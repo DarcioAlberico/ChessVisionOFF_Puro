@@ -31,6 +31,8 @@ dev = [
 cvoff-train = "chess_diagram_ocr.cli.train:main"
 cvoff-infer = "chess_diagram_ocr.cli.infer:main"
 cvoff-export = "chess_diagram_ocr.cli.export_pgn:main"
+cvoff-audit = "chess_diagram_ocr.cli.audit:main"
+cvoff-eval = "chess_diagram_ocr.cli.evaluate:main"
 
 [build-system]
 requires = ["setuptools>=68"]

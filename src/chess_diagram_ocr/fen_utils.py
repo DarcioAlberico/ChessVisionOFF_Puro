@@ -1,24 +1,181 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 import chess
 
 from .config import IDX_TO_CLASS, PIECE_TO_IDX
 
+# --------------------------------------------------------------------------------------
+# Classificacao de legalidade
+#
+# O criterio nao e uma lista arbitraria de status, e sim: a violacao depende do lado a
+# jogar ou nao?
+#
+# Um diagrama de livro nao carrega o lado a jogar. O pipeline preenche "w" por padrao
+# (ver _normalize_fen), entao qualquer violacao que dependa de quem joga pode ser apenas
+# um artefato desse preenchimento -- e nao um erro de reconhecimento.
+#
+#   FATAL  = viola uma regra independente do lado a jogar (material, contagem de reis,
+#            peoes em fila impossivel). E erro de reconhecimento de verdade.
+#   XEQUE  = depende de quem joga. Frequentemente indica apenas que o lado a jogar e o
+#            oposto do assumido; S-17 usa exatamente esse sinal para inferi-lo.
+#
+# Statuses ignorados (BAD_CASTLING_RIGHTS, INVALID_EP_SQUARE) sao artefatos do sufixo
+# "w - - 0 1" adicionado automaticamente e nao dizem nada sobre a posicao reconhecida.
+# --------------------------------------------------------------------------------------
+
+FATAL_STATUSES: tuple[chess.Status, ...] = (
+    chess.STATUS_NO_WHITE_KING,
+    chess.STATUS_NO_BLACK_KING,
+    chess.STATUS_TOO_MANY_KINGS,
+    chess.STATUS_TOO_MANY_WHITE_PAWNS,
+    chess.STATUS_TOO_MANY_BLACK_PAWNS,
+    chess.STATUS_TOO_MANY_WHITE_PIECES,
+    chess.STATUS_TOO_MANY_BLACK_PIECES,
+    chess.STATUS_PAWNS_ON_BACKRANK,
+    chess.STATUS_EMPTY,
+)
+
+TURN_DEPENDENT_STATUSES: tuple[chess.Status, ...] = (
+    chess.STATUS_OPPOSITE_CHECK,
+    chess.STATUS_IMPOSSIBLE_CHECK,
+    chess.STATUS_TOO_MANY_CHECKERS,
+)
+
+IGNORED_STATUSES: tuple[chess.Status, ...] = (
+    chess.STATUS_BAD_CASTLING_RIGHTS,
+    chess.STATUS_INVALID_EP_SQUARE,
+)
+
+_STATUS_DESCRIPTIONS: dict[chess.Status, str] = {
+    chess.STATUS_NO_WHITE_KING: "falta o rei branco",
+    chess.STATUS_NO_BLACK_KING: "falta o rei preto",
+    chess.STATUS_TOO_MANY_KINGS: "mais de um rei da mesma cor",
+    chess.STATUS_TOO_MANY_WHITE_PAWNS: "peões brancos demais",
+    chess.STATUS_TOO_MANY_BLACK_PAWNS: "peões pretos demais",
+    chess.STATUS_TOO_MANY_WHITE_PIECES: "peças brancas demais",
+    chess.STATUS_TOO_MANY_BLACK_PIECES: "peças pretas demais",
+    chess.STATUS_PAWNS_ON_BACKRANK: "peão na primeira ou na oitava fila",
+    chess.STATUS_EMPTY: "tabuleiro vazio",
+    chess.STATUS_OPPOSITE_CHECK: "o lado que não joga está em xeque",
+    chess.STATUS_IMPOSSIBLE_CHECK: "configuração de xeque impossível",
+    chess.STATUS_TOO_MANY_CHECKERS: "peças demais dando xeque",
+    chess.STATUS_BAD_CASTLING_RIGHTS: "direitos de roque incompatíveis com a posição",
+    chess.STATUS_INVALID_EP_SQUARE: "casa de en passant inválida",
+}
+
+
+@dataclass(frozen=True)
+class PositionCheck:
+    """Resultado da checagem de legalidade de uma posição reconhecida."""
+
+    fen: str
+    status: chess.Status
+    is_legal: bool
+    """A posição é legal exatamente como foi informada (incluindo o lado a jogar)."""
+
+    is_fatal: bool
+    """Viola uma regra independente do lado a jogar: erro real de reconhecimento."""
+
+    legal_turn: chess.Color | None
+    """Cor para a qual a posição é legal, se existir alguma.
+
+    Quando `is_legal` é False mas `legal_turn` não é None, a posição está correta e
+    apenas o lado a jogar foi assumido errado -- é o sinal que S-17 usa para inferi-lo.
+    """
+
+    problems: tuple[str, ...]
+    """Descrições em pt-BR dos problemas encontrados, prontas para exibição."""
+
+    @property
+    def needs_side_to_move_flip(self) -> bool:
+        """A posição só é ilegal por causa do lado a jogar assumido."""
+        return not self.is_legal and not self.is_fatal and self.legal_turn is not None
+
+
+def describe_status(status: chess.Status) -> tuple[str, ...]:
+    """Traduz um `chess.Status` em descrições legíveis, ignorando ruído do preenchimento."""
+    problems = [
+        text
+        for flag, text in _STATUS_DESCRIPTIONS.items()
+        if status & flag and flag not in IGNORED_STATUSES
+    ]
+    return tuple(problems)
+
+
+def _status_for_turn(board: chess.Board, turn: chess.Color) -> chess.Status:
+    probe = board.copy(stack=False)
+    probe.turn = turn
+    return probe.status()
+
+
+def check_position(fen: str) -> PositionCheck:
+    """Avalia a legalidade de uma posição.
+
+    Diferente de `is_valid_fen`, que só verifica sintaxe, esta função aplica as regras
+    do xadrez: contagem de reis e de peças, peões em filas impossíveis e configurações
+    de xeque.
+    """
+    normalized = _normalize_fen(fen)
+    try:
+        board = chess.Board(normalized)
+    except (ValueError, AttributeError, TypeError):
+        return PositionCheck(
+            fen=normalized,
+            status=chess.STATUS_EMPTY,
+            is_legal=False,
+            is_fatal=True,
+            legal_turn=None,
+            problems=("FEN não pôde ser interpretada",),
+        )
+
+    status = board.status()
+    relevant = _relevant_status(status)
+    is_fatal = any(relevant & flag for flag in FATAL_STATUSES)
+
+    legal_turn: chess.Color | None = None
+    if not is_fatal:
+        for turn in (board.turn, not board.turn):
+            if _relevant_status(_status_for_turn(board, turn)) == chess.STATUS_VALID:
+                legal_turn = turn
+                break
+
+    return PositionCheck(
+        fen=normalized,
+        status=status,
+        is_legal=relevant == chess.STATUS_VALID,
+        is_fatal=is_fatal,
+        legal_turn=legal_turn,
+        problems=describe_status(status),
+    )
+
+
+def _relevant_status(status: chess.Status) -> chess.Status:
+    """Remove do status os flags que são artefato do preenchimento padrão da FEN."""
+    for flag in IGNORED_STATUSES:
+        status &= ~flag
+    return status
+
+
+def is_legal_position(fen: str) -> bool:
+    """A posição é legal exatamente como informada. Ver `check_position` para o detalhe."""
+    return check_position(fen).is_legal
+
 
 def _normalize_fen(fen: str) -> str:
-    fen = fen.strip()
+    fen = str(fen).strip()
     if " " not in fen:
         return f"{fen} w - - 0 1"
     return fen
 
 
-def is_valid_fen(fen: str) -> bool:
-    """A FEN e parseavel. ATENCAO: nao garante posicao legal.
+def is_syntactically_valid_fen(fen: str) -> bool:
+    """A FEN é parseável.
 
-    Aceita, por exemplo, posicoes sem rei ou com dois reis da mesma cor.
-    A checagem de legalidade sera introduzida em S-05 (ver docs/SPEC.md).
+    ATENÇÃO: não garante posição legal. Aceita, por exemplo, posições sem rei ou com
+    dois reis da mesma cor. Para legalidade use `check_position` / `is_legal_position`.
     """
     try:
         chess.Board(_normalize_fen(fen))
@@ -26,6 +183,10 @@ def is_valid_fen(fen: str) -> bool:
     except (ValueError, AttributeError, TypeError):
         # AttributeError/TypeError cobrem entrada nao textual vinda da UI ou do CSV.
         return False
+
+
+# Nome historico, mantido para nao quebrar chamadores. Prefira o nome explicito acima.
+is_valid_fen = is_syntactically_valid_fen
 
 
 def board_from_fen(fen: str) -> chess.Board:
@@ -36,7 +197,7 @@ def labels_from_fen(fen: str) -> list[int]:
     board_part = fen.split()[0] if " " in fen else fen
     rows = board_part.split("/")
     if len(rows) != 8:
-        raise ValueError("FEN must have 8 ranks.")
+        raise ValueError("A FEN deve ter 8 filas.")
 
     labels: list[int] = []
     for row in rows:
@@ -47,7 +208,7 @@ def labels_from_fen(fen: str) -> list[int]:
             else:
                 expanded.append(ch)
         if len(expanded) != 8:
-            raise ValueError("Each FEN rank must resolve to 8 squares.")
+            raise ValueError("Cada fila da FEN deve resolver para 8 casas.")
         labels.extend(PIECE_TO_IDX.get(piece, PIECE_TO_IDX["empty"]) for piece in expanded)
     return labels
 
@@ -55,7 +216,7 @@ def labels_from_fen(fen: str) -> list[int]:
 def fen_from_class_indices(class_indices: Iterable[int]) -> str:
     classes = [IDX_TO_CLASS[int(idx)] for idx in class_indices]
     if len(classes) != 64:
-        raise ValueError("Expected exactly 64 squares.")
+        raise ValueError("Esperadas exatamente 64 casas.")
 
     rows: list[str] = []
     for row_start in range(0, 64, 8):

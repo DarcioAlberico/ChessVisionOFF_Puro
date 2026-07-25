@@ -1,0 +1,107 @@
+{
+  "split": "test",
+  "model_path": "C:\\PythonChess\\ChessVisionOFF_Puro\\models\\piece_classifier.pt",
+  "device": "cpu",
+  "board_count": 320,
+  "square_count": 20480,
+  "square_accuracy": 0.9998046875,
+  "board_exact_accuracy": 0.9875,
+  "board_within_one_accuracy": 1.0,
+  "illegal_rate": 0.003125,
+  "illegal_predictions": 1,
+  "illegal_expected": 0,
+  "mean_confidence_when_correct": 0.9993955193727504,
+  "mean_confidence_when_wrong": 0.7978165596723557,
+  "expected_calibration_error": 0.000448539017816049,
+  "confidence_auc_min_square": 0.9169303797468354,
+  "confidence_auc_mean_square": 0.8971518987341772,
+  "per_class": {
+    "empty": {
+      "support": 15833,
+      "recall": 0.9999368407755953,
+      "precision": 1.0
+    },
+    "P": {
+      "support": 1223,
+      "recall": 1.0,
+      "precision": 0.9983673469387755
+    },
+    "N": {
+      "support": 183,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "B": {
+      "support": 192,
+      "recall": 0.9947916666666666,
+      "precision": 1.0
+    },
+    "R": {
+      "support": 285,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "Q": {
+      "support": 139,
+      "recall": 1.0,
+      "precision": 0.9928571428571429
+    },
+    "K": {
+      "support": 320,
+      "recall": 0.996875,
+      "precision": 1.0
+    },
+    "p": {
+      "support": 1212,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "n": {
+      "support": 154,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "b": {
+      "support": 203,
+      "recall": 1.0,
+      "precision": 0.9950980392156863
+    },
+    "r": {
+      "support": 278,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "q": {
+      "support": 138,
+      "recall": 0.9927536231884058,
+      "precision": 1.0
+    },
+    "k": {
+      "support": 320,
+      "recall": 1.0,
+      "precision": 1.0
+    }
+  },
+  "top_confusions": [
+    {
+      "expected": "empty",
+      "predicted": "P",
+      "count": 1
+    },
+    {
+      "expected": "B",
+      "predicted": "P",
+      "count": 1
+    },
+    {
+      "expected": "K",
+      "predicted": "b",
+      "count": 1
+    },
+    {
+      "expected": "q",
+      "predicted": "Q",
+      "count": 1
+    }
+  ]
+}

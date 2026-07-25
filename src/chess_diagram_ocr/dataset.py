@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,8 +13,11 @@ import torch
 from torch.utils.data import Dataset
 
 from .config import BOARD_SIZE
-from .fen_utils import is_valid_fen, labels_from_fen
+from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .model import preprocess_cell_to_tensor
+from .splits import Split
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,12 +32,31 @@ class BoardFenDataset(Dataset):
         csv_path: Path,
         samples_dir: Path,
         transform: Callable | None = None,
+        *,
+        skip_illegal: bool = True,
+        split: Split | None = None,
+        splits: Mapping[str, Split] | None = None,
     ) -> None:
+        """Dataset de casas de tabuleiro a partir de rótulos FEN.
+
+        `skip_illegal` descarta rótulos que violam regras independentes do lado a jogar
+        (rei faltando, peças demais, peão na primeira fila). Esses rótulos são erros de
+        anotação e, se treinados, ensinam o modelo a reproduzi-los. Rótulos apenas com
+        o lado a jogar invertido são mantidos: a informação de peças neles está correta.
+
+        `split` restringe o dataset a uma partição, usando o mapa `splits` (normalmente
+        vindo de `splits.ensure_splits`). Amostras sem split registrado são ignoradas,
+        para que uma amostra nova nunca entre por acidente no conjunto de teste.
+        """
         self.csv_path = Path(csv_path)
         self.samples_dir = Path(samples_dir)
         self.transform = transform
+        self.skip_illegal = skip_illegal
+        self.split = split
+        self.splits = splits
         self.entries: list[DatasetEntry] = []
         self.index_map: list[tuple[int, int]] = []
+        self.skipped_illegal: list[tuple[str, tuple[str, ...]]] = []
         self._board_cache: dict[int, np.ndarray] = {}
         self._labels_cache: dict[int, list[int]] = {}
         self._load_entries()
@@ -51,9 +74,23 @@ class BoardFenDataset(Dataset):
         for row in df.itertuples(index=False):
             # Celula vazia no CSV chega como NaN (float): coagir antes de validar.
             fen = str(row.fen).strip()
-            if not fen or fen.lower() == "nan" or not is_valid_fen(fen):
+            if not fen or fen.lower() == "nan" or not is_syntactically_valid_fen(fen):
                 continue
+
             filename = str(row.filename).strip()
+
+            if self.split is not None:
+                if self.splits is None:
+                    raise ValueError("Para filtrar por split é necessário informar o mapa `splits`.")
+                if self.splits.get(filename) != self.split:
+                    continue
+
+            if self.skip_illegal:
+                position = check_position(fen)
+                if position.is_fatal:
+                    self.skipped_illegal.append((filename, position.problems))
+                    continue
+
             img_path = self.samples_dir / filename
             if not img_path.exists():
                 missing_files.append(filename)
@@ -64,9 +101,17 @@ class BoardFenDataset(Dataset):
             preview = ", ".join(sorted(set(missing_files))[:3])
             suffix = "..." if len(set(missing_files)) > 3 else ""
             warnings.warn(
-                f"Skipped {len(missing_files)} dataset rows with missing images: {preview}{suffix}",
+                f"{len(missing_files)} linhas ignoradas por imagem ausente: {preview}{suffix}",
                 RuntimeWarning,
                 stacklevel=2,
+            )
+
+        if self.skipped_illegal:
+            logger.warning(
+                "%d rótulos ignorados por posição ilegal. Rode `cvoff-audit` para revisá-los. "
+                "Primeiros casos: %s",
+                len(self.skipped_illegal),
+                "; ".join(f"{name} ({', '.join(problems)})" for name, problems in self.skipped_illegal[:3]),
             )
 
         self.index_map = [(entry_idx, sq) for entry_idx in range(len(self.entries)) for sq in range(64)]
@@ -117,9 +162,27 @@ class BoardFenDataset(Dataset):
         return x, y
 
 
-def append_training_sample(board_rgb: np.ndarray, fen: str, csv_path: Path, samples_dir: Path) -> Path:
-    if not is_valid_fen(fen):
-        raise ValueError("Invalid FEN. Please provide a legal FEN string.")
+def append_training_sample(
+    board_rgb: np.ndarray,
+    fen: str,
+    csv_path: Path,
+    samples_dir: Path,
+    *,
+    allow_illegal: bool = False,
+) -> Path:
+    """Grava uma amostra rotulada (imagem + linha no CSV).
+
+    Rejeita posições fatalmente ilegais: gravá-las como verdade ensina o modelo a
+    reproduzir o erro. Posições apenas com o lado a jogar invertido são aceitas.
+    `allow_illegal=True` contorna a checagem, para casos deliberados.
+    """
+    if not is_syntactically_valid_fen(fen):
+        raise ValueError("FEN inválida: não foi possível interpretar a notação.")
+
+    if not allow_illegal:
+        position = check_position(fen)
+        if position.is_fatal:
+            raise ValueError("Posição ilegal, não pode ser salva como rótulo: " + "; ".join(position.problems))
 
     csv_path = Path(csv_path)
     samples_dir = Path(samples_dir)

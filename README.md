@@ -57,7 +57,8 @@ Depois da instalacao, os tres comandos abaixo ficam disponiveis no ambiente. Tod
 aceitam `-v` para log em nivel DEBUG.
 
 ```bash
-# Treino
+# Treino. Usa data/splits.csv: treina no split 'train', valida em 'val',
+# e nunca toca no split 'test'. --fresh treina do zero.
 cvoff-train --epochs 12 --batch-size 128 --lr 0.001
 
 # Inferencia em uma pagina
@@ -65,6 +66,16 @@ cvoff-infer "PDF\1937 Kemeri.pdf" --page 0
 
 # Varredura completa do PDF para PGN
 cvoff-export "PDF\1937 Kemeri.pdf"
+
+# Auditoria do dataset: posicoes ilegais, duplicatas, orfaos, distribuicao de classes.
+# Sem flags, apenas relata. Toda escrita cria backup do CSV.
+cvoff-audit
+cvoff-audit --fix-side-to-move --quarantine --dedupe
+
+# Avaliacao. A metrica primaria e a acuracia exata por tabuleiro:
+# a fracao de diagramas que sai sem nenhuma correcao manual.
+cvoff-eval --split test
+cvoff-eval --split test --json docs/metrics/atual.json
 ```
 
 Os scripts `train_model.py`, `infer_pdf.py` e `export_pdf_pgn.py` na raiz continuam
@@ -104,29 +115,46 @@ esta vazia, entao a suite roda em um clone limpo.
 
 ```text
 src/chess_diagram_ocr/
+  audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   board_detection.py    deteccao do tabuleiro na pagina (OpenCV)
   checkpoint.py         leitura de checkpoints .pt
   config.py             classes de pecas, tamanhos e caminhos padrao
   dataset.py            dataset de treino e gravacao de amostras
-  fen_utils.py          conversao e validacao de FEN
+  evaluation.py         metricas de qualidade do reconhecimento
+  fen_utils.py          conversao de FEN e checagem de legalidade
   inference.py          carga do modelo e predicao de FEN
   logging_setup.py      configuracao de logging
   model.py              arquitetura do classificador de pecas
   pdf_io.py             render de paginas de PDF (PyMuPDF)
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
+  splits.py             divisao treino/validacao/teste estavel
   training.py           loop de treino
   webview2_panel.py     painel WebView2 embutido (Windows)
-  cli/                  entrypoints cvoff-train, cvoff-infer, cvoff-export
+  cli/                  entrypoints cvoff-*
 app_tkinter.py          interface desktop
 app_streamlit.py        interface web
 tests/                  suite de testes
-docs/                   analise tecnica, roadmap e especificacao
+docs/                   analise tecnica, roadmap, especificacao e baseline
 data/labels.csv         rotulos (versionado)
+data/splits.csv         particao treino/validacao/teste (versionado)
 data/samples/           imagens dos tabuleiros (nao versionado)
 models/                 checkpoints (nao versionado)
 PDF/                    livros de origem (nao versionado)
 PGN/                    saida gerada (nao versionado)
 ```
+
+## Sobre FEN: sintaxe nao e legalidade
+
+Duas checagens distintas, e confundi-las causava rotulos corrompidos no dataset:
+
+- `is_syntactically_valid_fen(fen)` -- a notacao e interpretavel. Aceita posicoes
+  impossiveis, como duas damas brancas sem rei.
+- `check_position(fen)` -- aplica as regras do xadrez. Classifica os problemas em:
+  - **fatais**, independentes do lado a jogar (rei faltando, pecas demais, peao na
+    primeira fila). Sao erro real de reconhecimento e ficam fora do treino.
+  - **de turno**, que dependem de quem joga. Num diagrama de livro o lado a jogar nao
+    esta na imagem e e preenchido como "brancas"; quando isso torna a posicao ilegal,
+    quase sempre significa que era a vez das pretas. As pecas estao certas.
 
 ## Dados e artefatos
 

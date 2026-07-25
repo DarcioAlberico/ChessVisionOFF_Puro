@@ -1,0 +1,162 @@
+{
+  "split": "train",
+  "model_path": "C:\\PythonChess\\ChessVisionOFF_Puro\\models\\piece_classifier.pt",
+  "device": "cpu",
+  "board_count": 2569,
+  "square_count": 164416,
+  "square_accuracy": 0.9993613760217984,
+  "board_exact_accuracy": 0.9743090696769171,
+  "board_within_one_accuracy": 0.9953289217594394,
+  "illegal_rate": 0.011288439081354613,
+  "illegal_predictions": 29,
+  "illegal_expected": 0,
+  "mean_confidence_when_correct": 0.9993408463536693,
+  "mean_confidence_when_wrong": 0.8100292544989359,
+  "expected_calibration_error": 0.00028740351632858843,
+  "confidence_auc_min_square": 0.9265487475635298,
+  "confidence_auc_mean_square": 0.9199324447027204,
+  "per_class": {
+    "empty": {
+      "support": 126513,
+      "recall": 0.9998419134792472,
+      "precision": 0.9997312826511338
+    },
+    "P": {
+      "support": 10067,
+      "recall": 0.999304658786133,
+      "precision": 0.998015873015873
+    },
+    "N": {
+      "support": 1375,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "B": {
+      "support": 1665,
+      "recall": 0.9927927927927928,
+      "precision": 0.9975859987929994
+    },
+    "R": {
+      "support": 2217,
+      "recall": 0.997744700045106,
+      "precision": 0.9968454258675079
+    },
+    "Q": {
+      "support": 1156,
+      "recall": 0.9974048442906575,
+      "precision": 0.9871575342465754
+    },
+    "K": {
+      "support": 2569,
+      "recall": 0.9902685869988322,
+      "precision": 0.999607072691552
+    },
+    "p": {
+      "support": 10054,
+      "recall": 0.999403222597971,
+      "precision": 0.9992044550517104
+    },
+    "n": {
+      "support": 1283,
+      "recall": 0.9992205767731879,
+      "precision": 0.9984423676012462
+    },
+    "b": {
+      "support": 1644,
+      "recall": 0.9993917274939172,
+      "precision": 0.9987841945288753
+    },
+    "r": {
+      "support": 2235,
+      "recall": 0.9959731543624161,
+      "precision": 0.9982062780269059
+    },
+    "q": {
+      "support": 1069,
+      "recall": 0.9878391019644528,
+      "precision": 0.9962264150943396
+    },
+    "k": {
+      "support": 2569,
+      "recall": 0.9988322304398599,
+      "precision": 0.998443579766537
+    }
+  },
+  "top_confusions": [
+    {
+      "expected": "K",
+      "predicted": "empty",
+      "count": 19
+    },
+    {
+      "expected": "q",
+      "predicted": "Q",
+      "count": 13
+    },
+    {
+      "expected": "B",
+      "predicted": "P",
+      "count": 9
+    },
+    {
+      "expected": "empty",
+      "predicted": "P",
+      "count": 8
+    },
+    {
+      "expected": "P",
+      "predicted": "empty",
+      "count": 7
+    },
+    {
+      "expected": "empty",
+      "predicted": "p",
+      "count": 4
+    },
+    {
+      "expected": "p",
+      "predicted": "empty",
+      "count": 4
+    },
+    {
+      "expected": "empty",
+      "predicted": "B",
+      "count": 3
+    },
+    {
+      "expected": "K",
+      "predicted": "k",
+      "count": 3
+    },
+    {
+      "expected": "r",
+      "predicted": "R",
+      "count": 3
+    },
+    {
+      "expected": "r",
+      "predicted": "p",
+      "count": 3
+    },
+    {
+      "expected": "R",
+      "predicted": "P",
+      "count": 2
+    },
+    {
+      "expected": "R",
+      "predicted": "r",
+      "count": 2
+    },
+    {
+      "expected": "Q",
+      "predicted": "R",
+      "count": 2
+    },
+    {
+      "expected": "p",
+      "predicted": "r",
+      "count": 2
+    }
+  ]
+}

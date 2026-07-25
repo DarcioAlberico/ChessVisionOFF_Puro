@@ -2,12 +2,31 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 DATE_FORMAT = "%H:%M:%S"
 
 _configured = False
+
+
+def _force_utf8_output() -> None:
+    """Garante UTF-8 em stdout/stderr.
+
+    No Windows o console usa cp1252 por padrao, o que corrompe texto acentuado.
+    Sem isso, mensagens em pt-BR sairiam ilegiveis ou levantariam UnicodeEncodeError
+    ao serem redirecionadas.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            # Stream nao reconfiguravel (por exemplo, ja substituido por um wrapper).
+            pass
 
 
 def configure_logging(*, verbose: bool = False, log_file: Path | None = None) -> None:
@@ -19,6 +38,8 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
     global _configured
     if _configured:
         return
+
+    _force_utf8_output()
 
     level = logging.DEBUG if verbose else logging.INFO
     handlers: list[logging.Handler] = [logging.StreamHandler()]
