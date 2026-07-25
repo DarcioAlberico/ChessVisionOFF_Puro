@@ -1,0 +1,47 @@
+# --- Python ---
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Dados e artefatos grandes (nao versionaveis em git puro) ---
+# Amostras de treino: 3.244 PNGs, ~2,7 GB. Ver docs/ROADMAP.md (Fase 5) sobre reducao de resolucao.
+data/samples/*
+!data/samples/.gitkeep
+data/app_tkinter_state.json
+data/review_queue.json
+data/quarantine.csv
+data/labels.csv.bak-*
+
+# Checkpoints do modelo (~8,7 MB cada). Distribuir por release, nao por git.
+models/*.pt
+models/*.onnx
+
+# --- Material de origem protegido por direito autoral ---
+# NUNCA versionar: o repositorio e publico.
+PDF/
+
+# --- Saida gerada ---
+PGN/
+logs/
+
+# --- Terceiros e lixo de execucao ---
+Python-Easy-Chess-GUI-master/
+pecg_log.txt
+pecg_user.json
+teste-001.*
+
+# --- Editores / SO ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

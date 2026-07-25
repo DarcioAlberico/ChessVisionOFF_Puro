@@ -1,0 +1,22 @@
+[project]
+name = "chessvisionoff-puro"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.10.*"
+dependencies = [
+    "numpy>=1.24.4,<1.25 ; python_full_version < '3.9'",
+    "numpy>=1.26.0 ; python_full_version >= '3.9'",
+    "opencv-python>=4.9.0 ; python_full_version >= '3.9'",
+    "opencv-python>=4.9.0,<4.11 ; python_full_version < '3.9'",
+    "pandas>=2.0.3,<2.1 ; python_full_version < '3.9'",
+    "pandas>=2.2.0 ; python_full_version >= '3.9'",
+    "pillow>=10.0.0",
+    "pymupdf>=1.24.0",
+    "pythonnet>=3.0.5",
+    "pywebview>=6.1",
+    "torch>=2.6",
+    "torchvision>=0.21",
+    "python-chess>=1.999",
+    "streamlit>=1.34.0",
+]
