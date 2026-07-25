@@ -22,21 +22,37 @@ Total: ~27 a 43 dias. As Fases 0 a 2 (9 a 15 dias) entregam a maior parte do val
 
 ---
 
-## Fase 0 — Higienização do repositório (1–2 dias)
+## Fase 0 — Higienização do repositório ✅ concluída (2026-07-25)
 
 **Por que primeiro:** é o único item cujo custo aumenta com o tempo. Depois do primeiro commit, 3,3 GB de PNGs e PDFs ficam no histórico do git para sempre.
 
-| # | Entrega | Ref. spec |
-|---|---|---|
-| 0.1 | `.gitignore` cobrindo `data/samples/`, `PDF/`, `PGN/`, `models/*.pt`, `Python-Easy-Chess-GUI-master/`, lixo de raiz | S-01 |
-| 0.2 | Remover `Python-Easy-Chess-GUI-master/`, `pecg_*`, `teste-001.*` da árvore | S-01 |
-| 0.3 | Commit inicial com árvore limpa | S-01 |
-| 0.4 | `pyproject.toml`: `[build-system]`, `[tool.setuptools]` src-layout, `[project.scripts]`, deps de dev, remover markers `<3.9` mortos | S-02 |
-| 0.5 | `pip install -e .` funcionando; remover as 4 gambiarras de `sys.path` | S-02 |
-| 0.6 | `ruff` + `mypy` configurados; CI no GitHub Actions rodando lint + testes | S-03 |
-| 0.7 | `logging` no lugar de `print`; strings em pt-BR **com acento** | S-04 |
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 0.1 | `.gitignore` cobrindo `data/samples/`, `PDF/`, `PGN/`, `models/*.pt`, `Python-Easy-Chess-GUI-master/`, lixo de raiz | S-01 | ✅ |
+| 0.2 | Remover `Python-Easy-Chess-GUI-master/`, `pecg_*`, `teste-001.*` da árvore | S-01 | ⏸️ ignorados no git; remoção do disco pendente de decisão |
+| 0.3 | Commit inicial com árvore limpa | S-01 | ✅ 41 arquivos, 0,57 MB |
+| 0.4 | `pyproject.toml`: `[build-system]`, `[tool.setuptools]` src-layout, `[project.scripts]`, deps de dev, remover markers `<3.9` mortos | S-02 | ✅ |
+| 0.5 | Instalação editável funcionando; remover as gambiarras de `sys.path` | S-02 | ✅ 5 removidas |
+| 0.6 | `ruff` + `mypy` configurados; CI no GitHub Actions rodando lint + testes | S-03 | ✅ |
+| 0.7 | `logging` no lugar de `print`; strings em pt-BR | S-04 | ✅ parcial (ver abaixo) |
 
-**Critério de saída:** `git status` limpo, `pip install -e .` seguido de `pytest` verde em máquina nova, CI verde.
+**Critério de saída:** atingido. `uv sync --extra dev` → `ruff` limpo, `mypy` limpo em 17 arquivos, `pytest` 8/8, CI verde.
+
+### O que a Fase 0 encontrou de quebrado
+
+Três bugs latentes que as ferramentas expuseram, corrigidos no mesmo commit:
+
+1. **`dataset.py`** — uma célula FEN vazia no `labels.csv` derrubava todo o carregamento com `AttributeError: 'float' object has no attribute 'strip'`. O pandas entrega `NaN` (float) e `is_valid_fen` só capturava `ValueError`. Reproduzido e corrigido.
+2. **`pdf_io.render_pdf_page`** — devolvia view somente-leitura sobre o buffer do `Pixmap`; escrita in-place levantava `ValueError`. Agora devolve array próprio e gravável.
+3. **`_load_checkpoint`** — duplicado idêntico em `inference.py` e `training.py`; consolidado em `checkpoint.py` com validação de formato.
+
+Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pythonnet`/`pywebview`): o `uv.lock` perdeu 6 pacotes `pyobjc-*` de macOS **sem alterar nenhuma versão já resolvida**.
+
+### Pendências conhecidas da Fase 0
+
+- **0.2** — `Python-Easy-Chess-GUI-master/` está fora do git, mas continua no disco. Já causou um problema concreto: o `uv` resolve o venv **dele** em vez do venv do projeto quando invocado sem `--python`. Remoção aguarda confirmação.
+- **0.7 (acentuação)** — o `logging` está feito e os `except Exception: pass` silenciosos foram eliminados, mas as strings de UI seguem sem acento ("posicao", "Configuracao"). A centralização em `ui/strings.py` depende da decomposição do Tkinter (S-31, Fase 6); acentuar antes disso criaria conflito com aquela refatoração.
+- **`requires-python`** — mantido em `==3.10.*`. Relaxar para `>=3.10,<3.14` permitiria matriz de CI, mas exigiria re-resolver o lock; deixado para quando houver motivo.
 
 ---
 

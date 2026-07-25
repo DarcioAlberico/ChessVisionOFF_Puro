@@ -1,7 +1,12 @@
 # Análise completa — ChessVisionOFF_Puro
 
 Data da análise: 2026-07-25
-Escopo: todo o código próprio do repositório (`src/chess_diagram_ocr/`, `app_tkinter.py`, `app_streamlit.py`, CLIs, `tests/`), dados (`data/`), artefatos (`models/`) e configuração do projeto.
+Escopo: todo o código próprio do repositório
+
+> **Nota de estado.** Este documento registra o diagnóstico **anterior** à Fase 0 e é
+> mantido como linha de base histórica. Os itens §3.1, §3.2, §3.6 e §3.11 (parcial) já
+> foram resolvidos — ver o registro de conclusão em [ROADMAP.md](ROADMAP.md#fase-0--higienização-do-repositório--concluída-2026-07-25).
+> As seções §2.1 a §2.5, que são as de maior impacto em precisão, continuam válidas. (`src/chess_diagram_ocr/`, `app_tkinter.py`, `app_streamlit.py`, CLIs, `tests/`), dados (`data/`), artefatos (`models/`) e configuração do projeto.
 
 Todas as afirmações quantitativas abaixo foram **medidas** neste repositório, com o `.venv` do projeto (Python 3.10.11, torch 2.10.0+cpu). Os scripts de medição são descartáveis e não foram adicionados ao repositório.
 
