@@ -29,7 +29,7 @@ Total: ~27 a 43 dias. As Fases 0 a 2 (9 a 15 dias) entregam a maior parte do val
 | # | Entrega | Ref. spec | Status |
 |---|---|---|---|
 | 0.1 | `.gitignore` cobrindo `data/samples/`, `PDF/`, `PGN/`, `models/*.pt`, `Python-Easy-Chess-GUI-master/`, lixo de raiz | S-01 | ✅ |
-| 0.2 | Remover `Python-Easy-Chess-GUI-master/`, `pecg_*`, `teste-001.*` da árvore | S-01 | ⏸️ ignorados no git; remoção do disco pendente de decisão |
+| 0.2 | Remover `Python-Easy-Chess-GUI-master/`, `pecg_*` da árvore | S-01 | ✅ removidos do disco |
 | 0.3 | Commit inicial com árvore limpa | S-01 | ✅ 41 arquivos, 0,57 MB |
 | 0.4 | `pyproject.toml`: `[build-system]`, `[tool.setuptools]` src-layout, `[project.scripts]`, deps de dev, remover markers `<3.9` mortos | S-02 | ✅ |
 | 0.5 | Instalação editável funcionando; remover as gambiarras de `sys.path` | S-02 | ✅ 5 removidas |
@@ -50,7 +50,6 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 
 ### Pendências conhecidas da Fase 0
 
-- **0.2** — `Python-Easy-Chess-GUI-master/` está fora do git, mas continua no disco. Já causou um problema concreto: o `uv` resolve o venv **dele** em vez do venv do projeto quando invocado sem `--python`. Remoção aguarda confirmação.
 - **0.7 (acentuação)** — o `logging` está feito e os `except Exception: pass` silenciosos foram eliminados, mas as strings de UI seguem sem acento ("posicao", "Configuracao"). A centralização em `ui/strings.py` depende da decomposição do Tkinter (S-31, Fase 6); acentuar antes disso criaria conflito com aquela refatoração.
 - **`requires-python`** — mantido em `==3.10.*`. Relaxar para `>=3.10,<3.14` permitiria matriz de CI, mas exigiria re-resolver o lock; deixado para quando houver motivo.
 
@@ -138,7 +137,7 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 | # | Entrega | Ref. spec |
 |---|---|---|
 | 5.1 | Cache do dataset limitado (LRU) — resolve os 5,8 GiB de RAM | S-26 |
-| 5.2 | `num_workers` configurável; amostras armazenadas em resolução reduzida | S-26 |
+| 5.2 | `num_workers` configurável | S-26 |
 | 5.3 | Treino reprodutível: `--fresh`, `strict=True`, semente e split registrados no checkpoint | S-27 |
 | 5.4 | Métricas de treino corretas: exata por tabuleiro, por classe, pesos de classe para o desbalanceamento | S-27 |
 | 5.5 | Calibração de confiança (temperature scaling) no conjunto de validação | S-28 |
@@ -187,8 +186,7 @@ Ao fim da semana o PGN exportado deixa de conter posições ilegais, os erros K�
 | Risco / decisão | Observação |
 |---|---|
 | **Os PDFs são material protegido** | Nunca versionar `PDF/`. Se o projeto for publicado, os livros não vão com ele. Decisão sobre distribuição é sua. |
-| **`data/samples` com 2,7 GB** | Precisa de estratégia: git-lfs, release de dados, ou reduzir resolução (Fase 5.2 corta >10×). Recomendo reduzir e usar release. |
-| **Reduzir resolução das amostras é irreversível** | Fazer com script que preserve os originais em backup externo até validar. |
+| **`data/samples` com 2,7 GB** | **Decidido (2026-07-25): manter em 800×800.** A redução para 512×512 foi descartada para preservar a resolução original caso o modelo passe a usar entrada maior que 64 px por casa (ver S-29). Consequência: as amostras seguem fora do git e precisam de estratégia própria de backup — não há cópia remota hoje. |
 | **Migração do `labels.csv`** | Adicionar `side_to_move` (Fase 3.6) muda o esquema. Script de migração com backup, e `dataset.py` aceitando os dois formatos por um período. |
 | **`Python-Easy-Chess-GUI-master/`** | Presumo que seja referência de estudo, não dependência — nenhum código do projeto o importa (verificado). Se estiver errado, me avise antes de remover. |
 | **Endpoint `helpman.komtera.lt`** | Serviço de terceiro sem contrato. Pode sair do ar. Tratar como opcional, nunca como dependência do fluxo principal. |

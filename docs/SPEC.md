@@ -698,9 +698,9 @@ Aproveitar para paralelizar: render de página e detecção são independentes e
 1. `functools.lru_cache` (ou `OrderedDict` com limite) de tamanho configurável — padrão 256 tabuleiros (~470 MiB). Parâmetro `cache_size` no construtor; `0` desliga.
 2. Amostrador que agrupa as 64 casas do mesmo tabuleiro no mesmo lote, transformando o acesso aleatório em quase sequencial — o cache pequeno passa a ter taxa de acerto alta.
 3. `num_workers` configurável (padrão `min(4, os.cpu_count()//2)`), com `persistent_workers=True`. Atenção: cache por processo, então o item 2 é o que faz isso funcionar.
-4. **Armazenar amostras em resolução reduzida.** Cada PNG 800×800 ocupa ~850 KB e os 3.244 somam 2,7 GB, mas o modelo consome casas de 64×64. Gravar o tabuleiro em 512×512 (64 px por casa, exatamente o que o modelo usa) reduz >10× sem perda de informação útil. Script de conversão com backup e flag `--keep-originals`.
+4. ~~Armazenar amostras em resolução reduzida.~~ **Descartado por decisão do projeto (2026-07-25):** as amostras permanecem em 800×800 para preservar resolução caso o modelo passe a usar entrada maior que 64 px por casa (ver S-29). O ganho de RAM vem inteiramente dos itens 1 e 2; o custo é 2,7 GB de disco que seguem sem cópia remota.
 
-**Critério de aceite.** Época completa em <2 GiB de RSS, medido. Tempo por época igual ou melhor. Após conversão, `data/samples/` abaixo de 300 MB.
+**Critério de aceite.** Época completa em <2 GiB de RSS, medido. Tempo por época igual ou melhor.
 
 ---
 

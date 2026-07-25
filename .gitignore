@@ -34,10 +34,8 @@ PDF/
 PGN/
 logs/
 
-# --- Terceiros e lixo de execucao ---
-Python-Easy-Chess-GUI-master/
-pecg_log.txt
-pecg_user.json
+# --- Lixo de execucao e artefatos locais ---
+# teste-001.pgn/.ini: analise salva pela aba de Estudo e descritor de leitor externo.
 teste-001.*
 
 # --- Editores / SO ---

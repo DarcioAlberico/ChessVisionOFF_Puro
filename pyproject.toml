@@ -48,7 +48,6 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-extend-exclude = ["Python-Easy-Chess-GUI-master"]
 
 [tool.ruff.lint]
 select = [
