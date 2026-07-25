@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import chess.svg
 import cv2
@@ -10,11 +9,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-
-ROOT = Path(__file__).resolve().parent
-SRC_DIR = ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
 
 from chess_diagram_ocr.board_detection import detect_boards
 from chess_diagram_ocr.config import DEFAULT_DATASET_CSV, DEFAULT_MODEL_PATH, DEFAULT_SAMPLES_DIR, find_default_pdf_path
@@ -62,7 +56,7 @@ def _clear_results() -> None:
 
 def run_ocr_for_boards(
     source_rgb: np.ndarray,
-    boards_with_quads: list[tuple[np.ndarray, Optional[np.ndarray]]],
+    boards_with_quads: list[tuple[np.ndarray, np.ndarray | None]],
     model_path: Path,
     rotate_180: bool,
     origin: str,
@@ -99,7 +93,7 @@ def _apply_fen_edits_from_dynamic_keys() -> None:
             fen_edits[idx] = st.session_state[key]
 
 
-def _crop_quad_region(source_rgb: np.ndarray, quad: Optional[list[list[float]]], pad: int = 12) -> Optional[np.ndarray]:
+def _crop_quad_region(source_rgb: np.ndarray, quad: list[list[float]] | None, pad: int = 12) -> np.ndarray | None:
     if quad is None:
         return None
     pts = np.array(quad, dtype=np.float32).reshape(4, 2)
@@ -113,7 +107,7 @@ def _crop_quad_region(source_rgb: np.ndarray, quad: Optional[list[list[float]]],
     return source_rgb[y0:y1, x0:x1]
 
 
-def _get_selected_fen_for_preview() -> tuple[Optional[str], Optional[int]]:
+def _get_selected_fen_for_preview() -> tuple[str | None, int | None]:
     items = st.session_state.get("result_items", [])
     if not items:
         return None, None

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import List, Literal, Optional, Tuple
+from typing import Literal
 
 import cv2
 import numpy as np
@@ -276,7 +276,7 @@ def detect_boards(
     max_boards: int = 8,
     iou_threshold: float = 0.25,
     reading_order: ReadingOrder = "row",
-) -> list[tuple[np.ndarray, Optional[np.ndarray]]]:
+) -> list[tuple[np.ndarray, np.ndarray | None]]:
     candidates = _extract_candidate_quads(image_rgb)
     top_score = candidates[0][1] if candidates else 0.0
     min_score = max(0.06, top_score * 0.25)
@@ -296,20 +296,20 @@ def detect_boards(
         return []
 
     _sort_selected_candidates(selected, reading_order)
-    boards: list[tuple[np.ndarray, Optional[np.ndarray]]] = []
+    boards: list[tuple[np.ndarray, np.ndarray | None]] = []
     for quad, _, _ in selected:
         boards.append((warp_from_quad(image_rgb, quad, target_size=target_size), quad))
     return boards
 
 
-def detect_board(image_rgb: np.ndarray, target_size: int = BOARD_SIZE) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+def detect_board(image_rgb: np.ndarray, target_size: int = BOARD_SIZE) -> tuple[np.ndarray, np.ndarray | None]:
     boards = detect_boards(image_rgb=image_rgb, target_size=target_size, max_boards=1)
     if not boards:
         raise NoBoardDetectedError("Nenhum tabuleiro de xadrez foi detectado na imagem.")
     return boards[0]
 
 
-def split_board_into_cells(board_rgb: np.ndarray) -> List[np.ndarray]:
+def split_board_into_cells(board_rgb: np.ndarray) -> list[np.ndarray]:
     if board_rgb.shape[0] != BOARD_SIZE or board_rgb.shape[1] != BOARD_SIZE:
         board_rgb = cv2.resize(board_rgb, (BOARD_SIZE, BOARD_SIZE))
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List
+from collections.abc import Iterable
 
 import chess
 
@@ -15,10 +15,16 @@ def _normalize_fen(fen: str) -> str:
 
 
 def is_valid_fen(fen: str) -> bool:
+    """A FEN e parseavel. ATENCAO: nao garante posicao legal.
+
+    Aceita, por exemplo, posicoes sem rei ou com dois reis da mesma cor.
+    A checagem de legalidade sera introduzida em S-05 (ver docs/SPEC.md).
+    """
     try:
         chess.Board(_normalize_fen(fen))
         return True
-    except ValueError:
+    except (ValueError, AttributeError, TypeError):
+        # AttributeError/TypeError cobrem entrada nao textual vinda da UI ou do CSV.
         return False
 
 
@@ -26,7 +32,7 @@ def board_from_fen(fen: str) -> chess.Board:
     return chess.Board(_normalize_fen(fen))
 
 
-def labels_from_fen(fen: str) -> List[int]:
+def labels_from_fen(fen: str) -> list[int]:
     board_part = fen.split()[0] if " " in fen else fen
     rows = board_part.split("/")
     if len(rows) != 8:

@@ -1,17 +1,11 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
-
-ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
 
 from chess_diagram_ocr.pdf_to_pgn import DiagramPosition, build_pgn_text, save_pdf_positions_to_pgn, scan_pdf_positions
 

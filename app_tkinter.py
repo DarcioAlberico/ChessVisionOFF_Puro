@@ -2,39 +2,44 @@ from __future__ import annotations
 
 import io
 import json
-import sys
+import logging
 import threading
+import tkinter as tk
 import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
 import chess
 import chess.pgn
 import cv2
 import numpy as np
-import tkinter as tk
 from PIL import Image, ImageTk
-from tkinter import filedialog, messagebox, ttk
-
-ROOT = Path(__file__).resolve().parent
-PIECE_IMAGE_DIR = ROOT / "assets" / "piece_images"
-APP_STATE_PATH = ROOT / "data" / "app_tkinter_state.json"
-SRC_DIR = ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
 
 from chess_diagram_ocr.board_detection import detect_boards
-from chess_diagram_ocr.config import DEFAULT_DATASET_CSV, DEFAULT_MODEL_PATH, DEFAULT_SAMPLES_DIR, BOARD_SIZE, find_default_pdf_path
+from chess_diagram_ocr.config import (
+    BOARD_SIZE,
+    DEFAULT_DATASET_CSV,
+    DEFAULT_MODEL_PATH,
+    DEFAULT_SAMPLES_DIR,
+    find_default_pdf_path,
+)
 from chess_diagram_ocr.dataset import append_training_sample
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
 from chess_diagram_ocr.inference import load_model, predict_fen_from_board
+from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.pdf_to_pgn import default_pgn_output_path, save_pdf_positions_to_pgn
 from chess_diagram_ocr.training import train_model
 from chess_diagram_ocr.webview2_panel import EmbeddedWebView2, WebView2SupportError
 
+ROOT = Path(__file__).resolve().parent
+PIECE_IMAGE_DIR = ROOT / "assets" / "piece_images"
+APP_STATE_PATH = ROOT / "data" / "app_tkinter_state.json"
+
+logger = logging.getLogger(__name__)
 
 UNICODE_PIECES = {
     "P": "♙",
@@ -63,19 +68,19 @@ class ChessOcrTkApp:
         self.pdf_source: Any = None
         self.pdf_name: str = ""
         self.page_count = 0
-        self.page_rgb: Optional[np.ndarray] = None
-        self.page_loaded_for_index: Optional[int] = None
+        self.page_rgb: np.ndarray | None = None
+        self.page_loaded_for_index: int | None = None
         self.result_items: list[dict[str, Any]] = []
         self.fen_edits: list[str] = []
         self.study_board = chess.Board()
         self.study_game = chess.pgn.Game()
         self.study_game.setup(self.study_board.copy(stack=False))
         self.study_current_node: chess.pgn.GameNode = self.study_game
-        self.study_selected_square: Optional[int] = None
-        self.study_drag_from_square: Optional[int] = None
-        self.study_drag_piece: Optional[chess.Piece] = None
-        self.study_drag_pointer: Optional[tuple[float, float]] = None
-        self.study_drag_start_pointer: Optional[tuple[float, float]] = None
+        self.study_selected_square: int | None = None
+        self.study_drag_from_square: int | None = None
+        self.study_drag_piece: chess.Piece | None = None
+        self.study_drag_pointer: tuple[float, float] | None = None
+        self.study_drag_start_pointer: tuple[float, float] | None = None
         self.study_drag_active = False
         self.study_press_selected_new_piece = False
         self.study_origin_var = tk.StringVar(value="Base: posicao inicial")
@@ -84,19 +89,19 @@ class ChessOcrTkApp:
         self.study_variation_var = tk.StringVar(value="")
         self.study_follow_ocr_var = tk.BooleanVar(value=True)
         self.study_flipped_var = tk.BooleanVar(value=False)
-        self.left_tabs: Optional[ttk.Notebook] = None
-        self.local_results_tab: Optional[ttk.Frame] = None
-        self.board_canvas: Optional[tk.Canvas] = None
-        self.study_canvas: Optional[tk.Canvas] = None
-        self.study_moves_text: Optional[tk.Text] = None
-        self.study_variation_combo: Optional[ttk.Combobox] = None
+        self.left_tabs: ttk.Notebook | None = None
+        self.local_results_tab: ttk.Frame | None = None
+        self.board_canvas: tk.Canvas | None = None
+        self.study_canvas: tk.Canvas | None = None
+        self.study_moves_text: tk.Text | None = None
+        self.study_variation_combo: ttk.Combobox | None = None
         self._study_board_geom: dict[str, float] = {}
 
         self._model_cache = None
-        self._model_cache_path: Optional[Path] = None
-        self._model_device: Optional[str] = None
+        self._model_cache_path: Path | None = None
+        self._model_device: str | None = None
 
-        self.page_photo: Optional[ImageTk.PhotoImage] = None
+        self.page_photo: ImageTk.PhotoImage | None = None
         self._piece_image_sources = self._load_piece_image_sources()
         self._piece_photo_cache: dict[tuple[str, int], ImageTk.PhotoImage] = {}
 
@@ -115,33 +120,33 @@ class ChessOcrTkApp:
         self.lr_var = tk.DoubleVar(value=0.001)
         self.pdf_zoom_var = tk.DoubleVar(value=0.7)
         self.board_zoom_var = tk.DoubleVar(value=0.85)
-        self.main_pane: Optional[tk.PanedWindow] = None
-        self.btn_train_model: Optional[ttk.Button] = None
-        self.train_dialog: Optional[tk.Toplevel] = None
-        self.train_progress: Optional[ttk.Progressbar] = None
+        self.main_pane: tk.PanedWindow | None = None
+        self.btn_train_model: ttk.Button | None = None
+        self.train_dialog: tk.Toplevel | None = None
+        self.train_progress: ttk.Progressbar | None = None
         self.train_dialog_status_var = tk.StringVar(value="")
         self.train_dialog_metrics_var = tk.StringVar(value="")
         self._is_training = False
         self._training_total_epochs = 0
-        self.btn_correct_net: Optional[ttk.Button] = None
+        self.btn_correct_net: ttk.Button | None = None
         self._is_correcting_net = False
-        self.btn_ocr_local_best: Optional[ttk.Button] = None
-        self.btn_ocr_local_all: Optional[ttk.Button] = None
-        self.btn_ocr_best: Optional[ttk.Button] = None
-        self.btn_ocr_all: Optional[ttk.Button] = None
-        self.btn_pdf_select: Optional[ttk.Button] = None
-        self.btn_export_pdf_pgn: Optional[ttk.Button] = None
+        self.btn_ocr_local_best: ttk.Button | None = None
+        self.btn_ocr_local_all: ttk.Button | None = None
+        self.btn_ocr_best: ttk.Button | None = None
+        self.btn_ocr_all: ttk.Button | None = None
+        self.btn_pdf_select: ttk.Button | None = None
+        self.btn_export_pdf_pgn: ttk.Button | None = None
         self._is_exporting_pdf_pgn = False
         self._is_running_ocr = False
         self._pdf_select_mode = False
-        self._pdf_select_start_canvas: Optional[tuple[float, float]] = None
-        self._pdf_select_rect_id: Optional[int] = None
-        self.pdf_view_tabs: Optional[ttk.Notebook] = None
-        self.pdf_ocr_tab: Optional[ttk.Frame] = None
-        self.pdf_reader_tab: Optional[ttk.Frame] = None
-        self.pdf_reader_host: Optional[ttk.Frame] = None
+        self._pdf_select_start_canvas: tuple[float, float] | None = None
+        self._pdf_select_rect_id: int | None = None
+        self.pdf_view_tabs: ttk.Notebook | None = None
+        self.pdf_ocr_tab: ttk.Frame | None = None
+        self.pdf_reader_tab: ttk.Frame | None = None
+        self.pdf_reader_host: ttk.Frame | None = None
         self.pdf_reader_notice_var = tk.StringVar(value="Modo leitura pronto para carregar.")
-        self._webview2_panel: Optional[EmbeddedWebView2] = None
+        self._webview2_panel: EmbeddedWebView2 | None = None
         self._webview2_supported = False
         self._webview2_support_reason = ""
 
@@ -268,9 +273,9 @@ class ChessOcrTkApp:
             if self.main_pane is not None:
                 total_w = max(1, self.main_pane.winfo_width())
                 self.main_pane.sash_place(0, int(total_w * 0.42), 0)
-        except Exception:
-            # Ignore transient geometry errors while first layout stabilizes.
-            pass
+        except tk.TclError as exc:
+            # Erro transitorio de geometria enquanto o primeiro layout se estabiliza.
+            logger.debug("Nao foi possivel posicionar o divisor inicial: %s", exc)
 
     def _build_study_tab(self, parent: ttk.Frame) -> None:
         top_row = ttk.Frame(parent)
@@ -389,7 +394,7 @@ class ChessOcrTkApp:
         self.pdf_hscroll = ttk.Scrollbar(self.pdf_ocr_tab, orient=tk.HORIZONTAL, command=self.pdf_canvas.xview)
         self.pdf_hscroll.pack(fill=tk.X, pady=(0, 8))
         self.pdf_canvas.configure(yscrollcommand=self.pdf_vscroll.set, xscrollcommand=self.pdf_hscroll.set)
-        self.pdf_canvas_image_id: Optional[int] = None
+        self.pdf_canvas_image_id: int | None = None
         self.pdf_canvas.bind("<ButtonPress-1>", self._on_pdf_canvas_button_press)
         self.pdf_canvas.bind("<B1-Motion>", self._on_pdf_canvas_drag)
         self.pdf_canvas.bind("<ButtonRelease-1>", self._on_pdf_canvas_button_release)
@@ -461,7 +466,8 @@ class ChessOcrTkApp:
                     self.page_loaded_for_index = None
                     self.render_current_page()
             return True
-        except Exception:
+        except (OSError, json.JSONDecodeError, ValueError, tk.TclError) as exc:
+            logger.warning("Estado da aplicacao ignorado (%s): %s", APP_STATE_PATH, exc)
             return False
 
     def _save_app_state(self) -> None:
@@ -470,8 +476,8 @@ class ChessOcrTkApp:
             if APP_STATE_PATH.exists():
                 try:
                     state = json.loads(APP_STATE_PATH.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
+                except (OSError, json.JSONDecodeError) as exc:
+                    logger.warning("Estado anterior corrompido, sera sobrescrito: %s", exc)
 
             pdf_history = state.get("pdf_history", {})
             if self.pdf_source is not None:
@@ -485,8 +491,9 @@ class ChessOcrTkApp:
 
             APP_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
             APP_STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        except (OSError, TypeError, ValueError, tk.TclError) as exc:
+            # Falhar em salvar o estado nao deve derrubar a aplicacao. Escrita atomica: ver S-25.
+            logger.warning("Nao foi possivel salvar o estado da aplicacao: %s", exc)
 
     def _on_close(self) -> None:
         self._save_app_state()
@@ -724,8 +731,8 @@ class ChessOcrTkApp:
         if self._pdf_select_rect_id is not None:
             try:
                 self.pdf_canvas.delete(self._pdf_select_rect_id)
-            except Exception:
-                pass
+            except tk.TclError as exc:
+                logger.debug("Retangulo de selecao ja removido: %s", exc)
             self._pdf_select_rect_id = None
 
     def _clamp_pdf_canvas_point(self, x: float, y: float) -> tuple[float, float]:
@@ -795,7 +802,7 @@ class ChessOcrTkApp:
             fallback_to_full_image=True,
         )
 
-    def _get_model(self, model_path: Optional[Path] = None):
+    def _get_model(self, model_path: Path | None = None):
         model_path = model_path or Path(self.model_path_var.get().strip())
         if self._model_cache is None or self._model_cache_path != model_path:
             self._set_status(f"Carregando modelo: {model_path}")
@@ -837,8 +844,8 @@ class ChessOcrTkApp:
                     pdf_key = str(self.pdf_source.resolve())
                     if pdf_key in history:
                         target_page = history[pdf_key]
-                except Exception:
-                    pass
+                except (OSError, json.JSONDecodeError, ValueError) as exc:
+                    logger.warning("Historico de paginas ignorado: %s", exc)
 
             self.page_index_var.set(max(0, min(self.page_count - 1, target_page)))
             self.spin_page.config(to=max(self.page_count - 1, 0))
@@ -1030,9 +1037,9 @@ class ChessOcrTkApp:
     def _refine_board_from_quad(
         self,
         image_rgb: np.ndarray,
-        quad: Optional[np.ndarray],
+        quad: np.ndarray | None,
         pad_ratio: float = 0.08,
-    ) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    ) -> tuple[np.ndarray, np.ndarray | None]:
         if quad is None:
             resized = cv2.resize(image_rgb, (BOARD_SIZE, BOARD_SIZE))
             return resized, None
@@ -1207,7 +1214,8 @@ class ChessOcrTkApp:
         if self.result_items:
             try:
                 requested = int(self.selected_diag_var.get()) - 1
-            except Exception:
+            except (ValueError, tk.TclError):
+                # Campo vazio ou nao numerico: mantem a selecao atual.
                 requested = self.selected_diag_idx
             self.selected_diag_idx = max(0, min(requested, len(self.result_items) - 1))
         self.selected_diag_var.set(self.selected_diag_idx + 1)
@@ -1270,8 +1278,8 @@ class ChessOcrTkApp:
             return
         try:
             self.left_tabs.select(self.local_results_tab)
-        except Exception:
-            pass
+        except tk.TclError as exc:
+            logger.debug("Nao foi possivel focar a aba de resultados: %s", exc)
 
     def _redraw_current_result_board(self) -> None:
         if self.board_canvas is None:
@@ -1292,11 +1300,12 @@ class ChessOcrTkApp:
                 try:
                     with Image.open(path) as img:
                         images[key] = img.convert("RGBA")
-                except Exception:
-                    continue
+                except (OSError, ValueError) as exc:
+                    # Sem a imagem, o tabuleiro cai no fallback de simbolos Unicode.
+                    logger.warning("Imagem de peca invalida em %s: %s", path, exc)
         return images
 
-    def _get_piece_photo(self, piece: Any, cell: int) -> Optional[ImageTk.PhotoImage]:
+    def _get_piece_photo(self, piece: Any, cell: int) -> ImageTk.PhotoImage | None:
         key = f"{'w' if piece.color else 'b'}{piece.symbol().lower()}"
         source = self._piece_image_sources.get(key)
         if source is None:
@@ -1632,8 +1641,8 @@ class ChessOcrTkApp:
         self.study_drag_active = False
         self.study_press_selected_new_piece = False
 
-    def _choose_study_promotion(self) -> Optional[int]:
-        choice: dict[str, Optional[int]] = {"piece_type": None}
+    def _choose_study_promotion(self) -> int | None:
+        choice: dict[str, int | None] = {"piece_type": None}
         dlg = tk.Toplevel(self.root)
         dlg.title("Promocao")
         dlg.resizable(False, False)
@@ -1668,7 +1677,7 @@ class ChessOcrTkApp:
         suffix = "Variante seguida." if existing_child is not None else "Lance salvo."
         self._set_study_status(f"{san} | {suffix}")
 
-    def _study_square_from_xy(self, x: float, y: float) -> Optional[int]:
+    def _study_square_from_xy(self, x: float, y: float) -> int | None:
         geom = self._study_board_geom
         if not geom:
             return None
@@ -1707,7 +1716,7 @@ class ChessOcrTkApp:
         self._push_study_move(move)
         return True
 
-    def _handle_study_square_action(self, square: Optional[int], allow_deselect: bool) -> None:
+    def _handle_study_square_action(self, square: int | None, allow_deselect: bool) -> None:
         if square is None:
             if self.study_drag_active:
                 self._set_study_status("Arraste cancelado.")
@@ -2128,8 +2137,10 @@ class ChessOcrTkApp:
 
 
 def main() -> None:
+    configure_logging(log_file=default_log_file())
+    logger.info("Iniciando interface desktop.")
     root = tk.Tk()
-    app = ChessOcrTkApp(root)
+    ChessOcrTkApp(root)
     root.mainloop()
 
 

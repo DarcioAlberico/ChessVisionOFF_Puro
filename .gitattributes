@@ -1,0 +1,24 @@
+# Normaliza finais de linha: LF no repositorio, nativo no disco de trabalho.
+* text=auto
+
+# Arquivos de codigo e configuracao: sempre LF no repositorio.
+*.py   text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+*.csv  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.lock text eol=lf
+
+# Binarios: nunca converter.
+*.png  binary
+*.pdf  binary
+*.pt   binary
+*.onnx binary
+
+# PGN e sensivel a formatacao: tratar como texto, mas sem conversao agressiva.
+*.pgn  text eol=lf
+
+# uv.lock e gerado: reduz ruido em diffs e revisoes.
+uv.lock linguist-generated=true

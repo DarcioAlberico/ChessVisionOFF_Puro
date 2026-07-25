@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+from chess_diagram_ocr.board_detection import (
+    NoBoardDetectedError,
+    _sort_selected_candidates,
+    detect_board,
+    detect_boards,
+)
 
-from chess_diagram_ocr.board_detection import NoBoardDetectedError, _sort_selected_candidates, detect_board, detect_boards
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class BoardDetectionTests(unittest.TestCase):
@@ -30,7 +31,13 @@ class BoardDetectionTests(unittest.TestCase):
             detect_board(blank_page)
 
     def test_detect_boards_still_finds_real_sample(self) -> None:
-        sample_path = next((ROOT / "data" / "samples").glob("*.png"))
+        # Depende de data/samples/, que nao e versionado (ver .gitignore). Enquanto nao
+        # houver fixtures proprios no repositorio (S-09), o teste pula fora do ambiente local.
+        # sorted() torna a escolha deterministica, em vez de depender da ordem do sistema de arquivos.
+        sample_path = next(iter(sorted((ROOT / "data" / "samples").glob("*.png"))), None)
+        if sample_path is None:
+            self.skipTest("Nenhuma amostra em data/samples/. Fixtures versionados: ver S-09 em docs/SPEC.md.")
+
         image_bgr = cv2.imread(str(sample_path))
         self.assertIsNotNone(image_bgr, f"Falha ao abrir sample: {sample_path}")
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)

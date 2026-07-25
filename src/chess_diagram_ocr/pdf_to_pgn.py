@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Optional
 
 import chess.pgn
+import numpy as np
 
 from .board_detection import ReadingOrder, detect_boards
 from .config import DEFAULT_MODEL_PATH, PROJECT_ROOT
@@ -39,7 +40,8 @@ def _get_pdf_page_count(pdf_source: PdfSource) -> int:
     return get_pdf_page_count(pdf_source)
 
 
-def _render_pdf_page(pdf_source: PdfSource, page_index: int, dpi: int) -> object:
+def _render_pdf_page(pdf_source: PdfSource, page_index: int, dpi: int) -> np.ndarray:
+    # Indirecao mantida para permitir mock nos testes sem tocar em pdf_io.
     from .pdf_io import render_pdf_page
 
     return render_pdf_page(pdf_source, page_index, dpi=dpi)
@@ -52,11 +54,11 @@ def scan_pdf_positions(
     dpi: int = 220,
     max_boards_per_page: int = 8,
     rotate_180: bool = False,
-    device: Optional[str] = None,
+    device: str | None = None,
     start_page: int = 0,
-    end_page: Optional[int] = None,
+    end_page: int | None = None,
     reading_order: ReadingOrder = "column",
-    progress_callback: Optional[ProgressCallback] = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[DiagramPosition]:
     page_count = _get_pdf_page_count(pdf_source)
     if page_count <= 0:
@@ -146,12 +148,12 @@ def save_pdf_positions_to_pgn(
     dpi: int = 220,
     max_boards_per_page: int = 8,
     rotate_180: bool = False,
-    device: Optional[str] = None,
+    device: str | None = None,
     start_page: int = 0,
-    end_page: Optional[int] = None,
+    end_page: int | None = None,
     reading_order: ReadingOrder = "column",
     event_name: str = "ChessVisionOFF PDF OCR",
-    progress_callback: Optional[ProgressCallback] = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[DiagramPosition]:
     source_name = Path(pdf_source).name if isinstance(pdf_source, (str, Path)) else "pdf-bytes"
     positions = scan_pdf_positions(

@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 from torchvision.transforms import v2
 
+from .checkpoint import load_state_dict
 from .dataset import BoardFenDataset
 from .model import PieceClassifier
 
+logger = logging.getLogger(__name__)
+
 
 class TransformSubset(torch.utils.data.Dataset):
-    def __init__(self, subset: Subset, transform: Optional[Callable] = None):
+    def __init__(self, subset: Subset, transform: Callable | None = None):
         self.subset = subset
         self.transform = transform
 
@@ -30,13 +35,6 @@ class TransformSubset(torch.utils.data.Dataset):
 def _accuracy(logits: torch.Tensor, target: torch.Tensor) -> float:
     preds = logits.argmax(dim=1)
     return float((preds == target).float().mean().item())
-
-
-def _load_checkpoint(path: Path, map_location: str) -> object:
-    try:
-        return torch.load(path, map_location=map_location, weights_only=True)
-    except TypeError:
-        return torch.load(path, map_location=map_location)
 
 
 def _split_square_indices_by_board(dataset: BoardFenDataset, val_ratio: float) -> tuple[list[int], list[int]]:
@@ -74,19 +72,20 @@ def train_model(
     lr: float = 1e-3,
     val_ratio: float = 0.1,
     patience: int = 15,
-    progress_cb: Optional[Callable[[dict[str, Any]], None]] = None,
+    progress_cb: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     dataset = BoardFenDataset(Path(csv_path), Path(samples_dir))
     if len(dataset) == 0:
-        raise ValueError("Dataset is empty. Add corrected samples before training.")
+        raise ValueError("Dataset vazio. Salve exemplos corrigidos antes de treinar.")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = PieceClassifier().to(device)
     if Path(model_path).exists():
-        ckpt = _load_checkpoint(model_path, map_location=device)
-        state = ckpt.get("model_state", ckpt) if isinstance(ckpt, dict) else ckpt
-        model.load_state_dict(state, strict=False)
+        # Retomada do checkpoint anterior. Ver S-27: falta a opcao de treinar do zero.
+        model.load_state_dict(load_state_dict(Path(model_path), map_location=device), strict=False)
+        logger.info("Retomando treino a partir de %s.", model_path)
 
+    logger.info("Treinando em %s com %d tabuleiros (%d casas).", device, len(dataset.entries), len(dataset))
     train_indices, val_indices = _split_square_indices_by_board(dataset, val_ratio=val_ratio)
 
     train_transform = v2.Compose([
@@ -96,13 +95,9 @@ def train_model(
         v2.Lambda(lambda x: torch.clamp(x, 0.0, 1.0))
     ])
 
-    if val_indices:
-        train_ds = TransformSubset(Subset(dataset, train_indices), transform=train_transform)
-        val_ds = Subset(dataset, val_indices)
-        val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-    else:
-        train_ds = TransformSubset(Subset(dataset, train_indices), transform=train_transform)
-        val_loader = None
+    train_ds = TransformSubset(Subset(dataset, train_indices), transform=train_transform)
+    val_ds: Subset | None = Subset(dataset, val_indices) if val_indices else None
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False) if val_ds is not None else None
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
@@ -129,8 +124,8 @@ def train_model(
             train_loss += float(loss.item()) * xb.size(0)
             train_acc += _accuracy(logits, yb) * xb.size(0)
 
-        train_loss /= len(train_loader.dataset)
-        train_acc /= len(train_loader.dataset)
+        train_loss /= len(train_ds)
+        train_acc /= len(train_ds)
 
         row: dict[str, Any] = {
             "epoch": epoch,
@@ -139,7 +134,7 @@ def train_model(
         }
 
         model.eval()
-        if val_loader is not None:
+        if val_loader is not None and val_ds is not None:
             val_loss = 0.0
             val_acc = 0.0
             with torch.no_grad():
@@ -150,8 +145,8 @@ def train_model(
                     val_loss += float(loss.item()) * xb.size(0)
                     val_acc += _accuracy(logits, yb) * xb.size(0)
 
-            val_loss /= len(val_loader.dataset)
-            val_acc /= len(val_loader.dataset)
+            val_loss /= len(val_ds)
+            val_acc /= len(val_ds)
             row["val_loss"] = val_loss
             row["val_acc"] = val_acc
 
@@ -172,7 +167,11 @@ def train_model(
             progress_cb(row)
 
         if patience > 0 and epochs_no_improve >= patience:
-            print(f"\n[Early Stopping] Model did not improve for {patience} epochs. Stopping early at epoch {epoch}.")
+            logger.info(
+                "Parada antecipada: sem melhora por %d epocas. Interrompendo na epoca %d.",
+                patience,
+                epoch,
+            )
             break
 
     return history

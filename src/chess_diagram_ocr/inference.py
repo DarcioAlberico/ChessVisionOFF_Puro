@@ -1,33 +1,31 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
 import torch
 
 from .board_detection import split_board_into_cells
+from .checkpoint import load_state_dict
 from .fen_utils import fen_from_class_indices
 from .model import PieceClassifier, preprocess_cell_to_tensor
 
-
-def _load_checkpoint(path: Path, map_location: str) -> object:
-    try:
-        return torch.load(path, map_location=map_location, weights_only=True)
-    except TypeError:
-        return torch.load(path, map_location=map_location)
+logger = logging.getLogger(__name__)
 
 
-def load_model(model_path: Path, device: Optional[str] = None) -> tuple[PieceClassifier, str]:
+def load_model(model_path: Path, device: str | None = None) -> tuple[PieceClassifier, str]:
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model = PieceClassifier()
     model_path = Path(model_path)
 
     if model_path.exists():
-        ckpt = _load_checkpoint(model_path, map_location=dev)
-        state_dict = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(load_state_dict(model_path, map_location=dev), strict=False)
+        logger.info("Modelo carregado de %s em %s.", model_path, dev)
+    else:
+        logger.warning("Checkpoint nao encontrado em %s: usando pesos aleatorios.", model_path)
+
     model.to(dev)
     model.eval()
     return model, dev

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -27,15 +27,15 @@ class BoardFenDataset(Dataset):
         self,
         csv_path: Path,
         samples_dir: Path,
-        transform: Optional[Callable] = None,
+        transform: Callable | None = None,
     ) -> None:
         self.csv_path = Path(csv_path)
         self.samples_dir = Path(samples_dir)
         self.transform = transform
         self.entries: list[DatasetEntry] = []
         self.index_map: list[tuple[int, int]] = []
-        self._board_cache: Dict[int, np.ndarray] = {}
-        self._labels_cache: Dict[int, List[int]] = {}
+        self._board_cache: dict[int, np.ndarray] = {}
+        self._labels_cache: dict[int, list[int]] = {}
         self._load_entries()
 
     def _load_entries(self) -> None:
@@ -49,14 +49,16 @@ class BoardFenDataset(Dataset):
 
         missing_files: list[str] = []
         for row in df.itertuples(index=False):
-            if not is_valid_fen(row.fen):
+            # Celula vazia no CSV chega como NaN (float): coagir antes de validar.
+            fen = str(row.fen).strip()
+            if not fen or fen.lower() == "nan" or not is_valid_fen(fen):
                 continue
             filename = str(row.filename).strip()
             img_path = self.samples_dir / filename
             if not img_path.exists():
                 missing_files.append(filename)
                 continue
-            self.entries.append(DatasetEntry(filename=filename, fen=str(row.fen)))
+            self.entries.append(DatasetEntry(filename=filename, fen=fen))
 
         if missing_files:
             preview = ", ".join(sorted(set(missing_files))[:3])
@@ -88,7 +90,7 @@ class BoardFenDataset(Dataset):
         self._board_cache[entry_idx] = board
         return board
 
-    def _labels(self, entry_idx: int) -> List[int]:
+    def _labels(self, entry_idx: int) -> list[int]:
         cached = self._labels_cache.get(entry_idx)
         if cached is not None:
             return cached

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import threading
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 USER32 = ctypes.windll.user32
 
@@ -14,20 +18,29 @@ class WebView2SupportError(RuntimeError):
 
 
 class EmbeddedWebView2:
-    def __init__(self, host_widget: object, error_cb: Optional[Callable[[str], None]] = None) -> None:
+    """Hospeda um WebView2 dentro de um widget Tk, via Windows Forms e pythonnet.
+
+    Os objetos vindos do interop .NET (`Control`, `EdgeChrome`, `Window`, `Thread` do
+    System.Threading) sao dinamicos e nao tem stubs de tipo: por isso estao anotados
+    como `Any`. `host_widget` e um widget Tk, mantido generico para nao acoplar o
+    modulo ao tkinter.
+    """
+
+    def __init__(self, host_widget: Any, error_cb: Callable[[str], None] | None = None) -> None:
         self.host_widget = host_widget
         self.error_cb = error_cb
-        self._thread: Optional[threading.Thread] = None
-        self._host_control = None
-        self._edge = None
-        self._window = None
+        self._thread: Any = None
+        self._host_control: Any = None
+        self._edge: Any = None
+        self._window: Any = None
         self._ready_event = threading.Event()
-        self._init_error: Optional[str] = None
-        self._current_url: Optional[str] = None
+        self._init_error: str | None = None
+        self._current_url: str | None = None
         self._destroyed = False
         self._parent_hwnd = 0
         self._initial_size = (1, 1)
-        self._exit_thread = None
+        self._exit_thread: Any = None
+        self._invoke: Any = None
 
     @staticmethod
     def is_supported() -> tuple[bool, str]:
@@ -115,8 +128,9 @@ class EmbeddedWebView2:
                 self._host_control.Dispose()
 
             self._invoke(_shutdown)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - interop .NET levanta tipos arbitrarios
+            # O encerramento e best-effort: o processo esta saindo de qualquer forma.
+            logger.warning("Falha ao encerrar o painel WebView2: %s", exc)
         self._thread = None
         self._host_control = None
         self._edge = None
@@ -148,7 +162,8 @@ class EmbeddedWebView2:
                 f"embedded-{uuid.uuid4().hex[:8]}",
                 "Embedded WebView2",
                 url=self._current_url,
-                html=None,
+                # pywebview aceita None em html/js_api, mas anota como str: ignore necessario.
+                html=None,  # type: ignore[arg-type]
                 js_api=None,
                 width=width,
                 height=height,
@@ -171,7 +186,8 @@ class EmbeddedWebView2:
                 draggable=True,
                 vibrancy=False,
             )
-            edge = EdgeChrome(host_control, window, None)
+            # Terceiro argumento (user_agent) e opcional em tempo de execucao.
+            edge = EdgeChrome(host_control, window, None)  # type: ignore[arg-type]
 
             control_handle = int(str(host_control.Handle))
             USER32.SetParent(control_handle, parent_hwnd)

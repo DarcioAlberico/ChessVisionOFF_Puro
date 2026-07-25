@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 PIECE_CLASSES = [
     "empty",
@@ -31,7 +30,7 @@ DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "piece_classifier.pt"
 DEFAULT_PDF_DIR = PROJECT_ROOT / "PDF"
 
 
-def find_default_pdf_path() -> Optional[Path]:
+def find_default_pdf_path() -> Path | None:
     if not DEFAULT_PDF_DIR.exists():
         return None
 

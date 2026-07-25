@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Windows: o projeto depende de tkinter e, opcionalmente, de WebView2/pythonnet.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sincronizar dependencias
+        # --frozen falha se uv.lock estiver desatualizado em relacao ao pyproject.toml.
+        run: uv sync --extra dev --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Tipos (mypy)
+        run: uv run mypy
+
+      - name: Testes (pytest)
+        # data/samples/ e PDF/ nao sao versionados: os testes que dependem deles pulam.
+        run: uv run pytest -v
+
+      - name: Verificar que o pacote e importavel fora do diretorio do projeto
+        run: |
+          cd ..
+          uv run --project ChessVisionOFF_Puro python -c "import chess_diagram_ocr; print(chess_diagram_ocr.__file__)"
