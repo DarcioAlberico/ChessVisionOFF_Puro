@@ -12,7 +12,7 @@ Estimativas em dias de trabalho focado de uma pessoa. As fases são sequenciais 
 Fase 0  Higienização do repositório          1–2 d   ▸ desbloqueia tudo, custo cresce se atrasar
 Fase 1  Verdade e medição                    3–5 d   ▸ sem isso "melhorou" é indemonstrável
 Fase 2  Precisão do OCR                      5–8 d   ▸ maior ganho de qualidade do projeto
-Fase 3  Semântica: lado a jogar e metadados  4–6 d   ▸ metade dos exercícios está errada hoje
+Fase 3  Semântica: lado a jogar e metadados  4–6 d   ▸ concluída — metade dos exercícios saía errada
 Fase 4  Produtividade humana                 5–8 d   ▸ ataca o gargalo real (tempo do usuário)
 Fase 5  Modelo e desempenho                  4–6 d   ▸ só faz sentido depois da Fase 1
 Fase 6  Consolidação do produto              5–8 d   ▸ unificação, i18n, empacotamento
@@ -246,21 +246,155 @@ produção junto com a S-27, que arruma o treino reprodutível.
 
 ---
 
-## Fase 3 — Semântica: lado a jogar e metadados (4–6 dias)
+## Fase 3 — Semântica: lado a jogar e metadados ✅ concluída (2026-07-26)
 
-**Por que:** hoje 100% dos exercícios saem como "brancas jogam"; em livros de tática ~50% está errado. É o maior erro semântico do produto.
+**Por que:** até aqui 100% dos exercícios saíam como "brancas jogam"; em livros de tática ~50% está errado. Era o maior erro semântico do produto.
 
-| # | Entrega | Ref. spec |
-|---|---|---|
-| 3.1 | Extração do texto vizinho ao diagrama via `page.get_text("blocks")` + associação por proximidade geométrica | S-16 |
-| 3.2 | Classificador de lado a jogar por padrões multilíngue ("White to move", "Brancas jogam", "Weiß am Zug", "Schwarz zieht", "◻/◼") | S-16 |
-| 3.3 | Inferência de lado a jogar por legalidade quando não há texto (se pretas estão em xeque, é vez das pretas) | S-17 |
-| 3.4 | Inferência de direitos de roque a partir da posição de reis/torres | S-17 |
-| 3.5 | Metadados no PGN: número do exercício, jogadores, evento, ano quando extraíveis da legenda | S-18 |
-| 3.6 | Campo `side_to_move` no `labels.csv` e na UI de correção (migração compatível) | S-19 |
-| 3.7 | Deduplicação de diagramas repetidos entre páginas no PGN exportado | S-18 |
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 3.1 | Extração do texto vizinho ao diagrama + associação por proximidade geométrica | S-16 | ✅ `pdf_text.py`, por linha e por grupo (ver abaixo) |
+| 3.2 | Classificador de lado a jogar por padrões multilíngue | S-16 | ✅ pt/en/de/es/fr + símbolos |
+| 3.3 | Inferência de lado a jogar por legalidade quando não há texto | S-17 | ✅ `semantics.infer_side_to_move` |
+| 3.4 | Inferência de direitos de roque a partir da posição de reis/torres | S-17 | ✅ `infer_castling_rights` + `[CastlingSource]` |
+| 3.5 | Metadados no PGN: número do exercício, jogadores, evento, ano | S-18 | ✅ headers novos em `build_pgn_games` |
+| 3.6 | Campo `side_to_move` no `labels.csv` e na UI de correção | S-19 | ✅ esquema novo, `cvoff-migrate-labels`, Tkinter e Streamlit |
+| 3.7 | Deduplicação de diagramas repetidos entre páginas | S-18 | ✅ `mark_duplicates` + `--dedupe` |
 
-**Critério de saída:** em amostra manual de 50 exercícios do `1001 Winning Chess Sacrifices`, lado a jogar correto em ≥95%; headers de PGN com número do exercício.
+**Critério de saída:** atingido nos livros onde ele é mensurável, e **impossível no livro que o texto do roadmap escolheu** — ver a última seção.
+
+### O levantamento que decidiu o desenho: quantos livros o texto alcança
+
+Os 27 PDFs, 40 páginas amostradas de cada:
+
+| a camada de texto declara o lado a jogar | livros |
+|---|---|
+| sim, em legenda ao lado de cada diagrama | **3** |
+| tem texto, mas sem declarar o lado | 12 |
+| não tem camada de texto (scan puro) | 12 |
+
+O texto resolve a minoria — e é por isso que a S-17 não é um complemento da S-16, é metade do
+item. Nos 24 livros restantes a única fonte é a própria posição.
+
+Rodar os padrões na página inteira dá a impressão de cobertura muito maior: 8 livros
+"parciais". Todos são falso positivo de prosa — `"se as brancas jogarem 32 f2×g2"`,
+`"it was possible for White to play 20.Nd3"`, `"White moves first"` numa nota de rodapé. O
+que separa declaração de comentário não é o padrão, é onde ele está.
+
+### O que a S-16 supunha e a medição desmentiu
+
+**A legenda fica acima, não abaixo.** A spec manda priorizar o texto abaixo do diagrama. Dos
+quatro livros com legenda, três a põem acima (`Schiller`, `AAGAARD`, `Karpov`); só o
+`400 Quebra-cabeças` a põe abaixo.
+
+E o lado não é detalhe de apresentação: é o que decide **de quem é cada legenda**. No `Karpov`
+o vão acima do diagrama mede 10 pt e o abaixo 7 pt, então por distância pura cada diagrama
+rouba a legenda do diagrama seguinte e a página inteira sai deslocada de um exercício — o
+`№79` vira `№81`. Mesmo erro no `Schiller`. A correção é decidir o lado **por página** (o lado
+que consegue legenda para mais diagramas vence) e só então distribuir.
+
+**A unidade é o grupo, não a linha nem o bloco.** Um bloco do `Karpov` cobre as legendas das
+duas colunas (`№79. Steinitz - Bird` em x 82–181 e `№80. Steinitz - Mortimer` em x 278–402):
+associado inteiro, cada diagrama herda o adversário do vizinho. Mas distribuir linha a linha
+quebra o `Schiller`, onde o `6` da legenda de baixo cai a 15 pt do diagrama de cima e a 31 pt
+do seu — o número não anda sozinho, pertence ao mesmo bloco que os jogadores e o evento. A
+unidade certa é o bloco quebrado por coluna.
+
+**Prosa não é legenda, mas cortar toda prosa custa recall.** O crivo por formato (bloco curto)
+dá precisão, e derrubaria os exercícios do `AAGAARD`, que grudam o enunciado no comentário
+(`"Black to play - Mark Dvoretsky invented this variation..."`). O que separa os dois casos é
+a posição na linha: os falsos positivos medidos são todos oracionais e ficam no meio da frase;
+os verdadeiros em parágrafo **abrem** a linha. Em legenda o padrão vale onde estiver.
+
+**Não existe deslocamento constante entre número impresso e índice da página.** A primeira
+versão do filtro de numeração media essa constante amostrando o documento. No `Reinfeld 1001`
+ela vai de **-10 na página 46 a -29 na 1012**, porque o scan tem páginas a mais que o livro.
+O que um número de página é não é uma função afim do índice: é um contador *localmente*
+consecutivo, e é assim que ele é reconhecido agora — a página vizinha traz o sucessor dele na
+mesma coluna. Sem esse filtro o `Reinfeld` reporta "exercício 10" para o número da página, que
+fica a 16 pt do diagrama e escapa da faixa de margem.
+
+**O português do acervo tem cinco formas, não duas.** Levantadas as legendas dos 400
+exercícios do `400 Quebra-cabeças`: `brancas jogam` (117), `jogada das pretas` (52), `jogada
+de pretas` (27), `pretas jogam` (13), `jogar de pretas` (12), `jogam as pretas` (1). Cobrir só
+as duas formas que a spec lista deixava 39 exercícios sem lado a jogar num livro que declara
+todos — foi o que a primeira medição do critério de aceite mostrou (74%).
+
+### Critério de aceite da S-16, medido
+
+Verdade independente do próprio extrator: no `400 Quebra-cabeças` o número esperado vem da
+aritmética (1 diagrama por página, `página - 9`) e não do texto; no `AAGAARD` o lado a jogar é
+conferido pelo **multiconjunto** de declarações da página inteira, o que testa a associação,
+que é o que pode dar errado.
+
+| livro | amostra | lado a jogar | nº do exercício |
+|---|---|---|---|
+| `400 Quebra-cabeças` | 50 exercícios | **100%** (50/50) | **100%** (50/50) |
+| `AAGAARD - Practical Chess Defence` | 89 declarações / 90 números | **98,9%** | **94,4%** |
+
+Alvos da S-16: ≥95% e ≥90%. Atingidos.
+
+### Critério de aceite da S-17, medido no dataset
+
+Aplicada a regra "o lado que não joga não pode estar em xeque" aos 3.195 rótulos do
+`labels.csv`:
+
+- os **51** rótulos que a Fase 1 corrigiu à mão como `OPPOSITE_CHECK` são recuperados
+  **51/51** pela regra, sem que ninguém lhe dissesse a resposta;
+- **0** posições legais são alteradas;
+- ao todo 118 rótulos têm a vez imposta pela posição; os outros 3.077 não têm resposta e ficam
+  no padrão, declarado como padrão.
+
+### O efeito no produto
+
+Exportação real, mesmo modelo e mesmas páginas:
+
+| livro (páginas) | diagramas | lado do texto | da legalidade | assumido | saem "pretas jogam" |
+|---|---|---|---|---|---|
+| `400 Quebra-cabeças` (20–69) | 50 | 50 | 0 | 0 | **21** |
+| `AAGAARD` (99–129) | 102 | 88 | 4 | 10 | **55** |
+| `Schiller` (20–49) | 178 | 0 | 30 | 148 | **25** |
+| `1937 Kemeri` (10–69) | 47 | 7 | 4 | 36 | **5** |
+| `Reinfeld 1001` (10–69) | 59 | 0 | 0 | 59 | 0 |
+
+As 106 posições que saem como "pretas jogam" saíam todas erradas antes. E o gancho que a
+Fase 2 deixou fechou: no `AAGAARD` a fila de revisão cai de **7 para 1**, porque o xeque
+invertido que a S-15 mandava conferir agora tem resposta — 4 pela legalidade e 2 pelo texto.
+
+### Decisões da Fase 3
+
+- **A legalidade vence o texto quando eles discordam, e o caso vai para revisão.** Emitir uma
+  FEN que se sabe ilegal seria pior de todos os jeitos, e é o que o gate rejeitaria adiante.
+  Mas a discordância significa que uma das duas fontes está errada — casa lida errado ou
+  legenda associada ao diagrama vizinho —, e as duas causas merecem olho humano.
+- **Lado a jogar assumido continua sendo aceito pelo gate.** Ele é a maioria (3.077 dos 3.195
+  rótulos, 148 dos 178 diagramas do `Schiller`): mandá-lo para revisão mandaria quase tudo.
+  O que muda é o PGN registrar `[SideToMoveSource "default"]`, para que "brancas jogam" possa
+  ser conferido em vez de apenas acreditado.
+- **A migração do `labels.csv` não preenche `w` no que não tem resposta.** Gravar o padrão
+  numa coluna nova repetiria exatamente o erro que a S-19 existe para corrigir, agora com
+  aparência de dado conferido. Fica vazia, que é o que ela é.
+- **Deduplicação anota por padrão e só remove sob `--dedupe`.** A mesma posição aparecer duas
+  vezes é comum e legítimo — enunciado e solução, ou o mesmo final em capítulos diferentes.
+  Nas páginas medidas há 1 repetição em 436 diagramas; remover por conta própria custaria mais
+  do que resolveria.
+- **O roque inferido entra por padrão, marcado como inferido.** A posição não diz se o rei já
+  se moveu, só que ele *poderia* não ter se movido. O erro tem lado: num meio-jogo com rei em
+  e1 e torres nos cantos, `KQkq` é quase sempre certo; num final onde seria falso, é
+  irrelevante. O `-` fixo de antes errava em toda posição de abertura.
+
+### A pendência que a Fase 3 não resolve, e o critério de saída que não dá para atingir
+
+O critério escrito neste roadmap pede ≥95% de acerto de lado a jogar em 50 exercícios do
+`1001 Winning Chess Sacrifices`. Medido: esse livro **não tem** o que ler. A camada de texto
+tem uma única linha por página — o número impresso — e nenhuma das 59 posições exportadas das
+páginas 10–69 tem a vez imposta pela posição. Todas caem no padrão. Não há fonte de informação
+no arquivo que responda à pergunta, e nenhuma implementação da S-16 ou da S-17 mudaria isso.
+
+O critério da S-16, que nomeia o `AAGAARD` e o `400 Quebra-cabeças`, é o mensurável, e foi
+atingido nos dois. Para os 12 livros sem camada de texto e sem xeque no diagrama, o lado a
+jogar continua sendo um palpite — agora um palpite **declarado como tal**. Resolvê-lo de
+verdade exige o motor da S-33 (o lado com ameaça imediata costuma ser o que joga) ou OCR sobre
+a imagem da página, e nenhum dos dois pertence a esta fase.
 
 ---
 

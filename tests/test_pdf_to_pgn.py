@@ -5,19 +5,24 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import chess
 import numpy as np
 from test_inference import probs_for_fen
 
+from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.inference import OrientedPrediction, prediction_from_probs
+from chess_diagram_ocr.pdf_text import DiagramContext
 from chess_diagram_ocr.pdf_to_pgn import (
     DiagramPosition,
     build_pgn_text,
     classify_position,
+    mark_duplicates,
     partition_positions,
     save_pdf_positions_to_pgn,
     scan_pdf_positions,
     write_gated_pgn,
 )
+from chess_diagram_ocr.semantics import SideToMove
 
 EMPTY_BOARD = "8/8/8/8/8/8/8/8"
 KINGS_ONLY = "4k3/8/8/8/8/8/8/4K3"
@@ -40,6 +45,18 @@ def oriented_for(fen: str, confidence: float, *, rotation: int = 0, ambiguous: b
         margin=0.0 if ambiguous else 0.5,
         ambiguous=ambiguous,
         reason="teste",
+    )
+
+
+def candidate_for(board_rgb: np.ndarray, index: int = 0) -> DiagramCandidate:
+    """`DiagramCandidate` real, como o detector híbrido da S-12 devolveria."""
+    top = 100.0 * index
+    return DiagramCandidate(
+        board_rgb=board_rgb,
+        bbox_pdf=(10.0, top, 90.0, top + 80.0),
+        source="embedded",
+        detector_score=0.9,
+        native_size=(320, 320),
     )
 
 
@@ -162,6 +179,7 @@ class PdfToPgnTests(unittest.TestCase):
 
                 self.assertIn(f'[OCRRotation "{rotation}"]', payload)
 
+    @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
     @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
@@ -174,6 +192,7 @@ class PdfToPgnTests(unittest.TestCase):
         mock_render_pdf_page,
         mock_detect,
         mock_predict,
+        mock_contexts,
     ) -> None:
         mock_get_pdf_page_count.return_value = 3
         mock_load_model.return_value = ("model", "cpu")
@@ -184,10 +203,11 @@ class PdfToPgnTests(unittest.TestCase):
         ]
         board_rgb = np.zeros((800, 800, 3), dtype=np.uint8)
         mock_detect.side_effect = [
-            [board_rgb, board_rgb],
+            [candidate_for(board_rgb, 0), candidate_for(board_rgb, 1)],
             [],
-            [board_rgb],
+            [candidate_for(board_rgb, 0)],
         ]
+        mock_contexts.side_effect = [[DiagramContext(), DiagramContext()], [], [DiagramContext()]]
         mock_predict.side_effect = [
             oriented_for(EMPTY_BOARD, 0.90),
             oriented_for(KINGS_ONLY, 0.80, rotation=180),
@@ -218,6 +238,7 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertTrue(all(call.kwargs.get("reading_order") == "column" for call in mock_detect.call_args_list))
         self.assertEqual(mock_predict.call_count, 3)
 
+    @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
     @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
@@ -230,6 +251,7 @@ class PdfToPgnTests(unittest.TestCase):
         mock_render_pdf_page,
         mock_detect,
         mock_predict,
+        mock_contexts,
     ) -> None:
         mock_get_pdf_page_count.return_value = 2
         mock_load_model.return_value = ("model", "cpu")
@@ -239,9 +261,10 @@ class PdfToPgnTests(unittest.TestCase):
         ]
         board_rgb = np.zeros((800, 800, 3), dtype=np.uint8)
         mock_detect.side_effect = [
-            [board_rgb],
+            [candidate_for(board_rgb)],
             [],
         ]
+        mock_contexts.side_effect = [[DiagramContext()], []]
         mock_predict.return_value = oriented_for(EMPTY_BOARD, 0.9)
         progress_calls: list[tuple[int, int, int, int]] = []
 
@@ -272,6 +295,156 @@ class PdfToPgnTests(unittest.TestCase):
             payload = output_path.read_text(encoding="utf-8")
             self.assertIn('[SourcePDF "book.pdf"]', payload)
             self.assertIn(f'[FEN "{KINGS_ONLY} w - - 0 1"]', payload)
+
+
+class EnrichedHeaderTests(unittest.TestCase):
+    """S-18: o que a S-16 extraiu tem de chegar ao PGN, e o que ela não extraiu não."""
+
+    def position_with_context(self) -> DiagramPosition:
+        return DiagramPosition(
+            page_index=19,
+            diagram_index=1,
+            fen=KINGS_ONLY,
+            confidence=0.99,
+            min_confidence=0.97,
+            is_legal=True,
+            is_fatal=False,
+            side_to_move=SideToMove(color=chess.BLACK, source="text", reason="texto do PDF"),
+            context=DiagramContext(
+                caption="5\nMorphy-De Riviere\nParis, 1858",
+                side_to_move=chess.BLACK,
+                exercise_number=5,
+                players=("Morphy", "De Riviere"),
+                event="Paris",
+                year=1858,
+            ),
+            detection_source="embedded",
+        )
+
+    def test_metadados_da_legenda_preenchem_os_headers(self) -> None:
+        payload = build_pgn_text([self.position_with_context()], source_name="book.pdf")
+
+        self.assertIn('[Event "Paris"]', payload)
+        self.assertIn('[White "Morphy"]', payload)
+        self.assertIn('[Black "De Riviere"]', payload)
+        self.assertIn('[Date "1858.??.??"]', payload)
+        self.assertIn('[ExerciseNumber "5"]', payload)
+        self.assertIn('[DetectionSource "embedded"]', payload)
+        self.assertIn("Morphy-De Riviere", payload)
+
+    def test_lado_a_jogar_vai_para_a_fen_e_a_procedencia_para_o_header(self) -> None:
+        payload = build_pgn_text([self.position_with_context()], source_name="book.pdf")
+
+        self.assertIn(f'[FEN "{KINGS_ONLY} b - - 0 1"]', payload)
+        self.assertIn('[SideToMoveSource "text"]', payload)
+        self.assertIn('[SideToMove "pretas"]', payload)
+
+    def test_sem_legenda_os_padroes_continuam(self) -> None:
+        payload = build_pgn_text(
+            [DiagramPosition(page_index=0, diagram_index=1, fen=KINGS_ONLY, confidence=0.9)],
+            source_name="book.pdf",
+            event_name="ChessVisionOFF PDF OCR",
+        )
+
+        self.assertIn('[Event "ChessVisionOFF PDF OCR"]', payload)
+        self.assertIn('[White "?"]', payload)
+        self.assertNotIn("ExerciseNumber", payload)
+        self.assertNotIn("SideToMoveSource", payload)
+        self.assertNotIn("Caption", payload)
+
+    def test_lado_assumido_e_declarado_como_assumido(self) -> None:
+        """O padrão continua sendo brancas -- a diferença é o PGN dizer que foi assumido."""
+        position = DiagramPosition(
+            page_index=0,
+            diagram_index=1,
+            fen=KINGS_ONLY,
+            confidence=0.9,
+            side_to_move=SideToMove(color=chess.WHITE, source="default", reason="nada diz"),
+        )
+
+        payload = build_pgn_text([position], source_name="book.pdf")
+
+        self.assertIn(f'[FEN "{KINGS_ONLY} w - - 0 1"]', payload)
+        self.assertIn('[SideToMoveSource "default"]', payload)
+
+    def test_roque_inferido_e_declarado_como_inferido(self) -> None:
+        position = DiagramPosition(
+            page_index=0,
+            diagram_index=1,
+            fen="r3k2r/8/8/8/8/8/8/R3K2R",
+            confidence=0.9,
+            side_to_move=SideToMove(color=chess.WHITE, source="default"),
+        )
+
+        payload = build_pgn_text([position], source_name="book.pdf")
+
+        self.assertIn('[FEN "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"]', payload)
+        self.assertIn('[CastlingSource "inferred"]', payload)
+
+    def test_legenda_com_aspas_nao_quebra_o_header(self) -> None:
+        position = DiagramPosition(
+            page_index=0,
+            diagram_index=1,
+            fen=KINGS_ONLY,
+            confidence=0.9,
+            context=DiagramContext(caption='Ele disse "xeque"\nsegunda linha'),
+        )
+
+        payload = build_pgn_text([position], source_name="book.pdf")
+
+        self.assertIn("[Caption \"Ele disse 'xeque' / segunda linha\"]", payload)
+
+
+class DeduplicationTests(unittest.TestCase):
+    """S-18: repetição é comum e legítima, então o padrão é anotar e não remover."""
+
+    def positions(self) -> list[DiagramPosition]:
+        return [
+            DiagramPosition(page_index=0, diagram_index=1, fen=KINGS_ONLY, confidence=0.99, min_confidence=0.99),
+            DiagramPosition(page_index=4, diagram_index=2, fen=KINGS_D1_D3, confidence=0.99, min_confidence=0.99),
+            # Mesma colocacao de pecas da primeira: o diagrama reimpresso na solucao.
+            DiagramPosition(page_index=9, diagram_index=1, fen=KINGS_ONLY, confidence=0.99, min_confidence=0.99),
+        ]
+
+    def test_repeticao_aponta_para_a_primeira_ocorrencia(self) -> None:
+        marked = mark_duplicates(self.positions())
+
+        self.assertEqual([p.duplicate_of for p in marked], [None, None, (1, 1)])
+
+    def test_lado_a_jogar_diferente_ainda_e_a_mesma_posicao_impressa(self) -> None:
+        marked = mark_duplicates(
+            [
+                DiagramPosition(page_index=0, diagram_index=1, fen=f"{KINGS_ONLY} w - - 0 1", confidence=0.9),
+                DiagramPosition(page_index=1, diagram_index=1, fen=f"{KINGS_ONLY} b - - 0 1", confidence=0.9),
+            ]
+        )
+
+        self.assertEqual(marked[1].duplicate_of, (1, 1))
+
+    def test_sem_dedupe_a_repeticao_sai_no_pgn_anotada(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report = write_gated_pgn(self.positions(), Path(tmpdir) / "book.pgn", source_name="book.pdf")
+
+            payload = report.output_path.read_text(encoding="utf-8")
+            self.assertEqual(payload.count("[FEN "), 3)
+            self.assertIn('[DuplicateOf "1.1"]', payload)
+            self.assertEqual(report.duplicates, [])
+
+    def test_com_dedupe_a_repeticao_sai_do_arquivo_mas_nao_do_relatorio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report = write_gated_pgn(
+                self.positions(),
+                Path(tmpdir) / "book.pgn",
+                source_name="book.pdf",
+                pages_scanned=10,
+                dedupe=True,
+            )
+
+            payload = report.output_path.read_text(encoding="utf-8")
+            self.assertEqual(payload.count("[FEN "), 2)
+            self.assertEqual([p.page_number for p in report.duplicates], [10])
+            self.assertEqual(report.total, 3)
+            self.assertIn("1 duplicados", report.summary())
 
 
 class ExportGateTests(unittest.TestCase):
@@ -342,6 +515,49 @@ class ExportGateTests(unittest.TestCase):
 
         self.assertEqual(verdict, "needs_review")
         self.assertIn("lado a jogar", reason)
+
+    def test_texto_e_posicao_em_desacordo_vao_para_revisao(self) -> None:
+        """S-17: a posição venceu e o que sai é legal, mas uma das duas fontes está errada."""
+        position = DiagramPosition(
+            page_index=0,
+            diagram_index=1,
+            fen=KINGS_ONLY,
+            confidence=0.99,
+            min_confidence=0.98,
+            is_legal=True,
+            is_fatal=False,
+            side_to_move=SideToMove(
+                color=chess.BLACK,
+                source="legality",
+                reason="o texto do PDF dizia o contrário",
+                conflicting=True,
+            ),
+        )
+
+        verdict, reason = classify_position(position)
+
+        self.assertEqual(verdict, "needs_review")
+        self.assertIn("discordam", reason)
+
+    def test_lado_a_jogar_resolvido_pela_legalidade_e_aceito(self) -> None:
+        """O gancho da Fase 2: o xeque invertido que ia para revisão agora passa direto.
+
+        A posição continua a mesma; o que mudou é que alguém respondeu de quem era a vez,
+        e com a resposta certa ela é legal. Mandar isso para revisão seria pedir ao usuário
+        que confirmasse uma dedução que a regra do xadrez já garante.
+        """
+        position = DiagramPosition(
+            page_index=0,
+            diagram_index=1,
+            fen=BLACK_IN_CHECK,
+            confidence=0.99,
+            min_confidence=0.98,
+            is_legal=True,
+            is_fatal=False,
+            side_to_move=SideToMove(color=chess.BLACK, source="legality"),
+        )
+
+        self.assertEqual(classify_position(position), ("accepted", ""))
 
     def test_ambiguous_orientation_outranks_a_low_confidence_square(self) -> None:
         """Uma casa insegura custa uma correção; diagrama girado custa o diagrama inteiro.

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import chess.pgn
 import numpy as np
@@ -17,10 +17,19 @@ from .config import (
     OrientationMode,
     ReadingOrder,
 )
+from .fen_utils import check_position
 from .inference import load_model, predict_with_orientation
+from .pdf_text import DiagramContext
+from .semantics import SideToMove, compose_fen, infer_castling_rights, infer_side_to_move
+
+if TYPE_CHECKING:
+    from .detection import DiagramCandidate
 
 PdfSource = str | Path | bytes
 ProgressCallback = Callable[[int, int, int, int], None]
+
+MAX_CAPTION_HEADER = 300
+"""Corte da legenda no header do PGN. Header não quebra linha, e comentário inteiro não cabe."""
 
 
 @dataclass(frozen=True)
@@ -28,6 +37,8 @@ class DiagramPosition:
     page_index: int
     diagram_index: int
     fen: str
+    """Campo de peças, sem lado a jogar. Ver `full_fen` para a FEN que vai ao PGN."""
+
     confidence: float
     """Confiança média das 64 casas. Mantida por compatibilidade; ver `min_confidence`."""
 
@@ -59,6 +70,31 @@ class DiagramPosition:
 
     orientation_reason: str = ""
     """Por que esta orientação venceu -- só interessa quando `orientation_ambiguous`."""
+
+    side_to_move: SideToMove | None = None
+    """De quem é a vez e de onde veio a resposta (S-16/S-17). `None` = não foi decidido."""
+
+    context: DiagramContext | None = None
+    """O que a camada de texto do PDF diz sobre este diagrama (S-16)."""
+
+    detection_source: str | None = None
+    """`embedded` ou `contour` (S-12). Vai para o PGN: leitura ruim costuma ter fonte em comum."""
+
+    duplicate_of: tuple[int, int] | None = None
+    """(página, diagrama) da primeira ocorrência desta mesma posição no PDF (S-18)."""
+
+    @property
+    def full_fen(self) -> str:
+        """A FEN que vai para o PGN, com o lado a jogar decidido e o roque inferido.
+
+        Antes da Fase 3 isto era `f"{fen} w - - 0 1"` -- o ponto exato onde metade dos
+        exercícios de um livro de táticas passava a mentir. Sem lado decidido o padrão
+        continua sendo brancas, porque uma FEN precisa de um: a diferença é que agora o PGN
+        registra em `[SideToMoveSource]` que aquilo foi assumido.
+        """
+        if self.side_to_move is None:
+            return _normalize_fen_for_pgn(self.fen)
+        return compose_fen(self.fen, self.side_to_move)
 
     @property
     def needs_side_to_move_flip(self) -> bool:
@@ -110,9 +146,16 @@ class ExportReport:
     review_path: Path | None
     """`None` quando nada precisou de revisão -- nesse caso o arquivo não é criado."""
 
+    duplicates: list[DiagramPosition] = field(default_factory=list)
+    """Repetições omitidas sob `--dedupe` (S-18). Vazio quando a opção está desligada.
+
+    Existem como lista, e não como contador, pela mesma razão da S-15: o usuário precisa
+    poder ver o que não entrou no arquivo.
+    """
+
     @property
     def total(self) -> int:
-        return len(self.accepted) + len(self.needs_review) + len(self.rejected)
+        return len(self.accepted) + len(self.needs_review) + len(self.rejected) + len(self.duplicates)
 
     @property
     def review_items(self) -> list[tuple[DiagramPosition, str]]:
@@ -121,9 +164,10 @@ class ExportReport:
         return sorted(items, key=lambda item: (item[0].page_index, item[0].diagram_index))
 
     def summary(self) -> str:
+        duplicates = f", {len(self.duplicates)} duplicados" if self.duplicates else ""
         return (
             f"{len(self.accepted)} aceitos, {len(self.needs_review)} para revisão, "
-            f"{len(self.rejected)} rejeitados em {self.pages_scanned} páginas"
+            f"{len(self.rejected)} rejeitados{duplicates} em {self.pages_scanned} páginas"
         )
 
 
@@ -148,9 +192,17 @@ def classify_position(
         detalhe = position.orientation_reason or "as duas orientações eram plausíveis"
         return "needs_review", f"orientação incerta: {detalhe}"
 
+    side = position.side_to_move
+    if side is not None and side.conflicting:
+        # O texto do PDF e a posicao discordam. A posicao venceu (ver `infer_side_to_move`),
+        # entao o que sai e legal -- mas uma das duas fontes esta errada, e as duas causas
+        # possiveis merecem olho humano: casa lida errado, ou legenda do diagrama vizinho.
+        return "needs_review", f"texto e posição discordam do lado a jogar: {side.reason}"
+
     if position.needs_side_to_move_flip:
-        # Leitura provavelmente boa, palpite de lado a jogar ruim. Vai para revisão porque
-        # ninguém verificou de quem é a vez; a inferência automática é a S-17.
+        # Leitura provavelmente boa, palpite de lado a jogar ruim. Antes da S-17 todo diagrama
+        # com xeque invertido caia aqui; agora a legalidade resolve esses -- o que sobra sao
+        # posicoes ilegais das *duas* formas, que nenhuma escolha de lado a jogar conserta.
         return "needs_review", "lado a jogar assumido errado: " + ("; ".join(position.problems) or "xeque invertido")
 
     if position.min_confidence is not None and position.min_confidence < accept_threshold:
@@ -193,6 +245,40 @@ def _normalize_fen_for_pgn(fen: str) -> str:
     return normalized
 
 
+def _flatten_caption(caption: str) -> str:
+    """Legenda em uma linha e sem aspas: header de PGN não quebra linha nem escapa aspas."""
+    flat = " / ".join(line.strip() for line in caption.splitlines() if line.strip())
+    flat = flat.replace('"', "'")
+    if len(flat) > MAX_CAPTION_HEADER:
+        flat = flat[: MAX_CAPTION_HEADER - 1].rstrip() + "…"
+    return flat
+
+
+def mark_duplicates(positions: Iterable[DiagramPosition]) -> list[DiagramPosition]:
+    """Anota cada repetição de uma mesma posição apontando para a primeira ocorrência (S-18).
+
+    Repetição é comum e legítima: livro de exercícios reimprime o diagrama na página de
+    solução, e coleção de finais reusa a mesma posição em capítulos diferentes. Por isso o
+    padrão é **anotar**, não remover -- a remoção fica no `--dedupe`, que é decisão de quem
+    exporta e não do exportador.
+
+    O critério é a colocação das peças, não a FEN completa: a mesma posição com lados a
+    jogar diferentes é o mesmo diagrama impresso duas vezes, e é justamente esse par que
+    interessa ver.
+    """
+    first_seen: dict[str, tuple[int, int]] = {}
+    marked: list[DiagramPosition] = []
+    for position in positions:
+        key = position.fen.strip().split(" ")[0]
+        origin = first_seen.get(key)
+        if origin is None:
+            first_seen[key] = (position.page_number, position.diagram_index)
+            marked.append(position)
+        else:
+            marked.append(replace(position, duplicate_of=origin))
+    return marked
+
+
 def _get_pdf_page_count(pdf_source: PdfSource) -> int:
     from .pdf_io import get_pdf_page_count
 
@@ -213,22 +299,35 @@ def _detect_page_diagrams(
     *,
     max_boards: int,
     reading_order: ReadingOrder,
-) -> list[np.ndarray]:
-    """Recortes de diagrama da página, pelo detector híbrido (S-12).
+) -> list[DiagramCandidate]:
+    """Candidatos a diagrama da página, pelo detector híbrido (S-12).
+
+    Devolve o candidato inteiro, e não só `board_rgb`: o `bbox_pdf` que ele carrega é o que
+    a S-16 usa para achar a legenda, e a `source` vai para o header `[DetectionSource]`.
 
     Indireção pelo mesmo motivo de `_render_pdf_page`: deixar os testes trocarem a detecção
     sem precisar de PDF de verdade.
     """
     from .detection import detect_diagrams_in_pdf_page
 
-    candidates = detect_diagrams_in_pdf_page(
+    return detect_diagrams_in_pdf_page(
         pdf_source,
         page_index,
         page_rgb,
         max_boards=max_boards,
         reading_order=reading_order,
     )
-    return [candidate.board_rgb for candidate in candidates]
+
+
+def _page_contexts(
+    pdf_source: PdfSource,
+    page_index: int,
+    bboxes: Sequence[tuple[float, float, float, float]],
+) -> list[DiagramContext]:
+    """Contexto textual de cada diagrama da página (S-16). Mesma indireção dos anteriores."""
+    from .pdf_text import contexts_for_pdf_page
+
+    return contexts_for_pdf_page(pdf_source, page_index, bboxes)
 
 
 def scan_pdf_positions(
@@ -242,6 +341,7 @@ def scan_pdf_positions(
     start_page: int = 0,
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
+    read_text: bool = True,
     progress_callback: ProgressCallback | None = None,
 ) -> list[DiagramPosition]:
     """Varre as páginas e reconhece cada diagrama encontrado.
@@ -249,6 +349,9 @@ def scan_pdf_positions(
     `orientation` substituiu o antigo `rotate_180: bool`. A diferença não é só de nome: o
     booleano valia para o PDF inteiro, então um livro que mistura orientações não tinha
     solução. Em `"auto"` cada diagrama decide a sua (S-13).
+
+    `read_text` liga a extração do contexto textual (S-16). Desligar não muda o tabuleiro
+    lido -- só faz o lado a jogar cair para a inferência por legalidade e para o padrão.
     """
     page_count = _get_pdf_page_count(pdf_source)
     if page_count <= 0:
@@ -267,21 +370,31 @@ def scan_pdf_positions(
 
     for page_index in range(start_page, last_page_exclusive):
         page_rgb = _render_pdf_page(pdf_source, page_index, dpi=dpi)
-        boards = _detect_page_diagrams(
+        candidates = _detect_page_diagrams(
             pdf_source,
             page_index,
             page_rgb,
             max_boards=max_boards_per_page,
             reading_order=reading_order,
         )
-        for diagram_index, board_rgb in enumerate(boards, start=1):
+        contexts = _page_contexts(pdf_source, page_index, [c.bbox_pdf for c in candidates]) if read_text else []
+
+        for diagram_index, candidate in enumerate(candidates, start=1):
             oriented = predict_with_orientation(
-                board_rgb,
+                candidate.board_rgb,
                 model,
                 resolved_device,
                 mode=orientation,
             )
             prediction = oriented.prediction
+            context = contexts[diagram_index - 1] if diagram_index - 1 < len(contexts) else None
+            side = infer_side_to_move(prediction.fen_board, context)
+
+            # Legalidade re-avaliada com o lado a jogar decidido, e nao com o "w" fixo que a
+            # inferencia usou: e o que faz o xeque invertido deixar de ser "ilegal" quando a
+            # S-17 descobre que a vez era das pretas.
+            resolved = check_position(compose_fen(prediction.fen_board, side))
+
             positions.append(
                 DiagramPosition(
                     page_index=page_index,
@@ -289,16 +402,19 @@ def scan_pdf_positions(
                     fen=prediction.fen_board,
                     confidence=prediction.mean_confidence,
                     min_confidence=prediction.min_confidence,
-                    is_legal=prediction.position.is_legal,
-                    is_fatal=prediction.position.is_fatal,
-                    problems=prediction.position.problems,
+                    is_legal=resolved.is_legal,
+                    is_fatal=resolved.is_fatal,
+                    problems=resolved.problems,
                     rotation=oriented.rotation,
                     orientation_ambiguous=oriented.ambiguous,
                     orientation_reason=oriented.reason,
+                    side_to_move=side,
+                    context=context,
+                    detection_source=candidate.source,
                 )
             )
         if progress_callback is not None:
-            progress_callback(page_index, total_pages, len(boards), len(positions))
+            progress_callback(page_index, total_pages, len(candidates), len(positions))
 
     return positions
 
@@ -324,21 +440,42 @@ def build_pgn_games(
     games: list[chess.pgn.Game] = []
 
     for position in positions:
+        context = position.context
         game = chess.pgn.Game()
-        game.headers["Event"] = event_name
+        game.headers["Event"] = (context.event if context and context.event else None) or event_name
         game.headers["Site"] = "Local"
         game.headers["Round"] = f"{position.page_number}.{position.diagram_index}"
-        game.headers["White"] = "?"
-        game.headers["Black"] = "?"
+        players = context.players if context and context.players else ("?", "?")
+        game.headers["White"], game.headers["Black"] = players
+        if context is not None and context.year is not None:
+            game.headers["Date"] = f"{context.year}.??.??"
         game.headers["Result"] = "*"
         game.headers["Annotator"] = "ChessVisionOFF"
         game.headers["SetUp"] = "1"
-        game.headers["FEN"] = _normalize_fen_for_pgn(position.fen)
+        game.headers["FEN"] = position.full_fen
         game.headers["SourcePDF"] = source_name
         game.headers["Page"] = str(position.page_number)
         game.headers["Diagram"] = str(position.diagram_index)
         game.headers["ReadingOrder"] = reading_order
         game.headers["OCRConfidence"] = f"{position.confidence:.3f}"
+
+        if position.side_to_move is not None:
+            game.headers["SideToMove"] = position.side_to_move.label
+            game.headers["SideToMoveSource"] = position.side_to_move.source
+            if infer_castling_rights(position.fen) != "-":
+                # So quando ha o que declarar: escrever a proveniencia de um "-" nao informa
+                # nada e enche o header de ruido.
+                game.headers["CastlingSource"] = "inferred"
+        if context is not None:
+            if context.exercise_number is not None:
+                game.headers["ExerciseNumber"] = str(context.exercise_number)
+            if context.caption:
+                game.headers["Caption"] = _flatten_caption(context.caption)
+        if position.detection_source is not None:
+            game.headers["DetectionSource"] = position.detection_source
+        if position.duplicate_of is not None:
+            page_number, diagram_index = position.duplicate_of
+            game.headers["DuplicateOf"] = f"{page_number}.{diagram_index}"
         if position.min_confidence is not None:
             game.headers["OCRMinConfidence"] = f"{position.min_confidence:.3f}"
         if position.is_legal is not None:
@@ -389,9 +526,21 @@ def write_gated_pgn(
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     pages_scanned: int = 0,
+    dedupe: bool = False,
 ) -> ExportReport:
-    """Escreve o PGN principal só com o que passou no gate, e o resto no `.review.pgn`."""
-    accepted, needs_review, rejected = partition_positions(positions, accept_threshold=accept_threshold)
+    """Escreve o PGN principal só com o que passou no gate, e o resto no `.review.pgn`.
+
+    `dedupe` omite do PGN principal as repetições de uma posição já exportada. Elas ficam
+    no relatório, em `report.duplicates`: sem `dedupe` o header `[DuplicateOf]` já diz qual
+    é qual, e com `dedupe` o que sumiu do arquivo continua nomeado em algum lugar.
+    """
+    marked = mark_duplicates(positions)
+    duplicates: list[DiagramPosition] = []
+    if dedupe:
+        duplicates = [position for position in marked if position.duplicate_of is not None]
+        marked = [position for position in marked if position.duplicate_of is None]
+
+    accepted, needs_review, rejected = partition_positions(marked, accept_threshold=accept_threshold)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -421,6 +570,7 @@ def write_gated_pgn(
         pages_scanned=pages_scanned,
         output_path=output_path,
         review_path=review_path,
+        duplicates=duplicates,
     )
 
 
@@ -438,6 +588,8 @@ def save_pdf_positions_to_pgn(
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     event_name: str = "ChessVisionOFF PDF OCR",
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+    read_text: bool = True,
+    dedupe: bool = False,
     progress_callback: ProgressCallback | None = None,
 ) -> ExportReport:
     """Varre o PDF e exporta com o gate de qualidade da S-15.
@@ -465,6 +617,7 @@ def save_pdf_positions_to_pgn(
         start_page=start_page,
         end_page=end_page,
         reading_order=reading_order,
+        read_text=read_text,
         progress_callback=_count_pages,
     )
 
@@ -476,6 +629,7 @@ def save_pdf_positions_to_pgn(
         accept_threshold=accept_threshold,
         reading_order=reading_order,
         pages_scanned=pages_seen,
+        dedupe=dedupe,
     )
 
 

@@ -20,9 +20,11 @@ from chess_diagram_ocr.config import (
 )
 from chess_diagram_ocr.dataset import append_training_sample
 from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
-from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
+from chess_diagram_ocr.fen_utils import board_from_fen, check_position, is_valid_fen
 from chess_diagram_ocr.inference import load_model, predict_with_orientation
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
+from chess_diagram_ocr.pdf_text import DiagramContext, contexts_for_pdf_page
+from chess_diagram_ocr.semantics import compose_fen, infer_side_to_move
 from chess_diagram_ocr.training import train_model
 
 
@@ -48,7 +50,7 @@ def _set_results(source_rgb: np.ndarray, items: list[dict[str, Any]], origin: st
 
 def _clear_results() -> None:
     for key in list(st.session_state.keys()):
-        if key.startswith("fen_edit_"):
+        if key.startswith(("fen_edit_", "side_edit_")):
             del st.session_state[key]
     for key in [
         "result_source_rgb",
@@ -67,16 +69,21 @@ def run_ocr_for_boards(
     model_path: Path,
     orientation: str,
     origin: str,
+    contexts: list[DiagramContext] | None = None,
 ) -> None:
     if not boards_with_quads:
         _clear_results()
         raise ValueError("Nenhum tabuleiro foi detectado na imagem selecionada.")
 
+    contexts = contexts or []
     model, device = get_loaded_model(str(model_path))
     items: list[dict[str, Any]] = []
     for idx, (board_rgb, quad) in enumerate(boards_with_quads):
         oriented = predict_with_orientation(board_rgb, model, device, mode=orientation)  # type: ignore[arg-type]
         prediction = oriented.prediction
+        context = contexts[idx] if idx < len(contexts) else None
+        side = infer_side_to_move(prediction.fen_board, context)
+        resolved = check_position(compose_fen(prediction.fen_board, side))
         items.append(
             {
                 "index": idx,
@@ -86,15 +93,45 @@ def run_ocr_for_boards(
                 "confidence": prediction.mean_confidence,
                 "min_confidence": prediction.min_confidence,
                 "uncertain_squares": prediction.uncertain_squares,
-                "is_legal": prediction.position.is_legal,
-                "is_fatal": prediction.position.is_fatal,
-                "problems": prediction.position.problems,
+                # Legalidade ja com o lado a jogar decidido (S-17), e nao com o "w" fixo.
+                "is_legal": resolved.is_legal,
+                "is_fatal": resolved.is_fatal,
+                "problems": resolved.problems,
                 "rotation": oriented.rotation,
                 "orientation_ambiguous": oriented.ambiguous,
                 "orientation_reason": oriented.reason,
+                "side_to_move": "w" if side.color else "b",
+                "side_to_move_source": side.source,
+                "side_conflicting": side.conflicting,
+                "exercise_number": context.exercise_number if context else None,
+                "caption": context.caption if context else "",
             }
         )
     _set_results(source_rgb=source_rgb, items=items, origin=origin)
+
+
+def _sample_metadata(idx: int) -> dict[str, Any]:
+    """Campos da S-19 para a amostra: lado a jogar e de onde ela veio.
+
+    A origem sai do `result_origin`, que já tem a forma `pdf:<nome>:page:<n>` -- é a única
+    coisa que a sessão sabe sobre a procedência, e é melhor gravá-la do que nada.
+    """
+    items = st.session_state.get("result_items", [])
+    item = items[idx] if 0 <= idx < len(items) else {}
+    origin = str(st.session_state.get("result_origin", ""))
+    source_pdf, source_page = "", ""
+    if origin.startswith("pdf:"):
+        _, _, resto = origin.partition("pdf:")
+        source_pdf, _, page_part = resto.partition(":page:")
+        source_page = str(int(page_part) + 1) if page_part.isdigit() else ""
+
+    return {
+        "side_to_move": st.session_state.get(f"side_edit_{idx}") or item.get("side_to_move"),
+        "source_pdf": source_pdf,
+        "source_page": source_page,
+        "source_diagram": idx + 1,
+        "detection_source": str(item.get("detection_source") or ""),
+    }
 
 
 def _apply_fen_edits_from_dynamic_keys() -> None:
@@ -155,6 +192,7 @@ def save_current_item(dataset_csv: Path, samples_dir: Path) -> None:
             fen=fen,
             csv_path=dataset_csv,
             samples_dir=samples_dir,
+            **_sample_metadata(idx),
         )
         st.success(f"Diagrama {idx + 1} salvo em: {path}")
     except Exception as exc:
@@ -181,6 +219,7 @@ def save_all_items(dataset_csv: Path, samples_dir: Path) -> None:
             fen=fen,
             csv_path=dataset_csv,
             samples_dir=samples_dir,
+            **_sample_metadata(idx),
         )
         saved += 1
 
@@ -289,6 +328,34 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
     st.text_input(f"FEN diagrama #{sel + 1}", key=f"fen_edit_{sel}")
     _apply_fen_edits_from_dynamic_keys()
     fen_sel = st.session_state["fen_edits"][sel]
+
+    # Lado a jogar visivel e editavel (S-16/S-19), com a procedencia ao lado: "pretas jogam"
+    # lido de uma legenda e "pretas jogam" assumido pelo padrao tem valores bem diferentes.
+    side_key = f"side_edit_{sel}"
+    if side_key not in st.session_state:
+        st.session_state[side_key] = str(items[sel].get("side_to_move") or "w")
+    side_col, source_col = st.columns([1.0, 1.6])
+    with side_col:
+        st.radio(
+            "Lado a jogar",
+            options=("w", "b"),
+            format_func=lambda value: "Brancas" if value == "w" else "Pretas",
+            key=side_key,
+            horizontal=True,
+        )
+    with source_col:
+        rotulos = {
+            "text": "declarado no texto do PDF",
+            "legality": "deduzido da legalidade da posicao",
+            "default": "assumido (o PDF nao diz)",
+        }
+        if items[sel].get("side_conflicting"):
+            st.caption("Origem: texto e posicao discordam — confira.")
+        else:
+            st.caption(f"Origem: {rotulos.get(str(items[sel].get('side_to_move_source')), 'nao avaliada')}")
+        numero = items[sel].get("exercise_number")
+        if numero is not None:
+            st.caption(f"Exercicio no PDF: {numero}")
 
     action_col_left, action_col_mid = st.columns([1.0, 1.2])
     with action_col_left:
@@ -446,21 +513,22 @@ with tab_pdf:
                         page_rgb = page_preview_rgb
                     # Pagina de PDF usa o detector das duas fontes, o mesmo da exportacao
                     # (S-12): GUI e PGN precisam recortar e numerar o mesmo diagrama.
-                    boards = [
-                        (candidate.board_rgb, None)
-                        for candidate in detect_diagrams_in_pdf_page(
-                            pdf_source,
-                            int(st.session_state["page_index"]),
-                            page_rgb,
-                            max_boards=(int(max_boards) if run_all else 1),
-                        )
-                    ]
+                    page_index = int(st.session_state["page_index"])
+                    candidates = detect_diagrams_in_pdf_page(
+                        pdf_source,
+                        page_index,
+                        page_rgb,
+                        max_boards=(int(max_boards) if run_all else 1),
+                    )
+                    boards = [(candidate.board_rgb, None) for candidate in candidates]
                     run_ocr_for_boards(
                         source_rgb=page_rgb,
                         boards_with_quads=boards,
                         model_path=model_path,
                         orientation=orientation,
-                        origin=f"pdf:{pdf_name}:page:{st.session_state['page_index']}",
+                        origin=f"pdf:{pdf_name}:page:{page_index}",
+                        # Mesmo contexto textual da exportacao (S-16).
+                        contexts=contexts_for_pdf_page(pdf_source, page_index, [c.bbox_pdf for c in candidates]),
                     )
                 except Exception as exc:
                     st.error(f"Falha no OCR da pagina: {exc}")

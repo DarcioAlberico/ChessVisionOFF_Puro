@@ -29,11 +29,13 @@ from chess_diagram_ocr.config import (
 )
 from chess_diagram_ocr.dataset import append_training_sample
 from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
-from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen, square_name
+from chess_diagram_ocr.fen_utils import board_from_fen, check_position, is_valid_fen, square_name
 from chess_diagram_ocr.inference import load_model, predict_with_orientation
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
+from chess_diagram_ocr.pdf_text import DiagramContext, contexts_for_pdf_page
 from chess_diagram_ocr.pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
+from chess_diagram_ocr.semantics import compose_fen, infer_side_to_move
 from chess_diagram_ocr.training import train_model
 from chess_diagram_ocr.webview2_panel import EmbeddedWebView2, WebView2SupportError
 
@@ -74,6 +76,9 @@ class ChessOcrTkApp:
         self.page_loaded_for_index: int | None = None
         self.result_items: list[dict[str, Any]] = []
         self.fen_edits: list[str] = []
+        self.side_edits: list[str] = []
+        """Lado a jogar por diagrama, editavel. Espelha `fen_edits` (S-19)."""
+
         self.study_board = chess.Board()
         self.study_game = chess.pgn.Game()
         self.study_game.setup(self.study_board.copy(stack=False))
@@ -117,6 +122,8 @@ class ChessOcrTkApp:
         self.selected_diag_var = tk.IntVar(value=1)
         self.selected_diag_idx = 0
         self.fen_var = tk.StringVar(value="")
+        self.side_to_move_var = tk.StringVar(value="w")
+        self.side_source_var = tk.StringVar(value="")
         self.epochs_var = tk.IntVar(value=8)
         self.batch_var = tk.IntVar(value=128)
         self.lr_var = tk.DoubleVar(value=0.001)
@@ -264,6 +271,22 @@ class ChessOcrTkApp:
         fen_entry = ttk.Entry(fen_box, textvariable=self.fen_var)
         fen_entry.pack(fill=tk.X, padx=8, pady=(0, 4))
         fen_entry.bind("<Return>", lambda _event: self.apply_fen_edit())
+
+        # Lado a jogar visivel e editavel (S-16/S-19). Ate a Fase 3 o app nao tinha onde
+        # mostrar isso, e a informacao -- quando o PDF a dava -- morria na exportacao.
+        side_row = ttk.Frame(fen_box)
+        side_row.pack(fill=tk.X, padx=8, pady=(0, 4))
+        ttk.Label(side_row, text="Lado a jogar").pack(side=tk.LEFT)
+        for texto, valor in (("Brancas", "w"), ("Pretas", "b")):
+            ttk.Radiobutton(
+                side_row,
+                text=texto,
+                value=valor,
+                variable=self.side_to_move_var,
+                command=self.on_side_to_move_change,
+            ).pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Label(side_row, textvariable=self.side_source_var).pack(side=tk.LEFT, padx=(10, 0))
+
         apply_row = ttk.Frame(fen_box)
         apply_row.pack(fill=tk.X, padx=8, pady=(0, 6))
         ttk.Button(apply_row, text="Aplicar FEN", command=self.apply_fen_edit).pack(side=tk.LEFT)
@@ -1104,13 +1127,17 @@ class ChessOcrTkApp:
         refine_detected_boards: bool = False,
         pdf_page: tuple[Any, int] | None = None,
     ) -> list[dict[str, Any]]:
+        contexts: list[DiagramContext] = []
+        detection_sources: list[str] = []
         if pdf_page is not None:
             # Pagina de PDF: usa o detector das duas fontes, igual a exportacao (S-12).
             source, page_index = pdf_page
-            boards = [
-                (candidate.board_rgb, None)
-                for candidate in detect_diagrams_in_pdf_page(source, page_index, image_rgb, max_boards=max_boards)
-            ]
+            candidates = detect_diagrams_in_pdf_page(source, page_index, image_rgb, max_boards=max_boards)
+            boards = [(candidate.board_rgb, None) for candidate in candidates]
+            detection_sources = [candidate.source for candidate in candidates]
+            # Mesmo contexto textual que a exportacao usa (S-16): a GUI mostrando um lado a
+            # jogar e o PGN gravando outro seria pior que nao mostrar nada.
+            contexts = contexts_for_pdf_page(source, page_index, [c.bbox_pdf for c in candidates])
             # O recorte embutido ja vem alinhado pelo warp; refinar de novo so acrescenta erro.
             refine_detected_boards = False
         else:
@@ -1134,6 +1161,9 @@ class ChessOcrTkApp:
                 mode=orientation,  # type: ignore[arg-type]
             )
             prediction = oriented.prediction
+            context = contexts[idx] if idx < len(contexts) else None
+            side = infer_side_to_move(prediction.fen_board, context)
+            resolved = check_position(compose_fen(prediction.fen_board, side))
             items.append(
                 {
                     "index": idx,
@@ -1143,12 +1173,20 @@ class ChessOcrTkApp:
                     "confidence": prediction.mean_confidence,
                     "min_confidence": prediction.min_confidence,
                     "uncertain_squares": prediction.uncertain_squares,
-                    "is_legal": prediction.position.is_legal,
-                    "is_fatal": prediction.position.is_fatal,
-                    "problems": prediction.position.problems,
+                    # Legalidade com o lado a jogar ja decidido (S-17): o "xeque invertido"
+                    # que a GUI mostrava some quando a inferencia descobre de quem e a vez.
+                    "is_legal": resolved.is_legal,
+                    "is_fatal": resolved.is_fatal,
+                    "problems": resolved.problems,
                     "rotation": oriented.rotation,
                     "orientation_ambiguous": oriented.ambiguous,
                     "orientation_reason": oriented.reason,
+                    "side_to_move": "w" if side.color else "b",
+                    "side_to_move_source": side.source,
+                    "side_to_move_reason": side.reason,
+                    "side_conflicting": side.conflicting,
+                    "context": context,
+                    "detection_source": detection_sources[idx] if idx < len(detection_sources) else "",
                 }
             )
         return items
@@ -1219,10 +1257,12 @@ class ChessOcrTkApp:
     def _apply_ocr_result_items(self, items: list[dict[str, Any]], origin: str) -> None:
         self.result_items = items
         self.fen_edits = [item["fen_pred"] for item in items]
+        self.side_edits = [str(item.get("side_to_move") or "w") for item in items]
         self.selected_diag_idx = 0
         self.selected_diag_var.set(1)
         self.spin_diag.config(from_=1, to=max(len(items), 1))
         self.fen_var.set(self.fen_edits[0] if self.fen_edits else "")
+        self._sync_side_widgets(0)
         self._show_local_results_tab()
         self._update_result_views()
         self.root.after_idle(self._redraw_current_result_board)
@@ -1241,11 +1281,49 @@ class ChessOcrTkApp:
     def _clear_ocr_results(self) -> None:
         self.result_items = []
         self.fen_edits = []
+        self.side_edits = []
         self.selected_diag_idx = 0
         self.selected_diag_var.set(1)
         self.spin_diag.config(from_=1, to=1)
         self.fen_var.set("")
+        self.side_to_move_var.set("w")
+        self.side_source_var.set("")
         self._update_result_views()
+
+    def _sync_side_widgets(self, idx: int) -> None:
+        """Põe na tela o lado a jogar do diagrama e de onde ele veio.
+
+        A procedência aparece junto porque "pretas jogam" lido de uma legenda e "pretas
+        jogam" assumido pelo padrão têm o mesmo texto e valores completamente diferentes
+        para quem vai conferir.
+        """
+        if not self.result_items or idx < 0 or idx >= len(self.side_edits):
+            self.side_source_var.set("")
+            return
+
+        self.side_to_move_var.set(self.side_edits[idx])
+        item = self.result_items[idx]
+        rotulos = {
+            "text": "do texto do PDF",
+            "legality": "deduzido da posicao",
+            "default": "assumido",
+            "manual": "definido por voce",
+        }
+        fonte = rotulos.get(str(item.get("side_to_move_source")), "")
+        if item.get("side_conflicting"):
+            fonte = "texto e posicao discordam"
+        self.side_source_var.set(f"({fonte})" if fonte else "")
+
+    def on_side_to_move_change(self) -> None:
+        if not self.result_items:
+            return
+        idx = self._selected_index()
+        if 0 <= idx < len(self.side_edits):
+            self.side_edits[idx] = self.side_to_move_var.get()
+            self.result_items[idx]["side_to_move_source"] = "manual"
+            self.result_items[idx]["side_conflicting"] = False
+            self._sync_side_widgets(idx)
+            self._set_status(f"Diagrama {idx + 1}: lado a jogar definido como {self.side_to_move_var.get()}.")
 
     def _selected_index(self) -> int:
         if not self.result_items:
@@ -1327,6 +1405,7 @@ class ChessOcrTkApp:
         self.selected_diag_idx = idx
         self.selected_diag_var.set(idx + 1)
         self.fen_var.set(self.fen_edits[idx])
+        self._sync_side_widgets(idx)
         self._set_status(f"Diagrama {idx + 1}/{len(self.result_items)} | {self._confidence_summary(idx)}")
         self._update_result_views()
 
@@ -1986,6 +2065,22 @@ class ChessOcrTkApp:
                     font=("Segoe UI Symbol", max(14, int(cell * 0.56))),
                 )
 
+    def _sample_metadata(self, idx: int) -> dict[str, Any]:
+        """Campos da S-19 para a amostra: lado a jogar e de onde ela veio.
+
+        Gravar a origem é o que permite, depois, agrupar o split por livro (S-07), auditar
+        por fonte e voltar ao PDF para recortar de novo. Os 3.195 rótulos existentes não a
+        têm porque ela nunca foi pedida aqui.
+        """
+        item = self.result_items[idx] if 0 <= idx < len(self.result_items) else {}
+        return {
+            "side_to_move": self.side_edits[idx] if 0 <= idx < len(self.side_edits) else None,
+            "source_pdf": self.pdf_name,
+            "source_page": self.page_index_var.get() + 1 if self.pdf_source is not None else "",
+            "source_diagram": idx + 1,
+            "detection_source": str(item.get("detection_source") or ""),
+        }
+
     def save_current(self) -> None:
         if not self.result_items:
             messagebox.showwarning("Aviso", "Nao ha OCR para salvar.")
@@ -2002,6 +2097,7 @@ class ChessOcrTkApp:
                 fen=fen,
                 csv_path=Path(self.dataset_csv_var.get()),
                 samples_dir=Path(self.samples_dir_var.get()),
+                **self._sample_metadata(idx),
             )
             self._set_status(f"Exemplo salvo: {path}")
             messagebox.showinfo("Sucesso", f"Diagrama salvo em:\n{path}")
@@ -2025,6 +2121,7 @@ class ChessOcrTkApp:
                 fen=fen,
                 csv_path=Path(self.dataset_csv_var.get()),
                 samples_dir=Path(self.samples_dir_var.get()),
+                **self._sample_metadata(idx),
             )
             saved += 1
         self._set_status(f"Salvar todos: {saved} salvos, {invalid} invalidos.")

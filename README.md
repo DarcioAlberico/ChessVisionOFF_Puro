@@ -66,11 +66,17 @@ cvoff-infer "PDF\1937 Kemeri.pdf" --page 0
 
 # Varredura completa do PDF para PGN
 cvoff-export "PDF\1937 Kemeri.pdf"
+cvoff-export "PDF\1937 Kemeri.pdf" --dedupe   # omite posicoes repetidas no mesmo PDF
+cvoff-export "PDF\1937 Kemeri.pdf" --no-text  # ignora a legenda do PDF (lado a jogar so por legalidade)
 
 # Auditoria do dataset: posicoes ilegais, duplicatas, orfaos, distribuicao de classes.
 # Sem flags, apenas relata. Toda escrita cria backup do CSV.
 cvoff-audit
 cvoff-audit --fix-side-to-move --quarantine --dedupe
+
+# Migracao do labels.csv para o esquema com lado a jogar e origem. Cria backup;
+# deduz o lado a jogar so onde a posicao o impoe, e deixa vazio o resto.
+cvoff-migrate-labels
 
 # Avaliacao. A metrica primaria e a acuracia exata por tabuleiro:
 # a fracao de diagramas que sai sem nenhuma correcao manual.
@@ -83,6 +89,11 @@ funcionando como invocadores equivalentes (`uv run python infer_pdf.py ...`).
 
 `cvoff-export` percorre todas as paginas, detecta os diagramas encontrados e salva um
 jogo PGN por posicao. Sem `--output`, o arquivo vai para `PGN\<nome-do-pdf>.pgn`.
+
+O lado a jogar sai da legenda do PDF quando ela declara, da legalidade da posicao quando
+ela impoe (o lado que nao joga nao pode estar em xeque), e do padrao "brancas" quando
+nenhuma das duas responde. O header `[SideToMoveSource]` diz qual dos tres foi, sempre --
+a maioria dos livros do acervo nao declara nada, e um palpite precisa parecer um palpite.
 
 Para gravar o log em arquivo, defina `CVOFF_LOG_DIR`:
 
