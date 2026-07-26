@@ -20,45 +20,46 @@ from PIL import Image, ImageTk
 
 from chess_diagram_ocr.board_detection import detect_boards
 from chess_diagram_ocr.config import (
+    ACCEPT_MIN_CONFIDENCE,
     BOARD_SIZE,
     DEFAULT_DATASET_CSV,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
+    DEFAULT_READING_ORDER,
     DEFAULT_SAMPLES_DIR,
     find_default_pdf_path,
 )
 from chess_diagram_ocr.dataset import append_training_sample
+from chess_diagram_ocr.dataset_browser import DatasetRow, update_row
 from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
+from chess_diagram_ocr.export_checkpoint import partial_path_for
 from chess_diagram_ocr.fen_utils import board_from_fen, check_position, is_valid_fen, square_name
-from chess_diagram_ocr.inference import load_model, predict_with_orientation
+from chess_diagram_ocr.inference import load_model, predict_board, predict_with_orientation
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.pdf_text import DiagramContext, contexts_for_pdf_page
-from chess_diagram_ocr.pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
+from chess_diagram_ocr.pdf_to_pgn import (
+    ExportReport,
+    default_pgn_output_path,
+    save_pdf_positions_to_pgn,
+)
+from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH, ReviewItem
 from chess_diagram_ocr.semantics import compose_fen, infer_side_to_move
 from chess_diagram_ocr.training import train_model
+from chess_diagram_ocr.ui import board_edit
+from chess_diagram_ocr.ui.board_widget import InteractiveBoard, PieceImages
+from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
+from chess_diagram_ocr.ui.legality import explain_position
+from chess_diagram_ocr.ui.review_panel import ReviewPanel, ScanRequest
+from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 from chess_diagram_ocr.webview2_panel import EmbeddedWebView2, WebView2SupportError
 
 ROOT = Path(__file__).resolve().parent
 PIECE_IMAGE_DIR = ROOT / "assets" / "piece_images"
 APP_STATE_PATH = ROOT / "data" / "app_tkinter_state.json"
+DEFAULT_SPLITS_PATH = ROOT / "data" / "splits.csv"
 
 logger = logging.getLogger(__name__)
-
-UNICODE_PIECES = {
-    "P": "♙",
-    "N": "♘",
-    "B": "♗",
-    "R": "♖",
-    "Q": "♕",
-    "K": "♔",
-    "p": "♟",
-    "n": "♞",
-    "b": "♝",
-    "r": "♜",
-    "q": "♛",
-    "k": "♚",
-}
 
 NET_CORRECT_URL = "https://helpman.komtera.lt/predict"
 
@@ -83,13 +84,8 @@ class ChessOcrTkApp:
         self.study_game = chess.pgn.Game()
         self.study_game.setup(self.study_board.copy(stack=False))
         self.study_current_node: chess.pgn.GameNode = self.study_game
-        self.study_selected_square: int | None = None
-        self.study_drag_from_square: int | None = None
-        self.study_drag_piece: chess.Piece | None = None
-        self.study_drag_pointer: tuple[float, float] | None = None
-        self.study_drag_start_pointer: tuple[float, float] | None = None
-        self.study_drag_active = False
-        self.study_press_selected_new_piece = False
+        # Selecao e arraste moraram aqui ate a S-20; agora sao estado interno do
+        # `InteractiveBoard`, e o app so guarda a arvore de variantes.
         self.study_origin_var = tk.StringVar(value="Base: posicao inicial")
         self.study_status_var = tk.StringVar(value="")
         self.study_fen_var = tk.StringVar(value=self.study_board.fen())
@@ -98,19 +94,25 @@ class ChessOcrTkApp:
         self.study_flipped_var = tk.BooleanVar(value=False)
         self.left_tabs: ttk.Notebook | None = None
         self.local_results_tab: ttk.Frame | None = None
-        self.board_canvas: tk.Canvas | None = None
-        self.study_canvas: tk.Canvas | None = None
+        self.result_board: InteractiveBoard | None = None
+        self.study_board_widget: InteractiveBoard | None = None
         self.study_moves_text: tk.Text | None = None
         self.study_variation_combo: ttk.Combobox | None = None
-        self._study_board_geom: dict[str, float] = {}
+        self.review_panel: ReviewPanel | None = None
+        self.dataset_panel: DatasetPanel | None = None
+        self._review_position: int | None = None
+        """Índice do item da fila que está aberto no editor, para devolver a correção."""
+
+        self._editing_sample: str | None = None
+        """Amostra do dataset aberta no editor (S-23). `None` = editando OCR."""
 
         self._model_cache = None
         self._model_cache_path: Path | None = None
         self._model_device: str | None = None
 
         self.page_photo: ImageTk.PhotoImage | None = None
-        self._piece_image_sources = self._load_piece_image_sources()
-        self._piece_photo_cache: dict[tuple[str, int], ImageTk.PhotoImage] = {}
+        self.piece_images = PieceImages(PIECE_IMAGE_DIR)
+        self.state = AppState()
 
         self.model_path_var = tk.StringVar(value=str(DEFAULT_MODEL_PATH))
         self.dataset_csv_var = tk.StringVar(value=str(DEFAULT_DATASET_CSV))
@@ -124,6 +126,9 @@ class ChessOcrTkApp:
         self.fen_var = tk.StringVar(value="")
         self.side_to_move_var = tk.StringVar(value="w")
         self.side_source_var = tk.StringVar(value="")
+        self.heatmap_var = tk.BooleanVar(value=True)
+        self.legality_var = tk.StringVar(value="")
+        self.material_var = tk.StringVar(value="")
         self.epochs_var = tk.IntVar(value=8)
         self.batch_var = tk.IntVar(value=128)
         self.lr_var = tk.DoubleVar(value=0.001)
@@ -145,6 +150,8 @@ class ChessOcrTkApp:
         self.btn_ocr_all: ttk.Button | None = None
         self.btn_pdf_select: ttk.Button | None = None
         self.btn_export_pdf_pgn: ttk.Button | None = None
+        self.btn_cancel_export: ttk.Button | None = None
+        self._export_cancel_event: threading.Event | None = None
         self._is_exporting_pdf_pgn = False
         self._is_running_ocr = False
         self._pdf_select_mode = False
@@ -160,6 +167,7 @@ class ChessOcrTkApp:
         self._webview2_support_reason = ""
 
         self._build_ui()
+        self._bind_shortcuts()
         self._update_zoom_labels()
         self._refresh_study_view()
         self._set_study_status("Clique em uma peca para estudar.")
@@ -196,8 +204,28 @@ class ChessOcrTkApp:
         self.local_results_tab = local_tab
         analysis_tab = ttk.Frame(tabs, padding=6)
         tabs.add(cfg_tab, text="Configuracao")
-        tabs.add(local_tab, text="Imagem local")
+        tabs.add(local_tab, text="Resultado")
         tabs.add(analysis_tab, text="Analise")
+
+        # Fila de revisao (S-22) e navegador do dataset (S-23) como abas proprias: o codigo
+        # delas mora em `ui/`, para nao repetir o inchaco que a Fase 6 vai ter de desfazer.
+        self.review_panel = ReviewPanel(
+            tabs,
+            scan_request=self._current_scan_request,
+            on_open=self.open_review_item,
+            on_status=self._set_status,
+            queue_path=DEFAULT_QUEUE_PATH,
+        )
+        tabs.add(self.review_panel, text="Revisao")
+
+        self.dataset_panel = DatasetPanel(
+            tabs,
+            paths=self._dataset_paths,
+            on_edit=self.open_dataset_row,
+            on_recheck=self.recheck_dataset_row,
+            on_status=self._set_status,
+        )
+        tabs.add(self.dataset_panel, text="Dataset")
 
         self._entry_row(cfg_tab, "Modelo (.pt)", self.model_path_var)
         self._entry_row(cfg_tab, "CSV labels", self.dataset_csv_var)
@@ -233,7 +261,7 @@ class ChessOcrTkApp:
         self.btn_ocr_local_all.pack(side=tk.LEFT, padx=6)
         ttk.Label(local_tab, text="Use imagem local para OCR fora do PDF.").pack(anchor="w", padx=8, pady=(2, 8))
 
-        rec_box = ttk.LabelFrame(local_tab, text="Reconhecido (SVG)")
+        rec_box = ttk.LabelFrame(local_tab, text="Reconhecido (clique e arraste para corrigir)")
         rec_box.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
         zoom_row = ttk.Frame(rec_box)
@@ -243,10 +271,33 @@ class ChessOcrTkApp:
         ttk.Button(zoom_row, text="+", width=3, command=lambda: self.zoom_board(0.1)).pack(side=tk.LEFT, padx=(2, 6))
         self.lbl_board_zoom = ttk.Label(zoom_row, text="85%")
         self.lbl_board_zoom.pack(side=tk.LEFT)
+        ttk.Checkbutton(
+            zoom_row,
+            text="Heatmap de incerteza",
+            variable=self.heatmap_var,
+            command=self.on_heatmap_toggle,
+        ).pack(side=tk.RIGHT)
 
-        self.board_canvas = tk.Canvas(rec_box, width=440, height=440, bg="#f2f2f2", highlightthickness=0)
-        self.board_canvas.pack(padx=8, pady=8)
-        self.board_canvas.bind("<Map>", lambda _event: self._redraw_current_result_board())
+        # O editor da S-20 no lugar do canvas somente-leitura: corrigir uma peca passa de
+        # "contar casas e reescrever a FEN" para um arraste.
+        self.result_board = InteractiveBoard(
+            rec_box,
+            mode="edit",
+            on_change=self.on_result_board_changed,
+            on_select=self.on_result_square_selected,
+            on_status=self._set_status,
+            piece_images=self.piece_images,
+            background="#f2f2f2",
+            min_size=260,
+            max_size=520,
+        )
+        self.result_board.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self.result_board.set_heatmap_enabled(True)
+
+        legal_box = ttk.Frame(rec_box)
+        legal_box.pack(fill=tk.X, padx=8, pady=(0, 6))
+        ttk.Label(legal_box, textvariable=self.legality_var, wraplength=520, justify=tk.LEFT).pack(anchor="w")
+        ttk.Label(legal_box, textvariable=self.material_var, foreground="#555555").pack(anchor="w")
 
         nav_diag = ttk.Frame(rec_box)
         nav_diag.pack(fill=tk.X, padx=8, pady=(0, 6))
@@ -348,16 +399,22 @@ class ChessOcrTkApp:
         study_entry.pack(fill=tk.X, padx=6, pady=(0, 6))
         study_entry.bind("<Return>", lambda _event: self.apply_study_fen())
 
-        self.study_canvas = tk.Canvas(parent, width=430, height=430, bg="#262421", highlightthickness=0, cursor="hand2")
-        self.study_canvas.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 6))
-        self.study_canvas.bind("<ButtonPress-1>", self.on_study_board_press)
-        self.study_canvas.bind("<B1-Motion>", self.on_study_board_drag)
-        self.study_canvas.bind("<ButtonRelease-1>", self.on_study_board_release)
-        self.study_canvas.bind("<Left>", lambda _event: self.undo_study_move())
-        self.study_canvas.bind("<Right>", lambda _event: self.redo_study_move())
-        self.study_canvas.bind("<Home>", lambda _event: self.go_to_start_of_study_line())
-        self.study_canvas.bind("<End>", lambda _event: self.go_to_end_of_study_line())
-        self.study_canvas.bind("<Configure>", lambda _event: self._draw_study_board())
+        # Mesmo widget do painel de resultado, em modo de jogo (S-20). Antes eram duas
+        # implementacoes de tabuleiro no mesmo arquivo, e so uma delas era interativa.
+        self.study_board_widget = InteractiveBoard(
+            parent,
+            mode="play",
+            on_move=self._push_study_move,
+            on_status=self._set_study_status,
+            promotion_chooser=self._choose_study_promotion,
+            piece_images=self.piece_images,
+        )
+        self.study_board_widget.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 6))
+        canvas = self.study_board_widget.canvas
+        canvas.bind("<Left>", lambda _event: self.undo_study_move())
+        canvas.bind("<Right>", lambda _event: self.redo_study_move())
+        canvas.bind("<Home>", lambda _event: self.go_to_start_of_study_line())
+        canvas.bind("<End>", lambda _event: self.go_to_end_of_study_line())
 
         move_box = ttk.LabelFrame(parent, text="Linha de estudo")
         move_box.pack(fill=tk.BOTH, expand=False, padx=6, pady=(0, 2))
@@ -399,6 +456,13 @@ class ChessOcrTkApp:
         self.btn_pdf_select.pack(side=tk.LEFT, padx=6)
         self.btn_export_pdf_pgn = ttk.Button(ocr_row, text="Exportar PDF -> PGN", command=self.export_pdf_to_pgn)
         self.btn_export_pdf_pgn.pack(side=tk.LEFT, padx=6)
+        self.btn_cancel_export = ttk.Button(
+            ocr_row,
+            text="Cancelar exportacao",
+            command=self.cancel_pdf_export,
+            state=tk.DISABLED,
+        )
+        self.btn_cancel_export.pack(side=tk.LEFT)
 
         zoom_row_pdf = ttk.Frame(pdf_box)
         zoom_row_pdf.pack(fill=tk.X, padx=8, pady=(0, 4))
@@ -462,69 +526,57 @@ class ChessOcrTkApp:
             self.load_pdf(default_pdf)
 
     def _restore_state_or_default_pdf(self) -> None:
-        if not self._load_app_state():
+        """Restaura o estado gravado. Sem PDF utilizável, cai no primeiro PDF da pasta.
+
+        Fonte única de leitura (S-25): `load_pdf` não relê mais o arquivo por conta própria,
+        consulta `self.state`.
+        """
+        self.state = load_state(APP_STATE_PATH)
+
+        self.pdf_zoom_var.set(self.state.pdf_zoom)
+        self.board_zoom_var.set(self.state.board_zoom)
+        self.heatmap_var.set(self.state.show_heatmap)
+        if self.result_board is not None:
+            self.result_board.set_heatmap_enabled(self.state.show_heatmap)
+        self._update_zoom_labels()
+
+        last_pdf = self.state.last_pdf.strip()
+        if not last_pdf:
             self._set_default_pdf_if_exists()
+            return
 
-    def _load_app_state(self) -> bool:
-        if not APP_STATE_PATH.exists():
-            return False
-        try:
-            raw = APP_STATE_PATH.read_text(encoding="utf-8")
-            state = json.loads(raw)
-            if not isinstance(state, dict):
-                return False
+        pdf_path = Path(last_pdf)
+        if not pdf_path.exists():
+            # Antes isto era um `return False` silencioso e o usuario so via o PDF errado
+            # abrir, sem saber por que.
+            logger.warning("Ultimo PDF do estado nao existe mais: %s", pdf_path)
+            self._set_status(f"Ultimo PDF nao encontrado: {pdf_path}")
+            self._set_default_pdf_if_exists()
+            return
 
-            pdf_zoom = state.get("pdf_zoom")
-            if isinstance(pdf_zoom, (int, float)):
-                self.pdf_zoom_var.set(max(0.25, min(2.0, float(pdf_zoom))))
-                self._update_zoom_labels()
-
-            last_pdf = state.get("last_pdf")
-            if not isinstance(last_pdf, str) or not last_pdf.strip():
-                return False
-            pdf_path = Path(last_pdf)
-            if not pdf_path.exists():
-                self._set_status(f"Ultimo PDF nao encontrado: {pdf_path}")
-                return False
-
-            self.load_pdf(pdf_path)
-
-            last_page = state.get("last_page")
-            if isinstance(last_page, int) and self.page_count > 0:
-                clamped_page = max(0, min(self.page_count - 1, last_page))
-                if clamped_page != int(self.page_index_var.get()):
-                    self.page_index_var.set(clamped_page)
-                    self.page_loaded_for_index = None
-                    self.render_current_page()
-            return True
-        except (OSError, json.JSONDecodeError, ValueError, tk.TclError) as exc:
-            logger.warning("Estado da aplicacao ignorado (%s): %s", APP_STATE_PATH, exc)
-            return False
+        self.load_pdf(pdf_path)
+        if self.page_count > 0:
+            clamped_page = max(0, min(self.page_count - 1, self.state.last_page))
+            if clamped_page != int(self.page_index_var.get()):
+                self.page_index_var.set(clamped_page)
+                self.page_loaded_for_index = None
+                self.render_current_page()
 
     def _save_app_state(self) -> None:
         try:
-            state = {}
-            if APP_STATE_PATH.exists():
-                try:
-                    state = json.loads(APP_STATE_PATH.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError) as exc:
-                    logger.warning("Estado anterior corrompido, sera sobrescrito: %s", exc)
-
-            pdf_history = state.get("pdf_history", {})
             if self.pdf_source is not None:
-                pdf_key = str(self.pdf_source.resolve())
-                pdf_history[pdf_key] = int(self.page_index_var.get())
-
-            state["last_pdf"] = str(self.pdf_source) if self.pdf_source is not None else ""
-            state["last_page"] = int(self.page_index_var.get())
-            state["pdf_zoom"] = float(self.pdf_zoom_var.get())
-            state["pdf_history"] = pdf_history
-
-            APP_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            APP_STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-        except (OSError, TypeError, ValueError, tk.TclError) as exc:
-            # Falhar em salvar o estado nao deve derrubar a aplicacao. Escrita atomica: ver S-25.
-            logger.warning("Nao foi possivel salvar o estado da aplicacao: %s", exc)
+                self.state.remember_page(self.pdf_source, int(self.page_index_var.get()))
+            self.state.last_pdf = str(self.pdf_source) if self.pdf_source is not None else ""
+            self.state.last_page = int(self.page_index_var.get())
+            self.state.pdf_zoom = float(self.pdf_zoom_var.get())
+            self.state.board_zoom = float(self.board_zoom_var.get())
+            self.state.show_heatmap = bool(self.heatmap_var.get())
+            if self.review_panel is not None:
+                self.state.review_queue_path = str(self.review_panel.queue_path)
+        except tk.TclError as exc:
+            logger.warning("Estado da aplicacao nao pode ser montado: %s", exc)
+            return
+        save_state(APP_STATE_PATH, self.state)
 
     def _on_close(self) -> None:
         self._save_app_state()
@@ -563,6 +615,9 @@ class ChessOcrTkApp:
         state = tk.NORMAL if enabled else tk.DISABLED
         if self.btn_export_pdf_pgn is not None:
             self.btn_export_pdf_pgn.configure(state=state)
+        if self.btn_cancel_export is not None:
+            # O cancelar so existe enquanto ha o que cancelar.
+            self.btn_cancel_export.configure(state=tk.DISABLED if enabled else tk.NORMAL)
 
     def _open_training_dialog(self) -> None:
         if self.train_dialog is not None and self.train_dialog.winfo_exists():
@@ -649,8 +704,9 @@ class ChessOcrTkApp:
         new_zoom = max(0.45, min(1.8, self.board_zoom_var.get() + delta))
         self.board_zoom_var.set(new_zoom)
         self._update_zoom_labels()
-        if self.result_items:
-            self._draw_board_canvas(self.fen_var.get().strip())
+        if self.result_board is not None:
+            self.result_board.canvas.configure(height=int(520 * new_zoom))
+            self.result_board.redraw()
 
     def _rgb_to_photo(self, image_rgb: np.ndarray, max_w: int, max_h: int) -> ImageTk.PhotoImage:
         pil = Image.fromarray(image_rgb)
@@ -867,17 +923,7 @@ class ChessOcrTkApp:
             self.page_count = get_pdf_page_count(self.pdf_source)
             self.lbl_pdf.config(text=f"{self.pdf_name} ({self.page_count} pags)")
 
-            target_page = 0
-            if APP_STATE_PATH.exists():
-                try:
-                    state = json.loads(APP_STATE_PATH.read_text(encoding="utf-8"))
-                    history = state.get("pdf_history", {})
-                    pdf_key = str(self.pdf_source.resolve())
-                    if pdf_key in history:
-                        target_page = history[pdf_key]
-                except (OSError, json.JSONDecodeError, ValueError) as exc:
-                    logger.warning("Historico de paginas ignorado: %s", exc)
-
+            target_page = self.state.page_for(pdf_path)
             self.page_index_var.set(max(0, min(self.page_count - 1, target_page)))
             self.spin_page.config(to=max(self.page_count - 1, 0))
             self.page_loaded_for_index = None
@@ -906,7 +952,24 @@ class ChessOcrTkApp:
             return
 
         output_path = Path(filename)
-        if output_path.exists():
+        partial_path = partial_path_for(output_path)
+        resume = True
+        if partial_path.exists():
+            # Retomar e o padrao, mas nao em silencio: quem esta refazendo a exportacao de
+            # proposito precisa poder dizer "comeca do zero" (S-24).
+            answer = messagebox.askyesnocancel(
+                "Exportacao interrompida encontrada",
+                f"Existe um progresso parcial em:\n{partial_path}\n\n"
+                "Sim: retomar de onde parou.\n"
+                "Nao: recomecar do zero, descartando o parcial.\n"
+                "Cancelar: abortar.",
+            )
+            if answer is None:
+                return
+            resume = bool(answer)
+            if not resume:
+                partial_path.unlink(missing_ok=True)
+        elif output_path.exists():
             overwrite = messagebox.askyesno(
                 "Sobrescrever PGN",
                 f"O arquivo ja existe:\n{output_path}\n\nDeseja sobrescrever?",
@@ -915,6 +978,7 @@ class ChessOcrTkApp:
                 return
 
         self._is_exporting_pdf_pgn = True
+        self._export_cancel_event = threading.Event()
         self._set_pdf_export_controls_enabled(False)
         self._set_status("Iniciando exportacao do PDF para PGN...")
 
@@ -927,10 +991,20 @@ class ChessOcrTkApp:
                 "dpi": int(self.dpi_var.get()),
                 "max_boards_per_page": int(self.max_boards_var.get()),
                 "orientation": self.orientation_var.get(),
+                "resume": resume,
+                "cancel_event": self._export_cancel_event,
             },
             daemon=True,
         )
         worker.start()
+
+    def cancel_pdf_export(self) -> None:
+        if self._export_cancel_event is None:
+            return
+        self._export_cancel_event.set()
+        self._set_status("Cancelando exportacao... o progresso da pagina atual sera preservado.")
+        if self.btn_cancel_export is not None:
+            self.btn_cancel_export.configure(state=tk.DISABLED)
 
     def _export_pdf_to_pgn_worker(
         self,
@@ -941,6 +1015,8 @@ class ChessOcrTkApp:
         dpi: int,
         max_boards_per_page: int,
         orientation: str,
+        resume: bool,
+        cancel_event: threading.Event,
     ) -> None:
         def _progress(page_index: int, total_pages: int, page_boards: int, total_positions: int) -> None:
             current_page = page_index + 1
@@ -959,6 +1035,8 @@ class ChessOcrTkApp:
                 dpi=dpi,
                 max_boards_per_page=max_boards_per_page,
                 orientation=orientation,
+                resume=resume,
+                cancel_event=cancel_event,
                 progress_callback=_progress,
             )
             self.root.after(0, lambda: self._on_export_pdf_to_pgn_success(report))
@@ -970,18 +1048,27 @@ class ChessOcrTkApp:
     def _on_export_pdf_to_pgn_success(self, report: ExportReport) -> None:
         self._set_status(f"Exportacao concluida. {report.summary()}.")
 
+        titulo = "Exportacao cancelada" if report.cancelled else "Arquivo gerado com sucesso."
         linhas = [
-            "Arquivo gerado com sucesso.",
+            titulo,
             "",
             f"PGN: {report.output_path}",
             f"Aceitos: {len(report.accepted)} de {report.total}",
         ]
+        if report.resumed_from_page is not None:
+            linhas.insert(1, f"(retomada a partir da pagina {report.resumed_from_page + 1})")
         # O gate so ajuda se o usuario souber o que ficou de fora (S-15).
         if report.review_path is not None:
             linhas += [
                 "",
                 f"Para revisao: {len(report.needs_review)} de baixa confianca, {len(report.rejected)} ilegais.",
                 f"Arquivo: {report.review_path}",
+            ]
+        if report.cancelled and report.partial_path is not None:
+            linhas += [
+                "",
+                "O progresso foi preservado. Exportar de novo para o mesmo arquivo oferece retomar.",
+                f"Parcial: {report.partial_path}",
             ]
         messagebox.showinfo("Exportar PDF para PGN", "\n".join(linhas))
 
@@ -991,6 +1078,7 @@ class ChessOcrTkApp:
 
     def _finish_export_pdf_to_pgn(self) -> None:
         self._is_exporting_pdf_pgn = False
+        self._export_cancel_event = None
         self._set_pdf_export_controls_enabled(True)
 
     def on_page_spin(self) -> None:
@@ -1173,6 +1261,11 @@ class ChessOcrTkApp:
                     "confidence": prediction.mean_confidence,
                     "min_confidence": prediction.min_confidence,
                     "uncertain_squares": prediction.uncertain_squares,
+                    # Insumos do heatmap e do tooltip (S-21). A matriz por casa ja existia
+                    # desde a S-10 e era descartada aqui -- a UI so via o agregado.
+                    "probs": prediction.probs,
+                    "square_confidences": [float(value) for value in prediction.square_confidences],
+                    "changed_squares": [square for square, _argmax, _final in (prediction.decode.changed_squares if prediction.decode else [])],
                     # Legalidade com o lado a jogar ja decidido (S-17): o "xeque invertido"
                     # que a GUI mostrava some quando a inferencia descobre de quem e a vez.
                     "is_legal": resolved.is_legal,
@@ -1255,6 +1348,10 @@ class ChessOcrTkApp:
             self.root.after(0, self._finish_ocr_ui)
 
     def _apply_ocr_result_items(self, items: list[dict[str, Any]], origin: str) -> None:
+        # OCR novo substitui o que estava no editor: se veio da fila ou do dataset, a
+        # ligacao com aquele item deixa de valer.
+        self._editing_sample = None
+        self._review_position = None
         self.result_items = items
         self.fen_edits = [item["fen_pred"] for item in items]
         self.side_edits = [str(item.get("side_to_move") or "w") for item in items]
@@ -1308,6 +1405,7 @@ class ChessOcrTkApp:
             "legality": "deduzido da posicao",
             "default": "assumido",
             "manual": "definido por voce",
+            "queue": "vindo da fila de revisao",
         }
         fonte = rotulos.get(str(item.get("side_to_move_source")), "")
         if item.get("side_conflicting"):
@@ -1323,6 +1421,11 @@ class ChessOcrTkApp:
             self.result_items[idx]["side_to_move_source"] = "manual"
             self.result_items[idx]["side_conflicting"] = False
             self._sync_side_widgets(idx)
+            if self.result_board is not None:
+                self.result_board.set_side_to_move(self.side_edits[idx] != "b")
+            # A legalidade depende de quem joga: trocar a vez pode resolver o "xeque
+            # invertido" sem mexer em nenhuma peca (S-17).
+            self._update_legality_panel()
             self._set_status(f"Diagrama {idx + 1}: lado a jogar definido como {self.side_to_move_var.get()}.")
 
     def _selected_index(self) -> int:
@@ -1416,17 +1519,84 @@ class ChessOcrTkApp:
         self._update_result_views()
 
     def _update_result_views(self) -> None:
-        if self.board_canvas is None:
+        if self.result_board is None:
             return
         if not self.result_items:
-            self.board_canvas.delete("all")
+            self.result_board.set_position(board_edit.EMPTY_PLACEMENT)
+            self.result_board.set_uncertainty(None)
+            self.result_board.set_probabilities(None)
+            self.result_board.set_changed_squares(())
+            self.result_board.set_problem_squares(())
+            self.legality_var.set("")
+            self.material_var.set("")
             return
 
         idx = self._selected_index()
         fen = self.fen_edits[idx]
+        item = self.result_items[idx]
 
-        self._draw_board_canvas(fen)
+        self.result_board.set_position(fen)
+        self.result_board.set_side_to_move(self.side_edits[idx] != "b")
+        self._apply_prediction_signals(item)
+        self._update_legality_panel()
         self._maybe_sync_study_with_current_fen()
+
+    def _apply_prediction_signals(self, item: dict[str, Any]) -> None:
+        """Põe na tela o que o modelo achou de cada casa (S-21).
+
+        Sem isso o usuário só tem a FEN e um número agregado -- e a média de confiança fica
+        em 0,97 mesmo quando há erro (S-10), então ela não aponta lugar nenhum.
+        """
+        if self.result_board is None:
+            return
+
+        confidences = item.get("square_confidences")
+        self.result_board.set_uncertainty(list(confidences) if confidences is not None else None)
+        self.result_board.set_probabilities(item.get("probs"))
+        self.result_board.set_changed_squares(item.get("changed_squares") or ())
+
+    def _update_legality_panel(self) -> None:
+        """Painel de legalidade da S-21: o problema em pt-BR e as casas que o causam."""
+        if self.result_board is None:
+            return
+
+        idx = self._selected_index()
+        if not self.result_items or idx >= len(self.fen_edits):
+            return
+
+        placement = self.result_board.placement
+        side = self.side_edits[idx] if idx < len(self.side_edits) else "w"
+        explanation = explain_position(compose_fen(placement, side == "w"))
+
+        self.legality_var.set(explanation.summary())
+        self.material_var.set(explanation.material_line())
+        self.result_board.set_problem_squares(explanation.highlight_squares)
+
+    def on_heatmap_toggle(self) -> None:
+        if self.result_board is not None:
+            self.result_board.set_heatmap_enabled(bool(self.heatmap_var.get()))
+        self._save_app_state()
+
+    def on_result_board_changed(self, placement: str) -> None:
+        """Toda edição no tabuleiro reescreve a FEN -- o campo de texto segue funcionando."""
+        idx = self._selected_index()
+        if not self.result_items or idx >= len(self.fen_edits):
+            return
+        self.fen_edits[idx] = placement
+        self.fen_var.set(placement)
+        self.result_items[idx]["edited_by_hand"] = True
+        self._update_legality_panel()
+        self._maybe_sync_study_with_current_fen()
+
+    def on_result_square_selected(self, index: int | None) -> None:
+        if index is None or self.result_board is None:
+            return
+        top = self.result_board.top_classes(index)
+        if not top:
+            self._set_status(f"Casa {square_name(index)} selecionada.")
+            return
+        detalhe = ", ".join(f"{nome} {valor:.1%}" for nome, valor in top)
+        self._set_status(f"Casa {square_name(index)}: {detalhe}")
 
     def _show_local_results_tab(self) -> None:
         if self.left_tabs is None or self.local_results_tab is None:
@@ -1437,102 +1607,8 @@ class ChessOcrTkApp:
             logger.debug("Nao foi possivel focar a aba de resultados: %s", exc)
 
     def _redraw_current_result_board(self) -> None:
-        if self.board_canvas is None:
-            return
-        if not self.result_items:
-            self.board_canvas.delete("all")
-            return
-        self._draw_board_canvas(self.fen_var.get().strip())
-
-    def _load_piece_image_sources(self) -> dict[str, Image.Image]:
-        images: dict[str, Image.Image] = {}
-        for color_code in ("w", "b"):
-            for piece_code in ("p", "n", "b", "r", "q", "k"):
-                key = f"{color_code}{piece_code}"
-                path = PIECE_IMAGE_DIR / f"{key}.png"
-                if not path.exists():
-                    continue
-                try:
-                    with Image.open(path) as img:
-                        images[key] = img.convert("RGBA")
-                except (OSError, ValueError) as exc:
-                    # Sem a imagem, o tabuleiro cai no fallback de simbolos Unicode.
-                    logger.warning("Imagem de peca invalida em %s: %s", path, exc)
-        return images
-
-    def _get_piece_photo(self, piece: Any, cell: int) -> ImageTk.PhotoImage | None:
-        key = f"{'w' if piece.color else 'b'}{piece.symbol().lower()}"
-        source = self._piece_image_sources.get(key)
-        if source is None:
-            return None
-
-        icon_size = max(12, int(cell * 0.86))
-        cache_key = (key, icon_size)
-        cached = self._piece_photo_cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        if hasattr(Image, "Resampling"):
-            resized = source.resize((icon_size, icon_size), resample=Image.Resampling.LANCZOS)
-        else:
-            resized = source.resize((icon_size, icon_size), resample=Image.LANCZOS)
-        photo = ImageTk.PhotoImage(resized)
-        self._piece_photo_cache[cache_key] = photo
-        return photo
-
-    def _draw_board_canvas(self, fen: str) -> None:
-        if self.board_canvas is None:
-            return
-        self.board_canvas.delete("all")
-        size = int(440 * float(self.board_zoom_var.get()))
-        size = max(220, min(size, 760))
-        origin_x, origin_y = 16, 16
-        cell = size // 8
-        light = "#f0d9b5"
-        dark = "#b58863"
-        canvas_w = min(560, size + 42)
-        canvas_h = min(560, size + 42)
-        self.board_canvas.configure(width=canvas_w, height=canvas_h)
-
-        if not fen:
-            self.board_canvas.create_text(canvas_w // 2, canvas_h // 2, text="Sem FEN", font=("Segoe UI", 14))
-            return
-
-        if not is_valid_fen(fen):
-            self.board_canvas.create_text(canvas_w // 2, canvas_h // 2, text="FEN invalida", fill="red", font=("Segoe UI", 14, "bold"))
-            return
-
-        board = board_from_fen(fen)
-
-        for row in range(8):
-            for col in range(8):
-                x0 = origin_x + col * cell
-                y0 = origin_y + row * cell
-                x1 = x0 + cell
-                y1 = y0 + cell
-                color = light if (row + col) % 2 == 0 else dark
-                self.board_canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline=color)
-
-                square = (7 - row) * 8 + col
-                piece = board.piece_at(square)
-                if piece is not None:
-                    piece_photo = self._get_piece_photo(piece, cell)
-                    if piece_photo is not None:
-                        self.board_canvas.create_image(x0 + cell / 2, y0 + cell / 2, image=piece_photo)
-                    else:
-                        symbol = UNICODE_PIECES.get(piece.symbol(), piece.symbol())
-                        self.board_canvas.create_text(
-                            x0 + cell / 2,
-                            y0 + cell / 2,
-                            text=symbol,
-                            fill="#111111",
-                            font=("Segoe UI Symbol", int(cell * 0.56)),
-                        )
-
-        for i, file_char in enumerate("abcdefgh"):
-            self.board_canvas.create_text(origin_x + i * cell + cell / 2, origin_y + size + 12, text=file_char, font=("Segoe UI", 10))
-        for i in range(8):
-            self.board_canvas.create_text(origin_x - 10, origin_y + i * cell + cell / 2, text=str(8 - i), font=("Segoe UI", 10))
+        if self.result_board is not None:
+            self.result_board.redraw()
 
     def _set_study_status(self, text: str = "") -> None:
         turn_text = "brancas" if self.study_board.turn else "pretas"
@@ -1601,14 +1677,19 @@ class ChessOcrTkApp:
         self.study_fen_var.set(self.study_board.fen())
         self._update_study_moves_text()
         self._update_study_variation_selector()
-        self._draw_study_board()
+        self._push_position_to_study_widget()
+
+    def _push_position_to_study_widget(self) -> None:
+        """Sincroniza o widget com o no atual da arvore. A arvore continua sendo do app."""
+        if self.study_board_widget is None:
+            return
+        self.study_board_widget.set_position(self.study_board.fen())
+        self.study_board_widget.set_last_move(self.study_current_node.move)
 
     def _set_study_board_state(self, board: chess.Board, origin: str, status: str) -> None:
         self.study_game = self._create_study_game(board)
         self.study_current_node = self.study_game
         self._sync_study_board_from_current_node()
-        self.study_selected_square = None
-        self._clear_study_drag_state()
         self.study_origin_var.set(origin)
         self._refresh_study_view()
         self._set_study_status(status)
@@ -1709,7 +1790,8 @@ class ChessOcrTkApp:
 
     def flip_study_board(self) -> None:
         self.study_flipped_var.set(not self.study_flipped_var.get())
-        self._draw_study_board()
+        if self.study_board_widget is not None:
+            self.study_board_widget.set_flipped(self.study_flipped_var.get())
 
     def toggle_study_turn(self) -> None:
         board = self.study_board.copy(stack=False)
@@ -1726,8 +1808,6 @@ class ChessOcrTkApp:
             self._set_study_status("Nao ha lances para desfazer.")
             return
         self.study_current_node = self.study_current_node.parent
-        self.study_selected_square = None
-        self._clear_study_drag_state()
         self._refresh_study_view()
         self._set_study_status("Ultimo lance desfeito.")
 
@@ -1738,8 +1818,6 @@ class ChessOcrTkApp:
         idx = self._get_selected_study_variation_index()
         idx = max(0, min(idx, len(self.study_current_node.variations) - 1))
         self.study_current_node = self.study_current_node.variations[idx]
-        self.study_selected_square = None
-        self._clear_study_drag_state()
         self._refresh_study_view()
         self._set_study_status("Lance refeito.")
 
@@ -1749,8 +1827,6 @@ class ChessOcrTkApp:
             return
         while self.study_current_node.parent is not None:
             self.study_current_node = self.study_current_node.parent
-        self.study_selected_square = None
-        self._clear_study_drag_state()
         self._refresh_study_view()
         self._set_study_status("Voltou para o inicio da linha.")
 
@@ -1764,37 +1840,8 @@ class ChessOcrTkApp:
             idx = max(0, min(idx, len(self.study_current_node.variations) - 1))
             self.study_current_node = self.study_current_node.variations[idx]
             first_step = False
-        self.study_selected_square = None
-        self._clear_study_drag_state()
         self._refresh_study_view()
         self._set_study_status("Avancou para o fim da linha.")
-
-    def _study_square_to_display(self, square: int) -> tuple[int, int]:
-        file_idx = chess.square_file(square)
-        rank_idx = chess.square_rank(square)
-        if self.study_flipped_var.get():
-            return rank_idx, 7 - file_idx
-        return 7 - rank_idx, file_idx
-
-    def _study_display_to_square(self, row: int, col: int) -> int:
-        if self.study_flipped_var.get():
-            file_idx = 7 - col
-            rank_idx = row
-        else:
-            file_idx = col
-            rank_idx = 7 - row
-        return chess.square(file_idx, rank_idx)
-
-    def _study_legal_moves_from(self, square: int) -> list[chess.Move]:
-        return [move for move in self.study_board.legal_moves if move.from_square == square]
-
-    def _clear_study_drag_state(self) -> None:
-        self.study_drag_from_square = None
-        self.study_drag_piece = None
-        self.study_drag_pointer = None
-        self.study_drag_start_pointer = None
-        self.study_drag_active = False
-        self.study_press_selected_new_piece = False
 
     def _choose_study_promotion(self) -> int | None:
         choice: dict[str, int | None] = {"piece_type": None}
@@ -1826,244 +1873,220 @@ class ChessOcrTkApp:
             self.study_current_node = existing_child
         else:
             self.study_current_node = self.study_current_node.add_variation(move)
-        self.study_selected_square = None
-        self._clear_study_drag_state()
         self._refresh_study_view()
         suffix = "Variante seguida." if existing_child is not None else "Lance salvo."
         self._set_study_status(f"{san} | {suffix}")
 
-    def _study_square_from_xy(self, x: float, y: float) -> int | None:
-        geom = self._study_board_geom
-        if not geom:
+    # ------------------------------------------------------------------ Fase 4
+    # Fila de revisao (S-22), navegador do dataset (S-23) e atalhos (S-20).
+
+    def _current_scan_request(self) -> ScanRequest | None:
+        """Parâmetros da varredura como a janela os tem configurados agora."""
+        if self.pdf_source is None or not isinstance(self.pdf_source, Path):
             return None
-        origin_x = geom["origin_x"]
-        origin_y = geom["origin_y"]
-        size = geom["size"]
-        cell = geom["cell"]
-        if not (origin_x <= x < origin_x + size and origin_y <= y < origin_y + size):
+        return ScanRequest(
+            pdf_path=self.pdf_source,
+            model_path=Path(self.model_path_var.get().strip()),
+            labels_csv=Path(self.dataset_csv_var.get()),
+            dpi=int(self.dpi_var.get()),
+            max_boards_per_page=int(self.max_boards_var.get()),
+            orientation=self.orientation_var.get(),  # type: ignore[arg-type]
+            reading_order=DEFAULT_READING_ORDER,
+            accept_threshold=ACCEPT_MIN_CONFIDENCE,
+        )
+
+    def _dataset_paths(self) -> tuple[Path, Path, Path]:
+        return (
+            Path(self.dataset_csv_var.get()),
+            Path(self.samples_dir_var.get()),
+            DEFAULT_SPLITS_PATH,
+        )
+
+    def open_review_item(self, item: ReviewItem, position: int) -> None:
+        """Abre um item da fila no editor, já com o heatmap e a casa suspeita selecionados."""
+        board_rgb = self._read_cached_board(item.board_image)
+        if board_rgb is None:
+            messagebox.showerror("Fila de revisao", f"Miniatura nao encontrada:\n{item.board_image}")
+            return
+
+        placement = item.fen.split(" ")[0]
+        self._editing_sample = None
+        self._review_position = position
+        self.result_items = [
+            {
+                "index": 0,
+                "board_rgb": board_rgb,
+                "quad": None,
+                "fen_pred": placement,
+                "confidence": item.min_confidence,
+                "min_confidence": item.min_confidence,
+                "uncertain_squares": list(item.uncertain_squares),
+                "probs": None,
+                "square_confidences": list(item.square_confidences) or None,
+                "changed_squares": list(item.changed_squares),
+                "is_legal": None,
+                "is_fatal": None,
+                "problems": (),
+                "rotation": None,
+                "orientation_ambiguous": False,
+                "orientation_reason": "",
+                "side_to_move": item.side_to_move,
+                "side_to_move_source": "queue",
+                "side_to_move_reason": "; ".join(item.reasons),
+                "side_conflicting": False,
+                "context": None,
+                "detection_source": "",
+            }
+        ]
+        self.fen_edits = [placement]
+        self.side_edits = [item.side_to_move]
+        self.selected_diag_idx = 0
+        self.selected_diag_var.set(1)
+        self.spin_diag.config(from_=1, to=1)
+        self.fen_var.set(placement)
+        self._sync_side_widgets(0)
+        self._show_local_results_tab()
+        self._update_result_views()
+
+        if self.result_board is not None and item.first_uncertain_square is not None:
+            # Abrir ja na casa suspeita e o que a S-22 pede do "corrigir agora": sem isso o
+            # usuario recebe o tabuleiro inteiro de novo e a fila nao economizou nada.
+            self.result_board.select_square(item.first_uncertain_square)
+        self._set_status(f"Revisao {item.label}: {'; '.join(item.reasons)}")
+
+    def _read_cached_board(self, path_text: str) -> np.ndarray | None:
+        path = Path(path_text)
+        if not path.exists():
             return None
-        col = int((x - origin_x) // cell)
-        row = int((y - origin_y) // cell)
-        if not (0 <= row <= 7 and 0 <= col <= 7):
+        image_bgr = cv2.imread(str(path))
+        if image_bgr is None:
             return None
-        return self._study_display_to_square(row, col)
+        return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-    def _play_study_move_to_square(self, target_square: int) -> bool:
-        if self.study_selected_square is None:
-            return False
-        candidate_moves = [move for move in self._study_legal_moves_from(self.study_selected_square) if move.to_square == target_square]
-        if not candidate_moves:
-            return False
-
-        move = candidate_moves[0]
-        if len(candidate_moves) > 1:
-            promotion = self._choose_study_promotion()
-            if promotion is None:
-                self._set_study_status("Promocao cancelada.")
-                return True
-            selected_move = next((item for item in candidate_moves if item.promotion == promotion), None)
-            if selected_move is None:
-                self._set_study_status("Promocao invalida.")
-                return True
-            move = selected_move
-
-        self.study_follow_ocr_var.set(False)
-        self._push_study_move(move)
-        return True
-
-    def _handle_study_square_action(self, square: int | None, allow_deselect: bool) -> None:
-        if square is None:
-            if self.study_drag_active:
-                self._set_study_status("Arraste cancelado.")
+    def open_dataset_row(self, row: DatasetRow) -> None:
+        """Abre uma amostra do dataset no editor. Salvar regrava a linha, não cria outra."""
+        samples_dir = Path(self.samples_dir_var.get())
+        board_rgb = self._read_cached_board(str(row.image_path(samples_dir)))
+        if board_rgb is None:
+            messagebox.showerror("Dataset", f"Imagem nao encontrada:\n{row.image_path(samples_dir)}")
             return
 
-        board = self.study_board
-        piece = board.piece_at(square)
-        if self.study_selected_square is None:
-            if piece is None or piece.color != board.turn:
-                self._set_study_status("Selecione uma peca do lado a jogar.")
-                return
-            self.study_selected_square = square
-            self._draw_study_board()
-            self._set_study_status(f"Peca selecionada em {chess.square_name(square)}.")
-            return
+        placement = row.placement
+        side = row.side_to_move if row.side_to_move in ("w", "b") else "w"
+        self._editing_sample = row.filename
+        self._review_position = None
+        self.result_items = [
+            {
+                "index": 0,
+                "board_rgb": board_rgb,
+                "quad": None,
+                "fen_pred": placement,
+                "confidence": 0.0,
+                "min_confidence": 0.0,
+                "uncertain_squares": [],
+                "probs": None,
+                "square_confidences": None,
+                "changed_squares": [],
+                "is_legal": row.legality == "legal",
+                "is_fatal": row.legality == "ilegal",
+                "problems": row.problems,
+                "rotation": None,
+                "orientation_ambiguous": False,
+                "orientation_reason": "",
+                "side_to_move": side,
+                "side_to_move_source": "manual",
+                "side_to_move_reason": "rotulo do dataset",
+                "side_conflicting": False,
+                "context": None,
+                "detection_source": row.detection_source,
+            }
+        ]
+        self.fen_edits = [placement]
+        self.side_edits = [side]
+        self.selected_diag_idx = 0
+        self.selected_diag_var.set(1)
+        self.spin_diag.config(from_=1, to=1)
+        self.fen_var.set(placement)
+        self._sync_side_widgets(0)
+        self._show_local_results_tab()
+        self._update_result_views()
+        self._set_status(f"Editando amostra {row.filename} (Ctrl+S regrava o rotulo).")
 
-        if square == self.study_selected_square and allow_deselect:
-            self.study_selected_square = None
-            self._draw_study_board()
-            self._set_study_status("Selecao removida.")
-            return
+    def recheck_dataset_row(self, row: DatasetRow) -> str:
+        """Roda o modelo na amostra e compara com o rótulo gravado (S-23).
 
-        if piece is not None and piece.color == board.turn:
-            self.study_selected_square = square
-            self._draw_study_board()
-            self._set_study_status(f"Peca selecionada em {chess.square_name(square)}.")
-            return
+        É o caminho para achar rótulo **humano** errado: se o modelo discorda em uma casa e
+        o rótulo é o esquisito, quem está errado é a anotação.
+        """
+        samples_dir = Path(self.samples_dir_var.get())
+        board_rgb = self._read_cached_board(str(row.image_path(samples_dir)))
+        if board_rgb is None:
+            raise FileNotFoundError(f"Imagem nao encontrada: {row.image_path(samples_dir)}")
 
-        if not self._play_study_move_to_square(square):
-            self._set_study_status("Lance ilegal para a posicao atual.")
+        model, device = self._get_model()
+        prediction = predict_board(cv2.resize(board_rgb, (BOARD_SIZE, BOARD_SIZE)), model, device)
+        divergentes = board_edit.differing_squares(row.placement, prediction.fen_board)
 
-    def on_study_board_press(self, event: tk.Event) -> None:
-        if self.study_canvas is not None:
-            self.study_canvas.focus_set()
-        square = self._study_square_from_xy(event.x, event.y)
-        self.study_drag_pointer = (event.x, event.y)
-        self.study_drag_start_pointer = (event.x, event.y)
-        self.study_drag_from_square = square
-        self.study_drag_active = False
-        self.study_press_selected_new_piece = False
-
-        if square is None:
-            self.study_drag_piece = None
-            return
-
-        piece = self.study_board.piece_at(square)
-        if piece is not None and piece.color == self.study_board.turn:
-            self.study_press_selected_new_piece = self.study_selected_square != square
-            self.study_drag_piece = piece
-            self.study_selected_square = square
-            self._draw_study_board()
-            return
-
-        self.study_drag_piece = None
-
-    def on_study_board_drag(self, event: tk.Event) -> None:
-        if self.study_drag_piece is None or self.study_drag_from_square is None:
-            return
-        self.study_drag_pointer = (event.x, event.y)
-        if not self.study_drag_active:
-            origin = self._study_board_geom
-            cell = max(1.0, float(origin.get("cell", 1.0)))
-            if self.study_drag_start_pointer is None:
-                self.study_drag_start_pointer = self.study_drag_pointer
-            start_x, start_y = self.study_drag_start_pointer
-            current_x, current_y = self.study_drag_pointer
-            if abs(current_x - start_x) < cell * 0.12 and abs(current_y - start_y) < cell * 0.12:
-                return
-            self.study_drag_active = True
-        self._draw_study_board()
-
-    def on_study_board_release(self, event: tk.Event) -> None:
-        target_square = self._study_square_from_xy(event.x, event.y)
-        allow_deselect = (not self.study_drag_active) and (not self.study_press_selected_new_piece)
-        self._handle_study_square_action(target_square, allow_deselect=allow_deselect)
-        self._clear_study_drag_state()
-        self._draw_study_board()
-
-    def _study_square_center(self, square: int) -> tuple[float, float]:
-        row, col = self._study_square_to_display(square)
-        geom = self._study_board_geom
-        origin_x = geom["origin_x"]
-        origin_y = geom["origin_y"]
-        cell = geom["cell"]
-        return origin_x + col * cell + cell / 2, origin_y + row * cell + cell / 2
-
-    def _draw_study_board(self) -> None:
-        if self.study_canvas is None:
-            return
-
-        canvas = self.study_canvas
-        canvas.delete("all")
-        canvas_w = max(320, canvas.winfo_width())
-        canvas_h = max(320, canvas.winfo_height())
-        size = max(240, min(canvas_w - 36, canvas_h - 36, 520))
-        cell = size / 8
-        origin_x = (canvas_w - size) / 2
-        origin_y = (canvas_h - size) / 2
-        self._study_board_geom = {"origin_x": origin_x, "origin_y": origin_y, "size": size, "cell": cell}
-
-        light = "#f0d9b5"
-        dark = "#b58863"
-        selected_fill = "#f7ec74"
-        last_move_fill = "#cdd26a"
-        target_outline = "#3f7f4c"
-
-        last_move = self.study_current_node.move
-        last_move_squares = set()
-        if last_move is not None:
-            last_move_squares = {last_move.from_square, last_move.to_square}
-        legal_targets = {move.to_square for move in self._study_legal_moves_from(self.study_selected_square)} if self.study_selected_square is not None else set()
-
-        canvas.create_rectangle(origin_x - 2, origin_y - 2, origin_x + size + 2, origin_y + size + 2, fill="#312e2b", outline="")
-
-        for row in range(8):
-            for col in range(8):
-                square = self._study_display_to_square(row, col)
-                rank_idx = chess.square_rank(square)
-                file_idx = chess.square_file(square)
-                x0 = origin_x + col * cell
-                y0 = origin_y + row * cell
-                x1 = x0 + cell
-                y1 = y0 + cell
-
-                color = light if (rank_idx + file_idx) % 2 == 0 else dark
-                if square in last_move_squares:
-                    color = last_move_fill
-                if square == self.study_selected_square:
-                    color = selected_fill
-                canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline=color)
-
-                if self.study_drag_active and square == self.study_drag_from_square:
-                    continue
-
-                piece = self.study_board.piece_at(square)
-                if piece is not None:
-                    piece_photo = self._get_piece_photo(piece, int(cell))
-                    if piece_photo is not None:
-                        canvas.create_image(x0 + cell / 2, y0 + cell / 2, image=piece_photo)
-                    else:
-                        symbol = UNICODE_PIECES.get(piece.symbol(), piece.symbol())
-                        canvas.create_text(
-                            x0 + cell / 2,
-                            y0 + cell / 2,
-                            text=symbol,
-                            fill="#111111",
-                            font=("Segoe UI Symbol", max(14, int(cell * 0.56))),
-                        )
-                elif square in legal_targets:
-                    radius = max(6, int(cell * 0.12))
-                    canvas.create_oval(
-                        x0 + cell / 2 - radius,
-                        y0 + cell / 2 - radius,
-                        x0 + cell / 2 + radius,
-                        y0 + cell / 2 + radius,
-                        fill=target_outline,
-                        outline="",
-                    )
-
-        if legal_targets:
-            for target in legal_targets:
-                piece = self.study_board.piece_at(target)
-                if piece is None:
-                    continue
-                row, col = self._study_square_to_display(target)
-                x0 = origin_x + col * cell
-                y0 = origin_y + row * cell
-                x1 = x0 + cell
-                y1 = y0 + cell
-                canvas.create_rectangle(x0 + 4, y0 + 4, x1 - 4, y1 - 4, outline=target_outline, width=2)
-
-        file_labels = "hgfedcba" if self.study_flipped_var.get() else "abcdefgh"
-        rank_labels = "12345678" if self.study_flipped_var.get() else "87654321"
-        for idx, file_char in enumerate(file_labels):
-            canvas.create_text(origin_x + idx * cell + cell / 2, origin_y + size + 12, text=file_char, fill="#d8d8d8", font=("Segoe UI", 10, "bold"))
-        for idx, rank_char in enumerate(rank_labels):
-            canvas.create_text(origin_x - 10, origin_y + idx * cell + cell / 2, text=rank_char, fill="#d8d8d8", font=("Segoe UI", 10, "bold"))
-
-        if self.study_drag_active and self.study_drag_piece is not None and self.study_drag_pointer is not None:
-            drag_x, drag_y = self.study_drag_pointer
-            piece_photo = self._get_piece_photo(self.study_drag_piece, int(cell))
-            if piece_photo is not None:
-                canvas.create_image(drag_x, drag_y, image=piece_photo)
-            else:
-                symbol = UNICODE_PIECES.get(self.study_drag_piece.symbol(), self.study_drag_piece.symbol())
-                canvas.create_text(
-                    drag_x,
-                    drag_y,
-                    text=symbol,
-                    fill="#111111",
-                    font=("Segoe UI Symbol", max(14, int(cell * 0.56))),
+        linhas = [
+            f"Amostra: {row.filename}",
+            f"Rotulo:  {row.placement}",
+            f"Modelo:  {prediction.fen_board}",
+            f"Confianca minima do modelo: {prediction.min_confidence:.3f}",
+            "",
+        ]
+        if not divergentes:
+            linhas.append("O modelo concorda com o rotulo em todas as 64 casas.")
+        else:
+            linhas.append(f"Divergem em {len(divergentes)} casa(s):")
+            rotulo = board_edit.squares_from_placement(row.placement)
+            lido = board_edit.squares_from_placement(prediction.fen_board)
+            for index in divergentes[:12]:
+                confianca = float(prediction.square_confidences[index])
+                linhas.append(
+                    f"  {square_name(index)}: rotulo {rotulo[index] or 'vazia'} | "
+                    f"modelo {lido[index] or 'vazia'} ({confianca:.1%})"
                 )
+            if len(divergentes) > 12:
+                linhas.append(f"  ... e outras {len(divergentes) - 12}")
+        return "\n".join(linhas)
+
+    def _bind_shortcuts(self) -> None:
+        """Atalhos do ciclo corrigir → salvar → próximo (S-20).
+
+        Ligados na janela e filtrados por foco: com o cursor num `Entry` ou `Text`, as setas
+        e o `Del` pertencem ao campo de texto, não à navegação de diagramas.
+        """
+        bindings = {
+            "<Left>": lambda _event: self.prev_diagram(),
+            "<Right>": lambda _event: self.next_diagram(),
+            "<Control-s>": lambda _event: self.save_current(),
+            "<Control-S>": lambda _event: self.save_all(),
+            "<Control-r>": lambda _event: self.ocr_all(),
+            "<Delete>": lambda _event: self._delete_selected_square(),
+            "<Control-n>": lambda _event: self._open_next_review_item(),
+        }
+        for sequence, handler in bindings.items():
+            self.root.bind_all(sequence, self._guard_shortcut(handler))
+
+    def _guard_shortcut(self, handler: Any) -> Any:
+        def _wrapped(event: tk.Event) -> str | None:
+            widget = getattr(event, "widget", None)
+            if isinstance(widget, (tk.Entry, ttk.Entry, tk.Text, ttk.Combobox, ttk.Spinbox)):
+                return None
+            handler(event)
+            return "break"
+
+        return _wrapped
+
+    def _delete_selected_square(self) -> None:
+        if self.result_board is not None and self.result_board.delete_selected():
+            return
+        self._set_status("Selecione uma casa do tabuleiro para apagar a peca.")
+
+    def _open_next_review_item(self) -> None:
+        if self.review_panel is None:
+            return
+        self.review_panel.open_next_pending()
 
     def _sample_metadata(self, idx: int) -> dict[str, Any]:
         """Campos da S-19 para a amostra: lado a jogar e de onde ela veio.
@@ -2091,6 +2114,13 @@ class ChessOcrTkApp:
         if not is_valid_fen(fen):
             messagebox.showerror("Erro", "FEN atual invalida.")
             return
+
+        # Amostra vinda da aba Dataset regrava a linha que ja existe; salvar de novo criaria
+        # uma segunda amostra da mesma imagem e o rotulo errado continuaria no arquivo (S-23).
+        if self._editing_sample is not None:
+            self._save_edited_dataset_sample(idx, fen)
+            return
+
         try:
             path = append_training_sample(
                 board_rgb=self.result_items[idx]["board_rgb"],
@@ -2100,9 +2130,46 @@ class ChessOcrTkApp:
                 **self._sample_metadata(idx),
             )
             self._set_status(f"Exemplo salvo: {path}")
+            self._settle_review_item(idx)
             messagebox.showinfo("Sucesso", f"Diagrama salvo em:\n{path}")
         except Exception as exc:
             messagebox.showerror("Erro", f"Falha ao salvar:\n{exc}")
+
+    def _save_edited_dataset_sample(self, idx: int, fen: str) -> None:
+        filename = self._editing_sample or ""
+        side = self.side_edits[idx] if idx < len(self.side_edits) else "w"
+        try:
+            atualizado = update_row(
+                Path(self.dataset_csv_var.get()),
+                filename,
+                fen=fen,
+                side_to_move=side,
+                corrected_by="tkinter",
+            )
+        except ValueError as exc:
+            messagebox.showerror("Dataset", str(exc))
+            return
+
+        if not atualizado:
+            messagebox.showerror("Dataset", f"Amostra nao encontrada no CSV: {filename}")
+            return
+
+        self._set_status(f"Rotulo de {filename} regravado.")
+        if self.dataset_panel is not None:
+            self.dataset_panel.reload()
+        messagebox.showinfo("Dataset", f"Rotulo regravado:\n{filename}")
+
+    def _settle_review_item(self, idx: int) -> None:
+        """Fecha na fila o item que acabou de ser corrigido e salvo (S-22)."""
+        if self.review_panel is None or self._review_position is None:
+            return
+        self.review_panel.apply_correction(
+            self._review_position,
+            self.fen_edits[idx],
+            self.side_edits[idx] if idx < len(self.side_edits) else "w",
+        )
+        self._set_status(f"Item da fila marcado como revisado. {self.review_panel.queue.summary()}")
+        self._review_position = None
 
     def save_all(self) -> None:
         if not self.result_items:

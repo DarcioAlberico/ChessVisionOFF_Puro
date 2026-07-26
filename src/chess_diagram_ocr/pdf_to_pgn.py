@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+import logging
+import threading
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -17,16 +19,27 @@ from .config import (
     OrientationMode,
     ReadingOrder,
 )
+from .export_checkpoint import (
+    DEFAULT_CHECKPOINT_EVERY,
+    CheckpointWriter,
+    ScanParams,
+    load_partial,
+    partial_path_for,
+)
 from .fen_utils import check_position
-from .inference import load_model, predict_with_orientation
+from .inference import BoardPrediction, load_model, predict_with_orientation
 from .pdf_text import DiagramContext
 from .semantics import SideToMove, compose_fen, infer_castling_rights, infer_side_to_move
 
 if TYPE_CHECKING:
     from .detection import DiagramCandidate
 
+logger = logging.getLogger(__name__)
+
 PdfSource = str | Path | bytes
 ProgressCallback = Callable[[int, int, int, int], None]
+PageCallback = Callable[[int, list["DiagramPosition"]], None]
+"""Chamado ao fim de cada página com (índice, posições daquela página). Ver S-24."""
 
 MAX_CAPTION_HEADER = 300
 """Corte da legenda no header do PGN. Header não quebra linha, e comentário inteiro não cabe."""
@@ -153,6 +166,15 @@ class ExportReport:
     poder ver o que não entrou no arquivo.
     """
 
+    cancelled: bool = False
+    """A varredura foi interrompida (S-24). O PGN sai com o que deu tempo de ler."""
+
+    partial_path: Path | None = None
+    """Checkpoint que sobreviveu, quando cancelado. `None` quando a exportação terminou."""
+
+    resumed_from_page: int | None = None
+    """Página em que esta execução retomou um parcial anterior. `None` = varredura nova."""
+
     @property
     def total(self) -> int:
         return len(self.accepted) + len(self.needs_review) + len(self.rejected) + len(self.duplicates)
@@ -165,9 +187,10 @@ class ExportReport:
 
     def summary(self) -> str:
         duplicates = f", {len(self.duplicates)} duplicados" if self.duplicates else ""
+        suffix = " (cancelada)" if self.cancelled else ""
         return (
             f"{len(self.accepted)} aceitos, {len(self.needs_review)} para revisão, "
-            f"{len(self.rejected)} rejeitados{duplicates} em {self.pages_scanned} páginas"
+            f"{len(self.rejected)} rejeitados{duplicates} em {self.pages_scanned} páginas{suffix}"
         )
 
 
@@ -330,7 +353,23 @@ def _page_contexts(
     return contexts_for_pdf_page(pdf_source, page_index, bboxes)
 
 
-def scan_pdf_positions(
+@dataclass(frozen=True, eq=False)
+class ScannedDiagram:
+    """Um diagrama lido, com tudo o que a varredura produziu sobre ele.
+
+    Existe porque a S-22 precisa do que a `DiagramPosition` deliberadamente joga fora: a
+    matriz de probabilidades por casa (para ordenar a fila por incerteza) e a imagem do
+    recorte (para a miniatura). Manter os dois na `DiagramPosition` custaria ~6 KB e uma
+    imagem por diagrama em toda exportação, que não usa nenhum dos dois.
+    """
+
+    position: DiagramPosition
+    prediction: BoardPrediction
+    board_rgb: np.ndarray
+    detector_score: float
+
+
+def iter_pdf_diagrams(
     pdf_source: PdfSource,
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
@@ -342,20 +381,22 @@ def scan_pdf_positions(
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     read_text: bool = True,
+    cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
-) -> list[DiagramPosition]:
-    """Varre as páginas e reconhece cada diagrama encontrado.
+    page_callback: PageCallback | None = None,
+) -> Iterator[ScannedDiagram]:
+    """Gerador de diagramas do PDF, uma página por vez.
 
-    `orientation` substituiu o antigo `rotate_180: bool`. A diferença não é só de nome: o
-    booleano valia para o PDF inteiro, então um livro que mistura orientações não tinha
-    solução. Em `"auto"` cada diagrama decide a sua (S-13).
+    É o laço que `scan_pdf_positions` sempre teve, extraído para que a fila de revisão
+    (S-22) não precise reimplementá-lo. Duas implementações do mesmo pipeline divergiriam
+    -- e foi exatamente isso que a S-14 teve de corrigir entre a GUI e a exportação.
 
-    `read_text` liga a extração do contexto textual (S-16). Desligar não muda o tabuleiro
-    lido -- só faz o lado a jogar cair para a inferência por legalidade e para o padrão.
+    `cancel_event` é conferido **antes** de cada página, e não dentro da inferência: uma
+    página a 220 DPI leva ~0,18 s, então o pior caso de resposta ao cancelamento é isso.
     """
     page_count = _get_pdf_page_count(pdf_source)
     if page_count <= 0:
-        return []
+        return
 
     if start_page < 0 or start_page >= page_count:
         raise ValueError(f"start_page {start_page} fora do intervalo 0..{page_count - 1}")
@@ -366,9 +407,13 @@ def scan_pdf_positions(
     total_pages = last_page_exclusive - start_page
 
     model, resolved_device = load_model(Path(model_path), device=device)
-    positions: list[DiagramPosition] = []
+    seen = 0
 
     for page_index in range(start_page, last_page_exclusive):
+        if cancel_event is not None and cancel_event.is_set():
+            logger.info("Varredura cancelada antes da página %d.", page_index + 1)
+            return
+
         page_rgb = _render_pdf_page(pdf_source, page_index, dpi=dpi)
         candidates = _detect_page_diagrams(
             pdf_source,
@@ -379,6 +424,7 @@ def scan_pdf_positions(
         )
         contexts = _page_contexts(pdf_source, page_index, [c.bbox_pdf for c in candidates]) if read_text else []
 
+        page_positions: list[DiagramPosition] = []
         for diagram_index, candidate in enumerate(candidates, start=1):
             oriented = predict_with_orientation(
                 candidate.board_rgb,
@@ -395,28 +441,83 @@ def scan_pdf_positions(
             # S-17 descobre que a vez era das pretas.
             resolved = check_position(compose_fen(prediction.fen_board, side))
 
-            positions.append(
-                DiagramPosition(
-                    page_index=page_index,
-                    diagram_index=diagram_index,
-                    fen=prediction.fen_board,
-                    confidence=prediction.mean_confidence,
-                    min_confidence=prediction.min_confidence,
-                    is_legal=resolved.is_legal,
-                    is_fatal=resolved.is_fatal,
-                    problems=resolved.problems,
-                    rotation=oriented.rotation,
-                    orientation_ambiguous=oriented.ambiguous,
-                    orientation_reason=oriented.reason,
-                    side_to_move=side,
-                    context=context,
-                    detection_source=candidate.source,
-                )
+            position = DiagramPosition(
+                page_index=page_index,
+                diagram_index=diagram_index,
+                fen=prediction.fen_board,
+                confidence=prediction.mean_confidence,
+                min_confidence=prediction.min_confidence,
+                is_legal=resolved.is_legal,
+                is_fatal=resolved.is_fatal,
+                problems=resolved.problems,
+                rotation=oriented.rotation,
+                orientation_ambiguous=oriented.ambiguous,
+                orientation_reason=oriented.reason,
+                side_to_move=side,
+                context=context,
+                detection_source=candidate.source,
             )
-        if progress_callback is not None:
-            progress_callback(page_index, total_pages, len(candidates), len(positions))
+            page_positions.append(position)
+            seen += 1
+            yield ScannedDiagram(
+                position=position,
+                prediction=prediction,
+                board_rgb=candidate.board_rgb,
+                detector_score=candidate.detector_score,
+            )
 
-    return positions
+        if page_callback is not None:
+            page_callback(page_index, page_positions)
+        if progress_callback is not None:
+            progress_callback(page_index, total_pages, len(candidates), seen)
+
+
+def scan_pdf_positions(
+    pdf_source: PdfSource,
+    model_path: Path = DEFAULT_MODEL_PATH,
+    *,
+    dpi: int = 220,
+    max_boards_per_page: int = 8,
+    orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
+    device: str | None = None,
+    start_page: int = 0,
+    end_page: int | None = None,
+    reading_order: ReadingOrder = DEFAULT_READING_ORDER,
+    read_text: bool = True,
+    cancel_event: threading.Event | None = None,
+    progress_callback: ProgressCallback | None = None,
+    page_callback: PageCallback | None = None,
+) -> list[DiagramPosition]:
+    """Varre as páginas e reconhece cada diagrama encontrado.
+
+    `orientation` substituiu o antigo `rotate_180: bool`. A diferença não é só de nome: o
+    booleano valia para o PDF inteiro, então um livro que mistura orientações não tinha
+    solução. Em `"auto"` cada diagrama decide a sua (S-13).
+
+    `read_text` liga a extração do contexto textual (S-16). Desligar não muda o tabuleiro
+    lido -- só faz o lado a jogar cair para a inferência por legalidade e para o padrão.
+
+    `cancel_event` interrompe a varredura entre páginas e devolve o que já foi lido (S-24):
+    o parcial é justamente o que permite retomar em vez de recomeçar.
+    """
+    return [
+        scanned.position
+        for scanned in iter_pdf_diagrams(
+            pdf_source,
+            model_path,
+            dpi=dpi,
+            max_boards_per_page=max_boards_per_page,
+            orientation=orientation,
+            device=device,
+            start_page=start_page,
+            end_page=end_page,
+            reading_order=reading_order,
+            read_text=read_text,
+            cancel_event=cancel_event,
+            progress_callback=progress_callback,
+            page_callback=page_callback,
+        )
+    ]
 
 
 def build_pgn_games(
@@ -527,6 +628,9 @@ def write_gated_pgn(
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     pages_scanned: int = 0,
     dedupe: bool = False,
+    cancelled: bool = False,
+    partial_path: Path | None = None,
+    resumed_from_page: int | None = None,
 ) -> ExportReport:
     """Escreve o PGN principal só com o que passou no gate, e o resto no `.review.pgn`.
 
@@ -571,6 +675,9 @@ def write_gated_pgn(
         output_path=output_path,
         review_path=review_path,
         duplicates=duplicates,
+        cancelled=cancelled,
+        partial_path=partial_path,
+        resumed_from_page=resumed_from_page,
     )
 
 
@@ -590,6 +697,10 @@ def save_pdf_positions_to_pgn(
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     read_text: bool = True,
     dedupe: bool = False,
+    cancel_event: threading.Event | None = None,
+    resume: bool = True,
+    checkpoint: bool = True,
+    checkpoint_every: int = DEFAULT_CHECKPOINT_EVERY,
     progress_callback: ProgressCallback | None = None,
 ) -> ExportReport:
     """Varre o PDF e exporta com o gate de qualidade da S-15.
@@ -597,29 +708,81 @@ def save_pdf_positions_to_pgn(
     Devolve o `ExportReport` -- antes devolvia a lista de posições. O relatório é o que
     permite ao chamador dizer quantas foram para revisão e por quê; a lista continua
     acessível em `report.accepted` e companhia.
+
+    `cancel_event` e `checkpoint` implementam a S-24. Cancelar não descarta trabalho: o
+    `.partial.jsonl` fica ao lado do PGN e a execução seguinte com **os mesmos parâmetros**
+    retoma da página seguinte à última concluída. Terminar apaga o parcial -- ele existe
+    para atravessar a interrupção, não para virar um segundo formato de saída.
     """
     source_name = Path(pdf_source).name if isinstance(pdf_source, (str, Path)) else "pdf-bytes"
-    pages_seen = 0
 
-    def _count_pages(page_index: int, total_pages: int, page_boards: int, total_positions: int) -> None:
-        nonlocal pages_seen
-        pages_seen += 1
-        if progress_callback is not None:
-            progress_callback(page_index, total_pages, page_boards, total_positions)
-
-    positions = scan_pdf_positions(
-        pdf_source=pdf_source,
-        model_path=model_path,
+    params = ScanParams(
+        source_name=source_name,
+        model_path=str(Path(model_path)),
         dpi=dpi,
         max_boards_per_page=max_boards_per_page,
         orientation=orientation,
-        device=device,
-        start_page=start_page,
-        end_page=end_page,
         reading_order=reading_order,
         read_text=read_text,
-        progress_callback=_count_pages,
+        start_page=start_page,
+        end_page=end_page,
     )
+    partial_path = partial_path_for(Path(output_path))
+    partial = load_partial(partial_path, params) if resume else None
+
+    positions: list[DiagramPosition] = list(partial.positions) if partial is not None else []
+    pages_seen = partial.pages_done if partial is not None else 0
+    scan_start = partial.resume_from if partial is not None else start_page
+    resumed_from_page = partial.resume_from if partial is not None else None
+    if partial is not None:
+        logger.info(
+            "Retomando exportação de %s na página %d (%d posições já lidas).",
+            source_name,
+            scan_start + 1,
+            len(positions),
+        )
+
+    writer = CheckpointWriter(partial_path, params, every=checkpoint_every, resumed=partial is not None)
+
+    def _on_page(page_index: int, page_positions: list[DiagramPosition]) -> None:
+        nonlocal pages_seen
+        pages_seen += 1
+        if checkpoint:
+            writer.record_page(page_index, page_positions)
+
+    # A contagem de paginas so e necessaria quando retomamos: sem parcial, `scan_start` e o
+    # `start_page` que a propria varredura ja valida, e abrir o documento aqui seria custo
+    # (e uma dependencia de I/O) por nada.
+    should_scan = True
+    if partial is not None:
+        page_count = _get_pdf_page_count(pdf_source)
+        last_page_exclusive = page_count if end_page is None else min(end_page, page_count)
+        should_scan = scan_start < last_page_exclusive
+
+    if should_scan:
+        positions.extend(
+            scan_pdf_positions(
+                pdf_source=pdf_source,
+                model_path=model_path,
+                dpi=dpi,
+                max_boards_per_page=max_boards_per_page,
+                orientation=orientation,
+                device=device,
+                start_page=scan_start,
+                end_page=end_page,
+                reading_order=reading_order,
+                read_text=read_text,
+                cancel_event=cancel_event,
+                progress_callback=progress_callback,
+                page_callback=_on_page,
+            )
+        )
+
+    cancelled = cancel_event is not None and cancel_event.is_set()
+    if checkpoint:
+        writer.flush()
+        if not cancelled:
+            writer.discard()
 
     return write_gated_pgn(
         positions,
@@ -630,6 +793,9 @@ def save_pdf_positions_to_pgn(
         reading_order=reading_order,
         pages_scanned=pages_seen,
         dedupe=dedupe,
+        cancelled=cancelled,
+        partial_path=partial_path if (cancelled and checkpoint) else None,
+        resumed_from_page=resumed_from_page,
     )
 
 

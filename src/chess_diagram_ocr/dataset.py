@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
+from .atomic_io import atomic_write_bytes
 from .config import BOARD_SIZE
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .model import preprocess_cell_to_tensor
@@ -316,13 +318,20 @@ def append_training_sample(
 
 
 def _write_labels(frame: pd.DataFrame, csv_path: Path) -> None:
-    """Grava o CSV com as colunas da S-19 na ordem, sem `NaN` e sem perder coluna extra."""
+    """Grava o CSV com as colunas da S-19 na ordem, sem `NaN` e sem perder coluna extra.
+
+    Escrita atômica (S-25): este arquivo é o dataset inteiro, 3.195 rótulos de trabalho
+    humano acumulado. `to_csv` direto no destino trunca antes de escrever -- e a UI de
+    dataset da S-23 passa a regravá-lo a cada correção, o que multiplica as chances de
+    apanhar a janela ruim.
+    """
     for column in LABEL_COLUMNS:
         if column not in frame.columns:
             frame[column] = ""
     extra = [column for column in frame.columns if column not in LABEL_COLUMNS]
     frame = frame[[*LABEL_COLUMNS, *extra]].fillna("")
-    frame.to_csv(csv_path, index=False)
+    payload = frame.to_csv(index=False, lineterminator=os.linesep)
+    atomic_write_bytes(Path(csv_path), payload.encode("utf-8"))
 
 
 def migrate_labels_csv(csv_path: Path, *, backup: bool = True, infer_side: bool = True) -> dict[str, int]:

@@ -13,7 +13,7 @@ Fase 0  Higienização do repositório          1–2 d   ▸ desbloqueia tudo, 
 Fase 1  Verdade e medição                    3–5 d   ▸ sem isso "melhorou" é indemonstrável
 Fase 2  Precisão do OCR                      5–8 d   ▸ maior ganho de qualidade do projeto
 Fase 3  Semântica: lado a jogar e metadados  4–6 d   ▸ concluída — metade dos exercícios saía errada
-Fase 4  Produtividade humana                 5–8 d   ▸ ataca o gargalo real (tempo do usuário)
+Fase 4  Produtividade humana                 5–8 d   ▸ concluída — corrigir deixou de ser editar FEN
 Fase 5  Modelo e desempenho                  4–6 d   ▸ só faz sentido depois da Fase 1
 Fase 6  Consolidação do produto              5–8 d   ▸ unificação, i18n, empacotamento
 ```
@@ -398,22 +398,173 @@ a imagem da página, e nenhum dos dois pertence a esta fase.
 
 ---
 
-## Fase 4 — Produtividade humana (5–8 dias)
+## Fase 4 — Produtividade humana ✅ concluída (2026-07-26)
 
-**Por que:** com a Fase 2 pronta, o gargalo passa a ser o tempo do usuário corrigindo. Hoje corrigir significa editar uma string FEN à mão.
+**Por que:** com a Fase 2 pronta, o gargalo passa a ser o tempo do usuário corrigindo. Até aqui corrigir significava editar uma string FEN à mão.
 
-| # | Entrega | Ref. spec |
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 4.1 | **Editor de posição por clique/arraste** na aba de resultado (reaproveitar o código de arraste do tabuleiro de estudo) | S-20 | ✅ `ui/board_widget.py`, usado nos **dois** painéis |
+| 4.2 | **Heatmap de incerteza**: casas de baixa confiança destacadas no tabuleiro reconhecido | S-21 | ✅ com tooltip das 3 classes e marca das casas da S-11 |
+| 4.3 | Painel de legalidade: mostra o `Board.status()` em linguagem clara ("faltando rei preto") | S-21 | ✅ `ui/legality.py`, com as **casas culpadas** |
+| 4.4 | Fila de revisão ordenada por incerteza (aprendizado ativo) atravessando páginas | S-22 | ✅ `review_queue.py` + `cvoff-review` + aba |
+| 4.5 | Navegador/editor do dataset: listar, filtrar por status, recorrigir, remover amostras | S-23 | ✅ `dataset_browser.py` + aba "Dataset" |
+| 4.6 | Exportação com cancelamento e retomada (checkpoint por página) | S-24 | ✅ `.partial.jsonl`; paralelização não (ver abaixo) |
+| 4.7 | Atalhos de teclado para o ciclo corrigir→salvar→próximo | S-20 | ✅ com guarda de foco |
+| 4.8 | Escrita atômica do estado da app; parar de silenciar exceções | S-25 | ✅ `atomic_io.py` + `ui/state.py`, e o `labels.csv` junto |
+
+**Critério de saída:** o da S-20 (≤3 ações de mouse por peça) está atingido e é verificável por
+construção. O de tempo (≥50% em 20 diagramas) **não foi medido**: exige um humano cronometrado
+nas duas versões, e não há registro do "antes". O que dá para afirmar sem cronômetro está na
+próxima seção.
+
+### O que mudou no custo de uma correção
+
+Antes: selecionar o `ttk.Entry`, achar o caractere da casa na string FEN — o que exige contar
+casas mentalmente, porque `4k3/8/8/8/2B5/...` não diz onde é `c4` —, digitar, `Enter`. Agora:
+
+| gesto | ações de mouse |
+|---|---|
+| peça na casa errada | 1 (arrastar) |
+| peça de classe errada | 2 (clicar na paleta, clicar na casa) |
+| peça sobrando | 1 (botão direito) |
+| lado a jogar errado | 1 (rádio "Pretas") |
+
+E o ciclo inteiro tem teclado: `←`/`→` navegam diagramas, `Ctrl+S` salva, `Ctrl+Shift+S` salva
+todos, `Ctrl+R` refaz o OCR da página, `Del` apaga a peça selecionada, `Ctrl+N` puxa o próximo
+item da fila de revisão. Os atalhos ficam desligados quando o foco está num campo de texto —
+sem essa guarda, `←` dentro do campo de FEN trocaria de diagrama em vez de mover o cursor.
+
+### O critério da S-22, medido contra verdade real
+
+A comparação que a S-22 pede ("topo da fila x 20 aleatórios") só significa algo se o erro for
+medido contra o **rótulo**, e não contra os mesmos sinais que ordenaram a fila. O único lugar
+do projeto com verdade é o split de teste. Rodando o `piece_classifier_baseline.pt` nos 320
+tabuleiros e ordenando-os como a fila ordenaria:
+
+| | taxa de erro real (tabuleiro exato) |
+|---|---|
+| **topo da fila** (os 3 que ela seleciona) | **66,7%** (2 de 3) |
+| 20 sorteados (média de 1.000 sorteios) | 1,0% |
+| conjunto inteiro | 0,94% (3 de 320) |
+
+Enriquecimento de ~71×. Critério atingido — com duas ressalvas que valem mais que o número:
+
+**A fila tem recall de 2/3, e o erro que ela perde é o pior tipo.** A terceira falha lê um
+bispo como peão em `c2` **com confiança 0,9997** e entropia média de 0,00004. Nenhum sinal da
+S-22 a enxerga, porque não há sinal nenhum: o modelo está errado e seguro. Priorizar por
+incerteza acha erro inseguro; erro confiante é problema de calibração (S-28) ou de modelo.
+
+**A seletividade da fila varia com a qualidade do livro, não é uma constante.** Medido em 60
+páginas de cada:
+
+| livro | diagramas varridos | entraram na fila |
 |---|---|---|
-| 4.1 | **Editor de posição por clique/arraste** na aba de resultado (reaproveitar o código de arraste do tabuleiro de estudo) | S-20 |
-| 4.2 | **Heatmap de incerteza**: casas de baixa confiança destacadas no tabuleiro reconhecido | S-21 |
-| 4.3 | Painel de legalidade: mostra o `Board.status()` em linguagem clara ("faltando rei preto") | S-21 |
-| 4.4 | Fila de revisão ordenada por incerteza (aprendizado ativo) atravessando páginas | S-22 |
-| 4.5 | Navegador/editor do dataset: listar, filtrar por status, recorrigir, remover amostras | S-23 |
-| 4.6 | Exportação com cancelamento e retomada (checkpoint por página) | S-24 |
-| 4.7 | Atalhos de teclado para o ciclo corrigir→salvar→próximo | S-20 |
-| 4.8 | Escrita atômica do estado da app; parar de silenciar exceções | S-25 |
+| `1001 Winning Chess Sacrifices` | 59 | **0** |
+| split de teste (dataset limpo) | 320 | 3 (0,9%) |
+| `1937 Kemeri` | 47 | **30 (64%)** |
 
-**Critério de saída:** medir tempo para corrigir 20 diagramas antes e depois; alvo de redução ≥50%.
+O Reinfeld esvazia a fila, e é a resposta certa: são 59 leituras sem nada a dizer sobre elas. O
+Kemeri enche, e também é a resposta certa. Mas isso desfaz a promessa aritmética da S-22 ("430
+revisões viram 30"): no livro em que a fila mais importaria, ela filtra pouco mais de um terço.
+O ganho real dela ali é a **ordem**, não o corte — os dois ilegais aparecem em 1º e 2º, e as
+cinco orientações ambíguas logo atrás, antes de qualquer coisa que seja só confiança baixa.
+
+### O critério da S-24, medido no livro de 1.121 páginas
+
+| o que a S-24 exige | medido |
+|---|---|
+| cancelar responde em < 2 s | **0,112 s** (`1001 Winning Chess Sacrifices`, 1.121 páginas) |
+| cancelar preserva o parcial | ✅ 39 páginas gravadas, 21 KB de `.partial.jsonl` |
+| retomar produz o mesmo PGN de uma execução sem interrupção | ✅ **byte a byte**, principal e `.review.pgn` (`1937 Kemeri`, páginas 10–70, 13.681 bytes) |
+
+O cancelamento é conferido **entre** páginas, não dentro da inferência: o pior caso é uma
+página, e uma página a 220 DPI leva ~0,18 s. Interromper no meio de uma página tornaria o
+parcial inconsistente para ganhar 0,1 s.
+
+### Decisões da Fase 4
+
+- **A "discordância entre fontes de detecção" da S-22 não existe mais, e foi substituída.** A
+  S-22 lista "fontes de detecção discordantes (S-12)" como segundo critério de prioridade. Ela
+  foi escrita quando a S-12 previa ler o diagrama pelas duas fontes e arbitrar. A medição da
+  Fase 2 mudou isso: imagem embutida **localiza** e contorno **alinha**, uma leitura por
+  candidato — não há duas leituras para discordarem. O que existe e é discordância de fonte de
+  verdade é a da Fase 3: texto do PDF contra legalidade da posição (`SideToMove.conflicting`).
+  Entrou no lugar, com o mesmo peso relativo.
+- **A orientação ambígua entrou como segundo critério, acima de tudo que é confiança.** A S-22
+  não a lista porque a S-13 não existia quando ela foi escrita. É o item mais caro da fila: uma
+  casa insegura custa uma correção, um diagrama de cabeça para baixo custa o diagrama.
+- **A fila guarda as 64 confianças, e não a `BoardPrediction`.** A S-22 põe `prediction:
+  BoardPrediction` no `ReviewItem`. A matriz (64, 13) não é serializável em JSON de forma útil e
+  custaria ~5,6 MB por livro; as 64 confianças da classe escolhida custam ~1 KB por item e são o
+  que o heatmap precisa. O tooltip das 3 classes, que precisa da matriz, reaparece quando o
+  usuário roda o OCR de novo na página — que é o gesto de quem quer olhar aquela casa a fundo.
+- **Entropia sozinha não põe ninguém na fila.** Ela pontua em todo diagrama e serve para
+  desempatar. Se bastasse para entrar, a fila teria os 320 tabuleiros do conjunto de teste.
+- **Classe rara é um sinal que nunca dispara neste dataset.** Medido: nenhuma das 12 classes de
+  peça fica abaixo de 0,5% das casas rotuladas. O código está lá e é testado, mas hoje ele não
+  muda nenhuma ordem — e dizer isso vale mais do que deixar acreditarem que ele contribui.
+- **O parcial é JSONL por página, não JSON reescrito.** Acrescentar não reescreve (evita
+  O(páginas²) e uma janela de truncamento por página), e linha rasgada por interrupção é
+  detectável e descartável — as anteriores continuam válidas. Um JSON único cortado ao meio não
+  tem nada aproveitável.
+- **Retomar com parâmetros diferentes não é retomar.** Outro DPI, outro modelo, outra ordem de
+  leitura: o parcial é descartado com aviso no log, porque juntar metade de uma varredura com
+  metade de outra produziria um PGN que não corresponde a execução nenhuma.
+- **O tabuleiro de estudo passou a usar o mesmo widget.** A S-20 manda extrair o editor de lá; o
+  resultado só vale se a aba de origem passar a consumir o extraído. Havia duas implementações
+  de tabuleiro no mesmo arquivo e só uma era interativa.
+- **A escrita atômica alcançou o `labels.csv`, não só o estado da app.** A S-25 fala do
+  `app_tkinter_state.json`. Mas a S-23 faz a UI **regravar o CSV inteiro a cada correção**, e
+  esse arquivo é 3.195 rótulos de trabalho humano acumulado. Era o alvo mais valioso do projeto
+  ainda sujeito a `to_csv` direto no destino.
+- **A paralelização da S-24 ficou de fora.** A S-24 sugere um `ThreadPoolExecutor` de 2 a 4
+  workers para render+detecção, e manda medir antes de assumir ganho. O pipeline roda a ~0,33
+  s/página medido agora (1.121 páginas do Reinfeld, 39 páginas em 20 s com o baseline), e o
+  ganho seria em wall-clock de uma operação que já é cancelável e retomável — enquanto o custo é
+  concorrência num caminho que grava checkpoint. Não é a troca certa nesta fase.
+
+### Onde a Fase 4 mora, e por que não no `app_tkinter.py`
+
+Seis módulos novos e nenhum deles é Tkinter puro por acidente:
+
+```
+atomic_io.py           escrita que não deixa arquivo pela metade
+export_checkpoint.py   serialização e parcial da exportação (S-24)
+review_queue.py        fila, prioridade e persistência (S-22)
+dataset_browser.py     leitura, filtro e edição do labels.csv (S-23)
+ui/state.py            estado tipado e versionado (S-25)
+ui/legality.py         legalidade em pt-BR com as casas culpadas (S-21)
+ui/board_edit.py       edição de posição sem regra de lance (S-20)
+ui/board_widget.py     o widget interativo (S-20/S-21)
+ui/review_panel.py     a aba de revisão
+ui/dataset_panel.py    a aba de dataset
+```
+
+A regra foi: o que dá para testar não entra no `app_tkinter.py`. O critério de aceite da S-23 é
+"corrigir os 100 rótulos ilegais **pela UI**" — se a regra de o que é ilegal morasse no widget,
+não haveria como testá-la. São 116 testes novos (332 no total, todos passando).
+
+O `app_tkinter.py` cresceu pouco apesar de ganhar duas abas: 2.321 → 2.388 linhas, porque as
+~260 linhas de desenho de tabuleiro saíram junto. A meta de < 600 linhas continua sendo da
+Fase 6 (S-31).
+
+### Pendências conhecidas da Fase 4
+
+- **O critério de tempo (≥50%) não foi medido.** Precisa de sessão cronometrada com o usuário
+  nas duas versões, e o "antes" já não existe no código. O que está medido é a contagem de
+  ações, acima.
+- **O critério de aceite da S-23 não é mais reproduzível como escrito.** Ele pede corrigir os
+  100 rótulos ilegais pela UI; a Fase 1 já os saneou e hoje o `labels.csv` tem **0** ilegais
+  (3.208 amostras). O caminho existe e é testado (`test_update_row_fixes_an_illegal_label`), mas
+  a demonstração no dataset real não tem mais o que corrigir.
+- **O heatmap se apaga quando o usuário edita a casa.** É deliberado — a confiança era da
+  leitura antiga —, mas significa que corrigir uma casa apaga a informação sobre as **outras**.
+  Guardar as confianças das casas não tocadas é possível e não foi feito; o gesto de contorno é
+  rodar o OCR da página de novo (`Ctrl+R`).
+- **A revisão não volta para o PGN.** Corrigir um item da fila salva a amostra no dataset e
+  marca o item como revisado, mas não reescreve o `.pgn` já exportado — quem quer o PGN
+  corrigido exporta de novo. Reescrever um PGN existente por diagrama é trabalho da S-34/Fase 6.
 
 ---
 
