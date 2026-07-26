@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import chess
@@ -222,6 +222,32 @@ def square_name(index: int) -> str:
     if not 0 <= index < 64:
         raise ValueError(f"Índice de casa fora do intervalo 0..63: {index}")
     return f"{'abcdefgh'[index % 8]}{8 - index // 8}"
+
+
+def pawn_direction_score(class_indices: Sequence[int]) -> float | None:
+    """Quão "de pé" a posição parece, pela fila média dos peões (S-13).
+
+    Peão anda para frente e nunca volta: os brancos ficam nas filas baixas e os pretos nas
+    altas. A diferença entre as médias é ~+2 a +4 numa posição de verdade e mede o mesmo
+    valor com sinal trocado se o tabuleiro estiver de cabeça para baixo.
+
+    Devolve `None` quando falta peão de alguma cor -- aí o sinal não tem o que dizer, e
+    fingir um número seria pior que admitir isso.
+
+    Existe porque o `min_confidence` decide a orientação muito bem quando a leitura é boa e
+    **para de decidir** quando não é: medido no `1937 Kemeri.pdf`, dois diagramas cuja
+    leitura de pé era claramente correta tinham margem de confiança de 0,001 e 0,019 --
+    ruído. Este prior, ao contrário, olha a estrutura da posição e continua informativo
+    justamente aí (+3,8 contra -4,2 nos mesmos dois casos).
+    """
+    if len(class_indices) != 64:
+        raise ValueError("Esperadas exatamente 64 casas.")
+
+    white = [8 - index // 8 for index, value in enumerate(class_indices) if value == PIECE_TO_IDX["P"]]
+    black = [8 - index // 8 for index, value in enumerate(class_indices) if value == PIECE_TO_IDX["p"]]
+    if not white or not black:
+        return None
+    return sum(black) / len(black) - sum(white) / len(white)
 
 
 def fen_from_class_indices(class_indices: Iterable[int]) -> str:

@@ -12,12 +12,22 @@ from .board_detection import split_board_into_cells
 from .checkpoint import load_state_dict
 from .config import (
     CONSTRAINED_DECODING,
+    DEFAULT_ORIENTATION_MODE,
     MAX_DECODE_CHANGES,
+    ORIENTATION_DECISIVE_MARGIN,
+    ORIENTATION_PAWN_PRIOR_MARGIN,
     PIECE_CLASSES,
     UNCERTAIN_SQUARE_THRESHOLD,
+    OrientationMode,
 )
 from .decode import DecodeResult, decode_constrained
-from .fen_utils import PositionCheck, check_position, fen_from_class_indices, square_name
+from .fen_utils import (
+    PositionCheck,
+    check_position,
+    fen_from_class_indices,
+    pawn_direction_score,
+    square_name,
+)
 from .model import PieceClassifier, preprocess_cell_to_tensor
 
 logger = logging.getLogger(__name__)
@@ -169,6 +179,153 @@ def predict_board(
         probs.cpu().numpy().astype(np.float64),
         uncertain_threshold=uncertain_threshold,
         constrained=constrained,
+    )
+
+
+@dataclass(frozen=True, eq=False)
+class OrientedPrediction:
+    """Leitura de um diagrama junto com a orientação escolhida para ela (S-13)."""
+
+    prediction: BoardPrediction
+    rotation: int
+    """0 ou 180 graus, aplicado à imagem antes de reconhecer."""
+
+    margin: float
+    """`min_confidence` da orientação escolhida menos a da descartada.
+
+    Sempre ≥ 0 quando a escolha foi por confiança. É a medida de quão folgada foi."""
+
+    ambiguous: bool
+    """A escolha foi apertada, ou os dois sinais discordaram: vale olho humano."""
+
+    reason: str
+    """Por que esta orientação venceu, em pt-BR, para a UI e o arquivo de revisão."""
+
+    alternative: BoardPrediction | None = None
+    """A leitura descartada. `None` quando a orientação foi imposta, não escolhida."""
+
+
+def _pawn_prior_gap(upright: BoardPrediction, flipped: BoardPrediction) -> float | None:
+    """Quanto o prior de peões prefere a leitura de pé. `None` se ele não se aplica."""
+    score_upright = pawn_direction_score(upright.class_indices)
+    score_flipped = pawn_direction_score(flipped.class_indices)
+    if score_upright is None and score_flipped is None:
+        return None
+    # Uma leitura sem peão de alguma cor não pontua; tratá-la como 0 é justo, porque o outro
+    # lado é que está afirmando algo sobre a estrutura.
+    return (score_upright or 0.0) - (score_flipped or 0.0)
+
+
+def predict_with_orientation(
+    board_rgb: np.ndarray,
+    model: PieceClassifier,
+    device: str,
+    *,
+    mode: OrientationMode = DEFAULT_ORIENTATION_MODE,
+    uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
+    constrained: bool = CONSTRAINED_DECODING,
+    decisive_margin: float = ORIENTATION_DECISIVE_MARGIN,
+    pawn_prior_margin: float = ORIENTATION_PAWN_PRIOR_MARGIN,
+) -> OrientedPrediction:
+    """Reconhece o diagrama decidindo a orientação por diagrama, não por checkbox global.
+
+    Com `mode="auto"` tenta 0° e 180° e escolhe a leitura mais plausível. A ordem dos
+    critérios vem de medição no split de teste (320 tabuleiros), não da intuição:
+
+    | sinal              | acerta | erra | empata |
+    |--------------------|--------|------|--------|
+    | legalidade         |     52 |    0 |    268 |
+    | `min_confidence`   |    320 |    0 |      0 |
+    | peões nas filas    |    264 |    9 |     47 |
+    | reis nas filas     |    267 |   37 |     16 |
+
+    A legalidade **não** serve como critério dominante, ao contrário do que a S-13 supôs:
+    girar a posição 180° manda peão branco da fila `r` para a fila `9-r`, e 2..7 vira 7..2 --
+    continua legal. Ela só decide em 16% dos casos, embora nunca erre, então fica como
+    primeiro filtro. O prior de **reis** que a S-13 sugeria erra 37 vezes em 320 e ficou fora.
+
+    A tabela acima, porém, só descreve leitura boa. Medido depois no `1937 Kemeri.pdf`, a
+    confiança **para de decidir** quando a leitura é ruim: em duas páginas cuja leitura de pé
+    era claramente correta, as duas orientações saíram com confiança ~0,04 e margens de 0,001
+    e 0,019 -- ruído, e seguir a margem girava o diagrama errado. O prior de peões, que olha a
+    estrutura da posição e não a aparência das peças, continuava informativo nos mesmos casos
+    (+3,8 contra -4,2). Daí a regra por regime:
+
+    1. Uma orientação ilegal e a outra não → a legal.
+    2. Margem de confiança ≥ `decisive_margin` → a mais confiante.
+    3. Senão, peões decidem por ≥ `pawn_prior_margin` filas → a que eles apontam.
+    4. Senão → a mais confiante, marcada `ambiguous`.
+
+    Atenção ao que isto **não** resolve: diagrama impresso do ponto de vista das pretas. Ali
+    as peças estão desenhadas para cima, e o que muda é o mapeamento casa→índice, não os
+    pixels. Girar a imagem estragaria a leitura. Ver a pendência da S-13 no ROADMAP.
+    """
+    if mode not in ("auto", "0", "180"):
+        raise ValueError(f"mode deve ser 'auto', '0' ou '180'; recebido {mode!r}.")
+
+    def read(rotate: bool) -> BoardPrediction:
+        return predict_board(
+            board_rgb,
+            model,
+            device,
+            rotate_180=rotate,
+            uncertain_threshold=uncertain_threshold,
+            constrained=constrained,
+        )
+
+    if mode != "auto":
+        rotation = 180 if mode == "180" else 0
+        return OrientedPrediction(
+            prediction=read(rotation == 180),
+            rotation=rotation,
+            margin=0.0,
+            ambiguous=False,
+            reason=f"orientação imposta ({rotation}°)",
+        )
+
+    upright, flipped = read(False), read(True)
+    margin = upright.min_confidence - flipped.min_confidence
+
+    # A legalidade entra primeiro porque, quando decide, nunca errou -- e uma leitura ilegal
+    # é pior que uma de confiança baixa. Quando as duas são legais (84% dos casos) ela cala.
+    legal_upright = not upright.position.is_fatal
+    legal_flipped = not flipped.position.is_fatal
+
+    if legal_upright != legal_flipped:
+        chose_upright = legal_upright
+        # Discordância entre sinais nunca apareceu na medição, mas se aparecer é exatamente
+        # o que "ambíguo" quer dizer -- e não algo para resolver em silêncio.
+        ambiguous = (margin > 0) != chose_upright
+        reason = "única orientação legal"
+    elif abs(margin) >= decisive_margin:
+        chose_upright = margin > 0
+        ambiguous = False
+        reason = f"maior confiança mínima (margem {abs(margin):.3f})"
+    else:
+        # Regime de leitura ruim: as duas orientações saem com confiança igualmente baixa e a
+        # margem é ruído. Aqui quem sabe algo é a estrutura da posição.
+        pawn_gap = _pawn_prior_gap(upright, flipped)
+        if pawn_gap is not None and abs(pawn_gap) >= pawn_prior_margin:
+            chose_upright = pawn_gap > 0
+            ambiguous = False
+            reason = f"peões apontam a orientação (vantagem {abs(pawn_gap):.1f} filas, confiança empatada)"
+        else:
+            chose_upright = margin >= 0
+            ambiguous = True
+            reason = (
+                f"margem apertada ({abs(margin):.3f}) e peões não decidem"
+                if pawn_gap is not None
+                else f"margem apertada ({abs(margin):.3f}) e sem peões dos dois lados"
+            )
+
+    chosen, discarded = (upright, flipped) if chose_upright else (flipped, upright)
+    return OrientedPrediction(
+        prediction=chosen,
+        rotation=0 if chose_upright else 180,
+        margin=abs(margin),
+        ambiguous=ambiguous,
+        reason=reason,
+        alternative=discarded,
     )
 
 

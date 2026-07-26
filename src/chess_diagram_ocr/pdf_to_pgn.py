@@ -12,11 +12,13 @@ from .board_detection import detect_boards
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_MODEL_PATH,
+    DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
     PROJECT_ROOT,
+    OrientationMode,
     ReadingOrder,
 )
-from .inference import load_model, predict_board
+from .inference import load_model, predict_with_orientation
 
 PdfSource = str | Path | bytes
 ProgressCallback = Callable[[int, int, int, int], None]
@@ -49,6 +51,15 @@ class DiagramPosition:
 
     problems: tuple[str, ...] = ()
     """Descrições dos problemas de legalidade, quando houver."""
+
+    rotation: int | None = None
+    """Orientação usada para ler o diagrama, em graus (S-13). `None` se não foi decidida."""
+
+    orientation_ambiguous: bool = False
+    """As duas orientações eram plausíveis. O diagrama pode estar de cabeça para baixo."""
+
+    orientation_reason: str = ""
+    """Por que esta orientação venceu -- só interessa quando `orientation_ambiguous`."""
 
     @property
     def needs_side_to_move_flip(self) -> bool:
@@ -132,6 +143,12 @@ def classify_position(
         problems = "; ".join(position.problems) or "posição ilegal"
         return "rejected", f"ilegal: {problems}"
 
+    # Orientação antes de tudo o mais: uma casa insegura custa uma correção, um diagrama de
+    # cabeça para baixo custa o diagrama inteiro. É o aviso mais urgente que o gate pode dar.
+    if position.orientation_ambiguous:
+        detalhe = position.orientation_reason or "as duas orientações eram plausíveis"
+        return "needs_review", f"orientação incerta: {detalhe}"
+
     if position.needs_side_to_move_flip:
         # Leitura provavelmente boa, palpite de lado a jogar ruim. Vai para revisão porque
         # ninguém verificou de quem é a vez; a inferência automática é a S-17.
@@ -196,13 +213,19 @@ def scan_pdf_positions(
     *,
     dpi: int = 220,
     max_boards_per_page: int = 8,
-    rotate_180: bool = False,
+    orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     device: str | None = None,
     start_page: int = 0,
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     progress_callback: ProgressCallback | None = None,
 ) -> list[DiagramPosition]:
+    """Varre as páginas e reconhece cada diagrama encontrado.
+
+    `orientation` substituiu o antigo `rotate_180: bool`. A diferença não é só de nome: o
+    booleano valia para o PDF inteiro, então um livro que mistura orientações não tinha
+    solução. Em `"auto"` cada diagrama decide a sua (S-13).
+    """
     page_count = _get_pdf_page_count(pdf_source)
     if page_count <= 0:
         return []
@@ -222,12 +245,13 @@ def scan_pdf_positions(
         page_rgb = _render_pdf_page(pdf_source, page_index, dpi=dpi)
         boards = detect_boards(page_rgb, max_boards=max_boards_per_page, reading_order=reading_order)
         for diagram_index, (board_rgb, _quad) in enumerate(boards, start=1):
-            prediction = predict_board(
+            oriented = predict_with_orientation(
                 board_rgb,
                 model,
                 resolved_device,
-                rotate_180=rotate_180,
+                mode=orientation,
             )
+            prediction = oriented.prediction
             positions.append(
                 DiagramPosition(
                     page_index=page_index,
@@ -238,6 +262,9 @@ def scan_pdf_positions(
                     is_legal=prediction.position.is_legal,
                     is_fatal=prediction.position.is_fatal,
                     problems=prediction.position.problems,
+                    rotation=oriented.rotation,
+                    orientation_ambiguous=oriented.ambiguous,
+                    orientation_reason=oriented.reason,
                 )
             )
         if progress_callback is not None:
@@ -288,6 +315,10 @@ def build_pgn_games(
             game.headers["OCRLegality"] = position.legality_label
             if not position.is_legal and position.problems:
                 game.headers["OCRProblems"] = "; ".join(position.problems)
+        if position.rotation is not None:
+            # Registrado sempre, e nao so quando girou: sem isso nao ha como saber depois se
+            # a leitura de um diagrama suspeito foi feita de pe ou de cabeca para baixo.
+            game.headers["OCRRotation"] = str(position.rotation)
 
         reason = (review_reasons or {}).get((position.page_index, position.diagram_index))
         if reason:
@@ -370,7 +401,7 @@ def save_pdf_positions_to_pgn(
     *,
     dpi: int = 220,
     max_boards_per_page: int = 8,
-    rotate_180: bool = False,
+    orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     device: str | None = None,
     start_page: int = 0,
     end_page: int | None = None,
@@ -399,7 +430,7 @@ def save_pdf_positions_to_pgn(
         model_path=model_path,
         dpi=dpi,
         max_boards_per_page=max_boards_per_page,
-        rotate_180=rotate_180,
+        orientation=orientation,
         device=device,
         start_page=start_page,
         end_page=end_page,

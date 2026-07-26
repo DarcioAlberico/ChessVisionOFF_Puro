@@ -23,12 +23,13 @@ from chess_diagram_ocr.config import (
     BOARD_SIZE,
     DEFAULT_DATASET_CSV,
     DEFAULT_MODEL_PATH,
+    DEFAULT_ORIENTATION_MODE,
     DEFAULT_SAMPLES_DIR,
     find_default_pdf_path,
 )
 from chess_diagram_ocr.dataset import append_training_sample
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen, square_name
-from chess_diagram_ocr.inference import load_model, predict_board
+from chess_diagram_ocr.inference import load_model, predict_with_orientation
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
@@ -108,7 +109,7 @@ class ChessOcrTkApp:
         self.model_path_var = tk.StringVar(value=str(DEFAULT_MODEL_PATH))
         self.dataset_csv_var = tk.StringVar(value=str(DEFAULT_DATASET_CSV))
         self.samples_dir_var = tk.StringVar(value=str(DEFAULT_SAMPLES_DIR))
-        self.rotate_var = tk.BooleanVar(value=False)
+        self.orientation_var = tk.StringVar(value=DEFAULT_ORIENTATION_MODE)
         self.page_index_var = tk.IntVar(value=0)
         self.dpi_var = tk.IntVar(value=220)
         self.max_boards_var = tk.IntVar(value=8)
@@ -194,7 +195,13 @@ class ChessOcrTkApp:
         self._entry_row(cfg_tab, "CSV labels", self.dataset_csv_var)
         self._entry_row(cfg_tab, "Pasta samples", self.samples_dir_var)
 
-        ttk.Checkbutton(cfg_tab, text="Rotacionar board em 180 graus", variable=self.rotate_var).pack(anchor="w", padx=8, pady=4)
+        # Tri-estado no lugar do checkbox: "auto" decide por diagrama, o que resolve livro
+        # com orientacoes misturadas -- o booleano valia para todos de uma vez (S-13).
+        orient_row = ttk.Frame(cfg_tab)
+        orient_row.pack(anchor="w", fill="x", padx=8, pady=4)
+        ttk.Label(orient_row, text="Orientacao do diagrama", width=24).pack(side="left")
+        for rotulo, valor in (("Automatica", "auto"), ("0 graus", "0"), ("180 graus", "180")):
+            ttk.Radiobutton(orient_row, text=rotulo, value=valor, variable=self.orientation_var).pack(side="left", padx=4)
         self._spin_row(cfg_tab, "DPI", self.dpi_var, 120, 320, 20)
         self._spin_row(cfg_tab, "Max diagramas", self.max_boards_var, 1, 20, 1)
 
@@ -895,7 +902,7 @@ class ChessOcrTkApp:
                 "model_path": Path(self.model_path_var.get().strip()),
                 "dpi": int(self.dpi_var.get()),
                 "max_boards_per_page": int(self.max_boards_var.get()),
-                "rotate_180": bool(self.rotate_var.get()),
+                "orientation": self.orientation_var.get(),
             },
             daemon=True,
         )
@@ -909,7 +916,7 @@ class ChessOcrTkApp:
         model_path: Path,
         dpi: int,
         max_boards_per_page: int,
-        rotate_180: bool,
+        orientation: str,
     ) -> None:
         def _progress(page_index: int, total_pages: int, page_boards: int, total_positions: int) -> None:
             current_page = page_index + 1
@@ -927,7 +934,7 @@ class ChessOcrTkApp:
                 model_path=model_path,
                 dpi=dpi,
                 max_boards_per_page=max_boards_per_page,
-                rotate_180=rotate_180,
+                orientation=orientation,
                 progress_callback=_progress,
             )
             self.root.after(0, lambda: self._on_export_pdf_to_pgn_success(report))
@@ -1088,7 +1095,7 @@ class ChessOcrTkApp:
         image_rgb: np.ndarray,
         max_boards: int,
         model_path: Path,
-        rotate_180: bool,
+        orientation: str,
         fallback_to_full_image: bool = False,
         refine_detected_boards: bool = False,
     ) -> list[dict[str, Any]]:
@@ -1105,12 +1112,13 @@ class ChessOcrTkApp:
             quad_for_item = quad
             if refine_detected_boards:
                 board_for_pred, quad_for_item = self._refine_board_from_quad(image_rgb=image_rgb, quad=quad)
-            prediction = predict_board(
+            oriented = predict_with_orientation(
                 board_for_pred,
                 model,
                 device,
-                rotate_180=rotate_180,
+                mode=orientation,  # type: ignore[arg-type]
             )
+            prediction = oriented.prediction
             items.append(
                 {
                     "index": idx,
@@ -1123,6 +1131,9 @@ class ChessOcrTkApp:
                     "is_legal": prediction.position.is_legal,
                     "is_fatal": prediction.position.is_fatal,
                     "problems": prediction.position.problems,
+                    "rotation": oriented.rotation,
+                    "orientation_ambiguous": oriented.ambiguous,
+                    "orientation_reason": oriented.reason,
                 }
             )
         return items
@@ -1143,7 +1154,7 @@ class ChessOcrTkApp:
         self._set_ocr_controls_enabled(False)
         self._set_status("Preparando OCR...")
         model_path = Path(self.model_path_var.get().strip())
-        rotate_180 = bool(self.rotate_var.get())
+        orientation = self.orientation_var.get()
         worker = threading.Thread(
             target=self._ocr_worker,
             kwargs={
@@ -1151,7 +1162,7 @@ class ChessOcrTkApp:
                 "origin": origin,
                 "max_boards": max_boards,
                 "model_path": model_path,
-                "rotate_180": rotate_180,
+                "orientation": orientation,
                 "fallback_to_full_image": fallback_to_full_image,
                 "refine_detected_boards": refine_detected_boards,
             },
@@ -1166,7 +1177,7 @@ class ChessOcrTkApp:
         origin: str,
         max_boards: int,
         model_path: Path,
-        rotate_180: bool,
+        orientation: str,
         fallback_to_full_image: bool,
         refine_detected_boards: bool,
     ) -> None:
@@ -1176,7 +1187,7 @@ class ChessOcrTkApp:
                 image_rgb=image_rgb,
                 max_boards=max_boards,
                 model_path=model_path,
-                rotate_180=rotate_180,
+                orientation=orientation,
                 fallback_to_full_image=fallback_to_full_image,
                 refine_detected_boards=refine_detected_boards,
             )
@@ -1265,6 +1276,13 @@ class ChessOcrTkApp:
         item = self.result_items[idx]
         parts = [f"conf min {float(item.get('min_confidence', 0.0)):.3f}"]
         parts.append(f"media {float(item.get('confidence', 0.0)):.3f}")
+
+        # Orientacao antes do resto: se o diagrama estiver de cabeca para baixo, conferir
+        # casa por casa e perda de tempo (S-13).
+        if item.get("orientation_ambiguous"):
+            parts.append(f"ORIENTACAO INCERTA ({item.get('orientation_reason') or 'as duas eram plausiveis'})")
+        elif item.get("rotation"):
+            parts.append(f"lido a {item['rotation']} graus")
 
         uncertain = item.get("uncertain_squares") or []
         if uncertain:

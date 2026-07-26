@@ -8,7 +8,7 @@ from unittest.mock import patch
 import numpy as np
 from test_inference import probs_for_fen
 
-from chess_diagram_ocr.inference import prediction_from_probs
+from chess_diagram_ocr.inference import OrientedPrediction, prediction_from_probs
 from chess_diagram_ocr.pdf_to_pgn import (
     DiagramPosition,
     build_pgn_text,
@@ -26,6 +26,21 @@ KINGS_D1_D3 = "8/8/8/8/8/3k4/8/3K4"
 # Pretas em xeque. O export assume "brancas jogam", então a FEN completa fica ilegal --
 # mas o tabuleiro está perfeito: é o palpite de lado a jogar que está errado (S-17).
 BLACK_IN_CHECK = "4k3/8/8/8/8/8/8/4KR2"
+
+
+def oriented_for(fen: str, confidence: float, *, rotation: int = 0, ambiguous: bool = False):
+    """`OrientedPrediction` real, como `predict_with_orientation` devolveria.
+
+    Objeto de verdade em vez de duplo: se a S-13 mudar de forma, estes testes quebram em vez
+    de continuarem passando sobre um contrato que nao existe mais.
+    """
+    return OrientedPrediction(
+        prediction=prediction_for(fen, confidence),
+        rotation=rotation,
+        margin=0.0 if ambiguous else 0.5,
+        ambiguous=ambiguous,
+        reason="teste",
+    )
 
 
 def prediction_for(fen: str, confidence: float):
@@ -128,7 +143,26 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertIn('[OCRLegality "lado-a-jogar"]', payload)
         self.assertNotIn('"ilegal"', payload)
 
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_board")
+    def test_headers_record_the_orientation_used(self) -> None:
+        """S-13: sem isso não há como saber depois se a leitura foi feita de pé ou girada."""
+        for rotation in (0, 180):
+            with self.subTest(rotation=rotation):
+                payload = build_pgn_text(
+                    [
+                        DiagramPosition(
+                            page_index=0,
+                            diagram_index=1,
+                            fen=KINGS_ONLY,
+                            confidence=0.99,
+                            rotation=rotation,
+                        )
+                    ],
+                    source_name="book.pdf",
+                )
+
+                self.assertIn(f'[OCRRotation "{rotation}"]', payload)
+
+    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn.detect_boards")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -139,7 +173,7 @@ class PdfToPgnTests(unittest.TestCase):
         mock_load_model,
         mock_render_pdf_page,
         mock_detect_boards,
-        mock_predict_board,
+        mock_predict,
     ) -> None:
         mock_get_pdf_page_count.return_value = 3
         mock_load_model.return_value = ("model", "cpu")
@@ -154,10 +188,10 @@ class PdfToPgnTests(unittest.TestCase):
             [],
             [(board_rgb, None)],
         ]
-        mock_predict_board.side_effect = [
-            prediction_for(EMPTY_BOARD, 0.90),
-            prediction_for(KINGS_ONLY, 0.80),
-            prediction_for(KINGS_D1_D3, 0.70),
+        mock_predict.side_effect = [
+            oriented_for(EMPTY_BOARD, 0.90),
+            oriented_for(KINGS_ONLY, 0.80, rotation=180),
+            oriented_for(KINGS_D1_D3, 0.70),
         ]
 
         positions = scan_pdf_positions(Path("sample.pdf"))
@@ -182,9 +216,9 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertEqual(mock_render_pdf_page.call_count, 3)
         self.assertEqual(mock_detect_boards.call_count, 3)
         self.assertTrue(all(call.kwargs.get("reading_order") == "column" for call in mock_detect_boards.call_args_list))
-        self.assertEqual(mock_predict_board.call_count, 3)
+        self.assertEqual(mock_predict.call_count, 3)
 
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_board")
+    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn.detect_boards")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -195,7 +229,7 @@ class PdfToPgnTests(unittest.TestCase):
         mock_load_model,
         mock_render_pdf_page,
         mock_detect_boards,
-        mock_predict_board,
+        mock_predict,
     ) -> None:
         mock_get_pdf_page_count.return_value = 2
         mock_load_model.return_value = ("model", "cpu")
@@ -208,7 +242,7 @@ class PdfToPgnTests(unittest.TestCase):
             [(board_rgb, None)],
             [],
         ]
-        mock_predict_board.return_value = prediction_for(EMPTY_BOARD, 0.9)
+        mock_predict.return_value = oriented_for(EMPTY_BOARD, 0.9)
         progress_calls: list[tuple[int, int, int, int]] = []
 
         scan_pdf_positions(
@@ -308,6 +342,48 @@ class ExportGateTests(unittest.TestCase):
 
         self.assertEqual(verdict, "needs_review")
         self.assertIn("lado a jogar", reason)
+
+    def test_ambiguous_orientation_outranks_a_low_confidence_square(self) -> None:
+        """Uma casa insegura custa uma correção; diagrama girado custa o diagrama inteiro.
+
+        Então quando os dois problemas coexistem, o motivo que chega ao usuário é a
+        orientação -- é o que ele precisa conferir primeiro.
+        """
+        position = DiagramPosition(
+            page_index=0,
+            diagram_index=1,
+            fen=KINGS_ONLY,
+            confidence=0.99,
+            min_confidence=0.10,
+            is_legal=True,
+            is_fatal=False,
+            rotation=180,
+            orientation_ambiguous=True,
+            orientation_reason="margem apertada (0.004) entre as duas orientações",
+        )
+
+        verdict, reason = classify_position(position)
+
+        self.assertEqual(verdict, "needs_review")
+        self.assertIn("orientação incerta", reason)
+        self.assertIn("margem apertada", reason)
+
+    def test_confident_board_with_settled_orientation_is_accepted(self) -> None:
+        position = DiagramPosition(
+            page_index=0,
+            diagram_index=1,
+            fen=KINGS_ONLY,
+            confidence=0.99,
+            min_confidence=0.98,
+            is_legal=True,
+            is_fatal=False,
+            rotation=180,
+            orientation_ambiguous=False,
+            orientation_reason="maior confiança mínima (margem 0.900)",
+        )
+
+        # Ter girado nao e defeito: o diagrama do livro e que estava de cabeca para baixo.
+        self.assertEqual(classify_position(position), ("accepted", ""))
 
     def test_unmeasured_position_is_not_condemned(self) -> None:
         """Sem `is_legal`/`min_confidence` medidos, nao ha o que alegar contra a posicao."""

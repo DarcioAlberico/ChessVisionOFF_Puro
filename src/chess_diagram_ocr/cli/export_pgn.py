@@ -4,7 +4,12 @@ import argparse
 import logging
 from pathlib import Path
 
-from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MODEL_PATH, DEFAULT_READING_ORDER
+from ..config import (
+    ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_MODEL_PATH,
+    DEFAULT_ORIENTATION_MODE,
+    DEFAULT_READING_ORDER,
+)
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_to_pgn import default_pgn_output_path, save_pdf_positions_to_pgn
 
@@ -18,7 +23,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
     parser.add_argument("--dpi", type=int, default=220)
     parser.add_argument("--max-boards-per-page", type=int, default=8)
-    parser.add_argument("--rotate-180", action="store_true")
+    parser.add_argument(
+        "--orientation",
+        choices=("auto", "0", "180"),
+        default=DEFAULT_ORIENTATION_MODE,
+        help=(
+            "Orientacao de cada diagrama (S-13). 'auto' decide por diagrama, o que resolve "
+            f"livro com orientacoes misturadas. Padrao: {DEFAULT_ORIENTATION_MODE}."
+        ),
+    )
     parser.add_argument("--start-page", type=int, default=0)
     parser.add_argument("--end-page", type=int, default=None, help="Exclusivo. Padrao: ate o fim do PDF.")
     parser.add_argument(
@@ -63,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
         model_path=args.model,
         dpi=args.dpi,
         max_boards_per_page=args.max_boards_per_page,
-        rotate_180=args.rotate_180,
+        orientation=args.orientation,
         start_page=args.start_page,
         end_page=args.end_page,
         reading_order=args.reading_order,

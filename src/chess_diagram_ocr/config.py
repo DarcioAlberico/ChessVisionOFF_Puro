@@ -45,6 +45,22 @@ MAX_DECODE_CHANGES = 6
 # calibracao da S-28 dar um numero derivado da curva.
 ACCEPT_MIN_CONFIDENCE = 0.80
 
+OrientationMode = Literal["auto", "0", "180"]
+
+# Orientacao decidida por diagrama em vez de um checkbox global (S-13).
+DEFAULT_ORIENTATION_MODE: OrientationMode = "auto"
+
+# A partir desta diferenca de min_confidence entre as duas orientacoes, a confianca decide
+# sozinha. Medido no split de teste: a margem mediana e 0,925 e o percentil 5 e 0,220 --
+# acima de 0,20 a confianca acertou 100% das 320 vezes.
+ORIENTATION_DECISIVE_MARGIN = 0.20
+
+# Abaixo da margem decisiva a confianca vira ruido (medido no 1937 Kemeri: duas leituras de
+# pe corretas com margem de 0,001 e 0,019) e quem decide e a estrutura da posicao. Diferenca
+# minima, em filas, entre o prior de peoes de uma orientacao e o da outra para ele decidir.
+# 1,0 fila e conservador: nos casos reais medidos a diferenca foi de 5 a 8 filas.
+ORIENTATION_PAWN_PRIOR_MARGIN = 1.0
+
 ReadingOrder = Literal["row", "column"]
 
 # Ordem em que os diagramas de uma pagina sao numerados (S-14). Um unico padrao aqui e o

@@ -11,10 +11,16 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from chess_diagram_ocr.board_detection import detect_boards
-from chess_diagram_ocr.config import DEFAULT_DATASET_CSV, DEFAULT_MODEL_PATH, DEFAULT_SAMPLES_DIR, find_default_pdf_path
+from chess_diagram_ocr.config import (
+    DEFAULT_DATASET_CSV,
+    DEFAULT_MODEL_PATH,
+    DEFAULT_ORIENTATION_MODE,
+    DEFAULT_SAMPLES_DIR,
+    find_default_pdf_path,
+)
 from chess_diagram_ocr.dataset import append_training_sample
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
-from chess_diagram_ocr.inference import load_model, predict_board
+from chess_diagram_ocr.inference import load_model, predict_with_orientation
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.training import train_model
 
@@ -58,7 +64,7 @@ def run_ocr_for_boards(
     source_rgb: np.ndarray,
     boards_with_quads: list[tuple[np.ndarray, np.ndarray | None]],
     model_path: Path,
-    rotate_180: bool,
+    orientation: str,
     origin: str,
 ) -> None:
     if not boards_with_quads:
@@ -68,7 +74,8 @@ def run_ocr_for_boards(
     model, device = get_loaded_model(str(model_path))
     items: list[dict[str, Any]] = []
     for idx, (board_rgb, quad) in enumerate(boards_with_quads):
-        prediction = predict_board(board_rgb, model, device, rotate_180=rotate_180)
+        oriented = predict_with_orientation(board_rgb, model, device, mode=orientation)  # type: ignore[arg-type]
+        prediction = oriented.prediction
         items.append(
             {
                 "index": idx,
@@ -81,6 +88,9 @@ def run_ocr_for_boards(
                 "is_legal": prediction.position.is_legal,
                 "is_fatal": prediction.position.is_fatal,
                 "problems": prediction.position.problems,
+                "rotation": oriented.rotation,
+                "orientation_ambiguous": oriented.ambiguous,
+                "orientation_reason": oriented.reason,
             }
         )
     _set_results(source_rgb=source_rgb, items=items, origin=origin)
@@ -230,10 +240,20 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
         sel_tmp = int(st.session_state["selected_result_one_based"]) - 1
         item_tmp = items[sel_tmp]
         # O minimo vem primeiro: a media fica ~0,97 mesmo com erro e nao alertaria (S-10).
+        rotacao = item_tmp.get("rotation")
         st.caption(
             f"Confianca minima: {float(item_tmp.get('min_confidence', 0.0)):.3f}  |  "
             f"media: {float(item_tmp.get('confidence', 0.0)):.3f}"
+            + (f"  |  lido a {rotacao} graus" if rotacao else "")
         )
+        # Orientacao incerta vem antes da legalidade: se o diagrama estiver de cabeca para
+        # baixo, nao ha o que conferir casa por casa (S-13).
+        if item_tmp.get("orientation_ambiguous"):
+            st.warning(
+                f"Orientacao incerta: {item_tmp.get('orientation_reason') or 'as duas eram plausiveis'}. "
+                "Confira se o diagrama nao esta de cabeca para baixo.",
+                icon="🔄",
+            )
         if item_tmp.get("is_legal") is False:
             problems = "; ".join(item_tmp.get("problems") or ())
             if item_tmp.get("is_fatal") is False:
@@ -330,7 +350,15 @@ with st.sidebar:
     model_path = Path(st.text_input("Modelo (.pt)", str(DEFAULT_MODEL_PATH)))
     dataset_csv = Path(st.text_input("CSV labels", str(DEFAULT_DATASET_CSV)))
     samples_dir = Path(st.text_input("Pasta samples", str(DEFAULT_SAMPLES_DIR)))
-    rotate_180 = st.checkbox("Rotacionar board em 180 graus", value=False)
+    # Tri-estado em vez de checkbox: "auto" decide por diagrama, o que resolve livro com
+    # orientacoes misturadas -- o booleano valia para a pagina inteira (S-13).
+    orientation = st.radio(
+        "Orientacao do diagrama",
+        options=("auto", "0", "180"),
+        index=("auto", "0", "180").index(DEFAULT_ORIENTATION_MODE),
+        horizontal=True,
+        help="auto: escolhe por diagrama pela leitura mais plausivel.",
+    )
     dpi = st.slider("DPI render PDF", min_value=120, max_value=320, value=220, step=20)
     max_boards = st.number_input("Max diagramas detectados", min_value=1, max_value=20, value=8, step=1)
     if st.button("Recarregar modelo"):
@@ -423,7 +451,7 @@ with tab_pdf:
                         source_rgb=page_rgb,
                         boards_with_quads=boards,
                         model_path=model_path,
-                        rotate_180=rotate_180,
+                        orientation=orientation,
                         origin=f"pdf:{pdf_name}:page:{st.session_state['page_index']}",
                     )
                 except Exception as exc:
@@ -482,7 +510,7 @@ with tab_local:
                         source_rgb=image_rgb,
                         boards_with_quads=boards,
                         model_path=model_path,
-                        rotate_180=rotate_180,
+                        orientation=orientation,
                         origin=f"local-image:{uploaded_image.name}",
                     )
                 except Exception as exc:

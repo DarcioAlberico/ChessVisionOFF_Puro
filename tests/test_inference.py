@@ -117,5 +117,187 @@ class PredictionFromProbsTests(unittest.TestCase):
         self.assertIn("falta o rei branco", prediction.position.problems)
 
 
+class FakeModel:
+    """Modelo falso que devolve a matriz que lhe for dada, por orientação da imagem.
+
+    A `predict_with_orientation` faz duas inferências sobre a mesma imagem, uma girada. Para
+    testar a *decisão* sem modelo treinado, basta reconhecer qual das duas chegou -- e a
+    imagem girada é distinguível por construção (metades de cor diferente).
+    """
+
+    def __init__(self, upright: np.ndarray, flipped: np.ndarray) -> None:
+        self.upright = upright
+        self.flipped = flipped
+        self.calls = 0
+
+    def __call__(self, batch):  # noqa: ANN001 - duplo de teste
+        import torch
+
+        self.calls += 1
+        # A primeira metade das casas e clara na imagem de pe e escura na girada.
+        is_upright = float(batch[0].mean()) > float(batch[-1].mean())
+        matrix = self.upright if is_upright else self.flipped
+        return torch.log(torch.tensor(matrix, dtype=torch.float32))
+
+
+def rotated_fen(fen: str) -> str:
+    """A FEN que sai ao ler a mesma imagem girada 180°: as 64 casas em ordem inversa.
+
+    Ler a imagem girada não muda as peças, muda qual casa é qual -- então a posição
+    resultante é a original rotacionada. Os testes de orientação precisam disso para que o
+    duplo de modelo reproduza o que o modelo de verdade faria.
+    """
+    from chess_diagram_ocr.fen_utils import fen_from_class_indices, labels_from_fen
+
+    return fen_from_class_indices(list(reversed(labels_from_fen(fen))))
+
+
+def board_image_with_distinct_halves() -> np.ndarray:
+    """Imagem 800×800 cuja metade de cima é clara: girar 180° é detectável."""
+    board = np.zeros((800, 800, 3), dtype=np.uint8)
+    board[:400] = 240
+    board[400:] = 10
+    return board
+
+
+class PredictWithOrientationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.board = board_image_with_distinct_halves()
+
+    def _run(self, upright: np.ndarray, flipped: np.ndarray, **kwargs):
+        from chess_diagram_ocr.inference import predict_with_orientation
+
+        model = FakeModel(upright, flipped)
+        return predict_with_orientation(self.board, model, "cpu", **kwargs)  # type: ignore[arg-type]
+
+    def test_picks_the_orientation_with_higher_min_confidence(self) -> None:
+        """O sinal que a medição mostrou separar 320 de 320 no split de teste."""
+        result = self._run(probs_for_fen(KINGS_ONLY, 0.99), probs_for_fen(KINGS_ONLY, 0.30))
+
+        self.assertEqual(result.rotation, 0)
+        self.assertFalse(result.ambiguous)
+        self.assertAlmostEqual(result.margin, 0.69, places=6)
+        self.assertIn("confiança mínima", result.reason)
+
+    def test_rotates_when_the_flipped_reading_is_the_confident_one(self) -> None:
+        result = self._run(probs_for_fen(KINGS_ONLY, 0.20), probs_for_fen(KINGS_ONLY, 0.99))
+
+        self.assertEqual(result.rotation, 180)
+        self.assertFalse(result.ambiguous)
+        self.assertIsNotNone(result.alternative)
+
+    def test_legality_decides_even_against_a_more_confident_illegal_reading(self) -> None:
+        """Leitura ilegal é pior que leitura insegura, então a legalidade filtra primeiro.
+
+        A orientação de pé é ilegal (sem rei branco) e mais confiante; a girada é legal e
+        menos confiante. Vence a legal -- e sai marcada como ambígua, porque os dois sinais
+        discordaram, o que não é para resolver em silêncio.
+        """
+        result = self._run(
+            probs_for_fen("4k3/8/8/8/8/8/8/8", 0.99),
+            probs_for_fen(KINGS_ONLY, 0.60),
+            constrained=False,
+        )
+
+        self.assertEqual(result.rotation, 180)
+        self.assertEqual(result.reason, "única orientação legal")
+        self.assertTrue(result.ambiguous)
+        self.assertTrue(result.prediction.position.is_legal)
+
+    def test_constrained_decoding_makes_legality_a_rare_but_harmless_tiebreak(self) -> None:
+        """Com a S-11 ligada os dois caminhos chegam à mesma orientação, por sinais diferentes.
+
+        A decodificação restrita repara a leitura ilegal *antes* de a legalidade ser
+        consultada, então as duas orientações chegam legais e o filtro cala -- é por isso que
+        no split de teste ele só decide em 52 dos 320 tabuleiros. Mas o reparo não esconde o
+        problema: a casa reescrita fica com a confiança real dela, que é baixa, e o
+        `min_confidence` despenca. Ou seja, ligar a S-11 transfere o sinal de ilegalidade
+        para a confiança em vez de perdê-lo, e o veredito não muda.
+        """
+        sem_rei_branco = probs_for_fen("4k3/8/8/8/8/8/8/8", 0.99)
+        legal_mas_insegura = probs_for_fen(KINGS_ONLY, 0.60)
+
+        reparado = self._run(sem_rei_branco, legal_mas_insegura, constrained=True)
+        cru = self._run(sem_rei_branco, legal_mas_insegura, constrained=False)
+
+        self.assertEqual(reparado.rotation, 180)
+        self.assertIn("confiança mínima", reparado.reason)
+        self.assertEqual(cru.rotation, 180)
+        self.assertEqual(cru.reason, "única orientação legal")
+
+        # A leitura descartada carrega a marca do reparo: confianca baixissima na casa que a
+        # busca teve de reescrever.
+        self.assertIsNotNone(reparado.alternative)
+        assert reparado.alternative is not None
+        self.assertLess(reparado.alternative.min_confidence, 0.01)
+
+    def test_pawn_prior_decides_when_confidence_is_noise(self) -> None:
+        """A regressão medida no 1937 Kemeri, como teste.
+
+        As duas orientações saem com confiança igualmente baixa -- margem 0,01, ruído -- e
+        seguir a margem girava um diagrama cuja leitura de pé estava certa. A estrutura da
+        posição resolve: peões brancos embaixo e pretos em cima só acontece na orientação
+        correta. Aqui a leitura de pé tem os peões coerentes e a girada, invertidos.
+        """
+        de_pe = "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3"
+        result = self._run(probs_for_fen(de_pe, 0.60), probs_for_fen(rotated_fen(de_pe), 0.61))
+
+        # A confianca prefere a girada por 0,01; os peoes preferem a de pe por 5 filas.
+        self.assertEqual(result.rotation, 0)
+        self.assertFalse(result.ambiguous)
+        self.assertIn("peões apontam a orientação", result.reason)
+        self.assertEqual(result.prediction.fen_board, de_pe)
+
+    def test_pawn_prior_can_also_confirm_a_rotation(self) -> None:
+        """O prior não tem preferência por "de pé": mede a estrutura, nos dois sentidos.
+
+        Aqui a imagem está de cabeça para baixo no livro: lida de pé sai com os peões
+        invertidos, e lida girada sai coerente. Girar é o certo.
+        """
+        de_cabeca_para_baixo = "4K3/PPPPPPPP/8/8/8/8/pppppppp/4k3"
+        result = self._run(
+            probs_for_fen(de_cabeca_para_baixo, 0.61),
+            probs_for_fen(rotated_fen(de_cabeca_para_baixo), 0.60),
+        )
+
+        self.assertEqual(result.rotation, 180)
+        self.assertIn("peões apontam a orientação", result.reason)
+        self.assertEqual(result.prediction.fen_board, rotated_fen(de_cabeca_para_baixo))
+
+    def test_thin_margin_is_flagged_instead_of_silently_chosen(self) -> None:
+        result = self._run(probs_for_fen(KINGS_ONLY, 0.61), probs_for_fen(KINGS_ONLY, 0.60))
+
+        self.assertTrue(result.ambiguous)
+        self.assertIn("margem apertada", result.reason)
+
+    def test_forced_mode_does_not_pay_for_a_second_inference(self) -> None:
+        from chess_diagram_ocr.inference import predict_with_orientation
+
+        for mode, expected in (("0", 0), ("180", 180)):
+            with self.subTest(mode=mode):
+                model = FakeModel(probs_for_fen(KINGS_ONLY, 0.99), probs_for_fen(KINGS_ONLY, 0.99))
+                result = predict_with_orientation(self.board, model, "cpu", mode=mode)  # type: ignore[arg-type]
+
+                self.assertEqual(result.rotation, expected)
+                self.assertEqual(model.calls, 1)
+                self.assertIsNone(result.alternative)
+                self.assertFalse(result.ambiguous)
+
+    def test_auto_mode_costs_exactly_two_inferences(self) -> None:
+        from chess_diagram_ocr.inference import predict_with_orientation
+
+        model = FakeModel(probs_for_fen(KINGS_ONLY, 0.99), probs_for_fen(KINGS_ONLY, 0.30))
+        predict_with_orientation(self.board, model, "cpu")  # type: ignore[arg-type]
+
+        self.assertEqual(model.calls, 2)
+
+    def test_rejects_unknown_mode(self) -> None:
+        from chess_diagram_ocr.inference import predict_with_orientation
+
+        model = FakeModel(probs_for_fen(KINGS_ONLY, 0.99), probs_for_fen(KINGS_ONLY, 0.99))
+        with self.assertRaises(ValueError):
+            predict_with_orientation(self.board, model, "cpu", mode="90")  # type: ignore[arg-type]
+
+
 if __name__ == "__main__":
     unittest.main()

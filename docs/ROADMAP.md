@@ -95,7 +95,7 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 | 2.3 | **Decodificação com restrições**: busca sobre as probabilidades por casa sujeita às regras (1 rei de cada cor, ≤8 peões, nada na 1ª/8ª fila, ≤16 peças) | S-11 | ✅ `decode.py` |
 | 2.4 | Extração de diagrama por **imagem embutida** do PDF (`page.get_image_info`) com recorte da moldura/legenda | S-12 | ⬜ |
 | 2.5 | Detector híbrido: candidatos embutidos + contorno, desempate por legalidade e concordância | S-12 | ⬜ |
-| 2.6 | Auto-orientação por tentativa (0°/180°) escolhendo a mais plausível; `rotate_180` deixa de ser global | S-13 | ⬜ |
+| 2.6 | Auto-orientação por tentativa (0°/180°) escolhendo a mais plausível; `rotate_180` deixa de ser global | S-13 | ✅ `predict_with_orientation` |
 | 2.7 | Unificar `reading_order` entre GUI e export (padrão único, configurável) | S-14 | ✅ `DEFAULT_READING_ORDER` + header `[ReadingOrder]` |
 | 2.8 | Gate de exportação: posições ilegais ou de baixa confiança vão para `*.review.pgn` separado | S-15 | ✅ `ExportReport` |
 
@@ -110,6 +110,61 @@ Números completos em [BASELINE.md](BASELINE.md). O resumo:
 - **A média das confianças era o número errado.** No conjunto de teste ela fica em 0,999 quando o tabuleiro está exato e ~0,75 nas casas erradas — mas 77% das casas são vazias e triviais, então a média do tabuleiro fica ~0,97 *mesmo com erro*. O mínimo por casa separa muito melhor: AUC 0,919 contra 0,905 da média. É por isso que a barra de status e os headers do PGN passaram a mostrar o mínimo primeiro.
 - **A decodificação com restrições não muda nada no conjunto de teste — e muda muito no PDF.** No teste o argmax já produz 0 posições ilegais em 320 tabuleiros, então a busca nunca é acionada: o conjunto de teste é limpo demais para medir a S-11. Em `1937 Kemeri.pdf` (páginas 10–69, 47 tabuleiros), a ilegalidade real cai de **16 para 2**. Em nenhuma medição uma casa que o argmax acertava foi estragada.
 - **2.7 era um bug de configuração, não de algoritmo.** `detect_boards` tinha `"row"` por padrão e a exportação passava `"column"`: numa página de duas colunas o `[Diagram "2"]` do PGN apontava para outra posição que a da tela. Os frontends nunca passavam o parâmetro, então herdavam o padrão errado.
+
+### 2.6 — o que a medição mudou no plano, e a armadilha que ela quase deixou passar
+
+A S-13 propunha decidir a orientação por legalidade em primeiro lugar, `min_confidence` em
+segundo e prior estrutural (peões **e reis**) como desempate leve. Medido nos 320 tabuleiros
+do split de teste, cada sinal isolado:
+
+| sinal | aponta certo | aponta errado | empata |
+|---|---|---|---|
+| legalidade | 52 | 0 | **268** |
+| `min_confidence` | **320** | 0 | 0 |
+| prior de peões | 264 | 9 | 47 |
+| prior de reis | 267 | **37** | 16 |
+
+A legalidade **não** pode ser o critério dominante: girar a posição 180° manda peão branco da
+fila `r` para a `9-r`, e 2..7 vira 7..2 — continua legal. Ela cala em 84% dos casos, embora
+nunca erre, então ficou como primeiro filtro. O prior de **reis** erra 37 vezes e ficou fora.
+
+**A armadilha.** Com essa medição o critério de aceite passou de primeira: girando o conjunto
+de teste inteiro, 0,9906 no original e 0,9906 no girado. Mas rodar num PDF de verdade mostrou
+regressão: 8 dos 47 diagramas do Kemeri giraram sem motivo. Duas páginas cuja leitura de pé
+era uma posição de meio-jogo claramente correta (`Q3brk1/pp2q1p1/...`, peões +3,5) tinham
+margem de confiança de **0,001** e **0,019**.
+
+A razão: no split de teste a orientação certa tem confiança ~1,0 e a girada ~0,07, então a
+margem é enorme. Em página difícil as duas caem para ~0,04 e a margem vira ruído. O
+`min_confidence` mede a *aparência* das peças e some junto com ela; o prior de peões mede a
+*estrutura da posição* e continua informativo exatamente ali (+3,8 contra −4,2 nos mesmos
+casos). Daí a regra por regime, em `predict_with_orientation`:
+
+1. Uma orientação ilegal e a outra não → a legal.
+2. Margem de confiança ≥ 0,20 → a mais confiante.
+3. Senão, peões decidem por ≥ 1 fila → a que eles apontam.
+4. Senão → a mais confiante, marcada `ambiguous` e mandada para revisão.
+
+Resultado: as rotações espúrias do Kemeri caem de 8 para 6, e as 6 restantes são leituras
+degeneradas (sem peão de alguma cor) das quais 5 saem marcadas para revisão. O critério de
+aceite continua atingido.
+
+**A lição de método:** conjunto de teste limpo não prova comportamento em entrada suja. Foi a
+segunda vez nesta fase que o número do split de teste disse "não muda nada" ou "está ótimo" e
+o PDF real discordou — a primeira foi a S-11.
+
+### Pendência da S-13: diagrama impresso do ponto de vista das pretas
+
+O que 2.6 resolve é **imagem de cabeça para baixo**: aí as peças aparecem invertidas e o
+reparo é girar os pixels. Livro que imprime o diagrama do ponto de vista das pretas é outro
+problema: as peças estão desenhadas para cima e o que muda é o mapeamento casa→índice. Girar
+a imagem estragaria a leitura; o certo é inverter a ordem das 64 casas, o que **não custa
+inferência nova**.
+
+E os sinais são outros: como as imagens de casa são idênticas nas duas interpretações, o
+`min_confidence` é rigorosamente igual e não diz nada. Só o prior estrutural pode decidir —
+que é justamente o sinal mais fraco. Não medi quantos diagramas assim existem nos 27 PDFs;
+antes de implementar, vale contar.
 
 ### Decisão pendente: qual modelo o app usa
 

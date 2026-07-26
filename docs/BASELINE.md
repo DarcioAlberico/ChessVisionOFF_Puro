@@ -143,6 +143,29 @@ violada, e sempre para a alternativa mais provável.
 
 ---
 
+## Auto-orientação (S-13): não custa acurácia, e cobre o conjunto girado
+
+Com `mode="auto"`, cada diagrama decide a própria orientação em vez de herdar um checkbox
+global. O critério de aceite da S-13 é que o conjunto de teste girado 180° iguale o original:
+
+| conjunto | exatos | acurácia | girou 180° | marcados ambíguos |
+|---|---|---|---|---|
+| original, `auto` | 317 | 0,9906 | 0 de 320 | 13 |
+| **girado 180°, `auto`** | **317** | **0,9906** | **320 de 320** | 13 |
+| original, `mode="0"` | 317 | 0,9906 | — | 0 |
+
+Atingido: mesmo número, e nenhuma imagem de pé foi girada por engano. Os 13 ambíguos são
+tabuleiros em que a decisão se dá por um fio; nenhum deles estava errado.
+
+O custo é uma segunda inferência por diagrama (~2× o tempo de reconhecimento, que a ~50 ms
+por tabuleiro continua irrelevante ao lado do render da página).
+
+Detalhe importante sobre como esse número foi obtido, e sobre o que ele esconde: a primeira
+versão da regra passava neste mesmo critério de aceite **e girava 8 dos 47 diagramas do
+Kemeri sem motivo**. A discussão está em [ROADMAP.md](ROADMAP.md) na seção da 2.6.
+
+---
+
 ## O aviso importante: 0,9906 não é a acurácia em um PDF qualquer
 
 Os dois PDFs medidos com o mesmo modelo, mesma configuração:
