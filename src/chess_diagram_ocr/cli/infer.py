@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..board_detection import NoBoardDetectedError, detect_board
 from ..config import DEFAULT_MODEL_PATH
-from ..inference import load_model, predict_fen_from_board
+from ..inference import load_model, predict_board
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_io import render_pdf_page
 
@@ -36,16 +36,24 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     model, device = load_model(args.model)
-    fen, confidence = predict_fen_from_board(
-        board_rgb=board_rgb,
-        model=model,
-        device=device,
-        rotate_180=args.rotate_180,
-    )
+    prediction = predict_board(board_rgb, model, device, rotate_180=args.rotate_180)
 
     # Resultado vai para stdout (consumivel por pipe); diagnostico vai para o log.
-    print(f"FEN: {fen}")
-    print(f"Confianca: {confidence:.3f}")
+    print(f"FEN: {prediction.fen_board}")
+    print(f"Confianca minima: {prediction.min_confidence:.3f}")
+    print(f"Confianca media:  {prediction.mean_confidence:.3f}")
+
+    if prediction.uncertain_squares:
+        casas = ", ".join(
+            f"{name} ({prediction.probs[index, prediction.class_indices[index]]:.2f})"
+            for index, name in zip(prediction.uncertain_squares, prediction.uncertain_square_names, strict=True)
+        )
+        print(f"Casas inseguras: {casas}")
+
+    if prediction.position.is_legal:
+        print("Legalidade: posicao legal")
+    else:
+        print(f"Legalidade: {'; '.join(prediction.position.problems) or 'ilegal'}")
     return 0
 
 

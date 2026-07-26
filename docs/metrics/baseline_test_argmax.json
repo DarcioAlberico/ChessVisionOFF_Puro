@@ -1,0 +1,111 @@
+{
+  "split": "test",
+  "model_path": "models\\piece_classifier_baseline.pt",
+  "device": "cpu",
+  "board_count": 320,
+  "square_count": 20480,
+  "square_accuracy": 0.999853515625,
+  "board_exact_accuracy": 0.990625,
+  "board_within_one_accuracy": 1.0,
+  "illegal_rate": 0.0,
+  "illegal_predictions": 0,
+  "illegal_expected": 0,
+  "mean_confidence_when_correct": 0.9998451213212709,
+  "mean_confidence_when_wrong": 0.8855181336402893,
+  "expected_calibration_error": 0.00011197105777678649,
+  "confidence_auc_min_square": 0.9158780231335436,
+  "confidence_auc_mean_square": 0.9032597266035752,
+  "constrained_decoding": false,
+  "decoder_repaired_boards": 0,
+  "decoder_repaired_squares": 0,
+  "decoder_helped": 0,
+  "decoder_hurt": 0,
+  "decoder_squares_fixed": 0,
+  "decoder_squares_broken": 0,
+  "decoder_squares_still_wrong": 0,
+  "decoder_gave_up": 0,
+  "per_class": {
+    "empty": {
+      "support": 15833,
+      "recall": 0.9999368407755953,
+      "precision": 1.0
+    },
+    "P": {
+      "support": 1223,
+      "recall": 1.0,
+      "precision": 0.9983673469387755
+    },
+    "N": {
+      "support": 183,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "B": {
+      "support": 192,
+      "recall": 0.9947916666666666,
+      "precision": 1.0
+    },
+    "R": {
+      "support": 285,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "Q": {
+      "support": 139,
+      "recall": 0.9928057553956835,
+      "precision": 1.0
+    },
+    "K": {
+      "support": 320,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "p": {
+      "support": 1212,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "n": {
+      "support": 154,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "b": {
+      "support": 203,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "r": {
+      "support": 278,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "q": {
+      "support": 138,
+      "recall": 1.0,
+      "precision": 0.9928057553956835
+    },
+    "k": {
+      "support": 320,
+      "recall": 1.0,
+      "precision": 1.0
+    }
+  },
+  "top_confusions": [
+    {
+      "expected": "empty",
+      "predicted": "P",
+      "count": 1
+    },
+    {
+      "expected": "B",
+      "predicted": "P",
+      "count": 1
+    },
+    {
+      "expected": "Q",
+      "predicted": "q",
+      "count": 1
+    }
+  ]
+}

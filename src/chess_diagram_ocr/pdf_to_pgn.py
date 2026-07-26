@@ -9,7 +9,7 @@ import numpy as np
 
 from .board_detection import ReadingOrder, detect_boards
 from .config import DEFAULT_MODEL_PATH, PROJECT_ROOT
-from .inference import load_model, predict_fen_from_board
+from .inference import load_model, predict_board
 
 PdfSource = str | Path | bytes
 ProgressCallback = Callable[[int, int, int, int], None]
@@ -21,6 +21,16 @@ class DiagramPosition:
     diagram_index: int
     fen: str
     confidence: float
+    """Confiança média das 64 casas. Mantida por compatibilidade; ver `min_confidence`."""
+
+    min_confidence: float | None = None
+    """Confiança da casa mais insegura (S-10). `None` em posições montadas à mão."""
+
+    is_legal: bool | None = None
+    """Legalidade da posição reconhecida (S-05). `None` quando não foi avaliada."""
+
+    problems: tuple[str, ...] = ()
+    """Descrições dos problemas de legalidade, quando houver."""
 
     @property
     def page_number(self) -> int:
@@ -79,18 +89,21 @@ def scan_pdf_positions(
         page_rgb = _render_pdf_page(pdf_source, page_index, dpi=dpi)
         boards = detect_boards(page_rgb, max_boards=max_boards_per_page, reading_order=reading_order)
         for diagram_index, (board_rgb, _quad) in enumerate(boards, start=1):
-            fen, confidence = predict_fen_from_board(
-                board_rgb=board_rgb,
-                model=model,
-                device=resolved_device,
+            prediction = predict_board(
+                board_rgb,
+                model,
+                resolved_device,
                 rotate_180=rotate_180,
             )
             positions.append(
                 DiagramPosition(
                     page_index=page_index,
                     diagram_index=diagram_index,
-                    fen=fen,
-                    confidence=confidence,
+                    fen=prediction.fen_board,
+                    confidence=prediction.mean_confidence,
+                    min_confidence=prediction.min_confidence,
+                    is_legal=prediction.position.is_legal,
+                    problems=prediction.position.problems,
                 )
             )
         if progress_callback is not None:
@@ -122,6 +135,12 @@ def build_pgn_games(
         game.headers["Page"] = str(position.page_number)
         game.headers["Diagram"] = str(position.diagram_index)
         game.headers["OCRConfidence"] = f"{position.confidence:.3f}"
+        if position.min_confidence is not None:
+            game.headers["OCRMinConfidence"] = f"{position.min_confidence:.3f}"
+        if position.is_legal is not None:
+            game.headers["OCRLegal"] = "1" if position.is_legal else "0"
+            if not position.is_legal and position.problems:
+                game.headers["OCRProblems"] = "; ".join(position.problems)
         games.append(game)
 
     return games

@@ -23,10 +23,11 @@ import numpy as np
 import torch
 
 from .board_detection import split_board_into_cells
-from .config import BOARD_SIZE, IDX_TO_CLASS, PIECE_CLASSES
+from .config import BOARD_SIZE, CONSTRAINED_DECODING, IDX_TO_CLASS, PIECE_CLASSES
 from .dataset import BoardFenDataset
+from .decode import DecodeResult
 from .fen_utils import check_position, fen_from_class_indices, labels_from_fen
-from .inference import load_model
+from .inference import load_model, prediction_from_probs
 from .model import PieceClassifier, preprocess_cell_to_tensor
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,37 @@ class EvaluationReport:
     boards_within_one: int = 0
     illegal_predictions: int = 0
     illegal_expected: int = 0
+    constrained_decoding: bool = False
+    decoder_repaired_boards: int = 0
+    """Tabuleiros em que a decodificação com restrições alterou pelo menos uma casa."""
+
+    decoder_repaired_squares: int = 0
+    decoder_helped: int = 0
+    """Reparos que transformaram um tabuleiro errado em exato -- o ganho da S-11."""
+
+    decoder_hurt: int = 0
+    """Reparos que estragaram um tabuleiro que o argmax já acertava. Tem de ser ~0."""
+
+    decoder_squares_fixed: int = 0
+    """Casas em que o reparo trocou a classe errada pela correta.
+
+    Contar por casa e não só por tabuleiro é o que torna o efeito visível: um reparo em
+    tabuleiro que já tinha dois erros não muda `decoder_helped`, mas reduzir de dois erros
+    para um é um ganho real -- é uma casa menos para o humano corrigir.
+    """
+
+    decoder_squares_broken: int = 0
+    """Casas corretas no argmax que o reparo estragou. É o custo direto da S-11."""
+
+    decoder_squares_still_wrong: int = 0
+    """Casas que já estavam erradas e continuaram erradas, com outra classe.
+
+    Neutro para a acurácia, mas não para a legalidade: é assim que a busca satisfaz as
+    regras quando o modelo não colocou a classe certa em nenhuma posição alta.
+    """
+
+    decoder_gave_up: int = 0
+    """Tabuleiros em que a busca esgotou o limite sem achar posição legal."""
     confusion: np.ndarray = field(default_factory=lambda: np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=np.int64))
     conf_when_correct: list[float] = field(default_factory=list)
     conf_when_wrong: list[float] = field(default_factory=list)
@@ -182,6 +214,15 @@ class EvaluationReport:
             "expected_calibration_error": self.expected_calibration_error(),
             "confidence_auc_min_square": self.confidence_auc(use_min=True),
             "confidence_auc_mean_square": self.confidence_auc(use_min=False),
+            "constrained_decoding": self.constrained_decoding,
+            "decoder_repaired_boards": self.decoder_repaired_boards,
+            "decoder_repaired_squares": self.decoder_repaired_squares,
+            "decoder_helped": self.decoder_helped,
+            "decoder_hurt": self.decoder_hurt,
+            "decoder_squares_fixed": self.decoder_squares_fixed,
+            "decoder_squares_broken": self.decoder_squares_broken,
+            "decoder_squares_still_wrong": self.decoder_squares_still_wrong,
+            "decoder_gave_up": self.decoder_gave_up,
             "per_class": self.per_class(),
             "top_confusions": [
                 {"expected": a, "predicted": b, "count": c} for a, b, c in self.top_confusions(limit=15)
@@ -207,12 +248,19 @@ def evaluate_dataset(
     split_name: str = "?",
     model_path: Path | None = None,
     boards_per_batch: int = 8,
+    constrained: bool = CONSTRAINED_DECODING,
 ) -> EvaluationReport:
-    """Avalia o modelo sobre os tabuleiros de um dataset já filtrado por split."""
+    """Avalia o modelo sobre os tabuleiros de um dataset já filtrado por split.
+
+    `constrained` liga a decodificação com restrições (S-11). Avaliar com e sem é o que
+    permite afirmar se ela ajuda -- por isso o relatório carrega o flag e conta reparos
+    que ajudaram e que atrapalharam separadamente.
+    """
     report = EvaluationReport(
         split=split_name,
         model_path=Path(model_path) if model_path else Path("<memória>"),
         device=device,
+        constrained_decoding=constrained,
     )
 
     pending: list[tuple[str, np.ndarray, list[int], str]] = []
@@ -224,15 +272,20 @@ def evaluate_dataset(
         batch = torch.stack(tensors).to(device)
         with torch.inference_mode():
             probs = torch.softmax(model(batch), dim=1)
-            confidences, predictions = probs.max(dim=1)
 
-        preds = predictions.cpu().numpy().reshape(len(pending), 64)
-        confs = confidences.cpu().numpy().reshape(len(pending), 64)
+        matrices = probs.cpu().numpy().astype(np.float64).reshape(len(pending), 64, NUM_CLASSES)
 
         for row, (filename, _board, true_labels, expected_fen) in enumerate(pending):
-            pred_labels = [int(v) for v in preds[row]]
-            square_confs = [float(v) for v in confs[row]]
-            _record(report, filename, true_labels, pred_labels, square_confs, expected_fen)
+            prediction = prediction_from_probs(matrices[row], constrained=constrained)
+            _record(
+                report,
+                filename,
+                true_labels,
+                prediction.class_indices,
+                [float(value) for value in prediction.square_confidences],
+                expected_fen,
+                decode=prediction.decode,
+            )
         pending.clear()
 
     for entry_idx, entry in enumerate(dataset.entries):
@@ -263,6 +316,7 @@ def _record(
     pred_labels: list[int],
     square_confidences: list[float],
     expected_fen: str,
+    decode: DecodeResult | None = None,
 ) -> None:
     predicted_fen = fen_from_class_indices(pred_labels)
     result = BoardResult(
@@ -295,6 +349,34 @@ def _record(
     if check_position(expected_fen).is_fatal:
         report.illegal_expected += 1
 
+    if decode is not None and decode.changed_squares:
+        report.decoder_repaired_boards += 1
+        report.decoder_repaired_squares += len(decode.changed_squares)
+
+        # Comparar com o que o argmax teria dado e o unico jeito de separar reparo que
+        # ajudou de reparo que estragou. `changed_squares` guarda a classe original.
+        argmax_labels = list(pred_labels)
+        for square, base_class, _ in decode.changed_squares:
+            argmax_labels[square] = base_class
+        argmax_exact = argmax_labels == true_labels
+
+        if result.is_exact and not argmax_exact:
+            report.decoder_helped += 1
+        elif not result.is_exact and argmax_exact:
+            report.decoder_hurt += 1
+
+        for square, base_class, final_class in decode.changed_squares:
+            expected_class = true_labels[square]
+            if final_class == expected_class:
+                report.decoder_squares_fixed += 1
+            elif base_class == expected_class:
+                report.decoder_squares_broken += 1
+            else:
+                report.decoder_squares_still_wrong += 1
+
+    if decode is not None and not decode.constraints_satisfied:
+        report.decoder_gave_up += 1
+
 
 def class_distribution(dataset: BoardFenDataset) -> Counter[str]:
     counts: Counter[str] = Counter()
@@ -316,6 +398,7 @@ def evaluate_split(
     splits: dict[str, Any],
     device: str | None = None,
     boards_per_batch: int = 8,
+    constrained: bool = CONSTRAINED_DECODING,
 ) -> EvaluationReport:
     dataset = BoardFenDataset(csv_path, samples_dir, split=split, splits=splits)  # type: ignore[arg-type]
     if not dataset.entries:
@@ -329,4 +412,5 @@ def evaluate_split(
         split_name=split,
         model_path=Path(model_path),
         boards_per_batch=boards_per_batch,
+        constrained=constrained,
     )

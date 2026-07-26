@@ -14,7 +14,7 @@ from chess_diagram_ocr.board_detection import detect_boards
 from chess_diagram_ocr.config import DEFAULT_DATASET_CSV, DEFAULT_MODEL_PATH, DEFAULT_SAMPLES_DIR, find_default_pdf_path
 from chess_diagram_ocr.dataset import append_training_sample
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
-from chess_diagram_ocr.inference import load_model, predict_fen_from_board
+from chess_diagram_ocr.inference import load_model, predict_board
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.training import train_model
 
@@ -68,14 +68,18 @@ def run_ocr_for_boards(
     model, device = get_loaded_model(str(model_path))
     items: list[dict[str, Any]] = []
     for idx, (board_rgb, quad) in enumerate(boards_with_quads):
-        fen_pred, confidence = predict_fen_from_board(board_rgb, model, device, rotate_180=rotate_180)
+        prediction = predict_board(board_rgb, model, device, rotate_180=rotate_180)
         items.append(
             {
                 "index": idx,
                 "board_rgb": board_rgb,
                 "quad": quad.tolist() if quad is not None else None,
-                "fen_pred": fen_pred,
-                "confidence": confidence,
+                "fen_pred": prediction.fen_board,
+                "confidence": prediction.mean_confidence,
+                "min_confidence": prediction.min_confidence,
+                "uncertain_squares": prediction.uncertain_squares,
+                "is_legal": prediction.position.is_legal,
+                "problems": prediction.position.problems,
             }
         )
     _set_results(source_rgb=source_rgb, items=items, origin=origin)
@@ -223,7 +227,15 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
         )
     with nav4:
         sel_tmp = int(st.session_state["selected_result_one_based"]) - 1
-        st.caption(f"Confianca media: {items[sel_tmp]['confidence']:.3f}")
+        item_tmp = items[sel_tmp]
+        # O minimo vem primeiro: a media fica ~0,97 mesmo com erro e nao alertaria (S-10).
+        st.caption(
+            f"Confianca minima: {float(item_tmp.get('min_confidence', 0.0)):.3f}  |  "
+            f"media: {float(item_tmp.get('confidence', 0.0)):.3f}"
+        )
+        if item_tmp.get("is_legal") is False:
+            problems = "; ".join(item_tmp.get("problems") or ())
+            st.warning(f"Posicao ilegal: {problems or 'motivo nao identificado'}", icon="⚠️")
 
     st.session_state["selected_result_idx"] = int(st.session_state["selected_result_one_based"]) - 1
     sel = st.session_state["selected_result_idx"]

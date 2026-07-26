@@ -27,8 +27,8 @@ from chess_diagram_ocr.config import (
     find_default_pdf_path,
 )
 from chess_diagram_ocr.dataset import append_training_sample
-from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
-from chess_diagram_ocr.inference import load_model, predict_fen_from_board
+from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen, square_name
+from chess_diagram_ocr.inference import load_model, predict_board
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.pdf_to_pgn import default_pgn_output_path, save_pdf_positions_to_pgn
@@ -1097,10 +1097,10 @@ class ChessOcrTkApp:
             quad_for_item = quad
             if refine_detected_boards:
                 board_for_pred, quad_for_item = self._refine_board_from_quad(image_rgb=image_rgb, quad=quad)
-            fen_pred, confidence = predict_fen_from_board(
-                board_rgb=board_for_pred,
-                model=model,
-                device=device,
+            prediction = predict_board(
+                board_for_pred,
+                model,
+                device,
                 rotate_180=rotate_180,
             )
             items.append(
@@ -1108,8 +1108,12 @@ class ChessOcrTkApp:
                     "index": idx,
                     "board_rgb": board_for_pred,
                     "quad": quad_for_item.tolist() if quad_for_item is not None else None,
-                    "fen_pred": fen_pred,
-                    "confidence": confidence,
+                    "fen_pred": prediction.fen_board,
+                    "confidence": prediction.mean_confidence,
+                    "min_confidence": prediction.min_confidence,
+                    "uncertain_squares": prediction.uncertain_squares,
+                    "is_legal": prediction.position.is_legal,
+                    "problems": prediction.position.problems,
                 }
             )
         return items
@@ -1243,6 +1247,28 @@ class ChessOcrTkApp:
         idx = self._selected_index()
         self.fen_edits[idx] = self.fen_var.get().strip()
 
+    def _confidence_summary(self, idx: int) -> str:
+        """Resumo de confianca e legalidade do diagrama para a barra de status.
+
+        Mostra o minimo antes da media: a media fica ~0,97 mesmo quando ha erro, entao
+        so ela nunca alertaria o usuario (S-10).
+        """
+        item = self.result_items[idx]
+        parts = [f"conf min {float(item.get('min_confidence', 0.0)):.3f}"]
+        parts.append(f"media {float(item.get('confidence', 0.0)):.3f}")
+
+        uncertain = item.get("uncertain_squares") or []
+        if uncertain:
+            nomes = ", ".join(square_name(square) for square in uncertain[:4])
+            sufixo = f" +{len(uncertain) - 4}" if len(uncertain) > 4 else ""
+            parts.append(f"casas inseguras: {nomes}{sufixo}")
+
+        if item.get("is_legal") is False:
+            problems = item.get("problems") or ()
+            parts.append("ILEGAL" + (f" ({'; '.join(problems)})" if problems else ""))
+
+        return " | ".join(parts)
+
     def _refresh_for_selected_diagram(self) -> None:
         if not self.result_items:
             return
@@ -1250,8 +1276,7 @@ class ChessOcrTkApp:
         self.selected_diag_idx = idx
         self.selected_diag_var.set(idx + 1)
         self.fen_var.set(self.fen_edits[idx])
-        conf = float(self.result_items[idx].get("confidence", 0.0))
-        self._set_status(f"Diagrama {idx + 1}/{len(self.result_items)} | conf {conf:.3f}")
+        self._set_status(f"Diagrama {idx + 1}/{len(self.result_items)} | {self._confidence_summary(idx)}")
         self._update_result_views()
 
     def apply_fen_edit(self) -> None:

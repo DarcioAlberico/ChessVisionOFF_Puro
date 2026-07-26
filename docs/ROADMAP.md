@@ -1,6 +1,6 @@
 # Roadmap — ChessVisionOFF_Puro
 
-Base: [ANALISE.md](ANALISE.md). Detalhes de implementação: [SPEC.md](SPEC.md).
+Base: [ANALISE.md](ANALISE.md). Detalhes de implementação: [SPEC.md](SPEC.md). Números medidos: [BASELINE.md](BASELINE.md).
 
 Estimativas em dias de trabalho focado de uma pessoa. As fases são sequenciais por dependência: cada uma depende de algo que a anterior estabelece.
 
@@ -55,41 +55,77 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 
 ---
 
-## Fase 1 — Verdade e medição (3–5 dias)
+## Fase 1 — Verdade e medição ✅ concluída (2026-07-25)
 
 **Por que agora:** hoje não existe conjunto de teste. Qualquer mudança da Fase 2 em diante seria adivinhação.
 
-| # | Entrega | Ref. spec |
-|---|---|---|
-| 1.1 | `fen_utils.is_legal_position()` usando `Board.status()`; `is_valid_fen` passa a ser explicitamente sintática | S-05 |
-| 1.2 | CLI `tools/audit_dataset.py`: relatório de rótulos ilegais, duplicatas, imagens órfãs | S-06 |
-| 1.3 | Sanear os 100 rótulos ilegais (49 corrigir/remover; 51 `OPPOSITE_CHECK` → marcar lado a jogar preto) | S-06 |
-| 1.4 | Deduplicação por hash perceptual da imagem | S-06 |
-| 1.5 | Split treino/validação/teste **persistido em arquivo**, estável sob crescimento do dataset | S-07 |
-| 1.6 | `tools/evaluate.py`: acurácia por casa, **exata por tabuleiro**, por classe, matriz de confusão, taxa de posição ilegal | S-08 |
-| 1.7 | Baseline registrado em `docs/BASELINE.md` (número honesto, em conjunto de teste) | S-08 |
-| 1.8 | Testes de `fen_utils`, `dataset`, `inference`; fixtures versionados; teste de regressão de acurácia | S-09 |
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 1.1 | `fen_utils.is_legal_position()` usando `Board.status()`; `is_valid_fen` passa a ser explicitamente sintática | S-05 | ✅ `check_position` devolve os problemas em texto |
+| 1.2 | CLI de auditoria: relatório de rótulos ilegais, duplicatas, imagens órfãs | S-06 | ✅ `cvoff-audit` |
+| 1.3 | Sanear os 100 rótulos ilegais (49 corrigir/remover; 51 `OPPOSITE_CHECK` → marcar lado a jogar preto) | S-06 | ✅ 0 ilegais em 3.195 linhas |
+| 1.4 | Deduplicação por hash perceptual da imagem | S-06 | ✅ resolvida por agrupamento (ver abaixo) |
+| 1.5 | Split treino/validação/teste **persistido em arquivo**, estável sob crescimento do dataset | S-07 | ✅ 2.569 / 306 / 320 |
+| 1.6 | Harness de avaliação: acurácia por casa, **exata por tabuleiro**, por classe, matriz de confusão, taxa de posição ilegal | S-08 | ✅ `cvoff-eval` |
+| 1.7 | Baseline registrado em `docs/BASELINE.md` (número honesto, em conjunto de teste) | S-08 | ✅ [BASELINE.md](BASELINE.md) |
+| 1.8 | Testes de `fen_utils`, `dataset`, `inference`; fixtures versionados; teste de regressão de acurácia | S-09 | ⚠ parcial (ver abaixo) |
 
-**Critério de saída:** `python -m tools.evaluate --split test` imprime acurácia exata por tabuleiro; nenhum rótulo ilegal em `labels.csv`; baseline documentado.
+**Critério de saída:** atingido. `cvoff-eval --split test` imprime acurácia exata por tabuleiro; `cvoff-audit` reporta 0 rótulos ilegais; baseline medido com modelo que nunca viu o conjunto de teste.
+
+### Decisões e desvios da Fase 1
+
+- **1.2 mora no pacote, não em `tools/`.** O plano dizia `tools/audit_dataset.py`. Virou `cvoff-audit` (`cli/audit.py` + `audit.py`) porque a lógica de auditoria é testável e reutilizável — `find_duplicate_groups` é usada pelo `splits.py`. Um script solto em `tools/` não seria importável nem entraria no `mypy`. O mesmo vale para `cvoff-eval` no lugar de `tools/evaluate.py`.
+- **1.4 — os redundantes ficaram no dataset, de propósito.** A detecção acha 234 amostras redundantes em 220 grupos (~7%). Elas **não** foram removidas: o problema real não era ocupar espaço, era a mesma posição cair em treino *e* em teste. O `splits.py` resolve isso na raiz atribuindo split por **grupo**, não por arquivo. Verificado: **0 dos 220 grupos** está espalhado entre splits. Remover as cópias jogaria fora variações de recorte que são aumento de dados legítimo. Se um dia atrapalharem, `cvoff-audit --dedupe` aplica a remoção.
+
+### Pendências conhecidas da Fase 1
+
+- **1.8 (fixtures e regressão)** — os testes de `fen_utils`, `dataset`, `inference`, `decode`, `splits` e `audit` existem e rodam sem dados. Falta o **teste de regressão de acurácia**, que depende de fixtures versionados (S-09): hoje `data/samples/` está fora do git, então um teste de acurácia pularia na CI e daria falsa sensação de cobertura. O baseline em `docs/BASELINE.md` cumpre o papel de trava manual até lá.
+- **O checkpoint não guarda com que `val_loss` foi salvo.** Consequência prática, encontrada ao retomar o treino do baseline: retomar zera o controle de melhor época e a primeira época sobrescreve o arquivo mesmo se for pior. Hoje há um `warning` avisando; a correção é gravar metadados no checkpoint (item 5.3).
 
 ---
 
-## Fase 2 — Precisão do OCR (5–8 dias)
+## Fase 2 — Precisão do OCR (5–8 dias) — em andamento
 
 **Por que é o núcleo:** ganho de precisão sem retreinar o modelo. Todos os itens exploram informação que já existe e está sendo descartada.
 
-| # | Entrega | Ref. spec |
-|---|---|---|
-| 2.1 | `predict_board()` retorna distribuição por casa, não só o argmax | S-10 |
-| 2.2 | Confiança = mínimo/entropia por casa em vez de média; `min_square_confidence` no `DiagramPosition` | S-10 |
-| 2.3 | **Decodificação com restrições**: busca sobre as probabilidades por casa sujeita às regras (1 rei de cada cor, ≤8 peões, nada na 1ª/8ª fila, ≤16 peças) | S-11 |
-| 2.4 | Extração de diagrama por **imagem embutida** do PDF (`page.get_image_info`) com recorte da moldura/legenda | S-12 |
-| 2.5 | Detector híbrido: candidatos embutidos + contorno, desempate por legalidade e concordância | S-12 |
-| 2.6 | Auto-orientação por tentativa (0°/180°) escolhendo a mais plausível; `rotate_180` deixa de ser global | S-13 |
-| 2.7 | Unificar `reading_order` entre GUI e export (padrão único, configurável) | S-14 |
-| 2.8 | Gate de exportação: posições ilegais ou de baixa confiança vão para `*.review.pgn` separado | S-15 |
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 2.1 | `predict_board()` retorna distribuição por casa, não só o argmax | S-10 | ✅ `BoardPrediction.probs` |
+| 2.2 | Confiança = mínimo/entropia por casa em vez de média; `min_square_confidence` no `DiagramPosition` | S-10 | ✅ mínimo, entropia e `uncertain_squares` |
+| 2.3 | **Decodificação com restrições**: busca sobre as probabilidades por casa sujeita às regras (1 rei de cada cor, ≤8 peões, nada na 1ª/8ª fila, ≤16 peças) | S-11 | ✅ `decode.py` |
+| 2.4 | Extração de diagrama por **imagem embutida** do PDF (`page.get_image_info`) com recorte da moldura/legenda | S-12 | ⬜ |
+| 2.5 | Detector híbrido: candidatos embutidos + contorno, desempate por legalidade e concordância | S-12 | ⬜ |
+| 2.6 | Auto-orientação por tentativa (0°/180°) escolhendo a mais plausível; `rotate_180` deixa de ser global | S-13 | ⬜ |
+| 2.7 | Unificar `reading_order` entre GUI e export (padrão único, configurável) | S-14 | ⬜ |
+| 2.8 | Gate de exportação: posições ilegais ou de baixa confiança vão para `*.review.pgn` separado | S-15 | ⬜ |
 
 **Critério de saída:** zero posições ilegais no PGN exportado dos 27 PDFs; acurácia exata por tabuleiro no conjunto de teste ≥ baseline + margem medida; erros K↔Q do `1937 Kemeri.pdf` corrigidos.
+
+**Baseline a bater:** 0,9906 de acurácia exata por tabuleiro no split `test` — ver [BASELINE.md](BASELINE.md). Atenção ao que esse número não é: com 3 erros em 320 tabuleiros, meio ponto de diferença é ruído, e a acurácia num PDF nunca revisado é muito mais baixa (46 dos 47 tabuleiros do Kemeri ficam abaixo do limiar de aceite de 0,80).
+
+### O que 2.1 a 2.3 mediram
+
+Números completos em [BASELINE.md](BASELINE.md). O resumo:
+
+- **A média das confianças era o número errado.** No conjunto de teste ela fica em 0,9998 quando a casa está certa e 0,8855 quando está errada — mas 77% das casas são vazias e triviais, então a média do tabuleiro fica ~0,97 *mesmo com erro*. O mínimo por casa separa melhor: AUC 0,9159 contra 0,9033 da média. É por isso que a UI e os headers do PGN passaram a mostrar o mínimo primeiro.
+- **A decodificação com restrições não muda nada no conjunto de teste — e muda muito no PDF.** No teste o argmax já produz 0 posições ilegais em 320 tabuleiros, então a busca nunca é acionada: o conjunto de teste é limpo demais para medir a S-11. Em `1937 Kemeri.pdf` (páginas 10–69, 47 tabuleiros), a ilegalidade real cai de **16 para 2**. Em nenhuma medição uma casa que o argmax acertava foi estragada.
+
+### Decisão pendente: qual modelo o app usa
+
+`DEFAULT_MODEL_PATH` continua apontando para `models/piece_classifier.pt`, o checkpoint
+antigo treinado sobre todo o dataset. Ele é **pior** que o baseline no conjunto de teste
+(0,9875 contra 0,9906), apesar de tê-lo visto no treino.
+
+Trocar o default não é automático porque nenhuma das duas opções é a certa:
+
+- `piece_classifier_baseline.pt` mede generalização de forma honesta, mas foi treinado com
+  2.569 dos 3.195 tabuleiros — desperdiça 20% dos dados de propósito, para manter `test`
+  reservado.
+- O modelo **de produção** ideal treina em `train` + `val` (2.875 tabuleiros) e mantém só o
+  `test` de fora. Esse checkpoint ainda não existe.
+
+Enquanto não existir, o baseline serve para medir e o antigo para usar. Vale produzir o de
+produção junto com a S-27, que arruma o treino reprodutível.
 
 ---
 

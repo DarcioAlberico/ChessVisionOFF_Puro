@@ -213,6 +213,17 @@ def labels_from_fen(fen: str) -> list[int]:
     return labels
 
 
+def square_name(index: int) -> str:
+    """Nome algébrico da casa a partir do índice em ordem de leitura (0 = a8, 63 = h1).
+
+    É a mesma ordem de `labels_from_fen` e da saída do modelo. Existe para que mensagens
+    e a fila de revisão falem "e4" em vez de "casa 36".
+    """
+    if not 0 <= index < 64:
+        raise ValueError(f"Índice de casa fora do intervalo 0..63: {index}")
+    return f"{'abcdefgh'[index % 8]}{8 - index // 8}"
+
+
 def fen_from_class_indices(class_indices: Iterable[int]) -> str:
     classes = [IDX_TO_CLASS[int(idx)] for idx in class_indices]
     if len(classes) != 64:
