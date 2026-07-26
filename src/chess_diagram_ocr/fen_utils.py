@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import chess
@@ -211,6 +211,62 @@ def labels_from_fen(fen: str) -> list[int]:
             raise ValueError("Cada fila da FEN deve resolver para 8 casas.")
         labels.extend(PIECE_TO_IDX.get(piece, PIECE_TO_IDX["empty"]) for piece in expanded)
     return labels
+
+
+def square_name(index: int) -> str:
+    """Nome algébrico da casa a partir do índice em ordem de leitura (0 = a8, 63 = h1).
+
+    É a mesma ordem de `labels_from_fen` e da saída do modelo. Existe para que mensagens
+    e a fila de revisão falem "e4" em vez de "casa 36".
+    """
+    if not 0 <= index < 64:
+        raise ValueError(f"Índice de casa fora do intervalo 0..63: {index}")
+    return f"{'abcdefgh'[index % 8]}{8 - index // 8}"
+
+
+def square_from_reading_index(index: int) -> chess.Square:
+    """Índice em ordem de leitura (0 = a8) para casa do `python-chess` (0 = a1).
+
+    As duas numerações convivem no projeto e a conversão estava implícita em cada lugar que
+    precisava dela (`app_tkinter._draw_board_canvas` fazia `(7 - row) * 8 + col` na mão). O
+    heatmap da S-21 e o painel de legalidade precisam ir e voltar entre elas o tempo todo.
+    """
+    if not 0 <= index < 64:
+        raise ValueError(f"Índice de casa fora do intervalo 0..63: {index}")
+    return chess.square(index % 8, 7 - index // 8)
+
+
+def reading_index_from_square(square: chess.Square) -> int:
+    """Inversa de `square_from_reading_index`."""
+    if not 0 <= square < 64:
+        raise ValueError(f"Casa fora do intervalo 0..63: {square}")
+    return (7 - chess.square_rank(square)) * 8 + chess.square_file(square)
+
+
+def pawn_direction_score(class_indices: Sequence[int]) -> float | None:
+    """Quão "de pé" a posição parece, pela fila média dos peões (S-13).
+
+    Peão anda para frente e nunca volta: os brancos ficam nas filas baixas e os pretos nas
+    altas. A diferença entre as médias é ~+2 a +4 numa posição de verdade e mede o mesmo
+    valor com sinal trocado se o tabuleiro estiver de cabeça para baixo.
+
+    Devolve `None` quando falta peão de alguma cor -- aí o sinal não tem o que dizer, e
+    fingir um número seria pior que admitir isso.
+
+    Existe porque o `min_confidence` decide a orientação muito bem quando a leitura é boa e
+    **para de decidir** quando não é: medido no `1937 Kemeri.pdf`, dois diagramas cuja
+    leitura de pé era claramente correta tinham margem de confiança de 0,001 e 0,019 --
+    ruído. Este prior, ao contrário, olha a estrutura da posição e continua informativo
+    justamente aí (+3,8 contra -4,2 nos mesmos dois casos).
+    """
+    if len(class_indices) != 64:
+        raise ValueError("Esperadas exatamente 64 casas.")
+
+    white = [8 - index // 8 for index, value in enumerate(class_indices) if value == PIECE_TO_IDX["P"]]
+    black = [8 - index // 8 for index, value in enumerate(class_indices) if value == PIECE_TO_IDX["p"]]
+    if not white or not black:
+        return None
+    return sum(black) / len(black) - sum(white) / len(white)
 
 
 def fen_from_class_indices(class_indices: Iterable[int]) -> str:

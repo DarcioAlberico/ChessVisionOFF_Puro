@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 PIECE_CLASSES = [
     "empty",
@@ -22,6 +23,52 @@ IDX_TO_CLASS = {idx: name for name, idx in PIECE_TO_IDX.items()}
 BOARD_SIZE = 800
 CELL_SIZE = BOARD_SIZE // 8
 MODEL_IMAGE_SIZE = 64
+
+# Abaixo disso a casa entra em `BoardPrediction.uncertain_squares` (S-10). O valor e alto
+# de proposito: o modelo e confiante ate quando erra (media ~0,80 nas casas erradas contra
+# ~0,999 nas certas), entao um limiar baixo nao separaria nada.
+UNCERTAIN_SQUARE_THRESHOLD = 0.90
+
+# Decodificacao sujeita as regras do xadrez (S-11) em vez de argmax por casa.
+# O efeito medido esta em docs/BASELINE.md; ligado por padrao porque o argmax nao tem
+# nenhuma obrigacao de produzir posicao legal.
+CONSTRAINED_DECODING = True
+
+# Teto de casas que o reparo pode reescrever. Alto demais e o decodificador "conserta"
+# uma leitura ruim inventando uma posicao legal e errada -- pior que admitir a falha.
+MAX_DECODE_CHANGES = 6
+
+# Gate de exportacao (S-15): abaixo desta confianca minima por casa a posicao vai para o
+# arquivo de revisao em vez do PGN principal. Medido no split de teste: a confianca minima
+# fica >= 0,90 em quase todo tabuleiro exato, e a media nas casas erradas e ~0,75 -- entao
+# 0,80 pega a maior parte do erro sem mandar tabuleiro bom para revisao. Provisorio ate a
+# calibracao da S-28 dar um numero derivado da curva.
+ACCEPT_MIN_CONFIDENCE = 0.80
+
+OrientationMode = Literal["auto", "0", "180"]
+
+# Orientacao decidida por diagrama em vez de um checkbox global (S-13).
+DEFAULT_ORIENTATION_MODE: OrientationMode = "auto"
+
+# A partir desta diferenca de min_confidence entre as duas orientacoes, a confianca decide
+# sozinha. Medido no split de teste: a margem mediana e 0,925 e o percentil 5 e 0,220 --
+# acima de 0,20 a confianca acertou 100% das 320 vezes.
+ORIENTATION_DECISIVE_MARGIN = 0.20
+
+# Abaixo da margem decisiva a confianca vira ruido (medido no 1937 Kemeri: duas leituras de
+# pe corretas com margem de 0,001 e 0,019) e quem decide e a estrutura da posicao. Diferenca
+# minima, em filas, entre o prior de peoes de uma orientacao e o da outra para ele decidir.
+# 1,0 fila e conservador: nos casos reais medidos a diferenca foi de 5 a 8 filas.
+ORIENTATION_PAWN_PRIOR_MARGIN = 1.0
+
+ReadingOrder = Literal["row", "column"]
+
+# Ordem em que os diagramas de uma pagina sao numerados (S-14). Um unico padrao aqui e o
+# que faz o "diagrama 2" da GUI ser o mesmo do header [Diagram "2"] no PGN: antes a GUI
+# usava "row" (padrao de detect_boards) e a exportacao passava "column", e numa pagina de
+# duas colunas a numeracao divergia -- justamente quando o usuario quer conferir.
+# "column" e o correto para a maioria dos livros de xadrez, que sao de duas colunas.
+DEFAULT_READING_ORDER: ReadingOrder = "column"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET_CSV = PROJECT_ROOT / "data" / "labels.csv"

@@ -120,6 +120,14 @@ def train_model(
     elif Path(model_path).exists():
         model.load_state_dict(load_state_dict(Path(model_path), map_location=device), strict=False)
         logger.info("Retomando treino a partir de %s.", model_path)
+        # O checkpoint nao guarda a val_loss com que foi salvo (pendencia da S-27), entao
+        # `best_val_loss` recomeca em infinito: a primeira epoca sempre grava, mesmo se for
+        # pior que o que estava no disco. Avisar e o minimo enquanto isso nao muda.
+        logger.warning(
+            "Retomar zera o controle de melhor época: a primeira época vai sobrescrever %s "
+            "mesmo se tiver val_loss pior. Faça uma cópia antes se o checkpoint atual importa.",
+            Path(model_path).name,
+        )
 
     logger.info("Treinando em %s com %d tabuleiros (%d casas).", device, len(dataset.entries), len(dataset))
     if val_dataset is not None:

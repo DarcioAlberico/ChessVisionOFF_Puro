@@ -7,9 +7,15 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 
 from chess_diagram_ocr.config import BOARD_SIZE
-from chess_diagram_ocr.dataset import BoardFenDataset, append_training_sample
+from chess_diagram_ocr.dataset import (
+    BoardFenDataset,
+    DatasetEntry,
+    append_training_sample,
+    migrate_labels_csv,
+)
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 FATAL = "4n3/8/8/4B2n/8/8/8/8"  # sem reis
@@ -239,6 +245,150 @@ class AppendSampleTests(unittest.TestCase):
 
             written = cv2.imread(str(path))
             self.assertEqual(written.shape[:2], (BOARD_SIZE, BOARD_SIZE))
+
+
+class LabelSchemaTests(unittest.TestCase):
+    """S-19: as colunas novas entram sem quebrar os 3.195 rótulos que já existem."""
+
+    def test_csv_antigo_carrega_com_campos_vazios(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            samples = root / "samples"
+            samples.mkdir()
+            _write_board(samples, "a.png")
+            _write_csv(root / "labels.csv", [("a.png", LEGAL)])
+
+            dataset = BoardFenDataset(root / "labels.csv", samples)
+
+            self.assertEqual(len(dataset.entries), 1)
+            self.assertEqual(dataset.entries[0].side_to_move, "")
+            self.assertEqual(dataset.entries[0].source_pdf, "")
+
+    def test_csv_novo_carrega_com_os_campos_preenchidos(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            samples = root / "samples"
+            samples.mkdir()
+            _write_board(samples, "a.png")
+            (root / "labels.csv").write_text(
+                "filename,fen,side_to_move,source_pdf,source_page,source_diagram,"
+                "detection_source,created_at,corrected_by\n"
+                f"a.png,{LEGAL},b,livro.pdf,20,1,embedded,2026-07-26T00:00:00Z,\n",
+                encoding="utf-8",
+            )
+
+            entry = BoardFenDataset(root / "labels.csv", samples).entries[0]
+
+            self.assertEqual(entry.side_to_move, "b")
+            self.assertEqual(entry.source_pdf, "livro.pdf")
+            self.assertEqual(entry.source_page, "20")
+            self.assertEqual(entry.detection_source, "embedded")
+            self.assertEqual(entry.corrected_by, "")
+
+    def test_lado_a_jogar_da_fen_vale_quando_a_coluna_esta_vazia(self) -> None:
+        self.assertEqual(DatasetEntry(filename="a.png", fen=f"{LEGAL} b - - 0 1").resolved_side_to_move, "b")
+        self.assertEqual(DatasetEntry(filename="a.png", fen=LEGAL).resolved_side_to_move, "")
+
+    def test_gravacao_registra_lado_a_jogar_e_origem(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+
+            append_training_sample(
+                board,
+                LEGAL,
+                root / "labels.csv",
+                root / "samples",
+                side_to_move="b",
+                source_pdf="livro.pdf",
+                source_page=20,
+                source_diagram=2,
+                detection_source="contour",
+            )
+
+            frame = pd.read_csv(root / "labels.csv")
+            self.assertEqual(frame.loc[0, "side_to_move"], "b")
+            self.assertEqual(frame.loc[0, "source_pdf"], "livro.pdf")
+            self.assertEqual(frame.loc[0, "source_page"], 20)
+            self.assertEqual(frame.loc[0, "detection_source"], "contour")
+            # A coluna e a FEN sao gravadas juntas: nao pode haver duas verdades no arquivo.
+            self.assertEqual(str(frame.loc[0, "fen"]).split()[1], "b")
+
+    def test_gravar_no_csv_antigo_preserva_as_linhas_existentes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_csv(root / "labels.csv", [("antiga.png", LEGAL)])
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+
+            append_training_sample(board, LEGAL, root / "labels.csv", root / "samples", side_to_move="b")
+
+            frame = pd.read_csv(root / "labels.csv")
+            self.assertEqual(len(frame), 2)
+            self.assertEqual(frame.loc[0, "filename"], "antiga.png")
+            self.assertEqual(list(frame.columns)[:3], ["filename", "fen", "side_to_move"])
+
+
+class MigrateLabelsTests(unittest.TestCase):
+    def test_migracao_deduz_lado_a_jogar_pela_legalidade(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_csv(root / "labels.csv", [("a.png", TURN_FLIP), ("b.png", LEGAL)])
+
+            counters = migrate_labels_csv(root / "labels.csv")
+
+            frame = pd.read_csv(root / "labels.csv").fillna("")
+            self.assertEqual(list(frame["side_to_move"]), ["b", ""])
+            self.assertEqual(counters["inferido"], 1)
+            self.assertEqual(counters["sem_resposta"], 1)
+
+    def test_migracao_nao_inventa_brancas_para_quem_nao_responde(self) -> None:
+        """Gravar `w` aqui repetiria o erro que a S-19 existe para corrigir."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_csv(root / "labels.csv", [("a.png", LEGAL)])
+
+            migrate_labels_csv(root / "labels.csv")
+
+            frame = pd.read_csv(root / "labels.csv").fillna("")
+            self.assertEqual(frame.loc[0, "side_to_move"], "")
+
+    def test_migracao_respeita_lado_ja_declarado_na_fen(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_csv(root / "labels.csv", [("a.png", f"{LEGAL} b - - 0 1")])
+
+            counters = migrate_labels_csv(root / "labels.csv")
+
+            self.assertEqual(pd.read_csv(root / "labels.csv").loc[0, "side_to_move"], "b")
+            self.assertEqual(counters["ja_tinha"], 1)
+
+    def test_migracao_grava_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_csv(root / "labels.csv", [("a.png", LEGAL)])
+
+            migrate_labels_csv(root / "labels.csv")
+
+            self.assertTrue(list(root.glob("labels.csv.bak-*")))
+
+    def test_migracao_e_idempotente(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_csv(root / "labels.csv", [("a.png", TURN_FLIP)])
+
+            migrate_labels_csv(root / "labels.csv", backup=False)
+            primeira = (root / "labels.csv").read_text(encoding="utf-8")
+            migrate_labels_csv(root / "labels.csv", backup=False)
+
+            self.assertEqual(primeira, (root / "labels.csv").read_text(encoding="utf-8"))
+
+    def test_csv_sem_as_colunas_obrigatorias_e_recusado(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "labels.csv").write_text("filename\na.png\n", encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                migrate_labels_csv(root / "labels.csv", backup=False)
 
 
 if __name__ == "__main__":

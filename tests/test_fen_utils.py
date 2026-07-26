@@ -11,6 +11,7 @@ from chess_diagram_ocr.fen_utils import (
     is_legal_position,
     is_syntactically_valid_fen,
     labels_from_fen,
+    pawn_direction_score,
 )
 
 # Posicoes legais de referencia.
@@ -137,6 +138,34 @@ class FenRoundTripTests(unittest.TestCase):
     def test_fen_from_class_indices_rejects_wrong_length(self) -> None:
         with self.assertRaises(ValueError):
             fen_from_class_indices([0] * 63)
+
+
+class PawnDirectionScoreTests(unittest.TestCase):
+    """O prior estrutural que decide a orientação quando a confiança empata (S-13)."""
+
+    def test_initial_position_scores_strongly_upright(self) -> None:
+        # Peoes brancos na fila 2, pretos na 7: diferenca de 5 filas.
+        self.assertAlmostEqual(pawn_direction_score(labels_from_fen(INITIAL)), 5.0, places=6)
+
+    def test_score_flips_sign_when_the_board_is_upside_down(self) -> None:
+        upright = labels_from_fen(INITIAL)
+        flipped = list(reversed(upright))
+
+        score_upright = pawn_direction_score(upright)
+        score_flipped = pawn_direction_score(flipped)
+
+        assert score_upright is not None and score_flipped is not None
+        self.assertAlmostEqual(score_upright, -score_flipped, places=6)
+
+    def test_returns_none_when_a_colour_has_no_pawn(self) -> None:
+        """Sem peão de um dos lados o prior não tem o que dizer -- e diz isso."""
+        for fen in ("4k3/8/8/8/8/8/PPPPPPPP/4K3", "4k3/pppppppp/8/8/8/8/8/4K3", "4k3/8/8/8/8/8/8/4K3"):
+            with self.subTest(fen=fen):
+                self.assertIsNone(pawn_direction_score(labels_from_fen(fen)))
+
+    def test_rejects_wrong_length(self) -> None:
+        with self.assertRaises(ValueError):
+            pawn_direction_score([0] * 63)
 
 
 if __name__ == "__main__":

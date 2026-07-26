@@ -5,7 +5,13 @@ import json
 import logging
 from pathlib import Path
 
-from ..config import DEFAULT_DATASET_CSV, DEFAULT_MODEL_PATH, DEFAULT_SAMPLES_DIR, PROJECT_ROOT
+from ..config import (
+    DEFAULT_DATASET_CSV,
+    DEFAULT_MODEL_PATH,
+    DEFAULT_SAMPLES_DIR,
+    MAX_DECODE_CHANGES,
+    PROJECT_ROOT,
+)
 from ..evaluation import EvaluationReport, evaluate_split
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
@@ -28,6 +34,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--batch-boards", type=int, default=8, help="Tabuleiros por lote de inferência.")
     parser.add_argument("--json", type=Path, default=None, help="Grava as métricas em JSON.")
     parser.add_argument("--show-errors", type=int, default=5, help="Tabuleiros com erro exibidos em detalhe.")
+    parser.add_argument(
+        "--no-constrained-decoding",
+        action="store_true",
+        help="Avalia com argmax puro, sem a decodificacao restrita (S-11).",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -53,6 +64,20 @@ def _print_report(report: EvaluationReport, show_errors: int) -> None:
     print("  Legalidade")
     print(f"    Predições ilegais ............ {report.illegal_predictions} ({report.illegal_rate:.4f})")
     print(f"    Rótulos ilegais no split ..... {report.illegal_expected}")
+    print()
+    print("  Decodificação")
+    if not report.constrained_decoding:
+        print("    Argmax puro (--no-constrained-decoding)")
+    else:
+        print(f"    Restrita (S-11), até {MAX_DECODE_CHANGES} trocas")
+        print(f"    Tabuleiros reparados ......... {report.decoder_repaired_boards}")
+        print(f"    Casas reescritas ............. {report.decoder_repaired_squares}")
+        print(f"      viraram a classe correta ... {report.decoder_squares_fixed}   <-- ganho")
+        print(f"      estragaram casa correta .... {report.decoder_squares_broken}   <-- custo")
+        print(f"      erro trocado por erro ...... {report.decoder_squares_still_wrong}")
+        print(f"    Tabuleiros que viraram exatos  {report.decoder_helped}")
+        print(f"    Tabuleiros exatos perdidos ... {report.decoder_hurt}   <-- tem de ser 0")
+        print(f"    Buscas sem solução ........... {report.decoder_gave_up}")
     print()
     print("  Calibração da confiança")
     metrics = report.as_dict()
@@ -111,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         splits=splits,
         device=args.device,
         boards_per_batch=args.batch_boards,
+        constrained=not args.no_constrained_decoding,
     )
     _print_report(report, show_errors=args.show_errors)
 

@@ -19,6 +19,9 @@ data/samples/*
 !data/samples/.gitkeep
 data/app_tkinter_state.json
 data/review_queue.json
+# Miniaturas dos diagramas da fila de revisao (S-22): recorte de PDF protegido, e
+# reconstruivel varrendo o livro de novo.
+data/review_cache/
 data/quarantine.csv
 data/labels.csv.bak-*
 
