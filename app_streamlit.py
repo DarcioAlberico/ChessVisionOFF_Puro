@@ -19,6 +19,7 @@ from chess_diagram_ocr.config import (
     find_default_pdf_path,
 )
 from chess_diagram_ocr.dataset import append_training_sample
+from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
 from chess_diagram_ocr.inference import load_model, predict_with_orientation
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
@@ -443,10 +444,17 @@ with tab_pdf:
                         page_rgb = render_pdf_page_cached(pdf_source, int(st.session_state["page_index"]), dpi=dpi)
                     else:
                         page_rgb = page_preview_rgb
-                    boards = detect_boards(
-                        image_rgb=page_rgb,
-                        max_boards=(int(max_boards) if run_all else 1),
-                    )
+                    # Pagina de PDF usa o detector das duas fontes, o mesmo da exportacao
+                    # (S-12): GUI e PGN precisam recortar e numerar o mesmo diagrama.
+                    boards = [
+                        (candidate.board_rgb, None)
+                        for candidate in detect_diagrams_in_pdf_page(
+                            pdf_source,
+                            int(st.session_state["page_index"]),
+                            page_rgb,
+                            max_boards=(int(max_boards) if run_all else 1),
+                        )
+                    ]
                     run_ocr_for_boards(
                         source_rgb=page_rgb,
                         boards_with_quads=boards,

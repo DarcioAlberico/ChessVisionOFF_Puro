@@ -163,7 +163,7 @@ class PdfToPgnTests(unittest.TestCase):
                 self.assertIn(f'[OCRRotation "{rotation}"]', payload)
 
     @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
-    @patch("chess_diagram_ocr.pdf_to_pgn.detect_boards")
+    @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
     @patch("chess_diagram_ocr.pdf_to_pgn._get_pdf_page_count")
@@ -172,7 +172,7 @@ class PdfToPgnTests(unittest.TestCase):
         mock_get_pdf_page_count,
         mock_load_model,
         mock_render_pdf_page,
-        mock_detect_boards,
+        mock_detect,
         mock_predict,
     ) -> None:
         mock_get_pdf_page_count.return_value = 3
@@ -183,10 +183,10 @@ class PdfToPgnTests(unittest.TestCase):
             np.zeros((10, 10, 3), dtype=np.uint8),
         ]
         board_rgb = np.zeros((800, 800, 3), dtype=np.uint8)
-        mock_detect_boards.side_effect = [
-            [(board_rgb, None), (board_rgb, None)],
+        mock_detect.side_effect = [
+            [board_rgb, board_rgb],
             [],
-            [(board_rgb, None)],
+            [board_rgb],
         ]
         mock_predict.side_effect = [
             oriented_for(EMPTY_BOARD, 0.90),
@@ -214,12 +214,12 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertEqual(positions[1].problems, ())
 
         self.assertEqual(mock_render_pdf_page.call_count, 3)
-        self.assertEqual(mock_detect_boards.call_count, 3)
-        self.assertTrue(all(call.kwargs.get("reading_order") == "column" for call in mock_detect_boards.call_args_list))
+        self.assertEqual(mock_detect.call_count, 3)
+        self.assertTrue(all(call.kwargs.get("reading_order") == "column" for call in mock_detect.call_args_list))
         self.assertEqual(mock_predict.call_count, 3)
 
     @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
-    @patch("chess_diagram_ocr.pdf_to_pgn.detect_boards")
+    @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
     @patch("chess_diagram_ocr.pdf_to_pgn._get_pdf_page_count")
@@ -228,7 +228,7 @@ class PdfToPgnTests(unittest.TestCase):
         mock_get_pdf_page_count,
         mock_load_model,
         mock_render_pdf_page,
-        mock_detect_boards,
+        mock_detect,
         mock_predict,
     ) -> None:
         mock_get_pdf_page_count.return_value = 2
@@ -238,8 +238,8 @@ class PdfToPgnTests(unittest.TestCase):
             np.zeros((10, 10, 3), dtype=np.uint8),
         ]
         board_rgb = np.zeros((800, 800, 3), dtype=np.uint8)
-        mock_detect_boards.side_effect = [
-            [(board_rgb, None)],
+        mock_detect.side_effect = [
+            [board_rgb],
             [],
         ]
         mock_predict.return_value = oriented_for(EMPTY_BOARD, 0.9)

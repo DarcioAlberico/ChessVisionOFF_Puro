@@ -8,7 +8,6 @@ from typing import Literal
 import chess.pgn
 import numpy as np
 
-from .board_detection import detect_boards
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_MODEL_PATH,
@@ -207,6 +206,31 @@ def _render_pdf_page(pdf_source: PdfSource, page_index: int, dpi: int) -> np.nda
     return render_pdf_page(pdf_source, page_index, dpi=dpi)
 
 
+def _detect_page_diagrams(
+    pdf_source: PdfSource,
+    page_index: int,
+    page_rgb: np.ndarray,
+    *,
+    max_boards: int,
+    reading_order: ReadingOrder,
+) -> list[np.ndarray]:
+    """Recortes de diagrama da página, pelo detector híbrido (S-12).
+
+    Indireção pelo mesmo motivo de `_render_pdf_page`: deixar os testes trocarem a detecção
+    sem precisar de PDF de verdade.
+    """
+    from .detection import detect_diagrams_in_pdf_page
+
+    candidates = detect_diagrams_in_pdf_page(
+        pdf_source,
+        page_index,
+        page_rgb,
+        max_boards=max_boards,
+        reading_order=reading_order,
+    )
+    return [candidate.board_rgb for candidate in candidates]
+
+
 def scan_pdf_positions(
     pdf_source: PdfSource,
     model_path: Path = DEFAULT_MODEL_PATH,
@@ -243,8 +267,14 @@ def scan_pdf_positions(
 
     for page_index in range(start_page, last_page_exclusive):
         page_rgb = _render_pdf_page(pdf_source, page_index, dpi=dpi)
-        boards = detect_boards(page_rgb, max_boards=max_boards_per_page, reading_order=reading_order)
-        for diagram_index, (board_rgb, _quad) in enumerate(boards, start=1):
+        boards = _detect_page_diagrams(
+            pdf_source,
+            page_index,
+            page_rgb,
+            max_boards=max_boards_per_page,
+            reading_order=reading_order,
+        )
+        for diagram_index, board_rgb in enumerate(boards, start=1):
             oriented = predict_with_orientation(
                 board_rgb,
                 model,

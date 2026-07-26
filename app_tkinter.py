@@ -28,6 +28,7 @@ from chess_diagram_ocr.config import (
     find_default_pdf_path,
 )
 from chess_diagram_ocr.dataset import append_training_sample
+from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen, square_name
 from chess_diagram_ocr.inference import load_model, predict_with_orientation
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
@@ -1021,6 +1022,9 @@ class ChessOcrTkApp:
             origin=f"pdf:{self.pdf_name}:page:{self.page_index_var.get()}",
             max_boards=max_boards,
             refine_detected_boards=True,
+            # Contexto do PDF: habilita o detector hibrido (S-12), o mesmo que a exportacao
+            # usa. Sem ele, a GUI e o PGN poderiam recortar diagramas diferentes.
+            pdf_page=(self.pdf_source, int(self.page_index_var.get())),
         )
 
     def ocr_local_best(self) -> None:
@@ -1098,8 +1102,19 @@ class ChessOcrTkApp:
         orientation: str,
         fallback_to_full_image: bool = False,
         refine_detected_boards: bool = False,
+        pdf_page: tuple[Any, int] | None = None,
     ) -> list[dict[str, Any]]:
-        boards = detect_boards(image_rgb=image_rgb, max_boards=max_boards)
+        if pdf_page is not None:
+            # Pagina de PDF: usa o detector das duas fontes, igual a exportacao (S-12).
+            source, page_index = pdf_page
+            boards = [
+                (candidate.board_rgb, None)
+                for candidate in detect_diagrams_in_pdf_page(source, page_index, image_rgb, max_boards=max_boards)
+            ]
+            # O recorte embutido ja vem alinhado pelo warp; refinar de novo so acrescenta erro.
+            refine_detected_boards = False
+        else:
+            boards = detect_boards(image_rgb=image_rgb, max_boards=max_boards)
         if fallback_to_full_image and not boards:
             boards = [(image_rgb, None)]
         if not boards:
@@ -1145,6 +1160,7 @@ class ChessOcrTkApp:
         max_boards: int,
         fallback_to_full_image: bool = False,
         refine_detected_boards: bool = False,
+        pdf_page: tuple[Any, int] | None = None,
     ) -> None:
         if self._is_running_ocr:
             self._set_status("OCR em andamento. Aguarde a conclusao.")
@@ -1165,6 +1181,7 @@ class ChessOcrTkApp:
                 "orientation": orientation,
                 "fallback_to_full_image": fallback_to_full_image,
                 "refine_detected_boards": refine_detected_boards,
+                "pdf_page": pdf_page,
             },
             daemon=True,
         )
@@ -1180,6 +1197,7 @@ class ChessOcrTkApp:
         orientation: str,
         fallback_to_full_image: bool,
         refine_detected_boards: bool,
+        pdf_page: tuple[Any, int] | None = None,
     ) -> None:
         try:
             self._set_status("Detectando diagramas...")
@@ -1190,6 +1208,7 @@ class ChessOcrTkApp:
                 orientation=orientation,
                 fallback_to_full_image=fallback_to_full_image,
                 refine_detected_boards=refine_detected_boards,
+                pdf_page=pdf_page,
             )
             self.root.after(0, lambda result_items=items, source=origin: self._apply_ocr_result_items(result_items, source))
         except Exception as exc:

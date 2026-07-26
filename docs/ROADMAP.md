@@ -93,8 +93,8 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 | 2.1 | `predict_board()` retorna distribuição por casa, não só o argmax | S-10 | ✅ `BoardPrediction.probs` |
 | 2.2 | Confiança = mínimo/entropia por casa em vez de média; `min_square_confidence` no `DiagramPosition` | S-10 | ✅ mínimo, entropia e `uncertain_squares` |
 | 2.3 | **Decodificação com restrições**: busca sobre as probabilidades por casa sujeita às regras (1 rei de cada cor, ≤8 peões, nada na 1ª/8ª fila, ≤16 peças) | S-11 | ✅ `decode.py` |
-| 2.4 | Extração de diagrama por **imagem embutida** do PDF (`page.get_image_info`) com recorte da moldura/legenda | S-12 | ⬜ |
-| 2.5 | Detector híbrido: candidatos embutidos + contorno, desempate por legalidade e concordância | S-12 | ⬜ |
+| 2.4 | Extração de diagrama por **imagem embutida** do PDF (`page.get_image_info`) com recorte da moldura/legenda | S-12 | ✅ `detection/embedded.py` |
+| 2.5 | Detector híbrido: candidatos embutidos + contorno, desempate por legalidade e concordância | S-12 | ✅ `detection/hybrid.py`, com desempate diferente (ver abaixo) |
 | 2.6 | Auto-orientação por tentativa (0°/180°) escolhendo a mais plausível; `rotate_180` deixa de ser global | S-13 | ✅ `predict_with_orientation` |
 | 2.7 | Unificar `reading_order` entre GUI e export (padrão único, configurável) | S-14 | ✅ `DEFAULT_READING_ORDER` + header `[ReadingOrder]` |
 | 2.8 | Gate de exportação: posições ilegais ou de baixa confiança vão para `*.review.pgn` separado | S-15 | ✅ `ExportReport` |
@@ -110,6 +110,62 @@ Números completos em [BASELINE.md](BASELINE.md). O resumo:
 - **A média das confianças era o número errado.** No conjunto de teste ela fica em 0,999 quando o tabuleiro está exato e ~0,75 nas casas erradas — mas 77% das casas são vazias e triviais, então a média do tabuleiro fica ~0,97 *mesmo com erro*. O mínimo por casa separa muito melhor: AUC 0,919 contra 0,905 da média. É por isso que a barra de status e os headers do PGN passaram a mostrar o mínimo primeiro.
 - **A decodificação com restrições não muda nada no conjunto de teste — e muda muito no PDF.** No teste o argmax já produz 0 posições ilegais em 320 tabuleiros, então a busca nunca é acionada: o conjunto de teste é limpo demais para medir a S-11. Em `1937 Kemeri.pdf` (páginas 10–69, 47 tabuleiros), a ilegalidade real cai de **16 para 2**. Em nenhuma medição uma casa que o argmax acertava foi estragada.
 - **2.7 era um bug de configuração, não de algoritmo.** `detect_boards` tinha `"row"` por padrão e a exportação passava `"column"`: numa página de duas colunas o `[Diagram "2"]` do PGN apontava para outra posição que a da tela. Os frontends nunca passavam o parâmetro, então herdavam o padrão errado.
+
+### 2.4 e 2.5 — o levantamento mudou o peso do item, e a arbitragem mudou de forma
+
+**Primeiro, quantos livros isso alcança.** A S-12 mede três PDFs e conclui que o diagrama vem
+como imagem embutida. Levantados os 27, amostrando 12 páginas do meio de cada:
+
+| o que a página tem | livros | a imagem embutida serve? |
+|---|---|---|
+| imagem quadrada por diagrama | **10** | sim |
+| a página inteira é um scan | **12** | não: uma imagem só, cobrindo tudo |
+| diagrama vetorial/fonte | 2 | não: não há imagem |
+| misto | 3 | às vezes |
+
+Ou seja, o caminho por contorno **não** é fallback para caso exótico, é a maioria do acervo.
+Isso não derruba o item — os 10 incluem justamente os piores para o contorno (`1937 Kemeri`,
+`AAGAARD`, `Schiller`, `Karpov`) — mas muda o que precisa ser robusto: o híbrido tem de sair
+idêntico ao detector atual nos 14 livros sem imagem embutida, e sai (verificado).
+
+**Segundo, as duas fontes não competem pela mesma coisa.** A S-12 propõe, quando elas
+discordam, ler as duas e arbitrar por legalidade. Medido em 10 páginas de cada livro:
+
+| livro | embutida crua | embutida + warp | contorno puro |
+|---|---|---|---|
+| `1937 Kemeri` | 0,478 / 0 ilegais | **0,538 / 0** | 0,431 / **2 ilegais** |
+| `Schiller` | 0,137 / 0 | **0,360 / 0** | 0,257 / 0 |
+| `Karpov 1` | 0,906 / 0 | **0,962** / 1 | 0,948 / 0 |
+| `Euwe Band 1-2` | 0,010 / 1 | **0,025 / 1** | 0,014 / 2 |
+
+O bbox embutido é melhor em **localizar** (sabe o que é diagrama e o que é figura); o warp por
+contorno é melhor em **alinhar** (acha os cantos exatos, e recortar o bbox cru deixa a grade
+8×8 fora de registro). Então não há o que arbitrar: a composição certa é **uma por candidato**
+— bbox para saber onde olhar, contorno rodado *dentro* dele para alinhar. Sai melhor que as
+duas fontes isoladas em 4 dos 5 livros, empata no quinto, e não paga inferência dupla.
+
+**Terceiro, a tensão que não tem solução limpa.** Duas medições se contradizem:
+
+- Unir as fontes cegamente traz de volta o falso positivo que a embutida evitava (Kemeri: a
+  figura que rende `8/8/8/8/8/8/8/8` volta pela porta do contorno).
+- Mas tratar a lista embutida como completa **perde diagrama de verdade**: no `Schiller` e no
+  `Karpov`, 4 por livro que o contorno acha não estão declarados como imagem.
+
+Tentei um prior de tamanho para separar os dois casos; ele recupera o Schiller e o Karpov mas
+não pega o falso positivo do Kemeri, que tem tamanho parecido com os diagramas reais. Diante
+disso escolhi **recall**: diagrama perdido na detecção desaparece em silêncio e nada
+downstream recupera, enquanto leitura ilegal é exatamente o que o gate da S-15 rejeita — e de
+fato os 2 do Kemeri aparecem como "2 rejeitados" no export. Precisão é problema do gate,
+recall é problema do detector.
+
+Resultado no acervo (9 livros dos três grupos, 10 páginas cada): **281 diagramas detectados
+contra 281** do detector atual, mesmo número de leituras-lixo, e confiança mínima média de
+0,691 para **0,716**. No produto, o export das páginas 10–69 do Kemeri vai de **1 diagrama
+aceito para 5**; o Reinfeld segue em 40 de 40, sem regressão.
+
+**Consequência de projeto:** GUI e exportação passam a usar o mesmo
+`detect_diagrams_in_pdf_page`. Deixar a GUI no contorno enquanto o export usa o híbrido
+recriaria, no recorte, exatamente o bug que a S-14 corrigiu na numeração.
 
 ### 2.6 — o que a medição mudou no plano, e a armadilha que ela quase deixou passar
 
