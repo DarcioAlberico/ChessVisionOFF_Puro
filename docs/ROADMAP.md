@@ -96,19 +96,20 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 | 2.4 | Extração de diagrama por **imagem embutida** do PDF (`page.get_image_info`) com recorte da moldura/legenda | S-12 | ⬜ |
 | 2.5 | Detector híbrido: candidatos embutidos + contorno, desempate por legalidade e concordância | S-12 | ⬜ |
 | 2.6 | Auto-orientação por tentativa (0°/180°) escolhendo a mais plausível; `rotate_180` deixa de ser global | S-13 | ⬜ |
-| 2.7 | Unificar `reading_order` entre GUI e export (padrão único, configurável) | S-14 | ⬜ |
-| 2.8 | Gate de exportação: posições ilegais ou de baixa confiança vão para `*.review.pgn` separado | S-15 | ⬜ |
+| 2.7 | Unificar `reading_order` entre GUI e export (padrão único, configurável) | S-14 | ✅ `DEFAULT_READING_ORDER` + header `[ReadingOrder]` |
+| 2.8 | Gate de exportação: posições ilegais ou de baixa confiança vão para `*.review.pgn` separado | S-15 | ✅ `ExportReport` |
 
 **Critério de saída:** zero posições ilegais no PGN exportado dos 27 PDFs; acurácia exata por tabuleiro no conjunto de teste ≥ baseline + margem medida; erros K↔Q do `1937 Kemeri.pdf` corrigidos.
 
-**Baseline a bater:** 0,9906 de acurácia exata por tabuleiro no split `test` — ver [BASELINE.md](BASELINE.md). Atenção ao que esse número não é: com 3 erros em 320 tabuleiros, meio ponto de diferença é ruído, e a acurácia num PDF nunca revisado é muito mais baixa (46 dos 47 tabuleiros do Kemeri ficam abaixo do limiar de aceite de 0,80).
+**Baseline a bater:** 0,9906 de acurácia exata por tabuleiro no split `test` — ver [BASELINE.md](BASELINE.md). Atenção ao que esse número não é: com 3 erros em 320 tabuleiros, meio ponto de diferença é ruído, e a acurácia num PDF nunca revisado é muito mais baixa (46 dos 47 tabuleiros do Kemeri ficam abaixo do limiar de aceite).
 
-### O que 2.1 a 2.3 mediram
+### O que a primeira metade da Fase 2 mediu
 
 Números completos em [BASELINE.md](BASELINE.md). O resumo:
 
-- **A média das confianças era o número errado.** No conjunto de teste ela fica em 0,9998 quando a casa está certa e 0,8855 quando está errada — mas 77% das casas são vazias e triviais, então a média do tabuleiro fica ~0,97 *mesmo com erro*. O mínimo por casa separa melhor: AUC 0,9159 contra 0,9033 da média. É por isso que a UI e os headers do PGN passaram a mostrar o mínimo primeiro.
+- **A média das confianças era o número errado.** No conjunto de teste ela fica em 0,999 quando o tabuleiro está exato e ~0,75 nas casas erradas — mas 77% das casas são vazias e triviais, então a média do tabuleiro fica ~0,97 *mesmo com erro*. O mínimo por casa separa muito melhor: AUC 0,919 contra 0,905 da média. É por isso que a barra de status e os headers do PGN passaram a mostrar o mínimo primeiro.
 - **A decodificação com restrições não muda nada no conjunto de teste — e muda muito no PDF.** No teste o argmax já produz 0 posições ilegais em 320 tabuleiros, então a busca nunca é acionada: o conjunto de teste é limpo demais para medir a S-11. Em `1937 Kemeri.pdf` (páginas 10–69, 47 tabuleiros), a ilegalidade real cai de **16 para 2**. Em nenhuma medição uma casa que o argmax acertava foi estragada.
+- **2.7 era um bug de configuração, não de algoritmo.** `detect_boards` tinha `"row"` por padrão e a exportação passava `"column"`: numa página de duas colunas o `[Diagram "2"]` do PGN apontava para outra posição que a da tela. Os frontends nunca passavam o parâmetro, então herdavam o padrão errado.
 
 ### Decisão pendente: qual modelo o app usa
 
@@ -126,6 +127,11 @@ Trocar o default não é automático porque nenhuma das duas opções é a certa
 
 Enquanto não existir, o baseline serve para medir e o antigo para usar. Vale produzir o de
 produção junto com a S-27, que arruma o treino reprodutível.
+
+### Decisões da Fase 2
+
+- **Posição rejeitada vai para o `.review.pgn`, não para o lixo.** A S-15 diz que a rejeitada "não vai para PGN; entra no relatório". Aqui ela vai para o arquivo de revisão junto com as de baixa confiança, marcada com `[Review "ilegal: ..."]`. O motivo: uma posição ilegal costuma estar a uma casa da correta, e é exatamente o que vale a pena corrigir à mão — descartá-la perderia o diagrama. O que a S-15 exige de fato, o PGN **principal** sem nenhuma posição ilegal, continua garantido.
+- **Limiar de aceite em 0,80 é provisório.** Escolhido a partir da distribuição medida (mínimo ≥ 0,90 em quase todo tabuleiro exato). O número derivado da curva de calibração só sai com a S-28.
 
 ---
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 PIECE_CLASSES = [
     "empty",
@@ -36,6 +37,22 @@ CONSTRAINED_DECODING = True
 # Teto de casas que o reparo pode reescrever. Alto demais e o decodificador "conserta"
 # uma leitura ruim inventando uma posicao legal e errada -- pior que admitir a falha.
 MAX_DECODE_CHANGES = 6
+
+# Gate de exportacao (S-15): abaixo desta confianca minima por casa a posicao vai para o
+# arquivo de revisao em vez do PGN principal. Medido no split de teste: a confianca minima
+# fica >= 0,90 em quase todo tabuleiro exato, e a media nas casas erradas e ~0,75 -- entao
+# 0,80 pega a maior parte do erro sem mandar tabuleiro bom para revisao. Provisorio ate a
+# calibracao da S-28 dar um numero derivado da curva.
+ACCEPT_MIN_CONFIDENCE = 0.80
+
+ReadingOrder = Literal["row", "column"]
+
+# Ordem em que os diagramas de uma pagina sao numerados (S-14). Um unico padrao aqui e o
+# que faz o "diagrama 2" da GUI ser o mesmo do header [Diagram "2"] no PGN: antes a GUI
+# usava "row" (padrao de detect_boards) e a exportacao passava "column", e numa pagina de
+# duas colunas a numeracao divergia -- justamente quando o usuario quer conferir.
+# "column" e o correto para a maioria dos livros de xadrez, que sao de duas colunas.
+DEFAULT_READING_ORDER: ReadingOrder = "column"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET_CSV = PROJECT_ROOT / "data" / "labels.csv"

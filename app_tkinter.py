@@ -31,7 +31,7 @@ from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen, square_nam
 from chess_diagram_ocr.inference import load_model, predict_board
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
-from chess_diagram_ocr.pdf_to_pgn import default_pgn_output_path, save_pdf_positions_to_pgn
+from chess_diagram_ocr.pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
 from chess_diagram_ocr.training import train_model
 from chess_diagram_ocr.webview2_panel import EmbeddedWebView2, WebView2SupportError
 
@@ -921,7 +921,7 @@ class ChessOcrTkApp:
             )
 
         try:
-            positions = save_pdf_positions_to_pgn(
+            report = save_pdf_positions_to_pgn(
                 pdf_source=pdf_path,
                 output_path=output_path,
                 model_path=model_path,
@@ -930,21 +930,29 @@ class ChessOcrTkApp:
                 rotate_180=rotate_180,
                 progress_callback=_progress,
             )
-            self.root.after(
-                0,
-                lambda: self._on_export_pdf_to_pgn_success(output_path, len(positions)),
-            )
+            self.root.after(0, lambda: self._on_export_pdf_to_pgn_success(report))
         except Exception as exc:
             self.root.after(0, lambda err=exc: self._on_export_pdf_to_pgn_error(err))
         finally:
             self.root.after(0, self._finish_export_pdf_to_pgn)
 
-    def _on_export_pdf_to_pgn_success(self, output_path: Path, total_positions: int) -> None:
-        self._set_status(f"Exportacao concluida. {total_positions} posicoes salvas em {output_path.name}.")
-        messagebox.showinfo(
-            "Exportar PDF para PGN",
-            f"Arquivo gerado com sucesso.\n\nPGN: {output_path}\nPosicoes salvas: {total_positions}",
-        )
+    def _on_export_pdf_to_pgn_success(self, report: ExportReport) -> None:
+        self._set_status(f"Exportacao concluida. {report.summary()}.")
+
+        linhas = [
+            "Arquivo gerado com sucesso.",
+            "",
+            f"PGN: {report.output_path}",
+            f"Aceitos: {len(report.accepted)} de {report.total}",
+        ]
+        # O gate so ajuda se o usuario souber o que ficou de fora (S-15).
+        if report.review_path is not None:
+            linhas += [
+                "",
+                f"Para revisao: {len(report.needs_review)} de baixa confianca, {len(report.rejected)} ilegais.",
+                f"Arquivo: {report.review_path}",
+            ]
+        messagebox.showinfo("Exportar PDF para PGN", "\n".join(linhas))
 
     def _on_export_pdf_to_pgn_error(self, exc: Exception) -> None:
         self._set_status("Falha na exportacao do PDF para PGN.")
@@ -1113,6 +1121,7 @@ class ChessOcrTkApp:
                     "min_confidence": prediction.min_confidence,
                     "uncertain_squares": prediction.uncertain_squares,
                     "is_legal": prediction.position.is_legal,
+                    "is_fatal": prediction.position.is_fatal,
                     "problems": prediction.position.problems,
                 }
             )
@@ -1265,7 +1274,12 @@ class ChessOcrTkApp:
 
         if item.get("is_legal") is False:
             problems = item.get("problems") or ()
-            parts.append("ILEGAL" + (f" ({'; '.join(problems)})" if problems else ""))
+            detalhe = f" ({'; '.join(problems)})" if problems else ""
+            # "Xeque invertido" nao e erro de leitura: o diagrama nao diz de quem e a vez e
+            # o app assume brancas. Chamar isso de ILEGAL manda o usuario procurar um erro
+            # que nao existe no tabuleiro.
+            rotulo = "LADO A JOGAR" if item.get("is_fatal") is False else "ILEGAL"
+            parts.append(rotulo + detalhe)
 
         return " | ".join(parts)
 

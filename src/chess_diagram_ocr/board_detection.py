@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
 
 import cv2
 import numpy as np
 
-from .config import BOARD_SIZE, CELL_SIZE
+from .config import BOARD_SIZE, CELL_SIZE, DEFAULT_READING_ORDER, ReadingOrder
 
 
 class NoBoardDetectedError(RuntimeError):
     pass
-
-
-ReadingOrder = Literal["row", "column"]
 
 
 def order_quad_points(points: np.ndarray) -> np.ndarray:
@@ -275,8 +271,14 @@ def detect_boards(
     target_size: int = BOARD_SIZE,
     max_boards: int = 8,
     iou_threshold: float = 0.25,
-    reading_order: ReadingOrder = "row",
+    reading_order: ReadingOrder = DEFAULT_READING_ORDER,
 ) -> list[tuple[np.ndarray, np.ndarray | None]]:
+    """Recorta os diagramas de uma página, numerados em `reading_order` (S-14).
+
+    O padrão vem de `config.DEFAULT_READING_ORDER` para que GUI e exportação numerem os
+    diagramas igual: o padrão daqui era `"row"` e a exportação passava `"column"`, então o
+    `[Diagram "2"]` do PGN podia apontar para outra posição que a da tela.
+    """
     candidates = _extract_candidate_quads(image_rgb)
     top_score = candidates[0][1] if candidates else 0.0
     min_score = max(0.06, top_score * 0.25)

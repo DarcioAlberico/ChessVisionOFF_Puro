@@ -79,6 +79,7 @@ def run_ocr_for_boards(
                 "min_confidence": prediction.min_confidence,
                 "uncertain_squares": prediction.uncertain_squares,
                 "is_legal": prediction.position.is_legal,
+                "is_fatal": prediction.position.is_fatal,
                 "problems": prediction.position.problems,
             }
         )
@@ -235,7 +236,11 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
         )
         if item_tmp.get("is_legal") is False:
             problems = "; ".join(item_tmp.get("problems") or ())
-            st.warning(f"Posicao ilegal: {problems or 'motivo nao identificado'}", icon="⚠️")
+            if item_tmp.get("is_fatal") is False:
+                # O tabuleiro esta bom; o palpite de lado a jogar e que nao fecha (S-17).
+                st.info(f"Lado a jogar provavelmente invertido: {problems}", icon="↔️")
+            else:
+                st.warning(f"Posicao ilegal: {problems or 'motivo nao identificado'}", icon="⚠️")
 
     st.session_state["selected_result_idx"] = int(st.session_state["selected_result_one_based"]) - 1
     sel = st.session_state["selected_result_idx"]

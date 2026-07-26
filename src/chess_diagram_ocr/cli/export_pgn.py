@@ -4,7 +4,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from ..config import DEFAULT_MODEL_PATH
+from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MODEL_PATH, DEFAULT_READING_ORDER
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_to_pgn import default_pgn_output_path, save_pdf_positions_to_pgn
 
@@ -21,8 +21,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--rotate-180", action="store_true")
     parser.add_argument("--start-page", type=int, default=0)
     parser.add_argument("--end-page", type=int, default=None, help="Exclusivo. Padrao: ate o fim do PDF.")
-    parser.add_argument("--reading-order", choices=("column", "row"), default="column")
+    parser.add_argument(
+        "--reading-order",
+        choices=("column", "row"),
+        default=DEFAULT_READING_ORDER,
+        help=f"Ordem de numeracao dos diagramas na pagina (S-14). Padrao: {DEFAULT_READING_ORDER}.",
+    )
     parser.add_argument("--event", type=str, default="ChessVisionOFF PDF OCR")
+    parser.add_argument(
+        "--accept-threshold",
+        type=float,
+        default=ACCEPT_MIN_CONFIDENCE,
+        help=(
+            "Confianca minima por casa para a posicao entrar no PGN principal (S-15). "
+            f"Padrao: {ACCEPT_MIN_CONFIDENCE:.2f}. Use 0 para exportar tudo."
+        ),
+    )
+    parser.add_argument("--show-review", type=int, default=10, help="Itens de revisao listados no fim.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Log em nivel DEBUG.")
     return parser.parse_args(argv)
 
@@ -42,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
             total_positions,
         )
 
-    positions = save_pdf_positions_to_pgn(
+    report = save_pdf_positions_to_pgn(
         pdf_source=args.pdf,
         output_path=output_path,
         model_path=args.model,
@@ -53,12 +68,26 @@ def main(argv: list[str] | None = None) -> int:
         end_page=args.end_page,
         reading_order=args.reading_order,
         event_name=args.event,
+        accept_threshold=args.accept_threshold,
         progress_callback=_progress,
     )
 
     print(f"PDF: {args.pdf}")
-    print(f"PGN: {output_path}")
-    print(f"Posicoes salvas: {len(positions)}")
+    print(f"PGN: {report.output_path}")
+    if report.review_path is not None:
+        print(f"Revisao: {report.review_path}")
+    print(report.summary())
+
+    # O que foi separado tem de aparecer: o ponto do gate e o usuario saber o que revisar,
+    # nao o PGN principal ficar limpo em silencio.
+    review_items = report.review_items
+    if review_items and args.show_review:
+        print()
+        print("Precisam de revisao:")
+        for position, reason in review_items[: args.show_review]:
+            print(f"  pagina {position.page_number} diagrama {position.diagram_index}: {reason}")
+        if len(review_items) > args.show_review:
+            print(f"  ... e outros {len(review_items) - args.show_review}")
     return 0
 
 
