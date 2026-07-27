@@ -825,7 +825,7 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 
 ---
 
-## Fase 6 — Consolidação do produto (5–8 dias) — em andamento
+## Fase 6 — Consolidação do produto — 6.1 a 6.7 concluídas (2026-07-27)
 
 | # | Entrega | Ref. spec | Status |
 |---|---|---|---|
@@ -838,7 +838,39 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 | 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 | ✅ + `docs/ARCHITECTURE.md` |
 | 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 | — |
 
-**Critério de saída:** Streamlit e Tkinter com paridade de funcionalidades; `app_tkinter.py` abaixo de 600 linhas; executável rodando em máquina sem Python.
+**Critério de saída:** três partes, e o placar honesto é **uma atingida, uma parcial, uma
+não iniciada**:
+
+| parte | estado |
+|---|---|
+| Streamlit e Tkinter com paridade | **parcial** — o pipeline é o mesmo; a edição não |
+| `app_tkinter.py` abaixo de 600 linhas | **651** (477 de código) |
+| executável rodando em máquina sem Python | **não iniciado** (6.8 / S-36) |
+
+O que a fase de fato entregou está medido nas seções abaixo. Duas observações que valem
+mais que o placar:
+
+- **A paridade que importava foi atingida.** Até a 6.1 as duas telas implementavam o OCR de
+  forma independente, e cinco entregas das Fases 2 e 3 nunca chegaram ao Streamlit. Isso
+  acabou. O que segue diferente é a *edição* — o tabuleiro por clique, o painel de
+  legalidade, a fila e o dataset são widgets de Tk. Portá-los deixou de exigir reescrever o
+  OCR junto, que era o custo real.
+- **As 51 linhas que faltam para 600 sairiam movendo a aba de configuração**, que é layout
+  puro. Seria mexer no número sem mexer no que ele mede.
+
+### O que a Fase 6 acrescentou em teste
+
+| | antes da fase | depois |
+|---|---|---|
+| testes | 485 | **611** |
+| subtestes | 408 | **498** |
+| arquivos sob `mypy` | 47 | **61** |
+| linhas em `app_tkinter.py` | 2.388 | **651** |
+
+Os 126 testes novos não são cobertura: são decisões que antes só existiam dentro de uma
+janela. O cliente HTTP com seus quatro modos de falha, a ordem das métricas de treino, a
+normalização da avaliação do motor para as brancas, o isolamento de falha do lote, a
+acentuação das strings — nenhum deles era verificável antes da decomposição.
 
 ### 6.1 — o que a duplicação tinha custado, medido no que faltava de um lado
 
