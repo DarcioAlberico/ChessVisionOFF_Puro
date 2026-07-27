@@ -422,7 +422,7 @@ class InteractiveBoard(ttk.Frame):
             return
 
         if self.mode == "edit" and self._brush is not None:
-            # Com pincel ativo o clique pinta e nao arrasta: e o gesto de quem sabe qual peca
+            # Com pincel ativo o clique pinta e não arrasta: e o gesto de quem sabe qual peça
             # falta e onde, que e o caso comum ao corrigir leitura de OCR.
             self._paint(index)
             self._drag_from = None
@@ -542,8 +542,8 @@ class InteractiveBoard(ttk.Frame):
 
     def _apply_placement(self, placement: str) -> None:
         self.board.set_board_fen(placement)
-        # A correcao invalida os sinais do modelo: a confianca era da leitura antiga, e
-        # deixa-la na tela afirmaria algo sobre uma casa que o usuario acabou de reescrever.
+        # A correção inválida os sinais do modelo: a confiança era da leitura antiga, e
+        # deixa-la na tela afirmaria algo sobre uma casa que o usuário acabou de reescrever.
         self._confidences = None
         self._probabilities = None
         self._changed_squares.clear()
@@ -705,8 +705,8 @@ class InteractiveBoard(ttk.Frame):
         if confidence >= self._uncertain_threshold:
             return
         color = heatmap_color(confidence, self._uncertain_threshold)
-        # `stipple` e o unico jeito de tingir sem apagar a casa no canvas do Tk, que nao tem
-        # canal alfa: a peca por baixo continua legivel.
+        # `stipple` e o único jeito de tingir sem apagar a casa no canvas do Tk, que não tem
+        # canal alfa: a peça por baixo continua legivel.
         self.canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline=color, stipple="gray50")
         self.canvas.create_rectangle(x0 + 1, y0 + 1, x1 - 1, y1 - 1, outline=color, width=2)
 

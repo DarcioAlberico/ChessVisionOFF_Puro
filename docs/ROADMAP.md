@@ -832,7 +832,7 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 | 6.1 | **Camada de serviço** `src/chess_diagram_ocr/service.py` — Tkinter e Streamlit passam a ser só apresentação | S-31 | ✅ |
 | 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 | ✅ 2.388 → **651** |
 | 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 | ✅ |
-| 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 | — |
+| 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 | ✅ fecha a pendência 0.7 |
 | 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | — |
 | 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 | — |
 | 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 | — |
@@ -988,6 +988,43 @@ porque o consentimento era sobre aquele destino.
 
 `data/settings.json` fica fora do git — versioná-lo devolveria um endereço fixo ao
 repositório, que é exatamente o que a S-32 existe para eliminar.
+
+### 6.4 — a pendência 0.7 fecha, e o que ela escondia
+
+A Fase 0 deixou registrado: o `logging` estava feito, mas "as strings de UI seguem sem
+acento (`posicao`, `Configuracao`)", e centralizá-las dependia da decomposição do Tkinter.
+Feita a 6.2, foram **291 tokens** de string e comentário acentuados em 15 arquivos, por um
+transformador que opera sobre `tokenize` e só reescreve `STRING` e `COMMENT` -- nunca
+identificadores, e nunca o interior de `{...}` numa f-string, onde `{pagina}` é código e
+virar `{página}` quebraria.
+
+**O que não virou constante.** `ui/strings.py` não é um catálogo das ~140 strings da
+interface. Um dicionário com duzentas constantes usadas uma vez cada troca um literal
+legível por uma indireção e piora o código de layout sem nada em troca. Entrou o que **duas
+telas precisam dizer igual**.
+
+**E aí estava o achado.** Os rótulos de procedência do lado a jogar existiam em dois
+lugares — `ui/result_panel.py` e `app_streamlit.py` — e já tinham divergido em **quatro dos
+cinco**:
+
+| chave | Tkinter dizia | Streamlit dizia |
+|---|---|---|
+| `text` | "do texto do PDF" | "declarado no texto do PDF" |
+| `legality` | "deduzido da posição" | "deduzido da legalidade da posição" |
+| `default` | "assumido" | "assumido (o PDF não diz)" |
+| `manual` | "definido por você" | (não existia) |
+
+É o mecanismo da S-31 aplicado a texto: duas implementações do mesmo conceito, a segunda
+seguindo por conta própria. E o rótulo não é decoração — ele é o que distingue "pretas
+jogam" lido de uma legenda de "pretas jogam" assumido pelo padrão, que é a diferença que a
+Fase 3 inteira existe para tornar visível.
+
+**O teste é o que impede a volta.** Ele varre os literais de string via AST (não o arquivo
+inteiro: docstring e comentário também são pt-BR, mas o que trava é o que o usuário lê) e
+recusa qualquer palavra da lista sem acento. Duas armadilhas apareceram ao escrevê-lo, e as
+duas viraram regra explícita: `automaticamente` **é** correto sem acento, então o casamento
+é `palavra + s?` e não sufixo livre; e `@media` é regra CSS, desambiguada pelo `@` que a
+precede.
 
 ### O que 6.1 não entrega da paridade
 

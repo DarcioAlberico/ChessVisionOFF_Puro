@@ -43,25 +43,13 @@ from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import RemoteFenSettings
 
-from . import board_edit
+from . import board_edit, strings
 from .board_widget import InteractiveBoard, PieceImages
 from .legality import explain_position
 from .page_results import PageOcrParams, PageResults, PageResultsCache, PageSwitch, decide_page_switch
 from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
-
-SIDE_SOURCE_LABELS = {
-    "text": "do texto do PDF",
-    "legality": "deduzido da posicao",
-    "default": "assumido",
-    "manual": "definido por voce",
-    "queue": "vindo da fila de revisao",
-}
-"""A procedência aparece ao lado do lado a jogar porque "pretas jogam" lido de uma legenda e
-"pretas jogam" assumido pelo padrão têm o mesmo texto e valores muito diferentes para quem
-vai conferir."""
-
 
 def confidence_summary(item: RecognizedDiagram) -> str:
     """Resumo de confiança e legalidade do diagrama, para a barra de status.
@@ -71,10 +59,10 @@ def confidence_summary(item: RecognizedDiagram) -> str:
     tudo porque, se o diagrama está de cabeça para baixo, conferir casa por casa é perda de
     tempo (S-13).
     """
-    partes = [f"conf min {item.min_confidence:.3f}", f"media {item.mean_confidence:.3f}"]
+    partes = [f"conf min {item.min_confidence:.3f}", f"média {item.mean_confidence:.3f}"]
 
     if item.orientation_ambiguous:
-        partes.append(f"ORIENTACAO INCERTA ({item.orientation_reason or 'as duas eram plausiveis'})")
+        partes.append(f"ORIENTAÇÃO INCERTA ({item.orientation_reason or 'as duas eram plausíveis'})")
     elif item.rotation:
         partes.append(f"lido a {item.rotation} graus")
 
@@ -85,19 +73,21 @@ def confidence_summary(item: RecognizedDiagram) -> str:
 
     if item.is_legal is False:
         detalhe = f" ({'; '.join(item.problems)})" if item.problems else ""
-        # "Xeque invertido" nao e erro de leitura: o diagrama nao diz de quem e a vez e o
-        # app assume brancas. Chamar isso de ILEGAL manda o usuario procurar um erro que
-        # nao existe no tabuleiro.
+        # "Xeque invertido" não e erro de leitura: o diagrama não diz de quem e a vez e o
+        # app assume brancas. Chamar isso de ILEGAL manda o usuário procurar um erro que
+        # não existe no tabuleiro.
         partes.append(("LADO A JOGAR" if item.is_fatal is False else "ILEGAL") + detalhe)
 
     return " | ".join(partes)
 
 
 def side_source_label(item: RecognizedDiagram) -> str:
-    """Texto entre parênteses ao lado do rádio de lado a jogar. Vazio quando não há o que dizer."""
-    if item.side_conflicting:
-        return "(texto e posicao discordam)"
-    fonte = SIDE_SOURCE_LABELS.get(item.side_to_move_source, "")
+    """Texto entre parênteses ao lado do rádio de lado a jogar.
+
+    O vocabulário vem de `ui/strings.py` porque o Streamlit mostra o mesmo, e as duas
+    versões já tinham divergido em quatro dos cinco rótulos (S-04).
+    """
+    fonte = strings.side_source_label(item.side_to_move_source, conflicting=item.side_conflicting)
     return f"({fonte})" if fonte else ""
 
 
@@ -214,7 +204,7 @@ class ResultPanel(ttk.Frame):
             zoom_row, text="Heatmap de incerteza", variable=self.heatmap_var, command=self.on_heatmap_toggle
         ).pack(side=tk.RIGHT)
 
-        # O editor da S-20 no lugar do canvas somente-leitura: corrigir uma peca passa de
+        # O editor da S-20 no lugar do canvas somente-leitura: corrigir uma peça passa de
         # "contar casas e reescrever a FEN" para um arraste.
         self.board = InteractiveBoard(
             caixa,
@@ -238,7 +228,7 @@ class ResultPanel(ttk.Frame):
         nav = ttk.Frame(caixa)
         nav.pack(fill=tk.X, padx=8, pady=(0, 6))
         ttk.Button(nav, text="Diagrama anterior", command=self.prev_diagram).pack(side=tk.LEFT)
-        ttk.Button(nav, text="Proximo diagrama", command=self.next_diagram).pack(side=tk.LEFT, padx=6)
+        ttk.Button(nav, text="Próximo diagrama", command=self.next_diagram).pack(side=tk.LEFT, padx=6)
         ttk.Label(nav, text="Selecionado").pack(side=tk.LEFT, padx=(12, 4))
         self.spin_diag = ttk.Spinbox(
             nav, from_=1, to=1, textvariable=self.selected_diag_var, width=6, command=self.on_diagram_spin
@@ -247,15 +237,15 @@ class ResultPanel(ttk.Frame):
         self.spin_diag.bind("<Return>", lambda _event: self.on_diagram_spin())
         self.spin_diag.bind("<FocusOut>", lambda _event: self.on_diagram_spin())
 
-        fen_box = ttk.LabelFrame(self, text="FEN e acoes")
+        fen_box = ttk.LabelFrame(self, text="FEN e ações")
         fen_box.pack(fill=tk.X, padx=8, pady=(0, 8))
         ttk.Label(fen_box, text="FEN").pack(anchor="w", padx=8, pady=(6, 0))
         entry = ttk.Entry(fen_box, textvariable=self.fen_var)
         entry.pack(fill=tk.X, padx=8, pady=(0, 4))
         entry.bind("<Return>", lambda _event: self.apply_fen_edit())
 
-        # Lado a jogar visivel e editavel (S-16/S-19). Ate a Fase 3 o app nao tinha onde
-        # mostrar isso, e a informacao -- quando o PDF a dava -- morria na exportacao.
+        # Lado a jogar visivel e editavel (S-16/S-19). Até a Fase 3 o app não tinha onde
+        # mostrar isso, e a informação -- quando o PDF a dava -- morria na exportação.
         side_row = ttk.Frame(fen_box)
         side_row.pack(fill=tk.X, padx=8, pady=(0, 4))
         ttk.Label(side_row, text="Lado a jogar").pack(side=tk.LEFT)
@@ -276,7 +266,7 @@ class ResultPanel(ttk.Frame):
         ttk.Button(acoes, text="Salvar todos", command=self.save_all).pack(side=tk.LEFT, padx=6)
         self.btn_correct_net = ttk.Button(acoes, text="Corrigir Net", command=self.correct_fen_with_net)
         self.btn_correct_net.pack(side=tk.LEFT, padx=6)
-        # Desabilitado ate haver configuracao, e com o motivo a um pouso de ponteiro: um
+        # Desabilitado até haver configuração, e com o motivo a um pouso de ponteiro: um
         # botao cinza sem explicacao e pior que um botao ausente (S-32).
         self.tip_correct_net = Tooltip(self.btn_correct_net)
         self.refresh_remote_availability()
@@ -338,7 +328,7 @@ class ResultPanel(ttk.Frame):
         elif acao is PageSwitch.CLEAR:
             self.page_key = None
             self.clear()
-            self._on_status(f"Pagina {page_index}: sem reconhecimento ainda. Rode o OCR.")
+            self._on_status(f"Página {page_index}: sem reconhecimento ainda. Rode o OCR.")
 
     def _apply_page_results(self, guardado: PageResults, documento: str) -> None:
         self.editing_sample = None
@@ -356,12 +346,12 @@ class ResultPanel(ttk.Frame):
         self.update_views()
         self.after_idle(self.board.redraw)
         self._on_status(
-            f"Pagina {guardado.page_index}: {guardado.count} diagrama(s) do reconhecimento anterior"
-            f"{', com correcoes suas' if guardado.has_hand_edits else ''}."
+            f"Página {guardado.page_index}: {guardado.count} diagrama(s) do reconhecimento anterior"
+            f"{', com correções suas' if guardado.has_hand_edits else ''}."
         )
 
     def discard_document_results(self, document: str) -> None:
-        """Trocar de PDF invalida o cache: a chave é (documento, página)."""
+        """Trocar de PDF inválida o cache: a chave é (documento, página)."""
         if self._document_key() != document:
             self.page_results.clear()
             self.page_key = None
@@ -376,8 +366,8 @@ class ResultPanel(ttk.Frame):
         self.origin = origin
         self._load(items, [d.placement for d in items], [d.side_to_move for d in items])
 
-        # So pagina inteira vai para o cache; recorte de area, nao -- guarda-lo como "o
-        # resultado da pagina 16" devolveria dois diagramas onde a pagina tem nove.
+        # So página inteira vai para o cache; recorte de área, não -- guarda-lo como "o
+        # resultado da página 16" devolveria dois diagramas onde a página tem nove.
         self.page_key = (
             (self._document_key(), origin.page_index)
             if origin.is_whole_page and origin.page_index is not None
@@ -390,21 +380,21 @@ class ResultPanel(ttk.Frame):
         """Abre um item da fila no editor, já na casa suspeita (S-22)."""
         board_rgb = read_board_image(item.board_image)
         if board_rgb is None:
-            messagebox.showerror("Fila de revisao", f"Miniatura nao encontrada:\n{item.board_image}")
+            messagebox.showerror("Fila de revisão", f"Miniatura não encontrada:\n{item.board_image}")
             return
 
         placement = item.fen.split(" ")[0]
         self.editing_sample = None
         self.review_position = position
-        # O que entra aqui e um item da fila, nao o reconhecimento de uma pagina: guardar o
-        # que estava antes e desligar o vinculo com a pagina, para que navegar depois nao
-        # apague o item da fila nem o confunda com resultado de pagina.
+        # O que entra aqui e um item da fila, não o reconhecimento de uma página: guardar o
+        # que estava antes e desligar o vinculo com a página, para que navegar depois não
+        # apague o item da fila nem o confunda com resultado de página.
         self.remember_page_results()
         self.page_key = None
         self.origin = None
-        # A fila guarda as 64 confiancas, nao a matriz (64, 13) -- ela custaria ~5,6 MB por
-        # livro em JSON (decisao da S-22). Entao vem heatmap, e nao o tooltip das 3 classes;
-        # esse volta quando o usuario roda o OCR da pagina de novo.
+        # A fila guarda as 64 confianças, não a matriz (64, 13) -- ela custaria ~5,6 MB por
+        # livro em JSON (decisão da S-22). Então vem heatmap, e não o tooltip das 3 classes;
+        # esse volta quando o usuário roda o OCR da página de novo.
         diagrama = RecognizedDiagram.from_label(
             board_rgb,
             placement,
@@ -420,17 +410,17 @@ class ResultPanel(ttk.Frame):
         self._load([diagrama], [placement], [item.side_to_move])
 
         if item.first_uncertain_square is not None:
-            # Abrir ja na casa suspeita e o que a S-22 pede do "corrigir agora": sem isso o
-            # usuario recebe o tabuleiro inteiro de novo e a fila nao economizou nada.
+            # Abrir já na casa suspeita e o que a S-22 pede do "corrigir agora": sem isso o
+            # usuário recebe o tabuleiro inteiro de novo e a fila não economizou nada.
             self.board.select_square(item.first_uncertain_square)
-        self._on_status(f"Revisao {item.label}: {'; '.join(item.reasons)}")
+        self._on_status(f"Revisão {item.label}: {'; '.join(item.reasons)}")
 
     def open_dataset_row(self, row: DatasetRow) -> None:
         """Abre uma amostra do dataset no editor. Salvar regrava a linha, não cria outra."""
         _csv, samples_dir = self._paths()
         board_rgb = read_board_image(str(row.image_path(samples_dir)))
         if board_rgb is None:
-            messagebox.showerror("Dataset", f"Imagem nao encontrada:\n{row.image_path(samples_dir)}")
+            messagebox.showerror("Dataset", f"Imagem não encontrada:\n{row.image_path(samples_dir)}")
             return
 
         side = row.side_to_move if row.side_to_move in ("w", "b") else "w"
@@ -449,7 +439,7 @@ class ResultPanel(ttk.Frame):
             side_to_move_reason="rotulo do dataset",
             detection_source=row.detection_source,
         )
-        # A legalidade sai da propria posicao rotulada, e nao das colunas do CSV: o rotulo
+        # A legalidade sai da própria posição rotulada, e não das colunas do CSV: o rotulo
         # foi gravado com um lado a jogar, e e com ele que a checagem tem de bater (S-17).
         diagrama.resolve_legality()
         self._load([diagrama], [row.placement], [side])
@@ -498,7 +488,7 @@ class ResultPanel(ttk.Frame):
             try:
                 pedido = int(self.selected_diag_var.get()) - 1
             except (ValueError, tk.TclError):
-                # Campo vazio ou nao numerico: mantem a selecao atual.
+                # Campo vazio ou não numerico: mantem a seleção atual.
                 pedido = self.selected_index
             self.selected_index = max(0, min(pedido, len(self.items) - 1))
         self.selected_diag_var.set(self.selected_index + 1)
@@ -561,8 +551,8 @@ class ResultPanel(ttk.Frame):
         item = self.items[idx]
         self.board.set_position(self.fen_edits[idx])
         self.board.set_side_to_move(self.side_edits[idx] != "b")
-        # Sem estes tres sinais o usuario so tem a FEN e um numero agregado -- e a media de
-        # confianca fica em 0,97 mesmo com erro (S-10), entao ela nao aponta lugar nenhum.
+        # Sem estes três sinais o usuário só tem a FEN e um número agregado -- e a media de
+        # confiança fica em 0,97 mesmo com erro (S-10), então ela não aponta lugar nenhum.
         self.board.set_uncertainty(list(item.square_confidences) or None)
         self.board.set_probabilities(item.probs)
         self.board.set_changed_squares(item.changed_squares)
@@ -594,7 +584,7 @@ class ResultPanel(ttk.Frame):
         self.sync_side_widgets(idx)
         self.board.set_side_to_move(self.side_edits[idx] != "b")
         # A legalidade depende de quem joga: trocar a vez pode resolver o "xeque invertido"
-        # sem mexer em nenhuma peca (S-17).
+        # sem mexer em nenhuma peça (S-17).
         self.update_legality()
         self._on_status(f"Diagrama {idx + 1}: lado a jogar definido como {self.side_to_move_var.get()}.")
 
@@ -621,7 +611,7 @@ class ResultPanel(ttk.Frame):
     def delete_selected_square(self) -> None:
         if self.board.delete_selected():
             return
-        self._on_status("Selecione uma casa do tabuleiro para apagar a peca.")
+        self._on_status("Selecione uma casa do tabuleiro para apagar a peça.")
 
     # --------------------------------------------------------------------------- gravação
 
@@ -642,16 +632,16 @@ class ResultPanel(ttk.Frame):
 
     def save_current(self) -> None:
         if not self.items:
-            messagebox.showwarning("Aviso", "Nao ha OCR para salvar.")
+            messagebox.showwarning("Aviso", "Não ha OCR para salvar.")
             return
         self.sync_fen_from_entry()
         idx = self.clamped_index()
         fen = self.fen_edits[idx]
         if not is_valid_fen(fen):
-            messagebox.showerror("Erro", "FEN atual invalida.")
+            messagebox.showerror("Erro", "FEN atual inválida.")
             return
 
-        # Amostra vinda da aba Dataset regrava a linha que ja existe; salvar de novo criaria
+        # Amostra vinda da aba Dataset regrava a linha que já existe; salvar de novo criaria
         # uma segunda amostra da mesma imagem e o rotulo errado continuaria no arquivo (S-23).
         if self.editing_sample is not None:
             self._rewrite_dataset_row(idx, fen)
@@ -676,7 +666,7 @@ class ResultPanel(ttk.Frame):
             return
 
         if not atualizado:
-            messagebox.showerror("Dataset", f"Amostra nao encontrada no CSV: {filename}")
+            messagebox.showerror("Dataset", f"Amostra não encontrada no CSV: {filename}")
             return
 
         self._on_status(f"Rotulo de {filename} regravado.")
@@ -696,7 +686,7 @@ class ResultPanel(ttk.Frame):
 
     def save_all(self) -> None:
         if not self.items:
-            messagebox.showwarning("Aviso", "Nao ha OCR para salvar.")
+            messagebox.showwarning("Aviso", "Não ha OCR para salvar.")
             return
         self.sync_fen_from_entry()
         salvos = 0
@@ -707,8 +697,8 @@ class ResultPanel(ttk.Frame):
                 continue
             self._save_one(idx, self.fen_edits[idx])
             salvos += 1
-        self._on_status(f"Salvar todos: {salvos} salvos, {invalidos} invalidos.")
-        messagebox.showinfo("Salvar todos", f"Salvos: {salvos}\nInvalidos: {invalidos}")
+        self._on_status(f"Salvar todos: {salvos} salvos, {invalidos} inválidos.")
+        messagebox.showinfo("Salvar todos", f"Salvos: {salvos}\nInválidos: {invalidos}")
 
     # ------------------------------------------------------------------------ Corrigir Net
 
@@ -730,7 +720,7 @@ class ResultPanel(ttk.Frame):
         autorize (S-32) e o usuário ter consentido com aquele host.
         """
         if not self.items:
-            messagebox.showwarning("Aviso", "Nao ha OCR para corrigir.")
+            messagebox.showwarning("Aviso", "Não ha OCR para corrigir.")
             return
         if self._is_correcting_net:
             return
@@ -738,8 +728,8 @@ class ResultPanel(ttk.Frame):
         configuracao = self._remote_fen()
         provedor = build_provider(configuracao)
         if provedor is None:
-            # Nao deveria acontecer -- o botao esta desabilitado --, mas o atalho de teclado
-            # e o codigo de teste chegam aqui, e "desabilitado na tela" nao e uma garantia.
+            # Não deveria acontecer -- o botao esta desabilitado --, mas o atalho de teclado
+            # e o código de teste chegam aqui, e "desabilitado na tela" não e uma garantia.
             messagebox.showinfo("Corrigir Net", configuracao.disabled_reason())
             return
 
@@ -761,7 +751,7 @@ class ResultPanel(ttk.Frame):
         try:
             fen = provider.predict(board_rgb)
             if not is_valid_fen(fen):
-                raise ValueError("API retornou FEN invalida.")
+                raise ValueError("API retornou FEN inválida.")
             self.after(0, partial(self._apply_corrected_fen, idx, fen))
         except Exception as exc:
             self.after(0, partial(self._on_net_error, exc))
@@ -774,11 +764,11 @@ class ResultPanel(ttk.Frame):
 
     def _on_net_error(self, exc: Exception) -> None:
         self._on_status("Falha ao corrigir com Net.")
-        messagebox.showerror("Corrigir Net", f"Nao foi possivel corrigir o FEN:\n{exc}")
+        messagebox.showerror("Corrigir Net", f"Não foi possível corrigir o FEN:\n{exc}")
 
     def _apply_corrected_fen(self, idx: int, fen: str) -> None:
         if idx < 0 or idx >= len(self.fen_edits):
-            self._on_status("Correcao recebida, mas o OCR atual mudou.")
+            self._on_status("Correção recebida, mas o OCR atual mudou.")
             return
         self.fen_edits[idx] = fen
         if idx == self.clamped_index():

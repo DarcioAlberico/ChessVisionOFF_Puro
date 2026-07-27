@@ -32,7 +32,7 @@ class FormatTests(unittest.TestCase):
         self.assertLess(linha.index("exata/tabuleiro"), linha.index("val_acc/casa"))
 
     def test_the_epoch_number_opens_the_line(self) -> None:
-        self.assertTrue(format_metrics(EPOCA).startswith("epoca=3"))
+        self.assertTrue(format_metrics(EPOCA).startswith("época=3"))
 
     def test_metrics_are_shown_with_four_decimals(self) -> None:
         self.assertIn("exata/tabuleiro=0.9877", format_metrics(EPOCA))
@@ -44,7 +44,7 @@ class FormatTests(unittest.TestCase):
         self.assertNotIn("exata/tabuleiro", linha)
 
     def test_the_best_epoch_so_far_is_flagged(self) -> None:
-        self.assertIn("melhor ate agora", format_metrics({**EPOCA, "is_best": True}))
+        self.assertIn("melhor até agora", format_metrics({**EPOCA, "is_best": True}))
 
     def test_an_empty_row_yields_an_empty_line_without_raising(self) -> None:
         self.assertEqual(format_metrics({}), "")
@@ -69,7 +69,7 @@ class SummaryTests(unittest.TestCase):
         uma métrica que não corresponde a nada que exista.
         """
         resumo = summarize_run(self._run())
-        self.assertIn("epoca=2", resumo)
+        self.assertIn("época=2", resumo)
         self.assertIn("0.9900", resumo)
 
     def test_the_calibration_temperature_appears_only_when_it_was_measured(self) -> None:

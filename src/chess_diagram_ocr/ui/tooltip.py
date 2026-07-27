@@ -32,7 +32,7 @@ class Tooltip:
 
         widget.bind("<Enter>", self._schedule, add="+")
         widget.bind("<Leave>", self._hide, add="+")
-        # Um clique tambem esconde: com o botao desabilitado o clique nao faz nada, e deixar
+        # Um clique também esconde: com o botao desabilitado o clique não faz nada, e deixar
         # a dica na tela pareceria que fez.
         widget.bind("<ButtonPress>", self._hide, add="+")
 

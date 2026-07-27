@@ -91,7 +91,7 @@ def _history_key(pdf_path: Path) -> str:
     try:
         return str(Path(pdf_path).resolve())
     except OSError:
-        # Caminho de rede fora do ar: o nao resolvido ainda serve de chave.
+        # Caminho de rede fora do ar: o não resolvido ainda serve de chave.
         return str(pdf_path)
 
 

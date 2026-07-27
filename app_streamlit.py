@@ -35,6 +35,7 @@ from chess_diagram_ocr.service import (
     RecognizedDiagram,
 )
 from chess_diagram_ocr.training import train_model
+from chess_diagram_ocr.ui import strings
 
 
 @st.cache_resource(show_spinner=False)
@@ -145,14 +146,14 @@ def _save_one(idx: int, fen: str, dataset_csv: Path, samples_dir: Path) -> Path:
 def save_current_item(dataset_csv: Path, samples_dir: Path) -> None:
     items = _items()
     if not items:
-        st.warning("Nao ha OCR para salvar.")
+        st.warning("Não ha OCR para salvar.")
         return
 
     _apply_fen_edits_from_dynamic_keys()
     idx = int(st.session_state.get("selected_result_idx", 0))
     fen = st.session_state["fen_edits"][idx]
     if not is_valid_fen(fen):
-        st.error("FEN atual invalida.")
+        st.error("FEN atual inválida.")
         return
 
     try:
@@ -165,7 +166,7 @@ def save_current_item(dataset_csv: Path, samples_dir: Path) -> None:
 def save_all_items(dataset_csv: Path, samples_dir: Path) -> None:
     items = _items()
     if not items:
-        st.warning("Nao ha OCR para salvar.")
+        st.warning("Não ha OCR para salvar.")
         return
 
     _apply_fen_edits_from_dynamic_keys()
@@ -183,55 +184,55 @@ def save_all_items(dataset_csv: Path, samples_dir: Path) -> None:
     if saved:
         st.success(f"Salvos {saved} diagramas.")
     if invalid:
-        st.warning(f"{invalid} diagramas nao salvos por FEN invalida.")
+        st.warning(f"{invalid} diagramas não salvos por FEN inválida.")
 
 
 def go_to_next_diagram() -> None:
     items = _items()
     if not items:
-        st.warning("Nao ha diagramas OCR para navegar.")
+        st.warning("Não ha diagramas OCR para navegar.")
         return
 
     current = int(st.session_state.get("selected_result_one_based", 1))
     if current < len(items):
         st.session_state["selected_result_one_based"] = current + 1
     else:
-        st.info("Ja esta no ultimo diagrama desta pagina.")
+        st.info("Já esta no último diagrama desta página.")
     st.session_state["selected_result_idx"] = int(st.session_state["selected_result_one_based"]) - 1
 
 
 def _show_diagram_signals(item: RecognizedDiagram) -> None:
     """Os sinais das Fases 2 e 3 que esta tela descartava por montar o próprio dicionário."""
-    # O minimo vem primeiro: a media fica ~0,97 mesmo com erro e nao alertaria (S-10).
+    # O mínimo vem primeiro: a media fica ~0,97 mesmo com erro e não alertaria (S-10).
     partes = [
-        f"Confianca minima: {item.min_confidence:.3f}",
-        f"media: {item.mean_confidence:.3f}",
+        f"Confiança mínima: {item.min_confidence:.3f}",
+        f"média: {item.mean_confidence:.3f}",
     ]
     if item.rotation:
         partes.append(f"lido a {item.rotation} graus")
     if item.detection_source:
-        partes.append(f"deteccao: {item.detection_source}")
+        partes.append(f"detecção: {strings.detection_source_label(item.detection_source)}")
     st.caption("  |  ".join(partes))
 
-    # Orientacao incerta vem antes da legalidade: se o diagrama estiver de cabeca para
-    # baixo, nao ha o que conferir casa por casa (S-13).
+    # Orientação incerta vem antes da legalidade: se o diagrama estiver de cabeça para
+    # baixo, não ha o que conferir casa por casa (S-13).
     if item.orientation_ambiguous:
         st.warning(
-            f"Orientacao incerta: {item.orientation_reason or 'as duas eram plausiveis'}. "
-            "Confira se o diagrama nao esta de cabeca para baixo.",
+            f"Orientação incerta: {item.orientation_reason or 'as duas eram plausíveis'}. "
+            "Confira se o diagrama não esta de cabeça para baixo.",
             icon="🔄",
         )
 
     if item.is_legal is False:
         problems = "; ".join(item.problems)
         if item.is_fatal is False:
-            # O tabuleiro esta bom; o palpite de lado a jogar e que nao fecha (S-17).
+            # O tabuleiro esta bom; o palpite de lado a jogar e que não fecha (S-17).
             st.info(f"Lado a jogar provavelmente invertido: {problems}", icon="↔️")
         else:
-            st.warning(f"Posicao ilegal: {problems or 'motivo nao identificado'}", icon="⚠️")
+            st.warning(f"Posição ilegal: {problems or 'motivo não identificado'}", icon="⚠️")
 
     # Sem tabuleiro interativo aqui, o heatmap da S-21 vira lista de casas -- que e a mesma
-    # informacao, e era o que faltava por completo nesta tela.
+    # informação, e era o que faltava por completo nesta tela.
     if item.uncertain_squares:
         nomes = ", ".join(square_name(casa) for casa in item.uncertain_squares[:8])
         sufixo = f" (+{len(item.uncertain_squares) - 8})" if len(item.uncertain_squares) > 8 else ""
@@ -264,7 +265,7 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
         if st.button("Diagrama anterior"):
             st.session_state["selected_result_one_based"] = max(1, st.session_state["selected_result_one_based"] - 1)
     with nav2:
-        if st.button("Proximo diagrama"):
+        if st.button("Próximo diagrama"):
             st.session_state["selected_result_one_based"] = min(len(items), st.session_state["selected_result_one_based"] + 1)
     with nav3:
         st.number_input(
@@ -289,7 +290,7 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
         if crop is not None:
             st.image(crop, caption=f"Recorte do diagrama #{sel + 1} no PDF", use_container_width=True)
         else:
-            st.info("Nao foi possivel gerar recorte do diagrama no PDF.")
+            st.info("Não foi possível gerar recorte do diagrama no PDF.")
         st.image(items[sel].board_rgb, caption=f"Resultado OCR - diagrama #{sel + 1}", use_container_width=True)
         if items[sel].quad is not None:
             st.caption(f"Quad selecionado: {items[sel].quad}")
@@ -304,7 +305,7 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
     fen_sel = st.session_state["fen_edits"][sel]
 
     # Lado a jogar visivel e editavel (S-16/S-19), com a procedencia ao lado: "pretas jogam"
-    # lido de uma legenda e "pretas jogam" assumido pelo padrao tem valores bem diferentes.
+    # lido de uma legenda e "pretas jogam" assumido pelo padrão tem valores bem diferentes.
     side_key = f"side_edit_{sel}"
     if side_key not in st.session_state:
         st.session_state[side_key] = items[sel].side_to_move
@@ -318,19 +319,13 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
             horizontal=True,
         )
     with source_col:
-        rotulos = {
-            "text": "declarado no texto do PDF",
-            "legality": "deduzido da legalidade da posicao",
-            "default": "assumido (o PDF nao diz)",
-            "manual": "definido por voce",
-            "queue": "vindo da fila de revisao",
-        }
-        if items[sel].side_conflicting:
-            st.caption("Origem: texto e posicao discordam — confira.")
-        else:
-            fonte = rotulos.get(items[sel].side_to_move_source, "nao avaliada")
-            motivo = items[sel].side_to_move_reason
-            st.caption(f"Origem: {fonte}" + (f" ({motivo})" if motivo else ""))
+        # O vocabulário é o mesmo do Tkinter (S-04). Antes eram dois dicionários, e eles já
+        # discordavam em quatro dos cinco rótulos.
+        fonte = strings.side_source_label(
+            items[sel].side_to_move_source, conflicting=items[sel].side_conflicting
+        )
+        motivo = items[sel].side_to_move_reason
+        st.caption(f"Origem: {fonte or 'não avaliada'}" + (f" ({motivo})" if motivo else ""))
         if items[sel].exercise_number is not None:
             st.caption(f"Exercicio no PDF: {items[sel].exercise_number}")
         if items[sel].caption:
@@ -345,7 +340,7 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
             st.code(fen_sel, language="text")
 
     with action_col_mid:
-        epochs = st.number_input("Epocas", min_value=1, max_value=200, value=8, step=1)
+        epochs = st.number_input("Épocas", min_value=1, max_value=200, value=8, step=1)
         batch_size = st.number_input("Batch size", min_value=16, max_value=512, value=128, step=16)
         lr = st.number_input("Learning rate", min_value=0.00001, max_value=0.05, value=0.001, step=0.0005, format="%.5f")
         if st.button("Treinar modelo"):
@@ -357,9 +352,9 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
                     epochs=int(epochs),
                     batch_size=int(batch_size),
                     lr=float(lr),
-                    # num_workers=0 obrigatorio aqui: este script nao tem guarda
-                    # `if __name__ == "__main__"` -- nao pode ter --, e no Windows cada
-                    # worker do DataLoader reimportaria a pagina inteira. Ver
+                    # num_workers=0 obrigatorio aqui: este script não tem guarda
+                    # `if __name__ == "__main__"` -- não pode ter --, e no Windows cada
+                    # worker do DataLoader reimportaria a página inteira. Ver
                     # `training.resolve_num_workers`.
                     num_workers=0,
                 )
@@ -367,7 +362,7 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
                 # com ele: o treino acabou de reescrever este mesmo `.pt` (S-31).
                 get_service().invalidate_model(model_path)
                 st.success(
-                    f"Treino concluido em {len(run.history)} epocas. Melhor: epoca {run.best_epoch}, "
+                    f"Treino concluido em {len(run.history)} épocas. Melhor: época {run.best_epoch}, "
                     f"{run.best_metric_name}={run.best_metric:.4f}. Modelo em: {model_path}"
                 )
                 if run.ece_after is not None:
@@ -385,7 +380,7 @@ st.title("Chess Diagram OCR (OpenCV + PyTorch)")
 st.markdown(
     """
     <style>
-    /* Mantem a coluna direita (PDF + diagramas) visivel durante scroll */
+    /* Mantém a coluna direita (PDF + diagramas) visivel durante scroll */
     div[data-testid="stHorizontalBlock"]:has(h3#pdf-fixo-direita) > div[data-testid="stColumn"]:last-child {
         position: sticky;
         top: 0.75rem;
@@ -408,18 +403,19 @@ st.markdown(
 default_pdf = find_default_pdf_path()
 
 with st.sidebar:
-    st.header("Configuracao")
+    st.header("Configuração")
     model_path = Path(st.text_input("Modelo (.pt)", str(DEFAULT_MODEL_PATH)))
     dataset_csv = Path(st.text_input("CSV labels", str(DEFAULT_DATASET_CSV)))
     samples_dir = Path(st.text_input("Pasta samples", str(DEFAULT_SAMPLES_DIR)))
     # Tri-estado em vez de checkbox: "auto" decide por diagrama, o que resolve livro com
-    # orientacoes misturadas -- o booleano valia para a pagina inteira (S-13).
+    # orientações misturadas -- o booleano valia para a página inteira (S-13).
     orientation = st.radio(
-        "Orientacao do diagrama",
+        "Orientação do diagrama",
         options=("auto", "0", "180"),
         index=("auto", "0", "180").index(DEFAULT_ORIENTATION_MODE),
+        format_func=lambda valor: strings.ORIENTATION_LABELS[valor],
         horizontal=True,
-        help="auto: escolhe por diagrama pela leitura mais plausivel.",
+        help="Automática: escolhe por diagrama pela leitura mais plausível.",
     )
     dpi = st.slider("DPI render PDF", min_value=120, max_value=320, value=220, step=20)
     max_boards = st.number_input(
@@ -429,7 +425,7 @@ with st.sidebar:
         get_service().invalidate_model(model_path)
         st.success("Cache do modelo limpo. OCR vai usar o .pt mais recente.")
     st.info(f"O OCR usa o modelo salvo em: {model_path}")
-    # S-30: o dispositivo era escolhido em silencio, entao uma maquina com placa mas com o
+    # S-30: o dispositivo era escolhido em silencio, então uma maquina com placa mas com o
     # torch +cpu instalado rodava em CPU sem nada dizer.
     st.caption(f"Dispositivo: {get_service().device_label}")
 
@@ -444,7 +440,7 @@ if mode == "Arquivo local":
         pdf_source = pdf_path
         pdf_name = pdf_path.name
     else:
-        st.warning("Arquivo PDF nao encontrado. Informe um caminho valido ou use Upload.")
+        st.warning("Arquivo PDF não encontrado. Informe um caminho valido ou use Upload.")
 else:
     uploaded_pdf = st.file_uploader("Envie o PDF", type=["pdf"])
     if uploaded_pdf is not None:
@@ -455,7 +451,7 @@ tab_pdf, tab_local = st.tabs(["OCR PDF", "OCR imagem local"])
 
 with tab_pdf:
     if pdf_source is None:
-        st.info("Selecione um PDF para usar navegacao por paginas.")
+        st.info("Selecione um PDF para usar navegacao por páginas.")
     else:
         try:
             page_count = get_service().page_count(pdf_source)
@@ -464,7 +460,7 @@ with tab_pdf:
             page_count = 0
 
         if page_count > 0:
-            st.caption(f"PDF: {pdf_name} | Paginas: {page_count}")
+            st.caption(f"PDF: {pdf_name} | Páginas: {page_count}")
 
             if "page_index" not in st.session_state:
                 st.session_state["page_index"] = 0
@@ -474,14 +470,14 @@ with tab_pdf:
             with layout_left:
                 n1, n2, n3 = st.columns([1, 1, 2])
                 with n1:
-                    if st.button("Pagina anterior"):
+                    if st.button("Página anterior"):
                         st.session_state["page_index"] = max(0, st.session_state["page_index"] - 1)
                 with n2:
-                    if st.button("Proxima pagina"):
+                    if st.button("Próxima página"):
                         st.session_state["page_index"] = min(page_count - 1, st.session_state["page_index"] + 1)
                 with n3:
                     st.number_input(
-                        "Pagina (0-index)",
+                        "Página (0-index)",
                         min_value=0,
                         max_value=page_count - 1,
                         step=1,
@@ -492,16 +488,16 @@ with tab_pdf:
                 with a1:
                     run_best = st.button("OCR melhor diagrama", type="primary")
                 with a2:
-                    run_all = st.button("OCR todos diagramas da pagina", type="primary")
+                    run_all = st.button("OCR todos diagramas da página", type="primary")
                 preview_container = st.container()
 
             with layout_right:
                 st.subheader("PDF fixo (direita)")
                 try:
                     page_preview_rgb = render_pdf_page_cached(pdf_source, int(st.session_state["page_index"]), dpi=dpi)
-                    st.image(page_preview_rgb, caption=f"Pagina {st.session_state['page_index']}", use_container_width=True)
+                    st.image(page_preview_rgb, caption=f"Página {st.session_state['page_index']}", use_container_width=True)
                 except Exception as exc:
-                    st.error(f"Falha ao renderizar pagina: {exc}")
+                    st.error(f"Falha ao renderizar página: {exc}")
                     page_preview_rgb = None
 
             if run_best or run_all:
@@ -512,7 +508,7 @@ with tab_pdf:
                     else:
                         page_rgb = page_preview_rgb
                     # `recognize_page` e o detector das duas fontes (S-12), o mesmo que a
-                    # exportacao usa: GUI e PGN precisam recortar e numerar o mesmo diagrama.
+                    # exportação usa: GUI e PGN precisam recortar e numerar o mesmo diagrama.
                     diagramas = get_service().recognize_page(
                         pdf_source,
                         page_index,
@@ -526,7 +522,7 @@ with tab_pdf:
                     )
                 except Exception as exc:
                     _clear_results()
-                    st.error(f"Falha no OCR da pagina: {exc}")
+                    st.error(f"Falha no OCR da página: {exc}")
 
             with preview_container:
                 st.subheader("Reconhecido (SVG)")
@@ -539,7 +535,7 @@ with tab_pdf:
                     components.html(preview_svg, height=480)
                     st.caption(f"Diagrama selecionado: #{int(preview_idx) + 1}")
                 else:
-                    st.error("FEN do diagrama selecionado esta invalida.")
+                    st.error("FEN do diagrama selecionado esta inválida.")
 
                 b1, b2, b3 = st.columns(3)
                 with b1:
@@ -549,13 +545,13 @@ with tab_pdf:
                     if st.button("Salvar todos", key="top_save_all"):
                         save_all_items(dataset_csv=dataset_csv, samples_dir=samples_dir)
                 with b3:
-                    if st.button("Proximo diagrama", key="top_next_diagram"):
+                    if st.button("Próximo diagrama", key="top_next_diagram"):
                         go_to_next_diagram()
 
 with tab_local:
     st.caption("Use para OCR de print, recorte ou foto. Pode detectar mais de um tabuleiro.")
     uploaded_image = st.file_uploader("Envie imagem", type=["png", "jpg", "jpeg", "webp"], key="local_image_uploader")
-    board_only = st.checkbox("Imagem ja contem somente um tabuleiro", value=False)
+    board_only = st.checkbox("Imagem já contem somente um tabuleiro", value=False)
     local_all = st.checkbox("Detectar todos diagramas da imagem", value=True)
     run_local = st.button("Fazer OCR local", type="primary")
 
@@ -566,12 +562,12 @@ with tab_local:
             data = np.frombuffer(uploaded_image.getvalue(), dtype=np.uint8)
             image_bgr = cv2.imdecode(data, cv2.IMREAD_COLOR)
             if image_bgr is None:
-                st.error("Nao foi possivel abrir a imagem.")
+                st.error("Não foi possível abrir a imagem.")
             else:
                 image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
                 try:
                     # `refine_detected_boards` alinha o recorte pelo contorno dentro do quad.
-                    # Estava so no Tkinter, e e o que decide se a grade 8x8 cai em registro.
+                    # Estava só no Tkinter, e e o que decide se a grade 8x8 cai em registro.
                     diagramas = get_service().recognize_image(
                         image_rgb,
                         options=_recognition_options(

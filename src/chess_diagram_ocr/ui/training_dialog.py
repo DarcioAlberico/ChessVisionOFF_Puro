@@ -55,7 +55,7 @@ def format_metrics(row: dict[str, Any]) -> str:
     partes: list[str] = []
     epoca = row.get("epoch")
     if epoca is not None:
-        partes.append(f"epoca={epoca}")
+        partes.append(f"época={epoca}")
     for chave, rotulo in (
         ("val_board_exact_acc", "exata/tabuleiro"),
         ("train_loss", "train_loss"),
@@ -66,7 +66,7 @@ def format_metrics(row: dict[str, Any]) -> str:
         if chave in row:
             partes.append(f"{rotulo}={float(row[chave]):.4f}")
     if row.get("is_best"):
-        partes.append("(melhor ate agora)")
+        partes.append("(melhor até agora)")
     return " | ".join(partes)
 
 
@@ -116,7 +116,7 @@ class TrainingController:
 
     def start(self) -> None:
         if self._running:
-            messagebox.showinfo("Treino em andamento", "Ja existe um treino em execucao.")
+            messagebox.showinfo("Treino em andamento", "Já existe um treino em execução.")
             return
 
         pedido = self._request()
@@ -180,7 +180,7 @@ class TrainingController:
 
     def _on_progress(self, row: dict[str, Any]) -> None:
         epoca = int(row.get("epoch", 0))
-        status = f"Treinando... epoca {epoca}/{self._total_epochs}"
+        status = f"Treinando... época {epoca}/{self._total_epochs}"
         self._on_status(status)
         self.set_text(status, format_metrics(row))
 
@@ -207,7 +207,7 @@ class TrainingController:
                 partial(
                     messagebox.showinfo,
                     "Treino concluido",
-                    f"Epocas: {len(run.history)}\nMelhor epoca: {run.best_epoch}\n{resumo}",
+                    f"Épocas: {len(run.history)}\nMelhor época: {run.best_epoch}\n{resumo}",
                 ),
             )
         except Exception as exc:

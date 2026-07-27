@@ -116,9 +116,9 @@ class PdfPanel(ttk.Frame):
 
         nav = ttk.Frame(box)
         nav.pack(fill=tk.X, padx=8, pady=(0, 6))
-        ttk.Button(nav, text="Pagina anterior", command=self.prev_page).pack(side=tk.LEFT)
-        ttk.Button(nav, text="Proxima pagina", command=self.next_page).pack(side=tk.LEFT, padx=6)
-        ttk.Label(nav, text="Pagina").pack(side=tk.LEFT, padx=(12, 4))
+        ttk.Button(nav, text="Página anterior", command=self.prev_page).pack(side=tk.LEFT)
+        ttk.Button(nav, text="Próxima página", command=self.next_page).pack(side=tk.LEFT, padx=6)
+        ttk.Label(nav, text="Página").pack(side=tk.LEFT, padx=(12, 4))
         self.spin_page = ttk.Spinbox(
             nav, from_=0, to=0, textvariable=self.page_index_var, width=8, command=self.on_page_spin
         )
@@ -130,12 +130,12 @@ class PdfPanel(ttk.Frame):
         self.btn_ocr_best.pack(side=tk.LEFT)
         self.btn_ocr_all = ttk.Button(acoes, text="OCR todos diagramas", command=on_ocr_all)
         self.btn_ocr_all.pack(side=tk.LEFT, padx=6)
-        self.btn_select = ttk.Button(acoes, text="Selecionar area (OCR)", command=self.toggle_area_selection)
+        self.btn_select = ttk.Button(acoes, text="Selecionar área (OCR)", command=self.toggle_area_selection)
         self.btn_select.pack(side=tk.LEFT, padx=6)
         self.btn_export = ttk.Button(acoes, text="Exportar PDF -> PGN", command=on_export)
         self.btn_export.pack(side=tk.LEFT, padx=6)
         self.btn_cancel_export = ttk.Button(
-            acoes, text="Cancelar exportacao", command=on_cancel_export, state=tk.DISABLED
+            acoes, text="Cancelar exportação", command=on_cancel_export, state=tk.DISABLED
         )
         self.btn_cancel_export.pack(side=tk.LEFT)
 
@@ -176,7 +176,7 @@ class PdfPanel(ttk.Frame):
             self.reader_host, textvariable=self.reader_notice_var, justify=tk.LEFT, wraplength=560
         ).pack(anchor="nw", padx=12, pady=12)
         if not suportado:
-            self.reader_notice_var.set(f"Leitura via WebView2 indisponivel.\n{motivo}")
+            self.reader_notice_var.set(f"Leitura via WebView2 indisponível.\n{motivo}")
 
     # ------------------------------------------------------------------------------- zoom
 
@@ -205,7 +205,7 @@ class PdfPanel(ttk.Frame):
 
     def set_export_controls_enabled(self, enabled: bool) -> None:
         self.btn_export.configure(state=tk.NORMAL if enabled else tk.DISABLED)
-        # O cancelar so existe enquanto ha o que cancelar.
+        # O cancelar só existe enquanto ha o que cancelar.
         self.btn_cancel_export.configure(state=tk.DISABLED if enabled else tk.NORMAL)
 
     def disable_cancel_button(self) -> None:
@@ -228,7 +228,7 @@ class PdfPanel(ttk.Frame):
             self.source = pdf_path
             self.name = pdf_path.name
             self.page_count = get_pdf_page_count(pdf_path)
-            self.lbl_pdf.config(text=f"{self.name} ({self.page_count} pags)")
+            self.lbl_pdf.config(text=f"{self.name} ({self.page_count} págs)")
 
             alvo = self._initial_page_for(pdf_path)
             self.page_index_var.set(max(0, min(self.page_count - 1, alvo)))
@@ -269,19 +269,19 @@ class PdfPanel(ttk.Frame):
         if self.page_loaded_for_index == idx and self.page_rgb is not None:
             return True
 
-        # Antes de trocar de pagina, o que esta no editor tem de ir para o cache da pagina
-        # de origem -- inclusive o texto que o usuario acabou de digitar no campo de FEN.
+        # Antes de trocar de página, o que esta no editor tem de ir para o cache da página
+        # de origem -- inclusive o texto que o usuário acabou de digitar no campo de FEN.
         self._on_before_page_change()
         try:
-            self._on_status(f"Renderizando pagina {idx}...")
+            self._on_status(f"Renderizando página {idx}...")
             self.page_rgb = render_pdf_page(self.source, idx, dpi=self._dpi())
             self.page_loaded_for_index = idx
             self.refresh_view()
-            self._on_status(f"Pagina {idx} pronta.")
+            self._on_status(f"Página {idx} pronta.")
         except Exception as exc:
             self.page_rgb = None
             self.page_loaded_for_index = None
-            messagebox.showerror("Erro", f"Falha ao renderizar pagina:\n{exc}")
+            messagebox.showerror("Erro", f"Falha ao renderizar página:\n{exc}")
             return False
 
         self._on_page_rendered(idx)
@@ -314,8 +314,8 @@ class PdfPanel(ttk.Frame):
 
     def on_view_mode_changed(self) -> None:
         if self.is_reader_mode():
-            # Selecao de area e do canvas; deixa-la ligada ao trocar de aba faria o botao
-            # dizer "Cancelar selecao" sobre uma tela onde nao se pode selecionar nada.
+            # Seleção de área e do canvas; deixa-la ligada ao trocar de aba faria o botao
+            # dizer "Cancelar seleção" sobre uma tela onde não se pode selecionar nada.
             self.disable_area_selection()
             self._ensure_reader()
             self._sync_reader()
@@ -343,10 +343,10 @@ class PdfPanel(ttk.Frame):
             self.reader_notice_var.set("Leitura via WebView2 pronta.")
         except WebView2SupportError as exc:
             self._webview2_supported = False
-            self.reader_notice_var.set(f"Leitura via WebView2 indisponivel.\n{exc}")
+            self.reader_notice_var.set(f"Leitura via WebView2 indisponível.\n{exc}")
 
     def destroy_reader(self) -> None:
-        """Fecha o WebView2 ao encerrar a janela: ele e um processo, nao um widget."""
+        """Fecha o WebView2 ao encerrar a janela: ele e um processo, não um widget."""
         if self._webview2 is not None:
             self._webview2.destroy()
             self._webview2 = None
@@ -364,7 +364,7 @@ class PdfPanel(ttk.Frame):
         try:
             self._webview2.load_pdf(self.source, self.page_index)
         except WebView2SupportError as exc:
-            self.reader_notice_var.set(f"Leitura via WebView2 indisponivel.\n{exc}")
+            self.reader_notice_var.set(f"Leitura via WebView2 indisponível.\n{exc}")
 
     # -------------------------------------------------------------------- seleção de área
 
@@ -372,25 +372,25 @@ class PdfPanel(ttk.Frame):
         if self.is_reader_mode():
             self.view_tabs.select(self.ocr_tab)
         if self._select_mode:
-            self.disable_area_selection("Selecao de area cancelada.")
+            self.disable_area_selection("Seleção de área cancelada.")
             return
         if self.source is None or self.page_rgb is None:
-            messagebox.showwarning("Aviso", "Abra um PDF antes de selecionar uma area.")
+            messagebox.showwarning("Aviso", "Abra um PDF antes de selecionar uma área.")
             return
 
         self._select_mode = True
         self._select_start = None
         self._clear_overlay()
         self.canvas.configure(cursor="crosshair")
-        self.btn_select.configure(text="Cancelar selecao")
-        self._on_status("Selecao ativa: arraste no PDF para reconhecer a area automaticamente.")
+        self.btn_select.configure(text="Cancelar seleção")
+        self._on_status("Seleção ativa: arraste no PDF para reconhecer a área automaticamente.")
 
     def disable_area_selection(self, status_text: str = "") -> None:
         self._select_mode = False
         self._select_start = None
         self._clear_overlay()
         self.canvas.configure(cursor="")
-        self.btn_select.configure(text="Selecionar area (OCR)")
+        self.btn_select.configure(text="Selecionar área (OCR)")
         if status_text:
             self._on_status(status_text)
 
@@ -400,7 +400,7 @@ class PdfPanel(ttk.Frame):
         try:
             self.canvas.delete(self._select_rect_id)
         except tk.TclError as exc:
-            logger.debug("Retangulo de selecao ja removido: %s", exc)
+            logger.debug("Retangulo de seleção já removido: %s", exc)
         self._select_rect_id = None
 
     def _clamp(self, x: float, y: float) -> tuple[float, float]:
@@ -446,10 +446,10 @@ class PdfPanel(ttk.Frame):
         x0c, x1c = sorted((x0, x1))
         y0c, y1c = sorted((y0, y1))
         if (x1c - x0c) < MIN_SELECTION_PX or (y1c - y0c) < MIN_SELECTION_PX:
-            self._on_status("Selecao muito pequena. Tente novamente.")
+            self._on_status("Seleção muito pequena. Tente novamente.")
             return
 
-        # Da coordenada do canvas para a do pixel da pagina -- a unica parte que depende do
+        # Da coordenada do canvas para a do pixel da página -- a única parte que depende do
         # zoom. Recortar e grampear aos limites e do servico (S-31).
         zoom = float(self.zoom_var.get())
         regiao = (int(x0c / zoom), int(y0c / zoom), int(x1c / zoom), int(y1c / zoom))

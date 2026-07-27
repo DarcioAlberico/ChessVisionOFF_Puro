@@ -50,16 +50,16 @@ class ScanRequest:
 class ReviewPanel(ttk.Frame):
     """Lista navegável da fila, com varredura em segundo plano e cancelamento."""
 
-    COLUMNS = ("prioridade", "pagina", "diagrama", "confianca", "status", "motivo")
+    COLUMNS = ("prioridade", "página", "diagrama", "confiança", "status", "motivo")
     HEADINGS = {
         "prioridade": "Prio.",
-        "pagina": "Pag.",
+        "página": "Pag.",
         "diagrama": "Diag.",
-        "confianca": "Conf. min",
+        "confiança": "Conf. min",
         "status": "Status",
         "motivo": "Motivo",
     }
-    WIDTHS = {"prioridade": 60, "pagina": 50, "diagrama": 50, "confianca": 80, "status": 80, "motivo": 460}
+    WIDTHS = {"prioridade": 60, "página": 50, "diagrama": 50, "confiança": 80, "status": 80, "motivo": 460}
 
     def __init__(
         self,
@@ -269,7 +269,7 @@ class ReviewPanel(ttk.Frame):
                 progress_callback=_progress,
             )
             self.after(0, lambda: self._apply_scan(fresh, cancel_event.is_set()))
-        except Exception as exc:  # noqa: BLE001 - erro de varredura vira mensagem, nao crash
+        except Exception as exc:  # noqa: BLE001 - erro de varredura vira mensagem, não crash
             logger.exception("Falha ao montar a fila de revisão.")
             detalhe = str(exc)
             self.after(0, lambda: messagebox.showerror("Fila de revisão", f"Falha na varredura:\n{detalhe}"))
@@ -278,7 +278,7 @@ class ReviewPanel(ttk.Frame):
 
     def _apply_scan(self, fresh: ReviewQueue, cancelled: bool) -> None:
         if self.queue.items and self.queue.source_pdf == fresh.source_pdf:
-            # Revarredura nao pode ressuscitar o que ja foi revisado -- e o que `merge_queues`
+            # Revarredura não pode ressuscitar o que já foi revisado -- e o que `merge_queues`
             # garante. Sem isso, cada varredura apagaria o trabalho da sessao anterior.
             fresh = merge_queues(self.queue, fresh)
         self.queue = fresh

@@ -61,6 +61,7 @@ from chess_diagram_ocr.settings import (
     load_settings,
     save_settings,
 )
+from chess_diagram_ocr.ui import strings
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 from chess_diagram_ocr.ui.export_controller import ExportController, ExportSettings
@@ -93,7 +94,7 @@ class ChessOcrTkApp:
         self.piece_images = PieceImages(PIECE_IMAGE_DIR)
         self.state = AppState()
         self.settings = load_settings()
-        """Preferencias do usuario (S-32). Por padrao nada sai da maquina."""
+        """Preferências do usuário (S-32). Por padrão nada sai da maquina."""
 
         self._is_running_ocr = False
 
@@ -123,7 +124,7 @@ class ChessOcrTkApp:
             request=self._training_request,
             on_status=self._set_status,
             on_controls_enabled=self._set_train_controls_enabled,
-            # Ao fim do treino o `.pt` em memoria pode nao ser mais o do disco. Invalidar
+            # Ao fim do treino o `.pt` em memória pode não ser mais o do disco. Invalidar
             # aqui espera o OCR em andamento, em vez de disputar com ele (S-31).
             on_finished=self.reload_model,
         )
@@ -162,7 +163,7 @@ class ChessOcrTkApp:
         self.left_tabs = tabs
 
         cfg_tab = ttk.Frame(tabs, padding=6)
-        tabs.add(cfg_tab, text="Configuracao")
+        tabs.add(cfg_tab, text="Configuração")
         self._build_config_tab(cfg_tab)
 
         self.result_panel = ResultPanel(
@@ -188,12 +189,12 @@ class ChessOcrTkApp:
         self.study_panel = StudyPanel(
             tabs,
             piece_images=self.piece_images,
-            # Vinculo de mao unica: o estudo le a FEN do diagrama selecionado e nunca
-            # escreve de volta. Um lance jogado na analise nao e uma correcao do OCR.
+            # Vinculo de mao única: o estudo le a FEN do diagrama selecionado e nunca
+            # escreve de volta. Um lance jogado na análise não e uma correção do OCR.
             current_fen=lambda: self.result_panel.fen_var.get() if self.result_panel else "",
             initial_dir=ROOT,
         )
-        tabs.add(self.study_panel, text="Analise")
+        tabs.add(self.study_panel, text="Análise")
 
         self.review_panel = ReviewPanel(
             tabs,
@@ -202,7 +203,7 @@ class ChessOcrTkApp:
             on_status=self._set_status,
             queue_path=DEFAULT_QUEUE_PATH,
         )
-        tabs.add(self.review_panel, text="Revisao")
+        tabs.add(self.review_panel, text="Revisão")
         self.result_panel.set_review_settler(self._settle_review_item)
 
         self.dataset_panel = DatasetPanel(
@@ -222,17 +223,17 @@ class ChessOcrTkApp:
         self._entry_row(cfg_tab, "Pasta samples", self.samples_dir_var)
 
         # Tri-estado no lugar do checkbox: "auto" decide por diagrama, o que resolve livro
-        # com orientacoes misturadas -- o booleano valia para todos de uma vez (S-13).
+        # com orientações misturadas -- o booleano valia para todos de uma vez (S-13).
         orient_row = ttk.Frame(cfg_tab)
         orient_row.pack(anchor="w", fill="x", padx=8, pady=4)
-        ttk.Label(orient_row, text="Orientacao do diagrama", width=24).pack(side="left")
-        for rotulo, valor in (("Automatica", "auto"), ("0 graus", "0"), ("180 graus", "180")):
+        ttk.Label(orient_row, text="Orientação do diagrama", width=24).pack(side="left")
+        for valor, rotulo in strings.ORIENTATION_LABELS.items():
             ttk.Radiobutton(orient_row, text=rotulo, value=valor, variable=self.orientation_var).pack(
                 side="left", padx=4
             )
         self._spin_row(cfg_tab, "DPI", self.dpi_var, 120, 320, 20)
-        # Ate 30: uma pagina de exercicios com grade 3x3 tem 9, e o teto antigo de 8 cortava
-        # o nono em silencio. Quem filtra e o piso de score do detector, nao este numero.
+        # Até 30: uma página de exercicios com grade 3x3 tem 9, e o teto antigo de 8 cortava
+        # o nono em silencio. Quem filtra e o piso de score do detector, não este número.
         self._spin_row(cfg_tab, "Max diagramas", self.max_boards_var, 1, 30, 1)
 
         btns = ttk.Frame(cfg_tab)
@@ -241,7 +242,7 @@ class ChessOcrTkApp:
 
         train_box = ttk.LabelFrame(cfg_tab, text="Treino (salva em piece_classifier.pt)")
         train_box.pack(fill=tk.X, padx=8, pady=(4, 8))
-        self._spin_row(train_box, "Epocas", self.epochs_var, 1, 200, 1)
+        self._spin_row(train_box, "Épocas", self.epochs_var, 1, 200, 1)
         self._spin_row(train_box, "Batch size", self.batch_var, 16, 512, 16)
         self._entry_row(train_box, "Learning rate", self.lr_var)
         ttk.Checkbutton(
@@ -249,7 +250,7 @@ class ChessOcrTkApp:
         ).pack(anchor="w", padx=8)
         ttk.Label(
             train_box,
-            text="Sem isso, o treino continua do checkpoint e so grava por cima se melhorar.",
+            text="Sem isso, o treino continua do checkpoint e só grava por cima se melhorar.",
             wraplength=320,
             foreground="#555555",
         ).pack(anchor="w", padx=8, pady=(0, 4))
@@ -293,7 +294,7 @@ class ChessOcrTkApp:
                 self.main_pane.sash_place(0, int(max(1, self.main_pane.winfo_width()) * 0.42), 0)
         except tk.TclError as exc:
             # Erro transitorio de geometria enquanto o primeiro layout se estabiliza.
-            logger.debug("Nao foi possivel posicionar o divisor inicial: %s", exc)
+            logger.debug("Não foi possível posicionar o divisor inicial: %s", exc)
 
     # ------------------------------------------------------------------------------ estado
 
@@ -334,10 +335,10 @@ class ChessOcrTkApp:
 
         pdf_path = Path(last_pdf)
         if not pdf_path.exists():
-            # Antes isto era um `return False` silencioso e o usuario so via o PDF errado
+            # Antes isto era um `return False` silencioso e o usuário só via o PDF errado
             # abrir, sem saber por que.
-            logger.warning("Ultimo PDF do estado nao existe mais: %s", pdf_path)
-            self._set_status(f"Ultimo PDF nao encontrado: {pdf_path}")
+            logger.warning("Último PDF do estado não existe mais: %s", pdf_path)
+            self._set_status(f"Último PDF não encontrado: {pdf_path}")
             self._set_default_pdf_if_exists()
             return
 
@@ -364,7 +365,7 @@ class ChessOcrTkApp:
             if self.review_panel is not None:
                 self.state.review_queue_path = str(self.review_panel.queue_path)
         except tk.TclError as exc:
-            logger.warning("Estado da aplicacao nao pode ser montado: %s", exc)
+            logger.warning("Estado da aplicacao não pode ser montado: %s", exc)
             return
         save_state(APP_STATE_PATH, self.state)
 
@@ -494,8 +495,8 @@ class ChessOcrTkApp:
 
     # --------------------------------------------------------------------------------- OCR
     # A janela decide *o que* reconhecer, porque e ela que tem os widgets; o servico decide
-    # *como*. `run` ja vem montado aqui, fechado sobre copias das imagens e sobre as opcoes
-    # lidas dos widgets -- ler `tk.Variable` de outra thread e acesso que o Tcl nao promete.
+    # *como*. `run` já vem montado aqui, fechado sobre copias das imagens e sobre as opções
+    # lidas dos widgets -- ler `tk.Variable` de outra thread e acesso que o Tcl não promete.
 
     def ocr_best(self) -> None:
         self._run_ocr_from_current_page(max_boards=1)
@@ -515,9 +516,9 @@ class ChessOcrTkApp:
         page_rgb = np.asarray(painel.page_rgb).copy()
         options = self._recognition_options(max_boards)
         source = painel.source
-        # `recognize_page` e o caminho do detector hibrido (S-12), o mesmo que a exportacao
+        # `recognize_page` e o caminho do detector hibrido (S-12), o mesmo que a exportação
         # usa. Deixar a GUI noutro detector faria a tela e o PGN recortarem diagramas
-        # diferentes -- o mesmo desencontro que a S-14 corrigiu na numeracao.
+        # diferentes -- o mesmo desencontro que a S-14 corrigiu na numeração.
         self._start_ocr(
             lambda: self.service.recognize_page(source, page_index, page_rgb, options=options),
             origin=RecognitionOrigin.for_page(painel.name, page_index),
@@ -542,7 +543,7 @@ class ChessOcrTkApp:
             return
         image_bgr = cv2.imread(filename)
         if image_bgr is None:
-            messagebox.showerror("Erro", "Nao foi possivel abrir a imagem.")
+            messagebox.showerror("Erro", "Não foi possível abrir a imagem.")
             return
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         options = self._recognition_options(max_boards, refine_detected_boards=True)
@@ -553,7 +554,7 @@ class ChessOcrTkApp:
 
     def _start_ocr(self, run: Callable[[], list[RecognizedDiagram]], *, origin: RecognitionOrigin) -> None:
         if self._is_running_ocr:
-            self._set_status("OCR em andamento. Aguarde a conclusao.")
+            self._set_status("OCR em andamento. Aguarde a conclusão.")
             return
 
         self._is_running_ocr = True
@@ -593,21 +594,21 @@ class ChessOcrTkApp:
         try:
             self.left_tabs.select(self.result_panel)
         except tk.TclError as exc:
-            logger.debug("Nao foi possivel focar a aba de resultados: %s", exc)
+            logger.debug("Não foi possível focar a aba de resultados: %s", exc)
 
     def _sync_study(self) -> None:
         if self.study_panel is not None:
             self.study_panel.sync_with_ocr()
 
     def _ask_remote_consent(self, configuracao: RemoteFenSettings) -> bool:
-        """Aviso antes do primeiro envio, com "nao perguntar novamente" (S-32).
+        """Aviso antes do primeiro envio, com "não perguntar novamente" (S-32).
 
-        Tres respostas, nao duas: "Sim" envia uma vez, "Nao" cancela, e a caixa marcada
-        grava o consentimento para aquele endpoint. Quem so quer experimentar uma vez nao
+        Três respostas, não duas: "Sim" envia uma vez, "Não" cancela, e a caixa marcada
+        grava o consentimento para aquele endpoint. Quem só quer experimentar uma vez não
         deveria precisar aceitar para sempre.
         """
         dlg = tk.Toplevel(self.root)
-        dlg.title("Correcao remota")
+        dlg.title("Correção remota")
         dlg.resizable(False, False)
         dlg.transient(self.root)
         dlg.grab_set()
@@ -618,7 +619,7 @@ class ChessOcrTkApp:
         wrap = ttk.Frame(dlg, padding=14)
         wrap.pack(fill=tk.BOTH, expand=True)
         ttk.Label(wrap, text=configuracao.consent_message(), wraplength=460, justify=tk.LEFT).pack(anchor="w")
-        ttk.Checkbutton(wrap, text="Nao perguntar novamente para este endereco", variable=nao_perguntar).pack(
+        ttk.Checkbutton(wrap, text="Não perguntar novamente para este endereco", variable=nao_perguntar).pack(
             anchor="w", pady=(10, 0)
         )
 
@@ -658,7 +659,7 @@ class ChessOcrTkApp:
         samples_dir = Path(self.samples_dir_var.get())
         board_rgb = read_board_image(str(row.image_path(samples_dir)))
         if board_rgb is None:
-            raise FileNotFoundError(f"Imagem nao encontrada: {row.image_path(samples_dir)}")
+            raise FileNotFoundError(f"Imagem não encontrada: {row.image_path(samples_dir)}")
         return self.service.recheck_label(board_rgb, row.placement).describe(row.filename)
 
     # ----------------------------------------------------------------------------- atalhos

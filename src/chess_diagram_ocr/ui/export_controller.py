@@ -46,17 +46,17 @@ def describe_report(report: ExportReport) -> list[str]:
     com menos diagramas.
     """
     linhas = [
-        "Exportacao cancelada" if report.cancelled else "Arquivo gerado com sucesso.",
+        "Exportação cancelada" if report.cancelled else "Arquivo gerado com sucesso.",
         "",
         f"PGN: {report.output_path}",
         f"Aceitos: {len(report.accepted)} de {report.total}",
     ]
     if report.resumed_from_page is not None:
-        linhas.insert(1, f"(retomada a partir da pagina {report.resumed_from_page + 1})")
+        linhas.insert(1, f"(retomada a partir da página {report.resumed_from_page + 1})")
     if report.review_path is not None:
         linhas += [
             "",
-            f"Para revisao: {len(report.needs_review)} de baixa confianca, {len(report.rejected)} ilegais.",
+            f"Para revisão: {len(report.needs_review)} de baixa confiança, {len(report.rejected)} ilegais.",
             f"Arquivo: {report.review_path}",
         ]
     if report.cancelled and report.partial_path is not None:
@@ -111,13 +111,13 @@ class ExportController:
         output_path = Path(filename)
         parcial = partial_path_for(output_path)
         if parcial.exists():
-            # Retomar e o padrao, mas nao em silencio: quem esta refazendo a exportacao de
+            # Retomar e o padrão, mas não em silencio: quem esta refazendo a exportação de
             # proposito precisa poder dizer "comeca do zero" (S-24).
             resposta = messagebox.askyesnocancel(
-                "Exportacao interrompida encontrada",
+                "Exportação interrompida encontrada",
                 f"Existe um progresso parcial em:\n{parcial}\n\n"
                 "Sim: retomar de onde parou.\n"
-                "Nao: recomecar do zero, descartando o parcial.\n"
+                "Não: recomecar do zero, descartando o parcial.\n"
                 "Cancelar: abortar.",
             )
             if resposta is None:
@@ -130,7 +130,7 @@ class ExportController:
         if output_path.exists():
             sobrescrever = messagebox.askyesno(
                 "Sobrescrever PGN",
-                f"O arquivo ja existe:\n{output_path}\n\nDeseja sobrescrever?",
+                f"O arquivo já existe:\n{output_path}\n\nDeseja sobrescrever?",
             )
             if not sobrescrever:
                 return None
@@ -142,7 +142,7 @@ class ExportController:
             return
         if self._running:
             messagebox.showinfo(
-                "Exportacao em andamento", "Ja existe uma exportacao de PDF para PGN em execucao."
+                "Exportação em andamento", "Já existe uma exportação de PDF para PGN em execução."
             )
             return
 
@@ -154,7 +154,7 @@ class ExportController:
         self._running = True
         self._cancel = threading.Event()
         self._on_controls_enabled(False)
-        self._on_status("Iniciando exportacao do PDF para PGN...")
+        self._on_status("Iniciando exportação do PDF para PGN...")
         threading.Thread(
             target=self._worker,
             args=(pdf_path, output_path, self._settings(), resume, self._cancel),
@@ -166,7 +166,7 @@ class ExportController:
         if self._cancel is None:
             return
         self._cancel.set()
-        self._on_status("Cancelando exportacao... o progresso da pagina atual sera preservado.")
+        self._on_status("Cancelando exportação... o progresso da página atual será preservado.")
 
     # ----------------------------------------------------------------------------- worker
 
@@ -183,8 +183,8 @@ class ExportController:
                 0,
                 partial(
                     self._on_status,
-                    f"Exportando PDF -> PGN... pagina {page_index + 1}/{total_pages} | "
-                    f"diagramas na pagina: {page_boards} | total: {total_positions}",
+                    f"Exportando PDF -> PGN... página {page_index + 1}/{total_pages} | "
+                    f"diagramas na página: {page_boards} | total: {total_positions}",
                 ),
             )
 
@@ -202,18 +202,18 @@ class ExportController:
             )
             self.root.after(0, partial(self._on_success, report))
         except Exception as exc:
-            logger.exception("Falha na exportacao de PDF para PGN.")
+            logger.exception("Falha na exportação de PDF para PGN.")
             self.root.after(0, partial(self._on_error, exc))
         finally:
             self.root.after(0, self._finish)
 
     def _on_success(self, report: ExportReport) -> None:
-        self._on_status(f"Exportacao concluida. {report.summary()}.")
+        self._on_status(f"Exportação concluida. {report.summary()}.")
         messagebox.showinfo("Exportar PDF para PGN", "\n".join(describe_report(report)))
 
     def _on_error(self, exc: Exception) -> None:
-        self._on_status("Falha na exportacao do PDF para PGN.")
-        messagebox.showerror("Exportar PDF para PGN", f"Nao foi possivel exportar o PDF:\n{exc}")
+        self._on_status("Falha na exportação do PDF para PGN.")
+        messagebox.showerror("Exportar PDF para PGN", f"Não foi possível exportar o PDF:\n{exc}")
 
     def _finish(self) -> None:
         self._running = False

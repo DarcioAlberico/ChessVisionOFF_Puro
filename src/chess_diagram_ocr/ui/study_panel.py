@@ -57,7 +57,7 @@ class StudyPanel(ttk.Frame):
         self.game.setup(self.board.copy(stack=False))
         self.current_node: chess.pgn.GameNode = self.game
 
-        self.origin_var = tk.StringVar(value="Base: posicao inicial")
+        self.origin_var = tk.StringVar(value="Base: posição inicial")
         self.status_var = tk.StringVar(value="")
         self.fen_var = tk.StringVar(value=self.board.fen())
         self.variation_var = tk.StringVar(value="")
@@ -66,7 +66,7 @@ class StudyPanel(ttk.Frame):
 
         self._build(piece_images)
         self.refresh()
-        self.set_status("Clique em uma peca para estudar.")
+        self.set_status("Clique em uma peça para estudar.")
 
     # ------------------------------------------------------------------------------ layout
 
@@ -74,7 +74,7 @@ class StudyPanel(ttk.Frame):
         top_row = ttk.Frame(self)
         top_row.pack(fill=tk.X, padx=4, pady=(0, 4))
         ttk.Button(top_row, text="Carregar OCR atual", command=self.load_from_recognized).pack(side=tk.LEFT)
-        ttk.Button(top_row, text="Posicao inicial", command=self.load_initial_position).pack(side=tk.LEFT, padx=6)
+        ttk.Button(top_row, text="Posição inicial", command=self.load_initial_position).pack(side=tk.LEFT, padx=6)
         ttk.Button(top_row, text="Virar board", command=self.flip_board).pack(side=tk.LEFT, padx=6)
         ttk.Button(top_row, text="Trocar vez", command=self.toggle_turn).pack(side=tk.LEFT, padx=6)
         ttk.Button(top_row, text="Salvar PGN", command=self.save_pgn).pack(side=tk.LEFT, padx=6)
@@ -96,12 +96,12 @@ class StudyPanel(ttk.Frame):
 
         variation_row = ttk.Frame(self)
         variation_row.pack(fill=tk.X, padx=4, pady=(0, 6))
-        ttk.Label(variation_row, text="Continuacoes").pack(side=tk.LEFT)
+        ttk.Label(variation_row, text="Continuações").pack(side=tk.LEFT)
         self.variation_combo = ttk.Combobox(
             variation_row, textvariable=self.variation_var, state="readonly", width=46
         )
         self.variation_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
-        self.variation_combo.bind("<<ComboboxSelected>>", lambda _event: self.set_status("Continuacao selecionada."))
+        self.variation_combo.bind("<<ComboboxSelected>>", lambda _event: self.set_status("Continuação selecionada."))
         ttk.Button(variation_row, text="Entrar", command=self.redo_move).pack(side=tk.LEFT)
 
         ttk.Label(self, textvariable=self.origin_var).pack(anchor="w", padx=6)
@@ -194,10 +194,10 @@ class StudyPanel(ttk.Frame):
 
     def _load_position(self, fen: str, origin: str, status: str) -> None:
         if not fen:
-            messagebox.showwarning("Aviso", "Nao ha FEN para carregar no tabuleiro de analise.")
+            messagebox.showwarning("Aviso", "Não ha FEN para carregar no tabuleiro de análise.")
             return
         if not is_valid_fen(fen):
-            messagebox.showerror("Erro", "A FEN informada para analise e invalida.")
+            messagebox.showerror("Erro", "A FEN informada para análise e inválida.")
             return
         self._set_board_state(board_from_fen(fen), origin=origin, status=status)
 
@@ -227,21 +227,21 @@ class StudyPanel(ttk.Frame):
         self._load_position(
             self._current_fen().strip(),
             origin="Base: OCR selecionado",
-            status="Posicao reconhecida carregada no tabuleiro.",
+            status="Posição reconhecida carregada no tabuleiro.",
         )
 
     # ------------------------------------------------------------------------------- ações
 
     def load_initial_position(self) -> None:
         self.follow_ocr_var.set(False)
-        self._set_board_state(chess.Board(), "Base: posicao inicial", "Tabuleiro reiniciado na posicao inicial.")
+        self._set_board_state(chess.Board(), "Base: posição inicial", "Tabuleiro reiniciado na posição inicial.")
 
     def apply_fen(self) -> None:
         self.follow_ocr_var.set(False)
         self._load_position(
             self.fen_var.get().strip(),
             origin="Base: FEN manual",
-            status="FEN aplicada no tabuleiro de analise.",
+            status="FEN aplicada no tabuleiro de análise.",
         )
 
     def copy_fen(self) -> None:
@@ -262,15 +262,15 @@ class StudyPanel(ttk.Frame):
 
     def undo_move(self) -> None:
         if self.current_node.parent is None:
-            self.set_status("Nao ha lances para desfazer.")
+            self.set_status("Não ha lances para desfazer.")
             return
         self.current_node = self.current_node.parent
         self.refresh()
-        self.set_status("Ultimo lance desfeito.")
+        self.set_status("Último lance desfeito.")
 
     def redo_move(self) -> None:
         if not self.current_node.variations:
-            self.set_status("Nao ha lances para refazer.")
+            self.set_status("Não ha lances para refazer.")
             return
         idx = max(0, min(self._selected_variation_index(), len(self.current_node.variations) - 1))
         self.current_node = self.current_node.variations[idx]
@@ -279,7 +279,7 @@ class StudyPanel(ttk.Frame):
 
     def go_to_start_of_line(self) -> None:
         if self.current_node.parent is None:
-            self.set_status("Ja esta no inicio da linha.")
+            self.set_status("Já esta no inicio da linha.")
             return
         while self.current_node.parent is not None:
             self.current_node = self.current_node.parent
@@ -288,7 +288,7 @@ class StudyPanel(ttk.Frame):
 
     def go_to_end_of_line(self) -> None:
         if not self.current_node.variations:
-            self.set_status("Ja esta no fim da linha.")
+            self.set_status("Já esta no fim da linha.")
             return
         # A variante escolhida no seletor vale para o primeiro passo; dali em diante segue a
         # linha principal, que e a leitura usual de "ir para o fim".
@@ -312,21 +312,21 @@ class StudyPanel(ttk.Frame):
         janela = self.winfo_toplevel()
         escolha: dict[str, int | None] = {"piece_type": None}
         dlg = tk.Toplevel(janela)
-        dlg.title("Promocao")
+        dlg.title("Promoção")
         dlg.resizable(False, False)
         dlg.transient(janela)
         dlg.grab_set()
 
         wrap = ttk.Frame(dlg, padding=12)
         wrap.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(wrap, text="Escolha a peca para promocao").pack(anchor="w", pady=(0, 8))
+        ttk.Label(wrap, text="Escolha a peça para promoção").pack(anchor="w", pady=(0, 8))
 
         def _select(piece_type: int) -> None:
             escolha["piece_type"] = piece_type
             dlg.destroy()
 
         for rotulo, tipo in (("Dama", chess.QUEEN), ("Torre", chess.ROOK), ("Bispo", chess.BISHOP), ("Cavalo", chess.KNIGHT)):
-            # `partial` e nao `lambda ...=tipo`: aqui ha laco, entao a captura por valor e
+            # `partial` e não `lambda ...=tipo`: aqui ha laco, então a captura por valor e
             # obrigatoria -- e o `partial` a expressa sem enganar o verificador de tipos.
             ttk.Button(wrap, text=rotulo, command=partial(_select, tipo)).pack(fill=tk.X, pady=2)
 
@@ -367,8 +367,8 @@ class StudyPanel(ttk.Frame):
             # e oferecer só "sobrescrever ou cancelar" faria perder análise já salva.
             resposta = messagebox.askyesnocancel(
                 "PGN existente",
-                "O arquivo ja existe.\n\nSim: acrescentar esta analise ao final.\n"
-                "Nao: sobrescrever o arquivo.\nCancelar: abortar o salvamento.",
+                "O arquivo já existe.\n\nSim: acrescentar esta análise ao final.\n"
+                "Não: sobrescrever o arquivo.\nCancelar: abortar o salvamento.",
             )
             if resposta is None:
                 return
@@ -376,6 +376,6 @@ class StudyPanel(ttk.Frame):
 
         try:
             self.write_pgn(path, append=append)
-            self.set_status(f"Analise acrescentada em {path.name}." if append else f"PGN salvo em {path.name}.")
+            self.set_status(f"Análise acrescentada em {path.name}." if append else f"PGN salvo em {path.name}.")
         except Exception as exc:
             messagebox.showerror("Erro", f"Falha ao salvar PGN:\n{exc}")

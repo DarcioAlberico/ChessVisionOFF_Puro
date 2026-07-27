@@ -135,17 +135,17 @@ class PageResultsCache:
         while len(self._entries) > self.max_pages:
             (descartado_doc, descartada), saindo = self._entries.popitem(last=False)
             if saindo.has_hand_edits:
-                # Aviso, nao bloqueio: quem quer guardar correcao salva a amostra no
-                # dataset (Ctrl+S). Este cache e conveniencia de navegacao, nao persistencia
+                # Aviso, não bloqueio: quem quer guardar correção salva a amostra no
+                # dataset (Ctrl+S). Este cache e conveniencia de navegacao, não persistencia
                 # -- e prometer o contrario seria pior que o teto.
                 logger.warning(
-                    "Pagina %d de %s saiu do cache de navegacao e tinha correcao feita a mao. "
-                    "Correcoes so ficam guardadas quando a amostra e salva no dataset.",
+                    "Página %d de %s saiu do cache de navegacao e tinha correção feita a mao. "
+                    "Correções só ficam guardadas quando a amostra e salva no dataset.",
                     descartada,
                     descartado_doc,
                 )
             else:
-                logger.debug("Pagina %d de %s saiu do cache de navegacao.", descartada, descartado_doc)
+                logger.debug("Página %d de %s saiu do cache de navegacao.", descartada, descartado_doc)
 
     def get(self, document: str, page_index: int, params: PageOcrParams) -> PageResults | None:
         """Resultado guardado da página, ou `None` se não há ou se os parâmetros mudaram."""
@@ -157,7 +157,7 @@ class PageResultsCache:
         if guardado.params != params:
             diferenca = params.describe_difference(guardado.params)
             logger.info(
-                "Resultado guardado da pagina %d descartado: %s. Rode o OCR de novo.",
+                "Resultado guardado da página %d descartado: %s. Rode o OCR de novo.",
                 page_index,
                 diferenca,
             )

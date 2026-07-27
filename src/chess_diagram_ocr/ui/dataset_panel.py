@@ -37,7 +37,7 @@ SPLIT_CHOICES = ("(todos)", "train", "val", "test")
 class DatasetPanel(ttk.Frame):
     """Tabela paginada do `labels.csv` com filtros, estatísticas e ações."""
 
-    COLUMNS = ("arquivo", "fen", "lado", "legalidade", "split", "origem", "pagina", "criado")
+    COLUMNS = ("arquivo", "fen", "lado", "legalidade", "split", "origem", "página", "criado")
     HEADINGS = {
         "arquivo": "Arquivo",
         "fen": "FEN",
@@ -45,7 +45,7 @@ class DatasetPanel(ttk.Frame):
         "legalidade": "Legalidade",
         "split": "Split",
         "origem": "Livro",
-        "pagina": "Pag.",
+        "página": "Pag.",
         "criado": "Criado em",
     }
     WIDTHS = {
@@ -55,7 +55,7 @@ class DatasetPanel(ttk.Frame):
         "legalidade": 95,
         "split": 55,
         "origem": 150,
-        "pagina": 50,
+        "página": 50,
         "criado": 130,
     }
 
@@ -266,7 +266,7 @@ class DatasetPanel(ttk.Frame):
             return
         try:
             resultado = self._on_recheck(rows[0])
-        except Exception as exc:  # noqa: BLE001 - falha de modelo vira mensagem, nao crash
+        except Exception as exc:  # noqa: BLE001 - falha de modelo vira mensagem, não crash
             messagebox.showerror("Conferir com o modelo", f"Não foi possível conferir:\n{exc}")
             return
         messagebox.showinfo("Conferir com o modelo", resultado)

@@ -72,7 +72,7 @@ class LegalityExplanation:
         if self.is_fatal:
             return f"Posição ilegal: {detail}"
         # Sem lado a jogar declarado o pipeline assume brancas; um xeque "invertido" aqui
-        # costuma significar que a vez era das pretas, e nao que o tabuleiro esta errado.
+        # costuma significar que a vez era das pretas, e não que o tabuleiro esta errado.
         return f"Só o lado a jogar não fecha: {detail}"
 
     def material_line(self) -> str:
@@ -116,7 +116,7 @@ def _problems_for(board: chess.Board, status: chess.Status) -> tuple[LegalityPro
     add(chess.STATUS_NO_WHITE_KING, "falta o rei branco", (), fatal=True)
     add(chess.STATUS_NO_BLACK_KING, "falta o rei preto", (), fatal=True)
     if status & chess.STATUS_TOO_MANY_KINGS:
-        # So aponta a cor que de fato duplicou: marcar os quatro reis mandaria o usuario
+        # So aponta a cor que de fato duplicou: marcar os quatro reis mandaria o usuário
         # conferir dois que estao certos.
         squares = tuple(
             sorted(
