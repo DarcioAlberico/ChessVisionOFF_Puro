@@ -825,20 +825,100 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 
 ---
 
-## Fase 6 — Consolidação do produto (5–8 dias)
+## Fase 6 — Consolidação do produto (5–8 dias) — em andamento
 
-| # | Entrega | Ref. spec |
-|---|---|---|
-| 6.1 | **Camada de serviço** `src/chess_diagram_ocr/service.py` — Tkinter e Streamlit passam a ser só apresentação | S-31 |
-| 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 |
-| 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 |
-| 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 |
-| 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 |
-| 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 |
-| 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 |
-| 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 |
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 6.1 | **Camada de serviço** `src/chess_diagram_ocr/service.py` — Tkinter e Streamlit passam a ser só apresentação | S-31 | ✅ |
+| 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 | — |
+| 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 | — |
+| 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 | — |
+| 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | — |
+| 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 | — |
+| 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 | — |
+| 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 | — |
 
 **Critério de saída:** Streamlit e Tkinter com paridade de funcionalidades; `app_tkinter.py` abaixo de 600 linhas; executável rodando em máquina sem Python.
+
+### 6.1 — o que a duplicação tinha custado, medido no que faltava de um lado
+
+A S-31 descreve o problema como manutenção em dobro. Comparados os dois caminhos linha a
+linha antes de unificar, o custo já tinha sido pago: o Streamlit não era uma cópia atrasada
+do Tkinter, era uma implementação **diferente**, e cinco entregas das Fases 2 e 3 nunca
+chegaram nele.
+
+| sinal | Tkinter | Streamlit (antes) |
+|---|---|---|
+| refino do recorte pelo contorno dentro do quad | sim | **não** |
+| matriz (64, 13) por casa (S-10), insumo do heatmap | sim | **descartada** |
+| casas inseguras (S-21) na tela | sim | **não** |
+| casas corrigidas pela decodificação com restrições (S-11) | sim | **não** |
+| fonte de detecção da S-12 gravada na amostra | sim | lia de uma chave que ninguém preenchia |
+
+A última linha é a que mostra o mecanismo: `_sample_metadata` do Streamlit lia
+`item.get("detection_source")` de um dicionário que o próprio arquivo montava **sem essa
+chave**. Não era um bug que quebrasse nada — gravava `""` e seguia. Nenhum teste podia
+pegá-lo, porque o dicionário não tem forma que possa ser violada. Foi o argumento para o
+`RecognizedDiagram` ser dataclass e não `dict[str, Any]`: com campo tipado, "esqueci de
+preencher" vira `TypeError` na construção, e não silêncio no arquivo de rótulos.
+
+**O `RecognizedDiagram` precisou de três estados de legalidade, não dois.** Nem todo
+diagrama no editor veio do OCR: a fila de revisão (S-22) e o navegador do dataset (S-23)
+abrem um tabuleiro que já tem rótulo e não tem predição. O código antigo já sabia disso —
+punha `is_legal: None` naqueles dicionários — e colapsar `None` em `False` faria a barra de
+status gritar "ILEGAL" para toda amostra aberta pelo dataset. Daí `legality` ser opcional e
+`is_legal` devolver `bool | None`.
+
+**A `RecognitionOrigin` existe porque a string era montada em três lugares e interpretada
+em dois.** `pdf:livro.pdf:page:16` era f-string na GUI, no recorte de área e no Streamlit;
+`page_index_from_origin` a interpretava no cache de página e `_sample_metadata` a
+interpretava de novo, com outro código, para achar a página da amostra. Os dois
+interpretadores discordavam num ponto que importa: o do cache sabia que recorte de área
+**não** é resultado de página, o do salvamento não. Agora há um tipo, e a regra
+(`is_whole_page`) mora nele.
+
+### As duas correções que a S-31 manda fazer "no caminho"
+
+- **`reload_model()` era chamada da thread de treino e zerava o cache do modelo.** O
+  perigo não é o objeto sumir — quem já pegou a referência continua com ela — é que o
+  treino acabou de **reescrever o `.pt`** que a próxima carga vai ler, e duas threads
+  podiam disparar duas cargas do mesmo arquivo. O `OcrService` segura o modelo sob lock
+  durante o **uso**, não só durante a carga: trocar de modelo espera o reconhecimento em
+  andamento terminar. Há teste de concorrência para isso — sem o lock, a invalidação
+  retornaria de imediato, e é esse tempo que o teste distingue.
+- **`_set_status` chamava `root.update_idletasks()` dentro de callback de evento**,
+  reentrando no loop do Tk e deixando outro callback rodar no meio deste. Removido; a
+  `StringVar` é observada pelo widget e o texto aparece no próximo ciclo ocioso.
+
+### O defeito que apareceu ao dirigir a interface, e que nenhum teste veria
+
+Rodando o OCR de uma página real pelo Streamlit, o log avisava:
+
+```
+max_boards=1 cortou 1 candidato(s) ... Se a pagina tem mais diagramas que isso,
+aumente 'Max diagramas'.
+```
+
+Só que o usuário tinha pedido 12, não 1. O aviso vinha de **dentro**: a S-12 refina cada
+candidato chamando `detect_boards(regiao, max_boards=1)`, e ali o teto é o pedido, não um
+limite. O conselho — "aumente 'Max diagramas'" — apontava para uma configuração sem efeito
+algum sobre aquela chamada.
+
+É o inverso exato do defeito que a Fase 5 corrigiu. Lá o teto cortava diagrama **em
+silêncio**; a correção foi avisar. Aqui o aviso passou a disparar onde não havia nada
+errado, e alarme falso que aparece em toda página gasta a credibilidade do alarme
+verdadeiro. `detect_boards` ganhou `warn_on_cap`, desligado nos três chamadores internos
+que pedem um tabuleiro de propósito — com teste que percorre os três módulos e confere que
+nenhum ficou de fora, porque silenciar um só deixaria o vazamento pelos outros dois.
+
+### O que 6.1 não entrega da paridade
+
+O critério de saída pede "paridade de funcionalidades", e o que 6.1 iguala é o **pipeline**:
+as duas telas fazem a mesma leitura, com os mesmos sinais e a mesma procedência gravada. O
+que segue diferente é a **edição**: o Streamlit não tem o editor de posição por clique
+(S-20), o painel de legalidade (S-21), a fila de revisão (S-22) nem a aba de dataset
+(S-23) — são widgets de Tk. Com o serviço no lugar, portá-los deixou de exigir reescrever
+o OCR junto, que era o custo real; mas continua sendo trabalho de UI, e não foi feito aqui.
 
 ---
 

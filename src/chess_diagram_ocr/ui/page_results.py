@@ -28,7 +28,10 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - só para os tipos
+    from chess_diagram_ocr.service import RecognizedDiagram
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +76,7 @@ class PageResults:
 
     page_index: int
     params: PageOcrParams
-    items: list[dict[str, Any]] = field(default_factory=list)
+    items: list[RecognizedDiagram] = field(default_factory=list)
     fen_edits: list[str] = field(default_factory=list)
     side_edits: list[str] = field(default_factory=list)
     selected_index: int = 0
@@ -97,7 +100,7 @@ class PageResults:
         OCR de novo, perder uma correção humana custa o trabalho da pessoa.
         """
         return any(
-            item.get("edited_by_hand") or item.get("side_to_move_source") == "manual" for item in self.items
+            item.edited_by_hand or item.side_to_move_source == "manual" for item in self.items
         )
 
     def clamped_index(self) -> int:
@@ -206,28 +209,8 @@ def decide_page_switch(*, stored: PageResults | None, current_is_page_result: bo
     return PageSwitch.CLEAR if current_is_page_result else PageSwitch.KEEP
 
 
-def page_index_from_origin(origin: str) -> int | None:
-    """Página de PDF a que uma origem de OCR se refere, ou `None` se não for uma.
-
-    As origens em uso hoje:
-
-    | origem | é resultado de página? |
-    |---|---|
-    | `pdf:livro.pdf:page:17` | sim |
-    | `pdf:livro.pdf:page:17:crop=(10,20)-(300,400)` | **não** |
-    | `local-image:foto.png` | não |
-
-    O recorte de área fica fora de propósito. Ele reconhece um pedaço escolhido a mão, e
-    guardá-lo como "o resultado da página 17" faria a navegação devolver dois diagramas
-    onde a página tem nove -- pior que não guardar nada, porque parece completo.
-    """
-    if not origin.startswith("pdf:") or ":crop=" in origin:
-        return None
-
-    marcador = ":page:"
-    if marcador not in origin:
-        return None
-    try:
-        return int(origin.rsplit(marcador, 1)[1])
-    except ValueError:
-        return None
+# `page_index_from_origin` morava aqui e interpretava a origem por manipulação de string.
+# Ela virou `service.RecognitionOrigin` na S-31: o formato passou a ter um único lugar que
+# o escreve e o lê, em vez de uma f-string montada em três pontos da UI e interpretada em
+# dois. A regra que ela guardava -- recorte de área não é resultado de página -- é agora
+# `RecognitionOrigin.is_whole_page`, com os mesmos testes.

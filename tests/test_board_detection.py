@@ -120,6 +120,31 @@ class MaxBoardsCapTests(unittest.TestCase):
         with self.assertNoLogs("chess_diagram_ocr.board_detection", level="WARNING"):
             detect_boards(page)
 
+    def test_a_deliberate_single_board_request_does_not_warn(self) -> None:
+        """O aviso é para o teto do usuário, e refinar um recorte não usa esse teto.
+
+        `refine_candidate_with_contour` pede **um** tabuleiro dentro da região de um
+        candidato já localizado -- ali `max_boards=1` é o pedido, não um limite. O aviso
+        aparecia mesmo assim, num OCR de página normal, mandando "aumente 'Max diagramas'"
+        numa configuração que não tem efeito nenhum sobre aquela chamada.
+        """
+        page = _synthetic_grid(3, 3)
+        with self.assertNoLogs("chess_diagram_ocr.board_detection", level="WARNING"):
+            detect_boards(page, max_boards=1, warn_on_cap=False)
+
+    def test_the_internal_single_board_callers_all_silence_the_warning(self) -> None:
+        """Silenciar num lugar só deixaria o aviso vazando pelos outros dois."""
+        from chess_diagram_ocr import board_detection, service
+        from chess_diagram_ocr.detection import hybrid
+
+        for modulo in (board_detection, hybrid, service):
+            fonte = inspect.getsource(modulo)
+            for chamada in fonte.split("detect_boards(")[1:]:
+                trecho = chamada[: chamada.find(")")]
+                if "max_boards=1" in trecho:
+                    with self.subTest(modulo=modulo.__name__):
+                        self.assertIn("warn_on_cap=False", trecho)
+
     def test_the_default_cap_is_the_shared_constant(self) -> None:
         """O teto morava em seis arquivos como literal 8; divergir de novo seria facil."""
         self.assertEqual(inspect.signature(detect_boards).parameters["max_boards"].default, DEFAULT_MAX_BOARDS)

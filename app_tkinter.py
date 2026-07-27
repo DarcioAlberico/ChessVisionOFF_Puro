@@ -8,6 +8,8 @@ import tkinter as tk
 import urllib.error
 import urllib.request
 import uuid
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any
@@ -18,7 +20,6 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 
-from chess_diagram_ocr.board_detection import detect_boards
 from chess_diagram_ocr.config import (
     ACCEPT_MIN_CONFIDENCE,
     BOARD_SIZE,
@@ -30,22 +31,25 @@ from chess_diagram_ocr.config import (
     DEFAULT_SAMPLES_DIR,
     find_default_pdf_path,
 )
-from chess_diagram_ocr.dataset import append_training_sample
 from chess_diagram_ocr.dataset_browser import DatasetRow, update_row
-from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.export_checkpoint import partial_path_for
-from chess_diagram_ocr.fen_utils import board_from_fen, check_position, is_valid_fen, square_name
-from chess_diagram_ocr.inference import describe_device, load_model, predict_board, predict_with_orientation
+from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen, square_name
+from chess_diagram_ocr.inference import predict_board
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
-from chess_diagram_ocr.pdf_text import DiagramContext, contexts_for_pdf_page
 from chess_diagram_ocr.pdf_to_pgn import (
     ExportReport,
     default_pgn_output_path,
     save_pdf_positions_to_pgn,
 )
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH, ReviewItem
-from chess_diagram_ocr.semantics import compose_fen, infer_side_to_move
+from chess_diagram_ocr.semantics import compose_fen
+from chess_diagram_ocr.service import (
+    OcrService,
+    RecognitionOptions,
+    RecognitionOrigin,
+    RecognizedDiagram,
+)
 from chess_diagram_ocr.training import train_model
 from chess_diagram_ocr.ui import board_edit
 from chess_diagram_ocr.ui.board_widget import InteractiveBoard, PieceImages
@@ -57,7 +61,6 @@ from chess_diagram_ocr.ui.page_results import (
     PageResultsCache,
     PageSwitch,
     decide_page_switch,
-    page_index_from_origin,
 )
 from chess_diagram_ocr.ui.review_panel import ReviewPanel, ScanRequest
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
@@ -84,7 +87,7 @@ class ChessOcrTkApp:
         self.page_count = 0
         self.page_rgb: np.ndarray | None = None
         self.page_loaded_for_index: int | None = None
-        self.result_items: list[dict[str, Any]] = []
+        self.result_items: list[RecognizedDiagram] = []
         self.fen_edits: list[str] = []
         self.side_edits: list[str] = []
         """Lado a jogar por diagrama, editavel. Espelha `fen_edits` (S-19)."""
@@ -127,9 +130,11 @@ class ChessOcrTkApp:
         self._editing_sample: str | None = None
         """Amostra do dataset aberta no editor (S-23). `None` = editando OCR."""
 
-        self._model_cache = None
-        self._model_cache_path: Path | None = None
-        self._model_device: str | None = None
+        self.service = OcrService(model_path=DEFAULT_MODEL_PATH)
+        """O pipeline (S-31). A janela é apresentação; nada de OCR mora mais aqui."""
+
+        self._result_origin: RecognitionOrigin | None = None
+        """Procedência do que está no editor, para o salvamento gravar de onde veio."""
 
         self.page_photo: ImageTk.PhotoImage | None = None
         self.piece_images = PieceImages(PIECE_IMAGE_DIR)
@@ -621,14 +626,17 @@ class ChessOcrTkApp:
         self.root.destroy()
 
     def _set_status(self, text: str) -> None:
-        def _apply() -> None:
-            self.status_var.set(text)
-            self.root.update_idletasks()
+        """Escreve na barra de status, de qualquer thread.
 
+        Sem `update_idletasks()`: chamado de dentro de um callback de evento, ele reentra
+        no loop de eventos do Tk e permite que outro callback rode no meio deste --
+        reentrância que a S-31 manda remover. A variável é observada pelo widget, então o
+        texto aparece no próximo ciclo ocioso de qualquer jeito.
+        """
         if threading.current_thread() is threading.main_thread():
-            _apply()
+            self.status_var.set(text)
         else:
-            self.root.after(0, _apply)
+            self.root.after(0, lambda: self.status_var.set(text))
 
     def _set_train_controls_enabled(self, enabled: bool) -> None:
         state = tk.NORMAL if enabled else tk.DISABLED
@@ -912,42 +920,36 @@ class ChessOcrTkApp:
             self._set_status("Selecao muito pequena. Tente novamente.")
             return
 
+        # Da coordenada do canvas para a do pixel da pagina. O recorte em si, e o
+        # grampeamento aos limites, sao do servico (S-31).
         zoom = float(self.pdf_zoom_var.get())
-        h, w = self.page_rgb.shape[:2]
-        ix0 = max(0, min(w - 1, int(x0c / zoom)))
-        iy0 = max(0, min(h - 1, int(y0c / zoom)))
-        ix1 = max(ix0 + 1, min(w, int(x1c / zoom)))
-        iy1 = max(iy0 + 1, min(h, int(y1c / zoom)))
-        cropped = self.page_rgb[iy0:iy1, ix0:ix1].copy()
-        if cropped.size == 0:
-            self._set_status("Selecao vazia. Tente novamente.")
-            return
+        region = (int(x0c / zoom), int(y0c / zoom), int(x1c / zoom), int(y1c / zoom))
+        page_rgb = np.asarray(self.page_rgb).copy()
+        options = self._recognition_options(int(self.max_boards_var.get()))
 
-        origin = f"pdf:{self.pdf_name}:page:{self.page_index_var.get()}:crop=({ix0},{iy0})-({ix1},{iy1})"
-        self._start_ocr_from_image(
-            cropped,
-            origin=origin,
-            max_boards=int(self.max_boards_var.get()),
-            fallback_to_full_image=True,
+        self._start_ocr(
+            lambda: self.service.recognize_region(page_rgb, region, options=options),
+            origin=RecognitionOrigin.for_crop(self.pdf_name, int(self.page_index_var.get()), region),
         )
 
-    def _get_model(self, model_path: Path | None = None):
-        model_path = model_path or Path(self.model_path_var.get().strip())
-        if self._model_cache is None or self._model_cache_path != model_path:
-            self._set_status(f"Carregando modelo: {model_path}")
-            model, device = load_model(model_path)
-            self._model_cache = model
-            self._model_cache_path = model_path
-            self._model_device = device
-            # S-30: o dispositivo era escolhido em silencio, entao uma maquina com placa
-            # mas com o torch +cpu instalado rodava em CPU sem nada dizer.
-            self._set_status(f"Modelo carregado em {describe_device(device)}.")
-        return self._model_cache, self._model_device
+    def _recognition_options(self, max_boards: int, **overrides: Any) -> RecognitionOptions:
+        """Os parâmetros da tela no formato que o serviço espera."""
+        return RecognitionOptions(
+            model_path=Path(self.model_path_var.get().strip()),
+            orientation=str(self.orientation_var.get()),
+            max_boards=max_boards,
+            dpi=int(self.dpi_var.get()),
+            **overrides,
+        )
 
     def reload_model(self) -> None:
-        self._model_cache = None
-        self._model_cache_path = None
-        self._model_device = None
+        """Descarta o modelo em memória. Espera o OCR em andamento, em vez de disputar.
+
+        Antes zerava três atributos direto da thread de treino enquanto uma thread de OCR
+        podia estar usando o modelo -- e o treino acabava de reescrever o `.pt` que uma
+        carga concorrente leria. O lock vive no serviço (S-31).
+        """
+        self.service.invalidate_model(Path(self.model_path_var.get().strip()))
         self._set_status("Modelo recarregado.")
 
     def open_pdf(self) -> None:
@@ -1187,14 +1189,17 @@ class ChessOcrTkApp:
         self.render_current_page()
         if self.page_rgb is None:
             return
-        self._start_ocr_from_image(
-            np.asarray(self.page_rgb).copy(),
-            origin=f"pdf:{self.pdf_name}:page:{self.page_index_var.get()}",
-            max_boards=max_boards,
-            refine_detected_boards=True,
-            # Contexto do PDF: habilita o detector hibrido (S-12), o mesmo que a exportacao
-            # usa. Sem ele, a GUI e o PGN poderiam recortar diagramas diferentes.
-            pdf_page=(self.pdf_source, int(self.page_index_var.get())),
+
+        page_index = int(self.page_index_var.get())
+        page_rgb = np.asarray(self.page_rgb).copy()
+        options = self._recognition_options(max_boards)
+        source = self.pdf_source
+        # `recognize_page` e o caminho do detector hibrido (S-12), o mesmo que a exportacao
+        # usa. Deixar a GUI noutro detector faria a tela e o PGN recortarem diagramas
+        # diferentes -- o mesmo desencontro que a S-14 corrigiu na numeracao.
+        self._start_ocr(
+            lambda: self.service.recognize_page(source, page_index, page_rgb, options=options),
+            origin=RecognitionOrigin.for_page(self.pdf_name, page_index),
         )
 
     def ocr_local_best(self) -> None:
@@ -1216,142 +1221,25 @@ class ChessOcrTkApp:
             messagebox.showerror("Erro", "Nao foi possivel abrir a imagem.")
             return
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-        self._start_ocr_from_image(
-            image_rgb,
-            origin=f"local-image:{Path(filename).name}",
-            max_boards=max_boards,
-            refine_detected_boards=True,
+        options = self._recognition_options(max_boards, refine_detected_boards=True)
+        self._start_ocr(
+            lambda: self.service.recognize_image(image_rgb, options=options),
+            origin=RecognitionOrigin.for_image(Path(filename).name),
         )
 
-    def _refine_board_from_quad(
+    def _start_ocr(
         self,
-        image_rgb: np.ndarray,
-        quad: np.ndarray | None,
-        pad_ratio: float = 0.08,
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        if quad is None:
-            resized = cv2.resize(image_rgb, (BOARD_SIZE, BOARD_SIZE))
-            return resized, None
-
-        h, w = image_rgb.shape[:2]
-        xs = quad[:, 0]
-        ys = quad[:, 1]
-        x0 = max(0, int(np.floor(np.min(xs))))
-        y0 = max(0, int(np.floor(np.min(ys))))
-        x1 = min(w, int(np.ceil(np.max(xs))))
-        y1 = min(h, int(np.ceil(np.max(ys))))
-        bw = max(1, x1 - x0)
-        bh = max(1, y1 - y0)
-        pad = int(max(bw, bh) * pad_ratio)
-
-        rx0 = max(0, x0 - pad)
-        ry0 = max(0, y0 - pad)
-        rx1 = min(w, x1 + pad)
-        ry1 = min(h, y1 + pad)
-        roi = image_rgb[ry0:ry1, rx0:rx1]
-        if roi.size == 0:
-            resized = cv2.resize(image_rgb, (BOARD_SIZE, BOARD_SIZE))
-            return resized, None
-
-        refined_candidates = detect_boards(image_rgb=roi, max_boards=1)
-        if not refined_candidates:
-            resized = cv2.resize(image_rgb[y0:y1, x0:x1], (BOARD_SIZE, BOARD_SIZE))
-            return resized, quad
-
-        refined_board, refined_quad = refined_candidates[0]
-        if refined_quad is not None:
-            offset = np.array([rx0, ry0], dtype=np.float32)
-            refined_quad = refined_quad + offset
-        return refined_board, refined_quad
-
-    def _detect_and_predict_items(
-        self,
-        image_rgb: np.ndarray,
-        max_boards: int,
-        model_path: Path,
-        orientation: str,
-        fallback_to_full_image: bool = False,
-        refine_detected_boards: bool = False,
-        pdf_page: tuple[Any, int] | None = None,
-    ) -> list[dict[str, Any]]:
-        contexts: list[DiagramContext] = []
-        detection_sources: list[str] = []
-        if pdf_page is not None:
-            # Pagina de PDF: usa o detector das duas fontes, igual a exportacao (S-12).
-            source, page_index = pdf_page
-            candidates = detect_diagrams_in_pdf_page(source, page_index, image_rgb, max_boards=max_boards)
-            boards = [(candidate.board_rgb, None) for candidate in candidates]
-            detection_sources = [candidate.source for candidate in candidates]
-            # Mesmo contexto textual que a exportacao usa (S-16): a GUI mostrando um lado a
-            # jogar e o PGN gravando outro seria pior que nao mostrar nada.
-            contexts = contexts_for_pdf_page(source, page_index, [c.bbox_pdf for c in candidates])
-            # O recorte embutido ja vem alinhado pelo warp; refinar de novo so acrescenta erro.
-            refine_detected_boards = False
-        else:
-            boards = detect_boards(image_rgb=image_rgb, max_boards=max_boards)
-        if fallback_to_full_image and not boards:
-            boards = [(image_rgb, None)]
-        if not boards:
-            raise ValueError("Nenhum tabuleiro foi detectado na imagem selecionada.")
-
-        model, device = self._get_model(model_path=model_path)
-        items: list[dict[str, Any]] = []
-        for idx, (board_rgb, quad) in enumerate(boards):
-            board_for_pred = board_rgb
-            quad_for_item = quad
-            if refine_detected_boards:
-                board_for_pred, quad_for_item = self._refine_board_from_quad(image_rgb=image_rgb, quad=quad)
-            oriented = predict_with_orientation(
-                board_for_pred,
-                model,
-                device,
-                mode=orientation,  # type: ignore[arg-type]
-            )
-            prediction = oriented.prediction
-            context = contexts[idx] if idx < len(contexts) else None
-            side = infer_side_to_move(prediction.fen_board, context)
-            resolved = check_position(compose_fen(prediction.fen_board, side))
-            items.append(
-                {
-                    "index": idx,
-                    "board_rgb": board_for_pred,
-                    "quad": quad_for_item.tolist() if quad_for_item is not None else None,
-                    "fen_pred": prediction.fen_board,
-                    "confidence": prediction.mean_confidence,
-                    "min_confidence": prediction.min_confidence,
-                    "uncertain_squares": prediction.uncertain_squares,
-                    # Insumos do heatmap e do tooltip (S-21). A matriz por casa ja existia
-                    # desde a S-10 e era descartada aqui -- a UI so via o agregado.
-                    "probs": prediction.probs,
-                    "square_confidences": [float(value) for value in prediction.square_confidences],
-                    "changed_squares": [square for square, _argmax, _final in (prediction.decode.changed_squares if prediction.decode else [])],
-                    # Legalidade com o lado a jogar ja decidido (S-17): o "xeque invertido"
-                    # que a GUI mostrava some quando a inferencia descobre de quem e a vez.
-                    "is_legal": resolved.is_legal,
-                    "is_fatal": resolved.is_fatal,
-                    "problems": resolved.problems,
-                    "rotation": oriented.rotation,
-                    "orientation_ambiguous": oriented.ambiguous,
-                    "orientation_reason": oriented.reason,
-                    "side_to_move": "w" if side.color else "b",
-                    "side_to_move_source": side.source,
-                    "side_to_move_reason": side.reason,
-                    "side_conflicting": side.conflicting,
-                    "context": context,
-                    "detection_source": detection_sources[idx] if idx < len(detection_sources) else "",
-                }
-            )
-        return items
-
-    def _start_ocr_from_image(
-        self,
-        image_rgb: np.ndarray,
-        origin: str,
-        max_boards: int,
-        fallback_to_full_image: bool = False,
-        refine_detected_boards: bool = False,
-        pdf_page: tuple[Any, int] | None = None,
+        run: Callable[[], list[RecognizedDiagram]],
+        *,
+        origin: RecognitionOrigin,
     ) -> None:
+        """Dispara o reconhecimento numa thread e devolve o resultado ao loop do Tk.
+
+        `run` já vem montado na thread da interface, fechado sobre cópias das imagens e
+        sobre as opções lidas dos widgets -- ler `tk.Variable` de outra thread é o tipo de
+        acesso que o Tcl não promete. O que a thread faz é chamar o serviço; a decisão de
+        *o que* chamar ficou aqui, onde os widgets estão.
+        """
         if self._is_running_ocr:
             self._set_status("OCR em andamento. Aguarde a conclusao.")
             return
@@ -1359,50 +1247,24 @@ class ChessOcrTkApp:
         self._is_running_ocr = True
         self._set_ocr_controls_enabled(False)
         self._set_status("Preparando OCR...")
-        model_path = Path(self.model_path_var.get().strip())
-        orientation = self.orientation_var.get()
-        worker = threading.Thread(
-            target=self._ocr_worker,
-            kwargs={
-                "image_rgb": np.asarray(image_rgb).copy(),
-                "origin": origin,
-                "max_boards": max_boards,
-                "model_path": model_path,
-                "orientation": orientation,
-                "fallback_to_full_image": fallback_to_full_image,
-                "refine_detected_boards": refine_detected_boards,
-                "pdf_page": pdf_page,
-            },
-            daemon=True,
-        )
-        worker.start()
+        threading.Thread(
+            target=self._ocr_worker, kwargs={"run": run, "origin": origin}, daemon=True
+        ).start()
 
     def _ocr_worker(
         self,
         *,
-        image_rgb: np.ndarray,
-        origin: str,
-        max_boards: int,
-        model_path: Path,
-        orientation: str,
-        fallback_to_full_image: bool,
-        refine_detected_boards: bool,
-        pdf_page: tuple[Any, int] | None = None,
+        run: Callable[[], list[RecognizedDiagram]],
+        origin: RecognitionOrigin,
     ) -> None:
         try:
             self._set_status("Detectando diagramas...")
-            items = self._detect_and_predict_items(
-                image_rgb=image_rgb,
-                max_boards=max_boards,
-                model_path=model_path,
-                orientation=orientation,
-                fallback_to_full_image=fallback_to_full_image,
-                refine_detected_boards=refine_detected_boards,
-                pdf_page=pdf_page,
-            )
-            self.root.after(0, lambda result_items=items, source=origin: self._apply_ocr_result_items(result_items, source))
+            diagrams = run()
+            # Fechamento simples, sem o idioma `lambda x=x:`: nao ha laco aqui, entao nao ha
+            # variavel que possa mudar entre agendar e executar.
+            self.root.after(0, partial(self._apply_ocr_result_items, diagrams, origin))
         except Exception as exc:
-            self.root.after(0, lambda err=exc: self._on_ocr_error(err))
+            self.root.after(0, partial(self._on_ocr_error, exc))
         finally:
             self.root.after(0, self._finish_ocr_ui)
 
@@ -1477,18 +1339,26 @@ class ChessOcrTkApp:
             f"{', com correcoes suas' if guardado.has_hand_edits else ''}."
         )
 
-    def _page_key_from_origin(self, origin: str) -> tuple[str, int] | None:
-        pagina = page_index_from_origin(origin)
-        return None if pagina is None else (self._document_key(), pagina)
+    def _page_key_from_origin(self, origin: RecognitionOrigin) -> tuple[str, int] | None:
+        """Só página inteira vai para o cache de navegação; recorte de área, não.
 
-    def _apply_ocr_result_items(self, items: list[dict[str, Any]], origin: str) -> None:
+        Guardar um recorte como "o resultado da página 16" faria a navegação devolver dois
+        diagramas onde a página tem nove -- pior que não guardar nada, porque parece
+        completo. Quem sabe distinguir isso é a própria origem, agora (S-31).
+        """
+        if not origin.is_whole_page or origin.page_index is None:
+            return None
+        return (self._document_key(), origin.page_index)
+
+    def _apply_ocr_result_items(self, items: list[RecognizedDiagram], origin: RecognitionOrigin) -> None:
         # OCR novo substitui o que estava no editor: se veio da fila ou do dataset, a
         # ligacao com aquele item deixa de valer.
         self._editing_sample = None
         self._review_position = None
+        self._result_origin = origin
         self.result_items = items
-        self.fen_edits = [item["fen_pred"] for item in items]
-        self.side_edits = [str(item.get("side_to_move") or "w") for item in items]
+        self.fen_edits = [item.placement for item in items]
+        self.side_edits = [item.side_to_move for item in items]
         self.selected_diag_idx = 0
         self.selected_diag_var.set(1)
         self.spin_diag.config(from_=1, to=max(len(items), 1))
@@ -1545,8 +1415,8 @@ class ChessOcrTkApp:
             "manual": "definido por voce",
             "queue": "vindo da fila de revisao",
         }
-        fonte = rotulos.get(str(item.get("side_to_move_source")), "")
-        if item.get("side_conflicting"):
+        fonte = rotulos.get(item.side_to_move_source, "")
+        if item.side_conflicting:
             fonte = "texto e posicao discordam"
         self.side_source_var.set(f"({fonte})" if fonte else "")
 
@@ -1556,8 +1426,7 @@ class ChessOcrTkApp:
         idx = self._selected_index()
         if 0 <= idx < len(self.side_edits):
             self.side_edits[idx] = self.side_to_move_var.get()
-            self.result_items[idx]["side_to_move_source"] = "manual"
-            self.result_items[idx]["side_conflicting"] = False
+            self.result_items[idx].set_side_to_move(self.side_to_move_var.get())
             self._sync_side_widgets(idx)
             if self.result_board is not None:
                 self.result_board.set_side_to_move(self.side_edits[idx] != "b")
@@ -1617,24 +1486,24 @@ class ChessOcrTkApp:
 
         # Orientacao antes do resto: se o diagrama estiver de cabeca para baixo, conferir
         # casa por casa e perda de tempo (S-13).
-        if item.get("orientation_ambiguous"):
-            parts.append(f"ORIENTACAO INCERTA ({item.get('orientation_reason') or 'as duas eram plausiveis'})")
-        elif item.get("rotation"):
-            parts.append(f"lido a {item['rotation']} graus")
+        if item.orientation_ambiguous:
+            parts.append(f"ORIENTACAO INCERTA ({item.orientation_reason or 'as duas eram plausiveis'})")
+        elif item.rotation:
+            parts.append(f"lido a {item.rotation} graus")
 
-        uncertain = item.get("uncertain_squares") or []
+        uncertain = item.uncertain_squares
         if uncertain:
             nomes = ", ".join(square_name(square) for square in uncertain[:4])
             sufixo = f" +{len(uncertain) - 4}" if len(uncertain) > 4 else ""
             parts.append(f"casas inseguras: {nomes}{sufixo}")
 
-        if item.get("is_legal") is False:
-            problems = item.get("problems") or ()
+        if item.is_legal is False:
+            problems = item.problems
             detalhe = f" ({'; '.join(problems)})" if problems else ""
             # "Xeque invertido" nao e erro de leitura: o diagrama nao diz de quem e a vez e
             # o app assume brancas. Chamar isso de ILEGAL manda o usuario procurar um erro
             # que nao existe no tabuleiro.
-            rotulo = "LADO A JOGAR" if item.get("is_fatal") is False else "ILEGAL"
+            rotulo = "LADO A JOGAR" if item.is_fatal is False else "ILEGAL"
             parts.append(rotulo + detalhe)
 
         return " | ".join(parts)
@@ -1679,7 +1548,7 @@ class ChessOcrTkApp:
         self._update_legality_panel()
         self._maybe_sync_study_with_current_fen()
 
-    def _apply_prediction_signals(self, item: dict[str, Any]) -> None:
+    def _apply_prediction_signals(self, item: RecognizedDiagram) -> None:
         """Põe na tela o que o modelo achou de cada casa (S-21).
 
         Sem isso o usuário só tem a FEN e um número agregado -- e a média de confiança fica
@@ -1688,10 +1557,9 @@ class ChessOcrTkApp:
         if self.result_board is None:
             return
 
-        confidences = item.get("square_confidences")
-        self.result_board.set_uncertainty(list(confidences) if confidences is not None else None)
-        self.result_board.set_probabilities(item.get("probs"))
-        self.result_board.set_changed_squares(item.get("changed_squares") or ())
+        self.result_board.set_uncertainty(list(item.square_confidences) or None)
+        self.result_board.set_probabilities(item.probs)
+        self.result_board.set_changed_squares(item.changed_squares)
 
     def _update_legality_panel(self) -> None:
         """Painel de legalidade da S-21: o problema em pt-BR e as casas que o causam."""
@@ -1722,7 +1590,7 @@ class ChessOcrTkApp:
             return
         self.fen_edits[idx] = placement
         self.fen_var.set(placement)
-        self.result_items[idx]["edited_by_hand"] = True
+        self.result_items[idx].edited_by_hand = True
         self._update_legality_panel()
         self._maybe_sync_study_with_current_fen()
 
@@ -2055,32 +1923,24 @@ class ChessOcrTkApp:
         # apague o item da fila nem o confunda com resultado de pagina.
         self._remember_current_page_results()
         self._results_page_key = None
+        # A fila guarda as 64 confiancas, nao a matriz (64, 13) -- ela custaria ~5,6 MB por
+        # livro em JSON (decisao da S-22). Entao vem heatmap, e nao o tooltip das 3 classes;
+        # esse volta quando o usuario roda o OCR da pagina de novo.
         self.result_items = [
-            {
-                "index": 0,
-                "board_rgb": board_rgb,
-                "quad": None,
-                "fen_pred": placement,
-                "confidence": item.min_confidence,
-                "min_confidence": item.min_confidence,
-                "uncertain_squares": list(item.uncertain_squares),
-                "probs": None,
-                "square_confidences": list(item.square_confidences) or None,
-                "changed_squares": list(item.changed_squares),
-                "is_legal": None,
-                "is_fatal": None,
-                "problems": (),
-                "rotation": None,
-                "orientation_ambiguous": False,
-                "orientation_reason": "",
-                "side_to_move": item.side_to_move,
-                "side_to_move_source": "queue",
-                "side_to_move_reason": "; ".join(item.reasons),
-                "side_conflicting": False,
-                "context": None,
-                "detection_source": "",
-            }
+            RecognizedDiagram.from_label(
+                board_rgb,
+                placement,
+                side_to_move=item.side_to_move,
+                side_to_move_source="queue",
+                side_to_move_reason="; ".join(item.reasons),
+                min_confidence=item.min_confidence,
+                mean_confidence=item.min_confidence,
+                uncertain_squares=list(item.uncertain_squares),
+                square_confidences=list(item.square_confidences),
+                changed_squares=list(item.changed_squares),
+            )
         ]
+        self._result_origin = None
         self.fen_edits = [placement]
         self.side_edits = [item.side_to_move]
         self.selected_diag_idx = 0
@@ -2121,32 +1981,19 @@ class ChessOcrTkApp:
         # Amostra do dataset: mesmo raciocinio do item da fila acima.
         self._remember_current_page_results()
         self._results_page_key = None
-        self.result_items = [
-            {
-                "index": 0,
-                "board_rgb": board_rgb,
-                "quad": None,
-                "fen_pred": placement,
-                "confidence": 0.0,
-                "min_confidence": 0.0,
-                "uncertain_squares": [],
-                "probs": None,
-                "square_confidences": None,
-                "changed_squares": [],
-                "is_legal": row.legality == "legal",
-                "is_fatal": row.legality == "ilegal",
-                "problems": row.problems,
-                "rotation": None,
-                "orientation_ambiguous": False,
-                "orientation_reason": "",
-                "side_to_move": side,
-                "side_to_move_source": "manual",
-                "side_to_move_reason": "rotulo do dataset",
-                "side_conflicting": False,
-                "context": None,
-                "detection_source": row.detection_source,
-            }
-        ]
+        diagrama = RecognizedDiagram.from_label(
+            board_rgb,
+            placement,
+            side_to_move=side,
+            side_to_move_source="manual",
+            side_to_move_reason="rotulo do dataset",
+            detection_source=row.detection_source,
+        )
+        # A legalidade sai da propria posicao rotulada, e nao das colunas do CSV: o rotulo
+        # foi gravado com um lado a jogar, e e com ele que a checagem tem de bater (S-17).
+        diagrama.resolve_legality()
+        self.result_items = [diagrama]
+        self._result_origin = None
         self.fen_edits = [placement]
         self.side_edits = [side]
         self.selected_diag_idx = 0
@@ -2169,8 +2016,8 @@ class ChessOcrTkApp:
         if board_rgb is None:
             raise FileNotFoundError(f"Imagem nao encontrada: {row.image_path(samples_dir)}")
 
-        model, device = self._get_model()
-        prediction = predict_board(cv2.resize(board_rgb, (BOARD_SIZE, BOARD_SIZE)), model, device)
+        with self.service.model_session(Path(self.model_path_var.get().strip())) as (model, device):
+            prediction = predict_board(cv2.resize(board_rgb, (BOARD_SIZE, BOARD_SIZE)), model, device)
         divergentes = board_edit.differing_squares(row.placement, prediction.fen_board)
 
         linhas = [
@@ -2234,21 +2081,16 @@ class ChessOcrTkApp:
             return
         self.review_panel.open_next_pending()
 
-    def _sample_metadata(self, idx: int) -> dict[str, Any]:
-        """Campos da S-19 para a amostra: lado a jogar e de onde ela veio.
-
-        Gravar a origem é o que permite, depois, agrupar o split por livro (S-07), auditar
-        por fonte e voltar ao PDF para recortar de novo. Os 3.195 rótulos existentes não a
-        têm porque ela nunca foi pedida aqui.
-        """
-        item = self.result_items[idx] if 0 <= idx < len(self.result_items) else {}
-        return {
-            "side_to_move": self.side_edits[idx] if 0 <= idx < len(self.side_edits) else None,
-            "source_pdf": self.pdf_name,
-            "source_page": self.page_index_var.get() + 1 if self.pdf_source is not None else "",
-            "source_diagram": idx + 1,
-            "detection_source": str(item.get("detection_source") or ""),
-        }
+    def _save_sample(self, idx: int, fen: str) -> Path:
+        """Grava a amostra pelo serviço, com a procedência da S-19 anexada."""
+        return self.service.save_sample(
+            self.result_items[idx],
+            fen,
+            csv_path=Path(self.dataset_csv_var.get()),
+            samples_dir=Path(self.samples_dir_var.get()),
+            origin=self._result_origin,
+            side_to_move=self.side_edits[idx] if 0 <= idx < len(self.side_edits) else None,
+        )
 
     def save_current(self) -> None:
         if not self.result_items:
@@ -2268,13 +2110,7 @@ class ChessOcrTkApp:
             return
 
         try:
-            path = append_training_sample(
-                board_rgb=self.result_items[idx]["board_rgb"],
-                fen=fen,
-                csv_path=Path(self.dataset_csv_var.get()),
-                samples_dir=Path(self.samples_dir_var.get()),
-                **self._sample_metadata(idx),
-            )
+            path = self._save_sample(idx, fen)
             self._set_status(f"Exemplo salvo: {path}")
             self._settle_review_item(idx)
             messagebox.showinfo("Sucesso", f"Diagrama salvo em:\n{path}")
@@ -2324,18 +2160,12 @@ class ChessOcrTkApp:
         self._sync_fen_from_entry_to_current()
         saved = 0
         invalid = 0
-        for idx, item in enumerate(self.result_items):
+        for idx in range(len(self.result_items)):
             fen = self.fen_edits[idx]
             if not is_valid_fen(fen):
                 invalid += 1
                 continue
-            append_training_sample(
-                board_rgb=item["board_rgb"],
-                fen=fen,
-                csv_path=Path(self.dataset_csv_var.get()),
-                samples_dir=Path(self.samples_dir_var.get()),
-                **self._sample_metadata(idx),
-            )
+            self._save_sample(idx, fen)
             saved += 1
         self._set_status(f"Salvar todos: {saved} salvos, {invalid} invalidos.")
         messagebox.showinfo("Salvar todos", f"Salvos: {saved}\nInvalidos: {invalid}")
@@ -2348,7 +2178,7 @@ class ChessOcrTkApp:
             return
 
         idx = self._selected_index()
-        board_rgb = self.result_items[idx].get("board_rgb")
+        board_rgb = self.result_items[idx].board_rgb
         if board_rgb is None:
             messagebox.showerror("Erro", "Diagrama atual sem imagem para enviar.")
             return

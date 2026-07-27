@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import unittest
 
+import numpy as np
+
+from chess_diagram_ocr.service import RecognizedDiagram
 from chess_diagram_ocr.ui.page_results import (
     DEFAULT_MAX_CACHED_PAGES,
     PageOcrParams,
@@ -11,17 +14,21 @@ from chess_diagram_ocr.ui.page_results import (
     PageResultsCache,
     PageSwitch,
     decide_page_switch,
-    page_index_from_origin,
 )
 
 DOC = "livro.pdf"
 PARAMS = PageOcrParams(dpi=220, max_boards=12, orientation="auto", model_path="m.pt")
 
 
+def _diagram(placement: str) -> RecognizedDiagram:
+    """Um diagrama minimo. O cache nao le nada dele alem dos marcadores de edicao."""
+    return RecognizedDiagram.from_label(np.zeros((8, 8, 3), dtype=np.uint8), placement)
+
+
 def _results(page: int, count: int = 3, *, params: PageOcrParams = PARAMS, hand: bool = False) -> PageResults:
-    itens = [{"index": i, "fen_pred": f"p{page}d{i}"} for i in range(count)]
+    itens = [_diagram(f"p{page}d{i}") for i in range(count)]
     if hand and itens:
-        itens[0]["edited_by_hand"] = True
+        itens[0].edited_by_hand = True
     return PageResults(
         page_index=page,
         params=params,
@@ -35,14 +42,14 @@ class PageResultsTests(unittest.TestCase):
     def test_mismatched_list_lengths_are_rejected(self) -> None:
         """Listas paralelas de tamanhos diferentes corrompem a selecao em silencio."""
         with self.assertRaises(ValueError):
-            PageResults(page_index=1, params=PARAMS, items=[{}, {}], fen_edits=["a"], side_edits=["w", "b"])
+            PageResults(page_index=1, params=PARAMS, items=[_diagram("a"), _diagram("b")], fen_edits=["a"], side_edits=["w", "b"])
 
     def test_hand_edits_are_detected_from_either_marker(self) -> None:
         self.assertFalse(_results(1).has_hand_edits)
         self.assertTrue(_results(1, hand=True).has_hand_edits)
 
         pelo_lado = _results(1)
-        pelo_lado.items[1]["side_to_move_source"] = "manual"
+        pelo_lado.items[1].side_to_move_source = "manual"
         self.assertTrue(pelo_lado.has_hand_edits)
 
     def test_selected_index_is_clamped_to_the_available_diagrams(self) -> None:
@@ -212,32 +219,8 @@ class PageSwitchDecisionTests(unittest.TestCase):
         )
 
 
-class OriginParsingTests(unittest.TestCase):
-    """Quais origens de OCR contam como "resultado desta pagina"."""
-
-    def test_a_full_page_ocr_is_a_page_result(self) -> None:
-        self.assertEqual(page_index_from_origin("pdf:livro.pdf:page:17"), 17)
-
-    def test_page_zero_is_a_valid_page_not_a_falsy_miss(self) -> None:
-        """`if pagina:` em vez de `if pagina is None:` quebraria a primeira pagina."""
-        self.assertEqual(page_index_from_origin("pdf:livro.pdf:page:0"), 0)
-
-    def test_an_area_crop_is_not_a_page_result(self) -> None:
-        origem = "pdf:livro.pdf:page:17:crop=(10,20)-(300,400)"
-        self.assertIsNone(page_index_from_origin(origem))
-
-    def test_a_local_image_is_not_a_page_result(self) -> None:
-        self.assertIsNone(page_index_from_origin("local-image:foto.png"))
-
-    def test_a_pdf_name_containing_page_does_not_confuse_the_parser(self) -> None:
-        """`rsplit` pega o ultimo `:page:`, entao o nome do arquivo nao interfere."""
-        self.assertEqual(page_index_from_origin("pdf:my:page:book.pdf:page:42"), 42)
-
-    def test_a_malformed_page_number_returns_none_instead_of_raising(self) -> None:
-        self.assertIsNone(page_index_from_origin("pdf:livro.pdf:page:abc"))
-
-    def test_an_origin_without_a_page_marker_returns_none(self) -> None:
-        self.assertIsNone(page_index_from_origin("pdf:livro.pdf"))
+# `OriginParsingTests` mudou de casa junto com a funcao: a interpretacao da origem virou
+# `service.RecognitionOrigin` na S-31, e os casos estao em `tests/test_service.py`.
 
 
 class DiscardTests(unittest.TestCase):

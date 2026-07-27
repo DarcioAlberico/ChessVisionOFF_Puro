@@ -1,3 +1,12 @@
+"""Frontend Streamlit. Apresentação apenas: o pipeline mora em `service.py` (S-31).
+
+Este arquivo tinha a sua própria versão de `run_ocr_for_boards`, e ela já divergia da do
+Tkinter: não refinava o recorte pelo contorno, montava a legalidade com `w` fixo antes da
+Fase 3, e descartava a matriz por casa -- então nunca poderia mostrar em que casa o modelo
+esteve inseguro. Agora as duas telas chamam o mesmo `OcrService` e recebem o mesmo
+`RecognizedDiagram`; o que cada uma faz de diferente é desenhar.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,7 +19,6 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from chess_diagram_ocr.board_detection import detect_boards
 from chess_diagram_ocr.config import (
     DEFAULT_DATASET_CSV,
     DEFAULT_MAX_BOARDS,
@@ -19,34 +27,39 @@ from chess_diagram_ocr.config import (
     DEFAULT_SAMPLES_DIR,
     find_default_pdf_path,
 )
-from chess_diagram_ocr.dataset import append_training_sample
-from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
-from chess_diagram_ocr.fen_utils import board_from_fen, check_position, is_valid_fen
-from chess_diagram_ocr.inference import load_model, predict_with_orientation
-from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
-from chess_diagram_ocr.pdf_text import DiagramContext, contexts_for_pdf_page
-from chess_diagram_ocr.semantics import compose_fen, infer_side_to_move
+from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen, square_name
+from chess_diagram_ocr.service import (
+    OcrService,
+    RecognitionOptions,
+    RecognitionOrigin,
+    RecognizedDiagram,
+)
 from chess_diagram_ocr.training import train_model
 
 
 @st.cache_resource(show_spinner=False)
-def get_loaded_model(model_path_text: str):
-    return load_model(Path(model_path_text))
+def get_service() -> OcrService:
+    """Um serviço por sessão do Streamlit, com o modelo carregado uma vez só.
+
+    `cache_resource` porque o modelo não é serializável e não deve ser: `cache_data`
+    tentaria copiá-lo a cada rerun.
+    """
+    return OcrService()
 
 
 @st.cache_data(show_spinner=False)
 def render_pdf_page_cached(pdf_source: Any, page_index: int, dpi: int) -> np.ndarray:
-    return render_pdf_page(pdf_source, page_index, dpi=dpi)
+    return get_service().render_page(pdf_source, page_index, dpi=dpi)
 
 
-def _set_results(source_rgb: np.ndarray, items: list[dict[str, Any]], origin: str) -> None:
+def _set_results(source_rgb: np.ndarray, items: list[RecognizedDiagram], origin: RecognitionOrigin) -> None:
     _clear_results()
     st.session_state["result_source_rgb"] = source_rgb
     st.session_state["result_items"] = items
     st.session_state["result_origin"] = origin
     st.session_state["selected_result_idx"] = 0
     st.session_state["selected_result_one_based"] = 1
-    st.session_state["fen_edits"] = [item["fen_pred"] for item in items]
+    st.session_state["fen_edits"] = [item.placement for item in items]
 
 
 def _clear_results() -> None:
@@ -64,79 +77,22 @@ def _clear_results() -> None:
         st.session_state.pop(key, None)
 
 
-def run_ocr_for_boards(
-    source_rgb: np.ndarray,
-    boards_with_quads: list[tuple[np.ndarray, np.ndarray | None]],
-    model_path: Path,
-    orientation: str,
-    origin: str,
-    contexts: list[DiagramContext] | None = None,
-) -> None:
-    if not boards_with_quads:
-        _clear_results()
-        raise ValueError("Nenhum tabuleiro foi detectado na imagem selecionada.")
-
-    contexts = contexts or []
-    model, device = get_loaded_model(str(model_path))
-    items: list[dict[str, Any]] = []
-    for idx, (board_rgb, quad) in enumerate(boards_with_quads):
-        oriented = predict_with_orientation(board_rgb, model, device, mode=orientation)  # type: ignore[arg-type]
-        prediction = oriented.prediction
-        context = contexts[idx] if idx < len(contexts) else None
-        side = infer_side_to_move(prediction.fen_board, context)
-        resolved = check_position(compose_fen(prediction.fen_board, side))
-        items.append(
-            {
-                "index": idx,
-                "board_rgb": board_rgb,
-                "quad": quad.tolist() if quad is not None else None,
-                "fen_pred": prediction.fen_board,
-                "confidence": prediction.mean_confidence,
-                "min_confidence": prediction.min_confidence,
-                "uncertain_squares": prediction.uncertain_squares,
-                # Legalidade ja com o lado a jogar decidido (S-17), e nao com o "w" fixo.
-                "is_legal": resolved.is_legal,
-                "is_fatal": resolved.is_fatal,
-                "problems": resolved.problems,
-                "rotation": oriented.rotation,
-                "orientation_ambiguous": oriented.ambiguous,
-                "orientation_reason": oriented.reason,
-                "side_to_move": "w" if side.color else "b",
-                "side_to_move_source": side.source,
-                "side_conflicting": side.conflicting,
-                "exercise_number": context.exercise_number if context else None,
-                "caption": context.caption if context else "",
-            }
-        )
-    _set_results(source_rgb=source_rgb, items=items, origin=origin)
+def _items() -> list[RecognizedDiagram]:
+    return list(st.session_state.get("result_items", []))
 
 
-def _sample_metadata(idx: int) -> dict[str, Any]:
-    """Campos da S-19 para a amostra: lado a jogar e de onde ela veio.
-
-    A origem sai do `result_origin`, que já tem a forma `pdf:<nome>:page:<n>` -- é a única
-    coisa que a sessão sabe sobre a procedência, e é melhor gravá-la do que nada.
-    """
-    items = st.session_state.get("result_items", [])
-    item = items[idx] if 0 <= idx < len(items) else {}
-    origin = str(st.session_state.get("result_origin", ""))
-    source_pdf, source_page = "", ""
-    if origin.startswith("pdf:"):
-        _, _, resto = origin.partition("pdf:")
-        source_pdf, _, page_part = resto.partition(":page:")
-        source_page = str(int(page_part) + 1) if page_part.isdigit() else ""
-
-    return {
-        "side_to_move": st.session_state.get(f"side_edit_{idx}") or item.get("side_to_move"),
-        "source_pdf": source_pdf,
-        "source_page": source_page,
-        "source_diagram": idx + 1,
-        "detection_source": str(item.get("detection_source") or ""),
-    }
+def _recognition_options(max_boards: int, **overrides: Any) -> RecognitionOptions:
+    return RecognitionOptions(
+        model_path=model_path,
+        orientation=orientation,
+        max_boards=max_boards,
+        dpi=int(dpi),
+        **overrides,
+    )
 
 
 def _apply_fen_edits_from_dynamic_keys() -> None:
-    items = st.session_state.get("result_items")
+    items = _items()
     fen_edits = st.session_state.get("fen_edits")
     if not items or not fen_edits:
         return
@@ -162,7 +118,7 @@ def _crop_quad_region(source_rgb: np.ndarray, quad: list[list[float]] | None, pa
 
 
 def _get_selected_fen_for_preview() -> tuple[str | None, int | None]:
-    items = st.session_state.get("result_items", [])
+    items = _items()
     if not items:
         return None, None
 
@@ -171,11 +127,23 @@ def _get_selected_fen_for_preview() -> tuple[str | None, int | None]:
     fen_edits = st.session_state.get("fen_edits", [])
     if fen_edits and len(fen_edits) > idx:
         return fen_edits[idx], idx
-    return items[idx].get("fen_pred"), idx
+    return items[idx].placement, idx
+
+
+def _save_one(idx: int, fen: str, dataset_csv: Path, samples_dir: Path) -> Path:
+    items = _items()
+    return get_service().save_sample(
+        items[idx],
+        fen,
+        csv_path=dataset_csv,
+        samples_dir=samples_dir,
+        origin=st.session_state.get("result_origin"),
+        side_to_move=st.session_state.get(f"side_edit_{idx}") or items[idx].side_to_move,
+    )
 
 
 def save_current_item(dataset_csv: Path, samples_dir: Path) -> None:
-    items = st.session_state.get("result_items", [])
+    items = _items()
     if not items:
         st.warning("Nao ha OCR para salvar.")
         return
@@ -188,20 +156,14 @@ def save_current_item(dataset_csv: Path, samples_dir: Path) -> None:
         return
 
     try:
-        path = append_training_sample(
-            board_rgb=items[idx]["board_rgb"],
-            fen=fen,
-            csv_path=dataset_csv,
-            samples_dir=samples_dir,
-            **_sample_metadata(idx),
-        )
+        path = _save_one(idx, fen, dataset_csv, samples_dir)
         st.success(f"Diagrama {idx + 1} salvo em: {path}")
     except Exception as exc:
         st.error(f"Falha ao salvar diagrama atual: {exc}")
 
 
 def save_all_items(dataset_csv: Path, samples_dir: Path) -> None:
-    items = st.session_state.get("result_items", [])
+    items = _items()
     if not items:
         st.warning("Nao ha OCR para salvar.")
         return
@@ -210,18 +172,12 @@ def save_all_items(dataset_csv: Path, samples_dir: Path) -> None:
     fen_edits = st.session_state["fen_edits"]
     saved = 0
     invalid = 0
-    for idx, item in enumerate(items):
+    for idx in range(len(items)):
         fen = fen_edits[idx]
         if not is_valid_fen(fen):
             invalid += 1
             continue
-        append_training_sample(
-            board_rgb=item["board_rgb"],
-            fen=fen,
-            csv_path=dataset_csv,
-            samples_dir=samples_dir,
-            **_sample_metadata(idx),
-        )
+        _save_one(idx, fen, dataset_csv, samples_dir)
         saved += 1
 
     if saved:
@@ -231,7 +187,7 @@ def save_all_items(dataset_csv: Path, samples_dir: Path) -> None:
 
 
 def go_to_next_diagram() -> None:
-    items = st.session_state.get("result_items", [])
+    items = _items()
     if not items:
         st.warning("Nao ha diagramas OCR para navegar.")
         return
@@ -244,8 +200,49 @@ def go_to_next_diagram() -> None:
     st.session_state["selected_result_idx"] = int(st.session_state["selected_result_one_based"]) - 1
 
 
+def _show_diagram_signals(item: RecognizedDiagram) -> None:
+    """Os sinais das Fases 2 e 3 que esta tela descartava por montar o próprio dicionário."""
+    # O minimo vem primeiro: a media fica ~0,97 mesmo com erro e nao alertaria (S-10).
+    partes = [
+        f"Confianca minima: {item.min_confidence:.3f}",
+        f"media: {item.mean_confidence:.3f}",
+    ]
+    if item.rotation:
+        partes.append(f"lido a {item.rotation} graus")
+    if item.detection_source:
+        partes.append(f"deteccao: {item.detection_source}")
+    st.caption("  |  ".join(partes))
+
+    # Orientacao incerta vem antes da legalidade: se o diagrama estiver de cabeca para
+    # baixo, nao ha o que conferir casa por casa (S-13).
+    if item.orientation_ambiguous:
+        st.warning(
+            f"Orientacao incerta: {item.orientation_reason or 'as duas eram plausiveis'}. "
+            "Confira se o diagrama nao esta de cabeca para baixo.",
+            icon="🔄",
+        )
+
+    if item.is_legal is False:
+        problems = "; ".join(item.problems)
+        if item.is_fatal is False:
+            # O tabuleiro esta bom; o palpite de lado a jogar e que nao fecha (S-17).
+            st.info(f"Lado a jogar provavelmente invertido: {problems}", icon="↔️")
+        else:
+            st.warning(f"Posicao ilegal: {problems or 'motivo nao identificado'}", icon="⚠️")
+
+    # Sem tabuleiro interativo aqui, o heatmap da S-21 vira lista de casas -- que e a mesma
+    # informacao, e era o que faltava por completo nesta tela.
+    if item.uncertain_squares:
+        nomes = ", ".join(square_name(casa) for casa in item.uncertain_squares[:8])
+        sufixo = f" (+{len(item.uncertain_squares) - 8})" if len(item.uncertain_squares) > 8 else ""
+        st.caption(f"Casas inseguras: {nomes}{sufixo}")
+    if item.changed_squares:
+        nomes = ", ".join(square_name(casa) for casa in item.changed_squares)
+        st.caption(f"Casas corrigidas pela decodificacao com restricoes (S-11): {nomes}")
+
+
 def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: Path) -> None:
-    items = st.session_state.get("result_items", [])
+    items = _items()
     if not items:
         return
 
@@ -278,48 +275,24 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
             key="selected_result_one_based",
         )
     with nav4:
-        sel_tmp = int(st.session_state["selected_result_one_based"]) - 1
-        item_tmp = items[sel_tmp]
-        # O minimo vem primeiro: a media fica ~0,97 mesmo com erro e nao alertaria (S-10).
-        rotacao = item_tmp.get("rotation")
-        st.caption(
-            f"Confianca minima: {float(item_tmp.get('min_confidence', 0.0)):.3f}  |  "
-            f"media: {float(item_tmp.get('confidence', 0.0)):.3f}"
-            + (f"  |  lido a {rotacao} graus" if rotacao else "")
-        )
-        # Orientacao incerta vem antes da legalidade: se o diagrama estiver de cabeca para
-        # baixo, nao ha o que conferir casa por casa (S-13).
-        if item_tmp.get("orientation_ambiguous"):
-            st.warning(
-                f"Orientacao incerta: {item_tmp.get('orientation_reason') or 'as duas eram plausiveis'}. "
-                "Confira se o diagrama nao esta de cabeca para baixo.",
-                icon="🔄",
-            )
-        if item_tmp.get("is_legal") is False:
-            problems = "; ".join(item_tmp.get("problems") or ())
-            if item_tmp.get("is_fatal") is False:
-                # O tabuleiro esta bom; o palpite de lado a jogar e que nao fecha (S-17).
-                st.info(f"Lado a jogar provavelmente invertido: {problems}", icon="↔️")
-            else:
-                st.warning(f"Posicao ilegal: {problems or 'motivo nao identificado'}", icon="⚠️")
+        _show_diagram_signals(items[int(st.session_state["selected_result_one_based"]) - 1])
 
     st.session_state["selected_result_idx"] = int(st.session_state["selected_result_one_based"]) - 1
     sel = st.session_state["selected_result_idx"]
-    fen_sel = st.session_state["fen_edits"][sel]
 
     compare_left, compare_right = st.columns([1.0, 1.35])
     with compare_left:
         st.caption("Edicao e treino")
     with compare_right:
         st.caption("Comparacao visual (PDF x OCR)")
-        crop = _crop_quad_region(source_rgb, items[sel].get("quad"))
+        crop = _crop_quad_region(source_rgb, items[sel].quad)
         if crop is not None:
             st.image(crop, caption=f"Recorte do diagrama #{sel + 1} no PDF", use_container_width=True)
         else:
             st.info("Nao foi possivel gerar recorte do diagrama no PDF.")
-        st.image(items[sel]["board_rgb"], caption=f"Resultado OCR - diagrama #{sel + 1}", use_container_width=True)
-        if items[sel]["quad"] is not None:
-            st.caption(f"Quad selecionado: {items[sel]['quad']}")
+        st.image(items[sel].board_rgb, caption=f"Resultado OCR - diagrama #{sel + 1}", use_container_width=True)
+        if items[sel].quad is not None:
+            st.caption(f"Quad selecionado: {items[sel].quad}")
 
     for idx in range(len(items)):
         key = f"fen_edit_{idx}"
@@ -334,7 +307,7 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
     # lido de uma legenda e "pretas jogam" assumido pelo padrao tem valores bem diferentes.
     side_key = f"side_edit_{sel}"
     if side_key not in st.session_state:
-        st.session_state[side_key] = str(items[sel].get("side_to_move") or "w")
+        st.session_state[side_key] = items[sel].side_to_move
     side_col, source_col = st.columns([1.0, 1.6])
     with side_col:
         st.radio(
@@ -349,14 +322,19 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
             "text": "declarado no texto do PDF",
             "legality": "deduzido da legalidade da posicao",
             "default": "assumido (o PDF nao diz)",
+            "manual": "definido por voce",
+            "queue": "vindo da fila de revisao",
         }
-        if items[sel].get("side_conflicting"):
+        if items[sel].side_conflicting:
             st.caption("Origem: texto e posicao discordam — confira.")
         else:
-            st.caption(f"Origem: {rotulos.get(str(items[sel].get('side_to_move_source')), 'nao avaliada')}")
-        numero = items[sel].get("exercise_number")
-        if numero is not None:
-            st.caption(f"Exercicio no PDF: {numero}")
+            fonte = rotulos.get(items[sel].side_to_move_source, "nao avaliada")
+            motivo = items[sel].side_to_move_reason
+            st.caption(f"Origem: {fonte}" + (f" ({motivo})" if motivo else ""))
+        if items[sel].exercise_number is not None:
+            st.caption(f"Exercicio no PDF: {items[sel].exercise_number}")
+        if items[sel].caption:
+            st.caption(f"Legenda: {items[sel].caption}")
 
     action_col_left, action_col_mid = st.columns([1.0, 1.2])
     with action_col_left:
@@ -385,7 +363,9 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
                     # `training.resolve_num_workers`.
                     num_workers=0,
                 )
-                get_loaded_model.clear()
+                # Espera o OCR em andamento antes de trocar o modelo, em vez de disputar
+                # com ele: o treino acabou de reescrever este mesmo `.pt` (S-31).
+                get_service().invalidate_model(model_path)
                 st.success(
                     f"Treino concluido em {len(run.history)} epocas. Melhor: epoca {run.best_epoch}, "
                     f"{run.best_metric_name}={run.best_metric:.4f}. Modelo em: {model_path}"
@@ -446,9 +426,12 @@ with st.sidebar:
         "Max diagramas detectados", min_value=1, max_value=30, value=DEFAULT_MAX_BOARDS, step=1
     )
     if st.button("Recarregar modelo"):
-        get_loaded_model.clear()
+        get_service().invalidate_model(model_path)
         st.success("Cache do modelo limpo. OCR vai usar o .pt mais recente.")
     st.info(f"O OCR usa o modelo salvo em: {model_path}")
+    # S-30: o dispositivo era escolhido em silencio, entao uma maquina com placa mas com o
+    # torch +cpu instalado rodava em CPU sem nada dizer.
+    st.caption(f"Dispositivo: {get_service().device_label}")
 
 mode = st.radio("Fonte do PDF", ["Arquivo local", "Upload"], horizontal=True)
 pdf_source: Any = None
@@ -475,7 +458,7 @@ with tab_pdf:
         st.info("Selecione um PDF para usar navegacao por paginas.")
     else:
         try:
-            page_count = get_pdf_page_count(pdf_source)
+            page_count = get_service().page_count(pdf_source)
         except Exception as exc:
             st.error(f"Falha ao abrir PDF: {exc}")
             page_count = 0
@@ -523,30 +506,26 @@ with tab_pdf:
 
             if run_best or run_all:
                 try:
+                    page_index = int(st.session_state["page_index"])
                     if page_preview_rgb is None:
-                        page_rgb = render_pdf_page_cached(pdf_source, int(st.session_state["page_index"]), dpi=dpi)
+                        page_rgb = render_pdf_page_cached(pdf_source, page_index, dpi=dpi)
                     else:
                         page_rgb = page_preview_rgb
-                    # Pagina de PDF usa o detector das duas fontes, o mesmo da exportacao
-                    # (S-12): GUI e PGN precisam recortar e numerar o mesmo diagrama.
-                    page_index = int(st.session_state["page_index"])
-                    candidates = detect_diagrams_in_pdf_page(
+                    # `recognize_page` e o detector das duas fontes (S-12), o mesmo que a
+                    # exportacao usa: GUI e PGN precisam recortar e numerar o mesmo diagrama.
+                    diagramas = get_service().recognize_page(
                         pdf_source,
                         page_index,
                         page_rgb,
-                        max_boards=(int(max_boards) if run_all else 1),
+                        options=_recognition_options(int(max_boards) if run_all else 1),
                     )
-                    boards = [(candidate.board_rgb, None) for candidate in candidates]
-                    run_ocr_for_boards(
+                    _set_results(
                         source_rgb=page_rgb,
-                        boards_with_quads=boards,
-                        model_path=model_path,
-                        orientation=orientation,
-                        origin=f"pdf:{pdf_name}:page:{page_index}",
-                        # Mesmo contexto textual da exportacao (S-16).
-                        contexts=contexts_for_pdf_page(pdf_source, page_index, [c.bbox_pdf for c in candidates]),
+                        items=diagramas,
+                        origin=RecognitionOrigin.for_page(str(pdf_name), page_index),
                     )
                 except Exception as exc:
+                    _clear_results()
                     st.error(f"Falha no OCR da pagina: {exc}")
 
             with preview_container:
@@ -591,21 +570,23 @@ with tab_local:
             else:
                 image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
                 try:
-                    if board_only:
-                        boards = [(image_rgb, None)]
-                    else:
-                        boards = detect_boards(
-                            image_rgb=image_rgb,
-                            max_boards=(int(max_boards) if local_all else 1),
-                        )
-                    run_ocr_for_boards(
+                    # `refine_detected_boards` alinha o recorte pelo contorno dentro do quad.
+                    # Estava so no Tkinter, e e o que decide se a grade 8x8 cai em registro.
+                    diagramas = get_service().recognize_image(
+                        image_rgb,
+                        options=_recognition_options(
+                            int(max_boards) if local_all else 1,
+                            refine_detected_boards=True,
+                        ),
+                        boards=[(image_rgb, None)] if board_only else None,
+                    )
+                    _set_results(
                         source_rgb=image_rgb,
-                        boards_with_quads=boards,
-                        model_path=model_path,
-                        orientation=orientation,
-                        origin=f"local-image:{uploaded_image.name}",
+                        items=diagramas,
+                        origin=RecognitionOrigin.for_image(uploaded_image.name),
                     )
                 except Exception as exc:
+                    _clear_results()
                     st.error(f"Falha no OCR local: {exc}")
 
 show_results_and_actions(dataset_csv=dataset_csv, samples_dir=samples_dir, model_path=model_path)

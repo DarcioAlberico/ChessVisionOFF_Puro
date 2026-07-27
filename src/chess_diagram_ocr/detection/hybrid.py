@@ -79,7 +79,7 @@ def refine_candidate_with_contour(
     if region is None:
         return candidate
 
-    found = detect_boards(region, max_boards=1)
+    found = detect_boards(region, max_boards=1, warn_on_cap=False)
     if not found:
         return candidate
 
