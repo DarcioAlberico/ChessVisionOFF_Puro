@@ -18,6 +18,9 @@ htmlcov/
 data/samples/*
 !data/samples/.gitkeep
 data/app_tkinter_state.json
+# Preferencias do usuario (S-32): contem o endpoint que ELE declarou. Versiona-lo
+# reintroduziria o endereco fixo que a S-32 existe para eliminar.
+data/settings.json
 data/review_queue.json
 # Miniaturas dos diagramas da fila de revisao (S-22): recorte de PDF protegido, e
 # reconstruivel varrendo o livro de novo.

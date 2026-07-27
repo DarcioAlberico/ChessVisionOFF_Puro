@@ -831,7 +831,7 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 |---|---|---|---|
 | 6.1 | **Camada de serviço** `src/chess_diagram_ocr/service.py` — Tkinter e Streamlit passam a ser só apresentação | S-31 | ✅ |
 | 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 | ✅ 2.388 → **651** |
-| 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 | — |
+| 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 | ✅ |
 | 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 | — |
 | 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | — |
 | 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 | — |
@@ -961,6 +961,33 @@ a **navegar entre diagramas** depois do OCR, e não apenas a reconhecer.
 As duas linhas hoje moram em `result_panel.confidence_summary`, que é função pura e tem
 teste. É o argumento da S-31 na sua forma mais direta: o problema nunca foi o tamanho do
 arquivo, foi que nada dentro dele podia ser verificado sem um humano clicando.
+
+### 6.3 — o endpoint padrão era o defeito, não a configuração faltando
+
+A S-32 pede opt-in e endpoint configurável. A parte que muda o comportamento é mais estreita
+e mais decisiva: **não existe mais endpoint embutido.** Habilitar exige escrever o endereço,
+em `data/settings.json` ou em `CVOFF_REMOTE_FEN_URL`. Um padrão "desligado, mas apontando
+para `helpman.komtera.lt`" reintroduziria a dependência invisível assim que alguém ligasse
+a chave sem saber para onde ela apontava — o endereço continua no código, mas como
+`KNOWN_PUBLIC_ENDPOINT`, documentado para quem já usava e quiser reescrevê-lo.
+
+**Sem configuração há dois níveis de recusa, e não um.** O botão fica desabilitado com
+tooltip, e `build_provider` devolve `None` — que é o único caminho para um provedor
+existir. Foi assim que o critério "nenhuma requisição parte no uso padrão" virou teste em
+vez de promessa: com `urlopen` substituído, a configuração padrão não consegue nem
+**construir** o objeto que faria a chamada.
+
+O tooltip distingue dois estados que pedem ações diferentes: "não configurada" (falta o
+endereço, e ele diz onde escrevê-lo) e "desligada" (o endereço existe, e ele o mostra). Um
+botão cinza sem explicação é pior que um botão ausente — quem o vê não sabe se está
+quebrado ou se falta configuração.
+
+**O aviso nomeia o host.** "Um serviço externo" não é informação; `exemplo.invalido` é. E o
+"não perguntar novamente" é gravado por endpoint: trocar o endereço volta a perguntar,
+porque o consentimento era sobre aquele destino.
+
+`data/settings.json` fica fora do git — versioná-lo devolveria um endereço fixo ao
+repositório, que é exatamente o que a S-32 existe para eliminar.
 
 ### O que 6.1 não entrega da paridade
 

@@ -9,10 +9,14 @@ os quatro modos de falha que um cliente HTTP tem: erro de rede, HTTP de erro, co
 uma janela. Aqui cada um é um caso, e as mensagens em pt-BR que a interface mostra são
 verificáveis.
 
-**O que ainda não é (S-32).** O endpoint continua fixo e o recurso continua ligado por
-padrão. Torná-lo opt-in, configurável e com aviso explícito de que a imagem sai da máquina
-é o item 6.3 -- e é ele quem deve decidir *se* a requisição parte, não este módulo, que
-sabe apenas *como* fazê-la.
+**Quem decide *se* a requisição parte não é este módulo.** Aqui mora o *como*. A decisão é
+do `settings.py` (habilitado? qual endpoint?) e da interface (o usuário consentiu?). Essa
+separação é o que permite ao teste da S-32 provar que, sem configuração, nenhuma requisição
+existe: não há caminho que construa um provedor.
+
+**`RemoteFenProvider` é protocolo, não classe base.** A S-32 pede que outros serviços -- ou
+um segundo modelo local -- possam entrar como segunda opinião. Um `Protocol` deixa isso
+aberto sem obrigar ninguém a herdar de um cliente HTTP para não ser um.
 """
 
 from __future__ import annotations
@@ -22,16 +26,67 @@ import logging
 import urllib.error
 import urllib.request
 import uuid
+from typing import Protocol, runtime_checkable
 
 import cv2
 import numpy as np
 
+from .settings import RemoteFenSettings
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_NET_CORRECT_URL = "https://helpman.komtera.lt/predict"
-"""Serviço de terceiro, sem contrato. Pode sair do ar; nunca é dependência do fluxo."""
+KNOWN_PUBLIC_ENDPOINT = "https://helpman.komtera.lt/predict"
+"""O endereço que estava fixo no código até a S-32. Continua documentado porque quem já
+usava o recurso precisa saber o que escrever para tê-lo de volta -- mas agora é o usuário
+quem o declara, e nada aqui o usa como padrão."""
 
 DEFAULT_TIMEOUT = 30.0
+
+
+@runtime_checkable
+class RemoteFenProvider(Protocol):
+    """Uma segunda opinião sobre a FEN de um tabuleiro (S-32).
+
+    Não presume HTTP: um segundo modelo local satisfaz a mesma interface, e é justamente
+    esse o uso que alimentaria o sinal de concordância da S-12.
+    """
+
+    @property
+    def name(self) -> str:
+        """Como o provedor aparece na barra de status e no log."""
+
+    def predict(self, image_rgb: np.ndarray) -> str:
+        """A FEN lida, ou `RuntimeError` com o motivo em pt-BR."""
+
+
+class HttpFenProvider:
+    """Provedor que fala com um serviço HTTP que aceita `multipart/form-data`."""
+
+    def __init__(self, url: str, *, timeout: float = DEFAULT_TIMEOUT) -> None:
+        if not url.strip():
+            # Falhar aqui, e nao na hora do envio: um provedor sem destino nao deveria
+            # chegar a existir, e deixa-lo existir e o que faria a UI oferecer o botao.
+            raise ValueError("Provedor remoto exige um endpoint declarado.")
+        self.url = url.strip()
+        self.timeout = timeout
+
+    @property
+    def name(self) -> str:
+        return self.url
+
+    def predict(self, image_rgb: np.ndarray) -> str:
+        return predict_fen_via_net(image_rgb, url=self.url, timeout=self.timeout)
+
+
+def build_provider(settings: RemoteFenSettings) -> RemoteFenProvider | None:
+    """O provedor que a configuração autoriza, ou `None` -- e `None` significa não enviar.
+
+    É o único caminho para um provedor existir. Sem ele não há como uma requisição partir
+    por engano, que é exatamente o que o critério de aceite da S-32 exige poder provar.
+    """
+    if not settings.is_usable:
+        return None
+    return HttpFenProvider(settings.endpoint, timeout=settings.timeout)
 
 
 def encode_multipart_png(image_rgb: np.ndarray, *, field: str = "file", filename: str = "board.png") -> tuple[bytes, str]:
@@ -84,13 +139,14 @@ def parse_net_response(payload: str) -> str:
 def predict_fen_via_net(
     image_rgb: np.ndarray,
     *,
-    url: str = DEFAULT_NET_CORRECT_URL,
+    url: str,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> str:
     """Envia o tabuleiro ao serviço externo e devolve a FEN que ele responder.
 
     **Esta chamada envia a imagem para fora da máquina.** Quem decide se ela pode partir é
-    a interface (S-32); aqui a decisão já foi tomada.
+    a configuração e a interface (S-32); aqui a decisão já foi tomada, e por isso `url` é
+    obrigatória -- não há para onde enviar por padrão.
     """
     body, content_type = encode_multipart_png(image_rgb)
     request = urllib.request.Request(

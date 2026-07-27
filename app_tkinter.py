@@ -26,6 +26,7 @@ import logging
 import threading
 import tkinter as tk
 from collections.abc import Callable
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -52,6 +53,13 @@ from chess_diagram_ocr.service import (
     RecognitionOptions,
     RecognitionOrigin,
     RecognizedDiagram,
+)
+from chess_diagram_ocr.settings import (
+    DEFAULT_SETTINGS_PATH,
+    RemoteFenSettings,
+    Settings,
+    load_settings,
+    save_settings,
 )
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
@@ -84,6 +92,9 @@ class ChessOcrTkApp:
         self.service = OcrService(model_path=DEFAULT_MODEL_PATH)
         self.piece_images = PieceImages(PIECE_IMAGE_DIR)
         self.state = AppState()
+        self.settings = load_settings()
+        """Preferencias do usuario (S-32). Por padrao nada sai da maquina."""
+
         self._is_running_ocr = False
 
         self.model_path_var = tk.StringVar(value=str(DEFAULT_MODEL_PATH))
@@ -169,6 +180,8 @@ class ChessOcrTkApp:
             on_state_changed=self._save_app_state,
             on_focus_request=self._focus_result_tab,
             on_sample_saved=self._reload_dataset_panel,
+            remote_fen=lambda: self.settings.remote_fen,
+            on_remote_consent=self._ask_remote_consent,
         )
         tabs.add(self.result_panel, text="Resultado")
 
@@ -585,6 +598,45 @@ class ChessOcrTkApp:
     def _sync_study(self) -> None:
         if self.study_panel is not None:
             self.study_panel.sync_with_ocr()
+
+    def _ask_remote_consent(self, configuracao: RemoteFenSettings) -> bool:
+        """Aviso antes do primeiro envio, com "nao perguntar novamente" (S-32).
+
+        Tres respostas, nao duas: "Sim" envia uma vez, "Nao" cancela, e a caixa marcada
+        grava o consentimento para aquele endpoint. Quem so quer experimentar uma vez nao
+        deveria precisar aceitar para sempre.
+        """
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Correcao remota")
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        resposta = {"enviar": False}
+        nao_perguntar = tk.BooleanVar(value=False)
+
+        wrap = ttk.Frame(dlg, padding=14)
+        wrap.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(wrap, text=configuracao.consent_message(), wraplength=460, justify=tk.LEFT).pack(anchor="w")
+        ttk.Checkbutton(wrap, text="Nao perguntar novamente para este endereco", variable=nao_perguntar).pack(
+            anchor="w", pady=(10, 0)
+        )
+
+        linha = ttk.Frame(wrap)
+        linha.pack(fill=tk.X, pady=(12, 0))
+
+        def _responder(enviar: bool) -> None:
+            resposta["enviar"] = enviar
+            dlg.destroy()
+
+        ttk.Button(linha, text="Enviar", command=partial(_responder, True)).pack(side=tk.LEFT)
+        ttk.Button(linha, text="Cancelar", command=partial(_responder, False)).pack(side=tk.LEFT, padx=8)
+        self.root.wait_window(dlg)
+
+        if resposta["enviar"] and nao_perguntar.get():
+            self.settings = Settings(remote_fen=replace(configuracao, acknowledged=True))
+            save_settings(DEFAULT_SETTINGS_PATH, self.settings)
+        return bool(resposta["enviar"])
 
     def _reload_dataset_panel(self) -> None:
         if self.dataset_panel is not None:

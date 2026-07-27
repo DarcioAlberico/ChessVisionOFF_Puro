@@ -37,15 +37,17 @@ import numpy as np
 
 from chess_diagram_ocr.dataset_browser import DatasetRow, update_row
 from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
-from chess_diagram_ocr.net_correction import predict_fen_via_net
+from chess_diagram_ocr.net_correction import RemoteFenProvider, build_provider
 from chess_diagram_ocr.review_queue import ReviewItem
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
+from chess_diagram_ocr.settings import RemoteFenSettings
 
 from . import board_edit
 from .board_widget import InteractiveBoard, PieceImages
 from .legality import explain_position
 from .page_results import PageOcrParams, PageResults, PageResultsCache, PageSwitch, decide_page_switch
+from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +132,8 @@ class ResultPanel(ttk.Frame):
         on_state_changed: Callable[[], None],
         on_focus_request: Callable[[], None],
         on_sample_saved: Callable[[], None],
+        remote_fen: Callable[[], RemoteFenSettings],
+        on_remote_consent: Callable[[RemoteFenSettings], bool],
     ) -> None:
         super().__init__(parent, padding=6)
         self._service = service
@@ -145,6 +149,13 @@ class ResultPanel(ttk.Frame):
         self._on_focus_request = on_focus_request
         self._on_sample_saved = on_sample_saved
         """Chamado depois de regravar a linha de uma amostra: a aba Dataset precisa reler."""
+
+        self._remote_fen = remote_fen
+        self._on_remote_consent = on_remote_consent
+        """Pergunta ao usuário se a imagem pode sair da máquina, e devolve a resposta.
+
+        Mora fora do painel porque a resposta afirmativa com "não perguntar novamente" tem
+        de ser **gravada** nas preferências, e persistência não é assunto de widget."""
 
         self.items: list[RecognizedDiagram] = []
         self.fen_edits: list[str] = []
@@ -265,6 +276,10 @@ class ResultPanel(ttk.Frame):
         ttk.Button(acoes, text="Salvar todos", command=self.save_all).pack(side=tk.LEFT, padx=6)
         self.btn_correct_net = ttk.Button(acoes, text="Corrigir Net", command=self.correct_fen_with_net)
         self.btn_correct_net.pack(side=tk.LEFT, padx=6)
+        # Desabilitado ate haver configuracao, e com o motivo a um pouso de ponteiro: um
+        # botao cinza sem explicacao e pior que um botao ausente (S-32).
+        self.tip_correct_net = Tooltip(self.btn_correct_net)
+        self.refresh_remote_availability()
 
     # -------------------------------------------------------------------------------- zoom
 
@@ -697,27 +712,54 @@ class ResultPanel(ttk.Frame):
 
     # ------------------------------------------------------------------------ Corrigir Net
 
+    def refresh_remote_availability(self) -> None:
+        """Habilita ou desabilita o botão conforme a configuração, e explica o porquê.
+
+        Chamado na construção e sempre que as preferências mudam. O tooltip carrega a razão
+        exata -- "não configurado" e "configurado e desligado" pedem ações diferentes.
+        """
+        configuracao = self._remote_fen()
+        disponivel = configuracao.is_usable and not self._is_correcting_net
+        self.btn_correct_net.configure(state=tk.NORMAL if disponivel else tk.DISABLED)
+        self.tip_correct_net.set_text(configuracao.disabled_reason())
+
     def correct_fen_with_net(self) -> None:
-        """Segunda opinião de um serviço externo. **Envia a imagem para fora da máquina.**"""
+        """Segunda opinião de um serviço externo. **Envia a imagem para fora da máquina.**
+
+        Três portas antes de qualquer byte sair: haver diagrama, haver configuração que
+        autorize (S-32) e o usuário ter consentido com aquele host.
+        """
         if not self.items:
             messagebox.showwarning("Aviso", "Nao ha OCR para corrigir.")
             return
         if self._is_correcting_net:
             return
 
+        configuracao = self._remote_fen()
+        provedor = build_provider(configuracao)
+        if provedor is None:
+            # Nao deveria acontecer -- o botao esta desabilitado --, mas o atalho de teclado
+            # e o codigo de teste chegam aqui, e "desabilitado na tela" nao e uma garantia.
+            messagebox.showinfo("Corrigir Net", configuracao.disabled_reason())
+            return
+
+        if not configuracao.acknowledged and not self._on_remote_consent(configuracao):
+            self._on_status("Envio para o servico externo cancelado.")
+            return
+
         idx = self.clamped_index()
         self._is_correcting_net = True
         self.btn_correct_net.configure(state=tk.DISABLED)
-        self._on_status("Corrigindo FEN via Net...")
+        self._on_status(f"Corrigindo FEN via {provedor.name}...")
         threading.Thread(
             target=self._net_worker,
-            args=(idx, np.asarray(self.items[idx].board_rgb).copy()),
+            args=(provedor, idx, np.asarray(self.items[idx].board_rgb).copy()),
             daemon=True,
         ).start()
 
-    def _net_worker(self, idx: int, board_rgb: np.ndarray) -> None:
+    def _net_worker(self, provider: RemoteFenProvider, idx: int, board_rgb: np.ndarray) -> None:
         try:
-            fen = predict_fen_via_net(board_rgb)
+            fen = provider.predict(board_rgb)
             if not is_valid_fen(fen):
                 raise ValueError("API retornou FEN invalida.")
             self.after(0, partial(self._apply_corrected_fen, idx, fen))
@@ -728,7 +770,7 @@ class ResultPanel(ttk.Frame):
 
     def _finish_net(self) -> None:
         self._is_correcting_net = False
-        self.btn_correct_net.configure(state=tk.NORMAL)
+        self.refresh_remote_availability()
 
     def _on_net_error(self, exc: Exception) -> None:
         self._on_status("Falha ao corrigir com Net.")

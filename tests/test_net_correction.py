@@ -20,13 +20,13 @@ import cv2
 import numpy as np
 
 from chess_diagram_ocr.net_correction import (
-    DEFAULT_NET_CORRECT_URL,
     encode_multipart_png,
     parse_net_response,
     predict_fen_via_net,
 )
 
 FEN = "8/8/8/8/8/8/8/K6k"
+ENDPOINT = "https://exemplo.invalido/predict"
 
 
 def _board() -> np.ndarray:
@@ -103,14 +103,14 @@ class ParseTests(unittest.TestCase):
 class RequestTests(unittest.TestCase):
     def test_the_fen_comes_back_from_a_successful_call(self) -> None:
         with _responding(f'{{"results": [{{"fen": "{FEN}"}}]}}') as chamada:
-            self.assertEqual(predict_fen_via_net(_board()), FEN)
+            self.assertEqual(predict_fen_via_net(_board(), url=ENDPOINT), FEN)
 
         pedido = chamada.call_args.args[0]
-        self.assertEqual(pedido.full_url, DEFAULT_NET_CORRECT_URL)
+        self.assertEqual(pedido.full_url, ENDPOINT)
         self.assertEqual(pedido.method, "POST")
 
-    def test_a_custom_endpoint_is_honoured(self) -> None:
-        """A S-32 exige endpoint configurável; o cliente já não fixa o destino."""
+    def test_the_destination_is_always_the_one_that_was_asked_for(self) -> None:
+        """A S-32 exige endpoint declarado; o cliente nao tem destino proprio."""
         with _responding(f'{{"results": [{{"fen": "{FEN}"}}]}}') as chamada:
             predict_fen_via_net(_board(), url="http://localhost:9999/predict")
         self.assertEqual(chamada.call_args.args[0].full_url, "http://localhost:9999/predict")
@@ -119,29 +119,29 @@ class RequestTests(unittest.TestCase):
         erro = urllib.error.URLError("getaddrinfo failed")
         with mock.patch("urllib.request.urlopen", side_effect=erro):
             with self.assertRaises(RuntimeError) as capturado:
-                predict_fen_via_net(_board())
+                predict_fen_via_net(_board(), url=ENDPOINT)
         self.assertIn("Erro de rede", str(capturado.exception))
 
     def test_an_http_error_reports_the_body_the_server_sent(self) -> None:
         erro = urllib.error.HTTPError(
-            DEFAULT_NET_CORRECT_URL, 413, "Payload Too Large", {}, io.BytesIO(b"imagem grande demais")  # type: ignore[arg-type]
+            ENDPOINT, 413, "Payload Too Large", {}, io.BytesIO(b"imagem grande demais")  # type: ignore[arg-type]
         )
         with mock.patch("urllib.request.urlopen", side_effect=erro):
             with self.assertRaises(RuntimeError) as capturado:
-                predict_fen_via_net(_board())
+                predict_fen_via_net(_board(), url=ENDPOINT)
         self.assertIn("imagem grande demais", str(capturado.exception))
 
     def test_an_http_error_with_an_empty_body_falls_back_to_the_status(self) -> None:
-        erro = urllib.error.HTTPError(DEFAULT_NET_CORRECT_URL, 500, "Server Error", {}, io.BytesIO(b""))  # type: ignore[arg-type]
+        erro = urllib.error.HTTPError(ENDPOINT, 500, "Server Error", {}, io.BytesIO(b""))  # type: ignore[arg-type]
         with mock.patch("urllib.request.urlopen", side_effect=erro):
             with self.assertRaises(RuntimeError) as capturado:
-                predict_fen_via_net(_board())
+                predict_fen_via_net(_board(), url=ENDPOINT)
         self.assertIn("HTTP 500", str(capturado.exception))
 
     def test_the_timeout_is_passed_through_instead_of_being_left_to_the_default(self) -> None:
         """Sem timeout, um serviço de terceiro fora do ar congela a thread para sempre."""
         with _responding(f'{{"results": [{{"fen": "{FEN}"}}]}}') as chamada:
-            predict_fen_via_net(_board(), timeout=7)
+            predict_fen_via_net(_board(), url=ENDPOINT, timeout=7)
         self.assertEqual(chamada.call_args.kwargs["timeout"], 7)
 
 
