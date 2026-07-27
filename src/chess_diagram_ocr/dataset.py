@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import warnings
-from collections.abc import Callable, Mapping
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,12 +12,12 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 
 from .atomic_io import atomic_write_bytes
-from .config import BOARD_SIZE
+from .config import BOARD_SIZE, BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
-from .model import preprocess_cell_to_tensor
+from .model import DEFAULT_ARCH, ArchConfig, preprocess_cell_to_tensor
 from .semantics import infer_side_to_move
 from .splits import Split
 
@@ -98,6 +99,8 @@ class BoardFenDataset(Dataset):
         skip_illegal: bool = True,
         split: Split | None = None,
         splits: Mapping[str, Split] | None = None,
+        cache_size: int = DEFAULT_BOARD_CACHE_SIZE,
+        arch: ArchConfig = DEFAULT_ARCH,
     ) -> None:
         """Dataset de casas de tabuleiro a partir de rótulos FEN.
 
@@ -109,6 +112,17 @@ class BoardFenDataset(Dataset):
         `split` restringe o dataset a uma partição, usando o mapa `splits` (normalmente
         vindo de `splits.ensure_splits`). Amostras sem split registrado são ignoradas,
         para que uma amostra nova nunca entre por acidente no conjunto de teste.
+
+        `cache_size` limita quantos tabuleiros 800×800×3 ficam residentes (S-26). Antes
+        o cache era um dict sem teto: como `index_map` percorre as 64 casas de cada
+        tabuleiro, uma época carregava **todos** -- 5,99 GiB de RSS medidos com os 3.208
+        rótulos de hoje, e crescendo com o dataset. `0` desliga o cache (relê a cada
+        casa: correto, mas 64× mais leitura de disco).
+
+        O teto só é barato porque o acesso deixou de ser aleatório: com
+        `BoardGroupedSampler` as casas do mesmo tabuleiro saem na mesma janela, então um
+        cache pequeno tem taxa de acerto alta. Com `shuffle=True` puro no `DataLoader`,
+        um cache limitado vira quase só falta -- os dois itens da S-26 são um só.
         """
         self.csv_path = Path(csv_path)
         self.samples_dir = Path(samples_dir)
@@ -116,10 +130,17 @@ class BoardFenDataset(Dataset):
         self.skip_illegal = skip_illegal
         self.split = split
         self.splits = splits
+        self.cache_size = max(0, int(cache_size))
+        self.arch = arch
         self.entries: list[DatasetEntry] = []
         self.index_map: list[tuple[int, int]] = []
         self.skipped_illegal: list[tuple[str, tuple[str, ...]]] = []
-        self._board_cache: dict[int, np.ndarray] = {}
+        self._board_cache: OrderedDict[int, np.ndarray] = OrderedDict()
+        self.cache_hits = 0
+        self.cache_misses = 0
+        # Os rótulos ficam sem teto de propósito: são 64 inteiros por tabuleiro (~6 MB no
+        # dataset inteiro) contra 1,83 MiB por tabuleiro de imagem. Limitá-los pagaria
+        # complexidade para economizar 0,1% do que a S-26 mede.
         self._labels_cache: dict[int, list[int]] = {}
         self._load_entries()
 
@@ -190,8 +211,11 @@ class BoardFenDataset(Dataset):
     def _load_board(self, entry_idx: int) -> np.ndarray:
         cached = self._board_cache.get(entry_idx)
         if cached is not None:
+            self.cache_hits += 1
+            self._board_cache.move_to_end(entry_idx)
             return cached
 
+        self.cache_misses += 1
         entry = self.entries[entry_idx]
         img_path = self.samples_dir / entry.filename
         board = cv2.imread(str(img_path))
@@ -200,8 +224,18 @@ class BoardFenDataset(Dataset):
         board = cv2.cvtColor(board, cv2.COLOR_BGR2RGB)
         if board.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
             board = cv2.resize(board, (BOARD_SIZE, BOARD_SIZE))
-        self._board_cache[entry_idx] = board
+
+        if self.cache_size:
+            self._board_cache[entry_idx] = board
+            while len(self._board_cache) > self.cache_size:
+                self._board_cache.popitem(last=False)
         return board
+
+    @property
+    def cache_hit_rate(self) -> float:
+        """Fração de acessos servidos pelo cache. Mede se o amostrador está fazendo efeito."""
+        total = self.cache_hits + self.cache_misses
+        return self.cache_hits / total if total else 0.0
 
     def _labels(self, entry_idx: int) -> list[int]:
         cached = self._labels_cache.get(entry_idx)
@@ -223,11 +257,95 @@ class BoardFenDataset(Dataset):
         x0, x1 = col * step, (col + 1) * step
 
         cell = board[y0:y1, x0:x1]
-        x = preprocess_cell_to_tensor(cell)
+        x = preprocess_cell_to_tensor(cell, self.arch)
         if self.transform is not None:
             x = self.transform(x)
         y = labels[square_idx]
         return x, y
+
+
+def board_groups(
+    index_map: Sequence[tuple[int, int]],
+    dataset_indices: Sequence[int] | None = None,
+) -> list[list[int]]:
+    """Agrupa posições do amostrador pelas casas do mesmo tabuleiro.
+
+    `dataset_indices` é a lista de índices do dataset que o wrapper (`Subset`) expõe, na
+    ordem em que ele os expõe; o retorno vem em coordenadas do **wrapper**. Sem ela, o
+    dataset é usado direto. Essa indireção existe porque o treino nem sempre entrega o
+    dataset cru ao `DataLoader`: com validação sorteada ele entrega um `Subset`, e um
+    amostrador que devolvesse índices do dataset apontaria para as casas erradas.
+
+    Os grupos saem em ordem de tabuleiro (dict preserva inserção), então duas execuções
+    com a mesma semente produzem a mesma sequência.
+    """
+    indices = range(len(index_map)) if dataset_indices is None else dataset_indices
+    groups: dict[int, list[int]] = {}
+    for position, dataset_index in enumerate(indices):
+        groups.setdefault(index_map[dataset_index][0], []).append(position)
+    return list(groups.values())
+
+
+class BoardGroupedSampler(Sampler[int]):
+    """Embaralha por tabuleiro, não por casa (item 2 da S-26).
+
+    O `shuffle=True` do `DataLoader` sorteia as 205.312 casas independentemente, então
+    duas casas do mesmo tabuleiro caem em pontos arbitrários da época e qualquer cache
+    com teto vira quase só falta -- é por isso que o cache de antes não tinha teto. Aqui
+    a época é percorrida em janelas de `boards_per_chunk` tabuleiros: dentro da janela as
+    casas são embaralhadas normalmente, mas o conjunto de trabalho do cache passa a ser a
+    janela e não o dataset.
+
+    **Por que a janela e não um tabuleiro por vez.** A leitura literal da S-26 ("as 64
+    casas do mesmo tabuleiro no mesmo lote") daria, com `batch_size=128`, lotes de 2
+    tabuleiros. Isso resolve o cache e cria outro problema: um lote com a estatística de
+    2 posições deixa o BatchNorm ruidoso e muda a dinâmica do treino por um motivo que
+    não tem nada a ver com memória. A janela de 64 tabuleiros mantém a localidade (117
+    MiB residentes) e devolve a mistura.
+
+    **Com `num_workers > 0` cada processo tem o próprio cache** e recebe um lote a cada
+    `num_workers`, então todos tocam todos os tabuleiros da janela: a leitura de disco é
+    multiplicada pelo número de workers. Medido, o disco é ~7% da época, então essa
+    amplificação é aceitável; alinhar janela e worker exigiria acoplar o amostrador ao
+    `num_workers` e degradaria em silêncio se o `DataLoader` mudasse a distribuição.
+    """
+
+    def __init__(
+        self,
+        groups: Iterable[Iterable[int]],
+        *,
+        shuffle: bool = True,
+        seed: int = 42,
+        boards_per_chunk: int = BOARDS_PER_CHUNK,
+    ) -> None:
+        self.groups = [list(group) for group in groups]
+        self.shuffle = shuffle
+        self.seed = seed
+        self.boards_per_chunk = max(1, int(boards_per_chunk))
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        """Fixa a época usada na semente. O padrão é incrementar a cada iteração."""
+        self.epoch = epoch
+
+    def __len__(self) -> int:
+        return sum(len(group) for group in self.groups)
+
+    def __iter__(self) -> Iterator[int]:
+        if not self.shuffle:
+            for group in self.groups:
+                yield from group
+            return
+
+        generator = torch.Generator().manual_seed(self.seed + self.epoch)
+        board_order = torch.randperm(len(self.groups), generator=generator).tolist()
+        self.epoch += 1
+
+        for start in range(0, len(board_order), self.boards_per_chunk):
+            window = [position for board in board_order[start : start + self.boards_per_chunk] for position in self.groups[board]]
+            inner = torch.randperm(len(window), generator=generator).tolist()
+            for offset in inner:
+                yield window[offset]
 
 
 def _fen_with_side(fen: str, side_to_move: str | None) -> tuple[str, str]:

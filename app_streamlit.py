@@ -13,6 +13,7 @@ import streamlit.components.v1 as components
 from chess_diagram_ocr.board_detection import detect_boards
 from chess_diagram_ocr.config import (
     DEFAULT_DATASET_CSV,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_SAMPLES_DIR,
@@ -371,17 +372,30 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
         lr = st.number_input("Learning rate", min_value=0.00001, max_value=0.05, value=0.001, step=0.0005, format="%.5f")
         if st.button("Treinar modelo"):
             try:
-                history = train_model(
+                run = train_model(
                     csv_path=dataset_csv,
                     samples_dir=samples_dir,
                     model_path=model_path,
                     epochs=int(epochs),
                     batch_size=int(batch_size),
                     lr=float(lr),
+                    # num_workers=0 obrigatorio aqui: este script nao tem guarda
+                    # `if __name__ == "__main__"` -- nao pode ter --, e no Windows cada
+                    # worker do DataLoader reimportaria a pagina inteira. Ver
+                    # `training.resolve_num_workers`.
+                    num_workers=0,
                 )
                 get_loaded_model.clear()
-                st.success(f"Treino concluido. Melhor modelo salvo em: {model_path}")
-                st.dataframe(pd.DataFrame(history))
+                st.success(
+                    f"Treino concluido em {len(run.history)} epocas. Melhor: epoca {run.best_epoch}, "
+                    f"{run.best_metric_name}={run.best_metric:.4f}. Modelo em: {model_path}"
+                )
+                if run.ece_after is not None:
+                    st.caption(
+                        f"Calibracao (S-28): T={run.temperature:.4f}, "
+                        f"ECE no val {run.ece_before:.5f} -> {run.ece_after:.5f}"
+                    )
+                st.dataframe(pd.DataFrame(run.history))
             except Exception as exc:
                 st.error(f"Falha no treino: {exc}")
 
@@ -428,7 +442,9 @@ with st.sidebar:
         help="auto: escolhe por diagrama pela leitura mais plausivel.",
     )
     dpi = st.slider("DPI render PDF", min_value=120, max_value=320, value=220, step=20)
-    max_boards = st.number_input("Max diagramas detectados", min_value=1, max_value=20, value=8, step=1)
+    max_boards = st.number_input(
+        "Max diagramas detectados", min_value=1, max_value=30, value=DEFAULT_MAX_BOARDS, step=1
+    )
     if st.button("Recarregar modelo"):
         get_loaded_model.clear()
         st.success("Cache do modelo limpo. OCR vai usar o .pt mais recente.")

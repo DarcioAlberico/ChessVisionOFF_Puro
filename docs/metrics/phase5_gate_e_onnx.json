@@ -1,0 +1,200 @@
+{
+  "gate": [
+    {
+      "modelo": "phase5_res32",
+      "board_count": 320,
+      "erros": 3,
+      "curva": [
+        {
+          "limiar": 0.5,
+          "rejeitados": 0,
+          "erros_pegos": 0,
+          "erros_totais": 3,
+          "falso_alarme": 0,
+          "erros_que_passam": 3
+        },
+        {
+          "limiar": 0.6,
+          "rejeitados": 0,
+          "erros_pegos": 0,
+          "erros_totais": 3,
+          "falso_alarme": 0,
+          "erros_que_passam": 3
+        },
+        {
+          "limiar": 0.7,
+          "rejeitados": 0,
+          "erros_pegos": 0,
+          "erros_totais": 3,
+          "falso_alarme": 0,
+          "erros_que_passam": 3
+        },
+        {
+          "limiar": 0.8,
+          "rejeitados": 2,
+          "erros_pegos": 1,
+          "erros_totais": 3,
+          "falso_alarme": 1,
+          "erros_que_passam": 2
+        },
+        {
+          "limiar": 0.9,
+          "rejeitados": 2,
+          "erros_pegos": 1,
+          "erros_totais": 3,
+          "falso_alarme": 1,
+          "erros_que_passam": 2
+        },
+        {
+          "limiar": 0.95,
+          "rejeitados": 3,
+          "erros_pegos": 1,
+          "erros_totais": 3,
+          "falso_alarme": 2,
+          "erros_que_passam": 2
+        },
+        {
+          "limiar": 0.99,
+          "rejeitados": 10,
+          "erros_pegos": 1,
+          "erros_totais": 3,
+          "falso_alarme": 9,
+          "erros_que_passam": 2
+        },
+        {
+          "limiar": 0.999,
+          "rejeitados": 38,
+          "erros_pegos": 2,
+          "erros_totais": 3,
+          "falso_alarme": 36,
+          "erros_que_passam": 1
+        }
+      ]
+    },
+    {
+      "modelo": "phase5",
+      "board_count": 320,
+      "erros": 5,
+      "curva": [
+        {
+          "limiar": 0.5,
+          "rejeitados": 1,
+          "erros_pegos": 0,
+          "erros_totais": 5,
+          "falso_alarme": 1,
+          "erros_que_passam": 5
+        },
+        {
+          "limiar": 0.6,
+          "rejeitados": 3,
+          "erros_pegos": 1,
+          "erros_totais": 5,
+          "falso_alarme": 2,
+          "erros_que_passam": 4
+        },
+        {
+          "limiar": 0.7,
+          "rejeitados": 4,
+          "erros_pegos": 2,
+          "erros_totais": 5,
+          "falso_alarme": 2,
+          "erros_que_passam": 3
+        },
+        {
+          "limiar": 0.8,
+          "rejeitados": 6,
+          "erros_pegos": 2,
+          "erros_totais": 5,
+          "falso_alarme": 4,
+          "erros_que_passam": 3
+        },
+        {
+          "limiar": 0.9,
+          "rejeitados": 8,
+          "erros_pegos": 2,
+          "erros_totais": 5,
+          "falso_alarme": 6,
+          "erros_que_passam": 3
+        },
+        {
+          "limiar": 0.95,
+          "rejeitados": 13,
+          "erros_pegos": 3,
+          "erros_totais": 5,
+          "falso_alarme": 10,
+          "erros_que_passam": 2
+        },
+        {
+          "limiar": 0.99,
+          "rejeitados": 21,
+          "erros_pegos": 3,
+          "erros_totais": 5,
+          "falso_alarme": 18,
+          "erros_que_passam": 2
+        },
+        {
+          "limiar": 0.999,
+          "rejeitados": 45,
+          "erros_pegos": 4,
+          "erros_totais": 5,
+          "falso_alarme": 41,
+          "erros_que_passam": 1
+        }
+      ]
+    }
+  ],
+  "onnx": [
+    {
+      "modelo": "phase5_res32",
+      "medidas": [
+        {
+          "lote": 64,
+          "torch_ms": 10.90249999833759,
+          "onnx_ms": 3.13730000925716,
+          "ganho": 3.475121909338549,
+          "contexto": "1 tabuleiro"
+        },
+        {
+          "lote": 448,
+          "torch_ms": 85.99310000136029,
+          "onnx_ms": 29.265100005432032,
+          "ganho": 2.9384181152771975,
+          "contexto": "1 com TTA"
+        },
+        {
+          "lote": 512,
+          "torch_ms": 98.69810000236612,
+          "onnx_ms": 32.870299997739494,
+          "ganho": 3.0026528510282424,
+          "contexto": "8 tabuleiros"
+        }
+      ]
+    },
+    {
+      "modelo": "phase5",
+      "medidas": [
+        {
+          "lote": 64,
+          "torch_ms": 50.13820000749547,
+          "onnx_ms": 16.61820001027081,
+          "ganho": 3.0170656254292134,
+          "contexto": "1 tabuleiro"
+        },
+        {
+          "lote": 448,
+          "torch_ms": 343.9416000037454,
+          "onnx_ms": 118.59810000169091,
+          "ganho": 2.900059950360433,
+          "contexto": "1 com TTA"
+        },
+        {
+          "lote": 512,
+          "torch_ms": 391.91990000836086,
+          "onnx_ms": 134.1068999900017,
+          "ganho": 2.9224439610309414,
+          "contexto": "8 tabuleiros"
+        }
+      ]
+    }
+  ]
+}

@@ -26,8 +26,10 @@ data/quarantine.csv
 data/labels.csv.bak-*
 
 # Checkpoints do modelo (~8,7 MB cada). Distribuir por release, nao por git.
-models/*.pt
-models/*.onnx
+# Recursivo de proposito: a Fase 5 gravou 39 MB em models/experiments/ (S-29), e
+# um padrao so de primeiro nivel nao os alcanca.
+models/**/*.pt
+models/**/*.onnx
 
 # --- Material de origem protegido por direito autoral ---
 # NUNCA versionar: o repositorio e publico.

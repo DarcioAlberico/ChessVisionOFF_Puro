@@ -7,16 +7,19 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
+import torch.nn as nn
 
 from .board_detection import split_board_into_cells
-from .checkpoint import load_state_dict
+from .checkpoint import load_checkpoint
 from .config import (
+    APPLY_CALIBRATED_TEMPERATURE,
     CONSTRAINED_DECODING,
     DEFAULT_ORIENTATION_MODE,
     MAX_DECODE_CHANGES,
     ORIENTATION_DECISIVE_MARGIN,
     ORIENTATION_PAWN_PRIOR_MARGIN,
     PIECE_CLASSES,
+    TTA_ENABLED,
     UNCERTAIN_SQUARE_THRESHOLD,
     OrientationMode,
 )
@@ -28,27 +31,117 @@ from .fen_utils import (
     pawn_direction_score,
     square_name,
 )
-from .model import PieceClassifier, preprocess_cell_to_tensor
+from .model import DEFAULT_ARCH, ArchConfig, build_model, preprocess_cell_to_tensor
 
 logger = logging.getLogger(__name__)
 
 _EPS = 1e-12
 
 
-def load_model(model_path: Path, device: str | None = None) -> tuple[PieceClassifier, str]:
+def describe_device(device: str) -> str:
+    """Descrição do dispositivo para log e barra de status (S-30).
+
+    O `load_model` decidia entre CPU e GPU em silêncio, então uma máquina com placa mas
+    com o torch `+cpu` instalado treinava e inferia na CPU sem que nada dissesse isso --
+    é a diferença entre 7,5 min e ~45 s por época, invisível.
+    """
+    if device.startswith("cuda") and torch.cuda.is_available():
+        index = torch.cuda.current_device() if device == "cuda" else int(device.split(":")[1])
+        return f"cuda:{index} ({torch.cuda.get_device_name(index)})"
+    if device.startswith("cuda"):
+        return f"{device} (indisponível!)"
+    build = "+cpu" if "+cpu" in torch.__version__ else torch.__version__
+    return f"cpu (torch {build}, sem CUDA compilada)" if "+cpu" in torch.__version__ else f"cpu (torch {build})"
+
+
+def load_model(
+    model_path: Path,
+    device: str | None = None,
+    *,
+    arch: ArchConfig | None = None,
+    apply_temperature: bool = APPLY_CALIBRATED_TEMPERATURE,
+) -> tuple[nn.Module, str]:
+    """Carrega o checkpoint e devolve `(modelo, dispositivo)`.
+
+    A arquitetura vem do próprio checkpoint quando ele a registra (S-27). Checkpoints
+    anteriores à Fase 5 não a registram e caem no default -- que é a arquitetura com que
+    eles foram treinados, então continuam carregando. Isso é deliberado: recusá-los
+    tornaria os números do BASELINE.md irreproduzíveis.
+
+    A temperatura da S-28 fica em `model.temperature` e é aplicada por quem chama, não
+    dentro do `forward`. `apply_temperature=False` (o padrão) carrega o modelo com
+    temperatura neutra e apenas **reporta** a que está gravada -- ver
+    `config.APPLY_CALIBRATED_TEMPERATURE` para o que foi medido e por quê.
+    """
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    model = PieceClassifier()
     model_path = Path(model_path)
 
-    if model_path.exists():
-        model.load_state_dict(load_state_dict(model_path, map_location=dev), strict=False)
-        logger.info("Modelo carregado de %s em %s.", model_path, dev)
-    else:
+    if not model_path.exists():
         logger.warning("Checkpoint nao encontrado em %s: usando pesos aleatorios.", model_path)
+        model = build_model(arch or DEFAULT_ARCH, pretrained=False)
+        model.to(dev)
+        model.eval()
+        return model, dev
 
+    checkpoint = load_checkpoint(model_path, map_location=dev)
+    if arch is None:
+        arch = ArchConfig.from_version(checkpoint.arch_version) if checkpoint.arch_version else DEFAULT_ARCH
+
+    model = build_model(arch, pretrained=False)
+    model.load_state_dict(checkpoint.state, strict=True)
+    model.temperature = checkpoint.temperature if apply_temperature else 1.0  # type: ignore[assignment]
     model.to(dev)
     model.eval()
+
+    if checkpoint.temperature == 1.0:
+        temperatura = "1,0000 (não calibrado)"
+    elif apply_temperature:
+        temperatura = f"{checkpoint.temperature:.4f} (aplicada)"
+    else:
+        temperatura = f"{checkpoint.temperature:.4f} gravada, não aplicada (S-28: medido que piora o gate)"
+
+    logger.info(
+        "Modelo carregado de %s | arquitetura %s%s | dispositivo %s | temperatura %s",
+        model_path.name,
+        arch.version,
+        " (não registrada no checkpoint; assumida)" if not checkpoint.arch_version else "",
+        describe_device(dev),
+        temperatura,
+    )
     return model, dev
+
+
+def _shifted(board: np.ndarray, dx: int, dy: int) -> np.ndarray:
+    matrix = np.array([[1.0, 0.0, dx], [0.0, 1.0, dy]], dtype=np.float32)
+    height, width = board.shape[:2]
+    return cv2.warpAffine(board, matrix, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+
+
+def _scaled(board: np.ndarray, factor: float) -> np.ndarray:
+    height, width = board.shape[:2]
+    matrix = cv2.getRotationMatrix2D((width / 2, height / 2), 0.0, factor)
+    return cv2.warpAffine(board, matrix, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+
+
+def tta_views(board: np.ndarray) -> list[np.ndarray]:
+    """As sete vistas do TTA da S-29: original, ±2 px nos dois eixos, escalas 0,98 e 1,02.
+
+    Os deslocamentos são no **tabuleiro**, não na casa, porque é ali que o erro real
+    acontece: a Fase 2 mediu que o recorte fora de registro é o que degrada a leitura em
+    PDF de verdade (o bbox embutido cru contra o warp por contorno, ROADMAP §2.4). Uma
+    casa de 100 px deslocada de 2 px vira ~1,3 px depois do resize para 64×64 -- pequeno
+    de propósito: o TTA existe para estabilizar a probabilidade, não para inventar vistas
+    que o modelo nunca veria.
+    """
+    return [
+        board,
+        _shifted(board, 2, 0),
+        _shifted(board, -2, 0),
+        _shifted(board, 0, 2),
+        _shifted(board, 0, -2),
+        _scaled(board, 0.98),
+        _scaled(board, 1.02),
+    ]
 
 
 @dataclass(frozen=True, eq=False)
@@ -157,26 +250,49 @@ def prediction_from_probs(
     )
 
 
+def board_probabilities(
+    board_rgb: np.ndarray,
+    model: nn.Module,
+    device: str,
+    *,
+    tta: bool = False,
+) -> np.ndarray:
+    """Matriz (64, 13) de probabilidades por casa.
+
+    A temperatura da S-28 é aplicada aqui, sobre os logits, e não dentro do `forward`:
+    dividir no treino mudaria o gradiente. Com `tta`, as vistas são somadas **depois** do
+    softmax de cada uma -- média de probabilidades, não de logits. As duas médias
+    discordam, e a de probabilidades é a que o voto da S-29 descreve: uma vista muito
+    confiante e errada não domina as outras seis como dominaria em espaço de logit.
+    """
+    arch = getattr(model, "arch", DEFAULT_ARCH)
+    temperature = float(getattr(model, "temperature", 1.0))
+    views = tta_views(board_rgb) if tta else [board_rgb]
+
+    tensors = [preprocess_cell_to_tensor(cell, arch) for view in views for cell in split_board_into_cells(view)]
+    batch = torch.stack(tensors, dim=0).to(device)
+
+    with torch.inference_mode():
+        probs = torch.softmax(model(batch) / temperature, dim=1)
+
+    matrices = probs.cpu().numpy().astype(np.float64).reshape(len(views), 64, len(PIECE_CLASSES))
+    return matrices.mean(axis=0)
+
+
 def predict_board(
     board_rgb: np.ndarray,
-    model: PieceClassifier,
+    model: nn.Module,
     device: str,
     *,
     rotate_180: bool = False,
     uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     constrained: bool = CONSTRAINED_DECODING,
+    tta: bool = TTA_ENABLED,
 ) -> BoardPrediction:
     """Reconhece um tabuleiro já recortado e normalizado, preservando as probabilidades."""
     board = cv2.rotate(board_rgb, cv2.ROTATE_180) if rotate_180 else board_rgb
-
-    cells = split_board_into_cells(board)
-    batch = torch.stack([preprocess_cell_to_tensor(cell) for cell in cells], dim=0).to(device)
-
-    with torch.inference_mode():
-        probs = torch.softmax(model(batch), dim=1)
-
     return prediction_from_probs(
-        probs.cpu().numpy().astype(np.float64),
+        board_probabilities(board, model, device, tta=tta),
         uncertain_threshold=uncertain_threshold,
         constrained=constrained,
     )
@@ -218,7 +334,7 @@ def _pawn_prior_gap(upright: BoardPrediction, flipped: BoardPrediction) -> float
 
 def predict_with_orientation(
     board_rgb: np.ndarray,
-    model: PieceClassifier,
+    model: nn.Module,
     device: str,
     *,
     mode: OrientationMode = DEFAULT_ORIENTATION_MODE,
@@ -226,6 +342,7 @@ def predict_with_orientation(
     constrained: bool = CONSTRAINED_DECODING,
     decisive_margin: float = ORIENTATION_DECISIVE_MARGIN,
     pawn_prior_margin: float = ORIENTATION_PAWN_PRIOR_MARGIN,
+    tta: bool = TTA_ENABLED,
 ) -> OrientedPrediction:
     """Reconhece o diagrama decidindo a orientação por diagrama, não por checkbox global.
 
@@ -271,6 +388,7 @@ def predict_with_orientation(
             rotate_180=rotate,
             uncertain_threshold=uncertain_threshold,
             constrained=constrained,
+            tta=tta,
         )
 
     if mode != "auto":

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_READING_ORDER, OrientationMode, ReadingOrder
+from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, OrientationMode, ReadingOrder
 from ..review_queue import (
     DEFAULT_CACHE_DIR,
     DEFAULT_QUEUE_PATH,
@@ -39,7 +39,7 @@ class ScanRequest:
     model_path: Path
     labels_csv: Path
     dpi: int = 220
-    max_boards_per_page: int = 8
+    max_boards_per_page: int = DEFAULT_MAX_BOARDS
     orientation: OrientationMode = "auto"
     reading_order: ReadingOrder = DEFAULT_READING_ORDER
     start_page: int = 0

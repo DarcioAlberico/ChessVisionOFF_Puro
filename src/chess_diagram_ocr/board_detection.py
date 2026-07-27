@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import math
 
 import cv2
 import numpy as np
 
-from .config import BOARD_SIZE, CELL_SIZE, DEFAULT_READING_ORDER, ReadingOrder
+from .config import BOARD_SIZE, CELL_SIZE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
+
+logger = logging.getLogger(__name__)
 
 
 class NoBoardDetectedError(RuntimeError):
@@ -269,7 +272,7 @@ def _extract_candidate_quads(image_rgb: np.ndarray) -> list[tuple[np.ndarray, fl
 def detect_boards(
     image_rgb: np.ndarray,
     target_size: int = BOARD_SIZE,
-    max_boards: int = 8,
+    max_boards: int = DEFAULT_MAX_BOARDS,
     iou_threshold: float = 0.25,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
 ) -> list[tuple[np.ndarray, np.ndarray | None]]:
@@ -283,6 +286,7 @@ def detect_boards(
     top_score = candidates[0][1] if candidates else 0.0
     min_score = max(0.06, top_score * 0.25)
     selected: list[tuple[np.ndarray, float, tuple[int, int, int, int]]] = []
+    dropped_by_cap: list[float] = []
 
     for candidate in candidates:
         _, score, bbox = candidate
@@ -290,9 +294,24 @@ def detect_boards(
             continue
         if any(_bbox_iou(bbox, kept_bbox) > iou_threshold for _, _, kept_bbox in selected):
             continue
-        selected.append(candidate)
         if len(selected) >= max_boards:
-            break
+            dropped_by_cap.append(score)
+            continue
+        selected.append(candidate)
+
+    if dropped_by_cap:
+        # O corte e por score, e o score nao ordena diagrama por posicao: numa grade 3x3 o
+        # nono pode ser o do canto superior direito. Cortar em silencio fez exatamente isso
+        # no "A Matter of Endgame Technique", e nada na tela dizia que faltava um.
+        logger.warning(
+            "max_boards=%d cortou %d candidato(s) que passaram no filtro de qualidade "
+            "(scores %s contra %.4f do ultimo aceito). Se a pagina tem mais diagramas que "
+            "isso, aumente 'Max diagramas'.",
+            max_boards,
+            len(dropped_by_cap),
+            ", ".join(f"{score:.4f}" for score in dropped_by_cap[:4]),
+            selected[-1][1] if selected else 0.0,
+        )
 
     if not selected:
         return []

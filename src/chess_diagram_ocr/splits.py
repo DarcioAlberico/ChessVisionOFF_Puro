@@ -170,6 +170,17 @@ def ensure_splits(
     return result
 
 
+def splits_hash(splits: Mapping[str, Split]) -> str:
+    """Identidade da divisão, para o checkpoint dizer sobre que partição ele foi treinado.
+
+    Sem isso, "o modelo A é melhor que o B" pode estar comparando dois modelos avaliados
+    em conjuntos de teste diferentes -- que é o erro que a S-07 existe para impedir e que
+    nada, até aqui, impedia de voltar em silêncio ao crescer o dataset.
+    """
+    payload = "\n".join(f"{name}={split}" for name, split in sorted(splits.items()))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
 def split_counts(splits: Mapping[str, Split]) -> dict[str, int]:
     counts = {"train": 0, "val": 0, "test": 0}
     for split in splits.values():

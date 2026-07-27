@@ -38,7 +38,7 @@ import fitz
 import numpy as np
 
 from ..board_detection import _bbox_iou, _sort_selected_candidates, detect_boards
-from ..config import BOARD_SIZE, DEFAULT_READING_ORDER, ReadingOrder
+from ..config import BOARD_SIZE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
 from .embedded import DiagramCandidate, _pixels_for_bbox, candidates_from_embedded_images
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ def detect_diagrams(
     page: fitz.Page,
     page_rgb: np.ndarray,
     *,
-    max_boards: int = 8,
+    max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     refine_embedded: bool = True,
     size_prior_tolerance: float | None = EMBEDDED_SIZE_TOLERANCE,
@@ -191,7 +191,7 @@ def detect_diagrams_in_pdf_page(
     page_index: int,
     page_rgb: np.ndarray,
     *,
-    max_boards: int = 8,
+    max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
 ) -> list[DiagramCandidate]:
     """`detect_diagrams` para quem tem o caminho do PDF, e não um `fitz.Page` aberto.

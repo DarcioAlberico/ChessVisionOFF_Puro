@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..config import (
     ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
@@ -29,7 +30,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=None, help="Padrao: PGN/<nome-do-pdf>.pgn")
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
     parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--max-boards-per-page", type=int, default=8)
+    parser.add_argument("--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS)
     parser.add_argument(
         "--orientation",
         choices=("auto", "0", "180"),

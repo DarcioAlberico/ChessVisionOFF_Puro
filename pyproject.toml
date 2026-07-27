@@ -26,6 +26,12 @@ dev = [
     "mypy>=1.11",
     "pandas-stubs",
 ]
+# Backend alternativo de inferencia em CPU (S-30). Opcional de proposito: o pipeline
+# funciona sem ele, e `cvoff-export-onnx` avisa se faltar.
+onnx = [
+    "onnx>=1.16",
+    "onnxruntime>=1.18",
+]
 
 [project.scripts]
 cvoff-train = "chess_diagram_ocr.cli.train:main"
@@ -35,6 +41,8 @@ cvoff-audit = "chess_diagram_ocr.cli.audit:main"
 cvoff-eval = "chess_diagram_ocr.cli.evaluate:main"
 cvoff-migrate-labels = "chess_diagram_ocr.cli.migrate_labels:main"
 cvoff-review = "chess_diagram_ocr.cli.review:main"
+cvoff-experiment = "chess_diagram_ocr.cli.experiment:main"
+cvoff-export-onnx = "chess_diagram_ocr.cli.export_onnx:main"
 
 [build-system]
 requires = ["setuptools>=68"]

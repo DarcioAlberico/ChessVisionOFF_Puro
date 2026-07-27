@@ -217,5 +217,33 @@ interprete como "o modelo piorou".
 - **Lado a jogar não é medido, porque nem é reconhecido.** 100% das saídas assumem brancas.
   Nas 47 leituras do Kemeri, 12 têm o lado a jogar comprovadamente invertido — e essas são
   só as detectáveis por legalidade. É o assunto da Fase 3.
-- **Limiar de aceite de 0,80 é provisório.** Escolhido pela distribuição observada, não
-  derivado de curva de calibração. O número justificado sai com a S-28.
+- ~~**Limiar de aceite de 0,80 é provisório.**~~ **Justificado na Fase 5** — não pela curva de
+  calibração, que é degenerada neste split (o modelo acerta 99,06% dos tabuleiros, então
+  qualquer limiar atinge um alvo de 99%), mas pela curva de **custo**: a 0,80 o gate pega 1 de
+  3 erros com 1 falso alarme; a 0,999 pega 2 de 3 com 36 falsos alarmes. 0,80 é o joelho. Ver
+  [EXPERIMENTS.md](EXPERIMENTS.md).
+
+---
+
+## O que a Fase 5 acrescentou a este documento
+
+Os números acima continuam valendo — `piece_classifier_baseline.pt` segue em **0,9906** no
+split de teste. O que a Fase 5 mediu em volta deles:
+
+| | |
+|---|---|
+| Três arquiteturas diferentes no teste | **todas 317/320**, incluindo uma com 3,5× menos parâmetros |
+| Mesma arquitetura retreinada | 315/320 — dois tabuleiros de variância entre execuções |
+| ECE, com e sem calibração | 0,000265 → 0,000837 (calibrar **piora**) |
+| TTA de 7 vistas | 316/320 contra 315, por 6× o tempo |
+| Memória de uma época de treino | 6,112 GiB → **1,271 GiB** |
+| ONNX contra torch em CPU | **~3×** mais rápido, paridade de 1,19e-07 |
+
+A leitura que atravessa a tabela: **este conjunto de teste chegou ao teto.** Com 3 tabuleiros
+difíceis em 320, ele não distingue mais arquitetura, nem calibração, nem TTA — e a variância
+entre duas execuções do mesmo treino é do tamanho de qualquer diferença que se queira medir.
+O aviso que este documento já dava ("±1 ponto não provou nada") deixou de ser teórico: a
+Fase 5 gastou sete variantes e três treinos completos para confirmá-lo.
+
+Para ir além, ou o conjunto de teste cresce, ou a comparação passa a ser par a par sobre os
+mesmos tabuleiros. Detalhes em [EXPERIMENTS.md](EXPERIMENTS.md).

@@ -1,6 +1,6 @@
 # Roadmap — ChessVisionOFF_Puro
 
-Base: [ANALISE.md](ANALISE.md). Detalhes de implementação: [SPEC.md](SPEC.md). Números medidos: [BASELINE.md](BASELINE.md).
+Base: [ANALISE.md](ANALISE.md). Detalhes de implementação: [SPEC.md](SPEC.md). Números medidos: [BASELINE.md](BASELINE.md) e [EXPERIMENTS.md](EXPERIMENTS.md).
 
 Estimativas em dias de trabalho focado de uma pessoa. As fases são sequenciais por dependência: cada uma depende de algo que a anterior estabelece.
 
@@ -14,7 +14,7 @@ Fase 1  Verdade e medição                    3–5 d   ▸ sem isso "melhorou"
 Fase 2  Precisão do OCR                      5–8 d   ▸ maior ganho de qualidade do projeto
 Fase 3  Semântica: lado a jogar e metadados  4–6 d   ▸ concluída — metade dos exercícios saía errada
 Fase 4  Produtividade humana                 5–8 d   ▸ concluída — corrigir deixou de ser editar FEN
-Fase 5  Modelo e desempenho                  4–6 d   ▸ só faz sentido depois da Fase 1
+Fase 5  Modelo e desempenho                  4–6 d   ▸ concluída — 6,11 GiB de RAM viraram 1,27
 Fase 6  Consolidação do produto              5–8 d   ▸ unificação, i18n, empacotamento
 ```
 
@@ -80,7 +80,7 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 ### Pendências conhecidas da Fase 1
 
 - **1.8 (fixtures e regressão)** — os testes de `fen_utils`, `dataset`, `inference`, `decode`, `splits` e `audit` existem e rodam sem dados. Falta o **teste de regressão de acurácia**, que depende de fixtures versionados (S-09): hoje `data/samples/` está fora do git, então um teste de acurácia pularia na CI e daria falsa sensação de cobertura. O baseline em `docs/BASELINE.md` cumpre o papel de trava manual até lá.
-- **O checkpoint não guarda com que `val_loss` foi salvo.** Consequência prática, encontrada ao retomar o treino do baseline: retomar zera o controle de melhor época e a primeira época sobrescreve o arquivo mesmo se for pior. Hoje há um `warning` avisando; a correção é gravar metadados no checkpoint (item 5.3).
+- ~~**O checkpoint não guarda com que `val_loss` foi salvo.**~~ **Resolvido na Fase 5 (item 5.3):** o checkpoint grava `best_metric` e `best_epoch`, e a retomada os lê de volta em vez de recomeçar em infinito. A métrica também mudou — é `val_board_exact_acc`, não `val_loss` (item 5.4).
 
 ---
 
@@ -572,18 +572,256 @@ Fase 6 (S-31).
 
 **Por que só agora:** sem a Fase 1 não há como saber se uma mudança de modelo ajudou. E a análise mostra que o classificador **não é** o gargalo atual — este é o item de menor prioridade relativa.
 
-| # | Entrega | Ref. spec |
-|---|---|---|
-| 5.1 | Cache do dataset limitado (LRU) — resolve os 5,8 GiB de RAM | S-26 |
-| 5.2 | `num_workers` configurável | S-26 |
-| 5.3 | Treino reprodutível: `--fresh`, `strict=True`, semente e split registrados no checkpoint | S-27 |
-| 5.4 | Métricas de treino corretas: exata por tabuleiro, por classe, pesos de classe para o desbalanceamento | S-27 |
-| 5.5 | Calibração de confiança (temperature scaling) no conjunto de validação | S-28 |
-| 5.6 | Experimento controlado: entrada em cor vs cinza, 32/48/64 px, backbone alternativo — decidir por medição | S-29 |
-| 5.7 | TTA leve (deslocamentos de ±2 px) com voto | S-29 |
-| 5.8 | Instalar torch com CUDA; exportação ONNX opcional para CPU rápida | S-30 |
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 5.1 | Cache do dataset limitado (LRU) — resolve os 5,8 GiB de RAM | S-26 | ✅ 6,11 → **1,27 GiB** de pico |
+| 5.2 | `num_workers` configurável | S-26 | ✅ entregue; medido, **não compensa** (ver abaixo) |
+| 5.3 | Treino reprodutível: `--fresh`, `strict=True`, semente e split registrados no checkpoint | S-27 | ✅ `checkpoint.py` reescrito |
+| 5.4 | Métricas de treino corretas: exata por tabuleiro, por classe, pesos de classe para o desbalanceamento | S-27 | ✅ com o padrão de pesos invertido pela medição |
+| 5.5 | Calibração de confiança (temperature scaling) no conjunto de validação | S-28 | ✅ `calibration.py` |
+| 5.6 | Experimento controlado: entrada em cor vs cinza, 32/48/64 px, backbone alternativo — decidir por medição | S-29 | ✅ `cvoff-experiment`, 7 variantes |
+| 5.7 | TTA leve (deslocamentos de ±2 px) com voto | S-29 | ✅ 7 vistas, desligado por padrão |
+| 5.8 | Instalar torch com CUDA; exportação ONNX opcional para CPU rápida | S-30 | ✅ dispositivo explícito + `cvoff-export-onnx` |
 
-**Critério de saída:** treino de época completa sem exceder 2 GiB de RAM; métricas reprodutíveis entre execuções; ganho ou não-ganho de cada experimento registrado.
+**Critério de saída:** atingido nos três itens — época completa em **1,27 GiB** (limite: 2 GiB) e duas execuções com a mesma semente produzindo métricas bit a bit idênticas, o que virou teste da suíte. O terceiro ("ganho ou não-ganho de cada experimento registrado") está em [EXPERIMENTS.md](EXPERIMENTS.md).
+
+### A memória: 6,11 GiB medidos, e por que os dois itens da S-26 são um só
+
+O cache era um `dict` sem teto. Como `index_map` percorre as 64 casas de cada tabuleiro,
+uma época carregava **todos** — linear, 1,79 MiB por tabuleiro, e crescendo com um dataset
+que é feito para crescer. Uma época real, mesma máquina e mesmo split:
+
+| | HEAD (pré-Fase 5) | Fase 5 (defaults) |
+|---|---|---|
+| **pico de RSS** | **6,112 GiB** | **1,271 GiB** |
+| tempo por época | 538,5 s | 533,8 s a 465 s |
+
+O que não é óbvio na spec: **o item 1 (cache limitado) não funciona sem o item 2
+(amostrador)**, e é por isso que o cache original não tinha teto. Com `shuffle=True` puro,
+as 205.312 casas são sorteadas independentemente e qualquer cache com teto vira quase só
+falta — medido, taxa de acerto < 0,50 com cache de 8. Com o amostrador agrupando, > 0,95.
+
+E a leitura literal da S-26 — "as 64 casas do mesmo tabuleiro no mesmo lote" — resolveria a
+memória criando outro problema: com `batch_size=128` isso dá lotes de **2 tabuleiros**, e
+um lote com a estatística de 2 posições deixa o BatchNorm ruidoso por um motivo que não tem
+nada a ver com memória. Daí a janela de 64 tabuleiros: mantém a localidade que o cache
+precisa e devolve a mistura ao lote.
+
+O tamanho de cache que a spec sugere (256) também acabou medido como 4× o necessário: o
+conjunto de trabalho é a janela, não um número escolhido. Padrão em 128, e o cache da
+validação — que é acesso estritamente sequencial — em 4.
+
+### 5.2 — o `num_workers` foi entregue, e a medição diz para deixá-lo desligado
+
+| | tempo por época | pico de RSS (árvore de processos) |
+|---|---|---|
+| `num_workers=0` | **533,8 s** | **1,271 GiB** |
+| `num_workers=4` | 577,4 s | 2,701 GiB |
+
+Oito por cento **mais lento** e quase três vezes a memória. Os caches não explicam isso —
+128 tabuleiros divididos por 5 processos são ~46 MiB cada. O que pesa são quatro
+interpretadores Python com o torch importado, ~400 MiB cada: no Windows o start method é
+`spawn`, e não há *copy-on-write* amortizando como haveria no Linux.
+
+O parâmetro fica, exposto em `cvoff-train --num-workers`, porque numa máquina com `fork` a
+conta provavelmente muda. O que não fica é o padrão que a S-26 sugere: `train_model` usa 0.
+
+Há também uma ressalva de **segurança**, não de desempenho: com `spawn`, cada worker
+reimporta o módulo `__main__`. `cvoff-train` e o `app_tkinter.py` têm guarda `if __name__
+== "__main__"`; o `app_streamlit.py` não tem — não pode ter, é um script de topo executado
+pelo Streamlit — e por isso passa `num_workers=0` explicitamente.
+
+### 5.3 — o que o checkpoint não guardava, e o que isso custou de verdade
+
+A Fase 1 registrou a pendência com um `warning`: retomar o treino zerava o controle de
+melhor época, e a primeira época da retomada sobrescrevia o arquivo mesmo sendo pior.
+Aconteceu ao treinar o próprio baseline. O checkpoint agora grava `arch_version`,
+`class_names`, `seed`, `split_hash`, `dataset_size`, `best_metric`, `best_epoch`,
+`git_commit` e a temperatura da S-28 — e a retomada lê `best_metric` de volta.
+
+`strict=False` virou `strict=True`. O caso que isso pega não é hipotético: sem ele, uma CNN
+de entrada 48×48 aceita os pesos de uma de 64×64 descartando em silêncio as camadas que não
+batem, e o treino continua a partir de metade de um modelo aleatório. A validação explícita
+vem **antes** do `load_state_dict` de propósito — o torch também recusaria, mas com uma
+lista de tensores faltando, e "size mismatch for classifier.1.weight" não diz a ninguém que
+o problema foi trocar a resolução.
+
+### A primeira versão da 5.3 estava errada, e foi o uso que mostrou
+
+A implementação inicial **recusava retomar** qualquer checkpoint anterior à Fase 5, com o
+argumento de que sem `arch_version` não dá para saber se ele é de outra arquitetura. Ao
+clicar em "Treinar modelo" na interface, o resultado foi um erro e nenhum caminho de saída:
+o `piece_classifier.pt` de todo mundo é anterior à Fase 5, e a UI não tinha equivalente a
+`--fresh`.
+
+O argumento também estava errado no mérito. **Quem garante que os pesos correspondem à
+arquitetura é o `strict=True`, não o metadado.** No espaço de `ArchConfig`, cada fator muda
+nome ou formato de algum tensor: `channels` muda a primeira convolução, `image_size` muda a
+entrada da cabeça linear (2.048 / 4.608 / 8.192), `head` e `backbone` mudam as próprias
+chaves. Retomar de metade de um modelo aleatório era o que o `strict=False` permitia; é
+exatamente o que o `strict=True` impede. A checagem de metadados continua, mas como
+**mensagem melhor** — "este checkpoint é de `cnn-gray-64-linear`, você pediu
+`cnn-gray-32-linear`" em vez de uma lista de tensores incompatíveis.
+
+O que de fato não se sabe de um checkpoint antigo é **que métrica ele atingiu**. Aí a
+resposta não é supor 0 (a primeira época grava por cima mesmo sendo pior — o problema
+original da Fase 1) nem confiar num número que pode ter sido medido em outro split: é
+**medir**. Ao retomar sem métrica registrada, ou com `split_hash` diferente do atual, o
+treino faz uma passada de validação no modelo recém-carregado e usa o resultado como o
+número a superar. Custa ~20 s e fecha a pendência inclusive para os checkpoints legados.
+
+Verificado no `piece_classifier.pt` real: retoma, mede **0,980392** de acurácia exata por
+tabuleiro no `val`, anuncia que só uma época melhor que isso grava por cima, e deixa o
+arquivo intacto. A interface ganhou junto a caixa **"Treinar do zero"**, que faltava.
+
+**Para inferência, checkpoints antigos sempre carregaram e continuam carregando** —
+`piece_classifier_baseline.pt` é a única forma de reproduzir os números do BASELINE.md, e
+recusá-lo tornaria o baseline do projeto inverificável.
+
+### 5.4 — a métrica de decisão estava errada, e os pesos de classe pioram
+
+`val_loss` decidia qual época era salva. A métrica que interessa ao produto é
+`val_board_exact_acc`: a fração de diagramas que sai sem nenhuma correção manual. Acurácia
+por casa é dominada pelos 77% de casas vazias — um modelo que só respondesse "vazio"
+marcaria 0,77. Agora o early stopping é em `val_board_exact_acc`, e o histórico traz também
+`val_per_class_recall`, onde uma dama que o modelo nunca acerta deixa de sumir dentro de
+0,9988.
+
+Sobre os pesos de classe, ver [EXPERIMENTS.md](EXPERIMENTS.md): a S-27 propõe `"balanced"`
+por padrão e a medição desaconselha. O peso inverso compra recall das classes raras
+vendendo precisão nas vazias, e como um tabuleiro exato exige as 64 casas certas, cada falso
+positivo numa casa vazia custa um diagrama inteiro. O padrão ficou em `"none"`.
+
+### 5.8 — o dispositivo era escolhido em silêncio
+
+`load_model` decidia entre CPU e GPU sem dizer nada, então uma máquina com placa mas com o
+torch `+cpu` instalado treinava e inferia em CPU de forma invisível — a diferença entre 9
+minutos e ~1 minuto por época. Agora o log e a barra de status dizem
+`cpu (torch +cpu, sem CUDA compilada)` ou `cuda:0 (nome da placa)`, e o README documenta a
+instalação da wheel CUDA.
+
+A exportação ONNX (`cvoff-export-onnx`) é opcional e só dá o arquivo por bom depois de
+conferir paridade com o torch: medido sobre o split de teste, diferença máxima de
+**1,19e-07** contra a tolerância de 1e-4 da S-30, e **zero** discordâncias de argmax. Essa
+segunda checagem importa mais que a primeira — uma divergência minúscula exatamente num
+empate troca a classe, e aí a FEN muda.
+
+O ganho de velocidade ficou em **~3×** de forma consistente (3,02× em lote de 1 tabuleiro,
+2,90× com TTA, 2,92× em 8 tabuleiros). Importa no modo interativo: reconhecer uma página de 9
+diagramas com auto-orientação são 18 inferências, 0,9 s em torch contra 0,3 s em ONNX. Não
+muda a exportação de um livro, onde o render da página domina.
+
+### O que o fechamento decidiu, e o que ele deixou decidido pela medição
+
+**Nenhuma arquitetura entra (5.6).** Os três candidatos empatam em 317 de 320 no split de
+teste, e o critério da S-29 exige melhora além do ruído — empate não é melhora.
+`DEFAULT_ARCH` fica. Detalhe que dá a medida do ruído: a **mesma** arquitetura retreinada
+deu 315/320 contra os 317/320 da Fase 1, com mesmos dados, mesmo split e mesma semente.
+
+**O TTA fica desligado (5.7).** 316 tabuleiros exatos contra 315, ou seja um em 320, por 6×
+o tempo de inferência. Ele melhora o AUC de detecção de erro (0,9124 → 0,9193), que é o
+sinal que a fila de revisão usa, mas não o suficiente para pagar o custo por padrão.
+
+**A calibração é ajustada e gravada, mas não aplicada (5.5).** Medido no mesmo modelo, com
+só a temperatura mudando: o ECE piora ~3× e a fila de revisão dobra (6 → 12 rejeitados em
+320), sem mudar uma casa. O motivo é estrutural — o modelo acerta 99,98% das casas, então
+confiança 0,9998 já é quase perfeitamente calibrada, e achatá-la afasta a confiança da
+verdade. A NLL, que é o que o método minimiza, melhora de verdade; o ECE, que é o que o
+critério da S-28 nomeia, vai no sentido oposto. Os dois objetivos discordam nesta faixa de
+acurácia. Ver [EXPERIMENTS.md](EXPERIMENTS.md).
+
+**O limiar de 0,80 da S-15 deixou de ser provisório.** Não pela curva de calibração, que é
+degenerada aqui (o modelo acerta 99,06% dos tabuleiros, então qualquer limiar atinge um alvo
+de 99%), mas pela curva de custo: a 0,80 o gate pega 1 de 3 erros com 1 falso alarme; a
+0,999 pega 2 de 3 com **36** falsos alarmes. 0,80 é o joelho.
+
+### A decisão pendente da Fase 2 sobre qual modelo o app usa
+
+A Fase 2 deixou aberto: `DEFAULT_MODEL_PATH` aponta para `piece_classifier.pt`, o checkpoint
+antigo treinado sobre todo o dataset, que media 0,9875 no teste — pior que o baseline
+honesto apesar de tê-lo visto. Faltava um modelo de produção.
+
+Medido agora, o `piece_classifier.pt` vale **0,980392** de acurácia exata por tabuleiro no
+`val`, e os candidatos novos de 8 épocas ficam entre 0,9804 e 0,9902 no mesmo split. Ou seja
+o checkpoint antigo **não é o problema que se supunha** — ele está na mesma faixa.
+
+A decisão continua com o dono do projeto, e agora com números:
+
+| checkpoint | exata/teste | exata/val | observação |
+|---|---|---|---|
+| `piece_classifier.pt` (em uso) | 0,9875 | 0,9804 | viu o teste no treino; número não é honesto |
+| `piece_classifier_baseline.pt` | 0,9906 | 0,9837 | honesto, mas desperdiça o split `val` |
+| `piece_classifier_phase5.pt` | 0,9844 | 0,9804 | mesma arquitetura, treino da Fase 5 |
+| `piece_classifier_phase5_res32.pt` | 0,9906 | 0,9837 | **4,6× mais rápido**, 3,5× menos parâmetros |
+| `piece_classifier_phase5_mobilenet.pt` | 0,9906 | **0,9902** | melhor no `val`; depende de pesos da ImageNet |
+
+Nenhum foi promovido a padrão nesta fase, de propósito: trocar o `DEFAULT_MODEL_PATH` muda o
+que todo usuário roda, e três dos cinco empatam dentro do ruído. O que a Fase 5 entrega é
+poder fazer essa escolha com número em vez de intuição — e o `res32`, que dá o mesmo
+resultado com um quarto do tempo de inferência, é o candidato mais interessante para a S-36.
+
+---
+
+## Fora de fase — dois defeitos que o uso encontrou durante a Fase 5
+
+Nenhum dos dois é item de spec. Os dois foram relatados por quem estava usando o produto, e
+os dois eram invisíveis para a suíte de testes e para as métricas — o que é a observação
+mais útil sobre eles.
+
+### O teto de diagramas por página cortava diagrama de verdade, em silêncio
+
+Numa página de grade 3×3 (`A Matter of Endgame Technique`), oito dos nove diagramas eram
+reconhecidos, e o que faltava era o do canto superior direito. `detect_boards` seleciona
+candidatos em ordem de **score** e parava em `max_boards = 8`; os nove diagramas daquela
+página pontuam entre 0,2667 e 0,3054, um bloco praticamente empatado, e o nono por 0,0079
+de diferença era justamente aquele. Score não ordena diagrama por posição.
+
+Medido em 6 livros, 15 páginas de cada, teto 8 contra teto 30: **só o Aagaard muda** (55
+para 58 diagramas), e nenhum outro livro ganha um único candidato a mais. Subir o teto não
+admite lixo — quem filtra é o piso de score, não ele. Números em
+[EXPERIMENTS.md](EXPERIMENTS.md).
+
+O `DEFAULT_MAX_BOARDS` passou a 12 em `config.py`, no lugar do literal `8` repetido em
+**oito** lugares. Trocar a constante não bastou: `cvoff-export` e `cvoff-review` têm o
+próprio `add_argument(default=8)`, e a exportação continuou saindo com 8 diagramas até isso
+ser corrigido também — quem apontou o vazamento foi o aviso novo, na primeira execução
+depois da correção parcial. Há teste percorrendo as seis rotas do pipeline e os dois
+`parse_args` conferindo que o default vem da constante.
+
+**O defeito de fato era o silêncio.** "8 de 9" na tela é indistinguível de "a página tem
+8". Agora, quando o teto corta candidato aprovado no filtro de qualidade, sai um `warning`
+com quantos foram e com que score.
+
+### Navegar entre páginas perdia o reconhecimento
+
+O estado do OCR na interface era uma lista só. Reconhecer a página 16 e ir para a 17 não
+apagava nada: a lista continuava sendo a da 16, e o seletor "Selecionado" seguia apontando
+para diagramas que não estavam na tela. Voltar para a 16 também não trazia nada de volta —
+era preciso rodar o OCR outra vez, e as correções feitas à mão se perdiam.
+
+`ui/page_results.py` guarda por página os itens, as FENs e os lados a jogar editados e o
+diagrama selecionado. As listas vão **por referência**, então correção feita durante a
+edição já está guardada — não existe um passo de "salvar" que dê para esquecer.
+
+Três decisões que o desenho obrigou:
+
+- **Cache com teto de 8 páginas** (~130 MiB). Cada item carrega o recorte 800×800×3, 1,83
+  MiB; uma página de exercícios custa ~16,5 MiB e um livro tem centenas de páginas. Sem
+  teto, navegar reconhecendo tudo custaria gigabytes — o mesmo problema que a S-26 acabou
+  de resolver no dataset, pela mesma causa. Ao descartar página com correção humana, sai
+  aviso: o cache é conveniência de navegação, não persistência, e prometer o contrário
+  seria pior que o teto.
+- **Página sem reconhecimento limpa o editor; conteúdo de outra origem, não.** Uma amostra
+  do dataset ou um item da fila abertos no editor não têm relação com a página exibida, e
+  apagá-los porque "esta página não tem reconhecimento" destruiria trabalho por um motivo
+  que não é dele. `decide_page_switch` tem três respostas, não duas.
+- **Mudar DPI, modelo, orientação ou máximo de diagramas invalida o guardado**, seguindo a
+  decisão da S-24 ("retomar com parâmetros diferentes não é retomar"). Um recorte feito a
+  220 DPI não é o recorte a 300 DPI.
+
+Verificado dirigindo a interface de verdade (reconhecer a 16, corrigir o diagrama 3 à mão,
+ir para a 17, reconhecer, voltar): os 9 diagramas voltam, a seleção volta em 3 e a correção
+está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py` são chamadas.
 
 ---
 
@@ -628,4 +866,4 @@ Ao fim da semana o PGN exportado deixa de conter posições ilegais, os erros K�
 | **Migração do `labels.csv`** | Adicionar `side_to_move` (Fase 3.6) muda o esquema. Script de migração com backup, e `dataset.py` aceitando os dois formatos por um período. |
 | **`Python-Easy-Chess-GUI-master/`** | Presumo que seja referência de estudo, não dependência — nenhum código do projeto o importa (verificado). Se estiver errado, me avise antes de remover. |
 | **Endpoint `helpman.komtera.lt`** | Serviço de terceiro sem contrato. Pode sair do ar. Tratar como opcional, nunca como dependência do fluxo principal. |
-| **Sem GPU no ambiente atual** | torch é `+cpu`. Se houver GPU na máquina, instalar a wheel CUDA acelera treino em ~10×. Vale verificar antes da Fase 5. |
+| **Sem GPU no ambiente atual** | **Verificado na Fase 5 (2026-07-26): a máquina não tem CUDA disponível** — `torch 2.10.0+cpu`, 12 CPUs, época de treino em ~9 min. Todo número de tempo da Fase 5 é de CPU e não se transfere. Se houver GPU, a wheel CUDA acelera o treino em ~10×; o README documenta a instalação, e desde a S-30 o log diz qual dispositivo está em uso em vez de escolher em silêncio. |

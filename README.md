@@ -59,7 +59,11 @@ aceitam `-v` para log em nivel DEBUG.
 ```bash
 # Treino. Usa data/splits.csv: treina no split 'train', valida em 'val',
 # e nunca toca no split 'test'. --fresh treina do zero.
+# A epoca salva e a de melhor acuracia exata por tabuleiro, nao a de menor val_loss.
+# No fim, calibra a temperatura no split de validacao e a grava no checkpoint.
 cvoff-train --epochs 12 --batch-size 128 --lr 0.001
+cvoff-train --fresh --seed 42            # reproduzivel: mesma semente, mesmas metricas
+cvoff-train --num-workers 4              # medido: nao compensa nesta maquina (EXPERIMENTS.md)
 
 # Inferencia em uma pagina
 cvoff-infer "PDF\1937 Kemeri.pdf" --page 0
@@ -82,6 +86,19 @@ cvoff-migrate-labels
 # a fracao de diagramas que sai sem nenhuma correcao manual.
 cvoff-eval --split test
 cvoff-eval --split test --json docs/metrics/atual.json
+cvoff-eval --split test --tta                      # soma as 7 vistas do TTA (S-29)
+cvoff-eval --split test --calibration-target 0.98  # deriva o limiar de aceite da curva
+
+# Grade de experimentos de arquitetura (S-29): canais, resolucao, cabeca, backbone.
+# Cada variante treina do zero com a mesma semente e e comparada no split 'val'
+# -- nunca no 'test', que fica para a confirmacao final da vencedora.
+cvoff-experiment --epochs 3
+cvoff-experiment --only referencia gap --epochs 8
+
+# Exportacao ONNX (S-30): backend alternativo para CPU. Confere paridade numerica
+# com o torch em tolerancia de 1e-4 sobre o split de teste antes de dar por bom.
+# Requer o extra: uv sync --extra onnx
+cvoff-export-onnx --model models/piece_classifier.pt
 
 # Fila de revisao: varre o livro e ordena os diagramas por valor de informacao.
 # Ilegal > orientacao incerta > fontes discordantes > confianca baixa > entropia.
@@ -119,7 +136,37 @@ uv run mypy            # tipos
 ```
 
 Os testes que dependem de `data/samples/` sao pulados automaticamente quando a pasta
-esta vazia, entao a suite roda em um clone limpo.
+esta vazia, entao a suite roda em um clone limpo. Os testes de ONNX sao pulados quando o
+extra `onnx` nao esta instalado.
+
+## Desempenho: CPU, GPU e ONNX
+
+O `torch` das dependencias e `+cpu`. Na inicializacao o log e a barra de status dizem
+qual dispositivo esta em uso -- antes essa escolha era feita em silencio, e uma maquina
+com placa de video rodava em CPU sem que nada indicasse isso.
+
+**Com GPU NVIDIA**, instalar a wheel CUDA correspondente acelera o treino em cerca de 10x:
+
+```bash
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+uv run python -c "import torch; print(torch.cuda.is_available())"   # tem de imprimir True
+```
+
+Nada mais precisa mudar: o codigo ja escolhe `cuda` quando ela existe, e passa a dize-lo.
+
+**Sem GPU**, o ONNX Runtime e uma alternativa para inferencia (nao para treino):
+
+```bash
+uv sync --extra onnx
+cvoff-export-onnx --model models/piece_classifier.pt
+```
+
+O comando so da o `.onnx` por bom depois de conferir que ele produz as mesmas
+probabilidades que o torch em tolerancia de 1e-4 sobre todo o split de teste, e que nao ha
+nenhuma discordancia de argmax -- um backend mais rapido que divergisse na terceira casa
+produziria outras FENs.
+
+Numeros medidos de memoria e tempo estao em [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 
 ## Fluxo recomendado
 
@@ -132,6 +179,13 @@ esta vazia, entao a suite roda em um clone limpo.
 5. Salvar exemplos corrigidos.
 6. Treinar modelo.
 7. Repetir ciclo para reduzir correcoes manuais.
+
+O reconhecimento fica guardado por pagina: voltar para uma pagina ja reconhecida traz de
+volta os diagramas, o diagrama que estava selecionado e as correcoes feitas a mao, sem
+rodar o OCR de novo. Sao as 8 paginas mais recentes; alem disso as mais antigas saem para
+nao acumular memoria, e o log avisa quando a que saiu tinha correcao sua. Mudar DPI,
+modelo, orientacao ou o maximo de diagramas invalida o que estava guardado, porque o
+recorte passa a ser outro.
 
 Para livro inteiro, o caminho mais curto e a aba **Revisao**: ela varre o PDF, ordena os
 diagramas por valor de informacao e abre cada um no editor ja na casa suspeita. A aba
@@ -156,17 +210,20 @@ src/chess_diagram_ocr/
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   board_detection.py    deteccao do tabuleiro na pagina (OpenCV)
-  checkpoint.py         leitura de checkpoints .pt
-  config.py             classes de pecas, tamanhos e caminhos padrao
-  dataset.py            dataset de treino e gravacao de amostras
+  calibration.py        temperature scaling e curva de confiabilidade
+  checkpoint.py         leitura e escrita de checkpoints, com metadados de treino
+  config.py             classes de pecas, tamanhos, limiares e caminhos padrao
+  dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
   evaluation.py         metricas de qualidade do reconhecimento
+  experiments.py        grade de experimentos de arquitetura
   export_checkpoint.py  parcial da exportacao, para cancelar e retomar
   fen_utils.py          conversao de FEN e checagem de legalidade
-  inference.py          carga do modelo e predicao de FEN
+  inference.py          carga do modelo, predicao de FEN e TTA
   logging_setup.py      configuracao de logging
-  model.py              arquitetura do classificador de pecas
+  model.py              arquitetura do classificador, configuravel por ArchConfig
+  onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
   pdf_io.py             render de paginas de PDF (PyMuPDF)
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
@@ -181,7 +238,7 @@ src/chess_diagram_ocr/
 app_tkinter.py          interface desktop
 app_streamlit.py        interface web
 tests/                  suite de testes
-docs/                   analise tecnica, roadmap, especificacao e baseline
+docs/                   analise tecnica, roadmap, especificacao, baseline e experimentos
 data/labels.csv         rotulos (versionado)
 data/splits.csv         particao treino/validacao/teste (versionado)
 data/samples/           imagens dos tabuleiros (nao versionado)
@@ -223,3 +280,6 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
 - [docs/ANALISE.md](docs/ANALISE.md) -- diagnostico do estado atual, com medicoes
 - [docs/ROADMAP.md](docs/ROADMAP.md) -- fases de evolucao planejadas
 - [docs/SPEC.md](docs/SPEC.md) -- especificacao detalhada das melhorias (S-01 a S-36)
+- [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia e como reproduzi-lo
+- [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) -- o que foi medido na Fase 5, incluindo o
+  que nao ajudou (memoria, workers, pesos de classe, arquitetura, TTA, ONNX)

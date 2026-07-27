@@ -23,6 +23,7 @@ from chess_diagram_ocr.config import (
     ACCEPT_MIN_CONFIDENCE,
     BOARD_SIZE,
     DEFAULT_DATASET_CSV,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
@@ -34,7 +35,7 @@ from chess_diagram_ocr.dataset_browser import DatasetRow, update_row
 from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.export_checkpoint import partial_path_for
 from chess_diagram_ocr.fen_utils import board_from_fen, check_position, is_valid_fen, square_name
-from chess_diagram_ocr.inference import load_model, predict_board, predict_with_orientation
+from chess_diagram_ocr.inference import describe_device, load_model, predict_board, predict_with_orientation
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.pdf_text import DiagramContext, contexts_for_pdf_page
@@ -50,6 +51,14 @@ from chess_diagram_ocr.ui import board_edit
 from chess_diagram_ocr.ui.board_widget import InteractiveBoard, PieceImages
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 from chess_diagram_ocr.ui.legality import explain_position
+from chess_diagram_ocr.ui.page_results import (
+    PageOcrParams,
+    PageResults,
+    PageResultsCache,
+    PageSwitch,
+    decide_page_switch,
+    page_index_from_origin,
+)
 from chess_diagram_ocr.ui.review_panel import ReviewPanel, ScanRequest
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 from chess_diagram_ocr.webview2_panel import EmbeddedWebView2, WebView2SupportError
@@ -79,6 +88,18 @@ class ChessOcrTkApp:
         self.fen_edits: list[str] = []
         self.side_edits: list[str] = []
         """Lado a jogar por diagrama, editavel. Espelha `fen_edits` (S-19)."""
+
+        self._page_results = PageResultsCache()
+        """Reconhecimento guardado por pagina, para navegar sem perde-lo."""
+
+        self._results_page_key: tuple[str, int] | None = None
+        """De que pagina de PDF vem o que esta no editor agora.
+
+        `None` significa que o conteudo atual nao veio de uma pagina inteira de PDF -- e
+        imagem local, recorte de area, item da fila de revisao ou amostra do dataset. Trocar
+        de pagina nao mexe nesses: apagar o trabalho de quem estava editando uma amostra do
+        dataset porque a pagina do PDF mudou seria pior que nao guardar nada.
+        """
 
         self.study_board = chess.Board()
         self.study_game = chess.pgn.Game()
@@ -120,7 +141,7 @@ class ChessOcrTkApp:
         self.orientation_var = tk.StringVar(value=DEFAULT_ORIENTATION_MODE)
         self.page_index_var = tk.IntVar(value=0)
         self.dpi_var = tk.IntVar(value=220)
-        self.max_boards_var = tk.IntVar(value=8)
+        self.max_boards_var = tk.IntVar(value=DEFAULT_MAX_BOARDS)
         self.selected_diag_var = tk.IntVar(value=1)
         self.selected_diag_idx = 0
         self.fen_var = tk.StringVar(value="")
@@ -132,6 +153,7 @@ class ChessOcrTkApp:
         self.epochs_var = tk.IntVar(value=8)
         self.batch_var = tk.IntVar(value=128)
         self.lr_var = tk.DoubleVar(value=0.001)
+        self.fresh_var = tk.BooleanVar(value=False)
         self.pdf_zoom_var = tk.DoubleVar(value=0.7)
         self.board_zoom_var = tk.DoubleVar(value=0.85)
         self.main_pane: tk.PanedWindow | None = None
@@ -239,7 +261,10 @@ class ChessOcrTkApp:
         for rotulo, valor in (("Automatica", "auto"), ("0 graus", "0"), ("180 graus", "180")):
             ttk.Radiobutton(orient_row, text=rotulo, value=valor, variable=self.orientation_var).pack(side="left", padx=4)
         self._spin_row(cfg_tab, "DPI", self.dpi_var, 120, 320, 20)
-        self._spin_row(cfg_tab, "Max diagramas", self.max_boards_var, 1, 20, 1)
+        # Ate 30: uma pagina de exercicios com grade 3x3 tem 9, e o teto antigo de 8
+        # cortava o nono em silencio. Quem filtra e o piso de score do detector, nao este
+        # numero -- medido, subir o teto nao admite candidato a mais em livro nenhum.
+        self._spin_row(cfg_tab, "Max diagramas", self.max_boards_var, 1, 30, 1)
 
         btns_model = ttk.Frame(cfg_tab)
         btns_model.pack(fill=tk.X, padx=8, pady=(4, 8))
@@ -250,6 +275,17 @@ class ChessOcrTkApp:
         self._spin_row(train_box, "Epocas", self.epochs_var, 1, 200, 1)
         self._spin_row(train_box, "Batch size", self.batch_var, 16, 512, 16)
         self._entry_row(train_box, "Learning rate", self.lr_var)
+        ttk.Checkbutton(
+            train_box,
+            text="Treinar do zero (ignora o checkpoint atual)",
+            variable=self.fresh_var,
+        ).pack(anchor="w", padx=8)
+        ttk.Label(
+            train_box,
+            text="Sem isso, o treino continua do checkpoint e so grava por cima se melhorar.",
+            wraplength=320,
+            foreground="#555555",
+        ).pack(anchor="w", padx=8, pady=(0, 4))
         self.btn_train_model = ttk.Button(train_box, text="Treinar modelo", command=self.train_model_in_thread)
         self.btn_train_model.pack(anchor="w", padx=8, pady=8)
 
@@ -668,14 +704,20 @@ class ChessOcrTkApp:
         epoch = row.get("epoch")
         if epoch is not None:
             parts.append(f"epoca={epoch}")
-        if "train_loss" in row:
-            parts.append(f"train_loss={float(row['train_loss']):.4f}")
-        if "train_acc" in row:
-            parts.append(f"train_acc={float(row['train_acc']):.4f}")
-        if "val_loss" in row:
-            parts.append(f"val_loss={float(row['val_loss']):.4f}")
-        if "val_acc" in row:
-            parts.append(f"val_acc={float(row['val_acc']):.4f}")
+        # A ordem importa: `val_board_exact_acc` (S-27) e a metrica que decide qual epoca
+        # e salva, entao ela vem primeiro. `val_acc` por casa fica ~0,999 mesmo quando um
+        # em cada vinte tabuleiros tem erro -- ver o comentario em training.py.
+        for key, label in (
+            ("val_board_exact_acc", "exata/tabuleiro"),
+            ("train_loss", "train_loss"),
+            ("train_square_acc", "train_acc"),
+            ("val_loss", "val_loss"),
+            ("val_square_acc", "val_acc/casa"),
+        ):
+            if key in row:
+                parts.append(f"{label}={float(row[key]):.4f}")
+        if row.get("is_best"):
+            parts.append("(melhor ate agora)")
         return " | ".join(parts)
 
     def _on_training_progress(self, row: dict[str, Any]) -> None:
@@ -897,6 +939,9 @@ class ChessOcrTkApp:
             self._model_cache = model
             self._model_cache_path = model_path
             self._model_device = device
+            # S-30: o dispositivo era escolhido em silencio, entao uma maquina com placa
+            # mas com o torch +cpu instalado rodava em CPU sem nada dizer.
+            self._set_status(f"Modelo carregado em {describe_device(device)}.")
         return self._model_cache, self._model_device
 
     def reload_model(self) -> None:
@@ -918,6 +963,13 @@ class ChessOcrTkApp:
 
     def load_pdf(self, pdf_path: Path) -> None:
         try:
+            # Reconhecimento guardado e por (documento, pagina): trocar de PDF invalida
+            # tudo o que estava em cache, e mante-lo faria a pagina 17 do livro novo
+            # devolver os diagramas da pagina 17 do anterior.
+            self._remember_current_page_results()
+            if self._document_key() != str(pdf_path):
+                self._page_results.clear()
+                self._results_page_key = None
             self.pdf_source = pdf_path
             self.pdf_name = pdf_path.name
             self.page_count = get_pdf_page_count(self.pdf_source)
@@ -1105,6 +1157,10 @@ class ChessOcrTkApp:
         idx = int(self.page_index_var.get())
         if self.page_loaded_for_index == idx and self.page_rgb is not None:
             return
+
+        # Antes de trocar de pagina, o que esta no editor tem de ir para o cache da pagina
+        # de origem -- inclusive o texto que o usuario acabou de digitar no campo de FEN.
+        self._remember_current_page_results()
         try:
             self._set_status(f"Renderizando pagina {idx}...")
             self.page_rgb = render_pdf_page(self.pdf_source, idx, dpi=int(self.dpi_var.get()))
@@ -1114,6 +1170,9 @@ class ChessOcrTkApp:
             self._set_status(f"Pagina {idx} pronta.")
         except Exception as exc:
             messagebox.showerror("Erro", f"Falha ao renderizar pagina:\n{exc}")
+            return
+
+        self._restore_results_for_page(idx)
 
     def ocr_best(self) -> None:
         self._run_ocr_from_current_page(max_boards=1)
@@ -1347,6 +1406,81 @@ class ChessOcrTkApp:
         finally:
             self.root.after(0, self._finish_ocr_ui)
 
+    def _document_key(self) -> str:
+        return str(self.pdf_source) if self.pdf_source is not None else ""
+
+    def _current_ocr_params(self) -> PageOcrParams:
+        return PageOcrParams(
+            dpi=int(self.dpi_var.get()),
+            max_boards=int(self.max_boards_var.get()),
+            orientation=str(self.orientation_var.get()),
+            model_path=self.model_path_var.get().strip(),
+        )
+
+    def _remember_current_page_results(self) -> None:
+        """Guarda o que esta no editor no cache da pagina de onde ele veio.
+
+        As listas vao por referencia, entao correcao feita durante a edicao ja esta no
+        cache; o que precisa ser copiado e o indice selecionado, que e escalar.
+        """
+        if self._results_page_key is None or not self.result_items:
+            return
+        self._sync_fen_from_entry_to_current()
+        documento, pagina = self._results_page_key
+        self._page_results.put(
+            documento,
+            PageResults(
+                page_index=pagina,
+                params=self._current_ocr_params(),
+                items=self.result_items,
+                fen_edits=self.fen_edits,
+                side_edits=self.side_edits,
+                selected_index=self.selected_diag_idx,
+            ),
+        )
+
+    def _restore_results_for_page(self, page_index: int) -> None:
+        """Traz de volta o reconhecimento da pagina, se houver, ao trocar de pagina.
+
+        Sem isto o seletor "Selecionado" continua apontando para os diagramas da pagina
+        reconhecida anteriormente, que nao sao os da pagina na tela.
+        """
+        documento = self._document_key()
+        guardado = self._page_results.get(documento, page_index, self._current_ocr_params())
+        acao = decide_page_switch(stored=guardado, current_is_page_result=self._results_page_key is not None)
+
+        if acao is PageSwitch.RESTORE:
+            assert guardado is not None
+            self._apply_page_results(guardado, documento)
+        elif acao is PageSwitch.CLEAR:
+            self._results_page_key = None
+            self._clear_ocr_results()
+            self._set_status(f"Pagina {page_index}: sem reconhecimento ainda. Rode o OCR.")
+
+    def _apply_page_results(self, guardado: PageResults, documento: str) -> None:
+        self._editing_sample = None
+        self._review_position = None
+        self.result_items = guardado.items
+        self.fen_edits = guardado.fen_edits
+        self.side_edits = guardado.side_edits
+        self.selected_diag_idx = guardado.clamped_index()
+        self._results_page_key = (documento, guardado.page_index)
+
+        self.selected_diag_var.set(self.selected_diag_idx + 1)
+        self.spin_diag.config(from_=1, to=max(guardado.count, 1))
+        self.fen_var.set(self.fen_edits[self.selected_diag_idx] if self.fen_edits else "")
+        self._sync_side_widgets(self.selected_diag_idx)
+        self._update_result_views()
+        self.root.after_idle(self._redraw_current_result_board)
+        self._set_status(
+            f"Pagina {guardado.page_index}: {guardado.count} diagrama(s) do reconhecimento anterior"
+            f"{', com correcoes suas' if guardado.has_hand_edits else ''}."
+        )
+
+    def _page_key_from_origin(self, origin: str) -> tuple[str, int] | None:
+        pagina = page_index_from_origin(origin)
+        return None if pagina is None else (self._document_key(), pagina)
+
     def _apply_ocr_result_items(self, items: list[dict[str, Any]], origin: str) -> None:
         # OCR novo substitui o que estava no editor: se veio da fila ou do dataset, a
         # ligacao com aquele item deixa de valer.
@@ -1363,6 +1497,10 @@ class ChessOcrTkApp:
         self._show_local_results_tab()
         self._update_result_views()
         self.root.after_idle(self._redraw_current_result_board)
+
+        self._results_page_key = self._page_key_from_origin(origin)
+        self._remember_current_page_results()
+
         self._set_status(f"OCR pronto. Diagramas detectados: {len(items)} | origem: {origin}")
 
     def _on_ocr_error(self, exc: Exception) -> None:
@@ -1912,6 +2050,11 @@ class ChessOcrTkApp:
         placement = item.fen.split(" ")[0]
         self._editing_sample = None
         self._review_position = position
+        # O que entra aqui e um item da fila, nao o reconhecimento de uma pagina: guardar
+        # o que estava antes e desligar o vinculo com a pagina, para que navegar depois nao
+        # apague o item da fila nem o confunda com resultado de pagina.
+        self._remember_current_page_results()
+        self._results_page_key = None
         self.result_items = [
             {
                 "index": 0,
@@ -1975,6 +2118,9 @@ class ChessOcrTkApp:
         side = row.side_to_move if row.side_to_move in ("w", "b") else "w"
         self._editing_sample = row.filename
         self._review_position = None
+        # Amostra do dataset: mesmo raciocinio do item da fila acima.
+        self._remember_current_page_results()
+        self._results_page_key = None
         self.result_items = [
             {
                 "index": 0,
@@ -2314,6 +2460,7 @@ class ChessOcrTkApp:
         epochs = int(self.epochs_var.get())
         batch_size = int(self.batch_var.get())
         lr = float(self.lr_var.get())
+        fresh = bool(self.fresh_var.get())
 
         self._is_training = True
         self._training_total_epochs = epochs
@@ -2330,6 +2477,7 @@ class ChessOcrTkApp:
                 "epochs": epochs,
                 "batch_size": batch_size,
                 "lr": lr,
+                "fresh": fresh,
             },
             daemon=True,
         )
@@ -2343,11 +2491,12 @@ class ChessOcrTkApp:
         epochs: int,
         batch_size: int,
         lr: float,
+        fresh: bool = False,
     ) -> None:
         try:
             self._set_status("Treinando modelo...")
             self._set_training_dialog_text("Treinando modelo...", "")
-            history = train_model(
+            run = train_model(
                 csv_path=csv_path,
                 samples_dir=samples_dir,
                 model_path=model_path,
@@ -2355,16 +2504,23 @@ class ChessOcrTkApp:
                 batch_size=batch_size,
                 lr=lr,
                 progress_cb=self._on_training_progress,
+                splits_path=DEFAULT_SPLITS_PATH if DEFAULT_SPLITS_PATH.exists() else None,
+                fresh=fresh,
             )
             self.reload_model()
-            last = history[-1] if history else {}
+            # A epoca salva e a melhor, nao a ultima (S-27): mostrar a ultima faria o
+            # usuario ler uma metrica que nao corresponde ao checkpoint no disco.
+            melhor = run.history[run.best_epoch - 1] if run.history and run.best_epoch else {}
+            resumo = self._format_train_metrics(melhor)
+            if run.ece_after is not None:
+                resumo += f" | T={run.temperature:.3f}"
             self._set_status("Treino concluido.")
-            self._set_training_dialog_text("Treino concluido.", self._format_train_metrics(last))
+            self._set_training_dialog_text("Treino concluido.", resumo)
             self.root.after(
                 0,
                 lambda: messagebox.showinfo(
                     "Treino concluido",
-                    f"Epocas: {len(history)}\nUltima metrica: {last}",
+                    f"Epocas: {len(run.history)}\nMelhor epoca: {run.best_epoch}\n{resumo}",
                 ),
             )
         except Exception as exc:

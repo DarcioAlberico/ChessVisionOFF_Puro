@@ -21,14 +21,16 @@ from typing import Any
 import cv2
 import numpy as np
 import torch
+import torch.nn as nn
 
 from .board_detection import split_board_into_cells
-from .config import BOARD_SIZE, CONSTRAINED_DECODING, IDX_TO_CLASS, PIECE_CLASSES
+from .calibration import expected_calibration_error, reliability_table
+from .config import BOARD_SIZE, CONSTRAINED_DECODING, IDX_TO_CLASS, PIECE_CLASSES, TTA_ENABLED
 from .dataset import BoardFenDataset
 from .decode import DecodeResult
 from .fen_utils import check_position, fen_from_class_indices, labels_from_fen
-from .inference import load_model, prediction_from_probs
-from .model import PieceClassifier, preprocess_cell_to_tensor
+from .inference import board_probabilities, load_model, prediction_from_probs
+from .model import DEFAULT_ARCH, preprocess_cell_to_tensor
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +107,13 @@ class EvaluationReport:
 
     decoder_gave_up: int = 0
     """Tabuleiros em que a busca esgotou o limite sem achar posição legal."""
+
+    temperature: float = 1.0
+    """Temperatura da calibração aplicada nas probabilidades (S-28). 1,0 = não calibrado."""
+
+    tta: bool = False
+    """Se a leitura somou as sete vistas do TTA (S-29)."""
+
     confusion: np.ndarray = field(default_factory=lambda: np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=np.int64))
     conf_when_correct: list[float] = field(default_factory=list)
     conf_when_wrong: list[float] = field(default_factory=list)
@@ -154,25 +163,46 @@ class EvaluationReport:
                     pairs.append((PIECE_CLASSES[true_idx], PIECE_CLASSES[pred_idx], count))
         return sorted(pairs, key=lambda item: -item[2])[:limit]
 
+    def _confidence_arrays(self) -> tuple[np.ndarray, np.ndarray]:
+        confidences = np.array(self.conf_when_correct + self.conf_when_wrong, dtype=np.float64)
+        correct = np.array([1.0] * len(self.conf_when_correct) + [0.0] * len(self.conf_when_wrong), dtype=np.float64)
+        return confidences, correct
+
     def expected_calibration_error(self, bins: int = 10) -> float:
-        """ECE: diferença média entre confiança declarada e acerto observado.
+        """ECE por casa: diferença média entre confiança declarada e acerto observado.
 
-        0 significa que "confiança 0,9" corresponde de fato a 90% de acerto.
+        0 significa que "confiança 0,9" corresponde de fato a 90% de acerto. A conta mora
+        em `calibration.py` desde a S-28, para que o número que decide o limiar e o número
+        que o relatório imprime não possam divergir.
         """
-        confidences = np.array(self.conf_when_correct + self.conf_when_wrong)
-        correct = np.array([1.0] * len(self.conf_when_correct) + [0.0] * len(self.conf_when_wrong))
-        if confidences.size == 0:
-            return 0.0
+        confidences, correct = self._confidence_arrays()
+        return expected_calibration_error(confidences, correct, bins=bins)
 
-        edges = np.linspace(0.0, 1.0, bins + 1)
-        error = 0.0
-        for low, high in zip(edges[:-1], edges[1:], strict=True):
-            mask = (confidences > low) & (confidences <= high)
-            if not mask.any():
-                continue
-            weight = mask.mean()
-            error += weight * abs(correct[mask].mean() - confidences[mask].mean())
-        return float(error)
+    def reliability(self, bins: int = 10) -> list[dict[str, float | int]]:
+        """Curva de calibração por faixa de confiança, para a S-28."""
+        confidences, correct = self._confidence_arrays()
+        return [
+            {
+                "low": faixa.low,
+                "high": faixa.high,
+                "count": faixa.count,
+                "mean_confidence": faixa.mean_confidence,
+                "accuracy": faixa.accuracy,
+                "gap": faixa.gap,
+            }
+            for faixa in reliability_table(confidences, correct, bins=bins)
+        ]
+
+    def board_confidence_arrays(self) -> tuple[np.ndarray, np.ndarray]:
+        """Confiança mínima por tabuleiro e se ele saiu exato.
+
+        É a granularidade em que o gate da S-15 decide -- ele aceita ou rejeita o diagrama
+        inteiro, não a casa --, então é nela que o limiar tem de ser derivado.
+        """
+        return (
+            np.array([board.min_confidence for board in self.boards], dtype=np.float64),
+            np.array([1.0 if board.is_exact else 0.0 for board in self.boards], dtype=np.float64),
+        )
 
     def confidence_auc(self, use_min: bool = True) -> float:
         """AUC da confiança do tabuleiro como detector de erro.
@@ -212,8 +242,11 @@ class EvaluationReport:
             "mean_confidence_when_correct": float(np.mean(self.conf_when_correct)) if self.conf_when_correct else 0.0,
             "mean_confidence_when_wrong": float(np.mean(self.conf_when_wrong)) if self.conf_when_wrong else 0.0,
             "expected_calibration_error": self.expected_calibration_error(),
+            "reliability": self.reliability(),
             "confidence_auc_min_square": self.confidence_auc(use_min=True),
             "confidence_auc_mean_square": self.confidence_auc(use_min=False),
+            "temperature": self.temperature,
+            "tta": self.tta,
             "constrained_decoding": self.constrained_decoding,
             "decoder_repaired_boards": self.decoder_repaired_boards,
             "decoder_repaired_squares": self.decoder_repaired_squares,
@@ -242,13 +275,14 @@ def _load_board_image(path: Path) -> np.ndarray | None:
 
 def evaluate_dataset(
     dataset: BoardFenDataset,
-    model: PieceClassifier,
+    model: nn.Module,
     device: str,
     *,
     split_name: str = "?",
     model_path: Path | None = None,
     boards_per_batch: int = 8,
     constrained: bool = CONSTRAINED_DECODING,
+    tta: bool = TTA_ENABLED,
 ) -> EvaluationReport:
     """Avalia o modelo sobre os tabuleiros de um dataset já filtrado por split.
 
@@ -263,17 +297,28 @@ def evaluate_dataset(
         constrained_decoding=constrained,
     )
 
+    arch = getattr(model, "arch", DEFAULT_ARCH)
+    temperature = float(getattr(model, "temperature", 1.0))
+    report.temperature = temperature
+    report.tta = tta
+
     pending: list[tuple[str, np.ndarray, list[int], str]] = []
 
     def flush() -> None:
         if not pending:
             return
-        tensors = [preprocess_cell_to_tensor(cell) for _, board, _, _ in pending for cell in split_board_into_cells(board)]
-        batch = torch.stack(tensors).to(device)
-        with torch.inference_mode():
-            probs = torch.softmax(model(batch), dim=1)
-
-        matrices = probs.cpu().numpy().astype(np.float64).reshape(len(pending), 64, NUM_CLASSES)
+        if tta:
+            matrices = np.stack([board_probabilities(board, model, device, tta=True) for _, board, _, _ in pending])
+        else:
+            tensors = [
+                preprocess_cell_to_tensor(cell, arch)
+                for _, board, _, _ in pending
+                for cell in split_board_into_cells(board)
+            ]
+            batch = torch.stack(tensors).to(device)
+            with torch.inference_mode():
+                probs = torch.softmax(model(batch) / temperature, dim=1)
+            matrices = probs.cpu().numpy().astype(np.float64).reshape(len(pending), 64, NUM_CLASSES)
 
         for row, (filename, _board, true_labels, expected_fen) in enumerate(pending):
             prediction = prediction_from_probs(matrices[row], constrained=constrained)
@@ -399,12 +444,15 @@ def evaluate_split(
     device: str | None = None,
     boards_per_batch: int = 8,
     constrained: bool = CONSTRAINED_DECODING,
+    tta: bool = TTA_ENABLED,
 ) -> EvaluationReport:
-    dataset = BoardFenDataset(csv_path, samples_dir, split=split, splits=splits)  # type: ignore[arg-type]
+    model, resolved_device = load_model(Path(model_path), device=device)
+    arch = getattr(model, "arch", DEFAULT_ARCH)
+
+    dataset = BoardFenDataset(csv_path, samples_dir, split=split, splits=splits, arch=arch)  # type: ignore[arg-type]
     if not dataset.entries:
         raise ValueError(f"Nenhuma amostra no split '{split}'. Rode `cvoff-audit` e verifique data/splits.csv.")
 
-    model, resolved_device = load_model(Path(model_path), device=device)
     return evaluate_dataset(
         dataset,
         model,
@@ -413,4 +461,5 @@ def evaluate_split(
         model_path=Path(model_path),
         boards_per_batch=boards_per_batch,
         constrained=constrained,
+        tta=tta,
     )

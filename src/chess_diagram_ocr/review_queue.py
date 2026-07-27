@@ -42,6 +42,7 @@ import numpy as np
 from .atomic_io import atomic_write_json
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
@@ -437,7 +438,7 @@ def build_review_queue(
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
     dpi: int = 220,
-    max_boards_per_page: int = 8,
+    max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     start_page: int = 0,
     end_page: int | None = None,
