@@ -106,8 +106,31 @@ class RemoteFenSettings:
         return cls(
             enabled=bool(data.get("enabled", False)),
             endpoint=str(data.get("endpoint", "") or "").strip(),
-            timeout=float(data.get("timeout", 30.0) or 30.0),  # type: ignore[arg-type]
+            timeout=float(str(data.get("timeout") or 30.0)),
             acknowledged=bool(data.get("acknowledged", False)),
+        )
+
+
+@dataclass(frozen=True)
+class EngineSettings:
+    """Motor de análise UCI (S-33). Caminho vazio significa "procurar sozinho"."""
+
+    path: str = ""
+    """Binário informado pelo usuário. Vazio: `engine.find_engine` procura no PATH e nos
+    lugares conhecidos, e o recurso simplesmente não aparece se não achar."""
+
+    movetime_ms: int = 800
+    threads: int = 1
+
+    def to_dict(self) -> dict[str, object]:
+        return {"path": self.path, "movetime_ms": self.movetime_ms, "threads": self.threads}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> EngineSettings:
+        return cls(
+            path=str(data.get("path", "") or "").strip(),
+            movetime_ms=int(str(data.get("movetime_ms") or 800)),
+            threads=int(str(data.get("threads") or 1)),
         )
 
 
@@ -116,14 +139,25 @@ class Settings:
     """As preferências do usuário que não são estado de janela."""
 
     remote_fen: RemoteFenSettings = RemoteFenSettings()
+    engine: EngineSettings = EngineSettings()
 
     def to_dict(self) -> dict[str, object]:
-        return {"version": SETTINGS_VERSION, "remote_fen": self.remote_fen.to_dict()}
+        return {
+            "version": SETTINGS_VERSION,
+            "remote_fen": self.remote_fen.to_dict(),
+            "engine": self.engine.to_dict(),
+        }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> Settings:
-        bruto = data.get("remote_fen")
-        return cls(remote_fen=RemoteFenSettings.from_dict(bruto if isinstance(bruto, Mapping) else {}))
+        def _secao(chave: str) -> Mapping[str, object]:
+            bruto = data.get(chave)
+            return bruto if isinstance(bruto, Mapping) else {}
+
+        return cls(
+            remote_fen=RemoteFenSettings.from_dict(_secao("remote_fen")),
+            engine=EngineSettings.from_dict(_secao("engine")),
+        )
 
 
 def apply_environment(settings: Settings, env: Mapping[str, str] | None = None) -> Settings:

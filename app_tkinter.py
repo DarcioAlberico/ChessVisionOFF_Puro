@@ -46,6 +46,7 @@ from chess_diagram_ocr.config import (
     find_default_pdf_path,
 )
 from chess_diagram_ocr.dataset_browser import DatasetRow
+from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import (
@@ -94,7 +95,10 @@ class ChessOcrTkApp:
         self.piece_images = PieceImages(PIECE_IMAGE_DIR)
         self.state = AppState()
         self.settings = load_settings()
-        """Preferências do usuário (S-32). Por padrão nada sai da maquina."""
+        """Preferências do usuário (S-32). Por padrão nada sai da máquina."""
+
+        self.analyzer = self._build_analyzer()
+        """Motor de análise (S-33), ou `None`. Sem binário, a seção some da aba Análise."""
 
         self._is_running_ocr = False
 
@@ -193,6 +197,7 @@ class ChessOcrTkApp:
             # escreve de volta. Um lance jogado na análise não e uma correção do OCR.
             current_fen=lambda: self.result_panel.fen_var.get() if self.result_panel else "",
             initial_dir=ROOT,
+            analyzer=self.analyzer,
         )
         tabs.add(self.study_panel, text="Análise")
 
@@ -311,6 +316,19 @@ class ChessOcrTkApp:
         else:
             self.root.after(0, partial(self.status_var.set, text))
 
+    def _build_analyzer(self) -> EngineAnalyzer | None:
+        """Procura o motor. Não achar é o caso normal, e não é erro (S-33)."""
+        caminho = find_engine(self.settings.engine.path or None)
+        if caminho is None:
+            logger.info("Nenhum motor de análise encontrado; a seção de avaliação fica oculta.")
+            return None
+        logger.info("Motor de análise disponível: %s", caminho)
+        return EngineAnalyzer(
+            caminho,
+            movetime_ms=self.settings.engine.movetime_ms,
+            threads=self.settings.engine.threads,
+        )
+
     def _set_default_pdf_if_exists(self) -> None:
         default_pdf = find_default_pdf_path()
         if default_pdf is not None and default_pdf.exists():
@@ -373,6 +391,9 @@ class ChessOcrTkApp:
         self._save_app_state()
         if self.pdf_panel is not None:
             self.pdf_panel.destroy_reader()
+        if self.analyzer is not None:
+            # O motor e um processo, nao um widget: fechar a janela nao o encerra.
+            self.analyzer.close()
         self.root.destroy()
 
     def _set_train_controls_enabled(self, enabled: bool) -> None:

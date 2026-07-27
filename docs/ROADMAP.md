@@ -833,7 +833,7 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 | 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 | ✅ 2.388 → **651** |
 | 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 | ✅ |
 | 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 | ✅ fecha a pendência 0.7 |
-| 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | — |
+| 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | ✅ |
 | 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 | — |
 | 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 | — |
 | 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 | — |
@@ -1025,6 +1025,41 @@ recusa qualquer palavra da lista sem acento. Duas armadilhas apareceram ao escre
 duas viraram regra explícita: `automaticamente` **é** correto sem acento, então o casamento
 é `palavra + s?` e não sufixo livre; e `@media` é regra CSS, desambiguada pelo `@` que a
 precede.
+
+### 6.5 — opcional de verdade, e o que a máquina sem Stockfish obrigou a fazer
+
+O critério da S-33 tem dois lados. O primeiro — "sem Stockfish instalado, o app funciona
+normalmente com o recurso oculto" — é o caso **desta** máquina, e é o que o
+`find_engine → None` entrega: a seção do motor não é montada, não há botão cinza nem
+mensagem de erro a cada abertura.
+
+O segundo lado — "avaliação em menos de 2 s, sem bloquear a UI" — não podia ser verificado
+aqui por falta de binário. A saída foi escrever um **motor UCI mínimo** em 70 linhas
+(`tests/fake_uci_engine.py`), que não joga xadrez mas fala o protocolo. Ele existe porque
+`SimpleEngine.popen_uci` precisa de um processo de verdade: não há como fingir isso com um
+objeto em memória sem reimplementar o transporte. Com ele, o caminho inteiro é exercitado —
+processo aberto, conversa UCI, pontuação normalizada, linha em SAN — e a suíte continua
+rodando numa máquina sem motor, que é a própria definição de recurso opcional.
+
+Três decisões que a medição ou o protocolo obrigaram:
+
+- **A pontuação é normalizada para as brancas.** O UCI responde relativo a **quem joga**, e
+  mostrar isso cru faria a barra de vantagem pular de lado a cada lance sem que a posição
+  tivesse mudado de dono. Há teste: o motor falso responde sempre `+35` para quem está no
+  lance, e a avaliação sai positiva com brancas e negativa com pretas.
+- **A barra é logística, não linear.** `1/(1+10^(-cp/400))` é a curva de expectativa de
+  pontuação do Elo. Linear, a diferença entre +8 e +12 — que não muda nada — gastaria tanta
+  tela quanto a diferença entre +0,2 e +1,0, que muda a partida.
+- **O limite é tempo, não profundidade.** 20 plies num final são instantâneos; num meio-jogo
+  travado, não. `movetime` de 800 ms fica bem abaixo dos 2 s com folga para o custo de ida e
+  volta com o processo, e o processo fica **aberto** entre análises — reabri-lo custaria
+  100–300 ms de inicialização a cada posição.
+
+**O que não foi feito, e por quê.** A S-33 nota que a avaliação do motor serviria como
+validador de plausibilidade para o OCR, alimentando a prioridade da fila da S-22. É uma
+hipótese razoável e não medida: quantificá-la exige rodar um motor de verdade sobre
+diagramas de verdade, e não há Stockfish aqui. Implementá-la sem medir seria repetir o erro
+que a Fase 5 documentou nos pesos de classe — a ideia razoável que a medição desaconselhou.
 
 ### O que 6.1 não entrega da paridade
 

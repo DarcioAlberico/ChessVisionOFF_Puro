@@ -19,6 +19,7 @@ era interativa.
 from __future__ import annotations
 
 import logging
+import threading
 import tkinter as tk
 from collections.abc import Callable
 from functools import partial
@@ -28,6 +29,7 @@ from tkinter import filedialog, messagebox, ttk
 import chess
 import chess.pgn
 
+from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
 
 from .board_widget import InteractiveBoard, PieceImages
@@ -45,12 +47,18 @@ class StudyPanel(ttk.Frame):
         piece_images: PieceImages,
         current_fen: Callable[[], str],
         initial_dir: Path,
+        analyzer: EngineAnalyzer | None = None,
     ) -> None:
         super().__init__(parent, padding=6)
         self._current_fen = current_fen
         """De onde vem a FEN do diagrama selecionado. Só é chamada quando o usuário pede."""
 
         self._initial_dir = initial_dir
+        self._analyzer = analyzer
+        """O motor, se houver um. `None` esconde a seção inteira em vez de deixá-la
+        cinza: a S-33 pede que sem Stockfish o app funcione normalmente (S-33)."""
+
+        self._analysing = False
 
         self.board = chess.Board()
         self.game = chess.pgn.Game()
@@ -63,6 +71,8 @@ class StudyPanel(ttk.Frame):
         self.variation_var = tk.StringVar(value="")
         self.follow_ocr_var = tk.BooleanVar(value=True)
         self.flipped_var = tk.BooleanVar(value=False)
+        self.engine_var = tk.StringVar(value="")
+        self.engine_line_var = tk.StringVar(value="")
 
         self._build(piece_images)
         self.refresh()
@@ -131,6 +141,73 @@ class StudyPanel(ttk.Frame):
         move_box.pack(fill=tk.BOTH, expand=False, padx=6, pady=(0, 2))
         self.moves_text = tk.Text(move_box, height=5, wrap="word", font=("Consolas", 10), state=tk.DISABLED)
         self.moves_text.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+        self._build_engine_section()
+
+    def _build_engine_section(self) -> None:
+        """A seção do motor. Sem binário, ela simplesmente não existe (S-33)."""
+        if self._analyzer is None:
+            return
+
+        caixa = ttk.LabelFrame(self, text=f"Motor ({self._analyzer.path.name})")
+        caixa.pack(fill=tk.X, padx=6, pady=(4, 6))
+
+        linha = ttk.Frame(caixa)
+        linha.pack(fill=tk.X, padx=6, pady=(6, 0))
+        self.btn_analyse = ttk.Button(linha, text="Analisar posição", command=self.analyse)
+        self.btn_analyse.pack(side=tk.LEFT)
+        ttk.Label(linha, textvariable=self.engine_var).pack(side=tk.LEFT, padx=(10, 0))
+
+        # Barra de vantagem: 0 = pretas ganhando, 100 = brancas. A escala e logistica, e a
+        # conversao mora em `Evaluation.advantage_fraction`.
+        self.advantage = ttk.Progressbar(caixa, maximum=100.0, value=50.0)
+        self.advantage.pack(fill=tk.X, padx=6, pady=(6, 0))
+        ttk.Label(caixa, textvariable=self.engine_line_var, wraplength=600, foreground="#555555").pack(
+            anchor="w", padx=6, pady=(4, 6)
+        )
+
+    # ------------------------------------------------------------------------------ motor
+
+    @property
+    def has_engine(self) -> bool:
+        return self._analyzer is not None
+
+    def analyse(self) -> None:
+        """Avalia a posição atual numa thread, para a interface não travar (S-33)."""
+        if self._analyzer is None or self._analysing:
+            return
+
+        self._analysing = True
+        self.btn_analyse.configure(state=tk.DISABLED)
+        self.engine_var.set("Analisando...")
+        posicao = self.board.copy(stack=False)
+        threading.Thread(target=self._analyse_worker, args=(posicao,), daemon=True).start()
+
+    def _analyse_worker(self, board: chess.Board) -> None:
+        assert self._analyzer is not None
+        try:
+            avaliacao = self._analyzer.analyse(board)
+            self.after(0, partial(self._show_evaluation, avaliacao))
+        except Exception as exc:
+            logger.warning("Falha na análise: %s", exc)
+            self.after(0, partial(self._show_engine_error, str(exc)))
+        finally:
+            self.after(0, self._finish_analysis)
+
+    def _show_evaluation(self, avaliacao: Evaluation) -> None:
+        self.engine_var.set(avaliacao.summary())
+        self.advantage.configure(value=avaliacao.advantage_fraction() * 100.0)
+        self.engine_line_var.set(
+            ("Linha: " + " ".join(avaliacao.pv_san)) if avaliacao.pv_san else "Sem lance legal nesta posição."
+        )
+
+    def _show_engine_error(self, mensagem: str) -> None:
+        self.engine_var.set("O motor não respondeu.")
+        self.engine_line_var.set(mensagem)
+
+    def _finish_analysis(self) -> None:
+        self._analysing = False
+        self.btn_analyse.configure(state=tk.NORMAL)
 
     # ------------------------------------------------------------------------------ estado
 
