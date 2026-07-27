@@ -37,6 +37,7 @@ onnx = [
 cvoff-train = "chess_diagram_ocr.cli.train:main"
 cvoff-infer = "chess_diagram_ocr.cli.infer:main"
 cvoff-export = "chess_diagram_ocr.cli.export_pgn:main"
+cvoff-batch = "chess_diagram_ocr.cli.batch:main"
 cvoff-audit = "chess_diagram_ocr.cli.audit:main"
 cvoff-eval = "chess_diagram_ocr.cli.evaluate:main"
 cvoff-migrate-labels = "chess_diagram_ocr.cli.migrate_labels:main"

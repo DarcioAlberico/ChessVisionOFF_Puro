@@ -100,6 +100,13 @@ cvoff-experiment --only referencia gap --epochs 8
 # Requer o extra: uv sync --extra onnx
 cvoff-export-onnx --model models/piece_classifier.pt
 
+# Biblioteca inteira de uma vez, com relatorio consolidado. Um livro que falha nao
+# derruba a varredura: vira uma linha do relatorio e a varredura segue. Livro cujo PGN
+# ja existe e pulado, e e isso que torna a varredura retomavel.
+cvoff-batch PDF --output PGN --report PGN/batch_report.json
+cvoff-batch PDF --no-skip-existing        # reexporta tudo
+cvoff-batch PDF --limit 3                 # so os tres primeiros livros
+
 # Fila de revisao: varre o livro e ordena os diagramas por valor de informacao.
 # Ilegal > orientacao incerta > fontes discordantes > confianca baixa > entropia.
 # Grava em data/review_queue.json, que a aba "Revisao" do app le.
@@ -126,6 +133,78 @@ Para gravar o log em arquivo, defina `CVOFF_LOG_DIR`:
 ```bash
 set CVOFF_LOG_DIR=logs
 ```
+
+## Recursos opcionais (e o que o projeto faz sem eles)
+
+**O projeto funciona inteiramente offline.** Nada sai da sua maquina no uso padrao. As duas
+integracoes abaixo sao desligadas por padrao e nao afetam o reconhecimento.
+
+### Correcao remota de FEN ("Corrigir Net")
+
+Envia a **imagem do diagrama** para um servico HTTP de terceiro, que devolve uma FEN. Serve
+como segunda opiniao quando o modelo local erra.
+
+Vem **desligado, e sem endereco algum embutido**. Habilitar exige declarar o endpoint:
+
+```jsonc
+// data/settings.json
+{
+  "remote_fen": {
+    "enabled": true,
+    "endpoint": "https://exemplo.invalido/predict",
+    "timeout": 30
+  }
+}
+```
+
+Ou por variavel de ambiente, que vence o arquivo:
+
+```bash
+set CVOFF_REMOTE_FEN_URL=https://exemplo.invalido/predict
+set CVOFF_REMOTE_FEN_ENABLED=0     # forca desligado, mesmo com o arquivo dizendo o contrario
+```
+
+Sem configuracao o botao fica desabilitado, e o tooltip diz por que. Na primeira vez que
+voce mandar enviar, um aviso nomeia o host de destino e pede confirmacao; "nao perguntar
+novamente" fica gravado **por endereco** -- trocar o endpoint volta a perguntar.
+
+O servico que o projeto usava antes (`https://helpman.komtera.lt/predict`) continua
+funcionando se voce o escrever ali. Ele e de terceiro e sem contrato: pode sair do ar.
+
+### Motor de analise (Stockfish)
+
+Avalia a posicao na aba **Analise**: pontuacao, melhor lance, linha principal e barra de
+vantagem. Sem binario instalado, a secao simplesmente nao aparece -- nao ha botao cinza nem
+mensagem de erro.
+
+O projeto procura o binario nesta ordem: o caminho em `settings.json`, a variavel
+`CVOFF_ENGINE_PATH`, o `PATH` do sistema, e por fim `engines/` dentro do projeto. Baixar o
+Stockfish para `engines/` e a instalacao mais simples.
+
+```jsonc
+// data/settings.json
+{
+  "engine": {
+    "path": "C:/Program Files/Stockfish/stockfish.exe",
+    "movetime_ms": 800
+  }
+}
+```
+
+## Resolucao de problemas
+
+| sintoma | causa provavel | o que fazer |
+|---|---|---|
+| A aba **Leitura** diz "WebView2 indisponivel" | falta o Microsoft Edge WebView2 Runtime (so Windows) | instalar o runtime, ou usar a aba **OCR**, que nao depende dele |
+| Treino muito lento (~9 min por epoca) | `torch` `+cpu`, sem CUDA | ver [Desempenho](#desempenho-cpu-gpu-e-onnx). A barra de status diz qual dispositivo esta em uso |
+| Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros do acervo. O header `[SideToMoveSource "default"]` marca o palpite como palpite |
+| Poucos diagramas detectados numa pagina cheia | o teto "Max diagramas" cortou | o padrao e 12; o log avisa com os scores quando o teto corta candidato aprovado |
+| Diagramas de cabeca para baixo | orientacao fixa em 0 ou 180 | usar **Automatica** (padrao). Casos ambiguos entram na fila de revisao marcados |
+| "Nenhum tabuleiro foi detectado" numa pagina que tem um | scan de baixo contraste, ou o diagrama nao e imagem embutida | usar **Selecionar area (OCR)** e arrastar em volta do diagrama: ali o recorte e o seu, e o detector nao precisa acertar |
+| A exportacao parou no meio | cancelada ou interrompida | exportar de novo para o mesmo arquivo: ele oferece retomar da pagina seguinte a ultima concluida |
+| `cvoff-*` nao existe | ambiente nao instalado em modo editavel | `uv sync --extra dev`, e usar `uv run cvoff-...` |
+| Testes de ONNX pulados | o extra nao esta instalado | `uv sync --extra onnx`, se voce precisa deles |
+| Correcoes somem ao navegar entre paginas | o cache guarda 8 paginas | salvar a amostra (`Ctrl+S`) e o que persiste; o cache e conveniencia de navegacao. O log avisa quando descarta pagina com correcao sua |
 
 ## Testes e verificacoes
 
@@ -207,8 +286,11 @@ Atalhos do ciclo de correcao (desligados quando o foco esta num campo de texto):
 
 ```text
 src/chess_diagram_ocr/
+  service.py            camada de servico: o pipeline de OCR, sem dependencia de UI
+  settings.py           preferencias do usuario (endpoint remoto, motor de analise)
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
+  batch.py              varredura da biblioteca inteira, com relatorio consolidado
   board_detection.py    deteccao do tabuleiro na pagina (OpenCV)
   calibration.py        temperature scaling e curva de confiabilidade
   checkpoint.py         leitura e escrita de checkpoints, com metadados de treino
@@ -216,6 +298,7 @@ src/chess_diagram_ocr/
   dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
+  engine.py             motor UCI opcional (Stockfish)
   evaluation.py         metricas de qualidade do reconhecimento
   experiments.py        grade de experimentos de arquitetura
   export_checkpoint.py  parcial da exportacao, para cancelar e retomar
@@ -223,6 +306,7 @@ src/chess_diagram_ocr/
   inference.py          carga do modelo, predicao de FEN e TTA
   logging_setup.py      configuracao de logging
   model.py              arquitetura do classificador, configuravel por ArchConfig
+  net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
   pdf_io.py             render de paginas de PDF (PyMuPDF)
   pdf_text.py           legenda e metadados da camada de texto do PDF
@@ -233,12 +317,13 @@ src/chess_diagram_ocr/
   training.py           loop de treino
   webview2_panel.py     painel WebView2 embutido (Windows)
   detection/            detector hibrido: imagem embutida + contorno
-  ui/                   tabuleiro interativo, paineis e estado da aplicacao
+  ui/                   paineis da interface: PDF, resultado, estudo, revisao, dataset
   cli/                  entrypoints cvoff-*
 app_tkinter.py          interface desktop
 app_streamlit.py        interface web
 tests/                  suite de testes
 docs/                   analise tecnica, roadmap, especificacao, baseline e experimentos
+CONTRIBUTING.md         como rodar as verificacoes e o que este projeto espera de um teste
 data/labels.csv         rotulos (versionado)
 data/splits.csv         particao treino/validacao/teste (versionado)
 data/samples/           imagens dos tabuleiros (nao versionado)
@@ -277,6 +362,10 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
 
 ## Documentacao tecnica
 
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) -- como uma pagina vira uma FEN, e onde
+  cada decisao mora
+- [CONTRIBUTING.md](CONTRIBUTING.md) -- ambiente, verificacoes, como dirigir a interface
+  sem clicar e o que se espera de um teste aqui
 - [docs/ANALISE.md](docs/ANALISE.md) -- diagnostico do estado atual, com medicoes
 - [docs/ROADMAP.md](docs/ROADMAP.md) -- fases de evolucao planejadas
 - [docs/SPEC.md](docs/SPEC.md) -- especificacao detalhada das melhorias (S-01 a S-36)

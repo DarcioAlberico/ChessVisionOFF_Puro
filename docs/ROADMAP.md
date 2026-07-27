@@ -834,8 +834,8 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 | 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 | ✅ |
 | 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 | ✅ fecha a pendência 0.7 |
 | 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | ✅ |
-| 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 | — |
-| 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 | — |
+| 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 | ✅ `cvoff-batch` |
+| 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 | ✅ + `docs/ARCHITECTURE.md` |
 | 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 | — |
 
 **Critério de saída:** Streamlit e Tkinter com paridade de funcionalidades; `app_tkinter.py` abaixo de 600 linhas; executável rodando em máquina sem Python.
@@ -1060,6 +1060,65 @@ validador de plausibilidade para o OCR, alimentando a prioridade da fila da S-22
 hipótese razoável e não medida: quantificá-la exige rodar um motor de verdade sobre
 diagramas de verdade, e não há Stockfish aqui. Implementá-la sem medir seria repetir o erro
 que a Fase 5 documentou nos pesos de classe — a ideia razoável que a medição desaconselhou.
+
+### 6.6 — o relatório mostrou algo que o `Andamento.txt` nunca poderia
+
+`cvoff-batch` substitui o acompanhamento manual. O critério de aceite tem três partes, e a
+que decide o desenho é a terceira: "sem perder progresso se um livro falhar". Com 27 PDFs e
+minutos por livro, uma exceção no décimo que abortasse o processo custaria tudo que veio
+antes. Cada livro é isolado, a falha vira uma linha do relatório com o motivo, e a varredura
+segue — verificado com um `corrompido.pdf` de propósito no meio da pasta.
+
+O relatório é gravado **a cada livro**, não no fim, pelo mesmo raciocínio: se o processo
+morrer por algo que o `try` não pega, o que já foi medido continua no disco. E é literal:
+durante a varredura de teste, o relatório do primeiro livro já estava legível enquanto o
+segundo ainda rodava.
+
+**`--skip-existing` não inventa estado.** O PGN no disco *é* o registro de que aquele livro
+foi feito. Um segundo lugar para essa verdade morar só teria como divergir do primeiro.
+
+**E aí veio o achado.** Rodando três livros de verdade:
+
+| livro | páginas | aceitos | revisão | ilegais | conf mín média | tempo |
+|---|---|---|---|---|---|---|
+| `1001 Winning Chess Sacrifices` (hq) | 1.120 | **949** | 52 | 1 | 0,952 | 492 s |
+| `Euwe/Kramer – Mittelspiel Band 7` | 56 | **0** | 84 | 2 | 0,065 | 79 s |
+| `Koblenz – El dominio del arte` | 70 | **0** | 120 | 0 | 0,205 | 33 s |
+
+O primeiro livro sai com **94,7% de aceitação**; os outros dois com **zero**. Não é o gate
+sendo severo — é a confiança mínima média em 0,065 e 0,205 contra 0,952. São dois dos 12
+livros que a Fase 2 classificou como "a página inteira é um scan", e o modelo simplesmente
+não os lê.
+
+Isso já era verdade antes; o que mudou é que agora **aparece**. Um `Andamento.txt` mantido à
+mão registra "processado" e nada mais — e "processado" é exatamente o que esses dois livros
+foram. A taxa de aceitação por livro é o número que diz onde vale a pena gastar rótulo novo,
+e ele não existia.
+
+**Sem `--workers`, e o motivo é medido.** A S-34 sugere 2 a 4 processos. A inferência do
+torch já usa as CPUs disponíveis — a varredura do Reinfeld roda a 0,44 s/página com os 12
+núcleos ocupados. Dois processos disputariam os mesmos núcleos e ainda carregariam dois
+modelos na memória. É a mesma decisão que a S-24 tomou para páginas, pelo mesmo motivo.
+
+### 6.7 — o que faltava não era o README
+
+O diagnóstico da S-35 é de antes da Fase 0: "documenta comandos que não funcionam como
+escrito". Isso deixou de valer quando a S-02 arrumou a instalação, e o README foi crescendo
+junto com as fases. O que ele **não** tinha era o que a S-35 lista depois: resolução de
+problemas, e um lugar onde a arquitetura estivesse desenhada.
+
+- **`docs/ARCHITECTURE.md`** — o caminho de uma página até a FEN, com cada etapa apontando
+  para a spec que a decidiu, e a tabela de quem faz o quê. Depois da 6.2 são 20 módulos em
+  `src/` e 14 em `ui/`; sem um mapa, a decomposição vira o problema que ela resolveu.
+- **`CONTRIBUTING.md`** — as três verificações, e o que este projeto espera de um teste.
+  Inclui o roteiro headless que dirige a interface, porque foi ele que pegou o defeito de
+  navegação que 509 testes verdes não pegaram — e a armadilha do `mainloop()` contra o laço
+  de `update()`, que faz o erro parecer do código quando é do roteiro.
+- **Resolução de problemas no README** — 10 sintomas com causa e saída. Os quatro que a
+  S-35 nomeia (WebView2 ausente, torch sem CUDA, PDF sem camada de texto, PDF sem imagem
+  embutida) mais os que a Fase 6 tornou possíveis de encontrar.
+- **Os recursos opcionais documentados como opcionais**, com a frase que a S-32 exige em
+  letra: o projeto funciona inteiramente offline, e nada sai da máquina no uso padrão.
 
 ### O que 6.1 não entrega da paridade
 
