@@ -21,6 +21,7 @@ from chess_diagram_ocr.config import BOARD_SIZE, PIECE_CLASSES, PIECE_TO_IDX
 from chess_diagram_ocr.model import ArchConfig
 from chess_diagram_ocr.service import (
     OcrService,
+    RecheckReport,
     RecognitionOptions,
     RecognitionOrigin,
     RecognizedDiagram,
@@ -374,3 +375,45 @@ class NoUiDependencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RecheckTests(unittest.TestCase):
+    """Comparar o que o modelo lê com o rótulo gravado (S-23).
+
+    Morava dentro da janela do Tkinter, onde a única forma de conferir o relatório era
+    abrir a aba Dataset e olhar. O que importa aqui é o texto que o usuário lê.
+    """
+
+    def _report(self, rotulo: str, lido: str = PRETAS_A_JOGAR) -> RecheckReport:
+        service, _ = _service(lido)
+        return service.recheck_label(_board_image(), rotulo)
+
+    def test_a_matching_label_reports_full_agreement(self) -> None:
+        relatorio = self._report(PRETAS_A_JOGAR)
+        self.assertTrue(relatorio.agrees)
+        self.assertIn("todas as 64 casas", relatorio.describe("amostra.png"))
+
+    def test_a_differing_label_lists_the_squares_with_both_readings(self) -> None:
+        # Mesma posicao, mas com a dama branca em a6 em vez de a7.
+        relatorio = self._report("k7/8/Q7/8/8/8/8/7K")
+
+        self.assertFalse(relatorio.agrees)
+        texto = relatorio.describe("amostra.png")
+        self.assertIn("Divergem em 2 casa(s)", texto)
+        self.assertIn("a7:", texto)
+        self.assertIn("a6:", texto)
+
+    def test_an_empty_square_is_named_instead_of_shown_blank(self) -> None:
+        """"rotulo  | modelo Q" nao diria o que estava lá; "vazia" diz."""
+        self.assertIn("vazia", self._report("k7/8/Q7/8/8/8/8/7K").describe("amostra.png"))
+
+    def test_a_wildly_different_label_is_counted_not_listed_in_full(self) -> None:
+        """Discordar de 40 casas não pede lista: pede olho humano, e a contagem já diz isso."""
+        texto = self._report("8/8/8/8/8/8/8/8").describe("amostra.png", max_squares=1)
+        self.assertIn("... e outras", texto)
+
+    def test_the_report_names_the_sample_and_both_readings(self) -> None:
+        texto = self._report(PRETAS_A_JOGAR).describe("board_123.png")
+        self.assertIn("board_123.png", texto)
+        self.assertIn(f"Rotulo:  {PRETAS_A_JOGAR}", texto)
+        self.assertIn(f"Modelo:  {PRETAS_A_JOGAR}", texto)

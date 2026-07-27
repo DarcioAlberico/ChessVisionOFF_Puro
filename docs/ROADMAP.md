@@ -830,7 +830,7 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 | # | Entrega | Ref. spec | Status |
 |---|---|---|---|
 | 6.1 | **Camada de serviço** `src/chess_diagram_ocr/service.py` — Tkinter e Streamlit passam a ser só apresentação | S-31 | ✅ |
-| 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 | — |
+| 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 | ✅ 2.388 → **651** |
 | 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 | — |
 | 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 | — |
 | 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | — |
@@ -910,6 +910,57 @@ errado, e alarme falso que aparece em toda página gasta a credibilidade do alar
 verdadeiro. `detect_boards` ganhou `warn_on_cap`, desligado nos três chamadores internos
 que pedem um tabuleiro de propósito — com teste que percorre os três módulos e confere que
 nenhum ficou de fora, porque silenciar um só deixaria o vazamento pelos outros dois.
+
+### 6.2 — a decomposição, e o critério de saída que ficou 51 linhas acima
+
+`app_tkinter.py` foi de **2.388 para 651 linhas**. O critério da S-31 pede abaixo de 600,
+e não está atingido ao pé da letra. Do que sobrou, 477 linhas são código e 174 são
+docstrings, comentários e linhas em branco; são 52 métodos, e o maior deles é o
+`_build_config_tab`, que é layout puro.
+
+Onde o conteúdo foi parar:
+
+| módulo | linhas | o que leva |
+|---|---|---|
+| `ui/result_panel.py` | 745 | o editor: tabuleiro, FEN, lado a jogar, legalidade, cache por página, salvar, fila e dataset |
+| `ui/pdf_panel.py` | 456 | exibir o PDF, navegar, zoom, seleção de área, modo leitura |
+| `ui/study_panel.py` | 381 | tabuleiro de estudo, árvore de variantes, PGN |
+| `ui/training_dialog.py` | 225 | o modal de treino e a thread |
+| `ui/export_controller.py` | 222 | destino, decisão sobre o parcial e relatório da exportação |
+| `net_correction.py` | 113 | o cliente HTTP do "Corrigir Net" |
+| `ui/shortcuts.py` | 50 | os atalhos e a guarda de foco |
+
+**Podia estar abaixo de 600 e não vale a pena.** Faltam ~50 linhas, e a maneira óbvia de
+tirá-las seria mover a aba de configuração para um `ui/config_panel.py`. Ela é layout puro
+— dez `tk.Variable` e os widgets que as editam —, então mudá-la de arquivo não tornaria
+nada testável nem desfaria acoplamento nenhum: seria mexer no número sem mexer no que o
+número mede. O que a S-31 quer de fato — "zero lógica de OCR fora de `src/`" e
+"`OcrService` testável sem Tk" — está atingido, e é isso que os 63 testes dos módulos novos
+verificam (485 → **543** na suíte inteira).
+
+**A regra de corte foi a da Fase 4, aplicada ao que tinha sobrado: o que dá para testar não
+fica no `app_tkinter.py`.** Foi ela que decidiu os casos duvidosos. O cliente HTTP do
+"Corrigir Net" saiu porque tem quatro modos de falha — erro de rede, HTTP de erro, corpo
+que não é JSON, JSON sem o campo — e nenhum deles tinha teste, porque testá-los exigia
+abrir uma janela. A comparação modelo × rótulo da S-23 saiu pelo mesmo motivo e virou
+`OcrService.recheck_label`. Já a montagem das abas ficou: não há o que conferir nela além
+de "abriu".
+
+### O defeito que a decomposição encontrou, e o que ele diz sobre o método
+
+Ao converter os `dict` em `RecognizedDiagram` (6.1), duas linhas de `_confidence_summary`
+escaparam da conversão e continuaram chamando `item.get('min_confidence', 0.0)` num
+dataclass, que não tem `.get`. Isso é `AttributeError` na primeira vez que o usuário
+aperta `←` para ir ao diagrama seguinte.
+
+Nada pegou: nem o `ruff`, nem o `mypy` — que não cobre `app_tkinter.py`, porque
+`files = ["src"]` —, nem os 509 testes, nem os dois roteiros que dirigiram a interface de
+verdade reconhecendo páginas do Kemeri e do Reinfeld. Só apareceu quando o roteiro passou
+a **navegar entre diagramas** depois do OCR, e não apenas a reconhecer.
+
+As duas linhas hoje moram em `result_panel.confidence_summary`, que é função pura e tem
+teste. É o argumento da S-31 na sua forma mais direta: o problema nunca foi o tamanho do
+arquivo, foi que nada dentro dele podia ser verificado sem um humano clicando.
 
 ### O que 6.1 não entrega da paridade
 

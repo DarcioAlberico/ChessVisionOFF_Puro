@@ -45,8 +45,14 @@ from .config import (
 )
 from .dataset import append_training_sample
 from .detection import detect_diagrams_in_pdf_page
-from .fen_utils import PositionCheck, check_position
-from .inference import BoardPrediction, describe_device, load_model, predict_with_orientation
+from .fen_utils import PositionCheck, check_position, square_name
+from .inference import (
+    BoardPrediction,
+    describe_device,
+    load_model,
+    predict_board,
+    predict_with_orientation,
+)
 from .pdf_io import get_pdf_page_count, render_pdf_page
 from .pdf_text import DiagramContext, contexts_for_pdf_page
 from .semantics import SideToMove, compose_fen, infer_side_to_move
@@ -245,6 +251,69 @@ class RecognizedDiagram:
             compose_fen(placement if placement is not None else self.placement, self.side_is_white)
         )
         return self.legality
+
+
+@dataclass(frozen=True)
+class RecheckReport:
+    """O que o modelo diz sobre uma amostra já rotulada, comparado ao rótulo (S-23)."""
+
+    placement: str
+    """O rótulo gravado no `labels.csv`."""
+
+    prediction: BoardPrediction
+
+    @property
+    def differing_squares(self) -> list[int]:
+        rotulo = _squares(self.placement)
+        lido = _squares(self.prediction.fen_board)
+        return [i for i in range(64) if rotulo[i] != lido[i]]
+
+    @property
+    def agrees(self) -> bool:
+        return not self.differing_squares
+
+    def describe(self, filename: str, *, max_squares: int = 12) -> str:
+        """O relatório em pt-BR que a interface mostra.
+
+        Corta em `max_squares` porque uma amostra em que o modelo discorda de 40 casas não
+        precisa de lista: ela precisa de olho humano, e a contagem já diz isso.
+        """
+        linhas = [
+            f"Amostra: {filename}",
+            f"Rotulo:  {self.placement}",
+            f"Modelo:  {self.prediction.fen_board}",
+            f"Confianca minima do modelo: {self.prediction.min_confidence:.3f}",
+            "",
+        ]
+        divergentes = self.differing_squares
+        if not divergentes:
+            linhas.append("O modelo concorda com o rotulo em todas as 64 casas.")
+            return "\n".join(linhas)
+
+        linhas.append(f"Divergem em {len(divergentes)} casa(s):")
+        rotulo = _squares(self.placement)
+        lido = _squares(self.prediction.fen_board)
+        for index in divergentes[:max_squares]:
+            confianca = float(self.prediction.square_confidences[index])
+            linhas.append(
+                f"  {square_name(index)}: rotulo {rotulo[index] or 'vazia'} | "
+                f"modelo {lido[index] or 'vazia'} ({confianca:.1%})"
+            )
+        if len(divergentes) > max_squares:
+            linhas.append(f"  ... e outras {len(divergentes) - max_squares}")
+        return "\n".join(linhas)
+
+
+def _squares(placement: str) -> list[str]:
+    """As 64 casas de um campo de peças, `""` para vazia, em ordem de leitura."""
+    casas: list[str] = []
+    for linha in str(placement).split("/"):
+        for char in linha:
+            if char.isdigit():
+                casas.extend([""] * int(char))
+            else:
+                casas.append(char)
+    return (casas + [""] * 64)[:64]
 
 
 @dataclass(frozen=True)
@@ -602,6 +671,17 @@ class OcrService:
         return diagrams
 
     # ---------------------------------------------------------------------------- dataset
+
+    def recheck_label(self, board_rgb: np.ndarray, placement: str) -> RecheckReport:
+        """Roda o modelo numa amostra já rotulada e compara com o rótulo (S-23).
+
+        É o caminho para achar rótulo **humano** errado: se o modelo discorda em uma casa e
+        o rótulo é o esquisito, quem está errado é a anotação -- e o `.pt` treinado sobre
+        ela está aprendendo o erro.
+        """
+        with self.model_session() as (model, device):
+            prediction = predict_board(cv2.resize(board_rgb, (BOARD_SIZE, BOARD_SIZE)), model, device)
+        return RecheckReport(placement=placement, prediction=prediction)
 
     def save_sample(
         self,
