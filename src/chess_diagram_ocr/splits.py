@@ -22,13 +22,16 @@ Ver S-07 em docs/SPEC.md.
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import logging
+import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
-import pandas as pd
+from .atomic_io import atomic_write_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -107,26 +110,38 @@ def load_splits(path: Path) -> dict[str, Split]:
     if not path.exists():
         return {}
 
-    df = pd.read_csv(path)
-    required = {"filename", "split"}
-    if not required.issubset(df.columns):
-        raise ValueError(f"{path} precisa das colunas {required}. Encontradas: {set(df.columns)}")
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        colunas = set(reader.fieldnames or ())
+        required = {"filename", "split"}
+        if not required.issubset(colunas):
+            raise ValueError(f"{path} precisa das colunas {required}. Encontradas: {colunas}")
 
-    result: dict[str, Split] = {}
-    for row in df.itertuples(index=False):
-        split = str(row.split).strip()
-        if split not in ("train", "val", "test"):
-            raise ValueError(f"Split inválido em {path}: {split!r}")
-        result[str(row.filename).strip()] = split  # type: ignore[assignment]
+        result: dict[str, Split] = {}
+        for row in reader:
+            split = str(row.get("split", "")).strip()
+            if split not in ("train", "val", "test"):
+                raise ValueError(f"Split inválido em {path}: {split!r}")
+            result[str(row.get("filename", "")).strip()] = split  # type: ignore[assignment]
     return result
 
 
 def save_splits(path: Path, splits: Mapping[str, Split]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frame = pd.DataFrame(sorted(splits.items()), columns=["filename", "split"])
-    frame.to_csv(path, index=False)
-    logger.info("Splits gravados em %s (%d amostras).", path, len(frame))
+
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator=os.linesep)
+    writer.writerow(["filename", "split"])
+    writer.writerows(sorted(splits.items()))
+
+    # Escrita atomica (S-25), como a do `labels.csv`. Este arquivo carrega uma decisao
+    # irreversivel na pratica -- por desenho da S-07, uma amostra que caiu no `test` fica
+    # la --, e ate a S-51 ele era gravado com `to_csv` direto no destino, que trunca antes
+    # de escrever. Um corte de energia no meio nao perderia o arquivo: perderia a fronteira
+    # entre treino e teste, que e o que torna toda medicao do projeto confiavel.
+    atomic_write_bytes(path, buffer.getvalue().encode("utf-8"))
+    logger.info("Splits gravados em %s (%d amostras).", path, len(splits))
 
 
 def ensure_splits(

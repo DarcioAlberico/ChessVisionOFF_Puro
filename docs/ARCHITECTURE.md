@@ -88,6 +88,7 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | `pdf_to_pgn.py` | Varredura de um livro, gate de exportação, checkpoint parcial. |
 | `batch.py` | Varredura da biblioteca inteira, com relatório consolidado. |
 | `review_queue.py` | Fila ordenada por valor de informação. |
+| `labels.py` | **A porta única do `labels.csv`** (S-51): esquema, leitura, escrita atômica, transação. |
 | `dataset.py` · `splits.py` · `audit.py` | Dados de treino: leitura, partição estável, auditoria. |
 | `training.py` · `model.py` · `checkpoint.py` | Treino, arquitetura e persistência. |
 | `calibration.py` · `evaluation.py` · `experiments.py` | Medição. |
@@ -188,12 +189,25 @@ parcial e sobrevive, o treino perde o progresso desde a última época melhor (S
 | `PGN/<livro>.partial.jsonl` | checkpoint da exportação, apagado ao concluir | não |
 
 Toda escrita de arquivo de trabalho passa por `atomic_io`: grava num temporário e troca. O
-`labels.csv` é 3.200 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
+`labels.csv` é 3.313 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
 cada correção. Desde a S-57 o `.pt` também passa por ali — era o maior dos arquivos, o mais
 demorado de escrever, e o único cuja escrita acontece numa thread de fundo enquanto outra
 pode estar lendo o mesmo caminho.
 
-O `labels.csv` é lido por `dataset.read_labels_frame`, que o trata como **texto puro**. Sem
-isso o pandas tipava `source_page` como `float64` (98,6% das células estão vazias) e `20`
-voltava `20.0`: como a gravação relê o arquivo inteiro antes de acrescentar uma linha, uma
-amostra nova reescrevia todas as antigas nesse formato (S-58).
+**O `labels.csv` tem uma porta só: `labels.LabelStore` (S-51).** Antes eram cinco módulos com
+pandas, cada um conhecendo o esquema por conta própria — e elas não concordavam: três
+caminhos do `audit.py`, todos alcançáveis por `cvoff-audit --fix`, gravavam com `to_csv`
+direto no destino, sem escrita atômica e sem a normalização de inteiro da S-58. O `splits.csv`
+tinha o mesmo defeito de escrita, e ele carrega uma decisão irreversível na prática.
+
+A regra é verificada por teste (`tests/test_labels.py`), e não por disciplina: a suíte varre a
+árvore e falha se `read_csv` ou `to_csv` reaparecerem fora do `labels.py`. Foi essa varredura
+que encontrou a **sexta** porta, em `review_queue.rare_classes_from_labels`, que nenhum
+levantamento tinha listado.
+
+`LabelStore` usa o `csv` da biblioteca padrão e não pandas. A S-58 existe porque o pandas
+infere tipo — `source_page` tem 98,6% de células vazias, a coluna virava `float64` e `20`
+voltava `20.0`, e como a gravação relê o arquivo inteiro antes de acrescentar uma linha, uma
+amostra nova reescrevia todas as antigas nesse formato. Com `csv.DictReader` não há tipo a
+inferir: todas as colunas do esquema são texto. O defeito deixou de ser evitado e passou a não
+existir.

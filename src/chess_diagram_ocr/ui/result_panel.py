@@ -37,6 +37,7 @@ import numpy as np
 
 from chess_diagram_ocr.dataset_browser import DatasetRow, update_row
 from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
+from chess_diagram_ocr.labels import DATASET_RECORRIGIDO, label_route
 from chess_diagram_ocr.net_correction import RemoteFenProvider, build_provider
 from chess_diagram_ocr.review_queue import ReviewItem
 from chess_diagram_ocr.semantics import compose_fen
@@ -153,6 +154,8 @@ class ResultPanel(ttk.Frame):
         self.selected_index = 0
 
         self.origin: RecognitionOrigin | None = None
+        self._net_corrected: set[int] = set()
+        """Índices cuja FEN veio do serviço externo da S-32. Alimenta `_label_route`."""
         self.page_key: tuple[str, int] | None = None
         """De que página de PDF vem o que está no editor. `None` = não veio de uma página
         inteira: imagem local, recorte de área, item da fila ou amostra do dataset."""
@@ -449,6 +452,9 @@ class ResultPanel(ttk.Frame):
         self.items = items
         self.fen_edits = fens
         self.side_edits = sides
+        # Os indices sao por carregamento: o diagrama 2 desta pagina nao e o diagrama 2 da
+        # anterior, e herdar a marca de "veio da Net" gravaria a procedencia errada.
+        self._net_corrected.clear()
         self.selected_index = 0
         self.selected_diag_var.set(1)
         self.spin_diag.config(from_=1, to=max(len(items), 1))
@@ -619,6 +625,15 @@ class ResultPanel(ttk.Frame):
         """Como devolver a correção à fila. Injetado para não depender do painel de revisão."""
         self._settle_review = settler
 
+    def _label_route(self, idx: int, fen: str) -> str:
+        """O que o painel sabe sobre a procedência, traduzido para `labels.label_route`."""
+        return label_route(
+            from_net=idx in self._net_corrected,
+            from_queue=self.review_position is not None,
+            read_placement=self.items[idx].placement if 0 <= idx < len(self.items) else "",
+            saved_placement=fen,
+        )
+
     def _save_one(self, idx: int, fen: str) -> Path:
         csv_path, samples_dir = self._paths()
         return self._service.save_sample(
@@ -628,6 +643,7 @@ class ResultPanel(ttk.Frame):
             samples_dir=samples_dir,
             origin=self.origin,
             side_to_move=self.side_edits[idx] if 0 <= idx < len(self.side_edits) else None,
+            corrected_by=self._label_route(idx, fen),
         )
 
     def save_current(self) -> None:
@@ -660,7 +676,9 @@ class ResultPanel(ttk.Frame):
         csv_path, _samples = self._paths()
         side = self.side_edits[idx] if idx < len(self.side_edits) else "w"
         try:
-            atualizado = update_row(csv_path, filename, fen=fen, side_to_move=side, corrected_by="tkinter")
+            atualizado = update_row(
+                csv_path, filename, fen=fen, side_to_move=side, corrected_by=DATASET_RECORRIGIDO
+            )
         except ValueError as exc:
             messagebox.showerror("Dataset", str(exc))
             return
@@ -771,6 +789,11 @@ class ResultPanel(ttk.Frame):
             self._on_status("Correção recebida, mas o OCR atual mudou.")
             return
         self.fen_edits[idx] = fen
+        # A procedencia da S-52: esta FEN nao foi lida pelo modelo local nem digitada por
+        # uma pessoa. Sem esta linha ela seria gravada como `ocr-corrigido`, e a pergunta que
+        # a coluna existe para responder -- amostra corrigida a mao treina melhor? -- passaria
+        # a contar leitura de terceiro como trabalho humano.
+        self._net_corrected.add(idx)
         if idx == self.clamped_index():
             self.fen_var.set(fen)
             self.update_views()

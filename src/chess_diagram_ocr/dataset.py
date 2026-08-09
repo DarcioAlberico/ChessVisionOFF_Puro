@@ -1,135 +1,38 @@
 from __future__ import annotations
 
 import logging
-import os
 import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
 import numpy as np
-import pandas as pd
 import torch
 from torch.utils.data import Dataset, Sampler
 
-from .atomic_io import atomic_write_bytes
 from .config import BOARD_SIZE, BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
+from .labels import LABEL_COLUMNS, DatasetEntry, LabelStore
 from .model import DEFAULT_ARCH, ArchConfig, preprocess_cell_to_tensor
 from .semantics import infer_side_to_move
 from .splits import Split
 
 logger = logging.getLogger(__name__)
 
-
-def _cell(row: object, column: str) -> str:
-    """Valor textual de uma coluna opcional. Coluna ausente ou `NaN` viram string vazia.
-
-    O `NaN` não é hipótese acadêmica: é o que o pandas entrega para célula vazia, e foi ele
-    que derrubou o carregamento inteiro do dataset antes da Fase 0. Depois da S-58 as
-    leituras passam por `read_labels_frame`, que já impede o `NaN` de existir -- isto aqui
-    continua porque `DatasetEntry` também é montada a partir de frames de outra origem.
-    """
-    value = getattr(row, column, "")
-    if value is None:
-        return ""
-    text = str(value).strip()
-    return "" if text.lower() == "nan" else text
-
-
-def read_labels_frame(csv_path: Path) -> pd.DataFrame:
-    """Lê um CSV de rótulos como **texto puro**, sem inferência de tipo (S-58).
-
-    Todas as colunas do esquema da S-19 são texto. Deixar o pandas inferir custava caro num
-    ponto específico: `source_page` e `source_diagram` têm célula vazia em 98,6% das linhas,
-    então a coluna era tipada como `float64` e `20` voltava como `20.0`. Como a gravação relê
-    o arquivo inteiro antes de acrescentar uma linha, cada amostra nova reescrevia as antigas
-    nesse formato -- o arquivo passou a ter os dois, e um diff de uma linha virava um diff de
-    milhares.
-
-    `keep_default_na=False` é a outra metade: sem ele, célula vazia vira `NaN` (float) e
-    `dtype=str` a transforma na string `"nan"`, que é pior que o `NaN`.
-    """
-    csv_path = Path(csv_path)
-    if not csv_path.exists():
-        return pd.DataFrame(columns=list(LABEL_COLUMNS))
-    return pd.read_csv(csv_path, dtype=str, keep_default_na=False)
-
-
-_INTEGER_TEXT_COLUMNS: tuple[str, ...] = ("source_page", "source_diagram")
-"""Colunas que guardam inteiro em forma de texto. Ver `_as_integer_text`."""
-
-
-def _as_integer_text(value: object) -> str:
-    """`"20.0"` → `"20"`, preservando vazio e qualquer coisa que não seja número.
-
-    Normaliza na **escrita** em vez de exigir um comando de migração: o arquivo converge para
-    um formato só na próxima gravação e fica nele, porque `read_labels_frame` não introduz
-    mais floats. O que não parece número passa intacto -- não é papel desta função decidir
-    que um valor inesperado é lixo.
-    """
-    text = str(value).strip()
-    if not text or text.lower() == "nan":
-        return ""
-    try:
-        number = float(text)
-    except ValueError:
-        return text
-    return str(int(number)) if number.is_integer() else text
-
-
-LABEL_COLUMNS: tuple[str, ...] = (
-    "filename",
-    "fen",
-    "side_to_move",
-    "source_pdf",
-    "source_page",
-    "source_diagram",
-    "detection_source",
-    "created_at",
-    "corrected_by",
-)
-"""Esquema do `labels.csv` a partir da S-19. Só `filename` e `fen` são obrigatórios.
-
-O esquema antigo (`filename,fen`) continua carregando: coluna ausente vira valor vazio. São
-3.195 rótulos existentes, e quebrá-los para ganhar colunas seria o pior negócio possível.
-
-`side_to_move` é o campo que motivou o resto. Sem ele o dataset perde a única informação
-que o PDF dava de graça e que a imagem do tabuleiro não contém -- e foi essa perda que fez
-`_normalize_fen` completar 3.244 rótulos com `w` fixo. As colunas de origem (`source_*`)
-existem para o que a Fase 1 já pediu e não pôde fazer: agrupar o split por livro (S-07),
-auditar por fonte e voltar ao PDF para recortar de novo.
-"""
-
-
-@dataclass(frozen=True)
-class DatasetEntry:
-    filename: str
-    fen: str
-    side_to_move: str = ""
-    """`w`, `b` ou vazio. Redundante com a FEN de propósito -- ver `resolved_side_to_move`."""
-
-    source_pdf: str = ""
-    source_page: str = ""
-    source_diagram: str = ""
-    detection_source: str = ""
-    created_at: str = ""
-    corrected_by: str = ""
-
-    @property
-    def resolved_side_to_move(self) -> str:
-        """A coluna manda; a FEN é o reserva.
-
-        As duas são escritas juntas e não deviam divergir, mas a coluna carrega o que a
-        legenda do PDF disse -- que numa posição legal dos dois jeitos é informação que a
-        FEN sozinha não tem como recuperar. Se um dia divergirem, a mais informativa vence.
-        """
-        if self.side_to_move in ("w", "b"):
-            return self.side_to_move
-        parts = self.fen.split()
-        return parts[1] if len(parts) > 1 and parts[1] in ("w", "b") else ""
+__all__ = [
+    "LABEL_COLUMNS",
+    "BoardFenDataset",
+    "BoardGroupedSampler",
+    "DatasetEntry",
+    "append_training_sample",
+    "board_groups",
+    "migrate_labels_csv",
+]
+"""`LABEL_COLUMNS` e `DatasetEntry` moraram aqui até a S-51 e agora moram em `labels.py`.
+Reexportados porque o nome deste módulo continua sendo o lugar onde se procura por eles, e
+porque quebrar o import de quem já os usava não compraria nada."""
 
 
 class BoardFenDataset(Dataset):
@@ -196,19 +99,13 @@ class BoardFenDataset(Dataset):
         if not self.csv_path.exists():
             return
 
-        df = read_labels_frame(self.csv_path)
-        required_cols = {"filename", "fen"}
-        if not required_cols.issubset(df.columns):
-            raise ValueError(f"Dataset CSV must have columns {required_cols}")
-
         missing_files: list[str] = []
-        for row in df.itertuples(index=False):
-            # Celula vazia no CSV chega como NaN (float): coagir antes de validar.
-            fen = str(row.fen).strip()
-            if not fen or fen.lower() == "nan" or not is_syntactically_valid_fen(fen):
+        for entry in LabelStore(self.csv_path).read():
+            fen = entry.fen
+            if not fen or not is_syntactically_valid_fen(fen):
                 continue
 
-            filename = str(row.filename).strip()
+            filename = entry.filename
 
             if self.split is not None:
                 if self.splits is None:
@@ -230,13 +127,7 @@ class BoardFenDataset(Dataset):
             if not img_path.exists():
                 missing_files.append(filename)
                 continue
-            self.entries.append(
-                DatasetEntry(
-                    filename=filename,
-                    fen=fen,
-                    **{column: _cell(row, column) for column in LABEL_COLUMNS[2:]},
-                )
-            )
+            self.entries.append(entry)
 
         if missing_files:
             preview = ", ".join(sorted(set(missing_files))[:3])
@@ -467,7 +358,7 @@ def append_training_sample(
     samples_dir.mkdir(parents=True, exist_ok=True)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
-    timestamp = pd.Timestamp.utcnow()
+    timestamp = datetime.now(timezone.utc)
     filename = f"board_{timestamp.strftime('%Y%m%d_%H%M%S_%f')}.png"
     image_path = samples_dir / filename
 
@@ -477,52 +368,20 @@ def append_training_sample(
     board_bgr = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
     cv2.imwrite(str(image_path), board_bgr)
 
-    new_row = pd.DataFrame(
-        [
-            {
-                "filename": filename,
-                "fen": fen,
-                "side_to_move": resolved_side,
-                "source_pdf": source_pdf,
-                "source_page": str(source_page),
-                "source_diagram": str(source_diagram),
-                "detection_source": detection_source,
-                "created_at": timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "corrected_by": corrected_by,
-            }
-        ]
+    LabelStore(csv_path).append(
+        DatasetEntry(
+            filename=filename,
+            fen=fen,
+            side_to_move=resolved_side,
+            source_pdf=source_pdf,
+            source_page=str(source_page),
+            source_diagram=str(source_diagram),
+            detection_source=detection_source,
+            created_at=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            corrected_by=corrected_by,
+        )
     )
-    if csv_path.exists():
-        existing = read_labels_frame(csv_path)
-        combined = pd.concat([existing, new_row], ignore_index=True)
-    else:
-        combined = new_row
-    _write_labels(combined, csv_path)
     return image_path
-
-
-def _write_labels(frame: pd.DataFrame, csv_path: Path) -> None:
-    """Grava o CSV com as colunas da S-19 na ordem, sem `NaN` e sem perder coluna extra.
-
-    Escrita atômica (S-25): este arquivo é o dataset inteiro, 3.195 rótulos de trabalho
-    humano acumulado. `to_csv` direto no destino trunca antes de escrever -- e a UI de
-    dataset da S-23 passa a regravá-lo a cada correção, o que multiplica as chances de
-    apanhar a janela ruim.
-
-    As colunas de inteiro são normalizadas aqui (S-58), e não na leitura: é o que faz um
-    arquivo que já tem `20.0` gravado convergir sozinho na próxima escrita, sem comando de
-    migração.
-    """
-    frame = frame.copy()
-    for column in LABEL_COLUMNS:
-        if column not in frame.columns:
-            frame[column] = ""
-    for column in _INTEGER_TEXT_COLUMNS:
-        frame[column] = frame[column].map(_as_integer_text)
-    extra = [column for column in frame.columns if column not in LABEL_COLUMNS]
-    frame = frame[[*LABEL_COLUMNS, *extra]].fillna("")
-    payload = frame.to_csv(index=False, lineterminator=os.linesep)
-    atomic_write_bytes(Path(csv_path), payload.encode("utf-8"))
 
 
 def migrate_labels_csv(csv_path: Path, *, backup: bool = True, infer_side: bool = True) -> dict[str, int]:
@@ -535,47 +394,37 @@ def migrate_labels_csv(csv_path: Path, *, backup: bool = True, infer_side: bool 
 
     Devolve a contagem do que mudou, para o CLI poder dizer o que fez em vez de só "ok".
     """
-    csv_path = Path(csv_path)
-    if not csv_path.exists():
+    store = LabelStore(csv_path)
+    if not store.exists():
         raise FileNotFoundError(f"CSV de rótulos não encontrado: {csv_path}")
 
-    frame = read_labels_frame(csv_path)
-    if "fen" not in frame.columns or "filename" not in frame.columns:
-        raise ValueError("CSV de rótulos precisa ter ao menos as colunas `filename` e `fen`.")
-
+    rows = store.read_rows()
     if backup:
-        stamp = pd.Timestamp.utcnow().strftime("%Y%m%d_%H%M%S")
-        backup_path = csv_path.with_suffix(f"{csv_path.suffix}.bak-{stamp}")
-        backup_path.write_bytes(csv_path.read_bytes())
-        logger.info("Backup do CSV de rótulos em %s", backup_path)
+        store.backup()
 
-    counters = {"total": len(frame), "ja_tinha": 0, "inferido": 0, "sem_resposta": 0}
-    sides: list[str] = []
-    for raw in frame["fen"].astype(str):
-        parts = raw.strip().split()
+    counters = {"total": len(rows), "ja_tinha": 0, "inferido": 0, "sem_resposta": 0}
+    for row in rows:
+        parts = row.get("fen", "").split()
         if len(parts) > 1 and parts[1] in ("w", "b"):
             counters["ja_tinha"] += 1
-            sides.append(parts[1])
-            continue
-        if not infer_side:
+            lado = parts[1]
+        elif not infer_side:
             counters["sem_resposta"] += 1
-            sides.append("")
-            continue
-
-        decision = infer_side_to_move(parts[0])
-        if decision.source == "legality":
-            counters["inferido"] += 1
-            sides.append("w" if decision.color else "b")
+            lado = ""
         else:
-            # Padrao nao e resposta: gravar "w" aqui seria repetir exatamente o erro que a
-            # S-19 existe para corrigir, so que agora com aparencia de dado conferido.
-            counters["sem_resposta"] += 1
-            sides.append("")
+            decision = infer_side_to_move(parts[0] if parts else "")
+            if decision.source == "legality":
+                counters["inferido"] += 1
+                lado = "w" if decision.color else "b"
+            else:
+                # Padrao nao e resposta: gravar "w" aqui seria repetir exatamente o erro que
+                # a S-19 existe para corrigir, so que agora com aparencia de dado conferido.
+                counters["sem_resposta"] += 1
+                lado = ""
 
-    if "side_to_move" in frame.columns:
-        existing_side = frame["side_to_move"].fillna("").astype(str)
-        sides = [current or previous for current, previous in zip(sides, existing_side, strict=True)]
-    frame["side_to_move"] = sides
+        # O que ja estava na coluna vence o vazio, e nunca o contrario: a migracao preenche
+        # o que falta e nao reinterpreta o que alguem ja respondeu.
+        row["side_to_move"] = lado or row.get("side_to_move", "")
 
-    _write_labels(frame, csv_path)
+    store.rewrite(rows)
     return counters

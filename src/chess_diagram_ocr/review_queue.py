@@ -53,6 +53,7 @@ from .config import (
     ReadingOrder,
 )
 from .fen_utils import labels_from_fen, square_name
+from .labels import LabelStore
 from .pdf_to_pgn import DiagramPosition, ProgressCallback, ScannedDiagram, iter_pdf_diagrams
 
 logger = logging.getLogger(__name__)
@@ -335,17 +336,15 @@ def rare_classes_from_labels(csv_path: Path, *, share: float = RARE_CLASS_SHARE)
     if not csv_path.exists():
         return set()
 
-    import pandas as pd
-
     try:
-        frame = pd.read_csv(csv_path, usecols=["fen"])
+        pares = LabelStore(csv_path).read_pairs()
     except (OSError, ValueError) as exc:
         logger.warning("Não foi possível ler as classes de %s: %s", csv_path, exc)
         return set()
 
     counts: dict[str, int] = {}
     total = 0
-    for raw in frame["fen"].astype(str):
+    for _filename, raw in pares:
         try:
             indices = labels_from_fen(raw)
         except (ValueError, IndexError):

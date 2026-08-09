@@ -1445,7 +1445,29 @@ clique→arrasta→solta testada sem janela; nenhuma mudança visual.
 
 ---
 
-## S-51 · `LabelStore` — uma porta para o `labels.csv`
+## S-51 · `LabelStore` — uma porta para o `labels.csv` ✅ implementada (2026-08-09)
+
+> **Estado.** `src/chess_diagram_ocr/labels.py`. Os cinco módulos migrados, mais um **sexto**
+> que a varredura do critério de aceite encontrou e que nenhum levantamento tinha listado:
+> `review_queue.rare_classes_from_labels`.
+>
+> **Três defeitos que a migração fechou, e que não eram o objetivo do item.** Os três
+> caminhos de escrita do `audit.py` -- `apply_side_to_move_fixes`, `quarantine_fatal_labels` e
+> `remove_duplicate_labels`, todos alcançáveis por `cvoff-audit --fix` -- gravavam com
+> `to_csv` direto no destino: **sem escrita atômica** (o `atomic_io` promete cobrir este
+> arquivo) e **sem a normalização de inteiro da S-58** (o `--fix` reintroduzia o `20.0` que a
+> S-58 tinha acabado de corrigir). O `save_splits` tinha o mesmo defeito de atomicidade, num
+> arquivo que carrega a fronteira entre treino e teste.
+>
+> **Uma decisão que a spec não previa: `csv` da biblioteca padrão, não pandas.** A S-58 existe
+> porque o pandas infere tipo, e a correção de lá era uma disciplina (`dtype=str,
+> keep_default_na=False`) que precisava ser lembrada em cinco lugares. Com `csv.DictReader`
+> não há tipo a inferir. O defeito deixou de ser evitado e passou a não existir.
+>
+> **Medido:** a saída do `LabelStore` é **byte a byte idêntica** à do `_write_labels` que ele
+> substituiu, verificado sobre o `data/labels.csv` real de 3.313 linhas e sobre o
+> `data/splits.csv` de 3.311 -- e idêntica também aos arquivos versionados, que não mudaram um
+> byte.
 
 **Problema.** O `labels.csv` é lido e escrito com pandas em **cinco módulos**: `dataset.py`
 (`_load_entries`, `append_training_sample`, `_write_labels`, `migrate_labels_csv`),
@@ -1496,7 +1518,25 @@ por `LabelStore` é byte a byte igual ao de hoje para a mesma entrada.
 
 ---
 
-## S-52 · Recuperar a procedência dos 3.195 rótulos órfãos
+## S-52 · Recuperar a procedência dos 3.195 rótulos órfãos ⏳ metade implementada (2026-08-09)
+
+> **Estado.** O item tem duas metades independentes, e só uma foi feita.
+>
+> **Feita: `corrected_by` deixou de ser coluna morta.** Estava preenchida em **0 de 3.313**
+> linhas. Agora toda amostra nova sai com o caminho pelo qual chegou ao rótulo --
+> `ocr-aceito`, `ocr-corrigido`, `fila-revisao`, `dataset-recorrigido` ou `net-remoto` --, nas
+> duas telas. A regra de precedência mora em `labels.label_route`, e não no painel, para poder
+> ser testada sem abrir uma janela. `dataset_browser.route_distribution` a torna legível, e as
+> 3.313 linhas anteriores saem em `caminho não registrado`: é esse número encolhendo que dirá
+> se a coluna passou a valer alguma coisa.
+>
+> Um detalhe que só apareceu ao escrever: o painel gravava `corrected_by="tkinter"` num
+> caminho -- o nome da **tela**, que é a informação sem valor que a spec avisa para não
+> guardar. Virou `dataset-recorrigido`.
+>
+> **Não feita: recuperar a procedência dos 3.195 órfãos por hash perceptual.** É o item
+> abaixo, e ele exige varrer os 27 PDFs (~12 mil páginas) para montar o índice. Isso é horas
+> de CPU e uma decisão de quando, como a medição da S-40.
 
 **Problema.** Medido no `data/labels.csv` de 3.241 linhas:
 

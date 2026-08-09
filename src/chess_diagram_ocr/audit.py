@@ -10,16 +10,14 @@ import logging
 from collections import Counter
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 import cv2
 import numpy as np
-import pandas as pd
 
 from .config import PIECE_CLASSES
-from .dataset import read_labels_frame
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
+from .labels import LabelStore
 from .splits import load_splits
 
 logger = logging.getLogger(__name__)
@@ -114,11 +112,7 @@ def read_label_rows(csv_path: Path) -> list[tuple[str, str]]:
     precisar da mesma leitura: importar um `_nome` de outro módulo é sinal de que a fronteira
     está no lugar errado, e a fronteira certa aqui é "quem sabe ler o esquema de rótulos".
     """
-    df = read_labels_frame(csv_path)
-    required = {"filename", "fen"}
-    if not required.issubset(df.columns):
-        raise ValueError(f"O CSV precisa das colunas {required}. Encontradas: {set(df.columns)}")
-    return [(str(row.filename).strip(), str(row.fen).strip()) for row in df.itertuples(index=False)]
+    return LabelStore(csv_path).read_pairs()
 
 
 def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool = True) -> AuditReport:
@@ -302,13 +296,13 @@ def filenames_without_split(csv_path: Path, splits_path: Path) -> list[str]:
 
 
 def backup_csv(csv_path: Path) -> Path:
-    """Copia o CSV para um arquivo datado antes de qualquer escrita."""
-    csv_path = Path(csv_path)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = csv_path.with_name(f"{csv_path.name}.bak-{stamp}")
-    backup_path.write_bytes(csv_path.read_bytes())
-    logger.info("Backup criado: %s", backup_path)
-    return backup_path
+    """Copia o CSV para um arquivo datado antes de qualquer escrita.
+
+    Continua exportada com este nome porque é o que o `cvoff-audit` chama; o backup em si é
+    do `LabelStore` desde a S-51, para que "como se faz backup de um CSV de rótulos" tenha
+    uma resposta e não três (esta, a do `migrate_labels_csv` e a do CLI).
+    """
+    return LabelStore(csv_path).backup()
 
 
 def apply_side_to_move_fixes(csv_path: Path, report: AuditReport) -> int:
@@ -322,15 +316,16 @@ def apply_side_to_move_fixes(csv_path: Path, report: AuditReport) -> int:
     if not fixes:
         return 0
 
-    df = read_labels_frame(csv_path)
+    # Uma gravacao no fim, e nao uma por correcao: um `--fix` que conserta 100 rotulos
+    # reescrevia o arquivo 100 vezes. E, sobretudo, uma gravacao **atomica** -- ate a S-51
+    # este caminho usava `to_csv` direto no destino, o que trunca o dataset inteiro antes de
+    # escrever, e o `atomic_io` prometia cobrir justamente este arquivo.
+    store = LabelStore(csv_path)
     applied = 0
-    for idx, row in df.iterrows():
-        filename = str(row["filename"]).strip()
-        if filename in fixes:
-            df.at[idx, "fen"] = fixes[filename]
-            applied += 1
-
-    df.to_csv(csv_path, index=False)
+    with store.transaction() as tx:
+        for filename, suggested in fixes.items():
+            if tx.update(filename, fen=suggested):
+                applied += 1
     return applied
 
 
@@ -344,25 +339,15 @@ def quarantine_fatal_labels(csv_path: Path, report: AuditReport, quarantine_path
     if not fatal:
         return 0
 
-    df = read_labels_frame(csv_path)
-    mask = df["filename"].astype(str).str.strip().isin(fatal.keys())
-    removed = df[mask].copy()
-    if removed.empty:
-        return 0
-
-    removed["motivo"] = [
-        "; ".join(fatal[str(name).strip()].problems) for name in removed["filename"]
-    ]
-
-    quarantine_path = Path(quarantine_path)
-    quarantine_path.parent.mkdir(parents=True, exist_ok=True)
-    if quarantine_path.exists():
-        existing = read_labels_frame(quarantine_path)
-        removed = pd.concat([existing, removed], ignore_index=True)
-    removed.to_csv(quarantine_path, index=False)
-
-    df[~mask].to_csv(csv_path, index=False)
-    return int(mask.sum())
+    # Uma chamada para o conjunto todo, com o motivo resolvido por linha: e o que a forma de
+    # funcao do `extra` existe para permitir. Uma chamada por arquivo reescreveria os dois
+    # CSVs uma vez por rotulo ilegal -- e o relatorio da Fase 1 encontrou 100 deles.
+    movidas = LabelStore(csv_path).move_to(
+        LabelStore(quarantine_path),
+        fatal.keys(),
+        extra=lambda filename: {"motivo": "; ".join(fatal[filename].problems)},
+    )
+    return len(movidas)
 
 
 def remove_duplicate_labels(csv_path: Path, report: AuditReport) -> int:
@@ -371,7 +356,4 @@ def remove_duplicate_labels(csv_path: Path, report: AuditReport) -> int:
     if not to_remove:
         return 0
 
-    df = read_labels_frame(csv_path)
-    mask = df["filename"].astype(str).str.strip().isin(to_remove)
-    df[~mask].to_csv(csv_path, index=False)
-    return int(mask.sum())
+    return LabelStore(csv_path).remove(to_remove)

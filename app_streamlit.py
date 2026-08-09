@@ -28,6 +28,7 @@ from chess_diagram_ocr.config import (
     find_default_pdf_path,
 )
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen, square_name
+from chess_diagram_ocr.labels import label_route
 from chess_diagram_ocr.service import (
     OcrService,
     RecognitionOptions,
@@ -140,6 +141,10 @@ def _save_one(idx: int, fen: str, dataset_csv: Path, samples_dir: Path) -> Path:
         samples_dir=samples_dir,
         origin=st.session_state.get("result_origin"),
         side_to_move=st.session_state.get(f"side_edit_{idx}") or items[idx].side_to_move,
+        # A procedencia da S-52. Aqui so ha dois caminhos: esta tela nao tem a fila de
+        # revisao nem a aba de dataset (o fechamento da Fase 6 registra isso), e a correcao
+        # remota e um botao do Tkinter.
+        corrected_by=label_route(read_placement=items[idx].placement, saved_placement=fen),
     )
 
 

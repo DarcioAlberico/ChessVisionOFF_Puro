@@ -123,6 +123,10 @@ uma vez, e um número olhado repetidamente deixa de ser honesto. Compare no `val
   daquele programa.
 - **Escrita de arquivo de trabalho passa por `atomic_io`.** O `labels.csv` é trabalho
   humano acumulado, e a interface o regrava inteiro a cada correção.
+- **O `labels.csv` só é tocado pelo `labels.LabelStore` (S-51).** Nada de `pd.read_csv` ou
+  `to_csv` sobre ele em outro módulo — há teste que varre a árvore e falha. Precisa de várias
+  alterações? `with store.transaction():` grava uma vez no fim. Se o esquema precisar de uma
+  coluna, ela entra em `LABEL_COLUMNS`, num lugar só.
 - **Comentário explica o *porquê*.** O *o quê* está no código, e um comentário que o repete
   envelhece sozinho.
 

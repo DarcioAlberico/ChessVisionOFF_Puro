@@ -787,6 +787,12 @@ mora em `dataset.py` e `_write_labels` é privado dele, então `dataset_browser.
 reimplementa a gravação. São 3.241 rótulos de trabalho humano acumulado atrás de cinco portas
 diferentes.
 
+> **✅ Resolvida (S-51, 2026-08-09).** Eram **seis**, não cinco: a varredura que o critério de
+> aceite exige encontrou `review_queue.rare_classes_from_labels`, que nenhum levantamento
+> tinha listado. E as portas não concordavam — três caminhos do `audit.py` gravavam sem
+> escrita atômica e sem a normalização da S-58, o que fazia `cvoff-audit --fix` reintroduzir
+> o `20.0` que a S-58 acabara de corrigir. Ver 9.4.
+
 ### 9.2 — O que extrair, e por que cada um
 
 Não é decomposição por gosto. Cada extração abaixo tem uma consequência concreta:
@@ -835,6 +841,50 @@ Sobre `corrected_by`: ou passa a ser preenchida (o valor útil não é o nome do
 **como** a amostra chegou ao rótulo: `ocr-aceito`, `ocr-corrigido`, `fila-revisao`,
 `dataset-recorrigido`, `net-remoto`), ou sai do esquema. Uma coluna que ninguém escreve é
 pior que nenhuma coluna, porque parece um dado. → **S-52**.
+
+---
+
+### 9.4 — A porta única do `labels.csv`, e os três defeitos que ela achou ✅ (S-51)
+
+A extração que a 9.2 listava por último acabou vindo primeiro, e por um motivo prático: a
+S-52 precisa gravar um campo novo, e gravá-lo em cinco lugares seria escrever o defeito antes
+de consertá-lo.
+
+**O item era organização; o que ele encontrou era conserto.** Três caminhos do `audit.py` —
+`apply_side_to_move_fixes`, `quarantine_fatal_labels` e `remove_duplicate_labels`, todos
+alcançáveis por `cvoff-audit --fix` — gravavam com `df.to_csv(csv_path)` direto no destino:
+
+| garantia que a documentação afirmava | o que de fato acontecia |
+|---|---|
+| o `atomic_io` protege o `labels.csv` | `to_csv` trunca o destino antes de escrever, e o que estava sendo truncado era o dataset inteiro |
+| a S-58 fez o arquivo convergir para um formato de inteiro | `--fix` reintroduzia o `20.0`, e o arquivo voltava a ter os dois |
+
+O `save_splits` tinha o mesmo defeito de atomicidade, num arquivo que carrega a fronteira
+entre treino e teste — a decisão mais irreversível do projeto por desenho da S-07.
+
+**Eram seis portas, não cinco.** O critério de aceite pedia uma varredura que provasse que
+nenhum `read_csv`/`to_csv` sobrevive fora do módulo. Ela encontrou
+`review_queue.rare_classes_from_labels`, que nenhum levantamento tinha listado — e é
+exatamente por isso que a varredura é um teste e não uma revisão manual.
+
+**Uma decisão que a spec não previa: `csv` da biblioteca padrão, não pandas.** A S-58 existe
+porque o pandas infere tipo, e a correção dela era uma disciplina que precisava ser lembrada
+em cinco lugares. Com `csv.DictReader` não há tipo a inferir. O defeito deixou de ser evitado
+e passou a não existir.
+
+**Medido:** a saída é **byte a byte idêntica** à anterior, sobre o `labels.csv` real de 3.313
+linhas e o `splits.csv` de 3.311 — e idêntica aos arquivos versionados, que não mudaram um
+byte. Suíte de 805 para 813 testes.
+
+**E `corrected_by` deixou de ser coluna morta** (metade da S-52). Toda amostra nova sai com o
+caminho pelo qual chegou ao rótulo, nas duas telas. A regra mora em `labels.label_route` e não
+no painel — a mesma regra da Fase 6: o que dá para testar não fica na janela. As 3.313 linhas
+anteriores saem em `caminho não registrado` em `dataset_browser.route_distribution`, e é esse
+número encolhendo que dirá se a coluna passou a valer alguma coisa.
+
+Detalhe que só apareceu ao escrever o código: um caminho **já** gravava algo — o painel punha
+`corrected_by="tkinter"` ao regravar uma amostra da aba Dataset. O nome da tela é precisamente
+a informação sem valor que a spec avisa para não guardar.
 
 ---
 
@@ -958,7 +1008,9 @@ Se houver duas semanas:
 | 7–9 | **S-42 + S-43** (motor de OCR + faixa de legenda) | com a S-44 e a S-45 fora, é **o** item da Fase 8: os 7 livros sem texto e o `LAS BLANCAS JUEGAN PRIMERO` | ✅ código |
 | 9b | S-42/S-43 — **instalar o extra e medir** | `uv sync --extra ocr` e `cvoff-field --ocr rapidocr`. É a sua decisão: muda o que o projeto instala | ← próximo |
 | — | ~~S-45 (coordenadas)~~ | **medido: 13,7% de cobertura, 48/52 num livro que já lê a 1,000, e 0 diagramas do ponto de vista das pretas** | ⏸ |
-| 10 | S-51 (procedência) + S-52 (`corrected_by`) | destrava o split por livro, que melhora toda medição futura |
+| 10a | **S-51 (`LabelStore`)** | o `labels.csv` passa a ter uma porta, e o campo novo da S-52 tem onde entrar | ✅ |
+| 10b | **S-52, metade: `corrected_by`** | a coluna sai de 0 de 3.313 preenchidas; a outra metade (hash perceptual) precisa de horas de CPU | ✅ metade |
+| 10c | S-52, metade: procedência por hash perceptual | varrer 27 PDFs (~12 mil páginas) para casar os 3.195 órfãos; destrava o split por livro | |
 | 11–14 | S-46 a S-50 (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro |
 
 A ordem tem uma regra: **medição antes de mudança, e mudança antes de refatoração.** É a
