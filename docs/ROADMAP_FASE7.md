@@ -683,7 +683,14 @@ usuário não pediu.
 → **S-42** (interface `TextRecognizer` + provedores), **S-43** (leitor de faixa de legenda),
 **S-44** (glifo `W`/`B` e número, sem OCR), **S-45** (coordenadas → orientação).
 
-### 8.3 — As coordenadas do tabuleiro fecham a pendência da S-13
+### 8.3 — As coordenadas do tabuleiro fecham a pendência da S-13 — **medido: não fecham, e talvez não haja o que fechar**
+
+> **Levantamento de 2026-08-09.** Coordenadas legíveis na camada de texto em **52 de 380
+> diagramas (13,7%)**, dos quais **48 são do `Polgar`**, que já lê a 1,000. E dos 49
+> conclusivos, **49 apontam ponto de vista das brancas e nenhum das pretas** — a pendência
+> que esta seção existe para fechar não apareceu uma vez. O item saiu do sequenciamento.
+> Números em [EXPERIMENTS_FASE7.md](EXPERIMENTS_FASE7.md); o texto abaixo é a proposta
+> original, mantida porque o raciocínio continua certo para um acervo que tenha o caso.
 
 A S-13 deixou uma pendência nomeada no ROADMAP: **diagrama impresso do ponto de vista das
 pretas**. Ali as peças estão desenhadas para cima e o que muda é o mapeamento casa→índice,
@@ -908,11 +915,11 @@ Se houver duas semanas:
 | 4 | S-40 (aumento dirigido) — **implementado** | módulo, testes e `--augment`; desligado por padrão | ✅ código |
 | 5 | S-40 — **medir** (~110 min de CPU) | a máquina estava em uso; é a sua decisão de quando | ← próximo |
 | 6 | **medir contra o conjunto de campo** | fim da Fase 7: a taxa de exportação saiu de 0,6842 ou não | |
-| 7 | S-44 (glifo `W`/`B` e número) | não depende de OCR; resolve o Gallagher e a convenção Batsford inteira |
-| 8–9 | S-42 + S-43 (motor de OCR + faixa de legenda) | resolve o `LAS BLANCAS JUEGAN PRIMERO` e os 7 livros sem texto |
-| 10 | S-45 (coordenadas) | fecha a pendência da S-13, se a cobertura medida justificar |
-| 11 | S-51 (procedência) + S-52 (`corrected_by`) | destrava o split por livro, que melhora toda medição futura |
-| 12–14 | S-46 a S-50 (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro |
+| — | ~~S-44 (glifo `W`/`B`)~~ | **medido: 0 ocorrências em 380 diagramas com texto.** O único livro que tem o marcador não tem camada de texto | ⏸ |
+| 7–9 | **S-42 + S-43** (motor de OCR + faixa de legenda) | com a S-44 e a S-45 fora, é **o** item da Fase 8: os 7 livros sem texto e o `LAS BLANCAS JUEGAN PRIMERO` |
+| — | ~~S-45 (coordenadas)~~ | **medido: 13,7% de cobertura, 48/52 num livro que já lê a 1,000, e 0 diagramas do ponto de vista das pretas** | ⏸ |
+| 10 | S-51 (procedência) + S-52 (`corrected_by`) | destrava o split por livro, que melhora toda medição futura |
+| 11–14 | S-46 a S-50 (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro |
 
 A ordem tem uma regra: **medição antes de mudança, e mudança antes de refatoração.** É a
 mesma que as Fases 1 a 6 seguiram, e é o que permitiu à Fase 5 descartar TTA, pesos de classe

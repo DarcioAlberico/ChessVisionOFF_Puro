@@ -208,3 +208,105 @@ reproduzir a degradação certa, porque a degradação certa não é a hachura. 
 continua sendo **anotar meia dúzia de páginas do Euwe e do Gallagher** e pôr o domínio real
 no treino — mais caro em tempo humano, e sem o risco de ensinar o modelo a ser robusto a uma
 degradação que não é a que ele encontra.
+
+---
+
+## Fase 8 · Três levantamentos que enfraqueceram três itens da spec
+
+A spec das Fases 7 a 11 foi escrita antes destes números. Os três itens abaixo continuam
+tecnicamente corretos e passaram a valer muito menos do que ela supunha. Registrado aqui para
+que ninguém os implemente confiando na estimativa.
+
+Amostragem: 12 páginas por livro nos dois primeiros, 40 no terceiro, nos 27 PDFs.
+
+### S-44 · O marcador `W`/`B`: **zero ocorrências na camada de texto do acervo**
+
+A spec dizia que a convenção Batsford (`W`/`B` colado à borda do diagrama) é a mais comum da
+literatura inglesa, e que ela não é lida nem nos livros que **têm** camada de texto.
+
+Varridas todas as linhas de 1 a 3 caracteres na vizinhança de cada diagrama (raio de 40 pt),
+em 380 diagramas de 19 livros com texto: **nenhum marcador `W`/`B`**. O levantamento acusou 5
+livros, e os cinco são falso positivo dele mesmo — o que achou foram glifos da fonte de
+xadrez sobrepostos ao tabuleiro:
+
+| achado | ocorrências | o que é |
+|---|---|---|
+| `+` sobreposto | 382 | fonte de diagrama |
+| `P`, `O`, `R` sobrepostos | 78 | fonte de diagrama |
+| `[2]`, `[3]`, `[4]` à direita | 30 | número de solução do `Karpov` |
+
+E o único livro do acervo que **tem** o marcador impresso — o `GALLAGHER`, onde o `B` ao lado
+do diagrama 76 foi verificado à vista — **não tem camada de texto nenhuma**.
+
+**Conclusão.** A parte (a) da S-44 (padrão de letra isolada na camada de texto) não tem o que
+ler: alcance **0 de 27 livros**. A parte (b) (classificador de glifo sobre a imagem) continua
+sendo o único caminho, precisa de um dataset de glifos anotado à mão, e o alcance conhecido é
+**1 livro**.
+
+### S-45 · Coordenadas: **13,7%, e nenhum diagrama do ponto de vista das pretas**
+
+A spec propunha ler as coordenadas impressas para (i) fechar a pendência da S-13 — diagrama
+impresso do ponto de vista das pretas — e (ii) obter o registro exato da grade.
+
+Filas (`1`–`8`) e colunas (`a`–`h`) isoladas na vizinhança de cada diagrama, 380 diagramas:
+
+| | diagramas | fração |
+|---|---|---|
+| com as **filas** legíveis no texto | 52 | 13,7% |
+| com as **colunas** legíveis no texto | 2 | 0,5% |
+
+E os 52 estão concentrados: **48 são do `Polgar 5334`**, que já lê a **1,000** no conjunto de
+campo. Os outros 4 são do `Yusupov`, todos parciais — a extração perde dígitos (`876541`,
+`765432`).
+
+O achado que mais importa é o outro. Dos 49 diagramas em que a sequência é conclusiva:
+
+| ponto de vista | diagramas |
+|---|---|
+| brancas (`87654321`) | **49** |
+| pretas (`12345678`) | **0** |
+
+**A pendência da S-13 pode não existir neste acervo.** Ela está aberta no ROADMAP desde a
+Fase 2, e em 49 diagramas com evidência não há um só. A ressalva honesta: 49 é a amostra
+**com evidência**, não 380 — os outros 331 não têm coordenada que confirme nem desminta.
+
+**Conclusão.** A S-45 pela camada de texto alcança um livro, e é o que menos precisa. O
+benefício de registro de grade continua real, e continua disponível só onde há coordenada.
+
+### S-43 · A faixa de margem descarta **6 declarações contra 150** que a S-16 já vê
+
+`pdf_text.MARGIN_BAND = 0,07` joga fora 7% do topo e do rodapé como cabeçalho corrente. A
+spec aponta que o `LAS BLANCAS JUEGAN PRIMERO` do `Reinfeld` mora exatamente ali — verdade, e
+verificado à vista —, mas aquele livro não tem camada de texto: a perda é do OCR, não da S-16.
+
+Nos 27 livros, 40 páginas cada, contando declarações dentro e fora da faixa:
+
+| | ocorrências | livros |
+|---|---|---|
+| descartadas pela faixa de margem | **6** | 3 |
+| que a S-16 já enxerga | **150** | — |
+
+As 6, uma a uma:
+
+| livro | texto | veredito |
+|---|---|---|
+| `Koblenz` | `Juegan las blancas` ×2, `Juegan las negras` ×1 | **perda real** |
+| `AAGAARD` | `Black to play - what is the only move?`, `There are two ways for White to play,` | enunciado que caiu na faixa; recuperável |
+| `Polgar` | `2.1 White to Move #2` | **cabeçalho de seção** — é o que a faixa existe para descartar |
+
+**Conclusão.** O conserto vale ~4% a mais de declarações, em 3 livros, e o caso do `Polgar`
+mostra por que ele não é trivial: ali o texto na margem é um cabeçalho corrente que
+**também** é uma declaração de escopo verdadeira para a seção inteira. Distinguir "cabeçalho
+que declara" de "cabeçalho que repete" não é a mudança de uma linha que a spec sugeria.
+
+### O que os três juntos dizem sobre a Fase 8
+
+O valor da Fase 8 **concentra-se no OCR de verdade** (S-42 + S-43), e não nos atalhos que a
+spec propunha para evitá-lo. Os 7 livros sem camada de texto continuam sendo o alvo, o
+`LAS BLANCAS JUEGAN PRIMERO` continua impresso e legível, e agora se sabe que não há caminho
+barato até ele: nenhum `W`/`B` em texto, coordenadas em 13,7%, e a faixa de margem valendo 6
+declarações.
+
+Isso torna a decisão sobre a dependência de OCR — que o ROADMAP lista como do dono do
+projeto — **mais** consequente, não menos: ela deixou de ser um item entre vários e passou a
+ser *o* item da Fase 8.

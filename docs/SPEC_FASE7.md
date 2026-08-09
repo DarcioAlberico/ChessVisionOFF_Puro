@@ -949,7 +949,11 @@ Duas correções que a S-43 traz junto, e que valem **também** para os livros c
 texto:
 
 - **`MARGIN_BAND` descarta declaração de escopo de página.** `pdf_text:85` joga fora 7% do
-  topo e do rodapé, como cabeçalho corrente. Medido: a página 40 do
+  topo e do rodapé, como cabeçalho corrente. **Medido (2026-08-09): vale 6 declarações
+  contra as 150 que a S-16 já vê, em 3 livros** -- e uma das 6 é o `2.1 White to Move #2` do
+  `Polgar`, um cabeçalho de seção que é ao mesmo tempo uma declaração de escopo verdadeira.
+  Distinguir "cabeçalho que declara" de "cabeçalho que repete" não é a mudança de uma linha
+  que o parágrafo abaixo sugere. Medido: a página 40 do
   `Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf` tem
   **`LAS BLANCAS JUEGAN PRIMERO`** exatamente nessa faixa, e é uma declaração que vale para os
   seis diagramas da página. A faixa de margem passa a ser **testada contra os padrões de lado
@@ -1007,6 +1011,19 @@ prova que o OCR entra pela porta da S-16 e não por uma paralela. Faixa de marge
 ---
 
 ## S-44 · O marcador `W`/`B` e o número do diagrama, sem depender de OCR
+
+> **Medido (2026-08-09): a parte (a) não tem o que ler, e a (b) alcança um livro.**
+>
+> Varridas as linhas de 1 a 3 caracteres na vizinhança de 380 diagramas em 19 livros com
+> camada de texto: **nenhum marcador `W`/`B`**. Os 5 livros que o levantamento acusou são
+> falso positivo dele mesmo -- glifos da fonte de xadrez sobrepostos ao tabuleiro (`+` ×382,
+> `P`/`O`/`R` ×78). E o único livro do acervo que **tem** o marcador impresso, o `GALLAGHER`,
+> não tem camada de texto.
+>
+> A parte (a) descrita abaixo -- padrão de letra isolada na camada de texto -- portanto
+> **não entra**: alcance 0 de 27. A parte (b), o classificador de glifo, continua sendo o
+> único caminho e precisa de um dataset anotado à mão para alcançar **1 livro**.
+> Ver docs/EXPERIMENTS_FASE7.md.
 
 **Problema.** `pdf_text._match_side_symbol:268` conhece `◻□▫⬜◽⚪` e `◼■▪⬛◾⚫`. Não conhece
 `W` e `B` — a convenção tipográfica mais comum da literatura inglesa de xadrez (Batsford,
@@ -1088,6 +1105,16 @@ fontes → o número certo.
 ---
 
 ## S-45 · Coordenadas do tabuleiro: orientação, ponto de vista das pretas e registro da grade
+
+> **Medido (2026-08-09): 13,7% de cobertura, e a pendência que ela fecharia pode não existir.**
+>
+> Em 380 diagramas com camada de texto, **52 (13,7%)** têm as filas legíveis e **2 (0,5%)**
+> têm as colunas. Dos 52, **48 são do `Polgar 5334`** -- que já lê a 1,000 no conjunto de
+> campo. E dos 49 conclusivos, **49 são do ponto de vista das brancas e 0 das pretas**.
+>
+> A pendência da S-13 que este item existe para fechar não apareceu uma vez em 49 diagramas
+> com evidência. O item **não entra agora**; o benefício de registro de grade continua real
+> e continua limitado a onde há coordenada. Ver docs/EXPERIMENTS_FASE7.md.
 
 **Problema.** A S-13 deixou uma pendência nomeada no ROADMAP: **diagrama impresso do ponto de
 vista das pretas**. Ali as peças estão desenhadas para cima e o que muda é o mapeamento
