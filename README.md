@@ -393,5 +393,7 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
+- [docs/EXPERIMENTS_FASE7.md](docs/EXPERIMENTS_FASE7.md) -- o que foi medido na Fase 7:
+  o refino do contorno, e a normalizacao de tabuleiro que **nao** entrou (S-38, S-39)
 - [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) -- o que foi medido na Fase 5, incluindo o
   que nao ajudou (memoria, workers, pesos de classe, arquitetura, TTA, ONNX)

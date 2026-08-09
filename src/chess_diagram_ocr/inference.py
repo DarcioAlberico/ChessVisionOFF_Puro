@@ -32,6 +32,7 @@ from .fen_utils import (
     square_name,
 )
 from .model import DEFAULT_ARCH, ArchConfig, build_model, preprocess_cell_to_tensor
+from .preprocess import IDENTITY, BoardNormalizer, NormalizerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -256,8 +257,13 @@ def board_probabilities(
     device: str,
     *,
     tta: bool = False,
+    normalizer: NormalizerConfig = IDENTITY,
 ) -> np.ndarray:
     """Matriz (64, 13) de probabilidades por casa.
+
+    `normalizer` roda no **tabuleiro inteiro**, antes do corte em casas (S-39): iluminação e
+    trama são propriedades da página, e estimá-las sobre 100×100 px de uma casa é estimá-las
+    sobre ruído. `IDENTITY` (o padrão) devolve a mesma imagem e não custa nada.
 
     A temperatura da S-28 é aplicada aqui, sobre os logits, e não dentro do `forward`:
     dividir no treino mudaria o gradiente. Com `tta`, as vistas são somadas **depois** do
@@ -267,6 +273,7 @@ def board_probabilities(
     """
     arch = getattr(model, "arch", DEFAULT_ARCH)
     temperature = float(getattr(model, "temperature", 1.0))
+    board_rgb = BoardNormalizer(normalizer).normalize(board_rgb)
     views = tta_views(board_rgb) if tta else [board_rgb]
 
     tensors = [preprocess_cell_to_tensor(cell, arch) for view in views for cell in split_board_into_cells(view)]
@@ -288,11 +295,12 @@ def predict_board(
     uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     constrained: bool = CONSTRAINED_DECODING,
     tta: bool = TTA_ENABLED,
+    normalizer: NormalizerConfig = IDENTITY,
 ) -> BoardPrediction:
-    """Reconhece um tabuleiro já recortado e normalizado, preservando as probabilidades."""
+    """Reconhece um tabuleiro já recortado, preservando as probabilidades."""
     board = cv2.rotate(board_rgb, cv2.ROTATE_180) if rotate_180 else board_rgb
     return prediction_from_probs(
-        board_probabilities(board, model, device, tta=tta),
+        board_probabilities(board, model, device, tta=tta, normalizer=normalizer),
         uncertain_threshold=uncertain_threshold,
         constrained=constrained,
     )
@@ -343,6 +351,7 @@ def predict_with_orientation(
     decisive_margin: float = ORIENTATION_DECISIVE_MARGIN,
     pawn_prior_margin: float = ORIENTATION_PAWN_PRIOR_MARGIN,
     tta: bool = TTA_ENABLED,
+    normalizer: NormalizerConfig = IDENTITY,
 ) -> OrientedPrediction:
     """Reconhece o diagrama decidindo a orientação por diagrama, não por checkbox global.
 
@@ -389,6 +398,7 @@ def predict_with_orientation(
             uncertain_threshold=uncertain_threshold,
             constrained=constrained,
             tta=tta,
+            normalizer=normalizer,
         )
 
     if mode != "auto":

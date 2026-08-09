@@ -55,6 +55,7 @@ from .inference import (
 )
 from .pdf_io import get_pdf_page_count, render_pdf_page
 from .pdf_text import DiagramContext, contexts_for_pdf_page
+from .preprocess import IDENTITY, NormalizerConfig
 from .semantics import SideToMove, compose_fen, infer_side_to_move
 
 logger = logging.getLogger(__name__)
@@ -435,6 +436,13 @@ class RecognitionOptions:
     max_boards: int = DEFAULT_MAX_BOARDS
     dpi: int = 220
 
+    normalizer: NormalizerConfig = IDENTITY
+    """Normalização do tabuleiro antes do corte em casas (S-39).
+
+    Padrão `IDENTITY`, que é o pipeline anterior. Ligar etapas aqui muda o domínio que o
+    modelo vê, e um checkpoint treinado sem elas não é o mesmo modelo -- ver
+    `NormalizerConfig.version`."""
+
     refine_detected_boards: bool = False
     """Rodar o detector de contorno dentro do quad para alinhar melhor o recorte.
 
@@ -636,6 +644,7 @@ class OcrService:
                 orientation=options.orientation,
                 max_boards=options.max_boards,
                 dpi=options.dpi,
+                normalizer=options.normalizer,
                 refine_detected_boards=options.refine_detected_boards,
                 fallback_to_full_image=True,
             ),
@@ -667,6 +676,7 @@ class OcrService:
                     model,
                     device,
                     mode=options.orientation,  # type: ignore[arg-type]
+                    normalizer=options.normalizer,
                 )
                 prediction = oriented.prediction
                 context = contexts[idx] if idx < len(contexts) else None

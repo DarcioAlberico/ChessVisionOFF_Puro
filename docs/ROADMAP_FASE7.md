@@ -3,7 +3,9 @@
 Continuação de [ROADMAP.md](ROADMAP.md), que fecha na Fase 6. Especificação detalhada em
 [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-63). Para o *como* de hoje,
 [ARCHITECTURE.md](ARCHITECTURE.md); para os números de referência,
-[BASELINE.md](BASELINE.md).
+[BASELINE.md](BASELINE.md);
+para o que foi medido nesta fase — **inclusive o que não entrou** —
+[EXPERIMENTS_FASE7.md](EXPERIMENTS_FASE7.md).
 
 **Data da análise:** 2026-08-09 · **Ramo:** `fase-5-modelo-desempenho` · **Commit base:** `ee308dd`
 
@@ -374,6 +376,54 @@ O `BoardVerifier` continua especificado e continua certo como arquitetura: hoje 
 candidato precisa parecer um tabuleiro para ser lido, e o caminho da imagem embutida não
 olha os pixels. Só não é onde está o retorno agora, e implementá-lo antes de medir seria
 fazer o que a Fase 5 aprendeu a não fazer.
+
+---
+
+### 7.0.9 — Normalizar o tabuleiro: medido, e **nada entrou ligado** (S-39)
+
+A hipótese da 7.2 abaixo parecia forte, e a medição a desmontou. Os números completos estão
+em [EXPERIMENTS_FASE7.md](EXPERIMENTS_FASE7.md); o resumo é curto porque o resultado é.
+
+Dez variantes de normalização no conjunto de campo, uma etapa por vez e em combinação:
+
+| variante | taxa de exportação |
+|---|---|
+| **nenhuma (base)** | **0,6842** |
+| deskew · campo plano · CLAHE — isolados ou juntos | 0,6842, **idênticos** |
+| qualquer combinação com supressão de trama | **0,0000** |
+
+**Campo plano e CLAHE não mudam nada, e o motivo é interessante.** Não é que estejam
+desligados: medida no tabuleiro do Euwe p25, a diferença média de pixel é 3,67 e 3,00. Eles
+alteram a imagem e não alteram a leitura — porque `build_train_transform` já usa
+`ColorJitter(brightness=0.3, contrast=0.3)`, e o modelo **já foi treinado a ignorar
+exatamente esse tipo de ajuste global**. O aumento genérico que a S-40 chama de insuficiente
+já cobre metade do que a S-39 propunha fazer na inferência.
+
+**A trama não é separável da peça por escala.** A hachura do Euwe tem período de ~12,5 px
+numa casa de 100 px — a ordem de grandeza do traço da peça. Testado por mediana e por
+morfologia, que separam por escala de formas diferentes: o kernel que começa a mover o Euwe
+(0,000 → 0,10 no melhor caso, ainda **oito vezes abaixo do gate**) é o mesmo que derruba
+`Karpov` e `Polgar` de 1,000 para 0,05–0,79. Não há janela.
+
+**O que fica.** `preprocess.py`, com tudo desligado e a medição no docstring — a mesma
+decisão que a Fase 5 tomou com o TTA e com a temperatura calibrada. `estimate_skew` é
+correto e barato, devolve 0,0 em todos os 38 diagramas do conjunto, e isso também é
+informação: o warp da S-12 não está deixando sobra de rotação.
+
+**O que isto muda no plano.** A S-39 e a S-40 eram um par — tornar a entrada parecida com o
+treino, ou tornar o treino parecido com a entrada. A medição elimina a primeira metade.
+Sobram duas saídas, e as duas são de **treino**:
+
+1. **S-40, aumento dirigido** — sintetizar hachura e granulação sobre as amostras limpas. O
+   `ColorJitter` acabou de provar que o modelo aprende invariância quando o aumento a ensina.
+2. **Anotar os livros hachurados** — as 3.289 amostras vêm quase todas dos livros fáceis.
+   Meia dúzia de páginas do Euwe e do Gallagher corrigidas à mão põem o domínio no treino sem
+   ninguém precisar simulá-lo. Mais barato de acertar, mais caro em tempo seu.
+
+E o erro concreto que qualquer uma das duas precisa consertar tem nome: no Euwe p25 o modelo
+lê as três primeiras filas **corretamente** e confunde **bispo branco com peão branco em casa
+hachurada**. Não é "o tabuleiro é ilegível" — é uma confusão de classe específica num fundo
+específico, e isso é o tipo de coisa que aumento de dados resolve.
 
 ---
 
@@ -854,8 +904,8 @@ Se houver duas semanas:
 | 1 | S-37 (ambiente) + S-41 (conjunto de campo) | sem os dois, nada do que vem depois é verificável | ✅ |
 | 2 | S-38a (o refino não pode piorar) | o que a S-41 revelou na primeira medição | ✅ |
 | — | ~~S-38b (`BoardVerifier`)~~ | **adiado por medição**: 1 falso positivo a ganhar, 35 verdadeiros a arriscar | ⏸ |
-| 3–4 | **S-39** (`BoardNormalizer`) | **9 dos 12 diagramas perdidos são confiança**, e é aqui que ela se resolve | ← próximo |
-| 5 | S-40 (aumento dirigido) + retreino | fecha o par com a S-39; medir os dois juntos e separados | |
+| 3 | ~~S-39 (`BoardNormalizer`)~~ | **medido, nada entrou ligado**: campo plano e CLAHE são no-op (o `ColorJitter` já ensinou), e a trama não é separável da peça por escala | ✅ medido |
+| 4–5 | **S-40** (aumento dirigido) + retreino | a S-39 caiu, então este é o caminho inteiro: o treino tem de ver hachura | ← próximo |
 | 6 | **medir contra o conjunto de campo** | fim da Fase 7: a taxa de exportação saiu de 0,6842 ou não | |
 | 7 | S-44 (glifo `W`/`B` e número) | não depende de OCR; resolve o Gallagher e a convenção Batsford inteira |
 | 8–9 | S-42 + S-43 (motor de OCR + faixa de legenda) | resolve o `LAS BLANCAS JUEGAN PRIMERO` e os 7 livros sem texto |
