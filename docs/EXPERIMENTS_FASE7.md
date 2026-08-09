@@ -385,3 +385,72 @@ exatamente o mesmo problema numa segunda dimensão: retomar com motor uma varred
 sem ele produziria um PGN em que metade dos `[SideToMoveSource]` diz `default` e a outra
 `ocr`, sem que a diferença seja do livro. `ocr_engine` entrou no cabeçalho do parcial pelo
 mesmo motivo e com o mesmo default vazio.
+
+---
+
+## S-52 · O casamento por hash perceptual, contra verdade de referência
+
+Medido em 2026-08-09. O item promete **reportar a taxa** e recusa **prometer 100%**, então a
+primeira coisa a medir não é a taxa — é se o mecanismo acerta quando tem o que casar.
+
+### A sonda que dá confiança
+
+As amostras salvas depois da S-31 têm `source_pdf` e `source_page` gravados pela
+`RecognitionOrigin`. Isso é verdade de referência de graça: dá para casá-las às cegas e
+conferir a resposta.
+
+Índice das **20 primeiras páginas** do `1937 Kemeri.pdf` (11 diagramas), contra as 12
+amostras daquelas páginas que têm procedência gravada:
+
+| | |
+|---|---|
+| casadas | **12 de 12** |
+| distância | **0** em todas |
+| página recuperada correta | **12 de 12** |
+| ambíguas | 0 |
+
+Distância 0 era o esperado, e vale dizer por quê: essas amostras foram salvas pelo caminho
+`embedded` com o detector de hoje, então o recorte indexado é o mesmo pixel a pixel. É o
+melhor caso, não o caso médio.
+
+### A sonda que dá cautela
+
+Os **3.195 órfãos** contra o mesmo índice de 11 diagramas — quase nenhum deles deveria casar:
+
+| | |
+|---|---|
+| casamentos | **0** |
+| impostor mais próximo | **7 bits** (2 amostras) |
+| depois | 9 (×1), 10 (×2), 11 (×13), 12 (×7), 13 (×12), 14 (×17), 15 (×37)… |
+| distância máxima vista | 103 bits |
+
+Zero falso positivo é bom. O problema é a folga.
+
+**O limiar é 6, e o impostor mais próximo está a 7.** Do outro lado, um recorte deslocado em
+6 px num tabuleiro de 800 custa **6 bits** (medido em `tests/test_provenance.py`) — e
+reenquadramento é exatamente o que separa uma amostra de julho do detector de agosto, que a
+S-38a mudou. As duas distribuições — casamento verdadeiro reenquadrado e impostor mais
+próximo — quase se tocam.
+
+E este é o caso **mais fácil possível**: 11 entradas de índice. Com o acervo inteiro, dezenas
+de milhares, o impostor mais próximo só pode chegar mais perto.
+
+### O que isso decidiu no desenho
+
+Três coisas, e nenhuma delas seria óbvia sem os números acima:
+
+- **`cvoff-provenance --match` não grava.** Gravar é `--apply`, um segundo comando. A
+  operação escreve em até 3.195 linhas de trabalho humano de uma vez, e a taxa é justamente o
+  número que precisa ser olhado antes.
+- **O relatório traz o histograma de distância**, e não só a contagem acima do limiar. Um pico
+  logo acima do corte significa casamento bom sendo recusado; um platô significa que não há o
+  que casar. As duas leituras mudam o que fazer, e a contagem sozinha não distingue.
+- **Ambiguidade é medida contra o segundo melhor de outro livro**, com folga de 4 bits. Duas
+  renderizações da mesma posição em livros distintos ficam por volta de 10 bits (medido pela
+  auditoria da Fase 1), então a folga separa "é este diagrama" de "é um dos dois".
+
+### O que **não** foi medido
+
+A taxa real sobre os 3.195 órfãos. Ela exige indexar os 27 PDFs — ~12 mil páginas, e a S-61
+mediu 0,043 s de render mais 0,562 s de detecção por página. São horas de CPU, e é uma decisão
+de quando, do mesmo tipo da medição da S-40.

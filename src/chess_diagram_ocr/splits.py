@@ -91,6 +91,37 @@ def group_keys(filenames: Iterable[str], groups: Iterable[Iterable[str]]) -> dic
     return keys
 
 
+def groups_by_book(provenance: Mapping[str, str]) -> list[list[str]]:
+    """Agrupa as amostras por livro de origem, para o split por livro da S-07/S-52.
+
+    `provenance` é `{nome do arquivo: source_pdf}`; amostra sem procedência fica de fora e
+    continua com split individual, que é o comportamento de hoje.
+
+    **Por que isto importa.** O split de hoje é por hash do nome do arquivo, agrupado por
+    diagrama duplicado. Com ele, o mesmo livro aparece nos três conjuntos, e o número do
+    `test` responde "quão bem o modelo lê um diagrama parecido com os que viu" -- não "quão
+    bem ele lê um livro que nunca viu". A segunda pergunta é a do produto, e ela precisa que
+    o livro inteiro caia de um lado só.
+
+    **Duas ressalvas honestas, e as duas são consequência do desenho da S-07.**
+
+    1. `ensure_splits` **nunca move uma amostra já registrada**, e é essa garantia que mantém
+       o conjunto de teste confiável ao longo do tempo. Então agrupar por livro só passa a
+       valer de fato para amostras novas ou numa reatribuição do zero (`--fresh`): as 3.313 já
+       registradas continuam onde estão, com o livro espalhado entre os três conjuntos.
+    2. Um acervo de 27 livros dá 27 grupos, e 10% deles é 2,7 livros. A granularidade do
+       split cai muito: um livro grande pode levar sozinho mais que a fatia inteira de teste.
+       Isso não é defeito do agrupamento, é o que agrupar por livro significa -- e é preciso
+       olhar a distribuição resultante antes de adotá-lo.
+    """
+    por_livro: dict[str, list[str]] = {}
+    for filename, book in provenance.items():
+        if not book:
+            continue
+        por_livro.setdefault(book, []).append(filename)
+    return [sorted(membros) for _livro, membros in sorted(por_livro.items()) if len(membros) > 1]
+
+
 def compute_splits(
     filenames: Iterable[str],
     *,

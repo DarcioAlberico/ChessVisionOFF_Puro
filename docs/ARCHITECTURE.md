@@ -89,6 +89,7 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | `batch.py` | Varredura da biblioteca inteira, com relatório consolidado. |
 | `review_queue.py` | Fila ordenada por valor de informação. |
 | `labels.py` | **A porta única do `labels.csv`** (S-51): esquema, leitura, escrita atômica, transação. |
+| `provenance.py` | Recupera de que livro e página veio cada amostra órfã, por hash perceptual (S-52). |
 | `dataset.py` · `splits.py` · `audit.py` | Dados de treino: leitura, partição estável, auditoria. |
 | `training.py` · `model.py` · `checkpoint.py` | Treino, arquitetura e persistência. |
 | `calibration.py` · `evaluation.py` · `experiments.py` | Medição. |
@@ -182,6 +183,7 @@ parcial e sobrevive, o treino perde o progresso desde a última época melhor (S
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
 | `data/app_tkinter_state.json` | último PDF, página, zoom | não |
 | `data/review_queue.json` | a fila de revisão | não |
+| `data/provenance_index.jsonl` | dHash de cada diagrama do acervo, para recuperar procedência (S-52) | não (horas para reconstruir, mas derivável dos PDFs) |
 | `models/*.pt` | checkpoints, com semente, split e métrica gravados | não |
 | `data/splits.csv` | partição, atribuída às amostras novas pelo próprio treino (S-56) | sim |
 | `PGN/<livro>.pgn` | as posições aceitas | não |

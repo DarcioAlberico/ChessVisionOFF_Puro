@@ -1518,9 +1518,9 @@ por `LabelStore` é byte a byte igual ao de hoje para a mesma entrada.
 
 ---
 
-## S-52 · Recuperar a procedência dos 3.195 rótulos órfãos ⏳ metade implementada (2026-08-09)
+## S-52 · Recuperar a procedência dos 3.195 rótulos órfãos ✅ implementada, não medida no acervo (2026-08-09)
 
-> **Estado.** O item tem duas metades independentes, e só uma foi feita.
+> **Estado.** O item tem duas metades independentes, e as duas foram implementadas.
 >
 > **Feita: `corrected_by` deixou de ser coluna morta.** Estava preenchida em **0 de 3.313**
 > linhas. Agora toda amostra nova sai com o caminho pelo qual chegou ao rótulo --
@@ -1534,9 +1534,28 @@ por `LabelStore` é byte a byte igual ao de hoje para a mesma entrada.
 > caminho -- o nome da **tela**, que é a informação sem valor que a spec avisa para não
 > guardar. Virou `dataset-recorrigido`.
 >
-> **Não feita: recuperar a procedência dos 3.195 órfãos por hash perceptual.** É o item
-> abaixo, e ele exige varrer os 27 PDFs (~12 mil páginas) para montar o índice. Isso é horas
-> de CPU e uma decisão de quando, como a medição da S-40.
+> **Feita depois: `provenance.py` + `cvoff-provenance`.** O índice é JSONL incremental (um
+> livro por vez, um livro reindexado substitui o que havia dele) e o casamento é vetorizado --
+> 3.195 amostras contra dezenas de milhares de diagramas são centenas de milhões de distâncias
+> de Hamming, e em Python puro isso levaria horas.
+>
+> **Medido em 2026-08-09, contra verdade de referência.** As amostras salvas depois da S-31
+> têm procedência gravada, então dá para conferir o casamento sem depender de opinião. Índice
+> das 20 primeiras páginas do `1937 Kemeri`:
+>
+> | sonda | resultado |
+> |---|---|
+> | 12 amostras daquelas páginas, com procedência conhecida | **12 de 12**, todas a distância 0, todas na **página certa** |
+> | os 3.195 órfãos contra o mesmo índice | **0** casamentos; impostor mais próximo a **7 bits** |
+>
+> **E o resultado pede cautela, não confiança.** Um recorte deslocado em 6 px num tabuleiro de
+> 800 custa 6 bits — exatamente o limiar. O impostor mais próximo estava a 7. A folga é de um
+> bit, com um índice de **11** entradas; com o acervo inteiro ela só encolhe. Por isso o
+> `cvoff-provenance` não grava por padrão: relata a taxa e o histograma, e gravar é um segundo
+> comando.
+>
+> **Não feito: a varredura do acervo.** Indexar os 27 PDFs (~12 mil páginas) é horas de CPU e
+> uma decisão de quando, como a medição da S-40. Sem ela não há taxa real sobre os 3.195.
 
 **Problema.** Medido no `data/labels.csv` de 3.241 linhas:
 

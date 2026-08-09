@@ -886,6 +886,42 @@ Detalhe que só apareceu ao escrever o código: um caminho **já** gravava algo 
 `corrected_by="tkinter"` ao regravar uma amostra da aba Dataset. O nome da tela é precisamente
 a informação sem valor que a spec avisa para não guardar.
 
+### 9.5 — A procedência recuperada por hash perceptual ✅ código (S-52)
+
+`provenance.py` e `cvoff-provenance`. O índice é JSONL incremental — um livro por vez, e um
+livro reindexado substitui o que havia dele —, e o casamento é vetorizado, porque 3.195
+amostras contra dezenas de milhares de diagramas são centenas de milhões de distâncias de
+Hamming.
+
+**Validado contra verdade de referência, e é isto que dá confiança na cadeia.** As amostras
+salvas depois da S-31 têm procedência gravada, então o casamento pode ser conferido em vez de
+acreditado. Índice das 20 primeiras páginas do `1937 Kemeri`:
+
+| sonda | resultado |
+|---|---|
+| 12 amostras daquelas páginas, com procedência conhecida | **12 de 12**, distância 0, **página certa** |
+| os 3.195 órfãos contra o mesmo índice | **0** casamentos; impostor mais próximo a **7 bits** |
+
+**E é aqui que a medição pede cautela.** Um recorte deslocado em 6 px num tabuleiro de 800
+custa 6 bits, que é exatamente o limiar; o impostor mais próximo estava a 7. **A folga é de um
+bit** — e isso com um índice de 11 entradas, o caso mais fácil possível. Com o acervo inteiro
+o impostor mais próximo só pode chegar mais perto.
+
+Por isso o comando **não grava por padrão**: `--match` relata a taxa e o histograma de
+distância, e `--apply` é um segundo passo. O histograma existe exatamente para que o limiar
+seja escolhido olhando dados em vez de herdado desta linha.
+
+**O que falta, e é decisão sua:** indexar os 27 PDFs (~12 mil páginas, horas de CPU). Sem
+isso não há taxa real sobre os 3.195 órfãos — só a garantia de que o mecanismo acerta quando
+tem o que casar.
+
+**E o que a recuperação destrava**, quando vier: `splits.groups_by_book` agrupa o split por
+livro, que é o que faz o `test` responder "quão bem o modelo lê um livro que nunca viu" em vez
+de "um diagrama parecido com os que viu". Com duas ressalvas registradas no próprio docstring:
+`ensure_splits` nunca move amostra já registrada, então o agrupamento só vale para amostras
+novas ou numa reatribuição do zero; e 27 livros dão 27 grupos, o que reduz muito a
+granularidade do split.
+
 ---
 
 ## Fase 10 — A interface, e a decisão que ninguém tomou
@@ -1010,7 +1046,8 @@ Se houver duas semanas:
 | — | ~~S-45 (coordenadas)~~ | **medido: 13,7% de cobertura, 48/52 num livro que já lê a 1,000, e 0 diagramas do ponto de vista das pretas** | ⏸ |
 | 10a | **S-51 (`LabelStore`)** | o `labels.csv` passa a ter uma porta, e o campo novo da S-52 tem onde entrar | ✅ |
 | 10b | **S-52, metade: `corrected_by`** | a coluna sai de 0 de 3.313 preenchidas; a outra metade (hash perceptual) precisa de horas de CPU | ✅ metade |
-| 10c | S-52, metade: procedência por hash perceptual | varrer 27 PDFs (~12 mil páginas) para casar os 3.195 órfãos; destrava o split por livro | |
+| 10c | **S-52, metade: procedência por hash perceptual** | `provenance.py` + `cvoff-provenance`; validado contra verdade de referência (12/12 na página certa) | ✅ código |
+| 10d | S-52 — **indexar o acervo e medir** | `cvoff-provenance --build` nos 27 PDFs (~12 mil páginas). Horas de CPU; é a sua decisão de quando | ← próximo |
 | 11–14 | S-46 a S-50 (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro |
 
 A ordem tem uma regra: **medição antes de mudança, e mudança antes de refatoração.** É a

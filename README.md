@@ -89,6 +89,13 @@ cvoff-audit --fix-side-to-move --quarantine --dedupe
 # deduz o lado a jogar so onde a posicao o impoe, e deixa vazio o resto.
 cvoff-migrate-labels
 
+# Recuperar a procedencia dos rotulos orfaos (S-52): 98,6% do dataset nao sabe de que livro
+# veio, e sem isso o split nao pode ser agrupado por livro. Casa cada PNG contra os diagramas
+# dos PDFs por hash perceptual. Tres passos, e o terceiro e o unico que escreve.
+cvoff-provenance --build --book "1937 Kemeri.pdf"   # indexa um livro. Caro: horas para o acervo
+cvoff-provenance --match                            # relata taxa e histograma, sem gravar nada
+cvoff-provenance --match --apply                    # grava a procedencia recuperada (com backup)
+
 # Avaliacao. A metrica primaria e a acuracia exata por tabuleiro:
 # a fracao de diagramas que sai sem nenhuma correcao manual.
 cvoff-eval --split test
