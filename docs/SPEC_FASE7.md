@@ -421,6 +421,21 @@ volta a rodar. Um `.pth` quebrado produz uma falha nomeada, não 33 `ImportError
 
 ## S-38 · `BoardVerifier` — um candidato precisa parecer um tabuleiro
 
+> **(a) implementada (2026-08-09); (b) adiada por medição.**
+>
+> A parte (a) — o refino não pode piorar o recorte — está em
+> `detection/hybrid.refine_candidate_with_contour`. Medida no conjunto de campo: os
+> detectados que produzem posição legal foram de **33 para 35 de 35**, e a taxa de
+> exportação **não se moveu** (0,6842), porque as leituras que substituíram as ilegais saem
+> a 0,664 e 0,467 — abaixo do gate. Em todo o conjunto, 2 refinos foram descartados,
+> exatamente os previstos.
+>
+> A parte (b) — o piso de textura para todo candidato — **não foi feita, e a medição diz
+> para não fazer agora**: a precisão de detecção é 0,9722 (um falso positivo em 36), então
+> um piso tem um a ganhar e 35 a arriscar. Dos 12 diagramas que não chegam ao PGN, **9 são
+> confiança abaixo do gate** e 3 são não-detecção; nenhum é ilegalidade. Quem ataca os 9 é a
+> S-39 e a S-40. A parte (b) segue especificada abaixo, e continua certa como arquitetura.
+
 **Problema.** Nenhuma das duas fontes de candidato exige que o recorte pareça um tabuleiro.
 
 No caminho de contorno, `board_detection._extract_candidate_quads:249` combina geometria e

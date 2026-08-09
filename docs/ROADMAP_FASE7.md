@@ -34,7 +34,10 @@ recognize_page` sobre páginas reais, com o checkpoint de produção
 | Euwe Band 1-2 (scan hachurado) | 2 | **0,000** | 2 | 0 | 0 |
 | **total** | **101** | — | **17** | **3** | **7** |
 
-Reproduzir: `docs/metrics/` não tem este arquivo ainda; o script está descrito na S-41.
+**Este levantamento foi a estimativa; o conjunto de campo da S-41 o substituiu.** A tabela
+acima conta só os diagramas que o detector achou, e por isso é otimista. O número atual, sobre
+15 páginas anotadas à mão, está em `docs/metrics/field_20260809.json` e se reproduz com
+`cvoff-field`: **taxa de exportação 0,6842 (26 de 38)**.
 
 **O número que reorganiza o roadmap:** o gate de exportação rejeita **17 de 101** diagramas
 de página real (16,8%) contra **3 de 320** no split de teste (0,94%). É um fator de **18×**.
@@ -312,6 +315,65 @@ candidato original quando o contorno não acha nada na região, caso em que o re
 melhor que se tem, e não há razão para piorá-lo"*. Ele só confere se achou **alguma coisa**,
 nunca se o que achou é **melhor**. A S-38 fica mais barata e mais precisa por causa disso:
 comparar o sinal antes e depois, e manter o refino só quando ele não piora.
+
+---
+
+### 7.0.7 — O refino do contorno passou a conferir o que entrega ✅ (S-38a)
+
+A metade da S-38 que a medição acima revelou, implementada e medida contra o conjunto de
+campo. `refine_candidate_with_contour` compara `board_texture_score` do recorte cru com o do
+refinado e fica com o melhor, com tolerância de 0,02 para o ruído de reamostragem.
+
+**Efeito medido, 38 diagramas anotados:**
+
+| | antes | depois |
+|---|---|---|
+| recall de detecção | 0,9211 | 0,9211 |
+| precisão de detecção | 0,9722 | 0,9722 |
+| **detectados que produzem posição legal** | **33 de 35** | **35 de 35** |
+| acima do gate | 26 | 26 |
+| taxa de exportação | 0,6842 | 0,6842 |
+
+**A métrica primária não se moveu, e isso é o resultado.** As duas posições fatalmente
+ilegais do `Karpov 1` p80 desapareceram — mas as leituras que as substituíram saem com
+confiança 0,664 e 0,467, ainda abaixo do gate de 0,80. O ganho é de **natureza**, não de
+quantidade: uma posição ilegal é lixo que polui o `.review.pgn` e pesa `WEIGHT_ILLEGAL` na
+fila; uma posição legal a 0,66 é um diagrama legível a uma ou duas casas do certo.
+
+O refino continua acontecendo onde ajuda: em todo o conjunto de campo, apenas **2 refinos
+foram descartados**, exatamente os dois previstos, e ambos com o motivo no log.
+
+Isto também é um recado sobre o método. Se a única medida fosse "posições ilegais", este
+item pareceria uma vitória (2 → 0). Se fosse só a taxa de exportação, pareceria inútil. São
+as duas juntas que dizem a verdade: o problema saiu do recorte e ficou inteiro na leitura.
+
+### 7.0.8 — O que a medição diz para **não** fazer agora
+
+A outra metade da S-38 — o `BoardVerifier` como piso para todo candidato — estava
+sequenciada em seguida. **A medição desaconselha.**
+
+Precisão de detecção hoje: **0,9722, um falso positivo em 36**. Um piso de textura tem, no
+máximo, esse um para ganhar, e tem 35 verdadeiros para arriscar. O único falso positivo é a
+caixa do bloco de texto na página 124 do `Gallagher`, num livro cuja página inteira é um
+scan — caso em que o piso teria de ser agressivo justamente onde os diagramas verdadeiros
+têm menos textura.
+
+Onde a taxa de exportação de fato se perde, dos 12 diagramas que não chegam ao PGN:
+
+| motivo | quantos |
+|---|---|
+| detectado, legal, **confiança abaixo de 0,80** | 9 |
+| não detectado | 3 |
+| detectado mas ilegal | 0 |
+
+**Nove dos doze são confiança.** É o problema de domínio que a 7.2 descreve — casa
+hachurada, papel amarelado, granulação — e quem o ataca é a **S-39** (`BoardNormalizer`) e a
+**S-40** (aumento dirigido), não um filtro de detecção. O próximo item é a S-39.
+
+O `BoardVerifier` continua especificado e continua certo como arquitetura: hoje nenhum
+candidato precisa parecer um tabuleiro para ser lido, e o caminho da imagem embutida não
+olha os pixels. Só não é onde está o retorno agora, e implementá-lo antes de medir seria
+fazer o que a Fase 5 aprendeu a não fazer.
 
 ---
 
@@ -786,19 +848,20 @@ mesmo split — verificado, 0 grupos espalhados —, mas o crescimento não é a
 
 Se houver duas semanas:
 
-| dia | itens | por que nesta ordem |
-|---|---|---|
-| 0 | **S-56** (splits) + S-57 + S-58 + S-60 | são defeitos, não melhorias; a S-56 sozinha devolve 45 amostras ao treino |
-| 1 | S-37 (ambiente) + S-41 (conjunto de campo) | sem os dois, nada do que vem depois é verificável |
-| 2–3 | S-38 (`BoardVerifier`) | o falso positivo é o erro mais barato de matar e o mais visível |
-| 4–5 | S-39 (`BoardNormalizer`) | é o que ataca o `min_confidence` 0,0000 do Euwe |
-| 6 | S-40 (aumento dirigido) + retreino | fecha o par com a S-39; medir os dois juntos e separados |
-| 7 | **medir contra o conjunto de campo** | fim da Fase 7: o número de 83,2% se moveu ou não |
-| 8 | S-44 (glifo `W`/`B` e número) | não depende de OCR; resolve o Gallagher e a convenção Batsford inteira |
-| 9–10 | S-42 + S-43 (motor de OCR + faixa de legenda) | resolve o `LAS BLANCAS JUEGAN PRIMERO` e os 7 livros sem texto |
-| 11 | S-45 (coordenadas) | fecha a pendência da S-13, se a cobertura medida justificar |
-| 12 | S-51 (procedência) + S-52 (`corrected_by`) | destrava o split por livro, que melhora toda medição futura |
-| 13–14 | S-46 a S-50 (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro |
+| dia | itens | por que nesta ordem | estado |
+|---|---|---|---|
+| 0 | **S-56** (splits) + S-57 + S-58 + S-59 + S-60 | são defeitos, não melhorias; a S-56 sozinha devolve 45 amostras ao treino | ✅ |
+| 1 | S-37 (ambiente) + S-41 (conjunto de campo) | sem os dois, nada do que vem depois é verificável | ✅ |
+| 2 | S-38a (o refino não pode piorar) | o que a S-41 revelou na primeira medição | ✅ |
+| — | ~~S-38b (`BoardVerifier`)~~ | **adiado por medição**: 1 falso positivo a ganhar, 35 verdadeiros a arriscar | ⏸ |
+| 3–4 | **S-39** (`BoardNormalizer`) | **9 dos 12 diagramas perdidos são confiança**, e é aqui que ela se resolve | ← próximo |
+| 5 | S-40 (aumento dirigido) + retreino | fecha o par com a S-39; medir os dois juntos e separados | |
+| 6 | **medir contra o conjunto de campo** | fim da Fase 7: a taxa de exportação saiu de 0,6842 ou não | |
+| 7 | S-44 (glifo `W`/`B` e número) | não depende de OCR; resolve o Gallagher e a convenção Batsford inteira |
+| 8–9 | S-42 + S-43 (motor de OCR + faixa de legenda) | resolve o `LAS BLANCAS JUEGAN PRIMERO` e os 7 livros sem texto |
+| 10 | S-45 (coordenadas) | fecha a pendência da S-13, se a cobertura medida justificar |
+| 11 | S-51 (procedência) + S-52 (`corrected_by`) | destrava o split por livro, que melhora toda medição futura |
+| 12–14 | S-46 a S-50 (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro |
 
 A ordem tem uma regra: **medição antes de mudança, e mudança antes de refatoração.** É a
 mesma que as Fases 1 a 6 seguiram, e é o que permitiu à Fase 5 descartar TTA, pesos de classe

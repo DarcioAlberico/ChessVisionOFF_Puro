@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import cv2
 import fitz
 import numpy as np
 
 from chess_diagram_ocr.detection import (
+    DiagramCandidate,
     candidates_from_embedded_images,
     detect_diagrams,
     trim_to_grid,
+)
+from chess_diagram_ocr.detection.hybrid import (
+    REFINE_TOLERANCE,
+    board_texture_score,
+    refine_candidate_with_contour,
 )
 
 # Uma pagina A4 em pontos.
@@ -266,6 +273,99 @@ class HybridDetectorTests(unittest.TestCase):
             self.assertEqual(detect_diagrams(page, render(page)), [])
         finally:
             doc.close()
+
+
+class RefineGuardTests(unittest.TestCase):
+    """S-38: o refino do contorno não pode entregar um recorte pior que o cru.
+
+    Até aqui `refine_candidate_with_contour` conferia se o contorno tinha achado *alguma
+    coisa*, nunca se o que achou era *melhor*. Medido na página 80 do `Karpov 1`: o bbox
+    embutido do candidato #4 contém um diagrama impecável e o refino o trocava por um
+    trapézio de texto, que o modelo lia como oito reis brancos com confiança 0,0004.
+    """
+
+    def _candidato(self, doc: fitz.Document, rect: fitz.Rect, board: np.ndarray) -> DiagramCandidate:
+        return DiagramCandidate(
+            board_rgb=board,
+            bbox_pdf=(rect.x0, rect.y0, rect.x1, rect.y1),
+            source="embedded",
+            detector_score=0.7,
+            native_size=(board.shape[1], board.shape[0]),
+        )
+
+    def test_um_recorte_pior_e_recusado_e_o_cru_fica(self) -> None:
+        rect = fitz.Rect(80, 100, 380, 400)
+        doc = pdf_with_images([(board_image(400), rect)])
+        try:
+            page = doc[0]
+            cru = self._candidato(doc, rect, board_image(400))
+            pior = np.full((320, 320, 3), 255, dtype=np.uint8)  # sem grade, sem xadrez
+
+            with mock.patch(
+                "chess_diagram_ocr.detection.hybrid.detect_boards", return_value=[(pior, None)]
+            ):
+                resultado = refine_candidate_with_contour(page, cru)
+
+            self.assertIs(resultado, cru, "o refino piorou o recorte e mesmo assim foi aceito")
+            self.assertFalse(resultado.trimmed)
+        finally:
+            doc.close()
+
+    def test_um_recorte_melhor_e_aceito(self) -> None:
+        """A guarda não pode virar "nunca refina": alinhar a grade é o ganho da S-12."""
+        rect = fitz.Rect(80, 100, 380, 400)
+        doc = pdf_with_images([(board_image(400), rect)])
+        try:
+            page = doc[0]
+            # Cru desalinhado (com moldura larga), refinado alinhado: e o caso que a S-12 mede.
+            cru = self._candidato(doc, rect, board_image(240, border=80))
+            melhor = board_image(320)
+
+            resultado = refine_candidate_with_contour(page, cru)
+            self.assertTrue(resultado.trimmed, "o refino que melhora tem de ser aceito")
+            self.assertGreater(
+                board_texture_score(resultado.board_rgb),
+                board_texture_score(cru.board_rgb) - REFINE_TOLERANCE,
+            )
+            self.assertGreater(board_texture_score(melhor), 0.0)
+        finally:
+            doc.close()
+
+    def test_uma_piora_dentro_da_tolerancia_passa(self) -> None:
+        """Ruído de reamostragem entre dois recortes igualmente bons não é motivo de recusa."""
+        rect = fitz.Rect(80, 100, 380, 400)
+        doc = pdf_with_images([(board_image(400), rect)])
+        try:
+            page = doc[0]
+            cru = self._candidato(doc, rect, board_image(400))
+            quase_igual = board_image(400)
+
+            with mock.patch(
+                "chess_diagram_ocr.detection.hybrid.detect_boards", return_value=[(quase_igual, None)]
+            ):
+                resultado = refine_candidate_with_contour(page, cru)
+
+            self.assertTrue(resultado.trimmed)
+        finally:
+            doc.close()
+
+    def test_sem_achado_continua_devolvendo_o_cru(self) -> None:
+        """O comportamento que já existia não pode ter mudado."""
+        rect = fitz.Rect(80, 100, 380, 400)
+        doc = pdf_with_images([(board_image(400), rect)])
+        try:
+            page = doc[0]
+            cru = self._candidato(doc, rect, board_image(400))
+            with mock.patch("chess_diagram_ocr.detection.hybrid.detect_boards", return_value=[]):
+                self.assertIs(refine_candidate_with_contour(page, cru), cru)
+        finally:
+            doc.close()
+
+    def test_a_textura_e_medida_na_resolucao_em_que_foi_calibrada(self) -> None:
+        """Comparar recortes de tamanhos diferentes compararia números incomparáveis."""
+        grande = board_texture_score(board_image(800))
+        pequeno = board_texture_score(board_image(160))
+        self.assertAlmostEqual(grande, pequeno, delta=0.15)
 
 
 if __name__ == "__main__":
