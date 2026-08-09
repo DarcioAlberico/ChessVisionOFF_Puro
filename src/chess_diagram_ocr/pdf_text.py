@@ -56,11 +56,12 @@ from __future__ import annotations
 import logging
 import math
 import re
+import time
 import unicodedata
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 import chess
 import fitz
@@ -68,6 +69,22 @@ import fitz
 logger = logging.getLogger(__name__)
 
 Placement = Literal["above", "below", "left", "right", "overlapping"]
+
+LineOrigin = Literal["text", "ocr"]
+"""De onde a linha veio: a camada de texto do PDF, ou o motor de OCR da S-42.
+
+Não é metadado decorativo. Um lado a jogar decidido por OCR com 0,62 de confiança não é o
+mesmo dado que um lido da camada de texto, e o `[SideToMoveSource]` do PGN -- que a Fase 3
+criou justamente para que um palpite pareça um palpite -- precisa distinguir os dois.
+"""
+
+SideOrigin = Literal["text", "ocr", "text-page-scope", "ocr-page-scope"]
+"""Como a declaração de lado a jogar chegou: de qual fonte, e em que escala.
+
+`*-page-scope` é a declaração que vale para a página inteira (`LAS BLANCAS JUEGAN PRIMERO`
+no topo do `Reinfeld`), e não para um diagrama. Vale menos que uma legenda e mais que o
+padrão "brancas" -- e precisa poder ser distinguida das duas na hora de conferir.
+"""
 
 DEFAULT_RADIUS_PT = 60.0
 """Raio de busca em pontos do PDF. As legendas medidas ficam a 0-20 pt do diagrama."""
@@ -97,6 +114,12 @@ class TextLine:
 
     group_id: int = 0
     """Identidade do grupo de legenda: linhas do mesmo bloco e da mesma coluna."""
+
+    origin: LineOrigin = "text"
+    """Camada de texto por padrão -- é o que este módulo sempre produziu."""
+
+    confidence: float = 1.0
+    """Quanto o motor confia no que leu. A camada de texto não é um palpite: vale 1,0."""
 
     @property
     def is_caption_like(self) -> bool:
@@ -130,6 +153,13 @@ class DiagramContext:
 
     side_to_move_evidence: str = ""
     """O trecho que decidiu o lado a jogar. Existe para o usuário poder discordar."""
+
+    side_to_move_origin: SideOrigin | None = None
+    """De onde veio a declaração, quando houve uma. `None` quando `side_to_move` é `None`."""
+
+    side_to_move_confidence: float = 1.0
+    """Confiança do trecho que decidiu. 1,0 para a camada de texto, o que o motor disser
+    para o OCR. Sobrevive até o `[SideToMoveConfidence]` do PGN quando não é 1,0."""
 
     exercise_number: int | None = None
     players: tuple[str, str] | None = None
@@ -334,6 +364,27 @@ def _split_into_columns(bboxes: Sequence[tuple[float, float, float, float]]) -> 
 
 def page_text_lines(page: fitz.Page) -> list[TextLine]:
     """Linhas de texto da página, sem cabeçalho/rodapé corrente e sem diagrama de fonte."""
+    return _page_lines(page, margin=False)
+
+
+def page_margin_lines(page: fitz.Page) -> list[TextLine]:
+    """Só o que mora na faixa de margem -- o que `page_text_lines` descarta (S-43).
+
+    Existe porque `MARGIN_BAND` joga fora 7% do topo e do rodapé como cabeçalho corrente, e
+    às vezes o que mora ali é uma **declaração de escopo de página**: a página 40 do
+    `Reinfeld` tem `LAS BLANCAS JUEGAN PRIMERO` em caixa alta no topo, e ela vale para os
+    seis diagramas da página.
+
+    O descarte continua certo como padrão. Medido (2026-08-09), a faixa de margem vale 6
+    declarações contra as 150 que a S-16 já vê, em 3 livros -- é pouco, e o motivo de ser
+    pouco é que a maioria dos cabeçalhos de fato repete o título do livro. Por isso a faixa
+    não volta para o fluxo normal: ela é lida à parte, testada contra os padrões de lado a
+    jogar, e só o que casa vira informação (ver `page_scope_declaration`).
+    """
+    return _page_lines(page, margin=True)
+
+
+def _page_lines(page: fitz.Page, *, margin: bool) -> list[TextLine]:
     height = page.rect.height or 1.0
     top_limit = page.rect.y0 + height * MARGIN_BAND
     bottom_limit = page.rect.y1 - height * MARGIN_BAND
@@ -357,7 +408,7 @@ def page_text_lines(page: fitz.Page) -> list[TextLine]:
                 continue
 
             x0, y0, x1, y1 = (float(v) for v in line["bbox"])
-            if y1 <= top_limit or y0 >= bottom_limit:
+            if (y1 <= top_limit or y0 >= bottom_limit) != margin:
                 continue
             kept.append((text, (x0, y0, x1, y1)))
 
@@ -780,42 +831,81 @@ def _side_from_line(text: str, *, caption_like: bool) -> tuple[chess.Color, str]
     return found if folded.startswith(evidence) else None
 
 
-_ParsedLine = tuple[str, bool, bool]
-"""(texto, é formato de legenda, veio da legenda deste diagrama)."""
+@dataclass(frozen=True)
+class _ParsedLine:
+    """Uma linha já pronta para virar contexto, com o que decide a precedência dela."""
+
+    text: str
+    caption_like: bool
+    """Formato de legenda (bloco curto), e não de parágrafo. Ver `MAX_CAPTION_WORDS`."""
+
+    primary: bool
+    """Veio da legenda deste diagrama, e não de um vizinho que passou perto."""
+
+    origin: LineOrigin = "text"
+    confidence: float = 1.0
 
 
-def _side_from_tier(lines: Sequence[tuple[str, bool]]) -> tuple[chess.Color, str] | None:
+@dataclass(frozen=True)
+class _SideDecision:
+    color: chess.Color
+    evidence: str
+    origin: LineOrigin
+    confidence: float
+
+
+def _side_from_tier(lines: Sequence[_ParsedLine]) -> _SideDecision | None:
     """Lado a jogar deste conjunto de linhas, ou `None` se ele disser as duas coisas.
 
     A checagem de contradição vale **dentro** do conjunto, e é por isso que o chamador
     separa legenda de vizinhança. Uma página de soluções que lista `11: Brancas jogam` e
     `12: Pretas jogam` na mesma legenda não tem resposta; já uma legenda que diz "brancas"
     ao lado do comentário de *outro* diagrama que diz "pretas" tem, e é a da legenda.
+
+    Com o OCR da S-42 ligado, o conjunto pode misturar as duas fontes -- e aí a contradição
+    tem desempate: **a camada de texto vence**. Não é preferência estética. A camada de
+    texto é o que o editor gravou; o OCR é uma leitura de pixels que pode confundir `blancas`
+    com `blancos` e, pior, `negras` com `negros` num scan sujo. Quando as duas discordam, a
+    que não adivinhou está certa com frequência muito maior -- e o caso em que a camada erra
+    e o OCR acerta é o caso em que a camada não existe, onde não há conflito para desempatar.
+
+    **O desempate é raro por construção, e é bom que seja.** `_lines_with_ocr` só roda o
+    motor onde a camada calou, então as duas fontes quase nunca disputam o mesmo escalão do
+    mesmo diagrama: para isso, uma linha lida na vizinhança de um diagrama precisa cair
+    também na de outro que já tinha texto. A regra existe para esse caso e para o dia em que
+    o gate mudar -- não é o mecanismo principal do item.
     """
     found = [
-        declaration
-        for text, caption_like in lines
-        if (declaration := _side_from_line(text, caption_like=caption_like)) is not None
+        _SideDecision(color=declaration[0], evidence=declaration[1], origin=line.origin, confidence=line.confidence)
+        for line in lines
+        if (declaration := _side_from_line(line.text, caption_like=line.caption_like)) is not None
     ]
     if not found:
         return None
-    if len({color for color, _ in found}) > 1:
+
+    if len({item.color for item in found}) > 1:
+        from_text = [item for item in found if item.origin == "text"]
+        if from_text and len({item.color for item in from_text}) == 1:
+            logger.debug("camada de texto e OCR discordam do lado a jogar; a camada de texto decide")
+            return from_text[0]
         logger.debug("declarações de lado a jogar conflitantes em %d linhas", len(found))
         return None
-    return found[0]
+
+    # Mesma cor por caminhos diferentes: fica a da camada de texto, cuja evidencia e o
+    # trecho real do PDF e nao uma transcricao.
+    return next((item for item in found if item.origin == "text"), found[0])
 
 
 def _parse_lines(lines: Sequence[_ParsedLine], *, page_number: int | None) -> DiagramContext:
     # A legenda decide; a vizinhanca so responde quando a legenda cala. Sao dois escaloes, e
     # a contradicao vale dentro de cada um: uma legenda que diz as duas coisas nao tem
     # resposta, mas uma legenda contradita pelo comentario do diagrama ao lado tem.
-    primary = [(text, caption_like) for text, caption_like, is_primary in lines if is_primary]
-    secondary = [(text, caption_like) for text, caption_like, is_primary in lines if not is_primary]
+    primary = [item for item in lines if item.primary]
+    secondary = [item for item in lines if not item.primary]
 
     decision = _side_from_tier(primary) or _side_from_tier(secondary)
-    side, evidence = decision if decision is not None else (None, "")
 
-    captions = [text for text, caption_like in [*primary, *secondary] if caption_like]
+    captions = [item.text for item in [*primary, *secondary] if item.caption_like]
 
     exercise_number: int | None = None
     for text in captions:
@@ -837,9 +927,11 @@ def _parse_lines(lines: Sequence[_ParsedLine], *, page_number: int | None) -> Di
                 event, year = line_event, line_year
 
     return DiagramContext(
-        caption="\n".join(text for text, _, _ in lines),
-        side_to_move=side,
-        side_to_move_evidence=evidence,
+        caption="\n".join(item.text for item in lines),
+        side_to_move=None if decision is None else decision.color,
+        side_to_move_evidence="" if decision is None else decision.evidence,
+        side_to_move_origin=None if decision is None else decision.origin,
+        side_to_move_confidence=1.0 if decision is None else decision.confidence,
         exercise_number=exercise_number,
         players=players,
         event=event,
@@ -856,7 +948,10 @@ def parse_context(caption: str, *, page_number: int | None = None) -> DiagramCon
     lines = [line.strip() for line in caption.splitlines() if line.strip()]
     if not lines:
         return DiagramContext()
-    return _parse_lines([(line, True, True) for line in lines], page_number=page_number)
+    return _parse_lines(
+        [_ParsedLine(text=line, caption_like=True, primary=True) for line in lines],
+        page_number=page_number,
+    )
 
 
 def context_from_lines(nearby: Sequence[NearbyLine], *, page_number: int | None = None) -> DiagramContext:
@@ -874,9 +969,162 @@ def context_from_lines(nearby: Sequence[NearbyLine], *, page_number: int | None 
 
     has_primary = any(item.primary for item in nearby)
     return _parse_lines(
-        [(item.text, item.line.is_caption_like, item.primary or not has_primary) for item in nearby],
+        [
+            _ParsedLine(
+                text=item.text,
+                caption_like=item.line.is_caption_like,
+                primary=item.primary or not has_primary,
+                origin=item.line.origin,
+                confidence=item.line.confidence,
+            )
+            for item in nearby
+        ],
         page_number=page_number,
     )
+
+
+# --------------------------------------------------------------------------------------
+# Escopo de pagina e segunda fonte de linhas (S-43)
+# --------------------------------------------------------------------------------------
+
+
+@runtime_checkable
+class CaptionSource(Protocol):
+    """Uma segunda fonte de `TextLine` para a página (S-43).
+
+    Protocolo, e não import do `ocr_caption`, por dois motivos. O primeiro é a direção da
+    dependência: quem sabe da camada de texto não pode passar a depender do motor de OCR,
+    senão o extra opcional deixa de ser opcional. O segundo é que **isto não é uma via
+    alternativa** -- é uma segunda fonte das mesmas `TextLine` que `page_text_lines`
+    produz, e por isso todo o aparato da S-16 (agrupamento por coluna,
+    `dominant_placement`, `assign_lines_to_diagrams`, os tiers, o filtro de prosa) continua
+    valendo sem uma linha de mudança.
+    """
+
+    def lines_around(self, page: fitz.Page, bbox_pdf: tuple[float, float, float, float]) -> list[TextLine]:
+        """Linhas na vizinhança do diagrama, em coordenadas do PDF."""
+
+    def margin_lines(self, page: fitz.Page) -> list[TextLine]:
+        """Linhas da faixa de margem, em coordenadas do PDF."""
+
+
+@dataclass(frozen=True)
+class PageScope:
+    """Uma declaração de lado a jogar que vale para a página inteira, não para um diagrama."""
+
+    color: chess.Color
+    evidence: str
+    origin: SideOrigin
+    confidence: float = 1.0
+
+
+def page_scope_declaration(page: fitz.Page, *, caption_reader: CaptionSource | None = None) -> PageScope | None:
+    """Declaração de escopo de página na faixa de margem, ou `None` (S-43).
+
+    A página 40 do `Reinfeld_1001` tem `LAS BLANCAS JUEGAN PRIMERO` em caixa alta no topo,
+    e ela vale para os seis diagramas da página. `MARGIN_BAND` a descartava junto com o
+    cabeçalho corrente, que é o que a faixa contém no resto do acervo.
+
+    **A precedência é o cuidado deste item.** Isto vale menos que a legenda do diagrama e
+    mais que o padrão "brancas" -- e o chamador só o aplica onde a legenda calou. Um livro
+    cujo cabeçalho declara o lado e cujas legendas também não muda de comportamento nenhum:
+    a legenda decidiu antes.
+
+    Duas fontes, nesta ordem: a camada de texto (de graça, e é onde moram as 6 declarações
+    que o levantamento de 2026-08-09 mediu) e, se ela calar e houver motor, o OCR. Uma
+    contradição dentro da faixa -- `White to Move` no topo e `Black to Move` no rodapé --
+    devolve `None`, pela mesma regra dos tiers: a página está dizendo as duas coisas.
+    """
+    for lines, origin in _scope_candidates(page, caption_reader):
+        declarations = [
+            (found, line)
+            for line in lines
+            if (found := _side_from_line(line.text, caption_like=True)) is not None
+        ]
+        if not declarations:
+            continue
+        if len({color for (color, _), _ in declarations}) > 1:
+            logger.debug("faixa de margem declara os dois lados; sem escopo de página")
+            return None
+
+        (color, evidence), line = declarations[0]
+        logger.info("declaração de escopo de página (%s): %r", origin, evidence)
+        return PageScope(color=color, evidence=evidence, origin=origin, confidence=line.confidence)
+    return None
+
+
+def _scope_candidates(
+    page: fitz.Page,
+    caption_reader: CaptionSource | None,
+) -> Iterable[tuple[list[TextLine], SideOrigin]]:
+    yield page_margin_lines(page), "text-page-scope"
+    if caption_reader is not None:
+        yield caption_reader.margin_lines(page), "ocr-page-scope"
+
+
+def _apply_page_scope(context: DiagramContext, scope: PageScope) -> DiagramContext:
+    """A declaração de página preenche o que a legenda deixou vazio, e só isso."""
+    if context.side_to_move is not None:
+        return context
+    return replace(
+        context,
+        side_to_move=scope.color,
+        side_to_move_evidence=scope.evidence,
+        side_to_move_origin=scope.origin,
+        side_to_move_confidence=scope.confidence,
+    )
+
+
+def _lines_with_ocr(
+    page: fitz.Page,
+    text_lines: list[TextLine],
+    bboxes: Sequence[tuple[float, float, float, float]],
+    *,
+    radius_pt: float,
+    caption_reader: CaptionSource,
+) -> list[TextLine]:
+    """As linhas da camada de texto, mais as do OCR onde ela não respondeu.
+
+    **A decisão é por diagrama, não por livro**, e é o que os 5 livros de OCR parcial
+    exigem: no `Gaprindashvili` a camada existe em 14 de 30 páginas, e decidir por livro
+    deixaria metade sem legenda ou pagaria OCR em metade sem precisar. O critério é direto:
+    se a camada de texto já pôs alguma linha na vizinhança deste diagrama, ela respondeu, e
+    o OCR não roda -- economia real, dado o custo de página medido na S-61.
+    """
+    extras: list[TextLine] = []
+    next_group = max((line.group_id for line in text_lines), default=-1) + 1
+    lidos = 0
+    inicio = time.perf_counter()
+
+    for bbox in bboxes:
+        if lines_near(text_lines, bbox, radius_pt=radius_pt):
+            continue
+        lidos += 1
+        novas = caption_reader.lines_around(page, bbox)
+        if not novas:
+            continue
+
+        # Os group_id do OCR comecam do zero a cada diagrama; sem o deslocamento, dois
+        # diagramas teriam legendas no "mesmo bloco" e `assign_lines_to_diagrams` daria
+        # as duas a um so.
+        originais = dict.fromkeys(linha.group_id for linha in novas)
+        remapeados = {group: next_group + offset for offset, group in enumerate(originais)}
+        next_group += len(remapeados)
+        extras.extend(replace(line, group_id=remapeados[line.group_id]) for line in novas)
+
+    if lidos:
+        # O custo por pagina e criterio de aceite da S-43, nao curiosidade: a S-61 mediu
+        # ~2,95 s de pipeline por pagina, e um OCR que passe de ~2x o custo do
+        # reconhecimento precisa de recorte mais apertado antes de o item fechar. Sem esta
+        # linha, descobrir isso exigiria instrumentar de novo.
+        logger.info(
+            "OCR de legenda: %d de %d diagramas sem texto na camada, %d linhas lidas em %.3f s.",
+            lidos,
+            len(bboxes),
+            len(extras),
+            time.perf_counter() - inicio,
+        )
+    return [*text_lines, *extras]
 
 
 def contexts_for_page(
@@ -885,14 +1133,31 @@ def contexts_for_page(
     *,
     radius_pt: float = DEFAULT_RADIUS_PT,
     page_number: int | None = None,
+    caption_reader: CaptionSource | None = None,
 ) -> list[DiagramContext]:
-    """Um contexto por diagrama da página, com as linhas repartidas sem sobreposição."""
+    """Um contexto por diagrama da página, com as linhas repartidas sem sobreposição.
+
+    Com `caption_reader`, as linhas do OCR entram **junto** com as da camada de texto, e
+    não por um caminho paralelo (S-43). Uma página que tem as duas usa as duas, e a camada
+    de texto vence no empate -- ver `_side_from_tier`.
+    """
     if not bboxes:
         return []
 
     lines = page_text_lines(page)
+    if caption_reader is not None:
+        lines = _lines_with_ocr(page, lines, bboxes, radius_pt=radius_pt, caption_reader=caption_reader)
+
     buckets = assign_lines_to_diagrams(lines, bboxes, radius_pt=radius_pt)
-    return [context_from_lines(bucket, page_number=page_number) for bucket in buckets]
+    contexts = [context_from_lines(bucket, page_number=page_number) for bucket in buckets]
+
+    # A faixa de margem so e consultada quando sobra diagrama sem lado a jogar. Nao e
+    # otimizacao: e o que garante que a precedencia da legenda nunca seja disputada.
+    if any(context.side_to_move is None for context in contexts):
+        scope = page_scope_declaration(page, caption_reader=caption_reader)
+        if scope is not None:
+            contexts = [_apply_page_scope(context, scope) for context in contexts]
+    return contexts
 
 
 def contexts_for_pdf_page(
@@ -901,6 +1166,7 @@ def contexts_for_pdf_page(
     bboxes: Sequence[tuple[float, float, float, float]],
     *,
     radius_pt: float = DEFAULT_RADIUS_PT,
+    caption_reader: CaptionSource | None = None,
 ) -> list[DiagramContext]:
     """`contexts_for_page` para quem tem o caminho do PDF, e não um `fitz.Page` aberto.
 
@@ -922,4 +1188,5 @@ def contexts_for_pdf_page(
             bboxes,
             radius_pt=radius_pt,
             page_number=running_page_number(doc, page_index),
+            caption_reader=caption_reader,
         )

@@ -73,11 +73,25 @@ class ScanParams:
     Ver `is_compatible_with`.
     """
 
+    ocr_engine: str = ""
+    """Motor de OCR de legenda em uso, ou vazio quando não havia (S-43).
+
+    Mesma razão do `model_identity`, aplicada à outra fonte de metadado: retomar com OCR uma
+    exportação começada sem ele produziria um PGN em que metade dos `[SideToMoveSource]` diz
+    `default` e a outra metade `ocr` -- e a diferença não seria do livro, seria de quando
+    cada página foi lida. O header existe para que a procedência signifique algo.
+
+    Vazio, e não `None`, para casar com o "sem OCR" que é o padrão do projeto: um parcial
+    gravado antes da S-43 e um gravado hoje com `--ocr off` são a mesma varredura, e têm de
+    poder continuar um ao outro.
+    """
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "source_name": self.source_name,
             "model_path": self.model_path,
             "model_identity": self.model_identity,
+            "ocr_engine": self.ocr_engine,
             "dpi": self.dpi,
             "max_boards_per_page": self.max_boards_per_page,
             "orientation": self.orientation,
@@ -93,6 +107,7 @@ class ScanParams:
             source_name=str(raw.get("source_name", "")),
             model_path=str(raw.get("model_path", "")),
             model_identity=str(raw.get("model_identity", "")),
+            ocr_engine=str(raw.get("ocr_engine", "")),
             dpi=int(raw.get("dpi", 0)),
             max_boards_per_page=int(raw.get("max_boards_per_page", 0)),
             orientation=str(raw.get("orientation", "")),
@@ -144,6 +159,8 @@ def _context_to_dict(context: Any) -> dict[str, Any] | None:
         "caption": context.caption,
         "side_to_move": None if context.side_to_move is None else bool(context.side_to_move),
         "side_to_move_evidence": context.side_to_move_evidence,
+        "side_to_move_origin": context.side_to_move_origin,
+        "side_to_move_confidence": context.side_to_move_confidence,
         "exercise_number": context.exercise_number,
         "players": list(context.players) if context.players else None,
         "event": context.event,
@@ -161,6 +178,10 @@ def _context_from_dict(raw: dict[str, Any] | None) -> Any:
         caption=str(raw.get("caption", "")),
         side_to_move=None if raw.get("side_to_move") is None else chess.Color(bool(raw["side_to_move"])),
         side_to_move_evidence=str(raw.get("side_to_move_evidence", "")),
+        # Parcial gravado antes da S-43 nao tem procedencia; `None` aqui faz a cascata da
+        # `semantics` cair no `"text"` de sempre, que e o que aquele parcial de fato usou.
+        side_to_move_origin=raw.get("side_to_move_origin"),
+        side_to_move_confidence=float(raw.get("side_to_move_confidence") or 1.0),
         exercise_number=raw.get("exercise_number"),
         players=(str(players[0]), str(players[1])) if players and len(players) == 2 else None,
         event=raw.get("event"),

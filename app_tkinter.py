@@ -48,6 +48,7 @@ from chess_diagram_ocr.config import (
 from chess_diagram_ocr.dataset_browser import DatasetRow
 from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
+from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import (
     OcrService,
@@ -92,11 +93,18 @@ class ChessOcrTkApp:
         self.root.title("Chess Diagram OCR - Tkinter")
         self.root.geometry("1700x980")
 
-        self.service = OcrService(model_path=DEFAULT_MODEL_PATH)
         self.piece_images = PieceImages(PIECE_IMAGE_DIR)
         self.state = AppState()
         self.settings = load_settings()
         """Preferências do usuário (S-32). Por padrão nada sai da máquina."""
+
+        # A configuracao vem antes do servico porque o OCR de legenda (S-43) entra por ele.
+        # Construir o motor aqui, e nao dentro do servico, e a mesma separacao da S-32: quem
+        # le a configuracao e a interface; o pipeline recebe pronto o que ela autorizou.
+        self.service = OcrService(
+            model_path=DEFAULT_MODEL_PATH,
+            caption_reader=caption_reader_from_settings(self.settings.ocr),
+        )
 
         self.analyzer = self._build_analyzer()
         """Motor de análise (S-33), ou `None`. Sem binário, a seção some da aba Análise."""

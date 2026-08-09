@@ -36,6 +36,9 @@ DEFAULT_SETTINGS_PATH = PROJECT_ROOT / "data" / "settings.json"
 ENV_REMOTE_URL = "CVOFF_REMOTE_FEN_URL"
 ENV_REMOTE_ENABLED = "CVOFF_REMOTE_FEN_ENABLED"
 
+ENV_OCR_ENABLED = "CVOFF_OCR_ENABLED"
+ENV_OCR_ENGINE = "CVOFF_OCR_ENGINE"
+
 SETTINGS_VERSION = 1
 
 
@@ -134,18 +137,61 @@ class EngineSettings:
         )
 
 
+DEFAULT_OCR_LANGUAGES: tuple[str, ...] = ("pt", "en", "es", "de")
+"""Os quatro idiomas do acervo. Nem todo motor os usa -- ver `OcrSettings.languages`."""
+
+
+@dataclass(frozen=True)
+class OcrSettings:
+    """Motor de OCR para as páginas sem camada de texto (S-42).
+
+    **Desligado por padrão, e não por conservadorismo.** 20 dos 27 livros do acervo têm
+    camada de texto; para eles o OCR é custo puro, porque a camada responde melhor e de
+    graça. Ligá-lo é uma decisão de quem tem os 7 livros que não têm.
+
+    O padrão de `engine` é `rapidocr` pelo motivo que a S-42 mede: é o único motor que não
+    baixa nada na primeira execução -- os modelos vêm no wheel, e o `onnxruntime` que ele
+    usa já é a dependência opcional da S-30. `easyocr` baixa ~100 MB no primeiro uso, o que
+    contradiz a promessa do README de que nada sai da máquina no uso padrão; por isso ele é
+    escolha explícita e nunca padrão.
+    """
+
+    enabled: bool = False
+    engine: str = "rapidocr"
+    languages: tuple[str, ...] = DEFAULT_OCR_LANGUAGES
+    """Idiomas pedidos ao motor. **Só o `easyocr` os usa**: o RapidOCR embarca um modelo de
+    reconhecimento fixo e o Tesseract precisa dos `traineddata` instalados à parte. Fica na
+    configuração mesmo assim porque é a informação certa a declarar, e trocar de motor não
+    deveria obrigar a redeclará-la."""
+
+    def to_dict(self) -> dict[str, object]:
+        return {"enabled": self.enabled, "engine": self.engine, "languages": list(self.languages)}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> OcrSettings:
+        bruto = data.get("languages")
+        idiomas = tuple(str(item).strip() for item in bruto if str(item).strip()) if isinstance(bruto, list) else ()
+        return cls(
+            enabled=bool(data.get("enabled", False)),
+            engine=str(data.get("engine", "") or "rapidocr").strip().lower(),
+            languages=idiomas or DEFAULT_OCR_LANGUAGES,
+        )
+
+
 @dataclass(frozen=True)
 class Settings:
     """As preferências do usuário que não são estado de janela."""
 
     remote_fen: RemoteFenSettings = RemoteFenSettings()
     engine: EngineSettings = EngineSettings()
+    ocr: OcrSettings = OcrSettings()
 
     def to_dict(self) -> dict[str, object]:
         return {
             "version": SETTINGS_VERSION,
             "remote_fen": self.remote_fen.to_dict(),
             "engine": self.engine.to_dict(),
+            "ocr": self.ocr.to_dict(),
         }
 
     @classmethod
@@ -157,6 +203,7 @@ class Settings:
         return cls(
             remote_fen=RemoteFenSettings.from_dict(_secao("remote_fen")),
             engine=EngineSettings.from_dict(_secao("engine")),
+            ocr=OcrSettings.from_dict(_secao("ocr")),
         )
 
 
@@ -176,13 +223,32 @@ def apply_environment(settings: Settings, env: Mapping[str, str] | None = None) 
         # duas variáveis para uma intenção só.
         remoto = replace(remoto, endpoint=url, enabled=True)
 
-    ligado = env.get(ENV_REMOTE_ENABLED, "").strip().lower()
-    if ligado in ("0", "false", "no", "off"):
-        remoto = replace(remoto, enabled=False)
-    elif ligado in ("1", "true", "yes", "on"):
-        remoto = replace(remoto, enabled=True)
+    ligado = _flag(env.get(ENV_REMOTE_ENABLED, ""))
+    if ligado is not None:
+        remoto = replace(remoto, enabled=ligado)
 
-    return replace(settings, remote_fen=remoto)
+    ocr = settings.ocr
+    motor = env.get(ENV_OCR_ENGINE, "").strip().lower()
+    if motor:
+        # Declarar o motor e ainda ter de ligá-lo seriam duas variáveis para uma intenção
+        # só -- a mesma leitura que `CVOFF_REMOTE_FEN_URL` faz do endpoint.
+        ocr = replace(ocr, engine=motor, enabled=True)
+
+    ocr_ligado = _flag(env.get(ENV_OCR_ENABLED, ""))
+    if ocr_ligado is not None:
+        ocr = replace(ocr, enabled=ocr_ligado)
+
+    return replace(settings, remote_fen=remoto, ocr=ocr)
+
+
+def _flag(raw: str) -> bool | None:
+    """`True`/`False` para as grafias aceitas, `None` quando a variável não diz nada."""
+    valor = raw.strip().lower()
+    if valor in ("0", "false", "no", "off"):
+        return False
+    if valor in ("1", "true", "yes", "on"):
+        return True
+    return None
 
 
 def load_settings(

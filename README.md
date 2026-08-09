@@ -152,7 +152,7 @@ set CVOFF_LOG_DIR=logs
 
 ## Recursos opcionais (e o que o projeto faz sem eles)
 
-**O projeto funciona inteiramente offline.** Nada sai da sua maquina no uso padrao. As duas
+**O projeto funciona inteiramente offline.** Nada sai da sua maquina no uso padrao. As tres
 integracoes abaixo sao desligadas por padrao e nao afetam o reconhecimento.
 
 ### Correcao remota de FEN ("Corrigir Net")
@@ -207,13 +207,60 @@ Stockfish para `engines/` e a instalacao mais simples.
 }
 ```
 
+### OCR da legenda (S-42/S-43)
+
+Le o texto **em volta do diagrama** nas paginas que nao tem camada de texto. Medido: **7 dos
+27 livros do acervo sao scan puro** e hoje saem inteiros como `[SideToMoveSource "default"]`,
+mesmo quando a pagina tem `LAS BLANCAS JUEGAN PRIMERO` impresso no topo. Outros 5 livros tem
+camada de texto que falha em parte das paginas.
+
+Vem **desligado**, e para 20 dos 27 livros deve continuar assim: onde a camada de texto
+existe, ela responde melhor e de graca.
+
+```bash
+uv sync --extra ocr        # ~15 MB de modelos, que vem no wheel
+```
+
+```jsonc
+// data/settings.json
+{
+  "ocr": {
+    "enabled": true,
+    "engine": "rapidocr",              // ou "easyocr", ou "tesseract"
+    "languages": ["pt", "en", "es", "de"]
+  }
+}
+```
+
+Ou por linha de comando, que vence o arquivo:
+
+```bash
+cvoff-field  --ocr rapidocr            # mede o efeito contra o conjunto de campo
+cvoff-export "PDF/livro.pdf" --ocr rapidocr
+```
+
+**O RapidOCR e o padrao porque nao baixa nada.** Os modelos vem no wheel, e ele roda no
+`onnxruntime` que o extra `onnx` ja traz -- a promessa de "nada sai da sua maquina no uso
+padrao" continua valendo com ele ligado. O **EasyOCR baixa ~100 MB de modelo na primeira
+execucao**: e uma escolha legitima, le mais idiomas, e por isso mesmo precisa ser sua e nao
+do padrao. O Tesseract usa o binario que voce ja tenha instalado.
+
+Tres coisas que o recurso **nao** faz, de proposito:
+
+- nao roda na pagina inteira -- so na faixa em volta do diagrama, com o interior do tabuleiro
+  apagado antes de o motor ver a imagem;
+- nao roda onde a camada de texto respondeu, diagrama a diagrama;
+- nao se disfarca de camada de texto: o PGN sai com `[SideToMoveSource "ocr"]` e, quando o
+  motor nao teve certeza, com `[SideToMoveConfidence]` ao lado.
+
 ## Resolucao de problemas
 
 | sintoma | causa provavel | o que fazer |
 |---|---|---|
 | A aba **Leitura** diz "WebView2 indisponivel" | falta o Microsoft Edge WebView2 Runtime (so Windows) | instalar o runtime, ou usar a aba **OCR**, que nao depende dele |
 | Treino muito lento (~9 min por epoca) | `torch` `+cpu`, sem CUDA | ver [Desempenho](#desempenho-cpu-gpu-e-onnx). A barra de status diz qual dispositivo esta em uso |
-| Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros do acervo. O header `[SideToMoveSource "default"]` marca o palpite como palpite |
+| Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros do acervo. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
+| `--ocr rapidocr` avisa que "o OCR pedido nao esta disponivel" | o extra nao esta instalado | `uv sync --extra ocr`. O comando segue sem OCR em vez de falhar, mas a saida nao tem legenda lida |
 | Poucos diagramas detectados numa pagina cheia | o teto "Max diagramas" cortou | o padrao e 12; o log avisa com os scores quando o teto corta candidato aprovado |
 | Diagramas de cabeca para baixo | orientacao fixa em 0 ou 180 | usar **Automatica** (padrao). Casos ambiguos entram na fila de revisao marcados |
 | "Nenhum tabuleiro foi detectado" numa pagina que tem um | scan de baixo contraste, ou o diagrama nao e imagem embutida | usar **Selecionar area (OCR)** e arrastar em volta do diagrama: ali o recorte e o seu, e o detector nao precisa acertar |

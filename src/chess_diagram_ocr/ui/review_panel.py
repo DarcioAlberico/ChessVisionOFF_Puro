@@ -276,6 +276,9 @@ class ReviewPanel(ttk.Frame):
                 cache_dir=self.cache_dir,
                 cancel_event=cancel_event,
                 progress_callback=_progress,
+                # Mesmo OCR de legenda do reconhecimento e da exportação (S-43): uma fila
+                # montada por outro pipeline manda corrigir um diagrama que o PGN não tem.
+                caption_reader=getattr(self._service, "caption_reader", None),
                 model_session=(
                     self._service.model_session(request.model_path) if self._service is not None else None
                 ),

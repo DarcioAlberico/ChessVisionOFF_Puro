@@ -223,6 +223,10 @@ class ExportController:
                 resume=resume,
                 cancel_event=cancel,
                 progress_callback=_progress,
+                # O mesmo OCR de legenda que a tela usa ao reconhecer uma página (S-43).
+                # Ter um na tela e outro no PGN recriaria, na procedência do lado a jogar,
+                # o desencontro que a S-14 corrigiu na numeração dos diagramas.
+                caption_reader=getattr(self._service, "caption_reader", None),
                 model_session=(
                     self._service.model_session(settings.model_path) if self._service is not None else None
                 ),

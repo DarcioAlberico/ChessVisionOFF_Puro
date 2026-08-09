@@ -835,7 +835,14 @@ não é versionado, então o teste **pula** quando a pasta está vazia — o mes
 
 # Fase 8 — OCR de verdade
 
-## S-42 · `TextRecognizer` — motor de OCR opcional e plugável
+## S-42 · `TextRecognizer` — motor de OCR opcional e plugável ✅ implementada (2026-08-09)
+
+> **Estado.** `src/chess_diagram_ocr/ocr.py`, extra `ocr` no `pyproject.toml`, seção `ocr` no
+> `data/settings.json`, `CVOFF_OCR_ENABLED`/`CVOFF_OCR_ENGINE`, e a opção `--ocr` em
+> `cvoff-field` e `cvoff-export`. Três provedores: RapidOCR (padrão), EasyOCR e Tesseract.
+> **Nenhum está instalado nesta máquina**, então o que está medido é o contrato — que a
+> ausência devolve `None` em vez de levantar, e que importar o módulo não carrega motor
+> nenhum — e não a acurácia de nenhum deles. Ver [EXPERIMENTS_FASE7.md](EXPERIMENTS_FASE7.md).
 
 **Problema.** 7 dos 27 livros (2.654 páginas) não têm camada de texto. Para eles
 `pdf_text.contexts_for_pdf_page` devolve `DiagramContext()` vazio, sempre: sem lado a jogar,
@@ -915,7 +922,27 @@ falta. Um teste de contrato por motor instalado, pulado quando ausente.
 
 ---
 
-## S-43 · `CaptionReader` — OCR da faixa de legenda, não da página
+## S-43 · `CaptionReader` — OCR da faixa de legenda, não da página ✅ implementada (2026-08-09)
+
+> **Estado.** `src/chess_diagram_ocr/ocr_caption.py`, com a decisão **por diagrama** (o motor
+> só roda onde a camada de texto calou naquela vizinhança), a faixa de margem lida à parte por
+> `pdf_text.page_scope_declaration`, e a procedência em `DiagramContext.side_to_move_origin` →
+> `[SideToMoveSource]` / `[SideToMoveConfidence]`.
+>
+> **O que foi medido:** com `--ocr off`, o conjunto de campo dá 0,6842 — idêntico à S-38a — e
+> as 15 páginas produzem **0** declarações de escopo pela camada de texto, o que prova que o
+> caminho novo está inerte sem motor.
+>
+> **O que não foi medido, e é o critério de aceite principal:** a página 40 do `Reinfeld`
+> saindo com os 6 diagramas em `WHITE` e os exercícios 193–198, e o custo por página com o
+> motor ligado. Os dois exigem `uv sync --extra ocr`, que é uma decisão do dono do projeto.
+>
+> **Uma correção ao texto abaixo:** a spec propunha que a faixa de margem "passa a ser testada
+> contra os padrões antes de ser descartada". Ela é testada, mas **fora** do fluxo normal e só
+> como último escalão — a legenda do diagrama decide antes, sempre. Foi o que o levantamento
+> de 2026-08-09 recomendou ao mostrar que uma das 6 declarações da faixa é o
+> `2.1 White to Move #2` do `Polgar`, cabeçalho de seção e declaração verdadeira ao mesmo
+> tempo. Reinseri-la no fluxo normal a poria competindo com legendas que já funcionam.
 
 **Problema.** Mesmo com um motor de OCR disponível, rodá-lo na página inteira é errado por
 três razões, e as três já estão documentadas na S-16:

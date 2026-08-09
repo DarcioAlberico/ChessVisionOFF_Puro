@@ -445,6 +445,7 @@ def build_review_queue(
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     read_text: bool = True,
+    caption_reader: Any = None,
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     rare_classes: Collection[str] = (),
     cache_dir: Path = DEFAULT_CACHE_DIR,
@@ -463,7 +464,9 @@ def build_review_queue(
 
     `model_session` empresta o modelo do `OcrService` em vez de carregar outro. É uma das
     duas varreduras longas que rodavam fora do lock da S-31 enquanto o treino reescrevia o
-    mesmo `.pt` (S-57).
+    mesmo `.pt` (S-57). `caption_reader` vem do mesmo serviço e pelo mesmo motivo do
+    parágrafo acima: a fila tem de ser construída pelo pipeline que gera o PGN, procedência
+    do lado a jogar incluída (S-43).
     """
     pdf_path = Path(pdf_source)
     items: list[ReviewItem] = []
@@ -480,6 +483,7 @@ def build_review_queue(
         end_page=end_page,
         reading_order=reading_order,
         read_text=read_text,
+        caption_reader=caption_reader,
         cancel_event=cancel_event,
         progress_callback=progress_callback,
         model_session=model_session,

@@ -21,6 +21,7 @@ from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MODEL_PATH, DEFAULT_PDF_DIR,
 from ..field_eval import FieldPage, FieldReport, draft_page, evaluate_field, load_field_set, save_field_set
 from ..logging_setup import configure_logging, default_log_file
 from ..service import OcrService, RecognitionOptions
+from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--show-misses", type=int, default=10, help="Quantos diagramas perdidos listar.")
+    add_ocr_argument(parser)
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -185,7 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         max_boards=args.max_boards,
         dpi=args.dpi,
     )
-    service = OcrService(model_path=args.model)
+    # O criterio de aceite da S-43 e uma comparacao: o mesmo conjunto, com e sem OCR. Por
+    # isso o leitor entra pelo servico, e nao por um caminho paralelo -- o que se mede tem
+    # de ser o pipeline que a exportacao usa.
+    service = OcrService(model_path=args.model, caption_reader=caption_reader_from_args(args))
 
     if args.draft:
         try:

@@ -465,12 +465,18 @@ class OcrService:
         *,
         model_path: Path | None = None,
         loader: Callable[[Path], tuple[Any, str]] = load_model,
+        caption_reader: Any = None,
     ) -> None:
         """`loader` troca de onde vem o modelo, mantendo o resto do pipeline igual.
 
         Serve aos testes, que não têm um `.pt` para carregar, e é o encaixe por onde a
         sessão ONNX da S-30 entra quando alguém quiser o modo rápido na interface -- ela
         já devolve o mesmo par `(modelo, dispositivo)`.
+
+        `caption_reader` é o OCR de legenda da S-43, e `None` -- o padrão -- é o pipeline
+        como sempre foi. Recebido pronto, e não construído aqui: o serviço não deve saber
+        que existe um extra opcional de OCR, e quem lê a configuração é a interface. Ver
+        `ocr_caption.caption_reader_from_settings`.
         """
         self._lock = threading.RLock()
         self._loader = loader
@@ -478,6 +484,12 @@ class OcrService:
         self._device: str | None = None
         self._loaded_path: Path | None = None
         self._requested_path = Path(model_path) if model_path is not None else DEFAULT_MODEL_PATH
+        self._caption_reader = caption_reader
+
+    @property
+    def caption_reader(self) -> Any:
+        """O leitor de legenda por OCR em uso, ou `None`. Repassado à varredura (S-43)."""
+        return self._caption_reader
 
     # ------------------------------------------------------------------------------ modelo
 
@@ -570,7 +582,12 @@ class OcrService:
         boards = [(candidate.board_rgb, None) for candidate in candidates]
         # Mesmo contexto textual que a exportação lê (S-16): a interface mostrando um lado a
         # jogar e o PGN gravando outro seria pior que não mostrar nada.
-        contexts = contexts_for_pdf_page(pdf_source, page_index, [c.bbox_pdf for c in candidates])
+        contexts = contexts_for_pdf_page(
+            pdf_source,
+            page_index,
+            [c.bbox_pdf for c in candidates],
+            caption_reader=self._caption_reader,
+        )
 
         return self._predict_boards(
             image_rgb=page_rgb,

@@ -310,3 +310,78 @@ declarações.
 Isso torna a decisão sobre a dependência de OCR — que o ROADMAP lista como do dono do
 projeto — **mais** consequente, não menos: ela deixou de ser um item entre vários e passou a
 ser *o* item da Fase 8.
+
+---
+
+## S-42 + S-43 · O motor de OCR entrou, e o que ele ainda não provou
+
+Implementados em 2026-08-09. O que segue é o que foi **medido**, separado do que foi
+**construído** — os dois não coincidem neste item, e a diferença é o próximo trabalho.
+
+### O que foi medido: com `--ocr off`, nada muda
+
+O critério de aceite da S-43 exige que ligar o OCR não altere os livros que têm camada de
+texto, e que desligá-lo devolva o projeto exatamente como era. A segunda metade está medida:
+
+| | S-38a (2026-08-09 04:33) | S-43, `--ocr off` (2026-08-09) |
+|---|---|---|
+| recall de detecção | 0,9211 | 0,9211 |
+| precisão de detecção | 0,9722 | 0,9722 |
+| **taxa de exportação** | **0,6842** (26/38) | **0,6842** (26/38) |
+| detectados e legais | 35 | 34 |
+
+Relatório em `docs/metrics/field_20260809_s43_sem_ocr.json`.
+
+**A linha que difere não é do código desta entrega, e vale dizer por quê.** `legal` conta
+`is_fatal is not True`, que é função só do campo de peças lido — nenhuma das mudanças da
+S-42/S-43 toca detecção, recorte ou classificação. O que mudou entre as duas medições foi o
+arquivo: `models/piece_classifier.pt` foi reescrito às 07:49, **depois** da medição da S-38a
+às 04:33. Um diagrama do `Euwe` p100 passou a sair fatalmente ilegal com o checkpoint novo.
+
+A verificação direta de que o caminho novo está inerte: das 15 páginas do conjunto de campo,
+**0 produzem declaração de escopo de página** pela camada de texto. O único comportamento
+que a S-43 acrescenta sem motor de OCR não dispara uma vez aqui.
+
+**Consequência para o roadmap:** o número de referência da Fase 7 (0,6842) continua válido,
+mas a linha `legal` do `field_20260809_s38a.json` descreve um checkpoint que não está mais em
+disco. Qualquer comparação futura tem de partir do arquivo novo.
+
+### O que **não** foi medido, e é o que falta
+
+Nenhum motor de OCR está instalado nesta máquina. Então:
+
+| pergunta | estado |
+|---|---|
+| o `--ocr off` mantém o pipeline igual | **medido**: sim |
+| ligar o OCR não muda os livros com camada de texto | **provado por construção, não medido** — o motor não roda onde a camada respondeu, e há teste disso; falta o número |
+| a página 40 do `Reinfeld` sai com os 6 diagramas em `WHITE` e exercícios 193–198 | **não medido** — é o critério de aceite principal da S-43 e exige `uv sync --extra ocr` |
+| o custo por página com OCR ligado fica abaixo de ~2× o reconhecimento | **não medido** — a instrumentação está no log (`_lines_with_ocr`), falta rodar |
+
+Os três últimos são a mesma medição, e ela precisa de uma decisão que é do dono do projeto:
+instalar o extra. O código está pronto para ela e não pretende ter respondido a ela.
+
+### O que a implementação ensinou
+
+**O desempate "a camada de texto vence" é quase inalcançável, e isso é bom.** A regra está
+na spec e foi implementada. Ao testá-la, ficou claro que o gate por diagrama a torna rara por
+construção: o motor só roda onde a camada calou, então as duas fontes praticamente nunca
+disputam o mesmo escalão do mesmo diagrama. Para que disputem, uma linha lida na vizinhança
+de um diagrama precisa cair também na de outro que já tinha texto. O primeiro teste que
+escrevi para ela passava sem exercitá-la — as duas leituras caíam em baldes diferentes. Foi
+reescrito para `context_from_lines`, onde o caso é construível, e o teste de integração
+passou a afirmar o que de fato acontece: procedências diferentes em diagramas diferentes da
+mesma página.
+
+**O tabuleiro é apagado antes do motor, não filtrado depois.** A armadilha nº 3 da S-16 — o
+OCR lê as peças como caracteres — tinha duas saídas. Filtrar depois exigiria estender
+`_is_diagram_font_row`, que foi feito para o `Polgar` (onde o tabuleiro *é* texto) e não para
+pixels. Pintar de branco o interior do `bbox_pdf` no recorte já renderizado custa uma linha e
+faz o problema deixar de existir. Branco e não preto: um retângulo preto de 400×400 px é a
+coisa mais parecida com um bloco de texto que se pode desenhar.
+
+**O parcial de exportação precisou de mais um campo.** `ScanParams` já guardava
+`model_identity` porque retomar depois de treinar misturava dois modelos (S-57). O OCR cria
+exatamente o mesmo problema numa segunda dimensão: retomar com motor uma varredura começada
+sem ele produziria um PGN em que metade dos `[SideToMoveSource]` diz `default` e a outra
+`ocr`, sem que a diferença seja do livro. `ocr_engine` entrou no cabeçalho do parcial pelo
+mesmo motivo e com o mesmo default vazio.

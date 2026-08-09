@@ -82,6 +82,8 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | `decode.py` | Decodificação sujeita às regras do xadrez. |
 | `semantics.py` | Lado a jogar e direitos de roque, deduzidos da posição. |
 | `pdf_text.py` | Legenda e metadados da camada de texto do PDF. |
+| `ocr.py` | Motor de OCR opcional e plugável (S-42). Sem o extra, `build_recognizer` devolve `None`. |
+| `ocr_caption.py` | Lê **a faixa em volta do diagrama**, não a página, e devolve a mesma `TextLine` da S-16 (S-43). |
 | `fen_utils.py` | Sintaxe **e** legalidade — duas coisas distintas, ver o README. |
 | `pdf_to_pgn.py` | Varredura de um livro, gate de exportação, checkpoint parcial. |
 | `batch.py` | Varredura da biblioteca inteira, com relatório consolidado. |
@@ -112,19 +114,34 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 
 ---
 
-## As três fontes de verdade sobre o lado a jogar
+## As fontes de verdade sobre o lado a jogar
 
 É a decisão de projeto mais consequente do produto, porque até a Fase 3 **100% dos
 exercícios saíam como "brancas jogam"** e em livro de tática cerca de metade está errada.
 
-| fonte | quando responde | alcance medido |
-|---|---|---|
-| texto do PDF (S-16) | há legenda ao lado do diagrama | **3** dos 27 livros |
-| legalidade (S-17) | quem não joga está em xeque | 118 dos 3.195 rótulos |
-| padrão "brancas" | nenhuma das duas | o resto |
+| fonte | `[SideToMoveSource]` | quando responde | alcance medido |
+|---|---|---|---|
+| legenda na camada de texto (S-16) | `text` | há legenda ao lado do diagrama | **3** dos 27 livros |
+| legenda lida por OCR (S-43) | `ocr` | a camada calou **naquele diagrama** e há motor | 7 livros sem camada + 5 com camada parcial |
+| cabeçalho da página, camada de texto (S-43) | `text-page-scope` | a legenda calou e a faixa de margem declara | 6 declarações em 3 livros |
+| cabeçalho da página, por OCR (S-43) | `ocr-page-scope` | idem, sem camada de texto | o `LAS BLANCAS JUEGAN PRIMERO` do `Reinfeld` |
+| legalidade (S-17) | `legality` | quem não joga está em xeque | 118 dos 3.195 rótulos |
+| padrão "brancas" | `default` | nenhuma das anteriores | o resto |
 
 O PGN grava `[SideToMoveSource]` **sempre**. A maioria do acervo cai no padrão, e um palpite
-precisa parecer um palpite — é essa a diferença entre um dado e uma suposição herdada.
+precisa parecer um palpite — é essa a diferença entre um dado e uma suposição herdada. As
+quatro procedências textuais existem separadas pelo mesmo motivo: "está escrito na legenda
+deste diagrama, no arquivo" e "um motor leu com 0,62 de confiança num cabeçalho que vale
+para a página inteira" não são o mesmo dado. Quando quem decide é o OCR, o header
+`[SideToMoveConfidence]` acompanha.
+
+Duas regras de precedência, e as duas foram escolhidas para que ligar o OCR não possa
+piorar um livro que já funciona:
+
+- **Por diagrama, e só onde a camada calou.** O motor não roda para um diagrama que já tem
+  linha de texto por perto — o que também é a economia que o custo medido na S-61 exige.
+- **A legenda vence o cabeçalho.** A declaração de escopo de página só preenche o diagrama
+  que ficou sem resposta.
 
 ---
 

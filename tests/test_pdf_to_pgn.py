@@ -4,6 +4,7 @@ import tempfile
 import threading
 import unittest
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -180,6 +181,38 @@ class PdfToPgnTests(unittest.TestCase):
                 )
 
                 self.assertIn(f'[OCRRotation "{rotation}"]', payload)
+
+    @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
+    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
+    @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
+    @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
+    @patch("chess_diagram_ocr.pdf_to_pgn._get_pdf_page_count")
+    def test_o_leitor_de_legenda_chega_ate_a_leitura_de_contexto(
+        self,
+        mock_get_pdf_page_count,
+        mock_load_model,
+        mock_render_pdf_page,
+        mock_detect,
+        mock_predict,
+        mock_contexts,
+    ) -> None:
+        """A S-43 só vale se o leitor atravessar as quatro camadas até `contexts_for_page`.
+
+        É uma passagem de parâmetro, e é exatamente o tipo de fio que se rompe em silêncio:
+        o pipeline continua funcionando sem OCR, e ninguém nota que ele parou de chegar.
+        """
+        mock_get_pdf_page_count.return_value = 1
+        mock_load_model.return_value = ("model", "cpu")
+        mock_render_pdf_page.return_value = np.zeros((10, 10, 3), dtype=np.uint8)
+        mock_detect.return_value = [candidate_for(np.zeros((800, 800, 3), dtype=np.uint8), 0)]
+        mock_contexts.return_value = [DiagramContext()]
+        mock_predict.return_value = oriented_for(KINGS_ONLY, 0.9)
+
+        sentinela = object()
+        scan_pdf_positions(Path("sample.pdf"), caption_reader=sentinela)
+
+        self.assertIs(mock_contexts.call_args.args[3], sentinela)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
     @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
@@ -410,6 +443,59 @@ class EnrichedHeaderTests(unittest.TestCase):
         self.assertIn(f'[FEN "{KINGS_ONLY} b - - 0 1"]', payload)
         self.assertIn('[SideToMoveSource "text"]', payload)
         self.assertIn('[SideToMove "pretas"]', payload)
+
+    def position_read_by_ocr(self, source: str = "ocr") -> DiagramPosition:
+        """O mesmo diagrama, mas com a legenda lida por um motor e não pelo arquivo (S-43)."""
+        return DiagramPosition(
+            page_index=0,
+            diagram_index=1,
+            fen=KINGS_ONLY,
+            confidence=0.99,
+            min_confidence=0.97,
+            is_legal=True,
+            is_fatal=False,
+            side_to_move=SideToMove(color=chess.BLACK, source=source, reason="OCR"),
+            context=DiagramContext(
+                caption="31: Jogada das pretas",
+                side_to_move=chess.BLACK,
+                side_to_move_origin="ocr" if source == "ocr" else "ocr-page-scope",
+                side_to_move_confidence=0.62,
+            ),
+        )
+
+    def test_lado_lido_por_ocr_nao_se_disfarca_de_camada_de_texto(self) -> None:
+        payload = build_pgn_text([self.position_read_by_ocr()], source_name="book.pdf")
+
+        self.assertIn('[SideToMoveSource "ocr"]', payload)
+        self.assertIn('[SideToMoveConfidence "0.620"]', payload)
+
+    def test_escopo_de_pagina_por_ocr_tem_procedencia_propria(self) -> None:
+        """Um cabeçalho que vale para a página inteira não é a legenda deste diagrama."""
+        payload = build_pgn_text([self.position_read_by_ocr("ocr-page-scope")], source_name="book.pdf")
+
+        self.assertIn('[SideToMoveSource "ocr-page-scope"]', payload)
+
+    def test_confianca_so_aparece_quando_quem_decidiu_foi_o_ocr(self) -> None:
+        """Escrever a confiança de uma leitura que a legalidade derrubou seria mentir.
+
+        A cascata da S-17 pode descartar uma declaração de OCR de 0,62 e decidir pela
+        posição. O header diria que a resposta gravada vale 0,62, e ela não veio de lá.
+        """
+        derrubada = replace(
+            self.position_read_by_ocr(),
+            side_to_move=SideToMove(color=chess.WHITE, source="legality", reason="xeque", conflicting=True),
+        )
+
+        payload = build_pgn_text([derrubada], source_name="book.pdf")
+
+        self.assertIn('[SideToMoveSource "legality"]', payload)
+        self.assertNotIn("SideToMoveConfidence", payload)
+
+    def test_camada_de_texto_nao_ganha_header_de_confianca(self) -> None:
+        """1,0 em todo jogo de um livro com camada de texto ensina a ignorar o header."""
+        payload = build_pgn_text([self.position_with_context()], source_name="book.pdf")
+
+        self.assertNotIn("SideToMoveConfidence", payload)
 
     def test_sem_legenda_os_padroes_continuam(self) -> None:
         payload = build_pgn_text(

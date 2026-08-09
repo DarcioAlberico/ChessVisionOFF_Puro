@@ -712,6 +712,45 @@ Ressalva honesta: nem todo livro imprime coordenadas. Nas páginas que olhei, o 
 tem, o Gallagher não tem, o Euwe não tem — o Aagaard e o Karpov têm. O item precisa medir a
 cobertura antes de prometer alcance, e a S-45 diz isso em letra.
 
+### 8.3b — O motor de OCR entrou; a medição dele não ✅ código (S-42, S-43)
+
+Implementados em 2026-08-09. Vale separar com clareza o que está pronto do que está provado,
+porque neste item as duas coisas não coincidem.
+
+**O que existe.** `ocr.py` com a interface `TextRecognizer` e três provedores — RapidOCR
+(padrão), EasyOCR e Tesseract —, atrás de um `build_recognizer` que devolve `None` quando o
+recurso está desligado, o motor é desconhecido ou o extra não está instalado. `ocr_caption.py`
+lê **a faixa em volta do diagrama**, apaga o interior do tabuleiro antes de o motor ver a
+imagem, e devolve a mesma `TextLine` que `page_text_lines` devolve — de forma que todo o
+aparato da S-16 continua valendo sem uma linha de mudança. A opção `--ocr` está em
+`cvoff-field` e `cvoff-export`, e o extra é `uv sync --extra ocr`.
+
+Duas regras de precedência, escolhidas para que ligar o OCR não possa piorar um livro que já
+funciona: o motor **só roda no diagrama cuja vizinhança a camada de texto deixou vazia** (por
+diagrama, não por livro — é o que os 5 livros de OCR parcial exigem), e a declaração de
+escopo de página só preenche o diagrama que a legenda não respondeu.
+
+**O que está medido.** Com `--ocr off`, o conjunto de campo dá **0,6842 — idêntico**. E das
+15 páginas, **0 produzem declaração de escopo pela camada de texto**: o único comportamento
+novo que roda sem motor não dispara uma vez aqui. O caminho novo está inerte, como tinha de
+estar.
+
+**O que não está medido, e é o critério de aceite principal.** Nenhum motor está instalado
+nesta máquina. A página 40 do `Reinfeld` saindo com os 6 diagramas em `WHITE` e os exercícios
+193–198 — o alvo do item — continua sem número, e o custo por página com o motor ligado
+também. A instrumentação está no log; falta rodar.
+
+**O que isso pede de você.** `uv sync --extra ocr` instala ~15 MB de modelos que vêm no
+wheel, sem download na primeira execução — é o motivo de o RapidOCR ser o padrão, e a
+promessa do README continua de pé. Mas é uma dependência a mais, e a decisão é sua. Depois
+dela, `cvoff-field --ocr rapidocr` responde em um comando se o item entregou o que promete.
+
+**Uma nota de método.** A linha `legal` do conjunto de campo saiu de 35 para 34 entre a
+medição da S-38a e esta. Não é desta entrega: `models/piece_classifier.pt` foi reescrito às
+07:49 de 2026-08-09, depois da medição das 04:33, e `legal` é função só do campo de peças
+lido. Fica registrado porque o `field_20260809_s38a.json` descreve um checkpoint que não está
+mais em disco — comparação futura parte do `field_20260809_s43_sem_ocr.json`.
+
 ### 8.4 — O critério de saída da Fase 8
 
 Hoje, **3 dos 27 livros** resolvem o lado a jogar por texto e **118 de 3.195 rótulos** por
@@ -916,7 +955,8 @@ Se houver duas semanas:
 | 5 | S-40 — **medir** (~110 min de CPU) | a máquina estava em uso; é a sua decisão de quando | ← próximo |
 | 6 | **medir contra o conjunto de campo** | fim da Fase 7: a taxa de exportação saiu de 0,6842 ou não | |
 | — | ~~S-44 (glifo `W`/`B`)~~ | **medido: 0 ocorrências em 380 diagramas com texto.** O único livro que tem o marcador não tem camada de texto | ⏸ |
-| 7–9 | **S-42 + S-43** (motor de OCR + faixa de legenda) | com a S-44 e a S-45 fora, é **o** item da Fase 8: os 7 livros sem texto e o `LAS BLANCAS JUEGAN PRIMERO` |
+| 7–9 | **S-42 + S-43** (motor de OCR + faixa de legenda) | com a S-44 e a S-45 fora, é **o** item da Fase 8: os 7 livros sem texto e o `LAS BLANCAS JUEGAN PRIMERO` | ✅ código |
+| 9b | S-42/S-43 — **instalar o extra e medir** | `uv sync --extra ocr` e `cvoff-field --ocr rapidocr`. É a sua decisão: muda o que o projeto instala | ← próximo |
 | — | ~~S-45 (coordenadas)~~ | **medido: 13,7% de cobertura, 48/52 num livro que já lê a 1,000, e 0 diagramas do ponto de vista das pretas** | ⏸ |
 | 10 | S-51 (procedência) + S-52 (`corrected_by`) | destrava o split por livro, que melhora toda medição futura |
 | 11–14 | S-46 a S-50 (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro |

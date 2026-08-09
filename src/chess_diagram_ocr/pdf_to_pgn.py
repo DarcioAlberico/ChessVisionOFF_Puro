@@ -271,6 +271,13 @@ def _normalize_fen_for_pgn(fen: str) -> str:
     return normalized
 
 
+_OCR_SOURCES = frozenset({"ocr", "ocr-page-scope"})
+"""Procedências em que o lado a jogar foi lido por um motor, e não do arquivo (S-43).
+
+São as únicas em que `[SideToMoveConfidence]` significa alguma coisa.
+"""
+
+
 def _flatten_caption(caption: str) -> str:
     """Legenda em uma linha e sem aspas: header de PGN não quebra linha nem escapa aspas."""
     flat = " / ".join(line.strip() for line in caption.splitlines() if line.strip())
@@ -349,11 +356,12 @@ def _page_contexts(
     pdf_source: PdfSource,
     page_index: int,
     bboxes: Sequence[tuple[float, float, float, float]],
+    caption_reader: Any = None,
 ) -> list[DiagramContext]:
     """Contexto textual de cada diagrama da página (S-16). Mesma indireção dos anteriores."""
     from .pdf_text import contexts_for_pdf_page
 
-    return contexts_for_pdf_page(pdf_source, page_index, bboxes)
+    return contexts_for_pdf_page(pdf_source, page_index, bboxes, caption_reader=caption_reader)
 
 
 @dataclass(frozen=True, eq=False)
@@ -384,6 +392,7 @@ def iter_pdf_diagrams(
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     read_text: bool = True,
+    caption_reader: Any = None,
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
     page_callback: PageCallback | None = None,
@@ -397,6 +406,11 @@ def iter_pdf_diagrams(
 
     `cancel_event` é conferido **antes** de cada página, e não dentro da inferência: uma
     página a 220 DPI leva ~0,18 s, então o pior caso de resposta ao cancelamento é isso.
+
+    `caption_reader` é o `ocr_caption.CaptionReader` da S-43, e `None` -- o padrão -- é o
+    projeto inteiro como sempre foi: só a camada de texto. Ele só entra onde a camada cala,
+    e vale para os 7 livros do acervo que não têm camada nenhuma. `Any` na assinatura, e não
+    o tipo, para que este módulo não passe a importar o extra opcional de OCR.
 
     `model_session` é o empréstimo do modelo do `OcrService`, com o lock da S-31 segurado
     pela duração da varredura (S-57). Sem ele, esta função carregava o `.pt` por conta
@@ -434,6 +448,7 @@ def iter_pdf_diagrams(
             orientation=orientation,
             reading_order=reading_order,
             read_text=read_text,
+            caption_reader=caption_reader,
             cancel_event=cancel_event,
             progress_callback=progress_callback,
             page_callback=page_callback,
@@ -459,6 +474,7 @@ def _scan_pages(
     orientation: OrientationMode,
     reading_order: ReadingOrder,
     read_text: bool,
+    caption_reader: Any,
     cancel_event: threading.Event | None,
     progress_callback: ProgressCallback | None,
     page_callback: PageCallback | None,
@@ -479,7 +495,11 @@ def _scan_pages(
             max_boards=max_boards_per_page,
             reading_order=reading_order,
         )
-        contexts = _page_contexts(pdf_source, page_index, [c.bbox_pdf for c in candidates]) if read_text else []
+        contexts = (
+            _page_contexts(pdf_source, page_index, [c.bbox_pdf for c in candidates], caption_reader)
+            if read_text
+            else []
+        )
 
         page_positions: list[DiagramPosition] = []
         for diagram_index, candidate in enumerate(candidates, start=1):
@@ -541,6 +561,7 @@ def scan_pdf_positions(
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     read_text: bool = True,
+    caption_reader: Any = None,
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
     page_callback: PageCallback | None = None,
@@ -554,6 +575,8 @@ def scan_pdf_positions(
 
     `read_text` liga a extração do contexto textual (S-16). Desligar não muda o tabuleiro
     lido -- só faz o lado a jogar cair para a inferência por legalidade e para o padrão.
+    `caption_reader` é o OCR da S-43, que só entra onde a camada de texto cala; com
+    `read_text=False` ele não roda, porque não há contexto textual nenhum a produzir.
 
     `cancel_event` interrompe a varredura entre páginas e devolve o que já foi lido (S-24):
     o parcial é justamente o que permite retomar em vez de recomeçar.
@@ -571,6 +594,7 @@ def scan_pdf_positions(
             end_page=end_page,
             reading_order=reading_order,
             read_text=read_text,
+            caption_reader=caption_reader,
             cancel_event=cancel_event,
             progress_callback=progress_callback,
             page_callback=page_callback,
@@ -622,6 +646,12 @@ def build_pgn_games(
         if position.side_to_move is not None:
             game.headers["SideToMove"] = position.side_to_move.label
             game.headers["SideToMoveSource"] = position.side_to_move.source
+            # So quando quem decidiu foi o OCR (S-43). Escrever a confianca de uma decisao
+            # de legalidade -- que pode ter derrubado uma leitura de OCR de 0,55 -- diria
+            # que a resposta gravada vale 0,55, e ela nao veio de la. E 1,0 em todo jogo de
+            # um livro com camada de texto e ruido que ensina a ignorar o header.
+            if position.side_to_move.source in _OCR_SOURCES and context is not None:
+                game.headers["SideToMoveConfidence"] = f"{context.side_to_move_confidence:.3f}"
             if infer_castling_rights(position.fen) != "-":
                 # So quando ha o que declarar: escrever a proveniencia de um "-" nao informa
                 # nada e enche o header de ruido.
@@ -755,6 +785,7 @@ def save_pdf_positions_to_pgn(
     event_name: str = "ChessVisionOFF PDF OCR",
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     read_text: bool = True,
+    caption_reader: Any = None,
     dedupe: bool = False,
     cancel_event: threading.Event | None = None,
     resume: bool = True,
@@ -793,6 +824,9 @@ def save_pdf_positions_to_pgn(
         orientation=orientation,
         reading_order=reading_order,
         read_text=read_text,
+        # Retomar com OCR o que comecou sem ele misturaria duas procedencias no mesmo PGN
+        # (S-43), pelo mesmo motivo que `model_identity` existe.
+        ocr_engine=getattr(caption_reader, "name", "") if caption_reader is not None else "",
         start_page=start_page,
         end_page=end_page,
     )
@@ -841,6 +875,7 @@ def save_pdf_positions_to_pgn(
                 end_page=end_page,
                 reading_order=reading_order,
                 read_text=read_text,
+                caption_reader=caption_reader,
                 cancel_event=cancel_event,
                 progress_callback=progress_callback,
                 page_callback=_on_page,

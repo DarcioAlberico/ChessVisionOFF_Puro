@@ -3,12 +3,13 @@
 ## O ambiente
 
 ```bash
-uv sync --extra dev --extra onnx
+uv sync --extra dev --extra onnx --extra ocr
 ```
 
 Isso instala o pacote em modo editável e traz `pytest`, `ruff` e `mypy`. Requer Python 3.10.
-O `--extra onnx` é opcional; sem ele os testes da S-30 pulam. Atenção: `uv sync` com um
-subconjunto de extras **desinstala** o que os outros trouxeram, então repita os dois.
+Os dois últimos extras são opcionais: sem `onnx` os testes da S-30 pulam, sem `ocr` pulam os
+de contrato de motor da S-42 (`InstalledEngineContractTests`). Atenção: `uv sync` com um
+subconjunto de extras **desinstala** o que os outros trouxeram, então repita os três.
 
 **Se você mover o diretório do projeto, rode `uv sync` de novo.** O ponteiro da instalação
 editável guarda o caminho absoluto, e um caminho morto quebra os `cvoff-*` e o

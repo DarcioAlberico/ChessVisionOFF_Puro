@@ -20,6 +20,9 @@ from __future__ import annotations
 
 SIDE_SOURCE_LABELS: dict[str, str] = {
     "text": "declarado no texto do PDF",
+    "ocr": "lido por OCR da legenda",
+    "text-page-scope": "declarado no cabeçalho da página",
+    "ocr-page-scope": "lido por OCR do cabeçalho da página",
     "legality": "deduzido da legalidade da posição",
     "default": "assumido (o PDF não diz)",
     "manual": "definido por você",

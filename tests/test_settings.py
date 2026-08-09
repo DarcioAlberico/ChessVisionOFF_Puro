@@ -23,8 +23,11 @@ from chess_diagram_ocr.net_correction import (
     build_provider,
 )
 from chess_diagram_ocr.settings import (
+    ENV_OCR_ENABLED,
+    ENV_OCR_ENGINE,
     ENV_REMOTE_ENABLED,
     ENV_REMOTE_URL,
+    OcrSettings,
     RemoteFenSettings,
     Settings,
     apply_environment,
@@ -33,6 +36,60 @@ from chess_diagram_ocr.settings import (
 )
 
 ENDPOINT = "https://exemplo.invalido/predict"
+
+
+class OcrSettingsTests(unittest.TestCase):
+    """A seção `ocr` do `settings.json` (S-42).
+
+    A promessa que estes testes travam é a mesma da correção remota, e por isso moram no
+    mesmo arquivo: **o padrão não liga nada**. Um motor de OCR não envia imagem para fora,
+    mas o EasyOCR baixa ~100 MB no primeiro uso -- e tráfego de rede que o usuário não pediu
+    é tráfego que o README promete não existir no uso padrão.
+    """
+
+    def test_o_padrao_e_desligado_e_no_motor_que_nao_baixa_nada(self) -> None:
+        padrao = Settings().ocr
+        self.assertFalse(padrao.enabled)
+        self.assertEqual(padrao.engine, "rapidocr")
+
+    def test_round_trip_pelo_arquivo(self) -> None:
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = Path(pasta) / "settings.json"
+            original = Settings(ocr=OcrSettings(enabled=True, engine="easyocr", languages=("de",)))
+            save_settings(caminho, original)
+            self.assertEqual(load_settings(caminho, env={}).ocr, original.ocr)
+
+    def test_secao_ausente_cai_no_padrao(self) -> None:
+        """Um `settings.json` escrito antes da S-42 continua válido, e continua desligado."""
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = Path(pasta) / "settings.json"
+            caminho.write_text(json.dumps({"remote_fen": {"enabled": False}}), encoding="utf-8")
+            self.assertEqual(load_settings(caminho, env={}).ocr, OcrSettings())
+
+    def test_lista_de_idiomas_vazia_nao_apaga_os_idiomas(self) -> None:
+        """`[]` é quase sempre engano de edição, e um motor sem idioma nenhum não lê nada."""
+        self.assertEqual(OcrSettings.from_dict({"languages": []}).languages, OcrSettings().languages)
+
+    def test_declarar_o_motor_no_ambiente_liga_o_recurso(self) -> None:
+        """Mesma leitura que `CVOFF_REMOTE_FEN_URL` faz do endpoint: uma variável, uma intenção."""
+        ajustado = apply_environment(Settings(), env={ENV_OCR_ENGINE: "tesseract"})
+        self.assertTrue(ajustado.ocr.enabled)
+        self.assertEqual(ajustado.ocr.engine, "tesseract")
+
+    def test_o_ambiente_pode_desligar_por_cima_do_arquivo(self) -> None:
+        ligado = Settings(ocr=OcrSettings(enabled=True))
+        self.assertFalse(apply_environment(ligado, env={ENV_OCR_ENABLED: "0"}).ocr.enabled)
+
+    def test_desligar_vence_o_motor_declarado_na_mesma_chamada(self) -> None:
+        """`CVOFF_OCR_ENABLED=0` é a garantia que um script ou a CI usa; nada a contradiz."""
+        ajustado = apply_environment(
+            Settings(), env={ENV_OCR_ENGINE: "rapidocr", ENV_OCR_ENABLED: "0"}
+        )
+        self.assertFalse(ajustado.ocr.enabled)
+
+    def test_valor_irreconhecivel_nao_muda_nada(self) -> None:
+        ligado = Settings(ocr=OcrSettings(enabled=True))
+        self.assertTrue(apply_environment(ligado, env={ENV_OCR_ENABLED: "talvez"}).ocr.enabled)
 
 
 class DefaultTests(unittest.TestCase):
