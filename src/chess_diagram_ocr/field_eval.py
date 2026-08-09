@@ -1,0 +1,438 @@
+"""Avaliação sobre páginas reais, e as métricas que faltavam (S-41).
+
+**O que este módulo mede que nenhum outro media.** Toda métrica do projeto é sobre *o que
+foi encontrado*: `evaluation.py` avalia recortes já rotulados, `batch.BookResult` reporta
+taxa de aceite sobre o que a varredura produziu, a fila de revisão ordena o que entrou nela.
+Nenhuma responde à pergunta que decide se um livro foi convertido: **dos diagramas que a
+página tem, quantos saíram?**
+
+Sem esse número, um ajuste que corte 20% dos falsos positivos e 5% dos verdadeiros aparece
+como melhora em todos os painéis existentes -- a confiança média sobe, a taxa de ilegais cai
+-- e é uma piora no produto.
+
+**Por que um conjunto novo em vez do split de teste.** As 320 amostras de `test` são recortes
+de `data/samples/`: tabuleiros que um humano já aprovou, salvos pelo próprio fluxo de
+correção. O produto não lê recortes aprovados, lê páginas de PDF. Medido em 2026-08-09 sobre
+101 diagramas de página real, o gate de exportação rejeita **17 (16,8%)** contra **3 de 320
+(0,94%)** no split de teste. Fator de 18×. O classificador está no teto de uma métrica que
+não descreve a entrada.
+
+**As páginas sem diagrama são obrigatórias.** São elas que medem falso positivo, e nenhuma
+métrica atual as vê -- foi assim que uma coluna de texto do `Karpov 1` pôde virar um
+"tabuleiro" com oito reis brancos sem que nada acusasse.
+
+**A anotação é humana, e o arquivo diz quando não é.** `draft_page` gera um rascunho a partir
+do que o pipeline lê hoje, para que anotar seja corrigir em vez de digitar. Um rascunho não
+revisado **não é verdade de referência**: medir contra a própria saída do modelo dá 100% em
+tudo e não significa nada. Por isso `reviewed` existe, começa `False`, e `evaluate_field`
+recusa páginas não revisadas em vez de silenciosamente inflar o número.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .atomic_io import atomic_write_text
+from .config import ACCEPT_MIN_CONFIDENCE
+from .service import OcrService, RecognitionOptions, RecognizedDiagram
+
+logger = logging.getLogger(__name__)
+
+FIELD_SET_VERSION = 1
+
+MATCH_IOU = 0.5
+"""IoU mínimo para uma detecção contar como o diagrama anotado.
+
+0,5 é frouxo de propósito. O que se mede aqui é **achou ou não achou**, não a qualidade do
+recorte -- essa já tem dono, é a `min_confidence`, que despenca quando a grade sai de
+registro. Exigir 0,9 misturaria as duas perguntas e faria um recorte 5 px deslocado contar
+como diagrama perdido.
+"""
+
+Bbox = tuple[float, float, float, float]
+
+
+def bbox_iou(a: Bbox, b: Bbox) -> float:
+    """IoU de dois retângulos `(x0, y0, x1, y1)`, em qualquer unidade comum."""
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    ix0, iy0 = max(ax0, bx0), max(ay0, by0)
+    ix1, iy1 = min(ax1, bx1), min(ay1, by1)
+    largura, altura = max(0.0, ix1 - ix0), max(0.0, iy1 - iy0)
+    intersecao = largura * altura
+    if intersecao <= 0:
+        return 0.0
+    uniao = (ax1 - ax0) * (ay1 - ay0) + (bx1 - bx0) * (by1 - by0) - intersecao
+    return intersecao / uniao if uniao > 0 else 0.0
+
+
+@dataclass(frozen=True)
+class AnnotatedDiagram:
+    """Um diagrama que a página tem, segundo um humano."""
+
+    bbox: Bbox
+    """Em **pontos do PDF**, não em pixels: a anotação sobrevive a uma troca de DPI."""
+
+    placement: str = ""
+    """Campo de peças da FEN. Vazio quando só a existência do diagrama foi anotada.
+
+    Anotar a posição inteira custa muito mais que anotar a caixa, e as duas perguntas são
+    separáveis: sem `placement` a página ainda mede recall e precisão de detecção, que é o
+    que não existia. `exact` simplesmente não conta essa página."""
+
+    side_to_move: str = ""
+    """`w`, `b` ou vazio quando a página não declara e o anotador não quis supor."""
+
+    note: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        dados: dict[str, Any] = {"bbox": [round(value, 2) for value in self.bbox]}
+        if self.placement:
+            dados["placement"] = self.placement
+        if self.side_to_move:
+            dados["side_to_move"] = self.side_to_move
+        if self.note:
+            dados["note"] = self.note
+        return dados
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> AnnotatedDiagram:
+        caixa = [float(value) for value in raw.get("bbox", (0, 0, 0, 0))]
+        if len(caixa) != 4:
+            raise ValueError(f"bbox precisa de 4 números; recebido {raw.get('bbox')!r}")
+        return cls(
+            bbox=(caixa[0], caixa[1], caixa[2], caixa[3]),
+            placement=str(raw.get("placement", "")).strip(),
+            side_to_move=str(raw.get("side_to_move", "")).strip(),
+            note=str(raw.get("note", "")).strip(),
+        )
+
+
+@dataclass(frozen=True)
+class FieldPage:
+    """Uma página anotada. `diagrams` vazio é um dado, não uma lacuna."""
+
+    pdf: str
+    page: int
+    diagrams: tuple[AnnotatedDiagram, ...] = ()
+
+    reviewed: bool = False
+    """Um humano conferiu esta linha.
+
+    Rascunho não revisado não é verdade de referência: medir o pipeline contra a própria
+    saída dele dá 100% em tudo. `evaluate_field` recusa páginas com `reviewed=False`."""
+
+    regime: str = ""
+    """Que caso esta página cobre: `scan-hachurado`, `vetorial`, `sem-diagrama`, `solucoes`,
+    `fotografia`, `fonte`. Existe para o relatório poder dizer *onde* o pipeline falha, e
+    não só quanto."""
+
+    note: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        dados: dict[str, Any] = {
+            "pdf": self.pdf,
+            "page": self.page,
+            "reviewed": self.reviewed,
+            "diagrams": [diagram.to_dict() for diagram in self.diagrams],
+        }
+        if self.regime:
+            dados["regime"] = self.regime
+        if self.note:
+            dados["note"] = self.note
+        return dados
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> FieldPage:
+        return cls(
+            pdf=str(raw["pdf"]),
+            page=int(raw["page"]),
+            diagrams=tuple(AnnotatedDiagram.from_dict(item) for item in raw.get("diagrams", ())),
+            reviewed=bool(raw.get("reviewed", False)),
+            regime=str(raw.get("regime", "")).strip(),
+            note=str(raw.get("note", "")).strip(),
+        )
+
+
+def load_field_set(path: Path) -> list[FieldPage]:
+    """Lê o `.jsonl`. Linha em branco é ignorada; linha inválida derruba, com o número dela.
+
+    JSONL e não JSON pelo mesmo motivo do checkpoint de exportação (S-24): acrescentar uma
+    página anotada não reescreve as anteriores, e um arquivo cortado no meio ainda tem valor
+    até a última linha inteira.
+    """
+    path = Path(path)
+    if not path.exists():
+        return []
+
+    paginas: list[FieldPage] = []
+    for numero, linha in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        texto = linha.strip()
+        if not texto or texto.startswith("//"):
+            continue
+        try:
+            paginas.append(FieldPage.from_dict(json.loads(texto)))
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"{path}:{numero}: linha inválida no conjunto de campo ({exc})") from exc
+    return paginas
+
+
+def save_field_set(path: Path, pages: Iterable[FieldPage]) -> None:
+    """Grava o `.jsonl` ordenado por (livro, página), de forma atômica (S-25)."""
+    ordenadas = sorted(pages, key=lambda pagina: (pagina.pdf, pagina.page))
+    corpo = "\n".join(json.dumps(pagina.to_dict(), ensure_ascii=False) for pagina in ordenadas)
+    atomic_write_text(Path(path), corpo + "\n" if corpo else "")
+
+
+# --------------------------------------------------------------------------- relatório
+
+
+@dataclass
+class FieldReport:
+    """O que o pipeline entrega sobre páginas reais.
+
+    A métrica primária é `export_rate`, e não a exatidão: é ela que responde "quantos
+    diagramas do livro chegam ao PGN sem passar por mão humana". As outras três existem para
+    dizer **onde** ela se perde -- na detecção, na legalidade ou na confiança.
+    """
+
+    pages: int = 0
+    pages_without_diagram: int = 0
+    annotated: int = 0
+    detected: int = 0
+    matched: int = 0
+    false_positives: int = 0
+    legal: int = 0
+    above_gate: int = 0
+    exported: int = 0
+    comparable: int = 0
+    """Diagramas casados cuja anotação traz `placement`, e que portanto podem ser conferidos."""
+
+    exact: int = 0
+    per_regime: dict[str, FieldReport] = field(default_factory=dict)
+    per_book: dict[str, FieldReport] = field(default_factory=dict)
+    misses: list[str] = field(default_factory=list)
+    """Descrição de cada diagrama anotado que não saiu, para o relatório poder mostrar."""
+
+    @property
+    def detection_recall(self) -> float:
+        return self.matched / self.annotated if self.annotated else 0.0
+
+    @property
+    def detection_precision(self) -> float:
+        return self.matched / self.detected if self.detected else 0.0
+
+    @property
+    def export_rate(self) -> float:
+        """**A métrica primária.** Anotados que saem detectados, legais e acima do gate."""
+        return self.exported / self.annotated if self.annotated else 0.0
+
+    @property
+    def conditional_exact(self) -> float:
+        """Exatidão da FEN entre os casados com posição anotada. Comparável com a de hoje."""
+        return self.exact / self.comparable if self.comparable else 0.0
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "pages": self.pages,
+            "pages_without_diagram": self.pages_without_diagram,
+            "annotated": self.annotated,
+            "detected": self.detected,
+            "matched": self.matched,
+            "false_positives": self.false_positives,
+            "detection_recall": round(self.detection_recall, 4),
+            "detection_precision": round(self.detection_precision, 4),
+            "legal": self.legal,
+            "above_gate": self.above_gate,
+            "exported": self.exported,
+            "export_rate": round(self.export_rate, 4),
+            "comparable": self.comparable,
+            "exact": self.exact,
+            "conditional_exact": round(self.conditional_exact, 4),
+            "per_regime": {nome: relatorio.as_dict() for nome, relatorio in sorted(self.per_regime.items())},
+            "per_book": {nome: relatorio.as_dict() for nome, relatorio in sorted(self.per_book.items())},
+        }
+
+    def summary(self) -> str:
+        return (
+            f"{self.annotated} diagramas anotados em {self.pages} páginas "
+            f"({self.pages_without_diagram} sem diagrama) | "
+            f"recall {self.detection_recall:.3f} | precisão {self.detection_precision:.3f} | "
+            f"**exportação {self.export_rate:.3f}** | exatidão condicional {self.conditional_exact:.3f}"
+        )
+
+
+def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
+    alvo.pages += parcela.pages
+    alvo.pages_without_diagram += parcela.pages_without_diagram
+    alvo.annotated += parcela.annotated
+    alvo.detected += parcela.detected
+    alvo.matched += parcela.matched
+    alvo.false_positives += parcela.false_positives
+    alvo.legal += parcela.legal
+    alvo.above_gate += parcela.above_gate
+    alvo.exported += parcela.exported
+    alvo.comparable += parcela.comparable
+    alvo.exact += parcela.exact
+    alvo.misses.extend(parcela.misses)
+
+
+def _match(annotated: Sequence[AnnotatedDiagram], read: Sequence[RecognizedDiagram]) -> dict[int, int]:
+    """Casa anotação com leitura pelo melhor IoU, sem repetir leitura.
+
+    Guloso sobre os pares ordenados por IoU, em vez de "o melhor para cada anotação": numa
+    página em que duas anotações vizinhas apontam para a mesma leitura, escolher por
+    anotação faria a segunda ficar sem par mesmo havendo leitura livre para ela.
+    """
+    pares = [
+        (bbox_iou(anotado.bbox, lido.bbox_pdf), indice_anotado, indice_lido)
+        for indice_anotado, anotado in enumerate(annotated)
+        for indice_lido, lido in enumerate(read)
+        if lido.bbox_pdf is not None
+    ]
+    pares.sort(reverse=True)
+
+    casados: dict[int, int] = {}
+    usados: set[int] = set()
+    for iou, indice_anotado, indice_lido in pares:
+        if iou < MATCH_IOU or indice_anotado in casados or indice_lido in usados:
+            continue
+        casados[indice_anotado] = indice_lido
+        usados.add(indice_lido)
+    return casados
+
+
+def evaluate_page(
+    page: FieldPage,
+    read: Sequence[RecognizedDiagram],
+    *,
+    accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+) -> FieldReport:
+    """Compara o que o pipeline leu numa página com o que a anotação diz que ela tem."""
+    relatorio = FieldReport(
+        pages=1,
+        pages_without_diagram=1 if not page.diagrams else 0,
+        annotated=len(page.diagrams),
+        detected=len(read),
+    )
+
+    casados = _match(page.diagrams, read)
+    relatorio.matched = len(casados)
+    relatorio.false_positives = len(read) - len(casados)
+
+    for indice, anotado in enumerate(page.diagrams):
+        alvo = casados.get(indice)
+        if alvo is None:
+            relatorio.misses.append(f"{page.pdf} p{page.page}: não detectado {anotado.bbox}")
+            continue
+
+        lido = read[alvo]
+        legal = lido.is_fatal is not True
+        acima = lido.min_confidence >= accept_threshold
+        relatorio.legal += int(legal)
+        relatorio.above_gate += int(acima)
+        if legal and acima:
+            relatorio.exported += 1
+        else:
+            motivo = "ilegal" if not legal else f"confiança {lido.min_confidence:.3f}"
+            relatorio.misses.append(f"{page.pdf} p{page.page}: detectado mas barrado ({motivo})")
+
+        if anotado.placement:
+            relatorio.comparable += 1
+            relatorio.exact += int(lido.placement == anotado.placement)
+
+    return relatorio
+
+
+def evaluate_field(
+    pages: Sequence[FieldPage],
+    *,
+    options: RecognitionOptions,
+    service: OcrService | None = None,
+    accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+    pdf_dir: Path | None = None,
+    on_page: Any = None,
+) -> FieldReport:
+    """Roda o pipeline sobre as páginas anotadas e devolve o relatório consolidado.
+
+    Páginas com `reviewed=False` são **puladas com aviso**. Contá-las inflaria o número com
+    a própria saída do modelo, que é exatamente o que o conjunto existe para não fazer.
+
+    Uma página que falha ao ser lida vira zero diagramas detectados, e não uma exceção: o
+    relatório precisa cobrir o livro inteiro, e uma página quebrada é um resultado -- é a
+    mesma decisão que a S-34 tomou para o livro que falha no meio da varredura em lote.
+    """
+    service = service or OcrService(model_path=options.model_path)
+    total = FieldReport()
+    puladas = 0
+
+    for pagina in pages:
+        if not pagina.reviewed:
+            puladas += 1
+            continue
+
+        caminho = Path(pdf_dir) / pagina.pdf if pdf_dir is not None else Path(pagina.pdf)
+        try:
+            lidos = service.recognize_page(caminho, pagina.page, options=options)
+        except Exception as exc:  # noqa: BLE001 - página quebrada é resultado, não crash
+            logger.warning("Falha ao ler %s p%d: %s", pagina.pdf, pagina.page, exc)
+            lidos = []
+
+        parcela = evaluate_page(pagina, lidos, accept_threshold=accept_threshold)
+        _accumulate(total, parcela)
+        _accumulate(total.per_book.setdefault(pagina.pdf, FieldReport()), parcela)
+        if pagina.regime:
+            _accumulate(total.per_regime.setdefault(pagina.regime, FieldReport()), parcela)
+        if on_page is not None:
+            on_page(pagina, parcela)
+
+    if puladas:
+        logger.warning(
+            "%d página(s) do conjunto de campo ainda não revisadas e ficaram de fora. "
+            "Rascunho não é verdade de referência: revise e marque `reviewed: true`.",
+            puladas,
+        )
+    return total
+
+
+def draft_page(
+    pdf: Path,
+    page: int,
+    *,
+    options: RecognitionOptions,
+    service: OcrService | None = None,
+    regime: str = "",
+    with_placement: bool = True,
+) -> FieldPage:
+    """Rascunho de anotação a partir do que o pipeline lê hoje, para anotar ser corrigir.
+
+    Sai com `reviewed=False`, sempre, e é a única coisa que impede este atalho de virar
+    trapaça: um rascunho medido contra si mesmo dá recall 1,0 e exatidão 1,0.
+
+    O que o humano precisa fazer depois: **acrescentar** os diagramas que faltaram (o
+    rascunho não sabe o que o detector não achou), **remover** os falsos positivos, conferir
+    as FENs, e marcar `reviewed: true`.
+    """
+    service = service or OcrService(model_path=options.model_path)
+    try:
+        lidos = service.recognize_page(Path(pdf), page, options=options)
+    except Exception as exc:  # noqa: BLE001 - página sem diagrama levanta, e é um rascunho válido
+        logger.debug("Nada lido em %s p%d (%s); rascunho sai vazio.", pdf, page, exc)
+        lidos = []
+
+    diagramas = tuple(
+        AnnotatedDiagram(
+            bbox=lido.bbox_pdf,
+            placement=lido.placement if with_placement else "",
+            side_to_move=lido.side_to_move if lido.side_to_move_source != "default" else "",
+            note=f"rascunho: conf {lido.min_confidence:.3f}, {lido.detection_source or 'contorno'}",
+        )
+        for lido in lidos
+        if lido.bbox_pdf is not None
+    )
+    return FieldPage(pdf=Path(pdf).name, page=page, diagrams=diagramas, reviewed=False, regime=regime)

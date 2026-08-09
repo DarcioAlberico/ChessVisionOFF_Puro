@@ -435,10 +435,33 @@ hachuradas (Euwe Band 1-2, p25) e **0,2252** numa coluna de texto corrido (Karpo
 Mas ele nunca é gate: com `pattern_score = 0` o candidato ainda fica com 55% da nota de
 geometria, e o piso de aceite é `min_score = max(0,06, top_score × 0,25)`.
 
-Consequência medida na página 80 do Karpov 1: uma coluna de prosa passou, foi deformada por
-perspectiva e o modelo leu
-`1q1KK1q1/3KK1P1/3PP3/qP2K1Pq/3KKP1P/2n1Kp1q/P1qP3P/K1R2k1K` com confiança 0,0004 — oito reis
-brancos. Os seis diagramas reais daquela página tiraram `pattern_score` entre 0,34 e 0,61.
+**A hipótese acima está pela metade, e foi a S-41 que mostrou onde.** A análise atribuía o
+lixo do `Karpov 1` p80 -- `1q1KK1q1/3KK1P1/3PP3/qP2K1Pq/3KKP1P/2n1Kp1q/P1qP3P/K1R2k1K`, oito
+reis brancos, confiança 0,0004 -- ao detector escolhendo uma região errada. Não é isso: as
+seis caixas daquela página estão **corretas**, sobre os seis diagramas reais.
+
+O que produz o lixo é `detection/hybrid.refine_candidate_with_contour`, que roda o contorno
+**dentro** do bbox já correto para alinhar o recorte e, quando acha o quad errado, troca um
+recorte perfeito por um trapézio de texto. Medido nos seis candidatos, `_board_pattern_score`
+do recorte cru contra o refinado:
+
+| candidato | cru | refinado | |
+|---|---|---|---|
+| #0 | 0,3138 | 0,6042 | melhora |
+| #1 | 0,2000 | 0,4616 | melhora |
+| #2 | 0,3511 | **0,2388** | **piora** |
+| #3 | 0,2000 | 0,4271 | melhora |
+| #4 | 0,2892 | **0,2252** | **piora — é o dos oito reis** |
+| #5 | 0,3306 | 0,5059 | melhora |
+
+O refino ajuda em quatro e atrapalha em dois, e num dos dois o estrago é total. O docstring
+dele já tem o raciocínio certo -- *"devolve o candidato original quando o contorno não acha
+nada na região, caso em que o recorte cru é o melhor que se tem, e não há razão para
+piorá-lo"* --, só que ele confere se achou **alguma coisa** e nunca se o que achou é
+**melhor**.
+
+Isso torna a S-38 mais barata e mais precisa: a primeira metade dela deixa de ser um gate
+novo e passa a ser uma comparação de `BoardEvidence` antes e depois do refino.
 
 No caminho embutido é pior: `detection/embedded.candidates_from_embedded_images:277-314`
 filtra por **tamanho nativo mínimo, proporção e cobertura da página**, e nunca olha os
@@ -449,9 +472,18 @@ O gate de exportação da S-15 pega o resultado — vai para `.review.pgn`. Mas 
 já consumiu uma vaga de `max_boards`, entrou na numeração `[Diagram "n"]` (que a S-14 existe
 para manter estável) e apareceu no editor como um diagrama a conferir.
 
-**Solução.** Extrair a verificação para uma classe, aplicada **uma vez, no fim de
-`detect_diagrams`, a todo candidato independentemente da fonte**. Isso é o oposto de espalhar
-o filtro: hoje há meio filtro numa fonte e nenhum na outra.
+**Solução, em duas metades.** A primeira é a que a S-41 revelou e sai quase de graça; a
+segunda é a que estava especificada.
+
+**(a) O refino não pode piorar.** `refine_candidate_with_contour` compara a evidência do
+recorte cru com a do refinado e fica com o melhor. Uma linha de decisão, e ela resolve o caso
+patológico inteiro. Faz sentido medi-la **isolada** antes da parte (b): se ela sozinha levar a
+taxa de exportação de 0,6842 para perto do alvo, o piso da parte (b) pode ser mais
+conservador, e piso conservador perde menos diagrama verdadeiro.
+
+**(b) Um verificador único no fim.** Extrair a verificação para uma classe, aplicada **uma
+vez, no fim de `detect_diagrams`, a todo candidato independentemente da fonte**. Isso é o
+oposto de espalhar o filtro: hoje há meio filtro numa fonte e nenhum na outra.
 
 Sinais, todos já calculáveis a partir do recorte 320×320 que a verificação renderiza:
 
@@ -689,7 +721,25 @@ do conjunto cuja validade depende do domínio.
 
 ---
 
-## S-41 · Conjunto de avaliação de campo, e a métrica que falta
+## S-41 · Conjunto de avaliação de campo, e a métrica que falta ✅ implementada (2026-08-09)
+
+> **Entregue.** `src/chess_diagram_ocr/field_eval.py`, `cvoff-field`, e
+> `data/field_set.jsonl` com **15 páginas anotadas à mão, 38 diagramas, 3 páginas sem
+> diagrama**, em cinco regimes. Linha de base: **taxa de exportação 0,6842 (26/38)**, recall
+> 0,9211, precisão 0,9722 — em `docs/metrics/field_20260809.json`.
+>
+> Dois desvios do que está especificado abaixo, e os dois deliberados:
+>
+> - **15 páginas, não 60.** As 15 cobrem os cinco regimes e já produzem números por regime
+>   que separam (1,000 no Polgar contra 0,429 no scan puro). Estender é rodar
+>   `cvoff-field --draft` e conferir; o custo por página caiu do que a spec supunha, porque
+>   anotar virou corrigir.
+> - **Anotação sem `placement`.** Anotar a caixa é olhar a página; conferir a posição é ler
+>   64 casas. A taxa de exportação -- a métrica primária -- não depende da FEN, e
+>   `conditional_exact` reporta `—` em vez de fingir um número. `--no-placement` existe para
+>   isso.
+>
+> E o item já se pagou: a primeira medição **corrigiu a hipótese da S-38** (ver acima).
 
 **Problema.** Todas as métricas do projeto medem sobre **o que foi encontrado**:
 `evaluation.evaluate_dataset` avalia recortes já rotulados; `batch.BookResult.acceptance_rate`

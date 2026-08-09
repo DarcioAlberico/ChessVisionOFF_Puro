@@ -253,6 +253,68 @@ jeito que pode corromper o `.pt` da 7.0.3. → **S-60**.
 Objetivo: fechar o fator de 18× entre a medição de laboratório e a de campo. Quatro itens,
 nesta ordem, porque cada um depende do anterior para ser medível.
 
+### 7.0.6 — O conjunto de campo, e o que ele corrigiu na primeira medição ✅ (S-41)
+
+Existe agora: **15 páginas anotadas à mão, 38 diagramas, 3 páginas sem diagrama nenhum**,
+cobrindo cinco regimes. `data/field_set.jsonl` é versionado (é texto); medir contra ele
+precisa dos PDFs, e o teste pula quando eles não estão.
+
+Cada página foi conferida olhando o render com as caixas do rascunho desenhadas em cima. O
+rascunho vem de `cvoff-field --draft`, que roda o pipeline e grava o que ele leu com
+`reviewed: false` — anotar passa a ser corrigir em vez de digitar, e o campo `reviewed` é o
+que impede o atalho de virar trapaça: medir o pipeline contra a própria saída dele daria
+recall 1,0 e não significaria nada.
+
+**A linha de base, medida em 2026-08-09:**
+
+| métrica | valor |
+|---|---|
+| recall de detecção | 0,9211 (35 de 38) |
+| precisão de detecção | 0,9722 (35 de 36) |
+| **taxa de exportação** | **0,6842 (26 de 38)** |
+
+| regime | exportação |
+|---|---|
+| tabuleiro em fonte (Polgar) | 1,000 (6/6) |
+| vetorial (Karpov, Aagaard) | 0,857 (12/14) |
+| scan hachurado (Kemeri, Euwe) | 0,500 (2/4) |
+| scan puro (Reinfeld, Gallagher) | 0,429 (6/14) |
+
+**O número honesto é 0,68, não os 0,83 que a análise estimou.** A estimativa anterior contava
+só os diagramas que o detector achou; o conjunto de campo conta também os que ele perdeu. É
+exatamente a diferença que motivou o item.
+
+#### O que a primeira medição corrigiu na hipótese da S-38
+
+A análise dizia que o falso positivo do `Karpov 1` p80 era o detector escolhendo uma região
+que não é tabuleiro. **Está errado, e o conjunto de campo mostrou isso na primeira rodada:**
+as 6 caixas daquela página estão todas certas, sobre os 6 diagramas reais.
+
+O que acontece é outra coisa, e é pior. `detection/hybrid.refine_candidate_with_contour` roda
+o detector de contorno **dentro** do bbox já correto para alinhar melhor o recorte — e quando
+o contorno acha o quad errado, ela substitui um recorte perfeito por um trapézio de texto.
+Medido nos 6 candidatos daquela página, `_board_pattern_score` antes e depois do refino:
+
+| candidato | recorte cru | depois do refino | |
+|---|---|---|---|
+| #0 | 0,3138 | 0,6042 | melhora |
+| #1 | 0,2000 | 0,4616 | melhora |
+| #2 | 0,3511 | **0,2388** | **piora** |
+| #3 | 0,2000 | 0,4271 | melhora |
+| #4 | 0,2892 | **0,2252** | **piora — é o lixo de 8 reis brancos** |
+| #5 | 0,3306 | 0,5059 | melhora |
+
+O refino ajuda em 4 e atrapalha em 2, e num dos dois o estrago é total: o recorte cru do
+candidato #4 é um diagrama impecável, e o refinado é ilegível.
+
+O docstring de `refine_candidate_with_contour` já tem o raciocínio certo — *"devolve o
+candidato original quando o contorno não acha nada na região, caso em que o recorte cru é o
+melhor que se tem, e não há razão para piorá-lo"*. Ele só confere se achou **alguma coisa**,
+nunca se o que achou é **melhor**. A S-38 fica mais barata e mais precisa por causa disso:
+comparar o sinal antes e depois, e manter o refino só quando ele não piora.
+
+---
+
 ### 7.1 — O detector aceita candidato que não é tabuleiro, e a arquitetura garante isso
 
 `board_detection._extract_candidate_quads` calcula um `_board_pattern_score` — textura de
@@ -359,8 +421,12 @@ Um conjunto de avaliação **de campo**: N páginas reais dos livros difíceis, 
 anotados à mão. A métrica primária deixa de ser "acurácia exata sobre recortes aprovados" e
 passa a ser **diagramas exportáveis por página** — detectado, legal e acima do gate.
 
-Número a bater, medido hoje sobre as 40 páginas amostradas: **84 de 101 diagramas passam o
-gate (83,2%)**. Alvo da Fase 7: **≥ 92%**, sem aumentar a taxa de falso positivo.
+**Número a bater, medido no conjunto de campo (S-41, 2026-08-09): taxa de exportação
+0,6842 — 26 de 38 diagramas.** Alvo da Fase 7: **≥ 0,85**, sem que a precisão de detecção
+caia abaixo dos 0,9722 de hoje.
+
+A estimativa anterior deste roadmap era 83,2%, e estava otimista pelo motivo que o item
+existe para corrigir: ela contava só os diagramas que o detector achou.
 
 ### 7.5 — O custo de uma varredura, medido
 

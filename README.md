@@ -92,6 +92,15 @@ cvoff-eval --split test --json docs/metrics/atual.json
 cvoff-eval --split test --tta                      # soma as 7 vistas do TTA (S-29)
 cvoff-eval --split test --calibration-target 0.98  # deriva o limiar de aceite da curva
 
+# Avaliacao de campo (S-41): mede sobre paginas reais anotadas a mao, e nao sobre recortes
+# ja aprovados. A metrica primaria e a taxa de exportacao -- dos diagramas que a pagina tem,
+# quantos saem detectados, legais e acima do gate. Inclui paginas SEM diagrama, que sao as
+# unicas que medem falso positivo.
+cvoff-field
+cvoff-field --json docs/metrics/atual.json
+# Anotar uma pagina nova: o rascunho ja traz o que o pipeline leu, e voce corrige.
+cvoff-field --no-placement --regime scan-puro --draft "1937 Kemeri.pdf:80,187"
+
 # Grade de experimentos de arquitetura (S-29): canais, resolucao, cabeca, backbone.
 # Cada variante treina do zero com a mesma semente e e comparada no split 'val'
 # -- nunca no 'test', que fica para a confirmacao final da vencedora.
@@ -305,7 +314,8 @@ src/chess_diagram_ocr/
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
   engine.py             motor UCI opcional (Stockfish)
-  evaluation.py         metricas de qualidade do reconhecimento
+  evaluation.py         metricas de qualidade do reconhecimento (sobre recortes rotulados)
+  field_eval.py         metricas sobre paginas reais anotadas: recall, precisao, exportacao
   experiments.py        grade de experimentos de arquitetura
   export_checkpoint.py  parcial da exportacao, para cancelar e retomar
   fen_utils.py          conversao de FEN e checagem de legalidade
@@ -332,6 +342,7 @@ docs/                   analise tecnica, roadmap, especificacao, baseline e expe
 CONTRIBUTING.md         como rodar as verificacoes e o que este projeto espera de um teste
 data/labels.csv         rotulos (versionado)
 data/splits.csv         particao treino/validacao/teste (versionado)
+data/field_set.jsonl    paginas reais anotadas a mao para a avaliacao de campo (versionado)
 data/samples/           imagens dos tabuleiros (nao versionado)
 models/                 checkpoints (nao versionado)
 PDF/                    livros de origem (nao versionado)
@@ -379,6 +390,8 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
   as motiva: o gate rejeita 17 de 101 diagramas de pagina real contra 3 de 320 no split de teste
 - [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 11 (S-37 a S-63),
   incluindo os defeitos da Fase 7.0
-- [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia e como reproduzi-lo
+- [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
+  (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
+  outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
 - [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) -- o que foi medido na Fase 5, incluindo o
   que nao ajudou (memoria, workers, pesos de classe, arquitetura, TTA, ONNX)

@@ -105,6 +105,18 @@ class RecognizedDiagram:
     orientation_reason: str = ""
 
     quad: list[list[float]] | None = None
+    """Os quatro cantos em pixels da página renderizada. `None` no caminho da S-12, que
+    localiza por bbox em vez de por contorno -- ali quem responde "onde" é `bbox_pdf`."""
+
+    bbox_pdf: tuple[float, float, float, float] | None = None
+    """Onde o diagrama está na página, em **pontos do PDF** (S-41).
+
+    O detector híbrido já carrega isto em cada `DiagramCandidate` desde a S-12, e
+    `recognize_page` o descartava: a `RecognizedDiagram` saía sabendo *o que* leu e não
+    *de onde*. Pontos, e não pixels, porque a anotação do conjunto de campo precisa
+    sobreviver a uma troca de DPI -- 220 hoje, 300 amanhã, e a mesma página passaria a
+    ter outro sistema de coordenadas."""
+
     context: DiagramContext | None = None
     detection_source: str = ""
 
@@ -136,6 +148,7 @@ class RecognizedDiagram:
         orientation_ambiguous: bool = False,
         orientation_reason: str = "",
         quad: list[list[float]] | None = None,
+        bbox_pdf: tuple[float, float, float, float] | None = None,
         context: DiagramContext | None = None,
         detection_source: str = "",
     ) -> RecognizedDiagram:
@@ -157,6 +170,7 @@ class RecognizedDiagram:
             orientation_ambiguous=orientation_ambiguous,
             orientation_reason=orientation_reason,
             quad=quad,
+            bbox_pdf=bbox_pdf,
             context=context,
             detection_source=detection_source,
             side_to_move="w" if side.color else "b",
@@ -558,6 +572,9 @@ class OcrService:
             detection_sources=[candidate.source for candidate in candidates],
             # O recorte embutido já vem alinhado pelo warp da S-12; refinar de novo só soma erro.
             refine=False,
+            # Onde cada diagrama está na página. O detector já sabia e o serviço jogava fora
+            # -- e é o que o conjunto de campo da S-41 precisa para casar com a anotação.
+            bboxes_pdf=[candidate.bbox_pdf for candidate in candidates],
         )
 
     def recognize_image(
@@ -633,6 +650,7 @@ class OcrService:
         contexts: Sequence[DiagramContext | None],
         detection_sources: Sequence[str],
         refine: bool,
+        bboxes_pdf: Sequence[tuple[float, float, float, float]] = (),
     ) -> list[RecognizedDiagram]:
         """O núcleo comum: prever, decidir orientação, inferir a vez, conferir legalidade."""
         if not boards:
@@ -664,6 +682,7 @@ class OcrService:
                         orientation_ambiguous=oriented.ambiguous,
                         orientation_reason=oriented.reason,
                         quad=quad_for_item.tolist() if quad_for_item is not None else None,
+                        bbox_pdf=bboxes_pdf[idx] if idx < len(bboxes_pdf) else None,
                         context=context,
                         detection_source=detection_sources[idx] if idx < len(detection_sources) else "",
                     )
