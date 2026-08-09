@@ -905,7 +905,8 @@ Se houver duas semanas:
 | 2 | S-38a (o refino não pode piorar) | o que a S-41 revelou na primeira medição | ✅ |
 | — | ~~S-38b (`BoardVerifier`)~~ | **adiado por medição**: 1 falso positivo a ganhar, 35 verdadeiros a arriscar | ⏸ |
 | 3 | ~~S-39 (`BoardNormalizer`)~~ | **medido, nada entrou ligado**: campo plano e CLAHE são no-op (o `ColorJitter` já ensinou), e a trama não é separável da peça por escala | ✅ medido |
-| 4–5 | **S-40** (aumento dirigido) + retreino | a S-39 caiu, então este é o caminho inteiro: o treino tem de ver hachura | ← próximo |
+| 4 | S-40 (aumento dirigido) — **implementado** | módulo, testes e `--augment`; desligado por padrão | ✅ código |
+| 5 | S-40 — **medir** (~110 min de CPU) | a máquina estava em uso; é a sua decisão de quando | ← próximo |
 | 6 | **medir contra o conjunto de campo** | fim da Fase 7: a taxa de exportação saiu de 0,6842 ou não | |
 | 7 | S-44 (glifo `W`/`B` e número) | não depende de OCR; resolve o Gallagher e a convenção Batsford inteira |
 | 8–9 | S-42 + S-43 (motor de OCR + faixa de legenda) | resolve o `LAS BLANCAS JUEGAN PRIMERO` e os 7 livros sem texto |

@@ -33,6 +33,7 @@ from torch.utils.data import DataLoader, Subset
 from torchvision.transforms import v2
 
 from .audit import duplicate_groups_touching, read_label_rows
+from .augment import DEFAULT_AUGMENT, AugmentConfig, build_augmentations
 from .calibration import expected_calibration_error, fit_temperature, negative_log_likelihood
 from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoint, save_checkpoint
 from .config import DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
@@ -101,13 +102,25 @@ def _clamp01(x: torch.Tensor) -> torch.Tensor:
     return torch.clamp(x, 0.0, 1.0)
 
 
-def build_train_transform() -> Callable:
-    return v2.Compose([
-        v2.RandomApply([v2.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0))], p=0.3),
+def build_train_transform(augment: AugmentConfig = DEFAULT_AUGMENT) -> Callable:
+    """A pipeline de aumento. O padrão reproduz o treino anterior à S-40.
+
+    As três primeiras etapas são o conjunto genérico de sempre. As dirigidas ao acervo
+    (hachura, granulação, papel, inversão, espelhamento) entram depois delas e **desligadas
+    por padrão**: ligar muda o modelo, e é a grade da S-40 que decide quais valem.
+
+    A ordem coloca as dirigidas **depois** do afim de propósito. O afim reamostra, e
+    reamostrar uma hachura sintética de período 6 px a borraria até sumir -- justamente a
+    frequência que se quer ensinar.
+    """
+    etapas: list[Any] = [
+        v2.RandomApply([v2.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0))], p=augment.blur),
         v2.ColorJitter(brightness=0.3, contrast=0.3),
         v2.RandomAffine(degrees=2, translate=(0.05, 0.05), scale=(0.95, 1.05)),
-        v2.Lambda(_clamp01),
-    ])
+    ]
+    etapas.extend(build_augmentations(augment))
+    etapas.append(v2.Lambda(_clamp01))
+    return v2.Compose(etapas)
 
 
 @dataclass
@@ -437,6 +450,7 @@ def train_model(
     pretrained: bool = True,
     assign_splits: bool = True,
     cancel_event: threading.Event | None = None,
+    augment: AugmentConfig = DEFAULT_AUGMENT,
 ) -> TrainingRun:
     """Treina o classificador de peças.
 
@@ -530,7 +544,7 @@ def train_model(
         class_weights,
     )
 
-    train_ds = TransformSubset(Subset(dataset, train_indices), transform=build_train_transform())
+    train_ds = TransformSubset(Subset(dataset, train_indices), transform=build_train_transform(augment))
     sampler = BoardGroupedSampler(board_groups(dataset.index_map, train_indices), shuffle=True, seed=seed)
 
     loader_extra: dict[str, Any] = {"num_workers": workers}
@@ -569,6 +583,9 @@ def train_model(
         "class_names": list(PIECE_CLASSES),
         "seed": seed,
         "class_weights": class_weights,
+        # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
+        # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
+        "augment_version": augment.version,
         "split_hash": splits_hash(splits_map) if splits_map else "",
         "splits_path": str(splits_path) if splits_path else "",
         "dataset_size": len(dataset.entries),

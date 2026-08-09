@@ -152,3 +152,59 @@ O erro concreto que qualquer uma das duas precisa consertar, medido no Euwe p25:
 as três primeiras filas **corretamente** (`r4rk1/pp3ppp/2n1q3`) e confunde **bispo branco com
 peão branco em casa hachurada** na parte de baixo. Não é "o tabuleiro é ilegível" — é uma
 confusão de classe específica, num contexto de fundo específico.
+
+---
+
+## S-40 · Aumento dirigido: implementado, **ainda não medido**
+
+O módulo `augment.py` existe, está testado (19 testes: piclabilidade sob `spawn`,
+determinismo por semente, rótulo preservado no espelhamento) e está **desligado por
+padrão** — `AugmentConfig()` é `aug0` e reproduz o treino que produziu o checkpoint atual.
+
+**Medir exige treinar, e treinar custa ~9 min por época nesta máquina.** A comparação
+honesta é quatro variantes × 3 épocas, mesma semente, `--fresh`, avaliadas no conjunto de
+campo: ~110 minutos de CPU cheia. Não foi rodado porque a máquina estava em uso.
+
+Reproduzir quando ela estiver livre:
+
+```bash
+cvoff-train --fresh --epochs 3 --seed 42 --augment aug0 --model models/experiments/s40_base.pt
+cvoff-train --fresh --epochs 3 --seed 42 --augment mhsp --model models/experiments/s40_dirigido.pt
+cvoff-field --model models/experiments/s40_base.pt     --json docs/metrics/s40_base.json
+cvoff-field --model models/experiments/s40_dirigido.pt --json docs/metrics/s40_dirigido.json
+```
+
+**A métrica que decide não é a acurácia de validação.** As duas vão sair em ~0,97: o split
+de validação é feito dos mesmos livros fáceis, e o aumento dirigido não deve ajudar ali —
+pode até atrapalhar um pouco. O que se quer saber é se o modelo passa a **ler a página
+hachurada**, e só a taxa de exportação do conjunto de campo responde isso.
+
+### Duas coisas que a inspeção das imagens mostrou antes de qualquer treino
+
+**1. As amostras de treino já contêm casas hachuradas.** Comparadas lado a lado na escala do
+modelo (64×64), casas do `Euwe` contra casas de uma amostra de `data/samples/`: a amostra —
+que vem do `Karpov`, um livro que lê a **1,000** — também tem casas escuras listradas na
+diagonal. A hipótese ingênua "o modelo nunca viu hachura" está **errada**.
+
+O que difere no Euwe é a qualidade do scan: hachura mais densa e escura, traço da peça
+quebrado, granulação em cima. É degradação de scan, não a hachura em si.
+
+**2. Estatística de tom não separa os casos.** Fração de pixels quase-preto/quase-branco:
+
+| página | extremos | cinza médio | lê bem? |
+|---|---|---|---|
+| Karpov p80 | 76,8% | 11,6% | sim (1,000) |
+| Polgar p300 | 80,2% | 11,9% | sim (1,000) |
+| Euwe p25 | 56,6% | 23,0% | **não** (0,000) |
+| Gallagher p80 | 41,3% | 34,7% | **não** (0,453) |
+| amostras de treino (5 sorteadas) | 49,8%–70,3% | 7,0%–19,5% | — |
+
+As páginas que falham têm **mais cinza médio**, mas caem dentro da faixa das amostras de
+treino. A estatística global não distingue, o que quer dizer que a diferença é **local** —
+está em como a peça se destaca do fundo dentro da casa, não no histograma da página.
+
+Isto é um aviso sobre o que esperar da S-40: sintetizar hachura sobre amostra limpa pode não
+reproduzir a degradação certa, porque a degradação certa não é a hachura. A alternativa
+continua sendo **anotar meia dúzia de páginas do Euwe e do Gallagher** e pôr o domínio real
+no treino — mais caro em tempo humano, e sem o risco de ensinar o modelo a ser robusto a uma
+degradação que não é a que ele encontra.

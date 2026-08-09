@@ -4,6 +4,7 @@ import argparse
 import logging
 from pathlib import Path
 
+from ..augment import AugmentConfig
 from ..config import (
     DEFAULT_BOARD_CACHE_SIZE,
     DEFAULT_DATASET_CSV,
@@ -52,6 +53,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=42, help="Semente. Gravada no checkpoint (S-27).")
     parser.add_argument(
+        "--augment",
+        default="aug0",
+        help=(
+            "Aumento dirigido ao acervo (S-40), como as letras de `AugmentConfig.version`: "
+            "m=espelhar, h=hachura, s=granulacao, p=papel, i=inversao. Ex.: --augment mhsp. "
+            "'aug0' (padrao) e o conjunto generico de antes da S-40. NAO MEDIDO ainda: ligar "
+            "muda o modelo, e a comparacao honesta e treinar as duas variantes com a mesma "
+            "semente e medir com `cvoff-field`."
+        ),
+    )
+    parser.add_argument(
         "--class-weights",
         choices=["none", "balanced"],
         default=DEFAULT_CLASS_WEIGHTS,
@@ -99,9 +111,38 @@ def _log_epoch(row: dict[str, object]) -> None:
         logger.info("    piores classes: %s", ", ".join(f"{name}={value:.4f}" for value, name in piores))
 
 
+def _augment_from_letters(texto: str) -> AugmentConfig:
+    """`"mhsp"` ou `"augmhsp"` -> `AugmentConfig`. Probabilidades fixas, ligado ou desligado.
+
+    Uma letra liga a transformacao na probabilidade que a S-40 propos; afinar valor por
+    valor pela linha de comando seria oferecer um espaco de busca que ninguem mediu.
+    """
+    letras = texto[3:] if texto.startswith("aug") else texto
+    if letras in ("", "0"):
+        return AugmentConfig()
+    desconhecidas = set(letras) - set("mhspi")
+    if desconhecidas:
+        raise ValueError(f"Letras desconhecidas em --augment: {''.join(sorted(desconhecidas))} (validas: mhspi)")
+    return AugmentConfig(
+        hflip=0.5 if "m" in letras else 0.0,
+        hatch=0.30 if "h" in letras else 0.0,
+        speckle=0.25 if "s" in letras else 0.0,
+        paper=0.30 if "p" in letras else 0.0,
+        invert=0.03 if "i" in letras else 0.0,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
+
+    try:
+        augment = _augment_from_letters(args.augment)
+    except ValueError as exc:
+        print(f"Erro: {exc}")
+        return 2
+    if not augment.version.endswith("0"):
+        logger.info("Aumento dirigido ligado: %s. Isto muda o modelo (S-40).", augment.version)
 
     run = train_model(
         csv_path=args.csv,
@@ -127,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         # `if __name__ == "__main__"`, entao `spawn` no Windows e seguro aqui.
         num_workers=args.num_workers,
         calibrate=not args.no_calibrate,
+        augment=augment,
     )
 
     logger.info(
