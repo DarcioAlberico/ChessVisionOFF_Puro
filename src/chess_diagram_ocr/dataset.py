@@ -28,13 +28,56 @@ def _cell(row: object, column: str) -> str:
     """Valor textual de uma coluna opcional. Coluna ausente ou `NaN` viram string vazia.
 
     O `NaN` não é hipótese acadêmica: é o que o pandas entrega para célula vazia, e foi ele
-    que derrubou o carregamento inteiro do dataset antes da Fase 0.
+    que derrubou o carregamento inteiro do dataset antes da Fase 0. Depois da S-58 as
+    leituras passam por `read_labels_frame`, que já impede o `NaN` de existir -- isto aqui
+    continua porque `DatasetEntry` também é montada a partir de frames de outra origem.
     """
     value = getattr(row, column, "")
     if value is None:
         return ""
     text = str(value).strip()
     return "" if text.lower() == "nan" else text
+
+
+def read_labels_frame(csv_path: Path) -> pd.DataFrame:
+    """Lê um CSV de rótulos como **texto puro**, sem inferência de tipo (S-58).
+
+    Todas as colunas do esquema da S-19 são texto. Deixar o pandas inferir custava caro num
+    ponto específico: `source_page` e `source_diagram` têm célula vazia em 98,6% das linhas,
+    então a coluna era tipada como `float64` e `20` voltava como `20.0`. Como a gravação relê
+    o arquivo inteiro antes de acrescentar uma linha, cada amostra nova reescrevia as antigas
+    nesse formato -- o arquivo passou a ter os dois, e um diff de uma linha virava um diff de
+    milhares.
+
+    `keep_default_na=False` é a outra metade: sem ele, célula vazia vira `NaN` (float) e
+    `dtype=str` a transforma na string `"nan"`, que é pior que o `NaN`.
+    """
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        return pd.DataFrame(columns=list(LABEL_COLUMNS))
+    return pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+
+
+_INTEGER_TEXT_COLUMNS: tuple[str, ...] = ("source_page", "source_diagram")
+"""Colunas que guardam inteiro em forma de texto. Ver `_as_integer_text`."""
+
+
+def _as_integer_text(value: object) -> str:
+    """`"20.0"` → `"20"`, preservando vazio e qualquer coisa que não seja número.
+
+    Normaliza na **escrita** em vez de exigir um comando de migração: o arquivo converge para
+    um formato só na próxima gravação e fica nele, porque `read_labels_frame` não introduz
+    mais floats. O que não parece número passa intacto -- não é papel desta função decidir
+    que um valor inesperado é lixo.
+    """
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    return str(int(number)) if number.is_integer() else text
 
 
 LABEL_COLUMNS: tuple[str, ...] = (
@@ -135,6 +178,11 @@ class BoardFenDataset(Dataset):
         self.entries: list[DatasetEntry] = []
         self.index_map: list[tuple[int, int]] = []
         self.skipped_illegal: list[tuple[str, tuple[str, ...]]] = []
+        self.skipped_without_split: list[str] = []
+        """Rótulos descartados por não terem split registrado (S-56).
+
+        Não é o mesmo que "de outro split": é "de split nenhum", e significa que a amostra
+        está invisível a **todos** os três datasets. Separá-los é o que permite avisar."""
         self._board_cache: OrderedDict[int, np.ndarray] = OrderedDict()
         self.cache_hits = 0
         self.cache_misses = 0
@@ -148,7 +196,7 @@ class BoardFenDataset(Dataset):
         if not self.csv_path.exists():
             return
 
-        df = pd.read_csv(self.csv_path)
+        df = read_labels_frame(self.csv_path)
         required_cols = {"filename", "fen"}
         if not required_cols.issubset(df.columns):
             raise ValueError(f"Dataset CSV must have columns {required_cols}")
@@ -165,7 +213,11 @@ class BoardFenDataset(Dataset):
             if self.split is not None:
                 if self.splits is None:
                     raise ValueError("Para filtrar por split é necessário informar o mapa `splits`.")
-                if self.splits.get(filename) != self.split:
+                registrado = self.splits.get(filename)
+                if registrado is None:
+                    self.skipped_without_split.append(filename)
+                    continue
+                if registrado != self.split:
                     continue
 
             if self.skip_illegal:
@@ -201,6 +253,20 @@ class BoardFenDataset(Dataset):
                 "Primeiros casos: %s",
                 len(self.skipped_illegal),
                 "; ".join(f"{name} ({', '.join(problems)})" for name, problems in self.skipped_illegal[:3]),
+            )
+
+        if self.skipped_without_split:
+            # Este aviso é a metade barata da S-56. O descarte em si está certo -- amostra sem
+            # split não pode entrar por acidente no conjunto de teste --, mas ele era mudo, e
+            # foi assim que 45 amostras ficaram fora do treino sem que nada dissesse. Quem
+            # atribui o split é `training.resolve_splits`; quem grita quando ninguém atribuiu
+            # é isto.
+            logger.warning(
+                "%d rótulo(s) ignorados por não terem split registrado em data/splits.csv, e "
+                "portanto invisíveis a este treino. Rode `cvoff-train` (que atribui) ou "
+                "`cvoff-audit` para vê-los. Primeiros casos: %s",
+                len(self.skipped_without_split),
+                ", ".join(self.skipped_without_split[:3]),
             )
 
         self.index_map = [(entry_idx, sq) for entry_idx in range(len(self.entries)) for sq in range(64)]
@@ -427,7 +493,7 @@ def append_training_sample(
         ]
     )
     if csv_path.exists():
-        existing = pd.read_csv(csv_path)
+        existing = read_labels_frame(csv_path)
         combined = pd.concat([existing, new_row], ignore_index=True)
     else:
         combined = new_row
@@ -442,10 +508,17 @@ def _write_labels(frame: pd.DataFrame, csv_path: Path) -> None:
     humano acumulado. `to_csv` direto no destino trunca antes de escrever -- e a UI de
     dataset da S-23 passa a regravá-lo a cada correção, o que multiplica as chances de
     apanhar a janela ruim.
+
+    As colunas de inteiro são normalizadas aqui (S-58), e não na leitura: é o que faz um
+    arquivo que já tem `20.0` gravado convergir sozinho na próxima escrita, sem comando de
+    migração.
     """
+    frame = frame.copy()
     for column in LABEL_COLUMNS:
         if column not in frame.columns:
             frame[column] = ""
+    for column in _INTEGER_TEXT_COLUMNS:
+        frame[column] = frame[column].map(_as_integer_text)
     extra = [column for column in frame.columns if column not in LABEL_COLUMNS]
     frame = frame[[*LABEL_COLUMNS, *extra]].fillna("")
     payload = frame.to_csv(index=False, lineterminator=os.linesep)
@@ -466,7 +539,7 @@ def migrate_labels_csv(csv_path: Path, *, backup: bool = True, infer_side: bool 
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV de rótulos não encontrado: {csv_path}")
 
-    frame = pd.read_csv(csv_path)
+    frame = read_labels_frame(csv_path)
     if "fen" not in frame.columns or "filename" not in frame.columns:
         raise ValueError("CSV de rótulos precisa ter ao menos as colunas `filename` e `fen`.")
 

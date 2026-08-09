@@ -27,6 +27,7 @@ from ..review_queue import (
     merge_queues,
     rare_classes_from_labels,
 )
+from ..service import OcrService
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +71,16 @@ class ReviewPanel(ttk.Frame):
         on_status: Callable[[str], None] | None = None,
         queue_path: Path = DEFAULT_QUEUE_PATH,
         cache_dir: Path = DEFAULT_CACHE_DIR,
+        service: OcrService | None = None,
     ) -> None:
+        """`service` empresta o modelo sob o lock da S-31 durante a varredura (S-57).
+
+        A varredura da fila percorre o livro inteiro e é uma das duas operações longas que
+        carregavam o `.pt` por conta própria, fora do lock -- enquanto o treino, noutra
+        thread, reescrevia esse mesmo arquivo.
+        """
         super().__init__(parent, padding=6)
+        self._service = service
         self._scan_request = scan_request
         self._on_open = on_open
         self._on_status = on_status or (lambda _text: None)
@@ -267,6 +276,9 @@ class ReviewPanel(ttk.Frame):
                 cache_dir=self.cache_dir,
                 cancel_event=cancel_event,
                 progress_callback=_progress,
+                model_session=(
+                    self._service.model_session(request.model_path) if self._service is not None else None
+                ),
             )
             self.after(0, lambda: self._apply_scan(fresh, cancel_event.is_set()))
         except Exception as exc:  # noqa: BLE001 - erro de varredura vira mensagem, não crash

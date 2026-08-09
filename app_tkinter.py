@@ -64,6 +64,7 @@ from chess_diagram_ocr.settings import (
 )
 from chess_diagram_ocr.ui import strings
 from chess_diagram_ocr.ui.board_widget import PieceImages
+from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 from chess_diagram_ocr.ui.export_controller import ExportController, ExportSettings
 from chess_diagram_ocr.ui.page_results import PageOcrParams
@@ -101,6 +102,10 @@ class ChessOcrTkApp:
         """Motor de análise (S-33), ou `None`. Sem binário, a seção some da aba Análise."""
 
         self._is_running_ocr = False
+        self.busy = BusyRegistry()
+        """O que esta rodando agora (S-60). Fechar a janela consulta isto antes de matar
+        oito threads daemon -- ate aqui `_on_close` nao perguntava nada, e um treino de ~9 min
+        por epoca morria no `destroy` sem uma palavra."""
 
         self.model_path_var = tk.StringVar(value=str(DEFAULT_MODEL_PATH))
         self.dataset_csv_var = tk.StringVar(value=str(DEFAULT_DATASET_CSV))
@@ -131,9 +136,14 @@ class ChessOcrTkApp:
             # Ao fim do treino o `.pt` em memória pode não ser mais o do disco. Invalidar
             # aqui espera o OCR em andamento, em vez de disputar com ele (S-31).
             on_finished=self.reload_model,
+            busy=self.busy,
         )
         self.export = ExportController(
             self.root,
+            # O mesmo servico do OCR: a exportacao passa a rodar sob o lock da S-31, e o
+            # treino que termina no meio dela nao troca mais o `.pt` debaixo dela (S-57).
+            service=self.service,
+            busy=self.busy,
             settings=self._export_settings,
             on_status=self._set_status,
             on_controls_enabled=self._set_export_controls_enabled,
@@ -207,6 +217,7 @@ class ChessOcrTkApp:
             on_open=self._open_review_item,
             on_status=self._set_status,
             queue_path=DEFAULT_QUEUE_PATH,
+            service=self.service,
         )
         tabs.add(self.review_panel, text="Revisão")
         self.result_panel.set_review_settler(self._settle_review_item)
@@ -388,6 +399,15 @@ class ChessOcrTkApp:
         save_state(APP_STATE_PATH, self.state)
 
     def _on_close(self) -> None:
+        aviso = self.busy.close_warning()
+        if aviso and not messagebox.askyesno("Operação em andamento", aviso, default=messagebox.NO):
+            return
+        if aviso:
+            # Pedir o cancelamento antes de destruir da a quem sabe parar limpo a chance de
+            # fazê-lo -- e o treino grava o checkpoint por epoca, entao parar entre elas nao
+            # deixa `.pt` pela metade (S-57).
+            self.busy.request_cancel()
+
         self._save_app_state()
         if self.pdf_panel is not None:
             self.pdf_panel.destroy_reader()

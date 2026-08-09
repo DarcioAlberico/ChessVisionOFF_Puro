@@ -4,7 +4,11 @@ Os quatro modos de falha de um cliente HTTP moravam dentro da janela do Tkinter,
 testá-los exigia abrir uma janela -- então nenhum deles tinha teste. As mensagens em pt-BR
 que a interface mostra ao usuário são o contrato aqui, e é isso que se verifica.
 
-Nenhum teste toca a rede: `urlopen` é substituído.
+Nenhum teste toca a rede: o *opener* do módulo é substituído. Ele é um objeto próprio desde
+a S-59 -- `urllib.request.urlopen` segue redirect por padrão, e seguir um manda a imagem do
+tabuleiro para um host que o consentimento da S-32 nunca nomeou. Substituir o alvo errado faz
+estes testes saírem para a rede de verdade em vez de falharem, e é o que
+`test_o_envio_nao_passa_por_urlopen` trava.
 """
 
 from __future__ import annotations
@@ -13,12 +17,14 @@ import io
 import unittest
 import urllib.error
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
 import cv2
 import numpy as np
 
+from chess_diagram_ocr import net_correction
 from chess_diagram_ocr.net_correction import (
     encode_multipart_png,
     parse_net_response,
@@ -45,7 +51,7 @@ def _responding(payload: str) -> Any:
         def __exit__(self, *_args: object) -> None:
             return None
 
-    with mock.patch("urllib.request.urlopen", return_value=_Response()) as chamada:
+    with mock.patch.object(net_correction._OPENER, "open", return_value=_Response()) as chamada:
         yield chamada
 
 
@@ -117,7 +123,7 @@ class RequestTests(unittest.TestCase):
 
     def test_a_network_error_becomes_a_message_in_portuguese(self) -> None:
         erro = urllib.error.URLError("getaddrinfo failed")
-        with mock.patch("urllib.request.urlopen", side_effect=erro):
+        with mock.patch.object(net_correction._OPENER, "open", side_effect=erro):
             with self.assertRaises(RuntimeError) as capturado:
                 predict_fen_via_net(_board(), url=ENDPOINT)
         self.assertIn("Erro de rede", str(capturado.exception))
@@ -126,14 +132,14 @@ class RequestTests(unittest.TestCase):
         erro = urllib.error.HTTPError(
             ENDPOINT, 413, "Payload Too Large", {}, io.BytesIO(b"imagem grande demais")  # type: ignore[arg-type]
         )
-        with mock.patch("urllib.request.urlopen", side_effect=erro):
+        with mock.patch.object(net_correction._OPENER, "open", side_effect=erro):
             with self.assertRaises(RuntimeError) as capturado:
                 predict_fen_via_net(_board(), url=ENDPOINT)
         self.assertIn("imagem grande demais", str(capturado.exception))
 
     def test_an_http_error_with_an_empty_body_falls_back_to_the_status(self) -> None:
         erro = urllib.error.HTTPError(ENDPOINT, 500, "Server Error", {}, io.BytesIO(b""))  # type: ignore[arg-type]
-        with mock.patch("urllib.request.urlopen", side_effect=erro):
+        with mock.patch.object(net_correction._OPENER, "open", side_effect=erro):
             with self.assertRaises(RuntimeError) as capturado:
                 predict_fen_via_net(_board(), url=ENDPOINT)
         self.assertIn("HTTP 500", str(capturado.exception))
@@ -143,6 +149,25 @@ class RequestTests(unittest.TestCase):
         with _responding(f'{{"results": [{{"fen": "{FEN}"}}]}}') as chamada:
             predict_fen_via_net(_board(), url=ENDPOINT, timeout=7)
         self.assertEqual(chamada.call_args.kwargs["timeout"], 7)
+
+    def test_o_envio_nao_passa_por_urlopen(self) -> None:
+        """S-59: `urlopen` segue redirect, e seguir um fura o consentimento da S-32.
+
+        Este teste é sobre os **testes** tanto quanto sobre o código. Enquanto eles
+        substituíam `urllib.request.urlopen`, trocar o caminho de envio não os fazia falhar:
+        fazia-os sair para a rede de verdade. Foi o que aconteceu ao introduzir o opener, e é
+        a razão de a garantia estar escrita aqui em vez de só no docstring.
+        """
+        fonte = Path(net_correction.__file__).read_text(encoding="utf-8")
+        corpo = fonte.split("def predict_fen_via_net(", 1)[1]
+        self.assertIn("_OPENER.open(", corpo)
+        self.assertNotIn("urlopen(", corpo)
+
+    def test_nenhuma_requisicao_sai_com_o_opener_substituido(self) -> None:
+        """A rede está de fato desligada nestes testes -- não só por convenção."""
+        with mock.patch.object(net_correction._OPENER, "open", side_effect=AssertionError("saiu para a rede")):
+            with self.assertRaises(AssertionError):
+                predict_fen_via_net(_board(), url=ENDPOINT)
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ import urllib.error
 import urllib.request
 import uuid
 from typing import Protocol, runtime_checkable
+from urllib.parse import urlsplit
 
 import cv2
 import numpy as np
@@ -41,6 +42,38 @@ usava o recurso precisa saber o que escrever para tê-lo de volta -- mas agora �
 quem o declara, e nada aqui o usa como padrão."""
 
 DEFAULT_TIMEOUT = 30.0
+
+ALLOWED_SCHEMES = frozenset({"http", "https"})
+"""Esquemas que um endpoint pode ter (S-59).
+
+`urllib.request.urlopen` aceita `file:`, `ftp:` e `data:` também. O endpoint é declarado pelo
+usuário, então isto não é defesa contra atacante -- é defesa contra engano: um
+`CVOFF_REMOTE_FEN_URL=file:///C:/...` faria o "provedor remoto" ler um arquivo local e tentar
+interpretá-lo como JSON, com uma mensagem de erro que não teria nada a ver com a causa."""
+
+
+class _RedirectRefused(urllib.request.HTTPRedirectHandler):
+    """Recusa redirect em vez de segui-lo (S-59).
+
+    A S-32 promete duas coisas sobre o envio: o aviso **nomeia o host de destino**, e o
+    consentimento fica gravado **por endereço** -- trocar o endpoint volta a perguntar. Um
+    `302` fura as duas: a imagem do tabuleiro sai para um host que o usuário nunca viu, e
+    nem o log registra o desvio, porque ele só imprime a URL configurada.
+
+    Recusar é a leitura certa aqui e não seria em outro cliente HTTP: o que está em jogo não
+    é uma requisição que falha, é uma imagem que já saiu da máquina.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        destino = urlsplit(newurl).netloc or newurl
+        raise RuntimeError(
+            f"O serviço respondeu com um redirecionamento para {destino}, que não é o endereço "
+            f"autorizado. Nada foi enviado para lá. Se o serviço mudou de endereço, atualize o "
+            f"endpoint em data/settings.json -- o aviso de consentimento vai perguntar de novo."
+        )
+
+
+_OPENER = urllib.request.build_opener(_RedirectRefused)
 
 
 @runtime_checkable
@@ -67,7 +100,17 @@ class HttpFenProvider:
             # Falhar aqui, e nao na hora do envio: um provedor sem destino nao deveria
             # chegar a existir, e deixa-lo existir e o que faria a UI oferecer o botao.
             raise ValueError("Provedor remoto exige um endpoint declarado.")
-        self.url = url.strip()
+
+        url = url.strip()
+        scheme = urlsplit(url).scheme.lower()
+        if scheme not in ALLOWED_SCHEMES:
+            # Mesma razao da linha acima, e por isso no mesmo lugar: e a existencia do
+            # provedor que faz a interface oferecer o botao (S-59).
+            raise ValueError(
+                f"Endpoint remoto precisa ser http ou https; recebido {scheme or 'sem esquema'!r} em {url!r}."
+            )
+
+        self.url = url
         self.timeout = timeout
 
     @property
@@ -158,7 +201,9 @@ def predict_fen_via_net(
 
     logger.info("Enviando tabuleiro para correcao externa em %s.", url)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - URL vem da config
+        # `_OPENER` em vez de `urlopen`: o padrao segue redirect, e seguir um manda a imagem
+        # para um host que o consentimento da S-32 nunca nomeou (S-59).
+        with _OPENER.open(request, timeout=timeout) as response:  # noqa: S310 - URL vem da config
             payload = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         detalhes = exc.read().decode("utf-8", errors="replace").strip() or f"HTTP {exc.code}"

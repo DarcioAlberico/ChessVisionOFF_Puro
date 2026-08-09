@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -18,7 +18,9 @@ import numpy as np
 import pandas as pd
 
 from .config import PIECE_CLASSES
+from .dataset import read_labels_frame
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
+from .splits import load_splits
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +107,14 @@ def _fen_with_turn(fen: str, turn_char: str) -> str:
     return " ".join(parts)
 
 
-def _read_rows(csv_path: Path) -> list[tuple[str, str]]:
-    df = pd.read_csv(csv_path)
+def read_label_rows(csv_path: Path) -> list[tuple[str, str]]:
+    """Os pares `(arquivo, FEN)` do CSV de rótulos, na ordem em que estão nele.
+
+    Era privada deste módulo. Deixou de ser quando `training.resolve_splits` (S-56) passou a
+    precisar da mesma leitura: importar um `_nome` de outro módulo é sinal de que a fronteira
+    está no lugar errado, e a fronteira certa aqui é "quem sabe ler o esquema de rótulos".
+    """
+    df = read_labels_frame(csv_path)
     required = {"filename", "fen"}
     if not required.issubset(df.columns):
         raise ValueError(f"O CSV precisa das colunas {required}. Encontradas: {set(df.columns)}")
@@ -122,7 +130,7 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV de rótulos não encontrado: {csv_path}")
 
-    rows = _read_rows(csv_path)
+    rows = read_label_rows(csv_path)
     report.total_rows = len(rows)
     referenced: set[str] = set()
     usable_labels: list[tuple[str, str]] = []
@@ -246,6 +254,53 @@ def find_duplicate_groups(
     return sorted(groups, key=lambda g: g[0])
 
 
+def duplicate_groups_touching(
+    samples_dir: Path,
+    labels: Iterable[tuple[str, str]],
+    filenames: Collection[str],
+) -> list[list[str]]:
+    """Grupos de duplicata que contêm ao menos um arquivo de `filenames` (S-56).
+
+    Existe por causa do custo. `find_duplicate_groups` lê as 3.289 imagens de
+    `data/samples/` -- cerca de 6 GB -- para achar **todos** os grupos, e a atribuição de
+    split só precisa dos grupos em que a amostra nova entra: as antigas já têm split
+    registrado, e `ensure_splits` nunca as move.
+
+    O corte é exato, não uma aproximação. `find_duplicate_groups` já agrupa por rótulo antes
+    de comparar hash -- duas imagens com posições diferentes nunca caem no mesmo grupo --,
+    então basta considerar as linhas cujo rótulo alguma amostra nova também tem. Um grupo
+    formado só por amostras antigas não muda nada aqui.
+    """
+    alvo = {str(name) for name in filenames}
+    if not alvo:
+        return []
+
+    pares = [(str(name), str(fen)) for name, fen in labels]
+    placements_novos = {_normalized_placement(fen) for name, fen in pares if name in alvo}
+    relevantes = [(name, fen) for name, fen in pares if _normalized_placement(fen) in placements_novos]
+
+    logger.debug(
+        "Deduplicação restrita a %d de %d linhas (%d rótulos distintos entre as amostras novas).",
+        len(relevantes),
+        len(pares),
+        len(placements_novos),
+    )
+    grupos = find_duplicate_groups(samples_dir, relevantes)
+    return [grupo for grupo in grupos if alvo.intersection(grupo)]
+
+
+def filenames_without_split(csv_path: Path, splits_path: Path) -> list[str]:
+    """Rótulos que não têm split registrado, na ordem do CSV (S-56).
+
+    São invisíveis a qualquer treino que filtre por split: `BoardFenDataset` descarta o que
+    o mapa não conhece, para que amostra nova não caia por acidente no conjunto de teste.
+    Sem alguém atribuindo o split, porém, "não cai por acidente" vira "não entra nunca" --
+    era o estado do projeto quando isto foi escrito, com 45 amostras fora do treino.
+    """
+    registrados = load_splits(Path(splits_path))
+    return [name for name, _fen in read_label_rows(Path(csv_path)) if name and name not in registrados]
+
+
 def backup_csv(csv_path: Path) -> Path:
     """Copia o CSV para um arquivo datado antes de qualquer escrita."""
     csv_path = Path(csv_path)
@@ -267,7 +322,7 @@ def apply_side_to_move_fixes(csv_path: Path, report: AuditReport) -> int:
     if not fixes:
         return 0
 
-    df = pd.read_csv(csv_path)
+    df = read_labels_frame(csv_path)
     applied = 0
     for idx, row in df.iterrows():
         filename = str(row["filename"]).strip()
@@ -289,7 +344,7 @@ def quarantine_fatal_labels(csv_path: Path, report: AuditReport, quarantine_path
     if not fatal:
         return 0
 
-    df = pd.read_csv(csv_path)
+    df = read_labels_frame(csv_path)
     mask = df["filename"].astype(str).str.strip().isin(fatal.keys())
     removed = df[mask].copy()
     if removed.empty:
@@ -302,7 +357,7 @@ def quarantine_fatal_labels(csv_path: Path, report: AuditReport, quarantine_path
     quarantine_path = Path(quarantine_path)
     quarantine_path.parent.mkdir(parents=True, exist_ok=True)
     if quarantine_path.exists():
-        existing = pd.read_csv(quarantine_path)
+        existing = read_labels_frame(quarantine_path)
         removed = pd.concat([existing, removed], ignore_index=True)
     removed.to_csv(quarantine_path, index=False)
 
@@ -316,7 +371,7 @@ def remove_duplicate_labels(csv_path: Path, report: AuditReport) -> int:
     if not to_remove:
         return 0
 
-    df = pd.read_csv(csv_path)
+    df = read_labels_frame(csv_path)
     mask = df["filename"].astype(str).str.strip().isin(to_remove)
     df[~mask].to_csv(csv_path, index=False)
     return int(mask.sum())

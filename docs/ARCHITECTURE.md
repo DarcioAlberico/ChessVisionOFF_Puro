@@ -106,6 +106,7 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | `page_results.py` | Cache do reconhecimento por página. |
 | `export_controller.py` · `training_dialog.py` | As duas operações longas e seus diálogos. |
 | `state.py` · `strings.py` · `shortcuts.py` · `tooltip.py` | Estado, vocabulário, atalhos, dicas. |
+| `busy.py` | O que está rodando e o que se perde ao fechar a janela (S-60). Sem Tk. |
 
 `app_tkinter.py` monta esses painéis e liga um ao outro. Nada mais.
 
@@ -129,16 +130,27 @@ precisa parecer um palpite — é essa a diferença entre um dado e uma suposiç
 
 ## Threads
 
-Três operações longas rodam fora da thread da interface, e todas voltam por `root.after`:
+Quatro operações longas rodam fora da thread da interface, e todas voltam por `root.after`:
 
-| operação | onde | cancelável |
-|---|---|---|
-| OCR de uma página | `app_tkinter._ocr_worker` | não (é rápido) |
-| exportação de um livro | `ui/export_controller.py` | sim, entre páginas (S-24) |
-| treino | `ui/training_dialog.py` | não |
+| operação | onde | cancelável | empresta o modelo do serviço |
+|---|---|---|---|
+| OCR de uma página | `app_tkinter._ocr_worker` | não (é rápido) | sim (S-31) |
+| exportação de um livro | `ui/export_controller.py` | sim, entre páginas (S-24) | sim (S-57) |
+| varredura da fila de revisão | `ui/review_panel.py` | sim, entre páginas | sim (S-57) |
+| treino | `ui/training_dialog.py` | sim, entre épocas (S-60) | escreve o `.pt` |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
-carga: o treino reescreve o mesmo `.pt` que um OCR concorrente leria (S-31).
+carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).
+
+Até a S-57 essa frase valia para **uma** das quatro. A exportação e a varredura da fila
+chamavam `load_model` por conta própria, fora do lock — e são justamente as duas longas, as
+que de fato coexistem com um treino. Hoje as duas recebem `model_session` do `OcrService`; o
+único `load_model` que sobrou em `pdf_to_pgn.py` está em `_own_model_session`, o caminho dos
+CLIs, onde não há serviço nem treino concorrente.
+
+Fechar a janela consulta `ui/busy.py` antes de destruir: `BusyRegistry` sabe o que está
+rodando e **o que se perde**, que não é a mesma coisa em todas — a exportação tem checkpoint
+parcial e sobrevive, o treino perde o progresso desde a última época melhor (S-60).
 
 ---
 
@@ -153,10 +165,18 @@ carga: o treino reescreve o mesmo `.pt` que um OCR concorrente leria (S-31).
 | `data/app_tkinter_state.json` | último PDF, página, zoom | não |
 | `data/review_queue.json` | a fila de revisão | não |
 | `models/*.pt` | checkpoints, com semente, split e métrica gravados | não |
+| `data/splits.csv` | partição, atribuída às amostras novas pelo próprio treino (S-56) | sim |
 | `PGN/<livro>.pgn` | as posições aceitas | não |
 | `PGN/<livro>.review.pgn` | as rejeitadas e as de baixa confiança, com o motivo | não |
 | `PGN/<livro>.partial.jsonl` | checkpoint da exportação, apagado ao concluir | não |
 
 Toda escrita de arquivo de trabalho passa por `atomic_io`: grava num temporário e troca. O
 `labels.csv` é 3.200 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
-cada correção.
+cada correção. Desde a S-57 o `.pt` também passa por ali — era o maior dos arquivos, o mais
+demorado de escrever, e o único cuja escrita acontece numa thread de fundo enquanto outra
+pode estar lendo o mesmo caminho.
+
+O `labels.csv` é lido por `dataset.read_labels_frame`, que o trata como **texto puro**. Sem
+isso o pandas tipava `source_page` como `float64` (98,6% das células estão vazias) e `20`
+voltava `20.0`: como a gravação relê o arquivo inteiro antes de acrescentar uma linha, uma
+amostra nova reescrevia todas as antigas nesse formato (S-58).

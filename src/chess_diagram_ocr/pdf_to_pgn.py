@@ -3,13 +3,15 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import chess.pgn
 import numpy as np
 
+from .checkpoint import checkpoint_identity
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_MAX_BOARDS,
@@ -385,6 +387,7 @@ def iter_pdf_diagrams(
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
     page_callback: PageCallback | None = None,
+    model_session: AbstractContextManager[tuple[Any, str]] | None = None,
 ) -> Iterator[ScannedDiagram]:
     """Gerador de diagramas do PDF, uma página por vez.
 
@@ -394,6 +397,17 @@ def iter_pdf_diagrams(
 
     `cancel_event` é conferido **antes** de cada página, e não dentro da inferência: uma
     página a 220 DPI leva ~0,18 s, então o pior caso de resposta ao cancelamento é isso.
+
+    `model_session` é o empréstimo do modelo do `OcrService`, com o lock da S-31 segurado
+    pela duração da varredura (S-57). Sem ele, esta função carregava o `.pt` por conta
+    própria -- e o `ARCHITECTURE.md` afirmava que o modelo ficava "sob lock durante o uso",
+    o que valia para o OCR interativo de uma página e **não** para os dois caminhos longos
+    que de fato coexistem com um treino: a exportação de um livro e a varredura da fila. O
+    treino reescreve o mesmo arquivo que estes leem.
+
+    Continua aceitando `None`, que é o caminho dos CLIs: ali não há serviço, não há treino
+    concorrente, e exigir um seria inventar acoplamento para resolver um problema que não
+    existe fora da interface.
     """
     page_count = _get_pdf_page_count(pdf_source)
     if page_count <= 0:
@@ -407,7 +421,49 @@ def iter_pdf_diagrams(
         raise ValueError("end_page deve ser maior que start_page.")
     total_pages = last_page_exclusive - start_page
 
-    model, resolved_device = load_model(Path(model_path), device=device)
+    with model_session or _own_model_session(Path(model_path), device) as (model, resolved_device):
+        yield from _scan_pages(
+            pdf_source,
+            model,
+            resolved_device,
+            start_page=start_page,
+            last_page_exclusive=last_page_exclusive,
+            total_pages=total_pages,
+            dpi=dpi,
+            max_boards_per_page=max_boards_per_page,
+            orientation=orientation,
+            reading_order=reading_order,
+            read_text=read_text,
+            cancel_event=cancel_event,
+            progress_callback=progress_callback,
+            page_callback=page_callback,
+        )
+
+
+@contextmanager
+def _own_model_session(model_path: Path, device: str | None) -> Iterator[tuple[Any, str]]:
+    """Carrega o modelo só para esta varredura. É o caminho dos CLIs -- ver `iter_pdf_diagrams`."""
+    yield load_model(model_path, device=device)
+
+
+def _scan_pages(
+    pdf_source: PdfSource,
+    model: Any,
+    resolved_device: str,
+    *,
+    start_page: int,
+    last_page_exclusive: int,
+    total_pages: int,
+    dpi: int,
+    max_boards_per_page: int,
+    orientation: OrientationMode,
+    reading_order: ReadingOrder,
+    read_text: bool,
+    cancel_event: threading.Event | None,
+    progress_callback: ProgressCallback | None,
+    page_callback: PageCallback | None,
+) -> Iterator[ScannedDiagram]:
+    """O laço de páginas, com o modelo já em mãos. Separado só para manter o `with` legível."""
     seen = 0
 
     for page_index in range(start_page, last_page_exclusive):
@@ -488,6 +544,7 @@ def scan_pdf_positions(
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
     page_callback: PageCallback | None = None,
+    model_session: AbstractContextManager[tuple[Any, str]] | None = None,
 ) -> list[DiagramPosition]:
     """Varre as páginas e reconhece cada diagrama encontrado.
 
@@ -517,6 +574,7 @@ def scan_pdf_positions(
             cancel_event=cancel_event,
             progress_callback=progress_callback,
             page_callback=page_callback,
+            model_session=model_session,
         )
     ]
 
@@ -703,6 +761,7 @@ def save_pdf_positions_to_pgn(
     checkpoint: bool = True,
     checkpoint_every: int = DEFAULT_CHECKPOINT_EVERY,
     progress_callback: ProgressCallback | None = None,
+    model_session: AbstractContextManager[tuple[Any, str]] | None = None,
 ) -> ExportReport:
     """Varre o PDF e exporta com o gate de qualidade da S-15.
 
@@ -714,12 +773,21 @@ def save_pdf_positions_to_pgn(
     `.partial.jsonl` fica ao lado do PGN e a execução seguinte com **os mesmos parâmetros**
     retoma da página seguinte à última concluída. Terminar apaga o parcial -- ele existe
     para atravessar a interrupção, não para virar um segundo formato de saída.
+
+    "Os mesmos parâmetros" inclui **o mesmo arquivo de modelo**, e não só o mesmo caminho
+    (S-57): o treino reescreve sempre o `models/piece_classifier.pt`, e retomar depois de
+    treinar juntaria metade de um PGN lido por um modelo com metade lida por outro.
+
+    `model_session` empresta o modelo do `OcrService` em vez de carregar outro -- ver
+    `iter_pdf_diagrams`.
     """
     source_name = Path(pdf_source).name if isinstance(pdf_source, (str, Path)) else "pdf-bytes"
 
     params = ScanParams(
         source_name=source_name,
         model_path=str(Path(model_path)),
+        # O caminho e sempre o mesmo `models/piece_classifier.pt`; o arquivo, nao (S-57).
+        model_identity=checkpoint_identity(Path(model_path)),
         dpi=dpi,
         max_boards_per_page=max_boards_per_page,
         orientation=orientation,
@@ -776,6 +844,7 @@ def save_pdf_positions_to_pgn(
                 cancel_event=cancel_event,
                 progress_callback=progress_callback,
                 page_callback=_on_page,
+                model_session=model_session,
             )
         )
 

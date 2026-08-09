@@ -25,6 +25,8 @@ from typing import Any
 
 from chess_diagram_ocr.training import TrainingRun, train_model
 
+from .busy import BusyRegistry
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,8 +96,14 @@ class TrainingController:
         on_status: Callable[[str], None],
         on_controls_enabled: Callable[[bool], None],
         on_finished: Callable[[], None],
+        busy: BusyRegistry | None = None,
     ) -> None:
+        """`busy` registra o treino como operação longa, para a janela saber o que se perde
+        ao ser fechada (S-60). `None` mantém o comportamento antigo, para os testes."""
         self.root = root
+        self._busy = busy
+        self._busy_token: object | None = None
+        self._cancel: threading.Event | None = None
         self._request = request
         self._on_status = on_status
         self._on_controls_enabled = on_controls_enabled
@@ -122,11 +130,29 @@ class TrainingController:
         pedido = self._request()
         self._running = True
         self._total_epochs = pedido.epochs
+        self._cancel = threading.Event()
+        if self._busy is not None:
+            self._busy_token = self._busy.register(
+                "treino do modelo",
+                # O checkpoint da melhor epoca ja esta no disco; o que se perde e o progresso
+                # desde ela -- que em CPU e ~9 min por epoca, e por isso vale perguntar.
+                loses_work=True,
+                cancellable=True,
+                detail=f"época 1 de {pedido.epochs}",
+                cancel=self.cancel,
+            )
         self._on_controls_enabled(False)
         self.set_text("Preparando treino...", "")
         self.open_dialog()
 
-        threading.Thread(target=self._worker, args=(pedido,), daemon=True).start()
+        threading.Thread(target=self._worker, args=(pedido, self._cancel), daemon=True).start()
+
+    def cancel(self) -> None:
+        """Pede o cancelamento. A resposta vem entre épocas, não no meio de uma (S-60)."""
+        if self._cancel is None:
+            return
+        self._cancel.set()
+        self._on_status("Cancelando treino... termina a época atual e para.")
 
     # ------------------------------------------------------------------------------ modal
 
@@ -183,8 +209,11 @@ class TrainingController:
         status = f"Treinando... época {epoca}/{self._total_epochs}"
         self._on_status(status)
         self.set_text(status, format_metrics(row))
+        token = self._busy_token
+        if token is not None:
+            token.update(f"época {epoca} de {self._total_epochs}")  # type: ignore[attr-defined]
 
-    def _worker(self, pedido: TrainingRequest) -> None:
+    def _worker(self, pedido: TrainingRequest, cancel: threading.Event) -> None:
         try:
             self._on_status("Treinando modelo...")
             self.set_text("Treinando modelo...", "")
@@ -220,6 +249,10 @@ class TrainingController:
 
     def _finish(self) -> None:
         self._running = False
+        self._cancel = None
+        if self._busy_token is not None:
+            self._busy_token.release()  # type: ignore[attr-defined]
+            self._busy_token = None
         self._on_controls_enabled(True)
         self.close_dialog()
         self._on_finished()

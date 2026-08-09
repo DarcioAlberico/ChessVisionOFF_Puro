@@ -328,6 +328,87 @@ class LabelSchemaTests(unittest.TestCase):
             self.assertEqual(list(frame.columns)[:3], ["filename", "fen", "side_to_move"])
 
 
+class IntegerColumnTests(unittest.TestCase):
+    """S-58: `source_page` e `source_diagram` são inteiros em texto, e continuam sendo.
+
+    O defeito: `pd.read_csv` sem `dtype` tipava a coluna como `float64` porque 98,6% das
+    células estão vazias, e `20` voltava `20.0`. Como a gravação relê o arquivo inteiro
+    antes de acrescentar uma linha, cada amostra nova reescrevia as antigas nesse formato --
+    o `labels.csv` acabou com os dois, e um diff de uma linha virava um diff de milhares.
+    """
+
+    def _uma_amostra(self, root: Path, **campos: object) -> None:
+        board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+        append_training_sample(board, LEGAL, root / "labels.csv", root / "samples", **campos)  # type: ignore[arg-type]
+
+    def test_pagina_e_diagrama_sao_gravados_como_inteiro(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._uma_amostra(root, source_pdf="livro.pdf", source_page=20, source_diagram=1)
+
+            linhas = (root / "labels.csv").read_text(encoding="utf-8").splitlines()
+            self.assertIn(",20,1,", linhas[1])
+            self.assertNotIn("20.0", linhas[1])
+
+    def test_uma_amostra_nova_nao_reescreve_as_linhas_antigas(self) -> None:
+        """O critério de aceite da S-58: gravar produz um diff de exatamente uma linha."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._uma_amostra(root, source_pdf="livro.pdf", source_page=20, source_diagram=1)
+            antes = (root / "labels.csv").read_text(encoding="utf-8").splitlines()
+
+            self._uma_amostra(root, source_pdf="livro.pdf", source_page=21, source_diagram=2)
+            depois = (root / "labels.csv").read_text(encoding="utf-8").splitlines()
+
+            self.assertEqual(len(depois), len(antes) + 1)
+            self.assertEqual(depois[: len(antes)], antes, "linhas antigas foram reescritas")
+
+    def test_um_csv_com_o_formato_antigo_converge_na_proxima_gravacao(self) -> None:
+        """Normalizar na escrita dispensa comando de migração: o arquivo se conserta sozinho."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "labels.csv").write_text(
+                "filename,fen,side_to_move,source_pdf,source_page,source_diagram,"
+                "detection_source,created_at,corrected_by\n"
+                f"antiga.png,{LEGAL} w - - 0 1,w,livro.pdf,20.0,1.0,contour,2026-01-01T00:00:00Z,\n",
+                encoding="utf-8",
+            )
+
+            self._uma_amostra(root, source_pdf="livro.pdf", source_page=21, source_diagram=2)
+
+            frame = pd.read_csv(root / "labels.csv", dtype=str, keep_default_na=False)
+            self.assertEqual(list(frame["source_page"]), ["20", "21"])
+            self.assertEqual(list(frame["source_diagram"]), ["1", "2"])
+
+    def test_celula_vazia_continua_vazia_e_nao_vira_nan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._uma_amostra(root)  # sem nenhum campo de origem
+
+            texto = (root / "labels.csv").read_text(encoding="utf-8")
+            self.assertNotIn("nan", texto.lower())
+            entrada = BoardFenDataset(root / "labels.csv", root / "samples", cache_size=0).entries
+            self.assertEqual(entrada[0].source_page, "")
+            self.assertEqual(entrada[0].source_diagram, "")
+
+    def test_valor_que_nao_e_numero_passa_intacto(self) -> None:
+        """Não é papel da normalização decidir que um valor inesperado é lixo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "labels.csv").write_text(
+                "filename,fen,side_to_move,source_pdf,source_page,source_diagram,"
+                "detection_source,created_at,corrected_by\n"
+                f"antiga.png,{LEGAL} w - - 0 1,w,livro.pdf,xii,capa,contour,2026-01-01T00:00:00Z,\n",
+                encoding="utf-8",
+            )
+
+            self._uma_amostra(root, source_page=3)
+
+            frame = pd.read_csv(root / "labels.csv", dtype=str, keep_default_na=False)
+            self.assertEqual(list(frame["source_page"]), ["xii", "3"])
+            self.assertEqual(list(frame["source_diagram"]), ["capa", ""])
+
+
 class MigrateLabelsTests(unittest.TestCase):
     def test_migracao_deduz_lado_a_jogar_pela_legalidade(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

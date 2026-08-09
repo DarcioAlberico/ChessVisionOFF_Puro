@@ -241,6 +241,171 @@ class CacheSizeSplitTests(unittest.TestCase):
             self.assertEqual(fake.call_args.kwargs["cache_size"], 64)
 
 
+class SplitAssignmentTests(unittest.TestCase):
+    """S-56: a amostra que você salva tem de chegar ao treino.
+
+    O defeito: `splits.ensure_splits` existia e nada em produção a chamava. Amostra nova
+    ficava sem split, `BoardFenDataset` a descartava, e o ciclo corrigir → salvar → treinar
+    não fechava. Eram 45 amostras fora do treino, em silêncio, justamente as únicas com
+    procedência preenchida.
+    """
+
+    def _dataset(self, root: Path, nomes: list[str], *, registrados: dict[str, str] | None = None) -> tuple[Path, Path, Path]:
+        import cv2
+        import numpy as np
+
+        from chess_diagram_ocr.splits import save_splits
+
+        samples = root / "samples"
+        samples.mkdir(parents=True)
+        rng = np.random.default_rng(0)
+        linhas = ["filename,fen"]
+        for nome in nomes:
+            cv2.imwrite(str(samples / nome), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+            linhas.append(f"{nome},{LEGAL}")
+
+        csv_path = root / "labels.csv"
+        csv_path.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+        splits_path = root / "splits.csv"
+        if registrados is not None:
+            save_splits(splits_path, registrados)  # type: ignore[arg-type]
+        return csv_path, samples, splits_path
+
+    def test_amostra_nova_recebe_split_e_passa_a_ser_vista_pelo_treino(self) -> None:
+        import tempfile
+
+        from chess_diagram_ocr.dataset import BoardFenDataset
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            csv_path, samples, splits_path = self._dataset(
+                root, ["velha.png", "nova.png"], registrados={"velha.png": "train"}
+            )
+
+            antes = BoardFenDataset(csv_path, samples, cache_size=0, splits={"velha.png": "train"}, split="train")
+            self.assertEqual(len(antes.entries), 1)
+            self.assertEqual(antes.skipped_without_split, ["nova.png"], "o descarte precisa ser registrado")
+
+            mapa = resolve_splits(csv_path, samples, splits_path)
+            self.assertIn("nova.png", mapa)
+
+            visiveis = sum(
+                len(BoardFenDataset(csv_path, samples, cache_size=0, splits=mapa, split=s).entries)
+                for s in ("train", "val", "test")
+            )
+            self.assertEqual(visiveis, 2, "a amostra nova continua invisível a todos os splits")
+
+    def test_o_split_de_uma_amostra_ja_registrada_nunca_muda(self) -> None:
+        """A garantia da S-07: atribuir split a uma nova não pode mover as antigas."""
+        import tempfile
+
+        from chess_diagram_ocr.splits import load_splits
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            registrados = {"a.png": "test", "b.png": "val", "c.png": "train"}
+            csv_path, samples, splits_path = self._dataset(
+                root, [*registrados, "nova.png"], registrados=registrados
+            )
+
+            mapa = resolve_splits(csv_path, samples, splits_path)
+
+            for nome, split in registrados.items():
+                self.assertEqual(mapa[nome], split)
+            gravado = load_splits(splits_path)
+            self.assertEqual({n: gravado[n] for n in registrados}, registrados)
+
+    def test_assign_new_false_le_e_nao_escreve(self) -> None:
+        import tempfile
+
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            csv_path, samples, splits_path = self._dataset(
+                root, ["velha.png", "nova.png"], registrados={"velha.png": "train"}
+            )
+            antes = splits_path.read_bytes()
+
+            mapa = resolve_splits(csv_path, samples, splits_path, assign_new=False)
+
+            self.assertNotIn("nova.png", mapa)
+            self.assertEqual(splits_path.read_bytes(), antes)
+
+    def test_amostra_identica_a_uma_ja_registrada_herda_o_split_dela(self) -> None:
+        """Membros de um mesmo diagrama não podem cair em splits diferentes (S-07).
+
+        A imagem é copiada byte a byte com o mesmo rótulo, que é o caso 1 dos grupos de
+        duplicata: a mesma amostra salva duas vezes.
+        """
+        import shutil
+        import tempfile
+
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            csv_path, samples, splits_path = self._dataset(root, ["original.png"], registrados={"original.png": "test"})
+            shutil.copy(samples / "original.png", samples / "zcopia.png")
+            with csv_path.open("a", encoding="utf-8") as arquivo:
+                arquivo.write(f"zcopia.png,{LEGAL}\n")
+
+            mapa = resolve_splits(csv_path, samples, splits_path)
+
+            self.assertEqual(mapa["zcopia.png"], "test", "a cópia caiu em outro split que a original")
+
+    def test_a_deduplicacao_so_le_as_imagens_que_importam(self) -> None:
+        """`duplicate_groups_touching` existe pelo custo: o completo lê ~6 GB a cada treino."""
+        import tempfile
+
+        import cv2
+        import numpy as np
+
+        from chess_diagram_ocr.audit import duplicate_groups_touching
+
+        OUTRO = "8/8/8/8/8/8/8/K1k5"
+        with tempfile.TemporaryDirectory() as tmp:
+            samples = Path(tmp)
+            rng = np.random.default_rng(1)
+            for nome in ("a.png", "b.png", "nova.png"):
+                cv2.imwrite(str(samples / nome), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+
+            lidas: list[str] = []
+            original = cv2.imread
+
+            def _espiao(caminho: str, *args: object, **kwargs: object):
+                lidas.append(Path(caminho).name)
+                return original(caminho, *args, **kwargs)
+
+            labels = [("a.png", OUTRO), ("b.png", OUTRO), ("nova.png", LEGAL)]
+            with patch("chess_diagram_ocr.audit.cv2.imread", side_effect=_espiao):
+                duplicate_groups_touching(samples, labels, ["nova.png"])
+
+            self.assertEqual(lidas, ["nova.png"], f"leu imagens de rótulo que nenhuma amostra nova tem: {lidas}")
+
+    def test_o_treino_atribui_split_em_vez_de_so_ler(self) -> None:
+        """Regressão do defeito exato: `train_model` chamava `load_splits`, que só lê.
+
+        A varredura é sobre o texto do módulo em vez de sobre o comportamento porque o
+        defeito era **a chamada errada**, não um resultado errado: `load_splits` funciona
+        perfeitamente, ela só não faz o que este caminho precisa. Um teste de comportamento
+        passaria a verde de novo se alguém trocasse de volta e o dataset de teste já tivesse
+        todos os splits registrados -- que é a situação de qualquer fixture.
+        """
+        import chess_diagram_ocr.training as training
+
+        fonte = Path(training.__file__).read_text(encoding="utf-8")
+        corpo = fonte.split("def train_model(", 1)[1]
+        self.assertIn("resolve_splits(", corpo)
+        self.assertNotIn(
+            "load_splits(",
+            corpo,
+            "`train_model` voltou a só ler o arquivo de splits; amostra nova fica fora do treino (S-56).",
+        )
+
+
 class ReproducibilityTests(unittest.TestCase):
     """O criterio de aceite da S-27: mesma semente e mesmo dataset -> metricas identicas.
 
@@ -288,6 +453,88 @@ class ReproducibilityTests(unittest.TestCase):
             num_workers=0,
             patience=0,
         )
+
+    def test_cancelar_antes_da_primeira_epoca_nao_toca_no_checkpoint(self) -> None:
+        """S-60: até aqui o treino não tinha cancelamento, e parar exigia fechar a janela.
+
+        Fechar a janela matava a thread daemon a qualquer instante -- inclusive no meio do
+        `torch.save`, que era a outra metade do defeito da S-57.
+        """
+        import tempfile
+        import threading
+
+        from chess_diagram_ocr.training import train_model
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "cancelado").mkdir()
+            csv_path, samples, splits_path = self._tiny_dataset(root / "cancelado")
+            model_path = root / "cancelado" / "m.pt"
+
+            cancel = threading.Event()
+            cancel.set()
+            run = train_model(
+                csv_path=csv_path,
+                samples_dir=samples,
+                model_path=model_path,
+                epochs=5,
+                batch_size=64,
+                splits_path=splits_path,
+                fresh=True,
+                num_workers=0,
+                patience=0,
+                cancel_event=cancel,
+            )
+
+            self.assertTrue(run.cancelled)
+            self.assertEqual(run.history, [])
+            self.assertFalse(model_path.exists(), "um treino cancelado antes da 1ª época gravou checkpoint")
+
+    def test_cancelar_no_meio_preserva_o_melhor_checkpoint_ja_gravado(self) -> None:
+        import tempfile
+        import threading
+
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.training import train_model
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "meio").mkdir()
+            csv_path, samples, splits_path = self._tiny_dataset(root / "meio")
+            model_path = root / "meio" / "m.pt"
+
+            cancel = threading.Event()
+
+            def _pede_parada_apos_a_primeira(_row: dict) -> None:
+                cancel.set()
+
+            run = train_model(
+                csv_path=csv_path,
+                samples_dir=samples,
+                model_path=model_path,
+                epochs=5,
+                batch_size=64,
+                splits_path=splits_path,
+                fresh=True,
+                num_workers=0,
+                patience=0,
+                cancel_event=cancel,
+                progress_cb=_pede_parada_apos_a_primeira,
+            )
+
+            self.assertTrue(run.cancelled)
+            self.assertEqual(len(run.history), 1, "a época em curso tem de terminar, não ser abortada no meio")
+            self.assertTrue(model_path.exists())
+            # O checkpoint continua carregável: cancelar não pode deixar `.pt` pela metade.
+            self.assertEqual(load_checkpoint(model_path).metadata["best_epoch"], run.best_epoch)
+
+    def test_um_treino_normal_nao_se_diz_cancelado(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "normal").mkdir()
+            run = self._train(Path(tmp), "normal")
+            self.assertFalse(run.cancelled)
 
     def test_two_runs_with_the_same_seed_agree_to_the_last_digit(self) -> None:
         import tempfile

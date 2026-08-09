@@ -19,6 +19,8 @@ from __future__ import annotations
 import logging
 import os
 import random
+import threading
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,13 +32,14 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 from torchvision.transforms import v2
 
+from .audit import duplicate_groups_touching, read_label_rows
 from .calibration import expected_calibration_error, fit_temperature, negative_log_likelihood
 from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoint, save_checkpoint
 from .config import DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
 from .dataset import BoardFenDataset, BoardGroupedSampler, board_groups
 from .fen_utils import labels_from_fen
 from .model import DEFAULT_ARCH, ArchConfig, build_model, count_parameters
-from .splits import load_splits, splits_hash
+from .splits import Split, ensure_splits, load_splits, splits_hash
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +114,12 @@ def build_train_transform() -> Callable:
 class TrainingRun:
     """Resultado de um treino: o histórico mais o que é preciso para reproduzi-lo."""
 
+    cancelled: bool = False
+    """O treino parou por pedido, entre épocas (S-60).
+
+    Não é falha: o checkpoint da melhor época gravada continua no disco e continua sendo o
+    melhor conhecido. O que muda é o que a interface diz ao terminar."""
+
     history: list[dict[str, Any]] = field(default_factory=list)
     best_epoch: int = 0
     best_metric: float = 0.0
@@ -180,6 +189,57 @@ def class_weights_for(entries: list, weighting: ClassWeighting) -> torch.Tensor 
         return None
     weights = np.where(counts > 0, total / (NUM_CLASSES * np.maximum(counts, 1.0)), 0.0)
     return torch.tensor(weights, dtype=torch.float32)
+
+
+def resolve_splits(
+    csv_path: Path,
+    samples_dir: Path,
+    splits_path: Path,
+    *,
+    assign_new: bool = True,
+) -> dict[str, Split]:
+    """Mapa de splits do `labels.csv`, atribuindo split às amostras novas (S-56).
+
+    **O defeito que isto corrige.** `splits.ensure_splits` existia, estava correta e tinha
+    teste, e nenhum código de produção a chamava: todos os consumidores usavam `load_splits`,
+    que só lê. Então uma amostra recém-salva não recebia split, e
+    `BoardFenDataset._load_entries` a descartava -- porque o que o mapa não conhece fica de
+    fora, para que amostra nova não caia por acidente no conjunto de teste. Sem ninguém
+    atribuindo, "não cai por acidente" virou "não entra nunca": 45 amostras, justamente as
+    únicas com procedência preenchida, estavam fora do treino em silêncio. O ciclo do README
+    -- corrigir, salvar, treinar -- não fechava.
+
+    **Por que a deduplicação é restrita.** Membros de um mesmo diagrama precisam cair no
+    mesmo split (S-07), e descobrir isso exige comparar imagens. `find_duplicate_groups` lê
+    as 3.289 amostras, ~6 GB, o que seria absurdo a cada treino. `duplicate_groups_touching`
+    lê só as linhas cujo rótulo alguma amostra nova também tem -- e o resultado é o mesmo,
+    porque um grupo formado só por amostras antigas não muda atribuição nenhuma.
+
+    `assign_new=False` volta ao comportamento anterior: lê e não escreve. Existe para quem
+    quer avaliar um checkpoint contra a partição exata em que ele foi treinado, sem que a
+    leitura mexa no arquivo.
+    """
+    splits_path = Path(splits_path)
+    if not assign_new:
+        return load_splits(splits_path)
+
+    linhas = read_label_rows(Path(csv_path))
+    nomes = [nome for nome, _fen in linhas if nome]
+    registrados = load_splits(splits_path)
+    novos = [nome for nome in nomes if nome not in registrados]
+
+    grupos = duplicate_groups_touching(Path(samples_dir), linhas, novos) if novos else []
+    mapa = ensure_splits(nomes, splits_path, groups=grupos)
+
+    if novos:
+        distribuicao = Counter(mapa[nome] for nome in novos if nome in mapa)
+        logger.info(
+            "%d amostra(s) sem split receberam um agora: %s. Antes da S-56 elas ficavam "
+            "invisíveis ao treino.",
+            len(novos),
+            ", ".join(f"{quantas} para {split}" for split, quantas in sorted(distribuicao.items())) or "nenhuma",
+        )
+    return mapa
 
 
 def _split_square_indices_by_board(dataset: BoardFenDataset, val_ratio: float, seed: int) -> tuple[list[int], list[int]]:
@@ -375,6 +435,8 @@ def train_model(
     num_workers: int | None = 0,
     calibrate: bool = True,
     pretrained: bool = True,
+    assign_splits: bool = True,
+    cancel_event: threading.Event | None = None,
 ) -> TrainingRun:
     """Treina o classificador de peças.
 
@@ -383,12 +445,28 @@ def train_model(
     reservado e nunca é visto. Sem ele, cai no comportamento antigo de sortear a validação
     a cada execução -- que contamina a métrica ao longo do tempo (S-07).
 
+    `assign_splits=True` (o padrão) dá split às amostras que ainda não têm, antes de montar
+    o dataset. É o que faz o ciclo do README fechar: sem isso, uma amostra recém-salva nunca
+    entra no treino, porque `BoardFenDataset` descarta o que o mapa de splits não conhece
+    (S-56). `False` lê e não escreve -- útil para reproduzir um treino sobre a partição
+    exata de antes.
+
     `fresh=True` ignora o checkpoint existente e treina do zero. `num_workers=None` resolve
     para `min(4, cpu//2)`; ver a ressalva de `resolve_num_workers` sobre o Streamlit.
+
+    `cancel_event` interrompe **entre épocas** (S-60). Até aqui o treino não tinha
+    cancelamento nenhum, então parar exigia fechar a janela -- e fechar a janela matava a
+    thread no meio de um `torch.save`, que era a outra metade do defeito da S-57. O melhor
+    checkpoint gravado até o cancelamento continua valendo, porque ele é gravado por época e
+    não no fim.
     """
     set_seed(seed)
     workers = resolve_num_workers(num_workers)
-    splits_map = load_splits(Path(splits_path)) if splits_path is not None else None
+    splits_map = (
+        resolve_splits(Path(csv_path), Path(samples_dir), Path(splits_path), assign_new=assign_splits)
+        if splits_path is not None
+        else None
+    )
 
     # Com num_workers > 0 o cache e por processo: o teto vale W+1 vezes, e o criterio de
     # aceite da S-26 (< 2 GiB por epoca) e sobre o treino inteiro, nao sobre o pai.
@@ -514,6 +592,15 @@ def train_model(
     best_validation: ValidationMetrics | None = None
 
     for epoch in range(1, epochs + 1):
+        if cancel_event is not None and cancel_event.is_set():
+            # Conferido **entre** épocas, e não dentro do laço de lotes, pelo mesmo motivo da
+            # varredura (S-24): o pior caso de resposta é uma unidade de trabalho, e aqui a
+            # unidade é a época porque é ela que decide se o checkpoint muda. Interromper no
+            # meio de uma época devolveria pesos que nenhuma métrica avaliou (S-60).
+            logger.info("Treino cancelado antes da época %d. O melhor checkpoint gravado continua valendo.", epoch)
+            run.cancelled = True
+            break
+
         model.train()
         train_loss = 0.0
         train_hits = 0
@@ -592,6 +679,12 @@ def train_model(
         _calibrate_and_store(run, best_validation, Path(model_path), device)
     elif calibrate and val_loader is None:
         logger.info("Sem conjunto de validação: calibração (S-28) pulada, temperatura fica em 1,0.")
+    elif calibrate and not Path(model_path).exists():
+        # Cancelado antes da primeira época (S-60), ou `epochs=0`: não há checkpoint no disco
+        # para ler a temperatura de, e nem deveria haver. Ler daqui era o único caminho que
+        # supunha que sempre existe um arquivo -- suposição que valia enquanto o treino não
+        # podia ser interrompido antes de gravar o primeiro.
+        logger.info("Nenhuma época rodou e não há checkpoint em %s: calibração pulada.", model_path)
     elif calibrate:
         # Retomada em que nenhuma epoca superou o melhor registrado: o checkpoint no disco
         # e de outra execucao e ja tem a temperatura dela. Recalibra-lo com os logits
@@ -607,7 +700,8 @@ def train_model(
         )
 
     logger.info(
-        "Treino concluído em %d épocas. Melhor época: %d (%s = %.6f). Checkpoint em %s.",
+        "Treino %s em %d épocas. Melhor época: %d (%s = %.6f). Checkpoint em %s.",
+        "cancelado" if run.cancelled else "concluído",
         len(run.history),
         run.best_epoch,
         run.best_metric_name,

@@ -16,6 +16,7 @@ from unittest import mock
 
 import numpy as np
 
+from chess_diagram_ocr import net_correction
 from chess_diagram_ocr.net_correction import (
     HttpFenProvider,
     RemoteFenProvider,
@@ -195,11 +196,56 @@ class ProviderTests(unittest.TestCase):
                 return None
 
         board = np.zeros((64, 64, 3), dtype=np.uint8)
-        with mock.patch("urllib.request.urlopen", return_value=_Response()) as chamada:
+        with mock.patch.object(net_correction._OPENER, "open", return_value=_Response()) as chamada:
             provedor.predict(board)
 
         self.assertEqual(chamada.call_args.args[0].full_url, ENDPOINT)
         self.assertEqual(chamada.call_args.kwargs["timeout"], 3)
+
+
+class EnderecoDeDestinoTests(unittest.TestCase):
+    """S-59: a S-32 promete que o aviso nomeia o host e que o consentimento é por endereço.
+
+    Duas coisas furavam a promessa, e nenhuma delas é explorável de fora -- o endpoint é
+    declarado pelo usuário. As duas enfraquecem a garantia mesmo assim, e fechá-las custa
+    poucas linhas.
+    """
+
+    def test_esquema_que_nao_e_http_e_recusado_na_construcao(self) -> None:
+        """`urlopen` aceita `file:`; o "provedor remoto" leria um arquivo local."""
+        for endereco in ("file:///C:/Windows/win.ini", "ftp://exemplo.invalido/x", "data:text/plain,oi"):
+            with self.subTest(endereco=endereco):
+                with self.assertRaises(ValueError) as capturado:
+                    HttpFenProvider(endereco)
+                self.assertIn("http", str(capturado.exception))
+
+    def test_endereco_sem_esquema_tambem_e_recusado(self) -> None:
+        with self.assertRaises(ValueError):
+            HttpFenProvider("exemplo.invalido/predict")
+
+    def test_https_e_http_continuam_valendo(self) -> None:
+        self.assertEqual(HttpFenProvider("http://exemplo.invalido/p").name, "http://exemplo.invalido/p")
+        self.assertEqual(HttpFenProvider(ENDPOINT).name, ENDPOINT)
+
+    def test_um_redirect_aborta_o_envio_e_nomeia_o_destino(self) -> None:
+        """Seguir o `302` mandaria a imagem para um host que o usuário nunca aprovou."""
+        provedor = HttpFenProvider(ENDPOINT)
+        outro_host = "https://outro.invalido/predict"
+
+        with self.assertRaises(RuntimeError) as capturado:
+            net_correction._RedirectRefused().redirect_request(
+                mock.Mock(), mock.Mock(), 302, "Found", {}, outro_host
+            )
+
+        mensagem = str(capturado.exception)
+        self.assertIn("outro.invalido", mensagem)
+        self.assertIn("Nada foi enviado", mensagem)
+        self.assertEqual(provedor.name, ENDPOINT, "o provedor não deve adotar o destino do redirect")
+
+    def test_o_opener_do_modulo_esta_configurado_para_recusar_redirect(self) -> None:
+        manipuladores = [type(h).__name__ for h in net_correction._OPENER.handlers]
+        self.assertIn("_RedirectRefused", manipuladores)
+        self.assertNotIn("HTTPRedirectHandler", manipuladores)
 
 
 if __name__ == "__main__":

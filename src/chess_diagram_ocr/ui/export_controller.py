@@ -24,6 +24,9 @@ from tkinter import filedialog, messagebox
 
 from chess_diagram_ocr.export_checkpoint import partial_path_for
 from chess_diagram_ocr.pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
+from chess_diagram_ocr.service import OcrService
+
+from .busy import BusyRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +81,20 @@ class ExportController:
         settings: Callable[[], ExportSettings],
         on_status: Callable[[str], None],
         on_controls_enabled: Callable[[bool], None],
+        service: OcrService | None = None,
+        busy: BusyRegistry | None = None,
     ) -> None:
+        """`service` empresta o modelo sob o lock da S-31 durante a varredura inteira (S-57).
+
+        Sem ele a exportação carregava o próprio `.pt` -- e o treino, que roda noutra thread
+        e reescreve esse mesmo arquivo, podia trocá-lo debaixo de uma exportação de dezenas
+        de minutos. `None` mantém o comportamento antigo, para quem monta o controlador sem
+        serviço (os testes).
+        """
         self.root = root
+        self._service = service
+        self._busy = busy
+        self._busy_token: object | None = None
         self._settings = settings
         self._on_status = on_status
         self._on_controls_enabled = on_controls_enabled
@@ -153,6 +168,15 @@ class ExportController:
 
         self._running = True
         self._cancel = threading.Event()
+        if self._busy is not None:
+            self._busy_token = self._busy.register(
+                "exportação para PGN",
+                # A S-24 grava um parcial a cada 5 paginas: fechar custa tempo, nao trabalho.
+                loses_work=False,
+                cancellable=True,
+                detail=pdf_path.name,
+                cancel=self.cancel,
+            )
         self._on_controls_enabled(False)
         self._on_status("Iniciando exportação do PDF para PGN...")
         threading.Thread(
@@ -199,6 +223,9 @@ class ExportController:
                 resume=resume,
                 cancel_event=cancel,
                 progress_callback=_progress,
+                model_session=(
+                    self._service.model_session(settings.model_path) if self._service is not None else None
+                ),
             )
             self.root.after(0, partial(self._on_success, report))
         except Exception as exc:
@@ -218,5 +245,8 @@ class ExportController:
     def _finish(self) -> None:
         self._running = False
         self._cancel = None
+        if self._busy_token is not None:
+            self._busy_token.release()  # type: ignore[attr-defined]
+            self._busy_token = None
         self._on_controls_enabled(True)
 

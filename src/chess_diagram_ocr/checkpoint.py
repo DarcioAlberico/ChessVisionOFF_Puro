@@ -16,6 +16,7 @@ apareceram na prática, não em revisão de código:
 
 from __future__ import annotations
 
+import io
 import logging
 import subprocess
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from typing import Any
 
 import torch
 
+from .atomic_io import atomic_write_bytes
 from .config import PIECE_CLASSES
 
 logger = logging.getLogger(__name__)
@@ -112,13 +114,46 @@ def save_checkpoint(
     metadata: dict[str, Any],
     temperature: float = 1.0,
 ) -> None:
+    """Grava o checkpoint sem passar por um estado de arquivo pela metade (S-57).
+
+    `torch.save` direto no destino trunca o arquivo antes de escrever os 8,7 MB. O
+    `atomic_io` existe exatamente para isso desde a S-25, e o docstring dele lista os três
+    arquivos que protegia -- estado da app, fila de revisão e `labels.csv`. O checkpoint não
+    estava na lista, e é o pior dos quatro para deixar pela metade: é o maior, o mais demorado
+    de escrever, e o único cuja escrita acontece numa thread de fundo enquanto outra pode
+    estar lendo o mesmo caminho (a exportação de um livro leva dezenas de minutos, e o treino
+    regrava uma vez por época que melhora).
+    """
     payload = {
         "model_state": state,
         "metadata": {**metadata, "checkpoint_format": CHECKPOINT_FORMAT},
         "temperature": float(temperature),
     }
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    torch.save(payload, path)
+    buffer = io.BytesIO()
+    torch.save(payload, buffer)
+    atomic_write_bytes(Path(path), buffer.getvalue())
+
+
+def checkpoint_identity(path: Path) -> str:
+    """Identidade barata do arquivo de checkpoint: `<tamanho>-<mtime_ns>` (S-57).
+
+    Serve para dizer se o `.pt` de agora é o mesmo de antes sem lê-lo. `export_checkpoint`
+    guardava só o **caminho** para decidir se um parcial podia ser retomado, e o treino
+    reescreve sempre `models/piece_classifier.pt`: exportar metade de um livro, cancelar,
+    treinar e retomar produzia um PGN com metade das posições lidas por um modelo e metade
+    por outro, sem aviso.
+
+    Tamanho e mtime em vez de hash do conteúdo porque a chamada acontece a cada retomada e
+    ler 8,7 MB para comparar seria caro para o que se quer saber -- que é "trocaram o arquivo
+    debaixo de mim?", e não "estes dois arquivos são idênticos". Arquivo ausente devolve
+    `""`, que nunca casa com nada.
+    """
+    path = Path(path)
+    try:
+        info = path.stat()
+    except OSError:
+        return ""
+    return f"{info.st_size}-{info.st_mtime_ns}"
 
 
 def check_compatible(checkpoint: Checkpoint, arch_version: str, *, class_names: list[str] | None = None) -> None:

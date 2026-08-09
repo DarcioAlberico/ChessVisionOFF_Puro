@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -237,6 +239,76 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertEqual(mock_detect.call_count, 3)
         self.assertTrue(all(call.kwargs.get("reading_order") == "column" for call in mock_detect.call_args_list))
         self.assertEqual(mock_predict.call_count, 3)
+
+    @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
+    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
+    @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
+    @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
+    @patch("chess_diagram_ocr.pdf_to_pgn._get_pdf_page_count")
+    def test_com_model_session_a_varredura_nao_carrega_o_proprio_modelo(
+        self,
+        mock_get_pdf_page_count,
+        mock_load_model,
+        mock_render_pdf_page,
+        mock_detect,
+        mock_predict,
+        mock_contexts,
+    ) -> None:
+        """S-57: a exportação e a fila rodavam fora do lock, e o treino reescreve o mesmo `.pt`.
+
+        O emprestado tem de ser **usado**, não só aceito: se a varredura ainda chamasse
+        `load_model`, o lock do serviço não cobriria nada e a corrida continuaria de pé.
+        """
+        mock_get_pdf_page_count.return_value = 1
+        mock_render_pdf_page.return_value = np.zeros((10, 10, 3), dtype=np.uint8)
+        board_rgb = np.zeros((800, 800, 3), dtype=np.uint8)
+        mock_detect.return_value = [candidate_for(board_rgb, 0)]
+        mock_contexts.return_value = [DiagramContext()]
+        mock_predict.return_value = oriented_for(KINGS_ONLY, 0.9)
+
+        entrou = threading.Event()
+        saiu = threading.Event()
+
+        @contextmanager
+        def _emprestimo():
+            entrou.set()
+            try:
+                yield ("modelo-do-servico", "cpu")
+            finally:
+                saiu.set()
+
+        positions = scan_pdf_positions(Path("sample.pdf"), model_session=_emprestimo())
+
+        self.assertEqual(len(positions), 1)
+        mock_load_model.assert_not_called()
+        self.assertTrue(entrou.is_set(), "a sessão emprestada não foi usada")
+        self.assertTrue(saiu.is_set(), "o lock não foi devolvido ao fim da varredura")
+        self.assertEqual(mock_predict.call_args.args[1], "modelo-do-servico")
+
+    def test_so_o_servico_e_os_clis_carregam_o_modelo(self) -> None:
+        """Regressão da S-57: `load_model` fora destes módulos é uma varredura sem lock.
+
+        Varre a árvore em vez de testar comportamento porque o defeito era **onde** a carga
+        acontecia, não o que ela devolvia: uma nova chamada em `review_queue.py` ou em
+        `batch.py` passaria em qualquer teste de resultado e reabriria a corrida.
+        """
+        import chess_diagram_ocr
+
+        raiz = Path(chess_diagram_ocr.__file__).parent
+        permitidos = {"inference.py", "service.py", "evaluation.py"}
+        culpados = [
+            caminho.relative_to(raiz).as_posix()
+            for caminho in sorted(raiz.rglob("*.py"))
+            if caminho.name not in permitidos
+            and caminho.parent.name != "cli"
+            and "load_model(" in caminho.read_text(encoding="utf-8")
+        ]
+        # `pdf_to_pgn` fica na lista com uma chamada só, dentro de `_own_model_session`, que
+        # é o caminho declarado dos CLIs. Qualquer outra é o defeito voltando.
+        self.assertEqual(culpados, ["pdf_to_pgn.py"])
+        fonte = (raiz / "pdf_to_pgn.py").read_text(encoding="utf-8")
+        self.assertEqual(fonte.count("load_model("), 1)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
     @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")

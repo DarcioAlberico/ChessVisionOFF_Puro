@@ -57,6 +57,11 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# S-37: a suite roda num checkout sem instalacao editavel. Nao substitui `uv sync` -- o
+# `app_tkinter.py` e os `cvoff-*` continuam dependendo dela, e `tests/test_environment.py`
+# e quem confere isso. Aqui o que se garante e que um diretorio movido nao desligue 611
+# testes em silencio, que foi o estado encontrado na analise da Fase 7.
+pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 120

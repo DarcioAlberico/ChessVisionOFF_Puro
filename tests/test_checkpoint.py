@@ -3,12 +3,14 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import torch
 
 from chess_diagram_ocr.checkpoint import (
     CHECKPOINT_FORMAT,
     check_compatible,
+    checkpoint_identity,
     load_checkpoint,
     load_state_dict,
     save_checkpoint,
@@ -158,6 +160,58 @@ class CompatibilityTests(unittest.TestCase):
             save_checkpoint(path, PieceClassifier().state_dict(), metadata=_metadata(class_names=["a", "b"]))
             with self.assertRaises(ValueError):
                 check_compatible(load_checkpoint(path), ArchConfig().version)
+
+
+class AtomicWriteTests(unittest.TestCase):
+    """S-57: o `.pt` é o quarto arquivo que não pode ficar pela metade.
+
+    O `atomic_io` protegia estado da app, fila de revisão e `labels.csv` desde a S-25, e não
+    o checkpoint -- que é o maior dos quatro, o mais demorado de escrever, e o único cuja
+    escrita acontece numa thread de fundo enquanto outra pode estar lendo o mesmo caminho.
+    """
+
+    def test_uma_escrita_interrompida_preserva_o_checkpoint_anterior(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.pt"
+            save_checkpoint(path, PieceClassifier().state_dict(), metadata=_metadata(best_epoch=1))
+            intacto = path.read_bytes()
+
+            with patch("chess_diagram_ocr.checkpoint.torch.save", side_effect=OSError("disco cheio")):
+                with self.assertRaises(OSError):
+                    save_checkpoint(path, PieceClassifier().state_dict(), metadata=_metadata(best_epoch=2))
+
+            self.assertEqual(path.read_bytes(), intacto)
+            self.assertEqual(load_checkpoint(path).metadata["best_epoch"], 1)
+
+    def test_nao_sobra_temporario_ao_lado_do_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.pt"
+            save_checkpoint(path, PieceClassifier().state_dict(), metadata=_metadata())
+            self.assertEqual([p.name for p in Path(tmp).iterdir()], ["m.pt"])
+
+
+class CheckpointIdentityTests(unittest.TestCase):
+    """S-57: retomar uma exportação depois de treinar não pode misturar dois modelos."""
+
+    def test_regravar_o_mesmo_caminho_muda_a_identidade(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.pt"
+            save_checkpoint(path, PieceClassifier().state_dict(), metadata=_metadata(best_epoch=1))
+            antes = checkpoint_identity(path)
+
+            # `st_mtime_ns` pode empatar em duas escritas seguidas; o tamanho muda porque os
+            # metadados mudam, e é justamente por isso que a identidade usa os dois.
+            save_checkpoint(
+                path,
+                PieceClassifier().state_dict(),
+                metadata=_metadata(best_epoch=2, split_hash="outro-split-bem-mais-longo"),
+            )
+
+            self.assertNotEqual(checkpoint_identity(path), antes)
+
+    def test_arquivo_ausente_devolve_identidade_vazia(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(checkpoint_identity(Path(tmp) / "nao-existe.pt"), "")
 
 
 if __name__ == "__main__":

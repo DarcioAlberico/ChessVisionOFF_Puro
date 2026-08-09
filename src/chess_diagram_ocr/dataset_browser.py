@@ -29,7 +29,7 @@ import pandas as pd
 
 from .atomic_io import atomic_write_bytes
 from .config import PIECE_CLASSES
-from .dataset import LABEL_COLUMNS, _write_labels
+from .dataset import _write_labels, read_labels_frame
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .splits import Split, load_splits
 
@@ -104,7 +104,7 @@ def load_rows(
     if not csv_path.exists():
         return []
 
-    frame = pd.read_csv(csv_path).fillna("")
+    frame = read_labels_frame(csv_path)
     if not {"filename", "fen"}.issubset(frame.columns):
         raise ValueError("O CSV precisa das colunas `filename` e `fen`.")
 
@@ -265,7 +265,7 @@ def update_row(
         if check.is_fatal:
             raise ValueError("Posição ilegal, não pode ser salva como rótulo: " + "; ".join(check.problems))
 
-    frame = pd.read_csv(csv_path).fillna("")
+    frame = read_labels_frame(csv_path)
     mask = frame["filename"].astype(str).str.strip() == filename
     if not mask.any():
         return False
@@ -296,7 +296,7 @@ def delete_rows(
     if not wanted:
         return 0
 
-    frame = pd.read_csv(csv_path).fillna("")
+    frame = read_labels_frame(csv_path)
     mask = frame["filename"].astype(str).str.strip().isin(wanted)
     removed = int(mask.sum())
     if not removed:
@@ -330,7 +330,7 @@ def quarantine_rows(
     if not wanted:
         return 0
 
-    frame = pd.read_csv(csv_path).fillna("")
+    frame = read_labels_frame(csv_path)
     mask = frame["filename"].astype(str).str.strip().isin(wanted)
     if not mask.any():
         return 0
@@ -338,7 +338,7 @@ def quarantine_rows(
     removed = frame[mask].copy()
     removed["motivo"] = reason
     if quarantine_path.exists():
-        existing = pd.read_csv(quarantine_path).fillna("")
+        existing = read_labels_frame(quarantine_path)
         removed = pd.concat([existing, removed], ignore_index=True)
     quarantine_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_bytes(quarantine_path, removed.to_csv(index=False, lineterminator=os.linesep).encode("utf-8"))
@@ -356,13 +356,13 @@ def restore_from_quarantine(csv_path: Path, quarantine_path: Path, filenames: Co
     if not wanted or not quarantine_path.exists():
         return 0
 
-    quarantined = pd.read_csv(quarantine_path).fillna("")
+    quarantined = read_labels_frame(quarantine_path)
     mask = quarantined["filename"].astype(str).str.strip().isin(wanted)
     if not mask.any():
         return 0
 
     restored = quarantined[mask].drop(columns=[c for c in ("motivo",) if c in quarantined.columns]).copy()
-    existing = pd.read_csv(csv_path).fillna("") if csv_path.exists() else pd.DataFrame(columns=list(LABEL_COLUMNS))
+    existing = read_labels_frame(csv_path)
     _write_labels(pd.concat([existing, restored], ignore_index=True), csv_path)
 
     atomic_write_bytes(

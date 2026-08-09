@@ -59,6 +59,8 @@ aceitam `-v` para log em nivel DEBUG.
 ```bash
 # Treino. Usa data/splits.csv: treina no split 'train', valida em 'val',
 # e nunca toca no split 'test'. --fresh treina do zero.
+# Amostra salva depois do ultimo treino recebe split aqui, antes de o dataset ser montado --
+# sem isso ela ficava invisivel ao treino, em silencio (S-56).
 # A epoca salva e a de melhor acuracia exata por tabuleiro, nao a de menor val_loss.
 # No fim, calibra a temperatura no split de validacao e a grava no checkpoint.
 cvoff-train --epochs 12 --batch-size 128 --lr 0.001
@@ -73,7 +75,8 @@ cvoff-export "PDF\1937 Kemeri.pdf"
 cvoff-export "PDF\1937 Kemeri.pdf" --dedupe   # omite posicoes repetidas no mesmo PDF
 cvoff-export "PDF\1937 Kemeri.pdf" --no-text  # ignora a legenda do PDF (lado a jogar so por legalidade)
 
-# Auditoria do dataset: posicoes ilegais, duplicatas, orfaos, distribuicao de classes.
+# Auditoria do dataset: posicoes ilegais, duplicatas, orfaos, distribuicao de classes e
+# amostras sem split (invisiveis ao treino ate o proximo cvoff-train).
 # Sem flags, apenas relata. Toda escrita cria backup do CSV.
 cvoff-audit
 cvoff-audit --fix-side-to-move --quarantine --dedupe
@@ -202,7 +205,10 @@ Stockfish para `engines/` e a instalacao mais simples.
 | Diagramas de cabeca para baixo | orientacao fixa em 0 ou 180 | usar **Automatica** (padrao). Casos ambiguos entram na fila de revisao marcados |
 | "Nenhum tabuleiro foi detectado" numa pagina que tem um | scan de baixo contraste, ou o diagrama nao e imagem embutida | usar **Selecionar area (OCR)** e arrastar em volta do diagrama: ali o recorte e o seu, e o detector nao precisa acertar |
 | A exportacao parou no meio | cancelada ou interrompida | exportar de novo para o mesmo arquivo: ele oferece retomar da pagina seguinte a ultima concluida |
+| A exportacao recusa retomar e diz que "o arquivo do modelo mudou" | houve treino entre a interrupcao e a retomada | e o esperado: retomar juntaria metade de um PGN lido por um modelo com metade lida por outro. Exportar do zero |
 | `cvoff-*` nao existe | ambiente nao instalado em modo editavel | `uv sync --extra dev`, e usar `uv run cvoff-...` |
+| `pytest` falha em 33 arquivos com `No module named 'chess_diagram_ocr'` | o projeto foi movido depois de instalado, e o `.pth` do `.venv` aponta para o caminho antigo | `uv sync --extra dev`. A suite em si roda sem instalacao (`pythonpath` no `pyproject.toml`); quem depende dela sao os `cvoff-*` e o `app_tkinter.py` |
+| O treino nao aparece no dataset o que voce acabou de salvar | a amostra nao tinha split registrado | resolvido desde a S-56: o proprio `cvoff-train` atribui. `cvoff-audit` mostra quantas estao nesse estado |
 | Testes de ONNX pulados | o extra nao esta instalado | `uv sync --extra onnx`, se voce precisa deles |
 | Correcoes somem ao navegar entre paginas | o cache guarda 8 paginas | salvar a amostra (`Ctrl+S`) e o que persiste; o cache e conveniencia de navegacao. O log avisa quando descarta pagina com correcao sua |
 
@@ -367,8 +373,12 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
 - [CONTRIBUTING.md](CONTRIBUTING.md) -- ambiente, verificacoes, como dirigir a interface
   sem clicar e o que se espera de um teste aqui
 - [docs/ANALISE.md](docs/ANALISE.md) -- diagnostico do estado atual, com medicoes
-- [docs/ROADMAP.md](docs/ROADMAP.md) -- fases de evolucao planejadas
+- [docs/ROADMAP.md](docs/ROADMAP.md) -- fases de evolucao planejadas (Fases 0 a 6)
 - [docs/SPEC.md](docs/SPEC.md) -- especificacao detalhada das melhorias (S-01 a S-36)
+- [docs/ROADMAP_FASE7.md](docs/ROADMAP_FASE7.md) -- Fases 7 a 11, com a medicao de campo que
+  as motiva: o gate rejeita 17 de 101 diagramas de pagina real contra 3 de 320 no split de teste
+- [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 11 (S-37 a S-63),
+  incluindo os defeitos da Fase 7.0
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia e como reproduzi-lo
 - [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) -- o que foi medido na Fase 5, incluindo o
   que nao ajudou (memoria, workers, pesos de classe, arquitetura, TTA, ONNX)

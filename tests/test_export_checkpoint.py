@@ -15,6 +15,7 @@ from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.export_checkpoint import (
     CheckpointWriter,
     ScanParams,
+    _params_diff,
     load_partial,
     partial_path_for,
     position_from_dict,
@@ -89,6 +90,47 @@ class SerializationTests(unittest.TestCase):
         assert restored.side_to_move is not None
         self.assertEqual(restored.side_to_move.color, chess.BLACK)
         self.assertTrue(restored.side_to_move.conflicting)
+
+
+class ModelIdentityTests(unittest.TestCase):
+    """S-57: "os mesmos parâmetros" inclui o mesmo **arquivo** de modelo, não o mesmo caminho.
+
+    O treino reescreve sempre `models/piece_classifier.pt`. Exportar metade de um livro,
+    cancelar, treinar e retomar juntava metade de um PGN lido por um modelo com metade lida
+    por outro -- e o docstring do módulo prometia justamente que outro modelo descartava o
+    parcial. Ele comparava o caminho.
+    """
+
+    def test_mesmo_caminho_e_arquivo_diferente_recusa_o_parcial(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "livro.partial.jsonl"
+            antigos = params(model_identity="8786991-111")
+            writer = CheckpointWriter(path, antigos, every=1)
+            writer.record_page(0, [position(0, 1)])
+            writer.flush()
+
+            depois_do_treino = params(model_identity="8787400-222")
+            self.assertIsNone(load_partial(path, depois_do_treino))
+            self.assertIsNotNone(load_partial(path, antigos))
+
+    def test_um_parcial_anterior_a_s57_continua_sendo_retomado(self) -> None:
+        """Recusá-lo por não registrar algo que ninguém lhe perguntou jogaria fora trabalho."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "livro.partial.jsonl"
+            writer = CheckpointWriter(path, params(model_identity=""), every=1)
+            writer.record_page(0, [position(0, 1)])
+            writer.flush()
+
+            retomado = load_partial(path, params(model_identity="8787400-222"))
+            self.assertIsNotNone(retomado)
+
+    def test_a_mensagem_diz_que_o_arquivo_do_modelo_mudou(self) -> None:
+        antigos = params(model_identity="a")
+        novos = params(model_identity="b")
+        self.assertIn("o arquivo do modelo mudou", _params_diff(antigos, novos))
+
+    def test_dpi_diferente_continua_recusando_como_antes(self) -> None:
+        self.assertFalse(params(dpi=220).is_compatible_with(params(dpi=300)))
 
 
 class PartialFileTests(unittest.TestCase):

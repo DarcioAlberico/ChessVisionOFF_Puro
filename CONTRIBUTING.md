@@ -3,10 +3,18 @@
 ## O ambiente
 
 ```bash
-uv sync --extra dev
+uv sync --extra dev --extra onnx
 ```
 
 Isso instala o pacote em modo editável e traz `pytest`, `ruff` e `mypy`. Requer Python 3.10.
+O `--extra onnx` é opcional; sem ele os testes da S-30 pulam. Atenção: `uv sync` com um
+subconjunto de extras **desinstala** o que os outros trouxeram, então repita os dois.
+
+**Se você mover o diretório do projeto, rode `uv sync` de novo.** O ponteiro da instalação
+editável guarda o caminho absoluto, e um caminho morto quebra os `cvoff-*` e o
+`app_tkinter.py`. A suíte sobrevive — `pythonpath = ["src"]` no `pyproject.toml` —, e é
+`tests/test_environment.py` que avisa que a instalação ficou para trás; sem ele o sintoma
+seriam 33 erros de coleta que não dizem o que fazer (S-37).
 
 ## As três verificações
 

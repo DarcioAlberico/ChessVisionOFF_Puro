@@ -31,6 +31,7 @@ import json
 import logging
 import threading
 from collections.abc import Collection, Iterable, Iterator, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -450,6 +451,7 @@ def build_review_queue(
     limit: int | None = None,
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
+    model_session: AbstractContextManager[tuple[Any, str]] | None = None,
 ) -> ReviewQueue:
     """Varre o livro inteiro e devolve a fila ordenada por valor de informação.
 
@@ -458,6 +460,10 @@ def build_review_queue(
 
     `limit` corta a fila **depois** de ordenar, e o corte fica registrado no log -- fila
     truncada em silêncio se parece com "o livro só tinha 30 problemas".
+
+    `model_session` empresta o modelo do `OcrService` em vez de carregar outro. É uma das
+    duas varreduras longas que rodavam fora do lock da S-31 enquanto o treino reescrevia o
+    mesmo `.pt` (S-57).
     """
     pdf_path = Path(pdf_source)
     items: list[ReviewItem] = []
@@ -476,6 +482,7 @@ def build_review_queue(
         read_text=read_text,
         cancel_event=cancel_event,
         progress_callback=progress_callback,
+        model_session=model_session,
     ):
         scanned_count += 1
         pages.add(scanned.position.page_index)
