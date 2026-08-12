@@ -7,9 +7,11 @@ errados, quais são duplicatas, e o que está órfão. Ver S-06 em docs/SPEC.md.
 from __future__ import annotations
 
 import logging
+import shutil
 from collections import Counter
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
@@ -37,6 +39,15 @@ DUPLICATE_HASH_SIZE = 16
 # Duas renderizações diferentes da mesma posição (livros distintos) ficam por volta de
 # 10 bits, acima do limiar -- e é justamente o que se quer: não são cópias redundantes.
 DUPLICATE_HAMMING_THRESHOLD = 3
+
+# Teto de redundância, como fração dos rótulos utilizáveis (S-63).
+#
+# Não é um limite de qualidade: recorte diferente da mesma página é aumento de dados legítimo,
+# e o BASELINE.md registra 234 redundantes em 220 grupos como estado aceito. O que este número
+# vigia é **crescimento sem ninguém olhando** -- entre o BASELINE e a Fase 11 subiu para 248 em
+# 227, e nada no projeto notou. 10% dá folga sobre os ~7% de hoje e dispara antes de a
+# redundância virar um décimo do conjunto de validação.
+DUPLICATE_SHARE_CEILING = 0.10
 
 
 @dataclass(frozen=True)
@@ -68,6 +79,20 @@ class AuditReport:
     def duplicate_count(self) -> int:
         """Número de arquivos que são cópia de outro já presente."""
         return sum(len(group) - 1 for group in self.duplicate_groups)
+
+    @property
+    def duplicate_share(self) -> float:
+        """Fração dos rótulos utilizáveis que é cópia de outro (S-63).
+
+        Zero quando não há rótulo utilizável -- um CSV vazio não tem excesso de redundância,
+        tem outro problema, e devolver `nan` aqui faria a comparação com o teto virar `False`
+        por acidente em vez de por medição.
+        """
+        return self.duplicate_count / self.valid_rows if self.valid_rows else 0.0
+
+    @property
+    def duplicates_above_ceiling(self) -> bool:
+        return self.duplicate_share > DUPLICATE_SHARE_CEILING
 
 
 def dhash(image_bgr: np.ndarray, hash_size: int = DUPLICATE_HASH_SIZE) -> int:
@@ -357,3 +382,73 @@ def remove_duplicate_labels(csv_path: Path, report: AuditReport) -> int:
         return 0
 
     return LabelStore(csv_path).remove(to_remove)
+
+
+def orphans_dir_for(samples_dir: Path) -> Path:
+    """Onde os órfãos aposentados vão parar: `data/orphans/`, irmão de `data/samples/`."""
+    return Path(samples_dir).parent / "orphans"
+
+
+def prune_orphan_images(report: AuditReport, *, orphans_dir: Path | None = None) -> list[Path]:
+    """Aposenta os PNGs que nenhuma linha do CSV referencia (S-63). Devolve os destinos.
+
+    **Move, não apaga**, e a diferença é o critério de aceite. São ~90 MiB de imagens que
+    saíram do CSV pela aba Dataset (`dataset_browser.delete_rows` apaga a linha e deixa o
+    arquivo), e uma remoção às cegas é irreversível para o caso em que a linha foi apagada por
+    engano -- que é justamente o caso que produz órfão. O diretório datado é o backup que o
+    `backup_csv` é para o CSV.
+
+    Um órfão cujo nome já exista no destino de uma poda anterior **não** é sobrescrito: dois
+    arquivos com o mesmo nome são dois trabalhos humanos diferentes, e o segundo ganha um
+    sufixo em vez de apagar o primeiro.
+    """
+    if not report.orphan_images:
+        return []
+
+    origem = Path(report.samples_dir)
+    destino_base = Path(orphans_dir) if orphans_dir is not None else orphans_dir_for(origem)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    destino = destino_base / stamp
+    destino.mkdir(parents=True, exist_ok=True)
+
+    movidos: list[Path] = []
+    for name in report.orphan_images:
+        atual = origem / name
+        if not atual.exists():
+            continue
+        alvo = destino / name
+        sufixo = 1
+        while alvo.exists():
+            alvo = destino / f"{atual.stem}-{sufixo}{atual.suffix}"
+            sufixo += 1
+        shutil.move(str(atual), str(alvo))
+        movidos.append(alvo)
+
+    logger.info("%d imagem(ns) órfã(s) movida(s) para %s", len(movidos), destino)
+    return movidos
+
+
+def drop_missing_labels(csv_path: Path, report: AuditReport, quarantine_path: Path) -> int:
+    """Tira do CSV as linhas cujo PNG sumiu, **para a quarentena** (S-63). Devolve quantas.
+
+    O inverso do órfão, e o mais silencioso dos dois: `dataset._load_entries` avisa por
+    `warnings.warn`, que ninguém vê pela GUI, então o rótulo continua no arquivo parecendo
+    trabalho preservado e não treina nada.
+
+    **Para a quarentena e não para o lixo, e a medição é que decidiu isso.** A primeira versão
+    apagava a linha: "não há o que recorrigir, a imagem não existe mais". Rodado no dataset
+    real, os 5 rótulos nesse estado **têm todos procedência preenchida** -- `source_pdf` e
+    `source_page` --, o que quer dizer que a imagem é reextraível do livro e a FEN é trabalho
+    humano que sobreviveria ao reencontro. Apagar seria jogar fora a metade cara do par para
+    limpar a metade barata.
+    """
+    ausentes = {issue.filename for issue in report.of_kind("imagem-ausente")}
+    if not ausentes:
+        return 0
+
+    movidas = LabelStore(csv_path).move_to(
+        LabelStore(quarantine_path),
+        ausentes,
+        extra={"motivo": "imagem ausente em data/samples/"},
+    )
+    return len(movidas)

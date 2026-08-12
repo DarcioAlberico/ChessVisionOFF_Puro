@@ -81,6 +81,7 @@ OCR_CORRIGIDO = "ocr-corrigido"
 FILA_REVISAO = "fila-revisao"
 DATASET_RECORRIGIDO = "dataset-recorrigido"
 NET_REMOTO = "net-remoto"
+SEGUNDA_OPINIAO = "segunda-opiniao"
 
 CORRECTED_BY_VALUES: tuple[str, ...] = (
     OCR_ACEITO,
@@ -88,6 +89,7 @@ CORRECTED_BY_VALUES: tuple[str, ...] = (
     FILA_REVISAO,
     DATASET_RECORRIGIDO,
     NET_REMOTO,
+    SEGUNDA_OPINIAO,
 )
 """Como a amostra chegou ao rótulo -- a coluna `corrected_by` (S-52).
 
@@ -108,6 +110,11 @@ lugar errado. Nenhuma das duas respostas é obtenível de um `corrected_by` vazi
 | `fila-revisao` | veio da fila de aprendizado ativo (S-22) |
 | `dataset-recorrigido` | rótulo que já existia e foi regravado pela aba Dataset (S-23) |
 | `net-remoto` | a FEN veio do serviço externo da S-32 |
+| `segunda-opiniao` | a FEN veio do segundo leitor **local** da S-66 |
+
+`segunda-opiniao` é separado de `net-remoto` porque a diferença é justamente a que a coluna
+existe para registrar: um é uma requisição a um host de terceiro, o outro é um modelo rodando
+nesta máquina. Colapsá-los faria o CSV afirmar uma chamada de rede que nunca houve.
 
 Não é enumeração fechada em código -- `append_training_sample` aceita qualquer string, e um
 chamador futuro pode ter um caminho que estes cinco não descrevem. É vocabulário, não
@@ -135,21 +142,26 @@ descartasse coluna desconhecida perderia o motivo da exclusão na primeira grava
 def label_route(
     *,
     from_net: bool = False,
+    from_second_opinion: bool = False,
     from_queue: bool = False,
     from_dataset: bool = False,
     read_placement: str = "",
     saved_placement: str = "",
 ) -> str:
-    """Por qual caminho esta amostra chegou ao rótulo (S-52).
+    """Por qual caminho esta amostra chegou ao rótulo (S-52, S-66).
 
     Mora aqui e não no painel pela regra que organizou a Fase 6: o que dá para testar não
-    fica na janela. São cinco caminhos e uma ordem de precedência, e os dois merecem um teste
+    fica na janela. São seis caminhos e uma ordem de precedência, e os dois merecem um teste
     que não precise abrir uma janela do Tk para rodar.
 
-    A ordem vai do mais específico para o mais genérico. Os três primeiros são caminhos
-    **declarados** -- quem chama sabe que veio da Net, da fila ou da aba Dataset --, e só
-    quando nenhum deles vale a resposta depende de comparar o que o modelo leu com o que está
-    sendo salvo.
+    A ordem vai do mais específico para o mais genérico. Os quatro primeiros são caminhos
+    **declarados** -- quem chama sabe que veio da Net, do segundo leitor local, da fila ou da
+    aba Dataset --, e só quando nenhum deles vale a resposta depende de comparar o que o
+    modelo leu com o que está sendo salvo.
+
+    `from_net` vem antes de `from_second_opinion` porque é o mais forte dos dois: se a imagem
+    chegou a sair da máquina, é isso que a linha precisa registrar, mesmo que um segundo
+    leitor local tenha opinado depois.
 
     Essa comparação é entre campos de peças, e não o `edited_by_hand` da `RecognizedDiagram`:
     aquele só é marcado pela edição por clique, e digitar uma FEN nova no campo de texto é
@@ -157,6 +169,8 @@ def label_route(
     """
     if from_net:
         return NET_REMOTO
+    if from_second_opinion:
+        return SEGUNDA_OPINIAO
     if from_queue:
         return FILA_REVISAO
     if from_dataset:
