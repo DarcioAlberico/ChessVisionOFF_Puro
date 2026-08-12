@@ -15,7 +15,7 @@ from torch.utils.data import Dataset, Sampler
 from .config import BOARD_SIZE, BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .labels import LABEL_COLUMNS, DatasetEntry, LabelStore
-from .model import DEFAULT_ARCH, ArchConfig, preprocess_cell_to_tensor
+from .model import DEFAULT_ARCH, ArchConfig, preprocess_cell_to_tensor, with_coordinate_channels
 from .semantics import infer_side_to_move
 from .splits import Split
 
@@ -25,6 +25,7 @@ __all__ = [
     "LABEL_COLUMNS",
     "BoardFenDataset",
     "BoardGroupedSampler",
+    "BoardUnitDataset",
     "DatasetEntry",
     "append_training_sample",
     "board_groups",
@@ -202,8 +203,15 @@ class BoardFenDataset(Dataset):
         self._labels_cache[entry_idx] = labels
         return labels
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
-        entry_idx, square_idx = self.index_map[idx]
+    def square(self, entry_idx: int, square_idx: int, transform: Callable | None) -> tuple[torch.Tensor, int]:
+        """Uma casa preprocessada e o seu rótulo, com o aumento que quem chama pedir.
+
+        Separado de `__getitem__` porque o `BoardUnitDataset` da S-62b precisa exatamente
+        disto -- o mesmo corte, o mesmo cache e a mesma ordem de canais -- mas com o aumento
+        vindo dele, e não do atributo deste objeto. Sem a separação ele teria de reimplementar
+        o corte, e o dia em que os dois divergissem o treino por tabuleiro passaria a ver uma
+        imagem diferente da que a inferência monta, em silêncio.
+        """
         board = self._load_board(entry_idx)
         labels = self._labels(entry_idx)
 
@@ -213,12 +221,58 @@ class BoardFenDataset(Dataset):
         y0, y1 = row * step, (row + 1) * step
         x0, x1 = col * step, (col + 1) * step
 
-        cell = board[y0:y1, x0:x1]
-        x = preprocess_cell_to_tensor(cell, self.arch)
-        if self.transform is not None:
-            x = self.transform(x)
-        y = labels[square_idx]
-        return x, y
+        x = preprocess_cell_to_tensor(board[y0:y1, x0:x1], self.arch)
+        if transform is not None:
+            x = transform(x)
+        # Depois do aumento, de proposito: ver `with_coordinate_channels` (S-62a).
+        return with_coordinate_channels(x, square_idx, self.arch), labels[square_idx]
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+        entry_idx, square_idx = self.index_map[idx]
+        return self.square(entry_idx, square_idx, self.transform)
+
+
+class BoardUnitDataset(Dataset):
+    """O tabuleiro como unidade de amostragem, para a cabeça da S-62b.
+
+    Devolve `(64, C, S, S)` e `(64,)` -- as 64 casas de um tabuleiro, em ordem de leitura.
+    Não substitui o `BoardFenDataset`: **envolve** o mesmo objeto, com o mesmo cache de
+    imagem, os mesmos rótulos e os mesmos descartes. O que muda é só o que conta como um item.
+
+    **O aumento roda por casa, e não sobre o bloco.** Aplicar o `Compose` ao tensor
+    `(64, C, S, S)` inteiro é uma linha mais curto e sorteia **um** conjunto de parâmetros
+    para as 64 casas -- o mesmo desfoque, o mesmo brilho, a mesma hachura em todas. Isso é
+    outro regime de aumento, e compará-lo com o da cabeça de hoje mediria duas mudanças de
+    uma vez. O laço custa o que a honestidade da comparação vale.
+
+    `board_indices` restringe a quais tabuleiros do dataset base este expõe -- é como o treino
+    e a validação se separam quando não há arquivo de splits.
+    """
+
+    def __init__(
+        self,
+        base: BoardFenDataset,
+        board_indices: Sequence[int] | None = None,
+        transform: Callable | None = None,
+    ) -> None:
+        self.base = base
+        self.transform = transform
+        self.board_indices = list(range(len(base.entries)) if board_indices is None else board_indices)
+
+    def __len__(self) -> int:
+        return len(self.board_indices)
+
+    @property
+    def entries(self) -> list[DatasetEntry]:
+        """Os tabuleiros que este dataset expõe, na ordem em que os expõe."""
+        return [self.base.entries[i] for i in self.board_indices]
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        board_idx = self.board_indices[idx]
+        # Por `base.square` de proposito: o cache, o corte e a ordem dos canais da S-62a tem
+        # de ser exatamente os mesmos que a cabeca de hoje recebe.
+        pares = [self.base.square(board_idx, square_idx, self.transform) for square_idx in range(64)]
+        return torch.stack([x for x, _ in pares]), torch.tensor([y for _, y in pares], dtype=torch.long)
 
 
 def board_groups(

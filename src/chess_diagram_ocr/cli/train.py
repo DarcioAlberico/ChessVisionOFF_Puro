@@ -14,7 +14,7 @@ from ..config import (
 )
 from ..logging_setup import configure_logging, default_log_file
 from ..model import ArchConfig
-from ..training import DEFAULT_CLASS_WEIGHTS, train_model
+from ..training import DEFAULT_CLASS_WEIGHTS, OptimPlan, train_model
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     grupo_arch.add_argument("--backbone", choices=["cnn", "mobilenet_v3_small"], default="cnn")
     grupo_arch.add_argument("--channels", choices=["gray", "rgb"], default="gray")
     grupo_arch.add_argument("--image-size", type=int, default=64)
-    grupo_arch.add_argument("--head", choices=["linear", "gap"], default="linear")
+    grupo_arch.add_argument(
+        "--head",
+        choices=["linear", "gap", "board"],
+        default="linear",
+        help="'board' é a cabeça por tabuleiro da S-62b: as 64 casas decididas juntas.",
+    )
+    grupo_arch.add_argument(
+        "--boards-per-batch",
+        type=int,
+        default=OptimPlan.boards_per_batch,
+        help="Tabuleiros por lote com --head board. Ignorado pelas outras cabeças (S-62b).",
+    )
+    grupo_arch.add_argument(
+        "--coords",
+        action="store_true",
+        help=(
+            "Canais de coordenada e paridade na entrada da casa (S-62a). Muda a arch_version "
+            "para '...-coords': o checkpoint resultante não carrega num pipeline sem eles, e "
+            "vice-versa, de propósito."
+        ),
+    )
 
     parser.add_argument("-v", "--verbose", action="store_true", help="Log em nivel DEBUG.")
     return parser.parse_args(argv)
@@ -160,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
             channels=args.channels,
             image_size=args.image_size,
             head=args.head,
+            coords=args.coords,
         ),
         class_weights=args.class_weights,
         seed=args.seed,
@@ -169,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         num_workers=args.num_workers,
         calibrate=not args.no_calibrate,
         augment=augment,
+        boards_per_batch=args.boards_per_batch,
     )
 
     logger.info(

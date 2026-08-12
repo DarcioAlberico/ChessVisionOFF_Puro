@@ -61,12 +61,16 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(len(versoes), 6, f"versões colidiram: {versoes}")
 
     def test_a_versao_entra_nos_metadados_do_checkpoint(self) -> None:
-        """Sem isso, comparar dois modelos pode estar comparando dois regimes de aumento."""
+        """Sem isso, comparar dois modelos pode estar comparando dois regimes de aumento.
+
+        A S-47 moveu a montagem dos metadados de `train_model` para `Trainer.prepare`; a
+        varredura acompanhou. `train_model` hoje só monta o plano e delega.
+        """
         import inspect
 
         from chess_diagram_ocr import training
 
-        self.assertIn("augment_version", inspect.getsource(training.train_model))
+        self.assertIn("augment_version", inspect.getsource(training.Trainer.prepare))
 
     def test_a_ordem_e_a_de_uma_pagina_real(self) -> None:
         """O papel amarela antes de a tinta da hachura ser impressa; a granulação é do scanner."""

@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -132,7 +133,36 @@ VAL_BOARD_CACHE_SIZE = 4
 # 64 tabuleiros sao 117 MiB residentes e 4.096 casas por janela.
 BOARDS_PER_CHUNK = 64
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+def _project_root() -> Path:
+    """Onde ficam `data/`, `models/`, `PDF/` e `PGN/`.
+
+    Num checkout, é a raiz do repositório: `src/chess_diagram_ocr/config.py` → dois níveis
+    acima. **Num bundle do PyInstaller isso apontaria para dentro do pacote** (S-55), que é
+    somente-leitura na prática e some a cada reinstalação -- e o `labels.csv` é trabalho
+    humano acumulado, o último arquivo que se quer dentro de um diretório descartável.
+
+    Congelado, a raiz é a pasta que **contém** o executável. O usuário vê `data/`,
+    `models/`, `PDF/` e `PGN/` ao lado do `.exe`, pode fazer backup copiando a pasta, e
+    reinstalar não apaga rótulo nenhum.
+
+    `sys.frozen` é posto pelo bootloader do PyInstaller; `sys.executable` é o `.exe` no modo
+    `--onedir`, que é o modo que este projeto usa (ver `packaging/cvoff.spec` para por quê).
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+
+PROJECT_ROOT = _project_root()
+
+BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT))
+"""Onde ficam os recursos **somente-leitura** que vão dentro do bundle (`assets/`).
+
+Igual a `PROJECT_ROOT` num checkout. Congelado, é a pasta interna do PyInstaller -- e a
+distinção importa: imagem de peça é dado do programa, `labels.csv` é dado do usuário, e
+misturar os dois é o que faz reinstalar apagar trabalho.
+"""
+
 DEFAULT_DATASET_CSV = PROJECT_ROOT / "data" / "labels.csv"
 DEFAULT_SAMPLES_DIR = PROJECT_ROOT / "data" / "samples"
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "piece_classifier.pt"

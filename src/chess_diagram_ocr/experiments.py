@@ -56,6 +56,12 @@ def default_grid() -> list[Variant]:
         Variant("gap", "cabeça", ArchConfig(head="gap"), note="2,19 M → ~93 k parâmetros"),
         Variant("mobilenet", "backbone", ArchConfig(backbone="mobilenet_v3_small"), note="pré-treinada na ImageNet"),
         Variant("pesos_balanceados", "pesos de classe", ArchConfig(), class_weights="balanced"),
+        # Os dois degraus da S-62. Entram na grade por serem fatores de arquitetura como os
+        # outros -- mas o veredito deles **nao** sai daqui: a S-62 manda medir no conjunto de
+        # campo, com `cvoff-field`, e o que esta grade compara e o split de validacao. Aqui
+        # eles servem para o que a grade serve: um fator por vez, mesma semente, custo medido.
+        Variant("coords", "entrada", ArchConfig(coords=True), note="paridade, fila e coluna (S-62a)"),
+        Variant("cabeca_por_tabuleiro", "cabeça", ArchConfig(head="board"), note="as 64 casas juntas (S-62b)"),
     ]
 
 

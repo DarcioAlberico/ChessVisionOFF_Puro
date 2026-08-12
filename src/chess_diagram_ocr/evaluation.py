@@ -30,7 +30,7 @@ from .dataset import BoardFenDataset
 from .decode import DecodeResult
 from .fen_utils import check_position, fen_from_class_indices, labels_from_fen
 from .inference import board_probabilities, load_model, prediction_from_probs
-from .model import DEFAULT_ARCH, preprocess_cell_to_tensor
+from .model import DEFAULT_ARCH, preprocess_cell_to_tensor, with_coordinate_channels
 
 logger = logging.getLogger(__name__)
 
@@ -311,9 +311,9 @@ def evaluate_dataset(
             matrices = np.stack([board_probabilities(board, model, device, tta=True) for _, board, _, _ in pending])
         else:
             tensors = [
-                preprocess_cell_to_tensor(cell, arch)
+                with_coordinate_channels(preprocess_cell_to_tensor(cell, arch), square_index, arch)
                 for _, board, _, _ in pending
-                for cell in split_board_into_cells(board)
+                for square_index, cell in enumerate(split_board_into_cells(board))
             ]
             batch = torch.stack(tensors).to(device)
             with torch.inference_mode():

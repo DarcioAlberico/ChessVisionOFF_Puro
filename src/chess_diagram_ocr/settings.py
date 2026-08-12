@@ -39,6 +39,9 @@ ENV_REMOTE_ENABLED = "CVOFF_REMOTE_FEN_ENABLED"
 ENV_OCR_ENABLED = "CVOFF_OCR_ENABLED"
 ENV_OCR_ENGINE = "CVOFF_OCR_ENGINE"
 
+ENV_LOCAL_READER_PATH = "CVOFF_LOCAL_READER_PATH"
+ENV_LOCAL_READER_ENABLED = "CVOFF_LOCAL_READER_ENABLED"
+
 SETTINGS_VERSION = 1
 
 
@@ -179,12 +182,57 @@ class OcrSettings:
 
 
 @dataclass(frozen=True)
+class LocalReaderSettings:
+    """Segunda opinião **local** para a posição de um diagrama (S-66).
+
+    Irmã da `RemoteFenSettings` e diferente dela no que importa: aqui **nada sai da máquina**,
+    então não há consentimento a pedir nem host a nomear. O que sobra de justificativa para
+    ela ser opt-in é outro: são 232,8 MiB de pesos, e carregá-los sem ninguém pedir custa
+    memória e ~7 s na primeira leitura.
+
+    `path` aponta para um clone de `tsoj/Chess_diagram_to_FEN` com os pesos já baixados. Sem
+    padrão embutido pela mesma razão do endpoint remoto: um caminho presumido faria o recurso
+    parecer quebrado em toda máquina que não o tivesse, em vez de simplesmente ausente.
+    """
+
+    enabled: bool = False
+    path: str = ""
+
+    @property
+    def is_usable(self) -> bool:
+        return bool(self.enabled and self.path.strip())
+
+    def disabled_reason(self) -> str:
+        """Por que o botão está desabilitado, em pt-BR. Distingue as duas situações."""
+        if not self.path.strip():
+            return (
+                "Segunda opinião não configurada. Ela lê o diagrama com um segundo modelo, "
+                "local e offline: aponte um clone de tsoj/Chess_diagram_to_FEN com os pesos "
+                f"baixados em data/settings.json ou em {ENV_LOCAL_READER_PATH}."
+            )
+        if not self.enabled:
+            return f"Segunda opinião desligada. O leitor configurado está em {self.path}."
+        return ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {"enabled": self.enabled, "path": self.path}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> LocalReaderSettings:
+        return cls(
+            enabled=bool(data.get("enabled", False)),
+            path=str(data.get("path", "") or "").strip(),
+        )
+
+
+@dataclass(frozen=True)
 class Settings:
     """As preferências do usuário que não são estado de janela."""
 
     remote_fen: RemoteFenSettings = RemoteFenSettings()
     engine: EngineSettings = EngineSettings()
     ocr: OcrSettings = OcrSettings()
+    local_reader: LocalReaderSettings = LocalReaderSettings()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -192,6 +240,7 @@ class Settings:
             "remote_fen": self.remote_fen.to_dict(),
             "engine": self.engine.to_dict(),
             "ocr": self.ocr.to_dict(),
+            "local_reader": self.local_reader.to_dict(),
         }
 
     @classmethod
@@ -204,6 +253,7 @@ class Settings:
             remote_fen=RemoteFenSettings.from_dict(_secao("remote_fen")),
             engine=EngineSettings.from_dict(_secao("engine")),
             ocr=OcrSettings.from_dict(_secao("ocr")),
+            local_reader=LocalReaderSettings.from_dict(_secao("local_reader")),
         )
 
 
@@ -238,7 +288,18 @@ def apply_environment(settings: Settings, env: Mapping[str, str] | None = None) 
     if ocr_ligado is not None:
         ocr = replace(ocr, enabled=ocr_ligado)
 
-    return replace(settings, remote_fen=remoto, ocr=ocr)
+    leitor = settings.local_reader
+    caminho = env.get(ENV_LOCAL_READER_PATH, "").strip()
+    if caminho:
+        # Mesma leitura que o endpoint e o motor de OCR: declarar o caminho ja e a intencao
+        # de usar, e exigir uma segunda variavel so para ligar seria burocracia.
+        leitor = replace(leitor, path=caminho, enabled=True)
+
+    leitor_ligado = _flag(env.get(ENV_LOCAL_READER_ENABLED, ""))
+    if leitor_ligado is not None:
+        leitor = replace(leitor, enabled=leitor_ligado)
+
+    return replace(settings, remote_fen=remoto, ocr=ocr, local_reader=leitor)
 
 
 def _flag(raw: str) -> bool | None:

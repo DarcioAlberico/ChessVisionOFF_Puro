@@ -393,17 +393,51 @@ class SplitAssignmentTests(unittest.TestCase):
         perfeitamente, ela só não faz o que este caminho precisa. Um teste de comportamento
         passaria a verde de novo se alguém trocasse de volta e o dataset de teste já tivesse
         todos os splits registrados -- que é a situação de qualquer fixture.
+
+        A S-47 moveu a montagem do dataset de `train_model` para `Trainer.prepare`, e a
+        varredura foi junto. `train_model` é hoje uma função fina sobre `Trainer.fit()`;
+        quem resolve o split é `prepare`, e é o corpo dela que precisa continuar chamando
+        `resolve_splits`.
         """
         import chess_diagram_ocr.training as training
 
         fonte = Path(training.__file__).read_text(encoding="utf-8")
-        corpo = fonte.split("def train_model(", 1)[1]
+        corpo = fonte.split("    def prepare(self) -> None:", 1)[1].split("    def resume(", 1)[0]
         self.assertIn("resolve_splits(", corpo)
         self.assertNotIn(
             "load_splits(",
             corpo,
-            "`train_model` voltou a só ler o arquivo de splits; amostra nova fica fora do treino (S-56).",
+            "`Trainer.prepare` voltou a só ler o arquivo de splits; amostra nova fica fora do treino (S-56).",
         )
+
+
+def _tiny_dataset(root: Path, boards: int = 6) -> tuple[Path, Path, Path]:
+    """Dataset sintético mínimo: `boards` tabuleiros, os dois últimos em `val`.
+
+    Módulo, e não método, porque a S-47 trouxe um segundo grupo de testes que precisa dele
+    -- o que exercita `Trainer` etapa a etapa.
+    """
+    import cv2
+    import numpy as np
+
+    from chess_diagram_ocr.splits import save_splits
+
+    samples = root / "samples"
+    samples.mkdir()
+    linhas = ["filename,fen"]
+    splits = {}
+    rng = np.random.default_rng(0)
+    for index in range(boards):
+        name = f"b{index}.png"
+        cv2.imwrite(str(samples / name), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+        linhas.append(f"{name},{LEGAL}")
+        splits[name] = "train" if index < boards - 2 else "val"
+
+    csv_path = root / "labels.csv"
+    csv_path.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+    splits_path = root / "splits.csv"
+    save_splits(splits_path, splits)  # type: ignore[arg-type]
+    return csv_path, samples, splits_path
 
 
 class ReproducibilityTests(unittest.TestCase):
@@ -414,28 +448,7 @@ class ReproducibilityTests(unittest.TestCase):
     e isso nao precisa de 2.569 tabuleiros para falhar quando esta quebrado.
     """
 
-    def _tiny_dataset(self, root: Path, boards: int = 6) -> tuple[Path, Path, Path]:
-        import cv2
-        import numpy as np
-
-        from chess_diagram_ocr.splits import save_splits
-
-        samples = root / "samples"
-        samples.mkdir()
-        linhas = ["filename,fen"]
-        splits = {}
-        rng = np.random.default_rng(0)
-        for index in range(boards):
-            name = f"b{index}.png"
-            cv2.imwrite(str(samples / name), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
-            linhas.append(f"{name},{LEGAL}")
-            splits[name] = "train" if index < boards - 2 else "val"
-
-        csv_path = root / "labels.csv"
-        csv_path.write_text("\n".join(linhas) + "\n", encoding="utf-8")
-        splits_path = root / "splits.csv"
-        save_splits(splits_path, splits)  # type: ignore[arg-type]
-        return csv_path, samples, splits_path
+    _tiny_dataset = staticmethod(_tiny_dataset)
 
     def _train(self, root: Path, name: str, seed: int = 7):
         from chess_diagram_ocr.training import train_model
@@ -717,6 +730,193 @@ class ReproducibilityTests(unittest.TestCase):
                     num_workers=0,
                 )
             self.assertIn("cnn-gray-32-linear", str(caught.exception))
+
+
+class BestEpochPolicyTests(unittest.TestCase):
+    """A consequência concreta da S-47: a política de melhor época sem dataset e sem GPU.
+
+    Cada teste aqui cobre uma decisão que antes só podia ser exercitada rodando um treino
+    inteiro -- e o primeiro deles é o defeito histórico que sobreviveu duas fases porque
+    ninguém conseguia perguntar à política sem treinar.
+    """
+
+    def test_retomar_nao_deixa_uma_epoca_pior_gravar_por_cima(self) -> None:
+        """O defeito da Fase 1, agora em três linhas.
+
+        Retomar zerava o controle em infinito e a primeira época gravava por cima mesmo
+        sendo pior. O incumbente do checkpoint é o que impede isso.
+        """
+        from chess_diagram_ocr.training import BestEpochPolicy
+
+        policy = BestEpochPolicy("val_board_exact_acc", 0.9906, best_epoch=12)
+        self.assertFalse(policy.accepts(0.9800))
+        self.assertFalse(policy.observe(0.9800, epoch=1))
+        self.assertEqual(policy.best_epoch, 12, "a melhor época retomada foi perdida")
+        self.assertEqual(policy.best_metric, 0.9906)
+
+    def test_treino_do_zero_grava_na_primeira_epoca_sem_clausula_especial(self) -> None:
+        from chess_diagram_ocr.training import BestEpochPolicy
+
+        policy = BestEpochPolicy("val_board_exact_acc", float("-inf"))
+        self.assertTrue(policy.observe(0.0, epoch=1), "com incumbente -inf, qualquer métrica grava")
+        self.assertEqual(policy.best_epoch, 1)
+
+    def test_empatar_nao_regrava(self) -> None:
+        """Regravar sem ganho é reescrever 8,7 MB e correr o risco da S-57 de graça."""
+        from chess_diagram_ocr.training import BestEpochPolicy
+
+        policy = BestEpochPolicy("val_board_exact_acc", 0.5)
+        self.assertFalse(policy.accepts(0.5))
+        self.assertTrue(policy.accepts(0.5 + 1e-12))
+
+    def test_parada_antecipada_conta_epocas_sem_melhora(self) -> None:
+        from chess_diagram_ocr.training import BestEpochPolicy
+
+        policy = BestEpochPolicy("val_board_exact_acc", 0.5, patience=2)
+        policy.observe(0.4, epoch=1)
+        self.assertFalse(policy.should_stop())
+        policy.observe(0.3, epoch=2)
+        self.assertTrue(policy.should_stop())
+
+        policy.observe(0.9, epoch=3)
+        self.assertFalse(policy.should_stop(), "uma época melhor tem de zerar o contador")
+
+    def test_paciencia_zero_desliga_a_parada_antecipada(self) -> None:
+        from chess_diagram_ocr.training import BestEpochPolicy
+
+        policy = BestEpochPolicy("val_board_exact_acc", 0.5, patience=0)
+        for epoch in range(1, 50):
+            policy.observe(0.1, epoch=epoch)
+        self.assertFalse(policy.should_stop())
+
+    def test_menos_infinito_nao_vai_para_os_metadados(self) -> None:
+        """`epochs=0` ou cancelamento antes da 1ª época: gravar `-inf` seria um número falso."""
+        from chess_diagram_ocr.training import BestEpochPolicy
+
+        self.assertEqual(BestEpochPolicy("m", float("-inf")).settled_metric, 0.0)
+        self.assertEqual(BestEpochPolicy("m", 0.42).settled_metric, 0.42)
+
+
+class TrainingPlanTests(unittest.TestCase):
+    """Os 18 parâmetros passam a ser conferidos uma vez, na construção do plano."""
+
+    def test_val_ratio_fora_da_faixa_e_recusado_na_construcao(self) -> None:
+        from chess_diagram_ocr.training import DataPlan
+
+        for ruim in (0.0, 1.0, -0.1, 1.5):
+            with self.subTest(val_ratio=ruim), self.assertRaises(ValueError):
+                DataPlan(csv_path=Path("a.csv"), samples_dir=Path("s"), val_ratio=ruim)
+
+    def test_hiperparametros_impossiveis_sao_recusados(self) -> None:
+        from chess_diagram_ocr.training import OptimPlan
+
+        with self.assertRaises(ValueError):
+            OptimPlan(batch_size=0)
+        with self.assertRaises(ValueError):
+            OptimPlan(lr=0.0)
+        with self.assertRaises(ValueError):
+            OptimPlan(epochs=-1)
+
+    def test_o_plano_e_imutavel(self) -> None:
+        """Um plano que muda no meio do treino faria os metadados descreverem outro treino."""
+        import dataclasses
+
+        from chess_diagram_ocr.training import OptimPlan
+
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            OptimPlan().epochs = 99  # type: ignore[misc]
+
+
+class TrainerStageTests(unittest.TestCase):
+    """`prepare → resume → run_epoch → finish` chamáveis uma a uma, e fiéis ao `fit()`."""
+
+    def _plan(self, root: Path, name: str, *, epochs: int = 2, seed: int = 7):
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, TrainingPlan
+
+        (root / name).mkdir()
+        csv_path, samples, splits_path = _tiny_dataset(root / name)
+        return TrainingPlan(
+            data=DataPlan(csv_path=csv_path, samples_dir=samples, splits_path=splits_path, num_workers=0),
+            output=OutputPlan(model_path=root / name / "m.pt", fresh=True),
+            optim=OptimPlan(epochs=epochs, batch_size=64, patience=0, seed=seed),
+        )
+
+    def test_rodar_as_etapas_a_mao_da_o_mesmo_que_fit(self) -> None:
+        """O critério de aceite da S-47: a decomposição não pode mudar resultado.
+
+        Duas execuções com a mesma semente, uma por `fit()` e outra chamando as etapas na
+        mão, têm de concordar até o último dígito.
+        """
+        import tempfile
+
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            de_uma_vez = Trainer(self._plan(root, "fit")).fit()
+
+            passo_a_passo = Trainer(self._plan(root, "passos"))
+            passo_a_passo.prepare()
+            passo_a_passo.resume()
+            passo_a_passo.run_epoch(1)
+            passo_a_passo.run_epoch(2)
+            manual = passo_a_passo.finish()
+
+            self.assertEqual(len(de_uma_vez.history), len(manual.history))
+            for a, b in zip(de_uma_vez.history, manual.history, strict=True):
+                for key in ("train_loss", "train_square_acc", "val_loss", "val_board_exact_acc", "is_best"):
+                    with self.subTest(epoch=a["epoch"], metric=key):
+                        self.assertEqual(a[key], b[key])
+            self.assertEqual(de_uma_vez.temperature, manual.temperature)
+            self.assertEqual(de_uma_vez.best_epoch, manual.best_epoch)
+
+    def test_run_epoch_antes_de_prepare_diz_o_que_falta(self) -> None:
+        import tempfile
+
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            trainer = Trainer(self._plan(Path(tmp), "cru"))
+            with self.assertRaises(RuntimeError) as caught:
+                trainer.run_epoch(1)
+            self.assertIn("prepare()", str(caught.exception))
+
+    def test_resume_devolve_o_checkpoint_em_vez_de_o_esconder(self) -> None:
+        """"De onde vieram estes pesos" é a pergunta que toda retomada levanta."""
+        import tempfile
+
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plano = self._plan(root, "a", epochs=1)
+            Trainer(plano).fit()
+
+            import dataclasses
+
+            retomada = dataclasses.replace(plano, output=dataclasses.replace(plano.output, fresh=False))
+            trainer = Trainer(retomada)
+            trainer.prepare()
+            checkpoint = trainer.resume()
+
+            self.assertIsNotNone(checkpoint)
+            assert checkpoint is not None
+            self.assertEqual(checkpoint.arch_version, "cnn-gray-64-linear")
+            self.assertEqual(trainer.policy.best_metric, checkpoint.best_metric)
+
+    def test_validate_sem_conjunto_de_validacao_diz_por_que(self) -> None:
+        import tempfile
+
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plano = self._plan(root, "sem_val")
+            trainer = Trainer(plano)
+            trainer.prepare()
+            trainer.val_loader = None
+            with self.assertRaises(ValueError):
+                trainer.validate()
 
 
 class ChunkCoverageTests(unittest.TestCase):

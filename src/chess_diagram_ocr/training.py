@@ -37,7 +37,7 @@ from .augment import DEFAULT_AUGMENT, AugmentConfig, build_augmentations
 from .calibration import expected_calibration_error, fit_temperature, negative_log_likelihood
 from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoint, save_checkpoint
 from .config import DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
-from .dataset import BoardFenDataset, BoardGroupedSampler, board_groups
+from .dataset import BoardFenDataset, BoardGroupedSampler, BoardUnitDataset, board_groups
 from .fen_utils import labels_from_fen
 from .model import DEFAULT_ARCH, ArchConfig, build_model, count_parameters
 from .splits import Split, ensure_splits, load_splits, splits_hash
@@ -89,6 +89,37 @@ class TransformSubset(torch.utils.data.Dataset):
 
     def __len__(self) -> int:
         return len(self.subset)
+
+
+class ImageChannelsOnly(nn.Module):
+    """Aplica o aumento só nos canais de imagem e recoloca os da S-62a intactos.
+
+    O docstring de `with_coordinate_channels` diz que a coordenada roda **depois** do aumento
+    porque `RandomAffine` translada e preenche a borda com zero: sobre um plano constante de
+    0,71 isso produziria uma coordenada que varia dentro da casa e mente na margem. No
+    caminho por tabuleiro a ordem sai de graça, porque quem chama `BoardFenDataset.square`
+    entrega o aumento junto. No caminho por casa **não sai**: o `TransformSubset` roda depois
+    do `__getitem__`, que já concatenou.
+
+    O primeiro sintoma disso não foi uma coordenada errada -- foi o `ColorJitter` recusando
+    `4` canais, o que é sorte: um aumento que aceitasse quatro teria treinado, e o defeito
+    apareceria como um modelo pior sem nenhuma mensagem.
+
+    `nn.Module` e não `lambda` pelo motivo de sempre: com `num_workers > 0` no Windows a
+    pipeline inteira é pickleada para cada worker (ver `_clamp01`).
+    """
+
+    def __init__(self, inner: Callable, image_channels: int) -> None:
+        super().__init__()
+        self.inner = inner
+        self.image_channels = image_channels
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.shape[-3] <= self.image_channels:
+            return self.inner(x)
+        imagem = x[..., : self.image_channels, :, :]
+        coordenadas = x[..., self.image_channels :, :, :]
+        return torch.cat((self.inner(imagem), coordenadas), dim=-3)
 
 
 def _clamp01(x: torch.Tensor) -> torch.Tensor:
@@ -170,9 +201,9 @@ def resolve_num_workers(requested: int | None) -> int:
 
     Atenção a quem chama: no Windows o start method é `spawn`, e cada worker **reimporta o
     módulo `__main__`**. `cvoff-train` e o `app_tkinter.py` têm guarda `if __name__ ==
-    "__main__"`, então são seguros. O `app_streamlit.py` não tem -- não pode ter, é um
-    script de topo executado pelo Streamlit --, e workers ali reexecutariam a página
-    inteira dentro de cada processo. Por isso o padrão de `train_model` é 0 e quem sobe
+    "__main__"`, então são seguros. O `examples/streamlit_demo.py` não tem -- não pode
+    ter, é um script de topo executado pelo Streamlit --, e workers ali reexecutariam a
+    página inteira dentro de cada processo. Por isso o padrão de `train_model` é 0 e quem sobe
     para 4 é o CLI, não a biblioteca.
     """
     if requested is not None:
@@ -311,7 +342,11 @@ def evaluate_validation(
         for xb, yb in loader:
             logits = model(xb.to(device))
             all_logits.append(logits.cpu())
-            all_targets.append(yb.cpu())
+            # Com a cabeca da S-62b o lote e (B, 64) de rotulos e (B*64, 13) de logits: a
+            # cabeca devolve achatado justamente para que tudo daqui para baixo -- loss,
+            # acuracia por casa, exata por tabuleiro, calibracao -- continue sendo o mesmo
+            # codigo. So os alvos precisam acompanhar.
+            all_targets.append(yb.reshape(-1).cpu())
 
     logits = torch.cat(all_logits).to(torch.float32)
     targets = torch.cat(all_targets).to(torch.long)
@@ -428,6 +463,569 @@ def _resolve_best_metric(
     return incumbente, 0
 
 
+class _Unprepared(nn.Module):
+    """Sentinela para os atributos do `Trainer` que só existem depois de `prepare()`.
+
+    A alternativa seria tipá-los `nn.Module | None` e espalhar `assert` por sete métodos --
+    o que troca uma mensagem útil por um `AssertionError` sem texto, e some com `-O`.
+    """
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("Chame Trainer.prepare() antes de treinar: não há modelo nem critério montados.")
+
+
+_UNPREPARED = _Unprepared()
+
+
+@dataclass(frozen=True)
+class DataPlan:
+    """De onde vêm os tabuleiros e como eles chegam à memória."""
+
+    csv_path: Path
+    samples_dir: Path
+    splits_path: Path | None = None
+    assign_splits: bool = True
+    val_ratio: float = 0.1
+    cache_size: int = DEFAULT_BOARD_CACHE_SIZE
+    num_workers: int | None = 0
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.val_ratio < 1.0:
+            raise ValueError(f"val_ratio tem de ficar entre 0 e 1 (exclusivos); veio {self.val_ratio}.")
+        if self.cache_size < 0:
+            raise ValueError(f"cache_size não pode ser negativo; veio {self.cache_size}.")
+
+
+@dataclass(frozen=True)
+class OptimPlan:
+    """Como o laço aprende, e quando ele desiste."""
+
+    epochs: int = 5
+    batch_size: int = 128
+    lr: float = 1e-3
+    patience: int = 15
+    class_weights: ClassWeighting = DEFAULT_CLASS_WEIGHTS
+    seed: int = 42
+    augment: AugmentConfig = DEFAULT_AUGMENT
+
+    boards_per_batch: int = 4
+    """Tabuleiros por lote quando a cabeça é a da S-62b. Ignorado pelas outras.
+
+    Quatro, e o número precisa de justificativa porque a S-26 já mediu o vizinho dele. Com o
+    tabuleiro como unidade, `batch_size=128` deixaria de significar 128 casas e passaria a
+    significar 128 tabuleiros -- 8.192 casas por passo, memória de sobra e uma época de 21
+    passos. Na outra ponta, a leitura literal ("as 64 casas juntas") daria lotes de 1 ou 2
+    tabuleiros, que é exatamente o regime de BatchNorm ruidoso que fez a S-26 escolher a
+    janela em vez do tabuleiro.
+
+    Quatro tabuleiros são 256 casas por lote: o dobro das 128 de hoje para as estatísticas do
+    BatchNorm, vindas de 4 posições diferentes em vez de 2. É um regime **novo**, não herdado,
+    e a S-62 manda remedi-lo em vez de supô-lo."""
+
+    def __post_init__(self) -> None:
+        if self.epochs < 0:
+            raise ValueError(f"epochs não pode ser negativo; veio {self.epochs}.")
+        if self.batch_size <= 0:
+            raise ValueError(f"batch_size tem de ser positivo; veio {self.batch_size}.")
+        if self.boards_per_batch <= 0:
+            raise ValueError(f"boards_per_batch tem de ser positivo; veio {self.boards_per_batch}.")
+        if self.lr <= 0:
+            raise ValueError(f"lr tem de ser positivo; veio {self.lr}.")
+
+
+@dataclass(frozen=True)
+class OutputPlan:
+    """O que o treino deixa no disco."""
+
+    model_path: Path
+    fresh: bool = False
+    calibrate: bool = True
+    pretrained: bool = True
+
+
+@dataclass(frozen=True)
+class TrainingPlan:
+    """Os 18 parâmetros de `train_model`, agrupados por assunto e validados uma vez (S-47).
+
+    Dezoito parâmetros posicionais não são um problema de estética: são quatro assuntos
+    distintos -- de onde vêm os dados, qual é a arquitetura, como o laço aprende, o que fica
+    no disco -- passados como uma lista plana em que nada valida nada. Agrupá-los é o que
+    permite ao `Trainer` receber **um** objeto imutável e conferido, em vez de repassar
+    dezoito por sete métodos.
+
+    `train_model` continua com a assinatura antiga porque tem trinta chamadores entre CLI,
+    `ui/training_dialog.py`, `experiments.py` e testes; ela monta este plano e delega.
+    """
+
+    data: DataPlan
+    output: OutputPlan
+    model: ArchConfig = DEFAULT_ARCH
+    optim: OptimPlan = OptimPlan()
+
+
+class BestEpochPolicy:
+    """Quando gravar por cima, e quando parar. Testável **sem treinar** -- era o que faltava.
+
+    Esta política já teve um defeito real e caro, e o ROADMAP registra que "a primeira versão
+    da 5.3 estava errada, e foi o uso que mostrou": retomar zerava o controle de melhor época
+    em infinito, e a primeira época da retomada sobrescrevia o checkpoint mesmo sendo pior.
+    O defeito sobreviveu porque **não havia como perguntar à política sem rodar um treino** --
+    a decisão morava no meio de um laço de 259 linhas que precisa de dataset, modelo e GPU
+    para ser exercitado.
+
+    Aqui ela é um objeto de três métodos e nenhuma dependência: `accepts` responde à pergunta
+    "esta métrica grava por cima?", `observe` registra a resposta, e `should_stop` responde
+    à parada antecipada. Um teste que cobre a retomada custa três linhas e nenhum tensor.
+
+    Convenção: **maior é melhor, sempre.** Sem validação a métrica é `-train_loss`, para que
+    a comparação valha nos dois regimes sem um caso especial. E o incumbente de um treino do
+    zero é `-inf`, para que a primeira época grave sem cláusula especial -- era justamente a
+    cláusula especial que produzia o defeito acima.
+    """
+
+    def __init__(self, metric_name: str, incumbent: float, *, patience: int = 15, best_epoch: int = 0) -> None:
+        self.metric_name = metric_name
+        self.best_metric = incumbent
+        self.best_epoch = best_epoch
+        self.patience = patience
+        self.epochs_without_improvement = 0
+
+    def accepts(self, metric: float) -> bool:
+        """Estritamente maior: empatar não regrava, porque regravar sem ganho é risco de graça."""
+        return metric > self.best_metric
+
+    def observe(self, metric: float, epoch: int) -> bool:
+        """Aplica `accepts` e atualiza o estado. Devolve se a época é a nova melhor."""
+        aceita = self.accepts(metric)
+        if aceita:
+            self.best_metric = metric
+            self.best_epoch = epoch
+            self.epochs_without_improvement = 0
+        else:
+            self.epochs_without_improvement += 1
+        return aceita
+
+    def should_stop(self, epochs_without_improvement: int | None = None) -> bool:
+        """Parada antecipada. `patience <= 0` desliga."""
+        contador = self.epochs_without_improvement if epochs_without_improvement is None else epochs_without_improvement
+        return self.patience > 0 and contador >= self.patience
+
+    @property
+    def settled_metric(self) -> float:
+        """O valor que vai para os metadados.
+
+        `-inf` só sobrevive se nenhuma época rodou (`epochs=0`, ou cancelamento antes da
+        primeira); gravá-lo seria um número falso.
+        """
+        return 0.0 if self.best_metric == float("-inf") else self.best_metric
+
+
+class Trainer:
+    """O treino em etapas nomeadas, cada uma chamável sozinha (S-47).
+
+    `train_model` fazia sete coisas em 259 linhas: montar dataset e loaders, resolver split,
+    retomar checkpoint, rodar o laço de época, decidir a melhor época, parar antecipadamente,
+    calibrar e gravar. O tamanho era o sintoma; o custo era que nada disso podia ser
+    perguntado isoladamente -- ver `BestEpochPolicy` para o defeito concreto que isso
+    escondeu por duas fases.
+
+    O ciclo de vida é `prepare() → resume() → run_epoch()* → finish()`, e `fit()` é
+    exatamente essa sequência. Cada etapa pode ser chamada por um teste:
+
+    - `prepare()` monta datasets, loaders, amostrador, pesos, critério e otimizador;
+    - `resume()` carrega o checkpoint e resolve o incumbente que a primeira época precisa
+      superar -- devolve o `Checkpoint` para inspeção, em vez de o esconder num local;
+    - `run_epoch(n)` é uma época completa, chamável com dois lotes sintéticos;
+    - `finish()` fecha metadados e calibração.
+
+    **A ordem das operações aleatórias é a de antes, de propósito.** `set_seed` primeiro, o
+    modelo construído antes de qualquer loader, e todo sorteio posterior com gerador
+    explícito. Este item não pode mudar resultado, e a comparação do critério de aceite é
+    sobre o histórico bit a bit sob a mesma semente.
+    """
+
+    def __init__(
+        self,
+        plan: TrainingPlan,
+        *,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
+        self.plan = plan
+        self.progress = progress
+        self.cancel_event = cancel_event
+
+        self.device: str = "cpu"
+        self.model: nn.Module = _UNPREPARED
+        self.dataset: BoardFenDataset | None = None
+        self.val_dataset: BoardFenDataset | None = None
+        self.train_loader: DataLoader | None = None
+        self.val_loader: DataLoader | None = None
+        self.criterion: nn.Module = _UNPREPARED
+        self.cpu_criterion: nn.Module = _UNPREPARED
+        self.optimizer: torch.optim.Optimizer | None = None
+        self.metadata_base: dict[str, Any] = {}
+        self.resumed: Checkpoint | None = None
+        self.best_validation: ValidationMetrics | None = None
+        self.run = TrainingRun(model_path=Path(plan.output.model_path))
+        self.policy = BestEpochPolicy("val_board_exact_acc", float("-inf"), patience=plan.optim.patience)
+
+    # ------------------------------------------------------------------ prepare
+
+    def prepare(self) -> None:
+        """Datasets, loaders, amostrador, pesos, critério e otimizador."""
+        data, optim, output = self.plan.data, self.plan.optim, self.plan.output
+        arch = self.plan.model
+
+        set_seed(optim.seed)
+        workers = resolve_num_workers(data.num_workers)
+        splits_map = (
+            resolve_splits(data.csv_path, data.samples_dir, data.splits_path, assign_new=data.assign_splits)
+            if data.splits_path is not None
+            else None
+        )
+
+        # Com num_workers > 0 o cache e por processo: o teto vale W+1 vezes, e o criterio de
+        # aceite da S-26 (< 2 GiB por epoca) e sobre o treino inteiro, nao sobre o pai.
+        per_process_cache = max(1, data.cache_size // (workers + 1)) if workers else data.cache_size
+
+        common = {"cache_size": per_process_cache, "arch": arch}
+        if splits_map:
+            dataset = BoardFenDataset(data.csv_path, data.samples_dir, split="train", splits=splits_map, **common)  # type: ignore[arg-type]
+            val_dataset: BoardFenDataset | None = BoardFenDataset(
+                data.csv_path,
+                data.samples_dir,
+                split="val",
+                splits=splits_map,
+                arch=arch,
+                # Validacao e sequencial: um cache do tamanho do treino dobraria a memoria
+                # residente para uma taxa de acerto que 4 tabuleiros ja entregam.
+                cache_size=VAL_BOARD_CACHE_SIZE,
+            )
+            logger.info(
+                "Split persistido em uso: %d tabuleiros de treino, %d de validação. Teste reservado.",
+                len(dataset.entries),
+                len(val_dataset.entries) if val_dataset else 0,
+            )
+        else:
+            dataset = BoardFenDataset(data.csv_path, data.samples_dir, **common)  # type: ignore[arg-type]
+            val_dataset = None
+            logger.warning(
+                "Sem arquivo de splits: a validação será sorteada e mudará quando o dataset crescer. "
+                "Passe splits_path para uma métrica estável (S-07)."
+            )
+
+        if len(dataset) == 0:
+            raise ValueError("Dataset vazio. Salve exemplos corrigidos antes de treinar.")
+
+        if val_dataset is not None:
+            train_indices = list(range(len(dataset)))
+            val_indices = list(range(len(val_dataset)))
+        else:
+            train_indices, val_indices = _split_square_indices_by_board(
+                dataset, val_ratio=data.val_ratio, seed=optim.seed
+            )
+
+        self.dataset, self.val_dataset = dataset, val_dataset
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = build_model(arch, pretrained=output.pretrained).to(self.device)
+
+        logger.info(
+            "Treinando em %s | arquitetura %s (%s parâmetros) | %d tabuleiros, %d casas | "
+            "semente %d | workers %d | cache %d tabuleiros/processo | pesos de classe: %s",
+            self.device,
+            arch.version,
+            f"{count_parameters(self.model):,}".replace(",", "."),
+            len(dataset.entries),
+            len(dataset),
+            optim.seed,
+            workers,
+            per_process_cache,
+            optim.class_weights,
+        )
+
+        loader_extra: dict[str, Any] = {"num_workers": workers}
+        if workers:
+            loader_extra["persistent_workers"] = True
+            loader_extra["prefetch_factor"] = 2
+
+        val_source = val_dataset if val_dataset is not None else dataset
+        train_board_ids = {dataset.index_map[index][0] for index in train_indices}
+        # Um so aumento para os dois caminhos: o guarda de `ImageChannelsOnly` o torna
+        # transparente quando nao ha canal de coordenada para proteger.
+        aumento = ImageChannelsOnly(build_train_transform(optim.augment), arch.image_channels)
+
+        if arch.head == "board":
+            # A cabeca da S-62b decide as 64 casas juntas, entao a unidade de amostragem passa
+            # a ser o tabuleiro -- e com ela cai o `BoardGroupedSampler`, que existia para
+            # aproximar isso sem pagar o preco. Um lote e N tabuleiros por construcao.
+            val_board_ids = sorted({val_source.index_map[index][0] for index in val_indices})
+            self.train_loader = DataLoader(
+                BoardUnitDataset(dataset, sorted(train_board_ids), transform=aumento),
+                batch_size=optim.boards_per_batch,
+                shuffle=True,
+                generator=torch.Generator().manual_seed(optim.seed),
+                **loader_extra,
+            )
+            self.val_loader = (
+                DataLoader(
+                    BoardUnitDataset(val_source, val_board_ids),
+                    batch_size=optim.boards_per_batch,
+                    shuffle=False,
+                    **loader_extra,
+                )
+                if val_board_ids
+                else None
+            )
+            logger.info(
+                "Cabeça por tabuleiro (S-62b): %d tabuleiro(s) por lote, %d casas por passo. "
+                "O amostrador por janela da S-26 não é usado neste regime.",
+                optim.boards_per_batch,
+                optim.boards_per_batch * 64,
+            )
+        else:
+            train_ds = TransformSubset(Subset(dataset, train_indices), transform=aumento)
+            sampler = BoardGroupedSampler(board_groups(dataset.index_map, train_indices), shuffle=True, seed=optim.seed)
+            self.train_loader = DataLoader(
+                train_ds,
+                batch_size=optim.batch_size,
+                sampler=sampler,
+                generator=torch.Generator().manual_seed(optim.seed),
+                **loader_extra,
+            )
+
+            # Sem shuffle e sem amostrador: a ordem sequencial ja e por tabuleiro, e a acuracia
+            # exata por tabuleiro depende disso (ver `evaluate_validation`).
+            val_ds: Subset | None = Subset(val_source, val_indices) if val_indices else None
+            self.val_loader = (
+                DataLoader(val_ds, batch_size=optim.batch_size, shuffle=False, **loader_extra)
+                if val_ds is not None
+                else None
+            )
+
+        weights = class_weights_for([dataset.entries[i] for i in sorted(train_board_ids)], optim.class_weights)
+        if weights is not None:
+            logger.info(
+                "Pesos de classe: %s",
+                ", ".join(f"{name}={value:.2f}" for name, value in zip(PIECE_CLASSES, weights.tolist(), strict=True)),
+            )
+        self.criterion = nn.CrossEntropyLoss(weight=weights.to(self.device) if weights is not None else None)
+        self.cpu_criterion = nn.CrossEntropyLoss(weight=weights if weights is not None else None)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=optim.lr)
+
+        self.metadata_base = {
+            "arch_version": arch.version,
+            "class_names": list(PIECE_CLASSES),
+            "seed": optim.seed,
+            "class_weights": optim.class_weights,
+            # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
+            # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
+            "augment_version": optim.augment.version,
+            "split_hash": splits_hash(splits_map) if splits_map else "",
+            "splits_path": str(data.splits_path) if data.splits_path else "",
+            "dataset_size": len(dataset.entries),
+            "val_size": len(val_dataset.entries) if val_dataset is not None else len(val_indices) // 64,
+            "git_commit": git_commit(),
+            "best_metric_name": "val_board_exact_acc" if self.val_loader is not None else "train_loss",
+        }
+        self.run.best_metric_name = str(self.metadata_base["best_metric_name"])
+        self.policy = BestEpochPolicy(
+            self.run.best_metric_name, float("-inf"), patience=optim.patience
+        )
+
+    # ------------------------------------------------------------------- resume
+
+    def resume(self) -> Checkpoint | None:
+        """Carrega o checkpoint existente e resolve o incumbente da primeira época.
+
+        Devolve o `Checkpoint` em vez de o guardar em silêncio: "de onde vieram estes pesos"
+        é a pergunta que uma retomada sempre levanta, e agora ela tem resposta sem log.
+        """
+        model_path = Path(self.plan.output.model_path)
+        if self.plan.output.fresh:
+            logger.info("Treinando do zero (--fresh): checkpoint existente será ignorado.")
+        elif model_path.exists():
+            self.resumed = _load_for_resume(self.model, model_path, self.plan.model, self.device)
+
+        best_metric, best_epoch = _resolve_best_metric(
+            self.resumed,
+            model=self.model,
+            val_loader=self.val_loader,
+            device=self.device,
+            criterion=self.cpu_criterion,
+            split_hash=str(self.metadata_base.get("split_hash", "")),
+        )
+        self.policy = BestEpochPolicy(
+            self.run.best_metric_name, best_metric, patience=self.plan.optim.patience, best_epoch=best_epoch
+        )
+        self.run.best_metric, self.run.best_epoch = best_metric, best_epoch
+        return self.resumed
+
+    # --------------------------------------------------------------------- laço
+
+    def validate(self) -> ValidationMetrics:
+        """Uma passada pela validação. Levanta se o plano não tem conjunto de validação."""
+        if self.val_loader is None:
+            raise ValueError("Este treino não tem conjunto de validação: não há o que medir.")
+        return evaluate_validation(self.model, self.val_loader, self.device, self.cpu_criterion)
+
+    def run_epoch(self, epoch: int) -> dict[str, Any]:
+        """Uma época completa: treinar, validar, decidir se grava, avisar quem observa."""
+        if self.train_loader is None or self.optimizer is None:
+            raise RuntimeError("Chame prepare() antes de run_epoch().")
+
+        self.model.train()
+        train_loss = 0.0
+        train_hits = 0
+        seen = 0
+
+        for xb, yb in self.train_loader:
+            # `reshape(-1)` para a cabeca por tabuleiro (S-62b), que entrega (B, 64) de
+            # rotulos; para as outras cabecas yb ja e 1-D e isto e uma vista, nao uma copia.
+            xb, yb = xb.to(self.device), yb.to(self.device).reshape(-1)
+            self.optimizer.zero_grad()
+            logits = self.model(xb)
+            loss = self.criterion(logits, yb)
+            loss.backward()
+            self.optimizer.step()
+
+            # Contado em **casas**, e nao em itens do lote: a loss por casa e o unico numero
+            # comparavel entre os dois regimes, e `xb.size(0)` significaria tabuleiros num e
+            # casas no outro.
+            casas = yb.numel()
+            train_loss += float(loss.item()) * casas
+            train_hits += int((logits.argmax(dim=1) == yb).sum().item())
+            seen += casas
+
+        row: dict[str, Any] = {
+            "epoch": epoch,
+            "total_epochs": self.plan.optim.epochs,
+            "train_loss": train_loss / max(seen, 1),
+            "train_square_acc": train_hits / max(seen, 1),
+        }
+
+        validation: ValidationMetrics | None = None
+        if self.val_loader is not None:
+            validation = self.validate()
+            row["val_loss"] = validation.loss
+            row["val_square_acc"] = validation.square_accuracy
+            row["val_board_exact_acc"] = validation.board_exact_accuracy
+            row["val_per_class_recall"] = validation.per_class_recall
+            # Maior e melhor, ao contrario da loss.
+            metric_for_best = validation.board_exact_accuracy
+        else:
+            # Sem validacao a unica coisa disponivel e a loss de treino, e ai menor e melhor:
+            # negar deixa a comparacao "maior e melhor" valendo nos dois regimes.
+            metric_for_best = -row["train_loss"]
+
+        # Sem clausula especial para a primeira epoca: num treino do zero o incumbente e
+        # `-inf`, e numa retomada e a metrica real do checkpoint que esta no disco. Era a
+        # clausula especial que fazia a primeira epoca de uma retomada gravar por cima.
+        improved = self.policy.observe(metric_for_best, epoch)
+        if improved:
+            self.run.best_metric = self.policy.best_metric
+            self.run.best_epoch = self.policy.best_epoch
+            self.best_validation = validation
+            save_checkpoint(
+                Path(self.plan.output.model_path),
+                self.model.state_dict(),
+                metadata={
+                    **self.metadata_base,
+                    "best_metric": metric_for_best,
+                    "best_epoch": epoch,
+                    "metrics": _plain(row),
+                },
+            )
+
+        row["is_best"] = improved
+        self.run.history.append(row)
+        if self.progress is not None:
+            self.progress(row)
+        return row
+
+    def _cancelled(self, epoch: int) -> bool:
+        """Conferido **entre** épocas, e não dentro do laço de lotes.
+
+        Pelo mesmo motivo da varredura (S-24): o pior caso de resposta é uma unidade de
+        trabalho, e aqui a unidade é a época porque é ela que decide se o checkpoint muda.
+        Interromper no meio de uma época devolveria pesos que nenhuma métrica avaliou (S-60).
+        """
+        if self.cancel_event is None or not self.cancel_event.is_set():
+            return False
+        logger.info("Treino cancelado antes da época %d. O melhor checkpoint gravado continua valendo.", epoch)
+        self.run.cancelled = True
+        return True
+
+    # ------------------------------------------------------------------- finish
+
+    def finish(self) -> TrainingRun:
+        """Metadados, calibração da S-28 e o log de fecho."""
+        model_path = Path(self.plan.output.model_path)
+        self.run.best_metric = self.policy.settled_metric
+        self.run.best_epoch = self.policy.best_epoch
+        self.run.metadata = {
+            **self.metadata_base,
+            "best_metric": self.run.best_metric,
+            "best_epoch": self.run.best_epoch,
+        }
+
+        calibrate = self.plan.output.calibrate
+        if calibrate and self.best_validation is not None:
+            _calibrate_and_store(self.run, self.best_validation, model_path, self.device)
+        elif calibrate and self.val_loader is None:
+            logger.info("Sem conjunto de validação: calibração (S-28) pulada, temperatura fica em 1,0.")
+        elif calibrate and not model_path.exists():
+            # Cancelado antes da primeira época (S-60), ou `epochs=0`: não há checkpoint no disco
+            # para ler a temperatura de, e nem deveria haver. Ler daqui era o único caminho que
+            # supunha que sempre existe um arquivo -- suposição que valia enquanto o treino não
+            # podia ser interrompido antes de gravar o primeiro.
+            logger.info("Nenhuma época rodou e não há checkpoint em %s: calibração pulada.", model_path)
+        elif calibrate:
+            # Retomada em que nenhuma epoca superou o melhor registrado: o checkpoint no disco
+            # e de outra execucao e ja tem a temperatura dela. Recalibra-lo com os logits
+            # destes pesos -- que sao piores e nao serao gravados -- daria um T que nao
+            # corresponde ao modelo que esta no arquivo.
+            self.run.temperature = load_checkpoint(model_path, map_location=self.device).temperature
+            logger.info(
+                "Nenhuma época superou o melhor registrado (%s = %.6f): o checkpoint no disco não "
+                "foi tocado, e a temperatura dele (%.4f) continua valendo.",
+                self.run.best_metric_name,
+                self.run.best_metric,
+                self.run.temperature,
+            )
+
+        logger.info(
+            "Treino %s em %d épocas. Melhor época: %d (%s = %.6f). Checkpoint em %s.",
+            "cancelado" if self.run.cancelled else "concluído",
+            len(self.run.history),
+            self.run.best_epoch,
+            self.run.best_metric_name,
+            self.run.best_metric,
+            model_path,
+        )
+        return self.run
+
+    def fit(self) -> TrainingRun:
+        """`prepare → resume → laço → finish`, que é o que `train_model` sempre fez."""
+        self.prepare()
+        self.resume()
+
+        for epoch in range(1, self.plan.optim.epochs + 1):
+            if self._cancelled(epoch):
+                break
+            self.run_epoch(epoch)
+            if self.policy.should_stop():
+                logger.info(
+                    "Parada antecipada: sem melhora de %s por %d épocas. Interrompendo na época %d.",
+                    self.run.best_metric_name,
+                    self.plan.optim.patience,
+                    epoch,
+                )
+                break
+
+        return self.finish()
+
+
 def train_model(
     csv_path: Path,
     samples_dir: Path,
@@ -451,8 +1049,13 @@ def train_model(
     assign_splits: bool = True,
     cancel_event: threading.Event | None = None,
     augment: AugmentConfig = DEFAULT_AUGMENT,
+    boards_per_batch: int = OptimPlan.boards_per_batch,
 ) -> TrainingRun:
-    """Treina o classificador de peças.
+    """Treina o classificador de peças. Monta o `TrainingPlan` e chama `Trainer.fit()` (S-47).
+
+    A assinatura é a de sempre porque tem trinta chamadores; o corpo são vinte e cinco linhas.
+    Quem precisa de uma etapa isolada -- rodar uma época com dois lotes, perguntar à política
+    de melhor época sem treinar, inspecionar o checkpoint retomado -- usa o `Trainer` direto.
 
     `splits_path` aponta para o arquivo de splits persistido (`data/splits.csv`). Quando
     informado, o treino usa **apenas** o split `train` e valida no `val`; o `test` fica
@@ -474,258 +1077,32 @@ def train_model(
     checkpoint gravado até o cancelamento continua valendo, porque ele é gravado por época e
     não no fim.
     """
-    set_seed(seed)
-    workers = resolve_num_workers(num_workers)
-    splits_map = (
-        resolve_splits(Path(csv_path), Path(samples_dir), Path(splits_path), assign_new=assign_splits)
-        if splits_path is not None
-        else None
+    plan = TrainingPlan(
+        data=DataPlan(
+            csv_path=Path(csv_path),
+            samples_dir=Path(samples_dir),
+            splits_path=Path(splits_path) if splits_path is not None else None,
+            assign_splits=assign_splits,
+            val_ratio=val_ratio,
+            cache_size=cache_size,
+            num_workers=num_workers,
+        ),
+        output=OutputPlan(
+            model_path=Path(model_path), fresh=fresh, calibrate=calibrate, pretrained=pretrained
+        ),
+        model=arch,
+        optim=OptimPlan(
+            epochs=epochs,
+            batch_size=batch_size,
+            lr=lr,
+            patience=patience,
+            class_weights=class_weights,
+            seed=seed,
+            augment=augment,
+            boards_per_batch=boards_per_batch,
+        ),
     )
-
-    # Com num_workers > 0 o cache e por processo: o teto vale W+1 vezes, e o criterio de
-    # aceite da S-26 (< 2 GiB por epoca) e sobre o treino inteiro, nao sobre o pai.
-    per_process_cache = max(1, cache_size // (workers + 1)) if workers else cache_size
-
-    common = {"cache_size": per_process_cache, "arch": arch}
-    if splits_map:
-        dataset = BoardFenDataset(Path(csv_path), Path(samples_dir), split="train", splits=splits_map, **common)  # type: ignore[arg-type]
-        val_dataset: BoardFenDataset | None = BoardFenDataset(
-            Path(csv_path),
-            Path(samples_dir),
-            split="val",
-            splits=splits_map,
-            arch=arch,
-            # Validacao e sequencial: um cache do tamanho do treino dobraria a memoria
-            # residente para uma taxa de acerto que 4 tabuleiros ja entregam.
-            cache_size=VAL_BOARD_CACHE_SIZE,
-        )
-        logger.info(
-            "Split persistido em uso: %d tabuleiros de treino, %d de validação. Teste reservado.",
-            len(dataset.entries),
-            len(val_dataset.entries) if val_dataset else 0,
-        )
-    else:
-        dataset = BoardFenDataset(Path(csv_path), Path(samples_dir), **common)  # type: ignore[arg-type]
-        val_dataset = None
-        logger.warning(
-            "Sem arquivo de splits: a validação será sorteada e mudará quando o dataset crescer. "
-            "Passe splits_path para uma métrica estável (S-07)."
-        )
-
-    if len(dataset) == 0:
-        raise ValueError("Dataset vazio. Salve exemplos corrigidos antes de treinar.")
-
-    if val_dataset is not None:
-        train_indices = list(range(len(dataset)))
-        val_indices = list(range(len(val_dataset)))
-    else:
-        train_indices, val_indices = _split_square_indices_by_board(dataset, val_ratio=val_ratio, seed=seed)
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = build_model(arch, pretrained=pretrained).to(device)
-
-    resumed: Checkpoint | None = None
-    if fresh:
-        logger.info("Treinando do zero (--fresh): checkpoint existente será ignorado.")
-    elif Path(model_path).exists():
-        resumed = _load_for_resume(model, Path(model_path), arch, device)
-
-    logger.info(
-        "Treinando em %s | arquitetura %s (%s parâmetros) | %d tabuleiros, %d casas | "
-        "semente %d | workers %d | cache %d tabuleiros/processo | pesos de classe: %s",
-        device,
-        arch.version,
-        f"{count_parameters(model):,}".replace(",", "."),
-        len(dataset.entries),
-        len(dataset),
-        seed,
-        workers,
-        per_process_cache,
-        class_weights,
-    )
-
-    train_ds = TransformSubset(Subset(dataset, train_indices), transform=build_train_transform(augment))
-    sampler = BoardGroupedSampler(board_groups(dataset.index_map, train_indices), shuffle=True, seed=seed)
-
-    loader_extra: dict[str, Any] = {"num_workers": workers}
-    if workers:
-        loader_extra["persistent_workers"] = True
-        loader_extra["prefetch_factor"] = 2
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=batch_size,
-        sampler=sampler,
-        generator=torch.Generator().manual_seed(seed),
-        **loader_extra,
-    )
-
-    # Sem shuffle e sem amostrador: a ordem sequencial ja e por tabuleiro, e a acuracia
-    # exata por tabuleiro depende disso (ver `evaluate_validation`).
-    val_source = val_dataset if val_dataset is not None else dataset
-    val_ds: Subset | None = Subset(val_source, val_indices) if val_indices else None
-    val_loader = (
-        DataLoader(val_ds, batch_size=batch_size, shuffle=False, **loader_extra) if val_ds is not None else None
-    )
-
-    train_board_ids = {dataset.index_map[index][0] for index in train_indices}
-    weights = class_weights_for([dataset.entries[i] for i in sorted(train_board_ids)], class_weights)
-    if weights is not None:
-        logger.info(
-            "Pesos de classe: %s",
-            ", ".join(f"{name}={value:.2f}" for name, value in zip(PIECE_CLASSES, weights.tolist(), strict=True)),
-        )
-    criterion = nn.CrossEntropyLoss(weight=weights.to(device) if weights is not None else None)
-    cpu_criterion = nn.CrossEntropyLoss(weight=weights if weights is not None else None)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-
-    metadata_base: dict[str, Any] = {
-        "arch_version": arch.version,
-        "class_names": list(PIECE_CLASSES),
-        "seed": seed,
-        "class_weights": class_weights,
-        # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
-        # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
-        "augment_version": augment.version,
-        "split_hash": splits_hash(splits_map) if splits_map else "",
-        "splits_path": str(splits_path) if splits_path else "",
-        "dataset_size": len(dataset.entries),
-        "val_size": len(val_dataset.entries) if val_dataset is not None else len(val_indices) // 64,
-        "git_commit": git_commit(),
-        "best_metric_name": "val_board_exact_acc" if val_loader is not None else "train_loss",
-    }
-
-    best_metric, best_epoch = _resolve_best_metric(
-        resumed,
-        model=model,
-        val_loader=val_loader,
-        device=device,
-        criterion=cpu_criterion,
-        split_hash=str(metadata_base["split_hash"]),
-    )
-
-    run = TrainingRun(model_path=Path(model_path), best_metric=best_metric, best_epoch=best_epoch)
-    run.best_metric_name = str(metadata_base["best_metric_name"])
-    epochs_no_improve = 0
-    best_validation: ValidationMetrics | None = None
-
-    for epoch in range(1, epochs + 1):
-        if cancel_event is not None and cancel_event.is_set():
-            # Conferido **entre** épocas, e não dentro do laço de lotes, pelo mesmo motivo da
-            # varredura (S-24): o pior caso de resposta é uma unidade de trabalho, e aqui a
-            # unidade é a época porque é ela que decide se o checkpoint muda. Interromper no
-            # meio de uma época devolveria pesos que nenhuma métrica avaliou (S-60).
-            logger.info("Treino cancelado antes da época %d. O melhor checkpoint gravado continua valendo.", epoch)
-            run.cancelled = True
-            break
-
-        model.train()
-        train_loss = 0.0
-        train_hits = 0
-        seen = 0
-
-        for xb, yb in train_loader:
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            logits = model(xb)
-            loss = criterion(logits, yb)
-            loss.backward()
-            optimizer.step()
-
-            train_loss += float(loss.item()) * xb.size(0)
-            train_hits += int((logits.argmax(dim=1) == yb).sum().item())
-            seen += xb.size(0)
-
-        row: dict[str, Any] = {
-            "epoch": epoch,
-            "total_epochs": epochs,
-            "train_loss": train_loss / max(seen, 1),
-            "train_square_acc": train_hits / max(seen, 1),
-        }
-
-        if val_loader is not None:
-            validation = evaluate_validation(model, val_loader, device, cpu_criterion)
-            row["val_loss"] = validation.loss
-            row["val_square_acc"] = validation.square_accuracy
-            row["val_board_exact_acc"] = validation.board_exact_accuracy
-            row["val_per_class_recall"] = validation.per_class_recall
-            # Maior e melhor, ao contrario da loss.
-            metric_for_best = validation.board_exact_accuracy
-        else:
-            validation = None  # type: ignore[assignment]
-            # Sem validacao a unica coisa disponivel e a loss de treino, e ai menor e melhor:
-            # negar deixa a comparacao "maior e melhor" valendo nos dois regimes.
-            metric_for_best = -row["train_loss"]
-
-        # Sem clausula especial para a primeira epoca: num treino do zero o incumbente e
-        # `-inf`, e numa retomada e a metrica real do checkpoint que esta no disco. Era a
-        # clausula especial que fazia a primeira epoca de uma retomada gravar por cima.
-        improved = metric_for_best > run.best_metric
-        if improved:
-            run.best_metric = metric_for_best
-            run.best_epoch = epoch
-            epochs_no_improve = 0
-            best_validation = validation
-            save_checkpoint(
-                Path(model_path),
-                model.state_dict(),
-                metadata={**metadata_base, "best_metric": metric_for_best, "best_epoch": epoch, "metrics": _plain(row)},
-            )
-        else:
-            epochs_no_improve += 1
-
-        row["is_best"] = improved
-        run.history.append(row)
-        if progress_cb is not None:
-            progress_cb(row)
-
-        if patience > 0 and epochs_no_improve >= patience:
-            logger.info(
-                "Parada antecipada: sem melhora de %s por %d épocas. Interrompendo na época %d.",
-                run.best_metric_name,
-                patience,
-                epoch,
-            )
-            break
-
-    # `-inf` so sobrevive se nenhuma epoca rodou (epochs=0); grava-lo seria um numero falso.
-    if run.best_metric == float("-inf"):
-        run.best_metric = 0.0
-    run.metadata = {**metadata_base, "best_metric": run.best_metric, "best_epoch": run.best_epoch}
-
-    if calibrate and best_validation is not None:
-        _calibrate_and_store(run, best_validation, Path(model_path), device)
-    elif calibrate and val_loader is None:
-        logger.info("Sem conjunto de validação: calibração (S-28) pulada, temperatura fica em 1,0.")
-    elif calibrate and not Path(model_path).exists():
-        # Cancelado antes da primeira época (S-60), ou `epochs=0`: não há checkpoint no disco
-        # para ler a temperatura de, e nem deveria haver. Ler daqui era o único caminho que
-        # supunha que sempre existe um arquivo -- suposição que valia enquanto o treino não
-        # podia ser interrompido antes de gravar o primeiro.
-        logger.info("Nenhuma época rodou e não há checkpoint em %s: calibração pulada.", model_path)
-    elif calibrate:
-        # Retomada em que nenhuma epoca superou o melhor registrado: o checkpoint no disco
-        # e de outra execucao e ja tem a temperatura dela. Recalibra-lo com os logits
-        # destes pesos -- que sao piores e nao serao gravados -- daria um T que nao
-        # corresponde ao modelo que esta no arquivo.
-        run.temperature = load_checkpoint(Path(model_path), map_location=device).temperature
-        logger.info(
-            "Nenhuma época superou o melhor registrado (%s = %.6f): o checkpoint no disco não "
-            "foi tocado, e a temperatura dele (%.4f) continua valendo.",
-            run.best_metric_name,
-            run.best_metric,
-            run.temperature,
-        )
-
-    logger.info(
-        "Treino %s em %d épocas. Melhor época: %d (%s = %.6f). Checkpoint em %s.",
-        "cancelado" if run.cancelled else "concluído",
-        len(run.history),
-        run.best_epoch,
-        run.best_metric_name,
-        run.best_metric,
-        model_path,
-    )
-    return run
+    return Trainer(plan, progress=progress_cb, cancel_event=cancel_event).fit()
 
 
 def _plain(row: dict[str, Any]) -> dict[str, Any]:
