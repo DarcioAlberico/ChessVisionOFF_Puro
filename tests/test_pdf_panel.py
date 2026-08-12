@@ -35,6 +35,15 @@ def _evento(x: float, y: float) -> tk.Event:
     return evento
 
 
+def _roda(delta: int) -> tk.Event:
+    """Um giro da roda. `x_root`/`y_root` existem porque a roda é ligada na janela inteira."""
+    evento = _evento(50, 50)
+    evento.delta = delta
+    evento.x_root, evento.y_root = 50, 50
+    evento.state = 0
+    return evento
+
+
 class PdfPanelBoxesTests(unittest.TestCase):
     """Uma raiz Tk para a classe toda, pelo mesmo motivo do `test_gallery_panel`."""
 
@@ -73,7 +82,7 @@ class PdfPanelBoxesTests(unittest.TestCase):
             on_zoom_changed=lambda _zoom: None,
             initial_dir=Path("."),
             on_box_click=self.cliques.append,
-            on_boxes_toggled=self.marcacao.append,
+            on_prefs_changed=lambda: self.marcacao.append(bool(self.panel.show_boxes_var.get())),
         )
         # Uma página na tela sem abrir arquivo nenhum: o painel só precisa dos pixels e de
         # saber para qual página eles são.
@@ -190,6 +199,111 @@ class PdfPanelBoxesTests(unittest.TestCase):
     def test_sem_caixas_o_clique_nao_levanta(self) -> None:
         self._clicar(60, 60)
         self.assertEqual(self.cliques, [])
+
+    # ------------------------------------------------------------- roda e arrasto (S-70)
+
+    def _finge_vista(self, primeiro: float, ultimo: float) -> list[tuple[int, str]]:
+        """Fixa onde a vista está e devolve a lista onde as rolagens vão sendo anotadas.
+
+        O canvas do teste não está mapeado, entao `yview()` de verdade diria sempre "a pagina
+        inteira cabe" -- que é justamente uma das bordas. Fixar a vista é o que permite testar
+        o meio da página."""
+        rolagens: list[tuple[int, str]] = []
+        self.panel.canvas.yview = lambda: (primeiro, ultimo)  # type: ignore[method-assign]
+        self.panel.canvas.yview_scroll = lambda n, what: rolagens.append((n, what))  # type: ignore[method-assign]
+        self.panel._pointer_over_canvas = lambda _evento: True  # type: ignore[method-assign]
+        return rolagens
+
+    def test_a_roda_no_meio_da_pagina_rola(self) -> None:
+        rolagens = self._finge_vista(0.3, 0.7)
+        self.panel._on_wheel(_roda(-120))
+        self.assertEqual(rolagens, [(3, "units")])
+        self.panel._on_wheel(_roda(120))
+        self.assertEqual(rolagens[-1], (-3, "units"))
+
+    def test_a_roda_no_rodape_vira_a_pagina_e_entra_pelo_topo(self) -> None:
+        self._finge_vista(0.6, 1.0)
+        self.panel.page_count = 5
+        self.panel.render_current_page = lambda: True  # type: ignore[method-assign]
+        posicoes: list[float] = []
+        self.panel.canvas.yview_moveto = posicoes.append  # type: ignore[method-assign]
+
+        self.panel._on_wheel(_roda(-120))
+        self.assertEqual(self.panel.page_index, 1)
+        self.assertEqual(posicoes[-1], 0.0, "a página seguinte começa no topo")
+
+    def test_com_a_virada_desligada_a_borda_so_rola(self) -> None:
+        rolagens = self._finge_vista(0.6, 1.0)
+        self.panel.page_count = 5
+        self.panel.flip_pages_var.set(False)
+        self.panel._on_wheel(_roda(-120))
+        self.assertEqual(self.panel.page_index, 0)
+        self.assertEqual(rolagens, [(3, "units")])
+
+    def test_o_ponteiro_fora_da_pagina_deixa_a_roda_passar(self) -> None:
+        """A roda é ligada na janela inteira; quem não é o canvas nao pode engoli-la."""
+        self.assertIsNone(self.panel._on_wheel(_roda(-120)))
+
+    def test_o_ponteiro_e_decidido_pelo_retangulo_do_canvas(self) -> None:
+        """Regressão medida: `winfo_containing` resolve pelo `WindowFromPoint` do Windows.
+
+        Com a janela do app atrás do terminal, ele devolvia `None` para um ponto que estava
+        dentro do canvas -- e a roda parava de funcionar sem nada na tela dizendo por quê. A
+        conta com as coordenadas do próprio widget não depende de empilhamento.
+        """
+        canvas = self.panel.canvas
+        canvas.winfo_ismapped = lambda: True  # type: ignore[method-assign]
+        canvas.winfo_rootx = lambda: 100  # type: ignore[method-assign]
+        canvas.winfo_rooty = lambda: 200  # type: ignore[method-assign]
+        canvas.winfo_width = lambda: 400  # type: ignore[method-assign]
+        canvas.winfo_height = lambda: 300  # type: ignore[method-assign]
+
+        dentro, fora, abaixo = _roda(-120), _roda(-120), _roda(-120)
+        dentro.x_root, dentro.y_root = 150, 250
+        fora.x_root, fora.y_root = 90, 250
+        abaixo.x_root, abaixo.y_root = 150, 600
+
+        self.assertTrue(self.panel._pointer_over_canvas(dentro))
+        self.assertFalse(self.panel._pointer_over_canvas(fora))
+        self.assertFalse(self.panel._pointer_over_canvas(abaixo))
+
+    def test_ctrl_roda_amplia_ancorado_no_ponteiro(self) -> None:
+        self._finge_vista(0.3, 0.7)
+        antes = float(self.panel.zoom_var.get())
+        self.panel._on_wheel_zoom(_roda(120))
+        self.assertGreater(float(self.panel.zoom_var.get()), antes)
+        self.panel._on_wheel_zoom(_roda(-120))
+        self.assertAlmostEqual(float(self.panel.zoom_var.get()), antes, places=6)
+
+    def test_arrastar_desloca_a_pagina_em_vez_de_abrir_diagrama(self) -> None:
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        arrastos: list[tuple[int, int]] = []
+        self.panel.canvas.scan_dragto = lambda x, y, gain=1: arrastos.append((x, y))  # type: ignore[method-assign]
+
+        self.panel._on_press(_evento(60, 60))
+        self.panel._on_drag(_evento(60, 140))
+        self.panel._on_release(_evento(60, 140))
+
+        self.assertEqual(arrastos, [(60, 140)])
+        self.assertEqual(self.cliques, [], "arrasto não é clique")
+        self.assertFalse(self.panel._panning, "o cursor de mão tem de voltar ao normal")
+
+    def test_o_tremor_dentro_da_folga_nao_vira_arrasto(self) -> None:
+        arrastos: list[tuple[int, int]] = []
+        self.panel.canvas.scan_dragto = lambda x, y, gain=1: arrastos.append((x, y))  # type: ignore[method-assign]
+        self.panel._on_press(_evento(60, 60))
+        self.panel._on_drag(_evento(62, 61))
+        self.assertEqual(arrastos, [])
+
+    def test_ajustar_a_largura_sem_pdf_avisa_em_vez_de_calcular(self) -> None:
+        self.panel.page_rgb = None
+        self.panel.fit_width()
+        self.assertTrue(any("Abra um PDF" in mensagem for mensagem in self.status))
+
+    def test_a_preferencia_da_virada_avisa_a_janela_para_ser_lembrada(self) -> None:
+        antes = len(self.marcacao)
+        self.panel.chk_flip.invoke()
+        self.assertEqual(len(self.marcacao), antes + 1)
 
     # ------------------------------------------------------- leitor do sistema (S-69)
 

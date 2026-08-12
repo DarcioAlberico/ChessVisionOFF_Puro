@@ -35,8 +35,10 @@ import logging
 import os
 import subprocess
 import sys
+import time
 import tkinter as tk
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -47,12 +49,25 @@ from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 
 from .page_overlay import PageBoxes
 from .tooltip import Tooltip
+from .viewport import (
+    WheelAction,
+    anchor_after_zoom,
+    clamp_zoom,
+    decide_wheel,
+    fit_width_zoom,
+    wheel_direction,
+    zoomed,
+)
 
 logger = logging.getLogger(__name__)
 
 MIN_SELECTION_PX = 12
 """Arrasto menor que isto é clique errado, não seleção. Abaixo disso o recorte não
 conteria nem uma casa do tabuleiro."""
+
+WHEEL_SCROLL_UNITS = 3
+"""Linhas de canvas por giro da roda. Três é o padrão do Windows, e o canvas mede "unidade"
+em pixels -- então o passo real é o `yscrollincrement`, que aqui fica no padrão do Tk."""
 
 CLICK_SLOP_PX = 4
 """Quanto o ponteiro pode andar entre apertar e soltar e ainda ser um clique.
@@ -117,7 +132,7 @@ class PdfPanel(ttk.Frame):
         on_zoom_changed: Callable[[float], None],
         initial_dir: Path,
         on_box_click: Callable[[int], None] = lambda _indice: None,
-        on_boxes_toggled: Callable[[bool], None] = lambda _ligado: None,
+        on_prefs_changed: Callable[[], None] = lambda: None,
     ) -> None:
         super().__init__(parent, padding=10)
         self._dpi = dpi
@@ -131,8 +146,9 @@ class PdfPanel(ttk.Frame):
         Padrão inerte para que montar o painel sem a janela (nos testes) não exija inventar um
         destino para o clique."""
 
-        self._on_boxes_toggled = on_boxes_toggled
-        """A marcação foi ligada ou desligada. Existe para o estado da aplicação lembrar."""
+        self._on_prefs_changed = on_prefs_changed
+        """Uma preferência de visualização mudou -- marcação de diagramas ou virada de página
+        pela roda. Existe para o estado da aplicação lembrar dela entre execuções."""
         self._on_before_page_change = on_before_page_change
         """Chamado antes de trocar a página exibida: é a janela de tempo em que o editor
         ainda tem o reconhecimento da página de origem para guardar no cache."""
@@ -171,6 +187,12 @@ class PdfPanel(ttk.Frame):
         self._selected_box: int | None = None
         self._press_at: tuple[float, float] | None = None
         self._hover_box: int | None = None
+
+        self.flip_pages_var = tk.BooleanVar(value=True)
+        """Se a roda vira a página ao chegar na borda (S-70)."""
+
+        self._last_page_flip = 0.0
+        self._panning = False
 
         self._build(on_ocr_best, on_ocr_all, on_export, on_cancel_export)
 
@@ -233,6 +255,25 @@ class PdfPanel(ttk.Frame):
         ttk.Button(zoom_row, text="+", width=3, command=lambda: self.zoom(0.1)).pack(side=tk.LEFT, padx=(2, 6))
         self.lbl_zoom = ttk.Label(zoom_row, text="70%")
         self.lbl_zoom.pack(side=tk.LEFT)
+        self.btn_fit_width = ttk.Button(zoom_row, text="Ajustar à largura", command=self.fit_width)
+        self.btn_fit_width.pack(side=tk.LEFT, padx=(8, 0))
+        Tooltip(
+            self.btn_fit_width,
+            "Ctrl + roda do mouse faz o mesmo, com o ponteiro como âncora.\n"
+            "A roda rola a página; na borda, ela vira para a página seguinte.",
+        )
+        self.chk_flip = ttk.Checkbutton(
+            zoom_row,
+            text="Roda vira a página",
+            variable=self.flip_pages_var,
+            command=self._on_prefs_changed,
+        )
+        self.chk_flip.pack(side=tk.LEFT, padx=(12, 0))
+        Tooltip(
+            self.chk_flip,
+            "Ligado: rolar além do fim da página vai para a próxima, no topo.\n"
+            "Desligado: a roda só rola dentro da página exibida.",
+        )
 
         self.chk_boxes = ttk.Checkbutton(
             zoom_row,
@@ -267,6 +308,22 @@ class PdfPanel(ttk.Frame):
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<Motion>", self._on_hover)
+        # Botão do meio: deslocar a página mesmo com a seleção de área ligada, que é quando o
+        # botão esquerdo pertence ao retângulo verde.
+        self.canvas.bind("<ButtonPress-2>", self._on_pan_start)
+        self.canvas.bind("<B2-Motion>", self._on_pan_move)
+        self.canvas.bind("<ButtonRelease-2>", self._on_pan_end)
+        self._bind_wheel()
+
+    def _bind_wheel(self) -> None:
+        """Liga a roda na janela inteira, e não no canvas -- ver `_pointer_over_canvas`."""
+        raiz = self.winfo_toplevel()
+        raiz.bind_all("<MouseWheel>", self._on_wheel)
+        raiz.bind_all("<Shift-MouseWheel>", self._on_wheel_horizontal)
+        raiz.bind_all("<Control-MouseWheel>", self._on_wheel_zoom)
+        # X11 não tem `MouseWheel`: a roda são os botões 4 e 5, sem delta.
+        raiz.bind_all("<Button-4>", partial(self._on_wheel_x11, delta=120))
+        raiz.bind_all("<Button-5>", partial(self._on_wheel_x11, delta=-120))
 
     # ------------------------------------------------------------------------------- zoom
 
@@ -275,11 +332,163 @@ class PdfPanel(ttk.Frame):
         return int(self.page_index_var.get())
 
     def zoom(self, delta: float) -> None:
-        novo = max(0.25, min(2.0, self.zoom_var.get() + delta))
+        """Os botões `+` e `-`. Continuam aditivos: um clique, um passo previsível."""
+        self.apply_zoom(self.zoom_var.get() + delta)
+
+    def apply_zoom(self, value: float, *, anchor: tuple[int, int] | None = None) -> None:
+        """Troca o zoom preservando o ponto de referência. `anchor` é (x, y) no widget.
+
+        Sem âncora o ponto preservado é o **centro da vista**, que é o que faz o botão `+`
+        aumentar o que está no meio da tela em vez de saltar para o canto superior esquerdo.
+        """
+        antigo = float(self.zoom_var.get())
+        novo = clamp_zoom(value)
+        if novo == antigo or self.page_rgb is None:
+            self.zoom_var.set(novo)
+            self.update_zoom_label()
+            return
+
+        largura = float(self.page_rgb.shape[1])
+        altura = float(self.page_rgb.shape[0])
+        ax, ay = anchor if anchor is not None else (self.canvas.winfo_width() // 2, self.canvas.winfo_height() // 2)
+        fx = anchor_after_zoom(
+            pointer_canvas=self.canvas.canvasx(ax),
+            pointer_widget=float(ax),
+            old_span=largura * antigo,
+            new_span=largura * novo,
+        )
+        fy = anchor_after_zoom(
+            pointer_canvas=self.canvas.canvasy(ay),
+            pointer_widget=float(ay),
+            old_span=altura * antigo,
+            new_span=altura * novo,
+        )
+
         self.zoom_var.set(novo)
         self.update_zoom_label()
-        self.refresh_view()
+        self.refresh_view(reset_scroll=False)
+        self.canvas.xview_moveto(fx)
+        self.canvas.yview_moveto(fy)
         self._on_zoom_changed(novo)
+
+    def fit_width(self) -> None:
+        """Ajusta o zoom para a página caber na largura visível."""
+        if self.page_rgb is None:
+            self._on_status("Abra um PDF antes de ajustar o zoom.")
+            return
+        alvo = fit_width_zoom(viewport_px=self.canvas.winfo_width(), page_px=int(self.page_rgb.shape[1]))
+        if alvo is None:
+            return
+        self.apply_zoom(alvo, anchor=(0, 0))
+        self._on_status(f"Zoom ajustado à largura: {int(alvo * 100)}%.")
+
+    # --------------------------------------------------------------------- roda e arrasto
+
+    def _pointer_over_canvas(self, event: tk.Event) -> bool:
+        """Se o ponteiro está sobre a página.
+
+        A roda é ligada com `bind_all` porque no Windows o `<MouseWheel>` vai para o widget com
+        **foco**, e não para o que está sob o ponteiro: ligada só no canvas, ela não rolaria
+        nada enquanto o cursor de texto estivesse no campo de FEN. Ligada na janela inteira, é
+        esta função que devolve o comportamento que todo mundo espera -- rola o que está
+        debaixo do mouse -- sem mexer no foco de ninguém.
+
+        **A conta é aritmética de propósito.** A primeira versão perguntava ao
+        `winfo_containing`, que no Windows resolve pelo `WindowFromPoint` do sistema: ele
+        devolve `None` quando *qualquer* outra janela cobre aquele ponto da tela. Medido com a
+        janela do app atrás do terminal, sobre um canvas de 909x740 na posição certa:
+        `winfo_containing` devolveu `None` e a roda não rolava nada. Um retângulo comparado com
+        as coordenadas do próprio widget não depende de empilhamento -- nem do tooltip que o
+        painel abre justamente por cima dele.
+        """
+        if not self.canvas.winfo_exists() or not self.canvas.winfo_ismapped():
+            return False
+        x, y = self._canvas_event(event)
+        return 0 <= x < self.canvas.winfo_width() and 0 <= y < self.canvas.winfo_height()
+
+    def _canvas_event(self, event: tk.Event) -> tuple[int, int]:
+        """O evento em coordenadas do canvas. Vem da janela, então o deslocamento é relativo."""
+        return (
+            int(event.x_root) - self.canvas.winfo_rootx(),
+            int(event.y_root) - self.canvas.winfo_rooty(),
+        )
+
+    def _on_wheel(self, event: tk.Event) -> str | None:
+        if not self._pointer_over_canvas(event) or self.page_rgb is None:
+            return None
+
+        direcao = wheel_direction(int(event.delta))
+        decorrido = time.monotonic() - self._last_page_flip
+        acao = decide_wheel(
+            direction=direcao,
+            view=self.canvas.yview(),
+            flip_pages=bool(self.flip_pages_var.get()),
+            since_last_flip=decorrido,
+        )
+        if acao is WheelAction.NEXT_PAGE:
+            self._flip_page(+1)
+        elif acao is WheelAction.PREV_PAGE:
+            self._flip_page(-1)
+        else:
+            self.canvas.yview_scroll(-direcao * WHEEL_SCROLL_UNITS, "units")
+        return "break"
+
+    def _on_wheel_horizontal(self, event: tk.Event) -> str | None:
+        if not self._pointer_over_canvas(event) or self.page_rgb is None:
+            return None
+        self.canvas.xview_scroll(-wheel_direction(int(event.delta)) * WHEEL_SCROLL_UNITS, "units")
+        return "break"
+
+    def _on_wheel_zoom(self, event: tk.Event) -> str | None:
+        if not self._pointer_over_canvas(event) or self.page_rgb is None:
+            return None
+        direcao = wheel_direction(int(event.delta))
+        self.apply_zoom(zoomed(self.zoom_var.get(), direcao), anchor=self._canvas_event(event))
+        return "break"
+
+    def _on_wheel_x11(self, event: tk.Event, *, delta: int) -> str | None:
+        """Botões 4 e 5 do X11 traduzidos para o `delta` que o resto do painel entende.
+
+        `event.state` é anotado como `int | str` no `tkinter`, e é `int` em evento de mouse --
+        o `str` existe por causa dos eventos virtuais.
+        """
+        event.delta = delta
+        estado = event.state if isinstance(event.state, int) else 0
+        if estado & 0x0004:  # Control
+            return self._on_wheel_zoom(event)
+        if estado & 0x0001:  # Shift
+            return self._on_wheel_horizontal(event)
+        return self._on_wheel(event)
+
+    def _flip_page(self, delta: int) -> None:
+        """Vira a página pela roda, e põe a vista na borda por onde ela entrou.
+
+        Entrar pelo topo ao descer e pelo rodapé ao subir é o que faz a sequência parecer um
+        documento contínuo; cair sempre no topo faria a leitura para trás recomeçar a página.
+        """
+        antes = self.page_index
+        if delta > 0:
+            self.next_page()
+        else:
+            self.prev_page()
+        if self.page_index == antes:
+            return
+
+        self._last_page_flip = time.monotonic()
+        self.canvas.yview_moveto(0.0 if delta > 0 else 1.0)
+
+    def _on_pan_start(self, event: tk.Event) -> None:
+        self.canvas.scan_mark(event.x, event.y)
+        self._panning = True
+        self.canvas.configure(cursor="fleur")
+
+    def _on_pan_move(self, event: tk.Event) -> None:
+        if self._panning:
+            self.canvas.scan_dragto(event.x, event.y, gain=1)
+
+    def _on_pan_end(self, _event: tk.Event) -> None:
+        self._panning = False
+        self.canvas.configure(cursor="")
 
     def set_zoom(self, value: float) -> None:
         self.zoom_var.set(value)
@@ -413,7 +622,12 @@ class PdfPanel(ttk.Frame):
         self._on_page_rendered(idx)
         return True
 
-    def refresh_view(self) -> None:
+    def refresh_view(self, *, reset_scroll: bool = True) -> None:
+        """Redesenha a página no zoom atual. `reset_scroll` desligado é o caminho do zoom.
+
+        Página nova começa no topo; mudar o zoom, não -- ali quem manda é a âncora calculada
+        por `apply_zoom`, e voltar ao topo antes dela jogaria fora o lugar onde a pessoa estava.
+        """
         if self.page_rgb is None:
             return
 
@@ -428,8 +642,9 @@ class PdfPanel(ttk.Frame):
         self._canvas_image_id = self.canvas.create_image(0, 0, anchor="nw", image=self._page_photo)
         self._select_rect_id = None
         self.canvas.configure(scrollregion=(0, 0, pil.width, pil.height))
-        self.canvas.xview_moveto(0)
-        self.canvas.yview_moveto(0)
+        if reset_scroll:
+            self.canvas.xview_moveto(0)
+            self.canvas.yview_moveto(0)
         # Depois da imagem: `delete("all")` acima levou os retângulos junto, e eles dependem do
         # zoom que acabou de ser aplicado.
         self._draw_boxes()
@@ -466,9 +681,8 @@ class PdfPanel(ttk.Frame):
         self._draw_boxes()
 
     def on_boxes_toggle(self) -> None:
-        ligado = bool(self.show_boxes_var.get())
         self._draw_boxes()
-        self._on_boxes_toggled(ligado)
+        self._on_prefs_changed()
 
     def _draw_boxes(self) -> None:
         """Redesenha os retângulos. Apagar por etiqueta, e não `delete("all")`: a página fica."""
@@ -575,7 +789,13 @@ class PdfPanel(ttk.Frame):
 
     def _on_press(self, event: tk.Event) -> None:
         self._press_at = (self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
-        if not self._select_mode or self.page_rgb is None:
+        if not self._select_mode:
+            # Fora do modo de seleção, o botão esquerdo é a mão do leitor: marca o ponto agora
+            # e só arrasta se o ponteiro andar. Quem não andar continua sendo um clique, e o
+            # clique continua abrindo o diagrama (S-68).
+            self.canvas.scan_mark(event.x, event.y)
+            return
+        if self.page_rgb is None:
             return
         x, y = self._point(event)
         self._select_start = (x, y)
@@ -583,7 +803,10 @@ class PdfPanel(ttk.Frame):
         self._select_rect_id = self.canvas.create_rectangle(x, y, x, y, outline="#00ff88", width=2, dash=(6, 4))
 
     def _on_drag(self, event: tk.Event) -> None:
-        if not self._select_mode or self.page_rgb is None or self._select_start is None:
+        if not self._select_mode:
+            self._drag_page(event)
+            return
+        if self.page_rgb is None or self._select_start is None:
             return
         x, y = self._point(event)
         x0, y0 = self._select_start
@@ -594,7 +817,32 @@ class PdfPanel(ttk.Frame):
         else:
             self.canvas.coords(self._select_rect_id, x0, y0, x, y)
 
+    def _drag_page(self, event: tk.Event) -> None:
+        """A mão do leitor: arrastar com o botão esquerdo desloca a página.
+
+        Só começa depois da folga do clique, e é isso que faz o mesmo botão servir para as duas
+        coisas -- abrir o diagrama de baixo (S-68) e puxar a página. Sem a folga, quem arrasta
+        abriria um diagrama ao soltar; sem o arrasto, a única forma de andar na página ampliada
+        seria a barra de rolagem.
+        """
+        if self.page_rgb is None or self._press_at is None:
+            return
+        if not self._panning:
+            andou = abs(self.canvas.canvasx(event.x) - self._press_at[0]) > CLICK_SLOP_PX or abs(
+                self.canvas.canvasy(event.y) - self._press_at[1]
+            ) > CLICK_SLOP_PX
+            if not andou:
+                return
+            self._panning = True
+            self.canvas.configure(cursor="fleur")
+        self.canvas.scan_dragto(event.x, event.y, gain=1)
+
     def _on_release(self, event: tk.Event) -> None:
+        if self._panning:
+            # Terminou um arrasto: a folga já garantiu que isto não era um clique.
+            self._on_pan_end(event)
+            self._press_at = None
+            return
         if not self._select_mode:
             self._release_on_box(event)
             return

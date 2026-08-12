@@ -65,6 +65,12 @@ class AppState:
     lendo o texto do livro, e essa escolha tem de sobreviver ao fechamento da janela -- senão
     ela vira uma tarefa a refazer toda vez."""
 
+    wheel_flips_page: bool = True
+    """A roda vira a página ao chegar na borda (S-70).
+
+    Ligado por padrão porque é o que devolve a leitura corrida que a aba "Leitura" dava. Quem
+    trabalha um diagrama de cada vez costuma desligar, e a escolha tem de durar."""
+
     review_queue_path: str = ""
     """Fila de revisão aberta por último (S-22). Vazio = nenhuma."""
 
@@ -91,6 +97,7 @@ class AppState:
             "pdf_history": {str(key): int(value) for key, value in self.pdf_history.items()},
             "show_heatmap": bool(self.show_heatmap),
             "show_diagram_boxes": bool(self.show_diagram_boxes),
+            "wheel_flips_page": bool(self.wheel_flips_page),
             "review_queue_path": self.review_queue_path,
         }
 
@@ -158,6 +165,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     show_boxes = raw.get("show_diagram_boxes")
     if isinstance(show_boxes, bool):
         state.show_diagram_boxes = show_boxes
+
+    flips = raw.get("wheel_flips_page")
+    if isinstance(flips, bool):
+        state.wheel_flips_page = flips
 
     queue_path = raw.get("review_queue_path")
     if isinstance(queue_path, str):

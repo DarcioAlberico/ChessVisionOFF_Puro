@@ -106,6 +106,7 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 |---|---|
 | `pdf_panel.py` | Exibir o PDF, navegar, zoom, seleção de área, modo leitura, e os diagramas marcados sobre a página (S-68). |
 | `page_overlay.py` | Onde estão os diagramas da página, o que um clique neles acerta e o que ele significa (S-68). **Sem Tk.** |
+| `viewport.py` | O que a roda faz, para onde o zoom puxa e quanto cabe na largura (S-70). **Sem Tk.** |
 | `result_panel.py` | O editor **desenhado**: widgets, diálogos e gravação. O estado é do `editor_model`. |
 | `editor_model.py` | As três listas paralelas, o índice e o vínculo — e o que `Ctrl+S` significa (S-49). **Sem Tk.** |
 | `study_panel.py` | Tabuleiro de estudo, árvore de variantes, PGN, motor. |
@@ -123,8 +124,8 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 
 `app_tkinter.py` monta esses painéis e liga um ao outro. Nada mais.
 
-**Os cinco módulos sem Tk não são organização.** `editor_model`, `board_model`, `busy`,
-`board_edit` e `page_overlay` são onde mora a regra que, dentro de um widget, só se testava dirigindo a
+**Os seis módulos sem Tk não são organização.** `editor_model`, `board_model`, `busy`,
+`board_edit`, `page_overlay` e `viewport` são onde mora a regra que, dentro de um widget, só se testava dirigindo a
 janela — e um teste que precisa de janela é um teste que quase não se escreve. `tests/` tem
 uma varredura de importação em cada um: se `tkinter` voltar a entrar ali, a suíte reprova.
 

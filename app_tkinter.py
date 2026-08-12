@@ -12,6 +12,7 @@ parâmetros que o `OcrService` espera.
 | detectar, prever, inferir a vez, gravar amostra | `service.py` |
 | PDF: exibir, navegar, selecionar área, marcar diagramas | `ui/pdf_panel.py` |
 | onde estão os diagramas da página e o que um clique neles significa | `ui/page_overlay.py` |
+| o que a roda do mouse faz e para onde o zoom puxa | `ui/viewport.py` |
 | editar o diagrama, legalidade, salvar, fila e dataset | `ui/result_panel.py` |
 | tabuleiro de estudo, variantes e PGN | `ui/study_panel.py` |
 | exportar o livro para PGN | `ui/export_controller.py` |
@@ -355,7 +356,7 @@ class ChessOcrTkApp:
             on_zoom_changed=lambda _valor: self._save_app_state(),
             initial_dir=ROOT,
             on_box_click=self._on_box_click,
-            on_boxes_toggled=lambda _ligado: self._save_app_state(),
+            on_prefs_changed=self._save_app_state,
         )
         self.pdf_panel.pack(fill=tk.BOTH, expand=True)
 
@@ -419,6 +420,7 @@ class ChessOcrTkApp:
         if self.pdf_panel is not None:
             self.pdf_panel.set_zoom(self.state.pdf_zoom)
             self.pdf_panel.show_boxes_var.set(self.state.show_diagram_boxes)
+            self.pdf_panel.flip_pages_var.set(self.state.wheel_flips_page)
         if self.result_panel is not None:
             self.result_panel.board_zoom_var.set(self.state.board_zoom)
             self.result_panel.heatmap_var.set(self.state.show_heatmap)
@@ -457,6 +459,7 @@ class ChessOcrTkApp:
             if self.pdf_panel is not None:
                 self.state.pdf_zoom = float(self.pdf_panel.zoom_var.get())
                 self.state.show_diagram_boxes = bool(self.pdf_panel.show_boxes_var.get())
+                self.state.wheel_flips_page = bool(self.pdf_panel.flip_pages_var.get())
             if self.result_panel is not None:
                 self.state.board_zoom = float(self.result_panel.board_zoom_var.get())
                 self.state.show_heatmap = bool(self.result_panel.heatmap_var.get())
@@ -976,6 +979,11 @@ class ChessOcrTkApp:
                 "<Control-r>": self.ocr_all,
                 "<Delete>": self._on_result(lambda p: p.delete_selected_square()),
                 "<Control-n>": self._open_next_review_item,
+                # Página do PDF, e não diagrama: as setas já são do editor (S-20), e virar a
+                # página é a outra navegação que a leitura pede o tempo todo (S-70).
+                "<Prior>": self._on_pdf(lambda p: p.prev_page()),
+                "<Next>": self._on_pdf(lambda p: p.next_page()),
+                "<Control-0>": self._on_pdf(lambda p: p.fit_width()),
             },
         )
 
@@ -983,6 +991,13 @@ class ChessOcrTkApp:
         def _run() -> None:
             if self.result_panel is not None:
                 action(self.result_panel)
+
+        return _run
+
+    def _on_pdf(self, action: Callable[[PdfPanel], None]) -> Callable[[], None]:
+        def _run() -> None:
+            if self.pdf_panel is not None:
+                action(self.pdf_panel)
 
         return _run
 

@@ -394,6 +394,16 @@ Numeros medidos de memoria e tempo estao em [docs/EXPERIMENTS.md](docs/EXPERIMEN
 6. Treinar modelo.
 7. Repetir ciclo para reduzir correcoes manuais.
 
+**Rolagem e zoom no visualizador.** A roda do mouse rola a pagina que estiver **sob o
+ponteiro** -- nao importa onde esteja o foco do teclado. Chegando ao fim da pagina, insistir
+na roda vai para a seguinte, que entra pelo topo (e para tras, pelo rodape); a caixa **Roda
+vira a pagina** desliga isso para quem prefere que a roda so role. `Shift+roda` rola na
+horizontal, `Ctrl+roda` amplia **ancorado no ponteiro** -- o ponto sob o cursor fica parado,
+que e o que evita cacar de volta, na barra de rolagem, o diagrama que voce estava tentando
+ver de perto. Arrastar com o botao esquerdo desloca a pagina (a mao do leitor); com o botao
+do meio, funciona ate durante a selecao de area. **Ajustar a largura** (ou `Ctrl+0`) faz a
+pagina caber na janela.
+
 **Os diagramas marcados na pagina.** Ao trocar de pagina, o detector roda em segundo plano e
 desenha um retangulo numerado sobre cada diagrama; o numero e o mesmo do seletor
 "Selecionado" da aba **Resultado**. Clicar num retangulo abre aquele diagrama no editor --
@@ -420,6 +430,8 @@ Atalhos do ciclo de correcao (desligados quando o foco esta num campo de texto):
 | tecla | acao |
 |---|---|
 | `←` / `→` | diagrama anterior / proximo |
+| `PageUp` / `PageDown` | pagina anterior / proxima do PDF |
+| `Ctrl+0` | ajustar o zoom a largura da pagina |
 | `Ctrl+S` | salvar a amostra atual |
 | `Ctrl+Shift+S` | salvar todas |
 | `Ctrl+R` | rodar o OCR na pagina de novo |
