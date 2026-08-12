@@ -13,7 +13,8 @@ concurrency:
 
 jobs:
   check:
-    # Windows: o projeto depende de tkinter e, opcionalmente, de WebView2/pythonnet.
+    # Windows porque e a maquina de desenvolvimento e os testes de Tk precisam de display.
+    # Nao ha mais dependencia de plataforma no codigo: WebView2/pythonnet sairam na S-69.
     runs-on: windows-latest
 
     steps:

@@ -58,6 +58,13 @@ class AppState:
     show_heatmap: bool = True
     """Heatmap de incerteza ligado no tabuleiro de resultado (S-21)."""
 
+    show_diagram_boxes: bool = True
+    """Diagramas marcados sobre a página no visualizador (S-68).
+
+    Ligado por padrão: é como se descobre que a marcação existe. Quem a desliga costuma estar
+    lendo o texto do livro, e essa escolha tem de sobreviver ao fechamento da janela -- senão
+    ela vira uma tarefa a refazer toda vez."""
+
     review_queue_path: str = ""
     """Fila de revisão aberta por último (S-22). Vazio = nenhuma."""
 
@@ -83,6 +90,7 @@ class AppState:
             "board_zoom": float(self.board_zoom),
             "pdf_history": {str(key): int(value) for key, value in self.pdf_history.items()},
             "show_heatmap": bool(self.show_heatmap),
+            "show_diagram_boxes": bool(self.show_diagram_boxes),
             "review_queue_path": self.review_queue_path,
         }
 
@@ -146,6 +154,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     show_heatmap = raw.get("show_heatmap")
     if isinstance(show_heatmap, bool):
         state.show_heatmap = show_heatmap
+
+    show_boxes = raw.get("show_diagram_boxes")
+    if isinstance(show_boxes, bool):
+        state.show_diagram_boxes = show_boxes
 
     queue_path = raw.get("review_queue_path")
     if isinstance(queue_path, str):
