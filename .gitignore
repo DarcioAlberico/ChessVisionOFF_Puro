@@ -27,10 +27,23 @@ data/review_queue.json
 data/review_cache/
 data/quarantine.csv
 data/labels.csv.bak-*
+data/splits.csv.bak-*
+# Orfaos aposentados pelo `cvoff-audit --prune-orphans` (S-63): sao os mesmos PNGs de
+# data/samples/, que ja estao fora por peso -- e o diretorio existe justamente para que a
+# poda seja reversivel, nao para ser distribuido.
+data/orphans/
+# Galeria (S-67): o `*.index.json` e derivado do PDF (posicoes e caminhos de recorte) e
+# reconstruivel varrendo o livro. O `<livro>.json` das anotacoes e trabalho humano, mas
+# descreve o conteudo de um PDF protegido -- fica de fora pela mesma regra do review_cache.
+data/gallery/
 # Indice de procedencia (S-52): dHash de cada diagrama dos 27 PDFs. Nao e versionavel pelo
 # mesmo motivo do review_cache -- e derivado de PDF protegido --, e reconstruir custa horas
 # de CPU. Quem clonar o repositorio roda `cvoff-provenance --build`.
 data/provenance_index.jsonl
+# Compactados do dataset (`data/samples.7z` tem 1,5 GB): sao os mesmos PNGs que ja estao
+# fora por peso, so que num arquivo so. O GitHub recusa acima de 100 MB, e um `git add -A`
+# distraido poria isso no historico para sempre -- e do historico nao sai.
+data/*.7z
 
 # Checkpoints do modelo (~8,7 MB cada). Distribuir por release, nao por git.
 # Recursivo de proposito: a Fase 5 gravou 39 MB em models/experiments/ (S-29), e
