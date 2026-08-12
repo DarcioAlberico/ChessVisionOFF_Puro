@@ -9,13 +9,18 @@ import numpy as np
 
 from chess_diagram_ocr.audit import (
     DUPLICATE_HASH_SIZE,
+    DUPLICATE_SHARE_CEILING,
     apply_side_to_move_fixes,
     audit_dataset,
     backup_csv,
     dhash,
+    drop_missing_labels,
     find_duplicate_groups,
     hamming_distance,
+    orphans_dir_for,
+    prune_orphan_images,
     quarantine_fatal_labels,
+    read_label_rows,
     remove_duplicate_labels,
 )
 
@@ -238,6 +243,126 @@ class MutationTests(unittest.TestCase):
             content = fx.csv.read_text(encoding="utf-8")
             self.assertIn("a.png", content)
             self.assertNotIn("b.png", content)
+
+
+class HygieneTests(unittest.TestCase):
+    """S-63: as duas ações que a auditoria só relatava, e o teto de redundância."""
+
+    def test_prune_orphans_moves_instead_of_deleting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.add("usada.png", LEGAL)
+            fx.write()
+            cv2.imwrite(str(fx.samples / "orfa.png"), _board_image(77))
+            report = audit_dataset(fx.csv, fx.samples)
+            self.assertEqual(report.orphan_images, ["orfa.png"])
+
+            movidos = prune_orphan_images(report)
+
+            self.assertEqual(len(movidos), 1)
+            self.assertTrue(movidos[0].exists(), "o orfao tem de continuar existindo em outro lugar")
+            self.assertFalse((fx.samples / "orfa.png").exists())
+            self.assertTrue((fx.samples / "usada.png").exists())
+            self.assertEqual(movidos[0].parent.parent, orphans_dir_for(fx.samples))
+
+    def test_prune_orphans_does_not_overwrite_a_previous_prune(self) -> None:
+        # Dois arquivos com o mesmo nome sao dois trabalhos diferentes; o segundo nao pode
+        # apagar o primeiro so porque a poda de hoje repetiu um nome de ontem.
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.write()
+            destino = orphans_dir_for(fx.samples) / "anterior"
+            destino.mkdir(parents=True)
+            (destino / "orfa.png").write_bytes(b"conteudo antigo")
+
+            cv2.imwrite(str(fx.samples / "orfa.png"), _board_image(78))
+            report = audit_dataset(fx.csv, fx.samples)
+            movidos = prune_orphan_images(report, orphans_dir=destino.parent / "hoje")
+
+            self.assertEqual(len(movidos), 1)
+            self.assertEqual((destino / "orfa.png").read_bytes(), b"conteudo antigo")
+
+    def test_drop_missing_moves_only_the_rows_without_image(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.add("existe.png", LEGAL)
+            fx.add("sumiu.png", LEGAL_OTHER, write_image=False)
+            fx.write()
+            report = audit_dataset(fx.csv, fx.samples)
+            quarentena = Path(tmp) / "quarantine.csv"
+
+            dropped = drop_missing_labels(fx.csv, report, quarentena)
+
+            self.assertEqual(dropped, 1)
+            content = fx.csv.read_text(encoding="utf-8")
+            self.assertIn("existe.png", content)
+            self.assertNotIn("sumiu.png", content)
+
+    def test_drop_missing_preserves_the_fen_in_quarantine(self) -> None:
+        """A FEN é trabalho humano e a imagem é reextraível: apagar a linha inverteria o valor."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.add("sumiu.png", LEGAL_OTHER, write_image=False)
+            fx.write()
+            quarentena = Path(tmp) / "quarantine.csv"
+
+            drop_missing_labels(fx.csv, audit_dataset(fx.csv, fx.samples), quarentena)
+
+            texto = quarentena.read_text(encoding="utf-8")
+            self.assertIn("sumiu.png", texto)
+            self.assertIn(LEGAL_OTHER, texto)
+            self.assertIn("imagem ausente", texto)
+
+    def test_the_two_actions_together_leave_the_same_set_of_names(self) -> None:
+        """O critério de aceite da S-63, escrito como teste."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.add("ok.png", LEGAL)
+            fx.add("sumiu.png", LEGAL_OTHER, write_image=False)
+            fx.write()
+            cv2.imwrite(str(fx.samples / "orfa.png"), _board_image(79))
+
+            report = audit_dataset(fx.csv, fx.samples)
+            drop_missing_labels(fx.csv, report, Path(tmp) / "quarantine.csv")
+            prune_orphan_images(audit_dataset(fx.csv, fx.samples, check_duplicates=False))
+
+            depois = audit_dataset(fx.csv, fx.samples)
+            self.assertEqual(depois.orphan_images, [])
+            self.assertEqual(depois.of_kind("imagem-ausente"), [])
+            no_disco = {path.name for path in fx.samples.glob("*.png")}
+            no_csv = {name for name, _fen in read_label_rows(fx.csv)}
+            self.assertEqual(no_disco, no_csv)
+            self.assertEqual(no_disco, {"ok.png"})
+
+    def test_duplicate_share_flags_growth_above_the_ceiling(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            shared = _board_image(31)
+            fx.add("a.png", LEGAL, image=shared)
+            fx.add("b.png", LEGAL, image=shared)
+            fx.write()
+
+            report = audit_dataset(fx.csv, fx.samples)
+
+            # 1 redundante em 2 utilizaveis = 50%, muito acima do teto.
+            self.assertEqual(report.duplicate_count, 1)
+            self.assertAlmostEqual(report.duplicate_share, 0.5)
+            self.assertTrue(report.duplicates_above_ceiling)
+
+    def test_duplicate_share_is_zero_without_labels(self) -> None:
+        # Um CSV sem rotulo utilizavel nao tem excesso de redundancia: tem outro problema.
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.write()
+            report = audit_dataset(fx.csv, fx.samples)
+
+            self.assertEqual(report.duplicate_share, 0.0)
+            self.assertFalse(report.duplicates_above_ceiling)
+
+    def test_ceiling_is_above_todays_measured_share(self) -> None:
+        # O teto e uma guarda contra crescimento, nao uma reprovacao do estado de hoje:
+        # 248 redundantes em 3.454 rotulos sao 7,2%.
+        self.assertGreater(DUPLICATE_SHARE_CEILING, 248 / 3454)
 
 
 if __name__ == "__main__":

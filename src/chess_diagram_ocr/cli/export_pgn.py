@@ -7,17 +7,22 @@ from pathlib import Path
 
 from ..config import (
     ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
 )
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_to_pgn import default_pgn_output_path, save_pdf_positions_to_pgn
+from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
 
 SIDE_SOURCE_LABELS = {
     "text": "pelo texto do PDF",
+    "ocr": "por OCR da legenda",
+    "text-page-scope": "pelo cabecalho da pagina",
+    "ocr-page-scope": "por OCR do cabecalho da pagina",
     "legality": "pela legalidade da posicao",
     "default": "assumido brancas",
 }
@@ -29,7 +34,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=None, help="Padrao: PGN/<nome-do-pdf>.pgn")
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
     parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--max-boards-per-page", type=int, default=8)
+    parser.add_argument("--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS)
     parser.add_argument(
         "--orientation",
         choices=("auto", "0", "180"),
@@ -74,6 +79,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "elas saem com o header [DuplicateOf] apontando a primeira ocorrencia."
         ),
     )
+    parser.add_argument(
+        "--lichess-links",
+        action="store_true",
+        help=(
+            "Acrescenta o link de analise do Lichess como comentario de cada diagrama (S-67). "
+            "E so o **padrao**: diagrama que declarou o contrario na galeria "
+            "(data/gallery/<livro>.json) mantem o que foi declarado."
+        ),
+    )
+    add_ocr_argument(parser)
     parser.add_argument("--show-review", type=int, default=10, help="Itens de revisao listados no fim.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Log em nivel DEBUG.")
     return parser.parse_args(argv)
@@ -107,7 +122,9 @@ def main(argv: list[str] | None = None) -> int:
         event_name=args.event,
         accept_threshold=args.accept_threshold,
         read_text=args.read_text,
+        caption_reader=caption_reader_from_args(args),
         dedupe=args.dedupe,
+        lichess_links=args.lichess_links,
         progress_callback=_progress,
     )
 

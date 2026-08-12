@@ -20,7 +20,7 @@ difíceis para o contorno (`1937 Kemeri`, `AAGAARD - Practical Chess Defence`, `
 que o render da página a 220 DPI produz.
 """
 
-from .embedded import DiagramCandidate, candidates_from_embedded_images, trim_to_grid
+from .embedded import DiagramCandidate, candidates_from_embedded_images, trim_to_frame, trim_to_grid
 from .hybrid import detect_diagrams, detect_diagrams_in_pdf_page, refine_candidate_with_contour
 
 __all__ = [
@@ -29,5 +29,6 @@ __all__ = [
     "detect_diagrams",
     "detect_diagrams_in_pdf_page",
     "refine_candidate_with_contour",
+    "trim_to_frame",
     "trim_to_grid",
 ]

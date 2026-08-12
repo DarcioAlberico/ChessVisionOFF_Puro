@@ -8,6 +8,7 @@ from pathlib import Path
 from ..config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_DATASET_CSV,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
@@ -36,7 +37,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--labels", type=Path, default=DEFAULT_DATASET_CSV, help="CSV usado para achar classes raras.")
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--max-boards-per-page", type=int, default=8)
+    parser.add_argument("--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS)
     parser.add_argument("--orientation", choices=("auto", "0", "180"), default=DEFAULT_ORIENTATION_MODE)
     parser.add_argument("--start-page", type=int, default=0)
     parser.add_argument("--end-page", type=int, default=None, help="Exclusivo. Padrao: ate o fim do PDF.")

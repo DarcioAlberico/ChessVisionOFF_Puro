@@ -1,6 +1,11 @@
 # Roadmap — ChessVisionOFF_Puro
 
-Base: [ANALISE.md](ANALISE.md). Detalhes de implementação: [SPEC.md](SPEC.md). Números medidos: [BASELINE.md](BASELINE.md).
+Base: [ANALISE.md](ANALISE.md). Detalhes de implementação: [SPEC.md](SPEC.md). Números medidos: [BASELINE.md](BASELINE.md) e [EXPERIMENTS.md](EXPERIMENTS.md).
+
+> Este documento cobre as **Fases 0 a 6**, todas concluídas. A continuação está em
+> [ROADMAP_FASE7.md](ROADMAP_FASE7.md) (Fases 7 a 11) e [SPEC_FASE7.md](SPEC_FASE7.md)
+> (S-37 a S-63) — inclusive seis defeitos abertos hoje, entre eles 45 amostras que não
+> chegam ao treino porque `ensure_splits` nunca é chamada.
 
 Estimativas em dias de trabalho focado de uma pessoa. As fases são sequenciais por dependência: cada uma depende de algo que a anterior estabelece.
 
@@ -14,7 +19,7 @@ Fase 1  Verdade e medição                    3–5 d   ▸ sem isso "melhorou"
 Fase 2  Precisão do OCR                      5–8 d   ▸ maior ganho de qualidade do projeto
 Fase 3  Semântica: lado a jogar e metadados  4–6 d   ▸ concluída — metade dos exercícios saía errada
 Fase 4  Produtividade humana                 5–8 d   ▸ concluída — corrigir deixou de ser editar FEN
-Fase 5  Modelo e desempenho                  4–6 d   ▸ só faz sentido depois da Fase 1
+Fase 5  Modelo e desempenho                  4–6 d   ▸ concluída — 6,11 GiB de RAM viraram 1,27
 Fase 6  Consolidação do produto              5–8 d   ▸ unificação, i18n, empacotamento
 ```
 
@@ -80,7 +85,7 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 ### Pendências conhecidas da Fase 1
 
 - **1.8 (fixtures e regressão)** — os testes de `fen_utils`, `dataset`, `inference`, `decode`, `splits` e `audit` existem e rodam sem dados. Falta o **teste de regressão de acurácia**, que depende de fixtures versionados (S-09): hoje `data/samples/` está fora do git, então um teste de acurácia pularia na CI e daria falsa sensação de cobertura. O baseline em `docs/BASELINE.md` cumpre o papel de trava manual até lá.
-- **O checkpoint não guarda com que `val_loss` foi salvo.** Consequência prática, encontrada ao retomar o treino do baseline: retomar zera o controle de melhor época e a primeira época sobrescreve o arquivo mesmo se for pior. Hoje há um `warning` avisando; a correção é gravar metadados no checkpoint (item 5.3).
+- ~~**O checkpoint não guarda com que `val_loss` foi salvo.**~~ **Resolvido na Fase 5 (item 5.3):** o checkpoint grava `best_metric` e `best_epoch`, e a retomada os lê de volta em vez de recomeçar em infinito. A métrica também mudou — é `val_board_exact_acc`, não `val_loss` (item 5.4).
 
 ---
 
@@ -572,35 +577,594 @@ Fase 6 (S-31).
 
 **Por que só agora:** sem a Fase 1 não há como saber se uma mudança de modelo ajudou. E a análise mostra que o classificador **não é** o gargalo atual — este é o item de menor prioridade relativa.
 
-| # | Entrega | Ref. spec |
-|---|---|---|
-| 5.1 | Cache do dataset limitado (LRU) — resolve os 5,8 GiB de RAM | S-26 |
-| 5.2 | `num_workers` configurável | S-26 |
-| 5.3 | Treino reprodutível: `--fresh`, `strict=True`, semente e split registrados no checkpoint | S-27 |
-| 5.4 | Métricas de treino corretas: exata por tabuleiro, por classe, pesos de classe para o desbalanceamento | S-27 |
-| 5.5 | Calibração de confiança (temperature scaling) no conjunto de validação | S-28 |
-| 5.6 | Experimento controlado: entrada em cor vs cinza, 32/48/64 px, backbone alternativo — decidir por medição | S-29 |
-| 5.7 | TTA leve (deslocamentos de ±2 px) com voto | S-29 |
-| 5.8 | Instalar torch com CUDA; exportação ONNX opcional para CPU rápida | S-30 |
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 5.1 | Cache do dataset limitado (LRU) — resolve os 5,8 GiB de RAM | S-26 | ✅ 6,11 → **1,27 GiB** de pico |
+| 5.2 | `num_workers` configurável | S-26 | ✅ entregue; medido, **não compensa** (ver abaixo) |
+| 5.3 | Treino reprodutível: `--fresh`, `strict=True`, semente e split registrados no checkpoint | S-27 | ✅ `checkpoint.py` reescrito |
+| 5.4 | Métricas de treino corretas: exata por tabuleiro, por classe, pesos de classe para o desbalanceamento | S-27 | ✅ com o padrão de pesos invertido pela medição |
+| 5.5 | Calibração de confiança (temperature scaling) no conjunto de validação | S-28 | ✅ `calibration.py` |
+| 5.6 | Experimento controlado: entrada em cor vs cinza, 32/48/64 px, backbone alternativo — decidir por medição | S-29 | ✅ `cvoff-experiment`, 7 variantes |
+| 5.7 | TTA leve (deslocamentos de ±2 px) com voto | S-29 | ✅ 7 vistas, desligado por padrão |
+| 5.8 | Instalar torch com CUDA; exportação ONNX opcional para CPU rápida | S-30 | ✅ dispositivo explícito + `cvoff-export-onnx` |
 
-**Critério de saída:** treino de época completa sem exceder 2 GiB de RAM; métricas reprodutíveis entre execuções; ganho ou não-ganho de cada experimento registrado.
+**Critério de saída:** atingido nos três itens — época completa em **1,27 GiB** (limite: 2 GiB) e duas execuções com a mesma semente produzindo métricas bit a bit idênticas, o que virou teste da suíte. O terceiro ("ganho ou não-ganho de cada experimento registrado") está em [EXPERIMENTS.md](EXPERIMENTS.md).
+
+### A memória: 6,11 GiB medidos, e por que os dois itens da S-26 são um só
+
+O cache era um `dict` sem teto. Como `index_map` percorre as 64 casas de cada tabuleiro,
+uma época carregava **todos** — linear, 1,79 MiB por tabuleiro, e crescendo com um dataset
+que é feito para crescer. Uma época real, mesma máquina e mesmo split:
+
+| | HEAD (pré-Fase 5) | Fase 5 (defaults) |
+|---|---|---|
+| **pico de RSS** | **6,112 GiB** | **1,271 GiB** |
+| tempo por época | 538,5 s | 533,8 s a 465 s |
+
+O que não é óbvio na spec: **o item 1 (cache limitado) não funciona sem o item 2
+(amostrador)**, e é por isso que o cache original não tinha teto. Com `shuffle=True` puro,
+as 205.312 casas são sorteadas independentemente e qualquer cache com teto vira quase só
+falta — medido, taxa de acerto < 0,50 com cache de 8. Com o amostrador agrupando, > 0,95.
+
+E a leitura literal da S-26 — "as 64 casas do mesmo tabuleiro no mesmo lote" — resolveria a
+memória criando outro problema: com `batch_size=128` isso dá lotes de **2 tabuleiros**, e
+um lote com a estatística de 2 posições deixa o BatchNorm ruidoso por um motivo que não tem
+nada a ver com memória. Daí a janela de 64 tabuleiros: mantém a localidade que o cache
+precisa e devolve a mistura ao lote.
+
+O tamanho de cache que a spec sugere (256) também acabou medido como 4× o necessário: o
+conjunto de trabalho é a janela, não um número escolhido. Padrão em 128, e o cache da
+validação — que é acesso estritamente sequencial — em 4.
+
+### 5.2 — o `num_workers` foi entregue, e a medição diz para deixá-lo desligado
+
+| | tempo por época | pico de RSS (árvore de processos) |
+|---|---|---|
+| `num_workers=0` | **533,8 s** | **1,271 GiB** |
+| `num_workers=4` | 577,4 s | 2,701 GiB |
+
+Oito por cento **mais lento** e quase três vezes a memória. Os caches não explicam isso —
+128 tabuleiros divididos por 5 processos são ~46 MiB cada. O que pesa são quatro
+interpretadores Python com o torch importado, ~400 MiB cada: no Windows o start method é
+`spawn`, e não há *copy-on-write* amortizando como haveria no Linux.
+
+O parâmetro fica, exposto em `cvoff-train --num-workers`, porque numa máquina com `fork` a
+conta provavelmente muda. O que não fica é o padrão que a S-26 sugere: `train_model` usa 0.
+
+Há também uma ressalva de **segurança**, não de desempenho: com `spawn`, cada worker
+reimporta o módulo `__main__`. `cvoff-train` e o `app_tkinter.py` têm guarda `if __name__
+== "__main__"`; o `app_streamlit.py` não tem — não pode ter, é um script de topo executado
+pelo Streamlit — e por isso passa `num_workers=0` explicitamente.
+
+### 5.3 — o que o checkpoint não guardava, e o que isso custou de verdade
+
+A Fase 1 registrou a pendência com um `warning`: retomar o treino zerava o controle de
+melhor época, e a primeira época da retomada sobrescrevia o arquivo mesmo sendo pior.
+Aconteceu ao treinar o próprio baseline. O checkpoint agora grava `arch_version`,
+`class_names`, `seed`, `split_hash`, `dataset_size`, `best_metric`, `best_epoch`,
+`git_commit` e a temperatura da S-28 — e a retomada lê `best_metric` de volta.
+
+`strict=False` virou `strict=True`. O caso que isso pega não é hipotético: sem ele, uma CNN
+de entrada 48×48 aceita os pesos de uma de 64×64 descartando em silêncio as camadas que não
+batem, e o treino continua a partir de metade de um modelo aleatório. A validação explícita
+vem **antes** do `load_state_dict` de propósito — o torch também recusaria, mas com uma
+lista de tensores faltando, e "size mismatch for classifier.1.weight" não diz a ninguém que
+o problema foi trocar a resolução.
+
+### A primeira versão da 5.3 estava errada, e foi o uso que mostrou
+
+A implementação inicial **recusava retomar** qualquer checkpoint anterior à Fase 5, com o
+argumento de que sem `arch_version` não dá para saber se ele é de outra arquitetura. Ao
+clicar em "Treinar modelo" na interface, o resultado foi um erro e nenhum caminho de saída:
+o `piece_classifier.pt` de todo mundo é anterior à Fase 5, e a UI não tinha equivalente a
+`--fresh`.
+
+O argumento também estava errado no mérito. **Quem garante que os pesos correspondem à
+arquitetura é o `strict=True`, não o metadado.** No espaço de `ArchConfig`, cada fator muda
+nome ou formato de algum tensor: `channels` muda a primeira convolução, `image_size` muda a
+entrada da cabeça linear (2.048 / 4.608 / 8.192), `head` e `backbone` mudam as próprias
+chaves. Retomar de metade de um modelo aleatório era o que o `strict=False` permitia; é
+exatamente o que o `strict=True` impede. A checagem de metadados continua, mas como
+**mensagem melhor** — "este checkpoint é de `cnn-gray-64-linear`, você pediu
+`cnn-gray-32-linear`" em vez de uma lista de tensores incompatíveis.
+
+O que de fato não se sabe de um checkpoint antigo é **que métrica ele atingiu**. Aí a
+resposta não é supor 0 (a primeira época grava por cima mesmo sendo pior — o problema
+original da Fase 1) nem confiar num número que pode ter sido medido em outro split: é
+**medir**. Ao retomar sem métrica registrada, ou com `split_hash` diferente do atual, o
+treino faz uma passada de validação no modelo recém-carregado e usa o resultado como o
+número a superar. Custa ~20 s e fecha a pendência inclusive para os checkpoints legados.
+
+Verificado no `piece_classifier.pt` real: retoma, mede **0,980392** de acurácia exata por
+tabuleiro no `val`, anuncia que só uma época melhor que isso grava por cima, e deixa o
+arquivo intacto. A interface ganhou junto a caixa **"Treinar do zero"**, que faltava.
+
+**Para inferência, checkpoints antigos sempre carregaram e continuam carregando** —
+`piece_classifier_baseline.pt` é a única forma de reproduzir os números do BASELINE.md, e
+recusá-lo tornaria o baseline do projeto inverificável.
+
+### 5.4 — a métrica de decisão estava errada, e os pesos de classe pioram
+
+`val_loss` decidia qual época era salva. A métrica que interessa ao produto é
+`val_board_exact_acc`: a fração de diagramas que sai sem nenhuma correção manual. Acurácia
+por casa é dominada pelos 77% de casas vazias — um modelo que só respondesse "vazio"
+marcaria 0,77. Agora o early stopping é em `val_board_exact_acc`, e o histórico traz também
+`val_per_class_recall`, onde uma dama que o modelo nunca acerta deixa de sumir dentro de
+0,9988.
+
+Sobre os pesos de classe, ver [EXPERIMENTS.md](EXPERIMENTS.md): a S-27 propõe `"balanced"`
+por padrão e a medição desaconselha. O peso inverso compra recall das classes raras
+vendendo precisão nas vazias, e como um tabuleiro exato exige as 64 casas certas, cada falso
+positivo numa casa vazia custa um diagrama inteiro. O padrão ficou em `"none"`.
+
+### 5.8 — o dispositivo era escolhido em silêncio
+
+`load_model` decidia entre CPU e GPU sem dizer nada, então uma máquina com placa mas com o
+torch `+cpu` instalado treinava e inferia em CPU de forma invisível — a diferença entre 9
+minutos e ~1 minuto por época. Agora o log e a barra de status dizem
+`cpu (torch +cpu, sem CUDA compilada)` ou `cuda:0 (nome da placa)`, e o README documenta a
+instalação da wheel CUDA.
+
+A exportação ONNX (`cvoff-export-onnx`) é opcional e só dá o arquivo por bom depois de
+conferir paridade com o torch: medido sobre o split de teste, diferença máxima de
+**1,19e-07** contra a tolerância de 1e-4 da S-30, e **zero** discordâncias de argmax. Essa
+segunda checagem importa mais que a primeira — uma divergência minúscula exatamente num
+empate troca a classe, e aí a FEN muda.
+
+O ganho de velocidade ficou em **~3×** de forma consistente (3,02× em lote de 1 tabuleiro,
+2,90× com TTA, 2,92× em 8 tabuleiros). Importa no modo interativo: reconhecer uma página de 9
+diagramas com auto-orientação são 18 inferências, 0,9 s em torch contra 0,3 s em ONNX. Não
+muda a exportação de um livro, onde o render da página domina.
+
+### O que o fechamento decidiu, e o que ele deixou decidido pela medição
+
+**Nenhuma arquitetura entra (5.6).** Os três candidatos empatam em 317 de 320 no split de
+teste, e o critério da S-29 exige melhora além do ruído — empate não é melhora.
+`DEFAULT_ARCH` fica. Detalhe que dá a medida do ruído: a **mesma** arquitetura retreinada
+deu 315/320 contra os 317/320 da Fase 1, com mesmos dados, mesmo split e mesma semente.
+
+**O TTA fica desligado (5.7).** 316 tabuleiros exatos contra 315, ou seja um em 320, por 6×
+o tempo de inferência. Ele melhora o AUC de detecção de erro (0,9124 → 0,9193), que é o
+sinal que a fila de revisão usa, mas não o suficiente para pagar o custo por padrão.
+
+**A calibração é ajustada e gravada, mas não aplicada (5.5).** Medido no mesmo modelo, com
+só a temperatura mudando: o ECE piora ~3× e a fila de revisão dobra (6 → 12 rejeitados em
+320), sem mudar uma casa. O motivo é estrutural — o modelo acerta 99,98% das casas, então
+confiança 0,9998 já é quase perfeitamente calibrada, e achatá-la afasta a confiança da
+verdade. A NLL, que é o que o método minimiza, melhora de verdade; o ECE, que é o que o
+critério da S-28 nomeia, vai no sentido oposto. Os dois objetivos discordam nesta faixa de
+acurácia. Ver [EXPERIMENTS.md](EXPERIMENTS.md).
+
+**O limiar de 0,80 da S-15 deixou de ser provisório.** Não pela curva de calibração, que é
+degenerada aqui (o modelo acerta 99,06% dos tabuleiros, então qualquer limiar atinge um alvo
+de 99%), mas pela curva de custo: a 0,80 o gate pega 1 de 3 erros com 1 falso alarme; a
+0,999 pega 2 de 3 com **36** falsos alarmes. 0,80 é o joelho.
+
+### A decisão pendente da Fase 2 sobre qual modelo o app usa
+
+A Fase 2 deixou aberto: `DEFAULT_MODEL_PATH` aponta para `piece_classifier.pt`, o checkpoint
+antigo treinado sobre todo o dataset, que media 0,9875 no teste — pior que o baseline
+honesto apesar de tê-lo visto. Faltava um modelo de produção.
+
+Medido agora, o `piece_classifier.pt` vale **0,980392** de acurácia exata por tabuleiro no
+`val`, e os candidatos novos de 8 épocas ficam entre 0,9804 e 0,9902 no mesmo split. Ou seja
+o checkpoint antigo **não é o problema que se supunha** — ele está na mesma faixa.
+
+A decisão continua com o dono do projeto, e agora com números:
+
+| checkpoint | exata/teste | exata/val | observação |
+|---|---|---|---|
+| `piece_classifier.pt` (em uso) | 0,9875 | 0,9804 | viu o teste no treino; número não é honesto |
+| `piece_classifier_baseline.pt` | 0,9906 | 0,9837 | honesto, mas desperdiça o split `val` |
+| `piece_classifier_phase5.pt` | 0,9844 | 0,9804 | mesma arquitetura, treino da Fase 5 |
+| `piece_classifier_phase5_res32.pt` | 0,9906 | 0,9837 | **4,6× mais rápido**, 3,5× menos parâmetros |
+| `piece_classifier_phase5_mobilenet.pt` | 0,9906 | **0,9902** | melhor no `val`; depende de pesos da ImageNet |
+
+Nenhum foi promovido a padrão nesta fase, de propósito: trocar o `DEFAULT_MODEL_PATH` muda o
+que todo usuário roda, e três dos cinco empatam dentro do ruído. O que a Fase 5 entrega é
+poder fazer essa escolha com número em vez de intuição — e o `res32`, que dá o mesmo
+resultado com um quarto do tempo de inferência, é o candidato mais interessante para a S-36.
 
 ---
 
-## Fase 6 — Consolidação do produto (5–8 dias)
+## Fora de fase — dois defeitos que o uso encontrou durante a Fase 5
 
-| # | Entrega | Ref. spec |
+Nenhum dos dois é item de spec. Os dois foram relatados por quem estava usando o produto, e
+os dois eram invisíveis para a suíte de testes e para as métricas — o que é a observação
+mais útil sobre eles.
+
+### O teto de diagramas por página cortava diagrama de verdade, em silêncio
+
+Numa página de grade 3×3 (`A Matter of Endgame Technique`), oito dos nove diagramas eram
+reconhecidos, e o que faltava era o do canto superior direito. `detect_boards` seleciona
+candidatos em ordem de **score** e parava em `max_boards = 8`; os nove diagramas daquela
+página pontuam entre 0,2667 e 0,3054, um bloco praticamente empatado, e o nono por 0,0079
+de diferença era justamente aquele. Score não ordena diagrama por posição.
+
+Medido em 6 livros, 15 páginas de cada, teto 8 contra teto 30: **só o Aagaard muda** (55
+para 58 diagramas), e nenhum outro livro ganha um único candidato a mais. Subir o teto não
+admite lixo — quem filtra é o piso de score, não ele. Números em
+[EXPERIMENTS.md](EXPERIMENTS.md).
+
+O `DEFAULT_MAX_BOARDS` passou a 12 em `config.py`, no lugar do literal `8` repetido em
+**oito** lugares. Trocar a constante não bastou: `cvoff-export` e `cvoff-review` têm o
+próprio `add_argument(default=8)`, e a exportação continuou saindo com 8 diagramas até isso
+ser corrigido também — quem apontou o vazamento foi o aviso novo, na primeira execução
+depois da correção parcial. Há teste percorrendo as seis rotas do pipeline e os dois
+`parse_args` conferindo que o default vem da constante.
+
+**O defeito de fato era o silêncio.** "8 de 9" na tela é indistinguível de "a página tem
+8". Agora, quando o teto corta candidato aprovado no filtro de qualidade, sai um `warning`
+com quantos foram e com que score.
+
+### Navegar entre páginas perdia o reconhecimento
+
+O estado do OCR na interface era uma lista só. Reconhecer a página 16 e ir para a 17 não
+apagava nada: a lista continuava sendo a da 16, e o seletor "Selecionado" seguia apontando
+para diagramas que não estavam na tela. Voltar para a 16 também não trazia nada de volta —
+era preciso rodar o OCR outra vez, e as correções feitas à mão se perdiam.
+
+`ui/page_results.py` guarda por página os itens, as FENs e os lados a jogar editados e o
+diagrama selecionado. As listas vão **por referência**, então correção feita durante a
+edição já está guardada — não existe um passo de "salvar" que dê para esquecer.
+
+Três decisões que o desenho obrigou:
+
+- **Cache com teto de 8 páginas** (~130 MiB). Cada item carrega o recorte 800×800×3, 1,83
+  MiB; uma página de exercícios custa ~16,5 MiB e um livro tem centenas de páginas. Sem
+  teto, navegar reconhecendo tudo custaria gigabytes — o mesmo problema que a S-26 acabou
+  de resolver no dataset, pela mesma causa. Ao descartar página com correção humana, sai
+  aviso: o cache é conveniência de navegação, não persistência, e prometer o contrário
+  seria pior que o teto.
+- **Página sem reconhecimento limpa o editor; conteúdo de outra origem, não.** Uma amostra
+  do dataset ou um item da fila abertos no editor não têm relação com a página exibida, e
+  apagá-los porque "esta página não tem reconhecimento" destruiria trabalho por um motivo
+  que não é dele. `decide_page_switch` tem três respostas, não duas.
+- **Mudar DPI, modelo, orientação ou máximo de diagramas invalida o guardado**, seguindo a
+  decisão da S-24 ("retomar com parâmetros diferentes não é retomar"). Um recorte feito a
+  220 DPI não é o recorte a 300 DPI.
+
+Verificado dirigindo a interface de verdade (reconhecer a 16, corrigir o diagrama 3 à mão,
+ir para a 17, reconhecer, voltar): os 9 diagramas voltam, a seleção volta em 3 e a correção
+está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py` são chamadas.
+
+---
+
+## Fase 6 — Consolidação do produto — 6.1 a 6.7 concluídas (2026-07-27)
+
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 6.1 | **Camada de serviço** `src/chess_diagram_ocr/service.py` — Tkinter e Streamlit passam a ser só apresentação | S-31 | ✅ |
+| 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 | ✅ 2.388 → **651** |
+| 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 | ✅ |
+| 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 | ✅ fecha a pendência 0.7 |
+| 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | ✅ |
+| 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 | ✅ `cvoff-batch` |
+| 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 | ✅ + `docs/ARCHITECTURE.md` |
+| 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 | — |
+
+**Critério de saída:** três partes, e o placar honesto é **uma atingida, uma parcial, uma
+não iniciada**:
+
+| parte | estado |
+|---|---|
+| Streamlit e Tkinter com paridade | **parcial** — o pipeline é o mesmo; a edição não |
+| `app_tkinter.py` abaixo de 600 linhas | **651** (477 de código) |
+| executável rodando em máquina sem Python | **não iniciado** (6.8 / S-36) |
+
+O que a fase de fato entregou está medido nas seções abaixo. Duas observações que valem
+mais que o placar:
+
+- **A paridade que importava foi atingida.** Até a 6.1 as duas telas implementavam o OCR de
+  forma independente, e cinco entregas das Fases 2 e 3 nunca chegaram ao Streamlit. Isso
+  acabou. O que segue diferente é a *edição* — o tabuleiro por clique, o painel de
+  legalidade, a fila e o dataset são widgets de Tk. Portá-los deixou de exigir reescrever o
+  OCR junto, que era o custo real.
+- **As 51 linhas que faltam para 600 sairiam movendo a aba de configuração**, que é layout
+  puro. Seria mexer no número sem mexer no que ele mede.
+
+### O que a Fase 6 acrescentou em teste
+
+| | antes da fase | depois |
 |---|---|---|
-| 6.1 | **Camada de serviço** `src/chess_diagram_ocr/service.py` — Tkinter e Streamlit passam a ser só apresentação | S-31 |
-| 6.2 | Quebrar `app_tkinter.py` em módulos (`ui/pdf_panel.py`, `ui/result_panel.py`, `ui/study_panel.py`, `ui/state.py`) | S-31 |
-| 6.3 | "Corrigir Net" opt-in, endpoint configurável, documentado, com aviso de envio externo | S-32 |
-| 6.4 | Centralizar strings; pt-BR acentuado e consistente | S-04 |
-| 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 |
-| 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 |
-| 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 |
-| 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 |
+| testes | 485 | **611** |
+| subtestes | 408 | **498** |
+| arquivos sob `mypy` | 47 | **61** |
+| linhas em `app_tkinter.py` | 2.388 | **651** |
 
-**Critério de saída:** Streamlit e Tkinter com paridade de funcionalidades; `app_tkinter.py` abaixo de 600 linhas; executável rodando em máquina sem Python.
+Os 126 testes novos não são cobertura: são decisões que antes só existiam dentro de uma
+janela. O cliente HTTP com seus quatro modos de falha, a ordem das métricas de treino, a
+normalização da avaliação do motor para as brancas, o isolamento de falha do lote, a
+acentuação das strings — nenhum deles era verificável antes da decomposição.
+
+### 6.1 — o que a duplicação tinha custado, medido no que faltava de um lado
+
+A S-31 descreve o problema como manutenção em dobro. Comparados os dois caminhos linha a
+linha antes de unificar, o custo já tinha sido pago: o Streamlit não era uma cópia atrasada
+do Tkinter, era uma implementação **diferente**, e cinco entregas das Fases 2 e 3 nunca
+chegaram nele.
+
+| sinal | Tkinter | Streamlit (antes) |
+|---|---|---|
+| refino do recorte pelo contorno dentro do quad | sim | **não** |
+| matriz (64, 13) por casa (S-10), insumo do heatmap | sim | **descartada** |
+| casas inseguras (S-21) na tela | sim | **não** |
+| casas corrigidas pela decodificação com restrições (S-11) | sim | **não** |
+| fonte de detecção da S-12 gravada na amostra | sim | lia de uma chave que ninguém preenchia |
+
+A última linha é a que mostra o mecanismo: `_sample_metadata` do Streamlit lia
+`item.get("detection_source")` de um dicionário que o próprio arquivo montava **sem essa
+chave**. Não era um bug que quebrasse nada — gravava `""` e seguia. Nenhum teste podia
+pegá-lo, porque o dicionário não tem forma que possa ser violada. Foi o argumento para o
+`RecognizedDiagram` ser dataclass e não `dict[str, Any]`: com campo tipado, "esqueci de
+preencher" vira `TypeError` na construção, e não silêncio no arquivo de rótulos.
+
+**O `RecognizedDiagram` precisou de três estados de legalidade, não dois.** Nem todo
+diagrama no editor veio do OCR: a fila de revisão (S-22) e o navegador do dataset (S-23)
+abrem um tabuleiro que já tem rótulo e não tem predição. O código antigo já sabia disso —
+punha `is_legal: None` naqueles dicionários — e colapsar `None` em `False` faria a barra de
+status gritar "ILEGAL" para toda amostra aberta pelo dataset. Daí `legality` ser opcional e
+`is_legal` devolver `bool | None`.
+
+**A `RecognitionOrigin` existe porque a string era montada em três lugares e interpretada
+em dois.** `pdf:livro.pdf:page:16` era f-string na GUI, no recorte de área e no Streamlit;
+`page_index_from_origin` a interpretava no cache de página e `_sample_metadata` a
+interpretava de novo, com outro código, para achar a página da amostra. Os dois
+interpretadores discordavam num ponto que importa: o do cache sabia que recorte de área
+**não** é resultado de página, o do salvamento não. Agora há um tipo, e a regra
+(`is_whole_page`) mora nele.
+
+### As duas correções que a S-31 manda fazer "no caminho"
+
+- **`reload_model()` era chamada da thread de treino e zerava o cache do modelo.** O
+  perigo não é o objeto sumir — quem já pegou a referência continua com ela — é que o
+  treino acabou de **reescrever o `.pt`** que a próxima carga vai ler, e duas threads
+  podiam disparar duas cargas do mesmo arquivo. O `OcrService` segura o modelo sob lock
+  durante o **uso**, não só durante a carga: trocar de modelo espera o reconhecimento em
+  andamento terminar. Há teste de concorrência para isso — sem o lock, a invalidação
+  retornaria de imediato, e é esse tempo que o teste distingue.
+- **`_set_status` chamava `root.update_idletasks()` dentro de callback de evento**,
+  reentrando no loop do Tk e deixando outro callback rodar no meio deste. Removido; a
+  `StringVar` é observada pelo widget e o texto aparece no próximo ciclo ocioso.
+
+### O defeito que apareceu ao dirigir a interface, e que nenhum teste veria
+
+Rodando o OCR de uma página real pelo Streamlit, o log avisava:
+
+```
+max_boards=1 cortou 1 candidato(s) ... Se a pagina tem mais diagramas que isso,
+aumente 'Max diagramas'.
+```
+
+Só que o usuário tinha pedido 12, não 1. O aviso vinha de **dentro**: a S-12 refina cada
+candidato chamando `detect_boards(regiao, max_boards=1)`, e ali o teto é o pedido, não um
+limite. O conselho — "aumente 'Max diagramas'" — apontava para uma configuração sem efeito
+algum sobre aquela chamada.
+
+É o inverso exato do defeito que a Fase 5 corrigiu. Lá o teto cortava diagrama **em
+silêncio**; a correção foi avisar. Aqui o aviso passou a disparar onde não havia nada
+errado, e alarme falso que aparece em toda página gasta a credibilidade do alarme
+verdadeiro. `detect_boards` ganhou `warn_on_cap`, desligado nos três chamadores internos
+que pedem um tabuleiro de propósito — com teste que percorre os três módulos e confere que
+nenhum ficou de fora, porque silenciar um só deixaria o vazamento pelos outros dois.
+
+### 6.2 — a decomposição, e o critério de saída que ficou 51 linhas acima
+
+`app_tkinter.py` foi de **2.388 para 651 linhas**. O critério da S-31 pede abaixo de 600,
+e não está atingido ao pé da letra. Do que sobrou, 477 linhas são código e 174 são
+docstrings, comentários e linhas em branco; são 52 métodos, e o maior deles é o
+`_build_config_tab`, que é layout puro.
+
+Onde o conteúdo foi parar:
+
+| módulo | linhas | o que leva |
+|---|---|---|
+| `ui/result_panel.py` | 745 | o editor: tabuleiro, FEN, lado a jogar, legalidade, cache por página, salvar, fila e dataset |
+| `ui/pdf_panel.py` | 456 | exibir o PDF, navegar, zoom, seleção de área, modo leitura |
+| `ui/study_panel.py` | 381 | tabuleiro de estudo, árvore de variantes, PGN |
+| `ui/training_dialog.py` | 225 | o modal de treino e a thread |
+| `ui/export_controller.py` | 222 | destino, decisão sobre o parcial e relatório da exportação |
+| `net_correction.py` | 113 | o cliente HTTP do "Corrigir Net" |
+| `ui/shortcuts.py` | 50 | os atalhos e a guarda de foco |
+
+**Podia estar abaixo de 600 e não vale a pena.** Faltam ~50 linhas, e a maneira óbvia de
+tirá-las seria mover a aba de configuração para um `ui/config_panel.py`. Ela é layout puro
+— dez `tk.Variable` e os widgets que as editam —, então mudá-la de arquivo não tornaria
+nada testável nem desfaria acoplamento nenhum: seria mexer no número sem mexer no que o
+número mede. O que a S-31 quer de fato — "zero lógica de OCR fora de `src/`" e
+"`OcrService` testável sem Tk" — está atingido, e é isso que os 63 testes dos módulos novos
+verificam (485 → **543** na suíte inteira).
+
+**A regra de corte foi a da Fase 4, aplicada ao que tinha sobrado: o que dá para testar não
+fica no `app_tkinter.py`.** Foi ela que decidiu os casos duvidosos. O cliente HTTP do
+"Corrigir Net" saiu porque tem quatro modos de falha — erro de rede, HTTP de erro, corpo
+que não é JSON, JSON sem o campo — e nenhum deles tinha teste, porque testá-los exigia
+abrir uma janela. A comparação modelo × rótulo da S-23 saiu pelo mesmo motivo e virou
+`OcrService.recheck_label`. Já a montagem das abas ficou: não há o que conferir nela além
+de "abriu".
+
+### O defeito que a decomposição encontrou, e o que ele diz sobre o método
+
+Ao converter os `dict` em `RecognizedDiagram` (6.1), duas linhas de `_confidence_summary`
+escaparam da conversão e continuaram chamando `item.get('min_confidence', 0.0)` num
+dataclass, que não tem `.get`. Isso é `AttributeError` na primeira vez que o usuário
+aperta `←` para ir ao diagrama seguinte.
+
+Nada pegou: nem o `ruff`, nem o `mypy` — que não cobre `app_tkinter.py`, porque
+`files = ["src"]` —, nem os 509 testes, nem os dois roteiros que dirigiram a interface de
+verdade reconhecendo páginas do Kemeri e do Reinfeld. Só apareceu quando o roteiro passou
+a **navegar entre diagramas** depois do OCR, e não apenas a reconhecer.
+
+As duas linhas hoje moram em `result_panel.confidence_summary`, que é função pura e tem
+teste. É o argumento da S-31 na sua forma mais direta: o problema nunca foi o tamanho do
+arquivo, foi que nada dentro dele podia ser verificado sem um humano clicando.
+
+### 6.3 — o endpoint padrão era o defeito, não a configuração faltando
+
+A S-32 pede opt-in e endpoint configurável. A parte que muda o comportamento é mais estreita
+e mais decisiva: **não existe mais endpoint embutido.** Habilitar exige escrever o endereço,
+em `data/settings.json` ou em `CVOFF_REMOTE_FEN_URL`. Um padrão "desligado, mas apontando
+para `helpman.komtera.lt`" reintroduziria a dependência invisível assim que alguém ligasse
+a chave sem saber para onde ela apontava — o endereço continua no código, mas como
+`KNOWN_PUBLIC_ENDPOINT`, documentado para quem já usava e quiser reescrevê-lo.
+
+**Sem configuração há dois níveis de recusa, e não um.** O botão fica desabilitado com
+tooltip, e `build_provider` devolve `None` — que é o único caminho para um provedor
+existir. Foi assim que o critério "nenhuma requisição parte no uso padrão" virou teste em
+vez de promessa: com `urlopen` substituído, a configuração padrão não consegue nem
+**construir** o objeto que faria a chamada.
+
+O tooltip distingue dois estados que pedem ações diferentes: "não configurada" (falta o
+endereço, e ele diz onde escrevê-lo) e "desligada" (o endereço existe, e ele o mostra). Um
+botão cinza sem explicação é pior que um botão ausente — quem o vê não sabe se está
+quebrado ou se falta configuração.
+
+**O aviso nomeia o host.** "Um serviço externo" não é informação; `exemplo.invalido` é. E o
+"não perguntar novamente" é gravado por endpoint: trocar o endereço volta a perguntar,
+porque o consentimento era sobre aquele destino.
+
+`data/settings.json` fica fora do git — versioná-lo devolveria um endereço fixo ao
+repositório, que é exatamente o que a S-32 existe para eliminar.
+
+### 6.4 — a pendência 0.7 fecha, e o que ela escondia
+
+A Fase 0 deixou registrado: o `logging` estava feito, mas "as strings de UI seguem sem
+acento (`posicao`, `Configuracao`)", e centralizá-las dependia da decomposição do Tkinter.
+Feita a 6.2, foram **291 tokens** de string e comentário acentuados em 15 arquivos, por um
+transformador que opera sobre `tokenize` e só reescreve `STRING` e `COMMENT` -- nunca
+identificadores, e nunca o interior de `{...}` numa f-string, onde `{pagina}` é código e
+virar `{página}` quebraria.
+
+**O que não virou constante.** `ui/strings.py` não é um catálogo das ~140 strings da
+interface. Um dicionário com duzentas constantes usadas uma vez cada troca um literal
+legível por uma indireção e piora o código de layout sem nada em troca. Entrou o que **duas
+telas precisam dizer igual**.
+
+**E aí estava o achado.** Os rótulos de procedência do lado a jogar existiam em dois
+lugares — `ui/result_panel.py` e `app_streamlit.py` — e já tinham divergido em **quatro dos
+cinco**:
+
+| chave | Tkinter dizia | Streamlit dizia |
+|---|---|---|
+| `text` | "do texto do PDF" | "declarado no texto do PDF" |
+| `legality` | "deduzido da posição" | "deduzido da legalidade da posição" |
+| `default` | "assumido" | "assumido (o PDF não diz)" |
+| `manual` | "definido por você" | (não existia) |
+
+É o mecanismo da S-31 aplicado a texto: duas implementações do mesmo conceito, a segunda
+seguindo por conta própria. E o rótulo não é decoração — ele é o que distingue "pretas
+jogam" lido de uma legenda de "pretas jogam" assumido pelo padrão, que é a diferença que a
+Fase 3 inteira existe para tornar visível.
+
+**O teste é o que impede a volta.** Ele varre os literais de string via AST (não o arquivo
+inteiro: docstring e comentário também são pt-BR, mas o que trava é o que o usuário lê) e
+recusa qualquer palavra da lista sem acento. Duas armadilhas apareceram ao escrevê-lo, e as
+duas viraram regra explícita: `automaticamente` **é** correto sem acento, então o casamento
+é `palavra + s?` e não sufixo livre; e `@media` é regra CSS, desambiguada pelo `@` que a
+precede.
+
+### 6.5 — opcional de verdade, e o que a máquina sem Stockfish obrigou a fazer
+
+O critério da S-33 tem dois lados. O primeiro — "sem Stockfish instalado, o app funciona
+normalmente com o recurso oculto" — é o caso **desta** máquina, e é o que o
+`find_engine → None` entrega: a seção do motor não é montada, não há botão cinza nem
+mensagem de erro a cada abertura.
+
+O segundo lado — "avaliação em menos de 2 s, sem bloquear a UI" — não podia ser verificado
+aqui por falta de binário. A saída foi escrever um **motor UCI mínimo** em 70 linhas
+(`tests/fake_uci_engine.py`), que não joga xadrez mas fala o protocolo. Ele existe porque
+`SimpleEngine.popen_uci` precisa de um processo de verdade: não há como fingir isso com um
+objeto em memória sem reimplementar o transporte. Com ele, o caminho inteiro é exercitado —
+processo aberto, conversa UCI, pontuação normalizada, linha em SAN — e a suíte continua
+rodando numa máquina sem motor, que é a própria definição de recurso opcional.
+
+Três decisões que a medição ou o protocolo obrigaram:
+
+- **A pontuação é normalizada para as brancas.** O UCI responde relativo a **quem joga**, e
+  mostrar isso cru faria a barra de vantagem pular de lado a cada lance sem que a posição
+  tivesse mudado de dono. Há teste: o motor falso responde sempre `+35` para quem está no
+  lance, e a avaliação sai positiva com brancas e negativa com pretas.
+- **A barra é logística, não linear.** `1/(1+10^(-cp/400))` é a curva de expectativa de
+  pontuação do Elo. Linear, a diferença entre +8 e +12 — que não muda nada — gastaria tanta
+  tela quanto a diferença entre +0,2 e +1,0, que muda a partida.
+- **O limite é tempo, não profundidade.** 20 plies num final são instantâneos; num meio-jogo
+  travado, não. `movetime` de 800 ms fica bem abaixo dos 2 s com folga para o custo de ida e
+  volta com o processo, e o processo fica **aberto** entre análises — reabri-lo custaria
+  100–300 ms de inicialização a cada posição.
+
+**O que não foi feito, e por quê.** A S-33 nota que a avaliação do motor serviria como
+validador de plausibilidade para o OCR, alimentando a prioridade da fila da S-22. É uma
+hipótese razoável e não medida: quantificá-la exige rodar um motor de verdade sobre
+diagramas de verdade, e não há Stockfish aqui. Implementá-la sem medir seria repetir o erro
+que a Fase 5 documentou nos pesos de classe — a ideia razoável que a medição desaconselhou.
+
+### 6.6 — o relatório mostrou algo que o `Andamento.txt` nunca poderia
+
+`cvoff-batch` substitui o acompanhamento manual. O critério de aceite tem três partes, e a
+que decide o desenho é a terceira: "sem perder progresso se um livro falhar". Com 27 PDFs e
+minutos por livro, uma exceção no décimo que abortasse o processo custaria tudo que veio
+antes. Cada livro é isolado, a falha vira uma linha do relatório com o motivo, e a varredura
+segue — verificado com um `corrompido.pdf` de propósito no meio da pasta.
+
+O relatório é gravado **a cada livro**, não no fim, pelo mesmo raciocínio: se o processo
+morrer por algo que o `try` não pega, o que já foi medido continua no disco. E é literal:
+durante a varredura de teste, o relatório do primeiro livro já estava legível enquanto o
+segundo ainda rodava.
+
+**`--skip-existing` não inventa estado.** O PGN no disco *é* o registro de que aquele livro
+foi feito. Um segundo lugar para essa verdade morar só teria como divergir do primeiro.
+
+**E aí veio o achado.** Rodando três livros de verdade:
+
+| livro | páginas | aceitos | revisão | ilegais | conf mín média | tempo |
+|---|---|---|---|---|---|---|
+| `1001 Winning Chess Sacrifices` (hq) | 1.120 | **949** | 52 | 1 | 0,952 | 492 s |
+| `Euwe/Kramer – Mittelspiel Band 7` | 56 | **0** | 84 | 2 | 0,065 | 79 s |
+| `Koblenz – El dominio del arte` | 70 | **0** | 120 | 0 | 0,205 | 33 s |
+
+O primeiro livro sai com **94,7% de aceitação**; os outros dois com **zero**. Não é o gate
+sendo severo — é a confiança mínima média em 0,065 e 0,205 contra 0,952. São dois dos 12
+livros que a Fase 2 classificou como "a página inteira é um scan", e o modelo simplesmente
+não os lê.
+
+Isso já era verdade antes; o que mudou é que agora **aparece**. Um `Andamento.txt` mantido à
+mão registra "processado" e nada mais — e "processado" é exatamente o que esses dois livros
+foram. A taxa de aceitação por livro é o número que diz onde vale a pena gastar rótulo novo,
+e ele não existia.
+
+**Sem `--workers`, e o motivo é medido.** A S-34 sugere 2 a 4 processos. A inferência do
+torch já usa as CPUs disponíveis — a varredura do Reinfeld roda a 0,44 s/página com os 12
+núcleos ocupados. Dois processos disputariam os mesmos núcleos e ainda carregariam dois
+modelos na memória. É a mesma decisão que a S-24 tomou para páginas, pelo mesmo motivo.
+
+### 6.7 — o que faltava não era o README
+
+O diagnóstico da S-35 é de antes da Fase 0: "documenta comandos que não funcionam como
+escrito". Isso deixou de valer quando a S-02 arrumou a instalação, e o README foi crescendo
+junto com as fases. O que ele **não** tinha era o que a S-35 lista depois: resolução de
+problemas, e um lugar onde a arquitetura estivesse desenhada.
+
+- **`docs/ARCHITECTURE.md`** — o caminho de uma página até a FEN, com cada etapa apontando
+  para a spec que a decidiu, e a tabela de quem faz o quê. Depois da 6.2 são 20 módulos em
+  `src/` e 14 em `ui/`; sem um mapa, a decomposição vira o problema que ela resolveu.
+- **`CONTRIBUTING.md`** — as três verificações, e o que este projeto espera de um teste.
+  Inclui o roteiro headless que dirige a interface, porque foi ele que pegou o defeito de
+  navegação que 509 testes verdes não pegaram — e a armadilha do `mainloop()` contra o laço
+  de `update()`, que faz o erro parecer do código quando é do roteiro.
+- **Resolução de problemas no README** — 10 sintomas com causa e saída. Os quatro que a
+  S-35 nomeia (WebView2 ausente, torch sem CUDA, PDF sem camada de texto, PDF sem imagem
+  embutida) mais os que a Fase 6 tornou possíveis de encontrar.
+- **Os recursos opcionais documentados como opcionais**, com a frase que a S-32 exige em
+  letra: o projeto funciona inteiramente offline, e nada sai da máquina no uso padrão.
+
+### O que 6.1 não entrega da paridade
+
+O critério de saída pede "paridade de funcionalidades", e o que 6.1 iguala é o **pipeline**:
+as duas telas fazem a mesma leitura, com os mesmos sinais e a mesma procedência gravada. O
+que segue diferente é a **edição**: o Streamlit não tem o editor de posição por clique
+(S-20), o painel de legalidade (S-21), a fila de revisão (S-22) nem a aba de dataset
+(S-23) — são widgets de Tk. Com o serviço no lugar, portá-los deixou de exigir reescrever
+o OCR junto, que era o custo real; mas continua sendo trabalho de UI, e não foi feito aqui.
 
 ---
 
@@ -628,4 +1192,4 @@ Ao fim da semana o PGN exportado deixa de conter posições ilegais, os erros K�
 | **Migração do `labels.csv`** | Adicionar `side_to_move` (Fase 3.6) muda o esquema. Script de migração com backup, e `dataset.py` aceitando os dois formatos por um período. |
 | **`Python-Easy-Chess-GUI-master/`** | Presumo que seja referência de estudo, não dependência — nenhum código do projeto o importa (verificado). Se estiver errado, me avise antes de remover. |
 | **Endpoint `helpman.komtera.lt`** | Serviço de terceiro sem contrato. Pode sair do ar. Tratar como opcional, nunca como dependência do fluxo principal. |
-| **Sem GPU no ambiente atual** | torch é `+cpu`. Se houver GPU na máquina, instalar a wheel CUDA acelera treino em ~10×. Vale verificar antes da Fase 5. |
+| **Sem GPU no ambiente atual** | **Verificado na Fase 5 (2026-07-26): a máquina não tem CUDA disponível** — `torch 2.10.0+cpu`, 12 CPUs, época de treino em ~9 min. Todo número de tempo da Fase 5 é de CPU e não se transfere. Se houver GPU, a wheel CUDA acelera o treino em ~10×; o README documenta a instalação, e desde a S-30 o log diz qual dispositivo está em uso em vez de escolher em silêncio. |

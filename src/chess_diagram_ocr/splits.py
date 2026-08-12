@@ -22,13 +22,16 @@ Ver S-07 em docs/SPEC.md.
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import logging
+import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
-import pandas as pd
+from .atomic_io import atomic_write_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +91,37 @@ def group_keys(filenames: Iterable[str], groups: Iterable[Iterable[str]]) -> dic
     return keys
 
 
+def groups_by_book(provenance: Mapping[str, str]) -> list[list[str]]:
+    """Agrupa as amostras por livro de origem, para o split por livro da S-07/S-52.
+
+    `provenance` é `{nome do arquivo: source_pdf}`; amostra sem procedência fica de fora e
+    continua com split individual, que é o comportamento de hoje.
+
+    **Por que isto importa.** O split de hoje é por hash do nome do arquivo, agrupado por
+    diagrama duplicado. Com ele, o mesmo livro aparece nos três conjuntos, e o número do
+    `test` responde "quão bem o modelo lê um diagrama parecido com os que viu" -- não "quão
+    bem ele lê um livro que nunca viu". A segunda pergunta é a do produto, e ela precisa que
+    o livro inteiro caia de um lado só.
+
+    **Duas ressalvas honestas, e as duas são consequência do desenho da S-07.**
+
+    1. `ensure_splits` **nunca move uma amostra já registrada**, e é essa garantia que mantém
+       o conjunto de teste confiável ao longo do tempo. Então agrupar por livro só passa a
+       valer de fato para amostras novas ou numa reatribuição do zero (`--fresh`): as 3.313 já
+       registradas continuam onde estão, com o livro espalhado entre os três conjuntos.
+    2. Um acervo de 27 livros dá 27 grupos, e 10% deles é 2,7 livros. A granularidade do
+       split cai muito: um livro grande pode levar sozinho mais que a fatia inteira de teste.
+       Isso não é defeito do agrupamento, é o que agrupar por livro significa -- e é preciso
+       olhar a distribuição resultante antes de adotá-lo.
+    """
+    por_livro: dict[str, list[str]] = {}
+    for filename, book in provenance.items():
+        if not book:
+            continue
+        por_livro.setdefault(book, []).append(filename)
+    return [sorted(membros) for _livro, membros in sorted(por_livro.items()) if len(membros) > 1]
+
+
 def compute_splits(
     filenames: Iterable[str],
     *,
@@ -107,26 +141,38 @@ def load_splits(path: Path) -> dict[str, Split]:
     if not path.exists():
         return {}
 
-    df = pd.read_csv(path)
-    required = {"filename", "split"}
-    if not required.issubset(df.columns):
-        raise ValueError(f"{path} precisa das colunas {required}. Encontradas: {set(df.columns)}")
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        colunas = set(reader.fieldnames or ())
+        required = {"filename", "split"}
+        if not required.issubset(colunas):
+            raise ValueError(f"{path} precisa das colunas {required}. Encontradas: {colunas}")
 
-    result: dict[str, Split] = {}
-    for row in df.itertuples(index=False):
-        split = str(row.split).strip()
-        if split not in ("train", "val", "test"):
-            raise ValueError(f"Split inválido em {path}: {split!r}")
-        result[str(row.filename).strip()] = split  # type: ignore[assignment]
+        result: dict[str, Split] = {}
+        for row in reader:
+            split = str(row.get("split", "")).strip()
+            if split not in ("train", "val", "test"):
+                raise ValueError(f"Split inválido em {path}: {split!r}")
+            result[str(row.get("filename", "")).strip()] = split  # type: ignore[assignment]
     return result
 
 
 def save_splits(path: Path, splits: Mapping[str, Split]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frame = pd.DataFrame(sorted(splits.items()), columns=["filename", "split"])
-    frame.to_csv(path, index=False)
-    logger.info("Splits gravados em %s (%d amostras).", path, len(frame))
+
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator=os.linesep)
+    writer.writerow(["filename", "split"])
+    writer.writerows(sorted(splits.items()))
+
+    # Escrita atomica (S-25), como a do `labels.csv`. Este arquivo carrega uma decisao
+    # irreversivel na pratica -- por desenho da S-07, uma amostra que caiu no `test` fica
+    # la --, e ate a S-51 ele era gravado com `to_csv` direto no destino, que trunca antes
+    # de escrever. Um corte de energia no meio nao perderia o arquivo: perderia a fronteira
+    # entre treino e teste, que e o que torna toda medicao do projeto confiavel.
+    atomic_write_bytes(path, buffer.getvalue().encode("utf-8"))
+    logger.info("Splits gravados em %s (%d amostras).", path, len(splits))
 
 
 def ensure_splits(
@@ -168,6 +214,17 @@ def ensure_splits(
         logger.info("%d amostras novas receberam split.", added)
 
     return result
+
+
+def splits_hash(splits: Mapping[str, Split]) -> str:
+    """Identidade da divisão, para o checkpoint dizer sobre que partição ele foi treinado.
+
+    Sem isso, "o modelo A é melhor que o B" pode estar comparando dois modelos avaliados
+    em conjuntos de teste diferentes -- que é o erro que a S-07 existe para impedir e que
+    nada, até aqui, impedia de voltar em silêncio ao crescer o dataset.
+    """
+    payload = "\n".join(f"{name}={split}" for name, split in sorted(splits.items()))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
 def split_counts(splits: Mapping[str, Split]) -> dict[str, int]:

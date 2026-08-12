@@ -1,0 +1,486 @@
+{
+  "ocr_engine": "",
+  "books": 32,
+  "books_with_diagrams": 32,
+  "books_resolved": 17,
+  "books_resolved_by_text": 10,
+  "books_mostly_resolved": 3,
+  "diagrams": 645,
+  "by_source": {
+    "default": 566,
+    "legality": 28,
+    "text": 41,
+    "text-page-scope": 10
+  },
+  "per_book": [
+    {
+      "pdf": "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 11,
+      "diagrams": 11,
+      "by_source": {
+        "default": 11
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 11,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 11,
+      "diagrams": 11,
+      "by_source": {
+        "default": 11
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 11,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 11,
+      "diagrams": 11,
+      "by_source": {
+        "default": 11
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 11,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "1937 Kemeri.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 6,
+      "diagrams": 6,
+      "by_source": {
+        "default": 6
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 6,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 8,
+      "diagrams": 8,
+      "by_source": {
+        "text": 8
+      },
+      "from_text": 8,
+      "from_legality": 0,
+      "assumed": 0,
+      "resolved": 8,
+      "resolved_share": 1.0
+    },
+    {
+      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 10,
+      "diagrams": 10,
+      "by_source": {
+        "text": 10
+      },
+      "from_text": 10,
+      "from_legality": 0,
+      "assumed": 0,
+      "resolved": 10,
+      "resolved_share": 1.0
+    },
+    {
+      "pdf": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 12,
+      "diagrams": 42,
+      "by_source": {
+        "default": 39,
+        "legality": 2,
+        "text": 1
+      },
+      "from_text": 1,
+      "from_legality": 2,
+      "assumed": 39,
+      "resolved": 3,
+      "resolved_share": 0.0714
+    },
+    {
+      "pdf": "AAGAARD - Practical Chess Defence.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 12,
+      "diagrams": 31,
+      "by_source": {
+        "default": 16,
+        "legality": 2,
+        "text": 11,
+        "text-page-scope": 2
+      },
+      "from_text": 13,
+      "from_legality": 2,
+      "assumed": 16,
+      "resolved": 15,
+      "resolved_share": 0.4839
+    },
+    {
+      "pdf": "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 11,
+      "diagrams": 19,
+      "by_source": {
+        "default": 18,
+        "legality": 1
+      },
+      "from_text": 0,
+      "from_legality": 1,
+      "assumed": 18,
+      "resolved": 1,
+      "resolved_share": 0.0526
+    },
+    {
+      "pdf": "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 5,
+      "diagrams": 5,
+      "by_source": {
+        "default": 3,
+        "legality": 1,
+        "text": 1
+      },
+      "from_text": 1,
+      "from_legality": 1,
+      "assumed": 3,
+      "resolved": 2,
+      "resolved_share": 0.4
+    },
+    {
+      "pdf": "Euwe, Kramer - Das Mittelspiel Band 7 (1958).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 11,
+      "diagrams": 15,
+      "by_source": {
+        "default": 11,
+        "legality": 4
+      },
+      "from_text": 0,
+      "from_legality": 4,
+      "assumed": 11,
+      "resolved": 4,
+      "resolved_share": 0.2667
+    },
+    {
+      "pdf": "GALLAGHER - Winning With the King's Gambit.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 10,
+      "diagrams": 13,
+      "by_source": {
+        "default": 13
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 13,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 6,
+      "diagrams": 28,
+      "by_source": {
+        "default": 24,
+        "legality": 4
+      },
+      "from_text": 0,
+      "from_legality": 4,
+      "assumed": 24,
+      "resolved": 4,
+      "resolved_share": 0.1429
+    },
+    {
+      "pdf": "Karpov A - Chess Combinations -World Champions-1 (2011).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 8,
+      "diagrams": 48,
+      "by_source": {
+        "default": 48
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 48,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 7,
+      "diagrams": 37,
+      "by_source": {
+        "default": 37
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 37,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 10,
+      "diagrams": 22,
+      "by_source": {
+        "default": 10,
+        "legality": 4,
+        "text": 8
+      },
+      "from_text": 8,
+      "from_legality": 4,
+      "assumed": 10,
+      "resolved": 12,
+      "resolved_share": 0.5455
+    },
+    {
+      "pdf": "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 9,
+      "diagrams": 9,
+      "by_source": {
+        "default": 9
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 9,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Levenfis - Cartea sahistului inceparator (1962).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 8,
+      "diagrams": 11,
+      "by_source": {
+        "default": 11
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 11,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 12,
+      "diagrams": 21,
+      "by_source": {
+        "default": 21
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 21,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 7,
+      "diagrams": 7,
+      "by_source": {
+        "default": 5,
+        "legality": 2
+      },
+      "from_text": 0,
+      "from_legality": 2,
+      "assumed": 5,
+      "resolved": 2,
+      "resolved_share": 0.2857
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 1,
+      "diagrams": 1,
+      "by_source": {
+        "default": 1
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 1,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Mieses - Blind Schaken (1938).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 3,
+      "diagrams": 3,
+      "by_source": {
+        "default": 3
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 3,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 10,
+      "diagrams": 20,
+      "by_source": {
+        "default": 18,
+        "legality": 1,
+        "text": 1
+      },
+      "from_text": 1,
+      "from_legality": 1,
+      "assumed": 18,
+      "resolved": 2,
+      "resolved_share": 0.1
+    },
+    {
+      "pdf": "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 7,
+      "diagrams": 11,
+      "by_source": {
+        "default": 10,
+        "legality": 1
+      },
+      "from_text": 0,
+      "from_legality": 1,
+      "assumed": 10,
+      "resolved": 1,
+      "resolved_share": 0.0909
+    },
+    {
+      "pdf": "Polgar,_Laszlo_Chess_5334_Problems,_Combinations,_and_Games.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 9,
+      "diagrams": 54,
+      "by_source": {
+        "default": 48,
+        "text-page-scope": 6
+      },
+      "from_text": 6,
+      "from_legality": 0,
+      "assumed": 48,
+      "resolved": 6,
+      "resolved_share": 0.1111
+    },
+    {
+      "pdf": "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 7,
+      "diagrams": 41,
+      "by_source": {
+        "default": 40,
+        "legality": 1
+      },
+      "from_text": 0,
+      "from_legality": 1,
+      "assumed": 40,
+      "resolved": 1,
+      "resolved_share": 0.0244
+    },
+    {
+      "pdf": "Schiller - The Big Book of Combinations (1994).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 8,
+      "diagrams": 48,
+      "by_source": {
+        "default": 48
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 48,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 9,
+      "diagrams": 14,
+      "by_source": {
+        "default": 12,
+        "text-page-scope": 2
+      },
+      "from_text": 2,
+      "from_legality": 0,
+      "assumed": 12,
+      "resolved": 2,
+      "resolved_share": 0.1429
+    },
+    {
+      "pdf": "Vishy_Anand_Great_Chess_Combinations.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 7,
+      "diagrams": 20,
+      "by_source": {
+        "default": 15,
+        "legality": 5
+      },
+      "from_text": 0,
+      "from_legality": 5,
+      "assumed": 15,
+      "resolved": 5,
+      "resolved_share": 0.25
+    },
+    {
+      "pdf": "📚Aagaard J. Excelling at chess calculation.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 10,
+      "diagrams": 23,
+      "by_source": {
+        "default": 23
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 23,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "📚Silman J. The Complete Book of Chess Strategy.pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 9,
+      "diagrams": 9,
+      "by_source": {
+        "default": 9
+      },
+      "from_text": 0,
+      "from_legality": 0,
+      "assumed": 9,
+      "resolved": 0,
+      "resolved_share": 0.0
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pages_sampled": 12,
+      "pages_with_diagram": 10,
+      "diagrams": 36,
+      "by_source": {
+        "default": 35,
+        "text": 1
+      },
+      "from_text": 1,
+      "from_legality": 0,
+      "assumed": 35,
+      "resolved": 1,
+      "resolved_share": 0.0278
+    }
+  ]
+}

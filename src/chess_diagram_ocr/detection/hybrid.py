@@ -32,13 +32,14 @@ vetoriais (ver o docstring do pacote).
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
+import cv2
 import fitz
 import numpy as np
 
-from ..board_detection import _bbox_iou, _sort_selected_candidates, detect_boards
-from ..config import BOARD_SIZE, DEFAULT_READING_ORDER, ReadingOrder
+from ..board_detection import _bbox_iou, _board_pattern_score, _sort_selected_candidates, detect_boards
+from ..config import BOARD_SIZE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
+from ..pdf_io import PdfSource
 from .embedded import DiagramCandidate, _pixels_for_bbox, candidates_from_embedded_images
 
 logger = logging.getLogger(__name__)
@@ -58,16 +59,58 @@ o mesmo tamanho dos declarados e passam.
 """
 
 
+REFINE_TOLERANCE = 0.02
+"""Quanto o refino pode piorar a textura de tabuleiro e ainda ser aceito (S-38).
+
+Não é zero porque `_board_pattern_score` tem ruído de reamostragem: o recorte refinado é
+outro conjunto de pixels, e uma diferença de ±0,01 entre dois recortes igualmente bons não
+significa nada. Zero faria o refino ser recusado metade das vezes por sorteio.
+"""
+
+
+def board_texture_score(board_rgb: np.ndarray) -> float:
+    """Quanto este recorte parece um tabuleiro: contraste entre casas mais grade periódica.
+
+    Envelopa `_board_pattern_score` na resolução em que ele foi calibrado (320 px, 40 por
+    casa). Chamá-lo direto num recorte de outro tamanho compara números que não são
+    comparáveis, e a decisão da S-38 é exatamente uma comparação.
+    """
+    return _board_pattern_score(cv2.resize(board_rgb, (320, 320), interpolation=cv2.INTER_AREA))
+
+
 def refine_candidate_with_contour(
     page: fitz.Page,
     candidate: DiagramCandidate,
     *,
     padding_pt: float = REFINE_PADDING_PT,
+    tolerance: float = REFINE_TOLERANCE,
 ) -> DiagramCandidate:
     """Realinha um candidato embutido rodando o detector de contorno dentro do bbox dele.
 
     Devolve o candidato original quando o contorno não acha nada na região -- caso em que o
     recorte cru é o melhor que se tem, e não há razão para piorá-lo.
+
+    **E também quando o que ele acha é pior (S-38).** Até aqui a função conferia se o
+    contorno tinha achado *alguma coisa*, nunca se o que achou era *melhor*, e a diferença
+    não é acadêmica: na página 80 do `Karpov 1` o bbox embutido do candidato #4 contém um
+    diagrama impecável, e o refino o substituía por um trapézio de texto que o modelo lia
+    como oito reis brancos, com confiança 0,0004.
+
+    Medido nos seis candidatos daquela página, `board_texture_score` cru → refinado:
+
+    | candidato | cru | refinado | |
+    |---|---|---|---|
+    | #0 | 0,3138 | 0,6042 | melhora |
+    | #1 | 0,2000 | 0,4616 | melhora |
+    | #2 | 0,3511 | **0,2388** | **piora** |
+    | #3 | 0,2000 | 0,4271 | melhora |
+    | #4 | 0,2892 | **0,2252** | **piora -- é o dos oito reis** |
+    | #5 | 0,3306 | 0,5059 | melhora |
+
+    O refino ajuda em quatro e atrapalha em dois. Ele fica: alinhar a grade é o que a medição
+    da S-12 mostrou valer 0,137 → 0,360 de confiança no `Schiller`. O que muda é passar a
+    conferir o resultado, e é a mesma regra que a função já aplicava ao caso "não achou
+    nada" -- só que agora aplicada ao caso "achou coisa pior".
     """
     bbox = fitz.Rect(candidate.bbox_pdf)
     padded = fitz.Rect(bbox.x0 - padding_pt, bbox.y0 - padding_pt, bbox.x1 + padding_pt, bbox.y1 + padding_pt)
@@ -79,11 +122,25 @@ def refine_candidate_with_contour(
     if region is None:
         return candidate
 
-    found = detect_boards(region, max_boards=1)
+    found = detect_boards(region, max_boards=1, warn_on_cap=False)
     if not found:
         return candidate
 
     board_rgb, _quad = found[0]
+    antes = board_texture_score(candidate.board_rgb)
+    depois = board_texture_score(board_rgb)
+    if depois < antes - tolerance:
+        # Descartar em silêncio foi o que deixou o trapézio do Karpov passar por semanas
+        # parecendo um problema do classificador.
+        logger.info(
+            "Refino do contorno descartado em %s: textura de tabuleiro cairia de %.4f para "
+            "%.4f. Fica o recorte embutido cru.",
+            tuple(round(value) for value in candidate.bbox_pdf),
+            antes,
+            depois,
+        )
+        return candidate
+
     return DiagramCandidate(
         board_rgb=board_rgb,
         bbox_pdf=candidate.bbox_pdf,
@@ -109,7 +166,7 @@ def detect_diagrams(
     page: fitz.Page,
     page_rgb: np.ndarray,
     *,
-    max_boards: int = 8,
+    max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     refine_embedded: bool = True,
     size_prior_tolerance: float | None = EMBEDDED_SIZE_TOLERANCE,
@@ -187,11 +244,11 @@ def detect_diagrams(
 
 
 def detect_diagrams_in_pdf_page(
-    pdf_source: str | Path | bytes,
+    pdf_source: PdfSource,
     page_index: int,
     page_rgb: np.ndarray,
     *,
-    max_boards: int = 8,
+    max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
 ) -> list[DiagramCandidate]:
     """`detect_diagrams` para quem tem o caminho do PDF, e não um `fitz.Page` aberto.
@@ -201,12 +258,13 @@ def detect_diagrams_in_pdf_page(
     `[Diagram "2"]` do PGN; repetir o erro na fonte de detecção seria pior, porque aí a
     divergência é no recorte e não só na numeração.
 
-    Abre o documento a cada chamada, como `render_pdf_page` já faz -- irrelevante ao lado do
-    render, e mantém a assinatura livre de objeto do PyMuPDF.
+    Abre o documento, ou o **empresta** quando `pdf_source` já é um `OpenPdf` (S-61): era
+    aqui que morria uma das três aberturas por página. A assinatura continua aceitando caminho,
+    que é a porta dos CLIs.
     """
-    from ..pdf_io import _open_document
+    from ..pdf_io import open_document
 
-    with _open_document(pdf_source) as doc:
+    with open_document(pdf_source) as doc:
         if page_index < 0 or page_index >= doc.page_count:
             raise ValueError(f"Pagina {page_index} fora do intervalo (0..{doc.page_count - 1})")
         return detect_diagrams(

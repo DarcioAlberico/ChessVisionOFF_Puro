@@ -13,7 +13,7 @@ from chess_diagram_ocr.board_detection import (
     detect_board,
     detect_boards,
 )
-from chess_diagram_ocr.config import DEFAULT_READING_ORDER
+from chess_diagram_ocr.config import DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER
 from chess_diagram_ocr.pdf_to_pgn import save_pdf_positions_to_pgn, scan_pdf_positions
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +66,120 @@ class BoardDetectionTests(unittest.TestCase):
         _sort_selected_candidates(selected, "column")
 
         self.assertEqual([int(item[0][0, 0]) for item in selected], [1, 3, 2, 4])
+
+
+def _synthetic_grid(rows: int, columns: int, *, cell: int = 24, margin: int = 40) -> np.ndarray:
+    """Pagina branca com `rows x columns` tabuleiros 8x8 desenhados em xadrez.
+
+    Serve para exercitar o teto de `max_boards` sem depender de PDF: o detector so
+    precisa de quadrados com textura periodica, que e o que ele pontua.
+    """
+    board = cell * 8
+    espaco = cell
+    page = np.full(
+        (margin * 2 + rows * board + (rows - 1) * espaco, margin * 2 + columns * board + (columns - 1) * espaco, 3),
+        255,
+        dtype=np.uint8,
+    )
+    for row in range(rows):
+        for column in range(columns):
+            y0 = margin + row * (board + espaco)
+            x0 = margin + column * (board + espaco)
+            for i in range(8):
+                for j in range(8):
+                    if (i + j) % 2:
+                        page[y0 + i * cell : y0 + (i + 1) * cell, x0 + j * cell : x0 + (j + 1) * cell] = 90
+            cv2.rectangle(page, (x0, y0), (x0 + board - 1, y0 + board - 1), (0, 0, 0), 2)
+    return page
+
+
+class MaxBoardsCapTests(unittest.TestCase):
+    """Regressao: numa grade 3x3 o teto de 8 cortava um diagrama, e em silencio.
+
+    Medido no "A Matter of Endgame Technique", pagina 17: os nove diagramas pontuam entre
+    0,2667 e 0,3054 -- um bloco praticamente empatado --, e o corte por score derrubava o
+    do canto superior direito. Nada na tela dizia que faltava um.
+    """
+
+    def test_a_three_by_three_page_is_not_truncated_by_the_default(self) -> None:
+        page = _synthetic_grid(3, 3)
+        self.assertGreaterEqual(len(detect_boards(page)), 9)
+
+    def test_the_cap_still_limits_when_asked_to(self) -> None:
+        page = _synthetic_grid(3, 3)
+        self.assertEqual(len(detect_boards(page, max_boards=4)), 4)
+
+    def test_hitting_the_cap_is_logged_instead_of_silent(self) -> None:
+        page = _synthetic_grid(3, 3)
+        with self.assertLogs("chess_diagram_ocr.board_detection", level="WARNING") as captured:
+            detect_boards(page, max_boards=4)
+        self.assertIn("max_boards", "\n".join(captured.output))
+
+    def test_no_warning_when_the_cap_does_not_bind(self) -> None:
+        page = _synthetic_grid(2, 2)
+        with self.assertNoLogs("chess_diagram_ocr.board_detection", level="WARNING"):
+            detect_boards(page)
+
+    def test_a_deliberate_single_board_request_does_not_warn(self) -> None:
+        """O aviso é para o teto do usuário, e refinar um recorte não usa esse teto.
+
+        `refine_candidate_with_contour` pede **um** tabuleiro dentro da região de um
+        candidato já localizado -- ali `max_boards=1` é o pedido, não um limite. O aviso
+        aparecia mesmo assim, num OCR de página normal, mandando "aumente 'Max diagramas'"
+        numa configuração que não tem efeito nenhum sobre aquela chamada.
+        """
+        page = _synthetic_grid(3, 3)
+        with self.assertNoLogs("chess_diagram_ocr.board_detection", level="WARNING"):
+            detect_boards(page, max_boards=1, warn_on_cap=False)
+
+    def test_the_internal_single_board_callers_all_silence_the_warning(self) -> None:
+        """Silenciar num lugar só deixaria o aviso vazando pelos outros dois."""
+        from chess_diagram_ocr import board_detection, service
+        from chess_diagram_ocr.detection import hybrid
+
+        for modulo in (board_detection, hybrid, service):
+            fonte = inspect.getsource(modulo)
+            for chamada in fonte.split("detect_boards(")[1:]:
+                trecho = chamada[: chamada.find(")")]
+                if "max_boards=1" in trecho:
+                    with self.subTest(modulo=modulo.__name__):
+                        self.assertIn("warn_on_cap=False", trecho)
+
+    def test_the_default_cap_is_the_shared_constant(self) -> None:
+        """O teto morava em seis arquivos como literal 8; divergir de novo seria facil."""
+        self.assertEqual(inspect.signature(detect_boards).parameters["max_boards"].default, DEFAULT_MAX_BOARDS)
+        self.assertGreaterEqual(DEFAULT_MAX_BOARDS, 9)
+
+    def test_every_pipeline_entry_point_shares_the_cap(self) -> None:
+        """Trocar a constante nao basta: o default de cada rota tem de vir dela.
+
+        Foi assim que a correcao vazou na primeira tentativa -- `config` e as funcoes ja
+        diziam 12, e `cvoff-export` continuava exportando 8 diagramas porque o
+        `add_argument` tinha o literal antigo.
+        """
+        from chess_diagram_ocr.detection.hybrid import detect_diagrams, detect_diagrams_in_pdf_page
+        from chess_diagram_ocr.pdf_to_pgn import save_pdf_positions_to_pgn, scan_pdf_positions
+        from chess_diagram_ocr.review_queue import build_review_queue
+
+        rotas = [
+            (detect_boards, "max_boards"),
+            (detect_diagrams, "max_boards"),
+            (detect_diagrams_in_pdf_page, "max_boards"),
+            (scan_pdf_positions, "max_boards_per_page"),
+            (save_pdf_positions_to_pgn, "max_boards_per_page"),
+            (build_review_queue, "max_boards_per_page"),
+        ]
+        for função, parâmetro in rotas:
+            with self.subTest(rota=função.__name__):
+                self.assertEqual(inspect.signature(função).parameters[parâmetro].default, DEFAULT_MAX_BOARDS)
+
+    def test_command_line_defaults_share_the_cap(self) -> None:
+        from chess_diagram_ocr.cli.export_pgn import parse_args as export_args
+        from chess_diagram_ocr.cli.review import parse_args as review_args
+
+        for parse, argv in ((export_args, ["livro.pdf"]), (review_args, ["livro.pdf"])):
+            with self.subTest(cli=parse.__module__):
+                self.assertEqual(parse(argv).max_boards_per_page, DEFAULT_MAX_BOARDS)
 
 
 class ReadingOrderIsUnifiedTests(unittest.TestCase):

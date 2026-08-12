@@ -1,0 +1,412 @@
+"""A aba "Galeria": um diagrama por vez, sincronizado com a página do PDF (S-67).
+
+**O que ela é, e o que ela não é.** Não é um segundo editor de posição -- a aba Resultado já
+é isso, e duplicá-la criaria dois lugares para corrigir a mesma casa. Aqui a unidade de
+trabalho é a **anotação de exportação**: o número do lance, a vez, se aquele diagrama sai com
+link de análise e os headers de PGN que só quem conhece o livro pode preencher.
+
+Por isso o que aparece no centro é o **recorte original** do livro, e não o tabuleiro
+redesenhado a partir da FEN. Quem está digitando "lance 24" está lendo a legenda impressa, e
+um tabuleiro redesenhado esconde justamente a fonte dessa informação.
+
+**A sincronia anda nos dois sentidos e nenhum deles arrasta o outro à força.** Navegar na
+galeria pede ao visualizador a página do diagrama; virar a página no visualizador move a
+galeria **se** aquela página tiver diagrama. Página de texto não move nada -- ver
+`GalleryModel.sync_to_page` para por que isso importa.
+
+Toda a lógica que dá para testar está no `gallery_model`. O que sobrou aqui é widget,
+thread e o vaivém entre os dois.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import tkinter as tk
+from collections.abc import Callable
+from functools import partial
+from pathlib import Path
+from tkinter import messagebox, ttk
+
+from PIL import Image, ImageTk
+
+from chess_diagram_ocr.config import DEFAULT_READING_ORDER
+from chess_diagram_ocr.gallery import load_annotations
+from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
+from chess_diagram_ocr.service import OcrService
+
+from .gallery_model import HEADER_FIELDS, GalleryModel
+from .tooltip import Tooltip
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["GalleryPanel"]
+
+BOARD_VIEW_SIZE = 420
+"""Lado do recorte na tela. Fixo: a galeria é para percorrer, e um tamanho que muda a cada
+diagrama faria a imagem pular sob o ponteiro a cada avanço."""
+
+LINK_CHOICES = (("padrão", ""), ("com link", "sim"), ("sem link", "não"))
+"""Tri-estado na tela, igual ao do arquivo. "padrão" é o que a exportação decidir."""
+
+
+class GalleryPanel(ttk.Frame):
+    """Percorre os diagramas do livro e grava as anotações de exportação."""
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        *,
+        service: OcrService,
+        pdf_path: Callable[[], Path | None],
+        model_path: Callable[[], Path],
+        max_boards: Callable[[], int],
+        on_status: Callable[[str], None],
+        on_page_request: Callable[[int], None],
+    ) -> None:
+        super().__init__(parent, padding=6)
+        self._service = service
+        self._pdf_path = pdf_path
+        self._model_path = model_path
+        self._max_boards = max_boards
+        self._on_status = on_status
+        self._on_page_request = on_page_request
+        """Pede ao visualizador para ir àquela página. Mora fora porque a galeria não conhece
+        o painel de PDF -- e não deveria: são abas irmãs, não uma dona da outra."""
+
+        self.model = GalleryModel()
+        self._cancel = threading.Event()
+        self._scanning = False
+        self._photo: ImageTk.PhotoImage | None = None
+        self._syncing = False
+        """Guarda de reentrância: pedir a página ao visualizador faz ele avisar de volta que
+        a página mudou, e sem isto os dois se chamariam em círculo."""
+
+        self.move_var = tk.StringVar(value="")
+        self.side_var = tk.StringVar(value="w")
+        self.link_var = tk.StringVar(value="")
+        self.position_var = tk.StringVar(value="nenhum diagrama varrido")
+        self.scan_var = tk.StringVar(value="")
+        self.header_vars: dict[str, tk.StringVar] = {nome: tk.StringVar(value="") for nome in HEADER_FIELDS}
+        self.free_name_var = tk.StringVar(value="")
+        self.free_value_var = tk.StringVar(value="")
+
+        self._build()
+        self.refresh()
+
+    # ------------------------------------------------------------------------ construção
+
+    def _build(self) -> None:
+        topo = ttk.Frame(self)
+        topo.pack(fill=tk.X)
+        self.btn_scan = ttk.Button(topo, text="Varrer livro", command=self.scan)
+        self.btn_scan.pack(side=tk.LEFT)
+        self.btn_cancel = ttk.Button(topo, text="Cancelar", command=self.cancel_scan, state=tk.DISABLED)
+        self.btn_cancel.pack(side=tk.LEFT, padx=6)
+        ttk.Label(topo, textvariable=self.scan_var).pack(side=tk.LEFT, padx=10)
+
+        corpo = ttk.Frame(self)
+        corpo.pack(fill=tk.BOTH, expand=True, pady=6)
+
+        centro = ttk.Frame(corpo)
+        centro.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.canvas = tk.Canvas(centro, width=BOARD_VIEW_SIZE, height=BOARD_VIEW_SIZE, highlightthickness=1)
+        self.canvas.pack()
+        ttk.Label(centro, textvariable=self.position_var).pack(pady=(6, 0))
+
+        navegacao = ttk.Frame(centro)
+        navegacao.pack(pady=4)
+        ttk.Button(navegacao, text="<<", width=4, command=lambda: self._go(0, absolute=True)).pack(side=tk.LEFT)
+        ttk.Button(navegacao, text="< anterior", command=lambda: self._go(-1)).pack(side=tk.LEFT, padx=4)
+        ttk.Button(navegacao, text="próximo >", command=lambda: self._go(1)).pack(side=tk.LEFT, padx=4)
+        ttk.Button(navegacao, text=">>", width=4, command=lambda: self._go(-1, absolute=True)).pack(side=tk.LEFT)
+
+        self.caption_var = tk.StringVar(value="")
+        ttk.Label(centro, textvariable=self.caption_var, wraplength=BOARD_VIEW_SIZE, justify=tk.LEFT).pack(pady=4)
+
+        self._build_side_frame(corpo)
+        self._build_footer()
+
+    def _build_side_frame(self, parent: tk.Misc) -> None:
+        lateral = ttk.LabelFrame(parent, text="Headers do PGN", padding=8)
+        lateral.pack(side=tk.LEFT, fill=tk.Y, padx=(10, 0))
+
+        for linha, nome in enumerate(HEADER_FIELDS):
+            ttk.Label(lateral, text=nome).grid(row=linha, column=0, sticky="w", pady=1)
+            campo = ttk.Entry(lateral, textvariable=self.header_vars[nome], width=26)
+            campo.grid(row=linha, column=1, sticky="we", pady=1)
+            # `partial` e nao `lambda` com argumento-padrao: o corpo do laco reusa `nome`, e
+            # um `lambda` que o capturasse por fechamento gravaria todos os campos no ultimo.
+            campo.bind("<FocusOut>", partial(self._on_header_event, nome))
+            campo.bind("<Return>", partial(self._on_header_event, nome))
+
+        livre = len(HEADER_FIELDS)
+        ttk.Separator(lateral, orient=tk.HORIZONTAL).grid(row=livre, column=0, columnspan=2, sticky="we", pady=6)
+        ttk.Label(lateral, text="outro").grid(row=livre + 1, column=0, sticky="w")
+        ttk.Entry(lateral, textvariable=self.free_name_var, width=26).grid(row=livre + 1, column=1, sticky="we")
+        ttk.Entry(lateral, textvariable=self.free_value_var, width=26).grid(row=livre + 2, column=1, sticky="we", pady=1)
+        ttk.Button(lateral, text="Gravar", command=self._commit_free_header).grid(row=livre + 3, column=1, sticky="e")
+
+        aplicar = ttk.Button(lateral, text="Aplicar a todos", command=self.apply_to_all)
+        aplicar.grid(row=livre + 4, column=0, columnspan=2, sticky="we", pady=(10, 0))
+        Tooltip(aplicar).set_text(
+            "Copia os headers preenchidos deste diagrama para todos os outros do livro. "
+            "Campo em branco não apaga o que os outros têm."
+        )
+
+    def _build_footer(self) -> None:
+        rodape = ttk.LabelFrame(self, text="Este diagrama", padding=8)
+        rodape.pack(fill=tk.X)
+
+        ttk.Label(rodape, text="Lance").pack(side=tk.LEFT)
+        lance = ttk.Entry(rodape, textvariable=self.move_var, width=6)
+        lance.pack(side=tk.LEFT, padx=(4, 12))
+        lance.bind("<FocusOut>", lambda _evento: self._commit_move())
+        lance.bind("<Return>", lambda _evento: self._commit_move())
+
+        ttk.Label(rodape, text="Vez").pack(side=tk.LEFT)
+        for rotulo, valor in (("brancas", "w"), ("pretas", "b")):
+            ttk.Radiobutton(
+                rodape, text=rotulo, value=valor, variable=self.side_var, command=self._commit_side
+            ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(rodape, text="Lichess").pack(side=tk.LEFT, padx=(12, 0))
+        for rotulo, valor in LINK_CHOICES:
+            ttk.Radiobutton(
+                rodape, text=rotulo, value=valor, variable=self.link_var, command=self._commit_link
+            ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(rodape, text="Copiar link", command=self.copy_link).pack(side=tk.RIGHT)
+
+    # ------------------------------------------------------------------------ varredura
+
+    def scan(self) -> None:
+        """Varre o livro inteiro. É a operação longa desta aba, e roda em thread."""
+        if self._scanning:
+            return
+        caminho = self._pdf_path()
+        if caminho is None:
+            messagebox.showwarning("Galeria", "Abra um PDF antes de varrer.")
+            return
+
+        self._scanning = True
+        self._cancel.clear()
+        self.btn_scan.configure(state=tk.DISABLED)
+        self.btn_cancel.configure(state=tk.NORMAL)
+        self.scan_var.set("varrendo...")
+        threading.Thread(target=self._scan_worker, args=(caminho,), daemon=True).start()
+
+    def cancel_scan(self) -> None:
+        """Cancelar não descarta o que já foi varrido -- ver `build_gallery_index`."""
+        self._cancel.set()
+        self.scan_var.set("cancelando...")
+
+    def _scan_worker(self, caminho: Path) -> None:
+        try:
+            # `model_session` empresta o modelo do servico em vez de carregar outro: e a
+            # mesma razao da S-57, e a varredura da galeria e tao longa quanto a da fila.
+            indice = build_gallery_index(
+                caminho,
+                self._model_path(),
+                max_boards_per_page=self._max_boards(),
+                reading_order=DEFAULT_READING_ORDER,
+                cancel_event=self._cancel,
+                progress_callback=self._progress,
+                model_session=self._service.model_session(self._model_path()),
+                caption_reader=getattr(self._service, "caption_reader", None),
+            )
+            save_index(caminho, indice)
+            self.after(0, lambda: self._scan_done(caminho, indice))
+        except Exception as exc:  # noqa: BLE001 - a varredura toca modelo, PDF e disco
+            logger.exception("Varredura da galeria falhou.")
+            # `partial` e nao `lambda`: a excecao viaja ligada por valor, e um `lambda` que
+            # fecha sobre `exc` le uma variavel que o `except` ja apagou ao sair do bloco.
+            self.after(0, partial(self._scan_failed, exc))
+
+    def _progress(self, pagina: int, total: int, _diagramas: int, _aceitos: int) -> None:
+        self.after(0, lambda: self.scan_var.set(f"varrendo página {pagina} de {total}..."))
+
+    def _scan_done(self, caminho: Path, indice: object) -> None:
+        self._scanning = False
+        self.btn_scan.configure(state=tk.NORMAL)
+        self.btn_cancel.configure(state=tk.DISABLED)
+        self.load_pdf(caminho)
+        cancelada = " (cancelada)" if self._cancel.is_set() else ""
+        self.scan_var.set(f"{len(self.model)} diagrama(s){cancelada}")
+        self._on_status(f"Galeria: {len(self.model)} diagrama(s) varrido(s){cancelada}.")
+
+    def _scan_failed(self, exc: Exception) -> None:
+        self._scanning = False
+        self.btn_scan.configure(state=tk.NORMAL)
+        self.btn_cancel.configure(state=tk.DISABLED)
+        self.scan_var.set("falhou")
+        messagebox.showerror("Galeria", f"Não foi possível varrer o livro:\n{exc}")
+
+    # ------------------------------------------------------------------------ ciclo de vida
+
+    def load_pdf(self, pdf_path: Path | None, *, request_page: bool = True) -> None:
+        """Troca o livro: carrega o índice já varrido, se houver, e as anotações.
+
+        `request_page` desligado é o caminho de quem **abre** o PDF: ali o visualizador acabou
+        de restaurar a página em que o usuário parou (S-25), e a galeria pedir a página do seu
+        primeiro diagrama jogaria essa restauração fora.
+        """
+        if pdf_path is None:
+            self.model = GalleryModel()
+            self.refresh(request_page=request_page)
+            return
+
+        indice = load_index(pdf_path)
+        self.model = GalleryModel(
+            index=indice if indice is not None else self.model.index.__class__(),
+            # As anotações são carregadas mesmo sem varredura: elas não dependem do índice, e
+            # desde a S-71 a aba Resultado escreve o número do lance por aqui. Ligá-las à
+            # varredura fazia o número digitado lá sumir num livro nunca varrido.
+            annotations=load_annotations(pdf_path),
+            pdf_path=pdf_path,
+        )
+        if indice is None:
+            self.scan_var.set("livro ainda não varrido")
+        self.refresh(request_page=request_page)
+
+    # ------------------------------------------------- anotação vinda de fora (S-71)
+    # A aba Resultado também edita o número do lance, e as duas têm de falar do mesmo
+    # diagrama. Quem guarda a anotação em memória é este painel -- duas cópias do mesmo
+    # arquivo JSON divergiriam, e a última a gravar apagaria o que a outra tinha escrito.
+
+    def move_number_at(self, page_index: int, diagram_index: int) -> int | None:
+        return self.model.annotations.get(page_index, diagram_index).move_number
+
+    def set_move_number(self, page_index: int, diagram_index: int, value: int | None) -> None:
+        """Grava o número do lance daquele diagrama. `None` apaga a declaração.
+
+        Em branco **apaga** em vez de gravar zero, pela mesma regra do resto da galeria: não
+        declarar e declarar vazio são coisas diferentes, e só a primeira deixa a exportação
+        decidir.
+        """
+        self.model.annotations.update(page_index, diagram_index, move_number=value)
+        self._persist()
+        if self.model.pdf_path is not None:
+            self.refresh(request_page=False)
+
+    def sync_to_page(self, page_index: int) -> None:
+        """O visualizador virou a página; a galeria acompanha se houver diagrama lá."""
+        if self._syncing or self.model.is_empty:
+            return
+        if self.model.sync_to_page(page_index):
+            self.refresh(request_page=False)
+
+    # ------------------------------------------------------------------------ navegação
+
+    def _go(self, delta: int, *, absolute: bool = False) -> None:
+        if absolute:
+            mudou = self.model.go_to(0 if delta >= 0 else len(self.model) - 1)
+        else:
+            mudou = self.model.step(delta)
+        if mudou:
+            self.refresh()
+
+    # ------------------------------------------------------------------------ edição
+
+    def _commit_move(self) -> None:
+        texto = self.move_var.get().strip()
+        if not texto:
+            self.model.edit(move_number=None)
+        else:
+            try:
+                self.model.edit(move_number=max(1, int(texto)))
+            except ValueError:
+                # Devolver o campo ao valor gravado e nao abrir caixa: digitar e apagar e
+                # normal, e um dialogo por tecla errada tornaria a galeria insuportavel.
+                self._on_status(f"Lance inválido: {texto!r}. Mantido o valor anterior.")
+        self._persist()
+
+    def _commit_side(self) -> None:
+        self.model.edit(side_to_move=self.side_var.get() or None)
+        self._persist()
+
+    def _commit_link(self) -> None:
+        escolha = self.link_var.get()
+        self.model.edit(lichess_link=None if escolha == "" else escolha == "sim")
+        self._persist()
+
+    def _on_header_event(self, nome: str, _evento: object = None) -> None:
+        self._commit_header(nome)
+
+    def _commit_header(self, nome: str) -> None:
+        self.model.set_header(nome, self.header_vars[nome].get())
+        self._persist()
+
+    def _commit_free_header(self) -> None:
+        nome = self.free_name_var.get().strip()
+        if not nome:
+            return
+        self.model.set_header(nome, self.free_value_var.get())
+        self.free_name_var.set("")
+        self.free_value_var.set("")
+        self._persist()
+        self._on_status(f"Header {nome} gravado neste diagrama.")
+
+    def apply_to_all(self) -> None:
+        atingidos = self.model.apply_headers_to_all()
+        if atingidos == 0:
+            self._on_status("Nada a aplicar: nenhum header preenchido neste diagrama.")
+            return
+        self._persist()
+        self._on_status(f"Headers aplicados a {atingidos} outro(s) diagrama(s).")
+
+    def copy_link(self) -> None:
+        url = self.model.lichess_url()
+        if not url:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(url)
+        self._on_status("Link do Lichess copiado. Nada saiu da máquina.")
+
+    def _persist(self) -> None:
+        caminho = self.model.save()
+        if caminho is not None:
+            self._on_status(f"Galeria: {self.model.annotated_count()} diagrama(s) anotado(s).")
+
+    # ------------------------------------------------------------------------ desenho
+
+    def refresh(self, *, request_page: bool = True) -> None:
+        """Redesenha tudo a partir do modelo. Único caminho de atualização da tela."""
+        atual = self.model.current
+        self.position_var.set(self.model.describe_position())
+        self._draw_board(atual)
+
+        anotacao = self.model.current_annotation
+        self.move_var.set("" if anotacao.move_number is None else str(anotacao.move_number))
+        self.side_var.set(anotacao.side_to_move or (atual.side_to_move if atual else "w"))
+        self.link_var.set("" if anotacao.lichess_link is None else ("sim" if anotacao.lichess_link else "não"))
+        for nome, variavel in self.header_vars.items():
+            variavel.set(anotacao.headers.get(nome, ""))
+        self.caption_var.set((atual.caption if atual else "")[:220])
+
+        if request_page and atual is not None:
+            # A guarda evita o circulo: o visualizador avisa de volta que a pagina mudou.
+            self._syncing = True
+            try:
+                self._on_page_request(atual.page_index)
+            finally:
+                self._syncing = False
+
+    def _draw_board(self, atual: object) -> None:
+        self.canvas.delete("all")
+        caminho = getattr(atual, "image_path", "")
+        if not caminho or not Path(caminho).exists():
+            self._photo = None
+            texto = "varra o livro para ver os diagramas" if self.model.is_empty else "recorte não encontrado"
+            self.canvas.create_text(BOARD_VIEW_SIZE // 2, BOARD_VIEW_SIZE // 2, text=texto, fill="#888")
+            return
+        try:
+            imagem = Image.open(caminho).convert("RGB").resize((BOARD_VIEW_SIZE, BOARD_VIEW_SIZE))
+        except OSError as exc:
+            logger.warning("Não foi possível abrir o recorte %s: %s", caminho, exc)
+            self._photo = None
+            self.canvas.create_text(BOARD_VIEW_SIZE // 2, BOARD_VIEW_SIZE // 2, text="recorte ilegível", fill="#888")
+            return
+        # A referencia tem de sobreviver a esta funcao: o Tk nao segura a imagem.
+        self._photo = ImageTk.PhotoImage(imagem)
+        self.canvas.create_image(0, 0, anchor="nw", image=self._photo)

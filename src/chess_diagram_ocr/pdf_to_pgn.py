@@ -3,15 +3,18 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import chess.pgn
 import numpy as np
 
+from .checkpoint import checkpoint_identity
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
@@ -27,7 +30,9 @@ from .export_checkpoint import (
     partial_path_for,
 )
 from .fen_utils import check_position
+from .gallery import DiagramAnnotation, lichess_analysis_url, load_annotations
 from .inference import BoardPrediction, load_model, predict_with_orientation
+from .pdf_io import PdfSource as _PdfSource
 from .pdf_text import DiagramContext
 from .semantics import SideToMove, compose_fen, infer_castling_rights, infer_side_to_move
 
@@ -36,7 +41,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PdfSource = str | Path | bytes
+PdfSource = _PdfSource
+"""Reexportado de `pdf_io`, e agora com o `OpenPdf` da S-61 dentro: uma varredura abre o
+documento uma vez e passa o objeto adiante, em vez de um caminho que cada etapa reabre.
+
+O nome continua aqui porque é por ele que dezenas de assinaturas deste módulo passam, e
+trocá-lo por um import direto em cada uma não compraria nada."""
 ProgressCallback = Callable[[int, int, int, int], None]
 PageCallback = Callable[[int, list["DiagramPosition"]], None]
 """Chamado ao fim de cada página com (índice, posições daquela página). Ver S-24."""
@@ -108,6 +118,37 @@ class DiagramPosition:
         if self.side_to_move is None:
             return _normalize_fen_for_pgn(self.fen)
         return compose_fen(self.fen, self.side_to_move)
+
+    def annotated_fen(self, annotation: DiagramAnnotation | None) -> str:
+        """`full_fen` com o que a pessoa declarou na galeria por cima (S-67).
+
+        A anotação **vence** a dedução, e é essa a razão de ela existir: quem abriu a galeria
+        e digitou "pretas" está corrigindo o palpite da S-17, não o reforçando. O que a
+        anotação não declara continua vindo do pipeline.
+        """
+        if annotation is None or (annotation.side_to_move is None and annotation.move_number is None):
+            return self.full_fen
+
+        lado = self.side_to_move
+        if annotation.side_to_move is not None:
+            lado = SideToMove(
+                color=chess.WHITE if annotation.side_to_move == "w" else chess.BLACK,
+                source="manual",
+                reason="declarado na galeria",
+            )
+        if lado is None:
+            lado = SideToMove(color=chess.WHITE, source="default")
+        return compose_fen(self.fen, lado, fullmove=annotation.move_number or 1)
+
+    def annotated_side_to_move(self, annotation: DiagramAnnotation | None) -> SideToMove | None:
+        """O lado que vai ao header, já com a declaração da galeria por cima (S-67)."""
+        if annotation is None or annotation.side_to_move is None:
+            return self.side_to_move
+        return SideToMove(
+            color=chess.WHITE if annotation.side_to_move == "w" else chess.BLACK,
+            source="manual",
+            reason="declarado na galeria",
+        )
 
     @property
     def needs_side_to_move_flip(self) -> bool:
@@ -268,6 +309,13 @@ def _normalize_fen_for_pgn(fen: str) -> str:
     return normalized
 
 
+_OCR_SOURCES = frozenset({"ocr", "ocr-page-scope"})
+"""Procedências em que o lado a jogar foi lido por um motor, e não do arquivo (S-43).
+
+São as únicas em que `[SideToMoveConfidence]` significa alguma coisa.
+"""
+
+
 def _flatten_caption(caption: str) -> str:
     """Legenda em uma linha e sem aspas: header de PGN não quebra linha nem escapa aspas."""
     flat = " / ".join(line.strip() for line in caption.splitlines() if line.strip())
@@ -300,6 +348,16 @@ def mark_duplicates(positions: Iterable[DiagramPosition]) -> list[DiagramPositio
         else:
             marked.append(replace(position, duplicate_of=origin))
     return marked
+
+
+def _opened(pdf_source: PdfSource) -> Any:
+    """Indireção pelo mesmo motivo das três abaixo: deixar os testes trocarem o pipeline.
+
+    Ver `pdf_io.opened_or_source` sobre por que não levantar aqui.
+    """
+    from .pdf_io import opened_or_source
+
+    return opened_or_source(pdf_source)
 
 
 def _get_pdf_page_count(pdf_source: PdfSource) -> int:
@@ -346,11 +404,12 @@ def _page_contexts(
     pdf_source: PdfSource,
     page_index: int,
     bboxes: Sequence[tuple[float, float, float, float]],
+    caption_reader: Any = None,
 ) -> list[DiagramContext]:
     """Contexto textual de cada diagrama da página (S-16). Mesma indireção dos anteriores."""
     from .pdf_text import contexts_for_pdf_page
 
-    return contexts_for_pdf_page(pdf_source, page_index, bboxes)
+    return contexts_for_pdf_page(pdf_source, page_index, bboxes, caption_reader=caption_reader)
 
 
 @dataclass(frozen=True, eq=False)
@@ -374,16 +433,18 @@ def iter_pdf_diagrams(
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
     dpi: int = 220,
-    max_boards_per_page: int = 8,
+    max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     device: str | None = None,
     start_page: int = 0,
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     read_text: bool = True,
+    caption_reader: Any = None,
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
     page_callback: PageCallback | None = None,
+    model_session: AbstractContextManager[tuple[Any, str]] | None = None,
 ) -> Iterator[ScannedDiagram]:
     """Gerador de diagramas do PDF, uma página por vez.
 
@@ -393,20 +454,88 @@ def iter_pdf_diagrams(
 
     `cancel_event` é conferido **antes** de cada página, e não dentro da inferência: uma
     página a 220 DPI leva ~0,18 s, então o pior caso de resposta ao cancelamento é isso.
+
+    `caption_reader` é o `ocr_caption.CaptionReader` da S-43, e `None` -- o padrão -- é o
+    projeto inteiro como sempre foi: só a camada de texto. Ele só entra onde a camada cala,
+    e vale para os 7 livros do acervo que não têm camada nenhuma. `Any` na assinatura, e não
+    o tipo, para que este módulo não passe a importar o extra opcional de OCR.
+
+    `model_session` é o empréstimo do modelo do `OcrService`, com o lock da S-31 segurado
+    pela duração da varredura (S-57). Sem ele, esta função carregava o `.pt` por conta
+    própria -- e o `ARCHITECTURE.md` afirmava que o modelo ficava "sob lock durante o uso",
+    o que valia para o OCR interativo de uma página e **não** para os dois caminhos longos
+    que de fato coexistem com um treino: a exportação de um livro e a varredura da fila. O
+    treino reescreve o mesmo arquivo que estes leem.
+
+    Continua aceitando `None`, que é o caminho dos CLIs: ali não há serviço, não há treino
+    concorrente, e exigir um seria inventar acoplamento para resolver um problema que não
+    existe fora da interface.
     """
-    page_count = _get_pdf_page_count(pdf_source)
-    if page_count <= 0:
-        return
+    # Uma abertura por varredura, e nao tres por pagina (S-61). No `Yusupov` sao 225,7 s de
+    # parsing de xref que deixam de acontecer; no `Polgar`, 4,1 s -- e e por isso que o
+    # docstring antigo achava a conta irrelevante: ele olhou o livro errado.
+    #
+    # A contagem de paginas fica **dentro** do `with`, e nao antes dele: fora, ela era a
+    # unica abertura que sobrava, e uma sobrando derrota o proposito do item num livro que
+    # a varredura abre uma vez.
+    with _opened(pdf_source) as documento:
+        page_count = _get_pdf_page_count(documento)
+        if page_count <= 0:
+            return
 
-    if start_page < 0 or start_page >= page_count:
-        raise ValueError(f"start_page {start_page} fora do intervalo 0..{page_count - 1}")
+        if start_page < 0 or start_page >= page_count:
+            raise ValueError(f"start_page {start_page} fora do intervalo 0..{page_count - 1}")
 
-    last_page_exclusive = page_count if end_page is None else min(end_page, page_count)
-    if last_page_exclusive <= start_page:
-        raise ValueError("end_page deve ser maior que start_page.")
-    total_pages = last_page_exclusive - start_page
+        last_page_exclusive = page_count if end_page is None else min(end_page, page_count)
+        if last_page_exclusive <= start_page:
+            raise ValueError("end_page deve ser maior que start_page.")
+        total_pages = last_page_exclusive - start_page
 
-    model, resolved_device = load_model(Path(model_path), device=device)
+        with model_session or _own_model_session(Path(model_path), device) as (model, resolved_device):
+            yield from _scan_pages(
+                documento,
+                model,
+                resolved_device,
+                start_page=start_page,
+                last_page_exclusive=last_page_exclusive,
+                total_pages=total_pages,
+                dpi=dpi,
+                max_boards_per_page=max_boards_per_page,
+                orientation=orientation,
+                reading_order=reading_order,
+                read_text=read_text,
+                caption_reader=caption_reader,
+                cancel_event=cancel_event,
+                progress_callback=progress_callback,
+                page_callback=page_callback,
+            )
+
+
+@contextmanager
+def _own_model_session(model_path: Path, device: str | None) -> Iterator[tuple[Any, str]]:
+    """Carrega o modelo só para esta varredura. É o caminho dos CLIs -- ver `iter_pdf_diagrams`."""
+    yield load_model(model_path, device=device)
+
+
+def _scan_pages(
+    pdf_source: PdfSource,
+    model: Any,
+    resolved_device: str,
+    *,
+    start_page: int,
+    last_page_exclusive: int,
+    total_pages: int,
+    dpi: int,
+    max_boards_per_page: int,
+    orientation: OrientationMode,
+    reading_order: ReadingOrder,
+    read_text: bool,
+    caption_reader: Any,
+    cancel_event: threading.Event | None,
+    progress_callback: ProgressCallback | None,
+    page_callback: PageCallback | None,
+) -> Iterator[ScannedDiagram]:
+    """O laço de páginas, com o modelo já em mãos. Separado só para manter o `with` legível."""
     seen = 0
 
     for page_index in range(start_page, last_page_exclusive):
@@ -422,7 +551,11 @@ def iter_pdf_diagrams(
             max_boards=max_boards_per_page,
             reading_order=reading_order,
         )
-        contexts = _page_contexts(pdf_source, page_index, [c.bbox_pdf for c in candidates]) if read_text else []
+        contexts = (
+            _page_contexts(pdf_source, page_index, [c.bbox_pdf for c in candidates], caption_reader)
+            if read_text
+            else []
+        )
 
         page_positions: list[DiagramPosition] = []
         for diagram_index, candidate in enumerate(candidates, start=1):
@@ -477,16 +610,18 @@ def scan_pdf_positions(
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
     dpi: int = 220,
-    max_boards_per_page: int = 8,
+    max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     device: str | None = None,
     start_page: int = 0,
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     read_text: bool = True,
+    caption_reader: Any = None,
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
     page_callback: PageCallback | None = None,
+    model_session: AbstractContextManager[tuple[Any, str]] | None = None,
 ) -> list[DiagramPosition]:
     """Varre as páginas e reconhece cada diagrama encontrado.
 
@@ -496,6 +631,8 @@ def scan_pdf_positions(
 
     `read_text` liga a extração do contexto textual (S-16). Desligar não muda o tabuleiro
     lido -- só faz o lado a jogar cair para a inferência por legalidade e para o padrão.
+    `caption_reader` é o OCR da S-43, que só entra onde a camada de texto cala; com
+    `read_text=False` ele não roda, porque não há contexto textual nenhum a produzir.
 
     `cancel_event` interrompe a varredura entre páginas e devolve o que já foi lido (S-24):
     o parcial é justamente o que permite retomar em vez de recomeçar.
@@ -513,9 +650,11 @@ def scan_pdf_positions(
             end_page=end_page,
             reading_order=reading_order,
             read_text=read_text,
+            caption_reader=caption_reader,
             cancel_event=cancel_event,
             progress_callback=progress_callback,
             page_callback=page_callback,
+            model_session=model_session,
         )
     ]
 
@@ -527,6 +666,8 @@ def build_pgn_games(
     event_name: str = "ChessVisionOFF PDF OCR",
     review_reasons: Mapping[tuple[int, int], str] | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
+    annotations: Mapping[tuple[int, int], DiagramAnnotation] | None = None,
+    lichess_links: bool = False,
 ) -> list[chess.pgn.Game]:
     """Um jogo por posição, só com headers -- o diagrama é a posição inicial.
 
@@ -537,11 +678,21 @@ def build_pgn_games(
     `reading_order` vai para o header porque `[Diagram "2"]` só significa algo junto com a
     ordem em que a página foi numerada (S-14): sem isso, um PGN gerado com outro padrão
     fica impossível de conferir depois.
+
+    `annotations` são as declarações da galeria (S-67), na mesma chave de `review_reasons`.
+    Elas **vencem** o que foi inferido -- vez a jogar, número do lance e headers --, porque é
+    exatamente para corrigir a inferência que a pessoa abriu a galeria e digitou.
+
+    `lichess_links` é o padrão para os diagramas que **não** declararam nada. Um diagrama que
+    declarou `lichess_link=True/False` ignora este padrão: a decisão por diagrama é o pedido
+    original da S-67, e um padrão que a atropelasse tornaria a anotação inútil.
     """
     games: list[chess.pgn.Game] = []
 
     for position in positions:
         context = position.context
+        annotation = (annotations or {}).get((position.page_index, position.diagram_index))
+        side_to_move = position.annotated_side_to_move(annotation)
         game = chess.pgn.Game()
         game.headers["Event"] = (context.event if context and context.event else None) or event_name
         game.headers["Site"] = "Local"
@@ -553,16 +704,22 @@ def build_pgn_games(
         game.headers["Result"] = "*"
         game.headers["Annotator"] = "ChessVisionOFF"
         game.headers["SetUp"] = "1"
-        game.headers["FEN"] = position.full_fen
+        game.headers["FEN"] = position.annotated_fen(annotation)
         game.headers["SourcePDF"] = source_name
         game.headers["Page"] = str(position.page_number)
         game.headers["Diagram"] = str(position.diagram_index)
         game.headers["ReadingOrder"] = reading_order
         game.headers["OCRConfidence"] = f"{position.confidence:.3f}"
 
-        if position.side_to_move is not None:
-            game.headers["SideToMove"] = position.side_to_move.label
-            game.headers["SideToMoveSource"] = position.side_to_move.source
+        if side_to_move is not None:
+            game.headers["SideToMove"] = side_to_move.label
+            game.headers["SideToMoveSource"] = side_to_move.source
+            # So quando quem decidiu foi o OCR (S-43). Escrever a confianca de uma decisao
+            # de legalidade -- que pode ter derrubado uma leitura de OCR de 0,55 -- diria
+            # que a resposta gravada vale 0,55, e ela nao veio de la. E 1,0 em todo jogo de
+            # um livro com camada de texto e ruido que ensina a ignorar o header.
+            if side_to_move.source in _OCR_SOURCES and context is not None:
+                game.headers["SideToMoveConfidence"] = f"{context.side_to_move_confidence:.3f}"
             if infer_castling_rights(position.fen) != "-":
                 # So quando ha o que declarar: escrever a proveniencia de um "-" nao informa
                 # nada e enche o header de ruido.
@@ -592,6 +749,21 @@ def build_pgn_games(
         if reason:
             game.headers["Review"] = reason
 
+        if annotation is not None:
+            # Por ultimo, e de proposito: o que a pessoa escreveu na galeria vence tudo que
+            # foi inferido acima. `RESERVED_HEADERS` ja tirou `FEN`, `SetUp` e `Result` da
+            # jogada -- aqueles mudam pelos campos proprios, que sabem recompor a posicao.
+            for nome, valor in annotation.headers.items():
+                game.headers[nome] = valor
+
+        quer_link = annotation.lichess_link if annotation is not None else None
+        if quer_link is None:
+            quer_link = lichess_links
+        if quer_link:
+            # Comentario, e nao header: o link e para uma pessoa clicar, e leitor de PGN
+            # mostra comentario junto do diagrama. Header seria metadado de maquina.
+            game.comment = lichess_analysis_url(game.headers["FEN"])
+
         games.append(game)
 
     return games
@@ -604,6 +776,8 @@ def build_pgn_text(
     event_name: str = "ChessVisionOFF PDF OCR",
     review_reasons: Mapping[tuple[int, int], str] | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
+    annotations: Mapping[tuple[int, int], DiagramAnnotation] | None = None,
+    lichess_links: bool = False,
 ) -> str:
     payloads = [
         game.accept(chess.pgn.StringExporter(headers=True, variations=True, comments=True)).strip()
@@ -613,6 +787,8 @@ def build_pgn_text(
             event_name=event_name,
             review_reasons=review_reasons,
             reading_order=reading_order,
+            annotations=annotations,
+            lichess_links=lichess_links,
         )
     ]
     return "\n\n".join(payload for payload in payloads if payload).strip()
@@ -631,12 +807,18 @@ def write_gated_pgn(
     cancelled: bool = False,
     partial_path: Path | None = None,
     resumed_from_page: int | None = None,
+    annotations: Mapping[tuple[int, int], DiagramAnnotation] | None = None,
+    lichess_links: bool = False,
 ) -> ExportReport:
     """Escreve o PGN principal só com o que passou no gate, e o resto no `.review.pgn`.
 
     `dedupe` omite do PGN principal as repetições de uma posição já exportada. Elas ficam
     no relatório, em `report.duplicates`: sem `dedupe` o header `[DuplicateOf]` já diz qual
     é qual, e com `dedupe` o que sumiu do arquivo continua nomeado em algum lugar.
+
+    As anotações da galeria (S-67) vão para os **dois** arquivos. O `.review.pgn` é o que a
+    pessoa vai abrir para consertar, e mandá-lo sem o lance e a vez que ela já declarou faria
+    o arquivo de revisão contradizer a galeria justamente onde ela trabalhou.
     """
     marked = mark_duplicates(positions)
     duplicates: list[DiagramPosition] = []
@@ -648,7 +830,14 @@ def write_gated_pgn(
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = build_pgn_text(accepted, source_name=source_name, event_name=event_name, reading_order=reading_order)
+    payload = build_pgn_text(
+        accepted,
+        source_name=source_name,
+        event_name=event_name,
+        reading_order=reading_order,
+        annotations=annotations,
+        lichess_links=lichess_links,
+    )
     output_path.write_text(payload + "\n" if payload else "", encoding="utf-8")
 
     review_items = sorted(
@@ -664,6 +853,8 @@ def write_gated_pgn(
             event_name=event_name,
             review_reasons={(position.page_index, position.diagram_index): reason for position, reason in review_items},
             reading_order=reading_order,
+            annotations=annotations,
+            lichess_links=lichess_links,
         )
         review_path.write_text(review_payload + "\n" if review_payload else "", encoding="utf-8")
 
@@ -687,7 +878,7 @@ def save_pdf_positions_to_pgn(
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
     dpi: int = 220,
-    max_boards_per_page: int = 8,
+    max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     device: str | None = None,
     start_page: int = 0,
@@ -696,12 +887,16 @@ def save_pdf_positions_to_pgn(
     event_name: str = "ChessVisionOFF PDF OCR",
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     read_text: bool = True,
+    caption_reader: Any = None,
     dedupe: bool = False,
     cancel_event: threading.Event | None = None,
     resume: bool = True,
     checkpoint: bool = True,
     checkpoint_every: int = DEFAULT_CHECKPOINT_EVERY,
     progress_callback: ProgressCallback | None = None,
+    model_session: AbstractContextManager[tuple[Any, str]] | None = None,
+    annotations: Mapping[tuple[int, int], DiagramAnnotation] | None = None,
+    lichess_links: bool = False,
 ) -> ExportReport:
     """Varre o PDF e exporta com o gate de qualidade da S-15.
 
@@ -713,17 +908,33 @@ def save_pdf_positions_to_pgn(
     `.partial.jsonl` fica ao lado do PGN e a execução seguinte com **os mesmos parâmetros**
     retoma da página seguinte à última concluída. Terminar apaga o parcial -- ele existe
     para atravessar a interrupção, não para virar um segundo formato de saída.
+
+    "Os mesmos parâmetros" inclui **o mesmo arquivo de modelo**, e não só o mesmo caminho
+    (S-57): o treino reescreve sempre o `models/piece_classifier.pt`, e retomar depois de
+    treinar juntaria metade de um PGN lido por um modelo com metade lida por outro.
+
+    `model_session` empresta o modelo do `OcrService` em vez de carregar outro -- ver
+    `iter_pdf_diagrams`.
+
+    `annotations` normalmente fica em `None`: as declarações da galeria (S-67) são carregadas
+    do `data/gallery/<livro>.json` aqui dentro. Passá-las explicitamente serve a teste e a
+    quem exporta a partir de bytes, que não têm nome de arquivo para procurar.
     """
     source_name = Path(pdf_source).name if isinstance(pdf_source, (str, Path)) else "pdf-bytes"
 
     params = ScanParams(
         source_name=source_name,
         model_path=str(Path(model_path)),
+        # O caminho e sempre o mesmo `models/piece_classifier.pt`; o arquivo, nao (S-57).
+        model_identity=checkpoint_identity(Path(model_path)),
         dpi=dpi,
         max_boards_per_page=max_boards_per_page,
         orientation=orientation,
         reading_order=reading_order,
         read_text=read_text,
+        # Retomar com OCR o que comecou sem ele misturaria duas procedencias no mesmo PGN
+        # (S-43), pelo mesmo motivo que `model_identity` existe.
+        ocr_engine=getattr(caption_reader, "name", "") if caption_reader is not None else "",
         start_page=start_page,
         end_page=end_page,
     )
@@ -772,9 +983,11 @@ def save_pdf_positions_to_pgn(
                 end_page=end_page,
                 reading_order=reading_order,
                 read_text=read_text,
+                caption_reader=caption_reader,
                 cancel_event=cancel_event,
                 progress_callback=progress_callback,
                 page_callback=_on_page,
+                model_session=model_session,
             )
         )
 
@@ -783,6 +996,16 @@ def save_pdf_positions_to_pgn(
         writer.flush()
         if not cancelled:
             writer.discard()
+
+    # As anotacoes da galeria (S-67) sao carregadas aqui, e nao pedidas ao chamador: elas
+    # pertencem ao livro, e ter de passa-las em toda chamada faria a GUI exportar com elas e
+    # a CLI sem -- dois PGNs diferentes do mesmo PDF, que e o defeito que a S-14 ja corrigiu
+    # uma vez na numeracao dos diagramas.
+    anotacoes: Mapping[tuple[int, int], DiagramAnnotation] | None = None
+    if annotations is None and isinstance(pdf_source, (str, Path)):
+        anotacoes = load_annotations(Path(pdf_source), reading_order=reading_order).as_mapping()
+    elif annotations is not None:
+        anotacoes = annotations
 
     return write_gated_pgn(
         positions,
@@ -796,6 +1019,8 @@ def save_pdf_positions_to_pgn(
         cancelled=cancelled,
         partial_path=partial_path if (cancelled and checkpoint) else None,
         resumed_from_page=resumed_from_page,
+        annotations=anotacoes,
+        lichess_links=lichess_links,
     )
 
 

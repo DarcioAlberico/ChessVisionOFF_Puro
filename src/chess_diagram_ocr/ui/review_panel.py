@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_READING_ORDER, OrientationMode, ReadingOrder
+from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, OrientationMode, ReadingOrder
 from ..review_queue import (
     DEFAULT_CACHE_DIR,
     DEFAULT_QUEUE_PATH,
@@ -27,6 +27,7 @@ from ..review_queue import (
     merge_queues,
     rare_classes_from_labels,
 )
+from ..service import OcrService
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class ScanRequest:
     model_path: Path
     labels_csv: Path
     dpi: int = 220
-    max_boards_per_page: int = 8
+    max_boards_per_page: int = DEFAULT_MAX_BOARDS
     orientation: OrientationMode = "auto"
     reading_order: ReadingOrder = DEFAULT_READING_ORDER
     start_page: int = 0
@@ -50,16 +51,16 @@ class ScanRequest:
 class ReviewPanel(ttk.Frame):
     """Lista navegável da fila, com varredura em segundo plano e cancelamento."""
 
-    COLUMNS = ("prioridade", "pagina", "diagrama", "confianca", "status", "motivo")
+    COLUMNS = ("prioridade", "página", "diagrama", "confiança", "status", "motivo")
     HEADINGS = {
         "prioridade": "Prio.",
-        "pagina": "Pag.",
+        "página": "Pag.",
         "diagrama": "Diag.",
-        "confianca": "Conf. min",
+        "confiança": "Conf. min",
         "status": "Status",
         "motivo": "Motivo",
     }
-    WIDTHS = {"prioridade": 60, "pagina": 50, "diagrama": 50, "confianca": 80, "status": 80, "motivo": 460}
+    WIDTHS = {"prioridade": 60, "página": 50, "diagrama": 50, "confiança": 80, "status": 80, "motivo": 460}
 
     def __init__(
         self,
@@ -70,8 +71,16 @@ class ReviewPanel(ttk.Frame):
         on_status: Callable[[str], None] | None = None,
         queue_path: Path = DEFAULT_QUEUE_PATH,
         cache_dir: Path = DEFAULT_CACHE_DIR,
+        service: OcrService | None = None,
     ) -> None:
+        """`service` empresta o modelo sob o lock da S-31 durante a varredura (S-57).
+
+        A varredura da fila percorre o livro inteiro e é uma das duas operações longas que
+        carregavam o `.pt` por conta própria, fora do lock -- enquanto o treino, noutra
+        thread, reescrevia esse mesmo arquivo.
+        """
         super().__init__(parent, padding=6)
+        self._service = service
         self._scan_request = scan_request
         self._on_open = on_open
         self._on_status = on_status or (lambda _text: None)
@@ -267,9 +276,15 @@ class ReviewPanel(ttk.Frame):
                 cache_dir=self.cache_dir,
                 cancel_event=cancel_event,
                 progress_callback=_progress,
+                # Mesmo OCR de legenda do reconhecimento e da exportação (S-43): uma fila
+                # montada por outro pipeline manda corrigir um diagrama que o PGN não tem.
+                caption_reader=getattr(self._service, "caption_reader", None),
+                model_session=(
+                    self._service.model_session(request.model_path) if self._service is not None else None
+                ),
             )
             self.after(0, lambda: self._apply_scan(fresh, cancel_event.is_set()))
-        except Exception as exc:  # noqa: BLE001 - erro de varredura vira mensagem, nao crash
+        except Exception as exc:  # noqa: BLE001 - erro de varredura vira mensagem, não crash
             logger.exception("Falha ao montar a fila de revisão.")
             detalhe = str(exc)
             self.after(0, lambda: messagebox.showerror("Fila de revisão", f"Falha na varredura:\n{detalhe}"))
@@ -278,7 +293,7 @@ class ReviewPanel(ttk.Frame):
 
     def _apply_scan(self, fresh: ReviewQueue, cancelled: bool) -> None:
         if self.queue.items and self.queue.source_pdf == fresh.source_pdf:
-            # Revarredura nao pode ressuscitar o que ja foi revisado -- e o que `merge_queues`
+            # Revarredura não pode ressuscitar o que já foi revisado -- e o que `merge_queues`
             # garante. Sem isso, cada varredura apagaria o trabalho da sessao anterior.
             fresh = merge_queues(self.queue, fresh)
         self.queue = fresh

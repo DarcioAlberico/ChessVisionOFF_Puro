@@ -1,22 +1,26 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 import torch
+import torch.nn as nn
 
 from .board_detection import split_board_into_cells
-from .checkpoint import load_state_dict
+from .checkpoint import load_checkpoint
 from .config import (
+    APPLY_CALIBRATED_TEMPERATURE,
     CONSTRAINED_DECODING,
     DEFAULT_ORIENTATION_MODE,
     MAX_DECODE_CHANGES,
     ORIENTATION_DECISIVE_MARGIN,
     ORIENTATION_PAWN_PRIOR_MARGIN,
     PIECE_CLASSES,
+    TTA_ENABLED,
     UNCERTAIN_SQUARE_THRESHOLD,
     OrientationMode,
 )
@@ -25,30 +29,130 @@ from .fen_utils import (
     PositionCheck,
     check_position,
     fen_from_class_indices,
-    pawn_direction_score,
     square_name,
 )
-from .model import PieceClassifier, preprocess_cell_to_tensor
+from .model import DEFAULT_ARCH, ArchConfig, build_model, preprocess_cell_to_tensor, with_coordinate_channels
+from .orientation import (
+    ConfidenceMarginRule,
+    CoordinateRule,
+    OrientationEvidence,
+    OrientationPolicy,
+    OrientedPrediction,
+    PawnPriorRule,
+    SingleLegalRule,
+    TightMarginFallback,
+)
+from .preprocess import IDENTITY, BoardNormalizer, NormalizerConfig
 
 logger = logging.getLogger(__name__)
 
 _EPS = 1e-12
 
 
-def load_model(model_path: Path, device: str | None = None) -> tuple[PieceClassifier, str]:
+def describe_device(device: str) -> str:
+    """Descrição do dispositivo para log e barra de status (S-30).
+
+    O `load_model` decidia entre CPU e GPU em silêncio, então uma máquina com placa mas
+    com o torch `+cpu` instalado treinava e inferia na CPU sem que nada dissesse isso --
+    é a diferença entre 7,5 min e ~45 s por época, invisível.
+    """
+    if device.startswith("cuda") and torch.cuda.is_available():
+        index = torch.cuda.current_device() if device == "cuda" else int(device.split(":")[1])
+        return f"cuda:{index} ({torch.cuda.get_device_name(index)})"
+    if device.startswith("cuda"):
+        return f"{device} (indisponível!)"
+    build = "+cpu" if "+cpu" in torch.__version__ else torch.__version__
+    return f"cpu (torch {build}, sem CUDA compilada)" if "+cpu" in torch.__version__ else f"cpu (torch {build})"
+
+
+def load_model(
+    model_path: Path,
+    device: str | None = None,
+    *,
+    arch: ArchConfig | None = None,
+    apply_temperature: bool = APPLY_CALIBRATED_TEMPERATURE,
+) -> tuple[nn.Module, str]:
+    """Carrega o checkpoint e devolve `(modelo, dispositivo)`.
+
+    A arquitetura vem do próprio checkpoint quando ele a registra (S-27). Checkpoints
+    anteriores à Fase 5 não a registram e caem no default -- que é a arquitetura com que
+    eles foram treinados, então continuam carregando. Isso é deliberado: recusá-los
+    tornaria os números do BASELINE.md irreproduzíveis.
+
+    A temperatura da S-28 fica em `model.temperature` e é aplicada por quem chama, não
+    dentro do `forward`. `apply_temperature=False` (o padrão) carrega o modelo com
+    temperatura neutra e apenas **reporta** a que está gravada -- ver
+    `config.APPLY_CALIBRATED_TEMPERATURE` para o que foi medido e por quê.
+    """
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    model = PieceClassifier()
     model_path = Path(model_path)
 
-    if model_path.exists():
-        model.load_state_dict(load_state_dict(model_path, map_location=dev), strict=False)
-        logger.info("Modelo carregado de %s em %s.", model_path, dev)
-    else:
+    if not model_path.exists():
         logger.warning("Checkpoint nao encontrado em %s: usando pesos aleatorios.", model_path)
+        model = build_model(arch or DEFAULT_ARCH, pretrained=False)
+        model.to(dev)
+        model.eval()
+        return model, dev
 
+    checkpoint = load_checkpoint(model_path, map_location=dev)
+    if arch is None:
+        arch = ArchConfig.from_version(checkpoint.arch_version) if checkpoint.arch_version else DEFAULT_ARCH
+
+    model = build_model(arch, pretrained=False)
+    model.load_state_dict(checkpoint.state, strict=True)
+    model.temperature = checkpoint.temperature if apply_temperature else 1.0  # type: ignore[assignment]
     model.to(dev)
     model.eval()
+
+    if checkpoint.temperature == 1.0:
+        temperatura = "1,0000 (não calibrado)"
+    elif apply_temperature:
+        temperatura = f"{checkpoint.temperature:.4f} (aplicada)"
+    else:
+        temperatura = f"{checkpoint.temperature:.4f} gravada, não aplicada (S-28: medido que piora o gate)"
+
+    logger.info(
+        "Modelo carregado de %s | arquitetura %s%s | dispositivo %s | temperatura %s",
+        model_path.name,
+        arch.version,
+        " (não registrada no checkpoint; assumida)" if not checkpoint.arch_version else "",
+        describe_device(dev),
+        temperatura,
+    )
     return model, dev
+
+
+def _shifted(board: np.ndarray, dx: int, dy: int) -> np.ndarray:
+    matrix = np.array([[1.0, 0.0, dx], [0.0, 1.0, dy]], dtype=np.float32)
+    height, width = board.shape[:2]
+    return cv2.warpAffine(board, matrix, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+
+
+def _scaled(board: np.ndarray, factor: float) -> np.ndarray:
+    height, width = board.shape[:2]
+    matrix = cv2.getRotationMatrix2D((width / 2, height / 2), 0.0, factor)
+    return cv2.warpAffine(board, matrix, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+
+
+def tta_views(board: np.ndarray) -> list[np.ndarray]:
+    """As sete vistas do TTA da S-29: original, ±2 px nos dois eixos, escalas 0,98 e 1,02.
+
+    Os deslocamentos são no **tabuleiro**, não na casa, porque é ali que o erro real
+    acontece: a Fase 2 mediu que o recorte fora de registro é o que degrada a leitura em
+    PDF de verdade (o bbox embutido cru contra o warp por contorno, ROADMAP §2.4). Uma
+    casa de 100 px deslocada de 2 px vira ~1,3 px depois do resize para 64×64 -- pequeno
+    de propósito: o TTA existe para estabilizar a probabilidade, não para inventar vistas
+    que o modelo nunca veria.
+    """
+    return [
+        board,
+        _shifted(board, 2, 0),
+        _shifted(board, -2, 0),
+        _shifted(board, 0, 2),
+        _shifted(board, 0, -2),
+        _scaled(board, 0.98),
+        _scaled(board, 1.02),
+    ]
 
 
 @dataclass(frozen=True, eq=False)
@@ -157,68 +261,104 @@ def prediction_from_probs(
     )
 
 
+def board_probabilities(
+    board_rgb: np.ndarray,
+    model: nn.Module,
+    device: str,
+    *,
+    tta: bool = False,
+    normalizer: NormalizerConfig = IDENTITY,
+) -> np.ndarray:
+    """Matriz (64, 13) de probabilidades por casa.
+
+    `normalizer` roda no **tabuleiro inteiro**, antes do corte em casas (S-39): iluminação e
+    trama são propriedades da página, e estimá-las sobre 100×100 px de uma casa é estimá-las
+    sobre ruído. `IDENTITY` (o padrão) devolve a mesma imagem e não custa nada.
+
+    A temperatura da S-28 é aplicada aqui, sobre os logits, e não dentro do `forward`:
+    dividir no treino mudaria o gradiente. Com `tta`, as vistas são somadas **depois** do
+    softmax de cada uma -- média de probabilidades, não de logits. As duas médias
+    discordam, e a de probabilidades é a que o voto da S-29 descreve: uma vista muito
+    confiante e errada não domina as outras seis como dominaria em espaço de logit.
+    """
+    return board_probabilities_batch([board_rgb], model, device, tta=tta, normalizer=normalizer)[0]
+
+
+def board_probabilities_batch(
+    boards_rgb: Sequence[np.ndarray],
+    model: nn.Module,
+    device: str,
+    *,
+    tta: bool = False,
+    normalizer: NormalizerConfig = IDENTITY,
+) -> list[np.ndarray]:
+    """Uma matriz (64, 13) por tabuleiro, **num único `forward`** (S-61).
+
+    Existe porque a orientação automática lia o mesmo diagrama duas vezes, em duas chamadas
+    de 64 casas. A computação é a mesma; o que se corta é o custo fixo por lote, que em CPU
+    não é desprezível -- e a inferência é 76% do tempo de página, do qual metade é a segunda
+    orientação.
+
+    A ordem do lote é `tabuleiro-maior, vista, casa`, e ela **é** o contrato com a cabeça por
+    tabuleiro da S-62b: cada bloco de 64 casas consecutivas é um tabuleiro inteiro, em ordem
+    de leitura. Embaralhar aqui não daria erro -- daria uma leitura errada.
+    """
+    if not boards_rgb:
+        return []
+
+    arch = getattr(model, "arch", DEFAULT_ARCH)
+    temperature = float(getattr(model, "temperature", 1.0))
+    normalizador = BoardNormalizer(normalizer)
+
+    por_tabuleiro = [
+        tta_views(normalizador.normalize(board)) if tta else [normalizador.normalize(board)]
+        for board in boards_rgb
+    ]
+    tensors = [
+        with_coordinate_channels(preprocess_cell_to_tensor(cell, arch), square_index, arch)
+        for views in por_tabuleiro
+        for view in views
+        for square_index, cell in enumerate(split_board_into_cells(view))
+    ]
+    batch = torch.stack(tensors, dim=0).to(device)
+
+    with torch.inference_mode():
+        probs = torch.softmax(model(batch) / temperature, dim=1)
+
+    plano = probs.cpu().numpy().astype(np.float64)
+    resultado: list[np.ndarray] = []
+    inicio = 0
+    for views in por_tabuleiro:
+        fim = inicio + len(views) * 64
+        matrizes = plano[inicio:fim].reshape(len(views), 64, len(PIECE_CLASSES))
+        resultado.append(matrizes.mean(axis=0))
+        inicio = fim
+    return resultado
+
+
 def predict_board(
     board_rgb: np.ndarray,
-    model: PieceClassifier,
+    model: nn.Module,
     device: str,
     *,
     rotate_180: bool = False,
     uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     constrained: bool = CONSTRAINED_DECODING,
+    tta: bool = TTA_ENABLED,
+    normalizer: NormalizerConfig = IDENTITY,
 ) -> BoardPrediction:
-    """Reconhece um tabuleiro já recortado e normalizado, preservando as probabilidades."""
+    """Reconhece um tabuleiro já recortado, preservando as probabilidades."""
     board = cv2.rotate(board_rgb, cv2.ROTATE_180) if rotate_180 else board_rgb
-
-    cells = split_board_into_cells(board)
-    batch = torch.stack([preprocess_cell_to_tensor(cell) for cell in cells], dim=0).to(device)
-
-    with torch.inference_mode():
-        probs = torch.softmax(model(batch), dim=1)
-
     return prediction_from_probs(
-        probs.cpu().numpy().astype(np.float64),
+        board_probabilities(board, model, device, tta=tta, normalizer=normalizer),
         uncertain_threshold=uncertain_threshold,
         constrained=constrained,
     )
 
 
-@dataclass(frozen=True, eq=False)
-class OrientedPrediction:
-    """Leitura de um diagrama junto com a orientação escolhida para ela (S-13)."""
-
-    prediction: BoardPrediction
-    rotation: int
-    """0 ou 180 graus, aplicado à imagem antes de reconhecer."""
-
-    margin: float
-    """`min_confidence` da orientação escolhida menos a da descartada.
-
-    Sempre ≥ 0 quando a escolha foi por confiança. É a medida de quão folgada foi."""
-
-    ambiguous: bool
-    """A escolha foi apertada, ou os dois sinais discordaram: vale olho humano."""
-
-    reason: str
-    """Por que esta orientação venceu, em pt-BR, para a UI e o arquivo de revisão."""
-
-    alternative: BoardPrediction | None = None
-    """A leitura descartada. `None` quando a orientação foi imposta, não escolhida."""
-
-
-def _pawn_prior_gap(upright: BoardPrediction, flipped: BoardPrediction) -> float | None:
-    """Quanto o prior de peões prefere a leitura de pé. `None` se ele não se aplica."""
-    score_upright = pawn_direction_score(upright.class_indices)
-    score_flipped = pawn_direction_score(flipped.class_indices)
-    if score_upright is None and score_flipped is None:
-        return None
-    # Uma leitura sem peão de alguma cor não pontua; tratá-la como 0 é justo, porque o outro
-    # lado é que está afirmando algo sobre a estrutura.
-    return (score_upright or 0.0) - (score_flipped or 0.0)
-
-
 def predict_with_orientation(
     board_rgb: np.ndarray,
-    model: PieceClassifier,
+    model: nn.Module,
     device: str,
     *,
     mode: OrientationMode = DEFAULT_ORIENTATION_MODE,
@@ -226,35 +366,28 @@ def predict_with_orientation(
     constrained: bool = CONSTRAINED_DECODING,
     decisive_margin: float = ORIENTATION_DECISIVE_MARGIN,
     pawn_prior_margin: float = ORIENTATION_PAWN_PRIOR_MARGIN,
+    tta: bool = TTA_ENABLED,
+    normalizer: NormalizerConfig = IDENTITY,
+    policy: OrientationPolicy | None = None,
 ) -> OrientedPrediction:
     """Reconhece o diagrama decidindo a orientação por diagrama, não por checkbox global.
 
-    Com `mode="auto"` tenta 0° e 180° e escolhe a leitura mais plausível. A ordem dos
-    critérios vem de medição no split de teste (320 tabuleiros), não da intuição:
+    Com `mode="auto"` tenta 0° e 180° e entrega as duas leituras à `OrientationPolicy`, que
+    é quem decide. Esta função ficou com o que só ela pode fazer -- rodar o modelo duas vezes
+    -- e a cascata de regras, os limiares e a medição que os justifica moram em
+    `orientation.py` (S-48). É lá que se lê **por que** a ordem é essa.
 
-    | sinal              | acerta | erra | empata |
-    |--------------------|--------|------|--------|
-    | legalidade         |     52 |    0 |    268 |
-    | `min_confidence`   |    320 |    0 |      0 |
-    | peões nas filas    |    264 |    9 |     47 |
-    | reis nas filas     |    267 |   37 |     16 |
+    O resumo da política padrão, na ordem:
 
-    A legalidade **não** serve como critério dominante, ao contrário do que a S-13 supôs:
-    girar a posição 180° manda peão branco da fila `r` para a fila `9-r`, e 2..7 vira 7..2 --
-    continua legal. Ela só decide em 16% dos casos, embora nunca erre, então fica como
-    primeiro filtro. O prior de **reis** que a S-13 sugeria erra 37 vezes em 320 e ficou fora.
+    1. Coordenadas da borda, quando alguém as leu (hoje: nunca; ver `CoordinateRule`).
+    2. Uma orientação ilegal e a outra não → a legal.
+    3. Margem de confiança ≥ `decisive_margin` → a mais confiante.
+    4. Senão, peões decidem por ≥ `pawn_prior_margin` filas → a que eles apontam.
+    5. Senão → a mais confiante, marcada `ambiguous`.
 
-    A tabela acima, porém, só descreve leitura boa. Medido depois no `1937 Kemeri.pdf`, a
-    confiança **para de decidir** quando a leitura é ruim: em duas páginas cuja leitura de pé
-    era claramente correta, as duas orientações saíram com confiança ~0,04 e margens de 0,001
-    e 0,019 -- ruído, e seguir a margem girava o diagrama errado. O prior de peões, que olha a
-    estrutura da posição e não a aparência das peças, continuava informativo nos mesmos casos
-    (+3,8 contra -4,2). Daí a regra por regime:
-
-    1. Uma orientação ilegal e a outra não → a legal.
-    2. Margem de confiança ≥ `decisive_margin` → a mais confiante.
-    3. Senão, peões decidem por ≥ `pawn_prior_margin` filas → a que eles apontam.
-    4. Senão → a mais confiante, marcada `ambiguous`.
+    `decisive_margin` e `pawn_prior_margin` continuam aqui porque trinta chamadores os
+    passam; eles montam a política quando `policy` não vem. Passar `policy` ignora os dois,
+    que é o que um experimento regra a regra quer.
 
     Atenção ao que isto **não** resolve: diagrama impresso do ponto de vista das pretas. Ali
     as peças estão desenhadas para cima, e o que muda é o mapeamento casa→índice, não os
@@ -271,6 +404,8 @@ def predict_with_orientation(
             rotate_180=rotate,
             uncertain_threshold=uncertain_threshold,
             constrained=constrained,
+            tta=tta,
+            normalizer=normalizer,
         )
 
     if mode != "auto":
@@ -283,50 +418,30 @@ def predict_with_orientation(
             reason=f"orientação imposta ({rotation}°)",
         )
 
-    upright, flipped = read(False), read(True)
-    margin = upright.min_confidence - flipped.min_confidence
-
-    # A legalidade entra primeiro porque, quando decide, nunca errou -- e uma leitura ilegal
-    # é pior que uma de confiança baixa. Quando as duas são legais (84% dos casos) ela cala.
-    legal_upright = not upright.position.is_fatal
-    legal_flipped = not flipped.position.is_fatal
-
-    if legal_upright != legal_flipped:
-        chose_upright = legal_upright
-        # Discordância entre sinais nunca apareceu na medição, mas se aparecer é exatamente
-        # o que "ambíguo" quer dizer -- e não algo para resolver em silêncio.
-        ambiguous = (margin > 0) != chose_upright
-        reason = "única orientação legal"
-    elif abs(margin) >= decisive_margin:
-        chose_upright = margin > 0
-        ambiguous = False
-        reason = f"maior confiança mínima (margem {abs(margin):.3f})"
-    else:
-        # Regime de leitura ruim: as duas orientações saem com confiança igualmente baixa e a
-        # margem é ruído. Aqui quem sabe algo é a estrutura da posição.
-        pawn_gap = _pawn_prior_gap(upright, flipped)
-        if pawn_gap is not None and abs(pawn_gap) >= pawn_prior_margin:
-            chose_upright = pawn_gap > 0
-            ambiguous = False
-            reason = f"peões apontam a orientação (vantagem {abs(pawn_gap):.1f} filas, confiança empatada)"
-        else:
-            chose_upright = margin >= 0
-            ambiguous = True
-            reason = (
-                f"margem apertada ({abs(margin):.3f}) e peões não decidem"
-                if pawn_gap is not None
-                else f"margem apertada ({abs(margin):.3f}) e sem peões dos dois lados"
-            )
-
-    chosen, discarded = (upright, flipped) if chose_upright else (flipped, upright)
-    return OrientedPrediction(
-        prediction=chosen,
-        rotation=0 if chose_upright else 180,
-        margin=abs(margin),
-        ambiguous=ambiguous,
-        reason=reason,
-        alternative=discarded,
+    # As duas orientacoes num lote so (S-61). O resultado e identico ao de duas chamadas --
+    # ha teste disso --, e o que muda e um `forward` de 128 casas em vez de dois de 64.
+    de_pe, de_cabeca = (
+        prediction_from_probs(matriz, uncertain_threshold=uncertain_threshold, constrained=constrained)
+        for matriz in board_probabilities_batch(
+            [board_rgb, cv2.rotate(board_rgb, cv2.ROTATE_180)],
+            model,
+            device,
+            tta=tta,
+            normalizer=normalizer,
+        )
     )
+
+    if policy is None:
+        policy = OrientationPolicy(
+            (
+                CoordinateRule(),
+                SingleLegalRule(),
+                ConfidenceMarginRule(decisive_margin),
+                PawnPriorRule(pawn_prior_margin),
+                TightMarginFallback(),
+            )
+        )
+    return policy.resolve(OrientationEvidence(upright=de_pe, flipped=de_cabeca))
 
 
 # `predict_fen_from_board` foi removida junto com o último chamador. Devolvia (FEN, média

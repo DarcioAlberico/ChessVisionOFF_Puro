@@ -5,10 +5,15 @@ import logging
 from pathlib import Path
 
 from ..audit import (
+    DUPLICATE_SHARE_CEILING,
     AuditReport,
     apply_side_to_move_fixes,
     audit_dataset,
     backup_csv,
+    drop_missing_labels,
+    filenames_without_split,
+    orphans_dir_for,
+    prune_orphan_images,
     quarantine_fatal_labels,
     remove_duplicate_labels,
 )
@@ -18,6 +23,7 @@ from ..logging_setup import configure_logging, default_log_file
 logger = logging.getLogger(__name__)
 
 DEFAULT_QUARANTINE = DEFAULT_DATASET_CSV.parent / "quarantine.csv"
+DEFAULT_SPLITS = DEFAULT_DATASET_CSV.parent / "splits.csv"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -28,6 +34,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--csv", type=Path, default=DEFAULT_DATASET_CSV)
     parser.add_argument("--samples", type=Path, default=DEFAULT_SAMPLES_DIR)
     parser.add_argument("--quarantine-path", type=Path, default=DEFAULT_QUARANTINE)
+    parser.add_argument(
+        "--splits",
+        type=Path,
+        default=DEFAULT_SPLITS,
+        help="Arquivo de splits, para relatar amostras que nenhum treino enxerga (S-56).",
+    )
     parser.add_argument(
         "--fix-side-to-move",
         action="store_true",
@@ -40,6 +52,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--dedupe", action="store_true", help="Remove duplicatas, mantendo a primeira ocorrência.")
     parser.add_argument(
+        "--prune-orphans",
+        action="store_true",
+        help="Aposenta os PNGs sem linha no CSV, movendo-os para data/orphans/<data>/ (S-63).",
+    )
+    parser.add_argument(
+        "--drop-missing",
+        action="store_true",
+        help="Move para a quarentena as linhas cujo PNG sumiu do disco (S-63).",
+    )
+    parser.add_argument(
         "--skip-duplicates",
         action="store_true",
         help="Não calcula hashes perceptuais (relatório muito mais rápido).",
@@ -49,7 +71,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _print_report(report: AuditReport, limit: int) -> None:
+def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | None = None) -> None:
     fatal = report.of_kind("fatal")
     turn = report.of_kind("lado-a-jogar")
     syntax = report.of_kind("sintaxe")
@@ -67,8 +89,33 @@ def _print_report(report: AuditReport, limit: int) -> None:
     print(f"    Lado a jogar invertido ....... {len(turn)}")
     print(f"    FEN não interpretável ........ {len(syntax)}")
     print(f"    Imagem ausente ............... {len(missing)}")
-    print(f"    Amostras redundantes ......... {report.duplicate_count} em {len(report.duplicate_groups)} grupos")
+    print(
+        f"    Amostras redundantes ......... {report.duplicate_count} em {len(report.duplicate_groups)} grupos"
+        f"  ({report.duplicate_share:.1%} dos utilizáveis)"
+    )
     print(f"    Imagens órfãs ................ {len(report.orphan_images)}")
+    if sem_split is not None:
+        print(f"    Sem split registrado ......... {len(sem_split)}")
+
+    if report.duplicates_above_ceiling:
+        # O teto da S-63 existe porque a redundancia cresceu de 234 para 248 sem nada notar.
+        # E um alerta, nao uma falha: recorte diferente da mesma pagina e aumento de dados
+        # legitimo, e o comando nao tem autoridade para decidir que 11% e demais.
+        print()
+        print(
+            f"  !! Redundância acima do teto: {report.duplicate_share:.1%} > {DUPLICATE_SHARE_CEILING:.0%} (S-63)."
+        )
+        print("     Membros de um grupo continuam no mesmo split, então a validação segue honesta.")
+        print("     O que isto vigia é o crescimento: confira de onde vêm os grupos novos antes de treinar.")
+
+    if sem_split:
+        print()
+        print("  Sem split registrado -- invisíveis a qualquer treino que filtre por split:")
+        print("    `cvoff-train` atribui o split que falta antes de montar o dataset (S-56).")
+        for filename in sem_split[:limit]:
+            print(f"      {filename}")
+        if len(sem_split) > limit:
+            print(f"      ... e outras {len(sem_split) - limit}")
 
     if fatal:
         print()
@@ -102,11 +149,26 @@ def _print_report(report: AuditReport, limit: int) -> None:
         for group in report.duplicate_groups[:limit]:
             print(f"      {group[0]}  <-  {', '.join(group[1:])}")
 
-    if report.orphan_images:
+    if missing:
         print()
-        print(f"  Imagens sem linha no CSV ({len(report.orphan_images)}):")
+        print(f"  Rótulos cujo PNG sumiu ({len(missing)}) -- descartados em silêncio no treino:")
+        for issue in missing[:limit]:
+            print(f"      {issue.filename}")
+        if len(missing) > limit:
+            print(f"      ... e outros {len(missing) - limit}")
+
+    if report.orphan_images:
+        bytes_orfaos = sum(
+            (report.samples_dir / name).stat().st_size
+            for name in report.orphan_images
+            if (report.samples_dir / name).exists()
+        )
+        print()
+        print(f"  Imagens sem linha no CSV ({len(report.orphan_images)}, {bytes_orfaos / 1024 / 1024:.1f} MiB):")
         for name in report.orphan_images[:limit]:
             print(f"      {name}")
+        if len(report.orphan_images) > limit:
+            print(f"      ... e outras {len(report.orphan_images) - limit}")
 
     if report.class_counts:
         print()
@@ -128,9 +190,10 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(verbose=args.verbose, log_file=default_log_file())
 
     report = audit_dataset(args.csv, args.samples, check_duplicates=not args.skip_duplicates)
-    _print_report(report, limit=args.limit_examples)
+    sem_split = filenames_without_split(args.csv, args.splits) if Path(args.splits).exists() else None
+    _print_report(report, limit=args.limit_examples, sem_split=sem_split)
 
-    mutating = args.fix_side_to_move or args.quarantine or args.dedupe
+    mutating = args.fix_side_to_move or args.quarantine or args.dedupe or args.prune_orphans or args.drop_missing
     if not mutating:
         suggestions = []
         if report.of_kind("lado-a-jogar"):
@@ -139,8 +202,18 @@ def main(argv: list[str] | None = None) -> int:
             suggestions.append("--quarantine")
         if report.duplicate_groups:
             suggestions.append("--dedupe")
+        if report.of_kind("imagem-ausente"):
+            suggestions.append("--drop-missing")
+        if report.orphan_images:
+            suggestions.append("--prune-orphans")
         if suggestions:
             print(f"Nada foi alterado. Para aplicar as correções: cvoff-audit {' '.join(suggestions)}")
+            print()
+        if sem_split:
+            # Nao entra na lista de sugestoes acima porque quem atribui split e o treino, nao
+            # a auditoria: atribuir e irreversivel na pratica (S-07), e nao e decisao de um
+            # comando cujo contrato e "sem flag, so relata".
+            print(f"{len(sem_split)} amostra(s) sem split. O próximo `cvoff-train` as inclui.")
             print()
         return 0
 
@@ -158,13 +231,35 @@ def main(argv: list[str] | None = None) -> int:
         removed = remove_duplicate_labels(args.csv, report)
         print(f"{removed} linhas duplicadas removidas.")
 
+    if args.drop_missing:
+        dropped = drop_missing_labels(args.csv, report, args.quarantine_path)
+        print(f"{dropped} rótulo(s) sem imagem movido(s) para {args.quarantine_path}.")
+
+    if args.prune_orphans:
+        # Depois do `--drop-missing` de proposito: apagar uma linha cria um orfao, e rodar as
+        # duas na mesma chamada tem de aposentar tambem o que a primeira acabou de orfanar.
+        alvo = report if not args.drop_missing else audit_dataset(args.csv, args.samples, check_duplicates=False)
+        aposentados = prune_orphan_images(alvo)
+        if aposentados:
+            print(f"{len(aposentados)} imagem(ns) órfã(s) movida(s) para {aposentados[0].parent}.")
+        else:
+            print("Nenhuma imagem órfã a mover.")
+
     print()
     print("Reauditando para confirmar...")
     after = audit_dataset(args.csv, args.samples, check_duplicates=not args.skip_duplicates)
     print(f"  Rótulos utilizáveis: {report.valid_rows} -> {after.valid_rows}")
     print(f"  Posições ilegais   : {len(report.of_kind('fatal'))} -> {len(after.of_kind('fatal'))}")
     print(f"  Lado a jogar errado: {len(report.of_kind('lado-a-jogar'))} -> {len(after.of_kind('lado-a-jogar'))}")
+    print(f"  Imagem ausente     : {len(report.of_kind('imagem-ausente'))} -> {len(after.of_kind('imagem-ausente'))}")
+    print(f"  Imagens órfãs      : {len(report.orphan_images)} -> {len(after.orphan_images)}")
     print(f"  Duplicatas         : {report.duplicate_count} -> {after.duplicate_count}")
+    if args.prune_orphans and not after.orphan_images and not after.of_kind("imagem-ausente"):
+        # O criterio de aceite da S-63, verificado no proprio comando em vez de prometido.
+        print("  → data/samples/ e labels.csv têm o mesmo conjunto de nomes.")
+    if args.prune_orphans:
+        print()
+        print(f"Nada foi apagado do disco: os órfãos estão em {orphans_dir_for(args.samples)}.")
     print()
     return 0
 

@@ -129,15 +129,25 @@ class FakeModel:
         self.upright = upright
         self.flipped = flipped
         self.calls = 0
+        self.boards_seen: list[int] = []
+        """Tabuleiros em cada chamada. Desde a S-61 a orientação automática manda os dois
+        num lote só, e é este contador que impede a otimização de se desfazer em silêncio."""
 
     def __call__(self, batch):  # noqa: ANN001 - duplo de teste
         import torch
 
         self.calls += 1
-        # A primeira metade das casas e clara na imagem de pe e escura na girada.
-        is_upright = float(batch[0].mean()) > float(batch[-1].mean())
-        matrix = self.upright if is_upright else self.flipped
-        return torch.log(torch.tensor(matrix, dtype=torch.float32))
+        tabuleiros = batch.shape[0] // 64
+        self.boards_seen.append(tabuleiros)
+
+        saidas = []
+        for indice in range(tabuleiros):
+            bloco = batch[indice * 64 : (indice + 1) * 64]
+            # A primeira metade das casas e clara na imagem de pe e escura na girada.
+            is_upright = float(bloco[0].mean()) > float(bloco[-1].mean())
+            matrix = self.upright if is_upright else self.flipped
+            saidas.append(torch.log(torch.tensor(matrix, dtype=torch.float32)))
+        return torch.cat(saidas)
 
 
 def rotated_fen(fen: str) -> str:
@@ -283,13 +293,45 @@ class PredictWithOrientationTests(unittest.TestCase):
                 self.assertIsNone(result.alternative)
                 self.assertFalse(result.ambiguous)
 
-    def test_auto_mode_costs_exactly_two_inferences(self) -> None:
+    def test_auto_mode_reads_two_orientations_in_a_single_forward(self) -> None:
+        """S-61: a computação continua sendo dois tabuleiros; o custo fixo por lote, um.
+
+        A inferência é 76% do tempo de página e metade dela é a segunda orientação. Isto não
+        corta a metade — corta o overhead de a pedir num lote separado.
+        """
         from chess_diagram_ocr.inference import predict_with_orientation
 
         model = FakeModel(probs_for_fen(KINGS_ONLY, 0.99), probs_for_fen(KINGS_ONLY, 0.30))
         predict_with_orientation(self.board, model, "cpu")  # type: ignore[arg-type]
 
-        self.assertEqual(model.calls, 2)
+        self.assertEqual(model.calls, 1)
+        self.assertEqual(model.boards_seen, [2])
+
+    def test_a_forced_orientation_still_costs_one_board(self) -> None:
+        from chess_diagram_ocr.inference import predict_with_orientation
+
+        model = FakeModel(probs_for_fen(KINGS_ONLY, 0.99), probs_for_fen(KINGS_ONLY, 0.30))
+        predict_with_orientation(self.board, model, "cpu", mode="0")  # type: ignore[arg-type]
+
+        self.assertEqual(model.boards_seen, [1])
+
+    def test_the_fused_batch_reads_the_same_as_two_separate_calls(self) -> None:
+        """A garantia que torna a S-61 aceitável: nenhuma mudança de resultado."""
+        import cv2
+
+        from chess_diagram_ocr.inference import board_probabilities, board_probabilities_batch
+
+        model = FakeModel(probs_for_fen(KINGS_ONLY, 0.99), probs_for_fen(KINGS_ONLY, 0.30))
+        girado = cv2.rotate(self.board, cv2.ROTATE_180)
+
+        separado = [
+            board_probabilities(self.board, model, "cpu"),  # type: ignore[arg-type]
+            board_probabilities(girado, model, "cpu"),  # type: ignore[arg-type]
+        ]
+        junto = board_probabilities_batch([self.board, girado], model, "cpu")  # type: ignore[arg-type]
+
+        for antes, depois in zip(separado, junto, strict=True):
+            self.assertTrue(np.allclose(antes, depois))
 
     def test_rejects_unknown_mode(self) -> None:
         from chess_diagram_ocr.inference import predict_with_orientation

@@ -31,6 +31,7 @@ import json
 import logging
 import threading
 from collections.abc import Collection, Iterable, Iterator, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +43,7 @@ import numpy as np
 from .atomic_io import atomic_write_json
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
@@ -51,6 +53,7 @@ from .config import (
     ReadingOrder,
 )
 from .fen_utils import labels_from_fen, square_name
+from .labels import LabelStore
 from .pdf_to_pgn import DiagramPosition, ProgressCallback, ScannedDiagram, iter_pdf_diagrams
 
 logger = logging.getLogger(__name__)
@@ -333,17 +336,15 @@ def rare_classes_from_labels(csv_path: Path, *, share: float = RARE_CLASS_SHARE)
     if not csv_path.exists():
         return set()
 
-    import pandas as pd
-
     try:
-        frame = pd.read_csv(csv_path, usecols=["fen"])
+        pares = LabelStore(csv_path).read_pairs()
     except (OSError, ValueError) as exc:
         logger.warning("Não foi possível ler as classes de %s: %s", csv_path, exc)
         return set()
 
     counts: dict[str, int] = {}
     total = 0
-    for raw in frame["fen"].astype(str):
+    for _filename, raw in pares:
         try:
             indices = labels_from_fen(raw)
         except (ValueError, IndexError):
@@ -437,18 +438,20 @@ def build_review_queue(
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
     dpi: int = 220,
-    max_boards_per_page: int = 8,
+    max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     start_page: int = 0,
     end_page: int | None = None,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     read_text: bool = True,
+    caption_reader: Any = None,
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     rare_classes: Collection[str] = (),
     cache_dir: Path = DEFAULT_CACHE_DIR,
     limit: int | None = None,
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
+    model_session: AbstractContextManager[tuple[Any, str]] | None = None,
 ) -> ReviewQueue:
     """Varre o livro inteiro e devolve a fila ordenada por valor de informação.
 
@@ -457,6 +460,12 @@ def build_review_queue(
 
     `limit` corta a fila **depois** de ordenar, e o corte fica registrado no log -- fila
     truncada em silêncio se parece com "o livro só tinha 30 problemas".
+
+    `model_session` empresta o modelo do `OcrService` em vez de carregar outro. É uma das
+    duas varreduras longas que rodavam fora do lock da S-31 enquanto o treino reescrevia o
+    mesmo `.pt` (S-57). `caption_reader` vem do mesmo serviço e pelo mesmo motivo do
+    parágrafo acima: a fila tem de ser construída pelo pipeline que gera o PGN, procedência
+    do lado a jogar incluída (S-43).
     """
     pdf_path = Path(pdf_source)
     items: list[ReviewItem] = []
@@ -473,8 +482,10 @@ def build_review_queue(
         end_page=end_page,
         reading_order=reading_order,
         read_text=read_text,
+        caption_reader=caption_reader,
         cancel_event=cancel_event,
         progress_callback=progress_callback,
+        model_session=model_session,
     ):
         scanned_count += 1
         pages.add(scanned.position.page_index)

@@ -18,19 +18,15 @@ Duas decisões que valem registro:
 from __future__ import annotations
 
 import logging
-import os
 from collections import Counter
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-import pandas as pd
-
-from .atomic_io import atomic_write_bytes
 from .config import PIECE_CLASSES
-from .dataset import LABEL_COLUMNS, _write_labels
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
+from .labels import LabelStore
 from .splits import Split, load_splits
 
 logger = logging.getLogger(__name__)
@@ -104,9 +100,7 @@ def load_rows(
     if not csv_path.exists():
         return []
 
-    frame = pd.read_csv(csv_path).fillna("")
-    if not {"filename", "fen"}.issubset(frame.columns):
-        raise ValueError("O CSV precisa das colunas `filename` e `fen`.")
+    entries = LabelStore(csv_path).read()
 
     splits = load_splits(splits_path) if splits_path is not None and Path(splits_path).exists() else {}
 
@@ -117,26 +111,24 @@ def load_rows(
             group_of[member] = members[0]
 
     rows: list[DatasetRow] = []
-    for record in frame.to_dict("records"):
-        filename = str(record.get("filename", "")).strip()
-        fen = str(record.get("fen", "")).strip()
-        legality, problems = _legality_of(fen)
+    for entry in entries:
+        legality, problems = _legality_of(entry.fen)
         rows.append(
             DatasetRow(
-                filename=filename,
-                fen=fen,
-                side_to_move=str(record.get("side_to_move", "")).strip(),
-                source_pdf=str(record.get("source_pdf", "")).strip(),
-                source_page=str(record.get("source_page", "")).strip(),
-                source_diagram=str(record.get("source_diagram", "")).strip(),
-                detection_source=str(record.get("detection_source", "")).strip(),
-                created_at=str(record.get("created_at", "")).strip(),
-                corrected_by=str(record.get("corrected_by", "")).strip(),
+                filename=entry.filename,
+                fen=entry.fen,
+                side_to_move=entry.side_to_move,
+                source_pdf=entry.source_pdf,
+                source_page=entry.source_page,
+                source_diagram=entry.source_diagram,
+                detection_source=entry.detection_source,
+                created_at=entry.created_at,
+                corrected_by=entry.corrected_by,
                 legality=legality,
                 problems=problems,
-                split=splits.get(filename),
-                image_exists=(samples_dir / filename).exists() if filename else False,
-                duplicate_group=group_of.get(filename, ""),
+                split=splits.get(entry.filename),
+                image_exists=(samples_dir / entry.filename).exists() if entry.filename else False,
+                duplicate_group=group_of.get(entry.filename, ""),
             )
         )
     return rows
@@ -203,6 +195,17 @@ def source_distribution(rows: Iterable[DatasetRow]) -> Counter[str]:
     return Counter(row.source_pdf or "origem não registrada" for row in rows)
 
 
+def route_distribution(rows: Iterable[DatasetRow]) -> Counter[str]:
+    """Por qual caminho cada amostra chegou ao rótulo -- a coluna `corrected_by` (S-52).
+
+    Existe junto com a coluna, e não depois dela. Uma coluna que ninguém lê é quase tão morta
+    quanto uma que ninguém escreve: os 3.313 rótulos anteriores à S-52 saem todos em
+    `caminho não registrado`, e é justamente esse número encolhendo que diz se a coluna
+    passou a valer alguma coisa.
+    """
+    return Counter(row.corrected_by or "caminho não registrado" for row in rows)
+
+
 def imbalance_alerts(counts: Counter[str], *, ratio: float = IMBALANCE_RATIO) -> list[str]:
     """Alertas de desbalanceamento entre as classes de peça.
 
@@ -265,20 +268,11 @@ def update_row(
         if check.is_fatal:
             raise ValueError("Posição ilegal, não pode ser salva como rótulo: " + "; ".join(check.problems))
 
-    frame = pd.read_csv(csv_path).fillna("")
-    mask = frame["filename"].astype(str).str.strip() == filename
-    if not mask.any():
+    if not LabelStore(csv_path).update(
+        filename, fen=full_fen, side_to_move=side or "", corrected_by=corrected_by
+    ):
         return False
 
-    frame.loc[mask, "fen"] = full_fen
-    if "side_to_move" not in frame.columns:
-        frame["side_to_move"] = ""
-    frame.loc[mask, "side_to_move"] = side or ""
-    if "corrected_by" not in frame.columns:
-        frame["corrected_by"] = ""
-    frame.loc[mask, "corrected_by"] = corrected_by
-
-    _write_labels(frame, csv_path)
     logger.info("Rótulo de %s regravado como %s.", filename, full_fen)
     return True
 
@@ -296,13 +290,9 @@ def delete_rows(
     if not wanted:
         return 0
 
-    frame = pd.read_csv(csv_path).fillna("")
-    mask = frame["filename"].astype(str).str.strip().isin(wanted)
-    removed = int(mask.sum())
+    removed = LabelStore(csv_path).remove(wanted)
     if not removed:
         return 0
-
-    _write_labels(frame[~mask].copy(), csv_path)
 
     if delete_images and samples_dir is not None:
         for name in wanted:
@@ -330,22 +320,10 @@ def quarantine_rows(
     if not wanted:
         return 0
 
-    frame = pd.read_csv(csv_path).fillna("")
-    mask = frame["filename"].astype(str).str.strip().isin(wanted)
-    if not mask.any():
-        return 0
-
-    removed = frame[mask].copy()
-    removed["motivo"] = reason
-    if quarantine_path.exists():
-        existing = pd.read_csv(quarantine_path).fillna("")
-        removed = pd.concat([existing, removed], ignore_index=True)
-    quarantine_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_bytes(quarantine_path, removed.to_csv(index=False, lineterminator=os.linesep).encode("utf-8"))
-
-    _write_labels(frame[~mask].copy(), csv_path)
-    logger.info("%d amostra(s) movidas para quarentena em %s.", int(mask.sum()), quarantine_path)
-    return int(mask.sum())
+    movidas = LabelStore(csv_path).move_to(LabelStore(quarantine_path), wanted, extra={"motivo": reason})
+    if movidas:
+        logger.info("%d amostra(s) movidas para quarentena em %s.", len(movidas), quarantine_path)
+    return len(movidas)
 
 
 def restore_from_quarantine(csv_path: Path, quarantine_path: Path, filenames: Collection[str]) -> int:
@@ -356,18 +334,10 @@ def restore_from_quarantine(csv_path: Path, quarantine_path: Path, filenames: Co
     if not wanted or not quarantine_path.exists():
         return 0
 
-    quarantined = pd.read_csv(quarantine_path).fillna("")
-    mask = quarantined["filename"].astype(str).str.strip().isin(wanted)
-    if not mask.any():
-        return 0
-
-    restored = quarantined[mask].drop(columns=[c for c in ("motivo",) if c in quarantined.columns]).copy()
-    existing = pd.read_csv(csv_path).fillna("") if csv_path.exists() else pd.DataFrame(columns=list(LABEL_COLUMNS))
-    _write_labels(pd.concat([existing, restored], ignore_index=True), csv_path)
-
-    atomic_write_bytes(
-        quarantine_path,
-        quarantined[~mask].to_csv(index=False, lineterminator=os.linesep).encode("utf-8"),
-    )
-    logger.info("%d amostra(s) restauradas da quarentena.", int(mask.sum()))
-    return int(mask.sum())
+    # `motivo` some na volta: ele descreve por que a amostra saiu, e uma amostra que voltou
+    # nao tem motivo de exclusao. Manter a coluna faria o `labels.csv` ganhar um campo cujo
+    # valor e mentira para 3.296 linhas e verdade para nenhuma.
+    restauradas = LabelStore(quarantine_path).move_to(LabelStore(csv_path), wanted, drop=("motivo",))
+    if restauradas:
+        logger.info("%d amostra(s) restauradas da quarentena.", len(restauradas))
+    return len(restauradas)

@@ -5,7 +5,9 @@ import json
 import logging
 from pathlib import Path
 
+from ..calibration import confidence_for_accuracy
 from ..config import (
+    ACCEPT_MIN_CONFIDENCE,
     DEFAULT_DATASET_CSV,
     DEFAULT_MODEL_PATH,
     DEFAULT_SAMPLES_DIR,
@@ -13,6 +15,7 @@ from ..config import (
     PROJECT_ROOT,
 )
 from ..evaluation import EvaluationReport, evaluate_split
+from ..inference import describe_device
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
 
@@ -39,17 +42,64 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Avalia com argmax puro, sem a decodificacao restrita (S-11).",
     )
+    parser.add_argument("--tta", action="store_true", help="Soma as sete vistas do TTA (S-29). ~7x mais lento.")
+    parser.add_argument(
+        "--calibration-target",
+        type=float,
+        default=None,
+        help="Deriva o limiar de aceite (S-15) da curva: menor confianca minima cuja "
+        "fracao de tabuleiros exatos atinge este alvo (ex.: 0.95).",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
 
 
-def _print_report(report: EvaluationReport, show_errors: int) -> None:
+def _print_calibration(report: EvaluationReport, target: float | None) -> None:
+    """A curva de calibração e o limiar que ela justifica (S-28).
+
+    O `ACCEPT_MIN_CONFIDENCE = 0,80` da S-15 foi escolhido olhando a distribuição e está
+    documentado como provisório desde a Fase 2. Aqui ele passa a ter uma derivação: qual é
+    a menor confiança mínima a partir da qual a fração de tabuleiros **exatos** atinge o
+    alvo. Note a granularidade -- o gate aceita ou rejeita o diagrama inteiro, então o
+    limiar tem de ser derivado por tabuleiro, não por casa.
+    """
+    print("  Curva de calibração por casa (S-28)")
+    print(f"    {'faixa':>13} {'casas':>9} {'confiança':>10} {'acerto':>9} {'lacuna':>9}")
+    for faixa in report.reliability():
+        print(
+            f"    {faixa['low']:.2f}–{faixa['high']:.2f}   {faixa['count']:>9} "
+            f"{faixa['mean_confidence']:>10.4f} {faixa['accuracy']:>9.4f} {faixa['gap']:>+9.4f}"
+        )
+    print()
+
+    if target is None:
+        return
+
+    confidences, exact = report.board_confidence_arrays()
+    threshold = confidence_for_accuracy(confidences, exact, target)
+    print(f"  Limiar de aceite derivado da curva, para {target:.0%} de tabuleiros exatos")
+    if threshold is None:
+        print("    Nenhum limiar atinge o alvo neste split.")
+        print("    Não é falha da conta: significa que o erro não está concentrado onde a")
+        print("    confiança é baixa. Ver o caso do bispo lido como peão com confiança 1,000.")
+    else:
+        aceitos = int((confidences >= threshold).sum())
+        precisao = float(exact[confidences >= threshold].mean())
+        print(f"    confiança mínima >= {threshold:.2f}")
+        print(f"    aceita {aceitos} de {len(confidences)} tabuleiros, {precisao:.4f} deles exatos")
+        print(f"    (ACCEPT_MIN_CONFIDENCE em uso hoje: {ACCEPT_MIN_CONFIDENCE:.2f})")
+    print()
+
+
+def _print_report(report: EvaluationReport, show_errors: int, calibration_target: float | None = None) -> None:
     print()
     print("=" * 78)
     print(f"Avaliação -- split '{report.split}'")
     print("=" * 78)
     print(f"  Modelo ......................... {report.model_path}")
-    print(f"  Dispositivo .................... {report.device}")
+    print(f"  Dispositivo .................... {describe_device(report.device)}")
+    print(f"  Temperatura (S-28) ............. {report.temperature:.4f}{'' if report.temperature != 1.0 else '  (não calibrado)'}")
+    print(f"  TTA (S-29) ..................... {'7 vistas' if report.tta else 'desligado'}")
     print(f"  Tabuleiros ..................... {report.board_count}")
     print(f"  Casas .......................... {report.square_count}")
     print()
@@ -93,6 +143,7 @@ def _print_report(report: EvaluationReport, show_errors: int) -> None:
         veredito = "mínimo é melhor" if delta > 0.01 else ("média é melhor" if delta < -0.01 else "empate")
         print(f"    Veredito ..................... {veredito} (Δ {delta:+.4f})")
     print()
+    _print_calibration(report, calibration_target)
     print("  Por classe")
     print(f"    {'classe':>7} {'suporte':>8} {'recall':>8} {'precisão':>9}")
     for name, values in report.per_class().items():
@@ -137,8 +188,9 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
         boards_per_batch=args.batch_boards,
         constrained=not args.no_constrained_decoding,
+        tta=args.tta,
     )
-    _print_report(report, show_errors=args.show_errors)
+    _print_report(report, show_errors=args.show_errors, calibration_target=args.calibration_target)
 
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)

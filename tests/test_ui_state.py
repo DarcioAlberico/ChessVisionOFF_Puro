@@ -57,6 +57,7 @@ class StateRoundTripTests(unittest.TestCase):
                 board_zoom=1.1,
                 pdf_history={"C:/PDF/livro.pdf": 41},
                 show_heatmap=False,
+                show_diagram_boxes=False,
                 review_queue_path="data/review_queue.json",
             )
             save_state(path, state)
@@ -67,6 +68,7 @@ class StateRoundTripTests(unittest.TestCase):
             self.assertAlmostEqual(restored.pdf_zoom, 1.25)
             self.assertAlmostEqual(restored.board_zoom, 1.1)
             self.assertFalse(restored.show_heatmap)
+            self.assertFalse(restored.show_diagram_boxes)
             self.assertEqual(restored.review_queue_path, "data/review_queue.json")
 
     def test_saved_state_declares_its_version(self) -> None:
@@ -93,6 +95,7 @@ class StateMigrationTests(unittest.TestCase):
         self.assertEqual(state.pdf_history, {"C:/PDF/livro.pdf": 12})
         # Campos novos assumem o padrao, e nao lixo.
         self.assertTrue(state.show_heatmap)
+        self.assertTrue(state.show_diagram_boxes)
 
     def test_refuses_state_written_by_a_newer_version(self) -> None:
         with self.assertRaises(ValueError):

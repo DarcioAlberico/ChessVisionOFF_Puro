@@ -59,10 +59,39 @@ class ScanParams:
     start_page: int
     end_page: int | None
 
+    model_identity: str = ""
+    """Identidade do arquivo de checkpoint, não do caminho (S-57).
+
+    O caminho não distingue dois modelos: o treino reescreve sempre o mesmo
+    `models/piece_classifier.pt`. Sem isto, exportar metade de um livro, cancelar, treinar e
+    retomar produzia um PGN com metade das posições lidas por um modelo e metade por outro,
+    **sem aviso** -- e o docstring deste módulo prometia justamente que "outro modelo"
+    descartava o parcial.
+
+    Default vazio para que um `.partial.jsonl` gravado antes desta mudança continue sendo
+    lido: ele não sabia a identidade, e recusá-lo por isso jogaria fora horas de varredura.
+    Ver `is_compatible_with`.
+    """
+
+    ocr_engine: str = ""
+    """Motor de OCR de legenda em uso, ou vazio quando não havia (S-43).
+
+    Mesma razão do `model_identity`, aplicada à outra fonte de metadado: retomar com OCR uma
+    exportação começada sem ele produziria um PGN em que metade dos `[SideToMoveSource]` diz
+    `default` e a outra metade `ocr` -- e a diferença não seria do livro, seria de quando
+    cada página foi lida. O header existe para que a procedência signifique algo.
+
+    Vazio, e não `None`, para casar com o "sem OCR" que é o padrão do projeto: um parcial
+    gravado antes da S-43 e um gravado hoje com `--ocr off` são a mesma varredura, e têm de
+    poder continuar um ao outro.
+    """
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "source_name": self.source_name,
             "model_path": self.model_path,
+            "model_identity": self.model_identity,
+            "ocr_engine": self.ocr_engine,
             "dpi": self.dpi,
             "max_boards_per_page": self.max_boards_per_page,
             "orientation": self.orientation,
@@ -77,6 +106,8 @@ class ScanParams:
         return cls(
             source_name=str(raw.get("source_name", "")),
             model_path=str(raw.get("model_path", "")),
+            model_identity=str(raw.get("model_identity", "")),
+            ocr_engine=str(raw.get("ocr_engine", "")),
             dpi=int(raw.get("dpi", 0)),
             max_boards_per_page=int(raw.get("max_boards_per_page", 0)),
             orientation=str(raw.get("orientation", "")),
@@ -85,6 +116,19 @@ class ScanParams:
             start_page=int(raw.get("start_page", 0)),
             end_page=None if raw.get("end_page") is None else int(raw["end_page"]),
         )
+
+    def is_compatible_with(self, wanted: ScanParams) -> bool:
+        """Se um parcial gravado com `self` pode ser continuado por uma varredura `wanted`.
+
+        Tudo tem de bater, com uma exceção: quando **um dos dois** não registra a identidade
+        do modelo, ela não pesa. É o caso de um parcial anterior à S-57, e recusá-lo por não
+        saber algo que ninguém lhe perguntou descartaria trabalho já feito por uma
+        formalidade.
+        """
+        if self.model_identity and wanted.model_identity:
+            return self.to_dict() == wanted.to_dict()
+        neutro = {"model_identity": ""}
+        return {**self.to_dict(), **neutro} == {**wanted.to_dict(), **neutro}
 
 
 @dataclass
@@ -115,6 +159,8 @@ def _context_to_dict(context: Any) -> dict[str, Any] | None:
         "caption": context.caption,
         "side_to_move": None if context.side_to_move is None else bool(context.side_to_move),
         "side_to_move_evidence": context.side_to_move_evidence,
+        "side_to_move_origin": context.side_to_move_origin,
+        "side_to_move_confidence": context.side_to_move_confidence,
         "exercise_number": context.exercise_number,
         "players": list(context.players) if context.players else None,
         "event": context.event,
@@ -132,6 +178,10 @@ def _context_from_dict(raw: dict[str, Any] | None) -> Any:
         caption=str(raw.get("caption", "")),
         side_to_move=None if raw.get("side_to_move") is None else chess.Color(bool(raw["side_to_move"])),
         side_to_move_evidence=str(raw.get("side_to_move_evidence", "")),
+        # Parcial gravado antes da S-43 nao tem procedencia; `None` aqui faz a cascata da
+        # `semantics` cair no `"text"` de sempre, que e o que aquele parcial de fato usou.
+        side_to_move_origin=raw.get("side_to_move_origin"),
+        side_to_move_confidence=float(raw.get("side_to_move_confidence") or 1.0),
         exercise_number=raw.get("exercise_number"),
         players=(str(players[0]), str(players[1])) if players and len(players) == 2 else None,
         event=raw.get("event"),
@@ -297,7 +347,7 @@ def load_partial(path: Path, params: ScanParams) -> PartialExport | None:
         return None
 
     stored = ScanParams.from_dict(header.get("params", {}))
-    if stored != params:
+    if not stored.is_compatible_with(params):
         logger.warning(
             "Parcial de exportação foi gerado com outros parâmetros e será ignorado: %s",
             _params_diff(stored, params),
@@ -331,4 +381,9 @@ def _params_diff(stored: ScanParams, wanted: ScanParams) -> str:
         for field_name in stored.to_dict()
         if getattr(stored, field_name) != getattr(wanted, field_name)
     ]
+    if stored.model_identity != wanted.model_identity and stored.model_identity and wanted.model_identity:
+        # O caminho e o mesmo e o arquivo nao: e o caso de ter treinado no meio da exportacao,
+        # e sem esta linha a mensagem diria "model_identity mudou" sem dizer o que isso quer
+        # dizer para quem esta olhando.
+        changes.append("o arquivo do modelo mudou desde o parcial (houve treino?)")
     return "; ".join(changes) or "sem diferença aparente"
