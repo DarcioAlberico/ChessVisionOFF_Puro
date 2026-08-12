@@ -152,6 +152,14 @@ def _print_report(report: FieldReport, limit: int) -> None:
     else:
         print("    Exatidão condicional ......... — (nenhuma anotação traz a posição)")
 
+    print()
+    print("  Decodificação e custo (S-62)")
+    print(
+        f"    Casas reparadas pelo decode .. {report.repaired_squares}"
+        f"  ({report.repairs_per_diagram:.3f} por diagrama lido)"
+    )
+    print(f"    Custo por diagrama ........... {report.seconds_per_diagram:.3f} s")
+
     if report.per_regime:
         print()
         print("  Por regime")

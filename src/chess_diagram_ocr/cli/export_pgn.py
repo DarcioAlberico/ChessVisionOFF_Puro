@@ -79,6 +79,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "elas saem com o header [DuplicateOf] apontando a primeira ocorrencia."
         ),
     )
+    parser.add_argument(
+        "--lichess-links",
+        action="store_true",
+        help=(
+            "Acrescenta o link de analise do Lichess como comentario de cada diagrama (S-67). "
+            "E so o **padrao**: diagrama que declarou o contrario na galeria "
+            "(data/gallery/<livro>.json) mantem o que foi declarado."
+        ),
+    )
     add_ocr_argument(parser)
     parser.add_argument("--show-review", type=int, default=10, help="Itens de revisao listados no fim.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Log em nivel DEBUG.")
@@ -115,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         read_text=args.read_text,
         caption_reader=caption_reader_from_args(args),
         dedupe=args.dedupe,
+        lichess_links=args.lichess_links,
         progress_callback=_progress,
     )
 

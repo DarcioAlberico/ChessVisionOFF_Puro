@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -214,6 +215,23 @@ class FieldReport:
     """Diagramas casados cuja anotação traz `placement`, e que portanto podem ser conferidos."""
 
     exact: int = 0
+
+    repaired_squares: int = 0
+    """Casas que `decode_constrained` teve de consertar no que o argmax devolveu (S-62).
+
+    É a métrica do critério de aceite da S-62, e ela mora aqui porque o item manda medi-la
+    **no conjunto de campo** e não no split de teste. Mede a distância entre o que o modelo
+    sabe e o que a posição impõe: um modelo que decide as 64 casas juntas deveria precisar de
+    menos reparo, e "pelo menos metade" é o corte que a spec fixou antes da primeira linha de
+    código."""
+
+    seconds: float = 0.0
+    """Tempo de `recognize_page` somado. Com `detected`, dá o custo por diagrama.
+
+    Não é cronômetro decorativo: o terceiro critério da S-62 é que a cabeça nova não passe de
+    1,5× o custo de hoje, porque acima disso ela compete com a S-61, que quer cortar o custo
+    pela metade."""
+
     per_regime: dict[str, FieldReport] = field(default_factory=dict)
     per_book: dict[str, FieldReport] = field(default_factory=dict)
     misses: list[str] = field(default_factory=list)
@@ -237,6 +255,19 @@ class FieldReport:
         """Exatidão da FEN entre os casados com posição anotada. Comparável com a de hoje."""
         return self.exact / self.comparable if self.comparable else 0.0
 
+    @property
+    def repairs_per_diagram(self) -> float:
+        """Casas reparadas por diagrama **detectado** (S-62).
+
+        Por detectado e não por anotado: o reparo é uma propriedade do que o modelo leu, e um
+        diagrama que o detector perdeu não teve leitura para reparar. Dividir pelos anotados
+        misturaria a qualidade do decodificador com a do detector."""
+        return self.repaired_squares / self.detected if self.detected else 0.0
+
+    @property
+    def seconds_per_diagram(self) -> float:
+        return self.seconds / self.detected if self.detected else 0.0
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "pages": self.pages,
@@ -254,6 +285,10 @@ class FieldReport:
             "comparable": self.comparable,
             "exact": self.exact,
             "conditional_exact": round(self.conditional_exact, 4),
+            "repaired_squares": self.repaired_squares,
+            "repairs_per_diagram": round(self.repairs_per_diagram, 4),
+            "seconds": round(self.seconds, 3),
+            "seconds_per_diagram": round(self.seconds_per_diagram, 4),
             "per_regime": {nome: relatorio.as_dict() for nome, relatorio in sorted(self.per_regime.items())},
             "per_book": {nome: relatorio.as_dict() for nome, relatorio in sorted(self.per_book.items())},
         }
@@ -279,6 +314,8 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.exported += parcela.exported
     alvo.comparable += parcela.comparable
     alvo.exact += parcela.exact
+    alvo.repaired_squares += parcela.repaired_squares
+    alvo.seconds += parcela.seconds
     alvo.misses.extend(parcela.misses)
 
 
@@ -312,6 +349,7 @@ def evaluate_page(
     read: Sequence[RecognizedDiagram],
     *,
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+    seconds: float = 0.0,
 ) -> FieldReport:
     """Compara o que o pipeline leu numa página com o que a anotação diz que ela tem."""
     relatorio = FieldReport(
@@ -319,6 +357,10 @@ def evaluate_page(
         pages_without_diagram=1 if not page.diagrams else 0,
         annotated=len(page.diagrams),
         detected=len(read),
+        seconds=seconds,
+        # Sobre **tudo** que foi lido, inclusive o falso positivo: o reparo mede o trabalho
+        # que o decodificador teve, e ele teve esse trabalho ali tambem (S-62).
+        repaired_squares=sum(len(lido.changed_squares) for lido in read),
     )
 
     casados = _match(page.diagrams, read)
@@ -377,13 +419,15 @@ def evaluate_field(
             continue
 
         caminho = Path(pdf_dir) / pagina.pdf if pdf_dir is not None else Path(pagina.pdf)
+        inicio = time.perf_counter()
         try:
             lidos = service.recognize_page(caminho, pagina.page, options=options)
         except Exception as exc:  # noqa: BLE001 - página quebrada é resultado, não crash
             logger.warning("Falha ao ler %s p%d: %s", pagina.pdf, pagina.page, exc)
             lidos = []
+        decorrido = time.perf_counter() - inicio
 
-        parcela = evaluate_page(pagina, lidos, accept_threshold=accept_threshold)
+        parcela = evaluate_page(pagina, lidos, accept_threshold=accept_threshold, seconds=decorrido)
         _accumulate(total, parcela)
         _accumulate(total.per_book.setdefault(pagina.pdf, FieldReport()), parcela)
         if pagina.regime:

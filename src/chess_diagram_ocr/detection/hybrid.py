@@ -32,7 +32,6 @@ vetoriais (ver o docstring do pacote).
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import cv2
 import fitz
@@ -40,6 +39,7 @@ import numpy as np
 
 from ..board_detection import _bbox_iou, _board_pattern_score, _sort_selected_candidates, detect_boards
 from ..config import BOARD_SIZE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
+from ..pdf_io import PdfSource
 from .embedded import DiagramCandidate, _pixels_for_bbox, candidates_from_embedded_images
 
 logger = logging.getLogger(__name__)
@@ -244,7 +244,7 @@ def detect_diagrams(
 
 
 def detect_diagrams_in_pdf_page(
-    pdf_source: str | Path | bytes,
+    pdf_source: PdfSource,
     page_index: int,
     page_rgb: np.ndarray,
     *,
@@ -258,12 +258,13 @@ def detect_diagrams_in_pdf_page(
     `[Diagram "2"]` do PGN; repetir o erro na fonte de detecção seria pior, porque aí a
     divergência é no recorte e não só na numeração.
 
-    Abre o documento a cada chamada, como `render_pdf_page` já faz -- irrelevante ao lado do
-    render, e mantém a assinatura livre de objeto do PyMuPDF.
+    Abre o documento, ou o **empresta** quando `pdf_source` já é um `OpenPdf` (S-61): era
+    aqui que morria uma das três aberturas por página. A assinatura continua aceitando caminho,
+    que é a porta dos CLIs.
     """
-    from ..pdf_io import _open_document
+    from ..pdf_io import open_document
 
-    with _open_document(pdf_source) as doc:
+    with open_document(pdf_source) as doc:
         if page_index < 0 or page_index >= doc.page_count:
             raise ValueError(f"Pagina {page_index} fora do intervalo (0..{doc.page_count - 1})")
         return detect_diagrams(

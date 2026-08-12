@@ -1,6 +1,6 @@
 """Camada de serviço: o pipeline de OCR sem nenhuma dependência de interface (S-31).
 
-**O problema.** `app_tkinter._detect_and_predict_items` e `app_streamlit.run_ocr_for_boards`
+**O problema.** `app_tkinter._detect_and_predict_items` e o `run_ocr_for_boards` do Streamlit
 implementavam o mesmo fluxo de forma independente -- detectar, prever com orientação,
 inferir o lado a jogar, conferir legalidade -- e já tinham divergido. O Streamlit não
 refinava o recorte pelo contorno, não guardava a matriz por casa (então nunca poderia ter o
