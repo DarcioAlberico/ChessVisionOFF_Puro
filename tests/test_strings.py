@@ -25,7 +25,7 @@ ARQUIVOS_DE_UI = [
     caminho
     for caminho in sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py"))
     if caminho.name != "strings.py"
-] + [RAIZ / "app_tkinter.py", RAIZ / "app_streamlit.py"]
+] + [RAIZ / "app_tkinter.py", RAIZ / "examples" / "streamlit_demo.py"]
 
 PERMITIDOS = {
     # Chaves, nomes de campo e identificadores que por acaso batem com uma palavra da lista.
@@ -117,7 +117,10 @@ class NoDuplicateVocabularyTests(unittest.TestCase):
     """Os rótulos existiam em dois lugares e já tinham divergido em quatro dos cinco."""
 
     def test_neither_frontend_keeps_its_own_copy_of_the_side_source_labels(self) -> None:
-        for caminho in (RAIZ / "app_streamlit.py", RAIZ / "src" / "chess_diagram_ocr" / "ui" / "result_panel.py"):
+        for caminho in (
+            RAIZ / "examples" / "streamlit_demo.py",
+            RAIZ / "src" / "chess_diagram_ocr" / "ui" / "result_panel.py",
+        ):
             with self.subTest(arquivo=caminho.name):
                 fonte = caminho.read_text(encoding="utf-8")
                 # A frase completa só pode aparecer no vocabulário compartilhado.

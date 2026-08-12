@@ -320,6 +320,107 @@ comparar o sinal antes e depois, e manter o refino só quando ele não piora.
 
 ---
 
+### 7.0.6b — O recorte que trazia o rodapé junto, e três guardas que calaram ✅ (S-64)
+
+**Achado por uso, não por varredura**, e é isso que o torna instrutivo: a pergunta era "por
+que os diagramas 420 e 421 da página 81 do `Karpov 1` saem piores que os outros quatro da
+mesma página?". Eles saíam a 0,7905 e 0,9385 contra 1,0000 dos vizinhos.
+
+**A resposta não era confiança baixa. Era posição errada.**
+
+A imagem que o PDF embute não é só o tabuleiro: ela inclui a faixa de avaliação (`△`, `+−`)
+**abaixo** dele. `split_board_into_cells` divide a imagem em oito filas iguais, e num recorte
+de 712 px cujo tabuleiro tem 630 cada fila lida mede 89 px onde a real mede 79. **O desvio
+acumula para baixo**: na fila 1 ele já passa de uma casa inteira, a última fila lida cai no
+rodapé e sai vazia, e as torres da primeira fila são lidas na segunda.
+
+```
+N°420   conf 0,7905 → 1,0000
+  antes   2rr2k1/1p1b1p2/8/1p6/4P3/7K/2R2R2/8
+  depois  2rr2k1/1p1b1p2/8/1p6/1PBPP1p1/4BP1n/7K/2R2R2
+
+N°421   conf 0,9385 → 1,0000     ← passava pelo gate de exportação
+  antes   2bqk1nr/3p1p1p/2n1p1n1/4P3/2P5/PP6/R2Q1RK1/8
+  depois  2bqk1nr/3p1p1p/2n1p1p1/rp2P3/2B1PB2/2N5/PP4PP/R2Q1RK1
+```
+
+O "depois" foi conferido contra o render, casa por casa.
+
+#### Três guardas deviam ter pego isso, e as três calaram
+
+Vale registrar quais, porque o padrão se repete e nenhuma delas estava quebrada:
+
+| guarda | por que calou |
+|---|---|
+| **`trim_to_grid`** | procura as 7 linhas internas da grade no perfil de gradiente. Em casa **hachurada** essas linhas não existem: a fronteira clara/escura é textura, não traço |
+| **`refine_candidate_with_contour`** | achou um quad **pior**, e a S-38a corretamente o descartou. O que sobrou foi o recorte cru |
+| **`board_texture_score`** | 0,3607 no recorte errado contra 0,3897 no certo — **0,03**, e a tolerância da S-38a é 0,02 |
+
+A terceira linha é a que mais importa. O sinal que a S-38a usa para julgar um recorte é
+**quase cego ao alinhamento da grade**, que é justamente o que decide se a leitura está
+certa. Um recorte deslocado quase uma casa e um recorte perfeito são, para ele, a mesma
+coisa. Isso não invalida a S-38a — ela continua pegando o trapézio de texto, que é outra
+ordem de erro — mas delimita o que ela pode prometer.
+
+E `trim_to_grid` não falhou por limiar apertado: ela desiste em `_board_span`, **antes** de
+avaliar a periodicidade. O passo mediano entre picos de gradiente sai 9 px e 32 px onde a
+casa tem 82 e 88 — o que ela acha é a moldura e as bordas das peças. Afrouxar
+`min_periodicity` não mudaria nada, e há teste que trava essa premissa.
+
+#### A correção: um segundo aparo, com um sinal que existe nessas imagens
+
+`trim_to_frame` procura a **moldura impressa** — uma linha reta escura que atravessa a imagem
+inteira. Contar pixels escuros por linha e por coluna separa isso de qualquer outra coisa com
+folga: uma fila cheia de peças pretas chega a ~0,45 de preenchimento, a moldura passa de
+0,95. Ela roda **só quando `trim_to_grid` não confiou**, e recusa quando o que sobra dentro
+da moldura não é quase quadrado ou não cobre a maior parte da imagem.
+
+**O que mudou, medido em 606 diagramas de 6 livros** (o "antes" é literalmente o
+comportamento anterior, com a função desligada):
+
+| livro | diagramas | conf. média | abaixo do gate | FENs corrigidas |
+|---|---|---|---|---|
+| **Karpov 1** | 173 | 0,9635 → **0,9889** | 14 → **4** | **10** |
+| **Kemeri 1937** | 15 | 0,9330 → **0,9661** | 2 → **1** | 0 |
+| Karpov 2 | 114 | 0,9493 → 0,9493 | 10 → 10 | 0 |
+| Polgar 5334 | 108 | 1,0000 → 1,0000 | 0 → 0 | 0 |
+| Aagaard Endgame | 120 | 1,0000 → 1,0000 | 0 → 0 | 0 |
+| Reinfeld ES | 76 | 0,8449 → 0,8449 | 21 → 21 | 0 |
+
+**Zero regressão.** Nenhum diagrama piorou em nenhum dos seis livros, e nos quatro que não
+têm o defeito nada se moveu — que é o que se quer de uma segunda tentativa condicionada à
+falha da primeira.
+
+#### E a métrica primária da Fase 7 se moveu
+
+Contra o conjunto de campo da S-41, mesmo checkpoint, mesmo conjunto:
+
+| | antes (S-43) | depois (S-64) |
+|---|---|---|
+| recall de detecção | 0,9211 | **0,9211** |
+| precisão de detecção | 0,9722 | **0,9722** |
+| detectados e legais | 34 | **35** |
+| acima do gate | 26 | **28** |
+| **taxa de exportação** | **0,6842** | **0,7368** |
+
+| regime | antes | depois |
+|---|---|---|
+| **vetorial** (Karpov, Aagaard) | 0,857 | **1,000** (14/14) |
+| tabuleiro em fonte (Polgar) | 1,000 | 1,000 |
+| scan hachurado (Kemeri, Euwe) | 0,500 | 0,500 |
+| scan puro (Reinfeld, Gallagher) | 0,429 | 0,429 |
+
+**+0,0526 na taxa de exportação, e a precisão de detecção não se moveu** — que é a condição
+que o critério de saída da Fase 7 impõe. É o primeiro item desde a S-38a a mover a métrica
+primária, e ele veio de uma pergunta sobre dois diagramas.
+
+O regime vetorial está fechado. O que sobra para os 0,85 é inteiramente scan: 10 dos 10
+diagramas que não chegam ao PGN são do `Reinfeld`, `Gallagher` e `Euwe`, e nove deles são
+confiança baixa — o problema de domínio que a **S-40** ataca. Números em
+`docs/metrics/field_20260809_s64_moldura.json`.
+
+---
+
 ### 7.0.7 — O refino do contorno passou a conferir o que entrega ✅ (S-38a)
 
 A metade da S-38 que a medição acima revelou, implementada e medida contra o conjunto de
@@ -533,11 +634,32 @@ Um conjunto de avaliação **de campo**: N páginas reais dos livros difíceis, 
 anotados à mão. A métrica primária deixa de ser "acurácia exata sobre recortes aprovados" e
 passa a ser **diagramas exportáveis por página** — detectado, legal e acima do gate.
 
-**Número a bater, medido no conjunto de campo (S-41, 2026-08-09): taxa de exportação
-0,6842 — 26 de 38 diagramas.** Alvo da Fase 7: **≥ 0,85**, sem que a precisão de detecção
-caia abaixo dos 0,9722 de hoje.
+**Número de partida (S-41, 2026-08-09): taxa de exportação 0,6842 — 26 de 38 diagramas.**
+Alvo da Fase 7: **≥ 0,85**, sem que a precisão de detecção caia abaixo dos 0,9722.
 
-A estimativa anterior deste roadmap era 83,2%, e estava otimista pelo motivo que o item
+**Onde está hoje: 0,7368 — 28 de 38** (S-64, 2026-08-09), com a precisão de detecção intacta
+nos 0,9722. Faltam **5 diagramas** para o alvo.
+
+> **2026-08-11 — a S-40 foi medida e o alvo continua a 5 diagramas.** Seis variantes de
+> modelo, todas em 27 ou 28 de 38. A explicação está em 7.7 abaixo, e ela é sobre o
+> instrumento antes de ser sobre os modelos.
+
+E eles têm nome. Os 10 que não chegam ao PGN são **todos de scan**: 6 do `Reinfeld`, 2 do
+`Gallagher`, 2 do `Euwe`. Nove são confiança abaixo do gate e um é falha de detecção. Os
+regimes vetorial e de fonte estão em 1,000 e não têm mais nada a dar.
+
+| regime | exportação | o que falta |
+|---|---|---|
+| tabuleiro em fonte (Polgar) | **1,000** (6/6) | — |
+| vetorial (Karpov, Aagaard) | **1,000** (14/14) | — fechado pela S-64 |
+| scan hachurado (Kemeri, Euwe) | 0,500 (2/4) | domínio: hachura e papel |
+| scan puro (Reinfeld, Gallagher) | 0,429 (6/14) | domínio: granulação e papel amarelado |
+
+Ou seja: **o que separa a Fase 7 do critério de saída é a S-40**, o aumento dirigido ao
+acervo — e ela está implementada e não medida. É a única alavanca restante que o
+levantamento aponta.
+
+A estimativa original deste roadmap era 83,2%, e estava otimista pelo motivo que o item
 existe para corrigir: ela contava só os diagramas que o detector achou.
 
 ### 7.5 — O custo de uma varredura, medido
@@ -578,6 +700,112 @@ e `contexts_for_pdf_page` cada uma chama `_open_document`. Numa varredura comple
 
 Para quase todo o acervo o docstring está certo ao chamar isso de irrelevante. Para o maior
 livro são quase 4 minutos de puro parsing de xref, e a diferença é de 50×. → **S-61**.
+
+### 7.6 — As duas ineficiências corrigidas, e o que sobrou de propósito ✅ (S-61, 2026-08-11)
+
+**(a) As duas orientações num único `forward`.** Página 80 do `Karpov 1`, 6 diagramas,
+mediana de 5 repetições: **2,1105 s → 1,5937 s**, −24,5% na inferência, que é 76% do tempo de
+página. A computação é a mesma; o que sai é o custo fixo de pedir um segundo lote.
+
+Não é a metade que a análise apontou como desperdício, e não deveria ser: essa metade só cai
+com o atalho por coordenadas, e a **S-45 foi adiada por medição**. O que sobra é este quarto,
+e ele é de graça.
+
+**(b) Uma abertura por varredura.** `OpenPdf` é o empréstimo; as funções por caminho
+continuam sendo a porta dos CLIs.
+
+| livro | páginas | por abertura | antes | depois |
+|---|---|---|---|---|
+| Polgar 5334 | 1.184 | 4,79 ms | 17,0 s | **0,005 s** |
+| Karpov 1 | 402 | 17,39 ms | 21,0 s | **0,017 s** |
+| **Secrets of Chess Training 1–5** | 1.181 | **40,34 ms** | **143,0 s** | **0,040 s** |
+
+**"Nenhuma mudança de resultado" foi conferido onde importa.** As dez métricas do conjunto de
+campo, com o checkpoint de produção, antes e depois: idênticas dígito a dígito. Um teste
+sintético sozinho não provaria isso — ali as imagens são zeros, e a fusão de lote não teria
+como divergir mesmo se estivesse errada.
+
+**A decisão que o item obrigou a tomar.** O empréstimo **não levanta** quando o arquivo não
+abre: devolve a origem intacta e deixa a etapa seguinte falhar. A tentação era validar ali — o
+documento está sendo aberto de qualquer jeito. Mas até a S-61 esta abertura não existia, e
+levantar aqui trocaria *"não consegui renderizar a página 1"* por um `FileNotFoundError` vindo
+de uma camada que quem chamou não sabe que existe. **Uma otimização não deve mudar qual erro o
+usuário vê.**
+
+### 7.7 — A S-40 medida, e o que ela revelou sobre a própria métrica ✅ (2026-08-11)
+
+O roadmap dizia que a S-40 era "a única alavanca restante que o levantamento aponta" para os
+0,85. Ela foi puxada — duas vezes, a 8 e a 16 épocas — e o ponteiro não se moveu. O que a
+medição encontrou no lugar vale mais que o veredito.
+
+#### O veredito
+
+Todas as variantes: `--fresh`, semente 42, mesmo split, mesmo dataset. O controle é o `aug0`
+**retreinado**, não o checkpoint de produção — comparar contra produção compararia também os
+meses de amostras que entraram desde que ele foi treinado.
+
+| variante | épocas | exportação | casas reparadas | val. exata |
+|---|---|---|---|---|
+| **`aug0` — controle** | **16** | **0,7368** | **15** | 0,9790 |
+| `mhsp` (espelho+hachura+granulação+papel) | 8 | 0,7368 | 17 | 0,9730 |
+| **`mhsp`** | **16** | **0,7368** | **9** | **0,9820** |
+| `m` (só espelhamento) | 8 | **0,7105** | 15 | 0,9760 |
+
+**Pela letra do critério, a S-40 não entra**: ele pede ganho no conjunto de campo, e a métrica
+primária dele não se moveu. E o controle está **convergido, verificado e não suposto**: oito
+épocas a mais não superaram a sétima, e o checkpoint no disco não chegou a ser tocado.
+
+O espelhamento sozinho — que a spec chamava de "a duplicação de dataset mais barata
+disponível" e "rótulo-preservante por construção" — **piorou** a métrica primária.
+
+#### O achado: o gate é uma catraca que só desce
+
+Por que seis modelos diferentes deram sempre 27 ou 28 de 38? A distribuição da confiança
+mínima dos 36 diagramas detectados, com o controle:
+
+| faixa | diagramas |
+|---|---|
+| ≥ 0,99 | **27** |
+| 0,95–0,99 | 0 |
+| 0,80–0,95 | 1 |
+| **0,60–0,80** | **0** ← a vizinhança do gate está vazia |
+| 0,40–0,60 | 2 |
+| < 0,40 | 6 |
+
+**A distribuição é bimodal e o gate cai no vale.** O modelo ou tem certeza absoluta (27 de 36
+acima de 0,99) ou está perdido; nada está a menos de 0,37 do corte por baixo. Daí a assimetria
+que explica todos os números desta fase:
+
+- para **ganhar** um diagrama, uma mudança de modelo precisa levar algo de ≤ 0,43 a ≥ 0,80 —
+  quase dobrar;
+- para **perder** um, basta derrubar um dos 27 que estavam em 0,99.
+
+Foi o que aconteceu duas vezes — o `m` derrubou o `Kemeri` p187 e a S-62ab derrubou o `Kemeri`
+p80 — e **nenhuma das seis variantes ganhou um único diagrama**. A taxa de exportação, neste
+ponto de operação, é uma catraca que só clica para baixo, e isso é propriedade do conjunto e
+não dos modelos.
+
+#### O que isto recomenda, em ordem
+
+1. **Crescer o conjunto de campo.** A S-41 planejava 60 páginas e entregou 15, com 38
+   diagramas. Enquanto não houver diagramas na faixa 0,6–0,8, a taxa de exportação não
+   distingue dois modelos — e **quatro** itens desta fase (S-38b, S-40, S-62a, S-62b) foram
+   julgados por ela.
+2. **Anotar os livros hachurados à mão.** Os 8 barrados estão **todos** abaixo de 0,43: são
+   falhas de domínio, não de margem. É o que a S-39 já apontava, e nenhum ajuste de modelo
+   treinado nos livros fáceis atravessa 0,37 de distância.
+3. **Não mexer no gate.** Baixá-lo para 0,40 traria dois diagramas do `Gallagher` e junto tudo
+   o que a S-15 existe para barrar. O vale entre 0,43 e 0,99 é a evidência de que 0,80 está
+   num lugar razoável.
+
+#### O candidato que fica no disco
+
+`models/s40_mhsp_16ep.pt` domina o controle em tudo que hoje é mensurável: **40% menos reparo**
+do decodificador (9 contra 15), melhor validação (0,9820 contra 0,9790), mesmo custo, mesma
+taxa de exportação. O padrão de `AugmentConfig()` **não** foi trocado por causa disso — essa
+decisão precisa de um conjunto de campo com poder de resolução, e é o item 1 acima. Mas o
+candidato existe, está medido, e é por onde o próximo retreino de produção deve começar.
+
 
 ---
 
@@ -761,6 +989,77 @@ cada um dos novos casos é rastreável ao trecho que decidiu, como a S-16 já fa
 
 ---
 
+### 8.5 — O critério de saída, medido — e o defeito que a medição achou ✅ (2026-08-11)
+
+O critério estava escrito desde o início e **não tinha instrumento**. Agora tem:
+`cvoff-sides` amostra páginas de cada livro do acervo pelo pipeline que a exportação usa e
+conta de onde veio cada `[SideToMoveSource]`. É a mesma lacuna que a S-41 fechou para a
+Fase 7, e o mesmo remédio.
+
+#### O motor foi instalado, e o alvo da S-43 não funcionava
+
+`uv pip install rapidocr-onnxruntime` — 14,2 MiB, modelos no wheel, nada baixado na primeira
+execução. A promessa do README continua de pé.
+
+E a primeira coisa que a medição mostrou foi que **o critério de aceite principal da S-43
+falhava**. O `LAS BLANCAS JUEGAN PRIMERO` da página 40 do `Reinfeld` não chegava a lugar
+nenhum, e o motivo é geométrico: `page_scope_declaration` lia a faixa de `MARGIN_BAND`, 7% da
+altura, que naquela página são 34,6 pt — a linha do cabeçalho não cabe. O motor recebia a
+metade de cima dos glifos e devolvia `TIEAANDDIVEDA` **com 0,71 de confiança**.
+
+**O 0,71 é a lição.** Um motor de OCR não avisa quando recebe meia linha: ele devolve algo com
+forma de texto e uma confiança que nenhum limiar razoável barra. O corte de 0,3 da S-42 existe
+para descartar adivinhação, e aqui ele não tinha o que fazer — o defeito era do recorte.
+
+`SCOPE_BAND = 0,12` é constante **separada** de `MARGIN_BAND`, e a separação é o item: uma
+decide o que **descartar** como cabeçalho corrente, e apertá-la erra para o lado seguro; a
+outra é o que o **motor vê**, e apertá-la corta a linha ao meio.
+
+#### O acervo, com e sem motor
+
+32 livros (cresceu dos 27 que a spec cita), 12 páginas por livro, 645 diagramas:
+
+| | sem OCR | com RapidOCR |
+|---|---|---|
+| **assumido (`default`)** | **566 (87,8%)** | **498 (77,2%)** |
+| resolvido por texto ou OCR | 51 | **120** |
+| resolvido por legalidade | 28 | 27 |
+
+| critério | sem OCR | com RapidOCR |
+|---|---|---|
+| livros com procedência ≠ `default` | 17 de 32 | **19 de 32** |
+| **dos quais por texto ou OCR** | **10** | **14** |
+| livros com a maioria resolvida | 3 | **5** |
+
+**A Fase 8 fecha — e a manchete engana se ficar sozinha.** Os 12 livros do critério já estavam
+atingidos **sem** OCR, porque `legality` também não é `default` e ela existe desde a S-17. O
+que a Fase 8 entregou é a coluna de texto: **10 → 14 livros**, e 68 diagramas que deixaram de
+ser palpite.
+
+Onde eles estão é o que torna o número concreto:
+
+| livro | assumidos antes | depois |
+|---|---|---|
+| **`Reinfeld_1001_Sacrificios`** | 40 de 41 | **0 de 41** |
+| `Gaprindashvili — Imagination in Chess` | 24 de 28 | **5 de 28** |
+| `Aagaard — Excelling at Chess Calculation` | 23 de 23 | **15 de 23** |
+| `Silman — Complete Book of Chess Strategy` | 9 de 9 | 8 de 9 |
+
+O `Reinfeld` é o item inteiro numa linha: ~1.900 exercícios em 320 páginas, metade deles de
+pretas, que até aqui saíam **todos** como `default` = brancas — certo por coincidência em
+metade e errado na outra. Os dois últimos são do terceiro regime que a 8.2 identificou, o de
+camada de texto **parcial**; nenhum dos dois tinha uma única procedência antes.
+
+**O que a taxa de exportação diz sobre isso: nada, e é o esperado.** Ela continua em 0,7368
+com e sem motor, porque conta detecção, legalidade e gate de confiança — o OCR não toca
+nenhum dos três. Foi para medir o que ela não vê que o `cvoff-sides` existe.
+
+Custo: **2,0 a 3,4 s por diagrama** cuja vizinhança a camada de texto deixou vazia. É por
+diagrama e não por página, e é por isso que a regra de precedência da S-43 — o motor só roda
+onde a camada calou — não é economia de estilo.
+
+---
+
 ## Fase 9 — O que ainda mora no lugar errado
 
 A Fase 6 fez a decomposição grande: tirou o pipeline das duas telas e o pôs em `service.py`,
@@ -924,6 +1223,71 @@ granularidade do split.
 
 ---
 
+### 9.6 — As quatro extrações, e o que cada uma destravou ✅ (S-47 a S-50)
+
+A 9.2 dizia que extração sem consequência não entra nesta spec. As quatro entraram, e o que
+segue é a consequência de cada uma **medida em teste que antes não existia** — não em linhas
+economizadas.
+
+| item | o que saiu | o que passou a ser possível | testes novos |
+|---|---|---|---|
+| **S-47 `Trainer`** | `train_model`, 259 linhas | perguntar à política de melhor época **sem treinar** | 15 |
+| **S-48 `OrientationPolicy`** | `predict_with_orientation`, 112 linhas | medir cada regra isolada; trocar a ordem da cascata | 18 |
+| **S-49 `DiagramEditorModel`** | `ResultPanel` | responder "o que `Ctrl+S` faz agora?" sem janela | 23 |
+| **S-50 `BoardModel`/`BoardRenderer`** | `InteractiveBoard` | clique→arrasta→solta sem canvas; redesenho parcial | 39 |
+
+Suíte de **813 para 957 testes** (mais 739 subtestes), `ruff` e `mypy` limpos, e o roteiro
+headless do CONTRIBUTING continua reconhecendo os 6 diagramas da página 80 do `Karpov 1` e
+navegando entre eles.
+
+**O defeito histórico que a S-47 finalmente pôs num teste de três linhas.** O ROADMAP
+registra que "a primeira versão da 5.3 estava errada, e foi o uso que mostrou": retomar
+zerava o controle de melhor época e a primeira época da retomada sobrescrevia o checkpoint
+mesmo sendo pior. Ele sobreviveu duas fases porque **não havia como perguntar à política sem
+rodar um treino inteiro**. Hoje:
+
+```python
+policy = BestEpochPolicy("val_board_exact_acc", 0.9906, best_epoch=12)
+self.assertFalse(policy.observe(0.9800, epoch=1))
+self.assertEqual(policy.best_epoch, 12)
+```
+
+**A S-48 mudou o que a cascata é, não o que ela decide.** Resultado idêntico ao de antes — as
+regras são as mesmas, na mesma ordem, com os mesmos limiares. O que mudou é que
+`explain()` responde o que **cada** regra disse sobre um diagrama, inclusive as que calaram,
+e trocar a ordem passou a ser trocar uma tupla. O teste que mais diz sobre o item é o que
+resolve o mesmo par de leituras com duas ordens e recebe duas respostas.
+
+`CoordinateRule` entrou na cascata e **cala em 100% dos diagramas**, porque nada produz
+`BoardCoordinates`. É deliberado, e está no docstring do tipo: a S-45 foi medida e adiada
+(13,7% de cobertura, 48 dos 52 num livro que já lê a 1,000, e zero diagramas do ponto de
+vista das pretas). O que a regra faz é transformar a S-45, quando ela voltar, num problema de
+**produzir o dado** em vez de um problema de mexer na política — por vinte linhas.
+
+**A S-49 encontrou um defeito, como a S-51 tinha encontrado três.** `save_all` nunca olhava o
+vínculo do editor: com uma linha da aba Dataset aberta, "Salvar todos" criava uma **amostra
+nova** da mesma imagem em vez de regravar o rótulo. É exatamente o defeito que a S-23 fechou
+no caminho do `Ctrl+S`, e que continuava aberto ao lado. Só apareceu porque `save_target()`
+passou a ser uma pergunta que se faz uma vez e se responde em dois lugares.
+
+**A S-50 entregou o redesenho parcial, e ele tem um limite honesto.** `BoardChange.dirty` diz
+quais casas mudaram, e `draw_dirty` redesenha só elas — arrastar uma peça toca 2 casas, não
+64. Mas o parcial vale **só no modo de edição**: em modo de jogo o conjunto de alvos legais
+muda a cada seleção, e ele não está em `dirty`. Ali o total continua, e o comentário no
+código diz isso. O modo de edição é o que importa para o custo, porque é onde o arraste
+acontece.
+
+**O critério de aceite que não foi atingido, e o número real.** A S-49 pedia `ResultPanel`
+abaixo de 400 linhas; ele ficou em **648** (a spec foi escrita quando o arquivo tinha 672, e
+ele já estava em 800 quando o item começou). O que saiu foi o que o item existe para tirar —
+**zero linhas de regra de edição sobrevivem ali** — mais o botão "Corrigir Net", que virou
+`ui/net_button.py` por não ter nada a ver com editar diagrama. O que sobrou é layout (~95
+linhas de `_build`), repasse para o modelo e caixas de diálogo. Cortar mais seria separar um
+widget da própria construção, e isso é organização sem consequência — que é o que a 9.2
+proíbe. `InteractiveBoard` foi de 606 para **390**, com 452 no arquivo.
+
+---
+
 ## Fase 10 — A interface, e a decisão que ninguém tomou
 
 ### 10.1 — O estado de hoje, sem adjetivos
@@ -994,6 +1358,113 @@ projeto" em "programa que outra pessoa usa". → **S-55**.
 
 ---
 
+### 10.5 — A Fase 10 fechada: o tema, a decisão e o programa ✅ (S-53, S-54, S-55)
+
+**S-53 — `ttkbootstrap` entrou, e o porte para Qt ficou amarrado a gatilho.** Um módulo,
+`ui/theme.py`, aplicado antes do primeiro widget; padrão `bootstrap-light`, trocável por
+`CVOFF_TTK_THEME` entre os 30 temas. O que precisou de teste não foi o tema bonito — foi a
+**degradação**: sem a biblioteca, com um nome de tema errado, ou num bundle que não a
+incluiu, a janela abre em `ttk` puro e o log diz por quê. Aparência não pode ser motivo de a
+ferramenta não abrir.
+
+Escolha de padrão que não é gosto: claro, porque o produto é comparar diagrama impresso em
+papel branco com o que o modelo leu, e um tema escuro põe o tabuleiro claro e a página
+renderizada sobre fundo preto. E um nome da era 2.0, porque os antigos (`litera`, `flatly`)
+emitiriam um `DeprecationWarning` a cada abertura.
+
+**A parte (b) da S-53 é a que dura.** Os dois gatilhos do porte para Qt estão registrados no
+[ARCHITECTURE.md](ARCHITECTURE.md), onde a próxima pessoa os encontra — sobreposição editável
+sobre a página, ou `labels.csv` acima de 10 mil linhas. Hoje ele tem **3.313**, 33% do
+gatilho. E o porte ficou mais barato do que a spec supunha: a S-50 isolou `board_render.py`
+como único arquivo de desenho, e a S-49 tirou o estado do editor do widget.
+
+**S-54 — o Streamlit foi aposentado.** `app_streamlit.py` virou `examples/streamlit_demo.py`,
+e o README parou de chamá-lo de "interface web alternativa". A escolha foi entre assumir a
+promessa (~1 semana: editor por clique no navegador, painel de legalidade, fila de revisão) e
+desfazê-la; desfazer venceu porque não há uso remoto real, e a pior saída era continuar sem
+escolher. Ele continua rodando e continua testado — `streamlit.testing.v1.AppTest` o executa
+sem navegador —, e continua sendo útil por um motivo honesto: ele importa o `OcrService` e
+quebra quando a fachada muda, que é o alarme que se quer de um exemplo.
+
+**S-55 — o programa existe, e foi medido.** `packaging/cvoff.spec` + `packaging/build_windows.py`,
+PyInstaller em `--onedir`. **696 MB, 5.247 arquivos**, build completo: leitor **e** treinador.
+
+O peso é quase todo torch, e ele está ali por decisão de produto: o ciclo que dá valor ao
+projeto é *corrigir → salvar → treinar*, e um bundle só de leitura (~5x menor, com
+`onnxruntime` e o `.onnx` da S-30) entregaria um programa sem o botão "Treinar modelo". O
+caminho para fazê-lo está descrito na spec, para quando a pergunta voltar.
+
+| ponto | o que foi feito |
+|---|---|
+| `--onedir`, não `--onefile` | `--onefile` extrairia ~700 MB para o `%TEMP%` **a cada execução** |
+| `config.PROJECT_ROOT` num bundle | ramo `sys.frozen`: a raiz gravável é a pasta do `.exe`, não o pacote |
+| `BUNDLE_ROOT`, novo | recursos do programa (`assets/`) vão dentro; dados do usuário, ao lado |
+| WebView2 | runtime do sistema, não empacotável. A aba Leitura degrada, como já degradava — *a aba saiu na S-69 e o ponto deixou de existir* |
+| Stockfish, Streamlit | fora, pelos motivos de sempre — e o Streamlit também pela S-54 |
+
+**O defeito que o item existia para evitar, verificado.** `PROJECT_ROOT` usava
+`Path(__file__).resolve().parents[2]`, que num bundle aponta para **dentro** do pacote — e o
+`labels.csv` é 3.313 rótulos de trabalho humano, o último arquivo que se quer num diretório
+que a reinstalação apaga. Conferido no bundle real: o `.exe` gravou
+`dist/ChessVisionOFF/data/app_tkinter_state.json` e leu
+`dist/ChessVisionOFF/models/piece_classifier.pt`, ambos **ao lado** do executável.
+
+**E como se confere uma instalação numa máquina que não é a sua.** `--selftest` abre um PDF,
+reconhece a página e escreve as FENs no log, sem janela — e depois confere que o caminho de
+**treino** também monta, porque ler não prova treinar e um bundle incompleto só falharia
+quando o usuário clicasse "Treinar modelo", depois de já ter corrigido dezenas de diagramas.
+Códigos de saída distintos para faltas distintas (2 sem PDF, 3 sem checkpoint, 4 lê mas não
+treina).
+
+Medido no bundle contra o mesmo comando no checkout, página 80 do `Karpov 1`:
+
+| | checkout | bundle |
+|---|---|---|
+| diagramas | 6 | **6** |
+| FENs | — | **idênticas, as seis** |
+| confiança mínima | 1,000 · 1,000 · 0,939 · 1,000 · 0,790 · 1,000 | **idênticas** |
+| caminho de treino monta | sim | **sim** |
+
+**O que este item não entrega, e é decisão sua.** O executável não é assinado: o SmartScreen
+vai avisar na primeira execução de quem receber o `.zip`, e resolver isso exige um
+certificado de assinatura de código — dinheiro e um processo, não uma linha de spec. E não há
+instalador: o produto é uma pasta que se descompacta, o que é suficiente para o critério de
+aceite ("roda numa máquina Windows limpa") e insuficiente para parecer software comercial.
+
+---
+
+### 10.6 — A paleta de edição, e três coisas que ela não dizia ✅ (S-65)
+
+Pedido de uso, não achado por varredura: *"troca essa fonte pelas imagens da pasta assets"*.
+O que a mudança encontrou foi mais do que fonte.
+
+Os 12 botões desenhavam `♙♘♗` — símbolos Unicode, que dependem de a máquina ter uma fonte que
+os desenhe. No Windows a `Segoe UI Symbol` os renderiza finos e de altura irregular, e as
+brancas quase somem no fundo claro do botão. Agora são as peças de `assets/piece_images/`, as
+mesmas do tabuleiro: **a paleta mostra o que o clique vai colocar.**
+
+Duas coisas apareceram ao mexer nisso, e as duas custavam mais que a fonte:
+
+- **O pincel ativo era invisível.** Pincel é um modo, e a única forma de saber qual peça
+  estava carregada era clicar numa casa e ver o que saía — executar a ação destrutiva para
+  poder conferi-la. Os botões viraram `Radiobutton` com estado ligado, e clicar no botão já
+  aceso larga o pincel.
+- **Desfazer custava três gestos.** Pôr a peça errada exigia largar o pincel, clicar com o
+  direito e pegar o pincel de volta. `BoardModel.paint` passou a alternar: clicar de novo na
+  mesma peça apaga. Pôr e tirar viraram o mesmo gesto.
+
+**O que a implementação descobriu.** Nenhuma variante de `Toolbutton` do tema em uso desenha
+estado selecionado quando o botão tem imagem e não tem texto — renderizados lado a lado, o
+aceso e o apagado saem idênticos. Daí o `Radiobutton` clássico, que é o único em que o
+`selectcolor` é escolhido em vez de herdado. E as cores saem do tema: metade dos 30 temas do
+`ttkbootstrap` é escura, e nos escuros as peças pretas somem — por isso o ícone vai sobre a
+cor da casa clara, que é como ele se parece no tabuleiro.
+
+Sem `assets/piece_images/`, a paleta volta ao Unicode. Uma peça faltando não impede a aba de
+abrir.
+
+---
+
 ## Fase 11 — O modelo, e por que ele vem por último
 
 A Fase 5 gastou uma grade inteira de experimentos para descobrir que a arquitetura não era o
@@ -1026,6 +1497,93 @@ mesmo split — verificado, 0 grupos espalhados —, mas o crescimento não é a
 
 ---
 
+### 11.1 — A Fase 11 feita, e reprovada nos próprios critérios ✅ (S-62, S-63, 2026-08-11)
+
+A pré-condição acima dizia que a fase "só começa depois que o conjunto de campo disser que o
+erro restante é de classificação". Ele nunca disse isso, e continua não dizendo. A fase foi
+feita mesmo assim, e o resultado é a terceira evidência de que a pré-condição estava certa.
+
+#### S-62 — os dois degraus, implementados e medidos
+
+Contra o controle `aug0` retreinado, no conjunto de campo, com a máquina livre:
+
+| variante | parâmetros | exportação | legais | **casas reparadas** | s/diagrama |
+|---|---|---|---|---|---|
+| **`aug0` — controle** | 2,19 M | **0,7368** | 35 | **15** | 0,315 |
+| **(a) coordenadas e paridade** | **2,19 M** (+0,04%) | 0,7368 | 35 | **10** (−33%) | **0,308** |
+| (b) cabeça por tabuleiro | 3,26 M | 0,7368 | 35 | **19** (+27%) | 0,461 |
+| (a) + (b) | 3,26 M | **0,7105** | **34** | 19 | 0,363 |
+
+Os três critérios de aceite, escritos antes da primeira linha de código:
+
+| critério | alvo | (a) | (b) | (a)+(b) |
+|---|---|---|---|---|
+| reparo cai **pelo menos pela metade** | ≤ 7 | 10 ✗ | 19 ✗ | 19 ✗ |
+| a taxa de exportação **sobe** | > 0,7368 | ✗ | ✗ | **✗✗** |
+| custo ≤ 1,5× | ≤ 0,47 s | ✓ | ✓ | ✓ |
+
+**Dois de três falham nos três: o item não entra.** É a mesma regra que descartou o TTA, os
+pesos de classe e a temperatura calibrada, e ela não vale nada se for afrouxada quando o
+resultado é simpático.
+
+**Mas os três não falham igual.** A (a) é a única variante do projeto inteiro que fez o que a
+S-62 existia para fazer — um terço menos de reparo, com **864 parâmetros a mais**, inferência
+mais barata que o controle e validação idêntica a ele. A (b) é o oposto: 1,07 M de parâmetros,
+27% mais reparo, 1,46× o custo, validação pior e instável. E os dois juntos herdam o pior dos
+dois — perdem um diagrama e produzem a **única leitura fatalmente ilegal** de todas as
+variantes medidas.
+
+**A ironia que fecha a Fase 11.** A métrica de aceite da S-62 foi mais bem satisfeita pela
+S-40 do que pela própria S-62:
+
+| o que mudou | casas reparadas |
+|---|---|
+| **aumento dirigido, 16 épocas (S-40)** | **9** — −40% |
+| canais de coordenada (S-62a) | 10 — −33% |
+| cabeça por tabuleiro (S-62b) | 19 — +27% |
+
+A S-62 existe sobre a tese de que o modelo precisa **saber** o que o decodificador sabe:
+coordenada, paridade, as outras 63 casas. O que de fato reduziu a dependência do decodificador
+foi mostrar ao modelo mais páginas feias. **Dado, não arquitetura** — que é exatamente o que a
+Fase 5 já havia concluído sobre o classificador, e o que a medição de campo desta análise diz
+desde a primeira linha.
+
+**O que fica no código.** `--coords` e `--head board`, cada um com a sua `arch_version`
+(`...-coords`, `...-board`), a garantia de que um checkpoint de um não carrega no outro, e um
+teste de **paridade numérica** que prova que os canais zerados reproduzem o modelo de hoje bit
+a bit. `ArchConfig()` não mudou: a produção continua sendo o que era, e a medição contra o
+checkpoint de produção confirma isso dígito a dígito.
+
+**Quando reabrir, e qual.** A (a), quando o conjunto de campo crescer. O critério que a reprova
+é a taxa de exportação, e a 7.7 mostrou que ela não tem resolução para julgá-la: nenhum modelo
+pode ganhar um diagrama num conjunto em que os 8 barrados estão a 0,37 do gate.
+
+#### S-63 — a higiene, aplicada
+
+`cvoff-audit --drop-missing --prune-orphans`, rodado no dataset real:
+
+| | antes | depois |
+|---|---|---|
+| rótulos sem imagem | **5** | 0 — para `data/quarantine.csv` |
+| imagens órfãs | **49** (41,4 MiB) | 0 — para `data/orphans/20260811_172159/` |
+| rótulos utilizáveis | 3.449 | 3.449 |
+| redundância | 284 em 259 grupos (**8,2%**) | abaixo do teto de 10% |
+
+**Nenhuma das duas ações apaga nada, e a segunda mudou de desenho por causa da medição.** O
+`--drop-missing` ia remover a linha — "não há o que recorrigir, a imagem sumiu". Rodado no
+dataset real, os 5 rótulos nesse estado têm **todos** procedência preenchida: a imagem é
+reextraível do livro e a FEN é trabalho humano que sobreviveria ao reencontro. Apagar seria
+jogar fora a metade cara do par para limpar a metade barata.
+
+O critério de aceite — `data/samples/` e `labels.csv` com o mesmo conjunto de nomes — é
+conferido pelo próprio comando ao final, e ele o imprimiu.
+
+E o teto de redundância já tem o que vigiar: 234 em 220 grupos no BASELINE, 248 em 227 na
+análise da Fase 11, **284 em 259** hoje. Continua abaixo dos 10%, e agora o crescimento tem
+quem o note.
+
+---
+
 ## Sequenciamento sugerido
 
 Se houver duas semanas:
@@ -1038,17 +1596,24 @@ Se houver duas semanas:
 | — | ~~S-38b (`BoardVerifier`)~~ | **adiado por medição**: 1 falso positivo a ganhar, 35 verdadeiros a arriscar | ⏸ |
 | 3 | ~~S-39 (`BoardNormalizer`)~~ | **medido, nada entrou ligado**: campo plano e CLAHE são no-op (o `ColorJitter` já ensinou), e a trama não é separável da peça por escala | ✅ medido |
 | 4 | S-40 (aumento dirigido) — **implementado** | módulo, testes e `--augment`; desligado por padrão | ✅ código |
-| 5 | S-40 — **medir** (~110 min de CPU) | a máquina estava em uso; é a sua decisão de quando | ← próximo |
-| 6 | **medir contra o conjunto de campo** | fim da Fase 7: a taxa de exportação saiu de 0,6842 ou não | |
+| 5 | ~~S-40 — **medir**~~ | **medido: não entra.** `mhsp` dá 0,7368, idêntico ao controle retreinado. O Euwe p25 sobe 60× (0,002 → 0,123) e continua 6,5× abaixo do gate | ✅ medido |
+| 6 | **medir contra o conjunto de campo** | feito: a taxa de exportação **não** saiu de 0,7368, e a Fase 7 fica a 5 diagramas do alvo | ✅ |
+| 6b | **S-61** (custo da varredura) | as duas ineficiências: −24,5% na inferência e uma abertura por varredura em vez de três por página | ✅ medido |
 | — | ~~S-44 (glifo `W`/`B`)~~ | **medido: 0 ocorrências em 380 diagramas com texto.** O único livro que tem o marcador não tem camada de texto | ⏸ |
 | 7–9 | **S-42 + S-43** (motor de OCR + faixa de legenda) | com a S-44 e a S-45 fora, é **o** item da Fase 8: os 7 livros sem texto e o `LAS BLANCAS JUEGAN PRIMERO` | ✅ código |
-| 9b | S-42/S-43 — **instalar o extra e medir** | `uv sync --extra ocr` e `cvoff-field --ocr rapidocr`. É a sua decisão: muda o que o projeto instala | ← próximo |
+| 9b | S-42/S-43 — **instalar o extra e medir** | feito. E a medição achou o defeito: a faixa de escopo lia a metade de cima dos glifos. Corrigida, o `Reinfeld` sai de 40 assumidos em 41 para **0** | ✅ medido |
+| 9c | **`cvoff-sides`** | o critério de saída da Fase 8 não tinha instrumento. Agora tem, e a Fase 8 fecha | ✅ |
 | — | ~~S-45 (coordenadas)~~ | **medido: 13,7% de cobertura, 48/52 num livro que já lê a 1,000, e 0 diagramas do ponto de vista das pretas** | ⏸ |
 | 10a | **S-51 (`LabelStore`)** | o `labels.csv` passa a ter uma porta, e o campo novo da S-52 tem onde entrar | ✅ |
 | 10b | **S-52, metade: `corrected_by`** | a coluna sai de 0 de 3.313 preenchidas; a outra metade (hash perceptual) precisa de horas de CPU | ✅ metade |
 | 10c | **S-52, metade: procedência por hash perceptual** | `provenance.py` + `cvoff-provenance`; validado contra verdade de referência (12/12 na página certa) | ✅ código |
-| 10d | S-52 — **indexar o acervo e medir** | `cvoff-provenance --build` nos 27 PDFs (~12 mil páginas). Horas de CPU; é a sua decisão de quando | ← próximo |
-| 11–14 | S-46 a S-50 (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro |
+| 10d | S-52 — **indexar o acervo e medir** | `cvoff-provenance --build` nos 32 PDFs (~12 mil páginas). Horas de CPU; é a sua decisão de quando | ← **a única pendência que sobrou** |
+| 11–14 | **S-47 a S-50** (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro | ✅ |
+| 15 | **S-53** (`ttkbootstrap` + gatilhos de Qt) | a única mudança de UI que não fecha porta nenhuma | ✅ |
+| 16 | **S-54** (o Streamlit) | a pior saída era continuar sem escolher. Aposentado | ✅ |
+| 17 | **S-55** (empacotamento Windows) | é o que transforma "meu projeto" em "programa que outra pessoa usa" | ✅ |
+| 18 | **S-63** (higiene do dataset) | as duas ações que a auditoria só relatava, e o teto de redundância | ✅ |
+| 19 | ~~**S-62** (modelo por tabuleiro)~~ | **implementada e reprovada nos próprios critérios**: o reparo do decodificador sobe em vez de cair pela metade | ✅ medido |
 
 A ordem tem uma regra: **medição antes de mudança, e mudança antes de refatoração.** É a
 mesma que as Fases 1 a 6 seguiram, e é o que permitiu à Fase 5 descartar TTA, pesos de classe
@@ -1056,16 +1621,65 @@ e temperatura calibrada com número em vez de opinião.
 
 ---
 
+## Onde isto para, e o que continua esperando você
+
+**Atualizado em 2026-08-11.** As cinco fases estão fechadas no sentido de que **todos os 29
+itens da spec têm destino decidido**: implementados, medidos-e-não-entram, ou adiados por
+medição. Nenhum ficou por falta de tempo.
+
+| fase | estado |
+|---|---|
+| **7** — ler o acervo que existe | código completo. **Critério de saída não atingido**: 0,7368 contra 0,85, e a 7.7 explica por que a métrica não consegue mais julgar |
+| **8** — OCR de verdade | **fechada**. 19 de 32 livros com procedência ≠ `default`, 14 deles por texto ou OCR — contra 10 antes do motor |
+| **9** e **10** | fechadas desde 2026-08-09 |
+| **11** — o modelo | **feita e reprovada nos próprios critérios**. Ver 11.1 |
+
+### Os quatro itens que a medição desaconselhou
+
+Nenhum foi adiado por preguiça. Os quatro têm número:
+
+| item | o que a medição disse |
+|---|---|
+| **S-38b** `BoardVerifier` | 1 falso positivo a ganhar contra 35 verdadeiros a arriscar |
+| **S-44** glifo `W`/`B` | 0 ocorrências em 380 diagramas com camada de texto |
+| **S-45** coordenadas | 13,7% de cobertura, e 0 diagramas do ponto de vista das pretas |
+| **S-46** solução como validador | 21,3% dos diagramas têm algo com forma de lance perto, e só **13,7% desses** são legais na posição lida — o texto vizinho é a continuação da partida, não a solução |
+
+### O que sobrou, e não é código
+
+| pendência | o que falta | custo |
+|---|---|---|
+| **Crescer o conjunto de campo** | a S-41 planejava 60 páginas e entregou 15. **É a pendência que destrava as outras**: quatro itens desta fase foram julgados por uma métrica que hoje não tem resolução para julgá-los | ~2 h suas |
+| **Anotar os livros hachurados** | os 8 diagramas barrados estão todos abaixo de 0,43 — falha de domínio, não de margem | tempo seu |
+| **S-52** (procedência) | `cvoff-provenance --build` nos 32 PDFs, depois `--match` | horas de CPU |
+| **Retreinar produção com `mhsp`** | `models/s40_mhsp_16ep.pt` domina o controle em tudo que é mensurável hoje. A troca do padrão de `AugmentConfig()` espera o item 1 | decisão sua |
+
+### O que este dia mediu, e que vale mais que os vereditos
+
+Três coisas que só apareceram por medir, e que valem para quem continuar:
+
+1. **A taxa de exportação é uma catraca que só desce.** Seis variantes de modelo, todas em 27
+   ou 28 de 38, e nenhuma ganhou um diagrama. A distribuição de confiança é bimodal com a
+   vizinhança do gate vazia (7.7).
+2. **Um motor de OCR não avisa quando recebe meia linha.** A faixa de escopo de 7% cortava o
+   cabeçalho ao meio e o RapidOCR devolvia `TIEAANDDIVEDA` com **0,71 de confiança**. Nenhum
+   limiar razoável pegaria isso; o que consertou foi 5 pontos percentuais de altura (8.5).
+3. **Dado bateu arquitetura, de novo.** A métrica de aceite da S-62 foi mais bem satisfeita
+   pelo aumento de dados da S-40 (−40% de reparo) do que pelos dois degraus arquiteturais que
+   a S-62 propôs (−33% e +27%).
+
+---
+
 ## Riscos e decisões que precisam do dono do projeto
 
 | risco / decisão | observação |
 |---|---|
-| **45 amostras fora do treino** | Consertável em minutos (rodar `ensure_splits`). Mas a atribuição de split é irreversível na prática — uma amostra que cair no `test` fica lá para sempre, por desenho da S-07. Rodar às cegas move 10% delas para um conjunto de teste que você nunca poderá usar como treino. Vale conferir a lista antes. |
-| **O `.venv` aponta para um caminho que não existe** | Consertável em 30 s (`uv sync --extra dev`). O item S-37 é a **guarda** contra a repetição, não o conserto. |
-| **`data/labels.csv` está modificado e não commitado** | 7 linhas novas na árvore de trabalho. As mesmas 45 amostras da S-56. Commitar antes de mexer em split. |
-| **Dependência de OCR muda a promessa de offline** | RapidOCR mantém a promessa (modelos no wheel). EasyOCR não (baixa na 1ª execução). Se a preferência for EasyOCR, o README precisa mudar de texto — a decisão é sua. |
-| **Anotar 60 páginas à mão custa tempo seu** | É o único jeito de ter recall. Estimativa: ~2 h. Sem isso, a Fase 7 não tem critério de saída verificável e vira ajuste de constante no escuro. |
+| ~~**45 amostras fora do treino**~~ | **Resolvido em 2026-08-11.** O `cvoff-train` atribuiu as 39 que faltavam: 29 para `train`, 7 para `val`, 3 para `test`. O backup do arquivo anterior está em `data/splits.csv.bak-s40`. |
+| ~~**O `.venv` aponta para um caminho que não existe**~~ | Resolvido. O `pythonpath` do `pytest` (S-37) é a guarda contra a repetição. |
+| **`data/labels.csv` e `data/splits.csv` estão modificados e não commitados** | O `labels.csv` perdeu 5 linhas para a quarentena (S-63) e o `splits.csv` ganhou as 39 atribuições. Os dois têm backup datado ao lado. Commitar antes de treinar de novo. |
+| **Dependência de OCR muda a promessa de offline** | **Decidido: RapidOCR instalado em 2026-08-11**, e a promessa continua de pé — 14,2 MiB, modelos no wheel, nada baixado na primeira execução (verificado). O EasyOCR continua opt-in e continua baixando ~100 MB; se um dia for a preferência, o README precisa mudar de texto. |
+| **Anotar 60 páginas à mão custa tempo seu** | Subiu de "vale a pena" para **a pendência que destrava as outras**. Com 38 diagramas e zero na faixa 0,6–0,8, a taxa de exportação não distingue dois modelos — e quatro itens desta fase foram julgados por ela (7.7). Estimativa: ~2 h. |
 | **Recuperar procedência (S-51) pode não casar tudo** | O casamento é por hash perceptual contra 27 PDFs. Amostras vindas de imagem local ou de PDF que saiu do acervo não casam. Espera-se recuperação parcial; o item precisa reportar a taxa, não prometer 100%. |
-| **`ArchConfig` não versiona o pré-processamento** | Se a S-39 entrar, um checkpoint treinado com normalização e outro sem passam a ser incompatíveis, e `arch_version` não distingue. A S-39 precisa estender a chave — do contrário volta em silêncio o defeito que a S-27 corrigiu. |
+| **`ArchConfig` não versiona o pré-processamento** | Continua valendo para a S-39, que não entrou. A S-62 **estendeu** a chave para o que ela acrescentou (`...-coords`, `...-board`), então o defeito que a S-27 corrigiu não voltou por esse caminho. |
 | **Reescrever a UI em Qt** | ~3–4 semanas e licença LGPL. A recomendação é **não fazer agora** e amarrar a decisão a um gatilho observável (S-53). |
-| **Sem GPU** | Continua valendo o da Fase 5: `torch 2.10.0+cpu`, 12 CPUs, época em ~9 min. Todo número de tempo aqui é de CPU. O aumento dirigido da S-40 não muda o custo por época; o retreino, sim, porque exige `--fresh`. |
+| **Sem GPU** | Continua valendo: `torch 2.10.0+cpu`, 12 CPUs, época em ~9 min com a máquina livre. Medido em 2026-08-11: o aumento dirigido de fato não muda o custo por época, e a grade inteira desta análise (9 treinos) custou ~9 h de CPU. |

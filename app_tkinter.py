@@ -10,7 +10,8 @@ parâmetros que o `OcrService` espera.
 | responsabilidade | onde mora |
 |---|---|
 | detectar, prever, inferir a vez, gravar amostra | `service.py` |
-| PDF: exibir, navegar, selecionar área, modo leitura | `ui/pdf_panel.py` |
+| PDF: exibir, navegar, selecionar área, marcar diagramas | `ui/pdf_panel.py` |
+| onde estão os diagramas da página e o que um clique neles significa | `ui/page_overlay.py` |
 | editar o diagrama, legalidade, salvar, fila e dataset | `ui/result_panel.py` |
 | tabuleiro de estudo, variantes e PGN | `ui/study_panel.py` |
 | exportar o livro para PGN | `ui/export_controller.py` |
@@ -22,6 +23,7 @@ aplicada agora ao que tinha sobrado.
 
 from __future__ import annotations
 
+import argparse
 import logging
 import threading
 import tkinter as tk
@@ -37,15 +39,19 @@ import numpy as np
 
 from chess_diagram_ocr.config import (
     ACCEPT_MIN_CONFIDENCE,
+    BUNDLE_ROOT,
     DEFAULT_DATASET_CSV,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
+    DEFAULT_PDF_DIR,
     DEFAULT_READING_ORDER,
     DEFAULT_SAMPLES_DIR,
+    PROJECT_ROOT,
     find_default_pdf_path,
 )
 from chess_diagram_ocr.dataset_browser import DatasetRow
+from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
@@ -68,6 +74,17 @@ from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 from chess_diagram_ocr.ui.export_controller import ExportController, ExportSettings
+from chess_diagram_ocr.ui.gallery_panel import GalleryPanel
+from chess_diagram_ocr.ui.page_overlay import (
+    BoxClick,
+    OverlayParams,
+    PageBoxes,
+    PageBoxesCache,
+    boxes_from_candidates,
+    boxes_from_diagrams,
+    choose_boxes,
+    decide_box_click,
+)
 from chess_diagram_ocr.ui.page_results import PageOcrParams
 from chess_diagram_ocr.ui.pdf_panel import PdfPanel
 from chess_diagram_ocr.ui.result_panel import ResultPanel, read_board_image
@@ -75,10 +92,14 @@ from chess_diagram_ocr.ui.review_panel import ReviewPanel, ScanRequest
 from chess_diagram_ocr.ui.shortcuts import bind_shortcuts
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 from chess_diagram_ocr.ui.study_panel import StudyPanel
+from chess_diagram_ocr.ui.theme import apply_theme
 from chess_diagram_ocr.ui.training_dialog import TrainingController, TrainingRequest
 
-ROOT = Path(__file__).resolve().parent
-PIECE_IMAGE_DIR = ROOT / "assets" / "piece_images"
+# `PROJECT_ROOT` e a pasta gravavel -- o checkout, ou a pasta do `.exe` num bundle (S-55).
+# `BUNDLE_ROOT` e onde ficam os recursos somente-leitura que viajam dentro do pacote. A
+# distincao existe para que reinstalar nao apague o `labels.csv`, que e trabalho humano.
+ROOT = PROJECT_ROOT
+PIECE_IMAGE_DIR = BUNDLE_ROOT / "assets" / "piece_images"
 APP_STATE_PATH = ROOT / "data" / "app_tkinter_state.json"
 DEFAULT_SPLITS_PATH = ROOT / "data" / "splits.csv"
 
@@ -93,9 +114,15 @@ class ChessOcrTkApp:
         self.root.title("Chess Diagram OCR - Tkinter")
         self.root.geometry("1700x980")
 
+        self.theme = apply_theme(root)
+        """Tema em uso (S-53), ou `"ttk"` quando o `ttkbootstrap` não está instalado.
+
+        Aplicado antes de qualquer widget: trocar tema depois de a árvore montada refaz o
+        layout inteiro, e a diferença aparece como um piscar."""
+
         self.piece_images = PieceImages(PIECE_IMAGE_DIR)
         self.state = AppState()
-        self.settings = load_settings()
+        self.settings: Settings = load_settings()
         """Preferências do usuário (S-32). Por padrão nada sai da máquina."""
 
         # A configuracao vem antes do servico porque o OCR de legenda (S-43) entra por ele.
@@ -110,6 +137,22 @@ class ChessOcrTkApp:
         """Motor de análise (S-33), ou `None`. Sem binário, a seção some da aba Análise."""
 
         self._is_running_ocr = False
+
+        self.page_boxes = PageBoxesCache()
+        """Onde estão os diagramas de cada página já visitada (S-68)."""
+
+        self._overlay_lock = threading.Lock()
+        self._overlay_request: tuple[str, int, OverlayParams, Path, np.ndarray] | None = None
+        self._overlay_worker_alive = False
+        """Uma thread de detecção por vez, com o pedido mais recente esperando a vez.
+
+        Não é uma fila: virar dez páginas em dois segundos não deve render dez detecções, das
+        quais nove serão descartadas ao chegar. O pedido novo **sobrescreve** o que ainda não
+        começou, que é a única coisa que o usuário ainda pode querer ver."""
+
+        self._select_after_ocr: int | None = None
+        """Diagrama a selecionar quando o OCR pedido por um clique terminar."""
+
         self.busy = BusyRegistry()
         """O que esta rodando agora (S-60). Fechar a janela consulta isto antes de matar
         oito threads daemon -- ate aqui `_on_close` nao perguntava nada, e um treino de ~9 min
@@ -135,6 +178,7 @@ class ChessOcrTkApp:
         self.study_panel: StudyPanel | None = None
         self.review_panel: ReviewPanel | None = None
         self.dataset_panel: DatasetPanel | None = None
+        self.gallery_panel: GalleryPanel | None = None
 
         self.training = TrainingController(
             self.root,
@@ -204,7 +248,9 @@ class ChessOcrTkApp:
             on_focus_request=self._focus_result_tab,
             on_sample_saved=self._reload_dataset_panel,
             remote_fen=lambda: self.settings.remote_fen,
+            local_reader=lambda: self.settings.local_reader,
             on_remote_consent=self._ask_remote_consent,
+            on_selection_changed=self._on_result_selection,
         )
         tabs.add(self.result_panel, text="Resultado")
 
@@ -238,6 +284,17 @@ class ChessOcrTkApp:
             on_status=self._set_status,
         )
         tabs.add(self.dataset_panel, text="Dataset")
+
+        self.gallery_panel = GalleryPanel(
+            tabs,
+            service=self.service,
+            pdf_path=self._pdf_path_or_none,
+            model_path=lambda: Path(self.model_path_var.get().strip()),
+            max_boards=lambda: int(self.max_boards_var.get()),
+            on_status=self._set_status,
+            on_page_request=self._gallery_page_request,
+        )
+        tabs.add(self.gallery_panel, text="Galeria")
 
         ttk.Label(self.left_frame, textvariable=self.status_var).pack(anchor="w", pady=(6, 0))
 
@@ -297,6 +354,8 @@ class ChessOcrTkApp:
             on_page_rendered=self._on_page_rendered,
             on_zoom_changed=lambda _valor: self._save_app_state(),
             initial_dir=ROOT,
+            on_box_click=self._on_box_click,
+            on_boxes_toggled=lambda _ligado: self._save_app_state(),
         )
         self.pdf_panel.pack(fill=tk.BOTH, expand=True)
 
@@ -359,6 +418,7 @@ class ChessOcrTkApp:
 
         if self.pdf_panel is not None:
             self.pdf_panel.set_zoom(self.state.pdf_zoom)
+            self.pdf_panel.show_boxes_var.set(self.state.show_diagram_boxes)
         if self.result_panel is not None:
             self.result_panel.board_zoom_var.set(self.state.board_zoom)
             self.result_panel.heatmap_var.set(self.state.show_heatmap)
@@ -396,6 +456,7 @@ class ChessOcrTkApp:
             self.state.last_page = self.page_index
             if self.pdf_panel is not None:
                 self.state.pdf_zoom = float(self.pdf_panel.zoom_var.get())
+                self.state.show_diagram_boxes = bool(self.pdf_panel.show_boxes_var.get())
             if self.result_panel is not None:
                 self.state.board_zoom = float(self.result_panel.board_zoom_var.get())
                 self.state.show_heatmap = bool(self.result_panel.heatmap_var.get())
@@ -417,8 +478,6 @@ class ChessOcrTkApp:
             self.busy.request_cancel()
 
         self._save_app_state()
-        if self.pdf_panel is not None:
-            self.pdf_panel.destroy_reader()
         if self.analyzer is not None:
             # O motor e um processo, nao um widget: fechar a janela nao o encerra.
             self.analyzer.close()
@@ -519,6 +578,10 @@ class ChessOcrTkApp:
 
     def _on_pdf_opened(self, pdf_path: Path) -> None:
         self._remember_page_results()
+        # As caixas são de um arquivo que pode ter mudado no disco desde a última visita. A
+        # chave já inclui o documento, então isto não é correção de bug: é não guardar
+        # afirmação sobre um PDF que ninguém mais está olhando.
+        self.page_boxes.clear()
         if self.result_panel is not None:
             self.result_panel.discard_document_results(str(pdf_path))
 
@@ -532,6 +595,21 @@ class ChessOcrTkApp:
         self._save_app_state()
         if self.result_panel is not None:
             self.result_panel.restore_results_for_page(page_index)
+        # Depois de restaurar: se esta página já foi lida, as caixas saem do reconhecimento --
+        # que sabe o mesmo sobre *onde* e mais sobre *o que* -- e o detector não precisa rodar.
+        self._refresh_overlay(page_index)
+        if self.gallery_panel is not None:
+            # A galeria acompanha a pagina, e ela propria ignora o aviso quando foi ela quem
+            # pediu a virada -- senao os dois se chamariam em circulo (S-67).
+            self.gallery_panel.sync_to_page(page_index)
+
+    def _pdf_path_or_none(self) -> Path | None:
+        return self.pdf_source
+
+    def _gallery_page_request(self, page_index: int) -> None:
+        """A galeria mudou de diagrama; o visualizador vai para a página dele."""
+        if self.pdf_panel is not None:
+            self.pdf_panel.go_to_page(page_index)
 
     def _remember_page_results(self) -> None:
         if self.result_panel is not None:
@@ -541,6 +619,167 @@ class ChessOcrTkApp:
         self.export.cancel()
         if self.pdf_panel is not None:
             self.pdf_panel.disable_cancel_button()
+
+    # ------------------------------------------------- diagramas marcados na página (S-68)
+    # Ninguém pediu esta detecção -- o usuário só virou a página --, e é isso que decide a
+    # forma: roda em thread, a janela nunca espera por ela, falhar não abre caixa de erro, e o
+    # resultado é conferido contra a página que estiver na tela quando ele chegar.
+
+    def _overlay_params(self) -> OverlayParams:
+        return OverlayParams(dpi=int(self.dpi_var.get()), max_boards=int(self.max_boards_var.get()))
+
+    def _editor_shows_page(self, page_index: int) -> bool:
+        """Se o que está no editor é, ele mesmo, o reconhecimento desta página."""
+        if self.result_panel is None:
+            return False
+        return self.result_panel.page_key == (self._document_key(), page_index)
+
+    def _page_items(self, page_index: int) -> list[RecognizedDiagram]:
+        """Os diagramas já lidos desta página: os do editor, se forem dela, ou os do cache."""
+        if self.result_panel is None:
+            return []
+        if self._editor_shows_page(page_index):
+            return self.result_panel.items
+        guardado = self.result_panel.page_results.get(
+            self._document_key(), page_index, self._current_ocr_params()
+        )
+        return list(guardado.items) if guardado is not None else []
+
+    def _refresh_overlay(self, page_index: int) -> None:
+        """Põe na tela as caixas desta página, e manda detectar quando ainda não se sabe."""
+        painel = self.pdf_panel
+        if painel is None or painel.source is None or painel.page_rgb is None:
+            return
+
+        params = self._overlay_params()
+        detectadas = self.page_boxes.get(self._document_key(), page_index, params)
+        escolhidas = choose_boxes(
+            recognized=boxes_from_diagrams(self._page_items(page_index)),
+            detected=detectadas.boxes if detectadas is not None else (),
+        )
+        if escolhidas:
+            painel.set_diagram_boxes(PageBoxes(page_index, params, escolhidas))
+            self._sync_selected_box()
+            return
+        if detectadas is not None:
+            # Página de prosa já visitada: sabe-se que não há diagrama, e dizê-lo é melhor que
+            # mandar o detector percorrê-la de novo a cada volta.
+            painel.set_diagram_boxes(detectadas)
+            return
+
+        self._request_overlay(page_index, params)
+
+    def _sync_selected_box(self) -> None:
+        """Destaca no visualizador o diagrama que está aberto no editor.
+
+        Só quando as caixas na tela são as do reconhecimento **desta** página. Com as caixas do
+        detector, o índice do editor não fala da mesma lista -- e um destaque no diagrama errado
+        é a resposta errada para a única pergunta que ele existe para responder.
+        """
+        painel = self.pdf_panel
+        if painel is None:
+            return
+        if painel.boxes is None or not painel.boxes.recognized:
+            painel.select_box(None)
+            return
+        if self.result_panel is None or not self._editor_shows_page(painel.page_index):
+            painel.select_box(None)
+            return
+        painel.select_box(self.result_panel.selected_index if self.result_panel.items else None)
+
+    def _on_result_selection(self, _index: int | None) -> None:
+        """O editor trocou de diagrama; o retângulo destacado acompanha."""
+        self._sync_selected_box()
+
+    def _request_overlay(self, page_index: int, params: OverlayParams) -> None:
+        painel = self.pdf_panel
+        if painel is None or painel.source is None or painel.page_rgb is None:
+            return
+
+        pedido = (
+            self._document_key(),
+            page_index,
+            params,
+            painel.source,
+            # Cópia pelo mesmo motivo do OCR: a thread lê esta imagem enquanto a janela pode
+            # estar rasterizando outra página por cima da referência.
+            np.asarray(painel.page_rgb).copy(),
+        )
+        with self._overlay_lock:
+            self._overlay_request = pedido
+            if self._overlay_worker_alive:
+                return
+            self._overlay_worker_alive = True
+        threading.Thread(target=self._overlay_worker, name="marcar-diagramas", daemon=True).start()
+
+    def _overlay_worker(self) -> None:
+        while True:
+            with self._overlay_lock:
+                pedido = self._overlay_request
+                self._overlay_request = None
+                if pedido is None:
+                    self._overlay_worker_alive = False
+                    return
+
+            documento, page_index, params, source, page_rgb = pedido
+            try:
+                candidatos = detect_diagrams_in_pdf_page(
+                    source, page_index, page_rgb, max_boards=params.max_boards
+                )
+            except Exception:
+                # Sem caixa de diálogo: a página continua legível no visualizador, e o usuário
+                # não pediu nada. O log é onde isto pertence.
+                logger.exception("Falha ao procurar diagramas na página %d de %s.", page_index, documento)
+                continue
+
+            caixas = PageBoxes(page_index, params, boxes_from_candidates(candidatos))
+            self.root.after(0, partial(self._apply_overlay, documento, caixas))
+
+    def _apply_overlay(self, documento: str, caixas: PageBoxes) -> None:
+        self.page_boxes.put(documento, caixas)
+        painel = self.pdf_panel
+        if painel is None or self._document_key() != documento:
+            return
+        if not painel.set_diagram_boxes(caixas):
+            return
+
+        self._sync_selected_box()
+        if len(caixas):
+            self._set_status(
+                f"Página {caixas.page_index}: {len(caixas)} diagrama(s) marcado(s). "
+                "Clique num deles para lê-lo."
+            )
+
+    def _on_box_click(self, index: int) -> None:
+        """Clique num diagrama marcado: abre-o no editor, lendo a página se for preciso."""
+        painel = self.pdf_panel
+        if painel is None or self.result_panel is None:
+            return
+
+        pagina = painel.page_index
+        if not self._editor_shows_page(pagina):
+            # O clique é um pedido explícito de abrir aquele diagrama. Trazer de volta o
+            # resultado guardado é o caminho barato, e o descarte que a `PageSwitch.KEEP` evita
+            # é o **implícito** -- o da virada de página, que ninguém pediu.
+            self.result_panel.restore_results_for_page(pagina)
+
+        lidos = len(self.result_panel.items) if self._editor_shows_page(pagina) else 0
+        if painel.boxes is not None and not painel.boxes.recognized:
+            # As caixas na tela são do detector: o índice clicado não fala da mesma lista que o
+            # editor. Ver `choose_boxes` -- é o caso do "OCR melhor diagrama".
+            lidos = 0
+
+        if decide_box_click(recognized_count=lidos, index=index) is BoxClick.SELECT:
+            self.result_panel.select_diagram(index)
+            self._focus_result_tab()
+            return
+
+        if self._is_running_ocr:
+            self._set_status("OCR em andamento. Aguarde a conclusão.")
+            return
+        self._select_after_ocr = index
+        self._set_status(f"Lendo a página para abrir o diagrama {index + 1}...")
+        self._run_ocr_from_current_page(max_boards=int(self.max_boards_var.get()))
 
     # --------------------------------------------------------------------------------- OCR
     # A janela decide *o que* reconhecer, porque e ela que tem os widgets; o servico decide
@@ -624,6 +863,11 @@ class ChessOcrTkApp:
     def _show_results(self, items: list[RecognizedDiagram], origin: RecognitionOrigin) -> None:
         if self.result_panel is not None:
             self.result_panel.show_ocr_results(items, origin)
+            if self._select_after_ocr is not None and origin.is_whole_page:
+                # A página foi lida porque alguém clicou num diagrama dela: abrir o primeiro
+                # seria responder outra pergunta.
+                self.result_panel.select_diagram(self._select_after_ocr)
+        self._refresh_overlay(self.page_index)
 
     def _on_ocr_error(self, exc: Exception) -> None:
         if "Nenhum tabuleiro foi detectado" in str(exc) and self.result_panel is not None:
@@ -633,6 +877,9 @@ class ChessOcrTkApp:
 
     def _finish_ocr_ui(self) -> None:
         self._is_running_ocr = False
+        # Limpo aqui, e não em `_show_results`: o pedido morre também quando o OCR falha, e
+        # este é o único ponto por onde os dois caminhos passam.
+        self._select_after_ocr = None
         self._set_ocr_controls_enabled(True)
 
     # ------------------------------------------------------------- ligações entre painéis
@@ -684,7 +931,11 @@ class ChessOcrTkApp:
         self.root.wait_window(dlg)
 
         if resposta["enviar"] and nao_perguntar.get():
-            self.settings = Settings(remote_fen=replace(configuracao, acknowledged=True))
+            # `replace` e nao `Settings(...)`: construir um Settings novo aqui devolvia
+            # `engine` e `ocr` aos padroes, e a linha seguinte gravava isso por cima do
+            # arquivo -- marcar "nao perguntar novamente" apagava o caminho do motor UCI e a
+            # configuracao de OCR de quem os tinha declarado.
+            self.settings = replace(self.settings, remote_fen=replace(configuracao, acknowledged=True))
             save_settings(DEFAULT_SETTINGS_PATH, self.settings)
         return bool(resposta["enviar"])
 
@@ -740,8 +991,86 @@ class ChessOcrTkApp:
             self.review_panel.open_next_pending()
 
 
+def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
+    """Abre um PDF e reconhece uma página, sem janela. `0` se o essencial funciona.
+
+    Existe por causa do bundle da S-55. Um `.exe` sem console não tem como dizer "aqui
+    funciona": se ele abrir e o torch estiver faltando, o sintoma é uma janela que some. Um
+    auto-teste que grava no log responde à única pergunta que interessa numa máquina limpa
+    -- *esta instalação lê um diagrama?* -- em vez de deixar o usuário descobrir isso ao
+    perder uma correção.
+
+    Roda igualmente num checkout, e é por isso que ele mora aqui e não no `packaging/`.
+    """
+    caminho = pdf or find_default_pdf_path()
+    if caminho is None:
+        logger.error(
+            "Auto-teste sem PDF: ponha um arquivo em %s (ao lado do executável) e rode de novo.",
+            DEFAULT_PDF_DIR,
+        )
+        return 2
+
+    modelo = Path(DEFAULT_MODEL_PATH)
+    if not modelo.exists():
+        logger.error("Auto-teste sem checkpoint em %s: o programa abre, mas não lê nada.", modelo)
+        return 3
+
+    logger.info("Auto-teste: %s, página %d.", caminho.name, page_index)
+    servico = OcrService(model_path=modelo)
+    try:
+        itens = servico.recognize_page(
+            caminho,
+            page_index,
+            options=RecognitionOptions(max_boards=DEFAULT_MAX_BOARDS, orientation=DEFAULT_ORIENTATION_MODE),
+        )
+    except Exception:
+        logger.exception("Auto-teste falhou ao reconhecer a página.")
+        return 1
+
+    for indice, item in enumerate(itens, start=1):
+        logger.info(
+            "  diagrama %d: %s | conf min %.3f | %s",
+            indice,
+            item.placement,
+            item.min_confidence,
+            "legal" if item.is_legal else "ilegal",
+        )
+    logger.info("Auto-teste concluído: %d diagrama(s) reconhecido(s).", len(itens))
+
+    # O bundle da S-55 promete leitor **e** treinador, e ler nao prova treinar: o caminho de
+    # treino usa `torchvision.transforms.v2`, que nada importa estaticamente e que um bundle
+    # incompleto derruba so quando o usuario clica "Treinar modelo" -- depois de ele ter
+    # corrigido dezenas de diagramas. Montar a pipeline de aumento custa milissegundos e
+    # responde a pergunta agora.
+    try:
+        from chess_diagram_ocr.training import build_train_transform, train_model  # noqa: F401
+
+        build_train_transform()
+    except Exception:
+        logger.exception("Auto-teste: a leitura funciona, mas o caminho de TREINO não montou.")
+        return 4
+    logger.info("Auto-teste: o caminho de treino também montou (leitor + treinador).")
+
+    # Zero diagrama nao e falha: ha paginas de prosa. O que se testa aqui e o caminho
+    # inteiro -- render, deteccao, torch, decodificacao -- ter rodado sem estourar.
+    return 0
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Interface desktop do ChessVisionOFF.")
+    parser.add_argument(
+        "--selftest",
+        action="store_true",
+        help="reconhece uma página e sai, sem abrir a janela. Para conferir uma instalação nova (S-55).",
+    )
+    parser.add_argument("--pdf", type=Path, default=None, help="PDF do auto-teste; sem isto, o primeiro de PDF/.")
+    parser.add_argument("--page", type=int, default=0, help="página do auto-teste (base 0).")
+    args = parser.parse_args()
+
     configure_logging(log_file=default_log_file())
+    if args.selftest:
+        raise SystemExit(selftest(args.pdf, args.page))
+
     logger.info("Iniciando interface desktop.")
     root = tk.Tk()
     ChessOcrTkApp(root)

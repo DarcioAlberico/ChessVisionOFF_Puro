@@ -94,7 +94,10 @@ Use `mainloop()` e não um laço de `update()`: `root.after` de outra thread fal
 "main thread is not in main loop" fora do loop de eventos de verdade, e o erro parece um
 defeito do código quando é do roteiro.
 
-Para o Streamlit, `streamlit.testing.v1.AppTest` roda o script inteiro sem navegador.
+Para a demonstração Streamlit (`examples/streamlit_demo.py`), `streamlit.testing.v1.AppTest`
+roda o script inteiro sem navegador. Ela é exemplo e não interface (S-54): um defeito ali
+não bloqueia entrega, mas ela importa o `OcrService` e por isso quebra quando a fachada
+muda — o que é exatamente o alarme que se quer de um exemplo.
 
 ## Adicionar amostras ao dataset
 
@@ -108,10 +111,33 @@ Depois de acrescentar amostras:
 cvoff-audit            # legalidade, duplicatas, órfãos, distribuição de classes
 cvoff-train --fresh    # o split é estável: amostra nova não muda o que já era 'test'
 cvoff-eval --split test
+cvoff-field            # e o que de fato importa: a taxa de exportação em página real
 ```
 
 **Nunca ajuste nada olhando para o split `test`.** Ele existe para responder uma pergunta
 uma vez, e um número olhado repetidamente deixa de ser honesto. Compare no `val`.
+
+**E não pare no `cvoff-eval`.** O split de teste são recortes que um humano já aprovou; o
+produto lê páginas de PDF. A Fase 7 mediu um fator de 18× entre os dois, e desde então
+`cvoff-field` é a métrica primária. Quatro variantes de modelo treinadas em 2026-08-11 deram
+taxas de exportação idênticas com acurácias de validação diferentes — é o tipo de coisa que só
+o conjunto de campo mostra.
+
+## Comparar dois modelos honestamente
+
+Um checkpoint só é comparável a outro treinado sobre o **mesmo dataset, mesma semente, mesmo
+regime de aumento e mesmo número de épocas**. Comparar contra `models/piece_classifier.pt`
+compara também os meses de amostras que entraram desde que ele foi treinado.
+
+```bash
+cvoff-train --fresh --seed 42 --model models/controle.pt              # o controle
+cvoff-train --fresh --seed 42 --coords --model models/variante.pt     # a variante
+cvoff-field --model models/controle.pt --json docs/metrics/controle.json
+cvoff-field --model models/variante.pt --json docs/metrics/variante.json
+```
+
+O relatório do `cvoff-field` traz as três medidas que um item de modelo precisa: taxa de
+exportação, casas que o `decode.py` teve de reparar, e custo por diagrama.
 
 ## Convenções de código
 

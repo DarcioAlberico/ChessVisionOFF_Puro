@@ -7,9 +7,9 @@ Projeto para extrair diagramas de xadrez em PDF, converter para FEN e melhorar a
 - OpenCV: deteccao de tabuleiro e recorte por perspectiva.
 - PyTorch: classificador de pecas por casa (13 classes: vazio + 12 pecas).
 - python-chess: validacao e representacao de FEN/board.
-- Tkinter: interface desktop principal (`app_tkinter.py`).
-- WebView2 embutido: modo de leitura do PDF na interface desktop.
-- Streamlit: interface web alternativa (`app_streamlit.py`).
+- Tkinter + ttkbootstrap: **a** interface do produto (`app_tkinter.py`).
+- Streamlit: demonstracao do servico no navegador (`examples/streamlit_demo.py`), nao e
+  uma interface alternativa -- veja abaixo.
 - PyMuPDF (`fitz`): render de paginas PDF para imagem.
 
 ## Setup
@@ -43,13 +43,64 @@ Requer Python 3.10. Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoin
 uv run python app_tkinter.py
 ```
 
-No Windows, o modo "Leitura" da interface desktop usa Microsoft Edge WebView2 Runtime.
+Nao ha dependencia de plataforma: a aba "Leitura" (WebView2, so-Windows) saiu na S-69, e com
+ela o `pythonnet` e o `pywebview`. Para ler o livro com rolagem continua e busca de texto, o
+botao **Abrir no leitor do sistema** entrega o PDF ao leitor padrao da maquina.
 
-## Rodar interface web (Streamlit)
+## Gerar o programa para Windows (sem Python)
 
 ```bash
-uv run streamlit run app_streamlit.py
+uv sync --extra dev --extra packaging
+uv run python packaging/build_windows.py
 ```
+
+Sai em `dist/ChessVisionOFF/`. Zipe a pasta inteira: ela roda numa maquina Windows limpa,
+sem Python e sem `uv`.
+
+**Tamanho medido: 696 MB, 5.247 arquivos** (torch 2.10+cpu, torchvision, OpenCV, PyMuPDF).
+E o build **completo** -- leitor *e* treinador. O peso vem quase todo do torch, e o torch
+esta ali porque o ciclo que da valor ao projeto e *corrigir, salvar, treinar*: um bundle so
+de leitura seria ~5x menor e nao teria o botao "Treinar modelo". O caminho para faze-lo esta
+descrito em `packaging/cvoff.spec`, e e uma decisao de produto, nao de empacotamento.
+
+O que fica **ao lado** do executavel, e nao dentro dele: `data/`, `models/`, `PDF/` e `PGN/`.
+Isso e proposital -- o `labels.csv` e trabalho humano acumulado, e reinstalar nao pode
+apaga-lo. Faca backup copiando a pasta.
+
+Conferir uma instalacao nova, sem abrir a janela:
+
+```bash
+set CVOFF_LOG_DIR=logs
+ChessVisionOFF.exe --selftest --page 80
+```
+
+Ele abre o primeiro PDF de `PDF/`, reconhece a pagina, escreve as FENs no log e confere que
+o caminho de treino tambem montou. Codigos de saida: `0` ok, `2` sem PDF, `3` sem
+checkpoint, `4` le mas nao treina, `1` falha ao reconhecer. Funciona igual num checkout
+(`uv run python app_tkinter.py --selftest`).
+
+Uma ressalva honesta:
+
+- **O executavel nao e assinado.** O SmartScreen vai avisar na primeira execucao. Resolver
+  isso exige um certificado de assinatura de codigo.
+
+## Demonstracao no navegador (Streamlit)
+
+```bash
+uv run streamlit run examples/streamlit_demo.py
+```
+
+**Isto nao e uma segunda interface, e sim um exemplo.** Ela abre um PDF, reconhece os
+diagramas e mostra a FEN e a legalidade -- tudo pelo mesmo `OcrService` que o Tkinter usa,
+sem uma linha de reconhecimento propria. Serve para **ver** o resultado e para provar que o
+pipeline nao depende de janela.
+
+O que ela nao tem, e nunca teve: editor de posicao por clique, painel de legalidade com as
+casas culpadas, fila de revisao e aba de dataset. Os quatro sao widgets de Tk, e sao onde
+mora o fluxo de valor do produto -- *corrigir, salvar, treinar*. Ate a Fase 10 este README
+a chamava de "interface web alternativa", o que prometia uma paridade que nao existe; a
+S-54 escolheu desfazer a promessa em vez de perseguir ~1 semana de trabalho por um uso
+remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
@@ -84,6 +135,10 @@ cvoff-export "PDF\1937 Kemeri.pdf" --no-text  # ignora a legenda do PDF (lado a 
 # Sem flags, apenas relata. Toda escrita cria backup do CSV.
 cvoff-audit
 cvoff-audit --fix-side-to-move --quarantine --dedupe
+# Higiene (S-63). Nenhuma das duas apaga nada: a linha cujo PNG sumiu vai para a quarentena
+# (a FEN e trabalho humano e a imagem e reextraivel do livro), e o PNG sem linha e aposentado
+# em data/orphans/<data>/. Depois delas, data/samples/ e labels.csv tem os mesmos nomes.
+cvoff-audit --drop-missing --prune-orphans
 
 # Migracao do labels.csv para o esquema com lado a jogar e origem. Cria backup;
 # deduz o lado a jogar so onde a posicao o impoe, e deixa vazio o resto.
@@ -111,6 +166,12 @@ cvoff-field
 cvoff-field --json docs/metrics/atual.json
 # Anotar uma pagina nova: o rascunho ja traz o que o pipeline leu, e voce corrige.
 cvoff-field --no-placement --regime scan-puro --draft "1937 Kemeri.pdf:80,187"
+
+# Procedencia do lado a jogar no acervo (criterio de saida da Fase 8): amostra paginas de
+# cada PDF e conta de onde veio o [SideToMoveSource] -- texto, OCR, legalidade ou assumido.
+# Rodar com e sem --ocr responde em dois numeros o que o motor da S-43 entregou.
+cvoff-sides
+cvoff-sides --ocr rapidocr --json docs/metrics/sides_com_ocr.json
 
 # Grade de experimentos de arquitetura (S-29): canais, resolucao, cabeca, backbone.
 # Cada variante treina do zero com a mesma semente e e comparada no split 'val'
@@ -264,7 +325,7 @@ Tres coisas que o recurso **nao** faz, de proposito:
 
 | sintoma | causa provavel | o que fazer |
 |---|---|---|
-| A aba **Leitura** diz "WebView2 indisponivel" | falta o Microsoft Edge WebView2 Runtime (so Windows) | instalar o runtime, ou usar a aba **OCR**, que nao depende dele |
+| Sumiu a aba **Leitura** do visualizador | saiu na S-69, junto com o WebView2 | o botao **Abrir no leitor do sistema** faz o mesmo, no leitor padrao da maquina. A pagina no app continua sendo a que reconhece, marca e recorta diagramas |
 | Treino muito lento (~9 min por epoca) | `torch` `+cpu`, sem CUDA | ver [Desempenho](#desempenho-cpu-gpu-e-onnx). A barra de status diz qual dispositivo esta em uso |
 | Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros do acervo. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
 | `--ocr rapidocr` avisa que "o OCR pedido nao esta disponivel" | o extra nao esta instalado | `uv sync --extra ocr`. O comando segue sem OCR em vez de falhar, mas a saida nao tem legenda lida |
@@ -324,13 +385,23 @@ Numeros medidos de memoria e tempo estao em [docs/EXPERIMENTS.md](docs/EXPERIMEN
 
 1. Abrir PDF.
 2. Navegar para a pagina desejada.
-3. Rodar OCR (melhor diagrama ou todos).
+3. Rodar OCR (melhor diagrama ou todos), **ou clicar direto no diagrama** que interessa: o
+   visualizador marca com um retangulo numerado cada diagrama que o detector achou na pagina.
 4. Corrigir a posicao no proprio tabuleiro: arrastar move a peca, botao direito apaga,
    a paleta insere. As casas em que o modelo esta inseguro aparecem tingidas de amarelo a
    vermelho, e o painel abaixo diz o que esta ilegal e em que casas.
 5. Salvar exemplos corrigidos.
 6. Treinar modelo.
 7. Repetir ciclo para reduzir correcoes manuais.
+
+**Os diagramas marcados na pagina.** Ao trocar de pagina, o detector roda em segundo plano e
+desenha um retangulo numerado sobre cada diagrama; o numero e o mesmo do seletor
+"Selecionado" da aba **Resultado**. Clicar num retangulo abre aquele diagrama no editor --
+lendo a pagina primeiro, se ela ainda nao tiver sido lida. O retangulo do diagrama que esta
+aberto fica destacado, e ele acompanha as setas `←`/`→`: e ele que responde "qual desses eu
+estou vendo?". Azul e diagrama localizado, verde e diagrama ja lido, laranja e o que esta no
+editor. A caixa **Marcar diagramas** desliga tudo isso para quem esta lendo o texto do livro,
+e a escolha sobrevive ao fechamento da janela.
 
 O reconhecimento fica guardado por pagina: voltar para uma pagina ja reconhecida traz de
 volta os diagramas, o diagrama que estava selecionado e as correcoes feitas a mao, sem
@@ -388,13 +459,14 @@ src/chess_diagram_ocr/
   review_queue.py       fila de revisao ordenada por valor de informacao
   semantics.py          lado a jogar e direitos de roque
   splits.py             divisao treino/validacao/teste estavel
-  training.py           loop de treino
-  webview2_panel.py     painel WebView2 embutido (Windows)
+  orientation.py        a cascata de regras que decide a orientacao do diagrama
+  training.py           loop de treino (Trainer, TrainingPlan, BestEpochPolicy)
   detection/            detector hibrido: imagem embutida + contorno
   ui/                   paineis da interface: PDF, resultado, estudo, revisao, dataset
   cli/                  entrypoints cvoff-*
-app_tkinter.py          interface desktop
-app_streamlit.py        interface web
+app_tkinter.py          interface desktop (--selftest confere uma instalacao sem abrir janela)
+examples/               demonstracoes: streamlit_demo.py roda o servico no navegador
+packaging/              cvoff.spec e build_windows.py: o .zip para Windows (S-55)
 tests/                  suite de testes
 docs/                   analise tecnica, roadmap, especificacao, baseline e experimentos
 CONTRIBUTING.md         como rodar as verificacoes e o que este projeto espera de um teste

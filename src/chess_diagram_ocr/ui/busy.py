@@ -1,7 +1,7 @@
 """O que está rodando agora, e o que se perde ao fechar a janela (S-60).
 
-**O defeito.** `app_tkinter._on_close` gravava o estado, destruía o leitor WebView2, fechava
-o motor de análise e chamava `root.destroy()`. Não perguntava nada. As oito threads do app
+**O defeito.** `app_tkinter._on_close` gravava o estado, destruía o leitor WebView2 (que saiu
+na S-69), fechava o motor de análise e chamava `root.destroy()`. Não perguntava nada. As oito threads do app
 são `daemon=True` e nenhuma é aguardada, então um treino de ~9 min por época em CPU, ou uma
 exportação de um livro de 1.121 páginas, morria no `destroy` sem uma palavra.
 

@@ -290,7 +290,22 @@ início devolve um `TrainingRun` vazio sem tocar no `.pt`.
 
 ---
 
-## S-61 · O custo de uma varredura: duas ineficiências estruturais
+## S-61 · O custo de uma varredura: duas ineficiências estruturais ✅ implementada e medida (2026-08-11)
+
+> **Entregue as duas.** (a) A orientação automática manda as duas leituras num único
+> `forward` de 128 casas: **−24,5%** na inferência de uma página de 6 diagramas. (b) `OpenPdf`
+> em `pdf_io.py` — uma abertura por varredura em vez de três por página: no
+> `Secrets of Chess Training`, **143,0 s → 0,040 s**.
+>
+> Os dois critérios de aceite estão travados por teste: uma varredura de 3 páginas faz **1**
+> abertura, e as dez métricas do conjunto de campo são idênticas antes e depois, dígito a
+> dígito. O atalho por coordenadas da parte (a) **não** entrou, porque a S-45 foi adiada por
+> medição — o que sobra é o quarto que a fusão de lote dá de graça.
+>
+> **A decisão que o item obrigou a tomar:** o empréstimo não levanta quando o arquivo não
+> abre. Ele é otimização, não validação, e quem falha continua sendo `_render_pdf_page`, com
+> a mensagem que sempre deu.
+
 
 **Problema.** Perfil de uma página do Karpov 1 (6 diagramas, 220 DPI, CPU):
 
@@ -360,6 +375,86 @@ Comparação de FEN antes/depois num PDF sintético.
 ---
 
 # Fase 7 — Ler o acervo que existe
+
+## S-64 · O recorte embutido que traz o rodapé junto ✅ implementada e medida (2026-08-09)
+
+> **Fora de fase, como a 7.0.** Não é melhoria: é recorte deslocado produzindo **posição
+> errada**, e uma delas passava pelo gate de exportação. Entrou antes dos itens abertos pelo
+> mesmo motivo que os seis defeitos da segunda análise entraram.
+
+**Problema.** A imagem que o PDF embute não é sempre só o tabuleiro: no `Karpov 1` ela inclui
+a faixa de avaliação (`△`, `+−`) abaixo dele. `split_board_into_cells` divide a imagem em
+oito filas iguais, e num recorte de 712 px cujo tabuleiro tem 630 cada fila lida mede 89 px
+onde a real mede 79. O desvio acumula para baixo e passa de uma casa inteira na fila 1.
+
+Medido no `Karpov 1`, páginas 70-99, 173 diagramas: **14 chegavam ao classificador como
+recorte cru**, e **8 entregavam posição errada** — uma delas com confiança 0,9385, acima do
+gate da S-15, indo para o PGN principal como se estivesse certa.
+
+**As três guardas que deviam ter pego, e por que cada uma calou.** É o que o item mais
+ensina, porque nenhuma delas estava quebrada:
+
+| guarda | por que calou |
+|---|---|
+| `trim_to_grid` | procura as 7 linhas internas da grade no gradiente. Em casa **hachurada** elas não existem: a fronteira clara/escura é textura, não traço |
+| `refine_candidate_with_contour` | achou um quad pior, e a S-38a corretamente o descartou — restando o recorte cru |
+| `board_texture_score` | 0,3607 no recorte errado contra 0,3897 no certo: **0,03**, quase cego ao alinhamento da grade |
+
+A terceira é a que delimita a S-38a: o sinal com que ela julga um recorte quase não vê a
+única coisa que decide se a leitura está certa. Ela continua pegando o trapézio de texto, que
+é outra ordem de erro; não pega deslocamento de uma casa.
+
+E `trim_to_grid` **não falha por limiar**: desiste em `_board_span`, antes de avaliar a
+periodicidade. O passo mediano entre picos sai 9 px e 32 px onde a casa tem 82 e 88 — o que
+ela acha é a moldura e as bordas das peças. Afrouxar `min_periodicity` não muda nada, e há
+teste que trava essa premissa para que ninguém tente.
+
+**Solução.** `detection/embedded.trim_to_frame`, segunda tentativa com um sinal que existe
+nessas imagens: a **moldura impressa**, uma linha reta escura atravessando a imagem inteira.
+
+```python
+# src/chess_diagram_ocr/detection/embedded.py
+def trim_to_frame(image_rgb, *, dark_level=128, min_fill=0.80,
+                  min_coverage=0.55, aspect_tolerance=0.10, inset=3) -> tuple[np.ndarray, bool]: ...
+```
+
+Mesmo contrato de `trim_to_grid`: sem confiança, a imagem volta inalterada. Roda **só quando
+a primeira não confiou** — a primeira usa o sinal mais específico e continua tendo
+precedência, e há teste que confere que ela não é sequer consultada quando a grade responde.
+
+Três guardas próprias, e cada uma fecha um jeito de errar: o que sobra dentro da moldura tem
+de ser quase quadrado (senão uma tarja ou um sublinhado vira "moldura"), tem de cobrir a
+maior parte da imagem, e a moldura não pode ser a própria borda do recorte (aí não há o que
+aparar, e dizer que aparou inflaria o `detector_score`). O `min_fill` de 0,80 não precisa de
+calibração por livro porque o vale é largo: peças pretas chegam a ~0,45, moldura passa de
+0,95.
+
+**Medido em 606 diagramas de 6 livros**, com o "antes" obtido desligando a função:
+
+| livro | diagramas | conf. média | abaixo do gate | FENs corrigidas |
+|---|---|---|---|---|
+| **Karpov 1** | 173 | 0,9635 → **0,9889** | 14 → **4** | **10** |
+| **Kemeri 1937** | 15 | 0,9330 → **0,9661** | 2 → **1** | 0 |
+| Karpov 2 | 114 | 0,9493 → 0,9493 | 10 → 10 | 0 |
+| Polgar 5334 | 108 | 1,0000 → 1,0000 | 0 → 0 | 0 |
+| Aagaard Endgame | 120 | 1,0000 → 1,0000 | 0 → 0 | 0 |
+| Reinfeld ES | 76 | 0,8449 → 0,8449 | 21 → 21 | 0 |
+
+Zero regressão: nenhum diagrama piorou, e nos quatro livros sem o defeito nada se moveu.
+
+**Critério de aceite — atingido.** Contra o conjunto de campo da S-41: taxa de exportação
+**0,6842 → 0,7368**, com recall (0,9211) e precisão de detecção (0,9722) **inalterados**. O
+regime vetorial fechou em 1,000 (14/14). É o primeiro item desde a S-38a a mover a métrica
+primária da Fase 7. `docs/metrics/field_20260809_s64_moldura.json`.
+
+**O que isto deixa em aberto.** O sinal que separava os 14 defeituosos com precisão perfeita
+era gratuito e ninguém olhava: **os 159 recortes corretos eram exatamente quadrados e os 14
+defeituosos não.** Depois desta correção o aparo pela moldura devolve algo quase quadrado
+(proporção ~0,96), então a regra "não quadrado é suspeito" perdeu o gume — mas a observação
+fica registrada, porque um candidato que chega ao classificador sem ter passado nem por warp
+nem por aparo é um candidato cuja grade ninguém conferiu, e hoje nada o marca como tal.
+
+---
 
 ## S-37 · O ambiente não pode desligar 611 testes em silêncio
 
@@ -661,7 +756,30 @@ aceita nome com e sem sufixo de normalização.
 
 ---
 
-## S-40 · Aumento de dados dirigido ao acervo
+## S-40 · Aumento de dados dirigido ao acervo ✅ implementada · ⏸ **não entra** (medida 2026-08-11)
+
+> **Medida a 8 e a 16 épocas, contra o `aug0` retreinado com a mesma semente.** A taxa de
+> exportação não se moveu — 0,7368 nas duas rodadas — e **pela letra do critério de aceite o
+> item não entra**, porque ele pede ganho no conjunto de campo.
+>
+> **A 16 épocas, porém, o dirigido domina o controle em tudo o mais**: reparo do decodificador
+> de 15 para **9** (−40%), `val_board_exact_acc` 0,9820 contra 0,9790, mesmo custo. E o
+> controle está **convergido, verificado**: oito épocas extras não superaram a sétima e o
+> checkpoint no disco não chegou a ser tocado.
+>
+> **O espelhamento sozinho piorou a métrica primária** (0,7105) — a transformação que esta
+> spec chamava de "a duplicação de dataset mais barata disponível".
+>
+> **E a medição encontrou um defeito no instrumento, não só no aumento.** A distribuição de
+> confiança do conjunto de campo é bimodal com a vizinhança do gate **vazia**: 27 dos 36
+> diagramas acima de 0,99, nada entre 0,60 e 0,80, e os 8 barrados abaixo de 0,43. Nenhuma
+> mudança de modelo pode ganhar um diagrama ali; só perder. Ver 7.7 do
+> [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
+>
+> `models/s40_mhsp_16ep.pt` fica como **candidato** ao próximo retreino de produção. O padrão
+> de `AugmentConfig()` não foi trocado: essa decisão precisa de um conjunto de campo com poder
+> de resolução.
+
 
 **Problema.** `training.build_train_transform:101`:
 
@@ -933,9 +1051,22 @@ falta. Um teste de contrato por motor instalado, pulado quando ausente.
 > as 15 páginas produzem **0** declarações de escopo pela camada de texto, o que prova que o
 > caminho novo está inerte sem motor.
 >
-> **O que não foi medido, e é o critério de aceite principal:** a página 40 do `Reinfeld`
-> saindo com os 6 diagramas em `WHITE` e os exercícios 193–198, e o custo por página com o
-> motor ligado. Os dois exigem `uv sync --extra ocr`, que é uma decisão do dono do projeto.
+> **Medido em 2026-08-11, com o extra instalado — e o critério de aceite principal falhava.**
+> A página 40 do `Reinfeld` **não** saía declarada: `page_scope_declaration` lia a faixa de
+> `MARGIN_BAND` (7% da altura), que naquela página são 34,6 pt e cortam a linha do cabeçalho
+> ao meio. O RapidOCR devolvia `TIEAANDDIVEDA` **com 0,71 de confiança** — um motor não avisa
+> quando recebe meia linha, e o limiar de 0,3 da S-42 não tinha como pegar isso.
+>
+> A correção é uma constante separada, `ocr_caption.SCOPE_BAND = 0,12`, porque as duas frações
+> respondem a perguntas diferentes: `MARGIN_BAND` decide o que **descartar** como cabeçalho
+> corrente e apertá-la erra para o lado seguro; `SCOPE_BAND` é o que o **motor vê**. Com ela,
+> os diagramas da página saem em `ocr-page-scope` e os números de exercício aparecem.
+>
+> **O que isso vale no acervo, medido por `cvoff-sides`:** o `Reinfeld_1001` sai de **40 de 41
+> diagramas assumidos para 0 de 41**. São ~1.900 exercícios em 320 páginas, metade deles de
+> pretas — até aqui o livro inteiro saía como `default` = brancas.
+>
+> Custo medido: **2,0 a 3,4 s por diagrama** cuja vizinhança a camada de texto deixou vazia.
 >
 > **Uma correção ao texto abaixo:** a spec propunha que a faixa de margem "passa a ser testada
 > contra os padrões antes de ser descartada". Ela é testada, mas **fora** do fluxo normal e só
@@ -1206,7 +1337,20 @@ recorte → confiança baixa, não palpite.
 
 ---
 
-## S-46 · A solução em notação algébrica como validador cruzado *(opcional)*
+## S-46 · A solução em notação algébrica como validador cruzado ⏸ **adiada por medição** (2026-08-11)
+
+> **Não implementada, e o motivo é um número.** Medido em 239 diagramas de 32 livros: 21,3%
+> têm algo com forma de lance no texto vizinho, e **apenas 13,7% desses são legais na posição
+> lida**. O texto perto de um diagrama é a continuação da partida, não a solução dele — os
+> livros que mais disparam o padrão são de análise (`A Matter of Endgame Technique`,
+> `Euwe Band 7`, `Practical Chess Defence`), não de exercício.
+>
+> Com esse sinal, 44 dos 51 casos virariam "discordância" e iriam para a fila da S-22, que
+> existe para ser seletiva. Ver [EXPERIMENTS_FASE7.md](EXPERIMENTS_FASE7.md).
+>
+> A ideia continua certa; o que falta é a associação exercício↔solução por editora, que é
+> exatamente o trabalho que o parágrafo "por que é opcional" abaixo previu.
+
 
 **Problema.** Nos livros de exercícios, a solução está impressa — no rodapé, na página
 seguinte ou no fim do livro: `31.♖:c5! ♛e4 32.♖c1 1:0`. É informação sobre a posição que o
@@ -1235,7 +1379,26 @@ Discordância **nunca** reescreve a posição automaticamente — vira item de r
 Os cinco itens abaixo não mudam comportamento. Cada um tem uma consequência concreta
 declarada; extração sem consequência não entra nesta spec.
 
-## S-47 · `Trainer` — quebrar `train_model`
+## S-47 · `Trainer` — quebrar `train_model` ✅ implementada (2026-08-09)
+
+> **Estado.** `TrainingPlan` (com `DataPlan`/`OptimPlan`/`OutputPlan`), `BestEpochPolicy` e
+> `Trainer` em `training.py`. `train_model` mantém a assinatura -- são trinta chamadores -- e
+> o corpo dela são 25 linhas: montar o plano e chamar `Trainer.fit()`.
+>
+> **O critério de aceite literal ("`train_model` abaixo de 40 linhas") mede a coisa errada, e
+> o número honesto é outro.** A função tem 76 linhas, das quais 24 são a assinatura de 18
+> parâmetros e 26 são o docstring que descreve `splits_path`, `assign_splits`, `fresh` e
+> `cancel_event`. Encurtar qualquer uma das duas seria piorar a interface para satisfazer uma
+> contagem. O que o item prometia -- que a decisão de "melhor época" deixasse de exigir um
+> treino para ser exercitada -- está em `tests/test_training.py::BestEpochPolicyTests`.
+>
+> **Métricas idênticas, verificado.** `test_rodar_as_etapas_a_mao_da_o_mesmo_que_fit` compara
+> `Trainer(plan).fit()` com `prepare → resume → run_epoch → run_epoch → finish` sob a mesma
+> semente e exige igualdade até o último dígito em `train_loss`, `train_square_acc`,
+> `val_loss`, `val_board_exact_acc`, `is_best` e temperatura. A ordem das operações aleatórias
+> foi preservada de propósito: `set_seed` primeiro, modelo antes de qualquer loader, e todo
+> sorteio posterior com gerador explícito.
+
 
 **Problema.** `training.train_model:358` tem **259 linhas e 18 parâmetros**, e faz sete coisas:
 montar dataset e loaders, resolver split, retomar checkpoint, rodar o laço de época, decidir
@@ -1288,7 +1451,29 @@ resultado.
 
 ---
 
-## S-48 · `OrientationPolicy` — a cascata de quatro regras vira estratégia
+## S-48 · `OrientationPolicy` — a cascata de quatro regras vira estratégia ✅ implementada (2026-08-09)
+
+> **Estado.** `src/chess_diagram_ocr/orientation.py`. `OrientedPrediction` mudou de casa junto
+> (é o resultado da **decisão**, não da inferência) e `inference` a reexporta, então nenhum
+> chamador mudou. `predict_with_orientation` ficou com o que só ela pode fazer: rodar o modelo
+> duas vezes.
+>
+> **Uma alteração de contrato em relação a esta spec.** `decide` devolve um
+> `OrientationVerdict` de três campos e não a `tuple[bool, str]` desenhada aqui, porque
+> `ambiguous` é **por regra** e a tupla o perderia: legalidade que discorda da confiança é
+> ambígua por definição, margem decisiva não é, e o desempate final é ambíguo sempre.
+> Derivá-lo fora da regra exigiria que a política soubesse qual regra decidiu -- o acoplamento
+> que o item desfaz.
+>
+> **`CoordinateRule` está na cascata e cala em 100% dos diagramas**, porque nada produz
+> `BoardCoordinates` -- a S-45 foi medida e adiada. É por isso que o resultado é idêntico ao
+> de antes, que é o critério de aceite. O que ela compra por vinte linhas: quando a S-45
+> voltar, ela vira um problema de produzir o dado, não de mexer na política.
+>
+> **`explain()` virou teste.** `tests/test_orientation.py` exercita cada regra isolada com
+> `BoardPrediction` sintético e sem torch, e o teste que mais diz sobre o item resolve o mesmo
+> par de leituras com duas ordens de cascata e recebe duas respostas.
+
 
 **Problema.** `inference.predict_with_orientation:335` tem 112 linhas com a cascata de
 decisão, os dois limiares, a explicação em pt-BR e a tabela de medição no docstring. A cascata
@@ -1336,7 +1521,30 @@ campo, com `CoordinateRule` desligada. `explain()` reproduz a tabela do docstrin
 
 ---
 
-## S-49 · `DiagramEditorModel` — o estado do editor fora do widget
+## S-49 · `DiagramEditorModel` — o estado do editor fora do widget ✅ implementada (2026-08-09)
+
+> **Estado.** `src/chess_diagram_ocr/ui/editor_model.py`, sem `import tkinter` (há teste que
+> varre a árvore de importação -- e sobre a árvore, não sobre o texto, porque o docstring cita
+> `import tkinter` para dizer que ele não existe ali).
+>
+> **O item era organização; o que ele encontrou era conserto** -- de novo, como na S-51.
+> `save_all` **nunca olhava o vínculo**: com uma linha da aba Dataset aberta, "Salvar todos"
+> criava uma amostra nova da mesma imagem em vez de regravar o rótulo. É exatamente o defeito
+> que a S-23 fechou no caminho do `Ctrl+S`, e que continuava aberto ao lado. Só apareceu
+> porque `save_target()` passou a ser uma pergunta feita uma vez e respondida em dois lugares.
+>
+> **`load()` recusa estado impossível em vez de confiar em quem chama.** Um vínculo sem a
+> âncora correspondente, ou duas âncoras ao mesmo tempo, levantam `ValueError`. Era o defeito
+> latente dos quatro caminhos antigos: cada um zerava dois campos e escrevia o terceiro por
+> conta própria, e esquecer de zerar um produzia um editor que grava a linha do dataset **e**
+> fecha um item da fila que ninguém corrigiu.
+>
+> **`ResultPanel` ficou em 648 linhas, não abaixo de 400.** A spec foi escrita quando ele
+> tinha 672 e ele já estava em 800 quando o item começou. O que saiu foi o que o item existe
+> para tirar -- zero linhas de regra de edição sobrevivem ali -- mais o botão "Corrigir Net",
+> que virou `ui/net_button.py`. O resto é layout (~95 linhas de `_build`), repasse ao modelo e
+> caixas de diálogo; cortar mais seria separar um widget da própria construção.
+
 
 **Problema.** `ui/result_panel.ResultPanel` tem **672 linhas e 41 métodos**, e o docstring
 descreve com precisão o que ele guarda: três listas paralelas (`items`, `fen_edits`,
@@ -1396,7 +1604,27 @@ sem janela.
 
 ---
 
-## S-50 · `BoardModel` + `BoardRenderer` — quebrar `InteractiveBoard`
+## S-50 · `BoardModel` + `BoardRenderer` — quebrar `InteractiveBoard` ✅ implementada (2026-08-09)
+
+> **Estado.** `ui/board_model.py` (sem tkinter, com teste de árvore de importação),
+> `ui/board_render.py` (só desenho, mais `BoardGeometry` e `PieceImages`), e
+> `ui/board_widget.py` reduzido à casca Tk: canvas, eventos, pixels de arraste, tooltip e
+> paleta. `InteractiveBoard` foi de 606 para **390** linhas; a API pública não mudou.
+>
+> **`draw_dirty` existe e tem um limite honesto.** Cada casa desenha com a tag `sq{índice}`, e
+> `BoardChange.dirty` diz quais refazer -- arrastar uma peça toca 2 casas. Mas o parcial vale
+> **só em `mode="edit"`**: em modo de jogo o conjunto de alvos legais muda a cada seleção e
+> não está em `dirty`, então ali o redesenho total continua. O modo de edição é o que importa
+> para o custo, porque é onde o arraste acontece.
+>
+> **Um detalhe que só apareceu ao escrever o código.** Uma edição invalida os sinais do modelo
+> (confiança, probabilidades, casas reparadas), e as casas que **perderam** o contorno azul
+> também precisam ser redesenhadas -- senão o contorno de uma casa que ninguém tocou fica na
+> tela. `_apply_placement` junta essas casas ao `dirty`, e há teste para isso.
+>
+> **`promotion_chooser` é uma `Callable` no modelo, não um diálogo.** Em teste é um
+> `lambda: chess.QUEEN`, e o modelo continua sem saber que existe uma janela.
+
 
 **Problema.** `ui/board_widget.InteractiveBoard`: **606 linhas, 43 métodos**, e três
 responsabilidades num objeto só — estado (posição, seleção, pincel, arrasto), sinais de
@@ -1623,7 +1851,22 @@ migração que preserva as 46 procedências já corretas.
 
 # Fase 10 — Interface e entrega
 
-## S-53 · A decisão de framework, por gatilho e não por gosto
+## S-53 · A decisão de framework, por gatilho e não por gosto ✅ implementada (2026-08-09)
+
+> **Estado.** `ui/theme.py`, aplicado em `ChessOcrTkApp.__init__` antes do primeiro widget --
+> trocar tema com a árvore montada refaz o layout e aparece como um piscar. Padrão
+> `bootstrap-light`, trocável por `CVOFF_TTK_THEME`. A parte (b) -- os dois gatilhos do porte
+> para Qt -- está no `ARCHITECTURE.md`, onde a próxima pessoa os procura.
+>
+> **O que precisou de teste foi a degradação, não o tema.** Sem `ttkbootstrap`, com um nome de
+> tema errado ou num bundle que não o incluiu, a janela abre em `ttk` puro e o log diz por
+> quê. `apply_theme` nunca levanta: aparência não pode ser motivo de a ferramenta não abrir.
+>
+> **Dois detalhes que a spec não previa.** O `tb.Style` não aceita `master` -- ele se prende ao
+> root **padrão** do Tk --, então `apply_theme` recebe a janela para documentar a pré-condição
+> real. E os nomes de tema clássicos (`litera`, `flatly`) emitem `DeprecationWarning` na 2.x e
+> saem na 3.0; o padrão é um nome da era 2.0 por isso.
+
 
 **Problema.** A UI é Tkinter + `ttk`, ~2.500 linhas em 14 módulos, com roteiro headless. Depois
 da Fase 6 não tem lógica de negócio dentro. Funciona, e reescrever por estética seria errado.
@@ -1670,7 +1913,77 @@ gatilhos registrados no ARCHITECTURE.md, onde a próxima pessoa os encontre.
 
 ---
 
-## S-54 · O Streamlit precisa de uma decisão
+## S-65 · A paleta de edição: imagens, pincel visível e clique que desfaz ✅ implementada (2026-08-09)
+
+**Problema.** Os 12 botões de peça desenhavam os símbolos Unicode `♙♘♗`. Isso tem três
+defeitos, e nenhum é estético:
+
+1. **Depende de a máquina ter uma fonte que os desenhe.** No Windows a `Segoe UI Symbol` os
+   renderiza pequenos, finos e de altura irregular, e as seis peças brancas quase somem no
+   fundo claro do botão -- num painel cujo trabalho é escolher qual peça inserir.
+2. **O pincel ativo era invisível.** Pincel é um **modo**, e a única forma de saber qual peça
+   estava carregada era clicar numa casa e ver o que saía -- ou seja, executar a ação
+   destrutiva que se queria conferir antes.
+3. **Desfazer custava três gestos.** Pôr a peça errada exigia largar o pincel, clicar com o
+   botão direito e pegar o pincel de volta. Corrigir leitura de OCR é uma sequência de
+   acertos e desacertos, e esse é o caminho mais percorrido da aba.
+
+**Solução.**
+
+- **As peças de `assets/piece_images/`**, as mesmas que aparecem no tabuleiro, por
+  `PieceImages.icon(symbol, size, background=...)`. A paleta passa a mostrar exatamente o que
+  o clique vai colocar.
+- **Pincel visível**: os botões viraram `Radiobutton` com estado ligado. Clicar no botão já
+  aceso **larga** o pincel, que é o gesto natural de quem terminou de pintar.
+- **`BoardModel.paint` alterna**: clicar de novo na mesma peça apaga. Pôr e tirar passam a
+  ser o mesmo gesto. A alternância vale só para pincel de peça -- com o pincel "apagar",
+  alternar significaria *criar*, que é o oposto do que o botão diz.
+
+**Três decisões que a implementação impôs, e a medição que as justifica.**
+
+**`tk.Radiobutton` e não `ttk.Radiobutton`.** Nenhuma variante de `Toolbutton` do tema em uso
+(`Toolbutton`, `primary.`, `info.`, `*.Outline.`) desenha estado selecionado quando o botão
+tem imagem e não tem texto: renderizado lado a lado, o selecionado e o não selecionado saem
+**idênticos**, e o pincel volta a ser invisível. O `Radiobutton` clássico com
+`indicatoron=False` desenha, e é o único caminho em que o `selectcolor` é escolhido em vez de
+herdado.
+
+**As cores saem do tema, não de hexadecimal fixo.** `ttkbootstrap` traz 30 temas e metade é
+escura; um `#ffffff` cravado deixaria a paleta como um retângulo branco no meio de uma janela
+preta. Fundo vem de `TFrame`, e os outros dois são o texto do tema misturado ao fundo -- a
+mesma conta dá contraste no claro e no escuro.
+
+**O ícone vai sobre uma casa clara.** Os PNGs são traço com transparência, e nos temas
+escuros as seis peças pretas somem no fundo da janela. Sobre a cor da casa clara elas
+aparecem em qualquer tema -- e é assim que elas se parecem no tabuleiro, que é o que a paleta
+está prometendo. Como o ícone ficou opaco, o botão ganhou 4 px de margem para o `selectcolor`
+ter onde aparecer; sem ela o botão aceso ficaria igual aos outros onze.
+
+**Degradação.** Sem `assets/piece_images/` -- um checkout incompleto, um PNG corrompido -- a
+paleta volta ao Unicode. Uma peça faltando não pode impedir a aba de abrir.
+
+**Critério de aceite.** Os 12 botões com imagem e sem texto; o pincel ativo distinguível em
+tema claro e escuro; alternância coberta por teste sem janela (`tests/test_board_model.py`) e
+paleta coberta por teste com janela (`tests/test_board_palette.py`). Conferido também no
+roteiro headless do CONTRIBUTING, sobre a página 80 do `Karpov 1`.
+
+---
+
+## S-54 · O Streamlit precisa de uma decisão ✅ **aposentado** (2026-08-09)
+
+> **A escolha foi aposentar.** `app_streamlit.py` → `examples/streamlit_demo.py`, e o README
+> parou de chamá-lo de "interface web alternativa". Assumir custaria ~1 semana (editor por
+> clique no navegador, painel de legalidade, fila de revisão) e só se paga com uso remoto
+> real, que não existe.
+>
+> **Ele continua rodando e continua testado,** e por um motivo que não é inércia: ele importa
+> o `OcrService` e quebra quando a fachada muda. É o alarme que se quer de um exemplo.
+> Conferido com `streamlit.testing.v1.AppTest` depois da mudança de pasta.
+>
+> **A ressalva do `resolve_num_workers` sobreviveu à mudança**, e o docstring dela foi
+> atualizado: continua sendo um script de topo sem guarda `if __name__ == "__main__"`, e é por
+> isso que o padrão de `train_model` é 0 worker.
+
 
 **Problema.** O fechamento da Fase 6 registra com honestidade o que a paridade não entregou: o
 Streamlit tem o mesmo *pipeline* e não tem o editor por clique (S-20), o painel de legalidade
@@ -1698,7 +2011,33 @@ cada processo — e é por isso que o padrão da biblioteca é 0.
 
 ---
 
-## S-55 · Empacotamento para Windows *(S-36 reaberta)*
+## S-55 · Empacotamento para Windows *(S-36 reaberta)* ✅ implementada e medida (2026-08-09)
+
+> **Estado.** `packaging/cvoff.spec` + `packaging/build_windows.py`, PyInstaller `--onedir`.
+> **696 MB, 5.247 arquivos.** Build completo -- leitor **e** treinador --, porque o ciclo que
+> dá valor ao projeto é *corrigir → salvar → treinar* e um bundle só de leitura entregaria um
+> programa sem o botão "Treinar modelo". O caminho para o build leve está na spec.
+>
+> **O defeito que o item nomeia, corrigido e verificado no bundle real.**
+> `config.PROJECT_ROOT` usava `parents[2]`, que num bundle aponta para dentro do pacote. Agora
+> há ramo `sys.frozen`, e um `BUNDLE_ROOT` novo separa recurso do programa (`assets/`, dentro)
+> de dado do usuário (`data/`, `models/`, `PDF/`, `PGN/`, ao lado). Conferido: o `.exe` gravou
+> `dist/ChessVisionOFF/data/app_tkinter_state.json`.
+>
+> **`--selftest`, que a spec não pedia e o critério de aceite exige.** Um `.exe` sem console
+> não tem como dizer "aqui funciona". `ChessVisionOFF.exe --selftest --page 80` abre o PDF,
+> reconhece e escreve as FENs no log -- e depois confere que o caminho de **treino** monta,
+> porque ler não prova treinar e um bundle incompleto só falharia quando o usuário clicasse
+> "Treinar modelo", já com dezenas de correções feitas. Códigos de saída distintos para faltas
+> distintas.
+>
+> Medido contra o mesmo comando no checkout, página 80 do `Karpov 1`: **6 diagramas, as seis
+> FENs idênticas, as seis confianças mínimas idênticas**, caminho de treino monta nos dois.
+>
+> **O que não foi entregue, e é decisão do dono.** O executável não é assinado (SmartScreen
+> avisa na primeira execução; resolver exige certificado de assinatura de código) e não há
+> instalador -- o produto é uma pasta que se descompacta.
+
 
 **Problema.** A S-36 nunca foi feita. Usar o projeto exige Python 3.10, `uv` e linha de
 comando. Com a Fase 6 fechada e a interface estável, é o item que transforma "meu projeto" em
@@ -1715,7 +2054,8 @@ cada execução e o torch torna isso lento demais). Pontos que este projeto espe
   executável, não dentro dele. `config.PROJECT_ROOT` usa `Path(__file__).resolve().parents[2]`,
   que num bundle aponta para dentro do pacote — precisa de um ramo para `sys.frozen`.
 - WebView2 é runtime do sistema, não empacotável. O instalador checa e avisa; a aba Leitura já
-  degrada bem sem ele.
+  degrada bem sem ele. *(Deixou de valer na S-69: a aba saiu, e com ela `pythonnet` e
+  `pywebview`. Não há runtime a checar.)*
 - Stockfish (S-33) continua opcional e fora do bundle.
 
 **Critério de aceite.** Um `.zip` ou instalador que roda numa máquina Windows limpa, sem
@@ -1736,7 +2076,36 @@ Ficam especificados agora porque a decisão de *não* fazê-los precisa ser tão
 a de fazê-los — a Fase 5 já gastou uma grade de experimentos para descobrir que a arquitetura
 não era o problema.
 
-## S-62 · Modelo por tabuleiro em vez de 64 decisões independentes
+## S-62 · Modelo por tabuleiro em vez de 64 decisões independentes ✅ implementada (2026-08-11)
+
+> **Entregue, os dois degraus.** (a) `ArchConfig(coords=True)` acrescenta três planos
+> constantes — paridade, fila e coluna — à entrada da casa, com `arch_version` própria
+> (`...-coords`) e teste de **paridade numérica**: com os pesos das entradas novas zerados, a
+> saída é bit a bit a do modelo de hoje. (b) `ArchConfig(head="board")` troca a cabeça linear
+> por dois blocos de auto-atenção sobre as 64 casas, e `BoardUnitDataset` faz do tabuleiro a
+> unidade de lote. A cabeça devolve **logits achatados** `(N, 13)` para que loss, acurácia
+> exata, calibração e `board_probabilities` continuem sendo o mesmo código.
+>
+> **Medida, e reprovada nos próprios critérios.** Dois de três falham nas três variantes
+> (a, b, a+b): o reparo do decodificador cai um terço em vez de metade na melhor delas, e a
+> taxa de exportação não sobe em nenhuma. **O item não entra.**
+>
+> **As três não falham igual, e a diferença decide o que reabrir.** A (a) é a única variante
+> do projeto que fez o que a S-62 existia para fazer: **−33% de reparo com 864 parâmetros a
+> mais** (+0,04%), inferência mais barata que o controle e validação idêntica a ele. A (b)
+> custa 1,07 M de parâmetros, **aumenta** o reparo em 27% e 1,46× o tempo. Os dois juntos
+> perdem um diagrama e produzem a única leitura fatalmente ilegal de todas as variantes.
+>
+> **A ironia:** a métrica de aceite deste item foi mais bem satisfeita pelo aumento de dados
+> da S-40 (−40% de reparo) do que pelos dois degraus arquiteturais que ele propõe. Dado, não
+> arquitetura. Ver [EXPERIMENTS_FASE7.md](EXPERIMENTS_FASE7.md).
+>
+> **Duas coisas que a implementação ensinou.** O `BoardGroupedSampler` da S-26 **sai** neste
+> regime: ele existia para aproximar "as casas do mesmo tabuleiro no mesmo lote" sem pagar o
+> preço, e com o tabuleiro como unidade a aproximação perde o sentido. E `boards_per_batch=4`
+> é escolha nova, não herdada: são 256 casas por passo, o dobro das 128 de hoje, vindas de 4
+> posições em vez de 2 — exatamente a decisão que a S-26 pediu para ser remedida.
+
 
 **Problema.** `PieceClassifier` decide 64 vezes, cada casa isolada da vizinhança e da posição
 que ela ocupa. É por isso que `decode.py` existe: o argmax não tem nenhuma obrigação de
@@ -1798,7 +2167,24 @@ versões na mensagem.
 
 ---
 
-## S-63 · Higiene do dataset: órfãos, ausentes e o que a auditoria só relata
+## S-63 · Higiene do dataset: órfãos, ausentes e o que a auditoria só relata ✅ implementada (2026-08-11)
+
+> **Entregue.** `cvoff-audit --drop-missing` e `--prune-orphans`, mais o teto de redundância
+> (`DUPLICATE_SHARE_CEILING = 0,10`) que alerta quando a fração passa do limite. O critério de
+> aceite — `data/samples/` e `labels.csv` com o mesmo conjunto de nomes — é conferido pelo
+> próprio comando ao final, e travado por teste.
+>
+> **Nenhuma das duas ações apaga nada, e a segunda mudou de desenho por causa da medição.** A
+> poda move os PNGs para `data/orphans/<data>/`: órfão é quase sempre linha removida por engano
+> pela aba Dataset. E o `--drop-missing`, que a spec descrevia como "remove a linha", passou a
+> mandá-la para a **quarentena** — rodado no dataset real, os 5 rótulos nesse estado têm
+> **todos** procedência preenchida, ou seja, a imagem é reextraível do livro e a FEN é trabalho
+> humano que sobreviveria ao reencontro. Apagar seria jogar fora a metade cara do par para
+> limpar a metade barata.
+>
+> **Duas correções aos números da spec**, medidos em 2026-08-11: são **5** rótulos sem imagem
+> (não 1) e os 49 órfãos pesam **41,4 MiB** (não ~90).
+
 
 **Problema.** `cvoff-audit`, rodado em 2026-08-09:
 

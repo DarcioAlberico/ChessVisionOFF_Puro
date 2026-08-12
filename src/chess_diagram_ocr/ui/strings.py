@@ -6,7 +6,8 @@ o código de layout sem nada em troca. Entra o que **duas telas precisam dizer i
 que tem significado além do texto.
 
 **Por que isso importa, medido.** Os rótulos de procedência do lado a jogar existiam em dois
-lugares -- `ui/result_panel.py` e `app_streamlit.py` -- e já tinham divergido: o Tkinter
+lugares -- `ui/result_panel.py` e o Streamlit (hoje `examples/streamlit_demo.py`) -- e já
+tinham divergido: o Tkinter
 dizia "deduzido da posicao" e o Streamlit "deduzido da legalidade da posicao"; "assumido"
 contra "assumido (o PDF nao diz)". É o mesmo mecanismo da S-31 aplicado a texto -- duas
 implementações do mesmo conceito, e a segunda seguindo por conta própria.

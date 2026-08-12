@@ -10,15 +10,31 @@ coordenadas de **pixel da página**; recortar, grampear aos limites e decidir o 
 quando não há contorno é do `OcrService` (S-31). O painel só sabe converter coordenada de
 canvas para coordenada de imagem, que é a única parte que depende do zoom.
 
-**Os dois modos de visualização.** A aba "OCR" é o canvas com a página rasterizada -- é
-sobre ela que a seleção acontece. A aba "Leitura" embute o visualizador do sistema via
-WebView2, que pode não existir na máquina; quando não existe, a aba explica o motivo em vez
-de ficar em branco.
+**Os diagramas marcados na página (S-68).** Sobre a mesma imagem o painel desenha um retângulo
+por diagrama que o detector achou, numerado como o seletor da aba Resultado numera. Clicar num
+deles é o gesto que a seleção de área já oferecia, sem o arrasto -- e a decisão do que aquele
+clique significa não mora aqui: ela é `page_overlay.decide_box_click`, e quem a executa é a
+janela, que é quem tem o OCR. O painel só sabe desenhar, acertar o alvo e avisar.
+
+**Um visualizador só, e por quê (S-69).** Até aqui havia duas abas: esta e uma "Leitura", que
+embutia o WebView2 -- o visualizador de PDF do Edge -- dentro de um `Frame` por `SetParent`. Ela
+saiu, e o que a matou foi justamente a S-68: um HWND nativo filho pinta **acima** de qualquer
+item do canvas, o leitor interno do Edge não aceita JS injetado e não informa a página em que
+está. Ou seja, na aba "Leitura" não havia como desenhar os retângulos, capturar o clique nem
+saber que página o usuário estava vendo -- a sincronia entre as duas abas era, por construção,
+de mão única e cega. E os pixels que o OCR precisa vêm do PyMuPDF, que só esta aba tem.
+
+No lugar dela ficou o botão **Abrir no leitor do sistema**, que entrega o mesmo valor -- rolagem
+contínua, busca de texto, render nativo -- sem fingir estar sincronizado com nada. Junto saíram
+`pythonnet` e `pywebview`, as duas únicas dependências só-Windows do projeto.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import sys
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
@@ -28,13 +44,56 @@ import numpy as np
 from PIL import Image, ImageTk
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
-from chess_diagram_ocr.webview2_panel import EmbeddedWebView2, WebView2SupportError
+
+from .page_overlay import PageBoxes
+from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
 
 MIN_SELECTION_PX = 12
 """Arrasto menor que isto é clique errado, não seleção. Abaixo disso o recorte não
 conteria nem uma casa do tabuleiro."""
+
+CLICK_SLOP_PX = 4
+"""Quanto o ponteiro pode andar entre apertar e soltar e ainda ser um clique.
+
+Sem folga, o clique de quem apoia a mão no mouse vira arrasto e não abre diagrama nenhum;
+com folga demais, arrastar a barra de rolagem abriria um diagrama por acidente."""
+
+BOX_OUTLINE = "#4da3ff"
+"""Diagrama localizado e ainda não lido."""
+
+BOX_OUTLINE_RECOGNIZED = "#00c07a"
+"""Diagrama já lido. Verde, mas não o `#00ff88` do retângulo de seleção: os dois podem
+aparecer na mesma tela, e são coisas diferentes -- um é o que o detector achou, o outro é o
+que a sua mão está desenhando agora."""
+
+BOX_OUTLINE_SELECTED = "#ffb02e"
+"""O diagrama que está aberto no editor. Cor própria e traço mais grosso, porque este é o
+vínculo entre as duas metades da janela -- é ele que responde "qual desses eu estou vendo?"."""
+
+
+def open_in_system_reader(pdf_path: Path) -> None:
+    """Abre o PDF no leitor padrão do sistema, na janela dele.
+
+    Substitui o WebView2 embutido (S-69) e cabe em oito linhas porque não tenta ser uma aba:
+    quem quer ler o livro ganha o leitor de verdade, com rolagem contínua e busca de texto, e
+    o app não promete saber o que acontece lá dentro -- que era a promessa que a aba "Leitura"
+    não tinha como cumprir.
+
+    Os três ramos existem porque, sem o WebView2, **não sobrou nada de específico de Windows no
+    projeto**. Deixar um `os.startfile` sozinho aqui reintroduziria a dependência de plataforma
+    pela porta dos fundos, e por um botão.
+    """
+    alvo = str(Path(pdf_path).resolve())
+    if sys.platform == "win32":
+        # `os.startfile` só existe no Windows -- daí o `getattr`, que mantém os três ramos
+        # verificáveis nas três plataformas em vez de depender de um `type: ignore`.
+        getattr(os, "startfile")(alvo)  # noqa: B009
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", alvo])
+    else:
+        subprocess.Popen(["xdg-open", alvo])
 
 
 class PdfPanel(ttk.Frame):
@@ -57,6 +116,8 @@ class PdfPanel(ttk.Frame):
         on_page_rendered: Callable[[int], None],
         on_zoom_changed: Callable[[float], None],
         initial_dir: Path,
+        on_box_click: Callable[[int], None] = lambda _indice: None,
+        on_boxes_toggled: Callable[[bool], None] = lambda _ligado: None,
     ) -> None:
         super().__init__(parent, padding=10)
         self._dpi = dpi
@@ -64,6 +125,14 @@ class PdfPanel(ttk.Frame):
         self._on_status = on_status
         self._on_region = on_region
         self._on_pdf_opened = on_pdf_opened
+        self._on_box_click = on_box_click
+        """Um diagrama marcado foi clicado. Recebe o índice em base 0 -- o mesmo do editor.
+
+        Padrão inerte para que montar o painel sem a janela (nos testes) não exija inventar um
+        destino para o clique."""
+
+        self._on_boxes_toggled = on_boxes_toggled
+        """A marcação foi ligada ou desligada. Existe para o estado da aplicação lembrar."""
         self._on_before_page_change = on_before_page_change
         """Chamado antes de trocar a página exibida: é a janela de tempo em que o editor
         ainda tem o reconhecimento da página de origem para guardar no cache."""
@@ -91,8 +160,17 @@ class PdfPanel(ttk.Frame):
         self._select_rect_id: int | None = None
         self._canvas_image_id: int | None = None
 
-        self.reader_notice_var = tk.StringVar(value="Modo leitura pronto para carregar.")
-        self._webview2: EmbeddedWebView2 | None = None
+        self.boxes: PageBoxes | None = None
+        """Os diagramas marcados na página exibida (S-68). `None` enquanto não se sabe.
+
+        "Não se sabe" e "não há" são estados diferentes e ambos existem: o primeiro é a página
+        recém-rasterizada, com a detecção ainda rodando; o segundo é uma página de prosa. Só o
+        segundo autoriza dizer ao usuário que ali não tem diagrama."""
+
+        self.show_boxes_var = tk.BooleanVar(value=True)
+        self._selected_box: int | None = None
+        self._press_at: tuple[float, float] | None = None
+        self._hover_box: int | None = None
 
         self._build(on_ocr_best, on_ocr_all, on_export, on_cancel_export)
 
@@ -111,6 +189,15 @@ class PdfPanel(ttk.Frame):
         row = ttk.Frame(box)
         row.pack(fill=tk.X, padx=8, pady=6)
         ttk.Button(row, text="Abrir PDF", command=self.open_pdf).pack(side=tk.LEFT)
+        self.btn_system_reader = ttk.Button(
+            row, text="Abrir no leitor do sistema", command=self.open_in_system_reader, state=tk.DISABLED
+        )
+        self.btn_system_reader.pack(side=tk.LEFT, padx=6)
+        Tooltip(
+            self.btn_system_reader,
+            "Abre este PDF no leitor padrão do sistema, numa janela própria.\n"
+            "Para ler o livro: rolagem contínua e busca de texto, que esta tela não tem.",
+        )
         self.lbl_pdf = ttk.Label(row, text="Nenhum PDF")
         self.lbl_pdf.pack(side=tk.LEFT, padx=8)
 
@@ -147,36 +234,39 @@ class PdfPanel(ttk.Frame):
         self.lbl_zoom = ttk.Label(zoom_row, text="70%")
         self.lbl_zoom.pack(side=tk.LEFT)
 
-        self.view_tabs = ttk.Notebook(box)
-        self.view_tabs.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-        self.ocr_tab = ttk.Frame(self.view_tabs)
-        self.reader_tab = ttk.Frame(self.view_tabs)
-        self.view_tabs.add(self.ocr_tab, text="OCR")
-        self.view_tabs.add(self.reader_tab, text="Leitura")
-        self.view_tabs.bind("<<NotebookTabChanged>>", lambda _event: self.on_view_mode_changed())
+        self.chk_boxes = ttk.Checkbutton(
+            zoom_row,
+            text="Marcar diagramas",
+            variable=self.show_boxes_var,
+            command=self.on_boxes_toggle,
+        )
+        self.chk_boxes.pack(side=tk.LEFT, padx=(16, 0))
+        Tooltip(
+            self.chk_boxes,
+            "Desenha um retângulo sobre cada diagrama que o detector achou na página.\n"
+            "Clique num deles para abri-lo na aba Resultado.",
+        )
+        self.lbl_boxes = ttk.Label(zoom_row, text="")
+        self.lbl_boxes.pack(side=tk.LEFT, padx=(8, 0))
 
-        wrap = ttk.Frame(self.ocr_tab)
+        # Sem `Notebook`: a página ocupa o painel inteiro desde a S-69. Enquanto havia duas
+        # abas, esta metade da janela custava uma linha de abas para oferecer uma escolha que
+        # não era uma -- a outra não fazia nada que esta não faça, e não fazia o que esta faz.
+        view = ttk.Frame(box)
+        view.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        wrap = ttk.Frame(view)
         wrap.pack(fill=tk.BOTH, expand=True)
         self.canvas = tk.Canvas(wrap, bg="#1c1c1c", highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vscroll = ttk.Scrollbar(wrap, orient=tk.VERTICAL, command=self.canvas.yview)
         vscroll.pack(side=tk.RIGHT, fill=tk.Y)
-        hscroll = ttk.Scrollbar(self.ocr_tab, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        hscroll = ttk.Scrollbar(view, orient=tk.HORIZONTAL, command=self.canvas.xview)
         hscroll.pack(fill=tk.X, pady=(0, 8))
         self.canvas.configure(yscrollcommand=vscroll.set, xscrollcommand=hscroll.set)
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
-
-        suportado, motivo = EmbeddedWebView2.is_supported()
-        self._webview2_supported = suportado
-        self.reader_host = ttk.Frame(self.reader_tab)
-        self.reader_host.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(
-            self.reader_host, textvariable=self.reader_notice_var, justify=tk.LEFT, wraplength=560
-        ).pack(anchor="nw", padx=12, pady=12)
-        if not suportado:
-            self.reader_notice_var.set(f"Leitura via WebView2 indisponível.\n{motivo}")
+        self.canvas.bind("<Motion>", self._on_hover)
 
     # ------------------------------------------------------------------------------- zoom
 
@@ -222,6 +312,20 @@ class PdfPanel(ttk.Frame):
         if filename:
             self.load_pdf(Path(filename))
 
+    def open_in_system_reader(self) -> None:
+        """Manda o PDF para o leitor do sistema. Falhar aqui é aviso, e não erro do app."""
+        if self.source is None:
+            return
+        try:
+            open_in_system_reader(self.source)
+            self._on_status(f"{self.name} enviado para o leitor do sistema.")
+        except Exception as exc:  # noqa: BLE001 - `startfile` e `Popen` levantam tipos diversos
+            logger.warning("Não foi possível abrir %s no leitor do sistema: %s", self.source, exc)
+            messagebox.showwarning(
+                "Leitor do sistema",
+                f"Não foi possível abrir o PDF no leitor do sistema:\n{exc}",
+            )
+
     def load_pdf(self, pdf_path: Path) -> None:
         try:
             self._on_pdf_opened(pdf_path)
@@ -229,6 +333,7 @@ class PdfPanel(ttk.Frame):
             self.name = pdf_path.name
             self.page_count = get_pdf_page_count(pdf_path)
             self.lbl_pdf.config(text=f"{self.name} ({self.page_count} págs)")
+            self.btn_system_reader.configure(state=tk.NORMAL)
 
             alvo = self._initial_page_for(pdf_path)
             self.page_index_var.set(max(0, min(self.page_count - 1, alvo)))
@@ -256,6 +361,23 @@ class PdfPanel(ttk.Frame):
         self.page_loaded_for_index = None
         self.render_current_page()
 
+    def go_to_page(self, page_index: int) -> bool:
+        """Vai para uma página qualquer. Devolve se **mudou** de página.
+
+        Existe para a galeria (S-67), que navega por diagrama e precisa arrastar o
+        visualizador junto. Devolver "mudou" e não "conseguiu" é o que impede o vaivém: a
+        galeria só reage quando algo de fato se moveu.
+        """
+        if self.page_count == 0:
+            return False
+        alvo = max(0, min(self.page_count - 1, int(page_index)))
+        if alvo == self.page_index:
+            return False
+        self.page_index_var.set(alvo)
+        self.page_loaded_for_index = None
+        self.render_current_page()
+        return True
+
     def render_current_page(self) -> bool:
         """Rasteriza a página atual, se ainda não estiver em memória. `True` se há imagem.
 
@@ -269,6 +391,10 @@ class PdfPanel(ttk.Frame):
         if self.page_loaded_for_index == idx and self.page_rgb is not None:
             return True
 
+        # As caixas da página anterior morrem aqui, e não quando as novas chegarem: a detecção
+        # roda em thread, e deixá-las na tela nesse intervalo apontaria para diagramas da
+        # página que acabou de sair -- sobre a imagem da que entrou.
+        self.clear_diagram_boxes()
         # Antes de trocar de página, o que esta no editor tem de ir para o cache da página
         # de origem -- inclusive o texto que o usuário acabou de digitar no campo de FEN.
         self._on_before_page_change()
@@ -304,73 +430,104 @@ class PdfPanel(ttk.Frame):
         self.canvas.configure(scrollregion=(0, 0, pil.width, pil.height))
         self.canvas.xview_moveto(0)
         self.canvas.yview_moveto(0)
-        self._sync_reader()
+        # Depois da imagem: `delete("all")` acima levou os retângulos junto, e eles dependem do
+        # zoom que acabou de ser aplicado.
+        self._draw_boxes()
 
-    # ------------------------------------------------------------------------ modo leitura
+    # ------------------------------------------------------------ diagramas marcados (S-68)
 
-    def is_reader_mode(self) -> bool:
-        atual = self.view_tabs.select()
-        return bool(atual) and atual == str(self.reader_tab)
+    def set_diagram_boxes(self, boxes: PageBoxes) -> bool:
+        """Recebe as caixas de uma página. Devolve se elas eram **desta** página.
 
-    def on_view_mode_changed(self) -> None:
-        if self.is_reader_mode():
-            # Seleção de área e do canvas; deixa-la ligada ao trocar de aba faria o botao
-            # dizer "Cancelar seleção" sobre uma tela onde não se pode selecionar nada.
-            self.disable_area_selection()
-            self._ensure_reader()
-            self._sync_reader()
-            if self._webview2 is not None:
-                self._webview2.show()
-        elif self._webview2 is not None:
-            self._webview2.hide()
+        A recusa é o que protege a tela do resultado atrasado: a detecção roda em thread, e
+        quem a pediu para a página 16 pode já estar na 17 quando ela responde. Devolver
+        booleano em vez de ignorar em silêncio deixa a janela registrar o descarte.
+        """
+        if boxes.page_index != self.page_index:
+            logger.debug(
+                "Caixas da página %d descartadas: a tela está na %d.", boxes.page_index, self.page_index
+            )
+            return False
+        self.boxes = boxes
+        self._draw_boxes()
+        return True
 
-    def _on_reader_error(self, message: str) -> None:
-        self.after(0, lambda: self.reader_notice_var.set(f"Falha ao iniciar WebView2:\n{message}"))
+    def clear_diagram_boxes(self) -> None:
+        self.boxes = None
+        self._selected_box = None
+        self._hover_box = None
+        self._draw_boxes()
 
-    def _ensure_reader(self) -> None:
-        if not self._webview2_supported:
+    def select_box(self, index: int | None) -> None:
+        """Marca qual diagrama está aberto no editor. `None` quando não é nenhum daqui."""
+        if index == self._selected_box:
             return
-        if self._webview2 is not None:
-            self._webview2.resize()
+        self._selected_box = index
+        self._draw_boxes()
+
+    def on_boxes_toggle(self) -> None:
+        ligado = bool(self.show_boxes_var.get())
+        self._draw_boxes()
+        self._on_boxes_toggled(ligado)
+
+    def _draw_boxes(self) -> None:
+        """Redesenha os retângulos. Apagar por etiqueta, e não `delete("all")`: a página fica."""
+        self.canvas.delete("diagram-box")
+        self._update_boxes_label()
+        if self.boxes is None or not self.show_boxes_var.get() or self.page_rgb is None:
             return
 
-        try:
-            self.reader_notice_var.set("Inicializando leitura via WebView2...")
-            painel = EmbeddedWebView2(self.reader_host, error_cb=self._on_reader_error)
-            painel.ensure_started()
-            self._webview2 = painel
-            self.reader_host.bind("<Configure>", lambda _event: self._resize_reader())
-            self.reader_notice_var.set("Leitura via WebView2 pronta.")
-        except WebView2SupportError as exc:
-            self._webview2_supported = False
-            self.reader_notice_var.set(f"Leitura via WebView2 indisponível.\n{exc}")
+        zoom = float(self.zoom_var.get())
+        for box in self.boxes.boxes:
+            x0, y0, x1, y1 = self.boxes.rect_of(box, zoom)
+            selecionado = box.index == self._selected_box
+            cor = (
+                BOX_OUTLINE_SELECTED
+                if selecionado
+                else (BOX_OUTLINE_RECOGNIZED if box.recognized else BOX_OUTLINE)
+            )
+            self.canvas.create_rectangle(
+                x0, y0, x1, y1, outline=cor, width=3 if selecionado else 2, tags="diagram-box"
+            )
+            # O número vai num retângulo cheio: por cima do diagrama, texto solto some no
+            # xadrez do tabuleiro justamente onde ele mais precisa ser lido.
+            self.canvas.create_rectangle(
+                x0, y0 - 18, x0 + 22, y0, outline=cor, fill=cor, tags="diagram-box"
+            )
+            self.canvas.create_text(
+                x0 + 11, y0 - 9, text=box.label, fill="#101010", font=("Segoe UI", 9, "bold"),
+                tags="diagram-box",
+            )
 
-    def destroy_reader(self) -> None:
-        """Fecha o WebView2 ao encerrar a janela: ele e um processo, não um widget."""
-        if self._webview2 is not None:
-            self._webview2.destroy()
-            self._webview2 = None
+    def _update_boxes_label(self) -> None:
+        if self.boxes is None:
+            self.lbl_boxes.config(text="")
+        elif not len(self.boxes):
+            self.lbl_boxes.config(text="nenhum diagrama nesta página")
+        else:
+            lidos = sum(1 for box in self.boxes.boxes if box.recognized)
+            sufixo = f", {lidos} lido(s)" if lidos else ""
+            self.lbl_boxes.config(text=f"{len(self.boxes)} diagrama(s){sufixo}")
 
-    def _resize_reader(self) -> None:
-        if self._webview2 is not None:
-            self._webview2.resize()
+    def _box_at_event(self, event: tk.Event) -> int | None:
+        if self.boxes is None or not self.show_boxes_var.get() or self.page_rgb is None:
+            return None
+        x, y = self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)
+        return self.boxes.index_at(x, y, float(self.zoom_var.get()))
 
-    def _sync_reader(self) -> None:
-        if not self.is_reader_mode() or self.source is None:
+    def _on_hover(self, event: tk.Event) -> None:
+        """Mão sobre o diagrama. É o que faz o retângulo parecer clicável antes do clique."""
+        if self._select_mode:
             return
-        self._ensure_reader()
-        if self._webview2 is None:
+        indice = self._box_at_event(event)
+        if indice == self._hover_box:
             return
-        try:
-            self._webview2.load_pdf(self.source, self.page_index)
-        except WebView2SupportError as exc:
-            self.reader_notice_var.set(f"Leitura via WebView2 indisponível.\n{exc}")
+        self._hover_box = indice
+        self.canvas.configure(cursor="hand2" if indice is not None else "")
 
     # -------------------------------------------------------------------- seleção de área
 
     def toggle_area_selection(self) -> None:
-        if self.is_reader_mode():
-            self.view_tabs.select(self.ocr_tab)
         if self._select_mode:
             self.disable_area_selection("Seleção de área cancelada.")
             return
@@ -388,6 +545,7 @@ class PdfPanel(ttk.Frame):
     def disable_area_selection(self, status_text: str = "") -> None:
         self._select_mode = False
         self._select_start = None
+        self._hover_box = None
         self._clear_overlay()
         self.canvas.configure(cursor="")
         self.btn_select.configure(text="Selecionar área (OCR)")
@@ -416,6 +574,7 @@ class PdfPanel(ttk.Frame):
         return self._clamp(self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
 
     def _on_press(self, event: tk.Event) -> None:
+        self._press_at = (self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
         if not self._select_mode or self.page_rgb is None:
             return
         x, y = self._point(event)
@@ -436,7 +595,10 @@ class PdfPanel(ttk.Frame):
             self.canvas.coords(self._select_rect_id, x0, y0, x, y)
 
     def _on_release(self, event: tk.Event) -> None:
-        if not self._select_mode or self.page_rgb is None or self._select_start is None:
+        if not self._select_mode:
+            self._release_on_box(event)
+            return
+        if self.page_rgb is None or self._select_start is None:
             return
 
         x1, y1 = self._point(event)
@@ -454,3 +616,21 @@ class PdfPanel(ttk.Frame):
         zoom = float(self.zoom_var.get())
         regiao = (int(x0c / zoom), int(y0c / zoom), int(x1c / zoom), int(y1c / zoom))
         self._on_region(np.asarray(self.page_rgb).copy(), regiao)
+
+    def _release_on_box(self, event: tk.Event) -> None:
+        """Soltar o botão fora do modo de seleção: se foi clique, e acertou, avisa a janela.
+
+        A distinção entre clique e arrasto é o que deixa a rolagem por arraste conviver com os
+        diagramas marcados -- sem ela, todo empurrão na página abriria o diagrama de baixo.
+        """
+        if self._press_at is None:
+            return
+        x, y = self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)
+        x0, y0 = self._press_at
+        self._press_at = None
+        if abs(x - x0) > CLICK_SLOP_PX or abs(y - y0) > CLICK_SLOP_PX:
+            return
+
+        indice = self._box_at_event(event)
+        if indice is not None:
+            self._on_box_click(indice)
