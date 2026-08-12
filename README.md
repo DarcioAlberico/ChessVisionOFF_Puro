@@ -419,8 +419,9 @@ A **cor diz em que ponto do trabalho** aquele diagrama esta: azul e localizado p
 ambar e lido pelo OCR e ainda nao salvo, **verde e ja tem amostra no `labels.csv`**. O verde
 vem da procedencia gravada no CSV e nao da memoria, entao ele aparece assim que voce abre um
 livro que ja trabalhou antes -- e responde "onde eu parei?" sem custar uma leitura. O diagrama
-aberto no editor e marcado por **hachura e traco grosso**, e nao por cor, justamente para nao
-esconder o estado dele.
+aberto no editor e marcado por **borda dupla e mais grossa**, e nao por cor, justamente para
+nao esconder o estado dele -- e nada e pintado por cima do tabuleiro, que e o que se esta
+tentando conferir.
 
 O reconhecimento fica guardado por pagina: voltar para uma pagina ja reconhecida traz de
 volta os diagramas, o diagrama que estava selecionado e as correcoes feitas a mao, sem

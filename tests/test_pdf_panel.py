@@ -132,7 +132,7 @@ class PdfPanelBoxesTests(unittest.TestCase):
         self.assertEqual(self.panel.canvas.coords(self._retangulos()[0]), [5.0, 5.0, 55.0, 55.0])
 
     def test_a_selecao_nao_gasta_uma_cor(self) -> None:
-        """A cor diz em que ponto do trabalho o diagrama está; a hachura diz qual está aberto.
+        """A cor diz em que ponto do trabalho o diagrama está; a borda diz qual está aberto.
 
         Enquanto a seleção era uma quarta cor, ela apagava o estado do diagrama selecionado --
         justamente o que se quer ver ao chegar nele (S-71).
@@ -140,12 +140,32 @@ class PdfPanelBoxesTests(unittest.TestCase):
         self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
         self.panel.select_box(1)
         cores = [self.panel.canvas.itemcget(item, "outline") for item in self._retangulos()]
-        self.assertEqual(cores, [BOX_OUTLINE] * 4, "a seleção não muda a cor de ninguém")
+        self.assertEqual(set(cores), {BOX_OUTLINE}, "a seleção não muda a cor de ninguém")
 
-        hachurados = [
-            item for item in self._retangulos() if self.panel.canvas.itemcget(item, "stipple")
+        larguras = [float(self.panel.canvas.itemcget(item, "width")) for item in self._retangulos()]
+        self.assertEqual(larguras.count(4.0), 1, "só o selecionado tem a borda grossa")
+
+    def test_a_selecao_nao_pinta_nada_sobre_o_tabuleiro(self) -> None:
+        """A hachura punha pontinhos sobre as casas que se está tentando conferir (S-71).
+
+        Virou uma segunda borda, **por fora** da caixa: marca a seleção sem gastar um pixel do
+        diagrama.
+        """
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        self.panel.select_box(0)
+
+        for item in self._retangulos():
+            with self.subTest(item=item):
+                self.assertEqual(self.panel.canvas.itemcget(item, "stipple"), "")
+
+        caixa = CAIXAS[0].bbox_pdf
+        halo = [
+            item
+            for item in self._retangulos()
+            if self.panel.canvas.coords(item)[0] < caixa[0]
+            and self.panel.canvas.coords(item)[2] > caixa[2]
         ]
-        self.assertEqual(len(hachurados), 1, "só o selecionado é hachurado")
+        self.assertEqual(len(halo), 1, "a segunda borda fica para fora da caixa")
 
     def test_as_tres_cores_dizem_o_ponto_do_trabalho(self) -> None:
         caixas = (

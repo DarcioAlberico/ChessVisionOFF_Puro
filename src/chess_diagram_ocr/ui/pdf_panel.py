@@ -83,6 +83,12 @@ BOX_OUTLINE = "#4da3ff"
 BOX_OUTLINE_RECOGNIZED = "#ffb02e"
 """Lido pelo OCR e **ainda não salvo**: o que falta fazer nesta página."""
 
+SELECTION_HALO_PX = 4
+"""Folga da segunda borda do diagrama selecionado, para fora da caixa.
+
+Para **fora** porque a caixa encosta no diagrama: uma borda por dentro cairia sobre as casas
+da primeira fila, e a caixa existe justamente para conferir a posição."""
+
 BOX_OUTLINE_SAVED = "#00c07a"
 """Já tem amostra no `labels.csv`. Verde é a cor de "pronto", e é para isso que ela serve.
 
@@ -712,20 +718,26 @@ class PdfPanel(ttk.Frame):
             selecionado = box.index == self._selected_box
             cor = box_color(box)
             # Uma propriedade visual, uma informação: a **cor** diz em que ponto do trabalho o
-            # diagrama está e a **hachura** diz qual está aberto no editor. Enquanto a seleção
+            # diagrama está e a **borda** diz qual está aberto no editor. Enquanto a seleção
             # era uma quarta cor, ela apagava o estado do diagrama selecionado -- justamente o
             # que se quer ver ao chegar nele.
             self.canvas.create_rectangle(
-                x0,
-                y0,
-                x1,
-                y1,
-                outline=cor,
-                width=4 if selecionado else 2,
-                fill=cor if selecionado else "",
-                stipple="gray12" if selecionado else "",
-                tags="diagram-box",
+                x0, y0, x1, y1, outline=cor, width=4 if selecionado else 2, tags="diagram-box"
             )
+            if selecionado:
+                # **Nada por cima do tabuleiro.** A primeira versão preenchia a caixa
+                # selecionada com hachura, e os pontinhos caíam justamente sobre as casas que
+                # se está tentando conferir -- que é para o que a caixa existe. A segunda
+                # borda, por fora, marca a seleção sem gastar um pixel do diagrama.
+                self.canvas.create_rectangle(
+                    x0 - SELECTION_HALO_PX,
+                    y0 - SELECTION_HALO_PX,
+                    x1 + SELECTION_HALO_PX,
+                    y1 + SELECTION_HALO_PX,
+                    outline=cor,
+                    width=2,
+                    tags="diagram-box",
+                )
             # O número vai num retângulo cheio: por cima do diagrama, texto solto some no
             # xadrez do tabuleiro justamente onde ele mais precisa ser lido.
             self.canvas.create_rectangle(
