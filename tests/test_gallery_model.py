@@ -1,0 +1,213 @@
+"""Navegação, anotação e sincronia da galeria, sem janela (S-67)."""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from chess_diagram_ocr.gallery import DiagramAnnotation, GalleryAnnotations, load_annotations
+from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
+from chess_diagram_ocr.ui.gallery_model import HEADER_FIELDS, GalleryModel
+
+PLACEMENT = "4k3/8/8/8/8/8/8/4K3"
+
+
+def _indice(*chaves: tuple[int, int]) -> GalleryIndex:
+    return GalleryIndex(
+        entries=[GalleryEntry(page_index=p, diagram_index=d, placement=PLACEMENT) for p, d in chaves]
+    )
+
+
+def _modelo(*chaves: tuple[int, int]) -> GalleryModel:
+    return GalleryModel(index=_indice(*chaves), annotations=GalleryAnnotations())
+
+
+class NavegacaoTests(unittest.TestCase):
+    def test_galeria_vazia_nao_tem_atual_e_nao_levanta(self) -> None:
+        modelo = GalleryModel()
+        self.assertTrue(modelo.is_empty)
+        self.assertIsNone(modelo.current)
+        self.assertFalse(modelo.step(1))
+        self.assertEqual(modelo.describe_position(), "nenhum diagrama varrido")
+
+    def test_proximo_e_anterior(self) -> None:
+        modelo = _modelo((0, 0), (0, 1), (3, 0))
+        self.assertTrue(modelo.step(1))
+        self.assertEqual(modelo.current.key, (0, 1))
+        self.assertTrue(modelo.step(-1))
+        self.assertEqual(modelo.current.key, (0, 0))
+
+    def test_nao_circula_no_fim(self) -> None:
+        """Circular faria o último diagrama do livro parecer o primeiro."""
+        modelo = _modelo((0, 0), (0, 1))
+        modelo.go_to(1)
+        self.assertFalse(modelo.step(1))
+        self.assertEqual(modelo.current.key, (0, 1))
+
+    def test_nao_circula_no_comeco(self) -> None:
+        modelo = _modelo((0, 0), (0, 1))
+        self.assertFalse(modelo.step(-1))
+        self.assertEqual(modelo.current.key, (0, 0))
+
+    def test_posicao_fora_da_lista_e_corrigida(self) -> None:
+        modelo = _modelo((0, 0), (0, 1))
+        modelo.position = 99
+        self.assertEqual(modelo.current.key, (0, 1))
+
+    def test_ir_para_a_mesma_posicao_nao_conta_como_mudanca(self) -> None:
+        modelo = _modelo((0, 0), (0, 1))
+        self.assertFalse(modelo.go_to(0))
+
+
+class SincroniaTests(unittest.TestCase):
+    def test_segue_a_pagina_do_pdf(self) -> None:
+        modelo = _modelo((0, 0), (4, 0), (4, 1))
+        self.assertTrue(modelo.sync_to_page(4))
+        self.assertEqual(modelo.current.key, (4, 0))
+
+    def test_pagina_sem_diagrama_nao_move(self) -> None:
+        """Rolar até uma página de texto não pode tirar da tela o que se estava anotando."""
+        modelo = _modelo((0, 0), (4, 0))
+        modelo.go_to(1)
+        self.assertFalse(modelo.sync_to_page(9))
+        self.assertEqual(modelo.current.key, (4, 0))
+
+    def test_a_galeria_diz_a_pagina_para_o_pdf_seguir(self) -> None:
+        modelo = _modelo((0, 0), (7, 2))
+        modelo.go_to(1)
+        self.assertEqual(modelo.page_index, 7)
+
+    def test_pagina_vazia_nao_tem_pagina(self) -> None:
+        self.assertIsNone(GalleryModel().page_index)
+
+
+class AnotacaoTests(unittest.TestCase):
+    def test_editar_grava_no_diagrama_certo(self) -> None:
+        modelo = _modelo((0, 0), (2, 1))
+        modelo.go_to(1)
+        modelo.edit(move_number=24)
+        self.assertEqual(modelo.annotations.get(2, 1).move_number, 24)
+        self.assertIsNone(modelo.annotations.get(0, 0).move_number)
+
+    def test_header_em_branco_apaga_a_declaracao(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.set_header("White", "Tal")
+        self.assertEqual(modelo.current_annotation.headers, {"White": "Tal"})
+        modelo.set_header("White", "   ")
+        self.assertEqual(modelo.current_annotation.headers, {})
+
+    def test_header_reservado_e_recusado(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.set_header("FEN", "lixo")
+        self.assertEqual(modelo.current_annotation.headers, {})
+
+    def test_anotacao_esvaziada_some_do_conjunto(self) -> None:
+        """Visitar não é anotar: o JSON não deve crescer por diagrama visitado."""
+        modelo = _modelo((0, 0))
+        modelo.set_header("White", "Tal")
+        self.assertEqual(modelo.annotated_count(), 1)
+        modelo.set_header("White", "")
+        self.assertEqual(modelo.annotated_count(), 0)
+
+    def test_editar_sem_diagrama_devolve_none(self) -> None:
+        self.assertIsNone(GalleryModel().edit(move_number=3))
+        self.assertIsNone(GalleryModel().set_header("White", "Tal"))
+
+
+class AplicarATodosTests(unittest.TestCase):
+    def test_copia_os_declarados_para_os_outros(self) -> None:
+        modelo = _modelo((0, 0), (0, 1), (1, 0))
+        modelo.set_header("Event", "Kemeri 1937")
+        self.assertEqual(modelo.apply_headers_to_all(), 2)
+        self.assertEqual(modelo.annotations.get(0, 1).headers, {"Event": "Kemeri 1937"})
+        self.assertEqual(modelo.annotations.get(1, 0).headers, {"Event": "Kemeri 1937"})
+
+    def test_campo_em_branco_nao_apaga_o_dos_outros(self) -> None:
+        """Aplicar a todos preenche; virar apagador em massa seria perder trabalho."""
+        modelo = _modelo((0, 0), (0, 1))
+        modelo.go_to(1)
+        modelo.set_header("White", "Tal")
+        modelo.go_to(0)
+        modelo.set_header("Event", "Riga")
+        modelo.apply_headers_to_all()
+        self.assertEqual(modelo.annotations.get(0, 1).headers, {"White": "Tal", "Event": "Riga"})
+
+    def test_sem_nada_declarado_nao_toca_em_ninguem(self) -> None:
+        modelo = _modelo((0, 0), (0, 1))
+        self.assertEqual(modelo.apply_headers_to_all(), 0)
+        self.assertEqual(modelo.annotated_count(), 0)
+
+    def test_nao_conta_o_proprio_diagrama(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.set_header("Event", "Riga")
+        self.assertEqual(modelo.apply_headers_to_all(), 0)
+
+    def test_todos_os_campos_da_tela_sao_aplicaveis(self) -> None:
+        modelo = _modelo((0, 0), (0, 1))
+        for nome in HEADER_FIELDS:
+            modelo.set_header(nome, f"v-{nome}")
+        modelo.apply_headers_to_all()
+        self.assertEqual(len(modelo.annotations.get(0, 1).headers), len(HEADER_FIELDS))
+
+
+class DerivadosTests(unittest.TestCase):
+    def test_fen_efetiva_usa_o_que_a_varredura_leu(self) -> None:
+        modelo = GalleryModel(
+            index=GalleryIndex(entries=[GalleryEntry(0, 0, PLACEMENT, side_to_move="b")]),
+            annotations=GalleryAnnotations(),
+        )
+        self.assertEqual(modelo.effective_fen(), f"{PLACEMENT} b - - 0 1")
+
+    def test_declaracao_vence_a_varredura(self) -> None:
+        modelo = GalleryModel(
+            index=GalleryIndex(entries=[GalleryEntry(0, 0, PLACEMENT, side_to_move="b")]),
+            annotations=GalleryAnnotations(),
+        )
+        modelo.edit(side_to_move="w", move_number=30)
+        self.assertEqual(modelo.effective_fen(), f"{PLACEMENT} w - - 0 30")
+
+    def test_o_link_acompanha_a_edicao(self) -> None:
+        """O defeito clássico seria mudar o lance e o link apontar para a posição antiga."""
+        modelo = _modelo((0, 0))
+        antes = modelo.lichess_url()
+        modelo.edit(move_number=42)
+        self.assertNotEqual(modelo.lichess_url(), antes)
+        self.assertIn("0_42", modelo.lichess_url())
+
+    def test_link_segue_o_padrao_quando_nao_declarado(self) -> None:
+        modelo = _modelo((0, 0))
+        self.assertTrue(modelo.exports_lichess_link(default=True))
+        self.assertFalse(modelo.exports_lichess_link(default=False))
+
+    def test_declaracao_por_diagrama_vence_o_padrao(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.edit(lichess_link=False)
+        self.assertFalse(modelo.exports_lichess_link(default=True))
+
+    def test_descricao_conta_a_partir_de_um(self) -> None:
+        modelo = _modelo((0, 0), (5, 0))
+        modelo.go_to(1)
+        self.assertEqual(modelo.describe_position(), "diagrama 2 de 2 — página 6")
+
+
+class GravacaoTests(unittest.TestCase):
+    def test_sem_livro_aberto_nao_grava(self) -> None:
+        self.assertIsNone(_modelo((0, 0)).save())
+
+    def test_grava_e_le_de_volta(self) -> None:
+        with tempfile.TemporaryDirectory() as pasta:
+            modelo = _modelo((0, 0))
+            modelo.pdf_path = Path(pasta) / "livro.pdf"
+            modelo.gallery_dir = Path(pasta)
+            modelo.edit(move_number=7, lichess_link=False)
+
+            caminho = modelo.save()
+            self.assertIsNotNone(caminho)
+            self.assertEqual(caminho.parent, Path(pasta), "não pode gravar no data/ de verdade")
+            voltou = load_annotations(modelo.pdf_path, directory=Path(pasta))
+        self.assertEqual(voltou.get(0, 0), DiagramAnnotation(move_number=7, lichess_link=False))
+
+
+if __name__ == "__main__":
+    unittest.main()
