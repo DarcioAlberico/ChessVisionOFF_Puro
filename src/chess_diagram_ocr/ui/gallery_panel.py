@@ -31,7 +31,7 @@ from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
 
 from chess_diagram_ocr.config import DEFAULT_READING_ORDER
-from chess_diagram_ocr.gallery import GalleryAnnotations, load_annotations
+from chess_diagram_ocr.gallery import load_annotations
 from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
 from chess_diagram_ocr.service import OcrService
 
@@ -244,22 +244,50 @@ class GalleryPanel(ttk.Frame):
 
     # ------------------------------------------------------------------------ ciclo de vida
 
-    def load_pdf(self, pdf_path: Path | None) -> None:
-        """Troca o livro: carrega o índice já varrido, se houver, e as anotações."""
+    def load_pdf(self, pdf_path: Path | None, *, request_page: bool = True) -> None:
+        """Troca o livro: carrega o índice já varrido, se houver, e as anotações.
+
+        `request_page` desligado é o caminho de quem **abre** o PDF: ali o visualizador acabou
+        de restaurar a página em que o usuário parou (S-25), e a galeria pedir a página do seu
+        primeiro diagrama jogaria essa restauração fora.
+        """
         if pdf_path is None:
             self.model = GalleryModel()
-            self.refresh()
+            self.refresh(request_page=request_page)
             return
 
         indice = load_index(pdf_path)
         self.model = GalleryModel(
             index=indice if indice is not None else self.model.index.__class__(),
-            annotations=load_annotations(pdf_path) if indice is not None else GalleryAnnotations(),
+            # As anotações são carregadas mesmo sem varredura: elas não dependem do índice, e
+            # desde a S-71 a aba Resultado escreve o número do lance por aqui. Ligá-las à
+            # varredura fazia o número digitado lá sumir num livro nunca varrido.
+            annotations=load_annotations(pdf_path),
             pdf_path=pdf_path,
         )
         if indice is None:
             self.scan_var.set("livro ainda não varrido")
-        self.refresh()
+        self.refresh(request_page=request_page)
+
+    # ------------------------------------------------- anotação vinda de fora (S-71)
+    # A aba Resultado também edita o número do lance, e as duas têm de falar do mesmo
+    # diagrama. Quem guarda a anotação em memória é este painel -- duas cópias do mesmo
+    # arquivo JSON divergiriam, e a última a gravar apagaria o que a outra tinha escrito.
+
+    def move_number_at(self, page_index: int, diagram_index: int) -> int | None:
+        return self.model.annotations.get(page_index, diagram_index).move_number
+
+    def set_move_number(self, page_index: int, diagram_index: int, value: int | None) -> None:
+        """Grava o número do lance daquele diagrama. `None` apaga a declaração.
+
+        Em branco **apaga** em vez de gravar zero, pela mesma regra do resto da galeria: não
+        declarar e declarar vazio são coisas diferentes, e só a primeira deixa a exportação
+        decidir.
+        """
+        self.model.annotations.update(page_index, diagram_index, move_number=value)
+        self._persist()
+        if self.model.pdf_path is not None:
+            self.refresh(request_page=False)
 
     def sync_to_page(self, page_index: int) -> None:
         """O visualizador virou a página; a galeria acompanha se houver diagrama lá."""

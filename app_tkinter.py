@@ -54,6 +54,7 @@ from chess_diagram_ocr.config import (
 from chess_diagram_ocr.dataset_browser import DatasetRow
 from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
+from chess_diagram_ocr.labels import LabelStore, saved_diagrams_by_page
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
@@ -85,6 +86,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     boxes_from_diagrams,
     choose_boxes,
     decide_box_click,
+    mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams
 from chess_diagram_ocr.ui.pdf_panel import PdfPanel
@@ -141,6 +143,13 @@ class ChessOcrTkApp:
 
         self.page_boxes = PageBoxesCache()
         """Onde estão os diagramas de cada página já visitada (S-68)."""
+
+        self.saved_diagrams: dict[int, set[int]] = {}
+        """Quais diagramas de cada página deste livro já têm amostra salva (S-71).
+
+        Vem do `labels.csv` e não da memória: é o que faz a marcação verde valer entre
+        execuções. Relido ao abrir o livro e a cada amostra gravada -- 3.313 linhas custam
+        milissegundos, e um índice que mente sobre trabalho já feito custa refazê-lo."""
 
         self._overlay_lock = threading.Lock()
         self._overlay_request: tuple[str, int, OverlayParams, Path, np.ndarray] | None = None
@@ -252,6 +261,8 @@ class ChessOcrTkApp:
             local_reader=lambda: self.settings.local_reader,
             on_remote_consent=self._ask_remote_consent,
             on_selection_changed=self._on_result_selection,
+            move_number_of=self._move_number_of,
+            on_move_number=self._set_move_number,
         )
         tabs.add(self.result_panel, text="Resultado")
 
@@ -585,6 +596,12 @@ class ChessOcrTkApp:
         # chave já inclui o documento, então isto não é correção de bug: é não guardar
         # afirmação sobre um PDF que ninguém mais está olhando.
         self.page_boxes.clear()
+        self._reload_saved_diagrams(pdf_path)
+        if self.gallery_panel is not None:
+            # Sem isto a galeria só conhecia o livro depois de uma varredura -- e o número do
+            # lance digitado na aba Resultado (S-71) seria gravado num modelo sem `pdf_path`,
+            # que descarta em silêncio.
+            self.gallery_panel.load_pdf(pdf_path, request_page=False)
         if self.result_panel is not None:
             self.result_panel.discard_document_results(str(pdf_path))
 
@@ -609,6 +626,19 @@ class ChessOcrTkApp:
     def _pdf_path_or_none(self) -> Path | None:
         return self.pdf_source
 
+    # O número do lance é anotação de exportação, e quem a guarda é a aba Galeria (S-67). A
+    # aba Resultado passou a editá-lo na S-71 e pergunta por aqui: um dono só para o arquivo
+    # do livro, duas telas que o mostram.
+
+    def _move_number_of(self, page_index: int, diagram_index: int) -> int | None:
+        if self.gallery_panel is None:
+            return None
+        return self.gallery_panel.move_number_at(page_index, diagram_index)
+
+    def _set_move_number(self, page_index: int, diagram_index: int, value: int | None) -> None:
+        if self.gallery_panel is not None:
+            self.gallery_panel.set_move_number(page_index, diagram_index, value)
+
     def _gallery_page_request(self, page_index: int) -> None:
         """A galeria mudou de diagrama; o visualizador vai para a página dele."""
         if self.pdf_panel is not None:
@@ -630,6 +660,26 @@ class ChessOcrTkApp:
 
     def _overlay_params(self) -> OverlayParams:
         return OverlayParams(dpi=int(self.dpi_var.get()), max_boards=int(self.max_boards_var.get()))
+
+    def _reload_saved_diagrams(self, pdf_path: Path | None = None) -> None:
+        """Relê do `labels.csv` o que já foi salvo deste livro (S-71).
+
+        Recebe o caminho porque quem abre o PDF avisa **antes** de o painel adotá-lo -- é a
+        janela de tempo em que o editor ainda tem o resultado do livro anterior para guardar.
+
+        Falhar aqui não impede nada: sem o índice, as caixas ficam sem o verde e o resto do
+        visualizador segue igual. Um CSV ilegível é assunto da aba Dataset, não do visualizador.
+        """
+        alvo = pdf_path if pdf_path is not None else self.pdf_source
+        if alvo is None:
+            self.saved_diagrams = {}
+            return
+        try:
+            loja = LabelStore(Path(self.dataset_csv_var.get()))
+            self.saved_diagrams = saved_diagrams_by_page(loja.read(), alvo.name)
+        except Exception:
+            logger.exception("Não foi possível ler o que já está salvo de %s.", alvo.name)
+            self.saved_diagrams = {}
 
     def _editor_shows_page(self, page_index: int) -> bool:
         """Se o que está no editor é, ele mesmo, o reconhecimento desta página."""
@@ -655,10 +705,14 @@ class ChessOcrTkApp:
             return
 
         params = self._overlay_params()
+        salvos = self.saved_diagrams.get(page_index, set())
         detectadas = self.page_boxes.get(self._document_key(), page_index, params)
-        escolhidas = choose_boxes(
-            recognized=boxes_from_diagrams(self._page_items(page_index)),
-            detected=detectadas.boxes if detectadas is not None else (),
+        escolhidas = mark_saved(
+            choose_boxes(
+                recognized=boxes_from_diagrams(self._page_items(page_index)),
+                detected=detectadas.boxes if detectadas is not None else (),
+            ),
+            salvos,
         )
         if escolhidas:
             painel.set_diagram_boxes(PageBoxes(page_index, params, escolhidas))
@@ -943,8 +997,11 @@ class ChessOcrTkApp:
         return bool(resposta["enviar"])
 
     def _reload_dataset_panel(self) -> None:
+        """Uma amostra foi gravada: a aba Dataset relê, e o visualizador repinta de verde."""
         if self.dataset_panel is not None:
             self.dataset_panel.reload()
+        self._reload_saved_diagrams()
+        self._refresh_overlay(self.page_index)
 
     def _open_review_item(self, item: Any, position: int) -> None:
         if self.result_panel is not None:

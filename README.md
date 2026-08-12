@@ -389,7 +389,10 @@ Numeros medidos de memoria e tempo estao em [docs/EXPERIMENTS.md](docs/EXPERIMEN
    visualizador marca com um retangulo numerado cada diagrama que o detector achou na pagina.
 4. Corrigir a posicao no proprio tabuleiro: arrastar move a peca, botao direito apaga,
    a paleta insere. As casas em que o modelo esta inseguro aparecem tingidas de amarelo a
-   vermelho, e o painel abaixo diz o que esta ilegal e em que casas.
+   vermelho, e o painel abaixo diz o que esta ilegal e em que casas. Ao lado do **Lado a
+   jogar** ha o campo **Lance**, para o numero do lance impresso na legenda: ele grava na
+   mesma anotacao que a aba **Galeria** edita e que a exportacao le, entao os dois lugares
+   mostram sempre o mesmo numero. Em branco **apaga** a declaracao, em vez de gravar zero.
 5. Salvar exemplos corrigidos.
 6. Treinar modelo.
 7. Repetir ciclo para reduzir correcoes manuais.
@@ -409,9 +412,15 @@ desenha um retangulo numerado sobre cada diagrama; o numero e o mesmo do seletor
 "Selecionado" da aba **Resultado**. Clicar num retangulo abre aquele diagrama no editor --
 lendo a pagina primeiro, se ela ainda nao tiver sido lida. O retangulo do diagrama que esta
 aberto fica destacado, e ele acompanha as setas `←`/`→`: e ele que responde "qual desses eu
-estou vendo?". Azul e diagrama localizado, verde e diagrama ja lido, laranja e o que esta no
-editor. A caixa **Marcar diagramas** desliga tudo isso para quem esta lendo o texto do livro,
-e a escolha sobrevive ao fechamento da janela.
+estou vendo?". A caixa **Marcar diagramas** desliga tudo isso para quem esta lendo o texto do
+livro, e a escolha sobrevive ao fechamento da janela.
+
+A **cor diz em que ponto do trabalho** aquele diagrama esta: azul e localizado pelo detector,
+ambar e lido pelo OCR e ainda nao salvo, **verde e ja tem amostra no `labels.csv`**. O verde
+vem da procedencia gravada no CSV e nao da memoria, entao ele aparece assim que voce abre um
+livro que ja trabalhou antes -- e responde "onde eu parei?" sem custar uma leitura. O diagrama
+aberto no editor e marcado por **hachura e traco grosso**, e nao por cor, justamente para nao
+esconder o estado dele.
 
 O reconhecimento fica guardado por pagina: voltar para uma pagina ja reconhecida traz de
 volta os diagramas, o diagrama que estava selecionado e as correcoes feitas a mao, sem

@@ -401,5 +401,47 @@ class LabelRouteTests(unittest.TestCase):
             with self.subTest(**kwargs):
                 self.assertIn(labels_module.label_route(**kwargs), labels_module.CORRECTED_BY_VALUES)
 
+class SavedDiagramsByPageTests(unittest.TestCase):
+    """O índice que pinta de verde, no visualizador, o que já foi salvo (S-71)."""
+
+    def _entrada(self, **campos: str) -> labels_module.DatasetEntry:
+        base = {
+            "filename": "board.png",
+            "fen": "8/8/8/8/8/8/8/8 w - - 0 1",
+            "source_pdf": "livro.pdf",
+            "source_page": "17",
+            "source_diagram": "3",
+        }
+        base.update(campos)
+        return labels_module.DatasetEntry(**base)  # type: ignore[arg-type]
+
+    def test_converte_as_duas_contagens_para_base_0(self) -> None:
+        """O CSV grava base 1 (a página que o usuário vê); a interface conta de 0."""
+        achado = labels_module.saved_diagrams_by_page([self._entrada()], "livro.pdf")
+        self.assertEqual(achado, {16: {2}})
+
+    def test_junta_os_diagramas_da_mesma_pagina(self) -> None:
+        entradas = [self._entrada(source_diagram="1"), self._entrada(source_diagram="4")]
+        self.assertEqual(labels_module.saved_diagrams_by_page(entradas, "livro.pdf"), {16: {0, 3}})
+
+    def test_ignora_amostra_de_outro_livro(self) -> None:
+        entradas = [self._entrada(), self._entrada(source_pdf="outro.pdf")]
+        self.assertEqual(labels_module.saved_diagrams_by_page(entradas, "livro.pdf"), {16: {2}})
+
+    def test_linha_sem_procedencia_e_ignorada_e_nao_e_caso_raro(self) -> None:
+        """98,6% do acervo é anterior à S-19 e tem `source_page` vazio."""
+        entradas = [self._entrada(source_page="", source_diagram="")]
+        self.assertEqual(labels_module.saved_diagrams_by_page(entradas, "livro.pdf"), {})
+
+    def test_o_20_ponto_0_herdado_do_pandas_ainda_e_lido(self) -> None:
+        """A S-58 corrigiu a escrita; arquivos antigos ainda têm o formato float gravado."""
+        entradas = [self._entrada(source_page="20.0", source_diagram="2.0")]
+        self.assertEqual(labels_module.saved_diagrams_by_page(entradas, "livro.pdf"), {19: {1}})
+
+    def test_livro_sem_nome_nao_casa_com_as_linhas_sem_procedencia(self) -> None:
+        entradas = [self._entrada(source_pdf="")]
+        self.assertEqual(labels_module.saved_diagrams_by_page(entradas, ""), {})
+
+
 if __name__ == "__main__":
     unittest.main()

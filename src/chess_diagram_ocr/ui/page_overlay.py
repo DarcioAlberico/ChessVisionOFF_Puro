@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Collection, Sequence
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -48,6 +48,7 @@ __all__ = [
     "choose_boxes",
     "decide_box_click",
     "hit_test",
+    "mark_saved",
 ]
 
 POINTS_PER_INCH = 72.0
@@ -95,6 +96,15 @@ class DiagramBox:
     Muda o que o clique faz e como o retângulo é pintado. A distinção importa porque as duas
     fontes são igualmente confiáveis quanto a *onde*, e completamente diferentes quanto a *o
     que já se sabe* -- e prometer leitura onde só houve detecção seria o pior dos dois.
+    """
+
+    saved: bool = False
+    """Se este diagrama já tem amostra gravada no `labels.csv` (S-71).
+
+    **É independente de `recognized`, e isso é o ponto.** O que responde por ele é a
+    procedência gravada no CSV, não o que está em memória: uma página aberta hoje mostra em
+    verde o que foi salvo semana passada, antes de qualquer OCR rodar. É a resposta para "onde
+    eu parei neste livro?", que é a pergunta que se faz ao abrir um livro pela quinta vez.
     """
 
     @property
@@ -160,6 +170,20 @@ def hit_test(
     return achado
 
 
+def mark_saved(boxes: Sequence[DiagramBox], saved: Collection[int]) -> tuple[DiagramBox, ...]:
+    """Carimba quais caixas já têm amostra gravada (S-71).
+
+    **Um lugar só, e no momento de desenhar.** As caixas do detector ficam num cache por
+    página; se o carimbo entrasse nelas quando a detecção rodou, salvar uma amostra não
+    pintaria de verde o diagrama que acabou de ser salvo -- ele só mudaria de cor na próxima
+    visita àquela página, que é quando o cache fosse refeito. Carimbar na hora de desenhar faz
+    a cor acompanhar o CSV, que é a fonte da verdade.
+    """
+    if not saved:
+        return tuple(boxes)
+    return tuple(replace(box, saved=box.index in saved) for box in boxes)
+
+
 def boxes_from_candidates(candidates: Sequence[DiagramCandidate]) -> tuple[DiagramBox, ...]:
     """As caixas do detector (S-12), antes de qualquer leitura.
 
@@ -167,9 +191,15 @@ def boxes_from_candidates(candidates: Sequence[DiagramCandidate]) -> tuple[Diagr
     com os mesmos parâmetros, vai produzir a mesma ordem quando o OCR rodar. Renumerar aqui
     faria o "3" do retângulo abrir o diagrama 5 do editor -- o desencontro que a S-14 corrigiu
     entre a tela e o PGN, recriado entre a tela e ela mesma.
+
+    Quem já foi salvo não se decide aqui: é `mark_saved`, na hora de desenhar.
     """
     return tuple(
-        DiagramBox(index=indice, bbox_pdf=tuple(candidato.bbox_pdf), source=candidato.source)  # type: ignore[arg-type]
+        DiagramBox(
+            index=indice,
+            bbox_pdf=tuple(candidato.bbox_pdf),  # type: ignore[arg-type]
+            source=candidato.source,
+        )
         for indice, candidato in enumerate(candidates)
     )
 

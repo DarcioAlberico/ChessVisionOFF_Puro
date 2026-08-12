@@ -19,7 +19,12 @@ import numpy as np
 
 from chess_diagram_ocr.ui import pdf_panel
 from chess_diagram_ocr.ui.page_overlay import DiagramBox, OverlayParams, PageBoxes
-from chess_diagram_ocr.ui.pdf_panel import BOX_OUTLINE, BOX_OUTLINE_SELECTED, PdfPanel
+from chess_diagram_ocr.ui.pdf_panel import (
+    BOX_OUTLINE,
+    BOX_OUTLINE_RECOGNIZED,
+    BOX_OUTLINE_SAVED,
+    PdfPanel,
+)
 
 PARAMS = OverlayParams(dpi=72, max_boards=12)
 CAIXAS = (
@@ -126,12 +131,48 @@ class PdfPanelBoxesTests(unittest.TestCase):
         self.panel.refresh_view()
         self.assertEqual(self.panel.canvas.coords(self._retangulos()[0]), [5.0, 5.0, 55.0, 55.0])
 
-    def test_o_diagrama_aberto_no_editor_tem_cor_propria(self) -> None:
+    def test_a_selecao_nao_gasta_uma_cor(self) -> None:
+        """A cor diz em que ponto do trabalho o diagrama está; a hachura diz qual está aberto.
+
+        Enquanto a seleção era uma quarta cor, ela apagava o estado do diagrama selecionado --
+        justamente o que se quer ver ao chegar nele (S-71).
+        """
         self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
         self.panel.select_box(1)
         cores = [self.panel.canvas.itemcget(item, "outline") for item in self._retangulos()]
-        self.assertEqual(cores.count(BOX_OUTLINE_SELECTED), 2, "só o selecionado muda de cor")
-        self.assertIn(BOX_OUTLINE, cores)
+        self.assertEqual(cores, [BOX_OUTLINE] * 4, "a seleção não muda a cor de ninguém")
+
+        hachurados = [
+            item for item in self._retangulos() if self.panel.canvas.itemcget(item, "stipple")
+        ]
+        self.assertEqual(len(hachurados), 1, "só o selecionado é hachurado")
+
+    def test_as_tres_cores_dizem_o_ponto_do_trabalho(self) -> None:
+        caixas = (
+            DiagramBox(index=0, bbox_pdf=(10.0, 10.0, 110.0, 110.0)),
+            DiagramBox(index=1, bbox_pdf=(10.0, 150.0, 110.0, 250.0), recognized=True),
+            DiagramBox(index=2, bbox_pdf=(150.0, 10.0, 250.0, 110.0), recognized=True, saved=True),
+            DiagramBox(index=3, bbox_pdf=(150.0, 150.0, 250.0, 250.0), saved=True),
+        )
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, caixas))
+        cores = [self.panel.canvas.itemcget(item, "outline") for item in self._retangulos()]
+        # Dois retângulos por caixa (contorno e fundo do número), na ordem em que foram criados.
+        self.assertEqual(
+            cores[::2],
+            [BOX_OUTLINE, BOX_OUTLINE_RECOGNIZED, BOX_OUTLINE_SAVED, BOX_OUTLINE_SAVED],
+            "salvo ganha de lido mesmo sem OCR nesta sessão",
+        )
+
+    def test_o_rotulo_conta_lidos_e_salvos_separadamente(self) -> None:
+        caixas = (
+            DiagramBox(index=0, bbox_pdf=(10.0, 10.0, 110.0, 110.0), recognized=True),
+            DiagramBox(index=1, bbox_pdf=(10.0, 150.0, 110.0, 250.0), recognized=True, saved=True),
+        )
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, caixas))
+        texto = self.panel.lbl_boxes.cget("text")
+        self.assertIn("2 diagrama(s)", texto)
+        self.assertIn("1 lido(s)", texto)
+        self.assertIn("1 salvo(s)", texto)
 
     def test_desligar_a_marcacao_apaga_os_retangulos_e_avisa(self) -> None:
         self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))

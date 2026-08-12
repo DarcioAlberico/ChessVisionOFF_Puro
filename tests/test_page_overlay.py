@@ -26,6 +26,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     choose_boxes,
     decide_box_click,
     hit_test,
+    mark_saved,
 )
 
 PARAMS = OverlayParams(dpi=144, max_boards=12)
@@ -127,6 +128,32 @@ class BoxSourceTests(unittest.TestCase):
 
     def test_o_rotulo_e_base_1_como_o_seletor(self) -> None:
         self.assertEqual(caixa(0, 0, 0, 1, 1).label, "1")
+
+
+class MarkSavedTests(unittest.TestCase):
+    """O carimbo do que já tem amostra gravada (S-71)."""
+
+    def setUp(self) -> None:
+        self.boxes = (caixa(0, 0, 0, 10, 10), caixa(1, 20, 0, 30, 10), caixa(2, 40, 0, 50, 10))
+
+    def test_carimba_pelo_indice_do_diagrama(self) -> None:
+        marcadas = mark_saved(self.boxes, {0, 2})
+        self.assertEqual([box.saved for box in marcadas], [True, False, True])
+
+    def test_nada_salvo_devolve_as_mesmas_caixas(self) -> None:
+        self.assertEqual(mark_saved(self.boxes, set()), self.boxes)
+
+    def test_salvo_e_independente_de_lido(self) -> None:
+        """É a procedência do CSV que responde, não o que está em memória: o verde vale
+        antes de qualquer OCR nesta sessão."""
+        marcadas = mark_saved(self.boxes, {1})
+        self.assertTrue(marcadas[1].saved)
+        self.assertFalse(marcadas[1].recognized)
+
+    def test_indice_salvo_que_nao_existe_mais_na_pagina_nao_atrapalha(self) -> None:
+        """Trocar `Max diagramas` muda quantas caixas a página tem."""
+        marcadas = mark_saved(self.boxes, {7})
+        self.assertEqual([box.saved for box in marcadas], [False, False, False])
 
 
 class ChooseBoxesTests(unittest.TestCase):

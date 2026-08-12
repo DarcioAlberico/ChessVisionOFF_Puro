@@ -475,6 +475,45 @@ class LabelStore:
         atomic_write_bytes(self.path, render_csv(rows).encode("utf-8"))
 
 
+def saved_diagrams_by_page(
+    entries: Iterable[DatasetEntry], source_pdf: str
+) -> dict[int, set[int]]:
+    """Quais diagramas de cada página deste livro já têm amostra salva (S-71).
+
+    Devolve `{índice da página: {índices dos diagramas}}`, os dois **em base 0** -- que é como
+    a interface conta. O CSV guarda os dois em base 1, porque `source_page` é o número que o
+    usuário vê no leitor de PDF (ver `RecognitionOrigin.sample_fields`) e `source_diagram` é o
+    número que aparece no seletor "Selecionado". A conversão fica aqui, num lugar só.
+
+    Serve para o visualizador pintar de verde o que já foi salvo -- inclusive **antes** de
+    rodar o OCR na página, que é quando a informação vale mais: ela responde "onde eu parei
+    neste livro?" sem custar uma leitura.
+
+    Linha sem procedência é ignorada, e não é caso raro: 98,6% do acervo é anterior à S-19 e
+    tem `source_page` vazio. Ignorar é o único tratamento honesto -- não dá para inventar de
+    que página veio uma amostra que não declarou.
+
+    `source_pdf` é o **nome** do arquivo, não o caminho: é o que a S-19 grava.
+    """
+    por_pagina: dict[int, set[int]] = {}
+    alvo = str(source_pdf).strip()
+    if not alvo:
+        return por_pagina
+
+    for entry in entries:
+        if entry.source_pdf.strip() != alvo:
+            continue
+        try:
+            pagina = int(float(entry.source_page)) - 1
+            diagrama = int(float(entry.source_diagram)) - 1
+        except (TypeError, ValueError):
+            continue
+        if pagina < 0 or diagrama < 0:
+            continue
+        por_pagina.setdefault(pagina, set()).add(diagrama)
+    return por_pagina
+
+
 def label_columns_for(rows: Sequence[LabelRow]) -> tuple[str, ...]:
     """As colunas do esquema, seguidas das extras na ordem em que apareceram.
 

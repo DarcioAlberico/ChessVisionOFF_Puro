@@ -47,7 +47,7 @@ from PIL import Image, ImageTk
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 
-from .page_overlay import PageBoxes
+from .page_overlay import DiagramBox, PageBoxes
 from .tooltip import Tooltip
 from .viewport import (
     WheelAction,
@@ -75,17 +75,32 @@ CLICK_SLOP_PX = 4
 Sem folga, o clique de quem apoia a mão no mouse vira arrasto e não abre diagrama nenhum;
 com folga demais, arrastar a barra de rolagem abriria um diagrama por acidente."""
 
+# --- as três cores são **um** eixo: em que ponto do trabalho aquele diagrama está. A seleção
+# --- deixou de ser cor na S-71 justamente para não disputar este eixo -- ver `_draw_boxes`.
 BOX_OUTLINE = "#4da3ff"
-"""Diagrama localizado e ainda não lido."""
+"""Localizado pelo detector, ainda não lido."""
 
-BOX_OUTLINE_RECOGNIZED = "#00c07a"
-"""Diagrama já lido. Verde, mas não o `#00ff88` do retângulo de seleção: os dois podem
-aparecer na mesma tela, e são coisas diferentes -- um é o que o detector achou, o outro é o
-que a sua mão está desenhando agora."""
+BOX_OUTLINE_RECOGNIZED = "#ffb02e"
+"""Lido pelo OCR e **ainda não salvo**: o que falta fazer nesta página."""
 
-BOX_OUTLINE_SELECTED = "#ffb02e"
-"""O diagrama que está aberto no editor. Cor própria e traço mais grosso, porque este é o
-vínculo entre as duas metades da janela -- é ele que responde "qual desses eu estou vendo?"."""
+BOX_OUTLINE_SAVED = "#00c07a"
+"""Já tem amostra no `labels.csv`. Verde é a cor de "pronto", e é para isso que ela serve.
+
+Vale mesmo antes de a página ser lida: quem responde é a procedência gravada no CSV, não o
+que está em memória. Abrir um livro pela quinta vez e ver de verde o que já foi feito é a
+única forma barata de responder "onde eu parei?"."""
+
+
+def box_color(box: DiagramBox) -> str:
+    """A cor do retângulo, pelo ponto em que aquele diagrama está.
+
+    Salvo ganha de lido, e lido ganha de localizado: a informação mais adiantada é a que
+    interessa. Salvo vem primeiro inclusive quando a página ainda não foi lida -- é o caso que
+    faz a marcação valer para um livro que já foi trabalhado antes.
+    """
+    if box.saved:
+        return BOX_OUTLINE_SAVED
+    return BOX_OUTLINE_RECOGNIZED if box.recognized else BOX_OUTLINE
 
 
 def open_in_system_reader(pdf_path: Path) -> None:
@@ -695,13 +710,21 @@ class PdfPanel(ttk.Frame):
         for box in self.boxes.boxes:
             x0, y0, x1, y1 = self.boxes.rect_of(box, zoom)
             selecionado = box.index == self._selected_box
-            cor = (
-                BOX_OUTLINE_SELECTED
-                if selecionado
-                else (BOX_OUTLINE_RECOGNIZED if box.recognized else BOX_OUTLINE)
-            )
+            cor = box_color(box)
+            # Uma propriedade visual, uma informação: a **cor** diz em que ponto do trabalho o
+            # diagrama está e a **hachura** diz qual está aberto no editor. Enquanto a seleção
+            # era uma quarta cor, ela apagava o estado do diagrama selecionado -- justamente o
+            # que se quer ver ao chegar nele.
             self.canvas.create_rectangle(
-                x0, y0, x1, y1, outline=cor, width=3 if selecionado else 2, tags="diagram-box"
+                x0,
+                y0,
+                x1,
+                y1,
+                outline=cor,
+                width=4 if selecionado else 2,
+                fill=cor if selecionado else "",
+                stipple="gray12" if selecionado else "",
+                tags="diagram-box",
             )
             # O número vai num retângulo cheio: por cima do diagrama, texto solto some no
             # xadrez do tabuleiro justamente onde ele mais precisa ser lido.
@@ -719,9 +742,14 @@ class PdfPanel(ttk.Frame):
         elif not len(self.boxes):
             self.lbl_boxes.config(text="nenhum diagrama nesta página")
         else:
-            lidos = sum(1 for box in self.boxes.boxes if box.recognized)
-            sufixo = f", {lidos} lido(s)" if lidos else ""
-            self.lbl_boxes.config(text=f"{len(self.boxes)} diagrama(s){sufixo}")
+            lidos = sum(1 for box in self.boxes.boxes if box.recognized and not box.saved)
+            salvos = sum(1 for box in self.boxes.boxes if box.saved)
+            partes = [f"{len(self.boxes)} diagrama(s)"]
+            if lidos:
+                partes.append(f"{lidos} lido(s)")
+            if salvos:
+                partes.append(f"{salvos} salvo(s)")
+            self.lbl_boxes.config(text=" · ".join(partes))
 
     def _box_at_event(self, event: tk.Event) -> int | None:
         if self.boxes is None or not self.show_boxes_var.get() or self.page_rgb is None:

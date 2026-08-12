@@ -125,6 +125,8 @@ class ResultPanel(ttk.Frame):
         on_remote_consent: Callable[[RemoteFenSettings], bool],
         local_reader: Callable[[], LocalReaderSettings] = LocalReaderSettings,
         on_selection_changed: Callable[[int | None], None] = lambda _indice: None,
+        move_number_of: Callable[[int, int], int | None] = lambda _pagina, _diagrama: None,
+        on_move_number: Callable[[int, int, int | None], None] = lambda _p, _d, _v: None,
     ) -> None:
         super().__init__(parent, padding=6)
         self._service = service
@@ -153,6 +155,14 @@ class ResultPanel(ttk.Frame):
         diagrama que está neste editor. Mão única, como o da aba Análise -- o painel avisa e
         não pergunta nada, para que quem escuta possa ignorar sem quebrar o editor."""
 
+        self._move_number_of = move_number_of
+        self._on_move_number = on_move_number
+        """Leitura e gravação do número do lance, por (página, diagrama) (S-71).
+
+        Moram fora porque o dono da anotação é a aba Galeria: ela já edita o mesmo campo, do
+        mesmo diagrama, no mesmo arquivo. Duas cópias em memória do `data/gallery/<livro>.json`
+        divergiriam, e a última a gravar apagaria o que a outra tivesse escrito."""
+
         self._on_remote_consent = on_remote_consent
         """Pergunta ao usuário se a imagem pode sair da máquina, e devolve a resposta.
 
@@ -172,6 +182,9 @@ class ResultPanel(ttk.Frame):
         self.side_to_move_var = tk.StringVar(value="w")
         self.side_source_var = tk.StringVar(value="")
         self.selected_diag_var = tk.IntVar(value=1)
+        self.move_number_var = tk.StringVar(value="")
+        """O número do lance do diagrama selecionado, como texto -- vazio é "não declarado"."""
+
         self.legality_var = tk.StringVar(value="")
         self.material_var = tk.StringVar(value="")
         self.heatmap_var = tk.BooleanVar(value=True)
@@ -299,6 +312,15 @@ class ResultPanel(ttk.Frame):
             ).pack(side=tk.LEFT, padx=(6, 0))
         ttk.Label(side_row, textvariable=self.side_source_var).pack(side=tk.LEFT, padx=(10, 0))
 
+        # Número do lance (S-71), ao lado do lado a jogar porque é a mesma leitura: os dois
+        # saem da legenda impressa, e quem está com o livro aberto declara os dois de uma vez.
+        # A gravação vai para a anotação da galeria -- ver `_commit_move_number`.
+        ttk.Label(side_row, text="Lance").pack(side=tk.RIGHT, padx=(0, 4))
+        self.move_number_entry = ttk.Entry(side_row, textvariable=self.move_number_var, width=6)
+        self.move_number_entry.pack(side=tk.RIGHT)
+        self.move_number_entry.bind("<Return>", lambda _event: self._commit_move_number())
+        self.move_number_entry.bind("<FocusOut>", lambda _event: self._commit_move_number())
+
         acoes = ttk.Frame(fen_box)
         acoes.pack(fill=tk.X, padx=8, pady=(0, 6))
         ttk.Button(acoes, text="Aplicar FEN", command=self.apply_fen_edit).pack(side=tk.LEFT)
@@ -323,6 +345,9 @@ class ResultPanel(ttk.Frame):
             schedule=self.after,
         )
         self.second_opinion_button.pack(side=tk.LEFT, padx=6)
+        # Editor vazio não tem diagrama a que atribuir lance: o campo nasce cinza, e não
+        # aceitando um número que seria descartado em silêncio.
+        self.sync_move_number()
 
     # -------------------------------------------------------------------------------- zoom
 
@@ -507,6 +532,7 @@ class ResultPanel(ttk.Frame):
         self.spin_diag.config(from_=1, to=total)
         self.fen_var.set(self.model.fen_at(idx))
         self.sync_side_widgets(idx)
+        self.sync_move_number()
         self.update_views()
         self._on_selection_changed(idx if self.model.items else None)
 
@@ -517,6 +543,7 @@ class ResultPanel(ttk.Frame):
         self.fen_var.set("")
         self.side_to_move_var.set("w")
         self.side_source_var.set("")
+        self.sync_move_number()
         self.update_views()
         self._on_selection_changed(None)
 
@@ -526,7 +553,14 @@ class ResultPanel(ttk.Frame):
         return self.model.clamped_index()
 
     def sync_fen_from_entry(self) -> None:
+        """Recolhe o que está nos campos antes de a seleção mudar ou de salvar.
+
+        O número do lance entra aqui, e não só no `FocusOut`: trocar de diagrama pelo botão
+        "Próximo" com o foco ainda no campo de FEN não dispara o `FocusOut` do campo de lance,
+        e o que a pessoa digitou iria embora sem aviso.
+        """
         self.model.set_fen(self.fen_var.get())
+        self._commit_move_number()
 
     def on_diagram_spin(self) -> None:
         self.sync_fen_from_entry()
@@ -538,6 +572,64 @@ class ResultPanel(ttk.Frame):
         self.model.select(pedido)
         self.selected_diag_var.set(self.model.clamped_index() + 1)
         self.refresh_selected()
+
+    # ---------------------------------------------------------------- número do lance (S-71)
+
+    def _move_number_target(self) -> tuple[int, int] | None:
+        """(página, diagrama) do que está no editor, ou `None` se não é resultado de página.
+
+        Item da fila e amostra do dataset não têm par: a anotação é do diagrama **daquele
+        livro naquela página**, e uma amostra solta do `labels.csv` não sabe mais de onde veio
+        com essa precisão. Ali o campo fica cinza, em vez de gravar no diagrama errado.
+        """
+        if self.model.page_key is None or not self.model.items:
+            return None
+        return (self.model.page_key[1], self.model.clamped_index())
+
+    def sync_move_number(self) -> None:
+        """Traz para o campo o lance do diagrama selecionado."""
+        alvo = self._move_number_target()
+        if alvo is None:
+            self.move_number_var.set("")
+            self.move_number_entry.configure(state=tk.DISABLED)
+            return
+        self.move_number_entry.configure(state=tk.NORMAL)
+        numero = self._move_number_of(*alvo)
+        self.move_number_var.set("" if numero is None else str(numero))
+
+    def _commit_move_number(self) -> None:
+        """Grava o que está no campo. Em branco **apaga** a declaração.
+
+        Só grava quando o valor muda de fato: o campo confirma no `FocusOut`, que dispara a
+        cada passagem do foco, e regravar o mesmo número reescreveria o JSON do livro inteiro
+        a cada clique fora do campo.
+        """
+        alvo = self._move_number_target()
+        if alvo is None:
+            return
+
+        texto = self.move_number_var.get().strip()
+        atual = self._move_number_of(*alvo)
+        if not texto:
+            if atual is not None:
+                self._on_move_number(alvo[0], alvo[1], None)
+                self._on_status(f"Diagrama {alvo[1] + 1}: número do lance apagado.")
+            return
+
+        try:
+            numero = int(texto)
+        except ValueError:
+            self._on_status(f"Número de lance inválido: {texto!r}. Use um inteiro positivo.")
+            self.sync_move_number()
+            return
+        if numero <= 0:
+            self._on_status(f"Número de lance inválido: {numero}. Use um inteiro positivo.")
+            self.sync_move_number()
+            return
+        if numero == atual:
+            return
+        self._on_move_number(alvo[0], alvo[1], numero)
+        self._on_status(f"Diagrama {alvo[1] + 1}: lance {numero}.")
 
     def select_diagram(self, index: int) -> None:
         """Seleciona um diagrama a pedido de fora -- o clique no diagrama marcado (S-68).
@@ -572,6 +664,7 @@ class ResultPanel(ttk.Frame):
         self.selected_diag_var.set(idx + 1)
         self.fen_var.set(self.model.fen_at(idx))
         self.sync_side_widgets(idx)
+        self.sync_move_number()
         self._on_status(f"Diagrama {idx + 1}/{self.model.count} | {confidence_summary(self.model.items[idx])}")
         self.update_views()
         self._on_selection_changed(idx)
@@ -706,6 +799,10 @@ class ResultPanel(ttk.Frame):
             path = self._save_one(alvo)
             self._on_status(f"Exemplo salvo: {path}")
             self._settle(alvo)
+            # Só o caminho de regravação avisava. Sem isto, a aba Dataset não via a amostra
+            # nova e o visualizador não pintava de verde o diagrama que acabou de ser salvo
+            # (S-71) -- os dois só se atualizavam na próxima vez que o livro fosse aberto.
+            self._on_sample_saved()
             messagebox.showinfo("Sucesso", f"Diagrama salvo em:\n{path}")
         except Exception as exc:
             messagebox.showerror("Erro", f"Falha ao salvar:\n{exc}")
