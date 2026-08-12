@@ -7,12 +7,15 @@ import torch
 
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.model import (
+    COORDINATE_CHANNELS,
     DEFAULT_ARCH,
     ArchConfig,
     PieceClassifier,
     build_model,
+    coordinate_channels,
     count_parameters,
     preprocess_cell_to_tensor,
+    with_coordinate_channels,
 )
 
 
@@ -112,6 +115,95 @@ class PreprocessTests(unittest.TestCase):
     def test_default_argument_matches_the_baseline_arch(self) -> None:
         cell = self._cell()
         self.assertTrue(torch.equal(preprocess_cell_to_tensor(cell), preprocess_cell_to_tensor(cell, DEFAULT_ARCH)))
+
+
+class CoordinateChannelTests(unittest.TestCase):
+    """S-62a: os três planos constantes, e a garantia de que eles não entram por acidente."""
+
+    def test_default_arch_has_no_coordinate_channels(self) -> None:
+        self.assertFalse(DEFAULT_ARCH.coords)
+        self.assertEqual(DEFAULT_ARCH.version, "cnn-gray-64-linear")
+        self.assertEqual(DEFAULT_ARCH.in_channels, DEFAULT_ARCH.image_channels)
+
+    def test_version_says_coords_and_round_trips(self) -> None:
+        arch = ArchConfig(coords=True)
+        self.assertEqual(arch.version, "cnn-gray-64-linear-coords")
+        self.assertEqual(ArchConfig.from_version(arch.version), arch)
+        # E a versao antiga continua interpretavel, sem virar um modelo com coordenadas.
+        self.assertFalse(ArchConfig.from_version("cnn-gray-64-linear").coords)
+
+    def test_input_gains_exactly_three_channels(self) -> None:
+        for base in (ArchConfig(), ArchConfig(channels="rgb")):
+            arch = ArchConfig(backbone=base.backbone, channels=base.channels, head=base.head, coords=True)
+            with self.subTest(arch=arch.version):
+                self.assertEqual(arch.in_channels, base.in_channels + COORDINATE_CHANNELS)
+
+    def test_planes_are_constant_and_encode_parity_row_and_column(self) -> None:
+        planos = coordinate_channels(square_index=9, size=8)  # fila 1, coluna 1
+        self.assertEqual(tuple(planos.shape), (COORDINATE_CHANNELS, 8, 8))
+        for canal, esperado in enumerate((0.0, 1 / 7, 1 / 7)):
+            with self.subTest(canal=canal):
+                self.assertAlmostEqual(float(planos[canal].min()), esperado, places=6)
+                self.assertAlmostEqual(float(planos[canal].max()), esperado, places=6)
+
+    def test_parity_alternates_between_neighbouring_squares(self) -> None:
+        paridade = [float(coordinate_channels(i, 8)[0, 0, 0]) for i in range(8)]
+        self.assertEqual(paridade, [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+        # E a fila seguinte comeca invertida, como no tabuleiro.
+        self.assertEqual(float(coordinate_channels(8, 8)[0, 0, 0]), 1.0)
+
+    def test_helper_is_a_no_op_without_coords(self) -> None:
+        cell = torch.rand(1, 64, 64)
+        self.assertIs(with_coordinate_channels(cell, 0, ArchConfig()), cell)
+
+    def test_helper_appends_after_the_image_channels(self) -> None:
+        cell = torch.rand(1, 64, 64)
+        saida = with_coordinate_channels(cell, 17, ArchConfig(coords=True))
+        self.assertEqual(tuple(saida.shape), (4, 64, 64))
+        self.assertTrue(torch.equal(saida[:1], cell), "o canal da imagem tem de ficar em primeiro")
+
+    def test_zeroed_extra_channels_reproduce_the_model_of_today(self) -> None:
+        """O teste de paridade numérica que a S-62 pede, antes de qualquer retreino.
+
+        Os pesos das entradas novas zerados, o resto copiado: a saída tem de ser bit a bit a
+        do modelo sem coordenadas. Se não for, o canal extra não está sendo *acrescentado* --
+        está deslocando a imagem para dentro de outro filtro.
+        """
+        torch.manual_seed(0)
+        antigo = build_model(ArchConfig(), pretrained=False).eval()
+        novo = build_model(ArchConfig(coords=True), pretrained=False).eval()
+
+        estado = dict(antigo.state_dict())
+        peso_antigo = estado.pop("features.0.weight")
+        faltando = novo.load_state_dict(estado, strict=False)
+        self.assertEqual(list(faltando.unexpected_keys), [])
+        with torch.no_grad():
+            novo.features[0].weight.zero_()
+            novo.features[0].weight[:, :1].copy_(peso_antigo)
+
+        cell = torch.rand(4, 1, 64, 64)
+        com_coords = torch.cat(
+            [with_coordinate_channels(cell[i], i, ArchConfig(coords=True)).unsqueeze(0) for i in range(4)]
+        )
+        with torch.no_grad():
+            self.assertTrue(torch.equal(antigo(cell), novo(com_coords)))
+
+    def test_the_extra_channels_cost_about_one_percent_of_the_parameters(self) -> None:
+        base = count_parameters(build_model(ArchConfig(), pretrained=False))
+        com = count_parameters(build_model(ArchConfig(coords=True), pretrained=False))
+        self.assertLess((com - base) / base, 0.01)
+
+    def test_every_coords_variant_still_outputs_one_logit_per_class(self) -> None:
+        for arch in (
+            ArchConfig(coords=True),
+            ArchConfig(channels="rgb", coords=True),
+            ArchConfig(head="gap", coords=True),
+            ArchConfig(image_size=32, coords=True),
+        ):
+            with self.subTest(arch=arch.version):
+                model = build_model(arch, pretrained=False)
+                batch = torch.zeros(4, arch.in_channels, arch.image_size, arch.image_size)
+                self.assertEqual(tuple(model(batch).shape), (4, len(PIECE_CLASSES)))
 
 
 if __name__ == "__main__":

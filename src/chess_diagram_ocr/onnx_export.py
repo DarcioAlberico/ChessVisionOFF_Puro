@@ -28,7 +28,7 @@ import torch
 
 from .checkpoint import load_checkpoint
 from .config import PIECE_CLASSES
-from .model import DEFAULT_ARCH, ArchConfig, build_model
+from .model import DEFAULT_ARCH, SQUARES_PER_BOARD, ArchConfig, build_model
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,11 @@ def export_onnx(model_path: Path, output_path: Path, *, arch: ArchConfig | None 
     model.load_state_dict(checkpoint.state, strict=True)
     model.eval()
 
-    example = torch.zeros(1, arch.in_channels, arch.image_size, arch.image_size)
+    # Uma casa basta para tracar as cabecas por casa. A da S-62b precisa das 64 juntas -- e o
+    # eixo dinamico passa a contar tabuleiros, nao casas: exportar com 1 casa nao falharia no
+    # export, falharia na primeira inferencia, que e o pior lugar para descobrir isso.
+    cells_in_example = SQUARES_PER_BOARD if arch.head == "board" else 1
+    example = torch.zeros(cells_in_example, arch.in_channels, arch.image_size, arch.image_size)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.onnx.export(
         model,

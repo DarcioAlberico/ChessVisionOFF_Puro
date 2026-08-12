@@ -14,7 +14,7 @@ from ..config import DEFAULT_DATASET_CSV, DEFAULT_MODEL_PATH, DEFAULT_SAMPLES_DI
 from ..dataset import BoardFenDataset
 from ..inference import describe_device, load_model
 from ..logging_setup import configure_logging, default_log_file
-from ..model import DEFAULT_ARCH, preprocess_cell_to_tensor
+from ..model import DEFAULT_ARCH, preprocess_cell_to_tensor, with_coordinate_channels
 from ..onnx_export import compare_backends, export_onnx, load_onnx_model
 from ..splits import load_splits
 
@@ -59,7 +59,10 @@ def _cell_batches(dataset: BoardFenDataset, limit: int) -> list[torch.Tensor]:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         if image.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
             image = cv2.resize(image, (BOARD_SIZE, BOARD_SIZE))
-        cells = [preprocess_cell_to_tensor(cell, dataset.arch) for cell in split_board_into_cells(image)]
+        cells = [
+            with_coordinate_channels(preprocess_cell_to_tensor(cell, dataset.arch), square_index, dataset.arch)
+            for square_index, cell in enumerate(split_board_into_cells(image))
+        ]
         batches.append(torch.stack(cells))
     return batches
 

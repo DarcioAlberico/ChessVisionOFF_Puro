@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,10 +29,19 @@ from .fen_utils import (
     PositionCheck,
     check_position,
     fen_from_class_indices,
-    pawn_direction_score,
     square_name,
 )
-from .model import DEFAULT_ARCH, ArchConfig, build_model, preprocess_cell_to_tensor
+from .model import DEFAULT_ARCH, ArchConfig, build_model, preprocess_cell_to_tensor, with_coordinate_channels
+from .orientation import (
+    ConfidenceMarginRule,
+    CoordinateRule,
+    OrientationEvidence,
+    OrientationPolicy,
+    OrientedPrediction,
+    PawnPriorRule,
+    SingleLegalRule,
+    TightMarginFallback,
+)
 from .preprocess import IDENTITY, BoardNormalizer, NormalizerConfig
 
 logger = logging.getLogger(__name__)
@@ -271,19 +281,59 @@ def board_probabilities(
     discordam, e a de probabilidades é a que o voto da S-29 descreve: uma vista muito
     confiante e errada não domina as outras seis como dominaria em espaço de logit.
     """
+    return board_probabilities_batch([board_rgb], model, device, tta=tta, normalizer=normalizer)[0]
+
+
+def board_probabilities_batch(
+    boards_rgb: Sequence[np.ndarray],
+    model: nn.Module,
+    device: str,
+    *,
+    tta: bool = False,
+    normalizer: NormalizerConfig = IDENTITY,
+) -> list[np.ndarray]:
+    """Uma matriz (64, 13) por tabuleiro, **num único `forward`** (S-61).
+
+    Existe porque a orientação automática lia o mesmo diagrama duas vezes, em duas chamadas
+    de 64 casas. A computação é a mesma; o que se corta é o custo fixo por lote, que em CPU
+    não é desprezível -- e a inferência é 76% do tempo de página, do qual metade é a segunda
+    orientação.
+
+    A ordem do lote é `tabuleiro-maior, vista, casa`, e ela **é** o contrato com a cabeça por
+    tabuleiro da S-62b: cada bloco de 64 casas consecutivas é um tabuleiro inteiro, em ordem
+    de leitura. Embaralhar aqui não daria erro -- daria uma leitura errada.
+    """
+    if not boards_rgb:
+        return []
+
     arch = getattr(model, "arch", DEFAULT_ARCH)
     temperature = float(getattr(model, "temperature", 1.0))
-    board_rgb = BoardNormalizer(normalizer).normalize(board_rgb)
-    views = tta_views(board_rgb) if tta else [board_rgb]
+    normalizador = BoardNormalizer(normalizer)
 
-    tensors = [preprocess_cell_to_tensor(cell, arch) for view in views for cell in split_board_into_cells(view)]
+    por_tabuleiro = [
+        tta_views(normalizador.normalize(board)) if tta else [normalizador.normalize(board)]
+        for board in boards_rgb
+    ]
+    tensors = [
+        with_coordinate_channels(preprocess_cell_to_tensor(cell, arch), square_index, arch)
+        for views in por_tabuleiro
+        for view in views
+        for square_index, cell in enumerate(split_board_into_cells(view))
+    ]
     batch = torch.stack(tensors, dim=0).to(device)
 
     with torch.inference_mode():
         probs = torch.softmax(model(batch) / temperature, dim=1)
 
-    matrices = probs.cpu().numpy().astype(np.float64).reshape(len(views), 64, len(PIECE_CLASSES))
-    return matrices.mean(axis=0)
+    plano = probs.cpu().numpy().astype(np.float64)
+    resultado: list[np.ndarray] = []
+    inicio = 0
+    for views in por_tabuleiro:
+        fim = inicio + len(views) * 64
+        matrizes = plano[inicio:fim].reshape(len(views), 64, len(PIECE_CLASSES))
+        resultado.append(matrizes.mean(axis=0))
+        inicio = fim
+    return resultado
 
 
 def predict_board(
@@ -306,40 +356,6 @@ def predict_board(
     )
 
 
-@dataclass(frozen=True, eq=False)
-class OrientedPrediction:
-    """Leitura de um diagrama junto com a orientação escolhida para ela (S-13)."""
-
-    prediction: BoardPrediction
-    rotation: int
-    """0 ou 180 graus, aplicado à imagem antes de reconhecer."""
-
-    margin: float
-    """`min_confidence` da orientação escolhida menos a da descartada.
-
-    Sempre ≥ 0 quando a escolha foi por confiança. É a medida de quão folgada foi."""
-
-    ambiguous: bool
-    """A escolha foi apertada, ou os dois sinais discordaram: vale olho humano."""
-
-    reason: str
-    """Por que esta orientação venceu, em pt-BR, para a UI e o arquivo de revisão."""
-
-    alternative: BoardPrediction | None = None
-    """A leitura descartada. `None` quando a orientação foi imposta, não escolhida."""
-
-
-def _pawn_prior_gap(upright: BoardPrediction, flipped: BoardPrediction) -> float | None:
-    """Quanto o prior de peões prefere a leitura de pé. `None` se ele não se aplica."""
-    score_upright = pawn_direction_score(upright.class_indices)
-    score_flipped = pawn_direction_score(flipped.class_indices)
-    if score_upright is None and score_flipped is None:
-        return None
-    # Uma leitura sem peão de alguma cor não pontua; tratá-la como 0 é justo, porque o outro
-    # lado é que está afirmando algo sobre a estrutura.
-    return (score_upright or 0.0) - (score_flipped or 0.0)
-
-
 def predict_with_orientation(
     board_rgb: np.ndarray,
     model: nn.Module,
@@ -352,35 +368,26 @@ def predict_with_orientation(
     pawn_prior_margin: float = ORIENTATION_PAWN_PRIOR_MARGIN,
     tta: bool = TTA_ENABLED,
     normalizer: NormalizerConfig = IDENTITY,
+    policy: OrientationPolicy | None = None,
 ) -> OrientedPrediction:
     """Reconhece o diagrama decidindo a orientação por diagrama, não por checkbox global.
 
-    Com `mode="auto"` tenta 0° e 180° e escolhe a leitura mais plausível. A ordem dos
-    critérios vem de medição no split de teste (320 tabuleiros), não da intuição:
+    Com `mode="auto"` tenta 0° e 180° e entrega as duas leituras à `OrientationPolicy`, que
+    é quem decide. Esta função ficou com o que só ela pode fazer -- rodar o modelo duas vezes
+    -- e a cascata de regras, os limiares e a medição que os justifica moram em
+    `orientation.py` (S-48). É lá que se lê **por que** a ordem é essa.
 
-    | sinal              | acerta | erra | empata |
-    |--------------------|--------|------|--------|
-    | legalidade         |     52 |    0 |    268 |
-    | `min_confidence`   |    320 |    0 |      0 |
-    | peões nas filas    |    264 |    9 |     47 |
-    | reis nas filas     |    267 |   37 |     16 |
+    O resumo da política padrão, na ordem:
 
-    A legalidade **não** serve como critério dominante, ao contrário do que a S-13 supôs:
-    girar a posição 180° manda peão branco da fila `r` para a fila `9-r`, e 2..7 vira 7..2 --
-    continua legal. Ela só decide em 16% dos casos, embora nunca erre, então fica como
-    primeiro filtro. O prior de **reis** que a S-13 sugeria erra 37 vezes em 320 e ficou fora.
+    1. Coordenadas da borda, quando alguém as leu (hoje: nunca; ver `CoordinateRule`).
+    2. Uma orientação ilegal e a outra não → a legal.
+    3. Margem de confiança ≥ `decisive_margin` → a mais confiante.
+    4. Senão, peões decidem por ≥ `pawn_prior_margin` filas → a que eles apontam.
+    5. Senão → a mais confiante, marcada `ambiguous`.
 
-    A tabela acima, porém, só descreve leitura boa. Medido depois no `1937 Kemeri.pdf`, a
-    confiança **para de decidir** quando a leitura é ruim: em duas páginas cuja leitura de pé
-    era claramente correta, as duas orientações saíram com confiança ~0,04 e margens de 0,001
-    e 0,019 -- ruído, e seguir a margem girava o diagrama errado. O prior de peões, que olha a
-    estrutura da posição e não a aparência das peças, continuava informativo nos mesmos casos
-    (+3,8 contra -4,2). Daí a regra por regime:
-
-    1. Uma orientação ilegal e a outra não → a legal.
-    2. Margem de confiança ≥ `decisive_margin` → a mais confiante.
-    3. Senão, peões decidem por ≥ `pawn_prior_margin` filas → a que eles apontam.
-    4. Senão → a mais confiante, marcada `ambiguous`.
+    `decisive_margin` e `pawn_prior_margin` continuam aqui porque trinta chamadores os
+    passam; eles montam a política quando `policy` não vem. Passar `policy` ignora os dois,
+    que é o que um experimento regra a regra quer.
 
     Atenção ao que isto **não** resolve: diagrama impresso do ponto de vista das pretas. Ali
     as peças estão desenhadas para cima, e o que muda é o mapeamento casa→índice, não os
@@ -411,50 +418,30 @@ def predict_with_orientation(
             reason=f"orientação imposta ({rotation}°)",
         )
 
-    upright, flipped = read(False), read(True)
-    margin = upright.min_confidence - flipped.min_confidence
-
-    # A legalidade entra primeiro porque, quando decide, nunca errou -- e uma leitura ilegal
-    # é pior que uma de confiança baixa. Quando as duas são legais (84% dos casos) ela cala.
-    legal_upright = not upright.position.is_fatal
-    legal_flipped = not flipped.position.is_fatal
-
-    if legal_upright != legal_flipped:
-        chose_upright = legal_upright
-        # Discordância entre sinais nunca apareceu na medição, mas se aparecer é exatamente
-        # o que "ambíguo" quer dizer -- e não algo para resolver em silêncio.
-        ambiguous = (margin > 0) != chose_upright
-        reason = "única orientação legal"
-    elif abs(margin) >= decisive_margin:
-        chose_upright = margin > 0
-        ambiguous = False
-        reason = f"maior confiança mínima (margem {abs(margin):.3f})"
-    else:
-        # Regime de leitura ruim: as duas orientações saem com confiança igualmente baixa e a
-        # margem é ruído. Aqui quem sabe algo é a estrutura da posição.
-        pawn_gap = _pawn_prior_gap(upright, flipped)
-        if pawn_gap is not None and abs(pawn_gap) >= pawn_prior_margin:
-            chose_upright = pawn_gap > 0
-            ambiguous = False
-            reason = f"peões apontam a orientação (vantagem {abs(pawn_gap):.1f} filas, confiança empatada)"
-        else:
-            chose_upright = margin >= 0
-            ambiguous = True
-            reason = (
-                f"margem apertada ({abs(margin):.3f}) e peões não decidem"
-                if pawn_gap is not None
-                else f"margem apertada ({abs(margin):.3f}) e sem peões dos dois lados"
-            )
-
-    chosen, discarded = (upright, flipped) if chose_upright else (flipped, upright)
-    return OrientedPrediction(
-        prediction=chosen,
-        rotation=0 if chose_upright else 180,
-        margin=abs(margin),
-        ambiguous=ambiguous,
-        reason=reason,
-        alternative=discarded,
+    # As duas orientacoes num lote so (S-61). O resultado e identico ao de duas chamadas --
+    # ha teste disso --, e o que muda e um `forward` de 128 casas em vez de dois de 64.
+    de_pe, de_cabeca = (
+        prediction_from_probs(matriz, uncertain_threshold=uncertain_threshold, constrained=constrained)
+        for matriz in board_probabilities_batch(
+            [board_rgb, cv2.rotate(board_rgb, cv2.ROTATE_180)],
+            model,
+            device,
+            tta=tta,
+            normalizer=normalizer,
+        )
     )
+
+    if policy is None:
+        policy = OrientationPolicy(
+            (
+                CoordinateRule(),
+                SingleLegalRule(),
+                ConfidenceMarginRule(decisive_margin),
+                PawnPriorRule(pawn_prior_margin),
+                TightMarginFallback(),
+            )
+        )
+    return policy.resolve(OrientationEvidence(upright=de_pe, flipped=de_cabeca))
 
 
 # `predict_fen_from_board` foi removida junto com o último chamador. Devolvia (FEN, média

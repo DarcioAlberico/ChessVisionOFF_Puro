@@ -101,11 +101,31 @@ class ExportTests(unittest.TestCase):
             ArchConfig(channels="rgb"),
             ArchConfig(image_size=32),
             ArchConfig(head="gap"),
+            ArchConfig(coords=True),
+            ArchConfig(head="board"),
         ):
             with self.subTest(arch=arch.version), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 _checkpoint(root / "m.pt", arch)
                 self.assertTrue(export_onnx(root / "m.pt", root / "m.onnx").exists())
+
+    def test_the_board_head_keeps_a_dynamic_batch_after_tracing(self) -> None:
+        """O `reshape(-1, 64, D)` da S-62b existe por causa deste teste.
+
+        Com o número de tabuleiros calculado em Python, o tracing o congelaria como constante
+        e o `dynamic_axes` passaria a mentir: o grafo exportado com 1 tabuleiro recusaria 2, ou
+        pior, aceitaria e leria errado.
+        """
+        arch = ArchConfig(head="board")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _checkpoint(root / "m.pt", arch)
+            onnx_model, _device = load_onnx_model(export_onnx(root / "m.pt", root / "m.onnx"))
+
+            for tabuleiros in (1, 3):
+                with self.subTest(tabuleiros=tabuleiros):
+                    entrada = torch.zeros(tabuleiros * 64, arch.in_channels, arch.image_size, arch.image_size)
+                    self.assertEqual(tuple(onnx_model(entrada).shape), (tabuleiros * 64, len(PIECE_CLASSES)))
 
 
 if __name__ == "__main__":
