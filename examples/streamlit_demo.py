@@ -1,9 +1,35 @@
-"""Frontend Streamlit. Apresentação apenas: o pipeline mora em `service.py` (S-31).
+"""**Demonstração** do `OcrService` no navegador. Não é a interface do produto (S-54).
+
+Rode com `uv run streamlit run examples/streamlit_demo.py`.
+
+**O que esta tela é.** Uma prova de que o pipeline não depende de janela: ela abre um PDF,
+reconhece os diagramas, mostra a FEN e a legalidade, e salva amostra -- tudo pelo mesmo
+`OcrService` que o Tkinter usa, sem uma linha de reconhecimento própria. É o exemplo
+executável do que o `ARCHITECTURE.md` chama de "nenhuma lógica de reconhecimento vive numa
+interface".
+
+**O que ela não é.** O fluxo de valor do produto é *corrigir → salvar → treinar*, e a parte
+de corrigir não existe aqui: sem editor de posição por clique (S-20), sem painel de
+legalidade com as casas culpadas (S-21), sem fila de revisão (S-22) e sem aba de dataset
+(S-23) -- os quatro são widgets de Tk. Ela serve para **ver** o resultado, não para
+**trabalhar** nele.
+
+Até a Fase 10 o README a chamava de "interface web alternativa", o que prometia uma paridade
+que o fechamento da Fase 6 já registrava não existir. A S-54 escolheu entre assumir a
+promessa (~1 semana: editor no navegador, legalidade, fila) e desfazê-la. Desfez: 593 linhas
+saíram do caminho da interface e viraram exemplo. Se um dia houver uso remoto real, a
+decisão se reabre -- e o custo estará no ROADMAP_FASE7, item 10.3.
+
+**Uma ressalva técnica que a mudança de pasta não apaga.** Este é um script de topo executado
+pelo Streamlit, então ele não pode ter guarda `if __name__ == "__main__"`; com
+`num_workers > 0` cada worker do `DataLoader` reexecutaria a página inteira dentro do próprio
+processo. É por isso que o padrão de `train_model` é 0 e quem sobe para 4 é o CLI. Ver
+`training.resolve_num_workers`.
 
 Este arquivo tinha a sua própria versão de `run_ocr_for_boards`, e ela já divergia da do
 Tkinter: não refinava o recorte pelo contorno, montava a legalidade com `w` fixo antes da
 Fase 3, e descartava a matriz por casa -- então nunca poderia mostrar em que casa o modelo
-esteve inseguro. Agora as duas telas chamam o mesmo `OcrService` e recebem o mesmo
+esteve inseguro. Desde a S-31 as duas telas chamam o mesmo `OcrService` e recebem o mesmo
 `RecognizedDiagram`; o que cada uma faz de diferente é desenhar.
 """
 
