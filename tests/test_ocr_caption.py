@@ -17,11 +17,14 @@ from test_ocr import FakeRecognizer
 
 from chess_diagram_ocr.ocr import TextBox
 from chess_diagram_ocr.ocr_caption import (
+    DEFAULT_OCR_DPI,
+    SCOPE_BAND,
     CaptionReader,
     build_caption_reader,
     caption_reader_from_settings,
 )
 from chess_diagram_ocr.pdf_text import (
+    MARGIN_BAND,
     NearbyLine,
     TextLine,
     context_from_lines,
@@ -339,7 +342,34 @@ class PageScopeTests(unittest.TestCase):
     """`LAS BLANCAS JUEGAN PRIMERO`: a faixa que `MARGIN_BAND` jogava fora."""
 
     TOPO = (0.10, 0.20, 0.80, 0.70)
-    """Dentro da faixa de margem renderizada -- 7% de 842 pt = 58,9 pt de altura."""
+    """Dentro da faixa de margem renderizada -- `SCOPE_BAND` de 842 pt = 101 pt de altura."""
+
+    def test_a_faixa_de_escopo_e_mais_alta_que_a_de_descarte(self) -> None:
+        """As duas frações respondem a perguntas diferentes; ver `SCOPE_BAND`.
+
+        Com 0,07 o RapidOCR devolveu `TIEAANDDIVEDA` a 0,71 de confiança na página que este
+        caminho existe para ler -- o motor não avisa quando recebe a metade de uma linha.
+        """
+        self.assertGreater(SCOPE_BAND, MARGIN_BAND)
+
+    def test_a_faixa_lida_tem_a_altura_de_scope_band(self) -> None:
+        alturas: list[int] = []
+
+        class Medidor(RelativeRecognizer):
+            def read(self, image_rgb: np.ndarray, *, allowlist: str = "") -> list[TextBox]:
+                alturas.append(image_rgb.shape[0])
+                return super().read(image_rgb, allowlist=allowlist)
+
+        doc = blank_page()
+        try:
+            CaptionReader(Medidor([], [])).margin_lines(doc[0])
+        finally:
+            doc.close()
+
+        esperado = PAGE_HEIGHT * SCOPE_BAND * (DEFAULT_OCR_DPI / 72.0)
+        self.assertEqual(len(alturas), 2, "topo e rodapé")
+        for altura in alturas:
+            self.assertAlmostEqual(altura, esperado, delta=2)
 
     def test_declaracao_de_escopo_na_camada_de_texto(self) -> None:
         doc = page_with([("2.1 White to Move #2", 150.0, 30.0)])

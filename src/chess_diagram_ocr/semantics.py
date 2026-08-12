@@ -37,7 +37,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SideSource = Literal["text", "ocr", "text-page-scope", "ocr-page-scope", "legality", "default"]
+SideSource = Literal[
+    "text", "ocr", "text-page-scope", "ocr-page-scope", "legality", "manual", "default"
+]
 
 _SOURCE_LABELS: dict[SideSource, str] = {
     "text": "declarado no texto do PDF",
@@ -45,6 +47,7 @@ _SOURCE_LABELS: dict[SideSource, str] = {
     "text-page-scope": "declarado no cabeçalho da página",
     "ocr-page-scope": "lido por OCR do cabeçalho da página",
     "legality": "deduzido da legalidade da posição",
+    "manual": "declarado à mão na galeria",
     "default": "assumido (nada no PDF diz de quem é a vez)",
 }
 """As quatro procedências textuais não são preciosismo de rótulo (S-43).
@@ -203,14 +206,20 @@ def compose_fen(
     *,
     castling: str | None = None,
     infer_castling: bool = True,
+    fullmove: int = 1,
 ) -> str:
     """FEN completa a partir do campo de peças e do lado a jogar decidido.
 
     Substitui o `f"{fen} w - - 0 1"` espalhado pelo pipeline, que era o ponto exato onde a
     informação de lado a jogar se perdia (`fen_utils._normalize_fen`).
+
+    `fullmove` é o número do lance, que o diagrama de livro não carrega e a pessoa pode
+    declarar na galeria (S-67). O padrão continua 1, que é o que o PGN tinha antes -- e
+    valores abaixo de 1 viram 1, porque a FEN não admite lance zero e recusar a exportação
+    inteira por causa de um campo digitado errado seria desproporcional.
     """
     placement = board_placement(placement)
     color = side.color if isinstance(side, SideToMove) else side
     if castling is None:
         castling = infer_castling_rights(placement) if infer_castling else "-"
-    return f"{placement} {'w' if color == chess.WHITE else 'b'} {castling} - 0 1"
+    return f"{placement} {'w' if color == chess.WHITE else 'b'} {castling} - 0 {max(1, int(fullmove))}"

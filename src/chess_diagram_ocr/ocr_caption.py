@@ -49,13 +49,35 @@ import fitz
 import numpy as np
 
 from .ocr import TextBox, TextRecognizer, build_recognizer
-from .pdf_text import DEFAULT_RADIUS_PT, MARGIN_BAND, TextLine
+from .pdf_text import DEFAULT_RADIUS_PT, TextLine
 from .settings import OcrSettings
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_OCR_DPI = 300.0
 """Ver o parágrafo sobre DPI no topo do módulo. Renderiza só a faixa, não a página."""
+
+SCOPE_BAND = 0.12
+"""Fração do topo e do rodapé lida em busca de declaração de escopo de página.
+
+**Maior que o `MARGIN_BAND` de 0,07, e a diferença foi medida, não escolhida.** As duas
+frações respondem a perguntas diferentes: `MARGIN_BAND` decide o que *descartar* como
+cabeçalho corrente, e uma faixa apertada erra para o lado seguro ali -- no máximo se perde um
+cabeçalho. Aqui a faixa é o que o motor vê, e uma faixa apertada **corta a linha ao meio**: o
+motor recebe a metade superior dos glifos e devolve algo com forma de texto.
+
+Medido no `Reinfeld_1001` p40, que é o alvo declarado da S-43:
+
+| faixa | altura | o que o RapidOCR leu |
+|---|---|---|
+| 0,07 | 34,6 pt | `TIEAANDDIVEDA` (0,71) |
+| **0,10** | 49,4 pt | `LAS BLANCAS JUEGAN PRIMERO` (0,94) |
+| **0,12** | 59,3 pt | `LAS BLANCAS JUEGAN PRIMERO` (0,93) |
+| 0,15 | 74,2 pt | a declaração **mais** dois fragmentos do diagrama de cima |
+
+O 0,71 de confiança do primeiro caso é o que torna isto instrutivo: o motor não avisou que
+estava adivinhando, e nenhum limiar razoável o teria barrado. 0,10 já lê; 0,12 é ele com
+folga, e 0,15 começa a puxar pedaço de tabuleiro para dentro da faixa."""
 
 MIN_BAND_PT = 6.0
 """Faixa mais estreita que isto não cabe uma linha de texto, e renderizá-la é custo puro."""
@@ -124,9 +146,12 @@ class CaptionReader:
         É onde mora o `LAS BLANCAS JUEGAN PRIMERO` do `Reinfeld`, e nos 7 livros sem camada
         de texto ele não tem nenhuma outra forma de ser lido. Quem decide o que fazer com
         isso é `pdf_text.page_scope_declaration`; aqui só se lê.
+
+        A faixa é a de `SCOPE_BAND`, e **não** a de `MARGIN_BAND`: ler com 0,07 devolvia
+        `TIEAANDDIVEDA` na página que este método existe para ler. Ver `SCOPE_BAND`.
         """
         altura = page.rect.height or 1.0
-        banda = altura * MARGIN_BAND
+        banda = altura * SCOPE_BAND
 
         lines: list[TextLine] = []
         for faixa in (

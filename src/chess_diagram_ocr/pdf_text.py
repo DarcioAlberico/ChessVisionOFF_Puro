@@ -60,11 +60,12 @@ import time
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
 import chess
 import fitz
+
+from .pdf_io import PdfSource
 
 logger = logging.getLogger(__name__)
 
@@ -1161,7 +1162,7 @@ def contexts_for_page(
 
 
 def contexts_for_pdf_page(
-    pdf_source: str | Path | bytes,
+    pdf_source: PdfSource,
     page_index: int,
     bboxes: Sequence[tuple[float, float, float, float]],
     *,
@@ -1175,12 +1176,12 @@ def contexts_for_pdf_page(
     de até quatro páginas vizinhas para `running_page_number` -- irrelevante ao lado do
     render a 220 DPI e das 64 inferências que a mesma página vai custar.
     """
-    from .pdf_io import _open_document
+    from .pdf_io import open_document
 
     if not bboxes:
         return []
 
-    with _open_document(pdf_source) as doc:
+    with open_document(pdf_source) as doc:
         if page_index < 0 or page_index >= doc.page_count:
             raise ValueError(f"Pagina {page_index} fora do intervalo (0..{doc.page_count - 1})")
         return contexts_for_page(
