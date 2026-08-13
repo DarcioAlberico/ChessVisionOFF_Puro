@@ -167,6 +167,18 @@ cvoff-field --json docs/metrics/atual.json
 # Anotar uma pagina nova: o rascunho ja traz o que o pipeline leu, e voce corrige.
 cvoff-field --no-placement --regime scan-puro --draft "1937 Kemeri.pdf:80,187"
 
+# Casar os diagramas com uma base de partidas em PGN (S-72/S-73). Preenche lance, vez e
+# headers -- SO onde estiver vazio, e nunca sobrescreve o que voce digitou. Posicao que casa
+# com mais de 5 partidas nao preenche nada: ali ela deixou de identificar qual partida e.
+# A base e sua, fica em pgn_database/ e fora do repositorio. Nada sai da maquina.
+# Exige o livro ja varrido na aba Galeria -- e dela que saem as posicoes e as legendas.
+cvoff-games --all                         # relata, sem gravar nada
+cvoff-games --all --apply                 # grava nas anotacoes da Galeria
+cvoff-games --book "Karpov" --names       # so o caminho por nome: ~150 s, alcanca 12,6%
+# O padrao (--positions) reproduz os lances da base inteira: ~104 min em dez processos, e
+# alcanca todo diagrama. O custo e da PASSADA, nao do livro -- por isso `--all` de uma vez,
+# e nao um `--book` por livro, que pagaria 32 vezes pela mesma varredura.
+
 # Procedencia do lado a jogar no acervo (criterio de saida da Fase 8): amostra paginas de
 # cada PDF e conta de onde veio o [SideToMoveSource] -- texto, OCR, legalidade ou assumido.
 # Rodar com e sem --ocr responde em dois numeros o que o motor da S-43 entregou.
@@ -220,8 +232,21 @@ set CVOFF_LOG_DIR=logs
 
 ## Recursos opcionais (e o que o projeto faz sem eles)
 
-**O projeto funciona inteiramente offline.** Nada sai da sua maquina no uso padrao. As tres
+**O projeto funciona inteiramente offline.** Nada sai da sua maquina no uso padrao. As
 integracoes abaixo sao desligadas por padrao e nao afetam o reconhecimento.
+
+### Base de partidas (S-72/S-73)
+
+Um `.pgn` que voce poe em `pgn_database/`. Com ele, a Galeria preenche **numero do lance, vez
+a jogar e headers** dos diagramas cuja posicao aparece numa partida registrada -- e a vez a
+jogar deixa de ser o palpite que a Fase 3 registrou como palpite.
+
+E **local**: o arquivo e lido do disco, nada e consultado na rede. Sem ele, o botao "Buscar na
+base" diz onde por um e o resto do produto segue igual.
+
+Medido numa base de 10.547.416 partidas, no `Secrets of Chess Training` (1.408 diagramas):
+**61 diagramas** pelo caminho por nome (~150 s) e **581** pelo caminho por posicao (~104 min).
+O caminho por posicao e comando de linha (`cvoff-games --positions`), nao botao.
 
 ### Correcao remota de FEN ("Corrigir Net")
 
@@ -525,6 +550,7 @@ por tamanho ou por direito autoral:
 | `data/samples/` | ~3.200 PNGs de tabuleiros, ~2,7 GB | tamanho |
 | `models/*.pt` | checkpoint treinado, ~8,7 MB | binario que muda a cada treino |
 | `PGN/` | saida gerada | reproduzivel a partir dos PDFs |
+| `pgn_database/` | sua base de partidas em PGN (a medida aqui tem 9,7 GB) | material de terceiro, e o GitHub recusa acima de 100 MB |
 
 Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o modelo
 (`cvoff-train`) ou obter um checkpoint por outro meio.
@@ -538,9 +564,9 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
 - [docs/ANALISE.md](docs/ANALISE.md) -- diagnostico do estado atual, com medicoes
 - [docs/ROADMAP.md](docs/ROADMAP.md) -- fases de evolucao planejadas (Fases 0 a 6)
 - [docs/SPEC.md](docs/SPEC.md) -- especificacao detalhada das melhorias (S-01 a S-36)
-- [docs/ROADMAP_FASE7.md](docs/ROADMAP_FASE7.md) -- Fases 7 a 12, com a medicao de campo que
+- [docs/ROADMAP_FASE7.md](docs/ROADMAP_FASE7.md) -- Fases 7 a 13, com a medicao de campo que
   as motiva: o gate rejeita 17 de 101 diagramas de pagina real contra 3 de 320 no split de teste
-- [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 12 (S-37 a S-71),
+- [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 13 (S-37 a S-73),
   incluindo os defeitos da Fase 7.0 e a Fase 12, que saiu de uso e nao de varredura
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e

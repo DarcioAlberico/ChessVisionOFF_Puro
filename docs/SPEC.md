@@ -3,7 +3,7 @@
 Base: [ANALISE.md](ANALISE.md). Sequenciamento: [ROADMAP.md](ROADMAP.md).
 
 > Este documento cobre **S-01 a S-36** (Fases 0 a 6). A continuação está em
-> [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-71), sequenciada em
+> [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-73), sequenciada em
 > [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
 
 Cada item tem **Problema** (com referência ao arquivo/linha atual), **Solução**, **Interface proposta**, **Critério de aceite** e **Testes**. Os itens são independentes o suficiente para serem implementados em ordem diferente, exceto onde há dependência declarada.

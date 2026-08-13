@@ -1,4 +1,4 @@
-# Especificação das melhorias — Fases 7 a 12 (S-37 a S-71)
+# Especificação das melhorias — Fases 7 a 13 (S-37 a S-73)
 
 Continuação de [SPEC.md](SPEC.md), que cobre S-01 a S-36. Sequenciamento e a medição que
 motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
@@ -2487,6 +2487,134 @@ widget daquela aba), `tests/test_pdf_panel.py` (a seleção que não pinta sobre
 
 ---
 
+# Fase 13 — A base de partidas, e a primeira verdade que não vem de gente
+
+## S-72 · A base de partidas como terceira fonte de verdade ✅ implementada e medida (2026-08-13)
+
+**Problema.** A legenda diz `Coull - Stanciu` e mais nada. O número do lance e a vez a jogar —
+os dois campos que a Galeria pede — a pessoa preenche **contando à mão no livro**, e em 24 dos
+27 livros do acervo a vez a jogar continua sendo o palpite que a Fase 3 registrou como palpite.
+
+Medido no `Secrets of Chess Training` (1.408 diagramas), o que a camada de texto entrega
+sozinha:
+
+| | |
+|---|---|
+| diagramas com legenda | 1.362 — 96,7% |
+| dos quais rendem os **jogadores** | 178 — 12,6% |
+| rendem o **evento** | 15 — 1,1% |
+| rendem o **ano** | 16 — 1,1% |
+
+O texto dá o nome e cala sobre o resto. É esse buraco que a base preenche.
+
+**Solução.** `games_db.py`: uma passada pela base colhendo as partidas dos pares que as
+legendas nomeiam, e o cruzamento com as posições lidas. Um botão **Buscar na base** na Galeria.
+
+**O que isto é, e que nada aqui era antes.** Toda verdade do projeto vem de humano — o
+`labels.csv` é trabalho humano, o lado a jogar da S-16 é texto que um humano escreveu no livro,
+a fila da S-22 ordena para um humano olhar. Um casamento contra a base é o primeiro **oráculo
+externo**: 64 casas contra 64 casas de um lance de uma partida registrada. Não é opinião, e não
+é confiança do modelo.
+
+**Três decisões, e as duas primeiras são economia medida.**
+
+- **Casar pela colocação de peças, nunca pela FEN inteira.** Roque e *en passant* são inferidos
+  (S-17), o contador de lances é o que se quer descobrir, e a vez costuma ser palpite. Comparar
+  a FEN completa faria todo casamento falhar por campos que o projeto **sabe** que não conhece.
+- **Uma passada por livro, não por diagrama.** Ler a base custa ~150 s; os pares vão todos
+  juntos. Perguntar por diagrama custaria os mesmos 150 s cada — a economia da S-61.
+- **Sem índice no disco.** ~1 GB de índice por nome para poupar 150 s por livro não se paga
+  enquanto a busca for por livro. No dia em que ela virar por diagrama, passa a valer.
+
+**Preenche só o que está vazio, e nunca sobrescreve** — a regra que a S-17 estabeleceu para o
+lado a jogar. Se a pessoa digitou `Event` e a base discorda, quem está com o livro na mão é
+ela. E **posição que casa com mais de cinco partidas não preenche nada**: um final de rei e
+peão aparece em centenas, com número de lance diferente em cada uma, e procedência inventada é
+pior que campo vazio — o campo vazio ninguém confunde com dado conferido.
+
+`DiagramAnnotation.filled_from` guarda a **evidência**, não só a origem — `"Ljubojevic x
+Browne, IBM 1972"` em vez de `"base"` —, pelo desenho do `side_to_move_evidence` da S-16: quem
+discorda precisa saber de quê está discordando.
+
+**Resultado medido.** 167 pares distintos, **84 achados** na base, 91 diagramas cobertos,
+**61 casamentos exatos** — 67% dos cobertos. Zero ambíguos.
+
+**A hipótese que morreu.** A proposta original previa usar a base para **reparar** leitura
+errada: se a posição lida estivesse a 1 ou 2 casas de um lance da partida, a base apontaria o
+erro do OCR. **Zero em 91.** O casamento é binário. Neste livro quase todo diagrama sai com
+confiança 1,000, então não havia erro a reparar — a hipótese não foi refutada, ficou sem chance
+de aparecer. E há um problema estrutural atrás disso: os livros onde o OCR erra são os de scan
+puro, que não têm legenda com nomes. Fica registrada como **não medida**, não como descartada.
+
+**Critério de aceite.** Sem base no disco, o botão explica onde pôr uma e nada quebra. Com
+ela, o que a pessoa digitou sobrevive à busca. Conferido de ponta a ponta contra a base real.
+
+**Testes.** `tests/test_games_db.py` (sobrenome, colheita, casamento, teto por par — com um
+PGN de três partidas escrito na hora, sem a base de 9,7 GB), `tests/test_gallery_model.py` (o
+preenchimento e o que ele recusa), `tests/test_gallery_panel.py` (a aba, com a base remendada
+para o teste não depender de ela existir na máquina).
+
+---
+
+## S-73 · A busca por posição, que alcança o diagrama sem legenda ✅ implementada e medida (2026-08-13)
+
+**Problema.** A S-72 chega a 12,6% dos diagramas. Os outros 87,4% têm posição lida e nenhum
+nome — e a posição, sozinha, é informação suficiente: ou aquelas 64 casas aparecem numa partida
+registrada, ou não.
+
+**Solução.** `cvoff-games --positions`: reproduz os lances das partidas da base e confere cada
+posição contra o conjunto-alvo.
+
+**A busca é invertida, e é o que a torna viável.** O caminho óbvio — indexar as ~800 milhões de
+posições da base — custaria dezenas de GB no disco e horas de construção. Aqui quem vai para a
+memória são as **nossas** posições, que são milhares, e a base passa uma vez.
+
+| | |
+|---|---|
+| custo | **104 min** em dez processos (10.547.416 partidas) |
+| num processo só | 7,5 h (392 partidas/s, 24,6 mil lances/s) |
+| posições distintas do livro que casaram | **761 de 1.404 — 54,2%** |
+| com **uma única** partida | 487 |
+| diagramas preenchíveis pela regra dos ≤5 | **581** de 1.408 |
+| o caminho por nome, no mesmo livro | 61 |
+
+**O custo é por varredura, não por livro.** O conjunto-alvo cabe na memória sejam 1.400
+posições ou 40 mil: `--all` varre os 32 livros pelo preço de um. Rodar `--book` cinco vezes
+paga cinco vezes por uma resposta que sai de uma.
+
+**Comando de linha, e não botão.** 104 minutos atrás de um botão é uma janela travada que
+ninguém entende — e o paralelismo com `spawn` exige um `__main__` guardado, que um CLI tem e um
+callback de widget não garante.
+
+**O cruzamento que vale mais que teste.** Nos 61 diagramas que os dois caminhos alcançam:
+**61/61 no número do lance e 61/61 na partida.** Duas rotas sem código em comum chegando ao
+mesmo lugar.
+
+**Dois defeitos que só a execução de verdade mostrou.**
+
+1. **`tell()` em modo texto não é byte, é um *cookie* opaco** com o estado do decodificador.
+   Comparado contra o fim do pedaço, encerrava o laço cedo: **5 partidas lidas de 2.000**, sem
+   erro nenhum na tela. Em binário o `tell()` é o byte, que é o que os limites do pedaço
+   significam. O teste de regressão usa 300 partidas — com três, o cookie ainda é pequeno.
+2. **`spawn` reimporta o `__main__` do pai** (S-26). Chamado de um script sem guarda, cada
+   filho reexecutava o script e criava mais filhos; travou a máquina uma vez aqui. Agora um
+   marcador vai no ambiente **antes** de o `Pool` existir, e o filho que reimportar responde
+   com um processo só — fica lento num uso que já estava errado, em vez de derrubar tudo.
+
+**O que não foi medido, e é a ressalva honesta.** O livro medido é do Dvoretsky, feito de
+partidas reais: é o melhor caso possível. Um livro de estudos compostos ou de problemas vai
+casar muito menos, e o 54,2% **não** deve ser lido como taxa do acervo. Medir um segundo livro
+de outro gênero custa uma varredura de Galeria e entra na mesma passada.
+
+**Critério de aceite.** Dividir a base em N processos não muda a resposta (conferido: 2.000
+partidas, contagem idêntica em 1 e em 4 processos); `--apply` não sobrescreve nada; sem
+`--apply`, nada é gravado.
+
+**Testes.** `tests/test_games_db.py` — a varredura por posição, o corte em pedaços, a
+equivalência entre um e vários processos, a guarda contra a recursão do `spawn`, e o comando.
+
+---
+
 # Apêndice · Índice de referências cruzadas
 
 | item | depende de | referenciado por |
@@ -2526,3 +2654,5 @@ widget daquela aba), `tests/test_pdf_panel.py` (a seleção que não pinta sobre
 | S-69 saída do WebView2 | S-68 (é quem a condenou) | S-70, S-55 |
 | S-70 roda, arrasto e zoom | S-69 | — |
 | S-71 lance e "já salvo" | S-67 (dona da anotação), S-19 (a procedência), S-51 | — |
+| S-72 base por nome | S-16 (o `parse_context`), S-67, S-17 (a regra de não sobrescrever) | S-73 |
+| S-73 base por posição | S-72, S-26 (a armadilha do `spawn`), S-61 (a economia da passada) | S-13, S-17 (dão vez a jogar com procedência) |

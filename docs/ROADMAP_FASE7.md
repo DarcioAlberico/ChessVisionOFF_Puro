@@ -1,7 +1,7 @@
-# Roadmap — Fases 7 a 12
+# Roadmap — Fases 7 a 13
 
 Continuação de [ROADMAP.md](ROADMAP.md), que fecha na Fase 6. Especificação detalhada em
-[SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-71). Para o *como* de hoje,
+[SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-73). Para o *como* de hoje,
 [ARCHITECTURE.md](ARCHITECTURE.md); para os números de referência,
 [BASELINE.md](BASELINE.md);
 para o que foi medido nesta fase — **inclusive o que não entrou** —
@@ -1733,6 +1733,91 @@ borda interna cairia sobre a primeira fila de casas.
 
 ---
 
+## Fase 13 — A base de partidas ✅ código completo (2026-08-13)
+
+**De onde ela veio.** De uma ideia sua, não de análise: *"a galeria poderia autopreencher os
+campos com dados lidos do PDF, consultados numa base de partidas"*. O que a medição fez foi
+mudar duas vezes o desenho dela antes de qualquer linha de código.
+
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 13.1 | Casamento por **nome**: legenda → partida → lance, na Galeria | S-72 | ✅ |
+| 13.2 | Casamento por **posição**: `cvoff-games`, alcança todo diagrama | S-73 | ✅ |
+| 13.3 | Medir um segundo livro, de outro gênero | — | ← pendente, e é a que calibra a expectativa |
+
+**Critério de saída:** um diagrama cuja posição está na base sai com lance, vez e headers sem
+ninguém digitar — e nada do que a pessoa digitou é tocado. Atingido nos dois caminhos.
+
+### 13.0 — O que a medição desmentiu antes de a primeira linha ser escrita
+
+**Primeiro: o interpretador de legenda já existia, e o levantamento disse quanto ele alcança.**
+A Fase 3 escreveu o `parse_context`, que devolve jogadores, evento e ano; a Galeria nunca o
+chamou. Rodado nos 1.408 diagramas do `Secrets of Chess Training`:
+
+| | |
+|---|---|
+| com legenda | 96,7% |
+| rendem os **jogadores** | **12,6%** |
+| rendem o **evento** | 1,1% |
+| rendem o **ano** | 1,1% |
+
+O texto dá o nome e cala sobre o resto. Isso definiu o papel da base: ela não entra para *ler*
+os headers, entra para **completar a partir do pouco que o texto deu** — e para dar os dois
+campos que fonte nenhuma do projeto sabia dar, o número do lance e a vez.
+
+**Segundo: a base tem 10.547.416 partidas e ler os 9,7 GB custa 147 s.** Esse número mudou a
+economia inteira. A proposta que eu tinha feito — indexar as ~800 milhões de posições num banco
+de dezenas de GB — deixou de fazer sentido diante de **inverter a busca**: são as *nossas*
+posições que vão para a memória, e a base passa uma vez.
+
+**Terceiro, e é o que a Fase 13 tem de mais honesto: a hipótese do reparo morreu.** Eu havia
+proposto usar a base para apontar o erro do OCR — posição lida a 1 ou 2 casas de um lance da
+partida significaria "o modelo errou aqui". **Zero em 91 diagramas.** O casamento é binário: ou
+bate nas 64 casas, ou a distância é grande. Neste livro quase todo diagrama sai com confiança
+1,000, então não havia erro a reparar; e os livros onde o OCR erra são os de scan puro, que não
+têm legenda com nomes e que o caminho por nome nunca alcança. A hipótese não foi refutada —
+ficou **sem chance de aparecer**, que é coisa diferente e que vale registrar como tal.
+
+### 13.1 e 13.2 — os dois caminhos, e o que cada um custa (S-72, S-73)
+
+| | por nome | por posição |
+|---|---|---|
+| alcança | os 12,6% com jogadores na legenda | **todo diagrama** |
+| casou, no livro medido | 61 de 1.408 | **761 posições de 1.404 (54,2%)** |
+| preenchível pela regra dos ≤5 | 61 | **581 diagramas** |
+| custo | ~150 s, um processo | **104 min** em dez |
+| onde | botão da Galeria | `cvoff-games --positions` |
+
+**O custo é por varredura, não por livro** — o conjunto-alvo cabe na memória sejam 1.400
+posições ou 40 mil, então `--all` varre os 32 livros pelo preço de um. É a mesma economia que a
+S-61 encontrou na abertura do PDF, num lugar onde ela vale 32×.
+
+**E os dois caminhos se conferem.** Nos 61 diagramas que ambos alcançam: **61/61 no número do
+lance e 61/61 na partida**. Duas rotas sem código em comum chegando ao mesmo lugar vale mais
+que qualquer teste escrito à mão.
+
+### 13.3 — o que a Fase 13 mede e o que ela ainda não sabe
+
+O livro medido é do Dvoretsky, feito de partidas reais: **é o melhor caso possível**. Um livro
+de estudos compostos ou de problemas de mate vai casar muito menos, e ler o 54,2% como taxa do
+acervo seria repetir o erro que a Fase 7 documentou — número de um conjunto favorável tratado
+como número do campo. Medir um segundo livro custa uma varredura de Galeria (minutos) e entra
+na mesma passada da base.
+
+### Os dois defeitos que só a execução mostrou
+
+Nenhum apareceu em teste, e os dois viraram teste depois:
+
+- **`tell()` em modo texto não é byte, é um *cookie* opaco** com o estado do decodificador.
+  Comparado contra o fim do pedaço, encerrava o laço cedo: **5 partidas lidas de 2.000**, em
+  silêncio — o modo de falha caro deste projeto, de novo. Um arquivo de três partidas não pega
+  isso; o teste de regressão usa 300.
+- **`spawn` reimporta o `__main__` do pai** (S-26). Chamado de um script sem guarda, cada filho
+  reexecutava o script e criava mais filhos — travou a máquina aqui. A guarda agora é um
+  marcador no ambiente, posto **antes** de o `Pool` existir.
+
+---
+
 ## Sequenciamento sugerido
 
 Se houver duas semanas:
@@ -1774,6 +1859,9 @@ de varredura:
 | — | **S-68 + S-69** (diagramas clicáveis; o WebView2 sai) | o detector já sabia onde eles estão desde a Fase 2, e o resultado nunca chegava à tela | ✅ |
 | — | **S-70** (roda, arrasto, zoom ancorado) | devolve no canvas do projeto o que a aba do Edge levou embora | ✅ |
 | — | **S-71** (lance e o verde de "já salvo") | "onde eu parei neste livro?", respondido pelo CSV antes de qualquer OCR | ✅ |
+| — | **S-72** (base por nome) | a legenda dá o nome e cala sobre o resto: 12,6% com jogadores, 1,1% com ano | ✅ medido |
+| — | **S-73** (base por posição) | 54,2% das posições do livro estão numa partida real, e o custo é por varredura e não por livro | ✅ medido |
+| — | **medir um segundo livro** | o livro medido é do Dvoretsky, feito de partidas reais — é o melhor caso possível | ← pendente |
 
 A ordem tem uma regra: **medição antes de mudança, e mudança antes de refatoração.** É a
 mesma que as Fases 1 a 6 seguiram, e é o que permitiu à Fase 5 descartar TTA, pesos de classe
@@ -1794,6 +1882,7 @@ Nenhum ficou por falta de tempo.
 | **9** e **10** | fechadas desde 2026-08-09, mais a S-66 e a S-67 documentadas depois (10.7, 10.8) |
 | **11** — o modelo | **feita e reprovada nos próprios critérios**. Ver 11.1 |
 | **12** — a página como lugar de trabalho | **fechada em 2026-08-12** (S-68 a S-71). Não estava em plano nenhum: saiu de uso |
+| **13** — a base de partidas | **código completo em 2026-08-13** (S-72, S-73). Falta medir um segundo livro, que é o que calibra a expectativa |
 
 ### Os quatro itens que a medição desaconselhou
 
