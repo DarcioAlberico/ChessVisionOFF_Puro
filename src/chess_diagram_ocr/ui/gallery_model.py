@@ -13,8 +13,10 @@ arquivo cresceria com uma linha por diagrama visitado, e "visitei" não é "anot
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 from chess_diagram_ocr.gallery import (
     RESERVED_HEADERS,
@@ -24,6 +26,7 @@ from chess_diagram_ocr.gallery import (
     save_annotations,
 )
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
+from chess_diagram_ocr.games_db import DiagramMatch, pair_from_caption
 from chess_diagram_ocr.semantics import compose_fen
 
 __all__ = ["HEADER_FIELDS", "GalleryModel"]
@@ -175,6 +178,55 @@ class GalleryModel:
                 self.annotations.set(entrada.page_index, entrada.diagram_index, replace(anterior, headers=headers))
                 atingidos += 1
         return atingidos
+
+    def apply_matches(self, matches: Sequence[DiagramMatch], *, max_games: int = 5) -> tuple[int, int]:
+        """Preenche com o que a base disse, **só onde está vazio** (S-72).
+
+        Devolve `(diagramas tocados, campos preenchidos)`.
+
+        **Nunca sobrescreve.** É a regra que a S-17 estabeleceu para o lado a jogar e que vale
+        aqui inteira: a base é uma fonte a mais, não a autoridade. Se você digitou `Event` e a
+        base discorda, quem está com o livro na mão é você -- e uma ferramenta que apaga o que
+        a pessoa escreveu deixa de ser usada, com razão.
+
+        **Posição comum não preenche nada.** Acima de `max_games` partidas contendo a mesma
+        colocação, o casamento deixou de identificar *qual* partida: um final de rei e peão
+        aparece em centenas, com número de lance diferente em cada uma. Preencher dali seria
+        inventar procedência -- e procedência inventada é pior que campo vazio, porque o campo
+        vazio ninguém confunde com dado conferido.
+        """
+        tocados = campos = 0
+        for casamento in matches:
+            if casamento.games_matched > max_games:
+                continue
+            anterior = self.annotations.get(*casamento.key)
+            mudancas: dict[str, Any] = {}
+            if anterior.move_number is None:
+                mudancas["move_number"] = casamento.move_number
+            if anterior.side_to_move is None:
+                mudancas["side_to_move"] = casamento.side_to_move
+            novos = {
+                nome: valor
+                for nome, valor in casamento.headers.items()
+                if valor and not anterior.headers.get(nome) and nome not in RESERVED_HEADERS
+            }
+            if novos:
+                mudancas["headers"] = {**anterior.headers, **novos}
+            if not mudancas:
+                continue
+            campos += sum(1 for chave in ("move_number", "side_to_move") if chave in mudancas) + len(novos)
+            tocados += 1
+            self.annotations.update(*casamento.key, filled_from=casamento.game_label, **mudancas)
+        return tocados, campos
+
+    def pending_pairs(self) -> set[tuple[str, str]]:
+        """Os pares de nomes que as legendas do livro declaram, para a busca na base.
+
+        Conjunto e não lista: 178 diagramas do `Secrets of Chess Training` rendem 167 pares
+        distintos, e varrer a base atrás do mesmo par duas vezes custaria o dobro por nada.
+        """
+        pares = {pair_from_caption(entrada.caption) for entrada in self.index.entries}
+        return {par for par in pares if par is not None}
 
     def save(self) -> Path | None:
         """Grava as anotações do livro. `None` quando não há livro aberto."""

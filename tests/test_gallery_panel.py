@@ -12,9 +12,11 @@ import tkinter as tk
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
+from unittest import mock
 
 from chess_diagram_ocr.gallery import GalleryAnnotations, load_annotations
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
+from chess_diagram_ocr.games_db import DiagramMatch
 from chess_diagram_ocr.ui.gallery_model import GalleryModel
 from chess_diagram_ocr.ui.gallery_panel import GalleryPanel
 
@@ -154,6 +156,60 @@ class GalleryPanelTests(unittest.TestCase):
         self.panel.model = GalleryModel()
         self.panel.refresh()
         self.assertEqual(self.panel.position_var.get(), "nenhum diagrama varrido")
+
+    # ------------------------------------------------------------------ a busca na base (S-72)
+
+    def test_sem_legenda_com_nomes_a_busca_nem_abre_a_base(self) -> None:
+        """A base tem 9,7 GB: varrê-la sem ter o que procurar seriam 150 s por nada.
+
+        A base é remendada porque ela não está no repositório: sem isto, o teste passaria
+        nesta máquina e falharia em qualquer outra -- que é a falha que a S-37 existe para
+        não deixar acontecer de novo.
+        """
+        with (
+            mock.patch("chess_diagram_ocr.ui.gallery_panel.default_database_path", return_value=Path("base.pgn")),
+            mock.patch("chess_diagram_ocr.ui.gallery_panel.scan_by_players") as varredura,
+        ):
+            self.panel.search_database()
+        varredura.assert_not_called()
+        self.assertTrue(any("não tem por onde procurar" in m for m in self.status))
+
+    def test_sem_base_no_disco_a_aba_diz_onde_poe_la(self) -> None:
+        with (
+            mock.patch("chess_diagram_ocr.ui.gallery_panel.default_database_path", return_value=None),
+            mock.patch("chess_diagram_ocr.ui.gallery_panel.messagebox.showinfo") as aviso,
+        ):
+            self.panel.search_database()
+        aviso.assert_called_once()
+        self.assertIn("pgn_database", str(aviso.call_args))
+
+    def test_livro_nao_varrido_avisa_em_vez_de_procurar(self) -> None:
+        self.panel.model = GalleryModel()
+        with mock.patch("chess_diagram_ocr.ui.gallery_panel.messagebox.showinfo") as aviso:
+            self.panel.search_database()
+        aviso.assert_called_once()
+
+    def test_casamento_preenche_e_conta_na_barra_de_status(self) -> None:
+        casamento = DiagramMatch(
+            page_index=0,
+            diagram_index=0,
+            move_number=39,
+            side_to_move="b",
+            headers={"White": "Ljubojevic, Ljubomir", "Event": "IBM"},
+            game_label="Ljubojevic x Browne, IBM 1972",
+        )
+        self.panel._search_done([casamento], pares_achados=1)
+        self.assertEqual(self.panel.move_var.get(), "39")
+        self.assertEqual(self.panel.side_var.get(), "b")
+        self.assertEqual(self.panel.header_vars["White"].get(), "Ljubojevic, Ljubomir")
+        self.assertIn("IBM 1972", self.panel.origin_var.get())
+        self.assertTrue(any("Nada foi sobrescrito" in m for m in self.status))
+
+    def test_a_procedencia_some_ao_ir_para_um_diagrama_que_a_base_nao_tocou(self) -> None:
+        casamento = DiagramMatch(0, 0, 39, "b", {"Event": "IBM"}, game_label="Ljubojevic x Browne")
+        self.panel._search_done([casamento], pares_achados=1)
+        self.panel._go(1)
+        self.assertEqual(self.panel.origin_var.get(), "")
 
     # ------------------------------------------------------------------ a legenda copiável
 

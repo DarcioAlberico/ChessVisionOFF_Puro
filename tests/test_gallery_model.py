@@ -8,6 +8,7 @@ from pathlib import Path
 
 from chess_diagram_ocr.gallery import DiagramAnnotation, GalleryAnnotations, load_annotations
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
+from chess_diagram_ocr.games_db import DiagramMatch
 from chess_diagram_ocr.ui.gallery_model import HEADER_FIELDS, GalleryModel
 
 PLACEMENT = "4k3/8/8/8/8/8/8/4K3"
@@ -189,6 +190,67 @@ class DerivadosTests(unittest.TestCase):
         modelo = _modelo((0, 0), (5, 0))
         modelo.go_to(1)
         self.assertEqual(modelo.describe_position(), "diagrama 2 de 2 — página 6")
+
+
+class BaseDePartidasTests(unittest.TestCase):
+    """O preenchimento pela base (S-72): ele completa, e nunca sobrescreve."""
+
+    def _casamento(self, **campos: object) -> DiagramMatch:
+        padrao: dict[str, object] = {
+            "page_index": 0,
+            "diagram_index": 0,
+            "move_number": 39,
+            "side_to_move": "b",
+            "headers": {"White": "Ljubojevic, Ljubomir", "Black": "Browne, Walter Shawn", "Event": "IBM"},
+            "game_label": "Ljubojevic x Browne, IBM 1972",
+        }
+        padrao.update(campos)
+        return DiagramMatch(**padrao)  # type: ignore[arg-type]
+
+    def test_preenche_lance_vez_e_headers_vazios(self) -> None:
+        modelo = _modelo((0, 0))
+        tocados, campos = modelo.apply_matches([self._casamento()])
+        anotacao = modelo.current_annotation
+        self.assertEqual((tocados, campos), (1, 5))
+        self.assertEqual(anotacao.move_number, 39)
+        self.assertEqual(anotacao.side_to_move, "b")
+        self.assertEqual(anotacao.headers["Event"], "IBM")
+        self.assertIn("Ljubojevic", anotacao.filled_from)
+
+    def test_o_que_a_pessoa_digitou_fica(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.edit(move_number=12, headers={"Event": "Amsterdam"})
+        modelo.apply_matches([self._casamento()])
+        anotacao = modelo.current_annotation
+        self.assertEqual(anotacao.move_number, 12, "o lance digitado não pode ser sobrescrito")
+        self.assertEqual(anotacao.headers["Event"], "Amsterdam")
+        self.assertEqual(anotacao.headers["White"], "Ljubojevic, Ljubomir", "o campo vazio, esse sim, preenche")
+
+    def test_posicao_comum_nao_preenche_nada(self) -> None:
+        """Casar com 40 partidas não identifica partida nenhuma -- ver `apply_matches`."""
+        modelo = _modelo((0, 0))
+        tocados, campos = modelo.apply_matches([self._casamento(games_matched=40)])
+        self.assertEqual((tocados, campos), (0, 0))
+        self.assertTrue(modelo.current_annotation.is_empty)
+
+    def test_nada_a_preencher_nao_conta_diagrama(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.apply_matches([self._casamento()])
+        tocados, campos = modelo.apply_matches([self._casamento()])
+        self.assertEqual((tocados, campos), (0, 0), "rodar duas vezes não inventa mudança")
+
+    def test_pares_pendentes_saem_das_legendas_sem_repetir(self) -> None:
+        modelo = GalleryModel(
+            index=GalleryIndex(
+                entries=[
+                    GalleryEntry(0, 0, PLACEMENT, caption="Coull - Stanciu"),
+                    GalleryEntry(1, 0, PLACEMENT, caption="Coull - Stanciu\noutra linha"),
+                    GalleryEntry(2, 0, PLACEMENT, caption="Diagrama 12"),
+                ]
+            ),
+            annotations=GalleryAnnotations(),
+        )
+        self.assertEqual(modelo.pending_pairs(), {("coull", "stanciu")})
 
 
 class GravacaoTests(unittest.TestCase):

@@ -91,9 +91,22 @@ class DiagramAnnotation:
     headers: dict[str, str] = field(default_factory=dict)
     """Headers de PGN extras. Aplicados por último: o que a pessoa escreve vence o inferido."""
 
+    filled_from: str = ""
+    """A partida da base que preencheu esta anotação, quando foi a base que preencheu (S-72).
+
+    **Guarda a evidência, e não só a origem** -- `"Kasparov, Garry x Karpov, Anatoly,
+    World-ch30 1984"` em vez de `"base"`. É o mesmo desenho do `side_to_move_evidence` da
+    S-16, e pela mesma razão: quem discorda precisa saber *de quê* está discordando. Vazio é o
+    normal, e significa que quem preencheu foi gente.
+    """
+
     @property
     def is_empty(self) -> bool:
-        """Nada foi declarado. Anotação vazia não é gravada -- ver o docstring do módulo."""
+        """Nada foi declarado. Anotação vazia não é gravada -- ver o docstring do módulo.
+
+        `filled_from` não conta: ele descreve de onde vieram os outros campos, e uma anotação
+        que só tivesse ele seria a procedência de coisa nenhuma.
+        """
         return (
             self.move_number is None
             and self.side_to_move is None
@@ -111,6 +124,8 @@ class DiagramAnnotation:
             dados["lichess_link"] = bool(self.lichess_link)
         if self.headers:
             dados["headers"] = dict(self.headers)
+        if self.filled_from:
+            dados["filled_from"] = self.filled_from
         return dados
 
     @classmethod
@@ -122,6 +137,7 @@ class DiagramAnnotation:
             side_to_move=_lado(dados.get("side_to_move")),
             lichess_link=_tri_estado(dados.get("lichess_link")),
             headers=_headers(dados.get("headers")),
+            filled_from=str(dados.get("filled_from") or ""),
         )
 
 

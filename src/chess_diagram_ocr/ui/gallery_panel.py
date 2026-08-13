@@ -33,6 +33,13 @@ from PIL import Image, ImageTk
 from chess_diagram_ocr.config import DEFAULT_READING_ORDER
 from chess_diagram_ocr.gallery import load_annotations
 from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
+from chess_diagram_ocr.games_db import (
+    DEFAULT_DATABASE_DIR,
+    DiagramMatch,
+    default_database_path,
+    match_entries,
+    scan_by_players,
+)
 from chess_diagram_ocr.service import OcrService
 
 from .gallery_model import HEADER_FIELDS, GalleryModel
@@ -98,6 +105,8 @@ class GalleryPanel(ttk.Frame):
         self.header_vars: dict[str, tk.StringVar] = {nome: tk.StringVar(value="") for nome in HEADER_FIELDS}
         self.free_name_var = tk.StringVar(value="")
         self.free_value_var = tk.StringVar(value="")
+        self.origin_var = tk.StringVar(value="")
+        """A partida da base que preencheu este diagrama, quando foi ela (S-72)."""
 
         self._build()
         self.refresh()
@@ -111,6 +120,13 @@ class GalleryPanel(ttk.Frame):
         self.btn_scan.pack(side=tk.LEFT)
         self.btn_cancel = ttk.Button(topo, text="Cancelar", command=self.cancel_scan, state=tk.DISABLED)
         self.btn_cancel.pack(side=tk.LEFT, padx=6)
+        self.btn_games = ttk.Button(topo, text="Buscar na base", command=self.search_database)
+        self.btn_games.pack(side=tk.LEFT, padx=6)
+        Tooltip(self.btn_games).set_text(
+            "Procura na base de partidas os diagramas cuja legenda traz os jogadores, e "
+            "preenche lance, vez e headers -- só onde estiver vazio. Uma passada pela base, "
+            "e nada sai da máquina."
+        )
         ttk.Label(topo, textvariable=self.scan_var).pack(side=tk.LEFT, padx=10)
 
         corpo = ttk.Frame(self)
@@ -215,8 +231,15 @@ class GalleryPanel(ttk.Frame):
         ttk.Entry(lateral, textvariable=self.free_value_var, width=26).grid(row=livre + 2, column=1, sticky="we", pady=1)
         ttk.Button(lateral, text="Gravar", command=self._commit_free_header).grid(row=livre + 3, column=1, sticky="e")
 
+        # A procedencia da base fica **junto dos campos que ela preencheu**, e nao na barra de
+        # status: a barra fala do ultimo gesto, e esta pergunta ("quem preencheu isto?") se faz
+        # ao chegar num diagrama, que pode ser dias depois da busca.
+        ttk.Label(lateral, textvariable=self.origin_var, wraplength=220, foreground="#2e7d32").grid(
+            row=livre + 4, column=0, columnspan=2, sticky="w", pady=(8, 0)
+        )
+
         aplicar = ttk.Button(lateral, text="Aplicar a todos", command=self.apply_to_all)
-        aplicar.grid(row=livre + 4, column=0, columnspan=2, sticky="we", pady=(10, 0))
+        aplicar.grid(row=livre + 5, column=0, columnspan=2, sticky="we", pady=(10, 0))
         Tooltip(aplicar).set_text(
             "Copia os headers preenchidos deste diagrama para todos os outros do livro. "
             "Campo em branco não apaga o que os outros têm."
@@ -309,6 +332,82 @@ class GalleryPanel(ttk.Frame):
         self.btn_cancel.configure(state=tk.DISABLED)
         self.scan_var.set("falhou")
         messagebox.showerror("Galeria", f"Não foi possível varrer o livro:\n{exc}")
+
+    # ------------------------------------------------------------------- busca na base (S-72)
+
+    def search_database(self) -> None:
+        """Procura na base de partidas o que as legendas deste livro nomeiam.
+
+        **Uma passada por livro, não por diagrama.** A base tem 9,7 GB e ler tudo custa ~150 s;
+        os pares de nomes vão todos juntos, e a resposta sai para os 178 de uma vez. Perguntar
+        por diagrama custaria os mesmos 150 s cada -- é a economia da S-61, aqui de novo.
+        """
+        if self._scanning:
+            return
+        if self.model.is_empty:
+            messagebox.showinfo("Base de partidas", "Varra o livro antes: a busca usa as legendas dos diagramas.")
+            return
+        base = default_database_path()
+        if base is None:
+            messagebox.showinfo(
+                "Base de partidas",
+                f"Nenhum arquivo .pgn em {DEFAULT_DATABASE_DIR}.\n\n"
+                "A base é sua e fica fora do repositório -- ponha um .pgn nessa pasta.",
+            )
+            return
+        pares = self.model.pending_pairs()
+        if not pares:
+            self._on_status("Nenhuma legenda deste livro traz os dois jogadores; a base não tem por onde procurar.")
+            return
+
+        self._scanning = True
+        self._cancel.clear()
+        self.btn_scan.configure(state=tk.DISABLED)
+        self.btn_games.configure(state=tk.DISABLED)
+        self.btn_cancel.configure(state=tk.NORMAL)
+        self.scan_var.set(f"procurando {len(pares)} par(es) na base...")
+        threading.Thread(target=self._search_worker, args=(base, pares), daemon=True).start()
+
+    def _search_worker(self, base: Path, pares: set[tuple[str, str]]) -> None:
+        try:
+            partidas = scan_by_players(
+                base,
+                pares,
+                progress=self._search_progress,
+                cancel=self._cancel,
+            )
+            casamentos = match_entries(self.model.index.entries, partidas)
+            self.after(0, partial(self._search_done, casamentos, len(partidas)))
+        except Exception as exc:  # noqa: BLE001 - a base e de terceiro e o arquivo e enorme
+            logger.exception("Busca na base falhou.")
+            self.after(0, partial(self._search_failed, exc))
+
+    def _search_progress(self, lidas: int) -> None:
+        """Vem da thread da busca; a `StringVar` só pode ser tocada pelo laço do Tk."""
+        self.after(0, lambda: self.scan_var.set(f"base: {lidas / 1e6:.1f} M partidas lidas..."))
+
+    def _search_done(self, casamentos: list[DiagramMatch], pares_achados: int) -> None:
+        self._scanning = False
+        self.btn_scan.configure(state=tk.NORMAL)
+        self.btn_games.configure(state=tk.NORMAL)
+        self.btn_cancel.configure(state=tk.DISABLED)
+
+        tocados, campos = self.model.apply_matches(casamentos)
+        self._persist()
+        self.refresh(request_page=False)
+        self.scan_var.set(f"{len(casamentos)} diagrama(s) casado(s)")
+        self._on_status(
+            f"Base: {pares_achados} par(es) com partida, {len(casamentos)} diagrama(s) casado(s), "
+            f"{campos} campo(s) preenchido(s) em {tocados} diagrama(s). Nada foi sobrescrito."
+        )
+
+    def _search_failed(self, exc: Exception) -> None:
+        self._scanning = False
+        self.btn_scan.configure(state=tk.NORMAL)
+        self.btn_games.configure(state=tk.NORMAL)
+        self.btn_cancel.configure(state=tk.DISABLED)
+        self.scan_var.set("falhou")
+        messagebox.showerror("Base de partidas", f"Não foi possível ler a base:\n{exc}")
 
     # ------------------------------------------------------------------------ ciclo de vida
 
@@ -464,6 +563,7 @@ class GalleryPanel(ttk.Frame):
         self.link_var.set("" if anotacao.lichess_link is None else ("sim" if anotacao.lichess_link else "não"))
         for nome, variavel in self.header_vars.items():
             variavel.set(anotacao.headers.get(nome, ""))
+        self.origin_var.set(f"da base: {anotacao.filled_from}" if anotacao.filled_from else "")
         self._set_caption(atual.caption if atual else "")
 
         if request_page and atual is not None:
