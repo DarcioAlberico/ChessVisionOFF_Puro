@@ -129,25 +129,26 @@ class DiagramPosition:
         if annotation is None or (annotation.side_to_move is None and annotation.move_number is None):
             return self.full_fen
 
-        lado = self.side_to_move
-        if annotation.side_to_move is not None:
-            lado = SideToMove(
-                color=chess.WHITE if annotation.side_to_move == "w" else chess.BLACK,
-                source="manual",
-                reason="declarado na galeria",
-            )
+        lado = self.annotated_side_to_move(annotation)
         if lado is None:
             lado = SideToMove(color=chess.WHITE, source="default")
         return compose_fen(self.fen, lado, fullmove=annotation.move_number or 1)
 
     def annotated_side_to_move(self, annotation: DiagramAnnotation | None) -> SideToMove | None:
-        """O lado que vai ao header, já com a declaração da galeria por cima (S-67)."""
+        """O lado que vai ao header, já com a declaração da galeria por cima (S-67).
+
+        **`"manual"` só quando foi mesmo uma pessoa.** Depois da S-72 a galeria também é
+        preenchida pela base de partidas, e marcar aquilo como declarado à mão seria dizer que
+        alguém conferiu -- exatamente o tipo de procedência inventada que a Fase 3 existe para
+        eliminar. Quando o campo veio da base, o header diz `database` e carrega a partida.
+        """
         if annotation is None or annotation.side_to_move is None:
             return self.side_to_move
+        da_base = "side_to_move" in annotation.filled_fields
         return SideToMove(
             color=chess.WHITE if annotation.side_to_move == "w" else chess.BLACK,
-            source="manual",
-            reason="declarado na galeria",
+            source="database" if da_base else "manual",
+            reason=f"casou com {annotation.filled_from}" if da_base else "declarado na galeria",
         )
 
     @property
@@ -755,6 +756,11 @@ def build_pgn_games(
             # jogada -- aqueles mudam pelos campos proprios, que sabem recompor a posicao.
             for nome, valor in annotation.headers.items():
                 game.headers[nome] = valor
+            if annotation.filled_from:
+                # A evidencia do casamento (S-72). Sem ela, `[White "Ljubojevic, Ljubomir"]`
+                # num PGN nao diz se alguem digitou aquilo ou se as 64 casas bateram com uma
+                # partida registrada -- e as duas coisas valem muito diferente.
+                game.headers["GameSource"] = annotation.filled_from
 
         quer_link = annotation.lichess_link if annotation is not None else None
         if quer_link is None:

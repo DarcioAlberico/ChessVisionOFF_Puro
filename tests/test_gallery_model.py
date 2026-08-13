@@ -239,6 +239,48 @@ class BaseDePartidasTests(unittest.TestCase):
         tocados, campos = modelo.apply_matches([self._casamento()])
         self.assertEqual((tocados, campos), (0, 0), "rodar duas vezes não inventa mudança")
 
+    def test_registra_quais_campos_vieram_da_base(self) -> None:
+        """É o que faz o PGN dizer `database` em vez de `manual` -- ver `annotated_side_to_move`."""
+        modelo = _modelo((0, 0))
+        modelo.apply_matches([self._casamento()])
+        campos = modelo.current_annotation.filled_fields
+        self.assertIn("side_to_move", campos)
+        self.assertIn("move_number", campos)
+        self.assertIn("header:Event", campos)
+
+    def test_corrigir_a_vez_a_mao_tira_ela_da_procedencia_da_base(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.apply_matches([self._casamento()])
+        modelo.edit(side_to_move="w")
+        anotacao = modelo.current_annotation
+        self.assertNotIn("side_to_move", anotacao.filled_fields)
+        self.assertIn("move_number", anotacao.filled_fields, "o lance não foi tocado, e continua da base")
+        self.assertTrue(anotacao.filled_from, "a evidência fica enquanto sobrar campo dela")
+
+    def test_corrigir_um_header_nao_derruba_a_procedencia_dos_outros(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.apply_matches([self._casamento()])
+        modelo.set_header("Event", "Amsterdam")
+        campos = modelo.current_annotation.filled_fields
+        self.assertNotIn("header:Event", campos)
+        self.assertIn("header:White", campos)
+
+    def test_sem_campo_nenhum_da_base_a_evidencia_some(self) -> None:
+        """Uma evidência que não descreve mais nenhum campo é procedência de coisa alguma."""
+        modelo = _modelo((0, 0))
+        modelo.apply_matches([self._casamento(headers={})])
+        modelo.edit(side_to_move="w", move_number=3)
+        self.assertEqual(modelo.current_annotation.filled_fields, ())
+        self.assertEqual(modelo.current_annotation.filled_from, "")
+
+    def test_rodar_a_busca_de_novo_nao_apaga_a_procedencia_anterior(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.apply_matches([self._casamento(headers={"Event": "IBM"})])
+        modelo.apply_matches([self._casamento(headers={"Site": "Amsterdam"})])
+        campos = modelo.current_annotation.filled_fields
+        self.assertIn("header:Event", campos)
+        self.assertIn("header:Site", campos)
+
     def test_pares_pendentes_saem_das_legendas_sem_repetir(self) -> None:
         modelo = GalleryModel(
             index=GalleryIndex(

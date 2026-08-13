@@ -179,6 +179,38 @@ class ExportacaoTests(unittest.TestCase):
         self.assertIn('[SideToMove "pretas"]', pgn)
         self.assertIn('[SideToMoveSource "manual"]', pgn)
 
+    def test_vez_vinda_da_base_nao_sai_como_declarada_a_mao(self) -> None:
+        """`manual` significa "uma pessoa conferiu". A base não é uma pessoa (S-72).
+
+        Marcá-la assim seria procedência inventada -- o erro que a Fase 3 inteira existe para
+        eliminar, agora com aparência de dado conferido.
+        """
+        pgn = self._pgn(
+            annotations={
+                (0, 0): DiagramAnnotation(
+                    side_to_move="b",
+                    filled_from="Ljubojevic x Browne, IBM 1972",
+                    filled_fields=("side_to_move",),
+                )
+            }
+        )
+        self.assertIn('[SideToMoveSource "database"]', pgn)
+        self.assertNotIn('[SideToMoveSource "manual"]', pgn)
+        self.assertIn('[GameSource "Ljubojevic x Browne, IBM 1972"]', pgn)
+
+    def test_vez_corrigida_a_mao_depois_da_base_sai_como_manual(self) -> None:
+        """O campo saiu de `filled_fields` ao ser editado -- ver `GalleryModel.edit`."""
+        pgn = self._pgn(
+            annotations={
+                (0, 0): DiagramAnnotation(
+                    side_to_move="b",
+                    filled_from="Ljubojevic x Browne, IBM 1972",
+                    filled_fields=("move_number",),
+                )
+            }
+        )
+        self.assertIn('[SideToMoveSource "manual"]', pgn)
+
     def test_header_da_pessoa_vence_o_inferido(self) -> None:
         pgn = self._pgn(annotations={(0, 0): DiagramAnnotation(headers={"White": "Tal", "Site": "Riga"})})
         self.assertIn('[White "Tal"]', pgn)

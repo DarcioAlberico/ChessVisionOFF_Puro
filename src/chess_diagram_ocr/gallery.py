@@ -100,6 +100,20 @@ class DiagramAnnotation:
     normal, e significa que quem preencheu foi gente.
     """
 
+    filled_fields: tuple[str, ...] = ()
+    """Quais campos vieram da base, e **não** de uma pessoa.
+
+    Sem isto o PGN mentiria com cara de procedência: a exportação marca a vez a jogar declarada
+    na galeria como `[SideToMoveSource "manual"]`, que significa "uma pessoa conferiu e
+    declarou" -- e depois da S-72 ela pode ter vindo de um casamento com a base, que é outra
+    coisa e vale outro tanto. É o mesmo erro que a S-19 evitou ao não gravar `w` no
+    `labels.csv` de quem não tem resposta.
+
+    Por campo, e não uma bandeira por anotação, porque os dois se misturam no mesmo diagrama:
+    a base preenche o lance e a pessoa corrige a vez. Editar um campo à mão o tira daqui --
+    ver `GalleryModel.edit`.
+    """
+
     @property
     def is_empty(self) -> bool:
         """Nada foi declarado. Anotação vazia não é gravada -- ver o docstring do módulo.
@@ -126,6 +140,8 @@ class DiagramAnnotation:
             dados["headers"] = dict(self.headers)
         if self.filled_from:
             dados["filled_from"] = self.filled_from
+        if self.filled_fields:
+            dados["filled_fields"] = list(self.filled_fields)
         return dados
 
     @classmethod
@@ -138,6 +154,7 @@ class DiagramAnnotation:
             lichess_link=_tri_estado(dados.get("lichess_link")),
             headers=_headers(dados.get("headers")),
             filled_from=str(dados.get("filled_from") or ""),
+            filled_fields=_campos(dados.get("filled_fields")),
         )
 
 
@@ -157,6 +174,13 @@ def _lado(valor: Any) -> str | None:
 
 def _tri_estado(valor: Any) -> bool | None:
     return None if valor is None else bool(valor)
+
+
+def _campos(valor: Any) -> tuple[str, ...]:
+    """Os nomes de campo preenchidos pela base, saneados. Qualquer outra coisa vira vazio."""
+    if not isinstance(valor, (list, tuple)):
+        return ()
+    return tuple(str(item).strip() for item in valor if str(item).strip())
 
 
 def _headers(valor: Any) -> dict[str, str]:

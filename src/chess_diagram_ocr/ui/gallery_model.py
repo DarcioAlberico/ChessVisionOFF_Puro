@@ -29,7 +29,7 @@ from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
 from chess_diagram_ocr.games_db import DiagramMatch, pair_from_caption
 from chess_diagram_ocr.semantics import compose_fen
 
-__all__ = ["HEADER_FIELDS", "GalleryModel"]
+__all__ = ["FIELD_LABELS", "HEADER_FIELDS", "GalleryModel", "describe_origin"]
 
 HEADER_FIELDS: tuple[str, ...] = (
     "White",
@@ -47,6 +47,24 @@ São os oito que um diagrama de livro costuma ter declarável. Qualquer outro he
 possível pelo par livre da tela -- `DiagramAnnotation.headers` é um dicionário, não um
 conjunto fechado.
 """
+
+
+FIELD_LABELS = {"move_number": "lance", "side_to_move": "vez"}
+"""Como cada campo da S-72 aparece na linha de procedência. Header vira o nome dele."""
+
+
+def describe_origin(annotation: DiagramAnnotation) -> str:
+    """A linha verde da aba: **o que** veio da base, e de que partida.
+
+    Dizer só "da base" seria insuficiente depois que a pessoa começa a corrigir: numa anotação
+    onde a base deu o lance e a mão deu a vez, "da base" atribuiria as duas coisas a ela.
+    """
+    if not annotation.filled_from or not annotation.filled_fields:
+        return ""
+    campos = [
+        FIELD_LABELS.get(campo, campo.removeprefix("header:")) for campo in annotation.filled_fields
+    ]
+    return f"da base ({', '.join(campos)}): {annotation.filled_from}"
 
 
 @dataclass
@@ -130,10 +148,26 @@ class GalleryModel:
         return DiagramAnnotation() if atual is None else self.annotations.get(*atual.key)
 
     def edit(self, **campos: object) -> DiagramAnnotation | None:
-        """Muda campos da anotação do diagrama atual. `None` se não há diagrama."""
+        """Muda campos da anotação do diagrama atual. `None` se não há diagrama.
+
+        **Editar à mão tira o campo da procedência da base** (S-72). O `filled_fields` é o que
+        faz o PGN dizer `[SideToMoveSource "database"]` em vez de `"manual"`; deixá-lo intacto
+        depois de a pessoa corrigir a vez faria o header atribuir à base uma resposta que ela
+        não deu -- e o header existe justamente para não haver esse tipo de dúvida.
+        """
         atual = self.current
         if atual is None:
             return None
+        anterior = self.annotations.get(atual.page_index, atual.diagram_index)
+        if anterior.filled_fields and "filled_fields" not in campos:
+            restantes = tuple(nome for nome in anterior.filled_fields if nome not in campos)
+            if restantes != anterior.filled_fields:
+                campos = {
+                    **campos,
+                    "filled_fields": restantes,
+                    # Sem campo nenhum da base sobrando, a evidência não descreve mais nada.
+                    "filled_from": anterior.filled_from if restantes else "",
+                }
         return self.annotations.update(atual.page_index, atual.diagram_index, **campos)
 
     def set_header(self, name: str, value: str) -> DiagramAnnotation | None:
@@ -145,12 +179,23 @@ class GalleryModel:
         if not nome or nome in RESERVED_HEADERS:
             return self.current_annotation
 
-        headers = dict(self.current_annotation.headers)
+        anotacao = self.current_annotation
+        headers = dict(anotacao.headers)
         texto = value.strip()
         if texto:
             headers[nome] = texto
         else:
             headers.pop(nome, None)
+
+        # Editar *este* header o tira da procedência da base, e deixa os outros como estavam --
+        # a base pode ter preenchido `Event` e a pessoa corrigir só o `White`.
+        restantes = tuple(campo for campo in anotacao.filled_fields if campo != f"header:{nome}")
+        if restantes != anotacao.filled_fields:
+            return self.edit(
+                headers=headers,
+                filled_fields=restantes,
+                filled_from=anotacao.filled_from if restantes else "",
+            )
         return self.edit(headers=headers)
 
     def apply_headers_to_all(self, names: tuple[str, ...] = HEADER_FIELDS) -> int:
@@ -216,7 +261,18 @@ class GalleryModel:
                 continue
             campos += sum(1 for chave in ("move_number", "side_to_move") if chave in mudancas) + len(novos)
             tocados += 1
-            self.annotations.update(*casamento.key, filled_from=casamento.game_label, **mudancas)
+            preenchidos: tuple[str, ...] = tuple(
+                chave for chave in ("move_number", "side_to_move") if chave in mudancas
+            )
+            preenchidos += tuple(f"header:{nome}" for nome in sorted(novos))
+            self.annotations.update(
+                *casamento.key,
+                filled_from=casamento.game_label,
+                # A união com o que já havia: rodar a busca duas vezes, ou rodar a por nome
+                # depois da por posição, não pode apagar a procedência da primeira.
+                filled_fields=tuple(dict.fromkeys((*anterior.filled_fields, *preenchidos))),
+                **mudancas,
+            )
         return tocados, campos
 
     def pending_pairs(self) -> set[tuple[str, str]]:

@@ -42,7 +42,7 @@ from chess_diagram_ocr.games_db import (
 )
 from chess_diagram_ocr.service import OcrService
 
-from .gallery_model import HEADER_FIELDS, GalleryModel
+from .gallery_model import HEADER_FIELDS, GalleryModel, describe_origin
 from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
@@ -563,7 +563,7 @@ class GalleryPanel(ttk.Frame):
         self.link_var.set("" if anotacao.lichess_link is None else ("sim" if anotacao.lichess_link else "não"))
         for nome, variavel in self.header_vars.items():
             variavel.set(anotacao.headers.get(nome, ""))
-        self.origin_var.set(f"da base: {anotacao.filled_from}" if anotacao.filled_from else "")
+        self.origin_var.set(describe_origin(anotacao))
         self._set_caption(atual.caption if atual else "")
 
         if request_page and atual is not None:
