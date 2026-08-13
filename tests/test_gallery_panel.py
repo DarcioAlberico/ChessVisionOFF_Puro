@@ -10,6 +10,7 @@ from __future__ import annotations
 import tempfile
 import tkinter as tk
 import unittest
+from dataclasses import dataclass
 from pathlib import Path
 
 from chess_diagram_ocr.gallery import GalleryAnnotations, load_annotations
@@ -153,6 +154,49 @@ class GalleryPanelTests(unittest.TestCase):
         self.panel.model = GalleryModel()
         self.panel.refresh()
         self.assertEqual(self.panel.position_var.get(), "nenhum diagrama varrido")
+
+    # ------------------------------------------------------------------ a legenda copiável
+
+    def test_legenda_aparece_inteira(self) -> None:
+        """Ela era cortada em 220 caracteres, e o que sobrava do corte era o fim do texto --
+        onde costumam estar o segundo jogador e o ano."""
+        longa = "Coull - Stanciu\n" + ("comentário do exercício. " * 40)
+        self.panel.model.index.entries[0] = GalleryEntry(0, 0, PLACEMENT, caption=longa)
+        self.panel.refresh(request_page=False)
+        self.assertEqual(self.panel.caption(), longa.strip())
+        self.assertGreater(len(self.panel.caption()), 220)
+
+    def test_copiar_legenda_poe_o_texto_na_area_de_transferencia(self) -> None:
+        self.panel.model.index.entries[0] = GalleryEntry(0, 0, PLACEMENT, caption="Coull - Stanciu")
+        self.panel.refresh(request_page=False)
+        self.panel.copy_caption()
+        self.assertEqual(self.panel.clipboard_get(), "Coull - Stanciu")
+
+    def test_copiar_legenda_vazia_avisa_em_vez_de_copiar_nada(self) -> None:
+        self.panel.copy_caption()
+        self.assertTrue(any("não tem legenda" in mensagem for mensagem in self.status))
+
+    def test_a_legenda_nao_aceita_edicao_mas_aceita_copia(self) -> None:
+        """Ela é texto de leitura. `state=DISABLED` custaria a seleção; o crivo é por tecla."""
+        self.assertEqual(self.panel._reject_caption_edit(_Tecla(keysym="a")), "break")
+        self.assertIsNone(self.panel._reject_caption_edit(_Tecla(keysym="c", state=0x0004)))
+        self.assertIsNone(self.panel._reject_caption_edit(_Tecla(keysym="Down")))
+
+    def test_trocar_de_diagrama_troca_a_legenda(self) -> None:
+        self.panel.model.index.entries[0] = GalleryEntry(0, 0, PLACEMENT, caption="primeira")
+        self.panel.model.index.entries[1] = GalleryEntry(4, 0, PLACEMENT, caption="segunda")
+        self.panel.refresh(request_page=False)
+        self.assertEqual(self.panel.caption(), "primeira")
+        self.panel._go(1)
+        self.assertEqual(self.panel.caption(), "segunda")
+
+
+@dataclass
+class _Tecla:
+    """O bastante de um `<Key>` para o crivo. O Tk não deixa construir um `tk.Event` útil."""
+
+    keysym: str
+    state: int = 0
 
 
 if __name__ == "__main__":

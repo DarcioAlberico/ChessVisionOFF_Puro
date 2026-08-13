@@ -46,6 +46,14 @@ BOARD_VIEW_SIZE = 420
 """Lado do recorte na tela. Fixo: a galeria é para percorrer, e um tamanho que muda a cada
 diagrama faria a imagem pular sob o ponteiro a cada avanço."""
 
+CAPTION_LINES = 8
+"""Altura da legenda em linhas. O resto rola -- e **nada é cortado**.
+
+Ela era um `Label` com `caption[:220]`, o que bastava enquanto ela fosse só pista de contexto.
+Deixou de bastar quando o texto passou a ser matéria-prima: o que se copia de uma legenda
+truncada é uma legenda truncada, e o pedaço que falta costuma ser justamente o nome do segundo
+jogador ou o ano."""
+
 LINK_CHOICES = (("padrão", ""), ("com link", "sim"), ("sem link", "não"))
 """Tri-estado na tela, igual ao do arquivo. "padrão" é o que a exportação decidir."""
 
@@ -121,11 +129,71 @@ class GalleryPanel(ttk.Frame):
         ttk.Button(navegacao, text="próximo >", command=lambda: self._go(1)).pack(side=tk.LEFT, padx=4)
         ttk.Button(navegacao, text=">>", width=4, command=lambda: self._go(-1, absolute=True)).pack(side=tk.LEFT)
 
-        self.caption_var = tk.StringVar(value="")
-        ttk.Label(centro, textvariable=self.caption_var, wraplength=BOARD_VIEW_SIZE, justify=tk.LEFT).pack(pady=4)
+        self._build_caption(centro)
 
         self._build_side_frame(corpo)
         self._build_footer()
+
+    def _build_caption(self, parent: tk.Misc) -> None:
+        """A legenda impressa, inteira e **selecionável**.
+
+        Ela é a fonte do que a pessoa digita nos campos ao lado -- o nome dos jogadores, o
+        evento, o lance --, e enquanto foi um `Label` era a única coisa da tela que não se
+        podia aproveitar: quem via "Coull - Stanciu" ali tinha de redigitá-lo à mão no campo
+        `Black`. Agora ela se seleciona com o mouse, copia com `Ctrl+C`, e tem um botão para
+        quem quer a legenda toda de uma vez.
+        """
+        moldura = ttk.Frame(parent)
+        moldura.pack(fill=tk.BOTH, expand=True, pady=4)
+
+        self.caption_text = tk.Text(
+            moldura,
+            height=CAPTION_LINES,
+            wrap=tk.WORD,
+            relief=tk.FLAT,
+            highlightthickness=0,
+            cursor="xterm",
+        )
+        fundo, frente = self._caption_colors()
+        if fundo:
+            self.caption_text.configure(background=fundo)
+        if frente:
+            self.caption_text.configure(foreground=frente)
+        self.caption_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        barra = ttk.Scrollbar(moldura, orient=tk.VERTICAL, command=self.caption_text.yview)
+        barra.pack(side=tk.LEFT, fill=tk.Y)
+        self.caption_text.configure(yscrollcommand=barra.set)
+        self.caption_text.bind("<Key>", self._reject_caption_edit)
+
+        ttk.Button(parent, text="Copiar legenda", command=self.copy_caption).pack(pady=(0, 4))
+
+    def _caption_colors(self) -> tuple[str, str]:
+        """Fundo e frente vindos do tema, e não hexadecimal fixo -- a mesma razão da S-65.
+
+        Metade dos 30 temas do `ttkbootstrap` é escura, e um `tk.Text` nasce branco: num tema
+        escuro ele seria um retângulo branco no meio da janela. Sem tema resolvido, devolve
+        vazio e o Tk usa o padrão dele, que é o que se quer numa instalação sem a biblioteca.
+        """
+        estilo = ttk.Style()
+        return (
+            str(estilo.lookup("TFrame", "background") or ""),
+            str(estilo.lookup("TLabel", "foreground") or ""),
+        )
+
+    def _reject_caption_edit(self, event: tk.Event) -> str | None:
+        """Deixa navegar e copiar; recusa qualquer tecla que editaria.
+
+        `state=tk.DISABLED` seria mais curto e é o caminho errado: o widget desabilitado
+        também recusa a seleção por teclado e o tema o pinta de cinza-apagado, e o que se
+        quer aqui é um texto **de leitura**, não um campo desligado.
+        """
+        # `event.state` chega como int no Windows e pode chegar como string em outros Tk.
+        modificadores = event.state if isinstance(event.state, int) else 0
+        if modificadores & 0x0004 and event.keysym.lower() in {"c", "a", "insert"}:
+            return None
+        if event.keysym in {"Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next", "Shift_L", "Shift_R"}:
+            return None
+        return "break"
 
     def _build_side_frame(self, parent: tk.Misc) -> None:
         lateral = ttk.LabelFrame(parent, text="Headers do PGN", padding=8)
@@ -355,6 +423,20 @@ class GalleryPanel(ttk.Frame):
         self._persist()
         self._on_status(f"Headers aplicados a {atingidos} outro(s) diagrama(s).")
 
+    def caption(self) -> str:
+        """A legenda como está na tela. É por aqui que o teste a lê, sem tocar no widget."""
+        return self.caption_text.get("1.0", tk.END).strip()
+
+    def copy_caption(self) -> None:
+        """Copia a legenda inteira. Nada sai da máquina -- é a área de transferência local."""
+        texto = self.caption()
+        if not texto:
+            self._on_status("Este diagrama não tem legenda para copiar.")
+            return
+        self.clipboard_clear()
+        self.clipboard_append(texto)
+        self._on_status("Legenda copiada.")
+
     def copy_link(self) -> None:
         url = self.model.lichess_url()
         if not url:
@@ -382,7 +464,7 @@ class GalleryPanel(ttk.Frame):
         self.link_var.set("" if anotacao.lichess_link is None else ("sim" if anotacao.lichess_link else "não"))
         for nome, variavel in self.header_vars.items():
             variavel.set(anotacao.headers.get(nome, ""))
-        self.caption_var.set((atual.caption if atual else "")[:220])
+        self._set_caption(atual.caption if atual else "")
 
         if request_page and atual is not None:
             # A guarda evita o circulo: o visualizador avisa de volta que a pagina mudou.
@@ -391,6 +473,13 @@ class GalleryPanel(ttk.Frame):
                 self._on_page_request(atual.page_index)
             finally:
                 self._syncing = False
+
+    def _set_caption(self, texto: str) -> None:
+        """Troca o texto exibido. Recomeça no topo: legenda nova, rolagem antiga é confusão."""
+        self.caption_text.delete("1.0", tk.END)
+        if texto:
+            self.caption_text.insert("1.0", texto)
+        self.caption_text.yview_moveto(0.0)
 
     def _draw_board(self, atual: object) -> None:
         self.canvas.delete("all")
