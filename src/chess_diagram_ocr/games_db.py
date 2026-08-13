@@ -22,14 +22,26 @@ de 64 símbolos, que não acontece por acaso.
    por todos os diagramas de uma vez; uma passada por diagrama custaria os mesmos 150 s cada.
    É a mesma economia da S-61 -- uma abertura por varredura, não uma por página.
 
-**O que este módulo não faz.** Busca por posição, para os diagramas cuja legenda não traz
-nome. Ela exige reproduzir os lances das 10,5 M partidas (~7,5 h num processo), e a decisão
-de pagá-la espera o número que a medição está levantando. Ver `docs/ROADMAP_FASE7.md`.
+**Os dois caminhos, e o que cada um custa.**
+
+| | por nome (S-72) | por posição (S-73) |
+|---|---|---|
+| alcança | os diagramas cuja legenda traz os dois jogadores | **todos** |
+| mediu, no `Secrets of Chess Training` | 61 de 1.408 | **581** preenchíveis de 1.408 |
+| custo | ~150 s, um processo | ~104 min em dez processos |
+| onde mora | botão da Galeria | `cvoff-games --positions` |
+
+O caminho por posição é ~10× mais abrangente e ~40× mais caro, e o custo dele é **por
+varredura, não por livro**: o conjunto-alvo cabe na memória sejam 1.400 posições ou 40 mil,
+então o acervo inteiro cabe na mesma passada. É por isso que ele é comando de linha e não
+botão -- e porque 104 minutos atrás de um botão é uma janela travada que ninguém entende.
 """
 
 from __future__ import annotations
 
 import logging
+import multiprocessing as mp
+import os
 import re
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -49,10 +61,14 @@ __all__ = [
     "DiagramMatch",
     "GameRecord",
     "PlayerPair",
+    "PositionHit",
+    "PositionIndex",
     "default_database_path",
     "match_entries",
+    "match_positions",
     "pair_from_caption",
     "scan_by_players",
+    "scan_by_positions",
     "surname",
 ]
 
@@ -244,6 +260,217 @@ def scan_by_players(
 
     logger.info("Base varrida: %d partidas, %d pares com partida.", partidas, len(colhidas))
     return colhidas
+
+
+@dataclass(frozen=True)
+class PositionHit:
+    """Uma partida da base que passou por uma posição que estamos procurando (S-73)."""
+
+    move_number: int
+    side_to_move: str
+    headers: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def label(self) -> str:
+        evento = " ".join(x for x in (self.headers.get("Event", ""), self.headers.get("Date", "")[:4]) if x)
+        return f"{self.headers.get('White', '?')} x {self.headers.get('Black', '?')}" + (f", {evento}" if evento else "")
+
+
+@dataclass
+class PositionIndex:
+    """O resultado de uma varredura por posição: as partidas por colocação, e quantas foram.
+
+    A **contagem** é separada da lista porque elas respondem coisas diferentes: a lista serve
+    para preencher os campos, e a contagem para decidir se preencher é honesto. Guardar todas
+    as partidas de uma posição de abertura custaria memória para produzir uma resposta que a
+    própria contagem manda descartar.
+    """
+
+    hits: dict[str, list[PositionHit]] = field(default_factory=dict)
+    counts: dict[str, int] = field(default_factory=dict)
+    games_read: int = 0
+
+    def merge(self, outro: PositionIndex, *, max_hits: int) -> None:
+        self.games_read += outro.games_read
+        for colocacao, achados in outro.hits.items():
+            guardados = self.hits.setdefault(colocacao, [])
+            guardados.extend(achados[: max(0, max_hits - len(guardados))])
+        for colocacao, quantas in outro.counts.items():
+            self.counts[colocacao] = self.counts.get(colocacao, 0) + quantas
+
+
+MAX_HITS_PER_POSITION = 8
+"""Quantas partidas guardar por posição. Acima do teto de `match_positions` ela não preenche
+nada, então guardar mais seria carregar o que vai ser descartado."""
+
+WORKER_ENV = "CVOFF_GAMES_WORKER"
+"""Marca herdada pelos processos-filhos, e a guarda contra a recursão que a S-26 previu.
+
+No Windows o `spawn` faz cada filho **reimportar o `__main__` do pai**. Se esse `__main__` for
+um script sem `if __name__ == "__main__"` -- um trecho colado no interpretador, uma célula de
+notebook --, o filho reexecuta o script inteiro, que chama esta função de novo, que cria mais
+filhos: recursão que consome a máquina em segundos. Aconteceu ao testar isto.
+
+O marcador vai no ambiente **antes** de o `Pool` existir, então o filho já o encontra ao
+reimportar, e ali `scan_by_positions` responde com um processo só. A varredura fica lenta num
+uso que já estava errado, em vez de derrubar a máquina."""
+
+
+def chunk_bounds(database: Path, parts: int) -> list[tuple[int, int]]:
+    """Corta o arquivo em pedaços, cada um começando numa fronteira de partida.
+
+    Cortar por byte e "andar até o próximo `[Event `" é o que permite dividir 9,7 GB sem
+    lê-los antes: a alternativa -- indexar as partidas para saber onde cortar -- custaria uma
+    passada inteira para poupar segundos de uma passada inteira.
+    """
+    tamanho = database.stat().st_size
+    marcos = [0]
+    with database.open("rb") as fh:
+        for i in range(1, max(1, parts)):
+            fh.seek(tamanho * i // max(1, parts))
+            fh.readline()  # a linha cortada ao meio não é de ninguém
+            while True:
+                posicao = fh.tell()
+                linha = fh.readline()
+                if not linha or linha.startswith(b"[Event "):
+                    marcos.append(posicao)
+                    break
+    marcos.append(tamanho)
+    return [(marcos[i], marcos[i + 1]) for i in range(len(marcos) - 1) if marcos[i] < marcos[i + 1]]
+
+
+def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], int]) -> PositionIndex:
+    """Um pedaço do arquivo, num processo. Precisa ser função de módulo para o `spawn`.
+
+    **Binário, e não texto, e isto não é preferência.** Num arquivo de texto o `tell()` não
+    devolve deslocamento de byte: devolve um *cookie* opaco que carrega o estado do decodificador
+    e pode ser muito maior que a posição real. Comparado contra o fim do pedaço, ele encerra o
+    laço cedo -- medido, 5 partidas lidas de 2.000, silenciosamente. Em binário o `tell()` é o
+    byte, que é o que os limites do pedaço significam.
+    """
+    caminho, inicio, fim, alvos, max_hits = argumento
+    resultado = PositionIndex()
+    cabecalho: dict[str, str] = {}
+    movetext: list[str] = []
+
+    def processar() -> None:
+        if not movetext:
+            return
+        partida = GameRecord(headers=dict(cabecalho), movetext=" ".join(movetext))
+        for colocacao, lance, vez in partida.positions():
+            if colocacao not in alvos:
+                continue
+            resultado.counts[colocacao] = resultado.counts.get(colocacao, 0) + 1
+            guardados = resultado.hits.setdefault(colocacao, [])
+            if len(guardados) < max_hits:
+                guardados.append(
+                    PositionHit(move_number=lance, side_to_move="w" if vez else "b", headers=dict(cabecalho))
+                )
+
+    with caminho.open("rb") as fh:
+        fh.seek(inicio)
+        while fh.tell() < fim:
+            linha = fh.readline()
+            if not linha:
+                break
+            if linha.startswith(b"["):
+                if linha.startswith(b"[Event "):
+                    processar()
+                    movetext, cabecalho = [], {}
+                    resultado.games_read += 1
+                casado = _RE_HEADER.match(linha.decode("utf-8", "replace").rstrip())
+                if casado is not None and casado.group(1) in _KEPT_HEADERS:
+                    cabecalho[casado.group(1)] = casado.group(2)
+                continue
+            texto = linha.strip()
+            if texto:
+                movetext.append(texto.decode("utf-8", "replace"))
+        processar()
+    return resultado
+
+
+def scan_by_positions(
+    database: Path,
+    targets: Iterable[str],
+    *,
+    workers: int | None = None,
+    max_hits_per_position: int = MAX_HITS_PER_POSITION,
+    progress: Callable[[int, int], None] | None = None,
+) -> PositionIndex:
+    """Procura as posições na base reproduzindo os lances de cada partida (S-73).
+
+    **A busca é invertida, e é o que a torna viável.** O caminho óbvio -- indexar as ~800
+    milhões de posições da base -- custaria dezenas de GB no disco e horas de construção. Aqui
+    quem vai para a memória são as **nossas** posições, que são milhares, e a base passa uma
+    vez. Medido: 104 min em dez processos, 10,5 M partidas.
+
+    E o custo é **por varredura, não por livro**: pôr o acervo inteiro no mesmo conjunto-alvo
+    custa o mesmo que pôr um livro. Quem chamar isto uma vez por livro está pagando 32 vezes
+    por uma resposta que sai de uma.
+
+    `workers=1` roda no próprio processo, sem `multiprocessing` -- é o caminho do teste e o
+    de uma base pequena, onde criar dez processos custaria mais que a varredura.
+    """
+    alvos = frozenset(targets)
+    total = PositionIndex()
+    if not alvos or not database.is_file():
+        return total
+
+    processos = workers if workers is not None else max(1, (os.cpu_count() or 4) - 2)
+    if os.environ.get(WORKER_ENV):
+        logger.debug("Já dentro de um processo de varredura: seguindo com um só.")
+        processos = 1
+    pedacos = chunk_bounds(database, processos) if processos > 1 else [(0, database.stat().st_size)]
+    tarefas = [(database, inicio, fim, alvos, max_hits_per_position) for inicio, fim in pedacos]
+
+    if len(tarefas) == 1:
+        total.merge(_scan_positions_chunk(tarefas[0]), max_hits=max_hits_per_position)
+        if progress is not None:
+            progress(1, 1)
+        return total
+
+    # `spawn` no Windows reimporta o modulo do processo pai (S-26). Este modulo e importavel
+    # sem efeito colateral, e `_scan_positions_chunk` e funcao de topo justamente por isso.
+    os.environ[WORKER_ENV] = "1"
+    try:
+        with mp.Pool(len(tarefas)) as pool:
+            for concluidos, parcial in enumerate(pool.imap_unordered(_scan_positions_chunk, tarefas), start=1):
+                total.merge(parcial, max_hits=max_hits_per_position)
+                if progress is not None:
+                    progress(concluidos, len(tarefas))
+    finally:
+        os.environ.pop(WORKER_ENV, None)
+    return total
+
+
+def match_positions(entries: Sequence[Any], index: PositionIndex, *, max_games: int = 5) -> list[DiagramMatch]:
+    """Cruza os diagramas com o que a varredura por posição achou.
+
+    Diferente do caminho por nome em um ponto que importa: aqui **não há legenda para
+    confirmar**. O que sustenta o casamento são as 64 casas e nada mais, e por isso a contagem
+    de partidas é o único freio -- uma posição que aparece em 300 partidas não identifica
+    partida nenhuma, e o `max_games` de quem consome decide o que fazer com ela.
+    """
+    achados: list[DiagramMatch] = []
+    for entrada in entries:
+        colocacao = getattr(entrada, "placement", "")
+        registros = index.hits.get(colocacao)
+        if not registros:
+            continue
+        quantas = index.counts.get(colocacao, len(registros))
+        primeiro = registros[0]
+        achados.append(
+            DiagramMatch(
+                page_index=int(entrada.page_index),
+                diagram_index=int(entrada.diagram_index),
+                move_number=primeiro.move_number,
+                side_to_move=primeiro.side_to_move,
+                headers=dict(primeiro.headers),
+                games_matched=quantas,
+                game_label=primeiro.label,
+            )
+        )
+    return achados
 
 
 def match_entries(

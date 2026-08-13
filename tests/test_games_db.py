@@ -7,20 +7,31 @@ posição bate, e o teto por par.
 
 from __future__ import annotations
 
+import os
 import tempfile
 import threading
 import unittest
+from itertools import pairwise
 from pathlib import Path
+from unittest import mock
 
 import chess
 
+from chess_diagram_ocr import games_db
+from chess_diagram_ocr.cli.games import _books, main, parse_args
 from chess_diagram_ocr.gallery_scan import GalleryEntry
 from chess_diagram_ocr.games_db import (
+    WORKER_ENV,
     GameRecord,
+    PositionIndex,
+    _scan_positions_chunk,
+    chunk_bounds,
     default_database_path,
     match_entries,
+    match_positions,
     pair_from_caption,
     scan_by_players,
+    scan_by_positions,
     surname,
 )
 
@@ -177,6 +188,153 @@ class MatchTests(unittest.TestCase):
         quebrada = GameRecord(headers={"White": "A, A", "Black": "B, B"}, movetext="1. e4 e5 2. Zz9 Nf6")
         posicoes = list(quebrada.positions())
         self.assertEqual(len(posicoes), 2, "para no lance recusado, e devolve o que já leu")
+
+
+class PosicaoTests(unittest.TestCase):
+    """A busca por posição (S-73): a que alcança diagrama sem nome na legenda."""
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.base = Path(self.pasta.name) / "base.pgn"
+        self.base.write_text(PGN, encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.pasta.cleanup()
+
+    def test_acha_a_posicao_com_lance_vez_e_partida(self) -> None:
+        colocacao, lance, vez_branca = colocacao_apos(IMORTAL, 7)
+        indice = scan_by_positions(self.base, {colocacao}, workers=1)
+        self.assertEqual(indice.games_read, 3)
+        (achado,) = indice.hits[colocacao]
+        self.assertEqual(achado.move_number, lance)
+        self.assertEqual(achado.side_to_move, "w" if vez_branca else "b")
+        self.assertEqual(achado.headers["Event"], "London")
+
+    def test_conta_todas_as_partidas_que_passam_pela_posicao(self) -> None:
+        """Duas partidas diferentes atravessam a mesma abertura -- e a contagem é o freio."""
+        colocacao, _, _ = colocacao_apos(OUTRA, 4)
+        indice = scan_by_positions(self.base, {colocacao}, workers=1)
+        self.assertEqual(indice.counts[colocacao], 2)
+
+    def test_le_o_pedaco_inteiro_e_nao_para_no_meio(self) -> None:
+        """Regressão: em modo texto o `tell()` é um *cookie* opaco, não um byte.
+
+        Comparado contra o fim do pedaço, ele encerrava o laço cedo -- 5 partidas lidas de
+        2.000, sem erro nenhum. Um arquivo de três partidas não pega isto: o cookie ainda é
+        pequeno. Daí este ter 300.
+        """
+        grande = Path(self.pasta.name) / "grande.pgn"
+        grande.write_text(PGN * 100, encoding="utf-8")
+        indice = scan_by_positions(grande, {colocacao_apos(IMORTAL, 7)[0]}, workers=1)
+        self.assertEqual(indice.games_read, 300)
+        self.assertEqual(indice.counts[colocacao_apos(IMORTAL, 7)[0]], 100)
+
+    def test_posicao_ausente_nao_aparece(self) -> None:
+        indice = scan_by_positions(self.base, {"8/8/8/8/8/8/8/K6k"}, workers=1)
+        self.assertEqual(indice.hits, {})
+
+    def test_alvo_vazio_nao_le_o_arquivo(self) -> None:
+        self.assertEqual(scan_by_positions(self.base, set(), workers=1).games_read, 0)
+
+    def test_base_inexistente_devolve_vazio_em_vez_de_levantar(self) -> None:
+        self.assertEqual(scan_by_positions(Path("nao_existe.pgn"), {"x"}, workers=1).games_read, 0)
+
+    def test_o_corte_em_pedacos_cai_sempre_numa_fronteira_de_partida(self) -> None:
+        """Cortar no meio de uma partida faria o pedaço seguinte reproduzir meio movetext."""
+        with self.base.open("rb") as fh:
+            for inicio, _fim in chunk_bounds(self.base, 3):
+                fh.seek(inicio)
+                if inicio:
+                    self.assertTrue(fh.readline().startswith(b"[Event "))
+
+    def test_os_pedacos_cobrem_o_arquivo_inteiro_sem_sobrepor(self) -> None:
+        pedacos = chunk_bounds(self.base, 3)
+        self.assertEqual(pedacos[0][0], 0)
+        self.assertEqual(pedacos[-1][1], self.base.stat().st_size)
+        for anterior, seguinte in pairwise(pedacos):
+            self.assertEqual(anterior[1], seguinte[0], "fim de um é começo do outro")
+
+    def test_dividir_em_pedacos_nao_muda_a_resposta(self) -> None:
+        """É o que o paralelismo tem de garantir, e o que um corte errado quebraria."""
+        colocacao, _, _ = colocacao_apos(OUTRA, 4)
+        um = scan_by_positions(self.base, {colocacao}, workers=1)
+        varios = PositionIndex()
+        for pedaco in chunk_bounds(self.base, 3):
+            varios.merge(
+                _scan_positions_chunk((self.base, pedaco[0], pedaco[1], frozenset({colocacao}), 8)),
+                max_hits=8,
+            )
+        self.assertEqual(varios.counts, um.counts)
+        self.assertEqual(varios.games_read, um.games_read)
+
+    def test_dentro_de_um_processo_filho_nao_cria_outros(self) -> None:
+        """A guarda contra a recursão do `spawn` (S-26) -- ela travou a máquina uma vez.
+
+        Com o marcador no ambiente, `mp.Pool` não pode ser tocado: se ele for, o teste falha
+        aqui em vez de o usuário descobrir com centenas de processos abertos.
+        """
+        colocacao, _, _ = colocacao_apos(IMORTAL, 7)
+        with (
+            mock.patch.dict(os.environ, {WORKER_ENV: "1"}),
+            mock.patch.object(games_db.mp, "Pool", side_effect=AssertionError("criou processo dentro do filho")),
+        ):
+            indice = scan_by_positions(self.base, {colocacao}, workers=4)
+        self.assertEqual(indice.games_read, 3, "sem paralelismo, mas com a resposta certa")
+
+    def test_o_marcador_nao_sobra_no_ambiente(self) -> None:
+        colocacao, _, _ = colocacao_apos(IMORTAL, 7)
+        scan_by_positions(self.base, {colocacao}, workers=1)
+        self.assertNotIn(WORKER_ENV, os.environ)
+
+    def test_casamento_por_posicao_vira_DiagramMatch(self) -> None:
+        colocacao, lance, _ = colocacao_apos(IMORTAL, 7)
+        indice = scan_by_positions(self.base, {colocacao}, workers=1)
+        entrada = GalleryEntry(3, 1, colocacao, caption="sem nome nenhum aqui")
+        (achado,) = match_positions([entrada], indice)
+        self.assertEqual(achado.key, (3, 1))
+        self.assertEqual(achado.move_number, lance)
+        self.assertEqual(achado.games_matched, 1)
+        self.assertIn("Anderssen", achado.game_label)
+
+
+class ComandoTests(unittest.TestCase):
+    """`cvoff-games`: o que ele decide antes de tocar na base."""
+
+    def test_o_padrao_e_a_busca_por_posicao_e_nao_gravar(self) -> None:
+        args = parse_args([])
+        self.assertEqual(args.mode, "positions")
+        self.assertFalse(args.apply, "gravar em centenas de anotações não pode ser o padrão")
+        self.assertEqual(args.max_games, 5)
+
+    def test_names_troca_o_modo(self) -> None:
+        self.assertEqual(parse_args(["--names"]).mode, "names")
+
+    def test_livro_pedido_casa_por_pedaco_do_nome(self) -> None:
+        with tempfile.TemporaryDirectory() as pasta:
+            galeria = Path(pasta)
+            (galeria / "Karpov 1 - Best Games.index.json").write_text("{}", encoding="utf-8")
+            (galeria / "Kemeri 1937.index.json").write_text("{}", encoding="utf-8")
+            args = parse_args(["--book", "karpov", "--gallery-dir", str(galeria), "--pdf-dir", str(galeria)])
+            self.assertEqual([caminho.stem for caminho in _books(args)], ["Karpov 1 - Best Games"])
+
+    def test_todos_pega_os_livros_ja_varridos(self) -> None:
+        with tempfile.TemporaryDirectory() as pasta:
+            galeria = Path(pasta)
+            (galeria / "A.index.json").write_text("{}", encoding="utf-8")
+            (galeria / "B.index.json").write_text("{}", encoding="utf-8")
+            args = parse_args(["--all", "--gallery-dir", str(galeria), "--pdf-dir", str(galeria)])
+            self.assertEqual(sorted(caminho.stem for caminho in _books(args)), ["A", "B"])
+
+    def test_livro_nao_varrido_avisa_e_nao_entra(self) -> None:
+        with tempfile.TemporaryDirectory() as pasta:
+            args = parse_args(["--book", "inexistente", "--gallery-dir", pasta, "--pdf-dir", pasta])
+            with self.assertLogs("chess_diagram_ocr.cli.games", level="WARNING"):
+                self.assertEqual(_books(args), [])
+
+    def test_sem_base_no_disco_sai_com_codigo_proprio(self) -> None:
+        with tempfile.TemporaryDirectory() as pasta:
+            codigo = main(["--all", "--database", str(Path(pasta) / "nao_existe.pgn"), "--gallery-dir", pasta])
+            self.assertEqual(codigo, 2)
 
 
 if __name__ == "__main__":
