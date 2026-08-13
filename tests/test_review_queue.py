@@ -113,6 +113,62 @@ class PriorityTests(unittest.TestCase):
         self.assertTrue(any("decodificação restrita" in reason for reason in reasons))
 
 
+class ConfirmadoPelaBaseTests(unittest.TestCase):
+    """S-74: casar com uma partida registrada responde o que a fila ia perguntar."""
+
+    def test_leitura_confirmada_sai_da_fila(self) -> None:
+        score, reasons = priority_for(
+            position(min_confidence=0.20),
+            min_confidence=0.20,
+            mean_entropy=0.9,
+            confirmed_by_database="Anderssen x Kieseritzky, London 1851",
+        )
+        self.assertEqual(reasons, (), "confiança baixa não é motivo quando existe a resposta")
+        self.assertEqual(score, 0.0)
+
+    def test_confirmacao_nao_cala_o_lado_a_jogar(self) -> None:
+        """A mesma colocação aparece com brancas e com pretas a jogar em partidas diferentes."""
+        _score, reasons = priority_for(
+            position(side_to_move=SideToMove(color=True, source="text", conflicting=True)),
+            min_confidence=0.99,
+            mean_entropy=0.0,
+            confirmed_by_database="Anderssen x Kieseritzky, London 1851",
+        )
+        self.assertIn("texto e posição discordam do lado a jogar", reasons)
+        self.assertTrue(any("confirmada pela base" in motivo for motivo in reasons))
+
+    def test_ilegal_confirmada_nao_existe_mas_a_regra_e_explicita(self) -> None:
+        """Posição de partida real é legal por construção -- se a leitura casou, não é ilegal."""
+        _score, reasons = priority_for(
+            position(is_legal=False, is_fatal=True, problems=("dois reis brancos",)),
+            min_confidence=0.99,
+            mean_entropy=0.0,
+            confirmed_by_database="4 partidas da base",
+        )
+        self.assertEqual(reasons, ())
+
+    def test_diagrama_confirmado_nao_vira_item(self) -> None:
+        scanned = ScannedDiagram(
+            position=position(min_confidence=0.20, page_index=2, diagram_index=1),
+            prediction=prediction_from_probs(probs_for_fen(KINGS_ONLY, 0.20)),
+            board_rgb=np.zeros((80, 80, 3), dtype=np.uint8),
+            detector_score=0.9,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.assertIsNone(
+                item_from_scanned(
+                    scanned,
+                    pdf_path=Path("livro.pdf"),
+                    cache_dir=Path(tmpdir),
+                    confirmed={(2, 1): "Anderssen x Kieseritzky, London 1851"},
+                )
+            )
+            # E o mesmo diagrama sem confirmacao entra: e a confirmacao que muda, e nao ele.
+            self.assertIsNotNone(
+                item_from_scanned(scanned, pdf_path=Path("livro.pdf"), cache_dir=Path(tmpdir))
+            )
+
+
 class QueueOrderingTests(unittest.TestCase):
     def item(self, priority: float, page: int = 0, diagram: int = 1, status: str = "pending") -> ReviewItem:
         return ReviewItem(

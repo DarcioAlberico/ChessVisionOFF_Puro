@@ -209,9 +209,10 @@ class BaseDePartidasTests(unittest.TestCase):
 
     def test_preenche_lance_vez_e_headers_vazios(self) -> None:
         modelo = _modelo((0, 0))
-        tocados, campos = modelo.apply_matches([self._casamento()])
+        relatorio = modelo.apply_matches([self._casamento()])
         anotacao = modelo.current_annotation
-        self.assertEqual((tocados, campos), (1, 5))
+        self.assertEqual((relatorio.touched, relatorio.fields), (1, 5))
+        self.assertEqual(relatorio.confirmed, 1)
         self.assertEqual(anotacao.move_number, 39)
         self.assertEqual(anotacao.side_to_move, "b")
         self.assertEqual(anotacao.headers["Event"], "IBM")
@@ -226,18 +227,28 @@ class BaseDePartidasTests(unittest.TestCase):
         self.assertEqual(anotacao.headers["Event"], "Amsterdam")
         self.assertEqual(anotacao.headers["White"], "Ljubojevic, Ljubomir", "o campo vazio, esse sim, preenche")
 
-    def test_posicao_comum_nao_preenche_nada(self) -> None:
-        """Casar com 40 partidas não identifica partida nenhuma -- ver `apply_matches`."""
+    def test_posicao_comum_confirma_mas_nao_preenche(self) -> None:
+        """Casar com 40 partidas não identifica partida nenhuma -- mas confirma a leitura.
+
+        As duas metades importam: a posição é real (S-74, tira o diagrama da fila) e não se
+        sabe de qual partida ela veio (S-72, não preenche header nenhum).
+        """
         modelo = _modelo((0, 0))
-        tocados, campos = modelo.apply_matches([self._casamento(games_matched=40)])
-        self.assertEqual((tocados, campos), (0, 0))
-        self.assertTrue(modelo.current_annotation.is_empty)
+        relatorio = modelo.apply_matches([self._casamento(games_matched=40)])
+        anotacao = modelo.current_annotation
+        self.assertEqual((relatorio.touched, relatorio.fields), (0, 0))
+        self.assertEqual((relatorio.confirmed, relatorio.ambiguous), (1, 1))
+        self.assertEqual(anotacao.confirmed_from, "40 partidas da base")
+        self.assertIsNone(anotacao.move_number)
+        self.assertEqual(anotacao.headers, {})
+        self.assertFalse(anotacao.is_empty, "a confirmação sozinha já é uma afirmação, e persiste")
 
     def test_nada_a_preencher_nao_conta_diagrama(self) -> None:
         modelo = _modelo((0, 0))
         modelo.apply_matches([self._casamento()])
-        tocados, campos = modelo.apply_matches([self._casamento()])
-        self.assertEqual((tocados, campos), (0, 0), "rodar duas vezes não inventa mudança")
+        relatorio = modelo.apply_matches([self._casamento()])
+        self.assertEqual((relatorio.touched, relatorio.fields), (0, 0), "rodar duas vezes não inventa mudança")
+        self.assertEqual(relatorio.confirmed, 1, "mas o diagrama continua confirmado")
 
     def test_registra_quais_campos_vieram_da_base(self) -> None:
         """É o que faz o PGN dizer `database` em vez de `manual` -- ver `annotated_side_to_move`."""

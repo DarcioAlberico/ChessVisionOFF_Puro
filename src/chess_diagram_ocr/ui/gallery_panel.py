@@ -392,13 +392,14 @@ class GalleryPanel(ttk.Frame):
         self.btn_games.configure(state=tk.NORMAL)
         self.btn_cancel.configure(state=tk.DISABLED)
 
-        tocados, campos = self.model.apply_matches(casamentos)
+        relatorio = self.model.apply_matches(casamentos)
         self._persist()
         self.refresh(request_page=False)
         self.scan_var.set(f"{len(casamentos)} diagrama(s) casado(s)")
         self._on_status(
-            f"Base: {pares_achados} par(es) com partida, {len(casamentos)} diagrama(s) casado(s), "
-            f"{campos} campo(s) preenchido(s) em {tocados} diagrama(s). Nada foi sobrescrito."
+            f"Base: {pares_achados} par(es) com partida, {relatorio.confirmed} leitura(s) confirmada(s), "
+            f"{relatorio.fields} campo(s) preenchido(s) em {relatorio.touched} diagrama(s). "
+            "Nada foi sobrescrito."
         )
 
     def _search_failed(self, exc: Exception) -> None:

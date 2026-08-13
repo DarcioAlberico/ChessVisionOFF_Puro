@@ -100,6 +100,18 @@ class DiagramAnnotation:
     normal, e significa que quem preencheu foi gente.
     """
 
+    confirmed_from: str = ""
+    """A base reconheceu esta posição -- ainda que não tenha preenchido campo nenhum (S-74).
+
+    **Confirmar e preencher são coisas diferentes, e é por isso que são dois campos.** Uma
+    posição que aparece em 300 partidas não identifica *qual* partida é, então ela não preenche
+    header nenhum (ver `apply_matches`); mas ela responde a pergunta mais importante que a fila
+    de revisão faz -- "esta leitura está certa?" --, porque as 64 casas bateram com uma posição
+    que aconteceu num tabuleiro de verdade.
+
+    Guarda a partida quando ela é única, e a contagem quando não é.
+    """
+
     filled_fields: tuple[str, ...] = ()
     """Quais campos vieram da base, e **não** de uma pessoa.
 
@@ -119,13 +131,17 @@ class DiagramAnnotation:
         """Nada foi declarado. Anotação vazia não é gravada -- ver o docstring do módulo.
 
         `filled_from` não conta: ele descreve de onde vieram os outros campos, e uma anotação
-        que só tivesse ele seria a procedência de coisa nenhuma.
+        que só tivesse ele seria a procedência de coisa nenhuma. `confirmed_from` **conta**, e
+        a diferença não é sutil: ele não descreve outro campo, ele é uma afirmação inteira --
+        "a base reconheceu esta posição" --, e é o que tira o diagrama da fila de revisão
+        (S-74). Descartá-lo por parecer vazio faria a fila reencher a cada varredura.
         """
         return (
             self.move_number is None
             and self.side_to_move is None
             and self.lichess_link is None
             and not self.headers
+            and not self.confirmed_from
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -142,6 +158,8 @@ class DiagramAnnotation:
             dados["filled_from"] = self.filled_from
         if self.filled_fields:
             dados["filled_fields"] = list(self.filled_fields)
+        if self.confirmed_from:
+            dados["confirmed_from"] = self.confirmed_from
         return dados
 
     @classmethod
@@ -155,6 +173,7 @@ class DiagramAnnotation:
             headers=_headers(dados.get("headers")),
             filled_from=str(dados.get("filled_from") or ""),
             filled_fields=_campos(dados.get("filled_fields")),
+            confirmed_from=str(dados.get("confirmed_from") or ""),
         )
 
 

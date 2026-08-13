@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import Collection, Iterable, Iterator, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -53,6 +53,7 @@ from .config import (
     ReadingOrder,
 )
 from .fen_utils import labels_from_fen, square_name
+from .gallery import load_annotations
 from .labels import LabelStore
 from .pdf_to_pgn import DiagramPosition, ProgressCallback, ScannedDiagram, iter_pdf_diagrams
 
@@ -271,14 +272,39 @@ def priority_for(
     repaired_squares: int = 0,
     rare_classes: Collection[str] = (),
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+    confirmed_by_database: str = "",
 ) -> tuple[float, tuple[str, ...]]:
     """Prioridade e motivos de um diagrama. Prioridade 0 significa "não precisa de olho".
 
     Recebe os números soltos em vez da `BoardPrediction` para poder ser chamada também
     sobre um item já persistido, que não tem mais a matriz de probabilidades.
+
+    **`confirmed_by_database` cala tudo que é sobre a leitura, e nada do que é sobre a vez a
+    jogar** (S-74). Quando as 64 casas batem com um lance de uma partida registrada, não há o
+    que revisar na *posição*: confiança baixa, entropia, casa reescrita pela S-11 e classe rara
+    são estimativas de erro, e ali existe a resposta. O que a confirmação **não** responde é de
+    quem é a vez -- a mesma colocação aparece com brancas e com pretas a jogar em partidas
+    diferentes --, então a discordância de fonte e o xeque invertido continuam valendo.
+
+    Confiar nisso tem um risco, e ele é pequeno e nomeado: uma leitura errada que por acaso
+    componha outra posição real. Com 64 casas isso exige coincidência estrutural, e o caso em
+    que ela é plausível -- final de poucas peças que aparece em centenas de partidas -- é
+    justamente o que `apply_matches` recusa preencher.
     """
     score = 0.0
     reasons: list[str] = []
+
+    if confirmed_by_database:
+        side = position.side_to_move
+        if side is not None and side.conflicting:
+            score += WEIGHT_SOURCES_DISAGREE
+            reasons.append("texto e posição discordam do lado a jogar")
+        if position.needs_side_to_move_flip:
+            score += WEIGHT_SIDE_TO_MOVE_WRONG
+            reasons.append("lado a jogar assumido não fecha: " + ("; ".join(position.problems) or "xeque invertido"))
+        if reasons:
+            reasons.append(f"posição confirmada pela base ({confirmed_by_database}); resta a vez a jogar")
+        return score, tuple(reasons)
 
     if position.is_fatal:
         score += WEIGHT_ILLEGAL
@@ -389,6 +415,7 @@ def item_from_scanned(
     cache_dir: Path,
     rare_classes: Collection[str] = (),
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+    confirmed: Mapping[tuple[int, int], str] | None = None,
 ) -> ReviewItem | None:
     """Constrói o item da fila. `None` quando o diagrama não pede revisão nenhuma."""
     position = scanned.position
@@ -403,6 +430,7 @@ def item_from_scanned(
         repaired_squares=repaired,
         rare_classes=rare_classes,
         accept_threshold=accept_threshold,
+        confirmed_by_database=(confirmed or {}).get((position.page_index, position.diagram_index), ""),
     )
     if not reasons:
         # Entropia sozinha nao e motivo: ela pontua em todo diagrama e serve para desempatar,
@@ -452,6 +480,7 @@ def build_review_queue(
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
     model_session: AbstractContextManager[tuple[Any, str]] | None = None,
+    confirmed: Mapping[tuple[int, int], str] | None = None,
 ) -> ReviewQueue:
     """Varre o livro inteiro e devolve a fila ordenada por valor de informação.
 
@@ -471,6 +500,18 @@ def build_review_queue(
     items: list[ReviewItem] = []
     scanned_count = 0
     pages: set[int] = set()
+
+    if confirmed is None:
+        # As anotacoes do livro sao a fonte, e nao um arquivo proprio da fila: quem grava a
+        # confirmacao e o `cvoff-games` (S-72/S-74), e um segundo lugar para essa verdade morar
+        # so teria como divergir do primeiro -- a decisao da S-34 sobre o `--skip-existing`.
+        confirmed = {
+            chave: anotacao.confirmed_from
+            for chave, anotacao in load_annotations(pdf_path, reading_order=reading_order).entries.items()
+            if anotacao.confirmed_from
+        }
+    if confirmed:
+        logger.info("%d diagrama(s) deste livro já foram confirmados pela base (S-74).", len(confirmed))
 
     for scanned in iter_pdf_diagrams(
         pdf_path,
@@ -495,6 +536,7 @@ def build_review_queue(
             cache_dir=cache_dir,
             rare_classes=rare_classes,
             accept_threshold=accept_threshold,
+            confirmed=confirmed,
         )
         if item is not None:
             items.append(item)

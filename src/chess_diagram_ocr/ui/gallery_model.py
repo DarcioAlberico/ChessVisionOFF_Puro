@@ -29,7 +29,7 @@ from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
 from chess_diagram_ocr.games_db import DiagramMatch, pair_from_caption
 from chess_diagram_ocr.semantics import compose_fen
 
-__all__ = ["FIELD_LABELS", "HEADER_FIELDS", "GalleryModel", "describe_origin"]
+__all__ = ["FIELD_LABELS", "HEADER_FIELDS", "ApplyReport", "GalleryModel", "describe_origin"]
 
 HEADER_FIELDS: tuple[str, ...] = (
     "White",
@@ -47,6 +47,22 @@ São os oito que um diagrama de livro costuma ter declarável. Qualquer outro he
 possível pelo par livre da tela -- `DiagramAnnotation.headers` é um dicionário, não um
 conjunto fechado.
 """
+
+
+@dataclass
+class ApplyReport:
+    """O que uma busca na base fez com as anotações do livro (S-72/S-74).
+
+    Quatro números, e não um, porque eles respondem perguntas diferentes: `confirmed` diz
+    quantas leituras a base deu por certas -- que é o que esvazia a fila de revisão --, e
+    `touched`/`fields` dizem quanto trabalho de digitação ela poupou. Um casamento ambíguo
+    conta no primeiro e não nos outros.
+    """
+
+    confirmed: int = 0
+    ambiguous: int = 0
+    touched: int = 0
+    fields: int = 0
 
 
 FIELD_LABELS = {"move_number": "lance", "side_to_move": "vez"}
@@ -224,10 +240,13 @@ class GalleryModel:
                 atingidos += 1
         return atingidos
 
-    def apply_matches(self, matches: Sequence[DiagramMatch], *, max_games: int = 5) -> tuple[int, int]:
-        """Preenche com o que a base disse, **só onde está vazio** (S-72).
+    def apply_matches(self, matches: Sequence[DiagramMatch], *, max_games: int = 5) -> ApplyReport:
+        """Preenche com o que a base disse, **só onde está vazio** (S-72), e confirma (S-74).
 
-        Devolve `(diagramas tocados, campos preenchidos)`.
+        **Confirmar não é preencher.** Uma posição que aparece em 300 partidas não diz qual
+        delas é, então não preenche header nenhum -- mas ela responde a pergunta que a fila de
+        revisão faz: aquelas 64 casas aconteceram num tabuleiro de verdade, logo a leitura está
+        certa. Por isso todo casamento grava `confirmed_from`, e só o não-ambíguo preenche.
 
         **Nunca sobrescreve.** É a regra que a S-17 estabeleceu para o lado a jogar e que vale
         aqui inteira: a base é uma fonte a mais, não a autoridade. Se você digitou `Event` e a
@@ -240,12 +259,27 @@ class GalleryModel:
         inventar procedência -- e procedência inventada é pior que campo vazio, porque o campo
         vazio ninguém confunde com dado conferido.
         """
-        tocados = campos = 0
+        relatorio = ApplyReport()
         for casamento in matches:
-            if casamento.games_matched > max_games:
-                continue
             anterior = self.annotations.get(*casamento.key)
+            relatorio.confirmed += 1
+
+            evidencia = (
+                casamento.game_label
+                if casamento.games_matched == 1
+                else f"{casamento.games_matched} partidas da base"
+            )
             mudancas: dict[str, Any] = {}
+            if anterior.confirmed_from != evidencia:
+                mudancas["confirmed_from"] = evidencia
+
+            if casamento.games_matched > max_games:
+                # Confirma e para: a posição é real, mas não se sabe de qual partida ela veio.
+                relatorio.ambiguous += 1
+                if mudancas:
+                    self.annotations.update(*casamento.key, **mudancas)
+                continue
+
             if anterior.move_number is None:
                 mudancas["move_number"] = casamento.move_number
             if anterior.side_to_move is None:
@@ -257,14 +291,18 @@ class GalleryModel:
             }
             if novos:
                 mudancas["headers"] = {**anterior.headers, **novos}
-            if not mudancas:
-                continue
-            campos += sum(1 for chave in ("move_number", "side_to_move") if chave in mudancas) + len(novos)
-            tocados += 1
+
             preenchidos: tuple[str, ...] = tuple(
                 chave for chave in ("move_number", "side_to_move") if chave in mudancas
             )
             preenchidos += tuple(f"header:{nome}" for nome in sorted(novos))
+            if not preenchidos:
+                if mudancas:
+                    self.annotations.update(*casamento.key, **mudancas)
+                continue
+
+            relatorio.fields += len(preenchidos)
+            relatorio.touched += 1
             self.annotations.update(
                 *casamento.key,
                 filled_from=casamento.game_label,
@@ -273,7 +311,7 @@ class GalleryModel:
                 filled_fields=tuple(dict.fromkeys((*anterior.filled_fields, *preenchidos))),
                 **mudancas,
             )
-        return tocados, campos
+        return relatorio
 
     def pending_pairs(self) -> set[tuple[str, str]]:
         """Os pares de nomes que as legendas do livro declaram, para a busca na base.

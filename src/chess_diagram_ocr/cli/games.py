@@ -133,9 +133,10 @@ def _apply(book: Path, indice: GalleryIndex, matches: list[DiagramMatch], args: 
         pdf_path=book,
         gallery_dir=args.gallery_dir,
     )
-    tocados, campos = modelo.apply_matches(matches, max_games=args.max_games)
+    relatorio = modelo.apply_matches(matches, max_games=args.max_games)
     save_annotations(book, modelo.annotations, directory=args.gallery_dir)
-    print(f"  gravados ................... {campos} campo(s) em {tocados} diagrama(s)")
+    print(f"  gravados ................... {relatorio.fields} campo(s) em {relatorio.touched} diagrama(s)")
+    print(f"  leituras confirmadas ....... {relatorio.confirmed}  ({relatorio.ambiguous} sem identificar a partida)")
 
 
 def main(argv: list[str] | None = None) -> int:
