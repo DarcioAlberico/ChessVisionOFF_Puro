@@ -193,6 +193,8 @@ def _apply(book: Path, indice: GalleryIndex, matches: list[DiagramMatch], args: 
     save_annotations(book, modelo.annotations, directory=args.gallery_dir)
     print(f"  gravados ................... {relatorio.fields} campo(s) em {relatorio.touched} diagrama(s)")
     print(f"  leituras confirmadas ....... {relatorio.confirmed}  ({relatorio.ambiguous} sem identificar a partida)")
+    if relatorio.recovered:
+        print(f"  procedência recuperada ..... {relatorio.recovered} campo(s) de execuções anteriores")
 
 
 def main(argv: list[str] | None = None) -> int:

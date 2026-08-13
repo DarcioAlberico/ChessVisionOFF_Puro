@@ -63,10 +63,42 @@ class ApplyReport:
     ambiguous: int = 0
     touched: int = 0
     fields: int = 0
+    recovered: int = 0
+    """Campos que a base já havia escrito e cuja procedência foi recuperada (ver
+    `_recover_provenance`). Separado de `fields` porque não é trabalho novo: é conserto."""
 
 
 FIELD_LABELS = {"move_number": "lance", "side_to_move": "vez"}
 """Como cada campo da S-72 aparece na linha de procedência. Header vira o nome dele."""
+
+
+def _recover_provenance(annotation: DiagramAnnotation, match: DiagramMatch) -> tuple[str, ...]:
+    """Campos que a base escreveu antes de existir `filled_fields`, e que ela reconhece.
+
+    **Isto é reparo, e a inferência está declarada.** Uma anotação com `filled_from` e sem
+    `filled_fields` só pode ter sido gravada pela versão do `apply_matches` anterior à correção
+    de procedência -- e, sem este reparo, o PGN sairia dizendo `[SideToMoveSource "manual"]`
+    para 1.409 diagramas que ninguém conferiu, que é exatamente o defeito que a correção
+    existe para eliminar.
+
+    O crivo é estreito de propósito: só campos **iguais** ao que este casamento diz. Se a
+    pessoa mudou o valor depois, ele não bate e continua sendo dela. O erro que sobra é
+    atribuir à base um valor que alguém digitou por acaso idêntico -- num diagrama que a base
+    já preencheu.
+    """
+    if not annotation.filled_from or annotation.filled_fields:
+        return ()
+    recuperados = []
+    if annotation.move_number == match.move_number:
+        recuperados.append("move_number")
+    if annotation.side_to_move == match.side_to_move:
+        recuperados.append("side_to_move")
+    recuperados += [
+        f"header:{nome}"
+        for nome, valor in sorted(match.headers.items())
+        if valor and annotation.headers.get(nome) == valor
+    ]
+    return tuple(recuperados)
 
 
 def describe_origin(annotation: DiagramAnnotation) -> str:
@@ -289,6 +321,7 @@ class GalleryModel:
                 for nome, valor in casamento.headers.items()
                 if valor and not anterior.headers.get(nome) and nome not in RESERVED_HEADERS
             }
+            recuperados = _recover_provenance(anterior, casamento)
             if novos:
                 mudancas["headers"] = {**anterior.headers, **novos}
 
@@ -296,12 +329,14 @@ class GalleryModel:
                 chave for chave in ("move_number", "side_to_move") if chave in mudancas
             )
             preenchidos += tuple(f"header:{nome}" for nome in sorted(novos))
+            relatorio.fields += len(preenchidos)
+            relatorio.recovered += len(recuperados)
+            preenchidos += recuperados
             if not preenchidos:
                 if mudancas:
                     self.annotations.update(*casamento.key, **mudancas)
                 continue
 
-            relatorio.fields += len(preenchidos)
             relatorio.touched += 1
             self.annotations.update(
                 *casamento.key,

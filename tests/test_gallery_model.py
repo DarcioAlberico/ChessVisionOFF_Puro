@@ -292,6 +292,46 @@ class BaseDePartidasTests(unittest.TestCase):
         self.assertIn("header:Event", campos)
         self.assertIn("header:Site", campos)
 
+    def test_recupera_a_procedencia_de_quem_gravou_antes_de_ela_existir(self) -> None:
+        """Reparo: `filled_from` sem `filled_fields` só existe em anotação da versão antiga.
+
+        Sem isto, o PGN sai dizendo `manual` para campo que a base escreveu -- o defeito que a
+        correção de procedência existe para eliminar, sobrevivendo nos dados.
+        """
+        modelo = _modelo((0, 0))
+        casamento = self._casamento()
+        modelo.annotations.update(
+            0,
+            0,
+            move_number=casamento.move_number,
+            side_to_move=casamento.side_to_move,
+            headers=dict(casamento.headers),
+            filled_from=casamento.game_label,
+        )
+        relatorio = modelo.apply_matches([casamento])
+        campos = modelo.current_annotation.filled_fields
+        self.assertEqual(relatorio.recovered, 5, "lance, vez e os três headers")
+        self.assertEqual(relatorio.fields, 0, "não preencheu nada -- os valores já estavam lá")
+        self.assertIn("side_to_move", campos)
+        self.assertIn("header:Event", campos)
+
+    def test_o_reparo_nao_reivindica_o_que_a_pessoa_mudou(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.annotations.update(
+            0, 0, move_number=12, side_to_move="b", headers={"Event": "Amsterdam"}, filled_from="Ljubojevic x Browne"
+        )
+        modelo.apply_matches([self._casamento()])
+        campos = modelo.current_annotation.filled_fields
+        self.assertNotIn("move_number", campos, "39 era o da base; 12 é de quem digitou")
+        self.assertNotIn("header:Event", campos)
+        self.assertIn("side_to_move", campos)
+
+    def test_o_reparo_nao_toca_em_anotacao_que_ja_tem_procedencia(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.apply_matches([self._casamento()])
+        relatorio = modelo.apply_matches([self._casamento()])
+        self.assertEqual(relatorio.recovered, 0)
+
     def test_pares_pendentes_saem_das_legendas_sem_repetir(self) -> None:
         modelo = GalleryModel(
             index=GalleryIndex(

@@ -23,6 +23,7 @@ from chess_diagram_ocr.gallery_scan import GalleryEntry
 from chess_diagram_ocr.games_db import (
     WORKER_ENV,
     GameRecord,
+    PositionHit,
     PositionIndex,
     _scan_positions_chunk,
     chunk_bounds,
@@ -285,6 +286,19 @@ class PosicaoTests(unittest.TestCase):
         colocacao, _, _ = colocacao_apos(IMORTAL, 7)
         scan_by_positions(self.base, {colocacao}, workers=1)
         self.assertNotIn(WORKER_ENV, os.environ)
+
+    def test_a_ordem_das_partidas_nao_depende_de_qual_processo_terminou_antes(self) -> None:
+        """Reprodutibilidade: quem consome usa a primeira partida da lista.
+
+        Sem ordenar, a mesma posição saía com um lance numa execução e outro na seguinte --
+        e foi assim que dois diagramas ficaram com procedência que não batia.
+        """
+        indice = PositionIndex()
+        antiga = PositionHit(move_number=20, side_to_move="w", headers={"Date": "1851.06.21", "White": "A"})
+        nova = PositionHit(move_number=84, side_to_move="b", headers={"Date": "2022.01.01", "White": "Z"})
+        indice.hits["x"] = [nova, antiga]
+        indice.sort()
+        self.assertEqual(indice.hits["x"][0].move_number, 20, "a mais antiga vem primeiro")
 
     def test_casamento_por_posicao_vira_DiagramMatch(self) -> None:
         colocacao, lance, _ = colocacao_apos(IMORTAL, 7)

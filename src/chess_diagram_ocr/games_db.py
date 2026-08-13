@@ -290,6 +290,28 @@ class PositionIndex:
     counts: dict[str, int] = field(default_factory=dict)
     games_read: int = 0
 
+    def sort(self) -> None:
+        """Ordena as partidas de cada posição por um critério estável.
+
+        **Sem isto, duas varreduras da mesma base dão respostas diferentes.** Os pedaços do
+        arquivo terminam em ordem imprevisível (`imap_unordered`), e quem consome usa a
+        *primeira* partida da lista -- então uma posição que aparece em três partidas podia
+        sair com lance 84 numa execução e 56 na seguinte, sem nada ter mudado. Aconteceu aqui,
+        e apareceu como dois diagramas cuja procedência não batia entre duas execuções.
+
+        A chave é a data, depois os jogadores: a partida mais antiga com aquela posição é a
+        escolha mais defensável quando não há como saber qual delas o livro citou.
+        """
+        for achados in self.hits.values():
+            achados.sort(
+                key=lambda hit: (
+                    hit.headers.get("Date", "9999"),
+                    hit.headers.get("White", ""),
+                    hit.headers.get("Black", ""),
+                    hit.move_number,
+                )
+            )
+
     def merge(self, outro: PositionIndex, *, max_hits: int) -> None:
         self.games_read += outro.games_read
         for colocacao, achados in outro.hits.items():
@@ -440,6 +462,7 @@ def scan_by_positions(
                     progress(concluidos, len(tarefas))
     finally:
         os.environ.pop(WORKER_ENV, None)
+    total.sort()
     return total
 
 
