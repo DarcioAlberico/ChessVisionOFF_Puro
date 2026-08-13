@@ -3,9 +3,9 @@
 Base: [ANALISE.md](ANALISE.md). Detalhes de implementação: [SPEC.md](SPEC.md). Números medidos: [BASELINE.md](BASELINE.md) e [EXPERIMENTS.md](EXPERIMENTS.md).
 
 > Este documento cobre as **Fases 0 a 6**, todas concluídas. A continuação está em
-> [ROADMAP_FASE7.md](ROADMAP_FASE7.md) (Fases 7 a 11) e [SPEC_FASE7.md](SPEC_FASE7.md)
-> (S-37 a S-63) — inclusive seis defeitos abertos hoje, entre eles 45 amostras que não
-> chegam ao treino porque `ensure_splits` nunca é chamada.
+> [ROADMAP_FASE7.md](ROADMAP_FASE7.md) (Fases 7 a 12) e [SPEC_FASE7.md](SPEC_FASE7.md)
+> (S-37 a S-71). Os seis defeitos que a segunda análise abriu — entre eles as 45 amostras que
+> não chegavam ao treino porque `ensure_splits` nunca era chamada — estão todos corrigidos.
 
 Estimativas em dias de trabalho focado de uma pessoa. As fases são sequenciais por dependência: cada uma depende de algo que a anterior estabelece.
 

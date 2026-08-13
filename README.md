@@ -538,10 +538,10 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
 - [docs/ANALISE.md](docs/ANALISE.md) -- diagnostico do estado atual, com medicoes
 - [docs/ROADMAP.md](docs/ROADMAP.md) -- fases de evolucao planejadas (Fases 0 a 6)
 - [docs/SPEC.md](docs/SPEC.md) -- especificacao detalhada das melhorias (S-01 a S-36)
-- [docs/ROADMAP_FASE7.md](docs/ROADMAP_FASE7.md) -- Fases 7 a 11, com a medicao de campo que
+- [docs/ROADMAP_FASE7.md](docs/ROADMAP_FASE7.md) -- Fases 7 a 12, com a medicao de campo que
   as motiva: o gate rejeita 17 de 101 diagramas de pagina real contra 3 de 320 no split de teste
-- [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 11 (S-37 a S-63),
-  incluindo os defeitos da Fase 7.0
+- [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 12 (S-37 a S-71),
+  incluindo os defeitos da Fase 7.0 e a Fase 12, que saiu de uso e nao de varredura
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

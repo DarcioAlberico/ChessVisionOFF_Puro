@@ -1,7 +1,7 @@
-# Roadmap — Fases 7 a 11
+# Roadmap — Fases 7 a 12
 
 Continuação de [ROADMAP.md](ROADMAP.md), que fecha na Fase 6. Especificação detalhada em
-[SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-63). Para o *como* de hoje,
+[SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-71). Para o *como* de hoje,
 [ARCHITECTURE.md](ARCHITECTURE.md); para os números de referência,
 [BASELINE.md](BASELINE.md);
 para o que foi medido nesta fase — **inclusive o que não entrou** —
@@ -1465,6 +1465,57 @@ abrir.
 
 ---
 
+### 10.7 — A segunda opinião que não sai da máquina ✅ (S-66)
+
+O `RemoteFenProvider` da S-32 é `Protocol`, e o docstring dele já dizia por quê: "um segundo
+modelo local satisfaz a mesma interface". A S-66 é essa frase cobrada. O adaptador para o
+`Chess_diagram_to_FEN` (MIT, Jost Triller) lê um diagrama já recortado, e **nada sai da
+máquina** — então este caminho não passa pelo consentimento da S-32. Ele existe em boa parte
+para tornar aquele desnecessário.
+
+O que ele resolve não é acurácia, é **custo humano**. Conferir um diagrama é olhar 64 casas, e
+é isso que limita quantas amostras entram no `labels.csv` — não o tempo de máquina, que é de
+décimos de segundo. Medido no `Niemeijer - Zwarte Magie (1945)`, 20 diagramas de um livro onde
+o classificador local afunda (confiança mínima média 0,25, **zero** acima do gate):
+
+| | leitor local | externo |
+|---|---|---|
+| coerentes com o tema do livro | 12/20 | **18/20** |
+| mediana de casas em desacordo entre os dois | — | **4,5** |
+
+E o achado que decide o desenho: nos três diagramas conferidos à mão, casa a casa, o conjunto
+em desacordo era **exatamente** o conjunto de erros do leitor local — 4 de 4, 23 de 23, 41 de
+41. Nenhum erro fora dele. Naquele livro, olhar 4,5 casas em vez de 64 não perdia nada.
+
+**O que ele não afirma** é que a segunda leitura está certa: 2 dos 20 saíram com dois reis
+brancos e nenhum preto. Por isso a saída é uma *marcação* e não uma correção automática — e o
+número vale para um livro de um regime. Num acervo em que o leitor local vai a 1,000, a mesma
+marcação pode apontar casa certa.
+
+---
+
+### 10.8 — A aba Galeria: o que o pipeline não tem como saber ✅ (S-67)
+
+Há informação que só existe na cabeça de quem está com o livro aberto: em que lance a posição
+acontece, de quem é a vez quando o texto não diz, os headers do exercício. O produto não tinha
+onde guardá-la. Agora tem — `data/gallery/<livro>.json`, um diagrama por vez, sincronizado com
+a página.
+
+**Não é um segundo editor**, e é isso que decide a tela: a unidade de trabalho aqui é a
+anotação, então o que aparece no centro é o **recorte original do livro**, e não o tabuleiro
+redesenhado a partir da FEN — quem digita "lance 24" está lendo a legenda impressa.
+
+Duas decisões que valem além deste item:
+
+- **Arquivo por livro, e não colunas no `labels.csv`.** Os dois falam dos mesmos diagramas e
+  têm vidas diferentes: uma linha existe no CSV porque alguém salvou aquela imagem para o
+  modelo aprender, e a maioria dos diagramas de um livro nunca vira amostra de treino.
+  Misturá-los obrigaria a salvar uma amostra só para poder dizer "este é o lance 24".
+- **Ausente significa "faça como sempre".** Anotação vazia não é gravada, porque não declarar
+  e declarar vazio são coisas diferentes — e só a primeira deixa a S-17 decidir.
+
+---
+
 ## Fase 11 — O modelo, e por que ele vem por último
 
 A Fase 5 gastou uma grade inteira de experimentos para descobrir que a arquitetura não era o
@@ -1584,6 +1635,104 @@ quem o note.
 
 ---
 
+## Fase 12 — A página exibida deixa de ser uma figura ✅ concluída (2026-08-12)
+
+**Como esta fase apareceu.** Nenhum dos quatro itens saiu de varredura de código. Saíram de
+usar o produto, e todos tocam a mesma coisa: o visualizador mostrava a página e **só isso**,
+enquanto todo o trabalho acontecia nas outras abas. O detector da S-12 já sabia onde estão os
+diagramas de cada página desde a Fase 2 — o resultado ia direto para o reconhecimento e nunca
+chegava à tela.
+
+| # | Entrega | Ref. spec | Status |
+|---|---|---|---|
+| 12.1 | Os diagramas da página viram retângulo desenhado e alvo de clique | S-68 | ✅ |
+| 12.2 | A aba "Leitura" (WebView2) sai, e com ela a última dependência de plataforma | S-69 | ✅ |
+| 12.3 | Roda, arrasto e zoom ancorado no canvas do projeto | S-70 | ✅ |
+| 12.4 | Campo Lance ao lado da vez, e a cor que diz onde o trabalho parou | S-71 | ✅ |
+
+**Critério de saída:** abrir um livro já trabalhado e saber, **sem rodar nada**, onde parou; e
+escolher um diagrama apontando para ele, em vez de arrastar o mouse em volta dele. Os dois
+atingidos e conferidos no app com `labels.csv` e galeria temporários.
+
+### 12.1 — O que o clique precisou decidir, e o que só a página real respondeu (S-68)
+
+`ui/page_overlay.py` é a parte que se verifica sem abrir janela: ponto do PDF → pixel de
+canvas, qual retângulo o clique acertou, e o que aquele clique significa. Quatro decisões
+ficaram registradas ali, e nenhuma é óbvia antes de ver a página:
+
+- **A menor caixa vence.** O empate acontece: o caminho por contorno às vezes acha a moldura
+  do exercício *e* o tabuleiro dentro dela, e as duas contêm o mesmo clique. Devolver a maior
+  faria o clique no tabuleiro abrir a moldura — o candidato que o modelo lê pior.
+- **Clicar num diagrama não lido reconhece a página inteira.** Ler o recorte isolado sairia da
+  página rasterizada em vez da imagem embutida — 590×590 nativos contra ~430 px a 220 DPI no
+  Kemeri (S-12) — e sem o contexto de texto que decide o lado a jogar (S-16/S-17). Seria um
+  diagrama lido **pior** que pelo botão de sempre, sem que nada na tela dissesse por quê.
+  Paga-se a página uma vez; dali em diante todo clique nela é instantâneo.
+- **"OCR melhor diagrama" não apaga as outras caixas.** Ele lê um, e o detector achou seis.
+  Com `max_boards=1` o contorno devolve o de maior *score*, não o primeiro em ordem de
+  leitura — prometer que a caixa restante é a de número 1 seria falso.
+- **O índice sai do detector, e não é renumerado.** Renumerar aqui recriaria, entre a tela e
+  ela mesma, o desencontro que a S-14 corrigiu entre a tela e o PGN.
+
+### 12.2 — O WebView2 sai, e foi a S-68 que o condenou (S-69)
+
+A aba "Leitura" embutia o visualizador do Edge por `SetParent`. Um HWND nativo filho pinta
+acima de qualquer item do canvas; o leitor interno do Edge não aceita JS injetado e não
+informa em que página está. Ou seja: naquela aba não havia como desenhar os retângulos,
+capturar o clique nem saber o que o usuário estava vendo. **A sincronia entre as duas abas era,
+por construção, de mão única e cega.**
+
+Some `webview2_panel.py`, e com ele `pythonnet` e `pywebview` — não sobra dependência de
+plataforma nenhuma no projeto, e o ponto que a S-55 carregava ("WebView2 é runtime do sistema,
+não empacotável") deixou de existir. Para ler o livro com rolagem contínua e busca de texto, o
+botão **Abrir no leitor do sistema** entrega o PDF ao leitor padrão da máquina.
+
+### 12.3 — A leitura de volta, e o defeito que só a janela real mostrou (S-70)
+
+O que a S-69 tirou era real: rolagem contínua e zoom. O que ficou no lugar foi um canvas com
+duas barras de rolagem — suficiente para recortar e reconhecer, pouco para *ler*. `viewport.py`
+devolve a parte que faltava, e as três decisões dele só se percebem errando ao usar: a roda que
+**vira a página na borda** (com carência de 350 ms, senão uma roda inercial pula quatro páginas
+por giro), o zoom **multiplicativo e ancorado no ponteiro** (aditivo de 0,1 dá salto de 33% em
+0,3 e de 5% em 1,9 — a mesma tecla com efeitos diferentes), e o ajuste à largura, que é uma
+conta e não um palpite.
+
+**O defeito.** A primeira versão perguntava ao `winfo_containing` se o ponteiro estava sobre a
+página. No Windows ele resolve pelo `WindowFromPoint` do sistema, então devolve `None` sempre
+que *outra* janela cobre aquele ponto: medido com a janela do app atrás do terminal,
+`winfo_containing(951, 346)` deu `None` num canvas de 909×740 posicionado exatamente ali — e a
+roda simplesmente não fazia nada, **sem erro nenhum na tela**. Um tooltip aberto por cima daria
+a mesma falha em uso normal. É a mesma lição que a Fase 5 registrou no teto de diagramas: o
+modo de falha caro não é o erro, é o silêncio.
+
+### 12.4 — "Onde eu parei?", respondido pelo CSV e não pela memória (S-71)
+
+O campo **Lance** foi para o lado do "Lado a jogar" porque é a mesma leitura — os dois saem da
+legenda impressa, e quem está com o livro aberto declara os dois de uma vez. Ele grava na
+**mesma anotação que a Galeria edita** (S-67): duas cópias em memória do mesmo JSON
+divergiriam, e a última a gravar apagaria o que a outra escreveu.
+
+E a caixa do diagrama passou a ter três cores: **azul** localizado, **âmbar** lido e não salvo,
+**verde** com amostra no `labels.csv`. Quem responde pelo verde é a procedência gravada no CSV
+(S-19), não o que está em memória — então ele aparece ao abrir um livro trabalhado semana
+passada, **antes de qualquer OCR**, e responde "onde eu parei?" sem custar uma leitura.
+
+Dois defeitos que o item encontrou, os dois de silêncio:
+
+- A Galeria só conhecia o livro **depois de uma varredura**. Sem varrer, `pdf_path` era `None`
+  e `save()` descartava sem avisar: o número digitado sumiria.
+- O caminho de **gravar amostra nova** não notificava ninguém — só o de regravar linha
+  notificava —, então a aba Dataset não via a amostra recém-salva.
+
+**A seleção deixou de ser uma cor**, porque a cor passou a carregar informação: ela era laranja
+e apagava justamente o estado do diagrama que se acabou de abrir. A primeira tentativa foi
+hachura, e os pontinhos caíam sobre as casas que se está tentando conferir — que é para o que a
+caixa existe. Não há hachura mais rala entre as do Tk, então a seleção virou borda grossa mais
+uma segunda borda **por fora** da caixa: por fora porque a caixa encosta no diagrama, e uma
+borda interna cairia sobre a primeira fila de casas.
+
+---
+
 ## Sequenciamento sugerido
 
 Se houver duas semanas:
@@ -1615,6 +1764,17 @@ Se houver duas semanas:
 | 18 | **S-63** (higiene do dataset) | as duas ações que a auditoria só relatava, e o teto de redundância | ✅ |
 | 19 | ~~**S-62** (modelo por tabuleiro)~~ | **implementada e reprovada nos próprios critérios**: o reparo do decodificador sobe em vez de cair pela metade | ✅ medido |
 
+E o que veio **depois** do fechamento, que não estava em plano nenhum porque saiu de uso e não
+de varredura:
+
+| dia | itens | por que | estado |
+|---|---|---|---|
+| — | **S-66** (segunda opinião local) | o `Protocol` da S-32 cobrado: 4,5 casas para olhar em vez de 64, sem nada sair da máquina | ✅ |
+| — | **S-67** (Galeria) | a anotação de exportação não tinha onde morar | ✅ |
+| — | **S-68 + S-69** (diagramas clicáveis; o WebView2 sai) | o detector já sabia onde eles estão desde a Fase 2, e o resultado nunca chegava à tela | ✅ |
+| — | **S-70** (roda, arrasto, zoom ancorado) | devolve no canvas do projeto o que a aba do Edge levou embora | ✅ |
+| — | **S-71** (lance e o verde de "já salvo") | "onde eu parei neste livro?", respondido pelo CSV antes de qualquer OCR | ✅ |
+
 A ordem tem uma regra: **medição antes de mudança, e mudança antes de refatoração.** É a
 mesma que as Fases 1 a 6 seguiram, e é o que permitiu à Fase 5 descartar TTA, pesos de classe
 e temperatura calibrada com número em vez de opinião.
@@ -1623,16 +1783,17 @@ e temperatura calibrada com número em vez de opinião.
 
 ## Onde isto para, e o que continua esperando você
 
-**Atualizado em 2026-08-11.** As cinco fases estão fechadas no sentido de que **todos os 29
-itens da spec têm destino decidido**: implementados, medidos-e-não-entram, ou adiados por
-medição. Nenhum ficou por falta de tempo.
+**Atualizado em 2026-08-13.** As seis fases estão fechadas no sentido de que **todos os itens
+da spec têm destino decidido**: implementados, medidos-e-não-entram, ou adiados por medição.
+Nenhum ficou por falta de tempo.
 
 | fase | estado |
 |---|---|
 | **7** — ler o acervo que existe | código completo. **Critério de saída não atingido**: 0,7368 contra 0,85, e a 7.7 explica por que a métrica não consegue mais julgar |
 | **8** — OCR de verdade | **fechada**. 19 de 32 livros com procedência ≠ `default`, 14 deles por texto ou OCR — contra 10 antes do motor |
-| **9** e **10** | fechadas desde 2026-08-09 |
+| **9** e **10** | fechadas desde 2026-08-09, mais a S-66 e a S-67 documentadas depois (10.7, 10.8) |
 | **11** — o modelo | **feita e reprovada nos próprios critérios**. Ver 11.1 |
+| **12** — a página como lugar de trabalho | **fechada em 2026-08-12** (S-68 a S-71). Não estava em plano nenhum: saiu de uso |
 
 ### Os quatro itens que a medição desaconselhou
 
