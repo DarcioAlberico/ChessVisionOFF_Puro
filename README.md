@@ -441,9 +441,13 @@ estou vendo?". A caixa **Marcar diagramas** desliga tudo isso para quem esta len
 livro, e a escolha sobrevive ao fechamento da janela.
 
 A **cor diz em que ponto do trabalho** aquele diagrama esta: azul e localizado pelo detector,
-ambar e lido pelo OCR e ainda nao salvo, **verde e ja tem amostra no `labels.csv`**. O verde
-vem da procedencia gravada no CSV e nao da memoria, entao ele aparece assim que voce abre um
-livro que ja trabalhou antes -- e responde "onde eu parei?" sem custar uma leitura. O diagrama
+ambar e lido pelo OCR e ainda nao salvo, **violeta e a base de partidas reconheceu a posicao**
+(S-75) e **verde e ja tem amostra no `labels.csv`**. O verde vem da procedencia gravada no CSV
+e o violeta das anotacoes da galeria -- nenhum dos dois vem da memoria, entao os dois aparecem
+assim que voce abre um livro que ja trabalhou antes, e respondem "onde eu parei?" sem custar
+uma leitura. O violeta diz uma coisa que nenhuma outra marca da tela sabe dizer: **aquele
+diagrama nao precisa de olho humano**, porque as 64 casas dele bateram com um lance de uma
+partida registrada. O diagrama
 aberto no editor e marcado por **borda dupla e mais grossa**, e nao por cor, justamente para
 nao esconder o estado dele -- e nada e pintado por cima do tabuleiro, que e o que se esta
 tentando conferir.

@@ -54,6 +54,7 @@ from chess_diagram_ocr.config import (
 from chess_diagram_ocr.dataset_browser import DatasetRow
 from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
+from chess_diagram_ocr.gallery import load_annotations
 from chess_diagram_ocr.labels import LabelStore, saved_diagrams_by_page
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
@@ -86,6 +87,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     boxes_from_diagrams,
     choose_boxes,
     decide_box_click,
+    mark_confirmed,
     mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams
@@ -150,6 +152,12 @@ class ChessOcrTkApp:
         Vem do `labels.csv` e não da memória: é o que faz a marcação verde valer entre
         execuções. Relido ao abrir o livro e a cada amostra gravada -- 3.313 linhas custam
         milissegundos, e um índice que mente sobre trabalho já feito custa refazê-lo."""
+
+        self.confirmed_diagrams: dict[int, set[int]] = {}
+        """Quais diagramas a base de partidas reconheceu (S-75).
+
+        Mesma mecânica do `saved_diagrams` e outra fonte: as anotações da galeria, onde o
+        `cvoff-games` grava. Um diz "eu já trabalhei isto", o outro "isto não precisa de mim"."""
 
         self._overlay_lock = threading.Lock()
         self._overlay_request: tuple[str, int, OverlayParams, Path, np.ndarray] | None = None
@@ -673,6 +681,7 @@ class ChessOcrTkApp:
         alvo = pdf_path if pdf_path is not None else self.pdf_source
         if alvo is None:
             self.saved_diagrams = {}
+            self.confirmed_diagrams = {}
             return
         try:
             loja = LabelStore(Path(self.dataset_csv_var.get()))
@@ -680,6 +689,25 @@ class ChessOcrTkApp:
         except Exception:
             logger.exception("Não foi possível ler o que já está salvo de %s.", alvo.name)
             self.saved_diagrams = {}
+        self.confirmed_diagrams = self._read_confirmed(alvo)
+
+    def _read_confirmed(self, pdf_path: Path) -> dict[int, set[int]]:
+        """O que a base de partidas já confirmou neste livro, por página (S-75).
+
+        Sai das anotações da galeria, que é onde o `cvoff-games` grava -- e não de um arquivo
+        próprio do visualizador, pela razão de sempre: dois lugares para a mesma verdade só têm
+        como divergir. Falhar aqui não impede nada; as caixas ficam sem o violeta.
+        """
+        confirmados: dict[int, set[int]] = {}
+        try:
+            anotacoes = load_annotations(pdf_path)
+        except Exception:
+            logger.exception("Não foi possível ler as confirmações de %s.", pdf_path.name)
+            return {}
+        for (pagina, diagrama), anotacao in anotacoes.entries.items():
+            if anotacao.confirmed_from:
+                confirmados.setdefault(pagina, set()).add(diagrama)
+        return confirmados
 
     def _editor_shows_page(self, page_index: int) -> bool:
         """Se o que está no editor é, ele mesmo, o reconhecimento desta página."""
@@ -707,12 +735,15 @@ class ChessOcrTkApp:
         params = self._overlay_params()
         salvos = self.saved_diagrams.get(page_index, set())
         detectadas = self.page_boxes.get(self._document_key(), page_index, params)
-        escolhidas = mark_saved(
-            choose_boxes(
-                recognized=boxes_from_diagrams(self._page_items(page_index)),
-                detected=detectadas.boxes if detectadas is not None else (),
+        escolhidas = mark_confirmed(
+            mark_saved(
+                choose_boxes(
+                    recognized=boxes_from_diagrams(self._page_items(page_index)),
+                    detected=detectadas.boxes if detectadas is not None else (),
+                ),
+                salvos,
             ),
-            salvos,
+            self.confirmed_diagrams.get(page_index, set()),
         )
         if escolhidas:
             painel.set_diagram_boxes(PageBoxes(page_index, params, escolhidas))

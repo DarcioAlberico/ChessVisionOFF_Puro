@@ -21,9 +21,12 @@ este comando gravou. Feche a aba, ou reabra o livro depois.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import multiprocessing as mp
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from ..config import DEFAULT_PDF_DIR
 from ..gallery import DEFAULT_GALLERY_DIR, load_annotations, save_annotations
@@ -79,8 +82,61 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=5,
         help="acima disto a posição não identifica partida, e nada é preenchido (padrão: 5).",
     )
+    parser.add_argument(
+        "--save-matches",
+        type=Path,
+        default=None,
+        help="grava os casamentos num JSON. 104 min de varredura viram um arquivo reaplicável.",
+    )
+    parser.add_argument(
+        "--from-matches",
+        type=Path,
+        default=None,
+        help="lê casamentos de um JSON em vez de varrer a base. Não abre o .pgn.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
+
+
+def _matches_to_json(matches_by_book: dict[Path, list[DiagramMatch]]) -> dict[str, Any]:
+    return {
+        "version": 1,
+        "books": {
+            livro.name: [
+                {
+                    "page_index": casamento.page_index,
+                    "diagram_index": casamento.diagram_index,
+                    "move_number": casamento.move_number,
+                    "side_to_move": casamento.side_to_move,
+                    "headers": casamento.headers,
+                    "games_matched": casamento.games_matched,
+                    "game_label": casamento.game_label,
+                }
+                for casamento in casamentos
+            ]
+            for livro, casamentos in matches_by_book.items()
+        },
+    }
+
+
+def _matches_from_json(path: Path, books: Sequence[Path]) -> dict[Path, list[DiagramMatch]]:
+    dados = json.loads(path.read_text(encoding="utf-8"))
+    por_nome = dados.get("books") or {}
+    saida: dict[Path, list[DiagramMatch]] = {}
+    for livro in books:
+        saida[livro] = [
+            DiagramMatch(
+                page_index=int(item["page_index"]),
+                diagram_index=int(item["diagram_index"]),
+                move_number=int(item["move_number"]),
+                side_to_move=str(item["side_to_move"]),
+                headers=dict(item.get("headers") or {}),
+                games_matched=int(item.get("games_matched", 1)),
+                game_label=str(item.get("game_label", "")),
+            )
+            for item in (por_nome.get(livro.name) or [])
+        ]
+    return saida
 
 
 def _books(args: argparse.Namespace) -> list[Path]:
@@ -158,6 +214,14 @@ def main(argv: list[str] | None = None) -> int:
     if not indices:
         return 2
 
+    if args.from_matches is not None:
+        # Reaplicar sem varrer: a varredura por posicao custa ~104 min, e nada nela depende do
+        # que se vai fazer com o resultado. Separar as duas coisas e o que permite mudar o
+        # `--max-games`, ou corrigir a regra de preenchimento, sem pagar a base de novo.
+        print(f"casamentos lidos de {args.from_matches}")
+        casamentos_por_livro = _matches_from_json(args.from_matches, list(indices))
+        return _finish(indices, casamentos_por_livro, args)
+
     print(f"base: {base} ({base.stat().st_size / 1e9:.1f} GB)")
     print(f"livros: {len(indices)}  |  modo: {args.mode}")
 
@@ -193,9 +257,25 @@ def main(argv: list[str] | None = None) -> int:
             livro: match_entries(indice.entries, partidas) for livro, indice in indices.items()
         }
 
+    return _finish(indices, casamentos_por_livro, args)
+
+
+def _finish(
+    indices: dict[Path, GalleryIndex],
+    matches_by_book: dict[Path, list[DiagramMatch]],
+    args: argparse.Namespace,
+) -> int:
+    """Relata, grava se pedido, e guarda os casamentos se pedido."""
+    if args.save_matches is not None:
+        args.save_matches.parent.mkdir(parents=True, exist_ok=True)
+        args.save_matches.write_text(
+            json.dumps(_matches_to_json(matches_by_book), ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+        print(f"casamentos gravados em {args.save_matches}")
+
     total_casados = total_identificaveis = 0
     for livro, indice in indices.items():
-        casamentos = casamentos_por_livro[livro]
+        casamentos = matches_by_book.get(livro, [])
         casados, identificaveis = _report(livro, len(indice.entries), casamentos, args.max_games)
         total_casados += casados
         total_identificaveis += identificaveis

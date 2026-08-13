@@ -48,6 +48,7 @@ __all__ = [
     "choose_boxes",
     "decide_box_click",
     "hit_test",
+    "mark_confirmed",
     "mark_saved",
 ]
 
@@ -96,6 +97,15 @@ class DiagramBox:
     Muda o que o clique faz e como o retângulo é pintado. A distinção importa porque as duas
     fontes são igualmente confiáveis quanto a *onde*, e completamente diferentes quanto a *o
     que já se sabe* -- e prometer leitura onde só houve detecção seria o pior dos dois.
+    """
+
+    confirmed: bool = False
+    """A base de partidas reconheceu esta posição (S-74/S-75).
+
+    Vem do arquivo de anotações, como o `saved` vem do CSV -- então aparece **antes de qualquer
+    OCR**, ao abrir um livro já casado. É a informação de maior valor por pixel do visualizador:
+    diz que aquele diagrama não precisa de olho humano, o que nenhuma outra marca da tela sabe
+    afirmar. Confiança alta é estimativa; isto é uma partida registrada.
     """
 
     saved: bool = False
@@ -182,6 +192,19 @@ def mark_saved(boxes: Sequence[DiagramBox], saved: Collection[int]) -> tuple[Dia
     if not saved:
         return tuple(boxes)
     return tuple(replace(box, saved=box.index in saved) for box in boxes)
+
+
+def mark_confirmed(boxes: Sequence[DiagramBox], confirmed: Collection[int]) -> tuple[DiagramBox, ...]:
+    """Carimba quais posições a base de partidas reconheceu (S-75).
+
+    Função separada da `mark_saved`, e não um parâmetro a mais nela, porque as duas respondem
+    perguntas independentes: uma diz que **você** trabalhou aquele diagrama, a outra que ele
+    **não precisa** ser trabalhado. Um diagrama pode ter as duas marcas, uma só, ou nenhuma --
+    e juntá-las numa chamada faria parecer que uma implica a outra.
+    """
+    if not confirmed:
+        return tuple(boxes)
+    return tuple(replace(box, confirmed=box.index in confirmed) for box in boxes)
 
 
 def boxes_from_candidates(candidates: Sequence[DiagramCandidate]) -> tuple[DiagramBox, ...]:

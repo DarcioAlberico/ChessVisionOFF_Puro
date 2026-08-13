@@ -36,6 +36,11 @@ data/orphans/
 # reconstruivel varrendo o livro. O `<livro>.json` das anotacoes e trabalho humano, mas
 # descreve o conteudo de um PDF protegido -- fica de fora pela mesma regra do review_cache.
 data/gallery/
+# Casamentos com a base de partidas (S-73): derivado do acervo protegido e de uma base de
+# terceiro, e reconstruivel com `cvoff-games --all --positions --save-matches`. Fica de fora
+# pelo mesmo motivo do review_cache -- mas guardar o arquivo vale muito, porque reconstrui-lo
+# custa ~104 minutos e reaplica-lo custa segundos (`--from-matches`).
+data/games_matches.json
 # Indice de procedencia (S-52): dHash de cada diagrama dos 27 PDFs. Nao e versionavel pelo
 # mesmo motivo do review_cache -- e derivado de PDF protegido --, e reconstruir custa horas
 # de CPU. Quem clonar o repositorio roda `cvoff-provenance --build`.

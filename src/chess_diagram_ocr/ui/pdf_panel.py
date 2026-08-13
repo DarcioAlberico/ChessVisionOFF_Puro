@@ -96,16 +96,26 @@ Vale mesmo antes de a página ser lida: quem responde é a procedência gravada 
 que está em memória. Abrir um livro pela quinta vez e ver de verde o que já foi feito é a
 única forma barata de responder "onde eu parei?"."""
 
+BOX_OUTLINE_CONFIRMED = "#9b7bff"
+"""A base de partidas reconheceu a posição (S-75). Violeta porque não é nem "feito" nem "a
+fazer": é **"não precisa"**, que é um estado que a tela não tinha.
+
+Vem do arquivo de anotações e, como o verde, aparece antes de qualquer OCR."""
+
 
 def box_color(box: DiagramBox) -> str:
     """A cor do retângulo, pelo ponto em que aquele diagrama está.
 
-    Salvo ganha de lido, e lido ganha de localizado: a informação mais adiantada é a que
-    interessa. Salvo vem primeiro inclusive quando a página ainda não foi lida -- é o caso que
-    faz a marcação valer para um livro que já foi trabalhado antes.
+    A precedência é: salvo > confirmado > lido > localizado -- da informação mais adiantada
+    para a menos. Salvo vem antes de confirmado porque ele é trabalho **seu** já feito: um
+    diagrama salvo e confirmado não precisa de nada, e o que interessa saber ao olhar a página
+    é que aquele já rendeu amostra. Salvo e confirmado valem inclusive antes de a página ser
+    lida, e é isso que faz a marcação servir a um livro trabalhado ontem.
     """
     if box.saved:
         return BOX_OUTLINE_SAVED
+    if box.confirmed:
+        return BOX_OUTLINE_CONFIRMED
     return BOX_OUTLINE_RECOGNIZED if box.recognized else BOX_OUTLINE
 
 
@@ -756,9 +766,12 @@ class PdfPanel(ttk.Frame):
         else:
             lidos = sum(1 for box in self.boxes.boxes if box.recognized and not box.saved)
             salvos = sum(1 for box in self.boxes.boxes if box.saved)
+            confirmados = sum(1 for box in self.boxes.boxes if box.confirmed and not box.saved)
             partes = [f"{len(self.boxes)} diagrama(s)"]
             if lidos:
                 partes.append(f"{lidos} lido(s)")
+            if confirmados:
+                partes.append(f"{confirmados} confirmado(s) pela base")
             if salvos:
                 partes.append(f"{salvos} salvo(s)")
             self.lbl_boxes.config(text=" · ".join(partes))

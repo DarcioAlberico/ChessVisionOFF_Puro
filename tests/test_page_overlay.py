@@ -26,6 +26,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     choose_boxes,
     decide_box_click,
     hit_test,
+    mark_confirmed,
     mark_saved,
 )
 
@@ -268,6 +269,30 @@ class NoTkinterTests(unittest.TestCase):
                 importados.add(node.module.split(".")[0])
 
         self.assertNotIn("tkinter", importados)
+
+
+class ConfirmadoPelaBaseTests(unittest.TestCase):
+    """A quarta marca da caixa (S-75): "não precisa", que a tela não sabia dizer."""
+
+    def _caixas(self) -> tuple[DiagramBox, ...]:
+        return (
+            DiagramBox(index=0, bbox_pdf=(0, 0, 10, 10)),
+            DiagramBox(index=1, bbox_pdf=(20, 0, 30, 10)),
+        )
+
+    def test_carimba_so_o_indice_confirmado(self) -> None:
+        caixas = mark_confirmed(self._caixas(), {1})
+        self.assertFalse(caixas[0].confirmed)
+        self.assertTrue(caixas[1].confirmed)
+
+    def test_sem_confirmacao_devolve_as_mesmas_caixas(self) -> None:
+        self.assertEqual(mark_confirmed(self._caixas(), set()), self._caixas())
+
+    def test_confirmado_e_salvo_convivem(self) -> None:
+        """Um diagrama pode ter as duas marcas: são perguntas independentes."""
+        caixas = mark_confirmed(mark_saved(self._caixas(), {0}), {0})
+        self.assertTrue(caixas[0].saved)
+        self.assertTrue(caixas[0].confirmed)
 
 
 if __name__ == "__main__":
