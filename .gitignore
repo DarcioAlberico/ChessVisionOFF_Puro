@@ -54,6 +54,11 @@ models/**/*.onnx
 # --- Material de origem protegido por direito autoral ---
 # NUNCA versionar: o repositorio e publico.
 PDF/
+# Base de partidas (10.547.416 partidas, 9,7 GB num arquivo so). E material de terceiro,
+# nao cabe no GitHub (limite de 100 MB por arquivo) e nao e reconstruivel a partir daqui --
+# quem clonar baixa a sua. Pela mesma razao do data/*.7z: um `git add -A` distraido poria
+# isso no historico para sempre, e do historico nao sai.
+pgn_database/
 
 # --- Saida gerada ---
 PGN/
