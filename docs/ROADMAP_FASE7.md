@@ -1,7 +1,7 @@
 # Roadmap — Fases 7 a 13
 
 Continuação de [ROADMAP.md](ROADMAP.md), que fecha na Fase 6. Especificação detalhada em
-[SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-73). Para o *como* de hoje,
+[SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75). Para o *como* de hoje,
 [ARCHITECTURE.md](ARCHITECTURE.md); para os números de referência,
 [BASELINE.md](BASELINE.md);
 para o que foi medido nesta fase — **inclusive o que não entrou** —
@@ -1743,7 +1743,9 @@ mudar duas vezes o desenho dela antes de qualquer linha de código.
 |---|---|---|---|
 | 13.1 | Casamento por **nome**: legenda → partida → lance, na Galeria | S-72 | ✅ |
 | 13.2 | Casamento por **posição**: `cvoff-games`, alcança todo diagrama | S-73 | ✅ |
-| 13.3 | Medir um segundo livro, de outro gênero | — | ← pendente, e é a que calibra a expectativa |
+| 13.3 | Medir outros livros, de outros gêneros | — | ✅ quatro livros, 3.563 diagramas |
+| 13.4 | A confirmação tira o diagrama da fila de revisão | S-74 | ✅ |
+| 13.5 | A quarta cor no visualizador: "não precisa" | S-75 | ✅ |
 
 **Critério de saída:** um diagrama cuja posição está na base sai com lance, vez e headers sem
 ninguém digitar — e nada do que a pessoa digitou é tocado. Atingido nos dois caminhos.
@@ -1796,13 +1798,63 @@ S-61 encontrou na abertura do PDF, num lugar onde ela vale 32×.
 lance e 61/61 na partida**. Duas rotas sem código em comum chegando ao mesmo lugar vale mais
 que qualquer teste escrito à mão.
 
-### 13.3 — o que a Fase 13 mede e o que ela ainda não sabe
+### 13.3 — quatro livros medidos, e a ressalva que caiu
 
-O livro medido é do Dvoretsky, feito de partidas reais: **é o melhor caso possível**. Um livro
-de estudos compostos ou de problemas de mate vai casar muito menos, e ler o 54,2% como taxa do
-acervo seria repetir o erro que a Fase 7 documentou — número de um conjunto favorável tratado
-como número do campo. Medir um segundo livro custa uma varredura de Galeria (minutos) e entra
-na mesma passada da base.
+Eu havia registrado que o 54,2% do Dvoretsky era "o melhor caso possível" e que outro gênero
+cairia muito. Medido em mais três livros, na mesma passada:
+
+| livro | diagramas | casaram | % | com partida única |
+|---|---|---|---|---|
+| `Secrets of Chess Training` (treino, partidas reais) | 1.408 | 764 | **54,3%** | 490 |
+| `400 Quebra-cabeças de Estratégia` (pt-BR, outro autor) | 1.120 | 589 | **52,6%** | 537 |
+| `1001 Winning Chess Sacrifices` (táticas, 1955) | 1.003 | 288 | **28,7%** | 241 |
+| `Niemeijer — Zwarte Magie` (problemas compostos) | 32 | **0** | 0% | 0 |
+| **total** | **3.563** | **1.641** | **46,1%** | |
+
+**A ressalva caiu pela metade.** O `400 Quebra-cabeças` não tem nada em comum com o Dvoretsky
+— outro autor, outra editora, outro idioma, estratégia em vez de treino — e ficou a 1,7 ponto
+dele. Dois livros independentes na mesma faixa não são "o melhor caso possível".
+
+O que cai é o **Reinfeld**, e a hipótese mais provável não é gênero: é **idade**. São táticas
+de partidas de até 1955, muitas obscuras, e uma base montada a partir de bancos comerciais
+cobre mal o que não virou clássico. Isso é testável — comparar a distribuição de anos dos
+casamentos com a dos diagramas — e não foi testado.
+
+O **Niemeijer deu zero**, como previsto, mas por **duas causas somadas**: são problemas
+compostos (não são posições de partida) e o modelo não lê o livro (confiança mínima mediana
+0,251, zero acima do gate). O experimento não separa as duas, e por isso ele não prova o que eu
+queria que provasse — serve como o caso extremo de que **a base não resgata OCR ruim**, o que
+até aqui eu vinha afirmando sem medir.
+
+**O que a Fase 13 entregou de trabalho poupado**, somando os quatro: **11.746 campos
+preenchidos em 1.409 diagramas**, e 1.641 leituras confirmadas — que é o número que esvazia a
+fila de revisão (13.4).
+
+### 13.4 e 13.5 — o que a confirmação vale além do preenchimento (S-74, S-75)
+
+A fila da S-22 ordena por **estimativa de erro**; um casamento é a **resposta**. Confirmado, o
+diagrama não vira item — e o que sobrevive é só o que a confirmação não responde: de quem é a
+vez, porque a mesma colocação aparece com brancas e com pretas em partidas diferentes.
+
+Isso mudou o desenho da S-72: **confirmar e preencher viraram coisas diferentes**. Uma posição
+em 300 partidas não diz qual delas é (não preenche), mas diz que a leitura está certa
+(confirma). Antes, o casamento ambíguo era descartado inteiro — e ele é 232 dos 1.641.
+
+Na tela, a quarta cor: violeta para "não precisa", entre o âmbar de "lido" e o verde de
+"salvo". Como o verde, vem do disco, então aparece ao abrir um livro casado ontem, antes de
+qualquer OCR — no `400 Quebra-cabeças` isso é metade da página respondida sem uma leitura.
+
+### O defeito de sequenciamento que custou 104 minutos
+
+A varredura dos quatro livros rodou com o código **de antes** da correção de procedência, e os
+11.746 campos foram gravados sem `filled_fields` e sem `confirmed_from`. O PGN teria dito
+`[SideToMoveSource "manual"]` para 1.409 diagramas que ninguém conferiu, e a S-74 não tiraria
+ninguém da fila.
+
+A correção não foi só refazer: `cvoff-games` ganhou `--save-matches` / `--from-matches`. Nada
+na varredura depende do que se faz com o resultado dela, e separar as duas coisas faz refazer
+custar segundos em vez de 104 minutos — inclusive para mudar o `--max-games` ou a regra de
+preenchimento.
 
 ### Os dois defeitos que só a execução mostrou
 
@@ -1882,7 +1934,7 @@ Nenhum ficou por falta de tempo.
 | **9** e **10** | fechadas desde 2026-08-09, mais a S-66 e a S-67 documentadas depois (10.7, 10.8) |
 | **11** — o modelo | **feita e reprovada nos próprios critérios**. Ver 11.1 |
 | **12** — a página como lugar de trabalho | **fechada em 2026-08-12** (S-68 a S-71). Não estava em plano nenhum: saiu de uso |
-| **13** — a base de partidas | **código completo em 2026-08-13** (S-72, S-73). Falta medir um segundo livro, que é o que calibra a expectativa |
+| **13** — a base de partidas | **fechada em 2026-08-13** (S-72 a S-75). Quatro livros medidos: 1.641 leituras confirmadas e 11.746 campos preenchidos |
 
 ### Os quatro itens que a medição desaconselhou
 

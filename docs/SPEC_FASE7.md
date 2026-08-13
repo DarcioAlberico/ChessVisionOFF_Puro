@@ -1,4 +1,4 @@
-# Especificação das melhorias — Fases 7 a 13 (S-37 a S-73)
+# Especificação das melhorias — Fases 7 a 13 (S-37 a S-75)
 
 Continuação de [SPEC.md](SPEC.md), que cobre S-01 a S-36. Sequenciamento e a medição que
 motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
@@ -2615,6 +2615,76 @@ equivalência entre um e vários processos, a guarda contra a recursão do `spaw
 
 ---
 
+## S-74 · O diagrama que a base confirmou sai da fila de revisão ✅ implementada (2026-08-13)
+
+**Problema.** A fila da S-22 ordena por **estimativa de erro**: confiança mínima, entropia,
+casa reescrita pela decodificação restrita, classe rara. São todas aproximações do que não se
+sabe. Quando as 64 casas batem com um lance de uma partida registrada, não há o que estimar —
+existe a resposta, e a fila continua perguntando.
+
+O número que dá a medida: no `1937 Kemeri` a fila pega **30 dos 47 diagramas**, e a própria
+Fase 4 registrou que ali o ganho dela é a ordem, não o corte. O corte é isto.
+
+**Solução.** `priority_for(..., confirmed_by_database=...)`, alimentado pelas anotações do
+livro. Confirmado, o diagrama não vira item.
+
+**Confirmar e preencher passaram a ser coisas diferentes, e por isso são dois campos.** Uma
+posição que aparece em 300 partidas não diz *qual* partida é, então não preenche header nenhum
+(S-72) — mas responde a pergunta da fila, porque aquelas 64 casas aconteceram num tabuleiro de
+verdade. `DiagramAnnotation.confirmed_from` guarda a partida quando ela é única e a contagem
+quando não é, e **conta como anotação não-vazia**: descartá-la por parecer vazia faria a fila
+reencher a cada varredura.
+
+**A confirmação cala tudo que é sobre a leitura, e nada do que é sobre a vez a jogar.** A mesma
+colocação aparece com brancas e com pretas a jogar em partidas diferentes — então a
+discordância entre texto e legalidade (S-16/S-17) e o xeque invertido continuam valendo, e o
+motivo registrado vira "posição confirmada pela base (...); resta a vez a jogar".
+
+**O risco, nomeado.** Uma leitura errada que por acaso componha *outra* posição real. Com 64
+casas isso exige coincidência estrutural, e o caso em que ela é plausível — final de poucas
+peças que aparece em centenas de partidas — é justamente o que `apply_matches` recusa
+preencher.
+
+**A fonte é o arquivo de anotações**, e não um arquivo próprio da fila: quem grava é o
+`cvoff-games`, e um segundo lugar para essa verdade morar só teria como divergir do primeiro —
+a decisão que a S-34 tomou no `--skip-existing`.
+
+**Critério de aceite.** Um diagrama confirmado não entra na fila; o mesmo diagrama sem
+confirmação entra. Rodar a busca duas vezes não muda a fila.
+
+**Testes.** `tests/test_review_queue.py` (a prioridade e o item), `tests/test_gallery_model.py`
+(o que confirma sem preencher).
+
+---
+
+## S-75 · A quarta cor: "não precisa" ✅ implementada (2026-08-13)
+
+**Problema.** As três cores da S-71 formam um eixo — azul localizado, âmbar lido, verde salvo:
+em que ponto do **seu** trabalho aquele diagrama está. A S-74 criou um estado que não cabe
+nesse eixo e vale mais que todos: a base reconheceu a posição, então ele **não precisa de olho
+nenhum**. Sem uma marca, essa informação só existia dentro do arquivo de anotações.
+
+**Solução.** `DiagramBox.confirmed` + `mark_confirmed`, e violeta entre o âmbar e o verde.
+
+Como o verde, vem do disco e não da memória — as anotações da galeria —, então aparece ao abrir
+um livro casado ontem, **antes de qualquer OCR**. Num livro como o `400 Quebra-cabeças`, que
+casou 52,6%, é metade da página respondida sem uma leitura.
+
+**`mark_confirmed` é função separada da `mark_saved`**, e não um parâmetro a mais nela, porque
+as duas respondem perguntas independentes: uma diz que você trabalhou aquele diagrama, a outra
+que ele não precisa ser trabalhado. Um diagrama pode ter as duas marcas, uma só, ou nenhuma —
+e juntá-las numa chamada faria parecer que uma implica a outra.
+
+**Precedência: salvo > confirmado > lido > localizado.** Salvo vem antes porque é trabalho seu
+já feito: ao olhar a página, o que interessa saber daquele diagrama é que ele já rendeu amostra.
+
+**Critério de aceite.** Abrir um livro já casado e ver o violeta antes de rodar qualquer coisa;
+a linha de status contando quantos são.
+
+**Testes.** `tests/test_page_overlay.py` (o carimbo e a convivência com o verde).
+
+---
+
 # Apêndice · Índice de referências cruzadas
 
 | item | depende de | referenciado por |
@@ -2655,4 +2725,6 @@ equivalência entre um e vários processos, a guarda contra a recursão do `spaw
 | S-70 roda, arrasto e zoom | S-69 | — |
 | S-71 lance e "já salvo" | S-67 (dona da anotação), S-19 (a procedência), S-51 | — |
 | S-72 base por nome | S-16 (o `parse_context`), S-67, S-17 (a regra de não sobrescrever) | S-73 |
-| S-73 base por posição | S-72, S-26 (a armadilha do `spawn`), S-61 (a economia da passada) | S-13, S-17 (dão vez a jogar com procedência) |
+| S-73 base por posição | S-72, S-26 (a armadilha do `spawn`), S-61 (a economia da passada) | S-13, S-17 (dão vez a jogar com procedência), S-74 |
+| S-74 confirmação na fila | S-73, S-22 | S-75 |
+| S-75 a quarta cor | S-74, S-71 (o eixo de cores), S-68 | — |
