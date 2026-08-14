@@ -190,6 +190,23 @@ def save_field_set(path: Path, pages: Iterable[FieldPage]) -> None:
     atomic_write_text(Path(path), corpo + "\n" if corpo else "")
 
 
+def upsert_page(path: Path, page: FieldPage) -> int:
+    """Grava uma página anotada, **substituindo** a anterior do mesmo (livro, página).
+
+    Devolve o total de páginas revisadas no arquivo depois da gravação -- que é o número que
+    interessa a quem está anotando, e o que a 7.7 pede para crescer.
+
+    Substituir em vez de acrescentar porque a mesma página é anotada mais de uma vez na
+    prática: confirma-se rápido, encontra-se um diagrama que faltou e volta-se a ela. Duas
+    linhas do mesmo par fariam `evaluate_field` contar a página duas vezes, com pesos
+    diferentes.
+    """
+    paginas = [item for item in load_field_set(path) if (item.pdf, item.page) != (page.pdf, page.page)]
+    paginas.append(page)
+    save_field_set(path, paginas)
+    return sum(1 for item in paginas if item.reviewed)
+
+
 # --------------------------------------------------------------------------- relatório
 
 

@@ -279,6 +279,13 @@ class PdfPanel(ttk.Frame):
         )
         self.btn_cancel_export.pack(side=tk.LEFT)
 
+        self.field_row = ttk.Frame(box)
+        """Onde a janela pendura os controles do conjunto de campo (S-77).
+
+        Junto da página, e não numa aba de configuração: anota-se o que se está vendo, e uma
+        anotação feita longe da imagem é uma anotação feita de memória."""
+        self.field_row.pack(fill=tk.X, padx=8, pady=(0, 6))
+
         zoom_row = ttk.Frame(box)
         zoom_row.pack(fill=tk.X, padx=8, pady=(0, 4))
         ttk.Label(zoom_row, text="Zoom PDF").pack(side=tk.LEFT)

@@ -54,6 +54,7 @@ from chess_diagram_ocr.config import (
 from chess_diagram_ocr.dataset_browser import DatasetRow
 from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
+from chess_diagram_ocr.field_eval import load_field_set, upsert_page
 from chess_diagram_ocr.gallery import load_annotations
 from chess_diagram_ocr.labels import LabelStore, saved_diagrams_by_page
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
@@ -77,6 +78,7 @@ from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 from chess_diagram_ocr.ui.export_controller import ExportController, ExportSettings
+from chess_diagram_ocr.ui.field_draft import REGIMES, FieldDraft
 from chess_diagram_ocr.ui.gallery_panel import GalleryPanel
 from chess_diagram_ocr.ui.page_overlay import (
     BoxClick,
@@ -98,6 +100,7 @@ from chess_diagram_ocr.ui.shortcuts import bind_shortcuts
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 from chess_diagram_ocr.ui.study_panel import StudyPanel
 from chess_diagram_ocr.ui.theme import apply_theme
+from chess_diagram_ocr.ui.tooltip import Tooltip
 from chess_diagram_ocr.ui.training_dialog import TrainingController, TrainingRequest
 
 # `PROJECT_ROOT` e a pasta gravavel -- o checkout, ou a pasta do `.exe` num bundle (S-55).
@@ -106,6 +109,7 @@ from chess_diagram_ocr.ui.training_dialog import TrainingController, TrainingReq
 ROOT = PROJECT_ROOT
 PIECE_IMAGE_DIR = BUNDLE_ROOT / "assets" / "piece_images"
 APP_STATE_PATH = ROOT / "data" / "app_tkinter_state.json"
+FIELD_SET_PATH = ROOT / "data" / "field_set.jsonl"
 DEFAULT_SPLITS_PATH = ROOT / "data" / "splits.csv"
 
 logger = logging.getLogger(__name__)
@@ -378,6 +382,33 @@ class ChessOcrTkApp:
             on_prefs_changed=self._save_app_state,
         )
         self.pdf_panel.pack(fill=tk.BOTH, expand=True)
+        self._build_field_row(self.pdf_panel.field_row)
+
+    def _build_field_row(self, parent: ttk.Widget) -> None:
+        """Os controles do conjunto de campo (S-77), junto da página exibida.
+
+        A ordem dos botões é a do gesto: confirmar o que está na tela é o caso comum, "sem
+        diagrama" é o segundo mais comum -- e as páginas sem diagrama são obrigatórias, porque
+        são as únicas que medem falso positivo (S-41).
+        """
+        ttk.Label(parent, text="Conjunto de campo").pack(side=tk.LEFT)
+        self.field_regime_var = tk.StringVar(value=REGIMES[0])
+        ttk.Combobox(
+            parent, textvariable=self.field_regime_var, values=list(REGIMES), width=15, state="readonly"
+        ).pack(side=tk.LEFT, padx=6)
+
+        botao = ttk.Button(parent, text="Anotar página", command=self.annotate_field_page)
+        botao.pack(side=tk.LEFT)
+        Tooltip(botao).set_text(
+            "Grava as caixas desta página como verdade de referência, revisada por você. "
+            "Confira antes: é isto que mede o pipeline, e um erro aqui vira erro na métrica."
+        )
+        ttk.Button(parent, text="Sem diagrama", command=lambda: self.annotate_field_page(empty=True)).pack(
+            side=tk.LEFT, padx=6
+        )
+        ttk.Button(parent, text="Tirar o selecionado", command=self.field_drop_selected).pack(side=tk.LEFT)
+        self.field_status_var = tk.StringVar(value="")
+        ttk.Label(parent, textvariable=self.field_status_var).pack(side=tk.LEFT, padx=10)
 
     def _entry_row(self, parent: ttk.Widget, label: str, var: Any) -> None:
         row = ttk.Frame(parent)
@@ -626,6 +657,7 @@ class ChessOcrTkApp:
         # Depois de restaurar: se esta página já foi lida, as caixas saem do reconhecimento --
         # que sabe o mesmo sobre *onde* e mais sobre *o que* -- e o detector não precisa rodar.
         self._refresh_overlay(page_index)
+        self._refresh_field_status()
         if self.gallery_panel is not None:
             # A galeria acompanha a pagina, e ela propria ignora o aviso quando foi ela quem
             # pediu a virada -- senao os dois se chamariam em circulo (S-67).
@@ -899,6 +931,85 @@ class ChessOcrTkApp:
             lambda: self.service.recognize_page(source, page_index, page_rgb, options=options),
             origin=RecognitionOrigin.for_page(painel.name, page_index),
         )
+
+    # ------------------------------------------------------- conjunto de campo (S-77)
+
+    def _field_draft(self) -> FieldDraft:
+        """A anotação desta página: a que já existe no arquivo, ou o que está na tela.
+
+        Retomar a existente é o que permite corrigir sem recomeçar -- confirma-se rápido,
+        acha-se um diagrama que faltou, e volta-se a ela.
+        """
+        nome = self.pdf_source.name if self.pdf_source else ""
+        gravadas = {(pagina.pdf, pagina.page): pagina for pagina in load_field_set(FIELD_SET_PATH)}
+        existente = gravadas.get((nome, self.page_index))
+        if existente is not None:
+            return FieldDraft.from_page(existente)
+
+        rascunho = FieldDraft(pdf_name=nome, page=self.page_index, regime=self.field_regime_var.get())
+        caixas = self.pdf_panel.boxes if self.pdf_panel is not None else None
+        lidos = {item.index: item for item in self._page_items(self.page_index)}
+        rascunho.reset_from(
+            [
+                (box.bbox_pdf, getattr(lidos.get(indice), "placement", "") or "")
+                for indice, box in enumerate(caixas.boxes if caixas is not None else ())
+            ]
+        )
+        return rascunho
+
+    def annotate_field_page(self, *, empty: bool = False) -> None:
+        """Grava a página no conjunto de campo, revisada.
+
+        **É o gesto que desbloqueia as Fases 7 e 11.** Com 38 diagramas, a taxa de exportação
+        não distingue dois modelos (7.7), e quatro itens de spec foram julgados por ela. O que
+        falta não é código: é este clique, página a página.
+        """
+        if self.pdf_source is None:
+            messagebox.showinfo("Conjunto de campo", "Abra um PDF antes de anotar a página.")
+            return
+
+        rascunho = FieldDraft(pdf_name=self.pdf_source.name, page=self.page_index) if empty else self._field_draft()
+        rascunho.regime = "sem-diagrama" if empty else (self.field_regime_var.get() or rascunho.regime)
+        total = upsert_page(FIELD_SET_PATH, rascunho.to_page())
+        self.field_status_var.set(f"{rascunho.describe()} · {total} página(s) no conjunto")
+        self._set_status(
+            f"Página {self.page_index + 1} anotada no conjunto de campo: {rascunho.describe()}. "
+            f"O conjunto tem {total} página(s) revisada(s)."
+        )
+
+    def field_drop_selected(self) -> None:
+        """Tira da anotação o diagrama selecionado -- o falso positivo que o detector achou."""
+        if self.pdf_source is None or self.result_panel is None:
+            return
+        caixas = self.pdf_panel.boxes if self.pdf_panel is not None else None
+        if caixas is None or not len(caixas):
+            self._set_status("Nenhuma caixa nesta página para tirar.")
+            return
+        selecionado = self.result_panel.selected_index
+        if not 0 <= selecionado < len(caixas.boxes):
+            self._set_status("Selecione o diagrama na página antes de tirá-lo da anotação.")
+            return
+
+        rascunho = self._field_draft()
+        indice = rascunho.index_at(caixas.boxes[selecionado].bbox_pdf)
+        if indice is None or not rascunho.remove(indice):
+            self._set_status("Esse diagrama não está na anotação desta página.")
+            return
+        total = upsert_page(FIELD_SET_PATH, rascunho.to_page())
+        self.field_status_var.set(f"{rascunho.describe()} · {total} página(s) no conjunto")
+        self._set_status(f"Diagrama tirado da anotação. Ficaram {rascunho.describe()}.")
+
+    def _refresh_field_status(self) -> None:
+        """Diz, ao virar a página, se ela já está anotada. Sem isso não há como saber."""
+        if self.pdf_source is None:
+            self.field_status_var.set("")
+            return
+        gravadas = {(pagina.pdf, pagina.page): pagina for pagina in load_field_set(FIELD_SET_PATH)}
+        pagina = gravadas.get((self.pdf_source.name, self.page_index))
+        if pagina is None:
+            self.field_status_var.set("página não anotada")
+            return
+        self.field_status_var.set(f"anotada: {FieldDraft.from_page(pagina).describe()}")
 
     def _ocr_region(self, page_rgb: np.ndarray, region: tuple[int, int, int, int]) -> None:
         options = self._recognition_options(int(self.max_boards_var.get()))
