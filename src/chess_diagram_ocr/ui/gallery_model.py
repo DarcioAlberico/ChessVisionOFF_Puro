@@ -13,7 +13,7 @@ arquivo cresceria com uma linha por diagrama visitado, e "visitei" não é "anot
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -246,12 +246,72 @@ class GalleryModel:
             )
         return self.edit(headers=headers)
 
+    def headers_to_apply(self, names: tuple[str, ...] = HEADER_FIELDS) -> dict[str, str]:
+        """O que um "aplicar a todos" copiaria daqui. Existe para a tela poder **mostrar**.
+
+        A ação é a mais destrutiva da aba -- ela sobrescreve o mesmo campo em centenas de
+        diagramas --, e até aqui o usuário só descobria o que tinha feito depois de feito. Uma
+        pergunta que não diz quais valores vão para quantos diagramas não é uma confirmação, é
+        um obstáculo.
+        """
+        return {
+            nome: valor
+            for nome, valor in self.current_annotation.headers.items()
+            if nome in names and valor
+        }
+
+    def revert_headers(self, values: Mapping[str, str]) -> int:
+        """Remove de **todo** diagrama os headers cujo valor é exatamente este. Devolve quantos.
+
+        É o desfazer do "aplicar a todos", e o critério é o valor e não a chave: apagar todo
+        `Event` do livro tiraria junto o que a base preencheu certo e o que a pessoa digitou
+        diagrama a diagrama. Apagar só onde `Event == "Amsterdam"` desfaz exatamente o que
+        aquele gesto espalhou.
+
+        O que ele não recupera é o que a cópia **sobrescreveu**: `apply_headers_to_all` grava
+        por cima, e o valor anterior não existe mais em lugar nenhum. É por isso que a
+        confirmação da tela vale mais que este desfazer.
+        """
+        alvos = {nome: valor for nome, valor in values.items() if valor}
+        if not alvos:
+            return 0
+        atingidos = 0
+        for chave, anotacao in list(self.annotations.entries.items()):
+            headers = {
+                nome: valor
+                for nome, valor in anotacao.headers.items()
+                if alvos.get(nome) != valor
+            }
+            if headers != anotacao.headers:
+                # Um header removido também deixa de ter procedência: se a base o escreveu, o
+                # que sobra depois de apagá-lo não é dela.
+                restantes = tuple(
+                    campo
+                    for campo in anotacao.filled_fields
+                    if not (campo.startswith("header:") and campo.removeprefix("header:") not in headers)
+                )
+                self.annotations.set(
+                    *chave,
+                    replace(
+                        anotacao,
+                        headers=headers,
+                        filled_fields=restantes,
+                        filled_from=anotacao.filled_from if restantes else "",
+                    ),
+                )
+                atingidos += 1
+        return atingidos
+
     def apply_headers_to_all(self, names: tuple[str, ...] = HEADER_FIELDS) -> int:
         """Copia os headers declarados neste diagrama para todos os outros. Devolve quantos.
 
         Só os **declarados**: um campo em branco aqui não apaga o que outro diagrama tem.
         Aplicar a todos é para preencher `Event` e `Site` de um livro inteiro de uma vez, e
         transformar isso num apagador em massa seria um jeito caro de perder trabalho.
+
+        **O que ele faz com campo já preenchido é sobrescrever**, e foi assim que um clique
+        espalhou "Ljubojevic / Browne / Amsterdam / 1972" por 1.405 diagramas de um livro. Quem
+        chama tem de perguntar antes -- ver `headers_to_apply` e `revert_headers`.
         """
         origem = {
             nome: valor

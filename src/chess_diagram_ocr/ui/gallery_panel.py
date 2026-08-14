@@ -108,6 +108,12 @@ class GalleryPanel(ttk.Frame):
         self.origin_var = tk.StringVar(value="")
         """A partida da base que preencheu este diagrama, quando foi ela (S-72)."""
 
+        self._last_applied: dict[str, str] = {}
+        """O que a última cópia para todos espalhou, para o desfazer.
+
+        Só da sessão: depois de fechar a janela, o desfazer some. É honesto -- o que ele
+        promete é reverter **aquele gesto**, e não manter um histórico do arquivo."""
+
         self._build()
         self.refresh()
 
@@ -238,11 +244,22 @@ class GalleryPanel(ttk.Frame):
             row=livre + 4, column=0, columnspan=2, sticky="w", pady=(8, 0)
         )
 
-        aplicar = ttk.Button(lateral, text="Aplicar a todos", command=self.apply_to_all)
+        # O rotulo diz a **direcao** da copia. "Aplicar a todos" foi lido como "salvar os
+        # headers deste diagrama" -- e o clique espalhou quatro campos por 1.405 diagramas.
+        aplicar = ttk.Button(lateral, text="Copiar headers para todos", command=self.apply_to_all)
         aplicar.grid(row=livre + 5, column=0, columnspan=2, sticky="we", pady=(10, 0))
         Tooltip(aplicar).set_text(
-            "Copia os headers preenchidos deste diagrama para todos os outros do livro. "
-            "Campo em branco não apaga o que os outros têm."
+            "Copia os headers deste diagrama para TODOS os outros do livro, sobrescrevendo o "
+            "que eles tiverem nesses campos. Os campos já se salvam sozinhos ao sair deles -- "
+            "este botão não é para salvar, é para propagar."
+        )
+
+        self.btn_undo = ttk.Button(lateral, text="Desfazer a cópia", command=self.undo_apply_to_all)
+        self.btn_undo.grid(row=livre + 6, column=0, columnspan=2, sticky="we", pady=(4, 0))
+        self.btn_undo.configure(state=tk.DISABLED)
+        Tooltip(self.btn_undo).set_text(
+            "Remove dos outros diagramas os valores que a última cópia espalhou. "
+            "Não recupera o que a cópia sobrescreveu -- por isso a pergunta antes."
         )
 
     def _build_footer(self) -> None:
@@ -516,12 +533,51 @@ class GalleryPanel(ttk.Frame):
         self._on_status(f"Header {nome} gravado neste diagrama.")
 
     def apply_to_all(self) -> None:
-        atingidos = self.model.apply_headers_to_all()
-        if atingidos == 0:
-            self._on_status("Nada a aplicar: nenhum header preenchido neste diagrama.")
+        """Copia os headers deste diagrama para o livro inteiro -- **perguntando antes**.
+
+        A pergunta nomeia os valores e conta os diagramas porque a ação é irreversível na
+        parte que importa: ela **sobrescreve** o mesmo campo em centenas de anotações, e o
+        valor anterior deixa de existir. Um clique já espalhou "Ljubojevic / Browne /
+        Amsterdam / 1972" por 1.405 diagramas de um livro de 1.408 -- e o dono do projeto só
+        descobriu depois, olhando um diagrama que não era daquela partida.
+        """
+        valores = self.model.headers_to_apply()
+        if not valores:
+            self._on_status("Nada a copiar: nenhum header preenchido neste diagrama.")
             return
+        alvos = max(0, len(self.model) - 1)
+        listados = "\n".join(f"    {nome} = {valor}" for nome, valor in valores.items())
+        if not messagebox.askokcancel(
+            "Copiar headers para todos",
+            f"Copiar estes valores para os outros {alvos} diagrama(s) do livro?\n\n{listados}\n\n"
+            "O que esses diagramas tiverem nesses campos será sobrescrito, e o valor "
+            "anterior não poderá ser recuperado.",
+            icon=messagebox.WARNING,
+            default=messagebox.CANCEL,
+        ):
+            self._on_status("Cópia cancelada.")
+            return
+
+        atingidos = self.model.apply_headers_to_all()
+        self._last_applied = dict(valores)
+        self.btn_undo.configure(state=tk.NORMAL if atingidos else tk.DISABLED)
         self._persist()
-        self._on_status(f"Headers aplicados a {atingidos} outro(s) diagrama(s).")
+        self._on_status(f"Headers copiados para {atingidos} outro(s) diagrama(s). Dá para desfazer.")
+
+    def undo_apply_to_all(self) -> None:
+        """Tira dos outros diagramas o que a última cópia espalhou.
+
+        Apaga **pelo valor**, e não pela chave: o `Event` que a base preencheu certo em cada
+        diagrama e o que foi digitado um a um continuam onde estão.
+        """
+        if not self._last_applied:
+            return
+        atingidos = self.model.revert_headers(self._last_applied)
+        self._last_applied = {}
+        self.btn_undo.configure(state=tk.DISABLED)
+        self._persist()
+        self.refresh(request_page=False)
+        self._on_status(f"Cópia desfeita: header removido de {atingidos} diagrama(s).")
 
     def caption(self) -> str:
         """A legenda como está na tela. É por aqui que o teste a lê, sem tocar no widget."""

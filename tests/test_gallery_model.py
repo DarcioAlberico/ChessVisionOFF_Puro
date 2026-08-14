@@ -192,6 +192,53 @@ class DerivadosTests(unittest.TestCase):
         self.assertEqual(modelo.describe_position(), "diagrama 2 de 2 — página 6")
 
 
+class DesfazerCopiaTests(unittest.TestCase):
+    """O desfazer do "copiar para todos" (S-76): apaga pelo valor, não pela chave."""
+
+    def _modelo_com_headers(self) -> GalleryModel:
+        modelo = _modelo((0, 0), (5, 0), (9, 0))
+        modelo.annotations.update(0, 0, headers={"Event": "Amsterdam", "White": "Ljubojevic"})
+        modelo.annotations.update(5, 0, headers={"Event": "Amsterdam", "White": "Ljubojevic"})
+        modelo.annotations.update(9, 0, headers={"Event": "Linares 10th", "White": "Bareev, Evgeny"})
+        return modelo
+
+    def test_apaga_so_onde_o_valor_bate(self) -> None:
+        modelo = self._modelo_com_headers()
+        atingidos = modelo.revert_headers({"Event": "Amsterdam", "White": "Ljubojevic"})
+        self.assertEqual(atingidos, 2)
+        self.assertEqual(modelo.annotations.get(9, 0).headers, {"Event": "Linares 10th", "White": "Bareev, Evgeny"})
+        self.assertEqual(modelo.annotations.get(0, 0).headers, {})
+
+    def test_o_que_a_copia_sobrescreveu_nao_volta(self) -> None:
+        """A ressalva que justifica a pergunta antes: o valor anterior não existe mais."""
+        modelo = self._modelo_com_headers()
+        modelo.revert_headers({"Event": "Amsterdam"})
+        self.assertNotIn("Event", modelo.annotations.get(0, 0).headers)
+
+    def test_desfazer_tira_junto_a_procedencia_do_header_removido(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.annotations.update(
+            0,
+            0,
+            headers={"Event": "Amsterdam", "Site": "Moscow"},
+            filled_fields=("header:Event", "header:Site"),
+            filled_from="uma partida",
+        )
+        modelo.revert_headers({"Event": "Amsterdam"})
+        anotacao = modelo.annotations.get(0, 0)
+        self.assertEqual(anotacao.filled_fields, ("header:Site",))
+        self.assertEqual(anotacao.filled_from, "uma partida")
+
+    def test_valor_vazio_nao_apaga_nada(self) -> None:
+        """Senão, um campo em branco no diagrama atual viraria um apagador em massa."""
+        modelo = self._modelo_com_headers()
+        self.assertEqual(modelo.revert_headers({"Event": ""}), 0)
+
+    def test_o_que_a_copia_levaria_e_visivel_antes_de_copiar(self) -> None:
+        modelo = self._modelo_com_headers()
+        self.assertEqual(modelo.headers_to_apply(), {"Event": "Amsterdam", "White": "Ljubojevic"})
+
+
 class BaseDePartidasTests(unittest.TestCase):
     """O preenchimento pela base (S-72): ele completa, e nunca sobrescreve."""
 

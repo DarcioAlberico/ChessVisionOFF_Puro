@@ -17,6 +17,7 @@ from unittest import mock
 from chess_diagram_ocr.gallery import GalleryAnnotations, load_annotations
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
 from chess_diagram_ocr.games_db import DiagramMatch
+from chess_diagram_ocr.ui import gallery_panel
 from chess_diagram_ocr.ui.gallery_model import GalleryModel
 from chess_diagram_ocr.ui.gallery_panel import GalleryPanel
 
@@ -143,14 +144,60 @@ class GalleryPanelTests(unittest.TestCase):
 
     def test_aplicar_a_todos_avisa_quando_nao_ha_o_que_aplicar(self) -> None:
         self.panel.apply_to_all()
-        self.assertTrue(any("Nada a aplicar" in mensagem for mensagem in self.status))
+        self.assertTrue(any("Nada a copiar" in mensagem for mensagem in self.status))
 
     def test_aplicar_a_todos_propaga_e_grava(self) -> None:
         self.panel.header_vars["Event"].set("Kemeri 1937")
         self.panel._commit_header("Event")
-        self.panel.apply_to_all()
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=True):
+            self.panel.apply_to_all()
         voltou = load_annotations(self.panel.model.pdf_path, directory=Path(self.pasta.name))
         self.assertEqual(voltou.get(4, 0).headers, {"Event": "Kemeri 1937"})
+
+    def test_a_copia_pergunta_antes_e_o_cancelar_nao_toca_em_nada(self) -> None:
+        """A ação sobrescreve o mesmo campo em centenas de diagramas, e o anterior some."""
+        self.panel.header_vars["Event"].set("Kemeri 1937")
+        self.panel._commit_header("Event")
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=False) as pergunta:
+            self.panel.apply_to_all()
+        pergunta.assert_called_once()
+        self.assertEqual(self.panel.model.annotations.get(4, 0).headers, {})
+        self.assertTrue(any("cancelada" in mensagem for mensagem in self.status))
+
+    def test_a_pergunta_mostra_os_valores_e_quantos_diagramas(self) -> None:
+        self.panel.header_vars["Event"].set("Kemeri 1937")
+        self.panel._commit_header("Event")
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=False) as pergunta:
+            self.panel.apply_to_all()
+        texto = str(pergunta.call_args)
+        self.assertIn("Kemeri 1937", texto)
+        self.assertIn("1 diagrama", texto, "são 2 no índice: o atual não conta")
+
+    def test_desfazer_tira_o_que_a_copia_espalhou(self) -> None:
+        self.panel.header_vars["Event"].set("Kemeri 1937")
+        self.panel._commit_header("Event")
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=True):
+            self.panel.apply_to_all()
+        self.assertEqual(self.panel.model.annotations.get(4, 0).headers, {"Event": "Kemeri 1937"})
+
+        self.panel.undo_apply_to_all()
+        self.assertEqual(self.panel.model.annotations.get(4, 0).headers, {})
+        self.assertTrue(any("desfeita" in mensagem for mensagem in self.status))
+
+    def test_desfazer_nao_apaga_o_que_outro_diagrama_declarou_por_si(self) -> None:
+        """Apaga pelo valor: o `Event` que a base preencheu em cada diagrama fica."""
+        self.panel.model.annotations.update(4, 0, headers={"Event": "Linares 10th"})
+        self.panel.header_vars["Event"].set("Kemeri 1937")
+        self.panel._commit_header("Event")
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=True):
+            self.panel.apply_to_all()
+        self.panel.undo_apply_to_all()
+        self.assertEqual(self.panel.model.annotations.get(4, 0).headers, {})
+
+    def test_desfazer_so_existe_depois_de_uma_copia(self) -> None:
+        self.assertEqual(str(self.panel.btn_undo["state"]), "disabled")
+        self.panel.undo_apply_to_all()
+        self.assertFalse(any("desfeita" in mensagem for mensagem in self.status))
 
     def test_galeria_vazia_desenha_o_convite_sem_levantar(self) -> None:
         self.panel.model = GalleryModel()
