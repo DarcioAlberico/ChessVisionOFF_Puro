@@ -23,6 +23,7 @@ from chess_diagram_ocr.audit import (
     read_label_rows,
     remove_duplicate_labels,
 )
+from chess_diagram_ocr.labels import ILLEGAL_OK
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 LEGAL_OTHER = "4k3/8/8/8/8/8/4P3/4K3"
@@ -51,8 +52,15 @@ class Fixture:
             cv2.imwrite(str(self.samples / name), img)
         self.rows.append((name, fen))
 
-    def write(self) -> None:
-        lines = ["filename,fen"] + [f"{name},{fen}" for name, fen in self.rows]
+    def write(self, *, illegal_ok: dict[str, str] | None = None) -> None:
+        """Sem `illegal_ok`, escreve o esquema mínimo -- que é o que quase todo teste quer."""
+        marcas = illegal_ok or {}
+        if not marcas:
+            lines = ["filename,fen"] + [f"{name},{fen}" for name, fen in self.rows]
+        else:
+            lines = ["filename,fen,illegal_ok"] + [
+                f"{name},{fen},{marcas.get(name, '')}" for name, fen in self.rows
+            ]
         self.csv.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -227,6 +235,29 @@ class MutationTests(unittest.TestCase):
             quarantine_fatal_labels(fx.csv, report, quarantine)
 
             self.assertIn("mais de um rei", quarantine.read_text(encoding="utf-8"))
+
+    def test_quarantine_leaves_the_confirmed_illegal_rows_alone(self) -> None:
+        """O `--fix` não pode desfazer o "sim" que a interface pediu.
+
+        Sem isto, salvar um diagrama de estrutura seria salvar num arquivo de onde o comando
+        seguinte o tira -- e o "sim" viraria uma pergunta sem consequência.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.add("estrutura.png", FATAL_NO_KINGS)
+            fx.add("erro.png", FATAL_TWO_WHITE_KINGS)
+            fx.write(illegal_ok={"estrutura.png": ILLEGAL_OK})
+            report = audit_dataset(fx.csv, fx.samples)
+            quarantine = Path(tmp) / "quarantine.csv"
+
+            self.assertEqual([issue.filename for issue in report.of_kind("fatal")], ["erro.png"])
+            self.assertEqual([issue.filename for issue in report.deliberate_illegal], ["estrutura.png"])
+            # E ela conta como utilizavel, porque o treino de fato a usa.
+            self.assertEqual(report.valid_rows, 1)
+
+            self.assertEqual(quarantine_fatal_labels(fx.csv, report, quarantine), 1)
+            self.assertIn("estrutura.png", fx.csv.read_text(encoding="utf-8"))
+            self.assertNotIn("estrutura.png", quarantine.read_text(encoding="utf-8"))
 
     def test_dedupe_keeps_first_of_each_group(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

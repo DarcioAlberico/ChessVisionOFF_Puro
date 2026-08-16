@@ -26,7 +26,7 @@ from typing import Literal
 
 from .config import PIECE_CLASSES
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
-from .labels import LabelStore
+from .labels import ILLEGAL_OK, LabelStore
 from .splits import Split, load_splits
 
 logger = logging.getLogger(__name__)
@@ -249,6 +249,12 @@ def update_row(
     Recusa posição fatalmente ilegal pelo mesmo motivo de `append_training_sample`: gravá-la
     como verdade ensina o modelo a reproduzir o erro. `allow_illegal` existe para o caso
     deliberado -- e é o que a quarentena usa.
+
+    A coluna `illegal_ok` é reescrita **em toda gravação**, e não só quando `allow_illegal`
+    está ligado: ela descreve a FEN que está sendo posta na linha. Corrigir o rótulo de um
+    diagrama que tinha a marca, agora com os dois reis no lugar, limpa a célula -- do
+    contrário a linha carregaria para sempre uma dispensa que já não vale, e o descarte de
+    ilegalidade do treino ficaria desligado para ela sem que ninguém tivesse pedido.
     """
     csv_path = Path(csv_path)
     if not is_syntactically_valid_fen(fen):
@@ -263,13 +269,16 @@ def update_row(
         full_fen = fen.strip()
         side = parts[1] if len(parts) > 1 and parts[1] in ("w", "b") else ""
 
-    if not allow_illegal:
-        check = check_position(full_fen)
-        if check.is_fatal:
-            raise ValueError("Posição ilegal, não pode ser salva como rótulo: " + "; ".join(check.problems))
+    check = check_position(full_fen)
+    if check.is_fatal and not allow_illegal:
+        raise ValueError("Posição ilegal, não pode ser salva como rótulo: " + "; ".join(check.problems))
 
     if not LabelStore(csv_path).update(
-        filename, fen=full_fen, side_to_move=side or "", corrected_by=corrected_by
+        filename,
+        fen=full_fen,
+        side_to_move=side or "",
+        corrected_by=corrected_by,
+        illegal_ok=ILLEGAL_OK if check.is_fatal else "",
     ):
         return False
 

@@ -61,6 +61,7 @@ LABEL_COLUMNS: tuple[str, ...] = (
     "detection_source",
     "created_at",
     "corrected_by",
+    "illegal_ok",
 )
 """Esquema do `labels.csv` a partir da S-19. Só `filename` e `fen` são obrigatórios.
 
@@ -75,6 +76,37 @@ auditar por fonte e voltar ao PDF para recortar de novo.
 """
 
 REQUIRED_COLUMNS: frozenset[str] = frozenset({"filename", "fen"})
+
+ILLEGAL_OK = "1"
+"""Valor da coluna `illegal_ok`: **uma pessoa confirmou** que esta posição ilegal é a certa.
+
+**O problema que ele resolve.** Um livro de xadrez não é feito só de posições jogáveis. Um
+capítulo sobre estrutura de peões desenha o esqueleto sem rei nenhum; um diagrama de final
+mostra três peças; um tabuleiro vazio ilustra as coordenadas. Ler qualquer um desses
+corretamente produz uma FEN que `check_position` chama de fatalmente ilegal -- e até aqui o
+projeto tratava "fatalmente ilegal" e "erro de anotação" como a mesma coisa, porque em 3.313
+rótulos vindos de posições completas eles de fato eram.
+
+Não são. A regra continua valendo para o que ela foi escrita: **rei faltando porque o modelo
+não viu o rei** é erro, e gravá-lo ensina o modelo a repetir o erro. O que muda é que agora
+existe um jeito de dizer a diferença, e quem diz é a única entidade capaz disso -- a pessoa
+que está olhando o diagrama e o PDF ao mesmo tempo. A interface pergunta antes de gravar; o
+"sim" vira esta coluna.
+
+**Por que uma coluna, e não um valor de `corrected_by`.** São eixos diferentes. Um diagrama
+de estrutura pode ter chegado por qualquer um dos seis caminhos da `CORRECTED_BY_VALUES`, e
+colapsar os dois campos perderia o caminho para ganhar a marca.
+
+**O que a marca desliga**, e é por isso que ela precisa existir em vez de só a caixa de
+diálogo: os três lugares que tratam ilegalidade fatal como defeito -- o descarte do
+`BoardFenDataset` (que manteria a amostra fora de todo treino), a lista `fatal` da auditoria e
+a quarentena do `cvoff-audit --fix` (que **tiraria a linha do arquivo**). Sem a coluna, salvar
+com confirmação seria salvar num lugar onde o comando seguinte apaga.
+
+Ela é gravada pela mesma escrita que grava a FEN, e some sozinha: regravar o rótulo já legal
+limpa a célula (ver `dataset_browser.update_row`), porque a marca descreve a FEN que está na
+linha e não um perdão permanente para o arquivo.
+"""
 
 OCR_ACEITO = "ocr-aceito"
 OCR_CORRIGIDO = "ocr-corrigido"
@@ -211,6 +243,19 @@ class DatasetEntry:
     detection_source: str = ""
     created_at: str = ""
     corrected_by: str = ""
+    illegal_ok: str = ""
+    """Marca da posição ilegal deliberada. Ver `ILLEGAL_OK` -- leia por `illegal_accepted`."""
+
+    @property
+    def illegal_accepted(self) -> bool:
+        """Uma pessoa confirmou que esta posição ilegal é a leitura certa do diagrama.
+
+        Aceita mais de uma grafia porque a coluna é texto num CSV que gente edita à mão: um
+        `sim` digitado no lugar de `1` significa a mesma coisa, e lê-lo como "não" desfaria a
+        decisão de quem digitou -- que é exatamente o desfazer que esta coluna existe para
+        impedir.
+        """
+        return self.illegal_ok.strip().lower() in ("1", "true", "sim", "yes", "x")
 
     @property
     def resolved_side_to_move(self) -> str:

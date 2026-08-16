@@ -43,7 +43,7 @@ from chess_diagram_ocr.settings import LocalReaderSettings, RemoteFenSettings
 from . import board_edit, strings
 from .board_widget import InteractiveBoard, PieceImages
 from .editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
-from .legality import explain_position
+from .legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
 from .net_button import NetCorrectionButton
 from .page_results import PageOcrParams, PageResults, PageResultsCache, PageSwitch, decide_page_switch
 from .second_opinion_button import SecondOpinionButton
@@ -763,7 +763,7 @@ class ResultPanel(ttk.Frame):
         """Como devolver a correção à fila. Injetado para não depender do painel de revisão."""
         self._settle_review = settler
 
-    def _save_one(self, alvo: SaveTarget) -> Path:
+    def _save_one(self, alvo: SaveTarget, *, allow_illegal: bool = False) -> Path:
         csv_path, samples_dir = self._paths()
         return self._service.save_sample(
             self.model.items[alvo.index],
@@ -773,7 +773,25 @@ class ResultPanel(ttk.Frame):
             origin=self.model.origin,
             side_to_move=alvo.side,
             corrected_by=alvo.route,
+            allow_illegal=allow_illegal,
         )
+
+    @staticmethod
+    def _illegal_question(alvo: SaveTarget) -> str | None:
+        """A pergunta desta gravação, ou `None`. A FEN do alvo pode vir só com as peças."""
+        return illegal_save_question(compose_fen(alvo.fen.split(" ")[0], alvo.side != "b"))
+
+    def _confirm_illegal(self, alvo: SaveTarget) -> bool | None:
+        """`None` quando a posição é legal, senão a resposta da pessoa.
+
+        Três valores em vez de dois porque quem chama precisa dos três: legal segue sem
+        caixa nenhuma, "sim" grava com a marca da `ILLEGAL_OK`, "não" cancela. Colapsar
+        legal com "sim" faria toda amostra normal ser gravada como ilegal confirmada.
+        """
+        pergunta = self._illegal_question(alvo)
+        if pergunta is None:
+            return None
+        return messagebox.askyesno(ILLEGAL_SAVE_TITLE, pergunta, default=messagebox.NO, icon=messagebox.WARNING)
 
     def save_current(self) -> None:
         """Salva o diagrama selecionado. **O que "salvar" significa é decisão do modelo.**
@@ -791,12 +809,19 @@ class ResultPanel(ttk.Frame):
             messagebox.showerror("Erro", "FEN atual inválida.")
             return
 
+        # A pergunta vem antes de decidir entre amostra nova e regravação porque a resposta
+        # vale para as duas: o que está sendo confirmado é a posição, não o destino dela.
+        confirmada = self._confirm_illegal(alvo)
+        if confirmada is False:
+            self._on_status("Gravação cancelada: posição ilegal não confirmada.")
+            return
+
         if alvo.kind is SaveKind.REWRITE_ROW:
-            self._rewrite_dataset_row(alvo)
+            self._rewrite_dataset_row(alvo, allow_illegal=confirmada is True)
             return
 
         try:
-            path = self._save_one(alvo)
+            path = self._save_one(alvo, allow_illegal=confirmada is True)
             self._on_status(f"Exemplo salvo: {path}")
             self._settle(alvo)
             # Só o caminho de regravação avisava. Sem isto, a aba Dataset não via a amostra
@@ -807,12 +832,17 @@ class ResultPanel(ttk.Frame):
         except Exception as exc:
             messagebox.showerror("Erro", f"Falha ao salvar:\n{exc}")
 
-    def _rewrite_dataset_row(self, alvo: SaveTarget) -> None:
+    def _rewrite_dataset_row(self, alvo: SaveTarget, *, allow_illegal: bool = False) -> None:
         filename = alvo.filename or ""
         csv_path, _samples = self._paths()
         try:
             atualizado = update_row(
-                csv_path, filename, fen=alvo.fen, side_to_move=alvo.side, corrected_by=alvo.route
+                csv_path,
+                filename,
+                fen=alvo.fen,
+                side_to_move=alvo.side,
+                corrected_by=alvo.route,
+                allow_illegal=allow_illegal,
             )
         except ValueError as exc:
             messagebox.showerror("Dataset", str(exc))
@@ -845,17 +875,55 @@ class ResultPanel(ttk.Frame):
             self.save_current()
             return
 
+        alvos = [self.model.save_target(idx) for idx in range(self.model.count)]
+        validos = [alvo for alvo in alvos if alvo.kind is not SaveKind.NOTHING and is_valid_fen(alvo.fen)]
+        invalidos = len(alvos) - len(validos)
+
+        # Uma pergunta para a pagina inteira, e nao uma por diagrama. Uma pagina de capitulo
+        # sobre estrutura tem os oito diagramas sem rei: perguntar oito vezes a mesma coisa
+        # treina a pessoa a clicar "sim" sem ler, que e o oposto do que a confirmacao existe
+        # para conseguir.
+        ilegais = [alvo for alvo in validos if self._illegal_question(alvo) is not None]
+        indices_ilegais = {alvo.index for alvo in ilegais}
+        confirmar_ilegais = False
+        if ilegais:
+            confirmar_ilegais = messagebox.askyesno(
+                ILLEGAL_SAVE_TITLE,
+                f"{len(ilegais)} de {len(validos)} diagramas têm posição ilegal:\n\n"
+                + "\n".join(f"  • {alvo.index + 1}: {self._resumo_ilegal(alvo)}" for alvo in ilegais[:6])
+                + (f"\n  ... e mais {len(ilegais) - 6}" if len(ilegais) > 6 else "")
+                + "\n\nSalvar também esses? Responder \"não\" salva apenas o resto.",
+                default=messagebox.NO,
+                icon=messagebox.WARNING,
+            )
+
+        pulados = 0
         salvos = 0
-        invalidos = 0
-        for idx in range(self.model.count):
-            alvo = self.model.save_target(idx)
-            if alvo.kind is SaveKind.NOTHING or not is_valid_fen(alvo.fen):
-                invalidos += 1
+        salvos_ilegais = 0
+        for alvo in validos:
+            ilegal = alvo.index in indices_ilegais
+            if ilegal and not confirmar_ilegais:
+                pulados += 1
                 continue
-            self._save_one(alvo)
+            self._save_one(alvo, allow_illegal=ilegal)
             salvos += 1
-        self._on_status(f"Salvar todos: {salvos} salvos, {invalidos} inválidos.")
-        messagebox.showinfo("Salvar todos", f"Salvos: {salvos}\nInválidos: {invalidos}")
+            salvos_ilegais += int(ilegal)
+
+        resumo = f"Salvar todos: {salvos} salvos, {invalidos} inválidos"
+        if pulados:
+            resumo += f", {pulados} ilegais não confirmados"
+        self._on_status(resumo + ".")
+        detalhe = f"Salvos: {salvos}\nInválidos: {invalidos}"
+        if salvos_ilegais:
+            detalhe += f"\nIlegais confirmados: {salvos_ilegais}"
+        if pulados:
+            detalhe += f"\nIlegais não salvos: {pulados}"
+        messagebox.showinfo("Salvar todos", detalhe)
+
+    def _resumo_ilegal(self, alvo: SaveTarget) -> str:
+        """Os problemas fatais deste diagrama em uma linha, para a lista do `save_all`."""
+        explicacao = explain_position(compose_fen(alvo.fen.split(" ")[0], alvo.side != "b"))
+        return "; ".join(problem.text for problem in explicacao.problems if problem.fatal)
 
     # ------------------------------------------------------------------------ Corrigir Net
 

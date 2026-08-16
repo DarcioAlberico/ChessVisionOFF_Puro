@@ -17,6 +17,7 @@ import numpy as np
 from chess_diagram_ocr.config import BUNDLE_ROOT
 from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import RemoteFenSettings
+from chess_diagram_ocr.ui import result_panel
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.page_results import PageOcrParams
 from chess_diagram_ocr.ui.result_panel import ResultPanel
@@ -30,22 +31,36 @@ def _diagrama() -> RecognizedDiagram:
     return RecognizedDiagram.from_label(np.zeros((8, 8, 3), dtype=np.uint8), PLACEMENT)
 
 
+_RAIZ: tk.Tk | None = None
+
+
+def _raiz() -> tk.Tk:
+    """Uma raiz Tk para o módulo inteiro, criada uma vez e nunca destruída.
+
+    Cada classe criava e destruía a sua. Enquanto houve uma classe só isso funcionou; com
+    duas, a segunda `tk.Tk()` do processo caía em `invalid command name "tcl_findLibrary"` --
+    reinicializar o Tcl depois de destruir a última raiz não é confiável no Windows. O sintoma
+    era pior que a causa: a classe não falhava, era **pulada**, e uma suíte verde escondia
+    cinco testes que não rodaram.
+    """
+    global _RAIZ
+    if _RAIZ is None:
+        try:
+            _RAIZ = tk.Tk()
+        except tk.TclError as exc:  # pragma: no cover - maquina sem display
+            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
+        _RAIZ.withdraw()
+    return _RAIZ
+
+
 class MoveNumberFieldTests(unittest.TestCase):
-    """Uma raiz Tk para a classe toda, pelo mesmo motivo do `test_gallery_panel`."""
+    """Uma raiz Tk para o módulo, pelo mesmo motivo do `test_gallery_panel` -- ver `_raiz`."""
 
     root: tk.Tk
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        cls.root = _raiz()
 
     def setUp(self) -> None:
         self.status: list[str] = []
@@ -172,6 +187,144 @@ class MoveNumberFieldTests(unittest.TestCase):
         self.panel.move_number_var.set("24")
         self.panel._commit_move_number()
         self.assertEqual(self.gravacoes, [])
+
+
+class _ServicoFalso:
+    """Só o que a gravação usa. `save_sample` guarda como foi chamada."""
+
+    def __init__(self) -> None:
+        self.chamadas: list[dict] = []
+
+    def save_sample(self, diagram, fen, **kwargs) -> Path:  # noqa: ANN001, ANN003
+        self.chamadas.append({"fen": fen, **kwargs})
+        return Path("data/samples/board_000.png")
+
+
+class _CaixasFalsas:
+    """Substitui o `messagebox` do painel: responde o que o teste mandar e anota o que viu."""
+
+    NO = "no"
+    WARNING = "warning"
+
+    def __init__(self, resposta: bool) -> None:
+        self.resposta = resposta
+        self.perguntas: list[str] = []
+        self.avisos: list[str] = []
+
+    def askyesno(self, _titulo, mensagem, **_kwargs) -> bool:  # noqa: ANN001, ANN003
+        self.perguntas.append(mensagem)
+        return self.resposta
+
+    def showinfo(self, _titulo, mensagem, **_kwargs) -> None:  # noqa: ANN001, ANN003
+        self.avisos.append(mensagem)
+
+    showerror = showinfo
+    showwarning = showinfo
+
+
+class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
+    """Salvar uma posição ilegal passou a ser uma pergunta, e não uma recusa.
+
+    O que estes testes fixam é a consequência da resposta: "sim" grava **com** a marca da
+    `ILLEGAL_OK` (sem ela o treino descartaria a amostra e o `cvoff-audit --fix` a tiraria do
+    arquivo), e "não" não grava nada.
+    """
+
+    root: tk.Tk
+
+    ESTRUTURA = "8/pp3ppp/8/8/8/8/PP3PPP/8"  # capítulo de estrutura: nenhum rei
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    def _painel(self, *, resposta: bool) -> tuple[object, _ServicoFalso, _CaixasFalsas]:
+        servico = _ServicoFalso()
+        caixas = _CaixasFalsas(resposta)
+        host = tk.Frame(self.root)
+        self.addCleanup(host.destroy)
+        painel = ResultPanel(
+            host,
+            service=servico,  # type: ignore[arg-type]
+            piece_images=PieceImages(BUNDLE_ROOT / "assets" / "piece_images"),
+            paths=lambda: (Path("labels.csv"), Path("samples")),
+            ocr_params=lambda: PageOcrParams(dpi=220, max_boards=12, orientation="auto", model_path="m.pt"),
+            document_key=lambda: DOCUMENTO,
+            model_path=lambda: Path("m.pt"),
+            on_status=lambda _mensagem: None,
+            on_ocr_local=lambda _max: None,
+            max_boards=lambda: 12,
+            on_sync_study=lambda: None,
+            on_state_changed=lambda: None,
+            on_focus_request=lambda: None,
+            on_sample_saved=lambda: None,
+            remote_fen=RemoteFenSettings,
+            on_remote_consent=lambda _cfg: False,
+            move_number_of=lambda _pagina, _diagrama: None,
+            on_move_number=lambda *_args: None,
+        )
+        # O painel usa o `messagebox` do modulo; trocar o atributo do modulo e o que permite
+        # dirigir a resposta sem abrir caixa nenhuma.
+        original = result_panel.messagebox
+        result_panel.messagebox = caixas  # type: ignore[assignment]
+        self.addCleanup(setattr, result_panel, "messagebox", original)
+        return painel, servico, caixas
+
+    def _abrir(self, painel, placements: list[str]) -> None:  # noqa: ANN001
+        painel.show_ocr_results(
+            [RecognizedDiagram.from_label(np.zeros((8, 8, 3), dtype=np.uint8), p) for p in placements],
+            RecognitionOrigin.for_page(DOCUMENTO, PAGINA),
+        )
+
+    def test_uma_posicao_legal_nao_pergunta_nada(self) -> None:
+        painel, servico, caixas = self._painel(resposta=False)
+        self._abrir(painel, [PLACEMENT])
+
+        painel.save_current()
+
+        self.assertEqual(caixas.perguntas, [])
+        self.assertEqual(len(servico.chamadas), 1)
+        self.assertFalse(servico.chamadas[0]["allow_illegal"])
+
+    def test_sim_grava_a_posicao_ilegal(self) -> None:
+        painel, servico, caixas = self._painel(resposta=True)
+        self._abrir(painel, [self.ESTRUTURA])
+
+        painel.save_current()
+
+        self.assertEqual(len(caixas.perguntas), 1)
+        self.assertIn("falta o rei branco", caixas.perguntas[0])
+        self.assertTrue(servico.chamadas[0]["allow_illegal"])
+
+    def test_nao_cancela_a_gravacao(self) -> None:
+        painel, servico, caixas = self._painel(resposta=False)
+        self._abrir(painel, [self.ESTRUTURA])
+
+        painel.save_current()
+
+        self.assertEqual(len(caixas.perguntas), 1)
+        self.assertEqual(servico.chamadas, [])
+
+    def test_salvar_todos_pergunta_uma_vez_so(self) -> None:
+        """Oito diagramas de estrutura numa página não podem virar oito caixas iguais."""
+        painel, servico, caixas = self._painel(resposta=True)
+        self._abrir(painel, [self.ESTRUTURA] * 3 + [PLACEMENT])
+
+        painel.save_all()
+
+        self.assertEqual(len(caixas.perguntas), 1)
+        self.assertEqual(len(servico.chamadas), 4)
+        self.assertEqual([c["allow_illegal"] for c in servico.chamadas], [True, True, True, False])
+
+    def test_salvar_todos_com_nao_grava_so_o_que_e_legal(self) -> None:
+        painel, servico, caixas = self._painel(resposta=False)
+        self._abrir(painel, [self.ESTRUTURA, PLACEMENT])
+
+        painel.save_all()
+
+        self.assertEqual(len(caixas.perguntas), 1)
+        self.assertEqual(len(servico.chamadas), 1)
+        self.assertFalse(servico.chamadas[0]["allow_illegal"])
 
 
 if __name__ == "__main__":

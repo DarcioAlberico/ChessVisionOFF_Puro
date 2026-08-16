@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from chess_diagram_ocr.fen_utils import square_name
-from chess_diagram_ocr.ui.legality import explain_position
+from chess_diagram_ocr.ui.legality import explain_position, illegal_save_question
 
 KINGS_ONLY = "4k3/8/8/8/8/8/8/4K3"
 
@@ -89,6 +89,34 @@ class SideToMoveProblemTests(unittest.TestCase):
 
     def test_flipping_the_side_to_move_resolves_it(self) -> None:
         self.assertTrue(explain_position("R3k3/8/8/8/8/8/8/4K3 b - - 0 1").is_legal)
+
+
+class IllegalSaveQuestionTests(unittest.TestCase):
+    """Quando perguntar antes de gravar, e o que a pergunta precisa dizer."""
+
+    def test_a_legal_position_asks_nothing(self) -> None:
+        self.assertIsNone(illegal_save_question(f"{KINGS_ONLY} w - - 0 1"))
+
+    def test_a_pawn_structure_without_kings_is_asked_about(self) -> None:
+        pergunta = illegal_save_question("8/pp3ppp/8/8/8/8/PP3PPP/8 w - - 0 1")
+        self.assertIsNotNone(pergunta)
+        assert pergunta is not None
+        self.assertIn("falta o rei branco", pergunta)
+        self.assertIn("falta o rei preto", pergunta)
+        # A pergunta tem de deixar as duas saidas visiveis: e a diferenca entre confirmar e
+        # clicar "sim" so para a caixa sumir.
+        self.assertIn("estrutura de peões", pergunta)
+        self.assertIn("cancele", pergunta)
+
+    def test_the_question_names_the_guilty_squares(self) -> None:
+        pergunta = illegal_save_question("4k3/8/8/8/8/8/8/K3K3 w - - 0 1")
+        assert pergunta is not None
+        self.assertIn("a1", pergunta)
+        self.assertIn("e1", pergunta)
+
+    def test_the_side_to_move_check_never_asks(self) -> None:
+        """Xeque invertido nunca bloqueou gravação; virar pergunta seria uma caixa nova."""
+        self.assertIsNone(illegal_save_question("R3k3/8/8/8/8/8/8/4K3 w - - 0 1"))
 
 
 if __name__ == "__main__":

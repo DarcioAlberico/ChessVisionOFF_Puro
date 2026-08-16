@@ -86,6 +86,8 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
     print()
     print("  Problemas")
     print(f"    Posição ilegal (fatal) ....... {len(fatal)}")
+    if report.deliberate_illegal:
+        print(f"    Ilegais confirmadas à mão .... {len(report.deliberate_illegal)}  (não são problema)")
     print(f"    Lado a jogar invertido ....... {len(turn)}")
     print(f"    FEN não interpretável ........ {len(syntax)}")
     print(f"    Imagem ausente ............... {len(missing)}")
@@ -130,6 +132,16 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
         for issue in fatal[:limit]:
             print(f"      {issue.filename}  [{', '.join(issue.problems)}]")
             print(f"        {issue.fen}")
+
+    if report.deliberate_illegal:
+        print()
+        print("  Ilegais confirmadas -- o livro desenha assim (estrutura de peões, final parcial):")
+        print("    Treinam normalmente e o --fix não as toca. Para desfazer uma, esvazie a")
+        print("    coluna `illegal_ok` da linha, ou corrija a FEN pela aba Dataset.")
+        for issue in report.deliberate_illegal[:limit]:
+            print(f"      {issue.filename}  [{', '.join(issue.problems)}]")
+        if len(report.deliberate_illegal) > limit:
+            print(f"      ... e outras {len(report.deliberate_illegal) - limit}")
 
     if turn:
         print()

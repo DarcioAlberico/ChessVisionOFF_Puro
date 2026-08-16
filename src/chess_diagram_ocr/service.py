@@ -739,11 +739,16 @@ class OcrService:
         origin: RecognitionOrigin | None = None,
         side_to_move: str | None = None,
         corrected_by: str = "",
+        allow_illegal: bool = False,
     ) -> Path:
         """Grava a amostra rotulada com os campos de procedência da S-19.
 
         A procedência é o que permite, depois, agrupar o split por livro (S-07), auditar
         por fonte de detecção e voltar ao PDF para recortar de novo.
+
+        `allow_illegal` é a resposta "sim" à pergunta de `ui.legality.illegal_save_question`,
+        repassada intacta: quem decide é a pessoa, e este método não tem o que acrescentar à
+        decisão dela.
         """
         campos: dict[str, Any] = {"source_pdf": "", "source_page": ""}
         if origin is not None:
@@ -754,6 +759,7 @@ class OcrService:
             fen=fen,
             csv_path=csv_path,
             samples_dir=samples_dir,
+            allow_illegal=allow_illegal,
             side_to_move=side_to_move if side_to_move is not None else diagram.side_to_move,
             source_diagram=diagram.index + 1,
             detection_source=diagram.detection_source,

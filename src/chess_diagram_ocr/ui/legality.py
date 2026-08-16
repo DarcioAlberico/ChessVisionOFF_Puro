@@ -195,3 +195,40 @@ def explain_position(fen: str) -> LegalityExplanation:
         problems=_problems_for(board, check.status),
         piece_counts=counts,
     )
+
+
+ILLEGAL_SAVE_TITLE = "Posição ilegal"
+
+
+def illegal_save_question(fen: str) -> str | None:
+    """O que perguntar antes de gravar esta posição, ou `None` quando não há o que perguntar.
+
+    **Por que perguntar em vez de recusar.** A recusa vinha de uma premissa que vale para
+    quase todo diagrama e não vale para todos: a de que uma posição sem os dois reis é uma
+    leitura errada. Num livro ela é, quase sempre. Mas um capítulo de estrutura de peões
+    desenha o esqueleto sem rei nenhum de propósito, um estudo de final mostra três peças, e
+    um tabuleiro vazio ilustra as coordenadas -- e nesses três o rótulo certo é justamente o
+    que o programa se recusava a gravar. Quem sabe de qual dos dois casos se trata é a pessoa
+    que está com o PDF aberto do lado, e a única coisa que faltava era perguntar a ela.
+
+    Fica aqui, e não dentro do painel, pela regra que organizou a Fase 6: a caixa de diálogo é
+    da janela, mas *quando* perguntar e *o que dizer* dá para testar sem abrir uma.
+
+    Só o fatal pergunta. "O lado que não joga está em xeque" nunca chegou a bloquear gravação
+    -- é palpite sobre o turno, não sobre as peças --, e transformá-lo em pergunta poria uma
+    caixa no caminho de um salvamento que sempre funcionou.
+    """
+    explicacao = explain_position(fen)
+    if not explicacao.is_fatal:
+        return None
+
+    detalhe = "; ".join(problem.describe() for problem in explicacao.problems if problem.fatal)
+    return (
+        f"Esta posição é ilegal: {detalhe}.\n\n"
+        f"{explicacao.material_line()}\n\n"
+        "Se o diagrama é assim mesmo -- estrutura de peões, final parcial, tabuleiro de "
+        "ilustração --, salvar está correto e a amostra entra no treino marcada como "
+        "confirmada.\n"
+        "Se foi o leitor que errou uma casa, cancele e conserte o tabuleiro.\n\n"
+        "Salvar mesmo assim?"
+    )

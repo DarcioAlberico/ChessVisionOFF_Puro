@@ -21,6 +21,7 @@ from chess_diagram_ocr.dataset_browser import (
     split_distribution,
     update_row,
 )
+from chess_diagram_ocr.labels import LabelStore
 
 KINGS_ONLY = "4k3/8/8/8/8/8/8/4K3"
 BLACK_IN_CHECK = "R3k3/8/8/8/8/8/8/4K3"
@@ -220,6 +221,21 @@ class EditingTests(unittest.TestCase):
         self.assertTrue(
             update_row(self.fixture.csv_path, "legal.png", fen=TWO_WHITE_KINGS, allow_illegal=True)
         )
+
+    def test_update_row_marks_the_illegal_position_it_accepted(self) -> None:
+        update_row(self.fixture.csv_path, "legal.png", fen=TWO_WHITE_KINGS, allow_illegal=True)
+
+        entry = next(e for e in LabelStore(self.fixture.csv_path).read() if e.filename == "legal.png")
+        self.assertTrue(entry.illegal_accepted)
+
+    def test_correcting_a_marked_row_back_to_legal_clears_the_mark(self) -> None:
+        """A marca descreve a FEN da linha, não perdoa o arquivo para sempre."""
+        update_row(self.fixture.csv_path, "legal.png", fen=TWO_WHITE_KINGS, allow_illegal=True)
+
+        update_row(self.fixture.csv_path, "legal.png", fen=KINGS_ONLY)
+
+        entry = next(e for e in LabelStore(self.fixture.csv_path).read() if e.filename == "legal.png")
+        self.assertEqual(entry.illegal_ok, "")
 
     def test_update_row_reports_unknown_sample(self) -> None:
         self.assertFalse(update_row(self.fixture.csv_path, "nao-existe.png", fen=KINGS_ONLY))

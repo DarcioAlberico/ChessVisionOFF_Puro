@@ -68,6 +68,14 @@ class AuditReport:
     total_rows: int = 0
     valid_rows: int = 0
     issues: list[LabelIssue] = field(default_factory=list)
+    deliberate_illegal: list[LabelIssue] = field(default_factory=list)
+    """Ilegais **confirmadas** por uma pessoa (coluna `illegal_ok`). Não são problema.
+
+    Fora de `issues` de propósito: tudo que está lá é candidato ao `--fix`, e a correção
+    automática destas seria mandá-las para a quarentena -- desfazendo a única decisão do
+    arquivo que não pode ser deduzida da FEN. Ficam numa lista própria para continuarem
+    visíveis no relatório sem entrarem em nenhum conserto."""
+
     duplicate_groups: list[list[str]] = field(default_factory=list)
     orphan_images: list[str] = field(default_factory=list)
     class_counts: Counter[str] = field(default_factory=Counter)
@@ -149,12 +157,16 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV de rótulos não encontrado: {csv_path}")
 
-    rows = read_label_rows(csv_path)
-    report.total_rows = len(rows)
+    # Entradas inteiras, e nao os pares `(arquivo, FEN)`: e a coluna `illegal_ok` que separa
+    # "o modelo perdeu o rei" de "o livro desenhou uma estrutura sem rei", e sem ela a
+    # quarentena do `--fix` tiraria do arquivo justamente os diagramas que alguem confirmou.
+    entries = LabelStore(csv_path).read()
+    report.total_rows = len(entries)
     referenced: set[str] = set()
     usable_labels: list[tuple[str, str]] = []
 
-    for filename, fen in rows:
+    for entry in entries:
+        filename, fen = entry.filename, entry.fen
         referenced.add(filename)
 
         if not fen or fen.lower() == "nan" or not is_syntactically_valid_fen(fen):
@@ -164,7 +176,14 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
             continue
 
         position = check_position(fen)
-        if position.is_fatal:
+        if position.is_fatal and entry.illegal_accepted:
+            # Nao e problema, e nao entra em `issues`: e um diagrama que uma pessoa olhou e
+            # declarou certo. Continua contado a parte, porque um "sim" dado por engano tem de
+            # ter onde aparecer.
+            report.deliberate_illegal.append(
+                LabelIssue(filename=filename, fen=fen, kind="ilegal-confirmada", problems=position.problems)
+            )
+        elif position.is_fatal:
             report.issues.append(
                 LabelIssue(filename=filename, fen=fen, kind="fatal", problems=position.problems)
             )
@@ -186,7 +205,10 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
             )
             continue
 
-        if not position.is_fatal:
+        if not position.is_fatal or entry.illegal_accepted:
+            # "Utilizavel" aqui quer dizer "o treino vai ver esta linha", e desde a marca da
+            # `illegal_ok` ele ve. Contar como inutilizavel o que entra no treino faria a
+            # fracao de redundancia (S-63) ser calculada sobre uma base que nao existe.
             report.valid_rows += 1
             usable_labels.append((filename, fen))
             try:
