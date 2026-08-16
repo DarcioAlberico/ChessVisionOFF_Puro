@@ -358,7 +358,7 @@ a condição de qualquer medição, a segunda porque cada dia de uso acrescenta 
 |---|---|---|---|
 | 14.1 | A verdade de referência deixa de ser a leitura do próprio modelo | S-95 | ✅ |
 | 14.2 | A exatidão de campo passa a existir, com `n` declarado | S-96 | ✅ |
-| 14.3 | O conjunto de campo declara a página que o modelo treinou | S-97 | ⬜ |
+| 14.3 | O conjunto de campo declara a página que o modelo treinou | S-97 | ✅ |
 | 14.4 | O mesmo diagrama impresso não cruza split | S-98 | ✅ |
 | 14.5 | Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida | S-99 | ⬜ trabalho seu |
 | 14.6 | O conjunto vigente é declarado e a comparação volta a ser honesta | S-100 | ⬜ |
@@ -479,15 +479,16 @@ precisa de justificativa uma a uma.
 ## O primeiro dia, executado (2026-08-16)
 
 Os quatro itens do *"se houver só um dia"* — **S-95, S-98, S-109 e S-111** — foram
-implementados, e a **S-96** entrou logo em seguida. Os quatro primeiros são os que corrompem em
+implementados, e a **S-96** e a **S-97** entraram logo em seguida. Os quatro primeiros são os que corrompem em
 silêncio e pioram enquanto o programa é usado; é por isso que vieram antes de qualquer melhoria.
 
 | | antes | depois |
 |---|---|---|
-| testes | 1.543 | **1.577** (+34, todos travando decisão) |
+| testes | 1.543 | **1.588** (+45, todos travando decisão) |
 | `ruff` · `mypy` | limpos | limpos |
 | `cvoff-field` — exatidão | `1.000` sobre uma alucinação | `insuficiente para medir (0 de 39, mínimo 50%)` |
 | `cvoff-field` — exportados e errados | não media | categoria própria, com a lista e a confiança |
+| `cvoff-field` — exportação | `0.7179` | `0.7179` geral e **`0.6562` limpa** (7 de 39 em páginas com treino) |
 | `cvoff-audit` — vazamento de split | não media | **3 triplas listadas, com o split de cada membro** |
 
 **O que cada um passou a impedir:**
@@ -516,6 +517,25 @@ O caminho de medição foi exercitado ponta a ponta num conjunto descartável co
 trocada de propósito, e o diagrama que saiu errado tinha **confiança 0,993** — a demonstração
 do item numa linha: nenhum gate razoável o barraria, e a taxa de exportação o conta como
 sucesso.
+
+**E a S-97 fechou a terceira metade da régua, com um número que não era esperado.** O
+relatório passou a declarar quais páginas do conjunto têm amostra em `train` e a publicar a
+taxa **limpa** ao lado da geral:
+
+```
+    **Taxa de exportação** ....... 0.7179  (28/39)
+    Em páginas com treino ........ 7 de 39  (18%)
+    **Exportação limpa** ......... 0.6562  (21/32)
+```
+
+**6,2 pontos percentuais de diferença.** Os sete diagramas contaminados exportam **todos**, o
+que faz da contaminação um viés **para cima** e não ruído. Contra o alvo de 0,85 da Fase 7, a
+distância real é de **0,19** e não de 0,13 — e essa era a régua com que quatro itens de spec
+foram reprovados.
+
+Nada é removido do conjunto: 39 diagramas não comportam jogar 18% fora. O que muda é que o
+viés é **publicado em vez de estimado**, e que a tela avisa antes do clique
+(`⚠ 8 amostra(s) de treino desta página`), para que a S-99 saiba de onde crescer.
 
 **O que ainda falta, e é trabalho seu:** a exatidão de campo existe como código e não como
 número. Hoje o relatório diz `Conferíveis 0 de 39 (0%)` e recusa medir — é a única coisa

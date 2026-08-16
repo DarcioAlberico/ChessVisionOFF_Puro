@@ -57,7 +57,7 @@ from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
 from chess_diagram_ocr.field_eval import load_field_set, upsert_page
 from chess_diagram_ocr.gallery import load_annotations
-from chess_diagram_ocr.labels import LabelStore, saved_diagrams_by_page
+from chess_diagram_ocr.labels import LabelStore, pages_with_training_samples, saved_diagrams_by_page
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
@@ -74,6 +74,7 @@ from chess_diagram_ocr.settings import (
     load_settings,
     save_settings,
 )
+from chess_diagram_ocr.splits import load_splits
 from chess_diagram_ocr.ui import strings
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -1033,16 +1034,42 @@ class ChessOcrTkApp:
         self._set_status(f"Diagrama tirado da anotação. Ficaram {rascunho.describe()}.")
 
     def _refresh_field_status(self) -> None:
-        """Diz, ao virar a página, se ela já está anotada. Sem isso não há como saber."""
+        """Diz, ao virar a página, se ela já está anotada e se ela serve de referência.
+
+        O aviso de treino é a metade da S-97 que fica na tela: anotar uma página de que já há
+        amostra em `train` acrescenta ao conjunto de campo um diagrama que o próximo modelo
+        terá visto. Não é proibido -- o conjunto é pequeno demais para recusar página --, mas
+        precisa ser uma escolha e não um acidente, e a hora de saber é **antes** do clique.
+        """
         if self.pdf_source is None:
             self.field_status_var.set("")
             return
         gravadas = {(pagina.pdf, pagina.page): pagina for pagina in load_field_set(FIELD_SET_PATH)}
         pagina = gravadas.get((self.pdf_source.name, self.page_index))
-        if pagina is None:
-            self.field_status_var.set("página não anotada")
-            return
-        self.field_status_var.set(f"anotada: {FieldDraft.from_page(pagina).describe()}")
+        estado = "página não anotada" if pagina is None else f"anotada: {FieldDraft.from_page(pagina).describe()}"
+        self.field_status_var.set(f"{estado}{self._field_training_warning()}")
+
+    def _field_training_warning(self) -> str:
+        """" · N amostra(s) de treino desta página" quando houver, senão string vazia (S-97).
+
+        Lê o `labels.csv` e o `splits.csv` a cada troca de página, e isso é aceitável **aqui**
+        pelo mesmo motivo que não seria no `Ctrl+S` (S-116): virar página é um gesto por vez, e
+        não o laço interno. Se algum dia doer, o remédio é o mesmo -- um cache invalidado ao
+        salvar.
+        """
+        if self.pdf_source is None:
+            return ""
+        csv_path, _amostras, splits_path = self._dataset_paths()
+        if not csv_path.exists() or not splits_path.exists():
+            return ""
+        try:
+            paginas = pages_with_training_samples(LabelStore(csv_path).read(), load_splits(splits_path))
+        except (OSError, ValueError) as exc:
+            # Aviso ausente e melhor que janela quebrada: e informacao lateral.
+            logger.debug("Não foi possível checar amostras de treino da página: %s", exc)
+            return ""
+        quantas = paginas.get((self.pdf_source.name, self.page_index), 0)
+        return f" · ⚠ {quantas} amostra(s) de treino desta página" if quantas else ""
 
     def _ocr_region(self, page_rgb: np.ndarray, region: tuple[int, int, int, int]) -> None:
         options = self._recognition_options(int(self.max_boards_var.get()))

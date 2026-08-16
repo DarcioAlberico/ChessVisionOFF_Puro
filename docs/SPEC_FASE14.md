@@ -226,7 +226,7 @@ relatório diz que não sabe, que é a única coisa honesta que ele pode dizer.
 
 ---
 
-## S-97 · O conjunto de campo declara a página que o modelo treinou
+## S-97 · O conjunto de campo declara a página que o modelo treinou ✅ implementada (2026-08-16)
 
 **Problema.** Cruzando `data/field_set.jsonl` com `data/labels.csv` por
 `(source_pdf, source_page-1)`:
@@ -270,6 +270,47 @@ de treino.
 
 **Testes.** `tests/test_field_eval.py` — a marcação de contaminação com `labels.csv` sintético;
 a taxa limpa exclui a página contaminada; página sem amostra não é marcada.
+
+### O que foi entregue, e o número que ele revelou
+
+`labels.pages_with_training_samples` responde `{(livro, página): quantas amostras de train}`,
+e `evaluate_page` recebe a contagem por página. O relatório ganhou a contagem, a **taxa limpa**
+e a lista das páginas.
+
+**A diferença entre as duas taxas é maior do que a estimativa da avaliação sugeria:**
+
+```
+    **Taxa de exportação** ....... 0.7179  (28/39)
+    Em páginas com treino ........ 7 de 39  (18%)
+    **Exportação limpa** ......... 0.6562  (21/32)
+```
+
+**6,2 pontos percentuais.** Os sete diagramas contaminados exportam **todos** — o que faz
+sentido e é o pior caso: a contaminação não é ruído em torno do número, é viés **para cima**.
+Contra o alvo de 0,85 da Fase 7, a distância real é de 0,19 e não de 0,13.
+
+As duas páginas, com o que cada uma carrega:
+
+```
+  Páginas de que há amostra de **treino** (2):
+      1937 Kemeri.pdf p187: 1 diagrama(s) anotado(s), 1 amostra(s) de treino desta página
+      Karpov A - ... p80: 6 diagrama(s) anotado(s), 8 amostra(s) de treino desta página
+```
+
+**Nada é removido**, e isso é decisão: o conjunto tem 39 diagramas e jogar 18% fora o deixaria
+sem resolução nenhuma. O que muda é que o viés passa a ser **publicado em vez de estimado** —
+que é a mesma regra da S-96 para a exatidão.
+
+**Na tela**, `_refresh_field_status` avisa **antes** do clique:
+
+```
+p80:  anotada: 6 diagramas · vetorial · ⚠ 8 amostra(s) de treino desta página
+p100: página não anotada
+```
+
+Anotar uma página assim não é proibido — o conjunto é pequeno demais para recusar página —,
+mas passa a ser escolha e não acidente. É o que a S-99 precisa saber para escolher de onde
+crescer.
 
 ---
 

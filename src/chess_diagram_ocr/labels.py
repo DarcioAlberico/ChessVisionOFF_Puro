@@ -582,6 +582,42 @@ def saved_diagrams_by_page(
     return por_pagina
 
 
+def pages_with_training_samples(
+    entries: Iterable[DatasetEntry], splits: Mapping[str, str]
+) -> dict[tuple[str, int], int]:
+    """`{(livro, página em base 0): quantas amostras de treino}` (S-97).
+
+    **Por que isto existe.** O conjunto de campo da S-41 nasceu porque o split de teste não
+    representa a entrada do produto -- *"não é o modelo que está ruim, é o conjunto de teste
+    que não representa a entrada"*. Mas nada impedia que uma página do conjunto de campo fosse
+    também uma página de que há amostra rotulada em `train`, e medido em 2026-08-16 são **7 de
+    39 diagramas anotados, 17,9%**: `Karpov p80` (6) e `1937 Kemeri` p187 (1).
+
+    **A ressalva, e ela muda a leitura.** Isto não diz que o checkpoint em uso viu aquela
+    página -- diz que **o próximo a ser treinado sobre estes splits verá**. Das nove amostras
+    envolvidas hoje, oito são posteriores ao `piece_classifier.pt` de 2026-08-09. É uma
+    armadilha que fecha no próximo retreino, e por isso o alerta vale mais agora que depois.
+
+    Só conta `train`: amostra em `val`/`test` na mesma página é outro assunto, e o modelo não
+    aprende com ela. Linha sem procedência é ignorada, como em `saved_diagrams_by_page`, e são
+    84,1% do acervo -- o alcance deste alerta é o das amostras que declaram de onde vieram.
+    """
+    por_pagina: dict[tuple[str, int], int] = {}
+    for entry in entries:
+        livro = entry.source_pdf.strip()
+        if not livro or splits.get(entry.filename) != "train":
+            continue
+        try:
+            pagina = int(float(entry.source_page)) - 1
+        except (TypeError, ValueError):
+            continue
+        if pagina < 0:
+            continue
+        chave = (livro, pagina)
+        por_pagina[chave] = por_pagina.get(chave, 0) + 1
+    return por_pagina
+
+
 def label_columns_for(rows: Sequence[LabelRow]) -> tuple[str, ...]:
     """As colunas do esquema, seguidas das extras na ordem em que apareceram.
 
