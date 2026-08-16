@@ -9,6 +9,21 @@ para o que foi medido nesta fase — **inclusive o que não entrou** —
 
 **Data da análise:** 2026-08-09 · **Ramo:** `fase-5-modelo-desempenho` · **Commit base:** `ee308dd`
 
+> **As Fases 14 a 19 estão em [ROADMAP_FASE14.md](ROADMAP_FASE14.md)** (avaliação de
+> 2026-08-16), especificadas em [SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-141).
+>
+> **Elas alcançam este documento em dois pontos, e vale ler antes de usá-lo como referência.**
+> A 7.7 concluiu que a taxa de exportação é *"uma catraca que só desce"* e atribuiu isso à
+> distribuição bimodal da confiança. A explicação está um nível abaixo: **uma métrica de
+> confiança não pode medir correção**, e o conjunto de campo tem 1 FEN de referência em 39
+> diagramas — que é uma alucinação do próprio modelo sobre uma capa (S-95). Além disso, **três
+> diagramas impressos cruzam split, um deles nas três partições** (S-98), e **17,9% do conjunto
+> de campo está em páginas de que já há amostra rotulada em `train`** — o que ainda não
+> contamina o checkpoint atual, mas contamina o próximo retreino (S-97).
+>
+> Consequência para a leitura desta fase: os vereditos de **S-38b, S-40, S-62a e S-62b** não
+> estão errados — estão **não tomados**.
+
 ---
 
 ## Como esta análise foi feita, e o que ela mede

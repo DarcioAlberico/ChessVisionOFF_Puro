@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, Sampler
 
+from .atomic_io import write_image
 from .config import BOARD_SIZE, BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .labels import ILLEGAL_OK, LABEL_COLUMNS, DatasetEntry, LabelStore
@@ -447,7 +448,7 @@ def append_training_sample(
     if board.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
         board = cv2.resize(board, (BOARD_SIZE, BOARD_SIZE))
     board_bgr = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(str(image_path), board_bgr)
+    write_image(image_path, board_bgr)
 
     LabelStore(csv_path).append(
         DatasetEntry(

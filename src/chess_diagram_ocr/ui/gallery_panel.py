@@ -31,7 +31,7 @@ from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
 
 from chess_diagram_ocr.config import DEFAULT_READING_ORDER
-from chess_diagram_ocr.gallery import load_annotations
+from chess_diagram_ocr.gallery import DiagramAnnotation, load_annotations
 from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
 from chess_diagram_ocr.games_cache import PositionCache, load_cache, save_cache
 from chess_diagram_ocr.games_db import (
@@ -724,7 +724,19 @@ class GalleryPanel(ttk.Frame):
 
     # ------------------------------------------------------------------------ edição
 
+    def _persist_if_changed(self, before: DiagramAnnotation) -> None:
+        """Grava só se a anotação de fato mudou (S-109).
+
+        O modelo já é no-op quando nada muda; o que esta guarda evita é a **escrita**. Os
+        quatro `_commit_*` são disparados por `<FocusOut>` e por `<<ComboboxSelected>>`, que
+        acontecem ao *passar* por um campo -- e sem isto percorrer os headers de um diagrama
+        reescrevia o arquivo do livro inteiro oito vezes, uma por campo.
+        """
+        if self.model.current_annotation != before:
+            self._persist()
+
     def _commit_move(self) -> None:
+        antes = self.model.current_annotation
         texto = self.move_var.get().strip()
         if not texto:
             self.model.edit(move_number=None)
@@ -735,23 +747,26 @@ class GalleryPanel(ttk.Frame):
                 # Devolver o campo ao valor gravado e nao abrir caixa: digitar e apagar e
                 # normal, e um dialogo por tecla errada tornaria a galeria insuportavel.
                 self._on_status(f"Lance inválido: {texto!r}. Mantido o valor anterior.")
-        self._persist()
+        self._persist_if_changed(antes)
 
     def _commit_side(self) -> None:
+        antes = self.model.current_annotation
         self.model.edit(side_to_move=self.side_var.get() or None)
-        self._persist()
+        self._persist_if_changed(antes)
 
     def _commit_link(self) -> None:
+        antes = self.model.current_annotation
         escolha = self.link_var.get()
         self.model.edit(lichess_link=None if escolha == "" else escolha == "sim")
-        self._persist()
+        self._persist_if_changed(antes)
 
     def _on_header_event(self, nome: str, _evento: object = None) -> None:
         self._commit_header(nome)
 
     def _commit_header(self, nome: str) -> None:
+        antes = self.model.current_annotation
         self.model.set_header(nome, self.header_vars[nome].get())
-        self._persist()
+        self._persist_if_changed(antes)
 
     def _commit_free_header(self) -> None:
         nome = self.free_name_var.get().strip()

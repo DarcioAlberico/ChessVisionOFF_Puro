@@ -520,6 +520,29 @@ class LabelStore:
         atomic_write_bytes(self.path, render_csv(rows).encode("utf-8"))
 
 
+def label_origins(csv_path: Path) -> dict[str, tuple[str, str, str]]:
+    """`{arquivo: (source_pdf, source_page, source_diagram)}` para o agrupamento da S-98.
+
+    A tripla é a chave de "é o mesmo diagrama impresso", e ela é **exata**: não depende de
+    limiar de imagem, e por isso pega o caso que o guarda de dHash não pega -- a mesma página
+    reextraída com recorte deslocado, que é o que acontece ao revarrer um livro depois de a
+    detecção mudar.
+
+    Os valores saem como texto e **como estão no CSV**, sem conversão de base: aqui a tripla
+    serve só de chave de igualdade, e converter para depois comparar seria trabalho que só
+    poderia introduzir divergência com `saved_diagrams_by_page`, que converte porque a
+    interface conta em base 0.
+
+    Linha sem `source_pdf` ou sem `source_page` entra com a tripla vazia e o chamador a
+    descarta -- são 84,1% do acervo, e inventar procedência seria pior que não ter.
+    """
+    return {
+        entry.filename: (entry.source_pdf.strip(), entry.source_page.strip(), entry.source_diagram.strip())
+        for entry in LabelStore(csv_path).read()
+        if entry.filename
+    }
+
+
 def saved_diagrams_by_page(
     entries: Iterable[DatasetEntry], source_pdf: str
 ) -> dict[int, set[int]]:

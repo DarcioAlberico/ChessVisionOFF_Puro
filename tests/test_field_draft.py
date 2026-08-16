@@ -21,7 +21,7 @@ CAIXA_B = (300.0, 100.0, 400.0, 200.0)
 class RascunhoTests(unittest.TestCase):
     def _rascunho(self) -> FieldDraft:
         rascunho = FieldDraft(pdf_name="livro.pdf", page=80, regime="scan-puro")
-        rascunho.reset_from([(CAIXA_A, "4k3/8/8/8/8/8/8/4K3")])
+        rascunho.reset_from([(CAIXA_A, "4k3/8/8/8/8/8/8/4K3", True)])
         return rascunho
 
     def test_comeca_do_que_o_detector_achou(self) -> None:
@@ -88,6 +88,70 @@ class RascunhoTests(unittest.TestCase):
     def test_os_regimes_sao_os_da_s41(self) -> None:
         self.assertIn("scan-hachurado", REGIMES)
         self.assertIn("sem-diagrama", REGIMES)
+
+
+class VerdadeDeReferenciaTests(unittest.TestCase):
+    """S-95: a colocação que vira verdade é a **conferida**, nunca a lida pelo modelo.
+
+    Até aqui `app_tkinter._field_draft` montava a anotação com `items[i].placement` -- a
+    leitura do modelo -- em vez de `fen_edits[i]`, que é o que a pessoa corrigiu. O efeito era
+    circular e invisível: `evaluate_field` comparava o modelo com a própria saída e reportava
+    `conditional_exact = 1,000`. A única FEN que o conjunto chegou a ter era a leitura de uma
+    **capa** de livro, sem rei branco e com 9 torres pretas.
+    """
+
+    LEGAL = "4k3/8/8/8/8/8/8/4K3"
+    A_CAPA_DO_YUSUPOV = "4r2R/7Q/6R1/3rrrr1/1R1rrrR1/6Pq/2k1r1Q1/3b2q1"
+
+    def test_a_leitura_nao_conferida_nao_vira_verdade(self) -> None:
+        rascunho = FieldDraft(pdf_name="livro.pdf", page=80)
+        rascunho.reset_from([(CAIXA_A, self.LEGAL, False)])
+        self.assertEqual(rascunho.diagrams[0].placement, "")
+        self.assertEqual(rascunho.diagrams[0].bbox, CAIXA_A, "a caixa continua sendo anotação válida")
+
+    def test_a_correcao_humana_e_o_que_fica(self) -> None:
+        """O par que hoje falhava em silêncio: leitura e correção diferentes entre si."""
+        lido = "4k3/8/8/8/8/8/8/3QK3"
+        corrigido = "4k3/8/8/8/8/8/8/4K3"
+        rascunho = FieldDraft(pdf_name="livro.pdf", page=80)
+        rascunho.reset_from([(CAIXA_A, corrigido, True)])
+        self.assertEqual(rascunho.diagrams[0].placement, corrigido)
+        self.assertNotEqual(rascunho.diagrams[0].placement, lido)
+
+    def test_posicao_fatalmente_ilegal_nao_entra_nem_conferida(self) -> None:
+        """A capa do Yusupov: `NO_WHITE_KING`. Um clique errado não pode fixá-la como alvo."""
+        rascunho = FieldDraft(pdf_name="livro.pdf", page=0)
+        rascunho.reset_from([(CAIXA_A, self.A_CAPA_DO_YUSUPOV, True)])
+        self.assertEqual(rascunho.diagrams[0].placement, "")
+
+    def test_notacao_invalida_nao_entra(self) -> None:
+        rascunho = FieldDraft(pdf_name="livro.pdf", page=0)
+        rascunho.reset_from([(CAIXA_A, "isto não é uma FEN", True)])
+        self.assertEqual(rascunho.diagrams[0].placement, "")
+
+    def test_ilegal_por_turno_continua_entrando(self) -> None:
+        """A S-05 separou fatal de ilegal-por-turno para que guardas pudessem escolher uma.
+
+        O livro desenha final parcial e estrutura de peões; recusar tudo que é ilegal barraria
+        exatamente o material difícil que o conjunto de campo existe para medir.
+        """
+        torre_dando_xeque = "R3k3/8/8/8/8/8/8/4K3"
+        rascunho = FieldDraft(pdf_name="livro.pdf", page=80)
+        rascunho.reset_from([(CAIXA_A, torre_dando_xeque, True)])
+        self.assertEqual(rascunho.diagrams[0].placement, torre_dando_xeque)
+
+    def test_o_diagrama_que_o_detector_achou_e_ninguem_abriu_fica_sem_fen(self) -> None:
+        """O caso comum: varrer a página e anotar sem abrir diagrama nenhum."""
+        rascunho = FieldDraft(pdf_name="livro.pdf", page=80, regime="scan-puro")
+        rascunho.reset_from([(CAIXA_A, self.LEGAL, False), (CAIXA_B, self.LEGAL, False)])
+        pagina = rascunho.to_page()
+        self.assertTrue(pagina.reviewed, "a caixa foi conferida por gente")
+        self.assertEqual([d.placement for d in pagina.diagrams], ["", ""])
+
+    def test_conferir_um_diagrama_de_dois_grava_so_o_conferido(self) -> None:
+        rascunho = FieldDraft(pdf_name="livro.pdf", page=80)
+        rascunho.reset_from([(CAIXA_A, self.LEGAL, True), (CAIXA_B, self.LEGAL, False)])
+        self.assertEqual([d.placement for d in rascunho.diagrams], [self.LEGAL, ""])
 
 
 class GravacaoTests(unittest.TestCase):

@@ -123,6 +123,27 @@ def _provenance_after(previous: DiagramAnnotation, remaining: tuple[str, ...]) -
     }
 
 
+_AUSENTE = object()
+
+
+def _apenas_o_que_mudou(previous: DiagramAnnotation, fields: dict[str, Any]) -> dict[str, Any]:
+    """Dos campos pedidos, os que de fato diferem do que já está gravado (S-109).
+
+    **Existe porque gesto de leitura não é edição.** O `<FocusOut>` de um `Entry` dispara ao
+    sair do campo, tenha-se digitado nele ou não -- e percorrer os oito headers com `Tab`, que
+    é o gesto de *conferir* o que a base preencheu, chamava `set_header` oito vezes com o
+    mesmo valor. Cada chamada tirava o campo de `filled_fields`, e o diagrama saía da
+    procedência `database` para `manual` sem que ninguém tivesse corrigido nada. Eram 4.906
+    anotações com header preenchido pela base expostas a isso, e o efeito no censo da S-89 é o
+    contrário do que ele existe para medir: a coluna "a revisar" **subia** com o trabalho de
+    revisar.
+
+    A guarda mora aqui, e não só no painel, porque é aqui que ela pode ser testada sem abrir
+    janela -- e porque `edit` tem quatro chamadores, não um.
+    """
+    return {nome: valor for nome, valor in fields.items() if getattr(previous, nome, _AUSENTE) != valor}
+
+
 def _evidence(match: DiagramMatch) -> str:
     """O que vai para o `confirmed_from`: a partida quando ela é única, a contagem quando não."""
     return match.game_label if match.games_matched == 1 else f"{match.games_matched} partidas da base"
@@ -304,6 +325,11 @@ class GalleryModel:
         if atual is None:
             return None
         anterior = self.annotations.get(atual.page_index, atual.diagram_index)
+
+        campos = _apenas_o_que_mudou(anterior, campos)
+        if not campos:
+            return anterior
+
         if anterior.filled_fields and "filled_fields" not in campos:
             restantes = tuple(nome for nome in anterior.filled_fields if nome not in campos)
             if restantes != anterior.filled_fields:
@@ -327,6 +353,12 @@ class GalleryModel:
             headers[nome] = texto
         else:
             headers.pop(nome, None)
+
+        # S-109: sair do campo sem digitar nada não é editar. A guarda precisa estar aqui, e
+        # não só no `edit`, porque a linha seguinte já calcula a procedência nova -- e é ela,
+        # e não o header, que `edit` veria como mudança.
+        if headers == anotacao.headers:
+            return anotacao
 
         # Editar *este* header o tira da procedência da base, e deixa os outros como estavam --
         # a base pode ter preenchido `Event` e a pessoa corrigir só o `White`.

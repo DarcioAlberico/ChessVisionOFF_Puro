@@ -1,7 +1,17 @@
 # Especificação das melhorias — Fases 7 a 13 (S-37 a S-75)
 
 Continuação de [SPEC.md](SPEC.md), que cobre S-01 a S-36. Sequenciamento e a medição que
-motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
+motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md). A continuação está em
+[SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-141) — passando por
+[ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) (S-78 a S-82) e
+[PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) (S-83 a S-94).
+
+> **Ressalva de 2026-08-16.** Quatro itens deste documento — **S-38b, S-40, S-62a e S-62b** —
+> foram reprovados pela taxa de exportação do conjunto de campo. A avaliação registrada em
+> [ROADMAP_FASE14.md](ROADMAP_FASE14.md) mostrou que essa métrica **mede confiança e não
+> correção**: 1 de 39 diagramas anotados carrega FEN de referência, e essa uma é uma alucinação
+> do próprio modelo sobre uma capa (S-95, S-96). Isso não torna os quatro vereditos errados —
+> torna-os **não tomados**. Reabri-los depende da Fase 14.
 
 Os itens **S-56 a S-61** vêm primeiro no documento porque são **defeitos abertos hoje**, não
 melhorias. A numeração é maior porque foram encontrados na segunda passada da análise, depois

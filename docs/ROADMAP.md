@@ -6,6 +6,13 @@ Base: [ANALISE.md](ANALISE.md). Detalhes de implementação: [SPEC.md](SPEC.md).
 > [ROADMAP_FASE7.md](ROADMAP_FASE7.md) (Fases 7 a 13) e [SPEC_FASE7.md](SPEC_FASE7.md)
 > (S-37 a S-75). Os seis defeitos que a segunda análise abriu — entre eles as 45 amostras que
 > não chegavam ao treino porque `ensure_splits` nunca era chamada — estão todos corrigidos.
+>
+> **As Fases 14 a 19 estão em [ROADMAP_FASE14.md](ROADMAP_FASE14.md)** (avaliação de
+> 2026-08-16), especificadas em [SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-141). Elas abrem
+> com um achado que alcança este documento: **as duas réguas do projeto — o split de teste e o
+> conjunto de campo — estão contaminadas pelo que deveriam julgar**, e o 0,9906 que o
+> [BASELINE.md](BASELINE.md) publica foi medido sobre um `test` com três diagramas que também
+> estão no `train`.
 
 Estimativas em dias de trabalho focado de uma pessoa. As fases são sequenciais por dependência: cada uma depende de algo que a anterior estabelece.
 

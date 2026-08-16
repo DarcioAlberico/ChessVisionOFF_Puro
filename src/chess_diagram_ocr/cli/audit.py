@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from ..audit import (
@@ -18,7 +19,9 @@ from ..audit import (
     remove_duplicate_labels,
 )
 from ..config import DEFAULT_DATASET_CSV, DEFAULT_SAMPLES_DIR, PIECE_CLASSES
+from ..labels import label_origins
 from ..logging_setup import configure_logging, default_log_file
+from ..splits import load_splits, split_leaks
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +74,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | None = None) -> None:
+def _print_report(
+    report: AuditReport,
+    limit: int,
+    *,
+    sem_split: list[str] | None = None,
+    vazamentos: Sequence[tuple[tuple[str, str, str], Mapping[str, str]]] = (),
+) -> None:
     fatal = report.of_kind("fatal")
     turn = report.of_kind("lado-a-jogar")
     syntax = report.of_kind("sintaxe")
@@ -98,6 +107,8 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
     print(f"    Imagens órfãs ................ {len(report.orphan_images)}")
     if sem_split is not None:
         print(f"    Sem split registrado ......... {len(sem_split)}")
+    if vazamentos:
+        print(f"    Mesmo diagrama em 2+ splits .. {len(vazamentos)}  (S-98)")
 
     if report.duplicates_above_ceiling:
         # O teto da S-63 existe porque a redundancia cresceu de 234 para 248 sem nada notar.
@@ -107,8 +118,27 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
         print(
             f"  !! Redundância acima do teto: {report.duplicate_share:.1%} > {DUPLICATE_SHARE_CEILING:.0%} (S-63)."
         )
-        print("     Membros de um grupo continuam no mesmo split, então a validação segue honesta.")
+        # A frase anterior aqui era "membros de um grupo continuam no mesmo split, entao a
+        # validacao segue honesta". Ela e verdadeira pela definicao de grupo e vazia na
+        # pratica (S-98): o grupo e `placement` igual + dHash <= 3, e o mesmo diagrama
+        # reextraido com recorte deslocado nao cai nele. Quem responde de verdade por
+        # vazamento e a secao abaixo, que compara procedencia.
+        print("     Membros de um mesmo grupo caem no mesmo split; o que o grupo não vê está abaixo.")
         print("     O que isto vigia é o crescimento: confira de onde vêm os grupos novos antes de treinar.")
+
+    if vazamentos:
+        print()
+        print(f"  Mesmo diagrama impresso em splits diferentes ({len(vazamentos)}) -- vazamento de treino:")
+        print("    A tripla (livro, página, diagrama) é exata: são a mesma posição impressa,")
+        print("    salva mais de uma vez com recorte diferente. O guarda de imagem não os vê.")
+        print("    Isto **lista e não move**: mover linha de `test` é irreversível na prática,")
+        print("    e a direção que não contamina é sempre em direção ao `train`.")
+        for (pdf, pagina, diagrama), membros in vazamentos[:limit]:
+            print(f"      {pdf} p{pagina} d{diagrama}")
+            for nome, split in membros.items():
+                print(f"        {nome}  [{split}]")
+        if len(vazamentos) > limit:
+            print(f"      ... e outros {len(vazamentos) - limit}")
 
     if sem_split:
         print()
@@ -203,7 +233,10 @@ def main(argv: list[str] | None = None) -> int:
 
     report = audit_dataset(args.csv, args.samples, check_duplicates=not args.skip_duplicates)
     sem_split = filenames_without_split(args.csv, args.splits) if Path(args.splits).exists() else None
-    _print_report(report, limit=args.limit_examples, sem_split=sem_split)
+    vazamentos = (
+        split_leaks(label_origins(args.csv), load_splits(args.splits)) if Path(args.splits).exists() else []
+    )
+    _print_report(report, limit=args.limit_examples, sem_split=sem_split, vazamentos=vazamentos)
 
     mutating = args.fix_side_to_move or args.quarantine or args.dedupe or args.prune_orphans or args.drop_missing
     if not mutating:

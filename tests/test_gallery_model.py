@@ -120,6 +120,102 @@ class AnotacaoTests(unittest.TestCase):
         self.assertIsNone(GalleryModel().set_header("White", "Tal"))
 
 
+class ConferirNaoEEditarTests(unittest.TestCase):
+    """S-109: `<FocusOut>` dispara ao *passar* por um campo, e passar não pode apagar dado.
+
+    Percorrer os oito headers com `Tab` -- o gesto de conferir o que a base preencheu --
+    chamava `set_header` oito vezes com o mesmo valor, e cada chamada tirava o campo de
+    `filled_fields`. O diagrama saía de `database` para `manual` sem ninguém ter corrigido
+    nada, e o censo da S-89 passava a listá-lo como "a revisar": a coluna que existe para cair
+    subia com o trabalho de revisar.
+    """
+
+    def _preenchido_pela_base(self) -> GalleryModel:
+        modelo = _modelo((0, 0))
+        modelo.annotations.update(
+            0,
+            0,
+            headers={"White": "Tal", "Black": "Botvinnik", "Event": "World-ch", "Date": "1960.03.15"},
+            side_to_move="w",
+            filled_fields=("header:White", "header:Black", "header:Event", "header:Date", "side_to_move"),
+            filled_from="Tal, Mikhail x Botvinnik, Mikhail, World-ch 1960",
+            filled_rule="caption",
+        )
+        return modelo
+
+    def test_reescrever_o_mesmo_header_preserva_a_procedencia_inteira(self) -> None:
+        modelo = self._preenchido_pela_base()
+        antes = modelo.current_annotation
+
+        modelo.set_header("White", "Tal")
+
+        self.assertEqual(modelo.current_annotation, antes)
+        self.assertEqual(modelo.current_annotation.filled_rule, "caption")
+        self.assertIn("header:White", modelo.current_annotation.filled_fields)
+
+    def test_percorrer_os_oito_campos_sem_digitar_nao_muda_nada(self) -> None:
+        modelo = self._preenchido_pela_base()
+        antes = modelo.current_annotation
+
+        for nome in HEADER_FIELDS:
+            modelo.set_header(nome, antes.headers.get(nome, ""))
+
+        self.assertEqual(modelo.current_annotation, antes)
+        self.assertEqual(modelo.current_annotation.filled_from, antes.filled_from)
+
+    def test_digitar_de_verdade_continua_rebaixando_so_aquele_campo(self) -> None:
+        """A S-86 decidiu que editar tira o campo da base. Isso não pode ter sido desligado."""
+        modelo = self._preenchido_pela_base()
+
+        modelo.set_header("White", "Tahl")
+
+        anotacao = modelo.current_annotation
+        self.assertNotIn("header:White", anotacao.filled_fields)
+        self.assertIn("header:Black", anotacao.filled_fields)
+        self.assertEqual(anotacao.filled_rule, "caption")
+
+    def test_apagar_um_header_da_base_continua_rebaixando(self) -> None:
+        modelo = self._preenchido_pela_base()
+
+        modelo.set_header("Event", "")
+
+        anotacao = modelo.current_annotation
+        self.assertNotIn("Event", anotacao.headers)
+        self.assertNotIn("header:Event", anotacao.filled_fields)
+
+    def test_reescrever_a_mesma_vez_preserva_a_procedencia(self) -> None:
+        """`_commit_side` dispara em `<<ComboboxSelected>>`, que acontece ao reabrir a lista."""
+        modelo = self._preenchido_pela_base()
+        antes = modelo.current_annotation
+
+        modelo.edit(side_to_move="w")
+
+        self.assertEqual(modelo.current_annotation, antes)
+        self.assertIn("side_to_move", modelo.current_annotation.filled_fields)
+
+    def test_trocar_a_vez_de_verdade_rebaixa(self) -> None:
+        modelo = self._preenchido_pela_base()
+
+        modelo.edit(side_to_move="b")
+
+        self.assertNotIn("side_to_move", modelo.current_annotation.filled_fields)
+
+    def test_o_ultimo_campo_da_base_a_sair_leva_a_evidencia_junto(self) -> None:
+        """Regra da S-94, que a guarda nova não pode ter quebrado."""
+        modelo = _modelo((0, 0))
+        modelo.annotations.update(
+            0, 0, headers={"White": "Tal"}, filled_fields=("header:White",),
+            filled_from="uma partida", filled_rule="date",
+        )
+
+        modelo.set_header("White", "outro")
+
+        anotacao = modelo.current_annotation
+        self.assertEqual(anotacao.filled_fields, ())
+        self.assertEqual(anotacao.filled_from, "")
+        self.assertEqual(anotacao.filled_rule, "")
+
+
 class LimparHeadersTests(unittest.TestCase):
     """Limpar tudo de um diagrama (S-94): o gesto de quando a base preencheu a partida errada."""
 

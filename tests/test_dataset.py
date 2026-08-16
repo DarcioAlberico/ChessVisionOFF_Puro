@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import unittest.mock
 import warnings
 from pathlib import Path
 
@@ -231,6 +232,39 @@ class AppendSampleTests(unittest.TestCase):
 
             self.assertTrue(path.exists())
             self.assertIn(path.name, (root / "labels.csv").read_text(encoding="utf-8"))
+
+    def test_a_imagem_que_nao_gravou_nao_vira_linha_no_csv(self) -> None:
+        """S-111: `cv2.imwrite` devolve `False`, não levanta.
+
+        Disco cheio, pasta em rede fora do ar, antivírus segurando o arquivo: quem chamava
+        seguia adiante e gravava a linha apontando para um PNG inexistente. O prejuízo é o
+        trabalho humano daquela correção, e ele só aparece semanas depois, na linha da
+        auditoria "rótulos cujo PNG sumiu -- descartados em silêncio no treino".
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+
+            with unittest.mock.patch("cv2.imwrite", return_value=False):
+                with self.assertRaises(OSError) as ctx:
+                    append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
+
+            self.assertIn("não conseguiu gravar", str(ctx.exception))
+            self.assertFalse((root / "labels.csv").exists())
+
+    def test_a_falha_de_gravacao_nao_acrescenta_a_um_csv_que_ja_existe(self) -> None:
+        """O caso que importa de verdade: o CSV tem 3.936 linhas e não pode ganhar uma órfã."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+            append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
+            antes = (root / "labels.csv").read_text(encoding="utf-8")
+
+            with unittest.mock.patch("cv2.imwrite", return_value=False):
+                with self.assertRaises(OSError):
+                    append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
+
+            self.assertEqual((root / "labels.csv").read_text(encoding="utf-8"), antes)
 
     def test_fatal_position_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

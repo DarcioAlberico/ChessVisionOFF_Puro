@@ -14,6 +14,7 @@ uma sexta em `review_queue.rare_classes_from_labels`, que ninguém tinha listado
 
 from __future__ import annotations
 
+import inspect
 import os
 import tempfile
 import unittest
@@ -400,6 +401,38 @@ class LabelRouteTests(unittest.TestCase):
         for kwargs in combinacoes:
             with self.subTest(**kwargs):
                 self.assertIn(labels_module.label_route(**kwargs), labels_module.CORRECTED_BY_VALUES)
+
+class LabelOriginsTests(unittest.TestCase):
+    """A tripla de procedência que o agrupamento por diagrama impresso usa (S-98)."""
+
+    def _grava(self, tmp: str, linhas: list[dict[str, str]]) -> Path:
+        caminho = Path(tmp) / "labels.csv"
+        loja = labels_module.LabelStore(caminho)
+        for campos in linhas:
+            base = {"filename": "x.png", "fen": "8/8/8/8/8/8/8/8 w - - 0 1"}
+            base.update(campos)
+            loja.append(labels_module.DatasetEntry(**base))  # type: ignore[arg-type]
+        return caminho
+
+    def test_devolve_a_tripla_como_esta_no_csv(self) -> None:
+        """Sem conversão de base: aqui a tripla é chave de igualdade, não índice de tela."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = self._grava(
+                tmp, [{"filename": "a.png", "source_pdf": "livro.pdf", "source_page": "41", "source_diagram": "1"}]
+            )
+            self.assertEqual(labels_module.label_origins(caminho), {"a.png": ("livro.pdf", "41", "1")})
+
+    def test_linha_sem_procedencia_sai_com_a_tripla_vazia(self) -> None:
+        """84,1% do acervo. Quem agrupa descarta; inventar procedência seria pior."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = self._grava(tmp, [{"filename": "a.png"}])
+            self.assertEqual(labels_module.label_origins(caminho), {"a.png": ("", "", "")})
+
+    def test_passa_pela_porta_unica_do_labels_csv(self) -> None:
+        """S-51: nada lê o `labels.csv` fora do `LabelStore`, nem o agrupamento novo."""
+        origem = inspect.getsource(labels_module.label_origins)
+        self.assertIn("LabelStore", origem)
+
 
 class SavedDiagramsByPageTests(unittest.TestCase):
     """O índice que pinta de verde, no visualizador, o que já foi salvo (S-71)."""

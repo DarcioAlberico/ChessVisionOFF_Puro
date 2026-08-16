@@ -949,14 +949,46 @@ class ChessOcrTkApp:
 
         rascunho = FieldDraft(pdf_name=nome, page=self.page_index, regime=self.field_regime_var.get())
         caixas = self.pdf_panel.boxes if self.pdf_panel is not None else None
-        lidos = {item.index: item for item in self._page_items(self.page_index)}
+        conferidos = self._page_confirmed_placements(self.page_index)
         rascunho.reset_from(
             [
-                (box.bbox_pdf, getattr(lidos.get(indice), "placement", "") or "")
+                (box.bbox_pdf, *conferidos.get(indice, ("", False)))
                 for indice, box in enumerate(caixas.boxes if caixas is not None else ())
             ]
         )
         return rascunho
+
+    def _page_confirmed_placements(self, page_index: int) -> dict[int, tuple[str, bool]]:
+        """Por diagrama da página: a colocação **corrigida** e se alguém a conferiu (S-95).
+
+        **Vem de `fen_edits`, e não de `items[i].placement`.** As duas listas são paralelas de
+        propósito -- `ui/editor_model.py:19` diz que fundi-las perderia a leitura original --, e
+        a anotação do conjunto de campo estava lendo o lado errado: gravava o que o modelo leu
+        como verdade **sobre** o modelo. Corrigir o tabuleiro e anotar a página descartava a
+        correção e gravava o erro.
+
+        `edited_by_hand` é o que separa lido de conferido, e é o mesmo sinal que o cache de
+        página já usa para decidir o que não pode ser descartado em silêncio.
+        """
+        painel = self.result_panel
+        if painel is None:
+            return {}
+
+        if self._editor_shows_page(page_index):
+            itens, edicoes = painel.items, painel.fen_edits
+        else:
+            guardado = painel.page_results.get(self._document_key(), page_index, self._current_ocr_params())
+            if guardado is None:
+                return {}
+            itens, edicoes = list(guardado.items), list(guardado.fen_edits)
+
+        return {
+            item.index: (
+                edicoes[posicao] if posicao < len(edicoes) else item.placement,
+                bool(item.edited_by_hand),
+            )
+            for posicao, item in enumerate(itens)
+        }
 
     def annotate_field_page(self, *, empty: bool = False) -> None:
         """Grava a página no conjunto de campo, revisada.

@@ -25,6 +25,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
+from chess_diagram_ocr.fen_utils import check_position, is_syntactically_valid_fen
 from chess_diagram_ocr.field_eval import AnnotatedDiagram, Bbox, FieldPage, bbox_iou
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,33 @@ REGIMES: tuple[str, ...] = (
 Não é taxonomia por gosto: a 7.4 mostra a taxa de exportação em 1,000 nos dois primeiros
 regimes e em 0,429 no scan puro. Uma média sobre os quatro esconde exatamente a diferença que
 decide onde vale trabalhar."""
+
+def _referencia_aceitavel(placement: str, confirmada: bool) -> str:
+    """A colocação que pode virar verdade de referência, ou string vazia (S-95).
+
+    Duas guardas, e a segunda é a rede embaixo da primeira:
+
+    1. **Não conferida não entra.** A leitura do modelo não é verdade sobre o modelo.
+    2. **Fatalmente ilegal não entra, mesmo conferida.** Uma posição sem rei não é diagrama de
+       livro: é o modelo lendo uma capa, uma tabela ou um retrato. Ela chegaria aqui só por um
+       clique errado, e o custo de deixá-la passar é alto e silencioso -- um valor de
+       referência impossível de satisfazer que puxa a exatidão medida para baixo para sempre,
+       sem que nada na tela diga por quê.
+
+    A ilegalidade **por turno** passa: o livro desenha finais parciais e estruturas de peões, e
+    a S-05 separou os dois estados exatamente para que este tipo de guarda pudesse escolher um.
+    É a mesma linha que `dataset.append_training_sample` já usa para recusar rótulo.
+    """
+    if not confirmada or not placement:
+        return ""
+    if not is_syntactically_valid_fen(placement):
+        logger.warning("Colocação descartada da anotação de campo: notação inválida (%r).", placement)
+        return ""
+    if check_position(placement).is_fatal:
+        logger.warning("Colocação descartada da anotação de campo: posição fatalmente ilegal (%r).", placement)
+        return ""
+    return placement
+
 
 SAME_DIAGRAM_IOU = 0.5
 """Acima disto, a caixa nova é a mesma que já está na lista -- o mesmo limiar com que o
@@ -63,16 +91,28 @@ class FieldDraft:
     def is_empty(self) -> bool:
         return not self.diagrams
 
-    def reset_from(self, boxes: Iterable[tuple[Bbox, str]]) -> None:
-        """Recomeça a partir do que está desenhado na tela: `(bbox, colocação)`.
+    def reset_from(self, boxes: Iterable[tuple[Bbox, str, bool]]) -> None:
+        """Recomeça a partir do que está na tela: `(bbox, colocação, conferida)`.
 
-        A colocação entra quando o diagrama já foi lido, e fica vazia quando ele só foi
-        localizado. As duas formas são anotação válida: o conjunto de campo mede **detecção,
-        legalidade e gate**, e a S-41 já aceita página anotada só com as caixas.
+        **A colocação só entra se alguém a conferiu**, e é essa a correção da S-95. Até aqui a
+        anotação vinha de `items[i].placement` -- *a leitura do modelo* --, e não de
+        `fen_edits[i]`, que é o que a pessoa corrigiu. Corrigir o tabuleiro e clicar "Anotar
+        página" gravava a leitura **errada** como verdade de referência, e `evaluate_field`
+        passava a comparar o modelo com a própria saída.
+
+        O estrago tinha nome e endereço: a única FEN que o conjunto chegou a ter era
+        `4r2R/7Q/6R1/3rrrr1/1R1rrrR1/6Pq/2k1r1Q1/3b2q1`, lida da **capa** do Yusupov -- sem rei
+        branco, com 9 torres pretas --, e era contra ela que o `cvoff-field` reportava
+        `conditional_exact = 1,000`.
+
+        Diagrama não conferido entra com `placement=""`, que é anotação válida desde a S-41 e é
+        honesta: caixa anotada, posição não. Vale a mesma regra do `reviewed` (ver `to_page`),
+        e agora pelo mesmo motivo escrito no mesmo lugar -- **medir o modelo contra a própria
+        saída dá 1,000 em tudo e não significa nada**.
         """
         self.diagrams = [
-            AnnotatedDiagram(bbox=tuple(bbox), placement=placement or "")  # type: ignore[arg-type]
-            for bbox, placement in boxes
+            AnnotatedDiagram(bbox=tuple(bbox), placement=_referencia_aceitavel(placement, confirmada))  # type: ignore[arg-type]
+            for bbox, placement, confirmada in boxes
         ]
 
     def add(self, bbox: Bbox, *, note: str = "") -> bool:

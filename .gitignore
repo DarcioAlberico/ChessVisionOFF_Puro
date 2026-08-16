@@ -28,6 +28,7 @@ data/review_cache/
 data/quarantine.csv
 data/labels.csv.bak-*
 data/splits.csv.bak-*
+data/field_set.jsonl.bak-*
 # Orfaos aposentados pelo `cvoff-audit --prune-orphans` (S-63): sao os mesmos PNGs de
 # data/samples/, que ja estao fora por peso -- e o diretorio existe justamente para que a
 # poda seja reversivel, nao para ser distribuido.

@@ -624,6 +624,17 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
   as motiva: o gate rejeita 17 de 101 diagramas de pagina real contra 3 de 320 no split de teste
 - [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 13 (S-37 a S-75),
   incluindo os defeitos da Fase 7.0 e a Fase 12, que saiu de uso e nao de varredura
+- [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) -- o glifo do cabecalho reconhecido
+  como diagrama, os quatro danos medidos e o censo de candidatos (S-78 a S-82)
+- [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) -- a base de partidas como fonte
+  de verdade: o indice por nome, a busca por posicao e a escolha que vira procedencia
+  (S-83 a S-94)
+- [docs/ROADMAP_FASE14.md](docs/ROADMAP_FASE14.md) -- **Fases 14 a 19**, com a avaliacao de
+  2026-08-16 que as motiva: as duas reguas do projeto -- o split de teste e o conjunto de
+  campo -- estao contaminadas pelo que deveriam julgar, e a metrica primaria mede confianca
+  e nao correcao
+- [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) -- especificacao das Fases 14 a 19 (S-95 a
+  S-141), com o indice de onde mora cada item da spec
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

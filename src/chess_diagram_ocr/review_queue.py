@@ -40,7 +40,7 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 
-from .atomic_io import atomic_write_json
+from .atomic_io import atomic_write_json, write_image
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_MAX_BOARDS,
@@ -399,8 +399,7 @@ def cache_board_image(board_rgb: np.ndarray, cache_dir: Path, pdf_name: str, pag
     directory = Path(cache_dir) / _safe_name(pdf_name)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"p{page_index + 1:05d}_d{diagram_index}.png"
-    cv2.imwrite(str(path), cv2.cvtColor(board_rgb, cv2.COLOR_RGB2BGR))
-    return path
+    return write_image(path, cv2.cvtColor(board_rgb, cv2.COLOR_RGB2BGR))
 
 
 def _safe_name(name: str) -> str:
