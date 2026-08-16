@@ -104,6 +104,25 @@ RULE_LABELS = {
 e é o que ele é: 72,3% de discordância com a legenda onde há legenda para conferir."""
 
 
+def _provenance_after(previous: DiagramAnnotation, remaining: tuple[str, ...]) -> dict[str, Any]:
+    """O que sobra da procedência quando campos deixam de ser da base (S-94).
+
+    **`filled_from` e `filled_rule` andam em par**: um diz *de que* partida veio o
+    preenchimento, o outro *por que* foi ela. Sem nenhum campo preenchido sobrando, os dois
+    descrevem coisa nenhuma -- e deixar a regra para trás faz o censo da S-89 contar como
+    "preenchido pelo desempate por data" um diagrama que não tem nada preenchido.
+
+    Existe como função porque a mesma conta aparece em quatro lugares -- editar um campo,
+    apagar um header, desfazer a cópia e limpar tudo --, e quatro cópias dela divergiriam na
+    primeira vez que uma fosse corrigida.
+    """
+    return {
+        "filled_fields": remaining,
+        "filled_from": previous.filled_from if remaining else "",
+        "filled_rule": previous.filled_rule if remaining else "",
+    }
+
+
 def _evidence(match: DiagramMatch) -> str:
     """O que vai para o `confirmed_from`: a partida quando ela é única, a contagem quando não."""
     return match.game_label if match.games_matched == 1 else f"{match.games_matched} partidas da base"
@@ -288,12 +307,8 @@ class GalleryModel:
         if anterior.filled_fields and "filled_fields" not in campos:
             restantes = tuple(nome for nome in anterior.filled_fields if nome not in campos)
             if restantes != anterior.filled_fields:
-                campos = {
-                    **campos,
-                    "filled_fields": restantes,
-                    # Sem campo nenhum da base sobrando, a evidência não descreve mais nada.
-                    "filled_from": anterior.filled_from if restantes else "",
-                }
+                # Sem campo nenhum da base sobrando, a evidência não descreve mais nada.
+                campos = {**campos, **_provenance_after(anterior, restantes)}
         return self.annotations.update(atual.page_index, atual.diagram_index, **campos)
 
     def set_header(self, name: str, value: str) -> DiagramAnnotation | None:
@@ -317,12 +332,38 @@ class GalleryModel:
         # a base pode ter preenchido `Event` e a pessoa corrigir só o `White`.
         restantes = tuple(campo for campo in anotacao.filled_fields if campo != f"header:{nome}")
         if restantes != anotacao.filled_fields:
-            return self.edit(
-                headers=headers,
-                filled_fields=restantes,
-                filled_from=anotacao.filled_from if restantes else "",
-            )
+            return self.edit(headers=headers, **_provenance_after(anotacao, restantes))
         return self.edit(headers=headers)
+
+    def clear_headers(self) -> tuple[str, ...]:
+        """Apaga **todos** os headers deste diagrama. Devolve os nomes que saíram (S-94).
+
+        **É o mesmo gesto que apagar campo a campo, feito de uma vez** -- inclusive na
+        procedência, que segue a regra do `set_header`: header removido deixa de ter origem, e
+        sem nenhum campo da base sobrando o `filled_from` não descreve mais nada. Não há
+        semântica nova aqui, e é de propósito: um botão que limpasse "de outro jeito" criaria
+        dois estados possíveis para a mesma tela.
+
+        **Existe porque a base pode preencher com a partida errada.** Uma posição em 47
+        partidas identifica a partida pela legenda ou pela data, e a data discorda da legenda
+        72,3% das vezes (S-91); quando ela erra, são oito campos para limpar um a um, saindo de
+        cada `Entry` para que o `<FocusOut>` grave. Ninguém faz isso oito vezes -- deixa errado.
+
+        **O lance, a vez e a partida escolhida ficam.** Os headers são o que a base escreve
+        sobre *qual* partida é; o lance e a vez a pessoa costuma ter contado no livro, e apagar
+        trabalho humano que ninguém pediu para apagar é o defeito da S-76. Quem quiser trocar a
+        partida inteira usa a lista de candidatas, que reescreve tudo junto.
+
+        Os livres saem também: `headers` é um dicionário, e "todos" quer dizer todos.
+        """
+        atual = self.current
+        anotacao = self.current_annotation
+        if atual is None or not anotacao.headers:
+            return ()
+        apagados = tuple(sorted(anotacao.headers))
+        restantes = tuple(campo for campo in anotacao.filled_fields if not campo.startswith("header:"))
+        self.edit(headers={}, **_provenance_after(anotacao, restantes))
+        return apagados
 
     def headers_to_apply(self, names: tuple[str, ...] = HEADER_FIELDS) -> dict[str, str]:
         """O que um "aplicar a todos" copiaria daqui. Existe para a tela poder **mostrar**.
@@ -369,13 +410,7 @@ class GalleryModel:
                     if not (campo.startswith("header:") and campo.removeprefix("header:") not in headers)
                 )
                 self.annotations.set(
-                    *chave,
-                    replace(
-                        anotacao,
-                        headers=headers,
-                        filled_fields=restantes,
-                        filled_from=anotacao.filled_from if restantes else "",
-                    ),
+                    *chave, replace(anotacao, headers=headers, **_provenance_after(anotacao, restantes))
                 )
                 atingidos += 1
         return atingidos

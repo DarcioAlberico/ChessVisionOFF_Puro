@@ -1,4 +1,4 @@
-# Plano · A escolha da partida, e a base que responde em segundos (S-83 a S-93)
+# Plano · A escolha da partida, e a base que responde em segundos (S-83 a S-94)
 
 > Sucessor da Fase 13. Medido em 2026-08-15 sobre `data/games_matches.json` — a varredura de
 > 2026-08-13, quatro livros, 1.641 casamentos — e sobre `pgn_database/PGN_Database.pgn`
@@ -160,6 +160,7 @@ que casaram alocam alguma coisa, e elas são 1.641 num acervo de 3.563 diagramas
 | S-87 | índice por nome em SQLite: busca por diagrama | precisão + alcance + segundos | grande | ✅ 2026-08-15 |
 | S-92 | a busca por posição vira botão da Galeria | os 53,9% que a legenda não alcança | pequeno | ✅ 2026-08-16 |
 | S-93 | a base é a pasta, e não o maior arquivo dela | +10,3 M partidas que eram invisíveis | médio | ✅ 2026-08-16 |
+| S-94 | limpar os headers de um diagrama | desfazer o que o automático errou | mínimo | ✅ 2026-08-16 |
 
 *(a tabela está na ordem de execução da §4, não na numérica)*
 
@@ -700,6 +701,46 @@ posição nova. Medidos nesta máquina, com 18,9 GB e 20.902.903 partidas:
 
 Não é opcional nem é desperdício: é o que separa uma resposta conferida de um número que
 parece conferido.
+
+### S-94 · Limpar os headers de um diagrama ✅ implementada (2026-08-16)
+
+**O pedido:** *"se por ventura o diagrama não estiver preenchido corretamente, deveria ter um
+botão para limpar todos os campos dos headers daquele diagrama."*
+
+O plano inteiro até aqui empurra dado para dentro da anotação — a busca por nome, a busca por
+posição, a lista de candidatas, o "aplicar aos vizinhos". **Nenhum deles tem o gesto inverso**,
+e ele é necessário justamente porque o preenchimento automático erra de um jeito conhecido e
+medido: onde a posição está em várias partidas, quem escolhe é o desempate por data, e ele
+discorda da legenda **72,3%** das vezes (§1.1). Quando erra, são até oito campos para limpar um
+a um, saindo de cada `Entry` para o `<FocusOut>` gravar. Ninguém faz isso oito vezes; deixa
+errado — e um header errado com cara de conferido é pior que campo vazio.
+
+**O que ele apaga, e o que não apaga.** Só os headers, e só deste diagrama:
+
+| fica | sai |
+|---|---|
+| o lance e a vez | os 8 headers da tela **e** os livres |
+| a partida escolhida (`chosen_game`) | a procedência dos headers (`filled_fields`) |
+| `confirmed_from` — as 64 casas bateram, e limpar header não desfaz isso (S-74) | `filled_from`/`filled_rule`, se não sobrar campo nenhum da base |
+
+O lance e a vez ficam porque costumam ter sido **contados no livro à mão**, e apagar trabalho
+humano que ninguém mandou apagar é o defeito que a S-76 custou caro para aprender. Quem quer
+trocar a partida inteira usa a lista de candidatas, que reescreve tudo de uma vez.
+
+**Não há semântica nova:** é o mesmo que apagar campo a campo, inclusive na procedência. Um
+botão que limpasse "de outro jeito" criaria dois estados possíveis para a mesma tela.
+
+**O que a implementação encontrou de quebra.** `filled_rule` sobrevivia a uma limpeza que
+apagava tudo — `filled_from` era zerado quando não sobrava campo da base, e a regra não. Os
+dois são um par (*de que* partida veio, e *por que* foi ela), e a regra sozinha faria o censo
+da S-89 contar como "preenchido pelo desempate por data" um diagrama sem nada preenchido. A
+conta virou `_provenance_after`, usada nos quatro lugares onde ela aparecia — editar um campo,
+apagar um header, desfazer a cópia e limpar tudo.
+
+**A pergunta nomeia os valores que vão sair**, como a do "copiar para todos" e pela mesma razão
+(§S-76): o que se apaga aqui pode ser meia hora de digitação de quem tinha o livro na mão. Não
+há desfazer, e a caixa diz isso — um segundo botão "desfazer" ao lado do que já existe criaria
+a dúvida de qual dos dois desfaz o quê, no momento em que a pessoa está com pressa.
 
 ---
 

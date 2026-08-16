@@ -260,18 +260,30 @@ class GalleryPanel(ttk.Frame):
         ttk.Entry(lateral, textvariable=self.free_value_var, width=26).grid(row=livre + 2, column=1, sticky="we", pady=1)
         ttk.Button(lateral, text="Gravar", command=self._commit_free_header).grid(row=livre + 3, column=1, sticky="e")
 
+        # Junto dos campos que ele limpa, e nao com os dois de baixo: aqueles agem sobre o
+        # livro inteiro, e este so sobre este diagrama. A distancia na tela e a diferenca de
+        # alcance -- foi confundir as duas que espalhou quatro campos por 1.405 diagramas (S-76).
+        self.btn_clear = ttk.Button(lateral, text="Limpar os headers", command=self.clear_headers)
+        self.btn_clear.grid(row=livre + 4, column=0, columnspan=2, sticky="we", pady=(8, 0))
+        self.btn_clear.configure(state=tk.DISABLED)
+        Tooltip(self.btn_clear).set_text(
+            "Apaga os headers DESTE diagrama, todos de uma vez -- para quando a base preencheu "
+            "com a partida errada. O lance, a vez e a partida escolhida ficam. Não mexe em "
+            "nenhum outro diagrama."
+        )
+
         # A procedencia da base fica **junto dos campos que ela preencheu**, e nao na barra de
         # status: a barra fala do ultimo gesto, e esta pergunta ("quem preencheu isto?") se faz
         # ao chegar num diagrama, que pode ser dias depois da busca.
         ttk.Label(lateral, textvariable=self.origin_var, wraplength=220, foreground="#2e7d32").grid(
-            row=livre + 4, column=0, columnspan=2, sticky="w", pady=(8, 0)
+            row=livre + 5, column=0, columnspan=2, sticky="w", pady=(8, 0)
         )
 
         # A lista de partidas fica **junto da procedencia**: as duas respondem "de onde veio
         # isto?", e a lista e o unico caminho para os 350 diagramas do acervo em que a base
         # sabe a resposta e nenhuma regra sabe qual das candidatas e (S-86).
         self.btn_candidates = ttk.Button(lateral, text="Partidas da base", command=self.open_games_dialog)
-        self.btn_candidates.grid(row=livre + 5, column=0, columnspan=2, sticky="we", pady=(8, 0))
+        self.btn_candidates.grid(row=livre + 6, column=0, columnspan=2, sticky="we", pady=(8, 0))
         self.btn_candidates.configure(state=tk.DISABLED)
         Tooltip(self.btn_candidates).set_text(
             "As partidas da base que contêm esta posição. Escolher uma preenche lance, vez e "
@@ -281,7 +293,7 @@ class GalleryPanel(ttk.Frame):
         # O rotulo diz a **direcao** da copia. "Aplicar a todos" foi lido como "salvar os
         # headers deste diagrama" -- e o clique espalhou quatro campos por 1.405 diagramas.
         aplicar = ttk.Button(lateral, text="Copiar headers para todos", command=self.apply_to_all)
-        aplicar.grid(row=livre + 6, column=0, columnspan=2, sticky="we", pady=(10, 0))
+        aplicar.grid(row=livre + 7, column=0, columnspan=2, sticky="we", pady=(10, 0))
         Tooltip(aplicar).set_text(
             "Copia os headers deste diagrama para TODOS os outros do livro, sobrescrevendo o "
             "que eles tiverem nesses campos. Os campos já se salvam sozinhos ao sair deles -- "
@@ -289,7 +301,7 @@ class GalleryPanel(ttk.Frame):
         )
 
         self.btn_undo = ttk.Button(lateral, text="Desfazer a cópia", command=self.undo_apply_to_all)
-        self.btn_undo.grid(row=livre + 7, column=0, columnspan=2, sticky="we", pady=(4, 0))
+        self.btn_undo.grid(row=livre + 8, column=0, columnspan=2, sticky="we", pady=(4, 0))
         self.btn_undo.configure(state=tk.DISABLED)
         Tooltip(self.btn_undo).set_text(
             "Remove dos outros diagramas os valores que a última cópia espalhou. "
@@ -751,6 +763,39 @@ class GalleryPanel(ttk.Frame):
         self._persist()
         self._on_status(f"Header {nome} gravado neste diagrama.")
 
+    def clear_headers(self) -> None:
+        """Apaga os headers **deste** diagrama, todos de uma vez -- perguntando antes (S-94).
+
+        A pergunta **nomeia os valores que vão sair**, e não pergunta em abstrato. É a mesma
+        regra do `apply_to_all` e a mesma razão: uma confirmação que não diz o que vai
+        acontecer não é confirmação, é obstáculo -- e aqui o que se apaga pode ser meia hora
+        de digitação de quem tinha o livro na mão.
+
+        Não há desfazer, e a caixa diz isso. Um segundo botão de desfazer ao lado do que já
+        existe ("Desfazer a cópia") criaria a dúvida de qual dos dois desfaz o quê, no exato
+        momento em que a pessoa está com pressa de consertar algo.
+        """
+        valores = dict(self.model.current_annotation.headers)
+        if not valores:
+            self._on_status("Este diagrama não tem header declarado; não há o que limpar.")
+            return
+        listados = "\n".join(f"    {nome} = {valor}" for nome, valor in sorted(valores.items()))
+        if not messagebox.askokcancel(
+            "Limpar os headers",
+            f"Apagar {len(valores)} header(s) deste diagrama?\n\n{listados}\n\n"
+            "Só deste diagrama, e não dá para desfazer. O lance, a vez e a partida escolhida "
+            "na lista de candidatas ficam como estão.",
+            icon=messagebox.WARNING,
+            default=messagebox.CANCEL,
+        ):
+            self._on_status("Limpeza cancelada.")
+            return
+
+        apagados = self.model.clear_headers()
+        self._persist()
+        self.refresh(request_page=False)
+        self._on_status(f"{len(apagados)} header(s) apagado(s) deste diagrama: {', '.join(apagados)}.")
+
     def apply_to_all(self) -> None:
         """Copia os headers deste diagrama para o livro inteiro -- **perguntando antes**.
 
@@ -841,6 +886,9 @@ class GalleryPanel(ttk.Frame):
             variavel.set(anotacao.headers.get(nome, ""))
         self.origin_var.set(describe_origin(anotacao))
         self._set_caption(atual.caption if atual else "")
+        # Desligado onde nao ha header: um botao que responde "nao ha o que limpar" e um botao
+        # que mente sobre estar disponivel, e a pergunta que ele abriria seria vazia.
+        self.btn_clear.configure(state=tk.NORMAL if anotacao.headers else tk.DISABLED)
         self._refresh_candidates_button()
 
         if request_page and atual is not None:

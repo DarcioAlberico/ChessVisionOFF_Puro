@@ -120,6 +120,107 @@ class AnotacaoTests(unittest.TestCase):
         self.assertIsNone(GalleryModel().set_header("White", "Tal"))
 
 
+class LimparHeadersTests(unittest.TestCase):
+    """Limpar tudo de um diagrama (S-94): o gesto de quando a base preencheu a partida errada."""
+
+    def _com_a_base(self) -> GalleryModel:
+        """Um diagrama como a busca por posição o deixa: headers, lance, vez e procedência."""
+        modelo = _modelo((0, 0), (0, 1))
+        modelo.annotations.update(
+            0,
+            0,
+            move_number=24,
+            side_to_move="b",
+            headers={"White": "Karpov, Anatoly", "Event": "Linares", "Date": "1994.05.30"},
+            filled_from="Karpov x Kasparov, Linares 1994",
+            filled_rule="date",
+            filled_fields=("move_number", "side_to_move", "header:White", "header:Event", "header:Date"),
+            confirmed_from="Karpov x Kasparov, Linares 1994",
+        )
+        return modelo
+
+    def test_apaga_todos_os_headers_e_devolve_quais(self) -> None:
+        modelo = self._com_a_base()
+        self.assertEqual(modelo.clear_headers(), ("Date", "Event", "White"))
+        self.assertEqual(modelo.current_annotation.headers, {})
+
+    def test_o_lance_e_a_vez_ficam(self) -> None:
+        """A pessoa costuma ter contado o lance no livro, e apagar trabalho que ninguém mandou
+        apagar é o defeito da S-76."""
+        modelo = self._com_a_base()
+        modelo.clear_headers()
+        anotacao = modelo.current_annotation
+        self.assertEqual(anotacao.move_number, 24)
+        self.assertEqual(anotacao.side_to_move, "b")
+
+    def test_a_procedencia_dos_headers_sai_junto(self) -> None:
+        """Header removido deixa de ter origem -- a regra do `set_header`, de uma vez só."""
+        modelo = self._com_a_base()
+        modelo.clear_headers()
+        self.assertEqual(modelo.current_annotation.filled_fields, ("move_number", "side_to_move"))
+        self.assertEqual(
+            modelo.current_annotation.filled_from,
+            "Karpov x Kasparov, Linares 1994",
+            "o lance e a vez continuam sendo da base, então a evidência ainda descreve algo",
+        )
+
+    def test_sem_nada_da_base_sobrando_a_evidencia_some(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.annotations.update(
+            0,
+            0,
+            headers={"Event": "Linares"},
+            filled_from="Karpov x Kasparov, Linares 1994",
+            filled_rule="date",
+            filled_fields=("header:Event",),
+        )
+        modelo.clear_headers()
+        self.assertEqual(modelo.current_annotation.filled_from, "")
+        self.assertEqual(
+            modelo.current_annotation.filled_rule,
+            "",
+            "a regra que escolheu a partida não descreve mais nada, e o censo a contaria",
+        )
+
+    def test_a_confirmacao_da_leitura_sobrevive(self) -> None:
+        """As 64 casas bateram com uma partida de verdade, e limpar header não desfaz isso --
+        senão o diagrama voltaria para a fila de revisão por um gesto que não fala dela (S-74)."""
+        modelo = self._com_a_base()
+        modelo.clear_headers()
+        self.assertEqual(modelo.current_annotation.confirmed_from, "Karpov x Kasparov, Linares 1994")
+
+    def test_nao_toca_em_nenhum_outro_diagrama(self) -> None:
+        modelo = self._com_a_base()
+        modelo.annotations.update(0, 1, headers={"Event": "Linares"})
+        modelo.clear_headers()
+        self.assertEqual(modelo.annotations.get(0, 1).headers, {"Event": "Linares"})
+
+    def test_o_header_livre_sai_tambem(self) -> None:
+        """`headers` é um dicionário, e "todos" quer dizer todos."""
+        modelo = _modelo((0, 0))
+        modelo.set_header("Annotator", "Kasparov")
+        modelo.set_header("SourceQuality", "3")
+        self.assertEqual(modelo.clear_headers(), ("Annotator", "SourceQuality"))
+        self.assertEqual(modelo.current_annotation.headers, {})
+
+    def test_sem_header_nenhum_nao_faz_nada(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.edit(move_number=12)
+        self.assertEqual(modelo.clear_headers(), ())
+        self.assertEqual(modelo.current_annotation.move_number, 12)
+
+    def test_sem_diagrama_devolve_vazio(self) -> None:
+        self.assertEqual(GalleryModel().clear_headers(), ())
+
+    def test_a_anotacao_que_so_tinha_headers_some_do_conjunto(self) -> None:
+        """Visitar não é anotar: limpar o único campo declarado tem de esvaziar a linha."""
+        modelo = _modelo((0, 0))
+        modelo.set_header("Event", "Linares")
+        self.assertEqual(modelo.annotated_count(), 1)
+        modelo.clear_headers()
+        self.assertEqual(modelo.annotated_count(), 0)
+
+
 class AplicarATodosTests(unittest.TestCase):
     def test_copia_os_declarados_para_os_outros(self) -> None:
         modelo = _modelo((0, 0), (0, 1), (1, 0))

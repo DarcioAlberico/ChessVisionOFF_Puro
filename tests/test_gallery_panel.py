@@ -201,6 +201,57 @@ class GalleryPanelTests(unittest.TestCase):
         self.panel.undo_apply_to_all()
         self.assertFalse(any("desfeita" in mensagem for mensagem in self.status))
 
+    # ------------------------------------------------ limpar os headers (S-94)
+
+    def test_o_botao_de_limpar_nasce_desligado_e_acende_com_header(self) -> None:
+        """Um botão que responderia "não há o que limpar" é um botão que mente sobre estar
+        disponível."""
+        self.assertEqual(str(self.panel.btn_clear["state"]), "disabled")
+        self.panel.header_vars["Event"].set("Linares")
+        self.panel._commit_header("Event")
+        self.panel.refresh(request_page=False)
+        self.assertEqual(str(self.panel.btn_clear["state"]), "normal")
+
+    def test_a_pergunta_nomeia_o_que_vai_sair(self) -> None:
+        """A lição da S-76: confirmação que não diz o que vai acontecer é obstáculo, não guarda.
+        Aqui o que se apaga pode ser meia hora de digitação."""
+        self.panel.model.annotations.update(0, 0, headers={"Event": "Linares", "White": "Karpov"})
+        self.panel.refresh(request_page=False)
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=False) as pergunta:
+            self.panel.clear_headers()
+        texto = str(pergunta.call_args)
+        self.assertIn("Event = Linares", texto)
+        self.assertIn("White = Karpov", texto)
+        self.assertIn("não dá para desfazer", texto)
+        self.assertEqual(self.panel.model.current_annotation.headers, {"Event": "Linares", "White": "Karpov"})
+
+    def test_confirmar_limpa_a_tela_e_o_arquivo(self) -> None:
+        self.panel.model.annotations.update(
+            0, 0, move_number=24, headers={"Event": "Linares", "White": "Karpov"}
+        )
+        self.panel.refresh(request_page=False)
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=True):
+            self.panel.clear_headers()
+        self.assertEqual(self.panel.header_vars["Event"].get(), "", "o campo da tela também")
+        self.assertEqual(self.panel.model.current_annotation.headers, {})
+        self.assertEqual(self.panel.model.current_annotation.move_number, 24, "o lance fica")
+        self.assertTrue(any("2 header(s) apagado(s)" in mensagem for mensagem in self.status))
+        self.assertEqual(load_annotations(self.panel.model.pdf_path, directory=Path(self.pasta.name)).get(0, 0).headers, {})
+
+    def test_limpar_sem_header_avisa_em_vez_de_abrir_caixa(self) -> None:
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel") as pergunta:
+            self.panel.clear_headers()
+        pergunta.assert_not_called()
+        self.assertTrue(any("não há o que limpar" in mensagem for mensagem in self.status))
+
+    def test_limpar_nao_toca_no_diagrama_vizinho(self) -> None:
+        self.panel.model.annotations.update(0, 0, headers={"Event": "Linares"})
+        self.panel.model.annotations.update(4, 0, headers={"Event": "Linares"})
+        self.panel.refresh(request_page=False)
+        with mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=True):
+            self.panel.clear_headers()
+        self.assertEqual(self.panel.model.annotations.get(4, 0).headers, {"Event": "Linares"})
+
     def test_galeria_vazia_desenha_o_convite_sem_levantar(self) -> None:
         self.panel.model = GalleryModel()
         self.panel.refresh()
