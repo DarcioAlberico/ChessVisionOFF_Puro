@@ -298,6 +298,7 @@ class ChessOcrTkApp:
             on_status=self._set_status,
             queue_path=DEFAULT_QUEUE_PATH,
             service=self.service,
+            busy=self.busy,
         )
         tabs.add(self.review_panel, text="Revisão")
         self.result_panel.set_review_settler(self._settle_review_item)
@@ -308,6 +309,7 @@ class ChessOcrTkApp:
             on_edit=self.result_panel.open_dataset_row,
             on_recheck=self.recheck_dataset_row,
             on_status=self._set_status,
+            busy=self.busy,
         )
         tabs.add(self.dataset_panel, text="Dataset")
 
@@ -319,6 +321,7 @@ class ChessOcrTkApp:
             max_boards=lambda: int(self.max_boards_var.get()),
             on_status=self._set_status,
             on_page_request=self._gallery_page_request,
+            busy=self.busy,
         )
         tabs.add(self.gallery_panel, text="Galeria")
 

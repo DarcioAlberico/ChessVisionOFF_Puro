@@ -48,8 +48,14 @@ class BusyOperation:
         return f"{self.name} ({self.detail})" if self.detail else self.name
 
 
-class _Token:
-    """Handle devolvido por `register`. Solta o registro e atualiza o detalhe."""
+class BusyToken:
+    """Handle devolvido por `register`. Solta o registro e atualiza o detalhe.
+
+    Público desde a S-112, e o nome é o item: com sete pontos de registro em vez de dois, os
+    `_busy_token: object | None` mais `# type: ignore[attr-defined]` que os dois primeiros
+    usavam viravam sete cópias de um tipo apagado -- e um `release()` esquecido deixa a janela
+    perguntando para sempre sobre uma operação que já acabou.
+    """
 
     def __init__(self, registry: BusyRegistry, key: int) -> None:
         self._registry = registry
@@ -61,7 +67,7 @@ class _Token:
     def release(self) -> None:
         self._registry._release(self._key)
 
-    def __enter__(self) -> _Token:
+    def __enter__(self) -> BusyToken:
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -85,7 +91,7 @@ class BusyRegistry:
         cancellable: bool = False,
         detail: str = "",
         cancel: Callable[[], None] | None = None,
-    ) -> _Token:
+    ) -> BusyToken:
         with self._lock:
             self._next += 1
             key = self._next
@@ -94,7 +100,7 @@ class BusyRegistry:
             )
             if cancel is not None:
                 self._cancels[key] = cancel
-        return _Token(self, key)
+        return BusyToken(self, key)
 
     def _update(self, key: int, detail: str) -> None:
         with self._lock:

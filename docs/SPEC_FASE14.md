@@ -1001,7 +1001,7 @@ ganhava a linha órfã e a interface dizia que tinha salvado.
 
 ---
 
-## S-112 · As doze threads no registro do que se perde
+## S-112 · As doze threads no registro do que se perde ✅ implementada (2026-08-16)
 
 **Problema.** `grep threading.Thread` em `app_tkinter.py` e `ui/*.py` devolve **12**
 ocorrências. `grep busy.register` devolve **2**: `ui/export_controller.py:172` e
@@ -1034,6 +1034,45 @@ se perde; a busca por posição pede confirmação explícita.
 o ponto de partida esteja num registro do `BusyRegistry` ou numa lista de exceções **declarada
 e comentada** — no molde do `ARQUIVOS_DE_UI` de `tests/test_strings.py:23-28`. A lista
 declarada é o ponto: um worker novo que não estiver nela falha a suíte.
+
+### O que foi entregue
+
+**Cinco registros novos, e os `loses_work` saíram da medição e não da intuição:**
+
+| operação | `loses_work` | por quê |
+|---|---|---|
+| busca por posição | **sim** | o cache só é gravado depois da passada inteira — meia base lida dá contagens que não valem |
+| varredura da Galeria | **sim**, por enquanto | `save_index` só acontece no fim, e fechar mata a thread `daemon` antes dela. **É a S-120 que troca este valor**, quando a varredura ganhar checkpoint |
+| varredura da fila | não | os recortes vão para `data/review_cache/` página a página, por `write_image`: refazer relê o PDF, não re-renderiza os tabuleiros |
+| busca por nome | não | ~150 s por gigabase, uma passada |
+| detecção de duplicatas | não | derivada: o hash perceptual não grava nada |
+
+A tabela do enunciado dizia *"varredura da Galeria: não (depois da S-120)"*, e a implementação
+segue o "depois": hoje ela **perde**, e o comentário no ponto de registro nomeia o item que
+inverte o valor. Publicar o que é em vez do que vai ser é a mesma regra da S-97.
+
+**As cinco que ficaram de fora estão declaradas, não esquecidas.** `SEM_REGISTRO` em
+`tests/test_busy.py` lista o OCR da página, o overlay de diagramas, os dois botões de leitura
+de um tabuleiro (rede e local) e a análise do motor — cada uma com uma linha dizendo por quê.
+O motivo comum: perguntar *"fechar mesmo assim?"* por causa de uma análise de dois segundos
+treina o usuário a responder "sim" sem ler, e aí ele responde "sim" também para a busca por
+posição, que custa 56 minutos.
+
+**Onde o registro entra e sai.** As três operações da Galeria dividem thread, `Event` de
+cancelamento e o mesmo `_busy(...)` que liga e desliga os botões — então o `release()` mora
+lá, no único ponto por onde as seis saídas (`_scan_done`, `_scan_failed`, `_search_done`,
+`_search_failed`, `_positions_done`, `_positions_cancelled`) já passavam. Seis cópias de um
+`release()` seriam cinco chances de esquecer, e um registro que não sai faz a janela perguntar
+para sempre sobre uma operação que acabou.
+
+**`_Token` virou `BusyToken`.** Com sete pontos de registro em vez de dois, os
+`_busy_token: object | None` mais `# type: ignore[attr-defined]` que os dois primeiros usavam
+virariam sete cópias de um tipo apagado. Saíram os dois `type: ignore` que existiam.
+
+**Quatro testes, e o primeiro falha no código anterior** listando exatamente as cinco threads
+sem registro. Os outros três guardam o que a lista de exceções pode virar: nenhuma entrada
+apontando para worker que não existe mais, motivo escrito em todas, e o aviso da busca por
+posição pedindo confirmação com o nome da operação dentro.
 
 ---
 

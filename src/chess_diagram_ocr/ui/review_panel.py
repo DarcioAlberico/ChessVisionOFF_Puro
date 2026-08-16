@@ -28,6 +28,7 @@ from ..review_queue import (
     rare_classes_from_labels,
 )
 from ..service import OcrService
+from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class ReviewPanel(ttk.Frame):
         queue_path: Path = DEFAULT_QUEUE_PATH,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         service: OcrService | None = None,
+        busy: BusyRegistry | None = None,
     ) -> None:
         """`service` empresta o modelo sob o lock da S-31 durante a varredura (S-57).
 
@@ -91,6 +93,9 @@ class ReviewPanel(ttk.Frame):
         self.queue.sort()
         self._cancel_event: threading.Event | None = None
         self._scanning = False
+        self._busy_registry = busy
+        """Onde a varredura da fila se declara como operação longa (S-112)."""
+        self._busy_token: BusyToken | None = None
 
         self.summary_var = tk.StringVar(value="")
         self.progress_var = tk.StringVar(value="")
@@ -239,6 +244,17 @@ class ReviewPanel(ttk.Frame):
 
         self._scanning = True
         self._cancel_event = threading.Event()
+        if self._busy_registry is not None:
+            self._busy_token = self._busy_registry.register(
+                "varredura da fila de revisão",
+                # Os recortes vão para `data/review_cache/` página a página, por `write_image`:
+                # refazer a varredura relê o PDF, mas não paga de novo a parte cara. Fechar
+                # aqui custa tempo, não trabalho -- é a mesma conta da exportação (S-24).
+                loses_work=False,
+                cancellable=True,
+                detail=request.pdf_path.name,
+                cancel=self.cancel_scan,
+            )
         self.btn_scan.configure(state=tk.DISABLED)
         self.btn_cancel.configure(state=tk.NORMAL)
         self.progress_var.set("Preparando varredura...")
@@ -306,6 +322,9 @@ class ReviewPanel(ttk.Frame):
     def _finish_scan(self) -> None:
         self._scanning = False
         self._cancel_event = None
+        if self._busy_token is not None:
+            self._busy_token.release()
+            self._busy_token = None
         self.btn_scan.configure(state=tk.NORMAL)
         self.btn_cancel.configure(state=tk.DISABLED)
 

@@ -25,7 +25,7 @@ from typing import Any
 
 from chess_diagram_ocr.training import TrainingRun, train_model
 
-from .busy import BusyRegistry
+from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class TrainingController:
         ao ser fechada (S-60). `None` mantém o comportamento antigo, para os testes."""
         self.root = root
         self._busy = busy
-        self._busy_token: object | None = None
+        self._busy_token: BusyToken | None = None
         self._cancel: threading.Event | None = None
         self._request = request
         self._on_status = on_status
@@ -211,7 +211,7 @@ class TrainingController:
         self.set_text(status, format_metrics(row))
         token = self._busy_token
         if token is not None:
-            token.update(f"época {epoca} de {self._total_epochs}")  # type: ignore[attr-defined]
+            token.update(f"época {epoca} de {self._total_epochs}")
 
     def _worker(self, pedido: TrainingRequest, cancel: threading.Event) -> None:
         try:
@@ -251,7 +251,7 @@ class TrainingController:
         self._running = False
         self._cancel = None
         if self._busy_token is not None:
-            self._busy_token.release()  # type: ignore[attr-defined]
+            self._busy_token.release()
             self._busy_token = None
         self._on_controls_enabled(True)
         self.close_dialog()

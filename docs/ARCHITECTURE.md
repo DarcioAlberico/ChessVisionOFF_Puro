@@ -209,19 +209,25 @@ piorar um livro que já funciona:
 
 ## Threads
 
-Quatro operações longas rodam fora da thread da interface, e todas voltam por `root.after`:
+**Doze** threads rodam fora da thread da interface, e todas voltam por `root.after`. Sete são
+operações longas e estão no `BusyRegistry`; as outras cinco são de segundos e estão
+**declaradas** em `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
 
-| operação | onde | cancelável | empresta o modelo do serviço |
-|---|---|---|---|
-| OCR de uma página | `app_tkinter._ocr_worker` | não (é rápido) | sim (S-31) |
-| exportação de um livro | `ui/export_controller.py` | sim, entre páginas (S-24) | sim (S-57) |
-| varredura da fila de revisão | `ui/review_panel.py` | sim, entre páginas | sim (S-57) |
-| treino | `ui/training_dialog.py` | sim, entre épocas (S-60) | escreve o `.pt` |
+| operação | onde | cancelável | perde trabalho ao fechar | empresta o modelo do serviço |
+|---|---|---|---|---|
+| OCR de uma página | `app_tkinter._ocr_worker` | não (é rápido) | — declarada | sim (S-31) |
+| exportação de um livro | `ui/export_controller.py` | sim, entre páginas (S-24) | não, tem parcial | sim (S-57) |
+| varredura da fila de revisão | `ui/review_panel.py` | sim, entre páginas | não, os recortes ficam no cache | sim (S-57) |
+| treino | `ui/training_dialog.py` | sim, entre épocas (S-60) | sim, desde a melhor época | escreve o `.pt` |
+| varredura da Galeria | `ui/gallery_panel.py` | sim, entre páginas | **sim**, até a S-120 dar checkpoint | sim (S-57) |
+| busca por nome na base | `ui/gallery_panel.py` | sim, entre partidas | não, é curta | não |
+| busca por posição na base | `ui/gallery_panel.py` | sim, entre pedaços | **sim**, a passada inteira | não |
+| detecção de duplicatas | `ui/dataset_panel.py` | não | não, é derivada | não |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).
 
-Até a S-57 essa frase valia para **uma** das quatro. A exportação e a varredura da fila
+Até a S-57 essa frase valia para **uma** delas. A exportação e a varredura da fila
 chamavam `load_model` por conta própria, fora do lock — e são justamente as duas longas, as
 que de fato coexistem com um treino. Hoje as duas recebem `model_session` do `OcrService`; o
 único `load_model` que sobrou em `pdf_to_pgn.py` está em `_own_model_session`, o caminho dos
@@ -230,6 +236,11 @@ CLIs, onde não há serviço nem treino concorrente.
 Fechar a janela consulta `ui/busy.py` antes de destruir: `BusyRegistry` sabe o que está
 rodando e **o que se perde**, que não é a mesma coisa em todas — a exportação tem checkpoint
 parcial e sobrevive, o treino perde o progresso desde a última época melhor (S-60).
+
+A lista de quem se registra é travada por teste, e não por convenção: `test_busy.py` varre
+`ui/*.py` e `app_tkinter.py` por `threading.Thread(` e exige que cada uma ou registre, ou
+esteja na lista de exceções **com o motivo escrito**. Sem isso, a S-60 cobriu duas operações
+e as dez seguintes entraram em silêncio — inclusive a mais cara do programa (S-112).
 
 ---
 

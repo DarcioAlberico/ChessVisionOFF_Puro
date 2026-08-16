@@ -27,6 +27,7 @@ from ..dataset_browser import (
     source_distribution,
     split_distribution,
 )
+from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class DatasetPanel(ttk.Frame):
         on_edit: Callable[[DatasetRow], None],
         on_recheck: Callable[[DatasetRow], str] | None = None,
         on_status: Callable[[str], None] | None = None,
+        busy: BusyRegistry | None = None,
     ) -> None:
         super().__init__(parent, padding=6)
         self._paths = paths
@@ -81,6 +83,9 @@ class DatasetPanel(ttk.Frame):
         self.visible: list[DatasetRow] = []
         self._duplicate_groups: list[list[str]] = []
         self._page = 0
+        self._busy_registry = busy
+        """Onde a detecção de duplicatas se declara como operação longa (S-112)."""
+        self._busy_token: BusyToken | None = None
 
         self.query_var = tk.StringVar(value="")
         self.legality_var = tk.StringVar(value=LEGALITY_CHOICES[0])
@@ -319,6 +324,17 @@ class DatasetPanel(ttk.Frame):
         self._on_status("Procurando duplicatas... isto lê todas as imagens do dataset.")
         labels = [(row.filename, row.fen) for row in self.rows if row.image_exists]
 
+        if self._busy_registry is not None:
+            self._busy_token = self._busy_registry.register(
+                "detecção de duplicatas",
+                # Derivada: o hash perceptual não grava nada, e refazer recomputa a mesma
+                # resposta a partir das mesmas imagens. Não é cancelável porque
+                # `find_duplicate_groups` não tem por onde -- e inventar um `Event` que ninguém
+                # consulta seria oferecer um botão que não para nada.
+                loses_work=False,
+                detail=f"{len(labels)} imagem(ns)",
+            )
+
         def _worker() -> None:
             try:
                 groups = find_duplicate_groups(samples_dir, labels)
@@ -327,10 +343,17 @@ class DatasetPanel(ttk.Frame):
                 detalhe = str(exc)
                 self.after(0, lambda: messagebox.showerror("Duplicatas", f"Falha na detecção:\n{detalhe}"))
                 return
+            finally:
+                self.after(0, self._release_busy)
             self.after(0, lambda: self._apply_duplicates(groups))
 
         threading.Thread(target=_worker, daemon=True).start()
         logger.debug("Detecção de duplicatas disparada sobre %s", csv_path)
+
+    def _release_busy(self) -> None:
+        if self._busy_token is not None:
+            self._busy_token.release()
+            self._busy_token = None
 
     def _apply_duplicates(self, groups: list[list[str]]) -> None:
         self._duplicate_groups = groups

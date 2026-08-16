@@ -46,6 +46,7 @@ from chess_diagram_ocr.games_db import (
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
 from chess_diagram_ocr.service import OcrService
 
+from .busy import BusyRegistry, BusyToken
 from .gallery_model import HEADER_FIELDS, GalleryModel, describe_origin
 from .games_dialog import GamesDialog
 from .tooltip import Tooltip
@@ -91,6 +92,7 @@ class GalleryPanel(ttk.Frame):
         max_boards: Callable[[], int],
         on_status: Callable[[str], None],
         on_page_request: Callable[[int], None],
+        busy: BusyRegistry | None = None,
     ) -> None:
         super().__init__(parent, padding=6)
         self._service = service
@@ -101,6 +103,11 @@ class GalleryPanel(ttk.Frame):
         self._on_page_request = on_page_request
         """Pede ao visualizador para ir àquela página. Mora fora porque a galeria não conhece
         o painel de PDF -- e não deveria: são abas irmãs, não uma dona da outra."""
+
+        self._busy_registry = busy
+        """Onde as três operações longas desta aba se declaram (S-112). `None` fora do app --
+        a aba tem de abrir num roteiro de teste que não montou registro nenhum."""
+        self._busy_token: BusyToken | None = None
 
         self.model = GalleryModel()
         self._cancel = threading.Event()
@@ -345,6 +352,29 @@ class GalleryPanel(ttk.Frame):
         for botao in (self.btn_scan, self.btn_games, self.btn_positions):
             botao.configure(state=estado)
         self.btn_cancel.configure(state=tk.NORMAL if busy else tk.DISABLED)
+        if not busy:
+            # Aqui, e não em cada um dos seis `_*_done`/`_*_failed`/`_*_cancelled`: soltar o
+            # registro é a metade do par que se esquece, e uma operação que ficou registrada
+            # depois de terminar faz a janela perguntar para sempre (S-112).
+            self._release_busy()
+
+    def _register_busy(self, name: str, *, loses_work: bool, detail: str = "") -> None:
+        """Declara a operação longa que vai começar, e o que fechar a janela custaria (S-112).
+
+        As três desta aba disputam a mesma thread, o mesmo `Event` de cancelamento e o mesmo
+        `_busy(...)` -- então o registro entra e sai pelos mesmos dois pontos. O que muda entre
+        elas é o nome e o `loses_work`, e é só isso que cada chamador precisa dizer.
+        """
+        if self._busy_registry is None:
+            return
+        self._busy_token = self._busy_registry.register(
+            name, loses_work=loses_work, cancellable=True, detail=detail, cancel=self.cancel_scan
+        )
+
+    def _release_busy(self) -> None:
+        if self._busy_token is not None:
+            self._busy_token.release()
+            self._busy_token = None
 
     def scan(self) -> None:
         """Varre o livro inteiro. É a operação longa desta aba, e roda em thread."""
@@ -357,6 +387,10 @@ class GalleryPanel(ttk.Frame):
 
         self._scanning = True
         self._cancel.clear()
+        # `save_index` só acontece no fim: fechar a janela no meio mata a thread daemon antes
+        # dela, e as páginas já lidas vão junto. A S-120 dá checkpoint à varredura, e é ela
+        # que troca este `True` por `False` -- não antes.
+        self._register_busy("varredura da Galeria", loses_work=True, detail=caminho.name)
         self._busy(True)
         self.scan_var.set("varrendo...")
         threading.Thread(target=self._scan_worker, args=(caminho,), daemon=True).start()
@@ -438,6 +472,9 @@ class GalleryPanel(ttk.Frame):
 
         self._scanning = True
         self._cancel.clear()
+        # Curta perto das outras duas: ~150 s por gigabase, uma passada só. Fechar no meio
+        # custa esse tempo de novo, e nada além dele.
+        self._register_busy("busca por nome na base", loses_work=False, detail=f"{len(pares)} par(es)")
         self._busy(True)
         self.scan_var.set(f"procurando {len(pares)} par(es) em {len(bases)} base(s)...")
         threading.Thread(target=self._search_worker, args=(bases, pares), daemon=True).start()
@@ -533,6 +570,11 @@ class GalleryPanel(ttk.Frame):
 
         self._scanning = True
         self._cancel.clear()
+        # **A mais cara do programa**, ~56 min medidos na Fase 13, e a única cujo resultado é
+        # tudo-ou-nada: o cache só é gravado depois da passada inteira, porque meia base lida
+        # dá contagens que não valem. Fechar aos 50 minutos descartava a passada sem uma
+        # palavra -- é o caso que a S-112 existe para nomear.
+        self._register_busy("busca por posição na base", loses_work=True, detail=f"{len(faltando)} posição(ões)")
         self._busy(True)
         self.scan_var.set(f"base: {len(faltando)} posição(ões) a procurar...")
         threading.Thread(

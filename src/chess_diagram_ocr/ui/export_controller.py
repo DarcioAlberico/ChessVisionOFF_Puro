@@ -26,7 +26,7 @@ from chess_diagram_ocr.export_checkpoint import partial_path_for
 from chess_diagram_ocr.pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
 from chess_diagram_ocr.service import OcrService
 
-from .busy import BusyRegistry
+from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ class ExportController:
         self.root = root
         self._service = service
         self._busy = busy
-        self._busy_token: object | None = None
+        self._busy_token: BusyToken | None = None
         self._settings = settings
         self._on_status = on_status
         self._on_controls_enabled = on_controls_enabled
@@ -250,7 +250,7 @@ class ExportController:
         self._running = False
         self._cancel = None
         if self._busy_token is not None:
-            self._busy_token.release()  # type: ignore[attr-defined]
+            self._busy_token.release()
             self._busy_token = None
         self._on_controls_enabled(True)
 
