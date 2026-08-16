@@ -18,7 +18,15 @@ import logging
 from pathlib import Path
 
 from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MODEL_PATH, DEFAULT_PDF_DIR, PROJECT_ROOT
-from ..field_eval import FieldPage, FieldReport, draft_page, evaluate_field, load_field_set, save_field_set
+from ..field_eval import (
+    MIN_COMPARABLE_SHARE,
+    FieldPage,
+    FieldReport,
+    draft_page,
+    evaluate_field,
+    load_field_set,
+    save_field_set,
+)
 from ..logging_setup import configure_logging, default_log_file
 from ..service import OcrService, RecognitionOptions
 from ._ocr import add_ocr_argument, caption_reader_from_args
@@ -147,10 +155,31 @@ def _print_report(report: FieldReport, limit: int) -> None:
     print(f"    Detectados e legais .......... {report.legal}")
     print(f"    Detectados e acima do gate ... {report.above_gate}")
     print(f"    **Taxa de exportação** ....... {report.export_rate:.4f}  ({report.exported}/{report.annotated})")
-    if report.comparable:
+    print()
+    print("  Do PGN até estar certo (S-96)")
+    print(
+        f"    Conferíveis .................. {report.comparable} de {report.annotated} anotados"
+        f"  ({report.comparable_share:.0%})"
+    )
+    if report.has_enough_comparable:
+        print(
+            f"    **Exatidão de campo** ........ {report.field_exact:.4f}"
+            f"  ({report.exported_exact}/{report.exported_comparable} exportados)"
+        )
         print(f"    Exatidão condicional ......... {report.conditional_exact:.4f}  ({report.exact}/{report.comparable})")
+        print(f"    **Exportados e errados** ..... {report.exported_wrong}")
     else:
-        print("    Exatidão condicional ......... — (nenhuma anotação traz a posição)")
+        # A taxa de exportacao diz que o modelo teve confianca; ela nao diz que ele leu certo.
+        # Sem conferivel bastante, imprimir um numero de exatidao seria dar aparencia de
+        # medicao ao que nao foi medido -- foi assim que um 1,000 sobre n=1, contra uma
+        # alucinacao numa capa de livro, passou meses como a exatidao do produto.
+        print(
+            f"    Exatidão ..................... insuficiente para medir"
+            f"  ({report.comparable} de {report.annotated}, mínimo {MIN_COMPARABLE_SHARE:.0%})"
+        )
+        print("      A taxa de exportação acima mede **confiança**, não correção: uma leitura")
+        print("      confiantemente errada entra nela como acerto. Confira a FEN dos diagramas")
+        print("      que passam o gate -- é a S-99, e são os que viram PGN sem ninguém olhar.")
 
     print()
     print("  Decodificação e custo (S-62)")
@@ -174,6 +203,16 @@ def _print_report(report: FieldReport, limit: int) -> None:
         for nome, parcial in sorted(report.per_book.items(), key=lambda item: item[1].export_rate):
             alvo = f"{parcial.exported}/{parcial.annotated}" if parcial.annotated else "sem diagrama"
             print(f"    {nome[:46]:48} {parcial.export_rate:.3f}  ({alvo})")
+
+    if report.wrong:
+        # Antes do que nao saiu, e de proposito: este e o dano maior. O barrado vai para o
+        # `.review.pgn` e alguem olha; o errado entra no PGN e no dataset como verdade.
+        print()
+        print(f"  O que saiu **errado** para o PGN ({len(report.wrong)}):")
+        for descricao in report.wrong[:limit]:
+            print(f"      {descricao}")
+        if len(report.wrong) > limit:
+            print(f"      ... e outros {len(report.wrong) - limit}")
 
     if report.misses:
         print()

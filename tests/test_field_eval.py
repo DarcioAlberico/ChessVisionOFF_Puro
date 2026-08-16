@@ -19,6 +19,8 @@ from chess_diagram_ocr.fen_utils import check_position
 from chess_diagram_ocr.field_eval import (
     AnnotatedDiagram,
     FieldPage,
+    FieldReport,
+    _accumulate,
     bbox_iou,
     evaluate_field,
     evaluate_page,
@@ -206,6 +208,131 @@ class _FakeService:
     def recognize_page(self, _source: object, page_index: int, *_args: object, **_kwargs: object):
         self.paginas_lidas.append(page_index)
         return self.por_pagina.get(page_index, [])
+
+
+class ExatidaoDeCampoTests(unittest.TestCase):
+    """S-96: a taxa de exportação mede confiança; a exatidão de campo mede correção.
+
+    Uma leitura **confiantemente errada** passa o gate e entra na taxa de exportação como
+    acerto. Foi essa cegueira que a 7.7 encontrou como "uma catraca que só desce" e atribuiu à
+    distribuição bimodal da confiança -- a explicação está um nível abaixo, e é que uma métrica
+    de confiança não pode medir correção.
+    """
+
+    OUTRA = "4k3/8/8/8/8/8/8/3QK3"
+
+    def _pagina(self, *placements: str) -> FieldPage:
+        return FieldPage(
+            pdf="a.pdf",
+            page=1,
+            reviewed=True,
+            diagrams=tuple(
+                AnnotatedDiagram(bbox=(i * 200.0, 0.0, i * 200.0 + 100.0, 100.0), placement=p)
+                for i, p in enumerate(placements)
+            ),
+        )
+
+    def _leituras(self, *pares: tuple[str, float]) -> list:
+        return [
+            lido((i * 200.0, 0.0, i * 200.0 + 100.0, 100.0), placement=p, conf=c)
+            for i, (p, c) in enumerate(pares)
+        ]
+
+    def test_exportado_e_errado_e_categoria_propria(self) -> None:
+        """O dano é de outra natureza: entra no PGN e no dataset **como verdade**."""
+        r = evaluate_page(self._pagina(LEGAL), self._leituras((self.OUTRA, 0.99)), accept_threshold=0.8)
+
+        self.assertEqual(r.exported, 1, "passou o gate")
+        self.assertEqual((r.comparable, r.exact), (1, 0))
+        self.assertEqual((r.exported_comparable, r.exported_exact, r.exported_wrong), (1, 0, 1))
+        self.assertAlmostEqual(r.field_exact, 0.0)
+        self.assertEqual(len(r.wrong), 1)
+        self.assertIn("exportado e errado", r.wrong[0])
+        self.assertIn(self.OUTRA, r.wrong[0], "o relatório mostra o que foi lido")
+        self.assertIn(LEGAL, r.wrong[0], "e a referência ao lado")
+
+    def test_a_taxa_de_exportacao_nao_distingue_o_errado(self) -> None:
+        """O ponto do item: as duas páginas exportam 1,000, e uma delas está errada."""
+        certa = evaluate_page(self._pagina(LEGAL), self._leituras((LEGAL, 0.99)), accept_threshold=0.8)
+        errada = evaluate_page(self._pagina(LEGAL), self._leituras((self.OUTRA, 0.99)), accept_threshold=0.8)
+
+        self.assertAlmostEqual(certa.export_rate, errada.export_rate, msg="a métrica antiga é cega")
+        self.assertAlmostEqual(certa.field_exact, 1.0)
+        self.assertAlmostEqual(errada.field_exact, 0.0)
+
+    def test_o_barrado_nao_entra_na_exatidao_de_campo(self) -> None:
+        """Errar e ser barrado é o sistema funcionando: vai para o `.review.pgn`."""
+        r = evaluate_page(self._pagina(LEGAL), self._leituras((self.OUTRA, 0.40)), accept_threshold=0.8)
+
+        self.assertEqual(r.exported, 0)
+        self.assertEqual((r.comparable, r.exact), (1, 0), "conta na exatidão condicional")
+        self.assertEqual(r.exported_comparable, 0, "e não na de campo")
+        self.assertEqual(r.wrong, [])
+
+    def test_exportado_sem_referencia_nao_conta_nem_como_acerto_nem_como_erro(self) -> None:
+        """Não medido é uma terceira coisa, e hoje é a mais comum."""
+        r = evaluate_page(self._pagina(""), self._leituras((LEGAL, 0.99)), accept_threshold=0.8)
+
+        self.assertEqual(r.exported, 1)
+        self.assertEqual((r.comparable, r.exported_comparable), (0, 0))
+        self.assertAlmostEqual(r.field_exact, 0.0, msg="sem denominador, a taxa é 0 e não 1")
+        self.assertFalse(r.has_enough_comparable)
+
+    def test_a_exatidao_de_campo_separa_do_condicional(self) -> None:
+        """Um exportado errado e um barrado errado: as duas taxas respondem coisas diferentes."""
+        r = evaluate_page(
+            self._pagina(LEGAL, LEGAL),
+            self._leituras((self.OUTRA, 0.99), (self.OUTRA, 0.40)),
+            accept_threshold=0.8,
+        )
+
+        self.assertEqual((r.comparable, r.exact), (2, 0))
+        self.assertAlmostEqual(r.conditional_exact, 0.0)
+        self.assertEqual(r.exported_comparable, 1, "só o que passou o gate")
+        self.assertAlmostEqual(r.field_exact, 0.0)
+        self.assertEqual(r.exported_wrong, 1)
+
+    def test_sem_conferivel_bastante_o_numero_e_recusado(self) -> None:
+        """Um 1,000 sobre n=1 tem a mesma aparência de um 1,000 sobre n=300."""
+        r = evaluate_page(self._pagina(LEGAL, "", "", ""), self._leituras(*[(LEGAL, 0.99)] * 4), accept_threshold=0.8)
+
+        self.assertEqual((r.comparable, r.annotated), (1, 4))
+        self.assertAlmostEqual(r.comparable_share, 0.25)
+        self.assertFalse(r.has_enough_comparable)
+        self.assertIn("exatidão não medida", r.summary())
+        self.assertIn("1 de 4", r.summary())
+
+    def test_com_conferivel_bastante_o_numero_sai(self) -> None:
+        r = evaluate_page(self._pagina(LEGAL, LEGAL), self._leituras(*[(LEGAL, 0.99)] * 2), accept_threshold=0.8)
+
+        self.assertTrue(r.has_enough_comparable)
+        self.assertAlmostEqual(r.field_exact, 1.0)
+        self.assertIn("exatidão de campo 1.000", r.summary())
+        self.assertIn("n=2", r.summary(), "o `n` sai junto, sempre")
+
+    def test_o_json_sai_cru_mesmo_quando_o_texto_recusa(self) -> None:
+        """Quem refaz a conta precisa dos números; quem lê o relatório precisa da ressalva."""
+        r = evaluate_page(self._pagina(LEGAL, "", "", ""), self._leituras(*[(LEGAL, 0.99)] * 4), accept_threshold=0.8)
+        dados = r.as_dict()
+
+        self.assertEqual(dados["comparable"], 1)
+        self.assertEqual(dados["exact"], 1)
+        self.assertEqual(dados["annotated"], 4)
+        self.assertAlmostEqual(dados["comparable_share"], 0.25)
+        self.assertFalse(dados["enough_comparable"])
+
+    def test_os_novos_contadores_somam_entre_paginas(self) -> None:
+        """`_accumulate` esquecer um campo é o defeito clássico deste dataclass."""
+        uma = evaluate_page(self._pagina(LEGAL), self._leituras((self.OUTRA, 0.99)), accept_threshold=0.8)
+        outra = evaluate_page(self._pagina(LEGAL), self._leituras((LEGAL, 0.99)), accept_threshold=0.8)
+
+        total = FieldReport()
+        for parcela in (uma, outra):
+            _accumulate(total, parcela)
+
+        self.assertEqual((total.exported_comparable, total.exported_exact, total.exported_wrong), (2, 1, 1))
+        self.assertAlmostEqual(total.field_exact, 0.5)
+        self.assertEqual(len(total.wrong), 1)
 
 
 class FieldRunTests(unittest.TestCase):

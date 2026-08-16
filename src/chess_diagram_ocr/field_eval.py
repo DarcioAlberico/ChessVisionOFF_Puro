@@ -46,6 +46,18 @@ logger = logging.getLogger(__name__)
 
 FIELD_SET_VERSION = 1
 
+MIN_COMPARABLE_SHARE = 0.5
+"""Abaixo disto o relatório recusa imprimir exatidão, e diz quantos conferiu (S-96).
+
+Metade é um corte de bom senso, e não uma medição -- não há como medir qual fração torna uma
+taxa confiável sem antes ter a taxa. O que o número protege é conhecido e tem data: com 1
+posição de referência em 39 diagramas, o relatório publicava `conditional_exact = 1,000`, e
+esse 1,000 tinha exatamente a mesma aparência de um 1,000 sobre 300 diagramas.
+
+Subir o corte é seguro; baixá-lo devolve o problema. Quem quiser o número bruto tem `--json`,
+onde `comparable` e `exact` continuam saindo crus, com `annotated` ao lado para a conta ser
+refeita."""
+
 MATCH_IOU = 0.5
 """IoU mínimo para uma detecção contar como o diagrama anotado.
 
@@ -233,6 +245,16 @@ class FieldReport:
 
     exact: int = 0
 
+    exported_comparable: int = 0
+    """Dos exportados, os que têm posição de referência para conferir (S-96).
+
+    É o denominador honesto da exatidão de campo. Um diagrama que passou o gate e não tem
+    referência não conta nem como acerto nem como erro -- ele conta como *não medido*, que é
+    uma terceira coisa e a mais comum hoje."""
+
+    exported_exact: int = 0
+    """Dos exportados com referência, os que a leitura acertou casa por casa (S-96)."""
+
     repaired_squares: int = 0
     """Casas que `decode_constrained` teve de consertar no que o argmax devolveu (S-62).
 
@@ -254,6 +276,14 @@ class FieldReport:
     misses: list[str] = field(default_factory=list)
     """Descrição de cada diagrama anotado que não saiu, para o relatório poder mostrar."""
 
+    wrong: list[str] = field(default_factory=list)
+    """Os que **saíram errados**: passaram o gate e a FEN não bate com a referência (S-96).
+
+    Categoria separada de `misses` porque o dano é de outra natureza e maior. O que não sai vai
+    para o `.review.pgn`, que é onde deve ir; o que sai errado entra no PGN e no dataset **como
+    verdade**, com confiança alta, e ninguém olha. Somar os dois numa taxa só esconde
+    exatamente a diferença que decide onde vale trabalhar."""
+
     @property
     def detection_recall(self) -> float:
         return self.matched / self.annotated if self.annotated else 0.0
@@ -271,6 +301,44 @@ class FieldReport:
     def conditional_exact(self) -> float:
         """Exatidão da FEN entre os casados com posição anotada. Comparável com a de hoje."""
         return self.exact / self.comparable if self.comparable else 0.0
+
+    @property
+    def field_exact(self) -> float:
+        """**Dos que chegaram ao PGN, quantos estão certos** (S-96).
+
+        A `export_rate` responde *quanto sai do livro*, e ela sozinha não distingue uma leitura
+        certa de uma **confiantemente errada** -- as duas passam o gate e as duas contam como
+        sucesso. Foi essa cegueira que a 7.7 encontrou como "uma catraca que só desce" e
+        atribuiu à distribuição bimodal da confiança; a explicação está um nível abaixo, e é
+        que uma métrica de confiança não pode medir correção.
+
+        O denominador são os exportados **com referência**, e não todos os exportados: quem não
+        tem posição anotada não foi medido, e diluí-lo no denominador faria a exatidão cair
+        quando o que faltou foi anotação."""
+        return self.exported_exact / self.exported_comparable if self.exported_comparable else 0.0
+
+    @property
+    def exported_wrong(self) -> int:
+        """Quantos saíram para o PGN com a posição errada. É o número que mais dói (S-96)."""
+        return self.exported_comparable - self.exported_exact
+
+    @property
+    def comparable_share(self) -> float:
+        """Que fração dos anotados tem posição de referência. Zero significa "não medido"."""
+        return self.comparable / self.annotated if self.annotated else 0.0
+
+    @property
+    def has_enough_comparable(self) -> bool:
+        """Se há amostra para a palavra "exatidão" significar alguma coisa (S-96).
+
+        Abaixo de `MIN_COMPARABLE_SHARE` o relatório **recusa imprimir o número** e diz quantos
+        foram conferidos. O motivo tem nome e data: em 2026-08-16 o conjunto tinha 1 posição de
+        referência em 39 diagramas, e ela era a leitura do próprio modelo sobre uma capa de
+        livro -- uma posição sem rei branco. O relatório publicava `conditional_exact = 1,000`,
+        e um 1,000 sobre n=1 tem a mesma aparência de um 1,000 sobre n=300.
+
+        Um número que não tem amostra não deve ter aparência de número."""
+        return self.annotated > 0 and self.comparable_share >= MIN_COMPARABLE_SHARE
 
     @property
     def repairs_per_diagram(self) -> float:
@@ -302,6 +370,14 @@ class FieldReport:
             "comparable": self.comparable,
             "exact": self.exact,
             "conditional_exact": round(self.conditional_exact, 4),
+            # S-96: o JSON sai cru, inclusive quando o relatorio de texto recusa o numero. Ele
+            # e a entrada de quem refaz a conta, e `comparable_share` diz o quanto confiar.
+            "comparable_share": round(self.comparable_share, 4),
+            "enough_comparable": self.has_enough_comparable,
+            "exported_comparable": self.exported_comparable,
+            "exported_exact": self.exported_exact,
+            "exported_wrong": self.exported_wrong,
+            "field_exact": round(self.field_exact, 4),
             "repaired_squares": self.repaired_squares,
             "repairs_per_diagram": round(self.repairs_per_diagram, 4),
             "seconds": round(self.seconds, 3),
@@ -311,11 +387,16 @@ class FieldReport:
         }
 
     def summary(self) -> str:
+        exatidao = (
+            f"exatidão de campo {self.field_exact:.3f} (n={self.exported_comparable})"
+            if self.has_enough_comparable
+            else f"exatidão não medida ({self.comparable} de {self.annotated} conferidos)"
+        )
         return (
             f"{self.annotated} diagramas anotados em {self.pages} páginas "
             f"({self.pages_without_diagram} sem diagrama) | "
             f"recall {self.detection_recall:.3f} | precisão {self.detection_precision:.3f} | "
-            f"**exportação {self.export_rate:.3f}** | exatidão condicional {self.conditional_exact:.3f}"
+            f"**exportação {self.export_rate:.3f}** | {exatidao}"
         )
 
 
@@ -331,9 +412,12 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.exported += parcela.exported
     alvo.comparable += parcela.comparable
     alvo.exact += parcela.exact
+    alvo.exported_comparable += parcela.exported_comparable
+    alvo.exported_exact += parcela.exported_exact
     alvo.repaired_squares += parcela.repaired_squares
     alvo.seconds += parcela.seconds
     alvo.misses.extend(parcela.misses)
+    alvo.wrong.extend(parcela.wrong)
 
 
 def _match(annotated: Sequence[AnnotatedDiagram], read: Sequence[RecognizedDiagram]) -> dict[int, int]:
@@ -393,17 +477,35 @@ def evaluate_page(
         lido = read[alvo]
         legal = lido.is_fatal is not True
         acima = lido.min_confidence >= accept_threshold
+        exportado = legal and acima
         relatorio.legal += int(legal)
         relatorio.above_gate += int(acima)
-        if legal and acima:
+        if exportado:
             relatorio.exported += 1
         else:
             motivo = "ilegal" if not legal else f"confiança {lido.min_confidence:.3f}"
             relatorio.misses.append(f"{page.pdf} p{page.page}: detectado mas barrado ({motivo})")
 
-        if anotado.placement:
-            relatorio.comparable += 1
-            relatorio.exact += int(lido.placement == anotado.placement)
+        if not anotado.placement:
+            continue
+
+        certo = lido.placement == anotado.placement
+        relatorio.comparable += 1
+        relatorio.exact += int(certo)
+
+        # S-96: exportado e errado e a categoria que mais custa, e por isso ela e contada
+        # separada em vez de sair no complemento de uma taxa. O que nao sai vai para o
+        # `.review.pgn`; o que sai errado entra no PGN e no dataset como verdade.
+        if exportado:
+            relatorio.exported_comparable += 1
+            relatorio.exported_exact += int(certo)
+            if not certo:
+                relatorio.wrong.append(
+                    f"{page.pdf} p{page.page}: exportado e errado "
+                    f"(confiança {lido.min_confidence:.3f})\n"
+                    f"        leu       {lido.placement}\n"
+                    f"        referência {anotado.placement}"
+                )
 
     return relatorio
 

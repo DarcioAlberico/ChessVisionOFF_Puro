@@ -127,7 +127,7 @@ exatidão de campo passa a existir de verdade na S-96, e o que enche o `comparab
 
 ---
 
-## S-96 · A exatidão de campo passa a existir
+## S-96 · A exatidão de campo passa a existir ✅ implementada (2026-08-16)
 
 **Problema.** `field_eval.py:404-406` só conta `exact` onde a anotação tem `placement`:
 
@@ -173,6 +173,56 @@ baixo recusa o número; "exportado e errado" aparece com a lista.
 **Testes.** `tests/test_field_eval.py` — exatidão sobre conjunto sintético com uma leitura
 certa e uma errada; a recusa do número quando `comparable` é baixo; "exportado e errado" conta
 o diagrama que passou o gate com FEN diferente da referência.
+
+### O que foi entregue, e o que a medição diz
+
+Três medidas, e a separação entre elas é o item:
+
+| medida | denominador | responde |
+|---|---|---|
+| taxa de exportação | anotados | quanto sai do livro |
+| **exatidão de campo** | **exportados com referência** | quanto do que saiu está certo |
+| exatidão condicional | todos com referência | quanto o modelo lê certo, saindo ou não |
+
+`exported_wrong` é categoria própria e vem **antes** dos barrados no relatório, de propósito: o
+que não sai vai para o `.review.pgn` e alguém olha; o que sai errado entra no PGN e no dataset
+como verdade.
+
+**A recusa é a parte que não parece código.** Com `comparable / annotated < 50%`
+(`MIN_COMPARABLE_SHARE`), o relatório imprime *"insuficiente para medir"* com o `n` e o mínimo,
+em vez do número — e explica, ali mesmo, que a taxa de exportação acima mede confiança e não
+correção. O JSON continua saindo cru, com `comparable_share` e `enough_comparable` ao lado,
+porque quem refaz a conta precisa dos números e quem lê o relatório precisa da ressalva.
+
+**O estado de hoje, que é o ponto de partida honesto:**
+
+```
+  Do PGN até estar certo (S-96)
+    Conferíveis .................. 0 de 39 anotados  (0%)
+    Exatidão ..................... insuficiente para medir  (0 de 39, mínimo 50%)
+```
+
+**O caminho de medição foi exercitado ponta a ponta** num conjunto descartável, com as
+referências vindas da própria leitura do modelo e **uma** trocada de propósito. Não é medição
+de qualidade — é o teste do relatório:
+
+```
+    Conferíveis .................. 36 de 39 anotados  (92%)
+    **Exatidão de campo** ........ 0.9643  (27/28 exportados)
+    Exatidão condicional ......... 0.9722  (35/36)
+    **Exportados e errados** ..... 1
+
+  O que saiu **errado** para o PGN (1):
+      1937 Kemeri.pdf p80: exportado e errado (confiança 0.993)
+        leu       5rkn/1R3p1p/5p2/3Bp2P/4P3/6P1/5P2/6K1
+        referência 4k3/8/8/8/8/8/8/4K3
+```
+
+**A confiança do diagrama errado era 0,993.** É a demonstração do item numa linha: nenhum gate
+razoável o barraria, e a taxa de exportação o conta como sucesso.
+
+**O que falta para o número existir de verdade é a S-99** — as FENs conferidas. Até lá o
+relatório diz que não sabe, que é a única coisa honesta que ele pode dizer.
 
 ---
 
