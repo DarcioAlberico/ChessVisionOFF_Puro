@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import multiprocessing as mp
 import threading
 import tkinter as tk
 from collections.abc import Callable
@@ -1271,6 +1272,12 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
 
 
 def main() -> None:
+    # Desde a S-92 a janela cria processos (a busca por posição na Galeria). Num bundle
+    # congelado, `spawn` reexecuta o próprio executável para criar cada filho -- e sem isto
+    # cada filho abriria outra janela do aplicativo em vez de varrer um pedaço da base. Fora
+    # do bundle é uma chamada sem efeito. É a guarda que o `cvoff-games` já tinha (S-26/S-55).
+    mp.freeze_support()
+
     parser = argparse.ArgumentParser(description="Interface desktop do ChessVisionOFF.")
     parser.add_argument(
         "--selftest",

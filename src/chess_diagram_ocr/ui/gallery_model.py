@@ -26,7 +26,16 @@ from chess_diagram_ocr.gallery import (
     save_annotations,
 )
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
-from chess_diagram_ocr.games_db import DiagramMatch, pair_from_caption
+from chess_diagram_ocr.games_cache import PositionCache
+from chess_diagram_ocr.games_db import (
+    DiagramMatch,
+    PositionHit,
+    agrees_with_caption,
+    kept_headers,
+    pair_from_caption,
+    rank_candidates,
+)
+from chess_diagram_ocr.games_index import lookup_pair, positions_of
 from chess_diagram_ocr.semantics import compose_fen
 
 __all__ = ["FIELD_LABELS", "HEADER_FIELDS", "ApplyReport", "GalleryModel", "describe_origin"]
@@ -67,9 +76,56 @@ class ApplyReport:
     """Campos que a base já havia escrito e cuja procedência foi recuperada (ver
     `_recover_provenance`). Separado de `fields` porque não é trabalho novo: é conserto."""
 
+    respected: int = 0
+    """Diagramas em que uma escolha humana já existia e foi **preservada** (S-86).
+
+    Conta separado porque não é nem trabalho poupado nem trabalho feito: é trabalho *não
+    desfeito*. Um número alto aqui numa varredura é sinal de que ela está passando por cima de
+    um livro já revisado à mão -- e é bom que ele apareça no relatório."""
+
+    by_caption: int = 0
+    """Diagramas cuja partida foi escolhida pela legenda, e não pela data (S-91).
+
+    Separado de `touched` porque mede outra coisa: `touched` é trabalho poupado, este é
+    **precisão**. Um preenchimento que a legenda confirma tem duas fontes independentes de
+    acordo; um que a data escolheu tem uma fonte e um critério de desempate."""
+
 
 FIELD_LABELS = {"move_number": "lance", "side_to_move": "vez"}
 """Como cada campo da S-72 aparece na linha de procedência. Header vira o nome dele."""
+
+RULE_LABELS = {
+    "unique": "partida única na base",
+    "caption": "confirmada pela legenda",
+    "date": "a mais antiga entre várias",
+    "human": "escolhida por você",
+}
+"""Como cada regra da S-91 aparece na tela. `date` é o único que o texto trata como ressalva --
+e é o que ele é: 72,3% de discordância com a legenda onde há legenda para conferir."""
+
+
+def _evidence(match: DiagramMatch) -> str:
+    """O que vai para o `confirmed_from`: a partida quando ela é única, a contagem quando não."""
+    return match.game_label if match.games_matched == 1 else f"{match.games_matched} partidas da base"
+
+
+def _candidate_key(match: DiagramMatch) -> str:
+    """A chave da partida que este casamento propõe, na forma que `chosen_game` guarda."""
+    return match.candidates[0].key if match.candidates else ""
+
+
+def _fill_rule(match: DiagramMatch) -> str:
+    """Por que **esta** partida, e não outra (S-91).
+
+    A ordem das perguntas é a ordem da força da evidência: partida única não teve escolha,
+    legenda é uma segunda fonte independente, e o resto é o desempate por data -- que precisa
+    ficar marcado como tal justamente por ser o fraco.
+    """
+    if match.games_matched == 1:
+        return "unique"
+    if match.caption_confirmed:
+        return "caption"
+    return "date"
 
 
 def _recover_provenance(annotation: DiagramAnnotation, match: DiagramMatch) -> tuple[str, ...]:
@@ -112,7 +168,11 @@ def describe_origin(annotation: DiagramAnnotation) -> str:
     campos = [
         FIELD_LABELS.get(campo, campo.removeprefix("header:")) for campo in annotation.filled_fields
     ]
-    return f"da base ({', '.join(campos)}): {annotation.filled_from}"
+    # A regra vai na mesma linha porque ela muda o que a linha significa: "a mais antiga entre
+    # várias" é um palpite, e uma tela que o mostre igual a "partida única" mente por omissão.
+    regra = RULE_LABELS.get(annotation.filled_rule, "")
+    sufixo = f" — {regra}" if regra else ""
+    return f"da base ({', '.join(campos)}): {annotation.filled_from}{sufixo}"
 
 
 @dataclass
@@ -123,6 +183,24 @@ class GalleryModel:
     annotations: GalleryAnnotations = field(default_factory=GalleryAnnotations)
     pdf_path: Path | None = None
     position: int = 0
+
+    position_cache: PositionCache | None = None
+    """O que a base respondeu, por posição (S-84). `None` é "ninguém varreu ainda".
+
+    Injetado e não carregado aqui pela mesma razão do `gallery_dir`: quem decide de onde ler é
+    quem monta o painel, e um modelo que abrisse `data/games_positions.json` sozinho não teria
+    como ser testado sem o arquivo de verdade."""
+
+    database_paths: tuple[Path, ...] = ()
+    index_path: Path | None = None
+    """As bases e o índice por nome (S-87), para a busca sob demanda. Vazio desliga o caminho.
+
+    **Plural desde a S-93**: a pasta pode ter mais de uma gigabase, e a que ficava de fora era
+    justamente onde estava a partida procurada. O índice é um só e sabe de que arquivo é cada
+    offset.
+
+    Injetados como o `position_cache`: um modelo que fosse abrir a base sozinho não teria como
+    ser testado sem um PGN de 10,3 GB por perto."""
 
     gallery_dir: Path | None = None
     """Onde gravar. `None` usa `data/gallery/`.
@@ -356,16 +434,21 @@ class GalleryModel:
             anterior = self.annotations.get(*casamento.key)
             relatorio.confirmed += 1
 
-            evidencia = (
-                casamento.game_label
-                if casamento.games_matched == 1
-                else f"{casamento.games_matched} partidas da base"
-            )
+            if anterior.chosen_game and anterior.chosen_game != _candidate_key(casamento):
+                # Uma pessoa já escolheu outra partida aqui (S-86). Confirmar a leitura ainda
+                # vale -- as 64 casas bateram --, mas trocar a procedência por baixo dela seria
+                # desfazer trabalho humano com um palpite, que é o defeito que a S-77 consertou.
+                relatorio.respected += 1
+                if anterior.confirmed_from != _evidence(casamento):
+                    self.annotations.update(*casamento.key, confirmed_from=_evidence(casamento))
+                continue
+
+            evidencia = _evidence(casamento)
             mudancas: dict[str, Any] = {}
             if anterior.confirmed_from != evidencia:
                 mudancas["confirmed_from"] = evidencia
 
-            if casamento.games_matched > max_games:
+            if casamento.games_matched > max_games and not casamento.caption_confirmed:
                 # Confirma e para: a posição é real, mas não se sabe de qual partida ela veio.
                 relatorio.ambiguous += 1
                 if mudancas:
@@ -398,15 +481,260 @@ class GalleryModel:
                 continue
 
             relatorio.touched += 1
+            if casamento.caption_confirmed:
+                relatorio.by_caption += 1
             self.annotations.update(
                 *casamento.key,
                 filled_from=casamento.game_label,
+                filled_rule=_fill_rule(casamento),
                 # A união com o que já havia: rodar a busca duas vezes, ou rodar a por nome
                 # depois da por posição, não pode apagar a procedência da primeira.
                 filled_fields=tuple(dict.fromkeys((*anterior.filled_fields, *preenchidos))),
                 **mudancas,
             )
         return relatorio
+
+    # ------------------------------------------------- a escolha da partida (S-86)
+
+    def candidates_for(self, entry: GalleryEntry | None) -> tuple[tuple[PositionHit, ...], int]:
+        """As candidatas daquele diagrama e **quantas existem**, do cache. `(lista, total)`.
+
+        Os dois números, e não um: a lista para de crescer em 32 e o total não, e uma tela que
+        mostrasse só a lista faria 32 de 147 passar por completo.
+
+        A ordem é a da S-91 -- quem a legenda confirma vem primeiro --, então a candidata que a
+        pessoa mais provavelmente quer já está no topo antes de ela filtrar qualquer coisa.
+        """
+        if entry is None or self.position_cache is None:
+            return (), 0
+        guardada = self.position_cache.positions.get(getattr(entry, "placement", ""))
+        if guardada is None or not guardada.count:
+            return (), 0
+        ordenadas, _ = rank_candidates(guardada.games, pair_from_caption(entry.caption or ""))
+        return ordenadas, guardada.count
+
+    def neighbour_game_keys(self, *, radius: int = 3) -> frozenset[str]:
+        """As partidas que os diagramas **vizinhos** também têm entre as candidatas (S-88).
+
+        **Isto é dica de ordenação, e não regra de preenchimento -- a medição reprovou a
+        segunda.** A hipótese era que a partida que explica os vizinhos explica este diagrama.
+        Medida no acervo em 2026-08-15: ela aponta uma candidata única em **62 dos 373**
+        ambíguos (16,6%, no melhor raio), contra o critério de 20% fixado antes de medir. E o
+        que a reprovou de vez não foi o rendimento: dos 62, só **3** têm legenda com nomes para
+        conferir a resposta -- ou seja, ela preencheria procedência sem meio de saber se acerta.
+
+        Como ordenação ela não pode errar: no máximo põe a candidata errada em segundo lugar
+        numa lista que a pessoa está lendo de qualquer forma.
+        """
+        if self.is_empty:
+            return frozenset()
+        centro = self.clamped_position()
+        chaves: set[str] = set()
+        for posicao in range(max(0, centro - radius), min(len(self.index), centro + radius + 1)):
+            if posicao == centro:
+                continue
+            candidatas, _ = self.candidates_for(self.index.entries[posicao])
+            chaves.update(candidata.key for candidata in candidatas)
+        return frozenset(chaves)
+
+    def current_candidates(self, *, radius: int = 3) -> tuple[tuple[PositionHit, ...], int]:
+        """As candidatas do diagrama atual, na ordem em que a tela deve mostrá-las.
+
+        Três critérios, do mais forte para o mais fraco: a legenda confirma (S-91), os vizinhos
+        também a têm (S-88, só como dica), e a data (S-73). Nenhum deles descarta candidata.
+        """
+        candidatas, total = self.candidates_for(self.current)
+        if len(candidatas) < 2:
+            return candidatas, total
+        vizinhas = self.neighbour_game_keys(radius=radius)
+        par = self.current_caption_pair()
+        # `sorted` é estável, então quem empata nos dois critérios mantém a ordem por data.
+        ordenadas = sorted(
+            candidatas,
+            key=lambda hit: (
+                not (par is not None and agrees_with_caption(hit, par)),
+                hit.key not in vizinhas,
+            ),
+        )
+        return tuple(ordenadas), total
+
+    def current_caption_pair(self) -> tuple[str, str] | None:
+        """Os dois sobrenomes que a legenda deste diagrama declara, se ela declarar.
+
+        A tela usa isto para **marcar** as candidatas que a legenda confirma. Marcar e não
+        filtrar: 26,5% das legendas discordam da base mesmo quando a posição está numa partida
+        só, e uma lista filtrada por elas esconderia a partida certa em um caso a cada quatro.
+        """
+        atual = self.current
+        return None if atual is None else pair_from_caption(atual.caption or "")
+
+    def search_games_by_name(self, pair: tuple[str, str] | None = None) -> tuple[PositionHit, ...]:
+        """Pergunta à base **pelos nomes**, agora, e devolve as que contêm esta posição (S-87).
+
+        É o caminho que a lista do cache não alcança, e são dois casos medidos:
+
+        - a lista foi **truncada em 32** e a partida certa ficou de fora -- 9 dos 22 diagramas
+          em que a legenda não acha candidata nenhuma;
+        - a posição **não casou com partida nenhuma** (1.922 diagramas do acervo, 53,9%), mas a
+          base tem a partida, e a legenda diz quem jogou.
+
+        Custa milissegundos porque o índice diz onde cada partida mora: são até 40 leituras com
+        `seek`, e não uma passada pelos 10,3 GB. Sem índice devolve vazio, e a lista do cache
+        continua sendo a resposta -- é caminho a mais, não substituto.
+        """
+        atual = self.current
+        if atual is None or not self.database_paths or self.index_path is None:
+            return ()
+        par = pair or self.current_caption_pair()
+        if par is None:
+            return ()
+        partidas = lookup_pair(par, list(self.database_paths), self.index_path)
+        casadas = positions_of(partidas, getattr(atual, "placement", ""))
+        achadas = [
+            PositionHit(
+                move_number=int(lance),
+                side_to_move="w" if vez else "b",
+                headers=kept_headers(partida.headers),
+            )
+            for partida, lance, vez in casadas
+        ]
+        # As partidas do par em que a posição **não** aparece entram como não verificadas: elas
+        # não podem dar o lance, e podem dar evento, data e resultado. Medido: em 68 dos 140
+        # diagramas do acervo nessa situação, é a única coisa que a base tem a oferecer.
+        casadas_ids = {id(partida) for partida, _, _ in casadas}
+        achadas += [
+            PositionHit(
+                move_number=0,
+                side_to_move="",
+                headers=kept_headers(partida.headers),
+                verified=False,
+            )
+            for partida in partidas
+            if id(partida) not in casadas_ids
+        ]
+        return tuple(achadas)
+
+    def conflicts_with(self, hit: PositionHit) -> tuple[str, ...]:
+        """Os campos que **a pessoa digitou** e que esta partida mudaria, se aplicada.
+
+        A regra da S-72 -- "a base nunca sobrescreve" -- vale para a base decidindo sozinha.
+        Uma pessoa escolhendo na lista é outra coisa, e pode trocar o que a base escreveu sem
+        perguntar: mesma origem, versão melhor. O que ela não pode é apagar em silêncio o que
+        *ela* digitou -- e é isso que esta lista existe para a tela perguntar antes.
+        """
+        anotacao = self.current_annotation
+        da_base = set(anotacao.filled_fields)
+        conflitos = []
+        # Uma candidata não verificada não propõe lance nem vez, então não há o que conflitar:
+        # ela não sabe esses dois campos, e o que ela não sabe não pode discordar de ninguém.
+        if hit.verified:
+            if anotacao.move_number not in (None, hit.move_number) and "move_number" not in da_base:
+                conflitos.append("move_number")
+            if anotacao.side_to_move not in (None, hit.side_to_move) and "side_to_move" not in da_base:
+                conflitos.append("side_to_move")
+        conflitos += [
+            f"header:{nome}"
+            for nome, valor in sorted(hit.headers.items())
+            if valor
+            and anotacao.headers.get(nome)
+            and anotacao.headers[nome] != valor
+            and f"header:{nome}" not in da_base
+        ]
+        return tuple(conflitos)
+
+    def choose_game(self, hit: PositionHit, *, overwrite: bool = False) -> tuple[str, ...]:
+        """Aplica a partida escolhida ao diagrama atual. Devolve os campos que ela mudou.
+
+        `overwrite` decide o que fazer com o que a pessoa digitou -- ver `conflicts_with`. O
+        que veio da base é trocado nos dois casos.
+
+        Grava `chosen_game`, e é ele que faz a escolha sobreviver: um `cvoff-games --apply`
+        depois disto respeita a partida escolhida em vez de reimpor a que o desempate prefere.
+        """
+        atual = self.current
+        if atual is None:
+            return ()
+        anotacao = self.current_annotation
+        protegidos = () if overwrite else self.conflicts_with(hit)
+
+        mudancas: dict[str, Any] = {}
+        campos: list[str] = []
+        # Lance e vez vêm da **posição**, e sem posição eles seriam invenção. Evento, data e
+        # resultado vêm da partida, e continuam sendo verdade sobre ela -- ver `PositionHit`.
+        if hit.verified:
+            if "move_number" not in protegidos and anotacao.move_number != hit.move_number:
+                mudancas["move_number"] = hit.move_number
+                campos.append("move_number")
+            if "side_to_move" not in protegidos and anotacao.side_to_move != hit.side_to_move:
+                mudancas["side_to_move"] = hit.side_to_move
+                campos.append("side_to_move")
+
+        headers = dict(anotacao.headers)
+        for nome, valor in sorted(hit.headers.items()):
+            if not valor or nome in RESERVED_HEADERS or f"header:{nome}" in protegidos:
+                continue
+            if headers.get(nome) != valor:
+                headers[nome] = valor
+                campos.append(f"header:{nome}")
+        if headers != anotacao.headers:
+            mudancas["headers"] = headers
+
+        self.annotations.update(
+            *atual.key,
+            chosen_game=hit.key,
+            filled_from=hit.label,
+            filled_rule="human",
+            # Os campos que **esta** escolha põe, e não a união com os de antes: a partida
+            # trocou, então a procedência da anterior descreve valores que não estão mais aqui.
+            filled_fields=tuple(campos),
+            confirmed_from=anotacao.confirmed_from or hit.label,
+            **mudancas,
+        )
+        return tuple(campos)
+
+    def neighbours_with_game(self, hit: PositionHit, *, radius: int = 3) -> list[GalleryEntry]:
+        """Os diagramas vizinhos que têm **esta mesma partida** entre as candidatas deles.
+
+        Um capítulo analisa uma partida em cinco ou seis diagramas seguidos, e escolher a mesma
+        coisa seis vezes é o trabalho que a S-86 existe para poupar.
+
+        **Só os que a têm entre as candidatas**, e é a trava que faltou no "aplicar a todos" da
+        S-76 -- aquele clique espalhou quatro campos por 1.405 diagramas. Aqui o vizinho que
+        não contém a posição daquela partida simplesmente não entra.
+        """
+        if self.is_empty:
+            return []
+        centro = self.clamped_position()
+        alcance = range(max(0, centro - radius), min(len(self.index), centro + radius + 1))
+        vizinhos = []
+        for posicao in alcance:
+            if posicao == centro:
+                continue
+            entrada = self.index.entries[posicao]
+            candidatas, _ = self.candidates_for(entrada)
+            if any(candidata.key == hit.key for candidata in candidatas):
+                vizinhos.append(entrada)
+        return vizinhos
+
+    def apply_game_to_neighbours(self, hit: PositionHit, *, radius: int = 3) -> int:
+        """Aplica a partida aos vizinhos que a contêm. Devolve quantos foram tocados.
+
+        Cada vizinho recebe **o lance dele**, não o do diagrama de origem: é a mesma partida em
+        outro momento dela, e copiar o número do lance seria escrever o dado errado com a
+        confiança de quem escolheu a partida certa.
+        """
+        posicao_original = self.position
+        tocados = 0
+        try:
+            for entrada in self.neighbours_with_game(hit, radius=radius):
+                self.position = self.index.entries.index(entrada)
+                candidatas, _ = self.candidates_for(entrada)
+                dele = next(c for c in candidatas if c.key == hit.key)
+                if self.choose_game(dele):
+                    tocados += 1
+        finally:
+            self.position = posicao_original
+        return tocados
 
     def pending_pairs(self) -> set[tuple[str, str]]:
         """Os pares de nomes que as legendas do livro declaram, para a busca na base.

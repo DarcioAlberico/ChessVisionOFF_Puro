@@ -12,6 +12,17 @@ primeiro **oráculo externo**: as 64 casas da posição lida têm de bater com a
 lance de uma partida registrada. Não é opinião, e não é confiança do modelo -- é coincidência
 de 64 símbolos, que não acontece por acaso.
 
+**A base é a pasta inteira, e não um arquivo (S-93).** Todos os `.pgn` de `pgn_database/`
+entram em toda busca. Era um só -- o maior --, e o preço disso apareceu medido: a segunda
+gigabase desta máquina tem 10.355.488 partidas que nunca foram consultadas, e a partida
+`Hutchings x Keene, Hexagon North Devon 1973` -- procurada por nome, por data e pelas 64 casas
+na base "oficial", e ausente das três -- está nela.
+
+Medido nos mesmos 4 livros, em 2026-08-16: os casamentos por posição vão de **1.641 para
+2.104** em 3.563 diagramas. O custo também está medido, e é real: **981 diagramas deixaram de
+ser "partida única"**, e 63,5% disso é a mesma partida repetida nas duas bases, com o evento
+escrito de outro jeito em cada uma. Ver `docs/PLANO_BASE_PARTIDAS.md`.
+
 **Duas regras que a arquitetura de hoje impõe, e que não são detalhe.**
 
 1. **Casar pela colocação de peças, nunca pela FEN inteira.** Roque e *en passant* são
@@ -28,13 +39,22 @@ de 64 símbolos, que não acontece por acaso.
 |---|---|---|
 | alcança | os diagramas cuja legenda traz os dois jogadores | **todos** |
 | mediu, no `Secrets of Chess Training` | 61 de 1.408 | **581** preenchíveis de 1.408 |
-| custo | ~150 s, um processo | ~104 min em dez processos |
-| onde mora | botão da Galeria | `cvoff-games --positions` |
+| custo | ~150 s, um processo | **28,7 min** em dez (eram 104, antes da S-85) |
+| onde mora | botão da Galeria | `cvoff-games --positions` **e** botão da Galeria (S-92) |
 
-O caminho por posição é ~10× mais abrangente e ~40× mais caro, e o custo dele é **por
+O caminho por posição é ~10× mais abrangente e ~12× mais caro, e o custo dele é **por
 varredura, não por livro**: o conjunto-alvo cabe na memória sejam 1.400 posições ou 40 mil,
-então o acervo inteiro cabe na mesma passada. É por isso que ele é comando de linha e não
-botão -- e porque 104 minutos atrás de um botão é uma janela travada que ninguém entende.
+então o acervo inteiro cabe na mesma passada.
+
+**Ele foi comando de linha e não botão até a S-92**, e a razão continua verdadeira: meia hora
+atrás de um botão é uma janela travada que ninguém entende. O que mudou foi o que cerca o
+botão -- ele diz o preço antes, mostra em que pedaço está, dá para cancelar, e o cache da S-84
+faz a segunda vez custar segundos. Sem essas quatro coisas ele continuaria não devendo existir.
+
+**Nenhum dos dois é mais o caminho de quem está parado num diagrama.** Desde a S-84 a resposta
+da varredura fica em `games_cache.py`, e a tela a lê do disco; desde a S-87, quem quiser
+perguntar à base pelos nomes *agora* usa o índice do `games_index.py`, que responde em
+milissegundos. Estes dois caminhos aqui são os que **produzem** aquelas respostas, em lote.
 """
 
 from __future__ import annotations
@@ -63,10 +83,15 @@ __all__ = [
     "PlayerPair",
     "PositionHit",
     "PositionIndex",
-    "default_database_path",
+    "as_databases",
+    "database_paths",
     "match_entries",
     "match_positions",
+    "occupancy",
+    "agrees_with_caption",
+    "kept_headers",
     "pair_from_caption",
+    "rank_candidates",
     "scan_by_players",
     "scan_by_positions",
     "surname",
@@ -93,12 +118,26 @@ PlayerPair = tuple[str, str]
 
 
 def surname(name: str) -> str:
-    """`De Castellvi, Francisco` -> `de castellvi`; `Coull` -> `coull`.
+    """`De Castellvi, Francisco` -> `de castellvi`; `K. Spicak` -> `spicak`.
 
     O sobrenome é o que as duas pontas têm em comum: a base escreve `Sobrenome, Nome` e o
     livro escreve `Sobrenome - Sobrenome`. Comparar nome completo não casaria nunca.
+
+    **A inicial colada do livro é a segunda forma, e ela custava um quinto da busca (S-90).**
+    A vírgula da base sempre foi tratada; `K. Spicak`, `De. Wagner`, `E. Mence` -- como o
+    `400 Quebra-cabeças` escreve **um terço** das suas legendas -- não eram, e não casavam com
+    `Spicak, Krzysztof` na base. Medido no acervo: **109 de 494 pares (22,1%)** nunca chegavam
+    a ser procurados, e em silêncio, porque `scan_by_players` só não os encontrava.
+
+    **A partícula sobrevive e a inicial não**, e a diferença é o critério: `De Castellvi`
+    continua inteiro porque `De` não tem ponto nem é letra solta; `De. Wagner` vira `wagner`
+    porque tem. A guarda do `len` é o que impede um nome que é *só* uma inicial de virar vazio
+    -- e vazio casaria com qualquer coisa, que é o oposto do que isto existe para fazer.
     """
-    return fold(str(name).split(",")[0]).strip()
+    tokens = fold(str(name).split(",")[0]).split()
+    while len(tokens) > 1 and (tokens[0].endswith(".") or len(tokens[0]) == 1):
+        tokens = tokens[1:]
+    return " ".join(tokens)
 
 
 def pair_from_caption(caption: str) -> PlayerPair | None:
@@ -115,17 +154,62 @@ def pair_from_caption(caption: str) -> PlayerPair | None:
     return par if par[0] and par[1] else None
 
 
-def default_database_path(directory: Path | None = None) -> Path | None:
-    """O maior `.pgn` da pasta da base, ou `None` se não houver.
+def database_paths(directory: Path | None = None) -> list[Path]:
+    """**Todos** os `.pgn` da pasta, em ordem estável. A base é o conjunto deles (S-93).
 
-    "O maior" e não "o primeiro": quem baixa uma gigabase costuma deixar ao lado dela o PGN de
-    um torneio, e escolher por ordem de diretório pegaria o torneio.
+    Até aqui a base era *um* arquivo -- o maior --, e a razão escrita era que "quem baixa uma
+    gigabase costuma deixar ao lado dela o PGN de um torneio". Ela estava certa sobre o risco e
+    errada sobre a saída: o torneio ao lado **também** tem partidas, e escolher um arquivo é
+    jogar fora tudo que os outros sabem.
+
+    **Medido nesta máquina, e é o que motivou a mudança.** A pasta tinha duas gigabases; a
+    menor (8,6 GB, 10.355.488 partidas) era invisível por ser a menor. A partida
+    `Hutchings x Keene, Hexagon North Devon 1973` -- procurada por nome, por data e pelas 64
+    casas na base "oficial", e ausente das três -- está nela, com as 44 posições batendo.
+
+    **A ordem é por nome, e não por tamanho, porque ela virou identidade.** O índice por nome
+    grava *em que arquivo* cada partida mora, e esse número é a posição nesta lista; uma ordem
+    que mudasse quando um arquivo crescesse faria cada offset apontar para o arquivo errado --
+    o defeito que o fingerprint existe para impedir.
     """
     pasta = directory or DEFAULT_DATABASE_DIR
     if not pasta.is_dir():
-        return None
-    candidatos = sorted(pasta.glob("*.pgn"), key=lambda p: p.stat().st_size, reverse=True)
-    return candidatos[0] if candidatos else None
+        return []
+    return sorted(pasta.glob("*.pgn"), key=lambda caminho: caminho.name.lower())
+
+
+def as_databases(databases: Path | Sequence[Path] | None) -> list[Path]:
+    """Um caminho, vários ou nenhum -- sempre uma lista. Existe para as assinaturas aceitarem os três.
+
+    Quem já tinha um `.pgn` na mão -- um teste, um `--database`, uma chamada anterior à S-93 --
+    continua passando um `Path`; quem tem a pasta passa a lista. Sem isto cada função de
+    varredura ganharia um segundo nome, e duas implementações da mesma coisa divergem.
+    """
+    if databases is None:
+        return []
+    return [databases] if isinstance(databases, Path) else list(databases)
+
+
+def occupancy(placement: str) -> int:
+    """As casas ocupadas de uma colocação, como o inteiro de 64 bits do `python-chess` (S-85).
+
+    Lida direto da string em vez de montar um `Board` e ler `.occupied`: os dois dão o mesmo
+    número (há teste), e a varredura chama isto uma vez por alvo -- 40 mil vezes no acervo
+    inteiro -- antes de abrir a base.
+
+    A numeração é a do `python-chess`: `a1` é o bit 0 e `a8` é o 56, enquanto a colocação
+    escreve a **oitava** fila primeiro. É de onde vem o `(7 - fila) * 8`.
+    """
+    bits = 0
+    for fila, linha in enumerate(placement.split("/")):
+        casa = (7 - fila) * 8
+        for simbolo in linha:
+            if simbolo.isdigit():
+                casa += int(simbolo)
+            else:
+                bits |= 1 << casa
+                casa += 1
+    return bits
 
 
 @dataclass(frozen=True)
@@ -135,13 +219,28 @@ class GameRecord:
     headers: dict[str, str] = field(default_factory=dict)
     movetext: str = ""
 
-    def positions(self) -> Iterator[tuple[str, int, bool]]:
+    def positions(self, occupancies: frozenset[int] | None = None) -> Iterator[tuple[str, int, bool]]:
         """Cada lance da partida como `(colocação, número do lance, vez das brancas)`.
 
         A colocação é `Board.board_fen()` -- campo de peças e nada mais, pela regra 1 do
         módulo. Um lance ilegal interrompe a partida em vez de derrubá-la: a base tem 10,5
         milhões de partidas e algumas trazem notação que o `python-chess` recusa, e perder o
         resto de uma partida é melhor que perder a varredura.
+
+        **`occupancies` é o porteiro que barateou a varredura em 3,5× (S-85).** `board_fen()` a
+        cada lance é **75% do custo** da busca por posição: o replay custa 2 s e as 213.830
+        strings de 64 casas custam mais 6 -- para 152 comparações que interessam.
+        `Board.occupied` é um inteiro que o `python-chess` já atualiza a cada lance, e ocupação
+        igual é *condição necessária* para colocação igual. Quem passa o conjunto das ocupações
+        dos seus alvos só paga a string no punhado que passa pelo porteiro.
+
+        Medido num pedaço de 304 MB da base, 332.823 partidas, com os 3.143 alvos reais do
+        acervo: **928,2 s -> 262,3 s**, e as **mesmas 516 posições casadas**, as mesmas 20.758
+        ocorrências, os mesmos lances e a mesma vez.
+
+        Não é aproximação: o que o porteiro deixar passar por engano -- mesmas casas ocupadas,
+        peças diferentes -- o `board_fen()` seguinte recusa, como sempre recusou. `None` desliga
+        o porteiro, que é o caminho de quem já tem poucas partidas em mão (`match_entries`).
         """
         tabuleiro = chess.Board()
         for token in _RE_BRACES.sub(" ", self.movetext).replace(".", ". ").split():
@@ -153,6 +252,8 @@ class GameRecord:
             except (ValueError, AssertionError):
                 logger.debug("Lance recusado em %s: %r", self.headers.get("White", "?"), limpo)
                 return
+            if occupancies is not None and tabuleiro.occupied not in occupancies:
+                continue
             yield tabuleiro.board_fen(), tabuleiro.fullmove_number, tabuleiro.turn == chess.WHITE
 
     @property
@@ -160,6 +261,75 @@ class GameRecord:
         """Como a partida aparece na barra de status: quem, contra quem, onde e quando."""
         evento = " ".join(x for x in (self.headers.get("Event", ""), self.headers.get("Date", "")[:4]) if x)
         return f"{self.headers.get('White', '?')} x {self.headers.get('Black', '?')}" + (f", {evento}" if evento else "")
+
+
+@dataclass(frozen=True)
+class PositionHit:
+    """Uma partida da base que passa pela posição procurada -- uma **candidata** (S-73/S-83).
+
+    Nasceu como resultado interno da varredura por posição e virou o tipo que atravessa o
+    projeto inteiro: é o que a lista da tela mostra e o que a pessoa escolhe. Os dois caminhos
+    -- por nome e por posição -- produzem isto, e por isso não existem dois tipos de candidata.
+    """
+
+    move_number: int
+    side_to_move: str
+    headers: dict[str, str] = field(default_factory=dict)
+
+    verified: bool = True
+    """As 64 casas do diagrama aparecem nesta partida, no lance declarado.
+
+    **Falso significa que a partida é do par certo e a posição não bate** -- é o que a busca por
+    nome (S-87) encontra em 68 dos 140 diagramas do acervo cuja legenda nomeia os jogadores e
+    cuja posição não casou com partida nenhuma. A base tem a partida; ela só não tem aquela
+    posição, seja porque a leitura saiu com uma casa errada, seja porque o livro mostra um
+    momento que o registro não guardou.
+
+    A distinção não é acadêmica: ela decide **o que pode ser preenchido**. Evento, data e
+    resultado vêm da partida e são verdade sobre ela; o número do lance e a vez vêm da posição,
+    e sem posição eles seriam invenção. `GalleryModel.choose_game` respeita isso."""
+
+    @property
+    def label(self) -> str:
+        evento = " ".join(x for x in (self.headers.get("Event", ""), self.headers.get("Date", "")[:4]) if x)
+        nome = f"{self.headers.get('White', '?')} x {self.headers.get('Black', '?')}" + (f", {evento}" if evento else "")
+        return nome if self.verified else f"{nome} (posição não confere)"
+
+    @property
+    def key(self) -> str:
+        """A identidade da **partida**, para uma escolha humana sobreviver a uma revarredura.
+
+        Não é o índice na lista: a ordem muda quando a base muda, e guardar "a terceira" faria
+        a escolha de ontem apontar para outra partida hoje. Não é o `label` tampouco -- ele é
+        texto para gente ler, e junta evento e ano no mesmo campo.
+
+        O lance fica **de fora** de propósito: a mesma partida pode passar duas vezes pela
+        mesma posição (repetição), e as duas continuam sendo a mesma escolha.
+        """
+        return "|".join(self.headers.get(campo, "") for campo in ("White", "Black", "Date", "Round", "Event"))
+
+    def to_dict(self) -> dict[str, Any]:
+        dados: dict[str, Any] = {
+            "move_number": self.move_number,
+            "side_to_move": self.side_to_move,
+            "headers": dict(self.headers),
+        }
+        # Só quando falso: o cache guarda casamentos de posição, que são verificados por
+        # definição, e uma chave repetida 40 mil vezes para dizer "sim" é peso morto no arquivo.
+        if not self.verified:
+            dados["verified"] = False
+        return dados
+
+    @classmethod
+    def from_dict(cls, dados: Any) -> PositionHit:
+        if not isinstance(dados, dict):
+            return cls(move_number=1, side_to_move="w")
+        return cls(
+            move_number=int(dados.get("move_number", 1)),
+            side_to_move=str(dados.get("side_to_move", "w")),
+            headers={str(k): str(v) for k, v in (dados.get("headers") or {}).items()},
+            verified=bool(dados.get("verified", True)),
+        )
 
 
 @dataclass(frozen=True)
@@ -180,34 +350,97 @@ class DiagramMatch:
 
     game_label: str = ""
 
+    caption_confirmed: bool = False
+    """A legenda do diagrama nomeia os jogadores desta partida, e **só dela** (S-91).
+
+    É a diferença entre uma escolha e um desempate. Medido nos 47 diagramas ambíguos cujas
+    legendas trazem os dois jogadores: o desempate por data discorda da legenda **72,3%** das
+    vezes, contra um piso de ruído de 26,5% medido nos casamentos de partida única. Onde a
+    legenda aponta uma candidata só, ela responde -- e a data deixa de decidir.
+
+    Vale também **acima** do teto de `max_games`: uma posição em 47 partidas não identifica
+    partida nenhuma pela contagem, mas identifica se a legenda nomeia exatamente uma delas.
+    São os 232 diagramas do acervo que hoje ficam confirmados e vazios.
+    """
+
+    candidates: tuple[PositionHit, ...] = ()
+    """As partidas que contêm a posição, até o teto de `MAX_HITS_PER_POSITION` (S-83).
+
+    **Antes disto, a lista era calculada e jogada fora três vezes**: a varredura guardava até
+    oito partidas, `match_positions` usava a primeira e descartava as outras sete, e
+    `--save-matches` gravava só a vencedora. Refazer a escolha custava 104 minutos de varredura,
+    porque o artefato que sobrevivia já vinha decidido.
+
+    `move_number`, `side_to_move` e `headers` continuam sendo **a primeira candidata**, e é o
+    que mantém tudo que consome isto funcionando como antes. A diferença é que agora dá para
+    discordar dela: 373 dos 1.641 casamentos do acervo têm mais de uma partida, e em 141 deles
+    o desempate por data escolheu sozinho -- discordando da legenda do livro 72,3% das vezes.
+
+    Vazio quando o casamento veio de um artefato v1, anterior à S-83.
+    """
+
     @property
     def key(self) -> tuple[int, int]:
         return (self.page_index, self.diagram_index)
 
+    @property
+    def ambiguous(self) -> bool:
+        """Mais de uma partida contém a posição -- há o que escolher."""
+        return self.games_matched > 1
+
 
 def scan_by_players(
-    database: Path,
+    databases: Path | Sequence[Path],
     wanted: Iterable[PlayerPair],
     *,
     max_games_per_pair: int = MAX_GAMES_PER_PAIR,
     progress: Callable[[int], None] | None = None,
     cancel: threading.Event | None = None,
 ) -> dict[PlayerPair, list[GameRecord]]:
-    """Uma passada pela base, colhendo só as partidas dos pares pedidos.
+    """Uma passada por **cada** base, colhendo só as partidas dos pares pedidos.
 
     **Sem índice, e é uma decisão medida.** Um índice por nome custaria ~1 GB no disco e uma
     construção de vários minutos para poupar 150 s por livro -- e livro se varre uma vez. O
     dia em que a busca virar por diagrama e não por livro, o índice passa a valer.
 
-    `progress` recebe o número de partidas lidas, a cada 200 mil. `cancel` é conferido no mesmo
-    ponto: entre partidas, nunca no meio de uma, pela razão da S-24.
+    `progress` recebe o número de partidas lidas, a cada 200 mil, **somado entre as bases** --
+    quem olha a barra quer saber quanto já se leu, não em qual arquivo se está. `cancel` é
+    conferido no mesmo ponto: entre partidas, nunca no meio de uma, pela razão da S-24.
+
+    O teto por par (`max_games_per_pair`) vale para o **conjunto** das bases, e não por
+    arquivo: são 40 partidas para reproduzir, venham de onde vierem.
     """
-    alvos = {tuple(par) for par in wanted}
+    # `(par[0], par[1])` e nao `tuple(par)`: o segundo perde o tamanho do par para o verificador
+    # de tipos, que passa a ver `tuple[str, ...]` onde o resto do modulo promete dois nomes.
+    alvos = {(par[0], par[1]) for par in wanted}
     colhidas: dict[PlayerPair, list[GameRecord]] = {}
     if not alvos:
         return colhidas
 
-    partidas = 0
+    lidas = 0
+    for base in as_databases(databases):
+        lidas = _collect_players(base, alvos, colhidas, max_games_per_pair, progress, cancel, lidas)
+        # Depois do arquivo, e nao antes: dentro dele o cancelamento ja e conferido a cada 200
+        # mil partidas, e conferi-lo aqui na entrada faria uma bandeira ligada de antemao
+        # devolver vazio sem ler nada -- que nao e o que "cancelar" significou ate agora.
+        if cancel is not None and cancel.is_set():
+            break
+
+    logger.info("Base varrida: %d partidas, %d pares com partida.", lidas, len(colhidas))
+    return colhidas
+
+
+def _collect_players(
+    database: Path,
+    alvos: set[PlayerPair],
+    colhidas: dict[PlayerPair, list[GameRecord]],
+    max_games_per_pair: int,
+    progress: Callable[[int], None] | None,
+    cancel: threading.Event | None,
+    lidas: int,
+) -> int:
+    """Um arquivo. Devolve o total de partidas lidas **incluindo** as das bases anteriores."""
+    partidas = lidas
     cabecalho: dict[str, str] = {}
     branco = ""
     coletando: PlayerPair | None = None
@@ -257,23 +490,7 @@ def scan_by_players(
             elif movetext:
                 fechar()
     fechar()
-
-    logger.info("Base varrida: %d partidas, %d pares com partida.", partidas, len(colhidas))
-    return colhidas
-
-
-@dataclass(frozen=True)
-class PositionHit:
-    """Uma partida da base que passou por uma posição que estamos procurando (S-73)."""
-
-    move_number: int
-    side_to_move: str
-    headers: dict[str, str] = field(default_factory=dict)
-
-    @property
-    def label(self) -> str:
-        evento = " ".join(x for x in (self.headers.get("Event", ""), self.headers.get("Date", "")[:4]) if x)
-        return f"{self.headers.get('White', '?')} x {self.headers.get('Black', '?')}" + (f", {evento}" if evento else "")
+    return partidas
 
 
 @dataclass
@@ -321,9 +538,28 @@ class PositionIndex:
             self.counts[colocacao] = self.counts.get(colocacao, 0) + quantas
 
 
-MAX_HITS_PER_POSITION = 8
-"""Quantas partidas guardar por posição. Acima do teto de `match_positions` ela não preenche
-nada, então guardar mais seria carregar o que vai ser descartado."""
+MAX_HITS_PER_POSITION = 32
+"""Quantas partidas guardar por posição.
+
+**Eram 8, quando o único consumidor era o preenchimento automático** -- acima do teto de
+`match_positions` nada era preenchido, então guardar mais seria carregar o que ia ser
+descartado. A S-83 mudou o consumidor: quem lê isto agora é uma pessoa escolhendo, e o que ela
+não recebe ela não pode escolher.
+
+**32 é o tamanho de uma lista que se lê rolando uma vez**, não "quanto mais melhor": acima
+disso quem resolve é o filtro da tela, não a rolagem. O custo é desprezível porque só posição
+que casou aloca -- no acervo medido, 1.641 de 3.563 diagramas, e a maioria com uma candidata
+só. `PositionIndex.counts` continua sendo a verdade sobre **quantas existem**, e é ele que
+impede uma lista truncada de passar por completa."""
+
+CANCEL_POLL_SECONDS = 0.5
+"""De quanto em quanto tempo a espera por um pedaço devolve o controle para conferir o
+cancelamento (S-92).
+
+Meio segundo é imperceptível para quem clicou e desprezível numa passada de meia hora. O que
+ele evita é a alternativa óbvia -- conferir o cancelamento **entre** pedaços concluídos --,
+que numa varredura de dez processos significa esperar um pedaço inteiro: a passada dividida
+por dez, ou seja, minutos depois do clique."""
 
 WORKER_ENV = "CVOFF_GAMES_WORKER"
 """Marca herdada pelos processos-filhos, e a guarda contra a recursão que a S-26 previu.
@@ -361,7 +597,7 @@ def chunk_bounds(database: Path, parts: int) -> list[tuple[int, int]]:
     return [(marcos[i], marcos[i + 1]) for i in range(len(marcos) - 1) if marcos[i] < marcos[i + 1]]
 
 
-def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], int]) -> PositionIndex:
+def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], frozenset[int], int]) -> PositionIndex:
     """Um pedaço do arquivo, num processo. Precisa ser função de módulo para o `spawn`.
 
     **Binário, e não texto, e isto não é preferência.** Num arquivo de texto o `tell()` não
@@ -370,7 +606,7 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], int])
     laço cedo -- medido, 5 partidas lidas de 2.000, silenciosamente. Em binário o `tell()` é o
     byte, que é o que os limites do pedaço significam.
     """
-    caminho, inicio, fim, alvos, max_hits = argumento
+    caminho, inicio, fim, alvos, ocupacoes, max_hits = argumento
     resultado = PositionIndex()
     cabecalho: dict[str, str] = {}
     movetext: list[str] = []
@@ -379,7 +615,7 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], int])
         if not movetext:
             return
         partida = GameRecord(headers=dict(cabecalho), movetext=" ".join(movetext))
-        for colocacao, lance, vez in partida.positions():
+        for colocacao, lance, vez in partida.positions(ocupacoes):
             if colocacao not in alvos:
                 continue
             resultado.counts[colocacao] = resultado.counts.get(colocacao, 0) + 1
@@ -412,58 +648,145 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], int])
 
 
 def scan_by_positions(
-    database: Path,
+    databases: Path | Sequence[Path],
     targets: Iterable[str],
     *,
     workers: int | None = None,
     max_hits_per_position: int = MAX_HITS_PER_POSITION,
     progress: Callable[[int, int], None] | None = None,
+    cancel: threading.Event | None = None,
 ) -> PositionIndex:
     """Procura as posições na base reproduzindo os lances de cada partida (S-73).
 
     **A busca é invertida, e é o que a torna viável.** O caminho óbvio -- indexar as ~800
     milhões de posições da base -- custaria dezenas de GB no disco e horas de construção. Aqui
     quem vai para a memória são as **nossas** posições, que são milhares, e a base passa uma
-    vez. Medido: 104 min em dez processos, 10,5 M partidas.
+    vez. Medido: 104 min em dez processos, 10,5 M partidas -- **antes** do porteiro de ocupação
+    da S-85, que mede 3,54× num pedaço de 304 MB da base e ainda não foi cronometrado na
+    passada inteira. A projeção é ~30 min; o número que vale é o da próxima varredura do acervo.
 
     E o custo é **por varredura, não por livro**: pôr o acervo inteiro no mesmo conjunto-alvo
     custa o mesmo que pôr um livro. Quem chamar isto uma vez por livro está pagando 32 vezes
     por uma resposta que sai de uma.
 
+    **Várias bases entram na mesma passada (S-93), e não uma passada por arquivo.** Cada
+    arquivo é cortado em pedaços e todos os pedaços vão para a mesma fila: os processos não
+    ficam ociosos esperando o arquivo grande terminar, o progresso é um só, e o cancelamento
+    vale para o conjunto. O `_scan_positions_chunk` já recebia o caminho em cada tarefa, então
+    o que mudou aqui foi de onde a lista de tarefas vem.
+
     `workers=1` roda no próprio processo, sem `multiprocessing` -- é o caminho do teste e o
     de uma base pequena, onde criar dez processos custaria mais que a varredura.
+
+    **`cancel` descarta a passada inteira, e isso não é desperdício: é a única resposta
+    verdadeira (S-92).** Uma varredura interrompida viu *parte* da base, e a contagem de
+    partidas por posição é justamente o que decide se preencher um header é honesto (S-74). Uma
+    posição achada em um dos dez pedaços sairia daqui com `count=1` -- a marca de "partida
+    única", que preenche tudo -- quando a base pode ter 47 partidas com ela. Guardar meia
+    varredura no cache seria gravar procedência inventada, que é pior que campo vazio.
+
+    Ele é conferido **enquanto os pedaços rodam**, e não entre eles: ver `CANCEL_POLL_SECONDS`.
+    Com um pedaço só -- `workers=1`, ou dentro de um processo-filho -- não há o que
+    interromper, e o cancelamento só é notado por quem chamou, depois.
     """
     alvos = frozenset(targets)
     total = PositionIndex()
-    if not alvos or not database.is_file():
+    bases = [caminho for caminho in as_databases(databases) if caminho.is_file()]
+    if not alvos or not bases:
         return total
+
+    # O porteiro da S-85, calculado uma vez e enviado pronto aos processos: recalculá-lo em cada
+    # filho seria o mesmo trabalho dez vezes, e ele é a condição de a varredura custar 29 min.
+    ocupacoes = frozenset(occupancy(colocacao) for colocacao in alvos)
 
     processos = workers if workers is not None else max(1, (os.cpu_count() or 4) - 2)
     if os.environ.get(WORKER_ENV):
         logger.debug("Já dentro de um processo de varredura: seguindo com um só.")
         processos = 1
-    pedacos = chunk_bounds(database, processos) if processos > 1 else [(0, database.stat().st_size)]
-    tarefas = [(database, inicio, fim, alvos, max_hits_per_position) for inicio, fim in pedacos]
+    tarefas = [
+        (caminho, inicio, fim, alvos, ocupacoes, max_hits_per_position)
+        for caminho in bases
+        for inicio, fim in (
+            chunk_bounds(caminho, processos) if processos > 1 else [(0, caminho.stat().st_size)]
+        )
+    ]
 
-    if len(tarefas) == 1:
-        total.merge(_scan_positions_chunk(tarefas[0]), max_hits=max_hits_per_position)
-        if progress is not None:
-            progress(1, 1)
+    if processos == 1:
+        # Sequencial, e **não** um pedaço só: com duas bases são duas tarefas, e o caminho sem
+        # `multiprocessing` continua tendo de ler as duas.
+        for indice, tarefa in enumerate(tarefas, start=1):
+            total.merge(_scan_positions_chunk(tarefa), max_hits=max_hits_per_position)
+            if progress is not None:
+                progress(indice, len(tarefas))
         return total
 
     # `spawn` no Windows reimporta o modulo do processo pai (S-26). Este modulo e importavel
     # sem efeito colateral, e `_scan_positions_chunk` e funcao de topo justamente por isso.
     os.environ[WORKER_ENV] = "1"
     try:
-        with mp.Pool(len(tarefas)) as pool:
-            for concluidos, parcial in enumerate(pool.imap_unordered(_scan_positions_chunk, tarefas), start=1):
+        # `min`, e nao `len(tarefas)`: com duas bases a lista tem o dobro de pedacos, e um
+        # processo por pedaco abriria vinte processos numa maquina de doze nucleos.
+        with mp.Pool(min(processos, len(tarefas))) as pool:
+            pendentes = pool.imap_unordered(_scan_positions_chunk, tarefas)
+            concluidos = 0
+            while concluidos < len(tarefas):
+                if cancel is not None and cancel.is_set():
+                    # `terminate` e nao `close`: os processos estao no meio de um pedaco, e
+                    # espera-los terminar e exatamente o que o cancelamento pede para nao fazer.
+                    pool.terminate()
+                    logger.info(
+                        "Varredura por posição cancelada em %d de %d pedaços; a passada foi descartada.",
+                        concluidos,
+                        len(tarefas),
+                    )
+                    return PositionIndex()
+                try:
+                    # Espera com prazo, e nao um `for` sobre o iterador: e o que devolve o
+                    # controle a tempo de conferir o cancelamento enquanto os pedacos rodam.
+                    parcial = pendentes.next(timeout=CANCEL_POLL_SECONDS)
+                except mp.TimeoutError:
+                    continue
                 total.merge(parcial, max_hits=max_hits_per_position)
+                concluidos += 1
                 if progress is not None:
                     progress(concluidos, len(tarefas))
     finally:
         os.environ.pop(WORKER_ENV, None)
     total.sort()
     return total
+
+
+def agrees_with_caption(hit: PositionHit, pair: PlayerPair) -> bool:
+    """A partida é entre os dois nomes que a legenda declara (S-91).
+
+    **Sem exigir a ordem das cores.** O livro escreve "Coull - Stanciu" sem prometer quem tinha
+    as brancas, e o `parse_context` devolve os nomes na ordem em que aparecem. Exigir a ordem
+    reprovaria metade dos acertos por uma informação que a legenda não deu.
+    """
+    return {surname(hit.headers.get("White", "")), surname(hit.headers.get("Black", ""))} == set(pair)
+
+
+def rank_candidates(
+    candidates: Sequence[PositionHit], pair: PlayerPair | None
+) -> tuple[tuple[PositionHit, ...], bool]:
+    """Põe na frente as candidatas que a legenda confirma. Devolve `(lista, só uma bateu)`.
+
+    **Ordena, não filtra**, e a diferença é medida: 26,5% das legendas que trazem nomes
+    discordam da partida mesmo quando a posição aparece numa única partida da base -- grafia
+    diferente, legenda do diagrama vizinho, o livro nomeando outra coisa. Filtrar por uma fonte
+    que erra um quarto das vezes tiraria a partida certa da lista, e a lista é justamente o que
+    a pessoa tem para discordar de nós.
+
+    A ordem de dentro de cada grupo é a que veio -- por data, pela S-73 --, então quando a
+    legenda não diz nada o resultado é exatamente o de antes.
+    """
+    if pair is None or not candidates:
+        return tuple(candidates), False
+    confirmadas = [hit for hit in candidates if agrees_with_caption(hit, pair)]
+    if not confirmadas:
+        return tuple(candidates), False
+    restantes = [hit for hit in candidates if not agrees_with_caption(hit, pair)]
+    return (*confirmadas, *restantes), len(confirmadas) == 1
 
 
 def match_positions(entries: Sequence[Any], index: PositionIndex, *, max_games: int = 5) -> list[DiagramMatch]:
@@ -481,7 +804,10 @@ def match_positions(entries: Sequence[Any], index: PositionIndex, *, max_games: 
         if not registros:
             continue
         quantas = index.counts.get(colocacao, len(registros))
-        primeiro = registros[0]
+        # A legenda entra aqui e não na varredura: ela é do diagrama, e a varredura responde
+        # por posição -- a mesma posição pode estar em dois livros com legendas diferentes.
+        candidatas, pela_legenda = rank_candidates(registros, pair_from_caption(getattr(entrada, "caption", "") or ""))
+        primeiro = candidatas[0]
         achados.append(
             DiagramMatch(
                 page_index=int(entrada.page_index),
@@ -491,6 +817,8 @@ def match_positions(entries: Sequence[Any], index: PositionIndex, *, max_games: 
                 headers=dict(primeiro.headers),
                 games_matched=quantas,
                 game_label=primeiro.label,
+                caption_confirmed=pela_legenda,
+                candidates=candidatas,
             )
         )
     return achados
@@ -525,16 +853,63 @@ def match_entries(
         casamentos = [item for item in por_par[par] if item[0] == alvo]
         if not casamentos:
             continue
-        _, lance, vez, partida = casamentos[0]
+        # Uma candidata por **partida**, e não por casamento: uma repetição de posição faz a
+        # mesma partida aparecer duas vezes em `casamentos`, e oferecer duas vezes a mesma
+        # escolha à pessoa não é oferecer duas escolhas.
+        candidatas = _candidates_from_games(casamentos)
+        # Aqui a legenda já escolheu as partidas -- foi ela que definiu o par procurado --, e o
+        # que `rank_candidates` acrescenta é só a resposta sobre unicidade. Chamá-lo mesmo assim
+        # mantém uma regra só de "a legenda confirma?" nos dois caminhos.
+        candidatas, pela_legenda = rank_candidates(candidatas, par)
+        # A primeira candidata é a resposta, e não mais "a primeira partida que a base guardou"
+        # (S-83). São os dois caminhos passando a concordar sobre *qual* é a escolha padrão --
+        # antes, a tela mostraria a lista com uma marcada e a anotação diria outra.
+        primeira = candidatas[0]
         achados.append(
             DiagramMatch(
                 page_index=int(entrada.page_index),
                 diagram_index=int(entrada.diagram_index),
-                move_number=int(lance),
-                side_to_move="w" if vez else "b",
-                headers={campo: partida.headers[campo] for campo in _KEPT_HEADERS if partida.headers.get(campo)},
+                move_number=primeira.move_number,
+                side_to_move=primeira.side_to_move,
+                headers=dict(primeira.headers),
                 games_matched=len({id(item[3]) for item in casamentos}),
-                game_label=partida.label,
+                game_label=primeira.label,
+                caption_confirmed=pela_legenda,
+                candidates=candidatas,
             )
         )
     return achados
+
+
+def kept_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    """Só os headers que descrevem a partida. O resto da base descreve a base."""
+    return {campo: headers[campo] for campo in _KEPT_HEADERS if headers.get(campo)}
+
+
+def _candidates_from_games(
+    matches: Sequence[tuple[str, int, bool, GameRecord]],
+    *,
+    max_hits: int = MAX_HITS_PER_POSITION,
+) -> tuple[PositionHit, ...]:
+    """As candidatas do caminho por nome, na mesma forma que as do caminho por posição (S-83).
+
+    A ordem é a de `PositionIndex.sort` -- data, jogadores, lance --, e pela mesma razão da
+    S-73: quem consome usa a primeira, e ela não pode depender da ordem em que a base guardou
+    as partidas.
+    """
+    vistas: dict[str, PositionHit] = {}
+    for _, lance, vez, partida in matches:
+        candidata = PositionHit(
+            move_number=int(lance), side_to_move="w" if vez else "b", headers=kept_headers(partida.headers)
+        )
+        vistas.setdefault(candidata.key, candidata)
+    ordenadas = sorted(
+        vistas.values(),
+        key=lambda hit: (
+            hit.headers.get("Date", "9999"),
+            hit.headers.get("White", ""),
+            hit.headers.get("Black", ""),
+            hit.move_number,
+        ),
+    )
+    return tuple(ordenadas[:max_hits])

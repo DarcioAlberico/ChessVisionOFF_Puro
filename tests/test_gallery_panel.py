@@ -16,10 +16,12 @@ from unittest import mock
 
 from chess_diagram_ocr.gallery import GalleryAnnotations, load_annotations
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
-from chess_diagram_ocr.games_db import DiagramMatch
+from chess_diagram_ocr.games_cache import CachedPosition, PositionCache
+from chess_diagram_ocr.games_db import DiagramMatch, PositionHit, PositionIndex
 from chess_diagram_ocr.ui import gallery_panel
 from chess_diagram_ocr.ui.gallery_model import GalleryModel
 from chess_diagram_ocr.ui.gallery_panel import GalleryPanel
+from chess_diagram_ocr.ui.games_dialog import GamesDialog
 
 PLACEMENT = "4k3/8/8/8/8/8/8/4K3"
 
@@ -214,7 +216,7 @@ class GalleryPanelTests(unittest.TestCase):
         não deixar acontecer de novo.
         """
         with (
-            mock.patch("chess_diagram_ocr.ui.gallery_panel.default_database_path", return_value=Path("base.pgn")),
+            mock.patch("chess_diagram_ocr.ui.gallery_panel.database_paths", return_value=[Path("base.pgn")]),
             mock.patch("chess_diagram_ocr.ui.gallery_panel.scan_by_players") as varredura,
         ):
             self.panel.search_database()
@@ -223,7 +225,7 @@ class GalleryPanelTests(unittest.TestCase):
 
     def test_sem_base_no_disco_a_aba_diz_onde_poe_la(self) -> None:
         with (
-            mock.patch("chess_diagram_ocr.ui.gallery_panel.default_database_path", return_value=None),
+            mock.patch("chess_diagram_ocr.ui.gallery_panel.database_paths", return_value=[]),
             mock.patch("chess_diagram_ocr.ui.gallery_panel.messagebox.showinfo") as aviso,
         ):
             self.panel.search_database()
@@ -292,6 +294,212 @@ class GalleryPanelTests(unittest.TestCase):
         self.assertEqual(self.panel.caption(), "primeira")
         self.panel._go(1)
         self.assertEqual(self.panel.caption(), "segunda")
+
+
+    # ------------------------------------ o botão e a janela de candidatas (S-86)
+    # A regra está no `gallery_model`; o que sobra aqui é o que só quebra com widget.
+
+    def _com_cache(self, *, count: int = 3) -> PositionHit:
+        partida = PositionHit(
+            move_number=24,
+            side_to_move="b",
+            headers={"White": "Karpov, Anatoly", "Black": "Korchnoi, Viktor", "Date": "1974.09.12"},
+        )
+        cache = PositionCache()
+        cache.positions[PLACEMENT] = CachedPosition(count=count, games=(partida,))
+        self.panel.model.position_cache = cache
+        self.panel.refresh(request_page=False)
+        return partida
+
+    def test_sem_cache_o_botao_fica_desligado(self) -> None:
+        """A lista é um caminho a mais, não uma pré-condição para anotar um livro."""
+        self.assertEqual(str(self.panel.btn_candidates["state"]), "disabled")
+
+    def test_o_botao_traz_a_contagem_verdadeira(self) -> None:
+        """Saber que há 47 candidatas **antes** de clicar muda o gesto de quem está anotando."""
+        self._com_cache(count=47)
+        self.assertEqual(str(self.panel.btn_candidates["state"]), "normal")
+        self.assertIn("(47)", self.panel.btn_candidates["text"])
+
+    def test_a_janela_lista_as_candidatas_e_diz_quantas_ficaram_de_fora(self) -> None:
+        self._com_cache(count=147)
+        dialogo = GamesDialog(self.host, model=self.panel.model, on_applied=self.status.append)
+        try:
+            self.assertEqual(len(dialogo.tree.get_children()), 1)
+            self.assertIn("1 de 147", dialogo.count_var.get())
+        finally:
+            dialogo.destroy()
+
+    def test_o_filtro_reduz_a_lista_sem_apagar_as_candidatas(self) -> None:
+        self._com_cache()
+        dialogo = GamesDialog(self.host, model=self.panel.model, on_applied=self.status.append)
+        try:
+            dialogo.filter_var.set("korchnoi")
+            self.assertEqual(len(dialogo.tree.get_children()), 1)
+            dialogo.filter_var.set("tartakower")
+            self.assertEqual(len(dialogo.tree.get_children()), 0)
+            dialogo.filter_var.set("")
+            self.assertEqual(len(dialogo.tree.get_children()), 1, "limpar o filtro traz tudo de volta")
+        finally:
+            dialogo.destroy()
+
+    def test_aplicar_grava_a_escolha_e_avisa(self) -> None:
+        partida = self._com_cache()
+        dialogo = GamesDialog(self.host, model=self.panel.model, on_applied=self.status.append)
+        try:
+            dialogo.apply_selected()
+        finally:
+            dialogo.destroy()
+        anotacao = self.panel.model.current_annotation
+        self.assertEqual(anotacao.move_number, 24)
+        self.assertEqual(anotacao.chosen_game, partida.key)
+        self.assertTrue(any("Karpov" in mensagem for mensagem in self.status))
+
+    def test_a_janela_avisa_quando_nao_ha_candidata(self) -> None:
+        with mock.patch.object(gallery_panel.messagebox, "showinfo") as aviso:
+            self.panel.open_games_dialog()
+        self.assertTrue(aviso.called, "silêncio faria o botão parecer quebrado")
+
+    # ------------------------------------------------ a busca pela posição (S-92)
+    # A varredura é do `games_db` e o preenchimento é do `gallery_model`. O que só quebra com
+    # widget é o que está aqui: não abrir 10,3 GB à toa, dizer o preço antes, e não gravar
+    # meia passada no cache.
+
+    def _base_no_disco(self) -> mock._patch:
+        return mock.patch.object(gallery_panel, "database_paths", return_value=[Path("base.pgn")])
+
+    def test_sem_base_no_disco_a_busca_por_posicao_diz_onde_poe_la(self) -> None:
+        with (
+            mock.patch.object(gallery_panel, "database_paths", return_value=[]),
+            mock.patch.object(gallery_panel.messagebox, "showinfo") as aviso,
+        ):
+            self.panel.search_by_position()
+        aviso.assert_called_once()
+        self.assertIn("pgn_database", str(aviso.call_args))
+        self.assertIn("mais de um", str(aviso.call_args), "a pasta aceita várias bases (S-93)")
+
+    def test_as_duas_bases_da_pasta_vao_para_a_varredura(self) -> None:
+        """O que a S-93 destrava na tela: a segunda gigabase deixa de ser invisível."""
+        bases = [Path("a.pgn"), Path("b.pgn")]
+        with (
+            mock.patch.object(gallery_panel, "database_paths", return_value=bases),
+            mock.patch.object(gallery_panel, "load_cache", return_value=PositionCache()),
+            mock.patch.object(gallery_panel, "scan_by_positions", return_value=PositionIndex()) as varredura,
+            mock.patch.object(gallery_panel, "save_cache"),
+            mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=True) as pergunta,
+            # A thread de verdade **não** pode subir aqui: fora do laço do Tk -- e num teste ele
+            # não roda -- o `after` da volta levanta, e a exceção de uma thread é relatada em
+            # qualquer teste que estiver correndo na hora. Foi assim que a suíte oscilou.
+            mock.patch.object(gallery_panel.threading, "Thread") as thread,
+        ):
+            self.panel.search_by_position()
+            # O mesmo trabalho, na thread do teste: os argumentos que iriam para a thread.
+            self.panel._positions_worker(*thread.call_args.kwargs["args"])
+        self.assertIn("2 arquivo(s)", str(pergunta.call_args))
+        self.assertEqual(varredura.call_args[0][0], bases, "as duas, e não a maior")
+
+    def test_livro_nao_varrido_nao_abre_a_base(self) -> None:
+        """Sem diagrama varrido não há posição para procurar, e a base tem 10,3 GB."""
+        self.panel.model = GalleryModel()
+        with (
+            self._base_no_disco(),
+            mock.patch.object(gallery_panel, "scan_by_positions") as varredura,
+            mock.patch.object(gallery_panel.messagebox, "showinfo") as aviso,
+        ):
+            self.panel.search_by_position()
+        varredura.assert_not_called()
+        aviso.assert_called_once()
+
+    def test_posicao_ja_perguntada_responde_do_cache_sem_abrir_a_base(self) -> None:
+        """O caso de todo livro que o `cvoff-games` já varreu: nada a perguntar, resposta na hora.
+
+        É o que impede a meia hora de ser paga duas vezes -- e o cache é por **posição**, então
+        um segundo livro que mostre os mesmos clássicos também não paga.
+        """
+        cache = PositionCache()
+        cache.positions[PLACEMENT] = CachedPosition(
+            count=1, games=(PositionHit(move_number=24, side_to_move="b", headers={"Event": "Linares"}),)
+        )
+        with (
+            self._base_no_disco(),
+            mock.patch.object(gallery_panel, "load_cache", return_value=cache),
+            mock.patch.object(gallery_panel, "scan_by_positions") as varredura,
+            mock.patch.object(gallery_panel.messagebox, "askokcancel") as pergunta,
+        ):
+            self.panel.search_by_position()
+        varredura.assert_not_called()
+        pergunta.assert_not_called()
+        self.assertEqual(self.panel.move_var.get(), "24")
+        self.assertIn("(1)", self.panel.btn_candidates["text"], "a lista de candidatas acende no mesmo gesto")
+
+    def test_a_caixa_diz_o_preco_e_recusar_nao_varre(self) -> None:
+        """Meia hora atrás de um botão que não avisa é uma janela travada."""
+        with (
+            self._base_no_disco(),
+            mock.patch.object(gallery_panel, "load_cache", return_value=PositionCache()),
+            mock.patch.object(gallery_panel, "scan_by_positions") as varredura,
+            mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=False) as pergunta,
+        ):
+            self.panel.search_by_position()
+        varredura.assert_not_called()
+        self.assertIn("meia hora", str(pergunta.call_args))
+
+    def test_a_resposta_da_base_vira_cache_gravado(self) -> None:
+        cache = PositionCache()
+        indice = PositionIndex(
+            hits={PLACEMENT: [PositionHit(move_number=24, side_to_move="b")]}, counts={PLACEMENT: 1}
+        )
+        with (
+            mock.patch.object(gallery_panel, "scan_by_positions", return_value=indice),
+            mock.patch.object(gallery_panel, "save_cache") as gravar,
+        ):
+            self.panel._positions_worker(Path("base.pgn"), cache, {PLACEMENT}, {PLACEMENT})
+        gravar.assert_called_once()
+        self.assertEqual(cache.positions[PLACEMENT].count, 1)
+
+    def test_a_posicao_sem_resposta_fica_registrada_como_perguntada(self) -> None:
+        """Senão ela volta ao alvo de toda varredura futura -- e são a maioria (S-84)."""
+        cache = PositionCache()
+        with (
+            mock.patch.object(gallery_panel, "scan_by_positions", return_value=PositionIndex()),
+            mock.patch.object(gallery_panel, "save_cache"),
+        ):
+            self.panel._positions_worker(Path("base.pgn"), cache, {PLACEMENT}, {PLACEMENT})
+        self.assertEqual(cache.positions[PLACEMENT].count, 0, "perguntada, e a base não conhece")
+
+    def test_cancelar_no_meio_nao_grava_nada(self) -> None:
+        """Meia base lida dá contagens que não valem -- ver `scan_by_positions`."""
+        cache = PositionCache()
+
+        def varrer(*_args: object, **kwargs: object) -> PositionIndex:
+            kwargs["cancel"].set()  # type: ignore[union-attr]
+            return PositionIndex()
+
+        with (
+            mock.patch.object(gallery_panel, "scan_by_positions", side_effect=varrer),
+            mock.patch.object(gallery_panel, "save_cache") as gravar,
+        ):
+            self.panel._positions_worker(Path("base.pgn"), cache, {PLACEMENT}, {PLACEMENT})
+        gravar.assert_not_called()
+        self.assertEqual(cache.positions, {}, "nem como perguntada: a pergunta não chegou a ser feita")
+
+    def test_cancelar_devolve_os_botoes_e_diz_que_nada_foi_gravado(self) -> None:
+        self.panel._busy(True)
+        self.assertEqual(str(self.panel.btn_positions["state"]), "disabled")
+        self.panel._positions_cancelled()
+        self.assertEqual(str(self.panel.btn_positions["state"]), "normal")
+        self.assertEqual(str(self.panel.btn_games["state"]), "normal")
+        self.assertTrue(any("nada foi gravado" in mensagem for mensagem in self.status))
+
+    def test_o_que_a_base_leu_aparece_na_barra_de_status(self) -> None:
+        cache = PositionCache()
+        cache.positions[PLACEMENT] = CachedPosition(
+            count=1, games=(PositionHit(move_number=24, side_to_move="b", headers={"Event": "Linares"}),)
+        )
+        self.panel._positions_done(cache, {PLACEMENT}, games_read=10_547_416)
+        self.assertEqual(self.panel.header_vars["Event"].get(), "Linares")
+        self.assertTrue(any("10.5 M partidas lidas" in mensagem for mensagem in self.status))
+        self.assertTrue(any("Nada foi sobrescrito" in mensagem for mensagem in self.status))
 
 
 @dataclass

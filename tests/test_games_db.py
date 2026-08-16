@@ -27,10 +27,12 @@ from chess_diagram_ocr.games_db import (
     PositionIndex,
     _scan_positions_chunk,
     chunk_bounds,
-    default_database_path,
+    database_paths,
     match_entries,
     match_positions,
+    occupancy,
     pair_from_caption,
+    rank_candidates,
     scan_by_players,
     scan_by_positions,
     surname,
@@ -83,11 +85,81 @@ def colocacao_apos(movetext: str, lances: int) -> tuple[str, int, bool]:
     return tabuleiro.board_fen(), tabuleiro.fullmove_number, tabuleiro.turn == chess.WHITE
 
 
+def _pedaco(colocacao: str) -> PositionIndex:
+    """O que um processo devolveria: uma partida com aquela posição."""
+    return PositionIndex(
+        hits={colocacao: [PositionHit(move_number=7, side_to_move="b")]},
+        counts={colocacao: 1},
+        games_read=1,
+    )
+
+
+class _PoolFalso:
+    """Um `mp.Pool` que só entrega pedaço quando perguntado com prazo (S-92).
+
+    Existe porque o que a S-92 acrescentou ao laço não é a varredura: é a **espera**. Um pool
+    de verdade sobre uma base de três partidas termina antes de o teste conseguir cancelar
+    nada, e o que ficaria coberto seria o caso em que o cancelamento não importa.
+    """
+
+    def __init__(self, *, entrega: PositionIndex, ao_esperar: object = None) -> None:
+        self.entrega = entrega
+        self._ao_esperar = ao_esperar
+        self.prazos: list[float | None] = []
+        self.terminado = False
+
+    def __enter__(self) -> _PoolFalso:
+        return self
+
+    def __exit__(self, *_excecao: object) -> bool:
+        return False
+
+    def imap_unordered(self, _funcao: object, _tarefas: object) -> _PoolFalso:
+        return self
+
+    def next(self, timeout: float | None = None) -> PositionIndex:  # noqa: A003 - o nome e do mp
+        self.prazos.append(timeout)
+        if self._ao_esperar is not None:
+            # O clique chegando **durante** a espera, que e como ele chega de verdade.
+            self._ao_esperar()
+            raise games_db.mp.TimeoutError
+        return self.entrega
+
+    def terminate(self) -> None:
+        self.terminado = True
+
+
 class NomesTests(unittest.TestCase):
     def test_sobrenome_ignora_o_nome_e_o_acento(self) -> None:
         self.assertEqual(surname("De Castellvi, Francisco"), "de castellvi")
         self.assertEqual(surname("Réti, Richard"), "reti")
         self.assertEqual(surname("Coull"), "coull")
+
+    def test_inicial_colada_do_livro_cai(self) -> None:
+        """S-90: é como o `400 Quebra-cabeças` escreve um terço das legendas dele.
+
+        Sem isto, `K. Spicak` não casava com `Spicak, Krzysztof` na base -- 109 dos 494 pares
+        do acervo (22,1%) nunca chegavam a ser procurados, e sem aviso nenhum.
+        """
+        self.assertEqual(surname("K. Spicak"), "spicak")
+        self.assertEqual(surname("De. Wagner"), "wagner")
+        self.assertEqual(surname("E. Mence"), "mence")
+        self.assertEqual(surname("A Hong"), "hong")
+
+    def test_a_particula_nao_e_inicial_e_sobrevive(self) -> None:
+        """`De` sem ponto e com duas letras é sobrenome, não abreviação. A regra separa os dois
+        pelo ponto e pelo tamanho -- e o `De Castellvi` acima é o caso que ela não pode quebrar."""
+        self.assertEqual(surname("De Castellvi"), "de castellvi")
+        self.assertEqual(surname("Van der Wiel, John"), "van der wiel")
+
+    def test_nome_que_e_so_uma_inicial_nao_vira_vazio(self) -> None:
+        """Vazio casaria com qualquer coisa, que é o oposto do que a normalização existe para
+        fazer. A guarda é o `len(tokens) > 1`."""
+        self.assertEqual(surname("K."), "k.")
+        self.assertEqual(surname("A"), "a")
+
+    def test_a_legenda_com_inicial_vira_par_procuravel(self) -> None:
+        self.assertEqual(pair_from_caption("Mosesov – De. Wagner"), ("mosesov", "wagner"))
 
     def test_par_sai_da_legenda_pelo_interpretador_da_s16(self) -> None:
         self.assertEqual(pair_from_caption("Coull - Stanciu\n3 b5 4 b6"), ("coull", "stanciu"))
@@ -138,12 +210,49 @@ class ScanTests(unittest.TestCase):
         # agir, e o que o teste garante é que a bandeira ligada não quebra a varredura.
         self.assertIn(("anderssen", "kieseritzky"), colhidas)
 
-    def test_a_base_padrao_e_o_maior_pgn_da_pasta(self) -> None:
-        (Path(self.pasta.name) / "torneio.pgn").write_text(PGN[:100], encoding="utf-8")
-        self.assertEqual(default_database_path(Path(self.pasta.name)), self.base)
+    def test_a_base_e_todo_pgn_da_pasta_e_nao_o_maior(self) -> None:
+        """Era "o maior", e o maior escondia o resto (S-93).
 
-    def test_pasta_sem_base_devolve_nada(self) -> None:
-        self.assertIsNone(default_database_path(Path(self.pasta.name) / "vazia"))
+        Nesta máquina eram duas gigabases, e a partida `Hutchings x Keene, 1973` -- procurada
+        por nome, por data e pelas 64 casas na maior -- estava na menor.
+        """
+        torneio = Path(self.pasta.name) / "torneio.pgn"
+        torneio.write_text(PGN[:100], encoding="utf-8")
+        self.assertEqual(database_paths(Path(self.pasta.name)), [self.base, torneio])
+
+    def test_a_ordem_e_por_nome_e_nao_por_tamanho(self) -> None:
+        """A ordem virou identidade: o índice grava a posição nesta lista como o número do
+        arquivo, e uma ordem que mudasse quando um arquivo crescesse faria cada offset apontar
+        para o arquivo errado."""
+        pasta = Path(self.pasta.name)
+        (pasta / "zz_pequena.pgn").write_text(PGN[:80], encoding="utf-8")
+        (pasta / "aa_grande.pgn").write_text(PGN * 5, encoding="utf-8")
+        nomes = [caminho.name for caminho in database_paths(pasta)]
+        self.assertEqual(nomes, ["aa_grande.pgn", "base.pgn", "zz_pequena.pgn"])
+
+    def test_pasta_sem_base_devolve_lista_vazia(self) -> None:
+        self.assertEqual(database_paths(Path(self.pasta.name) / "vazia"), [])
+
+    def test_varre_as_duas_bases_na_mesma_busca(self) -> None:
+        """O que a S-93 destrava: a segunda base da pasta era invisível."""
+        outra = Path(self.pasta.name) / "outra.pgn"
+        outra.write_text(
+            '[Event "Havana"]\n[White "Capablanca, Jose Raul"]\n[Black "Lasker, Emanuel"]\n'
+            f'[Result "1-0"]\n\n{IMORTAL} 1-0\n',
+            encoding="utf-8",
+        )
+        colhidas = scan_by_players(
+            [self.base, outra], [("anderssen", "kieseritzky"), ("capablanca", "lasker")]
+        )
+        self.assertEqual(len(colhidas[("anderssen", "kieseritzky")]), 2, "da primeira base")
+        self.assertEqual(len(colhidas[("capablanca", "lasker")]), 1, "da segunda, que antes era ignorada")
+
+    def test_o_teto_por_par_vale_para_o_conjunto_e_nao_por_arquivo(self) -> None:
+        """São 40 partidas para reproduzir, venham de onde vierem."""
+        outra = Path(self.pasta.name) / "outra.pgn"
+        outra.write_text(PGN, encoding="utf-8")
+        colhidas = scan_by_players([self.base, outra], [("anderssen", "kieseritzky")], max_games_per_pair=3)
+        self.assertEqual(len(colhidas[("anderssen", "kieseritzky")]), 3, "e não 3 por arquivo")
 
 
 class MatchTests(unittest.TestCase):
@@ -234,6 +343,21 @@ class PosicaoTests(unittest.TestCase):
         indice = scan_by_positions(self.base, {"8/8/8/8/8/8/8/K6k"}, workers=1)
         self.assertEqual(indice.hits, {})
 
+    def test_as_duas_bases_entram_na_mesma_varredura(self) -> None:
+        """Uma passada só sobre os dois arquivos, e a contagem soma as duas (S-93).
+
+        **Partida repetida nas duas bases conta duas vezes**, e isso não é defeito: são duas
+        partidas registradas, e o `max_games` que decide se preencher é honesto continua
+        medindo o que a base de fato tem. O efeito colateral é real e está declarado -- uma
+        posição que era "partida única" pode passar a ter duas candidatas iguais.
+        """
+        colocacao, _, _ = colocacao_apos(IMORTAL, 7)
+        outra = Path(self.pasta.name) / "outra.pgn"
+        outra.write_text(PGN, encoding="utf-8")
+        indice = scan_by_positions([self.base, outra], {colocacao}, workers=1)
+        self.assertEqual(indice.games_read, 6, "as três partidas de cada arquivo")
+        self.assertEqual(indice.counts[colocacao], 2)
+
     def test_alvo_vazio_nao_le_o_arquivo(self) -> None:
         self.assertEqual(scan_by_positions(self.base, set(), workers=1).games_read, 0)
 
@@ -262,11 +386,74 @@ class PosicaoTests(unittest.TestCase):
         varios = PositionIndex()
         for pedaco in chunk_bounds(self.base, 3):
             varios.merge(
-                _scan_positions_chunk((self.base, pedaco[0], pedaco[1], frozenset({colocacao}), 8)),
+                _scan_positions_chunk(
+                    (self.base, pedaco[0], pedaco[1], frozenset({colocacao}), frozenset({occupancy(colocacao)}), 8)
+                ),
                 max_hits=8,
             )
         self.assertEqual(varios.counts, um.counts)
         self.assertEqual(varios.games_read, um.games_read)
+
+    # ----------------------------------------------- o porteiro de ocupação (S-85)
+    # 3,6× medido, e o que estes quatro guardam é que ele não mudou uma resposta.
+
+    def test_a_ocupacao_lida_da_string_e_a_do_python_chess(self) -> None:
+        """É a garantia de que a conta de bits é a mesma que o `Board` mantém a cada lance --
+        e a numeração é a parte fácil de errar: a colocação escreve a oitava fila primeiro."""
+        for movetext, lances in ((IMORTAL, 7), (OUTRA, 4), (IMORTAL, 14)):
+            colocacao, _, _ = colocacao_apos(movetext, lances)
+            tabuleiro = chess.Board(None)
+            tabuleiro.set_board_fen(colocacao)
+            self.assertEqual(occupancy(colocacao), tabuleiro.occupied, colocacao)
+
+    def test_a_posicao_inicial_ocupa_as_quatro_filas_das_pontas(self) -> None:
+        inicial = chess.Board().board_fen()
+        self.assertEqual(occupancy(inicial), 0xFFFF00000000FFFF)
+
+    def test_o_porteiro_barra_o_que_nao_e_alvo_e_deixa_passar_o_alvo(self) -> None:
+        colocacao, _, _ = colocacao_apos(IMORTAL, 7)
+        partida = GameRecord(headers={"White": "A, A", "Black": "B, B"}, movetext=IMORTAL)
+        com = list(partida.positions(frozenset({occupancy(colocacao)})))
+        sem = list(partida.positions())
+        self.assertEqual(len(sem), 14, "sem porteiro, todo lance sai")
+        self.assertIn((colocacao, *com[0][1:]), com, "o alvo continua saindo")
+        self.assertLess(len(com), len(sem), "e o que não é alvo nem vira string")
+
+    def test_ocupacao_igual_com_pecas_diferentes_nao_e_casamento(self) -> None:
+        """O porteiro é filtro, não critério -- e este teste é o que garante isso.
+
+        Uma dama trocada por um bispo na mesma casa tem a **mesma** ocupação e passa pelo
+        porteiro; quem recusa é o `board_fen()` que vem depois, como sempre recusou. Se um dia
+        alguém "otimizar" comparando só a ocupação, este teste quebra.
+        """
+        colocacao, _, _ = colocacao_apos(IMORTAL, 7)
+        impostora = colocacao.replace("q", "b", 1) if "q" in colocacao else colocacao.replace("Q", "B", 1)
+        self.assertNotEqual(impostora, colocacao)
+        self.assertEqual(occupancy(impostora), occupancy(colocacao), "mesmas casas ocupadas")
+        indice = scan_by_positions(self.base, {impostora}, workers=1)
+        self.assertEqual(indice.hits, {}, "passou pelo porteiro e foi recusada pela colocação")
+
+    def test_a_varredura_com_porteiro_da_os_mesmos_casamentos(self) -> None:
+        """A prova de que a otimização não mudou a resposta: mesmos lances, mesmas contagens.
+
+        `positions()` sem porteiro é o caminho de antes da S-85; a varredura é a de agora.
+        """
+        for movetext, lances in ((IMORTAL, 7), (OUTRA, 4), (OUTRA, 6)):
+            colocacao, lance, vez = colocacao_apos(movetext, lances)
+            indice = scan_by_positions(self.base, {colocacao}, workers=1)
+            esperado = sum(
+                1
+                for partida in (
+                    GameRecord(movetext=IMORTAL),
+                    GameRecord(movetext=OUTRA),
+                    GameRecord(movetext=OUTRA),
+                )
+                for achada, _, _ in partida.positions()
+                if achada == colocacao
+            )
+            self.assertEqual(indice.counts.get(colocacao, 0), esperado, colocacao)
+            self.assertEqual(indice.hits[colocacao][0].move_number, lance)
+            self.assertEqual(indice.hits[colocacao][0].side_to_move, "w" if vez else "b")
 
     def test_dentro_de_um_processo_filho_nao_cria_outros(self) -> None:
         """A guarda contra a recursão do `spawn` (S-26) -- ela travou a máquina uma vez.
@@ -286,6 +473,53 @@ class PosicaoTests(unittest.TestCase):
         colocacao, _, _ = colocacao_apos(IMORTAL, 7)
         scan_by_positions(self.base, {colocacao}, workers=1)
         self.assertNotIn(WORKER_ENV, os.environ)
+
+    # ------------------------------------------------- o cancelamento (S-92)
+    # Com um pool de verdade estes três seriam corrida: a base tem três partidas e os pedaços
+    # terminam antes de qualquer clique. O que se verifica aqui não é a varredura -- é o que o
+    # laço faz **enquanto** ela não termina, que é onde o botão de cancelar vive.
+
+    def test_cancelar_descarta_a_passada_inteira(self) -> None:
+        """Meia base lida dá contagem que não vale, e a contagem decide se preencher é honesto.
+
+        Uma posição achada em um dos dez pedaços sairia daqui com `count=1` -- a marca de
+        partida única, que preenche tudo -- quando a base pode ter 47 partidas com ela.
+        """
+        colocacao, _, _ = colocacao_apos(IMORTAL, 7)
+        cancelar = threading.Event()
+        cancelar.set()
+        pool = _PoolFalso(entrega=_pedaco(colocacao))
+        with mock.patch.object(games_db.mp, "Pool", return_value=pool):
+            indice = scan_by_positions(self.base, {colocacao}, workers=4, cancel=cancelar)
+        self.assertEqual(indice.hits, {})
+        self.assertEqual(indice.counts, {})
+        self.assertTrue(pool.terminado, "os processos ficariam lendo a base depois do cancelamento")
+
+    def test_o_cancelamento_e_notado_enquanto_os_pedacos_rodam(self) -> None:
+        """Conferi-lo só entre pedaços concluídos seria esperar a passada dividida por dez."""
+        colocacao, _, _ = colocacao_apos(IMORTAL, 7)
+        cancelar = threading.Event()
+        pool = _PoolFalso(entrega=_pedaco(colocacao), ao_esperar=cancelar.set)
+        with mock.patch.object(games_db.mp, "Pool", return_value=pool):
+            indice = scan_by_positions(self.base, {colocacao}, workers=4, cancel=cancelar)
+        self.assertEqual(indice.counts, {}, "chegou depois de a espera começar, e ainda assim valeu")
+        self.assertTrue(pool.terminado)
+        self.assertEqual(pool.prazos, [games_db.CANCEL_POLL_SECONDS], "a espera tem de ter prazo")
+
+    def test_sem_cancelamento_o_laco_junta_todos_os_pedacos(self) -> None:
+        """O caminho normal: a espera com prazo não pode perder nem repetir pedaço."""
+        colocacao, _, _ = colocacao_apos(IMORTAL, 7)
+        pool = _PoolFalso(entrega=_pedaco(colocacao))
+        progresso: list[tuple[int, int]] = []
+        with mock.patch.object(games_db.mp, "Pool", return_value=pool):
+            indice = scan_by_positions(
+                self.base, {colocacao}, workers=4, progress=lambda feitos, total: progresso.append((feitos, total))
+            )
+        feitos, total = progresso[-1]
+        self.assertEqual(feitos, total, "o laço só termina quando todos os pedaços voltaram")
+        self.assertEqual(progresso, [(i, total) for i in range(1, total + 1)])
+        self.assertEqual(indice.counts[colocacao], total, "um de cada pedaço, somados")
+        self.assertFalse(pool.terminado)
 
     def test_a_ordem_das_partidas_nao_depende_de_qual_processo_terminou_antes(self) -> None:
         """Reprodutibilidade: quem consome usa a primeira partida da lista.
@@ -309,6 +543,139 @@ class PosicaoTests(unittest.TestCase):
         self.assertEqual(achado.move_number, lance)
         self.assertEqual(achado.games_matched, 1)
         self.assertIn("Anderssen", achado.game_label)
+
+    # -------------------------------------------- as candidatas que sobrevivem (S-83)
+
+    def test_a_posicao_ambigua_entrega_todas_as_candidatas(self) -> None:
+        """O que a S-83 conserta: a lista era calculada e o consumidor recebia um elemento.
+
+        Duas partidas da base atravessam a mesma abertura -- e são justamente esses os 373
+        diagramas do acervo em que o desempate por data escolhia sozinho.
+        """
+        colocacao, _, _ = colocacao_apos(OUTRA, 4)
+        indice = scan_by_positions(self.base, {colocacao}, workers=1)
+        entrada = GalleryEntry(0, 0, colocacao, caption="")
+        (achado,) = match_positions([entrada], indice)
+        self.assertEqual(achado.games_matched, 2)
+        self.assertEqual(len(achado.candidates), 2)
+        self.assertTrue(achado.ambiguous)
+        self.assertEqual(
+            {c.headers.get("Event") for c in achado.candidates},
+            {"Revanche", "Outro torneio"},
+            "as duas partidas, e não a vencedora duas vezes",
+        )
+
+    def test_a_primeira_candidata_e_a_resposta_do_casamento(self) -> None:
+        """A lista e os campos preenchidos têm de contar a mesma história: a tela vai mostrar
+        uma marcada como escolhida, e a anotação não pode dizer outra."""
+        colocacao, _, _ = colocacao_apos(OUTRA, 4)
+        indice = scan_by_positions(self.base, {colocacao}, workers=1)
+        (achado,) = match_positions([GalleryEntry(0, 0, colocacao, caption="")], indice)
+        self.assertEqual(achado.move_number, achado.candidates[0].move_number)
+        self.assertEqual(achado.side_to_move, achado.candidates[0].side_to_move)
+        self.assertEqual(achado.game_label, achado.candidates[0].label)
+
+    def test_a_chave_da_candidata_identifica_a_partida_e_nao_a_posicao_na_lista(self) -> None:
+        """É o que faz a escolha humana sobreviver a uma revarredura que reordene a lista.
+
+        O lance fica de fora: a mesma partida pode passar duas vezes pela mesma posição, e as
+        duas continuam sendo a mesma escolha.
+        """
+        cabecalho = {"White": "Anderssen, Adolf", "Black": "Kieseritzky, Lionel", "Date": "1851.06.21"}
+        primeira = PositionHit(move_number=12, side_to_move="w", headers=cabecalho)
+        repetida = PositionHit(move_number=30, side_to_move="w", headers=cabecalho)
+        outra = PositionHit(move_number=12, side_to_move="w", headers={**cabecalho, "Date": "1852.01.01"})
+        self.assertEqual(primeira.key, repetida.key)
+        self.assertNotEqual(primeira.key, outra.key)
+
+    def test_o_caminho_por_nome_entrega_candidatas_na_mesma_forma(self) -> None:
+        """Duas rotas, um tipo só de candidata -- senão a tela precisaria de dois códigos."""
+        colocacao, _, _ = colocacao_apos(OUTRA, 4)
+        partida = GameRecord(headers={"White": "A, A", "Black": "B, B", "Date": "1990.01.01"}, movetext=OUTRA)
+        segunda = GameRecord(headers={"White": "A, A", "Black": "B, B", "Date": "1980.01.01"}, movetext=OUTRA)
+        entrada = GalleryEntry(0, 0, colocacao, caption="A - B")
+        (achado,) = match_entries([entrada], {("a", "b"): [partida, segunda]})
+        self.assertEqual(len(achado.candidates), 2)
+        self.assertEqual(achado.candidates[0].headers["Date"], "1980.01.01", "a mais antiga primeiro")
+        self.assertEqual(achado.game_label, achado.candidates[0].label)
+
+    def test_a_mesma_partida_nao_vira_duas_candidatas(self) -> None:
+        """Uma repetição de posição faz a partida casar duas vezes; oferecer a mesma escolha
+        duas vezes não é oferecer duas escolhas."""
+        repeticao = "1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6"
+        partida = GameRecord(headers={"White": "A, A", "Black": "B, B"}, movetext=repeticao)
+        colocacao = colocacao_apos(repeticao, 2)[0]
+        entrada = GalleryEntry(0, 0, colocacao, caption="A - B")
+        (achado,) = match_entries([entrada], {("a", "b"): [partida]})
+        self.assertEqual(achado.games_matched, 1)
+        self.assertEqual(len(achado.candidates), 1)
+
+    def test_o_teto_de_candidatas_e_o_da_varredura(self) -> None:
+        self.assertEqual(games_db.MAX_HITS_PER_POSITION, 32, "8 era o teto de quando ninguém escolhia")
+
+
+class LegendaDesempataTests(unittest.TestCase):
+    """A S-91: onde a legenda nomeia uma candidata só, a data deixa de decidir."""
+
+    def _hit(self, brancas: str, pretas: str, data: str, lance: int = 20) -> PositionHit:
+        return PositionHit(
+            move_number=lance,
+            side_to_move="w",
+            headers={"White": brancas, "Black": pretas, "Date": data},
+        )
+
+    def setUp(self) -> None:
+        self.antiga = self._hit("Havasi, Kornel", "Tartakower, Saviely", "1929.01.01", lance=40)
+        self.citada = self._hit("Karpov, Anatoly", "Korchnoi, Viktor", "1974.09.12", lance=24)
+
+    def test_a_legenda_puxa_a_candidata_dela_para_a_frente(self) -> None:
+        ordenadas, so_uma = rank_candidates([self.antiga, self.citada], ("karpov", "korchnoi"))
+        self.assertEqual(ordenadas[0], self.citada, "a data escolheria a de 1929")
+        self.assertTrue(so_uma)
+
+    def test_a_ordem_das_cores_nao_e_exigida(self) -> None:
+        """O livro escreve "Coull - Stanciu" sem prometer quem tinha as brancas, e o
+        interpretador devolve os nomes na ordem em que aparecem."""
+        _, so_uma = rank_candidates([self.citada], ("korchnoi", "karpov"))
+        self.assertTrue(so_uma)
+
+    def test_legenda_que_bate_com_varias_nao_desempata_mas_ordena(self) -> None:
+        segunda = self._hit("Karpov, Anatoly", "Korchnoi, Viktor", "1978.07.07")
+        ordenadas, so_uma = rank_candidates([self.antiga, self.citada, segunda], ("karpov", "korchnoi"))
+        self.assertFalse(so_uma, "duas partidas do mesmo par não identificam qual")
+        self.assertEqual(ordenadas[:2], (self.citada, segunda), "mas as duas vêm na frente")
+        self.assertEqual(ordenadas[0].headers["Date"], "1974.09.12", "e entre elas, a mais antiga")
+
+    def test_legenda_que_nao_bate_com_nenhuma_nao_reordena_nem_descarta(self) -> None:
+        """**Ordena, não filtra.** 26,5% das legendas discordam da base mesmo em partida única
+        -- grafia, legenda do vizinho, o livro nomeando outra coisa. Filtrar por uma fonte que
+        erra um quarto das vezes tiraria a partida certa da lista."""
+        ordenadas, so_uma = rank_candidates([self.antiga, self.citada], ("gareev", "aitbayev"))
+        self.assertEqual(ordenadas, (self.antiga, self.citada), "a ordem por data, intacta")
+        self.assertFalse(so_uma)
+
+    def test_sem_legenda_o_resultado_e_o_de_antes(self) -> None:
+        ordenadas, so_uma = rank_candidates([self.antiga, self.citada], None)
+        self.assertEqual(ordenadas, (self.antiga, self.citada))
+        self.assertFalse(so_uma)
+
+    def test_o_casamento_marca_que_a_legenda_confirmou(self) -> None:
+        indice = PositionIndex()
+        indice.hits["x"] = [self.antiga, self.citada]
+        indice.counts["x"] = 2
+        entrada = GalleryEntry(0, 0, "x", caption="Karpov - Korchnoi")
+        (achado,) = match_positions([entrada], indice)
+        self.assertTrue(achado.caption_confirmed)
+        self.assertEqual(achado.move_number, 24, "o lance da partida que o livro cita")
+        self.assertEqual(achado.candidates[0], self.citada)
+
+    def test_sem_a_legenda_o_mesmo_casamento_cai_na_data(self) -> None:
+        indice = PositionIndex()
+        indice.hits["x"] = [self.antiga, self.citada]
+        indice.counts["x"] = 2
+        (achado,) = match_positions([GalleryEntry(0, 0, "x", caption="Diagrama 41")], indice)
+        self.assertFalse(achado.caption_confirmed)
+        self.assertEqual(achado.move_number, 40, "a mais antiga -- e é isto que erra 72,3%")
 
 
 class ComandoTests(unittest.TestCase):

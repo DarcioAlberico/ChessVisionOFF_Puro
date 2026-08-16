@@ -185,6 +185,17 @@ cvoff-games --book "Karpov" --names       # so o caminho por nome: ~150 s, alcan
 cvoff-sides
 cvoff-sides --ocr rapidocr --json docs/metrics/sides_com_ocr.json
 
+# Censo de deteccao (S-82): o que o detector ACEITA no acervo, contado por livro. Nao
+# carrega modelo e nao pede rotulo humano -- e distribuicao, nao acuracia. Existe porque
+# o projeto media leitura e nao media deteccao, e foi assim que o glifo de cavalo do
+# cabecalho do "Secrets" entrou como diagrama em 71 paginas sem aparecer em relatorio
+# nenhum. Ver docs/ANALISE_DETECCAO.md.
+cvoff-census --csv docs/metrics/deteccao_base.csv
+cvoff-census --pdf "PDF/1937 Kemeri.pdf" --all-pages
+# O comando que decide se uma mudanca em deteccao presta: o que sumiu, e algum dos que
+# sumiram era diagrama de verdade? --fail-on-loss transforma isso em portao.
+cvoff-census --csv nova.csv --baseline docs/metrics/deteccao_base.csv --fail-on-loss
+
 # Grade de experimentos de arquitetura (S-29): canais, resolucao, cabeca, backbone.
 # Cada variante treina do zero com a mesma semente e e comparada no split 'val'
 # -- nunca no 'test', que fica para a confirmacao final da vencedora.
@@ -237,16 +248,39 @@ integracoes abaixo sao desligadas por padrao e nao afetam o reconhecimento.
 
 ### Base de partidas (S-72/S-73)
 
-Um `.pgn` que voce poe em `pgn_database/`. Com ele, a Galeria preenche **numero do lance, vez
-a jogar e headers** dos diagramas cuja posicao aparece numa partida registrada -- e a vez a
-jogar deixa de ser o palpite que a Fase 3 registrou como palpite.
+Um ou mais `.pgn` que voce poe em `pgn_database/`. Com eles, a Galeria preenche **numero do
+lance, vez a jogar e headers** dos diagramas cuja posicao aparece numa partida registrada -- e
+a vez a jogar deixa de ser o palpite que a Fase 3 registrou como palpite.
 
-E **local**: o arquivo e lido do disco, nada e consultado na rede. Sem ele, o botao "Buscar na
-base" diz onde por um e o resto do produto segue igual.
+**Todos os arquivos da pasta entram nas buscas (S-93).** Ate aqui era so o maior, e o custo
+disso foi medido: numa pasta com duas gigabases, as 10,3 M partidas da segunda nunca eram
+consultadas -- e a partida procurada estava la. Acrescentar um `.pgn` invalida o indice por
+nome e o cache de posicoes, que avisam como refazer:
+
+```bash
+cvoff-games --build-index     # o indice por nome, sobre todas as bases da pasta
+```
+
+E **local**: o arquivo e lido do disco, nada e consultado na rede. Sem ele, os botoes "Buscar
+por nome" e "Buscar pela posicao" dizem onde por um e o resto do produto segue igual.
 
 Medido numa base de 10.547.416 partidas, no `Secrets of Chess Training` (1.408 diagramas):
-**61 diagramas** pelo caminho por nome (~150 s) e **581** pelo caminho por posicao (~104 min).
-O caminho por posicao e comando de linha (`cvoff-games --positions`), nao botao.
+**61 diagramas** pelo caminho por nome (~150 s) e **581** pelo caminho por posicao (~29 min
+desde a S-85, eram 104).
+
+Com as duas gigabases da pasta (18,9 GB, 20.902.903 partidas), medido em 2026-08-16 sobre os
+mesmos 4 livros: os casamentos por posicao vao de **1.641 para 2.104** em 3.563 diagramas
+(46,1% -> 59,1%), e a passada custa **56 min**. O preco esta declarado no plano: 981 diagramas
+deixaram de ser "partida unica", e **63,5% disso e a mesma partida repetida nas duas bases**.
+
+Os dois caminhos sao botao da Galeria e comando de linha. O por nome usa o que a legenda
+declara; o por posicao (S-92) pergunta pelas **64 casas lidas** e por isso alcanca diagrama
+sem nome nenhum impresso -- 53,9% do acervo, onde a legenda nao tinha o que oferecer. Ele
+custa uma passada pelo arquivo inteiro, avisa disso antes, mostra em que pedaco esta e da para
+cancelar. A resposta fica em `data/games_positions.json`: a segunda vez custa segundos, e um
+livro novo custa so as posicoes que ele trouxer. Cancelar no meio **descarta a passada
+inteira** -- meia base lida da contagens que nao valem, e e a contagem que decide se preencher
+um header e honesto.
 
 ### Correcao remota de FEN ("Corrigir Net")
 
@@ -538,10 +572,28 @@ Duas checagens distintas, e confundi-las causava rotulos corrompidos no dataset:
   impossiveis, como duas damas brancas sem rei.
 - `check_position(fen)` -- aplica as regras do xadrez. Classifica os problemas em:
   - **fatais**, independentes do lado a jogar (rei faltando, pecas demais, peao na
-    primeira fila). Sao erro real de reconhecimento e ficam fora do treino.
+    primeira fila). Quase sempre sao erro real de reconhecimento, e ficam fora do treino.
   - **de turno**, que dependem de quem joga. Num diagrama de livro o lado a jogar nao
     esta na imagem e e preenchido como "brancas"; quando isso torna a posicao ilegal,
     quase sempre significa que era a vez das pretas. As pecas estao certas.
+
+**"Quase sempre", e nao "sempre".** Um livro nao e feito so de posicoes jogaveis: um
+capitulo sobre estrutura de peoes desenha o esqueleto sem rei nenhum, um estudo de final
+mostra tres pecas, um tabuleiro vazio ilustra as coordenadas. Ler qualquer um desses
+**corretamente** produz uma FEN fatalmente ilegal, e ate a fase anterior o programa se
+recusava a grava-la -- perdendo justamente o rotulo certo.
+
+Hoje ele pergunta, em vez de recusar. Salvar uma posicao fatalmente ilegal abre uma caixa
+que diz o problema e as casas culpadas; **"sim"** grava a linha com a coluna `illegal_ok`
+marcada, e **"nao"** cancela sem gravar nada. Quem sabe de qual dos dois casos se trata e
+a pessoa que esta com o PDF aberto do lado.
+
+A marca vale para o arquivo inteiro, e nao so para a caixa de dialogo: a amostra marcada
+**entra no treino** (o classificador le casa a casa, e as 64 casas de um diagrama de
+estrutura estao rotuladas certas), o `cvoff-audit` a lista a parte em vez de chama-la de
+problema, e o `cvoff-audit --fix` nao a manda para a quarentena. Sem isso, o "sim" seria
+uma pergunta sem consequencia: o comando seguinte tiraria a linha do arquivo. Corrigir o
+rotulo depois, ja com os dois reis no lugar, limpa a marca sozinho.
 
 ## Dados e artefatos
 

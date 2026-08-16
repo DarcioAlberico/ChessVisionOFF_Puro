@@ -33,16 +33,21 @@ from PIL import Image, ImageTk
 from chess_diagram_ocr.config import DEFAULT_READING_ORDER
 from chess_diagram_ocr.gallery import load_annotations
 from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
+from chess_diagram_ocr.games_cache import PositionCache, load_cache, save_cache
 from chess_diagram_ocr.games_db import (
     DEFAULT_DATABASE_DIR,
     DiagramMatch,
-    default_database_path,
+    database_paths,
     match_entries,
+    match_positions,
     scan_by_players,
+    scan_by_positions,
 )
+from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
 from chess_diagram_ocr.service import OcrService
 
 from .gallery_model import HEADER_FIELDS, GalleryModel, describe_origin
+from .games_dialog import GamesDialog
 from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
@@ -63,6 +68,14 @@ jogador ou o ano."""
 
 LINK_CHOICES = (("padrão", ""), ("com link", "sim"), ("sem link", "não"))
 """Tri-estado na tela, igual ao do arquivo. "padrão" é o que a exportação decidir."""
+
+_SEM_BASE = (
+    f"Nenhum arquivo .pgn em {DEFAULT_DATABASE_DIR}.\n\n"
+    "A base é sua e fica fora do repositório -- ponha um .pgn nessa pasta. Pode ser mais de um: "
+    "desde a S-93 todos os .pgn da pasta entram nas buscas."
+)
+"""O aviso de quem não tem base. Um só, porque os dois botões dizem a mesma coisa -- e duas
+cópias do mesmo texto divergem na primeira vez que uma delas for corrigida."""
 
 
 class GalleryPanel(ttk.Frame):
@@ -126,12 +139,22 @@ class GalleryPanel(ttk.Frame):
         self.btn_scan.pack(side=tk.LEFT)
         self.btn_cancel = ttk.Button(topo, text="Cancelar", command=self.cancel_scan, state=tk.DISABLED)
         self.btn_cancel.pack(side=tk.LEFT, padx=6)
-        self.btn_games = ttk.Button(topo, text="Buscar na base", command=self.search_database)
+        # Os dois caminhos, lado a lado e com o criterio no proprio rotulo: "na base" nao
+        # distinguia mais nada depois que a busca por posicao virou botao tambem (S-92).
+        self.btn_games = ttk.Button(topo, text="Buscar por nome", command=self.search_database)
         self.btn_games.pack(side=tk.LEFT, padx=6)
         Tooltip(self.btn_games).set_text(
             "Procura na base de partidas os diagramas cuja legenda traz os jogadores, e "
             "preenche lance, vez e headers -- só onde estiver vazio. Uma passada pela base, "
             "e nada sai da máquina."
+        )
+        self.btn_positions = ttk.Button(topo, text="Buscar pela posição", command=self.search_by_position)
+        self.btn_positions.pack(side=tk.LEFT, padx=6)
+        Tooltip(self.btn_positions).set_text(
+            "Procura pelas 64 casas de cada diagrama, e não pela legenda: alcança todo diagrama, "
+            "inclusive os sem nome nenhum impresso. Reproduz os lances da base inteira -- cerca "
+            "de meia hora na primeira vez, segundos nas seguintes, porque a resposta fica "
+            "guardada. Dá para cancelar."
         )
         ttk.Label(topo, textvariable=self.scan_var).pack(side=tk.LEFT, padx=10)
 
@@ -244,10 +267,21 @@ class GalleryPanel(ttk.Frame):
             row=livre + 4, column=0, columnspan=2, sticky="w", pady=(8, 0)
         )
 
+        # A lista de partidas fica **junto da procedencia**: as duas respondem "de onde veio
+        # isto?", e a lista e o unico caminho para os 350 diagramas do acervo em que a base
+        # sabe a resposta e nenhuma regra sabe qual das candidatas e (S-86).
+        self.btn_candidates = ttk.Button(lateral, text="Partidas da base", command=self.open_games_dialog)
+        self.btn_candidates.grid(row=livre + 5, column=0, columnspan=2, sticky="we", pady=(8, 0))
+        self.btn_candidates.configure(state=tk.DISABLED)
+        Tooltip(self.btn_candidates).set_text(
+            "As partidas da base que contêm esta posição. Escolher uma preenche lance, vez e "
+            "headers, e a escolha fica registrada -- uma nova busca na base não a desfaz."
+        )
+
         # O rotulo diz a **direcao** da copia. "Aplicar a todos" foi lido como "salvar os
         # headers deste diagrama" -- e o clique espalhou quatro campos por 1.405 diagramas.
         aplicar = ttk.Button(lateral, text="Copiar headers para todos", command=self.apply_to_all)
-        aplicar.grid(row=livre + 5, column=0, columnspan=2, sticky="we", pady=(10, 0))
+        aplicar.grid(row=livre + 6, column=0, columnspan=2, sticky="we", pady=(10, 0))
         Tooltip(aplicar).set_text(
             "Copia os headers deste diagrama para TODOS os outros do livro, sobrescrevendo o "
             "que eles tiverem nesses campos. Os campos já se salvam sozinhos ao sair deles -- "
@@ -255,7 +289,7 @@ class GalleryPanel(ttk.Frame):
         )
 
         self.btn_undo = ttk.Button(lateral, text="Desfazer a cópia", command=self.undo_apply_to_all)
-        self.btn_undo.grid(row=livre + 6, column=0, columnspan=2, sticky="we", pady=(4, 0))
+        self.btn_undo.grid(row=livre + 7, column=0, columnspan=2, sticky="we", pady=(4, 0))
         self.btn_undo.configure(state=tk.DISABLED)
         Tooltip(self.btn_undo).set_text(
             "Remove dos outros diagramas os valores que a última cópia espalhou. "
@@ -288,6 +322,18 @@ class GalleryPanel(ttk.Frame):
 
     # ------------------------------------------------------------------------ varredura
 
+    def _busy(self, busy: bool) -> None:
+        """Liga e desliga os três botões que disputam a única thread longa desta aba.
+
+        Eram três blocos de `configure` repetidos em seis lugares, e a S-92 traria o quarto.
+        O que o `_scanning` já garantia -- que uma busca não começa em cima de outra -- passa a
+        aparecer na tela: um botão que não pode ser clicado agora **parece** que não pode.
+        """
+        estado = tk.DISABLED if busy else tk.NORMAL
+        for botao in (self.btn_scan, self.btn_games, self.btn_positions):
+            botao.configure(state=estado)
+        self.btn_cancel.configure(state=tk.NORMAL if busy else tk.DISABLED)
+
     def scan(self) -> None:
         """Varre o livro inteiro. É a operação longa desta aba, e roda em thread."""
         if self._scanning:
@@ -299,13 +345,17 @@ class GalleryPanel(ttk.Frame):
 
         self._scanning = True
         self._cancel.clear()
-        self.btn_scan.configure(state=tk.DISABLED)
-        self.btn_cancel.configure(state=tk.NORMAL)
+        self._busy(True)
         self.scan_var.set("varrendo...")
         threading.Thread(target=self._scan_worker, args=(caminho,), daemon=True).start()
 
     def cancel_scan(self) -> None:
-        """Cancelar não descarta o que já foi varrido -- ver `build_gallery_index`."""
+        """Cancela a operação longa em curso -- e o que se perde depende de qual é ela.
+
+        A varredura do livro não descarta o que já leu (ver `build_gallery_index`), e a busca
+        por posição **descarta a passada inteira** (ver `scan_by_positions`): meia base lida dá
+        contagens que não valem, e é a contagem que decide se preencher é honesto.
+        """
         self._cancel.set()
         self.scan_var.set("cancelando...")
 
@@ -336,8 +386,7 @@ class GalleryPanel(ttk.Frame):
 
     def _scan_done(self, caminho: Path, indice: object) -> None:
         self._scanning = False
-        self.btn_scan.configure(state=tk.NORMAL)
-        self.btn_cancel.configure(state=tk.DISABLED)
+        self._busy(False)
         self.load_pdf(caminho)
         cancelada = " (cancelada)" if self._cancel.is_set() else ""
         self.scan_var.set(f"{len(self.model)} diagrama(s){cancelada}")
@@ -345,8 +394,7 @@ class GalleryPanel(ttk.Frame):
 
     def _scan_failed(self, exc: Exception) -> None:
         self._scanning = False
-        self.btn_scan.configure(state=tk.NORMAL)
-        self.btn_cancel.configure(state=tk.DISABLED)
+        self._busy(False)
         self.scan_var.set("falhou")
         messagebox.showerror("Galeria", f"Não foi possível varrer o livro:\n{exc}")
 
@@ -355,22 +403,21 @@ class GalleryPanel(ttk.Frame):
     def search_database(self) -> None:
         """Procura na base de partidas o que as legendas deste livro nomeiam.
 
-        **Uma passada por livro, não por diagrama.** A base tem 9,7 GB e ler tudo custa ~150 s;
-        os pares de nomes vão todos juntos, e a resposta sai para os 178 de uma vez. Perguntar
-        por diagrama custaria os mesmos 150 s cada -- é a economia da S-61, aqui de novo.
+        **Uma passada por livro, não por diagrama.** Ler a base inteira custa ~150 s por
+        gigabase; os pares de nomes vão todos juntos, e a resposta sai para os 178 de uma vez.
+        Perguntar por diagrama custaria os mesmos 150 s cada -- é a economia da S-61, de novo.
+
+        **Todos os `.pgn` da pasta (S-93)**, e não o maior deles: a busca custa uma passada por
+        arquivo, e a partida procurada costuma estar justamente no que ficava de fora.
         """
         if self._scanning:
             return
         if self.model.is_empty:
             messagebox.showinfo("Base de partidas", "Varra o livro antes: a busca usa as legendas dos diagramas.")
             return
-        base = default_database_path()
-        if base is None:
-            messagebox.showinfo(
-                "Base de partidas",
-                f"Nenhum arquivo .pgn em {DEFAULT_DATABASE_DIR}.\n\n"
-                "A base é sua e fica fora do repositório -- ponha um .pgn nessa pasta.",
-            )
+        bases = database_paths()
+        if not bases:
+            messagebox.showinfo("Base de partidas", _SEM_BASE)
             return
         pares = self.model.pending_pairs()
         if not pares:
@@ -379,16 +426,14 @@ class GalleryPanel(ttk.Frame):
 
         self._scanning = True
         self._cancel.clear()
-        self.btn_scan.configure(state=tk.DISABLED)
-        self.btn_games.configure(state=tk.DISABLED)
-        self.btn_cancel.configure(state=tk.NORMAL)
-        self.scan_var.set(f"procurando {len(pares)} par(es) na base...")
-        threading.Thread(target=self._search_worker, args=(base, pares), daemon=True).start()
+        self._busy(True)
+        self.scan_var.set(f"procurando {len(pares)} par(es) em {len(bases)} base(s)...")
+        threading.Thread(target=self._search_worker, args=(bases, pares), daemon=True).start()
 
-    def _search_worker(self, base: Path, pares: set[tuple[str, str]]) -> None:
+    def _search_worker(self, bases: list[Path], pares: set[tuple[str, str]]) -> None:
         try:
             partidas = scan_by_players(
-                base,
+                bases,
                 pares,
                 progress=self._search_progress,
                 cancel=self._cancel,
@@ -405,9 +450,7 @@ class GalleryPanel(ttk.Frame):
 
     def _search_done(self, casamentos: list[DiagramMatch], pares_achados: int) -> None:
         self._scanning = False
-        self.btn_scan.configure(state=tk.NORMAL)
-        self.btn_games.configure(state=tk.NORMAL)
-        self.btn_cancel.configure(state=tk.DISABLED)
+        self._busy(False)
 
         relatorio = self.model.apply_matches(casamentos)
         self._persist()
@@ -421,11 +464,182 @@ class GalleryPanel(ttk.Frame):
 
     def _search_failed(self, exc: Exception) -> None:
         self._scanning = False
-        self.btn_scan.configure(state=tk.NORMAL)
-        self.btn_games.configure(state=tk.NORMAL)
-        self.btn_cancel.configure(state=tk.DISABLED)
+        self._busy(False)
         self.scan_var.set("falhou")
         messagebox.showerror("Base de partidas", f"Não foi possível ler a base:\n{exc}")
+
+    # ------------------------------------------------- busca pela posição (S-92)
+
+    def search_by_position(self) -> None:
+        """Procura na base as **posições** deste livro -- todas, numa passada só (S-92).
+
+        **O que ela alcança, e o caminho por nome não.** A busca por nome depende de a legenda
+        trazer os dois jogadores, e a maioria não traz: no acervo medido, 53,9% dos diagramas
+        não casaram com partida nenhuma, e um diagrama de exercício costuma vir sem nome
+        impresso. Aqui a pergunta são as **64 casas lidas**, que todo diagrama tem.
+
+        **Por que o livro inteiro, e não este diagrama.** O custo é da passada pela base, não do
+        alvo: o conjunto-alvo cabe na memória sejam 1.400 posições ou 40 mil. Perguntar por uma
+        posição custaria os mesmos ~30 min por gigabase que perguntar pelas 1.400 -- é a
+        economia da S-61 e da S-73, aqui de novo. Desde a S-93 são **todos** os `.pgn` da pasta
+        na mesma passada, então o relógio anda com o tamanho da pasta.
+
+        **E o preço é dito antes.** Meia hora atrás de um botão que não avisa é uma janela
+        travada; a caixa diz quantas posições faltam, quanto custa e que a resposta fica
+        guardada. Se nada faltar, a base **não é aberta** e a resposta sai do cache na hora --
+        que é o caso de todo livro já varrido pelo `cvoff-games`.
+        """
+        if self._scanning:
+            return
+        if self.model.is_empty:
+            messagebox.showinfo("Base de partidas", "Varra o livro antes: a busca usa as posições dos diagramas.")
+            return
+        bases = database_paths()
+        if not bases:
+            messagebox.showinfo("Base de partidas", _SEM_BASE)
+            return
+
+        alvos = {entrada.placement for entrada in self.model.index.entries if entrada.placement}
+        cache = load_cache(database=bases)
+        faltando = cache.missing(alvos)
+        if not faltando:
+            self._positions_done(cache, alvos, games_read=0)
+            return
+        if not messagebox.askokcancel(
+            "Base de partidas",
+            f"{len(faltando)} das {len(alvos)} posições deste livro nunca foram perguntadas à "
+            f"base ({len(bases)} arquivo(s) .pgn).\n\n"
+            "Procurá-las custa uma passada pelos arquivos inteiros, reproduzindo os lances de "
+            "milhões de partidas: cerca de meia hora por gigabase. As outras posições já saem "
+            "do cache.\n\n"
+            "A resposta fica guardada -- da próxima vez isto responde em segundos, e um livro "
+            "novo custa só as posições que ele trouxer.\n\n"
+            "Dá para cancelar no meio, mas aí a passada é descartada inteira: meia base lida "
+            "dá contagens que não valem.",
+        ):
+            return
+
+        self._scanning = True
+        self._cancel.clear()
+        self._busy(True)
+        self.scan_var.set(f"base: {len(faltando)} posição(ões) a procurar...")
+        threading.Thread(
+            target=self._positions_worker, args=(bases, cache, alvos, faltando), daemon=True
+        ).start()
+
+    def _positions_worker(
+        self, bases: list[Path], cache: PositionCache, alvos: set[str], faltando: set[str]
+    ) -> None:
+        try:
+            indice = scan_by_positions(bases, faltando, progress=self._positions_progress, cancel=self._cancel)
+            if self._cancel.is_set():
+                self.after(0, self._positions_cancelled)
+                return
+            # `faltando` inteiro, e nao so as posicoes que casaram: uma posicao que a base nao
+            # conhece precisa ficar registrada como **perguntada**, senao ela volta ao alvo de
+            # toda busca futura -- e no acervo medido essas sao a maioria (S-84).
+            cache.update(indice, faltando)
+            save_cache(cache)
+            self.after(0, partial(self._positions_done, cache, alvos, indice.games_read))
+        except Exception as exc:  # noqa: BLE001 - a base e de terceiro e o arquivo e enorme
+            logger.exception("Busca por posição falhou.")
+            self.after(0, partial(self._search_failed, exc))
+
+    def _positions_progress(self, feitos: int, total: int) -> None:
+        """Vem da thread da busca; a `StringVar` só pode ser tocada pelo laço do Tk."""
+        self.after(0, lambda: self.scan_var.set(f"base: pedaço {feitos} de {total}..."))
+
+    def _positions_done(self, cache: PositionCache, alvos: set[str], games_read: int) -> None:
+        """Aplica o que a base respondeu e **deixa o cache em pé** para a lista de candidatas.
+
+        Trocar `model.position_cache` é o que faz o botão "Partidas da base" acender no mesmo
+        gesto: a varredura acabou de descobrir as candidatas de cada diagrama, e mandar a pessoa
+        reabrir o livro para vê-las seria esconder o que ela pagou meia hora para ter.
+        """
+        self._scanning = False
+        self._busy(False)
+        self.model.position_cache = cache
+
+        casamentos = match_positions(self.model.index.entries, cache.to_index(alvos))
+        relatorio = self.model.apply_matches(casamentos)
+        self._persist()
+        self.refresh(request_page=False)
+        self.scan_var.set(f"{len(casamentos)} diagrama(s) casado(s) por posição")
+        if not games_read:
+            origem = "sem abrir a base (tudo do cache)"
+        elif games_read >= 1_000_000:
+            origem = f"{games_read / 1e6:.1f} M partidas lidas"
+        else:
+            # Uma base pequena lida em "0,0 M" pareceria uma varredura que nao leu nada.
+            origem = f"{games_read} partidas lidas"
+        self._on_status(
+            f"Base por posição: {origem}, {relatorio.confirmed} leitura(s) confirmada(s), "
+            f"{relatorio.fields} campo(s) preenchido(s) em {relatorio.touched} diagrama(s). "
+            "Nada foi sobrescrito."
+        )
+
+    def _positions_cancelled(self) -> None:
+        """Cancelou: **nada** é gravado, e a tela diz isso em vez de deixar parecer que gravou."""
+        self._scanning = False
+        self._busy(False)
+        self.scan_var.set("cancelada")
+        self._on_status(
+            "Busca por posição cancelada. Uma passada interrompida viu parte da base, e as "
+            "contagens dela não valem -- nada foi gravado no cache."
+        )
+
+    # ------------------------------------------------------- a lista de candidatas (S-86)
+
+    def open_games_dialog(self) -> None:
+        """Abre a lista de partidas que contêm a posição deste diagrama.
+
+        **Lê o cache, não a base.** É o que faz disto um clique e não uma janela travada por
+        meia hora: a varredura já respondeu, e a resposta está em `data/games_positions.json`.
+        """
+        candidatas, _total = self.model.current_candidates()
+        # Sem candidata a janela ainda abre **se a legenda nomeia os jogadores**: e o caminho
+        # da S-87, e ele alcanca os 1.922 diagramas do acervo (53,9%) cuja posicao nao casou.
+        if not candidatas and self.model.current_caption_pair() is None:
+            messagebox.showinfo(
+                "Partidas da base",
+                "Nenhuma partida da base contém esta posição, e a legenda não nomeia os dois "
+                "jogadores para procurar por nome.\n\n"
+                'Se este livro nunca foi perguntado à base pela posição, o botão "Buscar pela '
+                'posição" faz isso -- ou, para o acervo inteiro de uma vez:  cvoff-games --all',
+            )
+            return
+        GamesDialog(self, model=self.model, on_applied=self._candidate_applied)
+
+    def _candidate_applied(self, mensagem: str) -> None:
+        """Volta da janela de candidatas: grava, redesenha e conta o que houve."""
+        self._persist()
+        self.refresh(request_page=False)
+        self._on_status(mensagem)
+
+    def _load_position_cache(self) -> None:
+        """Carrega o cache de posições, se houver. Falha em silêncio -- ele é opcional.
+
+        Sem cache o botão fica desligado e o resto da aba funciona igual: a lista é um caminho
+        a mais, e não uma pré-condição para anotar um livro.
+        """
+        try:
+            self.model.position_cache = load_cache(database=database_paths())
+        except Exception:  # noqa: BLE001 - cache e material derivado; sem ele a aba segue
+            logger.exception("Não foi possível ler o cache de posições.")
+            self.model.position_cache = None
+
+    def _refresh_candidates_button(self) -> None:
+        candidatas, total = self.model.current_candidates()
+        if not candidatas:
+            pode_por_nome = self.model.current_caption_pair() is not None
+            self.btn_candidates.configure(
+                text="Procurar por nome" if pode_por_nome else "Partidas da base",
+                state=tk.NORMAL if pode_por_nome else tk.DISABLED,
+            )
+            return
+        # O numero no botao e o que faz a pessoa saber que ha o que escolher **antes** de
+        # clicar: um diagrama com 47 candidatas e um com uma so pedem gestos diferentes.
+        self.btn_candidates.configure(text=f"Partidas da base ({total})", state=tk.NORMAL)
 
     # ------------------------------------------------------------------------ ciclo de vida
 
@@ -449,7 +663,12 @@ class GalleryPanel(ttk.Frame):
             # varredura fazia o número digitado lá sumir num livro nunca varrido.
             annotations=load_annotations(pdf_path),
             pdf_path=pdf_path,
+            database_paths=tuple(database_paths()),
+            index_path=DEFAULT_INDEX_PATH,
         )
+        # O cache é do acervo, não do livro: ele é lido uma vez por troca de PDF porque uma
+        # varredura pode ter rodado no meio da sessão, e é barato (2,2 MB para 3.143 posições).
+        self._load_position_cache()
         if indice is None:
             self.scan_var.set("livro ainda não varrido")
         self.refresh(request_page=request_page)
@@ -622,6 +841,7 @@ class GalleryPanel(ttk.Frame):
             variavel.set(anotacao.headers.get(nome, ""))
         self.origin_var.set(describe_origin(anotacao))
         self._set_caption(atual.caption if atual else "")
+        self._refresh_candidates_button()
 
         if request_page and atual is not None:
             # A guarda evita o circulo: o visualizador avisa de volta que a pagina mudou.

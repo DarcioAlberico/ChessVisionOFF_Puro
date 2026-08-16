@@ -112,6 +112,39 @@ class DiagramAnnotation:
     Guarda a partida quando ela é única, e a contagem quando não é.
     """
 
+    chosen_game: str = ""
+    """A partida que **uma pessoa** escolheu na lista de candidatas (S-86).
+
+    Guarda a chave da partida -- `White|Black|Date|Round|Event` --, e não o índice dela na
+    lista: a ordem muda quando a base muda, e "a terceira" apontaria para outra partida na
+    execução seguinte.
+
+    **É o que impede a próxima varredura de desfazer o trabalho.** `apply_matches` preenche o
+    que está vazio e uma escolha humana costuma ter preenchido tudo -- mas ela também *troca* a
+    partida, e sem esta marca um `cvoff-games --apply` posterior reescreveria a procedência com
+    a candidata que o desempate automático prefere. É o mesmo defeito que a S-77 consertou no
+    conjunto de campo: o que a pessoa decidiu não pode ser sobrescrito por quem só palpita.
+    """
+
+    filled_rule: str = ""
+    """**Qual regra escolheu a partida** entre as candidatas (S-91). Vazio é anterior à S-91.
+
+    `filled_from` diz *de que* partida veio o preenchimento; isto diz *por que* foi ela, e são
+    perguntas diferentes cujas respostas valem tantos diferentes:
+
+    | valor | o que significa | quanto vale |
+    |---|---|---|
+    | `unique` | a posição está numa partida só da base | não houve escolha a fazer |
+    | `caption` | a legenda do livro nomeia exatamente esta | duas fontes independentes concordando |
+    | `date` | havia várias e o desempate pegou a mais antiga | **palpite** -- ver abaixo |
+    | `human` | uma pessoa escolheu na lista | a resposta |
+
+    **O `date` existe para ser encontrado.** Medido em 2026-08-15, esse desempate discorda da
+    legenda do livro 72,3% das vezes onde há legenda para conferir, contra um piso de ruído de
+    26,5%. São 141 diagramas do acervo preenchidos assim antes da S-91, e sem este campo eles
+    são indistinguíveis de dado conferido -- que é a definição de procedência inventada.
+    """
+
     filled_fields: tuple[str, ...] = ()
     """Quais campos vieram da base, e **não** de uma pessoa.
 
@@ -142,6 +175,10 @@ class DiagramAnnotation:
             and self.lichess_link is None
             and not self.headers
             and not self.confirmed_from
+            # Como o `confirmed_from`, e pela mesma razão: escolher uma partida é uma afirmação
+            # inteira, não a procedência de outro campo. Descartá-la faria a escolha da pessoa
+            # sumir num diagrama cujos campos já estavam todos preenchidos.
+            and not self.chosen_game
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -156,6 +193,10 @@ class DiagramAnnotation:
             dados["headers"] = dict(self.headers)
         if self.filled_from:
             dados["filled_from"] = self.filled_from
+        if self.chosen_game:
+            dados["chosen_game"] = self.chosen_game
+        if self.filled_rule:
+            dados["filled_rule"] = self.filled_rule
         if self.filled_fields:
             dados["filled_fields"] = list(self.filled_fields)
         if self.confirmed_from:
@@ -172,6 +213,8 @@ class DiagramAnnotation:
             lichess_link=_tri_estado(dados.get("lichess_link")),
             headers=_headers(dados.get("headers")),
             filled_from=str(dados.get("filled_from") or ""),
+            chosen_game=str(dados.get("chosen_game") or ""),
+            filled_rule=_regra(dados.get("filled_rule")),
             filled_fields=_campos(dados.get("filled_fields")),
             confirmed_from=str(dados.get("confirmed_from") or ""),
         )
@@ -193,6 +236,17 @@ def _lado(valor: Any) -> str | None:
 
 def _tri_estado(valor: Any) -> bool | None:
     return None if valor is None else bool(valor)
+
+
+FILL_RULES = ("unique", "caption", "date", "human")
+"""As regras que podem ter escolhido a partida. Ver `DiagramAnnotation.filled_rule`."""
+
+
+def _regra(valor: Any) -> str:
+    """Regra desconhecida vira vazio -- "não sei por que esta partida" é uma resposta melhor
+    que uma etiqueta inventada, e é o que o campo já significa nas anotações anteriores."""
+    texto = str(valor or "").strip().lower()
+    return texto if texto in FILL_RULES else ""
 
 
 def _campos(valor: Any) -> tuple[str, ...]:

@@ -41,6 +41,15 @@ data/gallery/
 # pelo mesmo motivo do review_cache -- mas guardar o arquivo vale muito, porque reconstrui-lo
 # custa ~104 minutos e reaplica-lo custa segundos (`--from-matches`).
 data/games_matches.json
+data/games_matches_v2.json
+# Cache de posicoes (S-84) e indice por nome (S-87/S-93): as duas respostas que a base de
+# terceiro da, guardadas. Sao derivados dela e reconstruiveis -- `cvoff-games --all` refaz o
+# cache (56 min nas duas gigabases) e `--build-index` refaz o indice. O sqlite tem 885 MB com
+# 20,9 M partidas indexadas: o GitHub recusa acima de 100 MB, e um `git add -A` distraido o
+# poria no historico para sempre. E a mesma regra do pgn_database/, pelo mesmo motivo.
+data/games_positions.json
+data/games_index.sqlite
+data/games_index.sqlite.parcial
 # Indice de procedencia (S-52): dHash de cada diagrama dos 27 PDFs. Nao e versionavel pelo
 # mesmo motivo do review_cache -- e derivado de PDF protegido --, e reconstruir custa horas
 # de CPU. Quem clonar o repositorio roda `cvoff-provenance --build`.
