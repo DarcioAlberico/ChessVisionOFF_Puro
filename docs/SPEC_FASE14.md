@@ -1076,7 +1076,7 @@ posição pedindo confirmação com o nome da operação dentro.
 
 ---
 
-## S-113 · O cache de posições com trava e refusão
+## S-113 · O cache de posições com trava e refusão ✅ implementada (2026-08-16)
 
 **Problema.** `ui/gallery_panel.py:515` lê o cache, a linha 546 varre (56 min medidos, 8.034
 alvos) e a 554 grava `save_cache(cache)` **com o objeto lido lá atrás**. `cli/games.py` faz o
@@ -1102,6 +1102,42 @@ imprimi-lo, para que a mensagem diga o que de fato mudou.
 
 **Testes.** `tests/test_games_cache.py` — a refusão com um arquivo alterado por baixo; o
 fingerprint estável sob `os.utime`.
+
+### O que foi entregue
+
+**A refusão é onde mora a correção, e a trava é conveniência.** `save_cache` relê o disco,
+traz o que ele tem e o objeto em memória não, e só então grava. Fundir é idempotente e
+comutativo — a chave é a colocação, e duas respostas da mesma base não se contradizem —, então
+dois processos que gravem fora de ordem chegam ao mesmo arquivo. É por isso que a trava pode
+desistir: ela estreita a janela entre reler e substituir, e nunca bloqueia.
+
+**A trava desiste por idade, e não por PID.** Um `.lock` mais velho que os 10 s de
+`LOCK_TIMEOUT` é lixo de um processo morto; mantê-lo faria toda gravação seguinte pagar a
+espera inteira, e insistir travaria uma varredura de meia hora atrás de um arquivo vazio.
+Sistema sem `O_EXCL` cai no mesmo caminho de "grava sem trava".
+
+**`count == 0` sobrevive à fusão**, e tem teste próprio: perder um *"a base não conhece esta
+posição"* devolve aquela posição ao alvo de toda varredura futura — que é justamente o custo
+que o cache existe para não pagar duas vezes.
+
+**Marca diferente no disco não é conflito, é outra base.** Nesse caso nada dela entra, e a
+gravação avisa. Fundir contagens de duas bases inventaria procedência, que é o que a S-74
+proíbe.
+
+**O `mtime` saiu do fingerprint**, e a regra passou a ser a do `index_fingerprint`: nome e
+tamanho. Havia duas regras para a mesma pergunta — *"é a mesma base?"* — e a mais estrita
+descartava o trabalho: uma cópia de pasta, um sync de nuvem ou um antivírus mudam o carimbo
+sem tocar num byte, e isso jogava fora **56 minutos**.
+
+**E os caches que já estão no disco continuam valendo.** `_same_database` compara nome e
+tamanho campo a campo em vez de `==` sobre o dicionário; sem isso, a primeira execução depois
+deste item descartaria exatamente as varreduras que ele existe para deixar de perder. Tem
+teste, com a marca antiga (com `mtime`) escrita à mão.
+
+**Nove testes, seis dos quais falham no código anterior** (conferido revertendo o módulo). Os
+três que passam nos dois são guardas: que a gravação não deixa `.lock` para trás, que o
+tamanho **continua** descartando o cache de outra base, e que a marca do cache e a do índice
+extraem os mesmos pares `(nome, tamanho)`.
 
 ---
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +17,7 @@ from unittest import mock
 
 import chess
 
+from chess_diagram_ocr import games_cache
 from chess_diagram_ocr.cli.games import _positions_index
 from chess_diagram_ocr.games_cache import (
     CachedPosition,
@@ -25,6 +27,7 @@ from chess_diagram_ocr.games_cache import (
     save_cache,
 )
 from chess_diagram_ocr.games_db import PositionHit, PositionIndex, scan_by_positions
+from chess_diagram_ocr.games_index import index_fingerprint
 
 UMA = "8/8/8/8/8/8/4K3/4k3"
 OUTRA = "8/8/8/8/8/8/3K4/3k4"
@@ -157,6 +160,124 @@ class FingerprintTests(unittest.TestCase):
             lido = load_cache(self.arquivo, database=[self.base, outra])
         self.assertEqual(len(lido), 0)
         self.assertEqual(lido.missing({UMA}), {UMA}, "tudo volta a ser perguntado")
+
+    # ------------------------------------------------- trava e refusão (S-113)
+
+    def test_gravar_funde_o_que_outro_processo_gravou_no_meio(self) -> None:
+        """**O fluxo que o próprio README sugere perdia uma das duas passadas.**
+
+        Deixar `cvoff-games --all` rodando enquanto se anota um livro na Galeria: os dois leem
+        o cache no começo, varrem por ~30 min cada e gravam no fim *o objeto lido lá atrás*. A
+        segunda a terminar sobrescrevia a primeira -- sem erro, sem log e sem nada na tela.
+
+        Aqui `nosso` é o retrato tirado antes; `OUTRA` chega ao disco enquanto ele "varre".
+        """
+        nosso = PositionCache(fingerprint=database_fingerprint(self.base))
+        nosso.update(indice(**{UMA: [partida("Anderssen")]}), {UMA})
+
+        outro_processo = PositionCache(fingerprint=database_fingerprint(self.base))
+        outro_processo.update(indice(**{OUTRA: [partida("Morphy")]}), {OUTRA})
+        save_cache(outro_processo, self.arquivo)
+
+        save_cache(nosso, self.arquivo)
+
+        lido = load_cache(self.arquivo, database=self.base)
+        self.assertEqual(lido.missing({UMA, OUTRA}), set(), "as duas passadas sobrevivem")
+        self.assertEqual(lido.to_index({OUTRA}).hits[OUTRA][0].headers["White"], "Morphy")
+
+    def test_a_pergunta_sem_resposta_do_outro_processo_tambem_sobrevive(self) -> None:
+        """`count == 0` é resposta, não ausência (S-84) -- e fundir tem de preservá-la.
+
+        Perder um "a base não conhece esta posição" a devolve ao alvo de toda varredura
+        futura, que é o custo que o cache existe para não pagar duas vezes.
+        """
+        outro_processo = PositionCache(fingerprint=database_fingerprint(self.base))
+        outro_processo.update(indice(), {AUSENTE})
+        save_cache(outro_processo, self.arquivo)
+
+        nosso = PositionCache(fingerprint=database_fingerprint(self.base))
+        nosso.update(indice(**{UMA: [partida("Anderssen")]}), {UMA})
+        save_cache(nosso, self.arquivo)
+
+        self.assertEqual(load_cache(self.arquivo, database=self.base).missing({AUSENTE}), set())
+
+    def test_o_que_esta_no_disco_de_outra_base_nao_e_fundido(self) -> None:
+        """Fundir contagens de duas bases inventaria procedência, que é o que a S-74 proíbe."""
+        outra = self.raiz / "outra.pgn"
+        outra.write_text('[Event "y"]\n' * 50, encoding="utf-8")
+        alheio = PositionCache(fingerprint=database_fingerprint(outra))
+        alheio.update(indice(**{OUTRA: [partida("Morphy")]}), {OUTRA})
+        save_cache(alheio, self.arquivo)
+
+        nosso = PositionCache(fingerprint=database_fingerprint(self.base))
+        nosso.update(indice(**{UMA: [partida("Anderssen")]}), {UMA})
+        with self.assertLogs("chess_diagram_ocr.games_cache", level="WARNING"):
+            save_cache(nosso, self.arquivo)
+
+        lido = load_cache(self.arquivo, database=self.base)
+        self.assertEqual(lido.missing({OUTRA}), {OUTRA}, "a resposta da outra base não entrou")
+
+    def test_a_gravacao_nao_deixa_trava_para_tras(self) -> None:
+        self._grava()
+        self.assertEqual([p.name for p in self.raiz.glob("*.lock")], [])
+
+    def test_trava_de_processo_morto_nao_bloqueia_a_gravacao(self) -> None:
+        """Preferir gravar sem trava a travar uma varredura de meia hora atrás de lixo.
+
+        A correção mora na refusão -- que é idempotente --, então desistir da trava custa uma
+        janela estreita, e insistir custaria a passada inteira.
+        """
+        (self.raiz / "cache.json.lock").write_text("", encoding="utf-8")
+        with mock.patch.object(games_cache, "LOCK_TIMEOUT", 0.0):
+            with self.assertLogs("chess_diagram_ocr.games_cache", level="WARNING"):
+                self._grava()
+        self.assertEqual(load_cache(self.arquivo, database=self.base).missing({UMA}), set())
+
+    # ------------------------------------------------- o fingerprint, uma regra só (S-113)
+
+    def test_tocar_o_mtime_de_uma_base_intacta_nao_invalida_o_cache(self) -> None:
+        """**56 minutos de varredura por um carimbo de data.**
+
+        Uma cópia da pasta, um sync de nuvem ou um antivírus mudam o `mtime` sem tocar num
+        byte. O `games_index.py` sempre usou só nome e tamanho; aqui havia `int(st_mtime)`
+        junto, e eram duas regras para a mesma pergunta -- com a mais estrita jogando fora o
+        trabalho.
+        """
+        self._grava()
+        antigo = self.base.stat().st_mtime
+        os.utime(self.base, (antigo + 86_400, antigo + 86_400))
+
+        lido = load_cache(self.arquivo, database=self.base)
+
+        self.assertEqual(lido.missing({UMA}), set(), "o conteúdo não mudou, o cache vale")
+
+    def test_o_cache_gravado_antes_da_s113_continua_valendo(self) -> None:
+        """A marca antiga trazia `mtime`; uma igualdade literal descartaria, na primeira
+        execução depois do item, justamente as varreduras que ele existe para não perder."""
+        antigo = {
+            "version": 1,
+            "database": {"files": [{"name": "base.pgn", "size": self.base.stat().st_size, "mtime": 12345}]},
+            "positions": {UMA: {"count": 1, "games": []}},
+        }
+        self.arquivo.write_text(json.dumps(antigo), encoding="utf-8")
+
+        self.assertEqual(load_cache(self.arquivo, database=self.base).missing({UMA}), set())
+
+    def test_o_tamanho_continua_descartando_o_cache(self) -> None:
+        """O que saiu foi o `mtime`, e não a guarda: base com outro conteúdo tem outro tamanho."""
+        self._grava()
+        self.base.write_text('[Event "x"]\n' * 99, encoding="utf-8")
+        with self.assertLogs("chess_diagram_ocr.games_cache", level="WARNING"):
+            self.assertEqual(len(load_cache(self.arquivo, database=self.base)), 0)
+
+    def test_a_marca_do_cache_e_a_mesma_regra_da_marca_do_indice(self) -> None:
+        """Duas perguntas iguais -- "é a mesma base?" -- não podem ter duas respostas."""
+        outra = self.raiz / "outra.pgn"
+        outra.write_text('[Event "y"]\n', encoding="utf-8")
+        bases = [self.base, outra]
+        do_cache = [(item["name"], item["size"]) for item in database_fingerprint(bases)["files"]]
+        do_indice = [(parte.rsplit(":", 1)[0], int(parte.rsplit(":", 1)[1])) for parte in index_fingerprint(bases).split("|")]
+        self.assertEqual(do_cache, do_indice)
 
     def test_as_duas_bases_juntas_sao_uma_marca_so(self) -> None:
         outra = self.raiz / "outra.pgn"

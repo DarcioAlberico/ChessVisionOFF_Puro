@@ -33,7 +33,10 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterable, Sequence
+import os
+import time
+from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -58,13 +61,27 @@ DEFAULT_CACHE_PATH = PROJECT_ROOT / "data" / "games_positions.json"
 
 CACHE_VERSION = 1
 
+LOCK_TIMEOUT = 10.0
+"""Segundos que uma gravação espera pela trava antes de gravar sem ela (S-113).
+
+Dez porque a gravação em si é de milissegundos -- ler um JSON, fundir dois dicionários e
+renomear -- e dez segundos já são duas ordens de grandeza acima do pior caso honesto. Além
+disso o mais provável é que a trava seja lixo de um processo morto, e esperar mais seria
+punir quem chegou depois."""
+
 
 def database_fingerprint(databases: Path | Sequence[Path]) -> dict[str, Any]:
-    """Nome, tamanho e data de **cada** base -- o bastante para notar que o conjunto mudou.
+    """Nome e tamanho de **cada** base -- o bastante para notar que o conjunto mudou.
 
     Não é hash do conteúdo: são 19 GB, e lê-los para decidir se vale ler os 19 GB seria a
-    piada do módulo. Tamanho e mtime erram no caso de uma base editada sem mudar nenhum dos
-    dois, que não é um caso que aconteça sem intenção.
+    piada do módulo. Tamanho erra no caso de uma base editada sem mudar o tamanho, que não é
+    um caso que aconteça sem intenção.
+
+    **O `mtime` saiu na S-113, e é o item.** Ele estava aqui e não em `index_fingerprint`
+    (`games_index.py`), que sempre usou só nome e tamanho -- duas regras para a mesma pergunta,
+    e a mais estrita descartava o trabalho. Copiar a pasta de bases, um sync de nuvem ou um
+    antivírus que reescreve o carimbo mudam o `mtime` sem tocar num byte do conteúdo, e isso
+    jogava fora **56 minutos** de varredura por posição sem que nada tivesse mudado.
 
     **Uma lista, e não um arquivo só, desde a S-93**, e a diferença não é cosmética: acrescentar
     um `.pgn` à pasta muda as contagens de *todas* as posições já perguntadas -- a mesma posição
@@ -74,11 +91,28 @@ def database_fingerprint(databases: Path | Sequence[Path]) -> dict[str, Any]:
     arquivos = []
     for caminho in as_databases(databases):
         try:
-            estado = caminho.stat()
-            arquivos.append({"name": caminho.name, "size": estado.st_size, "mtime": int(estado.st_mtime)})
+            arquivos.append({"name": caminho.name, "size": caminho.stat().st_size})
         except OSError:
-            arquivos.append({"name": caminho.name, "size": 0, "mtime": 0})
+            arquivos.append({"name": caminho.name, "size": 0})
     return {"files": arquivos}
+
+
+def _same_database(um: dict[str, Any], outro: dict[str, Any]) -> bool:
+    """Duas marcas descrevem o mesmo conjunto de bases? Só nome e tamanho decidem.
+
+    Compara campo a campo em vez de `==` sobre o dicionário **para não invalidar os caches que
+    já estão no disco**: eles foram gravados com `mtime` dentro, e uma igualdade literal
+    descartaria, na primeira execução depois da S-113, exatamente as varreduras que o item
+    existe para deixar de perder.
+    """
+
+    def _marcas(fingerprint: dict[str, Any]) -> list[tuple[str, int]]:
+        arquivos = fingerprint.get("files")
+        if not isinstance(arquivos, list):
+            arquivos = [fingerprint]
+        return [(str(item.get("name", "?")), int(item.get("size", 0))) for item in arquivos]
+
+    return _marcas(um) == _marcas(outro)
 
 
 @dataclass(frozen=True)
@@ -203,23 +237,13 @@ def load_cache(
     `load_annotations`: o vazio significa "varra", que é o comportamento anterior ao módulo.
     Um cache ilegível que derrubasse o comando trocaria uma varredura por um erro.
     """
-    caminho = Path(path)
-    if not caminho.exists():
-        return PositionCache()
-    try:
-        dados = json.loads(caminho.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("Cache de posições ilegível em %s (%s); seguindo sem ele.", caminho, exc)
+    cache = _read_cache(Path(path))
+    if cache is None:
         return PositionCache()
 
-    if int(dados.get("version", 0)) != CACHE_VERSION:
-        logger.warning("Cache de posições em versão %r; será refeito.", dados.get("version"))
-        return PositionCache()
-
-    cache = PositionCache.from_dict(dados)
     if database is not None:
         atual = database_fingerprint(database)
-        if cache.fingerprint and cache.fingerprint != atual:
+        if cache.fingerprint and not _same_database(cache.fingerprint, atual):
             logger.warning(
                 "O cache foi feito com %s e a base de agora é %s: as contagens guardadas "
                 "deixaram de valer, e o cache será refeito.",
@@ -230,6 +254,26 @@ def load_cache(
         cache.fingerprint = atual
     logger.info("Cache de posições: %d perguntadas, %d com resposta.", len(cache), cache.answered)
     return cache
+
+
+def _read_cache(caminho: Path) -> PositionCache | None:
+    """O arquivo como está, sem conferir base nenhuma. `None` quando não há o que ler.
+
+    Separado do `load_cache` porque a gravação precisa reler o disco (ver `save_cache`) e não
+    pode revalidar o fingerprint nem repetir o log de abertura -- ela não está abrindo o cache,
+    está conferindo se alguém escreveu nele enquanto a varredura rodava.
+    """
+    if not caminho.exists():
+        return None
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Cache de posições ilegível em %s (%s); seguindo sem ele.", caminho, exc)
+        return None
+    if int(dados.get("version", 0)) != CACHE_VERSION:
+        logger.warning("Cache de posições em versão %r; será refeito.", dados.get("version"))
+        return None
+    return PositionCache.from_dict(dados)
 
 
 def _descreve(fingerprint: dict[str, Any]) -> str:
@@ -245,8 +289,95 @@ def _descreve(fingerprint: dict[str, Any]) -> str:
     return ", ".join(f"{item.get('name', '?')} ({item.get('size', 0)} bytes)" for item in arquivos) or "nada"
 
 
+@contextmanager
+def _exclusive(caminho: Path, *, timeout: float = LOCK_TIMEOUT) -> Iterator[bool]:
+    """Trava de conselho por arquivo vizinho. Devolve se conseguiu -- e **nunca bloqueia**.
+
+    **A correção mora na refusão, não aqui.** Fundir é idempotente e comutativo: dois
+    processos que gravem fora de ordem chegam ao mesmo arquivo. A trava só estreita a janela
+    entre reler e substituir, e por isso ela pode desistir: preferir gravar sem trava a
+    travar uma varredura de meia hora atrás de um `.lock` que sobrou de um processo morto.
+
+    A limpeza é por idade, e não por PID: um `.lock` mais velho que o timeout é lixo de um
+    processo que não existe mais, e mantê-lo faria toda gravação seguinte pagar a espera
+    inteira. Sistema de arquivos sem `O_EXCL` cai no mesmo caminho de "segue sem trava".
+    """
+    trava = caminho.with_name(caminho.name + ".lock")
+    descritor: int | None = None
+    limite = time.monotonic() + timeout
+    while True:
+        try:
+            trava.parent.mkdir(parents=True, exist_ok=True)
+            descritor = os.open(trava, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            if time.monotonic() >= limite:
+                _descarta_trava_velha(trava, timeout)
+                logger.warning("Trava do cache de posições ocupada por %.0f s; gravando sem ela.", timeout)
+                break
+            time.sleep(0.05)
+        except OSError as exc:
+            logger.debug("Sem trava para o cache de posições (%s); gravando assim mesmo.", exc)
+            break
+    try:
+        yield descritor is not None
+    finally:
+        if descritor is not None:
+            os.close(descritor)
+            trava.unlink(missing_ok=True)
+
+
+def _descarta_trava_velha(trava: Path, timeout: float) -> None:
+    try:
+        if time.time() - trava.stat().st_mtime > timeout:
+            trava.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def save_cache(cache: PositionCache, path: Path = DEFAULT_CACHE_PATH) -> Path:
-    """Grava de forma atômica (S-25): meia varredura no disco seria pior que nenhuma."""
+    """Relê o disco, funde e grava de forma atômica (S-25 + S-113). Devolve o caminho.
+
+    **A releitura é o item.** A Galeria lê o cache antes de varrer (~56 min, 8.034 alvos) e
+    grava no fim *o objeto lido lá atrás*; `cvoff-games` faz igual. O fluxo que o próprio
+    README sugere -- deixar `cvoff-games --all` rodando enquanto se anota um livro na janela --
+    **perdia uma das duas passadas**: sem erro, sem log, sem nada na tela, porque a segunda a
+    terminar sobrescrevia a primeira com um retrato tirado uma hora antes.
+
+    **A fusão é segura porque a chave é a colocação e a resposta é da mesma base.** Duas
+    varreduras da mesma base sobre a mesma posição dão a mesma contagem e as mesmas candidatas
+    -- é o que o fingerprint garante. Marca diferente no disco não é conflito a resolver, é
+    resposta de outra base: essa não entra, e a nossa vale.
+
+    Serve também ao caso de a máquina cair no meio: o que já estava gravado sobrevive à
+    gravação seguinte em vez de ser apagado por ela.
+    """
     caminho = Path(path)
-    atomic_write_json(caminho, cache.to_dict(), indent=1)
+    with _exclusive(caminho):
+        disco = _read_cache(caminho)
+        if disco is not None:
+            _funde(cache, disco)
+        atomic_write_json(caminho, cache.to_dict(), indent=1)
     return caminho
+
+
+def _funde(cache: PositionCache, disco: PositionCache) -> int:
+    """Traz para `cache` o que o disco tem e ele não. Devolve quantas posições entraram."""
+    if cache.fingerprint and disco.fingerprint and not _same_database(cache.fingerprint, disco.fingerprint):
+        logger.warning(
+            "O cache no disco é de %s e esta gravação é de %s: as posições dele não entram.",
+            _descreve(disco.fingerprint),
+            _descreve(cache.fingerprint),
+        )
+        return 0
+    novas = {
+        colocacao: guardada
+        for colocacao, guardada in disco.positions.items()
+        if colocacao not in cache.positions
+    }
+    if novas:
+        # Log em `info` e não `debug`: a passada de 56 min que **quase** se perdeu é
+        # exatamente o que ninguém veria acontecer, e a linha é o rastro de que não se perdeu.
+        logger.info("Cache de posições: %d posição(ões) gravadas por outro processo, preservadas.", len(novas))
+        cache.positions.update(novas)
+    return len(novas)

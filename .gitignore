@@ -49,6 +49,9 @@ data/games_matches_v2.json
 # 20,9 M partidas indexadas: o GitHub recusa acima de 100 MB, e um `git add -A` distraido o
 # poria no historico para sempre. E a mesma regra do pgn_database/, pelo mesmo motivo.
 data/games_positions.json
+# A trava de conselho da gravacao (S-113). Vive milissegundos; so aparece aqui se um processo
+# morrer no meio, e nesse caso o proximo `save_cache` a descarta por idade.
+data/games_positions.json.lock
 data/games_index.sqlite
 data/games_index.sqlite.parcial
 # Indice de procedencia (S-52): dHash de cada diagrama dos 27 PDFs. Nao e versionavel pelo

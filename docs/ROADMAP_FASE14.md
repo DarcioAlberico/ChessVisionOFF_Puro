@@ -403,7 +403,7 @@ promovido é igual ou melhor que a do controle, com `n` declarado; e a decisão 
 | 16.2 | `cvoff-games --apply` não rebaixa uma escolha humana | S-110 | ✅ |
 | 16.3 | A imagem que não gravou não vira linha no CSV | S-111 | ✅ |
 | 16.4 | As doze threads no registro do que se perde | S-112 | ✅ |
-| 16.5 | O cache de posições com trava e refusão | S-113 | ⬜ |
+| 16.5 | O cache de posições com trava e refusão | S-113 | ✅ |
 | 16.6 | "Salvar todos" avisa quem precisa saber | S-114 | ⬜ |
 | 16.7 | A galeria entra no que o projeto preserva | S-115 | ⬜ |
 
