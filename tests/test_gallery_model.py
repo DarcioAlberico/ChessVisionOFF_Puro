@@ -562,6 +562,47 @@ class BaseDePartidasTests(unittest.TestCase):
         self.assertEqual(anotacao.filled_rule, "human")
         self.assertIn("partidas da base", anotacao.confirmed_from, "mas a leitura segue confirmada")
 
+    def test_a_escolha_humana_sobrevive_tambem_quando_o_desempate_concorda(self) -> None:
+        """**Concordar não é motivo para rebaixar** (S-110), e é o mesmo caso do teste acima.
+
+        A guarda pedia que a escolha humana *divergisse* da candidata automática. Quando ela
+        coincidia -- que é o caso comum, porque a pessoa costuma confirmar o que a base sugeriu
+        --, o fluxo seguia e regravava `filled_rule` como `date`.
+
+        O efeito era o oposto do critério de aceite da Fase 13: a coluna "A REVISAR:
+        preenchidos por desempate" que a S-89 publica deveria **cair** a cada sessão de
+        revisão, e subia -- o diagrama que uma pessoa resolveu voltava para a fila.
+        """
+        modelo = _modelo((0, 0))
+        escolhida = PositionHit(
+            move_number=24, side_to_move="b", headers={"White": "Karpov, Anatoly", "Black": "Korchnoi, Viktor"}
+        )
+        modelo.choose_game(escolhida)
+
+        # A candidata automática é **a mesma partida** que a pessoa escolheu: mesma chave.
+        relatorio = modelo.apply_matches([self._casamento(games_matched=3, candidates=(escolhida,))])
+        anotacao = modelo.current_annotation
+        self.assertEqual(relatorio.respected, 1, "escolha humana existe: respeitar, coincidindo ou não")
+        self.assertEqual(anotacao.filled_rule, "human", "e não 'date', que é o que o desempate teria posto")
+        self.assertEqual(anotacao.filled_from, escolhida.label, "a partida continua sendo a que ela escolheu")
+        self.assertEqual(anotacao.move_number, 24)
+        self.assertEqual(relatorio.touched, 0, "não é trabalho feito nem poupado: é trabalho não desfeito")
+        self.assertIn("partidas da base", anotacao.confirmed_from, "a leitura, essa sim, segue confirmada")
+
+    def test_a_escolha_humana_sem_candidata_nenhuma_tambem_e_respeitada(self) -> None:
+        """O terceiro caso da mesma regra: um casamento sem candidatas propõe partida nenhuma.
+
+        Ele já era respeitado antes da S-110, mas por acidente -- a chave vazia diferia da
+        escolhida --, e não porque a regra dissesse isso. Fica travado junto para que a
+        condição continue sendo "escolha humana existe" e não "as chaves diferem".
+        """
+        modelo = _modelo((0, 0))
+        modelo.choose_game(PositionHit(move_number=24, side_to_move="b", headers={"White": "Karpov, Anatoly"}))
+
+        relatorio = modelo.apply_matches([self._casamento(games_matched=3)])
+        self.assertEqual(relatorio.respected, 1)
+        self.assertEqual(modelo.current_annotation.filled_rule, "human")
+
 
     def test_registra_quais_campos_vieram_da_base(self) -> None:
         """É o que faz o PGN dizer `database` em vez de `manual` -- ver `annotated_side_to_move`."""

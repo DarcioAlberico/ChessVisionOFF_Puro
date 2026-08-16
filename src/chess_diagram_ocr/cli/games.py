@@ -262,6 +262,12 @@ def _apply(book: Path, indice: GalleryIndex, matches: list[DiagramMatch], args: 
     print(f"  leituras confirmadas ....... {relatorio.confirmed}  ({relatorio.ambiguous} sem identificar a partida)")
     if relatorio.recovered:
         print(f"  procedência recuperada ..... {relatorio.recovered} campo(s) de execuções anteriores")
+    if relatorio.respected:
+        # O número que a S-110 tornou honesto, e por isso ele passa a aparecer: até aqui,
+        # metade dos diagramas com escolha humana -- os que **concordavam** com o desempate --
+        # eram regravados como `date` em vez de contados aqui. Um número alto nesta linha diz
+        # que a varredura passou por cima de um livro já revisado à mão, e não desfez nada.
+        print(f"  escolha humana respeitada .. {relatorio.respected} diagrama(s), procedência intacta")
 
 
 def _positions_index(bases: list[Path], alvos: set[str], args: argparse.Namespace) -> PositionIndex:

@@ -894,7 +894,7 @@ um header rebaixa, e o último campo da base a sair leva `filled_from` e `filled
 
 ---
 
-## S-110 · `cvoff-games --apply` não rebaixa uma escolha humana
+## S-110 · `cvoff-games --apply` não rebaixa uma escolha humana ✅ implementada (2026-08-16)
 
 **Problema.** `ui/gallery_model.py:472` protege a escolha humana assim:
 
@@ -928,6 +928,33 @@ como "a revisar".
 
 **Testes.** `tests/test_gallery_model.py` — o caso coincidente (que hoje falha) e o divergente
 (que já passa), lado a lado, com o docstring dizendo por que os dois são o mesmo caso.
+
+### O que foi entregue
+
+A condição virou `if anterior.chosen_game:` — sem a comparação de chaves. Com ela, o helper
+`_candidate_key` ficou sem chamador e saiu: ele existia só para responder *"a pessoa discordou
+do desempate?"*, e essa pergunta deixou de decidir alguma coisa.
+
+Três casos travados lado a lado, e **só o do meio falha no código anterior** (conferido
+revertendo o módulo):
+
+| escolha humana vs. candidata automática | antes | agora |
+|---|---|---|
+| divergente | respeitada | respeitada |
+| **coincidente** | **`filled_rule` regravado como `date`** | **respeitada** |
+| casamento sem candidata nenhuma | respeitada, por acidente da chave vazia | respeitada, pela regra |
+
+O terceiro entrou porque passava pelo motivo errado: a chave vazia diferia da escolhida, e o
+teste guarda que a condição continua sendo *"escolha humana existe"* e não *"as chaves
+diferem"*.
+
+E `relatorio.respected` passou a **aparecer** na saída do `cvoff-games --apply`. O docstring
+do campo já dizia que ele deveria — *"um número alto aqui numa varredura é sinal de que ela
+está passando por cima de um livro já revisado à mão"* —, e até aqui metade do que ele deveria
+contar era regravado como `date` em vez de contado.
+
+O que continua valendo: `confirmed_from` é atualizado nos três casos, porque as 64 casas
+bateram e isso é informação nova sobre a **leitura**, não sobre a partida.
 
 ---
 

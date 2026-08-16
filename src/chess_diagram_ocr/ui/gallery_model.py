@@ -149,11 +149,6 @@ def _evidence(match: DiagramMatch) -> str:
     return match.game_label if match.games_matched == 1 else f"{match.games_matched} partidas da base"
 
 
-def _candidate_key(match: DiagramMatch) -> str:
-    """A chave da partida que este casamento propõe, na forma que `chosen_game` guarda."""
-    return match.candidates[0].key if match.candidates else ""
-
-
 def _fill_rule(match: DiagramMatch) -> str:
     """Por que **esta** partida, e não outra (S-91).
 
@@ -501,10 +496,20 @@ class GalleryModel:
             anterior = self.annotations.get(*casamento.key)
             relatorio.confirmed += 1
 
-            if anterior.chosen_game and anterior.chosen_game != _candidate_key(casamento):
-                # Uma pessoa já escolheu outra partida aqui (S-86). Confirmar a leitura ainda
-                # vale -- as 64 casas bateram --, mas trocar a procedência por baixo dela seria
+            if anterior.chosen_game:
+                # Uma pessoa já escolheu a partida aqui (S-86). Confirmar a leitura ainda vale
+                # -- as 64 casas bateram --, mas trocar a procedência por baixo dela seria
                 # desfazer trabalho humano com um palpite, que é o defeito que a S-77 consertou.
+                #
+                # **Coincidir com a candidata automática não é motivo para deixar de respeitar**
+                # (S-110). A guarda exigia divergência, e o caso coincidente seguia adiante até
+                # gravar `filled_rule=_fill_rule(casamento)` -- trocando `human` por `date`. O
+                # efeito era o contrário do que a S-89 mede: a coluna "a revisar: preenchidos
+                # por desempate" **subia** a cada sessão de trabalho humano, porque o diagrama
+                # que uma pessoa resolveu voltava para a fila de revisão.
+                #
+                # A escolha humana já respondeu *por que* esta partida, e responde igual
+                # concordando ou discordando do desempate automático.
                 relatorio.respected += 1
                 if anterior.confirmed_from != _evidence(casamento):
                     self.annotations.update(*casamento.key, confirmed_from=_evidence(casamento))

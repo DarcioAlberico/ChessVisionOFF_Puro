@@ -400,7 +400,7 @@ promovido é igual ou melhor que a do controle, com `n` declarado; e a decisão 
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
 | 16.1 | Sair de um campo sem digitar não apaga a procedência da base | S-109 | ✅ |
-| 16.2 | `cvoff-games --apply` não rebaixa uma escolha humana | S-110 | ⬜ |
+| 16.2 | `cvoff-games --apply` não rebaixa uma escolha humana | S-110 | ✅ |
 | 16.3 | A imagem que não gravou não vira linha no CSV | S-111 | ✅ |
 | 16.4 | As doze threads no registro do que se perde | S-112 | ⬜ |
 | 16.5 | O cache de posições com trava e refusão | S-113 | ⬜ |
