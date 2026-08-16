@@ -424,7 +424,7 @@ o guarda de imagem, e para eles o caminho é recuperar procedência — não est
 
 ---
 
-## S-99 · Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida
+## S-99 · Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida ⚠ **metade entregue** (2026-08-16)
 
 **Problema.** A S-41 planejou 60 páginas e o conjunto tem **17**, com 39 diagramas e **1** FEN.
 A S-77 construiu a ferramenta e ela foi usada duas vezes. O ROADMAP_FASE7 chama isto de *"a
@@ -457,6 +457,54 @@ distribuição de confiança mínima com **pelo menos 5 diagramas na faixa 0,60�
 que a 7.7 apontou como ausente e sem a qual nenhum modelo se distingue de outro.
 
 **Testes.** Não há teste que substitua isto. O que há é a guarda da S-100.
+
+### O que foi feito, e o que não foi (2026-08-16)
+
+**A metade da FEN foi feita; a metade das páginas não.** O conjunto continua com **17 páginas**;
+o que mudou é que **31 dos 39 diagramas agora têm posição de referência** (0 antes), e a
+exatidão de campo deixou de ser "insuficiente para medir".
+
+Método: cada diagrama foi renderizado a partir do recorte 800×800 **warpado** — o mesmo que o
+modelo vê, para que uma divergência seja erro de leitura e não de recorte — com uma grade
+`a-h`/`1-8` sobreposta. A posição foi transcrita **antes** de olhar o que o modelo tinha lido, e
+só depois comparada.
+
+**O resultado:**
+
+```
+    Conferíveis .................. 31 de 39 anotados  (79%)
+    **Exatidão de campo** ........ 1.0000  (28/28 exportados)
+    Exatidão condicional ......... 0.9032  (28/31)
+    **Exportados e errados** ..... 0
+```
+
+**E ele reorganiza a leitura da Fase 7.** As três leituras erradas são exatamente as três que o
+gate **barrou** — confianças 0,058, 0,001 e 0,056. Nenhuma leitura errada passou. Ou seja: o
+modelo **não** exporta lixo; ele se recusa a exportar 28% do que existe. O gate é preciso e
+custa recall — e o trabalho rende em detecção e cobertura, não em acurácia de leitura.
+
+### As ressalvas, e elas são grandes
+
+**1. Eu errei muito, e o registro disto vale mais que o número.** Nas 6 divergências iniciais
+contra o modelo, **eu estava errado em 5** — todas de **cor** da peça (`b01` c7, `b02` c1,
+`b18` h4, `b19` a7, `b30` d7). Resolvi cada uma comparando a casa em disputa com uma peça
+branca e uma preta **do mesmo diagrama**; no `Kemeri p187` foi preciso medir o brilho do miolo
+(114,7 na disputada, contra 170,5 na torre branca e 98,4 no cavalo preto) para aceitar que a
+peça era preta. Mais um erro meu — uma fila deslocada e um rei branco esquecido — foi pego pela
+**guarda de legalidade**, não por mim. Taxa bruta antes de corrigir: **6 em 31, ~19%**.
+
+**2. O erro correlacionado é invisível.** Nos 23 diagramas em que eu e o modelo concordamos de
+primeira, se os dois erramos igual a referência está errada e a métrica não acusa. Este
+conjunto é **mais forte que a saída do modelo** — foi lido por gente, contra a imagem — mas
+**não é verdade independente** no sentido estrito.
+
+**3. O 1,000 é sobre o regime fácil.** Dos 28 exportados, 22 são `vetorial` ou `fonte`, que são
+renderizações vetoriais nítidas. O número diz pouco sobre `scan-hachurado`, onde quase tudo é
+barrado antes de chegar ao gate.
+
+**4. O que falta da S-99 é a parte que muda a resolução:** as 43 páginas restantes, os regimes
+abaixo do alvo, e os ≥5 diagramas na faixa de confiança 0,60–0,80. O conjunto mede melhor
+**leitura** agora; ele continua sem poder distinguir dois modelos.
 
 ---
 

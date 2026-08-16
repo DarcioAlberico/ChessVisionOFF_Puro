@@ -360,7 +360,7 @@ a condição de qualquer medição, a segunda porque cada dia de uso acrescenta 
 | 14.2 | A exatidão de campo passa a existir, com `n` declarado | S-96 | ✅ |
 | 14.3 | O conjunto de campo declara a página que o modelo treinou | S-97 | ✅ |
 | 14.4 | O mesmo diagrama impresso não cruza split | S-98 | ✅ |
-| 14.5 | Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida | S-99 | ⬜ trabalho seu |
+| 14.5 | Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida | S-99 | ⚠ FEN feita (31), páginas não (17 de 60) |
 | 14.6 | O conjunto vigente é declarado e a comparação volta a ser honesta | S-100 | ⬜ |
 
 **Critério de saída:** `cvoff-field` relata exatidão de campo com `comparable ≥ 30`, nenhuma
@@ -479,14 +479,15 @@ precisa de justificativa uma a uma.
 ## O primeiro dia, executado (2026-08-16)
 
 Os quatro itens do *"se houver só um dia"* — **S-95, S-98, S-109 e S-111** — foram
-implementados, e a **S-96** e a **S-97** entraram logo em seguida. Os quatro primeiros são os que corrompem em
+implementados, e a **S-96**, a **S-97** e metade da **S-99** entraram logo em seguida. Os quatro primeiros são os que corrompem em
 silêncio e pioram enquanto o programa é usado; é por isso que vieram antes de qualquer melhoria.
 
 | | antes | depois |
 |---|---|---|
 | testes | 1.543 | **1.588** (+45, todos travando decisão) |
+| `data/field_set.jsonl` — com FEN | **0** de 39 | **31** de 39 |
 | `ruff` · `mypy` | limpos | limpos |
-| `cvoff-field` — exatidão | `1.000` sobre uma alucinação | `insuficiente para medir (0 de 39, mínimo 50%)` |
+| `cvoff-field` — exatidão | `1.000` sobre uma alucinação (n=1) | **`1.000` sobre 28 exportados**, com 31 de 39 conferidos |
 | `cvoff-field` — exportados e errados | não media | categoria própria, com a lista e a confiança |
 | `cvoff-field` — exportação | `0.7179` | `0.7179` geral e **`0.6562` limpa** (7 de 39 em páginas com treino) |
 | `cvoff-audit` — vazamento de split | não media | **3 triplas listadas, com o split de cada membro** |
@@ -537,10 +538,45 @@ Nada é removido do conjunto: 39 diagramas não comportam jogar 18% fora. O que 
 viés é **publicado em vez de estimado**, e que a tela avisa antes do clique
 (`⚠ 8 amostra(s) de treino desta página`), para que a S-99 saiba de onde crescer.
 
-**O que ainda falta, e é trabalho seu:** a exatidão de campo existe como código e não como
-número. Hoje o relatório diz `Conferíveis 0 de 39 (0%)` e recusa medir — é a única coisa
-honesta que ele pode dizer até a **S-99**, as ~3 h de conferir FEN nas páginas que passam o
-gate.
+**E a S-99 teve a metade da FEN feita**, o que fez a exatidão de campo deixar de ser código e
+virar número. O conjunto continua com **17 páginas**, mas **31 dos 39 diagramas têm posição de
+referência** — lidos um a um no recorte warpado com grade `a-h`/`1-8`, transcritos antes de
+olhar o que o modelo tinha lido.
+
+```
+    Conferíveis .................. 31 de 39 anotados  (79%)
+    **Exatidão de campo** ........ 1.0000  (28/28 exportados)
+    Exatidão condicional ......... 0.9032  (28/31)
+    **Exportados e errados** ..... 0
+```
+
+### O número que reorganiza a leitura da Fase 7
+
+**As três leituras erradas são exatamente as três que o gate barrou** — confianças 0,058, 0,001
+e 0,056. Nenhuma leitura errada passou.
+
+O modelo **não exporta lixo. Ele se recusa a exportar 28% do que existe.** O gate é preciso e o
+que ele custa é recall. Isso muda onde o trabalho rende: em **detecção e cobertura**, não em
+acurácia de leitura — e explica por que seis variantes de modelo deram sempre 27 ou 28 de 38
+(7.7). Elas estavam melhorando algo que já estava certo.
+
+### As ressalvas, e a primeira é sobre quem anotou
+
+**Eu errei em 5 das 6 divergências contra o modelo**, todas de **cor** da peça. Resolvi cada uma
+comparando a casa com uma peça branca e uma preta do mesmo diagrama; num caso foi preciso medir
+o brilho do miolo (114,7 na disputada contra 170,5 na torre branca e 98,4 no cavalo preto) para
+aceitar que eu estava errado. Um sexto erro — fila deslocada, rei branco esquecido — foi pego
+pela **guarda de legalidade**, não por mim. Taxa bruta: **6 em 31, ~19%**.
+
+Daí as outras três ressalvas:
+
+- **erro correlacionado é invisível**: nos 23 em que eu e o modelo concordamos de primeira, se
+  os dois erramos igual a referência está errada e a métrica não acusa. O conjunto é **mais
+  forte que a saída do modelo**, e **não** é verdade independente no sentido estrito;
+- **o 1,000 é sobre o regime fácil**: 22 dos 28 exportados são `vetorial` ou `fonte`;
+- **a resolução não melhorou**: faltam as 43 páginas, os regimes abaixo do alvo e os ≥5
+  diagramas na faixa 0,60–0,80. O conjunto mede **leitura** agora; continua sem distinguir dois
+  modelos, que é o que a S-107 vai precisar.
 
 **Um número que muda de leitura.** Com a máquina ociosa, `cvoff-field` custa **0,361 s por
 diagrama** — e não os 0,526 s medidos durante a avaliação, que saíram com seis auditorias
