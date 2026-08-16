@@ -139,6 +139,31 @@ cvoff-field --model models/variante.pt --json docs/metrics/variante.json
 O relatório do `cvoff-field` traz as três medidas que um item de modelo precisa: taxa de
 exportação, casas que o `decode.py` teve de reparar, e custo por diagrama.
 
+## Mexer em detecção
+
+`cvoff-eval` e `cvoff-field` medem **leitura**. Nenhum dos dois vê o detector errar: um
+recorte que nunca deveria ter existido entra nos dois como mais um diagrama difícil. Foi assim
+que o glifo de cavalo do cabeçalho do `Secrets of Chess Training` entrou como diagrama em 71
+páginas, deslocou a numeração do PGN em 14 delas, e sobreviveu a 509 testes verdes — é visível
+a olho nu e invisível em relatório (`docs/ANALISE_DETECCAO.md`).
+
+Então, antes e depois de tocar em `detection/`, `board_detection.py` ou qualquer limiar delas:
+
+```bash
+cvoff-census --csv /tmp/antes.csv                     # ou reaproveite docs/metrics/deteccao_base.csv
+# ... a mudança ...
+cvoff-census --csv /tmp/depois.csv --baseline /tmp/antes.csv --fail-on-loss
+```
+
+O diff casa candidatos pelo **canto do bbox**, não pelo índice: quando um falso positivo sai,
+o diagrama que era o #1 vira #0, e casar por índice leria uma remoção como remoção mais
+substituição.
+
+A linha que decide é `das quais acima do limiar`. Perder suspeito é o objetivo; perder
+candidato do tamanho de um diagrama impresso precisa de justificativa **um por um**, olhando a
+página. O censo não sabe o que é diagrama — não existe rótulo humano de detecção no acervo —,
+então ele não aprova nada sozinho. Ele diz onde olhar.
+
 ## Convenções de código
 
 - **pt-BR na interface, com acento.** Há teste para isso (`tests/test_strings.py`); a lista

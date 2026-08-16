@@ -7,6 +7,7 @@ import cv2
 import fitz
 import numpy as np
 
+from chess_diagram_ocr.board_detection import _bbox_iou
 from chess_diagram_ocr.detection import (
     DiagramCandidate,
     candidates_from_embedded_images,
@@ -15,7 +16,12 @@ from chess_diagram_ocr.detection import (
     trim_to_grid,
 )
 from chess_diagram_ocr.detection.hybrid import (
+    EMBEDDED_SIZE_TOLERANCE,
+    OVERLAP_IOU,
     REFINE_TOLERANCE,
+    _contour_wins_over_merged,
+    _same_region,
+    _typical_side,
     board_texture_score,
     refine_candidate_with_contour,
 )
@@ -323,6 +329,70 @@ class EmbeddedCandidateTests(unittest.TestCase):
         finally:
             doc.close()
 
+
+class MinimumSideInPointsTests(unittest.TestCase):
+    """A guarda da S-78: tamanho **na página**, que é a unidade da pergunta.
+
+    A fixture destes testes é o defeito. Todas as outras deste arquivo desenham em retângulos
+    grandes, e é por isso que 509 testes verdes nunca distinguiram "128 px nativos" de "128 px
+    nativos espremidos em 15 pt de página".
+    """
+
+    def test_o_glifo_do_cabecalho_nao_e_diagrama(self) -> None:
+        """O cavalo do `Secrets`: 128 px nativos em 15,4 pt. Passava nas quatro guardas."""
+        doc = pdf_with_images([(board_image(128), fitz.Rect(375.4, 16.3, 390.7, 31.7))])
+        try:
+            self.assertEqual(candidates_from_embedded_images(doc[0]), [])
+        finally:
+            doc.close()
+
+    def test_a_mesma_imagem_em_tamanho_de_diagrama_e_diagrama(self) -> None:
+        """O par do teste acima: o que muda é o retângulo, não a imagem.
+
+        É esta dupla que separa a guarda nova da velha -- `MIN_EMBEDDED_SIDE` vê 128 px nos
+        dois casos e não tem como distingui-los.
+        """
+        doc = pdf_with_images([(board_image(128), fitz.Rect(240, 320, 394, 474))])
+        try:
+            candidatos = candidates_from_embedded_images(doc[0])
+
+            self.assertEqual(len(candidatos), 1)
+            self.assertEqual(candidatos[0].native_size, (128, 128))
+        finally:
+            doc.close()
+
+    def test_o_menor_diagrama_real_do_acervo_passa(self) -> None:
+        """105,6 pt, medido no `Euwe Band 1-2`. O piso de 72 pt tem de deixá-lo entrar."""
+        doc = pdf_with_images([(board_image(440), fitz.Rect(100, 100, 205.6, 205.6))])
+        try:
+            self.assertEqual(len(candidates_from_embedded_images(doc[0])), 1)
+        finally:
+            doc.close()
+
+    def test_o_piso_e_parametro_e_nao_numero_solto_no_codigo(self) -> None:
+        doc = pdf_with_images([(board_image(128), fitz.Rect(375.4, 16.3, 390.7, 31.7))])
+        try:
+            self.assertEqual(len(candidates_from_embedded_images(doc[0], min_side_pt=10.0)), 1)
+        finally:
+            doc.close()
+
+    def test_o_glifo_nao_chega_ao_detector_hibrido(self) -> None:
+        """A guarda vale onde o dano acontecia: na lista que numera os diagramas da página."""
+        doc = pdf_with_images(
+            [
+                (board_image(128), fitz.Rect(375.4, 16.3, 390.7, 31.7)),
+                (board_image(400), fitz.Rect(80, 100, 380, 400)),
+            ]
+        )
+        try:
+            page = doc[0]
+            candidatos = detect_diagrams(page, render(page))
+
+            self.assertEqual(len(candidatos), 1, "o glifo continuava consumindo um número")
+            self.assertGreater(candidatos[0].bbox_pdf[3] - candidatos[0].bbox_pdf[1], 100)
+        finally:
+            doc.close()
+
     def test_ignores_images_that_are_not_roughly_square(self) -> None:
         wide = np.repeat(board_image(200), 3, axis=1)
         doc = pdf_with_images([(wide, fitz.Rect(50, 100, 500, 250))])
@@ -439,6 +509,264 @@ class HybridDetectorTests(unittest.TestCase):
             self.assertEqual(detect_diagrams(page, render(page)), [])
         finally:
             doc.close()
+
+
+def tiled_board(side: int = 320, *, rows: int = 2, cols: int = 2) -> list[tuple[np.ndarray, tuple[int, int]]]:
+    """Um tabuleiro partido em ladrilhos, com a posição de cada pedaço.
+
+    É a forma do `GALLAGHER`: o PDF traz a página digitalizada mais um punhado de remendos
+    pequenos sobrepostos, e cada remendo é um XObject de imagem próprio.
+    """
+    board = board_image(side)
+    alturas = [side // rows] * rows
+    larguras = [side // cols] * cols
+    alturas[-1] += side - sum(alturas)
+    larguras[-1] += side - sum(larguras)
+
+    pedacos: list[tuple[np.ndarray, tuple[int, int]]] = []
+    y = 0
+    for altura in alturas:
+        x = 0
+        for largura in larguras:
+            pedacos.append((board[y : y + altura, x : x + largura].copy(), (x, y)))
+            x += largura
+        y += altura
+    return pedacos
+
+
+class MergeTilesTests(unittest.TestCase):
+    """S-81: a imagem embutida que é **pedaço** de diagrama, e não diagrama.
+
+    No `GALLAGHER` o caminho embutido entregava 33 fragmentos contra 7 imagens de verdade em
+    192 páginas. Nenhum piso de tamanho os separa: eles vão a 106,5 pt e o menor diagrama real
+    do acervo tem 105,6 pt. O que os distingue é adjacência.
+    """
+
+    def _pdf_com_ladrilhos(self, origem: fitz.Rect, *, rows: int = 2, cols: int = 2) -> fitz.Document:
+        lado = int(origem.width)
+        colocacoes = []
+        for pedaco, (x, y) in tiled_board(lado, rows=rows, cols=cols):
+            altura, largura = pedaco.shape[:2]
+            destino = fitz.Rect(origem.x0 + x, origem.y0 + y, origem.x0 + x + largura, origem.y0 + y + altura)
+            colocacoes.append((pedaco, destino))
+        return pdf_with_images(colocacoes)
+
+    def test_quatro_ladrilhos_encostados_viram_um_candidato(self) -> None:
+        doc = self._pdf_com_ladrilhos(fitz.Rect(80, 100, 380, 400))
+        try:
+            candidatos = candidates_from_embedded_images(doc[0])
+
+            self.assertEqual(len(candidatos), 1, "cada pedaco entrou como diagrama proprio")
+            self.assertEqual(candidatos[0].merged_tiles, 4)
+            x0, y0, x1, y1 = candidatos[0].bbox_pdf
+            self.assertAlmostEqual(x1 - x0, 300, delta=4)
+            self.assertAlmostEqual(y1 - y0, 300, delta=4)
+        finally:
+            doc.close()
+
+    def test_diagramas_separados_na_mesma_pagina_nao_se_unem(self) -> None:
+        """A guarda que protege o caso comum: os vãos do acervo são de 30 e 100 pt."""
+        doc = pdf_with_images(
+            [
+                (board_image(320), fitz.Rect(60, 80, 280, 300)),
+                (board_image(320), fitz.Rect(310, 80, 530, 300)),
+                (board_image(320), fitz.Rect(60, 400, 280, 620)),
+            ]
+        )
+        try:
+            candidatos = candidates_from_embedded_images(doc[0])
+
+            self.assertEqual(len(candidatos), 3)
+            self.assertEqual([c.merged_tiles for c in candidatos], [0, 0, 0])
+        finally:
+            doc.close()
+
+    def test_o_scan_de_fundo_nao_engole_a_pagina(self) -> None:
+        """O `1937 Kemeri` tem scan de fundo **e** diagramas embutidos de verdade.
+
+        O scan toca todas as outras imagens por definição. Se entrasse no agrupamento, a
+        página inteira viraria um grupo só e os diagramas morreriam na cobertura.
+        """
+        doc = pdf_with_images(
+            [
+                (board_image(800), fitz.Rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT)),
+                (board_image(400), fitz.Rect(80, 100, 380, 400)),
+            ]
+        )
+        try:
+            candidatos = candidates_from_embedded_images(doc[0])
+
+            self.assertEqual(len(candidatos), 1)
+            self.assertEqual(candidatos[0].merged_tiles, 0)
+            self.assertAlmostEqual(candidatos[0].bbox_pdf[0], 80, delta=2)
+        finally:
+            doc.close()
+
+    def test_moldura_feita_de_linhas_esticadas_nao_vira_diagrama(self) -> None:
+        """O caso do `Polgar`: as bordas dos diagramas são imagens de **1×1 px** esticadas.
+
+        Dezenove delas cercam cada diagrama e se encostam, então a união reproduz a moldura com
+        precisão -- e seria tentador aceitá-la. Mas o retângulo carrega 19 pixels de imagem no
+        total: não há o que ler ali, e o conteúdo está no scan da página, que é o que o
+        contorno já lia. Aceitá-la trocava um recorte de 737 px por um render de 241 px nos
+        114 diagramas do livro, com a nota de textura **subindo** -- o censo não mede resolução.
+        """
+        linha = np.full((1, 1, 3), 20, dtype=np.uint8)
+        moldura = fitz.Rect(80, 100, 380, 400)
+        colocacoes = [
+            (linha, fitz.Rect(moldura.x0, moldura.y0, moldura.x1, moldura.y0 + 1)),
+            (linha, fitz.Rect(moldura.x0, moldura.y1 - 1, moldura.x1, moldura.y1)),
+            (linha, fitz.Rect(moldura.x0, moldura.y0, moldura.x0 + 1, moldura.y1)),
+            (linha, fitz.Rect(moldura.x1 - 1, moldura.y0, moldura.x1, moldura.y1)),
+        ]
+        doc = pdf_with_images(colocacoes)
+        try:
+            self.assertEqual(candidates_from_embedded_images(doc[0]), [])
+        finally:
+            doc.close()
+
+    def test_a_uniao_pode_ser_desligada(self) -> None:
+        doc = self._pdf_com_ladrilhos(fitz.Rect(80, 100, 380, 400))
+        try:
+            self.assertEqual(len(candidates_from_embedded_images(doc[0], merge_tiles=False)), 4)
+        finally:
+            doc.close()
+
+    def test_a_uniao_sobrevive_ao_refino(self) -> None:
+        """O `merged_tiles` some no refino e as duas regras que dependem dele calam.
+
+        Foi o que aconteceu, e o sintoma foi confuso: as regras estavam escritas, os testes
+        de unidade passavam, e no livro real nada mudava.
+        """
+        doc = self._pdf_com_ladrilhos(fitz.Rect(80, 100, 380, 400))
+        try:
+            page = doc[0]
+            candidato = candidates_from_embedded_images(page)[0]
+            self.assertEqual(refine_candidate_with_contour(page, candidato).merged_tiles, 4)
+        finally:
+            doc.close()
+
+
+class MergedVersusContourTests(unittest.TestCase):
+    """A união é inferência nossa, não declaração do PDF -- então ela não tem precedência.
+
+    Medido no `GALLAGHER`: nas páginas 168 e 169 a união produzia caixas de 91 pt com textura
+    0,34 e 0,11 que suprimiam achados de contorno de 120 pt com textura 0,74 e 0,69. Na 169
+    uma união engolia **dois** diagramas bons.
+    """
+
+    def _uniao(self, board: np.ndarray, bbox: tuple[float, float, float, float]) -> DiagramCandidate:
+        return DiagramCandidate(
+            board_rgb=board,
+            bbox_pdf=bbox,
+            source="embedded",
+            detector_score=0.7,
+            native_size=(board.shape[1], board.shape[0]),
+            merged_tiles=3,
+        )
+
+    def test_imagem_declarada_nunca_perde_para_o_contorno(self) -> None:
+        """A regra da S-12 continua: declaração ganha de inferência sobre pixels."""
+        declarada = DiagramCandidate(
+            board_rgb=np.full((320, 320, 3), 255, dtype=np.uint8),
+            bbox_pdf=(80.0, 100.0, 380.0, 400.0),
+            source="embedded",
+            detector_score=0.7,
+            native_size=(320, 320),
+        )
+        self.assertFalse(_contour_wins_over_merged(declarada, board_image(320)))
+
+    def test_a_uniao_perde_quando_o_contorno_e_claramente_melhor(self) -> None:
+        ruim = np.full((320, 320, 3), 250, dtype=np.uint8)
+        cv2.putText(ruim, "texto", (10, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2)
+
+        self.assertTrue(_contour_wins_over_merged(self._uniao(ruim, (80.0, 100.0, 380.0, 400.0)), board_image(320)))
+
+    def test_a_uniao_boa_nao_e_derrubada_por_ruido(self) -> None:
+        """A margem existe para o empate: `board_texture_score` tem ruído de reamostragem."""
+        board = board_image(320)
+
+        self.assertFalse(_contour_wins_over_merged(self._uniao(board, (80.0, 100.0, 380.0, 400.0)), board.copy()))
+
+    def test_contencao_conta_como_mesma_regiao_so_para_uniao(self) -> None:
+        """Na p168 do `GALLAGHER` a união está 97% dentro do contorno e o IoU dá 0,41.
+
+        IoU pergunta "as duas caixas são a mesma?"; aqui a pergunta é "uma está dentro da
+        outra?", que é razão sobre a menor.
+        """
+        contorno = (181, 555, 368, 368)
+        uniao = (324, 642, 232, 281)
+
+        self.assertLess(_bbox_iou(contorno, uniao), OVERLAP_IOU, "premissa: o IoU nao ve isto")
+        self.assertTrue(_same_region(contorno, uniao, merged=True))
+        self.assertFalse(_same_region(contorno, uniao, merged=False), "declarada nao usa contencao")
+
+
+class TypicalSideTests(unittest.TestCase):
+    """S-79: o gabarito de tamanho da página, que era `np.median` e não podia ser.
+
+    Mediana é robusta a *outlier* e não a **bimodalidade**. Com duas populações de tamanho ela
+    devolve um número que não é o tamanho de nada que exista na página, e o prior passa a
+    recusar exatamente o diagrama que ele existe para recuperar.
+    """
+
+    def test_a_lista_vazia_nao_tem_gabarito(self) -> None:
+        self.assertIsNone(_typical_side([], EMBEDDED_SIZE_TOLERANCE))
+
+    def test_um_candidato_so_e_o_proprio_gabarito(self) -> None:
+        self.assertEqual(_typical_side([150.0], EMBEDDED_SIZE_TOLERANCE), 150.0)
+
+    def test_tamanhos_parecidos_seguem_dando_o_de_sempre(self) -> None:
+        """O caso comum não pode mudar: é a página de diagramas todos iguais."""
+        self.assertAlmostEqual(_typical_side([148.0, 150.0, 152.0], EMBEDDED_SIZE_TOLERANCE), 150.0)
+
+    def test_o_glifo_nao_arrasta_o_gabarito_para_o_vazio(self) -> None:
+        """O defeito medido: glifo de 15 pt com diagrama de 154 pt dava mediana ~85 pt.
+
+        85 pt não é o tamanho de nada naquela página, e com tolerância de 30% a janela aceita
+        vira 59--110 pt -- todo achado de contorno do tamanho real seria recusado.
+        """
+        gabarito = _typical_side([15.4, 153.6], EMBEDDED_SIZE_TOLERANCE)
+
+        self.assertIsNotNone(gabarito)
+        assert gabarito is not None
+        self.assertAlmostEqual(gabarito, 153.6, delta=1.0)
+        self.assertNotAlmostEqual(gabarito, 84.5, delta=10.0, msg="voltou a ser a mediana")
+
+    def test_o_maior_grupo_ganha_e_nao_o_maior_valor(self) -> None:
+        """Três diagramas de 150 e uma capa de capítulo de 400: o gabarito é 150."""
+        gabarito = _typical_side([150.0, 151.0, 149.0, 400.0], EMBEDDED_SIZE_TOLERANCE)
+
+        self.assertIsNotNone(gabarito)
+        assert gabarito is not None
+        self.assertAlmostEqual(gabarito, 150.0, delta=2.0)
+
+    def test_empate_de_tamanho_de_grupo_resolve_pelo_maior(self) -> None:
+        """Na dúvida o maior: diagrama pequeno demais é o que as outras guardas já barram."""
+        gabarito = _typical_side([40.0, 41.0, 300.0, 305.0], EMBEDDED_SIZE_TOLERANCE)
+
+        self.assertIsNotNone(gabarito)
+        assert gabarito is not None
+        self.assertGreater(gabarito, 200.0)
+
+    def test_o_contorno_do_tamanho_certo_sobrevive_ao_glifo_na_pagina(self) -> None:
+        """O dano de ponta a ponta: um diagrama achado só pelo contorno, numa página com glifo.
+
+        Antes da S-79 o gabarito envenenado o recusava por tamanho. É o efeito silencioso --
+        o diagrama simplesmente não aparecia, sem erro e sem log.
+        """
+        pixels_por_pt = 220 / 72
+        lados = [200.0, 15.0]
+        gabarito = _typical_side([lado * pixels_por_pt for lado in lados], EMBEDDED_SIZE_TOLERANCE)
+
+        self.assertIsNotNone(gabarito)
+        assert gabarito is not None
+        achado = 200.0 * pixels_por_pt
+        self.assertLessEqual(
+            abs(achado - gabarito),
+            gabarito * EMBEDDED_SIZE_TOLERANCE,
+            "o achado de contorno do tamanho do diagrama caiu fora da janela",
+        )
 
 
 class RefineGuardTests(unittest.TestCase):

@@ -149,7 +149,144 @@ def refine_candidate_with_contour(
         detector_score=min(1.0, candidate.detector_score + 0.15),
         native_size=candidate.native_size,
         trimmed=True,
+        # A proveniencia sobrevive ao refino (S-81). Reconstruir o candidato sem ela zerava o
+        # `merged_tiles`, e as duas regras que dependem dele -- a uniao nao suprime contorno e
+        # a uniao nao calibra o gabarito de tamanho -- nunca chegavam a rodar.
+        merged_tiles=candidate.merged_tiles,
     )
+
+
+MERGED_CONTAINMENT = 0.70
+"""Fração da **união de ladrilhos** que precisa estar dentro do achado de contorno para os
+dois falarem do mesmo diagrama (S-81).
+
+`OVERLAP_IOU` não serve aqui, e o caso mostra por quê: na página 168 do `GALLAGHER` a união
+de 77×91 pt está **97% dentro** do achado de contorno de 120×120, e mesmo assim o IoU dá 0,41
+-- porque a união é bem menor, e a diferença de área infla o denominador. IoU pergunta "as
+duas caixas são a mesma?"; aqui a pergunta é "uma está dentro da outra?", que é razão sobre a
+menor.
+
+Só vale para união. Imagem embutida declarada continua respondendo a `OVERLAP_IOU`, porque
+ali as duas fontes disputam o mesmo retângulo e não há contenção a resolver."""
+
+MERGED_TILES_MARGIN = 0.10
+"""Quanto o contorno precisa ser melhor que uma **união de ladrilhos** para tomar o lugar dela.
+
+Só existe margem porque `board_texture_score` tem ruído de reamostragem, o mesmo motivo de
+`REFINE_TOLERANCE`. Nos dois casos medidos no `GALLAGHER` a diferença é de 0,40 e 0,58 -- muito
+acima disto, e a margem não decide nada ali. Ela existe para o empate."""
+
+
+def _same_region(
+    contour_box: tuple[int, int, int, int],
+    embedded_box: tuple[int, int, int, int],
+    *,
+    merged: bool,
+) -> bool:
+    """As duas caixas falam do mesmo diagrama?
+
+    Para imagem embutida declarada, é `OVERLAP_IOU` como sempre. Para **união de ladrilhos**,
+    é contenção: a união costuma ser bem menor que o tabuleiro inteiro que o contorno acha, e
+    o IoU castiga essa diferença de área a ponto de dar 0,41 onde uma caixa está 97% dentro
+    da outra. Ver `MERGED_CONTAINMENT`.
+    """
+    if _bbox_iou(contour_box, embedded_box) > OVERLAP_IOU:
+        return True
+    if not merged:
+        return False
+
+    ax, ay, aw, ah = contour_box
+    bx, by, bw, bh = embedded_box
+    largura = max(0, min(ax + aw, bx + bw) - max(ax, bx))
+    altura = max(0, min(ay + ah, by + bh) - max(ay, by))
+    inter = largura * altura
+    menor = min(aw * ah, bw * bh)
+    return menor > 0 and inter / menor >= MERGED_CONTAINMENT
+
+
+def _contour_wins_over_merged(embedded: DiagramCandidate, contour_rgb: np.ndarray) -> bool:
+    """O achado de contorno deve substituir este candidato embutido sobreposto? (S-81)
+
+    Quase sempre **não**, e é a regra desde a S-12: a imagem embutida é uma *declaração* do
+    PDF sobre onde está o diagrama, e o contorno é uma inferência sobre pixels. Declaração
+    ganha.
+
+    **A união de ladrilhos não é declaração nenhuma** -- ela é uma inferência nossa sobre um
+    punhado de imagens que se encostam, e nada garante que o retângulo resultante seja um
+    tabuleiro. Medido no `GALLAGHER`: nas páginas 168 e 169 a união produziu caixas de 91 pt
+    com textura 0,34 e 0,11 que suprimiram achados de contorno de 120 pt com textura 0,74 e
+    0,69 -- e na 169 uma união engoliu **dois** diagramas bons.
+
+    Então, e só então, as duas fontes competem, e a comparação é legítima onde a da S-80 não
+    era: aqui os dois recortes são **da mesma região da mesma página**, que é exatamente o que
+    a S-38 já faz em `refine_candidate_with_contour`. O que não se pode é comparar a nota de
+    livros diferentes, ou contra um piso fixo -- ver a S-80 em `docs/ANALISE_DETECCAO.md`,
+    onde um corte absoluto apagava diagramas impecáveis do `Polgar` e do `Reinfeld`.
+
+    Duas guardas antes de tentar: só vale para união (`merged_tiles`), e a união tem de estar
+    perdendo por uma margem que não seja ruído de reamostragem.
+    """
+    if not embedded.merged_tiles:
+        return False
+
+    nota_embutida = board_texture_score(embedded.board_rgb)
+    nota_contorno = board_texture_score(contour_rgb)
+    if nota_contorno <= nota_embutida + MERGED_TILES_MARGIN:
+        return False
+
+    logger.info(
+        "Uniao de %d ladrilhos substituida pelo achado de contorno em %s: textura %.4f contra "
+        "%.4f. A uniao e inferencia nossa, nao declaracao do PDF.",
+        embedded.merged_tiles,
+        tuple(round(valor) for valor in embedded.bbox_pdf),
+        nota_embutida,
+        nota_contorno,
+    )
+    return True
+
+
+def _typical_side(sides: list[float], tolerance: float) -> float | None:
+    """O lado de diagrama **desta página**, segundo as imagens embutidas dela.
+
+    Era `np.median(sides)`, e a mediana responde a pergunta errada quando a lista tem duas
+    populações. Mediana é robusta a *outlier*, não a **bimodalidade**: numa página com um
+    glifo de 15 pt e um diagrama de 154 pt ela dá ~85 pt, que não é o tamanho de nada que
+    exista ali. Com a tolerância de 30%, a janela aceita vira 59--110 pt, e **todo achado de
+    contorno do tamanho real seria recusado** -- o prior de tamanho, que existe para
+    *recuperar* diagrama não declarado (4 por livro no `Schiller` e no `Karpov`, medidos na
+    S-12), passava a bloqueá-los. Medido em 42 das 1181 páginas do `Secrets`.
+
+    A S-78 tira o glifo da lista antes de ela chegar aqui, então o caso medido não se repete
+    por aquela porta. Esta função fecha a **classe**: qualquer página que misture dois
+    tamanhos -- diagrama grande de destaque com diagramas pequenos de variante, capa de
+    capítulo, fragmento -- caía no mesmo buraco, e nenhuma dessas some com um piso.
+
+    A regra é agrupar os lados por proximidade relativa e tomar o **maior grupo**, com empate
+    resolvido pelo lado maior: numa página com um diagrama grande e um pequeno, o gabarito
+    tem de ser o do grupo que se repete, e na dúvida o maior, porque diagrama pequeno demais
+    já é o que as outras guardas barram.
+
+    Devolve `None` para lista vazia, e o próprio valor quando há um só -- que é o que a
+    mediana fazia, e continua certo.
+    """
+    if not sides:
+        return None
+    if len(sides) == 1:
+        return sides[0]
+
+    ordenados = sorted(sides)
+    grupos: list[list[float]] = [[ordenados[0]]]
+    for lado in ordenados[1:]:
+        referencia = grupos[-1][-1]
+        # A mesma tolerancia que decide o filtro decide o agrupamento: dois lados que o filtro
+        # aceitaria como o mesmo diagrama sao, por definicao, o mesmo grupo.
+        if referencia > 0 and abs(lado - referencia) <= referencia * tolerance:
+            grupos[-1].append(lado)
+        else:
+            grupos.append([lado])
+
+    maior = max(grupos, key=lambda grupo: (len(grupo), max(grupo)))
+    return float(np.median(maior))
 
 
 def _pixel_bbox(bbox_pdf: tuple[float, float, float, float], scale: float) -> tuple[int, int, int, int]:
@@ -188,6 +325,10 @@ def detect_diagrams(
     Então a lista embutida não vale como whitelist, vale como **prior de tamanho**: numa
     página cujos diagramas medem ~590 pt de lado, um achado de contorno desse tamanho é
     diagrama e um de tamanho muito diferente é figura. `None` desliga o filtro (união cega).
+
+    O gabarito sai de `_typical_side` e não de `np.median` desde a S-79: a mediana entrega um
+    número que não é o tamanho de nada quando a página tem duas populações de tamanho, e o
+    prior passa a recusar exatamente o diagrama que ele existe para recuperar.
     """
     scale_x = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
     scale_y = page_rgb.shape[0] / page.rect.height if page.rect.height else 1.0
@@ -202,10 +343,20 @@ def detect_diagrams(
 
     # Lado tipico do diagrama nesta pagina, em pixels, segundo as imagens embutidas. Serve de
     # gabarito para separar achado de contorno que e diagrama de achado que e figura.
+    #
+    # Uniao de ladrilhos nao entra no gabarito (S-81), pela mesma razao que ela nao suprime
+    # contorno em `_contour_wins_over_merged`: ela e inferencia nossa e nao declaracao do PDF.
+    # Medido no `GALLAGHER`: uma uniao de 91 px definia o gabarito da pagina e o prior recusava
+    # por tamanho o diagrama de 120 px que o contorno tinha achado -- sem sobreposicao nenhuma
+    # entre os dois, entao a guarda de IoU nem chegava a opinar.
     expected_side: float | None = None
     if embedded and size_prior_tolerance is not None:
-        sides = [max(box[2], box[3]) for box in embedded_boxes]
-        expected_side = float(np.median(sides))
+        sides = [
+            float(max(box[2], box[3]))
+            for box, candidate in zip(embedded_boxes, embedded, strict=True)
+            if not candidate.merged_tiles
+        ]
+        expected_side = _typical_side(sides, size_prior_tolerance)
 
     # O contorno na pagina inteira e a unica fonte quando nao ha imagem embutida -- o caso da
     # maioria do acervo: 12 dos 27 PDFs sao scan de pagina inteira e 2 sao vetoriais.
@@ -216,16 +367,35 @@ def detect_diagrams(
             xs, ys = quad[:, 0], quad[:, 1]
             box = (int(xs.min()), int(ys.min()), max(1, int(xs.max() - xs.min())), max(1, int(ys.max() - ys.min())))
 
-        if any(_bbox_iou(box, embedded_box) > OVERLAP_IOU for embedded_box in embedded_boxes):
-            continue
+        conflito = next(
+            (
+                indice
+                for indice, outra in enumerate(embedded_boxes)
+                if _same_region(box, outra, merged=bool(embedded[indice].merged_tiles))
+            ),
+            None,
+        )
+        if conflito is not None:
+            if not _contour_wins_over_merged(embedded[conflito], board_rgb):
+                continue
+            # O contorno ganhou de uma uniao de ladrilhos: ele passa a ser o candidato daquela
+            # regiao, e a uniao sai. Sem remover a caixa, o proximo achado de contorno da mesma
+            # regiao seria suprimido por um candidato que ja nao esta na lista.
+            candidates.remove(embedded[conflito])
+            embedded_boxes[conflito] = (0, 0, 1, 1)
 
         if expected_side is not None and size_prior_tolerance is not None:
             side = max(box[2], box[3])
             if abs(side - expected_side) > expected_side * size_prior_tolerance:
-                logger.debug(
-                    "contorno descartado por tamanho: %d px contra gabarito de %.0f px",
+                # `info` e nao `debug` (S-79): esta linha apaga um diagrama em potencial, e a
+                # unica evidencia de que ela agiu. Quando o gabarito estava envenenado, o
+                # sintoma era um diagrama que simplesmente nao aparecia na tela -- sem log,
+                # sem numero, sem nada a que voltar.
+                logger.info(
+                    "Contorno descartado por tamanho: %d px contra gabarito de %.0f px da pagina (tolerancia %.0f%%).",
                     side,
                     expected_side,
+                    size_prior_tolerance * 100,
                 )
                 continue
 

@@ -87,6 +87,7 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | `ocr.py` | Motor de OCR opcional e plugável (S-42). Sem o extra, `build_recognizer` devolve `None`. |
 | `ocr_caption.py` | Lê **a faixa em volta do diagrama**, não a página, e devolve a mesma `TextLine` da S-16 (S-43). A faixa de cabeçalho tem altura própria (`SCOPE_BAND`), porque a de descarte cortava a linha ao meio. |
 | `side_survey.py` | Conta de onde veio o lado a jogar, livro a livro — o critério de saída da Fase 8, medido por `cvoff-sides`. |
+| `detection_census.py` | Conta o que o **detector aceita**, livro a livro, e faz o diff contra a corrida anterior (`cvoff-census`, S-82). Sem modelo e sem rótulo humano: é distribuição, não acurácia. Existe porque `cvoff-eval` e `cvoff-field` medem leitura e são cegos a um recorte que nunca deveria ter existido. |
 | `fen_utils.py` | Sintaxe **e** legalidade — duas coisas distintas, ver o README. |
 | `pdf_to_pgn.py` | Varredura de um livro, gate de exportação, checkpoint parcial. |
 | `batch.py` | Varredura da biblioteca inteira, com relatório consolidado. |
@@ -236,7 +237,7 @@ parcial e sobrevive, o treino perde o progresso desde a última época melhor (S
 
 | arquivo | o que guarda | versionado |
 |---|---|---|
-| `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split | sim |
+| `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split, e a confirmação de ilegalidade deliberada (`illegal_ok`) | sim |
 | `data/splits.csv` | partição treino/validação/teste, estável sob crescimento | sim |
 | `data/samples/` | os PNGs 800×800 dos tabuleiros | não (2,7 GB) |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
