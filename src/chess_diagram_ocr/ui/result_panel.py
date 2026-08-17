@@ -828,7 +828,11 @@ class ResultPanel(ttk.Frame):
             # nova e o visualizador não pintava de verde o diagrama que acabou de ser salvo
             # (S-71) -- os dois só se atualizavam na próxima vez que o livro fosse aberto.
             self._on_sample_saved()
-            messagebox.showinfo("Sucesso", f"Diagrama salvo em:\n{path}")
+            # **Sem modal de sucesso** (S-116). Ele dizia o que a barra de status já diz e
+            # cobrava uma tecla por amostra no laço mais interno do projeto -- corrigir,
+            # `Ctrl+S`, seta, corrigir. Quem quer confirmação visual tem a melhor delas: a
+            # caixa do diagrama fica verde na hora (S-71). O modal de **erro** fica, porque
+            # ali a informação não é redundante e a interrupção é o ponto.
         except Exception as exc:
             messagebox.showerror("Erro", f"Falha ao salvar:\n{exc}")
 

@@ -87,6 +87,12 @@ class DatasetPanel(ttk.Frame):
         """Onde a detecção de duplicatas se declara como operação longa (S-112)."""
         self._busy_token: BusyToken | None = None
 
+        self._stale = True
+        """Alguém gravou no `labels.csv` desde a última leitura desta aba (S-116).
+
+        Começa **verdadeiro**: a aba nasce sem linha nenhuma, e a primeira vez que ela aparecer
+        tem de ler. É o mesmo estado de "mudou desde que eu li"."""
+
         self.query_var = tk.StringVar(value="")
         self.legality_var = tk.StringVar(value=LEGALITY_CHOICES[0])
         self.split_var = tk.StringVar(value=SPLIT_CHOICES[0])
@@ -97,6 +103,9 @@ class DatasetPanel(ttk.Frame):
         self.stats_var = tk.StringVar(value="")
 
         self._build_ui()
+        # O `ttk.Notebook` mapeia e desmapeia o quadro de cada aba ao trocar de aba: e este o
+        # evento que diz "a pessoa esta olhando o dataset agora" (S-116).
+        self.bind("<Map>", self._on_map)
 
     # ------------------------------------------------------------------ layout
 
@@ -164,6 +173,33 @@ class DatasetPanel(ttk.Frame):
     # -------------------------------------------------------------------- dados
 
     def reload(self) -> None:
+        """Relê o dataset -- **ou anota que ele mudou, se esta aba não está na tela** (S-116).
+
+        `load_rows` custa **689 ms** medidos sobre o `labels.csv` de 3.936 linhas, e o caminho
+        que mais chamava isto era o `Ctrl+S`: gravar uma amostra avisava a aba Dataset, que
+        relia o arquivo inteiro na thread do Tk **mesmo nunca tendo sido aberta**. O laço mais
+        interno do projeto -- corrigir, salvar, seta, corrigir -- pagava quase um segundo de
+        janela travada por amostra, e o custo cresce com o arquivo que o projeto existe para
+        fazer crescer.
+
+        **A preguiça mora aqui, e não em quem avisa.** Quem grava uma amostra não tem como
+        saber se esta aba está visível, e não deveria: espalhar `if aba_visivel` pelos
+        chamadores poria a mesma decisão em cinco lugares. O `<Map>` do próprio painel -- que o
+        `ttk.Notebook` dispara ao trocar de aba -- é o sinal, e ele chega sem que ninguém o
+        mande.
+        """
+        if not self.winfo_ismapped():
+            self._stale = True
+            return
+        self._reload_now()
+
+    def _on_map(self, _event: object = None) -> None:
+        """A aba apareceu. Se alguém gravou enquanto ela estava escondida, é agora que se paga."""
+        if self._stale:
+            self._reload_now()
+
+    def _reload_now(self) -> None:
+        self._stale = False
         csv_path, samples_dir, splits_path = self._paths()
         try:
             self.rows = load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=self._duplicate_groups)

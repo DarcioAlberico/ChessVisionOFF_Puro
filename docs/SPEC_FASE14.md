@@ -1304,7 +1304,7 @@ executável só aparece depois de um `uv sync`. Antes disso ele roda por
 
 # Fase 17 — O laço interno, e o custo de abrir um livro
 
-## S-116 · `Ctrl+S` deixa de reler o `labels.csv` inteiro
+## S-116 · `Ctrl+S` deixa de reler o `labels.csv` inteiro ✅ implementada (2026-08-16) — corte 1 de 2
 
 **Problema.** `ui/result_panel.py:830` chama `_on_sample_saved()` → `app_tkinter.py:1142-1147`
 `_reload_dataset_panel` → `dataset_panel.reload()` (`ui/dataset_panel.py:161-172`) →
@@ -1332,6 +1332,57 @@ s** com o `labels.csv` atual. Nenhuma tecla para continuar no caminho de sucesso
 
 **Testes.** Teste sem Tk que instrumenta `load_rows` e afirma **zero** chamadas depois de uma
 gravação com a aba Dataset fechada, e uma quando ela é aberta.
+
+### O que foi entregue
+
+**A medição primeiro, e ela decidiu o escopo.** Os três custos de um `Ctrl+S`, cronometrados
+nesta máquina sobre o `labels.csv` de 3.936 linhas:
+
+```
+    load_rows (aba Dataset) .......   688.7 ms
+    LabelStore.read() .............    29.2 ms
+    saved_diagrams_by_page ........     0.2 ms
+    TOTAL por Ctrl+S ..............   718.1 ms
+```
+
+**96% do custo é um só dos dois cortes.** Feito o corte 1, o mesmo caminho custa **46,1 ms**
+(`LabelStore.read()` 30,9 + `load_annotations` do livro 15,0 + `saved_diagrams_by_page` 0,2) —
+dentro do alvo de < 50 ms, com uma margem que é honesto chamar de estreita.
+
+**A preguiça mora no painel, e não em quem avisa.** `DatasetPanel.reload()` marca `_stale` e
+sai quando `winfo_ismapped()` é falso; o `<Map>` que o `ttk.Notebook` dispara ao trocar de aba
+recarrega **uma** vez, por mais gravações que tenham acontecido escondidas. Isso dispensou
+mexer no `<<NotebookTabChanged>>` da janela: quem grava uma amostra não tem como saber se
+aquela aba está visível, e não deveria — espalhar `if aba_visivel` pelos chamadores poria a
+mesma decisão em cinco lugares.
+
+**E o modal de sucesso do `save_current` saiu.** Ele dizia o que a barra de status já diz e
+cobrava uma tecla por amostra no laço mais interno do projeto. A confirmação visual continua,
+e é a melhor delas: a caixa do diagrama fica verde na hora (S-71). **O modal de erro fica** —
+ali a informação não é redundante e a interrupção é o ponto.
+
+### O que **não** foi feito: o corte 2, e ele vale ~31 ms dos 46
+
+`_reload_saved_diagrams` continua relendo o `labels.csv` inteiro para descobrir o que a janela
+acabou de escrever. Fazê-lo incrementalmente exige que a `(página, diagrama)` gravada atravesse
+o `on_sample_saved`, que hoje não recebe argumento nenhum — é mudança na fronteira entre o
+`result_panel` e o `app_tkinter`, e o alvo do critério de aceite já está cumprido sem ela.
+
+Fica registrado com o número para que a decisão de fazê-la seja tomada por ele: **30,9 ms de
+`LabelStore.read()` mais 15,0 ms de `load_annotations`**, e o primeiro cresce com o arquivo.
+
+### Uma armadilha de suíte que este item encontrou
+
+O módulo de teste novo roda cedo na ordem alfabética, e a primeira versão dele guardava a raiz
+Tk num global de módulo — como fazem o `test_result_panel` e o `test_pdf_panel`. Resultado:
+**47 testes falharam** em `test_gallery_panel`, `test_pdf_panel` e `test_result_panel`, com
+`image "pyimage1" doesn't exist` e `Can't find a usable tk.tcl`, apontando para os módulos
+errados. Uma raiz que sobrevive ao módulo fica viva enquanto os seguintes criam e destroem as
+deles, e nesta máquina isso quebra o Tcl.
+
+O molde que funciona é o do `test_gallery_panel`: criar em `setUpClass` e **destruir** em
+`tearDownClass`. Fica escrito no docstring da classe, com os sintomas, porque é o tipo de coisa
+que o próximo a acrescentar um teste de janela vai reencontrar.
 
 ---
 
