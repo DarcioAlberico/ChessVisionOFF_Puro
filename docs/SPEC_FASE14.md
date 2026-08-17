@@ -750,7 +750,7 @@ amostra sem split.
 
 ---
 
-## S-107 · O retreino de produção, e o candidato que espera desde 2026-08-11
+## S-107 · O retreino de produção, e o candidato que espera desde 2026-08-11 ✅ medido (2026-08-16)
 
 **Problema.** O modelo que `config.py:168` carrega foi treinado sobre **2.660** amostras em
 2026-08-09 (`augment_version=aug0`, `git_commit=88daa9a`). O treino disponível hoje é ≈ **3.128**
@@ -784,6 +784,39 @@ dele é igual ou melhor que a do controle, com `n` declarado; a decisão fica no
 **inclusive se for "não promover"**.
 
 **Testes.** Não é item de teste, é item de medição. O que a suíte trava é a S-102 e a S-105.
+
+### O que foi medido
+
+**A decisão é "não promover o `mhsp`", e ela está no [ROADMAP_FASE14](ROADMAP_FASE14.md) com a
+tabela inteira.** Aqui fica o que a medição ensinou sobre a própria régua, que é o que
+interessa às specs vizinhas:
+
+**A régua não distingue os três modelos.** Exatidão de campo 1,0000 sobre os mesmos 28
+diagramas para produção, controle e `mhsp`. O conjunto mede leitura desde a S-99, mas não tem
+resolução para escolher entre modelos — que era exatamente a terceira ressalva daquele commit,
+agora confirmada em vez de estimada. **A S-99 continua sendo o gargalo**, e agora com um alvo
+nomeado: `GALLAGHER p80` é o único diagrama em que o controle e o `mhsp` divergem, e ele está
+no conjunto **sem FEN de referência**.
+
+**A armadilha da S-97 fechou, e o número não mudou de tamanho.** As duas páginas contaminadas
+(`Karpov p80`, `Kemeri p187`) entraram no treino destes dois modelos — era a previsão literal
+da S-97, e o único remédio disponível foi o que ela já implementava: publicar a taxa limpa ao
+lado. A ordem entre controle e `mhsp` é a mesma nas duas taxas.
+
+**A S-96 mostrou o modo de falha dela do lado do vencedor.** O diagrama que o controle exporta
+a mais passa o gate com confiança acima de 0,80 e não tem referência: pela taxa de exportação
+ele é um acerto, e ninguém sabe se é. É a demonstração de que "exportado" e "certo" continuam
+sendo perguntas diferentes mesmo quando a resposta parece boa.
+
+**A S-105 teria poupado uma inferência.** Os metadados dos dois checkpoints não trazem lr, lote
+nem número de épocas; a única forma de saber que o candidato histórico `s40_mhsp_16ep.pt` rodou
+**8** épocas e não 16 foi ler `metadata["metrics"]["total_epochs"]`, que existe por acaso. O
+nome do arquivo dizia outra coisa.
+
+**A S-102 não existia para barrar.** O `cvoff-audit --strict` da receita não rodou porque é a
+S-102, ainda aberta; o `cvoff-audit` normal rodou e foi lido por gente. Ele acusa redundância
+em 11,0% (teto da S-63 é 10%) e 3 triplas cruzando split (S-98) — dois avisos que, com a S-102
+implementada, teriam interrompido o retreino em vez de virar uma linha de ressalva.
 
 ---
 

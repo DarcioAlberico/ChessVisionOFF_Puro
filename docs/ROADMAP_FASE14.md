@@ -384,12 +384,16 @@ melhorá-la.
 | 15.4 | A época salva tem critério de desempate | S-104 | ⬜ |
 | 15.5 | O checkpoint guarda o que reproduz o número | S-105 | ⬜ |
 | 15.6 | `cvoff-experiment` não reatribui splits no meio da grade | S-106 | ⬜ |
-| 15.7 | O retreino de produção, e a decisão sobre o candidato de 2026-08-11 | S-107 | ⬜ |
+| 15.7 | O retreino de produção, e a decisão sobre o candidato de 2026-08-11 | S-107 | ✅ medido — **não promover o `mhsp`** |
 | 15.8 | Os livros que exportam zero ganham rótulo no dataset | S-108 | ⬜ |
 
 **Critério de saída:** o modelo de produção cita `dataset_size ≥ 3.100`; a exatidão de campo do
 promovido é igual ou melhor que a do controle, com `n` declarado; e a decisão fica registrada
 **inclusive se for "não promover"**.
+
+> A 15.7 foi executada em 2026-08-16, **antes** das 15.1 a 15.6 — a pedido, e a ressalva está
+> registrada em ["O retreino de produção, medido"](#o-retreino-de-produção-medido-2026-08-16).
+> A decisão sobre o `mhsp` está tomada; a troca do arquivo de produção não.
 
 ---
 
@@ -585,6 +589,94 @@ rodando. A ressalva registrada em "O que esta avaliação não olhou" estava cer
 
 ---
 
+## O retreino de produção, medido (2026-08-16)
+
+**A decisão: não promover o `mhsp`. O `AugmentConfig()` padrão continua `aug0`.** Pendente
+desde 2026-08-11, e esta é a primeira vez que houve régua para tomá-la.
+
+Dois treinos sobre o **mesmo** dataset, semente e número de épocas — a regra do CONTRIBUTING —,
+3h40 de CPU, seguidos de três medições de campo no mesmo estado de máquina:
+
+```bash
+cvoff-train --fresh --seed 42 --model models/controle_20260816.pt
+cvoff-train --fresh --seed 42 --augment mhsp --model models/mhsp_20260816.pt
+cvoff-field --model models/controle_20260816.pt --json docs/metrics/controle_20260816.json
+cvoff-field --model models/mhsp_20260816.pt     --json docs/metrics/mhsp_20260816.json
+cvoff-field                                     --json docs/metrics/producao_20260816.json
+```
+
+| | produção (2026-08-09) | **controle `aug0`** | `mhsp` |
+|---|---|---|---|
+| `dataset_size` (treino) | 2.660 | **3.173** | 3.173 |
+| `split_hash` | `cf7b6cf5…` | `41c44c1c…` | `41c44c1c…` |
+| melhor época | 10 | 5 de 8 | 8 de 8 |
+| `val_board_exact_acc` | 0,9874 † | **0,9818** | 0,9766 |
+| **taxa de exportação** | 0,7179 (28/39) | **0,7436 (29/39)** | 0,7179 (28/39) |
+| exportação limpa | 0,6562 (21/32) | **0,6875 (22/32)** | 0,6562 (21/32) |
+| **exatidão de campo** | 1,0000 (28/28) | 1,0000 (28/28) | 1,0000 (28/28) |
+| exportados e errados | 0 | 0 | 0 |
+| reparos do decode / diagrama | 0,590 | 0,769 | **0,333** |
+| custo por diagrama | 0,378 s | 0,467 s | 0,346 s |
+
+† Sobre outro `split_hash` e 513 amostras a menos: **não é comparável**, e está na tabela só
+para que ninguém o compare depois sem ver esta linha.
+
+### Por que "não promover"
+
+**A exatidão de campo é 1,0000 nos três, sobre os mesmos 28 diagramas.** O conjunto não
+distingue os três modelos em *correção* — é exatamente a ressalva que o commit da S-99 deixou
+escrita, e ela se confirmou. Sobra a taxa de exportação como único número discriminante, e ela
+**favorece o controle**: 29 contra 28.
+
+**Os −40% de reparo do decodificador se confirmaram, e ficaram maiores: −57%** (0,333 contra
+0,769 por diagrama). Era o argumento de 2026-08-11 a favor do `mhsp`. Mas a S-96 estabeleceu
+que contagem de reparo não mede correção, e agora existe um número que mede — e ele diz que
+os dois leem igualmente certo. **A vantagem de reparo não compra nada mensurável.**
+
+**E o orçamento de treino não é a explicação.** O candidato histórico `s40_mhsp_16ep.pt`, cujo
+nome sugere 16 épocas, tem `total_epochs: 8` e `best_epoch: 8` nos próprios metadados: rodou 8,
+como este. A comparação é do regime de aumento, não do número de épocas.
+
+### As quatro ressalvas, e a primeira invalidaria a conclusão se fosse maior
+
+- **A diferença de 1 diagrama é de um diagrama sem FEN de referência.** O que o controle
+  exporta a mais é `GALLAGHER p80`, e o `field_set.jsonl` o traz com `placement` vazio. Não se
+  sabe se aquela leitura está certa — só que passou o gate com confiança acima de 0,80. É o
+  modo de falha que a S-96 nomeou, e ele está do lado do vencedor. **A S-99 deve conferir esse
+  diagrama antes de a diferença ser usada em qualquer outro argumento.**
+- **`n = 28` exportados conferíveis, de 39 anotados em 17 páginas.** Uma diferença de um
+  diagrama não sobrevive a nenhum teste de significância, e nada aqui pretende que sobreviva.
+  Isto é um veto a promover, não uma prova de superioridade.
+- **18% do conjunto está em páginas com amostra de treino**, e desta vez a armadilha da S-97
+  fechou: as duas páginas (`Karpov p80`, `Kemeri p187`) **entraram no treino destes dois
+  modelos**. A taxa limpa está publicada ao lado por isso, e a ordem entre controle e `mhsp` é
+  a mesma nas duas.
+- **O `git_commit` dos dois checkpoints difere** (`d1a3eb0` e `c3a4ea8`) porque foram gravados
+  em momentos diferentes de uma sessão que comitava outros itens. Nada em `src/` que afete
+  treino mudou entre os dois: as S-110, S-112 e S-113 tocam UI, registro de operações e cache
+  de posições.
+
+### O que **não** foi feito, e é decisão sua
+
+**`models/piece_classifier.pt` não foi trocado.** A receita da S-107 não inclui a troca, e ela
+sobrescreve o modelo que o produto carrega (`config.py:168`). O controle está medido e pronto
+em `models/controle_20260816.pt`, com `dataset_size = 3.173 ≥ 3.100` e taxa de exportação
+**acima** da de produção sobre o mesmo conjunto — os 468 rótulos de correção humana que o
+produto nunca viu. Promovê-lo é:
+
+```bash
+cp models/piece_classifier.pt models/piece_classifier_pre_20260816.pt
+cp models/controle_20260816.pt models/piece_classifier.pt
+```
+
+E o `cvoff-audit --strict` da receita **não rodou porque não existe** — é a S-102, ainda
+aberta. Rodou o `cvoff-audit` normal: 3.935 rótulos utilizáveis, 0 ilegais fatais, 1 PNG
+sumido, redundância em **11,0%** (acima do teto de 10% da S-63) e 3 triplas cruzando split
+(S-98). Nenhum é impeditivo, mas nenhum foi barrado por gate — foi lido por gente, que é
+precisamente o que a S-102 existe para deixar de exigir.
+
+---
+
 ## Sequenciamento sugerido
 
 A regra é a das fases anteriores: **medição antes de mudança, e mudança antes de refatoração.**
@@ -599,7 +691,7 @@ que decide se as outras cinco significam alguma coisa.
 | 3–4 | **S-99** — anotar as 60 páginas | ~3 h suas, e é a pendência que o ROADMAP_FASE7 já chamava de "a que destrava as outras". Agora ela vale, porque a ferramenta está consertada |
 | 5 | **S-101** + **S-102** | consertar o dedupe **antes** de rodá-lo; depois a auditoria passa a barrar |
 | 5 | **S-103** a **S-106** | as quatro guardas baratas do treino, todas de horas |
-| 6 | **S-107** — o retreino, e a decisão do `mhsp` | é o primeiro dia em que essa decisão tem régua para ser tomada |
+| 6 | ~~**S-107** — o retreino, e a decisão do `mhsp`~~ ✅ | feito fora de ordem, em 2026-08-16. A régua respondeu **não promover**, e disse também que não distingue os dois modelos em correção — ver a seção acima |
 | 7–8 | Fase 16 restante | o que se perde ao fechar a janela, o cache, a galeria |
 | 9–12 | Fase 17 | o laço interno e a varredura única; é o que torna o acervo alcançável |
 | 13–14 | Fase 18 | as três falhas mais prováveis, e o `.exe` que hoje é mudo |
@@ -620,5 +712,6 @@ silêncio, os quatro são de horas, e os quatro pioram enquanto o programa é us
 | **`data/gallery/` fora do git** | 5.953 anotações, 21 delas escolha humana explícita. Versionar custa ~11 MB de texto no repositório; não versionar custa tudo isso num disco que falhe. A decisão é sua, mas **precisa ser tomada** |
 | **`cvoff-audit --dedupe` como está** | Não rodar até a S-101. Ele apagaria 6,2% do `test` e 8,4% do `val` |
 | **A base de 18 GB e o índice de 885 MB** | O índice guarda a mesma informação duas vezes; 476 MB bastariam. Refazê-lo custa uma reconstrução, e a decisão pode esperar a Fase 17 |
-| **Retreinar produção com `mhsp`** | Pendente desde 2026-08-11, e agora com data para ser decidido: dia 6 do sequenciamento |
+| ~~**Retreinar produção com `mhsp`**~~ **decidido em 2026-08-16: não** | O `mhsp` exporta 28/39 contra 29/39 do controle, com exatidão de campo **idêntica** (1,0000 sobre os mesmos 28). Os −40% de reparo se confirmaram como −57% e não compram nada mensurável. O `AugmentConfig()` padrão continua `aug0` |
+| **Trocar `models/piece_classifier.pt` pelo controle** | **Esta continua sua.** O controle está medido, cita `dataset_size = 3.173` e exporta 29/39 contra 28/39 da produção — mas a diferença é de **um diagrama sem FEN de referência**, e o comando sobrescreve o modelo que o produto carrega. Ver a seção do retreino |
 | **Sem GPU** | Continua valendo: `torch 2.10.0+cpu`, época em ~9 min com a máquina livre. Os dois treinos da S-107 custam ~5 h de CPU |
