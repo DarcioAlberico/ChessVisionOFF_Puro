@@ -174,6 +174,26 @@ def filter_rows(
     return result
 
 
+def page_after_change(page: int, visible: int, page_size: int) -> int:
+    """A página que continua fazendo sentido depois de a lista visível mudar (S-118).
+
+    **O laço que isto conserta é o de conferir rótulos**: abrir no editor, corrigir, `Ctrl+S`,
+    voltar. Cada volta chamava `apply_filters`, que zerava a página -- a linha corrigida estava
+    na 15 e a tabela voltava para a 1. Com 3.936 linhas e 200 por página são 20 páginas, e o
+    gesto de retomar o lugar custa até 19 cliques.
+
+    Fica aqui e não no painel porque é aritmética, e aritmética se testa sem abrir janela.
+
+    Duas bordas, e as duas acontecem: remover a última linha da última página encolhe o total,
+    e a página pedida deixa de existir -- então ela cai para a última que existe, e não para a
+    primeira. Lista vazia é página 0, que é a única que faz sentido.
+    """
+    if visible <= 0 or page_size <= 0:
+        return 0
+    ultima = (visible - 1) // page_size
+    return max(0, min(page, ultima))
+
+
 def class_distribution(rows: Iterable[DatasetRow]) -> Counter[str]:
     """Contagem por classe **em casas**, que é a unidade em que o modelo aprende."""
     counts: Counter[str] = Counter()

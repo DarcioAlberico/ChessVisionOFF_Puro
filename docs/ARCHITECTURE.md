@@ -141,9 +141,12 @@ observável e não a gosto (S-53).
 
 Três lugares onde a escolha já cobra, e os três são mensuráveis:
 
-- `DatasetPanel` **pagina** porque, nas palavras do próprio código, *"3.195 linhas de uma vez
-  travam o `Treeview` do Tk"*. A paginação custa o que mitiga: filtro e ordenação valem por
-  página, não pelo conjunto.
+- `DatasetPanel` **pagina** por uma premissa que a S-118 mediu e derrubou: *"3.195 linhas de
+  uma vez travam o `Treeview` do Tk"*. Medido com `Treeview` real e as mesmas 8 colunas,
+  **inserir 3.936 linhas custa 53 ms**; o que custava eram os 689 ms do `load_rows` que vinha
+  antes (S-116). A paginação cobra o que não mitiga: filtro e ordenação valem por página, e
+  até a S-118 ela também perdia o lugar de quem corrigia rótulo a rótulo. Ela fica — remover
+  é uma segunda decisão, e ela precisa da medição refeita quando o `labels.csv` dobrar.
 - O tabuleiro redesenhava-se inteiro a cada mudança. A S-50 aliviou (`draw_dirty` toca 2
   casas ao arrastar), não eliminou: mudança de geometria ainda refaz as 64.
 - As sobreposições que a Fase 8 vai querer — bbox de texto reconhecido sobre a página, com

@@ -423,7 +423,7 @@ versionado, ou com backup documentado, mas **decidido**.
 |---|---|---|---|
 | 17.1 | `Ctrl+S` deixa de reler o `labels.csv` inteiro na thread da janela | S-116 | ✅ 718 → 46 ms (falta o corte 2, ~31 ms) |
 | 17.2 | A seta não executa dois painéis ao mesmo tempo | S-117 | ⬜ |
-| 17.3 | O DatasetPanel não perde a página e a seleção a cada correção | S-118 | ⬜ |
+| 17.3 | O DatasetPanel não perde a página e a seleção a cada correção | S-118 | ✅ |
 | 17.4 | Uma varredura por livro em vez de duas | S-119 | ⬜ |
 | 17.5 | A varredura da Galeria é retomável e diz até onde foi | S-120 | ⬜ |
 | 17.6 | O acervo varrido sem janela aberta | S-121 | ⬜ |

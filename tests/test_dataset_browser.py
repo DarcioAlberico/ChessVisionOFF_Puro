@@ -15,6 +15,7 @@ from chess_diagram_ocr.dataset_browser import (
     filter_rows,
     imbalance_alerts,
     load_rows,
+    page_after_change,
     quarantine_rows,
     restore_from_quarantine,
     source_distribution,
@@ -289,3 +290,38 @@ class EditingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PaginaPreservadaTests(unittest.TestCase):
+    """A tabela não volta para a página 1 a cada correção (S-118).
+
+    O laço de conferir rótulos -- abrir no editor, corrigir, `Ctrl+S`, voltar -- chamava
+    `apply_filters`, que zerava a página. A linha corrigida estava na 15 e a tabela voltava
+    para a 1; com 3.936 linhas e 200 por página são 20 páginas, e retomar o lugar custa até
+    19 cliques.
+
+    A aritmética mora em `dataset_browser` e não no painel justamente para caber aqui, sem Tk.
+    """
+
+    def test_remover_uma_linha_nao_muda_a_pagina(self) -> None:
+        """**O critério de aceite**, no vocabulário do modelo: a página 12 continua a 12."""
+        self.assertEqual(page_after_change(12, visible=3936, page_size=200), 12)
+        self.assertEqual(page_after_change(12, visible=3935, page_size=200), 12)
+
+    def test_a_pagina_que_deixou_de_existir_cai_para_a_ultima(self) -> None:
+        """Remover a última linha da última página: a página pedida some, e cair para a
+        primeira perderia o lugar tanto quanto o defeito que este item conserta."""
+        self.assertEqual(page_after_change(19, visible=3801, page_size=200), 19)
+        self.assertEqual(page_after_change(19, visible=3800, page_size=200), 18)
+
+    def test_lista_vazia_e_pagina_zero(self) -> None:
+        self.assertEqual(page_after_change(12, visible=0, page_size=200), 0)
+
+    def test_pagina_negativa_nao_passa(self) -> None:
+        """Defensivo e barato: `_page` é aritmética de botão, e um `-1` viraria fatia vazia
+        sem erro nenhum -- uma tabela em branco que ninguém sabe explicar."""
+        self.assertEqual(page_after_change(-3, visible=1000, page_size=200), 0)
+
+    def test_uma_pagina_so_continua_sendo_a_zero(self) -> None:
+        self.assertEqual(page_after_change(0, visible=5, page_size=200), 0)
+        self.assertEqual(page_after_change(3, visible=5, page_size=200), 0)

@@ -23,6 +23,7 @@ from ..dataset_browser import (
     filter_rows,
     imbalance_alerts,
     load_rows,
+    page_after_change,
     quarantine_rows,
     source_distribution,
     split_distribution,
@@ -61,7 +62,19 @@ class DatasetPanel(ttk.Frame):
     }
 
     PAGE_SIZE = 200
-    """Linhas por página da tabela. 3.195 linhas de uma vez travam o Treeview do Tk."""
+    """Linhas por página da tabela.
+
+    **A premissa que criou isto está medida e é falsa** (S-118). A justificativa era "3.195
+    linhas de uma vez travam o `Treeview` do Tk", e o `ARCHITECTURE.md` a repetia. Medido nesta
+    máquina com `Treeview` real e as mesmas 8 colunas: inserir **3.936 linhas custa 53 ms**, e
+    limpar a tabela custa 6 ms. O que custava era o `load_rows` que vinha antes -- 689 ms --, e
+    esse é assunto da S-116.
+
+    **A paginação fica, e tirá-la é uma segunda decisão.** Ela não é gratuita: cobra o lugar de
+    quem está conferindo rótulo a rótulo, e é isso que a S-118 conserta preservando página e
+    seleção. Mas 53 ms é o número de hoje com 3.936 linhas, e o `labels.csv` é o arquivo que o
+    projeto existe para fazer crescer -- a decisão de remover a paginação precisa da medição
+    refeita quando ele dobrar, não da premissa de 2026-07 nem desta."""
 
     def __init__(
         self,
@@ -200,6 +213,10 @@ class DatasetPanel(ttk.Frame):
 
     def _reload_now(self) -> None:
         self._stale = False
+        # O lugar de quem estava conferindo, guardado antes da recarga (S-118). Por
+        # `filename` e nao por indice: a linha corrigida pode ter mudado de posicao no filtro,
+        # e um indice apontaria para a vizinha dela.
+        selecionadas = {row.filename for row in self.selected_rows()}
         csv_path, samples_dir, splits_path = self._paths()
         try:
             self.rows = load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=self._duplicate_groups)
@@ -209,10 +226,33 @@ class DatasetPanel(ttk.Frame):
 
         livros = sorted({row.source_pdf for row in self.rows if row.source_pdf})
         self.source_combo.configure(values=("(todos)", *livros))
-        self.apply_filters()
+        self.apply_filters(keep_position=True)
+        self._select_filenames(selecionadas)
         self._on_status(f"Dataset carregado: {len(self.rows)} amostras.")
 
-    def apply_filters(self) -> None:
+    def _select_filenames(self, filenames: set[str]) -> None:
+        """Reseleciona, na página desenhada agora, as linhas que estavam selecionadas antes.
+
+        Só o que está na página: uma linha que saiu dela pela mudança de filtro não tem item
+        de `Treeview` para selecionar, e persegui-la mudando de página seria adivinhar.
+        """
+        if not filenames:
+            return
+        inicio = self._page * self.PAGE_SIZE
+        chunk = self.visible[inicio : inicio + self.PAGE_SIZE]
+        itens = self.tree.get_children()
+        alvos = [itens[i] for i, row in enumerate(chunk) if row.filename in filenames and i < len(itens)]
+        if alvos:
+            self.tree.selection_set(alvos)
+            self.tree.see(alvos[0])
+
+    def apply_filters(self, *, keep_position: bool = False) -> None:
+        """Refiltra e redesenha. `keep_position` é para quem **não** mudou o filtro (S-118).
+
+        Trocar um filtro é pedir outra lista, e ali voltar à primeira página é o certo. Salvar
+        uma amostra não é: a lista é a mesma, e devolver a tabela ao começo perde o lugar de
+        quem estava conferindo rótulo a rótulo.
+        """
         legality = self.legality_var.get()
         split = self.split_var.get()
         source = self.source_var.get()
@@ -225,7 +265,7 @@ class DatasetPanel(ttk.Frame):
             only_duplicates=bool(self.duplicates_var.get()),
             only_missing_image=bool(self.missing_var.get()),
         )
-        self._page = 0
+        self._page = page_after_change(self._page, len(self.visible), self.PAGE_SIZE) if keep_position else 0
         self._render_page()
         self._update_stats()
 

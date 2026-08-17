@@ -1576,7 +1576,7 @@ o foco fora dele, dispara o do editor.
 
 ---
 
-## S-118 · O DatasetPanel não perde a página e a seleção
+## S-118 · O DatasetPanel não perde a página e a seleção ✅ implementada (2026-08-17) — item 1 de 2
 
 **Problema.** `ui/dataset_panel.py:62-63` justifica a paginação com *"3.195 linhas de uma vez
 travam o `Treeview` do Tk"*, e o `ARCHITECTURE.md:143-145` repete a premissa. Medido com
@@ -1602,6 +1602,32 @@ linha selecionada.
 
 **Testes.** Teste sem Tk do modelo de paginação: ir para a página 12, remover uma linha, a
 página resultante continua 12 (hoje volta a 0).
+
+### O que foi entregue: o item 1. O item 2 fica com o número ao lado.
+
+`apply_filters(keep_position=...)` separa as duas situações: trocar um filtro é pedir outra
+lista, e ali voltar à primeira página é o certo; **salvar uma amostra não é** — a lista é a
+mesma. Só o `reload()` preserva.
+
+A aritmética mora em `dataset_browser.page_after_change`, e não no painel, porque é aritmética
+e se testa sem abrir janela. Ela trata a borda que acontece: remover a última linha da última
+página faz a página pedida deixar de existir, e cair para a **última que existe** — não para a
+primeira, que perderia o lugar tanto quanto o defeito original.
+
+A seleção volta **por `filename`, não por índice**: a linha corrigida pode ter mudado de
+posição no filtro, e um índice apontaria para a vizinha dela. Só o que está na página desenhada
+— perseguir uma linha que saiu dela mudando de página seria adivinhar.
+
+**O item 2 foi medido e não foi feito.** A premissa da paginação — *"3.195 linhas de uma vez
+travam o `Treeview` do Tk"* — é falsa: com `Treeview` real e as mesmas 8 colunas, **inserir
+3.936 linhas custa 53 ms** e limpar custa 6 ms. (A spec estimava ~30 ms; o número aqui é o
+medido nesta máquina.) O que custava eram os 689 ms do `load_rows`, que é a S-116.
+
+A paginação fica assim mesmo, e o motivo está no docstring do `PAGE_SIZE`: 53 ms é o número de
+**hoje**, com 3.936 linhas, e o `labels.csv` é o arquivo que o projeto existe para fazer
+crescer. Remover a paginação precisa da medição refeita quando ele dobrar — não da premissa de
+2026-07 nem desta. O `ARCHITECTURE.md`, que repetia a premissa antiga, passou a citar o
+número.
 
 ---
 
