@@ -105,6 +105,12 @@ candidato de contorno do acervo, o corte cai inteiro abaixo do gate de exportaç
 116×116 -- tabuleiro **cortado**, que o warp estica e desalinha. Eles leem 0,0001 a 0,41
 enquanto os gêmeos bem recortados da mesma página leem 0,998 e acima.
 
+> **Os 12 do `Reinfeld` não existem mais (S-171).** O recorte cortado era um contato de quina
+> que a rasterização não ligava, e ele foi consertado: aqueles diagramas voltam a sair 116×116
+> e a ler 0,99 e acima, e não chegam mais a esta guarda. O que este parágrafo registra é a
+> medição de 2026-08-17 que aceitou a S-143 -- e o motivo de ela ter aceitado um corte que
+> removia 12 diagramas de verdade: eles estavam quebrados **antes** da guarda.
+
 **Zero, e por quê.** O número não é ajustado à amostra: é onde a comparação sinal-contra-ruído
 troca de sinal (`contraste·2,4 ≤ dispersão·0,9`). O candidato legítimo mais próximo do corte no
 acervo é um `Polgar` de 0,0616 -- posição de abertura, 28 peças, o caso que derruba esta
@@ -447,7 +453,9 @@ def detect_diagrams(
 
     `checker_contrast_floor` recusa achado de contorno **sem contraste de casa nenhum** -- a
     foto, o retrato e a moldura da S-143. `None` desliga. Não alcança imagem embutida: ali a
-    declaração do PDF continua ganhando, como desde a S-12. Ver `MIN_CHECKER_CONTRAST`.
+    declaração do PDF continua ganhando, como desde a S-12. Ver `MIN_CHECKER_CONTRAST`. Quem
+    a aplica é `detect_boards`, e desde a S-171 é lá que ela precisa morar -- antes da
+    supressão por IoU, que é a primeira guarda de competição do caminho.
 
     `rejected`, quando dado, recebe um `RejectedQuad` por achado de contorno **barrado** --
     tanto os do `detect_boards` (geometria, score, IoU, teto) quanto os daqui: contraste de
@@ -495,26 +503,17 @@ def detect_diagrams(
         xs, ys = quad[:, 0], quad[:, 1]
         return (int(xs.min()), int(ys.min()), max(1, int(xs.max() - xs.min())), max(1, int(ys.max() - ys.min())))
 
+    # A guarda de contraste de casa (S-143) roda **dentro** do `detect_boards`, e nao aqui:
+    # a supressao por IoU e uma guarda de competicao, ela mora naquele laco, e um borrao sem
+    # xadrez nenhum podia derrubar o tabuleiro de verdade antes de esta linha ser alcancada.
+    # Medido no `Karpov 2` p56 (S-171); o porque esta em `detect_boards`.
     for board_rgb, quad in detect_boards(
-        page_rgb, max_boards=max_boards, reading_order=reading_order, rejected=rejected
+        page_rgb,
+        max_boards=max_boards,
+        reading_order=reading_order,
+        rejected=rejected,
+        checker_floor=checker_contrast_floor,
     ):
-        # Antes de tudo (S-143). O achado que nao tem contraste de casa nenhum nao e tabuleiro,
-        # e a ordem importa: se ele entrasse na disputa, um retrato podia derrubar uma uniao de
-        # ladrilhos em `_contour_wins_over_merged` ou envenenar o gabarito de tamanho. Guarda
-        # que julga o que a coisa **e** vem antes de guarda que julga com quem ela compete.
-        if checker_contrast_floor is not None:
-            contraste = board_checker_contrast(board_rgb)
-            if contraste <= checker_contrast_floor:
-                # `info` pelo mesmo motivo da recusa por tamanho (S-79): esta linha apaga um
-                # candidato, e e a unica evidencia de que ela agiu.
-                logger.info(
-                    "Contorno descartado por nao ter contraste de casa: %.4f. Foto, retrato "
-                    "ou moldura -- ou tabuleiro cortado, que o warp desalinha.",
-                    contraste,
-                )
-                _recusado(_caixa_do_quad(quad), contraste, "sem-contraste-de-casa")
-                continue
-
         box = _caixa_do_quad(quad)
 
         conflito = next(

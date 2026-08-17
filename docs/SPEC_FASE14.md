@@ -14,7 +14,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-171 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
@@ -2816,10 +2816,10 @@ do enunciado — os dois pedidos não cobriam as duas formas de a tabela apodrec
 | `test_a_tabela_de_faixas_e_a_mesma_em_todos` | as cinco cópias da tabela divergindo entre si |
 
 **A faixa da `ANALISE_DETECCAO` não é contígua, e isso é decisão e não descuido.** Ela é
-`S-78 a S-82, S-143`: item de detecção mora com os outros de detecção, ao lado da medição que o
-motivou — a S-143 entrou junto da S-80, que é o que ela corrige. O formato da tabela aceita
-vírgula por causa disso; obrigar contiguidade mandaria a S-143 para longe da única página que
-explica por que ela existe.
+`S-78 a S-82, S-143, S-171`: item de detecção mora com os outros de detecção, ao lado da medição
+que o motivou — a S-143 entrou junto da S-80, que é o que ela corrige, e a S-171 junto da S-143,
+que é o item que a deixou em aberto. O formato da tabela aceita vírgula por causa disso; obrigar
+contiguidade mandaria as duas para longe da única página que explica por que elas existem.
 
 **Os arquivos de medição ficam de fora, e o teste sabe disso.** `EXPERIMENTS.md`,
 `EXPERIMENTS_FASE7.md`, `BASELINE.md` e `ROADMAP_FASE7.md` também têm seções `S-NN`, e elas

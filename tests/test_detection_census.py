@@ -350,8 +350,12 @@ class RecusasTests(unittest.TestCase):
     efeito: dá para ver o falso positivo que sumiu, e não o diagrama que sumiu junto.
     """
 
-    MOTIVOS_DO_HIBRIDO = ("sem-contraste-de-casa", "prior-de-tamanho", "perdeu-para-embutido", "teto-da-pagina")
-    """As quatro guardas que moram no `detection/hybrid`, e não no `board_detection`."""
+    MOTIVOS_DO_HIBRIDO = ("prior-de-tamanho", "perdeu-para-embutido", "teto-da-pagina")
+    """As três guardas que moram no `detection/hybrid`, e não no `board_detection`.
+
+    Eram quatro até a S-171: `sem-contraste-de-casa` desceu para o `board_detection`, porque
+    precisa rodar antes da supressão por IoU -- ver `MOTIVOS_DE_RECUSA`.
+    """
 
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-s131-"))
