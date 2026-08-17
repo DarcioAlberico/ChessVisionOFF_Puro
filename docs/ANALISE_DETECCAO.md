@@ -794,8 +794,10 @@ diagrama ali.
 
 #### 7. Medido
 
-**O censo do acervo**, 39 livros, contra `docs/metrics/deteccao_base.csv` (a linha de base que
-a S-143 gravou):
+**O censo do acervo**, 39 livros, contra o censo da **mesma árvore sem o reparo** (`3780d6a`) —
+e não contra a linha de base commitada, porque a S-130 entrou entre uma coisa e outra e mexe em
+decisão de refino. Medido: aquele censo dá 1520, o mesmo número da linha de base, então os dois
+caminhos concordam aqui — mas a igualdade é resultado, e não premissa:
 
 | | |
 |---|---|
@@ -953,7 +955,8 @@ A varredura completa do livro do relato leva ~25 min em CPU; a amostragem por li
 | a tabela de DPI | o mesmo `detect_diagrams`, variando `render_pdf_page(..., dpi=)` de 150 a 400 |
 | a tabela de operações | duas casas afastadas por 1 px na quina, contando componentes depois de cada fechamento |
 | a tabela de passes | as 8 páginas do relato (13, 26, 38, 51, 77, 141, 154, 166, 0-based), com a lista de passes injetada |
-| a leitura antes/depois | **duas árvores**: `git worktree add --detach <tmp> <commit anterior>` e a de trabalho, cada uma varrendo o acervo com `predict_with_orientation` em todo candidato de contorno, e as duas casadas por página e sobreposição |
+| a leitura antes/depois | **duas árvores**: `git worktree add --detach <tmp> 3780d6a` e a de trabalho, cada uma varrendo o acervo com `predict_with_orientation` em todo candidato de contorno, e as duas casadas por página e sobreposição |
+| o censo antes/depois | as **mesmas duas árvores**, e não a linha de base commitada: a S-130 entrou entre uma e outra e mexe em decisão de refino, então diffar contra o arquivo antigo misturaria os dois efeitos |
 
 A última linha é o método, e não um detalhe de execução: remendar só o passe de limiar dentro
 de um processo mediria um programa que não existe -- foi assim que a primeira corrida desta
