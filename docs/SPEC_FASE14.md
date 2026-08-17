@@ -2010,7 +2010,7 @@ disparado.
 
 ---
 
-## S-124 · Um `settings.json` inválido não impede a janela de abrir
+## S-124 · Um `settings.json` inválido não impede a janela de abrir ✅ implementada (2026-08-17)
 
 **Problema.** `settings.py:320-336` — `load_settings` captura `OSError` e
 `json.JSONDecodeError`, mas `EngineSettings.from_dict` (`:138-139`) faz `int(str(...))` e
@@ -2031,6 +2031,27 @@ padrão daquele campo, preserva os demais, e o log diz qual campo foi ignorado.
 
 **Testes.** `tests/test_settings.py` — um caso por campo tipado; os outros campos intactos; o
 aviso sob `assertLogs`.
+
+### O que foi entregue
+
+`_inteiro(data, chave, padrao)` e `_flutuante(...)` nas três `from_dict`, cada um caindo no
+padrão **daquele campo** e avisando com o nome dele. É por campo e não um `except ValueError`
+global pela razão do enunciado, e ela tem teste: um `movetime_ms` com `"rápido"` dentro não
+pode zerar também o `endpoint`, que é a única preferência do arquivo que ninguém recupera
+sozinho.
+
+**Duas decisões que os testes travam:**
+
+- **`"8"` continua valendo.** A coerção não pode virar rigor — um arquivo editado à mão é
+  exatamente onde o número entre aspas aparece.
+- **Campo ausente não avisa.** Padrão não é defeito, e avisar sobre o que ninguém escreveu
+  treinaria a ignorar o log.
+
+**E uma rede de segurança além do que o enunciado pedia:** `load_settings` envolve o
+`Settings.from_dict` num `except Exception` que abre com os padrões e loga. Não é o conserto —
+o conserto é a coerção por campo, que preserva o resto do arquivo — mas cobre a forma que
+ninguém previu, e existe porque o custo do erro é desproporcional: no bundle da S-55
+(`console=False`) o programa não abre e não diz por quê.
 
 ---
 
