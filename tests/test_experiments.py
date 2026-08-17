@@ -110,11 +110,20 @@ class GradeRecusaComecarTests(unittest.TestCase):
         self.raiz = Path(self.tmp.name)
 
     def _args(self, csv_path: Path, samples: Path, splits_path: Path) -> list[str]:
+        """Tudo apontando para o temporário, **inclusive o `--json`**.
+
+        O padrão dele é `docs/metrics/experiments.json`, que é resultado publicado e
+        versionado. Um teste que confia na recusa para não escrever ali é um teste que
+        estraga o repositório na primeira vez que a recusa quebrar -- e foi exatamente o que
+        aconteceu ao conferir estes testes contra o código anterior à S-106: sem a guarda, a
+        grade rodou e sobrescreveu os nove treinos da Fase 5 com um de uma época.
+        """
         return [
             "--csv", str(csv_path),
             "--samples", str(samples),
             "--splits", str(splits_path),
             "--workdir", str(self.raiz / "work"),
+            "--json", str(self.raiz / "resultados.json"),
             "--epochs", "1",
             "--only", "referencia",
         ]
