@@ -381,7 +381,7 @@ melhorá-la.
 | 15.1 | O `--dedupe` registra o denominador que ele muda | S-101 | ✅ |
 | 15.2 | A auditoria barra em vez de relatar | S-102 | ✅ |
 | 15.3 | `split_hash` conferido: `cvoff-eval` **avisa** sobre o modelo de outra partição | S-103 | ✅ |
-| 15.4 | A época salva tem critério de desempate | S-104 | ⚠ ferramenta feita; medição rodando |
+| 15.4 | A época salva tem critério de desempate | S-104 | ✅ medido — **não mudar nada** |
 | 15.5 | O checkpoint guarda o que reproduz o número | S-105 | ✅ |
 | 15.6 | `cvoff-experiment` não reatribui splits no meio da grade | S-106 | ✅ |
 | 15.7 | O retreino de produção, e a decisão sobre o candidato de 2026-08-11 | S-107 | ✅ medido — **não promover o `mhsp`** |
@@ -674,6 +674,65 @@ aberta. Rodou o `cvoff-audit` normal: 3.935 rótulos utilizáveis, 0 ilegais fat
 sumido, redundância em **11,0%** (acima do teto de 10% da S-63) e 3 triplas cruzando split
 (S-98). Nenhum é impeditivo, mas nenhum foi barrado por gate — foi lido por gente, que é
 precisamente o que a S-102 existe para deixar de exigir.
+
+---
+
+## O desempate entre épocas, medido (2026-08-17)
+
+**A decisão: não mudar nada. O `>` estrito de `BestEpochPolicy.accepts` fica.** Dois números a
+sustentam, e o segundo é o que decide.
+
+### 1. Não há empate no máximo no dataset de hoje
+
+O item nasceu de `docs/metrics/phase5_training.json`, onde o máximo é atingido por duas épocas
+em **3 de 3** execuções. Nas três execuções de 2026-08-16/17 sobre o dataset atual — controle
+`aug0`, `mhsp` e o treino com `--keep-ties` — isso aconteceu **0 de 3**:
+
+| execução | máximo | épocas que o atingem | empate no máximo? |
+|---|---|---|---|
+| controle `aug0` | 0,981818 (época 5) | 1 | não |
+| `mhsp` | 0,976623 (época 8) | 1 | não |
+| `--keep-ties`, semente 42 | 0,981818 (época 5) | 1 | não |
+
+**A explicação é a granularidade.** A validação passou de ~306 tabuleiros na Fase 5 para
+**385** hoje: um tabuleiro vale 1/385 = 0,0026 em vez de 1/306 = 0,0033. Métrica mais fina,
+empate mais raro. As três execuções tiveram empate **no meio** — a época 4 empatando a 2 no
+`--keep-ties`, a 5 empatando a 4 no `mhsp` —, mas ali o desempate não mudaria nada: uma época
+posterior venceu as duas por diferença real.
+
+### 2. E 1,3 ponto de validação não move o conjunto de campo
+
+O `--keep-ties` gravou `models/s104_empate.tie-e4.pt` (época 4, `tie_with_best_epoch: 2`), e
+comparar os dois checkpoints responde uma pergunta **mais forte** que a do empate:
+
+| | principal (época 5) | empatada (época 4) |
+|---|---|---|
+| `val_board_exact_acc` | **0,9818** | 0,9688 |
+| `val_loss` | 0,005297 | 0,006170 |
+| **taxa de exportação** | 0,7436 (29/39) | **0,7436 (29/39)** |
+| exportação limpa | 0,6875 (22/32) | **0,6875 (22/32)** |
+| **exatidão de campo** | 1,0000 (28/28) | **1,0000 (28/28)** |
+| exportados e errados | 0 | 0 |
+| reparos do decode / diagrama | 0,769 | 0,795 |
+
+**1,3 ponto percentual de validação — cinco vezes a granularidade de um tabuleiro — e o
+conjunto de campo não distingue as duas.** Se um gap de 1,3 pp não move nada, um gap de
+**zero**, que é o que define empate, move menos ainda.
+
+Então o desempate por `val_loss` regravaria 8,7 MB e correria o risco da S-57 por uma
+diferença que a métrica de produto não enxerga — que é exatamente o que a razão escrita em
+`accepts` proíbe. Ela fica, agora com número ao lado em vez de argumento.
+
+### A ressalva
+
+**O conjunto de campo não distinguir duas coisas não prova que elas são iguais.** É a mesma
+limitação que a S-107 registrou: 17 páginas, `n = 28` exportados conferíveis, e nenhum diagrama
+na faixa de confiança 0,60–0,80. O que este número autoriza é *não pagar* 8,7 MB por uma
+diferença invisível; ele não autoriza dizer que as duas épocas leem igual. Quem quiser o
+segundo enunciado precisa da S-99 fechada.
+
+Os dois checkpoints ficam em `models/s104_empate*.pt` (fora do git, como todo `.pt`) e os
+relatórios em `docs/metrics/s104_*.json`, para que a comparação seja refazível.
 
 ---
 

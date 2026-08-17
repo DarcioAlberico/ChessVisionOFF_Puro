@@ -765,7 +765,7 @@ $ cvoff-eval --split val --model models/piece_classifier.pt
 
 ---
 
-## S-104 · O desempate entre épocas empatadas: medir antes de mudar ⚠ ferramenta feita (2026-08-17)
+## S-104 · O desempate entre épocas empatadas: medir antes de mudar ✅ medido (2026-08-17) — não mudar nada
 
 > **Dívida de baixa severidade, e o item é uma medição.** A primeira versão desta análise
 > classificou isto como defeito e propôs a mudança direto. A verificação derrubou a
@@ -828,9 +828,24 @@ saber que a época empatou em vez de perder.
 **Cinco testes**, entre eles o que separa "empatou" de "piorou" e o que confirma que sem a flag
 nada muda. `test_empatar_nao_regrava` continua verde e intacto.
 
-**A decisão não está tomada**, e é isso que o critério de aceite pede que fique registrado. A
-medição está rodando: um treino com `--keep-ties` sobre o mesmo dataset e semente do controle
-da S-107, seguido de `cvoff-field` no principal e no empatado.
+### A decisão: não mudar nada
+
+A tabela inteira está no [ROADMAP_FASE14](ROADMAP_FASE14.md). Os dois números, em resumo:
+
+- **Empate no máximo: 0 de 3 execuções** sobre o dataset de hoje, contra 3 de 3 na Fase 5. A
+  validação passou de ~306 para 385 tabuleiros, e um tabuleiro vale 0,0026 em vez de 0,0033 —
+  métrica mais fina, empate mais raro. O desempate quase nunca chegaria a disparar.
+- **1,3 ponto de validação não move o conjunto de campo.** O `--keep-ties` gravou a época 4
+  (0,9688) ao lado da 5 (0,9818), e as duas dão taxa de exportação, exportação limpa, exatidão
+  de campo e exportados-e-errados **idênticos**. Se 1,3 pp não move nada, um gap de zero — que
+  é o que define empate — move menos ainda.
+
+Então o desempate regravaria 8,7 MB e correria o risco da S-57 por uma diferença que a métrica
+de produto não enxerga. O `>` estrito fica, agora com número ao lado em vez de argumento.
+
+**A ressalva:** o conjunto de campo não distinguir duas coisas não prova que são iguais — é a
+mesma limitação que a S-107 registrou. O número autoriza *não pagar* pela diferença; não
+autoriza dizer que as duas épocas leem igual.
 
 ---
 
