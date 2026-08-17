@@ -2089,7 +2089,7 @@ detecção da página 5 chegando com a 0 na tela. O cache guarda as caixas cruas
 > `{"engine": {"movetime_ms": "rapido"}}` levanta `ValueError`, e o docstring da própria função
 > promete que *"arquivo ausente ou corrompido cai no padrão"*).
 
-## S-123 · O PDF que não abre não troca o livro por dentro
+## S-123 · O PDF que não abre não troca o livro por dentro ✅ implementada (2026-08-17)
 
 **Problema.** `ui/pdf_panel.py:576-591` — `load_pdf` chama `self._on_pdf_opened(pdf_path)` e
 atribui `self.source`/`self.name` **antes** de `get_pdf_page_count`, que é quem levanta quando
@@ -2111,6 +2111,36 @@ válido; a mensagem de erro nomeia o arquivo que falhou.
 
 **Testes.** `tests/test_pdf_panel.py` — o estado preservado depois da falha; nenhum callback
 disparado.
+
+### O que foi entregue
+
+`get_pdf_page_count` virou a **primeira** linha de `load_pdf`, e o `page_count` que ela devolve
+é o que segue adiante — contar as páginas é abrir o documento, então a validação não custa uma
+abertura a mais. Só depois vêm `_on_pdf_opened`, `source`, `name` e o render.
+
+**O `except` continuou largo, contra a letra do enunciado, e a razão é a da própria fase.** Um
+`except` estreito só na abertura deixaria uma falha em `_on_pdf_opened` subir para o callback
+do Tk — que no bundle da S-55 (`console=False`) não tem para onde escrever. Trocar um modo de
+falha silencioso por outro não é o negócio desta fase. O que resolve o enunciado é a **ordem**,
+e ela está resolvida com o `except` no lugar onde estava.
+
+**A frase sobre o livro anterior é condicionada ao estado, e não à suposição.** A mensagem diz
+`"bom.pdf continua aberto"` testando `self.source is not None and self.source != pdf_path` na
+hora do erro — verdadeiro no caso da S-123, e falso se algo quebrar *depois* da troca. Assim a
+caixa não promete o que a memória não tem, inclusive na falha que ninguém previu. Sem livro
+anterior nenhum, a frase não aparece: dizer "continua aberto" sobre nada seria pior que calar.
+
+**Um `logger.exception` no `except`**, que não havia. Pela S-127, num `.exe` isto agora vira
+linha em `logs/chessvisionoff.log`.
+
+**Um defeito de teste encontrado de raspão, e ele escondia testes.** A segunda classe Tk do
+módulo era **pulada** — `tk wasn't installed properly` ao criar a segunda raiz do processo,
+depois de a primeira ter sido destruída. É a mesma armadilha que o `test_result_panel` já
+havia documentado, e a mesma correção: uma raiz de módulo em `_raiz()`, criada uma vez e nunca
+destruída. Antes disso os 6 testes novos passavam sem rodar.
+
+**Conferido invertendo a correção:** com o `load_pdf` antigo, 5 dos 6 testes falham. O sexto é
+o controle — o PDF válido, que abre nos dois.
 
 ---
 

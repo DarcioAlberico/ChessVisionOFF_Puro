@@ -11,10 +11,13 @@ são as mesmas da tela. Com 220 as contas teriam de ser refeitas a cada leitura.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
 
+import fitz
 import numpy as np
 
 from chess_diagram_ocr.ui import pdf_panel
@@ -49,22 +52,36 @@ def _roda(delta: int) -> tk.Event:
     return evento
 
 
+_RAIZ: tk.Tk | None = None
+
+
+def _raiz() -> tk.Tk:
+    """Uma raiz Tk para o módulo inteiro, criada uma vez e nunca destruída.
+
+    Cópia deliberada do `test_result_panel`, e pelo mesmo motivo: enquanto houve uma classe
+    só, criar e destruir a raiz da classe funcionou; a segunda classe do módulo (a da S-123)
+    caiu em `tk wasn't installed properly` -- reinicializar o Tcl depois de destruir a última
+    raiz não é confiável no Windows. E o sintoma é pior que a causa: a classe não falha, é
+    **pulada**, e uma suíte verde esconde os testes que não rodaram.
+    """
+    global _RAIZ
+    if _RAIZ is None:
+        try:
+            _RAIZ = tk.Tk()
+        except tk.TclError as exc:  # pragma: no cover - maquina sem display
+            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
+        _RAIZ.withdraw()
+    return _RAIZ
+
+
 class PdfPanelBoxesTests(unittest.TestCase):
-    """Uma raiz Tk para a classe toda, pelo mesmo motivo do `test_gallery_panel`."""
+    """Uma raiz Tk para o módulo, pelo mesmo motivo do `test_gallery_panel` -- ver `_raiz`."""
 
     root: tk.Tk
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        cls.root = _raiz()
 
     def setUp(self) -> None:
         self.cliques: list[int] = []
@@ -452,6 +469,115 @@ class PdfPanelBoxesTests(unittest.TestCase):
         self.assertEqual(str(self.panel.canvas.cget("cursor")), "hand2")
         self.panel._on_hover(_evento(280, 380))
         self.assertEqual(str(self.panel.canvas.cget("cursor")), "")
+
+
+class LoadPdfEstadoTests(unittest.TestCase):
+    """O PDF que não abre não troca o livro por dentro (S-123).
+
+    Aqui há arquivo de verdade -- em `tmp_path` e nunca versionado, como os fixtures da
+    detecção -- porque o que se testa é exatamente a fronteira entre "abriu" e "não abriu", e
+    um `get_pdf_page_count` fingido testaria o fingimento.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-s123-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+        self.bom = self.tmp / "bom.pdf"
+        doc = fitz.open()
+        doc.new_page(width=200, height=300)
+        doc.new_page(width=200, height=300)
+        doc.save(str(self.bom))
+        doc.close()
+
+        self.quebrado = self.tmp / "quebrado.pdf"
+        self.quebrado.write_bytes(b"%PDF-1.4 isto nao e um PDF\n")
+
+        self.abertos: list[Path] = []
+        self.erros: list[tuple[str, str]] = []
+        self.host = tk.Frame(self.root)
+        self.panel = PdfPanel(
+            self.host,
+            dpi=lambda: 72,
+            initial_page_for=lambda _caminho: 0,
+            on_status=lambda _texto: None,
+            on_ocr_best=lambda: None,
+            on_ocr_all=lambda: None,
+            on_region=lambda _imagem, _regiao: None,
+            on_export=lambda: None,
+            on_cancel_export=lambda: None,
+            on_pdf_opened=self.abertos.append,
+            on_before_page_change=lambda: None,
+            on_page_rendered=lambda _indice: None,
+            on_zoom_changed=lambda _zoom: None,
+            initial_dir=self.tmp,
+        )
+        original = pdf_panel.messagebox.showerror
+        pdf_panel.messagebox.showerror = (  # type: ignore[assignment]
+            lambda titulo, texto: self.erros.append((titulo, texto))
+        )
+        self.addCleanup(setattr, pdf_panel.messagebox, "showerror", original)
+        self.addCleanup(self.host.destroy)
+
+    def test_o_pdf_valido_abre_e_o_estado_e_dele(self) -> None:
+        self.panel.load_pdf(self.bom)
+        self.assertEqual(self.erros, [])
+        self.assertEqual(self.panel.source, self.bom)
+        self.assertEqual(self.panel.name, "bom.pdf")
+        self.assertEqual(self.panel.page_count, 2)
+        self.assertEqual(self.abertos, [self.bom])
+
+    def test_o_pdf_corrompido_nao_troca_o_estado_do_valido(self) -> None:
+        """O defeito da S-123: a tela mostrava o livro anterior e o estado era o do quebrado."""
+        self.panel.load_pdf(self.bom)
+        self.abertos.clear()
+
+        self.panel.load_pdf(self.quebrado)
+
+        self.assertEqual(self.panel.source, self.bom)
+        self.assertEqual(self.panel.name, "bom.pdf")
+        self.assertEqual(self.panel.page_count, 2)
+
+    def test_o_callback_nao_dispara_para_o_pdf_que_nao_abriu(self) -> None:
+        """É `_on_pdf_opened` quem limpa as caixas e reaponta a Galeria. Ele não pode rodar."""
+        self.panel.load_pdf(self.bom)
+        self.abertos.clear()
+
+        self.panel.load_pdf(self.quebrado)
+
+        self.assertEqual(self.abertos, [])
+
+    def test_a_mensagem_nomeia_o_arquivo_que_falhou_e_o_que_ficou(self) -> None:
+        self.panel.load_pdf(self.bom)
+        self.panel.load_pdf(self.quebrado)
+
+        self.assertEqual(len(self.erros), 1)
+        _titulo, texto = self.erros[0]
+        self.assertIn("quebrado.pdf", texto)
+        self.assertIn("bom.pdf continua aberto", texto)
+
+    def test_sem_livro_anterior_a_mensagem_nao_promete_nenhum(self) -> None:
+        """Dizer "continua aberto" sobre nada seria pior que não dizer."""
+        self.panel.load_pdf(self.quebrado)
+
+        self.assertIsNone(self.panel.source)
+        self.assertEqual(len(self.erros), 1)
+        self.assertIn("quebrado.pdf", self.erros[0][1])
+        self.assertNotIn("continua aberto", self.erros[0][1])
+
+    def test_a_falha_vai_para_o_log_com_rastro(self) -> None:
+        """No bundle da S-55 não há console: sem isto, a falha não existe em lugar nenhum."""
+        with self.assertLogs(pdf_panel.logger, level="ERROR") as registro:
+            self.panel.load_pdf(self.quebrado)
+
+        self.assertIn("quebrado.pdf", registro.output[0])
+        self.assertIn("Traceback", registro.output[0])
 
 
 if __name__ == "__main__":

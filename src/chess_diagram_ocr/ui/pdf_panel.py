@@ -574,11 +574,30 @@ class PdfPanel(ttk.Frame):
             )
 
     def load_pdf(self, pdf_path: Path) -> None:
+        """Troca o livro aberto. **Abre antes de trocar** (S-123).
+
+        A ordem é a correção. Antes, `_on_pdf_opened` era a primeira linha e
+        `get_pdf_page_count` -- a única que levanta com arquivo corrompido -- a quarta. Um PDF
+        que não abria já tinha limpado as caixas da página, descartado os resultados do livro
+        anterior e apontado a Galeria para o arquivo quebrado: **a tela continuava mostrando o
+        livro anterior e o programa, por dentro, estava no que não abriu.** O `Ctrl+S`
+        seguinte gravava a amostra sob o nome errado.
+
+        Contar as páginas é abrir o documento de verdade, então serve de validação sem custo
+        próprio: o `page_count` que ela devolve é o mesmo que seria usado adiante.
+
+        O `except` continua largo de propósito -- no bundle da S-55 (`console=False`) uma
+        exceção solta nesta chamada não deixa rastro nenhum -- mas a frase sobre o livro
+        anterior é condicionada ao estado real, e não à suposição de que a falha foi na
+        abertura: se algo quebrar depois da troca, ela não é dita.
+        """
         try:
+            page_count = get_pdf_page_count(pdf_path)
+
             self._on_pdf_opened(pdf_path)
             self.source = pdf_path
             self.name = pdf_path.name
-            self.page_count = get_pdf_page_count(pdf_path)
+            self.page_count = page_count
             self.lbl_pdf.config(text=f"{self.name} ({self.page_count} págs)")
             self.btn_system_reader.configure(state=tk.NORMAL)
 
@@ -588,7 +607,10 @@ class PdfPanel(ttk.Frame):
             self.page_loaded_for_index = None
             self.render_current_page()
         except Exception as exc:
-            messagebox.showerror("Erro", f"Falha ao abrir PDF:\n{exc}")
+            logger.exception("Falha ao abrir %s.", pdf_path)
+            preservado = self.source is not None and self.source != pdf_path
+            resto = f"\n\n{self.name} continua aberto." if preservado else ""
+            messagebox.showerror("Erro", f"Falha ao abrir {pdf_path.name}:\n{exc}{resto}")
 
     def on_page_spin(self) -> None:
         self.page_loaded_for_index = None
