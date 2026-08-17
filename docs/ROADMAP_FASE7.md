@@ -10,7 +10,7 @@ para o que foi medido nesta fase — **inclusive o que não entrou** —
 **Data da análise:** 2026-08-09 · **Ramo:** `fase-5-modelo-desempenho` · **Commit base:** `ee308dd`
 
 > **As Fases 14 a 19 estão em [ROADMAP_FASE14.md](ROADMAP_FASE14.md)** (avaliação de
-> 2026-08-16), especificadas em [SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-141).
+> 2026-08-16), especificadas em [SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-142).
 >
 > **Elas alcançam este documento em dois pontos, e vale ler antes de usá-lo como referência.**
 > A 7.7 concluiu que a taxa de exportação é *"uma catraca que só desce"* e atribuiu isso à

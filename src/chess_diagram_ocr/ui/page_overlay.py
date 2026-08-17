@@ -139,6 +139,26 @@ class PageBoxes:
         """Se estas caixas vieram do OCR. Vazio não é reconhecido: é vazio."""
         return bool(self.boxes) and all(box.recognized for box in self.boxes)
 
+    @property
+    def all_saved(self) -> bool:
+        """Se **todo** diagrama desta página já tem amostra no `labels.csv` (S-142).
+
+        A pergunta da **página**, sobre a mesma verdade que o `saved` responde por diagrama
+        (S-71) -- e é a pergunta que o verde caixa a caixa não responde. Contar os retângulos
+        verdes e compará-los com o total era aritmética que o usuário fazia de cabeça a cada
+        virada de página, e que se erra justamente na página de nove diagramas: a que custa
+        caro reabrir depois.
+
+        **Vazio não é concluído: é vazio.** Mesma regra do `recognized`, e pela mesma razão.
+        Uma página de prosa não tem diagrama para salvar, e dizer que ela está terminada
+        misturaria "não há trabalho aqui" com "o trabalho daqui está feito" -- a distinção que
+        o par "não se sabe"/"não há" já mantém em pé no resto do visualizador.
+
+        Só olha `saved`. Um diagrama confirmado pela base (S-75) **não** conta: violeta é "não
+        precisa", e uma página de confirmados não rendeu amostra nenhuma para o dataset.
+        """
+        return bool(self.boxes) and all(box.saved for box in self.boxes)
+
     def rect_of(self, box: DiagramBox, zoom: float) -> tuple[float, float, float, float]:
         return canvas_rect(box, dpi=self.params.dpi, zoom=zoom)
 

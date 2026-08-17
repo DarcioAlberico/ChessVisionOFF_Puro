@@ -157,6 +157,37 @@ class MarkSavedTests(unittest.TestCase):
         self.assertEqual([box.saved for box in marcadas], [False, False, False])
 
 
+class PageDoneTests(unittest.TestCase):
+    """"Esta página está terminada?" (S-142) -- a conta que o usuário fazia de cabeça sobre o
+    verde que a S-71 pinta caixa a caixa."""
+
+    def setUp(self) -> None:
+        self.boxes = (caixa(0, 0, 0, 10, 10), caixa(1, 20, 0, 30, 10), caixa(2, 40, 0, 50, 10))
+
+    def _pagina(self, salvos: set[int]) -> PageBoxes:
+        return PageBoxes(7, PARAMS, mark_saved(self.boxes, salvos))
+
+    def test_a_pagina_so_se_diz_concluida_quando_todo_diagrama_tem_amostra(self) -> None:
+        self.assertTrue(self._pagina({0, 1, 2}).all_saved)
+        self.assertFalse(self._pagina({0, 1}).all_saved, "faltando um, não está terminada")
+        self.assertFalse(self._pagina(set()).all_saved)
+
+    def test_pagina_vazia_nao_e_concluida_e_sim_vazia(self) -> None:
+        """Mesma regra do `recognized`: "não há trabalho aqui" não é "o trabalho está feito"."""
+        self.assertFalse(PageBoxes(7, PARAMS, ()).all_saved)
+
+    def test_confirmado_pela_base_nao_conclui_a_pagina(self) -> None:
+        """Violeta é "não precisa" (S-75), e uma página de confirmados não rendeu amostra."""
+        pagina = PageBoxes(7, PARAMS, mark_confirmed(self.boxes, {0, 1, 2}))
+        self.assertFalse(pagina.all_saved)
+
+    def test_a_conclusao_nao_depende_de_a_pagina_ter_sido_lida(self) -> None:
+        """Quem responde é o CSV: um livro trabalhado semanas atrás abre já concluído."""
+        pagina = self._pagina({0, 1, 2})
+        self.assertTrue(pagina.all_saved)
+        self.assertFalse(pagina.recognized, "nenhuma destas caixas passou pelo OCR nesta sessão")
+
+
 class ChooseBoxesTests(unittest.TestCase):
     def setUp(self) -> None:
         self.detectadas = tuple(caixa(i, i * 10, 0, i * 10 + 9, 9) for i in range(6))

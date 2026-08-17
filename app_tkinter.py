@@ -783,8 +783,10 @@ class ChessOcrTkApp:
             self.confirmed_diagrams.get(page_index, set()),
         )
         if escolhidas:
-            painel.set_diagram_boxes(PageBoxes(page_index, params, escolhidas))
+            caixas = PageBoxes(page_index, params, escolhidas)
+            painel.set_diagram_boxes(caixas)
             self._sync_selected_box()
+            self._announce_if_page_done(caixas)
             return
         if detectadas is not None:
             # Página de prosa já visitada: sabe-se que não há diagrama, e dizê-lo é melhor que
@@ -793,6 +795,27 @@ class ChessOcrTkApp:
             return
 
         self._request_overlay(page_index, params)
+
+    def _announce_if_page_done(self, caixas: PageBoxes) -> None:
+        """Diz na barra de status que esta página acabou -- e só isso (S-142).
+
+        **Só o estado terminal fala.** A barra é uma linha só e todo mundo escreve nela; um
+        aviso a cada virada de página gastaria o lugar onde aparecem o erro de OCR e o caminho
+        da amostra salva. "Concluída" é raro, é a resposta para "posso virar?" e é a única
+        parcela do rótulo do painel que não dá para ler sem contar.
+
+        Vale nos dois momentos em que a resposta muda: ao chegar na página -- inclusive num
+        livro trabalhado semanas atrás, porque quem responde é o CSV -- e ao salvar o último
+        diagrama que faltava, que é quando ela **passa** a estar concluída. Nesse segundo caso
+        isto escreve por cima do "Exemplo salvo: ..." que a aba Resultado acabou de pôr, e é o
+        que se quer: o caminho do arquivo ainda aparece na caixa de sucesso, e a página ter
+        terminado não aparece em lugar nenhum.
+        """
+        if caixas.all_saved:
+            self._set_status(
+                f"Página {caixas.page_index} concluída: todos os {len(caixas)} diagrama(s) "
+                "já têm amostra salva."
+            )
 
     def _sync_selected_box(self) -> None:
         """Destaca no visualizador o diagrama que está aberto no editor.
@@ -865,15 +888,31 @@ class ChessOcrTkApp:
         painel = self.pdf_panel
         if painel is None or self._document_key() != documento:
             return
-        if not painel.set_diagram_boxes(caixas):
+        # A recusa da caixa atrasada mora no `set_diagram_boxes`, mas aqui ela precisa vir
+        # antes: quem vai desenhar é o `_refresh_overlay`, e ele também sincroniza a seleção e
+        # anuncia a página concluída. Chamá-lo para a 16 com a 17 na tela deixaria o desenho de
+        # fora e essas duas afirmações de pé -- sobre a página errada.
+        if painel.page_index != caixas.page_index:
+            logger.debug(
+                "Detecção da página %d chegou tarde: a tela está na %d.",
+                caixas.page_index,
+                painel.page_index,
+            )
             return
 
-        self._sync_selected_box()
         if len(caixas):
             self._set_status(
                 f"Página {caixas.page_index}: {len(caixas)} diagrama(s) marcado(s). "
                 "Clique num deles para lê-lo."
             )
+        # Depois do aviso, e pelo `_refresh_overlay` em vez de direto na tela (S-142). Duas
+        # razões, ambas do carimbo: as caixas do detector não têm nenhum, e desenhá-las como
+        # vieram deixava sem verde justamente a **primeira** visita à página -- a única em que
+        # a pergunta "onde eu parei neste livro?" está sendo feita. E é lá dentro que a página
+        # concluída se anuncia, então ela precisa falar por último para não ser sobrescrita
+        # pela linha acima. O carimbo continua onde a S-71 o pôs, na hora de desenhar e contra
+        # o CSV; o que faltava era este caminho passar por lá. O cache guarda as caixas cruas.
+        self._refresh_overlay(caixas.page_index)
 
     def _on_box_click(self, index: int) -> None:
         """Clique num diagrama marcado: abre-o no editor, lendo a página se for preciso."""

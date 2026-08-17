@@ -634,7 +634,7 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
   campo -- estao contaminadas pelo que deveriam julgar, e a metrica primaria mede confianca
   e nao correcao
 - [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) -- especificacao das Fases 14 a 19 (S-95 a
-  S-141), com o indice de onde mora cada item da spec
+  S-142), com o indice de onde mora cada item da spec
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

@@ -192,7 +192,39 @@ class PdfPanelBoxesTests(unittest.TestCase):
         texto = self.panel.lbl_boxes.cget("text")
         self.assertIn("2 diagrama(s)", texto)
         self.assertIn("1 lido(s)", texto)
-        self.assertIn("1 salvo(s)", texto)
+        self.assertIn("1 de 2 salvo(s)", texto, "a fração diz quanto falta; o número solto, não")
+
+    def test_a_pagina_com_tudo_salvo_diz_que_acabou_em_vez_de_somar(self) -> None:
+        """A pergunta é "posso virar?", e contar retângulo verde é a resposta pela metade."""
+        caixas = tuple(
+            DiagramBox(index=i, bbox_pdf=(10.0, 10.0 + i * 140, 110.0, 110.0 + i * 140), saved=True)
+            for i in range(2)
+        )
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, caixas))
+        self.assertIn("página concluída", self.panel.lbl_boxes.cget("text"))
+        self.assertEqual(
+            # `str`: o Tk devolve um objeto Tcl aqui, e ele não é igual à string do Python.
+            str(self.panel.lbl_boxes.cget("foreground")),
+            BOX_OUTLINE_SAVED,
+            "o rótulo diz da página o que os retângulos dizem de cada diagrama",
+        )
+
+    def test_falta_um_diagrama_e_a_pagina_nao_se_diz_concluida(self) -> None:
+        caixas = (
+            DiagramBox(index=0, bbox_pdf=(10.0, 10.0, 110.0, 110.0), saved=True),
+            DiagramBox(index=1, bbox_pdf=(10.0, 150.0, 110.0, 250.0)),
+        )
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, caixas))
+        texto = self.panel.lbl_boxes.cget("text")
+        self.assertNotIn("concluída", texto)
+        self.assertIn("1 de 2 salvo(s)", texto)
+
+    def test_a_pagina_seguinte_apaga_o_verde_do_rotulo(self) -> None:
+        """A cor é do estado, não do widget: deixá-la acesa afirmaria da 1 o que era da 0."""
+        salva = DiagramBox(index=0, bbox_pdf=(10.0, 10.0, 110.0, 110.0), saved=True)
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, (salva,)))
+        self.panel.clear_diagram_boxes()
+        self.assertEqual(str(self.panel.lbl_boxes.cget("foreground")), "")
 
     def test_desligar_a_marcacao_apaga_os_retangulos_e_avisa(self) -> None:
         self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))

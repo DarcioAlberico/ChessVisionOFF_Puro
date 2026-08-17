@@ -1,4 +1,4 @@
-# Especificação das melhorias — Fases 14 a 19 (S-95 a S-141)
+# Especificação das melhorias — Fases 14 a 19 (S-95 a S-142)
 
 Base: [ROADMAP_FASE14.md](ROADMAP_FASE14.md), que traz a avaliação de 2026-08-16 e o
 sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
@@ -16,7 +16,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-76, S-77 | **em lugar nenhum** — a S-133 as registra |
 > | S-78 a S-82 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-141 | este arquivo |
+> | S-95 a S-142 | este arquivo |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa
@@ -1979,6 +1979,95 @@ fronteira de módulo muda; o que muda é **quando** cada import acontece.
 
 **Testes.** `tests/test_packaging.py` — um subprocesso que importa `app_tkinter` com o marcador
 de filho e afirma que `torch` **não** está em `sys.modules`.
+
+---
+
+## S-142 · A página concluída se diz concluída, e o verde aparece na primeira visita ✅ implementada (2026-08-17)
+
+**Problema.** São dois, e o segundo é um defeito que torna o primeiro mentiroso.
+
+**1. Ninguém diz que a página acabou.** A S-71 pinta de verde cada diagrama já salvo e
+`ui/pdf_panel.py:768` (`_update_boxes_label`) soma as parcelas — `"3 diagrama(s) · 1 lido(s) ·
+2 salvo(s)"`. A pergunta do laço interno, porém, não é *quantos*: é **"posso virar?"**.
+Respondê-la custa comparar duas parcelas que estão em pontas opostas da mesma frase, e numa
+página de exercícios com grade 3×3 — nove diagramas, que o teto da S-68 existe para caber — é
+uma conta que se erra. Errar para menos faz reabrir a página; errar para mais **deixa
+diagrama para trás**, e é o erro que não aparece: nada na tela volta a citar aquela página.
+
+**2. O verde não aparece na primeira visita à página.** `app_tkinter.py:868` desenha as caixas
+como o detector as devolveu:
+
+```python
+if not painel.set_diagram_boxes(caixas):   # `caixas` vem do `_overlay_worker`, sem carimbo
+    return
+```
+
+`boxes_from_candidates` constrói `DiagramBox` com `saved=False`, e quem carimba é o
+`mark_saved` do `_refresh_overlay` — que este caminho não atravessa. O resultado: numa página
+ainda não visitada nesta sessão os retângulos saem **azuis**, mesmo com as amostras no
+`labels.csv`. O verde só chega na segunda passada, quando a detecção já está no
+`PageBoxesCache` e o `_refresh_overlay` monta as caixas por conta própria.
+
+A primeira visita é exatamente a que a S-71 existe para atender — *"abrir um livro pela quinta
+vez e ver de verde o que já foi feito é a única forma barata de responder «onde eu parei?»"*
+(`ui/pdf_panel.py:92`). O recurso funcionava em toda página **menos** naquela em que a
+pergunta está sendo feita.
+
+**Solução.**
+
+1. `PageBoxes.all_saved`, ao lado de `recognized` e com a mesma regra para o vazio: página sem
+   diagrama **não** é página concluída. Só olha `saved` — confirmado pela base (S-75) é *"não
+   precisa"*, não *"foi feito"*, e uma página de confirmados não rendeu amostra nenhuma.
+2. O rótulo do painel troca a soma por uma frase quando não sobra nada, na cor dos retângulos:
+   `✓ página concluída · N diagrama(s) salvo(s)`. Quando falta alguém, `"2 salvo(s)"` passa a
+   `"2 de 3 salvo(s)"` — o número solto não dizia se faltava um ou sete.
+3. A barra de status anuncia **só o estado terminal**. Ela é uma linha só e todo mundo escreve
+   nela; um aviso por virada de página gastaria o lugar do erro de OCR.
+4. `_apply_overlay` passa a desenhar **pelo** `_refresh_overlay` em vez de mandar as caixas
+   cruas para a tela. O carimbo continua onde a S-71 o pôs — na hora de desenhar, contra o CSV
+   — e o cache continua guardando as caixas cruas, que é o que faz a cor acompanhar o CSV em
+   vez do momento em que a detecção rodou.
+
+**Critério de aceite.** A primeira visita a uma página cujos diagramas já estão no `labels.csv`
+abre com os retângulos verdes e o rótulo dizendo "concluída"; salvar o último diagrama que
+faltava anuncia a conclusão sem que seja preciso virar a página e voltar; uma página de prosa
+não se diz concluída.
+
+**Testes.** `tests/test_page_overlay.py` — `all_saved` com todos, com um faltando, com a página
+vazia, e com confirmados no lugar de salvos. `tests/test_pdf_panel.py` — o rótulo da página
+concluída e sua cor, a fração quando falta alguém, e a cor que se apaga na página seguinte.
+
+### O que foi entregue
+
+**O defeito do carimbo é o que dava valor ao item, e ele não estava no pedido.** O pedido era o
+marcador de página concluída; a primeira visita desenhar azul apareceu ao seguir de onde
+`saved` entra na caixa. Sem essa correção o marcador seria *pior* que nada na única página que
+importa: ele afirmaria "faltam 3" sobre uma página inteira já salva.
+
+**A ordem dos dois avisos na barra de status é parte da correção.** `_apply_overlay` escreve
+`"Página N: 3 diagrama(s) marcado(s)"` e **depois** chama o `_refresh_overlay`, que é quem
+anuncia a conclusão. Invertido, o aviso genérico apagaria o específico justamente no caminho da
+primeira visita.
+
+**A guarda da caixa atrasada subiu de lugar.** Ela morava no `set_diagram_boxes`, que recusa
+desenhar caixas de outra página. Como agora quem desenha é o `_refresh_overlay` — que também
+sincroniza a seleção e anuncia a conclusão —, a recusa precisa vir antes: chamá-lo para a
+página 16 com a 17 na tela deixaria o desenho de fora e as duas afirmações de pé, sobre a
+página errada.
+
+**A conclusão não é anunciada a cada virada de página, e isso é decisão e não economia.** A
+barra é o lugar onde aparecem o erro de OCR e o caminho da amostra salva. Quando ela fala por
+cima do `"Exemplo salvo: ..."` — o caso de salvar o último diagrama que faltava — é de
+propósito: o caminho do arquivo ainda aparece na caixa de sucesso, e "a página terminou" não
+aparece em lugar nenhum.
+
+**Compõe com a S-114 sem ter sido combinado.** Aquele item fez o `save_all` chamar
+`_on_sample_saved()`, que é o gatilho do `_refresh_overlay`. Com os dois, `Ctrl+Shift+S` numa
+página inteira termina anunciando a conclusão dela.
+
+**Conferido chamando os métodos reais da janela** sobre um objeto mínimo, com quatro cenários:
+primeira visita com 3 de 3 no CSV (antes 0 retângulos verdes, agora 3), 2 de 3, nada salvo, e a
+detecção da página 5 chegando com a 0 na tela. O cache guarda as caixas cruas nos quatro.
 
 ---
 

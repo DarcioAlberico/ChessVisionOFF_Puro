@@ -767,9 +767,17 @@ class PdfPanel(ttk.Frame):
 
     def _update_boxes_label(self) -> None:
         if self.boxes is None:
-            self.lbl_boxes.config(text="")
+            self.lbl_boxes.config(text="", foreground="")
         elif not len(self.boxes):
-            self.lbl_boxes.config(text="nenhum diagrama nesta página")
+            self.lbl_boxes.config(text="nenhum diagrama nesta página", foreground="")
+        elif self.boxes.all_saved:
+            # Verde e uma frase, não mais uma parcela na soma (S-142): a página concluída é o
+            # único estado em que não sobra nada a fazer, e ele merece ser lido sem contar. A cor
+            # é a dos retângulos -- o rótulo diz da página o que eles dizem de cada diagrama.
+            self.lbl_boxes.config(
+                text=f"✓ página concluída · {len(self.boxes)} diagrama(s) salvo(s)",
+                foreground=BOX_OUTLINE_SAVED,
+            )
         else:
             lidos = sum(1 for box in self.boxes.boxes if box.recognized and not box.saved)
             salvos = sum(1 for box in self.boxes.boxes if box.saved)
@@ -780,8 +788,10 @@ class PdfPanel(ttk.Frame):
             if confirmados:
                 partes.append(f"{confirmados} confirmado(s) pela base")
             if salvos:
-                partes.append(f"{salvos} salvo(s)")
-            self.lbl_boxes.config(text=" · ".join(partes))
+                # Só a fração: "2 salvo(s)" não diz se falta um ou sete, e é a fração que
+                # decide se vale terminar a página agora ou virá-la.
+                partes.append(f"{salvos} de {len(self.boxes)} salvo(s)")
+            self.lbl_boxes.config(text=" · ".join(partes), foreground="")
 
     def _box_at_event(self, event: tk.Event) -> int | None:
         if self.boxes is None or not self.show_boxes_var.get() or self.page_rgb is None:

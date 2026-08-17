@@ -2,7 +2,7 @@
 
 Continuação de [SPEC.md](SPEC.md), que cobre S-01 a S-36. Sequenciamento e a medição que
 motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md). A continuação está em
-[SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-141) — passando por
+[SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-142) — passando por
 [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) (S-78 a S-82) e
 [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) (S-83 a S-94).
 
