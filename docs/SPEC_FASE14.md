@@ -1837,7 +1837,7 @@ preencher, a contagem para decidir se preencher é honesto (S-74).
 
 ---
 
-## S-139 · A consulta por nome alcança as duas cores, e paga o porteiro
+## S-139 · A consulta por nome alcança as duas cores, e paga o porteiro ✅ implementada (2026-08-17)
 
 **Problema.** Dois defeitos independentes no mesmo caminho, o da janela de candidatas.
 
@@ -1876,6 +1876,27 @@ um diagrama custa < 1 s com a pasta de base atual, medido.
 
 **Testes.** `tests/test_games_index.py` — o par prolífico com as duas cores presentes; o
 porteiro repassado (hoje ausente).
+
+### O que foi entregue
+
+**Duas consultas, e uma repartição — porque "duas consultas" sozinho não conserta.** A primeira
+versão deste item deu `LIMIT limit - len(achados)` à segunda cor, que é o mesmo teto global
+gasto em ordem: a primeira cor volta a comer tudo. **O teste passou no código anterior**, e foi
+isso que mostrou o erro.
+
+`_fair_share` reparte: cada cor recebe `limit // 2`, e o que sobrar — porque um dos lados tem
+menos partidas que a fatia — é distribuído em ordem. Um par que só jogou com uma cor continua
+recebendo o `limit` inteiro, e tem teste. O `limit` continua sendo teto: ele é o custo em
+*seeks* de disco que quem chama aceitou pagar.
+
+O teste do critério de aceite usa `limit` **menor que uma cor sozinha**, que é a condição em
+que o defeito aparece — e é a diferença entre o teste que passava no código antigo e o que não
+passa.
+
+**O porteiro da S-85** entra em `positions_of` como `frozenset({occupancy(placement)})`. Ele é
+filtro e não critério: o que decide continua sendo a igualdade das 64 casas, e há teste de que
+a resposta não muda. Também há um teste de que ele é **repassado** — sem isso o item seria
+invisível, porque o que muda é o custo, e custo não aparece numa asserção de igualdade.
 
 ---
 

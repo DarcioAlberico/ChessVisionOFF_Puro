@@ -42,7 +42,7 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 from .config import PROJECT_ROOT
-from .games_db import _KEPT_HEADERS, _RE_HEADER, GameRecord, PlayerPair, as_databases, surname
+from .games_db import _KEPT_HEADERS, _RE_HEADER, GameRecord, PlayerPair, as_databases, occupancy, surname
 
 logger = logging.getLogger(__name__)
 
@@ -273,14 +273,22 @@ def lookup_pair(
         }
 
         procurados = [tuple(pair)] + ([(pair[1], pair[0])] if both_colors else [])
-        chaves = [pair_hash(p) for p in procurados]  # type: ignore[arg-type]
-        marcadores = ",".join("?" * len(chaves))
-        achados = [
-            (int(linha[1]), int(linha[0]))
-            for linha in conexao.execute(
-                f"SELECT offset, file FROM games WHERE pair IN ({marcadores}) LIMIT ?", (*chaves, limit)
-            )
+        # **Uma consulta por cor, com cota propria** (S-139). Um `IN (?,?) LIMIT ?` da uma cota
+        # unica para os dois hashes, e ela se esgota na primeira cor: medido no indice real
+        # (20.902.904 partidas), Karpov x Kasparov tem 245 partidas com um hash e outras tantas
+        # com o outro, entao a segunda **nunca era lida**. O `both_colors=True` ficava inerte,
+        # em silencio, exatamente nos pares mais citados pelos livros.
+        por_cor = [
+            [
+                (int(linha[1]), int(linha[0]))
+                for linha in conexao.execute(
+                    "SELECT offset, file FROM games WHERE pair=? LIMIT ?",
+                    (pair_hash(procurado), limit),  # type: ignore[arg-type]
+                )
+            ]
+            for procurado in procurados
         ]
+        achados = _fair_share(por_cor, limit)
     finally:
         conexao.close()
 
@@ -310,15 +318,53 @@ def lookup_pair(
     return partidas
 
 
+def _fair_share(por_grupo: list[list[tuple[int, int]]], limit: int) -> list[tuple[int, int]]:
+    """Reparte `limit` leituras entre os grupos, dando a cada um a sua fatia antes de sobrar.
+
+    **Um teto global consumido em ordem não é uma cota por cor** (S-139): dar `LIMIT limit` às
+    duas consultas e depois cortar a concatenação em `limit` devolve exatamente o que a
+    consulta única devolvia, porque a primeira cor volta a comer tudo. A repartição é o que
+    torna `both_colors=True` observável.
+
+    A fatia é `limit // grupos`, e o que sobrar -- porque um dos lados tem menos partidas que a
+    fatia dele -- é distribuído em ordem. Um par que só jogou com uma cor continua recebendo o
+    `limit` inteiro.
+
+    `limit` continua sendo teto: ele é o custo em leituras de disco que quem chama aceitou
+    pagar, e são até 40 seeks num arquivo de gigabytes.
+    """
+    if not por_grupo:
+        return []
+    fatia = max(1, limit // len(por_grupo))
+    escolhidos: list[tuple[int, int]] = []
+    for grupo in por_grupo:
+        escolhidos.extend(grupo[:fatia])
+    # A sobra: quem tinha menos que a fatia deixou espaco, e ele vai para quem tinha mais.
+    for grupo in por_grupo:
+        if len(escolhidos) >= limit:
+            break
+        escolhidos.extend(grupo[fatia : fatia + limit - len(escolhidos)])
+    return escolhidos[:limit]
+
+
 def positions_of(games: Iterable[GameRecord], placement: str) -> list[tuple[GameRecord, int, bool]]:
     """Em quais das partidas aquela colocação aparece, e em que lance.
 
     O casamento continua sendo exato nas 64 casas -- o índice mudou *como se chega* às
     partidas, não o que conta como casamento.
+
+    **Com o porteiro da S-85** (S-139): `positions` recebe a ocupação da colocação procurada e
+    só monta a FEN das posições cujo mapa de casas ocupadas bate. A S-85 mediu que isso corta
+    ~3× o custo de reproduzir os lances, e este caminho pagava o preço cheio -- na thread do
+    Tk, porque quem o chama é a busca por nome da janela de candidatas.
+
+    O porteiro é **filtro e não critério**: o que decide continua sendo a igualdade das 64
+    casas, três linhas abaixo. É o que o docstring de `GameRecord.positions` garante.
     """
+    porteiro = frozenset({occupancy(placement)})
     achados = []
     for partida in games:
-        for colocacao, lance, vez in partida.positions():
+        for colocacao, lance, vez in partida.positions(porteiro):
             if colocacao == placement:
                 achados.append((partida, lance, vez))
                 break

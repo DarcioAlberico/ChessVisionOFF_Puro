@@ -13,7 +13,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import chess
+
+from chess_diagram_ocr.games_db import GameRecord
 from chess_diagram_ocr.games_index import (
     _read_game_at,
     build_index,
@@ -219,3 +223,132 @@ class DuasBasesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParProlificoTests(unittest.TestCase):
+    """O `LIMIT` deixou de ser compartilhado pelas duas cores (S-139).
+
+    A consulta era `SELECT offset, file FROM games WHERE pair IN (?,?) LIMIT ?` -- **uma cota
+    única para os dois hashes**. Medido no índice real (20.902.904 partidas), Karpov×Kasparov
+    tem 245 partidas com um hash e outras tantas com o outro: a cota se esgotava na primeira
+    cor e a segunda **nunca era lida**.
+
+    O `both_colors=True` ficava inerte, em silêncio, exatamente nos pares mais citados pelos
+    livros -- e o docstring de `lookup_pair` justifica a opção com *"'Coull - Stanciu' é como o
+    autor escreveu, não uma declaração de quem tinha as brancas"*.
+    """
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.raiz = Path(self.pasta.name)
+        self.base = self.raiz / "prolifico.pgn"
+        self.base.write_text(self._muitas_partidas(), encoding="utf-8")
+        self.indice = self.raiz / "indice.sqlite"
+        build_index(self.base, self.indice)
+
+    def _muitas_partidas(self, por_cor: int = 6) -> str:
+        """`por_cor` partidas com Karpov de brancas e outras tantas com ele de pretas."""
+        blocos = []
+        for n in range(por_cor):
+            blocos.append(
+                f'[Event "Brancas {n}"]\n[White "Karpov, Anatoly"]\n[Black "Kasparov, Garry"]\n'
+                f'[Date "20{n:02d}.01.01"]\n\n1. e4 e5 2. Nf3 *\n'
+            )
+        for n in range(por_cor):
+            blocos.append(
+                f'[Event "Pretas {n}"]\n[White "Kasparov, Garry"]\n[Black "Karpov, Anatoly"]\n'
+                f'[Date "19{n:02d}.01.01"]\n\n1. d4 d5 2. c4 *\n'
+            )
+        return "\n".join(blocos)
+
+    def test_o_limite_nao_se_esgota_na_primeira_cor(self) -> None:
+        """**O critério de aceite**, e o `limit` é menor que uma cor sozinha -- que é a
+        condição em que o defeito aparece. Com 6 partidas de cada lado e `limit=4`, a cota
+        única era inteiramente consumida pela primeira cor."""
+        partidas = lookup_pair(("karpov", "kasparov"), self.base, self.indice, limit=4)
+
+        eventos = {p.headers["Event"].split()[0] for p in partidas}
+        self.assertEqual(eventos, {"Brancas", "Pretas"}, "as duas cores, que é o que `both_colors` promete")
+
+    def test_o_limite_continua_sendo_um_teto(self) -> None:
+        """Uma cota por cor não pode virar duas cotas: o `limit` é o custo que quem chama
+        aceitou pagar em leituras de disco -- até 40 seeks num arquivo de gigabytes."""
+        self.assertLessEqual(len(lookup_pair(("karpov", "kasparov"), self.base, self.indice, limit=3)), 3)
+
+    def test_uma_cor_so_recebe_o_limite_inteiro(self) -> None:
+        """A repartição não pode virar desperdício: um par que só jogou com uma cor continua
+        podendo encher a cota."""
+        so_brancas = self.raiz / "so_brancas.pgn"
+        partidas = [
+            f'[Event "B{n}"]\n[White "Fischer, Robert"]\n[Black "Spassky, Boris"]\n\n1. e4 *\n'
+            for n in range(6)
+        ]
+        so_brancas.write_text("\n".join(partidas), encoding="utf-8")
+        indice = self.raiz / "so_brancas.sqlite"
+        build_index(so_brancas, indice)
+
+        self.assertEqual(len(lookup_pair(("fischer", "spassky"), so_brancas, indice, limit=4)), 4)
+
+    def test_sem_both_colors_continua_uma_consulta_so(self) -> None:
+        partidas = lookup_pair(("karpov", "kasparov"), self.base, self.indice, both_colors=False, limit=20)
+        self.assertTrue(all(p.headers["White"].startswith("Karpov") for p in partidas))
+
+
+class PorteiroNaBuscaPorNomeTests(unittest.TestCase):
+    """`positions_of` paga o porteiro da S-85, que ele ignorava (S-139).
+
+    `partida.positions()` era chamado **sem** `occupancies`, e quem o invoca é a busca por nome
+    da janela de candidatas -- na thread do Tk. A S-85 mediu que o porteiro corta ~3× o custo
+    de reproduzir os lances, e este caminho pagava o preço cheio.
+
+    O critério de aceite da Fase 13 é *"busca por nome de um diagrama: <1 s"*, medido em 27 ms
+    quando havia **uma** base; com duas gigabases o caminho já custava 70-220 ms, com a janela
+    congelada.
+    """
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.raiz = Path(self.pasta.name)
+        self.base = self.raiz / "base.pgn"
+        self.base.write_text(PGN, encoding="utf-8")
+        self.indice = self.raiz / "indice.sqlite"
+        build_index(self.base, self.indice)
+
+    def _partidas(self) -> list[GameRecord]:
+        return lookup_pair(("anderssen", "kieseritzky"), self.base, self.indice)
+
+    def test_a_colocacao_procurada_continua_sendo_achada(self) -> None:
+        """O porteiro é **filtro e não critério**: o que decide continua sendo a igualdade das
+        64 casas. Se ele mudasse a resposta, seria defeito e não otimização."""
+        partidas = self._partidas()
+        tabuleiro = chess.Board()
+        tabuleiro.push_san("e4")
+        procurada = tabuleiro.board_fen()
+
+        achados = positions_of(partidas, procurada)
+
+        self.assertTrue(achados, "a posição depois de 1.e4 está nas partidas do PGN de teste")
+        for _partida, lance, _vez in achados:
+            self.assertGreaterEqual(lance, 1)
+
+    def test_colocacao_ausente_continua_ausente(self) -> None:
+        positions = positions_of(self._partidas(), "8/8/8/8/8/8/8/K6k")
+        self.assertEqual(positions, [])
+
+    def test_o_porteiro_e_repassado_ao_replay(self) -> None:
+        """Sem isto o item é invisível: a resposta é a mesma com e sem porteiro -- o que muda é
+        o custo, e custo não aparece numa asserção de igualdade."""
+        vistos: list[frozenset[int] | None] = []
+        original = GameRecord.positions
+
+        def _espia(self, occupancies=None):  # noqa: ANN001, ANN202
+            vistos.append(occupancies)
+            return original(self, occupancies)
+
+        with mock.patch.object(GameRecord, "positions", _espia):
+            positions_of(self._partidas(), "8/8/8/8/8/8/8/K6k")
+
+        self.assertTrue(vistos, "positions foi chamado")
+        self.assertTrue(all(o is not None for o in vistos), "e com o porteiro, não sem ele")
