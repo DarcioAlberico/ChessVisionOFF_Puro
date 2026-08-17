@@ -13,10 +13,12 @@ from torch.utils.data import DataLoader
 
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.dataset import BoardGroupedSampler, DatasetEntry, board_groups
+from chess_diagram_ocr.labels import DatasetEntry as LabelEntry
 from chess_diagram_ocr.training import (
     build_train_transform,
     class_weights_for,
     evaluate_validation,
+    labels_hash,
     resolve_num_workers,
     set_seed,
 )
@@ -1041,3 +1043,104 @@ class EmpateEntreEpocasTests(unittest.TestCase):
             trainer.run_epoch(2)
 
             self.assertEqual(list((raiz / "pior").glob("*.tie-*.pt")), [])
+
+
+class MetadadosQueReproduzemTests(unittest.TestCase):
+    """O checkpoint guarda o que reproduz o número (S-105).
+
+    Os metadados traziam `arch_version`, `seed`, `class_weights`, `augment_version`,
+    `split_hash`, `dataset_size`, `git_commit`, `best_metric` e a calibração. **Ausentes:**
+    taxa de aprendizado, tamanho de lote, número de épocas pedido, otimizador, e qualquer
+    identidade do **conteúdo** dos rótulos.
+
+    `cvoff-train --lr 1e-4` e `cvoff-train --lr 1e-3` produziam dois arquivos indistinguíveis,
+    e há 17 checkpoints em `models/` e nove treinos comparados no `EXPERIMENTS_FASE7.md`.
+
+    A S-107 encontrou a consequência: a única forma de saber que o candidato histórico
+    `s40_mhsp_16ep.pt` rodou **8** épocas e não 16 foi ler `metadata["metrics"]
+    ["total_epochs"]`, que existe por acaso. O nome do arquivo dizia outra coisa.
+    """
+
+    def _entradas(self, pares: list[tuple[str, str]]) -> list[LabelEntry]:
+        return [LabelEntry(filename=nome, fen=fen) for nome, fen in pares]
+
+    def test_a_ordem_das_linhas_nao_muda_o_hash(self) -> None:
+        """A pergunta é "estes rótulos são os mesmos?", e a ordem no arquivo não é parte da
+        resposta -- ela muda a cada reescrita do `LabelStore`."""
+        pares = [("a.png", "4k3/8/8/8/8/8/8/4K3"), ("b.png", "8/8/8/8/8/8/8/4K2k")]
+        self.assertEqual(
+            labels_hash(self._entradas(pares)),
+            labels_hash(self._entradas(list(reversed(pares)))),
+        )
+
+    def test_corrigir_uma_fen_muda_o_hash(self) -> None:
+        """**O caso que o `split_hash` não vê.** Corrigir um rótulo não muda a partição."""
+        antes = self._entradas([("a.png", "4k3/8/8/8/8/8/8/4K3")])
+        depois = self._entradas([("a.png", "4k3/8/8/8/8/8/4P3/4K3")])
+        self.assertNotEqual(labels_hash(antes), labels_hash(depois))
+
+    def test_amostra_nova_muda_o_hash(self) -> None:
+        """As 468 amostras de correção humana da S-107 entraram sem que o `split_hash` mudasse."""
+        antes = self._entradas([("a.png", "4k3/8/8/8/8/8/8/4K3")])
+        depois = self._entradas([("a.png", "4k3/8/8/8/8/8/8/4K3"), ("b.png", "8/8/8/8/8/8/8/4K2k")])
+        self.assertNotEqual(labels_hash(antes), labels_hash(depois))
+
+    def test_conjunto_vazio_tem_hash_e_nao_erro(self) -> None:
+        self.assertTrue(labels_hash([]))
+
+    def test_dois_treinos_que_diferem_so_no_lr_sao_distinguiveis(self) -> None:
+        """**O critério de aceite.** Dois arquivos indistinguíveis pelos metadados são dois
+        arquivos que ninguém consegue comparar depois."""
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            caminhos = []
+            for nome, lr in (("baixo", 1e-4), ("alto", 1e-3)):
+                plano = self._plano(raiz, nome, lr=lr)
+                Trainer(plano).fit()
+                caminhos.append(load_checkpoint(plano.output.model_path).metadata)
+
+            self.assertNotEqual(caminhos[0]["lr"], caminhos[1]["lr"])
+            self.assertEqual(caminhos[0]["lr"], 1e-4)
+
+    def test_o_checkpoint_declara_lote_epocas_e_otimizador(self) -> None:
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plano = self._plano(Path(tmp), "meta", lr=1e-3)
+            Trainer(plano).fit()
+            metadados = load_checkpoint(plano.output.model_path).metadata
+
+            self.assertEqual(metadados["batch_size"], 64)
+            self.assertEqual(metadados["epochs_requested"], 2, "o pedido, e não o que rodou")
+            self.assertEqual(metadados["patience"], 0)
+            self.assertEqual(metadados["optimizer"], "adam")
+            self.assertTrue(metadados["labels_hash"])
+
+    def test_o_labels_hash_do_checkpoint_e_o_do_split_de_treino(self) -> None:
+        """Só o `train`: `val` e `test` mudarem não altera o que o modelo aprendeu, e incluí-los
+        faria o hash mudar por motivo que não é sobre este checkpoint."""
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plano = self._plano(Path(tmp), "treino", lr=1e-3)
+            trainer = Trainer(plano)
+            trainer.fit()
+
+            gravado = load_checkpoint(plano.output.model_path).metadata["labels_hash"]
+            self.assertEqual(gravado, trainer.metadata_base["labels_hash"])
+
+    def _plano(self, root: Path, name: str, *, lr: float):
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, TrainingPlan
+
+        (root / name).mkdir()
+        csv_path, samples, splits_path = _tiny_dataset(root / name)
+        return TrainingPlan(
+            data=DataPlan(csv_path=csv_path, samples_dir=samples, splits_path=splits_path, num_workers=0),
+            output=OutputPlan(model_path=root / name / "m.pt", fresh=True, calibrate=False),
+            optim=OptimPlan(epochs=2, batch_size=64, patience=0, seed=7, lr=lr),
+        )

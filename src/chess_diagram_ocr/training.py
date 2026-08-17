@@ -16,12 +16,13 @@ O que a Fase 5 mudou aqui, e por quê:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import random
 import threading
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -39,7 +40,7 @@ from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoin
 from .config import DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
 from .dataset import BoardFenDataset, BoardGroupedSampler, BoardUnitDataset, board_groups
 from .fen_utils import labels_from_fen
-from .labels import label_origins
+from .labels import DatasetEntry, label_origins
 from .model import DEFAULT_ARCH, ArchConfig, build_model, count_parameters
 from .splits import Split, ensure_splits, groups_by_origin, load_splits, splits_hash
 
@@ -580,6 +581,45 @@ class TrainingPlan:
     optim: OptimPlan = OptimPlan()
 
 
+def labels_hash(entries: Iterable[DatasetEntry]) -> str:
+    """Identidade do **conteúdo** dos rótulos de treino: SHA-256 dos pares `(arquivo, FEN)` (S-105).
+
+    `split_hash` responde *qual partição*; este responde *qual verdade*. São perguntas
+    diferentes, e até aqui só a primeira tinha resposta gravada -- as 468 amostras de correção
+    humana que a S-107 mediu entraram no `train` **sem** que o `split_hash` mudasse, porque a
+    partição delas era nova e não uma remontagem da antiga.
+
+    **Ordenado, e por isso estável sob reordenação do CSV.** A pergunta é "estes rótulos são os
+    mesmos?", e a ordem das linhas no arquivo não é parte da resposta -- ela muda por qualquer
+    reescrita do `LabelStore`. Corrigir **uma** FEN, essa sim, muda o hash.
+
+    Só o split de treino: `val` e `test` mudarem não altera o que o modelo aprendeu, e incluí-los
+    faria o hash mudar por motivo que não é sobre este checkpoint. Quem vigia os reservados é o
+    `split_hash`.
+    """
+    payload = "\n".join(sorted(f"{entry.filename}={entry.fen}" for entry in entries))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def _optim_metadata(optim: OptimPlan) -> dict[str, Any]:
+    """Os hiperparâmetros que reproduzem o número, prefixados para não colidir (S-105).
+
+    `asdict(optim)` traria `augment` como dicionário aninhado e `class_weights`/`seed`
+    duplicados -- os três já estão nos metadados com nome próprio desde a S-27 e a S-40.
+    O que faltava são estes quatro, e é neles que `--lr 1e-4` e `--lr 1e-3` diferem.
+    """
+    return {
+        "lr": optim.lr,
+        "batch_size": optim.batch_size,
+        "epochs_requested": optim.epochs,
+        "patience": optim.patience,
+        # Fixo hoje, e gravado mesmo assim: um metadado ausente e um metadado que diz "Adam"
+        # sao a mesma coisa **ate** o dia em que o otimizador mudar, e ai o segundo continua
+        # verdadeiro sobre os checkpoints antigos e o primeiro nao diz nada sobre nenhum.
+        "optimizer": "adam",
+    }
+
+
 class BestEpochPolicy:
     """Quando gravar por cima, e quando parar. Testável **sem treinar** -- era o que faltava.
 
@@ -838,7 +878,15 @@ class Trainer:
             # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
             # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
             "augment_version": optim.augment.version,
+            # Os hiperparametros de otimizacao, inteiros (S-105). Sem eles, `--lr 1e-4` e
+            # `--lr 1e-3` produziam dois arquivos indistinguiveis pelos metadados -- e ha 17
+            # checkpoints em `models/` e nove treinos comparados no EXPERIMENTS_FASE7.
+            **_optim_metadata(optim),
             "split_hash": splits_hash(splits_map) if splits_map else "",
+            # **Qual particao** e **qual verdade** sao perguntas diferentes, e ate aqui so a
+            # primeira tinha resposta: as 468 amostras de correcao humana da S-107 entraram
+            # sem que o `split_hash` mudasse.
+            "labels_hash": labels_hash([dataset.entries[i] for i in sorted(train_board_ids)]),
             "splits_path": str(data.splits_path) if data.splits_path else "",
             "dataset_size": len(dataset.entries),
             "val_size": len(val_dataset.entries) if val_dataset is not None else len(val_indices) // 64,
