@@ -40,7 +40,7 @@ from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import LocalReaderSettings, RemoteFenSettings
 
-from . import board_edit, strings, tokens
+from . import board_edit, estilos, strings, tokens
 from .board_widget import InteractiveBoard, PieceImages
 from .editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from .legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
@@ -324,7 +324,7 @@ class ResultPanel(ttk.Frame):
         acoes = ttk.Frame(fen_box)
         acoes.pack(fill=tk.X, padx=8, pady=(0, 6))
         ttk.Button(acoes, text="Aplicar FEN", command=self.apply_fen_edit).pack(side=tk.LEFT)
-        ttk.Button(acoes, text="Salvar posição reconhecida", command=self.save_current).pack(side=tk.LEFT, padx=6)
+        ttk.Button(acoes, text="Salvar posição reconhecida", style=estilos.estilo_de_botao(estilos.PRIMARIO), command=self.save_current).pack(side=tk.LEFT, padx=6)
         ttk.Button(acoes, text="Salvar todos", command=self.save_all).pack(side=tk.LEFT, padx=6)
         self.net_button = NetCorrectionButton(
             acoes,

@@ -47,7 +47,7 @@ from PIL import Image, ImageTk
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 
-from . import tokens
+from . import estilos, tokens
 from .page_overlay import DiagramBox, PageBoxes
 from .tooltip import Tooltip
 from .viewport import (
@@ -267,7 +267,7 @@ class PdfPanel(ttk.Frame):
 
         acoes = ttk.Frame(box)
         acoes.pack(fill=tk.X, padx=8, pady=(0, 8))
-        self.btn_ocr_best = ttk.Button(acoes, text="OCR melhor diagrama", command=on_ocr_best)
+        self.btn_ocr_best = ttk.Button(acoes, text="OCR melhor diagrama", style=estilos.estilo_de_botao(estilos.PRIMARIO), command=on_ocr_best)
         self.btn_ocr_best.pack(side=tk.LEFT)
         self.btn_ocr_all = ttk.Button(acoes, text="OCR todos diagramas", command=on_ocr_all)
         self.btn_ocr_all.pack(side=tk.LEFT, padx=6)

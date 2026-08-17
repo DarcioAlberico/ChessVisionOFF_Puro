@@ -28,6 +28,7 @@ from ..dataset_browser import (
     source_distribution,
     split_distribution,
 )
+from . import estilos
 from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
@@ -178,8 +179,8 @@ class DatasetPanel(ttk.Frame):
         actions.pack(fill=tk.X, pady=(6, 0))
         ttk.Button(actions, text="Abrir no editor", command=self.edit_selected).pack(side=tk.LEFT)
         ttk.Button(actions, text="Conferir com o modelo", command=self.recheck_selected).pack(side=tk.LEFT, padx=6)
-        ttk.Button(actions, text="Quarentena", command=self.quarantine_selected).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Remover", command=self.remove_selected).pack(side=tk.LEFT, padx=6)
+        ttk.Button(actions, text="Quarentena", command=self.quarantine_selected, style=estilos.estilo_de_botao(estilos.DESTRUTIVO)).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Remover", command=self.remove_selected, style=estilos.estilo_de_botao(estilos.DESTRUTIVO)).pack(side=tk.LEFT, padx=6)
 
         ttk.Label(self, textvariable=self.stats_var, wraplength=780, justify=tk.LEFT).pack(anchor="w", pady=(6, 0))
 

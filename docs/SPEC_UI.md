@@ -39,7 +39,7 @@ fronteira de responsabilidade. Todos os números citados foram medidos nesta má
 > O sistema de design está instalado, carregado e não é usado. Esta fase é a que o liga, e ela
 > vem primeiro porque todas as outras escrevem cor, peso ou fonte.
 
-## S-144 · Os botões dizem o que fazem: estilo semântico no lugar de 70 botões iguais
+## S-144 · Os botões dizem o que fazem: estilo semântico no lugar de 70 botões iguais ✅ implementada (2026-08-17)
 
 **Problema.** `ttkbootstrap` 2.2.0 está instalado e `ui/theme.py:77` aplica `bootstrap-light`
 com sucesso, mas `grep -rn bootstyle src/ app_tkinter.py` devolve **zero linhas**. Lido do objeto

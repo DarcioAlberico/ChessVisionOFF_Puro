@@ -28,6 +28,7 @@ from ..review_queue import (
     rare_classes_from_labels,
 )
 from ..service import OcrService
+from . import estilos
 from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
@@ -142,7 +143,7 @@ class ReviewPanel(ttk.Frame):
 
         actions = ttk.Frame(self)
         actions.pack(fill=tk.X, pady=(6, 0))
-        ttk.Button(actions, text="Corrigir agora", command=self.open_selected).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Corrigir agora", style=estilos.estilo_de_botao(estilos.PRIMARIO), command=self.open_selected).pack(side=tk.LEFT)
         ttk.Button(actions, text="Marcar revisado", command=lambda: self.mark_selected("done")).pack(side=tk.LEFT, padx=6)
         ttk.Button(actions, text="Pular", command=lambda: self.mark_selected("skipped")).pack(side=tk.LEFT)
         ttk.Button(actions, text="Reabrir", command=lambda: self.mark_selected("pending")).pack(side=tk.LEFT, padx=6)

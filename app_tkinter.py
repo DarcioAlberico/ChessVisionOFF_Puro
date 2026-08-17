@@ -76,7 +76,7 @@ from chess_diagram_ocr.settings import (
     save_settings,
 )
 from chess_diagram_ocr.splits import load_splits
-from chess_diagram_ocr.ui import strings, tokens
+from chess_diagram_ocr.ui import estilos, strings, tokens
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
@@ -403,7 +403,12 @@ class ChessOcrTkApp:
             parent, textvariable=self.field_regime_var, values=list(REGIMES), width=15, state="readonly"
         ).pack(side=tk.LEFT, padx=6)
 
-        botao = ttk.Button(parent, text="Anotar página", command=self.annotate_field_page)
+        botao = ttk.Button(
+            parent,
+            text="Anotar página",
+            style=estilos.estilo_de_botao(estilos.PRIMARIO),
+            command=self.annotate_field_page,
+        )
         botao.pack(side=tk.LEFT)
         Tooltip(botao).set_text(
             "Grava as caixas desta página como verdade de referência, revisada por você. "
