@@ -6,6 +6,7 @@ import argparse
 import logging
 from pathlib import Path
 
+from ..audit import filenames_without_split
 from ..config import DEFAULT_DATASET_CSV, DEFAULT_SAMPLES_DIR, PROJECT_ROOT
 from ..experiments import default_grid, markdown_table, run_variant, save_results
 from ..logging_setup import configure_logging, default_log_file
@@ -41,6 +42,19 @@ def main(argv: list[str] | None = None) -> int:
     splits = load_splits(args.splits)
     if not splits:
         print(f"Arquivo de splits vazio ou ausente: {args.splits}")
+        return 1
+
+    # A grade le a particao uma vez e nao a escreve (S-106). Amostra sem split ficaria
+    # invisivel as variantes **e** a avaliacao, entao a recusa e antes de comecar: descobrir
+    # isso depois de sete treinos custa horas.
+    sem_split = filenames_without_split(args.csv, args.splits)
+    if sem_split:
+        print(f"{len(sem_split)} amostra(s) sem split registrado, e a grade não atribui split.")
+        print("Elas ficariam invisíveis a todas as variantes, e a comparação sairia sobre um")
+        print("dataset menor do que o que existe.")
+        print()
+        print("Atribua o split rodando um treino comum uma vez, antes da grade:")
+        print("    cvoff-train --epochs 1")
         return 1
 
     grid = default_grid()
