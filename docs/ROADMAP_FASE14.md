@@ -471,7 +471,7 @@ no checkout **e** no `.exe`.
 | 19.5 | S-76 e S-77 registradas | S-133 | ✅ |
 | 19.6 | O índice de documentos, verificável por teste | S-134 | ✅ |
 | 19.7 | Os números vivos: ARCHITECTURE, README, bundle | S-135 | ✅ (falta refazer o bundle) |
-| 19.8 | `app_tkinter.py` dobrou: reabrir o item ou registrar o novo placar | S-136 | ⬜ |
+| 19.8 | `app_tkinter.py` dobrou: reabrir o item ou registrar o novo placar | S-136 | ✅ **registrar** — 1.440 linhas, travadas por catraca |
 | 19.9 | `mypy` olha o produto; `streamlit` sai das obrigatórias; `atomic_io` ganha guarda | S-137 | ✅ |
 
 **Critério de saída:** nenhum número citado em documento diverge do disco sem que a suíte

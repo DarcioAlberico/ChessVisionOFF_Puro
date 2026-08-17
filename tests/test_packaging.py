@@ -149,6 +149,67 @@ class FrozenLogFileTests(unittest.TestCase):
         self.assertIn("Tcl morreu", registro.output[0])
 
 
+class TamanhoDaJanelaTests(unittest.TestCase):
+    """`app_tkinter.py` não volta a crescer sem alguém decidir (S-136).
+
+    **O número original era 600**, e é o critério de aceite da S-31 (`SPEC.md`). Ele não é
+    arbitrário: a S-31 quebrou uma janela de 2.388 linhas porque "o que dá para testar não fica
+    na janela", e 600 era onde o que sobrava era layout puro. Fechou em **651**, com a decisão
+    escrita de que os ~50 restantes não valiam a pena — o que era honesto a 651.
+
+    Hoje são **1.440**: 2.388 → 651 → 703 → 1.153 → 1.302 → 1.440. O arquivo **dobrou depois da
+    decomposição** e nenhum documento registrava. O custo tem nome: a S-95 — a decisão de onde
+    vem a verdade de referência do conjunto de campo mora nessas linhas, gravou a leitura do
+    próprio modelo por três meses, e não tinha teste porque não dava para testar sem janela.
+
+    **Este teste é uma catraca, não uma meta.** O corte é o valor de hoje. Baixá-lo é a S-31
+    reaberta; subi-lo exige vir aqui e editar o número, que é o ponto: passa a ser uma decisão
+    em vez de um acidente, que é o que o `CONTRIBUTING.md` pede de um teste.
+
+    Registrar em vez de extrair foi escolha de data e não de princípio — há uma avaliação de
+    interface em curso (`docs/ROADMAP_UI.md`) que vai reorganizar este arquivo, e decidir a
+    decomposição antes de lê-la seria colidir com ela.
+    """
+
+    LIMITE = 1440
+    """Linhas de `app_tkinter.py` em 2026-08-17. Ver o docstring da classe antes de mudar."""
+
+    ALVO_ORIGINAL = 600
+    """O critério de aceite da S-31, em `docs/SPEC.md`. Fica aqui para não se perder."""
+
+    def _linhas(self) -> int:
+        return len((PROJETO / "app_tkinter.py").read_text(encoding="utf-8").splitlines())
+
+    def test_a_janela_nao_volta_a_crescer(self) -> None:
+        atual = self._linhas()
+        self.assertLessEqual(
+            atual,
+            self.LIMITE,
+            f"`app_tkinter.py` passou de {self.LIMITE} para {atual} linhas. O alvo da S-31 é "
+            f"{self.ALVO_ORIGINAL}; se o crescimento for deliberado, baixe o que for possível "
+            "para `ui/` ou registre o novo placar aqui e no ROADMAP, com o motivo.",
+        )
+
+    def test_o_limite_registrado_nao_esta_defasado_para_baixo(self) -> None:
+        """Uma catraca que não aperta não é catraca: se o arquivo encolheu, o corte desce junto.
+
+        Sem isto, extrair 400 linhas para `ui/` deixaria a folga de volta e o próximo
+        crescimento passaria sem ninguém ver.
+        """
+        atual = self._linhas()
+        self.assertGreater(
+            atual + 40,
+            self.LIMITE,
+            f"`app_tkinter.py` caiu para {atual} linhas e o corte ainda é {self.LIMITE}. "
+            "Baixe `LIMITE` para o novo valor.",
+        )
+
+    def test_o_alvo_original_continua_escrito_na_spec(self) -> None:
+        """Se a S-31 for reaberta, é este número que ela persegue -- e ele não pode sumir."""
+        spec = (PROJETO / "docs" / "SPEC.md").read_text(encoding="utf-8")
+        self.assertIn(f"abaixo de {self.ALVO_ORIGINAL} linhas", spec)
+
+
 class SpecTests(unittest.TestCase):
     """A spec é código que ninguém importa; sem teste, ela apodrece em silêncio."""
 

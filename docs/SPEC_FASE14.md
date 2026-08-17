@@ -2902,7 +2902,7 @@ sabe ler as duas seções de que precisa, com o porquê no docstring.
 
 ---
 
-## S-136 · `app_tkinter.py` dobrou: reabrir o item ou registrar o novo placar
+## S-136 · `app_tkinter.py` dobrou: reabrir o item ou registrar o novo placar ✅ implementada (2026-08-17)
 
 **Problema.** `SPEC.md:811` fixa o critério de aceite da S-31: *"`app_tkinter.py` abaixo de 600
 linhas"*. O `ROADMAP.md:852` registra o placar de fechamento — **651** — e o `:968` a decisão:
@@ -2930,6 +2930,29 @@ decisão em vez de num acidente, que é o que o `CONTRIBUTING.md:39-45` pede de 
 **Critério de aceite.** O número está registrado, e crescer além dele faz a suíte falhar.
 
 **Testes.** `tests/test_packaging.py` — a linha de corte, com o motivo no docstring.
+
+### O que foi entregue
+
+**A escolha foi registrar o placar, e a razão é de data e não de princípio.** Há uma avaliação
+de interface em curso — `docs/ROADMAP_UI.md`, Fases 20 a 24, escrita em 2026-08-17 — e ela vai
+reorganizar exatamente este arquivo. Extrair para `ui/` agora seria decidir a decomposição
+antes de ler a avaliação que a estuda, e colidir de frente com ela. O que não podia esperar é o
+arquivo continuar crescendo em silêncio enquanto isso se resolve.
+
+**O número de hoje é 1.440**, e não os 1.302 do enunciado: cresceu mais 138 linhas entre
+2026-08-16 e 2026-08-17, durante as próprias Fases 18 e 19. A trajetória completa está no
+`ROADMAP.md`, ao lado da decisão de fechamento da S-31 que ela contradiz.
+
+`TamanhoDaJanelaTests` tem **três** guardas, e a segunda é a que faz a primeira valer:
+
+| guarda | o que impede |
+|---|---|
+| `test_a_janela_nao_volta_a_crescer` | o arquivo passar de 1.440 sem alguém decidir |
+| `test_o_limite_registrado_nao_esta_defasado_para_baixo` | extrair 400 linhas e deixar a folga de volta — uma catraca que não aperta não é catraca |
+| `test_o_alvo_original_continua_escrito_na_spec` | os 600 da S-31 sumirem do `SPEC.md` se alguém "atualizar" o critério |
+
+**É catraca, não meta.** O corte é o valor de hoje. Baixá-lo é a S-31 reaberta; subi-lo exige
+editar o teste — que é o ponto: passa a ser decisão em vez de acidente.
 
 ---
 

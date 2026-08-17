@@ -978,7 +978,31 @@ Onde o conteúdo foi parar:
 tirá-las seria mover a aba de configuração para um `ui/config_panel.py`. Ela é layout puro
 — dez `tk.Variable` e os widgets que as editam —, então mudá-la de arquivo não tornaria
 nada testável nem desfaria acoplamento nenhum: seria mexer no número sem mexer no que o
-número mede. O que a S-31 quer de fato — "zero lógica de OCR fora de `src/`" e
+número mede.
+
+> ### O placar de 2026-08-17, e por que ele fica registrado em vez de corrigido (S-136)
+>
+> **Aquele argumento era honesto a 651 linhas e deixou de ser o mesmo argumento.** Hoje o
+> arquivo tem **1.440**. A trajetória: 2.388 antes da S-31 → **651** (2026-07-27) → 703 →
+> 1.153 (2026-08-12) → 1.302 (2026-08-16) → **1.440** (2026-08-17). Ele **dobrou depois da
+> decomposição**, com as Fases 12 a 19, e nenhum documento registrava.
+>
+> "Faltam ~50 linhas" virou "faltam 840", e ninguém refez a conta porque nada obrigava.
+>
+> **O que isso já custou tem nome: a S-95.** A decisão de onde vem a verdade de referência do
+> conjunto de campo mora nessas linhas, gravou a leitura do próprio modelo por três meses, e
+> não tinha teste porque não dava para testar sem janela.
+>
+> **A escolha entre reabrir a S-31 e registrar o placar foi feita, e é registrar** — por uma
+> razão de data e não de princípio: há uma avaliação de interface em curso (o
+> `ROADMAP_UI.md`, Fases 20 a 24), e ela vai reorganizar exatamente este arquivo. Extrair para
+> `ui/` agora seria decidir a decomposição antes de ler a avaliação que a estuda, e colidir com
+> ela. O que **não** pode esperar é o arquivo continuar crescendo em silêncio enquanto isso se
+> resolve, e é isso que `tests/test_packaging.py::TamanhoDaJanelaTests` passa a impedir.
+>
+> O corte está em **1.440**, que é o valor de hoje e não uma meta: ele é uma catraca, não um
+> alvo. Baixá-lo é a S-31 reaberta; subi-lo exige editar o teste, que é onde está escrito por
+> que 600 foi o número original. O que a S-31 quer de fato — "zero lógica de OCR fora de `src/`" e
 "`OcrService` testável sem Tk" — está atingido, e é isso que os 63 testes dos módulos novos
 verificam (485 → **543** na suíte inteira).
 
