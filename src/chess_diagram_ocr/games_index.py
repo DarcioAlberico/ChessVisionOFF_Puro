@@ -58,14 +58,39 @@ __all__ = [
 
 DEFAULT_INDEX_PATH = PROJECT_ROOT / "data" / "games_index.sqlite"
 
-INDEX_VERSION = 2
-"""O formato do arquivo. **2** desde a S-93, quando a partida passou a guardar em que base mora.
+INDEX_VERSION = 3
+"""O formato do arquivo. **3** desde a S-140, quando a tabela deixou de existir duas vezes.
 
-Existe porque o fingerprint não bastava para notar a diferença: com uma base só, a marca da
+A **2** é da S-93, quando a partida passou a guardar em que base mora. A versão declarada
+existe porque o fingerprint não bastava para notar a diferença: com uma base só, a marca da
 versão 1 (`nome:tamanho`) é *idêntica* à da 2, e um índice antigo passaria pela conferência
 para depois quebrar na primeira consulta -- `SELECT ... file` numa tabela sem essa coluna. Uma
 versão declarada transforma isso num aviso com instrução, que é o que o resto do módulo faz
-com todo desencontro."""
+com todo desencontro.
+
+**O que muda na 3.** Até a 2, `games` tinha rowid implícito e havia um `CREATE INDEX
+games_pair ON games (pair)` ao lado. Cada linha existia em **duas árvores**: a coluna de busca
+no índice, e `offset`/`file` na tabela, que só existia para ser sondada. Toda consulta pagava
+uma sonda aleatória a mais, e o disco pagava a linha duas vezes.
+
+Na 3 a tabela é `WITHOUT ROWID` com `PRIMARY KEY (pair, file, offset)`: a chave de busca **é**
+a árvore, e `offset`/`file` viajam na mesma folha. Uma árvore, uma sonda.
+
+**Medido** num índice sintético de 1 milhão de partidas, os dois esquemas sobre as mesmas
+linhas:
+
+| | tamanho | 200 consultas |
+|---|---|---|
+| v2 — rowid + `CREATE INDEX` | 38,9 MB | 14,6 ms |
+| v3 — `WITHOUT ROWID` | **21,8 MB** | 13,7 ms |
+
+**-44,0%**, e a consulta não fica mais lenta. Projetado sobre os 885 MB do acervo: **~495 MB**,
+contra os ~476 que a S-140 estimou -- a estimativa dela era otimista em 4%, e o número que vale
+é o do próximo `--build-index`, não esta projeção.
+
+`INSERT OR IGNORE` porque a chave passou a ser única: a mesma partida indexada duas vezes era
+uma linha duplicada e silenciosa antes, e agora seria um erro em cima de uma varredura de
+horas."""
 
 MAX_GAMES_PER_LOOKUP = 40
 """Teto de partidas lidas por consulta -- o mesmo do `MAX_GAMES_PER_PAIR`, e pela mesma razão:
@@ -135,8 +160,14 @@ def build_index(
         # descartado de qualquer forma -- nao ha nada a recuperar de um indice pela metade.
         conexao.execute("PRAGMA journal_mode=OFF")
         conexao.execute("PRAGMA synchronous=OFF")
+        # `WITHOUT ROWID` com a chave composta (S-140): a coluna de busca **e** a arvore, e
+        # `offset`/`file` viajam na mesma folha. Antes eram duas arvores -- a tabela e o
+        # `CREATE INDEX games_pair` -- e cada consulta pagava uma sonda aleatoria na tabela que
+        # so existia para ser sondada. Ver `INDEX_VERSION` para o numero medido.
         conexao.execute(
-            "CREATE TABLE games (pair INTEGER NOT NULL, offset INTEGER NOT NULL, file INTEGER NOT NULL)"
+            "CREATE TABLE games ("
+            "pair INTEGER NOT NULL, offset INTEGER NOT NULL, file INTEGER NOT NULL, "
+            "PRIMARY KEY (pair, file, offset)) WITHOUT ROWID"
         )
         conexao.execute("CREATE TABLE files (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
         conexao.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -171,10 +202,10 @@ def build_index(
                     elif casado.group(1) == "Black" and branco:
                         lote.append((pair_hash((branco, surname(casado.group(2)))), inicio, identificador))
                         if len(lote) >= 200_000:
-                            conexao.executemany("INSERT INTO games VALUES (?, ?, ?)", lote)
+                            conexao.executemany("INSERT OR IGNORE INTO games VALUES (?, ?, ?)", lote)
                             lote.clear()
-        conexao.executemany("INSERT INTO games VALUES (?, ?, ?)", lote)
-        conexao.execute("CREATE INDEX games_pair ON games (pair)")
+        conexao.executemany("INSERT OR IGNORE INTO games VALUES (?, ?, ?)", lote)
+        # Sem `CREATE INDEX`: a chave primaria ja e a arvore de busca (S-140).
         conexao.commit()
     finally:
         conexao.close()
@@ -245,8 +276,8 @@ def lookup_pair(
         gravada = conexao.execute("SELECT value FROM meta WHERE key = 'version'").fetchone()
         if gravada is None or gravada[0] != str(INDEX_VERSION):
             logger.warning(
-                "O índice por nome está no formato %r e este programa lê o %d: ele não sabe de "
-                "que arquivo é cada partida. Refaça com: cvoff-games --build-index",
+                "O índice por nome está no formato %r e este programa lê o %d. Refaça com: "
+                "cvoff-games --build-index",
                 None if gravada is None else gravada[0],
                 INDEX_VERSION,
             )

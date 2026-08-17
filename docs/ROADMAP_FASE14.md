@@ -430,7 +430,7 @@ versionado, ou com backup documentado, mas **decidido**.
 | 17.7 | O OCR ligado por padrão | S-122 | ✅ medido — **não ligar** |
 | 17.8 | A varredura por posição responde igual com 1 e com N processos | S-138 | ✅ |
 | 17.9 | A consulta por nome alcança as duas cores, e paga o porteiro | S-139 | ✅ |
-| 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ⬜ |
+| 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ⚠ índice feito (−44,0%); **falta o cache de posições** |
 | 17.11 | O processo filho não reimporta `torch` e a UI | S-141 | ⬜ |
 | 17.12 | A página concluída se diz concluída, e o verde aparece na primeira visita | S-142 | ✅ |
 

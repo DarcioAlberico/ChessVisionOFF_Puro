@@ -1916,7 +1916,7 @@ invisível, porque o que muda é o custo, e custo não aparece numa asserção d
 
 ---
 
-## S-140 · O índice sem a cópia, e o cache que não cabe na memória
+## S-140 · O índice sem a cópia, e o cache que não cabe na memória ⚠ item 1 implementado (2026-08-17)
 
 **Problema.** Dois artefatos que crescem com o acervo e nenhum dos dois tem teto.
 
@@ -1954,6 +1954,43 @@ mesmo tempo.
 **Testes.** `tests/test_games_cache.py` — a leitura por livro não toca as posições dos outros.
 `tests/test_games_index.py` — a recusa do índice de versão anterior, com a mensagem que diz
 como refazer.
+
+### O que foi entregue — **o item 1, e não o 2**
+
+`games` passou a ser `WITHOUT ROWID` com `PRIMARY KEY (pair, file, offset)`, o `CREATE INDEX
+games_pair` saiu, `INDEX_VERSION` subiu para **3** e `lookup_pair` recusa a v2 com a instrução
+de refazer. Quatro testes novos, um deles travando o **esquema** — acrescentar de volta um
+`CREATE INDEX games_pair` desfaria a economia inteira sem quebrar nada.
+
+**Medido** num índice sintético de 1 milhão de partidas, os dois esquemas sobre as mesmas
+linhas:
+
+| | tamanho | 200 consultas |
+|---|---|---|
+| v2 — rowid + `CREATE INDEX` | 38,9 MB | 14,6 ms |
+| v3 — `WITHOUT ROWID` | **21,8 MB** | 13,7 ms |
+
+**−44,0%**, e a consulta não fica mais lenta. Projetado sobre os 885 MB do acervo: **~495 MB**.
+A estimativa do enunciado (~476) era **otimista em 4%**, e fica registrado que o número que
+vale é o do próximo `--build-index` e não esta projeção.
+
+**A ordem do enunciado foi invertida, e a razão é externa ao item.** Ele diz, com todas as
+letras: *"O item 2 é o que trava a janela hoje; o item 1 é disco, e disco espera. Fazer o 2
+primeiro."* O item 2 mexe em `ui/gallery_panel.py`, e há uma avaliação de interface em curso
+(`docs/ROADMAP_UI.md`, Fases 20 a 24, escrita hoje) que vai reorganizar o pacote `ui/`.
+Entregar o item 1 — que não toca `ui/` — é o que dava para entregar sem colidir. **O item 2
+continua aberto, e continua sendo o mais urgente dos dois.**
+
+**O índice atual no disco vira inválido.** `data/games_index.sqlite` está na v2, e a próxima
+consulta por nome vai avisar e devolver vazio até alguém rodar:
+
+```bash
+uv run cvoff-games --build-index
+```
+
+Isso é ~8,4 min para a base de hoje. A alternativa — ler as duas versões — foi descartada pela
+razão que o próprio `INDEX_VERSION` já dava: um formato que se aceita nunca é abandonado, e o
+custo de manter os dois caminhos vivos é maior que o de uma reconstrução que roda sozinha.
 
 ---
 

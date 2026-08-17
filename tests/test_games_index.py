@@ -220,6 +220,68 @@ class DuasBasesTests(unittest.TestCase):
         with self.assertLogs("chess_diagram_ocr.games_index", level="WARNING"):
             self.assertEqual(lookup_pair(("anderssen", "kieseritzky"), self.primeira, antigo), [])
 
+    def test_o_indice_da_versao_2_e_recusado_com_a_instrucao_de_refazer(self) -> None:
+        """A v2 é **legível** -- tem a coluna `file` e responderia. É por isso que a marca de
+        versão importa: sem ela, ninguém notaria que o arquivo tem 44% de gordura (S-140).
+        """
+        v2 = self.raiz / "v2.sqlite"
+        conexao = sqlite3.connect(v2)
+        conexao.execute(
+            "CREATE TABLE games (pair INTEGER NOT NULL, offset INTEGER NOT NULL, file INTEGER NOT NULL)"
+        )
+        conexao.execute("CREATE INDEX games_pair ON games (pair)")
+        conexao.execute("CREATE TABLE files (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+        conexao.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conexao.execute("INSERT INTO meta VALUES ('database', ?)", (index_fingerprint(self.primeira),))
+        conexao.execute("INSERT INTO meta VALUES ('version', '2')")
+        conexao.commit()
+        conexao.close()
+
+        with self.assertLogs("chess_diagram_ocr.games_index", level="WARNING") as registro:
+            self.assertEqual(lookup_pair(("anderssen", "kieseritzky"), self.primeira, v2), [])
+
+        aviso = "\n".join(registro.output)
+        self.assertIn("'2'", aviso)
+        self.assertIn("cvoff-games --build-index", aviso, "o aviso precisa dizer como refazer")
+
+    def test_o_indice_novo_nao_tem_a_segunda_arvore(self) -> None:
+        """`WITHOUT ROWID` com a chave composta, e **nenhum** `CREATE INDEX` ao lado (S-140).
+
+        Medido em índice sintético de 1 milhão de partidas: 38,9 MB contra 21,8 MB, -44,0%, com
+        a consulta no mesmo tempo. O que este teste trava é o esquema, que é o que produz o
+        número -- alguém acrescentar de volta um `CREATE INDEX games_pair` desfaria a economia
+        inteira sem quebrar nada.
+        """
+        conexao = sqlite3.connect(f"file:{self.indice}?mode=ro", uri=True)
+        try:
+            criacao = conexao.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'games'"
+            ).fetchone()[0]
+            indices = conexao.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'games'"
+            ).fetchall()
+        finally:
+            conexao.close()
+
+        self.assertIn("WITHOUT ROWID", criacao.upper())
+        self.assertIn("PRIMARY KEY", criacao.upper())
+        self.assertEqual([], [nome for (nome,) in indices if not nome.startswith("sqlite_autoindex")])
+
+    def test_a_mesma_partida_indexada_duas_vezes_nao_duplica(self) -> None:
+        """A chave virou única: antes era uma linha duplicada em silêncio, agora seria erro."""
+        conexao = sqlite3.connect(self.indice)
+        try:
+            linha = conexao.execute("SELECT pair, offset, file FROM games LIMIT 1").fetchone()
+            conexao.execute("INSERT OR IGNORE INTO games VALUES (?, ?, ?)", linha)
+            conexao.commit()
+            repetidas = conexao.execute(
+                "SELECT COUNT(*) FROM games WHERE pair = ? AND offset = ? AND file = ?", linha
+            ).fetchone()[0]
+        finally:
+            conexao.close()
+
+        self.assertEqual(repetidas, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
