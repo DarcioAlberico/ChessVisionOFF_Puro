@@ -25,6 +25,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tk_root import raiz as raiz_do_processo
+
 from chess_diagram_ocr.ui import dataset_panel as modulo
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 
@@ -44,15 +46,7 @@ class RecargaPreguicosaTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        cls.root = raiz_do_processo()
 
     def setUp(self) -> None:
         self.leituras = 0

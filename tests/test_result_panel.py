@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.config import BUNDLE_ROOT
 from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
@@ -32,26 +33,9 @@ def _diagrama() -> RecognizedDiagram:
     return RecognizedDiagram.from_label(np.zeros((8, 8, 3), dtype=np.uint8), PLACEMENT)
 
 
-_RAIZ: tk.Tk | None = None
-
-
 def _raiz() -> tk.Tk:
-    """Uma raiz Tk para o módulo inteiro, criada uma vez e nunca destruída.
-
-    Cada classe criava e destruía a sua. Enquanto houve uma classe só isso funcionou; com
-    duas, a segunda `tk.Tk()` do processo caía em `invalid command name "tcl_findLibrary"` --
-    reinicializar o Tcl depois de destruir a última raiz não é confiável no Windows. O sintoma
-    era pior que a causa: a classe não falhava, era **pulada**, e uma suíte verde escondia
-    cinco testes que não rodaram.
-    """
-    global _RAIZ
-    if _RAIZ is None:
-        try:
-            _RAIZ = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        _RAIZ.withdraw()
-    return _RAIZ
+    """A raiz do processo (`tests/tk_root.py`). Ver o docstring de lá para o porquê."""
+    return raiz_do_processo()
 
 
 class MoveNumberFieldTests(unittest.TestCase):

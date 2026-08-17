@@ -12,6 +12,8 @@ import tkinter as tk
 import unittest
 from pathlib import Path
 
+from tk_root import raiz as raiz_do_processo
+
 from chess_diagram_ocr.ui.board_render import LIGHT_SQUARE, PieceImages
 from chess_diagram_ocr.ui.board_widget import (
     BRUSH_ERASE,
@@ -26,16 +28,11 @@ IMAGENS = RAIZ / "assets" / "piece_images"
 
 class PaletteTests(unittest.TestCase):
     def setUp(self) -> None:
-        try:
-            self.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - máquina sem display
-            self.skipTest(f"sem Tk disponível: {exc}")
-        self.root.withdraw()
+        self.root = raiz_do_processo()
         self.imagens = PieceImages(IMAGENS) if IMAGENS.exists() else None
-        self.board = InteractiveBoard(self.root, mode="edit", piece_images=self.imagens)
-
-    def tearDown(self) -> None:
-        self.root.destroy()
+        self.host = tk.Frame(self.root)
+        self.addCleanup(self.host.destroy)
+        self.board = InteractiveBoard(self.host, mode="edit", piece_images=self.imagens)
 
     def test_as_doze_pecas_usam_imagem_e_nao_fonte(self) -> None:
         """Os símbolos Unicode dependem de a máquina ter uma fonte que os desenhe."""
@@ -101,15 +98,8 @@ class PieceIconTests(unittest.TestCase):
     def setUp(self) -> None:
         if not IMAGENS.exists():
             self.skipTest("assets/piece_images ausente neste checkout")
-        try:
-            self.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover
-            self.skipTest(f"sem Tk disponível: {exc}")
-        self.root.withdraw()
+        self.root = raiz_do_processo()
         self.imagens = PieceImages(IMAGENS)
-
-    def tearDown(self) -> None:
-        self.root.destroy()
 
     def test_o_icone_sai_no_tamanho_pedido(self) -> None:
         icone = self.imagens.icon("Q", PALETTE_ICON_SIZE)

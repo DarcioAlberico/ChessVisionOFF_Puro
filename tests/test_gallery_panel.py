@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest import mock
 
+from tk_root import raiz as raiz_do_processo
+
 from chess_diagram_ocr.gallery import GalleryAnnotations, load_annotations
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
 from chess_diagram_ocr.games_cache import CachedPosition, PositionCache
@@ -39,15 +41,7 @@ class GalleryPanelTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        cls.root = raiz_do_processo()
 
     def setUp(self) -> None:
         self.pedidos: list[int] = []
