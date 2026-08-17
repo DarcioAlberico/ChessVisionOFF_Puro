@@ -2136,8 +2136,15 @@ linha em `logs/chessvisionoff.log`.
 **Um defeito de teste encontrado de raspão, e ele escondia testes.** A segunda classe Tk do
 módulo era **pulada** — `tk wasn't installed properly` ao criar a segunda raiz do processo,
 depois de a primeira ter sido destruída. É a mesma armadilha que o `test_result_panel` já
-havia documentado, e a mesma correção: uma raiz de módulo em `_raiz()`, criada uma vez e nunca
-destruída. Antes disso os 6 testes novos passavam sem rodar.
+havia documentado, e a primeira metade da correção é a mesma: uma raiz de módulo em `_raiz()`.
+Antes disso os 6 testes novos passavam sem rodar.
+
+**A segunda metade custou 20 falhas em outro módulo antes de aparecer.** Copiar o
+`test_result_panel` inteiro — guardar a raiz e nunca destruí-la — deixa **duas** raízes vivas
+no processo, e duas raízes são dois interpretadores Tcl: `PhotoImage` nasce no `_default_root`,
+que é a primeira criada, e o widget da outra não a enxerga. O sintoma foi `image "pyimage46"
+doesn't exist` em 20 testes do `test_result_panel`, que ninguém tocou. A raiz agora morre num
+`tearDownModule`, o que mantém "uma só durante o módulo" sem deixar duas vivas ao mesmo tempo.
 
 **Conferido invertendo a correção:** com o `load_pdf` antigo, 5 dos 6 testes falham. O sexto é
 o controle — o PDF válido, que abre nos dois.
@@ -2279,7 +2286,7 @@ o código e que a saída não contém `Traceback`.
 
 ---
 
-## S-127 · O bundle congelado deixa rastro em disco
+## S-127 · O bundle congelado deixa rastro em disco ✅ implementada (2026-08-17)
 
 **Problema.** `packaging/cvoff.spec:111-113` desliga o console com o comentário *"O log continua
 indo para o arquivo que `logging_setup.default_log_file()` decide, e é lá que se olha quando
@@ -2298,6 +2305,32 @@ traceback; o comentário da `cvoff.spec` passa a ser verdade.
 
 **Testes.** `tests/test_packaging.py` — `default_log_file()` com `sys.frozen` simulado devolve
 caminho e não `None`.
+
+### O que foi entregue
+
+`default_log_file()` ganhou o ramo congelado: sem `CVOFF_LOG_DIR`, `sys.frozen` leva a
+`PROJECT_ROOT/logs/chessvisionoff.log` — a pasta **ao lado** do `.exe`, e não `_MEIPASS`, que
+some a cada reinstalação e é a pior propriedade possível para o arquivo que existe para
+sobreviver a uma falha. **Num checkout nada mudou**: continua `None`, o terminal continua sendo
+o rastro, e a suíte não passa a sujar o repositório com um `.log`.
+
+`build_windows.py` cria `logs/` junto com as quatro pastas do usuário. Não é a mesma coisa que
+elas — `logs/` é do programa —, e o motivo de nascer no build está escrito lá: uma pasta que só
+existe depois do problema é uma instrução que não se pode seguir.
+
+**E uma quarta peça, sem a qual o critério de aceite não fecharia.** O enunciado pedia o
+arquivo; o critério pede o **traceback dentro dele**. Não vinha: a falha em `ChessOcrTkApp()`
+subia para o `sys.excepthook`, que escreve em `stderr` — e num bundle `console=False` `stderr`
+não vai a lugar nenhum. O arquivo existiria e a única falha que ninguém consegue diagnosticar
+continuaria fora dele. `main()` ganhou um `try/except` que faz `logger.exception("A janela não
+abriu.")` e **re-levanta**: num checkout o terminal e o código de saída continuam iguais.
+
+O comentário da `cvoff.spec` passou a nomear `logs/chessvisionoff.log`, e há teste sobre o
+texto dele — ele já esteve ali sem ser verdade, e é isso que impede repetir.
+
+**Conferido invertendo a correção:** com o `default_log_file()` antigo e o `main()` sem guarda,
+3 dos 7 testes falham. Os outros 4 são controles que **têm** de passar nos dois: a variável de
+ambiente continua mandando, o checkout continua sem arquivo, `logs/` continua no build.
 
 ---
 

@@ -109,8 +109,12 @@ exe = EXE(  # noqa: F821
     # empacotado por UPX como suspeito. Trocar minutos de download por um falso positivo
     # de antivírus não vale.
     console=False,
-    # Sem console: é um app de janela. O log continua indo para o arquivo que
-    # `logging_setup.default_log_file()` decide, e é lá que se olha quando algo falha.
+    # Sem console: é um app de janela. O log vai para `logs/chessvisionoff.log`, ao lado deste
+    # executável, e é lá que se olha quando algo falha -- inclusive quando a janela nem abre.
+    #
+    # Esta frase já esteve aqui sem ser verdade (S-127): `default_log_file()` devolvia `None`
+    # sem `CVOFF_LOG_DIR`, e nada no bundle a definia. Um `.exe` que não abria não deixava
+    # rastro nenhum, que é exatamente o modo de falha que desligar o console cria.
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

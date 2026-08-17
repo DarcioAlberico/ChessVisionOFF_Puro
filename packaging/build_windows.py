@@ -6,9 +6,9 @@
 Faz três coisas que o `pyinstaller` sozinho não faz, e as três são o motivo deste arquivo
 existir em vez de uma linha no README:
 
-1. **Cria as pastas graváveis ao lado do executável.** `data/`, `models/`, `PDF/` e `PGN/`
-   nascem vazias na `dist/`. Sem isso o primeiro `Ctrl+S` do usuário falharia ao gravar
-   num diretório que não existe -- e falharia depois de ele ter corrigido um diagrama.
+1. **Cria as pastas graváveis ao lado do executável.** `data/`, `models/`, `PDF/`, `PGN/` e
+   `logs/` nascem vazias na `dist/`. Sem isso o primeiro `Ctrl+S` do usuário falharia ao
+   gravar num diretório que não existe -- e falharia depois de ele ter corrigido um diagrama.
 2. **Copia o checkpoint, se houver.** Um bundle sem `models/piece_classifier.pt` abre e não
    lê nada; o programa avisa, mas a primeira impressão é de coisa quebrada.
 3. **Mede e relata o tamanho.** O README declara um número, e um número declarado que
@@ -32,8 +32,16 @@ PROJETO = Path(__file__).resolve().parents[1]
 SPEC = PROJETO / "packaging" / "cvoff.spec"
 SAIDA = PROJETO / "dist" / "ChessVisionOFF"
 
-PASTAS_DO_USUARIO = ("data", "models", "PDF", "PGN")
-"""Nascem vazias ao lado do `.exe`. São do usuário, e por isso não vão dentro do bundle."""
+PASTAS_DO_USUARIO = ("data", "models", "PDF", "PGN", "logs")
+"""Nascem vazias ao lado do `.exe`. Ficam de fora do bundle, e por motivos diferentes.
+
+As quatro primeiras são do **usuário**: rótulo corrigido, checkpoint, livro, PGN exportado.
+Dentro do bundle elas sumiriam a cada reinstalação.
+
+`logs/` é do **programa**, e entrou na S-127. Ela é criada aqui e não só na primeira falha
+porque é para onde a `cvoff.spec` manda olhar quando a janela não abre -- e uma pasta que só
+existe depois do problema é uma instrução que não se pode seguir. `configure_logging` também a
+cria sozinha, o que cobre a pasta apagada à mão."""
 
 logger = logging.getLogger("cvoff.build")
 

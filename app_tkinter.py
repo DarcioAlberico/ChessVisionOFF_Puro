@@ -1421,9 +1421,19 @@ def main() -> None:
         raise SystemExit(selftest(args.pdf, args.page))
 
     logger.info("Iniciando interface desktop.")
-    root = tk.Tk()
-    ChessOcrTkApp(root)
-    root.mainloop()
+    try:
+        root = tk.Tk()
+        ChessOcrTkApp(root)
+        root.mainloop()
+    except Exception:
+        # A guarda que faz o arquivo da S-127 valer alguma coisa. Sem ela, uma exceção aqui
+        # sobe para o `sys.excepthook`, que escreve em `stderr` -- e num bundle `console=False`
+        # `stderr` não vai a lugar nenhum. O arquivo de log existiria e a única falha que
+        # ninguém consegue diagnosticar continuaria fora dele.
+        logger.exception("A janela não abriu.")
+        # Re-levanta: num checkout o traceback no terminal continua sendo o rastro mais curto,
+        # e o código de saída continua dizendo que falhou.
+        raise
 
 
 if __name__ == "__main__":

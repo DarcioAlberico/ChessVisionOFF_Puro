@@ -235,11 +235,16 @@ ela impoe (o lado que nao joga nao pode estar em xeque), e do padrao "brancas" q
 nenhuma das duas responde. O header `[SideToMoveSource]` diz qual dos tres foi, sempre --
 a maioria dos livros do acervo nao declara nada, e um palpite precisa parecer um palpite.
 
-Para gravar o log em arquivo, defina `CVOFF_LOG_DIR`:
+Para gravar o log em arquivo num checkout, defina `CVOFF_LOG_DIR`:
 
 ```bash
 set CVOFF_LOG_DIR=logs
 ```
+
+**No `.exe` isso nao e preciso**: o executavel nao tem console, e por isso grava sozinho em
+`logs\chessvisionoff.log`, na pasta ao lado dele -- junto com `data\`, `models\`, `PDF\` e
+`PGN\`. E o primeiro lugar a olhar quando a janela nao abre (S-127). A variavel continua
+mandando se estiver definida, no `.exe` tambem.
 
 ## Recursos opcionais (e o que o projeto faz sem eles)
 

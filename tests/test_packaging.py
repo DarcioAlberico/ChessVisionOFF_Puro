@@ -61,6 +61,94 @@ class FrozenRootTests(unittest.TestCase):
         self.assertEqual(config.BUNDLE_ROOT, PROJETO)
 
 
+class FrozenLogFileTests(unittest.TestCase):
+    """Congelado, o programa tem para onde escrever quando algo falha (S-127).
+
+    O `console=False` da spec troca o terminal pelo arquivo. Enquanto `default_log_file()`
+    devolvia `None` sem `CVOFF_LOG_DIR` -- e nada no bundle a definia --, a troca era por nada:
+    uma janela que não abria não deixava rastro em lugar nenhum.
+    """
+
+    PASTA = PROJETO / "dist" / "ChessVisionOFF"
+
+    def setUp(self) -> None:
+        import chess_diagram_ocr.config as config
+
+        self.config = config
+        # `CVOFF_LOG_DIR` do ambiente de quem roda a suite mascararia o ramo congelado.
+        self.env = patch.dict("os.environ", {}, clear=False)
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        import os
+
+        os.environ.pop("CVOFF_LOG_DIR", None)
+        # Sem isto o modulo fica com a raiz falsa para todo teste que rodar depois.
+        self.addCleanup(importlib.reload, config)
+
+    def _congelado(self):
+        patches = {
+            "frozen": True,
+            "executable": str(self.PASTA / "ChessVisionOFF.exe"),
+            "_MEIPASS": str(self.PASTA / "_internal"),
+        }
+        return patch.multiple(sys, create=True, **patches)
+
+    def test_congelado_o_log_fica_ao_lado_do_executavel(self) -> None:
+        from chess_diagram_ocr.logging_setup import default_log_file
+
+        with self._congelado():
+            importlib.reload(self.config)
+            self.assertEqual(default_log_file(), self.PASTA / "logs" / "chessvisionoff.log")
+
+    def test_o_log_nao_vai_para_dentro_do_bundle(self) -> None:
+        """`_MEIPASS` some a cada reinstalação — a pior propriedade para um rastro de falha."""
+        from chess_diagram_ocr.logging_setup import default_log_file
+
+        with self._congelado():
+            importlib.reload(self.config)
+            caminho = default_log_file()
+
+        assert caminho is not None
+        self.assertNotIn("_internal", caminho.parts)
+
+    def test_num_checkout_continua_sem_arquivo_sem_pedir(self) -> None:
+        """O terminal já é o rastro. Um `.log` que ninguém pediu só suja o repositório."""
+        from chess_diagram_ocr.logging_setup import default_log_file
+
+        self.assertIsNone(default_log_file())
+
+    def test_a_variavel_de_ambiente_continua_mandando(self) -> None:
+        from chess_diagram_ocr.logging_setup import default_log_file
+
+        with patch.dict("os.environ", {"CVOFF_LOG_DIR": str(PROJETO / "outro")}):
+            with self._congelado():
+                importlib.reload(self.config)
+                self.assertEqual(default_log_file(), PROJETO / "outro" / "chessvisionoff.log")
+
+    def test_a_pasta_de_log_nasce_junto_com_as_do_usuario(self) -> None:
+        """Uma pasta que só existe depois do problema é uma instrução que não se pode seguir."""
+        if str(PROJETO / "packaging") not in sys.path:
+            sys.path.insert(0, str(PROJETO / "packaging"))
+        import build_windows
+
+        self.assertIn("logs", build_windows.PASTAS_DO_USUARIO)
+
+    def test_a_janela_que_nao_abre_deixa_o_traceback_no_log(self) -> None:
+        """É o `logger.exception` de `main` que enche o arquivo: `stderr` num bundle
+        `console=False` não vai a lugar nenhum, e é a única falha que ninguém diagnostica."""
+        app_tkinter = SelftestTests._app_tkinter()
+
+        with patch.object(app_tkinter, "ChessOcrTkApp", side_effect=RuntimeError("Tcl morreu")):
+            with patch.object(app_tkinter.tk, "Tk", lambda: None):
+                with patch.object(sys, "argv", ["app_tkinter.py"]):
+                    with self.assertLogs(app_tkinter.logger, level="ERROR") as registro:
+                        with self.assertRaises(RuntimeError):
+                            app_tkinter.main()
+
+        self.assertIn("Traceback", registro.output[0])
+        self.assertIn("Tcl morreu", registro.output[0])
+
+
 class SpecTests(unittest.TestCase):
     """A spec é código que ninguém importa; sem teste, ela apodrece em silêncio."""
 
@@ -83,6 +171,11 @@ class SpecTests(unittest.TestCase):
         for pasta in ("data", "models", "PDF", "PGN"):
             with self.subTest(pasta=pasta):
                 self.assertNotIn(f'"{pasta}"', datas)
+
+    def test_o_comentario_do_console_desligado_nomeia_o_arquivo_que_existe(self) -> None:
+        """O comentário já esteve aqui sem ser verdade (S-127). Travá-lo é o que impede repetir."""
+        self.assertIn("console=False", self.texto)
+        self.assertIn("logs/chessvisionoff.log", self.texto)
 
     def test_o_modo_e_onedir(self) -> None:
         """`--onefile` extrairia ~700 MB para o temp a cada execução."""

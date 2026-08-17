@@ -56,13 +56,15 @@ _RAIZ: tk.Tk | None = None
 
 
 def _raiz() -> tk.Tk:
-    """Uma raiz Tk para o módulo inteiro, criada uma vez e nunca destruída.
+    """Uma raiz Tk para o módulo inteiro, criada uma vez e destruída no fim dele.
 
-    Cópia deliberada do `test_result_panel`, e pelo mesmo motivo: enquanto houve uma classe
-    só, criar e destruir a raiz da classe funcionou; a segunda classe do módulo (a da S-123)
-    caiu em `tk wasn't installed properly` -- reinicializar o Tcl depois de destruir a última
-    raiz não é confiável no Windows. E o sintoma é pior que a causa: a classe não falha, é
-    **pulada**, e uma suíte verde esconde os testes que não rodaram.
+    **Uma só durante o módulo**, como no `test_result_panel`: enquanto houve uma classe só,
+    criar e destruir a raiz da classe funcionou; com a segunda classe (a da S-123) o segundo
+    `tk.Tk()` caiu em `tk wasn't installed properly` -- reinicializar o Tcl depois de destruir
+    a última raiz não é confiável no Windows. E o sintoma é pior que a causa: a classe não
+    falha, é **pulada**, e uma suíte verde esconde os testes que não rodaram.
+
+    **E destruída no fim**, que é o `tearDownModule` abaixo -- não vale só guardá-la. Ver lá.
     """
     global _RAIZ
     if _RAIZ is None:
@@ -72,6 +74,24 @@ def _raiz() -> tk.Tk:
             raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
         _RAIZ.withdraw()
     return _RAIZ
+
+
+def tearDownModule() -> None:
+    """Devolve o processo ao estado de **nenhuma** raiz viva.
+
+    Guardar a raiz para sempre, como faz o `test_result_panel`, quebra o `test_result_panel`:
+    duas raízes vivas ao mesmo tempo têm dois interpretadores Tcl, `PhotoImage` nasce no
+    `_default_root` -- que é a primeira criada no processo -- e o widget da outra raiz não a
+    enxerga. O sintoma é `image "pyimage46" doesn't exist` em 20 testes de um módulo que não
+    foi tocado, e ele só aparece quando os dois módulos rodam no mesmo processo.
+
+    Destruir aqui não reabre o problema que o `_raiz` resolve: aquele é sobre duas raízes
+    **dentro** deste módulo, e este `tearDown` roda depois da última.
+    """
+    global _RAIZ
+    if _RAIZ is not None:
+        _RAIZ.destroy()
+        _RAIZ = None
 
 
 class PdfPanelBoxesTests(unittest.TestCase):

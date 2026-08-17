@@ -71,8 +71,31 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
 
 
 def default_log_file() -> Path | None:
-    """Arquivo de log padrao, controlado por CVOFF_LOG_DIR. Retorna None se desabilitado."""
+    """Arquivo de log padrao. `CVOFF_LOG_DIR` manda; congelado, ha um destino mesmo sem ela.
+
+    **Num checkout, nada mudou**: sem `CVOFF_LOG_DIR` continua devolvendo `None`, e quem roda
+    a suite ou um `cvoff-*` no terminal nao ganha arquivo nenhum sem pedir. O terminal ja e o
+    rastro.
+
+    **Congelado, `None` era o defeito** (S-127). A `cvoff.spec` desliga o console com o
+    comentario "o log continua indo para o arquivo que `default_log_file()` decide, e e la que
+    se olha quando algo falha" -- so que nada no bundle define `CVOFF_LOG_DIR`, entao a decisao
+    era nao gravar nada. Junto com a S-124, o usuario do `.exe` tinha uma janela que nao
+    aparecia, sem console, sem log e sem codigo de saida visivel.
+
+    O destino e `PROJECT_ROOT/logs/`, que congelado e a pasta **ao lado** do `.exe` -- junto
+    com `data/`, `models/`, `PDF/` e `PGN/`, que e onde o usuario ja sabe procurar. Nao e
+    `_MEIPASS`: aquilo e somente-leitura na pratica e some a cada reinstalacao, que e a pior
+    propriedade possivel para o arquivo que existe para sobreviver a uma falha.
+
+    `config` e lido pelo modulo, e nao no `import`, porque `PROJECT_ROOT` sai de `sys.frozen`
+    na importacao dele -- e e assim que o teste consegue exercitar este ramo.
+    """
     log_dir = os.environ.get("CVOFF_LOG_DIR")
-    if not log_dir:
-        return None
-    return Path(log_dir) / "chessvisionoff.log"
+    if log_dir:
+        return Path(log_dir) / "chessvisionoff.log"
+    if getattr(sys, "frozen", False):
+        from . import config
+
+        return config.PROJECT_ROOT / "logs" / "chessvisionoff.log"
+    return None
