@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -929,3 +930,114 @@ class ChunkCoverageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmpateEntreEpocasTests(unittest.TestCase):
+    """`--keep-ties` grava a época empatada ao lado, para que a decisão tenha número (S-104).
+
+    A métrica que decide tem granularidade de **um tabuleiro** -- 1/306 = 0,00327 no `val` da
+    Fase 5 --, então empate é comum: em `docs/metrics/phase5_training.json` o máximo é atingido
+    por duas épocas em **3 de 3** execuções, e em **2 delas** a época gravada tem `val_loss`
+    maior que a da outra empatada.
+
+    O `>` estrito do `accepts` **não** é defeito: é decisão escrita, e a razão dela está no
+    docstring -- regravar sem ganho é reescrever 8,7 MB e correr o risco da S-57 de graça. O
+    que faltava era medir se a de menor `val_loss` exporta mais em página real, e é isso que
+    esta flag permite. Ela existe para o experimento, não para o uso normal.
+    """
+
+    def _plan(self, root: Path, name: str, *, keep_ties: bool, epochs: int = 2):
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, TrainingPlan
+
+        (root / name).mkdir()
+        csv_path, samples, splits_path = _tiny_dataset(root / name)
+        return TrainingPlan(
+            data=DataPlan(csv_path=csv_path, samples_dir=samples, splits_path=splits_path, num_workers=0),
+            output=OutputPlan(model_path=root / name / "m.pt", fresh=True, keep_ties=keep_ties, calibrate=False),
+            optim=OptimPlan(epochs=epochs, batch_size=64, patience=0, seed=7),
+        )
+
+    def _empata_a_proxima(self, trainer) -> None:  # noqa: ANN001
+        """Força a próxima época a empatar com a melhor, sem depender do acaso do dataset.
+
+        Devolver a **mesma** `board_exact_accuracy` da melhor é o que define empate para a
+        política; o `loss` vai menor de propósito, porque é justamente esse o caso que o item
+        quer medir -- a época empatada que tem `val_loss` melhor e não é gravada.
+        """
+        from chess_diagram_ocr.training import ValidationMetrics
+
+        igual = trainer.policy.best_metric
+        trainer.validate = lambda: ValidationMetrics(  # type: ignore[method-assign]
+            loss=0.0001,
+            square_accuracy=1.0,
+            board_exact_accuracy=igual,
+            per_class_recall={},
+            logits=torch.zeros(1, 13),
+            targets=torch.zeros(1, dtype=torch.long),
+        )
+
+    def _treina_com_empate(self, root: Path, name: str, *, keep_ties: bool):
+        from chess_diagram_ocr.training import Trainer
+
+        trainer = Trainer(self._plan(root, name, keep_ties=keep_ties))
+        trainer.prepare()
+        trainer.resume()
+        trainer.run_epoch(1)
+        self._empata_a_proxima(trainer)
+        linha = trainer.run_epoch(2)
+        return trainer, linha
+
+    def test_a_epoca_empatada_e_gravada_ao_lado(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            trainer, linha = self._treina_com_empate(raiz, "com", keep_ties=True)
+
+            self.assertFalse(linha["is_best"], "empatar continua não regravando o principal")
+            self.assertEqual(trainer.run.best_epoch, 1, "o checkpoint principal é o da política")
+            self.assertTrue((raiz / "com" / "m.tie-e2.pt").exists())
+            self.assertTrue((raiz / "com" / "m.pt").exists(), "e o principal continua lá")
+
+    def test_sem_a_flag_o_empate_nao_deixa_arquivo(self) -> None:
+        """O padrão é o comportamento de sempre: a flag existe para um experimento."""
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            self._treina_com_empate(raiz, "sem", keep_ties=False)
+
+            self.assertEqual(list((raiz / "sem").glob("*.tie-*.pt")), [])
+
+    def test_o_arquivo_do_empate_diz_com_quem_empatou(self) -> None:
+        """Um `.tie-*.pt` copiado para outro nome seria indistinguível de um checkpoint que a
+        política escolheu -- e o experimento inteiro depende de saber qual é qual."""
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            self._treina_com_empate(raiz, "marca", keep_ties=True)
+
+            metadados = load_checkpoint(raiz / "marca" / "m.tie-e2.pt").metadata
+            self.assertEqual(metadados["tie_with_best_epoch"], 1)
+            self.assertEqual(metadados["best_epoch"], 2)
+            self.assertEqual(metadados["metrics"]["val_loss"], 0.0001, "a loss menor, que é o ponto")
+
+    def test_perder_nao_conta_como_empate(self) -> None:
+        """A guarda que separa "empatou" de "piorou": só a igualdade exata grava ao lado."""
+        from chess_diagram_ocr.training import Trainer, ValidationMetrics
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            trainer = Trainer(self._plan(raiz, "pior", keep_ties=True))
+            trainer.prepare()
+            trainer.resume()
+            trainer.run_epoch(1)
+            pior = trainer.policy.best_metric - 0.5
+            trainer.validate = lambda: ValidationMetrics(  # type: ignore[method-assign]
+                loss=0.0001,
+                square_accuracy=0.5,
+                board_exact_accuracy=pior,
+                per_class_recall={},
+                logits=torch.zeros(1, 13),
+                targets=torch.zeros(1, dtype=torch.long),
+            )
+            trainer.run_epoch(2)
+
+            self.assertEqual(list((raiz / "pior").glob("*.tie-*.pt")), [])

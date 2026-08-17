@@ -85,6 +85,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--no-calibrate", action="store_true", help="Pula a calibracao de temperatura (S-28).")
     parser.add_argument(
+        "--keep-ties",
+        action="store_true",
+        help=(
+            "Grava tambem a epoca que EMPATOU com a melhor, em `<modelo>.tie-e<N>.pt` (S-104). "
+            "Existe para um experimento, nao para o uso normal: a pergunta e se a epoca "
+            "empatada de menor `val_loss` exporta mais em pagina real. Compare com "
+            "`cvoff-field --model` nos dois."
+        ),
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help=(
@@ -239,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         calibrate=not args.no_calibrate,
         augment=augment,
         boards_per_batch=args.boards_per_batch,
+        keep_ties=args.keep_ties,
     )
 
     logger.info(

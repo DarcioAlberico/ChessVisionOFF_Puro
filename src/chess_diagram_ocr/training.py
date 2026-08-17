@@ -547,6 +547,18 @@ class OutputPlan:
     calibrate: bool = True
     pretrained: bool = True
 
+    keep_ties: bool = False
+    """Grava também a época que **empatou** com a melhor, ao lado (S-104).
+
+    **Existe para um experimento, e não para o uso normal.** A métrica que decide tem
+    granularidade de um tabuleiro -- 1/306 = 0,00327 no `val` da Fase 5 --, então empate é
+    comum: em `docs/metrics/phase5_training.json` o máximo é atingido por duas épocas em 3 de
+    3 execuções, e em 2 delas a época gravada tem `val_loss` **maior** que a da outra empatada.
+
+    A pergunta que isto permite medir é se a de menor `val_loss` exporta mais em página real.
+    Enquanto ela não tiver resposta, o `>` estrito do `accepts` fica -- e a razão dele está
+    escrita lá: regravar sem ganho é reescrever 8,7 MB e correr o risco da S-57 de graça."""
+
 
 @dataclass(frozen=True)
 class TrainingPlan:
@@ -926,7 +938,13 @@ class Trainer:
         # Sem clausula especial para a primeira epoca: num treino do zero o incumbente e
         # `-inf`, e numa retomada e a metrica real do checkpoint que esta no disco. Era a
         # clausula especial que fazia a primeira epoca de uma retomada gravar por cima.
+        # **Antes** do `observe`, porque ele move o incumbente: depois da chamada não há mais
+        # como saber que esta época empatou com a melhor em vez de perder para ela (S-104).
+        empatou = not self.policy.accepts(metric_for_best) and metric_for_best == self.policy.best_metric
+
         improved = self.policy.observe(metric_for_best, epoch)
+        if empatou and self.plan.output.keep_ties:
+            self._save_tie(epoch, metric_for_best, row)
         if improved:
             self.run.best_metric = self.policy.best_metric
             self.run.best_epoch = self.policy.best_epoch
@@ -947,6 +965,39 @@ class Trainer:
         if self.progress is not None:
             self.progress(row)
         return row
+
+    def _save_tie(self, epoch: int, metric: float, row: dict[str, Any]) -> Path:
+        """Grava a época empatada num arquivo próprio, `<modelo>.tie-e<N>.pt` (S-104).
+
+        **Ao lado e não por cima**: o checkpoint principal continua sendo o que o `>` estrito
+        do `accepts` decidiu, e a comparação entre os dois é justamente o que se quer medir.
+        Um nome por época porque um treino pode empatar mais de uma vez, e sobrescrever
+        deixaria o experimento com um lado só.
+        """
+        destino = Path(self.plan.output.model_path)
+        destino = destino.with_name(f"{destino.stem}.tie-e{epoch}{destino.suffix}")
+        save_checkpoint(
+            destino,
+            self.model.state_dict(),
+            metadata={
+                **self.metadata_base,
+                "best_metric": metric,
+                "best_epoch": epoch,
+                "metrics": _plain(row),
+                # Marcado no proprio arquivo: sem isto, um `.tie-*.pt` copiado para outro nome
+                # seria indistinguivel de um checkpoint que a politica escolheu.
+                "tie_with_best_epoch": self.policy.best_epoch,
+            },
+        )
+        logger.info(
+            "Época %d empatou com a %d em %s=%.6f; gravada em %s para comparação (S-104).",
+            epoch,
+            self.policy.best_epoch,
+            self.run.best_metric_name,
+            metric,
+            destino.name,
+        )
+        return destino
 
     def _cancelled(self, epoch: int) -> bool:
         """Conferido **entre** épocas, e não dentro do laço de lotes.
@@ -1055,6 +1106,7 @@ def train_model(
     cancel_event: threading.Event | None = None,
     augment: AugmentConfig = DEFAULT_AUGMENT,
     boards_per_batch: int = OptimPlan.boards_per_batch,
+    keep_ties: bool = False,
 ) -> TrainingRun:
     """Treina o classificador de peças. Monta o `TrainingPlan` e chama `Trainer.fit()` (S-47).
 
@@ -1093,7 +1145,11 @@ def train_model(
             num_workers=num_workers,
         ),
         output=OutputPlan(
-            model_path=Path(model_path), fresh=fresh, calibrate=calibrate, pretrained=pretrained
+            model_path=Path(model_path),
+            fresh=fresh,
+            calibrate=calibrate,
+            pretrained=pretrained,
+            keep_ties=keep_ties,
         ),
         model=arch,
         optim=OptimPlan(
