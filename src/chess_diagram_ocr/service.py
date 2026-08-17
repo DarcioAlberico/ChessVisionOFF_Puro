@@ -36,7 +36,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from .board_detection import detect_boards
+from .board_detection import NoBoardDetectedError, detect_boards
 from .config import (
     BOARD_SIZE,
     DEFAULT_MAX_BOARDS,
@@ -680,7 +680,13 @@ class OcrService:
     ) -> list[RecognizedDiagram]:
         """O núcleo comum: prever, decidir orientação, inferir a vez, conferir legalidade."""
         if not boards:
-            raise ValueError("Nenhum tabuleiro foi detectado na imagem selecionada.")
+            # `NoBoardDetectedError` e nao `ValueError` (S-125): quem chama precisa distinguir
+            # "esta pagina nao tem diagrama" -- que e resposta, e a mais comum num livro -- de
+            # "o reconhecimento quebrou". Com um `ValueError` generico a unica forma de separar
+            # os dois era procurar a mensagem dentro do texto da excecao, e `app_tkinter` fazia
+            # exatamente isso. A classe ja existia, e `run_main` mapeia as duas para o mesmo
+            # codigo de saida 2, entao a CLI da S-126 nao muda de comportamento.
+            raise NoBoardDetectedError("Nenhum tabuleiro foi detectado na imagem selecionada.")
 
         diagrams: list[RecognizedDiagram] = []
         with self.model_session(options.model_path) as (model, device):

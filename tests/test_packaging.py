@@ -114,5 +114,112 @@ class SelftestTests(unittest.TestCase):
             self.assertEqual(app_tkinter.selftest(), 2)
 
 
+class _RootFalsa:
+    """`after(0, fn)` executa na hora. Num teste não há laço de eventos para agendar nada."""
+
+    def __init__(self) -> None:
+        self.agendados: list[str] = []
+
+    def after(self, _atraso: int, funcao):  # noqa: ANN001, ANN202 - assinatura do Tk
+        self.agendados.append(getattr(getattr(funcao, "func", funcao), "__name__", "?"))
+        funcao()
+
+
+def _janela_minima(app_tkinter, *, result_panel=None):  # noqa: ANN001, ANN202
+    """A janela reduzida ao que `_ocr_worker` toca, com os métodos **reais** amarrados nela.
+
+    Montar o `ChessOcrTkApp` inteiro exigiria Tk, checkpoint e PDF; o que se testa aqui é o
+    `except`, e ele não depende de nenhum dos três. É o mesmo recurso da S-142.
+    """
+    janela_class = type(
+        "JanelaMinima",
+        (),
+        {
+            "_ocr_worker": app_tkinter.ChessOcrTkApp._ocr_worker,
+            "_on_ocr_empty": app_tkinter.ChessOcrTkApp._on_ocr_empty,
+            "_on_ocr_error": app_tkinter.ChessOcrTkApp._on_ocr_error,
+            "_set_status": lambda self, texto: self.status.append(texto),
+            "_show_results": lambda self, *_args: self.lidos.append(_args),
+            "_finish_ocr_ui": lambda self: self.status.append("<fim>"),
+        },
+    )
+    janela = janela_class()
+    janela.root = _RootFalsa()
+    janela.result_panel = result_panel
+    janela.status = []
+    janela.lidos = []
+    return janela
+
+
+class OcrWorkerLogTests(unittest.TestCase):
+    """O worker de OCR registra a exceção como os outros cinco (S-125).
+
+    Era o único dos seis que a engolia: o usuário do `.exe` recebia uma linha de texto e o
+    arquivo de log não recebia nada. Junto com a S-127 -- que faz o arquivo existir num
+    bundle -- é o par que fecha "reconhecer a página quebrou e ninguém sabe por quê".
+    """
+
+    def setUp(self) -> None:
+        self.app_tkinter = SelftestTests._app_tkinter()
+        self.origem = self.app_tkinter.RecognitionOrigin.for_page("livro.pdf", 16)
+        self.caixas: list[tuple[str, str, str]] = []
+        for nome in ("showerror", "showinfo"):
+            original = getattr(self.app_tkinter.messagebox, nome)
+            self.addCleanup(setattr, self.app_tkinter.messagebox, nome, original)
+            setattr(
+                self.app_tkinter.messagebox,
+                nome,
+                lambda titulo, texto, _n=nome: self.caixas.append((_n, titulo, texto)),
+            )
+
+    def _roda(self, erro: Exception, *, nivel: str):
+        janela = _janela_minima(self.app_tkinter)
+
+        def _levanta():
+            raise erro
+
+        with self.assertLogs(self.app_tkinter.logger, level=nivel) as registro:
+            janela._ocr_worker(run=_levanta, origin=self.origem)
+        return janela, registro
+
+    def test_a_falha_de_verdade_vai_para_o_log_com_traceback(self) -> None:
+        _janela, registro = self._roda(RuntimeError("o checkpoint é de outra arch_version"), nivel="ERROR")
+
+        self.assertEqual(len(registro.records), 1)
+        self.assertEqual(registro.records[0].levelname, "ERROR")
+        self.assertIn("Traceback", registro.output[0])
+        self.assertIn("pdf:livro.pdf:page:16", registro.output[0])
+
+    def test_a_falha_de_verdade_continua_sendo_caixa_de_erro(self) -> None:
+        self._roda(RuntimeError("o checkpoint é de outra arch_version"), nivel="ERROR")
+
+        self.assertEqual([nome for nome, _t, _x in self.caixas], ["showerror"])
+        self.assertIn("arch_version", self.caixas[0][2])
+
+    def test_pagina_sem_diagrama_nao_e_erro(self) -> None:
+        """Prosa, índice e página de soluções são a maioria de um livro. Não são falha."""
+        _janela, registro = self._roda(
+            self.app_tkinter.NoBoardDetectedError("Nenhum tabuleiro foi detectado."), nivel="INFO"
+        )
+
+        self.assertEqual(registro.records[0].levelname, "INFO")
+        self.assertNotIn("Traceback", registro.output[0])
+        self.assertEqual([nome for nome, _t, _x in self.caixas], ["showinfo"])
+
+    def test_o_caminho_e_o_tipo_da_excecao_e_nao_o_texto_dela(self) -> None:
+        """A separação era `"Nenhum tabuleiro foi detectado" in str(exc)`: traduzir a
+        mensagem, ou mudar uma palavra dela, silenciosamente devolvia a caixa vermelha."""
+        self._roda(self.app_tkinter.NoBoardDetectedError("outra frase qualquer"), nivel="INFO")
+
+        self.assertEqual([nome for nome, _t, _x in self.caixas], ["showinfo"])
+
+    def test_a_ui_e_liberada_nos_dois_caminhos(self) -> None:
+        """O `finally` é o que devolve os botões. Perdê-lo travaria o OCR para sempre."""
+        for erro in (RuntimeError("qualquer"), self.app_tkinter.NoBoardDetectedError("nada aqui")):
+            with self.subTest(erro=type(erro).__name__):
+                janela, _registro = self._roda(erro, nivel="INFO")
+                self.assertEqual(janela.status[-1], "<fim>")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2189,7 +2189,7 @@ ninguém previu, e existe porque o custo do erro é desproporcional: no bundle d
 
 ---
 
-## S-125 · O worker de OCR loga a exceção como os outros cinco
+## S-125 · O worker de OCR loga a exceção como os outros cinco ✅ implementada (2026-08-17)
 
 **Problema.** `app_tkinter.py:1053-1061`:
 
@@ -2215,6 +2215,34 @@ esperado e não é erro — deixe de ter a mesma cara que uma falha de verdade.
 
 **Testes.** `tests/test_packaging.py` (que já importa `app_tkinter`) — `_ocr_worker` com um
 `run` que levanta, sob `assertLogs`, produz `ERROR` com traceback.
+
+### O que foi entregue
+
+Dois `except` onde havia um, e a separação entre eles é o item inteiro:
+
+| o que aconteceu | log | tela |
+|---|---|---|
+| `NoBoardDetectedError` | `INFO`, sem rastro | `showinfo`, com o atalho para **Selecionar área (OCR)** |
+| qualquer outra coisa | `ERROR` com traceback | `showerror`, dizendo que o traceback está no log |
+
+**A exceção nomeada precisou existir de verdade.** O enunciado dizia que `NoBoardDetectedError`
+"já existe" — existe, mas `service.py:683` levantava `ValueError`, e a classe só era usada pelo
+`detect_board` de uma imagem só, que não é o caminho da janela. A troca é o que permite testar
+o tipo; sem ela a única separação possível continuaria sendo procurar a mensagem dentro do
+texto da exceção, que era o que `app_tkinter.py:1174` fazia.
+
+**A troca não move nenhum código de saída da CLI.** `run_main` (S-126) captura `ValueError`,
+`OSError` e `RuntimeError` na mesma cláusula, e `NoBoardDetectedError` é `RuntimeError` — os
+15 comandos continuam saindo com 2. Conferido rodando `test_cli_errors.py`.
+
+**"Não há diagrama aqui" é a resposta mais comum de um livro** — prosa, índice, página de
+soluções. Continuava chegando ao usuário como caixa vermelha de erro, e o texto exibido era o
+da exceção, sem dizer o que fazer a seguir. Agora nomeia a saída que existe para o caso em que
+*há* diagrama e o detector não o achou, que é a linha que o `README` já dava na tabela de
+sintomas.
+
+**Conferido invertendo a correção:** com o `except` único de antes, os 5 testes falham — dois
+por `no logs of level INFO or higher triggered`, que é literalmente o defeito do enunciado.
 
 ---
 

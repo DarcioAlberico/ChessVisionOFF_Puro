@@ -39,6 +39,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from chess_diagram_ocr.board_detection import NoBoardDetectedError
 from chess_diagram_ocr.config import (
     ACCEPT_MIN_CONFIDENCE,
     BUNDLE_ROOT,
@@ -1152,11 +1153,26 @@ class ChessOcrTkApp:
         threading.Thread(target=self._ocr_worker, kwargs={"run": run, "origin": origin}, daemon=True).start()
 
     def _ocr_worker(self, *, run: Callable[[], list[RecognizedDiagram]], origin: RecognitionOrigin) -> None:
+        """Reconhece fora da thread da janela, e **registra** o que der errado (S-125).
+
+        Era o único dos seis workers do programa que engolia a exceção sem log nenhum. Ler
+        uma página é o que este programa faz: quando isso quebra num `.exe` sem console, o
+        usuário recebia uma linha de texto e o arquivo de log não recebia nada.
+
+        Os dois `except` são o item inteiro. "Não há tabuleiro nesta página" é a resposta
+        mais comum de um livro -- prosa, índice, solução -- e não é falha: vai para o log em
+        `INFO`, sem rastro, e para a tela sem caixa vermelha. O resto é falha de verdade, com
+        `logger.exception` como nos outros cinco.
+        """
         try:
             self._set_status("Detectando diagramas...")
             diagrams = run()
             self.root.after(0, partial(self._show_results, diagrams, origin))
+        except NoBoardDetectedError as exc:
+            logger.info("Nenhum tabuleiro em %s.", origin)
+            self.root.after(0, partial(self._on_ocr_empty, exc))
         except Exception as exc:
+            logger.exception("Falha no OCR de %s.", origin)
             self.root.after(0, partial(self._on_ocr_error, exc))
         finally:
             self.root.after(0, self._finish_ocr_ui)
@@ -1170,11 +1186,22 @@ class ChessOcrTkApp:
                 self.result_panel.select_diagram(self._select_after_ocr)
         self._refresh_overlay(self.page_index)
 
-    def _on_ocr_error(self, exc: Exception) -> None:
-        if "Nenhum tabuleiro foi detectado" in str(exc) and self.result_panel is not None:
+    def _on_ocr_empty(self, exc: NoBoardDetectedError) -> None:
+        """A página não tem diagrama. É resposta à pergunta feita, e não erro (S-125).
+
+        O editor é limpo pelo mesmo motivo de antes: deixar ali o reconhecimento da página
+        anterior faria a tela responder outra pergunta. O que muda é a moldura -- caixa
+        informativa e não `showerror` -- e o caminho até aqui, que era procurar a mensagem
+        dentro do texto da exceção e agora é o tipo dela.
+        """
+        if self.result_panel is not None:
             self.result_panel.clear()
+        self._set_status("Nenhum diagrama nesta página.")
+        messagebox.showinfo("Nenhum diagrama", f"{exc}\n\nSe há um diagrama aí, use Selecionar área (OCR).")
+
+    def _on_ocr_error(self, exc: Exception) -> None:
         self._set_status("Falha no OCR.")
-        messagebox.showerror("Erro", f"Falha no OCR:\n{exc}")
+        messagebox.showerror("Erro", f"Falha no OCR:\n{exc}\n\nO traceback está no arquivo de log.")
 
     def _finish_ocr_ui(self) -> None:
         self._is_running_ocr = False
