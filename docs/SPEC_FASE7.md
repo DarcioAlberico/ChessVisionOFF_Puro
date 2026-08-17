@@ -2695,6 +2695,118 @@ a linha de status contando quantos são.
 
 ---
 
+# Depois da Fase 13 — os dois itens que vieram do uso (2026-08-14)
+
+> Registrados em 2026-08-17 pela **S-133**, e o atraso é o item. Os dois foram entregues em
+> 2026-08-14, entre o fechamento da Fase 13 e a abertura da 14, e caíram na fenda entre este
+> arquivo (que parava em S-75) e o `ANALISE_DETECCAO.md` (que começa em S-78). Ficaram três
+> dias em produção sem critério de aceite escrito em lugar nenhum, citados de passagem quatro
+> vezes no `PLANO_BASE_PARTIDAS.md` e especificados em nenhum.
+>
+> O conteúdo abaixo é transcrição das mensagens de commit (`dd33644` e `11235da`), que são
+> longas e boas — não é arqueologia. O que **não** é transcrição está marcado como tal: são as
+> duas notas de "o que aconteceu depois", que só existem porque hoje se sabe mais.
+>
+> A causa mecânica da fenda — o `CONTRIBUTING` apontando para o `ROADMAP.md`, que fecha na
+> Fase 6, e a ausência de índice — é a **S-134**, e é ela que impede a repetição.
+
+## S-76 · "Aplicar a todos" espalhou quatro campos por 1.405 diagramas ✅ implementada (2026-08-14)
+
+**Problema.** Relato de uso, e o defeito é do **desenho do botão**: *"Aplicar a todos"* foi lido
+como *"salvar os headers deste diagrama"*. A leitura é razoável — os campos não têm botão de
+salvar próprio (eles gravam ao sair do campo), então o único botão ali parecia ser o de gravar.
+
+O clique copiou `Ljubojevic / Browne / Amsterdam / 1972` para **1.405 dos 1.408** diagramas do
+`Secrets of Chess Training`, sobrescrevendo o que houvesse.
+
+**Solução.** Três mudanças, e a primeira é a que importa:
+
+- **Pergunta antes, nomeando os valores e contando os diagramas.** A ação sobrescreve o mesmo
+  campo em centenas de anotações e o valor anterior deixa de existir — uma confirmação que não
+  diz o que vai acontecer é obstáculo, não proteção. O padrão do diálogo é **Cancelar**.
+- **O rótulo diz a direção**: "Copiar headers para todos". O tooltip diz, em letra, que os
+  campos já se salvam sozinhos e que este botão não é para salvar.
+- **Desfazer** (`gallery_model.revert_headers`), que apaga **pelo valor e não pela chave**:
+  apagar todo `Event` do livro levaria junto o que a base preencheu certo em cada diagrama e o
+  que foi digitado um a um. Ele **não** recupera o que a cópia sobrescreveu — e por isso a
+  pergunta vale mais que ele, o que está escrito no tooltip e no docstring.
+
+O desfazer é **da sessão**. Depois de fechar a janela ele some, e isso é honesto: o que ele
+promete é reverter *aquele gesto*, não manter histórico do arquivo.
+
+**Critério de aceite.** O botão pergunta antes, nomeando os valores e a contagem; o padrão do
+diálogo é Cancelar; desfazer apaga só onde o valor bate.
+
+**O que foi medido — e o conserto do dado já gravado.** Feito à parte, com backup datado: 1.405
+diagramas limpos pelo `revert_headers`, e a reaplicação dos casamentos preencheu os nomes certos
+de cada um — Dolmatov × Beliavsky, Taimanov × Fischer, Bareev × Kasparov. O livro saiu de 1.501
+anotações para **867**: as outras 634 só existiam por causa da cópia.
+
+**Testes.** `tests/test_gallery_model.py` e `tests/test_gallery_panel.py` (10 novos).
+
+**Nota posterior, que não é transcrição.** A regra que faltava aqui virou desenho no
+`PLANO_BASE_PARTIDAS.md` §S-88: o preenchimento automático só toca diagramas **sem** o campo,
+nunca os que já o têm. É "o aplicar a todos da S-76 com a trava que faltou", e está dito lá com
+essas palavras.
+
+---
+
+## S-77 · Anotar o conjunto de campo na própria página ✅ implementada (2026-08-14)
+
+**Problema.** **As Fases 7 e 11 estavam com o código completo e o critério de saída aberto, e
+travavam no mesmo lugar.** A 7.7 mediu por quê: com 38 diagramas, a distribuição de confiança é
+bimodal e a vizinhança do gate está **vazia** — 27 acima de 0,99, **nada entre 0,60 e 0,80**, 8
+abaixo de 0,43. Nesse conjunto nenhuma mudança de modelo pode ganhar um diagrama, e perder um
+basta para derrubar um dos 27. Seis variantes deram 27 ou 28 de 38, sempre.
+
+Quatro itens de spec foram julgados por essa métrica sem resolução: **S-38b, S-40, S-62a e
+S-62b**. A Fase 11 registra isso na própria conclusão — *"quando reabrir: a (a), quando o
+conjunto de campo crescer"*.
+
+Crescer o conjunto era **editar JSONL à mão**, e por isso ele parou em 15 páginas das 60
+planejadas. Mas o visualizador já desenha onde estão os diagramas (S-68) e a precisão do
+detector é 0,9722: **na maioria das páginas, anotar é confirmar.**
+
+**Solução.** `ui/field_draft.py`, e os gestos na própria página:
+
+- **Anotar página** grava as caixas da tela como verdade de referência, revisada.
+- **Sem diagrama** é o caminho mais rápido, e essas páginas são obrigatórias: são as únicas que
+  medem **falso positivo** (S-41).
+- **Tirar o selecionado** remove o falso positivo; anotar de novo **substitui** a linha em vez
+  de acrescentar — duas linhas do mesmo par fariam `evaluate_field` contar a página duas vezes,
+  com pesos diferentes.
+- Ao virar a página, a barra diz se ela já está anotada.
+
+`reviewed=True` só aparece em `FieldDraft.to_page`, e é o ponto do módulo: **quem confirma é
+gente.** O rascunho da S-41 grava `False` porque é a saída do modelo, e medir o modelo contra a
+própria saída dá 1,000 em tudo.
+
+**O que ele não faz, e não pode fazer**, está escrito no docstring: decidir **quantos**
+diagramas a página tem. Essa é a única informação do projeto que não existe senão no olho de
+quem abre o livro.
+
+**Critério de aceite.** Anotar uma página com N caixas grava **uma** linha com N diagramas;
+anotar de novo substitui; "sem diagrama" grava a página vazia; a barra diz o estado ao virar.
+
+**O que foi medido.** Conferido dirigindo a janela de verdade, na página 80 do `Karpov 1`: 6
+caixas detectadas, anotadas com regime; tirar uma deixa 5; anotar de novo continua **uma**
+linha; e a página 3 entra como `sem-diagrama`.
+
+O roteiro precisou de `mainloop` e não de laço de `update()` — a detecção volta por
+`root.after`, que sem o laço morre em *"main thread is not in main loop"*, e o erro parece do
+código quando é do roteiro (a armadilha que o `CONTRIBUTING` nomeia).
+
+**Testes.** `tests/test_field_draft.py` (14 novos).
+
+**Nota posterior, que não é transcrição, e é a razão de esta seção não ser só história.** Este
+item torna o gesto humano barato — e por três meses ele gravou a coisa errada. A anotação era
+montada a partir de `item.placement`, que é **o que o modelo leu**; a correção humana morava em
+`fen_edits`, uma lista paralela. Corrigir o tabuleiro e clicar "Anotar página" gravava a leitura
+do modelo como verdade de referência. Quem for crescer o conjunto de campo precisa ler a
+**S-95**, que é onde isso foi consertado, e não só esta seção.
+
+---
+
 # Apêndice · Índice de referências cruzadas
 
 | item | depende de | referenciado por |
@@ -2738,3 +2850,5 @@ a linha de status contando quantos são.
 | S-73 base por posição | S-72, S-26 (a armadilha do `spawn`), S-61 (a economia da passada) | S-13, S-17 (dão vez a jogar com procedência), S-74 |
 | S-74 confirmação na fila | S-73, S-22 | S-75 |
 | S-75 a quarta cor | S-74, S-71 (o eixo de cores), S-68 | — |
+| S-76 copiar headers | S-67 (dona da anotação), S-72 (é o que preenche certo na reaplicação) | S-88 (a trava que faltou) |
+| S-77 anotar na página | S-41 (o formato do conjunto), S-68 (as caixas na tela) | S-95 (corrige de onde vem a verdade), S-99 |

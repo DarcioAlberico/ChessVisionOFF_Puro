@@ -2484,7 +2484,7 @@ trava a propriedade, com o docstring dizendo por que ela existe.
 
 ---
 
-## S-133 · S-76 e S-77 registradas
+## S-133 · S-76 e S-77 registradas ✅ implementada (2026-08-17)
 
 **Problema.** `git log` traz `dd33644` ("S-76: 'Aplicar a todos' espalhou quatro campos por
 1.405 diagramas") e `11235da` ("S-77: anotar o conjunto de campo na propria pagina"). Extraindo
@@ -2507,6 +2507,30 @@ transcrição, não arqueologia.
 algum `docs/*.md`.
 
 **Testes.** É a S-134.
+
+### O que foi entregue
+
+Duas seções em `SPEC_FASE7.md`, sob um cabeçalho novo — *"Depois da Fase 13 — os dois itens que
+vieram do uso (2026-08-14)"* —, no formato das outras 39 daquele arquivo. É ali e não noutro
+porque o arquivo cobria S-37..S-75 e a fenda começa em S-76: a faixa fica contígua, que é o que
+a tabela da S-134 precisa poder afirmar. Mais duas linhas no apêndice de referências cruzadas.
+
+**Medido antes e depois, com o próprio critério de aceite.** Dos 94 identificadores que
+aparecem em `git log --oneline`, 92 tinham seção; os 2 que faltavam eram exatamente S-76 e
+S-77, como o enunciado previa. Depois: nenhum.
+
+**Duas coisas não são transcrição, e estão marcadas como tal no texto.** As mensagens de commit
+descrevem o que se sabia em 2026-08-14; hoje se sabe mais, e omitir isso faria a seção mentir
+por ser fiel:
+
+- a trava que faltava à S-76 — só preencher campo **vazio** — virou desenho na S-88;
+- a S-77 gravou a coisa errada por três meses. A anotação saía de `item.placement`, que é o que
+  o **modelo** leu, com a correção humana numa lista paralela: corrigir o tabuleiro e clicar
+  "Anotar página" gravava a leitura do modelo como verdade de referência. Quem for crescer o
+  conjunto precisa ler a **S-95**, e não só esta seção.
+
+Sem essa segunda nota, o item entregaria uma spec que descreve uma ferramenta que já não é a
+que está no programa — que é o defeito da Fase 19 inteira, cometido dentro do conserto dele.
 
 ---
 

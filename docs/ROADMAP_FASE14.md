@@ -313,7 +313,7 @@ hoje.
 | `README:233` — "o header `[SideToMoveSource]` diz qual dos **três** foi" | **oito** declarados em `semantics.py:40-42`, e um nono emitido fora do tipo |
 | `SPEC.md:811` — critério de aceite "`app_tkinter.py` abaixo de 600 linhas" | **1.302** — dobrou desde a S-31 e nenhum doc registra |
 | `docs/PLANO_BASE_PARTIDAS.md` (51 KB, S-83..S-94) | não é referenciado por **nenhum** arquivo do repositório |
-| S-76 e S-77 | entregues, **em documento nenhum** — caem na fenda entre `SPEC_FASE7` (até S-75) e `ANALISE_DETECCAO` (a partir de S-78) |
+| ~~S-76 e S-77~~ ✅ **S-133** | entregues, **em documento nenhum** — caíam na fenda entre `SPEC_FASE7` (até S-75) e `ANALISE_DETECCAO` (a partir de S-78). Registradas em `SPEC_FASE7.md` em 2026-08-17 |
 
 A última linha é a causa mecânica das outras: a spec está em seis arquivos sem índice, e o
 `CONTRIBUTING` manda atualizar o `ROADMAP.md`, que fecha na Fase 6.
@@ -468,7 +468,7 @@ no checkout **e** no `.exe`.
 | 19.2 | A nota de textura não muda com a resolução do recorte | S-130 | ⬜ |
 | 19.3 | O caminho de contorno ganha instrumento antes de ajuste | S-131 | ⬜ |
 | 19.4 | O que o gate não enxerga, escrito onde ele decide | S-132 | ⬜ |
-| 19.5 | S-76 e S-77 registradas | S-133 | ⬜ |
+| 19.5 | S-76 e S-77 registradas | S-133 | ✅ |
 | 19.6 | O índice de documentos, verificável por teste | S-134 | ⬜ |
 | 19.7 | Os números vivos: ARCHITECTURE, README, bundle | S-135 | ⬜ |
 | 19.8 | `app_tkinter.py` dobrou: reabrir o item ou registrar o novo placar | S-136 | ⬜ |
