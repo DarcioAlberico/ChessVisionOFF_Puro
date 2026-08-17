@@ -37,6 +37,7 @@ import cv2
 import fitz
 import numpy as np
 
+from ..board_detection import RejectedQuad as RejectedQuad
 from ..board_detection import (
     _bbox_iou,
     _board_pattern_score,
@@ -373,6 +374,7 @@ def detect_diagrams(
     refine_embedded: bool = True,
     size_prior_tolerance: float | None = EMBEDDED_SIZE_TOLERANCE,
     checker_contrast_floor: float | None = MIN_CHECKER_CONTRAST,
+    rejected: list[RejectedQuad] | None = None,
 ) -> list[DiagramCandidate]:
     """Todos os diagramas da página, das duas fontes, sem duplicar e em ordem de leitura.
 
@@ -399,6 +401,12 @@ def detect_diagrams(
     `checker_contrast_floor` recusa achado de contorno **sem contraste de casa nenhum** -- a
     foto, o retrato e a moldura da S-143. `None` desliga. Não alcança imagem embutida: ali a
     declaração do PDF continua ganhando, como desde a S-12. Ver `MIN_CHECKER_CONTRAST`.
+
+    `rejected`, quando dado, recebe um `RejectedQuad` por achado de contorno **barrado** --
+    tanto os do `detect_boards` (geometria, score, IoU, teto) quanto os daqui: contraste de
+    casa (S-143), prior de tamanho (S-79), disputa perdida com uma união de ladrilhos (S-81) e
+    o corte final por `max_boards`. É o instrumento da S-131, e as quatro guardas deste laço só
+    deixavam rastro em `logger.info`, que ninguém agrega.
     """
     scale_x = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
     scale_y = page_rgb.shape[0] / page.rect.height if page.rect.height else 1.0
@@ -430,7 +438,19 @@ def detect_diagrams(
 
     # O contorno na pagina inteira e a unica fonte quando nao ha imagem embutida -- o caso da
     # maioria do acervo: 12 dos 27 PDFs sao scan de pagina inteira e 2 sao vetoriais.
-    for board_rgb, quad in detect_boards(page_rgb, max_boards=max_boards, reading_order=reading_order):
+    def _recusado(caixa: tuple[int, int, int, int], contraste: float, motivo: str) -> None:
+        if rejected is not None:
+            rejected.append(RejectedQuad(caixa, 0.5, round(contraste, 4), motivo))
+
+    def _caixa_do_quad(quad: np.ndarray | None) -> tuple[int, int, int, int]:
+        if quad is None:
+            return (0, 0, page_rgb.shape[1], page_rgb.shape[0])
+        xs, ys = quad[:, 0], quad[:, 1]
+        return (int(xs.min()), int(ys.min()), max(1, int(xs.max() - xs.min())), max(1, int(ys.max() - ys.min())))
+
+    for board_rgb, quad in detect_boards(
+        page_rgb, max_boards=max_boards, reading_order=reading_order, rejected=rejected
+    ):
         # Antes de tudo (S-143). O achado que nao tem contraste de casa nenhum nao e tabuleiro,
         # e a ordem importa: se ele entrasse na disputa, um retrato podia derrubar uma uniao de
         # ladrilhos em `_contour_wins_over_merged` ou envenenar o gabarito de tamanho. Guarda
@@ -445,13 +465,10 @@ def detect_diagrams(
                     "ou moldura -- ou tabuleiro cortado, que o warp desalinha.",
                     contraste,
                 )
+                _recusado(_caixa_do_quad(quad), contraste, "sem-contraste-de-casa")
                 continue
 
-        if quad is None:
-            box = (0, 0, page_rgb.shape[1], page_rgb.shape[0])
-        else:
-            xs, ys = quad[:, 0], quad[:, 1]
-            box = (int(xs.min()), int(ys.min()), max(1, int(xs.max() - xs.min())), max(1, int(ys.max() - ys.min())))
+        box = _caixa_do_quad(quad)
 
         conflito = next(
             (
@@ -463,6 +480,7 @@ def detect_diagrams(
         )
         if conflito is not None:
             if not _contour_wins_over_merged(embedded[conflito], board_rgb):
+                _recusado(box, 0.0, "perdeu-para-embutido")
                 continue
             # O contorno ganhou de uma uniao de ladrilhos: ele passa a ser o candidato daquela
             # regiao, e a uniao sai. Sem remover a caixa, o proximo achado de contorno da mesma
@@ -483,6 +501,7 @@ def detect_diagrams(
                     expected_side,
                     size_prior_tolerance * 100,
                 )
+                _recusado(box, 0.0, "prior-de-tamanho")
                 continue
 
         candidates.append(
@@ -496,6 +515,14 @@ def detect_diagrams(
         )
 
     ordered = _order_candidates(candidates, scale=scale, reading_order=reading_order)
+    if rejected is not None:
+        # O corte final tambem e uma recusa, e e a que mais engana: o candidato passou por
+        # todas as guardas e sumiu por contagem. E o defeito que a S-14 ja tinha visto na tela
+        # ("o nono pode ser o do canto superior direito"), aqui do lado do relatorio.
+        for excedente in ordered[max_boards:]:
+            x0, y0, x1, y1 = excedente.bbox_pdf
+            caixa = (int(x0 * scale), int(y0 * scale), max(1, int((x1 - x0) * scale)), max(1, int((y1 - y0) * scale)))
+            rejected.append(RejectedQuad(caixa, excedente.detector_score, 0.0, "teto-da-pagina"))
     return ordered[:max_boards]
 
 

@@ -44,6 +44,7 @@ from typing import Any
 
 import numpy as np
 
+from .board_detection import RejectedQuad
 from .config import DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
 from .detection.hybrid import board_texture_score, detect_diagrams
 from .pdf_io import PdfSource, opened, render_pdf_page, sample_pages
@@ -129,6 +130,51 @@ class CandidateRow:
     def key(self) -> tuple[str, int, int, int]:
         """Identidade entre corridas: livro, página e canto, arredondado ao ponto."""
         return (self.pdf, self.page, round(self.x0), round(self.y0))
+
+
+@dataclass(frozen=True)
+class RejectionRow:
+    """Um candidato de contorno **barrado**, e por qual guarda (S-131).
+
+    O censo da S-82 conta o que entra e é cego ao que foi recusado — e é do lado recusado que
+    se vê o recall perdido. Mexer num limiar sem isto é medir metade do efeito: dá para ver o
+    falso positivo que sumiu, e não o diagrama que sumiu junto.
+
+    Só existe para o caminho de **contorno**. O candidato embutido tem a declaração do PDF a
+    favor dele e guardas próprias, e as recusas dele já aparecem em `logger.debug` com o número
+    ao lado desde a S-78.
+    """
+
+    pdf: str
+    page: int
+    """1-based, como no `CandidateRow` -- os dois CSVs se leem lado a lado."""
+
+    reason: str
+    """Qual guarda barrou. Ver `board_detection.MOTIVOS_DE_RECUSA` e os quatro do `hybrid`."""
+
+    score: float
+    checker: float
+    """Contraste de casa (S-143). `0.0` quando a recusa foi antes de existir recorte."""
+
+    side_pt: float
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+REJECTION_CSV_FIELDS = (
+    "pdf",
+    "page",
+    "reason",
+    "score",
+    "checker",
+    "side_pt",
+    "x0",
+    "y0",
+    "x1",
+    "y1",
+)
 
 
 CSV_FIELDS = (
@@ -310,16 +356,45 @@ def census_page(
     dpi: int = 220,
     max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
+    rejections: list[RejectionRow] | None = None,
 ) -> list[CandidateRow]:
     """Os candidatos de uma página, na forma em que o censo os grava.
 
     Chama `detect_diagrams` — o mesmo detector da GUI e da exportação, e não uma cópia dele.
     Um censo que medisse outro caminho mediria outro programa.
+
+    `rejections`, quando dado, recebe também o que foi **barrado** (S-131), convertido de pixel
+    para ponto do PDF — a mesma unidade das caixas aceitas, para que os dois CSVs se leiam lado
+    a lado e o mesmo candidato possa ser seguido de uma corrida para a outra.
     """
     page_rgb = render_pdf_page(pdf_source, page_index, dpi=dpi)
+    recusados: list[RejectedQuad] | None = [] if rejections is not None else None
     with opened(pdf_source) as emprestado:
         page = emprestado.doc[page_index]
-        candidatos = detect_diagrams(page, page_rgb, max_boards=max_boards, reading_order=reading_order)
+        candidatos = detect_diagrams(
+            page, page_rgb, max_boards=max_boards, reading_order=reading_order, rejected=recusados
+        )
+        escala = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
+
+    if rejections is not None and recusados:
+        for recusa in recusados:
+            x, y, largura, altura = recusa.bbox
+            x0, y0 = x / escala, y / escala
+            x1, y1 = (x + largura) / escala, (y + altura) / escala
+            rejections.append(
+                RejectionRow(
+                    pdf=pdf_name,
+                    page=page_index + 1,
+                    reason=recusa.reason,
+                    score=round(recusa.score, 4),
+                    checker=round(recusa.checker, 4),
+                    side_pt=round(max(x1 - x0, y1 - y0), 2),
+                    x0=round(x0, 2),
+                    y0=round(y0, 2),
+                    x1=round(x1, 2),
+                    y1=round(y1, 2),
+                )
+            )
 
     linhas: list[CandidateRow] = []
     for index, candidato in enumerate(candidatos):
@@ -355,6 +430,7 @@ def census_book(
     suspect_below_pt: float = SUSPECT_BELOW_PT,
     front_matter: int = DEFAULT_FRONT_MATTER,
     on_page: Callable[[int, int], None] | None = None,
+    rejections: list[RejectionRow] | None = None,
 ) -> BookCensus:
     """Censo de um livro. `pages=None` varre o livro inteiro.
 
@@ -383,6 +459,7 @@ def census_book(
                     dpi=dpi,
                     max_boards=max_boards,
                     reading_order=reading_order,
+                    rejections=rejections,
                 )
             except Exception as exc:  # noqa: BLE001 -- uma pagina ruim nao pode derrubar o acervo
                 logger.warning("%s p%d: falhou (%s: %s)", pdf_path.name, indice + 1, type(exc).__name__, exc)
@@ -408,6 +485,7 @@ def census_collection(
     suspect_below_pt: float = SUSPECT_BELOW_PT,
     front_matter: int = DEFAULT_FRONT_MATTER,
     on_book: Callable[[BookCensus], None] | None = None,
+    rejections: list[RejectionRow] | None = None,
 ) -> DetectionCensus:
     """Todos os PDFs do diretório, em ordem de nome. `on_book(BookCensus)` a cada livro."""
     censo = DetectionCensus(
@@ -428,6 +506,7 @@ def census_collection(
                 reading_order=reading_order,
                 suspect_below_pt=suspect_below_pt,
                 front_matter=front_matter,
+                rejections=rejections,
             )
         except Exception as exc:  # noqa: BLE001 -- um PDF quebrado nao pode derrubar o acervo
             logger.warning("%s: nao foi possivel abrir (%s: %s)", pdf_path.name, type(exc).__name__, exc)
@@ -449,6 +528,27 @@ def write_census_csv(path: Path, census: DetectionCensus) -> None:
         writer.writeheader()
         for row in census.rows:
             writer.writerow({campo: getattr(row, campo) for campo in CSV_FIELDS})
+
+
+def write_rejections_csv(path: Path, rejections: list[RejectionRow]) -> None:
+    """Uma linha por candidato **barrado**, com o motivo (S-131).
+
+    Arquivo separado do censo de aceitos, e não uma coluna nele: os dois têm cardinalidades
+    muito diferentes (o barrado é a maioria), e juntá-los faria toda leitura do censo começar
+    por um filtro. Além disso o diff da S-82 casa por canto de bbox, e uma linha de recusa não
+    é um candidato que a corrida seguinte deva procurar como se fosse entrega.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(REJECTION_CSV_FIELDS))
+        writer.writeheader()
+        for row in rejections:
+            writer.writerow({campo: getattr(row, campo) for campo in REJECTION_CSV_FIELDS})
+
+
+def rejections_by_reason(rejections: list[RejectionRow]) -> Counter[str]:
+    """Quantas recusas por guarda. É o resumo que o `--recusas` imprime."""
+    return Counter(row.reason for row in rejections)
 
 
 def read_census_csv(path: Path) -> list[CandidateRow]:

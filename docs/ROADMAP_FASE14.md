@@ -466,7 +466,7 @@ no checkout **e** no `.exe`.
 |---|---|---|---|
 | 19.1 | A página com `/Rotate` não gera candidato fantasma | S-129 | ✅ (1 página em 18.767) |
 | 19.2 | A nota de textura não muda com a resolução do recorte | S-130 | ⬜ |
-| 19.3 | O caminho de contorno ganha instrumento antes de ajuste | S-131 | ⬜ |
+| 19.3 | O caminho de contorno ganha instrumento antes de ajuste | S-131 | ✅ instrumento feito; limiares **não** ajustados |
 | 19.4 | O que o gate não enxerga, escrito onde ele decide | S-132 | ⬜ |
 | 19.5 | S-76 e S-77 registradas | S-133 | ✅ |
 | 19.6 | O índice de documentos, verificável por teste | S-134 | ✅ |

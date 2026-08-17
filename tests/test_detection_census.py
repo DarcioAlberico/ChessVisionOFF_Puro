@@ -12,23 +12,31 @@ continua verdade depois da S-78: o censo roda, grava, e o CSV volta igual.
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 import fitz
 from test_detection import PAGE_HEIGHT, PAGE_WIDTH, board_image, pdf_with_images
 
+from chess_diagram_ocr.board_detection import MOTIVOS_DE_RECUSA, RejectedQuad
 from chess_diagram_ocr.detection_census import (
+    REJECTION_CSV_FIELDS,
     SUSPECT_BELOW_PT,
     BookCensus,
     CandidateRow,
     DetectionCensus,
+    RejectionRow,
     census_book,
+    census_page,
     diff_census,
     read_census_csv,
+    rejections_by_reason,
     write_census_csv,
     write_census_json,
+    write_rejections_csv,
 )
 from chess_diagram_ocr.pdf_io import sample_pages
 
@@ -332,6 +340,115 @@ class PontaAPontaTests(unittest.TestCase):
 
         self.assertEqual(livro.pages_failed, 0)
         self.assertEqual(livro.pages_with_candidate, 0)
+
+
+class RecusasTests(unittest.TestCase):
+    """O que foi **barrado**, e por qual guarda (S-131).
+
+    O censo da S-82 conta o que entra e é cego ao que foi recusado — e é do lado recusado que
+    mora o recall perdido. Sem isto, mexer num limiar de `board_detection.py` é medir metade do
+    efeito: dá para ver o falso positivo que sumiu, e não o diagrama que sumiu junto.
+    """
+
+    MOTIVOS_DO_HIBRIDO = ("sem-contraste-de-casa", "prior-de-tamanho", "perdeu-para-embutido", "teto-da-pagina")
+    """As quatro guardas que moram no `detection/hybrid`, e não no `board_detection`."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-s131-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.pdf = _pdf_no_disco(
+            self.tmp / "recusas.pdf",
+            # Um tabuleiro e um retângulo achatado: o segundo é o que reprova no aspecto.
+            [
+                (board_image(400), fitz.Rect(80, 100, 380, 400)),
+                (board_image(400), fitz.Rect(60, 450, 500, 620)),
+            ],
+        )
+
+    def test_sem_pedir_recusas_nada_e_montado(self) -> None:
+        """`rejections=None` é o padrão, e precisa continuar barato: o censo roda no acervo."""
+        linhas = census_page(self.pdf, 0, "recusas.pdf", dpi=150)
+        self.assertGreaterEqual(len(linhas), 1)
+
+    def test_as_recusas_saem_em_ponto_do_pdf_como_os_aceitos(self) -> None:
+        """Os dois CSVs se leem lado a lado, então precisam da mesma unidade."""
+        recusas: list[RejectionRow] = []
+        aceitos = census_page(self.pdf, 0, "recusas.pdf", dpi=150, rejections=recusas)
+
+        self.assertTrue(recusas, "a página sintética precisa produzir alguma recusa")
+        conhecidos = set(MOTIVOS_DE_RECUSA) | set(self.MOTIVOS_DO_HIBRIDO)
+        for recusa in recusas:
+            self.assertEqual(recusa.pdf, "recusas.pdf")
+            self.assertEqual(recusa.page, 1, "1-based, como no CandidateRow")
+            self.assertIn(recusa.reason, conhecidos)
+            # Em ponto do PDF, e não em pixel do render: a 150 DPI o pixel é ~2x o ponto, e
+            # uma caixa em pixel estouraria a página.
+            self.assertLessEqual(recusa.x1, PAGE_WIDTH + 1)
+            self.assertLessEqual(recusa.y1, PAGE_HEIGHT + 1)
+        self.assertGreaterEqual(len(aceitos), 1)
+
+    def test_o_speckle_abaixo_do_piso_de_area_nao_entra(self) -> None:
+        """A medição que mudou o desenho: registrar tudo deu 2,6 milhões de linhas.
+
+        Na primeira corrida do instrumento sobre o acervo foram **2.630.560 recusas contra 499
+        aceitos**, lado mediano de 4,6 pt, num CSV de 280 MB. Manchas de contorno abaixo do piso
+        de área não são candidato barrado — são ruído que o `findContours` produz aos milhões, e
+        nenhuma delas pode ser um diagrama perdido. Com elas fora sobram 4.944 recusas e 564 KB.
+        """
+        recusas: list[RejectionRow] = []
+        census_page(self.pdf, 0, "recusas.pdf", dpi=150, rejections=recusas)
+
+        minusculas = [r for r in recusas if r.side_pt < 20.0]
+        self.assertEqual([], minusculas, "recusa de menos de 20 pt não é candidato, é speckle")
+
+    def test_o_motivo_de_cada_guarda_do_detect_boards(self) -> None:
+        """Direto no `detect_boards`, sem PDF: é onde as seis guardas moram."""
+        import numpy as np
+
+        from chess_diagram_ocr.board_detection import detect_boards
+
+        pagina = np.full((800, 600, 3), 255, dtype=np.uint8)
+        pagina[100:400, 100:400] = board_image(300)
+        pagina[500:700, 100:500] = 40  # retângulo achatado: reprova no aspecto
+
+        recusados: list[RejectedQuad] = []
+        detect_boards(pagina, max_boards=1, rejected=recusados)
+
+        motivos = {recusa.reason for recusa in recusados}
+        self.assertTrue(motivos, "a página sintética precisa barrar alguma coisa")
+        self.assertTrue(
+            motivos <= set(MOTIVOS_DE_RECUSA),
+            f"motivo fora de MOTIVOS_DE_RECUSA: {motivos - set(MOTIVOS_DE_RECUSA)}",
+        )
+        for recusa in recusados:
+            self.assertEqual(len(recusa.bbox), 4)
+
+    def test_o_csv_de_recusas_grava_os_dez_campos(self) -> None:
+        recusas = [
+            RejectionRow(
+                pdf="livro.pdf", page=7, reason="score-baixo", score=0.03, checker=0.0,
+                side_pt=118.4, x0=10.0, y0=20.0, x1=128.4, y1=138.4,
+            )
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            destino = Path(tmp) / "recusas.csv"
+            write_rejections_csv(destino, recusas)
+            linhas = destino.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(linhas[0].split(","), list(REJECTION_CSV_FIELDS))
+        self.assertIn("score-baixo", linhas[1])
+        self.assertIn("118.4", linhas[1])
+
+    def test_o_resumo_agrupa_por_motivo(self) -> None:
+        recusas = [
+            RejectionRow(pdf="a.pdf", page=1, reason="aspecto", score=0.0, checker=0.0,
+                         side_pt=100.0, x0=0.0, y0=0.0, x1=100.0, y1=100.0),
+            RejectionRow(pdf="a.pdf", page=2, reason="aspecto", score=0.0, checker=0.0,
+                         side_pt=90.0, x0=0.0, y0=0.0, x1=90.0, y1=90.0),
+            RejectionRow(pdf="a.pdf", page=3, reason="score-baixo", score=0.01, checker=0.0,
+                         side_pt=80.0, x0=0.0, y0=0.0, x1=80.0, y1=80.0),
+        ]
+        self.assertEqual(rejections_by_reason(recusas), Counter({"aspecto": 2, "score-baixo": 1}))
 
 
 class CliTests(unittest.TestCase):

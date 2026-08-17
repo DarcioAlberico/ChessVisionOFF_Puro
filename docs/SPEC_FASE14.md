@@ -2470,7 +2470,7 @@ um a um.
 
 ---
 
-## S-131 · O caminho de contorno ganha instrumento antes de ajuste
+## S-131 · O caminho de contorno ganha instrumento antes de ajuste ✅ implementada (2026-08-17)
 
 **Problema.** Contado com `ast`: `board_detection.py` tem **0 constantes nomeadas e 179
 literais numéricos**, contra 11 nomeadas em `detection/embedded.py`, 6 em `detection/hybrid.py`
@@ -2497,6 +2497,64 @@ que decidem têm nome e número medido; o censo antes/depois não perde candidat
 
 **Testes.** `tests/test_detection_census.py` — as recusas no relatório; o diff que casa por
 canto de bbox, como a S-82 já faz.
+
+### O que foi entregue
+
+**O passo 1 inteiro, e o passo 2 pela metade — e a metade que ficou é a que o enunciado
+mandava não fazer no escuro.**
+
+`cvoff-census --recusas [caminho.csv]` grava um `RejectionRow` por candidato de contorno
+barrado, com motivo, score, contraste de casa e caixa **em ponto do PDF** (a mesma unidade dos
+aceitos, para que os dois CSVs se leiam lado a lado). Dez guardas passaram a deixar rastro
+agregável: seis em `board_detection` (`aspecto`, `fora-da-pagina`, `area-relativa`,
+`score-baixo`, `sobreposicao`, `teto`) e quatro em `detection/hybrid`
+(`sem-contraste-de-casa`, `prior-de-tamanho`, `perdeu-para-embutido`, `teto-da-pagina`). Das
+dez, quatro só existiam como `logger.info`, que ninguém agrega, e seis não existiam de forma
+nenhuma. Sem `--recusas` nada é montado: o custo é zero para quem não pede.
+
+**A primeira corrida do instrumento mudou o desenho dele.** Sobre o acervo (39 livros, 12
+páginas por livro):
+
+| | recusas | CSV |
+|---|---|---|
+| registrando tudo | **2.630.560** contra 499 aceitos | **280 MB** |
+| sem o que está abaixo do piso de área | **4.944** contra 499 aceitos | **564 KB** |
+
+O lado mediano da recusa era **4,6 pt**. Não eram candidatos barrados: eram manchas que o
+`findContours` produz aos milhões e que o piso de área descarta por construção — nenhuma delas
+pode ser um diagrama perdido. Um CSV de 280 MB não é instrumento, é ruído com cabeçalho.
+Registrar só o que passou do piso deixa a recusa por **aspecto**, que é a informativa: algo do
+tamanho de um diagrama, barrado por não ser quadrado o bastante.
+
+**A linha de base, medida em 2026-08-17** (`docs/metrics/deteccao_recusas.csv`):
+
+| motivo | recusas | lado mediano |
+|---|---|---|
+| `score-baixo` | 2.289 | 74,6 pt |
+| `aspecto` | 1.673 | 108,3 pt |
+| `sobreposicao` | 344 | 177,8 pt |
+| `perdeu-para-embutido` | 263 | 138,1 pt |
+| `area-relativa` | 256 | 49,7 pt |
+| `sem-contraste-de-casa` | 119 | 135,5 pt |
+
+**Dez recusas por candidato aceito**, e as duas maiores populações têm lado mediano *acima* do
+limiar de suspeita de 72 pt — ou seja, do tamanho de um diagrama impresso. Isto não prova que
+haja recall perdido ali; prova que a pergunta agora tem onde ser feita, que é o que o item
+pedia.
+
+**O passo 2, e por que ele não foi cumprido como escrito.** As oito constantes que decidem
+foram nomeadas (`MIN_AREA_FRACTION`, `ASPECT_MIN`/`ASPECT_MAX`, `AREA_SATURATION`,
+`MIN_VISIBLE_RATIO`, `MIN_QUAD_INSIDE_RATIO`, `QUAD_MARGIN_RATIO`, `DEDUPE_IOU`,
+`MIN_RELATIVE_AREA`, `MIN_SCORE_FLOOR`, `MIN_SCORE_RELATIVE`). O enunciado pedia "cada uma com
+o número medido no docstring" — e **não há número medido**: eles vêm da Fase 1 e ninguém os
+mediu desde então. O docstring diz isso, com essas palavras, em vez de inventar uma
+justificativa. Nomear não é medir, e escrever um número que não foi medido ao lado de uma
+constante é pior do que deixá-la anônima: passa a parecer decidida.
+
+**Nenhum limiar foi ajustado**, que é a regra da S-82 e o motivo de a ordem do enunciado não
+ser estética — `ANALISE_DETECCAO.md` §5 registra dois ajustes feitos sem censo, os dois
+reprovados. O instrumento existe; a medição de cada guarda é trabalho de quem for mexer nela, e
+agora ela é possível.
 
 ---
 

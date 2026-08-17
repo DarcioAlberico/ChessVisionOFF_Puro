@@ -28,12 +28,15 @@ from ..detection_census import (
     BookCensus,
     CensusDiff,
     DetectionCensus,
+    RejectionRow,
     census_book,
     census_collection,
     diff_census,
     read_census_csv,
+    rejections_by_reason,
     write_census_csv,
     write_census_json,
+    write_rejections_csv,
 )
 from ..logging_setup import configure_logging, default_log_file
 from . import cli_errors
@@ -79,6 +82,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--csv", type=Path, default=None, help="Grava uma linha por candidato.")
     parser.add_argument("--json", type=Path, default=None, help="Grava o resumo por livro.")
     parser.add_argument("--baseline", type=Path, default=None, help="CSV de uma corrida anterior, para o diff.")
+    parser.add_argument(
+        "--recusas",
+        type=Path,
+        default=None,
+        nargs="?",
+        const=Path("-"),
+        help=(
+            "Grava também o candidato de contorno RECUSADO, com o motivo (S-131). Sem caminho, "
+            "só imprime o resumo por motivo. O censo conta o que entra; isto conta o que foi "
+            "barrado, que é onde mora o recall perdido."
+        ),
+    )
     parser.add_argument(
         "--fail-on-loss",
         action="store_true",
@@ -189,12 +204,34 @@ def _print_diff(mudancas: list[CensusDiff], baseline: Path) -> int:
     return perdidos_reais
 
 
+def _print_rejections(recusas: list[RejectionRow], census: DetectionCensus) -> None:
+    """O resumo das recusas, por motivo (S-131).
+
+    A razão aceito/recusado vem junto porque é o número que dá escala ao resto: "412 recusas"
+    não diz nada; "412 recusas para 89 aceitos" diz que quatro em cada cinco achados de contorno
+    da página morrem numa guarda, e que mexer em qualquer uma delas mexe muito.
+    """
+    if not recusas:
+        print("\nRecusas: nenhuma. O contorno não barrou nada nesta amostra.")
+        return
+
+    aceitos = sum(1 for row in census.rows if row.source == "contour")
+    print(f"\nRecusas do caminho de contorno: {len(recusas)} contra {aceitos} aceito(s)")
+    for motivo, quantos in rejections_by_reason(recusas).most_common():
+        lados = [row.side_pt for row in recusas if row.reason == motivo]
+        mediana = sorted(lados)[len(lados) // 2]
+        print(f"  {motivo:<24} {quantos:>6}   lado mediano {mediana:>7.1f} pt")
+
+
 @cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
 
     pages = None if args.all_pages else args.pages
+    # `None` quando ninguem pediu: sem isto o detector monta uma lista por pagina no acervo
+    # inteiro para joga-la fora, e o censo existe para ser barato.
+    recusas: list[RejectionRow] | None = [] if args.recusas is not None else None
     comuns = {
         "pages": pages,
         "dpi": args.dpi,
@@ -202,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
         "reading_order": args.reading_order,
         "suspect_below_pt": args.suspect_below_pt,
         "front_matter": args.front_matter,
+        "rejections": recusas,
     }
 
     if args.pdf is not None:
@@ -239,6 +277,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.json is not None:
         write_census_json(args.json, census)
         print(f"Resumo em {args.json}")
+    if recusas is not None:
+        _print_rejections(recusas, census)
+        if args.recusas != Path("-"):
+            write_rejections_csv(args.recusas, recusas)
+            print(f"Recusas por candidato em {args.recusas}")
 
     perdidos_reais = 0
     if args.baseline is not None:
