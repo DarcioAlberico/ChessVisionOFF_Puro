@@ -508,7 +508,7 @@ abaixo do alvo, e os ≥5 diagramas na faixa de confiança 0,60–0,80. O conjun
 
 ---
 
-## S-100 · O conjunto vigente é declarado, e a comparação volta a ser honesta
+## S-100 · O conjunto vigente é declarado, e a comparação volta a ser honesta ✅ implementada (2026-08-17)
 
 **Problema.** O conjunto mudou de 15 páginas/38 diagramas para 17/39 em 2026-08-15, e **todas
 as medições citadas nos documentos são do conjunto antigo**. `cvoff-field` hoje devolve 0,7179
@@ -533,6 +533,35 @@ mensagem certa.
 
 **Testes.** `tests/test_field_eval.py` — a guarda de conjunto vigente, com JSON sintético de
 conjunto antigo.
+
+### O que foi entregue
+
+`field_set_identity` devolve `{pages, annotated}` contando **só as revisadas** -- é o que
+`evaluate_field` mede, e os dois números já saíam no JSON com esses nomes. O que faltava era
+compará-los.
+
+**Medido, e confirma o enunciado linha por linha:**
+
+| | páginas / diagramas |
+|---|---|
+| `field_20260809*.json` e `field_20260811*.json` (15 relatórios) | **15 / 38** |
+| `field_20260816*.json` e os três da S-107 | **17 / 39** |
+
+**A lista mora no teste, no molde do `SEM_REGISTRO` da S-112.** `RELATORIOS_CORRENTES` nomeia
+os quatro relatórios que os documentos apresentam como o número de agora, **com o porquê de
+cada um**; os quinze da Fase 7 ficam de fora de propósito, porque são registro histórico e o
+cabeçalho do `EXPERIMENTS_FASE7.md` declara o conjunto deles.
+
+Quando a S-99 crescer o conjunto para 60 páginas, a suíte falha em bloco -- e é o ponto: cada
+linha da lista tem de ser remedida ou sair, e a decisão passa a ser explícita.
+
+**O cabeçalho do `EXPERIMENTS_FASE7.md`** ganhou o aviso com a tabela das duas medições lado a
+lado, e a frase que importa: *a diferença de 0,019 na taxa de exportação é da ordem das
+diferenças que decidiram aqueles vereditos*.
+
+**O controle não foi regravado sobre o conjunto de hoje**, e é decisão: a S-99 ainda vai
+crescê-lo de 17 para 60 páginas, e regravá-lo duas vezes é pagar duas vezes pela mesma
+resposta.
 
 ---
 

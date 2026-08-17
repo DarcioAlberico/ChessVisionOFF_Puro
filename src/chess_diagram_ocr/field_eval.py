@@ -219,6 +219,30 @@ def upsert_page(path: Path, page: FieldPage) -> int:
     return sum(1 for item in paginas if item.reviewed)
 
 
+def field_set_identity(pages: Iterable[FieldPage]) -> dict[str, int]:
+    """Quantas páginas revisadas e quantos diagramas anotados o conjunto tem (S-100).
+
+    **É a identidade que faltava para duas medições serem comparáveis.** O conjunto passou de
+    15 páginas/38 diagramas para 17/39 em 2026-08-15, e todas as medições citadas nos
+    documentos até então são do conjunto antigo: `cvoff-field` devolve 0,7179 onde os docs
+    dizem 0,7368, e a precisão de detecção aparece em 0,9231 contra 0,9722. Nenhuma dessas
+    comparações é limpa -- as duas pontas mediram conjuntos diferentes --, e nada avisava.
+
+    O peso disso é que as tabelas que **reprovaram** S-38b, S-40, S-62a e S-62b comparam
+    variantes sobre 38 diagramas; uma variante medida hoje entra numa tabela com que não é
+    comparável.
+
+    Só as revisadas, porque é o que `evaluate_field` mede: rascunho não é verdade de
+    referência. Os dois números já saem no JSON do relatório com estes nomes -- o que faltava
+    era compará-los.
+    """
+    revisadas = [pagina for pagina in pages if pagina.reviewed]
+    return {
+        "pages": len(revisadas),
+        "annotated": sum(len(pagina.diagrams) for pagina in revisadas),
+    }
+
+
 # --------------------------------------------------------------------------- relatório
 
 

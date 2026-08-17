@@ -9,8 +9,33 @@ Continuação de [EXPERIMENTS.md](EXPERIMENTS.md), que cobre a Fase 5.
 
 **Máquina:** Windows 11, 12 CPUs lógicas, `torch 2.10.0+cpu` — **sem GPU**, como na Fase 5.
 
-**Conjunto de medição:** `data/field_set.jsonl` (S-41) — 15 páginas anotadas à mão, 38
-diagramas, 3 páginas sem diagrama. Reproduzir: `cvoff-field`.
+**Conjunto de medição desta fase:** `data/field_set.jsonl` (S-41) — **15 páginas anotadas à
+mão, 38 diagramas**, 3 páginas sem diagrama. Reproduzir: `cvoff-field`.
+
+> ## ⚠ O conjunto mudou em 2026-08-15, e **nada nesta página é comparável ao de hoje**
+>
+> O conjunto vigente tem **17 páginas e 39 diagramas** — e a diferença não é só de tamanho: a
+> S-95 tirou dele uma leitura alucinada que servia de referência, e a S-99 acrescentou FEN a
+> 31 dos 39.
+>
+> | | esta página (até 2026-08-11) | vigente |
+> |---|---|---|
+> | páginas / diagramas | 15 / 38 | **17 / 39** |
+> | taxa de exportação da produção | 0,7368 | **0,7179** |
+> | precisão de detecção | 0,9722 (1 falso positivo) | **0,9231** (3 falsos positivos) |
+>
+> **As tabelas que reprovaram S-38b, S-40, S-62a e S-62b comparam variantes sobre 38
+> diagramas.** Uma variante medida hoje entra nelas sem ser comparável — e a diferença de
+> 0,019 na taxa de exportação é da ordem das diferenças que decidiram aqueles vereditos.
+>
+> Os relatórios desta página estão em `docs/metrics/field_20260809*.json` e
+> `field_20260811*.json`, e **todos** declaram `"pages": 15, "annotated": 38` — é assim que se
+> confere. `tests/test_field_eval.py::ConjuntoVigenteTests` trava a lista dos que são citados
+> como correntes; um relatório de outro conjunto nessa lista faz a suíte falhar.
+>
+> O controle não foi regravado sobre o conjunto de hoje **de propósito**: a S-99 ainda vai
+> crescê-lo de 17 para 60 páginas, e regravá-lo duas vezes é pagar duas vezes pela mesma
+> resposta.
 
 ---
 

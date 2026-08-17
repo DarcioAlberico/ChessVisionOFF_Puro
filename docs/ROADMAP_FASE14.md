@@ -361,7 +361,7 @@ a condição de qualquer medição, a segunda porque cada dia de uso acrescenta 
 | 14.3 | O conjunto de campo declara a página que o modelo treinou | S-97 | ✅ |
 | 14.4 | O mesmo diagrama impresso não cruza split | S-98 | ✅ |
 | 14.5 | Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida | S-99 | ⚠ FEN feita (31), páginas não (17 de 60) |
-| 14.6 | O conjunto vigente é declarado e a comparação volta a ser honesta | S-100 | ⬜ |
+| 14.6 | O conjunto vigente é declarado e a comparação volta a ser honesta | S-100 | ✅ |
 
 **Critério de saída:** `cvoff-field` relata exatidão de campo com `comparable ≥ 30`, nenhuma
 página do conjunto contaminada por amostra de treino, nenhuma tripla `(pdf, página, diagrama)`

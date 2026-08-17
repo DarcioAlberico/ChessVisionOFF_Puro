@@ -24,6 +24,7 @@ from chess_diagram_ocr.field_eval import (
     bbox_iou,
     evaluate_field,
     evaluate_page,
+    field_set_identity,
     load_field_set,
     save_field_set,
 )
@@ -541,3 +542,95 @@ class RealFieldSetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+RAIZ = Path(__file__).resolve().parents[1]
+
+RELATORIOS_CORRENTES = {
+    "field_20260816_s99.json": "o número da S-99, citado pelo ROADMAP_FASE14 como a régua de hoje",
+    "controle_20260816.json": "o controle da S-107, contra o qual o `mhsp` foi julgado",
+    "mhsp_20260816.json": "o candidato da S-107",
+    "producao_20260816.json": "a produção de 2026-08-09, medida no mesmo dia que os dois acima",
+}
+"""Os relatórios de campo que os documentos citam **como correntes** (S-100).
+
+O conjunto passou de 15 páginas/38 diagramas para 17/39 em 2026-08-15, e todas as medições
+anteriores são do conjunto antigo. As tabelas que reprovaram S-38b, S-40, S-62a e S-62b
+comparam variantes sobre 38 diagramas -- uma variante medida hoje entra nelas sem ser
+comparável, e a diferença de 0,019 na taxa de exportação é da ordem das que decidiram
+aqueles vereditos.
+
+**Um relatório entra nesta lista quando um documento o apresenta como o número de agora.** Os
+de `docs/metrics/field_20260809*.json` e `field_20260811*.json` ficam de fora de propósito:
+eles são o registro histórico da Fase 7, e o cabeçalho do `EXPERIMENTS_FASE7.md` declara o
+conjunto deles.
+
+Quando a S-99 crescer o conjunto para 60 páginas, esta suíte falha em bloco -- e é o ponto:
+cada linha aqui tem de ser remedida ou sair da lista, e a decisão passa a ser explícita."""
+
+
+class ConjuntoVigenteTests(unittest.TestCase):
+    """Um relatório antigo citado como corrente faz a suíte falhar (S-100)."""
+
+    def _hoje(self) -> dict[str, int]:
+        conjunto = RAIZ / "data" / "field_set.jsonl"
+        if not conjunto.exists():
+            raise unittest.SkipTest("sem data/field_set.jsonl: o conjunto real não é versionado em todo clone")
+        return field_set_identity(load_field_set(conjunto))
+
+    def test_a_identidade_conta_so_o_que_foi_revisado(self) -> None:
+        """Rascunho não é verdade de referência, e `evaluate_field` o pula -- então ele também
+        não entra na identidade, senão dois conjuntos com o mesmo número de revisadas
+        pareceriam diferentes por causa de rascunhos que ninguém mediu."""
+        paginas = [
+            FieldPage(pdf="a.pdf", page=1, diagrams=(AnnotatedDiagram(bbox=(0, 0, 1, 1)),), reviewed=True),
+            FieldPage(pdf="b.pdf", page=2, diagrams=(AnnotatedDiagram(bbox=(0, 0, 1, 1)),), reviewed=False),
+        ]
+        self.assertEqual(field_set_identity(paginas), {"pages": 1, "annotated": 1})
+
+    def test_pagina_sem_diagrama_conta_como_pagina(self) -> None:
+        """"Esta página não tem diagrama" é uma afirmação, e é ela que mede falso positivo."""
+        paginas = [FieldPage(pdf="a.pdf", page=1, diagrams=(), reviewed=True)]
+        self.assertEqual(field_set_identity(paginas), {"pages": 1, "annotated": 0})
+
+    def test_todo_relatorio_corrente_mediu_o_conjunto_de_hoje(self) -> None:
+        """**O critério de aceite.** Sem isto, um número de 38 diagramas e um de 39 entram na
+        mesma tabela sem nada avisar -- e foi assim que quatro itens de spec foram julgados."""
+        hoje = self._hoje()
+        divergentes = []
+        for nome, por_que in sorted(RELATORIOS_CORRENTES.items()):
+            caminho = RAIZ / "docs" / "metrics" / nome
+            if not caminho.exists():
+                divergentes.append(f"{nome}: citado como corrente ({por_que}) e não existe")
+                continue
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            medido = {"pages": dados.get("pages"), "annotated": dados.get("annotated")}
+            if medido != hoje:
+                divergentes.append(f"{nome}: mediu {medido}, e o conjunto de hoje é {hoje}")
+
+        self.assertEqual(
+            divergentes,
+            [],
+            "Relatório citado como corrente medido sobre outro conjunto. Ou remeça-o com "
+            "`cvoff-field --json`, ou tire-o de RELATORIOS_CORRENTES e diga no documento que "
+            "ele é histórico.",
+        )
+
+    def test_um_relatorio_de_conjunto_antigo_e_pego(self) -> None:
+        """A guarda demonstrada sobre um caso sintético, para o teste acima não ser vacuamente
+        verdadeiro no dia em que a lista ficar vazia."""
+        hoje = self._hoje()
+        antigo = {"pages": hoje["pages"] - 2, "annotated": hoje["annotated"] - 1}
+        self.assertNotEqual(antigo, hoje)
+
+    def test_os_relatorios_historicos_declaram_o_conjunto_deles(self) -> None:
+        """O que torna o cabeçalho do EXPERIMENTS_FASE7 verificável em vez de uma promessa:
+        todo relatório da Fase 7 diz `15 / 38` no próprio arquivo."""
+        historicos = sorted((RAIZ / "docs" / "metrics").glob("field_202608[01]*.json"))
+        if not historicos:
+            raise unittest.SkipTest("sem relatórios históricos neste clone")
+        for caminho in historicos:
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            with self.subTest(relatorio=caminho.name):
+                self.assertIn("pages", dados, "sem a identidade, o relatório não é auditável")
+                self.assertIn("annotated", dados)
