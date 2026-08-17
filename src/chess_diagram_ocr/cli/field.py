@@ -228,6 +228,17 @@ def _print_report(report: FieldReport, limit: int) -> None:
         f"    Casas reparadas pelo decode .. {report.repaired_squares}"
         f"  ({report.repairs_per_diagram:.3f} por diagrama lido)"
     )
+    print(f"    Diagramas com reparo ......... {report.repaired_diagrams}")
+    print(f"      reparados e exportados ..... {report.repaired_exported}")
+    print(f"      reparados e barrados ....... {report.repaired_blocked}")
+    if report.repaired_diagrams:
+        # A separação da S-132. Enquanto era um número só ao lado da taxa de exportação, ele
+        # sugeria que o reparo estava ajudando a exportar -- e a parcela "ajudou" é zero por
+        # aritmética, não por acaso deste conjunto.
+        print()
+        print("      Uma casa reparada carrega a confiança da SEGUNDA opção, que não passa de")
+        print("      0,5, e o gate é 0,80. Nenhum diagrama reparado passa -- e isso não depende")
+        print("      do modelo. Ver decode.decode_constrained (S-132).")
     print(f"    Custo por diagrama ........... {report.seconds_per_diagram:.3f} s")
 
     if report.per_regime:

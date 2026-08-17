@@ -35,7 +35,13 @@ LEGAL = "4k3/8/8/8/8/8/8/4K3"
 VAZIO = "8/8/8/8/8/8/8/8"  # fatalmente ilegal: sem reis
 
 
-def lido(bbox: tuple[float, float, float, float], *, conf: float = 0.95, placement: str = LEGAL) -> RecognizedDiagram:
+def lido(
+    bbox: tuple[float, float, float, float],
+    *,
+    conf: float = 0.95,
+    placement: str = LEGAL,
+    reparadas: tuple[int, ...] = (),
+) -> RecognizedDiagram:
     """`RecognizedDiagram` de verdade, não um duplo.
 
     Objeto real pelo mesmo motivo do `oriented_for` em `test_pdf_to_pgn`: se a forma mudar,
@@ -48,6 +54,7 @@ def lido(bbox: tuple[float, float, float, float], *, conf: float = 0.95, placeme
         min_confidence=conf,
         bbox_pdf=bbox,
         legality=check_position(f"{placement} w - - 0 1"),
+        changed_squares=list(reparadas),
     )
 
 
@@ -451,6 +458,73 @@ class PaginasComTreinoTests(unittest.TestCase):
     def test_o_20_ponto_0_herdado_do_pandas_ainda_e_lido(self) -> None:
         achado = pages_with_training_samples([self._entrada("x.png", source_page="20.0")], {"x.png": "train"})
         self.assertEqual(achado, {("a.pdf", 19): 1})
+
+
+class ReparoSeparadoDoGateTests(unittest.TestCase):
+    """"Casas reparadas" separado em exportadas e barradas (S-132).
+
+    Enquanto era um número só ao lado da taxa de exportação, ele sugeria que o reparo estava
+    ajudando a exportar. A parcela "ajudou" é **zero por aritmética**: uma casa reparada carrega
+    a confiança da segunda opção, que não passa de 0,5, contra um gate de 0,80. Ver
+    `decode.decode_constrained` e `tests/test_decode.py::ReparoNaoPassaNoGateTests`.
+
+    Aqui a confiança é montada à mão, então o teste consegue exercitar o ramo "reparado e
+    exportado" que o pipeline real não produz -- e é isso que faz dele um teste da **separação**
+    e não uma repetição da prova algébrica.
+    """
+
+    def _pagina(self) -> FieldPage:
+        return FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))
+
+    def test_sem_reparo_os_tres_numeros_sao_zero(self) -> None:
+        r = evaluate_page(self._pagina(), [lido((0, 0, 10, 10))])
+
+        self.assertEqual((r.repaired_squares, r.repaired_diagrams), (0, 0))
+        self.assertEqual((r.repaired_exported, r.repaired_blocked), (0, 0))
+
+    def test_o_reparado_que_o_gate_barra_conta_como_barrado(self) -> None:
+        """O caso real: confiança abaixo do gate porque houve reparo."""
+        r = evaluate_page(self._pagina(), [lido((0, 0, 10, 10), conf=0.45, reparadas=(12, 13))])
+
+        self.assertEqual(r.repaired_squares, 2)
+        self.assertEqual(r.repaired_diagrams, 1)
+        self.assertEqual((r.repaired_exported, r.repaired_blocked), (0, 1))
+        self.assertEqual(r.exported, 0)
+
+    def test_a_separacao_e_pelo_gate_e_nao_por_suposicao(self) -> None:
+        """Se um dia o gate mudar, o número acompanha em vez de continuar dizendo zero."""
+        r = evaluate_page(self._pagina(), [lido((0, 0, 10, 10), conf=0.95, reparadas=(12,))])
+
+        self.assertEqual((r.repaired_exported, r.repaired_blocked), (1, 0))
+        self.assertEqual(r.exported, 1)
+
+    def test_as_parcelas_somam_o_total_casado(self) -> None:
+        pagina = FieldPage(
+            pdf="a.pdf",
+            page=1,
+            reviewed=True,
+            diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)), AnnotatedDiagram(bbox=(20, 20, 30, 30))),
+        )
+        r = evaluate_page(
+            pagina,
+            [lido((0, 0, 10, 10), conf=0.45, reparadas=(1,)), lido((20, 20, 30, 30), conf=0.95, reparadas=(2,))],
+        )
+
+        self.assertEqual(r.repaired_exported + r.repaired_blocked, 2)
+        self.assertEqual(r.repaired_diagrams, 2)
+
+    def test_o_falso_positivo_conta_no_total_e_nao_na_separacao(self) -> None:
+        """`repaired_squares` mede o trabalho do decodificador, inclusive no que não é diagrama.
+
+        `repaired_exported`/`blocked` medem o destino de um diagrama **anotado**, então o falso
+        positivo fica de fora dos dois -- ele não tinha para onde ir.
+        """
+        r = evaluate_page(FieldPage(pdf="a.pdf", page=1, reviewed=True), [lido((0, 0, 10, 10), reparadas=(5,))])
+
+        self.assertEqual(r.repaired_squares, 1)
+        self.assertEqual(r.repaired_diagrams, 1)
+        self.assertEqual((r.repaired_exported, r.repaired_blocked), (0, 0))
+        self.assertEqual(r.false_positives, 1)
 
 
 class FieldRunTests(unittest.TestCase):

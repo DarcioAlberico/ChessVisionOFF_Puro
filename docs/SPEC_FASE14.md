@@ -2558,7 +2558,7 @@ agora ela é possível.
 
 ---
 
-## S-132 · O que o gate não enxerga, escrito onde ele decide
+## S-132 · O que o gate não enxerga, escrito onde ele decide ✅ implementada (2026-08-17)
 
 **Problema.** `prediction_from_probs` (`inference.py:239-241`) troca as confianças pelas das
 classes efetivamente escolhidas — o que é o desenho certo. A **consequência** não está escrita
@@ -2585,6 +2585,48 @@ decodificador — e essa separação é o que este item deixa registrado.
 
 **Testes.** `tests/test_field_eval.py` — a separação; `tests/test_decode.py` — um teste que
 trava a propriedade, com o docstring dizendo por que ela existe.
+
+### O que foi entregue
+
+**A propriedade é mais forte do que o enunciado dizia, e a diferença importa.** O texto afirma
+"nenhuma posição reparada pelo decodificador passa o gate de 0,80" como observação sobre este
+modelo. É **aritmética**, e vale para qualquer modelo:
+
+1. uma casa reparada recebeu uma classe que não era o argmax;
+2. a confiança relatada para ela é a dessa classe — `prediction_from_probs` troca as confianças
+   pelas das classes efetivamente escolhidas, que é o desenho certo;
+3. essa probabilidade é no máximo a **segunda maior** da casa;
+4. a segunda maior não pode passar de **0,5**: se passasse, a maior também passaria, e as duas
+   somariam mais que 1;
+5. `min_confidence` é o mínimo sobre as 64 casas, e o gate é 0,80.
+
+Logo o teto de um diagrama reparado é 0,5, e **subir a qualidade do classificador não move esse
+teto**. Escrever "hoje não passa" seria convidar alguém a tentar resolver com um modelo melhor.
+
+**Medido no conjunto de campo em 2026-08-17**, com o relatório já separado:
+
+```
+Casas reparadas pelo decode .. 7  (0.219 por diagrama lido)
+Diagramas com reparo ......... 3
+  reparados e exportados ..... 0
+  reparados e barrados ....... 2
+```
+
+Os três não somam dois porque o terceiro é **falso positivo**: `repaired_squares` mede o
+trabalho do decodificador em tudo o que foi lido (S-62), e a separação mede o destino de um
+diagrama **anotado**. O falso positivo não tinha para onde ir, e por isso fica fora dos dois —
+há teste sobre exatamente isso, porque somar os três seria a forma mais fácil de a separação
+voltar a mentir.
+
+**A separação é pelo gate, e não por suposição.** `repaired_exported` é incrementado testando
+`exportado`, não escrevendo zero. Se um dia o gate mudar — e a mudança, se vier, é no **gate** e
+não no decodificador —, o número acompanha em vez de continuar afirmando o que já não é
+verdade. O teste que cobre isso monta uma confiança impossível à mão para exercitar o ramo
+"reparado e exportado" que o pipeline real não produz.
+
+**Onde ficou escrito.** No docstring de `decode_constrained`, que é onde a decisão mora; nos
+três campos novos de `FieldReport`; e no relatório do `cvoff-field`, que passou a imprimir as
+três linhas e o porquê — só quando há reparo, para não virar ruído nas páginas em que não há.
 
 ---
 

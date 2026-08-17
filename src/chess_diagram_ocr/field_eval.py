@@ -297,6 +297,23 @@ class FieldReport:
     menos reparo, e "pelo menos metade" é o corte que a spec fixou antes da primeira linha de
     código."""
 
+    repaired_diagrams: int = 0
+    """Diagramas **lidos** em que o decodificador teve de consertar pelo menos uma casa."""
+
+    repaired_exported: int = 0
+    """Dos reparados e casados com uma anotação, os que passaram no gate (S-132).
+
+    **É estruturalmente zero**, e o número existe para dizer isso em voz alta. Uma casa reparada
+    carrega a confiança da segunda opção, que não passa de 0,5, e `min_confidence` é o mínimo
+    sobre as 64 — contra um gate de 0,80. Ver `decode.decode_constrained`.
+
+    Enquanto "casas reparadas" aparecia como um número só ao lado da taxa de exportação, ele
+    sugeria que o reparo estava ajudando a exportar. Somar os dois lados de uma soma em que uma
+    das parcelas é sempre zero é a forma mais barata de esconder isso."""
+
+    repaired_blocked: int = 0
+    """Dos reparados e casados, os que o gate barrou. Hoje é o total dos casados reparados."""
+
     seconds: float = 0.0
     """Tempo de `recognize_page` somado. Com `detected`, dá o custo por diagrama.
 
@@ -435,6 +452,9 @@ class FieldReport:
             "clean_annotated": self.clean_annotated,
             "clean_export_rate": round(self.clean_export_rate, 4),
             "repaired_squares": self.repaired_squares,
+            "repaired_diagrams": self.repaired_diagrams,
+            "repaired_exported": self.repaired_exported,
+            "repaired_blocked": self.repaired_blocked,
             "repairs_per_diagram": round(self.repairs_per_diagram, 4),
             "seconds": round(self.seconds, 3),
             "seconds_per_diagram": round(self.seconds_per_diagram, 4),
@@ -474,6 +494,9 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.contaminated += parcela.contaminated
     alvo.contaminated_exported += parcela.contaminated_exported
     alvo.repaired_squares += parcela.repaired_squares
+    alvo.repaired_diagrams += parcela.repaired_diagrams
+    alvo.repaired_exported += parcela.repaired_exported
+    alvo.repaired_blocked += parcela.repaired_blocked
     alvo.seconds += parcela.seconds
     alvo.misses.extend(parcela.misses)
     alvo.wrong.extend(parcela.wrong)
@@ -529,6 +552,7 @@ def evaluate_page(
         # Sobre **tudo** que foi lido, inclusive o falso positivo: o reparo mede o trabalho
         # que o decodificador teve, e ele teve esse trabalho ali tambem (S-62).
         repaired_squares=sum(len(lido.changed_squares) for lido in read),
+        repaired_diagrams=sum(1 for lido in read if lido.changed_squares),
     )
 
     casados = _match(page.diagrams, read)
@@ -555,6 +579,12 @@ def evaluate_page(
         exportado = legal and acima
         relatorio.legal += int(legal)
         relatorio.above_gate += int(acima)
+        if lido.changed_squares:
+            # A separação da S-132. `repaired_exported` é estruturalmente zero -- ver
+            # `decode.decode_constrained` --, e é por isso que ele é publicado: um número que
+            # só pode ser zero, impresso, é uma afirmação; somado ao outro, é um disfarce.
+            relatorio.repaired_exported += int(exportado)
+            relatorio.repaired_blocked += int(not exportado)
         if exportado:
             relatorio.exported += 1
             relatorio.contaminated_exported += int(contaminada)

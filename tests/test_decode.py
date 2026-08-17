@@ -5,9 +5,10 @@ import unittest
 import numpy as np
 from test_inference import probs_for_fen
 
-from chess_diagram_ocr.config import PIECE_TO_IDX
+from chess_diagram_ocr.config import ACCEPT_MIN_CONFIDENCE, PIECE_CLASSES, PIECE_TO_IDX
 from chess_diagram_ocr.decode import decode_constrained
 from chess_diagram_ocr.fen_utils import check_position, labels_from_fen, square_name
+from chess_diagram_ocr.inference import prediction_from_probs
 
 LEGAL = "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R"
 KINGS_ONLY = "4k3/8/8/8/8/8/8/4K3"
@@ -200,6 +201,71 @@ class NonFatalGuaranteeTests(unittest.TestCase):
                 result = decode_constrained(probs_for_fen(fen, confidence=0.95))
                 if result.constraints_satisfied:
                     self.assertFalse(check_position(result.fen_board).is_fatal)
+
+
+class ReparoNaoPassaNoGateTests(unittest.TestCase):
+    """Uma posição reparada nunca é exportada, e é aritmética e não tendência (S-132).
+
+    Uma casa reparada recebeu uma classe que **não** era o argmax, e a confiança relatada é a
+    dessa classe -- que é no máximo a segunda maior da casa. A segunda maior não passa de 0,5:
+    se passasse, a maior também passaria, e as duas somariam mais que 1. `min_confidence` é o
+    mínimo sobre as 64 casas, e o gate é `ACCEPT_MIN_CONFIDENCE = 0,80`.
+
+    Não é defeito, é propriedade. O que ela custa está na S-132: o reparo é uma das entregas
+    centrais da Fase 2, e o número "casas reparadas" que o `cvoff-field` publicava ao lado da
+    taxa de exportação descrevia diagramas que **nenhum** foi exportado.
+
+    O teste existe para que a propriedade não mude sem alguém decidir mudá-la. Se um dia o
+    reparo tiver de chegar ao PGN, o que muda é o **gate**, não o decodificador.
+    """
+
+    def _probs_com_reparo(self) -> np.ndarray:
+        """Probabilidades que forçam o decodificador a consertar pelo menos uma casa.
+
+        O caso real do `Kemeri` (S-11): a leitura sai sem rei branco porque em fonte figurina
+        alemã o K vira Q. Tudo a 0,97 no argmax, para que só a casa reparada possa derrubar o
+        mínimo -- se o teste falhar, é por causa do reparo e não do ruído de fundo.
+        """
+        probs = probs_for_fen(KEMERI_NO_WHITE_KING, confidence=0.97)
+        a7 = square_index("a7")
+        probs[a7] = 0.0
+        probs[a7, PIECE_TO_IDX["Q"]] = 0.55  # o que o argmax leu
+        probs[a7, PIECE_TO_IDX["K"]] = 0.45  # a leitura correta, descartada pelo argmax
+        return probs
+
+    def test_a_casa_reparada_carrega_a_confianca_da_segunda_opcao(self) -> None:
+        probs = self._probs_com_reparo()
+        resultado = decode_constrained(probs)
+
+        self.assertTrue(resultado.changed_squares, "o caso precisa produzir reparo")
+        for casa, argmax, final in resultado.changed_squares:
+            self.assertNotEqual(argmax, final)
+            self.assertLess(probs[casa, final], probs[casa, argmax])
+
+    def test_nenhum_diagrama_reparado_passa_no_gate(self) -> None:
+        probs = self._probs_com_reparo()
+        predicao = prediction_from_probs(probs, constrained=True)
+
+        self.assertLess(predicao.min_confidence, ACCEPT_MIN_CONFIDENCE)
+        self.assertLessEqual(predicao.min_confidence, 0.5, "o teto da segunda opção")
+
+    def test_o_teto_de_0_5_e_algebrico_e_nao_do_conjunto(self) -> None:
+        """A segunda maior de uma distribuição não passa de 0,5, para qualquer distribuição.
+
+        É o que faz a propriedade valer também para um modelo melhor que este: subir a
+        confiança do classificador não move o teto da casa **reparada**.
+        """
+        gerador = np.random.default_rng(11)
+        for _ in range(2000):
+            distribuicao = gerador.dirichlet(np.full(len(PIECE_CLASSES), 0.2))
+            self.assertLessEqual(float(np.sort(distribuicao)[-2]), 0.5)
+
+    def test_sem_reparo_a_confianca_pode_passar_do_gate(self) -> None:
+        """O controle: sem reparo, o mesmo desenho de probabilidades exporta."""
+        predicao = prediction_from_probs(probs_for_fen(LEGAL, confidence=0.97), constrained=True)
+
+        self.assertEqual(predicao.fen_board, LEGAL)
+        self.assertGreaterEqual(predicao.min_confidence, ACCEPT_MIN_CONFIDENCE)
 
 
 if __name__ == "__main__":
