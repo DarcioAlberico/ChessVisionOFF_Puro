@@ -265,7 +265,7 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 | `data/splits.csv` | partição treino/validação/teste, estável sob crescimento, atribuída às amostras novas pelo próprio treino (S-56) | sim |
 | `data/samples/` | os PNGs 800×800 dos tabuleiros | não (3,4 GB) |
 | `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
-| `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | sim |
+| `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | não — `.gitignore:28` |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
 | `data/app_tkinter_state.json` | último PDF, página, zoom | não |
 | `data/review_queue.json` | a fila de revisão | não |

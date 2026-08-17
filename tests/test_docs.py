@@ -362,15 +362,38 @@ class NumerosVivosTests(unittest.TestCase):
         sem_linha = sorted(caminho for caminho in no_disco if not coberto(caminho))
         self.assertEqual([], sem_linha, "Artefato em data/ que a tabela de persistência não lista.")
 
-        sob_demanda = set(re.findall(r"`(data/[\w./-]+)`[^|]*\|[^|]*\|[^|]*sob demanda", self.arquitetura))
-        fantasmas = sorted(
+        # A metade de tras -- "a linha aponta para o que nao existe" -- so pode ser cobrada
+        # onde o arquivo *poderia* existir. Num clone limpo, `data/` tem so o que o git
+        # rastreia: `settings.json`, `review_queue.json` e mais oito sao criados pelo uso, e
+        # cobrar a existencia deles ali transformaria o guarda num "a CI nunca rodou o
+        # programa". Foi exatamente assim que ele reprovou a CI e passou aqui.
+        #
+        # A linha marcada **sim** e outra coisa: ela e versionada, entao a ausencia dela e
+        # defeito em qualquer checkout.
+        versionados = {
             caminho
-            for caminho in citados
-            if "<" not in caminho
-            and caminho not in sob_demanda
-            and not (RAIZ / caminho).exists()
-            and not (RAIZ / caminho.rstrip("/")).exists()
-        )
+            for caminho, marca in re.findall(r"^\| `(data/[\w./<>-]+)` \|[^|]*\| ([^|]*)\|", self.arquitetura, re.M)
+            if marca.strip().lower().startswith(("sim", "**sim**"))
+        }
+        sumidos = sorted(c for c in versionados if "<" not in c and not (RAIZ / c).exists())
+        self.assertEqual([], sumidos, "A tabela marca como versionado um arquivo que não está no disco.")
+
+        def existe(caminho: str) -> bool:
+            return (RAIZ / caminho).exists() or (RAIZ / caminho.rstrip("/")).exists()
+
+        sob_demanda = set(re.findall(r"`(data/[\w./-]+)`[^|]*\|[^|]*\|[^|]*sob demanda", self.arquitetura))
+        de_uso = {c for c in citados - versionados if "<" not in c and c not in sob_demanda}
+        # O sinal de "a pasta esta em uso" sao os **arquivos**, nao as pastas: `data/samples/`
+        # vem no clone por causa do `.gitkeep` e existiria mesmo num checkout que nunca rodou
+        # o programa.
+        if not any(existe(caminho) for caminho in de_uso if not caminho.endswith("/")):
+            # Nenhum artefato de uso no disco: e um clone que nunca rodou o programa, e ali a
+            # ausencia nao prova nada. Com pelo menos um presente, a pasta esta em uso e a
+            # linha que continua sem arquivo e suspeita -- foi assim que o
+            # `provenance_index.jsonl`, que este repositorio nunca teve, apareceu.
+            self.skipTest("nenhum artefato de uso em data/: um clone limpo não prova ausência.")
+
+        fantasmas = sorted(caminho for caminho in de_uso if not existe(caminho))
         self.assertEqual(
             [],
             fantasmas,
