@@ -171,8 +171,16 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1440
-    """Linhas de `app_tkinter.py` em 2026-08-17. Ver o docstring da classe antes de mudar."""
+    LIMITE = 1457
+    """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **1.440 → 1.457 em 2026-08-17**, e a catraca funcionou: ela pegou o próprio crescimento.
+    As 17 linhas são da S-144 (o botão "Anotar página" quebrado em cinco linhas para receber
+    `style=`) e da S-150 (as duas constantes de largura mínima, com docstring, e a chamada de
+    `minsize`). Nenhuma é lógica nova -- são as que a Fase 20 precisava pôr aqui.
+
+    Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
+    crescer **sem decidir**."""
 
     ALVO_ORIGINAL = 600
     """O critério de aceite da S-31, em `docs/SPEC.md`. Fica aqui para não se perder."""

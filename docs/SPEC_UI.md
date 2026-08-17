@@ -263,7 +263,7 @@ família monoespaçada.
 > É a única fase que corrige perda de função. Hoje, num notebook de 1366×768, o botão de salvar
 > não está na tela.
 
-## S-150 · O piso da janela, e a aba que rola
+## S-150 · O piso da janela, e a aba que rola ⚠ piso feito; **falta a rolagem das abas**
 
 **Problema.** `app_tkinter.py:127` pede 1700×980 e **nada** define um piso: `root.minsize()`
 nunca é chamado. Os `minsize` de `app_tkinter.py:245-246` são do `PanedWindow` (420 + 520 = 940)
@@ -416,7 +416,7 @@ exatamente o estado de hoje.
 
 ---
 
-## S-155 · A moldura do tabuleiro: as coordenadas dentro do canvas
+## S-155 · A moldura do tabuleiro: as coordenadas dentro do canvas ✅ implementada (2026-08-17)
 
 **Problema.** Dois defeitos de geometria em `ui/board_render.py`, e os dois aparecem na tela.
 

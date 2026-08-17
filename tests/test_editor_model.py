@@ -318,13 +318,16 @@ SEM_TKINTER = {
     "board_model.py": "o estado do tabuleiro, sem widget",
     "busy.py": "o que se perde ao fechar a janela, decidido fora dela (S-60)",
     "editor_model.py": "o que 'salvar' significa, dado o vínculo (S-49)",
+    "estilos.py": "papel de botão -> nome de estilo ttk (S-144)",
     "field_draft.py": "o rascunho do conjunto de campo (S-41)",
     "gallery_model.py": "a navegação e as anotações da Galeria (S-67)",
+    "geometria.py": "o piso da janela, somado e não escolhido a olho (S-150)",
     "legality.py": "a explicação de por que a posição é ilegal",
     "page_overlay.py": "a geometria das caixas sobre a página",
     "page_results.py": "os resultados de uma página, sem tela",
     "state.py": "o estado da aplicação em disco",
     "strings.py": "o vocabulário da interface (S-04)",
+    "tokens.py": "a paleta e o contraste, sem widget (S-145/S-146)",
     "viewport.py": "o zoom e a rolagem, como aritmética",
 }
 """Os módulos de `ui/` que **não** podem importar `tkinter`, e o que cada um é (S-137).

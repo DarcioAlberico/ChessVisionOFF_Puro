@@ -393,3 +393,60 @@ class DisputedSquaresTests(unittest.TestCase):
         model.set_brush("Q")
         model.paint(0)
         self.assertEqual(model.disputed, frozenset({0}))
+
+
+class GeometriaDaMoldura(unittest.TestCase):
+    """As coordenadas cabem, e o tabuleiro nunca vaza do canvas (S-155).
+
+    Dois números estavam soltos em arquivos diferentes e nada os ligava: `board_render`
+    desenhava a letra 11 px abaixo do tabuleiro, e `board_widget` reservava `margin=28`, que o
+    `fit` divide entre os dois lados -- **14 px** para um texto de 9 pt em negrito. A base de
+    "a b c d e f g h" era cortada nos **dois** tabuleiros da janela.
+    """
+
+    MIN, MAX = 520, 1200
+
+    def test_a_margem_derivada_cabe_o_texto_da_coordenada(self) -> None:
+        """O teste que amarra os dois números: a metade da margem tem de passar do offset."""
+        from chess_diagram_ocr.ui.board_render import COORD_FONT, COORD_OFFSET_PX, margem_de_coordenada
+
+        margem = margem_de_coordenada()
+        meia_altura = (COORD_FONT[1] + 1) // 2
+        self.assertGreaterEqual(margem / 2, COORD_OFFSET_PX + meia_altura)
+
+    def test_a_margem_antiga_nao_cabia(self) -> None:
+        """O defeito, dito com número: 28/2 = 14 px para um texto que precisa de ~16."""
+        from chess_diagram_ocr.ui.board_render import COORD_FONT, COORD_OFFSET_PX
+
+        meia_altura = (COORD_FONT[1] + 1) // 2
+        self.assertLess(28 / 2, COORD_OFFSET_PX + meia_altura)
+
+    def test_a_letra_cai_dentro_do_canvas(self) -> None:
+        from chess_diagram_ocr.ui.board_render import COORD_FONT, COORD_OFFSET_PX, BoardGeometry, margem_de_coordenada
+
+        margem = margem_de_coordenada()
+        meia_altura = (COORD_FONT[1] + 1) // 2
+        for lado in (560, 700, 900, 1400):
+            with self.subTest(lado=lado):
+                g = BoardGeometry.fit(lado, lado, min_size=self.MIN, max_size=self.MAX, margin=margem)
+                base_da_letra = g.origin_y + g.size + COORD_OFFSET_PX + meia_altura
+                self.assertLessEqual(base_da_letra, lado, "a base de a–h saiu do canvas")
+
+    def test_o_tabuleiro_nunca_excede_o_canvas(self) -> None:
+        """O transbordo: com o canvas menor que `min_size`, o `max` externo ganhava e o
+        tabuleiro ficava **maior que o canvas** -- vazava em vez de encolher."""
+        from chess_diagram_ocr.ui.board_render import BoardGeometry
+
+        for largura, altura in ((300, 300), (200, 900), (900, 180), (64, 64)):
+            with self.subTest(canvas=(largura, altura)):
+                g = BoardGeometry.fit(largura, altura, min_size=self.MIN, max_size=self.MAX, margin=34)
+                self.assertLessEqual(g.size, min(largura, altura))
+                self.assertGreaterEqual(g.origin_x, 0.0)
+                self.assertGreaterEqual(g.origin_y, 0.0)
+
+    def test_acima_do_minimo_nada_mudou(self) -> None:
+        """O controle: a correção do transbordo não pode mexer no caso normal."""
+        from chess_diagram_ocr.ui.board_render import BoardGeometry
+
+        g = BoardGeometry.fit(900, 900, min_size=self.MIN, max_size=self.MAX, margin=34)
+        self.assertEqual(g.size, 900 - 34)

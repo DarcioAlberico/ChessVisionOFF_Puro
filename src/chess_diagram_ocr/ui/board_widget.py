@@ -48,7 +48,7 @@ import numpy as np
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
 from ..fen_utils import square_name
-from . import board_edit, tokens
+from . import board_edit, board_render, tokens
 from .board_model import BoardChange, BoardMode, BoardModel, ChangeKind
 from .board_render import (
     LIGHT_SQUARE,
@@ -591,6 +591,6 @@ class InteractiveBoard(ttk.Frame):
             canvas_h,
             min_size=self._min_size,
             max_size=self._max_size,
-            margin=28 if self._show_coordinates else 8,
+            margin=board_render.margem_de_coordenada() if self._show_coordinates else 8,
         )
         self.renderer.draw(self.canvas, self.model, self._geometry, drag=self._drag_overlay())

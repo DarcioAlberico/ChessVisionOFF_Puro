@@ -1565,7 +1565,7 @@ que o próximo a acrescentar um teste de janela vai reencontrar.
 
 ---
 
-## S-117 · A seta não executa dois painéis ao mesmo tempo
+## S-117 · A seta não executa dois painéis ao mesmo tempo ✅ implementada (2026-08-17)
 
 **Problema.** `ui/study_panel.py:135-138` liga `<Left>`/`<Right>` no canvas do tabuleiro de
 estudo a `undo_move`/`redo_move`, que devolvem `None` (`:340-346`). `app_tkinter.py:1175-1176`

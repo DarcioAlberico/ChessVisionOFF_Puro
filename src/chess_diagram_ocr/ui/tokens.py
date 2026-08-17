@@ -109,7 +109,7 @@ tema, e um tabuleiro que muda de cor com a janela deixa de ser reconhecível com
 TEXTO_SOBRE_MARCACAO = "TEXTO_SOBRE_MARCACAO"
 """O número dentro do retângulo do diagrama, e o rótulo sobre a casa. Escuro, sobre marcação."""
 
-SELECAO = "SELECAO"
+TRACEJADO = "TRACEJADO"
 """O tracejado da seleção de área, desenhado sobre a página renderizada."""
 
 TEXTO_PADRAO = "TEXTO_PADRAO"
@@ -145,7 +145,7 @@ PAPEIS: tuple[str, ...] = (
     CASA_ULTIMO_LANCE,
     ALVO,
     TEXTO_SOBRE_MARCACAO,
-    SELECAO,
+    TRACEJADO,
     TEXTO_PADRAO,
     SUPERFICIE_PADRAO,
 )
@@ -176,7 +176,7 @@ RESERVA: dict[str, str] = {
     CASA_ULTIMO_LANCE: "#cdd26a",
     ALVO: "#3f7f4c",
     TEXTO_SOBRE_MARCACAO: "#101010",
-    SELECAO: "#00ff88",
+    TRACEJADO: "#00ff88",
     TEXTO_PADRAO: "#000000",
     SUPERFICIE_PADRAO: "#f0f0f0",
 }

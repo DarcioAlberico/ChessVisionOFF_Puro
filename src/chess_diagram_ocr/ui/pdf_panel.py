@@ -893,7 +893,7 @@ class PdfPanel(ttk.Frame):
         x, y = self._point(event)
         self._select_start = (x, y)
         self._clear_overlay()
-        self._select_rect_id = self.canvas.create_rectangle(x, y, x, y, outline=tokens.RESERVA[tokens.SELECAO], width=2, dash=(6, 4))
+        self._select_rect_id = self.canvas.create_rectangle(x, y, x, y, outline=tokens.RESERVA[tokens.TRACEJADO], width=2, dash=(6, 4))
 
     def _on_drag(self, event: tk.Event) -> None:
         if not self._select_mode:
@@ -905,7 +905,7 @@ class PdfPanel(ttk.Frame):
         x0, y0 = self._select_start
         if self._select_rect_id is None:
             self._select_rect_id = self.canvas.create_rectangle(
-                x0, y0, x, y, outline=tokens.RESERVA[tokens.SELECAO], width=2, dash=(6, 4)
+                x0, y0, x, y, outline=tokens.RESERVA[tokens.TRACEJADO], width=2, dash=(6, 4)
             )
         else:
             self.canvas.coords(self._select_rect_id, x0, y0, x, y)

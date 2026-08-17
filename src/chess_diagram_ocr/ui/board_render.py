@@ -49,6 +49,28 @@ algo que já aconteceu, e "em disputa" é um pedido -- olhe esta casa."""
 BOARD_FRAME = tokens.RESERVA[tokens.MOLDURA]
 COORDINATE_TEXT = tokens.RESERVA[tokens.COORDENADA]
 
+COORD_FONT = ("Segoe UI", 9, "bold")
+"""A fonte das letras a–h e dos números 8–1. Um lugar só, porque a margem sai dela (S-155)."""
+
+COORD_OFFSET_PX = 11
+"""Quanto o texto da coordenada fica **fora** do tabuleiro, do centro do texto até a borda."""
+
+
+def margem_de_coordenada(offset: int = COORD_OFFSET_PX, altura_da_fonte: int = COORD_FONT[1]) -> int:
+    """A margem que o canvas precisa reservar para as coordenadas caberem inteiras (S-155).
+
+    **O defeito que isto conserta.** `_draw_coordinates` desenha as letras em
+    `origin_y + size + 11`, texto centrado de 9 pt em negrito -- precisa de ~18 px abaixo do
+    tabuleiro. O chamador reservava `margin=28`, que `BoardGeometry.fit` divide entre os dois
+    lados: **14 px**. A base de "a b c d e f g h" era cortada, e isso valia para os **dois**
+    tabuleiros da janela.
+
+    Os dois números estavam soltos em arquivos diferentes -- o `11` aqui, o `28` no
+    `board_widget` -- e nada os ligava. Agora um sai do outro: `2 × (deslocamento + meia
+    altura)`, arredondado para cima, com folga de 1 px para o antialias da fonte.
+    """
+    return 2 * (offset + (altura_da_fonte + 1) // 2 + 1)
+
 HEATMAP_LOW = (0xF2, 0xC7, 0x44)
 """Amarelo: casa logo abaixo do limiar."""
 
@@ -101,7 +123,16 @@ class BoardGeometry:
 
     @classmethod
     def fit(cls, width: float, height: float, *, min_size: int, max_size: int, margin: int) -> BoardGeometry:
-        size = max(min_size, min(width - margin, height - margin, max_size))
+        """O tabuleiro centrado no canvas, e **nunca maior que ele** (S-155).
+
+        O `max(min_size, ...)` sozinho ganhava quando o canvas era menor que `min_size`, e o
+        tabuleiro vazava para fora em vez de encolher. Não há tamanho em que desenhar fora do
+        canvas seja a resposta certa: abaixo do mínimo, o limite passa a ser o canvas, e quem
+        chama sabe que está no limite porque o tamanho devolvido é menor que `min_size`.
+        """
+        desejado = max(min_size, min(width - margin, height - margin, max_size))
+        cabe = max(1.0, min(float(width), float(height)))
+        size = min(desejado, cabe)
         return cls(origin_x=(width - size) / 2, origin_y=(height - size) / 2, size=size, cell=size / 8)
 
     def rect(self, row: int, col: int) -> tuple[float, float, float, float]:
@@ -378,19 +409,19 @@ class BoardRenderer:
         for index, char in enumerate(files):
             canvas.create_text(
                 geometry.origin_x + index * geometry.cell + geometry.cell / 2,
-                geometry.origin_y + geometry.size + 11,
+                geometry.origin_y + geometry.size + COORD_OFFSET_PX,
                 text=char,
                 fill=cor_coordenada,
-                font=("Segoe UI", 9, "bold"),
+                font=COORD_FONT,
                 tags=(COORDS_TAG,),
             )
         for index, char in enumerate(ranks):
             canvas.create_text(
-                geometry.origin_x - 10,
+                geometry.origin_x - COORD_OFFSET_PX + 1,
                 geometry.origin_y + index * geometry.cell + geometry.cell / 2,
                 text=char,
                 fill=cor_coordenada,
-                font=("Segoe UI", 9, "bold"),
+                font=COORD_FONT,
                 tags=(COORDS_TAG,),
             )
 

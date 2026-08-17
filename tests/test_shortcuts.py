@@ -13,7 +13,7 @@ import tkinter as tk
 import unittest
 from tkinter import ttk
 
-from chess_diagram_ocr.ui.shortcuts import guard, ignores_widget
+from chess_diagram_ocr.ui.shortcuts import guard, ignores_widget, owns_key
 
 
 class _FakeEvent:
@@ -67,3 +67,86 @@ class GuardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WidgetQueJaDeclarouATeclaTests(unittest.TestCase):
+    """A seta não executa dois painéis ao mesmo tempo (S-117).
+
+    O tabuleiro de estudo liga `<Left>`/`<Right>` no próprio canvas e os handlers devolvem
+    `None`; o `bind_all` daqui liga as mesmas teclas ao editor. Os dois disparavam: analisar
+    uma posição com as setas na aba Análise movia, invisivelmente, o cursor do editor em outra
+    aba -- e o `Ctrl+S` seguinte gravava outro diagrama.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        try:
+            cls.root = tk.Tk()
+        except tk.TclError as exc:  # pragma: no cover - maquina sem display
+            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
+        cls.root.withdraw()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.root.destroy()
+
+    def setUp(self) -> None:
+        self.disparos: list[str] = []
+        self.quadro = tk.Frame(self.root)
+        self.addCleanup(self.quadro.destroy)
+
+    def _evento(self, widget: object) -> tk.Event:
+        evento = tk.Event()
+        evento.widget = widget  # type: ignore[assignment]
+        return evento
+
+    def test_o_canvas_que_declarou_a_seta_fica_com_ela(self) -> None:
+        """A decisão, testada onde ela é tomada.
+
+        Dirigir o Tk com `event_generate` aqui testaria o roteamento de evento do Tk -- que
+        entrega por foco quando o alvo não é focável -- e não a guarda. O que a S-117 muda é a
+        resposta de `guard` diante de um widget que já declarou a tecla, e é isso que se afirma.
+        """
+        canvas = tk.Canvas(self.quadro, width=40, height=40)
+        canvas.bind("<Left>", lambda _e: None)
+        protegido = guard(lambda: self.disparos.append("editor"), "<Left>")
+
+        self.assertIsNone(protegido(self._evento(canvas)), "cedeu, então o Tk segue para o canvas")
+        self.assertEqual(self.disparos, [], "o handler do editor não pode ter rodado")
+
+    def test_fora_dele_o_atalho_do_editor_continua_valendo(self) -> None:
+        outro = tk.Frame(self.quadro, width=40, height=40)
+        protegido = guard(lambda: self.disparos.append("editor"), "<Left>")
+
+        self.assertEqual(protegido(self._evento(outro)), "break")
+        self.assertEqual(self.disparos, ["editor"])
+
+    def test_sem_sequencia_a_segunda_pergunta_nao_e_feita(self) -> None:
+        """`guard(handler)` sem tecla mantém o comportamento anterior à S-117 -- e há quem o use."""
+        canvas = tk.Canvas(self.quadro, width=40, height=40)
+        canvas.bind("<Left>", lambda _e: None)
+
+        self.assertEqual(guard(lambda: self.disparos.append("editor"))(self._evento(canvas)), "break")
+        self.assertEqual(self.disparos, ["editor"])
+
+    def test_o_campo_de_texto_continua_vencendo(self) -> None:
+        """A guarda antiga não pode ter sido substituída pela nova: as duas valem."""
+        campo = ttk.Entry(self.quadro)
+        protegido = guard(lambda: self.disparos.append("editor"), "<Left>")
+
+        self.assertIsNone(protegido(self._evento(campo)))
+        self.assertEqual(self.disparos, [])
+
+    def test_owns_key_e_por_sequencia_e_nao_por_widget(self) -> None:
+        """Ceder o widget inteiro tiraria `Ctrl+S` de quem está com o tabuleiro em foco."""
+        canvas = tk.Canvas(self.quadro, width=40, height=40)
+        canvas.bind("<Left>", lambda _e: None)
+
+        self.assertTrue(owns_key(canvas, "<Left>"))
+        self.assertFalse(owns_key(canvas, "<Control-s>"))
+
+    def test_um_objeto_sem_bind_nao_derruba_a_guarda(self) -> None:
+        self.assertFalse(owns_key(object(), "<Left>"))
+        self.assertFalse(owns_key(None, "<Left>"))

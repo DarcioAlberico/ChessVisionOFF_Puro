@@ -47,7 +47,7 @@ PARES_DE_MARCACAO = (
     (tokens.A_FAZER, tokens.SUPERFICIE_PAGINA),
     (tokens.LIDO, tokens.SUPERFICIE_PAGINA),
     (tokens.DISPENSADO, tokens.SUPERFICIE_PAGINA),
-    (tokens.SELECAO, tokens.SUPERFICIE_PAGINA),
+    (tokens.TRACEJADO, tokens.SUPERFICIE_PAGINA),
 )
 """Borda de retângulo sobre a página. Piso de elemento gráfico, 3:1 -- não é texto."""
 

@@ -76,7 +76,7 @@ from chess_diagram_ocr.settings import (
     save_settings,
 )
 from chess_diagram_ocr.splits import load_splits
-from chess_diagram_ocr.ui import estilos, strings, tokens
+from chess_diagram_ocr.ui import estilos, geometria, strings, tokens
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
@@ -115,6 +115,14 @@ APP_STATE_PATH = ROOT / "data" / "app_tkinter_state.json"
 FIELD_SET_PATH = ROOT / "data" / "field_set.jsonl"
 DEFAULT_SPLITS_PATH = ROOT / "data" / "splits.csv"
 
+LARGURA_MINIMA_ESQUERDA = 420
+"""Largura minima do painel esquerdo (editor, dataset, galeria). E o mesmo numero que o
+`PanedWindow` usa para o divisor e que o piso da janela soma -- um so, para os dois nao
+divergirem (S-150)."""
+
+LARGURA_MINIMA_DIREITA = 520
+"""Largura minima do visualizador de PDF."""
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,6 +133,10 @@ class ChessOcrTkApp:
         self.root = root
         self.root.title("Chess Diagram OCR - Tkinter")
         self.root.geometry("1700x980")
+        # O piso, e nao so o tamanho inicial (S-150). Sem ele a janela encolhe ate cortar a
+        # fila de salvar do Resultado -- sem erro, sem rolagem, e sem o usuario saber que
+        # existe um botao ali. O numero sai dos `minsize` dos paineis, logo abaixo.
+        self.root.minsize(*geometria.piso_da_janela(LARGURA_MINIMA_ESQUERDA, LARGURA_MINIMA_DIREITA))
 
         self.theme = apply_theme(root)
         """Tema em uso (S-53), ou `"ttk"` quando o `ttkbootstrap` não está instalado.
@@ -242,8 +254,8 @@ class ChessOcrTkApp:
 
         self.left_frame = ttk.Frame(self.main_pane, padding=10)
         self.right_frame = ttk.Frame(self.main_pane, padding=10)
-        self.main_pane.add(self.left_frame, minsize=420)
-        self.main_pane.add(self.right_frame, minsize=520)
+        self.main_pane.add(self.left_frame, minsize=LARGURA_MINIMA_ESQUERDA)
+        self.main_pane.add(self.right_frame, minsize=LARGURA_MINIMA_DIREITA)
 
         self._build_left_panel()
         self._build_right_panel()
