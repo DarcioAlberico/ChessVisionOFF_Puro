@@ -26,6 +26,7 @@ from unittest import mock
 import numpy as np
 
 from chess_diagram_ocr import gallery_scan
+from chess_diagram_ocr.cli import scan as cli_scan
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex, build_gallery_index
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
@@ -198,3 +199,124 @@ class RetomadaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AcervoVarridoSemJanelaTests(unittest.TestCase):
+    """`cvoff-scan` varre o acervo de fora da janela (S-121).
+
+    São 34 PDFs e 17.823 páginas; o estado hoje é 5 livros com PGN, 7 com índice de Galeria e
+    **27 sem nada**. Mesmo depois da S-119 são ~3,5 h para o acervo, e ninguém deixa uma janela
+    Tk aberta por 3,5 h.
+
+    Não é interface nova: é o mesmo `build_gallery_index` chamado de onde uma operação de horas
+    pertence -- a decisão que a S-73 já tinha tomado para os 104 minutos da busca por posição.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.raiz = Path(self.tmp.name)
+        self.pdfs = self.raiz / "PDF"
+        self.pdfs.mkdir()
+        for nome in ("um.pdf", "dois.pdf"):
+            (self.pdfs / nome).write_bytes(b"%PDF-1.4\n")
+
+        self.varridos: list[str] = []
+        self.indices: dict[str, GalleryIndex] = {}
+
+        def _varre(pdf_source, _model=None, *, on_scanned=None, resume_from=None, **_kwargs):  # noqa: ANN001, ANN003
+            caminho = Path(pdf_source)
+            self.varridos.append(caminho.name)
+            return GalleryIndex(
+                source_pdf=str(caminho),
+                entries=[GalleryEntry(page_index=0, diagram_index=1, placement=LEGAL)],
+                last_page_done=0,
+                complete=True,
+            )
+
+        remendos = [
+            mock.patch.object(cli_scan, "build_gallery_index", _varre),
+            mock.patch.object(cli_scan, "save_index", lambda pdf, indice: self.indices.setdefault(Path(pdf).name, indice)),
+            mock.patch.object(cli_scan, "load_index", lambda pdf: self.indices.get(Path(pdf).name)),
+        ]
+        for remendo in remendos:
+            remendo.start()
+            self.addCleanup(remendo.stop)
+
+    def _args(self, *extra: str) -> list[str]:
+        return [
+            "--all",
+            "--pdf-dir", str(self.pdfs),
+            "--queue-dir", str(self.raiz / "filas"),
+            "--no-queue",
+            *extra,
+        ]
+
+    def test_varre_o_acervo_inteiro(self) -> None:
+        self.assertEqual(cli_scan.main(self._args()), 0)
+        self.assertEqual(sorted(self.varridos), ["dois.pdf", "um.pdf"])
+
+    def test_a_segunda_execucao_nao_revarre_o_que_esta_completo(self) -> None:
+        """**O critério de aceite.** Uma noite deixa os 34 com índice; rodar de novo custa só
+        o que falta -- senão a retomada seria um recomeço com outro nome."""
+        cli_scan.main(self._args())
+        self.varridos.clear()
+
+        self.assertEqual(cli_scan.main(self._args()), 0)
+
+        self.assertEqual(self.varridos, [], "os dois já estavam completos")
+
+    def test_force_revarre_mesmo_o_que_esta_completo(self) -> None:
+        cli_scan.main(self._args())
+        self.varridos.clear()
+
+        cli_scan.main(self._args("--force"))
+
+        self.assertEqual(sorted(self.varridos), ["dois.pdf", "um.pdf"])
+
+    def test_indice_parcial_e_retomado_e_nao_pulado(self) -> None:
+        """Um livro que ficou pela metade é exatamente o que a próxima execução deve pegar."""
+        self.indices["um.pdf"] = GalleryIndex(source_pdf="um.pdf", last_page_done=3, complete=False)
+
+        cli_scan.main(self._args())
+
+        self.assertIn("um.pdf", self.varridos)
+
+    def test_um_livro_quebrado_nao_derruba_a_noite(self) -> None:
+        """3,5 h de varredura não podem terminar em traceback por causa de um PDF corrompido --
+        e o código de saída diz que houve erro, para quem chamou de um script saber."""
+
+        def _explode(pdf_source, *_a, **_k):  # noqa: ANN001, ANN002, ANN003
+            self.varridos.append(Path(pdf_source).name)
+            if Path(pdf_source).name == "um.pdf":
+                raise ValueError("PDF corrompido")
+            return GalleryIndex(source_pdf=str(pdf_source), complete=True)
+
+        with mock.patch.object(cli_scan, "build_gallery_index", _explode):
+            codigo = cli_scan.main(self._args())
+
+        self.assertEqual(codigo, 1, "houve erro, e quem chamou de um script precisa saber")
+        self.assertIn("dois.pdf", self.varridos, "e o livro seguinte foi varrido assim mesmo")
+
+    def test_sem_livro_nenhum_pedido_recusa_e_diz_o_que_fazer(self) -> None:
+        self.assertEqual(cli_scan.main(["--pdf-dir", str(self.pdfs), "--no-queue"]), 2)
+
+    def test_o_relatorio_soma_o_que_foi_varrido(self) -> None:
+        relatorio = cli_scan.ScanReport(
+            books=[
+                cli_scan.BookResult(pdf="a.pdf", diagrams=10, seconds=60.0),
+                cli_scan.BookResult(pdf="b.pdf", skipped="índice completo"),
+                cli_scan.BookResult(pdf="c.pdf", error="corrompido"),
+            ]
+        )
+        texto = "\n".join(relatorio.as_lines())
+
+        self.assertIn("1 livro(s) varrido(s), 10 diagrama(s)", texto)
+        self.assertIn("1 pulado(s)", texto)
+        self.assertIn("1 com erro", texto)
+
+    def test_o_parcial_aparece_no_relatorio(self) -> None:
+        """Um índice truncado indistinguível de um completo é o defeito que a S-120 fechou;
+        o relatório do acervo não pode reintroduzi-lo."""
+        relatorio = cli_scan.ScanReport(books=[cli_scan.BookResult(pdf="a.pdf", diagrams=3, complete=False)])
+        self.assertIn("parcial", "\n".join(relatorio.as_lines()))

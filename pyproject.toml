@@ -79,6 +79,7 @@ cvoff-review = "chess_diagram_ocr.cli.review:main"
 cvoff-sides = "chess_diagram_ocr.cli.sides:main"
 cvoff-experiment = "chess_diagram_ocr.cli.experiment:main"
 cvoff-gallery = "chess_diagram_ocr.cli.gallery:main"
+cvoff-scan = "chess_diagram_ocr.cli.scan:main"
 cvoff-export-onnx = "chess_diagram_ocr.cli.export_onnx:main"
 
 [build-system]

@@ -426,7 +426,7 @@ versionado, ou com backup documentado, mas **decidido**.
 | 17.3 | O DatasetPanel não perde a página e a seleção a cada correção | S-118 | ✅ |
 | 17.4 | Uma varredura por livro em vez de duas | S-119 | ⚠ biblioteca feita; falta o botão único |
 | 17.5 | A varredura da Galeria é retomável e diz até onde foi | S-120 | ✅ |
-| 17.6 | O acervo varrido sem janela aberta | S-121 | ⬜ |
+| 17.6 | O acervo varrido sem janela aberta | S-121 | ✅ |
 | 17.7 | O OCR ligado por padrão | S-122 | ⬜ |
 | 17.8 | A varredura por posição responde igual com 1 e com N processos | S-138 | ✅ |
 | 17.9 | A consulta por nome alcança as duas cores, e paga o porteiro | S-139 | ✅ |
