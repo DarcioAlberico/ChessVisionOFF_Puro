@@ -17,6 +17,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa
@@ -2447,7 +2448,7 @@ caixa cabia na página, e ela cabe mesmo errada. Foram trocados pelos que medem 
 
 ---
 
-## S-130 · A nota de textura não muda com a resolução do recorte
+## S-130 · A nota de textura não muda com a resolução do recorte ✅ implementada e medida (2026-08-17)
 
 **Problema.** `board_texture_score` (`detection/hybrid.py:71-78`) reamostra para 320 px;
 `_board_pattern_score` (`board_detection.py:186`) reamostra de novo para 160. As duas imagens
@@ -2467,6 +2468,60 @@ de tolerância declarada); o censo do acervo mostra o efeito, com os casos que v
 um a um.
 
 **Testes.** `tests/test_hybrid.py` — a nota invariante à escala; a arbitragem estável.
+
+### O que foi entregue
+
+`texture_scores_side_by_side(a, b)` reduz os dois recortes ao **menor lado dos dois** antes de
+pontuar, e é ela que `refine_candidate_with_contour` e `_contour_wins_over_merged` chamam. Os
+testes ficaram em `tests/test_detection.py`, que é onde os do `hybrid` já moram.
+
+**O diagnóstico do enunciado está certo pelo motivo errado, e o defeito é maior.** Não é que os
+dois recortes "nunca cheguem na mesma resolução" — `board_texture_score` leva ambos a 320 px. É
+que ampliar não cria detalhe: um recorte de 200 px ampliado a 320 continua borrado ao lado de
+um de 800 px reduzido a 320. Medido, o mesmo tabuleiro **hachurado** em oito resoluções:
+
+| lado de origem | 800 | 640 | 480 | 320 | 240 | 200 | 160 | 128 |
+|---|---|---|---|---|---|---|---|---|
+| nota | 0,0775 | 0,0772 | 0,0775 | 0,0775 | **0,2862** | **0,4203** | 0,0775 | **0,4202** |
+
+Amplitude **0,343**, contra uma margem de decisão de 0,02. Num tabuleiro **limpo** a nota é
+estável nas oito (0,6000) — é por isso que ninguém tinha visto, e é por isso que o teste usa
+hachura: o acervo de verdade não é limpo.
+
+**Onde mora o ruído, e o que isso diz à S-143.** Decomposta, a parcela de **xadrez** varia
+0,0335 a 0,0340; a de **grade** vai de 0,1429 a 1,0000. É *aliasing*: nas reduções para 240,
+200 e 128 as linhas da hachura caem sobre a expectativa de período 20 px e
+`_periodic_peak_score` reporta uma grade perfeita que a imagem não tem. A S-143 já desconfiava
+da parcela de grade por ser imitável por foto e moldura; agora há uma **segunda razão
+independente**, e ela é sobre a própria aritmética.
+
+**O efeito no acervo, medido — e a conclusão é "não muda nada que importe".**
+
+| | |
+|---|---|
+| refinos avaliados (39 livros, 12 páginas cada) | **260** |
+| decisões que viraram | **12 (4,6%)** |
+| e das 12, quantas movem o que é exportado | **nenhuma** |
+
+Rodado o OCR de verdade nos dois recortes de cada um dos 12: **4 melhoram, 4 pioram, 4
+empatam** — e em 10 deles a confiança é 1,0000 nos dois lados, ou seja, a diferença está na
+quinta casa. Os dois casos com diferença real são do `GALLAGHER` (0,0920 → 0,0156 e
+0,0796 → 0,0791), e os dois estão **muito** abaixo do gate de 0,80 nos dois estados: nem antes
+nem depois viram PGN.
+
+Nas 12, o recorte embutido é sempre o menor (299–594 px contra 800 px do contorno), que é
+exatamente a assimetria que o item previa.
+
+**Fica implementado mesmo com efeito nulo hoje**, e a razão é a mesma da S-131: a nota é o
+instrumento que arbitra duas fontes, e um instrumento que mede a resolução junto com o objeto
+não é instrumento. O `GALLAGHER` é um dos dois livros que exportam **0/2** (S-108); quando ele
+ganhar dado real, esta é uma das coisas que deixa de estar errada por baixo.
+
+**E uma limitação do censo, que o critério de aceite não previa.** `cvoff-census --baseline`
+diz **"nada mudou"** — corretamente. O censo casa candidatos por **canto de bbox**, e o refino
+não muda o bbox: ele muda *quais pixels* o recorte contém. O efeito da S-130 é invisível ao
+instrumento da S-82 por construção, e a medição acima teve de ser escrita à parte. Quem for
+mexer em algo que muda pixels e não caixas precisa saber disto antes de confiar num diff vazio.
 
 ---
 

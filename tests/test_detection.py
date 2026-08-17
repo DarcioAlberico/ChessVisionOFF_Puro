@@ -7,7 +7,7 @@ import cv2
 import fitz
 import numpy as np
 
-from chess_diagram_ocr.board_detection import _bbox_iou, _grid_score, _small_gray
+from chess_diagram_ocr.board_detection import _bbox_iou, _checker_score, _grid_score, _small_gray
 from chess_diagram_ocr.detection import (
     DiagramCandidate,
     candidates_from_embedded_images,
@@ -25,6 +25,7 @@ from chess_diagram_ocr.detection.hybrid import (
     board_checker_contrast,
     board_texture_score,
     refine_candidate_with_contour,
+    texture_scores_side_by_side,
 )
 
 # Uma pagina A4 em pontos.
@@ -329,6 +330,75 @@ class EmbeddedCandidateTests(unittest.TestCase):
             self.assertEqual(candidates_from_embedded_images(doc[0]), [])
         finally:
             doc.close()
+
+
+class NotaDoMesmoLadoTests(unittest.TestCase):
+    """A comparação de textura mede a imagem, e não a resolução em que ela chegou (S-130).
+
+    `board_texture_score` leva qualquer recorte a 320 px, mas ampliar não cria detalhe: um
+    recorte de 200 px ampliado a 320 continua borrado ao lado de um de 800 px reduzido a 320.
+    A nota media a nitidez junto com a "tabuleiridade", e a decisão dependia de qual dos dois
+    chegou maior.
+    """
+
+    def test_a_mesma_imagem_em_duas_resolucoes_recebe_a_mesma_nota(self) -> None:
+        """A tolerância declarada é **zero**: os dois lados viram literalmente o mesmo array."""
+        base = hatched_board(800)
+        pequena = cv2.resize(base, (240, 240), interpolation=cv2.INTER_AREA)
+
+        grande_nota, pequena_nota = board_detection_pair(base, pequena)
+
+        self.assertEqual(grande_nota, pequena_nota)
+
+    def test_a_ordem_dos_argumentos_nao_muda_o_par(self) -> None:
+        a, b = hatched_board(800), cv2.resize(hatched_board(800), (300, 300), interpolation=cv2.INTER_AREA)
+
+        primeira, segunda = board_detection_pair(a, b)
+        invertida_b, invertida_a = board_detection_pair(b, a)
+
+        self.assertAlmostEqual(primeira, invertida_a, places=12)
+        self.assertAlmostEqual(segunda, invertida_b, places=12)
+
+    def test_sem_a_correcao_a_nota_varia_com_a_resolucao(self) -> None:
+        """O defeito, medido: amplitude 0,343 contra uma margem de decisão de 0,02.
+
+        Num tabuleiro **limpo** a nota é estável nas oito resoluções -- é por isso que ninguém
+        tinha visto. O acervo de verdade é hachurado.
+        """
+        base = hatched_board(800)
+        notas = [
+            board_texture_score(cv2.resize(base, (lado, lado), interpolation=cv2.INTER_AREA))
+            for lado in (800, 640, 480, 320, 240, 200, 160, 128)
+        ]
+        self.assertGreater(max(notas) - min(notas), REFINE_TOLERANCE * 5)
+
+        limpo = board_image(800)
+        limpas = [
+            board_texture_score(cv2.resize(limpo, (lado, lado), interpolation=cv2.INTER_AREA))
+            for lado in (800, 640, 480, 320, 240, 200, 160, 128)
+        ]
+        self.assertLess(max(limpas) - min(limpas), 1e-9, "o caso limpo esconde o defeito")
+
+    def test_a_parcela_de_xadrez_e_estavel_e_a_de_grade_nao(self) -> None:
+        """Onde mora o ruído, e por que a S-143 tem uma segunda razão para desconfiar da grade.
+
+        Medido: xadrez varia 0,0335--0,0340 nas oito resoluções; grade vai de 0,1429 a 1,0000,
+        porque a hachura *aliasa* para o período de 20 px que o detector de picos procura.
+        """
+        base = hatched_board(800)
+        xadrez, grade = [], []
+        for lado in (800, 640, 480, 320, 240, 200, 160, 128):
+            pequeno = _small_gray(cv2.resize(base, (lado, lado), interpolation=cv2.INTER_AREA))
+            xadrez.append(_checker_score(pequeno))
+            grade.append(_grid_score(pequeno))
+
+        self.assertLess(max(xadrez) - min(xadrez), 0.01)
+        self.assertGreater(max(grade) - min(grade), 0.5)
+
+
+def board_detection_pair(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
+    """Atalho de leitura para o par de notas do mesmo lado."""
+    return texture_scores_side_by_side(a, b)
 
 
 class PaginaGiradaTests(unittest.TestCase):

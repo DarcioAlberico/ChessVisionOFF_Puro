@@ -135,6 +135,51 @@ def board_texture_score(board_rgb: np.ndarray) -> float:
     return _board_pattern_score(cv2.resize(board_rgb, (320, 320), interpolation=cv2.INTER_AREA))
 
 
+def texture_scores_side_by_side(a_rgb: np.ndarray, b_rgb: np.ndarray) -> tuple[float, float]:
+    """A nota de textura dos dois recortes, medida **do mesmo lado** (S-130).
+
+    `board_texture_score` leva qualquer recorte a 320 px, então os dois chegam ao mesmo
+    tamanho -- mas não à mesma **informação**: um recorte de 800 px reduzido a 320 é nítido, e
+    um de 200 px ampliado a 320 continua borrado, porque ampliar não cria detalhe. A nota
+    passava a depender de qual dos dois chegou maior, e não só do que cada um mostra.
+
+    **Medido, e o defeito é maior do que o enunciado supunha -- em conteúdo texturizado.** O
+    mesmo tabuleiro hachurado, entregue em oito resoluções, e a nota que sai:
+
+    | lado de origem | 800 | 640 | 480 | 320 | 240 | 200 | 160 | 128 |
+    |---|---|---|---|---|---|---|---|---|
+    | `board_texture_score` | 0,0775 | 0,0772 | 0,0775 | 0,0775 | **0,2862** | **0,4203** | 0,0775 | **0,4202** |
+
+    Amplitude **0,343**, contra uma margem de decisão de 0,02 (`REFINE_TOLERANCE`). Num
+    tabuleiro sintético limpo a nota é perfeitamente estável (0,6000 nas oito) — é por isso que
+    ninguém tinha visto: o defeito só aparece onde o acervo de verdade vive.
+
+    **De onde vem, exatamente.** Decompondo a nota nas duas parcelas, a de **xadrez** é estável
+    (0,0335 a 0,0340 nas oito) e a de **grade** é toda a variação (0,1429 nas resoluções que são
+    múltiplos limpos de 160, e 0,6646 / 1,0000 em 240, 200 e 128). É *aliasing*: nessas
+    reduções as linhas da hachura caem em cima da expectativa de período 20 px, e
+    `_periodic_peak_score` reporta uma grade perfeita que a imagem não tem.
+
+    Isso dá à S-143 uma **segunda razão independente** para não confiar na parcela de grade como
+    guarda: além de ser imitável por foto e moldura, ela não é invariante à escala.
+
+    **O que esta função conserta, e o que ela não conserta.** Ela não torna a nota invariante --
+    não dá: uma hachura genuinamente pode aliasar para uma grade, e nenhuma reamostragem desfaz
+    isso. O que ela garante é que os **dois lados da comparação sofram o mesmo**, reduzindo
+    ambos ao menor lado dos dois antes de pontuar. A decisão passa a depender do que as imagens
+    mostram, que é o que `refine_candidate_with_contour` e `_contour_wins_over_merged` precisam.
+    """
+    lado = min(a_rgb.shape[0], a_rgb.shape[1], b_rgb.shape[0], b_rgb.shape[1])
+
+    def _reduzir(imagem: np.ndarray) -> np.ndarray:
+        if imagem.shape[0] == lado and imagem.shape[1] == lado:
+            return imagem
+        # `INTER_AREA` porque aqui só se reduz, por construção: `lado` é o menor dos dois.
+        return cv2.resize(imagem, (lado, lado), interpolation=cv2.INTER_AREA)
+
+    return board_texture_score(_reduzir(a_rgb)), board_texture_score(_reduzir(b_rgb))
+
+
 def board_checker_contrast(board_rgb: np.ndarray) -> float:
     """Só a parcela de xadrez da textura, na mesma resolução calibrada (S-143).
 
@@ -193,8 +238,9 @@ def refine_candidate_with_contour(
         return candidate
 
     board_rgb, _quad = found[0]
-    antes = board_texture_score(candidate.board_rgb)
-    depois = board_texture_score(board_rgb)
+    # Do mesmo lado (S-130): o recorte embutido chega na resolução nativa do PDF e o do
+    # contorno em `BOARD_SIZE`, e a nota dependia de qual dos dois era maior.
+    antes, depois = texture_scores_side_by_side(candidate.board_rgb, board_rgb)
     if depois < antes - tolerance:
         # Descartar em silêncio foi o que deixou o trapézio do Karpov passar por semanas
         # parecendo um problema do classificador.
@@ -295,8 +341,9 @@ def _contour_wins_over_merged(embedded: DiagramCandidate, contour_rgb: np.ndarra
     if not embedded.merged_tiles:
         return False
 
-    nota_embutida = board_texture_score(embedded.board_rgb)
-    nota_contorno = board_texture_score(contour_rgb)
+    # Do mesmo lado (S-130): a união de ladrilhos e o achado de contorno chegam em resoluções
+    # diferentes, e a nota media a resolução junto com a textura.
+    nota_embutida, nota_contorno = texture_scores_side_by_side(embedded.board_rgb, contour_rgb)
     if nota_contorno <= nota_embutida + MERGED_TILES_MARGIN:
         return False
 

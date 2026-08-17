@@ -465,7 +465,7 @@ no checkout **e** no `.exe`.
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
 | 19.1 | A página com `/Rotate` não gera candidato fantasma | S-129 | ✅ (1 página em 18.767) |
-| 19.2 | A nota de textura não muda com a resolução do recorte | S-130 | ⬜ |
+| 19.2 | A nota de textura não muda com a resolução do recorte | S-130 | ✅ medido — **12 de 260 decisões viram, e nenhuma muda o que exporta** |
 | 19.3 | O caminho de contorno ganha instrumento antes de ajuste | S-131 | ✅ instrumento feito; limiares **não** ajustados |
 | 19.4 | O que o gate não enxerga, escrito onde ele decide | S-132 | ✅ medido — **0 de 3 diagramas reparados exportam**, e é aritmética |
 | 19.5 | S-76 e S-77 registradas | S-133 | ✅ |
