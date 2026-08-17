@@ -427,7 +427,7 @@ versionado, ou com backup documentado, mas **decidido**.
 | 17.4 | Uma varredura por livro em vez de duas | S-119 | ⚠ biblioteca feita; falta o botão único |
 | 17.5 | A varredura da Galeria é retomável e diz até onde foi | S-120 | ✅ |
 | 17.6 | O acervo varrido sem janela aberta | S-121 | ✅ |
-| 17.7 | O OCR ligado por padrão | S-122 | ⬜ |
+| 17.7 | O OCR ligado por padrão | S-122 | ✅ medido — **não ligar** |
 | 17.8 | A varredura por posição responde igual com 1 e com N processos | S-138 | ✅ |
 | 17.9 | A consulta por nome alcança as duas cores, e paga o porteiro | S-139 | ✅ |
 | 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ⬜ |
@@ -734,6 +734,56 @@ segundo enunciado precisa da S-99 fechada.
 
 Os dois checkpoints ficam em `models/s104_empate*.pt` (fora do git, como todo `.pt`) e os
 relatórios em `docs/metrics/s104_*.json`, para que a comparação seja refazível.
+
+---
+
+## O OCR por padrão, medido (2026-08-17)
+
+**A decisão: não ligar. `ocr.enabled` continua `False`.** O item pedia a medição antes da
+mudança — *"o número precisa ser medido nesta máquina antes de virar padrão"* —, e o número
+não sustenta a mudança.
+
+```bash
+cvoff-field --ocr off      --json docs/metrics/s122_ocr_off.json
+cvoff-field --ocr rapidocr --json docs/metrics/s122_ocr_rapidocr.json
+```
+
+| | `--ocr off` | `--ocr rapidocr` |
+|---|---|---|
+| **taxa de exportação** | 0,7179 (28/39) | **0,7179 (28/39)** |
+| exatidão de campo | 1,0000 (28/28) | 1,0000 (28/28) |
+| casas reparadas / diagrama | 0,219 | 0,219 |
+| **custo por diagrama** | **0,367 s** | **1,469 s** |
+| custo do conjunto inteiro | 11,7 s | 47,0 s |
+
+**4,0× o custo, e nenhuma diferença em nada que o conjunto de campo mede.** Nem uma casa
+reparada a mais, nem um diagrama exportado a mais.
+
+### O que isso não diz
+
+**O benefício da S-43 é real e está noutra métrica.** Ele é a procedência do lado a jogar
+caindo de 87,8% `default` para 77,2% — e `cvoff-field` não reporta procedência de lado a
+jogar. Quem mede isso é o `cvoff-sides`, que é outro comando e outra passada.
+
+**E o conjunto de campo é o lugar errado para ver o ganho**: os 9 livros dele são
+majoritariamente do acervo com camada de texto, e a precedência da S-43 só chama o motor onde
+a camada de texto calou. O ganho vive nos **7 livros sem camada de texto**, e o conjunto quase
+não os contém — é a mesma limitação de resolução que a S-107 e a S-104 registraram, aqui pela
+terceira vez.
+
+### Por que a decisão ainda assim é "não ligar"
+
+O custo de 4× é medido e certo; o benefício é medido noutro conjunto e não aparece aqui. E o
+custo agora tem um consumidor novo: o `cvoff-scan --all` da S-121 varre 17.823 páginas, e 4×
+transforma uma noite de ~3,5 h em ~14 h.
+
+Ligar por padrão seria impor esse fator a todo mundo por um ganho que só existe em 7 dos 34
+livros. **O caminho que o número recomenda é o oposto:** ligar o OCR **por livro**, onde a
+camada de texto falta — que é informação que o `cvoff-sides` já sabe produzir e que ninguém
+ainda ligou à preferência.
+
+Fica como pendência nomeada, e não como "não fizemos": o mecanismo pedido pelo enunciado
+("ligado se o motor estiver instalado") é uma linha; o que falta é justificativa para ele.
 
 ---
 
