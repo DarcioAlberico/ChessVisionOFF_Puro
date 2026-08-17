@@ -538,7 +538,7 @@ conjunto antigo.
 
 # Fase 15 — O dataset e o treino que não mentem
 
-## S-101 · `--dedupe` muda o tamanho de `val`/`test`, e nada registra isso
+## S-101 · `--dedupe` muda o tamanho de `val`/`test`, e nada registra isso ✅ implementada (2026-08-16)
 
 > **Redimensionado pela verificação.** A primeira versão deste item afirmava que `--dedupe`
 > encolheria os conjuntos reservados "sem consultar o split" e quebraria a comparabilidade. A
@@ -581,9 +581,30 @@ falhar.
 **Testes.** `tests/test_audit.py` — o resumo gravado; a contagem por split confere com o que
 foi removido.
 
+### O que foi entregue
+
+`dedupe_summary(report, splits_path)` calcula `{antes, removidos, depois}` por split, e
+`write_dedupe_summary` grava em `docs/metrics/dedupe_<data>.json`. O `cvoff-audit --dedupe`
+chama os dois **antes** de remover — depois não há como saber de que split cada linha saiu.
+
+Em `docs/metrics/` e não em `data/`: é a mesma categoria dos relatórios de campo e de censo —
+número publicado, versionado, e que serve para explicar por que dois números da mesma coisa
+não batem.
+
+**`groups_across_splits` fica no arquivo mesmo valendo zero.** É o número que refutou o alarme
+original deste item, e é ele que mostra, na próxima limpeza, se a garantia da S-07 deixou de
+valer. Uma linha sem split entra como `(sem split)` em vez de sumir da conta.
+
+**Seis testes**, entre eles a contagem por split conferindo com o que o `--dedupe` de fato
+removeu, e o grupo que atravessa split aparecendo no resumo.
+
+**O que a spec pedia e não entrou:** a guarda da S-100 comparando também o tamanho do split, e
+o `BASELINE.md` citando o `n` ao lado do número. As duas dependem da S-100, que continua
+aberta — o registro que este item entrega é o insumo delas.
+
 ---
 
-## S-102 · A auditoria barra em vez de relatar
+## S-102 · A auditoria barra em vez de relatar ✅ implementada (2026-08-16)
 
 **Problema.** `cvoff-audit` hoje, sem argumento nenhum:
 
@@ -620,9 +641,42 @@ reprovado.
 **Testes.** `tests/test_audit.py` — o código de saída sob cada violação. `tests/test_cli.py` —
 `cvoff-train` recusa, e a mensagem cita o comando de conserto.
 
+### O que foi entregue
+
+`AuditReport.violations()` devolve os limites **já declarados** que o relatório viola, em pt-BR
+e **com o conserto ao lado** — uma violação sem conserto ao lado é um beco. São quatro: ilegal
+fatal, FEN não interpretável, PNG ausente e o teto de redundância da S-63.
+
+Três coisas ficam de fora de propósito, e cada uma tem teste: amostra sem split (quem atribui é
+o `cvoff-train`, na linha seguinte — barrar aqui seria barrar o conserto), ilegal confirmada à
+mão (decisão humana registrada, S-70) e vazamento de split (o remédio é mover linha, que a S-98
+se recusa a fazer sozinha; barrar por algo que o comando não conserta deixaria o projeto sem
+saída).
+
+**Medido no dataset de hoje**, e é o critério de aceite:
+
+```
+$ cvoff-audit --strict        -> RC=1
+  - 1 rótulo(s) com PNG ausente -- conserto: cvoff-audit --drop-missing
+  - redundância em 11.0%, acima do teto de 10% (S-63) -- conserto: cvoff-audit --dedupe,
+    ou suba o teto explicitamente e registre por quê
+$ cvoff-audit                 -> RC=0
+$ cvoff-train                 -> RC=2, "a auditoria reprovou o dataset, e o treino não começou"
+```
+
+O portão do `cvoff-train` roda com `check_duplicates=False`: pular o hash perceptual de
+milhares de imagens 800×800 é o que o mantém barato. Em troca, o teto de redundância não é
+conferido ali — é o único dos quatro que precisa dos hashes, e vigiá-lo é trabalho do
+`cvoff-audit --strict`. O que o portão pega são os três que corrompem o **treino desta
+execução**.
+
+**O que não entrou: o passo na CI.** O `.github/workflows` não ganhou `cvoff-audit --strict` —
+num clone limpo `data/samples/` está vazio e o passo precisaria pular como os testes de dados
+fazem, e isso é configuração de CI, não código. Fica como pendência nomeada.
+
 ---
 
-## S-103 · `split_hash` conferido onde ele importa
+## S-103 · `split_hash` conferido onde ele importa ✅ implementada (2026-08-16)
 
 **Problema.** `grep split_hash` em `src/` devolve quatro ocorrências, **todas em
 `training.py`**: escrito em `training.py:824`, lido só em `_resolve_best_metric`
@@ -650,6 +704,35 @@ no JSON.
 no JSON; com o checkpoint da partição atual, nada muda.
 
 **Testes.** `tests/test_evaluation.py` — os três avisos, sob `assertLogs`; a ressalva no JSON.
+
+### O que foi entregue
+
+`evaluation.split_caveat(model_path, splits)` devolve a ressalva em pt-BR, ou `""`, e
+`evaluate_split` a grava em `EvaluationReport.split_caveat`. Os testes moram em
+`tests/test_split_caveat.py` (não havia `test_evaluation.py`), e a ressalva é **campo do
+relatório** em vez de `logger.warning`: aviso de log não sobrevive à cópia do número para um
+documento, e é exatamente aí que a contaminação vira baseline.
+
+**No texto ela vem antes dos números.** Uma ressalva impressa embaixo de um `0,9906` é lida
+depois de o número já ter sido anotado.
+
+**No JSON ela sai vazia quando não há o que ressalvar, e não ausente.** Chave ausente obrigaria
+quem lê a distinguir *"não havia ressalva"* de *"esta medição é de antes da S-103"*.
+
+**O primeiro uso já encontrou um caso real:**
+
+```
+$ cvoff-eval --split val --model models/piece_classifier.pt
+
+  !! Ressalva sobre a partição
+     o checkpoint foi treinado sobre outra partição (`split_hash`
+     cf7b6cf571f4045d, e o `splits.csv` de agora é 41c44c1caf132b8d): parte
+     do que está sendo avaliado pode ter estado no treino dele.
+```
+
+É o modelo **de produção**. O `splits.csv` mudou no retreino da S-107, que atribuiu split às
+357 amostras que estavam sem — e desde então qualquer avaliação do `piece_classifier.pt` sobre
+`val`/`test` carrega essa ressalva. Até agora ela não aparecia em lugar nenhum.
 
 ---
 

@@ -378,9 +378,9 @@ melhorá-la.
 
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
-| 15.1 | `cvoff-audit --dedupe` respeita o split em vez de encolher `val`/`test` | S-101 | ⬜ |
-| 15.2 | A auditoria barra em vez de relatar | S-102 | ⬜ |
-| 15.3 | `split_hash` conferido: `cvoff-eval` recusa o modelo que viu o teste | S-103 | ⬜ |
+| 15.1 | O `--dedupe` registra o denominador que ele muda | S-101 | ✅ |
+| 15.2 | A auditoria barra em vez de relatar | S-102 | ✅ |
+| 15.3 | `split_hash` conferido: `cvoff-eval` **avisa** sobre o modelo de outra partição | S-103 | ✅ |
 | 15.4 | A época salva tem critério de desempate | S-104 | ⬜ |
 | 15.5 | O checkpoint guarda o que reproduz o número | S-105 | ⬜ |
 | 15.6 | `cvoff-experiment` não reatribui splits no meio da grade | S-106 | ⬜ |
