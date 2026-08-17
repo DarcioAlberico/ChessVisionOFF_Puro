@@ -255,11 +255,26 @@ e as dez seguintes entraram em silêncio — inclusive a mais cara do programa (
 | `data/app_tkinter_state.json` | último PDF, página, zoom | não |
 | `data/review_queue.json` | a fila de revisão | não |
 | `data/provenance_index.jsonl` | dHash de cada diagrama do acervo, para recuperar procedência (S-52) | não (horas para reconstruir, mas derivável dos PDFs) |
+| `data/gallery/<livro>.json` | as anotações de exportação por diagrama: lance, vez, link, headers e a partida escolhida (S-67) | **não** — descreve o conteúdo de um livro protegido, como o `review_cache` |
+| `data/gallery/<livro>.index.json` | onde estão os diagramas daquele livro e o recorte de cada um | não — derivado do PDF, refeito varrendo o livro |
+| `data/gallery_human.jsonl` | **o extrato do que uma pessoa digitou ou escolheu** na galeria (S-115) | **sim** |
 | `models/*.pt` | checkpoints, com semente, split e métrica gravados | não |
 | `data/splits.csv` | partição, atribuída às amostras novas pelo próprio treino (S-56) | sim |
 | `PGN/<livro>.pgn` | as posições aceitas | não |
 | `PGN/<livro>.review.pgn` | as rejeitadas e as de baixa confiança, com o motivo | não |
 | `PGN/<livro>.partial.jsonl` | checkpoint da exportação, apagado ao concluir | não |
+
+**A galeria entra pela metade, e a metade é escolhida** (S-115). São 13 MB e 5.953 anotações,
+das quais o que a base preencheu volta com `cvoff-games --apply` a partir do cache de posições
+— o que **não** volta é a vez a jogar que alguém conferiu na legenda impressa e as 21 partidas
+escolhidas a mão na lista de candidatas (S-86). O crivo é o `filled_fields`, que já responde a
+pergunta campo a campo, e o extrato são ~214 KB:
+
+```bash
+cvoff-gallery --census          # quanto há, e quanto disso é irrecuperável
+cvoff-gallery --export-human    # data/gallery/ -> data/gallery_human.jsonl
+cvoff-gallery --import-human    # o caminho de volta; o que é da pessoa vence o da base
+```
 
 Toda escrita de arquivo de trabalho passa por `atomic_io`: grava num temporário e troca. O
 `labels.csv` é 3.313 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a

@@ -409,7 +409,7 @@ promovido é igual ou melhor que a do controle, com `n` declarado; e a decisão 
 | 16.4 | As doze threads no registro do que se perde | S-112 | ✅ |
 | 16.5 | O cache de posições com trava e refusão | S-113 | ✅ |
 | 16.6 | "Salvar todos" avisa quem precisa saber | S-114 | ✅ |
-| 16.7 | A galeria entra no que o projeto preserva | S-115 | ⬜ |
+| 16.7 | A galeria entra no que o projeto preserva | S-115 | ✅ opção 2 (extrato humano) |
 
 **Critério de saída:** nenhum gesto de leitura altera dado gravado; fechar a janela durante
 qualquer das 12 operações longas diz o que se perde; e `data/gallery/` tem destino declarado —

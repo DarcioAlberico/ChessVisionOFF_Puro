@@ -1222,7 +1222,7 @@ que faltava não deixa rastro no serviço nem na tela, e por isso sobreviveu à 
 
 ---
 
-## S-115 · A galeria entra no que o projeto preserva
+## S-115 · A galeria entra no que o projeto preserva ✅ implementada (2026-08-16) — opção 2
 
 **Problema.** `data/gallery/` tem **5.953 anotações** em 7 livros: 4.906 com headers, 4.902 com
 lado a jogar, 5.750 com `confirmed_from` e **21 com `chosen_game`**, que é escolha humana
@@ -1251,6 +1251,54 @@ duas é a mesma distinção que o `filled_rule` já grava.
 com o destino decidido; se a opção for a segunda, existe o comando que extrai e o que restaura.
 
 **Testes.** `tests/test_gallery.py` — a ida e volta do extrato humano, se ele existir.
+
+### O que foi entregue — a opção 2
+
+`cvoff-gallery`, com três modos: `--census` conta sem gravar, `--export-human` extrai e
+`--import-human` restaura. **`data/gallery_human.jsonl` está versionado; `data/gallery/`
+continua fora**, e agora os três aparecem na tabela de persistência do `ARCHITECTURE.md` com o
+motivo de cada destino.
+
+| | |
+|---|---|
+| `data/gallery/` | 13 MB, 7 livros |
+| extrato humano | **214 KB**, 1.746 diagramas |
+| partidas escolhidas a mão (S-86) | **21** |
+| vez a jogar declarada | 17 |
+| número do lance | 248 |
+| campos de header | 1.694 |
+
+**O crivo é o `filled_fields`, que já respondia a pergunta campo a campo** — e por isso o item
+não inventou classificação nenhuma: o que a base preencheu está listado lá, e volta com
+`cvoff-games --apply` a partir do cache; o que não está foi digitado.
+
+**Duas exceções ao crivo, e as duas mudam o resultado:**
+
+- **`filled_rule == "human"` inverte o crivo.** Ali o `filled_fields` lista o que a *escolha da
+  pessoa* pôs (ver `choose_game`): ela olhou a lista de candidatas e disse qual era. Tratá-los
+  como "da base" jogaria fora exatamente as 21 decisões mais caras do acervo.
+- **`filled_from` cheio com `filled_fields` vazio não declara nada.** É a anotação anterior à
+  correção de procedência da S-72 — a mesma que `_recover_provenance` repara. Nela tudo
+  *parece* humano, e chamar isso de humano encheria o extrato de headers da base; pior, o
+  `--import-human` os reescreveria como digitados, que é a procedência inventada que a S-94
+  existe para impedir. **A primeira versão deste item tinha esse defeito**, e o extrato saía
+  com headers de partida completos vindos da base. O número de anotações nessa situação é
+  contado e **publicado** pelo `--census`: sem ele, um extrato pequeno pareceria "há pouco
+  trabalho humano" quando é "há trabalho que não dá para separar".
+
+**Na restauração, o que vem do extrato vence** — e sai do `filled_fields`, com `filled_from` e
+`filled_rule` caindo junto quando não sobra campo da base. É a regra da S-17 (quem está com o
+livro na mão é a pessoa) e a mesma aritmética do `_provenance_after` da tela. O que a base
+preencheu e ninguém contradisse continua lá, e o `confirmed_from` também: ele é afirmação sobre
+a **leitura**, não sobre quem preencheu.
+
+**Onze testes**, entre eles a ida e volta com a galeria apagada no meio, a restauração por
+cima de uma galeria revarrida, e a ordenação do arquivo — que existe porque um arquivo
+versionado cuja ordem muda a cada execução produz um diff ilegível a cada commit.
+
+**Um passo de ambiente:** o `cvoff-gallery` é entrada nova no `pyproject.toml`, então o
+executável só aparece depois de um `uv sync`. Antes disso ele roda por
+`python -m chess_diagram_ocr.cli.gallery`.
 
 ---
 

@@ -36,7 +36,12 @@ data/orphans/
 # Galeria (S-67): o `*.index.json` e derivado do PDF (posicoes e caminhos de recorte) e
 # reconstruivel varrendo o livro. O `<livro>.json` das anotacoes e trabalho humano, mas
 # descreve o conteudo de um PDF protegido -- fica de fora pela mesma regra do review_cache.
+#
+# O que **nao** fica de fora e o extrato humano (S-115): `cvoff-gallery --export-human` separa
+# o que uma pessoa digitou ou escolheu do que a base preencheu, e so a primeira metade e
+# irrecuperavel. Sao ~214 KB contra 13 MB, e a volta e `--import-human`.
 data/gallery/
+!data/gallery_human.jsonl
 # Casamentos com a base de partidas (S-73): derivado do acervo protegido e de uma base de
 # terceiro, e reconstruivel com `cvoff-games --all --positions --save-matches`. Fica de fora
 # pelo mesmo motivo do review_cache -- mas guardar o arquivo vale muito, porque reconstrui-lo
