@@ -30,6 +30,7 @@ from ..config import DEFAULT_MAX_BOARDS, DEFAULT_MODEL_PATH, DEFAULT_PDF_DIR, DE
 from ..gallery_scan import build_gallery_index, index_path_for, load_index, save_index
 from ..logging_setup import configure_logging, default_log_file
 from ..review_queue import DEFAULT_CACHE_DIR, ReviewQueue, ReviewQueueBuilder, merge_queues
+from . import cli_errors, message_for
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
@@ -162,8 +163,9 @@ def scan_book(
             on_scanned=None if construtor is None else construtor.feed,
         )
     except Exception as exc:  # noqa: BLE001 - um livro quebrado nao pode derrubar a noite
-        logger.exception("Falha ao varrer %s.", pdf_path.name)
-        resultado.error = str(exc)
+        # Mesma razao do `batch` (S-126): o relatorio ja diz o que falhou, em pt-BR.
+        logger.debug("Falha ao varrer %s.", pdf_path.name, exc_info=True)
+        resultado.error = message_for(exc)
         resultado.seconds = time.perf_counter() - comeco
         return resultado
 
@@ -186,6 +188,7 @@ def scan_book(
     return resultado
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

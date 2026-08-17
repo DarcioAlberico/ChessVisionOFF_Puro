@@ -19,6 +19,7 @@ from ..evaluation import EvaluationReport, evaluate_split
 from ..inference import describe_device
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ def _print_report(report: EvaluationReport, show_errors: int, calibration_target
     print()
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

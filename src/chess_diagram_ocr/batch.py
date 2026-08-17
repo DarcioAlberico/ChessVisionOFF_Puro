@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from .atomic_io import atomic_write_json
+from .cli import message_for
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_MAX_BOARDS,
@@ -289,13 +290,16 @@ def _run_one(
     except Exception as exc:
         # Um livro que falha nao derruba a varredura: com 27 PDFs e minutos por livro, uma
         # excecao no decimo custaria tudo que veio antes (criterio da S-34).
-        logger.exception("Falha ao exportar %s.", pdf.name)
+        # `debug` e nao `exception`: o relatorio abaixo ja diz que este livro falhou, e em
+        # pt-BR (S-126). O traceback vai para o log, que e onde ele serve -- na tela ele
+        # empurrava o resumo dos outros livros para fora do terminal.
+        logger.debug("Falha ao exportar %s.", pdf.name, exc_info=True)
         return BookResult(
             pdf=pdf,
             status=STATUS_FAILED,
             output=saida,
             elapsed_s=time.monotonic() - inicio,
-            error=f"{type(exc).__name__}: {exc}",
+            error=f"{type(exc).__name__}: {message_for(exc)}",
         )
 
     return BookResult(

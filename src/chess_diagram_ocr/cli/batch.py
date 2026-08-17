@@ -18,6 +18,7 @@ from ..config import (
     DEFAULT_READING_ORDER,
 )
 from ..logging_setup import configure_logging, default_log_file
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ def _install_cancel_handler(cancel: threading.Event) -> None:
         logger.debug("Nao foi possivel instalar o handler de SIGINT.")
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(log_file=default_log_file())

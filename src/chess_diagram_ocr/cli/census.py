@@ -35,6 +35,7 @@ from ..detection_census import (
     write_census_json,
 )
 from ..logging_setup import configure_logging, default_log_file
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ def _print_diff(mudancas: list[CensusDiff], baseline: Path) -> int:
     return perdidos_reais
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

@@ -11,6 +11,7 @@ from ..config import DEFAULT_DATASET_CSV, DEFAULT_SAMPLES_DIR, PROJECT_ROOT
 from ..experiments import default_grid, markdown_table, run_variant, save_results
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

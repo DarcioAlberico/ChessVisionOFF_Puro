@@ -60,6 +60,7 @@ from ..games_db import (
 from ..games_index import DEFAULT_INDEX_PATH, build_index
 from ..logging_setup import configure_logging, default_log_file
 from ..ui.gallery_model import GalleryModel
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +357,7 @@ def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
     return 0
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     mp.freeze_support()  # o bundle da S-55 congela o processo; sem isto, `spawn` o reexecuta
     args = parse_args(argv)

@@ -16,6 +16,7 @@ from ..config import (
 from ..logging_setup import configure_logging, default_log_file
 from ..model import ArchConfig
 from ..training import DEFAULT_CLASS_WEIGHTS, OptimPlan, train_model
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +207,7 @@ def _audit_gate(args: argparse.Namespace) -> int | None:
     return 2
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

@@ -14,6 +14,7 @@ from ..config import (
 )
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_to_pgn import default_pgn_output_path, save_pdf_positions_to_pgn
+from . import cli_errors
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

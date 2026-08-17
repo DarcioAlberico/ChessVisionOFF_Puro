@@ -42,16 +42,26 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
     _force_utf8_output()
 
     level = logging.DEBUG if verbose else logging.INFO
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    console = logging.StreamHandler()
+    console.setLevel(level)
+    handlers: list[logging.Handler] = [console]
 
     if log_file is not None:
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+            arquivo = logging.FileHandler(log_file, encoding="utf-8")
+            # **O arquivo sempre em DEBUG, a tela no nivel pedido** (S-126). E o que permite ao
+            # `cli.run_main` mandar o traceback para o log sem despeja-lo na tela: sem isso, a
+            # unica escolha era "traceback em ingles no terminal" ou "rastro nenhum em lugar
+            # nenhum", e a segunda e o modo de falha que a Fase 18 existe para fechar.
+            arquivo.setLevel(logging.DEBUG)
+            handlers.append(arquivo)
         except OSError as exc:  # disco cheio, permissao, caminho invalido
             logging.getLogger(__name__).warning("Nao foi possivel abrir o arquivo de log %s: %s", log_file, exc)
 
-    logging.basicConfig(level=level, format=LOG_FORMAT, datefmt=DATE_FORMAT, handlers=handlers)
+    # A raiz em DEBUG e cada handler filtrando o seu: com a raiz em INFO, o handler de arquivo
+    # nunca receberia o registro de DEBUG para poder grava-lo.
+    logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT, datefmt=DATE_FORMAT, handlers=handlers)
 
     # Bibliotecas de terceiros sao verbosas em DEBUG e nao interessam por padrao.
     for noisy in ("PIL", "matplotlib", "urllib3", "fitz"):

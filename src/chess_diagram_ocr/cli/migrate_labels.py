@@ -13,6 +13,7 @@ from pathlib import Path
 from ..config import DEFAULT_DATASET_CSV
 from ..dataset import migrate_labels_csv
 from ..logging_setup import configure_logging, default_log_file
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

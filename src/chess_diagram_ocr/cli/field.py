@@ -37,6 +37,7 @@ from ..labels import LabelStore, pages_with_training_samples
 from ..logging_setup import configure_logging, default_log_file
 from ..service import OcrService, RecognitionOptions
 from ..splits import load_splits
+from . import cli_errors
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
@@ -275,6 +276,7 @@ def _print_report(report: FieldReport, limit: int) -> None:
     print()
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
