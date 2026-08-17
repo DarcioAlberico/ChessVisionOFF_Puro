@@ -47,6 +47,7 @@ from PIL import Image, ImageTk
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 
+from . import tokens
 from .page_overlay import DiagramBox, PageBoxes
 from .tooltip import Tooltip
 from .viewport import (
@@ -77,10 +78,10 @@ com folga demais, arrastar a barra de rolagem abriria um diagrama por acidente."
 
 # --- as três cores são **um** eixo: em que ponto do trabalho aquele diagrama está. A seleção
 # --- deixou de ser cor na S-71 justamente para não disputar este eixo -- ver `_draw_boxes`.
-BOX_OUTLINE = "#4da3ff"
+BOX_OUTLINE = tokens.RESERVA[tokens.A_FAZER]
 """Localizado pelo detector, ainda não lido."""
 
-BOX_OUTLINE_RECOGNIZED = "#ffb02e"
+BOX_OUTLINE_RECOGNIZED = tokens.RESERVA[tokens.LIDO]
 """Lido pelo OCR e **ainda não salvo**: o que falta fazer nesta página."""
 
 SELECTION_HALO_PX = 4
@@ -89,14 +90,14 @@ SELECTION_HALO_PX = 4
 Para **fora** porque a caixa encosta no diagrama: uma borda por dentro cairia sobre as casas
 da primeira fila, e a caixa existe justamente para conferir a posição."""
 
-BOX_OUTLINE_SAVED = "#00c07a"
+BOX_OUTLINE_SAVED = tokens.RESERVA[tokens.PRONTO]
 """Já tem amostra no `labels.csv`. Verde é a cor de "pronto", e é para isso que ela serve.
 
 Vale mesmo antes de a página ser lida: quem responde é a procedência gravada no CSV, não o
 que está em memória. Abrir um livro pela quinta vez e ver de verde o que já foi feito é a
 única forma barata de responder "onde eu parei?"."""
 
-BOX_OUTLINE_CONFIRMED = "#9b7bff"
+BOX_OUTLINE_CONFIRMED = tokens.RESERVA[tokens.DISPENSADO]
 """A base de partidas reconheceu a posição (S-75). Violeta porque não é nem "feito" nem "a
 fazer": é **"não precisa"**, que é um estado que a tela não tinha.
 
@@ -335,7 +336,7 @@ class PdfPanel(ttk.Frame):
         view.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         wrap = ttk.Frame(view)
         wrap.pack(fill=tk.BOTH, expand=True)
-        self.canvas = tk.Canvas(wrap, bg="#1c1c1c", highlightthickness=0)
+        self.canvas = tk.Canvas(wrap, bg=tokens.RESERVA[tokens.SUPERFICIE_PAGINA], highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vscroll = ttk.Scrollbar(wrap, orient=tk.VERTICAL, command=self.canvas.yview)
         vscroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -783,7 +784,7 @@ class PdfPanel(ttk.Frame):
                 x0, y0 - 18, x0 + 22, y0, outline=cor, fill=cor, tags="diagram-box"
             )
             self.canvas.create_text(
-                x0 + 11, y0 - 9, text=box.label, fill="#101010", font=("Segoe UI", 9, "bold"),
+                x0 + 11, y0 - 9, text=box.label, fill=tokens.RESERVA[tokens.TEXTO_SOBRE_MARCACAO], font=("Segoe UI", 9, "bold"),
                 tags="diagram-box",
             )
 
@@ -892,7 +893,7 @@ class PdfPanel(ttk.Frame):
         x, y = self._point(event)
         self._select_start = (x, y)
         self._clear_overlay()
-        self._select_rect_id = self.canvas.create_rectangle(x, y, x, y, outline="#00ff88", width=2, dash=(6, 4))
+        self._select_rect_id = self.canvas.create_rectangle(x, y, x, y, outline=tokens.RESERVA[tokens.SELECAO], width=2, dash=(6, 4))
 
     def _on_drag(self, event: tk.Event) -> None:
         if not self._select_mode:
@@ -904,7 +905,7 @@ class PdfPanel(ttk.Frame):
         x0, y0 = self._select_start
         if self._select_rect_id is None:
             self._select_rect_id = self.canvas.create_rectangle(
-                x0, y0, x, y, outline="#00ff88", width=2, dash=(6, 4)
+                x0, y0, x, y, outline=tokens.RESERVA[tokens.SELECAO], width=2, dash=(6, 4)
             )
         else:
             self.canvas.coords(self._select_rect_id, x0, y0, x, y)

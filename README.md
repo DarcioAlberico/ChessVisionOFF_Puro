@@ -689,6 +689,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-78 a S-82, S-143 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
 | S-95 a S-142 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
+| S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -722,6 +723,13 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   e nao correcao
 - [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) -- especificacao das Fases 14 a 19 (S-95 a
   S-142), com o indice de onde mora cada item da spec
+- [docs/ROADMAP_UI.md](docs/ROADMAP_UI.md) -- **Fases 20 a 24**, a avaliacao de interface de
+  2026-08-17 em tres passadas: o tema `ttkbootstrap` esta instalado e nenhum widget pede estilo,
+  abaixo de ~1500x840 a janela apaga controles (em 1100x760 a fila de salvar fica inalcancavel),
+  e azul e violeta significam coisas diferentes na pagina e no tabuleiro
+- [docs/SPEC_UI.md](docs/SPEC_UI.md) -- especificacao das Fases 20 a 24 (S-144 a S-170):
+  tokens de cor e tipografia, o piso da janela, cor com um significado so, barra de menus e
+  rodape de janela, vocabulario e estados vazios
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

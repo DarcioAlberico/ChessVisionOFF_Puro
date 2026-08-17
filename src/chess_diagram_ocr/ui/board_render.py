@@ -26,27 +26,28 @@ from pathlib import Path
 from PIL import Image, ImageTk
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
+from . import tokens
 from .board_model import BoardModel
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["BoardGeometry", "BoardRenderer", "PieceImages", "heatmap_color"]
 
-LIGHT_SQUARE = "#f0d9b5"
-DARK_SQUARE = "#b58863"
-SELECTED_SQUARE = "#f7ec74"
-LAST_MOVE_SQUARE = "#cdd26a"
-TARGET_MARK = "#3f7f4c"
-CHANGED_OUTLINE = "#3d7dd4"
-PROBLEM_OUTLINE = "#c0392b"
-DISPUTED_OUTLINE = "#8e44ad"
+LIGHT_SQUARE = tokens.RESERVA[tokens.CASA_CLARA]
+DARK_SQUARE = tokens.RESERVA[tokens.CASA_ESCURA]
+SELECTED_SQUARE = tokens.RESERVA[tokens.CASA_SELECIONADA]
+LAST_MOVE_SQUARE = tokens.RESERVA[tokens.CASA_ULTIMO_LANCE]
+TARGET_MARK = tokens.RESERVA[tokens.ALVO]
+CHANGED_OUTLINE = tokens.RESERVA[tokens.CORRIGIDO]
+PROBLEM_OUTLINE = tokens.RESERVA[tokens.PROBLEMA]
+DISPUTED_OUTLINE = tokens.RESERVA[tokens.DIVERGENTE]
 """Roxo: as duas leituras discordam desta casa (S-66).
 
 Cor própria, e não o vermelho da ilegalidade nem o azul da decodificação: as três dizem
 coisas diferentes e podem acender juntas. "Ilegal" é um fato sobre a posição, "reescrita" é
 algo que já aconteceu, e "em disputa" é um pedido -- olhe esta casa."""
-BOARD_FRAME = "#312e2b"
-COORDINATE_TEXT = "#d8d8d8"
+BOARD_FRAME = tokens.RESERVA[tokens.MOLDURA]
+COORDINATE_TEXT = tokens.RESERVA[tokens.COORDENADA]
 
 HEATMAP_LOW = (0xF2, 0xC7, 0x44)
 """Amarelo: casa logo abaixo do limiar."""
@@ -341,12 +342,37 @@ class BoardRenderer:
             center_x,
             center_y,
             text=UNICODE_PIECES.get(symbol, symbol),
-            fill="#111111",
+            fill=tokens.RESERVA[tokens.TEXTO_SOBRE_MARCACAO],
             font=("Segoe UI Symbol", max(12, int(cell * 0.56))),
             tags=tags,
         )
 
+    @staticmethod
+    def _cor_de_coordenada(canvas: tk.Canvas) -> str:
+        """A cor legível sobre o fundo real deste canvas. Cai na reserva se o Tk não responder."""
+        try:
+            fundo = str(canvas.cget("background") or "")
+            if not fundo.startswith("#"):
+                # `SystemButtonFace` e afins: pede ao Tk o RGB de 16 bits e reduz a 8.
+                r, g, b = canvas.winfo_rgb(fundo)
+                fundo = f"#{r // 257:02x}{g // 257:02x}{b // 257:02x}"
+        except tk.TclError:
+            return COORDINATE_TEXT
+        return tokens.sobre_superficie(fundo)
+
     def _draw_coordinates(self, canvas: tk.Canvas, model: BoardModel, geometry: BoardGeometry) -> None:
+        """As letras a–h e os números 8–1, **na cor que contrasta com o fundo do canvas** (S-146).
+
+        Eram uma constante `#d8d8d8`, escolhida para o tabuleiro escuro da Análise. O Resultado
+        desenha sobre `#f2f2f2`: razão **1,27:1**, ou seja, as coordenadas estavam na tela e não
+        podiam ser lidas. Num programa cujo trabalho é dizer "o bispo está em c4", a régua que
+        nomeia c4 era invisível.
+
+        O fundo vem do próprio canvas e não de um parâmetro: quem desenha é quem sabe onde está,
+        e um parâmetro seria mais um número solto em outro arquivo -- que é a família de defeito
+        que a S-145 veio fechar.
+        """
+        cor_coordenada = self._cor_de_coordenada(canvas)
         files = "hgfedcba" if model.flipped else "abcdefgh"
         ranks = "12345678" if model.flipped else "87654321"
         for index, char in enumerate(files):
@@ -354,7 +380,7 @@ class BoardRenderer:
                 geometry.origin_x + index * geometry.cell + geometry.cell / 2,
                 geometry.origin_y + geometry.size + 11,
                 text=char,
-                fill=COORDINATE_TEXT,
+                fill=cor_coordenada,
                 font=("Segoe UI", 9, "bold"),
                 tags=(COORDS_TAG,),
             )
@@ -363,7 +389,7 @@ class BoardRenderer:
                 geometry.origin_x - 10,
                 geometry.origin_y + index * geometry.cell + geometry.cell / 2,
                 text=char,
-                fill=COORDINATE_TEXT,
+                fill=cor_coordenada,
                 font=("Segoe UI", 9, "bold"),
                 tags=(COORDS_TAG,),
             )

@@ -32,6 +32,7 @@ import chess.pgn
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
 
+from . import tokens
 from .board_widget import InteractiveBoard, PieceImages
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,7 @@ class StudyPanel(ttk.Frame):
         # conversao mora em `Evaluation.advantage_fraction`.
         self.advantage = ttk.Progressbar(caixa, maximum=100.0, value=50.0)
         self.advantage.pack(fill=tk.X, padx=6, pady=(6, 0))
-        ttk.Label(caixa, textvariable=self.engine_line_var, wraplength=600, foreground="#555555").pack(
+        ttk.Label(caixa, textvariable=self.engine_line_var, wraplength=600, foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO]).pack(
             anchor="w", padx=6, pady=(4, 6)
         )
 

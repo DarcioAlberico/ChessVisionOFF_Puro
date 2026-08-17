@@ -21,6 +21,7 @@ from tkinter import messagebox, ttk
 from chess_diagram_ocr.games_db import PositionHit, agrees_with_caption
 from chess_diagram_ocr.pdf_text import fold
 
+from . import tokens
 from .gallery_model import GalleryModel
 
 __all__ = ["GamesDialog"]
@@ -78,7 +79,7 @@ class GamesDialog(tk.Toplevel):
         # A cada tecla, e nao no Return: com 32 candidatas o filtro e para *reduzir enquanto se
         # olha*, e exigir confirmacao a cada tentativa faria a pessoa digitar o nome inteiro.
         self.filter_var.trace_add("write", lambda *_: self._repopulate())
-        ttk.Label(topo, textvariable=self.count_var, foreground="#666666").pack(side=tk.RIGHT)
+        ttk.Label(topo, textvariable=self.count_var, foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO]).pack(side=tk.RIGHT)
 
         corpo = ttk.Frame(self, padding=(8, 0))
         corpo.pack(fill=tk.BOTH, expand=True)
@@ -97,9 +98,9 @@ class GamesDialog(tk.Toplevel):
         # tem em azul: as tres informacoes que decidem o clique, e nenhuma delas cabe numa
         # coluna sem virar mais uma coluna.
         self.tree.tag_configure("escolhida", font=("TkDefaultFont", 9, "bold"))
-        self.tree.tag_configure("legenda", foreground="#2e7d32")
-        self.tree.tag_configure("vizinha", foreground="#1565c0")
-        self.tree.tag_configure("porNome", foreground="#6a1b9a")
+        self.tree.tag_configure("legenda", foreground=tokens.RESERVA[tokens.PRONTO_TEXTO])
+        self.tree.tag_configure("vizinha", foreground=tokens.RESERVA[tokens.CORRIGIDO_TEXTO])
+        self.tree.tag_configure("porNome", foreground=tokens.RESERVA[tokens.DIVERGENTE])
 
         rodape = ttk.Frame(self, padding=8)
         rodape.pack(fill=tk.X)

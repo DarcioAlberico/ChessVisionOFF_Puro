@@ -76,7 +76,7 @@ from chess_diagram_ocr.settings import (
     save_settings,
 )
 from chess_diagram_ocr.splits import load_splits
-from chess_diagram_ocr.ui import strings
+from chess_diagram_ocr.ui import strings, tokens
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
@@ -363,7 +363,7 @@ class ChessOcrTkApp:
             train_box,
             text="Sem isso, o treino continua do checkpoint e só grava por cima se melhorar.",
             wraplength=320,
-            foreground="#555555",
+            foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO],
         ).pack(anchor="w", padx=8, pady=(0, 4))
         self.btn_train_model = ttk.Button(train_box, text="Treinar modelo", command=self.training.start)
         self.btn_train_model.pack(anchor="w", padx=8, pady=8)

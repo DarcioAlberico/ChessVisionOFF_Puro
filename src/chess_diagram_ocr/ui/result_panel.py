@@ -40,7 +40,7 @@ from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import LocalReaderSettings, RemoteFenSettings
 
-from . import board_edit, strings
+from . import board_edit, strings, tokens
 from .board_widget import InteractiveBoard, PieceImages
 from .editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from .legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
@@ -266,7 +266,7 @@ class ResultPanel(ttk.Frame):
             on_select=self.on_square_selected,
             on_status=self._on_status,
             piece_images=piece_images,
-            background="#f2f2f2",
+            background=tokens.RESERVA[tokens.SUPERFICIE_TABULEIRO],
             min_size=260,
             max_size=520,
         )
@@ -276,7 +276,7 @@ class ResultPanel(ttk.Frame):
         legal = ttk.Frame(caixa)
         legal.pack(fill=tk.X, padx=8, pady=(0, 6))
         ttk.Label(legal, textvariable=self.legality_var, wraplength=520, justify=tk.LEFT).pack(anchor="w")
-        ttk.Label(legal, textvariable=self.material_var, foreground="#555555").pack(anchor="w")
+        ttk.Label(legal, textvariable=self.material_var, foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO]).pack(anchor="w")
 
         nav = ttk.Frame(caixa)
         nav.pack(fill=tk.X, padx=8, pady=(0, 6))

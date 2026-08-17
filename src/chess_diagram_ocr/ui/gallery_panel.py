@@ -46,6 +46,7 @@ from chess_diagram_ocr.games_db import (
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
 from chess_diagram_ocr.service import OcrService
 
+from . import tokens
 from .busy import BusyRegistry, BusyToken
 from .gallery_model import HEADER_FIELDS, GalleryModel, describe_origin
 from .games_dialog import GamesDialog
@@ -282,7 +283,7 @@ class GalleryPanel(ttk.Frame):
         # A procedencia da base fica **junto dos campos que ela preencheu**, e nao na barra de
         # status: a barra fala do ultimo gesto, e esta pergunta ("quem preencheu isto?") se faz
         # ao chegar num diagrama, que pode ser dias depois da busca.
-        ttk.Label(lateral, textvariable=self.origin_var, wraplength=220, foreground="#2e7d32").grid(
+        ttk.Label(lateral, textvariable=self.origin_var, wraplength=220, foreground=tokens.RESERVA[tokens.PRONTO_TEXTO]).grid(
             row=livre + 5, column=0, columnspan=2, sticky="w", pady=(8, 0)
         )
 

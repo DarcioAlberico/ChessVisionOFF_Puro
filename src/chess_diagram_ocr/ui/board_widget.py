@@ -48,7 +48,7 @@ import numpy as np
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
 from ..fen_utils import square_name
-from . import board_edit
+from . import board_edit, tokens
 from .board_model import BoardChange, BoardMode, BoardModel, ChangeKind
 from .board_render import (
     LIGHT_SQUARE,
@@ -104,7 +104,7 @@ class InteractiveBoard(ttk.Frame):
         show_coordinates: bool = True,
         min_size: int = 240,
         max_size: int = 560,
-        background: str = "#262421",
+        background: str = tokens.RESERVA[tokens.SUPERFICIE_ESTUDO],
         uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     ) -> None:
         super().__init__(parent)
@@ -327,7 +327,7 @@ class InteractiveBoard(ttk.Frame):
             botao.image = imagem  # type: ignore[attr-defined]
         else:
             texto = rotulo or UNICODE_PIECES.get(value, value)
-            cor_texto = str(ttk.Style().lookup("TLabel", "foreground") or "#000000")
+            cor_texto = str(ttk.Style().lookup("TLabel", "foreground") or tokens.RESERVA[tokens.TEXTO_PADRAO])
             botao = tk.Radiobutton(
                 parent, text=texto, padx=8, pady=2, foreground=cor_texto, **opcoes  # type: ignore[arg-type]
             )
@@ -351,8 +351,8 @@ class InteractiveBoard(ttk.Frame):
         fundo, o que dá contraste no claro e no escuro pela mesma conta.
         """
         style = ttk.Style()
-        fundo = str(style.lookup("TFrame", "background") or "#f0f0f0")
-        texto = str(style.lookup("TLabel", "foreground") or "#000000")
+        fundo = str(style.lookup("TFrame", "background") or tokens.RESERVA[tokens.SUPERFICIE_PADRAO])
+        texto = str(style.lookup("TLabel", "foreground") or tokens.RESERVA[tokens.TEXTO_PADRAO])
         return fundo, self._mix(texto, fundo, 0.45), self._mix(texto, fundo, 0.15)
 
     def _mix(self, cor: str, fundo: str, peso: float) -> str:
@@ -558,7 +558,7 @@ class InteractiveBoard(ttk.Frame):
             tip,
             text="\n".join(lines),
             justify=tk.LEFT,
-            background="#ffffe0",
+            background=tokens.RESERVA[tokens.SUPERFICIE_DICA],
             relief=tk.SOLID,
             borderwidth=1,
             font=("Segoe UI", 9),

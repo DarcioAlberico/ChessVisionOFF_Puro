@@ -10,6 +10,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from . import tokens
+
 TOOLTIP_DELAY_MS = 450
 """Tempo parado sobre o widget antes de a dica aparecer. Curto o bastante para quem
 está procurando explicação, longo o bastante para não piscar ao atravessar a barra."""
@@ -66,7 +68,7 @@ class Tooltip:
             text=self.text,
             justify=tk.LEFT,
             wraplength=self.wraplength,
-            background="#ffffe0",
+            background=tokens.RESERVA[tokens.SUPERFICIE_DICA],
             relief=tk.SOLID,
             borderwidth=1,
             padding=6,
