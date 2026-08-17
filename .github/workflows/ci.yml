@@ -28,7 +28,15 @@ jobs:
 
       - name: Sincronizar dependencias
         # --frozen falha se uv.lock estiver desatualizado em relacao ao pyproject.toml.
-        run: uv sync --extra dev --frozen
+        #
+        # Os tres extras, e nao so `dev` (S-128): sem `onnx`, `tests/test_onnx_export.py`
+        # desliga a classe `ExportTests` inteira -- que e TODA a cobertura executavel de
+        # `onnx_export.py` --, e sem `ocr` o contrato de motor da S-42 nao roda. A S-30
+        # (paridade numerica do ONNX) e a S-42 eram codigo entregue cuja unica verificacao
+        # nunca rodava aqui: uma regressao nelas entrava verde.
+        #
+        # E o mesmo comando que o CONTRIBUTING.md manda rodar na maquina de quem contribui.
+        run: uv sync --extra dev --extra onnx --extra ocr --frozen
 
       - name: Lint (ruff)
         run: uv run ruff check .

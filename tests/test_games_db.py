@@ -7,6 +7,7 @@ posição bate, e o teto por par.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import threading
@@ -18,10 +19,11 @@ from unittest import mock
 import chess
 
 from chess_diagram_ocr import games_db
-from chess_diagram_ocr.cli.games import _books, main, parse_args
+from chess_diagram_ocr.cli.games import _books, _matches_from_json, _matches_to_json, main, parse_args
 from chess_diagram_ocr.gallery_scan import GalleryEntry
 from chess_diagram_ocr.games_db import (
     WORKER_ENV,
+    DiagramMatch,
     GameRecord,
     PositionHit,
     PositionIndex,
@@ -817,3 +819,94 @@ class DeterminismoDaVarreduraTests(unittest.TestCase):
 
         datas = [hit.headers["Date"] for hit in indice.hits[self.COLOCACAO]]
         self.assertEqual(datas, ["1950.01.01", "2020.01.01"], "a mais antiga primeiro, como o paralelo")
+
+
+class CasamentosNoDiscoTests(unittest.TestCase):
+    """O JSON de casamentos sobrevive à ida e volta, e a v1 continua carregando (S-128).
+
+    **O formato v2 é o artefato dos 104 minutos de 2026-08-13.** Ele tem ramo de
+    compatibilidade explícito para a v1 e não tinha teste nenhum: um `--save-matches` que
+    gravasse errado só apareceria na próxima vez que alguém tentasse reaplicar -- meses depois,
+    com a base já mudada e sem como refazer a comparação.
+    """
+
+    def _casamento(self, **campos: object) -> DiagramMatch:
+        padrao: dict[str, object] = {
+            "page_index": 3,
+            "diagram_index": 2,
+            "move_number": 24,
+            "side_to_move": "b",
+            "headers": {"White": "Karpov, Anatoly", "Black": "Korchnoi, Viktor", "Date": "1981.10.19"},
+            "games_matched": 3,
+            "game_label": "Karpov x Korchnoi, Merano 1981",
+            "candidates": (
+                PositionHit(move_number=24, side_to_move="b", headers={"White": "Karpov, Anatoly"}),
+                PositionHit(move_number=31, side_to_move="w", headers={"White": "Outro"}, verified=False),
+            ),
+        }
+        padrao.update(campos)
+        return DiagramMatch(**padrao)  # type: ignore[arg-type]
+
+    def test_a_ida_e_volta_preserva_tudo(self) -> None:
+        livro = Path("Karpov 1.pdf")
+        original = {livro: [self._casamento(), self._casamento(page_index=9, games_matched=1)]}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "matches.json"
+            caminho.write_text(json.dumps(_matches_to_json(original), ensure_ascii=False), encoding="utf-8")
+            voltou = _matches_from_json(caminho, [livro])
+
+        self.assertEqual(voltou[livro], original[livro])
+
+    def test_a_candidata_nao_verificada_volta_nao_verificada(self) -> None:
+        """A distinção decide **o que pode ser preenchido**: lance e vez vêm da posição, e sem
+        posição seriam invenção (ver `PositionHit.verified`)."""
+        livro = Path("livro.pdf")
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "m.json"
+            caminho.write_text(json.dumps(_matches_to_json({livro: [self._casamento()]})), encoding="utf-8")
+            voltou = _matches_from_json(caminho, [livro])
+
+        self.assertFalse(voltou[livro][0].candidates[1].verified)
+        self.assertTrue(voltou[livro][0].candidates[0].verified)
+
+    def test_o_formato_v1_continua_carregando(self) -> None:
+        """**É o artefato dos 104 minutos**, e ele não guardou candidatas. Vazio é a resposta
+        honesta: inventar uma lista de um elemento diria "só existe esta"."""
+        v1 = {
+            "version": 1,
+            "books": {
+                "livro.pdf": [
+                    {
+                        "page_index": 1,
+                        "diagram_index": 1,
+                        "move_number": 12,
+                        "side_to_move": "w",
+                        "headers": {"White": "A", "Black": "B"},
+                        "games_matched": 1,
+                        "game_label": "A x B",
+                    }
+                ]
+            },
+        }
+        livro = Path("livro.pdf")
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "v1.json"
+            caminho.write_text(json.dumps(v1), encoding="utf-8")
+            voltou = _matches_from_json(caminho, [livro])
+
+        self.assertEqual(len(voltou[livro]), 1)
+        self.assertEqual(voltou[livro][0].candidates, (), "sem candidatas, e não uma inventada")
+        self.assertEqual(voltou[livro][0].move_number, 12)
+
+    def test_livro_ausente_do_arquivo_devolve_lista_vazia(self) -> None:
+        """Pedir um livro que não estava na varredura não pode derrubar o comando: o artefato
+        cobre o acervo daquele dia, e o acervo cresce."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "m.json"
+            caminho.write_text(json.dumps({"version": 2, "books": {}}), encoding="utf-8")
+            self.assertEqual(_matches_from_json(caminho, [Path("novo.pdf")]), {Path("novo.pdf"): []})
+
+    def test_o_arquivo_declara_a_versao(self) -> None:
+        """Sem a versão gravada, o ramo de compatibilidade seria adivinhação sobre a forma."""
+        self.assertEqual(_matches_to_json({})["version"], 2)

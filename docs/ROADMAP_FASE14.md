@@ -452,7 +452,7 @@ sai de 7; e a mesma pergunta à base devolve a mesma resposta duas vezes seguida
 | 18.3 | O worker de OCR loga a exceção como os outros cinco | S-125 | ✅ |
 | 18.4 | Os `cvoff-*` falham em pt-BR, com código de saída por classe | S-126 | ✅ |
 | 18.5 | O bundle congelado deixa rastro em disco | S-127 | ✅ |
-| 18.6 | A CI roda o ambiente que o CONTRIBUTING promete | S-128 | ⬜ |
+| 18.6 | A CI roda o ambiente que o CONTRIBUTING promete | S-128 | ✅ |
 
 **Critério de saída:** as três falhas mais prováveis — PDF corrompido, `settings.json`
 inválido, checkpoint de outra `arch_version` — produzem mensagem em pt-BR e rastro em disco,
