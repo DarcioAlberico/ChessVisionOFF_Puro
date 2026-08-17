@@ -7,7 +7,7 @@ import cv2
 import fitz
 import numpy as np
 
-from chess_diagram_ocr.board_detection import _bbox_iou
+from chess_diagram_ocr.board_detection import _bbox_iou, _grid_score, _small_gray
 from chess_diagram_ocr.detection import (
     DiagramCandidate,
     candidates_from_embedded_images,
@@ -22,6 +22,7 @@ from chess_diagram_ocr.detection.hybrid import (
     _contour_wins_over_merged,
     _same_region,
     _typical_side,
+    board_checker_contrast,
     board_texture_score,
     refine_candidate_with_contour,
 )
@@ -859,6 +860,138 @@ class RefineGuardTests(unittest.TestCase):
         """Comparar recortes de tamanhos diferentes compararia números incomparáveis."""
         grande = board_texture_score(board_image(800))
         pequeno = board_texture_score(board_image(160))
+        self.assertAlmostEqual(grande, pequeno, delta=0.15)
+
+
+def photo_like(side: int = 320, *, seed: int = 7) -> np.ndarray:
+    """Um quadrado de tom contínuo: o retrato, a foto, a moldura -- nada de reticulado 8×8.
+
+    Feito de manchas suaves e não de ruído branco porque é assim que a foto impressa se
+    comporta: bordas longas e periódicas (a moldura), gradiente no meio, e **nenhuma**
+    diferença sistemática entre as 32 casas de uma paridade e as 32 da outra.
+    """
+    rng = np.random.default_rng(seed)
+    campo = rng.random((side // 8, side // 8)).astype(np.float32)
+    campo = cv2.resize(campo, (side, side), interpolation=cv2.INTER_CUBIC)
+    campo = cv2.GaussianBlur(campo, (0, 0), side / 24.0)
+    campo -= campo.min()
+    campo /= max(float(campo.max()), 1e-6)
+    cinza = (40 + campo * 180).astype(np.uint8)
+    imagem = cv2.cvtColor(cinza, cv2.COLOR_GRAY2RGB)
+    cv2.rectangle(imagem, (2, 2), (side - 3, side - 3), (20, 20, 20), 3)
+    return imagem
+
+
+def crowded_board(side: int = 320) -> np.ndarray:
+    """Tabuleiro com peça em quase toda casa -- o caso `Polgar` que reprovou a S-80.
+
+    A S-80 morreu porque `board_texture_score` mistura "isto é um tabuleiro" com "quantas
+    peças há": uma posição de abertura de 28 peças tira 0,158 e um final de dois reis tira
+    0,8, **no mesmo livro e na mesma página**. Esta fixture é o lado ruim dessa faixa.
+    """
+    board = board_image(side)
+    cell = side // 8
+    for row in range(8):
+        for column in range(8):
+            if row in (2, 3, 4, 5) and (row + column) % 3:
+                continue
+            centro = (int((column + 0.5) * cell), int((row + 0.5) * cell))
+            cv2.circle(board, centro, int(cell * 0.34), (25, 25, 25), -1)
+    return board
+
+
+class CheckerContrastGuardTests(unittest.TestCase):
+    """O achado de contorno sem contraste de casa não é diagrama (S-143).
+
+    Capa e prancha de retrato do `Karpov 1` rendiam 10 caixas onde não há diagrama: o título,
+    a grade de fotos, cada retrato, e três casas do tabuleiro **pintado ao fundo do quadro**.
+    """
+
+    def _pagina_com(self, imagem: np.ndarray, rect: fitz.Rect) -> fitz.Document:
+        return pdf_with_images([(imagem, rect)])
+
+    def test_a_foto_quadrada_nao_e_diagrama(self) -> None:
+        doc = self._pagina_com(photo_like(400), fitz.Rect(120, 160, 420, 460))
+        try:
+            page = doc[0]
+            contorno = [c for c in detect_diagrams(page, render(page)) if c.source == "contour"]
+            self.assertEqual(contorno, [], "retrato de tom contínuo não pode virar diagrama")
+        finally:
+            doc.close()
+
+    def test_o_tabuleiro_de_verdade_continua_passando(self) -> None:
+        """A guarda não pode custar o caminho que é a maioria do acervo."""
+        doc = fitz.open()
+        page = doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        cell, ox, oy = 30.0, 100.0, 150.0
+        for row in range(8):
+            for column in range(8):
+                if (row + column) % 2:
+                    page.draw_rect(
+                        fitz.Rect(ox + column * cell, oy + row * cell, ox + (column + 1) * cell, oy + (row + 1) * cell),
+                        color=None,
+                        fill=(0.18, 0.18, 0.18),
+                    )
+        page.draw_rect(fitz.Rect(ox, oy, ox + 8 * cell, oy + 8 * cell), color=(0, 0, 0), width=1)
+        try:
+            contorno = [c for c in detect_diagrams(page, render(page)) if c.source == "contour"]
+            self.assertTrue(contorno, "o diagrama vetorial tem de sobreviver à guarda")
+        finally:
+            doc.close()
+
+    def test_tabuleiro_cheio_de_pecas_sobrevive(self) -> None:
+        """O caso que reprovou a S-80: peça cobrindo casa derruba a nota, mas não a zera.
+
+        É a razão de a guarda olhar **só** a parcela de xadrez e cortar em zero, e não a
+        textura combinada num piso qualquer -- ali o `Polgar` tira 0,158 e uma foto tira 0,29.
+        """
+        self.assertGreater(board_checker_contrast(crowded_board()), 0.0)
+
+    def test_a_parcela_de_grade_sozinha_nao_separaria(self) -> None:
+        """Por que a guarda não usa a textura combinada, encravado em teste.
+
+        Moldura e faixa de fotos produzem borda periódica, que é o que a parcela de **grade**
+        mede -- medido nas páginas do relato, as fotos tiram 0,04 a 0,80 nela. É essa parcela
+        que, misturada 0,4 na textura, deixou a S-80 medir uma foto acima de um diagrama bom.
+        """
+        foto = cv2.resize(photo_like(320), (320, 320), interpolation=cv2.INTER_AREA)
+        self.assertEqual(board_checker_contrast(foto), 0.0, "a foto não tem contraste de casa")
+        self.assertGreater(
+            _grid_score(_small_gray(foto)),
+            0.0,
+            "a foto TEM borda periódica -- é por isso que a grade não serve de guarda",
+        )
+
+    def test_a_declaracao_do_pdf_nao_e_alcancada(self) -> None:
+        """Imagem embutida continua ganhando (S-12): ela tem as guardas dela."""
+        rect = fitz.Rect(120, 160, 420, 460)
+        doc = self._pagina_com(photo_like(400), rect)
+        try:
+            page = doc[0]
+            embutidos = [c for c in detect_diagrams(page, render(page)) if c.source == "embedded"]
+            self.assertTrue(embutidos, "a guarda da S-143 é só do caminho de contorno")
+        finally:
+            doc.close()
+
+    def test_a_guarda_pode_ser_desligada(self) -> None:
+        # 100 px nativos reprovam em `MIN_EMBEDDED_SIDE`, entao a fonte embutida nao declara
+        # nada e o contorno fica sendo a unica -- que e o caso das paginas do relato.
+        doc = self._pagina_com(photo_like(100), fitz.Rect(120, 160, 420, 460))
+        try:
+            page = doc[0]
+            pagina = render(page)
+            self.assertEqual(candidates_from_embedded_images(page), [])
+            com = detect_diagrams(page, pagina)
+            sem = detect_diagrams(page, pagina, checker_contrast_floor=None)
+            self.assertEqual(com, [])
+            self.assertTrue(sem, "None tem de reproduzir o comportamento anterior à S-143")
+        finally:
+            doc.close()
+
+    def test_o_contraste_e_medido_na_resolucao_calibrada(self) -> None:
+        """Mesmo motivo de `board_texture_score`: dois tamanhos, um número comparável."""
+        grande = board_checker_contrast(board_image(800))
+        pequeno = board_checker_contrast(board_image(160))
         self.assertAlmostEqual(grande, pequeno, delta=0.15)
 
 

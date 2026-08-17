@@ -285,6 +285,12 @@ também tem glifo.
 
 ### S-80 · A nota de textura relativa à página ❌ **não implementada — a medição reprovou**
 
+> **O alvo desta entrega existia.** Ela foi arquivada em parte por ter "zero instâncias
+> confirmadas no acervo", e isso estava errado por um motivo que só a S-143 encontrou: o censo
+> **não amostra as páginas onde o defeito mora**. Ver [S-143](#s-143--a-foto-quadrada-que-o-contorno-lê-como-tabuleiro).
+> O que segue abaixo continua valendo inteiro — a *proposta* (textura relativa) segue reprovada,
+> e é a S-143 que explica por que aquele número não podia funcionar.
+
 **A proposta era.** S-78 é um piso de tamanho, e tamanho é um *proxy*: um ornamento grande —
 capa de capítulo, selo, foto quadrada — passaria dos 72 pt e cairia no mesmo buraco. Como
 §5.1 mostrou que um piso **absoluto** de `board_texture_score` não sobrevive ao acervo, a ideia
@@ -465,6 +471,116 @@ que S-78 a S-81 vão ser medidas.
 
 ---
 
+### S-143 · A foto quadrada que o contorno lê como tabuleiro ✅ implementada (2026-08-17)
+
+> Relato do usuário: *"o OCR está muito preciso nos diagramas mas ainda tem uns falso diagramas
+> como na página 0 e 6"* — `Karpov A - Chess Combinations -World Champions-1 (2011).pdf`.
+
+**O que acontecia.** Dez caixas em duas páginas que não têm diagrama nenhum:
+
+| página | o que virava "diagrama" |
+|---|---|
+| 1 (capa) | o título `CHESS`, a grade de 9 fotos dos campeões, e 4 retratos isolados |
+| 7 (prancha do Steinitz) | 3 casas do **tabuleiro pintado ao fundo do quadro**, e a moldura inteira |
+
+Todas de **contorno**; nenhuma de imagem embutida. É exatamente o alvo que a S-80 descreveu —
+"um ornamento grande — capa de capítulo, selo, **foto quadrada**" — e deu como inexistente.
+
+#### 1. Por que ninguém tinha visto: o censo não olha para lá
+
+`sample_pages` descarta as bordas do livro **de propósito**, e a razão está escrita nela:
+
+> *"a primeira e a última página de um livro de xadrez são capa, índice ou catálogo, e
+> gastá-las é gastar dois doze avos da amostra em páginas que nunca têm diagrama."*
+
+O raciocínio está certo para *achar diagrama* e é exatamente errado para *achar falso
+positivo*: capa, folha de rosto e prancha são **onde o ornamento grande mora**. A S-80
+concluiu "zero instâncias confirmadas no acervo" a partir de uma amostra que não podia contê-las,
+e arquivou a entrega. Quem achou as instâncias foi o usuário, abrindo o PDF.
+
+Corrigido: `DEFAULT_FRONT_MATTER = 8` e `cvoff-census --front-matter N`. Medido depois, a faixa
+tem 121 candidatos de contorno no acervo, e **90 deles não têm contraste de casa nenhum**.
+
+#### 2. Três sinais que pareciam resolver e não sobrevivem ao acervo
+
+Registrados porque cada um passa no `Karpov 1` e morre adiante — e porque a diferença entre
+eles e o que ficou é a única coisa que importa aqui.
+
+| sinal | onde morre |
+|---|---|
+| **tom médio** (foto tem meio-tom, diagrama é tinta e papel) | o scan velho é cinza: perde 169 de 707 candidatos de contorno para pegar 7 de 10. `Koblenz`, `Levenfis` e `Gunderam` inteiros |
+| **nitidez local** (foto é suave, traço é duro) | **depende do DPI de render**. A 110 DPI o `Kmoch` de verdade cai a 5,43 e a foto do `Kemeri` sobe a 8,58: o vale **inverte** |
+| **rede 8×8 auto-normalizada** (energia de borda na grade / total) | não separa: diagramas reais dão 0,86–1,12 e as fotos 0,90–1,12 |
+
+O padrão é o mesmo da §5.1: **piso fotométrico absoluto não sobrevive a um acervo que vai de
+gravura de 1870 a PDF vetorial**, e nitidez ainda por cima depende de um parâmetro que quem
+chama escolhe.
+
+#### 3. O que ficou: a parcela de xadrez, sozinha
+
+`board_texture_score` é `0,6·xadrez + 0,4·grade`, e as duas parcelas respondem perguntas
+diferentes:
+
+- **grade** — borda que se repete a cada 1/8. Moldura de quadro, faixa de retratos e fachada
+  fazem isso muito bem: medido, as fotos do relato tiram **0,04 a 0,80** nela.
+- **xadrez** — as 32 casas de uma paridade sistematicamente mais claras que as 32 da outra,
+  num reticulado alinhado com o recorte. **Não há como imitar sem ser um tabuleiro.**
+
+Misturar as duas foi o que condenou a S-80: ela mediu 0,29 numa foto contra 0,158 num `Polgar`
+impecável, e concluiu — corretamente, para o número que estava olhando — que não havia corte
+que prestasse. O número errado não era o corte, era a nota.
+
+Medido, com o `clip` em 0 mordendo onde não há tabuleiro:
+
+| população | com xadrez **exatamente zero** |
+|---|---|
+| os 10 do relato | **10 de 10** |
+| contorno na frente do livro (capa, rosto, prancha) | 90 de 121 |
+| contorno na amostra do censo | 21 de 841 |
+
+**Zero não é ajuste à amostra:** é onde a comparação sinal-contra-ruído troca de sinal
+(`contraste·2,4 ≤ dispersão·0,9`). O candidato legítimo mais próximo é um `Polgar` de **0,0616**
+— posição de abertura, 28 peças, o caso que derruba esta parcela — então qualquer valor em
+(0; 0,06) se comportaria igual no acervo. Zero é o que tem significado independente dele.
+
+#### 4. O critério de aceite, e por que não é o diff do censo
+
+Contar candidatos não responde a pergunta: os 21 do censo *parecem* perda. Doze deles são
+`Reinfeld` e, a olho, são diagramas perfeitos. Então a medição foi outra — **rodar o OCR de
+verdade em todo candidato de contorno do acervo** e perguntar se algum dos removidos entregava
+leitura aproveitável:
+
+| | n | confiança mediana | máxima | ≥ gate de exportação (0,80) |
+|---|---|---|---|---|
+| **removidos pela guarda** | 132 | 0,0197 | **0,5299** | **0** |
+| mantidos | 988 | 0,9998 | 1,0000 | 728 |
+
+**Nenhum recorte removido lia acima do gate.** Os 12 do `Reinfeld` são os da **coluna
+esquerda**, que o contorno fecha em 101×116 pt em vez de 116×116 — tabuleiro cortado, que o
+warp estica e desalinha. Eles leem 0,0001 a 0,41; os gêmeos bem recortados da mesma página, na
+coluna direita, leem 0,998 e acima. A guarda os remove porque o recorte é defeituoso, não
+apesar disso.
+
+> Fica em aberto, e é outro item: **por que o contorno corta a coluna esquerda do `Reinfeld`.**
+> A guarda esconde o sintoma (o recorte ruim some da tela); ela não conserta o recorte. Aqueles
+> 3 diagramas por página continuam não sendo detectados naquele livro.
+
+#### 5. Onde a guarda **não** vale
+
+Só o caminho de contorno. Imagem embutida é *declaração* do PDF e continua ganhando (S-12);
+os 3 embutidos com xadrez zero no acervo ficam de fora de propósito. E ela roda **antes** de
+tudo no laço: um retrato não pode derrubar uma união de ladrilhos em `_contour_wins_over_merged`
+nem envenenar o gabarito de tamanho. Guarda que julga o que a coisa **é** vem antes de guarda
+que julga com quem ela compete.
+
+**Testes.** `tests/test_detection.py::CheckerContrastGuardTests`, 7 casos. Dois deles são o
+registro da lição: `test_tabuleiro_cheio_de_pecas_sobrevive` é o caso `Polgar` que reprovou a
+S-80, e `test_a_parcela_de_grade_sozinha_nao_separaria` prende no lugar o motivo de a guarda
+não usar a textura combinada — a fixture de foto **tem** borda periódica e **não** tem
+contraste de casa.
+
+---
+
 ## 7. Sequenciamento sugerido
 
 | ordem | entrega | fecha | estado |
@@ -474,6 +590,7 @@ que S-78 a S-81 vão ser medidas.
 | 3 | **S-79** gabarito sobre o que sobreviveu | as 42 páginas de prior envenenado | ✅ 2026-08-14 |
 | 4 | **S-80** textura relativa | — | ❌ a medição reprovou |
 | 5 | **S-81** imagem fatiada | o `GALLAGHER`, que nenhum limiar alcança | ✅ 2026-08-14 |
+| 6 | **S-143** contraste de casa | a foto quadrada, que era o alvo da S-80 | ✅ 2026-08-17 |
 
 A ordem se pagou quatro vezes, e todas antes de alguém abrir um PDF a olho:
 
@@ -486,6 +603,16 @@ A ordem se pagou quatro vezes, e todas antes de alguém abrir um PDF a olho:
    suprimindo achados de contorno bons no `GALLAGHER`.
 4. O censo **pegou um efeito colateral no `Polgar`** — 114 diagramas trocando um recorte de
    737 px por um de 241 px — num livro que ninguém tinha motivo para conferir.
+
+**E se pagou uma quinta vez, ao contrário.** A S-143 é o caso em que o instrumento *errou*, e
+o modo de errar vale mais que os quatro acertos: ele não mediu de menos, ele mediu **onde não
+era**. `sample_pages` descarta as bordas do livro por uma razão correta — economizar amostra —
+que vira cegueira assim que a pergunta muda de "onde estão os diagramas" para "onde estão os
+falsos positivos". A S-80 leu "zero instâncias" de uma amostra que não podia contê-las e
+arquivou a entrega certa pelo motivo errado.
+
+Fica a regra: **um instrumento é amostrado para uma pergunta, e a amostragem é uma premissa
+dele.** Quando a pergunta muda, a amostragem tem de ser reconferida antes do número.
 
 ---
 

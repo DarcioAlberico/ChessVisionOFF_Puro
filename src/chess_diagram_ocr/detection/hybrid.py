@@ -37,7 +37,13 @@ import cv2
 import fitz
 import numpy as np
 
-from ..board_detection import _bbox_iou, _board_pattern_score, _sort_selected_candidates, detect_boards
+from ..board_detection import (
+    _bbox_iou,
+    _board_pattern_score,
+    _sort_selected_candidates,
+    board_checker_score,
+    detect_boards,
+)
 from ..config import BOARD_SIZE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
 from ..pdf_io import PdfSource
 from .embedded import DiagramCandidate, _pixels_for_bbox, candidates_from_embedded_images
@@ -59,6 +65,56 @@ o mesmo tamanho dos declarados e passam.
 """
 
 
+MIN_CHECKER_CONTRAST = 0.0
+"""Piso do contraste entre casas para um achado de **contorno** ser diagrama (S-143).
+
+**O relato.** Capa e prancha de retrato do `Karpov 1` (páginas 1 e 7) rendiam 10 caixas onde
+não há diagrama nenhum: o título, a grade de fotos dos campeões, cada retrato, e -- na página
+do Steinitz -- três casas do tabuleiro *pintado ao fundo do quadro* mais a moldura inteira.
+
+É exatamente o alvo que a S-80 previu e não conseguiu confirmar: "um ornamento grande -- capa
+de capítulo, selo, **foto quadrada** -- passaria dos 72 pt". Ela o deu como tendo "zero
+instâncias confirmadas no acervo" porque `sample_pages` **descarta as bordas do livro de
+propósito**, e capa e prancha moram ali. O censo nunca olhou onde o defeito vive. Corrigido em
+`census_book(front_matter=...)`.
+
+**Por que o contraste de xadrez, e não a textura.** `board_texture_score` é
+`0,6·xadrez + 0,4·grade`, e a parcela de **grade** é o que uma foto imita bem: moldura de
+quadro, faixa de retratos e fachada produzem borda periódica. Medido nas páginas do relato, a
+grade das fotos dá 0,04 a 0,80 -- acima de diagramas legítimos. Misturar as duas foi o que fez
+a S-80 medir 0,29 numa foto contra 0,158 num `Polgar` impecável e concluir, corretamente para
+o número que ela olhava, que não havia corte que prestasse.
+
+A parcela de **xadrez** não tem como ser imitada: ela exige que as 32 casas de uma paridade
+sejam sistematicamente mais claras que as 32 da outra, num reticulado 8×8 alinhado com o
+recorte. Onde não há tabuleiro a diferença entre as duas metades é ruído, o `clip` em 0 morde,
+e o resultado é **exatamente zero**.
+
+**Medido no acervo (32 livros, amostra do censo + 8 páginas de frente por livro):**
+
+| população | com xadrez zero |
+|---|---|
+| os 10 do relato | **10 de 10** |
+| contorno na frente do livro (capa, rosto, prancha) | 73 de 99 |
+| contorno na amostra do censo | 21 de 841 |
+
+**E os 21 não são perda**, que é o que separa isto da S-80. Rodado o OCR de verdade em todo
+candidato de contorno do acervo, o corte cai inteiro abaixo do gate de exportação: os 12 do
+`Reinfeld` são os recortes da coluna esquerda, que o contorno fecha em 101×116 pt em vez de
+116×116 -- tabuleiro **cortado**, que o warp estica e desalinha. Eles leem 0,0001 a 0,41
+enquanto os gêmeos bem recortados da mesma página leem 0,998 e acima.
+
+**Zero, e por quê.** O número não é ajustado à amostra: é onde a comparação sinal-contra-ruído
+troca de sinal (`contraste·2,4 ≤ dispersão·0,9`). O candidato legítimo mais próximo do corte no
+acervo é um `Polgar` de 0,0616 -- posição de abertura, 28 peças, o caso que derruba esta
+parcela --, então qualquer valor em (0; 0,06) se comportaria igual aqui. Zero é o que tem
+significado independente do acervo, e é preferível por isso.
+
+**Só contorno.** Imagem embutida é *declaração* do PDF e continua ganhando (S-12); ela tem as
+guardas dela. Os 3 embutidos com xadrez zero no acervo ficam de fora deste guarda de propósito.
+"""
+
+
 REFINE_TOLERANCE = 0.02
 """Quanto o refino pode piorar a textura de tabuleiro e ainda ser aceito (S-38).
 
@@ -76,6 +132,15 @@ def board_texture_score(board_rgb: np.ndarray) -> float:
     comparáveis, e a decisão da S-38 é exatamente uma comparação.
     """
     return _board_pattern_score(cv2.resize(board_rgb, (320, 320), interpolation=cv2.INTER_AREA))
+
+
+def board_checker_contrast(board_rgb: np.ndarray) -> float:
+    """Só a parcela de xadrez da textura, na mesma resolução calibrada (S-143).
+
+    Separada de `board_texture_score` porque as duas parcelas respondem perguntas
+    diferentes, e misturá-las é o que fez a S-80 fracassar -- ver `MIN_CHECKER_CONTRAST`.
+    """
+    return board_checker_score(cv2.resize(board_rgb, (320, 320), interpolation=cv2.INTER_AREA))
 
 
 def refine_candidate_with_contour(
@@ -307,6 +372,7 @@ def detect_diagrams(
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     refine_embedded: bool = True,
     size_prior_tolerance: float | None = EMBEDDED_SIZE_TOLERANCE,
+    checker_contrast_floor: float | None = MIN_CHECKER_CONTRAST,
 ) -> list[DiagramCandidate]:
     """Todos os diagramas da página, das duas fontes, sem duplicar e em ordem de leitura.
 
@@ -329,6 +395,10 @@ def detect_diagrams(
     O gabarito sai de `_typical_side` e não de `np.median` desde a S-79: a mediana entrega um
     número que não é o tamanho de nada quando a página tem duas populações de tamanho, e o
     prior passa a recusar exatamente o diagrama que ele existe para recuperar.
+
+    `checker_contrast_floor` recusa achado de contorno **sem contraste de casa nenhum** -- a
+    foto, o retrato e a moldura da S-143. `None` desliga. Não alcança imagem embutida: ali a
+    declaração do PDF continua ganhando, como desde a S-12. Ver `MIN_CHECKER_CONTRAST`.
     """
     scale_x = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
     scale_y = page_rgb.shape[0] / page.rect.height if page.rect.height else 1.0
@@ -361,6 +431,22 @@ def detect_diagrams(
     # O contorno na pagina inteira e a unica fonte quando nao ha imagem embutida -- o caso da
     # maioria do acervo: 12 dos 27 PDFs sao scan de pagina inteira e 2 sao vetoriais.
     for board_rgb, quad in detect_boards(page_rgb, max_boards=max_boards, reading_order=reading_order):
+        # Antes de tudo (S-143). O achado que nao tem contraste de casa nenhum nao e tabuleiro,
+        # e a ordem importa: se ele entrasse na disputa, um retrato podia derrubar uma uniao de
+        # ladrilhos em `_contour_wins_over_merged` ou envenenar o gabarito de tamanho. Guarda
+        # que julga o que a coisa **e** vem antes de guarda que julga com quem ela compete.
+        if checker_contrast_floor is not None:
+            contraste = board_checker_contrast(board_rgb)
+            if contraste <= checker_contrast_floor:
+                # `info` pelo mesmo motivo da recusa por tamanho (S-79): esta linha apaga um
+                # candidato, e e a unica evidencia de que ela agiu.
+                logger.info(
+                    "Contorno descartado por nao ter contraste de casa: %.4f. Foto, retrato "
+                    "ou moldura -- ou tabuleiro cortado, que o warp desalinha.",
+                    contraste,
+                )
+                continue
+
         if quad is None:
             box = (0, 0, page_rgb.shape[1], page_rgb.shape[0])
         else:

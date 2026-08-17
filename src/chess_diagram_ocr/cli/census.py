@@ -21,6 +21,7 @@ from pathlib import Path
 
 from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
 from ..detection_census import (
+    DEFAULT_FRONT_MATTER,
     DEFAULT_PAGES_PER_BOOK,
     HISTOGRAM_BIN_PT,
     SUSPECT_BELOW_PT,
@@ -65,6 +66,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=SUSPECT_BELOW_PT,
         help="Lado em pontos abaixo do qual o candidato é marcado suspeito. Lente, não filtro.",
+    )
+    parser.add_argument(
+        "--front-matter",
+        type=int,
+        default=DEFAULT_FRONT_MATTER,
+        help=(
+            "Páginas do começo do livro varridas além da amostra (capa, rosto, prancha). "
+            "A amostra as descarta, e é onde a S-143 achou o falso positivo. 0 desliga."
+        ),
     )
     parser.add_argument("--csv", type=Path, default=None, help="Grava uma linha por candidato.")
     parser.add_argument("--json", type=Path, default=None, help="Grava o resumo por livro.")
@@ -191,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         "max_boards": args.max_boards,
         "reading_order": args.reading_order,
         "suspect_below_pt": args.suspect_below_pt,
+        "front_matter": args.front_matter,
     }
 
     if args.pdf is not None:
@@ -209,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             reading_order=args.reading_order,
             pages_per_book=pages,
             suspect_below_pt=args.suspect_below_pt,
+            front_matter=args.front_matter,
         )
     else:
         pdf_dir = Path(args.pdf_dir)

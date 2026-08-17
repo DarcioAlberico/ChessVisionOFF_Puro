@@ -57,6 +57,27 @@ O dobro do levantamento de lados (`side_survey`), e cabe no mesmo tempo: aqui um
 ~0,4 s porque não há inferência. 27 livros a 24 páginas ficam em ~5 min, que é curto o
 bastante para entrar no hábito de rodar antes de commitar detecção."""
 
+DEFAULT_FRONT_MATTER = 8
+"""Páginas do **começo** do livro que o censo varre além da amostra (S-143).
+
+`sample_pages` descarta as bordas de propósito -- "a primeira e a última página de um livro de
+xadrez são capa, índice ou catálogo, e gastá-las é gastar dois doze avos da amostra em páginas
+que nunca têm diagrama". O raciocínio está certo para *achar diagrama* e é exatamente errado
+para *achar falso positivo*: capa, folha de rosto e prancha de retrato são onde vive o
+ornamento grande, e o censo nunca olhou para lá.
+
+O preço de não olhar, medido: a S-80 registrou o alvo dela -- "capa de capítulo, selo, foto
+quadrada" -- como tendo **zero instâncias confirmadas no acervo**, e arquivou a entrega por
+isso. As instâncias existiam, nas páginas 1 e 7 do `Karpov 1`, fora da amostra. Quem as
+encontrou foi o usuário, abrindo o PDF.
+
+Oito páginas porque é onde a frente do livro acaba no acervo (capa, rosto, créditos, sumário,
+prefácio, pranchas). Medido depois da S-143: 73 dos 99 candidatos de contorno desta faixa não
+tinham contraste de casa nenhum.
+
+**Linha de base anterior a esta constante não tem estas páginas**, então o primeiro diff depois
+da S-143 as mostra como ganho. Ganho não reprova o diff -- `--fail-on-loss` olha perda."""
+
 SUSPECT_BELOW_PT = 72.0
 """Abaixo deste lado em pontos, o candidato é marcado como suspeito no relatório.
 
@@ -241,6 +262,7 @@ class DetectionCensus:
     reading_order: str = DEFAULT_READING_ORDER
     pages_per_book: int | None = DEFAULT_PAGES_PER_BOOK
     suspect_below_pt: float = SUSPECT_BELOW_PT
+    front_matter: int = DEFAULT_FRONT_MATTER
 
     @property
     def rows(self) -> list[CandidateRow]:
@@ -330,18 +352,25 @@ def census_book(
     max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     suspect_below_pt: float = SUSPECT_BELOW_PT,
+    front_matter: int = DEFAULT_FRONT_MATTER,
     on_page: Callable[[int, int], None] | None = None,
 ) -> BookCensus:
     """Censo de um livro. `pages=None` varre o livro inteiro.
 
     Abre o documento **uma vez** e empresta (S-61): a varredura completa do `Secrets` são 1181
     páginas, e três aberturas por página custam 28,80 ms cada no pior livro do acervo.
+
+    `front_matter` acrescenta as N primeiras páginas à amostra, que `sample_pages` descarta de
+    propósito -- e que é onde a S-143 encontrou o defeito que a S-80 deu como inexistente. Ver
+    `DEFAULT_FRONT_MATTER`. `0` desliga e reproduz a amostragem anterior.
     """
     livro = BookCensus(pdf=pdf_path.name, suspect_below_pt=suspect_below_pt)
 
     with opened(pdf_path) as emprestado:
         total = emprestado.doc.page_count
         indices = list(range(total)) if pages is None else sample_pages(total, pages)
+        if pages is not None and front_matter > 0:
+            indices = sorted(set(indices) | set(range(min(front_matter, total))))
         livro.pages_sampled = len(indices)
 
         for posicao, indice in enumerate(indices):
@@ -376,6 +405,7 @@ def census_collection(
     max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     suspect_below_pt: float = SUSPECT_BELOW_PT,
+    front_matter: int = DEFAULT_FRONT_MATTER,
     on_book: Callable[[BookCensus], None] | None = None,
 ) -> DetectionCensus:
     """Todos os PDFs do diretório, em ordem de nome. `on_book(BookCensus)` a cada livro."""
@@ -385,6 +415,7 @@ def census_collection(
         reading_order=reading_order,
         pages_per_book=pages,
         suspect_below_pt=suspect_below_pt,
+        front_matter=front_matter,
     )
     for pdf_path in sorted(Path(pdf_dir).glob("*.pdf")):
         try:
@@ -395,6 +426,7 @@ def census_collection(
                 max_boards=max_boards,
                 reading_order=reading_order,
                 suspect_below_pt=suspect_below_pt,
+                front_matter=front_matter,
             )
         except Exception as exc:  # noqa: BLE001 -- um PDF quebrado nao pode derrubar o acervo
             logger.warning("%s: nao foi possivel abrir (%s: %s)", pdf_path.name, type(exc).__name__, exc)

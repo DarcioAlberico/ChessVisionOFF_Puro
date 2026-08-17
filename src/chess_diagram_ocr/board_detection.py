@@ -180,24 +180,56 @@ def _periodic_peak_score(profile: np.ndarray, period: int) -> float:
     return float(np.clip((np.mean(peaks) - baseline) / spread, 0.0, 1.0))
 
 
-def _board_pattern_score(warped_rgb: np.ndarray) -> float:
+def _small_gray(warped_rgb: np.ndarray) -> np.ndarray:
+    """O recorte em 160x160 cinza -- 20 px por casa, que é onde as duas parcelas foram calibradas."""
     gray = cv2.cvtColor(warped_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
     # 20 px per cell: enough for line and checker texture cues.
-    small = cv2.resize(gray, (160, 160), interpolation=cv2.INTER_AREA)
+    return cv2.resize(gray, (160, 160), interpolation=cv2.INTER_AREA)
 
+
+def _checker_score(small: np.ndarray) -> float:
+    """Quanto as casas de paridade oposta diferem entre si, descontada a variação dentro de cada uma.
+
+    É a parcela que responde **"isto é um tabuleiro?"**, e a única das duas que não tem como
+    ser imitada por acaso: exige que as 32 casas de uma paridade sejam sistematicamente mais
+    claras que as 32 da outra, num reticulado 8×8 alinhado com o recorte. Foto, retrato e
+    moldura não têm 8×8 nenhum, a diferença entre as duas metades é ruído, e o `clip` em 0
+    entrega **exatamente zero** -- ver `MIN_CHECKER_CONTRAST` na S-143.
+
+    Não confundir com "quantas peças há": tabuleiro cheio derruba este número (as peças cobrem
+    as casas) sem zerá-lo, porque o que sobra de casa visível continua sistemático.
+    """
     cell_means = small.reshape(8, 20, 8, 20).mean(axis=(1, 3))
     parity = (np.indices((8, 8)).sum(axis=0) % 2) == 0
     even_cells = cell_means[parity]
     odd_cells = cell_means[~parity]
     contrast = abs(float(even_cells.mean()) - float(odd_cells.mean())) / 255.0
     within_var = (float(even_cells.std()) + float(odd_cells.std())) / (2.0 * 255.0)
-    checker_score = float(np.clip(contrast * 2.4 - within_var * 0.9, 0.0, 1.0))
+    return float(np.clip(contrast * 2.4 - within_var * 0.9, 0.0, 1.0))
 
+
+def _grid_score(small: np.ndarray) -> float:
+    """Quanto a borda do recorte se repete a cada 20 px, nos dois eixos.
+
+    Mede **linha periódica**, que um tabuleiro tem -- e uma moldura de quadro, uma faixa de
+    fotos e uma fachada também. Sozinha ela não distingue tabuleiro de retrato emoldurado
+    (medido: 0,43 a 0,80 nas fotos do relato da S-143), e é por isso que ela não serve de
+    guarda. Como parcela da textura ela continua útil: é o que separa grade nítida de grade
+    borrada entre dois recortes **do mesmo diagrama**, que é o uso da S-38 e da S-81.
+    """
     gx = np.abs(np.diff(small, axis=1)).mean(axis=0)
     gy = np.abs(np.diff(small, axis=0)).mean(axis=1)
-    grid_score = (_periodic_peak_score(gx, period=20) + _periodic_peak_score(gy, period=20)) / 2.0
+    return (_periodic_peak_score(gx, period=20) + _periodic_peak_score(gy, period=20)) / 2.0
 
-    return float(np.clip(0.6 * checker_score + 0.4 * grid_score, 0.0, 1.0))
+
+def _board_pattern_score(warped_rgb: np.ndarray) -> float:
+    small = _small_gray(warped_rgb)
+    return float(np.clip(0.6 * _checker_score(small) + 0.4 * _grid_score(small), 0.0, 1.0))
+
+
+def board_checker_score(warped_rgb: np.ndarray) -> float:
+    """Só a parcela de xadrez de `_board_pattern_score`, para quem precisa dela isolada."""
+    return _checker_score(_small_gray(warped_rgb))
 
 
 def _extract_candidate_quads(image_rgb: np.ndarray) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
