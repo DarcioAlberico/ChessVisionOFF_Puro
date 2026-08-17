@@ -1,7 +1,7 @@
 # Roadmap — Fases 14 a 19
 
 Continuação de [ROADMAP_FASE7.md](ROADMAP_FASE7.md), que fecha na Fase 13. Especificação
-detalhada em [SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-141). Para o *como* de hoje,
+detalhada em [SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-142). Para o *como* de hoje,
 [ARCHITECTURE.md](ARCHITECTURE.md); para os números anteriores, [BASELINE.md](BASELINE.md) e
 [EXPERIMENTS_FASE7.md](EXPERIMENTS_FASE7.md).
 
@@ -424,7 +424,7 @@ versionado, ou com backup documentado, mas **decidido**.
 | 17.1 | `Ctrl+S` deixa de reler o `labels.csv` inteiro na thread da janela | S-116 | ✅ 718 → 46 ms (falta o corte 2, ~31 ms) |
 | 17.2 | A seta não executa dois painéis ao mesmo tempo | S-117 | ⬜ |
 | 17.3 | O DatasetPanel não perde a página e a seleção a cada correção | S-118 | ✅ |
-| 17.4 | Uma varredura por livro em vez de duas | S-119 | ⬜ |
+| 17.4 | Uma varredura por livro em vez de duas | S-119 | ⚠ biblioteca feita; falta o botão único |
 | 17.5 | A varredura da Galeria é retomável e diz até onde foi | S-120 | ✅ |
 | 17.6 | O acervo varrido sem janela aberta | S-121 | ⬜ |
 | 17.7 | O OCR ligado por padrão | S-122 | ⬜ |
@@ -432,6 +432,7 @@ versionado, ou com backup documentado, mas **decidido**.
 | 17.9 | A consulta por nome alcança as duas cores, e paga o porteiro | S-139 | ✅ |
 | 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ⬜ |
 | 17.11 | O processo filho não reimporta `torch` e a UI | S-141 | ⬜ |
+| 17.12 | A página concluída se diz concluída, e o verde aparece na primeira visita | S-142 | ✅ |
 
 **Critério de saída:** o ciclo corrigir→salvar→seguinte custa menos de 0,05 s de janela
 travada; abrir um livro novo custa **uma** varredura; o número de livros do acervo com índice

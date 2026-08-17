@@ -10,6 +10,7 @@ import numpy as np
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.detection import DiagramCandidate
+from chess_diagram_ocr.gallery_scan import build_gallery_index
 from chess_diagram_ocr.inference import OrientedPrediction, prediction_from_probs
 from chess_diagram_ocr.pdf_text import DiagramContext
 from chess_diagram_ocr.pdf_to_pgn import DiagramPosition, ScannedDiagram
@@ -18,6 +19,7 @@ from chess_diagram_ocr.review_queue import (
     WEIGHT_ORIENTATION_AMBIGUOUS,
     ReviewItem,
     ReviewQueue,
+    ReviewQueueBuilder,
     build_review_queue,
     error_rate,
     item_from_scanned,
@@ -352,3 +354,104 @@ class RareClassTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UmaVarreduraPorLivroTests(unittest.TestCase):
+    """A fila sai da **mesma** passada que o índice da Galeria (S-119).
+
+    `build_gallery_index` e `build_review_queue` percorriam o mesmo `iter_pdf_diagrams`, com os
+    mesmos parâmetros, e gravavam em arquivos diferentes -- nenhum consumindo o resultado do
+    outro. Medido no `PDF/1000 Chess Problems` (420 páginas): **338 s + 299 s**. Abrir um livro
+    novo custava ~5 min antes de qualquer trabalho humano, e mais ~5 min quando se descobria
+    que a outra aba também precisava da própria varredura.
+
+    É uma das razões de **27 dos 34 livros** nunca terem sido abertos.
+    """
+
+    def setUp(self) -> None:
+        self.patches = [
+            patch("chess_diagram_ocr.pdf_to_pgn._get_pdf_page_count", return_value=3),
+            patch("chess_diagram_ocr.pdf_to_pgn.load_model", return_value=("model", "cpu")),
+            patch(
+                "chess_diagram_ocr.pdf_to_pgn._render_pdf_page",
+                side_effect=lambda *a, **k: np.zeros((10, 10, 3), dtype=np.uint8),
+            ),
+            patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams", side_effect=lambda *a, **k: [candidate()]),
+            patch("chess_diagram_ocr.pdf_to_pgn._page_contexts", side_effect=lambda *a, **k: [DiagramContext()]),
+        ]
+        for item in self.patches:
+            item.start()
+        self.addCleanup(lambda: [item.stop() for item in self.patches])
+
+    LEITURAS = (KINGS_ONLY, 0.999), (KINGS_ONLY, 0.20), (EMPTY_BOARD, 0.95)
+
+    def _leituras(self) -> list:
+        return [oriented(fen, conf) for fen, conf in self.LEITURAS]
+
+    def test_a_fila_derivada_da_varredura_unica_e_identica_a_varrida_direto(self) -> None:
+        """**O critério de aceite**: os mesmos itens, na mesma ordem.
+
+        A equivalência é estrutural e não coincidência -- os dois caminhos passam pelo mesmo
+        `ReviewQueueBuilder`. O teste existe para que continue sendo.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Path(tmpdir)
+            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+                direta = build_review_queue(Path("livro.pdf"), cache_dir=cache)
+
+            construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=cache, confirmed={})
+            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+                indice = build_gallery_index(
+                    Path("livro.pdf"), cache_dir=cache, on_scanned=construtor.feed, now="2026-08-17"
+                )
+            derivada = construtor.finish(created_at="2026-08-17")
+
+        self.assertEqual(len(indice), 3, "e o índice sai da mesma passada, inteiro")
+        self.assertEqual(
+            [(i.page_index, i.diagram_index, i.priority, i.reasons) for i in direta.items],
+            [(i.page_index, i.diagram_index, i.priority, i.reasons) for i in derivada.items],
+        )
+        self.assertEqual(direta.scanned_diagrams, derivada.scanned_diagrams)
+        self.assertEqual(direta.pages_scanned, derivada.pages_scanned)
+
+    def test_o_indice_nao_muda_por_causa_do_callback(self) -> None:
+        """A varredura da Galeria não pode passar a depender de quem está ouvindo."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Path(tmpdir)
+            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+                sozinho = build_gallery_index(Path("livro.pdf"), cache_dir=cache, now="2026-08-17")
+
+            construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=cache, confirmed={})
+            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+                com_fila = build_gallery_index(
+                    Path("livro.pdf"), cache_dir=cache, on_scanned=construtor.feed, now="2026-08-17"
+                )
+
+        self.assertEqual(sozinho.to_dict(), com_fila.to_dict())
+
+    def test_o_limite_continua_cortando_depois_de_ordenar(self) -> None:
+        """O corte é do acumulador, então ele vale nos dois caminhos -- e continua sendo
+        depois da ordenação, senão "fila truncada" pareceria "o livro só tinha 30 problemas"."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=Path(tmpdir), confirmed={}, limit=1)
+            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+                build_gallery_index(Path("livro.pdf"), cache_dir=Path(tmpdir), on_scanned=construtor.feed)
+            fila = construtor.finish()
+
+        self.assertEqual(len(fila.items), 1)
+        self.assertTrue(fila.items[0].reasons[0].startswith("ilegal"), "o de maior prioridade, e não o primeiro lido")
+
+    def test_a_confirmacao_da_base_e_lida_uma_vez_na_construcao(self) -> None:
+        """Ler as anotações do livro por diagrama seria trocar duas varreduras de PDF por N
+        leituras de JSON -- e o item existe para tirar trabalho do laço, não para mudá-lo de
+        lugar."""
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "chess_diagram_ocr.review_queue.load_annotations"
+        ) as anotacoes:
+            anotacoes.return_value.entries = {}
+            construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=Path(tmpdir))
+            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+                build_gallery_index(Path("livro.pdf"), cache_dir=Path(tmpdir), on_scanned=construtor.feed)
+            construtor.finish()
+
+        self.assertEqual(anotacoes.call_count, 1)

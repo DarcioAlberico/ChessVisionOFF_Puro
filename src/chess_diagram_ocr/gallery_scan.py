@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -40,7 +40,7 @@ from .config import (
     ReadingOrder,
 )
 from .gallery import DEFAULT_GALLERY_DIR
-from .pdf_to_pgn import ProgressCallback, iter_pdf_diagrams
+from .pdf_to_pgn import ProgressCallback, ScannedDiagram, iter_pdf_diagrams
 from .review_queue import DEFAULT_CACHE_DIR, cache_board_image
 
 logger = logging.getLogger(__name__)
@@ -246,6 +246,7 @@ def build_gallery_index(
     model_session: Any = None,
     now: str | None = None,
     resume_from: GalleryIndex | None = None,
+    on_scanned: Callable[[ScannedDiagram], None] | None = None,
 ) -> GalleryIndex:
     """Varre o livro e devolve **todos** os diagramas, sem gate e sem filtro de prioridade.
 
@@ -258,6 +259,16 @@ def build_gallery_index(
     ordem de leitura, é ignorado -- no primeiro caso não há o que retomar, e no segundo a
     numeração de diagrama por página muda (S-14) e as entradas antigas descreveriam outros
     diagramas.
+
+    `on_scanned` recebe cada diagrama lido, com tudo o que a varredura produziu sobre ele
+    (S-119). É o que permite montar a **fila de revisão na mesma passada**: as duas percorriam
+    o mesmo `iter_pdf_diagrams` com os mesmos parâmetros e gravavam em arquivos diferentes --
+    338 s + 299 s medidos no `1000 Chess Problems`, ~5 min antes de qualquer trabalho humano e
+    outros ~5 quando se descobria que a outra aba também precisava da própria varredura.
+
+    Um *callback* e não um segundo tipo de retorno porque a varredura da Galeria não deve
+    conhecer a fila: quem liga os dois é quem chama, e `ReviewQueueBuilder.feed` tem
+    exatamente esta assinatura.
     """
     pdf_path = Path(pdf_source)
     entradas: list[GalleryEntry] = []
@@ -300,6 +311,8 @@ def build_gallery_index(
         progress_callback=_progresso,
         model_session=model_session,
     ):
+        if on_scanned is not None:
+            on_scanned(scanned)
         posicao = scanned.position
         paginas.add(posicao.page_index)
         imagem = cache_board_image(

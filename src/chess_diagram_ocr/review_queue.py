@@ -460,6 +460,101 @@ def item_from_scanned(
     )
 
 
+class ReviewQueueBuilder:
+    """Monta a fila a partir dos `ScannedDiagram` de **uma** varredura (S-119).
+
+    **O que ele existe para eliminar são duas passadas pelo mesmo livro.**
+    `build_gallery_index` e `build_review_queue` percorriam o mesmo `iter_pdf_diagrams`, com os
+    mesmos parâmetros, e gravavam em arquivos diferentes -- nenhum consumindo o resultado do
+    outro. Medido no `PDF/1000 Chess Problems` (420 páginas): **338 s + 299 s**. Abrir um livro
+    novo custava ~5 min antes de qualquer trabalho humano, e mais ~5 min quando se descobria
+    que a outra aba também precisava da própria varredura. É uma das razões de 27 dos 34 livros
+    nunca terem sido abertos.
+
+    **Por que um acumulador e não "derivar do `GalleryIndex`", que era a proposta do
+    enunciado.** O índice **não** é superconjunto da fila: ele guarda colocação, confiança
+    mínima, legalidade e legenda, e a prioridade da S-22 precisa de `mean_entropy`,
+    `uncertain_squares` e das casas que o decodificador reparou -- que a `GalleryEntry` não
+    carrega. Derivar dali daria uma fila *parecida*, e o critério de aceite pede a **mesma**.
+    Alargar a `GalleryEntry` para caber tudo faria o índice de cada livro crescer para servir
+    a um consumidor que já tem arquivo próprio.
+
+    Com o acumulador, `build_review_queue` e a varredura única passam pelo **mesmo** código de
+    montagem: a equivalência entre as duas filas é estrutural, e não uma coincidência que um
+    teste vigia.
+    """
+
+    def __init__(
+        self,
+        pdf_path: Path,
+        *,
+        cache_dir: Path = DEFAULT_CACHE_DIR,
+        rare_classes: Collection[str] = (),
+        accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+        confirmed: Mapping[tuple[int, int], str] | None = None,
+        limit: int | None = None,
+    ) -> None:
+        self.pdf_path = Path(pdf_path)
+        self.cache_dir = Path(cache_dir)
+        self.rare_classes = rare_classes
+        self.accept_threshold = accept_threshold
+        self.confirmed = confirmed if confirmed is not None else confirmed_by_database(self.pdf_path)
+        self.limit = limit
+        self.items: list[ReviewItem] = []
+        self.scanned_count = 0
+        self.pages: set[int] = set()
+        if self.confirmed:
+            logger.info("%d diagrama(s) deste livro já foram confirmados pela base (S-74).", len(self.confirmed))
+
+    def feed(self, scanned: ScannedDiagram) -> None:
+        """Um diagrama lido. Serve como `on_scanned` de `build_gallery_index`."""
+        self.scanned_count += 1
+        self.pages.add(scanned.position.page_index)
+        item = item_from_scanned(
+            scanned,
+            pdf_path=self.pdf_path,
+            cache_dir=self.cache_dir,
+            rare_classes=self.rare_classes,
+            accept_threshold=self.accept_threshold,
+            confirmed=self.confirmed,
+        )
+        if item is not None:
+            self.items.append(item)
+
+    def finish(self, *, created_at: str | None = None) -> ReviewQueue:
+        """A fila ordenada, e cortada pelo `limit` **depois** de ordenar."""
+        queue = ReviewQueue(
+            source_pdf=str(self.pdf_path),
+            created_at=created_at or datetime.now().isoformat(timespec="seconds"),
+            items=self.items,
+            scanned_diagrams=self.scanned_count,
+            pages_scanned=len(self.pages),
+        )
+        queue.sort()
+        if self.limit is not None and len(queue.items) > self.limit:
+            logger.info(
+                "Fila cortada em %d itens; %d ficaram de fora.", self.limit, len(queue.items) - self.limit
+            )
+            queue.items = queue.items[: self.limit]
+        return queue
+
+
+def confirmed_by_database(
+    pdf_path: Path, *, reading_order: ReadingOrder = DEFAULT_READING_ORDER
+) -> dict[tuple[int, int], str]:
+    """Quais diagramas deste livro a base já confirmou (S-74).
+
+    As anotações do livro são a fonte, e não um arquivo próprio da fila: quem grava a
+    confirmação é o `cvoff-games` (S-72/S-74), e um segundo lugar para essa verdade morar só
+    teria como divergir do primeiro -- a decisão da S-34 sobre o `--skip-existing`.
+    """
+    return {
+        chave: anotacao.confirmed_from
+        for chave, anotacao in load_annotations(pdf_path, reading_order=reading_order).entries.items()
+        if anotacao.confirmed_from
+    }
+
+
 def build_review_queue(
     pdf_source: Path,
     model_path: Path = DEFAULT_MODEL_PATH,
@@ -496,21 +591,18 @@ def build_review_queue(
     do lado a jogar incluída (S-43).
     """
     pdf_path = Path(pdf_source)
-    items: list[ReviewItem] = []
-    scanned_count = 0
-    pages: set[int] = set()
-
     if confirmed is None:
-        # As anotacoes do livro sao a fonte, e nao um arquivo proprio da fila: quem grava a
-        # confirmacao e o `cvoff-games` (S-72/S-74), e um segundo lugar para essa verdade morar
-        # so teria como divergir do primeiro -- a decisao da S-34 sobre o `--skip-existing`.
-        confirmed = {
-            chave: anotacao.confirmed_from
-            for chave, anotacao in load_annotations(pdf_path, reading_order=reading_order).entries.items()
-            if anotacao.confirmed_from
-        }
-    if confirmed:
-        logger.info("%d diagrama(s) deste livro já foram confirmados pela base (S-74).", len(confirmed))
+        confirmed = confirmed_by_database(pdf_path, reading_order=reading_order)
+    # O mesmo acumulador da varredura unica (S-119): os dois caminhos passam pelo mesmo codigo
+    # de montagem, entao a equivalencia entre as duas filas e estrutural.
+    builder = ReviewQueueBuilder(
+        pdf_path,
+        cache_dir=cache_dir,
+        rare_classes=rare_classes,
+        accept_threshold=accept_threshold,
+        confirmed=confirmed,
+        limit=limit,
+    )
 
     for scanned in iter_pdf_diagrams(
         pdf_path,
@@ -527,31 +619,9 @@ def build_review_queue(
         progress_callback=progress_callback,
         model_session=model_session,
     ):
-        scanned_count += 1
-        pages.add(scanned.position.page_index)
-        item = item_from_scanned(
-            scanned,
-            pdf_path=pdf_path,
-            cache_dir=cache_dir,
-            rare_classes=rare_classes,
-            accept_threshold=accept_threshold,
-            confirmed=confirmed,
-        )
-        if item is not None:
-            items.append(item)
+        builder.feed(scanned)
 
-    queue = ReviewQueue(
-        source_pdf=str(pdf_path),
-        created_at=datetime.now().isoformat(timespec="seconds"),
-        items=items,
-        scanned_diagrams=scanned_count,
-        pages_scanned=len(pages),
-    )
-    queue.sort()
-    if limit is not None and len(queue.items) > limit:
-        logger.info("Fila cortada em %d itens; %d ficaram de fora.", limit, len(queue.items) - limit)
-        queue.items = queue.items[:limit]
-    return queue
+    return builder.finish()
 
 
 def merge_queues(existing: ReviewQueue, fresh: ReviewQueue) -> ReviewQueue:
