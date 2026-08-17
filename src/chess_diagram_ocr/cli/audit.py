@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 
 from ..audit import (
@@ -11,14 +12,16 @@ from ..audit import (
     apply_side_to_move_fixes,
     audit_dataset,
     backup_csv,
+    dedupe_summary,
     drop_missing_labels,
     filenames_without_split,
     orphans_dir_for,
     prune_orphan_images,
     quarantine_fatal_labels,
     remove_duplicate_labels,
+    write_dedupe_summary,
 )
-from ..config import DEFAULT_DATASET_CSV, DEFAULT_SAMPLES_DIR, PIECE_CLASSES
+from ..config import DEFAULT_DATASET_CSV, DEFAULT_SAMPLES_DIR, PIECE_CLASSES, PROJECT_ROOT
 from ..labels import label_origins
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits, split_leaks
@@ -27,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_QUARANTINE = DEFAULT_DATASET_CSV.parent / "quarantine.csv"
 DEFAULT_SPLITS = DEFAULT_DATASET_CSV.parent / "splits.csv"
+DEFAULT_METRICS_DIR = PROJECT_ROOT / "docs" / "metrics"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -263,6 +267,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     backup_csv(args.csv)
+
+    if args.dedupe:
+        # **Antes** de remover, porque depois nao ha como saber de que split cada linha saiu:
+        # o resumo e o denominador de toda medicao anterior a esta limpeza (S-101).
+        caminho = write_dedupe_summary(
+            dedupe_summary(report, args.splits),
+            DEFAULT_METRICS_DIR,
+            stamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+        )
+        print(f"Resumo do dedupe em {caminho}")
 
     if args.fix_side_to_move:
         applied = apply_side_to_move_fixes(args.csv, report)

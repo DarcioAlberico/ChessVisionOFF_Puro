@@ -13,10 +13,12 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
 
+from .atomic_io import atomic_write_json
 from .config import PIECE_CLASSES
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .labels import LabelStore
@@ -101,8 +103,6 @@ class AuditReport:
     @property
     def duplicates_above_ceiling(self) -> bool:
         return self.duplicate_share > DUPLICATE_SHARE_CEILING
-
-
 def dhash(image_bgr: np.ndarray, hash_size: int = DUPLICATE_HASH_SIZE) -> int:
     """Hash perceptual (dHash) de `hash_size**2` bits.
 
@@ -404,6 +404,72 @@ def remove_duplicate_labels(csv_path: Path, report: AuditReport) -> int:
         return 0
 
     return LabelStore(csv_path).remove(to_remove)
+
+
+def dedupe_summary(report: AuditReport, splits_path: Path) -> dict[str, Any]:
+    """O que um `--dedupe` tiraria de cada split, **antes** de tirar (S-101).
+
+    **O alarme original deste item era falso, e o registro é o que sobra dele.** A primeira
+    leitura foi que `remove_duplicate_labels` encolheria `val`/`test` "sem consultar o split" e
+    quebraria a comparabilidade. A primeira metade é verdade; a segunda não. Medido: dos 373
+    grupos redundantes, **0** se espalham entre splits, porque `splits.group_keys` mapeia cada
+    membro para `sorted(group)[0]` -- exatamente o nome que `find_duplicate_groups` mantém.
+    Toda linha de `val`/`test` que sai é cópia de um representante que fica no mesmo `val`/
+    `test`, e o conjunto de diagramas **distintos** de cada split não muda.
+
+    O que muda é a **contagem**: o `test` passaria de 354 para 332 linhas. Um número medido
+    depois deixa de ser comparável, por denominador, com um medido antes -- e nada avisava. É o
+    mesmo problema da S-100, noutro artefato.
+
+    Por isso esta função existe e não muda comportamento nenhum: ela grava o denominador.
+    """
+    splits = load_splits(Path(splits_path))
+    removidos = [name for group in report.duplicate_groups for name in group[1:]]
+
+    antes: Counter[str] = Counter(splits.values())
+    saindo: Counter[str] = Counter(splits.get(name, _SEM_SPLIT) for name in removidos)
+    grupos_entre_splits = [
+        group
+        for group in report.duplicate_groups
+        if len({splits.get(name, _SEM_SPLIT) for name in group}) > 1
+    ]
+
+    por_split = {
+        nome: {
+            "antes": antes.get(nome, 0),
+            "removidos": saindo.get(nome, 0),
+            "depois": antes.get(nome, 0) - saindo.get(nome, 0),
+        }
+        for nome in sorted(set(antes) | set(saindo))
+    }
+    return {
+        "csv": str(report.csv_path),
+        "rows_before": report.total_rows,
+        "valid_before": report.valid_rows,
+        "duplicate_groups": len(report.duplicate_groups),
+        "removed": len(removidos),
+        "by_split": por_split,
+        # Zero hoje, e é o número que refuta o alarme original -- ver o docstring. Fica no
+        # arquivo para que a próxima limpeza mostre se isso deixou de ser verdade.
+        "groups_across_splits": len(grupos_entre_splits),
+    }
+
+
+_SEM_SPLIT = "(sem split)"
+"""Como uma linha sem split aparece no resumo. Não é `""` para não sumir num relatório."""
+
+
+def write_dedupe_summary(summary: dict[str, Any], directory: Path, *, stamp: str) -> Path:
+    """Grava o resumo em `docs/metrics/dedupe_<stamp>.json`. Devolve o caminho.
+
+    Em `docs/metrics/` e não em `data/`: é a mesma categoria dos relatórios de campo e de
+    censo -- número publicado, versionado, e que serve para explicar por que um denominador
+    mudou entre duas medições.
+    """
+    caminho = Path(directory) / f"dedupe_{stamp}.json"
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(caminho, summary)
+    return caminho
 
 
 def orphans_dir_for(samples_dir: Path) -> Path:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from chess_diagram_ocr.audit import (
     apply_side_to_move_fixes,
     audit_dataset,
     backup_csv,
+    dedupe_summary,
     dhash,
     drop_missing_labels,
     find_duplicate_groups,
@@ -22,6 +24,7 @@ from chess_diagram_ocr.audit import (
     quarantine_fatal_labels,
     read_label_rows,
     remove_duplicate_labels,
+    write_dedupe_summary,
 )
 from chess_diagram_ocr.labels import ILLEGAL_OK
 
@@ -398,3 +401,78 @@ class HygieneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DedupeSummaryTests(unittest.TestCase):
+    """O que o `--dedupe` tirou de cada split, gravado antes de tirar (S-101).
+
+    **O alarme original deste item era falso, e o registro é o que sobra dele.** A primeira
+    leitura foi que o dedupe encolheria `val`/`test` "sem consultar o split" e quebraria a
+    comparabilidade. A primeira metade é verdade; a segunda não -- `splits.group_keys` mapeia
+    cada membro para `sorted(group)[0]`, exatamente o nome que `find_duplicate_groups` mantém,
+    então toda linha que sai é cópia de um representante que fica **no mesmo split**.
+
+    O que muda é a contagem, e é ela que faz um número medido depois deixar de ser comparável,
+    por denominador, com um medido antes.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fixture = Fixture(self.tmp.name)
+        imagem = _board_image(7)
+        for nome in ("a.png", "b.png", "c.png"):
+            self.fixture.add(nome, LEGAL, image=imagem)
+        self.fixture.add("d.png", LEGAL_OTHER)
+        self.fixture.write()
+
+        self.splits = Path(self.tmp.name) / "splits.csv"
+        self.splits.write_text(
+            "filename,split\na.png,test\nb.png,test\nc.png,test\nd.png,train\n", encoding="utf-8"
+        )
+        self.report = audit_dataset(self.fixture.csv, self.fixture.samples)
+
+    def test_o_resumo_diz_quanto_cada_split_encolhe(self) -> None:
+        resumo = dedupe_summary(self.report, self.splits)
+
+        self.assertEqual(resumo["removed"], 2, "b e c são cópias de a")
+        self.assertEqual(resumo["by_split"]["test"], {"antes": 3, "removidos": 2, "depois": 1})
+        self.assertEqual(resumo["by_split"]["train"], {"antes": 1, "removidos": 0, "depois": 1})
+
+    def test_o_representante_fica_no_mesmo_split_das_copias(self) -> None:
+        """**O número que refuta o alarme original.** Zero grupos atravessam split, e não é
+        sorte: é a S-07 funcionando. Fica no arquivo para que a próxima limpeza mostre se
+        isso deixou de ser verdade."""
+        self.assertEqual(dedupe_summary(self.report, self.splits)["groups_across_splits"], 0)
+
+    def test_grupo_que_atravessa_split_aparece_no_resumo(self) -> None:
+        """Se a garantia da S-07 quebrar, o resumo é onde isso fica visível."""
+        self.splits.write_text(
+            "filename,split\na.png,test\nb.png,train\nc.png,test\nd.png,train\n", encoding="utf-8"
+        )
+        self.assertEqual(dedupe_summary(self.report, self.splits)["groups_across_splits"], 1)
+
+    def test_linha_sem_split_nao_some_da_conta(self) -> None:
+        self.splits.write_text("filename,split\na.png,test\nd.png,train\n", encoding="utf-8")
+        resumo = dedupe_summary(self.report, self.splits)
+        self.assertEqual(resumo["by_split"]["(sem split)"]["removidos"], 2)
+
+    def test_o_resumo_vai_para_o_disco_com_a_data_no_nome(self) -> None:
+        """Em `docs/metrics/`, com o resto do que é número publicado: é o denominador que
+        explica por que duas medições da mesma coisa não batem."""
+        destino = Path(self.tmp.name) / "metrics"
+        caminho = write_dedupe_summary(dedupe_summary(self.report, self.splits), destino, stamp="20260816_2200")
+
+        self.assertEqual(caminho.name, "dedupe_20260816_2200.json")
+        gravado = json.loads(caminho.read_text(encoding="utf-8"))
+        self.assertEqual(gravado["removed"], 2)
+        self.assertEqual(gravado["by_split"]["test"]["depois"], 1)
+
+    def test_o_resumo_e_de_antes_e_confere_com_o_que_saiu(self) -> None:
+        """O critério de aceite: a contagem por split bate com o que o `--dedupe` removeu."""
+        resumo = dedupe_summary(self.report, self.splits)
+        removidos = remove_duplicate_labels(self.fixture.csv, self.report)
+
+        self.assertEqual(removidos, resumo["removed"])
+        soma = sum(parcial["removidos"] for parcial in resumo["by_split"].values())
+        self.assertEqual(soma, removidos)
