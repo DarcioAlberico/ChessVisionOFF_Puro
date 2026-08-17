@@ -381,9 +381,9 @@ melhorá-la.
 | 15.1 | O `--dedupe` registra o denominador que ele muda | S-101 | ✅ |
 | 15.2 | A auditoria barra em vez de relatar | S-102 | ✅ |
 | 15.3 | `split_hash` conferido: `cvoff-eval` **avisa** sobre o modelo de outra partição | S-103 | ✅ |
-| 15.4 | A época salva tem critério de desempate | S-104 | ⬜ |
-| 15.5 | O checkpoint guarda o que reproduz o número | S-105 | ⬜ |
-| 15.6 | `cvoff-experiment` não reatribui splits no meio da grade | S-106 | ⬜ |
+| 15.4 | A época salva tem critério de desempate | S-104 | ⚠ ferramenta feita; medição rodando |
+| 15.5 | O checkpoint guarda o que reproduz o número | S-105 | ✅ |
+| 15.6 | `cvoff-experiment` não reatribui splits no meio da grade | S-106 | ✅ |
 | 15.7 | O retreino de produção, e a decisão sobre o candidato de 2026-08-11 | S-107 | ✅ medido — **não promover o `mhsp`** |
 | 15.8 | Os livros que exportam zero ganham rótulo no dataset | S-108 | ⬜ |
 

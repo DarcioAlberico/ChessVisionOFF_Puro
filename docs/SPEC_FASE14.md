@@ -736,7 +736,7 @@ $ cvoff-eval --split val --model models/piece_classifier.pt
 
 ---
 
-## S-104 · O desempate entre épocas empatadas: medir antes de mudar
+## S-104 · O desempate entre épocas empatadas: medir antes de mudar ⚠ ferramenta feita (2026-08-17)
 
 > **Dívida de baixa severidade, e o item é uma medição.** A primeira versão desta análise
 > classificou isto como defeito e propôs a mudança direto. A verificação derrubou a
@@ -783,9 +783,29 @@ Fase 14. Três resultados possíveis, e os três são resposta:
 **Testes.** `tests/test_training.py` — `--keep-ties` grava os dois e não altera o padrão; o
 teste `test_empatar_nao_regrava` continua verde e intacto.
 
+### O que foi entregue: a ferramenta. A decisão espera o número.
+
+`--keep-ties` grava a época empatada em `<modelo>.tie-e<N>.pt`, **ao lado e não por cima**: o
+principal continua sendo o que a política escolheu, e a comparação entre os dois é o que se
+quer medir. Um nome por época porque um treino pode empatar mais de uma vez.
+
+O arquivo carrega `tie_with_best_epoch` nos metadados — sem isso, um `.tie-*.pt` copiado para
+outro nome seria indistinguível de um checkpoint que a política escolheu, e o experimento
+inteiro depende de saber qual é qual.
+
+A guarda mora **antes** do `observe`: ele move o incumbente, e depois dele não há mais como
+saber que a época empatou em vez de perder.
+
+**Cinco testes**, entre eles o que separa "empatou" de "piorou" e o que confirma que sem a flag
+nada muda. `test_empatar_nao_regrava` continua verde e intacto.
+
+**A decisão não está tomada**, e é isso que o critério de aceite pede que fique registrado. A
+medição está rodando: um treino com `--keep-ties` sobre o mesmo dataset e semente do controle
+da S-107, seguido de `cvoff-field` no principal e no empatado.
+
 ---
 
-## S-105 · O checkpoint guarda o que reproduz o número
+## S-105 · O checkpoint guarda o que reproduz o número ✅ implementada (2026-08-17)
 
 **Problema.** Os metadados de `models/piece_classifier.pt` trazem `arch_version`, `seed`,
 `class_weights`, `augment_version`, `split_hash`, `dataset_size`, `git_commit`, `best_metric` e
@@ -807,9 +827,29 @@ intacto.
 **Testes.** `tests/test_checkpoint.py` — os campos novos; `labels_hash` estável sob reordenação
 e sensível a uma FEN corrigida.
 
+### O que foi entregue
+
+Quatro campos de otimização em `_optim_metadata` — `lr`, `batch_size`, `epochs_requested`,
+`patience` e `optimizer`. **Não é `asdict(optim)` inteiro**: isso traria `augment` como
+dicionário aninhado e `class_weights`/`seed` duplicados, e os três já têm nome próprio nos
+metadados desde a S-27 e a S-40.
+
+`optimizer` é gravado mesmo sendo fixo hoje. Um metadado ausente e um metadado que diz `adam`
+são a mesma coisa **até** o dia em que o otimizador mudar — e aí o segundo continua verdadeiro
+sobre os checkpoints antigos e o primeiro não diz nada sobre nenhum.
+
+E `labels_hash`, com três decisões que têm teste cada: **ordenado** (a ordem das linhas muda a
+cada reescrita do `LabelStore` e não é parte da resposta), **sensível a uma FEN corrigida** (o
+caso que o `split_hash` não vê), e **só o split de treino** (`val`/`test` mudarem não altera o
+que o modelo aprendeu; quem vigia os reservados é o `split_hash`).
+
+Os testes moram em `tests/test_training.py` e não em `test_checkpoint.py`: é lá que estão o
+`_tiny_dataset` e o `TrainingPlan` de que o critério de aceite precisa — dois treinos de
+verdade que diferem só no `--lr`, com os metadados conferidos lado a lado.
+
 ---
 
-## S-106 · `cvoff-experiment` não reatribui splits no meio da grade
+## S-106 · `cvoff-experiment` não reatribui splits no meio da grade ✅ implementada (2026-08-17)
 
 **Problema.** `cli/experiment.py:41` faz `splits = load_splits(args.splits)` **uma vez, antes**
 da grade, e passa esse dicionário congelado a `run_variant`. Dentro dele, `experiments.py:115-128`
@@ -830,6 +870,17 @@ split, o comando recusa e diz o que fazer.
 
 **Testes.** `tests/test_experiments.py` — o `splits.csv` intacto depois da grade; a recusa com
 amostra sem split.
+
+### O que foi entregue
+
+`run_variant` passa `assign_splits=False`, e `cvoff-experiment` recusa começar enquanto houver
+amostra sem split — **antes** de começar, porque descobrir isso depois de sete treinos custa
+horas. A mensagem manda rodar `cvoff-train --epochs 1` uma vez.
+
+**Cinco testes num arquivo novo** (`tests/test_experiments.py` não existia), e três falham no
+código anterior: o `splits.csv` intacto depois de uma variante, as duas variantes vendo a mesma
+partição, e a recusa. Os outros dois são guardas — ler não escreve nem quando não há nada a
+atribuir, e a guarda anterior (splits ausente) continua de pé com a mensagem dela.
 
 ---
 
