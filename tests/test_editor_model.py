@@ -8,7 +8,9 @@ amostra da mesma imagem deixando o rótulo errado no arquivo (S-23).
 
 from __future__ import annotations
 
+import ast
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -309,3 +311,73 @@ class SecondOpinionTests(unittest.TestCase):
         parecer = model.mark_second_opinion(0, PLACEMENT, reader="leitor")
         self.assertEqual(parecer.disputed, ())
         self.assertEqual(model.label_route(0, PLACEMENT), "segunda-opiniao")
+
+
+SEM_TKINTER = {
+    "board_edit.py": "as regras de edição do tabuleiro (S-49)",
+    "board_model.py": "o estado do tabuleiro, sem widget",
+    "busy.py": "o que se perde ao fechar a janela, decidido fora dela (S-60)",
+    "editor_model.py": "o que 'salvar' significa, dado o vínculo (S-49)",
+    "field_draft.py": "o rascunho do conjunto de campo (S-41)",
+    "gallery_model.py": "a navegação e as anotações da Galeria (S-67)",
+    "legality.py": "a explicação de por que a posição é ilegal",
+    "page_overlay.py": "a geometria das caixas sobre a página",
+    "page_results.py": "os resultados de uma página, sem tela",
+    "state.py": "o estado da aplicação em disco",
+    "strings.py": "o vocabulário da interface (S-04)",
+    "viewport.py": "o zoom e a rolagem, como aritmética",
+}
+"""Os módulos de `ui/` que **não** podem importar `tkinter`, e o que cada um é (S-137).
+
+A separação que sustenta toda a testabilidade da interface estava declarada em seis docstrings
+e verificada em **quatro** módulos. A lista é o teste: um módulo novo sem Tk que não esteja
+aqui não é vigiado, e um daqui que passe a importar `tkinter` falha a suíte.
+
+**Importar `tkinter` não é proibido em `ui/`** -- a maioria dos painéis o faz, e é o que eles
+são. O que a lista fixa é o conjunto que decidiu **não** fazê-lo, porque é dele que sai a
+possibilidade de testar decisão de interface sem abrir janela."""
+
+
+class SemTkinterTests(unittest.TestCase):
+    """A varredura é sobre a **árvore de importação** e não sobre o texto.
+
+    Vários destes módulos citam `import tkinter` no docstring para dizer que ele não existe
+    ali, e um `assertNotIn` sobre o texto reprovaria a própria explicação -- é a razão que o
+    `NoTkinterTests` acima já registrava para um módulo só.
+    """
+
+    def _importados(self, caminho: Path) -> set[str]:
+        arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+        nomes: set[str] = set()
+        for node in ast.walk(arvore):
+            if isinstance(node, ast.Import):
+                nomes.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                nomes.add(node.module.split(".")[0])
+        return nomes
+
+    def test_os_doze_continuam_sem_tkinter(self) -> None:
+        raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "ui"
+        culpados = []
+        for nome, oque in sorted(SEM_TKINTER.items()):
+            caminho = raiz / nome
+            if not caminho.exists():
+                culpados.append(f"{nome}: declarado sem Tk ({oque}) e não existe")
+                continue
+            if {"tkinter", "PIL"} & self._importados(caminho):
+                culpados.append(f"{nome}: passou a importar tkinter/PIL")
+
+        self.assertEqual(culpados, [], "\n".join(["Módulos que deviam ser testáveis sem janela:", *culpados]))
+
+    def test_a_lista_cobre_todo_modulo_de_ui_que_hoje_dispensa_tkinter(self) -> None:
+        """O outro sentido: um módulo novo sem Tk que não entre na lista não é vigiado, e a
+        separação volta a ser convenção -- que é o estado que este item conserta."""
+        raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "ui"
+        fora = [
+            caminho.name
+            for caminho in sorted(raiz.glob("*.py"))
+            if caminho.name not in SEM_TKINTER
+            and caminho.name != "__init__.py"
+            and not {"tkinter", "PIL"} & self._importados(caminho)
+        ]
+        self.assertEqual(fora, [], "Módulo de `ui/` sem Tk e fora de SEM_TKINTER.")

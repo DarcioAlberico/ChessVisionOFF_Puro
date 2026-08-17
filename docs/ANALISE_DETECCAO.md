@@ -237,7 +237,7 @@ ver S-81.
 Manter `MIN_EMBEDDED_SIDE` como está — ele ainda serve, para outra coisa: barrar a imagem
 grande na página mas pobre em pixels, que não tem resolução para ser lida.
 
-**Critério de aceite.** No diff do `cvoff-census` contra `docs/metrics/deteccao_base.csv`:
+**Critério de aceite.** No diff do `cvoff-census` contra `docs/metrics/deteccao_20260814.csv`:
 todas as perdas abaixo de 72 pt e **zero** perdas acima. É a coluna `das quais acima do
 limiar`, e é o que separa "removi o glifo" de "removi diagrama junto".
 
@@ -298,7 +298,7 @@ era usá-lo como número **relativo**: um candidato cuja nota fosse muito menor 
 da mesma página não seria diagrama. A escala do livro se cancelaria na razão.
 
 **A medição.** Razão entre a nota do candidato e a mediana da sua página, sobre o censo do
-acervo (`docs/metrics/deteccao_base.csv`, 1309 candidatos):
+acervo (`docs/metrics/deteccao_20260814.csv`, 1309 candidatos):
 
 | corte | legítimos perdidos | suspeitos pegos |
 |---|---|---|
@@ -465,9 +465,13 @@ aprova nada sozinho. Ele diz onde olhar.
 aceitar um glifo, a S-78 as quebraria ao corrigir exatamente isso — e um instrumento que
 quebra quando o defeito é corrigido não serve para medir a correção.
 
-**Linha de base gravada.** `docs/metrics/deteccao_base.csv` e `.json` (acervo, 24 páginas por
-livro) e `docs/metrics/deteccao_secrets.csv` (o livro do relato, 200 páginas). É contra elas
-que S-78 a S-81 vão ser medidas.
+**Linha de base gravada.** `docs/metrics/deteccao_20260814.csv` e `.json` (acervo, 24 páginas
+por livro) e `docs/metrics/deteccao_secrets.csv` (o livro do relato, 200 páginas). É contra
+elas que S-78 a S-81 foram medidas.
+
+> O nome era `deteccao_base` até a S-143, que gravou uma linha de base nova sobre aquele nome
+> -- acervo maior (39 livros) e com as páginas de frente. As afirmações desta seção e das
+> S-78 a S-82 continuam apontando para o arquivo datado, que é o que elas mediram.
 
 ---
 
@@ -579,6 +583,45 @@ S-80, e `test_a_parcela_de_grade_sozinha_nao_separaria` prende no lugar o motivo
 não usar a textura combinada — a fixture de foto **tem** borda periódica e **não** tem
 contraste de casa.
 
+#### 6. O censo do acervo, depois
+
+Duas corridas. A primeira com `--front-matter 0`, para bater com a amostragem da linha de base
+de 2026-08-14 e isolar o efeito da guarda — **31 livros em comum**, porque o acervo cresceu 8
+livros desde então e contá-los como ganho esconderia o que interessa:
+
+| | |
+|---|---|
+| candidatos | 1307 → **1265** (−42) |
+| livros com mudança | **5 de 31** (26 saíram idênticos) |
+| perdas | 42, das quais **41 acima do limiar** |
+| ganhos / reajustados | 0 / 0 |
+
+**E é aqui que o censo sozinho não decide.** Quarenta e uma perdas "acima do limiar" é
+exatamente a linha que a S-82 diz exigir justificativa uma a uma — e a justificativa não está
+no censo, porque ele não sabe o que é diagrama. Está na leitura: cruzadas com a varredura de
+confiança, **as 42 liam abaixo do gate de exportação**, a maior delas 0,5299.
+
+| livro | perdas | o que eram | leitura |
+|---|---|---|---|
+| `Vishy Anand` | 21 | texto e fragmentos torcidos em quadrilátero | 0,0000 – 0,2282 |
+| `Reinfeld` | 12 | os recortes cortados da coluna esquerda | 0,0001 – 0,4125 |
+| `1937 Kemeri` | 4 | fotografias de torneio | 0,0197 – 0,1460 |
+| `Karpov 2` | 4 | diagramas warpados em losango | 0,0004 – 0,5299 |
+| `Koblenz` | 1 | — | 0,0479 |
+
+As 21 do `Vishy Anand` incluem o caso que a S-80 deixou registrado como *"falso positivo de
+contorno real, não é a mesma classe de defeito e não tem instrumento ainda"*. Tem agora.
+
+A segunda corrida é o padrão novo, com as páginas de frente: **39 livros, 1520 candidatos**
+(988 de contorno, 532 de imagem embutida), **+52 e nenhuma perda** contra a primeira. Suspeitos
+0, numeração deslocada 0, gabarito misturado 0. Os +52 são diagrama de verdade nas 8 primeiras
+páginas, que a amostragem nunca tinha visto — no livro do relato, as páginas 1 e 7 ficam com
+**zero** candidatos e os 6 ganhos são todos da página 8, imagem embutida, textura 0,43 a 0,63.
+
+**Linha de base nova:** `docs/metrics/deteccao_base.csv` e `.json` (39 livros, 24 páginas por
+livro mais 8 de frente). A de 2026-08-14 fica em `docs/metrics/deteccao_20260814.csv`, que é o
+que as S-78 a S-82 mediram.
+
 ---
 
 ## 7. Sequenciamento sugerido
@@ -619,7 +662,7 @@ dele.** Quando a pergunta muda, a amostragem tem de ser reconferida antes do nú
 ## Resultado, medido
 
 Acervo inteiro, 32 livros, 24 páginas por livro. Diff contra a linha de base do dia
-(`docs/metrics/deteccao_base.csv`):
+(`docs/metrics/deteccao_20260814.csv`):
 
 | | antes | depois |
 |---|---|---|

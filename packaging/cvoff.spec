@@ -71,6 +71,15 @@ hiddenimports += collect_submodules("chess_diagram_ocr")
 excludes = [
     "streamlit",
     "altair",
+    # `pyarrow` vem junto do `streamlit`, e sozinho ele e a maior parte dos 115,4 MiB (16,6%
+    # do bundle) que a S-137 mediu -- para um exemplo que a S-54 aposentou. Ele saiu das
+    # dependencias obrigatorias no mesmo item; ficar aqui tambem e cinto e suspensorio,
+    # porque quem instalar o extra `demo` e gerar o .zip nao deve empacota-lo por acidente.
+    "pyarrow",
+    # O `onnx` e um backend **alternativo** de inferencia (S-30), opcional de proposito: o
+    # pipeline empacotado usa `torch`, e quem tem os dois no ambiente levaria os dois.
+    "onnx",
+    "onnxruntime",
     "pytest",
     "mypy",
     "ruff",

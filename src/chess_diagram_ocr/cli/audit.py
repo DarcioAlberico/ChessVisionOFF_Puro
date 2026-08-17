@@ -237,6 +237,16 @@ def _print_report(
             bar = "#" * max(1, int(share / 2))
             print(f"    {cls:>5}  {count:7d}  {share:5.2f}%  {bar}")
 
+    if report.route_counts:
+        # Os 625 valores de `corrected_by` que nenhuma tela e nenhum comando liam (S-137). A
+        # pergunta que a coluna existe para responder -- "as amostras corrigidas a mao treinam
+        # melhor?" -- comeca por saber quantas sao de cada caminho.
+        print()
+        print("  Por onde o rótulo chegou (coluna `corrected_by`, S-52):")
+        total_rotas = sum(report.route_counts.values())
+        for rota, quantos in report.route_counts.most_common():
+            print(f"    {rota[:38]:40} {quantos:6d}  {quantos / total_rotas:6.1%}")
+
     print()
 
 

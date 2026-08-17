@@ -3,45 +3,21 @@
   "max_boards": 12,
   "reading_order": "column",
   "pages_per_book": 24,
-  "front_matter": 8,
   "suspect_below_pt": 72.0,
-  "books": 39,
-  "candidates": 1520,
-  "suspects": 0,
-  "books_with_suspects": 0,
+  "books": 32,
+  "candidates": 1307,
+  "suspects": 1,
+  "books_with_suspects": 1,
   "pages_numbering_shifted": 0,
-  "pages_size_prior_mixed": 0,
+  "pages_size_prior_mixed": 1,
   "by_source": {
-    "contour": 988,
-    "embedded": 532
+    "contour": 871,
+    "embedded": 436
   },
   "per_book": [
     {
-      "pdf": "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 15,
-      "pages_failed": 0,
-      "candidates": 60,
-      "by_source": {
-        "contour": 60
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "220": 60
-      },
-      "texture": {
-        "min": 0.4908,
-        "p05": 0.5447,
-        "median": 0.6264,
-        "max": 0.7174
-      }
-    },
-    {
       "pdf": "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 23,
       "pages_failed": 0,
       "candidates": 23,
@@ -64,7 +40,7 @@
     },
     {
       "pdf": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 23,
       "pages_failed": 0,
       "candidates": 23,
@@ -87,7 +63,7 @@
     },
     {
       "pdf": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 23,
       "pages_failed": 0,
       "candidates": 23,
@@ -110,58 +86,39 @@
     },
     {
       "pdf": "1937 Kemeri.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 13,
+      "pages_sampled": 24,
+      "pages_with_candidate": 14,
       "pages_failed": 0,
-      "candidates": 16,
+      "candidates": 19,
       "by_source": {
-        "contour": 1,
-        "embedded": 15
+        "contour": 5,
+        "embedded": 14
       },
-      "trimmed": 15,
+      "trimmed": 14,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "140": 11,
+        "80": 1,
+        "120": 1,
+        "140": 10,
         "150": 2,
         "160": 2,
-        "170": 1
+        "170": 1,
+        "200": 1,
+        "210": 1
       },
       "texture": {
-        "min": 0.4888,
-        "p05": 0.4974,
-        "median": 0.535,
+        "min": 0.1311,
+        "p05": 0.1657,
+        "median": 0.5227,
         "max": 0.5988
       }
     },
     {
       "pdf": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 21,
-      "pages_failed": 0,
-      "candidates": 24,
-      "by_source": {
-        "contour": 24
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "200": 24
-      },
-      "texture": {
-        "min": 0.5586,
-        "p05": 0.5928,
-        "median": 0.6794,
-        "max": 0.7387
-      }
-    },
-    {
-      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 19,
+      "pages_sampled": 24,
+      "pages_with_candidate": 20,
       "pages_failed": 0,
       "candidates": 23,
       "by_source": {
@@ -172,19 +129,41 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "190": 22,
-        "200": 1
+        "200": 23
+      },
+      "texture": {
+        "min": 0.5586,
+        "p05": 0.5925,
+        "median": 0.678,
+        "max": 0.7387
+      }
+    },
+    {
+      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
+      "pages_sampled": 24,
+      "pages_with_candidate": 18,
+      "pages_failed": 0,
+      "candidates": 22,
+      "by_source": {
+        "contour": 22
+      },
+      "trimmed": 0,
+      "suspects": 0,
+      "pages_numbering_shifted": 0,
+      "pages_size_prior_mixed": 0,
+      "side_histogram": {
+        "190": 22
       },
       "texture": {
         "min": 0.1173,
-        "p05": 0.1556,
-        "median": 0.2139,
+        "p05": 0.1554,
+        "median": 0.212,
         "max": 0.4319
       }
     },
     {
       "pdf": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 24,
       "pages_failed": 0,
       "candidates": 71,
@@ -209,31 +188,31 @@
     },
     {
       "pdf": "AAGAARD - Practical Chess Defence.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 27,
+      "pages_sampled": 24,
+      "pages_with_candidate": 23,
       "pages_failed": 0,
-      "candidates": 63,
+      "candidates": 56,
       "by_source": {
-        "embedded": 63
+        "embedded": 56
       },
-      "trimmed": 63,
+      "trimmed": 56,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
         "130": 47,
-        "150": 16
+        "150": 9
       },
       "texture": {
         "min": 0.3646,
-        "p05": 0.4358,
-        "median": 0.595,
+        "p05": 0.4252,
+        "median": 0.5778,
         "max": 0.7323
       }
     },
     {
       "pdf": "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
-      "pages_sampled": 30,
+      "pages_sampled": 24,
       "pages_with_candidate": 21,
       "pages_failed": 0,
       "candidates": 39,
@@ -257,7 +236,7 @@
     },
     {
       "pdf": "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf",
-      "pages_sampled": 31,
+      "pages_sampled": 24,
       "pages_with_candidate": 17,
       "pages_failed": 0,
       "candidates": 19,
@@ -281,7 +260,7 @@
     },
     {
       "pdf": "Euwe, Kramer - Das Mittelspiel Band 7 (1958).pdf",
-      "pages_sampled": 29,
+      "pages_sampled": 24,
       "pages_with_candidate": 22,
       "pages_failed": 0,
       "candidates": 38,
@@ -304,33 +283,32 @@
     },
     {
       "pdf": "GALLAGHER - Winning With the King's Gambit.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 26,
+      "pages_sampled": 24,
+      "pages_with_candidate": 24,
       "pages_failed": 0,
-      "candidates": 31,
+      "candidates": 29,
       "by_source": {
-        "contour": 28,
-        "embedded": 3
+        "contour": 27,
+        "embedded": 2
       },
       "trimmed": 2,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "120": 29,
-        "130": 1,
-        "300": 1
+        "120": 28,
+        "130": 1
       },
       "texture": {
-        "min": 0.2323,
-        "p05": 0.4948,
-        "median": 0.6692,
+        "min": 0.4794,
+        "p05": 0.5184,
+        "median": 0.6709,
         "max": 0.8976
       }
     },
     {
       "pdf": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 13,
       "pages_failed": 0,
       "candidates": 68,
@@ -353,131 +331,86 @@
       }
     },
     {
-      "pdf": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
-      "pages_sampled": 31,
-      "pages_with_candidate": 21,
-      "pages_failed": 0,
-      "candidates": 41,
-      "by_source": {
-        "contour": 41
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "100": 17,
-        "110": 24
-      },
-      "texture": {
-        "min": 0.5218,
-        "p05": 0.5284,
-        "median": 0.5623,
-        "max": 0.6423
-      }
-    },
-    {
       "pdf": "Karpov A - Chess Combinations -World Champions-1 (2011).pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 17,
+      "pages_sampled": 24,
+      "pages_with_candidate": 16,
       "pages_failed": 0,
-      "candidates": 99,
+      "candidates": 93,
       "by_source": {
         "contour": 8,
-        "embedded": 91
+        "embedded": 85
       },
-      "trimmed": 91,
+      "trimmed": 85,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
         "140": 2,
-        "150": 23,
-        "160": 51,
-        "170": 23
+        "150": 22,
+        "160": 49,
+        "170": 20
       },
       "texture": {
         "min": 0.3639,
-        "p05": 0.3905,
-        "median": 0.513,
+        "p05": 0.3894,
+        "median": 0.5146,
         "max": 0.6882
       }
     },
     {
       "pdf": "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 16,
+      "pages_sampled": 24,
+      "pages_with_candidate": 15,
       "pages_failed": 0,
-      "candidates": 88,
+      "candidates": 86,
       "by_source": {
-        "contour": 88
+        "contour": 86
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "140": 39,
-        "150": 49
+        "140": 36,
+        "150": 46,
+        "210": 4
       },
       "texture": {
-        "min": 0.2845,
-        "p05": 0.3512,
-        "median": 0.4442,
+        "min": 0.1123,
+        "p05": 0.3265,
+        "median": 0.4448,
         "max": 0.6078
       }
     },
     {
-      "pdf": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
-      "pages_sampled": 31,
-      "pages_with_candidate": 4,
-      "pages_failed": 0,
-      "candidates": 4,
-      "by_source": {
-        "contour": 4
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "140": 4
-      },
-      "texture": {
-        "min": 0.5029,
-        "p05": 0.505,
-        "median": 0.5192,
-        "max": 0.5416
-      }
-    },
-    {
       "pdf": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
-      "pages_sampled": 30,
-      "pages_with_candidate": 21,
+      "pages_sampled": 24,
+      "pages_with_candidate": 20,
       "pages_failed": 0,
-      "candidates": 48,
+      "candidates": 47,
       "by_source": {
-        "contour": 48
+        "contour": 47
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "150": 26,
-        "160": 21,
+        "100": 1,
+        "150": 25,
+        "160": 20,
         "170": 1
       },
       "texture": {
-        "min": 0.4189,
-        "p05": 0.4824,
-        "median": 0.6016,
+        "min": 0.1539,
+        "p05": 0.4593,
+        "median": 0.5948,
         "max": 0.7339
       }
     },
     {
       "pdf": "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf",
-      "pages_sampled": 30,
+      "pages_sampled": 24,
       "pages_with_candidate": 17,
       "pages_failed": 0,
       "candidates": 17,
@@ -503,7 +436,7 @@
     },
     {
       "pdf": "Levenfis - Cartea sahistului inceparator (1962).pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 18,
       "pages_failed": 0,
       "candidates": 31,
@@ -526,7 +459,7 @@
     },
     {
       "pdf": "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 24,
       "pages_failed": 0,
       "candidates": 37,
@@ -550,7 +483,7 @@
     },
     {
       "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 7,
       "pages_failed": 0,
       "candidates": 7,
@@ -574,7 +507,7 @@
     },
     {
       "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 0,
       "pages_failed": 0,
       "candidates": 0,
@@ -588,7 +521,7 @@
     },
     {
       "pdf": "Mieses - Blind Schaken (1938).pdf",
-      "pages_sampled": 30,
+      "pages_sampled": 24,
       "pages_with_candidate": 11,
       "pages_failed": 0,
       "candidates": 13,
@@ -613,79 +546,79 @@
     },
     {
       "pdf": "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
-      "pages_sampled": 30,
-      "pages_with_candidate": 21,
+      "pages_sampled": 24,
+      "pages_with_candidate": 20,
       "pages_failed": 0,
-      "candidates": 44,
+      "candidates": 43,
       "by_source": {
-        "embedded": 44
+        "embedded": 43
       },
-      "trimmed": 44,
+      "trimmed": 43,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
         "140": 10,
-        "150": 33,
+        "150": 32,
         "160": 1
       },
       "texture": {
         "min": 0.5415,
-        "p05": 0.5482,
-        "median": 0.6338,
+        "p05": 0.5473,
+        "median": 0.6337,
         "max": 0.733
       }
     },
     {
       "pdf": "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf",
-      "pages_sampled": 27,
-      "pages_with_candidate": 17,
+      "pages_sampled": 24,
+      "pages_with_candidate": 16,
       "pages_failed": 0,
-      "candidates": 26,
+      "candidates": 24,
       "by_source": {
-        "contour": 26
+        "contour": 24
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "280": 26
+        "280": 24
       },
       "texture": {
         "min": 0.503,
-        "p05": 0.5067,
-        "median": 0.5364,
+        "p05": 0.5062,
+        "median": 0.5354,
         "max": 0.588
       }
     },
     {
       "pdf": "Polgar,_Laszlo_Chess_5334_Problems,_Combinations,_and_Games.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 20,
+      "pages_sampled": 24,
+      "pages_with_candidate": 19,
       "pages_failed": 0,
-      "candidates": 115,
+      "candidates": 114,
       "by_source": {
-        "contour": 115
+        "contour": 114
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "240": 115
+        "240": 114
       },
       "texture": {
         "min": 0.1491,
-        "p05": 0.2252,
-        "median": 0.4824,
+        "p05": 0.2238,
+        "median": 0.4832,
         "max": 0.5825
       }
     },
     {
       "pdf": "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 16,
+      "pages_sampled": 24,
+      "pages_with_candidate": 14,
       "pages_failed": 0,
       "candidates": 82,
       "by_source": {
@@ -696,19 +629,20 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "120": 81,
+        "100": 1,
+        "120": 80,
         "130": 1
       },
       "texture": {
-        "min": 0.3847,
-        "p05": 0.4324,
-        "median": 0.6345,
+        "min": 0.2685,
+        "p05": 0.3229,
+        "median": 0.6237,
         "max": 0.7073
       }
     },
     {
       "pdf": "Schiller - The Big Book of Combinations (1994).pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 14,
       "pages_failed": 0,
       "candidates": 84,
@@ -735,7 +669,7 @@
     },
     {
       "pdf": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 18,
       "pages_failed": 0,
       "candidates": 25,
@@ -758,158 +692,89 @@
       }
     },
     {
-      "pdf": "Simple Chess - Stean, M_.pdf",
-      "pages_sampled": 31,
-      "pages_with_candidate": 11,
-      "pages_failed": 0,
-      "candidates": 11,
-      "by_source": {
-        "contour": 11
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "200": 5,
-        "210": 6
-      },
-      "texture": {
-        "min": 0.6409,
-        "p05": 0.6469,
-        "median": 0.6653,
-        "max": 0.762
-      }
-    },
-    {
-      "pdf": "Stefaniu - Problematica Deschideriliol in sah (1992).pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 11,
-      "pages_failed": 0,
-      "candidates": 13,
-      "by_source": {
-        "contour": 13
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "140": 13
-      },
-      "texture": {
-        "min": 0.3214,
-        "p05": 0.461,
-        "median": 0.6157,
-        "max": 0.6995
-      }
-    },
-    {
       "pdf": "Vishy_Anand_Great_Chess_Combinations.pdf",
-      "pages_sampled": 32,
+      "pages_sampled": 24,
       "pages_with_candidate": 14,
       "pages_failed": 0,
-      "candidates": 14,
+      "candidates": 35,
       "by_source": {
-        "contour": 14
+        "contour": 35
       },
       "trimmed": 0,
-      "suspects": 0,
+      "suspects": 1,
       "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
+      "pages_size_prior_mixed": 1,
       "side_histogram": {
+        "60": 1,
+        "80": 11,
+        "90": 6,
+        "110": 3,
         "150": 14
       },
       "texture": {
-        "min": 0.4424,
-        "p05": 0.4492,
-        "median": 0.5241,
+        "min": 0.0786,
+        "p05": 0.1095,
+        "median": 0.2523,
         "max": 0.6467
       }
     },
     {
       "pdf": "📚Aagaard J. Excelling at chess calculation.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 24,
+      "pages_sampled": 24,
+      "pages_with_candidate": 22,
       "pages_failed": 0,
-      "candidates": 54,
+      "candidates": 50,
       "by_source": {
-        "contour": 54
+        "contour": 50
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "190": 25,
-        "200": 29
+        "190": 22,
+        "200": 28
       },
       "texture": {
-        "min": 0.5761,
-        "p05": 0.6409,
-        "median": 0.7028,
+        "min": 0.626,
+        "p05": 0.6413,
+        "median": 0.7049,
         "max": 0.8365
       }
     },
     {
-      "pdf": "📚Burgess G. The Gambit Book of Instructive.pdf",
-      "pages_sampled": 31,
-      "pages_with_candidate": 11,
-      "pages_failed": 0,
-      "candidates": 47,
-      "by_source": {
-        "embedded": 47
-      },
-      "trimmed": 47,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "120": 46,
-        "140": 1
-      },
-      "texture": {
-        "min": 0.353,
-        "p05": 0.4144,
-        "median": 0.5891,
-        "max": 0.7654
-      }
-    },
-    {
       "pdf": "📚Silman J. The Complete Book of Chess Strategy.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 18,
+      "pages_sampled": 24,
+      "pages_with_candidate": 17,
       "pages_failed": 0,
-      "candidates": 21,
+      "candidates": 20,
       "by_source": {
-        "contour": 20,
-        "embedded": 1
+        "contour": 20
       },
-      "trimmed": 1,
+      "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "140": 1,
         "200": 5,
         "210": 15
       },
       "texture": {
-        "min": 0.2699,
-        "p05": 0.4235,
-        "median": 0.5229,
+        "min": 0.4235,
+        "p05": 0.4247,
+        "median": 0.5267,
         "max": 0.6485
       }
     },
     {
       "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 19,
+      "pages_sampled": 24,
+      "pages_with_candidate": 18,
       "pages_failed": 0,
-      "candidates": 47,
+      "candidates": 46,
       "by_source": {
         "contour": 30,
-        "embedded": 17
+        "embedded": 16
       },
       "trimmed": 16,
       "suspects": 0,
@@ -919,38 +784,13 @@
         "140": 31,
         "150": 2,
         "160": 10,
-        "170": 3,
-        "440": 1
+        "170": 3
       },
       "texture": {
-        "min": 0.2951,
-        "p05": 0.3516,
-        "median": 0.6971,
+        "min": 0.3323,
+        "p05": 0.3983,
+        "median": 0.6996,
         "max": 0.8804
-      }
-    },
-    {
-      "pdf": "📚Болеславский_И_Избранные_партии.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 25,
-      "pages_failed": 0,
-      "candidates": 31,
-      "by_source": {
-        "embedded": 31
-      },
-      "trimmed": 31,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "140": 28,
-        "160": 3
-      },
-      "texture": {
-        "min": 0.5391,
-        "p05": 0.5768,
-        "median": 0.6521,
-        "max": 0.7937
       }
     }
   ]

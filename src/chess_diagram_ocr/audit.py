@@ -82,6 +82,17 @@ class AuditReport:
     orphan_images: list[str] = field(default_factory=list)
     class_counts: Counter[str] = field(default_factory=Counter)
 
+    route_counts: Counter[str] = field(default_factory=Counter)
+    """Por qual caminho cada rótulo chegou -- a coluna `corrected_by` da S-52 (S-137).
+
+    **Eram 625 valores gravados que nenhuma tela e nenhum comando liam.** A função que os
+    conta existia em `dataset_browser` desde a S-52 e não tinha chamador nenhum, nem em
+    `tests/` -- e a pergunta que a coluna existe para responder, *"as amostras corrigidas à mão
+    treinam melhor?"*, continuava sem ninguém que a fizesse.
+
+    Aqui, ao lado da distribuição de classes, porque é o mesmo tipo de número e o mesmo
+    relatório: o que o dataset tem, contado."""
+
     def of_kind(self, kind: str) -> list[LabelIssue]:
         return [issue for issue in self.issues if issue.kind == kind]
 
@@ -249,6 +260,10 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
             # fracao de redundancia (S-63) ser calculada sobre uma base que nao existe.
             report.valid_rows += 1
             usable_labels.append((filename, fen))
+            # A coluna `corrected_by` da S-52, contada (S-137). Os rotulos anteriores a ela
+            # saem em "caminho nao registrado", e e esse numero encolhendo que diz se a coluna
+            # passou a valer alguma coisa.
+            report.route_counts[entry.corrected_by or "caminho não registrado"] += 1
             try:
                 for class_idx in labels_from_fen(fen):
                     report.class_counts[PIECE_CLASSES[class_idx]] += 1

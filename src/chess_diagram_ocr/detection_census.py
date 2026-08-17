@@ -289,6 +289,7 @@ class DetectionCensus:
             "max_boards": self.max_boards,
             "reading_order": self.reading_order,
             "pages_per_book": self.pages_per_book,
+            "front_matter": self.front_matter,
             "suspect_below_pt": self.suspect_below_pt,
             "books": len(self.books),
             "candidates": self.candidates,
