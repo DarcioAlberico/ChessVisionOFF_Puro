@@ -906,8 +906,19 @@ class ResultPanel(ttk.Frame):
                 pulados += 1
                 continue
             self._save_one(alvo, allow_illegal=ilegal)
+            # Dentro do laço, porque é por item: cada diagrama fecha o **seu** item da fila
+            # (S-22). Sem isto, `Ctrl+Shift+S` gravava a página inteira e não fechava nenhum,
+            # e a fila de revisão mandava corrigir de novo o que já tinha sido corrigido.
+            self._settle(alvo)
             salvos += 1
             salvos_ilegais += int(ilegal)
+
+        if salvos:
+            # **Uma vez ao fim, e não por diagrama.** O aviso relê o `labels.csv` inteiro na
+            # thread da janela (é o custo que a S-116 vai atacar): dispará-lo por item
+            # multiplicaria por N o travamento que o "salvar todos" existe justamente para
+            # evitar. É o mesmo raciocínio da pergunta única de ilegalidade, logo acima.
+            self._on_sample_saved()
 
         resumo = f"Salvar todos: {salvos} salvos, {invalidos} inválidos"
         if pulados:

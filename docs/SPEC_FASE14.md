@@ -1174,7 +1174,7 @@ extraem os mesmos pares `(nome, tamanho)`.
 
 ---
 
-## S-114 · "Salvar todos" avisa quem precisa saber
+## S-114 · "Salvar todos" avisa quem precisa saber ✅ implementada (2026-08-16)
 
 **Problema.** `ui/result_panel.py:866-921` (`save_all`) chama `_save_one` por diagrama e
 termina em `_on_status` + `messagebox.showinfo`. Não chama `self._on_sample_saved()` nem
@@ -1196,6 +1196,29 @@ itens de fila correspondentes; as marcas verdes aparecem sem trocar de página.
 **Testes.** `tests/test_result_panel.py` — contador no lugar de `on_sample_saved=lambda: None`,
 com asserção de exatamente 1 chamada depois de `save_all` (hoje 0); teste irmão para o vínculo
 `REVIEW`.
+
+### O que foi entregue
+
+Duas chamadas, em dois lugares diferentes de propósito:
+
+- **`self._settle(alvo)` dentro do laço**, porque fechar item de fila é por item. O vínculo
+  `REVIEW` carrega um diagrama só (`open_review_item` faz `load([diagrama], ...)`), então na
+  prática é um; o laço é o lugar certo mesmo assim, porque é onde a informação "este alvo
+  salvou" existe.
+- **`self._on_sample_saved()` uma vez ao fim, e só quando `salvos > 0`.** O aviso relê o
+  `labels.csv` inteiro na thread da janela — é o custo que a S-116 vai atacar —, e chamá-lo por
+  diagrama multiplicaria por N justamente o travamento que o "salvar todos" existe para
+  evitar. É o mesmo raciocínio da pergunta única de ilegalidade, dez linhas acima. Zero salvos
+  não avisa: mandar a aba Dataset reler 3.935 linhas para descobrir que nada mudou é o defeito
+  ao contrário.
+
+**Quatro testes, e os dois que importam falham no código anterior** (conferido revertendo o
+módulo): quatro diagramas produzem **um** aviso (hoje zero) e o `Ctrl+Shift+S` sobre um item
+da fila o fecha (hoje não fecha). Os outros dois são guardas contra trocar um defeito por
+outro: nada salvo não avisa, e `save_current` continua avisando uma vez.
+
+O contador no lugar do `on_sample_saved=lambda: None` é o que torna o item visível: a chamada
+que faltava não deixa rastro no serviço nem na tela, e por isso sobreviveu à suíte inteira.
 
 ---
 

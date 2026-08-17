@@ -19,6 +19,7 @@ from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import RemoteFenSettings
 from chess_diagram_ocr.ui import result_panel
 from chess_diagram_ocr.ui.board_widget import PieceImages
+from chess_diagram_ocr.ui.editor_model import EditorBinding
 from chess_diagram_ocr.ui.page_results import PageOcrParams
 from chess_diagram_ocr.ui.result_panel import ResultPanel
 
@@ -241,6 +242,10 @@ class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
     def _painel(self, *, resposta: bool) -> tuple[object, _ServicoFalso, _CaixasFalsas]:
         servico = _ServicoFalso()
         caixas = _CaixasFalsas(resposta)
+        # Contador no lugar do `lambda: None`: é a única forma de ver o aviso que a S-114
+        # descobriu que não acontecia -- ele não deixa rastro na tela nem no serviço.
+        self.avisos_de_dataset: list[int] = []
+        self.fechados: list[tuple[int, str, str]] = []
         host = tk.Frame(self.root)
         self.addCleanup(host.destroy)
         painel = ResultPanel(
@@ -257,12 +262,13 @@ class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
             on_sync_study=lambda: None,
             on_state_changed=lambda: None,
             on_focus_request=lambda: None,
-            on_sample_saved=lambda: None,
+            on_sample_saved=lambda: self.avisos_de_dataset.append(1),
             remote_fen=RemoteFenSettings,
             on_remote_consent=lambda _cfg: False,
             move_number_of=lambda _pagina, _diagrama: None,
             on_move_number=lambda *_args: None,
         )
+        painel.set_review_settler(lambda pos, fen, side: self.fechados.append((pos, fen, side)))
         # O painel usa o `messagebox` do modulo; trocar o atributo do modulo e o que permite
         # dirigir a resposta sem abrir caixa nenhuma.
         original = result_panel.messagebox
@@ -325,6 +331,80 @@ class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
         self.assertEqual(len(caixas.perguntas), 1)
         self.assertEqual(len(servico.chamadas), 1)
         self.assertFalse(servico.chamadas[0]["allow_illegal"])
+
+
+class SalvarTodosAvisaTests(unittest.TestCase):
+    """`Ctrl+Shift+S` gravava e não avisava ninguém (S-114).
+
+    `save_all` chamava `_save_one` por diagrama e terminava num `showinfo`. Não chamava
+    `_on_sample_saved()` nem `_settle()` -- os dois só existiam em `save_current` e em
+    `_rewrite_dataset_row`.
+
+    Quem usa o caminho barato de uma página inteira perdia exatamente o sinal que a S-71
+    construiu para responder *"onde eu parei neste livro?"*: as caixas verdes de "já salvo" não
+    apareciam, a aba Dataset não via as amostras novas, e o item da fila de revisão não fechava
+    -- ela mandava corrigir de novo o que já tinha sido corrigido.
+    """
+
+    root: tk.Tk
+
+    ESTRUTURA = "8/pp3ppp/8/8/8/8/PP3PPP/8"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    _painel = ConfirmacaoDePosicaoIlegalTests._painel
+    _abrir = ConfirmacaoDePosicaoIlegalTests._abrir
+
+    def test_quatro_diagramas_produzem_um_aviso_de_dataset(self) -> None:
+        """**Um, e não quatro.** O aviso relê o `labels.csv` inteiro na thread da janela -- é o
+        custo que a S-116 vai atacar --, e dispará-lo por item multiplicaria por N o
+        travamento que o "salvar todos" existe para evitar. Mesmo raciocínio da pergunta
+        única de ilegalidade."""
+        painel, servico, _caixas = self._painel(resposta=True)
+        self._abrir(painel, [PLACEMENT] * 4)
+
+        painel.save_all()
+
+        self.assertEqual(len(servico.chamadas), 4)
+        self.assertEqual(len(self.avisos_de_dataset), 1)
+
+    def test_nada_salvo_nao_avisa(self) -> None:
+        """Responder "não" à pergunta de ilegalidade não grava nada, e avisar de nada seria
+        mandar a aba Dataset reler 3.935 linhas para descobrir que nada mudou."""
+        painel, servico, _caixas = self._painel(resposta=False)
+        self._abrir(painel, [self.ESTRUTURA] * 3)
+
+        painel.save_all()
+
+        self.assertEqual(servico.chamadas, [])
+        self.assertEqual(self.avisos_de_dataset, [])
+
+    def test_salvar_todos_fecha_o_item_da_fila(self) -> None:
+        """O vínculo `REVIEW` carrega um diagrama só, e `Ctrl+Shift+S` sobre ele é uma
+        gravação -- mas era a única que não fechava o item, e a fila o devolvia na varredura
+        seguinte."""
+        painel, servico, _caixas = self._painel(resposta=True)
+        painel.model.load(
+            [_diagrama()], [PLACEMENT], ["w"], binding=EditorBinding.REVIEW, review_position=7
+        )
+        painel._after_load()
+
+        painel.save_all()
+
+        self.assertEqual(len(servico.chamadas), 1)
+        self.assertEqual([posicao for posicao, _fen, _lado in self.fechados], [7])
+        self.assertEqual(len(self.avisos_de_dataset), 1)
+
+    def test_salvar_o_atual_continua_avisando_uma_vez(self) -> None:
+        """A guarda do caminho que já funcionava: o item não podia trocar um defeito por outro."""
+        painel, _servico, _caixas = self._painel(resposta=True)
+        self._abrir(painel, [PLACEMENT, PLACEMENT])
+
+        painel.save_current()
+
+        self.assertEqual(len(self.avisos_de_dataset), 1)
 
 
 if __name__ == "__main__":
