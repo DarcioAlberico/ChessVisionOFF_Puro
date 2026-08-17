@@ -618,6 +618,31 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
 
 ## Documentacao tecnica
 
+### Onde mora a spec de cada item (S-NN)
+
+A spec deste projeto esta espalhada por cinco arquivos, e essa dispersao ja custou duas
+entregas: a S-76 e a S-77 ficaram tres meses em documento nenhum, porque caiam na fenda entre
+dois deles. Esta tabela e o indice, e `tests/test_docs.py` a confere contra o disco (S-134) --
+tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite falhar.
+
+| itens | arquivo |
+|---|---|
+| S-01 a S-36 | [docs/SPEC.md](docs/SPEC.md) |
+| S-37 a S-77 | [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) |
+| S-78 a S-82, S-143 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
+| S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
+| S-95 a S-142 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
+
+A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
+outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
+S-80, que e a medicao que ela corrige.
+
+Os arquivos de medicao -- `EXPERIMENTS.md`, `EXPERIMENTS_FASE7.md`, `BASELINE.md` -- tambem tem
+secoes `S-NN`, e elas **nao** substituem a spec: trazem o que foi medido daquele item, nao o
+criterio de aceite dele. A tabela acima e sobre a spec.
+
+### Os documentos
+
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) -- como uma pagina vira uma FEN, e onde
   cada decisao mora
 - [CONTRIBUTING.md](CONTRIBUTING.md) -- ambiente, verificacoes, como dirigir a interface

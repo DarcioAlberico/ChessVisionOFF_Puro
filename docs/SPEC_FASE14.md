@@ -5,18 +5,18 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) (S-78 a S-82) e
 [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) (S-83 a S-94).
 
-> **Onde mora cada item.** A spec deste projeto está espalhada por seis arquivos, e essa
-> dispersão custou duas entregas — a S-76 e a S-77 não estão em documento nenhum. Este índice
-> é o remédio de curto prazo; a S-134 o torna verificável por teste.
+> **Onde mora a spec de cada item (S-NN).** A spec deste projeto está espalhada por cinco
+> arquivos, e essa dispersão custou duas entregas — a S-76 e a S-77 ficaram três meses em
+> documento nenhum (corrigido na S-133). `tests/test_docs.py` confere esta tabela contra o
+> disco (S-134): item entregue sem seção e seção no arquivo errado fazem a suíte falhar.
 >
 > | itens | arquivo |
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
-> | S-37 a S-75 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-76, S-77 | **em lugar nenhum** — a S-133 as registra |
-> | S-78 a S-82 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
+> | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142 | este arquivo |
+> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa
@@ -2534,7 +2534,7 @@ que está no programa — que é o defeito da Fase 19 inteira, cometido dentro d
 
 ---
 
-## S-134 · O índice de documentos, verificável por teste
+## S-134 · O índice de documentos, verificável por teste ✅ implementada (2026-08-17)
 
 **Problema.** A spec está em seis arquivos com convenções diferentes e **sem índice**. O
 `CONTRIBUTING.md:188` manda registrar mudança de fase no `ROADMAP.md`, que fecha na Fase 6.
@@ -2562,6 +2562,45 @@ não há índice que force a escolha certa.
 identificador e o commit.
 
 **Testes.** `tests/test_docs.py` (novo) — os dois acima.
+
+### O que foi entregue
+
+A tabela "Onde mora a spec de cada item (S-NN)" no README e no topo dos cinco documentos de
+spec; o §Documentação do `CONTRIBUTING` deixou de nomear o `ROADMAP.md` (que fecha na Fase 6, e
+era a causa mecânica da fenda); e `tests/test_docs.py`, com **quatro** guardas em vez dos dois
+do enunciado — os dois pedidos não cobriam as duas formas de a tabela apodrecer.
+
+| guarda | o defeito que ela pega |
+|---|---|
+| `test_todo_item_entregue_tem_secao_em_algum_doc` | a S-76: entregue, sem seção em lugar nenhum |
+| `test_a_secao_esta_no_arquivo_que_o_indice_declara` | ter seção **no arquivo errado** — a fenda de outro jeito |
+| `test_todo_documento_aparece_no_readme` | documento novo que o índice não menciona |
+| `test_a_tabela_de_faixas_e_a_mesma_em_todos` | as cinco cópias da tabela divergindo entre si |
+
+**A faixa da `ANALISE_DETECCAO` não é contígua, e isso é decisão e não descuido.** Ela é
+`S-78 a S-82, S-143`: item de detecção mora com os outros de detecção, ao lado da medição que o
+motivou — a S-143 entrou junto da S-80, que é o que ela corrige. O formato da tabela aceita
+vírgula por causa disso; obrigar contiguidade mandaria a S-143 para longe da única página que
+explica por que ela existe.
+
+**Os arquivos de medição ficam de fora, e o teste sabe disso.** `EXPERIMENTS.md`,
+`EXPERIMENTS_FASE7.md`, `BASELINE.md` e `ROADMAP_FASE7.md` também têm seções `S-NN`, e elas
+**não** contam como spec: uma medição sem critério de aceite é exatamente o que a S-133 veio
+consertar. Estão numa constante nomeada, com o porquê ao lado.
+
+**A cópia da tabela em cinco arquivos é deliberada**, e o preço dela é a quarta guarda: quem
+abre o `SPEC_FASE7` direto não passa pelo README, e mandá-lo procurar o índice noutro arquivo é
+o mesmo obstáculo que criou a fenda.
+
+**E a CI teria passado sem olhar nada.** `actions/checkout@v4` clona **raso**: com
+`fetch-depth: 1` o `git log --oneline` tem um commit, a lista de entregues sai quase vazia e a
+primeira guarda passaria vazia — pior que não existir. A CI ganhou `fetch-depth: 0`, e o teste
+se pula sozinho abaixo de 50 commits, para que um clone raso diga "pulado" e não "verde".
+
+**Conferido quebrando cada guarda uma a uma**, com a mutação que ela existe para pegar: apagar
+o identificador da seção da S-76, tirar um `docs/*.md` do índice, fazer a cópia do `SPEC.md`
+divergir numa faixa, e declarar a S-143 no arquivo errado. As quatro falharam, cada uma na sua,
+e nenhuma nas das outras.
 
 ---
 

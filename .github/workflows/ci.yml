@@ -19,6 +19,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # O historico inteiro, e nao o clone raso padrao (S-134). `tests/test_docs.py` tira de
+          # `git log --oneline` a lista de itens entregues, para falhar quando um deles nao tem
+          # spec em `docs/`. Com `fetch-depth: 1` o log tem um commit, a lista sai vazia e o
+          # teste passaria sem ter olhado nada -- que e pior que nao existir. Ele se pula
+          # sozinho abaixo de 50 commits; isto e o que faz esse ramo nunca ser o da CI.
+          fetch-depth: 0
 
       - name: Instalar uv
         uses: astral-sh/setup-uv@v5

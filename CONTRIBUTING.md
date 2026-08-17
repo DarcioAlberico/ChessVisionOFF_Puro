@@ -185,9 +185,16 @@ então ele não aprova nada sozinho. Ele diz onde olhar.
 
 - Mudança que altera um número: [BASELINE.md](docs/BASELINE.md) ou
   [EXPERIMENTS.md](docs/EXPERIMENTS.md).
-- Mudança que fecha um item de fase: [ROADMAP.md](docs/ROADMAP.md), com **o que foi medido**
-  — inclusive quando o resultado desaconselhou a mudança.
+- Mudança que fecha um item de fase: **o documento da fase daquele item**, com **o que foi
+  medido** — inclusive quando o resultado desaconselhou a mudança. Qual documento é, a tabela
+  "Onde mora a spec de cada item" do [README](README.md#onde-mora-a-spec-de-cada-item-s-nn)
+  responde, e ela é conferida por teste.
 - Mudança que move responsabilidade entre módulos: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+> Esta linha já dizia "[ROADMAP.md](docs/ROADMAP.md)", que fecha na Fase 6 (S-36). Foi a causa
+> mecânica de duas entregas ficarem três meses sem spec em documento nenhum — S-76 e S-77, ver
+> a S-133. Hoje `tests/test_docs.py` falha nomeando o identificador e o commit, então o
+> esquecimento deixou de depender de alguém lembrar (S-134).
 
 O ROADMAP registra o que **não** funcionou com o mesmo cuidado do que funcionou. Isso é
 deliberado: os pesos de classe da S-27, a calibração da S-28, o TTA da S-29 e as

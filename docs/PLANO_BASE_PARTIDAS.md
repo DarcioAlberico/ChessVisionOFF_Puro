@@ -4,6 +4,17 @@
 > 2026-08-13, quatro livros, 1.641 casamentos — e sobre `pgn_database/PGN_Database.pgn`
 > (10,3 GB). Os scripts das medições estão em [Como reproduzir](#7-como-reproduzir-as-medições).
 
+> **Onde mora a spec de cada item (S-NN).** `tests/test_docs.py` confere esta tabela contra o
+> disco (S-134): item entregue sem seção e seção no arquivo errado fazem a suíte falhar.
+>
+> | itens | arquivo |
+> |---|---|
+> | S-01 a S-36 | [SPEC.md](SPEC.md) |
+> | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
+> | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
+> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+
 ---
 
 ## 1. O problema, com número

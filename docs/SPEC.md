@@ -2,21 +2,21 @@
 
 Base: [ANALISE.md](ANALISE.md). Sequenciamento: [ROADMAP.md](ROADMAP.md).
 
-> Este documento cobre **S-01 a S-36** (Fases 0 a 6). A continuação está em
-> [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75), sequenciada em
-> [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
+> Este documento cobre **S-01 a S-36** (Fases 0 a 6), sequenciado em
+> [ROADMAP.md](ROADMAP.md).
 >
-> **Onde mora cada item.** A spec está em seis arquivos, e essa dispersão custou duas
-> entregas — a S-76 e a S-77 não estão em documento nenhum (S-133). O índice completo:
+> **Onde mora a spec de cada item (S-NN).** A spec está em cinco arquivos, e essa dispersão
+> custou duas entregas — a S-76 e a S-77 ficaram três meses em documento nenhum (S-133).
+> `tests/test_docs.py` confere esta tabela contra o disco (S-134): item entregue sem seção e
+> seção no arquivo errado fazem a suíte falhar.
 >
 > | itens | arquivo |
 > |---|---|
-> | S-01 a S-36 | este arquivo |
-> | S-37 a S-75 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-76, S-77 | **em lugar nenhum** — a S-133 as registra |
-> | S-78 a S-82 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-01 a S-36 | [SPEC.md](SPEC.md) |
+> | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
+> | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md), sequenciada em [ROADMAP_FASE14.md](ROADMAP_FASE14.md) |
+> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 
 Cada item tem **Problema** (com referência ao arquivo/linha atual), **Solução**, **Interface proposta**, **Critério de aceite** e **Testes**. Os itens são independentes o suficiente para serem implementados em ordem diferente, exceto onde há dependência declarada.
 

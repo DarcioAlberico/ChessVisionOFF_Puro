@@ -4,6 +4,19 @@
 > (1181 páginas) e conferido nos outros 26 PDFs do acervo. Scripts de medição descritos ao
 > final, em [Como reproduzir](#como-reproduzir).
 
+> **Onde mora a spec de cada item (S-NN).** Este arquivo é o de **detecção**, e é por isso que
+> a faixa dele não é contígua: item de detecção mora aqui, ao lado da medição que o motivou, e
+> não com o número vizinho. Foi assim que a S-143 entrou junto da S-80, que é a medição que ela
+> corrige. `tests/test_docs.py` confere esta tabela contra o disco (S-134).
+>
+> | itens | arquivo |
+> |---|---|
+> | S-01 a S-36 | [SPEC.md](SPEC.md) |
+> | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
+> | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
+> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+
 ---
 
 ## 1. O que aconteceu na página 231

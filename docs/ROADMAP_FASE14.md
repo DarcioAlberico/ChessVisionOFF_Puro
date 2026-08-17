@@ -469,7 +469,7 @@ no checkout **e** no `.exe`.
 | 19.3 | O caminho de contorno ganha instrumento antes de ajuste | S-131 | ⬜ |
 | 19.4 | O que o gate não enxerga, escrito onde ele decide | S-132 | ⬜ |
 | 19.5 | S-76 e S-77 registradas | S-133 | ✅ |
-| 19.6 | O índice de documentos, verificável por teste | S-134 | ⬜ |
+| 19.6 | O índice de documentos, verificável por teste | S-134 | ✅ |
 | 19.7 | Os números vivos: ARCHITECTURE, README, bundle | S-135 | ⬜ |
 | 19.8 | `app_tkinter.py` dobrou: reabrir o item ou registrar o novo placar | S-136 | ⬜ |
 | 19.9 | `mypy` olha o produto; `streamlit` sai das obrigatórias; `atomic_io` ganha guarda | S-137 | ✅ |

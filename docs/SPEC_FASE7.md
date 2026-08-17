@@ -1,10 +1,20 @@
-# Especificação das melhorias — Fases 7 a 13 (S-37 a S-75)
+# Especificação das melhorias — Fases 7 a 13 (S-37 a S-77)
 
 Continuação de [SPEC.md](SPEC.md), que cobre S-01 a S-36. Sequenciamento e a medição que
-motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md). A continuação está em
-[SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-142) — passando por
-[ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) (S-78 a S-82) e
-[PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) (S-83 a S-94).
+motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
+
+> **Onde mora a spec de cada item (S-NN).** A spec está em cinco arquivos, e essa dispersão
+> custou duas entregas — a S-76 e a S-77 ficaram três meses em documento nenhum, e as duas
+> eram deste arquivo (S-133). `tests/test_docs.py` confere esta tabela contra o disco (S-134):
+> item entregue sem seção e seção no arquivo errado fazem a suíte falhar.
+>
+> | itens | arquivo |
+> |---|---|
+> | S-01 a S-36 | [SPEC.md](SPEC.md) |
+> | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
+> | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
+> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 
 > **Ressalva de 2026-08-16.** Quatro itens deste documento — **S-38b, S-40, S-62a e S-62b** —
 > foram reprovados pela taxa de exportação do conjunto de campo. A avaliação registrada em
