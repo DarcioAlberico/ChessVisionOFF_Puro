@@ -564,7 +564,17 @@ def candidates_from_embedded_images(
 
     caixas: list[tuple[fitz.Rect, int, int]] = []
     for info in infos:
-        bbox = fitz.Rect(info["bbox"])
+        # `* page.rotation_matrix` e nao `fitz.Rect(info["bbox"])` cru (S-129): o bbox de
+        # `get_image_info` vem no sistema **nao girado**, e tudo o que consome esta caixa --
+        # `get_pixmap(clip=...)` aqui, o retangulo sobre a pagina na tela, a caixa gravada no
+        # conjunto de campo -- trabalha no sistema **girado**, que e o de `page.rect`. Numa
+        # pagina com `/Rotate` diferente de zero o recorte sai de outro lugar da pagina: nao e
+        # erro, e um candidato que parece diagrama, entra na fila e ocupa uma vaga do teto.
+        #
+        # Medido no acervo em 2026-08-17: **1 pagina girada em 18.767** (Yusupov, p. 1413,
+        # `/Rotate 180`). O defeito e latente, e a correcao e identidade nas outras 18.766 --
+        # `rotation_matrix` e a identidade quando a rotacao e zero.
+        bbox = fitz.Rect(info["bbox"]) * page.rotation_matrix
         if bbox.is_empty or bbox.is_infinite:
             continue
         # O scan de fundo do Kemeri (1633x2468 cobrindo a pagina) cai aqui, antes de o

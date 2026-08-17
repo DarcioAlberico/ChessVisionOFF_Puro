@@ -464,7 +464,7 @@ no checkout **e** no `.exe`.
 
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
-| 19.1 | A página com `/Rotate` não gera candidato fantasma | S-129 | ⬜ |
+| 19.1 | A página com `/Rotate` não gera candidato fantasma | S-129 | ✅ (1 página em 18.767) |
 | 19.2 | A nota de textura não muda com a resolução do recorte | S-130 | ⬜ |
 | 19.3 | O caminho de contorno ganha instrumento antes de ajuste | S-131 | ⬜ |
 | 19.4 | O que o gate não enxerga, escrito onde ele decide | S-132 | ⬜ |

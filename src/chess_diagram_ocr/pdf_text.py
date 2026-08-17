@@ -385,6 +385,20 @@ def page_margin_lines(page: fitz.Page) -> list[TextLine]:
     return _page_lines(page, margin=True)
 
 
+def _texto_girado(page: fitz.Page, bbox: Sequence[float]) -> tuple[float, float, float, float]:
+    """A caixa de uma linha de texto no mesmo sistema em que a página é desenhada (S-129).
+
+    `get_text("dict")` devolve bbox no sistema **não girado**, como o `get_image_info`. Aqui a
+    consequência é o irmão do defeito da detecção: a legenda é casada ao diagrama **por
+    proximidade**, e numa página com `/Rotate` as duas caixas estariam em sistemas diferentes —
+    a legenda a 16 pt do diagrama pode acabar do outro lado da folha.
+
+    Identidade quando a rotação é zero, que é o caso de 18.766 das 18.767 páginas do acervo.
+    """
+    x0, y0, x1, y1 = (fitz.Rect(bbox) * page.rotation_matrix)
+    return float(x0), float(y0), float(x1), float(y1)
+
+
 def _page_lines(page: fitz.Page, *, margin: bool) -> list[TextLine]:
     height = page.rect.height or 1.0
     top_limit = page.rect.y0 + height * MARGIN_BAND
@@ -408,7 +422,7 @@ def _page_lines(page: fitz.Page, *, margin: bool) -> list[TextLine]:
             if not text or _is_diagram_font_row(text):
                 continue
 
-            x0, y0, x1, y1 = (float(v) for v in line["bbox"])
+            x0, y0, x1, y1 = _texto_girado(page, line["bbox"])
             if (y1 <= top_limit or y0 >= bottom_limit) != margin:
                 continue
             kept.append((text, (x0, y0, x1, y1)))
@@ -667,7 +681,7 @@ def _bare_integers(page: fitz.Page) -> list[tuple[int, tuple[float, float, float
             text = "".join(span.get("text", "") for span in line.get("spans", ())).strip()
             match = _BARE_INT.match(text)
             if match is not None:
-                x0, y0, x1, y1 = (float(v) for v in line["bbox"])
+                x0, y0, x1, y1 = _texto_girado(page, line["bbox"])
                 found.append((int(match.group(1)), (x0, y0, x1, y1)))
     return found
 

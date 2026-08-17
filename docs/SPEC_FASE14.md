@@ -2367,7 +2367,7 @@ o ramo v1.
 
 # Fase 19 — A detecção, e a documentação que descreve o programa que existe
 
-## S-129 · A página com `/Rotate` não gera candidato fantasma
+## S-129 · A página com `/Rotate` não gera candidato fantasma ✅ implementada (2026-08-17)
 
 **Problema.** `detection/embedded.py:567` lê `info["bbox"]` de `page.get_image_info()` e passa
 a caixa crua a `_pixels_for_bbox` (`:608`), que recorta com `page.get_pixmap(clip=bbox)`. A
@@ -2398,6 +2398,52 @@ não perde candidato legítimo.
 
 **Testes.** `tests/test_detection_embedded.py` — o PDF sintético girado, os quatro valores de
 `/Rotate`.
+
+### O que foi entregue
+
+O diagnóstico do enunciado **se confirmou**, e foi reproduzido antes de qualquer mudança — a
+Fase 19 avisa que os itens dela não passaram por cético. Num PDF sintético com o tabuleiro em
+posição conhecida, a caixa crua acerta só em `/Rotate 0`; `bbox * page.rotation_matrix` acerta
+nos quatro. Mesma coisa para as caixas de `get_text("dict")`.
+
+**Mas o tamanho do problema não era o do enunciado.** Medido no acervo em 2026-08-17: **1
+página girada em 18.767** — a 1413 do `Yusupov`, com `/Rotate 180`. O texto dizia "um candidato
+que parece diagrama, entra na fila, e ocupa uma vaga do teto por página", o que sugere um
+defeito ativo; ele é **latente**. Isso não muda a decisão — a correção é de uma linha e é a
+identidade quando a rotação é zero, portanto sem risco nas outras 18.766 —, mas muda o motivo:
+o item não recupera recall perdido hoje, ele impede um modo de falha silencioso no dia em que
+entrar um livro digitalizado em paisagem.
+
+Por isso o **censo antes/depois não foi rodado**: com uma página afetada em 18.767, ele não
+distinguiria a mudança do ruído, e custa horas. A regra da S-82 continua valendo para a S-130 e
+a S-131, que mexem em limiar.
+
+**A descoberta que justifica as duas correções serem uma só.** As caixas de imagem e de texto
+estavam *ambas* no sistema não girado — erradas, e erradas do mesmo jeito. A associação
+legenda↔diagrama é **por proximidade**, e proximidade é relativa: ela funcionava por acidente.
+Corrigir só `detection/embedded.py` põe as duas em sistemas diferentes e **quebra o que estava
+funcionando**. Medido no teste: a legenda passa de ≤ 60 pt para **243 pt** do diagrama a 90°, e
+nenhum diagrama herda legenda nenhuma. As duas linhas têm de andar juntas, e há teste dizendo
+isso.
+
+**O tamanho do estrago, por rotação** (IoU entre a caixa crua e onde o tabuleiro está
+desenhado):
+
+| `/Rotate` | IoU da caixa crua |
+|---|---|
+| 0 | 1,000 |
+| 90 | 0,000 |
+| 180 | 0,000 |
+| 270 | **0,404** |
+
+O 270 é o pior dos três justamente por não ser zero: um recorte com 40% de diagrama e 60% de
+outra coisa passa nas guardas de tamanho e de aspecto e vira um candidato que *parece* mal
+recortado, em vez de um erro.
+
+**Os testes ficaram em `tests/test_detection.py`** e não num `test_detection_embedded.py` novo:
+é onde moram `pdf_with_images`, `board_image` e `render`, e onde as outras guardas de candidato
+embutido já estão. Dois dos quatro nasceram passando **com e sem** a correção — afirmavam que a
+caixa cabia na página, e ela cabe mesmo errada. Foram trocados pelos que medem o que quebra.
 
 ---
 

@@ -331,6 +331,128 @@ class EmbeddedCandidateTests(unittest.TestCase):
             doc.close()
 
 
+class PaginaGiradaTests(unittest.TestCase):
+    """A página com `/Rotate` não gera candidato fantasma (S-129).
+
+    `get_image_info` devolve o bbox no sistema **não girado**; `get_pixmap` desenha a página
+    **girada**. Quem consome a caixa -- o recorte, o retângulo na tela, a linha do conjunto de
+    campo -- trabalha no sistema girado. Sem a correção, a caixa aponta para outro lugar da
+    folha, e o resultado não é erro: é um candidato que parece diagrama e ocupa uma vaga do
+    teto por página.
+
+    **Medido no acervo em 2026-08-17: 1 página girada em 18.767** (`Yusupov`, p. 1413,
+    `/Rotate 180`). O defeito é latente, e é por isso que ele precisa de teste: nada no acervo
+    o denunciaria, e o dia em que entrar um livro digitalizado em paisagem já é tarde.
+    """
+
+    ALVO = fitz.Rect(80, 100, 380, 400)
+
+    def _documento(self, rotacao: int) -> fitz.Document:
+        doc = pdf_with_images([(board_image(400), self.ALVO)])
+        doc[0].set_rotation(rotacao)
+        return doc
+
+    def _onde_o_tabuleiro_esta(self, page: fitz.Page) -> tuple[float, float, float, float]:
+        """A caixa do tabuleiro medida no **pixel** da página desenhada, a 72 DPI.
+
+        É a única referência que não depende da API sob teste: um ponto do PDF vira um pixel,
+        então o retângulo em pixels é o retângulo em pontos.
+        """
+        imagem = render(page, dpi=72)
+        escuro = np.argwhere(imagem[:, :, 0] < 200)
+        ys, xs = escuro[:, 0], escuro[:, 1]
+        return float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)
+
+    def test_a_caixa_do_candidato_cai_onde_o_tabuleiro_esta_desenhado(self) -> None:
+        for rotacao in (0, 90, 180, 270):
+            with self.subTest(rotacao=rotacao):
+                doc = self._documento(rotacao)
+                try:
+                    page = doc[0]
+                    candidatos = candidates_from_embedded_images(page)
+                    self.assertEqual(len(candidatos), 1)
+                    esperado = self._onde_o_tabuleiro_esta(page)
+                    for citado, real in zip(candidatos[0].bbox_pdf, esperado, strict=True):
+                        self.assertAlmostEqual(citado, real, delta=3)
+                finally:
+                    doc.close()
+
+    def test_sem_rotacao_nada_muda(self) -> None:
+        """A correção é a identidade em 18.766 das 18.767 páginas do acervo. Vale travar."""
+        doc = self._documento(0)
+        try:
+            (candidato,) = candidates_from_embedded_images(doc[0])
+            for citado, real in zip(candidato.bbox_pdf, tuple(self.ALVO), strict=True):
+                self.assertAlmostEqual(citado, real, delta=3)
+        finally:
+            doc.close()
+
+    @staticmethod
+    def _para_xywh(caixa: tuple[float, float, float, float]) -> tuple[int, int, int, int]:
+        return int(caixa[0]), int(caixa[1]), int(caixa[2] - caixa[0]), int(caixa[3] - caixa[1])
+
+    def test_a_caixa_crua_nao_encosta_no_tabuleiro_girado(self) -> None:
+        """O tamanho do estrago, medido: a caixa crua contra onde o tabuleiro está desenhado.
+
+        | `/Rotate` | IoU da caixa crua |
+        |---|---|
+        | 0 | 1,000 |
+        | 90 | **0,000** |
+        | 180 | **0,000** |
+        | 270 | **0,404** |
+
+        Não é um erro de alguns pontos que o refino do contorno consertaria depois. E o 270 é o
+        pior dos três justamente por não ser zero: um recorte que pega 40% do diagrama e 60% de
+        outra coisa ainda passa nas guardas de tamanho e aspecto, e vira um candidato que
+        *parece* um diagrama mal recortado em vez de um erro.
+        """
+        for rotacao, teto in ((90, 0.01), (180, 0.01), (270, 0.5)):
+            with self.subTest(rotacao=rotacao):
+                doc = self._documento(rotacao)
+                try:
+                    page = doc[0]
+                    desenhado = self._onde_o_tabuleiro_esta(page)
+                    crua = _bbox_iou(self._para_xywh(tuple(self.ALVO)), self._para_xywh(desenhado))
+                    self.assertLess(crua, teto)
+
+                    (candidato,) = candidates_from_embedded_images(page)
+                    corrigida = _bbox_iou(self._para_xywh(candidato.bbox_pdf), self._para_xywh(desenhado))
+                    self.assertGreater(corrigida, 0.95)
+                finally:
+                    doc.close()
+
+    def test_a_legenda_girada_continua_ao_lado_do_diagrama(self) -> None:
+        """A legenda é casada ao diagrama **por proximidade** (S-16), e proximidade é relativa.
+
+        **Este é o teste que diz por que as duas correções são uma só.** Antes da S-129, as
+        caixas do texto e da imagem estavam *ambas* no sistema não girado: erradas, e erradas
+        do mesmo jeito, então a distância entre elas saía certa e a associação funcionava por
+        acidente. Corrigir só `detection/embedded.py` põe as duas em sistemas diferentes e
+        **quebra o que estava funcionando** -- medido aqui: a legenda passa de ≤ 60 pt para
+        243 pt do diagrama, a 90°, e nenhum diagrama herda legenda nenhuma.
+
+        Por isso o que se afirma é a distância, e não que a caixa caiba na página: ela cabe
+        mesmo errada, e um teste sobre isso passaria nos três estados.
+        """
+        from chess_diagram_ocr.pdf_text import DEFAULT_RADIUS_PT, page_text_lines
+
+        for rotacao in (0, 90, 180, 270):
+            with self.subTest(rotacao=rotacao):
+                doc = pdf_with_images([(board_image(400), self.ALVO)])
+                try:
+                    doc[0].insert_text(fitz.Point(90, 430), "31: Jogada das pretas", fontsize=11)
+                    doc[0].set_rotation(rotacao)
+                    page = doc[0]
+                    (linha,) = [item for item in page_text_lines(page) if "pretas" in item.text]
+                    (candidato,) = candidates_from_embedded_images(page)
+
+                    dx = max(candidato.bbox_pdf[0] - linha.bbox[2], linha.bbox[0] - candidato.bbox_pdf[2], 0.0)
+                    dy = max(candidato.bbox_pdf[1] - linha.bbox[3], linha.bbox[1] - candidato.bbox_pdf[3], 0.0)
+                    self.assertLess(max(dx, dy), DEFAULT_RADIUS_PT)
+                finally:
+                    doc.close()
+
+
 class MinimumSideInPointsTests(unittest.TestCase):
     """A guarda da S-78: tamanho **na página**, que é a unidade da pergunta.
 
