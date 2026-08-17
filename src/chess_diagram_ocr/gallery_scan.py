@@ -126,6 +126,27 @@ class GalleryIndex:
     pages_scanned: int = 0
     entries: list[GalleryEntry] = field(default_factory=list)
 
+    start_page: int = 0
+    """Primeira página que esta varredura olhou (S-120)."""
+
+    last_page_done: int = -1
+    """Última página **terminada**, em base 0. `-1` é "nenhuma" (S-120).
+
+    Terminada e não iniciada: o progresso é emitido depois de a página inteira ser lida, então
+    retomar de `last_page_done + 1` não pula nem repete diagrama."""
+
+    complete: bool = True
+    """A varredura chegou ao fim do livro (S-120).
+
+    **O defeito que estes três campos fecham é pior que o tempo perdido.** Uma queda ou um
+    fechamento de janela no meio deixava um índice truncado **indistinguível de um completo** --
+    e ele alimenta em silêncio a busca por posição, o censo e a fila, todos concluindo que o
+    livro tem menos diagramas do que tem.
+
+    O padrão é `True` e a leitura de um arquivo sem a chave também: um índice gravado antes
+    deste item é tão confiável quanto era ontem, e marcá-lo parcial faria os 34 livros do
+    acervo gritarem lobo de uma vez."""
+
     def __len__(self) -> int:
         return len(self.entries)
 
@@ -154,6 +175,9 @@ class GalleryIndex:
             "created_at": self.created_at,
             "reading_order": self.reading_order,
             "pages_scanned": self.pages_scanned,
+            "start_page": self.start_page,
+            "last_page_done": self.last_page_done,
+            "complete": self.complete,
             "entries": [entrada.to_dict() for entrada in self.entries],
         }
 
@@ -168,6 +192,10 @@ class GalleryIndex:
             created_at=str(dados.get("created_at") or ""),
             reading_order=ordem if ordem in ("row", "column") else DEFAULT_READING_ORDER,  # type: ignore[arg-type]
             pages_scanned=int(dados.get("pages_scanned") or 0),
+            start_page=int(dados.get("start_page") or 0),
+            last_page_done=int(dados.get("last_page_done", -1)),
+            # Ausente e `True` sao a mesma coisa aqui, e o docstring do campo diz por que.
+            complete=bool(dados.get("complete", True)),
             entries=[entrada for entrada in entradas if entrada is not None],
         )
 
@@ -217,16 +245,45 @@ def build_gallery_index(
     progress_callback: ProgressCallback | None = None,
     model_session: Any = None,
     now: str | None = None,
+    resume_from: GalleryIndex | None = None,
 ) -> GalleryIndex:
     """Varre o livro e devolve **todos** os diagramas, sem gate e sem filtro de prioridade.
 
     Cancelar não é erro: o índice sai com o que deu tempo de varrer, e a interface diz até
     onde foi. Descartar o parcial faria a pessoa perder minutos de varredura por ter mudado
     de ideia -- a mesma razão do checkpoint da S-24.
+
+    `resume_from` continua uma varredura interrompida (S-120): as entradas dele são mantidas e
+    a leitura começa na página seguinte à última **terminada**. Um índice completo, ou de outra
+    ordem de leitura, é ignorado -- no primeiro caso não há o que retomar, e no segundo a
+    numeração de diagrama por página muda (S-14) e as entradas antigas descreveriam outros
+    diagramas.
     """
     pdf_path = Path(pdf_source)
     entradas: list[GalleryEntry] = []
     paginas: set[int] = set()
+
+    if resume_from is not None and not resume_from.complete and resume_from.reading_order == reading_order:
+        entradas = list(resume_from.entries)
+        paginas = {entrada.page_index for entrada in entradas}
+        start_page = max(start_page, resume_from.last_page_done + 1)
+        logger.info(
+            "Retomando a varredura de %s da página %d: %d diagrama(s) já lidos (S-120).",
+            pdf_path.name,
+            start_page,
+            len(entradas),
+        )
+
+    ultima_pronta = start_page - 1
+
+    def _progresso(page_index: int, total: int, diagramas: int, aceitos: int) -> None:
+        # O progresso e emitido **depois** de a pagina inteira ser lida, entao ele e a fonte
+        # certa de `last_page_done` -- e a unica que enxerga pagina sem diagrama nenhum, que
+        # nao produz entrada e mesmo assim foi varrida.
+        nonlocal ultima_pronta
+        ultima_pronta = max(ultima_pronta, page_index)
+        if progress_callback is not None:
+            progress_callback(page_index, total, diagramas, aceitos)
 
     for scanned in iter_pdf_diagrams(
         pdf_path,
@@ -240,7 +297,7 @@ def build_gallery_index(
         read_text=read_text,
         caption_reader=caption_reader,
         cancel_event=cancel_event,
-        progress_callback=progress_callback,
+        progress_callback=_progresso,
         model_session=model_session,
     ):
         posicao = scanned.position
@@ -263,10 +320,16 @@ def build_gallery_index(
             )
         )
 
+    cancelada = cancel_event is not None and cancel_event.is_set()
     return GalleryIndex(
         source_pdf=str(pdf_path),
         created_at=now or datetime.now().isoformat(timespec="seconds"),
         reading_order=reading_order,
         pages_scanned=len(paginas),
+        start_page=start_page,
+        last_page_done=ultima_pronta,
+        # `end_page` tambem trunca de proposito, e o indice resultante nao descreve o livro
+        # inteiro: quem consome precisa saber disso tanto quanto no caso do cancelamento.
+        complete=not cancelada and end_page is None,
         entries=entradas,
     )

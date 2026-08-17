@@ -1660,7 +1660,7 @@ sem janela.
 
 ---
 
-## S-120 · A varredura da Galeria é retomável e diz até onde foi
+## S-120 · A varredura da Galeria é retomável e diz até onde foi ✅ implementada (2026-08-17)
 
 **Problema.** `gallery_scan.py:228-272` acumula tudo numa lista em memória e só devolve no fim;
 `ui/gallery_panel.py:378-388` chama `build_gallery_index` sem `start_page` e grava com o
@@ -1685,6 +1685,39 @@ onde parou.
 
 **Testes.** `tests/test_gallery_scan.py` (não existe hoje) — os três campos; a retomada; o
 consumidor que recusa concluir sobre índice parcial.
+
+### O que foi entregue
+
+**A camada 1 inteira, e a 2 por um caminho mais barato que o `CheckpointWriter`.** Os três
+campos — `start_page`, `last_page_done`, `complete` — tornam o artefato auditável; e como o
+índice **já é gravado no fim de cada varredura**, retomar não precisou de um formato parcial
+novo: `build_gallery_index(resume_from=...)` recebe o índice do disco, mantém as entradas dele
+e começa na página seguinte à última terminada.
+
+**`last_page_done` sai do progresso, e não das entradas.** O progresso é emitido depois de a
+página inteira ser lida, e é o único que enxerga página **sem diagrama nenhum** — que não
+produz entrada e mesmo assim foi varrida. Tirá-lo das entradas faria a retomada reler todas as
+páginas de prosa do fim do capítulo.
+
+**Duas recusas de retomada, cada uma com teste:** índice completo (não há o que continuar, e
+reaproveitar as entradas duplicaria o livro) e ordem de leitura diferente (a numeração de
+diagrama por página depende dela, S-14, e as entradas antigas descreveriam outros diagramas —
+o índice sairia *mentindo* em vez de incompleto).
+
+**`end_page` também produz índice incompleto.** Truncar de propósito trunca do mesmo jeito, e
+quem consome precisa saber disso tanto quanto no caso do cancelamento.
+
+**Índice gravado antes deste item lê como completo.** É a decisão que evita gritar lobo: ele é
+tão confiável quanto era ontem, e marcar os 34 livros do acervo como parciais de uma vez faria
+o aviso deixar de significar alguma coisa.
+
+**E isto inverte o `loses_work` que a S-112 deixou marcado.** O comentário lá nomeava este
+item como o que trocaria o valor; a varredura da Galeria passou a `loses_work=False`, porque
+fechar a janela custa **a página em curso** e não o livro.
+
+**Dez testes num arquivo novo**, sem abrir PDF: o gerador de diagramas entra como duplo com a
+mesma assinatura de `iter_pdf_diagrams`, inclusive o progresso por página, que é o que torna
+`last_page_done` confiável.
 
 ---
 

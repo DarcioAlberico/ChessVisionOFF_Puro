@@ -387,10 +387,10 @@ class GalleryPanel(ttk.Frame):
 
         self._scanning = True
         self._cancel.clear()
-        # `save_index` só acontece no fim: fechar a janela no meio mata a thread daemon antes
-        # dela, e as páginas já lidas vão junto. A S-120 dá checkpoint à varredura, e é ela
-        # que troca este `True` por `False` -- não antes.
-        self._register_busy("varredura da Galeria", loses_work=True, detail=caminho.name)
+        # `loses_work=False` desde a S-120: a varredura retoma da página seguinte à última
+        # terminada, então fechar a janela custa **a página em curso**, e não o livro. Era
+        # `True` na S-112, com o comentário nomeando este item como o que inverteria o valor.
+        self._register_busy("varredura da Galeria", loses_work=False, detail=caminho.name)
         self._busy(True)
         self.scan_var.set("varrendo...")
         threading.Thread(target=self._scan_worker, args=(caminho,), daemon=True).start()
@@ -409,9 +409,14 @@ class GalleryPanel(ttk.Frame):
         try:
             # `model_session` empresta o modelo do servico em vez de carregar outro: e a
             # mesma razao da S-57, e a varredura da galeria e tao longa quanto a da fila.
+            # Retomar de onde parou (S-120). O indice no disco pode ser parcial de uma
+            # varredura cancelada ou de uma janela fechada, e `build_gallery_index` ignora
+            # sozinho o que estiver completo -- aqui so se entrega o que ha.
+            anterior = load_index(caminho)
             indice = build_gallery_index(
                 caminho,
                 self._model_path(),
+                resume_from=anterior,
                 max_boards_per_page=self._max_boards(),
                 reading_order=DEFAULT_READING_ORDER,
                 cancel_event=self._cancel,
@@ -431,12 +436,26 @@ class GalleryPanel(ttk.Frame):
         self.after(0, lambda: self.scan_var.set(f"varrendo página {pagina} de {total}..."))
 
     def _scan_done(self, caminho: Path, indice: object) -> None:
+        """Diz **quanto do livro** foi varrido, e não só quantos diagramas saíram (S-120).
+
+        Um índice truncado é indistinguível de um completo pelo número de diagramas -- é a
+        parte do defeito que custa mais que o tempo perdido --, então o estado parcial vira
+        texto na tela, com a página em que a varredura parou e o convite a continuar.
+        """
         self._scanning = False
         self._busy(False)
         self.load_pdf(caminho)
-        cancelada = " (cancelada)" if self._cancel.is_set() else ""
-        self.scan_var.set(f"{len(self.model)} diagrama(s){cancelada}")
-        self._on_status(f"Galeria: {len(self.model)} diagrama(s) varrido(s){cancelada}.")
+        completo = bool(getattr(indice, "complete", True))
+        ate = int(getattr(indice, "last_page_done", -1))
+        if completo:
+            self.scan_var.set(f"{len(self.model)} diagrama(s)")
+            self._on_status(f"Galeria: {len(self.model)} diagrama(s) varrido(s), livro inteiro.")
+            return
+        self.scan_var.set(f"{len(self.model)} diagrama(s) — parcial até a página {ate + 1}")
+        self._on_status(
+            f"Galeria: **parcial**. {len(self.model)} diagrama(s) até a página {ate + 1}; "
+            "varrer de novo continua daí, sem repetir o que já foi lido."
+        )
 
     def _scan_failed(self, exc: Exception) -> None:
         self._scanning = False
