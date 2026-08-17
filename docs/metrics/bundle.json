@@ -1,0 +1,8 @@
+{
+  "mb": 696,
+  "arquivos": 4723,
+  "data": "2026-08-09",
+  "commit": "desconhecido",
+  "obsoleto": true,
+  "nota": "Medido do dist/ que estava no disco em 2026-08-17, e esse dist e o build de 2026-08-09: ele ainda contem pythonnet e clr_loader (removidos na S-69) e o streamlit (fora das obrigatorias desde a S-137). Nao representa o bundle de hoje. O proximo `python packaging/build_windows.py` reescreve este arquivo sem estes dois campos."
+}

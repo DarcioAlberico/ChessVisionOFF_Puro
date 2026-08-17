@@ -8,11 +8,15 @@ escolha, [ROADMAP.md](ROADMAP.md); para os números, [BASELINE.md](BASELINE.md) 
 
 ## A regra que organiza tudo
 
-**Nenhuma lógica de reconhecimento vive numa interface.** `app_tkinter.py` e
-`app_streamlit.py` são apresentação: leem widgets, chamam o serviço, desenham o resultado.
-Isso não é gosto arquitetural — é consequência de um defeito medido. Até a Fase 6 as duas
-telas implementavam o pipeline de forma independente, e cinco entregas das Fases 2 e 3
-nunca chegaram ao Streamlit sem que nada acusasse.
+**Nenhuma lógica de reconhecimento vive numa interface.** `app_tkinter.py` é apresentação: lê
+widgets, chama o serviço, desenha o resultado. Isso não é gosto arquitetural — é consequência
+de um defeito medido. Até a Fase 6 havia **duas** telas, e cada uma implementava o pipeline de
+forma independente: cinco entregas das Fases 2 e 3 nunca chegaram ao Streamlit sem que nada
+acusasse.
+
+A segunda tela saiu na S-54 e virou exemplo em `examples/`; na S-137 o `streamlit` deixou de
+ser dependência obrigatória. **A regra sobreviveu à tela que a motivou**, e é o que permite
+testar o pipeline sem abrir janela nenhuma.
 
 O corolário prático: **o que dá para testar não fica na janela.**
 
@@ -161,7 +165,8 @@ disparar, e não antes:
 | a Fase 8 exigir sobreposição **editável** sobre a página renderizada | é onde o canvas do Tk deixa de ser desconforto e vira trabalho desproporcional |
 | o `labels.csv` passar de **10 mil linhas** | a paginação da S-23 deixa de ser mitigação e vira obstáculo ao fluxo |
 
-Hoje o `labels.csv` tem **3.313** linhas — 33% do gatilho. Quando a hora chegar, `Qt` dá
+Hoje o `labels.csv` tem **3.936** linhas — 39% do gatilho (medido em 2026-08-17; o número é
+conferido por `tests/test_docs.py`, S-135). Quando a hora chegar, `Qt` dá
 `QTableView` com modelo virtual (30 mil linhas sem paginar), `QGraphicsScene` para tabuleiro
 e sobreposições, `QThread` + sinais no lugar de `root.after`, `QPdfView` nativo, DPI correto
 por monitor e `QAction` para atalhos.
@@ -249,20 +254,32 @@ e as dez seguintes entraram em silêncio — inclusive a mais cara do programa (
 
 ## Formatos e persistência
 
+A tabela é conferida por `tests/test_docs.py` **nos dois sentidos** (S-135): artefato em `data/`
+sem linha aqui, e linha aqui apontando para um caminho que não existe e não está marcado como
+**sob demanda**, fazem a suíte falhar. Ela já esteve com 8 dos 16 artefatos, o `splits.csv`
+duplicado e uma linha para um arquivo que este repositório nunca teve.
+
 | arquivo | o que guarda | versionado |
 |---|---|---|
 | `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split, e a confirmação de ilegalidade deliberada (`illegal_ok`) | sim |
-| `data/splits.csv` | partição treino/validação/teste, estável sob crescimento | sim |
-| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (2,7 GB) |
+| `data/splits.csv` | partição treino/validação/teste, estável sob crescimento, atribuída às amostras novas pelo próprio treino (S-56) | sim |
+| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (3,4 GB) |
+| `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
+| `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | sim |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
 | `data/app_tkinter_state.json` | último PDF, página, zoom | não |
 | `data/review_queue.json` | a fila de revisão | não |
-| `data/provenance_index.jsonl` | dHash de cada diagrama do acervo, para recuperar procedência (S-52) | não (horas para reconstruir, mas derivável dos PDFs) |
+| `data/review_cache/` | os recortes das páginas já varridas, para a fila não reabrir o PDF | não (8,3 GB — o maior artefato do projeto) |
+| `data/orphans/` | os PNGs cujo rótulo sumiu do `labels.csv`, guardados em vez de apagados (S-63) | não |
 | `data/gallery/<livro>.json` | as anotações de exportação por diagrama: lance, vez, link, headers e a partida escolhida (S-67) | **não** — descreve o conteúdo de um livro protegido, como o `review_cache` |
 | `data/gallery/<livro>.index.json` | onde estão os diagramas daquele livro e o recorte de cada um | não — derivado do PDF, refeito varrendo o livro |
 | `data/gallery_human.jsonl` | **o extrato do que uma pessoa digitou ou escolheu** na galeria (S-115) | **sim** |
+| `data/games_index.sqlite` | o índice por nome e por posição da base de partidas (S-72, S-73) | não (884 MB — reconstruível a partir do `pgn_database/`) |
+| `data/games_positions.json` | o cache de posições da varredura, com trava e refusão (S-113) | não |
+| `data/games_matches.json` | os casamentos livro↔partida, formato v1 | não |
+| `data/games_matches_v2.json` | os mesmos, formato v2 — o artefato dos 104 minutos de 2026-08-13 (S-128) | não |
+| `data/provenance_index.jsonl` | dHash de cada diagrama do acervo, para recuperar procedência (S-52) | não — **sob demanda**: só existe depois de `cvoff-provenance`, e são horas |
 | `models/*.pt` | checkpoints, com semente, split e métrica gravados | não |
-| `data/splits.csv` | partição, atribuída às amostras novas pelo próprio treino (S-56) | sim |
 | `PGN/<livro>.pgn` | as posições aceitas | não |
 | `PGN/<livro>.review.pgn` | as rejeitadas e as de baixa confiança, com o motivo | não |
 | `PGN/<livro>.partial.jsonl` | checkpoint da exportação, apagado ao concluir | não |
@@ -297,7 +314,7 @@ que encontrou a **sexta** porta, em `review_queue.rare_classes_from_labels`, que
 levantamento tinha listado.
 
 `LabelStore` usa o `csv` da biblioteca padrão e não pandas. A S-58 existe porque o pandas
-infere tipo — `source_page` tem 98,6% de células vazias, a coluna virava `float64` e `20`
+infere tipo — `source_page` tem 84,1% de células vazias, a coluna virava `float64` e `20`
 voltava `20.0`, e como a gravação relê o arquivo inteiro antes de acrescentar uma linha, uma
 amostra nova reescrevia todas as antigas nesse formato. Com `csv.DictReader` não há tipo a
 inferir: todas as colunas do esquema são texto. O defeito deixou de ser evitado e passou a não

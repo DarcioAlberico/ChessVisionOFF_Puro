@@ -220,5 +220,223 @@ class IndiceDoReadmeTests(unittest.TestCase):
         self.assertGreaterEqual(copias, 5, "A tabela sumiu de algum dos cinco documentos de spec.")
 
 
+TOLERANCIA = 0.10
+"""Quanto um número citado pode ficar para trás do disco antes de a suíte falhar (S-135).
+
+**Por que tolerância e não igualdade.** `labels.csv`, `data/samples/` e `PDF/` crescem a cada
+gesto de uso: com igualdade exata, salvar uma amostra deixaria a suíte vermelha, e o time
+aprenderia a ignorar este arquivo — que é o oposto do que ele existe para fazer.
+
+**Por que 10%, e não 50%.** As doze divergências que a S-135 encontrou estavam todas acima
+disso: `labels.csv` citava 3.313 contra 3.936 (15,8%), os PNGs 3.200 contra 3.935 (18,7%), o
+acervo 27 livros contra 39 (30,8%), a base 9,7 GB contra 18,9 (49%). Dez por cento passa em
+crescimento de uso e falha em número esquecido, que é exatamente a divisão que se quer.
+
+De brinde, ela absorve a confusão GB↔GiB (7,4%), que neste projeto já fez alguém "corrigir" um
+número que estava certo.
+"""
+
+
+def chaves_da_secao(secao: str) -> list[str]:
+    """As chaves de uma tabela do `pyproject.toml`, sem depender de um leitor de TOML.
+
+    São só duas seções — `[project.scripts]` e `[project.optional-dependencies]` — e as duas
+    são listas de `chave = ...` sem aninhamento, então um leitor de dez linhas basta.
+
+    **O `tomllib` resolveria, e não serve**: ele é 3.11+ e este projeto exige 3.10. O `tomli`
+    que existe no ambiente vem de carona com o `mypy` e não está declarado em lugar nenhum —
+    depender do que ninguém declarou é como um teste passa hoje e some amanhã, que é a mesma
+    família de defeito que a S-128 consertou na CI.
+    """
+    texto = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
+    dentro = False
+    chaves: list[str] = []
+    for linha in texto.splitlines():
+        despida = linha.strip()
+        if despida.startswith("["):
+            dentro = despida == f"[{secao}]"
+            continue
+        if not dentro:
+            continue
+        achado = re.match(r"([A-Za-z0-9_-]+)\s*=", despida)
+        if achado:
+            chaves.append(achado.group(1))
+    return chaves
+
+
+def _citado(texto: str, padrao: str) -> float:
+    """O primeiro número que casa com `padrao`, em português: `3.936` e `18,9`."""
+    achado = re.search(padrao, texto)
+    assert achado is not None, f"o documento perdeu o trecho: {padrao}"
+    return float(achado.group(1).replace(".", "").replace(",", "."))
+
+
+def _perto(caso: unittest.TestCase, citado: float, real: float, o_que: str) -> None:
+    if real == 0:  # pragma: no cover - repositorio sem o artefato
+        caso.skipTest(f"{o_que} não existe neste checkout")
+    desvio = abs(citado - real) / real
+    caso.assertLessEqual(
+        desvio,
+        TOLERANCIA,
+        f"{o_que}: o documento diz {citado:g} e o disco tem {real:g} "
+        f"({desvio:.1%} de diferença, o limite é {TOLERANCIA:.0%}).",
+    )
+
+
+class NumerosVivosTests(unittest.TestCase):
+    """Nenhum número citado em documento diverge do disco sem que a suíte falhe (S-135).
+
+    É o critério de saída da Fase 19, e ele existe porque a alternativa foi medida: doze
+    afirmações de `README.md` e `ARCHITECTURE.md` estavam erradas ao mesmo tempo, entre elas um
+    módulo que não existe desde a S-54 e um artefato que este repositório nunca teve.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.readme = README.read_text(encoding="utf-8")
+        cls.arquitetura = (DOCS / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    def test_o_labels_csv_citado_bate_com_o_disco(self) -> None:
+        alvo = RAIZ / "data" / "labels.csv"
+        if not alvo.exists():
+            self.skipTest("data/labels.csv não existe neste checkout")
+        real = len(alvo.read_text(encoding="utf-8").splitlines()) - 1
+        citado = _citado(self.arquitetura, r"o `labels\.csv` tem \*\*([\d.]+)\*\* linhas")
+        _perto(self, citado, real, "linhas do labels.csv")
+
+    def test_os_pngs_citados_batem_com_o_disco(self) -> None:
+        pasta = RAIZ / "data" / "samples"
+        if not pasta.exists():
+            self.skipTest("data/samples/ não existe neste checkout")
+        real = sum(1 for _ in pasta.rglob("*.png"))
+        citado = _citado(self.readme, r"([\d.]+) PNGs de tabuleiros")
+        _perto(self, citado, real, "PNGs em data/samples")
+
+    def test_o_acervo_citado_bate_com_a_pasta_PDF(self) -> None:
+        """O número que a S-135 pegou mais desatualizado: 27 contra 39 livros."""
+        pasta = RAIZ / "PDF"
+        if not pasta.exists():
+            self.skipTest("PDF/ não existe neste checkout")
+        real = sum(1 for _ in pasta.glob("*.pdf"))
+        citado = _citado(self.readme, r"Hoje o acervo tem (\d+) PDFs")
+        _perto(self, citado, real, "PDFs em PDF/")
+
+    def test_a_base_de_partidas_citada_bate_com_o_disco(self) -> None:
+        pasta = RAIZ / "pgn_database"
+        if not pasta.exists():
+            self.skipTest("pgn_database/ não existe neste checkout")
+        real = sum(f.stat().st_size for f in pasta.rglob("*") if f.is_file()) / 10**9
+        citado = _citado(self.readme, r"as duas gigabases medidas aqui tem ([\d,]+) GB")
+        _perto(self, citado, real, "tamanho de pgn_database/ em GB")
+
+    def test_todo_modulo_citado_como_interface_existe(self) -> None:
+        """Pega o `app_streamlit.py`, que a ARCHITECTURE descreveu por três meses depois da S-54."""
+        citados = set(re.findall(r"`(app_\w+\.py)`", self.arquitetura))
+        self.assertTrue(citados, "a ARCHITECTURE perdeu a menção às interfaces.")
+        ausentes = sorted(nome for nome in citados if not (RAIZ / nome).exists())
+        self.assertEqual([], ausentes, "A ARCHITECTURE descreve um módulo que não existe.")
+
+    def test_a_tabela_de_persistencia_lista_o_que_data_tem(self) -> None:
+        """Nos dois sentidos: artefato sem linha, e linha apontando para o que não existe.
+
+        A tabela já esteve com 8 dos 16 artefatos, o `splits.csv` em duas linhas e uma linha
+        para o `provenance_index.jsonl`, que este repositório nunca teve.
+        """
+        citados = set(re.findall(r"`(data/[\w./<>-]+)`", self.arquitetura))
+        pasta = RAIZ / "data"
+        if not pasta.exists():
+            self.skipTest("data/ não existe neste checkout")
+
+        no_disco = {
+            f"data/{item.name}" + ("/" if item.is_dir() else "")
+            for item in pasta.iterdir()
+            if ".bak" not in item.name
+        }
+        def coberto(caminho: str) -> bool:
+            # Uma pasta conta como listada quando a tabela descreve o que mora dentro dela --
+            # `data/gallery/` está em duas linhas, uma por tipo de arquivo, e exigir uma
+            # terceira linha para a pasta em si seria ruído.
+            nu = caminho.rstrip("/")
+            return nu in citados or any(citado.startswith(f"{nu}/") for citado in citados)
+
+        sem_linha = sorted(caminho for caminho in no_disco if not coberto(caminho))
+        self.assertEqual([], sem_linha, "Artefato em data/ que a tabela de persistência não lista.")
+
+        sob_demanda = set(re.findall(r"`(data/[\w./-]+)`[^|]*\|[^|]*\|[^|]*sob demanda", self.arquitetura))
+        fantasmas = sorted(
+            caminho
+            for caminho in citados
+            if "<" not in caminho
+            and caminho not in sob_demanda
+            and not (RAIZ / caminho).exists()
+            and not (RAIZ / caminho.rstrip("/")).exists()
+        )
+        self.assertEqual(
+            [],
+            fantasmas,
+            "A tabela cita um caminho que não existe e não está marcado como sob demanda.",
+        )
+
+    def test_as_fontes_do_lado_a_jogar_batem_com_o_Literal(self) -> None:
+        """A tabela do README dizia "três" enquanto `semantics.py` declarava oito."""
+        from typing import get_args
+
+        from chess_diagram_ocr.semantics import SideSource
+
+        valores = set(get_args(SideSource))
+        citado = int(_citado(self.readme, r"diz \*\*qual das (\d+)\*\* foi"))
+        self.assertEqual(len(valores), citado, "O README e o `Literal` discordam na contagem.")
+
+        na_tabela = set(re.findall(r"^\| `([a-z-]+)` \| ", self.readme, flags=re.MULTILINE))
+        self.assertEqual(
+            set(),
+            valores - na_tabela,
+            "Valor de `SideSource` que a tabela do README não explica.",
+        )
+
+    def test_todo_extra_do_pyproject_aparece_no_README(self) -> None:
+        """Pega o `second-opinion`: um botão na tela, 232,8 MiB de clone, e zero menções."""
+        extras = chaves_da_secao("project.optional-dependencies")
+        self.assertTrue(extras, "o pyproject perdeu a seção de extras (ou o leitor quebrou).")
+        ausentes = sorted(extra for extra in extras if extra not in self.readme)
+        self.assertEqual([], ausentes, "Extra do pyproject que o README não menciona.")
+
+    def test_o_numero_de_comandos_citado_bate_com_project_scripts(self) -> None:
+        """Dizia "os três comandos abaixo", e a lista tinha quinze."""
+        comandos = chaves_da_secao("project.scripts")
+        self.assertTrue(comandos, "o pyproject perdeu a seção de comandos (ou o leitor quebrou).")
+        citado = int(_citado(self.readme, r"\*\*(\d+) comandos\*\* ficam disponiveis"))
+        self.assertEqual(len(comandos), citado)
+
+    def test_o_bundle_citado_bate_com_o_que_o_build_gravou(self) -> None:
+        """O README publicava 5.247 arquivos de um build que tinha 4.723 (S-135)."""
+        import json
+
+        metricas_json = DOCS / "metrics" / "bundle.json"
+        if not metricas_json.exists():
+            self.skipTest("docs/metrics/bundle.json ainda não foi gerado por um build")
+        metricas = json.loads(metricas_json.read_text(encoding="utf-8"))
+
+        citado_mb = int(_citado(self.readme, r"\*\*([\d.]+) MB, [\d.]+ arquivos\*\*"))
+        citado_arquivos = int(_citado(self.readme, r"\*\*[\d.]+ MB, ([\d.]+) arquivos\*\*"))
+        self.assertEqual((metricas["mb"], metricas["arquivos"]), (citado_mb, citado_arquivos))
+
+    def test_o_bundle_obsoleto_se_diz_obsoleto(self) -> None:
+        """Um número certo sobre um build que já não existe engana igual a um número errado."""
+        import json
+
+        metricas_json = DOCS / "metrics" / "bundle.json"
+        if not metricas_json.exists():
+            self.skipTest("docs/metrics/bundle.json ainda não foi gerado por um build")
+        metricas = json.loads(metricas_json.read_text(encoding="utf-8"))
+        if not metricas.get("obsoleto"):
+            return
+        self.assertIn(
+            "obsoleta",
+            self.readme,
+            "As métricas do bundle estão marcadas como obsoletas e o README não avisa.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

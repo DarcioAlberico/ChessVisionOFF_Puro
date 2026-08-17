@@ -57,7 +57,13 @@ uv run python packaging/build_windows.py
 Sai em `dist/ChessVisionOFF/`. Zipe a pasta inteira: ela roda numa maquina Windows limpa,
 sem Python e sem `uv`.
 
-**Tamanho medido: 696 MB, 5.247 arquivos** (torch 2.10+cpu, torchvision, OpenCV, PyMuPDF).
+**Tamanho: o build grava em [docs/metrics/bundle.json](docs/metrics/bundle.json), e o numero
+citado aqui e conferido contra esse arquivo por `tests/test_docs.py` (S-135).** A ultima
+medida registrada e de **696 MB, 4.723 arquivos**, do build de 2026-08-09 -- e ela esta
+**obsoleta**: aquele bundle ainda leva `pythonnet` e `clr_loader`, que sairam na S-69, e o
+`streamlit`, que saiu das obrigatorias na S-137 (115,4 MiB). O proximo
+`python packaging/build_windows.py` reescreve o arquivo e este numero com ele.
+
 E o build **completo** -- leitor *e* treinador. O peso vem quase todo do torch, e o torch
 esta ali porque o ciclo que da valor ao projeto e *corrigir, salvar, treinar*: um bundle so
 de leitura seria ~5x menor e nao teria o botao "Treinar modelo". O caminho para faze-lo esta
@@ -104,8 +110,10 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, os tres comandos abaixo ficam disponiveis no ambiente. Todos
-aceitam `-v` para log em nivel DEBUG.
+Depois da instalacao, **17 comandos** ficam disponiveis no ambiente -- a contagem sai de
+`[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
+log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
+usados estao abaixo; `--help` lista o resto.
 
 ```bash
 # Treino. Usa data/splits.csv: treina no split 'train', valida em 'val',
@@ -231,9 +239,24 @@ A exportacao e cancelavel e retomavel: a cada 5 paginas ela grava
 a ultima concluida -- desde que os parametros sejam os mesmos. Concluir apaga o parcial.
 
 O lado a jogar sai da legenda do PDF quando ela declara, da legalidade da posicao quando
-ela impoe (o lado que nao joga nao pode estar em xeque), e do padrao "brancas" quando
-nenhuma das duas responde. O header `[SideToMoveSource]` diz qual dos tres foi, sempre --
-a maioria dos livros do acervo nao declara nada, e um palpite precisa parecer um palpite.
+ela impoe (o lado que nao joga nao pode estar em xeque), da partida que a base casou, da
+escolha de quem estava com o livro aberto, e do padrao "brancas" quando nenhuma das outras
+responde. O header `[SideToMoveSource]` diz **qual das 8** foi, sempre -- a maioria dos livros
+do acervo nao declara nada, e um palpite precisa parecer um palpite.
+
+| valor | de onde veio |
+|---|---|
+| `text` | declarado no texto do PDF |
+| `ocr` | lido por OCR da legenda (S-42/S-43) |
+| `text-page-scope` | declarado no cabecalho da pagina |
+| `ocr-page-scope` | lido por OCR do cabecalho da pagina |
+| `legality` | deduzido da legalidade da posicao |
+| `database` | da partida que a base casou (S-72) |
+| `manual` | escolhido a mao na Galeria |
+| `default` | ninguem respondeu: "brancas", e o header marca o palpite como palpite |
+
+A lista sai de `SideSource`, em `semantics.py`, e `tests/test_docs.py` falha se a tabela e o
+`Literal` divergirem (S-135) -- ela ja disse "tres" enquanto o codigo declarava oito.
 
 Para gravar o log em arquivo num checkout, defina `CVOFF_LOG_DIR`:
 
@@ -339,14 +362,48 @@ Stockfish para `engines/` e a instalacao mais simples.
 }
 ```
 
+### Segunda opiniao: o botao "2a opiniao" (S-66)
+
+Manda o **mesmo recorte** que esta no editor para um segundo leitor, local, e mostra a FEN
+que ele devolve ao lado da sua. Serve para o diagrama em que voce nao tem certeza: duas
+leituras independentes concordando valem mais que uma, e discordando dizem exatamente onde
+olhar.
+
+**Sao tres coisas separadas, e as tres precisam existir**: o extra, um clone do
+[tsoj/Chess_diagram_to_FEN](https://github.com/tsoj/Chess_diagram_to_FEN) fora deste
+repositorio (~232,8 MiB, incluindo o modelo), e o caminho dele nas preferencias.
+
+```bash
+uv sync --extra second-opinion
+```
+
+```jsonc
+// data/settings.json
+{
+  "local_reader": {
+    "path": "C:/caminho/para/Chess_diagram_to_FEN"
+  }
+}
+```
+
+**Sem qualquer uma das tres, o botao nao aparece** -- e quando aparece e falha, `tsoj_reader`
+diz em pt-BR qual das tres falta. Opcional pelo mesmo motivo do `ocr`: quem ja tem dado do
+proprio acervo corrige mais rapido no editor do que pedindo opiniao, e 232,8 MiB de clone e um
+preco que so quem quer o recurso deve pagar.
+
+**O que o produto faz sem ele:** tudo, menos este botao. A segunda opiniao nunca grava nada
+sozinha -- adotar a leitura dela e um clique seu, e a procedencia registra que veio dali.
+
 ### OCR da legenda (S-42/S-43)
 
-Le o texto **em volta do diagrama** nas paginas que nao tem camada de texto. Medido: **7 dos
-27 livros do acervo sao scan puro** e hoje saem inteiros como `[SideToMoveSource "default"]`,
-mesmo quando a pagina tem `LAS BLANCAS JUEGAN PRIMERO` impresso no topo. Outros 5 livros tem
+Le o texto **em volta do diagrama** nas paginas que nao tem camada de texto. Medido em
+2026-08-14, quando o acervo tinha 27 livros: **7 deles sao scan puro** e saem inteiros como
+`[SideToMoveSource "default"]`, mesmo quando a pagina tem `LAS BLANCAS JUEGAN PRIMERO`
+impresso no topo. (Hoje o acervo tem 39 PDFs; os 12 que entraram depois nao foram
+classificados, e por isso o denominador aqui continua 27.) Outros 5 livros tem
 camada de texto que falha em parte das paginas.
 
-Vem **desligado**, e para 20 dos 27 livros deve continuar assim: onde a camada de texto
+Vem **desligado**, e para os outros 20 daqueles 27 deve continuar assim: onde a camada de texto
 existe, ela responde melhor e de graca.
 
 ```bash
@@ -391,7 +448,7 @@ Tres coisas que o recurso **nao** faz, de proposito:
 |---|---|---|
 | Sumiu a aba **Leitura** do visualizador | saiu na S-69, junto com o WebView2 | o botao **Abrir no leitor do sistema** faz o mesmo, no leitor padrao da maquina. A pagina no app continua sendo a que reconhece, marca e recorta diagramas |
 | Treino muito lento (~9 min por epoca) | `torch` `+cpu`, sem CUDA | ver [Desempenho](#desempenho-cpu-gpu-e-onnx). A barra de status diz qual dispositivo esta em uso |
-| Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros do acervo. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
+| Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros medidos em 2026-08-14. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
 | `--ocr rapidocr` avisa que "o OCR pedido nao esta disponivel" | o extra nao esta instalado | `uv sync --extra ocr`. O comando segue sem OCR em vez de falhar, mas a saida nao tem legenda lida |
 | Poucos diagramas detectados numa pagina cheia | o teto "Max diagramas" cortou | o padrao e 12; o log avisa com os scores quando o teto corta candidato aprovado |
 | Diagramas de cabeca para baixo | orientacao fixa em 0 ou 180 | usar **Automatica** (padrao). Casos ambiguos entram na fila de revisao marcados |
@@ -608,10 +665,10 @@ por tamanho ou por direito autoral:
 | Caminho | Conteudo | Por que fora |
 |---|---|---|
 | `PDF/` | livros de origem | material protegido por direito autoral |
-| `data/samples/` | ~3.200 PNGs de tabuleiros, ~2,7 GB | tamanho |
+| `data/samples/` | 3.935 PNGs de tabuleiros, 3,4 GB | tamanho |
 | `models/*.pt` | checkpoint treinado, ~8,7 MB | binario que muda a cada treino |
 | `PGN/` | saida gerada | reproduzivel a partir dos PDFs |
-| `pgn_database/` | sua base de partidas em PGN (a medida aqui tem 9,7 GB) | material de terceiro, e o GitHub recusa acima de 100 MB |
+| `pgn_database/` | sua base de partidas em PGN (as duas gigabases medidas aqui tem 18,9 GB) | material de terceiro, e o GitHub recusa acima de 100 MB |
 
 Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o modelo
 (`cvoff-train`) ou obter um checkpoint por outro meio.

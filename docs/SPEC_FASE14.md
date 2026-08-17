@@ -2604,7 +2604,7 @@ e nenhuma nas das outras.
 
 ---
 
-## S-135 · Os números vivos: ARCHITECTURE, README, bundle
+## S-135 · Os números vivos: ARCHITECTURE, README, bundle ✅ implementada (2026-08-17)
 
 **Problema.** Doze divergências medidas entre o que os documentos afirmam e o que o disco tem:
 
@@ -2645,6 +2645,59 @@ uma fonte viva e um teste:
 falhe.
 
 **Testes.** `tests/test_docs.py` — um caso por família de número.
+
+### O que foi entregue
+
+Onze guardas em `tests/test_docs.py`, e as correções de texto que elas passaram a exigir.
+**Conferido invertendo cada uma:** repostos os doze valores antigos, 10 das 11 falham, cada uma
+na sua e nenhuma nas das outras.
+
+**Duas das doze "divergências" do enunciado não eram divergência**, e medir antes de corrigir é
+o que impediu de estragá-las:
+
+- **`18,9 GB` da base de partidas estava certo.** O disco tem 17,66 **GiB**, que são 18,96 GB
+  decimais. O enunciado listou "18 GB" como a realidade porque mediu em unidade binária e
+  comparou com um número decimal. Nada foi mudado ali.
+- **"quatro operações longas" já tinha sido corrigido** pela S-112, que passou o texto para
+  "doze threads, sete no `BusyRegistry`, cinco declaradas". O enunciado é de 2026-08-16 e o
+  conserto é anterior.
+
+**A tolerância é 10%, e é decisão, não folga.** Com igualdade exata, salvar uma amostra deixaria
+a suíte vermelha e o time aprenderia a ignorar este arquivo — o oposto do que ele existe para
+fazer. Dez por cento passa em crescimento de uso e falha em número esquecido: as doze
+divergências reais estavam todas acima disso (15,8%, 18,7%, 30,8%, 49%). De brinde, absorve a
+confusão GB↔GiB, que é 7,4% e já custou a este item uma correção errada.
+
+**Os denominadores medidos não foram reescritos.** "7 dos 27 livros são scan puro" foi medido em
+2026-08-14 sobre 27 livros; hoje o acervo tem 39. Trocar para "7 dos 39" seria inventar uma
+medição que ninguém fez. O texto passou a dizer a data e o denominador dela, e a acrescentar que
+os 12 livros novos não foram classificados — e é *esse* número novo que o teste confere.
+
+**O bundle: o mecanismo entrou, a medição não pôde entrar.** `build_windows.py` grava
+`docs/metrics/bundle.json` com `{mb, arquivos, data, commit}`, e o README é conferido contra ele.
+Mas o `dist/` que existe no disco é o build de **2026-08-09** — ainda leva `pythonnet` e
+`clr_loader`, removidos na S-69, e o `streamlit`, fora das obrigatórias desde a S-137. Publicar
+o número dele como atual seria cometer o defeito deste item dentro do conserto dele. O arquivo
+foi gerado com `"obsoleto": true` e uma nota dizendo de que build é; o README repete isso; e a
+décima-primeira guarda existe só para isso: **se as métricas se dizem obsoletas e o README não
+avisa, a suíte falha.** Refazer o bundle é uma execução de `packaging/build_windows.py`, e ela
+reescreve o arquivo sem esses dois campos.
+
+De passagem, o número que ninguém tinha conferido: o README publicava **5.247 arquivos** e o
+build que ele descrevia tem **4.723**. O `mb` estava certo porque veio do `tamanho_em_mb`, que é
+binário — e é por isso que o novo `gravar_metricas` continua binário, com a unidade escrita no
+docstring. Trocar para `10**6` faria o mesmo bundle "engordar" de 696 para 730.
+
+**A tabela de persistência estava com 8 de 16 artefatos**, o `splits.csv` em duas linhas e uma
+linha para o `provenance_index.jsonl`, que este repositório nunca teve. Agora ela é conferida
+nos dois sentidos, e a linha do `provenance_index` ficou — marcada **sob demanda**, que é o que
+ela é: `cvoff-provenance` a produz, e são horas.
+
+**E um `tomli` que o teste não pode usar.** As duas primeiras versões liam o `pyproject.toml`
+com ele. Ele está no ambiente, e **não está declarado em lugar nenhum**: vem de carona com o
+`mypy`. Um teste que depende do que ninguém declarou passa hoje e some amanhã — a mesma família
+de defeito que a S-128 consertou na CI. Foram substituídos por um leitor de dez linhas que só
+sabe ler as duas seções de que precisa, com o porquê no docstring.
 
 ---
 

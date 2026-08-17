@@ -11,8 +11,11 @@ existir em vez de uma linha no README:
    gravar num diretório que não existe -- e falharia depois de ele ter corrigido um diagrama.
 2. **Copia o checkpoint, se houver.** Um bundle sem `models/piece_classifier.pt` abre e não
    lê nada; o programa avisa, mas a primeira impressão é de coisa quebrada.
-3. **Mede e relata o tamanho.** O README declara um número, e um número declarado que
-   ninguém recalcula envelhece. Aqui ele sai do disco.
+3. **Mede o tamanho e o grava em `docs/metrics/bundle.json`.** O README declara um número, e
+   um número declarado que ninguém recalcula envelhece: ele ficou publicando *"696 MB, 5.247
+   arquivos"* de um build de 2026-08-09 que já não existia -- e que nem tinha 5.247 arquivos.
+   Agora o número sai do disco, é versionado com o commit que o produziu, e
+   `tests/test_docs.py` falha se o README divergir dele (S-135).
 
 Não assina o executável nem gera instalador: SmartScreen vai avisar na primeira execução, e
 resolver isso exige um certificado de assinatura de código, que é uma decisão (e uma
@@ -22,10 +25,12 @@ despesa) do dono do projeto.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import shutil
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 PROJETO = Path(__file__).resolve().parents[1]
@@ -72,7 +77,7 @@ def build(*, limpar: bool) -> int:
     preparar_pastas_do_usuario()
     copiar_checkpoint()
 
-    mb = tamanho_em_mb(SAIDA)
+    mb = gravar_metricas()
     logger.info("Pronto: %s (%.0f MB, %d arquivos).", SAIDA, mb, sum(1 for _ in SAIDA.rglob("*")))
     logger.info("Zipe a pasta inteira. Ela roda numa máquina Windows sem Python instalado.")
     if mb > 1500:
@@ -88,6 +93,48 @@ def preparar_pastas_do_usuario() -> None:
         destino = SAIDA / nome
         destino.mkdir(parents=True, exist_ok=True)
         logger.info("Pasta gravável pronta: %s", destino.relative_to(SAIDA))
+
+
+def _commit_atual() -> str:
+    try:
+        resultado = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=PROJETO,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:  # pragma: no cover - maquina sem git
+        return "desconhecido"
+    return resultado.stdout.strip() or "desconhecido"
+
+
+def gravar_metricas() -> float:
+    """Mede a `dist/` e grava `docs/metrics/bundle.json`. Devolve o tamanho em MB.
+
+    **O commit vai junto de propósito.** Sem ele o arquivo diz "696 MB" e não diz de quê: o
+    número que o README publicava era de um build que ainda levava `pythonnet` e `clr_loader`,
+    removidos na S-69, e ninguém tinha como saber isso lendo o número. Com o commit, a
+    defasagem é uma pergunta que o `git log` responde.
+
+    **A unidade é a do `tamanho_em_mb`, que é binária (`1024²`)** — a mesma que o explorador de
+    arquivos do Windows mostra, e a mesma de que saiu o "696 MB" que o README publica desde a
+    S-55. Trocá-la por `10**6` faria o mesmo bundle passar a medir 730 e pareceria que ele
+    engordou. O campo se chama `mb` porque é assim que o README o chama; a unidade está aqui.
+    """
+    arquivos = [f for f in SAIDA.rglob("*") if f.is_file()]
+    mb = round(tamanho_em_mb(SAIDA))
+    metricas: dict[str, object] = {
+        "mb": mb,
+        "arquivos": len(arquivos),
+        "data": date.today().isoformat(),
+        "commit": _commit_atual(),
+    }
+    destino = PROJETO / "docs" / "metrics" / "bundle.json"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(json.dumps(metricas, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    logger.info("Métricas do bundle em %s: %s", destino.relative_to(PROJETO), metricas)
+    return float(mb)
 
 
 def copiar_checkpoint() -> None:
