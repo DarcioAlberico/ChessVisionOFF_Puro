@@ -103,6 +103,44 @@ class AuditReport:
     @property
     def duplicates_above_ceiling(self) -> bool:
         return self.duplicate_share > DUPLICATE_SHARE_CEILING
+
+    def violations(self) -> list[str]:
+        """Os limites **declarados** que este relatório viola, em pt-BR. Vazio é aprovado (S-102).
+
+        **O que entra aqui é o que já era um limite escrito, não uma régua nova.** A auditoria
+        relatava tudo e saía com código 0, inclusive com o teto da S-63 estourado em 11,0%;
+        nada no fluxo a consultava antes de treinar, e a imagem ausente é, nas palavras do
+        próprio relatório, *"descartada em silêncio no treino"*.
+
+        **O que fica de fora, e por quê:**
+
+        - **amostra sem split** não é violação: quem atribui é o `cvoff-train`, e ele o faz na
+          linha seguinte (S-56). Barrar aqui seria barrar o conserto;
+        - **ilegal confirmada à mão** (`illegal_ok`) é decisão humana registrada (S-70), não
+          defeito;
+        - **vazamento de split** (S-98) fica de fora porque o remédio é mover linha, que é
+          irreversível na prática e por isso "lista e não move". Barrar o treino por algo que
+          o comando se recusa a consertar deixaria o projeto sem saída.
+        """
+        violacoes = []
+        fatais = len(self.of_kind("fatal"))
+        if fatais:
+            violacoes.append(f"{fatais} posição(ões) ilegal(is) fatal(is) -- conserto: cvoff-audit --quarantine")
+        sintaxe = len(self.of_kind("sintaxe"))
+        if sintaxe:
+            violacoes.append(f"{sintaxe} FEN(s) não interpretável(is) -- conserto: corrija pela aba Dataset")
+        ausentes = len(self.of_kind("imagem-ausente"))
+        if ausentes:
+            violacoes.append(f"{ausentes} rótulo(s) com PNG ausente -- conserto: cvoff-audit --drop-missing")
+        if self.duplicates_above_ceiling:
+            violacoes.append(
+                f"redundância em {self.duplicate_share:.1%}, acima do teto de "
+                f"{DUPLICATE_SHARE_CEILING:.0%} (S-63) -- conserto: cvoff-audit --dedupe, "
+                "ou suba o teto explicitamente e registre por quê"
+            )
+        return violacoes
+
+
 def dhash(image_bgr: np.ndarray, hash_size: int = DUPLICATE_HASH_SIZE) -> int:
     """Hash perceptual (dHash) de `hash_size**2` bits.
 

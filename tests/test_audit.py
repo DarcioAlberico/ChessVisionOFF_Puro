@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import tempfile
 import unittest
@@ -26,6 +27,8 @@ from chess_diagram_ocr.audit import (
     remove_duplicate_labels,
     write_dedupe_summary,
 )
+from chess_diagram_ocr.cli import audit as cli_audit
+from chess_diagram_ocr.cli import train as cli_train
 from chess_diagram_ocr.labels import ILLEGAL_OK
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
@@ -476,3 +479,134 @@ class DedupeSummaryTests(unittest.TestCase):
         self.assertEqual(removidos, resumo["removed"])
         soma = sum(parcial["removidos"] for parcial in resumo["by_split"].values())
         self.assertEqual(soma, removidos)
+
+
+class LimitesDeclaradosTests(unittest.TestCase):
+    """A auditoria barra em vez de relatar (S-102).
+
+    `cvoff-audit` saía com código **0** com o teto da S-63 estourado em 11,0% e um rótulo cujo
+    PNG sumiu -- *"descartado em silêncio no treino"*, nas palavras do próprio relatório. Nada
+    no fluxo a consultava antes de treinar.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fixture = Fixture(self.tmp.name)
+
+    def _relatorio(self) -> object:
+        self.fixture.write()
+        return audit_dataset(self.fixture.csv, self.fixture.samples)
+
+    def test_dataset_limpo_nao_tem_violacao(self) -> None:
+        self.fixture.add("a.png", LEGAL)
+        self.fixture.add("b.png", LEGAL_OTHER)
+        self.assertEqual(self._relatorio().violations(), [])
+
+    def test_ilegal_fatal_e_violacao_e_a_mensagem_diz_o_conserto(self) -> None:
+        self.fixture.add("a.png", LEGAL)
+        self.fixture.add("ruim.png", FATAL_NO_KINGS)
+        violacoes = self._relatorio().violations()
+
+        self.assertEqual(len(violacoes), 1)
+        self.assertIn("--quarantine", violacoes[0], "uma violação sem conserto ao lado é um beco")
+
+    def test_png_ausente_e_violacao(self) -> None:
+        """O caso do dataset de hoje, e o que ele custa: o treino descarta a linha em silêncio."""
+        self.fixture.add("a.png", LEGAL)
+        self.fixture.add("sumiu.png", LEGAL_OTHER, write_image=False)
+        violacoes = self._relatorio().violations()
+
+        self.assertEqual(len(violacoes), 1)
+        self.assertIn("--drop-missing", violacoes[0])
+
+    def test_redundancia_acima_do_teto_e_violacao(self) -> None:
+        imagem = _board_image(3)
+        for nome in ("a.png", "b.png"):
+            self.fixture.add(nome, LEGAL, image=imagem)
+        violacoes = self._relatorio().violations()
+
+        self.assertEqual(len(violacoes), 1)
+        self.assertIn(f"{DUPLICATE_SHARE_CEILING:.0%}", violacoes[0])
+        self.assertIn("suba o teto explicitamente", violacoes[0], "o teto não é sagrado; o silêncio é que não serve")
+
+    def test_amostra_sem_split_nao_e_violacao(self) -> None:
+        """Quem atribui split é o `cvoff-train`, e ele o faz na linha seguinte (S-56).
+        Barrar aqui seria barrar o conserto."""
+        self.fixture.add("a.png", LEGAL)
+        self.assertEqual(self._relatorio().violations(), [])
+
+    def test_ilegal_confirmada_a_mao_nao_e_violacao(self) -> None:
+        """`illegal_ok` é decisão humana registrada (S-70), não defeito -- e o livro desenha
+        assim: capítulo de estrutura de peões não tem rei."""
+        self.fixture.add("a.png", LEGAL)
+        self.fixture.add("estrutura.png", FATAL_NO_KINGS)
+        self.fixture.write(illegal_ok={"estrutura.png": ILLEGAL_OK})
+        relatorio = audit_dataset(self.fixture.csv, self.fixture.samples)
+
+        self.assertEqual(relatorio.violations(), [])
+
+    def test_a_saida_estrita_e_1_e_a_normal_e_0(self) -> None:
+        """**O critério de aceite.** Sem `--strict` o comando é usado para olhar, e quebrar o
+        código de saída de quem olha trocaria um problema por outro."""
+        self.fixture.add("a.png", LEGAL)
+        self.fixture.add("sumiu.png", LEGAL_OTHER, write_image=False)
+        self.fixture.write()
+
+        comum = ["--csv", str(self.fixture.csv), "--samples", str(self.fixture.samples), "--skip-duplicates"]
+        self.assertEqual(cli_audit.main([*comum, "--strict"]), 1)
+        self.assertEqual(cli_audit.main(comum), 0)
+
+    def test_estrito_sobre_dataset_limpo_sai_0(self) -> None:
+        self.fixture.add("a.png", LEGAL)
+        self.fixture.add("b.png", LEGAL_OTHER)
+        self.fixture.write()
+
+        codigo = cli_audit.main(
+            ["--csv", str(self.fixture.csv), "--samples", str(self.fixture.samples), "--strict", "--skip-duplicates"]
+        )
+        self.assertEqual(codigo, 0)
+
+
+class TreinoRecusaDatasetReprovadoTests(unittest.TestCase):
+    """`cvoff-train` pergunta à auditoria antes de montar o dataset (S-102)."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fixture = Fixture(self.tmp.name)
+        self.fixture.add("a.png", LEGAL)
+        self.fixture.add("sumiu.png", LEGAL_OTHER, write_image=False)
+        self.fixture.write()
+
+    def _args(self, **extra: object) -> argparse.Namespace:
+        base = {
+            "csv": self.fixture.csv,
+            "samples": self.fixture.samples,
+            "force": False,
+        }
+        base.update(extra)
+        return argparse.Namespace(**base)
+
+    def test_recusa_com_codigo_proprio_e_diz_o_conserto(self) -> None:
+        self.assertEqual(cli_train._audit_gate(self._args()), 2)
+
+    def test_force_passa_por_cima(self) -> None:
+        """Quem sabe o que está fazendo continua podendo treinar -- foi assim que o dataset
+        chegou até aqui."""
+        self.assertIsNone(cli_train._audit_gate(self._args(force=True)))
+
+    def test_dataset_ausente_nao_e_reprovacao(self) -> None:
+        """Num clone limpo o `labels.csv` pode nem existir, e quem reclama disso com mensagem
+        melhor é o próprio `train_model`."""
+        ausente = Path(self.tmp.name) / "nao_existe.csv"
+        self.assertIsNone(cli_train._audit_gate(self._args(csv=ausente)))
+
+    def test_dataset_limpo_libera(self) -> None:
+        pasta = Path(self.tmp.name) / "limpo"
+        pasta.mkdir()
+        limpo = Fixture(str(pasta))
+        limpo.add("a.png", LEGAL)
+        limpo.add("b.png", LEGAL_OTHER)
+        limpo.write()
+        self.assertIsNone(cli_train._audit_gate(self._args(csv=limpo.csv, samples=limpo.samples)))

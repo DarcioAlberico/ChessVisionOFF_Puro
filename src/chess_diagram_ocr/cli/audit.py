@@ -74,6 +74,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Não calcula hashes perceptuais (relatório muito mais rápido).",
     )
     parser.add_argument("--limit-examples", type=int, default=5, help="Exemplos mostrados por categoria.")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Sai com código 1 quando um limite declarado é violado (S-102). Sem ele o comando "
+            "relata e sai 0, que é o contrato de quem usa a auditoria para olhar."
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -264,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
             # comando cujo contrato e "sem flag, so relata".
             print(f"{len(sem_split)} amostra(s) sem split. O próximo `cvoff-train` as inclui.")
             print()
-        return 0
+        return _codigo_de_saida(report, strict=args.strict)
 
     backup_csv(args.csv)
 
@@ -320,7 +328,35 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(f"Nada foi apagado do disco: os órfãos estão em {orphans_dir_for(args.samples)}.")
     print()
-    return 0
+    # O relatorio **depois** das correcoes: com `--strict`, o que importa e o estado em que o
+    # comando deixou o dataset, e nao aquele em que o encontrou.
+    return _codigo_de_saida(after, strict=args.strict)
+
+
+def _codigo_de_saida(report: AuditReport, *, strict: bool) -> int:
+    """`1` quando `--strict` e há violação; `0` sempre que não (S-102).
+
+    **Sem `--strict` continua saindo 0 mesmo reprovado**, e isso é decisão: o comando é usado
+    para *olhar*, e quebrar o código de saída de quem olha trocaria um problema por outro. Quem
+    quer o portão pede o portão -- é a CI e o `cvoff-train` que pedem.
+    """
+    violacoes = report.violations()
+    if not violacoes:
+        if strict:
+            print("Auditoria estrita: nenhum limite declarado violado.")
+            print()
+        return 0
+
+    print("Limites declarados violados:")
+    for violacao in violacoes:
+        print(f"  - {violacao}")
+    print()
+    if not strict:
+        print("Saindo com 0 porque `--strict` não foi pedido. Para transformar isto em portão:")
+        print("  cvoff-audit --strict")
+        print()
+        return 0
+    return 1
 
 
 if __name__ == "__main__":
