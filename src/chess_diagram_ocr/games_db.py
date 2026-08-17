@@ -518,24 +518,57 @@ class PositionIndex:
 
         A chave é a data, depois os jogadores: a partida mais antiga com aquela posição é a
         escolha mais defensável quando não há como saber qual delas o livro citou.
+
+        **Continua existindo depois da S-138**, que passou a ordenar dentro do `merge`: quem
+        monta um `PositionIndex` a mão -- o cache, os testes -- não passa por `merge` nenhum.
         """
         for achados in self.hits.values():
-            achados.sort(
-                key=lambda hit: (
-                    hit.headers.get("Date", "9999"),
-                    hit.headers.get("White", ""),
-                    hit.headers.get("Black", ""),
-                    hit.move_number,
-                )
-            )
+            achados.sort(key=_hit_order)
 
     def merge(self, outro: PositionIndex, *, max_hits: int) -> None:
+        """Junta o resultado de um pedaço, **ordenando antes de cortar** (S-138).
+
+        Dois defeitos com a mesma raiz moravam aqui, e os dois faziam a resposta depender de
+        quantos processos a varredura usou -- ou seja, **qual partida preenche um diagrama
+        dependia de um parâmetro de desempenho**.
+
+        1. O corte era por **ordem de chegada**: `achados[:max_hits - len(guardados)]` sobre um
+           `imap_unordered`, com o `sort()` rodando depois, sobre o que tinha sobrevivido. Para
+           as posições com mais de 32 candidatas, duas varreduras da mesma base sobre o mesmo
+           alvo devolviam **conjuntos diferentes**, e a lista da S-86 mudava de conteúdo entre
+           execuções sem que nada tivesse mudado.
+        2. O caminho sequencial (`--workers 1`) devolvia antes do `total.sort()`, então a
+           garantia de determinismo que o `sort` declara não valia justamente no caminho
+           documentado como o de depuração.
+
+        Ordenar aqui conserta os dois de uma vez, porque é aqui que a invariante pertence: um
+        `PositionIndex` que passou por `merge` está ordenado e cortado pelas **32 mais
+        antigas do conjunto**, e não pelas 32 primeiras a chegar. Custa uma ordenação por
+        pedaço, e é o preço do teto determinístico.
+        """
         self.games_read += outro.games_read
         for colocacao, achados in outro.hits.items():
             guardados = self.hits.setdefault(colocacao, [])
-            guardados.extend(achados[: max(0, max_hits - len(guardados))])
+            guardados.extend(achados)
+            guardados.sort(key=_hit_order)
+            del guardados[max(0, max_hits) :]
         for colocacao, quantas in outro.counts.items():
             self.counts[colocacao] = self.counts.get(colocacao, 0) + quantas
+
+
+def _hit_order(hit: PositionHit) -> tuple[str, str, str, int]:
+    """A ordem canônica de uma lista de candidatas: data, jogadores, lance (S-73).
+
+    Função de topo porque `sort` e `merge` têm de usar a **mesma** chave -- duas cópias dela
+    divergiriam na primeira vez que uma fosse corrigida, e o sintoma seria um teto que corta
+    candidatas diferentes das que a lista mostra.
+    """
+    return (
+        hit.headers.get("Date", "9999"),
+        hit.headers.get("White", ""),
+        hit.headers.get("Black", ""),
+        hit.move_number,
+    )
 
 
 MAX_HITS_PER_POSITION = 32
@@ -718,6 +751,10 @@ def scan_by_positions(
             total.merge(_scan_positions_chunk(tarefa), max_hits=max_hits_per_position)
             if progress is not None:
                 progress(indice, len(tarefas))
+        # Este `return` nao tinha `sort` nenhum, e era o defeito 2 da S-138. Depois de o
+        # `merge` passar a ordenar ele e redundante -- e fica, porque e barato e porque a
+        # invariante "quem sai daqui esta ordenado" nao pode depender de o leitor saber disso.
+        total.sort()
         return total
 
     # `spawn` no Windows reimporta o modulo do processo pai (S-26). Este modulo e importavel

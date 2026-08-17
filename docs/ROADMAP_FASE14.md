@@ -428,7 +428,7 @@ versionado, ou com backup documentado, mas **decidido**.
 | 17.5 | A varredura da Galeria é retomável e diz até onde foi | S-120 | ✅ |
 | 17.6 | O acervo varrido sem janela aberta | S-121 | ⬜ |
 | 17.7 | O OCR ligado por padrão | S-122 | ⬜ |
-| 17.8 | A varredura por posição responde igual com 1 e com N processos | S-138 | ⬜ |
+| 17.8 | A varredura por posição responde igual com 1 e com N processos | S-138 | ✅ |
 | 17.9 | A consulta por nome alcança as duas cores, e paga o porteiro | S-139 | ⬜ |
 | 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ⬜ |
 | 17.11 | O processo filho não reimporta `torch` e a UI | S-141 | ⬜ |

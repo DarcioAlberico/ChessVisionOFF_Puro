@@ -720,3 +720,100 @@ class ComandoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeterminismoDaVarreduraTests(unittest.TestCase):
+    """A mesma base e o mesmo alvo devolvem as mesmas candidatas, com 1 e com N processos (S-138).
+
+    **A primeira candidata da lista é a que vira o preenchimento automático.** Antes deste
+    item, qual partida preenchia um diagrama dependia de quantos processos a varredura usou --
+    um parâmetro de desempenho decidindo procedência.
+
+    Dois defeitos com a mesma raiz: a ordenação acontecia **depois** do corte e **fora** do
+    caminho sequencial.
+    """
+
+    COLOCACAO = "4k3/8/8/8/8/8/8/4K3"
+
+    def _hit(self, data: str, *, lance: int = 7) -> PositionHit:
+        return PositionHit(
+            move_number=lance,
+            side_to_move="w",
+            headers={"White": f"W{data}", "Black": f"B{data}", "Date": data},
+        )
+
+    def _pedaco_com(self, datas: list[str]) -> PositionIndex:
+        return PositionIndex(
+            hits={self.COLOCACAO: [self._hit(data) for data in datas]},
+            counts={self.COLOCACAO: len(datas)},
+            games_read=len(datas),
+        )
+
+    def test_o_teto_guarda_as_mais_antigas_e_nao_as_que_chegaram_antes(self) -> None:
+        """**O defeito 2, e o que ele custava.** O corte era por ordem de chegada, sobre um
+        `imap_unordered`, e o `sort()` rodava depois -- sobre o que tinha sobrevivido. Para as
+        posições com mais de 32 candidatas, duas varreduras da mesma base devolviam conjuntos
+        diferentes, e a lista da S-86 mudava de conteúdo entre execuções."""
+        recentes = self._pedaco_com([f"20{n:02d}.01.01" for n in range(10)])
+        antigas = self._pedaco_com([f"19{n:02d}.01.01" for n in range(10)])
+
+        total = PositionIndex()
+        total.merge(recentes, max_hits=5)
+        total.merge(antigas, max_hits=5)
+
+        datas = [hit.headers["Date"] for hit in total.hits[self.COLOCACAO]]
+        self.assertEqual(datas, [f"19{n:02d}.01.01" for n in range(5)], "as 5 mais antigas do conjunto")
+
+    def test_a_ordem_de_chegada_dos_pedacos_nao_muda_o_resultado(self) -> None:
+        """É a invariante inteira numa linha: `imap_unordered` não define ordem de chegada."""
+        recentes = self._pedaco_com([f"20{n:02d}.01.01" for n in range(6)])
+        antigas = self._pedaco_com([f"19{n:02d}.01.01" for n in range(6)])
+
+        uma = PositionIndex()
+        uma.merge(recentes, max_hits=4)
+        uma.merge(antigas, max_hits=4)
+
+        outra = PositionIndex()
+        outra.merge(antigas, max_hits=4)
+        outra.merge(recentes, max_hits=4)
+
+        self.assertEqual(
+            [hit.headers["Date"] for hit in uma.hits[self.COLOCACAO]],
+            [hit.headers["Date"] for hit in outra.hits[self.COLOCACAO]],
+        )
+
+    def test_quem_sai_do_merge_ja_esta_ordenado(self) -> None:
+        """A invariante mora no `merge` porque é lá que ela pertence -- e é o que faz o
+        caminho sequencial e o paralelo concordarem sem cada um lembrar de ordenar."""
+        total = PositionIndex()
+        total.merge(self._pedaco_com(["2020.01.01", "1950.01.01", "1999.01.01"]), max_hits=32)
+
+        datas = [hit.headers["Date"] for hit in total.hits[self.COLOCACAO]]
+        self.assertEqual(datas, sorted(datas))
+
+    def test_a_contagem_nao_e_cortada_pelo_teto(self) -> None:
+        """A lista serve para preencher; a contagem, para decidir se preencher é honesto
+        (S-74). Cortar a segunda faria uma posição de abertura parecer identificável."""
+        total = PositionIndex()
+        total.merge(self._pedaco_com([f"20{n:02d}.01.01" for n in range(10)]), max_hits=3)
+
+        self.assertEqual(len(total.hits[self.COLOCACAO]), 3)
+        self.assertEqual(total.counts[self.COLOCACAO], 10)
+
+    def test_workers_1_devolve_a_lista_ordenada(self) -> None:
+        """**O defeito 1.** O caminho sequencial devolvia antes do `total.sort()`, e é
+        justamente o documentado como o de depuração: `--workers 1 = sem paralelismo`.
+
+        Medido no enunciado com uma base de duas partidas (2020 e 1950) que compartilham uma
+        posição: em paralelo a primeira candidata era a de 1950, sequencialmente a de 2020.
+        """
+        pedaco = self._pedaco_com(["2020.01.01", "1950.01.01"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base.pgn"
+            base.write_text('[Event "x"]\n\n1. e4 *\n', encoding="utf-8")
+            with mock.patch.object(games_db, "_scan_positions_chunk", lambda _tarefa: pedaco):
+                indice = games_db.scan_by_positions([base], {self.COLOCACAO}, workers=1)
+
+        datas = [hit.headers["Date"] for hit in indice.hits[self.COLOCACAO]]
+        self.assertEqual(datas, ["1950.01.01", "2020.01.01"], "a mais antiga primeiro, como o paralelo")

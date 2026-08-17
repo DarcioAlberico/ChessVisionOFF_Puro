@@ -1775,7 +1775,7 @@ preferência explícita do usuário vence o padrão nos dois sentidos.
 
 ---
 
-## S-138 · A varredura por posição devolve a mesma resposta em qualquer número de processos
+## S-138 · A varredura por posição devolve a mesma resposta em qualquer número de processos ✅ implementada (2026-08-17)
 
 **Problema.** Dois defeitos com a mesma raiz — a ordenação acontece **depois** do corte e
 **fora** de um dos caminhos.
@@ -1811,6 +1811,29 @@ dígito, com 1 e com N processos — inclusive nas posições que estouram o tet
 **Testes.** `tests/test_games_db.py` — a equivalência 1×N incluindo a **ordem** (o teste atual
 compara contagem); uma posição com mais de 32 candidatas, com os pedaços chegando fora de
 ordem.
+
+### O que foi entregue
+
+**Os dois defeitos foram consertados no mesmo lugar: dentro do `merge`.** O enunciado dava
+duas opções para o primeiro (mover o `sort` para o ponto de saída, ou ordenar no `merge`), e a
+segunda resolve os dois de uma vez — porque é lá que a invariante pertence. Um `PositionIndex`
+que passou por `merge` está ordenado e cortado pelas **32 mais antigas do conjunto**, não pelas
+32 primeiras a chegar, e os caminhos sequencial e paralelo passam ambos por ele.
+
+A chave de ordenação virou `_hit_order`, função de topo, porque `sort` e `merge` têm de usar a
+**mesma**: duas cópias divergiriam na primeira correção, e o sintoma seria um teto que corta
+candidatas diferentes das que a lista mostra.
+
+**O `total.sort()` do caminho sequencial ficou**, redundante e barato: a invariante *"quem sai
+daqui está ordenado"* não pode depender de o próximo leitor saber que o `merge` já ordenou.
+
+**Quatro testes, e os quatro falham no código anterior.** Um deles é a demonstração do teto:
+dois pedaços de 10 candidatas cada, um de datas 2000-2009 e outro de 1900-1909, com
+`max_hits=5` — antes ficavam as cinco que chegaram primeiro, agora ficam as cinco mais
+antigas, em qualquer ordem de chegada.
+
+E um confirma o que **não** muda: a contagem não é cortada pelo teto. A lista serve para
+preencher, a contagem para decidir se preencher é honesto (S-74).
 
 ---
 
