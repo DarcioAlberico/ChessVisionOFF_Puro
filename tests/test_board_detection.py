@@ -34,15 +34,17 @@ class BoardDetectionTests(unittest.TestCase):
             detect_board(blank_page)
 
     def test_detect_boards_still_finds_real_sample(self) -> None:
-        # Depende de data/samples/, que nao e versionado (ver .gitignore). Enquanto nao
-        # houver fixtures proprios no repositorio (S-09), o teste pula fora do ambiente local.
-        # sorted() torna a escolha deterministica, em vez de depender da ordem do sistema de arquivos.
-        sample_path = next(iter(sorted((ROOT / "data" / "samples").glob("*.png"))), None)
-        if sample_path is None:
-            self.skipTest("Nenhuma amostra em data/samples/. Fixtures versionados: ver S-09 em docs/SPEC.md.")
+        """Uma página com um diagrama devolve um diagrama, 800×800 e com quad.
 
-        image_bgr = cv2.imread(str(sample_path))
-        self.assertIsNotNone(image_bgr, f"Falha ao abrir sample: {sample_path}")
+        **Ele lia `data/samples/` e pulava na CI** -- e como era a única cobertura executável do
+        detector sobre imagem, a CI não tinha nenhuma: uma regressão que fizesse `detect_boards`
+        devolver vazio entrava verde. O caminho agora é o fixture versionado da S-09
+        (`tests/fixtures/`), que roda em qualquer checkout. As páginas e a receita delas estão
+        em `tests/test_fixtures.py`, com o que elas cobrem e o que não cobrem.
+        """
+        fixture = ROOT / "tests" / "fixtures" / "um_diagrama.png"
+        image_bgr = cv2.imread(str(fixture))
+        self.assertIsNotNone(image_bgr, f"Falha ao abrir o fixture: {fixture}")
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
         boards = detect_boards(image_rgb, max_boards=1)
