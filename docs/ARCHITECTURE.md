@@ -275,6 +275,7 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 | `data/gallery_human.jsonl` | **o extrato do que uma pessoa digitou ou escolheu** na galeria (S-115) | **sim** |
 | `data/games_index.sqlite` | o índice por nome e por posição da base de partidas (S-72, S-73) | não (884 MB — reconstruível a partir do `pgn_database/`) |
 | `data/games_positions.sqlite` | o cache de posições da varredura, **uma linha por colocação** (S-84, S-113, S-140) | não — **sob demanda**: nasce na primeira vez que alguém abre o cache |
+| `data/games_positions__<bases>.sqlite` | o mesmo cache, **de um conjunto de bases que não é a pasta inteira** — `ui/database_choice.store_path_for` nomeia o arquivo pelos `.pgn` escolhidos, para que experimentar uma base não descarte o cache da outra | não — **sob demanda**: um por conjunto que alguém selecionar |
 | `data/games_positions.json` | o mesmo cache no formato anterior. Lido **uma vez** e renomeado; depois disso não é lido por nada | não — **sob demanda**: só em quem usou o programa antes da S-140 |
 | `data/games_positions.json.migrado` | o anterior, já dentro do SQLite. Renomear em vez de apagar porque apagar o que era do usuário não é da alçada de uma migração | não — **sob demanda**: aparece quando o SQLite é criado |
 | `data/games_matches.json` | os casamentos livro↔partida, formato v1 | não |

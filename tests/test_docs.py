@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 import subprocess
 import unittest
+from fnmatch import fnmatch
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -357,7 +358,17 @@ class NumerosVivosTests(unittest.TestCase):
             # `data/gallery/` está em duas linhas, uma por tipo de arquivo, e exigir uma
             # terceira linha para a pasta em si seria ruído.
             nu = caminho.rstrip("/")
-            return nu in citados or any(citado.startswith(f"{nu}/") for citado in citados)
+            if nu in citados or any(citado.startswith(f"{nu}/") for citado in citados):
+                return True
+            # E um `<placeholder>` no meio do **nome** conta como a familia dele. A metade de
+            # tras deste teste ja pulava esses caminhos; a metade da frente nao os entendia, e
+            # o sintoma foi um `games_positions__PGN_Database.sqlite` cobrado como artefato sem
+            # linha quando a linha existia -- escrita como `games_positions__<bases>.sqlite`,
+            # que e a unica forma de descrever um arquivo por conjunto de bases.
+            return any(
+                "<" in citado and fnmatch(nu, re.sub(r"<[^>]+>", "*", citado))
+                for citado in citados
+            )
 
         sem_linha = sorted(caminho for caminho in no_disco if not coberto(caminho))
         self.assertEqual([], sem_linha, "Artefato em data/ que a tabela de persistência não lista.")
