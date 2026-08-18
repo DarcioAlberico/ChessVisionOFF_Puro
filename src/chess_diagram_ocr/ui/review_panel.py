@@ -1,35 +1,42 @@
 """Aba de revisão: a fila da S-22 na tela (S-22 + S-20).
 
-O painel não sabe reconhecer nada e não guarda modelo: ele varre com `build_review_queue`,
-mostra o resultado ordenado e devolve o item escolhido ao dono da janela, que é quem tem o
-editor de posição. Essa fronteira é a mesma que a Fase 6 vai querer entre serviço e
-apresentação (S-31), e mantê-la agora custa nada.
+O painel não sabe reconhecer nada, não guarda modelo e **não varre**: ele mostra a fila
+ordenada e devolve o item escolhido ao dono da janela, que é quem tem o editor de posição. Essa
+fronteira é a mesma que a Fase 6 vai querer entre serviço e apresentação (S-31), e mantê-la
+agora custa nada.
+
+**Ele varria, até a S-119.** `build_review_queue` e `build_gallery_index` percorriam o mesmo
+`iter_pdf_diagrams`, com os mesmos parâmetros, e gravavam em arquivos diferentes: 338 s + 299 s
+medidos no `PDF/1000 Chess Problems`. Agora a passada é uma -- a da Galeria --, e o que este
+módulo põe nela é o `ReviewSink`: um acumulador que recebe cada diagrama lido e devolve a fila
+pronta. `build_review_queue` continua existindo para o `cvoff-review`, que não tem janela.
 """
 
 from __future__ import annotations
 
 import logging
-import threading
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, OrientationMode, ReadingOrder
+from ..pdf_to_pgn import ScannedDiagram
 from ..review_queue import (
     DEFAULT_CACHE_DIR,
     DEFAULT_QUEUE_PATH,
     ReviewItem,
     ReviewQueue,
-    build_review_queue,
+    ReviewQueueBuilder,
     error_rate,
     merge_queues,
     rare_classes_from_labels,
 )
 from ..service import OcrService
-from . import estilos
+from . import estilos, formato, strings, tabela, texto
 from .busy import BusyRegistry, BusyToken
+from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +57,87 @@ class ScanRequest:
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE
 
 
+class ReviewSink:
+    """Monta a fila de revisão a partir da varredura da Galeria, e a entrega ao painel (S-119).
+
+    **É o que faz uma passada pelo livro servir às duas abas.** `build_gallery_index` produz o
+    superconjunto -- todo diagrama, sem gate --, e cada um deles chega aqui pelo `on_scanned`;
+    o `ReviewQueueBuilder` é o mesmo acumulador que o `build_review_queue` usa, então as duas
+    filas saem do mesmo código de montagem e a equivalência é estrutural.
+
+    **O construtor não toca disco, e é de propósito.** Ele roda na thread do Tk, junto com o
+    clique; o `labels.csv` (3.936 linhas) e as anotações do livro só são lidos no primeiro
+    `feed`, que já é a thread da varredura. É a regra da S-116.
+    """
+
+    def __init__(self, panel: ReviewPanel, request: ScanRequest, *, cache_dir: Path) -> None:
+        self._panel = panel
+        self._request = request
+        self._cache_dir = cache_dir
+        self._builder: ReviewQueueBuilder | None = None
+
+    def _acumulador(self) -> ReviewQueueBuilder:
+        if self._builder is None:
+            self._builder = ReviewQueueBuilder(
+                self._request.pdf_path,
+                cache_dir=self._cache_dir,
+                rare_classes=rare_classes_from_labels(self._request.labels_csv),
+                accept_threshold=self._request.accept_threshold,
+            )
+        return self._builder
+
+    def feed(self, scanned: ScannedDiagram) -> None:
+        """Um diagrama lido pela varredura. Roda na thread dela."""
+        self._acumulador().feed(scanned)
+
+    def progress(self, pagina: int, total: int) -> None:
+        """A mesma página que a Galeria mostra, na barra desta aba. Vem da thread da varredura.
+
+        Não abre um segundo registro de operação longa: a barra do rodapé é da varredura, e
+        ela é uma só desde a S-119. O que falta aqui é só a pessoa que está *nesta* aba não
+        ficar olhando uma frase parada enquanto o livro roda.
+        """
+        self._panel.after(
+            0, lambda: self._panel.progress_var.set(f"Varrendo o livro... página {pagina} de {total}")
+        )
+
+    def deliver(self, *, cancelled: bool) -> None:
+        """A fila pronta, na tela. **Tem de ser chamado na thread do Tk.**
+
+        Nada lido, nada entregue: uma varredura retomada que não achou página nova (S-120) não
+        pode substituir a fila por uma vazia. As páginas visitadas viajam junto porque é o que
+        impede a fusão de encurtar a fila -- ver `merge_queues`.
+        """
+        if self._builder is None:
+            self._panel._finish_scan()
+            return
+        paginas = frozenset(self._builder.pages)
+        self._panel._apply_scan(self._builder.finish(), cancelled, pages=paginas)
+        self._panel._finish_scan()
+
+    def release(self) -> None:
+        """A varredura terminou sem entregar -- falhou, ou não havia o que varrer."""
+        self._panel._finish_scan()
+
+
 class ReviewPanel(ttk.Frame):
     """Lista navegável da fila, com varredura em segundo plano e cancelamento."""
 
-    COLUMNS = ("prioridade", "página", "diagrama", "confiança", "status", "motivo")
-    HEADINGS = {
-        "prioridade": "Prio.",
-        "página": "Pag.",
-        "diagrama": "Diag.",
-        "confiança": "Conf. min",
-        "status": "Status",
-        "motivo": "Motivo",
-    }
-    WIDTHS = {"prioridade": 60, "página": 50, "diagrama": 50, "confiança": 80, "status": 80, "motivo": 460}
+    COLUNAS = (
+        tabela.Coluna("prioridade", "Prio.", 60, numerica=True),
+        tabela.Coluna("página", "Pag.", 50, numerica=True),
+        tabela.Coluna("diagrama", "Diag.", 50, numerica=True),
+        tabela.Coluna("confiança", "Conf. min", 80, numerica=True),
+        tabela.Coluna("status", "Status", 80),
+        tabela.Coluna("motivo", "Motivo", 460, elastica=True),
+    )
+    """Quatro números e dois textos, e a diferença passou a valer (S-153).
+
+    As quatro numéricas estavam com `anchor="w"`: `1623.8`, `40`, `1` e `0.082` alinhados à
+    esquerda não se comparam por magnitude, e essa é a leitura inteira de uma fila ordenada por
+    prioridade."""
+
+    COLUMNS = tuple(coluna.chave for coluna in COLUNAS)
 
     def __init__(
         self,
@@ -71,6 +146,8 @@ class ReviewPanel(ttk.Frame):
         scan_request: Callable[[], ScanRequest | None],
         on_open: Callable[[ReviewItem, int], None],
         on_status: Callable[[str], None] | None = None,
+        on_scan_book: Callable[[], None] | None = None,
+        on_cancel_book: Callable[[], None] | None = None,
         queue_path: Path = DEFAULT_QUEUE_PATH,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         service: OcrService | None = None,
@@ -78,28 +155,38 @@ class ReviewPanel(ttk.Frame):
     ) -> None:
         """`service` empresta o modelo sob o lock da S-31 durante a varredura (S-57).
 
-        A varredura da fila percorre o livro inteiro e é uma das duas operações longas que
+        A varredura do livro percorre o PDF inteiro e é uma das duas operações longas que
         carregavam o `.pt` por conta própria, fora do lock -- enquanto o treino, noutra
         thread, reescrevia esse mesmo arquivo.
+
+        **`on_scan_book` e `on_cancel_book` são a varredura única (S-119).** Este painel deixou
+        de ter passada própria: ele pede a do livro e recebe a fila pelo `scan_sink`. Sem eles
+        o painel abre e funciona -- é o que um roteiro de teste monta --, só não tem como pedir
+        varredura nenhuma.
         """
         super().__init__(parent, padding=6)
         self._service = service
         self._scan_request = scan_request
         self._on_open = on_open
         self._on_status = on_status or (lambda _text: None)
+        self._on_scan_book = on_scan_book
+        self._on_cancel_book = on_cancel_book
         self.queue_path = Path(queue_path)
         self.cache_dir = Path(cache_dir)
 
         self.queue = ReviewQueue.load(self.queue_path)
         self.queue.sort()
-        self._cancel_event: threading.Event | None = None
         self._scanning = False
         self._busy_registry = busy
-        """Onde a varredura da fila se declara como operação longa (S-112)."""
+        """Onde a varredura do livro se declara como operação longa (S-112). Quem registra hoje
+        é a Galeria, que é quem tem a thread; aqui ele fica para não mudar a fronteira do
+        construtor por causa de um item de desempenho."""
         self._busy_token: BusyToken | None = None
 
         self.summary_var = tk.StringVar(value="")
         self.progress_var = tk.StringVar(value="")
+        self.detail_var = tk.StringVar(value="")
+        """O motivo inteiro do item selecionado, para o rodapé da tabela (S-153)."""
         self.only_pending_var = tk.BooleanVar(value=True)
         self._row_index: list[int] = []
         """Posição na `queue.items` de cada linha visível, na ordem da tabela."""
@@ -112,10 +199,21 @@ class ReviewPanel(ttk.Frame):
     def _build_ui(self) -> None:
         toolbar = ttk.Frame(self)
         toolbar.pack(fill=tk.X, pady=(0, 6))
-        self.btn_scan = ttk.Button(toolbar, text="Varrer PDF", command=self.start_scan)
+        self.btn_scan = ttk.Button(toolbar, text=strings.VARRER_LIVRO, command=self.start_scan)
         self.btn_scan.pack(side=tk.LEFT)
+        Tooltip(
+            self.btn_scan,
+            "Fica cinza enquanto a varredura roda: uma por vez, porque as duas leriam o mesmo\n"
+            "livro com o mesmo modelo. Pergunta antes quais livros varrer; a fila desta aba\n"
+            "só sai do PDF aberto -- é dele que ela declara a procedência.",
+        )
         self.btn_cancel = ttk.Button(toolbar, text="Cancelar", command=self.cancel_scan, state=tk.DISABLED)
         self.btn_cancel.pack(side=tk.LEFT, padx=6)
+        Tooltip(
+            self.btn_cancel,
+            "Só fica ativo durante a varredura. O cancelamento termina a página em curso\n"
+            "antes de parar, e os recortes já gravados continuam valendo.",
+        )
         ttk.Button(toolbar, text="Abrir fila", command=self.open_queue_file).pack(side=tk.LEFT, padx=6)
         ttk.Button(toolbar, text="Salvar fila", command=self.save_queue).pack(side=tk.LEFT)
         ttk.Checkbutton(
@@ -125,21 +223,20 @@ class ReviewPanel(ttk.Frame):
             command=self.refresh,
         ).pack(side=tk.RIGHT)
 
-        ttk.Label(self, textvariable=self.summary_var, wraplength=760).pack(anchor="w")
-        ttk.Label(self, textvariable=self.progress_var, wraplength=760).pack(anchor="w", pady=(0, 4))
+        texto.acompanhar(ttk.Label(self, textvariable=self.summary_var)).pack(anchor="w")
+        texto.acompanhar(ttk.Label(self, textvariable=self.progress_var)).pack(anchor="w", pady=(0, 4))
 
-        table_wrap = ttk.Frame(self)
-        table_wrap.pack(fill=tk.BOTH, expand=True)
-        self.tree = ttk.Treeview(table_wrap, columns=self.COLUMNS, show="headings", selectmode="browse", height=14)
-        for column in self.COLUMNS:
-            self.tree.heading(column, text=self.HEADINGS[column])
-            self.tree.column(column, width=self.WIDTHS[column], anchor="w", stretch=(column == "motivo"))
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll = ttk.Scrollbar(table_wrap, orient=tk.VERTICAL, command=self.tree.yview)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tree.configure(yscrollcommand=scroll.set)
+        self.tree = tabela.montar(self, self.COLUNAS, selectmode="browse", height=14)
         self.tree.bind("<Double-1>", lambda _event: self.open_selected())
         self.tree.bind("<Return>", lambda _event: self.open_selected())
+        self.tree.bind("<<TreeviewSelect>>", lambda _event: self._mostrar_motivo())
+
+        # O motivo **inteiro** do item selecionado, sob a tabela (S-153). Rolar para o lado numa
+        # lista de 129 linhas custa a coluna de referência: a tabela dá a visão geral, o rodapé
+        # dá o texto, e nenhuma das duas precisa escolher entre as duas coisas.
+        texto.acompanhar(
+            ttk.Label(self, textvariable=self.detail_var, justify=tk.LEFT)
+        ).pack(anchor="w", fill=tk.X, pady=(4, 0))
 
         actions = ttk.Frame(self)
         actions.pack(fill=tk.X, pady=(6, 0))
@@ -164,11 +261,14 @@ class ReviewPanel(ttk.Frame):
                 "",
                 tk.END,
                 values=(
-                    f"{item.priority:.1f}",
+                    # Sem casa decimal, e a confiança em porcentagem (S-169): `1623.8` sugere
+                    # que ele difere de `1623.7`, e `0.082` é o mesmo número que a barra de
+                    # status escreve como `8,2%`.
+                    formato.prioridade(item.priority),
                     item.page_number,
                     item.diagram_index,
-                    f"{item.min_confidence:.3f}",
-                    item.status,
+                    formato.confianca(item.min_confidence),
+                    strings.status_da_fila(item.status),
                     "; ".join(item.reasons),
                 ),
             )
@@ -177,7 +277,23 @@ class ReviewPanel(ttk.Frame):
             taxa = error_rate(self.queue.items)
             self.summary_var.set(f"{self.queue.summary()} | {taxa:.0%} com sinal objetivo de erro")
         else:
-            self.summary_var.set("Fila vazia. Abra um PDF e use 'Varrer PDF'.")
+            self.summary_var.set(f"Fila vazia. Abra um PDF e use '{strings.VARRER_LIVRO}'.")
+        self._mostrar_motivo()
+
+    def motivo_selecionado(self) -> str:
+        """O motivo inteiro do item selecionado, ou vazio quando não há seleção (S-153).
+
+        Função de leitura, sem widget de saída: é o que permite afirmar o **texto** do rodapé
+        sem perguntar a um `Label` o que ele está mostrando.
+        """
+        posicao = self.selected_position()
+        if posicao is None:
+            return ""
+        item = self.queue.items[posicao]
+        return f"Motivo: {'; '.join(item.reasons)}" if item.reasons else "Motivo: sem sinal objetivo de erro."
+
+    def _mostrar_motivo(self) -> None:
+        self.detail_var.set(self.motivo_selecionado())
 
     def selected_position(self) -> int | None:
         selection = self.tree.selection()
@@ -235,84 +351,65 @@ class ReviewPanel(ttk.Frame):
     # ---------------------------------------------------------------- varredura
 
     def start_scan(self) -> None:
+        """Pede **a** varredura do livro -- a mesma da Galeria, e a única que existe (S-119).
+
+        Até 2026-08-18 este botão rodava a segunda passada pelo mesmo PDF: `build_review_queue`
+        e `build_gallery_index` percorriam o mesmo `iter_pdf_diagrams`, com os mesmos
+        parâmetros, e gravavam em arquivos diferentes. Medido no `PDF/1000 Chess Problems`
+        (420 páginas): **338 s + 299 s**. Abrir um livro novo custava ~5 min antes de qualquer
+        trabalho humano, e mais ~5 quando se descobria que a outra aba também precisava da sua.
+
+        O botão continua aqui -- quem está na fila não deveria ter de saber que a varredura
+        "mora" na outra aba --, mas ele e o da Galeria são o mesmo gesto.
+        """
         if self._scanning:
-            messagebox.showinfo("Varredura em andamento", "Já existe uma varredura de fila em execução.")
+            # As duas vão para o rodapé (S-164): "já está rodando" é o que a zona de operação ao
+            # lado mostra, e "abra um PDF antes" é um passo que falta -- nenhuma é uma decisão.
+            self._on_status("Já existe uma varredura de fila em execução.")
             return
-        request = self._scan_request()
-        if request is None:
-            messagebox.showwarning("Aviso", "Abra um PDF antes de montar a fila de revisão.")
+        if self._on_scan_book is None:  # pragma: no cover - fora do app não há quem varra
+            self._on_status("Esta janela não tem de onde varrer o livro.")
             return
-
-        self._scanning = True
-        self._cancel_event = threading.Event()
-        if self._busy_registry is not None:
-            self._busy_token = self._busy_registry.register(
-                "varredura da fila de revisão",
-                # Os recortes vão para `data/review_cache/` página a página, por `write_image`:
-                # refazer a varredura relê o PDF, mas não paga de novo a parte cara. Fechar
-                # aqui custa tempo, não trabalho -- é a mesma conta da exportação (S-24).
-                loses_work=False,
-                cancellable=True,
-                detail=request.pdf_path.name,
-                cancel=self.cancel_scan,
-            )
-        self.btn_scan.configure(state=tk.DISABLED)
-        self.btn_cancel.configure(state=tk.NORMAL)
-        self.progress_var.set("Preparando varredura...")
-
-        worker = threading.Thread(target=self._scan_worker, args=(request, self._cancel_event), daemon=True)
-        worker.start()
+        self._on_scan_book()
 
     def cancel_scan(self) -> None:
-        if self._cancel_event is not None:
-            self._cancel_event.set()
+        if self._on_cancel_book is not None:
+            self._on_cancel_book()
             self.progress_var.set("Cancelando... (termina a página atual)")
 
-    def _scan_worker(self, request: ScanRequest, cancel_event: threading.Event) -> None:
-        def _progress(page_index: int, total_pages: int, page_boards: int, total_positions: int) -> None:
-            self.after(
-                0,
-                lambda: self.progress_var.set(
-                    f"Varrendo... página {page_index + 1} de {total_pages} | diagramas: {total_positions}"
-                ),
-            )
+    def scan_sink(self) -> ReviewSink | None:
+        """O coletor que monta a fila a partir da varredura do livro (S-119).
 
-        try:
-            rare = rare_classes_from_labels(request.labels_csv)
-            fresh = build_review_queue(
-                request.pdf_path,
-                request.model_path,
-                dpi=request.dpi,
-                max_boards_per_page=request.max_boards_per_page,
-                orientation=request.orientation,
-                start_page=request.start_page,
-                end_page=request.end_page,
-                reading_order=request.reading_order,
-                accept_threshold=request.accept_threshold,
-                rare_classes=rare,
-                cache_dir=self.cache_dir,
-                cancel_event=cancel_event,
-                progress_callback=_progress,
-                # Mesmo OCR de legenda do reconhecimento e da exportação (S-43): uma fila
-                # montada por outro pipeline manda corrigir um diagrama que o PGN não tem.
-                caption_reader=getattr(self._service, "caption_reader", None),
-                model_session=(
-                    self._service.model_session(request.model_path) if self._service is not None else None
-                ),
-            )
-            self.after(0, lambda: self._apply_scan(fresh, cancel_event.is_set()))
-        except Exception as exc:  # noqa: BLE001 - erro de varredura vira mensagem, não crash
-            logger.exception("Falha ao montar a fila de revisão.")
-            detalhe = str(exc)
-            self.after(0, lambda: messagebox.showerror("Fila de revisão", f"Falha na varredura:\n{detalhe}"))
-        finally:
-            self.after(0, self._finish_scan)
+        Chamado pela Galeria **na thread do Tk**, antes de a varredura começar: ele lê os
+        widgets de configuração aqui e não toca disco nenhum -- o `labels.csv` e as anotações
+        do livro só são lidos quando o primeiro diagrama chega, que já é na thread da
+        varredura. Ler 3.936 linhas de CSV para desenhar um botão cinza era o defeito da S-116,
+        e ele não volta por esta porta.
 
-    def _apply_scan(self, fresh: ReviewQueue, cancelled: bool) -> None:
+        `None` quando não há PDF aberto: a Galeria segue varrendo para a aba dela, e a fila
+        fica como estava. Um livro sem PDF não chega aqui, mas a Galeria não precisa saber
+        disso para funcionar.
+        """
+        request = self._scan_request()
+        if request is None:
+            return None
+        self._scanning = True
+        self.btn_scan.configure(state=tk.DISABLED)
+        self.btn_cancel.configure(state=tk.NORMAL)
+        self.progress_var.set("Varrendo o livro...")
+        return ReviewSink(self, request, cache_dir=self.cache_dir)
+
+    def _apply_scan(
+        self, fresh: ReviewQueue, cancelled: bool, *, pages: Collection[int] | None = None
+    ) -> None:
         if self.queue.items and self.queue.source_pdf == fresh.source_pdf:
             # Revarredura não pode ressuscitar o que já foi revisado -- e o que `merge_queues`
             # garante. Sem isso, cada varredura apagaria o trabalho da sessao anterior.
-            fresh = merge_queues(self.queue, fresh)
+            #
+            # `pages` é o que a passada de fato visitou (S-119): a varredura do livro retoma de
+            # onde parou (S-120), e sem dizer quais páginas ela viu a fusão encurtaria a fila
+            # para as páginas novas.
+            fresh = merge_queues(self.queue, fresh, pages=pages)
         self.queue = fresh
         self.save_queue(quiet=True)
         self.refresh()
@@ -322,10 +419,6 @@ class ReviewPanel(ttk.Frame):
 
     def _finish_scan(self) -> None:
         self._scanning = False
-        self._cancel_event = None
-        if self._busy_token is not None:
-            self._busy_token.release()
-            self._busy_token = None
         self.btn_scan.configure(state=tk.NORMAL)
         self.btn_cancel.configure(state=tk.DISABLED)
 

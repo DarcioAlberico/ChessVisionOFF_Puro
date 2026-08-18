@@ -343,7 +343,7 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
     side_col, source_col = st.columns([1.0, 1.6])
     with side_col:
         st.radio(
-            "Lado a jogar",
+            strings.LADO_A_JOGAR,
             options=("w", "b"),
             format_func=lambda value: "Brancas" if value == "w" else "Pretas",
             key=side_key,
@@ -372,8 +372,8 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
 
     with action_col_mid:
         epochs = st.number_input("Épocas", min_value=1, max_value=200, value=8, step=1)
-        batch_size = st.number_input("Batch size", min_value=16, max_value=512, value=128, step=16)
-        lr = st.number_input("Learning rate", min_value=0.00001, max_value=0.05, value=0.001, step=0.0005, format="%.5f")
+        batch_size = st.number_input(strings.TAMANHO_DO_LOTE, min_value=16, max_value=512, value=128, step=16)
+        lr = st.number_input(strings.TAXA_DE_APRENDIZADO, min_value=0.00001, max_value=0.05, value=0.001, step=0.0005, format="%.5f")
         if st.button("Treinar modelo"):
             try:
                 run = train_model(
@@ -399,7 +399,7 @@ def show_results_and_actions(dataset_csv: Path, samples_dir: Path, model_path: P
                 if run.ece_after is not None:
                     st.caption(
                         f"Calibracao (S-28): T={run.temperature:.4f}, "
-                        f"ECE no val {run.ece_before:.5f} -> {run.ece_after:.5f}"
+                        f"ECE no val {run.ece_before:.5f} {strings.SETA} {run.ece_after:.5f}"
                     )
                 st.dataframe(pd.DataFrame(run.history))
             except Exception as exc:
@@ -523,7 +523,7 @@ with tab_pdf:
                 preview_container = st.container()
 
             with layout_right:
-                st.subheader("PDF fixo (direita)")
+                st.subheader(strings.LIVRO_EM_PDF)
                 try:
                     page_preview_rgb = render_pdf_page_cached(pdf_source, int(st.session_state["page_index"]), dpi=dpi)
                     st.image(page_preview_rgb, caption=f"Página {st.session_state['page_index']}", use_container_width=True)
@@ -559,7 +559,7 @@ with tab_pdf:
                 st.subheader("Reconhecido (SVG)")
                 preview_fen, preview_idx = _get_selected_fen_for_preview()
                 if preview_fen is None:
-                    st.info("Rode OCR para exibir o board reconhecido aqui.")
+                    st.info("Rode o OCR para exibir o tabuleiro reconhecido aqui.")
                 elif is_valid_fen(preview_fen):
                     preview_board = board_from_fen(preview_fen)
                     preview_svg = chess.svg.board(board=preview_board, size=460)

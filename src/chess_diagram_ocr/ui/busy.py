@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,28 @@ class BusyOperation:
     detail: str = ""
     """Onde ela está, para a pergunta dizer "época 3 de 8" em vez de só "um treino"."""
 
+    feito: int = 0
+    total: int = 0
+    """Quanto já foi e quanto é o todo, **quando a operação sabe** (S-164).
+
+    Zero em `total` significa "não há total conhecido", e não "total zero": a busca por nome na
+    base descobre o tamanho enquanto lê, e prometer uma fração ali seria inventá-la. O `detail`
+    continua sendo o texto; estes dois são o número, e existem porque uma barra determinada não
+    dá para derivar de "época 3 de 8" sem interpretar a frase.
+    """
+
+    @property
+    def fracao(self) -> float | None:
+        """Quanto da operação já foi, entre 0,0 e 1,0 — ou `None` sem total conhecido.
+
+        Limitada a 1,0 de propósito: quem informa `feito` é a callback de progresso da operação,
+        e uma contagem que passe do total (uma página relida numa retomada, por exemplo) daria
+        uma barra além do fim em vez de um erro que ninguém veria.
+        """
+        if self.total <= 0:
+            return None
+        return max(0.0, min(1.0, self.feito / self.total))
+
     def describe(self) -> str:
         return f"{self.name} ({self.detail})" if self.detail else self.name
 
@@ -61,8 +83,9 @@ class BusyToken:
         self._registry = registry
         self._key = key
 
-    def update(self, detail: str) -> None:
-        self._registry._update(self._key, detail)
+    def update(self, detail: str, *, feito: int = 0, total: int = 0) -> None:
+        """Atualiza onde a operação está: o texto e, quando ela sabe, o número (S-164)."""
+        self._registry._update(self._key, detail, feito=feito, total=total)
 
     def release(self) -> None:
         self._registry._release(self._key)
@@ -90,25 +113,31 @@ class BusyRegistry:
         loses_work: bool,
         cancellable: bool = False,
         detail: str = "",
+        total: int = 0,
         cancel: Callable[[], None] | None = None,
     ) -> BusyToken:
         with self._lock:
             self._next += 1
             key = self._next
             self._operations[key] = BusyOperation(
-                name=name, loses_work=loses_work, cancellable=cancellable and cancel is not None, detail=detail
+                name=name,
+                loses_work=loses_work,
+                cancellable=cancellable and cancel is not None,
+                detail=detail,
+                total=total,
             )
             if cancel is not None:
                 self._cancels[key] = cancel
         return BusyToken(self, key)
 
-    def _update(self, key: int, detail: str) -> None:
+    def _update(self, key: int, detail: str, *, feito: int = 0, total: int = 0) -> None:
         with self._lock:
             atual = self._operations.get(key)
             if atual is not None:
-                self._operations[key] = BusyOperation(
-                    name=atual.name, loses_work=atual.loses_work, cancellable=atual.cancellable, detail=detail
-                )
+                # `replace` e não construir de novo: a S-32 registra o que custou reconstruir um
+                # `dataclass` campo a campo -- o campo novo que ninguém copiou volta ao padrão, e
+                # aqui isso apagaria o total a cada atualização de detalhe.
+                self._operations[key] = replace(atual, detail=detail, feito=feito, total=total or atual.total)
 
     def _release(self, key: int) -> None:
         with self._lock:

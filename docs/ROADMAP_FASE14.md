@@ -9,6 +9,29 @@ detalhada em [SPEC_FASE14.md](SPEC_FASE14.md) (S-95 a S-142). Para o *como* de h
 
 ---
 
+## Onde o projeto está (2026-08-18)
+
+**Vinte e duas das vinte e quatro fases estão fechadas.** As duas que faltam têm o código
+inteiro entregue e travado por teste; o que falta nelas **não é código** — é uma anotação e uma
+decisão, as duas do dono do acervo. Está assim, por medição e não por impressão:
+
+| fase | estado | o que falta |
+|---|---|---|
+| 0, 1, 3, 4, 5 | ✅ | — |
+| 2 | ✅ entregue | a 1ª parte do critério é exportar 39 livros: horas na máquina que os tem |
+| 6 | ⚠ | `app_tkinter.py` em 1.712 contra o alvo de 600 (S-31 aberta, com catraca) |
+| 7 a 13 | ✅ código completo | a 7 registra critério não atingido, com a razão medida |
+| **14 — a régua** | ⚠ | **2 diagramas conferíveis** (28 de 30). S-99: anotação à mão |
+| **15 — dataset e treino** | ⚠ | **decidido em 18/08: não promover** — a diferença é 1 diagrama sem FEN de referência. Reabre com um retreino que valha a troca |
+| 16, 17, 18, 19 | ✅ | — |
+| 20 a 24 — interface | ✅ | 27 de 27 |
+
+**As duas pendências são pequenas e não são minhas de fechar**, e a razão está escrita item a
+item: preencher a 14 com FEN que ninguém conferiu é o defeito que a S-95 consertou, e trocar o
+modelo de produção é a decisão que o quadro de riscos marca como sua desde 2026-08-16.
+
+---
+
 ## Como esta avaliação foi feita, e o que ela mede
 
 O projeto está saudável por todos os instrumentos que ele mesmo construiu: `ruff` limpo,
@@ -350,7 +373,7 @@ a condição de qualquer medição, a segunda porque cada dia de uso acrescenta 
 
 ---
 
-## Fase 14 — A régua
+## Fase 14 — A régua ⚠ **código completo; o critério depende de anotação humana**
 
 > O projeto não sabe se lê certo, e as duas réguas estão contaminadas pelo que deveriam julgar.
 
@@ -368,13 +391,28 @@ página do conjunto contaminada por amostra de treino, nenhuma tripla `(pdf, pá
 cruzando split, e **pelo menos 5 diagramas na faixa de confiança 0,60–0,80** — a condição que
 a 7.7 apontou como ausente e sem a qual nenhum modelo se distingue de outro.
 
+**Medido em 2026-08-18 (`cvoff-field`), e falta pouco:**
+
+| parte | alvo | medido |
+|---|---|---|
+| conferíveis (`comparable`) | ≥ 30 | **28** — faltam **2** |
+| exatidão de campo | — | **1,0000** (28/28) |
+| páginas contaminadas por treino | 0 | 2 páginas, 7 diagramas (18%) — **declaradas** pela S-97 |
+| triplas cruzando split | 0 | 0 (S-98) |
+
+**O que falta é dado, não código.** Todo o instrumento desta fase está entregue e travado por
+teste; o que o critério pede a mais são **duas leituras conferidas à mão** — S-99, a anotação
+das páginas restantes. É trabalho do dono do acervo, e é por isso que esta fase não fecha
+sozinha: fechá-la escrevendo FEN que ninguém conferiu seria exatamente o defeito que a S-95
+consertou.
+
 **A ordem dentro da fase é obrigatória.** A 14.5 vem depois da 14.1: crescer o conjunto com a
 ferramenta quebrada acrescenta verdade que é saída do modelo, e **piora** a régua em vez de
 melhorá-la.
 
 ---
 
-## Fase 15 — O dataset e o treino que não mentem
+## Fase 15 — O dataset e o treino que não mentem ⚠ **código completo; o critério depende de uma decisão sua**
 
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
@@ -391,13 +429,37 @@ melhorá-la.
 promovido é igual ou melhor que a do controle, com `n` declarado; e a decisão fica registrada
 **inclusive se for "não promover"**.
 
+**Medido em 2026-08-18, lendo os `metadata` dos checkpoints:**
+
+| checkpoint | `dataset_size` | melhor época | métrica |
+|---|---|---|---|
+| `models/piece_classifier.pt` (**produção**) | **2.660** | 10 | 0,9874 |
+| `models/controle_20260816.pt` | **3.173** | 5 | 0,9818 |
+
+**O critério não é atingido por um arquivo que ninguém trocou.** O treino existe, o candidato
+existe, a medição existe (S-107: o controle exporta 29/39 contra 28/39 da produção, com
+exatidão de campo idêntica sobre os mesmos 28) — e a promoção é **decisão do dono**, como o
+quadro de riscos registra desde 2026-08-16.
+
+**Decidido em 2026-08-18: não promover**, com a medição na mesa. A diferença entre os dois é
+**um diagrama** — e é um diagrama *sem FEN de referência*, então nem sequer é uma diferença de
+correção medida; a exatidão de campo dos dois é a mesma 1,0000 sobre os mesmos 28 conferíveis.
+Trocar o modelo que o produto carrega por isso seria pagar risco por ruído.
+
+**Consequência, dita sem rodeio:** a primeira cláusula do critério (`dataset_size ≥ 3.100` na
+produção) fica **não atingida por escolha**, e a terceira (*"a decisão fica registrada inclusive
+se for 'não promover'"*) fica atingida por esta linha. A fase fecha quando um retreino que valha
+a troca aparecer — e o que faz um retreino valer a troca é a Fase 14 ter régua, que é a
+pendência de anotação logo acima. As duas pendências que sobraram no projeto são, no fundo, a
+mesma.
+
 > A 15.7 foi executada em 2026-08-16, **antes** das 15.1 a 15.6 — a pedido, e a ressalva está
 > registrada em ["O retreino de produção, medido"](#o-retreino-de-produção-medido-2026-08-16).
 > A decisão sobre o `mhsp` está tomada; a troca do arquivo de produção não.
 
 ---
 
-## Fase 16 — O trabalho humano não se perde
+## Fase 16 — O trabalho humano não se perde ✅ concluída (2026-08-16)
 
 > São defeitos, não melhorias. Cada dia de uso acrescenta dado corrompido.
 
@@ -415,32 +477,46 @@ promovido é igual ou melhor que a do controle, com `n` declarado; e a decisão 
 qualquer das 12 operações longas diz o que se perde; e `data/gallery/` tem destino declarado —
 versionado, ou com backup documentado, mas **decidido**.
 
+**Conferido em 2026-08-18, parte a parte:** as S-109 e S-111 fecham o primeiro; a S-112 registra
+as doze operações; e o destino da galeria **está decidido** — opção 2, o extrato humano, com
+`data/gallery_human.jsonl` marcado como versionado na tabela de persistência do
+`ARCHITECTURE.md` e o par `--export-human`/`--import-human` no `cvoff-gallery`.
+
 ---
 
-## Fase 17 — O laço interno, e o custo de abrir um livro
+## Fase 17 — O laço interno, e o custo de abrir um livro ✅ concluída (2026-08-18)
 
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
-| 17.1 | `Ctrl+S` deixa de reler o `labels.csv` inteiro na thread da janela | S-116 | ✅ 718 → 46 ms (falta o corte 2, ~31 ms) |
+| 17.1 | `Ctrl+S` deixa de reler o `labels.csv` inteiro na thread da janela | S-116 | ✅ **718 → 0 ms**, os dois cortes; e o violeta das caixas deixou de depender de salvar amostra |
 | 17.2 | A seta não executa dois painéis ao mesmo tempo | S-117 | ✅ |
 | 17.3 | O DatasetPanel não perde a página e a seleção a cada correção | S-118 | ✅ |
-| 17.4 | Uma varredura por livro em vez de duas | S-119 | ⚠ biblioteca feita; falta o botão único |
+| 17.4 | Uma varredura por livro em vez de duas | S-119 | ✅ um botão, uma passada — e a fusão de fila parava de encurtar a fila numa varredura retomada |
 | 17.5 | A varredura da Galeria é retomável e diz até onde foi | S-120 | ✅ |
 | 17.6 | O acervo varrido sem janela aberta | S-121 | ✅ |
 | 17.7 | O OCR ligado por padrão | S-122 | ✅ medido — **não ligar** |
 | 17.8 | A varredura por posição responde igual com 1 e com N processos | S-138 | ✅ |
 | 17.9 | A consulta por nome alcança as duas cores, e paga o porteiro | S-139 | ✅ |
-| 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ⚠ índice feito (−44,0%); **falta o cache de posições** |
-| 17.11 | O processo filho não reimporta `torch` e a UI | S-141 | ⬜ |
+| 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ✅ índice −44,0%; cache por colocação — trocar de livro deixou de custar 0,59 s e 63 MB |
+| 17.11 | O processo filho não reimporta `torch` e a UI | S-141 | ✅ 223 → 15 MB por filho; arranque de 8 processos 3,24 → 0,76 s — **por outro caminho que o do enunciado** |
 | 17.12 | A página concluída se diz concluída, e o verde aparece na primeira visita | S-142 | ✅ |
 
 **Critério de saída:** o ciclo corrigir→salvar→seguinte custa menos de 0,05 s de janela
 travada; abrir um livro novo custa **uma** varredura; o número de livros do acervo com índice
 sai de 7; e a mesma pergunta à base devolve a mesma resposta duas vezes seguidas.
 
+**Medido em 2026-08-18, os quatro:**
+
+| parte | alvo | medido |
+|---|---|---|
+| ciclo corrigir→salvar→seguinte | < 0,05 s | **0,000 s** — os dois cortes da S-116 |
+| abrir um livro novo | **uma** varredura | uma (S-119): a fila sai da passada da Galeria |
+| livros do acervo com índice | > 7 | **10** (`data/gallery/*.index.json`) |
+| a mesma pergunta, duas vezes | mesma resposta | S-138, travada por teste |
+
 ---
 
-## Fase 18 — Quando algo dá errado
+## Fase 18 — Quando algo dá errado ✅ concluída (2026-08-18)
 
 > O bundle da S-55 é `console=False` e não grava log por padrão. Hoje, uma janela que não abre
 > não deixa rastro nenhum.
@@ -458,9 +534,15 @@ sai de 7; e a mesma pergunta à base devolve a mesma resposta duas vezes seguida
 inválido, checkpoint de outra `arch_version` — produzem mensagem em pt-BR e rastro em disco,
 no checkout **e** no `.exe`.
 
+**A metade do `.exe` foi exercitada em 2026-08-18, pela primeira vez** — ela exigia um bundle, e
+o bundle estava obsoleto desde 2026-08-09 até a S-135 ser refeita. **Duas das três estavam
+erradas** (S-174): PDF corrompido e checkpoint ilegível saíam com `1` e traceback em inglês,
+onde `1` quer dizer "o programa falhou" e quem falhou era um arquivo. Corrigido e reconferido no
+`.exe`: `2`, `0`, `3` e `0`, com frase pt-BR e `logs/chessvisionoff.log` gravado nos quatro.
+
 ---
 
-## Fase 19 — A detecção, e a documentação que descreve o programa que existe
+## Fase 19 — A detecção, e a documentação que descreve o programa que existe ✅ concluída (2026-08-18)
 
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
@@ -470,7 +552,7 @@ no checkout **e** no `.exe`.
 | 19.4 | O que o gate não enxerga, escrito onde ele decide | S-132 | ✅ medido — **0 de 3 diagramas reparados exportam**, e é aritmética |
 | 19.5 | S-76 e S-77 registradas | S-133 | ✅ |
 | 19.6 | O índice de documentos, verificável por teste | S-134 | ✅ |
-| 19.7 | Os números vivos: ARCHITECTURE, README, bundle | S-135 | ✅ (falta refazer o bundle) |
+| 19.7 | Os números vivos: ARCHITECTURE, README, bundle | S-135 | ✅ bundle refeito (696 → **684 MB**), e ele achou `pythonnet`/`clr_loader` ainda dentro, três fases depois da S-69 |
 | 19.8 | `app_tkinter.py` dobrou: reabrir o item ou registrar o novo placar | S-136 | ✅ **registrar** — 1.440 linhas, travadas por catraca |
 | 19.9 | `mypy` olha o produto; `streamlit` sai das obrigatórias; `atomic_io` ganha guarda | S-137 | ✅ |
 
@@ -478,6 +560,33 @@ no checkout **e** no `.exe`.
 falhe, e `cvoff-census` mostra o efeito das mudanças de detecção sobre o acervo — com a regra
 da S-82: perder suspeito é o objetivo, perder candidato do tamanho de um diagrama impresso
 precisa de justificativa uma a uma.
+
+---
+
+## Os dois achados que a implementação trouxe (2026-08-18)
+
+Nenhum dos dois veio de avaliação: vieram de **implementar** a Fase 17 e olhar para o lado.
+Especificados em [SPEC_FASE14.md](SPEC_FASE14.md).
+
+| # | Entrega | Ref. | Estado |
+|---|---|---|---|
+| A1 | A varredura por posição para em vez de esperar para sempre por um pedaço que não volta | S-171 | ✅ reproduzido (5 de 6 pedaços, espera infinita) e detectado em 0,3 s |
+| A2 | O critério de saída de uma fase envelhece igual a um número do README | S-172 | ✅ duas guardas novas, verificadas contra um documento mentiroso |
+| A3 | Uma passada descartada não pode virar "a base não conhece" | S-173 | ✅ e ele foi **criado pela A1** — está registrado assim |
+
+**A1 apareceu ao escrever a S-141** — o item que faz o filho arrancar nu. Ele registrou o
+próprio preço (*"o filho morre ao desempacotar e o laço de espera fica sem resposta"*), e
+perguntar quanto custava esse "sem resposta" mostrou que o travamento já existia antes, por um
+caminho muito mais provável: qualquer filho que morresse.
+
+**A2 apareceu ao refazer o bundle da S-135.** Com o `.exe` medido e travado por teste, o
+`ROADMAP.md` continuava dizendo que ele não tinha começado.
+
+**A3 é consequência da A1, e o registro disso é o ponto.** Consertar o travamento criou um
+estado que não existia — passada descartada sem cancelamento — e esse estado caía num defeito
+de corrupção latente: o cache gravaria "a base não conhece" sobre milhares de colocações que
+ninguém procurou. Um conserto que abre um caminho novo tem de ser seguido até onde ele
+desemboca, e é isso que a A3 é.
 
 ---
 
@@ -823,5 +932,5 @@ silêncio, os quatro são de horas, e os quatro pioram enquanto o programa é us
 | **`cvoff-audit --dedupe` como está** | Não rodar até a S-101. Ele apagaria 6,2% do `test` e 8,4% do `val` |
 | **A base de 18 GB e o índice de 885 MB** | O índice guarda a mesma informação duas vezes; 476 MB bastariam. Refazê-lo custa uma reconstrução, e a decisão pode esperar a Fase 17 |
 | ~~**Retreinar produção com `mhsp`**~~ **decidido em 2026-08-16: não** | O `mhsp` exporta 28/39 contra 29/39 do controle, com exatidão de campo **idêntica** (1,0000 sobre os mesmos 28). Os −40% de reparo se confirmaram como −57% e não compram nada mensurável. O `AugmentConfig()` padrão continua `aug0` |
-| **Trocar `models/piece_classifier.pt` pelo controle** | **Esta continua sua.** O controle está medido, cita `dataset_size = 3.173` e exporta 29/39 contra 28/39 da produção — mas a diferença é de **um diagrama sem FEN de referência**, e o comando sobrescreve o modelo que o produto carrega. Ver a seção do retreino |
+| ~~**Trocar `models/piece_classifier.pt` pelo controle**~~ **decidido em 2026-08-18: não** | A diferença é **um diagrama**, e um sem FEN de referência: a exatidão de campo dos dois é a mesma 1,0000 sobre os mesmos 28 conferíveis. Trocar o modelo que o produto carrega por isso é pagar risco por ruído. Reabre com um retreino que valha a troca — e o que faz um retreino valer a troca é a Fase 14 ter régua (S-99) |
 | **Sem GPU** | Continua valendo: `torch 2.10.0+cpu`, época em ~9 min com a máquina livre. Os dois treinos da S-107 custam ~5 h de CPU |

@@ -24,6 +24,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from .atomic_io import read_image
 from .board_detection import split_board_into_cells
 from .calibration import expected_calibration_error, reliability_table
 from .checkpoint import load_checkpoint
@@ -276,7 +277,7 @@ class EvaluationReport:
 
 
 def _load_board_image(path: Path) -> np.ndarray | None:
-    image = cv2.imread(str(path))
+    image = read_image(path)
     if image is None:
         return None
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)

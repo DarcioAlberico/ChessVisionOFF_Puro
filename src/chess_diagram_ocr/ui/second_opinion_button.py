@@ -77,7 +77,8 @@ class SecondOpinionButton:
 
         selecionado = self._board_image()
         if selecionado is None:
-            messagebox.showwarning("Aviso", "Não há diagrama para ler.")
+            # Pré-condição no rodapé (S-164).
+            self._on_status("Não há diagrama para ler.")
             return
 
         leitor = build_local_provider(self._settings())

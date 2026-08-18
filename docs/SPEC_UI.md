@@ -90,7 +90,7 @@ com cada estilo num `Tk` de tema `vista` e afirma que não levanta.
 
 ---
 
-## S-145 · Um módulo de tokens: as 24 cores cravadas viram uma paleta ✅ implementada (2026-08-17) ✅ implementada (2026-08-17) ✅ implementada (2026-08-17)
+## S-145 · Um módulo de tokens: as 24 cores cravadas viram uma paleta ✅ implementada (2026-08-17)
 
 **Problema.** 24 cores hexadecimais cravadas em 8 arquivos, sem lugar onde a paleta exista
 inteira. As consequências não são hipotéticas:
@@ -127,7 +127,7 @@ mesmo instrumento à S-146.
 
 ---
 
-## S-146 · Contraste medido: a cor que reprova, e as coordenadas que estão na tela e invisíveis ✅ implementada (2026-08-17) ✅ implementada (2026-08-17) ✅ implementada (2026-08-17)
+## S-146 · Contraste medido: a cor que reprova, e as coordenadas que estão na tela e invisíveis ✅ implementada (2026-08-17)
 
 **Problema.** Dois pares reprovam a razão WCGA AA de 4,5:1 para texto, calculados sobre as cores
 exatas do código:
@@ -158,7 +158,7 @@ declarados. O teste falha nomeando o par e a razão obtida.
 
 ---
 
-## S-147 · Um tabuleiro, uma identidade: as superfícies de canvas seguem o tema
+## S-147 · Um tabuleiro, uma identidade: as superfícies de canvas seguem o tema ✅ implementada (2026-08-17)
 
 **Problema.** Quatro superfícies desenhadas fora do `Style`, e uma delas produz um efeito que
 nenhum designer escolheria:
@@ -193,7 +193,7 @@ escuro, afirmando que a luminância da superfície acompanha a do tema; e que
 
 ---
 
-## S-148 · DPI por monitor, e o ícone do produto
+## S-148 · DPI por monitor, e o ícone do produto ✅ implementada (2026-08-17)
 
 **Problema.** Duas ausências que decidem a primeira impressão antes de qualquer widget.
 
@@ -223,7 +223,7 @@ disco.
 
 ---
 
-## S-149 · Escala tipográfica, e a FEN em monoespaçada
+## S-149 · Escala tipográfica, e a FEN em monoespaçada ✅ implementada (2026-08-17)
 
 **Problema.** Segoe UI 9 em toda a janela: título de grupo, rótulo de campo, dado e barra de
 status têm o mesmo tamanho e o mesmo peso, e por isso a tela não tem hierarquia nenhuma para o
@@ -263,7 +263,7 @@ família monoespaçada.
 > É a única fase que corrige perda de função. Hoje, num notebook de 1366×768, o botão de salvar
 > não está na tela.
 
-## S-150 · O piso da janela, e a aba que rola ⚠ piso feito; **falta a rolagem das abas**
+## S-150 · O piso da janela, e a aba que rola ✅ implementada (2026-08-17) (as duas metades)
 
 **Problema.** `app_tkinter.py:127` pede 1700×980 e **nada** define um piso: `root.minsize()`
 nunca é chamado. Os `minsize` de `app_tkinter.py:245-246` são do `PanedWindow` (420 + 520 = 940)
@@ -297,7 +297,7 @@ para cada botão registrado como ação, que `winfo_rooty() + winfo_height()` ca
 
 ---
 
-## S-151 · As barras de ferramentas refluem em vez de cortar
+## S-151 · As barras de ferramentas refluem em vez de cortar ✅ implementada (2026-08-17)
 
 **Problema.** `ui/pdf_panel.py:242-343` empilha **cinco** barras (`row`, `nav`, `acoes`,
 `field_row`, `zoom_row`) antes de a página aparecer: ~200 px, 20% da altura da janela gastos em
@@ -328,7 +328,7 @@ nenhum dos três casos (é essa a propriedade que hoje falha).
 
 ---
 
-## S-152 · `wraplength` derivado da largura real, não cravado
+## S-152 · `wraplength` derivado da largura real, não cravado ✅ implementada (2026-08-17)
 
 **Problema.** Doze `wraplength` cravados, de 220 a 780 px:
 
@@ -360,7 +360,7 @@ todo texto multi-linha reflui e nenhum fica cortado.
 
 ---
 
-## S-153 · Tabela que mostra a coluna que importa
+## S-153 · Tabela que mostra a coluna que importa ✅ implementada (2026-08-17)
 
 **Problema.** Os dois `Treeview` do projeto — `ui/dataset_panel.py:161-169` e
 `ui/review_panel.py:132-139` — têm barra **vertical** e nenhuma **horizontal**. As consequências,
@@ -390,7 +390,7 @@ contra a largura mínima do painel — se a soma passa, o painel **precisa** dec
 
 ---
 
-## S-154 · A coluna de headers da Galeria cabe, ou rola
+## S-154 · A coluna de headers da Galeria cabe, ou rola ✅ implementada (2026-08-17)
 
 **Problema.** `ui/gallery_panel.py:172-173` cria o tabuleiro com lado fixo de 420 px
 (`BOARD_VIEW_SIZE`, e o comentário explica bem por que é fixo) dentro de `centro`, que é
@@ -446,7 +446,7 @@ soltos em arquivos diferentes.
 
 ---
 
-## S-156 · Geometria, divisor e aba lembrados entre execuções
+## S-156 · Geometria, divisor e aba lembrados entre execuções ✅ implementada (2026-08-17)
 
 **Problema.** `ui/state.py:48-72` lembra o PDF, a página, os dois zooms e três interruptores — e
 esse cuidado está documentado item por item. Não lembra: **o tamanho da janela**, **a posição do
@@ -473,7 +473,7 @@ novos; a função pura que valida geometria contra uma lista de retângulos de m
 
 ---
 
-## S-157 · A página centralizada, e o primeiro zoom que serve
+## S-157 · A página centralizada, e o primeiro zoom que serve ✅ implementada (2026-08-17)
 
 **Problema.** O canvas do PDF (`ui/pdf_panel.py:338`) desenha a página encostada no canto
 superior esquerdo. Em 40% de zoom numa janela de 1700, ~45% da área de visualização é vazio
@@ -502,7 +502,7 @@ página.
 
 > Curta, e é o achado que o usuário sente sem saber nomear.
 
-## S-158 · Um eixo, um significado: azul e violeta na página e no tabuleiro
+## S-158 · Um eixo, um significado: azul e violeta na página e no tabuleiro ✅ implementada (2026-08-17)
 
 **Problema.** Duas paletas, cada uma impecavelmente documentada no seu arquivo, dizendo coisas
 diferentes com a mesma cor a 30 cm de distância na mesma janela:
@@ -529,7 +529,7 @@ diferença de matiz acima de um limiar; nenhum papel aparece duas vezes com core
 
 ---
 
-## S-159 · A cor não é o único portador do estado
+## S-159 · A cor não é o único portador do estado ✅ implementada (2026-08-17)
 
 **Problema.** `ui/pdf_panel.py:747-786` desenha quatro estados de diagrama em quatro matizes,
 com o número numa etiqueta preenchida da mesma cor. Não há forma, traço nem letra que distinga um
@@ -555,7 +555,7 @@ glifo por estado é total e injetiva — dois estados não compartilham o par (t
 
 ---
 
-## S-160 · Os dois amarelos do tabuleiro
+## S-160 · Os dois amarelos do tabuleiro ✅ implementada (2026-08-17)
 
 **Problema.** `ui/board_render.py:37-38`: casa selecionada `#f7ec74` e casa do último lance
 `#cdd26a`, **1,32:1** entre si, e frequentemente adjacentes — selecionar a casa de destino do
@@ -578,7 +578,7 @@ preenchimento da casa; e os pares de cor de casa declarados têm contraste acima
 > Onde as coisas moram, e como o programa responde. Vem depois da 21 porque mover controle que
 > ainda desaparece quando a janela encolhe é mover o problema.
 
-## S-161 · Barra de menus: um lugar para abrir, exportar, preferências e ajuda
+## S-161 · Barra de menus: um lugar para abrir, exportar, preferências e ajuda ✅ implementada (2026-08-17)
 
 **Problema.** `grep -rn "tk.Menu" src/ app_tkinter.py` devolve vazio: **não há barra de menus**.
 Os ~70 comandos da janela são botões permanentemente visíveis, o que produz três consequências
@@ -604,9 +604,38 @@ mostra o atalho no menu; nenhum comando sai da janela sem estar no menu.
 estrutura declarativa; e o teste afirma que o conjunto de comandos do menu contém o conjunto de
 atalhos de `bind_shortcuts` (`app_tkinter.py:1298-1316`) e que cada rótulo traz o acelerador.
 
+**Como ficou.** Dois módulos e uma tabela na janela. `ui/atalhos.py` declara as dez teclas —
+sequência do Tk, rótulo lido, nome do comando, descrição — e é a fonte que `bind_shortcuts`, o
+menu e (na S-165) a legenda consomem; `ui/menu.py` declara os cinco menus como dado, sem
+`tkinter` até `montar`. O que ficou no `app_tkinter.py` é `_comandos`: 26 nomes → métodos, a única
+parte que precisa dos painéis.
+
+`montar` **recusa** uma declaração cujo item não tenha comando, pela mesma disciplina de
+`tokens.cor`: um item de menu inerte é pior que a ausência dele, porque a pessoa conclui que a
+função existe e está quebrada. O acelerador é só mostrado, nunca ligado — quem liga é o
+`bind_shortcuts`, que tem a guarda de foco da S-20 (`←` dentro do campo de FEN é do campo); o
+acelerador do Tk não tem guarda, e as duas ligações fariam a tecla disparar duas vezes.
+
+**O critério de aceite ficou cumprido pela metade, e a metade que falta é declarada.** "Todo
+comando com atalho mostra o atalho no menu" está verificado por teste. "Todo comando da janela é
+alcançável pelo menu" **não**: são ~70 controles, e a própria spec pede o "mínimo honesto" logo
+acima. O menu tem 26 comandos — os do documento, do diagrama, da vista, das ferramentas e da
+ajuda. Ficaram de fora os campos de configuração (são estado, não comando), as anotações do
+conjunto de campo (a S-77 as põe junto da página de propósito) e a navegação interna da Galeria.
+Um menu com 70 itens não seria um mapa da janela: seria a mesma pilha de botões noutra vertical.
+
+**O que a implementação encontrou.** O submenu "Abrir recente" saiu com **29 livros, 13 deles
+inexistentes** — o histórico da S-156 guarda caminhos absolutos, e os 13 apontavam para
+`C:/PythonChess/`, a pasta anterior do projeto (o mesmo evento que a S-37 documenta). Treze itens
+de menu que falham ao serem clicados são o defeito que `montar` recusa na declaração, descoberto
+pelo usuário um clique por vez. `AppState.recentes` passou a filtrar por existência — com o
+predicado injetável, para o teste não depender de disco — e a mostrar 10, não 50: o histórico
+responde "em que página eu parei neste livro?" e o menu responde "qual dos últimos eu quero de
+volta?".
+
 ---
 
-## S-162 · As abas dizem quanto trabalho têm, e trocam pelo teclado
+## S-162 · As abas dizem quanto trabalho têm, e trocam pelo teclado ✅ implementada (2026-08-17)
 
 **Problema.** Três defeitos na mesma barra de abas (`app_tkinter.py:251-327`).
 
@@ -635,9 +664,36 @@ checkout novo cai na aba de trabalho.
 **Testes.** `tests/test_ui_abas.py`: a função rótulo(nome, contagem) — sem contagem, com zero
 (que não mostra "(0)"), com 129 e com 3.936 (separador de milhar em pt-BR).
 
+**Como ficou.** `ui/abas.py` decide o rótulo -- e o que ele decide são os casos de borda: `None` é
+"a aba nunca carregou" e `0` é "não há nada aqui", e **nenhum dos dois vira "(0)"**, porque o
+parêntese existe para dizer quanto falta. O milhar é ponto, como no resto da interface.
+
+**A contagem criou uma interação com a S-156, e ela falharia em silêncio.** O `AppState` guarda a
+aba aberta **pelo rótulo**; com o número dentro, "Revisão (129)" guardado numa sessão não casaria
+com "Revisão (54)" na seguinte -- a janela abriria na primeira aba, sem erro nenhum, e a explicação
+estaria a dois módulos de distância. `abas.nome_base` separa identidade de estado, e é ele que
+`rolagem.selecionar_aba` compara desde então.
+
+**A contagem do Dataset não pode custar o que custa abrir o Dataset.** A S-116 tornou aquela aba
+preguiçosa porque `load_rows` custa 689 ms sobre 3.936 linhas; chamá-lo para preencher um rótulo
+desfaria o item. `DatasetPanel.contagem_de_amostras` conta as linhas do arquivo -- leitura
+sequencial, milissegundos -- e responde a pergunta do rótulo sem carregar nada.
+
+**A ordem das abas é a separação dos dois níveis.** Resultado, Análise e Revisão (o diagrama aberto
+agora) vêm antes de Dataset, Galeria e Configuração (o acervo); o corte entre os grupos é onde a
+barra muda de assunto. A Configuração foi para o fim -- é a aba do primeiro dia e quase nunca
+depois --, e a janela passou a abrir no Resultado num checkout novo, respeitando o que a S-156
+guardou nas execuções seguintes. `enable_traversal()` é uma linha que nunca tinha sido escrita:
+`Ctrl+Tab` e `Shift+Ctrl+Tab` circulam as abas, verificado com a janela dirigida.
+
+**O separador visual não entrou.** O `ttk.Notebook` não desenha separador entre abas, e o caminho
+alternativo da spec -- mover o grupo do acervo para o menu Ferramentas -- esconderia três abas
+atrás de um menu para marcar um agrupamento. A ordem faz o corte; a decisão fica registrada aqui
+para não parecer esquecimento.
+
 ---
 
-## S-163 · A barra de status é da janela, não do painel esquerdo
+## S-163 · A barra de status é da janela, não do painel esquerdo ✅ implementada (2026-08-17)
 
 **Problema.** `app_tkinter.py:329`:
 
@@ -670,9 +726,29 @@ texto.
 **Testes.** `tests/test_ui_rodape.py`: a função que decide zona, severidade e expiração a partir
 de (mensagem, origem, operações em curso) — puro, sem `tkinter`, como manda `ui/busy.py`.
 
+**Como ficou.** `ui/rodape.py`: 11 funções puras (severidade, expiração, as três descrições, a
+projeção do `BusyRegistry`) mais o widget `RodapeDaJanela`. A janela ficou com quatro linhas — a
+construção e **a ordem do `pack`**, que é o item: o rodapé antes do `PanedWindow`, senão ele é o
+primeiro a sair da tela em vez do último. O estado do documento saiu da barra de zoom do
+visualizador e o `ttk.Label` do painel esquerdo deixou de existir; `_set_status` continua sendo o
+ponto único por onde os seis painéis falam, e é ele que dá severidade aos 60 chamadores que não
+declaram uma. A altura é fixa **por construção**: todo widget do rodapé existe sempre, e o teste
+mede que a altura pedida com o rodapé vazio é a mesma com mensagem longa e operação rodando.
+
+**O que a implementação encontrou, e a avaliação não tinha visto.** A janela dirigida mostrou a
+primeira mensagem de erro **preta**. A causa não era do rodapé: `tokens._DO_TEMA` manda perguntar
+ao tema a cor de três papéis de texto, e sob `bootstrap-light` os três respondem `#212529` — o
+mesmo do `TLabel` base. `style.lookup` sobe a cadeia de herança do Tk, então um `danger.TLabel`
+que não declara `foreground` devolve o do pai sem dizer que não tinha o seu. Consequência, aberta
+desde a S-145: "já salvo" (verde `#146c43`), "posição ilegal" (vermelho `#c0392b`) e contagem de
+apoio (cinza `#555555`) resolviam para a **mesma** cor na janela em execução, e as três medições
+da S-146 nunca chegavam à tela. A correção é `tokens._resposta_do_tema` — resposta igual à do
+estilo base é ausência de resposta —, e o que a trava é um teste com o `Style` **real** em
+`tests/test_theme.py`: o falso sempre dizia que os três eram distintos.
+
 ---
 
-## S-164 · Progresso com número e cancelamento para as três operações longas
+## S-164 · Progresso com número e cancelamento para as três operações longas ✅ implementada (2026-08-17)
 
 **Problema.** Três operações passam de um minuto — exportar um livro de 402 páginas, varrer o
 livro na Galeria, varrer a fila na Revisão — e as três informam **só por texto**. Há três
@@ -700,9 +776,35 @@ sobra é decisão, não notificação.
 **Testes.** `tests/test_busy.py` (estende o que já existe): a projeção de `BusyRegistry.running()`
 para (modo da barra, fração, texto) nos três casos — nada rodando, uma com total, uma sem.
 
+**Como ficou.** `BusyOperation` ganhou `feito` e `total`, e `BusyToken.update` os aceita: o número
+vai separado da frase porque derivar a fração de "época 3 de 8" exigiria interpretar um texto que
+foi escrito para ser lido. Cinco pontos passam o número — exportação, varredura da Galeria, busca
+por posição, varredura da fila e treino —, e a projeção `rodape.ocupacao` decide o modo da barra:
+determinada com total conhecido, indeterminada sem ele, e **indeterminada de novo com duas
+operações**, porque somar 120 de 402 páginas com 3 de 8 épocas daria o progresso de coisa nenhuma.
+O cancelamento é o botão do rodapé, que chama `BusyRegistry.request_cancel` — um lugar só, e não um
+botão numa barra que a S-151 pode ter colapsado.
+
+A projeção ficou testada em `tests/test_ui_rodape.py` e não no `test_busy.py`: ela é apresentação,
+e o registro não conhece barra nenhuma. O `test_busy.py` ganhou o que é dele — os campos de
+progresso, a fração limitada a 1,0 e o `replace` que não apaga o total ao atualizar o detalhe.
+
+**A conta dos modais, medida por AST: 66 → 44.** As 22 que saíram são fim de operação longa (2),
+pré-condição de uma frase (9), "já está rodando" (3), confirmação de sucesso que repetia a frase do
+rodapé (4) e o "nenhum diagrama nesta página" (1) — este último era um clique obrigatório no caso
+**mais comum** do programa. As 44 que ficam são 23 `showerror`, 13 perguntas e 8 instruções de
+várias linhas; o critério, a tabela e a catraca estão em `tests/test_ui_retorno_modal.py`, com a
+decisão de manter erro modal escrita por extenso.
+
+**Correção de número:** a avaliação disse "76 chamadas de `messagebox`" e o certo é 66. O 76 saiu
+de `grep -c messagebox`, que conta também `default=messagebox.NO` e `icon=messagebox.WARNING` —
+constantes passadas a outra chamada, não caixas. Nenhuma conclusão do item muda (66 caixas contra
+3 barras de progresso é a mesma frase), e fica registrado porque número irreprodutível em documento
+é o mecanismo da S-135.
+
 ---
 
-## S-165 · A legenda de atalhos, e o tooltip onde ele foi criado para estar
+## S-165 · A legenda de atalhos, e o tooltip onde ele foi criado para estar ✅ implementada (2026-08-17)
 
 **Problema.** Onze atalhos ligados em `app_tkinter.py:1298-1316` — `←`, `→`, `Ctrl+S`,
 `Ctrl+Shift+S`, `Ctrl+R`, `Del`, `Ctrl+N`, `PgUp`, `PgDn`, `Ctrl+0` — e **nenhum** aparece na
@@ -725,6 +827,36 @@ controle desabilitável fica sem motivo escrito.
 legenda é igual ao de `bind_shortcuts` — o teste falha quando alguém adiciona atalho e esquece a
 legenda; e um inventário de controles desabilitáveis afirmando que cada um tem texto de motivo.
 
+**Como ficou.** A legenda é `ui/legenda.py`, uma `Toplevel` que **percorre** `atalhos.ATALHOS`. Por
+isso o teste previsto acima não existe na forma prevista: não há dois conjuntos a comparar, há um.
+O que `tests/test_ui_legenda.py` trava é o que sobrou de arriscado — **nenhuma sequência de tecla
+escrita fora de `ui/atalhos.py`**, a mesma varredura que a S-145 fez com hexadecimal — e a
+propriedade em si: acrescentar uma linha à tabela a faz aparecer na janela sem ninguém editá-la.
+`<Control-MouseWheel>` fica fora da varredura com o motivo escrito: é gesto de mouse, não cabe como
+acelerador de menu, e uma legenda de teclado que o listasse prometeria uma tecla que não existe.
+
+A legenda é `Toplevel` e não `messagebox` porque a tecla é dado: vai em monoespaçada pela S-149, e a
+caixa do sistema desenharia `Ctrl+S` com a mesma aparência da frase ao lado — que é justamente o que
+não ajuda a achar a linha certa. Ela também diz a guarda de foco da S-20, no único lugar em que
+alguém pergunta "por que a seta não trocou de diagrama agora?".
+
+**São dez atalhos, e não onze.** O critério de aceite acima diz 11 e a lista da avaliação tem 10;
+`_bind_shortcuts` ligava 10. Corrigido em `ui/atalhos.py`, com o teste contando.
+
+**A segunda metade fechou a S-32, e ela estava mais aberta do que a avaliação disse.** A varredura
+de `tests/test_ui_motivos.py` encontrou **13 controles desabiláveis sem tooltip nenhum**: o
+"Cancelar" da Galeria, o da fila, o da exportação, o "Exportar PDF → PGN", o "Analisar posição", o
+combo de variantes, o campo do número do lance, o "Partidas vizinhas", o "Treinar modelo" e o
+"Cancelar" do rodapé recém-nascido. Todos ganharam o motivo, e o teste passou a exigi-lo de quem
+escrever o próximo `state=tk.DISABLED`.
+
+Duas exceções ficaram declaradas com o motivo: os dois `tk.Text` de leitura (a lista de lances e o
+detalhe do Dataset), onde `state=DISABLED` é como o Tk faz um texto não editável — não são controle
+desligado, e exigir tooltip ali seria ruído com aparência de rigor. E dois botões continuam com o
+motivo **escrito na hora** (`disabled_reason()`), porque "não configurado" e "configurado e
+desligado" são situações diferentes e uma frase fixa não daria conta das duas — que é exatamente a
+razão pela qual `Tooltip.set_text` existe desde a S-32.
+
 ---
 
 # Fase 24 — Cópia, formulário e estados vazios
@@ -732,7 +864,7 @@ legenda; e um inventário de controles desabilitáveis afirmando que cada um tem
 > Independente das quatro anteriores; pode andar em paralelo. Fica no fim porque é a única fase
 > cujo erro não custa nada além de si mesmo.
 
-## S-166 · O vocabulário: pt-BR, e um nome por conceito
+## S-166 · O vocabulário: pt-BR, e um nome por conceito ✅ implementada (2026-08-17)
 
 **Problema.** `ui/strings.py` foi criado na S-04 com o critério certo — "entra o que duas telas
 precisam dizer igual" — e três classes de termo ficaram fora.
@@ -765,9 +897,30 @@ conceito, um nome, verificado entre painéis; nenhum rótulo descreve posição 
 uma lista de termos proibidos varrida nos literais de `src/` e `app_tkinter.py`; e a afirmação de
 que os termos compartilhados vêm de `strings.py` e não de literal repetido.
 
+**Como ficou.** Quinze termos entraram em `ui/strings.py`, cada um com o motivo da escolha escrito
+ao lado. As decisões discutíveis, ditas: **FEN e PGN ficam** (são o nome do formato, como JPEG);
+"Zoom" fica (entrou no português e não tem substituto de uma palavra); "heatmap" virou "mapa de
+incerteza"; **"Net" virou "Corrigir pela rede"**, porque "Net" não é o nome de nada e o que a
+pessoa precisa saber antes de clicar é que a imagem sai da máquina; "Split" virou "Conjunto";
+`pending` virou "pendente" -- ele aparecia em 129 linhas da coluna Status enquanto o filtro ao lado
+dizia "Só pendentes". "Varrer o livro" passou a nomear os dois lugares que varrem, e `PDF
+(direita)` virou "Livro em PDF": um rótulo que descreve a própria posição mente assim que alguém
+arrasta o divisor. Os glifos `⏮ ◀ ▶ ⏭ →` substituíram `|< << >> >| ->`.
+
+**O teste achou dois lugares que a leitura não tinha achado.** O primeiro foi o próprio menu da
+S-161, que escrevia "Varrer o livro" como literal -- a segunda cópia do termo nasceu no mesmo dia
+em que ele foi centralizado. O segundo foi `examples/streamlit_demo.py`, com "Batch size",
+"Learning rate", "PDF fixo (direita)" e um "Lado a jogar" à mão: o exemplo não é a interface
+(S-54), mas é a mesma tela descrita duas vezes, e é exatamente o mecanismo que a S-04 documenta.
+
+**A varredura usa fronteira de palavra, e isso é decisão.** `max_boards`, `board_zoom` e
+`val_board_exact_acc` são chaves -- de opção, de estado e de métrica --, não texto de tela.
+Renomeá-las por causa deste teste mudaria a API por causa de uma varredura sobre **interface**, que
+é o oposto do que ela existe para proteger.
+
 ---
 
-## S-167 · O título da janela diz o produto, o livro e a página
+## S-167 · O título da janela diz o produto, o livro e a página ✅ implementada (2026-08-17)
 
 **Problema.** `app_tkinter.py:126`: `"Chess Diagram OCR - Tkinter"`. Nomeia o **toolkit** — que é
 a única informação da frase que não interessa a ninguém que use o programa —, não nomeia o
@@ -786,7 +939,7 @@ aberto, nomeia o produto.
 
 ---
 
-## S-168 · Os três caminhos com "Procurar…", e o campo que não aceita letra em número
+## S-168 · Os três caminhos com "Procurar…", e o campo que não aceita letra em número ✅ implementada (2026-08-17)
 
 **Problema.** `app_tkinter.py:332-334` monta `Modelo (.pt)`, `CSV labels` e `Pasta samples` com
 `_entry_row` (`app_tkinter.py:419-423`): um `ttk.Entry` de texto livre. **Sem botão
@@ -817,7 +970,7 @@ varredura que afirma uma única largura de rótulo na aba.
 
 ---
 
-## S-169 · Precisão honesta na fila, e o dado cru que não chega à tela
+## S-169 · Precisão honesta na fila, e o dado cru que não chega à tela ✅ implementada (2026-08-17)
 
 **Problema.** `ui/review_panel.py:55-56` mostra prioridade com uma casa decimal — `1623.8`,
 `1617.2`, `1135.5` — em número que ninguém compara nesse detalhe: a casa decimal é ruído com
@@ -841,7 +994,7 @@ ausente; e a afirmação de que a chave de ordenação de uma coluna formatada �
 
 ---
 
-## S-170 · O estado vazio do Resultado, e o destrutivo com cara de destrutivo
+## S-170 · O estado vazio do Resultado, e o destrutivo com cara de destrutivo ✅ implementada (2026-08-17)
 
 **Problema.** Três coisas que a tela diz e que não são verdade.
 
@@ -871,3 +1024,29 @@ oferece salvar; toda ação destrutiva se distingue visualmente e nomeia o alvo 
 **Testes.** `tests/test_result_panel.py` (estende o que já existe): o estado inicial não tem
 posição e as ações de salvar estão desabilitadas; a frase de confirmação de remoção nomeia
 arquivo e contagem para 1 e para N linhas.
+
+**Como ficou.** As três coisas, e a primeira era um defeito com consequência em disco.
+
+*O tabuleiro cheio.* `update_views` já sabia desenhar o tabuleiro vazio quando não há diagrama --
+ele só **nunca era chamado na construção**, então a aba abria com a posição inicial que o
+`InteractiveBoard` desenha por padrão e a FEN vazia ao lado. Uma linha no fim do `__init__`
+resolve o desenho; o resto do item é o que ela revelou: quem clicasse "Salvar posição reconhecida"
+naquele estado gravava a **posição inicial** no `labels.csv` como leitura de uma página. As três
+ações de edição passam a ficar cinza sem diagrama, com o motivo no tooltip pela regra da S-165, e
+a aba ganhou uma frase que diz **o que fazer** -- "clique num diagrama marcado da página, ou use
+'OCR todos diagramas'" --, e não que está vazia: "sem dados" descreve a tela; o gesto seguinte é o
+que a pessoa procura.
+
+*O rótulo depois do campo.* `[campo] Lance` era o `pack` fazendo o que lhe pediram: dois widgets
+com `side=RIGHT` saem na ordem em que chegam, da direita para a esquerda. Empacotar o campo antes
+do rótulo devolve a ordem de leitura sem mudar o lado da linha em que os dois ficam. O teste mede
+o `winfo_rootx` dos dois -- é a única forma de afirmar "à esquerda" sem reimplementar o `pack`.
+
+*O destrutivo.* "Remover" e "Quarentena" já tinham ganhado o papel `DESTRUTIVO` na S-144; o que
+faltava era a pergunta **nomear** o que vai sumir. `strings.frase_de_remocao` diz o arquivo, a
+contagem e os nomes -- todos até cinco, e "e mais N" acima disso, porque uma pergunta que ninguém
+lê não protege nada. Uma amostra é dita pelo nome; muitas dizem contagem e nomes, porque estender
+a seleção de um `Treeview` sem querer é um `Shift+clique` a mais e a única defesa é ver quais.
+
+E o teste fecha o par nos dois sentidos: quem apaga usa `DESTRUTIVO`, **e quem não apaga não usa**
+-- se tudo é vermelho, nada é.

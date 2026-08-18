@@ -10,6 +10,7 @@ from pathlib import Path
 
 import torch
 
+from ..atomic_io import read_image
 from ..config import DEFAULT_DATASET_CSV, DEFAULT_MODEL_PATH, DEFAULT_SAMPLES_DIR, PROJECT_ROOT
 from ..dataset import BoardFenDataset
 from ..inference import describe_device, load_model
@@ -54,7 +55,7 @@ def _cell_batches(dataset: BoardFenDataset, limit: int) -> list[torch.Tensor]:
     batches: list[torch.Tensor] = []
     entries = dataset.entries[:limit] if limit else dataset.entries
     for entry in entries:
-        image = cv2.imread(str(dataset.samples_dir / entry.filename))
+        image = read_image(dataset.samples_dir / entry.filename)
         if image is None:
             continue
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)

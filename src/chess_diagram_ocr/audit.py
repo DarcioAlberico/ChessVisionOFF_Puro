@@ -18,7 +18,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from .atomic_io import atomic_write_json
+from .atomic_io import atomic_write_json, read_image
 from .config import PIECE_CLASSES
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .labels import LabelStore
@@ -314,7 +314,7 @@ def find_duplicate_groups(
         path = samples_dir / filename
         if not path.exists():
             continue
-        image = cv2.imread(str(path))
+        image = read_image(path)
         if image is None:
             logger.warning("Imagem ilegível, ignorada na deduplicação: %s", path)
             continue

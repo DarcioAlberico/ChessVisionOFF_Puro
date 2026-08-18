@@ -29,7 +29,7 @@ import logging
 import multiprocessing as mp
 import threading
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -39,7 +39,9 @@ from typing import Any
 import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.board_detection import NoBoardDetectedError
+from chess_diagram_ocr.cli import message_for
 from chess_diagram_ocr.config import (
     ACCEPT_MIN_CONFIDENCE,
     BUNDLE_ROOT,
@@ -58,9 +60,16 @@ from chess_diagram_ocr.detection import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
 from chess_diagram_ocr.field_eval import load_field_set, upsert_page
 from chess_diagram_ocr.gallery import load_annotations
-from chess_diagram_ocr.labels import LabelStore, pages_with_training_samples, saved_diagrams_by_page
+from chess_diagram_ocr.labels import (
+    LabelStore,
+    SavedSample,
+    note_saved_diagram,
+    pages_with_training_samples,
+    saved_diagrams_by_page,
+)
 from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
 from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
+from chess_diagram_ocr.pdf_io import get_pdf_page_count
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import (
     OcrService,
@@ -76,13 +85,27 @@ from chess_diagram_ocr.settings import (
     save_settings,
 )
 from chess_diagram_ocr.splits import load_splits
-from chess_diagram_ocr.ui import estilos, geometria, strings, tokens
+from chess_diagram_ocr.ui import (
+    abas,
+    atalhos,
+    campos,
+    estilos,
+    geometria,
+    legenda,
+    menu,
+    plataforma,
+    rodape,
+    rolagem,
+    strings,
+    texto,
+    tokens,
+)
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 from chess_diagram_ocr.ui.export_controller import ExportController, ExportSettings
 from chess_diagram_ocr.ui.field_draft import REGIMES, FieldDraft
-from chess_diagram_ocr.ui.gallery_panel import GalleryPanel
+from chess_diagram_ocr.ui.gallery_panel import LARGURA_MINIMA_DA_GALERIA, GalleryPanel
 from chess_diagram_ocr.ui.page_overlay import (
     BoxClick,
     OverlayParams,
@@ -96,7 +119,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams
-from chess_diagram_ocr.ui.pdf_panel import PdfPanel
+from chess_diagram_ocr.ui.pdf_panel import PdfPanel, open_in_system_reader
 from chess_diagram_ocr.ui.result_panel import ResultPanel, read_board_image
 from chess_diagram_ocr.ui.review_panel import ReviewPanel, ScanRequest
 from chess_diagram_ocr.ui.shortcuts import bind_shortcuts
@@ -115,10 +138,11 @@ APP_STATE_PATH = ROOT / "data" / "app_tkinter_state.json"
 FIELD_SET_PATH = ROOT / "data" / "field_set.jsonl"
 DEFAULT_SPLITS_PATH = ROOT / "data" / "splits.csv"
 
-LARGURA_MINIMA_ESQUERDA = 420
+LARGURA_MINIMA_ESQUERDA = LARGURA_MINIMA_DA_GALERIA
 """Largura minima do painel esquerdo (editor, dataset, galeria). E o mesmo numero que o
 `PanedWindow` usa para o divisor e que o piso da janela soma -- um so, para os dois nao
-divergirem (S-150)."""
+divergirem (S-150). Era 420 cravado, da S-31, de quando a Galeria nao existia -- agora deriva
+da aba mais larga, e o porque esta em `LARGURA_MINIMA_DA_GALERIA` (S-154)."""
 
 LARGURA_MINIMA_DIREITA = 520
 """Largura minima do visualizador de PDF."""
@@ -131,7 +155,7 @@ class ChessOcrTkApp:
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Chess Diagram OCR - Tkinter")
+        self.root.title(strings.titulo_da_janela())
         self.root.geometry("1700x980")
         # O piso, e nao so o tamanho inicial (S-150). Sem ele a janela encolhe ate cortar a
         # fila de salvar do Resultado -- sem erro, sem rolagem, e sem o usuario saber que
@@ -203,9 +227,19 @@ class ChessOcrTkApp:
         self.max_boards_var = tk.IntVar(value=DEFAULT_MAX_BOARDS)
         self.epochs_var = tk.IntVar(value=8)
         self.batch_var = tk.IntVar(value=128)
-        self.lr_var = tk.DoubleVar(value=0.001)
+        self.lr_var = tk.StringVar(value="0.001")
+        """Texto, e não `DoubleVar` (S-168): o `get()` de um `DoubleVar` levanta `TclError` com
+        uma letra dentro, e levanta **onde é lido** -- dentro do treino, minutos depois. Como
+        texto, o campo diz "não é um número" na tecla seguinte, e quem converte é `_train_lr`."""
         self.fresh_var = tk.BooleanVar(value=False)
-        self.status_var = tk.StringVar(value="Pronto.")
+
+        self.rodape = rodape.RodapeDaJanela(self.root, cancelar=self.busy.request_cancel)
+        """O rodapé da janela (S-163). Era um `ttk.Label` cru com `StringVar` dentro do **painel
+        esquerdo**: longe de onde o trabalho acontece, sem severidade, e fora da tela quando a
+        janela encolhia. Empacotado **antes** do `PanedWindow`, que é o que o faz sobreviver ao
+        encolher -- o `pack` reparte na ordem em que recebe."""
+        self.rodape.pack(side=tk.BOTTOM, fill=tk.X)
+        self.rodape.acompanhar(self.busy.running)
 
         self.main_pane: tk.PanedWindow | None = None
         self.left_tabs: ttk.Notebook | None = None
@@ -239,8 +273,11 @@ class ChessOcrTkApp:
         )
 
         self._build_ui()
+        self._build_menu()
         self._bind_shortcuts()
         self._restore_state_or_default_pdf()
+        self._atualizar_abas()
+        self._restore_window_arrangement()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(180, self._set_initial_sashes)
 
@@ -263,14 +300,17 @@ class ChessOcrTkApp:
     def _build_left_panel(self) -> None:
         tabs = ttk.Notebook(self.left_frame)
         tabs.pack(fill=tk.BOTH, expand=True)
+        # `Ctrl+Tab`, `Shift+Ctrl+Tab` e as teclas de acesso (S-162). Uma linha, e ela nunca tinha
+        # sido escrita: a barra de abas era navegável só pelo mouse.
+        tabs.enable_traversal()
         self.left_tabs = tabs
 
-        cfg_tab = ttk.Frame(tabs, padding=6)
-        tabs.add(cfg_tab, text="Configuração")
-        self._build_config_tab(cfg_tab)
-
+        # **A ordem é o item** (S-162). As seis abas misturavam dois níveis: Resultado, Análise e
+        # Revisão são do diagrama aberto agora; Dataset, Galeria e Configuração são do acervo. Elas
+        # passam a vir nessa ordem, e o corte entre os dois grupos é onde a barra muda de assunto.
+        # A Configuração vai para o fim porque é a aba do primeiro dia e quase nunca depois.
         self.result_panel = ResultPanel(
-            tabs,
+            rolagem.aba_rolavel(tabs, "Resultado"),
             service=self.service,
             piece_images=self.piece_images,
             paths=lambda: (Path(self.dataset_csv_var.get()), Path(self.samples_dir_var.get())),
@@ -291,7 +331,7 @@ class ChessOcrTkApp:
             move_number_of=self._move_number_of,
             on_move_number=self._set_move_number,
         )
-        tabs.add(self.result_panel, text="Resultado")
+        self.result_panel.pack(fill=tk.BOTH, expand=True)
 
         self.study_panel = StudyPanel(
             tabs,
@@ -309,6 +349,8 @@ class ChessOcrTkApp:
             scan_request=self._current_scan_request,
             on_open=self._open_review_item,
             on_status=self._set_status,
+            on_scan_book=lambda: self.gallery_panel.scan() if self.gallery_panel else None,
+            on_cancel_book=lambda: self.gallery_panel.cancel_scan() if self.gallery_panel else None,
             queue_path=DEFAULT_QUEUE_PATH,
             service=self.service,
             busy=self.busy,
@@ -327,23 +369,27 @@ class ChessOcrTkApp:
         tabs.add(self.dataset_panel, text="Dataset")
 
         self.gallery_panel = GalleryPanel(
-            tabs,
+            rolagem.aba_rolavel(tabs, "Galeria"),
             service=self.service,
             pdf_path=self._pdf_path_or_none,
             model_path=lambda: Path(self.model_path_var.get().strip()),
             max_boards=lambda: int(self.max_boards_var.get()),
             on_status=self._set_status,
             on_page_request=self._gallery_page_request,
+            # Uma varredura por livro (S-119): a Galeria varre, e a fila de revisão sai da
+            # mesma passada. Quem liga as duas abas é a janela -- nenhuma conhece a outra.
+            review_sink=lambda: self.review_panel.scan_sink() if self.review_panel else None,
+            on_annotations_changed=self._reload_confirmed_diagrams,
             busy=self.busy,
         )
-        tabs.add(self.gallery_panel, text="Galeria")
+        self.gallery_panel.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(self.left_frame, textvariable=self.status_var).pack(anchor="w", pady=(6, 0))
+        self._build_config_tab(rolagem.aba_rolavel(tabs, "Configuração", padding=6))
 
     def _build_config_tab(self, cfg_tab: ttk.Frame) -> None:
-        self._entry_row(cfg_tab, "Modelo (.pt)", self.model_path_var)
-        self._entry_row(cfg_tab, "CSV labels", self.dataset_csv_var)
-        self._entry_row(cfg_tab, "Pasta samples", self.samples_dir_var)
+        campos.linha_de_caminho(cfg_tab, "Modelo (.pt)", self.model_path_var)
+        campos.linha_de_caminho(cfg_tab, "CSV labels", self.dataset_csv_var)
+        campos.linha_de_caminho(cfg_tab, "Pasta samples", self.samples_dir_var, tipo=campos.PASTA)
 
         # Tri-estado no lugar do checkbox: "auto" decide por diagrama, o que resolve livro
         # com orientações misturadas -- o booleano valia para todos de uma vez (S-13).
@@ -366,19 +412,25 @@ class ChessOcrTkApp:
         train_box = ttk.LabelFrame(cfg_tab, text="Treino (salva em piece_classifier.pt)")
         train_box.pack(fill=tk.X, padx=8, pady=(4, 8))
         self._spin_row(train_box, "Épocas", self.epochs_var, 1, 200, 1)
-        self._spin_row(train_box, "Batch size", self.batch_var, 16, 512, 16)
-        self._entry_row(train_box, "Learning rate", self.lr_var)
+        self._spin_row(train_box, strings.TAMANHO_DO_LOTE, self.batch_var, 16, 512, 16)
+        campos.linha_de_numero(train_box, strings.TAXA_DE_APRENDIZADO, self.lr_var, minimo=1e-6, maximo=1.0)
         ttk.Checkbutton(
             train_box, text="Treinar do zero (ignora o checkpoint atual)", variable=self.fresh_var
         ).pack(anchor="w", padx=8)
-        ttk.Label(
-            train_box,
-            text="Sem isso, o treino continua do checkpoint e só grava por cima se melhorar.",
-            wraplength=320,
-            foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO],
+        texto.acompanhar(
+            ttk.Label(
+                train_box,
+                text="Sem isso, o treino continua do checkpoint e só grava por cima se melhorar.",
+                foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO],
+            )
         ).pack(anchor="w", padx=8, pady=(0, 4))
         self.btn_train_model = ttk.Button(train_box, text="Treinar modelo", command=self.training.start)
         self.btn_train_model.pack(anchor="w", padx=8, pady=8)
+        Tooltip(
+            self.btn_train_model,
+            "Fica cinza durante o treino, que roda um por vez. O progresso e o cancelamento\n"
+            "ficam no rodapé da janela.",
+        )
 
     def _build_right_panel(self) -> None:
         self.pdf_panel = PdfPanel(
@@ -398,6 +450,7 @@ class ChessOcrTkApp:
             initial_dir=ROOT,
             on_box_click=self._on_box_click,
             on_prefs_changed=self._save_app_state,
+            on_document_state=self.rodape.definir_documento,
         )
         self.pdf_panel.pack(fill=tk.BOTH, expand=True)
         self._build_field_row(self.pdf_panel.field_row)
@@ -433,11 +486,10 @@ class ChessOcrTkApp:
         self.field_status_var = tk.StringVar(value="")
         ttk.Label(parent, textvariable=self.field_status_var).pack(side=tk.LEFT, padx=10)
 
-    def _entry_row(self, parent: ttk.Widget, label: str, var: Any) -> None:
-        row = ttk.Frame(parent)
-        row.pack(fill=tk.X, padx=8, pady=4)
-        ttk.Label(row, text=label, width=16).pack(side=tk.LEFT)
-        ttk.Entry(row, textvariable=var).pack(side=tk.LEFT, fill=tk.X, expand=True)
+    def _train_lr(self) -> float:
+        """O `Learning rate` como número. Texto inválido cai no padrão, e o campo já avisou."""
+        bruto = str(self.lr_var.get()).strip().replace(",", ".")
+        return float(bruto) if campos.numero_na_faixa(bruto, minimo=1e-6, maximo=1.0) else 0.001
 
     def _spin_row(self, parent: ttk.Widget, label: str, var: tk.Variable, frm: int, to: int, inc: int) -> None:
         row = ttk.Frame(parent)
@@ -446,27 +498,53 @@ class ChessOcrTkApp:
         ttk.Spinbox(row, from_=frm, to=to, increment=inc, textvariable=var, width=12).pack(side=tk.LEFT)
 
     def _set_initial_sashes(self) -> None:
+        """Põe o divisor onde ele estava, ou nos 42% da primeira execução (S-156).
+
+        Era o número cravado, aplicado a **toda** abertura: quem trabalha com o PDF grande
+        arrastava o divisor toda sessão e o perdia toda sessão.
+        """
+        fracao = self.state.sash_fraction or geometria.FRACAO_PADRAO_DO_DIVISOR
         try:
             if self.main_pane is not None:
-                self.main_pane.sash_place(0, int(max(1, self.main_pane.winfo_width()) * 0.42), 0)
+                self.main_pane.sash_place(0, int(max(1, self.main_pane.winfo_width()) * fracao), 0)
         except tk.TclError as exc:
             # Erro transitorio de geometria enquanto o primeiro layout se estabiliza.
             logger.debug("Não foi possível posicionar o divisor inicial: %s", exc)
 
+    def _restore_window_arrangement(self) -> None:
+        """Tamanho, posição e aba de onde a sessão anterior parou (S-156).
+
+        O divisor não vem aqui: ele é de `_set_initial_sashes`, que roda 180 ms depois porque o
+        `PanedWindow` precisa de largura medida para posicionar a alça.
+        """
+        alvo = geometria.geometria_a_aplicar(
+            self.state.window_geometry,
+            plataforma.monitores(self.root),
+            piso=geometria.piso_da_janela(LARGURA_MINIMA_ESQUERDA, LARGURA_MINIMA_DIREITA),
+        )
+        if alvo is not None:
+            self.root.geometry(alvo)
+        if self.left_tabs is not None:
+            # A aba de trabalho na primeira abertura, e a guardada nas seguintes (S-162/S-156). A
+            # janela abria na Configuração -- três caminhos de arquivo e os parâmetros de treino,
+            # isto é, a aba do primeiro dia e quase nunca depois.
+            rolagem.selecionar_aba(self.left_tabs, self.state.active_tab or abas.ABA_DE_TRABALHO)
+
     # ------------------------------------------------------------------------------ estado
 
     def _set_status(self, text: str) -> None:
-        """Escreve na barra de status, de qualquer thread.
+        """Escreve na zona de mensagem do rodapé, de qualquer thread (S-163).
 
         Sem `update_idletasks()`: chamado de dentro de um callback de evento, ele reentra no
-        loop de eventos do Tk e permite que outro callback rode no meio deste --
-        reentrância que a S-31 manda remover. A variável é observada pelo widget, então o
-        texto aparece no próximo ciclo ocioso de qualquer jeito.
+        loop de eventos do Tk e permite que outro callback rode no meio deste -- reentrância
+        que a S-31 manda remover. O `after(0)` é o que faz o widget ser tocado só pela thread
+        que o criou. A severidade sai da frase, em `ui/rodape.severidade_de`: os seis painéis
+        passam por este ponto, e é ele que dá cor de erro aos 60 chamadores que não declaram uma.
         """
         if threading.current_thread() is threading.main_thread():
-            self.status_var.set(text)
+            self.rodape.mostrar(text)
         else:
-            self.root.after(0, partial(self.status_var.set, text))
+            self.root.after(0, partial(self.rodape.mostrar, text))
 
     def _build_analyzer(self) -> EngineAnalyzer | None:
         """Procura o motor. Não achar é o caso normal, e não é erro (S-33)."""
@@ -491,7 +569,10 @@ class ChessOcrTkApp:
         self.state = load_state(APP_STATE_PATH)
 
         if self.pdf_panel is not None:
-            self.pdf_panel.set_zoom(self.state.pdf_zoom)
+            # `last_pdf` vazio = nunca houve execução anterior, e então não há zoom escolhido a
+            # restaurar: quem enquadra é a S-157, com a primeira página inteira na tela.
+            if self.state.last_pdf:
+                self.pdf_panel.set_zoom(self.state.pdf_zoom)
             self.pdf_panel.show_boxes_var.set(self.state.show_diagram_boxes)
             self.pdf_panel.flip_pages_var.set(self.state.wheel_flips_page)
         if self.result_panel is not None:
@@ -523,6 +604,20 @@ class ChessOcrTkApp:
                 painel.page_loaded_for_index = None
                 painel.render_current_page()
 
+    def _remember_window_arrangement(self) -> None:
+        """Anota tamanho, divisor e aba no estado (S-156)."""
+        self.state.window_geometry = (
+            geometria.geometria_gravavel(str(self.root.winfo_geometry())) or self.state.window_geometry
+        )
+        if self.main_pane is not None:
+            self.state.sash_fraction = geometria.fracao_de_divisor(
+                int(self.main_pane.sash_coord(0)[0]), int(self.main_pane.winfo_width())
+            )
+        if self.left_tabs is not None and self.left_tabs.select():
+            # O **nome**, sem a contagem da S-162: "Revisão (129)" guardado não casaria com
+            # "Revisão (54)" na sessão seguinte, e a janela cairia na primeira aba em silêncio.
+            self.state.active_tab = abas.nome_base(str(self.left_tabs.tab(self.left_tabs.select(), "text")))
+
     def _save_app_state(self) -> None:
         try:
             if self.pdf_source is not None:
@@ -538,6 +633,7 @@ class ChessOcrTkApp:
                 self.state.show_heatmap = bool(self.result_panel.heatmap_var.get())
             if self.review_panel is not None:
                 self.state.review_queue_path = str(self.review_panel.queue_path)
+            self._remember_window_arrangement()
         except tk.TclError as exc:
             logger.warning("Estado da aplicacao não pode ser montado: %s", exc)
             return
@@ -612,7 +708,7 @@ class ChessOcrTkApp:
             model_path=Path(self.model_path_var.get()),
             epochs=int(self.epochs_var.get()),
             batch_size=int(self.batch_var.get()),
-            lr=float(self.lr_var.get()),
+            lr=self._train_lr(),
             fresh=bool(self.fresh_var.get()),
             splits_path=DEFAULT_SPLITS_PATH if DEFAULT_SPLITS_PATH.exists() else None,
         )
@@ -666,6 +762,19 @@ class ChessOcrTkApp:
             self.gallery_panel.load_pdf(pdf_path, request_page=False)
         if self.result_panel is not None:
             self.result_panel.discard_document_results(str(pdf_path))
+        self._atualizar_titulo()
+        self._atualizar_abas()
+
+    def _atualizar_titulo(self) -> None:
+        """O livro e a página no título da janela (S-167). Ver `strings.titulo_da_janela`."""
+        painel = self.pdf_panel
+        self.root.title(
+            strings.titulo_da_janela(
+                painel.name if painel is not None and painel.source is not None else "",
+                painel.page_index if painel is not None else None,
+                painel.page_count if painel is not None else None,
+            )
+        )
 
     def _on_page_rendered(self, page_index: int) -> None:
         """A página apareceu: traz de volta o que já foi reconhecido nela, se houver.
@@ -675,6 +784,7 @@ class ChessOcrTkApp:
         diagramas que não são os da página exibida.
         """
         self._save_app_state()
+        self._atualizar_titulo()
         if self.result_panel is not None:
             self.result_panel.restore_results_for_page(page_index)
         # Depois de restaurar: se esta página já foi lida, as caixas saem do reconhecimento --
@@ -745,6 +855,20 @@ class ChessOcrTkApp:
             logger.exception("Não foi possível ler o que já está salvo de %s.", alvo.name)
             self.saved_diagrams = {}
         self.confirmed_diagrams = self._read_confirmed(alvo)
+
+    def _reload_confirmed_diagrams(self) -> None:
+        """As confirmações da base mudaram: relê as anotações e repinta a página (S-116).
+
+        Quem chama é a Galeria, ao aplicar uma candidata -- que é o único gesto desta janela
+        que grava `confirmed_from`. Antes isto vinha de carona no `Ctrl+S`, que relia as
+        anotações do livro a cada amostra salva (15,0 ms) sem que salvar amostra pudesse mudar
+        confirmação nenhuma.
+        """
+        if self.pdf_source is None:
+            self.confirmed_diagrams = {}
+            return
+        self.confirmed_diagrams = self._read_confirmed(self.pdf_source)
+        self._refresh_overlay(self.page_index)
 
     def _read_confirmed(self, pdf_path: Path) -> dict[int, set[int]]:
         """O que a base de partidas já confirmou neste livro, por página (S-75).
@@ -977,7 +1101,8 @@ class ChessOcrTkApp:
     def _run_ocr_from_current_page(self, max_boards: int) -> None:
         painel = self.pdf_panel
         if painel is None or painel.source is None:
-            messagebox.showwarning("Aviso", "Abra um PDF primeiro.")
+            # Pré-condição no rodapé, e não em caixa modal (S-164).
+            self._set_status("Abra um PDF antes de ler a página.")
             return
         if not painel.render_current_page() or painel.page_rgb is None:
             return
@@ -1059,7 +1184,7 @@ class ChessOcrTkApp:
         falta não é código: é este clique, página a página.
         """
         if self.pdf_source is None:
-            messagebox.showinfo("Conjunto de campo", "Abra um PDF antes de anotar a página.")
+            self._set_status("Abra um PDF antes de anotar a página.")
             return
 
         rascunho = FieldDraft(pdf_name=self.pdf_source.name, page=self.page_index) if empty else self._field_draft()
@@ -1148,7 +1273,7 @@ class ChessOcrTkApp:
         )
         if not filename:
             return
-        image_bgr = cv2.imread(filename)
+        image_bgr = read_image(filename)
         if image_bgr is None:
             messagebox.showerror("Erro", "Não foi possível abrir a imagem.")
             return
@@ -1207,14 +1332,16 @@ class ChessOcrTkApp:
         """A página não tem diagrama. É resposta à pergunta feita, e não erro (S-125).
 
         O editor é limpo pelo mesmo motivo de antes: deixar ali o reconhecimento da página
-        anterior faria a tela responder outra pergunta. O que muda é a moldura -- caixa
-        informativa e não `showerror` -- e o caminho até aqui, que era procurar a mensagem
-        dentro do texto da exceção e agora é o tipo dela.
+        anterior faria a tela responder outra pergunta. O caminho até aqui era procurar a
+        mensagem dentro do texto da exceção, e agora é o tipo dela.
+
+        **Sem caixa nenhuma desde a S-164.** Virar página em livro de exercícios cai em prosa a
+        cada duas ou três, e ler uma página de prosa é o caso mais comum do programa: era um
+        clique obrigatório para saber que nada aconteceu, na operação que mais se repete.
         """
         if self.result_panel is not None:
             self.result_panel.clear()
-        self._set_status("Nenhum diagrama nesta página.")
-        messagebox.showinfo("Nenhum diagrama", f"{exc}\n\nSe há um diagrama aí, use Selecionar área (OCR).")
+        self._set_status(f"{exc} Se há um diagrama aí, use Selecionar área (OCR).")
 
     def _on_ocr_error(self, exc: Exception) -> None:
         self._set_status("Falha no OCR.")
@@ -1228,6 +1355,25 @@ class ChessOcrTkApp:
         self._set_ocr_controls_enabled(True)
 
     # ------------------------------------------------------------- ligações entre painéis
+
+    def _atualizar_abas(self) -> None:
+        """Põe no rótulo de cada aba quanto trabalho ela carrega (S-162).
+
+        Chamado nos pontos em que os números mudam -- abrir livro, salvar amostra, fechar item da
+        fila --, e não num relógio: a contagem só muda quando alguém a muda, e um `after` periódico
+        redesenharia a barra de abas para dizer o mesmo número.
+        """
+        if self.left_tabs is None:
+            return
+        contagens = {
+            "Revisão": len(self.review_panel.queue.pending()) if self.review_panel is not None else None,
+            "Dataset": self.dataset_panel.contagem_de_amostras() if self.dataset_panel is not None else None,
+            "Galeria": len(self.gallery_panel.model) if self.gallery_panel is not None else None,
+        }
+        for indice in range(int(self.left_tabs.index("end"))):
+            nome = abas.nome_base(str(self.left_tabs.tab(indice, "text")))
+            if nome in contagens:
+                self.left_tabs.tab(indice, text=abas.rotulo(nome, contagens[nome]))
 
     def _focus_result_tab(self) -> None:
         if self.left_tabs is None or self.result_panel is None:
@@ -1259,7 +1405,7 @@ class ChessOcrTkApp:
 
         wrap = ttk.Frame(dlg, padding=14)
         wrap.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(wrap, text=configuracao.consent_message(), wraplength=460, justify=tk.LEFT).pack(anchor="w")
+        texto.acompanhar(ttk.Label(wrap, text=configuracao.consent_message(), justify=tk.LEFT)).pack(anchor="w")
         ttk.Checkbutton(wrap, text="Não perguntar novamente para este endereco", variable=nao_perguntar).pack(
             anchor="w", pady=(10, 0)
         )
@@ -1284,12 +1430,23 @@ class ChessOcrTkApp:
             save_settings(DEFAULT_SETTINGS_PATH, self.settings)
         return bool(resposta["enviar"])
 
-    def _reload_dataset_panel(self) -> None:
-        """Uma amostra foi gravada: a aba Dataset relê, e o visualizador repinta de verde."""
+    def _reload_dataset_panel(self, saved: Sequence[SavedSample] = ()) -> None:
+        """Uma amostra foi gravada: a aba Dataset relê, e o visualizador repinta de verde.
+
+        **Sem tocar o disco** (S-116, corte 2). `saved` é o que o editor acabou de gravar, e é
+        o bastante para o índice de verdes: relê-lo do `labels.csv` custava 30,9 ms sobre 3.936
+        linhas, e o arquivo é o que o projeto existe para fazer crescer. A aba Dataset também
+        não lê nada aqui -- ela marca `_stale` e recarrega quando for exibida (corte 1).
+        """
         if self.dataset_panel is not None:
             self.dataset_panel.reload()
-        self._reload_saved_diagrams()
+        for amostra in saved:
+            note_saved_diagram(self.saved_diagrams, amostra, source_pdf=self._pdf_name())
         self._refresh_overlay(self.page_index)
+        self._atualizar_abas()
+
+    def _pdf_name(self) -> str:
+        return self.pdf_source.name if self.pdf_source is not None else ""
 
     def _open_review_item(self, item: Any, position: int) -> None:
         if self.result_panel is not None:
@@ -1300,6 +1457,7 @@ class ChessOcrTkApp:
         if self.review_panel is None:
             return
         self.review_panel.apply_correction(position, fen, side)
+        self._atualizar_abas()
         self._set_status(f"Item da fila marcado como revisado. {self.review_panel.queue.summary()}")
 
     def recheck_dataset_row(self, row: DatasetRow) -> str:
@@ -1312,25 +1470,85 @@ class ChessOcrTkApp:
 
     # ----------------------------------------------------------------------------- atalhos
 
-    def _bind_shortcuts(self) -> None:
-        """Atalhos do ciclo corrigir → salvar → próximo (S-20)."""
-        bind_shortcuts(
+    def _comandos(self) -> dict[str, Callable[[], None]]:
+        """Nome → função, para o menu (S-161) e os atalhos (S-165) saírem da mesma fonte.
+
+        **Por que esta tabela mora aqui.** Ela é a única coisa do assunto que precisa dos widgets:
+        `ui/atalhos.py` declara qual tecla faz o quê e `ui/menu.py` declara onde cada comando
+        aparece, os dois sem `tkinter`. O que sobra é amarrar nome a método, e isso é do objeto que
+        **é** a janela -- a mesma razão pela qual a ordem do `pack` da S-163 ficou aqui.
+
+        Os guardas de `None` não são zelo: os painéis são criados em `_build_ui`, e um roteiro de
+        teste monta a janela sem eles. Sem o guarda, o menu montaria e o primeiro clique estouraria.
+        """
+        return {
+            "abrir_pdf": self._on_pdf(lambda p: p.open_pdf()),
+            "abrir_no_leitor": self._on_pdf(lambda p: p.open_in_system_reader()),
+            "exportar_pgn": lambda: self.export.start(self.pdf_source),
+            "sair": self._on_close,
+            "aplicar_fen": self._on_result(lambda p: p.apply_fen_edit()),
+            "apagar_casa": self._on_result(lambda p: p.delete_selected_square()),
+            "salvar": self._on_result(lambda p: p.save_current()),
+            "salvar_todos": self._on_result(lambda p: p.save_all()),
+            "diagrama_anterior": self._on_result(lambda p: p.prev_diagram()),
+            "proximo_diagrama": self._on_result(lambda p: p.next_diagram()),
+            "proximo_da_fila": self._open_next_review_item,
+            # Página do PDF, e não diagrama: as setas já são do editor (S-20), e virar a
+            # página é a outra navegação que a leitura pede o tempo todo (S-70).
+            "pagina_anterior": self._on_pdf(lambda p: p.prev_page()),
+            "proxima_pagina": self._on_pdf(lambda p: p.next_page()),
+            "ajustar_largura": self._on_pdf(lambda p: p.fit_width()),
+            "ajustar_pagina": self._on_pdf(lambda p: p.fit_page()),
+            "marcar_diagramas": self._on_pdf(lambda p: p.on_boxes_toggle()),
+            "roda_vira_pagina": self._save_app_state,
+            "ler_pagina": self.ocr_all,
+            "ler_melhor": self.ocr_best,
+            "selecionar_area": self._on_pdf(lambda p: p.toggle_area_selection()),
+            "varrer_livro": lambda: self.gallery_panel.scan() if self.gallery_panel is not None else None,
+            "recarregar_modelo": self.reload_model,
+            "treinar": self.training.start,
+            "legenda_de_atalhos": self._abrir_legenda,
+            "abrir_log": self._abrir_log,
+            "sobre": self._sobre,
+        }
+
+    def _build_menu(self) -> None:
+        """A barra de menus (S-161). Depois dos painéis: os comandos falam com eles."""
+        painel = self.pdf_panel
+        menu.montar(
             self.root,
-            {
-                "<Left>": self._on_result(lambda p: p.prev_diagram()),
-                "<Right>": self._on_result(lambda p: p.next_diagram()),
-                "<Control-s>": self._on_result(lambda p: p.save_current()),
-                "<Control-S>": self._on_result(lambda p: p.save_all()),
-                "<Control-r>": self.ocr_all,
-                "<Delete>": self._on_result(lambda p: p.delete_selected_square()),
-                "<Control-n>": self._open_next_review_item,
-                # Página do PDF, e não diagrama: as setas já são do editor (S-20), e virar a
-                # página é a outra navegação que a leitura pede o tempo todo (S-70).
-                "<Prior>": self._on_pdf(lambda p: p.prev_page()),
-                "<Next>": self._on_pdf(lambda p: p.next_page()),
-                "<Control-0>": self._on_pdf(lambda p: p.fit_width()),
-            },
+            self._comandos(),
+            interruptores={} if painel is None else painel.interruptores_de_vista,
+            recentes=self._livros_recentes,
         )
+
+    def _livros_recentes(self) -> list[tuple[str, Callable[[], None]]]:
+        """Os livros que o estado lembra, para o submenu "Abrir recente" (S-161)."""
+        return [(Path(caminho).name, partial(self.load_pdf, Path(caminho))) for caminho in self.state.recentes()]
+
+    def _abrir_legenda(self) -> None:
+        """A legenda de atalhos do menu Ajuda (S-165). Ela se escreve da tabela de `ui/atalhos.py`."""
+        legenda.abrir(self.root)
+
+    def _abrir_log(self) -> None:
+        """Abre o log no leitor do sistema, ou diz que não há um (S-161/S-127).
+
+        Num checkout `default_log_file()` devolve `None` de propósito -- o terminal já é o rastro --,
+        e o item de menu tem de dizer isso em vez de não fazer nada.
+        """
+        alvo = default_log_file()
+        if alvo is None or not alvo.exists():
+            self._set_status("Não há arquivo de log neste ambiente: defina CVOFF_LOG_DIR para criar um.")
+            return
+        open_in_system_reader(alvo)
+
+    def _sobre(self) -> None:
+        """Caixa "Sobre", e ela é modal de propósito: quem a abriu pediu por ela pelo menu."""
+        messagebox.showinfo(f"Sobre o {strings.PRODUTO}", strings.sobre_o_produto(self.theme))
+
+    def _bind_shortcuts(self) -> None:
+        """Atalhos do ciclo corrigir → salvar → próximo (S-20), da tabela de `ui/atalhos.py`."""
+        bind_shortcuts(self.root, atalhos.ligacoes(self._comandos()))
 
     def _on_result(self, action: Callable[[ResultPanel], None]) -> Callable[[], None]:
         def _run() -> None:
@@ -1377,6 +1595,39 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
 
     logger.info("Auto-teste: %s, página %d.", caminho.name, page_index)
     servico = OcrService(model_path=modelo)
+
+    # **A ordem responde duas perguntas diferentes, e a da instalação vem primeiro** (Fase 18).
+    # O auto-teste existe para dizer "esta instalação funciona?" numa máquina limpa; se o
+    # checkpoint não carrega, isso é verdade sobre a instalação e não depende de qual PDF o
+    # usuário escolheu. Só depois vem "e este arquivo dá para abrir?".
+    #
+    # As duas passaram a ser passo próprio porque **classificar exige saber onde falhou**.
+    # Exercitadas no `.exe` recém-construído em 2026-08-18, as duas caíam no `except` genérico
+    # do reconhecimento e saíam com **1 e um traceback em inglês** -- 1 quer dizer "o programa
+    # falhou", e nos dois casos quem falhou foi um arquivo. São duas das três falhas que o
+    # critério de saída da Fase 18 nomeia; a terceira (`settings.json` inválido) já estava
+    # tratada pela S-124.
+    try:
+        with servico.model_session(modelo):
+            pass
+    except Exception as exc:  # noqa: BLE001 - o que o torch levanta aqui não tem tipo próprio
+        logger.exception("Auto-teste: o checkpoint não pôde ser lido.")
+        logger.error(
+            "Auto-teste: o checkpoint em %s existe mas não pôde ser lido (%s). Ele pode estar "
+            "truncado, ter vindo pela metade, ou ser de outra arquitetura -- ver `arch_version`. "
+            "O rastro completo está no log.",
+            modelo,
+            message_for(exc),
+        )
+        return 3
+
+    try:
+        get_pdf_page_count(caminho)
+    except Exception as exc:  # noqa: BLE001 - o `pymupdf` levanta a sua própria família aqui
+        logger.exception("Auto-teste: o PDF não pôde ser aberto.")
+        logger.error("Auto-teste: não foi possível abrir %s (%s).", caminho.name, message_for(exc))
+        return 2
+
     try:
         itens = servico.recognize_page(
             caminho,
@@ -1439,7 +1690,11 @@ def main() -> None:
 
     logger.info("Iniciando interface desktop.")
     try:
+        # Antes de `tk.Tk()`, e a ordem é o item (S-148): depois da primeira janela o Windows
+        # já classificou o processo e a chamada existe sem efeito. Ver `ui/plataforma.py`.
+        plataforma.consciencia_de_dpi()
         root = tk.Tk()
+        plataforma.preparar_janela(root)
         ChessOcrTkApp(root)
         root.mainloop()
     except Exception:

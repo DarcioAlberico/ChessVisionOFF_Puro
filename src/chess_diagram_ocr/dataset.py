@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, Sampler
 
-from .atomic_io import write_image
+from .atomic_io import read_image, write_image
 from .config import BOARD_SIZE, BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .labels import ILLEGAL_OK, LABEL_COLUMNS, DatasetEntry, LabelStore
@@ -201,7 +201,7 @@ class BoardFenDataset(Dataset):
         self.cache_misses += 1
         entry = self.entries[entry_idx]
         img_path = self.samples_dir / entry.filename
-        board = cv2.imread(str(img_path))
+        board = read_image(img_path)
         if board is None:
             raise FileNotFoundError(f"Could not read board image: {img_path}")
         board = cv2.cvtColor(board, cv2.COLOR_BGR2RGB)

@@ -153,12 +153,13 @@ class ExportController:
 
     def start(self, pdf_path: Path | None) -> None:
         if pdf_path is None:
-            messagebox.showwarning("Aviso", "Abra um PDF antes de exportar o PGN.")
+            # Pré-condição e "já está rodando" vão para o rodapé (S-164): a primeira é um passo
+            # que falta, a segunda é o que a zona de operação ao lado já está mostrando -- e
+            # nenhuma das duas é uma decisão a tomar, que é o que justifica uma caixa modal.
+            self._on_status("Abra um PDF antes de exportar o PGN.")
             return
         if self._running:
-            messagebox.showinfo(
-                "Exportação em andamento", "Já existe uma exportação de PDF para PGN em execução."
-            )
+            self._on_status("Já existe uma exportação de PDF para PGN em execução.")
             return
 
         escolha = self.choose_output(pdf_path)
@@ -203,6 +204,14 @@ class ExportController:
         cancel: threading.Event,
     ) -> None:
         def _progress(page_index: int, total_pages: int, page_boards: int, total_positions: int) -> None:
+            # O número vai para o registro, e é ele que o rodapé transforma em barra determinada
+            # (S-164): "página 120 de 402" na tela é frase, e frase não dá para desenhar sem
+            # interpretá-la. O `BusyRegistry` tem lock próprio, então isto pode ser chamado da
+            # thread de trabalho -- é para isso que ele existe.
+            if self._busy_token is not None:
+                self._busy_token.update(
+                    f"página {page_index + 1} de {total_pages}", feito=page_index + 1, total=total_pages
+                )
             self.root.after(
                 0,
                 partial(
@@ -239,8 +248,18 @@ class ExportController:
             self.root.after(0, self._finish)
 
     def _on_success(self, report: ExportReport) -> None:
-        self._on_status(f"Exportação concluida. {report.summary()}.")
-        messagebox.showinfo("Exportar PDF para PGN", "\n".join(describe_report(report)))
+        """Termina no rodapé, e não numa caixa que precisa de clique (S-164).
+
+        **É o critério de aceite do item.** Uma exportação de 402 páginas é justamente o que se
+        deixa rodando enquanto se faz outra coisa; terminar numa caixa modal fazia dela uma
+        operação que não pode ser deixada só -- a janela ficava esperando um clique para liberar o
+        teclado, e o "concluída" só era lido quando alguém voltasse.
+
+        O detalhe linha a linha vai para o log, que é onde ele já ia, e a frase do rodapé traz o
+        resumo -- que é o que se lê ao voltar.
+        """
+        self._on_status(f"Exportação concluída. {report.summary()}.")
+        logger.info("Exportação para PGN concluída:\n%s", "\n".join(describe_report(report)))
 
     def _on_error(self, exc: Exception) -> None:
         self._on_status("Falha na exportação do PDF para PGN.")

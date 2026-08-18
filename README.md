@@ -59,10 +59,12 @@ sem Python e sem `uv`.
 
 **Tamanho: o build grava em [docs/metrics/bundle.json](docs/metrics/bundle.json), e o numero
 citado aqui e conferido contra esse arquivo por `tests/test_docs.py` (S-135).** A ultima
-medida registrada e de **696 MB, 4.723 arquivos**, do build de 2026-08-09 -- e ela esta
-**obsoleta**: aquele bundle ainda leva `pythonnet` e `clr_loader`, que sairam na S-69, e o
-`streamlit`, que saiu das obrigatorias na S-137 (115,4 MiB). O proximo
-`python packaging/build_windows.py` reescreve o arquivo e este numero com ele.
+medida registrada e de **684 MB, 4.275 arquivos**, do build de 2026-08-18 (commit `9a683d1`).
+Ela substitui a de 2026-08-09, que estava obsoleta -- e refaze-la achou uma coisa: o
+`streamlit` de fato tinha saido, mas o `pythonnet` e o `clr_loader` **continuavam dentro do
+bundle**, muito depois de a S-69 ter removido o codigo que os usava. O PyInstaller coleta o
+que esta *instalado*, e nao o que o `pyproject.toml` declara; os dois entraram para os
+`excludes` de `packaging/cvoff.spec`. 696 -> 685 (streamlit) -> **684 MB** (os dois).
 
 E o build **completo** -- leitor *e* treinador. O peso vem quase todo do torch, e o torch
 esta ali porque o ciclo que da valor ao projeto e *corrigir, salvar, treinar*: um bundle so
@@ -305,8 +307,9 @@ Os dois caminhos sao botao da Galeria e comando de linha. O por nome usa o que a
 declara; o por posicao (S-92) pergunta pelas **64 casas lidas** e por isso alcanca diagrama
 sem nome nenhum impresso -- 53,9% do acervo, onde a legenda nao tinha o que oferecer. Ele
 custa uma passada pelo arquivo inteiro, avisa disso antes, mostra em que pedaco esta e da para
-cancelar. A resposta fica em `data/games_positions.json`: a segunda vez custa segundos, e um
-livro novo custa so as posicoes que ele trouxer. Cancelar no meio **descarta a passada
+cancelar. A resposta fica em `data/games_positions.sqlite`, **uma linha por colocacao**: a
+segunda vez custa segundos, um livro novo custa so as posicoes que ele trouxer, e abrir um
+livro le as colocacoes daquele livro e nao o acervo (S-140). Cancelar no meio **descarta a passada
 inteira** -- meia base lida da contagens que nao valem, e e a contagem que decide se preencher
 um header e honesto.
 

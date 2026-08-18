@@ -235,6 +235,41 @@ class QueueOrderingTests(unittest.TestCase):
         # A prioridade nova manda: o que mudou no livro tem de aparecer.
         self.assertAlmostEqual(next(i.priority for i in merged.items if i.page_index == 1), 80.0)
 
+    def test_a_passada_parcial_nao_encurta_a_fila(self) -> None:
+        """**O defeito que a varredura retomável tornaria rotina** (S-119 + S-120).
+
+        A varredura do livro retoma da página seguinte à última terminada. Uma passada que leu
+        só as páginas 8 e 9 entrega uma fila com as páginas 8 e 9 -- e, sem dizer o que
+        visitou, a fusão apagaria as pendências das sete primeiras.
+
+        Valia também para o cancelamento, e ali o defeito já existia: cancelar uma revarredura
+        na página 40 gravava uma fila com as 40 primeiras e só.
+        """
+        antiga = ReviewQueue(items=[self.item(10, page=1), self.item(20, page=2), self.item(30, page=8)])
+        parcial = ReviewQueue(items=[self.item(90, page=8), self.item(80, page=9)])
+
+        merged = merge_queues(antiga, parcial, pages={8, 9})
+
+        paginas = sorted(item.page_index for item in merged.items)
+        self.assertEqual(paginas, [1, 2, 8, 9], "o que estava fora do que foi visitado sobrevive")
+        # A pagina 8 foi visitada: quem manda nela e a leitura nova.
+        self.assertAlmostEqual(next(i.priority for i in merged.items if i.page_index == 8), 90.0)
+
+    def test_sem_paginas_a_fusao_continua_sendo_a_de_antes(self) -> None:
+        """O argumento é opcional porque quem varre o livro inteiro não precisa dele -- e o
+        `cvoff-review`, que sempre varre inteiro, não passa a ter de saber disso."""
+        antiga = ReviewQueue(items=[self.item(10, page=1), self.item(30, page=8)])
+        nova = ReviewQueue(items=[self.item(90, page=8)])
+        self.assertEqual([i.page_index for i in merge_queues(antiga, nova).items], [8])
+
+    def test_a_pagina_visitada_e_esvaziada_pela_passada_nova(self) -> None:
+        """Um diagrama que deixou de ser suspeito sai da fila. Preservar por página não pode
+        virar "o que entrou na fila nunca sai dela"."""
+        antiga = ReviewQueue(items=[self.item(10, page=3, diagram=1), self.item(20, page=3, diagram=2)])
+        nova = ReviewQueue(items=[self.item(90, page=3, diagram=1)])
+        merged = merge_queues(antiga, nova, pages={3})
+        self.assertEqual([(i.page_index, i.diagram_index) for i in merged.items], [(3, 1)])
+
     def test_error_rate_counts_objective_signals(self) -> None:
         limpo = self.item(1)
         suspeito = ReviewItem(**{**limpo.__dict__, "reasons": ("ilegal: tabuleiro vazio",)})
@@ -455,3 +490,118 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
             construtor.finish()
 
         self.assertEqual(anotacoes.call_count, 1)
+
+
+def _lido(pagina: int) -> ScannedDiagram:
+    """Um diagrama lido, com confianca baixa para que ele de fato entre na fila."""
+    return ScannedDiagram(
+        position=position(page_index=pagina, diagram_index=1, min_confidence=0.20, confidence=0.20),
+        prediction=prediction_from_probs(probs_for_fen(KINGS_ONLY, 0.20)),
+        board_rgb=np.zeros((80, 80, 3), dtype=np.uint8),
+        detector_score=0.9,
+    )
+
+
+class _PainelFalso:
+    """O bastante de um `ReviewPanel` para o `ReviewSink`. Sem Tk: aqui nada desenha."""
+
+    def __init__(self) -> None:
+        self.aplicadas: list[tuple[ReviewQueue, bool, frozenset[int] | None]] = []
+        self.terminou = 0
+        self.progresso: list[str] = []
+
+    class _Var:
+        def __init__(self, painel: _PainelFalso) -> None:
+            self._painel = painel
+
+        def set(self, texto: str) -> None:
+            self._painel.progresso.append(texto)
+
+    @property
+    def progress_var(self) -> _PainelFalso._Var:
+        return self._Var(self)
+
+    def after(self, _ms: int, funcao) -> None:  # noqa: ANN001, ANN202
+        funcao()
+
+    def _apply_scan(self, fresh, cancelled, *, pages=None) -> None:  # noqa: ANN001
+        self.aplicadas.append((fresh, cancelled, pages))
+
+    def _finish_scan(self) -> None:
+        self.terminou += 1
+
+
+class ReviewSinkTests(unittest.TestCase):
+    """O coletor que leva a fila da varredura da Galeria até a aba de Revisão (S-119)."""
+
+    def _pedido(self, pasta: Path):  # noqa: ANN202
+        from chess_diagram_ocr.ui.review_panel import ScanRequest
+
+        return ScanRequest(
+            pdf_path=Path("livro.pdf"),
+            model_path=Path("modelo.pt"),
+            labels_csv=pasta / "labels.csv",
+        )
+
+    def _coletor(self, pasta: Path):  # noqa: ANN202
+        from chess_diagram_ocr.ui.review_panel import ReviewSink
+
+        painel = _PainelFalso()
+        return painel, ReviewSink(painel, self._pedido(pasta), cache_dir=pasta)
+
+    def test_construir_o_coletor_nao_toca_disco(self) -> None:
+        """**Ele nasce na thread do Tk**, junto com o clique. Ler 3.936 linhas de `labels.csv`
+        ali era o defeito da S-116, e ele não volta por esta porta."""
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "chess_diagram_ocr.ui.review_panel.rare_classes_from_labels"
+        ) as raras:
+            self._coletor(Path(tmpdir))
+        raras.assert_not_called()
+
+    def test_o_disco_e_lido_no_primeiro_diagrama_e_uma_vez_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "chess_diagram_ocr.ui.review_panel.rare_classes_from_labels", return_value=()
+        ) as raras, patch("chess_diagram_ocr.review_queue.load_annotations") as anotacoes:
+            anotacoes.return_value.entries = {}
+            _painel, coletor = self._coletor(Path(tmpdir))
+            for pagina in (0, 1):
+                coletor.feed(_lido(pagina))
+        self.assertEqual(raras.call_count, 1)
+
+    def test_a_fila_entregue_diz_que_paginas_a_passada_visitou(self) -> None:
+        """Sem isso a fusão encurtaria a fila numa varredura retomada -- ver `merge_queues`."""
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "chess_diagram_ocr.ui.review_panel.rare_classes_from_labels", return_value=()
+        ), patch("chess_diagram_ocr.review_queue.load_annotations") as anotacoes:
+            anotacoes.return_value.entries = {}
+            painel, coletor = self._coletor(Path(tmpdir))
+            coletor.feed(_lido(7))
+            coletor.deliver(cancelled=False)
+
+        (fila, cancelada, paginas) = painel.aplicadas[0]
+        self.assertEqual(paginas, frozenset({7}))
+        self.assertFalse(cancelada)
+        self.assertEqual([item.page_index for item in fila.items], [7])
+        self.assertEqual(painel.terminou, 1)
+
+    def test_varredura_que_nao_leu_nada_nao_substitui_a_fila(self) -> None:
+        """Retomar um livro já varrido inteiro (S-120) não pode apagar as 129 pendências."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            painel, coletor = self._coletor(Path(tmpdir))
+            coletor.deliver(cancelled=False)
+        self.assertEqual(painel.aplicadas, [], "nada lido, nada entregue")
+        self.assertEqual(painel.terminou, 1, "e a aba não fica com o botão cinza para sempre")
+
+    def test_a_varredura_que_falhou_devolve_o_botao(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            painel, coletor = self._coletor(Path(tmpdir))
+            coletor.release()
+        self.assertEqual(painel.aplicadas, [])
+        self.assertEqual(painel.terminou, 1)
+
+    def test_a_pagina_em_curso_aparece_na_aba_de_revisao(self) -> None:
+        """Quem está nesta aba não deve ficar olhando uma frase parada por meia hora."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            painel, coletor = self._coletor(Path(tmpdir))
+            coletor.progress(12, 402)
+        self.assertIn("página 12 de 402", painel.progresso[-1])

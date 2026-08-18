@@ -63,8 +63,10 @@ import logging
 import multiprocessing as mp
 import os
 import re
+import sys
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -507,6 +509,23 @@ class PositionIndex:
     counts: dict[str, int] = field(default_factory=dict)
     games_read: int = 0
 
+    complete: bool = True
+    """A passada leu a base inteira? **Falso não é "não achou nada": é "não vale nada"** (S-171).
+
+    Sem este campo, os dois estados saíam idênticos daqui -- um `PositionIndex()` vazio --, e
+    quem grava não tinha como distinguir. A consequência é a pior possível para este cache:
+    `update` registra o conjunto-alvo inteiro como **perguntado**, então uma passada descartada
+    gravaria "a base não conhece" sobre milhares de colocações que ninguém chegou a procurar --
+    e elas nunca mais voltariam ao alvo de varredura nenhuma (é a decisão da S-84, aqui virada
+    contra si mesma).
+
+    O caminho de cancelamento escapava disso por sorte: a Galeria conferia `cancel.is_set()`
+    antes de gravar, e o `cvoff-games` não tem cancelamento. Com a S-171 a passada passou a
+    poder ser descartada **sem ninguém ter cancelado**, e a sorte acabou.
+
+    A guarda mora no `update` do cache, e não em cada chamador: quem chama não deve precisar
+    lembrar de perguntar."""
+
     def sort(self) -> None:
         """Ordena as partidas de cada posição por um critério estável.
 
@@ -680,6 +699,85 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], froze
     return resultado
 
 
+def _pids_do_pool(pool: Any) -> frozenset[int]:
+    """Os pids dos processos que o `Pool` acabou de criar. Vazio se não der para saber.
+
+    `_pool` é atributo privado do `multiprocessing`, e é lido por `getattr` de propósito: numa
+    versão que não o tenha, isto devolve vazio e a guarda de `_perdeu_um_filho` desliga sozinha
+    -- volta-se ao comportamento anterior, que é ruim, e não a um `AttributeError`, que é pior.
+    """
+    return frozenset(
+        processo.pid for processo in getattr(pool, "_pool", ()) if processo.pid is not None
+    )
+
+
+def _perdeu_um_filho(pool: Any, nascidos: frozenset[int]) -> bool:
+    """Algum processo da varredura morreu? **Então um pedaço da base não foi lido.**
+
+    **O defeito, reproduzido em 2026-08-18:** um filho que morre -- OOM, crash nativo, `kill` --
+    leva com ele o pedaço que estava lendo, e o `imap_unordered` **nunca** devolve aquele
+    resultado. O laço contava conclusões até `len(tarefas)`, então ele esperava para sempre: com
+    seis pedaços e um filho morto, cinco voltaram e a varredura ficou pendurada com a barra
+    parada em 5 de 6. Numa passada de ~56 min sobre 10 GB de PGN, o sintoma é a Galeria dizendo
+    "pedaço 9 de 10" até alguém desistir.
+
+    **O sinal é a troca de pid, e ela é confiável porque o `Pool` repovoa.** Ao perder um
+    trabalhador, o `_maintain_pool` cria outro no lugar -- então o conjunto de pids deixa de ser
+    o que nasceu com o pool, e isso é observável na volta seguinte do laço. Medido: a troca
+    aparece no mesmo décimo de segundo em que o filho morre.
+
+    **A resposta é descartar a passada**, e é a mesma do cancelamento, pela mesma razão da S-92:
+    quem viu parte da base tem contagem de partidas por posição que não vale, e é a contagem que
+    decide se preencher um header é honesto (S-74). Meia varredura gravada seria procedência
+    inventada.
+    """
+    if not nascidos:
+        return False
+    return _pids_do_pool(pool) != nascidos
+
+
+@contextmanager
+def _filho_sem_o_main_do_pai() -> Iterator[bool]:
+    """Cada filho de `spawn` deixa de reexecutar o script que abriu a janela (S-141).
+
+    **Medido nesta máquina:** o filho reimporta `app_tkinter.py` como `__mp_main__` e isso
+    custa **3,14 s e 2.212 módulos** -- `torch`, `cv2`, `PIL` e os seis painéis da interface,
+    dos quais ele não usa **nenhum**: ele lê PGN e reproduz lances. Com dez processos são
+    ~31 s de CPU e ~2,3 GB de RAM no arranque de cada varredura, numa máquina que ao mesmo
+    tempo pode estar treinando.
+
+    **A alavanca é o `main_path`.** O `multiprocessing.spawn.get_preparation_data` só manda o
+    caminho do `__main__` ao filho se `sys.modules["__main__"].__file__` existir; sem ele, o
+    `_fixup_main_from_path` do outro lado não roda e o filho arranca com o interpretador nu.
+    Tirar o atributo enquanto os processos nascem, e devolvê-lo em seguida, é o que separa um
+    filho de 2.212 módulos de um de ~50.
+
+    **O preço, dito aqui porque é o que decide se isto pode ser copiado:** o `__main__` do
+    filho fica vazio, então **nada que atravesse a fila pode ser definido no script do pai**.
+    Nesta chamada nada é: o alvo é `_scan_positions_chunk`, função de topo deste módulo -- que
+    já era função de topo por causa da S-26 --, e as tarefas são `Path`, `int` e `frozenset`.
+    Se um dia o alvo ou um argumento vier do `__main__`, o filho morre ao desempacotar e o
+    laço de espera fica sem resposta. É o contrato desta função, e ele é estreito de propósito.
+
+    **Num bundle congelado isto não roda.** Ali o `spawn` reexecuta o próprio `.exe` e quem
+    intercepta é o `freeze_support` (S-55); o caminho é outro, não foi medido aqui, e mexer
+    nele às cegas trocaria 3 s por um risco que não sei dimensionar.
+
+    Devolve se a supressão de fato aconteceu -- o teste pergunta isso, e um `pass` silencioso
+    passaria por uma economia que não existiu.
+    """
+    principal = sys.modules.get("__main__")
+    caminho = getattr(principal, "__file__", None)
+    if principal is None or caminho is None or getattr(sys, "frozen", False):
+        yield False
+        return
+    del principal.__file__
+    try:
+        yield True
+    finally:
+        principal.__file__ = caminho
+
+
 def scan_by_positions(
     databases: Path | Sequence[Path],
     targets: Iterable[str],
@@ -763,10 +861,23 @@ def scan_by_positions(
     try:
         # `min`, e nao `len(tarefas)`: com duas bases a lista tem o dobro de pedacos, e um
         # processo por pedaco abriria vinte processos numa maquina de doze nucleos.
-        with mp.Pool(min(processos, len(tarefas))) as pool:
+        with _filho_sem_o_main_do_pai():
+            pool = mp.Pool(min(processos, len(tarefas)))
+        with pool:
+            nascidos = _pids_do_pool(pool)
             pendentes = pool.imap_unordered(_scan_positions_chunk, tarefas)
             concluidos = 0
             while concluidos < len(tarefas):
+                if _perdeu_um_filho(pool, nascidos):
+                    pool.terminate()
+                    logger.error(
+                        "Um processo da varredura morreu em %d de %d pedaços. A passada foi "
+                        "descartada: o pedaço que ele lia não voltou, e uma contagem que não viu "
+                        "a base inteira não pode preencher header nenhum (S-74).",
+                        concluidos,
+                        len(tarefas),
+                    )
+                    return PositionIndex(complete=False)
                 if cancel is not None and cancel.is_set():
                     # `terminate` e nao `close`: os processos estao no meio de um pedaco, e
                     # espera-los terminar e exatamente o que o cancelamento pede para nao fazer.
@@ -776,7 +887,7 @@ def scan_by_positions(
                         concluidos,
                         len(tarefas),
                     )
-                    return PositionIndex()
+                    return PositionIndex(complete=False)
                 try:
                     # Espera com prazo, e nao um `for` sobre o iterador: e o que devolve o
                     # controle a tempo de conferir o cancelamento enquanto os pedacos rodam.

@@ -149,6 +149,43 @@ class RegistryTests(unittest.TestCase):
 
         self.assertIn("época 5 de 8", registro.close_warning())
 
+    def test_a_operacao_que_sabe_o_total_publica_a_fracao(self) -> None:
+        """O que faz a barra do rodapé ser determinada (S-164).
+
+        O número vem separado do texto de propósito: derivar a fração de "época 3 de 8" exigiria
+        interpretar a frase, e a frase é escrita para ser lida, não parseada.
+        """
+        registro = BusyRegistry()
+        token = registro.register("treino do modelo", loses_work=True, total=8)
+
+        token.update("época 2 de 8", feito=2, total=8)
+
+        self.assertAlmostEqual(registro.running()[0].fracao, 0.25)
+
+    def test_sem_total_conhecido_nao_ha_fracao_a_prometer(self) -> None:
+        """A busca por nome descobre o tamanho enquanto lê; ali uma fração seria inventada."""
+        registro = BusyRegistry()
+        registro.register("busca por nome na base", loses_work=False, detail="3 par(es)")
+        self.assertIsNone(registro.running()[0].fracao)
+
+    def test_a_atualizacao_de_detalhe_nao_apaga_o_total(self) -> None:
+        """`replace` e não reconstruir campo a campo: o campo esquecido voltaria ao padrão."""
+        registro = BusyRegistry()
+        token = registro.register("exportação para PGN", loses_work=False, total=402)
+
+        token.update("página 120 de 402", feito=120)
+
+        operacao = registro.running()[0]
+        self.assertEqual(operacao.total, 402)
+        self.assertAlmostEqual(operacao.fracao, 120 / 402)
+
+    def test_a_contagem_que_passa_do_total_nao_estoura_a_barra(self) -> None:
+        """Retomar uma varredura pode relê uma página; barra além do fim seria o sintoma."""
+        registro = BusyRegistry()
+        token = registro.register("varredura da Galeria", loses_work=False, total=10)
+        token.update("página 12 de 10", feito=12, total=10)
+        self.assertEqual(registro.running()[0].fracao, 1.0)
+
     def test_pedir_cancelamento_avisa_so_quem_sabe_parar(self) -> None:
         registro = BusyRegistry()
         parado = threading.Event()

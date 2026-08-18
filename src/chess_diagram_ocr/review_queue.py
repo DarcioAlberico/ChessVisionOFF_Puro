@@ -624,18 +624,35 @@ def build_review_queue(
     return builder.finish()
 
 
-def merge_queues(existing: ReviewQueue, fresh: ReviewQueue) -> ReviewQueue:
+def merge_queues(
+    existing: ReviewQueue, fresh: ReviewQueue, *, pages: Collection[int] | None = None
+) -> ReviewQueue:
     """Revarredura sem perder o que já foi revisado.
 
     O item novo manda em tudo -- prioridade, motivos, FEN --, menos no `status`: se o
     usuário já marcou aquele diagrama como resolvido, revarrer o livro não pode ressuscitá-lo
     para a fila de pendentes.
+
+    **`pages` são as páginas que a passada de fato visitou, e sem elas isto encurta a fila**
+    (S-119). Sem o argumento, `fresh` é tomada como a fila inteira e o que ela não tem
+    desaparece -- o que estava certo enquanto toda varredura era do livro inteiro, e deixou de
+    estar quando a varredura passou a retomar de onde parou (S-120): uma passada que leu só as
+    páginas 300 a 420 apagaria as 129 pendências das 300 primeiras. Com `pages`, o que está
+    fora do que foi visitado sobrevive como estava.
+
+    Vale também para o cancelamento, e ali o defeito já existia: cancelar uma revarredura na
+    página 40 gravava uma fila com as 40 primeiras páginas e só.
     """
     previous = {(item.page_index, item.diagram_index): item.status for item in existing.items}
     merged = [
         replace(item, status=previous.get((item.page_index, item.diagram_index), item.status))
         for item in fresh.items
     ]
+    if pages is not None:
+        visitadas = set(pages)
+        # Ordem: os preservados entram depois e o `sort` decide o lugar de cada um. Chave por
+        # (pagina, diagrama) nao e preciso -- `fresh` so tem paginas visitadas, por construcao.
+        merged.extend(item for item in existing.items if item.page_index not in visitadas)
     result = ReviewQueue(
         source_pdf=fresh.source_pdf,
         created_at=fresh.created_at,

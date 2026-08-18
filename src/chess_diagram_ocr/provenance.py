@@ -61,7 +61,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .atomic_io import atomic_write_bytes
+from .atomic_io import atomic_write_bytes, read_image
 from .audit import DUPLICATE_HASH_SIZE, dhash
 from .config import DEFAULT_MAX_BOARDS, PROJECT_ROOT
 from .labels import LabelStore
@@ -301,7 +301,7 @@ def hash_board_rgb(board_rgb: np.ndarray, *, hash_size: int = DUPLICATE_HASH_SIZ
 
 def hash_image_file(path: Path, *, hash_size: int = DUPLICATE_HASH_SIZE) -> str | None:
     """dHash de um PNG do `data/samples/`. `None` quando a imagem não abre."""
-    imagem = cv2.imread(str(path))
+    imagem = read_image(path)
     if imagem is None:
         return None
     return format(dhash(imagem, hash_size=hash_size), "x")

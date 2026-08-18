@@ -80,7 +80,7 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 | 1.5 | Split treino/validação/teste **persistido em arquivo**, estável sob crescimento do dataset | S-07 | ✅ 2.569 / 306 / 320 |
 | 1.6 | Harness de avaliação: acurácia por casa, **exata por tabuleiro**, por classe, matriz de confusão, taxa de posição ilegal | S-08 | ✅ `cvoff-eval` |
 | 1.7 | Baseline registrado em `docs/BASELINE.md` (número honesto, em conjunto de teste) | S-08 | ✅ [BASELINE.md](BASELINE.md) |
-| 1.8 | Testes de `fen_utils`, `dataset`, `inference`; fixtures versionados; teste de regressão de acurácia | S-09 | ⚠ parcial (ver abaixo) |
+| 1.8 | Testes de `fen_utils`, `dataset`, `inference`; fixtures versionados; teste de regressão de acurácia | S-09 | ⚠ fixtures ✅ (2026-08-18, 134 KB); regressão de **acurácia** depende de decisão (ver abaixo) |
 
 **Critério de saída:** atingido. `cvoff-eval --split test` imprime acurácia exata por tabuleiro; `cvoff-audit` reporta 0 rótulos ilegais; baseline medido com modelo que nunca viu o conjunto de teste.
 
@@ -91,12 +91,14 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 
 ### Pendências conhecidas da Fase 1
 
-- **1.8 (fixtures e regressão)** — os testes de `fen_utils`, `dataset`, `inference`, `decode`, `splits` e `audit` existem e rodam sem dados. Falta o **teste de regressão de acurácia**, que depende de fixtures versionados (S-09): hoje `data/samples/` está fora do git, então um teste de acurácia pularia na CI e daria falsa sensação de cobertura. O baseline em `docs/BASELINE.md` cumpre o papel de trava manual até lá.
+- **1.8 (fixtures e regressão)** — ⚠ **metade entregue em 2026-08-18.** Os fixtures versionados existem: `tests/fixtures/` tem três páginas sintéticas (134 KB no total, contra o teto de 2 MB da S-09) com o gerador ao lado, e `tests/test_fixtures.py` trava contagem, tamanho do recorte, posição dos quads e ordem de leitura. Com elas, `test_detect_boards_still_finds_real_sample` deixou de ler `data/samples/` e de **pular na CI** — era a única cobertura executável do detector sobre imagem, e lá ela não rodava: uma regressão que fizesse `detect_boards` devolver vazio entrava verde.
+
+  **O teste de regressão de acurácia continua aberto, e agora com o motivo medido.** Ele precisa de dois artefatos que estão fora do git: `data/samples/` (peso e licença) e `models/*.pt` (8,4 MB por checkpoint). Sem os dois ele pularia na CI de qualquer forma — a mesma falsa sensação de cobertura de antes, com mais arquivos. E medi-lo sobre as páginas sintéticas daria um número real sobre um domínio que não é o produto. **É decisão do dono do projeto**: versionar um conjunto pequeno de recortes com licença resolvida mais um checkpoint congelado, ou manter o `docs/BASELINE.md` como trava manual. Enquanto não for tomada, é o BASELINE que cumpre o papel.
 - ~~**O checkpoint não guarda com que `val_loss` foi salvo.**~~ **Resolvido na Fase 5 (item 5.3):** o checkpoint grava `best_metric` e `best_epoch`, e a retomada os lê de volta em vez de recomeçar em infinito. A métrica também mudou — é `val_board_exact_acc`, não `val_loss` (item 5.4).
 
 ---
 
-## Fase 2 — Precisão do OCR (5–8 dias) — em andamento
+## Fase 2 — Precisão do OCR ✅ entregue (2026-07-26); o critério de saída ficou sem a medição do acervo
 
 **Por que é o núcleo:** ganho de precisão sem retreinar o modelo. Todos os itens exploram informação que já existe e está sendo descartada.
 
@@ -112,6 +114,13 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 | 2.8 | Gate de exportação: posições ilegais ou de baixa confiança vão para `*.review.pgn` separado | S-15 | ✅ `ExportReport` |
 
 **Critério de saída:** zero posições ilegais no PGN exportado dos 27 PDFs; acurácia exata por tabuleiro no conjunto de teste ≥ baseline + margem medida; erros K↔Q do `1937 Kemeri.pdf` corrigidos.
+
+**Conferido em 2026-08-18: as oito entregas estão feitas, e a terceira parte do critério está
+medida — a primeira nunca foi.** Os erros do Kemeri caíram de **16 ilegais para 2** (medido na
+própria fase), e a acurácia de teste está no `BASELINE.md`. Já *"zero posições ilegais no PGN
+exportado dos 27 PDFs"* exige exportar o acervo inteiro, e o acervo cresceu para 39 livros desde
+que a frase foi escrita. Isso é uma execução de `cvoff-batch` de horas sobre os PDFs do dono —
+não é código pendente, é uma medição que só faz sentido na máquina que tem os livros.
 
 **Baseline a bater:** 0,9906 de acurácia exata por tabuleiro no split `test` — ver [BASELINE.md](BASELINE.md). Atenção ao que esse número não é: com 3 erros em 320 tabuleiros, meio ponto de diferença é ruído, e a acurácia num PDF nunca revisado é muito mais baixa (46 dos 47 tabuleiros do Kemeri ficam abaixo do limiar de aceite).
 
@@ -580,7 +589,7 @@ Fase 6 (S-31).
 
 ---
 
-## Fase 5 — Modelo e desempenho (4–6 dias)
+## Fase 5 — Modelo e desempenho ✅ concluída (2026-07-26)
 
 **Por que só agora:** sem a Fase 1 não há como saber se uma mudança de modelo ajudou. E a análise mostra que o classificador **não é** o gargalo atual — este é o item de menor prioridade relativa.
 
@@ -848,16 +857,23 @@ está lá. 36 testes no módulo; a orquestração que sobrou no `app_tkinter.py`
 | 6.5 | Engine (Stockfish) opcional na aba de análise: avaliação e melhor lance | S-33 | ✅ |
 | 6.6 | Processamento em lote de vários PDFs com relatório consolidado | S-34 | ✅ `cvoff-batch` |
 | 6.7 | README reescrito (fluxos reais, resolução de problemas) + `CONTRIBUTING.md` | S-35 | ✅ + `docs/ARCHITECTURE.md` |
-| 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 | — |
+| 6.8 | Empacotamento Windows (PyInstaller) para uso sem Python instalado | S-36 | ✅ na S-55; log em arquivo na S-127, número vivo na S-135 |
 
-**Critério de saída:** três partes, e o placar honesto é **uma atingida, uma parcial, uma
-não iniciada**:
+**Critério de saída, revisto em 2026-08-18.** O placar abaixo ficou parado em 2026-07-27 e
+duas das três linhas envelheceram — uma para melhor e outra para pior. Ele é conferido por
+`tests/test_docs.py`, pela mesma razão da S-135: um número publicado que ninguém recalcula
+vira afirmação falsa, e este dizia *"não iniciado"* sobre um `.exe` que roda.
 
-| parte | estado |
-|---|---|
-| Streamlit e Tkinter com paridade | **parcial** — o pipeline é o mesmo; a edição não |
-| `app_tkinter.py` abaixo de 600 linhas | **651** (477 de código) |
-| executável rodando em máquina sem Python | **não iniciado** (6.8 / S-36) |
+| parte | estado em 2026-07-27 | hoje |
+|---|---|---|
+| Streamlit e Tkinter com paridade | **parcial** — o pipeline é o mesmo; a edição não | **decidido, não parcial**: a S-54 desfez a promessa de paridade e o README a chama de demonstração |
+| `app_tkinter.py` abaixo de 600 linhas | **651** (477 de código) | **1.677**, e o arquivo dobrou depois da decomposição — ver S-136 |
+| executável rodando em máquina sem Python | **não iniciado** (6.8 / S-36) | **feito** (S-55): `dist/ChessVisionOFF/`, 684 MB, medido em 2026-08-18 e travado por teste |
+
+**A linha que piorou é a do meio, e ela tem dono.** O 651 era honesto quando foi escrito; hoje
+são 1.677, e o crescimento está registrado item a item na catraca de
+`tests/test_packaging.py::TamanhoDaJanelaTests`. A S-31 continua aberta e o alvo continua 600 —
+o que mudou é que agora crescer exige uma decisão escrita, em vez de acontecer.
 
 O que a fase de fato entregou está medido nas seções abaixo. Duas observações que valem
 mais que o placar:

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,14 @@ STATE_VERSION = 2
 
 MAX_PDF_HISTORY = 50
 """Tamanho do histórico de páginas por PDF. Sem teto ele cresce para sempre."""
+
+MAX_RECENTES = 10
+"""Quantos livros o menu "Abrir recente" mostra (S-161).
+
+O histórico guarda 50 porque a pergunta dele é "em que página eu parei neste livro?", e essa vale
+para o acervo inteiro. A do menu é outra -- "qual dos últimos eu quero de volta?" --, e 50 linhas
+num submenu não são uma lista de recentes: são o acervo em ordem de acesso, que é o que a aba
+Galeria já é."""
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -74,6 +83,50 @@ class AppState:
     review_queue_path: str = ""
     """Fila de revisão aberta por último (S-22). Vazio = nenhuma."""
 
+    window_geometry: str = ""
+    """Tamanho e posição da janela, no formato do Tk (`1700x980+120+40`). Vazio = nunca guardada.
+
+    O estado lembrava o PDF, a página, os dois zooms e três interruptores -- e não lembrava o
+    arranjo da janela, que é o que o usuário reconstrói primeiro ao voltar (S-156). Validada
+    contra os monitores atuais na hora de aplicar: ver `ui/geometria.geometria_corrigida`."""
+
+    sash_fraction: float = 0.0
+    """Onde o divisor está, como fração da largura da janela. `0.0` = nunca guardada.
+
+    Zero e não 0,42: "não guardado" e "guardado em 0,42" são estados diferentes, e o segundo
+    tem de sobreviver a alguém mudar o padrão. `_set_initial_sashes` reposicionava o divisor em
+    42% a **cada** abertura -- quem trabalha com o PDF grande o arrastava e o perdia toda
+    sessão."""
+
+    active_tab: str = ""
+    """Rótulo da aba aberta por último. Vazio = nenhuma, e a janela abre na primeira.
+
+    **O rótulo e não o índice**, porque índice não sobrevive a reordenar as abas -- e a S-162
+    é, literalmente, reordená-las. Um rótulo que não existe mais cai na primeira aba, que é o
+    mesmo comportamento de não ter nada guardado."""
+
+    def recentes(
+        self, limite: int = MAX_RECENTES, *, existe: Callable[[Path], bool] | None = None
+    ) -> list[str]:
+        """Os livros abertos que **ainda existem**, do mais recente para o mais antigo (S-161).
+
+        Sai de graça do `pdf_history`: `remember_page` reinsere a chave a cada visita, então a
+        ordem do dicionário **é** a de uso. Um segundo arquivo de "recentes" seria uma segunda
+        verdade sobre a mesma coisa, e o projeto já registrou o que isso custa (S-75).
+
+        **O filtro de existência não é zelo, é o que a janela dirigida encontrou.** O histórico
+        desta máquina tem 29 entradas e **13 delas apontam para a pasta `C:/PythonChess/`**, a pasta de
+        antes de o projeto ser movido (o mesmo evento que a S-37 documenta). Um submenu com 13 itens
+        que falham ao serem clicados é a mesma família de defeito que `ui/menu.montar` recusa ao
+        exigir comando para todo item declarado -- só que descoberto pelo usuário, um clique por vez.
+
+        `existe` é injetável para o teste poder afirmar isso sem tocar em disco, como
+        `campos.diagnosticar_caminho` já fazia.
+        """
+        confere = existe if existe is not None else Path.exists
+        vivos = [caminho for caminho in reversed(list(self.pdf_history)) if confere(Path(caminho))]
+        return vivos[:limite]
+
     def page_for(self, pdf_path: Path) -> int:
         """Página em que este PDF foi deixado. 0 se ele nunca foi aberto."""
         return int(self.pdf_history.get(_history_key(pdf_path), 0))
@@ -99,6 +152,9 @@ class AppState:
             "show_diagram_boxes": bool(self.show_diagram_boxes),
             "wheel_flips_page": bool(self.wheel_flips_page),
             "review_queue_path": self.review_queue_path,
+            "window_geometry": self.window_geometry,
+            "sash_fraction": float(self.sash_fraction),
+            "active_tab": self.active_tab,
         }
 
 
@@ -173,6 +229,20 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     queue_path = raw.get("review_queue_path")
     if isinstance(queue_path, str):
         state.review_queue_path = queue_path
+
+    # Os três da S-156. Nenhum é validado aqui além do tipo: a geometria depende dos monitores
+    # que existem **agora**, e essa pergunta é de quem vai aplicá-la, não de quem a lê do disco.
+    geometry = raw.get("window_geometry")
+    if isinstance(geometry, str):
+        state.window_geometry = geometry
+
+    sash = raw.get("sash_fraction")
+    if isinstance(sash, (int, float)) and not isinstance(sash, bool):
+        state.sash_fraction = _clamp(float(sash), 0.0, 1.0)
+
+    tab = raw.get("active_tab")
+    if isinstance(tab, str):
+        state.active_tab = tab
 
     return state
 

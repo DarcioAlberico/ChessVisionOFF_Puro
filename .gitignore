@@ -53,9 +53,19 @@ data/games_matches_v2.json
 # cache (56 min nas duas gigabases) e `--build-index` refaz o indice. O sqlite tem 885 MB com
 # 20,9 M partidas indexadas: o GitHub recusa acima de 100 MB, e um `git add -A` distraido o
 # poria no historico para sempre. E a mesma regra do pgn_database/, pelo mesmo motivo.
+data/games_positions.sqlite
+# E os caches por conjunto de bases: `database_choice.store_path_for` nomeia um arquivo vizinho
+# para cada selecao que nao seja a pasta inteira (`games_positions__Kasparov-Mega.sqlite`). Sem
+# o glob, cada conjunto que alguem experimentasse aparecia como arquivo novo para versionar.
+data/games_positions__*.sqlite
+# O cache no formato anterior a S-140, e ele depois de migrado. O primeiro so existe em quem
+# usou o programa antes de 2026-08-18; o segundo e o que a migracao deixa no lugar dele, em vez
+# de apagar o que era do usuario. Nenhum dos dois e lido depois disso.
 data/games_positions.json
-# A trava de conselho da gravacao (S-113). Vive milissegundos; so aparece aqui se um processo
-# morrer no meio, e nesse caso o proximo `save_cache` a descarta por idade.
+data/games_positions.json.migrado
+# A trava de conselho da gravacao (S-113): ela saiu com a S-140, quando a gravacao passou a ser
+# uma transacao de SQLite. A linha fica porque o arquivo pode ter sobrado no disco de quem
+# rodava a versao anterior, e nada mais o apaga.
 data/games_positions.json.lock
 data/games_index.sqlite
 data/games_index.sqlite.parcial

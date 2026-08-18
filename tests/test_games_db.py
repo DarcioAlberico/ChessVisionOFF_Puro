@@ -910,3 +910,97 @@ class CasamentosNoDiscoTests(unittest.TestCase):
     def test_o_arquivo_declara_a_versao(self) -> None:
         """Sem a versão gravada, o ramo de compatibilidade seria adivinhação sobre a forma."""
         self.assertEqual(_matches_to_json({})["version"], 2)
+
+
+class _ProcessoFalso:
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+
+
+class _PoolDePids:
+    """O bastante de um `mp.Pool` para a guarda: a lista privada de processos."""
+
+    def __init__(self, pids: list[int]) -> None:
+        self._pool = [_ProcessoFalso(pid) for pid in pids]
+
+
+class FilhoMortoTests(unittest.TestCase):
+    """A varredura para em vez de esperar para sempre por um pedaço que não volta.
+
+    **O defeito, reproduzido em 2026-08-18 com um `Pool` de verdade:** um filho que chama
+    `os._exit` leva com ele o pedaço que estava lendo, e o `imap_unordered` nunca devolve
+    aquele resultado. Com seis pedaços e um filho morto, cinco voltaram e o laço ficou
+    pendurado -- 20 s de espera no teste, e numa passada real seriam os ~56 min inteiros com a
+    Galeria dizendo "pedaço 9 de 10" até alguém desistir.
+
+    A reprodução completa não cabe na suíte -- ela precisa de um `Pool` de verdade e de um
+    filho que morra de propósito, e nenhum dos dois é coisa de rodar 2.000 vezes por dia. O que
+    está travado aqui é a **decisão**: qual sinal conta como filho perdido, e o que se faz com
+    a passada quando ele aparece.
+    """
+
+    def test_o_pool_intacto_nao_dispara_a_guarda(self) -> None:
+        pool = _PoolDePids([10, 11, 12])
+        nascidos = games_db._pids_do_pool(pool)
+        self.assertEqual(nascidos, frozenset({10, 11, 12}))
+        self.assertFalse(games_db._perdeu_um_filho(pool, nascidos))
+
+    def test_o_pid_trocado_e_o_sinal(self) -> None:
+        """**Por que o pid e não `is_alive()`:** o `Pool` repovoa o trabalhador morto, então
+        olhar para "está vivo?" acha três vivos de novo. O que não volta ao que era é o
+        conjunto de pids -- medido, ele troca no mesmo décimo de segundo em que o filho morre.
+        """
+        pool = _PoolDePids([10, 11, 12])
+        nascidos = games_db._pids_do_pool(pool)
+
+        pool._pool = [_ProcessoFalso(10), _ProcessoFalso(11), _ProcessoFalso(99)]
+
+        self.assertTrue(games_db._perdeu_um_filho(pool, nascidos))
+
+    def test_um_filho_a_menos_tambem_conta(self) -> None:
+        """O caso em que o pool não repovoa a tempo: o conjunto encolhe, e encolher é perder."""
+        pool = _PoolDePids([10, 11, 12])
+        nascidos = games_db._pids_do_pool(pool)
+        pool._pool = [_ProcessoFalso(10), _ProcessoFalso(11)]
+        self.assertTrue(games_db._perdeu_um_filho(pool, nascidos))
+
+    def test_sem_a_lista_privada_a_guarda_desliga_em_vez_de_levantar(self) -> None:
+        """`_pool` é privado do `multiprocessing`. Numa versão que não o tenha, o que se perde é
+        a guarda -- e não a varredura, que é o que um `AttributeError` custaria."""
+        sem_pool = object()
+        self.assertEqual(games_db._pids_do_pool(sem_pool), frozenset())
+        self.assertFalse(games_db._perdeu_um_filho(sem_pool, frozenset()))
+
+    def test_com_zero_nascidos_a_guarda_nao_acusa_pool_saudavel(self) -> None:
+        """Sem saber quem nasceu não dá para dizer quem morreu, e acusar seria descartar
+        varreduras boas por não ter o instrumento."""
+        pool = _PoolDePids([10, 11, 12])
+        self.assertFalse(games_db._perdeu_um_filho(pool, frozenset()))
+
+    def test_a_passada_perdida_e_descartada_inteira_e_nao_pela_metade(self) -> None:
+        """A mesma regra do cancelamento (S-92), pela mesma razão: quem viu parte da base tem
+        contagem que não vale, e é a contagem que autoriza preencher header (S-74).
+
+        Aqui o `Pool` é remendado para nascer já "com um filho a menos" na segunda olhada.
+        """
+        base = Path(self.pasta.name) / "base.pgn"
+        base.write_text(
+            '[Event "x"]\n[White "Anderssen"]\n[Black "Kieseritzky"]\n\n1. e4 e5 2. f4 *\n' * 50,
+            encoding="utf-8",
+        )
+        tabuleiro = chess.Board()
+        for lance in ("e4", "e5", "f4"):
+            tabuleiro.push_san(lance)
+
+        with mock.patch.object(games_db, "_perdeu_um_filho", return_value=True):
+            with self.assertLogs("chess_diagram_ocr.games_db", level="ERROR") as registro:
+                achado = games_db.scan_by_positions([base], {tabuleiro.board_fen()}, workers=2)
+
+        self.assertEqual(achado.counts, {}, "nada gravado: meia base lida não é resposta")
+        self.assertEqual(achado.hits, {})
+        self.assertIn("morreu", registro.output[0])
+        self.assertIn("descartada", registro.output[0])
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)

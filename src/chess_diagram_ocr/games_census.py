@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .gallery import GalleryAnnotations
-from .games_cache import PositionCache
+from .games_cache import PositionCache, PositionStore
 
 __all__ = ["BUCKETS", "BookCensus", "bucket_for", "census_book", "census_total"]
 
@@ -127,7 +127,7 @@ class BookCensus:
 def census_book(
     book: str,
     entries: Sequence[Any],
-    cache: PositionCache,
+    cache: PositionCache | PositionStore,
     annotations: GalleryAnnotations,
     *,
     max_games: int = 5,
@@ -139,8 +139,8 @@ def census_book(
     """
     placar = BookCensus(book=book, diagrams=len(entries))
     for entrada in entries:
-        guardada = cache.positions.get(getattr(entrada, "placement", ""))
-        if guardada is None or not guardada.count:
+        guardada = cache.get(getattr(entrada, "placement", ""))
+        if not guardada.count:
             continue
         placar.matched += 1
         faixa = bucket_for(guardada.count)

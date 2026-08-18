@@ -366,6 +366,7 @@ class SplitAssignmentTests(unittest.TestCase):
         import cv2
         import numpy as np
 
+        from chess_diagram_ocr.atomic_io import read_image
         from chess_diagram_ocr.audit import duplicate_groups_touching
 
         OUTRO = "8/8/8/8/8/8/8/K1k5"
@@ -376,14 +377,13 @@ class SplitAssignmentTests(unittest.TestCase):
                 cv2.imwrite(str(samples / nome), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
 
             lidas: list[str] = []
-            original = cv2.imread
 
-            def _espiao(caminho: str, *args: object, **kwargs: object):
+            def _espiao(caminho: Path | str, *args: object, **kwargs: object):
                 lidas.append(Path(caminho).name)
-                return original(caminho, *args, **kwargs)
+                return read_image(caminho, *args, **kwargs)
 
             labels = [("a.png", OUTRO), ("b.png", OUTRO), ("nova.png", LEGAL)]
-            with patch("chess_diagram_ocr.audit.cv2.imread", side_effect=_espiao):
+            with patch("chess_diagram_ocr.audit.read_image", side_effect=_espiao):
                 duplicate_groups_touching(samples, labels, ["nova.png"])
 
             self.assertEqual(lidas, ["nova.png"], f"leu imagens de rótulo que nenhuma amostra nova tem: {lidas}")

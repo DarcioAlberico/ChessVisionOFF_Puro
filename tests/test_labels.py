@@ -475,6 +475,47 @@ class SavedDiagramsByPageTests(unittest.TestCase):
         entradas = [self._entrada(source_pdf="")]
         self.assertEqual(labels_module.saved_diagrams_by_page(entradas, ""), {})
 
+    # ------------------------------------------------ o mesmo índice, sem ler o arquivo (S-116)
+
+    def test_marcar_a_amostra_gravada_da_o_mesmo_indice_que_reler_o_csv(self) -> None:
+        """**O que trava o corte 2 da S-116.** As duas funções produzem o mesmo índice, e por
+        isso a janela pode marcar o que gravou em vez de redescobri-lo em 30,9 ms de leitura.
+
+        Se um dia elas divergirem, o sintoma seria uma caixa que não fica verde até o livro ser
+        reaberto -- o defeito da S-71 de volta, e por um caminho que ninguém procuraria.
+        """
+        entradas = [self._entrada(source_page="17", source_diagram="3")]
+        relido = labels_module.saved_diagrams_by_page(entradas, "livro.pdf")
+
+        marcado: dict[int, set[int]] = {}
+        gravada = labels_module.SavedSample(source_pdf="livro.pdf", page_index=16, diagram_index=2)
+        self.assertTrue(labels_module.note_saved_diagram(marcado, gravada, source_pdf="livro.pdf"))
+
+        self.assertEqual(marcado, relido)
+
+    def test_marcar_acumula_na_pagina_que_ja_tinha(self) -> None:
+        indice: dict[int, set[int]] = {16: {0}}
+        gravada = labels_module.SavedSample("livro.pdf", 16, 2)
+        labels_module.note_saved_diagram(indice, gravada, source_pdf="livro.pdf")
+        self.assertEqual(indice, {16: {0, 2}})
+
+    def test_amostra_de_outro_livro_nao_entra_no_indice(self) -> None:
+        """O índice é do livro aberto, e a defesa mora aqui e não em quem chama."""
+        indice: dict[int, set[int]] = {}
+        gravada = labels_module.SavedSample("outro.pdf", 16, 2)
+        self.assertFalse(labels_module.note_saved_diagram(indice, gravada, source_pdf="livro.pdf"))
+        self.assertEqual(indice, {})
+
+    def test_indice_negativo_nao_entra(self) -> None:
+        """Mesma recusa de `saved_diagrams_by_page`: página 0 no CSV vira -1 aqui."""
+        indice: dict[int, set[int]] = {}
+        self.assertFalse(
+            labels_module.note_saved_diagram(
+                indice, labels_module.SavedSample("livro.pdf", -1, 2), source_pdf="livro.pdf"
+            )
+        )
+        self.assertEqual(indice, {})
+
 
 if __name__ == "__main__":
     unittest.main()

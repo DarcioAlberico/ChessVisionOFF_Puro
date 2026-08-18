@@ -234,22 +234,35 @@ class AppendSampleTests(unittest.TestCase):
             self.assertIn(path.name, (root / "labels.csv").read_text(encoding="utf-8"))
 
     def test_a_imagem_que_nao_gravou_nao_vira_linha_no_csv(self) -> None:
-        """S-111: `cv2.imwrite` devolve `False`, não levanta.
+        """S-111: a gravação da imagem falha em silêncio, e quem chamava seguia adiante.
 
-        Disco cheio, pasta em rede fora do ar, antivírus segurando o arquivo: quem chamava
-        seguia adiante e gravava a linha apontando para um PNG inexistente. O prejuízo é o
-        trabalho humano daquela correção, e ele só aparece semanas depois, na linha da
-        auditoria "rótulos cujo PNG sumiu -- descartados em silêncio no treino".
+        Disco cheio, pasta em rede fora do ar, antivírus segurando o arquivo: gravava-se a
+        linha apontando para um PNG inexistente. O prejuízo é o trabalho humano daquela
+        correção, e ele só aparece semanas depois, na linha da auditoria "rótulos cujo PNG
+        sumiu -- descartados em silêncio no treino".
         """
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
 
-            with unittest.mock.patch("cv2.imwrite", return_value=False):
+            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
                 with self.assertRaises(OSError) as ctx:
                     append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
 
-            self.assertIn("não conseguiu gravar", str(ctx.exception))
+            self.assertIn("Não foi possível gravar", str(ctx.exception))
+            self.assertFalse((root / "labels.csv").exists())
+
+    def test_a_imagem_que_nao_codificou_nao_vira_linha_no_csv(self) -> None:
+        """A outra metade: o `imencode` recusa e devolve `False` em vez de levantar."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+
+            with unittest.mock.patch("cv2.imencode", return_value=(False, None)):
+                with self.assertRaises(OSError) as ctx:
+                    append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
+
+            self.assertIn("não conseguiu codificar", str(ctx.exception))
             self.assertFalse((root / "labels.csv").exists())
 
     def test_a_falha_de_gravacao_nao_acrescenta_a_um_csv_que_ja_existe(self) -> None:
@@ -260,7 +273,7 @@ class AppendSampleTests(unittest.TestCase):
             append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
             antes = (root / "labels.csv").read_text(encoding="utf-8")
 
-            with unittest.mock.patch("cv2.imwrite", return_value=False):
+            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
                 with self.assertRaises(OSError):
                     append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
 

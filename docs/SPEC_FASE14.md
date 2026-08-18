@@ -1540,15 +1540,42 @@ cobrava uma tecla por amostra no laço mais interno do projeto. A confirmação 
 e é a melhor delas: a caixa do diagrama fica verde na hora (S-71). **O modal de erro fica** —
 ali a informação não é redundante e a interrupção é o ponto.
 
-### O que **não** foi feito: o corte 2, e ele vale ~31 ms dos 46
+### O corte 2, feito em 2026-08-18: os 46 ms viraram zero
 
-`_reload_saved_diagrams` continua relendo o `labels.csv` inteiro para descobrir o que a janela
-acabou de escrever. Fazê-lo incrementalmente exige que a `(página, diagrama)` gravada atravesse
-o `on_sample_saved`, que hoje não recebe argumento nenhum — é mudança na fronteira entre o
-`result_panel` e o `app_tkinter`, e o alvo do critério de aceite já está cumprido sem ela.
+`_reload_saved_diagrams` relia o `labels.csv` inteiro para descobrir o que a janela acabara de
+escrever. Agora a `(página, diagrama)` gravada atravessa o `on_sample_saved` — que passou a
+receber `Sequence[SavedSample]` em vez de nada —, e quem pinta de verde marca o que recebeu.
+A aritmética mora em `labels.note_saved_diagram`, ao lado de `saved_diagrams_by_page`, e um
+teste afirma que **as duas produzem o mesmo índice**: se divergirem, o sintoma seria a caixa
+que só fica verde ao reabrir o livro, que é o defeito da S-71 de volta por um caminho que
+ninguém procuraria.
 
-Fica registrado com o número para que a decisão de fazê-la seja tomada por ele: **30,9 ms de
-`LabelStore.read()` mais 15,0 ms de `load_annotations`**, e o primeiro cresce com o arquivo.
+**Medido nesta máquina, sobre o `labels.csv` de 3.936 linhas** e o livro com mais anotação do
+acervo (Yusupov):
+
+| | antes do corte 2 | agora |
+|---|---|---|
+| `LabelStore.read()` | 28,0 ms — e cresce com o arquivo | — |
+| `load_annotations` do livro | 37,2 ms | — |
+| `saved_diagrams_by_page` | 0,2 ms | — |
+| `note_saved_diagram` | — | < 0,001 ms |
+| **total por `Ctrl+S`** | **65,3 ms** | **0,000 ms** |
+
+Os 46,1 ms que este documento publicava eram de um livro com anotação menor; a parcela de
+`load_annotations` varia com o livro aberto, e a de `LabelStore.read()` com o `labels.csv`. As
+duas somem, então a variação também.
+
+**A sequência vazia é resposta, e não ausência.** Regravar a linha de uma amostra que já existia
+(`REWRITE_ROW`) não faz diagrama nenhum ficar verde — ele já estava —, e é isso que `()` diz. O
+"salvar todos" manda a lista inteira numa chamada só, como já fazia.
+
+**O `load_annotations` saiu do `Ctrl+S` porque ele nunca deveria ter estado ali.** Ele lê as
+anotações da galeria, que é onde mora `confirmed_from` — o violeta das caixas (S-75). Salvar
+amostra não pode mudar confirmação nenhuma; o refresco vinha de carona, e por isso escolher uma
+candidata na Galeria só acendia o violeta na *próxima* gravação de amostra. Agora quem muda a
+anotação é quem avisa: `GalleryPanel._candidate_applied` chama `on_annotations_changed`, e a
+janela relê ali. **Um defeito de comportamento consertado por um item de desempenho**, e fica
+registrado porque só apareceu ao tirar a releitura do caminho errado.
 
 ### Uma armadilha de suíte que este item encontrou
 
@@ -1647,7 +1674,7 @@ número.
 
 ---
 
-## S-119 · Uma varredura por livro em vez de duas
+## S-119 · Uma varredura por livro ✅ implementada (2026-08-18) em vez de duas
 
 **Problema.** `gallery_scan.py:203-245` (`build_gallery_index`) e `review_queue.py:464-503`
 (`build_review_queue`) percorrem o **mesmo** `iter_pdf_diagrams`, com os mesmos parâmetros, e
@@ -1673,6 +1700,46 @@ mesmos itens, na mesma ordem, que a fila varrida direto.
 
 **Testes.** `tests/test_review_queue.py` — a equivalência entre a fila derivada e a varrida,
 sem janela.
+
+### O que foi entregue
+
+A biblioteca saiu antes (`ReviewQueueBuilder`, com a equivalência já travada por teste); o que
+fechou agora é a tela. `GalleryPanel.scan` passou a alimentar um `ReviewSink` pelo `on_scanned`
+de `build_gallery_index`, e a aba de Revisão deixou de ter passada própria: o botão dela e o da
+Galeria são o mesmo gesto, e o menu Ferramentas perdeu "Varrer a fila de revisão" — que era um
+segundo comando com o custo inteiro do primeiro.
+
+**O enunciado propunha derivar a fila do `GalleryIndex`, e isso não foi feito** — a razão está
+no docstring do `ReviewQueueBuilder` e vale repetir aqui: o índice não é superconjunto da fila.
+Ele guarda colocação, confiança mínima, legalidade e legenda; a prioridade da S-22 precisa de
+`mean_entropy`, `uncertain_squares` e das casas que o decodificador reparou. Derivar dali daria
+uma fila *parecida*, e o critério de aceite pede a **mesma**. Com o acumulador, os dois caminhos
+passam pelo mesmo código de montagem e a equivalência é estrutural, não vigiada.
+
+**Dois defeitos foram encontrados ao ligar as pontas, e os dois são de fusão de fila.**
+
+1. **`merge_queues` usava `fresh` como a fila inteira**, então o que ela não tivesse
+   desaparecia. Isso estava certo enquanto toda varredura era do livro inteiro, e deixou de
+   estar com a varredura retomável da S-120: uma passada que lê só as páginas 300 a 420
+   apagaria as pendências das 300 primeiras. Agora ela recebe `pages` — as páginas que a
+   passada de fato visitou — e o que está fora sobrevive como estava.
+2. **O mesmo defeito já existia no cancelamento**, e ninguém o tinha visto: cancelar uma
+   revarredura na página 40 gravava uma fila com as 40 primeiras páginas e só. O conserto do
+   item 1 o corrige junto, e fica registrado que ele era anterior a este item.
+
+**A janela é quem liga as duas abas**, e nenhuma conhece a outra: `review_sink` na Galeria,
+`on_scan_book` e `on_cancel_book` na Revisão. São as quatro linhas que subiram a catraca do
+`app_tkinter.py` de 1.642 para 1.646, e estão registradas lá com o motivo.
+
+**A operação longa passou a ser uma**, e o guarda de `tests/test_ui_retorno_modal.py` mudou de
+quatro módulos para três. O `review_panel.py` não perdeu o número: quem registra e publica
+`feito=` é quem tem a thread, e ela é uma só. A aba de Revisão mostra a página em curso na sua
+própria barra, sem abrir um segundo registro para a mesma passada.
+
+**O que não foi medido, e é honesto dizer.** Os 338 s + 299 s do enunciado são do
+`PDF/1000 Chess Problems`, e repetir a medição exigiria as duas versões do programa lado a lado
+sobre 420 páginas — ~21 min de máquina para confirmar uma soma. A passada é literalmente uma
+agora, e a que sobrou é a da Galeria: o número a esperar é o dela.
 
 ---
 
@@ -1916,7 +1983,7 @@ invisível, porque o que muda é o custo, e custo não aparece numa asserção d
 
 ---
 
-## S-140 · O índice sem a cópia, e o cache que não cabe na memória ⚠ item 1 implementado (2026-08-17)
+## S-140 · O índice sem a cópia, e o cache que não cabe na memória ✅ implementada (item 1 em 2026-08-17, item 2 em 2026-08-18)
 
 **Problema.** Dois artefatos que crescem com o acervo e nenhum dos dois tem teto.
 
@@ -1955,7 +2022,7 @@ mesmo tempo.
 `tests/test_games_index.py` — a recusa do índice de versão anterior, com a mensagem que diz
 como refazer.
 
-### O que foi entregue — **o item 1, e não o 2**
+### O que foi entregue no item 1 (2026-08-17)
 
 `games` passou a ser `WITHOUT ROWID` com `PRIMARY KEY (pair, file, offset)`, o `CREATE INDEX
 games_pair` saiu, `INDEX_VERSION` subiu para **3** e `lookup_pair` recusa a v2 com a instrução
@@ -1979,7 +2046,7 @@ letras: *"O item 2 é o que trava a janela hoje; o item 1 é disco, e disco espe
 primeiro."* O item 2 mexe em `ui/gallery_panel.py`, e há uma avaliação de interface em curso
 (`docs/ROADMAP_UI.md`, Fases 20 a 24, escrita hoje) que vai reorganizar o pacote `ui/`.
 Entregar o item 1 — que não toca `ui/` — é o que dava para entregar sem colidir. **O item 2
-continua aberto, e continua sendo o mais urgente dos dois.**
+saiu em 2026-08-18**, com as Fases 20 a 24 fechadas e o `ui/` já reorganizado.
 
 **O índice atual no disco vira inválido.** `data/games_index.sqlite` está na v2, e a próxima
 consulta por nome vai avisar e devolver vazio até alguém rodar:
@@ -1992,9 +2059,54 @@ Isso é ~8,4 min para a base de hoje. A alternativa — ler as duas versões —
 razão que o próprio `INDEX_VERSION` já dava: um formato que se aceita nunca é abandonado, e o
 custo de manter os dois caminhos vivos é maior que o de uma reconstrução que roda sozinha.
 
+### O que foi entregue no item 2 (2026-08-18)
+
+`data/games_positions.json` virou `data/games_positions.sqlite`, uma linha por colocação, no
+mesmo esquema do item 1: `placement` de chave primária, `WITHOUT ROWID`, sem `CREATE INDEX` ao
+lado. `PositionStore` responde `get`, `missing`, `answered_of` e `to_index` por `SELECT` sobre
+as colocações pedidas; `PositionCache` sobrou como a forma em memória — é o que a migração lê
+e o que um teste de `games_census` monta em três linhas.
+
+**Medido sobre o cache desta máquina** (10.656 posições, 11,6 MB), e não projetado:
+
+| | antes (JSON) | agora (SQLite) |
+|---|---|---|
+| trocar de livro | **0,59 s**, pico de **63 MB** — o acervo inteiro, na thread do Tk | 0 — a conexão fica aberta |
+| responder sobre um livro (1.400 colocações, 885 casamentos) | (já estava tudo em memória) | **30 ms**, pico de 5,5 MB |
+| abrir a lista de um diagrama | idem | 0,085 ms |
+| o arquivo no disco | 11,6 MB | 11,6 MB |
+
+**E o que o critério de aceite pedia — "alvo constante" — foi medido crescendo o acervo**, com
+o mesmo livro de 1.400 colocações:
+
+| linhas no cache | arquivo | o livro |
+|---|---|---|
+| 10.656 | 10,9 MB | 29,9 ms |
+| 31.968 | 33,1 MB | 31,5 ms |
+| **53.280** (5×) | 55,2 MB | **33,0 ms** (+10%) |
+
+Cinco vezes o acervo custa 10% a mais no livro. Pelo caminho anterior custaria cinco vezes: os
+0,59 s e 63 MB de hoje viram ~2,8 s e ~295 MB nas 50 mil posições que os 34 livros projetam —
+que é a estimativa do enunciado, aqui confirmada pela curva em vez de suposta.
+
+**A trava e a refusão da S-113 saíram, e não foram perdidas.** O `.lock` de conselho, o
+`_funde` e o `save_cache` que relia o disco existiam porque duas passadas simultâneas se
+sobrescreviam — cada uma gravava o dicionário inteiro que lera meia hora antes. Com uma linha
+por colocação não há retrato para substituir: cada `update` é uma transação, o SQLite serializa
+as duas, e o teste que guardava a decisão continua de pé com o mesmo nome e a mesma pergunta.
+
+**O JSON é migrado, e só uma vez.** Descartá-lo custaria ~56 min de varredura por nada, e nada
+nele mudou: a resposta é a mesma, o lugar é que é outro. A migração roda quando o SQLite
+**acaba de ser criado** e só para o artefato padrão — um `--cache` apontado para outro lugar
+não puxa nem renomeia o de `data/`. Depois dela o arquivo vira `games_positions.json.migrado` e
+não é lido por nada; renomear em vez de apagar porque apagar o que era do usuário não é da
+alçada de uma migração. Isto foi encontrado por acidente e é o registro: a primeira versão
+migrava a partir de qualquer caminho, e a primeira execução da suíte renomeou o JSON de verdade
+desta máquina. O teste que guarda o par de caminhos nasceu disso.
+
 ---
 
-## S-141 · O processo filho não reimporta o programa inteiro
+## S-141 · O processo filho não reimporta o programa inteiro ✅ implementada (2026-08-18)
 
 **Problema.** `games_db.py:725-731` cria `mp.Pool(min(processos, len(tarefas)))`. No Windows o
 `spawn` reimporta o módulo `__main__` em cada filho — e medido, importar `app_tkinter.py` como
@@ -2017,6 +2129,63 @@ fronteira de módulo muda; o que muda é **quando** cada import acontece.
 
 **Testes.** `tests/test_packaging.py` — um subprocesso que importa `app_tkinter` com o marcador
 de filho e afirma que `torch` **não** está em `sys.modules`.
+
+### O que foi entregue, e por que não foi a solução do enunciado
+
+**O enunciado foi conferido primeiro, e ele estava certo.** Reimportar `app_tkinter.py` como
+`__mp_main__` custa, medido nesta máquina, **3,14 s e 2.212 módulos** — `torch`, `cv2`, `PIL`,
+`chess` e os seis painéis da interface. Um filho carregado com esse conjunto ocupa **223 MB**
+contra **15 MB** de um filho nu (1.193 módulos contra 61). Com dez processos são ~31 s de CPU e
+~2,1 GB de RAM no arranque de cada varredura, e o filho não usa **nada** disso: ele lê PGN e
+reproduz lances.
+
+**A solução do enunciado não foi escrita, e a razão é aritmética.** Ela pede cascas finas
+*"sem que nenhuma fronteira de módulo mude"*: imports pesados para dentro de `main()`. Só que a
+classe `ChessOcrTkApp` — 1.400 das 1.642 linhas do arquivo — referencia ~45 desses nomes como
+globais do módulo, em métodos espalhados por ela. Adiar os imports sem mover a classe exigiria
+reinjetá-los em `globals()` dentro de `main()`; mover a classe **é** mudar a fronteira, é a
+S-31 reaberta, e alcançaria os 15 arquivos de teste que leem `app_tkinter.py` como texto para
+cobrar arquitetura. Um item de desempenho não paga essa conta.
+
+**O que foi feito, no lugar onde o custo nasce.** `games_db._filho_sem_o_main_do_pai` tira
+`__file__` de `sys.modules["__main__"]` enquanto os processos do `Pool` nascem, e o devolve em
+seguida. O `multiprocessing.spawn.get_preparation_data` só manda o caminho do `__main__` ao
+filho se esse atributo existir; sem ele, o `_fixup_main_from_path` do outro lado não roda e o
+filho arranca com o interpretador nu. A janela é a construção do `Pool` — segundos —, e não a
+varredura inteira, que dura meia hora.
+
+**Medido**, com um `__main__` do peso do `app_tkinter.py` (torch, cv2, numpy, PIL, `OcrService`)
+sobre uma base sintética de 1,5 MB, e as duas colunas devolvendo os mesmos 20.000 casamentos:
+
+| processos | como era | agora |
+|---|---|---|
+| 2 | 2,78 s | **1,10 s** |
+| 8 | 3,24 s | **0,76 s** (−77%) |
+
+O critério de aceite pedia *"< 0,5 s e < 30 MB"* para o import do filho. Ele não é atingido —
+ele deixa de existir: o filho não importa o script do pai, e o que sobra são os 15 MB do
+interpretador. **A resposta da varredura não mudou**, que é a outra metade do critério.
+
+**O preço, escrito onde ele pode morder.** Com o `__main__` do filho vazio, nada que atravesse
+a fila pode ser definido no script do pai. Nesta chamada nada é — o alvo é
+`_scan_positions_chunk`, função de topo do `games_db` desde a S-26, e as tarefas são `Path`,
+`int` e `frozenset`. Se um dia o alvo ou um argumento vier do `__main__`, o filho morre ao
+desempacotar e o laço de espera fica sem resposta. Está no docstring da função, é o contrato
+dela, e é estreito de propósito.
+
+**Num bundle congelado a supressão não roda.** Ali o `spawn` reexecuta o próprio `.exe` e quem
+intercepta é o `freeze_support` (S-55). O caminho é outro, não foi medido aqui, e mexer nele às
+cegas trocaria três segundos por um risco sem tamanho conhecido.
+
+**O preço acima deixou de ser um travamento** (S-171, 2026-08-18). A guarda de filho morto
+detecta o caso em **0,3 s** e descarta a passada com a mensagem que diz o que houve --
+verificado com um alvo definido no `__main__` e a supressão ligada. O contrato continua o
+mesmo; o que mudou é que violá-lo agora dá erro em vez de silêncio.
+
+**A S-31 continua aberta, e agora com um argumento a menos.** Enquanto o peso do arranque era
+razão para quebrar o `app_tkinter.py`, ele valia como pressão; deixou de valer. Quebrá-lo
+continua certo pelas razões da S-31 — o que dá para testar não fica na janela —, e essas não
+mudaram.
 
 ---
 
@@ -2921,6 +3090,29 @@ décima-primeira guarda existe só para isso: **se as métricas se dizem obsolet
 avisa, a suíte falha.** Refazer o bundle é uma execução de `packaging/build_windows.py`, e ela
 reescreve o arquivo sem esses dois campos.
 
+### O bundle foi refeito em 2026-08-18, e ele achou o que o item existia para achar
+
+`python packaging/build_windows.py --clean`, duas vezes, e os números:
+
+| build | mb | arquivos | o que mudou |
+|---|---|---|---|
+| 2026-08-09 (o que o README publicava) | 696 | 4.723 | — |
+| 2026-08-18, primeira passada | 685 | 4.278 | o `streamlit` de fato tinha saído |
+| 2026-08-18, com os `excludes` novos | **684** | **4.275** | e o `pythonnet` **não** |
+
+**O `pythonnet` e o `clr_loader` continuavam dentro do bundle** — 440 KB e 24 KB —, e o
+docstring da `cvoff.spec` dizia, com todas as letras, que WebView2 *"não é mais assunto: a aba
+'Leitura' que o embutia saiu na S-69, e com ela `pythonnet` e `pywebview`"*. A frase estava
+certa sobre o código e errada sobre o bundle, e a razão é a que este item inteiro é sobre:
+**o PyInstaller coleta o que está instalado, não o que o `pyproject.toml` declara.** A S-69
+tirou a dependência declarada; o pacote continuou no ambiente de quem já o tinha, e o
+empacotador continuou achando-o. Os dois entraram para os `excludes`, com o número ao lado —
+a mesma disciplina de "cinto e suspensórios" que o `pyarrow` já tinha ali.
+
+São 1 MB em 685. **O tamanho não é o ponto**: o ponto é que um número publicado que ninguém
+recalcula envelhece, e que a primeira recalculada desmentiu uma afirmação que estava escrita em
+dois arquivos. Era exatamente a aposta do item.
+
 De passagem, o número que ninguém tinha conferido: o README publicava **5.247 arquivos** e o
 build que ele descrevia tem **4.723**. O `mb` estava certo porque veio do `tamanho_em_mb`, que é
 binário — e é por isso que o novo `gravar_metricas` continua binário, com a unidade escrita no
@@ -3045,3 +3237,196 @@ suíte falhar; os doze módulos sem Tk estão na varredura; `uv sync` sem extras
 
 **Testes.** `tests/test_atomic_io.py` — a varredura da árvore. `tests/test_viewport.py` — a
 lista dos doze. `tests/test_environment.py` — `streamlit` ausente não quebra nada em `src/`.
+
+---
+
+# Achados de 2026-08-18 — o que a implementação encontrou
+
+> Os dois itens abaixo não vieram de uma avaliação: vieram de **implementar** os itens da Fase
+> 17 e olhar para o que estava ao lado. Ficam aqui, numerados na sequência, porque o método do
+> projeto é que achado sem número não é achado — é lembrança.
+
+## S-171 · A varredura que espera para sempre por um pedaço que não volta ✅ implementada (2026-08-18)
+
+**Problema.** `games_db.scan_by_positions` conta conclusões até `len(tarefas)`:
+
+```python
+while concluidos < len(tarefas):
+    ...
+    parcial = pendentes.next(timeout=CANCEL_POLL_SECONDS)
+```
+
+Um processo-filho que morra — OOM, crash nativo, `kill` — leva com ele o pedaço que estava
+lendo, e o `imap_unordered` **nunca** devolve aquele resultado. O `Pool` repovoa o trabalhador,
+os outros pedaços terminam, e o laço fica pendurado no que não vem.
+
+**Reproduzido em 2026-08-18**, com um `Pool` de verdade e um filho que chama `os._exit(1)`:
+seis pedaços, **cinco voltaram, e o laço esperou até o teste desistir aos 20 s**. Numa passada
+real — ~56 min sobre 10,3 GB de PGN, dez processos — o sintoma é a Galeria dizendo "pedaço 9 de
+10" indefinidamente, com a barra de progresso parada e o botão de cancelar como única saída.
+
+**Por que ele importa mais do que a probabilidade sugere.** É a operação mais cara do programa
+e a única tudo-ou-nada: quem cancela perde a passada inteira (S-92). Um travamento que só se
+resolve cancelando custa exatamente o que o item existe para não custar. E cada filho carrega o
+conjunto-alvo e o porteiro de ocupações — com 40 mil posições e dez processos, morrer de memória
+não é hipótese exótica.
+
+**Solução.** `_pids_do_pool` fotografa os pids que nasceram com o pool; `_perdeu_um_filho`
+compara a cada volta do laço. **O sinal é a troca de pid, e ela é confiável porque o `Pool`
+repovoa**: perder um trabalhador faz o conjunto deixar de ser o que nasceu, e isso aparece na
+volta seguinte — medido, no mesmo décimo de segundo. Olhar para `is_alive()` não serviria:
+depois do repovoamento há três vivos de novo.
+
+A resposta é **descartar a passada e dizer**, que é a mesma do cancelamento e pela mesma razão
+da S-92: quem viu parte da base tem contagem de partidas por posição que não vale, e é a
+contagem que autoriza preencher header (S-74). Meia varredura gravada seria procedência
+inventada.
+
+`_pool` é privado do `multiprocessing` e é lido por `getattr` de propósito: numa versão que não
+o tenha, a guarda desliga sozinha e volta-se ao comportamento anterior — que é ruim — em vez de
+um `AttributeError`, que é pior.
+
+**E ela fecha o contrato que a S-141 deixou aberto.** Aquele item registrou, com todas as
+letras, que suprimir o `__main__` do filho tem um preço: *"se um dia o alvo ou um argumento vier
+do `__main__`, o filho morre ao desempacotar e o laço de espera fica sem resposta"*. Com a
+guarda, esse caso passou a ser **detectado em 0,3 s**, com a mensagem que diz o que houve —
+verificado com um alvo definido no `__main__` e a supressão ligada. O preço da S-141 deixou de
+ser um travamento e virou um erro.
+
+**Testes.** `tests/test_games_db.py::FilhoMortoTests` — o pool intacto não dispara, o pid
+trocado dispara, o conjunto que encolhe dispara, a ausência de `_pool` desliga a guarda em vez
+de levantar, e a passada perdida sai vazia com log de erro. A reprodução completa (um `Pool` de
+verdade com um filho que morre) não entra na suíte: ela custa 20 s de espera e não é coisa de
+rodar 2.000 vezes por dia. O que fica travado é a decisão — qual sinal conta, e o que se faz
+com a passada.
+
+## S-172 · O placar de uma fase envelhece igual a um número do README ✅ implementada (2026-08-18)
+
+**Problema.** O critério de saída da Fase 6 (`ROADMAP.md`) ficou parado em 2026-07-27 e duas das
+três linhas ficaram falsas:
+
+| a linha | dizia | era verdade |
+|---|---|---|
+| executável rodando em máquina sem Python | **não iniciado** (6.8 / S-36) | feito desde a S-55; a S-127 pôs log em arquivo, a S-135 mediu, e o bundle foi refeito hoje |
+| `app_tkinter.py` abaixo de 600 linhas | **651** (477 de código) | **1.677**, e o arquivo dobrou depois da decomposição (S-136) |
+
+E a linha 6.8 da tabela de entregas continuava com `—` no status.
+
+**É o mesmo defeito da S-135, num documento que ela não olhou.** Aquele item existe porque *"um
+número declarado que ninguém recalcula envelhece"*, e travou onze afirmações de `README.md` e
+`ARCHITECTURE.md`. Os critérios de saída das fases não estavam na lista, e são exatamente o tipo
+de texto que ninguém revisita: eles descrevem o passado por construção.
+
+**A gravidade não é o número, é a direção do erro.** "Não iniciado" sobre um `.exe` que roda
+manda quem lê o roadmap planejar trabalho que já está feito.
+
+**Solução.** As três linhas passam a ter duas colunas — o estado de 2026-07-27 e o de hoje —,
+e duas guardas novas em `tests/test_docs.py`:
+
+1. a **última** célula da linha do executável não pode dizer "não iniciado" enquanto
+   `packaging/cvoff.spec` estiver no disco;
+2. o número de linhas citado bate com `app_tkinter.py`, com a mesma tolerância de 10% dos
+   outros números vivos.
+
+A primeira olha a última célula e não a seção inteira **de propósito**: a coluna do meio guarda
+o estado de 2026-07-27, e cobrar "não iniciado" ali apagaria o registro de que o placar
+envelheceu — que é o que este item existe para mostrar.
+
+**As duas guardas foram verificadas contra um documento mentiroso**, e não só contra o
+corrigido: com o placar adulterado para "não iniciado" e para "900 linhas", as duas falham com o
+número ao lado. Uma guarda que nunca se viu falhar é decoração.
+
+**Testes.** `tests/test_docs.py::NumerosVivosTests` — as duas descritas acima, ao lado das onze
+da S-135.
+
+## S-173 · Uma passada descartada não pode virar "a base não conhece" ✅ implementada (2026-08-18)
+
+**Este item existe porque a S-171 o criou.** Está escrito assim de propósito: a guarda de filho
+morto abriu um caminho novo — uma passada descartada **sem ninguém ter cancelado** — e esse
+caminho desembocava num defeito de corrupção que estava latente.
+
+**O mecanismo.** `scan_by_positions` devolvia `PositionIndex()` vazio para dois estados que não
+são o mesmo:
+
+| o que aconteceu | o que saía | o que significa |
+|---|---|---|
+| a base foi lida inteira e não achou nada | `PositionIndex()` | **resposta**: "a base não conhece estas" |
+| a passada foi descartada | `PositionIndex()` | **nada**: ninguém procurou |
+
+E `update` grava o conjunto-alvo **inteiro** como perguntado — que é a decisão da S-84, e ela é
+certa: sem ela as 1.922 posições que a base não conhece voltariam ao alvo de toda varredura
+futura. Junte as duas e o resultado é o pior que este cache admite: uma passada descartada
+gravaria `count = 0` sobre **milhares de colocações que ninguém chegou a procurar**, e —
+perguntado sendo perguntado — elas nunca mais voltariam ao alvo de varredura nenhuma. A
+corrupção se parece com trabalho feito.
+
+**Por que ele não tinha mordido antes.** Por sorte, e a sorte é nomeável: o único caminho que
+produzia índice vazio era o cancelamento, a Galeria conferia `cancel.is_set()` antes de gravar,
+e o `cvoff-games` não tem cancelamento. Eram duas linhas de defesa, as duas em quem **chama** —
+e uma delas não existia. A S-171 tirou a premissa de que só o cancelamento descarta.
+
+**Solução.** `PositionIndex.complete`, no molde do `GalleryIndex.complete` da S-120. Falso nos
+dois caminhos de descarte. A guarda mora nos dois `update` do cache, e **não** em cada
+chamador, pela razão que o próprio defeito demonstrou: quem chama não deve precisar lembrar de
+perguntar, e houve dois chamadores e só um lembrava.
+
+**A tela e o comando passaram a dizer o que houve.** A Galeria tem uma frase própria — diferente
+da de cancelamento, porque ali a pessoa sabe o que fez e aqui ela não fez nada e precisa saber
+que **dá para tentar de novo**, já que nada foi gravado. O `cvoff-games` imprime a mesma
+informação e sai com `EXIT_FAILURE`: um comando que varre meia base e sai com 0 mente para o
+script que o chamou.
+
+**Testes.** `tests/test_games_cache.py::PassadaDescartadaTests` — a passada descartada não grava
+uma linha, as colocações continuam por perguntar, e a passada **completa** que não achou nada
+continua gravando (é o lado que a guarda não pode quebrar). `tests/test_gallery_panel.py` — o
+worker não abre o cache para gravar, e a frase diz que nada se perdeu.
+
+## S-174 · O auto-teste classifica errado as duas falhas que ele existe para nomear ✅ implementada (2026-08-18)
+
+**Como ele apareceu.** Fazendo o que o critério de saída da Fase 18 manda fazer e ninguém tinha
+feito: exercitar as três falhas **no `.exe`**. O critério diz, com todas as letras, *"produzem
+mensagem em pt-BR e rastro em disco, no checkout **e** no `.exe`"* — e a metade do `.exe` nunca
+tinha sido rodada, porque exigia um bundle, e o bundle estava obsoleto desde 2026-08-09 (S-135).
+
+**O que o bundle recém-construído respondeu**, com os códigos que o README documenta ao lado:
+
+| falha | esperado | **era** |
+|---|---|---|
+| PDF corrompido | 2 (entrada inválida) | **1** + traceback do `pymupdf` em inglês |
+| `settings.json` inválido | 0 (não impede nada) | 0 ✅ — a S-124 já cobria |
+| checkpoint de outra `arch_version` | 3 | **1** + traceback do `torch` em inglês |
+
+**Duas das três estavam erradas, e erradas na direção que confunde.** `1` quer dizer *"o
+programa falhou"*; nos dois casos quem falhou foi **um arquivo** — um que o usuário escolheu, e
+outro que a instalação trouxe. Quem lê `1` procura defeito no programa; quem lê `2` troca o
+arquivo e quem lê `3` reinstala.
+
+**A causa é a mesma nos dois, e ela é estrutural:** `selftest` classificava **ausência** e não
+**ilegibilidade**. `modelo.exists()` respondia por 3, e um `.pt` truncado passava por essa
+guarda para morrer no `except` genérico do reconhecimento — que não tem como saber se o que
+falhou foi o modelo, o PDF ou a leitura.
+
+**Solução.** Carregar o checkpoint e abrir o PDF viraram **passos próprios**, porque
+classificar exige saber *onde* falhou. A classificação não vem do texto da exceção: as pistas
+de `cli._CHECKPOINT_PISTAS` teriam de adivinhar "isto era um checkpoint" de uma mensagem do
+`torch` que não contém nem `.pt` nem `state_dict`. O `message_for` da S-126 é reusado para a
+frase — um tradutor, não dois.
+
+**E a ordem passou a responder a pergunta certa primeiro.** Instalação antes de entrada: se o
+checkpoint não carrega, isso é verdade sobre a instalação e não depende de qual PDF o usuário
+escolheu. Antes o PDF era aberto primeiro, e uma instalação quebrada com um PDF ruim reportava
+o PDF.
+
+**Verificado no `.exe`, e é o ponto do item:**
+
+```
+1. PDF corrompido ......... exit=2   frase pt-BR ✓
+2. settings.json invalido .. exit=0
+3. checkpoint ilegivel .... exit=3   frase pt-BR ✓ (cita `arch_version`)
+4. instalacao boa ......... exit=0
+   logs/chessvisionoff.log gravado nos quatro
+```
+
+**Testes.** `tests/test_packaging.py::SelftestTests` — os dois códigos, as duas frases, e a
+guarda de que um checkpoint **bom** não cai nelas (uma guarda que transforma instalação boa em
+erro é pior que a falha que ela cobre).

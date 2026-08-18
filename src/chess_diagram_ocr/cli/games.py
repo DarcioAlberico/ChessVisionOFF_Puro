@@ -43,7 +43,7 @@ from typing import Any
 from ..config import DEFAULT_PDF_DIR
 from ..gallery import DEFAULT_GALLERY_DIR, load_annotations, save_annotations
 from ..gallery_scan import GalleryIndex, load_index
-from ..games_cache import DEFAULT_CACHE_PATH, load_cache, save_cache
+from ..games_cache import DEFAULT_STORE_PATH, open_store
 from ..games_census import BUCKETS, census_book, census_total
 from ..games_db import (
     DEFAULT_DATABASE_DIR,
@@ -60,7 +60,7 @@ from ..games_db import (
 from ..games_index import DEFAULT_INDEX_PATH, build_index
 from ..logging_setup import configure_logging, default_log_file
 from ..ui.gallery_model import GalleryModel
-from . import cli_errors
+from . import EXIT_FAILURE, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -121,8 +121,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--cache",
         type=Path,
-        default=DEFAULT_CACHE_PATH,
-        help=f"cache de posições já perguntadas à base (padrão: {DEFAULT_CACHE_PATH.name}).",
+        default=DEFAULT_STORE_PATH,
+        help=f"cache de posições já perguntadas à base (padrão: {DEFAULT_STORE_PATH.name}).",
     )
     parser.add_argument(
         "--no-cache",
@@ -283,20 +283,31 @@ def _positions_index(bases: list[Path], alvos: set[str], args: argparse.Namespac
         print(f"partidas lidas: {indice.games_read}  (--no-cache: o cache não foi lido nem gravado)")
         return indice
 
-    cache = load_cache(args.cache, database=bases)
-    faltando = cache.missing(alvos)
-    print(f"cache: {len(cache)} posição(ões) já perguntada(s), {cache.answered_of(alvos)} deste acervo com resposta")
+    with open_store(args.cache, database=bases) as cache:
+        faltando = cache.missing(alvos)
+        print(
+            f"cache: {len(cache)} posição(ões) já perguntada(s), "
+            f"{cache.answered_of(alvos)} deste acervo com resposta"
+        )
 
-    if faltando:
-        print(f"a varrer: {len(faltando)}  (as outras {len(alvos) - len(faltando)} saem do cache)")
-        parcial = scan_by_positions(bases, faltando, workers=args.workers, progress=_chunk_progress)
-        print(f"partidas lidas: {parcial.games_read}")
-        cache.update(parcial, faltando)
-        print(f"cache gravado em {save_cache(cache, args.cache)}")
-    else:
-        print("a varrer: nada -- todas as posições já estavam no cache, e a base não foi aberta.")
+        if faltando:
+            print(f"a varrer: {len(faltando)}  (as outras {len(alvos) - len(faltando)} saem do cache)")
+            parcial = scan_by_positions(bases, faltando, workers=args.workers, progress=_chunk_progress)
+            print(f"partidas lidas: {parcial.games_read}")
+            if not parcial.complete:
+                # A passada morreu no meio (S-171). O cache recusa a gravacao sozinho; o que
+                # nao pode e o comando sair com cara de sucesso e o usuario achar que o acervo
+                # foi varrido. Devolve o indice incompleto, e quem chamou vira codigo de saida.
+                print(
+                    "A varredura NÃO terminou: um processo de leitura da base morreu. Nada foi "
+                    f"gravado, e as {len(faltando)} posições continuam por perguntar."
+                )
+                return parcial
+            print(f"cache: {cache.update(parcial, faltando)} posição(ões) gravadas em {args.cache}")
+        else:
+            print("a varrer: nada -- todas as posições já estavam no cache, e a base não foi aberta.")
 
-    return cache.to_index(alvos)
+        return cache.to_index(alvos)
 
 
 def _chunk_progress(feitos: int, total: int) -> None:
@@ -309,27 +320,28 @@ def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
     Sai antes de qualquer varredura de propósito: um instrumento que precisasse de 30 minutos
     para dizer o estado do acervo não seria consultado, e o que não se consulta não mede nada.
     """
-    cache = load_cache(args.cache, database=args.database or database_paths())
-    if not cache.positions:
-        print(f"Cache vazio em {args.cache}. Para produzi-lo:  cvoff-games --all")
-        return 2
+    with open_store(args.cache, database=args.database or database_paths()) as cache:
+        perguntadas, com_resposta = len(cache), cache.answered
+        if not perguntadas:
+            print(f"Cache vazio em {args.cache}. Para produzi-lo:  cvoff-games --all")
+            return 2
 
-    placares = []
-    for livro, indice in indices.items():
-        placares.append(
-            census_book(
-                livro.name,
-                indice.entries,
-                cache,
-                load_annotations(livro, directory=args.gallery_dir),
-                max_games=args.max_games,
+        placares = []
+        for livro, indice in indices.items():
+            placares.append(
+                census_book(
+                    livro.name,
+                    indice.entries,
+                    cache,
+                    load_annotations(livro, directory=args.gallery_dir),
+                    max_games=args.max_games,
+                )
             )
-        )
     total = census_total(placares)
 
     faixas = [nome for nome, _ in BUCKETS]
     largura = max(len(p.book) for p in placares) if placares else 10
-    print(f"\ncache: {len(cache)} posição(ões) perguntada(s), {cache.answered} com resposta\n")
+    print(f"\ncache: {perguntadas} posição(ões) perguntada(s), {com_resposta} com resposta\n")
     print(f"{'livro':{largura}}  {'diagr':>6} {'casou':>6}  " + " ".join(f"{f:>7}" for f in faixas))
     for placar in (*placares, total):
         linha = " ".join(f"{placar.buckets.get(f, 0):>7}" for f in faixas)
@@ -413,6 +425,10 @@ def main(argv: list[str] | None = None) -> int:
         alvos = {entrada.placement for indice in indices.values() for entrada in indice.entries}
         print(f"posições-alvo distintas: {len(alvos)}  (a varredura é uma só para todos os livros)")
         indice_posicoes = _positions_index(bases, alvos, args)
+        if not indice_posicoes.complete:
+            # Sem passada nao ha o que casar, e casar com meia base seria pior que nao casar:
+            # e a contagem que autoriza preencher header (S-74/S-171).
+            return EXIT_FAILURE
         casamentos_por_livro = {
             livro: match_positions(indice.entries, indice_posicoes, max_games=args.max_games)
             for livro, indice in indices.items()

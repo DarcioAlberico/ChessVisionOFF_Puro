@@ -460,6 +460,69 @@ class NumerosVivosTests(unittest.TestCase):
             "As métricas do bundle estão marcadas como obsoletas e o README não avisa.",
         )
 
+    # ------------------------------------------ o placar de uma fase envelhece igual (2026-08-18)
+
+    def test_o_placar_da_fase_6_nao_diz_nao_iniciado_sobre_o_que_existe(self) -> None:
+        """**A décima-segunda guarda, e ela nasceu de um achado.** O critério de saída da Fase 6
+        ficou parado em 2026-07-27 dizendo *"executável rodando em máquina sem Python: não
+        iniciado"* -- sobre o bundle que a S-55 entregou, a S-127 instrumentou e a S-135 mediu.
+
+        A guarda é a mesma ideia dos onze números do README: se o artefato existe no disco, o
+        documento não pode continuar dizendo que ele não existe.
+        """
+        if not (RAIZ / "packaging" / "cvoff.spec").exists():
+            self.skipTest("packaging/cvoff.spec não existe neste checkout")
+        roadmap = (DOCS / "ROADMAP.md").read_text(encoding="utf-8")
+        criterio = roadmap.split("## Fase 6", 1)[1].split("## Fase 7", 1)[0]
+
+        # A **última** celula da linha, e nao a secao inteira: a coluna do meio guarda o estado
+        # de 2026-07-27 de proposito, e cobrar "nao iniciado" ali apagaria o registro de que o
+        # placar envelheceu -- que e justamente o que este item existe para mostrar.
+        linha = next(
+            (li for li in criterio.splitlines() if li.startswith("| executável rodando")),
+            None,
+        )
+        self.assertIsNotNone(linha, "a linha do executável sumiu do critério de saída da Fase 6")
+        assert linha is not None
+        hoje = linha.rstrip("|").rsplit("|", 1)[-1]
+        self.assertNotIn(
+            "não iniciado",
+            hoje,
+            "A Fase 6 diz que o empacotamento não começou, e `packaging/cvoff.spec` está no disco.",
+        )
+
+    def test_as_linhas_da_janela_citadas_na_fase_6_batem_com_a_catraca(self) -> None:
+        """O 651 do placar original era honesto quando foi escrito, e virou falso sem que nada
+        avisasse -- o arquivo dobrou (S-136). O número citado passa a sair do mesmo lugar que a
+        catraca de `test_packaging.py` cobra."""
+        janela = RAIZ / "app_tkinter.py"
+        if not janela.exists():
+            self.skipTest("app_tkinter.py não existe neste checkout")
+        real = len(janela.read_text(encoding="utf-8").splitlines())
+        roadmap = (DOCS / "ROADMAP.md").read_text(encoding="utf-8")
+        criterio = roadmap.split("## Fase 6", 1)[1].split("## Fase 7", 1)[0]
+        citado = _citado(criterio, r"\*\*([\d.]+)\*\*, e o arquivo dobrou")
+        _perto(self, citado, real, "linhas de app_tkinter.py citadas na Fase 6")
+
+    def test_o_placar_das_fases_bate_com_o_da_janela(self) -> None:
+        """O quadro "Onde o projeto está" cita o mesmo número da catraca (2026-08-18).
+
+        Ele é o texto que alguém lê para saber onde o projeto parou, e é por isso que ele é o
+        primeiro a envelhecer -- foi exatamente o que aconteceu com o critério de saída da Fase
+        6, que passou três semanas dizendo "não iniciado" sobre um `.exe` que rodava.
+        """
+        janela = RAIZ / "app_tkinter.py"
+        if not janela.exists():
+            self.skipTest("app_tkinter.py não existe neste checkout")
+        real = len(janela.read_text(encoding="utf-8").splitlines())
+        roadmap = (DOCS / "ROADMAP_FASE14.md").read_text(encoding="utf-8")
+        # `chr(10) + "---" + chr(10)` e nao `"---"`: a propria tabela tem `|---|` nas
+        # separadoras, e cortar ali deixaria o quadro sem as linhas que se quer conferir.
+        quadro = roadmap.split("## Onde o projeto está", 1)[1]
+        quadro = quadro.split(chr(10) + "---" + chr(10), 1)[0]
+        citado = _citado(quadro, r"`app_tkinter\.py` em ([\d.]+) contra")
+        _perto(self, citado, real, "linhas de app_tkinter.py no quadro das fases")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -314,11 +314,14 @@ class SecondOpinionTests(unittest.TestCase):
 
 
 SEM_TKINTER = {
+    "abas.py": "o rótulo de uma aba e a contagem dentro dele (S-162)",
+    "atalhos.py": "a tabela de atalhos: tecla, comando e descrição, sem widget (S-161/S-165)",
     "board_edit.py": "as regras de edição do tabuleiro (S-49)",
     "board_model.py": "o estado do tabuleiro, sem widget",
     "busy.py": "o que se perde ao fechar a janela, decidido fora dela (S-60)",
     "editor_model.py": "o que 'salvar' significa, dado o vínculo (S-49)",
     "estilos.py": "papel de botão -> nome de estilo ttk (S-144)",
+    "formato.py": "número e código do CSV como a tela os escreve (S-169)",
     "field_draft.py": "o rascunho do conjunto de campo (S-41)",
     "gallery_model.py": "a navegação e as anotações da Galeria (S-67)",
     "geometria.py": "o piso da janela, somado e não escolhido a olho (S-150)",
@@ -327,6 +330,7 @@ SEM_TKINTER = {
     "page_results.py": "os resultados de uma página, sem tela",
     "state.py": "o estado da aplicação em disco",
     "strings.py": "o vocabulário da interface (S-04)",
+    "tipografia.py": "a escala de fontes, derivada do sistema e sem widget (S-149)",
     "tokens.py": "a paleta e o contraste, sem widget (S-145/S-146)",
     "viewport.py": "o zoom e a rolagem, como aritmética",
 }

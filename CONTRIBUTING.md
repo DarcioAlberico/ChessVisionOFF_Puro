@@ -83,7 +83,7 @@ def esperar(tentativas=[0]):
         return
     print(len(janela.result_panel.items), "diagramas")
     janela.result_panel.next_diagram()      # é aqui que os defeitos costumam aparecer
-    print(janela.status_var.get())
+    print(janela.rodape.mensagem())         # a zona de mensagem do rodapé (S-163)
     root.quit()
 
 root.after(100, começar)

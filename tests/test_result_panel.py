@@ -11,6 +11,7 @@ from __future__ import annotations
 import tkinter as tk
 import unittest
 from pathlib import Path
+from tkinter import ttk
 
 import numpy as np
 from tk_root import raiz as raiz_do_processo
@@ -18,7 +19,7 @@ from tk_root import raiz as raiz_do_processo
 from chess_diagram_ocr.config import BUNDLE_ROOT
 from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import RemoteFenSettings
-from chess_diagram_ocr.ui import result_panel
+from chess_diagram_ocr.ui import board_edit, result_panel
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.editor_model import EditorBinding
 from chess_diagram_ocr.ui.page_results import PageOcrParams
@@ -74,7 +75,7 @@ class MoveNumberFieldTests(unittest.TestCase):
             on_sync_study=lambda: None,
             on_state_changed=lambda: None,
             on_focus_request=lambda: None,
-            on_sample_saved=lambda: None,
+            on_sample_saved=lambda _gravadas: None,
             remote_fen=RemoteFenSettings,
             on_remote_consent=lambda _cfg: False,
             move_number_of=lambda pagina, diagrama: self.lances.get((pagina, diagrama)),
@@ -207,6 +208,101 @@ class _CaixasFalsas:
     showwarning = showinfo
 
 
+def _painel(pai: tk.Misc, *, status: list[str] | None = None) -> ResultPanel:
+    """Um `ResultPanel` montado com o mínimo -- o mesmo conjunto de callbacks do teste acima."""
+    return ResultPanel(
+        pai,
+        service=None,  # type: ignore[arg-type] - só a gravação o usa, e ela não roda aqui
+        piece_images=PieceImages(BUNDLE_ROOT / "assets" / "piece_images"),
+        paths=lambda: (Path("labels.csv"), Path("samples")),
+        ocr_params=lambda: PageOcrParams(dpi=220, max_boards=12, orientation="auto", model_path="m.pt"),
+        document_key=lambda: DOCUMENTO,
+        model_path=lambda: Path("m.pt"),
+        on_status=(status if status is not None else []).append,
+        on_ocr_local=lambda _max: None,
+        max_boards=lambda: 12,
+        on_sync_study=lambda: None,
+        on_state_changed=lambda: None,
+        on_focus_request=lambda: None,
+        on_sample_saved=lambda _gravadas: None,
+        remote_fen=RemoteFenSettings,
+        on_remote_consent=lambda _cfg: False,
+    )
+
+
+class EstadoVazioTests(unittest.TestCase):
+    """A aba Resultado ao abrir: **não** mostra posição, e não oferece salvar (S-170).
+
+    O que havia: um tabuleiro completo na posição inicial com o campo de FEN vazio -- o padrão do
+    `InteractiveBoard`, nunca sobrescrito porque `update_views` só era chamado depois da primeira
+    leitura. Parecia um diagrama reconhecido. Quem clicasse "Salvar posição reconhecida" ali
+    gravava a posição inicial no `labels.csv` como se fosse leitura de uma página do livro, e o
+    `cvoff-audit` não teria como saber que aquela linha não veio de lugar nenhum.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    def setUp(self) -> None:
+        self.janela = tk.Toplevel(self.root)
+        self.janela.geometry("620x900")
+        self.addCleanup(self.janela.destroy)
+        self.painel = _painel(self.janela)
+        self.painel.pack(fill=tk.BOTH, expand=True)
+        self.janela.update()
+
+    def test_sem_diagrama_o_tabuleiro_nao_mostra_posicao_nenhuma(self) -> None:
+        self.assertEqual(self.painel.items, [])
+        self.assertEqual(self.painel.board.placement, board_edit.EMPTY_PLACEMENT)
+        self.assertEqual(self.painel.fen_var.get(), "")
+
+    def test_sem_diagrama_as_acoes_de_salvar_estao_desabilitadas(self) -> None:
+        """O critério de aceite: não mostra posição **e** não oferece salvar."""
+        for botao in (self.painel.btn_save, self.painel.btn_save_all, self.painel.btn_apply_fen):
+            with self.subTest(botao=str(botao.cget("text"))):
+                self.assertEqual(str(botao.cget("state")), tk.DISABLED)
+
+    def test_a_frase_diz_o_que_fazer_e_nao_que_esta_vazio(self) -> None:
+        """"Sem dados" descreve a tela; o estado vazio útil descreve o gesto seguinte."""
+        frase = self.painel.vazio_var.get()
+        self.assertIn("Clique num diagrama marcado", frase)
+        self.assertIn("OCR", frase)
+
+    def test_com_diagrama_a_frase_some_e_as_acoes_voltam(self) -> None:
+        self.painel.show_ocr_results([_diagrama()], RecognitionOrigin.for_page("livro.pdf", 3))
+        self.janela.update()
+
+        self.assertEqual(self.painel.vazio_var.get(), "")
+        self.assertEqual(str(self.painel.btn_save.cget("state")), tk.NORMAL)
+        self.assertNotEqual(self.painel.board.placement, board_edit.EMPTY_PLACEMENT)
+
+    def test_limpar_volta_ao_estado_vazio(self) -> None:
+        """`clear()` é o caminho de "nenhum diagrama nesta página": ele tem de desfazer tudo."""
+        self.painel.show_ocr_results([_diagrama()], RecognitionOrigin.for_page("livro.pdf", 3))
+        self.painel.clear()
+        self.janela.update()
+
+        self.assertEqual(self.painel.board.placement, board_edit.EMPTY_PLACEMENT)
+        self.assertEqual(str(self.painel.btn_save.cget("state")), tk.DISABLED)
+        self.assertTrue(self.painel.vazio_var.get())
+
+    def test_o_rotulo_lance_vem_antes_do_campo(self) -> None:
+        """Os dois estavam com `side=RIGHT`, e o `pack` põe o primeiro mais à direita: lia-se
+        `[campo] Lance`, ao contrário da ordem de leitura e de todos os outros campos da janela."""
+        linha = self.painel.move_number_entry.master
+        filhos = list(linha.pack_slaves())
+        rotulos = [f for f in filhos if isinstance(f, ttk.Label) and str(f.cget("text")) == "Lance"]
+        self.assertEqual(len(rotulos), 1)
+        self.assertLess(
+            rotulos[0].winfo_rootx(),
+            self.painel.move_number_entry.winfo_rootx(),
+            "o rótulo continua desenhado à direita do campo",
+        )
+
+
 class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
     """Salvar uma posição ilegal passou a ser uma pergunta, e não uma recusa.
 
@@ -246,7 +342,7 @@ class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
             on_sync_study=lambda: None,
             on_state_changed=lambda: None,
             on_focus_request=lambda: None,
-            on_sample_saved=lambda: self.avisos_de_dataset.append(1),
+            on_sample_saved=self.avisos_de_dataset.append,
             remote_fen=RemoteFenSettings,
             on_remote_consent=lambda _cfg: False,
             move_number_of=lambda _pagina, _diagrama: None,

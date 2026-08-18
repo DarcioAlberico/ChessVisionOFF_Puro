@@ -7,6 +7,92 @@ esta avaliação **não** toca, [ROADMAP_FASE14.md](ROADMAP_FASE14.md).
 
 **Data da avaliação:** 2026-08-17 · **Ramo:** `fase-5-modelo-desempenho` · **Commit base:** `3799f35`
 
+## Onde a implementação está (2026-08-17)
+
+**As cinco fases estão fechadas: 27 de 27.** As Fases 20 a 22 saíram primeiro; a 23 (navegação e
+retorno) e a 24 (cópia, formulário e estados vazios) fecharam na sequência, com dez entregas.
+
+| fase | itens | estado |
+|---|---|---|
+| **20** — a fundação visual | S-144 a S-149 | **completa** (6 de 6) |
+| **21** — a janela que não apaga controles | S-150 a S-157 | **completa** (8 de 8) |
+| **22** — cor com um significado só | S-158 a S-160 | **completa** (3 de 3) |
+| **23** — navegação e retorno | S-161 a S-165 | **completa** (5 de 5) |
+| **24** — cópia, formulário e estados vazios | S-166 a S-170 | **completa** (5 de 5) |
+
+O que a fundação deixou pronto, e que os itens seguintes usam em vez de reinventar:
+
+| módulo | o que ele decide | quem já o usa |
+|---|---|---|
+| `ui/tokens.py` | papel → cor, contraste medido, tema claro ou escuro, **matiz e significado** | as 4 superfícies, as marcações da página e do tabuleiro |
+| `ui/estilos.py` | papel de botão → estilo `ttk` | as filas de ação dos 6 painéis |
+| `ui/tipografia.py` | papel → família e tamanho, derivados da fonte do sistema | FEN, PGN, caminho, título de grupo, tabela do Dataset |
+| `ui/texto.py` | onde a linha quebra, dada a largura real do pai | os 12 rótulos multi-linha |
+| `ui/tabela.py` | o que uma coluna é, e o que isso decide | os 2 `Treeview` |
+| `ui/rolagem.py` | quando a aba precisa rolar, e qual aba está aberta | Configuração, Resultado, Galeria |
+| `ui/geometria.py` | o piso da janela, e onde ela cabe entre os monitores | `root.minsize`, a geometria lembrada |
+| `ui/plataforma.py` | DPI por monitor, o ícone do produto, os monitores | a abertura da janela e o `.spec` do bundle |
+| `ui/viewport.py` | zoom, roda, centralização da página | o visualizador de PDF |
+| `ui/page_overlay.py` | o estado de um diagrama, e o **traço** que o diz sem cor | as caixas sobre a página |
+| `ui/barra.py` | em quantas linhas os controles cabem numa largura | as duas barras do PDF |
+| `ui/formato.py` | número e código do CSV como a tela os escreve | a fila de revisão e o Dataset |
+| `ui/campos.py` | o caminho existe? o texto é número? | os três caminhos e o `Learning rate` |
+| `ui/strings.py` | o vocabulário, e o título da janela | o rádio de lado, a lista de partidas, o `root.title` |
+| `ui/rodape.py` | severidade de uma frase, quando ela expira, o que a barra de operação mostra | o rodapé da janela, e o estado do documento que saiu da barra de zoom |
+| `ui/atalhos.py` | qual tecla faz o quê, e como ela se escreve | `bind_shortcuts`, o acelerador do menu |
+| `ui/menu.py` | onde cada comando mora na barra de menus | a barra da janela, e o submenu de recentes |
+| `ui/legenda.py` | a lista de teclas na tela, gerada da tabela | o menu Ajuda |
+| `ui/abas.py` | o rótulo de uma aba, e a contagem dentro dele | as 6 abas, e a aba lembrada da S-156 |
+
+**A regra que isso cria para o resto:** nenhum item das Fases 21 a 24 escreve cor, fonte,
+largura de quebra ou coluna de tabela por conta própria. Se precisar de um valor que não existe,
+o valor entra no módulo que o decide — e não no painel que o usa.
+
+### O que a implementação encontrou e a avaliação não tinha visto
+
+Três achados que só apareceram porque os itens ganharam instrumento, e os três estão travados
+por teste:
+
+- **`TRACEJADO` e `PRONTO` distavam 6° de matiz** e são desenhados na **mesma** superfície — o
+  retângulo verde que você acabou de arrastar e a caixa verde de "este já foi feito". A S-158
+  listou dois pares; a regra, que gera os pares em vez de listá-los, encontrou um terceiro.
+- **`CORRIGIDO` dava 1,31:1 sobre a casa escura do tabuleiro** — uma borda desenhada e invisível
+  em metade das casas. É o defeito da S-146 num lugar que ninguém tinha medido, e trocar a matiz
+  pela S-158 o corrigiu de lado.
+- **`bind_all` sem `add="+"` apaga a ligação anterior**: o visualizador de PDF é construído
+  depois das abas, e sem o `+` ele teria matado a roda delas em silêncio (S-150).
+- **O `grid` do Tk é uma tabela, e barra não é tabela** (S-151). Duas tentativas de refluxo
+  falharam pelo mesmo motivo: a coluna 1 tem a mesma largura em todas as linhas, então cada
+  linha engorda pelo item mais largo da outra e o `grid` **desmapeia** o que não coube — o
+  defeito original de volta, com outra causa. O teste do painel pegou as duas.
+- **Cortar o nome do livro pelo meio pode apagar o volume** (S-167). Com o corte simétrico,
+  `Boost your Chess 1` e `…2` produziam títulos idênticos: o número caía no pedaço elidido. O
+  fim do nome vale mais que o meio, e agora ele fica com dois terços do espaço.
+- **Três cores medidas não chegavam à tela** (S-163). O rodapé pediu ao tema a primeira cor de
+  texto com significado e recebeu preto. `style.lookup("danger.TLabel", "foreground")` sobe a
+  cadeia de herança do Tk: um estilo derivado que não declara a opção devolve a do pai **sem
+  dizer** que não tinha a sua, e sob `bootstrap-light` os três papéis de `_DO_TEMA` respondiam
+  `#212529` — o verde de "já salvo", o vermelho de "posição ilegal" e o cinza de apoio, iguais na
+  janela em execução desde a S-145. O teste com `Style` falso não podia pegar isto: nele os três
+  sempre foram distintos.
+- **O "Abrir recente" nasceu com 13 livros mortos** (S-161). O histórico da S-156 guarda caminho
+  absoluto, e 13 das 29 entradas desta máquina apontam para `C:/PythonChess/` — a pasta de antes de
+  o projeto ser movido (S-37). O menu recusa item sem comando por construção; o item que **tem**
+  comando e falha ao ser clicado só aparece dirigindo a janela.
+- **O tabuleiro cheio da aba Resultado gravava no `labels.csv`** (S-170). A aba abria com a
+  posição inicial desenhada e a FEN vazia -- não porque alguém a desenhasse, mas porque
+  `update_views` nunca era chamado na construção e o `InteractiveBoard` tem a posição inicial como
+  padrão. O que a avaliação viu como "parece dado onde não há dado" tinha uma consequência em
+  disco: "Salvar posição reconhecida" ali gravava a posição inicial como leitura de uma página.
+- **A S-32 estava mais aberta do que a avaliação disse** (S-165). A avaliação contou "16 tooltips
+  para ~70 controles, três deles em botão desabilitado". A varredura por `state=DISABLED` achou
+  **13 controles desabiláveis sem tooltip nenhum** — inclusive os três "Cancelar", que são o caso
+  exato do docstring da S-32: um botão cinza que não diz se ficou assim porque a operação acabou ou
+  porque nunca começou.
+- **Depois da S-158 não sobrou matiz livre no tabuleiro** (S-160). Azul, violeta, vermelho,
+  verde e azeitona têm dono, e a única faixa vaga era um ciano a 21° do azul da página. A
+  seleção da casa saiu do canal de cor: virou forma, e é acromática por eliminação medida.
+
 ---
 
 ## Como esta avaliação foi feita, e por que foram três passadas
@@ -144,7 +230,7 @@ Cada linha aponta o item de spec que a resolve. Os `arquivo:linha` são do commi
 | D2 | As 6 abas misturam **dois níveis de navegação**: Configuração, Dataset e Galeria são do acervo; Resultado, Análise e Revisão são do diagrama que está aberto agora. E a janela abre na Configuração — a aba menos usada depois do primeiro dia | `app_tkinter.py:251-327` | **S-162** |
 | D3 | `enable_traversal()` nunca é chamado: não há `Ctrl+Tab` entre as abas nem tecla de acesso. E as abas não dizem quanto trabalho carregam — 129 pendentes na Revisão, 3.936 linhas no Dataset, 1.480 diagramas na Galeria, nada disso aparece no rótulo | `app_tkinter.py:252` | **S-162** |
 | D4 | A barra de status é um `ttk.Label` cru dentro do **painel esquerdo**, sem separador, sem relevo, sem altura fixa, e mostra o que aconteceu por último em qualquer painel: "Dataset carregado: 3936 amostras." fica na tela enquanto o usuário trabalha na Galeria. Quando a janela encolhe, ela sai da tela | `app_tkinter.py:329` | **S-163** |
-| D5 | Três operações longas — exportar 402 páginas, varrer o livro, varrer a fila — informam **só por texto**. Há 3 `Progressbar` no projeto e nenhuma delas está nessas três. Contra isso, **76 chamadas de `messagebox`**: o retorno que devia ser ambiente é modal | `study_panel.py:163`, `training_dialog.py:180`; `grep -c messagebox` = 76 | **S-164** |
+| D5 | Três operações longas — exportar 402 páginas, varrer o livro, varrer a fila — informam **só por texto**. Há 3 `Progressbar` no projeto e nenhuma delas está nessas três. Contra isso, **66 chamadas de `messagebox`**: o retorno que devia ser ambiente é modal | `study_panel.py:163`, `training_dialog.py:180`; 66 chamadas por AST (o `grep -c` dizia 76, contando `messagebox.NO` e `messagebox.WARNING`, que são constantes e não caixas) | **S-164** |
 | D6 | 16 tooltips para ~70 controles. A `ui/tooltip.py` existe exatamente para explicar botão desabilitado (S-32) e cobre 3 deles | `grep -c "Tooltip("` = 16 | **S-165** |
 
 ### E. Cópia, vocabulário e formulário
@@ -178,14 +264,36 @@ vocabulário que a seguinte usa.
 
 ### O que fazer primeiro se houver só um dia
 
-Nesta ordem, e cada um é medível sozinho:
+Esta lista era o roteiro do primeiro dia, e **os quatro estão feitos** — S-144, S-150, S-146 e
+S-155. Fica registrada porque a ordem se provou certa: os estilos de botão da S-144 e a paleta
+da S-145 são o que fez todos os outros custarem pouco.
 
-1. **S-144** — os estilos semânticos nos botões. Uma tarde, e é a mudança que se vê da porta.
-2. **S-150** — `root.minsize(1180, 800)` mais rolagem vertical nas abas. Uma hora, e devolve o
-   botão de salvar a quem trabalha em notebook.
-3. **S-146** — os dois contrastes reprovados. Duas constantes, e uma delas faz reaparecer as
-   coordenadas que hoje estão desenhadas e invisíveis.
-4. **S-155** — `margin=36`. Uma linha, e as letras a–h deixam de ser cortadas nas duas abas.
+1. ~~**S-144** — os estilos semânticos nos botões.~~ Feito.
+2. ~~**S-150** — `root.minsize(1180, 800)` mais rolagem vertical nas abas.~~ Feito, as duas
+   metades: o piso em `ui/geometria.py` e a rolagem em `ui/rolagem.py`.
+3. ~~**S-146** — os dois contrastes reprovados.~~ Feito, e a S-147 o resolveu pela origem:
+   unificar a esteira dos dois tabuleiros dá **11,03:1** às coordenadas em vez de 1,27:1.
+4. ~~**S-155** — `margin=36`.~~ Feito.
+
+**O roteiro do dia seguinte está feito por inteiro** — S-151, S-160 e S-167 saíram, e com elas
+as Fases 21 e 22 fecharam. Medido depois da S-151: as barras do painel do PDF gastam **113 px**
+em 1700 de largura, contra os ~200 px das cinco de antes.
+
+**O que fazer agora**, na ordem, e agora a ordem muda de natureza: o que sobra não é mais
+conserto de defeito medido, é **reorganização** — e reorganizar depois de consertar era o
+sequenciamento desde o começo.
+
+1. ~~**S-163** — a barra de status é da janela, e não do painel esquerdo.~~ Feito, e ele era o
+   item de que os outros da Fase 23 dependem: a zona de operação do rodapé é onde a S-164 pôs o
+   progresso, e a faixa do conjunto de campo (a nota na S-151) passa a ter para onde ir.
+   ~~**S-164** — progresso com número e cancelamento num lugar só.~~ Feito na sequência, e com
+   ele os modais caíram de 66 para 44 — o que saiu foi notificação, e as 13 perguntas continuam
+   de pé.
+2. ~~**S-161** — a barra de menus.~~ Feita: cinco menus, 26 comandos, os dez atalhos visíveis
+   como acelerador. "Preferências" continua fora — o `settings.json` da S-32 não tem tela, e
+   inventá-la aqui seria outro item.
+3. ~~**S-166** — o vocabulário.~~ Feito: 15 termos em `ui/strings.py`, e a varredura achou duas
+   cópias que a leitura não tinha achado — uma delas no menu que a S-161 acabara de escrever.
 
 ### A restrição técnica que decide como a Fase 20 é escrita
 

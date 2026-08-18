@@ -1,4 +1,4 @@
-"""O botão "Corrigir Net": consentimento, thread e ciclo de vida do envio (S-32/S-49).
+"""O botão "Corrigir pela rede": consentimento, thread e ciclo de vida do envio (S-32/S-49).
 
 Saiu do `ResultPanel` porque não é edição de diagrama: é o único caminho do projeto em que
 **bytes saem da máquina**, e ele carrega três portas de autorização, uma thread, um botão
@@ -26,6 +26,7 @@ from chess_diagram_ocr.fen_utils import is_valid_fen
 from chess_diagram_ocr.net_correction import RemoteFenProvider, build_provider
 from chess_diagram_ocr.settings import RemoteFenSettings
 
+from . import strings
 from .tooltip import Tooltip
 
 __all__ = ["NetCorrectionButton"]
@@ -62,7 +63,7 @@ class NetCorrectionButton:
 
         self._running = False
 
-        self.button = ttk.Button(parent, text="Corrigir Net", command=self.correct)
+        self.button = ttk.Button(parent, text=strings.CORRIGIR_PELA_REDE, command=self.correct)
         # Desabilitado até haver configuração, e com o motivo a um pouso de ponteiro: um
         # botao cinza sem explicacao e pior que um botao ausente (S-32).
         self.tooltip = Tooltip(self.button)
@@ -93,7 +94,8 @@ class NetCorrectionButton:
 
         selecionado = self._board_image()
         if selecionado is None:
-            messagebox.showwarning("Aviso", "Não ha OCR para corrigir.")
+            # Pré-condição no rodapé (S-164).
+            self._on_status("Não há diagrama lido para corrigir.")
             return
 
         configuracao = self._settings()
@@ -101,7 +103,7 @@ class NetCorrectionButton:
         if provedor is None:
             # Não deveria acontecer -- o botao esta desabilitado --, mas o atalho de teclado
             # e o código de teste chegam aqui, e "desabilitado na tela" não e uma garantia.
-            messagebox.showinfo("Corrigir Net", configuracao.disabled_reason())
+            messagebox.showinfo(strings.CORRIGIR_PELA_REDE, configuracao.disabled_reason())
             return
 
         if not configuracao.acknowledged and not self._on_consent(configuracao):
@@ -131,4 +133,4 @@ class NetCorrectionButton:
 
     def _error(self, exc: Exception) -> None:
         self._on_status("Falha ao corrigir com Net.")
-        messagebox.showerror("Corrigir Net", f"Não foi possível corrigir o FEN:\n{exc}")
+        messagebox.showerror(strings.CORRIGIR_PELA_REDE, f"Não foi possível corrigir o FEN:\n{exc}")

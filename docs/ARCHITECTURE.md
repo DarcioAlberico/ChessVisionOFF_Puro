@@ -225,9 +225,8 @@ operações longas e estão no `BusyRegistry`; as outras cinco são de segundos 
 |---|---|---|---|---|
 | OCR de uma página | `app_tkinter._ocr_worker` | não (é rápido) | — declarada | sim (S-31) |
 | exportação de um livro | `ui/export_controller.py` | sim, entre páginas (S-24) | não, tem parcial | sim (S-57) |
-| varredura da fila de revisão | `ui/review_panel.py` | sim, entre páginas | não, os recortes ficam no cache | sim (S-57) |
 | treino | `ui/training_dialog.py` | sim, entre épocas (S-60) | sim, desde a melhor época | escreve o `.pt` |
-| varredura da Galeria | `ui/gallery_panel.py` | sim, entre páginas | **sim**, até a S-120 dar checkpoint | sim (S-57) |
+| varredura do livro — Galeria **e** fila de revisão (S-119) | `ui/gallery_panel.py`, com o `ReviewSink` de `ui/review_panel.py` | sim, entre páginas | não, retoma de onde parou (S-120) | sim (S-57) |
 | busca por nome na base | `ui/gallery_panel.py` | sim, entre partidas | não, é curta | não |
 | busca por posição na base | `ui/gallery_panel.py` | sim, entre pedaços | **sim**, a passada inteira | não |
 | detecção de duplicatas | `ui/dataset_panel.py` | não | não, é derivada | não |
@@ -275,7 +274,9 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 | `data/gallery/<livro>.index.json` | onde estão os diagramas daquele livro e o recorte de cada um | não — derivado do PDF, refeito varrendo o livro |
 | `data/gallery_human.jsonl` | **o extrato do que uma pessoa digitou ou escolheu** na galeria (S-115) | **sim** |
 | `data/games_index.sqlite` | o índice por nome e por posição da base de partidas (S-72, S-73) | não (884 MB — reconstruível a partir do `pgn_database/`) |
-| `data/games_positions.json` | o cache de posições da varredura, com trava e refusão (S-113) | não |
+| `data/games_positions.sqlite` | o cache de posições da varredura, **uma linha por colocação** (S-84, S-113, S-140) | não — **sob demanda**: nasce na primeira vez que alguém abre o cache |
+| `data/games_positions.json` | o mesmo cache no formato anterior. Lido **uma vez** e renomeado; depois disso não é lido por nada | não — **sob demanda**: só em quem usou o programa antes da S-140 |
+| `data/games_positions.json.migrado` | o anterior, já dentro do SQLite. Renomear em vez de apagar porque apagar o que era do usuário não é da alçada de uma migração | não — **sob demanda**: aparece quando o SQLite é criado |
 | `data/games_matches.json` | os casamentos livro↔partida, formato v1 | não |
 | `data/games_matches_v2.json` | os mesmos, formato v2 — o artefato dos 104 minutos de 2026-08-13 (S-128) | não |
 | `data/provenance_index.jsonl` | dHash de cada diagrama do acervo, para recuperar procedência (S-52) | não — **sob demanda**: só existe depois de `cvoff-provenance`, e são horas |

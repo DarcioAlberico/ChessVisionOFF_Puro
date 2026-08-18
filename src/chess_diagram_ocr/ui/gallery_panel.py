@@ -21,19 +21,21 @@ thread e o vaivém entre os dois.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
-from chess_diagram_ocr.config import DEFAULT_READING_ORDER
+from chess_diagram_ocr.config import DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
 from chess_diagram_ocr.gallery import DiagramAnnotation, load_annotations
-from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
-from chess_diagram_ocr.games_cache import PositionCache, load_cache, save_cache
+from chess_diagram_ocr.gallery_scan import GalleryIndex, build_gallery_index, load_index, save_index
+from chess_diagram_ocr.games_cache import PositionStore, open_store
 from chess_diagram_ocr.games_db import (
     DEFAULT_DATABASE_DIR,
     DiagramMatch,
@@ -46,19 +48,44 @@ from chess_diagram_ocr.games_db import (
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
 from chess_diagram_ocr.service import OcrService
 
-from . import tokens
+from . import database_choice, scan_scope, strings, texto, tokens
 from .busy import BusyRegistry, BusyToken
 from .gallery_model import HEADER_FIELDS, GalleryModel, describe_origin
 from .games_dialog import GamesDialog
+from .review_panel import ReviewSink
 from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["GalleryPanel"]
+__all__ = ["BOARD_VIEW_SIZE", "LARGURA_DA_LATERAL", "LARGURA_MINIMA_DA_GALERIA", "GalleryPanel"]
 
 BOARD_VIEW_SIZE = 420
 """Lado do recorte na tela. Fixo: a galeria é para percorrer, e um tamanho que muda a cada
 diagrama faria a imagem pular sob o ponteiro a cada avanço."""
+
+LARGURA_DA_LATERAL = 260
+"""Largura reservada para a coluna "Headers do PGN", **medida** e não estimada (S-154).
+
+O `winfo_reqwidth` da lateral montada é **240 px** em `ttk` puro e **246** sob o
+`bootstrap-light` -- dez rótulos de campo, dez `Entry` de `width=26` e o `padding=8` do
+`LabelFrame`, com o tema acrescentando 6 px de moldura. 260 é o maior dos dois com folga, e a
+folga é o item: reservar o número exato de um tema deixa a coluna 6 px curta no outro, que é
+a mesma família de defeito, menor.
+
+`tests/test_ui_galeria_layout.py` compara este número com a medição de verdade -- acrescentar
+um campo ao PGN sem mexer aqui falha o teste, em vez de voltar a cortar a coluna."""
+
+FOLGA_DO_CORPO = 40
+"""O que fica entre a lateral e o recorte, e nas bordas: `padx=(10, 0)` mais o `padding` do painel."""
+
+LARGURA_MINIMA_DA_GALERIA = BOARD_VIEW_SIZE + LARGURA_DA_LATERAL + FOLGA_DO_CORPO
+"""O que esta aba de fato precisa de largura, somado das partes (S-154).
+
+**É este número que o painel esquerdo passou a ter de piso.** Os 420 de `LARGURA_MINIMA_ESQUERDA`
+eram da S-31, de quando a Galeria não existia -- e a consequência estava fotografada: na posição
+padrão do divisor sobravam ~680 px para 700 pedidos, e quem perdia era a lateral, porque o centro
+já tinha tomado o espaço com `expand=True`. Campos cortados, "Copiar headers para to…" cortado, o
+texto verde de procedência cortado."""
 
 CAPTION_LINES = 8
 """Altura da legenda em linhas. O resto rola -- e **nada é cortado**.
@@ -80,6 +107,47 @@ _SEM_BASE = (
 cópias do mesmo texto divergem na primeira vez que uma delas for corrigida."""
 
 
+@dataclass
+class _LivroVarrido:
+    """O que a varredura de um livro produziu, ou por que ela não aconteceu.
+
+    Os três campos são mutuamente exclusivos, e é de propósito que sejam três e não um estado:
+    "pulado" e "falhou" contam histórias diferentes no relatório, e um `indice=None` sozinho não
+    distinguiria as duas. É o mesmo `BookResult` do `cvoff-scan`, na versão que a janela precisa.
+    """
+
+    path: Path
+    indice: GalleryIndex | None = None
+    pulado: str = ""
+    erro: Exception | None = None
+
+    @property
+    def resumo(self) -> str:
+        if self.erro is not None:
+            return f"{self.path.name}: erro — {self.erro}"
+        if self.pulado:
+            return f"{self.path.name}: pulado — {self.pulado}"
+        indice = self.indice
+        parcial = "" if indice is None or indice.complete else " (parcial)"
+        return f"{self.path.name}: {len(indice or ())} diagrama(s){parcial}"
+
+
+def _mesmo_arquivo(um: Path | None, outro: Path | None) -> bool:
+    """O mesmo PDF, apesar de `..`, de barra invertida e de maiúsculas no Windows.
+
+    Comparar `Path` cru diria que `PDF/livro.pdf` e `C:\\...\\PDF\\Livro.pdf` são livros
+    diferentes -- e é dessa comparação que dependem *duas* decisões: se a fila de revisão é
+    alimentada, e se a galeria recarrega no fim. Errar para menos deixa a fila vazia sem dizer
+    por quê; errar para mais mistura livros na mesma fila.
+    """
+    if um is None or outro is None:
+        return False
+    try:
+        return os.path.normcase(Path(um).resolve()) == os.path.normcase(Path(outro).resolve())
+    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
+        return os.path.normcase(str(um)) == os.path.normcase(str(outro))
+
+
 class GalleryPanel(ttk.Frame):
     """Percorre os diagramas do livro e grava as anotações de exportação."""
 
@@ -93,7 +161,11 @@ class GalleryPanel(ttk.Frame):
         max_boards: Callable[[], int],
         on_status: Callable[[str], None],
         on_page_request: Callable[[int], None],
+        review_sink: Callable[[], ReviewSink | None] | None = None,
+        on_annotations_changed: Callable[[], None] = lambda: None,
         busy: BusyRegistry | None = None,
+        ask_scan_scope: Callable[[Path | None], scan_scope.ScanScope | None] | None = None,
+        ask_databases: Callable[[Sequence[Path]], Sequence[Path] | None] | None = None,
     ) -> None:
         super().__init__(parent, padding=6)
         self._service = service
@@ -104,6 +176,30 @@ class GalleryPanel(ttk.Frame):
         self._on_page_request = on_page_request
         """Pede ao visualizador para ir àquela página. Mora fora porque a galeria não conhece
         o painel de PDF -- e não deveria: são abas irmãs, não uma dona da outra."""
+        self._on_annotations_changed = on_annotations_changed
+        """A anotação de exportação deste livro mudou -- quem pinta o violeta da página precisa
+        saber (S-116). Padrão neutro: a aba abre sozinha num roteiro de teste."""
+        self._ask_scan_scope = ask_scan_scope
+        """Quem pergunta **quais livros** varrer. `None` abre o diálogo de verdade.
+
+        Recebe o livro aberto (ou `None`) e devolve o escopo escolhido, ou `None` se a pessoa
+        desistiu. Existe injetável porque uma janela modal não se dirige de um roteiro de teste."""
+
+        self._ask_databases = ask_databases
+        """Quem pergunta **em quais bases** procurar. `None` abre o diálogo de verdade."""
+
+        self._bases: tuple[Path, ...] | None = None
+        """As bases escolhidas nesta sessão. `None` é "ninguém escolheu ainda" -- e aí valem
+        todos os `.pgn` da pasta, que é o que a S-93 fixou e continua sendo o padrão da caixa.
+
+        A escolha vale para a sessão e para **tudo** que lê base nesta aba: as duas buscas, o
+        cache de posições e a lista de candidatas. Guardá-la só dentro de uma das buscas faria a
+        janela procurar num conjunto e responder com o cache de outro."""
+
+        self._review_sink = review_sink
+        """Quem quer a fila de revisão desta varredura (S-119). Mesma razão do de cima: esta
+        aba não conhece a de Revisão, ela só oferece o que leu a quem a janela apontar. `None`
+        varre só para a Galeria, que é o que um roteiro de teste monta."""
 
         self._busy_registry = busy
         """Onde as três operações longas desta aba se declaram (S-112). `None` fora do app --
@@ -111,6 +207,13 @@ class GalleryPanel(ttk.Frame):
         self._busy_token: BusyToken | None = None
 
         self.model = GalleryModel()
+        self._store: PositionStore | None = None
+        """A conexão aberta com o cache de posições (S-140). Uma por painel, e não por livro.
+
+        Trocar de livro deixou de ler artefato nenhum: a mesma conexão responde sobre o livro
+        novo, e enxerga o que outro processo gravou desde que ela foi aberta -- cada consulta
+        abre a sua leitura. Ela só é refeita quando a **base** muda debaixo da sessão, que é a
+        única coisa que invalida o que está guardado."""
         self._cancel = threading.Event()
         self._scanning = False
         self._photo: ImageTk.PhotoImage | None = None
@@ -143,10 +246,21 @@ class GalleryPanel(ttk.Frame):
     def _build(self) -> None:
         topo = ttk.Frame(self)
         topo.pack(fill=tk.X)
-        self.btn_scan = ttk.Button(topo, text="Varrer livro", command=self.scan)
+        self.btn_scan = ttk.Button(topo, text=strings.VARRER_LIVRO, command=self.scan)
         self.btn_scan.pack(side=tk.LEFT)
+        Tooltip(self.btn_scan).set_text(
+            "Pergunta antes quais livros varrer: o que está aberto, outros escolhidos em disco, "
+            f"ou todos os .pdf de {DEFAULT_PDF_DIR.name}. Com mais de um livro, os que já têm "
+            "índice completo são pulados."
+        )
         self.btn_cancel = ttk.Button(topo, text="Cancelar", command=self.cancel_scan, state=tk.DISABLED)
         self.btn_cancel.pack(side=tk.LEFT, padx=6)
+        Tooltip(
+            self.btn_cancel,
+            "Só fica ativo enquanto uma varredura ou busca está rodando.\n"
+            "A varredura do livro retoma da página seguinte à última terminada; a busca por\n"
+            "posição descarta a passada inteira, porque meia base lida dá contagens que não valem.",
+        )
         # Os dois caminhos, lado a lado e com o criterio no proprio rotulo: "na base" nao
         # distinguia mais nada depois que a busca por posicao virou botao tambem (S-92).
         self.btn_games = ttk.Button(topo, text="Buscar por nome", command=self.search_database)
@@ -154,7 +268,7 @@ class GalleryPanel(ttk.Frame):
         Tooltip(self.btn_games).set_text(
             "Procura na base de partidas os diagramas cuja legenda traz os jogadores, e "
             "preenche lance, vez e headers -- só onde estiver vazio. Uma passada pela base, "
-            "e nada sai da máquina."
+            "e nada sai da máquina. Pergunta antes em quais .pgn procurar."
         )
         self.btn_positions = ttk.Button(topo, text="Buscar pela posição", command=self.search_by_position)
         self.btn_positions.pack(side=tk.LEFT, padx=6)
@@ -162,12 +276,16 @@ class GalleryPanel(ttk.Frame):
             "Procura pelas 64 casas de cada diagrama, e não pela legenda: alcança todo diagrama, "
             "inclusive os sem nome nenhum impresso. Reproduz os lances da base inteira -- cerca "
             "de meia hora na primeira vez, segundos nas seguintes, porque a resposta fica "
-            "guardada. Dá para cancelar."
+            "guardada. Dá para cancelar. Pergunta antes em quais .pgn procurar -- e cada "
+            "conjunto de bases guarda as respostas dele em separado."
         )
         ttk.Label(topo, textvariable=self.scan_var).pack(side=tk.LEFT, padx=10)
 
         corpo = ttk.Frame(self)
         corpo.pack(fill=tk.BOTH, expand=True, pady=6)
+
+        # A lateral primeiro: ela reserva a largura que pede, e o centro fica com o resto (S-154).
+        self._build_side_frame(corpo)
 
         centro = ttk.Frame(corpo)
         centro.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -177,14 +295,12 @@ class GalleryPanel(ttk.Frame):
 
         navegacao = ttk.Frame(centro)
         navegacao.pack(pady=4)
-        ttk.Button(navegacao, text="<<", width=4, command=lambda: self._go(0, absolute=True)).pack(side=tk.LEFT)
-        ttk.Button(navegacao, text="< anterior", command=lambda: self._go(-1)).pack(side=tk.LEFT, padx=4)
-        ttk.Button(navegacao, text="próximo >", command=lambda: self._go(1)).pack(side=tk.LEFT, padx=4)
-        ttk.Button(navegacao, text=">>", width=4, command=lambda: self._go(-1, absolute=True)).pack(side=tk.LEFT)
+        ttk.Button(navegacao, text=strings.PRIMEIRO, width=4, command=lambda: self._go(0, absolute=True)).pack(side=tk.LEFT)
+        ttk.Button(navegacao, text=f"{strings.ANTERIOR} anterior", command=lambda: self._go(-1)).pack(side=tk.LEFT, padx=4)
+        ttk.Button(navegacao, text=f"próximo {strings.PROXIMO}", command=lambda: self._go(1)).pack(side=tk.LEFT, padx=4)
+        ttk.Button(navegacao, text=strings.ULTIMO, width=4, command=lambda: self._go(-1, absolute=True)).pack(side=tk.LEFT)
 
         self._build_caption(centro)
-
-        self._build_side_frame(corpo)
         self._build_footer()
 
     def _build_caption(self, parent: tk.Misc) -> None:
@@ -249,8 +365,13 @@ class GalleryPanel(ttk.Frame):
         return "break"
 
     def _build_side_frame(self, parent: tk.Misc) -> None:
-        lateral = ttk.LabelFrame(parent, text="Headers do PGN", padding=8)
-        lateral.pack(side=tk.LEFT, fill=tk.Y, padx=(10, 0))
+        lateral = ttk.LabelFrame(parent, text=strings.CABECALHOS_DO_PGN, padding=8)
+        # `side=RIGHT`, e empacotada **antes** do centro (S-154). O `pack` reparte na ordem em
+        # que recebe, e o `expand=True` do centro tomava tudo: a lateral -- que são os controles
+        # que gravam a procedência de uma partida, o produto da S-83 à S-94 inteira -- ficava
+        # com o que sobrasse, e não sobrava. Reservar a largura dela primeiro é o item.
+        lateral.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
+        self.lateral = lateral
 
         for linha, nome in enumerate(HEADER_FIELDS):
             ttk.Label(lateral, text=nome).grid(row=linha, column=0, sticky="w", pady=1)
@@ -277,15 +398,16 @@ class GalleryPanel(ttk.Frame):
         Tooltip(self.btn_clear).set_text(
             "Apaga os headers DESTE diagrama, todos de uma vez -- para quando a base preencheu "
             "com a partida errada. O lance, a vez e a partida escolhida ficam. Não mexe em "
-            "nenhum outro diagrama."
+            "nenhum outro diagrama.\n"
+            "Fica cinza quando este diagrama não tem nenhum header preenchido."
         )
 
         # A procedencia da base fica **junto dos campos que ela preencheu**, e nao na barra de
         # status: a barra fala do ultimo gesto, e esta pergunta ("quem preencheu isto?") se faz
         # ao chegar num diagrama, que pode ser dias depois da busca.
-        ttk.Label(lateral, textvariable=self.origin_var, wraplength=220, foreground=tokens.RESERVA[tokens.PRONTO_TEXTO]).grid(
-            row=livre + 5, column=0, columnspan=2, sticky="w", pady=(8, 0)
-        )
+        texto.acompanhar(
+            ttk.Label(lateral, textvariable=self.origin_var, foreground=tokens.RESERVA[tokens.PRONTO_TEXTO])
+        ).grid(row=livre + 5, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         # A lista de partidas fica **junto da procedencia**: as duas respondem "de onde veio
         # isto?", e a lista e o unico caminho para os 350 diagramas do acervo em que a base
@@ -295,7 +417,8 @@ class GalleryPanel(ttk.Frame):
         self.btn_candidates.configure(state=tk.DISABLED)
         Tooltip(self.btn_candidates).set_text(
             "As partidas da base que contêm esta posição. Escolher uma preenche lance, vez e "
-            "headers, e a escolha fica registrada -- uma nova busca na base não a desfaz."
+            "headers, e a escolha fica registrada -- uma nova busca na base não a desfaz.\n"
+            "Fica cinza enquanto a busca na base não achou candidata para este diagrama."
         )
 
         # O rotulo diz a **direcao** da copia. "Aplicar a todos" foi lido como "salvar os
@@ -313,7 +436,8 @@ class GalleryPanel(ttk.Frame):
         self.btn_undo.configure(state=tk.DISABLED)
         Tooltip(self.btn_undo).set_text(
             "Remove dos outros diagramas os valores que a última cópia espalhou. "
-            "Não recupera o que a cópia sobrescreveu -- por isso a pergunta antes."
+            "Não recupera o que a cópia sobrescreveu -- por isso a pergunta antes.\n"
+            "Fica cinza até haver uma cópia desta sessão para desfazer."
         )
 
     def _build_footer(self) -> None:
@@ -326,7 +450,7 @@ class GalleryPanel(ttk.Frame):
         lance.bind("<FocusOut>", lambda _evento: self._commit_move())
         lance.bind("<Return>", lambda _evento: self._commit_move())
 
-        ttk.Label(rodape, text="Vez").pack(side=tk.LEFT)
+        ttk.Label(rodape, text=strings.LADO_A_JOGAR).pack(side=tk.LEFT)
         for rotulo, valor in (("brancas", "w"), ("pretas", "b")):
             ttk.Radiobutton(
                 rodape, text=rotulo, value=valor, variable=self.side_var, command=self._commit_side
@@ -378,23 +502,64 @@ class GalleryPanel(ttk.Frame):
             self._busy_token = None
 
     def scan(self) -> None:
-        """Varre o livro inteiro. É a operação longa desta aba, e roda em thread."""
+        """Pergunta **quais livros** e varre os escolhidos, um a um, em thread (S-119).
+
+        Até 2026-08-18 esta passada e a da fila de revisão eram duas: o mesmo
+        `iter_pdf_diagrams`, os mesmos parâmetros, arquivos diferentes, e nenhuma consumindo o
+        resultado da outra. Medido no `PDF/1000 Chess Problems` (420 páginas): **338 s + 299 s**.
+        Agora o índice desta aba é o superconjunto -- todo diagrama, sem gate -- e a fila é
+        montada do mesmo fluxo, pelo `ReviewSink`.
+
+        **O escopo passou a ser pergunta, e não pressuposto.** O botão só sabia varrer o livro
+        aberto, e sem PDF na tela ele recusava; quem quisesse os outros do acervo tinha o
+        `cvoff-scan --all` e mais nada -- linha de comando para o mesmo gesto que o botão do
+        lado já fazia. Ver `scan_scope` para os três escopos e para por que "pular os já
+        completos" só vale quando há mais de um livro.
+        """
         if self._scanning:
             return
-        caminho = self._pdf_path()
-        if caminho is None:
-            messagebox.showwarning("Galeria", "Abra um PDF antes de varrer.")
+        escopo = self._ask_scope()
+        if escopo is None:
+            # Desistiu no diálogo: nem rodapé, nem log. Cancelar não é evento.
             return
+        if escopo.is_empty:
+            # Pré-condição: rodapé com severidade de aviso, e não caixa modal (S-164).
+            self._on_status("Nenhum livro para varrer: abra um PDF, escolha um em disco ou ponha .pdf na pasta padrão.")
+            return
+        self._start_scan(escopo)
+
+    def _ask_scope(self) -> scan_scope.ScanScope | None:
+        """O diálogo do escopo, ou o que o teste injetou no lugar dele.
+
+        Mesma razão do `campos.linha_de_caminho`: uma janela modal do sistema não se dirige de
+        um roteiro, e o que se quer afirmar é que **a lista escolhida vira varredura** -- não
+        que o Tk sabe desenhar rádios.
+        """
+        if self._ask_scan_scope is not None:
+            return self._ask_scan_scope(self._pdf_path())
+        return scan_scope.ask_scan_scope(self, open_book=self._pdf_path(), folder=DEFAULT_PDF_DIR)
+
+    def _start_scan(self, escopo: scan_scope.ScanScope) -> None:
+        aberto = self._pdf_path()
+        # A fila de revisão é **do livro aberto**: o `ReviewSink` nasce ligado ao `pdf_path` da
+        # janela (ver `ScanRequest`), e alimentá-lo com diagramas de outro livro montaria uma
+        # fila que diz uma procedência e carrega outra. Varrer o acervo grava o índice de cada
+        # livro; a fila continua sendo a do que está na tela -- e só se ele estiver no lote.
+        varre_o_aberto = aberto is not None and any(_mesmo_arquivo(aberto, livro) for livro in escopo.books)
 
         self._scanning = True
         self._cancel.clear()
+        # Criado aqui, na thread do Tk, porque ele le os widgets de configuracao da janela --
+        # e so aqui. Nada de disco: ver `ReviewSink`.
+        coletor = self._review_sink() if self._review_sink is not None and varre_o_aberto else None
         # `loses_work=False` desde a S-120: a varredura retoma da página seguinte à última
         # terminada, então fechar a janela custa **a página em curso**, e não o livro. Era
         # `True` na S-112, com o comentário nomeando este item como o que inverteria o valor.
-        self._register_busy("varredura da Galeria", loses_work=False, detail=caminho.name)
+        detalhe = escopo.books[0].name if len(escopo.books) == 1 else f"{len(escopo.books)} livros"
+        self._register_busy("varredura do livro", loses_work=False, detail=detalhe)
         self._busy(True)
         self.scan_var.set("varrendo...")
-        threading.Thread(target=self._scan_worker, args=(caminho,), daemon=True).start()
+        threading.Thread(target=self._scan_worker, args=(escopo, coletor, aberto), daemon=True).start()
 
     def cancel_scan(self) -> None:
         """Cancela a operação longa em curso -- e o que se perde depende de qual é ela.
@@ -406,14 +571,54 @@ class GalleryPanel(ttk.Frame):
         self._cancel.set()
         self.scan_var.set("cancelando...")
 
-    def _scan_worker(self, caminho: Path) -> None:
+    def _scan_worker(
+        self,
+        escopo: scan_scope.ScanScope,
+        coletor: ReviewSink | None,
+        aberto: Path | None,
+    ) -> None:
+        """Os livros do escopo, um a um, na mesma thread e com o mesmo modelo carregado.
+
+        **Um livro que quebra não derruba o lote.** É a mesma decisão do `cvoff-scan` (S-121):
+        com 34 livros, interromper no primeiro PDF corrompido faria a pessoa descobrir o
+        problema três horas depois, com os 30 seguintes por varrer. O erro vira linha do
+        relatório; o rastro completo fica no log.
+        """
+        resultados: list[_LivroVarrido] = []
+        for numero, caminho in enumerate(escopo.books, start=1):
+            if self._cancel.is_set():
+                break
+            resultados.append(
+                self._scan_one(
+                    caminho,
+                    numero=numero,
+                    livros=len(escopo.books),
+                    coletor=coletor if _mesmo_arquivo(caminho, aberto) else None,
+                    skip_complete=escopo.skip_complete,
+                )
+            )
+        self.after(0, partial(self._scan_finished, escopo, resultados, coletor, aberto))
+
+    def _scan_one(
+        self,
+        caminho: Path,
+        *,
+        numero: int,
+        livros: int,
+        coletor: ReviewSink | None,
+        skip_complete: bool,
+    ) -> _LivroVarrido:
         try:
-            # `model_session` empresta o modelo do servico em vez de carregar outro: e a
-            # mesma razao da S-57, e a varredura da galeria e tao longa quanto a da fila.
             # Retomar de onde parou (S-120). O indice no disco pode ser parcial de uma
             # varredura cancelada ou de uma janela fechada, e `build_gallery_index` ignora
             # sozinho o que estiver completo -- aqui so se entrega o que ha.
             anterior = load_index(caminho)
+            if skip_complete and anterior is not None and anterior.complete and anterior.entries:
+                # Ler o disco aqui, e nao no dialogo: sao 34 arquivos, e o laco do Tk nao abre
+                # arquivo para desenhar botao (S-116).
+                return _LivroVarrido(caminho, pulado=f"{len(anterior.entries)} diagrama(s), índice completo")
+            # `model_session` empresta o modelo do servico em vez de carregar outro: e a
+            # mesma razao da S-57, e a varredura da galeria e tao longa quanto a da fila.
             indice = build_gallery_index(
                 caminho,
                 self._model_path(),
@@ -421,50 +626,181 @@ class GalleryPanel(ttk.Frame):
                 max_boards_per_page=self._max_boards(),
                 reading_order=DEFAULT_READING_ORDER,
                 cancel_event=self._cancel,
-                progress_callback=self._progress,
+                progress_callback=partial(
+                    self._progress, coletor=coletor, nome=caminho.name, numero=numero, livros=livros
+                ),
                 model_session=self._service.model_session(self._model_path()),
                 caption_reader=getattr(self._service, "caption_reader", None),
+                # A fila de revisao sai desta mesma passada (S-119). O `on_scanned` recebe o
+                # diagrama com tudo o que a varredura produziu -- entropia, casas incertas, o
+                # que o decodificador reparou --, que e o que a `GalleryEntry` nao carrega e a
+                # prioridade da S-22 precisa.
+                on_scanned=None if coletor is None else coletor.feed,
             )
             save_index(caminho, indice)
-            self.after(0, lambda: self._scan_done(caminho, indice))
+            return _LivroVarrido(caminho, indice=indice)
         except Exception as exc:  # noqa: BLE001 - a varredura toca modelo, PDF e disco
-            logger.exception("Varredura da galeria falhou.")
-            # `partial` e nao `lambda`: a excecao viaja ligada por valor, e um `lambda` que
-            # fecha sobre `exc` le uma variavel que o `except` ja apagou ao sair do bloco.
-            self.after(0, partial(self._scan_failed, exc))
+            logger.exception("Varredura de %s falhou.", caminho.name)
+            return _LivroVarrido(caminho, erro=exc)
 
-    def _progress(self, pagina: int, total: int, _diagramas: int, _aceitos: int) -> None:
-        self.after(0, lambda: self.scan_var.set(f"varrendo página {pagina} de {total}..."))
+    def _progress(
+        self,
+        pagina: int,
+        total: int,
+        _diagramas: int,
+        _aceitos: int,
+        coletor: ReviewSink | None = None,
+        nome: str = "",
+        numero: int = 1,
+        livros: int = 1,
+    ) -> None:
+        onde = "" if livros == 1 else f"livro {numero} de {livros} · "
+        if self._busy_token is not None:
+            # O número no registro é o que vira barra determinada no rodapé (S-164). **Um só**:
+            # a varredura é uma desde a S-119, e dois registros para ela dariam duas barras
+            # contando a mesma coisa. Com vários livros, a barra é a do livro em curso e o
+            # texto diz de qual -- uma barra que somasse páginas de livros de tamanhos
+            # diferentes andaria em saltos que não querem dizer nada.
+            self._busy_token.update(f"{onde}página {pagina} de {total}", feito=pagina, total=total)
+        rotulo = f"varrendo {onde}página {pagina} de {total}..." if livros == 1 else f"{onde}{nome[:24]}: página {pagina} de {total}..."
+        self.after(0, lambda: self.scan_var.set(rotulo))
+        if coletor is not None:
+            coletor.progress(pagina, total)
 
-    def _scan_done(self, caminho: Path, indice: object) -> None:
+    def _scan_finished(
+        self,
+        escopo: scan_scope.ScanScope,
+        resultados: list[_LivroVarrido],
+        coletor: ReviewSink | None,
+        aberto: Path | None,
+    ) -> None:
+        """Fecha a operação e conta o que aconteceu -- por livro, ou em uma linha para o lote.
+
+        **A fila de revisão é entregue daqui**, e não da thread: `_apply_scan` grava o arquivo
+        e redesenha uma tabela, e as duas coisas são do laço do Tk (S-119).
+        """
+        self._scanning = False
+        self._busy(False)
+
+        # Só o livro aberto volta para a tela desta aba. Carregar o índice de outro deixaria a
+        # galeria mostrando diagramas de um livro que o visualizador não tem aberto, e a
+        # sincronia das duas abas (S-67) passaria a virar páginas erradas. O índice dos outros
+        # está no disco e aparece quando a pessoa abrir aquele livro.
+        if aberto is not None and any(_mesmo_arquivo(item.path, aberto) for item in resultados):
+            self.load_pdf(aberto)
+        if coletor is not None:
+            # A fila fica como estava quando nada foi lido; o que nao pode ficar e a aba de
+            # revisao com o botao cinza para sempre por causa do que aconteceu deste lado.
+            coletor.deliver(cancelled=self._cancel.is_set())
+
+        if not resultados:
+            self.scan_var.set("cancelada")
+            self._on_status("Varredura cancelada antes do primeiro livro: nada foi lido.")
+            return
+        if len(resultados) == 1 and len(escopo.books) == 1:
+            self._report_one_book(resultados[0], aberto)
+            return
+        self._report_many_books(escopo, resultados)
+
+    def _report_one_book(self, item: _LivroVarrido, aberto: Path | None) -> None:
         """Diz **quanto do livro** foi varrido, e não só quantos diagramas saíram (S-120).
 
         Um índice truncado é indistinguível de um completo pelo número de diagramas -- é a
         parte do defeito que custa mais que o tempo perdido --, então o estado parcial vira
         texto na tela, com a página em que a varredura parou e o convite a continuar.
         """
-        self._scanning = False
-        self._busy(False)
-        self.load_pdf(caminho)
+        if item.erro is not None:
+            self.scan_var.set("falhou")
+            messagebox.showerror("Galeria", f"Não foi possível varrer o livro:\n{item.erro}")
+            return
+        if item.pulado:  # defensivo: com um livro só o escopo não pula nada
+            self.scan_var.set("pulado")
+            self._on_status(f"Galeria: {item.path.name} pulado — {item.pulado}.")
+            return
+
+        indice = item.indice
+        do_aberto = aberto is not None and _mesmo_arquivo(item.path, aberto)
+        # Do modelo quando é o livro da tela (é ele que a pessoa vai navegar agora), do índice
+        # quando não é: o modelo não foi trocado, e citar o número dele seria falar do livro errado.
+        quantos = len(self.model) if do_aberto else len(indice or ())
+        onde = "" if do_aberto else f" em {item.path.name}"
         completo = bool(getattr(indice, "complete", True))
         ate = int(getattr(indice, "last_page_done", -1))
         if completo:
-            self.scan_var.set(f"{len(self.model)} diagrama(s)")
-            self._on_status(f"Galeria: {len(self.model)} diagrama(s) varrido(s), livro inteiro.")
+            self.scan_var.set(f"{quantos} diagrama(s)")
+            self._on_status(f"Galeria: {quantos} diagrama(s) varrido(s){onde}, livro inteiro.")
             return
-        self.scan_var.set(f"{len(self.model)} diagrama(s) — parcial até a página {ate + 1}")
+        self.scan_var.set(f"{quantos} diagrama(s) — parcial até a página {ate + 1}")
         self._on_status(
-            f"Galeria: **parcial**. {len(self.model)} diagrama(s) até a página {ate + 1}; "
+            f"Galeria: **parcial**. {quantos} diagrama(s){onde} até a página {ate + 1}; "
             "varrer de novo continua daí, sem repetir o que já foi lido."
         )
 
-    def _scan_failed(self, exc: Exception) -> None:
-        self._scanning = False
-        self._busy(False)
-        self.scan_var.set("falhou")
-        messagebox.showerror("Galeria", f"Não foi possível varrer o livro:\n{exc}")
+    def _report_many_books(self, escopo: scan_scope.ScanScope, resultados: list[_LivroVarrido]) -> None:
+        """Uma linha para o lote inteiro, e o detalhe de cada livro no log.
+
+        Rodapé e não caixa modal (S-164): varrer o acervo é o gesto que se deixa rodando, e uma
+        modal esperando clique no fim seria a janela travada de que a S-121 tirou o projeto.
+        """
+        feitos = [item for item in resultados if item.indice is not None]
+        pulados = [item for item in resultados if item.pulado]
+        erros = [item for item in resultados if item.erro is not None]
+        parciais = [item for item in feitos if not item.indice.complete]  # type: ignore[union-attr]
+        diagramas = sum(len(item.indice or ()) for item in feitos)
+
+        partes = [f"{len(feitos)} livro(s) varrido(s), {diagramas} diagrama(s)"]
+        if parciais:
+            partes.append(f"{len(parciais)} parcial(is) — varrer de novo continua de onde parou")
+        if pulados:
+            partes.append(f"{len(pulados)} pulado(s) por índice já completo")
+        if erros:
+            partes.append(f"{len(erros)} com erro (o rastro está no log)")
+        faltaram = len(escopo.books) - len(resultados)
+        if faltaram:
+            partes.append(f"cancelada com {faltaram} livro(s) sem varrer")
+
+        for item in resultados:
+            logger.info("Varredura: %s", item.resumo)
+        self.scan_var.set(f"{len(feitos)} de {len(escopo.books)} livro(s)")
+        self._on_status("Galeria: " + "; ".join(partes) + ".")
 
     # ------------------------------------------------------------------- busca na base (S-72)
+
+    def _bases_atuais(self) -> list[Path]:
+        """As bases que valem agora: as escolhidas, ou a pasta inteira enquanto ninguém escolheu."""
+        return database_paths() if self._bases is None else list(self._bases)
+
+    def _store_path(self, bases: Sequence[Path]) -> Path:
+        """O arquivo de cache **deste** conjunto de bases. Ver `database_choice.store_path_for`."""
+        return database_choice.store_path_for(bases, default_bases=database_paths())
+
+    def _ask_bases(self) -> list[Path] | None:
+        """Pergunta em quais bases procurar. `None` é "desistiu", e aí nada acontece.
+
+        A resposta é adotada **antes** de a busca começar: trocar o conjunto troca o cache de
+        posições junto (cada conjunto tem o seu arquivo, ver `database_choice.store_path_for`),
+        e uma busca que rodasse com o conjunto novo e o cache antigo devolveria contagens de
+        uma base sobre as partidas de outra.
+        """
+        atuais = self._bases_atuais()
+        if self._ask_databases is not None:
+            escolhidas = self._ask_databases(atuais)
+        else:
+            escolhidas = database_choice.ask_databases(self, selected=atuais)
+        if escolhidas is None:
+            return None
+        escolhidas = list(escolhidas)
+        if escolhidas == atuais:
+            # Confirmar o que já valia não pode custar uma reabertura do cache: a conexão em
+            # pé responde pelo mesmo conjunto, e fechá-la e reabri-la seria trabalho por nada.
+            self._bases = tuple(escolhidas)
+            return escolhidas
+        self._bases = tuple(escolhidas)
+        self.model.database_paths = tuple(escolhidas)
+        # Reabre o cache no arquivo deste conjunto. Sem isto a conexão aberta continuaria
+        # respondendo pelo conjunto anterior -- e ela é a que preenche a lista de candidatas.
+        self._load_position_cache()
+        return escolhidas
 
     def search_database(self) -> None:
         """Procura na base de partidas o que as legendas deste livro nomeiam.
@@ -479,11 +815,15 @@ class GalleryPanel(ttk.Frame):
         if self._scanning:
             return
         if self.model.is_empty:
-            messagebox.showinfo("Base de partidas", "Varra o livro antes: a busca usa as legendas dos diagramas.")
+            # Pré-condição de uma frase: rodapé (S-164). O `_SEM_BASE` logo abaixo continua
+            # modal -- ele é uma instrução de várias linhas, e o rodapé é uma linha só.
+            self._on_status("Varra o livro antes: a busca usa as legendas dos diagramas.")
             return
-        bases = database_paths()
-        if not bases:
+        if not self._bases_atuais():
             messagebox.showinfo("Base de partidas", _SEM_BASE)
+            return
+        bases = self._ask_bases()
+        if not bases:
             return
         pares = self.model.pending_pairs()
         if not pares:
@@ -561,18 +901,24 @@ class GalleryPanel(ttk.Frame):
         if self._scanning:
             return
         if self.model.is_empty:
-            messagebox.showinfo("Base de partidas", "Varra o livro antes: a busca usa as posições dos diagramas.")
+            # Pré-condição de uma frase: rodapé (S-164).
+            self._on_status("Varra o livro antes: a busca usa as posições dos diagramas.")
             return
-        bases = database_paths()
-        if not bases:
+        if not self._bases_atuais():
             messagebox.showinfo("Base de partidas", _SEM_BASE)
+            return
+        bases = self._ask_bases()
+        if not bases:
             return
 
         alvos = {entrada.placement for entrada in self.model.index.entries if entrada.placement}
-        cache = load_cache(database=bases)
-        faltando = cache.missing(alvos)
+        self._load_position_cache()
+        if self._store is None:
+            self._on_status("O cache de posições não abriu; a busca precisa dele para não repetir a base.")
+            return
+        faltando = self._store.missing(alvos)
         if not faltando:
-            self._positions_done(cache, alvos, games_read=0)
+            self._positions_done(alvos, games_read=0)
             return
         if not messagebox.askokcancel(
             "Base de partidas",
@@ -598,40 +944,65 @@ class GalleryPanel(ttk.Frame):
         self._busy(True)
         self.scan_var.set(f"base: {len(faltando)} posição(ões) a procurar...")
         threading.Thread(
-            target=self._positions_worker, args=(bases, cache, alvos, faltando), daemon=True
+            target=self._positions_worker,
+            args=(bases, alvos, faltando, self._store_path(bases)),
+            daemon=True,
         ).start()
 
     def _positions_worker(
-        self, bases: list[Path], cache: PositionCache, alvos: set[str], faltando: set[str]
+        self, bases: list[Path], alvos: set[str], faltando: set[str], store_path: Path | None = None
     ) -> None:
+        """A passada pela base, fora da thread do Tk -- **com a conexão dela** (S-140).
+
+        A conexão de `self._store` é da thread da janela e continua respondendo à tela
+        enquanto isto roda; uma segunda, aberta aqui e fechada aqui, é o que evita duas threads
+        no mesmo objeto de banco. As linhas gravadas aparecem para a primeira sozinhas: cada
+        consulta dela abre a sua própria leitura do arquivo.
+        """
         try:
             indice = scan_by_positions(bases, faltando, progress=self._positions_progress, cancel=self._cancel)
             if self._cancel.is_set():
                 self.after(0, self._positions_cancelled)
                 return
+            if not indice.complete:
+                # Descartada sem ninguem ter cancelado: um processo morreu no meio (S-171). O
+                # cache recusa a gravacao sozinho; o que falta e a tela dizer o que houve, em
+                # vez de anunciar "0 casamentos" como se a base tivesse respondido isso.
+                self.after(0, self._positions_incomplete)
+                return
             # `faltando` inteiro, e nao so as posicoes que casaram: uma posicao que a base nao
             # conhece precisa ficar registrada como **perguntada**, senao ela volta ao alvo de
             # toda busca futura -- e no acervo medido essas sao a maioria (S-84).
-            cache.update(indice, faltando)
-            save_cache(cache)
-            self.after(0, partial(self._positions_done, cache, alvos, indice.games_read))
+            # No arquivo **deste** conjunto de bases: a conexao da tela ja esta nele, e gravar
+            # no caminho padrao misturaria as respostas de dois conjuntos no mesmo cache.
+            with open_store(store_path or self._store_path(bases), database=bases) as gravacao:
+                gravacao.update(indice, faltando)
+            self.after(0, partial(self._positions_done, alvos, indice.games_read))
         except Exception as exc:  # noqa: BLE001 - a base e de terceiro e o arquivo e enorme
             logger.exception("Busca por posição falhou.")
             self.after(0, partial(self._search_failed, exc))
 
     def _positions_progress(self, feitos: int, total: int) -> None:
         """Vem da thread da busca; a `StringVar` só pode ser tocada pelo laço do Tk."""
+        if self._busy_token is not None:
+            # A mais cara do programa -- ~56 min medidos na Fase 13 -- e a que mais precisa de
+            # uma fração: só o número diz se vale esperar ou cancelar agora (S-164).
+            self._busy_token.update(f"pedaço {feitos} de {total}", feito=feitos, total=total)
         self.after(0, lambda: self.scan_var.set(f"base: pedaço {feitos} de {total}..."))
 
-    def _positions_done(self, cache: PositionCache, alvos: set[str], games_read: int) -> None:
+    def _positions_done(self, alvos: set[str], games_read: int) -> None:
         """Aplica o que a base respondeu e **deixa o cache em pé** para a lista de candidatas.
 
-        Trocar `model.position_cache` é o que faz o botão "Partidas da base" acender no mesmo
-        gesto: a varredura acabou de descobrir as candidatas de cada diagrama, e mandar a pessoa
-        reabrir o livro para vê-las seria esconder o que ela pagou meia hora para ter.
+        O botão "Partidas da base" acende no mesmo gesto, e agora sem passar objeto nenhum de
+        volta: a conexão que a tela já tem enxerga as linhas que a thread gravou. Mandar a
+        pessoa reabrir o livro para vê-las seria esconder o que ela pagou meia hora para ter.
         """
         self._scanning = False
         self._busy(False)
+        cache = self._store
+        if cache is None:  # pragma: no cover - so acontece se o cache fechou no meio
+            self._on_status("A busca terminou, mas o cache de posições fechou antes de responder.")
+            return
         self.model.position_cache = cache
 
         casamentos = match_positions(self.model.index.entries, cache.to_index(alvos))
@@ -652,6 +1023,22 @@ class GalleryPanel(ttk.Frame):
             "Nada foi sobrescrito."
         )
 
+    def _positions_incomplete(self) -> None:
+        """A passada morreu no meio, e ninguém cancelou (S-171).
+
+        A frase é diferente da de cancelamento de propósito: ali a pessoa sabe o que fez, aqui
+        ela não fez nada e precisa saber que **pode tentar de novo** -- nada foi gravado, então
+        as colocações continuam por perguntar.
+        """
+        self._scanning = False
+        self._busy(False)
+        self.scan_var.set("interrompida")
+        self._on_status(
+            "A busca por posição foi interrompida: um dos processos de leitura da base morreu. "
+            "Nada foi gravado, e as posições continuam por perguntar -- dá para tentar de novo. "
+            "O arquivo de log tem a linha com o que aconteceu."
+        )
+
     def _positions_cancelled(self) -> None:
         """Cancelou: **nada** é gravado, e a tela diz isso em vez de deixar parecer que gravou."""
         self._scanning = False
@@ -668,7 +1055,7 @@ class GalleryPanel(ttk.Frame):
         """Abre a lista de partidas que contêm a posição deste diagrama.
 
         **Lê o cache, não a base.** É o que faz disto um clique e não uma janela travada por
-        meia hora: a varredura já respondeu, e a resposta está em `data/games_positions.json`.
+        meia hora: a varredura já respondeu, e a resposta está em `data/games_positions.sqlite`.
         """
         candidatas, _total = self.model.current_candidates()
         # Sem candidata a janela ainda abre **se a legenda nomeia os jogadores**: e o caminho
@@ -685,21 +1072,46 @@ class GalleryPanel(ttk.Frame):
         GamesDialog(self, model=self.model, on_applied=self._candidate_applied)
 
     def _candidate_applied(self, mensagem: str) -> None:
-        """Volta da janela de candidatas: grava, redesenha e conta o que houve."""
+        """Volta da janela de candidatas: grava, redesenha e conta o que houve.
+
+        **E avisa quem pinta as caixas da página** (S-116, corte 2). Escolher uma candidata é o
+        que grava `confirmed_from`, e é o violeta do visualizador. Até aqui ele só reaparecia na
+        próxima gravação de amostra -- porque o `Ctrl+S` relia as anotações do livro de
+        carona --, o que era acidente antes e passaria a ser defeito depois de o `Ctrl+S`
+        parar de ler. Agora quem muda a anotação é quem avisa.
+        """
         self._persist()
         self.refresh(request_page=False)
+        self._on_annotations_changed()
         self._on_status(mensagem)
 
     def _load_position_cache(self) -> None:
-        """Carrega o cache de posições, se houver. Falha em silêncio -- ele é opcional.
+        """Deixa o cache de posições aberto e apontado à base de agora. Falha em silêncio.
 
         Sem cache o botão fica desligado e o resto da aba funciona igual: a lista é um caminho
         a mais, e não uma pré-condição para anotar um livro.
+
+        **Aberto uma vez, e não relido por livro (S-140).** Até 2026-08-18 isto era um
+        `json.loads` do acervo inteiro a cada troca de PDF -- ~4,2 s de parse e ~190 MB para
+        responder sobre as ~1.400 posições de um livro. Agora abrir é uma conexão, e o que ela
+        custa não cresce com o acervo. A base é reconferida a cada chamada porque é a única
+        coisa que pode ter mudado: um `.pgn` a mais na pasta muda as contagens de tudo que está
+        guardado, e uma conexão aberta antes dele responderia o número de ontem.
         """
+        bases = self._bases_atuais()
+        caminho = self._store_path(bases)
         try:
-            self.model.position_cache = load_cache(database=database_paths())
+            if self._store is not None:
+                if self._store.path == caminho and self._store.matches(bases):
+                    self.model.position_cache = self._store
+                    return
+                self._store.close()
+                self._store = None
+            self._store = open_store(caminho, database=bases)
+            self.model.position_cache = self._store
         except Exception:  # noqa: BLE001 - cache e material derivado; sem ele a aba segue
             logger.exception("Não foi possível ler o cache de posições.")
+            self._store = None
             self.model.position_cache = None
 
     def _refresh_candidates_button(self) -> None:
@@ -737,7 +1149,7 @@ class GalleryPanel(ttk.Frame):
             # varredura fazia o número digitado lá sumir num livro nunca varrido.
             annotations=load_annotations(pdf_path),
             pdf_path=pdf_path,
-            database_paths=tuple(database_paths()),
+            database_paths=tuple(self._bases_atuais()),
             index_path=DEFAULT_INDEX_PATH,
         )
         # O cache é do acervo, não do livro: ele é lido uma vez por troca de PDF porque uma

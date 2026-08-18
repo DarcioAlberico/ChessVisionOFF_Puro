@@ -30,17 +30,24 @@ RAIZ = Path(__file__).resolve().parents[1]
 HEX = re.compile(r'"#[0-9a-fA-F]{6}"')
 
 PARES_DE_TEXTO = (
-    (tokens.TEXTO_SECUNDARIO, tokens.SUPERFICIE_TABULEIRO),
     (tokens.TEXTO_SECUNDARIO, tokens.SUPERFICIE_PADRAO),
-    (tokens.PRONTO_TEXTO, tokens.SUPERFICIE_TABULEIRO),
     (tokens.PRONTO_TEXTO, tokens.SUPERFICIE_PADRAO),
-    (tokens.PROBLEMA, tokens.SUPERFICIE_TABULEIRO),
-    (tokens.ATENCAO, tokens.SUPERFICIE_TABULEIRO),
+    (tokens.PROBLEMA, tokens.SUPERFICIE_PADRAO),
+    (tokens.ATENCAO, tokens.SUPERFICIE_PADRAO),
     (tokens.DIVERGENTE, tokens.SUPERFICIE_PADRAO),
-    (tokens.CORRIGIDO_TEXTO, tokens.SUPERFICIE_PADRAO),
+    (tokens.VIZINHA_TEXTO, tokens.SUPERFICIE_PADRAO),
     (tokens.TEXTO_PADRAO, tokens.SUPERFICIE_PADRAO),
 )
-"""Todo par (texto, fundo) que a janela de fato desenha. Piso AA de 4,5:1."""
+"""Todo par (texto, fundo) que a janela de fato desenha. Piso AA de 4,5:1.
+
+**A lista encolheu na S-147, e por honestidade.** Metade dela media texto contra
+`SUPERFICIE_TABULEIRO`, e a janela nunca escreveu uma letra ali: os rótulos de material, de
+legalidade e de procedência moram em `ttk.Frame`, não no canvas do tabuleiro. O único texto
+sobre a esteira são as coordenadas, e elas não têm cor fixa a medir — `sobre_superficie` as
+resolve contra o fundo real, que é o teste logo abaixo.
+
+Manter os pares falsos custava mais do que não medir nada: com a esteira escura da S-147 eles
+reprovariam, e a correção seria clarear a esteira por causa de um texto que não existe."""
 
 PARES_DE_MARCACAO = (
     (tokens.PRONTO, tokens.SUPERFICIE_PAGINA),
@@ -91,25 +98,30 @@ class ContrasteTests(unittest.TestCase):
         self.assertLess(razao_de_contraste(RESERVA[tokens.PRONTO], "#ffffff"), AA_TEXTO)
         self.assertGreaterEqual(razao_de_contraste(RESERVA[tokens.PRONTO_TEXTO], "#ffffff"), AA_TEXTO)
 
-    def test_a_coordenada_e_legivel_nas_duas_superficies_de_tabuleiro(self) -> None:
+    def test_a_coordenada_e_legivel_em_toda_superficie_de_canvas(self) -> None:
         """O defeito que a S-146 chama de o pior dos dois: as letras a–h desenhadas e invisíveis.
 
         A constante era `#d8d8d8`, escolhida para o tabuleiro escuro da Análise. Sobre o
-        `#f2f2f2` do Resultado dá **1,27:1**.
-        """
-        antiga = "#d8d8d8"
-        self.assertLess(razao_de_contraste(antiga, RESERVA[tokens.SUPERFICIE_TABULEIRO]), 1.5)
+        `#f2f2f2` que o Resultado usava então, **1,27:1**.
 
-        for superficie in (tokens.SUPERFICIE_TABULEIRO, tokens.SUPERFICIE_ESTUDO):
-            with self.subTest(superficie=superficie):
-                escolhida = sobre_superficie(RESERVA[superficie])
-                razao = razao_de_contraste(escolhida, RESERVA[superficie])
-                self.assertGreaterEqual(razao, AA_TEXTO, f"{escolhida} sobre {superficie}: {razao:.2f}:1")
+        A varredura passou a ser sobre `SUPERFICIES` inteira, nos **dois** temas: depois da
+        S-147 cada fundo de canvas tem dois valores, e um deles legível não diz nada sobre o
+        outro.
+        """
+        antiga, antigo_fundo = "#d8d8d8", "#f2f2f2"
+        self.assertLess(razao_de_contraste(antiga, antigo_fundo), 1.5)
+
+        for papel in tokens.SUPERFICIES:
+            for tema, fundo in (("claro", RESERVA[papel]), ("escuro", tokens._NO_ESCURO[papel])):
+                with self.subTest(superficie=papel, tema=tema):
+                    escolhida = sobre_superficie(fundo)
+                    razao = razao_de_contraste(escolhida, fundo)
+                    self.assertGreaterEqual(razao, AA_TEXTO, f"{escolhida} sobre {papel}/{tema}: {razao:.2f}:1")
 
     def test_a_coordenada_escolhe_lados_opostos_para_fundos_opostos(self) -> None:
         """Se a função devolvesse a mesma cor nos dois, ela não estaria resolvendo nada."""
-        clara = sobre_superficie(RESERVA[tokens.SUPERFICIE_ESTUDO])
-        escura = sobre_superficie(RESERVA[tokens.SUPERFICIE_TABULEIRO])
+        clara = sobre_superficie(RESERVA[tokens.SUPERFICIE_TABULEIRO])
+        escura = sobre_superficie(RESERVA[tokens.SUPERFICIE_DICA])
         self.assertNotEqual(clara, escura)
 
 
@@ -149,6 +161,33 @@ class PaletaTests(unittest.TestCase):
 
         self.assertEqual(cor(tokens.PRONTO_TEXTO, EstiloFalso()), "#0b5ed7")
         self.assertEqual(cor(tokens.PROBLEMA, EstiloFalso()), RESERVA[tokens.PROBLEMA])
+
+    def test_o_tema_que_so_herda_a_cor_do_estilo_base_nao_esta_respondendo(self) -> None:
+        """O defeito que o rodapé da S-163 expôs, e ele valia para os três papéis de texto.
+
+        `style.lookup` sobe a cadeia de herança do Tk: um `danger.TLabel` que não declara
+        `foreground` devolve o do `TLabel` sem dizer que não tinha o seu. Sob `bootstrap-light` os
+        três papéis de `_DO_TEMA` resolviam para o **mesmo** `#212529` -- "já salvo", "posição
+        ilegal" e contagem de apoio na mesma cor, e as três medidas da S-146 sem chegar à tela.
+        """
+
+        class EstiloQueSoHerda:
+            def lookup(self, layout: str, option: str) -> str:
+                return "#212529"
+
+        for papel in tokens._DO_TEMA:
+            with self.subTest(papel=papel):
+                self.assertEqual(cor(papel, EstiloQueSoHerda()), RESERVA[papel])
+
+    def test_os_tres_papeis_de_texto_do_tema_sao_distintos_entre_si(self) -> None:
+        """A propriedade que o usuário vê, e a que estava falsa: três significados, três cores."""
+
+        class EstiloQueSoHerda:
+            def lookup(self, layout: str, option: str) -> str:
+                return "#212529"
+
+        resolvidas = {cor(papel, EstiloQueSoHerda()) for papel in tokens._DO_TEMA}
+        self.assertEqual(len(resolvidas), len(tokens._DO_TEMA))
 
     def test_o_tema_que_levanta_nao_derruba_a_janela(self) -> None:
         """Aparência não pode derrubar ferramenta -- é o contrato do `ui/theme.py` desde a S-53."""
@@ -211,17 +250,11 @@ class CoordenadaNoCanvasTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        import tkinter as tk
+        # A raiz do processo (`tests/tk_root.py`), e não uma própria: este módulo criava a sua
+        # e a destruía no fim, que é exatamente o que deixa as raízes seguintes sem `init.tcl`.
+        from tk_root import raiz
 
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        cls.root = raiz()
 
     def _cor_no_fundo(self, fundo: str) -> str:
         import tkinter as tk
@@ -234,13 +267,13 @@ class CoordenadaNoCanvasTests(unittest.TestCase):
         finally:
             canvas.destroy()
 
-    def test_o_tabuleiro_claro_recebe_coordenada_escura(self) -> None:
-        clara = RESERVA[tokens.SUPERFICIE_TABULEIRO]
+    def test_um_canvas_claro_recebe_coordenada_escura(self) -> None:
+        clara = RESERVA[tokens.SUPERFICIE_DICA]
         escolhida = self._cor_no_fundo(clara)
         self.assertGreaterEqual(razao_de_contraste(escolhida, clara), AA_TEXTO)
 
-    def test_o_tabuleiro_escuro_recebe_coordenada_clara(self) -> None:
-        escuro = RESERVA[tokens.SUPERFICIE_ESTUDO]
+    def test_a_esteira_do_tabuleiro_recebe_coordenada_clara(self) -> None:
+        escuro = RESERVA[tokens.SUPERFICIE_TABULEIRO]
         escolhida = self._cor_no_fundo(escuro)
         self.assertGreaterEqual(razao_de_contraste(escolhida, escuro), AA_TEXTO)
 

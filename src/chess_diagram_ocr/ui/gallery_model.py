@@ -26,7 +26,7 @@ from chess_diagram_ocr.gallery import (
     save_annotations,
 )
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
-from chess_diagram_ocr.games_cache import PositionCache
+from chess_diagram_ocr.games_cache import PositionCache, PositionStore
 from chess_diagram_ocr.games_db import (
     DiagramMatch,
     PositionHit,
@@ -219,11 +219,11 @@ class GalleryModel:
     pdf_path: Path | None = None
     position: int = 0
 
-    position_cache: PositionCache | None = None
+    position_cache: PositionCache | PositionStore | None = None
     """O que a base respondeu, por posição (S-84). `None` é "ninguém varreu ainda".
 
     Injetado e não carregado aqui pela mesma razão do `gallery_dir`: quem decide de onde ler é
-    quem monta o painel, e um modelo que abrisse `data/games_positions.json` sozinho não teria
+    quem monta o painel, e um modelo que abrisse `data/games_positions.sqlite` sozinho não teria
     como ser testado sem o arquivo de verdade."""
 
     database_paths: tuple[Path, ...] = ()
@@ -579,8 +579,8 @@ class GalleryModel:
         """
         if entry is None or self.position_cache is None:
             return (), 0
-        guardada = self.position_cache.positions.get(getattr(entry, "placement", ""))
-        if guardada is None or not guardada.count:
+        guardada = self.position_cache.get(getattr(entry, "placement", ""))
+        if not guardada.count:
             return (), 0
         ordenadas, _ = rank_candidates(guardada.games, pair_from_caption(entry.caption or ""))
         return ordenadas, guardada.count

@@ -48,7 +48,7 @@ import numpy as np
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
 from ..fen_utils import square_name
-from . import board_edit, board_render, tokens
+from . import board_edit, board_render, theme, tipografia, tokens
 from .board_model import BoardChange, BoardMode, BoardModel, ChangeKind
 from .board_render import (
     LIGHT_SQUARE,
@@ -104,7 +104,6 @@ class InteractiveBoard(ttk.Frame):
         show_coordinates: bool = True,
         min_size: int = 240,
         max_size: int = 560,
-        background: str = tokens.RESERVA[tokens.SUPERFICIE_ESTUDO],
         uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     ) -> None:
         super().__init__(parent)
@@ -141,7 +140,16 @@ class InteractiveBoard(ttk.Frame):
         self._brush_var = tk.StringVar(value=BRUSH_NONE)
         self._palette_buttons: dict[str, tk.Radiobutton] = {}
 
-        self.canvas = tk.Canvas(self, bg=background, highlightthickness=0, cursor="hand2")
+        # Sem parâmetro de cor: quem decide a esteira é o token, não o painel que hospeda
+        # (S-147). Era `background=` no construtor, e o Resultado passava claro enquanto a
+        # Análise ficava com o padrão escuro -- o mesmo widget com duas identidades em duas
+        # abas vizinhas, e nada além do argumento a justificar.
+        self.canvas = tk.Canvas(
+            self,
+            bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO),
+            highlightthickness=0,
+            cursor="hand2",
+        )
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
@@ -554,14 +562,18 @@ class InteractiveBoard(ttk.Frame):
         tip = tk.Toplevel(self.canvas)
         tip.wm_overrideredirect(True)
         tip.wm_geometry(f"+{x_root + 14}+{y_root + 14}")
+        fundo = theme.cor_atual(tokens.SUPERFICIE_DICA)
         tk.Label(
             tip,
             text="\n".join(lines),
             justify=tk.LEFT,
-            background=tokens.RESERVA[tokens.SUPERFICIE_DICA],
+            background=fundo,
+            # `tk.Label` não herda cor de letra do `Style`: sem isto o texto é preto em
+            # qualquer tema, e sobre a dica escura da S-147 ele desapareceria.
+            foreground=tokens.sobre_superficie(fundo),
             relief=tk.SOLID,
             borderwidth=1,
-            font=("Segoe UI", 9),
+            font=theme.fonte_atual(tipografia.CORPO),
             padx=6,
             pady=4,
         ).pack()

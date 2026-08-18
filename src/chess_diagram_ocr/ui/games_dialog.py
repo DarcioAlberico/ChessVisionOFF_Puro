@@ -21,8 +21,9 @@ from tkinter import messagebox, ttk
 from chess_diagram_ocr.games_db import PositionHit, agrees_with_caption
 from chess_diagram_ocr.pdf_text import fold
 
-from . import tokens
+from . import theme, tipografia, tokens
 from .gallery_model import GalleryModel
+from .tooltip import Tooltip
 
 __all__ = ["GamesDialog"]
 
@@ -97,9 +98,11 @@ class GamesDialog(tk.Toplevel):
         # A escolhida em negrito, a confirmada pela legenda em verde, a que os vizinhos tambem
         # tem em azul: as tres informacoes que decidem o clique, e nenhuma delas cabe numa
         # coluna sem virar mais uma coluna.
-        self.tree.tag_configure("escolhida", font=("TkDefaultFont", 9, "bold"))
+        # Negrito no corpo, e não um degrau acima: a linha escolhida precisa de peso e não de
+        # nível -- subir de tamanho faria a linha crescer e a lista pular ao trocar de escolha.
+        self.tree.tag_configure("escolhida", font=theme.fonte_atual(tipografia.CORPO, negrito=True))
         self.tree.tag_configure("legenda", foreground=tokens.RESERVA[tokens.PRONTO_TEXTO])
-        self.tree.tag_configure("vizinha", foreground=tokens.RESERVA[tokens.CORRIGIDO_TEXTO])
+        self.tree.tag_configure("vizinha", foreground=tokens.RESERVA[tokens.VIZINHA_TEXTO])
         self.tree.tag_configure("porNome", foreground=tokens.RESERVA[tokens.DIVERGENTE])
 
         rodape = ttk.Frame(self, padding=8)
@@ -111,6 +114,11 @@ class GamesDialog(tk.Toplevel):
             rodape, text="Aplicar aos vizinhos...", command=self.apply_to_neighbours, state=tk.DISABLED
         )
         self.btn_neighbours.pack(side=tk.LEFT, padx=6)
+        Tooltip(
+            self.btn_neighbours,
+            "Fica cinza quando os diagramas vizinhos desta página não têm partida escolhida:\n"
+            "é deles que sai o palpite, e sem eles não há o que copiar.",
+        )
         ttk.Button(rodape, text="Fechar", command=self.destroy).pack(side=tk.RIGHT)
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self._update_neighbour_button())
 

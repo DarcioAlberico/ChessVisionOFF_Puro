@@ -582,6 +582,46 @@ def saved_diagrams_by_page(
     return por_pagina
 
 
+@dataclass(frozen=True)
+class SavedSample:
+    """A procedência de uma amostra recém-gravada, **na contagem da interface** (S-116).
+
+    Base 0 nos dois índices, como `saved_diagrams_by_page` devolve -- e não como o CSV guarda.
+    Existe para que a janela saiba o que ela mesma acabou de escrever sem ir perguntar ao
+    arquivo: era o último custo do `Ctrl+S`, e ele cresce com o `labels.csv`.
+    """
+
+    source_pdf: str
+    """O **nome** do arquivo, não o caminho: é o que a S-19 grava e o que o índice compara."""
+
+    page_index: int
+    diagram_index: int
+
+
+def note_saved_diagram(
+    por_pagina: dict[int, set[int]], saved: SavedSample, *, source_pdf: str
+) -> bool:
+    """Marca no índice de "já salvo" a amostra que a janela acabou de gravar. Devolve se entrou.
+
+    **É o corte 2 da S-116**, e o que ele substitui é uma releitura do `labels.csv` inteiro
+    (30,9 ms sobre 3.936 linhas, e crescendo) para descobrir uma linha que o próprio processo
+    acabou de escrever.
+
+    Ela mora aqui, e não no painel, pela mesma razão de `saved_diagrams_by_page`: a conversão
+    entre a contagem do CSV e a da tela tem um lugar só, e as duas funções produzem o mesmo
+    índice -- é isso que um teste pode afirmar, e afirma.
+
+    Amostra de outro livro não entra: o índice é do que está aberto. Amostra sem procedência
+    também não chega aqui, porque quem a monta devolve `None` antes (ver `_saved_sample`).
+    """
+    if not saved.source_pdf.strip() or saved.source_pdf.strip() != str(source_pdf).strip():
+        return False
+    if saved.page_index < 0 or saved.diagram_index < 0:
+        return False
+    por_pagina.setdefault(saved.page_index, set()).add(saved.diagram_index)
+    return True
+
+
 def pages_with_training_samples(
     entries: Iterable[DatasetEntry], splits: Mapping[str, str]
 ) -> dict[tuple[str, int], int]:

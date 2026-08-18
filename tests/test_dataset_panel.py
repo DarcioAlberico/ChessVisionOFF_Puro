@@ -20,6 +20,7 @@ da decisão; o resto é o painel de verdade.
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 import unittest
 from pathlib import Path
@@ -27,6 +28,7 @@ from unittest import mock
 
 from tk_root import raiz as raiz_do_processo
 
+from chess_diagram_ocr.labels import SavedSample
 from chess_diagram_ocr.ui import dataset_panel as modulo
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 
@@ -124,6 +126,135 @@ class RecargaPreguicosaTests(unittest.TestCase):
         que o sinal chega ao painel sem que a janela principal precise saber de nada.
         """
         self.assertTrue(self.painel.bind("<Map>"), "o painel precisa escutar <Map>")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class _VarFalsa:
+    """O bastante de uma `tk.StringVar` para a janela mínima ler o caminho do CSV."""
+
+    def __init__(self, valor: str) -> None:
+        self._valor = valor
+
+    def get(self) -> str:
+        return self._valor
+
+
+def _janela_minima(app_tkinter):  # noqa: ANN001, ANN202
+    """A janela reduzida ao que o aviso de "amostra gravada" toca, com os métodos reais.
+
+    Mesmo recurso do `test_packaging._janela_minima`: montar o `ChessOcrTkApp` inteiro exigiria
+    checkpoint e PDF, e o que se testa aqui é o que este caminho **deixou de ler**.
+    """
+    tipo = type(
+        "JanelaMinima",
+        (),
+        {
+            "_reload_dataset_panel": app_tkinter.ChessOcrTkApp._reload_dataset_panel,
+            "_reload_saved_diagrams": app_tkinter.ChessOcrTkApp._reload_saved_diagrams,
+            "_pdf_name": app_tkinter.ChessOcrTkApp._pdf_name,
+            "_read_confirmed": app_tkinter.ChessOcrTkApp._read_confirmed,
+            "_refresh_overlay": lambda self, _pagina: self.repintadas.append(_pagina),
+            "_atualizar_abas": lambda self: None,
+        },
+    )
+    janela = tipo()
+    janela.dataset_panel = None
+    janela.saved_diagrams = {}
+    janela.confirmed_diagrams = {}
+    janela.pdf_source = Path("Karpov 1.pdf")
+    janela.dataset_csv_var = _VarFalsa("labels.csv")
+    janela.page_index = 15
+    janela.repintadas = []
+    return janela
+
+
+class CorteDoisTests(unittest.TestCase):
+    """O que o `Ctrl+S` deixou de ler: o `labels.csv` e as anotações do livro (S-116, corte 2).
+
+    Feito o corte 1, sobravam **46,1 ms** por amostra salva, e 45,9 deles eram duas leituras de
+    disco para descobrir o que este mesmo processo acabara de escrever:
+
+        LabelStore.read() .............    30,9 ms   <- cresce com o labels.csv
+        load_annotations (do livro) ...    15,0 ms
+        saved_diagrams_by_page ........     0,2 ms
+
+    O que substituiu as duas é o próprio dado da gravação, que agora atravessa o
+    `on_sample_saved` em vez de ser redescoberto.
+    """
+
+    @staticmethod
+    def _app_tkinter():  # noqa: ANN205
+        """`app_tkinter.py` mora na raiz e não é pacote; o pytest só põe `src/` no path."""
+        raiz = str(Path(__file__).resolve().parents[1])
+        if raiz not in sys.path:
+            sys.path.insert(0, raiz)
+        import app_tkinter
+
+        return app_tkinter
+
+    def setUp(self) -> None:
+        self.app_tkinter = self._app_tkinter()
+        self.janela = _janela_minima(self.app_tkinter)
+        self.leituras: list[str] = []
+
+        def _espiao(nome: str, resposta: object):  # noqa: ANN202
+            def _chamada(*_args: object, **_kwargs: object) -> object:
+                self.leituras.append(nome)
+                return resposta
+            return _chamada
+
+        vazio = mock.Mock(entries={})
+        for nome, resposta in (
+            ("LabelStore", mock.Mock(read=_espiao("LabelStore.read", []))),
+            ("saved_diagrams_by_page", {}),
+            ("load_annotations", vazio),
+        ):
+            remendo = mock.patch.object(self.app_tkinter, nome, _espiao(nome, resposta))
+            remendo.start()
+            self.addCleanup(remendo.stop)
+
+    def test_salvar_uma_amostra_nao_le_arquivo_nenhum(self) -> None:
+        """**O item numa linha.** O que ficou verde foi o que a janela acabou de gravar."""
+        gravada = SavedSample(source_pdf="Karpov 1.pdf", page_index=15, diagram_index=2)
+
+        self.janela._reload_dataset_panel([gravada])
+
+        self.assertEqual(self.leituras, [], "nenhuma leitura de disco no laço mais interno")
+        self.assertEqual(self.janela.saved_diagrams, {15: {2}})
+        self.assertEqual(self.janela.repintadas, [15], "e a página é repintada uma vez")
+
+    def test_salvar_todos_marca_os_quatro_sem_ler_quatro_vezes(self) -> None:
+        gravadas = [SavedSample("Karpov 1.pdf", 15, n) for n in range(4)]
+
+        self.janela._reload_dataset_panel(gravadas)
+
+        self.assertEqual(self.leituras, [])
+        self.assertEqual(self.janela.saved_diagrams, {15: {0, 1, 2, 3}})
+
+    def test_regravar_uma_linha_nao_inventa_diagrama_verde(self) -> None:
+        """Regravar o rótulo de uma amostra que já existia não muda o que está salvo -- e a
+        sequência vazia é como o editor diz isso."""
+        self.janela._reload_dataset_panel(())
+
+        self.assertEqual(self.leituras, [])
+        self.assertEqual(self.janela.saved_diagrams, {})
+
+    def test_amostra_de_outro_livro_nao_pinta_o_livro_aberto(self) -> None:
+        """A defesa é do índice, e não de quem chama: ele é do PDF que está na tela."""
+        self.janela._reload_dataset_panel([SavedSample("Outro.pdf", 15, 2)])
+
+        self.assertEqual(self.janela.saved_diagrams, {})
+
+    def test_abrir_um_livro_continua_lendo_o_arquivo(self) -> None:
+        """A releitura não sumiu: ela mudou de gatilho. Abrir um PDF é quando ela vale, porque
+        aí o índice não existe -- e é uma vez por livro, não uma por amostra."""
+        self.janela._reload_saved_diagrams(Path("Karpov 1.pdf"))
+
+        self.assertIn("LabelStore", self.leituras)
+        self.assertIn("load_annotations", self.leituras)
 
 
 if __name__ == "__main__":

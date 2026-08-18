@@ -10,6 +10,7 @@ from __future__ import annotations
 import tempfile
 import tkinter as tk
 import unittest
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from unittest import mock
@@ -18,14 +19,25 @@ from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.gallery import GalleryAnnotations, load_annotations
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
-from chess_diagram_ocr.games_cache import CachedPosition, PositionCache
+from chess_diagram_ocr.games_cache import PositionStore
 from chess_diagram_ocr.games_db import DiagramMatch, PositionHit, PositionIndex
-from chess_diagram_ocr.ui import gallery_panel
+from chess_diagram_ocr.ui import gallery_panel, scan_scope
 from chess_diagram_ocr.ui.gallery_model import GalleryModel
 from chess_diagram_ocr.ui.gallery_panel import GalleryPanel
 from chess_diagram_ocr.ui.games_dialog import GamesDialog
+from chess_diagram_ocr.ui.scan_scope import ScanScope
 
 PLACEMENT = "4k3/8/8/8/8/8/8/4K3"
+
+
+class _LojaDeTeste(PositionStore):
+    """Uma loja em memória que sobrevive ao `with` de quem grava. Ver `GalleryPanelTests._loja`."""
+
+    def close(self) -> None:
+        """Neutro: no painel são duas conexões sobre o mesmo arquivo, aqui é um objeto só."""
+
+    def fechar_de_verdade(self) -> None:
+        PositionStore.close(self)
 
 
 class GalleryPanelTests(unittest.TestCase):
@@ -43,9 +55,15 @@ class GalleryPanelTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.root = raiz_do_processo()
 
+    def _aceitar_bases(self, atuais: Sequence[Path]) -> Sequence[Path]:
+        """A pergunta das bases, respondida com "as de sempre"."""
+        self.bases_perguntadas.append(list(atuais))
+        return atuais
+
     def setUp(self) -> None:
         self.pedidos: list[int] = []
         self.status: list[str] = []
+        self.bases_perguntadas: list[list[Path]] = []
         self.pasta = tempfile.TemporaryDirectory()
         self.host = tk.Frame(self.root)
 
@@ -57,6 +75,10 @@ class GalleryPanelTests(unittest.TestCase):
             max_boards=lambda: 12,
             on_status=self.status.append,
             on_page_request=self.pedidos.append,
+            # A pergunta "em quais bases?" aceita o que já valia: estes testes são sobre o que
+            # a busca faz com as bases, e não sobre a caixa que as escolhe (ver
+            # `test_database_choice`). Sem isto cada um deles abriria um modal e travaria.
+            ask_databases=self._aceitar_bases,
         )
         self.panel.model = GalleryModel(
             index=GalleryIndex(
@@ -278,10 +300,12 @@ class GalleryPanelTests(unittest.TestCase):
         self.assertIn("pgn_database", str(aviso.call_args))
 
     def test_livro_nao_varrido_avisa_em_vez_de_procurar(self) -> None:
+        """No rodapé desde a S-164: é uma pré-condição de uma frase, e não uma decisão a tomar."""
         self.panel.model = GalleryModel()
         with mock.patch("chess_diagram_ocr.ui.gallery_panel.messagebox.showinfo") as aviso:
             self.panel.search_database()
-        aviso.assert_called_once()
+        aviso.assert_not_called()
+        self.assertTrue(any("Varra o livro antes" in mensagem for mensagem in self.status))
 
     def test_casamento_preenche_e_conta_na_barra_de_status(self) -> None:
         casamento = DiagramMatch(
@@ -350,9 +374,7 @@ class GalleryPanelTests(unittest.TestCase):
             side_to_move="b",
             headers={"White": "Karpov, Anatoly", "Black": "Korchnoi, Viktor", "Date": "1974.09.12"},
         )
-        cache = PositionCache()
-        cache.positions[PLACEMENT] = CachedPosition(count=count, games=(partida,))
-        self.panel.model.position_cache = cache
+        self._loja(**{PLACEMENT: (count, (partida,))})
         self.panel.refresh(request_page=False)
         return partida
 
@@ -413,6 +435,22 @@ class GalleryPanelTests(unittest.TestCase):
     def _base_no_disco(self) -> mock._patch:
         return mock.patch.object(gallery_panel, "database_paths", return_value=[Path("base.pgn")])
 
+    def _loja(self, **posicoes: tuple[int, tuple[PositionHit, ...]]) -> PositionStore:
+        """Um cache de posições em memória, já pendurado no painel (S-140).
+
+        `close()` é neutro aqui de propósito: o painel abre uma segunda conexão para gravar e
+        a fecha ao sair do `with`, e o teste ainda vai ler o que ela gravou. Num cache de
+        verdade são dois arquivos abertos sobre o mesmo banco; aqui é o mesmo objeto.
+        """
+        loja = _LojaDeTeste.in_memory()
+        for colocacao, (contagem, partidas) in posicoes.items():
+            indice = PositionIndex(hits={colocacao: list(partidas)}, counts={colocacao: contagem})
+            loja.update(indice, {colocacao})
+        self.addCleanup(_LojaDeTeste.fechar_de_verdade, loja)
+        self.panel._store = loja
+        self.panel.model.position_cache = loja
+        return loja
+
     def test_sem_base_no_disco_a_busca_por_posicao_diz_onde_poe_la(self) -> None:
         with (
             mock.patch.object(gallery_panel, "database_paths", return_value=[]),
@@ -428,9 +466,8 @@ class GalleryPanelTests(unittest.TestCase):
         bases = [Path("a.pgn"), Path("b.pgn")]
         with (
             mock.patch.object(gallery_panel, "database_paths", return_value=bases),
-            mock.patch.object(gallery_panel, "load_cache", return_value=PositionCache()),
+            mock.patch.object(gallery_panel, "open_store", return_value=self._loja()),
             mock.patch.object(gallery_panel, "scan_by_positions", return_value=PositionIndex()) as varredura,
-            mock.patch.object(gallery_panel, "save_cache"),
             mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=True) as pergunta,
             # A thread de verdade **não** pode subir aqui: fora do laço do Tk -- e num teste ele
             # não roda -- o `after` da volta levanta, e a exceção de uma thread é relatada em
@@ -442,6 +479,45 @@ class GalleryPanelTests(unittest.TestCase):
             self.panel._positions_worker(*thread.call_args.kwargs["args"])
         self.assertIn("2 arquivo(s)", str(pergunta.call_args))
         self.assertEqual(varredura.call_args[0][0], bases, "as duas, e não a maior")
+        self.assertEqual(self.bases_perguntadas, [bases], "a caixa abre com o que já valia marcado")
+
+    def test_desistir_da_pergunta_da_base_nao_abre_19_gb(self) -> None:
+        """Cancelar a escolha é cancelar a busca -- e ela custa meia hora por gigabase."""
+        self.panel._ask_databases = lambda _atuais: None
+        with (
+            mock.patch.object(gallery_panel, "database_paths", return_value=[Path("a.pgn")]),
+            mock.patch.object(gallery_panel, "scan_by_positions") as varredura,
+            mock.patch.object(gallery_panel.messagebox, "askokcancel") as pergunta,
+        ):
+            self.panel.search_by_position()
+        varredura.assert_not_called()
+        pergunta.assert_not_called()
+        self.assertFalse(self.panel._scanning)
+
+    def test_a_base_marcada_e_a_unica_que_a_busca_abre(self) -> None:
+        """O gesto que o item existe para permitir: procurar só na base nova, sem os 19 GB."""
+        nova = Path("estudos.pgn")
+        self.panel._ask_databases = lambda _atuais: [nova]
+        with (
+            mock.patch.object(gallery_panel, "database_paths", return_value=[Path("a.pgn"), nova]),
+            mock.patch.object(gallery_panel, "open_store", return_value=self._loja()),
+            mock.patch.object(gallery_panel, "scan_by_positions", return_value=PositionIndex()) as varredura,
+            mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=True) as pergunta,
+            mock.patch.object(gallery_panel.threading, "Thread") as thread,
+        ):
+            self.panel.search_by_position()
+            self.panel._positions_worker(*thread.call_args.kwargs["args"])
+        self.assertEqual(varredura.call_args[0][0], [nova])
+        self.assertIn("1 arquivo(s)", str(pergunta.call_args))
+        self.assertEqual(self.panel.model.database_paths, (nova,), "a lista por nome segue a escolha")
+
+    def test_o_conjunto_escolhido_guarda_o_cache_em_arquivo_proprio(self) -> None:
+        """Experimentar uma base sozinha não pode apagar as respostas do acervo inteiro."""
+        nova = Path("estudos.pgn")
+        with mock.patch.object(gallery_panel, "database_paths", return_value=[Path("a.pgn"), nova]):
+            padrao = self.panel._store_path([Path("a.pgn"), nova])
+            sozinha = self.panel._store_path([nova])
+        self.assertNotEqual(padrao, sozinha)
 
     def test_livro_nao_varrido_nao_abre_a_base(self) -> None:
         """Sem diagrama varrido não há posição para procurar, e a base tem 10,3 GB."""
@@ -453,7 +529,10 @@ class GalleryPanelTests(unittest.TestCase):
         ):
             self.panel.search_by_position()
         varredura.assert_not_called()
-        aviso.assert_called_once()
+        # A frase vai para o rodapé (S-164); o que continua modal é o `_SEM_BASE`, que é uma
+        # instrução de três linhas sobre onde pôr a base.
+        aviso.assert_not_called()
+        self.assertTrue(any("Varra o livro antes" in mensagem for mensagem in self.status))
 
     def test_posicao_ja_perguntada_responde_do_cache_sem_abrir_a_base(self) -> None:
         """O caso de todo livro que o `cvoff-games` já varreu: nada a perguntar, resposta na hora.
@@ -461,13 +540,12 @@ class GalleryPanelTests(unittest.TestCase):
         É o que impede a meia hora de ser paga duas vezes -- e o cache é por **posição**, então
         um segundo livro que mostre os mesmos clássicos também não paga.
         """
-        cache = PositionCache()
-        cache.positions[PLACEMENT] = CachedPosition(
-            count=1, games=(PositionHit(move_number=24, side_to_move="b", headers={"Event": "Linares"}),)
-        )
+        linares = PositionHit(move_number=24, side_to_move="b", headers={"Event": "Linares"})
         with (
             self._base_no_disco(),
-            mock.patch.object(gallery_panel, "load_cache", return_value=cache),
+            mock.patch.object(
+                gallery_panel, "open_store", return_value=self._loja(**{PLACEMENT: (1, (linares,))})
+            ),
             mock.patch.object(gallery_panel, "scan_by_positions") as varredura,
             mock.patch.object(gallery_panel.messagebox, "askokcancel") as pergunta,
         ):
@@ -481,7 +559,7 @@ class GalleryPanelTests(unittest.TestCase):
         """Meia hora atrás de um botão que não avisa é uma janela travada."""
         with (
             self._base_no_disco(),
-            mock.patch.object(gallery_panel, "load_cache", return_value=PositionCache()),
+            mock.patch.object(gallery_panel, "open_store", return_value=self._loja()),
             mock.patch.object(gallery_panel, "scan_by_positions") as varredura,
             mock.patch.object(gallery_panel.messagebox, "askokcancel", return_value=False) as pergunta,
         ):
@@ -490,31 +568,31 @@ class GalleryPanelTests(unittest.TestCase):
         self.assertIn("meia hora", str(pergunta.call_args))
 
     def test_a_resposta_da_base_vira_cache_gravado(self) -> None:
-        cache = PositionCache()
+        cache = self._loja()
         indice = PositionIndex(
             hits={PLACEMENT: [PositionHit(move_number=24, side_to_move="b")]}, counts={PLACEMENT: 1}
         )
         with (
             mock.patch.object(gallery_panel, "scan_by_positions", return_value=indice),
-            mock.patch.object(gallery_panel, "save_cache") as gravar,
+            mock.patch.object(gallery_panel, "open_store", return_value=cache),
         ):
-            self.panel._positions_worker(Path("base.pgn"), cache, {PLACEMENT}, {PLACEMENT})
-        gravar.assert_called_once()
-        self.assertEqual(cache.positions[PLACEMENT].count, 1)
+            self.panel._positions_worker([Path("base.pgn")], {PLACEMENT}, {PLACEMENT})
+        self.assertEqual(cache.get(PLACEMENT).count, 1)
 
     def test_a_posicao_sem_resposta_fica_registrada_como_perguntada(self) -> None:
         """Senão ela volta ao alvo de toda varredura futura -- e são a maioria (S-84)."""
-        cache = PositionCache()
+        cache = self._loja()
         with (
             mock.patch.object(gallery_panel, "scan_by_positions", return_value=PositionIndex()),
-            mock.patch.object(gallery_panel, "save_cache"),
+            mock.patch.object(gallery_panel, "open_store", return_value=cache),
         ):
-            self.panel._positions_worker(Path("base.pgn"), cache, {PLACEMENT}, {PLACEMENT})
-        self.assertEqual(cache.positions[PLACEMENT].count, 0, "perguntada, e a base não conhece")
+            self.panel._positions_worker([Path("base.pgn")], {PLACEMENT}, {PLACEMENT})
+        self.assertEqual(cache.missing({PLACEMENT}), set(), "perguntada")
+        self.assertEqual(cache.get(PLACEMENT).count, 0, "e a base não conhece")
 
     def test_cancelar_no_meio_nao_grava_nada(self) -> None:
         """Meia base lida dá contagens que não valem -- ver `scan_by_positions`."""
-        cache = PositionCache()
+        cache = self._loja()
 
         def varrer(*_args: object, **kwargs: object) -> PositionIndex:
             kwargs["cancel"].set()  # type: ignore[union-attr]
@@ -522,11 +600,38 @@ class GalleryPanelTests(unittest.TestCase):
 
         with (
             mock.patch.object(gallery_panel, "scan_by_positions", side_effect=varrer),
-            mock.patch.object(gallery_panel, "save_cache") as gravar,
+            mock.patch.object(gallery_panel, "open_store", return_value=cache),
         ):
-            self.panel._positions_worker(Path("base.pgn"), cache, {PLACEMENT}, {PLACEMENT})
-        gravar.assert_not_called()
-        self.assertEqual(cache.positions, {}, "nem como perguntada: a pergunta não chegou a ser feita")
+            self.panel._positions_worker([Path("base.pgn")], {PLACEMENT}, {PLACEMENT})
+        self.assertEqual(len(cache), 0, "nem como perguntada: a pergunta não chegou a ser feita")
+
+    def test_a_passada_que_morreu_no_meio_nao_grava_e_diz_que_pode_repetir(self) -> None:
+        """Descartada **sem ninguém ter cancelado** (S-171): um processo de leitura morreu.
+
+        A frase é diferente da de cancelamento de propósito -- ali a pessoa sabe o que fez;
+        aqui ela não fez nada e precisa saber que dá para tentar de novo, porque nada foi
+        gravado e as colocações continuam por perguntar.
+        """
+        cache = self._loja()
+        with (
+            mock.patch.object(
+                gallery_panel, "scan_by_positions", return_value=PositionIndex(complete=False)
+            ),
+            mock.patch.object(gallery_panel, "open_store", return_value=cache) as abrir,
+        ):
+            self.panel._positions_worker([Path("base.pgn")], {PLACEMENT}, {PLACEMENT})
+
+        self.assertEqual(len(cache), 0, "nada gravado")
+        abrir.assert_not_called()
+
+    def test_a_frase_da_passada_interrompida_diz_que_nada_se_perdeu(self) -> None:
+        """Direto, e não pelo worker: o `after` da volta não roda fora do laço do Tk."""
+        self.panel._busy(True)
+        self.panel._positions_incomplete()
+        self.assertEqual(str(self.panel.btn_positions["state"]), "normal")
+        self.assertTrue(any("interrompida" in m for m in self.status))
+        self.assertTrue(any("continuam por perguntar" in m for m in self.status))
+        self.assertTrue(any("Nada foi gravado" in m for m in self.status))
 
     def test_cancelar_devolve_os_botoes_e_diz_que_nada_foi_gravado(self) -> None:
         self.panel._busy(True)
@@ -537,14 +642,125 @@ class GalleryPanelTests(unittest.TestCase):
         self.assertTrue(any("nada foi gravado" in mensagem for mensagem in self.status))
 
     def test_o_que_a_base_leu_aparece_na_barra_de_status(self) -> None:
-        cache = PositionCache()
-        cache.positions[PLACEMENT] = CachedPosition(
-            count=1, games=(PositionHit(move_number=24, side_to_move="b", headers={"Event": "Linares"}),)
-        )
-        self.panel._positions_done(cache, {PLACEMENT}, games_read=10_547_416)
+        linares = PositionHit(move_number=24, side_to_move="b", headers={"Event": "Linares"})
+        self._loja(**{PLACEMENT: (1, (linares,))})
+        self.panel._positions_done({PLACEMENT}, games_read=10_547_416)
         self.assertEqual(self.panel.header_vars["Event"].get(), "Linares")
         self.assertTrue(any("10.5 M partidas lidas" in mensagem for mensagem in self.status))
         self.assertTrue(any("Nada foi sobrescrito" in mensagem for mensagem in self.status))
+
+
+class EscopoDaVarreduraTests(unittest.TestCase):
+    """O que a Galeria faz com a lista de livros que a pergunta devolveu.
+
+    A pergunta em si está no `test_scan_scope`. Aqui é o outro lado: quem não varre nada, quem
+    alimenta a fila de revisão, e o que o rodapé diz de um lote de livros.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz_do_processo()
+
+    def setUp(self) -> None:
+        self.status: list[str] = []
+        self.escopo: ScanScope | None = None
+        self.perguntas: list[Path | None] = []
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.aberto = Path(self.pasta.name) / "livro.pdf"
+        self.host = tk.Frame(self.root)
+        self.addCleanup(self.host.destroy)
+
+        self.panel = GalleryPanel(
+            self.host,
+            service=None,  # type: ignore[arg-type] - a varredura de verdade nao roda aqui
+            pdf_path=lambda: self.aberto,
+            model_path=lambda: Path("modelo.pt"),
+            max_boards=lambda: 12,
+            on_status=self.status.append,
+            on_page_request=lambda _pagina: None,
+            ask_scan_scope=self._perguntar,
+        )
+
+    def _perguntar(self, aberto: Path | None) -> ScanScope | None:
+        self.perguntas.append(aberto)
+        return self.escopo
+
+    def _iniciar(self, escopo: ScanScope) -> None:
+        """Chama `_start_scan` sem deixar a thread nascer: o que se afirma é a decisão."""
+        with mock.patch.object(gallery_panel.threading, "Thread"):
+            self.panel._start_scan(escopo)
+        self.panel._scanning = False
+
+    def test_desistir_da_pergunta_nao_varre_nem_avisa(self) -> None:
+        self.escopo = None
+        self.panel.scan()
+        self.assertEqual(self.perguntas, [self.aberto], "a pergunta recebe o livro aberto")
+        self.assertFalse(self.panel._scanning)
+        self.assertEqual(self.status, [], "cancelar não é evento para o rodapé")
+
+    def test_escopo_vazio_avisa_no_rodape_e_nao_varre(self) -> None:
+        """Sem PDF aberto e sem .pdf na pasta padrão não há o que varrer -- e isso se diz."""
+        self.escopo = ScanScope(kind=scan_scope.PASTA, books=())
+        self.panel.scan()
+        self.assertFalse(self.panel._scanning)
+        self.assertTrue(any("Nenhum livro para varrer" in mensagem for mensagem in self.status))
+
+    def test_a_fila_de_revisao_so_e_pedida_quando_o_livro_aberto_esta_no_lote(self) -> None:
+        """A fila nasce ligada ao PDF da janela: alimentá-la com outro livro mentiria a procedência."""
+        pedidos: list[str] = []
+        self.panel._review_sink = lambda: pedidos.append("pediu")  # type: ignore[assignment,return-value]
+
+        outro = Path(self.pasta.name) / "outro.pdf"
+        self._iniciar(ScanScope(kind=scan_scope.PASTA, books=(outro,)))
+        self.assertEqual(pedidos, [], "livro que não é o aberto não monta fila")
+
+        self._iniciar(ScanScope(kind=scan_scope.PASTA, books=(outro, self.aberto)))
+        self.assertEqual(pedidos, ["pediu"])
+
+    def test_o_mesmo_arquivo_apesar_da_grafia_do_caminho(self) -> None:
+        torto = Path(self.pasta.name) / "sub" / ".." / "livro.pdf"
+        self.assertTrue(gallery_panel._mesmo_arquivo(self.aberto, torto))
+        self.assertFalse(gallery_panel._mesmo_arquivo(self.aberto, Path(self.pasta.name) / "outro.pdf"))
+
+    def test_um_livro_conta_diagramas_e_o_lote_conta_livros(self) -> None:
+        indice = GalleryIndex(entries=[GalleryEntry(0, 0, PLACEMENT, side_to_move="w")])
+        um = ScanScope(kind=scan_scope.ESCOLHER, books=(Path("a.pdf"),))
+        self.panel._scan_finished(um, [gallery_panel._LivroVarrido(Path("a.pdf"), indice=indice)], None, None)
+        self.assertTrue(any("1 diagrama(s) varrido(s) em a.pdf, livro inteiro." in m for m in self.status))
+
+        lote = ScanScope(kind=scan_scope.PASTA, books=(Path("a.pdf"), Path("b.pdf"), Path("c.pdf")))
+        self.panel._scan_finished(
+            lote,
+            [
+                gallery_panel._LivroVarrido(Path("a.pdf"), indice=indice),
+                gallery_panel._LivroVarrido(Path("b.pdf"), pulado="12 diagrama(s), índice completo"),
+            ],
+            None,
+            None,
+        )
+        ultima = self.status[-1]
+        self.assertIn("1 livro(s) varrido(s), 1 diagrama(s)", ultima)
+        self.assertIn("1 pulado(s) por índice já completo", ultima)
+        self.assertIn("cancelada com 1 livro(s) sem varrer", ultima)
+        self.assertEqual(self.panel.scan_var.get(), "1 de 3 livro(s)")
+
+    def test_um_livro_com_erro_no_lote_nao_derruba_o_relatorio(self) -> None:
+        lote = ScanScope(kind=scan_scope.PASTA, books=(Path("a.pdf"), Path("b.pdf")))
+        self.panel._scan_finished(
+            lote,
+            [
+                gallery_panel._LivroVarrido(Path("a.pdf"), erro=RuntimeError("PDF corrompido")),
+                gallery_panel._LivroVarrido(Path("b.pdf"), indice=GalleryIndex(complete=False, last_page_done=3)),
+            ],
+            None,
+            None,
+        )
+        ultima = self.status[-1]
+        self.assertIn("1 com erro", ultima)
+        self.assertIn("1 parcial(is)", ultima)
 
 
 @dataclass
