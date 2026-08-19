@@ -112,9 +112,44 @@ class RemoteFenSettings:
         return cls(
             enabled=bool(data.get("enabled", False)),
             endpoint=str(data.get("endpoint", "") or "").strip(),
-            timeout=float(str(data.get("timeout") or 30.0)),
+            timeout=_flutuante(data, "timeout", 30.0),
             acknowledged=bool(data.get("acknowledged", False)),
         )
+
+
+def _inteiro(data: Mapping[str, object], chave: str, padrao: int) -> int:
+    """O campo como `int`, ou o padrão **daquele campo**, com aviso nomeando-o (S-124).
+
+    **Por campo, e não um `except ValueError` em volta do arquivo inteiro.** Um `movetime_ms`
+    com `"rápido"` dentro não pode zerar também o `endpoint`, que é trabalho do usuário e a
+    única preferência do arquivo que ninguém consegue recuperar sozinho.
+
+    O que isto conserta é uma janela que **não abre**: `load_settings` capturava `OSError` e
+    `json.JSONDecodeError`, mas `int(str(...))` levanta `ValueError` sobre um JSON
+    sintaticamente perfeito. `app_tkinter` a chama no `__init__`, antes de a janela existir, e
+    no bundle da S-55 (`console=False`) o traceback não aparece em lugar nenhum -- o programa
+    simplesmente não abre.
+    """
+    bruto = data.get(chave)
+    if bruto is None or bruto == "":
+        return padrao
+    try:
+        return int(str(bruto))
+    except (TypeError, ValueError):
+        logger.warning("settings.json: %r não é um número inteiro em %r; usando %r.", bruto, chave, padrao)
+        return padrao
+
+
+def _flutuante(data: Mapping[str, object], chave: str, padrao: float) -> float:
+    """Idem para `float`. Ver `_inteiro` para por que a coerção é por campo."""
+    bruto = data.get(chave)
+    if bruto is None or bruto == "":
+        return padrao
+    try:
+        return float(str(bruto))
+    except (TypeError, ValueError):
+        logger.warning("settings.json: %r não é um número em %r; usando %r.", bruto, chave, padrao)
+        return padrao
 
 
 @dataclass(frozen=True)
@@ -135,8 +170,8 @@ class EngineSettings:
     def from_dict(cls, data: Mapping[str, object]) -> EngineSettings:
         return cls(
             path=str(data.get("path", "") or "").strip(),
-            movetime_ms=int(str(data.get("movetime_ms") or 800)),
-            threads=int(str(data.get("threads") or 1)),
+            movetime_ms=_inteiro(data, "movetime_ms", 800),
+            threads=_inteiro(data, "threads", 1),
         )
 
 
@@ -333,7 +368,17 @@ def load_settings(
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("Nao foi possivel ler %s (%s); usando os padroes.", path, exc)
 
-    return apply_environment(Settings.from_dict(dados), env=env)
+    try:
+        return apply_environment(Settings.from_dict(dados), env=env)
+    except Exception:  # noqa: BLE001 - ver abaixo: preferencia nenhuma vale a janela nao abrir
+        # **Rede de seguranca, e nao o conserto** (S-124). O conserto e a coercao por campo
+        # (`_inteiro`, `_flutuante`), que preserva o resto do arquivo; isto aqui cobre a forma
+        # que ninguem previu -- uma secao que e lista, um valor que e dicionario -- e existe
+        # porque o custo do erro e desproporcional: `app_tkinter` chama isto no `__init__`,
+        # antes de a janela existir, e no bundle da S-55 (`console=False`) o traceback nao
+        # aparece em lugar nenhum. O programa nao abre e nao diz por que.
+        logger.exception("settings.json tem uma forma inesperada; abrindo com os padroes.")
+        return apply_environment(Settings(), env=env)
 
 
 def save_settings(path: Path, settings: Settings) -> None:

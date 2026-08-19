@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,14 +24,17 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from .atomic_io import read_image
 from .board_detection import split_board_into_cells
 from .calibration import expected_calibration_error, reliability_table
+from .checkpoint import load_checkpoint
 from .config import BOARD_SIZE, CONSTRAINED_DECODING, IDX_TO_CLASS, PIECE_CLASSES, TTA_ENABLED
 from .dataset import BoardFenDataset
 from .decode import DecodeResult
 from .fen_utils import check_position, fen_from_class_indices, labels_from_fen
 from .inference import board_probabilities, load_model, prediction_from_probs
 from .model import DEFAULT_ARCH, preprocess_cell_to_tensor, with_coordinate_channels
+from .splits import splits_hash
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +80,14 @@ class EvaluationReport:
     boards_within_one: int = 0
     illegal_predictions: int = 0
     illegal_expected: int = 0
+
+    split_caveat: str = ""
+    """Sobre que partição este número vale, quando há o que ressalvar (S-103).
+
+    Vazio é o caso normal: o checkpoint declara o mesmo `split_hash` do `splits.csv` de agora.
+    Cheio, sai no texto **e** no JSON -- um número copiado do JSON para um documento sem a
+    ressalva junto é exatamente como uma medição contaminada vira baseline."""
+
     constrained_decoding: bool = False
     decoder_repaired_boards: int = 0
     """Tabuleiros em que a decodificação com restrições alterou pelo menos uma casa."""
@@ -239,6 +251,7 @@ class EvaluationReport:
             "illegal_rate": self.illegal_rate,
             "illegal_predictions": self.illegal_predictions,
             "illegal_expected": self.illegal_expected,
+            "split_caveat": self.split_caveat,
             "mean_confidence_when_correct": float(np.mean(self.conf_when_correct)) if self.conf_when_correct else 0.0,
             "mean_confidence_when_wrong": float(np.mean(self.conf_when_wrong)) if self.conf_when_wrong else 0.0,
             "expected_calibration_error": self.expected_calibration_error(),
@@ -264,7 +277,7 @@ class EvaluationReport:
 
 
 def _load_board_image(path: Path) -> np.ndarray | None:
-    image = cv2.imread(str(path))
+    image = read_image(path)
     if image is None:
         return None
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -453,7 +466,7 @@ def evaluate_split(
     if not dataset.entries:
         raise ValueError(f"Nenhuma amostra no split '{split}'. Rode `cvoff-audit` e verifique data/splits.csv.")
 
-    return evaluate_dataset(
+    report = evaluate_dataset(
         dataset,
         model,
         resolved_device,
@@ -463,3 +476,50 @@ def evaluate_split(
         constrained=constrained,
         tta=tta,
     )
+    report.split_caveat = split_caveat(Path(model_path), splits)
+    return report
+
+
+def split_caveat(model_path: Path, splits: Mapping[str, Any]) -> str:
+    """A ressalva sobre **em que partição este número vale**, ou `""` (S-103).
+
+    `grep split_hash` em `src/` devolvia quatro ocorrências, todas em `training.py`: escrito
+    ao salvar, lido só para decidir se a métrica gravada num checkpoint retomado ainda vale.
+    O `evaluate_split` carregava splits e checkpoint e não comparava nada -- a S-07 inteira
+    existe para tornar impossível medir num conjunto que o modelo já viu, e o dado que fecha
+    essa porta estava no arquivo desde a Fase 5, ao alcance de um `if`.
+
+    **Avisa e não recusa.** Comparar um checkpoint antigo é legítimo -- é assim que os números
+    do `BASELINE.md` continuam verificáveis --, e recusar impediria a própria auditoria
+    histórica. O número sai com a ressalva ao lado, no texto e no JSON.
+    """
+    try:
+        checkpoint = load_checkpoint(Path(model_path), map_location="cpu")
+    except (OSError, RuntimeError, ValueError, KeyError):
+        # Um checkpoint que nao abre nao e assunto desta funcao: quem falha com mensagem boa e
+        # o `load_model`, e ele ja rodou antes daqui.
+        return ""
+
+    if not checkpoint.metadata:
+        return (
+            "checkpoint legado, sem metadados: não há como saber sobre que partição ele foi "
+            "treinado, e este número não é auditável."
+        )
+
+    gravado = str(checkpoint.metadata.get("split_hash", ""))
+    if not gravado:
+        # `--no-splits` sorteia a validacao a cada execucao, entao nao existe particao
+        # reservada: parte do que se esta medindo agora esteve no treino.
+        return (
+            "o checkpoint foi treinado sem partição persistida (`--no-splits`): o conjunto "
+            "avaliado está **contaminado**, e este número mede o que o modelo já viu."
+        )
+
+    atual = splits_hash(splits) if splits else ""
+    if atual and gravado != atual:
+        return (
+            f"o checkpoint foi treinado sobre outra partição (`split_hash` {gravado}, e o "
+            f"`splits.csv` de agora é {atual}): parte do que está sendo avaliado pode ter "
+            "estado no treino dele."
+        )
+    return ""

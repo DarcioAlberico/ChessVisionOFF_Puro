@@ -36,7 +36,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from .board_detection import detect_boards
+from .board_detection import NoBoardDetectedError, detect_boards
 from .config import (
     BOARD_SIZE,
     DEFAULT_MAX_BOARDS,
@@ -680,7 +680,13 @@ class OcrService:
     ) -> list[RecognizedDiagram]:
         """O núcleo comum: prever, decidir orientação, inferir a vez, conferir legalidade."""
         if not boards:
-            raise ValueError("Nenhum tabuleiro foi detectado na imagem selecionada.")
+            # `NoBoardDetectedError` e nao `ValueError` (S-125): quem chama precisa distinguir
+            # "esta pagina nao tem diagrama" -- que e resposta, e a mais comum num livro -- de
+            # "o reconhecimento quebrou". Com um `ValueError` generico a unica forma de separar
+            # os dois era procurar a mensagem dentro do texto da excecao, e `app_tkinter` fazia
+            # exatamente isso. A classe ja existia, e `run_main` mapeia as duas para o mesmo
+            # codigo de saida 2, entao a CLI da S-126 nao muda de comportamento.
+            raise NoBoardDetectedError("Nenhum tabuleiro foi detectado na imagem selecionada.")
 
         diagrams: list[RecognizedDiagram] = []
         with self.model_session(options.model_path) as (model, device):
@@ -739,11 +745,16 @@ class OcrService:
         origin: RecognitionOrigin | None = None,
         side_to_move: str | None = None,
         corrected_by: str = "",
+        allow_illegal: bool = False,
     ) -> Path:
         """Grava a amostra rotulada com os campos de procedência da S-19.
 
         A procedência é o que permite, depois, agrupar o split por livro (S-07), auditar
         por fonte de detecção e voltar ao PDF para recortar de novo.
+
+        `allow_illegal` é a resposta "sim" à pergunta de `ui.legality.illegal_save_question`,
+        repassada intacta: quem decide é a pessoa, e este método não tem o que acrescentar à
+        decisão dela.
         """
         campos: dict[str, Any] = {"source_pdf": "", "source_page": ""}
         if origin is not None:
@@ -754,6 +765,7 @@ class OcrService:
             fen=fen,
             csv_path=csv_path,
             samples_dir=samples_dir,
+            allow_illegal=allow_illegal,
             side_to_move=side_to_move if side_to_move is not None else diagram.side_to_move,
             source_diagram=diagram.index + 1,
             detection_source=diagram.detection_source,

@@ -229,6 +229,31 @@ def decode_constrained(
     a leitura estiver muito errada, reparar 20 casas produziria uma posição legal e
     inventada, pior que admitir a falha. Nesse caso volta o melhor estado parcial com
     `constraints_satisfied=False`.
+
+    **Uma posição reparada aqui nunca é exportada, e isso é aritmética e não tendência (S-132).**
+
+    Uma casa reparada recebeu, por definição, uma classe que **não** era o argmax. A confiança
+    reportada para ela é a dessa classe (`inference.prediction_from_probs` troca as confianças
+    pelas das classes efetivamente escolhidas, que é o desenho certo — a confiança relatada tem
+    de ser a verdade sobre o que foi escolhido). Essa probabilidade é no máximo a segunda maior
+    da casa, e a segunda maior **não pode passar de 0,5**: se passasse, a maior também
+    passaria, e as duas somariam mais que 1.
+
+    `min_confidence` é o mínimo sobre as 64 casas. Logo, um diagrama com pelo menos uma casa
+    reparada tem `min_confidence ≤ 0,5`, e o gate de exportação é
+    `ACCEPT_MIN_CONFIDENCE = 0,80`. **Nenhum diagrama reparado passa**, hoje nem com outro
+    modelo — o teto de 0,5 não depende de quão bem o classificador vai.
+
+    Não é defeito, é propriedade. Mas ela muda a leitura de duas métricas que o projeto publica
+    lado a lado: `cvoff-field` mostra "casas reparadas" ao lado da taxa de exportação, e o
+    reparo — uma das entregas centrais da Fase 2 — **não contribui com um único diagrama
+    exportado**. Por isso o relatório separa `repaired_exported` de `repaired_blocked` desde a
+    S-132: somados, os dois números sugeriam que o reparo estava ajudando a exportar.
+
+    Se um dia se quiser que o reparo chegue ao PGN, a mudança é no **gate** e não aqui — um
+    gate que olhasse a confiança das casas *não* reparadas, ou um limiar próprio para posição
+    reparada. Mexer no decodificador para elevar a confiança da casa consertada seria mentir
+    sobre o que ele sabe.
     """
     probs = np.asarray(probs, dtype=np.float64)
     expected = (64, len(PIECE_CLASSES))

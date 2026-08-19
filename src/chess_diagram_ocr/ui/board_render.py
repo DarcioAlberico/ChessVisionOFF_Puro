@@ -26,27 +26,54 @@ from pathlib import Path
 from PIL import Image, ImageTk
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
+from . import theme, tokens
 from .board_model import BoardModel
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["BoardGeometry", "BoardRenderer", "PieceImages", "heatmap_color"]
 
-LIGHT_SQUARE = "#f0d9b5"
-DARK_SQUARE = "#b58863"
-SELECTED_SQUARE = "#f7ec74"
-LAST_MOVE_SQUARE = "#cdd26a"
-TARGET_MARK = "#3f7f4c"
-CHANGED_OUTLINE = "#3d7dd4"
-PROBLEM_OUTLINE = "#c0392b"
-DISPUTED_OUTLINE = "#8e44ad"
+LIGHT_SQUARE = tokens.RESERVA[tokens.CASA_CLARA]
+DARK_SQUARE = tokens.RESERVA[tokens.CASA_ESCURA]
+SELECTION_OUTLINE = tokens.RESERVA[tokens.CONTORNO_DE_SELECAO]
+"""A casa selecionada: um anel, e não uma cor de fundo (S-160)."""
+
+LAST_MOVE_SQUARE = tokens.RESERVA[tokens.CASA_ULTIMO_LANCE]
+TARGET_MARK = tokens.RESERVA[tokens.ALVO]
+CHANGED_OUTLINE = tokens.RESERVA[tokens.CORRIGIDO]
+PROBLEM_OUTLINE = tokens.RESERVA[tokens.PROBLEMA]
+DISPUTED_OUTLINE = tokens.RESERVA[tokens.DIVERGENTE]
 """Roxo: as duas leituras discordam desta casa (S-66).
 
 Cor própria, e não o vermelho da ilegalidade nem o azul da decodificação: as três dizem
 coisas diferentes e podem acender juntas. "Ilegal" é um fato sobre a posição, "reescrita" é
 algo que já aconteceu, e "em disputa" é um pedido -- olhe esta casa."""
-BOARD_FRAME = "#312e2b"
-COORDINATE_TEXT = "#d8d8d8"
+BOARD_FRAME = tokens.RESERVA[tokens.MOLDURA]
+"""A reserva da moldura. O desenho resolve contra o tema em uso -- ver `_cor_de_moldura`."""
+
+COORDINATE_TEXT = tokens.RESERVA[tokens.COORDENADA]
+
+COORD_FONT = ("Segoe UI", 9, "bold")
+"""A fonte das letras a–h e dos números 8–1. Um lugar só, porque a margem sai dela (S-155)."""
+
+COORD_OFFSET_PX = 11
+"""Quanto o texto da coordenada fica **fora** do tabuleiro, do centro do texto até a borda."""
+
+
+def margem_de_coordenada(offset: int = COORD_OFFSET_PX, altura_da_fonte: int = COORD_FONT[1]) -> int:
+    """A margem que o canvas precisa reservar para as coordenadas caberem inteiras (S-155).
+
+    **O defeito que isto conserta.** `_draw_coordinates` desenha as letras em
+    `origin_y + size + 11`, texto centrado de 9 pt em negrito -- precisa de ~18 px abaixo do
+    tabuleiro. O chamador reservava `margin=28`, que `BoardGeometry.fit` divide entre os dois
+    lados: **14 px**. A base de "a b c d e f g h" era cortada, e isso valia para os **dois**
+    tabuleiros da janela.
+
+    Os dois números estavam soltos em arquivos diferentes -- o `11` aqui, o `28` no
+    `board_widget` -- e nada os ligava. Agora um sai do outro: `2 × (deslocamento + meia
+    altura)`, arredondado para cima, com folga de 1 px para o antialias da fonte.
+    """
+    return 2 * (offset + (altura_da_fonte + 1) // 2 + 1)
 
 HEATMAP_LOW = (0xF2, 0xC7, 0x44)
 """Amarelo: casa logo abaixo do limiar."""
@@ -100,7 +127,16 @@ class BoardGeometry:
 
     @classmethod
     def fit(cls, width: float, height: float, *, min_size: int, max_size: int, margin: int) -> BoardGeometry:
-        size = max(min_size, min(width - margin, height - margin, max_size))
+        """O tabuleiro centrado no canvas, e **nunca maior que ele** (S-155).
+
+        O `max(min_size, ...)` sozinho ganhava quando o canvas era menor que `min_size`, e o
+        tabuleiro vazava para fora em vez de encolher. Não há tamanho em que desenhar fora do
+        canvas seja a resposta certa: abaixo do mínimo, o limite passa a ser o canvas, e quem
+        chama sabe que está no limite porque o tamanho devolvido é menor que `min_size`.
+        """
+        desejado = max(min_size, min(width - margin, height - margin, max_size))
+        cabe = max(1.0, min(float(width), float(height)))
+        size = min(desejado, cabe)
         return cls(origin_x=(width - size) / 2, origin_y=(height - size) / 2, size=size, cell=size / 8)
 
     def rect(self, row: int, col: int) -> tuple[float, float, float, float]:
@@ -220,7 +256,7 @@ class BoardRenderer:
             geometry.origin_y - 2,
             geometry.origin_x + geometry.size + 2,
             geometry.origin_y + geometry.size + 2,
-            fill=BOARD_FRAME,
+            fill=self._cor_de_moldura(),
             outline="",
             tags=(FRAME_TAG,),
         )
@@ -279,9 +315,16 @@ class BoardRenderer:
             base = LIGHT_SQUARE if (index // 8 + index % 8) % 2 == 0 else DARK_SQUARE
             if index in last_move:
                 base = LAST_MOVE_SQUARE
-            if index == model.selected:
-                base = SELECTED_SQUARE
             canvas.create_rectangle(x0, y0, x1, y1, fill=base, outline=base, tags=(tag,))
+
+            if index == model.selected:
+                # **Contorno, e não preenchimento** (S-160). A seleção pintava a casa de
+                # `#f7ec74` e o último lance de `#cdd26a` -- 1,32:1 entre si, e adjacentes toda
+                # vez que se seleciona a casa de destino do lance recém-jogado, que é o gesto
+                # mais comum desta aba. O amarelo ficou sozinho no papel dele.
+                canvas.create_rectangle(
+                    x0 + 1, y0 + 1, x1 - 1, y1 - 1, outline=SELECTION_OUTLINE, width=3, tags=(tag,)
+                )
 
             confidence = model.heatmap_confidence(index)
             if confidence is not None:
@@ -341,30 +384,68 @@ class BoardRenderer:
             center_x,
             center_y,
             text=UNICODE_PIECES.get(symbol, symbol),
-            fill="#111111",
+            fill=tokens.RESERVA[tokens.TEXTO_SOBRE_MARCACAO],
             font=("Segoe UI Symbol", max(12, int(cell * 0.56))),
             tags=tags,
         )
 
+    @staticmethod
+    def _cor_de_moldura() -> str:
+        """A moldura resolvida contra o tema em uso (S-147). Reserva quando não há janela.
+
+        Só no desenho completo: `draw_dirty` não toca a moldura, e trocar de tema redesenha
+        tudo. Resolver aqui, e não no `__init__`, é o que faz `CVOFF_TTK_THEME=darkly` chegar
+        ao anel do tabuleiro sem o renderizador guardar estado de tema.
+        """
+        try:
+            return theme.cor_atual(tokens.MOLDURA)
+        except tk.TclError:  # pragma: no cover - sem root o desenho nem acontece
+            return BOARD_FRAME
+
+    @staticmethod
+    def _cor_de_coordenada(canvas: tk.Canvas) -> str:
+        """A cor legível sobre o fundo real deste canvas. Cai na reserva se o Tk não responder."""
+        try:
+            fundo = str(canvas.cget("background") or "")
+            if not fundo.startswith("#"):
+                # `SystemButtonFace` e afins: pede ao Tk o RGB de 16 bits e reduz a 8.
+                r, g, b = canvas.winfo_rgb(fundo)
+                fundo = f"#{r // 257:02x}{g // 257:02x}{b // 257:02x}"
+        except tk.TclError:
+            return COORDINATE_TEXT
+        return tokens.sobre_superficie(fundo)
+
     def _draw_coordinates(self, canvas: tk.Canvas, model: BoardModel, geometry: BoardGeometry) -> None:
+        """As letras a–h e os números 8–1, **na cor que contrasta com o fundo do canvas** (S-146).
+
+        Eram uma constante `#d8d8d8`, escolhida para o tabuleiro escuro da Análise. O Resultado
+        desenha sobre `#f2f2f2`: razão **1,27:1**, ou seja, as coordenadas estavam na tela e não
+        podiam ser lidas. Num programa cujo trabalho é dizer "o bispo está em c4", a régua que
+        nomeia c4 era invisível.
+
+        O fundo vem do próprio canvas e não de um parâmetro: quem desenha é quem sabe onde está,
+        e um parâmetro seria mais um número solto em outro arquivo -- que é a família de defeito
+        que a S-145 veio fechar.
+        """
+        cor_coordenada = self._cor_de_coordenada(canvas)
         files = "hgfedcba" if model.flipped else "abcdefgh"
         ranks = "12345678" if model.flipped else "87654321"
         for index, char in enumerate(files):
             canvas.create_text(
                 geometry.origin_x + index * geometry.cell + geometry.cell / 2,
-                geometry.origin_y + geometry.size + 11,
+                geometry.origin_y + geometry.size + COORD_OFFSET_PX,
                 text=char,
-                fill=COORDINATE_TEXT,
-                font=("Segoe UI", 9, "bold"),
+                fill=cor_coordenada,
+                font=COORD_FONT,
                 tags=(COORDS_TAG,),
             )
         for index, char in enumerate(ranks):
             canvas.create_text(
-                geometry.origin_x - 10,
+                geometry.origin_x - COORD_OFFSET_PX + 1,
                 geometry.origin_y + index * geometry.cell + geometry.cell / 2,
                 text=char,
-                fill=COORDINATE_TEXT,
-                font=("Segoe UI", 9, "bold"),
+                fill=cor_coordenada,
+                font=COORD_FONT,
                 tags=(COORDS_TAG,),
             )
 

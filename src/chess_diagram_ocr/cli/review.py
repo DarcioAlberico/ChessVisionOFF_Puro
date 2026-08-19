@@ -23,6 +23,7 @@ from ..review_queue import (
     merge_queues,
     rare_classes_from_labels,
 )
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

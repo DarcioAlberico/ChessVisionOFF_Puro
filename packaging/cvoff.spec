@@ -56,6 +56,18 @@ datas = [
 ]
 datas += collect_data_files("ttkbootstrap")
 
+ICONE = PROJETO / "assets" / "cvoff.ico"
+"""O ícone do `.exe`, e o **mesmo** que `ui/plataforma.py` põe na janela (S-148).
+
+Ele viaja duas vezes de propósito: aqui, cravado no cabeçalho do executável pelo PyInstaller --
+é o que o Explorer, o atalho e a barra de tarefas leem antes de o programa rodar --, e dentro de
+`assets/` pelo `datas` acima, que é de onde `preparar_janela` o lê em execução. Um `.exe` com
+ícone e uma janela com a pena do Tk seria pior que os dois genéricos: pareceria outro programa.
+
+Gerado por `ui/plataforma.py::gravar_icone()` e versionado, para o build não depender de o
+Pillow estar no ambiente de empacotamento. `tests/test_ui_plataforma.py` afirma que o arquivo em
+disco e o gerador não divergiram."""
+
 # `torchvision.models` e os CLIs entram por nome porque nada os importa estaticamente: a
 # arquitetura vem do checkpoint (S-27) e os `cvoff-*` são entrypoints declarados no
 # pyproject, que o PyInstaller não lê.
@@ -71,6 +83,25 @@ hiddenimports += collect_submodules("chess_diagram_ocr")
 excludes = [
     "streamlit",
     "altair",
+    # `pyarrow` vem junto do `streamlit`, e sozinho ele e a maior parte dos 115,4 MiB (16,6%
+    # do bundle) que a S-137 mediu -- para um exemplo que a S-54 aposentou. Ele saiu das
+    # dependencias obrigatorias no mesmo item; ficar aqui tambem e cinto e suspensorio,
+    # porque quem instalar o extra `demo` e gerar o .zip nao deve empacota-lo por acidente.
+    "pyarrow",
+    # O `onnx` e um backend **alternativo** de inferencia (S-30), opcional de proposito: o
+    # pipeline empacotado usa `torch`, e quem tem os dois no ambiente levaria os dois.
+    "onnx",
+    "onnxruntime",
+    # A S-69 tirou o modo "Leitura" via WebView2 e com ele a dependencia declarada -- mas nao
+    # tirou os pacotes do ambiente de quem ja os tinha, e o PyInstaller coleta o que **esta
+    # instalado**, nao o que o `pyproject.toml` declara. Medido no build de 2026-08-18, com o
+    # docstring deste arquivo dizendo que "nao e mais assunto": `pythonnet` (440 KB) e
+    # `clr_loader` (24 KB) estavam dentro do bundle. Sao pequenos; ficarem la depois de o
+    # codigo que os usava ter sido removido e que nao e.
+    "pythonnet",
+    "clr_loader",
+    "clr",
+    "webview",
     "pytest",
     "mypy",
     "ruff",
@@ -109,14 +140,18 @@ exe = EXE(  # noqa: F821
     # empacotado por UPX como suspeito. Trocar minutos de download por um falso positivo
     # de antivírus não vale.
     console=False,
-    # Sem console: é um app de janela. O log continua indo para o arquivo que
-    # `logging_setup.default_log_file()` decide, e é lá que se olha quando algo falha.
+    # Sem console: é um app de janela. O log vai para `logs/chessvisionoff.log`, ao lado deste
+    # executável, e é lá que se olha quando algo falha -- inclusive quando a janela nem abre.
+    #
+    # Esta frase já esteve aqui sem ser verdade (S-127): `default_log_file()` devolvia `None`
+    # sem `CVOFF_LOG_DIR`, e nada no bundle a definia. Um `.exe` que não abria não deixava
+    # rastro nenhum, que é exatamente o modo de falha que desligar o console cria.
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=str(ICONE),
 )
 
 coll = COLLECT(  # noqa: F821

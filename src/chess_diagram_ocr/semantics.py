@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SideSource = Literal[
-    "text", "ocr", "text-page-scope", "ocr-page-scope", "legality", "manual", "default"
+    "text", "ocr", "text-page-scope", "ocr-page-scope", "legality", "database", "manual", "default"
 ]
 
 _SOURCE_LABELS: dict[SideSource, str] = {
@@ -47,6 +47,7 @@ _SOURCE_LABELS: dict[SideSource, str] = {
     "text-page-scope": "declarado no cabeçalho da página",
     "ocr-page-scope": "lido por OCR do cabeçalho da página",
     "legality": "deduzido da legalidade da posição",
+    "database": "da partida que a base casou",
     "manual": "declarado à mão na galeria",
     "default": "assumido (nada no PDF diz de quem é a vez)",
 }

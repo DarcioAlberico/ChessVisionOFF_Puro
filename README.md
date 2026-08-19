@@ -57,7 +57,15 @@ uv run python packaging/build_windows.py
 Sai em `dist/ChessVisionOFF/`. Zipe a pasta inteira: ela roda numa maquina Windows limpa,
 sem Python e sem `uv`.
 
-**Tamanho medido: 696 MB, 5.247 arquivos** (torch 2.10+cpu, torchvision, OpenCV, PyMuPDF).
+**Tamanho: o build grava em [docs/metrics/bundle.json](docs/metrics/bundle.json), e o numero
+citado aqui e conferido contra esse arquivo por `tests/test_docs.py` (S-135).** A ultima
+medida registrada e de **684 MB, 4.275 arquivos**, do build de 2026-08-18 (commit `9a683d1`).
+Ela substitui a de 2026-08-09, que estava obsoleta -- e refaze-la achou uma coisa: o
+`streamlit` de fato tinha saido, mas o `pythonnet` e o `clr_loader` **continuavam dentro do
+bundle**, muito depois de a S-69 ter removido o codigo que os usava. O PyInstaller coleta o
+que esta *instalado*, e nao o que o `pyproject.toml` declara; os dois entraram para os
+`excludes` de `packaging/cvoff.spec`. 696 -> 685 (streamlit) -> **684 MB** (os dois).
+
 E o build **completo** -- leitor *e* treinador. O peso vem quase todo do torch, e o torch
 esta ali porque o ciclo que da valor ao projeto e *corrigir, salvar, treinar*: um bundle so
 de leitura seria ~5x menor e nao teria o botao "Treinar modelo". O caminho para faze-lo esta
@@ -104,8 +112,10 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, os tres comandos abaixo ficam disponiveis no ambiente. Todos
-aceitam `-v` para log em nivel DEBUG.
+Depois da instalacao, **17 comandos** ficam disponiveis no ambiente -- a contagem sai de
+`[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
+log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
+usados estao abaixo; `--help` lista o resto.
 
 ```bash
 # Treino. Usa data/splits.csv: treina no split 'train', valida em 'val',
@@ -167,11 +177,34 @@ cvoff-field --json docs/metrics/atual.json
 # Anotar uma pagina nova: o rascunho ja traz o que o pipeline leu, e voce corrige.
 cvoff-field --no-placement --regime scan-puro --draft "1937 Kemeri.pdf:80,187"
 
+# Casar os diagramas com uma base de partidas em PGN (S-72/S-73). Preenche lance, vez e
+# headers -- SO onde estiver vazio, e nunca sobrescreve o que voce digitou. Posicao que casa
+# com mais de 5 partidas nao preenche nada: ali ela deixou de identificar qual partida e.
+# A base e sua, fica em pgn_database/ e fora do repositorio. Nada sai da maquina.
+# Exige o livro ja varrido na aba Galeria -- e dela que saem as posicoes e as legendas.
+cvoff-games --all                         # relata, sem gravar nada
+cvoff-games --all --apply                 # grava nas anotacoes da Galeria
+cvoff-games --book "Karpov" --names       # so o caminho por nome: ~150 s, alcanca 12,6%
+# O padrao (--positions) reproduz os lances da base inteira: ~104 min em dez processos, e
+# alcanca todo diagrama. O custo e da PASSADA, nao do livro -- por isso `--all` de uma vez,
+# e nao um `--book` por livro, que pagaria 32 vezes pela mesma varredura.
+
 # Procedencia do lado a jogar no acervo (criterio de saida da Fase 8): amostra paginas de
 # cada PDF e conta de onde veio o [SideToMoveSource] -- texto, OCR, legalidade ou assumido.
 # Rodar com e sem --ocr responde em dois numeros o que o motor da S-43 entregou.
 cvoff-sides
 cvoff-sides --ocr rapidocr --json docs/metrics/sides_com_ocr.json
+
+# Censo de deteccao (S-82): o que o detector ACEITA no acervo, contado por livro. Nao
+# carrega modelo e nao pede rotulo humano -- e distribuicao, nao acuracia. Existe porque
+# o projeto media leitura e nao media deteccao, e foi assim que o glifo de cavalo do
+# cabecalho do "Secrets" entrou como diagrama em 71 paginas sem aparecer em relatorio
+# nenhum. Ver docs/ANALISE_DETECCAO.md.
+cvoff-census --csv docs/metrics/deteccao_base.csv
+cvoff-census --pdf "PDF/1937 Kemeri.pdf" --all-pages
+# O comando que decide se uma mudanca em deteccao presta: o que sumiu, e algum dos que
+# sumiram era diagrama de verdade? --fail-on-loss transforma isso em portao.
+cvoff-census --csv nova.csv --baseline docs/metrics/deteccao_base.csv --fail-on-loss
 
 # Grade de experimentos de arquitetura (S-29): canais, resolucao, cabeca, backbone.
 # Cada variante treina do zero com a mesma semente e e comparada no split 'val'
@@ -208,20 +241,77 @@ A exportacao e cancelavel e retomavel: a cada 5 paginas ela grava
 a ultima concluida -- desde que os parametros sejam os mesmos. Concluir apaga o parcial.
 
 O lado a jogar sai da legenda do PDF quando ela declara, da legalidade da posicao quando
-ela impoe (o lado que nao joga nao pode estar em xeque), e do padrao "brancas" quando
-nenhuma das duas responde. O header `[SideToMoveSource]` diz qual dos tres foi, sempre --
-a maioria dos livros do acervo nao declara nada, e um palpite precisa parecer um palpite.
+ela impoe (o lado que nao joga nao pode estar em xeque), da partida que a base casou, da
+escolha de quem estava com o livro aberto, e do padrao "brancas" quando nenhuma das outras
+responde. O header `[SideToMoveSource]` diz **qual das 8** foi, sempre -- a maioria dos livros
+do acervo nao declara nada, e um palpite precisa parecer um palpite.
 
-Para gravar o log em arquivo, defina `CVOFF_LOG_DIR`:
+| valor | de onde veio |
+|---|---|
+| `text` | declarado no texto do PDF |
+| `ocr` | lido por OCR da legenda (S-42/S-43) |
+| `text-page-scope` | declarado no cabecalho da pagina |
+| `ocr-page-scope` | lido por OCR do cabecalho da pagina |
+| `legality` | deduzido da legalidade da posicao |
+| `database` | da partida que a base casou (S-72) |
+| `manual` | escolhido a mao na Galeria |
+| `default` | ninguem respondeu: "brancas", e o header marca o palpite como palpite |
+
+A lista sai de `SideSource`, em `semantics.py`, e `tests/test_docs.py` falha se a tabela e o
+`Literal` divergirem (S-135) -- ela ja disse "tres" enquanto o codigo declarava oito.
+
+Para gravar o log em arquivo num checkout, defina `CVOFF_LOG_DIR`:
 
 ```bash
 set CVOFF_LOG_DIR=logs
 ```
 
+**No `.exe` isso nao e preciso**: o executavel nao tem console, e por isso grava sozinho em
+`logs\chessvisionoff.log`, na pasta ao lado dele -- junto com `data\`, `models\`, `PDF\` e
+`PGN\`. E o primeiro lugar a olhar quando a janela nao abre (S-127). A variavel continua
+mandando se estiver definida, no `.exe` tambem.
+
 ## Recursos opcionais (e o que o projeto faz sem eles)
 
-**O projeto funciona inteiramente offline.** Nada sai da sua maquina no uso padrao. As tres
+**O projeto funciona inteiramente offline.** Nada sai da sua maquina no uso padrao. As
 integracoes abaixo sao desligadas por padrao e nao afetam o reconhecimento.
+
+### Base de partidas (S-72/S-73)
+
+Um ou mais `.pgn` que voce poe em `pgn_database/`. Com eles, a Galeria preenche **numero do
+lance, vez a jogar e headers** dos diagramas cuja posicao aparece numa partida registrada -- e
+a vez a jogar deixa de ser o palpite que a Fase 3 registrou como palpite.
+
+**Todos os arquivos da pasta entram nas buscas (S-93).** Ate aqui era so o maior, e o custo
+disso foi medido: numa pasta com duas gigabases, as 10,3 M partidas da segunda nunca eram
+consultadas -- e a partida procurada estava la. Acrescentar um `.pgn` invalida o indice por
+nome e o cache de posicoes, que avisam como refazer:
+
+```bash
+cvoff-games --build-index     # o indice por nome, sobre todas as bases da pasta
+```
+
+E **local**: o arquivo e lido do disco, nada e consultado na rede. Sem ele, os botoes "Buscar
+por nome" e "Buscar pela posicao" dizem onde por um e o resto do produto segue igual.
+
+Medido numa base de 10.547.416 partidas, no `Secrets of Chess Training` (1.408 diagramas):
+**61 diagramas** pelo caminho por nome (~150 s) e **581** pelo caminho por posicao (~29 min
+desde a S-85, eram 104).
+
+Com as duas gigabases da pasta (18,9 GB, 20.902.903 partidas), medido em 2026-08-16 sobre os
+mesmos 4 livros: os casamentos por posicao vao de **1.641 para 2.104** em 3.563 diagramas
+(46,1% -> 59,1%), e a passada custa **56 min**. O preco esta declarado no plano: 981 diagramas
+deixaram de ser "partida unica", e **63,5% disso e a mesma partida repetida nas duas bases**.
+
+Os dois caminhos sao botao da Galeria e comando de linha. O por nome usa o que a legenda
+declara; o por posicao (S-92) pergunta pelas **64 casas lidas** e por isso alcanca diagrama
+sem nome nenhum impresso -- 53,9% do acervo, onde a legenda nao tinha o que oferecer. Ele
+custa uma passada pelo arquivo inteiro, avisa disso antes, mostra em que pedaco esta e da para
+cancelar. A resposta fica em `data/games_positions.sqlite`, **uma linha por colocacao**: a
+segunda vez custa segundos, um livro novo custa so as posicoes que ele trouxer, e abrir um
+livro le as colocacoes daquele livro e nao o acervo (S-140). Cancelar no meio **descarta a passada
+inteira** -- meia base lida da contagens que nao valem, e e a contagem que decide se preencher
+um header e honesto.
 
 ### Correcao remota de FEN ("Corrigir Net")
 
@@ -275,14 +365,48 @@ Stockfish para `engines/` e a instalacao mais simples.
 }
 ```
 
+### Segunda opiniao: o botao "2a opiniao" (S-66)
+
+Manda o **mesmo recorte** que esta no editor para um segundo leitor, local, e mostra a FEN
+que ele devolve ao lado da sua. Serve para o diagrama em que voce nao tem certeza: duas
+leituras independentes concordando valem mais que uma, e discordando dizem exatamente onde
+olhar.
+
+**Sao tres coisas separadas, e as tres precisam existir**: o extra, um clone do
+[tsoj/Chess_diagram_to_FEN](https://github.com/tsoj/Chess_diagram_to_FEN) fora deste
+repositorio (~232,8 MiB, incluindo o modelo), e o caminho dele nas preferencias.
+
+```bash
+uv sync --extra second-opinion
+```
+
+```jsonc
+// data/settings.json
+{
+  "local_reader": {
+    "path": "C:/caminho/para/Chess_diagram_to_FEN"
+  }
+}
+```
+
+**Sem qualquer uma das tres, o botao nao aparece** -- e quando aparece e falha, `tsoj_reader`
+diz em pt-BR qual das tres falta. Opcional pelo mesmo motivo do `ocr`: quem ja tem dado do
+proprio acervo corrige mais rapido no editor do que pedindo opiniao, e 232,8 MiB de clone e um
+preco que so quem quer o recurso deve pagar.
+
+**O que o produto faz sem ele:** tudo, menos este botao. A segunda opiniao nunca grava nada
+sozinha -- adotar a leitura dela e um clique seu, e a procedencia registra que veio dali.
+
 ### OCR da legenda (S-42/S-43)
 
-Le o texto **em volta do diagrama** nas paginas que nao tem camada de texto. Medido: **7 dos
-27 livros do acervo sao scan puro** e hoje saem inteiros como `[SideToMoveSource "default"]`,
-mesmo quando a pagina tem `LAS BLANCAS JUEGAN PRIMERO` impresso no topo. Outros 5 livros tem
+Le o texto **em volta do diagrama** nas paginas que nao tem camada de texto. Medido em
+2026-08-14, quando o acervo tinha 27 livros: **7 deles sao scan puro** e saem inteiros como
+`[SideToMoveSource "default"]`, mesmo quando a pagina tem `LAS BLANCAS JUEGAN PRIMERO`
+impresso no topo. (Hoje o acervo tem 39 PDFs; os 12 que entraram depois nao foram
+classificados, e por isso o denominador aqui continua 27.) Outros 5 livros tem
 camada de texto que falha em parte das paginas.
 
-Vem **desligado**, e para 20 dos 27 livros deve continuar assim: onde a camada de texto
+Vem **desligado**, e para os outros 20 daqueles 27 deve continuar assim: onde a camada de texto
 existe, ela responde melhor e de graca.
 
 ```bash
@@ -327,7 +451,7 @@ Tres coisas que o recurso **nao** faz, de proposito:
 |---|---|---|
 | Sumiu a aba **Leitura** do visualizador | saiu na S-69, junto com o WebView2 | o botao **Abrir no leitor do sistema** faz o mesmo, no leitor padrao da maquina. A pagina no app continua sendo a que reconhece, marca e recorta diagramas |
 | Treino muito lento (~9 min por epoca) | `torch` `+cpu`, sem CUDA | ver [Desempenho](#desempenho-cpu-gpu-e-onnx). A barra de status diz qual dispositivo esta em uso |
-| Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros do acervo. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
+| Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros medidos em 2026-08-14. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
 | `--ocr rapidocr` avisa que "o OCR pedido nao esta disponivel" | o extra nao esta instalado | `uv sync --extra ocr`. O comando segue sem OCR em vez de falhar, mas a saida nao tem legenda lida |
 | Poucos diagramas detectados numa pagina cheia | o teto "Max diagramas" cortou | o padrao e 12; o log avisa com os scores quando o teto corta candidato aprovado |
 | Diagramas de cabeca para baixo | orientacao fixa em 0 ou 180 | usar **Automatica** (padrao). Casos ambiguos entram na fila de revisao marcados |
@@ -416,9 +540,13 @@ estou vendo?". A caixa **Marcar diagramas** desliga tudo isso para quem esta len
 livro, e a escolha sobrevive ao fechamento da janela.
 
 A **cor diz em que ponto do trabalho** aquele diagrama esta: azul e localizado pelo detector,
-ambar e lido pelo OCR e ainda nao salvo, **verde e ja tem amostra no `labels.csv`**. O verde
-vem da procedencia gravada no CSV e nao da memoria, entao ele aparece assim que voce abre um
-livro que ja trabalhou antes -- e responde "onde eu parei?" sem custar uma leitura. O diagrama
+ambar e lido pelo OCR e ainda nao salvo, **violeta e a base de partidas reconheceu a posicao**
+(S-75) e **verde e ja tem amostra no `labels.csv`**. O verde vem da procedencia gravada no CSV
+e o violeta das anotacoes da galeria -- nenhum dos dois vem da memoria, entao os dois aparecem
+assim que voce abre um livro que ja trabalhou antes, e respondem "onde eu parei?" sem custar
+uma leitura. O violeta diz uma coisa que nenhuma outra marca da tela sabe dizer: **aquele
+diagrama nao precisa de olho humano**, porque as 64 casas dele bateram com um lance de uma
+partida registrada. O diagrama
 aberto no editor e marcado por **borda dupla e mais grossa**, e nao por cor, justamente para
 nao esconder o estado dele -- e nada e pintado por cima do tabuleiro, que e o que se esta
 tentando conferir.
@@ -509,10 +637,28 @@ Duas checagens distintas, e confundi-las causava rotulos corrompidos no dataset:
   impossiveis, como duas damas brancas sem rei.
 - `check_position(fen)` -- aplica as regras do xadrez. Classifica os problemas em:
   - **fatais**, independentes do lado a jogar (rei faltando, pecas demais, peao na
-    primeira fila). Sao erro real de reconhecimento e ficam fora do treino.
+    primeira fila). Quase sempre sao erro real de reconhecimento, e ficam fora do treino.
   - **de turno**, que dependem de quem joga. Num diagrama de livro o lado a jogar nao
     esta na imagem e e preenchido como "brancas"; quando isso torna a posicao ilegal,
     quase sempre significa que era a vez das pretas. As pecas estao certas.
+
+**"Quase sempre", e nao "sempre".** Um livro nao e feito so de posicoes jogaveis: um
+capitulo sobre estrutura de peoes desenha o esqueleto sem rei nenhum, um estudo de final
+mostra tres pecas, um tabuleiro vazio ilustra as coordenadas. Ler qualquer um desses
+**corretamente** produz uma FEN fatalmente ilegal, e ate a fase anterior o programa se
+recusava a grava-la -- perdendo justamente o rotulo certo.
+
+Hoje ele pergunta, em vez de recusar. Salvar uma posicao fatalmente ilegal abre uma caixa
+que diz o problema e as casas culpadas; **"sim"** grava a linha com a coluna `illegal_ok`
+marcada, e **"nao"** cancela sem gravar nada. Quem sabe de qual dos dois casos se trata e
+a pessoa que esta com o PDF aberto do lado.
+
+A marca vale para o arquivo inteiro, e nao so para a caixa de dialogo: a amostra marcada
+**entra no treino** (o classificador le casa a casa, e as 64 casas de um diagrama de
+estrutura estao rotuladas certas), o `cvoff-audit` a lista a parte em vez de chama-la de
+problema, e o `cvoff-audit --fix` nao a manda para a quarentena. Sem isso, o "sim" seria
+uma pergunta sem consequencia: o comando seguinte tiraria a linha do arquivo. Corrigir o
+rotulo depois, ja com os dois reis no lugar, limpa a marca sozinho.
 
 ## Dados e artefatos
 
@@ -522,14 +668,41 @@ por tamanho ou por direito autoral:
 | Caminho | Conteudo | Por que fora |
 |---|---|---|
 | `PDF/` | livros de origem | material protegido por direito autoral |
-| `data/samples/` | ~3.200 PNGs de tabuleiros, ~2,7 GB | tamanho |
+| `data/samples/` | 3.935 PNGs de tabuleiros, 3,4 GB | tamanho |
 | `models/*.pt` | checkpoint treinado, ~8,7 MB | binario que muda a cada treino |
 | `PGN/` | saida gerada | reproduzivel a partir dos PDFs |
+| `pgn_database/` | sua base de partidas em PGN (as duas gigabases medidas aqui tem 18,9 GB) | material de terceiro, e o GitHub recusa acima de 100 MB |
 
 Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o modelo
 (`cvoff-train`) ou obter um checkpoint por outro meio.
 
 ## Documentacao tecnica
+
+### Onde mora a spec de cada item (S-NN)
+
+A spec deste projeto esta espalhada por cinco arquivos, e essa dispersao ja custou duas
+entregas: a S-76 e a S-77 ficaram tres meses em documento nenhum, porque caiam na fenda entre
+dois deles. Esta tabela e o indice, e `tests/test_docs.py` a confere contra o disco (S-134) --
+tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite falhar.
+
+| itens | arquivo |
+|---|---|
+| S-01 a S-36 | [docs/SPEC.md](docs/SPEC.md) |
+| S-37 a S-77 | [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) |
+| S-78 a S-82, S-143 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
+| S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
+| S-95 a S-142 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
+| S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
+
+A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
+outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
+S-80, que e a medicao que ela corrige.
+
+Os arquivos de medicao -- `EXPERIMENTS.md`, `EXPERIMENTS_FASE7.md`, `BASELINE.md` -- tambem tem
+secoes `S-NN`, e elas **nao** substituem a spec: trazem o que foi medido daquele item, nao o
+criterio de aceite dele. A tabela acima e sobre a spec.
+
+### Os documentos
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) -- como uma pagina vira uma FEN, e onde
   cada decisao mora
@@ -538,10 +711,28 @@ Em um clone novo e preciso trazer seus proprios PDFs para `PDF/` e treinar o mod
 - [docs/ANALISE.md](docs/ANALISE.md) -- diagnostico do estado atual, com medicoes
 - [docs/ROADMAP.md](docs/ROADMAP.md) -- fases de evolucao planejadas (Fases 0 a 6)
 - [docs/SPEC.md](docs/SPEC.md) -- especificacao detalhada das melhorias (S-01 a S-36)
-- [docs/ROADMAP_FASE7.md](docs/ROADMAP_FASE7.md) -- Fases 7 a 11, com a medicao de campo que
+- [docs/ROADMAP_FASE7.md](docs/ROADMAP_FASE7.md) -- Fases 7 a 13, com a medicao de campo que
   as motiva: o gate rejeita 17 de 101 diagramas de pagina real contra 3 de 320 no split de teste
-- [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 11 (S-37 a S-63),
-  incluindo os defeitos da Fase 7.0
+- [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 13 (S-37 a S-75),
+  incluindo os defeitos da Fase 7.0 e a Fase 12, que saiu de uso e nao de varredura
+- [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) -- o glifo do cabecalho reconhecido
+  como diagrama, os quatro danos medidos e o censo de candidatos (S-78 a S-82)
+- [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) -- a base de partidas como fonte
+  de verdade: o indice por nome, a busca por posicao e a escolha que vira procedencia
+  (S-83 a S-94)
+- [docs/ROADMAP_FASE14.md](docs/ROADMAP_FASE14.md) -- **Fases 14 a 19**, com a avaliacao de
+  2026-08-16 que as motiva: as duas reguas do projeto -- o split de teste e o conjunto de
+  campo -- estao contaminadas pelo que deveriam julgar, e a metrica primaria mede confianca
+  e nao correcao
+- [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) -- especificacao das Fases 14 a 19 (S-95 a
+  S-142), com o indice de onde mora cada item da spec
+- [docs/ROADMAP_UI.md](docs/ROADMAP_UI.md) -- **Fases 20 a 24**, a avaliacao de interface de
+  2026-08-17 em tres passadas: o tema `ttkbootstrap` esta instalado e nenhum widget pede estilo,
+  abaixo de ~1500x840 a janela apaga controles (em 1100x760 a fila de salvar fica inalcancavel),
+  e azul e violeta significam coisas diferentes na pagina e no tabuleiro
+- [docs/SPEC_UI.md](docs/SPEC_UI.md) -- especificacao das Fases 20 a 24 (S-144 a S-170):
+  tokens de cor e tipografia, o piso da janela, cor com um significado so, barra de menus e
+  rodape de janela, vocabulario e estados vazios
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

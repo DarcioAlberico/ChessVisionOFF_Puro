@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -13,6 +14,95 @@ logger = logging.getLogger(__name__)
 
 class NoBoardDetectedError(RuntimeError):
     pass
+
+
+MIN_AREA_FRACTION = 0.004
+"""Fração da página abaixo da qual um contorno não é considerado. **Sem medição registrada.**
+
+Este arquivo tinha 0 constantes nomeadas e 179 literais numéricos quando a S-131 o olhou --
+contra 11 nomeadas em `detection/embedded.py`, 6 em `detection/hybrid.py` e 5 em
+`preprocess.py`, todas com o número medido ao lado. Era o único caminho do núcleo sem
+constante, sem medição e sem instrumento, e é a **única fonte de candidato** nos livros cuja
+página não traz imagem embutida.
+
+Nomear não é medir, e este docstring não finge o contrário: os números destas oito constantes
+vêm da Fase 1 e ninguém os mediu desde então. O que a S-131 entrega é o **instrumento** --
+`cvoff-census --recusas` grava o que cada uma barrou, com score, contraste e caixa --, para que
+o primeiro a mexer num deles tenha contra o que comparar. A ordem é a da S-82, e não é
+estética: `ANALISE_DETECCAO.md` §5 registra dois ajustes de limiar feitos sem censo, os dois
+reprovados.
+"""
+
+ASPECT_MIN, ASPECT_MAX = 0.62, 1.62
+"""Faixa de proporção largura/altura aceita. **Sem medição registrada** -- ver `MIN_AREA_FRACTION`.
+
+Larga de propósito: o contorno de um diagrama impresso raramente fecha quadrado, e um
+tabuleiro com legenda embutida no recorte estica no eixo vertical.
+"""
+
+AREA_SATURATION = 0.12
+"""Fração da página em que a nota de área satura, para caixa grande não vencer só por tamanho."""
+
+MIN_VISIBLE_RATIO = 0.65
+"""Quanto da caixa precisa estar dentro da página. Corta o quad que sangra para fora da folha."""
+
+MIN_QUAD_INSIDE_RATIO = 0.5
+"""Quantos dos 4 cantos precisam cair dentro da página (com a margem de `QUAD_MARGIN_RATIO`)."""
+
+QUAD_MARGIN_RATIO = 0.015
+"""Folga, em fração do lado da página, para um canto contar como "dentro"."""
+
+DEDUPE_IOU = 0.9
+"""Acima disto, dois candidatos das duas passadas de limiar são o mesmo, e o pior sai."""
+
+MIN_RELATIVE_AREA = 0.02
+"""Fração da área do **maior** candidato abaixo da qual os outros são ruído da mesma página."""
+
+MIN_SCORE_FLOOR = 0.06
+"""Piso absoluto de score. Abaixo disto o candidato não entra, mesmo sendo o melhor da página."""
+
+MIN_SCORE_RELATIVE = 0.25
+"""Fração do score do melhor candidato abaixo da qual os outros saem. Vale o maior dos dois."""
+
+
+@dataclass(frozen=True)
+class RejectedQuad:
+    """Um candidato de contorno que **não** entrou, e por qual guarda (S-131).
+
+    O censo da S-82 conta o que entra e é cego ao que foi barrado — que é justamente onde mora
+    o recall perdido. Sem isto, mexer num limiar é medir só um dos dois lados do efeito: dá
+    para ver o falso positivo que sumiu, e não o diagrama que sumiu junto.
+
+    A caixa é em **pixels da imagem** recebida por `detect_boards`, como o resto deste módulo;
+    quem grava em pontos do PDF converte (é o que `detection_census` faz).
+    """
+
+    bbox: tuple[int, int, int, int]
+    score: float
+    checker: float
+    """Contraste de casa do recorte (S-143). `0.0` quando a recusa foi antes de haver recorte."""
+
+    reason: str
+    """Qual guarda barrou. Os valores estão em `MOTIVOS_DE_RECUSA`."""
+
+
+MOTIVOS_DE_RECUSA = (
+    "aspecto",
+    "fora-da-pagina",
+    "area-relativa",
+    "score-baixo",
+    "sobreposicao",
+    "teto",
+)
+"""Os motivos que `detect_boards` sabe registrar, na ordem em que as guardas rodam.
+
+Tupla e não texto livre para que o relatório possa agrupar sem depender de ortografia, e para
+que acrescentar uma guarda sem acrescentar o motivo seja um erro visível.
+
+**Não há motivo para "abaixo do piso de área", e a ausência é decisão.** Ver o comentário em
+`_extract_candidate_quads`: registrá-lo produziu 2,6 milhões de linhas de speckle de 4,6 pt num
+CSV de 280 MB, contra 499 candidatos aceitos. Instrumento que ninguém abre não instrumenta.
+"""
 
 
 def order_quad_points(points: np.ndarray) -> np.ndarray:
@@ -48,20 +138,20 @@ def _contour_geometry_score(quad: np.ndarray, image_area: float) -> float:
     if area <= 0:
         return 0.0
     # Keep small diagrams but reject tiny noisy contours.
-    if area < image_area * 0.004:
+    if area < image_area * MIN_AREA_FRACTION:
         return 0.0
 
     x, y, w, h = cv2.boundingRect(quad.astype(np.int32))
     if h == 0:
         return 0.0
     ratio = w / float(h)
-    if ratio < 0.62 or ratio > 1.62:
+    if ratio < ASPECT_MIN or ratio > ASPECT_MAX:
         return 0.0
 
     area_ratio = area / image_area
     # Saturates to avoid very large non-board boxes dominating by area only.
-    area_component = min(area_ratio / 0.12, 1.0)
-    squareness = max(0.0, 1.0 - (abs(math.log(ratio)) / math.log(1.62)))
+    area_component = min(area_ratio / AREA_SATURATION, 1.0)
+    squareness = max(0.0, 1.0 - (abs(math.log(ratio)) / math.log(ASPECT_MAX)))
     return area_component * (squareness**2.4)
 
 
@@ -144,7 +234,7 @@ def _bbox_visible_ratio(bbox: tuple[int, int, int, int], image_shape: tuple[int,
 def _quad_point_inside_ratio(
     quad: np.ndarray,
     image_shape: tuple[int, int, int],
-    margin_ratio: float = 0.015,
+    margin_ratio: float = QUAD_MARGIN_RATIO,
 ) -> float:
     img_h, img_w = image_shape[:2]
     margin_x = img_w * margin_ratio
@@ -180,27 +270,62 @@ def _periodic_peak_score(profile: np.ndarray, period: int) -> float:
     return float(np.clip((np.mean(peaks) - baseline) / spread, 0.0, 1.0))
 
 
-def _board_pattern_score(warped_rgb: np.ndarray) -> float:
+def _small_gray(warped_rgb: np.ndarray) -> np.ndarray:
+    """O recorte em 160x160 cinza -- 20 px por casa, que é onde as duas parcelas foram calibradas."""
     gray = cv2.cvtColor(warped_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
     # 20 px per cell: enough for line and checker texture cues.
-    small = cv2.resize(gray, (160, 160), interpolation=cv2.INTER_AREA)
+    return cv2.resize(gray, (160, 160), interpolation=cv2.INTER_AREA)
 
+
+def _checker_score(small: np.ndarray) -> float:
+    """Quanto as casas de paridade oposta diferem entre si, descontada a variação dentro de cada uma.
+
+    É a parcela que responde **"isto é um tabuleiro?"**, e a única das duas que não tem como
+    ser imitada por acaso: exige que as 32 casas de uma paridade sejam sistematicamente mais
+    claras que as 32 da outra, num reticulado 8×8 alinhado com o recorte. Foto, retrato e
+    moldura não têm 8×8 nenhum, a diferença entre as duas metades é ruído, e o `clip` em 0
+    entrega **exatamente zero** -- ver `MIN_CHECKER_CONTRAST` na S-143.
+
+    Não confundir com "quantas peças há": tabuleiro cheio derruba este número (as peças cobrem
+    as casas) sem zerá-lo, porque o que sobra de casa visível continua sistemático.
+    """
     cell_means = small.reshape(8, 20, 8, 20).mean(axis=(1, 3))
     parity = (np.indices((8, 8)).sum(axis=0) % 2) == 0
     even_cells = cell_means[parity]
     odd_cells = cell_means[~parity]
     contrast = abs(float(even_cells.mean()) - float(odd_cells.mean())) / 255.0
     within_var = (float(even_cells.std()) + float(odd_cells.std())) / (2.0 * 255.0)
-    checker_score = float(np.clip(contrast * 2.4 - within_var * 0.9, 0.0, 1.0))
+    return float(np.clip(contrast * 2.4 - within_var * 0.9, 0.0, 1.0))
 
+
+def _grid_score(small: np.ndarray) -> float:
+    """Quanto a borda do recorte se repete a cada 20 px, nos dois eixos.
+
+    Mede **linha periódica**, que um tabuleiro tem -- e uma moldura de quadro, uma faixa de
+    fotos e uma fachada também. Sozinha ela não distingue tabuleiro de retrato emoldurado
+    (medido: 0,43 a 0,80 nas fotos do relato da S-143), e é por isso que ela não serve de
+    guarda. Como parcela da textura ela continua útil: é o que separa grade nítida de grade
+    borrada entre dois recortes **do mesmo diagrama**, que é o uso da S-38 e da S-81.
+    """
     gx = np.abs(np.diff(small, axis=1)).mean(axis=0)
     gy = np.abs(np.diff(small, axis=0)).mean(axis=1)
-    grid_score = (_periodic_peak_score(gx, period=20) + _periodic_peak_score(gy, period=20)) / 2.0
-
-    return float(np.clip(0.6 * checker_score + 0.4 * grid_score, 0.0, 1.0))
+    return (_periodic_peak_score(gx, period=20) + _periodic_peak_score(gy, period=20)) / 2.0
 
 
-def _extract_candidate_quads(image_rgb: np.ndarray) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
+def _board_pattern_score(warped_rgb: np.ndarray) -> float:
+    small = _small_gray(warped_rgb)
+    return float(np.clip(0.6 * _checker_score(small) + 0.4 * _grid_score(small), 0.0, 1.0))
+
+
+def board_checker_score(warped_rgb: np.ndarray) -> float:
+    """Só a parcela de xadrez de `_board_pattern_score`, para quem precisa dela isolada."""
+    return _checker_score(_small_gray(warped_rgb))
+
+
+def _extract_candidate_quads(
+    image_rgb: np.ndarray,
+    rejected: list[RejectedQuad] | None = None,
+) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
     gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     thresh_base = cv2.adaptiveThreshold(
@@ -235,13 +360,27 @@ def _extract_candidate_quads(image_rgb: np.ndarray) -> list[tuple[np.ndarray, fl
 
             geom_score = _contour_geometry_score(quad, image_area)
             if geom_score <= 0:
+                # **O que fica de fora do registro, e por quê.** Medido na primeira corrida do
+                # instrumento: 2.627.289 recusas contra 499 aceitos, e o lado mediano da recusa
+                # era 4,6 pt. Um CSV de 280 MB de manchas de contorno não é instrumento, é
+                # ruído com cabeçalho. Só entra o que passou do piso de área -- abaixo dele o
+                # `_contour_geometry_score` não está julgando um candidato, está descartando
+                # speckle, e a recusa não pode ser recall perdido. Sobram as recusas por
+                # **aspecto**, que são as informativas: algo do tamanho de um diagrama que foi
+                # barrado por não ser quadrado o bastante.
+                if rejected is not None and cv2.contourArea(quad.astype(np.float32)) >= image_area * MIN_AREA_FRACTION:
+                    rejected.append(RejectedQuad(_bbox_from_quad(quad), 0.0, 0.0, "aspecto"))
                 continue
 
             bbox = _bbox_from_quad(quad)
             # Reject heavily out-of-frame quads; they tend to produce page-level false positives.
-            if _bbox_visible_ratio(bbox, image_rgb.shape) < 0.65:
-                continue
-            if _quad_point_inside_ratio(quad, image_rgb.shape) < 0.5:
+            fora = (
+                _bbox_visible_ratio(bbox, image_rgb.shape) < MIN_VISIBLE_RATIO
+                or _quad_point_inside_ratio(quad, image_rgb.shape) < MIN_QUAD_INSIDE_RATIO
+            )
+            if fora:
+                if rejected is not None:
+                    rejected.append(RejectedQuad(bbox, geom_score, 0.0, "fora-da-pagina"))
                 continue
 
             warped = warp_from_quad(image_rgb, quad, target_size=320)
@@ -257,12 +396,21 @@ def _extract_candidate_quads(image_rgb: np.ndarray) -> list[tuple[np.ndarray, fl
     deduped: list[tuple[np.ndarray, float, tuple[int, int, int, int], float]] = []
     for candidate in raw_candidates:
         _, _, bbox, _ = candidate
-        if any(_bbox_iou(bbox, kept_bbox) > 0.9 for _, _, kept_bbox, _ in deduped):
+        # A duplicata das duas passadas de limiar **não** vai para as recusas: ela é o mesmo
+        # candidato visto duas vezes, e registrá-la faria o relatório contar cada achado como
+        # um achado mais uma perda.
+        if any(_bbox_iou(bbox, kept_bbox) > DEDUPE_IOU for _, _, kept_bbox, _ in deduped):
             continue
         deduped.append(candidate)
 
     largest_area = max(item[3] for item in deduped)
-    min_relative_area = largest_area * 0.02
+    min_relative_area = largest_area * MIN_RELATIVE_AREA
+    if rejected is not None:
+        rejected.extend(
+            RejectedQuad(item[2], round(item[1], 4), 0.0, "area-relativa")
+            for item in deduped
+            if item[3] < min_relative_area
+        )
     candidates = [item[:3] for item in deduped if item[3] >= min_relative_area]
 
     candidates.sort(key=lambda item: item[1], reverse=True)
@@ -276,6 +424,7 @@ def detect_boards(
     iou_threshold: float = 0.25,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     warn_on_cap: bool = True,
+    rejected: list[RejectedQuad] | None = None,
 ) -> list[tuple[np.ndarray, np.ndarray | None]]:
     """Recorta os diagramas de uma página, numerados em `reading_order` (S-14).
 
@@ -287,21 +436,33 @@ def detect_boards(
     de um candidato já localizado, por exemplo. Ali o teto é o pedido, não um limite do
     usuário, e o aviso da Fase 5 mandava "aumente 'Max diagramas'" numa configuração que
     não tem efeito nenhum sobre essa chamada.
+
+    `rejected`, quando dado, recebe um `RejectedQuad` por candidato **barrado**, com o motivo
+    (S-131). É o instrumento que faltava para mexer em limiar aqui: o censo da S-82 conta o que
+    entra e é cego ao que foi barrado, e é do lado barrado que se vê o recall perdido. Custa
+    uma lista por página quando pedido, e nada quando não.
     """
-    candidates = _extract_candidate_quads(image_rgb)
+    candidates = _extract_candidate_quads(image_rgb, rejected)
     top_score = candidates[0][1] if candidates else 0.0
-    min_score = max(0.06, top_score * 0.25)
+    min_score = max(MIN_SCORE_FLOOR, top_score * MIN_SCORE_RELATIVE)
     selected: list[tuple[np.ndarray, float, tuple[int, int, int, int]]] = []
     dropped_by_cap: list[float] = []
+
+    def _anota(bbox: tuple[int, int, int, int], score: float, motivo: str) -> None:
+        if rejected is not None:
+            rejected.append(RejectedQuad(bbox, round(score, 4), 0.0, motivo))
 
     for candidate in candidates:
         _, score, bbox = candidate
         if score < min_score:
+            _anota(bbox, score, "score-baixo")
             continue
         if any(_bbox_iou(bbox, kept_bbox) > iou_threshold for _, _, kept_bbox in selected):
+            _anota(bbox, score, "sobreposicao")
             continue
         if len(selected) >= max_boards:
             dropped_by_cap.append(score)
+            _anota(bbox, score, "teto")
             continue
         selected.append(candidate)
 

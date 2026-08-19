@@ -32,6 +32,18 @@ padrão se repete:
 
 O sinal que separava os 14 com precisão perfeita era gratuito e não estava sendo olhado:
 **os 159 recortes corretos são exatamente quadrados e os 14 defeituosos não são.**
+
+**E a terceira medição, 2026-08-14 (S-78).** O mesmo padrão outra vez, agora na entrada: a
+guarda de tamanho media **pixels nativos** e o docstring dela prometia barrar "ícone, logotipo
+ou peça solta". São grandezas diferentes -- pixel nativo é resolução --, e um glifo de cavalo
+de 15,4 pt gravado a 600 DPI tem 128 px e passava. 71 das 1181 páginas do `Secrets of Chess
+Training` entregavam um ornamento de cabeçalho como diagrama, e em 14 delas ele vinha **antes**
+de um diagrama de verdade na ordem de leitura, consumindo o número que o `[Diagram "N"]` do
+PGN usa. `MIN_EMBEDDED_SIDE_PT` é a guarda na unidade da pergunta.
+
+Que isso tenha durado tanto é o assunto da S-82: o projeto media leitura (`cvoff-eval`,
+`cvoff-field`) e não media **detecção**, e um recorte que nunca deveria ter existido entra nas
+duas métricas como mais um diagrama difícil. `cvoff-census` é o instrumento que faltava.
 """
 
 from __future__ import annotations
@@ -49,13 +61,54 @@ logger = logging.getLogger(__name__)
 CandidateSource = Literal["embedded", "contour"]
 
 MIN_EMBEDDED_SIDE = 120
-"""Lado mínimo em pixels nativos. Abaixo disso é ícone, logotipo ou peça solta."""
+"""Lado mínimo em **pixels nativos**. Barra a imagem pobre em resolução, que não tem detalhe
+para ser lida por mais espaço que ocupe na página.
+
+Não é o que barra ícone e logotipo, embora tenha dito isso por muito tempo -- ver
+`MIN_EMBEDDED_SIDE_PT`, que é a guarda que responde essa pergunta."""
+
+MIN_EMBEDDED_SIDE_PT = 72.0
+"""Lado mínimo do diagrama **na página**, em pontos. Uma polegada: oito filas de 9 pt.
+
+Existe porque `MIN_EMBEDDED_SIDE` mede pixels nativos, que são **resolução e não tamanho**, e
+por anos o docstring dele prometeu barrar "ícone, logotipo ou peça solta". O glifo de cavalo
+do cabeçalho do `Secrets of Chess Training` tem 128 px nativos em 15,4 pt de página -- 600 DPI
+de ornamento -- e passava com folga: **71 das 1181 páginas** do livro entregavam um cavalo
+como diagrama. Um ornamento gravado a 300 DPI teria 64 px e a 1200 DPI teria 256, então
+apertar o número em pixels não teria resolvido nada além do livro da vez.
+
+**72 pt, e por quê.** Medido pelo censo da S-82 no acervo inteiro, candidato a candidato:
+
+| população, só fonte embutida | faixa |
+|---|---|
+| glifos de cabeçalho (`Secrets`, `Karpov`, `Kemeri`) | 15 -- 50 pt |
+| diagramas de verdade (menor: `Euwe Band 1-2`) | 105,6 pt e acima |
+
+Qualquer número entre 51 e 105 separa os dois. 72 é o meio da faixa e tem significado
+independente do acervo -- uma polegada --, o que o torna preferível a um valor ajustado à
+amostra que por acaso se tem.
+
+**O que ele não resolve, e é de propósito.** Os fragmentos do `GALLAGHER` (um diagrama
+digitalizado que o PDF quebra em vários XObjects) vão de 38,8 a **106,5 pt** e encavalam o
+menor diagrama real por 0,9 pt. Não existe limiar de tamanho que os separe; quem trata aquilo
+é a união de imagens adjacentes, e não esta constante."""
 
 MAX_PAGE_COVERAGE = 0.70
 """Acima desta fração da área da página, a imagem é o scan de fundo e não um diagrama."""
 
 ASPECT_TOLERANCE = 0.20
 """Quanto o aspecto pode fugir de 1,0. Cobre a imagem que inclui legenda (620×704 = 1,14)."""
+
+TILE_GAP_PT = 2.0
+"""Folga em pontos para duas imagens embutidas contarem como **ladrilhos do mesmo desenho**.
+
+Pequena de propósito. O que se quer unir são pedaços que se **encostam** -- no `GALLAGHER` os
+remendos partilham a borda ao ponto de 0,1 pt --, e não diagramas que apenas estão perto. Na
+página de três diagramas do acervo os vãos são de 30 e 100 pt, duas ordens de grandeza acima
+disto, então a regra não os alcança."""
+
+MIN_TILES_TO_MERGE = 2
+"""A partir de quantos ladrilhos encostados a união vale. Dois já é um desenho partido."""
 
 
 @dataclass(frozen=True, eq=False)
@@ -78,6 +131,9 @@ class DiagramCandidate:
 
     trimmed: bool = False
     """`trim_to_grid` encontrou a grade e recortou moldura/legenda."""
+
+    merged_tiles: int = 0
+    """Quantas imagens embutidas encostadas viraram este candidato (S-81). 0 = nenhuma união."""
 
     @property
     def area_pdf(self) -> float:
@@ -379,12 +435,111 @@ def _pixels_for_bbox(page: fitz.Page, bbox: fitz.Rect, native_side: int) -> np.n
     return buffer[:, :, :3].copy() if pix.n == 4 else buffer.copy()
 
 
+@dataclass(frozen=True)
+class _EmbeddedUnit:
+    """Uma unidade candidata: uma imagem embutida, ou a união de várias encostadas (S-81)."""
+
+    bbox: fitz.Rect
+    native_width: int
+    native_height: int
+    tiles: int
+    """Quantas imagens embutidas entraram. 1 = nenhuma união."""
+
+
+def _merge_adjacent_tiles(
+    boxes: list[tuple[fitz.Rect, int, int]],
+    *,
+    gap_pt: float = TILE_GAP_PT,
+    min_tiles: int = MIN_TILES_TO_MERGE,
+) -> list[_EmbeddedUnit]:
+    """Agrupa imagens embutidas que se **encostam** e devolve a união de cada grupo.
+
+    **O que isto corrige.** No `GALLAGHER - Winning With the King's Gambit` cada página traz o
+    scan da página inteira mais um punhado de remendos pequenos sobrepostos a ele -- pedaços
+    de 14 a 106 pt que juntos cobrem a região de um diagrama. Sozinho, cada remendo entrava
+    como candidato próprio: censo do livro inteiro, **33 fragmentos** contra 7 imagens de
+    verdade, em 192 páginas.
+
+    **Por que não bastava um piso de tamanho.** Os fragmentos vão até 106,5 pt e o menor
+    diagrama real do acervo tem 105,6 pt: as duas populações se sobrepõem e nenhum limiar as
+    separa. O que as distingue não é tamanho, é **quantidade e adjacência** -- diagrama vem
+    inteiro, remendo vem em cinco pedaços que partilham borda.
+
+    A folga é de 2 pt de propósito (`TILE_GAP_PT`): une o que se encosta, não o que está
+    perto. Na página de três diagramas do acervo os vãos são de 30 e 100 pt.
+
+    **O scan de fundo não entra aqui**, e quem chama tem de garantir isso. Ele toca todas as
+    outras imagens da página por definição, então incluí-lo colapsaria a página inteira num
+    grupo só -- e no `1937 Kemeri`, que tem scan de fundo **e** diagramas embutidos de verdade,
+    isso destruiria os diagramas. É por isso que `max_page_coverage` roda antes.
+    """
+    if not boxes:
+        return []
+
+    pais = list(range(len(boxes)))
+
+    def raiz(indice: int) -> int:
+        while pais[indice] != indice:
+            pais[indice] = pais[pais[indice]]
+            indice = pais[indice]
+        return indice
+
+    for i in range(len(boxes)):
+        inflado = fitz.Rect(boxes[i][0])
+        inflado = fitz.Rect(inflado.x0 - gap_pt, inflado.y0 - gap_pt, inflado.x1 + gap_pt, inflado.y1 + gap_pt)
+        for j in range(i + 1, len(boxes)):
+            if not (inflado & boxes[j][0]).is_empty:
+                pais[raiz(i)] = raiz(j)
+
+    grupos: dict[int, list[int]] = {}
+    for indice in range(len(boxes)):
+        grupos.setdefault(raiz(indice), []).append(indice)
+
+    unidades: list[_EmbeddedUnit] = []
+    for membros in grupos.values():
+        if len(membros) < min_tiles:
+            bbox, largura, altura = boxes[membros[0]]
+            unidades.append(_EmbeddedUnit(bbox=bbox, native_width=largura, native_height=altura, tiles=1))
+            continue
+
+        uniao = fitz.Rect(boxes[membros[0]][0])
+        for indice in membros[1:]:
+            uniao = uniao | boxes[indice][0]
+
+        # A resolucao da uniao sai do **conteudo** que os ladrilhos trazem, por unidade de
+        # area: raiz de (pixels somados / area da uniao). Nao e preciosismo -- e o que faz
+        # `MIN_EMBEDDED_SIDE` continuar significando o que ele diz significar.
+        #
+        # Medido no `Polgar`: as bordas dos diagramas daquele livro sao imagens de **1x1
+        # pixel esticadas** em linhas de 241 pt. Dezenove delas cercam cada diagrama e se
+        # encostam, entao a uniao reproduz a moldura com precisao. Tomar a densidade do
+        # ladrilho mais fino dava 217 px "nativos" para um retangulo que carrega 19 pixels de
+        # imagem no total, e os 114 diagramas do livro trocavam um recorte de contorno de 737
+        # px por um render de 241 px. A conta honesta da 4 px, a unidade morre no piso de
+        # resolucao, e o contorno -- que ali sempre funcionou -- segue sendo a fonte.
+        area_pt = abs(uniao.width) * abs(uniao.height)
+        pixels = sum(boxes[indice][1] * boxes[indice][2] for indice in membros)
+        pixels_por_ponto = float(np.sqrt(pixels / area_pt)) if area_pt > 0 else 0.0
+        unidades.append(
+            _EmbeddedUnit(
+                bbox=uniao,
+                native_width=max(1, int(round(pixels_por_ponto * abs(uniao.width)))),
+                native_height=max(1, int(round(pixels_por_ponto * abs(uniao.height)))),
+                tiles=len(membros),
+            )
+        )
+
+    return unidades
+
+
 def candidates_from_embedded_images(
     page: fitz.Page,
     *,
     min_side: int = MIN_EMBEDDED_SIDE,
+    min_side_pt: float = MIN_EMBEDDED_SIDE_PT,
     aspect_tolerance: float = ASPECT_TOLERANCE,
     max_page_coverage: float = MAX_PAGE_COVERAGE,
+    merge_tiles: bool = True,
     trim: bool = True,
 ) -> list[DiagramCandidate]:
     """Diagramas da página segundo as imagens que o PDF embute.
@@ -392,9 +547,14 @@ def candidates_from_embedded_images(
     Devolve lista vazia quando a página não tem imagem que sirva -- o que é o caso da maioria
     do acervo (12 dos 27 PDFs são scan de página inteira, 2 são vetoriais). Quem chama tem de
     tratar isso como caminho normal, não como erro.
+
+    **A ordem das guardas é a decisão (S-81).** A cobertura de página vem primeiro, porque o
+    scan de fundo não pode participar do agrupamento de ladrilhos -- ele encosta em tudo. O
+    agrupamento vem antes de tamanho e aspecto, porque é justamente o pedaço que reprova nos
+    dois isolado e aprova inteiro: no `GALLAGHER` um ladrilho de 240×96 tem aspecto 2,5 e
+    morreria antes de a união existir.
     """
     page_area = abs(page.rect.width * page.rect.height)
-    candidates: list[DiagramCandidate] = []
 
     try:
         infos = page.get_image_info()
@@ -402,9 +562,38 @@ def candidates_from_embedded_images(
         logger.warning("get_image_info falhou na pagina %s: %s", page.number, exc)
         return []
 
+    caixas: list[tuple[fitz.Rect, int, int]] = []
     for info in infos:
-        native_width = int(info.get("width", 0))
-        native_height = int(info.get("height", 0))
+        # `* page.rotation_matrix` e nao `fitz.Rect(info["bbox"])` cru (S-129): o bbox de
+        # `get_image_info` vem no sistema **nao girado**, e tudo o que consome esta caixa --
+        # `get_pixmap(clip=...)` aqui, o retangulo sobre a pagina na tela, a caixa gravada no
+        # conjunto de campo -- trabalha no sistema **girado**, que e o de `page.rect`. Numa
+        # pagina com `/Rotate` diferente de zero o recorte sai de outro lugar da pagina: nao e
+        # erro, e um candidato que parece diagrama, entra na fila e ocupa uma vaga do teto.
+        #
+        # Medido no acervo em 2026-08-17: **1 pagina girada em 18.767** (Yusupov, p. 1413,
+        # `/Rotate 180`). O defeito e latente, e a correcao e identidade nas outras 18.766 --
+        # `rotation_matrix` e a identidade quando a rotacao e zero.
+        bbox = fitz.Rect(info["bbox"]) * page.rotation_matrix
+        if bbox.is_empty or bbox.is_infinite:
+            continue
+        # O scan de fundo do Kemeri (1633x2468 cobrindo a pagina) cai aqui, antes de o
+        # agrupamento existir -- se entrasse, colapsaria a pagina inteira num grupo so.
+        if page_area > 0 and abs(bbox.get_area()) > page_area * max_page_coverage:
+            continue
+        caixas.append((bbox, int(info.get("width", 0)), int(info.get("height", 0))))
+
+    if merge_tiles:
+        unidades = _merge_adjacent_tiles(caixas)
+    else:
+        unidades = [
+            _EmbeddedUnit(bbox=bbox, native_width=largura, native_height=altura, tiles=1)
+            for bbox, largura, altura in caixas
+        ]
+
+    candidates: list[DiagramCandidate] = []
+    for unidade in unidades:
+        native_width, native_height = unidade.native_width, unidade.native_height
         if min(native_width, native_height) < min_side:
             continue
 
@@ -412,12 +601,18 @@ def candidates_from_embedded_images(
         if not (1.0 - aspect_tolerance) <= aspect <= (1.0 + aspect_tolerance):
             continue
 
-        bbox = fitz.Rect(info["bbox"])
-        if bbox.is_empty or bbox.is_infinite:
-            continue
-
-        # O scan de fundo do Kemeri (1633x2468 cobrindo a pagina) cai aqui.
-        if page_area > 0 and abs(bbox.get_area()) > page_area * max_page_coverage:
+        bbox = unidade.bbox
+        # O glifo de cavalo do cabecalho do `Secrets` cai aqui: 128 px nativos em 15,4 pt.
+        side_pt = max(abs(bbox.width), abs(bbox.height))
+        if side_pt < min_side_pt:
+            logger.debug(
+                "imagem embutida descartada por tamanho na pagina: %.1f pt de lado (%dx%d px "
+                "nativos) contra piso de %.0f pt",
+                side_pt,
+                native_width,
+                native_height,
+                min_side_pt,
+            )
             continue
 
         image = _pixels_for_bbox(page, bbox, native_side=max(native_width, native_height))
@@ -432,6 +627,15 @@ def candidates_from_embedded_images(
                 # desenhada: a moldura impressa. Ver `trim_to_frame` para o que isso corrige.
                 image, trimmed = trim_to_frame(image)
 
+        if unidade.tiles > 1:
+            logger.info(
+                "Unidos %d ladrilhos embutidos encostados num candidato de %.0f x %.0f pt. "
+                "Sozinho, cada pedaco entraria como diagrama proprio.",
+                unidade.tiles,
+                abs(bbox.width),
+                abs(bbox.height),
+            )
+
         # Aspecto perfeito e recorte confirmado valem mais que caixa esticada aceita no limite.
         score = float(np.clip(1.0 - abs(aspect - 1.0) / max(aspect_tolerance, 1e-6), 0.0, 1.0))
         candidates.append(
@@ -442,6 +646,7 @@ def candidates_from_embedded_images(
                 detector_score=0.5 + 0.5 * score if trimmed else 0.35 + 0.35 * score,
                 native_size=(native_width, native_height),
                 trimmed=trimmed,
+                merged_tiles=unidade.tiles if unidade.tiles > 1 else 0,
             )
         )
 

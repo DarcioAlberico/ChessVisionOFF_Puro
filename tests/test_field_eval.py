@@ -19,19 +19,29 @@ from chess_diagram_ocr.fen_utils import check_position
 from chess_diagram_ocr.field_eval import (
     AnnotatedDiagram,
     FieldPage,
+    FieldReport,
+    _accumulate,
     bbox_iou,
     evaluate_field,
     evaluate_page,
+    field_set_identity,
     load_field_set,
     save_field_set,
 )
+from chess_diagram_ocr.labels import DatasetEntry, pages_with_training_samples
 from chess_diagram_ocr.service import RecognitionOptions, RecognizedDiagram
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 VAZIO = "8/8/8/8/8/8/8/8"  # fatalmente ilegal: sem reis
 
 
-def lido(bbox: tuple[float, float, float, float], *, conf: float = 0.95, placement: str = LEGAL) -> RecognizedDiagram:
+def lido(
+    bbox: tuple[float, float, float, float],
+    *,
+    conf: float = 0.95,
+    placement: str = LEGAL,
+    reparadas: tuple[int, ...] = (),
+) -> RecognizedDiagram:
     """`RecognizedDiagram` de verdade, não um duplo.
 
     Objeto real pelo mesmo motivo do `oriented_for` em `test_pdf_to_pgn`: se a forma mudar,
@@ -44,6 +54,7 @@ def lido(bbox: tuple[float, float, float, float], *, conf: float = 0.95, placeme
         min_confidence=conf,
         bbox_pdf=bbox,
         legality=check_position(f"{placement} w - - 0 1"),
+        changed_squares=list(reparadas),
     )
 
 
@@ -208,6 +219,314 @@ class _FakeService:
         return self.por_pagina.get(page_index, [])
 
 
+class ExatidaoDeCampoTests(unittest.TestCase):
+    """S-96: a taxa de exportação mede confiança; a exatidão de campo mede correção.
+
+    Uma leitura **confiantemente errada** passa o gate e entra na taxa de exportação como
+    acerto. Foi essa cegueira que a 7.7 encontrou como "uma catraca que só desce" e atribuiu à
+    distribuição bimodal da confiança -- a explicação está um nível abaixo, e é que uma métrica
+    de confiança não pode medir correção.
+    """
+
+    OUTRA = "4k3/8/8/8/8/8/8/3QK3"
+
+    def _pagina(self, *placements: str) -> FieldPage:
+        return FieldPage(
+            pdf="a.pdf",
+            page=1,
+            reviewed=True,
+            diagrams=tuple(
+                AnnotatedDiagram(bbox=(i * 200.0, 0.0, i * 200.0 + 100.0, 100.0), placement=p)
+                for i, p in enumerate(placements)
+            ),
+        )
+
+    def _leituras(self, *pares: tuple[str, float]) -> list:
+        return [
+            lido((i * 200.0, 0.0, i * 200.0 + 100.0, 100.0), placement=p, conf=c)
+            for i, (p, c) in enumerate(pares)
+        ]
+
+    def test_exportado_e_errado_e_categoria_propria(self) -> None:
+        """O dano é de outra natureza: entra no PGN e no dataset **como verdade**."""
+        r = evaluate_page(self._pagina(LEGAL), self._leituras((self.OUTRA, 0.99)), accept_threshold=0.8)
+
+        self.assertEqual(r.exported, 1, "passou o gate")
+        self.assertEqual((r.comparable, r.exact), (1, 0))
+        self.assertEqual((r.exported_comparable, r.exported_exact, r.exported_wrong), (1, 0, 1))
+        self.assertAlmostEqual(r.field_exact, 0.0)
+        self.assertEqual(len(r.wrong), 1)
+        self.assertIn("exportado e errado", r.wrong[0])
+        self.assertIn(self.OUTRA, r.wrong[0], "o relatório mostra o que foi lido")
+        self.assertIn(LEGAL, r.wrong[0], "e a referência ao lado")
+
+    def test_a_taxa_de_exportacao_nao_distingue_o_errado(self) -> None:
+        """O ponto do item: as duas páginas exportam 1,000, e uma delas está errada."""
+        certa = evaluate_page(self._pagina(LEGAL), self._leituras((LEGAL, 0.99)), accept_threshold=0.8)
+        errada = evaluate_page(self._pagina(LEGAL), self._leituras((self.OUTRA, 0.99)), accept_threshold=0.8)
+
+        self.assertAlmostEqual(certa.export_rate, errada.export_rate, msg="a métrica antiga é cega")
+        self.assertAlmostEqual(certa.field_exact, 1.0)
+        self.assertAlmostEqual(errada.field_exact, 0.0)
+
+    def test_o_barrado_nao_entra_na_exatidao_de_campo(self) -> None:
+        """Errar e ser barrado é o sistema funcionando: vai para o `.review.pgn`."""
+        r = evaluate_page(self._pagina(LEGAL), self._leituras((self.OUTRA, 0.40)), accept_threshold=0.8)
+
+        self.assertEqual(r.exported, 0)
+        self.assertEqual((r.comparable, r.exact), (1, 0), "conta na exatidão condicional")
+        self.assertEqual(r.exported_comparable, 0, "e não na de campo")
+        self.assertEqual(r.wrong, [])
+
+    def test_exportado_sem_referencia_nao_conta_nem_como_acerto_nem_como_erro(self) -> None:
+        """Não medido é uma terceira coisa, e hoje é a mais comum."""
+        r = evaluate_page(self._pagina(""), self._leituras((LEGAL, 0.99)), accept_threshold=0.8)
+
+        self.assertEqual(r.exported, 1)
+        self.assertEqual((r.comparable, r.exported_comparable), (0, 0))
+        self.assertAlmostEqual(r.field_exact, 0.0, msg="sem denominador, a taxa é 0 e não 1")
+        self.assertFalse(r.has_enough_comparable)
+
+    def test_a_exatidao_de_campo_separa_do_condicional(self) -> None:
+        """Um exportado errado e um barrado errado: as duas taxas respondem coisas diferentes."""
+        r = evaluate_page(
+            self._pagina(LEGAL, LEGAL),
+            self._leituras((self.OUTRA, 0.99), (self.OUTRA, 0.40)),
+            accept_threshold=0.8,
+        )
+
+        self.assertEqual((r.comparable, r.exact), (2, 0))
+        self.assertAlmostEqual(r.conditional_exact, 0.0)
+        self.assertEqual(r.exported_comparable, 1, "só o que passou o gate")
+        self.assertAlmostEqual(r.field_exact, 0.0)
+        self.assertEqual(r.exported_wrong, 1)
+
+    def test_sem_conferivel_bastante_o_numero_e_recusado(self) -> None:
+        """Um 1,000 sobre n=1 tem a mesma aparência de um 1,000 sobre n=300."""
+        r = evaluate_page(self._pagina(LEGAL, "", "", ""), self._leituras(*[(LEGAL, 0.99)] * 4), accept_threshold=0.8)
+
+        self.assertEqual((r.comparable, r.annotated), (1, 4))
+        self.assertAlmostEqual(r.comparable_share, 0.25)
+        self.assertFalse(r.has_enough_comparable)
+        self.assertIn("exatidão não medida", r.summary())
+        self.assertIn("1 de 4", r.summary())
+
+    def test_com_conferivel_bastante_o_numero_sai(self) -> None:
+        r = evaluate_page(self._pagina(LEGAL, LEGAL), self._leituras(*[(LEGAL, 0.99)] * 2), accept_threshold=0.8)
+
+        self.assertTrue(r.has_enough_comparable)
+        self.assertAlmostEqual(r.field_exact, 1.0)
+        self.assertIn("exatidão de campo 1.000", r.summary())
+        self.assertIn("n=2", r.summary(), "o `n` sai junto, sempre")
+
+    def test_o_json_sai_cru_mesmo_quando_o_texto_recusa(self) -> None:
+        """Quem refaz a conta precisa dos números; quem lê o relatório precisa da ressalva."""
+        r = evaluate_page(self._pagina(LEGAL, "", "", ""), self._leituras(*[(LEGAL, 0.99)] * 4), accept_threshold=0.8)
+        dados = r.as_dict()
+
+        self.assertEqual(dados["comparable"], 1)
+        self.assertEqual(dados["exact"], 1)
+        self.assertEqual(dados["annotated"], 4)
+        self.assertAlmostEqual(dados["comparable_share"], 0.25)
+        self.assertFalse(dados["enough_comparable"])
+
+    def test_os_novos_contadores_somam_entre_paginas(self) -> None:
+        """`_accumulate` esquecer um campo é o defeito clássico deste dataclass."""
+        uma = evaluate_page(self._pagina(LEGAL), self._leituras((self.OUTRA, 0.99)), accept_threshold=0.8)
+        outra = evaluate_page(self._pagina(LEGAL), self._leituras((LEGAL, 0.99)), accept_threshold=0.8)
+
+        total = FieldReport()
+        for parcela in (uma, outra):
+            _accumulate(total, parcela)
+
+        self.assertEqual((total.exported_comparable, total.exported_exact, total.exported_wrong), (2, 1, 1))
+        self.assertAlmostEqual(total.field_exact, 0.5)
+        self.assertEqual(len(total.wrong), 1)
+
+
+class ContaminacaoPorTreinoTests(unittest.TestCase):
+    """S-97: o conjunto de campo herdou uma versão menor do problema que veio corrigir.
+
+    A Fase 7 nasceu de *"não é o modelo que está ruim, é o conjunto de teste que não
+    representa a entrada"*. Mas nada impedia que uma página do conjunto de campo fosse também
+    uma página de que há amostra em `train` -- e medido em 2026-08-16 são 7 de 39 diagramas
+    (17,9%), todos exportando.
+
+    Isto **não** diz que o checkpoint em uso viu a página: diz que o próximo treinado sobre
+    estes splits verá. É armadilha que fecha no próximo retreino.
+    """
+
+    def _pagina(self, quantos: int = 2) -> FieldPage:
+        return FieldPage(
+            pdf="a.pdf",
+            page=80,
+            reviewed=True,
+            diagrams=tuple(
+                AnnotatedDiagram(bbox=(i * 200.0, 0.0, i * 200.0 + 100.0, 100.0)) for i in range(quantos)
+            ),
+        )
+
+    def _leituras(self, quantos: int = 2, *, conf: float = 0.99) -> list:
+        return [
+            lido((i * 200.0, 0.0, i * 200.0 + 100.0, 100.0), conf=conf) for i in range(quantos)
+        ]
+
+    def test_pagina_com_amostra_de_treino_e_marcada(self) -> None:
+        r = evaluate_page(self._pagina(), self._leituras(), training_samples=3)
+
+        self.assertEqual(r.contaminated, 2, "os dois diagramas da página contam")
+        self.assertEqual(len(r.contaminated_pages), 1)
+        self.assertIn("3 amostra(s) de treino", r.contaminated_pages[0])
+
+    def test_pagina_sem_amostra_nao_e_marcada(self) -> None:
+        r = evaluate_page(self._pagina(), self._leituras(), training_samples=0)
+
+        self.assertEqual(r.contaminated, 0)
+        self.assertEqual(r.contaminated_pages, [])
+        self.assertAlmostEqual(r.clean_export_rate, r.export_rate, msg="sem contaminação, as duas coincidem")
+
+    def test_a_taxa_limpa_tira_a_pagina_contaminada_das_duas_pontas(self) -> None:
+        """Do numerador e do denominador: o que sai dali não conta como sucesso nem como falha."""
+        suja = evaluate_page(self._pagina(2), self._leituras(2), training_samples=1)
+        limpa = evaluate_page(
+            FieldPage(pdf="b.pdf", page=9, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 100, 100)),)),
+            [lido((0, 0, 100, 100), conf=0.2)],
+            accept_threshold=0.8,
+        )
+
+        total = FieldReport()
+        for parcela in (suja, limpa):
+            _accumulate(total, parcela)
+
+        self.assertEqual((total.annotated, total.exported), (3, 2))
+        self.assertAlmostEqual(total.export_rate, 2 / 3)
+        self.assertEqual((total.contaminated, total.contaminated_exported), (2, 2))
+        self.assertEqual(total.clean_annotated, 1)
+        self.assertAlmostEqual(total.clean_export_rate, 0.0, msg="o único diagrama limpo foi barrado")
+
+    def test_pagina_sem_diagrama_nao_e_contaminada(self) -> None:
+        """Ela mede falso positivo, e não há diagrama anotado para o modelo ter aprendido."""
+        r = evaluate_page(FieldPage(pdf="a.pdf", page=1, reviewed=True), [lido((0, 0, 10, 10))], training_samples=5)
+
+        self.assertEqual(r.contaminated, 0)
+        self.assertEqual(r.contaminated_pages, [])
+
+    def test_o_resumo_declara_a_contaminacao(self) -> None:
+        r = evaluate_page(self._pagina(), self._leituras(), training_samples=1)
+        self.assertIn("contaminados", r.summary())
+        self.assertIn("limpa", r.summary())
+
+    def test_o_json_traz_as_duas_taxas(self) -> None:
+        dados = evaluate_page(self._pagina(), self._leituras(), training_samples=1).as_dict()
+
+        self.assertEqual(dados["contaminated"], 2)
+        self.assertEqual(dados["clean_annotated"], 0)
+        self.assertIn("clean_export_rate", dados)
+
+
+class PaginasComTreinoTests(unittest.TestCase):
+    """`labels.pages_with_training_samples`: quem responde de onde vem a marca (S-97)."""
+
+    def _entrada(self, nome: str, **campos: str) -> DatasetEntry:
+        base = {"filename": nome, "fen": f"{LEGAL} w - - 0 1", "source_pdf": "a.pdf", "source_page": "81"}
+        base.update(campos)
+        return DatasetEntry(**base)  # type: ignore[arg-type]
+
+    def test_converte_a_pagina_para_base_0(self) -> None:
+        """O CSV grava a página que o usuário vê (base 1); o conjunto de campo conta de 0."""
+        achado = pages_with_training_samples([self._entrada("x.png")], {"x.png": "train"})
+        self.assertEqual(achado, {("a.pdf", 80): 1})
+
+    def test_conta_quantas_amostras_por_pagina(self) -> None:
+        entradas = [self._entrada("x.png"), self._entrada("y.png"), self._entrada("z.png", source_page="99")]
+        splits = {"x.png": "train", "y.png": "train", "z.png": "train"}
+
+        self.assertEqual(pages_with_training_samples(entradas, splits), {("a.pdf", 80): 2, ("a.pdf", 98): 1})
+
+    def test_so_conta_train(self) -> None:
+        """Amostra em `val`/`test` na mesma página é outro assunto: o modelo não aprende dela."""
+        entradas = [self._entrada("x.png"), self._entrada("y.png")]
+
+        self.assertEqual(pages_with_training_samples(entradas, {"x.png": "val", "y.png": "test"}), {})
+
+    def test_amostra_sem_procedencia_e_ignorada(self) -> None:
+        """84,1% do acervo. O alcance do alerta é o das amostras que declaram de onde vieram."""
+        entradas = [self._entrada("x.png", source_pdf=""), self._entrada("y.png", source_page="")]
+
+        self.assertEqual(pages_with_training_samples(entradas, {"x.png": "train", "y.png": "train"}), {})
+
+    def test_o_20_ponto_0_herdado_do_pandas_ainda_e_lido(self) -> None:
+        achado = pages_with_training_samples([self._entrada("x.png", source_page="20.0")], {"x.png": "train"})
+        self.assertEqual(achado, {("a.pdf", 19): 1})
+
+
+class ReparoSeparadoDoGateTests(unittest.TestCase):
+    """"Casas reparadas" separado em exportadas e barradas (S-132).
+
+    Enquanto era um número só ao lado da taxa de exportação, ele sugeria que o reparo estava
+    ajudando a exportar. A parcela "ajudou" é **zero por aritmética**: uma casa reparada carrega
+    a confiança da segunda opção, que não passa de 0,5, contra um gate de 0,80. Ver
+    `decode.decode_constrained` e `tests/test_decode.py::ReparoNaoPassaNoGateTests`.
+
+    Aqui a confiança é montada à mão, então o teste consegue exercitar o ramo "reparado e
+    exportado" que o pipeline real não produz -- e é isso que faz dele um teste da **separação**
+    e não uma repetição da prova algébrica.
+    """
+
+    def _pagina(self) -> FieldPage:
+        return FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))
+
+    def test_sem_reparo_os_tres_numeros_sao_zero(self) -> None:
+        r = evaluate_page(self._pagina(), [lido((0, 0, 10, 10))])
+
+        self.assertEqual((r.repaired_squares, r.repaired_diagrams), (0, 0))
+        self.assertEqual((r.repaired_exported, r.repaired_blocked), (0, 0))
+
+    def test_o_reparado_que_o_gate_barra_conta_como_barrado(self) -> None:
+        """O caso real: confiança abaixo do gate porque houve reparo."""
+        r = evaluate_page(self._pagina(), [lido((0, 0, 10, 10), conf=0.45, reparadas=(12, 13))])
+
+        self.assertEqual(r.repaired_squares, 2)
+        self.assertEqual(r.repaired_diagrams, 1)
+        self.assertEqual((r.repaired_exported, r.repaired_blocked), (0, 1))
+        self.assertEqual(r.exported, 0)
+
+    def test_a_separacao_e_pelo_gate_e_nao_por_suposicao(self) -> None:
+        """Se um dia o gate mudar, o número acompanha em vez de continuar dizendo zero."""
+        r = evaluate_page(self._pagina(), [lido((0, 0, 10, 10), conf=0.95, reparadas=(12,))])
+
+        self.assertEqual((r.repaired_exported, r.repaired_blocked), (1, 0))
+        self.assertEqual(r.exported, 1)
+
+    def test_as_parcelas_somam_o_total_casado(self) -> None:
+        pagina = FieldPage(
+            pdf="a.pdf",
+            page=1,
+            reviewed=True,
+            diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)), AnnotatedDiagram(bbox=(20, 20, 30, 30))),
+        )
+        r = evaluate_page(
+            pagina,
+            [lido((0, 0, 10, 10), conf=0.45, reparadas=(1,)), lido((20, 20, 30, 30), conf=0.95, reparadas=(2,))],
+        )
+
+        self.assertEqual(r.repaired_exported + r.repaired_blocked, 2)
+        self.assertEqual(r.repaired_diagrams, 2)
+
+    def test_o_falso_positivo_conta_no_total_e_nao_na_separacao(self) -> None:
+        """`repaired_squares` mede o trabalho do decodificador, inclusive no que não é diagrama.
+
+        `repaired_exported`/`blocked` medem o destino de um diagrama **anotado**, então o falso
+        positivo fica de fora dos dois -- ele não tinha para onde ir.
+        """
+        r = evaluate_page(FieldPage(pdf="a.pdf", page=1, reviewed=True), [lido((0, 0, 10, 10), reparadas=(5,))])
+
+        self.assertEqual(r.repaired_squares, 1)
+        self.assertEqual(r.repaired_diagrams, 1)
+        self.assertEqual((r.repaired_exported, r.repaired_blocked), (0, 0))
+        self.assertEqual(r.false_positives, 1)
+
+
 class FieldRunTests(unittest.TestCase):
     def test_pagina_nao_revisada_e_pulada(self) -> None:
         """Medir contra o proprio rascunho daria recall 1,0 e nao significaria nada."""
@@ -297,3 +616,95 @@ class RealFieldSetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+RAIZ = Path(__file__).resolve().parents[1]
+
+RELATORIOS_CORRENTES = {
+    "field_20260816_s99.json": "o número da S-99, citado pelo ROADMAP_FASE14 como a régua de hoje",
+    "controle_20260816.json": "o controle da S-107, contra o qual o `mhsp` foi julgado",
+    "mhsp_20260816.json": "o candidato da S-107",
+    "producao_20260816.json": "a produção de 2026-08-09, medida no mesmo dia que os dois acima",
+}
+"""Os relatórios de campo que os documentos citam **como correntes** (S-100).
+
+O conjunto passou de 15 páginas/38 diagramas para 17/39 em 2026-08-15, e todas as medições
+anteriores são do conjunto antigo. As tabelas que reprovaram S-38b, S-40, S-62a e S-62b
+comparam variantes sobre 38 diagramas -- uma variante medida hoje entra nelas sem ser
+comparável, e a diferença de 0,019 na taxa de exportação é da ordem das que decidiram
+aqueles vereditos.
+
+**Um relatório entra nesta lista quando um documento o apresenta como o número de agora.** Os
+de `docs/metrics/field_20260809*.json` e `field_20260811*.json` ficam de fora de propósito:
+eles são o registro histórico da Fase 7, e o cabeçalho do `EXPERIMENTS_FASE7.md` declara o
+conjunto deles.
+
+Quando a S-99 crescer o conjunto para 60 páginas, esta suíte falha em bloco -- e é o ponto:
+cada linha aqui tem de ser remedida ou sair da lista, e a decisão passa a ser explícita."""
+
+
+class ConjuntoVigenteTests(unittest.TestCase):
+    """Um relatório antigo citado como corrente faz a suíte falhar (S-100)."""
+
+    def _hoje(self) -> dict[str, int]:
+        conjunto = RAIZ / "data" / "field_set.jsonl"
+        if not conjunto.exists():
+            raise unittest.SkipTest("sem data/field_set.jsonl: o conjunto real não é versionado em todo clone")
+        return field_set_identity(load_field_set(conjunto))
+
+    def test_a_identidade_conta_so_o_que_foi_revisado(self) -> None:
+        """Rascunho não é verdade de referência, e `evaluate_field` o pula -- então ele também
+        não entra na identidade, senão dois conjuntos com o mesmo número de revisadas
+        pareceriam diferentes por causa de rascunhos que ninguém mediu."""
+        paginas = [
+            FieldPage(pdf="a.pdf", page=1, diagrams=(AnnotatedDiagram(bbox=(0, 0, 1, 1)),), reviewed=True),
+            FieldPage(pdf="b.pdf", page=2, diagrams=(AnnotatedDiagram(bbox=(0, 0, 1, 1)),), reviewed=False),
+        ]
+        self.assertEqual(field_set_identity(paginas), {"pages": 1, "annotated": 1})
+
+    def test_pagina_sem_diagrama_conta_como_pagina(self) -> None:
+        """"Esta página não tem diagrama" é uma afirmação, e é ela que mede falso positivo."""
+        paginas = [FieldPage(pdf="a.pdf", page=1, diagrams=(), reviewed=True)]
+        self.assertEqual(field_set_identity(paginas), {"pages": 1, "annotated": 0})
+
+    def test_todo_relatorio_corrente_mediu_o_conjunto_de_hoje(self) -> None:
+        """**O critério de aceite.** Sem isto, um número de 38 diagramas e um de 39 entram na
+        mesma tabela sem nada avisar -- e foi assim que quatro itens de spec foram julgados."""
+        hoje = self._hoje()
+        divergentes = []
+        for nome, por_que in sorted(RELATORIOS_CORRENTES.items()):
+            caminho = RAIZ / "docs" / "metrics" / nome
+            if not caminho.exists():
+                divergentes.append(f"{nome}: citado como corrente ({por_que}) e não existe")
+                continue
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            medido = {"pages": dados.get("pages"), "annotated": dados.get("annotated")}
+            if medido != hoje:
+                divergentes.append(f"{nome}: mediu {medido}, e o conjunto de hoje é {hoje}")
+
+        self.assertEqual(
+            divergentes,
+            [],
+            "Relatório citado como corrente medido sobre outro conjunto. Ou remeça-o com "
+            "`cvoff-field --json`, ou tire-o de RELATORIOS_CORRENTES e diga no documento que "
+            "ele é histórico.",
+        )
+
+    def test_um_relatorio_de_conjunto_antigo_e_pego(self) -> None:
+        """A guarda demonstrada sobre um caso sintético, para o teste acima não ser vacuamente
+        verdadeiro no dia em que a lista ficar vazia."""
+        hoje = self._hoje()
+        antigo = {"pages": hoje["pages"] - 2, "annotated": hoje["annotated"] - 1}
+        self.assertNotEqual(antigo, hoje)
+
+    def test_os_relatorios_historicos_declaram_o_conjunto_deles(self) -> None:
+        """O que torna o cabeçalho do EXPERIMENTS_FASE7 verificável em vez de uma promessa:
+        todo relatório da Fase 7 diz `15 / 38` no próprio arquivo."""
+        historicos = sorted((RAIZ / "docs" / "metrics").glob("field_202608[01]*.json"))
+        if not historicos:
+            raise unittest.SkipTest("sem relatórios históricos neste clone")
+        for caminho in historicos:
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            with self.subTest(relatorio=caminho.name):
+                self.assertIn("pages", dados, "sem a identidade, o relatório não é auditável")
+                self.assertIn("annotated", dados)

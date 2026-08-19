@@ -26,29 +26,41 @@ from __future__ import annotations
 
 import logging
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.dataset_browser import DatasetRow, update_row
 from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
+from chess_diagram_ocr.labels import SavedSample
 from chess_diagram_ocr.review_queue import ReviewItem
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import LocalReaderSettings, RemoteFenSettings
 
-from . import board_edit, strings
+from . import board_edit, estilos, strings, texto, theme, tipografia, tokens
 from .board_widget import InteractiveBoard, PieceImages
 from .editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
-from .legality import explain_position
+from .legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
 from .net_button import NetCorrectionButton
 from .page_results import PageOcrParams, PageResults, PageResultsCache, PageSwitch, decide_page_switch
 from .second_opinion_button import SecondOpinionButton
+from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
+
+MENSAGEM_VAZIA = (
+    "Nenhum diagrama aberto. Clique num diagrama marcado da página, "
+    'ou use "OCR todos diagramas" para ler a página inteira.'
+)
+"""O que a aba diz quando não há o que editar (S-170).
+
+Ela **diz o que fazer**, e não que está vazia: "sem dados" descreve a tela; esta frase descreve o
+gesto seguinte, que é o que a pessoa está procurando quando lê um estado vazio."""
 
 def confidence_summary(item: RecognizedDiagram) -> str:
     """Resumo de confiança e legalidade do diagrama, para a barra de status.
@@ -95,7 +107,7 @@ def read_board_image(path_text: str) -> np.ndarray | None:
     path = Path(path_text)
     if not path.exists():
         return None
-    image_bgr = cv2.imread(str(path))
+    image_bgr = read_image(path)
     if image_bgr is None:
         return None
     return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -120,7 +132,7 @@ class ResultPanel(ttk.Frame):
         on_sync_study: Callable[[], None],
         on_state_changed: Callable[[], None],
         on_focus_request: Callable[[], None],
-        on_sample_saved: Callable[[], None],
+        on_sample_saved: Callable[[Sequence[SavedSample]], None],
         remote_fen: Callable[[], RemoteFenSettings],
         on_remote_consent: Callable[[RemoteFenSettings], bool],
         local_reader: Callable[[], LocalReaderSettings] = LocalReaderSettings,
@@ -141,7 +153,13 @@ class ResultPanel(ttk.Frame):
         self._on_state_changed = on_state_changed
         self._on_focus_request = on_focus_request
         self._on_sample_saved = on_sample_saved
-        """Chamado depois de regravar a linha de uma amostra: a aba Dataset precisa reler."""
+        """Chamado depois de gravar ou regravar amostra: a aba Dataset precisa reler.
+
+        **Recebe o que foi gravado desde a S-116 (corte 2)**, e não um aviso vazio. Com o
+        aviso, quem ouvia relia o `labels.csv` inteiro para descobrir uma linha que este
+        processo acabara de escrever -- 30,9 ms sobre 3.936 linhas, no laço mais interno do
+        projeto. Uma sequência vazia é resposta: "o dataset mudou e nenhum diagrama novo ficou
+        verde", que é exatamente o caso de regravar uma linha que já existia."""
 
         self._remote_fen = remote_fen
         self._local_reader = local_reader
@@ -193,6 +211,9 @@ class ResultPanel(ttk.Frame):
         self._settle_review: Callable[[int, str, str], None] | None = None
 
         self._build(piece_images)
+        # **Depois de montar, e não só ao limpar** (S-170): sem esta chamada o tabuleiro abria na
+        # posição inicial que o `InteractiveBoard` desenha por padrão, com a FEN vazia ao lado.
+        self.update_views()
 
     # ------------------------------------------------------- o estado, que mora no modelo
 
@@ -248,13 +269,13 @@ class ResultPanel(ttk.Frame):
 
         zoom_row = ttk.Frame(caixa)
         zoom_row.pack(fill=tk.X, padx=8, pady=(6, 0))
-        ttk.Label(zoom_row, text="Zoom board").pack(side=tk.LEFT)
+        ttk.Label(zoom_row, text=strings.ZOOM_DO_TABULEIRO).pack(side=tk.LEFT)
         ttk.Button(zoom_row, text="-", width=3, command=lambda: self.zoom(-0.1)).pack(side=tk.LEFT, padx=(6, 2))
         ttk.Button(zoom_row, text="+", width=3, command=lambda: self.zoom(0.1)).pack(side=tk.LEFT, padx=(2, 6))
         self.lbl_zoom = ttk.Label(zoom_row, text="85%")
         self.lbl_zoom.pack(side=tk.LEFT)
         ttk.Checkbutton(
-            zoom_row, text="Heatmap de incerteza", variable=self.heatmap_var, command=self.on_heatmap_toggle
+            zoom_row, text=strings.MAPA_DE_INCERTEZA, variable=self.heatmap_var, command=self.on_heatmap_toggle
         ).pack(side=tk.RIGHT)
 
         # O editor da S-20 no lugar do canvas somente-leitura: corrigir uma peça passa de
@@ -266,17 +287,28 @@ class ResultPanel(ttk.Frame):
             on_select=self.on_square_selected,
             on_status=self._on_status,
             piece_images=piece_images,
-            background="#f2f2f2",
             min_size=260,
             max_size=520,
         )
         self.board.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         self.board.set_heatmap_enabled(True)
 
+        # A frase do estado vazio (S-170). Um `Label` que existe sempre e fica em branco quando há
+        # diagrama: aparecer e sumir mudaria a altura do painel a cada leitura.
+        self.vazio_var = tk.StringVar(value=MENSAGEM_VAZIA)
+        texto.acompanhar(
+            ttk.Label(
+                caixa,
+                textvariable=self.vazio_var,
+                justify=tk.LEFT,
+                foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
+            )
+        ).pack(anchor="w", padx=8, pady=(0, 6))
+
         legal = ttk.Frame(caixa)
         legal.pack(fill=tk.X, padx=8, pady=(0, 6))
-        ttk.Label(legal, textvariable=self.legality_var, wraplength=520, justify=tk.LEFT).pack(anchor="w")
-        ttk.Label(legal, textvariable=self.material_var, foreground="#555555").pack(anchor="w")
+        texto.acompanhar(ttk.Label(legal, textvariable=self.legality_var, justify=tk.LEFT)).pack(anchor="w")
+        ttk.Label(legal, textvariable=self.material_var, foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO]).pack(anchor="w")
 
         nav = ttk.Frame(caixa)
         nav.pack(fill=tk.X, padx=8, pady=(0, 6))
@@ -293,7 +325,10 @@ class ResultPanel(ttk.Frame):
         fen_box = ttk.LabelFrame(self, text="FEN e ações")
         fen_box.pack(fill=tk.X, padx=8, pady=(0, 8))
         ttk.Label(fen_box, text="FEN").pack(anchor="w", padx=8, pady=(6, 0))
-        entry = ttk.Entry(fen_box, textvariable=self.fen_var)
+        # Monoespaçada (S-149): é o dado central do produto, e em proporcional `1`, `l` e `I`
+        # têm larguras diferentes -- duas leituras da mesma posição deixam de alinhar, que é
+        # exatamente a comparação que a aba Revisão e a 2ª opinião pedem.
+        entry = ttk.Entry(fen_box, textvariable=self.fen_var, font=theme.fonte_atual(tipografia.DADO))
         entry.pack(fill=tk.X, padx=8, pady=(0, 4))
         entry.bind("<Return>", lambda _event: self.apply_fen_edit())
 
@@ -301,11 +336,11 @@ class ResultPanel(ttk.Frame):
         # mostrar isso, e a informação -- quando o PDF a dava -- morria na exportação.
         side_row = ttk.Frame(fen_box)
         side_row.pack(fill=tk.X, padx=8, pady=(0, 4))
-        ttk.Label(side_row, text="Lado a jogar").pack(side=tk.LEFT)
-        for texto, valor in (("Brancas", "w"), ("Pretas", "b")):
+        ttk.Label(side_row, text=strings.LADO_A_JOGAR).pack(side=tk.LEFT)
+        for valor, rotulo in strings.SIDE_LABELS.items():
             ttk.Radiobutton(
                 side_row,
-                text=texto,
+                text=rotulo,
                 value=valor,
                 variable=self.side_to_move_var,
                 command=self.on_side_to_move_change,
@@ -315,17 +350,40 @@ class ResultPanel(ttk.Frame):
         # Número do lance (S-71), ao lado do lado a jogar porque é a mesma leitura: os dois
         # saem da legenda impressa, e quem está com o livro aberto declara os dois de uma vez.
         # A gravação vai para a anotação da galeria -- ver `_commit_move_number`.
-        ttk.Label(side_row, text="Lance").pack(side=tk.RIGHT, padx=(0, 4))
+        # O rótulo **antes** do campo (S-170). Os dois estavam com `side=RIGHT`, e o `pack` põe o
+        # primeiro mais à direita: na tela lia-se `[campo] Lance`, ao contrário da ordem de leitura
+        # e ao contrário de todos os outros campos da janela. Empacotar o campo primeiro é o que
+        # faz o rótulo aparecer à esquerda dele sem mudar o lado da linha em que os dois ficam.
         self.move_number_entry = ttk.Entry(side_row, textvariable=self.move_number_var, width=6)
         self.move_number_entry.pack(side=tk.RIGHT)
+        ttk.Label(side_row, text="Lance").pack(side=tk.RIGHT, padx=(10, 4))
         self.move_number_entry.bind("<Return>", lambda _event: self._commit_move_number())
         self.move_number_entry.bind("<FocusOut>", lambda _event: self._commit_move_number())
+        Tooltip(
+            self.move_number_entry,
+            "O número do lance da legenda impressa, para a exportação. Fica cinza quando o\n"
+            "diagrama não veio de uma página do livro -- uma imagem solta não tem onde gravá-lo.",
+        )
 
         acoes = ttk.Frame(fen_box)
         acoes.pack(fill=tk.X, padx=8, pady=(0, 6))
-        ttk.Button(acoes, text="Aplicar FEN", command=self.apply_fen_edit).pack(side=tk.LEFT)
-        ttk.Button(acoes, text="Salvar posição reconhecida", command=self.save_current).pack(side=tk.LEFT, padx=6)
-        ttk.Button(acoes, text="Salvar todos", command=self.save_all).pack(side=tk.LEFT, padx=6)
+        self.btn_apply_fen = ttk.Button(acoes, text="Aplicar FEN", command=self.apply_fen_edit)
+        self.btn_apply_fen.pack(side=tk.LEFT)
+        self.btn_save = ttk.Button(
+            acoes,
+            text="Salvar posição reconhecida",
+            style=estilos.estilo_de_botao(estilos.PRIMARIO),
+            command=self.save_current,
+        )
+        self.btn_save.pack(side=tk.LEFT, padx=6)
+        self.btn_save_all = ttk.Button(acoes, text="Salvar todos", command=self.save_all)
+        self.btn_save_all.pack(side=tk.LEFT, padx=6)
+        for botao in (self.btn_apply_fen, self.btn_save, self.btn_save_all):
+            Tooltip(
+                botao,
+                "Fica cinza enquanto não há diagrama aberto: clique num diagrama marcado da\n"
+                "página, ou use \"OCR todos diagramas\" para ler a página inteira.",
+            )
         self.net_button = NetCorrectionButton(
             acoes,
             settings=self._remote_fen,
@@ -608,18 +666,18 @@ class ResultPanel(ttk.Frame):
         if alvo is None:
             return
 
-        texto = self.move_number_var.get().strip()
+        digitado = self.move_number_var.get().strip()
         atual = self._move_number_of(*alvo)
-        if not texto:
+        if not digitado:
             if atual is not None:
                 self._on_move_number(alvo[0], alvo[1], None)
                 self._on_status(f"Diagrama {alvo[1] + 1}: número do lance apagado.")
             return
 
         try:
-            numero = int(texto)
+            numero = int(digitado)
         except ValueError:
-            self._on_status(f"Número de lance inválido: {texto!r}. Use um inteiro positivo.")
+            self._on_status(f"Número de lance inválido: {digitado!r}. Use um inteiro positivo.")
             self.sync_move_number()
             return
         if numero <= 0:
@@ -684,7 +742,23 @@ class ResultPanel(ttk.Frame):
         self.sync_fen_from_entry()
         self.update_views()
 
+    def _mostrar_estado_vazio(self, vazio: bool) -> None:
+        """Liga ou desliga o estado vazio: a frase, e as três ações que não têm o que fazer (S-170).
+
+        **O que ele conserta.** Ao abrir, a aba mostrava um tabuleiro completo na posição inicial
+        com o campo de FEN vazio -- parecia um diagrama reconhecido, e era o padrão do
+        `InteractiveBoard`. Quem clicasse "Salvar posição reconhecida" ali gravava a posição inicial
+        no `labels.csv` como se fosse leitura de uma página.
+
+        O motivo de cada botão cinza está no tooltip, pela regra da S-165.
+        """
+        self.vazio_var.set(MENSAGEM_VAZIA if vazio else "")
+        estado = tk.DISABLED if vazio else tk.NORMAL
+        for botao in (self.btn_apply_fen, self.btn_save, self.btn_save_all):
+            botao.configure(state=estado)
+
     def update_views(self) -> None:
+        self._mostrar_estado_vazio(not self.items)
         if not self.items:
             self.board.set_position(board_edit.EMPTY_PLACEMENT)
             self.board.set_uncertainty(None)
@@ -763,7 +837,28 @@ class ResultPanel(ttk.Frame):
         """Como devolver a correção à fila. Injetado para não depender do painel de revisão."""
         self._settle_review = settler
 
-    def _save_one(self, alvo: SaveTarget) -> Path:
+    def _saved_sample(self, alvo: SaveTarget) -> SavedSample | None:
+        """A procedência do que acabou de ser gravado, para quem pinta a caixa de verde (S-116).
+
+        `None` quando não há procedência de página: imagem solta, ou origem ausente. É o mesmo
+        crivo de `saved_diagrams_by_page`, que ignora linha sem `source_page` -- e ali por não
+        poder inventar de onde ela veio, aqui por não haver o que marcar.
+
+        Os dois índices saem em base 0, que é a contagem da tela. O CSV grava em base 1 (ver
+        `RecognitionOrigin.sample_fields` e `save_sample`), e a conversão continua num lugar só.
+        """
+        origem = self.model.origin
+        if origem is None or origem.page_index is None or not origem.document:
+            return None
+        if not 0 <= alvo.index < len(self.model.items):
+            return None
+        return SavedSample(
+            source_pdf=origem.document,
+            page_index=int(origem.page_index),
+            diagram_index=int(self.model.items[alvo.index].index),
+        )
+
+    def _save_one(self, alvo: SaveTarget, *, allow_illegal: bool = False) -> Path:
         csv_path, samples_dir = self._paths()
         return self._service.save_sample(
             self.model.items[alvo.index],
@@ -773,7 +868,25 @@ class ResultPanel(ttk.Frame):
             origin=self.model.origin,
             side_to_move=alvo.side,
             corrected_by=alvo.route,
+            allow_illegal=allow_illegal,
         )
+
+    @staticmethod
+    def _illegal_question(alvo: SaveTarget) -> str | None:
+        """A pergunta desta gravação, ou `None`. A FEN do alvo pode vir só com as peças."""
+        return illegal_save_question(compose_fen(alvo.fen.split(" ")[0], alvo.side != "b"))
+
+    def _confirm_illegal(self, alvo: SaveTarget) -> bool | None:
+        """`None` quando a posição é legal, senão a resposta da pessoa.
+
+        Três valores em vez de dois porque quem chama precisa dos três: legal segue sem
+        caixa nenhuma, "sim" grava com a marca da `ILLEGAL_OK`, "não" cancela. Colapsar
+        legal com "sim" faria toda amostra normal ser gravada como ilegal confirmada.
+        """
+        pergunta = self._illegal_question(alvo)
+        if pergunta is None:
+            return None
+        return messagebox.askyesno(ILLEGAL_SAVE_TITLE, pergunta, default=messagebox.NO, icon=messagebox.WARNING)
 
     def save_current(self) -> None:
         """Salva o diagrama selecionado. **O que "salvar" significa é decisão do modelo.**
@@ -783,7 +896,8 @@ class ResultPanel(ttk.Frame):
         `DiagramEditorModel` e tem teste sem janela (S-49).
         """
         if not self.model.items:
-            messagebox.showwarning("Aviso", "Não ha OCR para salvar.")
+            # Pré-condição, e não falha: vai para o rodapé com severidade de aviso (S-164).
+            self._on_status("Não há diagrama lido para salvar: leia uma página antes.")
             return
         self.sync_fen_from_entry()
         alvo = self.model.save_target()
@@ -791,28 +905,48 @@ class ResultPanel(ttk.Frame):
             messagebox.showerror("Erro", "FEN atual inválida.")
             return
 
+        # A pergunta vem antes de decidir entre amostra nova e regravação porque a resposta
+        # vale para as duas: o que está sendo confirmado é a posição, não o destino dela.
+        confirmada = self._confirm_illegal(alvo)
+        if confirmada is False:
+            self._on_status("Gravação cancelada: posição ilegal não confirmada.")
+            return
+
         if alvo.kind is SaveKind.REWRITE_ROW:
-            self._rewrite_dataset_row(alvo)
+            self._rewrite_dataset_row(alvo, allow_illegal=confirmada is True)
             return
 
         try:
-            path = self._save_one(alvo)
+            path = self._save_one(alvo, allow_illegal=confirmada is True)
             self._on_status(f"Exemplo salvo: {path}")
             self._settle(alvo)
             # Só o caminho de regravação avisava. Sem isto, a aba Dataset não via a amostra
             # nova e o visualizador não pintava de verde o diagrama que acabou de ser salvo
             # (S-71) -- os dois só se atualizavam na próxima vez que o livro fosse aberto.
-            self._on_sample_saved()
-            messagebox.showinfo("Sucesso", f"Diagrama salvo em:\n{path}")
+            #
+            # **Com o que foi gravado, e não vazio** (S-116, corte 2): quem ouve pinta a caixa
+            # com este dado em vez de reler o `labels.csv` para redescobri-lo.
+            gravada = self._saved_sample(alvo)
+            self._on_sample_saved(() if gravada is None else (gravada,))
+            # **Sem modal de sucesso** (S-116). Ele dizia o que a barra de status já diz e
+            # cobrava uma tecla por amostra no laço mais interno do projeto -- corrigir,
+            # `Ctrl+S`, seta, corrigir. Quem quer confirmação visual tem a melhor delas: a
+            # caixa do diagrama fica verde na hora (S-71). O modal de **erro** fica, porque
+            # ali a informação não é redundante e a interrupção é o ponto.
         except Exception as exc:
             messagebox.showerror("Erro", f"Falha ao salvar:\n{exc}")
 
-    def _rewrite_dataset_row(self, alvo: SaveTarget) -> None:
+    def _rewrite_dataset_row(self, alvo: SaveTarget, *, allow_illegal: bool = False) -> None:
         filename = alvo.filename or ""
         csv_path, _samples = self._paths()
         try:
             atualizado = update_row(
-                csv_path, filename, fen=alvo.fen, side_to_move=alvo.side, corrected_by=alvo.route
+                csv_path,
+                filename,
+                fen=alvo.fen,
+                side_to_move=alvo.side,
+                corrected_by=alvo.route,
+                allow_illegal=allow_illegal,
             )
         except ValueError as exc:
             messagebox.showerror("Dataset", str(exc))
@@ -822,9 +956,14 @@ class ResultPanel(ttk.Frame):
             messagebox.showerror("Dataset", f"Amostra não encontrada no CSV: {filename}")
             return
 
-        self._on_status(f"Rotulo de {filename} regravado.")
-        self._on_sample_saved()
-        messagebox.showinfo("Dataset", f"Rotulo regravado:\n{filename}")
+        # Sem `messagebox` (S-164): a frase acima diz a mesma coisa, no rodapé, e um clique para
+        # confirmar sucesso é o que treina a pessoa a fechar caixas sem ler -- inclusive as que
+        # perguntam algo.
+        self._on_status(f"Rótulo de {filename} regravado.")
+        # Vazio, e é resposta: regravar a linha de uma amostra que já existia não faz diagrama
+        # nenhum ficar verde -- ele já estava. O que mudou foi o rótulo, e disso a aba Dataset
+        # é que precisa saber.
+        self._on_sample_saved(())
 
     def _settle(self, alvo: SaveTarget) -> None:
         """Fecha na fila o item que acabou de ser corrigido e salvo (S-22)."""
@@ -835,7 +974,8 @@ class ResultPanel(ttk.Frame):
 
     def save_all(self) -> None:
         if not self.model.items:
-            messagebox.showwarning("Aviso", "Não ha OCR para salvar.")
+            # Pré-condição, e não falha: vai para o rodapé com severidade de aviso (S-164).
+            self._on_status("Não há diagrama lido para salvar: leia uma página antes.")
             return
         self.sync_fen_from_entry()
         if self.model.binding is EditorBinding.SAMPLE:
@@ -845,17 +985,70 @@ class ResultPanel(ttk.Frame):
             self.save_current()
             return
 
+        alvos = [self.model.save_target(idx) for idx in range(self.model.count)]
+        validos = [alvo for alvo in alvos if alvo.kind is not SaveKind.NOTHING and is_valid_fen(alvo.fen)]
+        invalidos = len(alvos) - len(validos)
+
+        # Uma pergunta para a pagina inteira, e nao uma por diagrama. Uma pagina de capitulo
+        # sobre estrutura tem os oito diagramas sem rei: perguntar oito vezes a mesma coisa
+        # treina a pessoa a clicar "sim" sem ler, que e o oposto do que a confirmacao existe
+        # para conseguir.
+        ilegais = [alvo for alvo in validos if self._illegal_question(alvo) is not None]
+        indices_ilegais = {alvo.index for alvo in ilegais}
+        confirmar_ilegais = False
+        if ilegais:
+            confirmar_ilegais = messagebox.askyesno(
+                ILLEGAL_SAVE_TITLE,
+                f"{len(ilegais)} de {len(validos)} diagramas têm posição ilegal:\n\n"
+                + "\n".join(f"  • {alvo.index + 1}: {self._resumo_ilegal(alvo)}" for alvo in ilegais[:6])
+                + (f"\n  ... e mais {len(ilegais) - 6}" if len(ilegais) > 6 else "")
+                + "\n\nSalvar também esses? Responder \"não\" salva apenas o resto.",
+                default=messagebox.NO,
+                icon=messagebox.WARNING,
+            )
+
+        pulados = 0
         salvos = 0
-        invalidos = 0
-        for idx in range(self.model.count):
-            alvo = self.model.save_target(idx)
-            if alvo.kind is SaveKind.NOTHING or not is_valid_fen(alvo.fen):
-                invalidos += 1
+        salvos_ilegais = 0
+        gravadas: list[SavedSample] = []
+        for alvo in validos:
+            ilegal = alvo.index in indices_ilegais
+            if ilegal and not confirmar_ilegais:
+                pulados += 1
                 continue
-            self._save_one(alvo)
+            self._save_one(alvo, allow_illegal=ilegal)
+            gravada = self._saved_sample(alvo)
+            if gravada is not None:
+                gravadas.append(gravada)
+            # Dentro do laço, porque é por item: cada diagrama fecha o **seu** item da fila
+            # (S-22). Sem isto, `Ctrl+Shift+S` gravava a página inteira e não fechava nenhum,
+            # e a fila de revisão mandava corrigir de novo o que já tinha sido corrigido.
+            self._settle(alvo)
             salvos += 1
-        self._on_status(f"Salvar todos: {salvos} salvos, {invalidos} inválidos.")
-        messagebox.showinfo("Salvar todos", f"Salvos: {salvos}\nInválidos: {invalidos}")
+            salvos_ilegais += int(ilegal)
+
+        if salvos:
+            # **Uma vez ao fim, e não por diagrama**, com a lista inteira do que foi gravado.
+            # O aviso relia o `labels.csv` na thread da janela e dispará-lo por item
+            # multiplicaria por N o travamento que o "salvar todos" existe justamente para
+            # evitar. Depois do corte 2 da S-116 ele não relê nada -- e a chamada única fica,
+            # porque redesenhar a página oito vezes também custa, e por nada.
+            self._on_sample_saved(gravadas)
+
+        # Uma linha no rodapé, e não uma caixa modal (S-164): "salvar todos" existe para não
+        # travar a pessoa item por item, e terminar num clique obrigatório desfazia metade disso.
+        # As quatro parcelas que a caixa mostrava entram na frase; nenhuma se perdeu.
+        resumo = f"Salvar todos: {salvos} salvos, {invalidos} inválidos"
+        if salvos_ilegais:
+            resumo += f", {salvos_ilegais} ilegais confirmados"
+        if pulados:
+            resumo += f", {pulados} ilegais não confirmados"
+        self._on_status(resumo + ".")
+
+    def _resumo_ilegal(self, alvo: SaveTarget) -> str:
+        """Os problemas fatais deste diagrama em uma linha, para a lista do `save_all`."""
+        explicacao = explain_position(compose_fen(alvo.fen.split(" ")[0], alvo.side != "b"))
+        return "; ".join(problem.text for problem in explicacao.problems if problem.fatal)
 
     # ------------------------------------------------------------------------ Corrigir Net
 

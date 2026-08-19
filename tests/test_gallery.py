@@ -13,9 +13,14 @@ from chess_diagram_ocr.gallery import (
     DiagramAnnotation,
     GalleryAnnotations,
     annotations_path_for,
+    export_human,
+    human_only,
     lichess_analysis_url,
     load_annotations,
+    read_human_extract,
+    restore_human,
     save_annotations,
+    write_human_extract,
 )
 from chess_diagram_ocr.pdf_to_pgn import DiagramPosition, build_pgn_text
 from chess_diagram_ocr.semantics import SideToMove
@@ -179,6 +184,38 @@ class ExportacaoTests(unittest.TestCase):
         self.assertIn('[SideToMove "pretas"]', pgn)
         self.assertIn('[SideToMoveSource "manual"]', pgn)
 
+    def test_vez_vinda_da_base_nao_sai_como_declarada_a_mao(self) -> None:
+        """`manual` significa "uma pessoa conferiu". A base não é uma pessoa (S-72).
+
+        Marcá-la assim seria procedência inventada -- o erro que a Fase 3 inteira existe para
+        eliminar, agora com aparência de dado conferido.
+        """
+        pgn = self._pgn(
+            annotations={
+                (0, 0): DiagramAnnotation(
+                    side_to_move="b",
+                    filled_from="Ljubojevic x Browne, IBM 1972",
+                    filled_fields=("side_to_move",),
+                )
+            }
+        )
+        self.assertIn('[SideToMoveSource "database"]', pgn)
+        self.assertNotIn('[SideToMoveSource "manual"]', pgn)
+        self.assertIn('[GameSource "Ljubojevic x Browne, IBM 1972"]', pgn)
+
+    def test_vez_corrigida_a_mao_depois_da_base_sai_como_manual(self) -> None:
+        """O campo saiu de `filled_fields` ao ser editado -- ver `GalleryModel.edit`."""
+        pgn = self._pgn(
+            annotations={
+                (0, 0): DiagramAnnotation(
+                    side_to_move="b",
+                    filled_from="Ljubojevic x Browne, IBM 1972",
+                    filled_fields=("move_number",),
+                )
+            }
+        )
+        self.assertIn('[SideToMoveSource "manual"]', pgn)
+
     def test_header_da_pessoa_vence_o_inferido(self) -> None:
         pgn = self._pgn(annotations={(0, 0): DiagramAnnotation(headers={"White": "Tal", "Site": "Riga"})})
         self.assertIn('[White "Tal"]', pgn)
@@ -214,3 +251,193 @@ class ExportacaoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExtratoHumanoTests(unittest.TestCase):
+    """O que se versiona da galeria, e por que só isso (S-115).
+
+    `data/gallery/` são 13 MB fora do repositório por dois motivos que continuam de pé -- o
+    `*.index.json` é derivado do PDF e o `<livro>.json` descreve o conteúdo de um livro
+    protegido. Mas dentro dele há trabalho que **varredura nenhuma reconstrói**: a vez a jogar
+    que alguém conferiu na legenda impressa e as 21 partidas escolhidas a mão (S-86).
+
+    O crivo é o `filled_rule`/`filled_fields`, que já responde a pergunta campo a campo: o que
+    a base preencheu volta com `cvoff-games --apply`; o que uma pessoa decidiu não volta.
+    """
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.raiz = Path(self.pasta.name)
+        self.addCleanup(self.pasta.cleanup)
+
+    def _grava(self, livro: str, entradas: dict[tuple[int, int], DiagramAnnotation]) -> None:
+        anotacoes = GalleryAnnotations(source_name=f"{livro}.pdf", entries=dict(entradas))
+        save_annotations(Path(f"{livro}.pdf"), anotacoes, directory=self.raiz)
+
+    def test_o_que_a_base_preencheu_fica_de_fora(self) -> None:
+        da_base = DiagramAnnotation(
+            move_number=24,
+            side_to_move="b",
+            headers={"White": "Karpov, Anatoly"},
+            filled_from="Karpov x Korchnoi",
+            filled_rule="date",
+            filled_fields=("move_number", "side_to_move", "header:White"),
+        )
+        self.assertTrue(human_only(da_base).is_empty, "tudo isto volta com `cvoff-games --apply`")
+
+    def test_o_que_a_pessoa_digitou_entra(self) -> None:
+        """O caso misto, que é o comum: a base deu o lance e a pessoa conferiu a vez."""
+        misto = DiagramAnnotation(
+            move_number=24,
+            side_to_move="b",
+            headers={"White": "Karpov, Anatoly", "Event": "Merano"},
+            filled_from="Karpov x Korchnoi",
+            filled_rule="date",
+            filled_fields=("move_number", "header:White"),
+        )
+        humano = human_only(misto)
+        self.assertIsNone(humano.move_number, "o lance veio da base")
+        self.assertEqual(humano.side_to_move, "b", "a vez, não")
+        self.assertEqual(humano.headers, {"Event": "Merano"})
+
+    def test_a_partida_escolhida_a_mao_leva_os_campos_dela_junto(self) -> None:
+        """**A exceção que é o coração do item.** Com `filled_rule="human"`, o `filled_fields`
+        lista o que a *escolha da pessoa* pôs (ver `choose_game`) -- ela olhou a lista de
+        candidatas e disse qual era. Tratá-los como "da base" jogaria fora as 21 decisões mais
+        caras do acervo."""
+        escolhida = DiagramAnnotation(
+            move_number=24,
+            side_to_move="b",
+            headers={"White": "Karpov, Anatoly"},
+            filled_from="Karpov x Korchnoi",
+            filled_rule="human",
+            chosen_game="Karpov, Anatoly|Korchnoi, Viktor|1981.10.19||Merano",
+            filled_fields=("move_number", "side_to_move", "header:White"),
+        )
+        humano = human_only(escolhida)
+        self.assertEqual(humano.chosen_game, escolhida.chosen_game)
+        self.assertEqual(humano.move_number, 24)
+        self.assertEqual(humano.headers, {"White": "Karpov, Anatoly"})
+
+    def test_anotacao_anterior_a_procedencia_por_campo_nao_e_chamada_de_humana(self) -> None:
+        """`filled_from` cheio e `filled_fields` vazio só acontece numa anotação gravada antes
+        da correção da S-72. Ali tudo *parece* humano, e chamar isso de humano encheria o
+        extrato de headers da base -- e o `--import-human` os reescreveria como digitados, que
+        é a procedência inventada que a S-94 existe para impedir."""
+        antiga = DiagramAnnotation(
+            move_number=24,
+            side_to_move="b",
+            headers={"White": "Karpov, Anatoly"},
+            filled_from="Karpov x Korchnoi",
+        )
+        self.assertTrue(human_only(antiga).is_empty)
+
+        self._grava("livro", {(0, 0): antiga})
+        extrato = export_human(directory=self.raiz)
+        self.assertEqual(extrato.records, [])
+        self.assertEqual(extrato.unresolved, 1, "e o número aparece, senão o extrato pequeno mentiria")
+
+    def test_a_escolha_humana_sobrevive_mesmo_na_anotacao_antiga(self) -> None:
+        """A base nunca escolhe partida nem marca link: os dois passam sem crivo nenhum."""
+        antiga = DiagramAnnotation(filled_from="x", chosen_game="A|B|||", lichess_link=True)
+        humano = human_only(antiga)
+        self.assertEqual(humano.chosen_game, "A|B|||")
+        self.assertIs(humano.lichess_link, True)
+
+    def test_a_ida_e_volta_preserva_o_que_a_pessoa_fez(self) -> None:
+        """O critério de aceite: extrair, perder a galeria, restaurar."""
+        self._grava(
+            "livro",
+            {
+                (0, 0): DiagramAnnotation(side_to_move="w", headers={"Event": "Merano"}),
+                (7, 2): DiagramAnnotation(chosen_game="A|B|1981||Merano", move_number=31),
+            },
+        )
+        extrato = export_human(directory=self.raiz)
+        caminho = write_human_extract(extrato.records, self.raiz / "humano.jsonl")
+
+        for arquivo in self.raiz.glob("*.json"):
+            arquivo.unlink()  # o disco falhou
+
+        restore_human(read_human_extract(caminho), directory=self.raiz)
+
+        voltou = load_annotations(Path("livro.pdf"), directory=self.raiz)
+        self.assertEqual(voltou.get(0, 0).side_to_move, "w")
+        self.assertEqual(voltou.get(0, 0).headers, {"Event": "Merano"})
+        self.assertEqual(voltou.get(7, 2).chosen_game, "A|B|1981||Merano")
+        self.assertEqual(voltou.get(7, 2).move_number, 31)
+
+    def test_restaurar_sobre_uma_galeria_revarrida_tira_o_campo_da_procedencia_da_base(self) -> None:
+        """**O que vem do extrato vence.** Se a pessoa digitou `Event` e a reconstrução o
+        preencheu pela base, quem está com o livro na mão é ela (S-17) -- e o campo tem de sair
+        do `filled_fields`, senão o PGN sairia dizendo `database` sobre o que ela digitou."""
+        self._grava("livro", {(0, 0): DiagramAnnotation(headers={"Event": "Merano"})})
+        extrato = export_human(directory=self.raiz)
+        caminho = write_human_extract(extrato.records, self.raiz / "humano.jsonl")
+
+        self._grava(
+            "livro",
+            {
+                (0, 0): DiagramAnnotation(
+                    headers={"Event": "Amsterdam"},
+                    filled_from="a base",
+                    filled_rule="date",
+                    filled_fields=("header:Event",),
+                )
+            },
+        )
+        restore_human(read_human_extract(caminho), directory=self.raiz)
+
+        voltou = load_annotations(Path("livro.pdf"), directory=self.raiz).get(0, 0)
+        self.assertEqual(voltou.headers["Event"], "Merano")
+        self.assertEqual(voltou.filled_fields, (), "deixou de ser da base")
+        self.assertEqual(voltou.filled_from, "", "e sem campo da base sobrando, a evidência some")
+
+    def test_o_que_a_base_preencheu_e_ninguem_contradisse_continua_la(self) -> None:
+        """Restaurar não é apagar: só toca no que o registro traz."""
+        self._grava("livro", {(0, 0): DiagramAnnotation(side_to_move="w")})
+        caminho = write_human_extract(export_human(directory=self.raiz).records, self.raiz / "h.jsonl")
+        self._grava(
+            "livro",
+            {
+                (0, 0): DiagramAnnotation(
+                    move_number=12,
+                    headers={"Event": "Amsterdam"},
+                    filled_from="a base",
+                    filled_fields=("move_number", "header:Event"),
+                    confirmed_from="3 partidas da base",
+                )
+            },
+        )
+        restore_human(read_human_extract(caminho), directory=self.raiz)
+
+        voltou = load_annotations(Path("livro.pdf"), directory=self.raiz).get(0, 0)
+        self.assertEqual(voltou.move_number, 12)
+        self.assertEqual(voltou.headers, {"Event": "Amsterdam"})
+        self.assertEqual(voltou.filled_fields, ("move_number", "header:Event"))
+        self.assertEqual(voltou.confirmed_from, "3 partidas da base", "é afirmação sobre a leitura")
+
+    def test_o_extrato_sai_ordenado_para_o_diff_ser_legivel(self) -> None:
+        """Um arquivo versionado cuja ordem muda a cada execução produz um diff ilegível a
+        cada commit -- mesma razão pela qual `to_dict` ordena as chaves."""
+        self._grava("b", {(3, 0): DiagramAnnotation(side_to_move="w")})
+        self._grava("a", {(9, 1): DiagramAnnotation(side_to_move="b"), (2, 0): DiagramAnnotation(move_number=5)})
+        registros = export_human(directory=self.raiz).records
+        self.assertEqual([(r["book"], r["at"]) for r in registros], [("a", "2.0"), ("a", "9.1"), ("b", "3.0")])
+
+    def test_linha_estragada_nao_leva_o_extrato_junto(self) -> None:
+        """Restaurar acontece depois de um desastre: é justamente quando se quer as outras."""
+        caminho = self.raiz / "h.jsonl"
+        caminho.write_text(
+            '{"book": "livro", "at": "0.0", "side_to_move": "w"}\n{isto nao e json\n\n',
+            encoding="utf-8",
+        )
+        with self.assertLogs("chess_diagram_ocr.gallery", level="WARNING"):
+            registros = read_human_extract(caminho)
+        self.assertEqual(len(registros), 1)
+
+    def test_o_index_derivado_do_pdf_nao_entra(self) -> None:
+        """`*.index.json` é posição e caminho de recorte: reconstrói-se varrendo o livro."""
+        (self.raiz / "livro.index.json").write_text('{"diagrams": {}}', encoding="utf-8")
+        self._grava("livro", {(0, 0): DiagramAnnotation(side_to_move="w")})
+        self.assertEqual(export_human(directory=self.raiz).books, 1)

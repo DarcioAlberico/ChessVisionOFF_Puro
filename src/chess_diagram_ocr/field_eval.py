@@ -33,7 +33,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -45,6 +45,18 @@ from .service import OcrService, RecognitionOptions, RecognizedDiagram
 logger = logging.getLogger(__name__)
 
 FIELD_SET_VERSION = 1
+
+MIN_COMPARABLE_SHARE = 0.5
+"""Abaixo disto o relatório recusa imprimir exatidão, e diz quantos conferiu (S-96).
+
+Metade é um corte de bom senso, e não uma medição -- não há como medir qual fração torna uma
+taxa confiável sem antes ter a taxa. O que o número protege é conhecido e tem data: com 1
+posição de referência em 39 diagramas, o relatório publicava `conditional_exact = 1,000`, e
+esse 1,000 tinha exatamente a mesma aparência de um 1,000 sobre 300 diagramas.
+
+Subir o corte é seguro; baixá-lo devolve o problema. Quem quiser o número bruto tem `--json`,
+onde `comparable` e `exact` continuam saindo crus, com `annotated` ao lado para a conta ser
+refeita."""
 
 MATCH_IOU = 0.5
 """IoU mínimo para uma detecção contar como o diagrama anotado.
@@ -190,6 +202,47 @@ def save_field_set(path: Path, pages: Iterable[FieldPage]) -> None:
     atomic_write_text(Path(path), corpo + "\n" if corpo else "")
 
 
+def upsert_page(path: Path, page: FieldPage) -> int:
+    """Grava uma página anotada, **substituindo** a anterior do mesmo (livro, página).
+
+    Devolve o total de páginas revisadas no arquivo depois da gravação -- que é o número que
+    interessa a quem está anotando, e o que a 7.7 pede para crescer.
+
+    Substituir em vez de acrescentar porque a mesma página é anotada mais de uma vez na
+    prática: confirma-se rápido, encontra-se um diagrama que faltou e volta-se a ela. Duas
+    linhas do mesmo par fariam `evaluate_field` contar a página duas vezes, com pesos
+    diferentes.
+    """
+    paginas = [item for item in load_field_set(path) if (item.pdf, item.page) != (page.pdf, page.page)]
+    paginas.append(page)
+    save_field_set(path, paginas)
+    return sum(1 for item in paginas if item.reviewed)
+
+
+def field_set_identity(pages: Iterable[FieldPage]) -> dict[str, int]:
+    """Quantas páginas revisadas e quantos diagramas anotados o conjunto tem (S-100).
+
+    **É a identidade que faltava para duas medições serem comparáveis.** O conjunto passou de
+    15 páginas/38 diagramas para 17/39 em 2026-08-15, e todas as medições citadas nos
+    documentos até então são do conjunto antigo: `cvoff-field` devolve 0,7179 onde os docs
+    dizem 0,7368, e a precisão de detecção aparece em 0,9231 contra 0,9722. Nenhuma dessas
+    comparações é limpa -- as duas pontas mediram conjuntos diferentes --, e nada avisava.
+
+    O peso disso é que as tabelas que **reprovaram** S-38b, S-40, S-62a e S-62b comparam
+    variantes sobre 38 diagramas; uma variante medida hoje entra numa tabela com que não é
+    comparável.
+
+    Só as revisadas, porque é o que `evaluate_field` mede: rascunho não é verdade de
+    referência. Os dois números já saem no JSON do relatório com estes nomes -- o que faltava
+    era compará-los.
+    """
+    revisadas = [pagina for pagina in pages if pagina.reviewed]
+    return {
+        "pages": len(revisadas),
+        "annotated": sum(len(pagina.diagrams) for pagina in revisadas),
+    }
+
+
 # --------------------------------------------------------------------------- relatório
 
 
@@ -216,6 +269,25 @@ class FieldReport:
 
     exact: int = 0
 
+    exported_comparable: int = 0
+    """Dos exportados, os que têm posição de referência para conferir (S-96).
+
+    É o denominador honesto da exatidão de campo. Um diagrama que passou o gate e não tem
+    referência não conta nem como acerto nem como erro -- ele conta como *não medido*, que é
+    uma terceira coisa e a mais comum hoje."""
+
+    exported_exact: int = 0
+    """Dos exportados com referência, os que a leitura acertou casa por casa (S-96)."""
+
+    contaminated: int = 0
+    """Diagramas anotados em páginas de que há amostra rotulada em `train` (S-97).
+
+    Não são descartados do total -- o conjunto já é pequeno demais para jogar fora 18% dele.
+    O que muda é que passam a **aparecer**, e que as taxas ganham uma versão limpa ao lado."""
+
+    contaminated_exported: int = 0
+    """Dos contaminados, os que saíram. É o que a taxa limpa tira do numerador."""
+
     repaired_squares: int = 0
     """Casas que `decode_constrained` teve de consertar no que o argmax devolveu (S-62).
 
@@ -224,6 +296,23 @@ class FieldReport:
     sabe e o que a posição impõe: um modelo que decide as 64 casas juntas deveria precisar de
     menos reparo, e "pelo menos metade" é o corte que a spec fixou antes da primeira linha de
     código."""
+
+    repaired_diagrams: int = 0
+    """Diagramas **lidos** em que o decodificador teve de consertar pelo menos uma casa."""
+
+    repaired_exported: int = 0
+    """Dos reparados e casados com uma anotação, os que passaram no gate (S-132).
+
+    **É estruturalmente zero**, e o número existe para dizer isso em voz alta. Uma casa reparada
+    carrega a confiança da segunda opção, que não passa de 0,5, e `min_confidence` é o mínimo
+    sobre as 64 — contra um gate de 0,80. Ver `decode.decode_constrained`.
+
+    Enquanto "casas reparadas" aparecia como um número só ao lado da taxa de exportação, ele
+    sugeria que o reparo estava ajudando a exportar. Somar os dois lados de uma soma em que uma
+    das parcelas é sempre zero é a forma mais barata de esconder isso."""
+
+    repaired_blocked: int = 0
+    """Dos reparados e casados, os que o gate barrou. Hoje é o total dos casados reparados."""
 
     seconds: float = 0.0
     """Tempo de `recognize_page` somado. Com `detected`, dá o custo por diagrama.
@@ -236,6 +325,17 @@ class FieldReport:
     per_book: dict[str, FieldReport] = field(default_factory=dict)
     misses: list[str] = field(default_factory=list)
     """Descrição de cada diagrama anotado que não saiu, para o relatório poder mostrar."""
+
+    contaminated_pages: list[str] = field(default_factory=list)
+    """Que páginas têm amostra de treino, para quem for crescer o conjunto saber de onde fugir."""
+
+    wrong: list[str] = field(default_factory=list)
+    """Os que **saíram errados**: passaram o gate e a FEN não bate com a referência (S-96).
+
+    Categoria separada de `misses` porque o dano é de outra natureza e maior. O que não sai vai
+    para o `.review.pgn`, que é onde deve ir; o que sai errado entra no PGN e no dataset **como
+    verdade**, com confiança alta, e ninguém olha. Somar os dois numa taxa só esconde
+    exatamente a diferença que decide onde vale trabalhar."""
 
     @property
     def detection_recall(self) -> float:
@@ -254,6 +354,59 @@ class FieldReport:
     def conditional_exact(self) -> float:
         """Exatidão da FEN entre os casados com posição anotada. Comparável com a de hoje."""
         return self.exact / self.comparable if self.comparable else 0.0
+
+    @property
+    def clean_annotated(self) -> int:
+        """Anotados em páginas de que **não** há amostra de treino (S-97)."""
+        return self.annotated - self.contaminated
+
+    @property
+    def clean_export_rate(self) -> float:
+        """A taxa de exportação sobre o subconjunto limpo. **É a que vale** (S-97).
+
+        A geral inclui páginas cujos diagramas o próximo modelo terá visto no treino, e é por
+        isso que a Fase 7 nasceu: medir o modelo no que ele aprendeu dá o número errado para
+        cima. Aqui a diferença entre as duas é o tamanho do viés -- e ela é publicada, e não
+        estimada."""
+        return (self.exported - self.contaminated_exported) / self.clean_annotated if self.clean_annotated else 0.0
+
+    @property
+    def field_exact(self) -> float:
+        """**Dos que chegaram ao PGN, quantos estão certos** (S-96).
+
+        A `export_rate` responde *quanto sai do livro*, e ela sozinha não distingue uma leitura
+        certa de uma **confiantemente errada** -- as duas passam o gate e as duas contam como
+        sucesso. Foi essa cegueira que a 7.7 encontrou como "uma catraca que só desce" e
+        atribuiu à distribuição bimodal da confiança; a explicação está um nível abaixo, e é
+        que uma métrica de confiança não pode medir correção.
+
+        O denominador são os exportados **com referência**, e não todos os exportados: quem não
+        tem posição anotada não foi medido, e diluí-lo no denominador faria a exatidão cair
+        quando o que faltou foi anotação."""
+        return self.exported_exact / self.exported_comparable if self.exported_comparable else 0.0
+
+    @property
+    def exported_wrong(self) -> int:
+        """Quantos saíram para o PGN com a posição errada. É o número que mais dói (S-96)."""
+        return self.exported_comparable - self.exported_exact
+
+    @property
+    def comparable_share(self) -> float:
+        """Que fração dos anotados tem posição de referência. Zero significa "não medido"."""
+        return self.comparable / self.annotated if self.annotated else 0.0
+
+    @property
+    def has_enough_comparable(self) -> bool:
+        """Se há amostra para a palavra "exatidão" significar alguma coisa (S-96).
+
+        Abaixo de `MIN_COMPARABLE_SHARE` o relatório **recusa imprimir o número** e diz quantos
+        foram conferidos. O motivo tem nome e data: em 2026-08-16 o conjunto tinha 1 posição de
+        referência em 39 diagramas, e ela era a leitura do próprio modelo sobre uma capa de
+        livro -- uma posição sem rei branco. O relatório publicava `conditional_exact = 1,000`,
+        e um 1,000 sobre n=1 tem a mesma aparência de um 1,000 sobre n=300.
+
+        Um número que não tem amostra não deve ter aparência de número."""
+        return self.annotated > 0 and self.comparable_share >= MIN_COMPARABLE_SHARE
 
     @property
     def repairs_per_diagram(self) -> float:
@@ -285,7 +438,23 @@ class FieldReport:
             "comparable": self.comparable,
             "exact": self.exact,
             "conditional_exact": round(self.conditional_exact, 4),
+            # S-96: o JSON sai cru, inclusive quando o relatorio de texto recusa o numero. Ele
+            # e a entrada de quem refaz a conta, e `comparable_share` diz o quanto confiar.
+            "comparable_share": round(self.comparable_share, 4),
+            "enough_comparable": self.has_enough_comparable,
+            "exported_comparable": self.exported_comparable,
+            "exported_exact": self.exported_exact,
+            "exported_wrong": self.exported_wrong,
+            "field_exact": round(self.field_exact, 4),
+            # S-97: o vies que o conjunto carrega, publicado ao lado do numero que ele afeta.
+            "contaminated": self.contaminated,
+            "contaminated_exported": self.contaminated_exported,
+            "clean_annotated": self.clean_annotated,
+            "clean_export_rate": round(self.clean_export_rate, 4),
             "repaired_squares": self.repaired_squares,
+            "repaired_diagrams": self.repaired_diagrams,
+            "repaired_exported": self.repaired_exported,
+            "repaired_blocked": self.repaired_blocked,
             "repairs_per_diagram": round(self.repairs_per_diagram, 4),
             "seconds": round(self.seconds, 3),
             "seconds_per_diagram": round(self.seconds_per_diagram, 4),
@@ -294,11 +463,17 @@ class FieldReport:
         }
 
     def summary(self) -> str:
+        exatidao = (
+            f"exatidão de campo {self.field_exact:.3f} (n={self.exported_comparable})"
+            if self.has_enough_comparable
+            else f"exatidão não medida ({self.comparable} de {self.annotated} conferidos)"
+        )
+        sujeira = f" (limpa {self.clean_export_rate:.3f}, {self.contaminated} contaminados)" if self.contaminated else ""
         return (
             f"{self.annotated} diagramas anotados em {self.pages} páginas "
             f"({self.pages_without_diagram} sem diagrama) | "
             f"recall {self.detection_recall:.3f} | precisão {self.detection_precision:.3f} | "
-            f"**exportação {self.export_rate:.3f}** | exatidão condicional {self.conditional_exact:.3f}"
+            f"**exportação {self.export_rate:.3f}**{sujeira} | {exatidao}"
         )
 
 
@@ -314,9 +489,18 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.exported += parcela.exported
     alvo.comparable += parcela.comparable
     alvo.exact += parcela.exact
+    alvo.exported_comparable += parcela.exported_comparable
+    alvo.exported_exact += parcela.exported_exact
+    alvo.contaminated += parcela.contaminated
+    alvo.contaminated_exported += parcela.contaminated_exported
     alvo.repaired_squares += parcela.repaired_squares
+    alvo.repaired_diagrams += parcela.repaired_diagrams
+    alvo.repaired_exported += parcela.repaired_exported
+    alvo.repaired_blocked += parcela.repaired_blocked
     alvo.seconds += parcela.seconds
     alvo.misses.extend(parcela.misses)
+    alvo.wrong.extend(parcela.wrong)
+    alvo.contaminated_pages.extend(parcela.contaminated_pages)
 
 
 def _match(annotated: Sequence[AnnotatedDiagram], read: Sequence[RecognizedDiagram]) -> dict[int, int]:
@@ -350,8 +534,15 @@ def evaluate_page(
     *,
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     seconds: float = 0.0,
+    training_samples: int = 0,
 ) -> FieldReport:
-    """Compara o que o pipeline leu numa página com o que a anotação diz que ela tem."""
+    """Compara o que o pipeline leu numa página com o que a anotação diz que ela tem.
+
+    `training_samples` é quantas amostras de `train` vêm desta página (S-97). Acima de zero, os
+    diagramas dela contam em `contaminated` e saem da taxa limpa -- ver
+    `labels.pages_with_training_samples` para o que o número significa e o que ele **não**
+    significa.
+    """
     relatorio = FieldReport(
         pages=1,
         pages_without_diagram=1 if not page.diagrams else 0,
@@ -361,11 +552,20 @@ def evaluate_page(
         # Sobre **tudo** que foi lido, inclusive o falso positivo: o reparo mede o trabalho
         # que o decodificador teve, e ele teve esse trabalho ali tambem (S-62).
         repaired_squares=sum(len(lido.changed_squares) for lido in read),
+        repaired_diagrams=sum(1 for lido in read if lido.changed_squares),
     )
 
     casados = _match(page.diagrams, read)
     relatorio.matched = len(casados)
     relatorio.false_positives = len(read) - len(casados)
+
+    contaminada = training_samples > 0 and bool(page.diagrams)
+    if contaminada:
+        relatorio.contaminated = len(page.diagrams)
+        relatorio.contaminated_pages.append(
+            f"{page.pdf} p{page.page}: {len(page.diagrams)} diagrama(s) anotado(s), "
+            f"{training_samples} amostra(s) de treino desta página"
+        )
 
     for indice, anotado in enumerate(page.diagrams):
         alvo = casados.get(indice)
@@ -376,17 +576,42 @@ def evaluate_page(
         lido = read[alvo]
         legal = lido.is_fatal is not True
         acima = lido.min_confidence >= accept_threshold
+        exportado = legal and acima
         relatorio.legal += int(legal)
         relatorio.above_gate += int(acima)
-        if legal and acima:
+        if lido.changed_squares:
+            # A separação da S-132. `repaired_exported` é estruturalmente zero -- ver
+            # `decode.decode_constrained` --, e é por isso que ele é publicado: um número que
+            # só pode ser zero, impresso, é uma afirmação; somado ao outro, é um disfarce.
+            relatorio.repaired_exported += int(exportado)
+            relatorio.repaired_blocked += int(not exportado)
+        if exportado:
             relatorio.exported += 1
+            relatorio.contaminated_exported += int(contaminada)
         else:
             motivo = "ilegal" if not legal else f"confiança {lido.min_confidence:.3f}"
             relatorio.misses.append(f"{page.pdf} p{page.page}: detectado mas barrado ({motivo})")
 
-        if anotado.placement:
-            relatorio.comparable += 1
-            relatorio.exact += int(lido.placement == anotado.placement)
+        if not anotado.placement:
+            continue
+
+        certo = lido.placement == anotado.placement
+        relatorio.comparable += 1
+        relatorio.exact += int(certo)
+
+        # S-96: exportado e errado e a categoria que mais custa, e por isso ela e contada
+        # separada em vez de sair no complemento de uma taxa. O que nao sai vai para o
+        # `.review.pgn`; o que sai errado entra no PGN e no dataset como verdade.
+        if exportado:
+            relatorio.exported_comparable += 1
+            relatorio.exported_exact += int(certo)
+            if not certo:
+                relatorio.wrong.append(
+                    f"{page.pdf} p{page.page}: exportado e errado "
+                    f"(confiança {lido.min_confidence:.3f})\n"
+                    f"        leu       {lido.placement}\n"
+                    f"        referência {anotado.placement}"
+                )
 
     return relatorio
 
@@ -399,6 +624,7 @@ def evaluate_field(
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     pdf_dir: Path | None = None,
     on_page: Any = None,
+    training_pages: Mapping[tuple[str, int], int] | None = None,
 ) -> FieldReport:
     """Roda o pipeline sobre as páginas anotadas e devolve o relatório consolidado.
 
@@ -408,6 +634,10 @@ def evaluate_field(
     Uma página que falha ao ser lida vira zero diagramas detectados, e não uma exceção: o
     relatório precisa cobrir o livro inteiro, e uma página quebrada é um resultado -- é a
     mesma decisão que a S-34 tomou para o livro que falha no meio da varredura em lote.
+
+    `training_pages` vem de `labels.pages_with_training_samples` e marca as páginas de que
+    há amostra em `train` (S-97). `None` desliga a checagem -- é o que os testes usam, e é
+    o comportamento anterior.
     """
     service = service or OcrService(model_path=options.model_path)
     total = FieldReport()
@@ -427,7 +657,13 @@ def evaluate_field(
             lidos = []
         decorrido = time.perf_counter() - inicio
 
-        parcela = evaluate_page(pagina, lidos, accept_threshold=accept_threshold, seconds=decorrido)
+        parcela = evaluate_page(
+            pagina,
+            lidos,
+            accept_threshold=accept_threshold,
+            seconds=decorrido,
+            training_samples=(training_pages or {}).get((pagina.pdf, pagina.page), 0),
+        )
         _accumulate(total, parcela)
         _accumulate(total.per_book.setdefault(pagina.pdf, FieldReport()), parcela)
         if pagina.regime:

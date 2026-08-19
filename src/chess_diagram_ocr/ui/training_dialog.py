@@ -25,7 +25,8 @@ from typing import Any
 
 from chess_diagram_ocr.training import TrainingRun, train_model
 
-from .busy import BusyRegistry
+from . import texto
+from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ class TrainingController:
         ao ser fechada (S-60). `None` mantém o comportamento antigo, para os testes."""
         self.root = root
         self._busy = busy
-        self._busy_token: object | None = None
+        self._busy_token: BusyToken | None = None
         self._cancel: threading.Event | None = None
         self._request = request
         self._on_status = on_status
@@ -124,7 +125,9 @@ class TrainingController:
 
     def start(self) -> None:
         if self._running:
-            messagebox.showinfo("Treino em andamento", "Já existe um treino em execução.")
+            # Rodapé (S-164): a zona de operação ao lado já mostra "treino do modelo (época 3 de
+            # 8)", e uma caixa modal dizendo o mesmo é um clique para saber o que está na tela.
+            self._on_status("Já existe um treino em execução.")
             return
 
         pedido = self._request()
@@ -174,8 +177,8 @@ class TrainingController:
         wrap = ttk.Frame(dlg, padding=12)
         wrap.pack(fill=tk.BOTH, expand=True)
         ttk.Label(wrap, text="Status do treino").pack(anchor="w")
-        ttk.Label(wrap, textvariable=self.status_var, wraplength=480).pack(anchor="w", pady=(6, 0))
-        ttk.Label(wrap, textvariable=self.metrics_var, wraplength=480).pack(anchor="w", pady=(4, 0))
+        texto.acompanhar(ttk.Label(wrap, textvariable=self.status_var)).pack(anchor="w", pady=(6, 0))
+        texto.acompanhar(ttk.Label(wrap, textvariable=self.metrics_var)).pack(anchor="w", pady=(4, 0))
 
         self._progress = ttk.Progressbar(wrap, mode="indeterminate")
         self._progress.pack(fill=tk.X, pady=(10, 0))
@@ -211,7 +214,9 @@ class TrainingController:
         self.set_text(status, format_metrics(row))
         token = self._busy_token
         if token is not None:
-            token.update(f"época {epoca} de {self._total_epochs}")  # type: ignore[attr-defined]
+            # Com o número, e não só com a frase: é o que faz a barra do rodapé ser determinada
+            # (S-164). Época é a unidade em que o treino de verdade progride -- ~9 min cada em CPU.
+            token.update(f"época {epoca} de {self._total_epochs}", feito=epoca, total=self._total_epochs)
 
     def _worker(self, pedido: TrainingRequest, cancel: threading.Event) -> None:
         try:
@@ -229,16 +234,11 @@ class TrainingController:
                 fresh=pedido.fresh,
             )
             resumo = summarize_run(run)
-            self._on_status("Treino concluido.")
-            self.set_text("Treino concluido.", resumo)
-            self.root.after(
-                0,
-                partial(
-                    messagebox.showinfo,
-                    "Treino concluido",
-                    f"Épocas: {len(run.history)}\nMelhor época: {run.best_epoch}\n{resumo}",
-                ),
-            )
+            # Sem caixa modal ao fim (S-164): o modal do treino **já está aberto** e mostra o
+            # resumo em `metrics_var` -- a caixa era uma segunda cópia do que está a 20 px dela,
+            # e um treino de uma hora terminava exigindo um clique para liberar a janela.
+            self._on_status(f"Treino concluído. Melhor época: {run.best_epoch} de {len(run.history)}. {resumo}")
+            self.set_text("Treino concluído.", resumo)
         except Exception as exc:
             logger.exception("Falha no treino disparado pela interface.")
             self._on_status("Falha no treino.")
@@ -251,7 +251,7 @@ class TrainingController:
         self._running = False
         self._cancel = None
         if self._busy_token is not None:
-            self._busy_token.release()  # type: ignore[attr-defined]
+            self._busy_token.release()
             self._busy_token = None
         self._on_controls_enabled(True)
         self.close_dialog()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -12,10 +13,12 @@ from torch.utils.data import DataLoader
 
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.dataset import BoardGroupedSampler, DatasetEntry, board_groups
+from chess_diagram_ocr.labels import DatasetEntry as LabelEntry
 from chess_diagram_ocr.training import (
     build_train_transform,
     class_weights_for,
     evaluate_validation,
+    labels_hash,
     resolve_num_workers,
     set_seed,
 )
@@ -363,6 +366,7 @@ class SplitAssignmentTests(unittest.TestCase):
         import cv2
         import numpy as np
 
+        from chess_diagram_ocr.atomic_io import read_image
         from chess_diagram_ocr.audit import duplicate_groups_touching
 
         OUTRO = "8/8/8/8/8/8/8/K1k5"
@@ -373,14 +377,13 @@ class SplitAssignmentTests(unittest.TestCase):
                 cv2.imwrite(str(samples / nome), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
 
             lidas: list[str] = []
-            original = cv2.imread
 
-            def _espiao(caminho: str, *args: object, **kwargs: object):
+            def _espiao(caminho: Path | str, *args: object, **kwargs: object):
                 lidas.append(Path(caminho).name)
-                return original(caminho, *args, **kwargs)
+                return read_image(caminho, *args, **kwargs)
 
             labels = [("a.png", OUTRO), ("b.png", OUTRO), ("nova.png", LEGAL)]
-            with patch("chess_diagram_ocr.audit.cv2.imread", side_effect=_espiao):
+            with patch("chess_diagram_ocr.audit.read_image", side_effect=_espiao):
                 duplicate_groups_touching(samples, labels, ["nova.png"])
 
             self.assertEqual(lidas, ["nova.png"], f"leu imagens de rótulo que nenhuma amostra nova tem: {lidas}")
@@ -929,3 +932,215 @@ class ChunkCoverageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmpateEntreEpocasTests(unittest.TestCase):
+    """`--keep-ties` grava a época empatada ao lado, para que a decisão tenha número (S-104).
+
+    A métrica que decide tem granularidade de **um tabuleiro** -- 1/306 = 0,00327 no `val` da
+    Fase 5 --, então empate é comum: em `docs/metrics/phase5_training.json` o máximo é atingido
+    por duas épocas em **3 de 3** execuções, e em **2 delas** a época gravada tem `val_loss`
+    maior que a da outra empatada.
+
+    O `>` estrito do `accepts` **não** é defeito: é decisão escrita, e a razão dela está no
+    docstring -- regravar sem ganho é reescrever 8,7 MB e correr o risco da S-57 de graça. O
+    que faltava era medir se a de menor `val_loss` exporta mais em página real, e é isso que
+    esta flag permite. Ela existe para o experimento, não para o uso normal.
+    """
+
+    def _plan(self, root: Path, name: str, *, keep_ties: bool, epochs: int = 2):
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, TrainingPlan
+
+        (root / name).mkdir()
+        csv_path, samples, splits_path = _tiny_dataset(root / name)
+        return TrainingPlan(
+            data=DataPlan(csv_path=csv_path, samples_dir=samples, splits_path=splits_path, num_workers=0),
+            output=OutputPlan(model_path=root / name / "m.pt", fresh=True, keep_ties=keep_ties, calibrate=False),
+            optim=OptimPlan(epochs=epochs, batch_size=64, patience=0, seed=7),
+        )
+
+    def _empata_a_proxima(self, trainer) -> None:  # noqa: ANN001
+        """Força a próxima época a empatar com a melhor, sem depender do acaso do dataset.
+
+        Devolver a **mesma** `board_exact_accuracy` da melhor é o que define empate para a
+        política; o `loss` vai menor de propósito, porque é justamente esse o caso que o item
+        quer medir -- a época empatada que tem `val_loss` melhor e não é gravada.
+        """
+        from chess_diagram_ocr.training import ValidationMetrics
+
+        igual = trainer.policy.best_metric
+        trainer.validate = lambda: ValidationMetrics(  # type: ignore[method-assign]
+            loss=0.0001,
+            square_accuracy=1.0,
+            board_exact_accuracy=igual,
+            per_class_recall={},
+            logits=torch.zeros(1, 13),
+            targets=torch.zeros(1, dtype=torch.long),
+        )
+
+    def _treina_com_empate(self, root: Path, name: str, *, keep_ties: bool):
+        from chess_diagram_ocr.training import Trainer
+
+        trainer = Trainer(self._plan(root, name, keep_ties=keep_ties))
+        trainer.prepare()
+        trainer.resume()
+        trainer.run_epoch(1)
+        self._empata_a_proxima(trainer)
+        linha = trainer.run_epoch(2)
+        return trainer, linha
+
+    def test_a_epoca_empatada_e_gravada_ao_lado(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            trainer, linha = self._treina_com_empate(raiz, "com", keep_ties=True)
+
+            self.assertFalse(linha["is_best"], "empatar continua não regravando o principal")
+            self.assertEqual(trainer.run.best_epoch, 1, "o checkpoint principal é o da política")
+            self.assertTrue((raiz / "com" / "m.tie-e2.pt").exists())
+            self.assertTrue((raiz / "com" / "m.pt").exists(), "e o principal continua lá")
+
+    def test_sem_a_flag_o_empate_nao_deixa_arquivo(self) -> None:
+        """O padrão é o comportamento de sempre: a flag existe para um experimento."""
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            self._treina_com_empate(raiz, "sem", keep_ties=False)
+
+            self.assertEqual(list((raiz / "sem").glob("*.tie-*.pt")), [])
+
+    def test_o_arquivo_do_empate_diz_com_quem_empatou(self) -> None:
+        """Um `.tie-*.pt` copiado para outro nome seria indistinguível de um checkpoint que a
+        política escolheu -- e o experimento inteiro depende de saber qual é qual."""
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            self._treina_com_empate(raiz, "marca", keep_ties=True)
+
+            metadados = load_checkpoint(raiz / "marca" / "m.tie-e2.pt").metadata
+            self.assertEqual(metadados["tie_with_best_epoch"], 1)
+            self.assertEqual(metadados["best_epoch"], 2)
+            self.assertEqual(metadados["metrics"]["val_loss"], 0.0001, "a loss menor, que é o ponto")
+
+    def test_perder_nao_conta_como_empate(self) -> None:
+        """A guarda que separa "empatou" de "piorou": só a igualdade exata grava ao lado."""
+        from chess_diagram_ocr.training import Trainer, ValidationMetrics
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            trainer = Trainer(self._plan(raiz, "pior", keep_ties=True))
+            trainer.prepare()
+            trainer.resume()
+            trainer.run_epoch(1)
+            pior = trainer.policy.best_metric - 0.5
+            trainer.validate = lambda: ValidationMetrics(  # type: ignore[method-assign]
+                loss=0.0001,
+                square_accuracy=0.5,
+                board_exact_accuracy=pior,
+                per_class_recall={},
+                logits=torch.zeros(1, 13),
+                targets=torch.zeros(1, dtype=torch.long),
+            )
+            trainer.run_epoch(2)
+
+            self.assertEqual(list((raiz / "pior").glob("*.tie-*.pt")), [])
+
+
+class MetadadosQueReproduzemTests(unittest.TestCase):
+    """O checkpoint guarda o que reproduz o número (S-105).
+
+    Os metadados traziam `arch_version`, `seed`, `class_weights`, `augment_version`,
+    `split_hash`, `dataset_size`, `git_commit`, `best_metric` e a calibração. **Ausentes:**
+    taxa de aprendizado, tamanho de lote, número de épocas pedido, otimizador, e qualquer
+    identidade do **conteúdo** dos rótulos.
+
+    `cvoff-train --lr 1e-4` e `cvoff-train --lr 1e-3` produziam dois arquivos indistinguíveis,
+    e há 17 checkpoints em `models/` e nove treinos comparados no `EXPERIMENTS_FASE7.md`.
+
+    A S-107 encontrou a consequência: a única forma de saber que o candidato histórico
+    `s40_mhsp_16ep.pt` rodou **8** épocas e não 16 foi ler `metadata["metrics"]
+    ["total_epochs"]`, que existe por acaso. O nome do arquivo dizia outra coisa.
+    """
+
+    def _entradas(self, pares: list[tuple[str, str]]) -> list[LabelEntry]:
+        return [LabelEntry(filename=nome, fen=fen) for nome, fen in pares]
+
+    def test_a_ordem_das_linhas_nao_muda_o_hash(self) -> None:
+        """A pergunta é "estes rótulos são os mesmos?", e a ordem no arquivo não é parte da
+        resposta -- ela muda a cada reescrita do `LabelStore`."""
+        pares = [("a.png", "4k3/8/8/8/8/8/8/4K3"), ("b.png", "8/8/8/8/8/8/8/4K2k")]
+        self.assertEqual(
+            labels_hash(self._entradas(pares)),
+            labels_hash(self._entradas(list(reversed(pares)))),
+        )
+
+    def test_corrigir_uma_fen_muda_o_hash(self) -> None:
+        """**O caso que o `split_hash` não vê.** Corrigir um rótulo não muda a partição."""
+        antes = self._entradas([("a.png", "4k3/8/8/8/8/8/8/4K3")])
+        depois = self._entradas([("a.png", "4k3/8/8/8/8/8/4P3/4K3")])
+        self.assertNotEqual(labels_hash(antes), labels_hash(depois))
+
+    def test_amostra_nova_muda_o_hash(self) -> None:
+        """As 468 amostras de correção humana da S-107 entraram sem que o `split_hash` mudasse."""
+        antes = self._entradas([("a.png", "4k3/8/8/8/8/8/8/4K3")])
+        depois = self._entradas([("a.png", "4k3/8/8/8/8/8/8/4K3"), ("b.png", "8/8/8/8/8/8/8/4K2k")])
+        self.assertNotEqual(labels_hash(antes), labels_hash(depois))
+
+    def test_conjunto_vazio_tem_hash_e_nao_erro(self) -> None:
+        self.assertTrue(labels_hash([]))
+
+    def test_dois_treinos_que_diferem_so_no_lr_sao_distinguiveis(self) -> None:
+        """**O critério de aceite.** Dois arquivos indistinguíveis pelos metadados são dois
+        arquivos que ninguém consegue comparar depois."""
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            caminhos = []
+            for nome, lr in (("baixo", 1e-4), ("alto", 1e-3)):
+                plano = self._plano(raiz, nome, lr=lr)
+                Trainer(plano).fit()
+                caminhos.append(load_checkpoint(plano.output.model_path).metadata)
+
+            self.assertNotEqual(caminhos[0]["lr"], caminhos[1]["lr"])
+            self.assertEqual(caminhos[0]["lr"], 1e-4)
+
+    def test_o_checkpoint_declara_lote_epocas_e_otimizador(self) -> None:
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plano = self._plano(Path(tmp), "meta", lr=1e-3)
+            Trainer(plano).fit()
+            metadados = load_checkpoint(plano.output.model_path).metadata
+
+            self.assertEqual(metadados["batch_size"], 64)
+            self.assertEqual(metadados["epochs_requested"], 2, "o pedido, e não o que rodou")
+            self.assertEqual(metadados["patience"], 0)
+            self.assertEqual(metadados["optimizer"], "adam")
+            self.assertTrue(metadados["labels_hash"])
+
+    def test_o_labels_hash_do_checkpoint_e_o_do_split_de_treino(self) -> None:
+        """Só o `train`: `val` e `test` mudarem não altera o que o modelo aprendeu, e incluí-los
+        faria o hash mudar por motivo que não é sobre este checkpoint."""
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.training import Trainer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plano = self._plano(Path(tmp), "treino", lr=1e-3)
+            trainer = Trainer(plano)
+            trainer.fit()
+
+            gravado = load_checkpoint(plano.output.model_path).metadata["labels_hash"]
+            self.assertEqual(gravado, trainer.metadata_base["labels_hash"])
+
+    def _plano(self, root: Path, name: str, *, lr: float):
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, TrainingPlan
+
+        (root / name).mkdir()
+        csv_path, samples, splits_path = _tiny_dataset(root / name)
+        return TrainingPlan(
+            data=DataPlan(csv_path=csv_path, samples_dir=samples, splits_path=splits_path, num_workers=0),
+            output=OutputPlan(model_path=root / name / "m.pt", fresh=True, calibrate=False),
+            optim=OptimPlan(epochs=2, batch_size=64, patience=0, seed=7, lr=lr),
+        )

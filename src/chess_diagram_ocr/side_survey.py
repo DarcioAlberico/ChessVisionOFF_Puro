@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .pdf_io import get_pdf_page_count
+from .pdf_io import get_pdf_page_count, sample_pages
 from .semantics import SideSource
 from .service import OcrService, RecognitionOptions
 
@@ -138,19 +138,20 @@ class SideSurvey:
         }
 
 
-def sample_pages(page_count: int, wanted: int) -> list[int]:
-    """Índices igualmente espaçados, sem repetição e sem sorteio.
-
-    As bordas ficam de fora de propósito: a primeira e a última página de um livro de xadrez
-    são capa, índice ou catálogo, e gastá-las é gastar dois doze avos da amostra em páginas
-    que nunca têm diagrama.
-    """
-    if page_count <= 0 or wanted <= 0:
-        return []
-    if page_count <= wanted:
-        return list(range(page_count))
-    passo = page_count / (wanted + 1)
-    return sorted({min(page_count - 1, int(round(passo * (i + 1)))) for i in range(wanted)})
+__all__ = [
+    "BookSides",
+    "DEFAULT_PAGES_PER_BOOK",
+    "SideSurvey",
+    "TEXT_SOURCES",
+    "sample_pages",
+    "source_label",
+    "survey_book",
+    "survey_collection",
+    "write_survey",
+]
+"""`sample_pages` mudou para `pdf_io` na S-82 e segue reexportada aqui: ela estreou neste
+módulo e é assim que os testes e os CLIs a nomeiam. Duas implementações divergiriam, e a
+amostragem tem de ser a mesma nos dois levantamentos para que eles falem da mesma página."""
 
 
 def survey_book(

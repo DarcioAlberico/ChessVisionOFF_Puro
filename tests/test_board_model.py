@@ -393,3 +393,168 @@ class DisputedSquaresTests(unittest.TestCase):
         model.set_brush("Q")
         model.paint(0)
         self.assertEqual(model.disputed, frozenset({0}))
+
+
+class GeometriaDaMoldura(unittest.TestCase):
+    """As coordenadas cabem, e o tabuleiro nunca vaza do canvas (S-155).
+
+    Dois números estavam soltos em arquivos diferentes e nada os ligava: `board_render`
+    desenhava a letra 11 px abaixo do tabuleiro, e `board_widget` reservava `margin=28`, que o
+    `fit` divide entre os dois lados -- **14 px** para um texto de 9 pt em negrito. A base de
+    "a b c d e f g h" era cortada nos **dois** tabuleiros da janela.
+    """
+
+    MIN, MAX = 520, 1200
+
+    def test_a_margem_derivada_cabe_o_texto_da_coordenada(self) -> None:
+        """O teste que amarra os dois números: a metade da margem tem de passar do offset."""
+        from chess_diagram_ocr.ui.board_render import COORD_FONT, COORD_OFFSET_PX, margem_de_coordenada
+
+        margem = margem_de_coordenada()
+        meia_altura = (COORD_FONT[1] + 1) // 2
+        self.assertGreaterEqual(margem / 2, COORD_OFFSET_PX + meia_altura)
+
+    def test_a_margem_antiga_nao_cabia(self) -> None:
+        """O defeito, dito com número: 28/2 = 14 px para um texto que precisa de ~16."""
+        from chess_diagram_ocr.ui.board_render import COORD_FONT, COORD_OFFSET_PX
+
+        meia_altura = (COORD_FONT[1] + 1) // 2
+        self.assertLess(28 / 2, COORD_OFFSET_PX + meia_altura)
+
+    def test_a_letra_cai_dentro_do_canvas(self) -> None:
+        from chess_diagram_ocr.ui.board_render import COORD_FONT, COORD_OFFSET_PX, BoardGeometry, margem_de_coordenada
+
+        margem = margem_de_coordenada()
+        meia_altura = (COORD_FONT[1] + 1) // 2
+        for lado in (560, 700, 900, 1400):
+            with self.subTest(lado=lado):
+                g = BoardGeometry.fit(lado, lado, min_size=self.MIN, max_size=self.MAX, margin=margem)
+                base_da_letra = g.origin_y + g.size + COORD_OFFSET_PX + meia_altura
+                self.assertLessEqual(base_da_letra, lado, "a base de a–h saiu do canvas")
+
+    def test_o_tabuleiro_nunca_excede_o_canvas(self) -> None:
+        """O transbordo: com o canvas menor que `min_size`, o `max` externo ganhava e o
+        tabuleiro ficava **maior que o canvas** -- vazava em vez de encolher."""
+        from chess_diagram_ocr.ui.board_render import BoardGeometry
+
+        for largura, altura in ((300, 300), (200, 900), (900, 180), (64, 64)):
+            with self.subTest(canvas=(largura, altura)):
+                g = BoardGeometry.fit(largura, altura, min_size=self.MIN, max_size=self.MAX, margin=34)
+                self.assertLessEqual(g.size, min(largura, altura))
+                self.assertGreaterEqual(g.origin_x, 0.0)
+                self.assertGreaterEqual(g.origin_y, 0.0)
+
+    def test_acima_do_minimo_nada_mudou(self) -> None:
+        """O controle: a correção do transbordo não pode mexer no caso normal."""
+        from chess_diagram_ocr.ui.board_render import BoardGeometry
+
+        g = BoardGeometry.fit(900, 900, min_size=self.MIN, max_size=self.MAX, margin=34)
+        self.assertEqual(g.size, 900 - 34)
+
+
+class DoisAmarelosTests(unittest.TestCase):
+    """A casa selecionada deixou de ser um segundo amarelo (S-160).
+
+    **O par, com número.** Casa selecionada `#f7ec74` contra casa do último lance `#cdd26a`:
+    **1,32:1**. E frequentemente adjacentes — selecionar a casa de destino do lance que acabou
+    de ser jogado é o gesto mais comum da aba Análise, e as duas ficavam lado a lado.
+
+    A saída não foi um terceiro amarelo: foi tirar a seleção do canal de preenchimento, que é o
+    mesmo movimento da S-159 numa casa em vez de numa caixa da página.
+    """
+
+    def test_o_par_antigo_reprovava(self) -> None:
+        """Para o registro, e para o teste abaixo ter contra o que se comparar."""
+        from chess_diagram_ocr.ui.tokens import razao_de_contraste
+
+        self.assertLess(razao_de_contraste("#f7ec74", "#cdd26a"), 1.5)
+
+    def test_sobrou_um_amarelo_so_no_preenchimento(self) -> None:
+        """Dois preenchimentos amarelos não existem mais: a seleção não pinta casa nenhuma."""
+        from chess_diagram_ocr.ui import tokens
+
+        self.assertNotIn("CASA_SELECIONADA", tokens.PAPEIS)
+        self.assertIn("CONTORNO_DE_SELECAO", tokens.PAPEIS)
+
+    def test_o_contorno_de_selecao_contrasta_com_tudo_que_pode_estar_embaixo(self) -> None:
+        """Casa clara, casa escura e o amarelo do último lance -- as três que ele pode cobrir."""
+        from chess_diagram_ocr.ui import tokens
+
+        anel = tokens.RESERVA[tokens.CONTORNO_DE_SELECAO]
+        for fundo in (tokens.CASA_CLARA, tokens.CASA_ESCURA, tokens.CASA_ULTIMO_LANCE):
+            with self.subTest(fundo=fundo):
+                razao = tokens.razao_de_contraste(anel, tokens.RESERVA[fundo])
+                self.assertGreaterEqual(razao, tokens.AA_GRAFICO, f"anel sobre {fundo}: {razao:.2f}:1")
+
+    def test_o_anel_nao_disputa_matiz_com_ninguem(self) -> None:
+        """Depois da S-158 não sobrou matiz livre no tabuleiro: acromático é a saída, e é medida."""
+        from chess_diagram_ocr.ui import tokens
+
+        self.assertLess(tokens.saturacao(tokens.RESERVA[tokens.CONTORNO_DE_SELECAO]), tokens.SATURACAO_NEUTRA)
+
+
+class SelecaoNoCanvasTests(unittest.TestCase):
+    """A ligação: selecionar não muda o preenchimento da casa, e desenha um anel.
+
+    O teste puro acima prova a paleta; este prova que o **desenho** mudou de canal. Sem ele, a
+    cor podia sair da tabela e continuar sendo aplicada como `fill` por outro caminho.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from tk_root import raiz
+
+        cls.root = raiz()
+
+    def _casas(self, selecionada: int | None):
+        import tkinter as tk
+
+        from chess_diagram_ocr.ui.board_model import BoardModel
+        from chess_diagram_ocr.ui.board_render import BoardGeometry, BoardRenderer
+
+        quadro = tk.Frame(self.root)
+        self.addCleanup(quadro.destroy)
+        canvas = tk.Canvas(quadro, width=400, height=400)
+        modelo = BoardModel(mode="edit")
+        modelo.set_position("8/8/8/8/8/8/8/8")
+        if selecionada is not None:
+            modelo.selected = selecionada
+        geometria = BoardGeometry.fit(400, 400, min_size=240, max_size=360, margin=36)
+        BoardRenderer(images=None).draw(canvas, modelo, geometria)
+        return canvas
+
+    def _preenchimentos(self, canvas) -> set[str]:
+        return {
+            str(canvas.itemcget(item, "fill"))
+            for item in canvas.find_all()
+            if canvas.type(item) == "rectangle" and str(canvas.itemcget(item, "fill"))
+        }
+
+    def test_selecionar_nao_muda_o_preenchimento_de_casa_nenhuma(self) -> None:
+        """O critério de aceite da S-160, dito como igualdade de conjuntos."""
+        sem = self._preenchimentos(self._casas(None))
+        com = self._preenchimentos(self._casas(28))
+        self.assertEqual(sem, com, "a seleção continua pintando a casa")
+
+    def test_a_selecao_desenha_um_anel(self) -> None:
+        from chess_diagram_ocr.ui.board_render import SELECTION_OUTLINE
+
+        canvas = self._casas(28)
+        aneis = [
+            item
+            for item in canvas.find_all()
+            if canvas.type(item) == "rectangle" and str(canvas.itemcget(item, "outline")) == SELECTION_OUTLINE
+        ]
+        self.assertEqual(len(aneis), 1, "a seleção não desenhou anel, ou desenhou mais de um")
+
+    def test_sem_selecao_nao_ha_anel(self) -> None:
+        """O controle: sem ele, um anel desenhado sempre passaria o teste acima."""
+        from chess_diagram_ocr.ui.board_render import SELECTION_OUTLINE
+
+        canvas = self._casas(None)
+        aneis = [
+            item
+            for item in canvas.find_all()
+            if canvas.type(item) == "rectangle" and str(canvas.itemcget(item, "outline")) == SELECTION_OUTLINE
+        ]
+        self.assertEqual(aneis, [])

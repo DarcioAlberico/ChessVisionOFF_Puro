@@ -1,0 +1,46 @@
+{
+  "paginas": {
+    "um_diagrama": [
+      {
+        "placement": "r3qr1k/pp3pbp/2pn4/7Q/3pP3/2NB3P/PPP3P1/R4RK1",
+        "x": 250,
+        "y": 400,
+        "lado": 500
+      }
+    ],
+    "quatro_diagramas": [
+      {
+        "placement": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+        "x": 80,
+        "y": 120,
+        "lado": 380
+      },
+      {
+        "placement": "8/8/4k3/8/8/4K3/8/8",
+        "x": 560,
+        "y": 140,
+        "lado": 340
+      },
+      {
+        "placement": "r3qr1k/pp3pbp/2pn4/7Q/3pP3/2NB3P/PPP3P1/R4RK1",
+        "x": 80,
+        "y": 700,
+        "lado": 360
+      },
+      {
+        "placement": "8/5k2/8/8/3Q4/8/2K5/8",
+        "x": 560,
+        "y": 720,
+        "lado": 320
+      }
+    ],
+    "diagrama_esparso": [
+      {
+        "placement": "8/5k2/8/8/3Q4/8/2K5/8",
+        "x": 300,
+        "y": 500,
+        "lado": 420
+      }
+    ]
+  }
+}

@@ -128,6 +128,26 @@ def get_pdf_page_count(pdf_source: PdfSource) -> int:
         return doc.page_count
 
 
+def sample_pages(page_count: int, wanted: int) -> list[int]:
+    """Indices igualmente espacados, sem repeticao e sem sorteio.
+
+    As bordas ficam de fora de proposito: a primeira e a ultima pagina de um livro de xadrez
+    sao capa, indice ou catalogo, e gasta-las e gastar dois doze avos da amostra em paginas
+    que nunca tem diagrama.
+
+    Mora aqui, e nao no levantamento que a estreou (`side_survey`), porque a S-82 precisa da
+    mesma amostragem **sem** arrastar junto o `OcrService` -- e com ele o torch. Um censo de
+    deteccao que paga 8 s de import de modelo para nao usar modelo nenhum nao seria rodado a
+    cada mudanca, que e a unica coisa que ele existe para ser.
+    """
+    if page_count <= 0 or wanted <= 0:
+        return []
+    if page_count <= wanted:
+        return list(range(page_count))
+    passo = page_count / (wanted + 1)
+    return sorted({min(page_count - 1, int(round(passo * (i + 1)))) for i in range(wanted)})
+
+
 def render_pdf_page(pdf_source: PdfSource, page_index: int, dpi: int = 220) -> np.ndarray:
     """Renderiza uma pagina do PDF como array RGB (H, W, 3) proprio e gravavel."""
     with open_document(pdf_source) as doc:

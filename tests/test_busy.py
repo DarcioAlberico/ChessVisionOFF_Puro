@@ -11,10 +11,76 @@ testável sem abrir janela.
 
 from __future__ import annotations
 
+import ast
 import threading
 import unittest
+from pathlib import Path
 
 from chess_diagram_ocr.ui.busy import BusyRegistry
+
+RAIZ = Path(__file__).resolve().parents[1]
+
+ARQUIVOS_COM_THREAD = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
+"""Onde a interface abre threads. Mesmo recorte do `ARQUIVOS_DE_UI` do `test_strings`."""
+
+SEM_REGISTRO = {
+    ("app_tkinter.py", "_request_overlay"): (
+        "Marcar os diagramas da página aberta. Sub-segundo, e o resultado é um desenho por "
+        "cima da página -- nada em disco, nada a perder."
+    ),
+    ("app_tkinter.py", "_start_ocr"): (
+        "O reconhecimento da página. É o laço interno do programa, limitado por `max_boards`, "
+        "e o que ele produz aparece na tela: quem fecha a janela durante ele está desistindo "
+        "do resultado, não perdendo trabalho gravado."
+    ),
+    ("net_button.py", "correct"): "Uma leitura de um tabuleiro por um provedor de rede. Segundos.",
+    ("second_opinion_button.py", "read"): "Uma leitura de um tabuleiro pelo leitor local (S-66). Segundos.",
+    ("study_panel.py", "analyse"): (
+        "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
+        "posição continua lá para pedir de novo."
+    ),
+}
+"""As threads que **não** entram no registro, e por quê -- uma linha cada, e a lista é o item.
+
+Perguntar "fechar mesmo assim?" por causa de uma análise de dois segundos treina o usuário a
+responder "sim" sem ler, e aí ele responde "sim" também para a busca por posição, que custa
+56 minutos. O registro só vale enquanto quem for avisado tiver motivo para parar.
+
+**Uma thread nova em `ui/` ou no `app_tkinter.py` falha a suíte até estar registrada ou
+declarada aqui.** É o que a S-60 não teve: ela cobriu as duas operações longas que existiam
+então, e as dez que vieram depois entraram em silêncio."""
+
+
+def _threads_por_funcao(caminho: Path) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef | None]]:
+    """Cada `threading.Thread(...)` do arquivo, com a função que o dispara."""
+    arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+    pais: dict[ast.AST, ast.AST] = {}
+    for no in ast.walk(arvore):
+        for filho in ast.iter_child_nodes(no):
+            pais[filho] = no
+
+    achados = []
+    for no in ast.walk(arvore):
+        if not (isinstance(no, ast.Call) and ast.unparse(no.func) == "threading.Thread"):
+            continue
+        atual: ast.AST | None = pais.get(no)
+        while atual is not None and not isinstance(atual, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            atual = pais.get(atual)
+        achados.append((f"{caminho.name}:{no.lineno}", atual))
+    return achados
+
+
+def _registra(funcao: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """A função chama algo cujo nome fala em registrar -- `busy.register` ou `_register_busy`.
+
+    O nome e não o objeto: a Galeria registra por um ajudante, porque as três operações dela
+    dividem o mesmo ponto de saída, e exigir a chamada literal empurraria para copiar o
+    registro três vezes.
+    """
+    for no in ast.walk(funcao):
+        if isinstance(no, ast.Call) and "register" in ast.unparse(no.func).rsplit(".", 1)[-1]:
+            return True
+    return False
 
 
 class RegistryTests(unittest.TestCase):
@@ -83,6 +149,43 @@ class RegistryTests(unittest.TestCase):
 
         self.assertIn("época 5 de 8", registro.close_warning())
 
+    def test_a_operacao_que_sabe_o_total_publica_a_fracao(self) -> None:
+        """O que faz a barra do rodapé ser determinada (S-164).
+
+        O número vem separado do texto de propósito: derivar a fração de "época 3 de 8" exigiria
+        interpretar a frase, e a frase é escrita para ser lida, não parseada.
+        """
+        registro = BusyRegistry()
+        token = registro.register("treino do modelo", loses_work=True, total=8)
+
+        token.update("época 2 de 8", feito=2, total=8)
+
+        self.assertAlmostEqual(registro.running()[0].fracao, 0.25)
+
+    def test_sem_total_conhecido_nao_ha_fracao_a_prometer(self) -> None:
+        """A busca por nome descobre o tamanho enquanto lê; ali uma fração seria inventada."""
+        registro = BusyRegistry()
+        registro.register("busca por nome na base", loses_work=False, detail="3 par(es)")
+        self.assertIsNone(registro.running()[0].fracao)
+
+    def test_a_atualizacao_de_detalhe_nao_apaga_o_total(self) -> None:
+        """`replace` e não reconstruir campo a campo: o campo esquecido voltaria ao padrão."""
+        registro = BusyRegistry()
+        token = registro.register("exportação para PGN", loses_work=False, total=402)
+
+        token.update("página 120 de 402", feito=120)
+
+        operacao = registro.running()[0]
+        self.assertEqual(operacao.total, 402)
+        self.assertAlmostEqual(operacao.fracao, 120 / 402)
+
+    def test_a_contagem_que_passa_do_total_nao_estoura_a_barra(self) -> None:
+        """Retomar uma varredura pode relê uma página; barra além do fim seria o sintoma."""
+        registro = BusyRegistry()
+        token = registro.register("varredura da Galeria", loses_work=False, total=10)
+        token.update("página 12 de 10", feito=12, total=10)
+        self.assertEqual(registro.running()[0].fracao, 1.0)
+
     def test_pedir_cancelamento_avisa_so_quem_sabe_parar(self) -> None:
         registro = BusyRegistry()
         parado = threading.Event()
@@ -116,6 +219,70 @@ class RegistryTests(unittest.TestCase):
             thread.join()
 
         self.assertEqual(len(registro.running()), 16)
+
+
+class ThreadsDeclaradasTests(unittest.TestCase):
+    """Toda thread da interface está no registro, ou está na lista de exceções (S-112).
+
+    A S-60 construiu o registro e o ligou às duas operações longas que existiam então. Um ano
+    de itens depois havia **doze** threads e **dois** registros: ficavam de fora a varredura da
+    Galeria, a da fila de revisão, a busca por nome, a detecção de duplicatas e -- a mais cara
+    do programa, ~56 min medidos na Fase 13 -- a busca por posição. Fechar a janela aos 50
+    minutos descartava a passada sem uma palavra.
+
+    O que trava a regressão não é a contagem, é a **exigência**: uma thread nova ou registra
+    ou se declara, e as duas coisas obrigam quem a escreve a responder "o que se perde se a
+    janela fechar agora?".
+    """
+
+    def test_toda_thread_da_ui_registra_ou_esta_declarada(self) -> None:
+        faltando = []
+        for caminho in ARQUIVOS_COM_THREAD:
+            for onde, funcao in _threads_por_funcao(caminho):
+                if funcao is None:
+                    faltando.append(f"{onde}: fora de função, sem onde registrar")
+                    continue
+                if (caminho.name, funcao.name) in SEM_REGISTRO or _registra(funcao):
+                    continue
+                faltando.append(f"{onde} ({funcao.name})")
+
+        self.assertEqual(
+            faltando,
+            [],
+            "Thread nova sem registro. Ou ela chama `busy.register(...)` dizendo o que se "
+            "perde ao fechar a janela, ou ela entra em SEM_REGISTRO com o motivo escrito.",
+        )
+
+    def test_a_lista_de_excecoes_nao_guarda_thread_que_nao_existe_mais(self) -> None:
+        """Exceção que sobrevive ao worker que a justificava vira permissão em branco."""
+        reais = {
+            (caminho.name, funcao.name)
+            for caminho in ARQUIVOS_COM_THREAD
+            for _onde, funcao in _threads_por_funcao(caminho)
+            if funcao is not None
+        }
+        self.assertEqual(sorted(set(SEM_REGISTRO) - reais), [])
+
+    def test_cada_excecao_diz_por_que(self) -> None:
+        """Uma lista de nomes seria uma lista de nomes; o que vale é o motivo ao lado."""
+        for chave, motivo in SEM_REGISTRO.items():
+            self.assertGreater(len(motivo), 30, f"{chave} está na lista sem justificativa")
+
+    def test_a_busca_por_posicao_pede_confirmacao_explicita(self) -> None:
+        """O critério de aceite da S-112, no vocabulário do registro.
+
+        A passada é descartada inteira -- meia base lida dá contagens que não valem --, e é a
+        única das cinco novas cujo `loses_work` é verdadeiro por não ter nada em disco a
+        recuperar.
+        """
+        registro = BusyRegistry()
+        registro.register("busca por posição na base", loses_work=True, detail="8.034 posição(ões)")
+
+        aviso = registro.close_warning()
+
+        self.assertIn("busca por posição na base", aviso)
+        self.assertIn("descarta o progresso de: busca por posição na base", aviso)
+        self.assertIn("Fechar mesmo assim?", aviso)
 
 
 if __name__ == "__main__":

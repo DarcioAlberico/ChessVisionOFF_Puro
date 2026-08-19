@@ -16,12 +16,13 @@ O que a Fase 5 mudou aqui, e por quê:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import random
 import threading
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -39,8 +40,9 @@ from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoin
 from .config import DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
 from .dataset import BoardFenDataset, BoardGroupedSampler, BoardUnitDataset, board_groups
 from .fen_utils import labels_from_fen
+from .labels import DatasetEntry, label_origins
 from .model import DEFAULT_ARCH, ArchConfig, build_model, count_parameters
-from .splits import Split, ensure_splits, load_splits, splits_hash
+from .splits import Split, ensure_splits, groups_by_origin, load_splits, splits_hash
 
 logger = logging.getLogger(__name__)
 
@@ -272,7 +274,11 @@ def resolve_splits(
     registrados = load_splits(splits_path)
     novos = [nome for nome in nomes if nome not in registrados]
 
-    grupos = duplicate_groups_touching(Path(samples_dir), linhas, novos) if novos else []
+    # S-98: dois agrupamentos, e a união deles é o grupo. O de imagem não vê a mesma página
+    # reextraída com recorte deslocado -- é como o `Niemeijer p10 d1` foi parar nas três
+    # partições. O de origem vê, e é exato, mas só alcança as amostras com procedência.
+    grupos = list(duplicate_groups_touching(Path(samples_dir), linhas, novos)) if novos else []
+    grupos += groups_by_origin(label_origins(Path(csv_path)))
     mapa = ensure_splits(nomes, splits_path, groups=grupos)
 
     if novos:
@@ -542,6 +548,18 @@ class OutputPlan:
     calibrate: bool = True
     pretrained: bool = True
 
+    keep_ties: bool = False
+    """Grava também a época que **empatou** com a melhor, ao lado (S-104).
+
+    **Existe para um experimento, e não para o uso normal.** A métrica que decide tem
+    granularidade de um tabuleiro -- 1/306 = 0,00327 no `val` da Fase 5 --, então empate é
+    comum: em `docs/metrics/phase5_training.json` o máximo é atingido por duas épocas em 3 de
+    3 execuções, e em 2 delas a época gravada tem `val_loss` **maior** que a da outra empatada.
+
+    A pergunta que isto permite medir é se a de menor `val_loss` exporta mais em página real.
+    Enquanto ela não tiver resposta, o `>` estrito do `accepts` fica -- e a razão dele está
+    escrita lá: regravar sem ganho é reescrever 8,7 MB e correr o risco da S-57 de graça."""
+
 
 @dataclass(frozen=True)
 class TrainingPlan:
@@ -561,6 +579,45 @@ class TrainingPlan:
     output: OutputPlan
     model: ArchConfig = DEFAULT_ARCH
     optim: OptimPlan = OptimPlan()
+
+
+def labels_hash(entries: Iterable[DatasetEntry]) -> str:
+    """Identidade do **conteúdo** dos rótulos de treino: SHA-256 dos pares `(arquivo, FEN)` (S-105).
+
+    `split_hash` responde *qual partição*; este responde *qual verdade*. São perguntas
+    diferentes, e até aqui só a primeira tinha resposta gravada -- as 468 amostras de correção
+    humana que a S-107 mediu entraram no `train` **sem** que o `split_hash` mudasse, porque a
+    partição delas era nova e não uma remontagem da antiga.
+
+    **Ordenado, e por isso estável sob reordenação do CSV.** A pergunta é "estes rótulos são os
+    mesmos?", e a ordem das linhas no arquivo não é parte da resposta -- ela muda por qualquer
+    reescrita do `LabelStore`. Corrigir **uma** FEN, essa sim, muda o hash.
+
+    Só o split de treino: `val` e `test` mudarem não altera o que o modelo aprendeu, e incluí-los
+    faria o hash mudar por motivo que não é sobre este checkpoint. Quem vigia os reservados é o
+    `split_hash`.
+    """
+    payload = "\n".join(sorted(f"{entry.filename}={entry.fen}" for entry in entries))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def _optim_metadata(optim: OptimPlan) -> dict[str, Any]:
+    """Os hiperparâmetros que reproduzem o número, prefixados para não colidir (S-105).
+
+    `asdict(optim)` traria `augment` como dicionário aninhado e `class_weights`/`seed`
+    duplicados -- os três já estão nos metadados com nome próprio desde a S-27 e a S-40.
+    O que faltava são estes quatro, e é neles que `--lr 1e-4` e `--lr 1e-3` diferem.
+    """
+    return {
+        "lr": optim.lr,
+        "batch_size": optim.batch_size,
+        "epochs_requested": optim.epochs,
+        "patience": optim.patience,
+        # Fixo hoje, e gravado mesmo assim: um metadado ausente e um metadado que diz "Adam"
+        # sao a mesma coisa **ate** o dia em que o otimizador mudar, e ai o segundo continua
+        # verdadeiro sobre os checkpoints antigos e o primeiro nao diz nada sobre nenhum.
+        "optimizer": "adam",
+    }
 
 
 class BestEpochPolicy:
@@ -821,7 +878,15 @@ class Trainer:
             # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
             # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
             "augment_version": optim.augment.version,
+            # Os hiperparametros de otimizacao, inteiros (S-105). Sem eles, `--lr 1e-4` e
+            # `--lr 1e-3` produziam dois arquivos indistinguiveis pelos metadados -- e ha 17
+            # checkpoints em `models/` e nove treinos comparados no EXPERIMENTS_FASE7.
+            **_optim_metadata(optim),
             "split_hash": splits_hash(splits_map) if splits_map else "",
+            # **Qual particao** e **qual verdade** sao perguntas diferentes, e ate aqui so a
+            # primeira tinha resposta: as 468 amostras de correcao humana da S-107 entraram
+            # sem que o `split_hash` mudasse.
+            "labels_hash": labels_hash([dataset.entries[i] for i in sorted(train_board_ids)]),
             "splits_path": str(data.splits_path) if data.splits_path else "",
             "dataset_size": len(dataset.entries),
             "val_size": len(val_dataset.entries) if val_dataset is not None else len(val_indices) // 64,
@@ -921,7 +986,13 @@ class Trainer:
         # Sem clausula especial para a primeira epoca: num treino do zero o incumbente e
         # `-inf`, e numa retomada e a metrica real do checkpoint que esta no disco. Era a
         # clausula especial que fazia a primeira epoca de uma retomada gravar por cima.
+        # **Antes** do `observe`, porque ele move o incumbente: depois da chamada não há mais
+        # como saber que esta época empatou com a melhor em vez de perder para ela (S-104).
+        empatou = not self.policy.accepts(metric_for_best) and metric_for_best == self.policy.best_metric
+
         improved = self.policy.observe(metric_for_best, epoch)
+        if empatou and self.plan.output.keep_ties:
+            self._save_tie(epoch, metric_for_best, row)
         if improved:
             self.run.best_metric = self.policy.best_metric
             self.run.best_epoch = self.policy.best_epoch
@@ -942,6 +1013,39 @@ class Trainer:
         if self.progress is not None:
             self.progress(row)
         return row
+
+    def _save_tie(self, epoch: int, metric: float, row: dict[str, Any]) -> Path:
+        """Grava a época empatada num arquivo próprio, `<modelo>.tie-e<N>.pt` (S-104).
+
+        **Ao lado e não por cima**: o checkpoint principal continua sendo o que o `>` estrito
+        do `accepts` decidiu, e a comparação entre os dois é justamente o que se quer medir.
+        Um nome por época porque um treino pode empatar mais de uma vez, e sobrescrever
+        deixaria o experimento com um lado só.
+        """
+        destino = Path(self.plan.output.model_path)
+        destino = destino.with_name(f"{destino.stem}.tie-e{epoch}{destino.suffix}")
+        save_checkpoint(
+            destino,
+            self.model.state_dict(),
+            metadata={
+                **self.metadata_base,
+                "best_metric": metric,
+                "best_epoch": epoch,
+                "metrics": _plain(row),
+                # Marcado no proprio arquivo: sem isto, um `.tie-*.pt` copiado para outro nome
+                # seria indistinguivel de um checkpoint que a politica escolheu.
+                "tie_with_best_epoch": self.policy.best_epoch,
+            },
+        )
+        logger.info(
+            "Época %d empatou com a %d em %s=%.6f; gravada em %s para comparação (S-104).",
+            epoch,
+            self.policy.best_epoch,
+            self.run.best_metric_name,
+            metric,
+            destino.name,
+        )
+        return destino
 
     def _cancelled(self, epoch: int) -> bool:
         """Conferido **entre** épocas, e não dentro do laço de lotes.
@@ -1050,6 +1154,7 @@ def train_model(
     cancel_event: threading.Event | None = None,
     augment: AugmentConfig = DEFAULT_AUGMENT,
     boards_per_batch: int = OptimPlan.boards_per_batch,
+    keep_ties: bool = False,
 ) -> TrainingRun:
     """Treina o classificador de peças. Monta o `TrainingPlan` e chama `Trainer.fit()` (S-47).
 
@@ -1088,7 +1193,11 @@ def train_model(
             num_workers=num_workers,
         ),
         output=OutputPlan(
-            model_path=Path(model_path), fresh=fresh, calibrate=calibrate, pretrained=pretrained
+            model_path=Path(model_path),
+            fresh=fresh,
+            calibrate=calibrate,
+            pretrained=pretrained,
+            keep_ties=keep_ties,
         ),
         model=arch,
         optim=OptimPlan(

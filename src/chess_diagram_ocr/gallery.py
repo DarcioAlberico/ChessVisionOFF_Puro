@@ -33,21 +33,40 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from .atomic_io import atomic_write_json
+from .atomic_io import atomic_write_json, atomic_write_text
 from .config import DEFAULT_READING_ORDER, PROJECT_ROOT, ReadingOrder
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "DEFAULT_HUMAN_EXTRACT",
     "DiagramAnnotation",
     "GalleryAnnotations",
+    "HumanExtract",
     "annotations_path_for",
+    "export_human",
+    "human_only",
     "lichess_analysis_url",
     "load_annotations",
+    "read_human_extract",
+    "restore_human",
     "save_annotations",
+    "write_human_extract",
 ]
 
 DEFAULT_GALLERY_DIR = PROJECT_ROOT / "data" / "gallery"
+
+DEFAULT_HUMAN_EXTRACT = PROJECT_ROOT / "data" / "gallery_human.jsonl"
+"""O extrato do que **uma pessoa** digitou ou escolheu na galeria (S-115).
+
+`data/gallery/` fica fora do repositório por dois motivos que continuam válidos: o
+`*.index.json` é derivado do PDF, e o `<livro>.json` descreve o conteúdo de um livro protegido.
+Mas dentro dele há trabalho que **não se refaz de jeito nenhum** -- a vez a jogar que alguém
+conferiu na legenda, e as partidas escolhidas a mão na lista de candidatas da S-86.
+
+A separação é a que o `filled_rule` já grava: o que a base preencheu volta com
+`cvoff-games --apply` a partir do cache de posições; o que uma pessoa decidiu não volta.
+Versionar só a segunda metade custa uma fração dos 13 MB e protege a parte irrecuperável."""
 
 LICHESS_ANALYSIS_BASE = "https://lichess.org/analysis/"
 """Montar a URL é offline; **abri-la** manda a posição para o lichess.org.
@@ -91,14 +110,94 @@ class DiagramAnnotation:
     headers: dict[str, str] = field(default_factory=dict)
     """Headers de PGN extras. Aplicados por último: o que a pessoa escreve vence o inferido."""
 
+    filled_from: str = ""
+    """A partida da base que preencheu esta anotação, quando foi a base que preencheu (S-72).
+
+    **Guarda a evidência, e não só a origem** -- `"Kasparov, Garry x Karpov, Anatoly,
+    World-ch30 1984"` em vez de `"base"`. É o mesmo desenho do `side_to_move_evidence` da
+    S-16, e pela mesma razão: quem discorda precisa saber *de quê* está discordando. Vazio é o
+    normal, e significa que quem preencheu foi gente.
+    """
+
+    confirmed_from: str = ""
+    """A base reconheceu esta posição -- ainda que não tenha preenchido campo nenhum (S-74).
+
+    **Confirmar e preencher são coisas diferentes, e é por isso que são dois campos.** Uma
+    posição que aparece em 300 partidas não identifica *qual* partida é, então ela não preenche
+    header nenhum (ver `apply_matches`); mas ela responde a pergunta mais importante que a fila
+    de revisão faz -- "esta leitura está certa?" --, porque as 64 casas bateram com uma posição
+    que aconteceu num tabuleiro de verdade.
+
+    Guarda a partida quando ela é única, e a contagem quando não é.
+    """
+
+    chosen_game: str = ""
+    """A partida que **uma pessoa** escolheu na lista de candidatas (S-86).
+
+    Guarda a chave da partida -- `White|Black|Date|Round|Event` --, e não o índice dela na
+    lista: a ordem muda quando a base muda, e "a terceira" apontaria para outra partida na
+    execução seguinte.
+
+    **É o que impede a próxima varredura de desfazer o trabalho.** `apply_matches` preenche o
+    que está vazio e uma escolha humana costuma ter preenchido tudo -- mas ela também *troca* a
+    partida, e sem esta marca um `cvoff-games --apply` posterior reescreveria a procedência com
+    a candidata que o desempate automático prefere. É o mesmo defeito que a S-77 consertou no
+    conjunto de campo: o que a pessoa decidiu não pode ser sobrescrito por quem só palpita.
+    """
+
+    filled_rule: str = ""
+    """**Qual regra escolheu a partida** entre as candidatas (S-91). Vazio é anterior à S-91.
+
+    `filled_from` diz *de que* partida veio o preenchimento; isto diz *por que* foi ela, e são
+    perguntas diferentes cujas respostas valem tantos diferentes:
+
+    | valor | o que significa | quanto vale |
+    |---|---|---|
+    | `unique` | a posição está numa partida só da base | não houve escolha a fazer |
+    | `caption` | a legenda do livro nomeia exatamente esta | duas fontes independentes concordando |
+    | `date` | havia várias e o desempate pegou a mais antiga | **palpite** -- ver abaixo |
+    | `human` | uma pessoa escolheu na lista | a resposta |
+
+    **O `date` existe para ser encontrado.** Medido em 2026-08-15, esse desempate discorda da
+    legenda do livro 72,3% das vezes onde há legenda para conferir, contra um piso de ruído de
+    26,5%. São 141 diagramas do acervo preenchidos assim antes da S-91, e sem este campo eles
+    são indistinguíveis de dado conferido -- que é a definição de procedência inventada.
+    """
+
+    filled_fields: tuple[str, ...] = ()
+    """Quais campos vieram da base, e **não** de uma pessoa.
+
+    Sem isto o PGN mentiria com cara de procedência: a exportação marca a vez a jogar declarada
+    na galeria como `[SideToMoveSource "manual"]`, que significa "uma pessoa conferiu e
+    declarou" -- e depois da S-72 ela pode ter vindo de um casamento com a base, que é outra
+    coisa e vale outro tanto. É o mesmo erro que a S-19 evitou ao não gravar `w` no
+    `labels.csv` de quem não tem resposta.
+
+    Por campo, e não uma bandeira por anotação, porque os dois se misturam no mesmo diagrama:
+    a base preenche o lance e a pessoa corrige a vez. Editar um campo à mão o tira daqui --
+    ver `GalleryModel.edit`.
+    """
+
     @property
     def is_empty(self) -> bool:
-        """Nada foi declarado. Anotação vazia não é gravada -- ver o docstring do módulo."""
+        """Nada foi declarado. Anotação vazia não é gravada -- ver o docstring do módulo.
+
+        `filled_from` não conta: ele descreve de onde vieram os outros campos, e uma anotação
+        que só tivesse ele seria a procedência de coisa nenhuma. `confirmed_from` **conta**, e
+        a diferença não é sutil: ele não descreve outro campo, ele é uma afirmação inteira --
+        "a base reconheceu esta posição" --, e é o que tira o diagrama da fila de revisão
+        (S-74). Descartá-lo por parecer vazio faria a fila reencher a cada varredura.
+        """
         return (
             self.move_number is None
             and self.side_to_move is None
             and self.lichess_link is None
             and not self.headers
+            and not self.confirmed_from
+            # Como o `confirmed_from`, e pela mesma razão: escolher uma partida é uma afirmação
+            # inteira, não a procedência de outro campo. Descartá-la faria a escolha da pessoa
+            # sumir num diagrama cujos campos já estavam todos preenchidos.
+            and not self.chosen_game
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -111,6 +210,16 @@ class DiagramAnnotation:
             dados["lichess_link"] = bool(self.lichess_link)
         if self.headers:
             dados["headers"] = dict(self.headers)
+        if self.filled_from:
+            dados["filled_from"] = self.filled_from
+        if self.chosen_game:
+            dados["chosen_game"] = self.chosen_game
+        if self.filled_rule:
+            dados["filled_rule"] = self.filled_rule
+        if self.filled_fields:
+            dados["filled_fields"] = list(self.filled_fields)
+        if self.confirmed_from:
+            dados["confirmed_from"] = self.confirmed_from
         return dados
 
     @classmethod
@@ -122,6 +231,11 @@ class DiagramAnnotation:
             side_to_move=_lado(dados.get("side_to_move")),
             lichess_link=_tri_estado(dados.get("lichess_link")),
             headers=_headers(dados.get("headers")),
+            filled_from=str(dados.get("filled_from") or ""),
+            chosen_game=str(dados.get("chosen_game") or ""),
+            filled_rule=_regra(dados.get("filled_rule")),
+            filled_fields=_campos(dados.get("filled_fields")),
+            confirmed_from=str(dados.get("confirmed_from") or ""),
         )
 
 
@@ -141,6 +255,24 @@ def _lado(valor: Any) -> str | None:
 
 def _tri_estado(valor: Any) -> bool | None:
     return None if valor is None else bool(valor)
+
+
+FILL_RULES = ("unique", "caption", "date", "human")
+"""As regras que podem ter escolhido a partida. Ver `DiagramAnnotation.filled_rule`."""
+
+
+def _regra(valor: Any) -> str:
+    """Regra desconhecida vira vazio -- "não sei por que esta partida" é uma resposta melhor
+    que uma etiqueta inventada, e é o que o campo já significa nas anotações anteriores."""
+    texto = str(valor or "").strip().lower()
+    return texto if texto in FILL_RULES else ""
+
+
+def _campos(valor: Any) -> tuple[str, ...]:
+    """Os nomes de campo preenchidos pela base, saneados. Qualquer outra coisa vira vazio."""
+    if not isinstance(valor, (list, tuple)):
+        return ()
+    return tuple(str(item).strip() for item in valor if str(item).strip())
 
 
 def _headers(valor: Any) -> dict[str, str]:
@@ -289,3 +421,211 @@ def save_annotations(
     caminho.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(caminho, annotations.to_dict())
     return caminho
+
+
+# ------------------------------------------------------- o extrato humano (S-115)
+
+HUMAN_FIELDS = ("move_number", "side_to_move", "lichess_link", "headers", "chosen_game")
+"""Os campos que o extrato carrega. Ver `human_only` para por que **estes**."""
+
+
+def human_only(annotation: DiagramAnnotation) -> DiagramAnnotation:
+    """O que **uma pessoa** declarou nesta anotação. Vazia quando foi tudo da base (S-115).
+
+    O crivo é o `filled_fields`, que já responde exatamente esta pergunta campo a campo: o que
+    está lá veio de um casamento com a base e volta com `cvoff-games --apply`; o que não está
+    foi digitado.
+
+    **Com uma exceção, e ela é o coração do item:** quando `filled_rule == "human"`, o
+    `filled_fields` lista os campos que a *escolha da pessoa* pôs (ver `choose_game`) -- ela
+    olhou a lista de candidatas e disse qual era. Tratá-los como "da base" jogaria fora
+    justamente as 21 decisões mais caras do acervo.
+
+    **`filled_from`, `filled_rule` e `confirmed_from` ficam de fora**: descrevem de onde vieram
+    os outros campos, e uma varredura nova os reconstrói. O que o extrato guarda é o que
+    varredura nenhuma reconstrói.
+
+    **E uma anotação anterior à procedência por campo não declara nada.** `filled_from` cheio
+    com `filled_fields` vazio só acontece numa anotação gravada pela versão do `apply_matches`
+    anterior à correção de procedência (é o caso que `_recover_provenance` repara). Nela o
+    crivo não funciona: tudo *parece* humano. Chamar isso de humano encheria o extrato de
+    headers da base -- 1.694 campos, medidos -- e, pior, o `--import-human` os reescreveria
+    como digitados, que é a procedência inventada que a S-72 e a S-94 existem para impedir.
+
+    O caminho de recuperá-los existe e é outro: `cvoff-games --apply` reconhece os campos que
+    batem com o casamento e devolve o `filled_fields` a eles. Depois disso, extrair de novo
+    separa direito.
+    """
+    if annotation.filled_from and not annotation.filled_fields and annotation.filled_rule != "human":
+        return DiagramAnnotation(
+            lichess_link=annotation.lichess_link,
+            chosen_game=annotation.chosen_game,
+        )
+
+    da_base = () if annotation.filled_rule == "human" else annotation.filled_fields
+    return DiagramAnnotation(
+        move_number=None if "move_number" in da_base else annotation.move_number,
+        side_to_move=None if "side_to_move" in da_base else annotation.side_to_move,
+        # A base nunca preenche o link nem escolhe partida: os dois são decisão de gente,
+        # sempre, e por isso não passam pelo crivo.
+        lichess_link=annotation.lichess_link,
+        headers={
+            nome: valor
+            for nome, valor in annotation.headers.items()
+            if f"header:{nome}" not in da_base
+        },
+        chosen_game=annotation.chosen_game,
+    )
+
+
+@dataclass
+class HumanExtract:
+    """O extrato e **o que ele não pôde separar**. Os dois juntos porque o segundo é ressalva."""
+
+    records: list[dict[str, Any]] = field(default_factory=list)
+    books: int = 0
+
+    unresolved: int = 0
+    """Anotações anteriores à procedência por campo -- ver `human_only`.
+
+    Não entram no extrato, e o número precisa aparecer: sem ele, um extrato pequeno pareceria
+    "há pouco trabalho humano" quando na verdade é "há trabalho que não dá para separar".
+    O conserto é `cvoff-games --apply`, que devolve o `filled_fields` a elas (S-72)."""
+
+
+def export_human(*, directory: Path = DEFAULT_GALLERY_DIR) -> HumanExtract:
+    """Uma linha por diagrama com algo humano, de todos os livros da pasta. Ordenado.
+
+    Ordenado por `(livro, página, diagrama)` e não pela ordem do disco: o extrato é
+    versionado, e um arquivo cuja ordem muda a cada execução produz um diff ilegível a cada
+    commit -- é a mesma razão pela qual `to_dict` ordena as chaves.
+    """
+    extrato = HumanExtract()
+    for caminho in sorted(Path(directory).glob("*.json")):
+        if caminho.name.endswith(".index.json") or ".bak-" in caminho.name:
+            continue
+        try:
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Galeria ilegível em %s (%s); fora do extrato.", caminho, exc)
+            continue
+        extrato.books += 1
+        anotacoes = GalleryAnnotations.from_dict(dados)
+        for (pagina, diagrama), anotacao in sorted(anotacoes.entries.items()):
+            if anotacao.filled_from and not anotacao.filled_fields and anotacao.filled_rule != "human":
+                extrato.unresolved += 1
+            humano = human_only(anotacao)
+            if humano.is_empty:
+                continue
+            extrato.records.append(
+                {"book": caminho.stem, "at": f"{pagina}.{diagrama}", **humano.to_dict()}
+            )
+    return extrato
+
+
+def write_human_extract(
+    records: list[dict[str, Any]], path: Path = DEFAULT_HUMAN_EXTRACT
+) -> Path:
+    """Grava o extrato como JSONL. Uma linha por diagrama, para o diff ser por diagrama."""
+    caminho = Path(path)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    corpo = "".join(json.dumps(registro, ensure_ascii=False, sort_keys=True) + "\n" for registro in records)
+    atomic_write_text(caminho, corpo)
+    return caminho
+
+
+def read_human_extract(path: Path = DEFAULT_HUMAN_EXTRACT) -> list[dict[str, Any]]:
+    """Lê o extrato. Arquivo ausente é lista vazia; linha corrompida é pulada com aviso.
+
+    Pular a linha e não derrubar o comando: o extrato é restaurado depois de um desastre, e um
+    arquivo com uma linha truncada é exatamente a situação em que se quer as outras 5.952.
+    """
+    caminho = Path(path)
+    if not caminho.exists():
+        return []
+    registros = []
+    for numero, linha in enumerate(caminho.read_text(encoding="utf-8").splitlines(), start=1):
+        if not linha.strip():
+            continue
+        try:
+            registro = json.loads(linha)
+        except json.JSONDecodeError as exc:
+            logger.warning("Linha %d do extrato humano ignorada (%s).", numero, exc)
+            continue
+        if isinstance(registro, dict) and registro.get("book") and registro.get("at"):
+            registros.append(registro)
+        else:
+            logger.warning("Linha %d do extrato humano sem livro ou posição; ignorada.", numero)
+    return registros
+
+
+def restore_human(
+    records: list[dict[str, Any]], *, directory: Path = DEFAULT_GALLERY_DIR
+) -> dict[str, int]:
+    """Escreve o extrato de volta nas anotações. Devolve `{livro: diagramas tocados}`.
+
+    **O que vem do extrato vence**, e sai do `filled_fields`: se a pessoa digitou `Event` e a
+    varredura de reconstrução o preencheu pela base, quem está com o livro na mão é ela -- é a
+    mesma regra da S-17, e é a razão de o extrato existir.
+
+    Só toca no que o registro traz. Um livro reconstruído mantém tudo o que a base preencheu e
+    que ninguém contradisse, e mantém o `confirmed_from`, que é afirmação sobre a **leitura** e
+    não sobre quem preencheu.
+    """
+    por_livro: dict[str, int] = {}
+    for livro, do_livro in _por_livro(records).items():
+        caminho = Path(directory) / f"{livro}.json"
+        anotacoes = GalleryAnnotations(source_name=livro)
+        if caminho.exists():
+            try:
+                anotacoes = GalleryAnnotations.from_dict(json.loads(caminho.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.warning("Galeria ilegível em %s (%s); será refeita a partir do extrato.", caminho, exc)
+
+        tocados = 0
+        for chave, registro in do_livro:
+            humano = DiagramAnnotation.from_dict(registro)
+            anterior = anotacoes.get(*chave)
+            declarados = _declared_fields(humano)
+            restantes = tuple(campo for campo in anterior.filled_fields if campo not in declarados)
+            anotacoes.set(
+                *chave,
+                replace(
+                    anterior,
+                    move_number=humano.move_number if humano.move_number is not None else anterior.move_number,
+                    side_to_move=humano.side_to_move or anterior.side_to_move,
+                    lichess_link=humano.lichess_link if humano.lichess_link is not None else anterior.lichess_link,
+                    headers={**anterior.headers, **humano.headers},
+                    chosen_game=humano.chosen_game or anterior.chosen_game,
+                    filled_fields=restantes,
+                    # Mesma aritmética do `_provenance_after` da tela: sem campo nenhum da base
+                    # sobrando, os dois descrevem coisa nenhuma.
+                    filled_from=anterior.filled_from if restantes else "",
+                    filled_rule=anterior.filled_rule if restantes else "",
+                ),
+            )
+            tocados += 1
+
+        atomic_write_json(caminho, anotacoes.to_dict())
+        por_livro[livro] = tocados
+    return por_livro
+
+
+def _declared_fields(annotation: DiagramAnnotation) -> set[str]:
+    """Os nomes de `filled_fields` que esta anotação humana ocupa."""
+    nomes = {nome for nome in ("move_number", "side_to_move") if getattr(annotation, nome) is not None}
+    return nomes | {f"header:{nome}" for nome in annotation.headers}
+
+
+def _por_livro(records: list[dict[str, Any]]) -> dict[str, list[tuple[tuple[int, int], dict[str, Any]]]]:
+    """Agrupa por livro e converte `"80.0"` em `(80, 0)`. Uma leitura de arquivo por livro."""
+    agrupado: dict[str, list[tuple[tuple[int, int], dict[str, Any]]]] = {}
+    for registro in records:
+        pagina, _, diagrama = str(registro.get("at", "")).partition(".")
+        try:
+            chave = (int(pagina), int(diagrama))
+        except ValueError:
+            logger.warning("Posição ignorada no extrato humano: %r", registro.get("at"))
+            continue
+        agrupado.setdefault(str(registro["book"]), []).append((chave, registro))
+    return agrupado

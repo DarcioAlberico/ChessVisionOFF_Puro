@@ -61,6 +61,7 @@ LABEL_COLUMNS: tuple[str, ...] = (
     "detection_source",
     "created_at",
     "corrected_by",
+    "illegal_ok",
 )
 """Esquema do `labels.csv` a partir da S-19. Só `filename` e `fen` são obrigatórios.
 
@@ -75,6 +76,37 @@ auditar por fonte e voltar ao PDF para recortar de novo.
 """
 
 REQUIRED_COLUMNS: frozenset[str] = frozenset({"filename", "fen"})
+
+ILLEGAL_OK = "1"
+"""Valor da coluna `illegal_ok`: **uma pessoa confirmou** que esta posição ilegal é a certa.
+
+**O problema que ele resolve.** Um livro de xadrez não é feito só de posições jogáveis. Um
+capítulo sobre estrutura de peões desenha o esqueleto sem rei nenhum; um diagrama de final
+mostra três peças; um tabuleiro vazio ilustra as coordenadas. Ler qualquer um desses
+corretamente produz uma FEN que `check_position` chama de fatalmente ilegal -- e até aqui o
+projeto tratava "fatalmente ilegal" e "erro de anotação" como a mesma coisa, porque em 3.313
+rótulos vindos de posições completas eles de fato eram.
+
+Não são. A regra continua valendo para o que ela foi escrita: **rei faltando porque o modelo
+não viu o rei** é erro, e gravá-lo ensina o modelo a repetir o erro. O que muda é que agora
+existe um jeito de dizer a diferença, e quem diz é a única entidade capaz disso -- a pessoa
+que está olhando o diagrama e o PDF ao mesmo tempo. A interface pergunta antes de gravar; o
+"sim" vira esta coluna.
+
+**Por que uma coluna, e não um valor de `corrected_by`.** São eixos diferentes. Um diagrama
+de estrutura pode ter chegado por qualquer um dos seis caminhos da `CORRECTED_BY_VALUES`, e
+colapsar os dois campos perderia o caminho para ganhar a marca.
+
+**O que a marca desliga**, e é por isso que ela precisa existir em vez de só a caixa de
+diálogo: os três lugares que tratam ilegalidade fatal como defeito -- o descarte do
+`BoardFenDataset` (que manteria a amostra fora de todo treino), a lista `fatal` da auditoria e
+a quarentena do `cvoff-audit --fix` (que **tiraria a linha do arquivo**). Sem a coluna, salvar
+com confirmação seria salvar num lugar onde o comando seguinte apaga.
+
+Ela é gravada pela mesma escrita que grava a FEN, e some sozinha: regravar o rótulo já legal
+limpa a célula (ver `dataset_browser.update_row`), porque a marca descreve a FEN que está na
+linha e não um perdão permanente para o arquivo.
+"""
 
 OCR_ACEITO = "ocr-aceito"
 OCR_CORRIGIDO = "ocr-corrigido"
@@ -211,6 +243,19 @@ class DatasetEntry:
     detection_source: str = ""
     created_at: str = ""
     corrected_by: str = ""
+    illegal_ok: str = ""
+    """Marca da posição ilegal deliberada. Ver `ILLEGAL_OK` -- leia por `illegal_accepted`."""
+
+    @property
+    def illegal_accepted(self) -> bool:
+        """Uma pessoa confirmou que esta posição ilegal é a leitura certa do diagrama.
+
+        Aceita mais de uma grafia porque a coluna é texto num CSV que gente edita à mão: um
+        `sim` digitado no lugar de `1` significa a mesma coisa, e lê-lo como "não" desfaria a
+        decisão de quem digitou -- que é exatamente o desfazer que esta coluna existe para
+        impedir.
+        """
+        return self.illegal_ok.strip().lower() in ("1", "true", "sim", "yes", "x")
 
     @property
     def resolved_side_to_move(self) -> str:
@@ -475,6 +520,29 @@ class LabelStore:
         atomic_write_bytes(self.path, render_csv(rows).encode("utf-8"))
 
 
+def label_origins(csv_path: Path) -> dict[str, tuple[str, str, str]]:
+    """`{arquivo: (source_pdf, source_page, source_diagram)}` para o agrupamento da S-98.
+
+    A tripla é a chave de "é o mesmo diagrama impresso", e ela é **exata**: não depende de
+    limiar de imagem, e por isso pega o caso que o guarda de dHash não pega -- a mesma página
+    reextraída com recorte deslocado, que é o que acontece ao revarrer um livro depois de a
+    detecção mudar.
+
+    Os valores saem como texto e **como estão no CSV**, sem conversão de base: aqui a tripla
+    serve só de chave de igualdade, e converter para depois comparar seria trabalho que só
+    poderia introduzir divergência com `saved_diagrams_by_page`, que converte porque a
+    interface conta em base 0.
+
+    Linha sem `source_pdf` ou sem `source_page` entra com a tripla vazia e o chamador a
+    descarta -- são 84,1% do acervo, e inventar procedência seria pior que não ter.
+    """
+    return {
+        entry.filename: (entry.source_pdf.strip(), entry.source_page.strip(), entry.source_diagram.strip())
+        for entry in LabelStore(csv_path).read()
+        if entry.filename
+    }
+
+
 def saved_diagrams_by_page(
     entries: Iterable[DatasetEntry], source_pdf: str
 ) -> dict[int, set[int]]:
@@ -511,6 +579,82 @@ def saved_diagrams_by_page(
         if pagina < 0 or diagrama < 0:
             continue
         por_pagina.setdefault(pagina, set()).add(diagrama)
+    return por_pagina
+
+
+@dataclass(frozen=True)
+class SavedSample:
+    """A procedência de uma amostra recém-gravada, **na contagem da interface** (S-116).
+
+    Base 0 nos dois índices, como `saved_diagrams_by_page` devolve -- e não como o CSV guarda.
+    Existe para que a janela saiba o que ela mesma acabou de escrever sem ir perguntar ao
+    arquivo: era o último custo do `Ctrl+S`, e ele cresce com o `labels.csv`.
+    """
+
+    source_pdf: str
+    """O **nome** do arquivo, não o caminho: é o que a S-19 grava e o que o índice compara."""
+
+    page_index: int
+    diagram_index: int
+
+
+def note_saved_diagram(
+    por_pagina: dict[int, set[int]], saved: SavedSample, *, source_pdf: str
+) -> bool:
+    """Marca no índice de "já salvo" a amostra que a janela acabou de gravar. Devolve se entrou.
+
+    **É o corte 2 da S-116**, e o que ele substitui é uma releitura do `labels.csv` inteiro
+    (30,9 ms sobre 3.936 linhas, e crescendo) para descobrir uma linha que o próprio processo
+    acabou de escrever.
+
+    Ela mora aqui, e não no painel, pela mesma razão de `saved_diagrams_by_page`: a conversão
+    entre a contagem do CSV e a da tela tem um lugar só, e as duas funções produzem o mesmo
+    índice -- é isso que um teste pode afirmar, e afirma.
+
+    Amostra de outro livro não entra: o índice é do que está aberto. Amostra sem procedência
+    também não chega aqui, porque quem a monta devolve `None` antes (ver `_saved_sample`).
+    """
+    if not saved.source_pdf.strip() or saved.source_pdf.strip() != str(source_pdf).strip():
+        return False
+    if saved.page_index < 0 or saved.diagram_index < 0:
+        return False
+    por_pagina.setdefault(saved.page_index, set()).add(saved.diagram_index)
+    return True
+
+
+def pages_with_training_samples(
+    entries: Iterable[DatasetEntry], splits: Mapping[str, str]
+) -> dict[tuple[str, int], int]:
+    """`{(livro, página em base 0): quantas amostras de treino}` (S-97).
+
+    **Por que isto existe.** O conjunto de campo da S-41 nasceu porque o split de teste não
+    representa a entrada do produto -- *"não é o modelo que está ruim, é o conjunto de teste
+    que não representa a entrada"*. Mas nada impedia que uma página do conjunto de campo fosse
+    também uma página de que há amostra rotulada em `train`, e medido em 2026-08-16 são **7 de
+    39 diagramas anotados, 17,9%**: `Karpov p80` (6) e `1937 Kemeri` p187 (1).
+
+    **A ressalva, e ela muda a leitura.** Isto não diz que o checkpoint em uso viu aquela
+    página -- diz que **o próximo a ser treinado sobre estes splits verá**. Das nove amostras
+    envolvidas hoje, oito são posteriores ao `piece_classifier.pt` de 2026-08-09. É uma
+    armadilha que fecha no próximo retreino, e por isso o alerta vale mais agora que depois.
+
+    Só conta `train`: amostra em `val`/`test` na mesma página é outro assunto, e o modelo não
+    aprende com ela. Linha sem procedência é ignorada, como em `saved_diagrams_by_page`, e são
+    84,1% do acervo -- o alcance deste alerta é o das amostras que declaram de onde vieram.
+    """
+    por_pagina: dict[tuple[str, int], int] = {}
+    for entry in entries:
+        livro = entry.source_pdf.strip()
+        if not livro or splits.get(entry.filename) != "train":
+            continue
+        try:
+            pagina = int(float(entry.source_page)) - 1
+        except (TypeError, ValueError):
+            continue
+        if pagina < 0:
+            continue
+        chave = (livro, pagina)
+        por_pagina[chave] = por_pagina.get(chave, 0) + 1
     return por_pagina
 
 

@@ -1,11 +1,37 @@
-# Especificação das melhorias — Fases 7 a 11 (S-37 a S-63)
+# Especificação das melhorias — Fases 7 a 13 (S-37 a S-77)
 
 Continuação de [SPEC.md](SPEC.md), que cobre S-01 a S-36. Sequenciamento e a medição que
 motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
 
+> **Onde mora a spec de cada item (S-NN).** A spec está em cinco arquivos, e essa dispersão
+> custou duas entregas — a S-76 e a S-77 ficaram três meses em documento nenhum, e as duas
+> eram deste arquivo (S-133). `tests/test_docs.py` confere esta tabela contra o disco (S-134):
+> item entregue sem seção e seção no arquivo errado fazem a suíte falhar.
+>
+> | itens | arquivo |
+> |---|---|
+> | S-01 a S-36 | [SPEC.md](SPEC.md) |
+> | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
+> | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
+> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
+
+> **Ressalva de 2026-08-16.** Quatro itens deste documento — **S-38b, S-40, S-62a e S-62b** —
+> foram reprovados pela taxa de exportação do conjunto de campo. A avaliação registrada em
+> [ROADMAP_FASE14.md](ROADMAP_FASE14.md) mostrou que essa métrica **mede confiança e não
+> correção**: 1 de 39 diagramas anotados carrega FEN de referência, e essa uma é uma alucinação
+> do próprio modelo sobre uma capa (S-95, S-96). Isso não torna os quatro vereditos errados —
+> torna-os **não tomados**. Reabri-los depende da Fase 14.
+
 Os itens **S-56 a S-61** vêm primeiro no documento porque são **defeitos abertos hoje**, não
 melhorias. A numeração é maior porque foram encontrados na segunda passada da análise, depois
 de S-37 a S-55 já estarem escritos.
+
+Os itens **S-64 a S-71** são posteriores ao fechamento das Fases 7 a 11 e não saíram de
+varredura: saíram de uso. Cada um nasceu de alguém trabalhando com o produto e esbarrando em
+algo — daí eles serem escritos *depois* de implementados, ao contrário de todos os anteriores.
+Os quatro últimos formam a **Fase 12**, no fim deste documento.
 
 Mesma convenção da SPEC.md: cada item tem **Problema** (com referência ao arquivo e à linha
 de hoje), **Solução**, **Interface proposta**, **Critério de aceite** e **Testes**. Nomes de
@@ -2224,6 +2250,574 @@ mesmo conjunto de nomes. Nenhuma ação destrutiva sem backup e sem listar o que
 
 ---
 
+# Fase 12 — Depois do fechamento: o que o uso pediu
+
+Os seis itens abaixo vieram de trabalhar com o produto, não de analisar o código. Dois deles
+(**S-66**, **S-67**) nasceram ainda dentro das Fases 9 e 10 e ficaram sem spec na época; os
+quatro seguintes (**S-68** a **S-71**) são a Fase 12 e têm um só assunto: **a página exibida
+deixa de ser uma figura e passa a ser onde se trabalha.**
+
+## S-66 · O leitor externo como segunda opinião **local** ✅ implementada (2026-08-09)
+
+**Problema.** Conferir um diagrama é olhar 64 casas. Quem captura um livro novo faz isso
+diagrama a diagrama, e é esse custo humano — não o tempo de máquina, que é de décimos de
+segundo — que limita quantas amostras entram no `labels.csv`. E há livros em que o
+classificador local simplesmente afunda: no `Niemeijer - Zwarte Magie (1945)` a confiança
+mínima média é 0,25 e **nenhum** dos 20 diagramas passa do gate.
+
+**Solução.** Um adaptador para o `Chess_diagram_to_FEN` (MIT, Jost Triller), que satisfaz o
+`RemoteFenProvider` da S-32 — que é `Protocol` justamente para isto: aquele docstring já dizia
+que um segundo modelo local satisfaria a mesma interface. E `second_opinion.py` compara as duas
+leituras e devolve **as casas em que elas discordam**.
+
+Medido nos mesmos 20 diagramas:
+
+| | leitor local | externo |
+|---|---|---|
+| coerentes com o tema do livro (1 rei de cada, ≥1 dama preta, sem peão na borda) | 12/20 | **18/20** |
+| `p6_d0` / `p6_d1` / `p13_d2`, conferidos casa a casa | 60 / 41 / 23 de 64 | **64 / 64 / 64** |
+| mediana de casas em desacordo entre os dois | — | **4,5** |
+
+Nos três diagramas conferidos à mão, o conjunto em desacordo era **exatamente** o conjunto de
+erros do leitor local — 4 de 4, 23 de 23, 41 de 41. Nenhum erro fora dele. Olhar 4,5 casas em
+vez de 64 não perdia nada.
+
+**Três decisões.**
+
+- **Local quer dizer local, e por isso este caminho não passa pelo consentimento da S-32.**
+  Nada sai da máquina. Ele existe em boa parte para tornar aquele desnecessário.
+- **A saída é uma marcação, não uma correção automática.** A segunda leitura erra também: 2
+  dos 20 saíram com dois reis brancos e nenhum preto. Quem decide continua sendo quem olha.
+- **Só dois dos cinco modelos do pacote.** `existence` e `quad` respondem "há tabuleiro?" e
+  "onde estão os cantos?", que o `board_detection` já respondeu antes de chegar ali. A poda
+  para `position` + `orientation` (232,8 MiB, −21%) não custou leitura, e o que se perde — a
+  guarda de imagem deitada — não faz falta num recorte que já vem alinhado pelo detector.
+
+As duas asperezas do projeto de origem (`requires-python >=3.11` e o `render_config` que
+resolve recursos relativo ao diretório corrente) são tratadas no adaptador, e não num clone de
+terceiro que o usuário vai atualizar.
+
+**Critério de aceite.** Com o clone ausente, o botão não existe e nada quebra. Com ele, as
+casas divergentes aparecem marcadas no tabuleiro. Nenhuma requisição de rede em nenhum dos
+dois casos.
+
+**Testes.** `tests/test_second_opinion.py` (a comparação, sem Tk).
+
+---
+
+## S-67 · A aba Galeria: a anotação que o pipeline não tem como saber ✅ implementada (2026-08-09)
+
+**Problema.** Há informação que só quem está com o livro aberto sabe: de quem é a vez quando o
+texto não diz, em que lance a posição acontece, os headers de PGN do exercício. O produto não
+tinha onde guardá-la — o `labels.csv` é dataset de treino, e uma anotação de exportação não é
+uma amostra.
+
+**Solução.** Uma aba que percorre os diagramas do livro, um por vez, sincronizada com a página
+exibida, gravando em `data/gallery/<livro>.json`.
+
+**Não é um segundo editor.** A unidade de trabalho aqui é a *anotação*, e por isso o que
+aparece no centro é **o recorte original do livro**, não o tabuleiro redesenhado a partir da
+FEN: quem digita "lance 24" está lendo a legenda impressa.
+
+**Quatro decisões.**
+
+- **Um arquivo por livro, e não colunas no `labels.csv`.** Os dois falam dos mesmos diagramas
+  e têm vidas diferentes. Misturá-los faria uma anotação de exportação criar linha de dataset,
+  ou obrigaria a salvar uma amostra só para poder dizer "este é o lance 24" — e a maioria dos
+  diagramas de um livro nunca vira amostra de treino.
+- **Ausente significa "faça como sempre".** Anotação vazia não é gravada. `side_to_move=None`
+  é "use o que a S-17 deduziu"; `"w"` é "eu conferi". A segunda tem de vencer a dedução, senão
+  anotar não serviria para nada. `lichess_link` é tri-estado pelo mesmo motivo.
+- **A chave é `(page_index, diagram_index)`**, e ela depende da ordem de leitura (S-14). Por
+  isso a ordem usada fica gravada no arquivo e `load_annotations` avisa quando não bate —
+  trocar `reading_order` renumeraria os diagramas e deslocaria todas as anotações.
+- **`FEN` e `SetUp` são os únicos headers reservados**, e o critério é estreito: contradizer o
+  diagrama. `Result` não está na lista, porque um problema de mate anunciado tem resultado
+  declarável e `"*"` é o padrão de quem não declarou.
+
+**A sincronia anda nos dois sentidos sem que nenhum arraste o outro:** página sem diagrama não
+move a galeria.
+
+**Critério de aceite.** A anotação sobrevive a fechar o programa; a exportação a lê; navegar
+até o fim da lista, trocar de diagrama com o campo pela metade e "aplicar a todos" fazem o que
+dizem.
+
+**Testes.** `tests/test_gallery.py` (o arquivo e a URL), `tests/test_gallery_model.py` (a
+regra, sem Tk), `tests/test_gallery_panel.py` (a aba).
+
+---
+
+## S-68 · Os diagramas da página viram alvo de clique ✅ implementada (2026-08-12)
+
+**Problema.** O visualizador mostrava a página e nada mais. Descobrir onde estavam os
+diagramas exigia rodar o OCR da página inteira, e escolher *um* deles exigia arrastar o mouse
+em volta dele à mão. Só que quem sabe onde eles estão é o detector da S-12, e **ele já
+rodava** — o resultado ia direto para o reconhecimento e nunca chegava à tela.
+
+**Solução.** `ui/page_overlay.py`: a parte disso que se verifica sem abrir janela — ponto do
+PDF → pixel de canvas, qual retângulo um clique acertou, o que aquele clique significa, e de
+qual fonte as caixas vêm. Desenho e eventos ficam no `ui/pdf_panel.py`.
+
+**As decisões que o módulo registra.**
+
+- **A menor caixa vence o clique.** O empate acontece de verdade: o caminho por contorno às
+  vezes acha a moldura do exercício *e* o tabuleiro dentro dela. Devolver a maior faria o
+  clique no tabuleiro abrir a moldura — que é o candidato que o modelo lê pior.
+- **Clicar num diagrama não lido reconhece a página inteira**, não só ele. Ler o recorte
+  isolado sairia da página rasterizada em vez da imagem embutida — 590×590 nativos contra ~430
+  px a 220 DPI no Kemeri (S-12) — e sem o contexto de texto que decide o lado a jogar
+  (S-16/S-17). Seria um diagrama lido pior que pelo botão "OCR todos diagramas", sem que nada
+  na tela dissesse por quê. Paga-se a página uma vez; dali em diante todo clique nela é
+  instantâneo.
+- **"OCR melhor diagrama" não apaga as outras caixas.** Ele lê um, e o detector achou seis.
+  Ficam as seis, nenhuma marcada como lida: com `max_boards=1` o caminho por contorno devolve
+  o candidato de maior *score*, e não o primeiro em ordem de leitura, então prometer que a
+  caixa restante é a de número 1 seria falso.
+- **A caixa viaja em pontos do PDF, e o DPI vem dos parâmetros da rasterização**, não do
+  spinbox. Ler o spinbox na hora de desenhar produziria retângulos deslocados no intervalo
+  entre mudar o DPI e a página ser rasterizada de novo — e retângulo deslocado é pior que
+  nenhum, porque afirma que o diagrama está onde não está.
+- **O índice sai do detector, não é renumerado.** O "3" do retângulo tem de abrir o diagrama 3
+  do editor; renumerar aqui recriaria, entre a tela e ela mesma, o desencontro que a S-14
+  corrigiu entre a tela e o PGN.
+
+**Critério de aceite.** Numa página com diagramas, os retângulos aparecem antes de qualquer
+OCR, e o número deles bate com o do seletor "Selecionado" depois do OCR.
+
+**Testes.** `tests/test_page_overlay.py` (conversão, *hit test*, decisão do clique),
+`tests/test_pdf_panel.py` (o desenho e os eventos).
+
+---
+
+## S-69 · A aba "Leitura" (WebView2) sai ✅ implementada (2026-08-12)
+
+**Problema.** A aba embutia o visualizador do Edge por `SetParent`, e foi a S-68 que a
+condenou: um HWND nativo filho pinta acima de qualquer item do canvas, o leitor interno do
+Edge não aceita JS injetado e não informa em que página está. Naquela aba não havia como
+desenhar os retângulos, capturar o clique nem saber o que o usuário estava vendo — a sincronia
+entre as duas abas era, **por construção**, de mão única e cega.
+
+**Solução.** Sai `webview2_panel.py`, e com ele `pythonnet` e `pywebview`. Não sobra
+dependência de plataforma nenhuma no projeto. Para ler o livro com rolagem contínua e busca de
+texto, o botão **Abrir no leitor do sistema** entrega o PDF ao leitor padrão da máquina.
+
+**O que isto custou, e onde foi devolvido.** A rolagem contínua e o zoom do leitor do Edge
+eram reais, e sumiram. A S-70 os devolve no canvas do projeto, que é onde os retângulos
+existem.
+
+**Critério de aceite.** Nenhum `import` condicional de plataforma no projeto, e o README
+dizendo o que aconteceu com a aba, na tabela de resolução de problemas.
+
+**Testes.** Os que existiam para o painel saíram junto. A CI continua em `windows-latest`,
+mas agora por um motivo diferente e escrito no arquivo: é a máquina de desenvolvimento e os
+testes de Tk precisam de *display* — não mais o WebView2. E `packaging/cvoff.spec` deixou de
+carregar a ressalva do runtime do Edge: o bundle parou de depender de algo do sistema.
+
+---
+
+## S-70 · A leitura de volta no visualizador: roda, arrasto e zoom ancorado ✅ implementada (2026-08-12)
+
+**Problema.** A S-69 deixou um canvas com duas barras de rolagem: suficiente para recortar e
+reconhecer, pouco para **ler**.
+
+**Solução.** `ui/viewport.py`, sem Tk, com as três decisões que só se percebem errando ao usar:
+
+- **A roda rola o que está sob o ponteiro**, com o foco onde estiver — `bind_all`, e não um
+  bind no canvas, porque no Windows o `<MouseWheel>` vai para o widget com **foco**: ligada só
+  no canvas, ela não rolaria nada enquanto o cursor de texto estivesse no campo de FEN.
+- **Na borda, a roda vira a página**, que entra pelo topo descendo e pelo rodapé subindo, com
+  carência de 350 ms. Não é *anti-bounce* teórico: uma roda inercial entrega uma rajada de
+  eventos por giro, e sem carência um giro pularia quatro páginas. A caixa "Roda vira a
+  página" desliga, e o estado lembra.
+- **`Ctrl+roda` amplia ancorado no ponteiro, com passo multiplicativo.** Aditivo de 0,1 dá
+  salto de 33% em 0,3 e de 5% em 1,9 — a mesma tecla com efeitos diferentes. E zoom sem âncora
+  joga fora o lugar que a pessoa estava olhando, que é justamente o que ela quer aumentar.
+- **Arrastar com o botão esquerdo desloca a página**, convivendo com o clique no diagrama pela
+  mesma folga de 4 px que já separava clique de arrasto (S-68); com o botão do meio, funciona
+  até durante a seleção de área. Mais "Ajustar à largura" (`Ctrl+0`), `PageUp`/`PageDown` e
+  `Shift+roda` na horizontal.
+
+**O defeito que só a janela real mostrou.** A primeira versão perguntava ao `winfo_containing`
+se o ponteiro estava sobre a página. No Windows ele resolve pelo `WindowFromPoint` do sistema,
+então devolve `None` sempre que *outra* janela cobre aquele ponto: medido com a janela do app
+atrás do terminal, `winfo_containing(951, 346)` deu `None` num canvas de 909×740 posicionado
+exatamente ali — e a roda simplesmente não fazia nada, sem erro nenhum na tela. Um tooltip
+aberto por cima daria a mesma falha em uso normal. Agora é aritmética com as coordenadas do
+próprio widget, que não depende de empilhamento, com teste de regressão.
+
+**Critério de aceite.** Ler um livro do começo ao fim sem tocar na barra de rolagem; o zoom
+mantendo sob o ponteiro o que estava sob o ponteiro; a roda funcionando com o foco num campo
+de texto.
+
+**Testes.** `tests/test_viewport.py` (as três decisões, sem Tk), `tests/test_pdf_panel.py`
+(os eventos, inclusive o gerado sobre outro widget).
+
+---
+
+## S-71 · O número do lance ao lado da vez, e o verde de "já salvo" ✅ implementada (2026-08-12)
+
+**Problema.** Duas coisas que a mesma leitura da legenda resolve, e que estavam em lugares
+diferentes: o lado a jogar ficava na aba Resultado e o número do lance só na Galeria. E, ao
+reabrir um livro trabalhado semana passada, nada na tela respondia **"onde eu parei?"**.
+
+**Solução, parte 1 — o campo Lance.** Fica ao lado do "Lado a jogar" porque é a mesma leitura:
+os dois saem da legenda impressa, e quem está com o livro aberto declara os dois de uma vez.
+
+- **Grava na mesma anotação que a Galeria edita** e que a exportação lê. Duas cópias em memória
+  do `data/gallery/<livro>.json` divergiriam, e a última a gravar apagaria o que a outra
+  tivesse escrito; por isso o dono continua sendo a Galeria, e a aba Resultado pergunta a ela.
+- **Em branco apaga a declaração**, pela regra que já valia na Galeria: não declarar e declarar
+  vazio são coisas diferentes, e só a primeira deixa a exportação decidir.
+- **O campo fica cinza quando o que está no editor não é o diagrama de uma página** — item da
+  fila, amostra do dataset, recorte de área —, porque ali gravar apontaria para o diagrama
+  errado.
+
+**Solução, parte 2 — o verde.** A cor da caixa passa a dizer em que ponto do trabalho o
+diagrama está: **azul** localizado, **âmbar** lido e não salvo, **verde** com amostra no
+`labels.csv`. Quem responde é a procedência gravada no CSV (`source_pdf`/`source_page`/
+`source_diagram`, da S-19), e não a memória — então o verde aparece ao abrir um livro já
+trabalhado, **antes de qualquer OCR**, e responde "onde eu parei?" sem custar uma leitura.
+
+**O carimbo é aplicado na hora de desenhar, e não no cache de detecção.** Salvar precisa
+pintar de verde o diagrama que acabou de ser salvo, e não na próxima visita àquela página.
+
+**Dois defeitos que isto encontrou.**
+
+- A Galeria só conhecia o livro **depois de uma varredura**: sem varrer, `pdf_path` era `None`
+  e `save()` descartava em silêncio — o número digitado sumiria. Agora o livro é carregado ao
+  abrir o PDF, sem pedir a página do primeiro diagrama, que jogaria fora a página que a S-25
+  acabou de restaurar.
+- O caminho de **gravar amostra nova** não avisava ninguém; só o de regravar linha avisava. A
+  aba Dataset não via a amostra recém-salva.
+
+**A seleção deixou de ser uma cor.** Ela era laranja, o que apagava justamente o estado do
+diagrama que se acabou de abrir. Virou traço grosso. A primeira versão a preenchia com hachura
+`gray12`, e os pontinhos caíam sobre as casas que se está tentando conferir — que é para o que
+a caixa existe; não há hachura mais rala entre as do Tk, então o preenchimento saiu inteiro, e
+a seleção passou a ser borda de 4 px mais uma segunda borda **por fora** da caixa. Por fora
+porque a caixa encosta no diagrama: uma borda interna cairia sobre a primeira fila de casas e
+trocaria um estorvo por outro.
+
+**Critério de aceite.** Azul antes do OCR, âmbar depois, verde ao salvar — e o verde
+sobrevivendo a virar a página e voltar. Conferido de ponta a ponta no app com `labels.csv` e
+galeria temporários.
+
+**Testes.** `tests/test_labels.py` (a consulta de procedência), `tests/test_page_overlay.py`
+(o carimbo), `tests/test_result_panel.py` (o campo e o estado cinza — o primeiro teste de
+widget daquela aba), `tests/test_pdf_panel.py` (a seleção que não pinta sobre o tabuleiro).
+
+---
+
+# Fase 13 — A base de partidas, e a primeira verdade que não vem de gente
+
+## S-72 · A base de partidas como terceira fonte de verdade ✅ implementada e medida (2026-08-13)
+
+**Problema.** A legenda diz `Coull - Stanciu` e mais nada. O número do lance e a vez a jogar —
+os dois campos que a Galeria pede — a pessoa preenche **contando à mão no livro**, e em 24 dos
+27 livros do acervo a vez a jogar continua sendo o palpite que a Fase 3 registrou como palpite.
+
+Medido no `Secrets of Chess Training` (1.408 diagramas), o que a camada de texto entrega
+sozinha:
+
+| | |
+|---|---|
+| diagramas com legenda | 1.362 — 96,7% |
+| dos quais rendem os **jogadores** | 178 — 12,6% |
+| rendem o **evento** | 15 — 1,1% |
+| rendem o **ano** | 16 — 1,1% |
+
+O texto dá o nome e cala sobre o resto. É esse buraco que a base preenche.
+
+**Solução.** `games_db.py`: uma passada pela base colhendo as partidas dos pares que as
+legendas nomeiam, e o cruzamento com as posições lidas. Um botão **Buscar na base** na Galeria.
+
+**O que isto é, e que nada aqui era antes.** Toda verdade do projeto vem de humano — o
+`labels.csv` é trabalho humano, o lado a jogar da S-16 é texto que um humano escreveu no livro,
+a fila da S-22 ordena para um humano olhar. Um casamento contra a base é o primeiro **oráculo
+externo**: 64 casas contra 64 casas de um lance de uma partida registrada. Não é opinião, e não
+é confiança do modelo.
+
+**Três decisões, e as duas primeiras são economia medida.**
+
+- **Casar pela colocação de peças, nunca pela FEN inteira.** Roque e *en passant* são inferidos
+  (S-17), o contador de lances é o que se quer descobrir, e a vez costuma ser palpite. Comparar
+  a FEN completa faria todo casamento falhar por campos que o projeto **sabe** que não conhece.
+- **Uma passada por livro, não por diagrama.** Ler a base custa ~150 s; os pares vão todos
+  juntos. Perguntar por diagrama custaria os mesmos 150 s cada — a economia da S-61.
+- **Sem índice no disco.** ~1 GB de índice por nome para poupar 150 s por livro não se paga
+  enquanto a busca for por livro. No dia em que ela virar por diagrama, passa a valer.
+
+**Preenche só o que está vazio, e nunca sobrescreve** — a regra que a S-17 estabeleceu para o
+lado a jogar. Se a pessoa digitou `Event` e a base discorda, quem está com o livro na mão é
+ela. E **posição que casa com mais de cinco partidas não preenche nada**: um final de rei e
+peão aparece em centenas, com número de lance diferente em cada uma, e procedência inventada é
+pior que campo vazio — o campo vazio ninguém confunde com dado conferido.
+
+`DiagramAnnotation.filled_from` guarda a **evidência**, não só a origem — `"Ljubojevic x
+Browne, IBM 1972"` em vez de `"base"` —, pelo desenho do `side_to_move_evidence` da S-16: quem
+discorda precisa saber de quê está discordando.
+
+**Resultado medido.** 167 pares distintos, **84 achados** na base, 91 diagramas cobertos,
+**61 casamentos exatos** — 67% dos cobertos. Zero ambíguos.
+
+**A hipótese que morreu.** A proposta original previa usar a base para **reparar** leitura
+errada: se a posição lida estivesse a 1 ou 2 casas de um lance da partida, a base apontaria o
+erro do OCR. **Zero em 91.** O casamento é binário. Neste livro quase todo diagrama sai com
+confiança 1,000, então não havia erro a reparar — a hipótese não foi refutada, ficou sem chance
+de aparecer. E há um problema estrutural atrás disso: os livros onde o OCR erra são os de scan
+puro, que não têm legenda com nomes. Fica registrada como **não medida**, não como descartada.
+
+**Critério de aceite.** Sem base no disco, o botão explica onde pôr uma e nada quebra. Com
+ela, o que a pessoa digitou sobrevive à busca. Conferido de ponta a ponta contra a base real.
+
+**Testes.** `tests/test_games_db.py` (sobrenome, colheita, casamento, teto por par — com um
+PGN de três partidas escrito na hora, sem a base de 9,7 GB), `tests/test_gallery_model.py` (o
+preenchimento e o que ele recusa), `tests/test_gallery_panel.py` (a aba, com a base remendada
+para o teste não depender de ela existir na máquina).
+
+---
+
+## S-73 · A busca por posição, que alcança o diagrama sem legenda ✅ implementada e medida (2026-08-13)
+
+**Problema.** A S-72 chega a 12,6% dos diagramas. Os outros 87,4% têm posição lida e nenhum
+nome — e a posição, sozinha, é informação suficiente: ou aquelas 64 casas aparecem numa partida
+registrada, ou não.
+
+**Solução.** `cvoff-games --positions`: reproduz os lances das partidas da base e confere cada
+posição contra o conjunto-alvo.
+
+**A busca é invertida, e é o que a torna viável.** O caminho óbvio — indexar as ~800 milhões de
+posições da base — custaria dezenas de GB no disco e horas de construção. Aqui quem vai para a
+memória são as **nossas** posições, que são milhares, e a base passa uma vez.
+
+| | |
+|---|---|
+| custo | **104 min** em dez processos (10.547.416 partidas) |
+| num processo só | 7,5 h (392 partidas/s, 24,6 mil lances/s) |
+| posições distintas do livro que casaram | **761 de 1.404 — 54,2%** |
+| com **uma única** partida | 487 |
+| diagramas preenchíveis pela regra dos ≤5 | **581** de 1.408 |
+| o caminho por nome, no mesmo livro | 61 |
+
+**O custo é por varredura, não por livro.** O conjunto-alvo cabe na memória sejam 1.400
+posições ou 40 mil: `--all` varre os 32 livros pelo preço de um. Rodar `--book` cinco vezes
+paga cinco vezes por uma resposta que sai de uma.
+
+**Comando de linha, e não botão.** 104 minutos atrás de um botão é uma janela travada que
+ninguém entende — e o paralelismo com `spawn` exige um `__main__` guardado, que um CLI tem e um
+callback de widget não garante.
+
+**O cruzamento que vale mais que teste.** Nos 61 diagramas que os dois caminhos alcançam:
+**61/61 no número do lance e 61/61 na partida.** Duas rotas sem código em comum chegando ao
+mesmo lugar.
+
+**Dois defeitos que só a execução de verdade mostrou.**
+
+1. **`tell()` em modo texto não é byte, é um *cookie* opaco** com o estado do decodificador.
+   Comparado contra o fim do pedaço, encerrava o laço cedo: **5 partidas lidas de 2.000**, sem
+   erro nenhum na tela. Em binário o `tell()` é o byte, que é o que os limites do pedaço
+   significam. O teste de regressão usa 300 partidas — com três, o cookie ainda é pequeno.
+2. **`spawn` reimporta o `__main__` do pai** (S-26). Chamado de um script sem guarda, cada
+   filho reexecutava o script e criava mais filhos; travou a máquina uma vez aqui. Agora um
+   marcador vai no ambiente **antes** de o `Pool` existir, e o filho que reimportar responde
+   com um processo só — fica lento num uso que já estava errado, em vez de derrubar tudo.
+
+**O que não foi medido, e é a ressalva honesta.** O livro medido é do Dvoretsky, feito de
+partidas reais: é o melhor caso possível. Um livro de estudos compostos ou de problemas vai
+casar muito menos, e o 54,2% **não** deve ser lido como taxa do acervo. Medir um segundo livro
+de outro gênero custa uma varredura de Galeria e entra na mesma passada.
+
+**Critério de aceite.** Dividir a base em N processos não muda a resposta (conferido: 2.000
+partidas, contagem idêntica em 1 e em 4 processos); `--apply` não sobrescreve nada; sem
+`--apply`, nada é gravado.
+
+**Testes.** `tests/test_games_db.py` — a varredura por posição, o corte em pedaços, a
+equivalência entre um e vários processos, a guarda contra a recursão do `spawn`, e o comando.
+
+---
+
+## S-74 · O diagrama que a base confirmou sai da fila de revisão ✅ implementada (2026-08-13)
+
+**Problema.** A fila da S-22 ordena por **estimativa de erro**: confiança mínima, entropia,
+casa reescrita pela decodificação restrita, classe rara. São todas aproximações do que não se
+sabe. Quando as 64 casas batem com um lance de uma partida registrada, não há o que estimar —
+existe a resposta, e a fila continua perguntando.
+
+O número que dá a medida: no `1937 Kemeri` a fila pega **30 dos 47 diagramas**, e a própria
+Fase 4 registrou que ali o ganho dela é a ordem, não o corte. O corte é isto.
+
+**Solução.** `priority_for(..., confirmed_by_database=...)`, alimentado pelas anotações do
+livro. Confirmado, o diagrama não vira item.
+
+**Confirmar e preencher passaram a ser coisas diferentes, e por isso são dois campos.** Uma
+posição que aparece em 300 partidas não diz *qual* partida é, então não preenche header nenhum
+(S-72) — mas responde a pergunta da fila, porque aquelas 64 casas aconteceram num tabuleiro de
+verdade. `DiagramAnnotation.confirmed_from` guarda a partida quando ela é única e a contagem
+quando não é, e **conta como anotação não-vazia**: descartá-la por parecer vazia faria a fila
+reencher a cada varredura.
+
+**A confirmação cala tudo que é sobre a leitura, e nada do que é sobre a vez a jogar.** A mesma
+colocação aparece com brancas e com pretas a jogar em partidas diferentes — então a
+discordância entre texto e legalidade (S-16/S-17) e o xeque invertido continuam valendo, e o
+motivo registrado vira "posição confirmada pela base (...); resta a vez a jogar".
+
+**O risco, nomeado.** Uma leitura errada que por acaso componha *outra* posição real. Com 64
+casas isso exige coincidência estrutural, e o caso em que ela é plausível — final de poucas
+peças que aparece em centenas de partidas — é justamente o que `apply_matches` recusa
+preencher.
+
+**A fonte é o arquivo de anotações**, e não um arquivo próprio da fila: quem grava é o
+`cvoff-games`, e um segundo lugar para essa verdade morar só teria como divergir do primeiro —
+a decisão que a S-34 tomou no `--skip-existing`.
+
+**Critério de aceite.** Um diagrama confirmado não entra na fila; o mesmo diagrama sem
+confirmação entra. Rodar a busca duas vezes não muda a fila.
+
+**Testes.** `tests/test_review_queue.py` (a prioridade e o item), `tests/test_gallery_model.py`
+(o que confirma sem preencher).
+
+---
+
+## S-75 · A quarta cor: "não precisa" ✅ implementada (2026-08-13)
+
+**Problema.** As três cores da S-71 formam um eixo — azul localizado, âmbar lido, verde salvo:
+em que ponto do **seu** trabalho aquele diagrama está. A S-74 criou um estado que não cabe
+nesse eixo e vale mais que todos: a base reconheceu a posição, então ele **não precisa de olho
+nenhum**. Sem uma marca, essa informação só existia dentro do arquivo de anotações.
+
+**Solução.** `DiagramBox.confirmed` + `mark_confirmed`, e violeta entre o âmbar e o verde.
+
+Como o verde, vem do disco e não da memória — as anotações da galeria —, então aparece ao abrir
+um livro casado ontem, **antes de qualquer OCR**. Num livro como o `400 Quebra-cabeças`, que
+casou 52,6%, é metade da página respondida sem uma leitura.
+
+**`mark_confirmed` é função separada da `mark_saved`**, e não um parâmetro a mais nela, porque
+as duas respondem perguntas independentes: uma diz que você trabalhou aquele diagrama, a outra
+que ele não precisa ser trabalhado. Um diagrama pode ter as duas marcas, uma só, ou nenhuma —
+e juntá-las numa chamada faria parecer que uma implica a outra.
+
+**Precedência: salvo > confirmado > lido > localizado.** Salvo vem antes porque é trabalho seu
+já feito: ao olhar a página, o que interessa saber daquele diagrama é que ele já rendeu amostra.
+
+**Critério de aceite.** Abrir um livro já casado e ver o violeta antes de rodar qualquer coisa;
+a linha de status contando quantos são.
+
+**Testes.** `tests/test_page_overlay.py` (o carimbo e a convivência com o verde).
+
+---
+
+# Depois da Fase 13 — os dois itens que vieram do uso (2026-08-14)
+
+> Registrados em 2026-08-17 pela **S-133**, e o atraso é o item. Os dois foram entregues em
+> 2026-08-14, entre o fechamento da Fase 13 e a abertura da 14, e caíram na fenda entre este
+> arquivo (que parava em S-75) e o `ANALISE_DETECCAO.md` (que começa em S-78). Ficaram três
+> dias em produção sem critério de aceite escrito em lugar nenhum, citados de passagem quatro
+> vezes no `PLANO_BASE_PARTIDAS.md` e especificados em nenhum.
+>
+> O conteúdo abaixo é transcrição das mensagens de commit (`dd33644` e `11235da`), que são
+> longas e boas — não é arqueologia. O que **não** é transcrição está marcado como tal: são as
+> duas notas de "o que aconteceu depois", que só existem porque hoje se sabe mais.
+>
+> A causa mecânica da fenda — o `CONTRIBUTING` apontando para o `ROADMAP.md`, que fecha na
+> Fase 6, e a ausência de índice — é a **S-134**, e é ela que impede a repetição.
+
+## S-76 · "Aplicar a todos" espalhou quatro campos por 1.405 diagramas ✅ implementada (2026-08-14)
+
+**Problema.** Relato de uso, e o defeito é do **desenho do botão**: *"Aplicar a todos"* foi lido
+como *"salvar os headers deste diagrama"*. A leitura é razoável — os campos não têm botão de
+salvar próprio (eles gravam ao sair do campo), então o único botão ali parecia ser o de gravar.
+
+O clique copiou `Ljubojevic / Browne / Amsterdam / 1972` para **1.405 dos 1.408** diagramas do
+`Secrets of Chess Training`, sobrescrevendo o que houvesse.
+
+**Solução.** Três mudanças, e a primeira é a que importa:
+
+- **Pergunta antes, nomeando os valores e contando os diagramas.** A ação sobrescreve o mesmo
+  campo em centenas de anotações e o valor anterior deixa de existir — uma confirmação que não
+  diz o que vai acontecer é obstáculo, não proteção. O padrão do diálogo é **Cancelar**.
+- **O rótulo diz a direção**: "Copiar headers para todos". O tooltip diz, em letra, que os
+  campos já se salvam sozinhos e que este botão não é para salvar.
+- **Desfazer** (`gallery_model.revert_headers`), que apaga **pelo valor e não pela chave**:
+  apagar todo `Event` do livro levaria junto o que a base preencheu certo em cada diagrama e o
+  que foi digitado um a um. Ele **não** recupera o que a cópia sobrescreveu — e por isso a
+  pergunta vale mais que ele, o que está escrito no tooltip e no docstring.
+
+O desfazer é **da sessão**. Depois de fechar a janela ele some, e isso é honesto: o que ele
+promete é reverter *aquele gesto*, não manter histórico do arquivo.
+
+**Critério de aceite.** O botão pergunta antes, nomeando os valores e a contagem; o padrão do
+diálogo é Cancelar; desfazer apaga só onde o valor bate.
+
+**O que foi medido — e o conserto do dado já gravado.** Feito à parte, com backup datado: 1.405
+diagramas limpos pelo `revert_headers`, e a reaplicação dos casamentos preencheu os nomes certos
+de cada um — Dolmatov × Beliavsky, Taimanov × Fischer, Bareev × Kasparov. O livro saiu de 1.501
+anotações para **867**: as outras 634 só existiam por causa da cópia.
+
+**Testes.** `tests/test_gallery_model.py` e `tests/test_gallery_panel.py` (10 novos).
+
+**Nota posterior, que não é transcrição.** A regra que faltava aqui virou desenho no
+`PLANO_BASE_PARTIDAS.md` §S-88: o preenchimento automático só toca diagramas **sem** o campo,
+nunca os que já o têm. É "o aplicar a todos da S-76 com a trava que faltou", e está dito lá com
+essas palavras.
+
+---
+
+## S-77 · Anotar o conjunto de campo na própria página ✅ implementada (2026-08-14)
+
+**Problema.** **As Fases 7 e 11 estavam com o código completo e o critério de saída aberto, e
+travavam no mesmo lugar.** A 7.7 mediu por quê: com 38 diagramas, a distribuição de confiança é
+bimodal e a vizinhança do gate está **vazia** — 27 acima de 0,99, **nada entre 0,60 e 0,80**, 8
+abaixo de 0,43. Nesse conjunto nenhuma mudança de modelo pode ganhar um diagrama, e perder um
+basta para derrubar um dos 27. Seis variantes deram 27 ou 28 de 38, sempre.
+
+Quatro itens de spec foram julgados por essa métrica sem resolução: **S-38b, S-40, S-62a e
+S-62b**. A Fase 11 registra isso na própria conclusão — *"quando reabrir: a (a), quando o
+conjunto de campo crescer"*.
+
+Crescer o conjunto era **editar JSONL à mão**, e por isso ele parou em 15 páginas das 60
+planejadas. Mas o visualizador já desenha onde estão os diagramas (S-68) e a precisão do
+detector é 0,9722: **na maioria das páginas, anotar é confirmar.**
+
+**Solução.** `ui/field_draft.py`, e os gestos na própria página:
+
+- **Anotar página** grava as caixas da tela como verdade de referência, revisada.
+- **Sem diagrama** é o caminho mais rápido, e essas páginas são obrigatórias: são as únicas que
+  medem **falso positivo** (S-41).
+- **Tirar o selecionado** remove o falso positivo; anotar de novo **substitui** a linha em vez
+  de acrescentar — duas linhas do mesmo par fariam `evaluate_field` contar a página duas vezes,
+  com pesos diferentes.
+- Ao virar a página, a barra diz se ela já está anotada.
+
+`reviewed=True` só aparece em `FieldDraft.to_page`, e é o ponto do módulo: **quem confirma é
+gente.** O rascunho da S-41 grava `False` porque é a saída do modelo, e medir o modelo contra a
+própria saída dá 1,000 em tudo.
+
+**O que ele não faz, e não pode fazer**, está escrito no docstring: decidir **quantos**
+diagramas a página tem. Essa é a única informação do projeto que não existe senão no olho de
+quem abre o livro.
+
+**Critério de aceite.** Anotar uma página com N caixas grava **uma** linha com N diagramas;
+anotar de novo substitui; "sem diagrama" grava a página vazia; a barra diz o estado ao virar.
+
+**O que foi medido.** Conferido dirigindo a janela de verdade, na página 80 do `Karpov 1`: 6
+caixas detectadas, anotadas com regime; tirar uma deixa 5; anotar de novo continua **uma**
+linha; e a página 3 entra como `sem-diagrama`.
+
+O roteiro precisou de `mainloop` e não de laço de `update()` — a detecção volta por
+`root.after`, que sem o laço morre em *"main thread is not in main loop"*, e o erro parece do
+código quando é do roteiro (a armadilha que o `CONTRIBUTING` nomeia).
+
+**Testes.** `tests/test_field_draft.py` (14 novos).
+
+**Nota posterior, que não é transcrição, e é a razão de esta seção não ser só história.** Este
+item torna o gesto humano barato — e por três meses ele gravou a coisa errada. A anotação era
+montada a partir de `item.placement`, que é **o que o modelo leu**; a correção humana morava em
+`fen_edits`, uma lista paralela. Corrigir o tabuleiro e clicar "Anotar página" gravava a leitura
+do modelo como verdade de referência. Quem for crescer o conjunto de campo precisa ler a
+**S-95**, que é onde isso foi consertado, e não só esta seção.
+
+---
+
 # Apêndice · Índice de referências cruzadas
 
 | item | depende de | referenciado por |
@@ -2255,3 +2849,17 @@ mesmo conjunto de nomes. Nenhuma ação destrutiva sem backup e sem listar o que
 | S-55 empacotamento | S-30 (ONNX para o build leve) | — |
 | S-62 modelo por tabuleiro | S-41 (é a pré-condição), S-26, S-27 | S-11 (reduz o reparo, não o substitui) |
 | S-63 higiene do dataset | S-06 | S-52 |
+| S-64 recorte com rodapé | S-12 | S-41 |
+| S-65 paleta de edição | S-50, S-53 | — |
+| S-66 segunda opinião local | S-32 (o `Protocol`), S-12 | — |
+| S-67 Galeria | S-14 (a chave depende da ordem), S-18 | S-71 |
+| S-68 diagramas clicáveis | S-12, S-14, S-41 (a caixa em pontos) | S-69, S-70, S-71 |
+| S-69 saída do WebView2 | S-68 (é quem a condenou) | S-70, S-55 |
+| S-70 roda, arrasto e zoom | S-69 | — |
+| S-71 lance e "já salvo" | S-67 (dona da anotação), S-19 (a procedência), S-51 | — |
+| S-72 base por nome | S-16 (o `parse_context`), S-67, S-17 (a regra de não sobrescrever) | S-73 |
+| S-73 base por posição | S-72, S-26 (a armadilha do `spawn`), S-61 (a economia da passada) | S-13, S-17 (dão vez a jogar com procedência), S-74 |
+| S-74 confirmação na fila | S-73, S-22 | S-75 |
+| S-75 a quarta cor | S-74, S-71 (o eixo de cores), S-68 | — |
+| S-76 copiar headers | S-67 (dona da anotação), S-72 (é o que preenche certo na reaplicação) | S-88 (a trava que faltou) |
+| S-77 anotar na página | S-41 (o formato do conjunto), S-68 (as caixas na tela) | S-95 (corrige de onde vem a verdade), S-99 |

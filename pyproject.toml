@@ -13,7 +13,6 @@ dependencies = [
     "torch>=2.6",
     "torchvision>=0.21",
     "chess>=1.11",
-    "streamlit>=1.34.0",
     # Tema da janela (S-53). Mesma API de widget do `ttk`, `Treeview` intacto -- e o
     # `ui/theme.py` degrada para o `ttk` puro se ela faltar, porque aparencia nao pode ser
     # motivo de a ferramenta nao abrir.
@@ -43,6 +42,14 @@ ocr = [
     "rapidocr-onnxruntime>=1.3",
     "onnxruntime>=1.18",
 ]
+# A demonstracao Streamlit (S-54). Era dependencia **obrigatoria**, ao lado de `torch` e
+# `opencv`, para um exemplo que a propria S-54 aposentou -- nada em `src/` o importa. Ele
+# arrasta `pyarrow`, e juntos sao 115,4 MiB, 16,6% do bundle que o usuario baixa e nunca
+# executa (S-137). Vira extra pela mesma regra dos outros quatro: quem quer a demonstracao
+# pede a demonstracao.
+demo = [
+    "streamlit>=1.34.0",
+]
 # Empacotamento Windows (S-55). Extra separado porque so quem gera o .zip precisa dele --
 # e ele so e usado por `packaging/cvoff.spec`, nunca importado pelo codigo.
 packaging = [
@@ -69,13 +76,17 @@ cvoff-infer = "chess_diagram_ocr.cli.infer:main"
 cvoff-export = "chess_diagram_ocr.cli.export_pgn:main"
 cvoff-batch = "chess_diagram_ocr.cli.batch:main"
 cvoff-audit = "chess_diagram_ocr.cli.audit:main"
+cvoff-census = "chess_diagram_ocr.cli.census:main"
 cvoff-eval = "chess_diagram_ocr.cli.evaluate:main"
 cvoff-field = "chess_diagram_ocr.cli.field:main"
 cvoff-migrate-labels = "chess_diagram_ocr.cli.migrate_labels:main"
 cvoff-provenance = "chess_diagram_ocr.cli.provenance:main"
+cvoff-games = "chess_diagram_ocr.cli.games:main"
 cvoff-review = "chess_diagram_ocr.cli.review:main"
 cvoff-sides = "chess_diagram_ocr.cli.sides:main"
 cvoff-experiment = "chess_diagram_ocr.cli.experiment:main"
+cvoff-gallery = "chess_diagram_ocr.cli.gallery:main"
+cvoff-scan = "chess_diagram_ocr.cli.scan:main"
 cvoff-export-onnx = "chess_diagram_ocr.cli.export_onnx:main"
 
 [build-system]
@@ -116,7 +127,11 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.10"
-files = ["src"]
+# `app_tkinter.py` ficava de fora, e e onde tudo e montado -- 1.302 linhas em que o
+# CONTRIBUTING registra que um `AttributeError` sobreviveu a 509 testes verdes (S-137). Ele
+# passa limpo; o que faltava era a guarda. `packaging/` entra pela mesma razao: o `.spec` e o
+# `--selftest` decidem o que o usuario recebe.
+files = ["src", "app_tkinter.py", "packaging"]
 ignore_missing_imports = true
 warn_redundant_casts = true
 no_implicit_optional = true

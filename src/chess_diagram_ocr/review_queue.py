@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import Collection, Iterable, Iterator, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -40,7 +40,7 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 
-from .atomic_io import atomic_write_json
+from .atomic_io import atomic_write_json, write_image
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_MAX_BOARDS,
@@ -53,6 +53,7 @@ from .config import (
     ReadingOrder,
 )
 from .fen_utils import labels_from_fen, square_name
+from .gallery import load_annotations
 from .labels import LabelStore
 from .pdf_to_pgn import DiagramPosition, ProgressCallback, ScannedDiagram, iter_pdf_diagrams
 
@@ -271,14 +272,39 @@ def priority_for(
     repaired_squares: int = 0,
     rare_classes: Collection[str] = (),
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+    confirmed_by_database: str = "",
 ) -> tuple[float, tuple[str, ...]]:
     """Prioridade e motivos de um diagrama. Prioridade 0 significa "não precisa de olho".
 
     Recebe os números soltos em vez da `BoardPrediction` para poder ser chamada também
     sobre um item já persistido, que não tem mais a matriz de probabilidades.
+
+    **`confirmed_by_database` cala tudo que é sobre a leitura, e nada do que é sobre a vez a
+    jogar** (S-74). Quando as 64 casas batem com um lance de uma partida registrada, não há o
+    que revisar na *posição*: confiança baixa, entropia, casa reescrita pela S-11 e classe rara
+    são estimativas de erro, e ali existe a resposta. O que a confirmação **não** responde é de
+    quem é a vez -- a mesma colocação aparece com brancas e com pretas a jogar em partidas
+    diferentes --, então a discordância de fonte e o xeque invertido continuam valendo.
+
+    Confiar nisso tem um risco, e ele é pequeno e nomeado: uma leitura errada que por acaso
+    componha outra posição real. Com 64 casas isso exige coincidência estrutural, e o caso em
+    que ela é plausível -- final de poucas peças que aparece em centenas de partidas -- é
+    justamente o que `apply_matches` recusa preencher.
     """
     score = 0.0
     reasons: list[str] = []
+
+    if confirmed_by_database:
+        side = position.side_to_move
+        if side is not None and side.conflicting:
+            score += WEIGHT_SOURCES_DISAGREE
+            reasons.append("texto e posição discordam do lado a jogar")
+        if position.needs_side_to_move_flip:
+            score += WEIGHT_SIDE_TO_MOVE_WRONG
+            reasons.append("lado a jogar assumido não fecha: " + ("; ".join(position.problems) or "xeque invertido"))
+        if reasons:
+            reasons.append(f"posição confirmada pela base ({confirmed_by_database}); resta a vez a jogar")
+        return score, tuple(reasons)
 
     if position.is_fatal:
         score += WEIGHT_ILLEGAL
@@ -373,8 +399,7 @@ def cache_board_image(board_rgb: np.ndarray, cache_dir: Path, pdf_name: str, pag
     directory = Path(cache_dir) / _safe_name(pdf_name)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"p{page_index + 1:05d}_d{diagram_index}.png"
-    cv2.imwrite(str(path), cv2.cvtColor(board_rgb, cv2.COLOR_RGB2BGR))
-    return path
+    return write_image(path, cv2.cvtColor(board_rgb, cv2.COLOR_RGB2BGR))
 
 
 def _safe_name(name: str) -> str:
@@ -389,6 +414,7 @@ def item_from_scanned(
     cache_dir: Path,
     rare_classes: Collection[str] = (),
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+    confirmed: Mapping[tuple[int, int], str] | None = None,
 ) -> ReviewItem | None:
     """Constrói o item da fila. `None` quando o diagrama não pede revisão nenhuma."""
     position = scanned.position
@@ -403,6 +429,7 @@ def item_from_scanned(
         repaired_squares=repaired,
         rare_classes=rare_classes,
         accept_threshold=accept_threshold,
+        confirmed_by_database=(confirmed or {}).get((position.page_index, position.diagram_index), ""),
     )
     if not reasons:
         # Entropia sozinha nao e motivo: ela pontua em todo diagrama e serve para desempatar,
@@ -433,6 +460,101 @@ def item_from_scanned(
     )
 
 
+class ReviewQueueBuilder:
+    """Monta a fila a partir dos `ScannedDiagram` de **uma** varredura (S-119).
+
+    **O que ele existe para eliminar são duas passadas pelo mesmo livro.**
+    `build_gallery_index` e `build_review_queue` percorriam o mesmo `iter_pdf_diagrams`, com os
+    mesmos parâmetros, e gravavam em arquivos diferentes -- nenhum consumindo o resultado do
+    outro. Medido no `PDF/1000 Chess Problems` (420 páginas): **338 s + 299 s**. Abrir um livro
+    novo custava ~5 min antes de qualquer trabalho humano, e mais ~5 min quando se descobria
+    que a outra aba também precisava da própria varredura. É uma das razões de 27 dos 34 livros
+    nunca terem sido abertos.
+
+    **Por que um acumulador e não "derivar do `GalleryIndex`", que era a proposta do
+    enunciado.** O índice **não** é superconjunto da fila: ele guarda colocação, confiança
+    mínima, legalidade e legenda, e a prioridade da S-22 precisa de `mean_entropy`,
+    `uncertain_squares` e das casas que o decodificador reparou -- que a `GalleryEntry` não
+    carrega. Derivar dali daria uma fila *parecida*, e o critério de aceite pede a **mesma**.
+    Alargar a `GalleryEntry` para caber tudo faria o índice de cada livro crescer para servir
+    a um consumidor que já tem arquivo próprio.
+
+    Com o acumulador, `build_review_queue` e a varredura única passam pelo **mesmo** código de
+    montagem: a equivalência entre as duas filas é estrutural, e não uma coincidência que um
+    teste vigia.
+    """
+
+    def __init__(
+        self,
+        pdf_path: Path,
+        *,
+        cache_dir: Path = DEFAULT_CACHE_DIR,
+        rare_classes: Collection[str] = (),
+        accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+        confirmed: Mapping[tuple[int, int], str] | None = None,
+        limit: int | None = None,
+    ) -> None:
+        self.pdf_path = Path(pdf_path)
+        self.cache_dir = Path(cache_dir)
+        self.rare_classes = rare_classes
+        self.accept_threshold = accept_threshold
+        self.confirmed = confirmed if confirmed is not None else confirmed_by_database(self.pdf_path)
+        self.limit = limit
+        self.items: list[ReviewItem] = []
+        self.scanned_count = 0
+        self.pages: set[int] = set()
+        if self.confirmed:
+            logger.info("%d diagrama(s) deste livro já foram confirmados pela base (S-74).", len(self.confirmed))
+
+    def feed(self, scanned: ScannedDiagram) -> None:
+        """Um diagrama lido. Serve como `on_scanned` de `build_gallery_index`."""
+        self.scanned_count += 1
+        self.pages.add(scanned.position.page_index)
+        item = item_from_scanned(
+            scanned,
+            pdf_path=self.pdf_path,
+            cache_dir=self.cache_dir,
+            rare_classes=self.rare_classes,
+            accept_threshold=self.accept_threshold,
+            confirmed=self.confirmed,
+        )
+        if item is not None:
+            self.items.append(item)
+
+    def finish(self, *, created_at: str | None = None) -> ReviewQueue:
+        """A fila ordenada, e cortada pelo `limit` **depois** de ordenar."""
+        queue = ReviewQueue(
+            source_pdf=str(self.pdf_path),
+            created_at=created_at or datetime.now().isoformat(timespec="seconds"),
+            items=self.items,
+            scanned_diagrams=self.scanned_count,
+            pages_scanned=len(self.pages),
+        )
+        queue.sort()
+        if self.limit is not None and len(queue.items) > self.limit:
+            logger.info(
+                "Fila cortada em %d itens; %d ficaram de fora.", self.limit, len(queue.items) - self.limit
+            )
+            queue.items = queue.items[: self.limit]
+        return queue
+
+
+def confirmed_by_database(
+    pdf_path: Path, *, reading_order: ReadingOrder = DEFAULT_READING_ORDER
+) -> dict[tuple[int, int], str]:
+    """Quais diagramas deste livro a base já confirmou (S-74).
+
+    As anotações do livro são a fonte, e não um arquivo próprio da fila: quem grava a
+    confirmação é o `cvoff-games` (S-72/S-74), e um segundo lugar para essa verdade morar só
+    teria como divergir do primeiro -- a decisão da S-34 sobre o `--skip-existing`.
+    """
+    return {
+        chave: anotacao.confirmed_from
+        for chave, anotacao in load_annotations(pdf_path, reading_order=reading_order).entries.items()
+        if anotacao.confirmed_from
+    }
+
+
 def build_review_queue(
     pdf_source: Path,
     model_path: Path = DEFAULT_MODEL_PATH,
@@ -452,6 +574,7 @@ def build_review_queue(
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
     model_session: AbstractContextManager[tuple[Any, str]] | None = None,
+    confirmed: Mapping[tuple[int, int], str] | None = None,
 ) -> ReviewQueue:
     """Varre o livro inteiro e devolve a fila ordenada por valor de informação.
 
@@ -468,9 +591,18 @@ def build_review_queue(
     do lado a jogar incluída (S-43).
     """
     pdf_path = Path(pdf_source)
-    items: list[ReviewItem] = []
-    scanned_count = 0
-    pages: set[int] = set()
+    if confirmed is None:
+        confirmed = confirmed_by_database(pdf_path, reading_order=reading_order)
+    # O mesmo acumulador da varredura unica (S-119): os dois caminhos passam pelo mesmo codigo
+    # de montagem, entao a equivalencia entre as duas filas e estrutural.
+    builder = ReviewQueueBuilder(
+        pdf_path,
+        cache_dir=cache_dir,
+        rare_classes=rare_classes,
+        accept_threshold=accept_threshold,
+        confirmed=confirmed,
+        limit=limit,
+    )
 
     for scanned in iter_pdf_diagrams(
         pdf_path,
@@ -487,44 +619,40 @@ def build_review_queue(
         progress_callback=progress_callback,
         model_session=model_session,
     ):
-        scanned_count += 1
-        pages.add(scanned.position.page_index)
-        item = item_from_scanned(
-            scanned,
-            pdf_path=pdf_path,
-            cache_dir=cache_dir,
-            rare_classes=rare_classes,
-            accept_threshold=accept_threshold,
-        )
-        if item is not None:
-            items.append(item)
+        builder.feed(scanned)
 
-    queue = ReviewQueue(
-        source_pdf=str(pdf_path),
-        created_at=datetime.now().isoformat(timespec="seconds"),
-        items=items,
-        scanned_diagrams=scanned_count,
-        pages_scanned=len(pages),
-    )
-    queue.sort()
-    if limit is not None and len(queue.items) > limit:
-        logger.info("Fila cortada em %d itens; %d ficaram de fora.", limit, len(queue.items) - limit)
-        queue.items = queue.items[:limit]
-    return queue
+    return builder.finish()
 
 
-def merge_queues(existing: ReviewQueue, fresh: ReviewQueue) -> ReviewQueue:
+def merge_queues(
+    existing: ReviewQueue, fresh: ReviewQueue, *, pages: Collection[int] | None = None
+) -> ReviewQueue:
     """Revarredura sem perder o que já foi revisado.
 
     O item novo manda em tudo -- prioridade, motivos, FEN --, menos no `status`: se o
     usuário já marcou aquele diagrama como resolvido, revarrer o livro não pode ressuscitá-lo
     para a fila de pendentes.
+
+    **`pages` são as páginas que a passada de fato visitou, e sem elas isto encurta a fila**
+    (S-119). Sem o argumento, `fresh` é tomada como a fila inteira e o que ela não tem
+    desaparece -- o que estava certo enquanto toda varredura era do livro inteiro, e deixou de
+    estar quando a varredura passou a retomar de onde parou (S-120): uma passada que leu só as
+    páginas 300 a 420 apagaria as 129 pendências das 300 primeiras. Com `pages`, o que está
+    fora do que foi visitado sobrevive como estava.
+
+    Vale também para o cancelamento, e ali o defeito já existia: cancelar uma revarredura na
+    página 40 gravava uma fila com as 40 primeiras páginas e só.
     """
     previous = {(item.page_index, item.diagram_index): item.status for item in existing.items}
     merged = [
         replace(item, status=previous.get((item.page_index, item.diagram_index), item.status))
         for item in fresh.items
     ]
+    if pages is not None:
+        visitadas = set(pages)
+        # Ordem: os preservados entram depois e o `sort` decide o lugar de cada um. Chave por
+        # (pagina, diagrama) nao e preciso -- `fresh` so tem paginas visitadas, por construcao.
+        merged.extend(item for item in existing.items if item.page_index not in visitadas)
     result = ReviewQueue(
         source_pdf=fresh.source_pdf,
         created_at=fresh.created_at,

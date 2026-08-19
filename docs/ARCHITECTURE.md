@@ -8,11 +8,15 @@ escolha, [ROADMAP.md](ROADMAP.md); para os números, [BASELINE.md](BASELINE.md) 
 
 ## A regra que organiza tudo
 
-**Nenhuma lógica de reconhecimento vive numa interface.** `app_tkinter.py` e
-`app_streamlit.py` são apresentação: leem widgets, chamam o serviço, desenham o resultado.
-Isso não é gosto arquitetural — é consequência de um defeito medido. Até a Fase 6 as duas
-telas implementavam o pipeline de forma independente, e cinco entregas das Fases 2 e 3
-nunca chegaram ao Streamlit sem que nada acusasse.
+**Nenhuma lógica de reconhecimento vive numa interface.** `app_tkinter.py` é apresentação: lê
+widgets, chama o serviço, desenha o resultado. Isso não é gosto arquitetural — é consequência
+de um defeito medido. Até a Fase 6 havia **duas** telas, e cada uma implementava o pipeline de
+forma independente: cinco entregas das Fases 2 e 3 nunca chegaram ao Streamlit sem que nada
+acusasse.
+
+A segunda tela saiu na S-54 e virou exemplo em `examples/`; na S-137 o `streamlit` deixou de
+ser dependência obrigatória. **A regra sobreviveu à tela que a motivou**, e é o que permite
+testar o pipeline sem abrir janela nenhuma.
 
 O corolário prático: **o que dá para testar não fica na janela.**
 
@@ -87,6 +91,7 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | `ocr.py` | Motor de OCR opcional e plugável (S-42). Sem o extra, `build_recognizer` devolve `None`. |
 | `ocr_caption.py` | Lê **a faixa em volta do diagrama**, não a página, e devolve a mesma `TextLine` da S-16 (S-43). A faixa de cabeçalho tem altura própria (`SCOPE_BAND`), porque a de descarte cortava a linha ao meio. |
 | `side_survey.py` | Conta de onde veio o lado a jogar, livro a livro — o critério de saída da Fase 8, medido por `cvoff-sides`. |
+| `detection_census.py` | Conta o que o **detector aceita**, livro a livro, e faz o diff contra a corrida anterior (`cvoff-census`, S-82). Sem modelo e sem rótulo humano: é distribuição, não acurácia. Existe porque `cvoff-eval` e `cvoff-field` medem leitura e são cegos a um recorte que nunca deveria ter existido. |
 | `fen_utils.py` | Sintaxe **e** legalidade — duas coisas distintas, ver o README. |
 | `pdf_to_pgn.py` | Varredura de um livro, gate de exportação, checkpoint parcial. |
 | `batch.py` | Varredura da biblioteca inteira, com relatório consolidado. |
@@ -140,9 +145,12 @@ observável e não a gosto (S-53).
 
 Três lugares onde a escolha já cobra, e os três são mensuráveis:
 
-- `DatasetPanel` **pagina** porque, nas palavras do próprio código, *"3.195 linhas de uma vez
-  travam o `Treeview` do Tk"*. A paginação custa o que mitiga: filtro e ordenação valem por
-  página, não pelo conjunto.
+- `DatasetPanel` **pagina** por uma premissa que a S-118 mediu e derrubou: *"3.195 linhas de
+  uma vez travam o `Treeview` do Tk"*. Medido com `Treeview` real e as mesmas 8 colunas,
+  **inserir 3.936 linhas custa 53 ms**; o que custava eram os 689 ms do `load_rows` que vinha
+  antes (S-116). A paginação cobra o que não mitiga: filtro e ordenação valem por página, e
+  até a S-118 ela também perdia o lugar de quem corrigia rótulo a rótulo. Ela fica — remover
+  é uma segunda decisão, e ela precisa da medição refeita quando o `labels.csv` dobrar.
 - O tabuleiro redesenhava-se inteiro a cada mudança. A S-50 aliviou (`draw_dirty` toca 2
   casas ao arrastar), não eliminou: mudança de geometria ainda refaz as 64.
 - As sobreposições que a Fase 8 vai querer — bbox de texto reconhecido sobre a página, com
@@ -157,7 +165,8 @@ disparar, e não antes:
 | a Fase 8 exigir sobreposição **editável** sobre a página renderizada | é onde o canvas do Tk deixa de ser desconforto e vira trabalho desproporcional |
 | o `labels.csv` passar de **10 mil linhas** | a paginação da S-23 deixa de ser mitigação e vira obstáculo ao fluxo |
 
-Hoje o `labels.csv` tem **3.313** linhas — 33% do gatilho. Quando a hora chegar, `Qt` dá
+Hoje o `labels.csv` tem **3.936** linhas — 39% do gatilho (medido em 2026-08-17; o número é
+conferido por `tests/test_docs.py`, S-135). Quando a hora chegar, `Qt` dá
 `QTableView` com modelo virtual (30 mil linhas sem paginar), `QGraphicsScene` para tabuleiro
 e sobreposições, `QThread` + sinais no lugar de `root.after`, `QPdfView` nativo, DPI correto
 por monitor e `QAction` para atalhos.
@@ -208,19 +217,24 @@ piorar um livro que já funciona:
 
 ## Threads
 
-Quatro operações longas rodam fora da thread da interface, e todas voltam por `root.after`:
+**Doze** threads rodam fora da thread da interface, e todas voltam por `root.after`. Sete são
+operações longas e estão no `BusyRegistry`; as outras cinco são de segundos e estão
+**declaradas** em `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
 
-| operação | onde | cancelável | empresta o modelo do serviço |
-|---|---|---|---|
-| OCR de uma página | `app_tkinter._ocr_worker` | não (é rápido) | sim (S-31) |
-| exportação de um livro | `ui/export_controller.py` | sim, entre páginas (S-24) | sim (S-57) |
-| varredura da fila de revisão | `ui/review_panel.py` | sim, entre páginas | sim (S-57) |
-| treino | `ui/training_dialog.py` | sim, entre épocas (S-60) | escreve o `.pt` |
+| operação | onde | cancelável | perde trabalho ao fechar | empresta o modelo do serviço |
+|---|---|---|---|---|
+| OCR de uma página | `app_tkinter._ocr_worker` | não (é rápido) | — declarada | sim (S-31) |
+| exportação de um livro | `ui/export_controller.py` | sim, entre páginas (S-24) | não, tem parcial | sim (S-57) |
+| treino | `ui/training_dialog.py` | sim, entre épocas (S-60) | sim, desde a melhor época | escreve o `.pt` |
+| varredura do livro — Galeria **e** fila de revisão (S-119) | `ui/gallery_panel.py`, com o `ReviewSink` de `ui/review_panel.py` | sim, entre páginas | não, retoma de onde parou (S-120) | sim (S-57) |
+| busca por nome na base | `ui/gallery_panel.py` | sim, entre partidas | não, é curta | não |
+| busca por posição na base | `ui/gallery_panel.py` | sim, entre pedaços | **sim**, a passada inteira | não |
+| detecção de duplicatas | `ui/dataset_panel.py` | não | não, é derivada | não |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).
 
-Até a S-57 essa frase valia para **uma** das quatro. A exportação e a varredura da fila
+Até a S-57 essa frase valia para **uma** delas. A exportação e a varredura da fila
 chamavam `load_model` por conta própria, fora do lock — e são justamente as duas longas, as
 que de fato coexistem com um treino. Hoje as duas recebem `model_session` do `OcrService`; o
 único `load_model` que sobrou em `pdf_to_pgn.py` está em `_own_model_session`, o caminho dos
@@ -230,24 +244,59 @@ Fechar a janela consulta `ui/busy.py` antes de destruir: `BusyRegistry` sabe o q
 rodando e **o que se perde**, que não é a mesma coisa em todas — a exportação tem checkpoint
 parcial e sobrevive, o treino perde o progresso desde a última época melhor (S-60).
 
+A lista de quem se registra é travada por teste, e não por convenção: `test_busy.py` varre
+`ui/*.py` e `app_tkinter.py` por `threading.Thread(` e exige que cada uma ou registre, ou
+esteja na lista de exceções **com o motivo escrito**. Sem isso, a S-60 cobriu duas operações
+e as dez seguintes entraram em silêncio — inclusive a mais cara do programa (S-112).
+
 ---
 
 ## Formatos e persistência
 
+A tabela é conferida por `tests/test_docs.py` **nos dois sentidos** (S-135): artefato em `data/`
+sem linha aqui, e linha aqui apontando para um caminho que não existe e não está marcado como
+**sob demanda**, fazem a suíte falhar. Ela já esteve com 8 dos 16 artefatos, o `splits.csv`
+duplicado e uma linha para um arquivo que este repositório nunca teve.
+
 | arquivo | o que guarda | versionado |
 |---|---|---|
-| `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split | sim |
-| `data/splits.csv` | partição treino/validação/teste, estável sob crescimento | sim |
-| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (2,7 GB) |
+| `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split, e a confirmação de ilegalidade deliberada (`illegal_ok`) | sim |
+| `data/splits.csv` | partição treino/validação/teste, estável sob crescimento, atribuída às amostras novas pelo próprio treino (S-56) | sim |
+| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (3,4 GB) |
+| `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
+| `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | não — `.gitignore:28` |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
 | `data/app_tkinter_state.json` | último PDF, página, zoom | não |
 | `data/review_queue.json` | a fila de revisão | não |
-| `data/provenance_index.jsonl` | dHash de cada diagrama do acervo, para recuperar procedência (S-52) | não (horas para reconstruir, mas derivável dos PDFs) |
+| `data/review_cache/` | os recortes das páginas já varridas, para a fila não reabrir o PDF | não (8,3 GB — o maior artefato do projeto) |
+| `data/orphans/` | os PNGs cujo rótulo sumiu do `labels.csv`, guardados em vez de apagados (S-63) | não |
+| `data/gallery/<livro>.json` | as anotações de exportação por diagrama: lance, vez, link, headers e a partida escolhida (S-67) | **não** — descreve o conteúdo de um livro protegido, como o `review_cache` |
+| `data/gallery/<livro>.index.json` | onde estão os diagramas daquele livro e o recorte de cada um | não — derivado do PDF, refeito varrendo o livro |
+| `data/gallery_human.jsonl` | **o extrato do que uma pessoa digitou ou escolheu** na galeria (S-115) | **sim** |
+| `data/games_index.sqlite` | o índice por nome e por posição da base de partidas (S-72, S-73) | não (884 MB — reconstruível a partir do `pgn_database/`) |
+| `data/games_positions.sqlite` | o cache de posições da varredura, **uma linha por colocação** (S-84, S-113, S-140) | não — **sob demanda**: nasce na primeira vez que alguém abre o cache |
+| `data/games_positions__<bases>.sqlite` | o mesmo cache, **de um conjunto de bases que não é a pasta inteira** — `ui/database_choice.store_path_for` nomeia o arquivo pelos `.pgn` escolhidos, para que experimentar uma base não descarte o cache da outra | não — **sob demanda**: um por conjunto que alguém selecionar |
+| `data/games_positions.json` | o mesmo cache no formato anterior. Lido **uma vez** e renomeado; depois disso não é lido por nada | não — **sob demanda**: só em quem usou o programa antes da S-140 |
+| `data/games_positions.json.migrado` | o anterior, já dentro do SQLite. Renomear em vez de apagar porque apagar o que era do usuário não é da alçada de uma migração | não — **sob demanda**: aparece quando o SQLite é criado |
+| `data/games_matches.json` | os casamentos livro↔partida, formato v1 | não |
+| `data/games_matches_v2.json` | os mesmos, formato v2 — o artefato dos 104 minutos de 2026-08-13 (S-128) | não |
+| `data/provenance_index.jsonl` | dHash de cada diagrama do acervo, para recuperar procedência (S-52) | não — **sob demanda**: só existe depois de `cvoff-provenance`, e são horas |
 | `models/*.pt` | checkpoints, com semente, split e métrica gravados | não |
-| `data/splits.csv` | partição, atribuída às amostras novas pelo próprio treino (S-56) | sim |
 | `PGN/<livro>.pgn` | as posições aceitas | não |
 | `PGN/<livro>.review.pgn` | as rejeitadas e as de baixa confiança, com o motivo | não |
 | `PGN/<livro>.partial.jsonl` | checkpoint da exportação, apagado ao concluir | não |
+
+**A galeria entra pela metade, e a metade é escolhida** (S-115). São 13 MB e 5.953 anotações,
+das quais o que a base preencheu volta com `cvoff-games --apply` a partir do cache de posições
+— o que **não** volta é a vez a jogar que alguém conferiu na legenda impressa e as 21 partidas
+escolhidas a mão na lista de candidatas (S-86). O crivo é o `filled_fields`, que já responde a
+pergunta campo a campo, e o extrato são ~214 KB:
+
+```bash
+cvoff-gallery --census          # quanto há, e quanto disso é irrecuperável
+cvoff-gallery --export-human    # data/gallery/ -> data/gallery_human.jsonl
+cvoff-gallery --import-human    # o caminho de volta; o que é da pessoa vence o da base
+```
 
 Toda escrita de arquivo de trabalho passa por `atomic_io`: grava num temporário e troca. O
 `labels.csv` é 3.313 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
@@ -267,7 +316,7 @@ que encontrou a **sexta** porta, em `review_queue.rare_classes_from_labels`, que
 levantamento tinha listado.
 
 `LabelStore` usa o `csv` da biblioteca padrão e não pandas. A S-58 existe porque o pandas
-infere tipo — `source_page` tem 98,6% de células vazias, a coluna virava `float64` e `20`
+infere tipo — `source_page` tem 84,1% de células vazias, a coluna virava `float64` e `20`
 voltava `20.0`, e como a gravação relê o arquivo inteiro antes de acrescentar uma linha, uma
 amostra nova reescrevia todas as antigas nesse formato. Com `csv.DictReader` não há tipo a
 inferir: todas as colunas do esquema são texto. O defeito deixou de ser evitado e passou a não

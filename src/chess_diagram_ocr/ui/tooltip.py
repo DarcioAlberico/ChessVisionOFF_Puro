@@ -10,6 +10,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from . import theme, tokens
+
 TOOLTIP_DELAY_MS = 450
 """Tempo parado sobre o widget antes de a dica aparecer. Curto o bastante para quem
 está procurando explicação, longo o bastante para não piscar ao atravessar a barra."""
@@ -61,12 +63,17 @@ class Tooltip:
         janela = tk.Toplevel(self.widget)
         janela.wm_overrideredirect(True)
         janela.wm_geometry(f"+{x}+{y}")
+        # A dica segue o tema (S-147). O fundo era um amarelo-pálido cravado e a letra vinha do
+        # `Style`: sob tema escuro isso dava letra clara sobre `#ffffe0` -- a única explicação
+        # que um botão desabilitado oferece, ilegível.
+        fundo = theme.cor_atual(tokens.SUPERFICIE_DICA)
         ttk.Label(
             janela,
             text=self.text,
             justify=tk.LEFT,
             wraplength=self.wraplength,
-            background="#ffffe0",
+            background=fundo,
+            foreground=tokens.sobre_superficie(fundo),
             relief=tk.SOLID,
             borderwidth=1,
             padding=6,

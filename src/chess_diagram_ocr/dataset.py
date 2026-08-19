@@ -12,9 +12,10 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, Sampler
 
+from .atomic_io import read_image, write_image
 from .config import BOARD_SIZE, BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
-from .labels import LABEL_COLUMNS, DatasetEntry, LabelStore
+from .labels import ILLEGAL_OK, LABEL_COLUMNS, DatasetEntry, LabelStore
 from .model import DEFAULT_ARCH, ArchConfig, preprocess_cell_to_tensor, with_coordinate_channels
 from .semantics import infer_side_to_move
 from .splits import Split
@@ -56,6 +57,13 @@ class BoardFenDataset(Dataset):
         anotação e, se treinados, ensinam o modelo a reproduzi-los. Rótulos apenas com
         o lado a jogar invertido são mantidos: a informação de peças neles está correta.
 
+        **Exceto os que trazem `illegal_ok`**, que ficam mesmo com `skip_illegal` ligado.
+        Neles alguém confirmou que a ilegalidade é do diagrama, não da leitura -- estrutura de
+        peões sem rei, final parcial, tabuleiro vazio de ilustração --, e nesse caso as 64
+        casas estão rotuladas certas. O que este classificador aprende é casa a casa: uma casa
+        vazia onde o livro desenhou casa vazia é verdade, e a regra que conta reis não tem
+        opinião sobre ela. Descartá-los seria jogar fora rótulo correto. Ver `ILLEGAL_OK`.
+
         `split` restringe o dataset a uma partição, usando o mapa `splits` (normalmente
         vindo de `splits.ensure_splits`). Amostras sem split registrado são ignoradas,
         para que uma amostra nova nunca entre por acidente no conjunto de teste.
@@ -82,6 +90,11 @@ class BoardFenDataset(Dataset):
         self.entries: list[DatasetEntry] = []
         self.index_map: list[tuple[int, int]] = []
         self.skipped_illegal: list[tuple[str, tuple[str, ...]]] = []
+        self.kept_illegal: list[str] = []
+        """Rótulos ilegais **mantidos** por terem `illegal_ok` (diagrama de estrutura etc.).
+
+        Contados à parte dos descartados porque as duas listas respondem a perguntas opostas:
+        uma diz o que o treino não viu, esta diz o que ele viu apesar da regra."""
         self.skipped_without_split: list[str] = []
         """Rótulos descartados por não terem split registrado (S-56).
 
@@ -121,8 +134,10 @@ class BoardFenDataset(Dataset):
             if self.skip_illegal:
                 position = check_position(fen)
                 if position.is_fatal:
-                    self.skipped_illegal.append((filename, position.problems))
-                    continue
+                    if not entry.illegal_accepted:
+                        self.skipped_illegal.append((filename, position.problems))
+                        continue
+                    self.kept_illegal.append(filename)
 
             img_path = self.samples_dir / filename
             if not img_path.exists():
@@ -145,6 +160,16 @@ class BoardFenDataset(Dataset):
                 "Primeiros casos: %s",
                 len(self.skipped_illegal),
                 "; ".join(f"{name} ({', '.join(problems)})" for name, problems in self.skipped_illegal[:3]),
+            )
+
+        if self.kept_illegal:
+            # Em nivel de informacao, e nao de aviso: nao ha nada a corrigir aqui. O que esta
+            # linha compra e nao haver amostra ilegal entrando no treino sem registro nenhum --
+            # se um dia um "sim" for dado por engano, e por aqui que ele aparece.
+            logger.info(
+                "%d rótulo(s) ilegais mantidos por confirmação humana (illegal_ok). Primeiros: %s",
+                len(self.kept_illegal),
+                ", ".join(self.kept_illegal[:3]),
             )
 
         if self.skipped_without_split:
@@ -176,7 +201,7 @@ class BoardFenDataset(Dataset):
         self.cache_misses += 1
         entry = self.entries[entry_idx]
         img_path = self.samples_dir / entry.filename
-        board = cv2.imread(str(img_path))
+        board = read_image(img_path)
         if board is None:
             raise FileNotFoundError(f"Could not read board image: {img_path}")
         board = cv2.cvtColor(board, cv2.COLOR_BGR2RGB)
@@ -393,6 +418,10 @@ def append_training_sample(
     reproduzir o erro. Posições apenas com o lado a jogar invertido são aceitas.
     `allow_illegal=True` contorna a checagem, para casos deliberados.
 
+    Quando ela é contornada **e a posição de fato é ilegal**, a linha sai marcada com
+    `illegal_ok` -- senão o resto do projeto desfaria a decisão de quem contornou: o treino
+    descartaria a amostra e `cvoff-audit --fix` a mandaria para a quarentena. Ver `ILLEGAL_OK`.
+
     Os campos de origem são todos opcionais e default vazio: quem grava um tabuleiro
     montado à mão não tem PDF nem página para informar, e exigir isso quebraria o fluxo
     que existe hoje.
@@ -402,10 +431,9 @@ def append_training_sample(
 
     fen, resolved_side = _fen_with_side(fen, side_to_move)
 
-    if not allow_illegal:
-        position = check_position(fen)
-        if position.is_fatal:
-            raise ValueError("Posição ilegal, não pode ser salva como rótulo: " + "; ".join(position.problems))
+    position = check_position(fen)
+    if position.is_fatal and not allow_illegal:
+        raise ValueError("Posição ilegal, não pode ser salva como rótulo: " + "; ".join(position.problems))
 
     csv_path = Path(csv_path)
     samples_dir = Path(samples_dir)
@@ -420,7 +448,7 @@ def append_training_sample(
     if board.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
         board = cv2.resize(board, (BOARD_SIZE, BOARD_SIZE))
     board_bgr = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(str(image_path), board_bgr)
+    write_image(image_path, board_bgr)
 
     LabelStore(csv_path).append(
         DatasetEntry(
@@ -433,6 +461,7 @@ def append_training_sample(
             detection_source=detection_source,
             created_at=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
             corrected_by=corrected_by,
+            illegal_ok=ILLEGAL_OK if position.is_fatal else "",
         )
     )
     return image_path

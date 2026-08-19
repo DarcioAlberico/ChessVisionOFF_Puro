@@ -7,6 +7,7 @@ import cv2
 import fitz
 import numpy as np
 
+from chess_diagram_ocr.board_detection import _bbox_iou, _checker_score, _grid_score, _small_gray
 from chess_diagram_ocr.detection import (
     DiagramCandidate,
     candidates_from_embedded_images,
@@ -15,9 +16,16 @@ from chess_diagram_ocr.detection import (
     trim_to_grid,
 )
 from chess_diagram_ocr.detection.hybrid import (
+    EMBEDDED_SIZE_TOLERANCE,
+    OVERLAP_IOU,
     REFINE_TOLERANCE,
+    _contour_wins_over_merged,
+    _same_region,
+    _typical_side,
+    board_checker_contrast,
     board_texture_score,
     refine_candidate_with_contour,
+    texture_scores_side_by_side,
 )
 
 # Uma pagina A4 em pontos.
@@ -323,6 +331,261 @@ class EmbeddedCandidateTests(unittest.TestCase):
         finally:
             doc.close()
 
+
+class NotaDoMesmoLadoTests(unittest.TestCase):
+    """A comparação de textura mede a imagem, e não a resolução em que ela chegou (S-130).
+
+    `board_texture_score` leva qualquer recorte a 320 px, mas ampliar não cria detalhe: um
+    recorte de 200 px ampliado a 320 continua borrado ao lado de um de 800 px reduzido a 320.
+    A nota media a nitidez junto com a "tabuleiridade", e a decisão dependia de qual dos dois
+    chegou maior.
+    """
+
+    def test_a_mesma_imagem_em_duas_resolucoes_recebe_a_mesma_nota(self) -> None:
+        """A tolerância declarada é **zero**: os dois lados viram literalmente o mesmo array."""
+        base = hatched_board(800)
+        pequena = cv2.resize(base, (240, 240), interpolation=cv2.INTER_AREA)
+
+        grande_nota, pequena_nota = board_detection_pair(base, pequena)
+
+        self.assertEqual(grande_nota, pequena_nota)
+
+    def test_a_ordem_dos_argumentos_nao_muda_o_par(self) -> None:
+        a, b = hatched_board(800), cv2.resize(hatched_board(800), (300, 300), interpolation=cv2.INTER_AREA)
+
+        primeira, segunda = board_detection_pair(a, b)
+        invertida_b, invertida_a = board_detection_pair(b, a)
+
+        self.assertAlmostEqual(primeira, invertida_a, places=12)
+        self.assertAlmostEqual(segunda, invertida_b, places=12)
+
+    def test_sem_a_correcao_a_nota_varia_com_a_resolucao(self) -> None:
+        """O defeito, medido: amplitude 0,343 contra uma margem de decisão de 0,02.
+
+        Num tabuleiro **limpo** a nota é estável nas oito resoluções -- é por isso que ninguém
+        tinha visto. O acervo de verdade é hachurado.
+        """
+        base = hatched_board(800)
+        notas = [
+            board_texture_score(cv2.resize(base, (lado, lado), interpolation=cv2.INTER_AREA))
+            for lado in (800, 640, 480, 320, 240, 200, 160, 128)
+        ]
+        self.assertGreater(max(notas) - min(notas), REFINE_TOLERANCE * 5)
+
+        limpo = board_image(800)
+        limpas = [
+            board_texture_score(cv2.resize(limpo, (lado, lado), interpolation=cv2.INTER_AREA))
+            for lado in (800, 640, 480, 320, 240, 200, 160, 128)
+        ]
+        self.assertLess(max(limpas) - min(limpas), 1e-9, "o caso limpo esconde o defeito")
+
+    def test_a_parcela_de_xadrez_e_estavel_e_a_de_grade_nao(self) -> None:
+        """Onde mora o ruído, e por que a S-143 tem uma segunda razão para desconfiar da grade.
+
+        Medido: xadrez varia 0,0335--0,0340 nas oito resoluções; grade vai de 0,1429 a 1,0000,
+        porque a hachura *aliasa* para o período de 20 px que o detector de picos procura.
+        """
+        base = hatched_board(800)
+        xadrez, grade = [], []
+        for lado in (800, 640, 480, 320, 240, 200, 160, 128):
+            pequeno = _small_gray(cv2.resize(base, (lado, lado), interpolation=cv2.INTER_AREA))
+            xadrez.append(_checker_score(pequeno))
+            grade.append(_grid_score(pequeno))
+
+        self.assertLess(max(xadrez) - min(xadrez), 0.01)
+        self.assertGreater(max(grade) - min(grade), 0.5)
+
+
+def board_detection_pair(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
+    """Atalho de leitura para o par de notas do mesmo lado."""
+    return texture_scores_side_by_side(a, b)
+
+
+class PaginaGiradaTests(unittest.TestCase):
+    """A página com `/Rotate` não gera candidato fantasma (S-129).
+
+    `get_image_info` devolve o bbox no sistema **não girado**; `get_pixmap` desenha a página
+    **girada**. Quem consome a caixa -- o recorte, o retângulo na tela, a linha do conjunto de
+    campo -- trabalha no sistema girado. Sem a correção, a caixa aponta para outro lugar da
+    folha, e o resultado não é erro: é um candidato que parece diagrama e ocupa uma vaga do
+    teto por página.
+
+    **Medido no acervo em 2026-08-17: 1 página girada em 18.767** (`Yusupov`, p. 1413,
+    `/Rotate 180`). O defeito é latente, e é por isso que ele precisa de teste: nada no acervo
+    o denunciaria, e o dia em que entrar um livro digitalizado em paisagem já é tarde.
+    """
+
+    ALVO = fitz.Rect(80, 100, 380, 400)
+
+    def _documento(self, rotacao: int) -> fitz.Document:
+        doc = pdf_with_images([(board_image(400), self.ALVO)])
+        doc[0].set_rotation(rotacao)
+        return doc
+
+    def _onde_o_tabuleiro_esta(self, page: fitz.Page) -> tuple[float, float, float, float]:
+        """A caixa do tabuleiro medida no **pixel** da página desenhada, a 72 DPI.
+
+        É a única referência que não depende da API sob teste: um ponto do PDF vira um pixel,
+        então o retângulo em pixels é o retângulo em pontos.
+        """
+        imagem = render(page, dpi=72)
+        escuro = np.argwhere(imagem[:, :, 0] < 200)
+        ys, xs = escuro[:, 0], escuro[:, 1]
+        return float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)
+
+    def test_a_caixa_do_candidato_cai_onde_o_tabuleiro_esta_desenhado(self) -> None:
+        for rotacao in (0, 90, 180, 270):
+            with self.subTest(rotacao=rotacao):
+                doc = self._documento(rotacao)
+                try:
+                    page = doc[0]
+                    candidatos = candidates_from_embedded_images(page)
+                    self.assertEqual(len(candidatos), 1)
+                    esperado = self._onde_o_tabuleiro_esta(page)
+                    for citado, real in zip(candidatos[0].bbox_pdf, esperado, strict=True):
+                        self.assertAlmostEqual(citado, real, delta=3)
+                finally:
+                    doc.close()
+
+    def test_sem_rotacao_nada_muda(self) -> None:
+        """A correção é a identidade em 18.766 das 18.767 páginas do acervo. Vale travar."""
+        doc = self._documento(0)
+        try:
+            (candidato,) = candidates_from_embedded_images(doc[0])
+            for citado, real in zip(candidato.bbox_pdf, tuple(self.ALVO), strict=True):
+                self.assertAlmostEqual(citado, real, delta=3)
+        finally:
+            doc.close()
+
+    @staticmethod
+    def _para_xywh(caixa: tuple[float, float, float, float]) -> tuple[int, int, int, int]:
+        return int(caixa[0]), int(caixa[1]), int(caixa[2] - caixa[0]), int(caixa[3] - caixa[1])
+
+    def test_a_caixa_crua_nao_encosta_no_tabuleiro_girado(self) -> None:
+        """O tamanho do estrago, medido: a caixa crua contra onde o tabuleiro está desenhado.
+
+        | `/Rotate` | IoU da caixa crua |
+        |---|---|
+        | 0 | 1,000 |
+        | 90 | **0,000** |
+        | 180 | **0,000** |
+        | 270 | **0,404** |
+
+        Não é um erro de alguns pontos que o refino do contorno consertaria depois. E o 270 é o
+        pior dos três justamente por não ser zero: um recorte que pega 40% do diagrama e 60% de
+        outra coisa ainda passa nas guardas de tamanho e aspecto, e vira um candidato que
+        *parece* um diagrama mal recortado em vez de um erro.
+        """
+        for rotacao, teto in ((90, 0.01), (180, 0.01), (270, 0.5)):
+            with self.subTest(rotacao=rotacao):
+                doc = self._documento(rotacao)
+                try:
+                    page = doc[0]
+                    desenhado = self._onde_o_tabuleiro_esta(page)
+                    crua = _bbox_iou(self._para_xywh(tuple(self.ALVO)), self._para_xywh(desenhado))
+                    self.assertLess(crua, teto)
+
+                    (candidato,) = candidates_from_embedded_images(page)
+                    corrigida = _bbox_iou(self._para_xywh(candidato.bbox_pdf), self._para_xywh(desenhado))
+                    self.assertGreater(corrigida, 0.95)
+                finally:
+                    doc.close()
+
+    def test_a_legenda_girada_continua_ao_lado_do_diagrama(self) -> None:
+        """A legenda é casada ao diagrama **por proximidade** (S-16), e proximidade é relativa.
+
+        **Este é o teste que diz por que as duas correções são uma só.** Antes da S-129, as
+        caixas do texto e da imagem estavam *ambas* no sistema não girado: erradas, e erradas
+        do mesmo jeito, então a distância entre elas saía certa e a associação funcionava por
+        acidente. Corrigir só `detection/embedded.py` põe as duas em sistemas diferentes e
+        **quebra o que estava funcionando** -- medido aqui: a legenda passa de ≤ 60 pt para
+        243 pt do diagrama, a 90°, e nenhum diagrama herda legenda nenhuma.
+
+        Por isso o que se afirma é a distância, e não que a caixa caiba na página: ela cabe
+        mesmo errada, e um teste sobre isso passaria nos três estados.
+        """
+        from chess_diagram_ocr.pdf_text import DEFAULT_RADIUS_PT, page_text_lines
+
+        for rotacao in (0, 90, 180, 270):
+            with self.subTest(rotacao=rotacao):
+                doc = pdf_with_images([(board_image(400), self.ALVO)])
+                try:
+                    doc[0].insert_text(fitz.Point(90, 430), "31: Jogada das pretas", fontsize=11)
+                    doc[0].set_rotation(rotacao)
+                    page = doc[0]
+                    (linha,) = [item for item in page_text_lines(page) if "pretas" in item.text]
+                    (candidato,) = candidates_from_embedded_images(page)
+
+                    dx = max(candidato.bbox_pdf[0] - linha.bbox[2], linha.bbox[0] - candidato.bbox_pdf[2], 0.0)
+                    dy = max(candidato.bbox_pdf[1] - linha.bbox[3], linha.bbox[1] - candidato.bbox_pdf[3], 0.0)
+                    self.assertLess(max(dx, dy), DEFAULT_RADIUS_PT)
+                finally:
+                    doc.close()
+
+
+class MinimumSideInPointsTests(unittest.TestCase):
+    """A guarda da S-78: tamanho **na página**, que é a unidade da pergunta.
+
+    A fixture destes testes é o defeito. Todas as outras deste arquivo desenham em retângulos
+    grandes, e é por isso que 509 testes verdes nunca distinguiram "128 px nativos" de "128 px
+    nativos espremidos em 15 pt de página".
+    """
+
+    def test_o_glifo_do_cabecalho_nao_e_diagrama(self) -> None:
+        """O cavalo do `Secrets`: 128 px nativos em 15,4 pt. Passava nas quatro guardas."""
+        doc = pdf_with_images([(board_image(128), fitz.Rect(375.4, 16.3, 390.7, 31.7))])
+        try:
+            self.assertEqual(candidates_from_embedded_images(doc[0]), [])
+        finally:
+            doc.close()
+
+    def test_a_mesma_imagem_em_tamanho_de_diagrama_e_diagrama(self) -> None:
+        """O par do teste acima: o que muda é o retângulo, não a imagem.
+
+        É esta dupla que separa a guarda nova da velha -- `MIN_EMBEDDED_SIDE` vê 128 px nos
+        dois casos e não tem como distingui-los.
+        """
+        doc = pdf_with_images([(board_image(128), fitz.Rect(240, 320, 394, 474))])
+        try:
+            candidatos = candidates_from_embedded_images(doc[0])
+
+            self.assertEqual(len(candidatos), 1)
+            self.assertEqual(candidatos[0].native_size, (128, 128))
+        finally:
+            doc.close()
+
+    def test_o_menor_diagrama_real_do_acervo_passa(self) -> None:
+        """105,6 pt, medido no `Euwe Band 1-2`. O piso de 72 pt tem de deixá-lo entrar."""
+        doc = pdf_with_images([(board_image(440), fitz.Rect(100, 100, 205.6, 205.6))])
+        try:
+            self.assertEqual(len(candidates_from_embedded_images(doc[0])), 1)
+        finally:
+            doc.close()
+
+    def test_o_piso_e_parametro_e_nao_numero_solto_no_codigo(self) -> None:
+        doc = pdf_with_images([(board_image(128), fitz.Rect(375.4, 16.3, 390.7, 31.7))])
+        try:
+            self.assertEqual(len(candidates_from_embedded_images(doc[0], min_side_pt=10.0)), 1)
+        finally:
+            doc.close()
+
+    def test_o_glifo_nao_chega_ao_detector_hibrido(self) -> None:
+        """A guarda vale onde o dano acontecia: na lista que numera os diagramas da página."""
+        doc = pdf_with_images(
+            [
+                (board_image(128), fitz.Rect(375.4, 16.3, 390.7, 31.7)),
+                (board_image(400), fitz.Rect(80, 100, 380, 400)),
+            ]
+        )
+        try:
+            page = doc[0]
+            candidatos = detect_diagrams(page, render(page))
+
+            self.assertEqual(len(candidatos), 1, "o glifo continuava consumindo um número")
+            self.assertGreater(candidatos[0].bbox_pdf[3] - candidatos[0].bbox_pdf[1], 100)
+        finally:
+            doc.close()
+
     def test_ignores_images_that_are_not_roughly_square(self) -> None:
         wide = np.repeat(board_image(200), 3, axis=1)
         doc = pdf_with_images([(wide, fitz.Rect(50, 100, 500, 250))])
@@ -441,6 +704,264 @@ class HybridDetectorTests(unittest.TestCase):
             doc.close()
 
 
+def tiled_board(side: int = 320, *, rows: int = 2, cols: int = 2) -> list[tuple[np.ndarray, tuple[int, int]]]:
+    """Um tabuleiro partido em ladrilhos, com a posição de cada pedaço.
+
+    É a forma do `GALLAGHER`: o PDF traz a página digitalizada mais um punhado de remendos
+    pequenos sobrepostos, e cada remendo é um XObject de imagem próprio.
+    """
+    board = board_image(side)
+    alturas = [side // rows] * rows
+    larguras = [side // cols] * cols
+    alturas[-1] += side - sum(alturas)
+    larguras[-1] += side - sum(larguras)
+
+    pedacos: list[tuple[np.ndarray, tuple[int, int]]] = []
+    y = 0
+    for altura in alturas:
+        x = 0
+        for largura in larguras:
+            pedacos.append((board[y : y + altura, x : x + largura].copy(), (x, y)))
+            x += largura
+        y += altura
+    return pedacos
+
+
+class MergeTilesTests(unittest.TestCase):
+    """S-81: a imagem embutida que é **pedaço** de diagrama, e não diagrama.
+
+    No `GALLAGHER` o caminho embutido entregava 33 fragmentos contra 7 imagens de verdade em
+    192 páginas. Nenhum piso de tamanho os separa: eles vão a 106,5 pt e o menor diagrama real
+    do acervo tem 105,6 pt. O que os distingue é adjacência.
+    """
+
+    def _pdf_com_ladrilhos(self, origem: fitz.Rect, *, rows: int = 2, cols: int = 2) -> fitz.Document:
+        lado = int(origem.width)
+        colocacoes = []
+        for pedaco, (x, y) in tiled_board(lado, rows=rows, cols=cols):
+            altura, largura = pedaco.shape[:2]
+            destino = fitz.Rect(origem.x0 + x, origem.y0 + y, origem.x0 + x + largura, origem.y0 + y + altura)
+            colocacoes.append((pedaco, destino))
+        return pdf_with_images(colocacoes)
+
+    def test_quatro_ladrilhos_encostados_viram_um_candidato(self) -> None:
+        doc = self._pdf_com_ladrilhos(fitz.Rect(80, 100, 380, 400))
+        try:
+            candidatos = candidates_from_embedded_images(doc[0])
+
+            self.assertEqual(len(candidatos), 1, "cada pedaco entrou como diagrama proprio")
+            self.assertEqual(candidatos[0].merged_tiles, 4)
+            x0, y0, x1, y1 = candidatos[0].bbox_pdf
+            self.assertAlmostEqual(x1 - x0, 300, delta=4)
+            self.assertAlmostEqual(y1 - y0, 300, delta=4)
+        finally:
+            doc.close()
+
+    def test_diagramas_separados_na_mesma_pagina_nao_se_unem(self) -> None:
+        """A guarda que protege o caso comum: os vãos do acervo são de 30 e 100 pt."""
+        doc = pdf_with_images(
+            [
+                (board_image(320), fitz.Rect(60, 80, 280, 300)),
+                (board_image(320), fitz.Rect(310, 80, 530, 300)),
+                (board_image(320), fitz.Rect(60, 400, 280, 620)),
+            ]
+        )
+        try:
+            candidatos = candidates_from_embedded_images(doc[0])
+
+            self.assertEqual(len(candidatos), 3)
+            self.assertEqual([c.merged_tiles for c in candidatos], [0, 0, 0])
+        finally:
+            doc.close()
+
+    def test_o_scan_de_fundo_nao_engole_a_pagina(self) -> None:
+        """O `1937 Kemeri` tem scan de fundo **e** diagramas embutidos de verdade.
+
+        O scan toca todas as outras imagens por definição. Se entrasse no agrupamento, a
+        página inteira viraria um grupo só e os diagramas morreriam na cobertura.
+        """
+        doc = pdf_with_images(
+            [
+                (board_image(800), fitz.Rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT)),
+                (board_image(400), fitz.Rect(80, 100, 380, 400)),
+            ]
+        )
+        try:
+            candidatos = candidates_from_embedded_images(doc[0])
+
+            self.assertEqual(len(candidatos), 1)
+            self.assertEqual(candidatos[0].merged_tiles, 0)
+            self.assertAlmostEqual(candidatos[0].bbox_pdf[0], 80, delta=2)
+        finally:
+            doc.close()
+
+    def test_moldura_feita_de_linhas_esticadas_nao_vira_diagrama(self) -> None:
+        """O caso do `Polgar`: as bordas dos diagramas são imagens de **1×1 px** esticadas.
+
+        Dezenove delas cercam cada diagrama e se encostam, então a união reproduz a moldura com
+        precisão -- e seria tentador aceitá-la. Mas o retângulo carrega 19 pixels de imagem no
+        total: não há o que ler ali, e o conteúdo está no scan da página, que é o que o
+        contorno já lia. Aceitá-la trocava um recorte de 737 px por um render de 241 px nos
+        114 diagramas do livro, com a nota de textura **subindo** -- o censo não mede resolução.
+        """
+        linha = np.full((1, 1, 3), 20, dtype=np.uint8)
+        moldura = fitz.Rect(80, 100, 380, 400)
+        colocacoes = [
+            (linha, fitz.Rect(moldura.x0, moldura.y0, moldura.x1, moldura.y0 + 1)),
+            (linha, fitz.Rect(moldura.x0, moldura.y1 - 1, moldura.x1, moldura.y1)),
+            (linha, fitz.Rect(moldura.x0, moldura.y0, moldura.x0 + 1, moldura.y1)),
+            (linha, fitz.Rect(moldura.x1 - 1, moldura.y0, moldura.x1, moldura.y1)),
+        ]
+        doc = pdf_with_images(colocacoes)
+        try:
+            self.assertEqual(candidates_from_embedded_images(doc[0]), [])
+        finally:
+            doc.close()
+
+    def test_a_uniao_pode_ser_desligada(self) -> None:
+        doc = self._pdf_com_ladrilhos(fitz.Rect(80, 100, 380, 400))
+        try:
+            self.assertEqual(len(candidates_from_embedded_images(doc[0], merge_tiles=False)), 4)
+        finally:
+            doc.close()
+
+    def test_a_uniao_sobrevive_ao_refino(self) -> None:
+        """O `merged_tiles` some no refino e as duas regras que dependem dele calam.
+
+        Foi o que aconteceu, e o sintoma foi confuso: as regras estavam escritas, os testes
+        de unidade passavam, e no livro real nada mudava.
+        """
+        doc = self._pdf_com_ladrilhos(fitz.Rect(80, 100, 380, 400))
+        try:
+            page = doc[0]
+            candidato = candidates_from_embedded_images(page)[0]
+            self.assertEqual(refine_candidate_with_contour(page, candidato).merged_tiles, 4)
+        finally:
+            doc.close()
+
+
+class MergedVersusContourTests(unittest.TestCase):
+    """A união é inferência nossa, não declaração do PDF -- então ela não tem precedência.
+
+    Medido no `GALLAGHER`: nas páginas 168 e 169 a união produzia caixas de 91 pt com textura
+    0,34 e 0,11 que suprimiam achados de contorno de 120 pt com textura 0,74 e 0,69. Na 169
+    uma união engolia **dois** diagramas bons.
+    """
+
+    def _uniao(self, board: np.ndarray, bbox: tuple[float, float, float, float]) -> DiagramCandidate:
+        return DiagramCandidate(
+            board_rgb=board,
+            bbox_pdf=bbox,
+            source="embedded",
+            detector_score=0.7,
+            native_size=(board.shape[1], board.shape[0]),
+            merged_tiles=3,
+        )
+
+    def test_imagem_declarada_nunca_perde_para_o_contorno(self) -> None:
+        """A regra da S-12 continua: declaração ganha de inferência sobre pixels."""
+        declarada = DiagramCandidate(
+            board_rgb=np.full((320, 320, 3), 255, dtype=np.uint8),
+            bbox_pdf=(80.0, 100.0, 380.0, 400.0),
+            source="embedded",
+            detector_score=0.7,
+            native_size=(320, 320),
+        )
+        self.assertFalse(_contour_wins_over_merged(declarada, board_image(320)))
+
+    def test_a_uniao_perde_quando_o_contorno_e_claramente_melhor(self) -> None:
+        ruim = np.full((320, 320, 3), 250, dtype=np.uint8)
+        cv2.putText(ruim, "texto", (10, 160), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2)
+
+        self.assertTrue(_contour_wins_over_merged(self._uniao(ruim, (80.0, 100.0, 380.0, 400.0)), board_image(320)))
+
+    def test_a_uniao_boa_nao_e_derrubada_por_ruido(self) -> None:
+        """A margem existe para o empate: `board_texture_score` tem ruído de reamostragem."""
+        board = board_image(320)
+
+        self.assertFalse(_contour_wins_over_merged(self._uniao(board, (80.0, 100.0, 380.0, 400.0)), board.copy()))
+
+    def test_contencao_conta_como_mesma_regiao_so_para_uniao(self) -> None:
+        """Na p168 do `GALLAGHER` a união está 97% dentro do contorno e o IoU dá 0,41.
+
+        IoU pergunta "as duas caixas são a mesma?"; aqui a pergunta é "uma está dentro da
+        outra?", que é razão sobre a menor.
+        """
+        contorno = (181, 555, 368, 368)
+        uniao = (324, 642, 232, 281)
+
+        self.assertLess(_bbox_iou(contorno, uniao), OVERLAP_IOU, "premissa: o IoU nao ve isto")
+        self.assertTrue(_same_region(contorno, uniao, merged=True))
+        self.assertFalse(_same_region(contorno, uniao, merged=False), "declarada nao usa contencao")
+
+
+class TypicalSideTests(unittest.TestCase):
+    """S-79: o gabarito de tamanho da página, que era `np.median` e não podia ser.
+
+    Mediana é robusta a *outlier* e não a **bimodalidade**. Com duas populações de tamanho ela
+    devolve um número que não é o tamanho de nada que exista na página, e o prior passa a
+    recusar exatamente o diagrama que ele existe para recuperar.
+    """
+
+    def test_a_lista_vazia_nao_tem_gabarito(self) -> None:
+        self.assertIsNone(_typical_side([], EMBEDDED_SIZE_TOLERANCE))
+
+    def test_um_candidato_so_e_o_proprio_gabarito(self) -> None:
+        self.assertEqual(_typical_side([150.0], EMBEDDED_SIZE_TOLERANCE), 150.0)
+
+    def test_tamanhos_parecidos_seguem_dando_o_de_sempre(self) -> None:
+        """O caso comum não pode mudar: é a página de diagramas todos iguais."""
+        self.assertAlmostEqual(_typical_side([148.0, 150.0, 152.0], EMBEDDED_SIZE_TOLERANCE), 150.0)
+
+    def test_o_glifo_nao_arrasta_o_gabarito_para_o_vazio(self) -> None:
+        """O defeito medido: glifo de 15 pt com diagrama de 154 pt dava mediana ~85 pt.
+
+        85 pt não é o tamanho de nada naquela página, e com tolerância de 30% a janela aceita
+        vira 59--110 pt -- todo achado de contorno do tamanho real seria recusado.
+        """
+        gabarito = _typical_side([15.4, 153.6], EMBEDDED_SIZE_TOLERANCE)
+
+        self.assertIsNotNone(gabarito)
+        assert gabarito is not None
+        self.assertAlmostEqual(gabarito, 153.6, delta=1.0)
+        self.assertNotAlmostEqual(gabarito, 84.5, delta=10.0, msg="voltou a ser a mediana")
+
+    def test_o_maior_grupo_ganha_e_nao_o_maior_valor(self) -> None:
+        """Três diagramas de 150 e uma capa de capítulo de 400: o gabarito é 150."""
+        gabarito = _typical_side([150.0, 151.0, 149.0, 400.0], EMBEDDED_SIZE_TOLERANCE)
+
+        self.assertIsNotNone(gabarito)
+        assert gabarito is not None
+        self.assertAlmostEqual(gabarito, 150.0, delta=2.0)
+
+    def test_empate_de_tamanho_de_grupo_resolve_pelo_maior(self) -> None:
+        """Na dúvida o maior: diagrama pequeno demais é o que as outras guardas já barram."""
+        gabarito = _typical_side([40.0, 41.0, 300.0, 305.0], EMBEDDED_SIZE_TOLERANCE)
+
+        self.assertIsNotNone(gabarito)
+        assert gabarito is not None
+        self.assertGreater(gabarito, 200.0)
+
+    def test_o_contorno_do_tamanho_certo_sobrevive_ao_glifo_na_pagina(self) -> None:
+        """O dano de ponta a ponta: um diagrama achado só pelo contorno, numa página com glifo.
+
+        Antes da S-79 o gabarito envenenado o recusava por tamanho. É o efeito silencioso --
+        o diagrama simplesmente não aparecia, sem erro e sem log.
+        """
+        pixels_por_pt = 220 / 72
+        lados = [200.0, 15.0]
+        gabarito = _typical_side([lado * pixels_por_pt for lado in lados], EMBEDDED_SIZE_TOLERANCE)
+
+        self.assertIsNotNone(gabarito)
+        assert gabarito is not None
+        achado = 200.0 * pixels_por_pt
+        self.assertLessEqual(
+            abs(achado - gabarito),
+            gabarito * EMBEDDED_SIZE_TOLERANCE,
+            "o achado de contorno do tamanho do diagrama caiu fora da janela",
+        )
+
+
 class RefineGuardTests(unittest.TestCase):
     """S-38: o refino do contorno não pode entregar um recorte pior que o cru.
 
@@ -531,6 +1052,138 @@ class RefineGuardTests(unittest.TestCase):
         """Comparar recortes de tamanhos diferentes compararia números incomparáveis."""
         grande = board_texture_score(board_image(800))
         pequeno = board_texture_score(board_image(160))
+        self.assertAlmostEqual(grande, pequeno, delta=0.15)
+
+
+def photo_like(side: int = 320, *, seed: int = 7) -> np.ndarray:
+    """Um quadrado de tom contínuo: o retrato, a foto, a moldura -- nada de reticulado 8×8.
+
+    Feito de manchas suaves e não de ruído branco porque é assim que a foto impressa se
+    comporta: bordas longas e periódicas (a moldura), gradiente no meio, e **nenhuma**
+    diferença sistemática entre as 32 casas de uma paridade e as 32 da outra.
+    """
+    rng = np.random.default_rng(seed)
+    campo = rng.random((side // 8, side // 8)).astype(np.float32)
+    campo = cv2.resize(campo, (side, side), interpolation=cv2.INTER_CUBIC)
+    campo = cv2.GaussianBlur(campo, (0, 0), side / 24.0)
+    campo -= campo.min()
+    campo /= max(float(campo.max()), 1e-6)
+    cinza = (40 + campo * 180).astype(np.uint8)
+    imagem = cv2.cvtColor(cinza, cv2.COLOR_GRAY2RGB)
+    cv2.rectangle(imagem, (2, 2), (side - 3, side - 3), (20, 20, 20), 3)
+    return imagem
+
+
+def crowded_board(side: int = 320) -> np.ndarray:
+    """Tabuleiro com peça em quase toda casa -- o caso `Polgar` que reprovou a S-80.
+
+    A S-80 morreu porque `board_texture_score` mistura "isto é um tabuleiro" com "quantas
+    peças há": uma posição de abertura de 28 peças tira 0,158 e um final de dois reis tira
+    0,8, **no mesmo livro e na mesma página**. Esta fixture é o lado ruim dessa faixa.
+    """
+    board = board_image(side)
+    cell = side // 8
+    for row in range(8):
+        for column in range(8):
+            if row in (2, 3, 4, 5) and (row + column) % 3:
+                continue
+            centro = (int((column + 0.5) * cell), int((row + 0.5) * cell))
+            cv2.circle(board, centro, int(cell * 0.34), (25, 25, 25), -1)
+    return board
+
+
+class CheckerContrastGuardTests(unittest.TestCase):
+    """O achado de contorno sem contraste de casa não é diagrama (S-143).
+
+    Capa e prancha de retrato do `Karpov 1` rendiam 10 caixas onde não há diagrama: o título,
+    a grade de fotos, cada retrato, e três casas do tabuleiro **pintado ao fundo do quadro**.
+    """
+
+    def _pagina_com(self, imagem: np.ndarray, rect: fitz.Rect) -> fitz.Document:
+        return pdf_with_images([(imagem, rect)])
+
+    def test_a_foto_quadrada_nao_e_diagrama(self) -> None:
+        doc = self._pagina_com(photo_like(400), fitz.Rect(120, 160, 420, 460))
+        try:
+            page = doc[0]
+            contorno = [c for c in detect_diagrams(page, render(page)) if c.source == "contour"]
+            self.assertEqual(contorno, [], "retrato de tom contínuo não pode virar diagrama")
+        finally:
+            doc.close()
+
+    def test_o_tabuleiro_de_verdade_continua_passando(self) -> None:
+        """A guarda não pode custar o caminho que é a maioria do acervo."""
+        doc = fitz.open()
+        page = doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        cell, ox, oy = 30.0, 100.0, 150.0
+        for row in range(8):
+            for column in range(8):
+                if (row + column) % 2:
+                    page.draw_rect(
+                        fitz.Rect(ox + column * cell, oy + row * cell, ox + (column + 1) * cell, oy + (row + 1) * cell),
+                        color=None,
+                        fill=(0.18, 0.18, 0.18),
+                    )
+        page.draw_rect(fitz.Rect(ox, oy, ox + 8 * cell, oy + 8 * cell), color=(0, 0, 0), width=1)
+        try:
+            contorno = [c for c in detect_diagrams(page, render(page)) if c.source == "contour"]
+            self.assertTrue(contorno, "o diagrama vetorial tem de sobreviver à guarda")
+        finally:
+            doc.close()
+
+    def test_tabuleiro_cheio_de_pecas_sobrevive(self) -> None:
+        """O caso que reprovou a S-80: peça cobrindo casa derruba a nota, mas não a zera.
+
+        É a razão de a guarda olhar **só** a parcela de xadrez e cortar em zero, e não a
+        textura combinada num piso qualquer -- ali o `Polgar` tira 0,158 e uma foto tira 0,29.
+        """
+        self.assertGreater(board_checker_contrast(crowded_board()), 0.0)
+
+    def test_a_parcela_de_grade_sozinha_nao_separaria(self) -> None:
+        """Por que a guarda não usa a textura combinada, encravado em teste.
+
+        Moldura e faixa de fotos produzem borda periódica, que é o que a parcela de **grade**
+        mede -- medido nas páginas do relato, as fotos tiram 0,04 a 0,80 nela. É essa parcela
+        que, misturada 0,4 na textura, deixou a S-80 medir uma foto acima de um diagrama bom.
+        """
+        foto = cv2.resize(photo_like(320), (320, 320), interpolation=cv2.INTER_AREA)
+        self.assertEqual(board_checker_contrast(foto), 0.0, "a foto não tem contraste de casa")
+        self.assertGreater(
+            _grid_score(_small_gray(foto)),
+            0.0,
+            "a foto TEM borda periódica -- é por isso que a grade não serve de guarda",
+        )
+
+    def test_a_declaracao_do_pdf_nao_e_alcancada(self) -> None:
+        """Imagem embutida continua ganhando (S-12): ela tem as guardas dela."""
+        rect = fitz.Rect(120, 160, 420, 460)
+        doc = self._pagina_com(photo_like(400), rect)
+        try:
+            page = doc[0]
+            embutidos = [c for c in detect_diagrams(page, render(page)) if c.source == "embedded"]
+            self.assertTrue(embutidos, "a guarda da S-143 é só do caminho de contorno")
+        finally:
+            doc.close()
+
+    def test_a_guarda_pode_ser_desligada(self) -> None:
+        # 100 px nativos reprovam em `MIN_EMBEDDED_SIDE`, entao a fonte embutida nao declara
+        # nada e o contorno fica sendo a unica -- que e o caso das paginas do relato.
+        doc = self._pagina_com(photo_like(100), fitz.Rect(120, 160, 420, 460))
+        try:
+            page = doc[0]
+            pagina = render(page)
+            self.assertEqual(candidates_from_embedded_images(page), [])
+            com = detect_diagrams(page, pagina)
+            sem = detect_diagrams(page, pagina, checker_contrast_floor=None)
+            self.assertEqual(com, [])
+            self.assertTrue(sem, "None tem de reproduzir o comportamento anterior à S-143")
+        finally:
+            doc.close()
+
+    def test_o_contraste_e_medido_na_resolucao_calibrada(self) -> None:
+        """Mesmo motivo de `board_texture_score`: dois tamanhos, um número comparável."""
+        grande = board_checker_contrast(board_image(800))
+        pequeno = board_checker_contrast(board_image(160))
         self.assertAlmostEqual(grande, pequeno, delta=0.15)
 
 

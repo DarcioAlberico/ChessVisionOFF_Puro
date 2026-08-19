@@ -20,10 +20,21 @@ from __future__ import annotations
 import logging
 import os
 import tkinter as tk
+from tkinter import ttk
+
+from . import tipografia, tokens
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DEFAULT_THEME", "apply_theme", "available_themes"]
+__all__ = [
+    "DEFAULT_THEME",
+    "apply_theme",
+    "available_themes",
+    "cor_atual",
+    "estilo_atual",
+    "fonte_atual",
+    "fonte_base",
+]
 
 DEFAULT_THEME = "bootstrap-light"
 """Claro, alto contraste e sóbrio.
@@ -91,4 +102,121 @@ def apply_theme(root: tk.Misc, theme: str | None = None) -> str:
 
     nome = str(getattr(style.theme, "name", escolhido))
     logger.info("Tema da interface: %s (ttkbootstrap).", nome)
+    # Depois do tema, e dentro desta função de propósito (S-149): estilo declarado antes é
+    # sobrescrito pelo tema, e deixar a ordem a cargo do chamador é o tipo de dependência
+    # invisível que produz "funciona aqui e não lá". Aplicar o tema é aplicá-lo inteiro.
+    registrar_estilos()
     return nome
+
+
+# ------------------------------------------------------------------ a ponte com os tokens
+
+
+def estilo_atual() -> ttk.Style | None:
+    """O `Style` que a janela está usando agora, ou `None` se não houver janela.
+
+    Existe porque `ui/tokens.py` não importa `tkinter` — é o que permite afirmar a paleta
+    inteira sem abrir janela — e alguém precisa levar o `Style` até lá. Este módulo já é o que
+    sabe de tema, então a ponte mora aqui e não num painel.
+
+    `ttk.Style()` se prende ao root **padrão** do Tk; sem root ele levanta, e um painel que
+    pergunta a cor antes de existir janela é erro de ordem, não de tema.
+    """
+    try:
+        return ttk.Style()
+    except (tk.TclError, RuntimeError):  # pragma: no cover - sem root: cai na reserva
+        return None
+
+
+def cor_atual(papel: str) -> str:
+    """Um papel da S-145 resolvido contra o tema em uso (S-147).
+
+    É o que os painéis chamam. Sem janela, sem `ttkbootstrap` ou com um `Style` que não
+    responde, devolve a reserva clara — o mesmo contrato de degradação do resto do módulo.
+
+    Papel desconhecido **levanta**, e isso é de propósito: a tolerância aqui é a tema ausente,
+    não a papel escrito errado (ver `tokens.cor`).
+    """
+    return tokens.cor(papel, estilo_atual())
+
+
+FAMILIA_DE_RESERVA = ("Segoe UI", "Consolas")
+"""Família proporcional e monoespaçada de quando o Tk não responde.
+
+São as duas que a janela já usava cravadas, e ficam aqui como **último** recurso: o caminho
+normal é perguntar à `TkDefaultFont` e à `TkFixedFont`, que é o que faz a escala acompanhar a
+configuração de fonte do Windows em vez de ignorá-la."""
+
+
+def fonte_base() -> tuple[int, str, str]:
+    """`(tamanho, família proporcional, família monoespaçada)` do sistema (S-149).
+
+    Lidas da `TkDefaultFont` e da `TkFixedFont`, que é o que o Tk expõe da configuração do
+    sistema. **É daqui que a escala inteira deriva**: quem aumenta a fonte do Windows aumenta a
+    do programa, e uma escala de números fixos ignoraria isso.
+
+    O tamanho vem negativo quando o Tk o expressa em pixels em vez de pontos; o sinal some
+    porque a escala só precisa da magnitude, e um `-9` cravado num `font=` desenha do mesmo
+    tamanho que `9` em quase toda tela.
+    """
+    tamanho, proporcional, monoespacada = 9, *FAMILIA_DE_RESERVA
+    try:
+        from tkinter import font as tkfont
+
+        padrao = tkfont.nametofont("TkDefaultFont")
+        tamanho = abs(int(padrao.cget("size"))) or tamanho
+        proporcional = str(padrao.cget("family") or proporcional)
+        do_tk = str(tkfont.nametofont("TkFixedFont").cget("family") or monoespacada)
+        monoespacada = tipografia.familia_monoespacada(tkfont.families(), do_tk)
+    except Exception as exc:  # noqa: BLE001 - sem root, sem Tk ou fonte exótica: a reserva serve
+        logger.debug("Fonte do sistema não lida (%s): usando %s.", exc, FAMILIA_DE_RESERVA)
+    return tamanho, proporcional, monoespacada
+
+
+def fonte_atual(papel: str, *, negrito: bool = False) -> tuple[str, int] | tuple[str, int, str]:
+    """Um papel da S-149 resolvido contra a fonte do sistema. É o que os painéis chamam.
+
+    Como `cor_atual`: tolerante a ambiente, intolerante a papel escrito errado.
+    """
+    tamanho, proporcional, monoespacada = fonte_base()
+    return tipografia.fonte(papel, base=tamanho, familia=proporcional, mono=monoespacada, negrito=negrito)
+
+
+ESTILO_DE_TABELA_DE_DADOS = "Dado.Treeview"
+"""Nome do estilo de `Treeview` cujo corpo é monoespaçado. Pedido por quem quer, e são poucos."""
+
+ESTILO_DE_TITULO = "TLabelframe.Label"
+"""O rótulo de `LabelFrame`, **sem** prefixo: todo `LabelFrame` desta janela é título de grupo.
+
+Um estilo nomeado exigiria `style=` nos 20 e poucos grupos da janela, e o primeiro que alguém
+esquecesse voltaria ao corpo sem nada avisar. Redefinir o padrão faz a escala valer por
+construção -- e se um dia existir um `LabelFrame` que não seja título, ele é que pede o
+prefixo."""
+
+
+def registrar_estilos() -> None:
+    """Declara no `Style` os papéis que só um estilo nomeado alcança (S-149). Nunca levanta.
+
+    **Por que dois deles não cabem num `font=` de widget.**
+
+    `ttk.Treeview` aplica a fonte à tabela inteira: não existe fonte por coluna. A coluna que
+    pede monoespaçada é a de FEN, e a do Dataset é uma tabela de **dados** de ponta a ponta --
+    arquivo, FEN, livro, data. Aplicar ao corpo inteiro é a leitura certa desse painel; a fila
+    de Revisão, cuja coluna larga é prosa ("Motivo"), fica de fora de propósito.
+
+    `LabelFrame` desenha o próprio rótulo por um sub-estilo, e um `font=` no construtor do
+    widget não o alcança.
+
+    Chamada pelo próprio `apply_theme`, no fim: estilo declarado antes do tema é sobrescrito
+    por ele. Pública porque o teste a chama direto, e porque trocar de tema em execução — o que
+    `CVOFF_TTK_THEME` permite entre execuções e um menu de preferências vai permitir dentro de
+    uma — precisa reaplicá-la.
+    """
+    style = estilo_atual()
+    if style is None:  # pragma: no cover - sem root não há estilo a registrar
+        return
+    try:
+        style.configure(ESTILO_DE_TABELA_DE_DADOS, font=fonte_atual(tipografia.DADO))
+        style.configure(ESTILO_DE_TITULO, font=fonte_atual(tipografia.TITULO))
+    except tk.TclError as exc:  # pragma: no cover - Style exótico: a janela abre sem a escala
+        logger.info("Estilos de tipografia não registrados (%s).", exc)

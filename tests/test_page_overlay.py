@@ -14,6 +14,7 @@ import numpy as np
 
 from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.service import RecognizedDiagram
+from chess_diagram_ocr.ui import page_overlay
 from chess_diagram_ocr.ui.page_overlay import (
     BoxClick,
     DiagramBox,
@@ -26,6 +27,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     choose_boxes,
     decide_box_click,
     hit_test,
+    mark_confirmed,
     mark_saved,
 )
 
@@ -156,6 +158,37 @@ class MarkSavedTests(unittest.TestCase):
         self.assertEqual([box.saved for box in marcadas], [False, False, False])
 
 
+class PageDoneTests(unittest.TestCase):
+    """"Esta página está terminada?" (S-142) -- a conta que o usuário fazia de cabeça sobre o
+    verde que a S-71 pinta caixa a caixa."""
+
+    def setUp(self) -> None:
+        self.boxes = (caixa(0, 0, 0, 10, 10), caixa(1, 20, 0, 30, 10), caixa(2, 40, 0, 50, 10))
+
+    def _pagina(self, salvos: set[int]) -> PageBoxes:
+        return PageBoxes(7, PARAMS, mark_saved(self.boxes, salvos))
+
+    def test_a_pagina_so_se_diz_concluida_quando_todo_diagrama_tem_amostra(self) -> None:
+        self.assertTrue(self._pagina({0, 1, 2}).all_saved)
+        self.assertFalse(self._pagina({0, 1}).all_saved, "faltando um, não está terminada")
+        self.assertFalse(self._pagina(set()).all_saved)
+
+    def test_pagina_vazia_nao_e_concluida_e_sim_vazia(self) -> None:
+        """Mesma regra do `recognized`: "não há trabalho aqui" não é "o trabalho está feito"."""
+        self.assertFalse(PageBoxes(7, PARAMS, ()).all_saved)
+
+    def test_confirmado_pela_base_nao_conclui_a_pagina(self) -> None:
+        """Violeta é "não precisa" (S-75), e uma página de confirmados não rendeu amostra."""
+        pagina = PageBoxes(7, PARAMS, mark_confirmed(self.boxes, {0, 1, 2}))
+        self.assertFalse(pagina.all_saved)
+
+    def test_a_conclusao_nao_depende_de_a_pagina_ter_sido_lida(self) -> None:
+        """Quem responde é o CSV: um livro trabalhado semanas atrás abre já concluído."""
+        pagina = self._pagina({0, 1, 2})
+        self.assertTrue(pagina.all_saved)
+        self.assertFalse(pagina.recognized, "nenhuma destas caixas passou pelo OCR nesta sessão")
+
+
 class ChooseBoxesTests(unittest.TestCase):
     def setUp(self) -> None:
         self.detectadas = tuple(caixa(i, i * 10, 0, i * 10 + 9, 9) for i in range(6))
@@ -268,6 +301,100 @@ class NoTkinterTests(unittest.TestCase):
                 importados.add(node.module.split(".")[0])
 
         self.assertNotIn("tkinter", importados)
+
+
+class ConfirmadoPelaBaseTests(unittest.TestCase):
+    """A quarta marca da caixa (S-75): "não precisa", que a tela não sabia dizer."""
+
+    def _caixas(self) -> tuple[DiagramBox, ...]:
+        return (
+            DiagramBox(index=0, bbox_pdf=(0, 0, 10, 10)),
+            DiagramBox(index=1, bbox_pdf=(20, 0, 30, 10)),
+        )
+
+    def test_carimba_so_o_indice_confirmado(self) -> None:
+        caixas = mark_confirmed(self._caixas(), {1})
+        self.assertFalse(caixas[0].confirmed)
+        self.assertTrue(caixas[1].confirmed)
+
+    def test_sem_confirmacao_devolve_as_mesmas_caixas(self) -> None:
+        self.assertEqual(mark_confirmed(self._caixas(), set()), self._caixas())
+
+    def test_confirmado_e_salvo_convivem(self) -> None:
+        """Um diagrama pode ter as duas marcas: são perguntas independentes."""
+        caixas = mark_confirmed(mark_saved(self._caixas(), {0}), {0})
+        self.assertTrue(caixas[0].saved)
+        self.assertTrue(caixas[0].confirmed)
+
+
+class CanalRedundanteTests(unittest.TestCase):
+    """A cor não é o único portador do estado (S-159).
+
+    **O achado, com número.** Quatro estados, quatro matizes e mais nada -- nem forma, nem
+    traço, nem letra. E o par mais crítico era o menos distinguível: azul `#4da3ff` contra
+    violeta `#9b7bff` dá **1,20:1** de contraste entre si, separados essencialmente por matiz,
+    numa linha de 2 px sobre página impressa hachurada.
+
+    Para quem tem protanopia ou deuteranopia — **~8% dos homens** — "ainda a fazer" e "não
+    precisa" eram o mesmo retângulo. E são justamente os dois cuja confusão custa trabalho:
+    refazer o que já estava pronto, ou pular o que faltava.
+
+    O critério de aceite da spec é objetivo: *os quatro estados são distinguíveis numa impressão
+    em tons de cinza da captura de tela*. Em teste, isso é a **injetividade** do par (traço,
+    glifo) — dois estados que compartilhassem os dois seriam indistinguíveis sem cor.
+    """
+
+    def _caixa(self, **estado: bool) -> page_overlay.DiagramBox:
+        return page_overlay.DiagramBox(index=0, bbox_pdf=(0.0, 0.0, 10.0, 10.0), **estado)
+
+    def test_a_tabela_e_total(self) -> None:
+        """Um estado sem traço declarado cairia em `KeyError` no meio do desenho da página."""
+        self.assertEqual(set(page_overlay.ESTADOS), set(page_overlay.TRACO_POR_ESTADO))
+
+    def test_o_par_traco_glifo_e_injetivo(self) -> None:
+        """A propriedade que faz o segundo canal ser um canal, e não enfeite."""
+        assinaturas = [page_overlay.TRACO_POR_ESTADO[estado].assinatura for estado in page_overlay.ESTADOS]
+        self.assertEqual(len(assinaturas), len(set(assinaturas)), "dois estados desenham igual sem a cor")
+
+    def test_o_estado_sai_da_mesma_precedencia_da_cor(self) -> None:
+        """Se as duas decisões divergissem, apareceria um retângulo verde tracejado de "dispensado"."""
+        casos = {
+            "a_fazer": self._caixa(),
+            "lido": self._caixa(recognized=True),
+            "dispensado": self._caixa(confirmed=True),
+            "pronto": self._caixa(saved=True),
+        }
+        for esperado, caixa in casos.items():
+            with self.subTest(estado=esperado):
+                self.assertEqual(page_overlay.estado_da_caixa(caixa), esperado)
+
+    def test_salvo_vence_confirmado_como_na_cor(self) -> None:
+        """Salvo é trabalho **seu** já feito, e é o que interessa ver ao olhar a página."""
+        caixa = self._caixa(saved=True, confirmed=True, recognized=True)
+        self.assertEqual(page_overlay.estado_da_caixa(caixa), "pronto")
+
+    def test_o_par_critico_se_distingue_sem_cor(self) -> None:
+        """"A fazer" contra "não precisa": o par de 1,20:1, e o que custa confundir."""
+        a_fazer = page_overlay.traco_da_caixa(self._caixa())
+        dispensado = page_overlay.traco_da_caixa(self._caixa(confirmed=True))
+        self.assertNotEqual(a_fazer.assinatura, dispensado.assinatura)
+        self.assertNotEqual(a_fazer.tracejado, dispensado.tracejado, "os dois dependeriam do glifo sozinho")
+
+    def test_so_o_estado_inicial_dispensa_glifo(self) -> None:
+        """"Ainda não mexi nisto" é a ausência de marca, e marcar o nada é ruído em toda página."""
+        sem_glifo = [estado for estado in page_overlay.ESTADOS if not page_overlay.TRACO_POR_ESTADO[estado].glifo]
+        self.assertEqual(sem_glifo, ["a_fazer"])
+
+    def test_toda_espessura_e_visivel(self) -> None:
+        """Espessura zero seria um estado invisível -- o defeito, com outro nome."""
+        for estado, traco in page_overlay.TRACO_POR_ESTADO.items():
+            with self.subTest(estado=estado):
+                self.assertGreaterEqual(traco.espessura, 1)
+
+    def test_pronto_e_o_traco_mais_forte(self) -> None:
+        """O estado que encerra o trabalho é o que se lê de longe, ao varrer a página."""
+        espessuras = {estado: traco.espessura for estado, traco in page_overlay.TRACO_POR_ESTADO.items()}
+        self.assertEqual(max(espessuras, key=lambda estado: espessuras[estado]), "pronto")
 
 
 if __name__ == "__main__":

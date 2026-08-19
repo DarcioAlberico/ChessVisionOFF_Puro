@@ -32,7 +32,9 @@ import chess.pgn
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.fen_utils import board_from_fen, is_valid_fen
 
+from . import strings, texto, theme, tipografia, tokens
 from .board_widget import InteractiveBoard, PieceImages
+from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
 
@@ -85,16 +87,16 @@ class StudyPanel(ttk.Frame):
         top_row.pack(fill=tk.X, padx=4, pady=(0, 4))
         ttk.Button(top_row, text="Carregar OCR atual", command=self.load_from_recognized).pack(side=tk.LEFT)
         ttk.Button(top_row, text="Posição inicial", command=self.load_initial_position).pack(side=tk.LEFT, padx=6)
-        ttk.Button(top_row, text="Virar board", command=self.flip_board).pack(side=tk.LEFT, padx=6)
+        ttk.Button(top_row, text=strings.VIRAR_TABULEIRO, command=self.flip_board).pack(side=tk.LEFT, padx=6)
         ttk.Button(top_row, text="Trocar vez", command=self.toggle_turn).pack(side=tk.LEFT, padx=6)
         ttk.Button(top_row, text="Salvar PGN", command=self.save_pgn).pack(side=tk.LEFT, padx=6)
 
         action_row = ttk.Frame(self)
         action_row.pack(fill=tk.X, padx=4, pady=(0, 6))
-        ttk.Button(action_row, text="|<", width=4, command=self.go_to_start_of_line).pack(side=tk.LEFT)
-        ttk.Button(action_row, text="<", width=4, command=self.undo_move).pack(side=tk.LEFT, padx=(6, 0))
-        ttk.Button(action_row, text=">", width=4, command=self.redo_move).pack(side=tk.LEFT, padx=(6, 0))
-        ttk.Button(action_row, text=">|", width=4, command=self.go_to_end_of_line).pack(side=tk.LEFT, padx=(6, 6))
+        ttk.Button(action_row, text=strings.PRIMEIRO, width=4, command=self.go_to_start_of_line).pack(side=tk.LEFT)
+        ttk.Button(action_row, text=strings.ANTERIOR, width=4, command=self.undo_move).pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Button(action_row, text=strings.PROXIMO, width=4, command=self.redo_move).pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Button(action_row, text=strings.ULTIMO, width=4, command=self.go_to_end_of_line).pack(side=tk.LEFT, padx=(6, 6))
         ttk.Button(action_row, text="Aplicar FEN", command=self.apply_fen).pack(side=tk.LEFT, padx=6)
         ttk.Button(action_row, text="Copiar FEN", command=self.copy_fen).pack(side=tk.LEFT, padx=6)
         ttk.Checkbutton(
@@ -112,13 +114,18 @@ class StudyPanel(ttk.Frame):
         )
         self.variation_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
         self.variation_combo.bind("<<ComboboxSelected>>", lambda _event: self.set_status("Continuação selecionada."))
+        Tooltip(
+            self.variation_combo,
+            "Fica cinza sem variante gravada nesta posição. Uma variante nasce ao jogar um lance\n"
+            "diferente do que já estava na linha.",
+        )
         ttk.Button(variation_row, text="Entrar", command=self.redo_move).pack(side=tk.LEFT)
 
         ttk.Label(self, textvariable=self.origin_var).pack(anchor="w", padx=6)
-        ttk.Label(self, textvariable=self.status_var, wraplength=620).pack(anchor="w", padx=6, pady=(0, 6))
+        texto.acompanhar(ttk.Label(self, textvariable=self.status_var)).pack(anchor="w", padx=6, pady=(0, 6))
 
         ttk.Label(self, text="FEN do estudo").pack(anchor="w", padx=6)
-        entry = ttk.Entry(self, textvariable=self.fen_var)
+        entry = ttk.Entry(self, textvariable=self.fen_var, font=theme.fonte_atual(tipografia.DADO))
         entry.pack(fill=tk.X, padx=6, pady=(0, 6))
         entry.bind("<Return>", lambda _event: self.apply_fen())
 
@@ -139,7 +146,12 @@ class StudyPanel(ttk.Frame):
 
         move_box = ttk.LabelFrame(self, text="Linha de estudo")
         move_box.pack(fill=tk.BOTH, expand=False, padx=6, pady=(0, 2))
-        self.moves_text = tk.Text(move_box, height=5, wrap="word", font=("Consolas", 10), state=tk.DISABLED)
+        # A linha de PGN em monoespaçada, e agora pelo papel: era `Consolas 10` cravada, que
+        # ignorava a fonte do sistema e divergia em 1 pt do outro `Text` monoespaçado do
+        # projeto -- dois lugares com a mesma intenção e dois tamanhos (S-149).
+        self.moves_text = tk.Text(
+            move_box, height=5, wrap="word", font=theme.fonte_atual(tipografia.DADO), state=tk.DISABLED
+        )
         self.moves_text.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
         self._build_engine_section()
@@ -156,15 +168,20 @@ class StudyPanel(ttk.Frame):
         linha.pack(fill=tk.X, padx=6, pady=(6, 0))
         self.btn_analyse = ttk.Button(linha, text="Analisar posição", command=self.analyse)
         self.btn_analyse.pack(side=tk.LEFT)
+        Tooltip(
+            self.btn_analyse,
+            "Fica cinza enquanto o motor está pensando nesta posição, e volta quando\n"
+            "ele responde. Sem motor UCI instalado, esta seção inteira não aparece.",
+        )
         ttk.Label(linha, textvariable=self.engine_var).pack(side=tk.LEFT, padx=(10, 0))
 
         # Barra de vantagem: 0 = pretas ganhando, 100 = brancas. A escala e logistica, e a
         # conversao mora em `Evaluation.advantage_fraction`.
         self.advantage = ttk.Progressbar(caixa, maximum=100.0, value=50.0)
         self.advantage.pack(fill=tk.X, padx=6, pady=(6, 0))
-        ttk.Label(caixa, textvariable=self.engine_line_var, wraplength=600, foreground="#555555").pack(
-            anchor="w", padx=6, pady=(4, 6)
-        )
+        texto.acompanhar(
+            ttk.Label(caixa, textvariable=self.engine_line_var, foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO])
+        ).pack(anchor="w", padx=6, pady=(4, 6))
 
     # ------------------------------------------------------------------------------ motor
 
@@ -271,7 +288,8 @@ class StudyPanel(ttk.Frame):
 
     def _load_position(self, fen: str, origin: str, status: str) -> None:
         if not fen:
-            messagebox.showwarning("Aviso", "Não ha FEN para carregar no tabuleiro de análise.")
+            # Pré-condição no rodapé (S-164).
+            self.set_status("Não há FEN para carregar no tabuleiro de análise.")
             return
         if not is_valid_fen(fen):
             messagebox.showerror("Erro", "A FEN informada para análise e inválida.")

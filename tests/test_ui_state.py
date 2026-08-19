@@ -164,5 +164,62 @@ class PdfHistoryTests(unittest.TestCase):
         self.assertEqual(state.page_for(Path("livro_0.pdf")), 0)
 
 
+class ArranjoDaJanelaTests(unittest.TestCase):
+    """Os três campos que faltavam: geometria, divisor e aba (S-156).
+
+    O estado lembrava o PDF, a página, os dois zooms e três interruptores — cada um com o
+    porquê escrito ao lado. Não lembrava o **arranjo da janela**, que é o que o usuário
+    reconstrói primeiro ao voltar: o tamanho, onde ele deixou o divisor, e em que aba estava.
+    """
+
+    def test_os_tres_campos_fazem_ida_e_volta(self) -> None:
+        state = AppState(window_geometry="1700x980+120+40", sash_fraction=0.63, active_tab="Resultado")
+        de_volta = state_from_dict(state.to_dict())
+        self.assertEqual(de_volta.window_geometry, "1700x980+120+40")
+        self.assertAlmostEqual(de_volta.sash_fraction, 0.63, places=6)
+        self.assertEqual(de_volta.active_tab, "Resultado")
+
+    def test_os_padroes_dizem_nunca_guardado(self) -> None:
+        """"Não guardado" e "guardado no padrão" são estados diferentes: o divisor em 42% que o
+        usuário escolheu tem de sobreviver a alguém mudar o padrão."""
+        state = AppState()
+        self.assertEqual(state.window_geometry, "")
+        self.assertEqual(state.sash_fraction, 0.0)
+        self.assertEqual(state.active_tab, "")
+
+    def test_um_estado_antigo_sem_os_tres_campos_continua_valendo(self) -> None:
+        """O formato em disco hoje não os tem, e ler um deles não pode custar os outros nove."""
+        antigo = {"version": STATE_VERSION, "last_pdf": "livro.pdf", "pdf_zoom": 1.2}
+        state = state_from_dict(antigo)
+        self.assertEqual(state.last_pdf, "livro.pdf")
+        self.assertAlmostEqual(state.pdf_zoom, 1.2, places=6)
+        self.assertEqual(state.window_geometry, "")
+
+    def test_campo_de_tipo_errado_cai_no_padrao_sem_derrubar_a_leitura(self) -> None:
+        state = state_from_dict(
+            {
+                "version": STATE_VERSION,
+                "last_pdf": "livro.pdf",
+                "window_geometry": 1700,
+                "sash_fraction": "meio",
+                "active_tab": ["Resultado"],
+            }
+        )
+        self.assertEqual(state.last_pdf, "livro.pdf", "um campo estragado custou o resto")
+        self.assertEqual((state.window_geometry, state.sash_fraction, state.active_tab), ("", 0.0, ""))
+
+    def test_a_fracao_do_divisor_e_grampeada_na_leitura(self) -> None:
+        """Um valor absurdo em disco não pode virar um painel de largura negativa na tela."""
+        for bruto, esperado in ((-3.0, 0.0), (7.5, 1.0), (0.5, 0.5)):
+            with self.subTest(bruto=bruto):
+                state = state_from_dict({"version": STATE_VERSION, "sash_fraction": bruto})
+                self.assertAlmostEqual(state.sash_fraction, esperado, places=6)
+
+    def test_a_aba_e_guardada_por_rotulo_e_nao_por_indice(self) -> None:
+        """Índice não sobrevive a reordenar as abas -- e a S-162 é, literalmente, reordená-las."""
+        self.assertIsInstance(AppState().active_tab, str)
+        self.assertEqual(state_from_dict({"version": STATE_VERSION, "active_tab": 3}).active_tab, "")
+
+
 if __name__ == "__main__":
     unittest.main()

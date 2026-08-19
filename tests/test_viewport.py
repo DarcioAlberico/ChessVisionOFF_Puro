@@ -17,7 +17,10 @@ from chess_diagram_ocr.ui.viewport import (
     anchor_after_zoom,
     clamp_zoom,
     decide_wheel,
+    desvio_de_centralizacao,
+    fit_page_zoom,
     fit_width_zoom,
+    regiao_de_rolagem,
     wheel_direction,
     zoomed,
 )
@@ -175,6 +178,99 @@ class NoTkinterTests(unittest.TestCase):
                 importados.add(node.module.split(".")[0])
 
         self.assertNotIn("tkinter", importados)
+
+
+class CentralizacaoTests(unittest.TestCase):
+    """A página no meio da área visível, e a região de rolagem que a acompanha (S-157).
+
+    O defeito: `create_image(0, 0, anchor="nw")` encosta a página no canto superior esquerdo, e
+    em 40% de zoom numa janela de 1700 isso deixava **~45% da área de visualização** em vazio
+    `#1c1c1c` à direita — a maior área contínua da janela, gasta em nada, no painel que existe
+    para mostrar a página.
+    """
+
+    def test_pagina_menor_ganha_metade_da_folga(self) -> None:
+        self.assertEqual(desvio_de_centralizacao(400, 1000), 300)
+
+    def test_pagina_maior_nao_desloca(self) -> None:
+        """Deslocar aqui esconderia o começo da página atrás da borda esquerda."""
+        self.assertEqual(desvio_de_centralizacao(1200, 1000), 0)
+
+    def test_pagina_do_tamanho_exato_nao_desloca(self) -> None:
+        self.assertEqual(desvio_de_centralizacao(1000, 1000), 0)
+
+    def test_a_folga_impar_sobra_para_a_direita_e_nao_alterna(self) -> None:
+        """Arredondamento que alternasse de lado faria a página **tremer** 1 px ao
+        redimensionar -- mais visível do que o pixel de assimetria que ninguém mede."""
+        self.assertEqual(desvio_de_centralizacao(400, 1001), 300)
+        self.assertEqual(desvio_de_centralizacao(401, 1000), 299)
+
+    def test_a_regiao_de_rolagem_cobre_a_area_visivel(self) -> None:
+        """O par da centralização: sem isto, a página deslocada cai fora do que o Tk rola.
+
+        A região limitada ao tamanho da página faria o Tk oferecer rolagem para a faixa vazia à
+        esquerda e esconder a faixa à direita onde a página de fato está.
+        """
+        self.assertEqual(regiao_de_rolagem((400, 300), (1000, 800)), (0, 0, 1000, 800))
+
+    def test_a_regiao_de_rolagem_cobre_a_pagina_quando_ela_e_maior(self) -> None:
+        self.assertEqual(regiao_de_rolagem((1400, 2000), (1000, 800)), (0, 0, 1400, 2000))
+
+    def test_a_regiao_toma_o_maior_de_cada_eixo_separadamente(self) -> None:
+        """Página estreita e alta é o caso comum: A4 em retrato, janela em paisagem."""
+        self.assertEqual(regiao_de_rolagem((600, 2000), (1000, 800)), (0, 0, 1000, 2000))
+
+
+class AjustarAPaginaTests(unittest.TestCase):
+    """"Ajustar à página": ver a folha toda para escolher qual diagrama abrir (S-157)."""
+
+    def test_toma_o_menor_dos_dois_ajustes(self) -> None:
+        """Caber é uma conjunção: caber na largura e não na altura é não caber."""
+        alvo = fit_page_zoom(viewport_w=1000, viewport_h=500, page_w=1000, page_h=1400, margin_px=0)
+        self.assertAlmostEqual(alvo, 500 / 1400, places=6)
+
+    def test_tres_proporcoes_de_pagina(self) -> None:
+        """Retrato, quadrada e paisagem, na mesma janela de 1000x800."""
+        casos = {
+            "retrato": ((800, 1200), 800 / 1200),
+            "quadrada": ((1000, 1000), 800 / 1000),
+            "paisagem": ((1600, 900), 1000 / 1600),
+        }
+        for nome, ((page_w, page_h), esperado) in casos.items():
+            with self.subTest(pagina=nome):
+                alvo = fit_page_zoom(
+                    viewport_w=1000, viewport_h=800, page_w=page_w, page_h=page_h, margin_px=0
+                )
+                self.assertAlmostEqual(alvo, clamp_zoom(esperado), places=6)
+
+    def test_a_pagina_inteira_cabe_no_zoom_devolvido(self) -> None:
+        """A propriedade, e não a fórmula: no zoom devolvido, os dois lados cabem."""
+        for page_w, page_h in ((800, 1200), (1600, 900), (2000, 2000), (300, 400)):
+            with self.subTest(pagina=(page_w, page_h)):
+                alvo = fit_page_zoom(viewport_w=1000, viewport_h=800, page_w=page_w, page_h=page_h)
+                assert alvo is not None
+                if alvo < MAX_ZOOM:  # no teto, caber deixa de ser promessa -- o limite manda
+                    self.assertLessEqual(page_w * alvo, 1000)
+                    self.assertLessEqual(page_h * alvo, 800)
+
+    def test_ajustar_a_pagina_nunca_passa_de_ajustar_a_largura(self) -> None:
+        """Se passasse, "página inteira" mostraria menos que "largura inteira" em algum caso."""
+        largura = fit_width_zoom(viewport_px=1000, page_px=800)
+        pagina = fit_page_zoom(viewport_w=1000, viewport_h=800, page_w=800, page_h=1200)
+        assert largura is not None and pagina is not None
+        self.assertLessEqual(pagina, largura)
+
+    def test_sem_medida_devolve_none_como_o_ajuste_a_largura(self) -> None:
+        """Mesmo contrato dos dois, para o painel tratá-los no mesmo ramo."""
+        self.assertIsNone(fit_page_zoom(viewport_w=0, viewport_h=800, page_w=800, page_h=1200))
+        self.assertIsNone(fit_page_zoom(viewport_w=1000, viewport_h=800, page_w=0, page_h=1200))
+        self.assertIsNone(fit_page_zoom(viewport_w=1000, viewport_h=0, page_w=800, page_h=1200))
+
+    def test_o_resultado_respeita_os_limites_de_zoom(self) -> None:
+        minusculo = fit_page_zoom(viewport_w=4000, viewport_h=4000, page_w=10, page_h=10)
+        gigante = fit_page_zoom(viewport_w=100, viewport_h=100, page_w=100000, page_h=100000)
+        self.assertEqual(minusculo, MAX_ZOOM)
+        self.assertEqual(gigante, MIN_ZOOM)
 
 
 if __name__ == "__main__":

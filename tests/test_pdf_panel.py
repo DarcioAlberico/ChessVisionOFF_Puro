@@ -11,11 +11,15 @@ são as mesmas da tela. Com 220 as contas teriam de ser refeitas a cada leitura.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
 
+import fitz
 import numpy as np
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui import pdf_panel
 from chess_diagram_ocr.ui.page_overlay import DiagramBox, OverlayParams, PageBoxes
@@ -49,22 +53,25 @@ def _roda(delta: int) -> tk.Event:
     return evento
 
 
+def _raiz() -> tk.Tk:
+    """A raiz do processo (`tests/tk_root.py`). Ver o docstring de lá para o porquê."""
+    return raiz_do_processo()
+
+
+# O `tearDownModule` que existia aqui destruía a raiz do módulo para que nunca houvesse duas
+# vivas ao mesmo tempo -- o diagnóstico estava certo e está preservado em `tests/tk_root.py`.
+# Ele saiu porque a raiz agora é **uma só no processo**: não há segunda para conflitar, e
+# destruí-la no meio da suíte é justamente o que deixa o Tcl instável no Windows.
+
+
 class PdfPanelBoxesTests(unittest.TestCase):
-    """Uma raiz Tk para a classe toda, pelo mesmo motivo do `test_gallery_panel`."""
+    """Uma raiz Tk para o módulo, pelo mesmo motivo do `test_gallery_panel` -- ver `_raiz`."""
 
     root: tk.Tk
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        cls.root = _raiz()
 
     def setUp(self) -> None:
         self.cliques: list[int] = []
@@ -113,7 +120,7 @@ class PdfPanelBoxesTests(unittest.TestCase):
         self.assertTrue(self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS)))
         # Dois retângulos por diagrama: o contorno e o fundo do número.
         self.assertEqual(len(self._retangulos()), 4)
-        self.assertIn("2 diagrama(s)", self.panel.lbl_boxes.cget("text"))
+        self.assertIn("2 diagrama(s)", self.panel.estado_do_documento)
 
     def test_a_caixa_atrasada_de_outra_pagina_e_recusada(self) -> None:
         """A detecção roda em thread: quem a pediu para a 16 pode já estar na 17."""
@@ -132,18 +139,24 @@ class PdfPanelBoxesTests(unittest.TestCase):
         self.assertEqual(self.panel.canvas.coords(self._retangulos()[0]), [5.0, 5.0, 55.0, 55.0])
 
     def test_a_selecao_nao_gasta_uma_cor(self) -> None:
-        """A cor diz em que ponto do trabalho o diagrama está; a borda diz qual está aberto.
+        """A cor diz em que ponto do trabalho o diagrama está; a seleção não a toca (S-71).
 
-        Enquanto a seleção era uma quarta cor, ela apagava o estado do diagrama selecionado --
-        justamente o que se quer ver ao chegar nele (S-71).
+        **A espessura mudou de dono na S-159.** Ela era o sinal de "este está aberto no editor";
+        virou o segundo canal do **estado**, junto com o tracejado, porque a cor sozinha não
+        distinguia "a fazer" de "não precisa" para ~8% dos homens. A seleção ficou com o halo,
+        que a S-71 já tinha criado e que é o sinal que não gasta nenhum pixel do diagrama.
         """
         self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
         self.panel.select_box(1)
         cores = [self.panel.canvas.itemcget(item, "outline") for item in self._retangulos()]
         self.assertEqual(set(cores), {BOX_OUTLINE}, "a seleção não muda a cor de ninguém")
 
-        larguras = [float(self.panel.canvas.itemcget(item, "width")) for item in self._retangulos()]
-        self.assertEqual(larguras.count(4.0), 1, "só o selecionado tem a borda grossa")
+        # Duas caixas no mesmo estado ("a fazer"): a espessura tem de ser a mesma nas duas, ou
+        # ela estaria dizendo duas coisas de novo.
+        contornos = self.panel.canvas.find_withtag(pdf_panel.TAG_CONTORNO)
+        larguras = {float(self.panel.canvas.itemcget(item, "width")) for item in contornos}
+        self.assertEqual(len(contornos), 2)
+        self.assertEqual(larguras, {2.0}, "a espessura passou a distinguir seleção de novo")
 
     def test_a_selecao_nao_pinta_nada_sobre_o_tabuleiro(self) -> None:
         """A hachura punha pontinhos sobre as casas que se está tentando conferir (S-71).
@@ -189,10 +202,41 @@ class PdfPanelBoxesTests(unittest.TestCase):
             DiagramBox(index=1, bbox_pdf=(10.0, 150.0, 110.0, 250.0), recognized=True, saved=True),
         )
         self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, caixas))
-        texto = self.panel.lbl_boxes.cget("text")
+        texto = self.panel.estado_do_documento
         self.assertIn("2 diagrama(s)", texto)
         self.assertIn("1 lido(s)", texto)
-        self.assertIn("1 salvo(s)", texto)
+        self.assertIn("1 de 2 salvo(s)", texto, "a fração diz quanto falta; o número solto, não")
+
+    def test_a_pagina_com_tudo_salvo_diz_que_acabou_em_vez_de_somar(self) -> None:
+        """A pergunta é "posso virar?", e contar retângulo verde é a resposta pela metade."""
+        caixas = tuple(
+            DiagramBox(index=i, bbox_pdf=(10.0, 10.0 + i * 140, 110.0, 110.0 + i * 140), saved=True)
+            for i in range(2)
+        )
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, caixas))
+        self.assertIn("página concluída", self.panel.estado_do_documento)
+        self.assertTrue(
+            self.panel.pagina_concluida,
+            "é o que faz o rodapé dizer da página, em verde, o que os retângulos dizem de cada diagrama",
+        )
+
+    def test_falta_um_diagrama_e_a_pagina_nao_se_diz_concluida(self) -> None:
+        caixas = (
+            DiagramBox(index=0, bbox_pdf=(10.0, 10.0, 110.0, 110.0), saved=True),
+            DiagramBox(index=1, bbox_pdf=(10.0, 150.0, 110.0, 250.0)),
+        )
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, caixas))
+        texto = self.panel.estado_do_documento
+        self.assertNotIn("concluída", texto)
+        self.assertIn("1 de 2 salvo(s)", texto)
+
+    def test_a_pagina_seguinte_apaga_o_verde_do_rotulo(self) -> None:
+        """A cor é do estado, não do widget: deixá-la acesa afirmaria da 1 o que era da 0."""
+        salva = DiagramBox(index=0, bbox_pdf=(10.0, 10.0, 110.0, 110.0), saved=True)
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, (salva,)))
+        self.panel.clear_diagram_boxes()
+        self.assertFalse(self.panel.pagina_concluida)
+        self.assertEqual(self.panel.estado_do_documento, "")
 
     def test_desligar_a_marcacao_apaga_os_retangulos_e_avisa(self) -> None:
         self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
@@ -210,12 +254,12 @@ class PdfPanelBoxesTests(unittest.TestCase):
 
     def test_pagina_sem_diagrama_diz_isso_em_vez_de_ficar_muda(self) -> None:
         self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, ()))
-        self.assertIn("nenhum diagrama", self.panel.lbl_boxes.cget("text"))
+        self.assertIn("nenhum diagrama", self.panel.estado_do_documento)
 
     def test_sem_resposta_ainda_o_rotulo_fica_vazio(self) -> None:
         """"Não se sabe" e "não há" são estados diferentes, e só o segundo se anuncia."""
         self.assertIsNone(self.panel.boxes)
-        self.assertEqual(self.panel.lbl_boxes.cget("text"), "")
+        self.assertEqual(self.panel.estado_do_documento, "")
 
     # -------------------------------------------------------------------------- clique
 
@@ -420,6 +464,274 @@ class PdfPanelBoxesTests(unittest.TestCase):
         self.assertEqual(str(self.panel.canvas.cget("cursor")), "hand2")
         self.panel._on_hover(_evento(280, 380))
         self.assertEqual(str(self.panel.canvas.cget("cursor")), "")
+
+
+class LoadPdfEstadoTests(unittest.TestCase):
+    """O PDF que não abre não troca o livro por dentro (S-123).
+
+    Aqui há arquivo de verdade -- em `tmp_path` e nunca versionado, como os fixtures da
+    detecção -- porque o que se testa é exatamente a fronteira entre "abriu" e "não abriu", e
+    um `get_pdf_page_count` fingido testaria o fingimento.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-s123-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+        self.bom = self.tmp / "bom.pdf"
+        doc = fitz.open()
+        doc.new_page(width=200, height=300)
+        doc.new_page(width=200, height=300)
+        doc.save(str(self.bom))
+        doc.close()
+
+        self.quebrado = self.tmp / "quebrado.pdf"
+        self.quebrado.write_bytes(b"%PDF-1.4 isto nao e um PDF\n")
+
+        self.abertos: list[Path] = []
+        self.erros: list[tuple[str, str]] = []
+        self.host = tk.Frame(self.root)
+        self.panel = PdfPanel(
+            self.host,
+            dpi=lambda: 72,
+            initial_page_for=lambda _caminho: 0,
+            on_status=lambda _texto: None,
+            on_ocr_best=lambda: None,
+            on_ocr_all=lambda: None,
+            on_region=lambda _imagem, _regiao: None,
+            on_export=lambda: None,
+            on_cancel_export=lambda: None,
+            on_pdf_opened=self.abertos.append,
+            on_before_page_change=lambda: None,
+            on_page_rendered=lambda _indice: None,
+            on_zoom_changed=lambda _zoom: None,
+            initial_dir=self.tmp,
+        )
+        original = pdf_panel.messagebox.showerror
+        pdf_panel.messagebox.showerror = (  # type: ignore[assignment]
+            lambda titulo, texto: self.erros.append((titulo, texto))
+        )
+        self.addCleanup(setattr, pdf_panel.messagebox, "showerror", original)
+        self.addCleanup(self.host.destroy)
+
+    def test_o_pdf_valido_abre_e_o_estado_e_dele(self) -> None:
+        self.panel.load_pdf(self.bom)
+        self.assertEqual(self.erros, [])
+        self.assertEqual(self.panel.source, self.bom)
+        self.assertEqual(self.panel.name, "bom.pdf")
+        self.assertEqual(self.panel.page_count, 2)
+        self.assertEqual(self.abertos, [self.bom])
+
+    def test_o_pdf_corrompido_nao_troca_o_estado_do_valido(self) -> None:
+        """O defeito da S-123: a tela mostrava o livro anterior e o estado era o do quebrado."""
+        self.panel.load_pdf(self.bom)
+        self.abertos.clear()
+
+        self.panel.load_pdf(self.quebrado)
+
+        self.assertEqual(self.panel.source, self.bom)
+        self.assertEqual(self.panel.name, "bom.pdf")
+        self.assertEqual(self.panel.page_count, 2)
+
+    def test_o_callback_nao_dispara_para_o_pdf_que_nao_abriu(self) -> None:
+        """É `_on_pdf_opened` quem limpa as caixas e reaponta a Galeria. Ele não pode rodar."""
+        self.panel.load_pdf(self.bom)
+        self.abertos.clear()
+
+        self.panel.load_pdf(self.quebrado)
+
+        self.assertEqual(self.abertos, [])
+
+    def test_a_mensagem_nomeia_o_arquivo_que_falhou_e_o_que_ficou(self) -> None:
+        self.panel.load_pdf(self.bom)
+        self.panel.load_pdf(self.quebrado)
+
+        self.assertEqual(len(self.erros), 1)
+        _titulo, texto = self.erros[0]
+        self.assertIn("quebrado.pdf", texto)
+        self.assertIn("bom.pdf continua aberto", texto)
+
+    def test_sem_livro_anterior_a_mensagem_nao_promete_nenhum(self) -> None:
+        """Dizer "continua aberto" sobre nada seria pior que não dizer."""
+        self.panel.load_pdf(self.quebrado)
+
+        self.assertIsNone(self.panel.source)
+        self.assertEqual(len(self.erros), 1)
+        self.assertIn("quebrado.pdf", self.erros[0][1])
+        self.assertNotIn("continua aberto", self.erros[0][1])
+
+    def test_a_falha_vai_para_o_log_com_rastro(self) -> None:
+        """No bundle da S-55 não há console: sem isto, a falha não existe em lugar nenhum."""
+        with self.assertLogs(pdf_panel.logger, level="ERROR") as registro:
+            self.panel.load_pdf(self.quebrado)
+
+        self.assertIn("quebrado.pdf", registro.output[0])
+        self.assertIn("Traceback", registro.output[0])
+
+
+def _painel_em(janela: tk.Misc, *, pagina: tuple[int, int]) -> PdfPanel:
+    """Um painel montado numa janela de verdade, com uma página de `(altura, largura)`."""
+    painel = PdfPanel(
+        janela,
+        dpi=lambda: 72,
+        initial_page_for=lambda _caminho: 0,
+        on_status=lambda _texto: None,
+        on_ocr_best=lambda: None,
+        on_ocr_all=lambda: None,
+        on_region=lambda _imagem, _regiao: None,
+        on_export=lambda: None,
+        on_cancel_export=lambda: None,
+        on_pdf_opened=lambda _caminho: None,
+        on_before_page_change=lambda: None,
+        on_page_rendered=lambda _indice: None,
+        on_zoom_changed=lambda _zoom: None,
+        initial_dir=Path("."),
+    )
+    painel.pack(fill=tk.BOTH, expand=True)
+    painel.source = Path("livro.pdf")
+    painel.page_rgb = np.zeros((*pagina, 3), dtype=np.uint8)
+    painel.page_loaded_for_index = 0
+    return painel
+
+
+class PaginaCentralizadaTests(unittest.TestCase):
+    """A página no meio do canvas, e o clique que continua acertando a caixa certa (S-157).
+
+    **O risco deste item não é a centralização — é o que ela desalinha.** O painel converte
+    coordenada de canvas para coordenada de página em oito lugares: a caixa clicada, o retângulo
+    da seleção, a âncora do zoom, a mão do leitor. Deslocar a imagem e esquecer um deles produz
+    um defeito silencioso e caro -- o clique abre o **diagrama vizinho**, e o recorte da seleção
+    sai de outro pedaço da folha.
+
+    Daí os testes daqui serem de dois tipos: o desvio existir, e a ida-e-volta fechar.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    def setUp(self) -> None:
+        self.janela = tk.Toplevel(self.root)
+        self.janela.geometry("900x700")
+        self.addCleanup(self.janela.destroy)
+        self.panel = _painel_em(self.janela, pagina=(400, 300))
+        self.janela.update()
+        # Depois de mapeada: o enquadramento inicial já rodou, e aqui o zoom é o do teste.
+        self.panel.set_zoom(1.0)
+        self.panel.refresh_view()
+
+    def test_a_pagina_menor_que_o_canvas_fica_no_meio(self) -> None:
+        largura, altura = self.panel.canvas.winfo_width(), self.panel.canvas.winfo_height()
+        self.assertGreater(largura, 300, "o canvas do teste precisa ser maior que a página")
+        self.assertEqual(self.panel._desvio, ((largura - 300) // 2, (altura - 400) // 2))
+
+    def test_a_imagem_e_desenhada_no_desvio(self) -> None:
+        """O desvio calculado tem de chegar ao item do canvas, e não parar numa variável."""
+        assert self.panel._canvas_image_id is not None
+        self.assertEqual(
+            self.panel.canvas.coords(self.panel._canvas_image_id),
+            [float(self.panel._desvio[0]), float(self.panel._desvio[1])],
+        )
+
+    def test_a_regiao_de_rolagem_cobre_o_canvas_inteiro(self) -> None:
+        """Senão o Tk rolaria para a faixa vazia à esquerda e esconderia a página."""
+        regiao = [int(float(valor)) for valor in str(self.panel.canvas.cget("scrollregion")).split()]
+        self.assertEqual(regiao[2], max(300, self.panel.canvas.winfo_width()))
+        self.assertEqual(regiao[3], max(400, self.panel.canvas.winfo_height()))
+
+    def test_a_ida_e_volta_entre_pagina_e_canvas_fecha(self) -> None:
+        for ponto in ((0.0, 0.0), (10.0, 10.0), (123.5, 271.25)):
+            with self.subTest(ponto=ponto):
+                self.assertEqual(self.panel._para_pagina(*self.panel._para_canvas(*ponto)), ponto)
+
+    def test_o_clique_no_centro_da_caixa_acerta_a_caixa(self) -> None:
+        """O defeito que a centralização introduziria se um dos oito pontos ficasse para trás.
+
+        A primeira caixa vai de (10,10) a (110,110) em coordenada de página; o centro dela, em
+        coordenada de **canvas**, é esse ponto mais o desvio.
+        """
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        for esperado, centro in ((0, (60.0, 60.0)), (1, (60.0, 200.0))):
+            with self.subTest(caixa=esperado):
+                x, y = self.panel._para_canvas(*centro)
+                self.assertEqual(self.panel._box_at_event(_evento(x, y)), esperado)
+
+    def test_o_clique_onde_a_pagina_nao_esta_nao_acerta_nada(self) -> None:
+        """O controle: sem ele, um `_box_at_event` que ignorasse o desvio ainda passaria acima
+        se por acaso as duas caixas cobrissem a folha inteira."""
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        self.assertIsNone(self.panel._box_at_event(_evento(2.0, 2.0)))
+
+    def test_o_retangulo_desenhado_leva_o_desvio(self) -> None:
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS[:1]))
+        retangulo = next(
+            item
+            for item in self.panel.canvas.find_withtag("diagram-box")
+            if self.panel.canvas.type(item) == "rectangle"
+        )
+        dx, dy = self.panel._desvio
+        self.assertEqual(self.panel.canvas.coords(retangulo), [10.0 + dx, 10.0 + dy, 110.0 + dx, 110.0 + dy])
+
+    def test_a_pagina_maior_que_o_canvas_nao_desloca(self) -> None:
+        """Deslocar aqui esconderia o topo da página atrás da borda."""
+        self.panel.set_zoom(2.0)
+        self.panel.refresh_view()
+        self.assertEqual(self.panel._desvio[1], 0, "página de 800 px de altura em canvas menor")
+
+
+class EnquadramentoInicialTests(unittest.TestCase):
+    """O primeiro zoom de um livro sem escolha guardada: a página inteira (S-157)."""
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    def _janela(self) -> tk.Toplevel:
+        janela = tk.Toplevel(self.root)
+        janela.geometry("700x600")
+        self.addCleanup(janela.destroy)
+        return janela
+
+    def test_sem_zoom_guardado_a_primeira_pagina_aparece_inteira(self) -> None:
+        janela = self._janela()
+        painel = _painel_em(janela, pagina=(1200, 900))
+        janela.update()
+
+        zoom = float(painel.zoom_var.get())
+        self.assertNotAlmostEqual(zoom, 0.7, places=3, msg="ficou no padrão em vez de enquadrar")
+        self.assertLessEqual(1200 * zoom, painel.canvas.winfo_height() + 1)
+        self.assertLessEqual(900 * zoom, painel.canvas.winfo_width() + 1)
+
+    def test_um_zoom_guardado_vence_o_enquadramento(self) -> None:
+        """Ajustar à página por cima de uma escolha do usuário é a interface desfazendo o que
+        ele fez -- e é o que separa este item de uma regressão da S-70."""
+        janela = self._janela()
+        painel = _painel_em(janela, pagina=(1200, 900))
+        painel.set_zoom(1.35)
+        janela.update()
+
+        self.assertAlmostEqual(float(painel.zoom_var.get()), 1.35, places=6)
+
+    def test_o_enquadramento_acontece_uma_vez_e_nao_a_cada_redimensionamento(self) -> None:
+        """Senão arrastar o divisor jogaria fora o zoom que a pessoa acabou de escolher."""
+        janela = self._janela()
+        painel = _painel_em(janela, pagina=(1200, 900))
+        janela.update()
+
+        painel.apply_zoom(1.5)
+        janela.geometry("1100x900")
+        janela.update()
+        self.assertAlmostEqual(float(painel.zoom_var.get()), 1.5, places=6)
 
 
 if __name__ == "__main__":

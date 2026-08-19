@@ -120,6 +120,13 @@ def run_variant(
             batch_size=batch_size,
             splits_path=splits_path,
             fresh=True,
+            # **A grade lê e não escreve** (S-106). O padrão de `assign_splits` é `True`, e com
+            # ele a *primeira* variante atribuía split às amostras que estavam sem -- 357 hoje
+            # --, reescrevendo o `splits.csv`. As seguintes treinavam sobre a partição nova, e
+            # a avaliação de todas usava o mapa velho, carregado antes da grade. Uma grade que
+            # muda a partição no meio compara variantes contra conjuntos diferentes, que é
+            # exatamente o que ela existe para não fazer.
+            assign_splits=False,
             arch=variant.arch,
             class_weights=variant.class_weights,
             seed=seed,

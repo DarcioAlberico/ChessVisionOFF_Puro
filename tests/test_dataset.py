@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import unittest.mock
 import warnings
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from chess_diagram_ocr.dataset import (
     append_training_sample,
     migrate_labels_csv,
 )
+from chess_diagram_ocr.labels import ILLEGAL_OK, LabelStore
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 FATAL = "4n3/8/8/4B2n/8/8/8/8"  # sem reis
@@ -91,6 +93,31 @@ class LegalityFilterTests(unittest.TestCase):
             self.assertEqual(len(dataset.entries), 1)
             self.assertEqual(len(dataset.skipped_illegal), 1)
             self.assertEqual(dataset.skipped_illegal[0][0], "ruim.png")
+
+    def test_confirmed_illegal_labels_survive_the_filter(self) -> None:
+        """A estrutura de peões que uma pessoa confirmou treina; a ilegal sem marca, não.
+
+        As duas linhas violam a mesma regra (nenhum rei). O que as separa é só a coluna, e é
+        essa separação que faz a confirmação da interface significar alguma coisa.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            samples = root / "samples"
+            samples.mkdir()
+            for name in ("estrutura.png", "erro.png"):
+                _write_board(samples, name)
+            (root / "labels.csv").write_text(
+                "filename,fen,illegal_ok\n"
+                f"estrutura.png,{FATAL},{ILLEGAL_OK}\n"
+                f"erro.png,{FATAL},\n",
+                encoding="utf-8",
+            )
+
+            dataset = BoardFenDataset(root / "labels.csv", samples)
+
+            self.assertEqual([entry.filename for entry in dataset.entries], ["estrutura.png"])
+            self.assertEqual(dataset.kept_illegal, ["estrutura.png"])
+            self.assertEqual([name for name, _ in dataset.skipped_illegal], ["erro.png"])
 
     def test_skip_illegal_can_be_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -206,6 +233,52 @@ class AppendSampleTests(unittest.TestCase):
             self.assertTrue(path.exists())
             self.assertIn(path.name, (root / "labels.csv").read_text(encoding="utf-8"))
 
+    def test_a_imagem_que_nao_gravou_nao_vira_linha_no_csv(self) -> None:
+        """S-111: a gravação da imagem falha em silêncio, e quem chamava seguia adiante.
+
+        Disco cheio, pasta em rede fora do ar, antivírus segurando o arquivo: gravava-se a
+        linha apontando para um PNG inexistente. O prejuízo é o trabalho humano daquela
+        correção, e ele só aparece semanas depois, na linha da auditoria "rótulos cujo PNG
+        sumiu -- descartados em silêncio no treino".
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+
+            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
+                with self.assertRaises(OSError) as ctx:
+                    append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
+
+            self.assertIn("Não foi possível gravar", str(ctx.exception))
+            self.assertFalse((root / "labels.csv").exists())
+
+    def test_a_imagem_que_nao_codificou_nao_vira_linha_no_csv(self) -> None:
+        """A outra metade: o `imencode` recusa e devolve `False` em vez de levantar."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+
+            with unittest.mock.patch("cv2.imencode", return_value=(False, None)):
+                with self.assertRaises(OSError) as ctx:
+                    append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
+
+            self.assertIn("não conseguiu codificar", str(ctx.exception))
+            self.assertFalse((root / "labels.csv").exists())
+
+    def test_a_falha_de_gravacao_nao_acrescenta_a_um_csv_que_ja_existe(self) -> None:
+        """O caso que importa de verdade: o CSV tem 3.936 linhas e não pode ganhar uma órfã."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+            append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
+            antes = (root / "labels.csv").read_text(encoding="utf-8")
+
+            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
+                with self.assertRaises(OSError):
+                    append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
+
+            self.assertEqual((root / "labels.csv").read_text(encoding="utf-8"), antes)
+
     def test_fatal_position_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -227,6 +300,36 @@ class AppendSampleTests(unittest.TestCase):
             )
 
             self.assertTrue(path.exists())
+
+    def test_forced_illegal_row_carries_the_mark(self) -> None:
+        """Sem a marca, o treino descartaria a amostra e o `--fix` a tiraria do arquivo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+
+            append_training_sample(
+                board, FATAL, root / "labels.csv", root / "samples", allow_illegal=True
+            )
+
+            entry = LabelStore(root / "labels.csv").read()[0]
+            self.assertEqual(entry.illegal_ok, ILLEGAL_OK)
+            self.assertTrue(entry.illegal_accepted)
+
+    def test_legal_row_saved_with_the_bypass_is_not_marked(self) -> None:
+        """`allow_illegal` não é o que marca: marcar é a posição ser de fato ilegal.
+
+        Um chamador que passe `allow_illegal=True` por precaução sobre um tabuleiro normal não
+        pode acabar dispensando aquela linha da checagem de legalidade para sempre.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
+
+            append_training_sample(
+                board, LEGAL, root / "labels.csv", root / "samples", allow_illegal=True
+            )
+
+            self.assertEqual(LabelStore(root / "labels.csv").read()[0].illegal_ok, "")
 
     def test_unparseable_fen_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

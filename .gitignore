@@ -28,6 +28,7 @@ data/review_cache/
 data/quarantine.csv
 data/labels.csv.bak-*
 data/splits.csv.bak-*
+data/field_set.jsonl.bak-*
 # Orfaos aposentados pelo `cvoff-audit --prune-orphans` (S-63): sao os mesmos PNGs de
 # data/samples/, que ja estao fora por peso -- e o diretorio existe justamente para que a
 # poda seja reversivel, nao para ser distribuido.
@@ -35,7 +36,39 @@ data/orphans/
 # Galeria (S-67): o `*.index.json` e derivado do PDF (posicoes e caminhos de recorte) e
 # reconstruivel varrendo o livro. O `<livro>.json` das anotacoes e trabalho humano, mas
 # descreve o conteudo de um PDF protegido -- fica de fora pela mesma regra do review_cache.
+#
+# O que **nao** fica de fora e o extrato humano (S-115): `cvoff-gallery --export-human` separa
+# o que uma pessoa digitou ou escolheu do que a base preencheu, e so a primeira metade e
+# irrecuperavel. Sao ~214 KB contra 13 MB, e a volta e `--import-human`.
 data/gallery/
+!data/gallery_human.jsonl
+# Casamentos com a base de partidas (S-73): derivado do acervo protegido e de uma base de
+# terceiro, e reconstruivel com `cvoff-games --all --positions --save-matches`. Fica de fora
+# pelo mesmo motivo do review_cache -- mas guardar o arquivo vale muito, porque reconstrui-lo
+# custa ~104 minutos e reaplica-lo custa segundos (`--from-matches`).
+data/games_matches.json
+data/games_matches_v2.json
+# Cache de posicoes (S-84) e indice por nome (S-87/S-93): as duas respostas que a base de
+# terceiro da, guardadas. Sao derivados dela e reconstruiveis -- `cvoff-games --all` refaz o
+# cache (56 min nas duas gigabases) e `--build-index` refaz o indice. O sqlite tem 885 MB com
+# 20,9 M partidas indexadas: o GitHub recusa acima de 100 MB, e um `git add -A` distraido o
+# poria no historico para sempre. E a mesma regra do pgn_database/, pelo mesmo motivo.
+data/games_positions.sqlite
+# E os caches por conjunto de bases: `database_choice.store_path_for` nomeia um arquivo vizinho
+# para cada selecao que nao seja a pasta inteira (`games_positions__Kasparov-Mega.sqlite`). Sem
+# o glob, cada conjunto que alguem experimentasse aparecia como arquivo novo para versionar.
+data/games_positions__*.sqlite
+# O cache no formato anterior a S-140, e ele depois de migrado. O primeiro so existe em quem
+# usou o programa antes de 2026-08-18; o segundo e o que a migracao deixa no lugar dele, em vez
+# de apagar o que era do usuario. Nenhum dos dois e lido depois disso.
+data/games_positions.json
+data/games_positions.json.migrado
+# A trava de conselho da gravacao (S-113): ela saiu com a S-140, quando a gravacao passou a ser
+# uma transacao de SQLite. A linha fica porque o arquivo pode ter sobrado no disco de quem
+# rodava a versao anterior, e nada mais o apaga.
+data/games_positions.json.lock
+data/games_index.sqlite
+data/games_index.sqlite.parcial
 # Indice de procedencia (S-52): dHash de cada diagrama dos 27 PDFs. Nao e versionavel pelo
 # mesmo motivo do review_cache -- e derivado de PDF protegido --, e reconstruir custa horas
 # de CPU. Quem clonar o repositorio roda `cvoff-provenance --build`.
@@ -54,6 +87,11 @@ models/**/*.onnx
 # --- Material de origem protegido por direito autoral ---
 # NUNCA versionar: o repositorio e publico.
 PDF/
+# Base de partidas (10.547.416 partidas, 9,7 GB num arquivo so). E material de terceiro,
+# nao cabe no GitHub (limite de 100 MB por arquivo) e nao e reconstruivel a partir daqui --
+# quem clonar baixa a sua. Pela mesma razao do data/*.7z: um `git add -A` distraido poria
+# isso no historico para sempre, e do historico nao sai.
+pgn_database/
 
 # --- Saida gerada ---
 PGN/

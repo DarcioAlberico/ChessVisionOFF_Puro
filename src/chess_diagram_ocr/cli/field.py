@@ -17,15 +17,45 @@ import json
 import logging
 from pathlib import Path
 
-from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MODEL_PATH, DEFAULT_PDF_DIR, PROJECT_ROOT
-from ..field_eval import FieldPage, FieldReport, draft_page, evaluate_field, load_field_set, save_field_set
+from ..config import (
+    ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_DATASET_CSV,
+    DEFAULT_MODEL_PATH,
+    DEFAULT_PDF_DIR,
+    PROJECT_ROOT,
+)
+from ..field_eval import (
+    MIN_COMPARABLE_SHARE,
+    FieldPage,
+    FieldReport,
+    draft_page,
+    evaluate_field,
+    load_field_set,
+    save_field_set,
+)
+from ..labels import LabelStore, pages_with_training_samples
 from ..logging_setup import configure_logging, default_log_file
 from ..service import OcrService, RecognitionOptions
+from ..splits import load_splits
+from . import cli_errors
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_FIELD_SET = PROJECT_ROOT / "data" / "field_set.jsonl"
+DEFAULT_SPLITS = DEFAULT_DATASET_CSV.parent / "splits.csv"
+
+
+def _training_pages(labels: Path, splits: Path) -> dict[tuple[str, int], int]:
+    """As páginas de que há amostra em `train` (S-97). Vazio quando não há o que cruzar.
+
+    Falta de arquivo não é erro: num clone limpo o `labels.csv` existe e o `splits.csv`
+    não, e a medição de campo tem de rodar assim mesmo -- o alerta é um extra, não um
+    pré-requisito.
+    """
+    if not Path(labels).exists() or not Path(splits).exists():
+        return {}
+    return pages_with_training_samples(LabelStore(Path(labels)).read(), load_splits(Path(splits)))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -64,6 +94,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "de exportação -- que é a métrica primária."
         ),
     )
+    parser.add_argument(
+        "--labels",
+        type=Path,
+        default=DEFAULT_DATASET_CSV,
+        help="Rótulos, para marcar as páginas de que há amostra de treino (S-97).",
+    )
+    parser.add_argument("--splits", type=Path, default=DEFAULT_SPLITS, help="Partição, para o mesmo fim.")
     parser.add_argument("--show-misses", type=int, default=10, help="Quantos diagramas perdidos listar.")
     add_ocr_argument(parser)
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -147,10 +184,43 @@ def _print_report(report: FieldReport, limit: int) -> None:
     print(f"    Detectados e legais .......... {report.legal}")
     print(f"    Detectados e acima do gate ... {report.above_gate}")
     print(f"    **Taxa de exportação** ....... {report.export_rate:.4f}  ({report.exported}/{report.annotated})")
-    if report.comparable:
+    if report.contaminated:
+        # A Fase 7 nasceu de "o conjunto de teste nao representa a entrada". O conjunto de
+        # campo herdou uma versao menor do mesmo problema, e o remedio aqui e o mesmo de
+        # sempre: publicar o vies em vez de estima-lo.
+        print(
+            f"    Em páginas com treino ........ {report.contaminated} de {report.annotated}"
+            f"  ({report.contaminated / report.annotated:.0%})"
+        )
+        print(
+            f"    **Exportação limpa** ......... {report.clean_export_rate:.4f}"
+            f"  ({report.exported - report.contaminated_exported}/{report.clean_annotated})"
+        )
+    print()
+    print("  Do PGN até estar certo (S-96)")
+    print(
+        f"    Conferíveis .................. {report.comparable} de {report.annotated} anotados"
+        f"  ({report.comparable_share:.0%})"
+    )
+    if report.has_enough_comparable:
+        print(
+            f"    **Exatidão de campo** ........ {report.field_exact:.4f}"
+            f"  ({report.exported_exact}/{report.exported_comparable} exportados)"
+        )
         print(f"    Exatidão condicional ......... {report.conditional_exact:.4f}  ({report.exact}/{report.comparable})")
+        print(f"    **Exportados e errados** ..... {report.exported_wrong}")
     else:
-        print("    Exatidão condicional ......... — (nenhuma anotação traz a posição)")
+        # A taxa de exportacao diz que o modelo teve confianca; ela nao diz que ele leu certo.
+        # Sem conferivel bastante, imprimir um numero de exatidao seria dar aparencia de
+        # medicao ao que nao foi medido -- foi assim que um 1,000 sobre n=1, contra uma
+        # alucinacao numa capa de livro, passou meses como a exatidao do produto.
+        print(
+            f"    Exatidão ..................... insuficiente para medir"
+            f"  ({report.comparable} de {report.annotated}, mínimo {MIN_COMPARABLE_SHARE:.0%})"
+        )
+        print("      A taxa de exportação acima mede **confiança**, não correção: uma leitura")
+        print("      confiantemente errada entra nela como acerto. Confira a FEN dos diagramas")
+        print("      que passam o gate -- é a S-99, e são os que viram PGN sem ninguém olhar.")
 
     print()
     print("  Decodificação e custo (S-62)")
@@ -158,6 +228,17 @@ def _print_report(report: FieldReport, limit: int) -> None:
         f"    Casas reparadas pelo decode .. {report.repaired_squares}"
         f"  ({report.repairs_per_diagram:.3f} por diagrama lido)"
     )
+    print(f"    Diagramas com reparo ......... {report.repaired_diagrams}")
+    print(f"      reparados e exportados ..... {report.repaired_exported}")
+    print(f"      reparados e barrados ....... {report.repaired_blocked}")
+    if report.repaired_diagrams:
+        # A separação da S-132. Enquanto era um número só ao lado da taxa de exportação, ele
+        # sugeria que o reparo estava ajudando a exportar -- e a parcela "ajudou" é zero por
+        # aritmética, não por acaso deste conjunto.
+        print()
+        print("      Uma casa reparada carrega a confiança da SEGUNDA opção, que não passa de")
+        print("      0,5, e o gate é 0,80. Nenhum diagrama reparado passa -- e isso não depende")
+        print("      do modelo. Ver decode.decode_constrained (S-132).")
     print(f"    Custo por diagrama ........... {report.seconds_per_diagram:.3f} s")
 
     if report.per_regime:
@@ -175,6 +256,27 @@ def _print_report(report: FieldReport, limit: int) -> None:
             alvo = f"{parcial.exported}/{parcial.annotated}" if parcial.annotated else "sem diagrama"
             print(f"    {nome[:46]:48} {parcial.export_rate:.3f}  ({alvo})")
 
+    if report.contaminated_pages:
+        print()
+        print(f"  Páginas de que há amostra de **treino** ({len(report.contaminated_pages)}):")
+        print("    Não medem generalização: o próximo modelo treinado sobre os splits de hoje")
+        print("    terá visto estes diagramas. Ao crescer o conjunto (S-99), prefira páginas")
+        print("    que não estejam aqui.")
+        for descricao in report.contaminated_pages[:limit]:
+            print(f"      {descricao}")
+        if len(report.contaminated_pages) > limit:
+            print(f"      ... e outras {len(report.contaminated_pages) - limit}")
+
+    if report.wrong:
+        # Antes do que nao saiu, e de proposito: este e o dano maior. O barrado vai para o
+        # `.review.pgn` e alguem olha; o errado entra no PGN e no dataset como verdade.
+        print()
+        print(f"  O que saiu **errado** para o PGN ({len(report.wrong)}):")
+        for descricao in report.wrong[:limit]:
+            print(f"      {descricao}")
+        if len(report.wrong) > limit:
+            print(f"      ... e outros {len(report.wrong) - limit}")
+
     if report.misses:
         print()
         print(f"  O que não chegou ao PGN ({len(report.misses)}):")
@@ -185,6 +287,7 @@ def _print_report(report: FieldReport, limit: int) -> None:
     print()
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
@@ -222,6 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         service=service,
         accept_threshold=args.accept_threshold,
         pdf_dir=args.pdf_dir,
+        training_pages=_training_pages(args.labels, args.splits),
     )
     _print_report(report, limit=args.show_misses)
 

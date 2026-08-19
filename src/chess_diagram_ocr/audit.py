@@ -13,10 +13,12 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
 
+from .atomic_io import atomic_write_json, read_image
 from .config import PIECE_CLASSES
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
 from .labels import LabelStore
@@ -68,9 +70,28 @@ class AuditReport:
     total_rows: int = 0
     valid_rows: int = 0
     issues: list[LabelIssue] = field(default_factory=list)
+    deliberate_illegal: list[LabelIssue] = field(default_factory=list)
+    """Ilegais **confirmadas** por uma pessoa (coluna `illegal_ok`). Não são problema.
+
+    Fora de `issues` de propósito: tudo que está lá é candidato ao `--fix`, e a correção
+    automática destas seria mandá-las para a quarentena -- desfazendo a única decisão do
+    arquivo que não pode ser deduzida da FEN. Ficam numa lista própria para continuarem
+    visíveis no relatório sem entrarem em nenhum conserto."""
+
     duplicate_groups: list[list[str]] = field(default_factory=list)
     orphan_images: list[str] = field(default_factory=list)
     class_counts: Counter[str] = field(default_factory=Counter)
+
+    route_counts: Counter[str] = field(default_factory=Counter)
+    """Por qual caminho cada rótulo chegou -- a coluna `corrected_by` da S-52 (S-137).
+
+    **Eram 625 valores gravados que nenhuma tela e nenhum comando liam.** A função que os
+    conta existia em `dataset_browser` desde a S-52 e não tinha chamador nenhum, nem em
+    `tests/` -- e a pergunta que a coluna existe para responder, *"as amostras corrigidas à mão
+    treinam melhor?"*, continuava sem ninguém que a fizesse.
+
+    Aqui, ao lado da distribuição de classes, porque é o mesmo tipo de número e o mesmo
+    relatório: o que o dataset tem, contado."""
 
     def of_kind(self, kind: str) -> list[LabelIssue]:
         return [issue for issue in self.issues if issue.kind == kind]
@@ -93,6 +114,42 @@ class AuditReport:
     @property
     def duplicates_above_ceiling(self) -> bool:
         return self.duplicate_share > DUPLICATE_SHARE_CEILING
+
+    def violations(self) -> list[str]:
+        """Os limites **declarados** que este relatório viola, em pt-BR. Vazio é aprovado (S-102).
+
+        **O que entra aqui é o que já era um limite escrito, não uma régua nova.** A auditoria
+        relatava tudo e saía com código 0, inclusive com o teto da S-63 estourado em 11,0%;
+        nada no fluxo a consultava antes de treinar, e a imagem ausente é, nas palavras do
+        próprio relatório, *"descartada em silêncio no treino"*.
+
+        **O que fica de fora, e por quê:**
+
+        - **amostra sem split** não é violação: quem atribui é o `cvoff-train`, e ele o faz na
+          linha seguinte (S-56). Barrar aqui seria barrar o conserto;
+        - **ilegal confirmada à mão** (`illegal_ok`) é decisão humana registrada (S-70), não
+          defeito;
+        - **vazamento de split** (S-98) fica de fora porque o remédio é mover linha, que é
+          irreversível na prática e por isso "lista e não move". Barrar o treino por algo que
+          o comando se recusa a consertar deixaria o projeto sem saída.
+        """
+        violacoes = []
+        fatais = len(self.of_kind("fatal"))
+        if fatais:
+            violacoes.append(f"{fatais} posição(ões) ilegal(is) fatal(is) -- conserto: cvoff-audit --quarantine")
+        sintaxe = len(self.of_kind("sintaxe"))
+        if sintaxe:
+            violacoes.append(f"{sintaxe} FEN(s) não interpretável(is) -- conserto: corrija pela aba Dataset")
+        ausentes = len(self.of_kind("imagem-ausente"))
+        if ausentes:
+            violacoes.append(f"{ausentes} rótulo(s) com PNG ausente -- conserto: cvoff-audit --drop-missing")
+        if self.duplicates_above_ceiling:
+            violacoes.append(
+                f"redundância em {self.duplicate_share:.1%}, acima do teto de "
+                f"{DUPLICATE_SHARE_CEILING:.0%} (S-63) -- conserto: cvoff-audit --dedupe, "
+                "ou suba o teto explicitamente e registre por quê"
+            )
+        return violacoes
 
 
 def dhash(image_bgr: np.ndarray, hash_size: int = DUPLICATE_HASH_SIZE) -> int:
@@ -149,12 +206,16 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV de rótulos não encontrado: {csv_path}")
 
-    rows = read_label_rows(csv_path)
-    report.total_rows = len(rows)
+    # Entradas inteiras, e nao os pares `(arquivo, FEN)`: e a coluna `illegal_ok` que separa
+    # "o modelo perdeu o rei" de "o livro desenhou uma estrutura sem rei", e sem ela a
+    # quarentena do `--fix` tiraria do arquivo justamente os diagramas que alguem confirmou.
+    entries = LabelStore(csv_path).read()
+    report.total_rows = len(entries)
     referenced: set[str] = set()
     usable_labels: list[tuple[str, str]] = []
 
-    for filename, fen in rows:
+    for entry in entries:
+        filename, fen = entry.filename, entry.fen
         referenced.add(filename)
 
         if not fen or fen.lower() == "nan" or not is_syntactically_valid_fen(fen):
@@ -164,7 +225,14 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
             continue
 
         position = check_position(fen)
-        if position.is_fatal:
+        if position.is_fatal and entry.illegal_accepted:
+            # Nao e problema, e nao entra em `issues`: e um diagrama que uma pessoa olhou e
+            # declarou certo. Continua contado a parte, porque um "sim" dado por engano tem de
+            # ter onde aparecer.
+            report.deliberate_illegal.append(
+                LabelIssue(filename=filename, fen=fen, kind="ilegal-confirmada", problems=position.problems)
+            )
+        elif position.is_fatal:
             report.issues.append(
                 LabelIssue(filename=filename, fen=fen, kind="fatal", problems=position.problems)
             )
@@ -186,9 +254,16 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
             )
             continue
 
-        if not position.is_fatal:
+        if not position.is_fatal or entry.illegal_accepted:
+            # "Utilizavel" aqui quer dizer "o treino vai ver esta linha", e desde a marca da
+            # `illegal_ok` ele ve. Contar como inutilizavel o que entra no treino faria a
+            # fracao de redundancia (S-63) ser calculada sobre uma base que nao existe.
             report.valid_rows += 1
             usable_labels.append((filename, fen))
+            # A coluna `corrected_by` da S-52, contada (S-137). Os rotulos anteriores a ela
+            # saem em "caminho nao registrado", e e esse numero encolhendo que diz se a coluna
+            # passou a valer alguma coisa.
+            report.route_counts[entry.corrected_by or "caminho não registrado"] += 1
             try:
                 for class_idx in labels_from_fen(fen):
                     report.class_counts[PIECE_CLASSES[class_idx]] += 1
@@ -239,7 +314,7 @@ def find_duplicate_groups(
         path = samples_dir / filename
         if not path.exists():
             continue
-        image = cv2.imread(str(path))
+        image = read_image(path)
         if image is None:
             logger.warning("Imagem ilegível, ignorada na deduplicação: %s", path)
             continue
@@ -382,6 +457,72 @@ def remove_duplicate_labels(csv_path: Path, report: AuditReport) -> int:
         return 0
 
     return LabelStore(csv_path).remove(to_remove)
+
+
+def dedupe_summary(report: AuditReport, splits_path: Path) -> dict[str, Any]:
+    """O que um `--dedupe` tiraria de cada split, **antes** de tirar (S-101).
+
+    **O alarme original deste item era falso, e o registro é o que sobra dele.** A primeira
+    leitura foi que `remove_duplicate_labels` encolheria `val`/`test` "sem consultar o split" e
+    quebraria a comparabilidade. A primeira metade é verdade; a segunda não. Medido: dos 373
+    grupos redundantes, **0** se espalham entre splits, porque `splits.group_keys` mapeia cada
+    membro para `sorted(group)[0]` -- exatamente o nome que `find_duplicate_groups` mantém.
+    Toda linha de `val`/`test` que sai é cópia de um representante que fica no mesmo `val`/
+    `test`, e o conjunto de diagramas **distintos** de cada split não muda.
+
+    O que muda é a **contagem**: o `test` passaria de 354 para 332 linhas. Um número medido
+    depois deixa de ser comparável, por denominador, com um medido antes -- e nada avisava. É o
+    mesmo problema da S-100, noutro artefato.
+
+    Por isso esta função existe e não muda comportamento nenhum: ela grava o denominador.
+    """
+    splits = load_splits(Path(splits_path))
+    removidos = [name for group in report.duplicate_groups for name in group[1:]]
+
+    antes: Counter[str] = Counter(splits.values())
+    saindo: Counter[str] = Counter(splits.get(name, _SEM_SPLIT) for name in removidos)
+    grupos_entre_splits = [
+        group
+        for group in report.duplicate_groups
+        if len({splits.get(name, _SEM_SPLIT) for name in group}) > 1
+    ]
+
+    por_split = {
+        nome: {
+            "antes": antes.get(nome, 0),
+            "removidos": saindo.get(nome, 0),
+            "depois": antes.get(nome, 0) - saindo.get(nome, 0),
+        }
+        for nome in sorted(set(antes) | set(saindo))
+    }
+    return {
+        "csv": str(report.csv_path),
+        "rows_before": report.total_rows,
+        "valid_before": report.valid_rows,
+        "duplicate_groups": len(report.duplicate_groups),
+        "removed": len(removidos),
+        "by_split": por_split,
+        # Zero hoje, e é o número que refuta o alarme original -- ver o docstring. Fica no
+        # arquivo para que a próxima limpeza mostre se isso deixou de ser verdade.
+        "groups_across_splits": len(grupos_entre_splits),
+    }
+
+
+_SEM_SPLIT = "(sem split)"
+"""Como uma linha sem split aparece no resumo. Não é `""` para não sumir num relatório."""
+
+
+def write_dedupe_summary(summary: dict[str, Any], directory: Path, *, stamp: str) -> Path:
+    """Grava o resumo em `docs/metrics/dedupe_<stamp>.json`. Devolve o caminho.
+
+    Em `docs/metrics/` e não em `data/`: é a mesma categoria dos relatórios de campo e de
+    censo -- número publicado, versionado, e que serve para explicar por que um denominador
+    mudou entre duas medições.
+    """
+    caminho = Path(directory) / f"dedupe_{stamp}.json"
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(caminho, summary)
+    return caminho
 
 
 def orphans_dir_for(samples_dir: Path) -> Path:

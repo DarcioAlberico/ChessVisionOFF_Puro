@@ -14,6 +14,7 @@ uma sexta em `review_queue.rare_classes_from_labels`, que ninguém tinha listado
 
 from __future__ import annotations
 
+import inspect
 import os
 import tempfile
 import unittest
@@ -401,6 +402,38 @@ class LabelRouteTests(unittest.TestCase):
             with self.subTest(**kwargs):
                 self.assertIn(labels_module.label_route(**kwargs), labels_module.CORRECTED_BY_VALUES)
 
+class LabelOriginsTests(unittest.TestCase):
+    """A tripla de procedência que o agrupamento por diagrama impresso usa (S-98)."""
+
+    def _grava(self, tmp: str, linhas: list[dict[str, str]]) -> Path:
+        caminho = Path(tmp) / "labels.csv"
+        loja = labels_module.LabelStore(caminho)
+        for campos in linhas:
+            base = {"filename": "x.png", "fen": "8/8/8/8/8/8/8/8 w - - 0 1"}
+            base.update(campos)
+            loja.append(labels_module.DatasetEntry(**base))  # type: ignore[arg-type]
+        return caminho
+
+    def test_devolve_a_tripla_como_esta_no_csv(self) -> None:
+        """Sem conversão de base: aqui a tripla é chave de igualdade, não índice de tela."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = self._grava(
+                tmp, [{"filename": "a.png", "source_pdf": "livro.pdf", "source_page": "41", "source_diagram": "1"}]
+            )
+            self.assertEqual(labels_module.label_origins(caminho), {"a.png": ("livro.pdf", "41", "1")})
+
+    def test_linha_sem_procedencia_sai_com_a_tripla_vazia(self) -> None:
+        """84,1% do acervo. Quem agrupa descarta; inventar procedência seria pior."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = self._grava(tmp, [{"filename": "a.png"}])
+            self.assertEqual(labels_module.label_origins(caminho), {"a.png": ("", "", "")})
+
+    def test_passa_pela_porta_unica_do_labels_csv(self) -> None:
+        """S-51: nada lê o `labels.csv` fora do `LabelStore`, nem o agrupamento novo."""
+        origem = inspect.getsource(labels_module.label_origins)
+        self.assertIn("LabelStore", origem)
+
+
 class SavedDiagramsByPageTests(unittest.TestCase):
     """O índice que pinta de verde, no visualizador, o que já foi salvo (S-71)."""
 
@@ -441,6 +474,47 @@ class SavedDiagramsByPageTests(unittest.TestCase):
     def test_livro_sem_nome_nao_casa_com_as_linhas_sem_procedencia(self) -> None:
         entradas = [self._entrada(source_pdf="")]
         self.assertEqual(labels_module.saved_diagrams_by_page(entradas, ""), {})
+
+    # ------------------------------------------------ o mesmo índice, sem ler o arquivo (S-116)
+
+    def test_marcar_a_amostra_gravada_da_o_mesmo_indice_que_reler_o_csv(self) -> None:
+        """**O que trava o corte 2 da S-116.** As duas funções produzem o mesmo índice, e por
+        isso a janela pode marcar o que gravou em vez de redescobri-lo em 30,9 ms de leitura.
+
+        Se um dia elas divergirem, o sintoma seria uma caixa que não fica verde até o livro ser
+        reaberto -- o defeito da S-71 de volta, e por um caminho que ninguém procuraria.
+        """
+        entradas = [self._entrada(source_page="17", source_diagram="3")]
+        relido = labels_module.saved_diagrams_by_page(entradas, "livro.pdf")
+
+        marcado: dict[int, set[int]] = {}
+        gravada = labels_module.SavedSample(source_pdf="livro.pdf", page_index=16, diagram_index=2)
+        self.assertTrue(labels_module.note_saved_diagram(marcado, gravada, source_pdf="livro.pdf"))
+
+        self.assertEqual(marcado, relido)
+
+    def test_marcar_acumula_na_pagina_que_ja_tinha(self) -> None:
+        indice: dict[int, set[int]] = {16: {0}}
+        gravada = labels_module.SavedSample("livro.pdf", 16, 2)
+        labels_module.note_saved_diagram(indice, gravada, source_pdf="livro.pdf")
+        self.assertEqual(indice, {16: {0, 2}})
+
+    def test_amostra_de_outro_livro_nao_entra_no_indice(self) -> None:
+        """O índice é do livro aberto, e a defesa mora aqui e não em quem chama."""
+        indice: dict[int, set[int]] = {}
+        gravada = labels_module.SavedSample("outro.pdf", 16, 2)
+        self.assertFalse(labels_module.note_saved_diagram(indice, gravada, source_pdf="livro.pdf"))
+        self.assertEqual(indice, {})
+
+    def test_indice_negativo_nao_entra(self) -> None:
+        """Mesma recusa de `saved_diagrams_by_page`: página 0 no CSV vira -1 aqui."""
+        indice: dict[int, set[int]] = {}
+        self.assertFalse(
+            labels_module.note_saved_diagram(
+                indice, labels_module.SavedSample("livro.pdf", -1, 2), source_pdf="livro.pdf"
+            )
+        )
+        self.assertEqual(indice, {})
 
 
 if __name__ == "__main__":

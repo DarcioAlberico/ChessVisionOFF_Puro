@@ -36,6 +36,7 @@ from ..provenance import (
     match_samples,
     samples_without_provenance,
 )
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,7 @@ def _print_report(report: MatchReport, limit: int) -> None:
     print()
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())

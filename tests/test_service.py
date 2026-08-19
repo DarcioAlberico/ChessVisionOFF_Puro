@@ -17,6 +17,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from chess_diagram_ocr.board_detection import NoBoardDetectedError
 from chess_diagram_ocr.config import BOARD_SIZE, PIECE_CLASSES, PIECE_TO_IDX
 from chess_diagram_ocr.model import ArchConfig
 from chess_diagram_ocr.service import (
@@ -183,8 +184,12 @@ class RecognizeTests(unittest.TestCase):
         self.assertEqual([d.index for d in diagramas], [0, 1, 2])
 
     def test_nothing_detected_raises_instead_of_returning_an_empty_page(self) -> None:
+        """E levanta a classe **nomeada** (S-125), para quem chama poder testar o tipo.
+
+        Era `ValueError`, e a janela separava "página sem diagrama" de "o OCR quebrou"
+        procurando a mensagem dentro do texto da exceção."""
         service, _ = _service()
-        with self.assertRaises(ValueError):
+        with self.assertRaises(NoBoardDetectedError):
             service.recognize_image(_board_image(), options=_upright(), boards=[])
 
     def test_fallback_treats_the_whole_image_as_the_board(self) -> None:

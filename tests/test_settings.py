@@ -307,3 +307,80 @@ class EnderecoDeDestinoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ArquivoInvalidoAbreAJanelaTests(unittest.TestCase):
+    """Um `settings.json` com campo de tipo errado não impede a janela de abrir (S-124).
+
+    `load_settings` capturava `OSError` e `json.JSONDecodeError` -- mas `int(str(...))` e
+    `float(str(...))` levantam `ValueError` sobre um JSON **sintaticamente perfeito**.
+    `app_tkinter` chama `load_settings()` dentro do `__init__`, antes de a janela existir: num
+    checkout sai um traceback; no bundle da S-55 (`console=False`) **não sai nada** -- o
+    programa não abre e não diz por quê.
+    """
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.arquivo = Path(self.pasta.name) / "settings.json"
+
+    def _grava(self, dados: dict) -> Path:
+        self.arquivo.write_text(json.dumps(dados), encoding="utf-8")
+        return self.arquivo
+
+    def test_movetime_com_texto_cai_no_padrao_daquele_campo(self) -> None:
+        """O caso reproduzido à mão na avaliação: `{"engine": {"movetime_ms": "rapido"}}`."""
+        caminho = self._grava({"engine": {"path": "/usr/bin/stockfish", "movetime_ms": "rapido"}})
+
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING") as registro:
+            settings = load_settings(caminho, env={})
+
+        self.assertEqual(settings.engine.movetime_ms, 800)
+        self.assertEqual(settings.engine.path, "/usr/bin/stockfish", "o resto da seção fica")
+        self.assertIn("movetime_ms", "\n".join(registro.output))
+
+    def test_um_campo_ruim_nao_derruba_o_endpoint_do_usuario(self) -> None:
+        """**Por isto a coerção é por campo e não um `except` em volta do arquivo.** O
+        `endpoint` é a única preferência que ninguém recupera sozinho."""
+        caminho = self._grava(
+            {
+                "remote_fen": {"enabled": True, "endpoint": "https://meu-servidor/fen", "timeout": "devagar"},
+                "engine": {"threads": "muitas"},
+            }
+        )
+
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING"):
+            settings = load_settings(caminho, env={})
+
+        self.assertEqual(settings.remote_fen.endpoint, "https://meu-servidor/fen")
+        self.assertTrue(settings.remote_fen.enabled)
+        self.assertEqual(settings.remote_fen.timeout, 30.0)
+        self.assertEqual(settings.engine.threads, 1)
+
+    def test_threads_com_lista_tambem_cai_no_padrao(self) -> None:
+        caminho = self._grava({"engine": {"threads": [1, 2]}})
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING"):
+            self.assertEqual(load_settings(caminho, env={}).engine.threads, 1)
+
+    def test_numero_como_texto_continua_valendo(self) -> None:
+        """A coerção não pode virar rigor: `"8"` sempre foi aceito, e um arquivo editado à mão
+        é exatamente onde isso aparece."""
+        caminho = self._grava({"engine": {"movetime_ms": "1200", "threads": "4"}})
+        settings = load_settings(caminho, env={})
+        self.assertEqual((settings.engine.movetime_ms, settings.engine.threads), (1200, 4))
+
+    def test_campo_ausente_nao_avisa(self) -> None:
+        """Padrão não é defeito: avisar sobre o que ninguém escreveu treinaria a ignorar o log."""
+        caminho = self._grava({"engine": {"path": "x"}})
+        with self.assertNoLogs("chess_diagram_ocr.settings", level="WARNING"):
+            self.assertEqual(load_settings(caminho, env={}).engine.movetime_ms, 800)
+
+    def test_secao_com_forma_inesperada_abre_com_os_padroes(self) -> None:
+        """A rede de segurança: a forma que ninguém previu. Preferência nenhuma vale a janela
+        não abrir -- e no `.exe` isso é um programa que some sem mensagem."""
+        self.arquivo.write_text('{"engine": [1, 2, 3]}', encoding="utf-8")
+
+        settings = load_settings(self.arquivo, env={})
+
+        self.assertEqual(settings.engine.movetime_ms, 800)
+        self.assertFalse(settings.remote_fen.enabled, "e o padrão continua sendo não enviar nada")

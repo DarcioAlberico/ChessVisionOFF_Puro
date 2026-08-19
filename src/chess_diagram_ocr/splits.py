@@ -122,6 +122,62 @@ def groups_by_book(provenance: Mapping[str, str]) -> list[list[str]]:
     return [sorted(membros) for _livro, membros in sorted(por_livro.items()) if len(membros) > 1]
 
 
+def groups_by_origin(origins: Mapping[str, tuple[str, str, str]]) -> list[list[str]]:
+    """Agrupa as amostras que são **o mesmo diagrama impresso** (S-98).
+
+    `origins` é `{nome do arquivo: (source_pdf, source_page, source_diagram)}`; amostra sem
+    procedência fica de fora e continua com o guarda de imagem, que é o de hoje.
+
+    **Por que o guarda de imagem não bastava.** `duplicate_groups_touching` agrupa por
+    `placement` idêntico **e** dHash ≤ 3, e o 3 foi calibrado para *"a mesma amostra salva
+    duas vezes"* (`audit.py:242-247`). Ele não vê a mesma página **reextraída com recorte
+    deslocado** -- e isso acontece toda vez que um livro é varrido de novo depois de a
+    detecção mudar, porque `append_training_sample` gera nome novo por timestamp e
+    `ensure_splits` sorteia pelo hash do nome.
+
+    Medido em 2026-08-16 no acervo: **3 triplas cruzam split**, e a do
+    `Niemeijer - Zwarte Magie p10 d1` está nas **três** partições -- o mesmo diagrama impresso
+    salvo quatro vezes. `find_duplicate_groups` devolve 373 grupos e **0 espalhados entre
+    splits**, o que torna a frase do relatório da auditoria (*"a validação segue honesta"*)
+    verdadeira pela definição de grupo e vazia na prática.
+
+    **O alcance é declarado, e é pequeno:** 625 de 3.936 linhas (15,9%) têm procedência. Isto
+    resolve as 3 triplas e **nenhum** dos casos sem procedência -- para esses o caminho é a
+    S-121 (recuperar procedência por hash perceptual) e não este agrupamento. Prometer mais
+    seria repetir o defeito que ele corrige: uma garantia que a definição torna verdadeira e
+    a prática torna vazia.
+    """
+    por_origem: dict[tuple[str, str, str], list[str]] = {}
+    for filename, origem in origins.items():
+        pdf, page, diagram = origem
+        if not pdf or not page:
+            continue
+        por_origem.setdefault((pdf, page, diagram), []).append(filename)
+    return [sorted(membros) for _chave, membros in sorted(por_origem.items()) if len(membros) > 1]
+
+
+def split_leaks(
+    origins: Mapping[str, tuple[str, str, str]], splits: Mapping[str, Split]
+) -> list[tuple[tuple[str, str, str], dict[str, Split]]]:
+    """As triplas de procedência cujos arquivos caíram em splits diferentes (S-98).
+
+    Devolve `[(chave de origem, {arquivo: split})]`, ordenado. Serve ao relatório da
+    auditoria: **listar, não mover**. Mover uma linha de `test` é irreversível na prática --
+    o `test` existe para responder uma pergunta uma vez --, então quem aplica é gente.
+    """
+    vazamentos = []
+    for chave, membros in sorted(
+        {
+            origem: [nome for nome in origins if origins[nome] == origem]
+            for origem in {o for f, o in origins.items() if o[0] and o[1] and f in splits}
+        }.items()
+    ):
+        atribuidos = {nome: splits[nome] for nome in sorted(membros) if nome in splits}
+        if len({*atribuidos.values()}) > 1:
+            vazamentos.append((chave, atribuidos))
+    return vazamentos
+
+
 def compute_splits(
     filenames: Iterable[str],
     *,

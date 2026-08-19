@@ -4,6 +4,7 @@ import argparse
 import logging
 from pathlib import Path
 
+from ..audit import audit_dataset
 from ..augment import AugmentConfig
 from ..config import (
     DEFAULT_BOARD_CACHE_SIZE,
@@ -15,6 +16,7 @@ from ..config import (
 from ..logging_setup import configure_logging, default_log_file
 from ..model import ArchConfig
 from ..training import DEFAULT_CLASS_WEIGHTS, OptimPlan, train_model
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Processos de carregamento. Padrao: min(4, cpus//2). 0 carrega no processo principal.",
     )
     parser.add_argument("--no-calibrate", action="store_true", help="Pula a calibracao de temperatura (S-28).")
+    parser.add_argument(
+        "--keep-ties",
+        action="store_true",
+        help=(
+            "Grava tambem a epoca que EMPATOU com a melhor, em `<modelo>.tie-e<N>.pt` (S-104). "
+            "Existe para um experimento, nao para o uso normal: a pergunta e se a epoca "
+            "empatada de menor `val_loss` exporta mais em pagina real. Compare com "
+            "`cvoff-field --model` nos dois."
+        ),
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Treina mesmo com a auditoria reprovando o dataset (S-102). O que ela barra sao "
+            "limites ja declarados: ilegal fatal, FEN nao interpretavel, PNG ausente e o teto "
+            "de redundancia da S-63."
+        ),
+    )
 
     grupo_arch = parser.add_argument_group("arquitetura (S-29)")
     grupo_arch.add_argument("--backbone", choices=["cnn", "mobilenet_v3_small"], default="cnn")
@@ -152,6 +173,41 @@ def _augment_from_letters(texto: str) -> AugmentConfig:
     )
 
 
+def _audit_gate(args: argparse.Namespace) -> int | None:
+    """Audita antes de montar o dataset. `None` libera; `2` recusa com a mensagem (S-102).
+
+    **Nada no fluxo consultava a auditoria antes de treinar.** A CI roda `ruff`, `mypy`,
+    `pytest` e um teste de import; o `cvoff-train` montava o dataset sem perguntar nada. O
+    resultado era um teto declarado -- o da S-63 -- estourado em 11,0% e um rótulo cujo PNG
+    sumiu, *"descartado em silêncio no treino"*, com o comando saindo 0.
+
+    **Sem duplicatas de propósito**, e é o que mantém o portão barato: `check_duplicates=False`
+    pula o hash perceptual de milhares de imagens 800x800. Em troca, o teto de redundância não
+    é conferido aqui -- ele é o único dos quatro limites que precisa dos hashes, e vigiá-lo é
+    trabalho do `cvoff-audit --strict`, que a CI roda. O que este portão pega são os três que
+    corrompem o **treino desta execução**: ilegal fatal, FEN não interpretável e PNG ausente.
+
+    Um dataset ausente não é reprovação: num clone limpo o `labels.csv` pode nem existir, e
+    quem reclama disso é o próprio `train_model`, com mensagem melhor que esta.
+    """
+    if args.force or not Path(args.csv).exists():
+        return None
+
+    relatorio = audit_dataset(args.csv, args.samples, check_duplicates=False)
+    violacoes = relatorio.violations()
+    if not violacoes:
+        return None
+
+    print("A auditoria reprovou o dataset, e o treino não começou:")
+    for violacao in violacoes:
+        print(f"  - {violacao}")
+    print()
+    print("Confira o quadro inteiro com: cvoff-audit")
+    print("Para treinar assim mesmo:     cvoff-train --force")
+    return 2
+
+
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
@@ -163,6 +219,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if not augment.version.endswith("0"):
         logger.info("Aumento dirigido ligado: %s. Isto muda o modelo (S-40).", augment.version)
+
+    recusa = _audit_gate(args)
+    if recusa is not None:
+        return recusa
 
     run = train_model(
         csv_path=args.csv,
@@ -191,6 +251,7 @@ def main(argv: list[str] | None = None) -> int:
         calibrate=not args.no_calibrate,
         augment=augment,
         boards_per_batch=args.boards_per_batch,
+        keep_ties=args.keep_ties,
     )
 
     logger.info(

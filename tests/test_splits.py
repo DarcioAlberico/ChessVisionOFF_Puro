@@ -9,9 +9,11 @@ from chess_diagram_ocr.splits import (
     compute_splits,
     ensure_splits,
     group_keys,
+    groups_by_origin,
     load_splits,
     save_splits,
     split_counts,
+    split_leaks,
 )
 
 
@@ -112,6 +114,83 @@ class GroupAwarenessTests(unittest.TestCase):
             grown = ensure_splits(["a.png", "b.png"], path, groups=[["a.png", "b.png"]])
 
             self.assertEqual(grown["b.png"], recorded)
+
+
+class MesmoDiagramaImpressoTests(unittest.TestCase):
+    """S-98: o guarda de imagem não vê a mesma página reextraída com recorte deslocado.
+
+    `duplicate_groups_touching` agrupa por `placement` igual **e** dHash ≤ 3, e o 3 foi
+    calibrado para "a mesma amostra salva duas vezes". Revarrer um livro depois de a detecção
+    mudar produz um recorte deslocado, com nome novo por timestamp -- e `ensure_splits`
+    sorteia pelo hash do nome. Medido no acervo em 2026-08-16: 3 triplas cruzam split, e a do
+    `Niemeijer p10 d1` está nas **três** partições.
+    """
+
+    def test_agrupa_o_mesmo_diagrama_impresso(self) -> None:
+        origens = {
+            "a.png": ("livro.pdf", "41", "1"),
+            "b.png": ("livro.pdf", "41", "1"),
+            "c.png": ("livro.pdf", "41", "2"),
+        }
+        self.assertEqual(groups_by_origin(origens), [["a.png", "b.png"]])
+
+    def test_amostra_sem_procedencia_fica_de_fora(self) -> None:
+        """84,1% do acervo não declara procedência; inventar seria pior que não agrupar."""
+        origens = {
+            "a.png": ("", "", ""),
+            "b.png": ("", "", ""),
+            "c.png": ("livro.pdf", "", "1"),
+        }
+        self.assertEqual(groups_by_origin(origens), [])
+
+    def test_o_mesmo_diagrama_impresso_cai_no_mesmo_split(self) -> None:
+        nomes = _names(600)
+        sem = compute_splits(nomes)
+        # Um par que, pelo hash do nome, cai em splits diferentes -- que é exatamente o que
+        # acontece quando a mesma página é reextraída e ganha nome novo por timestamp.
+        primeiro = nomes[0]
+        segundo = next(nome for nome in nomes if sem[nome] != sem[primeiro])
+
+        origens = dict.fromkeys(nomes, ("", "", ""))
+        origens[primeiro] = ("livro.pdf", "41", "1")
+        origens[segundo] = ("livro.pdf", "41", "1")
+
+        com = compute_splits(nomes, groups=groups_by_origin(origens))
+
+        self.assertNotEqual(sem[primeiro], sem[segundo], "sem agrupamento o par cruzava split")
+        self.assertEqual(com[primeiro], com[segundo])
+
+    def test_vazamento_e_listado_com_o_split_de_cada_membro(self) -> None:
+        origens = {
+            "a.png": ("livro.pdf", "10", "1"),
+            "b.png": ("livro.pdf", "10", "1"),
+            "c.png": ("livro.pdf", "20", "1"),
+        }
+        splits = {"a.png": "train", "b.png": "test", "c.png": "val"}
+
+        vazamentos = split_leaks(origens, splits)  # type: ignore[arg-type]
+
+        self.assertEqual(len(vazamentos), 1)
+        chave, membros = vazamentos[0]
+        self.assertEqual(chave, ("livro.pdf", "10", "1"))
+        self.assertEqual(membros, {"a.png": "train", "b.png": "test"})
+
+    def test_o_mesmo_diagrama_no_mesmo_split_nao_e_vazamento(self) -> None:
+        origens = {"a.png": ("livro.pdf", "10", "1"), "b.png": ("livro.pdf", "10", "1")}
+        splits = {"a.png": "train", "b.png": "train"}
+
+        self.assertEqual(split_leaks(origens, splits), [])  # type: ignore[arg-type]
+
+    def test_a_estabilidade_da_s07_e_preservada(self) -> None:
+        """Agrupar não pode mover o que já era `test`: é a garantia que a S-07 existe para dar."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "splits.csv"
+            ensure_splits(["a.png"], path)
+            antes = load_splits(path)["a.png"]
+
+            depois = ensure_splits(["a.png", "b.png"], path, groups=[["a.png", "b.png"]])
+
+            self.assertEqual(depois["a.png"], antes)
 
 
 class PersistenceTests(unittest.TestCase):

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 
 from ..audit import (
@@ -10,20 +12,26 @@ from ..audit import (
     apply_side_to_move_fixes,
     audit_dataset,
     backup_csv,
+    dedupe_summary,
     drop_missing_labels,
     filenames_without_split,
     orphans_dir_for,
     prune_orphan_images,
     quarantine_fatal_labels,
     remove_duplicate_labels,
+    write_dedupe_summary,
 )
-from ..config import DEFAULT_DATASET_CSV, DEFAULT_SAMPLES_DIR, PIECE_CLASSES
+from ..config import DEFAULT_DATASET_CSV, DEFAULT_SAMPLES_DIR, PIECE_CLASSES, PROJECT_ROOT
+from ..labels import label_origins
 from ..logging_setup import configure_logging, default_log_file
+from ..splits import load_splits, split_leaks
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_QUARANTINE = DEFAULT_DATASET_CSV.parent / "quarantine.csv"
 DEFAULT_SPLITS = DEFAULT_DATASET_CSV.parent / "splits.csv"
+DEFAULT_METRICS_DIR = PROJECT_ROOT / "docs" / "metrics"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -67,11 +75,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Não calcula hashes perceptuais (relatório muito mais rápido).",
     )
     parser.add_argument("--limit-examples", type=int, default=5, help="Exemplos mostrados por categoria.")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Sai com código 1 quando um limite declarado é violado (S-102). Sem ele o comando "
+            "relata e sai 0, que é o contrato de quem usa a auditoria para olhar."
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
 
 
-def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | None = None) -> None:
+def _print_report(
+    report: AuditReport,
+    limit: int,
+    *,
+    sem_split: list[str] | None = None,
+    vazamentos: Sequence[tuple[tuple[str, str, str], Mapping[str, str]]] = (),
+) -> None:
     fatal = report.of_kind("fatal")
     turn = report.of_kind("lado-a-jogar")
     syntax = report.of_kind("sintaxe")
@@ -86,6 +108,8 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
     print()
     print("  Problemas")
     print(f"    Posição ilegal (fatal) ....... {len(fatal)}")
+    if report.deliberate_illegal:
+        print(f"    Ilegais confirmadas à mão .... {len(report.deliberate_illegal)}  (não são problema)")
     print(f"    Lado a jogar invertido ....... {len(turn)}")
     print(f"    FEN não interpretável ........ {len(syntax)}")
     print(f"    Imagem ausente ............... {len(missing)}")
@@ -96,6 +120,8 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
     print(f"    Imagens órfãs ................ {len(report.orphan_images)}")
     if sem_split is not None:
         print(f"    Sem split registrado ......... {len(sem_split)}")
+    if vazamentos:
+        print(f"    Mesmo diagrama em 2+ splits .. {len(vazamentos)}  (S-98)")
 
     if report.duplicates_above_ceiling:
         # O teto da S-63 existe porque a redundancia cresceu de 234 para 248 sem nada notar.
@@ -105,8 +131,27 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
         print(
             f"  !! Redundância acima do teto: {report.duplicate_share:.1%} > {DUPLICATE_SHARE_CEILING:.0%} (S-63)."
         )
-        print("     Membros de um grupo continuam no mesmo split, então a validação segue honesta.")
+        # A frase anterior aqui era "membros de um grupo continuam no mesmo split, entao a
+        # validacao segue honesta". Ela e verdadeira pela definicao de grupo e vazia na
+        # pratica (S-98): o grupo e `placement` igual + dHash <= 3, e o mesmo diagrama
+        # reextraido com recorte deslocado nao cai nele. Quem responde de verdade por
+        # vazamento e a secao abaixo, que compara procedencia.
+        print("     Membros de um mesmo grupo caem no mesmo split; o que o grupo não vê está abaixo.")
         print("     O que isto vigia é o crescimento: confira de onde vêm os grupos novos antes de treinar.")
+
+    if vazamentos:
+        print()
+        print(f"  Mesmo diagrama impresso em splits diferentes ({len(vazamentos)}) -- vazamento de treino:")
+        print("    A tripla (livro, página, diagrama) é exata: são a mesma posição impressa,")
+        print("    salva mais de uma vez com recorte diferente. O guarda de imagem não os vê.")
+        print("    Isto **lista e não move**: mover linha de `test` é irreversível na prática,")
+        print("    e a direção que não contamina é sempre em direção ao `train`.")
+        for (pdf, pagina, diagrama), membros in vazamentos[:limit]:
+            print(f"      {pdf} p{pagina} d{diagrama}")
+            for nome, split in membros.items():
+                print(f"        {nome}  [{split}]")
+        if len(vazamentos) > limit:
+            print(f"      ... e outros {len(vazamentos) - limit}")
 
     if sem_split:
         print()
@@ -130,6 +175,16 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
         for issue in fatal[:limit]:
             print(f"      {issue.filename}  [{', '.join(issue.problems)}]")
             print(f"        {issue.fen}")
+
+    if report.deliberate_illegal:
+        print()
+        print("  Ilegais confirmadas -- o livro desenha assim (estrutura de peões, final parcial):")
+        print("    Treinam normalmente e o --fix não as toca. Para desfazer uma, esvazie a")
+        print("    coluna `illegal_ok` da linha, ou corrija a FEN pela aba Dataset.")
+        for issue in report.deliberate_illegal[:limit]:
+            print(f"      {issue.filename}  [{', '.join(issue.problems)}]")
+        if len(report.deliberate_illegal) > limit:
+            print(f"      ... e outras {len(report.deliberate_illegal) - limit}")
 
     if turn:
         print()
@@ -182,16 +237,30 @@ def _print_report(report: AuditReport, limit: int, *, sem_split: list[str] | Non
             bar = "#" * max(1, int(share / 2))
             print(f"    {cls:>5}  {count:7d}  {share:5.2f}%  {bar}")
 
+    if report.route_counts:
+        # Os 625 valores de `corrected_by` que nenhuma tela e nenhum comando liam (S-137). A
+        # pergunta que a coluna existe para responder -- "as amostras corrigidas a mao treinam
+        # melhor?" -- comeca por saber quantas sao de cada caminho.
+        print()
+        print("  Por onde o rótulo chegou (coluna `corrected_by`, S-52):")
+        total_rotas = sum(report.route_counts.values())
+        for rota, quantos in report.route_counts.most_common():
+            print(f"    {rota[:38]:40} {quantos:6d}  {quantos / total_rotas:6.1%}")
+
     print()
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
 
     report = audit_dataset(args.csv, args.samples, check_duplicates=not args.skip_duplicates)
     sem_split = filenames_without_split(args.csv, args.splits) if Path(args.splits).exists() else None
-    _print_report(report, limit=args.limit_examples, sem_split=sem_split)
+    vazamentos = (
+        split_leaks(label_origins(args.csv), load_splits(args.splits)) if Path(args.splits).exists() else []
+    )
+    _print_report(report, limit=args.limit_examples, sem_split=sem_split, vazamentos=vazamentos)
 
     mutating = args.fix_side_to_move or args.quarantine or args.dedupe or args.prune_orphans or args.drop_missing
     if not mutating:
@@ -215,9 +284,19 @@ def main(argv: list[str] | None = None) -> int:
             # comando cujo contrato e "sem flag, so relata".
             print(f"{len(sem_split)} amostra(s) sem split. O próximo `cvoff-train` as inclui.")
             print()
-        return 0
+        return _codigo_de_saida(report, strict=args.strict)
 
     backup_csv(args.csv)
+
+    if args.dedupe:
+        # **Antes** de remover, porque depois nao ha como saber de que split cada linha saiu:
+        # o resumo e o denominador de toda medicao anterior a esta limpeza (S-101).
+        caminho = write_dedupe_summary(
+            dedupe_summary(report, args.splits),
+            DEFAULT_METRICS_DIR,
+            stamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+        )
+        print(f"Resumo do dedupe em {caminho}")
 
     if args.fix_side_to_move:
         applied = apply_side_to_move_fixes(args.csv, report)
@@ -261,7 +340,35 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(f"Nada foi apagado do disco: os órfãos estão em {orphans_dir_for(args.samples)}.")
     print()
-    return 0
+    # O relatorio **depois** das correcoes: com `--strict`, o que importa e o estado em que o
+    # comando deixou o dataset, e nao aquele em que o encontrou.
+    return _codigo_de_saida(after, strict=args.strict)
+
+
+def _codigo_de_saida(report: AuditReport, *, strict: bool) -> int:
+    """`1` quando `--strict` e há violação; `0` sempre que não (S-102).
+
+    **Sem `--strict` continua saindo 0 mesmo reprovado**, e isso é decisão: o comando é usado
+    para *olhar*, e quebrar o código de saída de quem olha trocaria um problema por outro. Quem
+    quer o portão pede o portão -- é a CI e o `cvoff-train` que pedem.
+    """
+    violacoes = report.violations()
+    if not violacoes:
+        if strict:
+            print("Auditoria estrita: nenhum limite declarado violado.")
+            print()
+        return 0
+
+    print("Limites declarados violados:")
+    for violacao in violacoes:
+        print(f"  - {violacao}")
+    print()
+    if not strict:
+        print("Saindo com 0 porque `--strict` não foi pedido. Para transformar isto em portão:")
+        print("  cvoff-audit --strict")
+        print()
+        return 0
+    return 1
 
 
 if __name__ == "__main__":

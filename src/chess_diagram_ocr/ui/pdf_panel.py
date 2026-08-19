@@ -47,14 +47,19 @@ from PIL import Image, ImageTk
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 
-from .page_overlay import DiagramBox, PageBoxes
+from . import estilos, rodape, strings, theme, tipografia, tokens
+from .barra import BarraFluida
+from .page_overlay import DiagramBox, PageBoxes, traco_da_caixa
 from .tooltip import Tooltip
 from .viewport import (
     WheelAction,
     anchor_after_zoom,
     clamp_zoom,
     decide_wheel,
+    desvio_de_centralizacao,
+    fit_page_zoom,
     fit_width_zoom,
+    regiao_de_rolagem,
     wheel_direction,
     zoomed,
 )
@@ -69,6 +74,9 @@ WHEEL_SCROLL_UNITS = 3
 """Linhas de canvas por giro da roda. Três é o padrão do Windows, e o canvas mede "unidade"
 em pixels -- então o passo real é o `yscrollincrement`, que aqui fica no padrão do Tk."""
 
+TAG_CONTORNO = "diagram-box-outline"
+"""O contorno de estado de uma caixa, separado do halo e do fundo do número (S-159)."""
+
 CLICK_SLOP_PX = 4
 """Quanto o ponteiro pode andar entre apertar e soltar e ainda ser um clique.
 
@@ -77,10 +85,10 @@ com folga demais, arrastar a barra de rolagem abriria um diagrama por acidente."
 
 # --- as três cores são **um** eixo: em que ponto do trabalho aquele diagrama está. A seleção
 # --- deixou de ser cor na S-71 justamente para não disputar este eixo -- ver `_draw_boxes`.
-BOX_OUTLINE = "#4da3ff"
+BOX_OUTLINE = tokens.RESERVA[tokens.A_FAZER]
 """Localizado pelo detector, ainda não lido."""
 
-BOX_OUTLINE_RECOGNIZED = "#ffb02e"
+BOX_OUTLINE_RECOGNIZED = tokens.RESERVA[tokens.LIDO]
 """Lido pelo OCR e **ainda não salvo**: o que falta fazer nesta página."""
 
 SELECTION_HALO_PX = 4
@@ -89,23 +97,33 @@ SELECTION_HALO_PX = 4
 Para **fora** porque a caixa encosta no diagrama: uma borda por dentro cairia sobre as casas
 da primeira fila, e a caixa existe justamente para conferir a posição."""
 
-BOX_OUTLINE_SAVED = "#00c07a"
+BOX_OUTLINE_SAVED = tokens.RESERVA[tokens.PRONTO]
 """Já tem amostra no `labels.csv`. Verde é a cor de "pronto", e é para isso que ela serve.
 
 Vale mesmo antes de a página ser lida: quem responde é a procedência gravada no CSV, não o
 que está em memória. Abrir um livro pela quinta vez e ver de verde o que já foi feito é a
 única forma barata de responder "onde eu parei?"."""
 
+BOX_OUTLINE_CONFIRMED = tokens.RESERVA[tokens.DISPENSADO]
+"""A base de partidas reconheceu a posição (S-75). Violeta porque não é nem "feito" nem "a
+fazer": é **"não precisa"**, que é um estado que a tela não tinha.
+
+Vem do arquivo de anotações e, como o verde, aparece antes de qualquer OCR."""
+
 
 def box_color(box: DiagramBox) -> str:
     """A cor do retângulo, pelo ponto em que aquele diagrama está.
 
-    Salvo ganha de lido, e lido ganha de localizado: a informação mais adiantada é a que
-    interessa. Salvo vem primeiro inclusive quando a página ainda não foi lida -- é o caso que
-    faz a marcação valer para um livro que já foi trabalhado antes.
+    A precedência é: salvo > confirmado > lido > localizado -- da informação mais adiantada
+    para a menos. Salvo vem antes de confirmado porque ele é trabalho **seu** já feito: um
+    diagrama salvo e confirmado não precisa de nada, e o que interessa saber ao olhar a página
+    é que aquele já rendeu amostra. Salvo e confirmado valem inclusive antes de a página ser
+    lida, e é isso que faz a marcação servir a um livro trabalhado ontem.
     """
     if box.saved:
         return BOX_OUTLINE_SAVED
+    if box.confirmed:
+        return BOX_OUTLINE_CONFIRMED
     return BOX_OUTLINE_RECOGNIZED if box.recognized else BOX_OUTLINE
 
 
@@ -154,11 +172,19 @@ class PdfPanel(ttk.Frame):
         initial_dir: Path,
         on_box_click: Callable[[int], None] = lambda _indice: None,
         on_prefs_changed: Callable[[], None] = lambda: None,
+        on_document_state: Callable[[str, bool], None] = lambda _texto, _concluida: None,
     ) -> None:
         super().__init__(parent, padding=10)
         self._dpi = dpi
         self._initial_page_for = initial_page_for
         self._on_status = on_status
+        self._on_document_state = on_document_state
+        """Onde o estado do documento é publicado: o rodapé da janela (S-163).
+
+        Era um `ttk.Label` no fim da barra de zoom, e a barra reflui (S-151) -- então "3 de 5
+        salvo(s)" ia para a segunda linha junto com o botão de zoom, ou saía da tela. Estado do
+        documento não é controle de visualização, e o rodapé é onde ele para de disputar largura
+        com botão. Padrão inerte para o painel montado sem janela, como o `on_box_click`."""
         self._on_region = on_region
         self._on_pdf_opened = on_pdf_opened
         self._on_box_click = on_box_click
@@ -182,6 +208,15 @@ class PdfPanel(ttk.Frame):
         self._on_zoom_changed = on_zoom_changed
         self._initial_dir = initial_dir
 
+        self.estado_do_documento = ""
+        """A última frase publicada no rodapé sobre a página exibida (S-163).
+
+        Guardada aqui, e não só enviada, porque ela é o que o teste afirma: o painel decide o
+        texto, o rodapé o desenha, e as duas coisas se verificam separadamente."""
+
+        self.pagina_concluida = False
+        """Se todos os diagramas da página exibida já têm amostra. Decide a cor no rodapé."""
+
         self.source: Path | None = None
         self.name: str = ""
         self.page_count = 0
@@ -196,6 +231,20 @@ class PdfPanel(ttk.Frame):
         self._select_start: tuple[float, float] | None = None
         self._select_rect_id: int | None = None
         self._canvas_image_id: int | None = None
+
+        self._desvio: tuple[int, int] = (0, 0)
+        """Quanto a página está deslocada dentro do canvas para ficar centralizada (S-157).
+
+        Começa em `(0, 0)` e é isso que faz o painel montado e nunca desenhado se comportar como
+        antes: sem página, não há o que centralizar. Ver `_para_pagina`, que é a única fronteira
+        entre esta coordenada e todo o resto do painel."""
+
+        self._enquadramento_pendente = True
+        """Este livro ainda não recebeu um enquadramento inicial (S-157).
+
+        Existe porque o primeiro `refresh_view` acontece com o canvas ainda por medir --
+        `winfo_width()` devolve 1 antes de a janela ser mapeada --, e ajustar à página ali daria
+        o zoom mínimo. O ajuste espera o primeiro `<Configure>` de verdade."""
 
         self.boxes: PageBoxes | None = None
         """Os diagramas marcados na página exibida (S-68). `None` enquanto não se sabe.
@@ -226,90 +275,109 @@ class PdfPanel(ttk.Frame):
         on_export: Callable[[], None],
         on_cancel_export: Callable[[], None],
     ) -> None:
-        box = ttk.LabelFrame(self, text="PDF (direita)")
+        box = ttk.LabelFrame(self, text=strings.LIVRO_EM_PDF)
         box.pack(fill=tk.BOTH, expand=True)
 
-        row = ttk.Frame(box)
-        row.pack(fill=tk.X, padx=8, pady=6)
-        ttk.Button(row, text="Abrir PDF", command=self.open_pdf).pack(side=tk.LEFT)
-        self.btn_system_reader = ttk.Button(
-            row, text="Abrir no leitor do sistema", command=self.open_in_system_reader, state=tk.DISABLED
+        # **Duas barras, e não cinco** (S-151). O agrupamento é por pergunta, e não por ordem
+        # histórica de quem escreveu cada linha: a primeira é *o que fazer com este livro*, a
+        # segunda é *onde estou e quão perto*. Navegação de página e zoom eram duas barras e são
+        # um eixo só -- as duas respondem à mesma pergunta com unidades diferentes.
+        self.barra_livro = BarraFluida(box)
+        self.barra_livro.pack(fill=tk.X, padx=8, pady=6)
+        self.barra_vista = BarraFluida(box)
+        self.barra_vista.pack(fill=tk.X, padx=8, pady=(0, 4))
+
+        livro, vista = self.barra_livro, self.barra_vista
+        livro.adicionar(ttk.Button(livro, text="Abrir PDF", command=self.open_pdf))
+        self.btn_system_reader = livro.adicionar(
+            ttk.Button(livro, text="Abrir no leitor do sistema", command=self.open_in_system_reader, state=tk.DISABLED)
         )
-        self.btn_system_reader.pack(side=tk.LEFT, padx=6)
         Tooltip(
             self.btn_system_reader,
             "Abre este PDF no leitor padrão do sistema, numa janela própria.\n"
             "Para ler o livro: rolagem contínua e busca de texto, que esta tela não tem.",
         )
-        self.lbl_pdf = ttk.Label(row, text="Nenhum PDF")
-        self.lbl_pdf.pack(side=tk.LEFT, padx=8)
-
-        nav = ttk.Frame(box)
-        nav.pack(fill=tk.X, padx=8, pady=(0, 6))
-        ttk.Button(nav, text="Página anterior", command=self.prev_page).pack(side=tk.LEFT)
-        ttk.Button(nav, text="Próxima página", command=self.next_page).pack(side=tk.LEFT, padx=6)
-        ttk.Label(nav, text="Página").pack(side=tk.LEFT, padx=(12, 4))
-        self.spin_page = ttk.Spinbox(
-            nav, from_=0, to=0, textvariable=self.page_index_var, width=8, command=self.on_page_spin
+        self.lbl_pdf = livro.adicionar(ttk.Label(livro, text="Nenhum PDF"))
+        self.btn_ocr_best = livro.adicionar(
+            ttk.Button(livro, text="OCR melhor diagrama", style=estilos.estilo_de_botao(estilos.PRIMARIO), command=on_ocr_best)
         )
-        self.spin_page.pack(side=tk.LEFT)
-
-        acoes = ttk.Frame(box)
-        acoes.pack(fill=tk.X, padx=8, pady=(0, 8))
-        self.btn_ocr_best = ttk.Button(acoes, text="OCR melhor diagrama", command=on_ocr_best)
-        self.btn_ocr_best.pack(side=tk.LEFT)
-        self.btn_ocr_all = ttk.Button(acoes, text="OCR todos diagramas", command=on_ocr_all)
-        self.btn_ocr_all.pack(side=tk.LEFT, padx=6)
-        self.btn_select = ttk.Button(acoes, text="Selecionar área (OCR)", command=self.toggle_area_selection)
-        self.btn_select.pack(side=tk.LEFT, padx=6)
-        self.btn_export = ttk.Button(acoes, text="Exportar PDF -> PGN", command=on_export)
-        self.btn_export.pack(side=tk.LEFT, padx=6)
-        self.btn_cancel_export = ttk.Button(
-            acoes, text="Cancelar exportação", command=on_cancel_export, state=tk.DISABLED
+        self.btn_ocr_all = livro.adicionar(ttk.Button(livro, text="OCR todos diagramas", command=on_ocr_all))
+        self.btn_select = livro.adicionar(
+            ttk.Button(livro, text="Selecionar área (OCR)", command=self.toggle_area_selection)
         )
-        self.btn_cancel_export.pack(side=tk.LEFT)
+        self.btn_export = livro.adicionar(ttk.Button(livro, text=f"Exportar PDF {strings.SETA} PGN", command=on_export))
+        self.btn_cancel_export = livro.adicionar(
+            ttk.Button(livro, text="Cancelar exportação", command=on_cancel_export, state=tk.DISABLED)
+        )
+        Tooltip(
+            self.btn_export,
+            "Fica cinza durante a exportação, que roda uma por vez. Precisa de um PDF aberto.\n"
+            "A exportação grava um parcial a cada 5 páginas e retoma de onde parou.",
+        )
+        Tooltip(
+            self.btn_cancel_export,
+            "Só fica ativo durante a exportação. O que já foi gravado no parcial continua valendo;\n"
+            "a exportação seguinte retoma dali.",
+        )
 
-        zoom_row = ttk.Frame(box)
-        zoom_row.pack(fill=tk.X, padx=8, pady=(0, 4))
-        ttk.Label(zoom_row, text="Zoom PDF").pack(side=tk.LEFT)
-        ttk.Button(zoom_row, text="-", width=3, command=lambda: self.zoom(-0.1)).pack(side=tk.LEFT, padx=(6, 2))
-        ttk.Button(zoom_row, text="+", width=3, command=lambda: self.zoom(0.1)).pack(side=tk.LEFT, padx=(2, 6))
-        self.lbl_zoom = ttk.Label(zoom_row, text="70%")
-        self.lbl_zoom.pack(side=tk.LEFT)
-        self.btn_fit_width = ttk.Button(zoom_row, text="Ajustar à largura", command=self.fit_width)
-        self.btn_fit_width.pack(side=tk.LEFT, padx=(8, 0))
+        vista.adicionar(ttk.Button(vista, text="Página anterior", command=self.prev_page))
+        vista.adicionar(ttk.Button(vista, text="Próxima página", command=self.next_page))
+        vista.adicionar(ttk.Label(vista, text="Página"))
+        self.spin_page = vista.adicionar(
+            ttk.Spinbox(vista, from_=0, to=0, textvariable=self.page_index_var, width=8, command=self.on_page_spin)
+        )
+        vista.adicionar(ttk.Label(vista, text="Zoom PDF"))
+        vista.adicionar(ttk.Button(vista, text="-", width=3, command=lambda: self.zoom(-0.1)))
+        vista.adicionar(ttk.Button(vista, text="+", width=3, command=lambda: self.zoom(0.1)))
+        self.lbl_zoom = vista.adicionar(ttk.Label(vista, text="70%"))
+        self.btn_fit_width = vista.adicionar(ttk.Button(vista, text="Ajustar à largura", command=self.fit_width))
         Tooltip(
             self.btn_fit_width,
             "Ctrl + roda do mouse faz o mesmo, com o ponteiro como âncora.\n"
             "A roda rola a página; na borda, ela vira para a página seguinte.",
         )
-        self.chk_flip = ttk.Checkbutton(
-            zoom_row,
-            text="Roda vira a página",
-            variable=self.flip_pages_var,
-            command=self._on_prefs_changed,
+        self.btn_fit_page = vista.adicionar(ttk.Button(vista, text="Ajustar à página", command=self.fit_page))
+        Tooltip(
+            self.btn_fit_page,
+            "A folha inteira na tela. É o enquadramento de escolher qual diagrama abrir;\n"
+            "'Ajustar à largura' é o de ler o enunciado de um.",
         )
-        self.chk_flip.pack(side=tk.LEFT, padx=(12, 0))
+        self.chk_flip = vista.adicionar(
+            ttk.Checkbutton(
+                vista, text="Roda vira a página", variable=self.flip_pages_var, command=self._on_prefs_changed
+            )
+        )
         Tooltip(
             self.chk_flip,
             "Ligado: rolar além do fim da página vai para a próxima, no topo.\n"
             "Desligado: a roda só rola dentro da página exibida.",
         )
-
-        self.chk_boxes = ttk.Checkbutton(
-            zoom_row,
-            text="Marcar diagramas",
-            variable=self.show_boxes_var,
-            command=self.on_boxes_toggle,
+        self.chk_boxes = vista.adicionar(
+            ttk.Checkbutton(
+                vista, text="Marcar diagramas", variable=self.show_boxes_var, command=self.on_boxes_toggle
+            )
         )
-        self.chk_boxes.pack(side=tk.LEFT, padx=(16, 0))
         Tooltip(
             self.chk_boxes,
             "Desenha um retângulo sobre cada diagrama que o detector achou na página.\n"
             "Clique num deles para abri-lo na aba Resultado.",
         )
-        self.lbl_boxes = ttk.Label(zoom_row, text="")
-        self.lbl_boxes.pack(side=tk.LEFT, padx=(8, 0))
+        # O que se sabe dos diagramas da página **não** entra nesta barra (S-163): ele é estado
+        # do documento e vai para o rodapé da janela, via `_on_document_state`. Era o último item
+        # da barra de zoom -- o lugar de onde ele saía da tela primeiro.
+
+        self.field_row = ttk.Frame(box)
+        """Onde a janela pendura os controles do conjunto de campo (S-77).
+
+        Junto da página, e não numa aba de configuração: anota-se o que se está vendo, e uma
+        anotação feita longe da imagem é uma anotação feita de memória.
+
+        **Continua sendo uma terceira faixa, e isso está registrado** (S-151). A spec manda esta
+        tarefa para o rodapé da S-163 ou para o menu da S-161, e nenhum dos dois existe ainda;
+        movê-la para uma das duas barras a misturaria com controle de visualização, que é
+        exatamente o agrupamento por acaso de que este item veio tirar o painel. Ela nasce
+        vazia: sem os controles de campo montados pela janela, não ocupa altura nenhuma."""
+        self.field_row.pack(fill=tk.X, padx=8, pady=(0, 6))
 
         # Sem `Notebook`: a página ocupa o painel inteiro desde a S-69. Enquanto havia duas
         # abas, esta metade da janela custava uma linha de abas para oferecer uma escolha que
@@ -318,13 +386,14 @@ class PdfPanel(ttk.Frame):
         view.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         wrap = ttk.Frame(view)
         wrap.pack(fill=tk.BOTH, expand=True)
-        self.canvas = tk.Canvas(wrap, bg="#1c1c1c", highlightthickness=0)
+        self.canvas = tk.Canvas(wrap, bg=theme.cor_atual(tokens.SUPERFICIE_PAGINA), highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vscroll = ttk.Scrollbar(wrap, orient=tk.VERTICAL, command=self.canvas.yview)
         vscroll.pack(side=tk.RIGHT, fill=tk.Y)
         hscroll = ttk.Scrollbar(view, orient=tk.HORIZONTAL, command=self.canvas.xview)
         hscroll.pack(fill=tk.X, pady=(0, 8))
         self.canvas.configure(yscrollcommand=vscroll.set, xscrollcommand=hscroll.set)
+        self.canvas.bind("<Configure>", self._ao_redimensionar)
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
@@ -339,12 +408,16 @@ class PdfPanel(ttk.Frame):
     def _bind_wheel(self) -> None:
         """Liga a roda na janela inteira, e não no canvas -- ver `_pointer_over_canvas`."""
         raiz = self.winfo_toplevel()
-        raiz.bind_all("<MouseWheel>", self._on_wheel)
-        raiz.bind_all("<Shift-MouseWheel>", self._on_wheel_horizontal)
-        raiz.bind_all("<Control-MouseWheel>", self._on_wheel_zoom)
+        # `add="+"` em todas: `bind_all` sem ele **substitui** a ligação anterior da mesma
+        # sequência, e este painel é construído depois das abas roláveis da S-150 -- sem o `+`
+        # ele apagaria a roda delas em silêncio. Cada uma checa se o ponteiro está sobre si e
+        # só então devolve `"break"`, então conviver é a única coisa que elas precisam fazer.
+        raiz.bind_all("<MouseWheel>", self._on_wheel, add="+")
+        raiz.bind_all("<Shift-MouseWheel>", self._on_wheel_horizontal, add="+")
+        raiz.bind_all("<Control-MouseWheel>", self._on_wheel_zoom, add="+")
         # X11 não tem `MouseWheel`: a roda são os botões 4 e 5, sem delta.
-        raiz.bind_all("<Button-4>", partial(self._on_wheel_x11, delta=120))
-        raiz.bind_all("<Button-5>", partial(self._on_wheel_x11, delta=-120))
+        raiz.bind_all("<Button-4>", partial(self._on_wheel_x11, delta=120), add="+")
+        raiz.bind_all("<Button-5>", partial(self._on_wheel_x11, delta=-120), add="+")
 
     # ------------------------------------------------------------------------------- zoom
 
@@ -372,14 +445,16 @@ class PdfPanel(ttk.Frame):
         largura = float(self.page_rgb.shape[1])
         altura = float(self.page_rgb.shape[0])
         ax, ay = anchor if anchor is not None else (self.canvas.winfo_width() // 2, self.canvas.winfo_height() // 2)
+        # Em coordenada de **página**: a âncora é um ponto da folha, e o desvio da S-157 não é.
+        px, py = self._para_pagina(self.canvas.canvasx(ax), self.canvas.canvasy(ay))
         fx = anchor_after_zoom(
-            pointer_canvas=self.canvas.canvasx(ax),
+            pointer_canvas=px,
             pointer_widget=float(ax),
             old_span=largura * antigo,
             new_span=largura * novo,
         )
         fy = anchor_after_zoom(
-            pointer_canvas=self.canvas.canvasy(ay),
+            pointer_canvas=py,
             pointer_widget=float(ay),
             old_span=altura * antigo,
             new_span=altura * novo,
@@ -402,6 +477,52 @@ class PdfPanel(ttk.Frame):
             return
         self.apply_zoom(alvo, anchor=(0, 0))
         self._on_status(f"Zoom ajustado à largura: {int(alvo * 100)}%.")
+
+    def fit_page(self) -> None:
+        """Ajusta o zoom para a **página inteira** caber na área visível (S-157).
+
+        É o enquadramento de escolher entre os nove diagramas de uma página de exercícios;
+        "ajustar à largura" é o de ler o enunciado de um deles.
+        """
+        alvo = self._zoom_de_pagina_inteira()
+        if alvo is None:
+            if self.page_rgb is None:
+                self._on_status("Abra um PDF antes de ajustar o zoom.")
+            return
+        self.apply_zoom(alvo, anchor=(0, 0))
+        self._on_status(f"Zoom ajustado à página: {int(alvo * 100)}%.")
+
+    def _zoom_de_pagina_inteira(self) -> float | None:
+        if self.page_rgb is None:
+            return None
+        return fit_page_zoom(
+            viewport_w=self.canvas.winfo_width(),
+            viewport_h=self.canvas.winfo_height(),
+            page_w=int(self.page_rgb.shape[1]),
+            page_h=int(self.page_rgb.shape[0]),
+        )
+
+    def _ao_redimensionar(self, _event: tk.Event) -> None:
+        """A janela mudou de tamanho: recentraliza, e enquadra o livro novo (S-157).
+
+        Duas coisas acontecem aqui, e a segunda só uma vez por livro. **Recentralizar** é o
+        trabalho de sempre: a folga entre a página e o canvas mudou, então o desvio mudou.
+        **Enquadrar** é o primeiro `<Configure>` de um livro que ainda não tem zoom escolhido --
+        e ele espera este momento porque antes de a janela ser mapeada `winfo_width()` devolve
+        **1**, e ajustar à página ali daria o zoom mínimo em toda abertura.
+        """
+        if self.page_rgb is None:
+            return
+        if self._enquadramento_pendente:
+            alvo = self._zoom_de_pagina_inteira()
+            # A bandeira só cai quando o enquadramento de fato **aconteceu**. Baixá-la antes do
+            # `if` deixava o item à mercê da ordem dos eventos: o primeiro `<Configure>` de uma
+            # janela ainda por medir devolve `None`, e o livro abria no zoom padrão para sempre.
+            if alvo is not None:
+                self._enquadramento_pendente = False
+                self.apply_zoom(alvo, anchor=(0, 0))
+                return
+        self.refresh_view(reset_scroll=False)
 
     # --------------------------------------------------------------------- roda e arrasto
 
@@ -512,6 +633,14 @@ class PdfPanel(ttk.Frame):
         self.canvas.configure(cursor="")
 
     def set_zoom(self, value: float) -> None:
+        """Aplica um zoom vindo de fora -- hoje, o que estava gravado no estado.
+
+        E com isso **cancela o enquadramento inicial da S-157**: um zoom guardado é uma escolha
+        do usuário, e ajustar à página por cima dela seria a interface desfazendo o que ele fez.
+        A regra inteira do item cabe aqui: sem escolha guardada, a primeira página aparece
+        inteira; com escolha, ela vale.
+        """
+        self._enquadramento_pendente = False
         self.zoom_var.set(value)
         self.update_zoom_label()
 
@@ -542,6 +671,16 @@ class PdfPanel(ttk.Frame):
         if filename:
             self.load_pdf(Path(filename))
 
+    @property
+    def interruptores_de_vista(self) -> dict[str, tk.BooleanVar]:
+        """Os dois interruptores de visualização, por nome de comando do menu (S-161).
+
+        Mora aqui e não na janela porque as duas `BooleanVar` são deste painel: quem acrescentar
+        uma terceira preferência de visualização a declara ao lado das outras duas, e ela aparece
+        no menu sem ninguém lembrar de ir mexer no `app_tkinter.py`.
+        """
+        return {"marcar_diagramas": self.show_boxes_var, "roda_vira_pagina": self.flip_pages_var}
+
     def open_in_system_reader(self) -> None:
         """Manda o PDF para o leitor do sistema. Falhar aqui é aviso, e não erro do app."""
         if self.source is None:
@@ -557,11 +696,30 @@ class PdfPanel(ttk.Frame):
             )
 
     def load_pdf(self, pdf_path: Path) -> None:
+        """Troca o livro aberto. **Abre antes de trocar** (S-123).
+
+        A ordem é a correção. Antes, `_on_pdf_opened` era a primeira linha e
+        `get_pdf_page_count` -- a única que levanta com arquivo corrompido -- a quarta. Um PDF
+        que não abria já tinha limpado as caixas da página, descartado os resultados do livro
+        anterior e apontado a Galeria para o arquivo quebrado: **a tela continuava mostrando o
+        livro anterior e o programa, por dentro, estava no que não abriu.** O `Ctrl+S`
+        seguinte gravava a amostra sob o nome errado.
+
+        Contar as páginas é abrir o documento de verdade, então serve de validação sem custo
+        próprio: o `page_count` que ela devolve é o mesmo que seria usado adiante.
+
+        O `except` continua largo de propósito -- no bundle da S-55 (`console=False`) uma
+        exceção solta nesta chamada não deixa rastro nenhum -- mas a frase sobre o livro
+        anterior é condicionada ao estado real, e não à suposição de que a falha foi na
+        abertura: se algo quebrar depois da troca, ela não é dita.
+        """
         try:
+            page_count = get_pdf_page_count(pdf_path)
+
             self._on_pdf_opened(pdf_path)
             self.source = pdf_path
             self.name = pdf_path.name
-            self.page_count = get_pdf_page_count(pdf_path)
+            self.page_count = page_count
             self.lbl_pdf.config(text=f"{self.name} ({self.page_count} págs)")
             self.btn_system_reader.configure(state=tk.NORMAL)
 
@@ -571,7 +729,10 @@ class PdfPanel(ttk.Frame):
             self.page_loaded_for_index = None
             self.render_current_page()
         except Exception as exc:
-            messagebox.showerror("Erro", f"Falha ao abrir PDF:\n{exc}")
+            logger.exception("Falha ao abrir %s.", pdf_path)
+            preservado = self.source is not None and self.source != pdf_path
+            resto = f"\n\n{self.name} continua aberto." if preservado else ""
+            messagebox.showerror("Erro", f"Falha ao abrir {pdf_path.name}:\n{exc}{resto}")
 
     def on_page_spin(self) -> None:
         self.page_loaded_for_index = None
@@ -660,9 +821,22 @@ class PdfPanel(ttk.Frame):
 
         self._page_photo = ImageTk.PhotoImage(pil)
         self.canvas.delete("all")
-        self._canvas_image_id = self.canvas.create_image(0, 0, anchor="nw", image=self._page_photo)
+        # A página no meio da área visível, e não encostada no canto (S-157). O desvio é zero
+        # quando ela é maior que o canvas -- aí não há folga a repartir --, e a região de
+        # rolagem cresce junto, senão a página deslocada cairia fora do que o Tk sabe rolar.
+        self._desvio = (
+            desvio_de_centralizacao(pil.width, self.canvas.winfo_width()),
+            desvio_de_centralizacao(pil.height, self.canvas.winfo_height()),
+        )
+        self._canvas_image_id = self.canvas.create_image(
+            self._desvio[0], self._desvio[1], anchor="nw", image=self._page_photo
+        )
         self._select_rect_id = None
-        self.canvas.configure(scrollregion=(0, 0, pil.width, pil.height))
+        self.canvas.configure(
+            scrollregion=regiao_de_rolagem(
+                (pil.width, pil.height), (self.canvas.winfo_width(), self.canvas.winfo_height())
+            )
+        )
         if reset_scroll:
             self.canvas.xview_moveto(0)
             self.canvas.yview_moveto(0)
@@ -714,15 +888,31 @@ class PdfPanel(ttk.Frame):
 
         zoom = float(self.zoom_var.get())
         for box in self.boxes.boxes:
-            x0, y0, x1, y1 = self.boxes.rect_of(box, zoom)
+            pagina = self.boxes.rect_of(box, zoom)
+            x0, y0 = self._para_canvas(pagina[0], pagina[1])
+            x1, y1 = self._para_canvas(pagina[2], pagina[3])
             selecionado = box.index == self._selected_box
             cor = box_color(box)
+            traco = traco_da_caixa(box)
             # Uma propriedade visual, uma informação: a **cor** diz em que ponto do trabalho o
             # diagrama está e a **borda** diz qual está aberto no editor. Enquanto a seleção
             # era uma quarta cor, ela apagava o estado do diagrama selecionado -- justamente o
             # que se quer ver ao chegar nele.
+            #
+            # O traço é o segundo canal do mesmo estado (S-159): azul contra violeta dava
+            # 1,20:1, e para ~8% dos homens "a fazer" e "não precisa" eram o mesmo retângulo.
             self.canvas.create_rectangle(
-                x0, y0, x1, y1, outline=cor, width=4 if selecionado else 2, tags="diagram-box"
+                x0,
+                y0,
+                x1,
+                y1,
+                outline=cor,
+                width=traco.espessura,
+                dash=traco.tracejado or "",
+                # Etiqueta própria: o contorno de estado é o único item cuja espessura e cujo
+                # tracejado significam alguma coisa, e o teste precisa achá-lo entre o halo da
+                # seleção e o fundo do número.
+                tags=("diagram-box", TAG_CONTORNO),
             )
             if selecionado:
                 # **Nada por cima do tabuleiro.** A primeira versão preenchia a caixa
@@ -739,34 +929,47 @@ class PdfPanel(ttk.Frame):
                     tags="diagram-box",
                 )
             # O número vai num retângulo cheio: por cima do diagrama, texto solto some no
-            # xadrez do tabuleiro justamente onde ele mais precisa ser lido.
+            # xadrez do tabuleiro justamente onde ele mais precisa ser lido. O glifo de estado
+            # entra junto (S-159) -- a etiqueta já é preenchida, então ele não custa pixel.
+            etiqueta = f"{box.label}{traco.glifo}"
+            largura = 22 + (10 if traco.glifo else 0)
             self.canvas.create_rectangle(
-                x0, y0 - 18, x0 + 22, y0, outline=cor, fill=cor, tags="diagram-box"
+                x0, y0 - 18, x0 + largura, y0, outline=cor, fill=cor, tags="diagram-box"
             )
+            # Corpo em negrito, e não um degrau acima: o número é rótulo da interface sobre a
+            # página, e quem aumenta a fonte do Windows aumenta este junto (S-149).
             self.canvas.create_text(
-                x0 + 11, y0 - 9, text=box.label, fill="#101010", font=("Segoe UI", 9, "bold"),
-                tags="diagram-box",
+                x0 + largura // 2, y0 - 9, text=etiqueta, fill=tokens.RESERVA[tokens.TEXTO_SOBRE_MARCACAO],
+                font=theme.fonte_atual(tipografia.CORPO, negrito=True), tags="diagram-box",
             )
 
     def _update_boxes_label(self) -> None:
+        """Publica no rodapé o que se sabe dos diagramas da página exibida (S-163).
+
+        A frase é de `ui/rodape.py` e a decisão de quando falar continua aqui: `None` é "ainda
+        não se sabe" -- a página recém-rasterizada, com a detecção rodando -- e só "não há"
+        autoriza dizer que ali não tem diagrama.
+        """
         if self.boxes is None:
-            self.lbl_boxes.config(text="")
-        elif not len(self.boxes):
-            self.lbl_boxes.config(text="nenhum diagrama nesta página")
+            self.estado_do_documento, self.pagina_concluida = "", False
         else:
-            lidos = sum(1 for box in self.boxes.boxes if box.recognized and not box.saved)
-            salvos = sum(1 for box in self.boxes.boxes if box.saved)
-            partes = [f"{len(self.boxes)} diagrama(s)"]
-            if lidos:
-                partes.append(f"{lidos} lido(s)")
-            if salvos:
-                partes.append(f"{salvos} salvo(s)")
-            self.lbl_boxes.config(text=" · ".join(partes))
+            self.pagina_concluida = bool(len(self.boxes)) and self.boxes.all_saved
+            self.estado_do_documento = rodape.descricao_dos_diagramas(
+                len(self.boxes),
+                lidos=sum(1 for box in self.boxes.boxes if box.recognized and not box.saved),
+                salvos=sum(1 for box in self.boxes.boxes if box.saved),
+                confirmados=sum(1 for box in self.boxes.boxes if box.confirmed and not box.saved),
+                todos_salvos=self.pagina_concluida,
+            )
+        self._on_document_state(
+            rodape.descricao_do_documento(self.name, self.page_index, self.page_count, self.estado_do_documento),
+            self.pagina_concluida,
+        )
 
     def _box_at_event(self, event: tk.Event) -> int | None:
         if self.boxes is None or not self.show_boxes_var.get() or self.page_rgb is None:
             return None
-        x, y = self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)
+        x, y = self._para_pagina(self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
         return self.boxes.index_at(x, y, float(self.zoom_var.get()))
 
     def _on_hover(self, event: tk.Event) -> None:
@@ -786,7 +989,8 @@ class PdfPanel(ttk.Frame):
             self.disable_area_selection("Seleção de área cancelada.")
             return
         if self.source is None or self.page_rgb is None:
-            messagebox.showwarning("Aviso", "Abra um PDF antes de selecionar uma área.")
+            # Pré-condição no rodapé (S-164).
+            self._on_status("Abra um PDF antes de selecionar uma área.")
             return
 
         self._select_mode = True
@@ -824,8 +1028,23 @@ class PdfPanel(ttk.Frame):
             max(0.0, min(y, float(self.page_rgb.shape[0]) * zoom)),
         )
 
+    def _para_pagina(self, x: float, y: float) -> tuple[float, float]:
+        """Do canvas para a página, descontando a centralização da S-157.
+
+        **A fronteira que a centralização criou, e a única que ela criou.** Tudo que este painel
+        calcula -- a caixa clicada, o retângulo da seleção, a âncora do zoom -- vive em
+        coordenada de **página**, com a origem no canto da folha. O desvio existe só no desenho,
+        e é aqui que ele entra e sai. Espalhá-lo pelos oito pontos de conversão seria a forma de
+        um deles ficar para trás e a caixa clicada passar a ser a do vizinho.
+        """
+        return x - self._desvio[0], y - self._desvio[1]
+
+    def _para_canvas(self, x: float, y: float) -> tuple[float, float]:
+        """Da página para o canvas. O par de `_para_pagina`."""
+        return x + self._desvio[0], y + self._desvio[1]
+
     def _point(self, event: tk.Event) -> tuple[float, float]:
-        return self._clamp(self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
+        return self._clamp(*self._para_pagina(self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)))
 
     def _on_press(self, event: tk.Event) -> None:
         self._press_at = (self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
@@ -840,7 +1059,8 @@ class PdfPanel(ttk.Frame):
         x, y = self._point(event)
         self._select_start = (x, y)
         self._clear_overlay()
-        self._select_rect_id = self.canvas.create_rectangle(x, y, x, y, outline="#00ff88", width=2, dash=(6, 4))
+        cx, cy = self._para_canvas(x, y)
+        self._select_rect_id = self.canvas.create_rectangle(cx, cy, cx, cy, outline=tokens.RESERVA[tokens.TRACEJADO], width=2, dash=(6, 4))
 
     def _on_drag(self, event: tk.Event) -> None:
         if not self._select_mode:
@@ -848,14 +1068,14 @@ class PdfPanel(ttk.Frame):
             return
         if self.page_rgb is None or self._select_start is None:
             return
-        x, y = self._point(event)
-        x0, y0 = self._select_start
+        cx, cy = self._para_canvas(*self._point(event))
+        cx0, cy0 = self._para_canvas(*self._select_start)
         if self._select_rect_id is None:
             self._select_rect_id = self.canvas.create_rectangle(
-                x0, y0, x, y, outline="#00ff88", width=2, dash=(6, 4)
+                cx0, cy0, cx, cy, outline=tokens.RESERVA[tokens.TRACEJADO], width=2, dash=(6, 4)
             )
         else:
-            self.canvas.coords(self._select_rect_id, x0, y0, x, y)
+            self.canvas.coords(self._select_rect_id, cx0, cy0, cx, cy)
 
     def _drag_page(self, event: tk.Event) -> None:
         """A mão do leitor: arrastar com o botão esquerdo desloca a página.

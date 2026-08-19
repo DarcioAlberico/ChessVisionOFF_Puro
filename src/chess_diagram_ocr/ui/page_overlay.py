@@ -37,18 +37,24 @@ if TYPE_CHECKING:  # pragma: no cover - só para os tipos
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "ESTADOS",
+    "TRACO_POR_ESTADO",
     "BoxClick",
     "DiagramBox",
     "OverlayParams",
     "PageBoxes",
     "PageBoxesCache",
+    "Traco",
     "boxes_from_candidates",
     "boxes_from_diagrams",
     "canvas_rect",
     "choose_boxes",
     "decide_box_click",
+    "estado_da_caixa",
     "hit_test",
+    "mark_confirmed",
     "mark_saved",
+    "traco_da_caixa",
 ]
 
 POINTS_PER_INCH = 72.0
@@ -98,6 +104,15 @@ class DiagramBox:
     que já se sabe* -- e prometer leitura onde só houve detecção seria o pior dos dois.
     """
 
+    confirmed: bool = False
+    """A base de partidas reconheceu esta posição (S-74/S-75).
+
+    Vem do arquivo de anotações, como o `saved` vem do CSV -- então aparece **antes de qualquer
+    OCR**, ao abrir um livro já casado. É a informação de maior valor por pixel do visualizador:
+    diz que aquele diagrama não precisa de olho humano, o que nenhuma outra marca da tela sabe
+    afirmar. Confiança alta é estimativa; isto é uma partida registrada.
+    """
+
     saved: bool = False
     """Se este diagrama já tem amostra gravada no `labels.csv` (S-71).
 
@@ -111,6 +126,78 @@ class DiagramBox:
     def label(self) -> str:
         """O número como o usuário o vê: base 1, igual ao seletor da aba Resultado."""
         return str(self.index + 1)
+
+
+# ------------------------------------------- a cor não é o único portador do estado (S-159)
+
+A_FAZER = "a_fazer"
+LIDO = "lido"
+PRONTO = "pronto"
+DISPENSADO = "dispensado"
+ESTADOS: tuple[str, ...] = (A_FAZER, LIDO, PRONTO, DISPENSADO)
+"""Os quatro pontos em que um diagrama da página pode estar, na ordem do trabalho.
+
+A mesma ordem de precedência de `box_color`, e é dela que sai `estado_da_caixa`: salvo antes de
+confirmado porque salvo é trabalho **seu** já feito."""
+
+
+@dataclass(frozen=True)
+class Traco:
+    """Como o retângulo de um estado é desenhado, além da cor.
+
+    `espessura` e `tracejado` são o que o Tk aceita direto em `create_rectangle`; `glifo` vai na
+    etiqueta preenchida do número, que já tem contraste medido de 6:1 a 10:1 contra o texto.
+    """
+
+    espessura: int
+    tracejado: tuple[int, int] | None
+    glifo: str
+
+    @property
+    def assinatura(self) -> tuple[int, tuple[int, int] | None, str]:
+        """O par (traço, glifo) que precisa ser único entre os quatro estados."""
+        return (self.espessura, self.tracejado, self.glifo)
+
+
+TRACO_POR_ESTADO: dict[str, Traco] = {
+    A_FAZER: Traco(espessura=2, tracejado=None, glifo=""),
+    LIDO: Traco(espessura=2, tracejado=(2, 2), glifo="·"),
+    PRONTO: Traco(espessura=4, tracejado=None, glifo="✓"),
+    DISPENSADO: Traco(espessura=1, tracejado=(6, 4), glifo="–"),
+}
+"""**O segundo canal**, e por que ele é barato aqui (S-159).
+
+O visualizador desenhava quatro estados em quatro matizes e mais nada: nem forma, nem traço,
+nem letra. E o par mais crítico era o menos distinguível -- azul `#4da3ff` contra violeta
+`#9b7bff` dá **1,20:1** de contraste entre si, separados essencialmente por matiz, numa linha de
+2 px sobre página impressa hachurada.
+
+Para quem tem protanopia ou deuteranopia -- **~8% dos homens** -- "ainda a fazer" e "não precisa"
+eram o mesmo retângulo. E são justamente os dois cuja confusão custa trabalho: refazer o que já
+estava pronto, ou pular o que faltava.
+
+A caixa já é um retângulo, então o traço não custa pixel nenhum: contínuo fino para "a fazer",
+pontilhado para "lido", **grosso** para "pronto", tracejado largo e fino para "dispensado". E a
+etiqueta do número já é preenchida, então o glifo entra sem disputar espaço com o diagrama."""
+
+
+def estado_da_caixa(box: DiagramBox) -> str:
+    """Em que ponto do trabalho este diagrama está. Mesma precedência de `pdf_panel.box_color`.
+
+    Existe separada da cor de propósito: é ela que garante que os dois canais -- matiz e traço
+    -- digam **a mesma coisa**. Duas funções decidindo o estado por conta própria é como um
+    retângulo verde tracejado de "dispensado" apareceria.
+    """
+    if box.saved:
+        return PRONTO
+    if box.confirmed:
+        return DISPENSADO
+    return LIDO if box.recognized else A_FAZER
+
+
+def traco_da_caixa(box: DiagramBox) -> Traco:
+    """O traço e o glifo desta caixa. Total: todo estado tem um, e todo box tem um estado."""
+    return TRACO_POR_ESTADO[estado_da_caixa(box)]
 
 
 @dataclass(frozen=True)
@@ -128,6 +215,26 @@ class PageBoxes:
     def recognized(self) -> bool:
         """Se estas caixas vieram do OCR. Vazio não é reconhecido: é vazio."""
         return bool(self.boxes) and all(box.recognized for box in self.boxes)
+
+    @property
+    def all_saved(self) -> bool:
+        """Se **todo** diagrama desta página já tem amostra no `labels.csv` (S-142).
+
+        A pergunta da **página**, sobre a mesma verdade que o `saved` responde por diagrama
+        (S-71) -- e é a pergunta que o verde caixa a caixa não responde. Contar os retângulos
+        verdes e compará-los com o total era aritmética que o usuário fazia de cabeça a cada
+        virada de página, e que se erra justamente na página de nove diagramas: a que custa
+        caro reabrir depois.
+
+        **Vazio não é concluído: é vazio.** Mesma regra do `recognized`, e pela mesma razão.
+        Uma página de prosa não tem diagrama para salvar, e dizer que ela está terminada
+        misturaria "não há trabalho aqui" com "o trabalho daqui está feito" -- a distinção que
+        o par "não se sabe"/"não há" já mantém em pé no resto do visualizador.
+
+        Só olha `saved`. Um diagrama confirmado pela base (S-75) **não** conta: violeta é "não
+        precisa", e uma página de confirmados não rendeu amostra nenhuma para o dataset.
+        """
+        return bool(self.boxes) and all(box.saved for box in self.boxes)
 
     def rect_of(self, box: DiagramBox, zoom: float) -> tuple[float, float, float, float]:
         return canvas_rect(box, dpi=self.params.dpi, zoom=zoom)
@@ -182,6 +289,19 @@ def mark_saved(boxes: Sequence[DiagramBox], saved: Collection[int]) -> tuple[Dia
     if not saved:
         return tuple(boxes)
     return tuple(replace(box, saved=box.index in saved) for box in boxes)
+
+
+def mark_confirmed(boxes: Sequence[DiagramBox], confirmed: Collection[int]) -> tuple[DiagramBox, ...]:
+    """Carimba quais posições a base de partidas reconheceu (S-75).
+
+    Função separada da `mark_saved`, e não um parâmetro a mais nela, porque as duas respondem
+    perguntas independentes: uma diz que **você** trabalhou aquele diagrama, a outra que ele
+    **não precisa** ser trabalhado. Um diagrama pode ter as duas marcas, uma só, ou nenhuma --
+    e juntá-las numa chamada faria parecer que uma implica a outra.
+    """
+    if not confirmed:
+        return tuple(boxes)
+    return tuple(replace(box, confirmed=box.index in confirmed) for box in boxes)
 
 
 def boxes_from_candidates(candidates: Sequence[DiagramCandidate]) -> tuple[DiagramBox, ...]:

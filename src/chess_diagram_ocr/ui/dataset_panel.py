@@ -23,10 +23,13 @@ from ..dataset_browser import (
     filter_rows,
     imbalance_alerts,
     load_rows,
+    page_after_change,
     quarantine_rows,
     source_distribution,
     split_distribution,
 )
+from . import estilos, formato, strings, tabela, texto, theme, tipografia
+from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
 
@@ -37,30 +40,38 @@ SPLIT_CHOICES = ("(todos)", "train", "val", "test")
 class DatasetPanel(ttk.Frame):
     """Tabela paginada do `labels.csv` com filtros, estatísticas e ações."""
 
-    COLUMNS = ("arquivo", "fen", "lado", "legalidade", "split", "origem", "página", "criado")
-    HEADINGS = {
-        "arquivo": "Arquivo",
-        "fen": "FEN",
-        "lado": "Lado",
-        "legalidade": "Legalidade",
-        "split": "Split",
-        "origem": "Livro",
-        "página": "Pag.",
-        "criado": "Criado em",
-    }
-    WIDTHS = {
-        "arquivo": 210,
-        "fen": 330,
-        "lado": 45,
-        "legalidade": 95,
-        "split": 55,
-        "origem": 150,
-        "página": 50,
-        "criado": 130,
-    }
+    COLUNAS = (
+        tabela.Coluna("arquivo", "Arquivo", 210),
+        tabela.Coluna("fen", "FEN", 330, elastica=True),
+        tabela.Coluna("lado", "Lado", 45),
+        tabela.Coluna("legalidade", "Legalidade", 95),
+        tabela.Coluna("split", strings.CONJUNTO, 55),
+        tabela.Coluna("origem", "Livro", 150),
+        tabela.Coluna("página", "Pag.", 50, numerica=True),
+        tabela.Coluna("criado", "Criado em", 130),
+    )
+    """As oito colunas, cada uma dizendo o que é (S-153).
+
+    Eram três dicionários paralelos -- `COLUMNS`, `HEADINGS`, `WIDTHS` --, e paralelo é o
+    problema: nada ligava a largura ao título, nada dizia que "Pag." é número, e a nona coluna
+    entraria em três lugares ou em dois."""
+
+    COLUMNS = tuple(coluna.chave for coluna in COLUNAS)
 
     PAGE_SIZE = 200
-    """Linhas por página da tabela. 3.195 linhas de uma vez travam o Treeview do Tk."""
+    """Linhas por página da tabela.
+
+    **A premissa que criou isto está medida e é falsa** (S-118). A justificativa era "3.195
+    linhas de uma vez travam o `Treeview` do Tk", e o `ARCHITECTURE.md` a repetia. Medido nesta
+    máquina com `Treeview` real e as mesmas 8 colunas: inserir **3.936 linhas custa 53 ms**, e
+    limpar a tabela custa 6 ms. O que custava era o `load_rows` que vinha antes -- 689 ms --, e
+    esse é assunto da S-116.
+
+    **A paginação fica, e tirá-la é uma segunda decisão.** Ela não é gratuita: cobra o lugar de
+    quem está conferindo rótulo a rótulo, e é isso que a S-118 conserta preservando página e
+    seleção. Mas 53 ms é o número de hoje com 3.936 linhas, e o `labels.csv` é o arquivo que o
+    projeto existe para fazer crescer -- a decisão de remover a paginação precisa da medição
+    refeita quando ele dobrar, não da premissa de 2026-07 nem desta."""
 
     def __init__(
         self,
@@ -70,6 +81,7 @@ class DatasetPanel(ttk.Frame):
         on_edit: Callable[[DatasetRow], None],
         on_recheck: Callable[[DatasetRow], str] | None = None,
         on_status: Callable[[str], None] | None = None,
+        busy: BusyRegistry | None = None,
     ) -> None:
         super().__init__(parent, padding=6)
         self._paths = paths
@@ -81,6 +93,15 @@ class DatasetPanel(ttk.Frame):
         self.visible: list[DatasetRow] = []
         self._duplicate_groups: list[list[str]] = []
         self._page = 0
+        self._busy_registry = busy
+        """Onde a detecção de duplicatas se declara como operação longa (S-112)."""
+        self._busy_token: BusyToken | None = None
+
+        self._stale = True
+        """Alguém gravou no `labels.csv` desde a última leitura desta aba (S-116).
+
+        Começa **verdadeiro**: a aba nasce sem linha nenhuma, e a primeira vez que ela aparecer
+        tem de ler. É o mesmo estado de "mudou desde que eu li"."""
 
         self.query_var = tk.StringVar(value="")
         self.legality_var = tk.StringVar(value=LEGALITY_CHOICES[0])
@@ -92,6 +113,9 @@ class DatasetPanel(ttk.Frame):
         self.stats_var = tk.StringVar(value="")
 
         self._build_ui()
+        # O `ttk.Notebook` mapeia e desmapeia o quadro de cada aba ao trocar de aba: e este o
+        # evento que diz "a pessoa esta olhando o dataset agora" (S-116).
+        self.bind("<Map>", self._on_map)
 
     # ------------------------------------------------------------------ layout
 
@@ -114,7 +138,7 @@ class DatasetPanel(ttk.Frame):
         ttk.Combobox(line, textvariable=self.legality_var, values=LEGALITY_CHOICES, state="readonly", width=13).pack(
             side=tk.LEFT, padx=(4, 10)
         )
-        ttk.Label(line, text="Split").pack(side=tk.LEFT)
+        ttk.Label(line, text=strings.CONJUNTO).pack(side=tk.LEFT)
         ttk.Combobox(line, textvariable=self.split_var, values=SPLIT_CHOICES, state="readonly", width=8).pack(
             side=tk.LEFT, padx=(4, 10)
         )
@@ -129,16 +153,16 @@ class DatasetPanel(ttk.Frame):
         ttk.Button(line2, text="Aplicar", command=self.apply_filters).pack(side=tk.LEFT, padx=8)
         ttk.Button(line2, text="Limpar", command=self.clear_filters).pack(side=tk.LEFT)
 
-        table_wrap = ttk.Frame(self)
-        table_wrap.pack(fill=tk.BOTH, expand=True)
-        self.tree = ttk.Treeview(table_wrap, columns=self.COLUMNS, show="headings", selectmode="extended", height=14)
-        for column in self.COLUMNS:
-            self.tree.heading(column, text=self.HEADINGS[column])
-            self.tree.column(column, width=self.WIDTHS[column], anchor="w", stretch=(column == "fen"))
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll = ttk.Scrollbar(table_wrap, orient=tk.VERTICAL, command=self.tree.yview)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tree.configure(yscrollcommand=scroll.set)
+        # Corpo em monoespaçada (S-149): a coluna de FEN é a razão, e `ttk` não tem fonte por
+        # coluna -- mas esta tabela é dado de ponta a ponta (arquivo, FEN, livro, data), e é
+        # nela que duas linhas precisam alinhar para serem comparadas.
+        self.tree = tabela.montar(
+            self,
+            self.COLUNAS,
+            selectmode="extended",
+            height=14,
+            style=theme.ESTILO_DE_TABELA_DE_DADOS,
+        )
         self.tree.bind("<Double-1>", lambda _event: self.edit_selected())
 
         pager = ttk.Frame(self)
@@ -151,14 +175,65 @@ class DatasetPanel(ttk.Frame):
         actions.pack(fill=tk.X, pady=(6, 0))
         ttk.Button(actions, text="Abrir no editor", command=self.edit_selected).pack(side=tk.LEFT)
         ttk.Button(actions, text="Conferir com o modelo", command=self.recheck_selected).pack(side=tk.LEFT, padx=6)
-        ttk.Button(actions, text="Quarentena", command=self.quarantine_selected).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Remover", command=self.remove_selected).pack(side=tk.LEFT, padx=6)
+        ttk.Button(actions, text="Quarentena", command=self.quarantine_selected, style=estilos.estilo_de_botao(estilos.DESTRUTIVO)).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Remover", command=self.remove_selected, style=estilos.estilo_de_botao(estilos.DESTRUTIVO)).pack(side=tk.LEFT, padx=6)
 
-        ttk.Label(self, textvariable=self.stats_var, wraplength=780, justify=tk.LEFT).pack(anchor="w", pady=(6, 0))
+        texto.acompanhar(ttk.Label(self, textvariable=self.stats_var, justify=tk.LEFT)).pack(anchor="w", pady=(6, 0))
 
     # -------------------------------------------------------------------- dados
 
+    def contagem_de_amostras(self) -> int | None:
+        """Quantas linhas o `labels.csv` tem, **sem carregar o dataset** (S-162).
+
+        A contagem vai para o rótulo da aba, e ela não pode custar o que custa abrir a aba: a
+        S-116 mediu `load_rows` em **689 ms** sobre 3.936 linhas e tornou esta aba preguiçosa
+        justamente por isso. Contar linhas do arquivo é leitura sequencial e milissegundos -- e
+        responde a pergunta que o rótulo faz ("quanto tem lá dentro?") sem desfazer aquele item.
+
+        `None` quando o arquivo não existe: a aba nunca foi usada, e "(0)" ali seria afirmar que o
+        dataset está vazio quando o que se sabe é que ele não foi encontrado.
+        """
+        csv_path, _amostras, _splits = self._paths()
+        try:
+            with Path(csv_path).open("r", encoding="utf-8", errors="replace") as arquivo:
+                linhas = sum(1 for _ in arquivo)
+        except OSError:
+            return None
+        # Menos o cabeçalho; um arquivo só com ele é dataset vazio, e não -1 amostras.
+        return max(0, linhas - 1)
+
     def reload(self) -> None:
+        """Relê o dataset -- **ou anota que ele mudou, se esta aba não está na tela** (S-116).
+
+        `load_rows` custa **689 ms** medidos sobre o `labels.csv` de 3.936 linhas, e o caminho
+        que mais chamava isto era o `Ctrl+S`: gravar uma amostra avisava a aba Dataset, que
+        relia o arquivo inteiro na thread do Tk **mesmo nunca tendo sido aberta**. O laço mais
+        interno do projeto -- corrigir, salvar, seta, corrigir -- pagava quase um segundo de
+        janela travada por amostra, e o custo cresce com o arquivo que o projeto existe para
+        fazer crescer.
+
+        **A preguiça mora aqui, e não em quem avisa.** Quem grava uma amostra não tem como
+        saber se esta aba está visível, e não deveria: espalhar `if aba_visivel` pelos
+        chamadores poria a mesma decisão em cinco lugares. O `<Map>` do próprio painel -- que o
+        `ttk.Notebook` dispara ao trocar de aba -- é o sinal, e ele chega sem que ninguém o
+        mande.
+        """
+        if not self.winfo_ismapped():
+            self._stale = True
+            return
+        self._reload_now()
+
+    def _on_map(self, _event: object = None) -> None:
+        """A aba apareceu. Se alguém gravou enquanto ela estava escondida, é agora que se paga."""
+        if self._stale:
+            self._reload_now()
+
+    def _reload_now(self) -> None:
+        self._stale = False
+        # O lugar de quem estava conferindo, guardado antes da recarga (S-118). Por
+        # `filename` e nao por indice: a linha corrigida pode ter mudado de posicao no filtro,
+        # e um indice apontaria para a vizinha dela.
+        selecionadas = {row.filename for row in self.selected_rows()}
         csv_path, samples_dir, splits_path = self._paths()
         try:
             self.rows = load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=self._duplicate_groups)
@@ -168,10 +243,33 @@ class DatasetPanel(ttk.Frame):
 
         livros = sorted({row.source_pdf for row in self.rows if row.source_pdf})
         self.source_combo.configure(values=("(todos)", *livros))
-        self.apply_filters()
+        self.apply_filters(keep_position=True)
+        self._select_filenames(selecionadas)
         self._on_status(f"Dataset carregado: {len(self.rows)} amostras.")
 
-    def apply_filters(self) -> None:
+    def _select_filenames(self, filenames: set[str]) -> None:
+        """Reseleciona, na página desenhada agora, as linhas que estavam selecionadas antes.
+
+        Só o que está na página: uma linha que saiu dela pela mudança de filtro não tem item
+        de `Treeview` para selecionar, e persegui-la mudando de página seria adivinhar.
+        """
+        if not filenames:
+            return
+        inicio = self._page * self.PAGE_SIZE
+        chunk = self.visible[inicio : inicio + self.PAGE_SIZE]
+        itens = self.tree.get_children()
+        alvos = [itens[i] for i, row in enumerate(chunk) if row.filename in filenames and i < len(itens)]
+        if alvos:
+            self.tree.selection_set(alvos)
+            self.tree.see(alvos[0])
+
+    def apply_filters(self, *, keep_position: bool = False) -> None:
+        """Refiltra e redesenha. `keep_position` é para quem **não** mudou o filtro (S-118).
+
+        Trocar um filtro é pedir outra lista, e ali voltar à primeira página é o certo. Salvar
+        uma amostra não é: a lista é a mesma, e devolver a tabela ao começo perde o lugar de
+        quem estava conferindo rótulo a rótulo.
+        """
         legality = self.legality_var.get()
         split = self.split_var.get()
         source = self.source_var.get()
@@ -184,7 +282,7 @@ class DatasetPanel(ttk.Frame):
             only_duplicates=bool(self.duplicates_var.get()),
             only_missing_image=bool(self.missing_var.get()),
         )
-        self._page = 0
+        self._page = page_after_change(self._page, len(self.visible), self.PAGE_SIZE) if keep_position else 0
         self._render_page()
         self._update_stats()
 
@@ -213,12 +311,14 @@ class DatasetPanel(ttk.Frame):
                 values=(
                     row.filename,
                     row.fen,
-                    row.side_to_move or "—",
+                    # "Brancas" e não `w` (S-169): o código é do CSV, e publicá-lo obriga quem
+                    # lê a saber que `w` quer dizer brancas -- em inglês, numa janela pt-BR.
+                    formato.lado_a_jogar(row.side_to_move),
                     row.legality + (" (dup)" if row.is_duplicate else ""),
-                    row.split or "—",
-                    row.source_pdf or "—",
-                    row.source_page or "—",
-                    row.created_at or "—",
+                    formato.texto_ou_ausente(row.split),
+                    formato.texto_ou_ausente(row.source_pdf),
+                    formato.texto_ou_ausente(row.source_page),
+                    formato.texto_ou_ausente(row.created_at),
                 ),
             )
         pages = max(1, (len(self.visible) + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
@@ -269,7 +369,10 @@ class DatasetPanel(ttk.Frame):
         except Exception as exc:  # noqa: BLE001 - falha de modelo vira mensagem, não crash
             messagebox.showerror("Conferir com o modelo", f"Não foi possível conferir:\n{exc}")
             return
-        messagebox.showinfo("Conferir com o modelo", resultado)
+        # O resultado da conferência é uma linha, e ela vai para o rodapé (S-164): a caixa era
+        # modal por não haver outro lugar, e conferir amostra a amostra é gesto de repetição --
+        # exatamente onde um clique obrigatório por resposta custa mais.
+        self._on_status(resultado)
 
     def quarantine_selected(self) -> None:
         rows = self.selected_rows()
@@ -294,7 +397,9 @@ class DatasetPanel(ttk.Frame):
             return
         answer = messagebox.askyesnocancel(
             "Remover amostras",
-            f"Remover {len(rows)} amostra(s) do labels.csv?\n\n"
+            # A pergunta **nomeia** o que vai sumir (S-170): contar não é conferir, e o que
+            # está prestes a ser apagado é rótulo corrigido à mão. Ver `strings.frase_de_remocao`.
+            strings.frase_de_remocao([row.filename for row in rows], arquivo=self._paths()[0].name) + "\n\n"
             "Sim: remove a linha e apaga o PNG.\n"
             "Não: remove só a linha, preservando o PNG.\n"
             "Cancelar: não faz nada.",
@@ -319,6 +424,17 @@ class DatasetPanel(ttk.Frame):
         self._on_status("Procurando duplicatas... isto lê todas as imagens do dataset.")
         labels = [(row.filename, row.fen) for row in self.rows if row.image_exists]
 
+        if self._busy_registry is not None:
+            self._busy_token = self._busy_registry.register(
+                "detecção de duplicatas",
+                # Derivada: o hash perceptual não grava nada, e refazer recomputa a mesma
+                # resposta a partir das mesmas imagens. Não é cancelável porque
+                # `find_duplicate_groups` não tem por onde -- e inventar um `Event` que ninguém
+                # consulta seria oferecer um botão que não para nada.
+                loses_work=False,
+                detail=f"{len(labels)} imagem(ns)",
+            )
+
         def _worker() -> None:
             try:
                 groups = find_duplicate_groups(samples_dir, labels)
@@ -327,10 +443,17 @@ class DatasetPanel(ttk.Frame):
                 detalhe = str(exc)
                 self.after(0, lambda: messagebox.showerror("Duplicatas", f"Falha na detecção:\n{detalhe}"))
                 return
+            finally:
+                self.after(0, self._release_busy)
             self.after(0, lambda: self._apply_duplicates(groups))
 
         threading.Thread(target=_worker, daemon=True).start()
         logger.debug("Detecção de duplicatas disparada sobre %s", csv_path)
+
+    def _release_busy(self) -> None:
+        if self._busy_token is not None:
+            self._busy_token.release()
+            self._busy_token = None
 
     def _apply_duplicates(self, groups: list[list[str]]) -> None:
         self._duplicate_groups = groups
@@ -364,7 +487,9 @@ class DatasetPanel(ttk.Frame):
         window = tk.Toplevel(self)
         window.title("Estatísticas do dataset")
         window.geometry("560x520")
-        text = tk.Text(window, wrap="none", font=("Consolas", 10))
+        # `wrap="none"` mais monoespaçada: as estatísticas são colunas alinhadas por espaço, e
+        # em proporcional elas deixam de ser colunas (S-149).
+        text = tk.Text(window, wrap="none", font=theme.fonte_atual(tipografia.DADO))
         text.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         text.insert("1.0", "\n".join(linhas))
         text.configure(state=tk.DISABLED)

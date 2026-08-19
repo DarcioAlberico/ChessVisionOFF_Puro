@@ -48,7 +48,7 @@ import numpy as np
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
 from ..fen_utils import square_name
-from . import board_edit
+from . import board_edit, board_render, theme, tipografia, tokens
 from .board_model import BoardChange, BoardMode, BoardModel, ChangeKind
 from .board_render import (
     LIGHT_SQUARE,
@@ -104,7 +104,6 @@ class InteractiveBoard(ttk.Frame):
         show_coordinates: bool = True,
         min_size: int = 240,
         max_size: int = 560,
-        background: str = "#262421",
         uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     ) -> None:
         super().__init__(parent)
@@ -141,7 +140,16 @@ class InteractiveBoard(ttk.Frame):
         self._brush_var = tk.StringVar(value=BRUSH_NONE)
         self._palette_buttons: dict[str, tk.Radiobutton] = {}
 
-        self.canvas = tk.Canvas(self, bg=background, highlightthickness=0, cursor="hand2")
+        # Sem parâmetro de cor: quem decide a esteira é o token, não o painel que hospeda
+        # (S-147). Era `background=` no construtor, e o Resultado passava claro enquanto a
+        # Análise ficava com o padrão escuro -- o mesmo widget com duas identidades em duas
+        # abas vizinhas, e nada além do argumento a justificar.
+        self.canvas = tk.Canvas(
+            self,
+            bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO),
+            highlightthickness=0,
+            cursor="hand2",
+        )
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
@@ -327,7 +335,7 @@ class InteractiveBoard(ttk.Frame):
             botao.image = imagem  # type: ignore[attr-defined]
         else:
             texto = rotulo or UNICODE_PIECES.get(value, value)
-            cor_texto = str(ttk.Style().lookup("TLabel", "foreground") or "#000000")
+            cor_texto = str(ttk.Style().lookup("TLabel", "foreground") or tokens.RESERVA[tokens.TEXTO_PADRAO])
             botao = tk.Radiobutton(
                 parent, text=texto, padx=8, pady=2, foreground=cor_texto, **opcoes  # type: ignore[arg-type]
             )
@@ -351,8 +359,8 @@ class InteractiveBoard(ttk.Frame):
         fundo, o que dá contraste no claro e no escuro pela mesma conta.
         """
         style = ttk.Style()
-        fundo = str(style.lookup("TFrame", "background") or "#f0f0f0")
-        texto = str(style.lookup("TLabel", "foreground") or "#000000")
+        fundo = str(style.lookup("TFrame", "background") or tokens.RESERVA[tokens.SUPERFICIE_PADRAO])
+        texto = str(style.lookup("TLabel", "foreground") or tokens.RESERVA[tokens.TEXTO_PADRAO])
         return fundo, self._mix(texto, fundo, 0.45), self._mix(texto, fundo, 0.15)
 
     def _mix(self, cor: str, fundo: str, peso: float) -> str:
@@ -554,14 +562,18 @@ class InteractiveBoard(ttk.Frame):
         tip = tk.Toplevel(self.canvas)
         tip.wm_overrideredirect(True)
         tip.wm_geometry(f"+{x_root + 14}+{y_root + 14}")
+        fundo = theme.cor_atual(tokens.SUPERFICIE_DICA)
         tk.Label(
             tip,
             text="\n".join(lines),
             justify=tk.LEFT,
-            background="#ffffe0",
+            background=fundo,
+            # `tk.Label` não herda cor de letra do `Style`: sem isto o texto é preto em
+            # qualquer tema, e sobre a dica escura da S-147 ele desapareceria.
+            foreground=tokens.sobre_superficie(fundo),
             relief=tk.SOLID,
             borderwidth=1,
-            font=("Segoe UI", 9),
+            font=theme.fonte_atual(tipografia.CORPO),
             padx=6,
             pady=4,
         ).pack()
@@ -591,6 +603,6 @@ class InteractiveBoard(ttk.Frame):
             canvas_h,
             min_size=self._min_size,
             max_size=self._max_size,
-            margin=28 if self._show_coordinates else 8,
+            margin=board_render.margem_de_coordenada() if self._show_coordinates else 8,
         )
         self.renderer.draw(self.canvas, self.model, self._geometry, drag=self._drag_overlay())

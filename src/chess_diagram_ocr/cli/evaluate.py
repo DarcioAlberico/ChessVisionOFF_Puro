@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import textwrap
 from pathlib import Path
 
 from ..calibration import confidence_for_accuracy
@@ -18,6 +19,7 @@ from ..evaluation import EvaluationReport, evaluate_split
 from ..inference import describe_device
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +104,14 @@ def _print_report(report: EvaluationReport, show_errors: int, calibration_target
     print(f"  TTA (S-29) ..................... {'7 vistas' if report.tta else 'desligado'}")
     print(f"  Tabuleiros ..................... {report.board_count}")
     print(f"  Casas .......................... {report.square_count}")
+    if report.split_caveat:
+        # **Antes** dos números, e não depois: a S-07 inteira existe para tornar impossível
+        # medir num conjunto que o modelo já viu, e uma ressalva impressa embaixo de um
+        # `0,9906` é lida depois de o número já ter sido anotado (S-103).
+        print()
+        print("  !! Ressalva sobre a partição")
+        for linha in textwrap.wrap(report.split_caveat, width=72):
+            print(f"     {linha}")
     print()
     print("  Acurácia")
     print(f"    Exata por tabuleiro .......... {report.board_exact_accuracy:.4f}   <-- métrica primária")
@@ -169,6 +179,7 @@ def _print_report(report: EvaluationReport, show_errors: int, calibration_target
     print()
 
 
+@cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
