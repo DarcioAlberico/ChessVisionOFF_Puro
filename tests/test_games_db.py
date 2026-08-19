@@ -74,6 +74,41 @@ PGN = f"""[Event "London"]
 """
 
 
+ESTUDO_FEN = "2B5/5K2/3P1p1p/BbP2P1k/1P5P/r2n1N2/4n3/8"
+"""A colocação do primeiro estudo da `Endgame_Study_Database_VI`, copiada do arquivo.
+
+O alvo real do defeito corrigido em 2026-08-19, e por isso ele e não uma posição inventada:
+é esta colocação que, procurada na base que a contém, casava zero vezes."""
+
+PGN_DE_ESTUDOS = f"""﻿[Event "13th UAPA internet ty"]
+[Site "?"]
+[Date "2020.10.10"]
+[White "Zilberstein=D"]
+[Black "(+0357.52f7h5)"]
+[Result "1-0"]
+[SetUp "1"]
+[FEN "{ESTUDO_FEN} w - - 0 1"]
+
+1. d7 (1. Ba6 $2 Bc6 2. Bb7) 1... Bxd7 2. Bxd7 1-0
+
+[Event "Outro concurso"]
+[Site "?"]
+[Date "1924.??.??"]
+[White "Reti=R"]
+[Black "(+0100.01)"]
+[Result "1/2-1/2"]
+[SetUp "1"]
+[FEN "7K/8/k1P5/7p/8/8/8/8 w - - 0 1"]
+
+1. Kg7 h4 2. Kf6 1/2-1/2
+"""
+"""Duas composições no formato em que a base do Heijden as publica -- **com a marca de ordem de
+bytes na frente**, como o arquivo real tem.
+
+A marca é parte do caso: a leitura por pedaços é binária, e sem tratá-la a primeira composição
+de todo arquivo gravado no Windows perdia os headers."""
+
+
 def colocacao_apos(movetext: str, lances: int) -> tuple[str, int, bool]:
     """A colocação depois de N meios-lances, com o número do lance e a vez."""
     tabuleiro = chess.Board()
@@ -300,6 +335,105 @@ class MatchTests(unittest.TestCase):
         quebrada = GameRecord(headers={"White": "A, A", "Black": "B, B"}, movetext="1. e4 e5 2. Zz9 Nf6")
         posicoes = list(quebrada.positions())
         self.assertEqual(len(posicoes), 2, "para no lance recusado, e devolve o que já leu")
+
+
+class ComposicaoTests(unittest.TestCase):
+    """Estudo e problema: a partida que **começa montada**.
+
+    Medido na `Endgame_Study_Database_VI` antes da correção: 93.838 estudos lidos, **zero**
+    posições casadas -- com o alvo copiado do `[FEN]` do próprio arquivo. O replay partia da
+    posição inicial, o primeiro lance da solução é ilegal ali, e cada composição morria
+    inteira e em silêncio.
+    """
+
+    ESTUDO = ESTUDO_FEN
+    SOLUCAO = "1. d7 (1. Kxf6 $2 Nxb4 2. d7 (2. Bxb4 Rxf3) 2... Nd5+) 1... Bxd7 2. Bxd7"
+    """A solução do estudo, com a variante e a sub-variante que o arquivo real traz."""
+
+    def test_a_posicao_montada_e_uma_posicao_da_partida(self) -> None:
+        """Num livro de estudos, o diagrama impresso **é** a posição montada -- e só ela."""
+        estudo = GameRecord(setup_fen=f"{self.ESTUDO} w - - 0 1", movetext=self.SOLUCAO)
+        primeira, lance, vez_branca = next(iter(estudo.positions()))
+        self.assertEqual(primeira, self.ESTUDO)
+        self.assertEqual(lance, 1)
+        self.assertTrue(vez_branca, "a vez sai do próprio FEN, que é o que o livro imprime")
+
+    def test_a_solucao_parte_da_posicao_montada(self) -> None:
+        estudo = GameRecord(setup_fen=f"{self.ESTUDO} w - - 0 1", movetext=self.SOLUCAO)
+        self.assertEqual(len(list(estudo.positions())), 4, "a montada e os três lances da linha")
+
+    def test_a_variante_nao_entra_como_linha_principal(self) -> None:
+        """`1. d7 (1. Ba6 ...)` era lido como `d7 Ba6 ...`: posições que a composição não tem."""
+        estudo = GameRecord(setup_fen=f"{self.ESTUDO} w - - 0 1", movetext=self.SOLUCAO)
+        colocacoes = [colocacao for colocacao, _, _ in estudo.positions()]
+
+        tabuleiro = chess.Board(f"{self.ESTUDO} w - - 0 1")
+        tabuleiro.push_san("Kxf6")
+        self.assertNotIn(tabuleiro.board_fen(), colocacoes)
+
+    def test_variante_aninhada_tambem_fica_de_fora(self) -> None:
+        estudo = GameRecord(setup_fen=f"{self.ESTUDO} w - - 0 1", movetext=self.SOLUCAO)
+        colocacoes = [colocacao for colocacao, _, _ in estudo.positions()]
+
+        tabuleiro = chess.Board(f"{self.ESTUDO} w - - 0 1")
+        for lance in ("Kxf6", "Nxb4", "Bxb4", "Rxf3"):
+            tabuleiro.push_san(lance)
+        self.assertNotIn(tabuleiro.board_fen(), colocacoes)
+
+    def test_parentese_sem_par_fica_no_que_veio_antes_dele(self) -> None:
+        """Notação quebrada é regra numa base de 19 GB: o resto cai, como no lance ilegal."""
+        estudo = GameRecord(setup_fen=f"{self.ESTUDO} w - - 0 1", movetext="1. d7 (1. Ba6 Bc6 1... Bxd7")
+        colocacoes = [colocacao for colocacao, _, _ in estudo.positions()]
+
+        depois_de_d7 = chess.Board(f"{self.ESTUDO} w - - 0 1")
+        depois_de_d7.push_san("d7")
+        self.assertEqual(colocacoes, [self.ESTUDO, depois_de_d7.board_fen()], "o lance antes do parêntese fica")
+
+    def test_fen_que_o_python_chess_recusa_descarta_a_composicao_inteira(self) -> None:
+        """E não meia dela a partir de um tabuleiro que não é o dela."""
+        self.assertEqual(list(GameRecord(setup_fen="lixo", movetext="1. e4").positions()), [])
+
+    def test_partida_normal_nao_ganha_a_posicao_inicial(self) -> None:
+        """Emiti-la poria a mesma colocação em 21 milhões de partidas, e ela não decide nada."""
+        partida = GameRecord(movetext=IMORTAL)
+        primeira, _, _ = next(iter(partida.positions()))
+        self.assertNotEqual(primeira, chess.Board().board_fen())
+
+
+class BaseDeEstudosTests(unittest.TestCase):
+    """O arquivo inteiro, pelos dois leitores de PGN -- que são dois, e os dois precisavam do FEN."""
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.base = Path(self.pasta.name) / "estudos.pgn"
+        self.base.write_text(PGN_DE_ESTUDOS, encoding="utf-8")
+
+    def test_a_busca_por_posicao_acha_o_diagrama_do_estudo(self) -> None:
+        indice = scan_by_positions(self.base, {ESTUDO_FEN}, workers=1)
+        self.assertEqual(indice.games_read, 2)
+        (achado,) = indice.hits[ESTUDO_FEN]
+        self.assertEqual(achado.move_number, 1)
+        self.assertEqual(achado.side_to_move, "w")
+
+    def test_os_headers_da_primeira_composicao_sobrevivem_a_marca_de_bytes(self) -> None:
+        """Regressão: o `[Event` da primeira vinha com três bytes na frente e ninguém o via."""
+        indice = scan_by_positions(self.base, {ESTUDO_FEN}, workers=1)
+        (achado,) = indice.hits[ESTUDO_FEN]
+        self.assertEqual(achado.headers.get("Event"), "13th UAPA internet ty")
+        self.assertEqual(achado.headers.get("White"), "Zilberstein=D")
+
+    def test_a_busca_por_nome_tambem_parte_da_posicao_montada(self) -> None:
+        """O outro leitor: o de `scan_by_players`, que colhe a partida e a reproduz depois.
+
+        O par é `(compositor, código GBR)` porque é assim que a base de estudos preenche
+        `[White]` e `[Black]` -- e é por isso que o caminho por nome alcança pouco numa base de
+        composições: quem procura por ela é a busca por posição.
+        """
+        par = ("reti=r", surname("(+0100.01)"))
+        colhidas = scan_by_players(self.base, {par})
+        (estudo,) = colhidas[par]
+        self.assertEqual(next(iter(estudo.positions()))[0], "7K/8/k1P5/7p/8/8/8/8")
 
 
 class PosicaoTests(unittest.TestCase):

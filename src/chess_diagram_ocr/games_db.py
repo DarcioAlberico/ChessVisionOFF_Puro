@@ -112,6 +112,15 @@ posição não apareceu nas 40 primeiras partidas do par, o problema não é fal
 _RE_HEADER = re.compile(r'^\[(\w+)\s+"(.*)"\s*\]\s*$')
 _RE_BRACES = re.compile(r"\{[^}]*\}")
 _RE_SAN = re.compile(r"[a-hKQRBNOx1-8=+#\-]{2,7}")
+_BOM = b"\xef\xbb\xbf"
+_ABRE_CABECALHO = (b"[", _BOM + b"[")
+"""A linha de cabeçalho, com ou sem a marca de ordem de bytes.
+
+A leitura por pedaços é **binária** -- ela precisa de deslocamento em bytes para cortar o
+arquivo --, então o `utf-8-sig` que resolve isto no outro caminho não existe aqui. Sem a marca
+no teste, a primeira composição de todo `.pgn` gravado pelo Windows perdia os headers: o
+`[Event` dela vinha com três bytes na frente e nenhum casamento reconhecia a linha."""
+
 _KEPT_HEADERS = ("White", "Black", "Event", "Site", "Date", "Round", "Result", "ECO")
 """Os que viram header de PGN nosso. O resto da base (`SourceQuality`, `EventCountry`...)
 descreve a base, não a partida."""
@@ -214,12 +223,63 @@ def occupancy(placement: str) -> int:
     return bits
 
 
+_RE_VARIANTE = re.compile(r"\([^()]*\)")
+"""Uma variante **sem variante dentro**. Aplicada em passadas, ela come as de fora também."""
+
+PROFUNDIDADE_DE_VARIANTE = 12
+"""Quantas passadas de `_RE_VARIANTE` valem a pena antes de desistir do resto do movetext.
+
+Doze porque análise de estudo aninha três ou quatro níveis e nada aninha doze; o teto existe
+para um parêntese sem par não virar laço -- e ele existe: a base é de terceiros, tem 19 GB, e
+notação quebrada é regra e não exceção nesse tamanho."""
+
+
+def _sem_variantes(movetext: str) -> str:
+    """O movetext só com a linha principal.
+
+    **O que isto conserta.** As variantes entravam como lances da linha principal: o filtro só
+    tirava os comentários entre chaves, e `1. d7 (1. Ba6 $2 Bc6 2. Bb7) 1... Bxd7` era lido como
+    `d7 Ba6 Bc6 Bb7 Bxd7`. Numa base de partidas isso é raro; numa de estudos, a análise é a
+    maior parte do texto, e o replay saía da linha no primeiro parêntese -- produzindo posições
+    que a composição nunca teve, ou morrendo num lance ilegal e perdendo a composição inteira.
+
+    De fora para dentro, com uma expressão que só casa o par mais interno: `re.sub` em C, doze
+    passadas no pior caso, contra um laço de caractere em Python sobre 19 GB de texto.
+    """
+    if "(" not in movetext:
+        # O caminho de quase toda partida de base: nada a fazer, e nem uma varredura da string.
+        return movetext
+    for _ in range(PROFUNDIDADE_DE_VARIANTE):
+        limpo = _RE_VARIANTE.sub(" ", movetext)
+        if limpo == movetext:
+            break
+        movetext = limpo
+    if "(" not in movetext:
+        return movetext
+    # Sobrou parêntese: ele não tem par, ou o aninhamento passou do teto. Fica o que vem antes
+    # do primeiro -- mesma regra do lance ilegal, perder o resto da partida é melhor que ler a
+    # variante como linha principal. Sair aqui pelo `break` acima não bastaria: o `sub` que não
+    # muda nada é justamente o sintoma do parêntese sem par.
+    return movetext[: movetext.index("(")]
+
+
 @dataclass(frozen=True)
 class GameRecord:
     """Uma partida da base: os headers que interessam e o movetext cru."""
 
     headers: dict[str, str] = field(default_factory=dict)
     movetext: str = ""
+
+    setup_fen: str = ""
+    """O `[FEN]` da partida, quando ela **não** começa na posição inicial.
+
+    Fora do `headers` de propósito: `_KEPT_HEADERS` é a lista do que descreve *a partida* e vira
+    header do PGN exportado, e uma colocação não é isso -- ela é de onde o replay parte. Misturar
+    os dois faria a anotação de um diagrama sair com um `FEN` da base dentro.
+
+    **Em base de estudos e problemas, este campo é a base inteira.** Uma composição é publicada
+    como posição montada mais solução; sem ele, o replay parte da posição inicial, o primeiro
+    lance da solução é ilegal ali e a composição é descartada em silêncio."""
 
     def positions(self, occupancies: frozenset[int] | None = None) -> Iterator[tuple[str, int, bool]]:
         """Cada lance da partida como `(colocação, número do lance, vez das brancas)`.
@@ -228,6 +288,17 @@ class GameRecord:
         módulo. Um lance ilegal interrompe a partida em vez de derrubá-la: a base tem 10,5
         milhões de partidas e algumas trazem notação que o `python-chess` recusa, e perder o
         resto de uma partida é melhor que perder a varredura.
+
+        **A posição montada conta como posição da partida, e as jogadas partem dela.**
+        Medido na `Endgame_Study_Database_VI` (93.838 estudos): procurar ali a colocação do
+        `[FEN]` do primeiro estudo -- copiada do próprio arquivo -- casava **zero** vezes. Num
+        livro de estudos o diagrama impresso *é* a posição montada, e ela não aparece em lance
+        nenhum: é a única posição da composição que o livro mostra e a única que o replay não
+        produzia. Ela sai daqui com o número de lance e a vez que o próprio `[FEN]` declara.
+
+        Para uma partida normal não muda nada: sem `[FEN]` não há posição montada, e emitir a
+        posição inicial padrão poria a mesma colocação em 21 milhões de partidas -- uma contagem
+        que não decide nada e custa uma string por partida.
 
         **`occupancies` é o porteiro que barateou a varredura em 3,5× (S-85).** `board_fen()` a
         cada lance é **75% do custo** da busca por posição: o replay custa 2 s e as 213.830
@@ -244,8 +315,20 @@ class GameRecord:
         peças diferentes -- o `board_fen()` seguinte recusa, como sempre recusou. `None` desliga
         o porteiro, que é o caminho de quem já tem poucas partidas em mão (`match_entries`).
         """
-        tabuleiro = chess.Board()
-        for token in _RE_BRACES.sub(" ", self.movetext).replace(".", ". ").split():
+        if self.setup_fen:
+            try:
+                tabuleiro = chess.Board(self.setup_fen)
+            except ValueError:
+                # FEN que o `python-chess` recusa: a composição inteira vai embora, e não meia
+                # dela a partir de um tabuleiro que não é o dela.
+                logger.debug("FEN recusado em %s: %r", self.headers.get("White", "?"), self.setup_fen)
+                return
+            if occupancies is None or tabuleiro.occupied in occupancies:
+                yield tabuleiro.board_fen(), tabuleiro.fullmove_number, tabuleiro.turn == chess.WHITE
+        else:
+            tabuleiro = chess.Board()
+
+        for token in _sem_variantes(_RE_BRACES.sub(" ", self.movetext)).replace(".", ". ").split():
             limpo = token.replace("!", "").replace("?", "")
             if not limpo or limpo[0].isdigit() or not _RE_SAN.fullmatch(limpo):
                 continue
@@ -444,6 +527,7 @@ def _collect_players(
     """Um arquivo. Devolve o total de partidas lidas **incluindo** as das bases anteriores."""
     partidas = lidas
     cabecalho: dict[str, str] = {}
+    fen = ""
     branco = ""
     coletando: PlayerPair | None = None
     movetext: list[str] = []
@@ -452,7 +536,7 @@ def _collect_players(
         nonlocal coletando, movetext
         if coletando is not None and movetext:
             colhidas.setdefault(coletando, []).append(
-                GameRecord(headers=dict(cabecalho), movetext=" ".join(movetext))
+                GameRecord(headers=dict(cabecalho), movetext=" ".join(movetext), setup_fen=fen)
             )
         coletando, movetext = None, []
 
@@ -472,6 +556,7 @@ def _collect_players(
                         if progress is not None:
                             progress(partidas)
                     cabecalho = {}
+                    fen = ""
                     branco = ""
                 casado = _RE_HEADER.match(linha.rstrip())
                 if casado is None:
@@ -479,6 +564,9 @@ def _collect_players(
                 campo, valor = casado.group(1), casado.group(2)
                 if campo in _KEPT_HEADERS:
                     cabecalho[campo] = valor
+                elif campo == "FEN":
+                    # Fora do `cabecalho`: ver `GameRecord.setup_fen`.
+                    fen = valor
                 if campo == "White":
                     branco = surname(valor)
                 elif campo == "Black":
@@ -661,12 +749,13 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], froze
     caminho, inicio, fim, alvos, ocupacoes, max_hits = argumento
     resultado = PositionIndex()
     cabecalho: dict[str, str] = {}
+    fen = ""
     movetext: list[str] = []
 
     def processar() -> None:
-        if not movetext:
+        if not movetext and not fen:
             return
-        partida = GameRecord(headers=dict(cabecalho), movetext=" ".join(movetext))
+        partida = GameRecord(headers=dict(cabecalho), movetext=" ".join(movetext), setup_fen=fen)
         for colocacao, lance, vez in partida.positions(ocupacoes):
             if colocacao not in alvos:
                 continue
@@ -683,14 +772,19 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], froze
             linha = fh.readline()
             if not linha:
                 break
-            if linha.startswith(b"["):
-                if linha.startswith(b"[Event "):
+            if linha.startswith(_ABRE_CABECALHO):
+                if linha.lstrip(_BOM).startswith(b"[Event "):
                     processar()
-                    movetext, cabecalho = [], {}
+                    movetext, cabecalho, fen = [], {}, ""
                     resultado.games_read += 1
-                casado = _RE_HEADER.match(linha.decode("utf-8", "replace").rstrip())
-                if casado is not None and casado.group(1) in _KEPT_HEADERS:
+                casado = _RE_HEADER.match(linha.decode("utf-8", "replace").lstrip("﻿").rstrip())
+                if casado is None:
+                    continue
+                if casado.group(1) in _KEPT_HEADERS:
                     cabecalho[casado.group(1)] = casado.group(2)
+                elif casado.group(1) == "FEN":
+                    # Fora do `cabecalho`: ver `GameRecord.setup_fen`.
+                    fen = casado.group(2)
                 continue
             texto = linha.strip()
             if texto:

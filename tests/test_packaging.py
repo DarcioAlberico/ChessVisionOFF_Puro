@@ -400,17 +400,32 @@ class SelftestTests(unittest.TestCase):
         mais um traceback do `pymupdf` em inglês. Quem falhou foi o arquivo que o usuário
         escolheu, e 2 é o código de entrada inválida em todos os `cvoff-*` (S-126). Não havia
         razão para o auto-teste ser a exceção.
+
+        **Ele não pede checkpoint de verdade, e isso é o item dentro do item.** A primeira
+        versão pedia -- a carga do modelo vem antes da abertura do PDF --, e o resultado
+        apareceu no log da CI: `SKIPPED`. Um guarda que só roda na máquina que já tem o
+        checkpoint não guarda a CI, que é justamente onde o `.exe` de outra pessoa é montado.
+        O modelo é dispensado com um `model_session` neutro; o que se testa aqui é o PDF.
         """
         import tempfile
+        from contextlib import contextmanager
 
         app_tkinter = self._app_tkinter()
-        modelo = PROJETO / "models" / "piece_classifier.pt"
-        if not modelo.exists():
-            self.skipTest("sem checkpoint neste checkout")
+
+        @contextmanager
+        def _sem_modelo(*_args: object, **_kwargs: object):  # noqa: ANN202
+            yield (None, "cpu")
+
         with tempfile.TemporaryDirectory() as pasta:
             ruim = Path(pasta) / "corrompido.pdf"
             ruim.write_bytes(b"%PDF-1.4" + bytes([10]) + b"isto nao e um pdf" + bytes([10]))
-            with patch.object(app_tkinter, "DEFAULT_MODEL_PATH", modelo):
+            # So precisa **existir**: a guarda de ausencia e outra, e tem teste proprio.
+            fingido = Path(pasta) / "piece_classifier.pt"
+            fingido.write_text("o carregamento esta remendado abaixo", encoding="utf-8")
+            servico = patch.object(
+                app_tkinter.OcrService, "model_session", _sem_modelo, create=False
+            )
+            with patch.object(app_tkinter, "DEFAULT_MODEL_PATH", fingido), servico:
                 with self.assertLogs(app_tkinter.logger, level="ERROR") as registro:
                     codigo = app_tkinter.selftest(pdf=ruim)
 
