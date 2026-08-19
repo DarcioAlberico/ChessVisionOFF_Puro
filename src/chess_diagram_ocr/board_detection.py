@@ -65,6 +65,44 @@ MIN_SCORE_RELATIVE = 0.25
 """Fração do score do melhor candidato abaixo da qual os outros saem. Vale o maior dos dois."""
 
 
+SQUARE_KERNEL = np.ones((3, 3), np.uint8)
+"""Elemento reto do fechamento. Estava aqui desde o commit inicial, sem medição."""
+
+DIAGONAL_KERNELS = (np.eye(3, dtype=np.uint8), np.fliplr(np.eye(3, dtype=np.uint8)).copy())
+"""Os dois elementos diagonais do reparo de contato de quina (S-171).
+
+**O defeito.** As casas escuras de um diagrama impresso são de uma paridade só, e duas casas
+da mesma paridade **encostam apenas pela quina**. É por esses pontos, e só por eles, que o
+tabuleiro inteiro é *uma* componente 8-conexa para o `findContours` -- que é o que este
+módulo assume ao tomar a extensão do contorno pela extensão do tabuleiro.
+
+Se um contato de quina não sobrevive à rasterização, a corrente parte e o contorno fecha um
+pedaço do tabuleiro. E não parte um contato de cada vez: os 7 contatos de uma mesma linha da
+grade caem no **mesmo x**, então dividem a mesma fase sub-pixel e morrem juntos. O que sai é
+um quad com uma fileira a menos -- 7/8 exatos do tabuleiro.
+
+**Medido**, `Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf`, página 142 a 220
+DPI: a coluna esquerda fecha em 101×116 pt e a direita em 116×116. Em pixels o contorno da
+esquerda vai de x=99 a x=410, e a borda direita do tabuleiro está em x=454: 311 px de 355,
+que é 7 casas de 8. A leitura desmoronava junto -- 0,026 / 0,207 / 0,413 contra 0,993 e acima
+nas gêmeas bem recortadas da mesma página.
+
+**Não é uma propriedade daquela coluna, nem daquele livro: é da fase.** Renderizada a 260,
+300 ou 400 DPI a mesma página entrega 116×116 nas seis. A 150 e 180 DPI parte também no eixo
+vertical, e sai 101×101. Nada no PDF muda entre essas corridas.
+
+**Por que o fechamento reto não repara.** `MORPH_CLOSE` é dilatação seguida de erosão. A
+dilatação com o elemento quadrado atravessa a quina, mas o pescoço que ela cria tem a largura
+de um pixel e a erosão com o **mesmo** elemento o corta de volta. Fechar ao longo da diagonal
+sobrevive porque a erosão corre na direção da ponte, e não contra ela.
+
+**Passe próprio, e não misturado no fechamento reto.** Unir os dois numa imagem só economiza
+um `findContours` e custa candidato: juntar duas componentes tira as duas da lista de
+contornos e põe a fundida no lugar, então o contorno **justo** deixa de existir onde ele era
+o bom. Medido, custou 8 diagramas do `Gaprindashvili` -- ver `_repaired_pass`.
+"""
+
+
 @dataclass(frozen=True)
 class RejectedQuad:
     """Um candidato de contorno que **não** entrou, e por qual guarda (S-131).
@@ -91,6 +129,7 @@ MOTIVOS_DE_RECUSA = (
     "fora-da-pagina",
     "area-relativa",
     "score-baixo",
+    "sem-contraste-de-casa",
     "sobreposicao",
     "teto",
 )
@@ -98,6 +137,10 @@ MOTIVOS_DE_RECUSA = (
 
 Tupla e não texto livre para que o relatório possa agrupar sem depender de ortografia, e para
 que acrescentar uma guarda sem acrescentar o motivo seja um erro visível.
+
+`sem-contraste-de-casa` era do `detection/hybrid` até a S-171, e mudou de casa junto com a
+guarda: ela precisa rodar **antes** da supressão por IoU, que é aqui. A ordem desta tupla é a
+das guardas, e por isso ele entrou entre `score-baixo` e `sobreposicao` e não no fim.
 
 **Não há motivo para "abaixo do piso de área", e a ausência é decisão.** Ver o comentário em
 `_extract_candidate_quads`: registrá-lo produziu 2,6 milhões de linhas de speckle de 4,6 pt num
@@ -312,9 +355,20 @@ def _grid_score(small: np.ndarray) -> float:
     return (_periodic_peak_score(gx, period=20) + _periodic_peak_score(gy, period=20)) / 2.0
 
 
-def _board_pattern_score(warped_rgb: np.ndarray) -> float:
+def _pattern_and_checker(warped_rgb: np.ndarray) -> tuple[float, float]:
+    """A textura e a parcela de xadrez do mesmo recorte, num cálculo só.
+
+    As duas saem do mesmo `_small_gray`, e quem gera candidato precisa das duas: a textura
+    entra no score e o contraste de casa decide se aquilo é tabuleiro (S-143). Calculá-las
+    separado custava dois `_small_gray` por candidato.
+    """
     small = _small_gray(warped_rgb)
-    return float(np.clip(0.6 * _checker_score(small) + 0.4 * _grid_score(small), 0.0, 1.0))
+    checker = _checker_score(small)
+    return float(np.clip(0.6 * checker + 0.4 * _grid_score(small), 0.0, 1.0)), checker
+
+
+def _board_pattern_score(warped_rgb: np.ndarray) -> float:
+    return _pattern_and_checker(warped_rgb)[0]
 
 
 def board_checker_score(warped_rgb: np.ndarray) -> float:
@@ -322,10 +376,62 @@ def board_checker_score(warped_rgb: np.ndarray) -> float:
     return _checker_score(_small_gray(warped_rgb))
 
 
+def _repaired_pass(thresh: np.ndarray) -> np.ndarray:
+    """O terceiro passe de limiar: o fechamento nas duas diagonais, unidas.
+
+    Existe para que o contato de quina entre casas da mesma paridade sobreviva à binarização,
+    que é o que mantém o tabuleiro como uma componente só. O porquê, com os números, está em
+    `DIAGONAL_KERNELS`.
+
+    A caixa **não** cresce, e isso não é detalhe: dilatar repararia a quina do mesmo jeito e
+    entregaria 117×117 onde o tabuleiro mede 116×116, deslocando toda caixa de contorno do
+    acervo em ~1 pt. O fechamento devolve a forma ao tamanho original, então o diff do censo
+    continua mostrando só o que de fato mudou.
+
+    **Passe próprio, e não misturado no fechamento reto.** A primeira versão desta entrega
+    unia os dois numa imagem só, para não pagar um `findContours` a mais. O raciocínio era que
+    a união é um superconjunto do fechamento reto e portanto "só pode ligar mais" -- verdade
+    sobre **conexidade** e falsa sobre **candidatos**: juntar duas componentes tira as duas da
+    lista de contornos e põe a fundida no lugar. Onde o contorno justo era o bom, ele
+    simplesmente sumia.
+
+    Medido no `Gaprindashvili`: os diagramas daquele livro fecham dois contornos, um justo de
+    112 pt (a borda da grade) e um largo de 116 pt (a moldura impressa em volta). O justo lê
+    **1,0000** e o largo lê 0,29 a 0,87, porque a moldura tira a grade 8×8 de registro. Com os
+    passes unidos o justo deixava de existir, e **8 diagramas caíam de 1,0000 para 0,46--0,79**
+    -- abaixo do gate de exportação. Em passes separados ele continua na lista, continua
+    ganhando no score, e os 8 ficam em 1,0000.
+    """
+    reparado = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, DIAGONAL_KERNELS[0], iterations=1)
+    for kernel in DIAGONAL_KERNELS[1:]:
+        reparado = cv2.bitwise_or(reparado, cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1))
+    return reparado
+
+
+def _threshold_passes(thresh_base: np.ndarray) -> list[np.ndarray]:
+    """As três binarizações de que os candidatos saem, cada uma contribuindo a **sua** lista.
+
+    O cru, o fechamento reto (aqui desde o commit inicial, e intocado) e o reparo de quina da
+    S-171. São três imagens e não uma: fundir duas componentes tira as duas da lista de
+    contornos, então uma imagem mais ligada não é um superconjunto de candidatos -- é outro
+    conjunto. Ver `_repaired_pass`, e os 8 diagramas que essa confusão custou.
+    """
+    return [
+        thresh_base,
+        cv2.morphologyEx(thresh_base, cv2.MORPH_CLOSE, SQUARE_KERNEL, iterations=1),
+        _repaired_pass(thresh_base),
+    ]
+
+
 def _extract_candidate_quads(
     image_rgb: np.ndarray,
     rejected: list[RejectedQuad] | None = None,
-) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
+) -> list[tuple[np.ndarray, float, tuple[int, int, int, int], float]]:
+    """Os candidatos da página: `(quad, score, bbox, contraste de casa)`.
+
+    O contraste vem junto porque ele já foi calculado para compor o score, e porque quem
+    seleciona precisa dele **antes** de resolver sobreposição -- ver `detect_boards`.
+    """
     gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     thresh_base = cv2.adaptiveThreshold(
@@ -337,9 +443,8 @@ def _extract_candidate_quads(
         8,
     )
     image_area = float(image_rgb.shape[0] * image_rgb.shape[1])
-    raw_candidates: list[tuple[np.ndarray, float, tuple[int, int, int, int], float]] = []
-    kernel = np.ones((3, 3), np.uint8)
-    threshold_passes = [thresh_base, cv2.morphologyEx(thresh_base, cv2.MORPH_CLOSE, kernel, iterations=1)]
+    raw_candidates: list[tuple[np.ndarray, float, tuple[int, int, int, int], float, float]] = []
+    threshold_passes = _threshold_passes(thresh_base)
 
     for thresh in threshold_passes:
         # RETR_LIST keeps inner contours too. This helps when board is inside a larger rectangle.
@@ -384,22 +489,22 @@ def _extract_candidate_quads(
                 continue
 
             warped = warp_from_quad(image_rgb, quad, target_size=320)
-            pattern_score = _board_pattern_score(warped)
+            pattern_score, checker = _pattern_and_checker(warped)
             score = geom_score * (0.55 + 0.45 * pattern_score)
             quad_area = float(cv2.contourArea(quad.astype(np.float32)))
-            raw_candidates.append((quad, float(score), bbox, quad_area))
+            raw_candidates.append((quad, float(score), bbox, quad_area, float(checker)))
 
     if not raw_candidates:
         return []
 
     raw_candidates.sort(key=lambda item: item[1], reverse=True)
-    deduped: list[tuple[np.ndarray, float, tuple[int, int, int, int], float]] = []
+    deduped: list[tuple[np.ndarray, float, tuple[int, int, int, int], float, float]] = []
     for candidate in raw_candidates:
-        _, _, bbox, _ = candidate
+        bbox = candidate[2]
         # A duplicata das duas passadas de limiar **não** vai para as recusas: ela é o mesmo
         # candidato visto duas vezes, e registrá-la faria o relatório contar cada achado como
         # um achado mais uma perda.
-        if any(_bbox_iou(bbox, kept_bbox) > DEDUPE_IOU for _, _, kept_bbox, _ in deduped):
+        if any(_bbox_iou(bbox, kept[2]) > DEDUPE_IOU for kept in deduped):
             continue
         deduped.append(candidate)
 
@@ -407,11 +512,11 @@ def _extract_candidate_quads(
     min_relative_area = largest_area * MIN_RELATIVE_AREA
     if rejected is not None:
         rejected.extend(
-            RejectedQuad(item[2], round(item[1], 4), 0.0, "area-relativa")
+            RejectedQuad(item[2], round(item[1], 4), round(item[4], 4), "area-relativa")
             for item in deduped
             if item[3] < min_relative_area
         )
-    candidates = [item[:3] for item in deduped if item[3] >= min_relative_area]
+    candidates = [(item[0], item[1], item[2], item[4]) for item in deduped if item[3] >= min_relative_area]
 
     candidates.sort(key=lambda item: item[1], reverse=True)
     return candidates
@@ -425,6 +530,7 @@ def detect_boards(
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     warn_on_cap: bool = True,
     rejected: list[RejectedQuad] | None = None,
+    checker_floor: float | None = None,
 ) -> list[tuple[np.ndarray, np.ndarray | None]]:
     """Recorta os diagramas de uma página, numerados em `reading_order` (S-14).
 
@@ -441,6 +547,19 @@ def detect_boards(
     (S-131). É o instrumento que faltava para mexer em limiar aqui: o censo da S-82 conta o que
     entra e é cego ao que foi barrado, e é do lado barrado que se vê o recall perdido. Custa
     uma lista por página quando pedido, e nada quando não.
+
+    `checker_floor` recusa o candidato **sem contraste de casa** -- a foto, o retrato e a
+    moldura da S-143. `None` desliga, e é o padrão: quem pede **um** tabuleiro de propósito
+    (`refine_candidate_with_contour`) já sabe que há diagrama ali, e a guarda é do caminho de
+    contorno na página inteira. Quem a liga é `detection.hybrid.detect_diagrams`.
+
+    **Por que ela mora aqui e não lá (S-171).** A S-143 a escreveu no laço do `detect_diagrams`
+    com a regra certa -- "guarda que julga o que a coisa **é** vem antes de guarda que julga com
+    quem ela compete" -- mas uma guarda de competição roda antes das duas: a supressão por IoU,
+    que é *neste* laço. Um borrão sem xadrez nenhum podia vencer o tabuleiro de verdade no
+    score, suprimi-lo aqui, e só então morrer na guarda lá -- e a região terminava **sem
+    candidato nenhum**. Medido no `Karpov 2`, página 56: o diagrama do alto à esquerda lia
+    1,0000 e sumia inteiro, derrubado por um borrão de 618×611 px com contraste de casa 0,0000.
     """
     candidates = _extract_candidate_quads(image_rgb, rejected)
     top_score = candidates[0][1] if candidates else 0.0
@@ -448,23 +567,32 @@ def detect_boards(
     selected: list[tuple[np.ndarray, float, tuple[int, int, int, int]]] = []
     dropped_by_cap: list[float] = []
 
-    def _anota(bbox: tuple[int, int, int, int], score: float, motivo: str) -> None:
+    def _anota(bbox: tuple[int, int, int, int], score: float, motivo: str, checker: float = 0.0) -> None:
         if rejected is not None:
-            rejected.append(RejectedQuad(bbox, round(score, 4), 0.0, motivo))
+            rejected.append(RejectedQuad(bbox, round(score, 4), round(checker, 4), motivo))
 
-    for candidate in candidates:
-        _, score, bbox = candidate
+    for quad, score, bbox, checker in candidates:
         if score < min_score:
-            _anota(bbox, score, "score-baixo")
+            _anota(bbox, score, "score-baixo", checker)
+            continue
+        if checker_floor is not None and checker <= checker_floor:
+            # `info` pelo mesmo motivo da recusa por tamanho (S-79): esta linha apaga um
+            # candidato, e e a unica evidencia de que ela agiu.
+            logger.info(
+                "Contorno descartado por nao ter contraste de casa: %.4f. Foto, retrato "
+                "ou moldura -- ou dois diagramas colados num borrao so.",
+                checker,
+            )
+            _anota(bbox, score, "sem-contraste-de-casa", checker)
             continue
         if any(_bbox_iou(bbox, kept_bbox) > iou_threshold for _, _, kept_bbox in selected):
-            _anota(bbox, score, "sobreposicao")
+            _anota(bbox, score, "sobreposicao", checker)
             continue
         if len(selected) >= max_boards:
             dropped_by_cap.append(score)
-            _anota(bbox, score, "teto")
+            _anota(bbox, score, "teto", checker)
             continue
-        selected.append(candidate)
+        selected.append((quad, score, bbox))
 
     if dropped_by_cap and warn_on_cap:
         # O corte e por score, e o score nao ordena diagrama por posicao: numa grade 3x3 o

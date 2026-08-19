@@ -689,7 +689,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 |---|---|
 | S-01 a S-36 | [docs/SPEC.md](docs/SPEC.md) |
 | S-37 a S-77 | [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) |
-| S-78 a S-82, S-143 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
+| S-78 a S-82, S-143, S-171 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
 | S-95 a S-142 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
 | S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |

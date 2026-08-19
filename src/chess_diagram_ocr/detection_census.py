@@ -150,7 +150,7 @@ class RejectionRow:
     """1-based, como no `CandidateRow` -- os dois CSVs se leem lado a lado."""
 
     reason: str
-    """Qual guarda barrou. Ver `board_detection.MOTIVOS_DE_RECUSA` e os quatro do `hybrid`."""
+    """Qual guarda barrou. Ver `board_detection.MOTIVOS_DE_RECUSA` e as três do `hybrid`."""
 
     score: float
     checker: float

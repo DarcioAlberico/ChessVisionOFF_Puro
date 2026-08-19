@@ -6,13 +6,13 @@
   "front_matter": 8,
   "suspect_below_pt": 72.0,
   "books": 39,
-  "candidates": 1554,
+  "candidates": 1520,
   "suspects": 0,
   "books_with_suspects": 0,
   "pages_numbering_shifted": 0,
   "pages_size_prior_mixed": 0,
   "by_source": {
-    "contour": 1022,
+    "contour": 988,
     "embedded": 532
   },
   "per_book": [
@@ -58,7 +58,7 @@
       "texture": {
         "min": 0.1462,
         "p05": 0.1923,
-        "median": 0.3112,
+        "median": 0.3092,
         "max": 0.6634
       }
     },
@@ -94,7 +94,7 @@
       "by_source": {
         "embedded": 23
       },
-      "trimmed": 9,
+      "trimmed": 4,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
@@ -102,9 +102,9 @@
         "280": 23
       },
       "texture": {
-        "min": 0.2027,
-        "p05": 0.2059,
-        "median": 0.401,
+        "min": 0.2345,
+        "p05": 0.3121,
+        "median": 0.3967,
         "max": 0.6634
       }
     },
@@ -130,8 +130,8 @@
       },
       "texture": {
         "min": 0.4888,
-        "p05": 0.4945,
-        "median": 0.5355,
+        "p05": 0.4974,
+        "median": 0.535,
         "max": 0.5988
       }
     },
@@ -227,7 +227,7 @@
       "texture": {
         "min": 0.3646,
         "p05": 0.4358,
-        "median": 0.5881,
+        "median": 0.595,
         "max": 0.7323
       }
     },
@@ -245,12 +245,12 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "120": 32,
-        "130": 7
+        "120": 28,
+        "130": 11
       },
       "texture": {
-        "min": 0.6427,
-        "p05": 0.7141,
+        "min": 0.6417,
+        "p05": 0.7078,
         "median": 0.7687,
         "max": 0.8883
       }
@@ -296,9 +296,9 @@
         "150": 38
       },
       "texture": {
-        "min": 0.7946,
-        "p05": 0.8508,
-        "median": 0.9763,
+        "min": 0.7909,
+        "p05": 0.8088,
+        "median": 0.9576,
         "max": 1.0
       }
     },
@@ -325,7 +325,7 @@
         "min": 0.2323,
         "p05": 0.4948,
         "median": 0.6692,
-        "max": 0.9211
+        "max": 0.8976
       }
     },
     {
@@ -366,13 +366,13 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "100": 20,
-        "110": 21
+        "100": 17,
+        "110": 24
       },
       "texture": {
         "min": 0.5218,
         "p05": 0.5284,
-        "median": 0.5653,
+        "median": 0.5623,
         "max": 0.6423
       }
     },
@@ -397,7 +397,7 @@
         "170": 23
       },
       "texture": {
-        "min": 0.3399,
+        "min": 0.3639,
         "p05": 0.3905,
         "median": 0.513,
         "max": 0.6882
@@ -408,9 +408,9 @@
       "pages_sampled": 32,
       "pages_with_candidate": 16,
       "pages_failed": 0,
-      "candidates": 92,
+      "candidates": 88,
       "by_source": {
-        "contour": 92
+        "contour": 88
       },
       "trimmed": 0,
       "suspects": 0,
@@ -418,12 +418,12 @@
       "pages_size_prior_mixed": 0,
       "side_histogram": {
         "140": 39,
-        "150": 53
+        "150": 49
       },
       "texture": {
         "min": 0.2845,
-        "p05": 0.3522,
-        "median": 0.4432,
+        "p05": 0.3512,
+        "median": 0.4442,
         "max": 0.6078
       }
     },
@@ -455,24 +455,24 @@
       "pages_sampled": 30,
       "pages_with_candidate": 21,
       "pages_failed": 0,
-      "candidates": 49,
+      "candidates": 48,
       "by_source": {
-        "contour": 49
+        "contour": 48
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "150": 22,
-        "160": 26,
+        "150": 26,
+        "160": 21,
         "170": 1
       },
       "texture": {
-        "min": 0.4521,
-        "p05": 0.4716,
-        "median": 0.5858,
-        "max": 0.7091
+        "min": 0.4189,
+        "p05": 0.4824,
+        "median": 0.6016,
+        "max": 0.7339
       }
     },
     {
@@ -497,7 +497,7 @@
       "texture": {
         "min": 0.2828,
         "p05": 0.2937,
-        "median": 0.4172,
+        "median": 0.4192,
         "max": 0.5325
       }
     },
@@ -520,7 +520,7 @@
       "texture": {
         "min": 0.5173,
         "p05": 0.5352,
-        "median": 0.6349,
+        "median": 0.6147,
         "max": 0.7359
       }
     },
@@ -608,7 +608,7 @@
         "min": 0.4554,
         "p05": 0.4677,
         "median": 0.4916,
-        "max": 0.5618
+        "max": 0.5558
       }
     },
     {
@@ -630,8 +630,8 @@
         "160": 1
       },
       "texture": {
-        "min": 0.5261,
-        "p05": 0.5474,
+        "min": 0.5415,
+        "p05": 0.5482,
         "median": 0.6338,
         "max": 0.733
       }
@@ -639,25 +639,24 @@
     {
       "pdf": "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf",
       "pages_sampled": 27,
-      "pages_with_candidate": 21,
+      "pages_with_candidate": 17,
       "pages_failed": 0,
-      "candidates": 42,
+      "candidates": 26,
       "by_source": {
-        "contour": 42
+        "contour": 26
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "270": 1,
-        "280": 41
+        "280": 26
       },
       "texture": {
-        "min": 0.4803,
-        "p05": 0.5042,
-        "median": 0.5393,
-        "max": 0.6685
+        "min": 0.503,
+        "p05": 0.5067,
+        "median": 0.5364,
+        "max": 0.588
       }
     },
     {
@@ -688,22 +687,22 @@
       "pages_sampled": 32,
       "pages_with_candidate": 16,
       "pages_failed": 0,
-      "candidates": 95,
+      "candidates": 82,
       "by_source": {
-        "contour": 95
+        "contour": 82
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "120": 94,
+        "120": 81,
         "130": 1
       },
       "texture": {
         "min": 0.3847,
-        "p05": 0.5797,
-        "median": 0.6348,
+        "p05": 0.4324,
+        "median": 0.6345,
         "max": 0.7073
       }
     },
@@ -730,7 +729,7 @@
       "texture": {
         "min": 0.7079,
         "p05": 0.7376,
-        "median": 0.8177,
+        "median": 0.8184,
         "max": 0.9391
       }
     },
@@ -772,13 +771,13 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "200": 6,
-        "210": 5
+        "200": 5,
+        "210": 6
       },
       "texture": {
         "min": 0.6409,
         "p05": 0.6469,
-        "median": 0.677,
+        "median": 0.6653,
         "max": 0.762
       }
     },
@@ -842,13 +841,13 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "190": 32,
-        "200": 22
+        "190": 25,
+        "200": 29
       },
       "texture": {
         "min": 0.5761,
         "p05": 0.6409,
-        "median": 0.7049,
+        "median": 0.7028,
         "max": 0.8365
       }
     },
@@ -871,9 +870,9 @@
       },
       "texture": {
         "min": 0.353,
-        "p05": 0.4034,
-        "median": 0.5808,
-        "max": 0.785
+        "p05": 0.4144,
+        "median": 0.5891,
+        "max": 0.7654
       }
     },
     {
@@ -925,7 +924,7 @@
       },
       "texture": {
         "min": 0.2951,
-        "p05": 0.3414,
+        "p05": 0.3516,
         "median": 0.6971,
         "max": 0.8804
       }
@@ -950,8 +949,8 @@
       "texture": {
         "min": 0.5391,
         "p05": 0.5768,
-        "median": 0.6527,
-        "max": 0.8183
+        "median": 0.6521,
+        "max": 0.7937
       }
     }
   ]
