@@ -350,8 +350,13 @@ class RecusasTests(unittest.TestCase):
     efeito: dá para ver o falso positivo que sumiu, e não o diagrama que sumiu junto.
     """
 
-    MOTIVOS_DO_HIBRIDO = ("sem-contraste-de-casa", "prior-de-tamanho", "perdeu-para-embutido", "teto-da-pagina")
-    """As quatro guardas que moram no `detection/hybrid`, e não no `board_detection`."""
+    MOTIVOS_DO_HIBRIDO = ("prior-de-tamanho", "perdeu-para-embutido", "teto-da-pagina")
+    """As guardas que moram no `detection/hybrid`, e não no `board_detection`.
+
+    Eram quatro: `"sem-contraste-de-casa"` mudou de casa na S-160 e agora está em
+    `MOTIVOS_DE_RECUSA`. Ele precisava correr **antes** da ordenação por score e da supressão
+    por IoU do `detect_boards`, e aqui só alcançava o que aquela função já tinha devolvido.
+    """
 
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-s131-"))
@@ -402,7 +407,11 @@ class RecusasTests(unittest.TestCase):
         self.assertEqual([], minusculas, "recusa de menos de 20 pt não é candidato, é speckle")
 
     def test_o_motivo_de_cada_guarda_do_detect_boards(self) -> None:
-        """Direto no `detect_boards`, sem PDF: é onde as seis guardas moram."""
+        """Direto no `detect_boards`, sem PDF: é onde as sete guardas moram.
+
+        Eram seis: o piso de contraste de casa passou a rodar aqui na S-160, antes da disputa
+        por score e IoU, em vez de no laço do `hybrid` -- ver `MOTIVOS_DO_HIBRIDO`.
+        """
         import numpy as np
 
         from chess_diagram_ocr.board_detection import detect_boards

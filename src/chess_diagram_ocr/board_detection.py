@@ -33,11 +33,19 @@ estética: `ANALISE_DETECCAO.md` §5 registra dois ajustes de limiar feitos sem 
 reprovados.
 """
 
-ASPECT_MIN, ASPECT_MAX = 0.62, 1.62
-"""Faixa de proporção largura/altura aceita. **Sem medição registrada** -- ver `MIN_AREA_FRACTION`.
+ASPECT_MAX = 1.62
+"""Alongamento máximo -- lado maior sobre lado menor -- aceito num candidato. **Sem medição
+registrada** -- ver `MIN_AREA_FRACTION`.
 
-Larga de propósito: o contorno de um diagrama impresso raramente fecha quadrado, e um
+Largo de propósito: o contorno de um diagrama impresso raramente fecha quadrado, e um
 tabuleiro com legenda embutida no recorte estica no eixo vertical.
+
+**Era um par -- `ASPECT_MIN, ASPECT_MAX = 0.62, 1.62` -- e o par media a caixa alinhada aos
+eixos (S-160).** Naquela régua "largo demais" e "alto demais" são dois casos, porque a caixa
+tem orientação de página. Medindo o quad, que carrega a inclinação dele, os dois viram um só:
+alongamento, sempre ≥ 1. `ASPECT_MIN` saiu junto com a medição que o justificava, e com ele
+some uma assimetria que nunca teve significado nenhum -- 0,62 contra 1/1,62 = 0,6173. Por que
+a caixa era a régua errada está em `_contour_geometry_score`.
 """
 
 AREA_SATURATION = 0.12
@@ -64,6 +72,47 @@ MIN_SCORE_FLOOR = 0.06
 MIN_SCORE_RELATIVE = 0.25
 """Fração do score do melhor candidato abaixo da qual os outros saem. Vale o maior dos dois."""
 
+MIN_CHECKER_CONTRAST = 0.0
+"""Piso do contraste entre casas para um achado de contorno ser diagrama (S-143).
+
+**O relato.** Capa e prancha de retrato do `Karpov 1` (páginas 1 e 7) rendiam 10 caixas onde
+não há diagrama nenhum: o título, a grade de fotos dos campeões, cada retrato, e -- na página
+do Steinitz -- três casas do tabuleiro *pintado ao fundo do quadro* mais a moldura inteira.
+
+**Por que o contraste de xadrez, e não a textura.** `_board_pattern_score` é
+`0,6·xadrez + 0,4·grade`, e a parcela de **grade** é o que uma foto imita bem: moldura de
+quadro, faixa de retratos e fachada produzem borda periódica. Medido nas páginas do relato, a
+grade das fotos dá 0,04 a 0,80 -- acima de diagramas legítimos. A parcela de **xadrez** não tem
+como ser imitada: ela exige que as 32 casas de uma paridade sejam sistematicamente mais claras
+que as 32 da outra, num reticulado 8×8 alinhado com o recorte. Onde não há tabuleiro a diferença
+entre as duas metades é ruído, o `clip` em 0 morde, e o resultado é **exatamente zero**.
+
+**Zero, e por quê.** O número não é ajustado à amostra: é onde a comparação sinal-contra-ruído
+troca de sinal (`contraste·2,4 ≤ dispersão·0,9`). O candidato legítimo mais próximo do corte no
+acervo é um `Polgar` de 0,0616 -- posição de abertura, 28 peças, o caso que derruba esta
+parcela --, então qualquer valor em (0; 0,06) se comportaria igual aqui. Zero é o que tem
+significado independente do acervo, e é preferível por isso.
+
+**Só contorno.** Imagem embutida é *declaração* do PDF e continua ganhando (S-12); ela tem as
+guardas dela, e este piso mora no caminho de contorno justamente por isso.
+
+**Ele morava no laço de `detection/hybrid.detect_diagrams`, e ali era tarde demais (S-160).**
+O comentário daquele laço enunciava a regra certa -- *"guarda que julga o que a coisa é vem
+antes de guarda que julga com quem ela compete"* --, mas o laço percorre o que `detect_boards`
+**já devolveu**, e `detect_boards` ordena por score e suprime por IoU antes de devolver. Na
+página 62 do `Vishy_Anand_Great_Chess_Combinations` a sequência era esta:
+
+1. uma faixa de hachura vencia por score (0,6423 contra 0,6012);
+2. o tabuleiro de verdade sobrepunha a faixa (IoU 0,49, acima de `iou_threshold`) e saía
+   como `sobreposicao`;
+3. só então a faixa vencedora morria aqui, por contraste zero.
+
+A guarda removia o vencedor **depois** de o vencedor já ter comido o tabuleiro, e a página
+voltava sem diagrama nenhum -- na interface, uma página em branco; no `cvoff-infer`, que chama
+`detect_board` direto e nunca teve esta guarda, o losango e a FEN de vinte reis. Ela agora roda
+em `_extract_candidate_quads`, antes de qualquer disputa, que é onde a própria frase mandava.
+"""
+
 
 @dataclass(frozen=True)
 class RejectedQuad:
@@ -89,6 +138,7 @@ class RejectedQuad:
 MOTIVOS_DE_RECUSA = (
     "aspecto",
     "fora-da-pagina",
+    "sem-contraste-de-casa",
     "area-relativa",
     "score-baixo",
     "sobreposicao",
@@ -133,7 +183,41 @@ def warp_from_quad(image_rgb: np.ndarray, quad: np.ndarray, target_size: int = B
     return cv2.warpPerspective(image_rgb, matrix, (target_size, target_size))
 
 
+def _quad_elongation(quad: np.ndarray) -> float:
+    """Lado maior sobre lado menor do quad, na inclinação dele. Nunca menor que 1.
+
+    `cv2.minAreaRect` e não `cv2.boundingRect`: a caixa alinhada aos eixos mede a **pegada na
+    página**, e não a forma do candidato. As duas só coincidem quando o candidato está de pé, e
+    é justamente o candidato torto que precisa ser julgado -- ver `_contour_geometry_score`.
+    """
+    (_, (largura, altura), _) = cv2.minAreaRect(quad.astype(np.float32))
+    if largura <= 0.0 or altura <= 0.0:
+        return math.inf
+    return float(max(largura, altura) / min(largura, altura))
+
+
 def _contour_geometry_score(quad: np.ndarray, image_area: float) -> float:
+    """Quanto o candidato parece diagrama pela geometria: grande, e quadrado.
+
+    **A régua era a caixa alinhada aos eixos, e ela premiava exatamente o que devia recusar
+    (S-160).** Um quadrilátero inclinado a 45° fecha caixa quadrada seja qual for o formato
+    dele. Na página 62 do `Vishy_Anand_Great_Chess_Combinations` -- as casas escuras são
+    hachura a 45°, e o limiar adaptativo emenda as diagonais vizinhas numa faixa só -- os
+    números eram estes:
+
+    | candidato | lados do quad | alongamento | caixa | razão da caixa | squareness | score |
+    |---|---|---|---|---|---|---|
+    | faixa de hachura | 620×314 | **1,98** | 662×659 | 1,0046 | 0,978 | **0,6423** |
+    | tabuleiro | 466×453 | 1,03 | 469×455 | 1,0308 | 0,856 | 0,6012 |
+
+    Alongamento 1,98 está muito além de `ASPECT_MAX` e devia ter sido recusado por aspecto; a
+    inclinação o convertia em razão 1,0046, e a faixa saía **mais quadrada que o tabuleiro**.
+    Ela vencia, o warp entregava um losango ao classificador, e a FEN vinha com vinte reis.
+
+    Medido no acervo: 5 das 244 páginas daquele livro, e o mesmo padrão no `Schiller` e no
+    `1937 Kemeri`, onde a imagem embutida ainda socorre. Livro cujas casas escuras são chapadas
+    não produz a faixa e não muda de resposta.
+    """
     area = cv2.contourArea(quad.astype(np.float32))
     if area <= 0:
         return 0.0
@@ -141,17 +225,14 @@ def _contour_geometry_score(quad: np.ndarray, image_area: float) -> float:
     if area < image_area * MIN_AREA_FRACTION:
         return 0.0
 
-    x, y, w, h = cv2.boundingRect(quad.astype(np.int32))
-    if h == 0:
-        return 0.0
-    ratio = w / float(h)
-    if ratio < ASPECT_MIN or ratio > ASPECT_MAX:
+    alongamento = _quad_elongation(quad)
+    if alongamento > ASPECT_MAX:
         return 0.0
 
     area_ratio = area / image_area
     # Saturates to avoid very large non-board boxes dominating by area only.
     area_component = min(area_ratio / AREA_SATURATION, 1.0)
-    squareness = max(0.0, 1.0 - (abs(math.log(ratio)) / math.log(ASPECT_MAX)))
+    squareness = max(0.0, 1.0 - (math.log(alongamento) / math.log(ASPECT_MAX)))
     return area_component * (squareness**2.4)
 
 
@@ -312,9 +393,18 @@ def _grid_score(small: np.ndarray) -> float:
     return (_periodic_peak_score(gx, period=20) + _periodic_peak_score(gy, period=20)) / 2.0
 
 
+def _texture_from_parts(checker: float, grid: float) -> float:
+    """A textura a partir das duas parcelas já medidas.
+
+    Existe separada de `_board_pattern_score` para que `_extract_candidate_quads` possa olhar
+    a parcela de xadrez sozinha -- é o piso da S-143 -- sem medir o recorte duas vezes.
+    """
+    return float(np.clip(0.6 * checker + 0.4 * grid, 0.0, 1.0))
+
+
 def _board_pattern_score(warped_rgb: np.ndarray) -> float:
     small = _small_gray(warped_rgb)
-    return float(np.clip(0.6 * _checker_score(small) + 0.4 * _grid_score(small), 0.0, 1.0))
+    return _texture_from_parts(_checker_score(small), _grid_score(small))
 
 
 def board_checker_score(warped_rgb: np.ndarray) -> float:
@@ -325,6 +415,7 @@ def board_checker_score(warped_rgb: np.ndarray) -> float:
 def _extract_candidate_quads(
     image_rgb: np.ndarray,
     rejected: list[RejectedQuad] | None = None,
+    checker_floor: float | None = MIN_CHECKER_CONTRAST,
 ) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
     gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -383,8 +474,19 @@ def _extract_candidate_quads(
                     rejected.append(RejectedQuad(bbox, geom_score, 0.0, "fora-da-pagina"))
                 continue
 
-            warped = warp_from_quad(image_rgb, quad, target_size=320)
-            pattern_score = _board_pattern_score(warped)
+            small = _small_gray(warp_from_quad(image_rgb, quad, target_size=320))
+            checker = _checker_score(small)
+            # Antes de qualquer disputa (S-143, reposicionada na S-160). O achado sem contraste
+            # de casa nenhum não é tabuleiro -- é foto, retrato, moldura ou faixa de hachura --,
+            # e deixá-lo entrar na competição não o fazia vencer sozinho: fazia com que, ao
+            # vencer por score, ele suprimisse por IoU o diagrama de verdade e morresse depois,
+            # levando o diagrama junto. Ver `MIN_CHECKER_CONTRAST`.
+            if checker_floor is not None and checker <= checker_floor:
+                if rejected is not None:
+                    rejected.append(RejectedQuad(bbox, round(geom_score, 4), round(checker, 4), "sem-contraste-de-casa"))
+                continue
+
+            pattern_score = _texture_from_parts(checker, _grid_score(small))
             score = geom_score * (0.55 + 0.45 * pattern_score)
             quad_area = float(cv2.contourArea(quad.astype(np.float32)))
             raw_candidates.append((quad, float(score), bbox, quad_area))
@@ -425,6 +527,7 @@ def detect_boards(
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     warn_on_cap: bool = True,
     rejected: list[RejectedQuad] | None = None,
+    checker_floor: float | None = MIN_CHECKER_CONTRAST,
 ) -> list[tuple[np.ndarray, np.ndarray | None]]:
     """Recorta os diagramas de uma página, numerados em `reading_order` (S-14).
 
@@ -441,8 +544,12 @@ def detect_boards(
     (S-131). É o instrumento que faltava para mexer em limiar aqui: o censo da S-82 conta o que
     entra e é cego ao que foi barrado, e é do lado barrado que se vê o recall perdido. Custa
     uma lista por página quando pedido, e nada quando não.
+
+    `checker_floor` é o piso de contraste de casa da S-143, e ele vale aqui e não mais no
+    `hybrid` porque precisa correr **antes** da disputa por score e IoU desta função -- ver
+    `MIN_CHECKER_CONTRAST`. `None` desliga, e quem desliga assume achar diagrama onde não há.
     """
-    candidates = _extract_candidate_quads(image_rgb, rejected)
+    candidates = _extract_candidate_quads(image_rgb, rejected, checker_floor)
     top_score = candidates[0][1] if candidates else 0.0
     min_score = max(MIN_SCORE_FLOOR, top_score * MIN_SCORE_RELATIVE)
     selected: list[tuple[np.ndarray, float, tuple[int, int, int, int]]] = []

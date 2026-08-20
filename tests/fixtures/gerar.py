@@ -78,9 +78,18 @@ def desenhar_tabuleiro(lado: int, placement: str) -> np.ndarray:
     return imagem
 
 
-def montar_pagina(tabuleiros: list[tuple[str, tuple[int, int, int]]]) -> np.ndarray:
-    """Cola os tabuleiros numa página branca. Cada um é `(placement, (x, y, lado))`."""
+def montar_pagina(
+    tabuleiros: list[tuple[str, tuple[int, int, int]]],
+    molduras: list[tuple[int, int, int]] | None = None,
+) -> np.ndarray:
+    """Cola os tabuleiros numa página branca. Cada um é `(placement, (x, y, lado))`.
+
+    `molduras` são quadrados vazios `(x, y, lado)` desenhados **antes**: não são diagrama, e o
+    manifesto não os registra. Ver `MOLDURAS` para o que elas existem para provocar.
+    """
     pagina = np.full((*PAGINA, 3), FUNDO, dtype=np.uint8)
+    for x, y, lado in molduras or []:
+        cv2.rectangle(pagina, (x, y), (x + lado, y + lado), (60, 60, 60), 9)
     for placement, (x, y, lado) in tabuleiros:
         pagina[y : y + lado, x : x + lado] = desenhar_tabuleiro(lado, placement)
     return pagina
@@ -106,13 +115,42 @@ PAGINAS: dict[str, list[tuple[str, tuple[int, int, int]]]] = {
     # Um tabuleiro quase vazio: o caso em que o contraste medio da pagina cai e o detector
     # ainda tem de achar a grade.
     "diagrama_esparso": [(ESPARSO, (300, 500, 420))],
+    # Um diagrama pequeno dentro de uma moldura grande e vazia (S-160). Ver `MOLDURAS`.
+    "diagrama_em_moldura": [(MEIO, (240, 420, 340))],
 }
+
+MOLDURAS: dict[str, list[tuple[int, int, int]]] = {
+    # **O falso positivo que vence por score e leva o diagrama junto.**
+    #
+    # A moldura e o caso da S-143 -- retrato, foto, quadro --, e aquela guarda ja sabia recusa-la
+    # por nao ter contraste de casa nenhum. O que ninguem tinha montado era a moldura **em cima
+    # de um diagrama**, e e ai que a ordem das guardas aparece:
+    #
+    # | candidato | lado | score | contraste de casa |
+    # |---|---|---|---|
+    # | moldura | 600 | 0,7026 | **0,000** |
+    # | diagrama | 340 | 0,6119 | 0,599 |
+    #
+    # A moldura vence por area (600 px saturam `AREA_SATURATION`, 340 px nao), o diagrama cai
+    # dentro dela (IoU 0,32, acima de `iou_threshold`) e saia como `sobreposicao`, e so entao a
+    # moldura morria pelo piso de contraste -- levando junto o diagrama que ela tinha suprimido.
+    # A pagina voltava vazia. E a mesma sequencia que a hachura a 45 graus produzia na pagina 62
+    # do `Vishy_Anand_Great_Chess_Combinations`, montada com uma forma que nao depende de
+    # reproduzir a granulacao de um scan.
+    #
+    # Os numeros acima sao com a moldura no lugar: nao mexa em `lado` sem reconferi-los, porque
+    # e o par (area da moldura, area do diagrama) que faz a inversao existir.
+    "diagrama_em_moldura": [(170, 350, 600)],
+}
+"""Ornamentos por pagina: quadrados sem xadrez nenhum, que nao sao diagrama e nao entram no
+manifesto. Existem para que o fixture cubra o falso positivo que **compete** com um diagrama --
+o que a suite nao tinha, e o que deixou a S-160 passar."""
 
 
 def main() -> int:
     esperado: dict[str, list[dict[str, object]]] = {}
     for nome, tabuleiros in PAGINAS.items():
-        pagina = montar_pagina(tabuleiros)
+        pagina = montar_pagina(tabuleiros, MOLDURAS.get(nome, []))
         destino = AQUI / f"{nome}.png"
         cv2.imwrite(str(destino), cv2.cvtColor(pagina, cv2.COLOR_RGB2BGR))
         esperado[nome] = [
