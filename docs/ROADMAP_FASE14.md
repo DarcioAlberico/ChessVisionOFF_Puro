@@ -383,7 +383,7 @@ a condição de qualquer medição, a segunda porque cada dia de uso acrescenta 
 | 14.2 | A exatidão de campo passa a existir, com `n` declarado | S-96 | ✅ |
 | 14.3 | O conjunto de campo declara a página que o modelo treinou | S-97 | ✅ |
 | 14.4 | O mesmo diagrama impresso não cruza split | S-98 | ✅ |
-| 14.5 | Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida | S-99 | ⚠ FEN feita (31), páginas não (17 de 60) |
+| 14.5 | Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida | S-99 | ⚠ FEN feita (33 de 40), páginas não (19 de 60) |
 | 14.6 | O conjunto vigente é declarado e a comparação volta a ser honesta | S-100 | ✅ |
 
 **Critério de saída:** `cvoff-field` relata exatidão de campo com `comparable ≥ 30`, nenhuma
@@ -400,11 +400,59 @@ a 7.7 apontou como ausente e sem a qual nenhum modelo se distingue de outro.
 | páginas contaminadas por treino | 0 | 2 páginas, 7 diagramas (18%) — **declaradas** pela S-97 |
 | triplas cruzando split | 0 | 0 (S-98) |
 
+**Remedido em 2026-08-20, depois da S-175 e de duas correções de anotação:**
+
+| parte | alvo | 2026-08-18 | 2026-08-20 |
+|---|---|---|---|
+| páginas revisadas / diagramas anotados | — | 18 / 39 | **19 / 40** |
+| conferíveis (`comparable`) | ≥ 30 | 28 | **33** ✅ |
+| exatidão de campo | — | 1,0000 (28/28) | **1,0000 (33/33)** |
+| exportados e **errados** | 0 | 0 | **0** |
+| taxa de exportação | — | 0,7179 (28/39) | **0,8500 (34/40)** |
+| páginas contaminadas por treino | 0 | 2 páginas, 7 diagramas | 4 páginas, 9 diagramas (22%) — **declaradas** |
+| triplas cruzando split | 0 | 0 | **0** |
+| diagramas na faixa de confiança 0,60–0,80 | ≥ 5 | 0 | **0** ❌ |
+
+**A cláusula que faltava por dois passou a sobrar por três**, e não por anotação nova: a S-175
+devolveu os diagramas da coluna esquerda do `Reinfeld`, que já estavam anotados e nunca eram
+detectados. Cinco conferíveis a mais vieram daí e da página 62 do `Anand`.
+
+**Duas cláusulas continuam abertas, e as duas são dado.** A contaminação subiu — de 18% para
+22% — porque as amostras novas do `Anand` incluem a página 62, que agora está no conjunto. E a
+**faixa de 0,60–0,80 continua vazia**: a distribuição de confiança do conjunto é bimodal, 35
+diagramas acima de 0,9 e 2 em 0,000. É o achado da 7.7 intacto — sem vizinhança do gate,
+nenhuma mudança pode ganhar ou perder um diagrama por margem, e dois modelos continuam
+indistinguíveis por esta métrica. **É a razão que sobra para a S-99 existir**, e ela mudou de
+natureza: não é mais "faltam duas leituras", é "faltam páginas difíceis".
+
+### As duas anotações que estavam com o defeito dentro (2026-08-20)
+
+Encontradas ao remedir, e as duas são a mesma classe: **o defeito virou verdade de
+referência**. Não é a leitura do modelo entrando como verdade — que é o que a S-95 fechou — é o
+*bug* entrando como verdade, por um caminho que a S-95 não alcança.
+
+| onde | o que estava gravado | por quê |
+|---|---|---|
+| `Anand` p62 | `"diagrams": [], "regime": "sem-diagrama"` | anotada enquanto a S-160 estava viva, quando a interface mostrava aquela página **sem diagrama nenhum** |
+| `Reinfeld` p40 e p150, 4 diagramas | caixa de 99 a 102 pt, e FEN deslocada uma casa à direita | anotadas a partir do recorte de 7/8 que a S-175 consertou |
+
+**A caixa é a prova, e ela estava no arquivo o tempo todo.** Das doze anotações daquele livro,
+as oito com caixa de ~116 pt casam com a leitura de hoje **casa por casa**; as quatro com caixa
+de ~99 a 102 pt são as quatro que divergem. Não é coincidência: 116,14/8 = 14,52 pt por casa, e
+116,14 − 102,07 = 14,07 — **uma fileira**. O que está à esquerda do tabuleiro coincide, e tudo
+o que está à direita aparece uma casa adiante, que é o que acontece quando 7 fileiras são
+esticadas sobre 8 colunas.
+
+As cinco FENs foram **conferidas casa a casa contra o render a 600 DPI** antes de entrar, pela
+mesma regra da S-95 e da S-160. Que a leitura de hoje coincida com as cinco é resultado, não
+método — e é o que o `exportados e errados` de 3 para **0** mede.
+
 **O que falta é dado, não código.** Todo o instrumento desta fase está entregue e travado por
-teste; o que o critério pede a mais são **duas leituras conferidas à mão** — S-99, a anotação
-das páginas restantes. É trabalho do dono do acervo, e é por isso que esta fase não fecha
+teste; o que o critério ainda pede é anotação de páginas **difíceis**, que é onde a faixa
+0,60–0,80 pode existir. É trabalho do dono do acervo, e é por isso que esta fase não fecha
 sozinha: fechá-la escrevendo FEN que ninguém conferiu seria exatamente o defeito que a S-95
-consertou.
+consertou — e, como estas duas anotações mostram, conferir contra a tela também não basta
+quando a tela está errada.
 
 **A ordem dentro da fase é obrigatória.** A 14.5 vem depois da 14.1: crescer o conjunto com a
 ferramenta quebrada acrescenta verdade que é saída do modelo, e **piora** a régua em vez de
@@ -445,6 +493,43 @@ quadro de riscos registra desde 2026-08-16.
 **um diagrama** — e é um diagrama *sem FEN de referência*, então nem sequer é uma diferença de
 correção medida; a exatidão de campo dos dois é a mesma 1,0000 sobre os mesmos 28 conferíveis.
 Trocar o modelo que o produto carrega por isso seria pagar risco por ruído.
+
+### O retreino que o disco já tinha, e o documento não (medido em 2026-08-20)
+
+O parágrafo acima diz *"um arquivo que ninguém trocou"*, e na hora em que foi escrito era
+verdade. **Não é mais.** Lendo o `metadata` de `models/piece_classifier.pt` hoje:
+
+| campo | o que o documento dizia | o que o arquivo diz |
+|---|---|---|
+| `dataset_size` | 2.660 | **3.291** |
+| melhor época | 10 | 2 |
+| `best_metric` (`val_board_exact_acc`) | 0,9874 | **0,9875** |
+| `git_commit` | — | `0978c0d` (a S-160) |
+| `augment_version` | `aug0` | `aug0` — inalterado |
+
+**A primeira cláusula do critério de saída está atingida por fato:** a produção cita
+`dataset_size` 3.291, acima do piso de 3.100. Ela não foi atingida por uma decisão de
+promoção; foi atingida porque o dataset cresceu — 98 amostras novas do
+`Vishy_Anand_Great_Chess_Combinations`, coletadas durante a S-160 — e o retreino saiu com o
+modelo de produção no lugar.
+
+**Medido no conjunto de campo de hoje** (19 páginas, 40 diagramas anotados, depois da correção
+da página 62 do `Anand` — ver a nota abaixo): exatidão de campo **1,0000** sobre 29
+conferíveis, taxa de exportação 0,7500 (30/40), **zero exportados e errados**.
+
+**O que isto não muda.** A decisão sobre o `mhsp` continua sendo *não promover*, e o
+`controle_20260816.pt` continua sem ter sido promovido. O que mudou é o denominador do
+critério, e o fato de que **nenhuma guarda viu a troca acontecer**: as duas da S-172 cobrem
+placar de fase e número de README, e nenhuma cobre o checkpoint que o produto carrega. É a
+mesma classe de apodrecimento, num arquivo que a suíte não olha.
+
+> **A página 62 do `Anand` estava anotada com o defeito dentro.** Ela entrou no conjunto de
+> campo como `"diagrams": [], "regime": "sem-diagrama"` — anotada enquanto a S-160 estava viva,
+> quando a interface mostrava aquela página **sem diagrama nenhum**. Ela tem um diagrama, e a
+> FEN dele é a que o commit da S-160 registra como conferida casa a casa contra o render a 600
+> DPI. Corrigida em 2026-08-20: `scan-hachurado`, um diagrama, com `placement`. É o defeito da
+> S-95 chegando pelo lado que a S-95 não fechava — não é a leitura do modelo virando verdade, é
+> **o bug virando verdade**, e o único remédio é o mesmo: só entra o que foi conferido.
 
 **Consequência, dita sem rodeio:** a primeira cláusula do critério (`dataset_size ≥ 3.100` na
 produção) fica **não atingida por escolha**, e a terceira (*"a decisão fica registrada inclusive
