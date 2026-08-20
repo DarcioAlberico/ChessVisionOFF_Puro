@@ -41,6 +41,14 @@
         "y": 500,
         "lado": 420
       }
+    ],
+    "diagrama_em_moldura": [
+      {
+        "placement": "r3qr1k/pp3pbp/2pn4/7Q/3pP3/2NB3P/PPP3P1/R4RK1",
+        "x": 240,
+        "y": 420,
+        "lado": 340
+      }
     ]
   }
 }

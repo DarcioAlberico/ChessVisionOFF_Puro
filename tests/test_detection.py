@@ -32,14 +32,23 @@ from chess_diagram_ocr.detection.hybrid import (
 PAGE_WIDTH, PAGE_HEIGHT = 595.0, 842.0
 
 
-def board_image(side: int = 320, *, border: int = 0) -> np.ndarray:
-    """Imagem de tabuleiro 8x8 com casas alternadas e, opcionalmente, moldura branca."""
+def board_image(side: int = 320, *, border: int = 0, frame: bool = False) -> np.ndarray:
+    """Imagem de tabuleiro 8x8 com casas alternadas e, opcionalmente, margem branca.
+
+    `frame` desenha a linha preta em volta do tabuleiro, como um diagrama impresso tem -- e
+    como `tests/fixtures/gerar.py` sempre desenhou. Sem ela as casas claras (245) encostam na
+    margem branca (255) e o contorno nao tem borda onde fechar o retangulo: o detector so acha
+    as casas de dentro. Fica em `False` por padrao porque quase todo teste deste arquivo
+    substitui o detector; quem precisa dele de verdade e o refino (S-160).
+    """
     cell = side // 8
     board = np.full((side, side, 3), 245, dtype=np.uint8)
     for row in range(8):
         for column in range(8):
             if (row + column) % 2:
                 board[row * cell : (row + 1) * cell, column * cell : (column + 1) * cell] = 45
+    if frame:
+        cv2.rectangle(board, (0, 0), (side - 1, side - 1), (0, 0, 0), 3)
     if border:
         framed = np.full((side + 2 * border, side + 2 * border, 3), 255, dtype=np.uint8)
         framed[border : border + side, border : border + side] = board
@@ -999,9 +1008,24 @@ class RefineGuardTests(unittest.TestCase):
             doc.close()
 
     def test_um_recorte_melhor_e_aceito(self) -> None:
-        """A guarda não pode virar "nunca refina": alinhar a grade é o ganho da S-12."""
+        """A guarda não pode virar "nunca refina": alinhar a grade é o ganho da S-12.
+
+        **A página precisa de moldura e de margem (S-160), e nenhuma das duas é enfeite.** Com
+        `board_image(400)` o tabuleiro ocupava a região inteira e não tinha linha em volta:
+        o contorno não achava retângulo nenhum e sobravam os contornos das casas *internas*.
+        O "refino" que este teste dava por aceito era **uma casa de 49×49 px substituindo um
+        tabuleiro de 400** -- ele nunca verificou o que o nome dele diz. Uma casa sozinha não
+        tem paridade, logo tem contraste de casa zero, e foi o piso da S-143 que expôs isso ao
+        recusá-la: o refino passou a devolver o recorte cru, que é a resposta certa e é a
+        mesma regra que a S-38 já aplicava ao caso "não achou nada".
+
+        Com moldura e margem o contorno acha o tabuleiro inteiro -- 311×312 px de um lado de
+        320, contraste 1,00 --, e o refino sobe a textura de 0,0000 para 1,0000. Medido no
+        acervo: dos 284 candidatos embutidos de quatro livros, 283 refinam igual com e sem o
+        piso, e o único que muda melhora (0,089 para 0,137 de contraste).
+        """
         rect = fitz.Rect(80, 100, 380, 400)
-        doc = pdf_with_images([(board_image(400), rect)])
+        doc = pdf_with_images([(board_image(320, border=40, frame=True), rect)])
         try:
             page = doc[0]
             # Cru desalinhado (com moldura larga), refinado alinhado: e o caso que a S-12 mede.

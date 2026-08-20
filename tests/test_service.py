@@ -85,7 +85,25 @@ def _service(placement: str = PRETAS_A_JOGAR) -> tuple[OcrService, _ScriptedMode
 
 
 def _board_image() -> np.ndarray:
-    return np.random.default_rng(0).integers(0, 256, (BOARD_SIZE, BOARD_SIZE, 3), dtype=np.uint8)
+    """Um tabuleiro 8×8 de verdade, com moldura, no tamanho que o pipeline usa.
+
+    **Era ruído aleatório (S-160), e o nome era mentira.** Passava porque `detect_boards`
+    achava dois "tabuleiros" no ruído -- um deles com alongamento 2,81, uma mancha torta cuja
+    caixa alinhada aos eixos saía quadrada. Corrigida a régua do aspecto, o ruído passou a
+    devolver zero, que é a resposta certa, e o teste de recorte deste arquivo caiu junto.
+
+    Trocar por um tabuleiro desenhado é o conserto, e não afrouxar a guarda: o modelo aqui é
+    ditado, então a imagem nunca precisou ser ruído -- ela só precisa ser detectável, que é
+    justamente o que o nome dela sempre prometeu.
+    """
+    casa = BOARD_SIZE // 8
+    imagem = np.full((BOARD_SIZE, BOARD_SIZE, 3), 235, dtype=np.uint8)
+    for linha in range(8):
+        for coluna in range(8):
+            if (linha + coluna) % 2:
+                imagem[linha * casa : (linha + 1) * casa, coluna * casa : (coluna + 1) * casa] = 60
+    imagem[:3, :] = imagem[-3:, :] = imagem[:, :3] = imagem[:, -3:] = 0
+    return imagem
 
 
 def _upright() -> RecognitionOptions:

@@ -37,6 +37,7 @@ import cv2
 import fitz
 import numpy as np
 
+from ..board_detection import MIN_CHECKER_CONTRAST as _MIN_CHECKER_CONTRAST
 from ..board_detection import RejectedQuad as RejectedQuad
 from ..board_detection import (
     _bbox_iou,
@@ -66,53 +67,18 @@ o mesmo tamanho dos declarados e passam.
 """
 
 
-MIN_CHECKER_CONTRAST = 0.0
-"""Piso do contraste entre casas para um achado de **contorno** ser diagrama (S-143).
+MIN_CHECKER_CONTRAST = _MIN_CHECKER_CONTRAST
+"""Reexportado de `board_detection`, que é onde ele passou a morar (S-160).
 
-**O relato.** Capa e prancha de retrato do `Karpov 1` (páginas 1 e 7) rendiam 10 caixas onde
-não há diagrama nenhum: o título, a grade de fotos dos campeões, cada retrato, e -- na página
-do Steinitz -- três casas do tabuleiro *pintado ao fundo do quadro* mais a moldura inteira.
+O piso é o mesmo da S-143 e continua valendo **só para achado de contorno** -- imagem embutida
+é declaração do PDF e continua ganhando, como desde a S-12. O que mudou é *quando* ele corre:
+aqui ele julgava o que `detect_boards` já tinha devolvido, ou seja, depois da ordenação por
+score e da supressão por IoU daquela função, e um falso positivo que vencesse por score comia
+o diagrama de verdade antes de morrer. O relato inteiro, com os números da página que o
+expôs, está em `board_detection.MIN_CHECKER_CONTRAST`.
 
-É exatamente o alvo que a S-80 previu e não conseguiu confirmar: "um ornamento grande -- capa
-de capítulo, selo, **foto quadrada** -- passaria dos 72 pt". Ela o deu como tendo "zero
-instâncias confirmadas no acervo" porque `sample_pages` **descarta as bordas do livro de
-propósito**, e capa e prancha moram ali. O censo nunca olhou onde o defeito vive. Corrigido em
-`census_book(front_matter=...)`.
-
-**Por que o contraste de xadrez, e não a textura.** `board_texture_score` é
-`0,6·xadrez + 0,4·grade`, e a parcela de **grade** é o que uma foto imita bem: moldura de
-quadro, faixa de retratos e fachada produzem borda periódica. Medido nas páginas do relato, a
-grade das fotos dá 0,04 a 0,80 -- acima de diagramas legítimos. Misturar as duas foi o que fez
-a S-80 medir 0,29 numa foto contra 0,158 num `Polgar` impecável e concluir, corretamente para
-o número que ela olhava, que não havia corte que prestasse.
-
-A parcela de **xadrez** não tem como ser imitada: ela exige que as 32 casas de uma paridade
-sejam sistematicamente mais claras que as 32 da outra, num reticulado 8×8 alinhado com o
-recorte. Onde não há tabuleiro a diferença entre as duas metades é ruído, o `clip` em 0 morde,
-e o resultado é **exatamente zero**.
-
-**Medido no acervo (32 livros, amostra do censo + 8 páginas de frente por livro):**
-
-| população | com xadrez zero |
-|---|---|
-| os 10 do relato | **10 de 10** |
-| contorno na frente do livro (capa, rosto, prancha) | 73 de 99 |
-| contorno na amostra do censo | 21 de 841 |
-
-**E os 21 não são perda**, que é o que separa isto da S-80. Rodado o OCR de verdade em todo
-candidato de contorno do acervo, o corte cai inteiro abaixo do gate de exportação: os 12 do
-`Reinfeld` são os recortes da coluna esquerda, que o contorno fecha em 101×116 pt em vez de
-116×116 -- tabuleiro **cortado**, que o warp estica e desalinha. Eles leem 0,0001 a 0,41
-enquanto os gêmeos bem recortados da mesma página leem 0,998 e acima.
-
-**Zero, e por quê.** O número não é ajustado à amostra: é onde a comparação sinal-contra-ruído
-troca de sinal (`contraste·2,4 ≤ dispersão·0,9`). O candidato legítimo mais próximo do corte no
-acervo é um `Polgar` de 0,0616 -- posição de abertura, 28 peças, o caso que derruba esta
-parcela --, então qualquer valor em (0; 0,06) se comportaria igual aqui. Zero é o que tem
-significado independente do acervo, e é preferível por isso.
-
-**Só contorno.** Imagem embutida é *declaração* do PDF e continua ganhando (S-12); ela tem as
-guardas dela. Os 3 embutidos com xadrez zero no acervo ficam de fora deste guarda de propósito.
+`detect_diagrams` continua tendo o botão (`checker_contrast_floor`); ele agora é repassado ao
+`detect_boards` em vez de aplicado depois dele.
 """
 
 
@@ -182,6 +148,11 @@ def texture_scores_side_by_side(a_rgb: np.ndarray, b_rgb: np.ndarray) -> tuple[f
 
 def board_checker_contrast(board_rgb: np.ndarray) -> float:
     """Só a parcela de xadrez da textura, na mesma resolução calibrada (S-143).
+
+    **Quem a chamava dentro deste módulo era o piso da S-143, e ele mudou de casa na S-160**
+    -- ver `MIN_CHECKER_CONTRAST`. Ela fica porque é a leitura isolada dessa parcela sobre um
+    recorte já pronto, que é o que a suíte usa para afirmar que foto dá zero e diagrama não;
+    o caminho de produção mede a mesma coisa mais cedo, sobre o warp que já tem em mãos.
 
     Separada de `board_texture_score` porque as duas parcelas respondem perguntas
     diferentes, e misturá-las é o que fez a S-80 fracassar -- ver `MIN_CHECKER_CONTRAST`.
@@ -450,9 +421,9 @@ def detect_diagrams(
     declaração do PDF continua ganhando, como desde a S-12. Ver `MIN_CHECKER_CONTRAST`.
 
     `rejected`, quando dado, recebe um `RejectedQuad` por achado de contorno **barrado** --
-    tanto os do `detect_boards` (geometria, score, IoU, teto) quanto os daqui: contraste de
-    casa (S-143), prior de tamanho (S-79), disputa perdida com uma união de ladrilhos (S-81) e
-    o corte final por `max_boards`. É o instrumento da S-131, e as quatro guardas deste laço só
+    tanto os do `detect_boards` (geometria, contraste de casa, score, IoU, teto) quanto os
+    daqui: prior de tamanho (S-79), disputa perdida com uma união de ladrilhos (S-81) e
+    o corte final por `max_boards`. É o instrumento da S-131, e as guardas deste laço só
     deixavam rastro em `logger.info`, que ninguém agrega.
     """
     scale_x = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
@@ -495,26 +466,19 @@ def detect_diagrams(
         xs, ys = quad[:, 0], quad[:, 1]
         return (int(xs.min()), int(ys.min()), max(1, int(xs.max() - xs.min())), max(1, int(ys.max() - ys.min())))
 
+    # O piso de contraste de casa da S-143 vai **dentro** do `detect_boards` (S-160), e nao
+    # sobre o que ele devolve. A regra que este laco enunciava continua sendo a certa -- guarda
+    # que julga o que a coisa e vem antes de guarda que julga com quem ela compete --, mas o
+    # laco so alcanca os sobreviventes da ordenacao por score e da supressao por IoU que
+    # acontecem la dentro. Aplicada aqui, ela removia o falso positivo **depois** de ele ja ter
+    # comido o diagrama de verdade. Ver `board_detection.MIN_CHECKER_CONTRAST`.
     for board_rgb, quad in detect_boards(
-        page_rgb, max_boards=max_boards, reading_order=reading_order, rejected=rejected
+        page_rgb,
+        max_boards=max_boards,
+        reading_order=reading_order,
+        rejected=rejected,
+        checker_floor=checker_contrast_floor,
     ):
-        # Antes de tudo (S-143). O achado que nao tem contraste de casa nenhum nao e tabuleiro,
-        # e a ordem importa: se ele entrasse na disputa, um retrato podia derrubar uma uniao de
-        # ladrilhos em `_contour_wins_over_merged` ou envenenar o gabarito de tamanho. Guarda
-        # que julga o que a coisa **e** vem antes de guarda que julga com quem ela compete.
-        if checker_contrast_floor is not None:
-            contraste = board_checker_contrast(board_rgb)
-            if contraste <= checker_contrast_floor:
-                # `info` pelo mesmo motivo da recusa por tamanho (S-79): esta linha apaga um
-                # candidato, e e a unica evidencia de que ela agiu.
-                logger.info(
-                    "Contorno descartado por nao ter contraste de casa: %.4f. Foto, retrato "
-                    "ou moldura -- ou tabuleiro cortado, que o warp desalinha.",
-                    contraste,
-                )
-                _recusado(_caixa_do_quad(quad), contraste, "sem-contraste-de-casa")
-                continue
-
         box = _caixa_do_quad(quad)
 
         conflito = next(
