@@ -6,13 +6,13 @@
   "front_matter": 8,
   "suspect_below_pt": 72.0,
   "books": 39,
-  "candidates": 1555,
+  "candidates": 1525,
   "suspects": 0,
   "books_with_suspects": 0,
   "pages_numbering_shifted": 0,
   "pages_size_prior_mixed": 0,
   "by_source": {
-    "contour": 1023,
+    "contour": 993,
     "embedded": 532
   },
   "per_book": [
@@ -94,7 +94,7 @@
       "by_source": {
         "embedded": 23
       },
-      "trimmed": 10,
+      "trimmed": 15,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
@@ -102,9 +102,9 @@
         "280": 23
       },
       "texture": {
-        "min": 0.2027,
-        "p05": 0.2059,
-        "median": 0.401,
+        "min": 0.2121,
+        "p05": 0.3389,
+        "median": 0.4007,
         "max": 0.6634
       }
     },
@@ -130,8 +130,8 @@
       },
       "texture": {
         "min": 0.4888,
-        "p05": 0.4945,
-        "median": 0.5355,
+        "p05": 0.4974,
+        "median": 0.5281,
         "max": 0.5988
       }
     },
@@ -178,7 +178,7 @@
       "texture": {
         "min": 0.1173,
         "p05": 0.1586,
-        "median": 0.2348,
+        "median": 0.2345,
         "max": 0.4319
       }
     },
@@ -245,8 +245,8 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "120": 21,
-        "130": 18,
+        "120": 19,
+        "130": 20,
         "290": 1
       },
       "texture": {
@@ -298,8 +298,8 @@
       },
       "texture": {
         "min": 0.7909,
-        "p05": 0.8255,
-        "median": 0.9745,
+        "p05": 0.8088,
+        "median": 0.9576,
         "max": 1.0
       }
     },
@@ -325,8 +325,8 @@
       "texture": {
         "min": 0.2323,
         "p05": 0.5051,
-        "median": 0.7071,
-        "max": 0.9211
+        "median": 0.6692,
+        "max": 0.8976
       }
     },
     {
@@ -367,13 +367,13 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "100": 22,
-        "110": 19
+        "100": 17,
+        "110": 24
       },
       "texture": {
         "min": 0.5218,
         "p05": 0.5284,
-        "median": 0.5653,
+        "median": 0.5657,
         "max": 0.6423
       }
     },
@@ -400,7 +400,7 @@
       "texture": {
         "min": 0.3639,
         "p05": 0.3869,
-        "median": 0.513,
+        "median": 0.5129,
         "max": 0.6882
       }
     },
@@ -457,24 +457,24 @@
       "pages_sampled": 30,
       "pages_with_candidate": 21,
       "pages_failed": 0,
-      "candidates": 49,
+      "candidates": 48,
       "by_source": {
-        "contour": 49
+        "contour": 48
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "150": 21,
-        "160": 27,
+        "150": 25,
+        "160": 22,
         "170": 1
       },
       "texture": {
-        "min": 0.4521,
-        "p05": 0.4716,
-        "median": 0.5858,
-        "max": 0.7151
+        "min": 0.4189,
+        "p05": 0.4824,
+        "median": 0.6016,
+        "max": 0.7339
       }
     },
     {
@@ -522,7 +522,7 @@
       "texture": {
         "min": 0.5173,
         "p05": 0.5352,
-        "median": 0.6354,
+        "median": 0.6163,
         "max": 0.7306
       }
     },
@@ -632,8 +632,8 @@
         "160": 1
       },
       "texture": {
-        "min": 0.5261,
-        "p05": 0.5518,
+        "min": 0.5415,
+        "p05": 0.5482,
         "median": 0.6344,
         "max": 0.733
       }
@@ -641,25 +641,24 @@
     {
       "pdf": "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf",
       "pages_sampled": 27,
-      "pages_with_candidate": 21,
+      "pages_with_candidate": 17,
       "pages_failed": 0,
-      "candidates": 42,
+      "candidates": 26,
       "by_source": {
-        "contour": 42
+        "contour": 26
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "270": 1,
-        "280": 41
+        "280": 26
       },
       "texture": {
-        "min": 0.4803,
-        "p05": 0.5042,
-        "median": 0.5393,
-        "max": 0.6685
+        "min": 0.503,
+        "p05": 0.5067,
+        "median": 0.5364,
+        "max": 0.588
       }
     },
     {
@@ -690,22 +689,22 @@
       "pages_sampled": 32,
       "pages_with_candidate": 16,
       "pages_failed": 0,
-      "candidates": 95,
+      "candidates": 82,
       "by_source": {
-        "contour": 95
+        "contour": 82
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "120": 94,
+        "120": 81,
         "130": 1
       },
       "texture": {
         "min": 0.3847,
-        "p05": 0.5797,
-        "median": 0.6348,
+        "p05": 0.4324,
+        "median": 0.6345,
         "max": 0.7073
       }
     },
@@ -731,9 +730,9 @@
       },
       "texture": {
         "min": 0.707,
-        "p05": 0.7374,
-        "median": 0.8165,
-        "max": 0.9252
+        "p05": 0.7382,
+        "median": 0.817,
+        "max": 0.9391
       }
     },
     {
@@ -774,13 +773,13 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "200": 7,
-        "210": 4
+        "200": 5,
+        "210": 6
       },
       "texture": {
         "min": 0.6409,
         "p05": 0.6469,
-        "median": 0.6875,
+        "median": 0.6653,
         "max": 0.7744
       }
     },
@@ -844,12 +843,12 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "190": 33,
-        "200": 21
+        "190": 27,
+        "200": 27
       },
       "texture": {
-        "min": 0.6062,
-        "p05": 0.6413,
+        "min": 0.6056,
+        "p05": 0.6356,
         "median": 0.7049,
         "max": 0.8339
       }
@@ -873,9 +872,9 @@
       },
       "texture": {
         "min": 0.353,
-        "p05": 0.3873,
-        "median": 0.5808,
-        "max": 0.785
+        "p05": 0.3837,
+        "median": 0.5769,
+        "max": 0.7654
       }
     },
     {
@@ -952,8 +951,8 @@
       "texture": {
         "min": 0.5391,
         "p05": 0.5768,
-        "median": 0.6627,
-        "max": 0.8183
+        "median": 0.6547,
+        "max": 0.7937
       }
     }
   ]

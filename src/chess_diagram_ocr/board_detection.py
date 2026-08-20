@@ -61,7 +61,7 @@ QUAD_MARGIN_RATIO = 0.015
 """Folga, em fração do lado da página, para um canto contar como "dentro"."""
 
 DEDUPE_IOU = 0.9
-"""Acima disto, dois candidatos das duas passadas de limiar são o mesmo, e o pior sai."""
+"""Acima disto, dois candidatos das três passadas de limiar são o mesmo, e o pior sai."""
 
 MIN_RELATIVE_AREA = 0.02
 """Fração da área do **maior** candidato abaixo da qual os outros são ruído da mesma página."""
@@ -71,6 +71,48 @@ MIN_SCORE_FLOOR = 0.06
 
 MIN_SCORE_RELATIVE = 0.25
 """Fração do score do melhor candidato abaixo da qual os outros saem. Vale o maior dos dois."""
+
+
+SQUARE_KERNEL = np.ones((3, 3), np.uint8)
+"""Elemento reto do fechamento. Está aqui desde o commit inicial, e continua intocado."""
+
+DIAGONAL_KERNELS = (np.eye(3, dtype=np.uint8), np.fliplr(np.eye(3, dtype=np.uint8)).copy())
+"""Os dois elementos diagonais do reparo de contato de quina (S-175).
+
+**O defeito.** As casas escuras de um diagrama impresso são de uma paridade só, e duas casas
+da mesma paridade **encostam apenas pela quina**. É por esses 49 pontos, e só por eles, que a
+tinta do tabuleiro forma uma única componente 8-conexa para o `findContours` -- que é o que
+este módulo assume ao tomar a extensão do contorno pela extensão do tabuleiro.
+
+Se um contato de quina não sobrevive à rasterização, a corrente parte e o contorno fecha um
+pedaço do tabuleiro. E não parte um contato de cada vez: os 7 contatos de uma mesma linha da
+grade caem no **mesmo x**, então dividem a mesma fase sub-pixel e morrem juntos. O que sai é
+um quad com uma fileira a menos -- 7/8 exatos do tabuleiro.
+
+**Medido**, `Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf`, página 141
+(0-based) a 220 DPI: a coluna esquerda fechava em 101×116 pt e a direita em 116×116. Em
+pixels o contorno da esquerda ia de x=99 a x=410, e a borda direita do tabuleiro está em
+x=454: 311 px de 355, que é 7 casas de 8.
+
+**E desde a S-160 a página não entregava nem o recorte torto: entregava três diagramas a
+menos.** Um tabuleiro cortado em 7/8 e esticado pelo warp perde o reticulado 8×8, então o
+contraste de casa dele é **exatamente 0,0000** -- e o piso da S-143, que a S-160 mudou para
+antes da disputa, o mata. Medido na mesma página: os três da esquerda saem como
+`sem-contraste-de-casa` com score 0,2798 a 0,2971, e `recognize_page` devolve **3** dos 6
+diagramas. A guarda estava certa (aquele recorte não é tabuleiro) e escondia o defeito, que é
+o que a própria S-143 registrou como pendência.
+
+**Não é uma propriedade daquela coluna, nem daquele livro: é da fase.** Renderizada a 240 DPI
+ou acima, a mesma página entrega 116×116 na esquerda sem reparo nenhum; a 150, 180 e 220 ela
+não entrega nada. Nada no PDF muda entre essas corridas -- o que muda é onde a grade cai em
+relação à malha de pixels, e por isso o mesmo defeito espera em qualquer livro cujo diagrama
+caia na fase errada.
+
+**Por que o fechamento reto não repara.** `MORPH_CLOSE` é dilatação seguida de erosão. A
+dilatação com o elemento quadrado atravessa a quina, mas o pescoço que ela cria tem a largura
+de um pixel e a erosão com o **mesmo** elemento o corta de volta. Fechar ao longo da diagonal
+sobrevive porque a erosão corre na direção da ponte, e não contra ela.
+"""
 
 MIN_CHECKER_CONTRAST = 0.0
 """Piso do contraste entre casas para um achado de contorno ser diagrama (S-143).
@@ -412,6 +454,62 @@ def board_checker_score(warped_rgb: np.ndarray) -> float:
     return _checker_score(_small_gray(warped_rgb))
 
 
+def _repaired_pass(thresh: np.ndarray) -> np.ndarray:
+    """O terceiro passe de limiar: o fechamento nas duas diagonais, unidas (S-175).
+
+    Existe para que o contato de quina entre casas da mesma paridade sobreviva à binarização,
+    que é o que mantém o tabuleiro como uma componente só. O porquê, com os números, está em
+    `DIAGONAL_KERNELS`.
+
+    A caixa **não** cresce, e isso não é detalhe: dilatar repararia a quina do mesmo jeito e
+    entregaria 117×117 onde o tabuleiro mede 116×116, deslocando toda caixa de contorno do
+    acervo em ~1 pt. O fechamento devolve a forma ao tamanho original, então o diff do censo
+    continua mostrando só o que de fato mudou.
+    """
+    reparado = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, DIAGONAL_KERNELS[0], iterations=1)
+    for kernel in DIAGONAL_KERNELS[1:]:
+        reparado = cv2.bitwise_or(reparado, cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1))
+    return reparado
+
+
+def _threshold_passes(thresh_base: np.ndarray) -> list[np.ndarray]:
+    """As três binarizações de que os candidatos saem, cada uma contribuindo a **sua** lista.
+
+    O cru, o fechamento reto (aqui desde o commit inicial, e intocado) e o reparo de quina da
+    S-175.
+
+    **Três imagens, e não uma.** A primeira versão da S-175 unia o fechamento reto e o reparo
+    numa imagem só, para não pagar um `findContours` a mais. O raciocínio era que a união é um
+    superconjunto do fechamento reto e portanto "só pode ligar mais" -- verdade sobre
+    **conexidade** e falsa sobre **candidatos**: juntar duas componentes tira as duas da lista
+    de contornos e põe a fundida no lugar. Onde o contorno **justo** era o bom, ele
+    simplesmente deixava de existir.
+
+    Medido no `Gaprindashvili`, cujos diagramas fecham dois contornos -- um justo de 112 pt (a
+    borda da grade) e um largo de 116 pt (a moldura impressa em volta). A moldura não é a borda
+    do tabuleiro, e incluí-la tira a grade 8×8 de registro. Nas 13 páginas que o censo amostra
+    daquele livro, os dois desenhos entregam os **mesmos 68 candidatos de contorno** -- e não é
+    a contagem que muda, é qual dos dois contornos sobra:
+
+    | desenho | acima do gate de 0,80 |
+    |---|---|
+    | três passes separados | **59** de 68 |
+    | reto e reparo fundidos numa imagem | 56 de 68 |
+
+    Os 3 são as páginas 35, 69 e 92: o candidato de 112 pt que lia 1,0000 / 0,9999 / 0,9998 é
+    substituído pelo de 116 pt, que lê **0,2973 / 0,2897 / 0,0608**. Em passes separados o justo
+    continua na lista, continua ganhando no score, e os três ficam acima do gate.
+
+    **O preço**, medido nesta função sobre 8 páginas já renderizadas: 61,6 → 95,0 ms por
+    página, **+54%**. Está em avaliar mais candidato, não em binarizar mais uma vez.
+    """
+    return [
+        thresh_base,
+        cv2.morphologyEx(thresh_base, cv2.MORPH_CLOSE, SQUARE_KERNEL, iterations=1),
+        _repaired_pass(thresh_base),
+    ]
+
+
 def _extract_candidate_quads(
     image_rgb: np.ndarray,
     rejected: list[RejectedQuad] | None = None,
@@ -429,8 +527,7 @@ def _extract_candidate_quads(
     )
     image_area = float(image_rgb.shape[0] * image_rgb.shape[1])
     raw_candidates: list[tuple[np.ndarray, float, tuple[int, int, int, int], float]] = []
-    kernel = np.ones((3, 3), np.uint8)
-    threshold_passes = [thresh_base, cv2.morphologyEx(thresh_base, cv2.MORPH_CLOSE, kernel, iterations=1)]
+    threshold_passes = _threshold_passes(thresh_base)
 
     for thresh in threshold_passes:
         # RETR_LIST keeps inner contours too. This helps when board is inside a larger rectangle.
@@ -498,9 +595,9 @@ def _extract_candidate_quads(
     deduped: list[tuple[np.ndarray, float, tuple[int, int, int, int], float]] = []
     for candidate in raw_candidates:
         _, _, bbox, _ = candidate
-        # A duplicata das duas passadas de limiar **não** vai para as recusas: ela é o mesmo
-        # candidato visto duas vezes, e registrá-la faria o relatório contar cada achado como
-        # um achado mais uma perda.
+        # A duplicata das três passadas de limiar **não** vai para as recusas: ela é o mesmo
+        # candidato visto mais de uma vez, e registrá-la faria o relatório contar cada achado
+        # como um achado mais uma perda.
         if any(_bbox_iou(bbox, kept_bbox) > DEDUPE_IOU for _, _, kept_bbox, _ in deduped):
             continue
         deduped.append(candidate)

@@ -13,7 +13,7 @@
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
@@ -582,6 +582,11 @@ apesar disso.
 > Fica em aberto, e é outro item: **por que o contorno corta a coluna esquerda do `Reinfeld`.**
 > A guarda esconde o sintoma (o recorte ruim some da tela); ela não conserta o recorte. Aqueles
 > 3 diagramas por página continuam não sendo detectados naquele livro.
+>
+> Fechado pela [S-175](#s-175--a-quina-que-a-rasterização-não-liga-e-o-tabuleiro-que-sai-pela-metade).
+> A causa não era do livro nem da coluna: era a **fase sub-pixel** da grade contra a malha de
+> pixels do render, e o remédio é um terceiro passe de limiar. Depois dela aqueles 3 por página
+> saem 116×116 e leem 1,0000 — e não chegam mais a esta guarda.
 
 #### 5. Onde a guarda **não** vale
 
@@ -632,9 +637,222 @@ A segunda corrida é o padrão novo, com as páginas de frente: **39 livros, 152
 páginas, que a amostragem nunca tinha visto — no livro do relato, as páginas 1 e 7 ficam com
 **zero** candidatos e os 6 ganhos são todos da página 8, imagem embutida, textura 0,43 a 0,63.
 
-**Linha de base nova:** `docs/metrics/deteccao_base.csv` e `.json` (39 livros, 24 páginas por
-livro mais 8 de frente). A de 2026-08-14 fica em `docs/metrics/deteccao_20260814.csv`, que é o
-que as S-78 a S-82 mediram.
+**Linha de base nova:** `docs/metrics/deteccao_20260817_s143.csv` e `.json` (39 livros, 24
+páginas por livro mais 8 de frente; 1520 candidatos). A de 2026-08-14 fica em
+`docs/metrics/deteccao_20260814.csv`, que é o que as S-78 a S-82 mediram. Ela **deixou** de ser
+`deteccao_base` na S-175 — ver [o que a S-160 tinha deslocado sem
+remedir](#0-a-linha-de-base-do-disco-não-reproduzia-o-programa-do-disco).
+
+---
+
+### S-175 · A quina que a rasterização não liga, e o tabuleiro que sai pela metade ✅ implementada (2026-08-20)
+
+> Item deixado em aberto pela [S-143](#4-o-critério-de-aceite-e-por-que-não-é-o-diff-do-censo):
+> *"por que o contorno corta a coluna esquerda do `Reinfeld`."*
+
+#### 0. A linha de base do disco não reproduzia o programa do disco
+
+Antes de medir qualquer coisa, o "antes" precisou ser medido, e não lido de arquivo. Rodando o
+censo na árvore de `0978c0d` (a S-160, o commit imediatamente anterior a esta entrega) contra o
+`deteccao_base.csv` que estava versionado:
+
+| | |
+|---|---|
+| candidatos no arquivo | 1520 |
+| candidatos que o mesmo comando entrega hoje | **1525** |
+| diferença | +5 ganhos, 0 perdas, **85 caixas reajustadas** |
+
+Os +5 são 4 no `Karpov 2` e 1 no `Estrin`, e são o efeito da própria S-160: mover o piso de
+contraste para antes da supressão por IoU devolveu o diagrama que um borrão sem xadrez
+suprimia. **A S-160 mudou o recorte do acervo e não regravou a linha de base**, então o arquivo
+descrevia um programa que não existia mais — e um diff contra ele teria creditado à S-175
+ganhos que não são dela.
+
+Por isso esta entrega arquiva **duas** corridas em vez de uma: `deteccao_20260817_s143.*` (o
+arquivo antigo, medido antes da S-160) e `deteccao_20260820_s160.*` (a árvore de `0978c0d`,
+que é contra o que os números abaixo foram medidos).
+
+#### 1. A causa: o tabuleiro só é *uma* mancha por causa das quinas
+
+As casas escuras de um diagrama impresso são de uma paridade só, e **duas casas da mesma
+paridade encostam apenas pela quina**. É por esses 49 pontos, e só por eles, que a tinta do
+tabuleiro forma uma única componente 8-conexa — que é exatamente o que este módulo assume ao
+tomar a extensão do contorno pela extensão do tabuleiro.
+
+Se um contato de quina não sobrevive à rasterização, a corrente parte e o contorno fecha um
+pedaço do tabuleiro. **E não parte uma quina de cada vez:** os 7 contatos de uma mesma linha
+vertical da grade caem no **mesmo x**, dividem a mesma fase sub-pixel e morrem juntos. O que
+sai é um quad com uma fileira a menos — 7/8 exatos do tabuleiro.
+
+Medido no `Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf`, página 141
+(0-based), a 220 DPI: a coluna esquerda fecha em 101×116 pt contra 116×116 na direita. Em
+pixels o contorno vai de x=99 a x=410 e a borda direita do tabuleiro está em x=454 — 311 px de
+355, que é 7 casas de 8.
+
+#### 2. Desde a S-160 o sintoma não era recorte torto: eram três diagramas a menos
+
+Este é o ponto em que o relato da S-143 envelheceu, e vale dizê-lo em voz alta. Um tabuleiro
+cortado em 7/8 e esticado pelo warp perde o reticulado 8×8, então o **contraste de casa dele é
+exatamente 0,0000** — e o piso da S-143, que a S-160 mudou de lugar para antes da disputa, o
+mata. Medido na mesma página 141, na árvore de `0978c0d`:
+
+| candidato | caixa | score | contraste | o que acontece |
+|---|---|---|---|---|
+| coluna direita, 3× | 116×116 pt | — | — | sai, e lê 0,9999 a 1,0000 |
+| coluna esquerda, 3× | 101×116 pt | 0,2798 a 0,2971 | **0,0000** | recusado como `sem-contraste-de-casa` |
+
+`recognize_page` devolvia **3** dos 6 diagramas da página, sem uma linha na tela dizendo que
+havia mais. A guarda estava certa — aquele recorte não é tabuleiro —, e é exatamente o que a
+S-143 registrou como pendência: *"a guarda esconde o sintoma; ela não conserta o recorte"*.
+
+#### 3. A prova de que é fase, e não o livro
+
+A mesma página, o mesmo arquivo, só mudando o DPI do render, na árvore de `0978c0d`:
+
+| DPI | coluna esquerda | coluna direita |
+|---|---|---|
+| 150 | **nada** | 118×106 |
+| 180 | **nada** | 116×116 |
+| **220** (o padrão) | **nada** | 116×116 |
+| 240 | 116×116 | 116×116 |
+| 260, 300, 400 | 116×116 | 116×116 |
+
+Nada no PDF muda entre essas corridas. A partir de 240 DPI a coluna esquerda sai inteira **sem
+reparo nenhum**; abaixo disso ela não sai. Não é uma propriedade daquela coluna nem daquele
+livro: é de onde a grade cai em relação à malha de pixels — e por isso o mesmo defeito espera
+em qualquer livro cujo diagrama caia na fase errada, que é o que o censo confirmou adiante.
+
+#### 4. Por que o fechamento reto não repara, e o que repara
+
+`MORPH_CLOSE` é dilatação seguida de erosão. Com o elemento quadrado 3×3 a dilatação atravessa
+a quina, mas o pescoço que ela cria tem a largura de um pixel e a erosão com o **mesmo**
+elemento o corta de volta. Fechar ao longo da **diagonal** sobrevive, porque ali a erosão corre
+na direção da ponte e não contra ela.
+
+Medido na unidade do defeito — duas casas afastadas por 1 px na quina:
+
+| operação | componentes 8-conexas |
+|---|---|
+| cru | 2 |
+| fechamento reto 3×3 | **2** |
+| fechamento nas duas diagonais | **1** |
+
+Dilatar repararia a quina do mesmo jeito e foi **recusado pela caixa**: entrega 117×117 onde o
+tabuleiro mede 116×116, o que deslocaria toda caixa de contorno do acervo em ~1 pt e encheria o
+diff do censo de ruído. O fechamento devolve a forma ao tamanho original —
+`test_o_reparo_nao_engorda_a_caixa` prende isso.
+
+#### 5. Três passes, e não uma imagem mais ligada
+
+A entrega são **três binarizações**, cada uma contribuindo a sua lista de contornos: o cru, o
+fechamento reto (intocado desde o commit inicial) e o reparo de quina.
+
+Unir o fechamento reto ao reparo numa imagem só economiza um `findContours` e **tira
+candidato**. O argumento de que a união "só pode ligar mais" é verdade sobre **conexidade** e
+falso sobre **candidatos**: fundir duas componentes remove as duas da lista de contornos e põe
+a fundida no lugar. Onde o contorno **justo** era o bom, ele deixa de existir — e o
+`Gaprindashvili` é o livro em que isso custa caro, porque cada diagrama dele fecha dois
+contornos:
+
+| contorno | lado | o que ele é |
+|---|---|---|
+| justo | 112 pt | a borda da grade — o tabuleiro |
+| largo | 116 pt | a moldura impressa em volta, que tira a grade 8×8 de registro |
+
+**Medido nos dois desenhos**, sobre as 13 páginas que o censo amostra daquele livro, com o
+modelo de produção em todo candidato de contorno:
+
+| desenho | candidatos | acima do gate de 0,80 |
+|---|---|---|
+| três passes separados (o entregue) | 68 | **59** |
+| reto e reparo fundidos numa imagem | 68 | 56 |
+
+**A contagem não muda; muda qual dos dois contornos sobra.** Nas páginas 35, 69 e 92 o
+candidato de 112 pt que lia 1,0000 / 0,9999 / 0,9998 é substituído pelo de 116 pt, que lê
+**0,2973 / 0,2897 / 0,0608** — abaixo do gate. Foi por isso que o censo sozinho não bastava
+para decidir o desenho: ele marcaria essas três como *reajustadas*, porque a caixa continua
+lá, com outro tamanho.
+
+Com os passes separados aquele livro sai **idêntico** ao de antes e nem aparece no diff do
+censo. `test_o_fechamento_reto_continua_sendo_um_passe_proprio` afirma que `_threshold_passes`
+devolve três imagens e que a segunda é o fechamento reto **byte a byte** — é a lição encravada,
+e não um teste de forma.
+
+**O que o terceiro passe custa**, medido em `_extract_candidate_quads` sobre 8 páginas já
+renderizadas (render e modelo de fora, porque não é neles que a mudança mexe), mediana de 24
+corridas: **61,6 → 95,0 ms por página, +54%.** O gasto está em avaliar mais candidato — um
+`warp` de 320 px e uma nota de textura por achado —, e não em binarizar mais uma vez. É o preço
+de não trocar um recorte bom por um ruim, e ele aparece na varredura de livro, não no clique.
+
+#### 6. Medido: o censo do acervo
+
+39 livros, 24 páginas amostradas por livro mais 8 de frente, contra
+`docs/metrics/deteccao_20260820_s160.csv`:
+
+| | |
+|---|---|
+| candidatos | 1525 → **1555** (+30) |
+| de contorno | 993 → **1023** |
+| de imagem embutida | 532 → 532 (intocado) |
+| ganhos | **30** |
+| **perdas** | **0** (e 0 acima do limiar de suspeita) |
+| reajustados (mesma caixa, outro tamanho) | 61 |
+| suspeitos (< 72 pt) | 0 → **0** |
+| numeração deslocada / gabarito misturado | 0 / 0 → **0 / 0** |
+
+Os ganhos, por livro:
+
+| livro | + | ~ | o que eram |
+|---|---|---|---|
+| `Niemeijer` | 16 | 4 | diagramas de um scan de 1945 cuja grade cai na fase ruim |
+| `Reinfeld` | 13 | 3 | **os três por página da coluna esquerda** — o relato |
+| `Koblenz` | 1 | 12 | idem, num livro em que o reajuste é o efeito dominante |
+
+Os outros nove livros do diff aparecem **só com reajuste**: caixa que cresceu para o tamanho
+certo sem trocar de identidade. É o efeito esperado de remendar quinas, e é o motivo de a
+dilatação ter sido recusada — com ela os 1023 candidatos de contorno se moveriam, e não 61.
+
+**Linha de base nova:** `docs/metrics/deteccao_base.csv` e `.json` (39 livros, 1555
+candidatos).
+
+#### 7. Medido: a leitura, que é o que o censo não responde
+
+O censo conta caixa. Uma caixa **reajustada** continua lá com outro tamanho, e o censo não tem
+como dizer que ela deixou de ser legível — foi exatamente essa cegueira que quase aprovou os
+passes fundidos do §5. A régua que decide é o modelo de produção lendo **todo candidato de
+contorno da mesma amostra**, nas duas árvores, casados por página e sobreposição:
+
+| | antes (`0978c0d`) | depois |
+|---|---|---|
+| candidatos de contorno | 993 | **1023** |
+| acima do gate de exportação (0,80) | 745 | **769** |
+| casados entre as duas corridas | — | 993 |
+| **sumiram** | — | **0** |
+| passaram a ler **acima** do gate | — | 12 |
+| passaram a ler **abaixo** do gate | — | **1** |
+| surgiram | — | 30, dos quais **13** leem acima do gate |
+
+Os 993 casam **todos**: nenhum candidato do programa anterior deixou de existir. Os 13 ganhos
+acima do gate são os do `Reinfeld` — os três por página da coluna esquerda, em 13 das páginas
+amostradas. Os 16 do `Niemeijer` e o 1 do `Koblenz` são diagramas de verdade num scan de 1945 e
+num de 1978 que entram no censo e continuam **abaixo** do gate, como já estavam os vizinhos
+deles naqueles livros: o reparo os torna visíveis, não legíveis.
+
+**O único que piorou, nomeado.** `Euwe, Kramer - Das Mittelspiel Band 7 (1958).pdf`, página 49:
+o contorno fecha 146,2×145,9 pt onde antes fechava 149,8×149,2, e a leitura cai de **0,8655
+para 0,6399**. É um recorte *mais justo* que corta ~3,6 pt do tabuleiro, e é o preço desta
+entrega — um diagrama em 993, contra 12 que subiram e 13 que apareceram acima do gate. Fica
+registrado com nome e número porque a regra da S-82 é essa: candidato do tamanho de um diagrama
+impresso que muda para pior precisa de justificativa, e a justificativa aqui é o saldo, não a
+ausência de custo.
+
+**Testes.** `tests/test_board_detection.py::DiagonalContactRepairTests`, 6 casos. Três deles são
+o registro da lição: `test_fechamento_reto_nao_liga_a_quina_e_o_reparo_liga` prende a razão de o
+passe existir, `test_o_fechamento_reto_continua_sendo_um_passe_proprio` prende a razão de serem
+três imagens e não uma, e `test_sem_o_reparo_a_pagina_e_so_manchas_soltas` fixa o que o passe
+base sozinho enxerga — sem ele, o teste do tabuleiro inteiro não provaria nada. Conferido
+revertendo `_threshold_passes` para as duas passadas anteriores: a página de quinas partidas
+devolve **zero** tabuleiros.
 
 ---
 
@@ -648,6 +866,7 @@ que as S-78 a S-82 mediram.
 | 4 | **S-80** textura relativa | — | ❌ a medição reprovou |
 | 5 | **S-81** imagem fatiada | o `GALLAGHER`, que nenhum limiar alcança | ✅ 2026-08-14 |
 | 6 | **S-143** contraste de casa | a foto quadrada, que era o alvo da S-80 | ✅ 2026-08-17 |
+| 7 | **S-175** reparo de quina | os 3 por página do `Reinfeld`, que a S-143 deixou em aberto | ✅ 2026-08-20 |
 
 A ordem se pagou quatro vezes, e todas antes de alguém abrir um PDF a olho:
 
@@ -713,3 +932,22 @@ projeto (`.venv/Scripts/python.exe`):
 
 A varredura completa do livro do relato leva ~25 min em CPU; a amostragem por livro no acervo,
 ~40 min. São o argumento para a S-82 existir como ferramenta e não como script de scratchpad.
+
+### Os números da S-175
+
+| número | como |
+|---|---|
+| as caixas de 101×116 e o motivo da recusa | `detect_boards(render_pdf_page(pdf, 141), rejected=[...], checker_floor=0.0)`, imprimindo o `RejectedQuad` de cada candidato com lado ≥ 90 pt |
+| "não é uma componente" | `cv2.connectedComponents(thresh, connectivity=8)` sobre o binário, no `thresh_base` e no passe de reparo |
+| a tabela de DPI | o mesmo `detect_boards`, variando `render_pdf_page(..., dpi=)` de 150 a 400 |
+| a tabela de operações | duas casas afastadas por 1 px na quina, contando componentes depois de cada fechamento — é a mesma figura do `_severed_corner_pair` dos testes |
+| a tabela do `Gaprindashvili` | as 13 páginas que o censo amostra daquele livro, com `_threshold_passes` trocado em memória pelo desenho fundido, e `recognize_page` nos dois |
+| o custo de +54% | `_extract_candidate_quads` sobre 8 páginas já renderizadas, mediana de 24 corridas, com os dois desenhos de passe na mesma árvore |
+| o censo e a leitura, antes e depois | **duas árvores**: `git worktree add --detach <tmp> 0978c0d` e a de trabalho |
+
+A última linha é o método, e não um detalhe de execução. **Remendar só o passe de limiar dentro
+de um processo mediria um programa que não existe** — e havia uma segunda armadilha, esta
+específica desta entrega: o `deteccao_base.csv` versionado não reproduzia nem a árvore de
+`0978c0d`, porque a S-160 mudou o recorte do acervo sem regravá-lo. Duas árvores é o que garante
+que os dois lados sejam **o programa inteiro**, e medir o "antes" em vez de lê-lo de arquivo é o
+que garante que ele seja o **antes de verdade**.
