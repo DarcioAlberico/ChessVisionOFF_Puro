@@ -425,7 +425,7 @@ o guarda de imagem, e para eles o caminho é recuperar procedência — não est
 
 ---
 
-## S-99 · Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida ⚠ **metade entregue** (2026-08-16)
+## S-99 · Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida ✅ **fechada** (2026-08-22)
 
 **Problema.** A S-41 planejou 60 páginas e o conjunto tem **17**, com 39 diagramas e **1** FEN.
 A S-77 construiu a ferramenta e ela foi usada duas vezes. O ROADMAP_FASE7 chama isto de *"a
@@ -506,6 +506,121 @@ barrado antes de chegar ao gate.
 **4. O que falta da S-99 é a parte que muda a resolução:** as 43 páginas restantes, os regimes
 abaixo do alvo, e os ≥5 diagramas na faixa de confiança 0,60–0,80. O conjunto mede melhor
 **leitura** agora; ele continua sem poder distinguir dois modelos.
+
+### O fechamento (2026-08-22): 63 páginas, e a régua passou a separar modelos
+
+**Os quatro critérios de aceite, medidos:**
+
+| critério | alvo | medido |
+|---|---|---|
+| páginas revisadas | 60 | **63** ✅ |
+| `comparable` | ≥ 30 | **93** ✅ |
+| diagramas na faixa 0,60–0,80 | ≥ 5 | **6** ✅ |
+| cinco regimes no alvo | — | ✅ (abaixo) |
+
+| regime | antes | alvo | **agora** |
+|---|---|---|---|
+| `scan-puro` | 6 | 15 | **17** |
+| `scan-hachurado` | 5 | 12 | **13** |
+| `vetorial` | 3 | 12 | **12** |
+| `fonte` | 1 | 6 | **6** |
+| `sem-diagrama` | 4 | 15 | **15** |
+| **total** | **19** | **60** | **63** |
+
+O conjunto passou de 40 para **110 diagramas anotados** e de 10 para **30 livros**: as páginas
+novas vieram de 20 livros que não estavam nele — inclusive os dois que exportavam zero, que a
+spec pedia por nome.
+
+**O número da produção sobre o conjunto novo** (`docs/metrics/field_20260822_s99.json`):
+
+```
+    Páginas ...................... 63  (15 sem diagrama)
+    Anotados ..................... 110
+    Recall de detecção ........... 0.9364     precisão 0.9904  (1 falso positivo)
+    **Taxa de exportação** ....... 0.7455  (82/110)
+    Conferíveis .................. 93 de 110  (85%)
+    **Exatidão de campo** ........ 0.9878  (81/82 exportados)
+    Exatidão condicional ......... 0.9570  (89/93)
+    **Exportados e errados** ..... 1
+```
+
+**O achado que justifica a S-99 inteira: a exatidão de campo deixou de ser 1,0000.** O conjunto
+de 19 páginas dizia que a produção nunca exporta errado. O de 63 achou o contrário, e é um caso
+que nenhuma quantidade de páginas fáceis encontraria:
+
+> `Dvoretsky p450`, diagrama 16-92. O modelo lê a posição **girada 180°** (a S-13 escolhe a
+> orientação, e escolheu a errada) e, dentro dessa orientação, troca dois peões por torre e
+> dama. Confiança mínima **0,9647** — bem acima do gate de 0,80. Sai para o PGN, é legal, e
+> está errada.
+
+**E a régua passou a separar os modelos, que era o motivo declarado da 7.7.** Os quatro
+medidos sobre as mesmas 63 páginas:
+
+| | produção | **controle** | `mhsp` | tratamento S-108 |
+|---|---|---|---|---|
+| taxa de exportação | 0,7455 | **0,7727** | 0,7182 | 0,7273 |
+| `exact` (de 93) | **89** | 86 | 82 | 88 |
+| exatidão condicional | **0,9570** | 0,9247 | 0,8817 | 0,9462 |
+| exportados e errados | 1 | **0** | 1 | 1 |
+| exatidão de campo | 0,9878 | **1,0000** | 0,9873 | 0,9875 |
+| exportação limpa | 0,7228 | **0,7525** | 0,6931 | 0,7129 |
+
+Três leituras deste quadro, e as três são novas:
+
+1. **O veredito da S-107 (`não promover o mhsp`) fica confirmado com régua que enxerga.** Ele é
+   o pior nas cinco linhas. Antes ele era indistinguível.
+2. **O controle exporta mais e não erra nenhum.** Produção e controle erram diagramas
+   *diferentes*: a produção quebra no `Dvoretsky p450` (orientação), `mhsp` e o tratamento da
+   S-108 quebram no `Burgess p60` — a dama **preta** em e5 lida como branca, com 0,998 e 0,901
+   de confiança. O controle não erra nenhum dos dois. **A decisão de 2026-08-18 de não trocar
+   o modelo de produção pelo controle foi tomada sobre o conjunto de 19 páginas, em que a
+   diferença era "um diagrama sem FEN de referência". Sobre 63 páginas a diferença existe, e a
+   decisão volta a ser do dono do acervo.**
+3. **A faixa 0,60–0,80 encheu com página nova, e não com modelo novo.** São 6, em quatro
+   livros diferentes (`Neumann` ×3, `Gunderam`, `Burgess`, `Euwe Band 7`) — todos scans ou
+   fontes de impressão antiga. A rota que a S-108 abriu (domínio aprendido cria vizinhança de
+   corte) e a rota original (faltam páginas difíceis) valem as duas.
+
+### Como foi anotado, e o que eu errei
+
+Cada diagrama foi renderizado do recorte **warpado** de 800×800 — o mesmo que o modelo vê — a
+900×900 com grade `a-h`/`1-8`. A posição foi transcrita **antes** de abrir a leitura do modelo,
+que ficava num JSON à parte. Onde houve divergência, a casa em disputa foi recortada a 200×200
+e comparada com uma peça branca e uma preta do mesmo diagrama.
+
+**Errei 5 diagramas em ~70 transcritos (~7%)**, e todos os cinco foram erros de *leitura em
+recorte pequeno*, não de peça ambígua:
+
+| diagrama | meu erro | como se resolveu |
+|---|---|---|
+| `Dvoretsky p700` | torre em f6 (era g6), peão em e4 (era f4) | recorte de 900×900 |
+| `Chess Structures p50` (dois) | esqueci a torre em c1 nos dois; cavalo em g6 (era f6) | recorte de 900×900 |
+| `Estrin p40` | esqueci o peão branco em g4 | o texto da página traz `14. g4` |
+| `Burgess p60` | dama de e5 lida como branca (é preta) | recorte de 200×200 por casa |
+
+E **o modelo errou dois que eu peguei**: `Dvoretsky p450` (a rotação acima) e `Levenfis p150`,
+onde ele troca rei e dama de casa em d1/g1 — este barrado em 0,108, aquele exportado a 0,965.
+Nos dois casos a referência ficou com a minha leitura, conferida no recorte grande.
+
+**A ressalva do erro correlacionado continua valendo**: nos diagramas em que eu e o modelo
+concordamos de primeira, um erro comum aos dois não aparece. O conjunto é mais forte que a
+saída do modelo — foi lido por gente contra a imagem, e 17 dos 110 estão anotados **só com a
+caixa** porque a hachura não deixava separar 64 casas com segurança — mas não é verdade
+independente no sentido estrito.
+
+### Duas coisas que apareceram no caminho, e não são desta spec
+
+**1. `evaluate_field` engole "arquivo não existe" e devolve isso como recall.** O laço tem um
+`except Exception` que transforma qualquer falha de leitura em "não detectou nada"
+(`field_eval.py:653-657`). Nesta sessão, 11 páginas entraram com o nome do PDF em codificação
+dupla (`Eröffnungswege` → `ErÃ¶ffnungswege`), os arquivos não abriram, e o relatório saiu com
+**recall 0,7596** em vez de 0,9364 — sem nada além de um `WARNING` que diz a mesma frase que
+uma página legitimamente vazia diz. Um nome errado tem de derrubar a medição, não baratear o
+número.
+
+**2. O relatório de campo não grava com que modelo foi medido.** Os quatro JSON de 2026-08-22
+só se distinguem pelo nome do arquivo. A comparação do quadro acima depende de quem gravou
+lembrar o que rodou.
 
 ---
 
@@ -1038,6 +1153,175 @@ também é resposta, e mais barata que a alternativa de mexer no modelo.
 dois medida antes e depois, sobre páginas de campo sem amostra rotulada.
 
 **Testes.** Nenhum novo: é coleta e medição. As guardas são a S-97 e a S-98.
+
+### O que foi entregue (2026-08-21)
+
+**80 amostras, 40 de cada livro, com procedência completa.** Os dois livros saíram de **0**
+rótulos para 40 cada; `labels.csv` foi de 4.098 para 4.178 linhas, `corrected_by` =
+`transcricao-manual` nas 80, e **nenhuma delas cai numa página do conjunto de campo** — a
+medição de antes/depois que o critério pede nasce limpa por construção (Euwe rotula as páginas
+11–80, o campo mede 25/62/100; Gallagher rotula 6–43, o campo mede 80/124).
+
+**A premissa da spec estava velha, e isso muda o custo do item.** Ela manda coletar *"pelo
+caminho de seleção de área da S-20, que funciona mesmo quando o detector falha"*. O detector
+não falha mais: `cvoff-census --all-pages` acha **80 candidatos no Euwe** (100% imagem
+embutida, todos aparados pela moldura) e **198 no Gallagher** (87,9% contorno). A coleta não
+precisou de um único arrasto de mouse.
+
+**Triagem antes de rotular.** `board_checker_score` -- o gate da S-12 -- separa candidato de
+página de texto sem tocar em tabuleiro nenhum: no Gallagher **5 dos 198 pontuam exatamente
+0,0000** (o índice do livro, o *Index of Variations* e três páginas de texto corrido) contra
+0,2891 do menor tabuleiro real; no Euwe o mínimo é 0,7414 e não há falso positivo. Os 5 ficaram
+de fora, e com eles o `#170`, que é tabuleiro real com recorte desalinhado.
+
+#### O "antes" que faltava, e ele reformula o item
+
+O item nasceu de *"os dois livros exportam 0/2"* e tratava os dois como o mesmo problema. Com
+verdade de referência nos 80, medido contra o modelo de produção:
+
+| | casas certas | tabuleiros inteiros | confiança mínima (mediana) |
+|---|---|---|---|
+| **Euwe** | 0,9402 | **2 de 40** | **0,0006** |
+| **Gallagher** | **0,9973** | **33 de 40** | 0,7522 |
+
+**Os dois exportam zero por razões opostas.** No Euwe o modelo não lê. No Gallagher ele lê
+quase perfeito e o **gate** barra: 15 dos 40 são lidos com as 64 casas certas e ficam abaixo de
+0,80 -- recall puro, com **zero** exportado errado. Um retreino que ganhe confiança sem ganhar
+leitura já move o Gallagher; só o Euwe precisa de domínio novo.
+
+**E há exportado-errado neste domínio, que o conjunto de campo não via.** Três tabuleiros do
+Euwe passariam o gate com leitura errada, confiança **0,89 a 0,98**, sempre a mesma troca:
+bispo branco lido como peão. O `field_eval` reporta `exportados e errados = 0` porque mede 2
+diagramas deste livro; sobre 40 o número é 3.
+
+**A lacuna é de vocabulário, não de margem.** Nas 88 casas de bispo do Euwe o modelo dá à
+classe bispo probabilidade **0,0000** -- não é segunda opção fraca, é ausência. A prova que não
+depende da minha leitura: no `euwe#001`, posição de abertura com a fila de trás inteira, `c1` e
+`c8` **são** os bispos de dama por regra do jogo, e o modelo dá zero aos dois. Nenhum ajuste de
+gate alcança isso, e é exatamente a hipótese que a S-40 tentou cobrir com hachura sintética.
+
+#### O método da transcrição, e a taxa de erro dele
+
+Quatro fontes, nesta ordem, e **as quatro acharam coisa diferente**:
+
+| fonte | o que pegou |
+|---|---|
+| legalidade (S-17), testando os dois lados | posição impossível |
+| contagem de material, com bispos por cor de casa | **4 erros** -- dois bispos de casa escura |
+| discordância do modelo, ordenada por confiança da casa | **1 erro** que as duas guardas deixaram passar |
+| folha de contato a 4×, as 102 chamadas de bispo uma a uma | **6 erros** |
+| base de partidas, 10.355.488 jogos | **fechou o laço**: 4 não-confirmações eram erro meu |
+
+**Doze casas erradas em 80 tabuleiros -- 10 tabuleiros, 0,23% das 5.120 casas** -- e onze delas
+na mesma direção e na mesma peça: chamei bispo o que era peão. A troca preserva legalidade e,
+quando as cores de casa fecham, preserva a contagem de material -- por isso as guardas baratas
+não bastam aqui, e por isso a auditoria casa a casa foi feita.
+
+**A décima segunda é a mais instrutiva, porque eu errei duas vezes seguidas na mesma casa.** O
+`d6` do `euwe#041` eu li primeiro como cavalo; a folha de contato contra um peão da mesma
+página me convenceu de que era peão; e só a comparação contra **bispos confirmados pela base em
+casa hachurada** (`012 d6`, `013 c5`, `029 e6`) mostrou o que era: bispo. Duas lições, e as
+duas valem para quem anotar o resto do acervo:
+
+- **referência de uma peça só decide entre duas.** Comparar o disputado contra um peão responde
+  "é peão?", não "o que é?". O gabarito precisa das três peças plausíveis lado a lado.
+- **a referência tem de vir de casa da mesma cor.** O mesmo bispo em casa clara e em casa
+  hachurada não se parecem: a trama come o contorno e muda a silhueta aparente.
+
+A confirmação que sobrou não veio de olhar melhor, veio da aritmética: com bispo em `d6` o
+material fica **simétrico** -- os dois lados sem os dois cavalos e sem dois peões --, e nem a
+leitura de cavalo nem a de peão fechavam assim. **E a base decidiu**: com o bispo, a posição
+existe em 91 partidas (`Forgacs x Caro, Coburg 1904`, lance 11); com cavalo ou com peão, em
+nenhuma. As três leituras foram à base e só uma voltou.
+
+**A triagem inversa também foi feita, e não achou nada.** A auditoria de bispo só cobre as
+casas em que eu *disse* bispo; o erro oposto -- bispo lido como peão -- é invisível para ela e
+para o modelo, que dá zero à classe. O crivo foi a altura da tinta: toda casa preta que eu li
+como peão ou cavalo e que mede acima de 0,62 de altura entrou numa lista de 25, e as 25 se
+explicam (cavalo de verdade mede 0,62--0,81) ou já estavam confirmadas por teoria de abertura.
+
+**A base de partidas é a única fonte independente, e ela se provou.** **75 das 83** colocações
+existem numa partida real; **30 delas em exatamente uma** partida entre 10,4 milhões, que é uma
+impressão digital de 64 casas -- uma leitura errada não acerta isso por acaso. Melhor ainda:
+`euwe#008`, `euwe#009`, `gallagher#008` e `euwe#041` **não** confirmavam antes das correções e
+passaram a confirmar depois. As 8 restantes foram reconferidas casa a casa contra o recorte e
+estão certas: são posição de análise -- variante que o livro mostra e ninguém jogou --, o que
+num livro de Gambito do Rei é metade do conteúdo.
+
+**Ausência da base não é evidência de erro, mas está longe de ser ruído**: das 13
+não-confirmações observadas nas quatro passadas, **4 eram defeito meu**. É sinal fraco e caro de
+investigar (~25 min por passada), e vale a pena mesmo assim -- foi ele que encontrou o único
+erro que sobreviveu a todas as outras guardas.
+
+**O custo é por varredura, não por posição** (S-73), e é isso que torna o método viável: as
+quatro passadas custaram o mesmo que teriam custado para uma colocação só.
+
+#### O que o conjunto de campo passou a medir
+
+`comparable` foi de **33 para 36** com as três FEN das páginas de campo dos dois livros
+(`Euwe p25`, `Euwe p100`, `GALLAGHER p80`), as três confirmadas pela base. A exatidão
+condicional caiu de `1,0000` para **`0,9444`** -- e a queda é o instrumento funcionando: os dois
+diagramas do Euwe que o modelo lê errado agora **aparecem**, onde antes eram invisíveis por
+falta de referência.
+
+| por livro | exportação | conferíveis | exatidão de campo |
+|---|---|---|---|
+| `Euwe` | 0,0000 (0/2) | 0 → **2** | — (nada exportado) |
+| `GALLAGHER` | 0,5000 (1/2) | 0 → **1** | — → **1,0000** |
+
+#### O "depois": o experimento rodou, e a hipótese passou
+
+O dedupe e o `--drop-missing` foram autorizados em 2026-08-21 e rodaram com registro
+(`docs/metrics/dedupe_20260821_072042.json`): 4.177 → 3.733 rótulos, 444 duplicatas, 1 sem
+imagem para a quarentena, e o denominador que a S-101 existe para tornar visível -- `val`
+401 → 358, `test` 393 → 369. **Nenhuma das 80 era duplicata.**
+
+Dois modelos, mesma receita (`--fresh`, semente 42, 8 épocas, `aug0`, lote 128, lr 0,001), o
+mesmo `splits.csv`, e **a única diferença sendo as 80 amostras**:
+
+| | controle (3.653) | tratamento (3.733) |
+|---|---|---|
+| `Euwe` -- exportação | **0,0000** (0/2) | **0,5000** (1/2) |
+| `Euwe` -- exatidão condicional | 0,0000 | **1,0000** |
+| exportação limpa (geral) | 0,8065 (25/31) | **0,8387** (26/31) |
+| exatidão condicional (geral) | 0,9444 (34/36) | **1,0000** (36/36) |
+| exportados e errados | 0 | 0 |
+| `val_board_exact_acc` | 0,975069 | 0,978082 |
+
+**A hipótese era falsificável e não foi falsificada.** A spec dizia: *"se 80 tabuleiros reais de
+domínio hachurado não moverem a exportação desses dois livros, a conclusão é que o problema não
+é dado"*. Eles moveram. O livro que exportava zero exporta, **e certo**.
+
+**O que custou, e está aqui porque custou.** O `1937 Kemeri p187` saiu do PGN: passava o gate no
+controle e cai para **0,791** no tratamento. A taxa de exportação geral não muda (34/40 nos
+dois) -- o Euwe ganha um e o Kemeri perde um. O que melhora sem contrapartida é a **leitura**:
+`exact` 34 → 36, exatidão condicional 0,9444 → 1,0000, e a exportação **limpa** (a que exclui
+páginas com amostra de treino) sobe de 0,8065 para 0,8387, porque a página do Euwe é limpa e a
+do Kemeri não é.
+
+#### O achado que não era deste item: a faixa da S-99 encheu sozinha
+
+A distribuição de confiança do conjunto de campo, medida nos três modelos sobre as mesmas 19
+páginas:
+
+| faixa | produção | controle | **tratamento** |
+|---|---|---|---|
+| `[0,00, 0,20)` | 2 | 2 | **0** |
+| `[0,60, 0,80)` -- **a faixa da S-99** | 0 | 0 | **2** |
+| `[0,90, 1,00)` | 35 | 34 | 34 |
+
+O critério da Fase 14 pede **≥ 5 diagramas na faixa 0,60--0,80**, e o ROADMAP atribui a faixa
+vazia a *"faltam páginas difíceis"*. **As páginas são as mesmas nos três modelos.** O que
+mudou foi o modelo: os dois diagramas que ficavam em 0,000 e 0,020 -- o Euwe -- subiram para o
+gate, e um deles parou em **0,6519**; o `Kemeri p187` desceu de cima do corte para **0,7914**.
+
+A faixa não estava vazia só por falta de página difícil. Estava vazia porque **o modelo não
+tinha o vocabulário para ficar em dúvida**: onde o domínio era desconhecido ele errava com
+0,999 de certeza, e onde era conhecido acertava com 0,999. Fechar a lacuna de domínio criou a
+vizinhança do gate que a régua precisava.
+
+Continua faltando para o critério: **2 de 5**. Mas a rota mudou -- não é só anotar mais página,
+é também que cada domínio novo aprendido converte um par de extremos em vizinhança de corte.
 
 ---
 

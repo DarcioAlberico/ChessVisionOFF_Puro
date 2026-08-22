@@ -621,10 +621,10 @@ if __name__ == "__main__":
 RAIZ = Path(__file__).resolve().parents[1]
 
 RELATORIOS_CORRENTES = {
-    "field_20260816_s99.json": "o número da S-99, citado pelo ROADMAP_FASE14 como a régua de hoje",
-    "controle_20260816.json": "o controle da S-107, contra o qual o `mhsp` foi julgado",
-    "mhsp_20260816.json": "o candidato da S-107",
-    "producao_20260816.json": "a produção de 2026-08-09, medida no mesmo dia que os dois acima",
+    "field_20260822_s99.json": "a régua da S-99 fechada: a produção sobre as 63 páginas",
+    "controle_20260822.json": "o controle da S-107, regravado sobre o conjunto de hoje",
+    "mhsp_20260822.json": "o candidato da S-107, regravado no mesmo conjunto",
+    "s108_20260822.json": "o tratamento da S-108, medido pela primeira vez com régua que separa",
 }
 """Os relatórios de campo que os documentos citam **como correntes** (S-100).
 
@@ -640,7 +640,14 @@ eles são o registro histórico da Fase 7, e o cabeçalho do `EXPERIMENTS_FASE7.
 conjunto deles.
 
 Quando a S-99 crescer o conjunto para 60 páginas, esta suíte falha em bloco -- e é o ponto:
-cada linha aqui tem de ser remedida ou sair da lista, e a decisão passa a ser explícita."""
+cada linha aqui tem de ser remedida ou sair da lista, e a decisão passa a ser explícita.
+
+**Foi o que aconteceu em 2026-08-22.** O conjunto passou de 17/40 para 63/110 e as quatro
+linhas de 2026-08-16 caíram juntas. Os quatro modelos foram remedidos sobre o conjunto novo --
+`producao_20260816.json` sai da lista porque `field_20260822_s99.json` é a produção sobre o
+conjunto de hoje, e `s108_20260822.json` entra porque a decisão da Fase 15 passou a depender
+dele. Os de 2026-08-16 viram registro histórico: eles declaram `"pages": 19` e é assim que se
+confere."""
 
 
 class ConjuntoVigenteTests(unittest.TestCase):

@@ -12,17 +12,19 @@ Continuação de [EXPERIMENTS.md](EXPERIMENTS.md), que cobre a Fase 5.
 **Conjunto de medição desta fase:** `data/field_set.jsonl` (S-41) — **15 páginas anotadas à
 mão, 38 diagramas**, 3 páginas sem diagrama. Reproduzir: `cvoff-field`.
 
-> ## ⚠ O conjunto mudou em 2026-08-15, e **nada nesta página é comparável ao de hoje**
+> ## ⚠ O conjunto mudou duas vezes, e **nada nesta página é comparável ao de hoje**
 >
-> O conjunto vigente tem **17 páginas e 39 diagramas** — e a diferença não é só de tamanho: a
-> S-95 tirou dele uma leitura alucinada que servia de referência, e a S-99 acrescentou FEN a
-> 31 dos 39.
+> O conjunto vigente tem **63 páginas e 110 diagramas** (S-99 fechada em 2026-08-22). Entre
+> esta página e ele houve duas trocas: 15/38 → 17/39 em 2026-08-15, e 19/40 → 63/110 em
+> 2026-08-22. A diferença não é só de tamanho — a S-95 tirou uma leitura alucinada que servia
+> de referência, e a S-99 acrescentou FEN conferida a 93 dos 110.
 >
-> | | esta página (até 2026-08-11) | vigente |
-> |---|---|---|
-> | páginas / diagramas | 15 / 38 | **17 / 39** |
-> | taxa de exportação da produção | 0,7368 | **0,7179** |
-> | precisão de detecção | 0,9722 (1 falso positivo) | **0,9231** (3 falsos positivos) |
+> | | esta página (até 2026-08-11) | 2026-08-16 | **vigente (2026-08-22)** |
+> |---|---|---|---|
+> | páginas / diagramas | 15 / 38 | 19 / 40 | **63 / 110** |
+> | taxa de exportação da produção | 0,7368 | 0,8500 | **0,7455** |
+> | precisão de detecção | 0,9722 (1 falso positivo) | 0,9730 | **0,9904** (1 falso positivo) |
+> | exportado e **errado** | não media | 0 | **1** |
 >
 > **As tabelas que reprovaram S-38b, S-40, S-62a e S-62b comparam variantes sobre 38
 > diagramas.** Uma variante medida hoje entra nelas sem ser comparável — e a diferença de
@@ -30,12 +32,13 @@ mão, 38 diagramas**, 3 páginas sem diagrama. Reproduzir: `cvoff-field`.
 >
 > Os relatórios desta página estão em `docs/metrics/field_20260809*.json` e
 > `field_20260811*.json`, e **todos** declaram `"pages": 15, "annotated": 38` — é assim que se
-> confere. `tests/test_field_eval.py::ConjuntoVigenteTests` trava a lista dos que são citados
-> como correntes; um relatório de outro conjunto nessa lista faz a suíte falhar.
+> confere. Os de `*_20260816.json` declaram `"pages": 19`. Os correntes são os `*_20260822*`.
+> `tests/test_field_eval.py::ConjuntoVigenteTests` trava a lista dos que são citados como
+> correntes; um relatório de outro conjunto nessa lista faz a suíte falhar.
 >
-> O controle não foi regravado sobre o conjunto de hoje **de propósito**: a S-99 ainda vai
-> crescê-lo de 17 para 60 páginas, e regravá-lo duas vezes é pagar duas vezes pela mesma
-> resposta.
+> **O controle foi regravado em 2026-08-22**, que é a condição que a S-100 fixou: só quando a
+> S-99 fechasse, para não pagar duas vezes pela mesma resposta. Os quatro modelos (produção,
+> controle, `mhsp`, tratamento da S-108) estão medidos sobre o mesmo conjunto de 63 páginas.
 
 ---
 
