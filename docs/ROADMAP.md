@@ -98,7 +98,7 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 
 ---
 
-## Fase 2 — Precisão do OCR ✅ entregue (2026-07-26); o critério de saída ficou sem a medição do acervo
+## Fase 2 — Precisão do OCR ✅ entregue (2026-07-26); **critério de saída fechado em 2026-08-22**
 
 **Por que é o núcleo:** ganho de precisão sem retreinar o modelo. Todos os itens exploram informação que já existe e está sendo descartada.
 
@@ -121,6 +121,50 @@ própria fase), e a acurácia de teste está no `BASELINE.md`. Já *"zero posiç
 exportado dos 27 PDFs"* exige exportar o acervo inteiro, e o acervo cresceu para 39 livros desde
 que a frase foi escrita. Isso é uma execução de `cvoff-batch` de horas sobre os PDFs do dono —
 não é código pendente, é uma medição que só faz sentido na máquina que tem os livros.
+
+### A medição do acervo, 2026-08-22: **0 ilegais em 29.322 posições**
+
+`cvoff-batch PDF --output PGN_fase2_20260822`, na máquina que tem os livros. **41 PDFs, 20.089
+páginas, 3 h 25 min, nenhum livro falhou.** Relatório em
+[batch_fase2_20260822.json](metrics/batch_fase2_20260822.json).
+
+| | |
+|---|---|
+| aceitos (foram para o PGN) | **29.322** |
+| mandados para `*.review.pgn` | 2.660 |
+| recusados | 153 |
+| **posições ilegais no PGN exportado** | **0** |
+
+Conferido lendo **toda** `[FEN "..."]` dos 41 PGN aceitos e aplicando `fen_utils.check_position`
+— não o contador do relatório, que conta aceite e não legalidade. Zero ilegais, zero fatais,
+zero que só precisassem trocar o lado a jogar.
+
+**E o contrafactual está no mesmo disco:** os `*.review.pgn` guardam 2.813 posições, das quais
+**261 são ilegais** (153 por regra dura). O gate não é decorativo — ele desviou 261 posições
+ilegais e deixou passar nenhuma. É a S-15 fazendo exatamente o que foi escrita para fazer.
+
+**A saída ficou em `PGN_fase2_20260822/`, não em `PGN/`**: a medição não é entrega, e
+sobrescrever os PGN que já estavam lá custaria o que houvesse de trabalho neles.
+
+#### O que a varredura mostrou de novo
+
+**Cinco livros exportam zero** — `Koblenz`, `Levenfis`, `Melhores Finais de Capablanca`,
+`Niemeijer` e `Stefaniu`, 1.077 páginas somadas. Não é o gate sendo severo: a confiança mínima
+média deles fica entre **0,034 e 0,246**, contra 0,99 dos que exportam quase tudo. É o achado
+da 6.6 confirmado em escala de acervo, e a taxa de aceitação por livro continua sendo o número
+que diz onde vale gastar rótulo novo.
+
+**O mesmo livro em duas digitalizações dá dois resultados incompatíveis, e não por leitura:**
+
+| | páginas | detectados | aceitos | conf. mín. média |
+|---|---|---|---|---|
+| `Melhores Finais de Capablanca ... - Copia.pdf` | 423 | 163 | **0** | 0,171 |
+| `Melhores Finais de Capablanca ... - Copia_hq.pdf` | 423 | **4** | 4 | 0,987 |
+
+A versão `hq` não é lida pior — ela quase não é **detectada**: 4 diagramas em 423 páginas,
+contra 163 da outra, e a varredura inteira dela levou 40 s contra 184 s. O par `400
+Quebra-cabeças`/`_hq` não tem esse problema (1.118 contra 1.112 aceitos), então não é uma regra
+sobre "hq". É um caso para a Fase 19, que é onde a detecção ganha instrumento.
 
 **Baseline a bater:** 0,9906 de acurácia exata por tabuleiro no split `test` — ver [BASELINE.md](BASELINE.md). Atenção ao que esse número não é: com 3 erros em 320 tabuleiros, meio ponto de diferença é ruído, e a acurácia num PDF nunca revisado é muito mais baixa (46 dos 47 tabuleiros do Kemeri ficam abaixo do limiar de aceite).
 
