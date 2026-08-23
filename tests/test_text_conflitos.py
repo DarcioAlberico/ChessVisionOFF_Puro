@@ -239,6 +239,37 @@ class DecisoesReaisTests(unittest.TestCase):
             self.assertGreaterEqual(len(decisao["rotulos"]), 2, sha)
 
 
+class CaminhoNoRelatorioTests(unittest.TestCase):
+    """O `path`/`base` que um relatório grava. Ver `config.caminho_para_relatorio`."""
+
+    def test_o_caminho_dentro_da_raiz_sai_relativo(self) -> None:
+        """Um relatorio com a raiz do disco embutida nao compara com outro medido noutra maquina.
+
+        E o campo que se le primeiro: dois relatorios do mesmo alvo com `path` diferente parecem
+        alvos diferentes, e o digest ao lado so salva quem for conferir.
+        """
+        from chess_diagram_ocr.config import PROJECT_ROOT, caminho_para_relatorio
+
+        self.assertEqual("training_data", caminho_para_relatorio(PROJECT_ROOT / "training_data"))
+        self.assertEqual(
+            "data/texto_conflitos.json", caminho_para_relatorio(PROJECT_ROOT / "data" / "texto_conflitos.json")
+        )
+
+    def test_o_caminho_fora_da_raiz_sai_absoluto(self) -> None:
+        """Fora da raiz o caminho completo **e** a informacao: diz que aquilo nao mora aqui."""
+        from chess_diagram_ocr.config import caminho_para_relatorio
+
+        with TemporaryDirectory() as tmp:
+            fora = Path(tmp) / "modelo.pt"
+            self.assertEqual(fora.as_posix(), caminho_para_relatorio(fora))
+
+    def test_as_barras_saem_normalizadas(self) -> None:
+        """A barra invertida vira escape no JSON, e o caminho sairia diferente por sistema."""
+        from chess_diagram_ocr.config import PROJECT_ROOT, caminho_para_relatorio
+
+        self.assertNotIn("\\", caminho_para_relatorio(PROJECT_ROOT / "data" / "texto_conflitos.json"))
+
+
 class ConflitoTests(unittest.TestCase):
     def test_os_rotulos_saem_ordenados_e_a_comparacao_ignora_a_ordem(self) -> None:
         a = Conflito("a" * 64, {"lower_l": ["x"], "digit_1": ["y", "z"]})

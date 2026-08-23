@@ -1,5 +1,5 @@
 {
-  "base": "C:\\Python-Chess2\\ChessVisionOFF_Puro\\training_data",
+  "base": "training_data",
   "amostras": {
     "treino": 142682,
     "validacao": 17844,

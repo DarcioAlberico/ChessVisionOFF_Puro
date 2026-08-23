@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
+from ..config import caminho_para_relatorio
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
 
 logger = logging.getLogger(__name__)
@@ -270,8 +271,8 @@ def aplicar(
         json.dumps(
             {
                 "quando": datetime.now().replace(microsecond=0).isoformat(),
-                "base": str(base),
-                "quarentena": str(quarentena),
+                "base": caminho_para_relatorio(base),
+                "quarentena": caminho_para_relatorio(quarentena),
                 "por_motivo": plano.por_motivo,
                 "movidos": movidos,
             },

@@ -175,3 +175,24 @@ def find_default_pdf_path() -> Path | None:
 
     pdfs = sorted(path for path in DEFAULT_PDF_DIR.glob("*.pdf") if path.is_file())
     return pdfs[0] if pdfs else None
+
+
+def caminho_para_relatorio(caminho: Path | str) -> str:
+    """O caminho como um relatório deve grava-lo: relativo à raiz quando cabe dentro dela.
+
+    **É o campo que se lê primeiro, e por isso ele não pode depender de onde a máquina guarda o
+    projeto.** Um relatório com `C:/Python-Chess2/ChessVisionOFF_Puro/training_data` e outro com
+    `training_data` descrevem a mesma pasta e parecem duas; quem compara dois relatórios medidos
+    em máquinas diferentes lê o `path` antes de qualquer digest, e conclui errado. E num
+    repositório público ainda publica o layout do disco de quem mediu, que é ruído pessoal que
+    ninguém revisa depois de gravado.
+
+    **Fora da raiz sai absoluto de propósito**: aí o caminho completo é a informação -- diz que
+    aquilo não mora no repositório. Barras normalizadas para `/` porque `\` vira escape no JSON e
+    o mesmo caminho sai diferente conforme o sistema.
+    """
+    caminho = Path(caminho)
+    try:
+        return caminho.resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
+    except ValueError:
+        return caminho.as_posix()

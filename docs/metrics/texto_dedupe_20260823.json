@@ -1,6 +1,6 @@
 {
   "quando": "2026-08-23",
-  "base": "C:\\Python-Chess2\\ChessVisionOFF_Puro\\training_data",
+  "base": "training_data",
   "grupos_em_conflito": 0,
   "recortes_em_conflito": 0,
   "julgados": 0,
@@ -11,7 +11,7 @@
   },
   "pares": {},
   "julgamentos_registrados": {
-    "arquivo": "C:\\Python-Chess2\\ChessVisionOFF_Puro\\data\\texto_conflitos.json",
+    "arquivo": "data/texto_conflitos.json",
     "grupos": 83,
     "com_vencedor": 33,
     "indecidiveis": 50,

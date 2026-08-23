@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from ..atomic_io import atomic_write_text
-from ..config import PROJECT_ROOT
+from ..config import PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
 from . import cli_errors
 
@@ -248,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
           f"| {metricas_teste['amostras']:,} imagens distintas".replace(",", "."))
 
     extra = {
-        "base": str(args.base),
+        "base": caminho_para_relatorio(args.base),
         "amostras": {"treino": int(idx_treino.size), "validacao": int(idx_val.size), "teste": int(idx_teste.size)},
         "imagens_distintas": int(np.unique(varredura.grupos).size),
         "grupos_em_conflito": int(conflitos.size),

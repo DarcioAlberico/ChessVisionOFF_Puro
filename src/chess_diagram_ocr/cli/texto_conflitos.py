@@ -22,7 +22,7 @@ from datetime import date
 from pathlib import Path
 
 from ..atomic_io import atomic_write_bytes, atomic_write_text
-from ..config import PROJECT_ROOT
+from ..config import PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
 from . import cli_errors
 
@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(
             {
                 "quando": date.today().isoformat(),
-                "base": str(args.base),
+                "base": caminho_para_relatorio(args.base),
                 "recortes": varredura.recortes,
                 "imagens_distintas": varredura.imagens_distintas,
                 "copias_exatas": varredura.copias_exatas,
@@ -194,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
                 # dissesse isso apagaria a memoria de que os 83 existiram e de como foram
                 # decididos. Esta secao e o que sobrevive ao conserto.
                 "julgamentos_registrados": {
-                    "arquivo": str(args.decisoes),
+                    "arquivo": caminho_para_relatorio(args.decisoes),
                     "grupos": len(decisoes),
                     "com_vencedor": sum(1 for d in decisoes.values() if d.get("vencedor")),
                     "indecidiveis": sum(1 for d in decisoes.values() if not d.get("vencedor")),
