@@ -989,6 +989,26 @@ em digest nenhum, então nenhuma verificação automática o alcançaria; quem o
 sessão relendo um arquivo já publicado. As duas metades juntas são o argumento do item: a guarda
 pega o que muda por baixo, e não substitui alguém olhando o que ficou escrito.
 
+**São duas famílias de defeito, e precisam de dois instrumentos.** O digest cobre **deriva** —
+o número certo que envelheceu porque o código mudou por baixo. O caminho absoluto é a outra
+família: **o valor certo gravado errado desde a origem**. Ele não envelhece, não vence, e
+nenhuma remedição o revela — comparar *hoje* com *quando foi gravado* dá igual, porque sempre
+esteve errado. Nove arquivos estavam assim em 2026-08-23, quatro deles já no remoto.
+
+Contra essa família vale um teste de **forma**, e ele é barato:
+`test_docs.py::CaminhoPublicadoTests` varre `docs/metrics/*.json` e recusa caminho absoluto
+dentro da raiz em campo de caminho. Duas decisões o mantêm vivo:
+
+- **Olha campos de caminho, não toda string.** Medido: `texto_treino_20260823_s204.json` traz
+  `{"pasta": "sym_47", "caractere": "/"}` — o `/` é o **glifo da barra**, uma classe do
+  classificador. Uma regra de "string que começa com barra" acusaria dado legítimo, e guarda que
+  acusa à toa é desligada.
+- **Absoluto fora da raiz passa.** Ali o caminho é informação, não ruído.
+
+E ele mora nos testes de propósito: `tests/` não está no fecho de importação, então esta guarda
+**não vence relatório nenhum** — verificado, o `code.digest` seguiu `e0a6c677499bccff` depois
+dela. É o raro caso em que a cobertura sai de graça.
+
 **O que este item deliberadamente não faz.** Não adivinha quais módulos do fecho uma corrida
 executou de fato — só a poda do motor desligado, que é decidível. Um digest condicionado ao que
 rodou seria mais justo e é exatamente por onde um digest passa batido.

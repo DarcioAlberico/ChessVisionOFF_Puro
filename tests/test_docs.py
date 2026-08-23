@@ -535,5 +535,87 @@ class NumerosVivosTests(unittest.TestCase):
         _perto(self, citado, real, "linhas de app_tkinter.py no quadro das fases")
 
 
+CHAVES_DE_CAMINHO = ("path", "base", "dir", "diretorio", "caminho", "pasta", "arquivo")
+"""Campos de `docs/metrics/*.json` que guardam caminho, e só eles (S-218).
+
+**Varrer toda string seria a implementação errada, e foi medido.** O
+`texto_treino_20260823_s204.json` traz `{"pasta": "sym_47", "caractere": "/"}` -- o `/` é o
+**glifo da barra**, uma classe do classificador de caractere. Uma regra de "string que começa
+com barra" o acusaria como caminho absoluto, e uma guarda que acusa dado legítimo é desligada
+na primeira semana.
+"""
+
+_ABSOLUTO = re.compile(r"^(?:[A-Za-z]:[\\/]|[\\/]{1,2}[^\\/])")
+"""Absoluto em qualquer uma das grafias: `C:\\x`, `C:/x`, `/x`, `\\\\servidor\\x`."""
+
+
+class CaminhoPublicadoTests(unittest.TestCase):
+    """Nenhum relatório publica a raiz do disco de quem mediu (S-218).
+
+    **É a família de defeito que o digest de código não alcança.** Um caminho absoluto não é
+    deriva -- não muda com o tempo, não vence, nenhuma remedição o revela. É o valor certo
+    gravado errado desde a origem, e por isso escapa de toda guarda que compara *hoje* com
+    *quando foi gravado*. Em 2026-08-23 nove arquivos estavam assim, e o único motivo de terem
+    sido achados é alguém ter relido o que já estava publicado -- quatro deles já no remoto.
+
+    O dano maior não é vazar o layout do disco num repositório público; é que o mesmo artefato
+    medido em duas máquinas fica com dois nomes e um digest só, e **quem lê a olho conclui que
+    são artefatos diferentes**.
+
+    Absoluto **fora** da raiz continua válido: aí o caminho é a informação de que o arquivo não
+    mora no repositório.
+    """
+
+    def _caminhos_publicados(self) -> list[tuple[str, str, str]]:
+        import json
+
+        achados: list[tuple[str, str, str]] = []
+
+        def anda(no: object, arquivo: str, trilha: str = "") -> None:
+            if isinstance(no, dict):
+                for chave, valor in no.items():
+                    onde = f"{trilha}.{chave}" if trilha else str(chave)
+                    if chave in CHAVES_DE_CAMINHO and isinstance(valor, str) and valor:
+                        achados.append((arquivo, onde, valor))
+                    anda(valor, arquivo, onde)
+            elif isinstance(no, list):
+                for indice, item in enumerate(no):
+                    anda(item, arquivo, f"{trilha}[{indice}]")
+
+        for caminho in sorted((RAIZ / "docs" / "metrics").glob("*.json")):
+            try:
+                anda(json.loads(caminho.read_text(encoding="utf-8")), caminho.name)
+            except (OSError, ValueError):  # pragma: no cover - JSON em edição
+                continue
+        return achados
+
+    def test_nenhum_relatorio_publica_a_raiz_do_disco(self) -> None:
+        raiz = str(RAIZ).replace("\\", "/").rstrip("/").lower()
+        dentro = []
+        for arquivo, onde, valor in self._caminhos_publicados():
+            if not _ABSOLUTO.match(valor):
+                continue
+            if valor.replace("\\", "/").lower().startswith(raiz):
+                dentro.append(f"{arquivo}: {onde} = {valor}")
+
+        self.assertEqual(
+            dentro,
+            [],
+            "Caminho absoluto dentro da árvore num relatório publicado. Grave relativo à raiz "
+            "-- `chess_diagram_ocr.field_eval._model_path_relativo` é o modelo a seguir. "
+            "Absoluto só quando o arquivo mora fora do repositório.",
+        )
+
+    def test_a_regra_nao_confunde_o_glifo_da_barra_com_caminho(self) -> None:
+        """O falso positivo que definiu o desenho: `"caractere": "/"` é uma classe do
+        classificador, e `caractere` não é campo de caminho. Se esta lista crescer para incluí-lo,
+        a guarda passa a acusar dado legítimo -- e é assim que uma guarda morre."""
+        self.assertNotIn("caractere", CHAVES_DE_CAMINHO)
+        self.assertTrue(_ABSOLUTO.match("C:/x/y"))
+        self.assertTrue(_ABSOLUTO.match("/opt/modelo.pt"))
+        self.assertFalse(_ABSOLUTO.match("/"))
+        self.assertFalse(_ABSOLUTO.match("models/piece_classifier.pt"))
+
+
 if __name__ == "__main__":
     unittest.main()
