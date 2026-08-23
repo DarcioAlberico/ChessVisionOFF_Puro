@@ -16,7 +16,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-220 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
@@ -3430,3 +3430,91 @@ o PDF.
 **Testes.** `tests/test_packaging.py::SelftestTests` — os dois códigos, as duas frases, e a
 guarda de que um checkpoint **bom** não cai nelas (uma guarda que transforma instalação boa em
 erro é pior que a falha que ela cobre).
+
+---
+
+## S-220 · Dois relatórios do mesmo conjunto podiam discordar na detecção ✅ implementada (2026-08-23)
+
+**Problema.** A S-100 fechou um eixo e deixou o vizinho aberto. Ela publica a identidade do
+**conjunto** -- `pages` e `annotated` -- e trava por teste, e é por isso que um relatório de 38
+diagramas não entra mais numa tabela de 39. Mas metade do que um relatório de campo mede não é
+conjunto nem modelo: é **detecção**, e detecção é código. O conjunto pode ficar parado por
+semanas enquanto `detection/hybrid.py` muda embaixo, e nem `pages` nem `annotated` se mexem.
+
+Foi exatamente o que aconteceu. O `9eb6685` (S-176) mudou a detecção; os quatro relatórios de
+2026-08-22 continuaram publicando os números de antes dela por dois commits, até o `c640012`
+regravá-los. A suíte ficou verde o tempo todo.
+
+**Qual defeito este item pega, e qual não.** Vale separar, porque o histórico não diz o que
+parece dizer. Conferidas todas as revisões dos quatro arquivos, eles **sempre andaram em
+bloco**:
+
+| | `49a83a6` | `373739c` / `9eb6685` | `c640012` |
+|---|---|---|---|
+| `field_20260822_s99` | 104/103/1 | 109/106/3 | 110/109/1 |
+| `controle_20260822` | 104/103/1 | 109/106/3 | 110/109/1 |
+| `mhsp_20260822` | 104/103/1 | 109/106/3 | 110/109/1 |
+| `s108_20260822` | 104/103/1 | 109/106/3 | 110/109/1 |
+
+Ficaram velhos juntos e foram consertados juntos, então a divergência nunca chegou ao
+histórico. **O que ninguém impede é o meio do caminho.** Em 2026-08-23, entre 05:48 e 05:55, a
+árvore do checkout principal teve os quatro sendo reescritos um a um -- `controle` às 05:48,
+`mhsp` às 05:50, `s108` às 05:52, `field_s99` às 05:55. Durante sete minutos o disco tinha um
+quarteto meio-e-meio: dois arquivos dizendo 110/109/1 e dois dizendo 109/106/3, com quatro
+nomes que se parecem. Um commit ali dentro teria publicado uma tabela comparando dois códigos.
+
+O estado foi observado enquanto acontecia, e não deduzido dos mtimes depois: às 05:49:01 um
+`git status --short` no checkout principal listava `M docs/metrics/controle_20260822.json` e
+mais nada -- os outros três ainda no valor commitado em `9eb6685`.
+
+Que isso não tenha virado commit foi **disciplina de quem regravou** e três sessões avisando
+umas às outras, e não consequência de nada. Este item é o que torna consequência -- e é por
+isso que ele mora num teste, que lê a árvore de trabalho, e não numa conferência do histórico:
+a janela que ele fecha é, por definição, a que nunca chega a commit.
+
+**Por que a guarda é possível, e não é um palpite.** `service._predict_boards` empilha um
+`RecognizedDiagram` para **todo** candidato que o detector devolveu, sem nenhum filtro pelo que
+o classificador diga; e `field_eval._match` casa anotação com leitura por `bbox_iou` sobre
+`bbox_pdf`, que vem do detector. Trocar o `.pt` move `exported`, `exact` e `field_exact`; não
+move `detected`, `matched` nem `false_positives`. **Esses três são a assinatura do código de
+detecção** -- dois relatórios do mesmo conjunto que discordam neles não são dois modelos, são
+dois códigos.
+
+**Solução.** `divergencias_de_deteccao` agrupa os relatórios pelo conjunto que declaram e
+reclama de todo grupo que não concorda nos três campos. A guarda roda sobre
+`RELATORIOS_CORRENTES` -- a mesma lista da S-100 --, e a falha nomeia o arquivo destoante:
+
+```
+conjunto 18 páginas / 39 diagramas -- controle_20260816.json viu 32/31/1;
+field_20260816_s99.json viu 32/31/1; mhsp_20260816.json viu 33/32/1;
+producao_20260816.json viu 32/31/1
+```
+
+**Agrupar por conjunto não é zelo, é divisão de trabalho.** Sem isso, um relatório de conjunto
+antigo faria disparar esta guarda *e* a da S-100, e quem lesse a falha veria dois diagnósticos
+para um defeito só. Cada uma cobre o eixo dela.
+
+**O classificador tem de poder divergir, e isso é metade do item.** Uma guarda que exigisse
+relatórios idênticos proibiria justamente o que a tabela existe para fazer. Os quatro de
+2026-08-22 divergem em `exact` -- 92 / 91 / 89 / 85 -- porque são quatro `.pt` diferentes, e
+isso é o resultado, não o defeito. Há teste dizendo que quatro relatórios que só diferem em
+`exported` e `exact` passam.
+
+**Por que `RELATORIOS_CORRENTES` e não o acervo inteiro.** Os relatórios citados como correntes
+são, por construção, os que vão para a mesma tabela -- é o que a S-107 fez com `controle` e
+`mhsp`, e a S-108 com o candidato dela. Entre eles, diferença de detecção é sempre defeito.
+Fora dessa lista não é: o acervo tem medições separadas por semanas de mudança de detector, e
+uma varredura geral transformaria registro histórico legítimo em falha. Hoje o acervo inteiro
+passaria -- `field_20260809*` e `field_20260811*` estão todos em 36/35/1, e os `_20260816` em
+32/31/1 --, mas passar hoje não é o mesmo que ser uma promessa que o projeto queira fazer.
+
+**O que ele não promete.** A guarda compara relatórios **entre si**, e não contra o código de
+hoje: quatro arquivos velhos de forma consistente continuam passando, e foi essa a situação de
+`9eb6685`. Esse eixo tem dono próprio -- o `code_commit` da S-219, que carimba de que código
+cada relatório saiu. Os dois se completam: a S-219 diz *com o que* mediu, esta diz *se os que
+vão para a mesma tabela mediram com a mesma coisa*.
+
+**Testes.** `tests/test_field_eval.py::DeteccaoEntreRelatoriosTests` -- o critério de aceite
+sobre os arquivos em disco, a demonstração sobre o quarteto meio-e-meio real (para o primeiro
+não ser vacuamente verdadeiro no dia em que a lista tiver um item só), a permissão explícita de
+o classificador divergir, e a guarda de que conjuntos diferentes não são comparados.

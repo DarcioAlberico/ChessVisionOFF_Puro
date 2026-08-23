@@ -708,3 +708,131 @@ class ConjuntoVigenteTests(unittest.TestCase):
             with self.subTest(relatorio=caminho.name):
                 self.assertIn("pages", dados, "sem a identidade, o relatório não é auditável")
                 self.assertIn("annotated", dados)
+
+
+CAMPOS_DA_DETECCAO = ("detected", "matched", "false_positives")
+"""O que o detector achou, e que **não depende de qual `.pt` rodou** (S-220).
+
+`service._predict_boards` empilha um `RecognizedDiagram` para todo candidato que o detector
+devolveu, sem filtrar por nada que o classificador diga; e `_match` casa anotação com leitura
+por `bbox_iou` sobre `bbox_pdf`, que é do detector. Trocar o modelo move `exported`, `exact` e
+`field_exact`; não move estes três.
+
+É essa assimetria que faz a guarda ser possível: **os três são a assinatura do código de
+detecção**, e dois relatórios do mesmo conjunto que discordam neles não são dois modelos --
+são dois códigos."""
+
+
+def divergencias_de_deteccao(relatorios: dict[str, dict]) -> list[str]:
+    """Relatórios agrupados pelo conjunto que declaram; uma queixa por grupo que discorda.
+
+    Agrupar por `pages`/`annotated` não é zelo: sem isso a guarda dispararia junto com a da
+    S-100 sempre que um relatório de conjunto antigo entrasse na lista, e as duas diriam a
+    mesma coisa com palavras diferentes. Cada uma cobre um eixo, e só o dela.
+    """
+    por_conjunto: dict[tuple, dict[str, tuple]] = {}
+    for nome, dados in relatorios.items():
+        conjunto = (dados.get("pages"), dados.get("annotated"))
+        por_conjunto.setdefault(conjunto, {})[nome] = tuple(
+            dados.get(campo) for campo in CAMPOS_DA_DETECCAO
+        )
+
+    queixas = []
+    for conjunto, medidos in sorted(por_conjunto.items(), key=lambda item: str(item[0])):
+        if len(set(medidos.values())) < 2:
+            continue
+        detalhe = "; ".join(
+            f"{nome} viu {'/'.join(str(valor) for valor in deteccao)}"
+            for nome, deteccao in sorted(medidos.items())
+        )
+        queixas.append(f"conjunto {conjunto[0]} páginas / {conjunto[1]} diagramas -- {detalhe}")
+    return queixas
+
+
+class DeteccaoEntreRelatoriosTests(unittest.TestCase):
+    """Dois relatórios do mesmo conjunto concordam na detecção, ou um deles está velho (S-220).
+
+    **O que a S-100 deixou de fora.** Ela publica a identidade do *conjunto* e trava por teste,
+    e é por isso que `pages`/`annotated` são conferidos. Mas detecção não é conjunto: o conjunto
+    pode ficar parado por semanas enquanto `detection/hybrid.py` muda embaixo, e nenhum dos dois
+    campos se mexe. Foi exatamente o que o `9eb6685` (S-176) fez -- os quatro relatórios de
+    2026-08-22 passaram dois commits medindo o código de antes dela, e a suíte ficou verde.
+
+    **O caso que esta guarda existe para pegar não é aquele, e vale dizer qual é.** Em
+    `9eb6685` os quatro ficaram velhos *juntos*, e o `c640012` os regravou *juntos*; a
+    divergência nunca chegou ao histórico. O que ninguém impede é o meio do caminho: em
+    2026-08-23, entre 05:48 e 05:55, a árvore do checkout principal teve os quatro sendo
+    reescritos um a um, e às 05:49:01 um `git status --short` listava `M controle_20260822.json`
+    e mais nada: um arquivo em 110/109/1 e três ainda em 109/106/3. Um commit ali dentro teria
+    publicado uma tabela comparando dois códigos, com quatro linhas que se parecem.
+
+    Que os quatro tenham andado em bloco até hoje foi disciplina de quem regravou, não
+    consequência de nada. Isto aqui é o que torna consequência -- e é por isso que é teste, que
+    lê a árvore de trabalho: a janela que ele fecha nunca chega a commit.
+    """
+
+    def _correntes(self) -> dict[str, dict]:
+        relatorios = {}
+        for nome in RELATORIOS_CORRENTES:
+            caminho = RAIZ / "docs" / "metrics" / nome
+            if caminho.exists():
+                relatorios[nome] = json.loads(caminho.read_text(encoding="utf-8"))
+        if len(relatorios) < 2:
+            raise unittest.SkipTest("menos de dois relatórios correntes neste clone: nada a comparar")
+        return relatorios
+
+    def test_os_relatorios_correntes_concordam_na_deteccao(self) -> None:
+        """**O critério de aceite.** Os relatórios de `RELATORIOS_CORRENTES` existem para serem
+        lidos lado a lado numa tabela: é o que a S-107 fez com `controle` e `mhsp`, e a S-108
+        com o candidato dela. Numa tabela assim, a diferença entre duas linhas é atribuída ao
+        modelo -- e uma diferença de detecção, que é de código, entraria com essa mesma cara."""
+        self.assertEqual(
+            [],
+            divergencias_de_deteccao(self._correntes()),
+            "Relatórios do mesmo conjunto discordam em detecção, e detecção não depende do "
+            "modelo. Quase certamente um deles foi regravado e os outros não: remeça os que "
+            "faltam com `cvoff-field --json`, ou tire-os de RELATORIOS_CORRENTES.",
+        )
+
+    def test_um_relatorio_regravado_sozinho_e_pego(self) -> None:
+        """A guarda demonstrada sobre o caso real, para o teste acima não ser vacuamente
+        verdadeiro no dia em que a lista tiver um item só.
+
+        Os números são os da janela de 2026-08-23: `controle` já remedido depois da S-176, os
+        outros três ainda no valor de antes dela."""
+        meio_e_meio = {
+            "controle_20260822.json": {"pages": 66, "annotated": 115, "detected": 110, "matched": 109, "false_positives": 1},
+            "field_20260822_s99.json": {"pages": 66, "annotated": 115, "detected": 109, "matched": 106, "false_positives": 3},
+            "mhsp_20260822.json": {"pages": 66, "annotated": 115, "detected": 109, "matched": 106, "false_positives": 3},
+            "s108_20260822.json": {"pages": 66, "annotated": 115, "detected": 109, "matched": 106, "false_positives": 3},
+        }
+
+        queixas = divergencias_de_deteccao(meio_e_meio)
+
+        self.assertEqual(len(queixas), 1, "um conjunto, uma queixa")
+        self.assertIn("110/109/1", queixas[0])
+        self.assertIn("109/106/3", queixas[0])
+
+    def test_o_que_vem_do_classificador_pode_divergir(self) -> None:
+        """**O outro lado, e ele é metade do item.** Uma guarda que exigisse relatórios
+        idênticos proibiria justamente o que a tabela existe para fazer -- comparar modelos. Os
+        quatro de 2026-08-22 divergem em `exact` (92 / 91 / 89 / 85) porque são quatro `.pt`
+        diferentes, e isso é o resultado, não o defeito."""
+        quatro_modelos = {
+            f"m{i}.json": {"pages": 66, "annotated": 115, "detected": 110, "matched": 109,
+                           "false_positives": 1, "exported": exportados, "exact": exatos}
+            for i, (exportados, exatos) in enumerate([(88, 92), (86, 91), (91, 89), (84, 85)])
+        }
+
+        self.assertEqual([], divergencias_de_deteccao(quatro_modelos))
+
+    def test_conjuntos_diferentes_nao_sao_comparados(self) -> None:
+        """Um relatório do conjunto antigo já tem dono: é a S-100 que o pega, e com a mensagem
+        certa. Se esta guarda também disparasse, quem lesse a falha veria dois diagnósticos
+        para um defeito e teria de descobrir sozinho que são o mesmo."""
+        conjuntos_distintos = {
+            "novo.json": {"pages": 66, "annotated": 115, "detected": 110, "matched": 109, "false_positives": 1},
+            "antigo.json": {"pages": 18, "annotated": 39, "detected": 32, "matched": 31, "false_positives": 1},
+        }
+
+        self.assertEqual([], divergencias_de_deteccao(conjuntos_distintos))
