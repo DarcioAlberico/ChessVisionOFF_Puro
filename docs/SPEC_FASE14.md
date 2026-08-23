@@ -3526,16 +3526,19 @@ o classificador divergir, e a guarda de que conjuntos diferentes não são compa
 **Problema.** A tabela "Onde mora a spec de cada item" existe porque a dispersão da spec por
 cinco arquivos já custou duas entregas -- a S-76 e a S-77 passaram três meses em documento
 nenhum, caindo na fenda entre dois deles. A S-134 pôs `tests/test_docs.py` para conferir a
-tabela contra o disco. Mas a conferência tinha três arestas e cobria duas:
+tabela contra o disco. Mas a conferência tinha quatro arestas e cobria duas:
 
 | propriedade | guarda |
 |---|---|
 | a seção está no arquivo que o índice declara | `test_a_secao_esta_no_arquivo_que_o_indice_declara` |
 | a faixa declarada aponta para arquivo que existe | `test_o_indice_nao_declara_faixa_sem_dono` |
 | **todo número com seção está declarado em alguma faixa** | **nenhuma** |
+| **todo número declarado tem seção em algum documento** | **nenhuma** |
 
-E a que faltava é a que sustenta as outras duas. `test_a_secao_esta_no_arquivo_que_o_indice_declara`
-faz `declarado.get(numero)` e, quando dá `None`, **não olha**: número fora de faixa não era
+As duas que faltavam são as duas metades da mesma pergunta -- *o índice descreve o disco?* --,
+e nenhuma das guardas existentes a fazia. A terceira é a que sustenta as outras duas:
+`test_a_secao_esta_no_arquivo_que_o_indice_declara` faz `declarado.get(numero)` e, quando dá
+`None`, **não olha** -- número fora de faixa não era
 reprovado nem aprovado, passava sem ser examinado. A ausência de declaração não desligava um
 teste, desligava dois.
 
@@ -3586,12 +3589,37 @@ declarada obrigaria a tabela a apontar dois arquivos para o mesmo número, que �
 que `test_a_secao_esta_no_arquivo_que_o_indice_declara` proíbe. São 18 números nessa situação
 hoje -- S-26 a S-30, S-38 a S-46, S-52, S-61 a S-64 --, e nenhum é defeito.
 
-**O que ele não promete.** A aresta recíproca -- faixa declarada cujo número não tem seção
-nenhuma -- continua só parcialmente coberta: `test_o_indice_nao_declara_faixa_sem_dono` confere
-que o **arquivo** existe, não que o número tenha seção. Hoje não há nenhum caso
-(`declarado - com_secao` é vazio), e fechá-la é mexer num teste que este item não precisa
-tocar. Fica nomeado aqui para quem pegar.
+### A aresta recíproca, e por que sozinha a primeira não bastava
 
-**Testes.** `tests/test_docs.py::DeclaracaoDeFaixaTests` -- o critério de aceite sobre o disco,
-a demonstração sobre o caso real da S-171/S-174 (para o primeiro não ser vacuamente verdadeiro
-agora que a tabela cobre tudo, que é o desfecho desejado), e a isenção da medição.
+**Declarar uma faixa larga cala a guarda de cima, e não custa nada.** `| S-95 a S-250 |` faz
+toda seção existente ficar declarada, passa no critério de aceite acima e não exige escrever
+uma linha de spec. Uma guarda que se satisfaz assim mede se alguém digitou um intervalo, não se
+o índice descreve o disco.
+
+Por isso o item traz as duas: `faixas_sem_secao` reprova todo número que a tabela declara e que
+não tem seção em documento nenhum. Sobre aquele `S-95 a S-250`, ela lista da S-175 em diante --
+as que a faixa promete e o disco não tem. **Juntas são uma tenaz**: uma proíbe a tabela de ficar
+para trás do disco, a outra proíbe que ela vá além. Só as duas ao mesmo tempo obrigam o índice
+a descrever, em vez de cobrir.
+
+**Ela procura seção em qualquer documento, e não no que a faixa declara.** Número declarado
+para um arquivo cuja seção mora noutro já tem dono --
+`test_a_secao_esta_no_arquivo_que_o_indice_declara`, com a mensagem certa. Exigir o arquivo
+aqui faria as duas nomearem o mesmo defeito, e é o mesmo motivo pelo qual
+`divergencias_de_deteccao` (S-220) agrupa por conjunto antes de comparar.
+
+**Hoje ela é guarda de regressão, e vale dizer isso em vez de sugerir dívida paga:** são 176
+números declarados e 176 com seção, `declarado - com_secao` vazio. O que ela impede é o dia em
+que alguém encolher um documento sem encolher a faixa, ou alargar a faixa para calar a outra
+guarda.
+
+**`test_o_indice_nao_declara_faixa_sem_dono` continua com o trabalho estreito dele** -- conferir
+que o **arquivo** citado existe em `docs/`. O nome promete mais do que ele faz, e a promessa
+agora é cumprida ao lado, não ali: o teste antigo está dentro de `ItemEntregueTemSpecTests`, que
+pula sem histórico de git, e esta conferência não precisa de git nenhum. Unificar os dois é
+possível e não é deste item.
+
+**Testes.** `tests/test_docs.py::DeclaracaoDeFaixaTests` -- os dois critérios de aceite sobre o
+disco, a demonstração de cada um sobre caso construído (a cauda real da S-171/S-174 num; a
+faixa larga demais no outro, que é a saída fácil que a segunda guarda existe para fechar), a
+isenção dos arquivos de medição, e a fronteira com a guarda do arquivo errado.

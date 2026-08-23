@@ -557,6 +557,30 @@ def faixas_sem_declaracao(
     return fora
 
 
+def faixas_sem_secao(secoes: dict[str, set[int]], declarado: dict[int, str]) -> list[str]:
+    """Números que a tabela declara e que não têm seção em documento de spec nenhum (S-221).
+
+    O par de `faixas_sem_declaracao`, e as duas juntas são uma tenaz: sem esta, a forma óbvia
+    de calar a outra é declarar uma faixa larga -- `S-01 a S-300` faz toda seção existente ficar
+    declarada e não custa nada. Esta reprova as 123 que sobrariam vazias. Só as duas ao mesmo
+    tempo obrigam a tabela a descrever o disco em vez de o cobrir.
+
+    **Procura seção em qualquer documento, e não no que a faixa declara.** Número declarado para
+    um arquivo cuja seção mora noutro já tem dono: é `test_a_secao_esta_no_arquivo_que_o_indice_declara`,
+    com a mensagem certa. Exigir o arquivo aqui faria as duas nomearem o mesmo defeito -- o mesmo
+    motivo pelo qual `divergencias_de_deteccao` (S-220) agrupa por conjunto antes de comparar.
+    """
+    com_secao = set()
+    for arquivo, numeros in secoes.items():
+        if arquivo not in ARQUIVOS_DE_MEDICAO:
+            com_secao |= numeros
+    return [
+        f"{_rotulo(numero)} é declarado para {arquivo} e não tem seção em documento nenhum"
+        for numero, arquivo in sorted(declarado.items())
+        if numero not in com_secao
+    ]
+
+
 class DeclaracaoDeFaixaTests(unittest.TestCase):
     """Toda seção de spec está declarada numa faixa da tabela (S-221).
 
@@ -623,6 +647,35 @@ class DeclaracaoDeFaixaTests(unittest.TestCase):
         so_medicao = dict.fromkeys(ARQUIVOS_DE_MEDICAO, {999})
 
         self.assertEqual([], faixas_sem_declaracao(so_medicao, {}))
+    def test_toda_faixa_declarada_tem_dono(self) -> None:
+        """**A outra metade do critério de aceite.** Uma faixa que nenhum item ocupa é índice
+        apontando para o vazio -- e, pior, é a saída fácil para calar a guarda de cima. Hoje são
+        176 números declarados e 176 com seção; esta guarda é o que mantém a conta assim."""
+        self.assertEqual(
+            [],
+            faixas_sem_secao(secoes_por_arquivo(), self._declarado()),
+            'A tabela "Onde mora a spec de cada item" declara número que não tem seção em '
+            "documento nenhum. Ou escreva a seção, ou encolha a faixa -- um índice que promete "
+            "mais do que existe custa a mesma busca frustrada que um que promete de menos.",
+        )
+
+    def test_uma_faixa_larga_demais_e_pega(self) -> None:
+        """A guarda demonstrada, e sobre o caso que ela existe para impedir: declarar uma faixa
+        folgada é o jeito barato de satisfazer `faixas_sem_declaracao` sem escrever spec
+        nenhuma."""
+        larga = faixas_sem_secao({"SPEC.md": {1, 2}}, dict.fromkeys(range(1, 6), "SPEC.md"))
+
+        self.assertEqual(len(larga), 3, "S-03 a S-05 declaradas e sem seção")
+        self.assertIn("S-03", larga[0])
+        self.assertIn("SPEC.md", larga[0])
+
+    def test_secao_no_arquivo_errado_nao_e_pega_aqui(self) -> None:
+        """Número declarado para um arquivo cuja seção mora noutro **tem dono** --
+        `test_a_secao_esta_no_arquivo_que_o_indice_declara`, com a mensagem certa. Se esta
+        também disparasse, uma troca de arquivo produziria dois diagnósticos para um defeito."""
+        trocado = faixas_sem_secao({"SPEC_UI.md": {150}}, {150: "SPEC_FASE14.md"})
+
+        self.assertEqual([], trocado)
 
 if __name__ == "__main__":
     unittest.main()
