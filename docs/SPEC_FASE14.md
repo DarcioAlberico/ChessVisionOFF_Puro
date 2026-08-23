@@ -965,11 +965,20 @@ O terceiro é o que importa, por dois motivos. É o primeiro contra quem **não*
 medição**: acrescentou uma função e não alterou nenhum caminho executado. O digest é por
 conteúdo e não tem como saber disso, então venceu os quatro relatórios de qualquer forma.
 
-**Ser conservador aqui é o comportamento certo, e o custo é conhecido: um minuto por modelo.** O
-que destruiria a guarda seria a saída fácil — mover o ajudante para fora do fecho para calar o
-alarme. `config.py` é o lugar certo para uma função sobre `PROJECT_ROOT`, e **mudar código de
-lugar para silenciar um alarme é o primeiro passo de uma guarda em que ninguém confia**. A sessão
-que caiu nela não fez isso, e essa decisão vale mais para o item do que o código dele.
+**Ser conservador aqui é o comportamento certo, e o custo é conhecido: um minuto por modelo.**
+
+**O que sustenta isso é a ausência de escape, e não a disciplina de quem edita.** A guarda não
+tem `# noqa`, não tem lista de módulos isentos e não tem limiar a afrouxar. Para uma mudança
+inerte parar de acusar, seria preciso **mover a função para um módulo pior** — `config.py` é o
+lugar certo para uma função sobre `PROJECT_ROOT` — e isso se vê que é errado sem precisar de
+virtude nenhuma. É a diferença entre um desenho e um pedido: **uma guarda que oferece escape
+será escapada**, e a alternativa a projetá-la sem escape é confiar na disciplina de quem edita,
+que é a coisa que nunca funciona.
+
+> Este parágrafo dizia outra coisa quando foi escrito: creditava à sessão que caiu na guarda a
+> *decisão* de pagar em vez de contornar. Ela corrigiu — não houve decisão, porque não havia
+> opção. A distinção não é modéstia: registrada errado, a lição vira "confie em quem edita", e
+> a próxima guarda nasce com uma saída de emergência que alguém vai usar.
 
 **A sequência que se repete, e vale como regra:** mexer no código depois de medir invalida os
 quatro. Fechar o código **antes** de medir para publicar — medir custa um minuto, publicar
