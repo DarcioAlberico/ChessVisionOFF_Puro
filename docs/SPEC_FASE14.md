@@ -876,6 +876,18 @@ O modelo entra **por conteúdo** e não por nome (`sha256` do arquivo): copiar
 coisa a distinguir os quatro que criou o problema. O código entra por **nome e conteúdo**, que é
 o oposto e pelo motivo oposto: renomear `hybrid.py` muda o que roda tanto quanto editá-la.
 
+**E o `path` sai relativo à raiz quando o modelo mora dentro dela.** O padrão do `--model` chega
+já resolvido de `PROJECT_ROOT` e o valor passado à mão chega como foi digitado, então a primeira
+publicação destes quatro saiu com **um absoluto e três relativos** — mesmo comando, mesma
+máquina. O dano menor é publicar o layout do disco de quem mediu num repositório público; o
+dano real é que o mesmo modelo medido em duas máquinas daria `path` diferente com `digest`
+igual, e **`path` é o campo que se lê primeiro**. Fora da árvore continua absoluto, e aí não é
+ruído: é a informação de que o modelo não mora no repositório.
+
+> **Um limite conhecido:** caminho relativo é resolvido contra o **diretório de trabalho**, e não
+> contra a raiz. É assim que o `--model` de fato abre o arquivo; normalizar contra a raiz faria o
+> relatório declarar um arquivo diferente do que foi lido para quem rodasse de outro diretório.
+
 **O caso que decidiu isso tem nome e dois arquivos.** `models/s108_20260821.pt` e
 `models/controle_s108_20260821.pt` têm **exatamente 8.786.392 bytes** e nomes quase iguais — a
 leitura natural é que um é cópia do outro. Medidos, os `sha256` diferem: são **modelos
@@ -937,12 +949,17 @@ módulo, e não o pai; `test_o_pacote_do_init_resolve_para_ele_mesmo` existe par
 - ✅ os quatro relatórios correntes remedidos, carregando a impressão, com os números
   reproduzindo os de `c640012` antes de publicar.
 
-**A guarda funcionou contra quem a escreveu, que é o único teste que vale.** Os quatro foram
-medidos **duas vezes**: a primeira para conferir contra `c640012` — reproduziu 92/91/89/85 e
-detecção 110/109/1 —, e a segunda para publicar. A segunda existiu porque entre elas o `--nota`
-entrou no `cli/field.py`, e **mexer no código depois de medir invalida os quatro pela própria
-guarda**. Publicar a primeira corrida teria posto no disco quatro arquivos que a suíte marcaria
-como vencidos no minuto seguinte. Custou quatro minutos de máquina ociosa.
+**A guarda funcionou contra quem a escreveu, duas vezes — que é o único teste que vale.** Os
+quatro foram medidos **três vezes**. A primeira para conferir contra `c640012`, e reproduziu
+92/91/89/85 com detecção 110/109/1. A segunda porque entre elas o `--nota` entrou no
+`cli/field.py`. A terceira porque outra sessão revisou o `af9eb0c` publicado e achou o `path`
+absoluto, e consertá-lo mexeu no `field_eval.py`.
+
+Nas duas últimas a sequência foi a mesma e é a que vale registrar: **mexer no código depois de
+medir invalida os quatro pela própria guarda**, e ela ficou vermelha nomeando o módulo antes de
+qualquer um perceber à mão. Publicar sem remedir teria posto no disco quatro arquivos que a
+suíte marcaria como vencidos no minuto seguinte. Custou quatro minutos de máquina ociosa por
+vez, e é o preço de a impressão significar alguma coisa.
 
 **O que este item deliberadamente não faz.** Não adivinha quais módulos do fecho uma corrida
 executou de fato — só a poda do motor desligado, que é decidível. Um digest condicionado ao que

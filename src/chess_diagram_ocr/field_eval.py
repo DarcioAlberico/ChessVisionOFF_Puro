@@ -386,6 +386,28 @@ def _digest_file(caminho: Path) -> str:
     return acumulador.hexdigest()[:16]
 
 
+def _model_path_relativo(caminho: Path, raiz: Path) -> str:
+    """O caminho do modelo como um relatório deve publicá-lo: relativo à raiz quando cabe.
+
+    **O `path` é o campo que quem abre o arquivo lê primeiro, e por isso ele tem de comparar.**
+    O padrão do `--model` chega já resolvido de `PROJECT_ROOT` e o valor passado à mão chega
+    como o usuário digitou, então os quatro relatórios de 2026-08-23 saíram com um absoluto e
+    três relativos -- mesmo comando, mesma máquina. Dois danos, e o segundo é o que importa:
+
+    1. publica o layout do disco de quem mediu num arquivo versionado de repositório público;
+    2. **quebra a comparação que este item existe para permitir.** O mesmo modelo medido em duas
+       máquinas daria `path` diferente com `digest` igual. O digest salva quem confere; quem lê
+       a olho conclui que são modelos distintos, e é a olho que se lê.
+
+    Fora da árvore continua absoluto, e aí não é ruído: é a informação de que o modelo não mora
+    no repositório.
+    """
+    try:
+        return caminho.resolve().relative_to(raiz.resolve()).as_posix()
+    except ValueError:
+        return caminho.resolve().as_posix()
+
+
 def _git(args: list[str], raiz: Path) -> str | None:
     try:
         saida = subprocess.run(
@@ -429,7 +451,7 @@ def measurement_fingerprint(
     if model_path is not None:
         caminho = Path(model_path)
         modelo = {
-            "path": caminho.as_posix(),
+            "path": _model_path_relativo(caminho, raiz),
             "digest": _digest_file(caminho) if caminho.is_file() else None,
         }
 

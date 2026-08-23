@@ -896,6 +896,53 @@ class ImpressaoDaMedicaoTests(unittest.TestCase):
             impressao = measurement_fingerprint(root=raiz, note="  máquina ociosa  ")
             self.assertEqual(impressao["note"], "máquina ociosa")
 
+    def test_o_caminho_do_modelo_sai_relativo_a_raiz(self) -> None:
+        """Absoluto e relativo no mesmo quarteto quebram a comparação que o item quer permitir.
+
+        Aconteceu em 2026-08-23: o padrão do `--model` chega resolvido de `PROJECT_ROOT` e o
+        valor passado à mão chega como foi digitado, então três relatórios saíram
+        `models/x.pt` e um saiu `C:/Python-Chess2/.../models/piece_classifier.pt` — mesmo
+        comando, mesma máquina. O `path` é o campo que se lê primeiro.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp).resolve()
+            (raiz / "src" / "chess_diagram_ocr").mkdir(parents=True)
+            (raiz / "src" / "chess_diagram_ocr" / "__init__.py").write_text("", encoding="utf-8")
+            (raiz / "models").mkdir()
+            dentro = raiz / "models" / "m.pt"
+            dentro.write_bytes(b"pesos")
+
+            # O caso que quebrou: absoluto dentro da árvore sai relativo.
+            self.assertEqual(measurement_fingerprint(dentro, root=raiz)["model"]["path"], "models/m.pt")
+
+            # E um relativo continua o mesmo relativo. Precisa do `chdir` porque caminho
+            # relativo é resolvido contra o diretório de trabalho, e não contra a raiz -- é
+            # assim que o `--model` de fato abre o arquivo, e medir diferente aqui mediria uma
+            # função que não existe.
+            antes = os.getcwd()
+            try:
+                os.chdir(raiz)
+                self.assertEqual(
+                    measurement_fingerprint(Path("models/m.pt"), root=raiz)["model"]["path"],
+                    "models/m.pt",
+                )
+            finally:
+                os.chdir(antes)
+
+    def test_modelo_de_fora_da_arvore_continua_absoluto(self) -> None:
+        """Aí o caminho não é ruído: é a informação de que o modelo não mora no repositório."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve()
+            raiz = base / "repo"
+            (raiz / "src" / "chess_diagram_ocr").mkdir(parents=True)
+            (raiz / "src" / "chess_diagram_ocr" / "__init__.py").write_text("", encoding="utf-8")
+            fora = base / "fora.pt"
+            fora.write_bytes(b"pesos")
+
+            caminho = measurement_fingerprint(fora, root=raiz)["model"]["path"]
+            self.assertEqual(caminho, fora.as_posix())
+            self.assertTrue(Path(caminho).is_absolute())
+
     def test_modelo_ausente_nao_derruba_a_impressao(self) -> None:
         """Relatório medido em clone sem os pesos ainda tem de sair, dizendo que não os tinha."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -904,7 +951,9 @@ class ImpressaoDaMedicaoTests(unittest.TestCase):
             (raiz / "src" / "chess_diagram_ocr" / "__init__.py").write_text("", encoding="utf-8")
             impressao = measurement_fingerprint(raiz / "nao_existe.pt", root=raiz)
             self.assertIsNone(impressao["model"]["digest"])
-            self.assertEqual(impressao["model"]["path"], (raiz / "nao_existe.pt").as_posix())
+            # O caminho ainda sai, e ainda sai relativo: dizer *qual* modelo faltava é metade
+            # da informação, e é a metade que sobrevive a mudar de máquina.
+            self.assertEqual(impressao["model"]["path"], "nao_existe.pt")
 
     def test_todo_relatorio_corrente_declara_com_que_codigo_mediu(self) -> None:
         """**O critério de aceite.** Sem isto, o relatório publica a impressão e ninguém olha --
