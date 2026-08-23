@@ -35,10 +35,12 @@ import logging
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from .atomic_io import atomic_write_text
+from .checkpoint import CheckpointDescription, describe_checkpoint, git_commit, git_worktree_dirty
 from .config import ACCEPT_MIN_CONFIDENCE
 from .service import OcrService, RecognitionOptions, RecognizedDiagram
 
@@ -246,6 +248,99 @@ def field_set_identity(pages: Iterable[FieldPage]) -> dict[str, int]:
 # --------------------------------------------------------------------------- relatório
 
 
+@dataclass(frozen=True)
+class Measurement:
+    """**Com o que** este relatório foi medido (S-219).
+
+    O relatório dizia tudo sobre *o resultado* e nada sobre *o run*. Em 2026-08-22 quatro
+    modelos foram medidos sobre as mesmas 66 páginas e os quatro JSON de `docs/metrics/` só
+    se distinguiam pelo **nome do arquivo** -- a tabela comparativa da S-99 dependia de quem
+    gravou ter lembrado o que rodou, o que é a mesma classe de defeito que a S-100 fechou
+    para o *conjunto* e que aqui continuava aberta para o *modelo*.
+
+    Os campos são os que mudam o número e não apareciam:
+
+    - o **modelo**, que é a pergunta que a tabela faz;
+    - o **gate**, porque `export_rate` é literalmente "quantos passaram deste corte";
+    - o **DPI**, porque ele muda o que o detector vê antes de o modelo ver qualquer coisa;
+    - o **código**, porque metade do número é detecção, e detecção é código e não modelo.
+
+    O código entrou por um caso medido, e não por simetria. Os mesmos quatro relatórios de
+    2026-08-22 foram medidos antes de uma mudança na detecção que levou o recall de uma
+    página de 0,800 para 1,000 e sumiu com um falso positivo. Nenhum campo deles mudou, e a
+    guarda da S-100 não pega: ela compara `pages` e `annotated` do **conjunto**, e mudança de
+    código não move nenhum dos dois.
+
+    Não pretende ser o run inteiro. Orientação, `max_boards` e o leitor de legenda também
+    mexem no número; entram aqui quando alguém tiver dois relatórios que só diferem por eles
+    -- é o que aconteceu com o modelo e com o código, e é o que justifica gravá-los.
+    """
+
+    model: CheckpointDescription
+    accept_threshold: float
+    dpi: int
+    """Os três sem valor padrão, de propósito.
+
+    Um padrão aqui seria um número que o relatório afirma sem ter sido informado -- e afirmar
+    o gate errado é pior que não afirmar nada, porque tem a mesma aparência de uma medição.
+    Quem monta isto é `describe_measurement`, a partir do que o pipeline de fato usou."""
+
+    code_commit: str = ""
+    """O commit da árvore que **rodou a medição**. Vazio quando não há `git` para perguntar.
+
+    Diferente de `model.train_commit`, que é o commit de que saiu o **treino**. Os dois
+    respondem perguntas distintas e podem estar a semanas de distância."""
+
+    code_dirty: bool = False
+    """A árvore tinha mudança não commitada quando mediu.
+
+    Sem isto o `code_commit` mente por omissão: ele aponta para o HEAD, e o que rodou foi o
+    HEAD **mais** o que estava por commitar. Um relatório assim não é reproduzível, e é o
+    campo que diz isso em voz alta em vez de deixar o commit dar a impressão contrária."""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "model": self.model.as_dict(),
+            "accept_threshold": round(self.accept_threshold, 4),
+            "dpi": self.dpi,
+            "code_commit": self.code_commit,
+            "code_dirty": self.code_dirty,
+        }
+
+
+@lru_cache(maxsize=1)
+def _code_revision() -> tuple[str, bool]:
+    """O commit e a sujeira da árvore, perguntados uma vez por processo (S-219).
+
+    Cache não é só economia dos ~120 ms de dois `git` -- é a resposta mais correta. O que o
+    campo descreve é **o código que está rodando**, e esse foi fixado quando o Python
+    importou os módulos. Commitar no meio de uma sessão não troca o que já está carregado, e
+    perguntar de novo faria o relatório apontar para um commit que não foi o que mediu.
+    """
+    return git_commit(), git_worktree_dirty()
+
+
+def describe_measurement(
+    options: RecognitionOptions,
+    *,
+    accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+) -> Measurement:
+    """Monta a identidade a partir do que já foi decidido para o run (S-219).
+
+    A partir das `options`, e não de argumentos soltos: o que se quer gravar é o que o
+    pipeline **de fato usou**, e um segundo caminho para a mesma informação é um segundo
+    lugar onde ela pode divergir.
+    """
+    commit, sujo = _code_revision()
+    return Measurement(
+        model=describe_checkpoint(options.model_path),
+        accept_threshold=accept_threshold,
+        dpi=options.dpi,
+        code_commit=commit,
+        code_dirty=sujo,
+    )
+
+
 @dataclass
 class FieldReport:
     """O que o pipeline entrega sobre páginas reais.
@@ -337,6 +432,17 @@ class FieldReport:
     verdade**, com confiança alta, e ninguém olha. Somar os dois numa taxa só esconde
     exatamente a diferença que decide onde vale trabalhar."""
 
+    measurement: Measurement | None = None
+    """Com que modelo, gate e DPI este relatório foi medido (S-219).
+
+    **Só o total tem.** Os sub-relatórios por regime e por livro são fatias do mesmo run, e
+    repetir a identidade dentro de cada um encheria o JSON de cópias da mesma frase. Por isso
+    `as_dict` omite a chave quando ela é `None`, e por isso `_accumulate` não a propaga.
+
+    `None` também é o que sai de `evaluate_page`, que mede uma página contra uma leitura já
+    pronta e legitimamente não sabe de onde a leitura veio.
+    """
+
     @property
     def detection_recall(self) -> float:
         return self.matched / self.annotated if self.annotated else 0.0
@@ -422,7 +528,7 @@ class FieldReport:
         return self.seconds / self.detected if self.detected else 0.0
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        dados: dict[str, Any] = {
             "pages": self.pages,
             "pages_without_diagram": self.pages_without_diagram,
             "annotated": self.annotated,
@@ -461,6 +567,11 @@ class FieldReport:
             "per_regime": {nome: relatorio.as_dict() for nome, relatorio in sorted(self.per_regime.items())},
             "per_book": {nome: relatorio.as_dict() for nome, relatorio in sorted(self.per_book.items())},
         }
+        if self.measurement is None:
+            return dados
+        # A identidade na frente, e de proposito: quem abre um relatorio precisa saber **de
+        # quem** e o numero antes de ler o numero (S-219).
+        return {"measurement": self.measurement.as_dict(), **dados}
 
     def summary(self) -> str:
         exatidao = (
@@ -638,9 +749,16 @@ def evaluate_field(
     `training_pages` vem de `labels.pages_with_training_samples` e marca as páginas de que
     há amostra em `train` (S-97). `None` desliga a checagem -- é o que os testes usam, e é
     o comportamento anterior.
+
+    O relatório sai carimbado com **que modelo, que gate e que DPI** produziram estes números
+    (S-219): sem isso, dois relatórios de dois modelos sobre o mesmo conjunto são dois
+    arquivos idênticos com nomes diferentes.
     """
     service = service or OcrService(model_path=options.model_path)
-    total = FieldReport()
+    # Antes do laco, e nao no fim: um run que nao mediu pagina nenhuma ainda tem de dizer com
+    # que modelo ele nao mediu nada. E aqui, e nao na CLI, porque a identidade e do que foi
+    # medido -- deixa-la com quem chama recria o "dependia de quem gravou lembrar" (S-219).
+    total = FieldReport(measurement=describe_measurement(options, accept_threshold=accept_threshold))
     puladas = 0
 
     for pagina in pages:
