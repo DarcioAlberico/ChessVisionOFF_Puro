@@ -595,11 +595,21 @@ class IdentidadeDaMedicaoTests(unittest.TestCase):
     o **conjunto** -- e que continuava aberta para o **modelo**, o gate e o DPI.
     """
 
+    def setUp(self) -> None:
+        """Os PDFs citados existem: desde a S-218 a medição os confere antes de medir.
+
+        Vazios, porque quem lê é o `_FakeService`. O que estes testes exercitam é o carimbo
+        de procedência, não a leitura -- mas o conjunto não pode citar arquivo que não há."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.pasta = Path(tmp.name)
+        (self.pasta / "a.pdf").write_bytes(b"")
+
     def _relatorio(self, **kwargs: object) -> FieldReport:
         servico = _FakeService({1: [lido((0, 0, 10, 10))]})
         paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True, regime="facil",
                              diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
-        return evaluate_field(paginas, service=servico, **kwargs)  # type: ignore[arg-type]
+        return evaluate_field(paginas, service=servico, pdf_dir=self.pasta, **kwargs)  # type: ignore[arg-type]
 
     def test_o_json_diz_com_que_modelo_o_numero_foi_medido(self) -> None:
         """**O critério de aceite.** Sem esta chave, dois modelos sobre o mesmo conjunto
@@ -620,9 +630,9 @@ class IdentidadeDaMedicaoTests(unittest.TestCase):
         paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True,
                              diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
 
-        frouxo = evaluate_field(paginas, options=RecognitionOptions(), service=conf_baixa,  # type: ignore[arg-type]
+        frouxo = evaluate_field(paginas, options=RecognitionOptions(), service=conf_baixa, pdf_dir=self.pasta,  # type: ignore[arg-type]
                                 accept_threshold=0.7)
-        apertado = evaluate_field(paginas, options=RecognitionOptions(), service=conf_baixa,  # type: ignore[arg-type]
+        apertado = evaluate_field(paginas, options=RecognitionOptions(), service=conf_baixa, pdf_dir=self.pasta,  # type: ignore[arg-type]
                                   accept_threshold=0.8)
 
         self.assertEqual((frouxo.exported, apertado.exported), (1, 0))
@@ -700,7 +710,8 @@ class IdentidadeDaMedicaoTests(unittest.TestCase):
         paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=False,
                              diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
 
-        dados = evaluate_field(paginas, options=RecognitionOptions(), service=_FakeService({})).as_dict()  # type: ignore[arg-type]
+        dados = evaluate_field(paginas, options=RecognitionOptions(), service=_FakeService({}),
+                                pdf_dir=self.pasta).as_dict()  # type: ignore[arg-type]
 
         self.assertEqual(dados["pages"], 0)
         self.assertIn("measurement", dados)
