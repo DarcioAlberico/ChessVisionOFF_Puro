@@ -16,7 +16,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-220 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-171 a S-174, S-220, S-221 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
@@ -3518,3 +3518,72 @@ vão para a mesma tabela mediram com a mesma coisa*.
 sobre os arquivos em disco, a demonstração sobre o quarteto meio-e-meio real (para o primeiro
 não ser vacuamente verdadeiro no dia em que a lista tiver um item só), a permissão explícita de
 o classificador divergir, e a guarda de que conjuntos diferentes não são comparados.
+
+---
+
+## S-221 · O índice cobria 170 de 174 itens, e não avisava ✅ implementada (2026-08-23)
+
+**Problema.** A tabela "Onde mora a spec de cada item" existe porque a dispersão da spec por
+cinco arquivos já custou duas entregas -- a S-76 e a S-77 passaram três meses em documento
+nenhum, caindo na fenda entre dois deles. A S-134 pôs `tests/test_docs.py` para conferir a
+tabela contra o disco. Mas a conferência tinha três arestas e cobria duas:
+
+| propriedade | guarda |
+|---|---|
+| a seção está no arquivo que o índice declara | `test_a_secao_esta_no_arquivo_que_o_indice_declara` |
+| a faixa declarada aponta para arquivo que existe | `test_o_indice_nao_declara_faixa_sem_dono` |
+| **todo número com seção está declarado em alguma faixa** | **nenhuma** |
+
+E a que faltava é a que sustenta as outras duas. `test_a_secao_esta_no_arquivo_que_o_indice_declara`
+faz `declarado.get(numero)` e, quando dá `None`, **não olha**: número fora de faixa não era
+reprovado nem aprovado, passava sem ser examinado. A ausência de declaração não desligava um
+teste, desligava dois.
+
+**Não era teórico.** Em 2026-08-23 a tabela parava no S-170, e a S-171, S-172, S-173 e S-174
+tinham seção em `SPEC_FASE14.md` desde 2026-08-18. Cinco dias, quatro itens, e nada falando --
+e era exatamente a região onde as colisões de número estavam acontecendo, com duas sessões
+numerando S-218 para itens diferentes na mesma semana.
+
+**Por que isso é guarda e não convenção.** O leitor da tabela é quem procura onde mora a spec da
+entrega X. Um índice que cobre 170 de 174 itens **não avisa que não cobre**: ele responde "não
+achei" com a mesma cara com que responderia sobre um item que não existe. É a mesma fenda que a
+tabela nasceu para fechar, um nível acima.
+
+**Solução.** `faixas_sem_declaracao` recebe as seções e as faixas -- os dois lados, em vez de
+ler o disco -- e devolve uma queixa por número descoberto, nomeando o arquivo onde a seção
+mora. A falha diz o que fazer:
+
+```
+S-171 tem seção em SPEC_FASE14.md e a tabela não a declara
+S-172 tem seção em SPEC_FASE14.md e a tabela não a declara
+...
+Item com seção que a tabela "Onde mora a spec de cada item" não declara. Acrescente o
+número à linha do arquivo onde a seção mora, nas sete cópias da tabela (README.md e os
+seis documentos de spec).
+```
+
+**A política, e havia duas.** Ou se estende a tabela a cada entrega, ou se aceita que a cauda
+fique sem dono até a próxima consolidação. Este item escolhe a primeira, e a escolha é o item:
+a segunda deixaria a região recém-entregue -- justamente a que mais se consulta -- descoberta
+por construção. O preço é uma linha por entrega, nas sete cópias. O que ele compra é que a
+cauda não volte a existir.
+
+A dívida foi paga junto: a linha do `SPEC_FASE14.md` passou a declarar `S-95 a S-142,
+S-171 a S-174, S-220, S-221`. As faixas não contíguas já eram o formato da tabela -- foi assim
+que a S-143 entrou ao lado da S-80 --, então declarar uma cauda não pediu sintaxe nova.
+
+**Os arquivos de medição continuam isentos**, e há teste dizendo isso. Uma seção de
+`EXPERIMENTS_FASE7.md` é o que foi **medido** daquele item, não a spec dele; exigir que fosse
+declarada obrigaria a tabela a apontar dois arquivos para o mesmo número, que é exatamente o
+que `test_a_secao_esta_no_arquivo_que_o_indice_declara` proíbe. São 18 números nessa situação
+hoje -- S-26 a S-30, S-38 a S-46, S-52, S-61 a S-64 --, e nenhum é defeito.
+
+**O que ele não promete.** A aresta recíproca -- faixa declarada cujo número não tem seção
+nenhuma -- continua só parcialmente coberta: `test_o_indice_nao_declara_faixa_sem_dono` confere
+que o **arquivo** existe, não que o número tenha seção. Hoje não há nenhum caso
+(`declarado - com_secao` é vazio), e fechá-la é mexer num teste que este item não precisa
+tocar. Fica nomeado aqui para quem pegar.
+
+**Testes.** `tests/test_docs.py::DeclaracaoDeFaixaTests` -- o critério de aceite sobre o disco,
+a demonstração sobre o caso real da S-171/S-174 (para o primeiro não ser vacuamente verdadeiro
+agora que a tabela cobre tudo, que é o desfecho desejado), e a isenção da medição.

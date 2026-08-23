@@ -535,5 +535,94 @@ class NumerosVivosTests(unittest.TestCase):
         _perto(self, citado, real, "linhas de app_tkinter.py no quadro das fases")
 
 
+def faixas_sem_declaracao(
+    secoes: dict[str, set[int]], declarado: dict[int, str]
+) -> list[str]:
+    """Números que têm seção de spec e que nenhuma faixa da tabela declara (S-221).
+
+    Recebe os dois lados em vez de ler o disco, para a guarda poder ser demonstrada sobre um
+    caso construído -- um teste que só sabe passar não prova que sabe reprovar.
+
+    Os arquivos de medição ficam de fora pelo mesmo motivo que já os isenta em
+    `ItemEntregueTemSpecTests`: uma seção de `EXPERIMENTS.md` é o que foi medido do item, e a
+    tabela é sobre onde mora a spec dele.
+    """
+    fora = []
+    for arquivo, numeros in sorted(secoes.items()):
+        if arquivo in ARQUIVOS_DE_MEDICAO:
+            continue
+        for numero in sorted(numeros):
+            if numero not in declarado:
+                fora.append(f"{_rotulo(numero)} tem seção em {arquivo} e a tabela não a declara")
+    return fora
+
+
+class DeclaracaoDeFaixaTests(unittest.TestCase):
+    """Toda seção de spec está declarada numa faixa da tabela (S-221).
+
+    **A terceira aresta, e era a que faltava.** O índice tem três propriedades, e a suíte
+    conferia duas: `test_a_secao_esta_no_arquivo_que_o_indice_declara` pega a seção no arquivo
+    errado, `test_o_indice_nao_declara_faixa_sem_dono` pega a faixa que aponta para arquivo
+    inexistente. Faltava a cobertura -- **número que tem seção e nenhuma faixa declara**.
+
+    E o buraco não era teórico: `declarado.get(numero)` devolve `None` para número fora de
+    faixa, e o teste do arquivo errado simplesmente **não olha**. Número sem faixa não era
+    reprovado nem aprovado; ele passava sem ser examinado. Em 2026-08-23 a tabela parava no
+    S-170 e a S-171 a S-174 estavam em `SPEC_FASE14.md` havia cinco dias, sem que nada falasse
+    -- e era exatamente a região onde as colisões de número estavam acontecendo.
+
+    **Por que isto é guarda e não convenção.** A tabela é o que o README chama de índice, e o
+    seu leitor é quem procura onde mora a spec da entrega X. Um índice que cobre 170 de 174
+    itens não avisa que não cobre: ele responde "não achei" com a mesma cara com que responderia
+    sobre um item que não existe. Foi essa fenda que custou a S-76 e a S-77, e a tabela nasceu
+    para fechá-la.
+
+    **A política que este item escolhe, entre duas possíveis.** Ou se estende a tabela a cada
+    entrega, ou se aceita que a cauda fique sem dono até a próxima consolidação. Aqui é a
+    primeira: uma entrega nova acrescenta o número à linha do arquivo onde a seção mora, e são
+    sete cópias a editar (o README mais seis documentos). O preço é uma linha por entrega; o que
+    ele compra é que a cauda nunca mais exista.
+    """
+
+    def _declarado(self) -> dict[int, str]:
+        declarado = faixas_declaradas(README.read_text(encoding="utf-8"))
+        self.assertTrue(declarado, "O README perdeu a tabela de faixas.")
+        return declarado
+
+    def test_toda_secao_de_spec_esta_declarada_na_tabela(self) -> None:
+        """**O critério de aceite.** Sem isto, entregar um item e esquecer a tabela deixa o
+        número invisível para o índice **e** para a guarda do arquivo errado, que só age sobre
+        número declarado. Dois testes deixam de cobri-lo ao mesmo tempo."""
+        self.assertEqual(
+            [],
+            faixas_sem_declaracao(secoes_por_arquivo(), self._declarado()),
+            'Item com seção que a tabela "Onde mora a spec de cada item" não declara. '
+            "Acrescente o número à linha do arquivo onde a seção mora, nas sete cópias da "
+            "tabela (README.md e os seis documentos de spec).",
+        )
+
+    def test_um_numero_fora_de_faixa_e_pego(self) -> None:
+        """A guarda demonstrada sobre o caso real: em 2026-08-23 a tabela ia até S-170 e a
+        S-171 a S-174 já tinham seção em `SPEC_FASE14.md`. Sintético para o teste acima não
+        ficar vacuamente verdadeiro no dia em que a tabela cobrir tudo -- que é hoje, e é o
+        ponto."""
+        fora = faixas_sem_declaracao(
+            {"SPEC_FASE14.md": {142, 171, 174}},
+            {142: "SPEC_FASE14.md"},
+        )
+
+        self.assertEqual(len(fora), 2, "S-171 e S-174 não declaradas; a S-142 está")
+        self.assertIn("S-171", fora[0])
+        self.assertIn("SPEC_FASE14.md", fora[0])
+
+    def test_os_arquivos_de_medicao_ficam_de_fora(self) -> None:
+        """Uma seção de `EXPERIMENTS_FASE7.md` é **o que foi medido** daquele item, não a spec
+        dele -- e a tabela é sobre a spec, como o próprio README diz. Exigir declaração delas
+        obrigaria a tabela a apontar dois arquivos para o mesmo número, que é justamente o que
+        `test_a_secao_esta_no_arquivo_que_o_indice_declara` proíbe."""
+        so_medicao = dict.fromkeys(ARQUIVOS_DE_MEDICAO, {999})
+
+        self.assertEqual([], faixas_sem_declaracao(so_medicao, {}))
+
 if __name__ == "__main__":
     unittest.main()
