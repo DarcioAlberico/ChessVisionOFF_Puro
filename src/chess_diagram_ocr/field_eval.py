@@ -30,8 +30,11 @@ recusa páginas não revisadas em vez de silenciosamente inflar o número.
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import logging
+import subprocess
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -39,7 +42,7 @@ from pathlib import Path
 from typing import Any
 
 from .atomic_io import atomic_write_text
-from .config import ACCEPT_MIN_CONFIDENCE
+from .config import ACCEPT_MIN_CONFIDENCE, PROJECT_ROOT
 from .service import OcrService, RecognitionOptions, RecognizedDiagram
 
 logger = logging.getLogger(__name__)
@@ -240,6 +243,227 @@ def field_set_identity(pages: Iterable[FieldPage]) -> dict[str, int]:
     return {
         "pages": len(revisadas),
         "annotated": sum(len(pagina.diagrams) for pagina in revisadas),
+    }
+
+
+# ------------------------------------------------------- com que código, e com que modelo
+
+MEASUREMENT_ENTRY = "chess_diagram_ocr.cli.field"
+"""Onde o fecho de importação começa (S-218).
+
+**No CLI, e não em `field_eval`.** É o comando que monta o conjunto e fixa `dpi`,
+`accept-threshold` e `max-boards`, e mudança ali move número tanto quanto mudança no
+detector. Começar em `field_eval` deixaria essa camada de fora do digest.
+"""
+
+
+def _module_file(dotted: str, root: Path) -> Path | None:
+    parts = dotted.split(".")
+    base = root / "src" / Path(*parts)
+    if base.is_dir():
+        return base / "__init__.py" if (base / "__init__.py").exists() else None
+    arquivo = base.with_suffix(".py")
+    return arquivo if arquivo.exists() else None
+
+
+def _imports_of(arquivo: Path, dotted: str) -> set[str]:
+    """Os módulos **do pacote** que este importa, achados por `ast`.
+
+    `ast` e não `import`: importar puxaria `torch` e abriria o modelo só para responder de que
+    código o relatório saiu. É a mesma escolha do `text_status.py`, e pelo mesmo motivo.
+    """
+    try:
+        arvore = ast.parse(arquivo.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError):  # pragma: no cover - arquivo em edição
+        return set()
+
+    # **Dentro de um `__init__.py` o pacote é o próprio módulo, e não o pai.** Errar isto fazia
+    # `from .hybrid import ...` em `detection/__init__.py` resolver para
+    # `chess_diagram_ocr.hybrid`, que não existe -- e `detection/hybrid.py`, o módulo cuja
+    # mudança moveu os quatro relatórios de 22/08, ficava **fora** do digest. Um digest que
+    # deixa de fora justamente o módulo que se move é o defeito que este item veio consertar.
+    if arquivo.name == "__init__.py":
+        pacote = dotted
+    else:
+        pacote = dotted.rsplit(".", 1)[0] if "." in dotted else dotted
+    achados: set[str] = set()
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.ImportFrom):
+            if no.level:
+                base = pacote.split(".")
+                subida = no.level - 1
+                prefixo = ".".join(base[: len(base) - subida]) if subida else pacote
+                alvo = f"{prefixo}.{no.module}" if no.module else prefixo
+            elif no.module and no.module.startswith(PACOTE):
+                alvo = no.module
+            else:
+                continue
+            achados.add(alvo)
+            achados.update(f"{alvo}.{a.name}" for a in no.names)
+        elif isinstance(no, ast.Import):
+            achados.update(a.name for a in no.names if a.name.startswith(PACOTE))
+    return achados
+
+
+PACOTE = "chess_diagram_ocr"
+
+
+OPTIONAL_BACKENDS = (f"{PACOTE}.text",)
+"""Motores que só entram quando alguém os liga, e que ficam fora do digest quando não entraram.
+
+`--ocr` nasce `off`, e o classificador de glifo é alcançado por **um import tardio dentro de
+`ocr.build_recognizer`** -- deliberado, e o comentário lá diz que é o ponto. Com o motor
+desligado esse código não roda, e código que não rodou não pode ter mudado o número.
+
+**Podar é o oposto de afrouxar aqui.** A alternativa é digerir a subárvore inteira do `text/`,
+que hoje muda várias vezes por dia: a guarda ficaria vermelha o tempo todo por mudança que
+comprovadamente não toca a medição, e uma guarda que grita sempre é apagada. O que mantém isso
+honesto é que o motor usado sai **gravado no relatório** -- então a poda é visível, e uma
+corrida com `--ocr glifo` digere o `text/` junto.
+"""
+
+
+def measured_modules(
+    root: Path | None = None,
+    entry: str = MEASUREMENT_ENTRY,
+    *,
+    with_ocr: bool = False,
+) -> list[str]:
+    """Os módulos do pacote que uma corrida de `cvoff-field` exercita, em ordem.
+
+    Fecho de importação a partir de `entry`, e **não** uma lista escrita à mão. A lista à mão
+    envelhece em silêncio: ela pegaria o defeito de hoje -- que foi em `detection/hybrid.py` --
+    e deixaria passar o de amanhã, que virá de outro módulo. Um digest que passa batido é pior
+    que digest nenhum, porque quem lê confia nele.
+
+    O fecho não alcança `ui/`: nada no caminho da medição a importa, e por isso mexer na
+    interface não invalida um relatório de campo. Sobre `text/`, ver `OPTIONAL_BACKENDS`.
+    """
+    raiz = root or PROJECT_ROOT
+    vistos: set[str] = set()
+    fila = [entry]
+    arquivos: dict[str, Path] = {}
+    while fila:
+        dotted = fila.pop()
+        if dotted in vistos:
+            continue
+        vistos.add(dotted)
+        if not with_ocr and any(dotted == b or dotted.startswith(f"{b}.") for b in OPTIONAL_BACKENDS):
+            continue
+        arquivo = _module_file(dotted, raiz)
+        if arquivo is None:
+            continue
+        arquivos[dotted] = arquivo
+        fila.extend(_imports_of(arquivo, dotted) - vistos)
+    return sorted(arquivos)
+
+
+def _digest_of(caminhos: Iterable[Path], raiz: Path) -> str:
+    """Digest de código: **o nome entra junto com o conteúdo.**
+
+    Para módulo o nome é significado -- renomear `hybrid.py` muda o que roda tanto quanto
+    editá-lo, e um digest cego ao nome diria que nada mudou. É o oposto do modelo, ver
+    `_digest_file`.
+    """
+    acumulador = hashlib.sha256()
+    for caminho in sorted(caminhos):
+        acumulador.update(caminho.relative_to(raiz).as_posix().encode("utf-8"))
+        acumulador.update(caminho.read_bytes())
+    return acumulador.hexdigest()[:16]
+
+
+def _digest_file(caminho: Path) -> str:
+    """Digest de artefato: **só o conteúdo.**
+
+    Para o modelo o nome não é significado, é rótulo -- e um rótulo enganoso foi exatamente o
+    problema. Copiar `piece_classifier.pt` para `controle_20260816.pt` não faz dois modelos, e
+    dois arquivos de mesmo nome em máquinas diferentes podem ser pesos distintos.
+    """
+    acumulador = hashlib.sha256()
+    with caminho.open("rb") as arquivo:
+        for bloco in iter(lambda: arquivo.read(1 << 20), b""):
+            acumulador.update(bloco)
+    return acumulador.hexdigest()[:16]
+
+
+def _git(args: list[str], raiz: Path) -> str | None:
+    try:
+        saida = subprocess.run(
+            ["git", *args], cwd=raiz, capture_output=True, text=True, timeout=15, check=False
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - clone sem git instalado
+        return None
+    return saida.stdout.strip() if saida.returncode == 0 else None
+
+
+def measurement_fingerprint(
+    model_path: Path | None = None,
+    root: Path | None = None,
+    *,
+    ocr_engine: str = "off",
+    note: str = "",
+) -> dict[str, Any]:
+    """Com que código e com que modelo este relatório foi medido (S-218).
+
+    **O que isto conserta.** Até 2026-08-23 o relatório de campo não gravava nem uma coisa nem
+    outra, e os quatro JSON de 2026-08-22 só se distinguiam pelo nome do arquivo. Custou meia
+    hora identificar empiricamente qual modelo gerou cada um -- rodando candidatos até
+    reproduzir bit a bit --, e escondeu um defeito pior: os quatro tinham sido medidos com
+    código de gerações diferentes, metade antes e metade depois da S-176, e `detected`,
+    `matched` e `false_positives` divergiam entre eles. Detecção não depende de modelo, então
+    aquele quarteto era impossível numa medição sã, e **nada avisava**.
+
+    A S-100 já ensinou a forma da solução: publicar a identidade do que foi medido e **falhar**
+    quando ela diverge. Ela cobre o conjunto (`pages`/`annotated`); esta cobre as outras duas
+    entradas, que são o modelo e o código.
+
+    `dirty` não é detalhe: nesta árvore quase nunca há commit limpo, e um relatório medido com
+    a árvore suja é indistinguível de um medido no commit se só o `commit` for gravado. É o
+    `code.digest` que decide, e o `commit` serve para achar a vizinhança.
+    """
+    raiz = root or PROJECT_ROOT
+    ligado = bool(ocr_engine) and ocr_engine != "off"
+    modulos = measured_modules(raiz, with_ocr=ligado)
+
+    modelo: dict[str, Any] | None = None
+    if model_path is not None:
+        caminho = Path(model_path)
+        modelo = {
+            "path": caminho.as_posix(),
+            "digest": _digest_file(caminho) if caminho.is_file() else None,
+        }
+
+    sujo = _git(["status", "--porcelain", "--untracked-files=no"], raiz)
+    # **Um digest por módulo, e não um só para o conjunto.** Um hash agregado diz *que* mudou e
+    # nunca *o quê*, e o custo disso é quem lê ter de bissectar à mão -- que foi como as quatro
+    # medições de 22/08 acabaram meio numa geração de código e meio noutra. Com o mapa, a guarda
+    # nomeia o módulo que se moveu.
+    fontes: list[tuple[str, Path]] = []
+    for dotted in modulos:
+        arquivo = _module_file(dotted, raiz)
+        if arquivo is not None:
+            fontes.append((dotted.removeprefix(f"{PACOTE}."), arquivo))
+
+    por_modulo = {nome: _digest_of([arquivo], raiz) for nome, arquivo in fontes}
+    return {
+        "model": modelo,
+        "commit": _git(["rev-parse", "HEAD"], raiz),
+        "dirty": None if sujo is None else bool(sujo),
+        "ocr": ocr_engine or "off",
+        # **A condição da máquina não sai de nenhum digest, e precisa caber em algum lugar.**
+        # `seconds` variou de 58 a 113 entre corridas do mesmo modelo em 2026-08-23, e a causa
+        # foi contenção de CPU, não código. Sem um campo onde dizer isso, quem abrir o arquivo
+        # daqui a um mês lê a queda como ganho -- e a mensagem do commit, que é onde a ressalva
+        # normalmente iria parar, não viaja junto com o JSON.
+        "note": note.strip(),
+        "code": {
+            "digest": _digest_of([arquivo for _, arquivo in fontes], raiz),
+            "entry": MEASUREMENT_ENTRY,
+            # **A lista sai por extenso de propósito.** Um fecho que encolheu -- alguém tirou um
+            # import e o módulo saiu do digest -- é invisível dentro de um hash e óbvio numa
+            # lista. Quem lê o relatório consegue ver que o caminho medido é o que ele espera.
+            "modules": por_modulo,
+        },
     }
 
 

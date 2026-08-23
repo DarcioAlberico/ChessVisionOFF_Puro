@@ -9,6 +9,9 @@ existe, no mesmo padrão de `data/samples/`.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,6 +29,8 @@ from chess_diagram_ocr.field_eval import (
     evaluate_page,
     field_set_identity,
     load_field_set,
+    measured_modules,
+    measurement_fingerprint,
     save_field_set,
 )
 from chess_diagram_ocr.labels import DatasetEntry, pages_with_training_samples
@@ -741,3 +746,212 @@ class ConjuntoVigenteTests(unittest.TestCase):
             with self.subTest(relatorio=caminho.name):
                 self.assertIn("pages", dados, "sem a identidade, o relatório não é auditável")
                 self.assertIn("annotated", dados)
+
+
+class ImpressaoDaMedicaoTests(unittest.TestCase):
+    """Com que código e com que modelo o relatório foi medido (S-218).
+
+    A S-100 cobriu o **conjunto**; faltavam as outras duas entradas. Em 2026-08-22 os quatro
+    relatórios correntes foram medidos metade antes e metade depois da S-176, e `detected`,
+    `matched` e `false_positives` divergiam entre eles -- detecção não depende de modelo, então
+    aquele quarteto era impossível numa medição sã, e nada avisava.
+    """
+
+    def test_o_fecho_alcanca_quem_move_o_numero(self) -> None:
+        """Os módulos que já provaram mover estes números, e os que decidem a conta.
+
+        `detection.hybrid` é o caso com data: foi a mudança dela, na S-176, que levou o recall
+        de 0,9217 a 0,9478. Um digest que não a cobrisse seria pior que digest nenhum.
+        """
+        modulos = set(measured_modules())
+        for alvo in (
+            "chess_diagram_ocr.detection.hybrid",  # S-176: o defeito que motivou o item
+            "chess_diagram_ocr.detection.embedded",
+            "chess_diagram_ocr.field_eval",  # decide o casamento e o portão
+            "chess_diagram_ocr.decode",  # entra no `exact`
+            "chess_diagram_ocr.cli.field",  # monta o conjunto e fixa dpi/limiar
+            "chess_diagram_ocr.service",
+            "chess_diagram_ocr.model",
+        ):
+            with self.subTest(modulo=alvo):
+                self.assertIn(alvo, modulos)
+
+    def test_o_pacote_do_init_resolve_para_ele_mesmo(self) -> None:
+        """O defeito que este teste guarda: `from .hybrid import ...` dentro de
+        `detection/__init__.py` resolvia para `chess_diagram_ocr.hybrid`, que não existe -- e
+        o módulo que de fato se move ficava de fora do digest, em silêncio."""
+        self.assertIn("chess_diagram_ocr.detection.hybrid", measured_modules())
+
+    def test_o_digest_nao_muda_sozinho_entre_processos(self) -> None:
+        """**Uma guarda que oscila sozinha perde a confiança de todos na primeira semana.**
+
+        O risco é concreto e tem dois nomes. O primeiro é a ordem de travessia: o fecho anda
+        por `set`, cuja iteração depende do `PYTHONHASHSEED`, e sem o `sorted` final duas
+        corridas idênticas dariam digests diferentes. O segundo é o `__pycache__`: digerir o
+        `.pyc` faria o digest mudar ao trocar de versão de Python sem uma linha editada.
+
+        Roda em subprocesso porque dentro do mesmo processo o seed é fixo -- testar aqui
+        mediria o contrário do que a pergunta é.
+        """
+        codigo = (
+            "from chess_diagram_ocr.field_eval import measurement_fingerprint;"
+            "print(measurement_fingerprint()['code']['digest'])"
+        )
+        vistos = set()
+        for seed in ("0", "1", "12345"):
+            saida = subprocess.run(
+                [sys.executable, "-c", codigo],
+                cwd=RAIZ,
+                env={**os.environ, "PYTHONHASHSEED": seed},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if saida.returncode != 0:  # pragma: no cover - clone sem o pacote importável
+                raise unittest.SkipTest(f"subprocesso não importou o pacote: {saida.stderr[-200:]}")
+            vistos.add(saida.stdout.strip())
+        self.assertEqual(len(vistos), 1, f"digest instável entre processos: {vistos}")
+
+    def test_o_bytecode_nao_entra_no_digest(self) -> None:
+        """`__pycache__` ao lado do módulo não pode mover o digest -- senão trocar de versão de
+        Python pediria remedição sem ninguém ter editado nada."""
+        modulos = measured_modules()
+        self.assertFalse([m for m in modulos if "pycache" in m or m.endswith(".pyc")])
+
+    def test_a_interface_nao_invalida_uma_medicao(self) -> None:
+        """Nada no caminho da medição importa `ui/`, então mexer nela não torna um relatório
+        obsoleto. Um digest que incluísse a interface pediria remedição por mudança de botão."""
+        self.assertFalse([m for m in measured_modules() if m.startswith("chess_diagram_ocr.ui")])
+
+    def test_o_motor_desligado_fica_fora_do_digest(self) -> None:
+        """`--ocr` nasce `off`, e o glifo entra por import tardio dentro de `build_recognizer`.
+
+        Código que não rodou não pode ter mudado o número. A poda é o que impede a guarda de
+        ficar vermelha o tempo todo enquanto a Fase 26 mexe no `text/` várias vezes por dia --
+        e uma guarda que grita sempre é apagada. O que a mantém honesta é o motor sair gravado
+        no relatório, e a corrida com glifo digerir o `text/` junto.
+        """
+        desligado = measured_modules(with_ocr=False)
+        ligado = measured_modules(with_ocr=True)
+        self.assertFalse([m for m in desligado if m.startswith("chess_diagram_ocr.text")])
+        self.assertTrue([m for m in ligado if m.startswith("chess_diagram_ocr.text")])
+        self.assertLess(len(desligado), len(ligado))
+
+    def test_a_impressao_muda_quando_um_modulo_medido_muda(self) -> None:
+        """O critério de aceite do digest: mexer num módulo do caminho move o `digest`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            pacote = raiz / "src" / "chess_diagram_ocr"
+            (pacote / "cli").mkdir(parents=True)
+            (pacote / "__init__.py").write_text("", encoding="utf-8")
+            (pacote / "cli" / "__init__.py").write_text("", encoding="utf-8")
+            (pacote / "cli" / "field.py").write_text("from ..detector import ler\n", encoding="utf-8")
+            alvo = pacote / "detector.py"
+            alvo.write_text("def ler():\n    return 1\n", encoding="utf-8")
+
+            antes = measurement_fingerprint(root=raiz)
+            self.assertIn("detector", antes["code"]["modules"])
+
+            alvo.write_text("def ler():\n    return 2\n", encoding="utf-8")
+            depois = measurement_fingerprint(root=raiz)
+
+            self.assertNotEqual(antes["code"]["digest"], depois["code"]["digest"])
+            self.assertNotEqual(antes["code"]["modules"]["detector"], depois["code"]["modules"]["detector"])
+            # O que não mudou continua igual: a guarda nomeia o módulo, e não só o conjunto.
+            self.assertEqual(antes["code"]["modules"]["cli.field"], depois["code"]["modules"]["cli.field"])
+
+    def test_o_modelo_entra_por_conteudo_e_nao_por_nome(self) -> None:
+        """Dois arquivos de nome diferente e conteúdo igual são o mesmo modelo; o mesmo nome
+        com conteúdo diferente não é. Foi o nome do arquivo que custou meia hora de arqueologia
+        em 2026-08-23, justamente porque era a única coisa que distinguia os quatro."""
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            (raiz / "src" / "chess_diagram_ocr").mkdir(parents=True)
+            (raiz / "src" / "chess_diagram_ocr" / "__init__.py").write_text("", encoding="utf-8")
+            a, b = raiz / "a.pt", raiz / "b.pt"
+            a.write_bytes(b"pesos")
+            b.write_bytes(b"pesos")
+            self.assertEqual(
+                measurement_fingerprint(a, root=raiz)["model"]["digest"],
+                measurement_fingerprint(b, root=raiz)["model"]["digest"],
+            )
+            b.write_bytes(b"outros pesos")
+            self.assertNotEqual(
+                measurement_fingerprint(a, root=raiz)["model"]["digest"],
+                measurement_fingerprint(b, root=raiz)["model"]["digest"],
+            )
+
+    def test_a_nota_viaja_dentro_do_relatorio(self) -> None:
+        """O que nenhum digest captura: a condição da máquina.
+
+        Em 2026-08-23 o mesmo modelo sobre o mesmo conjunto deu `seconds` entre 58 e 113, e a
+        causa foi contenção de CPU. A ressalva costuma acabar na mensagem do commit -- que não
+        viaja junto com o JSON, e é o JSON que alguém abre daqui a um mês.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            (raiz / "src" / "chess_diagram_ocr").mkdir(parents=True)
+            (raiz / "src" / "chess_diagram_ocr" / "__init__.py").write_text("", encoding="utf-8")
+            self.assertEqual(measurement_fingerprint(root=raiz)["note"], "")
+            impressao = measurement_fingerprint(root=raiz, note="  máquina ociosa  ")
+            self.assertEqual(impressao["note"], "máquina ociosa")
+
+    def test_modelo_ausente_nao_derruba_a_impressao(self) -> None:
+        """Relatório medido em clone sem os pesos ainda tem de sair, dizendo que não os tinha."""
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            (raiz / "src" / "chess_diagram_ocr").mkdir(parents=True)
+            (raiz / "src" / "chess_diagram_ocr" / "__init__.py").write_text("", encoding="utf-8")
+            impressao = measurement_fingerprint(raiz / "nao_existe.pt", root=raiz)
+            self.assertIsNone(impressao["model"]["digest"])
+            self.assertEqual(impressao["model"]["path"], (raiz / "nao_existe.pt").as_posix())
+
+    def test_todo_relatorio_corrente_declara_com_que_codigo_mediu(self) -> None:
+        """**O critério de aceite.** Sem isto, o relatório publica a impressão e ninguém olha --
+        e o defeito de 22/08 aconteceria igual, só que documentado."""
+        faltando = []
+        for nome, por_que in sorted(RELATORIOS_CORRENTES.items()):
+            caminho = RAIZ / "docs" / "metrics" / nome
+            if not caminho.exists():
+                continue
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            impressao = dados.get("measured_with")
+            if not isinstance(impressao, dict) or not impressao.get("code", {}).get("digest"):
+                faltando.append(f"{nome}: citado como corrente ({por_que}) e não diz com que código mediu")
+
+        self.assertEqual(
+            faltando,
+            [],
+            "Remeça com `cvoff-field --json`, que grava a impressão, ou tire o relatório de "
+            "RELATORIOS_CORRENTES e diga no documento que ele é histórico.",
+        )
+
+    def test_todo_relatorio_corrente_mediu_o_codigo_de_hoje(self) -> None:
+        """O que a S-100 faz pelo conjunto, aqui pelo código: **falhar** quando divergem.
+
+        Nomeia o módulo que se moveu, e não só o conjunto -- foi bissectar isso à mão que
+        custou meia hora em 2026-08-23.
+        """
+        hoje = measurement_fingerprint()["code"]["modules"]
+        divergentes = []
+        for nome in sorted(RELATORIOS_CORRENTES):
+            caminho = RAIZ / "docs" / "metrics" / nome
+            if not caminho.exists():
+                continue
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            impressao = dados.get("measured_with")
+            if not isinstance(impressao, dict):
+                continue  # já cobrido pelo teste acima
+            if impressao.get("ocr", "off") != "off":
+                continue  # outro fecho: comparar com o de hoje mediria coisa diferente
+            gravado = impressao.get("code", {}).get("modules", {})
+            mexidos = sorted(m for m in set(gravado) | set(hoje) if gravado.get(m) != hoje.get(m))
+            if mexidos:
+                divergentes.append(f"{nome}: mudou {', '.join(mexidos)}")
+
+        self.assertEqual(
+            divergentes,
+            [],
+            "Módulo do caminho de medição mudou desde que o relatório foi gravado. Remeça com "
+            "`cvoff-field --json` -- ~1 min por modelo sobre o conjunto atual.",
+        )

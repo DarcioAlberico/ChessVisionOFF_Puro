@@ -1,4 +1,4 @@
-# Especificação das melhorias — Fases 14 a 19 (S-95 a S-142)
+# Especificação das melhorias — Fases 14 a 19 (S-95 a S-142, S-218)
 
 Base: [ROADMAP_FASE14.md](ROADMAP_FASE14.md), que traz a avaliação de 2026-08-16 e o
 sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
@@ -16,7 +16,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 
@@ -817,6 +817,145 @@ diferenças que decidiram aqueles vereditos*.
 **O controle não foi regravado sobre o conjunto de hoje**, e é decisão: a S-99 ainda vai
 crescê-lo de 17 para 60 páginas, e regravá-lo duas vezes é pagar duas vezes pela mesma
 resposta.
+
+---
+
+## S-218 · O relatório diz com que código e com que modelo foi medido ✅ implementada (2026-08-23)
+
+> Acrescentado à Fase 14 depois de ela fechar, e mora aqui porque é a outra metade da S-100 —
+> não ao lado do número da numeração. Nasceu de um incidente de 2026-08-23, descrito abaixo.
+
+**Problema.** A S-100 declarou o **conjunto** e travou a comparação nele. Faltam as outras duas
+entradas de uma medição de campo: **o modelo** e **o código**. Nenhuma das duas era gravada, e o
+custo apareceu inteiro no mesmo dia.
+
+Primeiro o barato: os quatro JSON de 2026-08-22 só se distinguiam **pelo nome do arquivo**.
+Identificar qual modelo gerou cada um custou meia hora, rodando candidatos até reproduzir bit a
+bit — arqueologia para responder uma pergunta que o arquivo devia responder sozinho.
+
+Depois o caro, que a arqueologia desenterrou: os quatro tinham sido medidos com **código de
+gerações diferentes**, metade antes e metade depois da S-176. O estado publicado era este:
+
+| relatório | detected | matched | false_positives | recall |
+|---|---:|---:|---:|---:|
+| `field_20260822_s99` | 109 | 106 | 3 | 0,9217 |
+| `controle_20260822` | 110 | 109 | 1 | 0,9478 |
+| `mhsp_20260822` | 110 | 109 | 1 | 0,9478 |
+| `s108_20260822` | 110 | 109 | 1 | 0,9478 |
+
+**Detecção não depende de modelo.** Um quarteto que discorda nessas quatro colunas é impossível
+numa medição sã, e é a assinatura de que foram medidos com código diferente — e **nada avisava**.
+A guarda da S-100 não pega: ela compara `pages` e `annotated`, e mudança de código não move
+nenhum dos dois.
+
+**Solução.** `field_eval.measurement_fingerprint`, gravada pelo `cvoff-field --json` como
+`measured_with`. Três decisões, e cada uma responde a uma forma de a impressão ser inútil:
+
+**1. O digest de código sai de um fecho de importação, e não de uma lista.** Calculado por `ast`
+a partir de `cli/field.py` — o CLI, e não `field_eval`, porque é ele que monta o conjunto e fixa
+`dpi`, `accept-threshold` e `max-boards`. O fecho pega hoje 29 módulos, entre eles
+`detection/hybrid.py` (o defeito com data), `field_eval.py` (que decide o casamento e o portão),
+`decode.py` (que entra no `exact`) e o próprio `cli/field.py` — e pega sozinho o módulo que
+alguém puser no caminho amanhã. **Uma lista escrita à mão pegaria o defeito de hoje e deixaria
+passar o de amanhã**, e um digest que passa batido é pior que digest nenhum, porque quem lê
+confia nele.
+
+**2. O motor desligado fica fora do fecho, e o motor usado sai gravado.** `--ocr` nasce `off`, e
+o classificador de glifo é alcançado por um import tardio dentro de `ocr.build_recognizer` —
+deliberado, e o comentário lá diz que é o ponto. Código que não rodou não pode ter mudado o
+número. Digerir o `text/` inteiro deixaria a guarda vermelha o tempo todo enquanto a Fase 26
+mexe nele várias vezes por dia, e **uma guarda que grita sempre é apagada**. O que mantém a poda
+honesta é o motor sair no relatório: uma corrida com `--ocr glifo` digere o `text/` junto, e
+sobem de 29 para 35 os módulos cobertos.
+
+**3. Um digest por módulo, e não um só.** Um hash agregado diz *que* mudou e nunca *o quê* — e
+bissectar isso à mão foi a meia hora. Com o mapa, a guarda nomeia o módulo que se moveu.
+
+O modelo entra **por conteúdo** e não por nome (`sha256` do arquivo): copiar
+`piece_classifier.pt` para `controle_20260816.pt` não faz dois modelos, e foi o nome ser a única
+coisa a distinguir os quatro que criou o problema. O código entra por **nome e conteúdo**, que é
+o oposto e pelo motivo oposto: renomear `hybrid.py` muda o que roda tanto quanto editá-la.
+
+**O caso que decidiu isso tem nome e dois arquivos.** `models/s108_20260821.pt` e
+`models/controle_s108_20260821.pt` têm **exatamente 8.786.392 bytes** e nomes quase iguais — a
+leitura natural é que um é cópia do outro. Medidos, os `sha256` diferem: são **modelos
+diferentes**, e o tamanho idêntico era pista da *arquitetura* comum, não de duplicata. Um deles
+gerou o `exact` 91 publicado, e até aqui a única forma de saber qual era ler o comando na
+mensagem de um commit. É a mesma informação que já se perdeu uma vez.
+
+**4. Uma nota que viaja com o arquivo.** `--nota` grava texto livre em `measured_with.note`, para
+o que nenhum digest captura. O caso que a criou é a condição da máquina, e ele tem números:
+
+| corrida | `seconds` | máquina |
+|---|---|---|
+| as três gerações anteriores destes quatro | 84 a 113 | nove sessões, treino em curso |
+| a desta entrega | **57,7 a 64,3** | ociosa, e as quatro em sequência |
+
+São **~40%**, e não ruído de medição. O estrago concreto: o `controle` marcava 113 s e parecia
+*o modelo mais lento do quarteto* — era a máquina ocupada. Um leitor futuro compararia modelos
+por um número que media outra coisa, e a queda desta entrega passaria por ganho de código. A
+ressalva normalmente acabaria na mensagem do commit, que **não viaja junto com o JSON** — e é o
+JSON que alguém abre daqui a um mês.
+
+Por isso os quatro foram medidos **um de cada vez**: quatro corridas simultâneas disputariam
+entre si e reintroduziriam exatamente o que a nota existe para denunciar.
+
+`dirty` fica ao lado do `commit` porque nesta árvore quase nunca há commit limpo — nove sessões
+escrevem nela ao mesmo tempo. Um relatório medido com a árvore suja é indistinguível de um medido
+no commit se só o `commit` for gravado; quem decide é o `code.digest`, e o `commit` serve para
+achar a vizinhança.
+
+> **Isso deixou de ser argumento e virou episódio, durante a própria medição deste item.** Outra
+> sessão commitou entre a primeira e a segunda das quatro corridas, e os relatórios saíram assim:
+>
+> | corrida | `commit` | `code.digest` |
+> |---|---|---|
+> | produção | `76e5b042` | `19930ff018e78839` |
+> | controle | `bc8b0bca` | `19930ff018e78839` |
+>
+> O commit mudou, o digest não — porque aquele commit tocou `.gitignore`, um documento e um JSON,
+> e **nenhum módulo do caminho de medição**. Uma guarda que comparasse `commit` teria acusado dois
+> relatórios corretos como incompatíveis, e a primeira coisa que se faz com uma guarda que acusa
+> à toa é desligá-la.
+
+**O defeito que o próprio item quase teve.** A primeira versão do fecho resolvia
+`from .hybrid import ...` dentro de `detection/__init__.py` para `chess_diagram_ocr.hybrid`, que
+não existe — e **`detection/hybrid.py`, o módulo cuja mudança motivou este item, ficava de fora
+do digest**. Passava em tudo e não guardava nada. Dentro de um `__init__.py` o pacote é o próprio
+módulo, e não o pai; `test_o_pacote_do_init_resolve_para_ele_mesmo` existe para isso.
+
+**Critério de aceite.**
+
+- ✅ o relatório grava modelo (caminho + digest de conteúdo), `commit`, `dirty`, motor de OCR e o
+  digest do código, com a lista de módulos por extenso;
+- ✅ o fecho alcança `detection.hybrid`, `detection.embedded`, `field_eval`, `decode`,
+  `cli.field`, `service` e `model`;
+- ✅ o fecho **não** alcança `ui/` — mudança de botão não obsoleta uma medição;
+- ✅ **a suíte falha** quando um módulo do caminho mudou desde que o relatório corrente foi
+  gravado, nomeando qual. É a metade que dá trabalho e é a que importa: gravar sem conferir
+  deixaria o mesmo buraco, só que documentado;
+- ✅ os quatro relatórios correntes remedidos, carregando a impressão, com os números
+  reproduzindo os de `c640012` antes de publicar.
+
+**A guarda funcionou contra quem a escreveu, que é o único teste que vale.** Os quatro foram
+medidos **duas vezes**: a primeira para conferir contra `c640012` — reproduziu 92/91/89/85 e
+detecção 110/109/1 —, e a segunda para publicar. A segunda existiu porque entre elas o `--nota`
+entrou no `cli/field.py`, e **mexer no código depois de medir invalida os quatro pela própria
+guarda**. Publicar a primeira corrida teria posto no disco quatro arquivos que a suíte marcaria
+como vencidos no minuto seguinte. Custou quatro minutos de máquina ociosa.
+
+**O que este item deliberadamente não faz.** Não adivinha quais módulos do fecho uma corrida
+executou de fato — só a poda do motor desligado, que é decidível. Um digest condicionado ao que
+rodou seria mais justo e é exatamente por onde um digest passa batido.
+
+**Testes.** `test_o_fecho_alcanca_quem_move_o_numero`;
+`test_o_pacote_do_init_resolve_para_ele_mesmo`; `test_a_interface_nao_invalida_uma_medicao`;
+`test_o_motor_desligado_fica_fora_do_digest`;
+`test_a_impressao_muda_quando_um_modulo_medido_muda`;
+`test_o_modelo_entra_por_conteudo_e_nao_por_nome`;
+`test_modelo_ausente_nao_derruba_a_impressao`;
+`test_todo_relatorio_corrente_declara_com_que_codigo_mediu`;
+`test_todo_relatorio_corrente_mediu_o_codigo_de_hoje`.
 
 ---
 

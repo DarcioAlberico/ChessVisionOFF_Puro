@@ -31,6 +31,7 @@ from ..field_eval import (
     draft_page,
     evaluate_field,
     load_field_set,
+    measurement_fingerprint,
     save_field_set,
 )
 from ..labels import LabelStore, pages_with_training_samples
@@ -74,6 +75,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--orientation", default="auto", choices=("auto", "0", "180"))
     parser.add_argument("--accept-threshold", type=float, default=ACCEPT_MIN_CONFIDENCE)
     parser.add_argument("--json", type=Path, default=None, help="Grava o relatório em JSON.")
+    parser.add_argument(
+        "--nota",
+        default="",
+        help=(
+            "Texto livre gravado dentro do relatorio, para o que nenhum digest captura -- "
+            'tipicamente a condicao da maquina. Ex.: --nota "medido com a maquina ociosa".'
+        ),
+    )
     parser.add_argument(
         "--draft",
         action="append",
@@ -331,7 +340,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(report.as_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        # **A impressão entra aqui, e não no `as_dict` (S-218).** O `as_dict` também serve os
+        # relatórios por livro e por regime, e a impressão repetida em cada um deles diria a
+        # mesma coisa dezenas de vezes. Ela é do arquivo, não do recorte.
+        dados = report.as_dict()
+        dados["measured_with"] = measurement_fingerprint(args.model, ocr_engine=args.ocr, note=args.nota)
+        args.json.write_text(json.dumps(dados, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"Relatório em {args.json}")
         print()
     return 0
