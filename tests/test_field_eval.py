@@ -656,11 +656,18 @@ a mensagem do commit repete `63/110` cinco vezes -- e foi esta guarda que pegou,
 que ela existe. O conjunto foi para `66/115` com a `p14` do Yusupov, que estava por anotar, e
 os quatro foram remedidos sobre ele com o mesmo código.
 
-O que se moveu foi denominador e **detecção**: o recall caiu de 0,9364 para 0,9217 e a precisão
-de 0,9904 para 0,9725, e as duas quedas são o mesmo caso -- a `p14`, em que o caminho de imagem
-embutida devolve fragmento de scan em vez de diagrama, acha um dos três diagramas e inventa uma
-caixa. As FENs dos três foram transcritas depois, e aí `comparable` foi de 93 para 94 e `exact`
-subiu 1 nas quatro colunas: dos três, só o 1-11 é casado, e os quatro modelos o leem certo.
+O que se moveu foi denominador e **detecção**, e a segunda metade se inverteu em 23/08. Quando a
+`p14` entrou, o recall caiu de 0,9364 para 0,9217 e a precisão de 0,9904 para 0,9725, e as duas
+quedas eram o mesmo caso: naquela página o caminho de imagem embutida devolvia fragmento de scan
+em vez de diagrama, achava um dos três e inventava uma caixa. **A S-176 consertou exatamente
+isso** -- `is_page_band` e `contour_inside_candidate` --, e a remedição de 23/08 deu recall
+0,9478 e precisão 0,9909, acima de onde estavam antes de a página entrar.
+
+Medido por livro: a deriva se concentra em dois. No Yusupov, `matched` foi de 3 para 5 e o falso
+positivo de 2 para 1; no GALLAGHER, `matched` de 4 para 5 e o falso positivo sumiu. Os dois
+diagramas que voltaram são o 1-9 e o 1-10 da `p14`, e com eles `comparable` foi de 94 para 96 e
+`exact` subiu 2 nas quatro colunas -- ou seja, as três FENs daquela página passaram a ter
+concordância de quatro modelos além da análise impressa nela.
 Está na S-99 da `SPEC_FASE14.md`.
 
 **Repare no que esta guarda não pega.** Ela compara identidade -- `pages` e `annotated` -- e

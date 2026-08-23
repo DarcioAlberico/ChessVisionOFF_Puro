@@ -515,7 +515,7 @@ abaixo do alvo, e os ≥5 diagramas na faixa de confiança 0,60–0,80. O conjun
 | critério | alvo | medido |
 |---|---|---|
 | páginas revisadas | 60 | **66** ✅ |
-| `comparable` | ≥ 30 | **94** ✅ |
+| `comparable` | ≥ 30 | **96** ✅ |
 | diagramas na faixa 0,60–0,80 | ≥ 5 | **6** ✅ |
 | cinco regimes no alvo | — | ✅ (abaixo) |
 
@@ -537,11 +537,11 @@ spec pedia por nome.
 ```
     Páginas ...................... 66  (17 sem diagrama)
     Anotados ..................... 115
-    Recall de detecção ........... 0.9217     precisão 0.9725  (3 falsos positivos)
-    **Taxa de exportação** ....... 0.7391  (85/115)
-    Conferíveis .................. 94 de 115  (82%)
-    **Exatidão de campo** ........ 0.9880  (82/83 exportados)
-    Exatidão condicional ......... 0.9574  (90/94)
+    Recall de detecção ........... 0.9478     precisão 0.9909  (1 falso positivo)
+    **Taxa de exportação** ....... 0.7652  (88/115)
+    Conferíveis .................. 96 de 115  (83%)
+    **Exatidão de campo** ........ 0.9882  (84/85 exportados)
+    Exatidão condicional ......... 0.9583  (92/96)
     **Exportados e errados** ..... 1
 ```
 
@@ -559,12 +559,12 @@ medidos sobre as mesmas 66 páginas:
 
 | | produção | **controle** | `mhsp` | tratamento S-108 |
 |---|---|---|---|---|
-| taxa de exportação | 0,7391 | **0,7652** | 0,7130 | 0,7217 |
-| `exact` (de 94) | **90** | 87 | 83 | 89 |
-| exatidão condicional | **0,9574** | 0,9255 | 0,8830 | 0,9468 |
+| taxa de exportação | 0,7652 | **0,7913** | 0,7304 | 0,7478 |
+| `exact` (de 96) | **92** | 89 | 85 | 91 |
+| exatidão condicional | **0,9583** | 0,9271 | 0,8854 | 0,9479 |
 | exportados e errados | 1 | **0** | 1 | 1 |
-| exatidão de campo | 0,9880 | **1,0000** | 0,9875 | 0,9877 |
-| exportação limpa | 0,7170 | **0,7453** | 0,6887 | 0,7075 |
+| exatidão de campo | 0,9882 | **1,0000** | 0,9878 | 0,9880 |
+| exportação limpa | 0,7453 | **0,7736** | 0,7075 | 0,7358 |
 
 Três leituras deste quadro, e as três são novas:
 
@@ -599,11 +599,11 @@ das três páginas do Yusupov que faltavam ser medidas:
 |---|---|---|---|
 | anotados | 110 | **115** | dois do `p11`, três do `p14` |
 | casados | 103 | **106** | os do `p11` e um dos três do `p14` |
-| detectados | 104 | **109** | e dois deles não são diagrama |
-| falsos positivos | 1 | **3** | o `p2` (arte de capa, 0,177) e dois fragmentos de scan do `p14` |
-| recall de detecção | 0,9364 | **0,9217** | o detector perde dois dos três do `p14` |
-| precisão de detecção | 0,9904 | **0,9725** | idem |
-| exportados (produção) | 82 | **85** | +3 sobre um denominador que subiu 5 |
+| detectados | 104 | **110** | e um deles não é diagrama |
+| falsos positivos | 1 | **1** | o `p2` (arte de capa, 0,177); os dois fragmentos de scan do `p14` sumiram com a S-176 |
+| recall de detecção | 0,9364 | **0,9478** | a S-176 devolveu os dois do `p14` que o detector perdia |
+| precisão de detecção | 0,9904 | **0,9909** | idem |
+| exportados (produção) | 82 | **88** | +6 sobre um denominador que subiu 5 |
 | `comparable` | 93 | **94** | o 1-11 do `p14`, único dos três que é casado |
 | `exact` (produção) | 89 | **90** | e os quatro modelos o leem certo |
 
