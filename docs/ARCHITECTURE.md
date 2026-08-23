@@ -281,6 +281,8 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 | `data/games_matches.json` | os casamentos livro↔partida, formato v1 | não |
 | `data/games_matches_v2.json` | os mesmos, formato v2 — o artefato dos 104 minutos de 2026-08-13 (S-128) | não |
 | `data/provenance_index.jsonl` | dHash de cada diagrama do acervo, para recuperar procedência (S-52) | não — **sob demanda**: só existe depois de `cvoff-provenance`, e são horas |
+| `data/texto_conflitos.json` | **o julgamento humano dos 83 grupos em que a mesma imagem está arquivada sob dois caracteres** (S-202): o hash do recorte, os rótulos em disputa, quem venceu e **por quê** — inclusive as 50 fichas em que ninguém consegue decidir, e a razão | **sim** — é trabalho humano, e é o que `cvoff-texto-conflitos --aplicar` obedece |
+| `data/quarentena_texto/` | os recortes que saíram da base por rótulo contraditório, na pasta da classe de origem, mais o manifesto que `--desfazer` lê de volta | não — **sob demanda**: nasce no primeiro `cvoff-texto-conflitos --aplicar`. São os mesmos PNGs de `training_data/`, e a pasta existe para que a poda seja reversível |
 | `models/*.pt` | checkpoints, com semente, split e métrica gravados | não |
 | `PGN/<livro>.pgn` | as posições aceitas | não |
 | `PGN/<livro>.review.pgn` | as rejeitadas e as de baixa confiança, com o motivo | não |

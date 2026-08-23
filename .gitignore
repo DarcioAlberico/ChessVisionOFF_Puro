@@ -95,6 +95,12 @@ pgn_database/
 
 # --- Saida gerada ---
 PGN/
+# A varredura do acervo que fechou o criterio da Fase 2 (2026-08-22): 41 PGN aceitos mais 40
+# `.review.pgn`, ~2 GB. Saiu numa pasta datada, e nao em PGN/, porque medicao nao e entrega e
+# sobrescrever o que ja estava la custaria o trabalho que houvesse nele. Fica de fora pela
+# mesma regra do PGN/: e recorte de PDF protegido e refazivel com um `cvoff-batch`. O que
+# sobrevive da varredura e versionavel e o relatorio, em docs/metrics/batch_fase2_20260822.json.
+PGN_fase2_20260822/
 logs/
 
 # --- Lixo de execucao e artefatos locais ---
@@ -106,3 +112,25 @@ teste-001.*
 .idea/
 Thumbs.db
 desktop.ini
+
+# Base de treino do classificador de caracteres (Fase 29): 608.407 PNGs de 32x32, 0,61 GB em
+# 314 pastas. Fica de fora pela mesma regra do data/samples/ -- e a linha e urgente e nao
+# preventiva: a pasta chegou destravada, e um `git add -A` distraido a poria no historico
+# inteira, de onde nao sai. O que descreve a base e versionavel e mora em docs/metrics/.
+training_data/
+# A varredura em cache (S-203): os mesmos 608 mil recortes ja decodificados em 32x32, ~623 MB
+# num .npz. E derivado da pasta acima e reconstruivel em ~2 min com `cvoff-texto-train --varrer`.
+models/.texto_base_cache.npz
+
+# Varredura de exportacao com data no nome. O `PGN/` acima ja cobre a pasta padrao; estas sao
+# a mesma coisa com sufixo de lote, e sao saida gerada -- crescem a cada varredura e sao
+# reconstruiveis com `cvoff-batch`.
+PGN_*/
+# Mockups de interface largados na raiz. Imagem de proposta nao e artefato do programa, e a
+# spec da interface mora em docs/SPEC_UI.md.
+Proposta de interface/
+# Os recortes tirados da base por rotulo contraditorio (S-202). Sao os mesmos PNGs de
+# training_data/, que ja esta fora, e a pasta existe para que a poda seja reversivel --
+# `cvoff-texto-conflitos --desfazer <manifesto>` os devolve. O que **fica** versionado e o
+# julgamento humano, em data/texto_conflitos.json.
+data/quarentena_texto/

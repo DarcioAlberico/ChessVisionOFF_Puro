@@ -54,7 +54,11 @@ from .settings import OcrSettings
 
 logger = logging.getLogger(__name__)
 
-KNOWN_ENGINES: tuple[str, ...] = ("rapidocr", "easyocr", "tesseract")
+KNOWN_ENGINES: tuple[str, ...] = ("rapidocr", "easyocr", "tesseract", "glifo")
+"""`glifo` entrou na S-181, e é o único de casa: o classificador de caractere portado do
+PyBoxEditor_Tkinter (`text/recognizer.py`). Ele não baixa nada -- os pesos são apontados por
+`OcrSettings.glyph_model` --, e é o único que restringe o **decodificador** pelo `allowlist` em
+vez de filtrar a saída. Ver `docs/SPEC_TEXTO.md`."""
 
 MIN_CONFIDENCE = 0.30
 """Abaixo disto o motor está adivinhando, e uma legenda adivinhada é pior que legenda
@@ -112,6 +116,7 @@ def build_recognizer(settings: OcrSettings) -> TextRecognizer | None:
         "rapidocr": _build_rapidocr,
         "easyocr": lambda: _build_easyocr(settings.languages),
         "tesseract": lambda: _build_tesseract(settings.languages),
+        "glifo": lambda: _build_glifo(settings.glyph_model),
     }
     construtor = construtores.get(motor)
     if construtor is None:
@@ -133,7 +138,14 @@ def build_recognizer(settings: OcrSettings) -> TextRecognizer | None:
         )
         return None
     except Exception as exc:  # noqa: BLE001 - motor de terceiro; a falha dele nao é a nossa
-        logger.warning("Nao foi possivel inicializar o motor de OCR %r (%s). O pipeline segue sem OCR.", motor, exc)
+        if motor == "glifo":
+            # O `glifo` é o único motor de casa, e a mensagem dele já diz o que falta e onde
+            # pôr. Embrulhá-la em "nao foi possivel inicializar" esconderia o que interessa.
+            logger.warning("%s O pipeline segue sem OCR.", exc)
+        else:
+            logger.warning(
+                "Nao foi possivel inicializar o motor de OCR %r (%s). O pipeline segue sem OCR.", motor, exc
+            )
         return None
 
     logger.info("Motor de OCR pronto: %s", recognizer.name)
@@ -299,6 +311,18 @@ def _build_rapidocr() -> TextRecognizer:
     from rapidocr_onnxruntime import RapidOCR  # noqa: PLC0415 - import tardio é o ponto
 
     return RapidOcrRecognizer(RapidOCR())
+
+
+def _build_glifo(model_path: str) -> TextRecognizer:
+    """O classificador de caractere deste projeto (S-181). **Não é um motor de terceiro.**
+
+    Ele levanta `ModeloInvalido` com a mensagem já escrita em pt-BR -- qual arquivo falta, onde
+    apontá-lo, ou por que o par (pesos, metadado) não confere. Quem chama só a repassa; ver o
+    ramo `glifo` em `build_recognizer`.
+    """
+    from .text.recognizer import build_glyph_recognizer  # noqa: PLC0415 - import tardio é o ponto
+
+    return build_glyph_recognizer(model_path)
 
 
 def _build_easyocr(languages: tuple[str, ...]) -> TextRecognizer:

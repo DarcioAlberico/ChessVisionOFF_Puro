@@ -1,0 +1,180 @@
+{
+  "tau": {
+    "paginas": 232,
+    "prosa": 0.12707972217276411,
+    "grade": 0.09430924533537956,
+    "calibrado": 0.06758194737126347
+  },
+  "livros_medidos": 8,
+  "livros_sem_camada_de_texto": [
+    "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+    "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+    "GALLAGHER - Winning With the King's Gambit.pdf",
+    "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
+    "Levenfis - Cartea sahistului inceparator (1962).pdf",
+    "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
+    "Simple Chess - Stean, M_.pdf",
+    "Stefaniu - Problematica Deschideriliol in sah (1992).pdf",
+    "📚Aagaard J. Excelling at chess calculation.pdf",
+    "📚Silman J. The Complete Book of Chess Strategy.pdf"
+  ],
+  "livros_com_camada_editorada": [
+    "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf",
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf",
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf",
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+    "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+    "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf",
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+    "Polgar,_Laszlo_Chess_5334_Problems,_Combinations,_and_Games.pdf"
+  ],
+  "paginas_de_grade": 271,
+  "paginas_decidiveis": 164,
+  "acerto": 1.0,
+  "emissao_contra_impresso": {
+    "de_acordo": 140,
+    "contra": 24
+  },
+  "por_livro": {
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf": {
+      "camada": "imagem de página inteira com texto por cima",
+      "paginas_de_grade": 1,
+      "paginas_decidiveis": 0,
+      "arranjo": "indefinido",
+      "votos": {
+        "grade": 0,
+        "prosa": 0
+      },
+      "emissao_contra_impresso": {
+        "de_acordo": 0,
+        "contra": 0
+      },
+      "paginas_com_tau": 0,
+      "tau_prosa": null,
+      "tau_grade": null
+    },
+    "Karpov A - Chess Combinations -World Champions-1 (2011).pdf": {
+      "camada": "paper capture",
+      "paginas_de_grade": 85,
+      "paginas_decidiveis": 66,
+      "arranjo": "grade",
+      "votos": {
+        "grade": 66,
+        "prosa": 0
+      },
+      "emissao_contra_impresso": {
+        "de_acordo": 49,
+        "contra": 17
+      },
+      "paginas_com_tau": 62,
+      "tau_prosa": 0.23285100234940437,
+      "tau_grade": 0.04557396909713894
+    },
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": {
+      "camada": "fonte invisível (Tesseract e afins)",
+      "paginas_de_grade": 2,
+      "paginas_decidiveis": 0,
+      "arranjo": "indefinido",
+      "votos": {
+        "grade": 0,
+        "prosa": 0
+      },
+      "emissao_contra_impresso": {
+        "de_acordo": 0,
+        "contra": 0
+      },
+      "paginas_com_tau": 1,
+      "tau_prosa": 0.5934065934065934,
+      "tau_grade": 0.5384615384615384
+    },
+    "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf": {
+      "camada": "imagem de página inteira com texto por cima",
+      "paginas_de_grade": 6,
+      "paginas_decidiveis": 0,
+      "arranjo": "indefinido",
+      "votos": {
+        "grade": 0,
+        "prosa": 0
+      },
+      "emissao_contra_impresso": {
+        "de_acordo": 0,
+        "contra": 0
+      },
+      "paginas_com_tau": 0,
+      "tau_prosa": null,
+      "tau_grade": null
+    },
+    "Schiller - The Big Book of Combinations (1994).pdf": {
+      "camada": "paper capture",
+      "paginas_de_grade": 91,
+      "paginas_decidiveis": 77,
+      "arranjo": "prosa",
+      "votos": {
+        "grade": 0,
+        "prosa": 77
+      },
+      "emissao_contra_impresso": {
+        "de_acordo": 77,
+        "contra": 0
+      },
+      "paginas_com_tau": 90,
+      "tau_prosa": 0.0004364942858234912,
+      "tau_grade": 0.1705107392130096
+    },
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": {
+      "camada": "paper capture",
+      "paginas_de_grade": 4,
+      "paginas_decidiveis": 3,
+      "arranjo": "prosa",
+      "votos": {
+        "grade": 0,
+        "prosa": 3
+      },
+      "emissao_contra_impresso": {
+        "de_acordo": 0,
+        "contra": 3
+      },
+      "paginas_com_tau": 4,
+      "tau_prosa": 0.26172161172161174,
+      "tau_grade": 0.014285714285714287
+    },
+    "📚Burgess G. The Gambit Book of Instructive.pdf": {
+      "camada": "paper capture",
+      "paginas_de_grade": 18,
+      "paginas_decidiveis": 18,
+      "arranjo": "grade",
+      "votos": {
+        "grade": 18,
+        "prosa": 0
+      },
+      "emissao_contra_impresso": {
+        "de_acordo": 14,
+        "contra": 4
+      },
+      "paginas_com_tau": 16,
+      "tau_prosa": 0.16826923076923078,
+      "tau_grade": 0.03125
+    },
+    "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf": {
+      "camada": "fontes Fd######## (Paper Capture)",
+      "paginas_de_grade": 64,
+      "paginas_decidiveis": 0,
+      "arranjo": "indefinido",
+      "votos": {
+        "grade": 0,
+        "prosa": 0
+      },
+      "emissao_contra_impresso": {
+        "de_acordo": 0,
+        "contra": 0
+      },
+      "paginas_com_tau": 59,
+      "tau_prosa": 0.18091268101853147,
+      "tau_grade": 0.044281151000172596
+    }
+  },
+  "avisos": []
+}

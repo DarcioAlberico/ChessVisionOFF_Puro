@@ -88,6 +88,25 @@ cvoff-experiment = "chess_diagram_ocr.cli.experiment:main"
 cvoff-gallery = "chess_diagram_ocr.cli.gallery:main"
 cvoff-scan = "chess_diagram_ocr.cli.scan:main"
 cvoff-export-onnx = "chess_diagram_ocr.cli.export_onnx:main"
+# Diz quais itens do plano de reconhecimento de texto (S-178 a S-216) ja existem no disco.
+# Olha o disco, nao o documento: `tests/test_text_status.py` e quem compara os dois.
+cvoff-texto-status = "chess_diagram_ocr.cli.text_status:main"
+# O placar da S-183: a mesma faixa de legenda lida pela camada de texto, pelo RapidOCR e
+# pelo classificador de glifo. E o item que decide se a Fase 26 acontece.
+cvoff-texto-placar = "chess_diagram_ocr.cli.texto_placar:main"
+# A regua da ordem de leitura (S-194): mede a nossa contra a da camada de texto do proprio
+# PDF. Independente da nossa medicao -- mas em parte do acervo a camada e de OCR, e nao da
+# diagramacao, e ali ela nao arbitra grade de exercicio (S-216).
+cvoff-texto-ordem = "chess_diagram_ocr.cli.texto_ordem:main"
+# O treino do classificador de caracteres (S-204): varre training_data/, parte por grupo de
+# copia exata, treina, calibra na validacao e grava o par pinado que text/modelo.py exige.
+cvoff-texto-train = "chess_diagram_ocr.cli.texto_train:main"
+# A mesma imagem arquivada sob dois caracteres (S-202): acha por hash, mostra os glifos em
+# disputa para alguem julgar, e move o rotulo perdedor para quarentena -- nunca apaga.
+cvoff-texto-conflitos = "chess_diagram_ocr.cli.texto_conflitos:main"
+# A direcao em que cada livro numera a grade de exercicios (S-216), medida contra o numero
+# impresso na pagina -- que e a unica referencia que a camada de OCR nao contamina.
+cvoff-texto-grade = "chess_diagram_ocr.cli.texto_grade:main"
 
 [build-system]
 requires = ["setuptools>=68"]

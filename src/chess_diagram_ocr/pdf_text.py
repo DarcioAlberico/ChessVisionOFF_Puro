@@ -318,25 +318,124 @@ _BOARD_FONT_ROW = re.compile(r"^[1-8]?[0-9A-Za-z]{8}$")
 _FILE_LABELS = re.compile(r"^a\W*b\W*c\W*d\W*e\W*f\W*g\W*h$", re.IGNORECASE)
 _AXIS_LABEL = re.compile(r"^[a-h1-8]$")
 _MIN_AXIS_LABELS = 6
-"""A partir de tantos rótulos de eixo soltos no mesmo bloco, são as bordas de um diagrama."""
+"""A partir de tantos rótulos de eixo soltos na mesma faixa, são as bordas de um diagrama."""
+
+_FONT_SUBSET_PREFIX = re.compile(r"^[A-Z]{6}\+")
+"""`ABCDEF+ChessMerida`: o prefixo de subconjunto do PDF, que não faz parte do nome."""
+
+_DIAGRAM_FONT_NAME = re.compile(
+    r"chess|skak|merida|diagram|schach|echecs|scacchi|ajedrez|xadrez", re.IGNORECASE
+)
+_FIGURINE_FONT_NAME = re.compile(r"figurine|semfig", re.IGNORECASE)
+"""Fonte de **figurina**, que desenha a peça no meio do lance (`♘f3`) e não o tabuleiro.
+
+Precisa ser excluída à mão porque o nome dela casa com `_DIAGRAM_FONT_NAME`: no `Polgar` a
+família é `SkakNew-Diagram` para o tabuleiro e `SkakNew-Figurine` para o lance. Medido no
+acervo, as duas de figurina desenham **1.892 linhas que também têm prosa** -- são as listas
+de lances, e descartá-las apagaria o texto que a S-208 vai precisar ler.
+"""
 
 
-def _is_diagram_font_row(text: str) -> bool:
+def is_diagram_font(name: str) -> bool:
+    """O nome desta fonte é o de uma fonte que desenha tabuleiro?
+
+    Medido no acervo (2026-08-23, 964 fontes distintas em 41 livros): **3 casam** --
+    `SkakNew-Diagram`, `ChessMerida` e `Chess-Merida` --, **2 são excluídas** por serem de
+    figurina, e as 959 restantes não casam. Nenhuma fonte de prosa casa por engano.
+    """
+    limpo = _FONT_SUBSET_PREFIX.sub("", name)
+    if _FIGURINE_FONT_NAME.search(limpo):
+        return False
+    return bool(_DIAGRAM_FONT_NAME.search(limpo))
+
+
+def _is_diagram_font_row(text: str, fonts: Sequence[str] = ()) -> bool:
     """Linha que é o próprio diagrama desenhado com fonte de xadrez, não legenda.
 
     O `Polgar 5334` não tem imagem nenhuma: o tabuleiro é texto. Cada fila sai como uma
     linha (`0Z0Z0mkZ`, `Z0Z0Z0a0`) e as coordenadas saem como caracteres soltos. Sem este
     filtro, a legenda de cada diagrama desse livro seria o tabuleiro em si.
 
-    O crivo é a densidade de `0` e `Z` -- as casas vazias claras e escuras da fonte Merida.
-    `Steinitz`, que também tem oito caracteres, tem um `z` e passa direto.
+    **O crivo forte é o nome da fonte, e não o texto (S-217).** A versão original media a
+    densidade de `0` e `Z` -- as casas vazias claras e escuras da Merida como o `Polgar` a
+    codifica. Medido semeando a S-183, isso deixava passar **16 das 123 faixas** de
+    referência, em 6 livros, por duas razões que o texto não alcança:
+
+    | livro | fonte | casa vazia | por que escapava |
+    |---|---|---|---|
+    | `Polgar` | `SkakNew-Diagram` | `0` `Z` | `0l0o0ORL` tem 3 vazias, e o crivo pedia 4 |
+    | 4 livros `_hq` | `ChessMerida` | `+` | outra codificação: o export do Lichess |
+    | `Dvoretsky` | `Chess-Merida` | `+` `*` | idem, e a fila sai partida em `+`, `*`, `P` |
+
+    A fila do `Dvoretsky` chega como caracteres de **um** símbolo (`+`, `*`, `P`, `k`), e
+    não há crivo de texto que separe um `P` de tabuleiro de um `P` de prosa. O nome da
+    fonte separa, e é a única coisa que separa.
+
+    `fonts` são as fontes dos spans da linha, e a linha só cai se **todas** forem de
+    diagrama. Medido, nenhuma linha do acervo mistura fonte de diagrama com outra
+    (0 de 229.510) -- exigir todas não custa nada aqui, e é o que impede que uma prosa
+    grudada num glifo de tabuleiro desapareça junto num livro que ainda não foi medido.
+
+    Sem `fonts` -- linha vinda do OCR da S-43, ou fonte sem nome útil -- vale o crivo de
+    texto de sempre, que continua pegando o `Polgar` sozinho.
     """
+    if fonts and all(is_diagram_font(name) for name in fonts):
+        return True
     compact = text.strip()
     if _FILE_LABELS.match(re.sub(r"\s+", "", compact)):
         return True
     if not _BOARD_FONT_ROW.match(compact):
         return False
     return sum(compact.count(ch) for ch in "0Zz") >= 4
+
+
+def _axis_label_strip(
+    items: Sequence[tuple[str, tuple[float, float, float, float]]],
+) -> set[int]:
+    """Índices dos rótulos que formam a **borda** de um diagrama, e não texto solto.
+
+    Existe porque contar por bloco não bastava (S-217). O `Polgar` põe cada dígito de fila
+    no seu **próprio bloco** -- `8`, `7`, `6` ... são 8 blocos de uma linha --, então o
+    `_MIN_AXIS_LABELS` nunca disparava e os oito dígitos entravam na legenda. As letras
+    `a b c d e f g h`, que o mesmo livro põe num bloco só, sempre caíram.
+
+    Contar a página inteira em vez do bloco resolveria o `Polgar` e quebraria o `1937
+    Kemeri`: a tabela de cruzamento do torneio tem dezenas de `1` soltos, que são
+    **resultados**. Medido, a regra por página descartaria 4.904 linhas a mais na amostra do
+    acervo, e as do `Kemeri` seriam perda de dado.
+
+    O que separa os dois é o que a borda de um tabuleiro é de fato: rótulos **alinhados**
+    numa faixa, e **distintos** -- as oito filas, ou as oito colunas, cada uma uma vez. A
+    coluna de resultados do `Kemeri` é alinhada, mas é `1`, `1`, `0`, `1` -- repetida. Com
+    as duas exigências o `Kemeri` sai inteiro da conta, e sobram só livros de xadrez.
+    """
+    dropped: set[int] = set()
+    for axis in (0, 1):
+        labels = list(range(len(items)))
+
+        def find(index: int, labels: list[int] = labels) -> int:
+            while labels[index] != index:
+                labels[index] = labels[labels[index]]
+                index = labels[index]
+            return index
+
+        for i, (_, a) in enumerate(items):
+            for j in range(i + 1, len(items)):
+                b = items[j][1]
+                if _axis_overlap(a[axis], a[axis + 2], b[axis], b[axis + 2]) > 0.0:
+                    labels[find(i)] = find(j)
+
+        groups: dict[int, list[int]] = {}
+        for index in range(len(items)):
+            groups.setdefault(find(index), []).append(index)
+
+        for group in groups.values():
+            marks = {items[index][0].lower() for index in group}
+            ranks = sum(1 for mark in marks if mark.isdigit())
+            files = len(marks) - ranks
+            if ranks >= _MIN_AXIS_LABELS or files >= _MIN_AXIS_LABELS:
+                dropped |= set(group)
+    return dropped
 
 
 def _split_into_columns(bboxes: Sequence[tuple[float, float, float, float]]) -> list[int]:
@@ -404,8 +503,7 @@ def _page_lines(page: fitz.Page, *, margin: bool) -> list[TextLine]:
     top_limit = page.rect.y0 + height * MARGIN_BAND
     bottom_limit = page.rect.y1 - height * MARGIN_BAND
 
-    lines: list[TextLine] = []
-    next_group = 0
+    blocks: list[tuple[int, list[tuple[str, tuple[float, float, float, float]]]]] = []
     for block in page.get_text("dict").get("blocks", ()):
         if block.get("type") != 0:
             continue
@@ -417,9 +515,11 @@ def _page_lines(page: fitz.Page, *, margin: bool) -> list[TextLine]:
 
         kept: list[tuple[str, tuple[float, float, float, float]]] = []
         for line in block.get("lines", ()):
+            spans = [span for span in line.get("spans", ()) if span.get("text", "").strip()]
             text = "".join(span.get("text", "") for span in line.get("spans", ()))
             text = re.sub(r"\s+", " ", text).strip()
-            if not text or _is_diagram_font_row(text):
+            fonts = [str(span.get("font", "")) for span in spans]
+            if not text or _is_diagram_font_row(text, fonts):
                 continue
 
             x0, y0, x1, y1 = _texto_girado(page, line["bbox"])
@@ -433,9 +533,35 @@ def _page_lines(page: fitz.Page, *, margin: bool) -> list[TextLine]:
         if sum(1 for text, _ in kept if _AXIS_LABEL.match(text)) >= _MIN_AXIS_LABELS:
             kept = [item for item in kept if not _AXIS_LABEL.match(item[0])]
 
+        if kept:
+            blocks.append((block_words, kept))
+
+    # **A borda do diagrama nao respeita o bloco, e por isso a segunda passada e por pagina.**
+    # O `Polgar` poe cada digito de fila num bloco proprio, e o corte por bloco acima nunca
+    # os alcanca. Ver `_axis_label_strip` -- e por que ela e uma faixa, e nao a pagina toda.
+    marks = [
+        (block_index, item_index, text, bbox)
+        for block_index, (_, kept) in enumerate(blocks)
+        for item_index, (text, bbox) in enumerate(kept)
+        if _AXIS_LABEL.match(text)
+    ]
+    if len(marks) >= _MIN_AXIS_LABELS:
+        strip = _axis_label_strip([(text, bbox) for _, _, text, bbox in marks])
+        drop = {(marks[i][0], marks[i][1]) for i in strip}
+        if drop:
+            blocks = [
+                (
+                    block_words,
+                    [item for item_index, item in enumerate(kept) if (block_index, item_index) not in drop],
+                )
+                for block_index, (block_words, kept) in enumerate(blocks)
+            ]
+
+    lines: list[TextLine] = []
+    next_group = 0
+    for block_words, kept in blocks:
         if not kept:
             continue
-
         columns = _split_into_columns([bbox for _, bbox in kept])
         group_ids = {label: next_group + offset for offset, label in enumerate(dict.fromkeys(columns))}
         next_group += len(group_ids)

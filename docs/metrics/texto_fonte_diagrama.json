@@ -1,0 +1,73 @@
+{
+ "item": "S-217",
+ "data": "2026-08-23",
+ "conjunto": "docs/metrics/texto_faixa_referencia.jsonl (123 faixas, 41 livros, semeadas pela S-183)",
+ "censo_de_fontes": {
+  "distintas_no_acervo": 964,
+  "de_diagrama": [
+   "Chess-Merida",
+   "ChessMerida",
+   "SkakNew-Diagram"
+  ],
+  "de_figurina_excluidas": [
+   "SkakNew-Figurine",
+   "SkakNew-Figurine-Bold"
+  ],
+  "de_prosa": 959
+ },
+ "faixa_de_legenda": {
+  "antes": {
+   "faixas_poluidas": 19,
+   "por_fonte_de_diagrama": {
+    "faixas": 16,
+    "livros": 6
+   },
+   "por_rotulo_de_eixo": {
+    "faixas": 7,
+    "livros": 3
+   },
+   "livros": [
+    "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf",
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf",
+    "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf",
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+    "Polgar,_Laszlo_Chess_5334_Problems,_Combinations,_and_Games.pdf"
+   ]
+  },
+  "depois": {
+   "faixas_poluidas": 1,
+   "por_fonte_de_diagrama": {
+    "faixas": 0,
+    "livros": 0
+   },
+   "por_rotulo_de_eixo": {
+    "faixas": 1,
+    "livros": 1
+   },
+   "livros": [
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf"
+   ]
+  }
+ },
+ "semeadura_ponta_a_ponta": {
+  "comando": "cvoff-texto-placar --semear --por-livro 3",
+  "faixas": 123,
+  "mesmos_bbox_da_referencia": true,
+  "texto_intocado": 105,
+  "texto_alterado": 16,
+  "texto_esvaziado": 2
+ },
+ "varredura_do_acervo": {
+  "paginas": 1860,
+  "linhas_antes": 81795,
+  "linhas_depois": 72592,
+  "retiradas": {
+   "fonte_de_diagrama": 7072,
+   "rotulo_de_eixo": 2131
+  },
+  "linhas_novas": 0,
+  "nota": "Contado por instancia de linha, e nao por texto: no `Dvoretsky` o mesmo `B` e o bispo do tabuleiro (Chess-Merida) numa linha e o marcador de pretas jogam (TimesNewRomanPSMT) noutra, na mesma pagina. Contar por texto somaria os dois. Nenhuma linha de prosa foi retirada."
+ }
+}

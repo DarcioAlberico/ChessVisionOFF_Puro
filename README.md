@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **17 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **23 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -228,6 +228,28 @@ cvoff-batch PDF --limit 3                 # so os tres primeiros livros
 # Ilegal > orientacao incerta > fontes discordantes > confianca baixa > entropia.
 # Grava em data/review_queue.json, que a aba "Revisao" do app le.
 cvoff-review "PDF\1937 Kemeri.pdf" --start-page 10 --end-page 70
+
+# O que do plano de reconhecimento de texto (S-178 a S-217) ja existe no disco.
+# Olha o disco -- arquivo no lugar, simbolo definido, extra declarado --, e nao o
+# documento; quem compara os dois e tests/test_text_status.py.
+cvoff-texto-status                  # tudo, agrupado por fase
+cvoff-texto-status --fase 25        # so uma fase
+cvoff-texto-status --pendentes      # so o que falta
+cvoff-texto-status --sondas         # cada sonda, e o que ela respondeu
+cvoff-texto-status --json           # para a CI
+cvoff-texto-status --exigir S-181   # portao: codigo 1 se o item nao esta inteiro
+
+# A regua da ordem de leitura (S-194). A referencia e a ordem em que o proprio PDF emite os
+# spans, independente da nossa medicao. Pagina cuja camada emite blocos fora da ordem de
+# leitura e contada a parte, nao descartada.
+cvoff-texto-ordem --por-livro 5
+cvoff-texto-ordem --baseline docs/metrics/texto_ordem.json   # regressao de ordem e regressao
+
+# A direcao em que cada livro numera a grade de exercicios (S-216). Aqui a referencia e o
+# numero impresso na pagina, e nao a ordem de emissao: nos tres livros de grade do acervo a
+# camada e do Adobe Acrobat Paper Capture, e ela erra a direcao em 1 pagina de grade a cada 10.
+cvoff-texto-grade --por-livro 40
+cvoff-texto-grade --baseline docs/metrics/texto_grade.json   # falha se o acerto cair
 ```
 
 Os scripts `train_model.py`, `infer_pdf.py` e `export_pdf_pgn.py` na raiz continuam
@@ -437,6 +459,26 @@ padrao" continua valendo com ele ligado. O **EasyOCR baixa ~100 MB de modelo na 
 execucao**: e uma escolha legitima, le mais idiomas, e por isso mesmo precisa ser sua e nao
 do padrao. O Tesseract usa o binario que voce ja tenha instalado.
 
+**O quarto motor e de casa: `glifo` (S-181).** E o classificador de 292 classes portado do
+`PyBoxEditor_Tkinter` -- digitos, caixa alta e baixa, acentuacao latina, ligaduras tipograficas
+(`fi`, `ffl`), casas de xadrez coladas (`e4`, `xf6`), figurinas (`♔♕♖♗♘♙`) e simbolos de
+avaliacao (`±`, `∓`, `⩲`, `∞`). Ele nao baixa nada, e e o unico que aplica o `allowlist` no
+**decodificador** em vez de filtrar a saida: pedir `WB` faz o `B` vencer o `8` em vez de apagar
+o `8` depois de escolhido.
+
+Os pesos (2,6 MB) **nao vem no repositorio** -- `*.pt` e ignorado. O metadado que descreve as
+classes vem (`models/char_meta.json`). Aponte o arquivo assim:
+
+```bash
+CVOFF_OCR_GLYPH_MODEL=/caminho/custom_model.pth cvoff-field --ocr glifo
+```
+
+ou grave `"glyph_model"` na secao `ocr` do `data/settings.json`. Sem os pesos o motor nao sobe,
+o log diz onde apontar, e a varredura segue sem OCR -- o contrato de sempre.
+
+O plano completo do reconhecimento de texto (colunas, tabelas, tarjas, PDF pesquisavel) esta em
+[docs/ROADMAP_TEXTO.md](docs/ROADMAP_TEXTO.md), e `cvoff-texto-status` diz o que dele ja existe.
+
 Tres coisas que o recurso **nao** faz, de proposito:
 
 - nao roda na pagina inteira -- so na faixa em volta do diagrama, com o interior do tabuleiro
@@ -453,6 +495,8 @@ Tres coisas que o recurso **nao** faz, de proposito:
 | Treino muito lento (~9 min por epoca) | `torch` `+cpu`, sem CUDA | ver [Desempenho](#desempenho-cpu-gpu-e-onnx). A barra de status diz qual dispositivo esta em uso |
 | Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros medidos em 2026-08-14. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
 | `--ocr rapidocr` avisa que "o OCR pedido nao esta disponivel" | o extra nao esta instalado | `uv sync --extra ocr`. O comando segue sem OCR em vez de falhar, mas a saida nao tem legenda lida |
+| `--ocr glifo` diz que os pesos "nao estao em models/char_classifier.pt" | os 2,6 MB do classificador de caracteres nao vem no repositorio | apontar o arquivo em `CVOFF_OCR_GLYPH_MODEL` ou em `ocr.glyph_model` no `data/settings.json`. O metadado das 292 classes ja esta em `models/char_meta.json` |
+| `--ocr glifo` diz que o `.pt` "nao e o modelo descrito por char_meta.json" | os pesos e o metadado sao de rodadas de treino diferentes | e o esperado, e a recusa e o recurso: indices de outro treino apontam para as letras erradas **sem erro nenhum**. Repor o par completo |
 | Poucos diagramas detectados numa pagina cheia | o teto "Max diagramas" cortou | o padrao e 12; o log avisa com os scores quando o teto corta candidato aprovado |
 | Diagramas de cabeca para baixo | orientacao fixa em 0 ou 180 | usar **Automatica** (padrao). Casos ambiguos entram na fila de revisao marcados |
 | "Nenhum tabuleiro foi detectado" numa pagina que tem um | scan de baixo contraste, ou o diagrama nao e imagem embutida | usar **Selecionar area (OCR)** e arrastar em volta do diagrama: ali o recorte e o seu, e o detector nao precisa acertar |
@@ -693,6 +737,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
 | S-95 a S-142 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
 | S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
+| S-178 a S-217 | [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -733,6 +778,15 @@ criterio de aceite dele. A tabela acima e sobre a spec.
 - [docs/SPEC_UI.md](docs/SPEC_UI.md) -- especificacao das Fases 20 a 24 (S-144 a S-170):
   tokens de cor e tipografia, o piso da janela, cor com um significado so, barra de menus e
   rodape de janela, vocabulario e estados vazios
+- [docs/ROADMAP_TEXTO.md](docs/ROADMAP_TEXTO.md) -- **Fases 25 a 31**, o plano de reconhecimento
+  de texto: o levantamento dos dois projetos, a decisao de portar o classificador de 292 classes
+  do PyBoxEditor_Tkinter em vez de depender dele ou reescrever, e os seis riscos que precisam de
+  decisao do dono -- entre eles a procedencia das 608.407 imagens de caractere
+- [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) -- especificacao das Fases 25 a 31 (S-178 a S-217):
+  a fronteira e a prova de vida, segmentacao ate a linha, a coluna achada na imagem, os cinco
+  casos que apagam texto (tarja, trama, texto girado, box de duas linhas, tabela), a base de
+  608 mil, o que o texto lido serve e o laco que faz a base crescer. Cada item traz uma **sonda**,
+  e `cvoff-texto-status` responde quais ja existem no disco
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

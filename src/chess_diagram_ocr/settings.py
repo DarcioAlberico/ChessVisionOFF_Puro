@@ -38,6 +38,7 @@ ENV_REMOTE_ENABLED = "CVOFF_REMOTE_FEN_ENABLED"
 
 ENV_OCR_ENABLED = "CVOFF_OCR_ENABLED"
 ENV_OCR_ENGINE = "CVOFF_OCR_ENGINE"
+ENV_OCR_GLYPH_MODEL = "CVOFF_OCR_GLYPH_MODEL"
 
 ENV_LOCAL_READER_PATH = "CVOFF_LOCAL_READER_PATH"
 ENV_LOCAL_READER_ENABLED = "CVOFF_LOCAL_READER_ENABLED"
@@ -202,8 +203,45 @@ class OcrSettings:
     configuração mesmo assim porque é a informação certa a declarar, e trocar de motor não
     deveria obrigar a redeclará-la."""
 
+    glyph_model: str = ""
+    """Os pesos do classificador de caracteres, para o motor `glifo` (S-179/S-182).
+
+    **Sem padrão embutido, pela mesma razão do `LocalReaderSettings.path`**: um caminho presumido
+    faz o recurso parecer quebrado em toda máquina que não o tem, em vez de simplesmente ausente.
+    Vazio deixa `carregar_classificador` procurar o `.pt` ao lado de `models/char_meta.json` --
+    que é o caminho de quem já pôs o arquivo lá.
+
+    O que **não** é opcional é o metadado: `models/char_meta.json` é versionado, tem 10 KB e é o
+    que descreve as classes -- **quantas** elas são vem dele, e muda a cada retreino (292 no porte
+    de 2026-08-21, 314 no treino de 2026-08-23). É a assimetria entre os dois que torna o
+    `modelo_sha256` necessário -- ver `text/modelo.py`."""
+
+    def glyph_disabled_reason(self) -> str:
+        """Por que o motor `glifo` não vai subir, em pt-BR. Vazio quando ele vai."""
+        from .config import PROJECT_ROOT
+
+        meta = PROJECT_ROOT / "models" / "char_meta.json"
+        if not meta.exists():
+            return (
+                f"O motor `glifo` precisa de {meta.name}, que descreve as classes de "
+                "caractere, e ele não está em models/."
+            )
+        candidato = Path(self.glyph_model.strip()) if self.glyph_model.strip() else meta.parent / "char_classifier.pt"
+        if not candidato.exists():
+            return (
+                f"Os pesos do classificador de caracteres não estão em {candidato}. Eles não vêm "
+                "no repositório (2,6 MB de binário; `*.pt` é ignorado). Aponte o arquivo em "
+                f"data/settings.json (`ocr.glyph_model`) ou em {ENV_OCR_GLYPH_MODEL}."
+            )
+        return ""
+
     def to_dict(self) -> dict[str, object]:
-        return {"enabled": self.enabled, "engine": self.engine, "languages": list(self.languages)}
+        return {
+            "enabled": self.enabled,
+            "engine": self.engine,
+            "languages": list(self.languages),
+            "glyph_model": self.glyph_model,
+        }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> OcrSettings:
@@ -213,6 +251,7 @@ class OcrSettings:
             enabled=bool(data.get("enabled", False)),
             engine=str(data.get("engine", "") or "rapidocr").strip().lower(),
             languages=idiomas or DEFAULT_OCR_LANGUAGES,
+            glyph_model=str(data.get("glyph_model", "") or "").strip(),
         )
 
 
@@ -318,6 +357,12 @@ def apply_environment(settings: Settings, env: Mapping[str, str] | None = None) 
         # Declarar o motor e ainda ter de ligá-lo seriam duas variáveis para uma intenção
         # só -- a mesma leitura que `CVOFF_REMOTE_FEN_URL` faz do endpoint.
         ocr = replace(ocr, engine=motor, enabled=True)
+
+    glifo = env.get(ENV_OCR_GLYPH_MODEL, "").strip()
+    if glifo:
+        # Apontar os pesos ja e a intencao de usar o motor de glifo -- a mesma leitura que o
+        # endpoint remoto, o motor de OCR e o caminho do leitor local fazem.
+        ocr = replace(ocr, glyph_model=glifo, engine="glifo", enabled=True)
 
     ocr_ligado = _flag(env.get(ENV_OCR_ENABLED, ""))
     if ocr_ligado is not None:

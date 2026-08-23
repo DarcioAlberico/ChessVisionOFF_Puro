@@ -1,0 +1,256 @@
+{
+  "dpi": 220.0,
+  "livros_medidos": 17,
+  "livros_sem_referencia": [
+    "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+    "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+    "GALLAGHER - Winning With the King's Gambit.pdf",
+    "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
+    "Levenfis - Cartea sahistului inceparator (1962).pdf",
+    "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
+    "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf",
+    "Simple Chess - Stean, M_.pdf",
+    "Stefaniu - Problematica Deschideriliol in sah (1992).pdf",
+    "📚Aagaard J. Excelling at chess calculation.pdf",
+    "📚Silman J. The Complete Book of Chess Strategy.pdf"
+  ],
+  "paginas": 57,
+  "tau_medio": 0.009633920102293567,
+  "paginas_em_ordem": 32,
+  "por_livro": {
+    "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf": {
+      "paginas": 5,
+      "tau_medio": 0.005104879017922496
+    },
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf": {
+      "paginas": 5,
+      "tau_medio": 0.0
+    },
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf": {
+      "paginas": 5,
+      "tau_medio": 0.0052242998269984775
+    },
+    "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf": {
+      "paginas": 1,
+      "tau_medio": 0.0
+    },
+    "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf": {
+      "paginas": 5,
+      "tau_medio": 0.0
+    },
+    "Karpov A - Chess Combinations -World Champions-1 (2011).pdf": {
+      "paginas": 2,
+      "tau_medio": 0.11437908496732026
+    },
+    "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf": {
+      "paginas": 1,
+      "tau_medio": 0.0033222591362126247
+    },
+    "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf": {
+      "paginas": 1,
+      "tau_medio": 0.0
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": {
+      "paginas": 5,
+      "tau_medio": 0.0090979197519115
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf": {
+      "paginas": 4,
+      "tau_medio": 0.010603168920658605
+    },
+    "Mieses - Blind Schaken (1938).pdf": {
+      "paginas": 5,
+      "tau_medio": 0.0003361344537815126
+    },
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": {
+      "paginas": 5,
+      "tau_medio": 0.0
+    },
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": {
+      "paginas": 1,
+      "tau_medio": 0.0
+    },
+    "Schiller - The Big Book of Combinations (1994).pdf": {
+      "paginas": 1,
+      "tau_medio": 0.0
+    },
+    "Vishy_Anand_Great_Chess_Combinations.pdf": {
+      "paginas": 5,
+      "tau_medio": 0.004395604395604396
+    },
+    "📚Burgess G. The Gambit Book of Instructive.pdf": {
+      "paginas": 2,
+      "tau_medio": 0.07692307692307693
+    },
+    "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf": {
+      "paginas": 4,
+      "tau_medio": 0.0
+    }
+  },
+  "piores": [
+    {
+      "pdf": "Karpov A - Chess Combinations -World Champions-1 (2011).pdf",
+      "pagina": 62,
+      "linhas": 18,
+      "colunas": 2,
+      "tau": 0.22875816993464052,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "📚Burgess G. The Gambit Book of Instructive.pdf",
+      "pagina": 29,
+      "linhas": 13,
+      "colunas": 2,
+      "tau": 0.15384615384615385,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 64,
+      "linhas": 50,
+      "colunas": 1,
+      "tau": 0.018775510204081632,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf",
+      "pagina": 64,
+      "linhas": 50,
+      "colunas": 1,
+      "tau": 0.018775510204081632,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 67,
+      "linhas": 136,
+      "colunas": 1,
+      "tau": 0.011328976034858388,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf",
+      "pagina": 67,
+      "linhas": 136,
+      "colunas": 1,
+      "tau": 0.011328976034858388,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "Vishy_Anand_Great_Chess_Combinations.pdf",
+      "pagina": 143,
+      "linhas": 14,
+      "colunas": 1,
+      "tau": 0.01098901098901099,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "Vishy_Anand_Great_Chess_Combinations.pdf",
+      "pagina": 146,
+      "linhas": 14,
+      "colunas": 1,
+      "tau": 0.01098901098901099,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf",
+      "pagina": 171,
+      "linhas": 22,
+      "colunas": 1,
+      "tau": 0.008658008658008658,
+      "descidas_da_referencia": 0
+    },
+    {
+      "pdf": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf",
+      "pagina": 172,
+      "linhas": 22,
+      "colunas": 1,
+      "tau": 0.008658008658008658,
+      "descidas_da_referencia": 0
+    }
+  ],
+  "paginas_com_referencia_suspeita": 93,
+  "referencias_suspeitas": [
+    {
+      "pdf": "1937 Kemeri.pdf",
+      "pagina": 44,
+      "linhas": 32,
+      "colunas": 1,
+      "tau": 0.0907258064516129,
+      "descidas_da_referencia": 1
+    },
+    {
+      "pdf": "1937 Kemeri.pdf",
+      "pagina": 45,
+      "linhas": 48,
+      "colunas": 1,
+      "tau": 0.0549645390070922,
+      "descidas_da_referencia": 1
+    },
+    {
+      "pdf": "1937 Kemeri.pdf",
+      "pagina": 46,
+      "linhas": 47,
+      "colunas": 1,
+      "tau": 0.05087881591119334,
+      "descidas_da_referencia": 1
+    },
+    {
+      "pdf": "1937 Kemeri.pdf",
+      "pagina": 47,
+      "linhas": 35,
+      "colunas": 1,
+      "tau": 0.0773109243697479,
+      "descidas_da_referencia": 1
+    },
+    {
+      "pdf": "1937 Kemeri.pdf",
+      "pagina": 48,
+      "linhas": 132,
+      "colunas": 1,
+      "tau": 0.14873930141105712,
+      "descidas_da_referencia": 4
+    },
+    {
+      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "pagina": 197,
+      "linhas": 18,
+      "colunas": 1,
+      "tau": 0.1111111111111111,
+      "descidas_da_referencia": 1
+    },
+    {
+      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "pagina": 198,
+      "linhas": 12,
+      "colunas": 1,
+      "tau": 0.16666666666666666,
+      "descidas_da_referencia": 1
+    },
+    {
+      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "pagina": 199,
+      "linhas": 13,
+      "colunas": 1,
+      "tau": 0.15384615384615385,
+      "descidas_da_referencia": 1
+    },
+    {
+      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "pagina": 200,
+      "linhas": 18,
+      "colunas": 1,
+      "tau": 0.1111111111111111,
+      "descidas_da_referencia": 1
+    },
+    {
+      "pdf": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "pagina": 201,
+      "linhas": 19,
+      "colunas": 1,
+      "tau": 0.10526315789473684,
+      "descidas_da_referencia": 1
+    }
+  ],
+  "avisos": []
+}

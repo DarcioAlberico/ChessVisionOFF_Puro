@@ -1,0 +1,916 @@
+[
+ {
+  "ficha": 1,
+  "sha256": "33731672944418fa55ff0965ccf58aeba0fbabc1c9114363299bbfeea133c47f",
+  "rotulos": {
+   "upper_B": 416,
+   "sym_9815": 1
+  },
+  "vencedor": "upper_B",
+  "confianca": "alta",
+  "motivo": "o desenho e a letra B, com as duas barrigas fechadas; o bispo tem mitra"
+ },
+ {
+  "ficha": 2,
+  "sha256": "ad85554f27244e633c072cf8eb60ce3cae40e563d7d1cd27564282188aca432b",
+  "rotulos": {
+   "lower_e": 100,
+   "lower_s": 1
+  },
+  "vencedor": "lower_e",
+  "confianca": "alta",
+  "motivo": "e minusculo, sem duvida"
+ },
+ {
+  "ficha": 3,
+  "sha256": "cc71e9c2b758cd4b8accb0888befbdc016b535e51d8b543ef8fcaeb711917979",
+  "rotulos": {
+   "lower_a": 89,
+   "lower_s": 1
+  },
+  "vencedor": "lower_a",
+  "confianca": "alta",
+  "motivo": "a minusculo de dois andares"
+ },
+ {
+  "ficha": 4,
+  "sha256": "0902e4f36ec2ccaea5f71a57c70fee1f8d9c66e3e88c4cde8f377beb92146130",
+  "rotulos": {
+   "lower_s": 57,
+   "upper_S": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "s ou S: o mesmo desenho, e o recorte perdeu a altura que separava"
+ },
+ {
+  "ficha": 5,
+  "sha256": "6feed1a6c012259715bb712eca2d84105da382931f9450c82767a50e801c6538",
+  "rotulos": {
+   "lower_l": 52,
+   "upper_I": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "bloco preto solido: nao ha glifo legivel nenhum ali"
+ },
+ {
+  "ficha": 6,
+  "sha256": "db3d065518b5070b231d4e5525c32dedd74bfbe484dfcbde9c26232a24c047c2",
+  "rotulos": {
+   "ligature_d2": 33,
+   "ligature_a2": 1
+  },
+  "vencedor": "ligature_d2",
+  "confianca": "alta",
+  "motivo": "le-se d2"
+ },
+ {
+  "ficha": 7,
+  "sha256": "6b075dc82a81d0963d337cd29a56cf1bbd01393a3d24cb077fc17b9ac13d5c46",
+  "rotulos": {
+   "upper_N": 22,
+   "sym_9816": 1
+  },
+  "vencedor": "upper_N",
+  "confianca": "alta",
+  "motivo": "a letra N; o cavalo tem cabeca"
+ },
+ {
+  "ficha": 8,
+  "sha256": "54d30241668714e962d51ce5949d24fdc738e6af99bb8703af0816e43d377b03",
+  "rotulos": {
+   "lower_d": 21,
+   "digit_4": 1
+  },
+  "vencedor": "lower_d",
+  "confianca": "alta",
+  "motivo": "d minusculo"
+ },
+ {
+  "ficha": 9,
+  "sha256": "4784f61f15ae0f824b5b534d642520634d5c09c63bd935a910a6112b13883e0f",
+  "rotulos": {
+   "lower_c": 19,
+   "upper_C": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "c ou C: mesmo desenho"
+ },
+ {
+  "ficha": 10,
+  "sha256": "f2352a7f0ed9079d5e5400341d88240c7bef88a23d72c751fbe06ae8bf2af508",
+  "rotulos": {
+   "lower_r": 19,
+   "upper_I": 1
+  },
+  "vencedor": "lower_r",
+  "confianca": "alta",
+  "motivo": "haste com braco a direita: e r, e as referencias de upper_I sao barras lisas"
+ },
+ {
+  "ficha": 11,
+  "sha256": "70af6eed85e6467e2d678d54fb4579f3ada0593c78205c74dee874bf523dfb91",
+  "rotulos": {
+   "lower_h": 17,
+   "digit_4": 1
+  },
+  "vencedor": "lower_h",
+  "confianca": "alta",
+  "motivo": "h italico"
+ },
+ {
+  "ficha": 12,
+  "sha256": "7653d1fbada2934c0ce3f430fa233f42e42cdedfff28d31bb3109364a15d57db",
+  "rotulos": {
+   "sym_44": 16,
+   "sym_59": 1
+  },
+  "vencedor": "sym_44",
+  "confianca": "alta",
+  "motivo": "virgula: uma peca so com cauda; o ponto-e-virgula tem o ponto por cima"
+ },
+ {
+  "ficha": 13,
+  "sha256": "b3d5f2853c1cc35a43f366b537f9363a3e48be08bdf174eea536d87df9d3be73",
+  "rotulos": {
+   "sym_9812": 16,
+   "upper_K": 1
+  },
+  "vencedor": "sym_9812",
+  "confianca": "alta",
+  "motivo": "a coroa do rei, nao a letra K"
+ },
+ {
+  "ficha": 14,
+  "sha256": "734e81dd59cf220a5ef5c0573f1ae299a6c4bc69364fd13ca0e16d807939d687",
+  "rotulos": {
+   "lower_o": 61,
+   "digit_0": 4
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "o ou 0"
+ },
+ {
+  "ficha": 15,
+  "sha256": "5d5027dde9f565b470b0769e950e6d86dfa4b5e3616fbfc439ac1f2a35563244",
+  "rotulos": {
+   "lower_f": 30,
+   "ligature_ft": 2
+  },
+  "vencedor": "ligature_ft",
+  "confianca": "alta",
+  "motivo": "le-se ft, duas letras. A MAIORIA (30 em lower_f) e que esta errada"
+ },
+ {
+  "ficha": 16,
+  "sha256": "5f4ab9f91a5d1e477f711bc15247927193277d97b1f21aea20097c8a6ec520fc",
+  "rotulos": {
+   "digit_1": 14,
+   "lower_l": 1
+  },
+  "vencedor": "digit_1",
+  "confianca": "alta",
+  "motivo": "tem bandeira e base alargada; as referencias de lower_l sao barras lisas"
+ },
+ {
+  "ficha": 17,
+  "sha256": "d2cca548f718db0c447c212e3d19228d3b6bf1998a66cc6538f446c362560db4",
+  "rotulos": {
+   "lower_u": 14,
+   "lower_w": 1
+  },
+  "vencedor": "lower_u",
+  "confianca": "alta",
+  "motivo": "u minusculo"
+ },
+ {
+  "ficha": 18,
+  "sha256": "1448dfac38887cd9845e4ccde0984c1b00dcf42f89921e3167623518e29183ee",
+  "rotulos": {
+   "lower_c": 41,
+   "upper_C": 3
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "c ou C"
+ },
+ {
+  "ficha": 19,
+  "sha256": "eee20da0f526a599b4c3f2ef2d0876f77bf26dcc63d983ea7f66ec9f552b5c33",
+  "rotulos": {
+   "lower_c": 26,
+   "upper_C": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "c ou C"
+ },
+ {
+  "ficha": 20,
+  "sha256": "f08e1709d7f230a562b2a7f6f6e5e2ac3d75fb8268f4b0c57c5fab5855a367ae",
+  "rotulos": {
+   "digit_1": 12,
+   "lower_l": 1
+  },
+  "vencedor": "digit_1",
+  "confianca": "media",
+  "motivo": "borda esquerda serrilhada onde vai a bandeira do 1"
+ },
+ {
+  "ficha": 21,
+  "sha256": "d26a1dca0416a0b79d7d5249c79aeeb8388bfb487f43df6b0253ae274c966943",
+  "rotulos": {
+   "lower_l": 10,
+   "digit_1": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "barra lisa: 1 ou l"
+ },
+ {
+  "ficha": 22,
+  "sha256": "309d93b7c76466476e99676e7d56efeac7a0d594015386546500fa96406d4b82",
+  "rotulos": {
+   "lower_l": 10,
+   "digit_1": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "barra lisa: 1 ou l"
+ },
+ {
+  "ficha": 23,
+  "sha256": "d6f2de5772d5e4b39ed10ba32289dc8d4b24a6a3139f6af0210eca9ca28cab10",
+  "rotulos": {
+   "lower_l": 10,
+   "sym_46": 1
+  },
+  "vencedor": "lower_l",
+  "confianca": "media",
+  "motivo": "massa escura larga; o ponto final e um pingo redondo pequeno"
+ },
+ {
+  "ficha": 24,
+  "sha256": "54574cc30711eb7a963de3b0e9b394d62b2b66987fd69b4176efa75d7bf06e52",
+  "rotulos": {
+   "lower_x": 9,
+   "upper_X": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "x ou X"
+ },
+ {
+  "ficha": 25,
+  "sha256": "0bc69eb75ace360fa16b7a22c35c13e7ceb66bc100ec067fc41a61a1021bddf9",
+  "rotulos": {
+   "lower_o": 8,
+   "digit_0": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "o ou 0"
+ },
+ {
+  "ficha": 26,
+  "sha256": "51a06c9a57ac4541df0148cdfe7e27e1d2fef8f03c36511b45c01ac0fba5359f",
+  "rotulos": {
+   "lower_l": 16,
+   "digit_1": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "1 ou l"
+ },
+ {
+  "ficha": 27,
+  "sha256": "0defd41fc74d2b6af266a5d1d138f9d5ff8ac35409c4d90ca7dd5e9384a89418",
+  "rotulos": {
+   "lower_p": 8,
+   "upper_P": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "p ou P"
+ },
+ {
+  "ficha": 28,
+  "sha256": "895ad1d62f20ae0a12c3d69a7cb03f48f7718c90d1fc5b975a1ea262726e8a11",
+  "rotulos": {
+   "lower_t": 8,
+   "upper_S": 1
+  },
+  "vencedor": "lower_t",
+  "confianca": "alta",
+  "motivo": "haste com travessao e pe curvo: e t, nao S"
+ },
+ {
+  "ficha": 29,
+  "sha256": "f00b13cdbb7b0db263fe58ebede9c60b725c522928ba5eab69376f44b9de407a",
+  "rotulos": {
+   "digit_1": 15,
+   "lower_l": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "1 ou l, sem evidencia conferida"
+ },
+ {
+  "ficha": 30,
+  "sha256": "a9ecc5e955f9fc24546990c49fe23e3665c5beac8e042cff5f83c0aa25b9df99",
+  "rotulos": {
+   "lower_c": 28,
+   "upper_C": 4
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "c ou C"
+ },
+ {
+  "ficha": 31,
+  "sha256": "06195622f896b13c923b6a84edf1fd43165f8f1a6d7ecb2acfc948bd8c3e482f",
+  "rotulos": {
+   "lower_w": 7,
+   "upper_W": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "w ou W"
+ },
+ {
+  "ficha": 32,
+  "sha256": "7d73752af2a2d90eebeb1a73e7f1b32073ef7e3cd00f40857c87f9395e9ab0ac",
+  "rotulos": {
+   "lower_y": 7,
+   "upper_Y": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "y ou Y"
+ },
+ {
+  "ficha": 33,
+  "sha256": "e2cfae76551f3cb4c6bf1b0a40e258c90867963a5934ae8a7661e6cac7f98e2a",
+  "rotulos": {
+   "upper_R": 7,
+   "sym_9814": 1
+  },
+  "vencedor": "upper_R",
+  "confianca": "alta",
+  "motivo": "a letra R; a torre tem ameias"
+ },
+ {
+  "ficha": 34,
+  "sha256": "01cc92f2a2203907f83676ab4bfa0bdba9c2f8dbfde1bb8de1ce60e6fdbf9ba9",
+  "rotulos": {
+   "ligature_c6": 13,
+   "ligature_e6": 2
+  },
+  "vencedor": "ligature_c6",
+  "confianca": "alta",
+  "motivo": "le-se c6"
+ },
+ {
+  "ficha": 35,
+  "sha256": "d27ac11d46bebea001e2c731b5a5bc74a3b24643ec0cd3e982bb1d91a80c077d",
+  "rotulos": {
+   "digit_1": 5,
+   "lower_l": 1
+  },
+  "vencedor": "digit_1",
+  "confianca": "alta",
+  "motivo": "bandeira e base do algarismo 1"
+ },
+ {
+  "ficha": 36,
+  "sha256": "83eac5e6c8eb361901199244e2879ee0eecde91f10af8e7bb545ccbc44bce78b",
+  "rotulos": {
+   "lower_v": 5,
+   "upper_V": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "v ou V"
+ },
+ {
+  "ficha": 37,
+  "sha256": "9e7594faa6296028d5f92e9df2a12c2873c6c8f98c5dd1e3565425af256b85cf",
+  "rotulos": {
+   "lower_w": 5,
+   "upper_W": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "w ou W"
+ },
+ {
+  "ficha": 38,
+  "sha256": "f9b9fc94b762852ab97bc14db1208abf3b0d15592ca305972b7d6db75723f046",
+  "rotulos": {
+   "lower_l": 48,
+   "sym_46": 11
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "borrao escuro sem glifo legivel"
+ },
+ {
+  "ficha": 39,
+  "sha256": "61917c51d7dd3bba35a5c26c1d074d2942d5be38faa53ddd8cd968a612075d8d",
+  "rotulos": {
+   "lower_l": 17,
+   "digit_1": 4
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "1 ou l"
+ },
+ {
+  "ficha": 40,
+  "sha256": "78b960fed5ffb946ea032ba900620f88ab70d377e4106e8b0818140101736178",
+  "rotulos": {
+   "digit_1": 4,
+   "lower_l": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "1 ou l"
+ },
+ {
+  "ficha": 41,
+  "sha256": "833bd49c6821aa84af2131060dcc94de559af9c35f132a502bc3ea366891190f",
+  "rotulos": {
+   "digit_1": 4,
+   "lower_l": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "1 ou l"
+ },
+ {
+  "ficha": 42,
+  "sha256": "bc04b6d6ce769247de68934cc977bdd14f85e83c3dfc395e52ba85346c3ece4c",
+  "rotulos": {
+   "lower_i": 4,
+   "digit_1": 1
+  },
+  "vencedor": "lower_i",
+  "confianca": "media",
+  "motivo": "o pingo do i aparece separado da haste"
+ },
+ {
+  "ficha": 43,
+  "sha256": "5ba9541a15022a084d52844df4195599a831ce85da09663e6947ee5c748005aa",
+  "rotulos": {
+   "lower_o": 4,
+   "lower_s": 1
+  },
+  "vencedor": "lower_o",
+  "confianca": "alta",
+  "motivo": "oval fechado: e o, nao s"
+ },
+ {
+  "ficha": 44,
+  "sha256": "c50e95dd7361df7a8386edfe17701eb116a3e0b3c69124e3b975ac779b09a15f",
+  "rotulos": {
+   "sym_44": 4,
+   "sym_59": 1
+  },
+  "vencedor": "sym_44",
+  "confianca": "alta",
+  "motivo": "virgula, uma peca so"
+ },
+ {
+  "ficha": 45,
+  "sha256": "dfabc763650c70451c3e4ce26a2c8285cb2693222e207970128550e03f1d4ef6",
+  "rotulos": {
+   "lower_o": 11,
+   "digit_0": 3
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "o ou 0"
+ },
+ {
+  "ficha": 46,
+  "sha256": "f55ffa7cc515010049d9d37e5b169336f5bf04967aeab5818d7ef5aef73adb9d",
+  "rotulos": {
+   "lower_v": 3,
+   "lower_h": 1,
+   "sym_44": 1
+  },
+  "vencedor": "lower_v",
+  "confianca": "alta",
+  "motivo": "desenho em V; h e virgula estao os dois errados"
+ },
+ {
+  "ficha": 47,
+  "sha256": "e21bab628f4fbdedeb25b4c0ec5967dafc690b17a0f03aa4f4c849aa7b8678f0",
+  "rotulos": {
+   "lower_s": 6,
+   "upper_S": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "s ou S"
+ },
+ {
+  "ficha": 48,
+  "sha256": "1893a6181c9f181f6d79720f0f815d8940f5509fc2efa2e9859555740b76191b",
+  "rotulos": {
+   "lower_x": 6,
+   "upper_X": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "x ou X"
+ },
+ {
+  "ficha": 49,
+  "sha256": "d2e799ff0b6f40d1fefe43facae22446e5b53ef37c803b3a849e6904387846c0",
+  "rotulos": {
+   "lower_w": 8,
+   "upper_W": 3
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "w ou W"
+ },
+ {
+  "ficha": 50,
+  "sha256": "159ab5c26aa780f2e6f5147d93de5e97c58670174eb1091786ef915d76763956",
+  "rotulos": {
+   "lower_o": 5,
+   "digit_0": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "o ou 0"
+ },
+ {
+  "ficha": 51,
+  "sha256": "0a1c66aa9bdeda23cff07c710ded9f4bea8998d305b174cfacb098075873fed3",
+  "rotulos": {
+   "lower_v": 5,
+   "upper_V": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "v ou V"
+ },
+ {
+  "ficha": 52,
+  "sha256": "a4d6b0c8d8baac98599e67fecd02c5f5e91092c4691faa0c431ebb37fba6b424",
+  "rotulos": {
+   "lower_o": 2,
+   "digit_0": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "o ou 0"
+ },
+ {
+  "ficha": 53,
+  "sha256": "d4435d2ca0facc219fcd23b25ff8f54382c3bb82f6c5444f2614c4b79a671c2b",
+  "rotulos": {
+   "digit_0": 2,
+   "lower_o": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "o ou 0"
+ },
+ {
+  "ficha": 54,
+  "sha256": "2b4ac9c2a4e63f52f375717224b5da35df00868228ac3544a41c2df1891bb16d",
+  "rotulos": {
+   "lower_l": 2,
+   "digit_1": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "1 ou l"
+ },
+ {
+  "ficha": 55,
+  "sha256": "063a45cee71132af86f233757d1e8a4033b8bd49a79a6afba54970ef81d08c1e",
+  "rotulos": {
+   "ligature_c6": 2,
+   "ligature_e6": 1
+  },
+  "vencedor": "ligature_c6",
+  "confianca": "alta",
+  "motivo": "le-se c6"
+ },
+ {
+  "ficha": 56,
+  "sha256": "5d6eba5323778af710b6eee0f19194e7a547f4924ddf7182a174c73e2719cd99",
+  "rotulos": {
+   "upper_I": 2,
+   "lower_r": 1
+  },
+  "vencedor": "lower_r",
+  "confianca": "alta",
+  "motivo": "haste com braco a direita: e r. A MAIORIA (2 em upper_I) e que esta errada"
+ },
+ {
+  "ficha": 57,
+  "sha256": "9fa96867dfd8aabf1cc8bc86a31d4d24143b09f03718dc004f5824ebdda12f35",
+  "rotulos": {
+   "lower_s": 2,
+   "upper_S": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "s ou S"
+ },
+ {
+  "ficha": 58,
+  "sha256": "c5ff60c6544b42517cc09b434dbb32e89893b7790a6544c53b3f653c05ae7a90",
+  "rotulos": {
+   "lower_s": 2,
+   "upper_S": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "s ou S"
+ },
+ {
+  "ficha": 59,
+  "sha256": "5cc7c4b1f06e01f5651209d746ebb8500bec1cf8804000fb40f84d0dc83d944f",
+  "rotulos": {
+   "sym_39": 2,
+   "sym_44": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "apostrofe ou virgula: so a altura na linha separa, e o recorte a perdeu"
+ },
+ {
+  "ficha": 60,
+  "sha256": "41d29f605534bf59903d7d8dc885416465fa4627c9534928464c02f610d1f4e6",
+  "rotulos": {
+   "sym_44": 2,
+   "sym_39": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "apostrofe ou virgula"
+ },
+ {
+  "ficha": 61,
+  "sha256": "d59b8aa26ea772a95ef2db7fd05f78addcb24a7558e90a35d653ef24adf7177c",
+  "rotulos": {
+   "upper_E": 4,
+   "upper_F": 2
+  },
+  "vencedor": "upper_E",
+  "confianca": "alta",
+  "motivo": "tem o braco de baixo: e E, e nao F"
+ },
+ {
+  "ficha": 62,
+  "sha256": "874691bbf140929551ae826d7fb281c084daff9ed0600ca6cadba07b35b0351b",
+  "rotulos": {
+   "lower_v": 3,
+   "upper_V": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "v ou V"
+ },
+ {
+  "ficha": 63,
+  "sha256": "7e16de9d08f5dfdd798dab4061b85b7c25373dea050f4b039784257be7ae832b",
+  "rotulos": {
+   "sym_39": 3,
+   "sym_44": 2
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "apostrofe ou virgula"
+ },
+ {
+  "ficha": 64,
+  "sha256": "98eaa24135d79bb5a84d4cd21d912ddc4d9c03db9efa809ff7fe2d35f217236f",
+  "rotulos": {
+   "sym_44": 6,
+   "sym_39": 4
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "apostrofe ou virgula"
+ },
+ {
+  "ficha": 65,
+  "sha256": "99e751cc39226d30e67d18a8fb7c1c3f2f9cb8e93a32d9763e062e40abfc0876",
+  "rotulos": {
+   "lower_p": 4,
+   "upper_P": 3
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "p ou P"
+ },
+ {
+  "ficha": 66,
+  "sha256": "3cea3531fb889b546b53df0e95e4a0e46898edc03811f207a97290d92882b326",
+  "rotulos": {
+   "digit_0": 1,
+   "upper_O": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "0 ou O"
+ },
+ {
+  "ficha": 67,
+  "sha256": "ed24ff2b424b61c0d9a1f26b9b9805fd2ee3b87c99252621d9dc007e70e855ab",
+  "rotulos": {
+   "digit_0": 1,
+   "upper_O": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "0 ou O"
+ },
+ {
+  "ficha": 68,
+  "sha256": "86fc8b29bc7abe7e12582ab6ac2664efb81153b7cc2ea200ce4d92e23c0f8c55",
+  "rotulos": {
+   "digit_1": 1,
+   "lower_l": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "1 ou l"
+ },
+ {
+  "ficha": 69,
+  "sha256": "db7f014ab1feb34b438df11abea230701bfb940d92fea0f4e8b46156cbe5955f",
+  "rotulos": {
+   "digit_1": 1,
+   "lower_l": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "1 ou l"
+ },
+ {
+  "ficha": 70,
+  "sha256": "eb41e404946797cff0c45dfe312e58d518c3a0f4af13e74f56ccfcd887eaba7e",
+  "rotulos": {
+   "digit_2": 1,
+   "lower_z": 1
+  },
+  "vencedor": "lower_z",
+  "confianca": "alta",
+  "motivo": "diagonal reta e topo chato: e z; o 2 tem topo curvo e volta"
+ },
+ {
+  "ficha": 71,
+  "sha256": "307a86fc03c60a7baa20a9a8269be5f9f15fc6ade6c4473a2aac5cb569db57ae",
+  "rotulos": {
+   "ligature_rv": 1,
+   "upper_N": 1
+  },
+  "vencedor": "ligature_rv",
+  "confianca": "alta",
+  "motivo": "haste seguida de V, igual as referencias de rv; o N tem duas hastes"
+ },
+ {
+  "ficha": 72,
+  "sha256": "be840a23f9b9ce4c39999ce857fdffb26631e1ba414e63b20c71b1d7cb0c1526",
+  "rotulos": {
+   "ligature_rv": 1,
+   "upper_N": 1
+  },
+  "vencedor": "ligature_rv",
+  "confianca": "alta",
+  "motivo": "haste seguida de V, igual as referencias de rv"
+ },
+ {
+  "ficha": 73,
+  "sha256": "00147b7689fa1912493c8eb0bc895cd0c8c0fea8d8d6e0503dc69bce3c002521",
+  "rotulos": {
+   "ligature_tr": 1,
+   "lower_t": 1
+  },
+  "vencedor": "ligature_tr",
+  "confianca": "alta",
+  "motivo": "le-se tr, duas letras"
+ },
+ {
+  "ficha": 74,
+  "sha256": "162e4114762cbaaa9f8e43aa87a285c430de34e97ed95495dec0491851db3951",
+  "rotulos": {
+   "lower_b": 1,
+   "lower_h": 1
+  },
+  "vencedor": "lower_b",
+  "confianca": "alta",
+  "motivo": "b italico, com a barriga fechada embaixo da haste"
+ },
+ {
+  "ficha": 75,
+  "sha256": "52afeb41fa6d1e6f6690c949c55ac70dc0d06d110ffa08fae298d24cd8ee35d8",
+  "rotulos": {
+   "lower_h": 1,
+   "upper_B": 1
+  },
+  "vencedor": "upper_B",
+  "confianca": "alta",
+  "motivo": "B italico maiusculo, duas barrigas"
+ },
+ {
+  "ficha": 76,
+  "sha256": "88de5aed9449738916cc353f7f0f5ee4db1290fa76f3e20acc93e9ff212914a7",
+  "rotulos": {
+   "lower_s": 1,
+   "upper_S": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "s ou S"
+ },
+ {
+  "ficha": 77,
+  "sha256": "4a432b0b4897b24ba24b0ce4873123367f1f8026d574527d547bc87f20e5b0e5",
+  "rotulos": {
+   "lower_v": 1,
+   "upper_V": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "v ou V"
+ },
+ {
+  "ficha": 78,
+  "sha256": "0040d190358d3319ae06932a2336594f2440946325a3d3b4ab1112c4dc19b918",
+  "rotulos": {
+   "lower_v": 1,
+   "upper_V": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "v ou V"
+ },
+ {
+  "ficha": 79,
+  "sha256": "8c405b14839bf629ed9c79933fb9ceddc2b6c37db35631a660c6a4672dd823b6",
+  "rotulos": {
+   "lower_v": 1,
+   "upper_V": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "v ou V"
+ },
+ {
+  "ficha": 80,
+  "sha256": "685abf1db0e78ea1b11abd9212630ba7e1ac61cdb275a5c072b42e781b20403e",
+  "rotulos": {
+   "lower_v": 1,
+   "upper_V": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "v ou V"
+ },
+ {
+  "ficha": 81,
+  "sha256": "9fb7a32033d4f43641b4e11aa32885447863e2bdd4e4c00d0e4b0c059f1dc8fb",
+  "rotulos": {
+   "lower_w": 1,
+   "upper_W": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "w ou W"
+ },
+ {
+  "ficha": 82,
+  "sha256": "d5237a8b684beb7c2d64ce8f9f02b66207ea1534d12026b99d3d4c4e537a59ab",
+  "rotulos": {
+   "sym_39": 1,
+   "sym_44": 1
+  },
+  "vencedor": null,
+  "confianca": "indecidivel",
+  "motivo": "apostrofe ou virgula"
+ },
+ {
+  "ficha": 83,
+  "sha256": "1f7a9254eb8e9f4053ad029e0acf49cea39c3230a6fe05ea12cbcb8fb0480f71",
+  "rotulos": {
+   "sym_44": 1,
+   "sym_46": 1
+  },
+  "vencedor": "sym_44",
+  "confianca": "alta",
+  "motivo": "tem cauda: e virgula; o ponto final e redondo"
+ }
+]

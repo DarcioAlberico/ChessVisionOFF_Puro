@@ -1,0 +1,30 @@
+{
+  "csv": "data\\labels.csv",
+  "rows_before": 4178,
+  "valid_before": 4177,
+  "duplicate_groups": 382,
+  "removed": 444,
+  "by_split": {
+    "(sem split)": {
+      "antes": 0,
+      "removidos": 2,
+      "depois": -2
+    },
+    "test": {
+      "antes": 393,
+      "removidos": 24,
+      "depois": 369
+    },
+    "train": {
+      "antes": 3291,
+      "removidos": 376,
+      "depois": 2915
+    },
+    "val": {
+      "antes": 401,
+      "removidos": 42,
+      "depois": 359
+    }
+  },
+  "groups_across_splits": 3
+}

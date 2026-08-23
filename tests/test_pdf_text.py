@@ -8,12 +8,14 @@ import fitz
 from chess_diagram_ocr.pdf_text import (
     DEFAULT_RADIUS_PT,
     TextLine,
+    _is_diagram_font_row,
     assign_lines_to_diagrams,
     blocks_near,
     context_from_lines,
     contexts_for_page,
     dominant_placement,
     fold,
+    is_diagram_font,
     page_text_lines,
     parse_context,
     running_page_number,
@@ -38,6 +40,37 @@ def pdf_with_lines(pages: list[list[tuple[str, float, float]]]) -> fitz.Document
         for text, x, y in lines:
             page.insert_text((x, y), text, fontsize=11)
     return doc
+
+
+def write_in_font(page: fitz.Page, font: str, items: list[tuple[str, float, float]], size: float = 24.0) -> None:
+    """Escreve `items` na página declarando `font` como nome da fonte.
+
+    A fonte entra **sem programa embutido**, e é por isso que o nome chega inteiro do outro
+    lado: com um programa embutido o MuPDF reporta o nome interno dele (`NimbusSans-Regular`)
+    e não o `/BaseFont` do PDF. Sem programa não há nome interno, e o `get_text("dict")`
+    devolve o que o PDF declara -- que é justamente o que `_is_diagram_font_row` lê.
+
+    Não versionar uma `ChessMerida.ttf` só para o teste é deliberado: o repositório não
+    versiona binário de fonte, e o que se exercita aqui é o filtro, não o desenho do glifo.
+    """
+    doc = page.parent
+    font_xref = doc.get_new_xref()
+    doc.update_object(
+        font_xref,
+        f"<< /Type /Font /Subtype /TrueType /BaseFont /{font} "
+        "/FirstChar 32 /LastChar 255 /Encoding /WinAnsiEncoding >>",
+    )
+    resources = int(doc.xref_get_key(page.xref, "Resources")[1].split()[0])
+    alias = f"Cvoff{font_xref}"
+    doc.xref_set_key(resources, f"Font/{alias}", f"{font_xref} 0 R")
+
+    if not page.get_contents():
+        page.insert_text((0.0, 0.0), " ", fontsize=1)
+    contents = page.get_contents()[0]
+    operators = "\n".join(
+        f"BT /{alias} {size} Tf {x} {PAGE_HEIGHT - y} Td ({text}) Tj ET" for text, x, y in items
+    )
+    doc.update_stream(contents, doc.xref_stream(contents) + b"\n" + operators.encode("latin-1"))
 
 
 class SideToMovePatternTests(unittest.TestCase):
@@ -295,6 +328,7 @@ class PageTextTests(unittest.TestCase):
 
         self.assertEqual(textos, ["31"])
 
+
     def test_blocks_near_ordena_por_distancia(self) -> None:
         doc = pdf_with_lines([[("perto", 100, 290), ("longe", 100, 340)]])
         textos = blocks_near(doc[0], (90.0, 100.0, 300.0, 300.0), radius_pt=60.0)
@@ -315,6 +349,154 @@ class PageTextTests(unittest.TestCase):
         doc = pdf_with_lines([[("qualquer coisa", 100, 300)]])
         self.assertEqual(contexts_for_page(doc[0], []), [])
         doc.close()
+
+
+class DiagramFontTests(unittest.TestCase):
+    """O tabuleiro impresso como texto, nas duas codificações que o acervo tem (S-217)."""
+
+    NOMES_DE_DIAGRAMA = [
+        # medidos no acervo: as tres fontes que desenham tabuleiro, em 6 livros
+        "SkakNew-Diagram",
+        "ChessMerida",
+        "Chess-Merida",
+        # o prefixo de subconjunto do PDF nao pode esconder o nome
+        "ABCDEF+ChessMerida",
+    ]
+
+    NOMES_QUE_NAO_SAO = [
+        # figurina: desenha a peca no meio do lance, e o texto ao redor e prosa de verdade
+        "SkakNew-Figurine",
+        "SkakNew-Figurine-Bold",
+        "SemFigNormal",
+        "SemFigBold",
+        # as fontes de prosa dos mesmos livros
+        "TimesNewRomanPSMT",
+        "CMSS12",
+        "Cambria",
+        "GlyphLessFont",
+        "ArialMT",
+        "Helvetica",
+    ]
+
+    FILAS = [
+        # (texto da linha, fonte, e uma nota do porque)
+        # `Polgar`: casa vazia e `0`/`Z`, e o crivo de densidade ja pegava
+        ("0Z0Z0mkZ", "SkakNew-Diagram"),
+        ("Z0Z0Z0a0", "SkakNew-Diagram"),
+        # `Polgar` de novo, a fila que ESCAPAVA: so tres casas vazias, e o crivo pedia quatro
+        ("0l0o0ORL", "SkakNew-Diagram"),
+        # os quatro livros `_hq`: casa vazia e `+`, a codificacao do export do Lichess
+        ("t+v+t+l+", "ChessMerida"),
+        ("+p+n+p+", "ChessMerida"),
+        ("Kb+r", "ChessMerida"),
+        ("OoO", "ChessMerida"),
+        # `Dvoretsky`: casa vazia e `+` ou `*`, e a fila chega partida em um caractere
+        ("*", "Chess-Merida"),
+        ("+", "Chess-Merida"),
+        ("P", "Chess-Merida"),
+        ("k", "Chess-Merida"),
+        ("B", "Chess-Merida"),
+    ]
+
+    LEGENDAS = [
+        # o mesmo texto curto, na fonte de prosa: e legenda, e nao pode cair
+        ("B", "TimesNewRomanPSMT"),
+        ("P", "TimesNewRomanPSMT"),
+        ("8", "ArialMT"),
+        ("Steinitz", "TimesNewRomanPSMT"),
+        ("Bremen 1998", "Cambria"),
+        ("11: Brancas jogam *", "TimesNewRomanPSMT"),
+        # lance em figurina: o `X` e uma captura, e apagar a linha apagaria o lance
+        ("NXe3", "SkakNew-Figurine"),
+        ("Qd5", "SkakNew-Figurine"),
+    ]
+
+    def test_nome_de_fonte_de_diagrama(self) -> None:
+        for nome in self.NOMES_DE_DIAGRAMA:
+            with self.subTest(nome=nome):
+                self.assertTrue(is_diagram_font(nome))
+
+    def test_nome_que_nao_e_de_diagrama(self) -> None:
+        for nome in self.NOMES_QUE_NAO_SAO:
+            with self.subTest(nome=nome):
+                self.assertFalse(is_diagram_font(nome))
+
+    def test_fila_de_tabuleiro_cai_pela_fonte(self) -> None:
+        for texto, fonte in self.FILAS:
+            with self.subTest(texto=texto, fonte=fonte):
+                self.assertTrue(_is_diagram_font_row(texto, [fonte]))
+
+    def test_legenda_na_fonte_de_prosa_nao_cai(self) -> None:
+        """O risco desta família de filtro é sempre o falso positivo, e ele mora aqui.
+
+        `B` sozinho é o marcador de *pretas jogam* do `Dvoretsky` -- exatamente o dado que a
+        S-16 existe para achar -- e também é o bispo do tabuleiro dele. Só a fonte separa os
+        dois, e nas páginas 172 e 262 do livro os dois estão na mesma página.
+        """
+        for texto, fonte in self.LEGENDAS:
+            with self.subTest(texto=texto, fonte=fonte):
+                self.assertFalse(_is_diagram_font_row(texto, [fonte]))
+
+    def test_linha_que_mistura_fonte_de_diagrama_com_prosa_fica(self) -> None:
+        """Nenhuma linha do acervo mistura (0 de 229.510), e é por isso que a regra é `all`.
+
+        Se um livro ainda não medido grudar um glifo de tabuleiro numa legenda, o que se
+        perde é o glifo -- e não a legenda.
+        """
+        self.assertFalse(_is_diagram_font_row("+ Steinitz", ["ChessMerida", "TimesNewRomanPSMT"]))
+
+    def test_sem_fonte_vale_o_crivo_de_texto(self) -> None:
+        """Linha do OCR da S-43 não tem fonte, e o crivo de densidade continua valendo."""
+        self.assertTrue(_is_diagram_font_row("0Z0Z0mkZ"))
+        self.assertFalse(_is_diagram_font_row("Steinitz"))
+
+    def test_lichess_nao_ocupa_a_legenda(self) -> None:
+        """`1001 Sacrificios` p.169: a legenda vinha com as filas em `ChessMerida`."""
+        doc = pdf_with_lines([[("158", 200, 100), ("Pretas jogam", 200, 480)]])
+        write_in_font(
+            doc[0],
+            "ChessMerida",
+            [("t+v+t+l+", 200, 140), ("OoO", 200, 180), ("+p+n+p+", 200, 220), ("Kb+r", 200, 260)],
+        )
+        textos = [item.text for item in page_text_lines(doc[0])]
+        doc.close()
+
+        self.assertEqual(textos, ["158", "Pretas jogam"])
+
+    def test_marcador_de_lado_sobrevive_ao_bispo_na_mesma_pagina(self) -> None:
+        """`Dvoretsky` p.172: um `B` é o bispo do tabuleiro, o outro é *Black to move*."""
+        doc = pdf_with_lines([[("B", 300, 350), ("Golberg - Zhuk", 300, 400)]])
+        write_in_font(doc[0], "Chess-Merida", [("B", 200, 120), ("*", 200, 160), ("+", 200, 200)])
+        textos = [item.text for item in page_text_lines(doc[0])]
+        doc.close()
+
+        self.assertEqual(textos.count("B"), 1)
+        self.assertIn("Golberg - Zhuk", textos)
+
+    def test_digito_de_fila_em_bloco_proprio_nao_vira_legenda(self) -> None:
+        """`Polgar` p.178: cada dígito de fila é um bloco de uma linha, e os oito passavam.
+
+        A contagem por bloco nunca disparava -- é `>= 6` num bloco que tem 1. O que os
+        identifica é a faixa: alinhados em x, e os oito distintos.
+        """
+        doc = pdf_with_lines([[("962", 90, 100)] + [(str(rank), 60, 140 + 30 * i) for i, rank in enumerate(range(8, 0, -1))]])
+        textos = [item.text for item in page_text_lines(doc[0])]
+        doc.close()
+
+        self.assertEqual(textos, ["962"])
+
+    def test_coluna_de_resultados_de_torneio_nao_e_borda_de_tabuleiro(self) -> None:
+        """`1937 Kemeri`: a tabela de cruzamento tem dezenas de `1` soltos, e são resultados.
+
+        É o caso que impede a regra de ser "conte a página inteira": alinhados eles são,
+        mas repetidos -- e a borda de um tabuleiro traz cada fila uma vez só.
+        """
+        doc = pdf_with_lines([[("Flohr", 200, 120)] + [("1", 60, 140 + 24 * i) for i in range(9)]])
+        textos = [item.text for item in page_text_lines(doc[0])]
+        doc.close()
+
+        self.assertEqual(textos.count("1"), 9)
+        self.assertIn("Flohr", textos)
 
 
 class RunningPageNumberTests(unittest.TestCase):
