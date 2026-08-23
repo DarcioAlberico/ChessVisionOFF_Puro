@@ -595,21 +595,34 @@ em 23/08, e a seção abaixo é sobre ela.
 as 66, com o mesmo código commitado; os números acima já são os novos. O deslocamento é todo
 das três páginas do Yusupov que faltavam ser medidas:
 
-| | 63 páginas | 66 páginas | de onde vem |
-|---|---|---|---|
-| anotados | 110 | **115** | dois do `p11`, três do `p14` |
-| casados | 103 | **106** | os do `p11` e um dos três do `p14` |
-| detectados | 104 | **110** | e um deles não é diagrama |
-| falsos positivos | 1 | **1** | o `p2` (arte de capa, 0,177); os dois fragmentos de scan do `p14` sumiram com a S-176 |
-| recall de detecção | 0,9364 | **0,9478** | a S-176 devolveu os dois do `p14` que o detector perdia |
-| precisão de detecção | 0,9904 | **0,9909** | idem |
-| exportados (produção) | 82 | **88** | +6 sobre um denominador que subiu 5 |
-| `comparable` | 93 | **94** | o 1-11 do `p14`, único dos três que é casado |
-| `exact` (produção) | 89 | **90** | e os quatro modelos o leem certo |
+**Duas causas se moveram, e a tabela as separa de propósito.** Entre o relatório de 22/08 e o de
+hoje mudaram o **conjunto** (63 → 66 páginas) e o **código** (a S-176, commitada no 9eb6685).
+Somar as duas numa coluna só seria repetir o defeito que esta seção inteira documenta, então
+aqui estão as três medições, todas da produção:
 
-**Nenhuma leitura do quadro dos quatro modelos muda**: as três conclusões acima valem com os
-números novos, porque a parte que decide correção — `exact`, exatidão condicional, exportados
-e errados, exatidão de campo — é idêntica nas quatro colunas. O que se moveu foi denominador.
+| | 63 pág., código de 22/08 | 66 pág., código de 22/08 | 66 pág., **hoje** (S-176) |
+|---|---|---|---|
+| anotados | 110 | 115 | 115 |
+| detectados | 104 | 109 | **110** |
+| casados | 103 | 106 | **109** |
+| falsos positivos | 1 | 3 | **1** |
+| recall de detecção | 0,9364 | 0,9217 | **0,9478** |
+| precisão de detecção | 0,9904 | 0,9725 | **0,9909** |
+| exportados | 82 | 85 | **88** |
+| `comparable` | 93 | 94 | **96** |
+| `exact` | 89 | 90 | **92** |
+
+Lendo por coluna: **o conjunto** acrescentou 5 diagramas e 3 páginas e fez o número **piorar** —
+recall de 0,9364 para 0,9217, precisão de 0,9904 para 0,9725 — porque as páginas novas trouxeram
+um defeito que o conjunto antigo não continha. **O código** então o consertou, e devolveu mais do
+que o conjunto tinha tirado. As duas colunas do meio e da direita medem o mesmo conjunto; a
+diferença entre elas é inteiramente a S-176.
+
+**Nenhuma leitura do quadro dos quatro modelos muda em nenhuma das três colunas**: as três
+conclusões acima valem, porque a parte que decide correção — exatidão condicional, exportados e
+errados, exatidão de campo — mantém a mesma ordem entre os modelos. O `mhsp` é o pior nas cinco
+linhas, o controle é o único que não exporta errado, e a produção lê certo mais diagramas no
+total. O que se moveu foi denominador e detecção, não veredito.
 
 ### A `p14` do Yusupov, e o defeito de detecção que ela mede
 
@@ -637,30 +650,54 @@ aqui é que **a página publica a análise**, e ela depende da posição exata:
 | 1-11 | `5rk1/qp1r2pp/1bpp1p1B/p1nPpP1Q/P1P1P3/2N4P/1P3P1K/1R4R1`, brancas | `1.♗xg7! ♖xg7 2.♖xg7† ♔xg7 3.♖g1† ♔h8 4.♕g4+−`, e a linha lateral `1.♖xg7† ♖xg7 2.♗xg7`. Ambas legais. O `4...♖f7` da ressalva exige `f7` vazia |
 
 As três são legais para o `check_position`, que **infere sozinho o mesmo lado a jogar** que a
-notação da página indica. E o 1-11, o único dos três que o detector casa, é lido **certo pelos
-quatro modelos** — `exact` sobe de 89 para 90 na produção e +1 em cada uma das outras três
-colunas. A ressalva do erro correlacionado continua valendo entre mim e os modelos; a análise
+notação da página indica.
+
+Quando foram escritas, só o 1-11 era casado pelo detector, e os outros dois ficaram de reserva.
+A S-176 mudou isso no mesmo dia: **os três são casados agora, e os quatro modelos leem os três
+certo.** O Yusupov sai de `comparable` 1 para 3 e de `exact` 1 para 3, e com isso
+`enough_comparable` vira `True` — o livro deixa de ser só contagem de detecção e passa a ter base
+de correção. A ressalva do erro correlacionado continua valendo entre mim e os modelos; a análise
 impressa, essa, é independente dos dois.
 
-Os outros dois ficam de reserva: são referência conferida esperando o detector achar as caixas.
+**O defeito que ela mediu, e que durou um dia.** Anotada a página, o `cvoff-field` de 22/08 não
+usava o contorno nela: usava a imagem embutida, e as imagens embutidas da `p14` são **fragmentos
+de scan**, não diagramas. Media 2 detectados, 1 casado (o 1-11, IoU 0,76), 2 perdidos, e um falso
+positivo que era o retângulo `(-9, 12, 451, 415)` — a faixa de topo do scan. O livro inteiro caía
+para recall 0,500 e precisão 0,600, o pior do conjunto.
 
-**O que ela mede, e por que o número piora.** O `cvoff-field` não usa o contorno nesta página:
-usa a imagem embutida, e as imagens embutidas da `p14` são **fragmentos de scan**, não
-diagramas. O relatório vê:
+O `detection/__init__.py` já documentava a divisão — "a página inteira é um scan: uma imagem só,
+cobrindo tudo" — e o Yusupov é um desses livros; o que ninguém tinha visto é que a `p14` tem o
+scan quebrado em **três** imagens em vez de uma, e isso faz o caminho embutido parecer aplicável
+quando não é.
 
-| | |
-|---|---|
-| detectados na página | 2 |
-| casados com a anotação | 1 (o 1-11, IoU 0,76) |
-| falsos positivos | 1 — o retângulo `(-9, 12, 451, 415)`, que é o fragmento de topo do scan |
-| perdidos | 2 (1-9 e 1-10) |
+**A S-176 fechou isso, e este caso é a evidência dela.** `is_page_band` e
+`contour_inside_candidate` derrubam a faixa e deixam o contorno vencer. Medido no mesmo conjunto,
+só trocando o código:
 
-O livro inteiro cai para recall 0,500 e precisão 0,600, e é o pior do conjunto. **É medição
-correta de um defeito real**, e o defeito tem nome: nesta página o caminho de imagem embutida
-vence o de contorno, e o de contorno é o que está certo. O `detection/__init__.py` já
-documenta a divisão — "a página inteira é um scan: uma imagem só, cobrindo tudo" — e o Yusupov
-é um desses livros, mas a `p14` tem o scan quebrado em três imagens em vez de uma, o que faz o
-caminho embutido parecer aplicável quando não é. A régua agora tem um caso que exercita isso.
+| Yusupov (4 páginas, 6 diagramas) | 22/08 | hoje |
+|---|---|---|
+| casados | 3 | **5** |
+| falsos positivos | 2 | **1** |
+| recall / precisão | 0,500 / 0,600 | **0,833 / 0,833** |
+| `comparable` / `exact` | 1 / 1 | **3 / 3** |
+| `enough_comparable` | `False` | **`True`** |
+
+O falso positivo que **sobra** é o que deve sobrar: a arte de capa da `p2`, lida a 0,177. A S-176
+matou as duas faixas fantasma sem matar a medição de falso positivo, que é a coisa que uma página
+`sem-diagrama` existe para não deixar perder. Uma guarda que zerasse a coluna teria zerado junto a
+capacidade de detectá-la. Confirmado por fora rodando `detect_diagrams` com e sem a guarda no
+`GALLAGHER p124`: antes a única caixa da página era a faixa embutida de 308×274 pt, depois é o
+diagrama de contorno de 119×120 pt.
+
+**E o conserto é dirigido, o que é a parte difícil.** No `per_book`, os **outros 28 livros do
+conjunto não se moveram em nenhum dos oito campos** — a mudança inteira está nas duas páginas que
+tinham o defeito. É o que separa "a guarda consertou a `p14`" de "a guarda mexeu na régua
+inteira", e sem o conjunto de campo não haveria como dizer qual dos dois aconteceu.
+
+**O que fica de lição, e não é sobre detecção.** O defeito existiu por um dia inteiro, e nenhuma
+guarda o teria achado. Ele só apareceu porque uma página nova foi anotada **contra a imagem** em
+vez de contra a saída do modelo — e o que a anotação correta produziu, no primeiro momento, foi
+um número **pior**. Uma régua que só melhora não está medindo.
 
 ### Como foi anotado, e o que eu errei
 
@@ -693,11 +730,32 @@ independente no sentido estrito.
 
 **1. `evaluate_field` engole "arquivo não existe" e devolve isso como recall.** O laço tem um
 `except Exception` que transforma qualquer falha de leitura em "não detectou nada"
-(`field_eval.py:653-657`). Nesta sessão, 11 páginas entraram com o nome do PDF em codificação
-dupla (`Eröffnungswege` → `ErÃ¶ffnungswege`), os arquivos não abriram, e o relatório saiu com
-**recall 0,7596** em vez de 0,9364 — sem nada além de um `WARNING` que diz a mesma frase que
-uma página legitimamente vazia diz. Um nome errado tem de derrubar a medição, não baratear o
-número.
+(`field_eval.py:655`). Em 2026-08-22, 11 páginas entraram com o nome do PDF em codificação
+dupla (`Eröffnungswege` → `ErÃ¶ffnungswege`), os arquivos não abriram, e o relatório daquele dia
+saiu com **recall 0,7596** em vez dos **0,9364** que o código de então valia — sem nada além de
+um `WARNING` que diz a mesma frase que uma página legitimamente vazia diz. Um nome errado tem de
+derrubar a medição, não baratear o número.
+
+> **Corrigido em outra branch, ainda aberto aqui — e o merge tem de trocar este parágrafo.** O
+> commit `6370a7c` (PR #6, branch `claude/competent-vaughan-d2bf5e`, que sai da `main`) fecha
+> exatamente isto: só
+> `NoBoardDetectedError` continua virando zero detectados, qualquer outra exceção derruba a
+> medição com caminho, página e causa, e os PDFs das páginas revisadas são conferidos **antes**
+> da primeira leitura — nomeando a pasta e, quando existe lá um arquivo que só difere pela
+> codificação do nome, qual é ele. O `cvoff-field` sai com código 2 em vez de publicar um número
+> mais barato.
+>
+> **Cuidado com o número ao fazer o merge: `S-218` foi usado duas vezes, para coisas
+> diferentes.** Lá é este conserto do `except Exception`; aqui é o item de procedência no JSON,
+> mais abaixo neste mesmo arquivo. Duas sessões escolheram o número lendo cada uma o disco do
+> próprio worktree. Por isso o parágrafo acima aponta o **commit**, e não o número.
+>
+> Enquanto os dois lados não se encontrarem, aquela branch tem o defeito fechado e este documento
+> diz que está aberto. **O `test_docs` confere presença de seção, não se o que a seção afirma ainda é
+> verdade** — é a mesma família de buraco da S-100, que confere identidade de conjunto e não de
+> código. Os números `0,7596` e `0,9364` acima são de 2026-08-22 e **não retroagem**: o
+> `0,9478` de hoje é pós-S-176, e trocar um pelo outro faria o parágrafo afirmar que o pipeline
+> já valia isso antes da mudança que o levou até lá.
 
 **2. O relatório de campo não grava com que modelo foi medido.** Os quatro JSON de 2026-08-22
 só se distinguem pelo nome do arquivo. A comparação do quadro acima depende de quem gravou
