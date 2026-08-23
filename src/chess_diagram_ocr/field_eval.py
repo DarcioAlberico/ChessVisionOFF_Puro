@@ -33,12 +33,14 @@ from __future__ import annotations
 import json
 import logging
 import time
+import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .atomic_io import atomic_write_text
+from .board_detection import NoBoardDetectedError
 from .config import ACCEPT_MIN_CONFIDENCE
 from .service import OcrService, RecognitionOptions, RecognizedDiagram
 
@@ -616,6 +618,127 @@ def evaluate_page(
     return relatorio
 
 
+class MissingFieldPdfError(FileNotFoundError):
+    """Um PDF citado pelo conjunto de campo não está onde a medição vai procurá-lo (S-218).
+
+    **É uma falha, e não um dado.** Até 2026-08-22 o laço de `evaluate_field` capturava
+    `Exception` inteira e transformava qualquer tropeço em `lidos = []` -- e "o arquivo não
+    existe" é indistinguível, nessa forma, de "esta página não tem tabuleiro". Naquele dia 11
+    páginas entraram no conjunto com o nome do livro em codificação dupla
+    (`Eröffnungswege` gravado como `ErÃ¶ffnungswege`), nenhum dos arquivos abriu, e o
+    relatório saiu com `detection_recall` **0,7596** onde o pipeline valia **0,9364**. O
+    único sinal foi um WARNING com a mesma frase que uma página legitimamente vazia produz.
+
+    Uma métrica medida sobre arquivos que não abriram não é uma métrica ruim, é um número
+    sobre outra coisa -- e ele foi para os documentos como se fosse regressão do detector.
+    Por isso isto derruba a medição em vez de baixá-la.
+
+    `FileNotFoundError` e não uma classe solta porque `cli.run_main` já traduz `OSError` para
+    pt-BR e devolve `EXIT_BAD_INPUT`: um caminho errado no conjunto é entrada inválida, que é
+    exatamente a classe 2.
+    """
+
+
+class FieldPageReadError(RuntimeError):
+    """Falha ao ler uma página do conjunto que **não** é "esta página não tem tabuleiro".
+
+    PDF que existe mas não abre, página fora do arquivo, backend sem checkpoint: nada disso é
+    resultado de medição. A mensagem carrega o caminho, o número da página e o texto original
+    da exceção -- o original porque é ele que `cli.message_for` traduz e `cli.classify` lê.
+    """
+
+
+def _pdf_path(page: FieldPage, pdf_dir: Path | None) -> Path:
+    """Onde a medição procura o PDF desta página. Um lugar só, para o pré-voo e o laço."""
+    return Path(pdf_dir) / page.pdf if pdf_dir is not None else Path(page.pdf)
+
+
+def _undo_double_encoding(nome: str) -> str | None:
+    """`"ErÃ¶ffnungswege.pdf"` → `"Eröffnungswege.pdf"`, quando o nome passou por UTF-8 duas vezes.
+
+    `None` quando a volta não muda nada ou não é possível -- o nome já estava certo.
+    """
+    try:
+        recuperado = nome.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return None
+    return recuperado if recuperado != nome else None
+
+
+def _name_keys(nome: str) -> set[str]:
+    """As formas do nome que são "o mesmo arquivo" para efeito de sugestão.
+
+    Codificação dupla desfeita, NFC (o macOS grava NFD) e caixa dobrada: são as três maneiras
+    de o conjunto e o disco discordarem sobre um nome que um humano leria como igual.
+    """
+    variantes = {nome}
+    recuperado = _undo_double_encoding(nome)
+    if recuperado:
+        variantes.add(recuperado)
+    return {unicodedata.normalize("NFC", variante).casefold() for variante in variantes}
+
+
+def _look_alike(caminho: Path) -> str | None:
+    """Um arquivo da mesma pasta que só difere do procurado pela codificação do nome.
+
+    A sugestão é o que separa "arrume o conjunto" de "procure o que aconteceu": sem ela, o
+    incidente de 2026-08-22 continua sendo 11 caminhos que não existem e nenhuma pista de que
+    os arquivos estavam ali o tempo todo, com o nome certo.
+    """
+    pasta = caminho.parent
+    procuradas = _name_keys(caminho.name)
+    try:
+        existentes = sorted(item.name for item in pasta.iterdir() if item.is_file())
+    except OSError:
+        return None
+    return next((nome for nome in existentes if _name_keys(nome) & procuradas), None)
+
+
+def missing_field_pdfs(pages: Sequence[FieldPage], *, pdf_dir: Path | None = None) -> list[Path]:
+    """Os PDFs das páginas **revisadas** que não estão onde a medição vai procurar.
+
+    Só as revisadas porque só elas são medidas: um rascunho pendente citando um PDF que ainda
+    não chegou à máquina não pode impedir a medição do resto.
+    """
+    caminhos: dict[Path, None] = {}
+    for pagina in pages:
+        if pagina.reviewed:
+            caminhos.setdefault(_pdf_path(pagina, pdf_dir), None)
+    return [caminho for caminho in caminhos if not caminho.is_file()]
+
+
+def require_field_pdfs(pages: Sequence[FieldPage], *, pdf_dir: Path | None = None) -> None:
+    """Confere **antes de medir** que todo PDF citado abre, ou levanta `MissingFieldPdfError`.
+
+    Pré-voo e não checagem no laço por dois motivos. O primeiro é tempo: uma medição de campo
+    leva minutos por livro, e descobrir no oitavo que o terceiro não existia é descobrir tarde.
+    O segundo é que a lista completa é o diagnóstico -- 11 nomes com o mesmo defeito dizem
+    "codificação", um nome de cada vez diz "arquivo faltando".
+    """
+    faltando = missing_field_pdfs(pages, pdf_dir=pdf_dir)
+    if not faltando:
+        return
+
+    pasta = Path(pdf_dir) if pdf_dir is not None else Path.cwd()
+    linhas = []
+    for caminho in faltando:
+        rotulo = caminho.name if caminho.parent == pasta else str(caminho)
+        parecido = _look_alike(caminho)
+        sugestao = f'  (a pasta tem "{parecido}" -- nome em codificação dupla?)' if parecido else ""
+        linhas.append(f"  - {rotulo}{sugestao}")
+
+    cabecalho = (
+        f"{len(faltando)} PDF(s) citados pelo conjunto de campo não foram encontrados.\n"
+        f"Pasta procurada: {pasta}"
+    )
+    raise MissingFieldPdfError(
+        "\n".join([cabecalho, *linhas]) + "\n"
+        "Corrija o campo `pdf` do conjunto ou aponte --pdf-dir para a pasta certa. "
+        "A medição não roda sem eles: o recall sairia baixo por arquivo ausente, e não por "
+        "falha do pipeline -- e os dois números têm a mesma aparência no relatório."
+    )
+
+
 def evaluate_field(
     pages: Sequence[FieldPage],
     *,
@@ -631,14 +754,20 @@ def evaluate_field(
     Páginas com `reviewed=False` são **puladas com aviso**. Contá-las inflaria o número com
     a própria saída do modelo, que é exatamente o que o conjunto existe para não fazer.
 
-    Uma página que falha ao ser lida vira zero diagramas detectados, e não uma exceção: o
-    relatório precisa cobrir o livro inteiro, e uma página quebrada é um resultado -- é a
-    mesma decisão que a S-34 tomou para o livro que falha no meio da varredura em lote.
+    **Página sem tabuleiro é resultado; arquivo que não abre é falha (S-218).** Só
+    `NoBoardDetectedError` vira zero diagramas detectados -- é a mesma decisão que a S-34
+    tomou para o livro que falha no meio da varredura em lote, e é o que permite ao relatório
+    cobrir o livro inteiro. Qualquer outra exceção derruba a medição: um número medido sobre
+    arquivos que não abriram descreve outra coisa, e no relatório ele tem a mesma aparência de
+    uma regressão do detector. Ver `MissingFieldPdfError` para o dia em que teve.
+
+    Os PDFs citados são conferidos **antes** da primeira leitura, por `require_field_pdfs`.
 
     `training_pages` vem de `labels.pages_with_training_samples` e marca as páginas de que
     há amostra em `train` (S-97). `None` desliga a checagem -- é o que os testes usam, e é
     o comportamento anterior.
     """
+    require_field_pdfs(pages, pdf_dir=pdf_dir)
     service = service or OcrService(model_path=options.model_path)
     total = FieldReport()
     puladas = 0
@@ -648,13 +777,21 @@ def evaluate_field(
             puladas += 1
             continue
 
-        caminho = Path(pdf_dir) / pagina.pdf if pdf_dir is not None else Path(pagina.pdf)
+        caminho = _pdf_path(pagina, pdf_dir)
         inicio = time.perf_counter()
         try:
             lidos = service.recognize_page(caminho, pagina.page, options=options)
-        except Exception as exc:  # noqa: BLE001 - página quebrada é resultado, não crash
-            logger.warning("Falha ao ler %s p%d: %s", pagina.pdf, pagina.page, exc)
+        except NoBoardDetectedError as exc:
+            # A única falha que é medição: a página existe, foi aberta, e não tem tabuleiro --
+            # que é o mesmo que o detector dizer "nenhum". Vale recall zero nesta página, e o
+            # `debug` basta porque a página já aparece no relatório, em `misses`.
+            logger.debug("Nenhum tabuleiro em %s p%d (%s).", pagina.pdf, pagina.page, exc)
             lidos = []
+        except Exception as exc:
+            # Tudo o mais -- PDF que não abre, página fora do arquivo, backend sem checkpoint --
+            # é defeito de entrada ou de ambiente, e até a S-218 virava zero detectados sem
+            # nada avisar. O `from` preserva a causa; a mensagem acrescenta qual página parou.
+            raise FieldPageReadError(f"Falha ao ler {caminho} (página {pagina.page}): {exc}") from exc
         decorrido = time.perf_counter() - inicio
 
         parcela = evaluate_page(
