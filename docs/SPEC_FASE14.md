@@ -949,17 +949,36 @@ módulo, e não o pai; `test_o_pacote_do_init_resolve_para_ele_mesmo` existe par
 - ✅ os quatro relatórios correntes remedidos, carregando a impressão, com os números
   reproduzindo os de `c640012` antes de publicar.
 
-**A guarda funcionou contra quem a escreveu, duas vezes — que é o único teste que vale.** Os
-quatro foram medidos **três vezes**. A primeira para conferir contra `c640012`, e reproduziu
-92/91/89/85 com detecção 110/109/1. A segunda porque entre elas o `--nota` entrou no
-`cli/field.py`. A terceira porque outra sessão revisou o `af9eb0c` publicado e achou o `path`
-absoluto, e consertá-lo mexeu no `field_eval.py`.
+## O balanço do primeiro dia, e o que ele diz sobre o desenho
 
-Nas duas últimas a sequência foi a mesma e é a que vale registrar: **mexer no código depois de
-medir invalida os quatro pela própria guarda**, e ela ficou vermelha nomeando o módulo antes de
-qualquer um perceber à mão. Publicar sem remedir teria posto no disco quatro arquivos que a
-suíte marcaria como vencidos no minuto seguinte. Custou quatro minutos de máquina ociosa por
-vez, e é o preço de a impressão significar alguma coisa.
+A guarda disparou **três vezes em 2026-08-23**, e nas três o defeito era real e ninguém tinha
+percebido. Os quatro relatórios foram remedidos **quatro vezes** no total.
+
+| # | o que mudou | quem escreveu a mudança |
+|---|---|---|
+| 1 | `--nota` entrou no `cli/field.py` | quem escreveu a guarda |
+| 2 | `_model_path_relativo` no `field_eval.py` | quem escreveu a guarda |
+| 3 | `caminho_para_relatorio` no `config.py` | **outra sessão** |
+
+O terceiro é o que importa, por dois motivos. É o primeiro contra quem **não** escreveu a guarda
+— o teste que só pega o próprio autor não é guarda, é lembrete. E a mudança era **inerte para a
+medição**: acrescentou uma função e não alterou nenhum caminho executado. O digest é por
+conteúdo e não tem como saber disso, então venceu os quatro relatórios de qualquer forma.
+
+**Ser conservador aqui é o comportamento certo, e o custo é conhecido: um minuto por modelo.** O
+que destruiria a guarda seria a saída fácil — mover o ajudante para fora do fecho para calar o
+alarme. `config.py` é o lugar certo para uma função sobre `PROJECT_ROOT`, e **mudar código de
+lugar para silenciar um alarme é o primeiro passo de uma guarda em que ninguém confia**. A sessão
+que caiu nela não fez isso, e essa decisão vale mais para o item do que o código dele.
+
+**A sequência que se repete, e vale como regra:** mexer no código depois de medir invalida os
+quatro. Fechar o código **antes** de medir para publicar — medir custa um minuto, publicar
+arquivo vencido custa a confiança no arquivo.
+
+**E o defeito que a guarda não pegou foi achado por leitura humana.** O `path` absoluto não entra
+em digest nenhum, então nenhuma verificação automática o alcançaria; quem o achou foi outra
+sessão relendo um arquivo já publicado. As duas metades juntas são o argumento do item: a guarda
+pega o que muda por baixo, e não substitui alguém olhando o que ficou escrito.
 
 **O que este item deliberadamente não faz.** Não adivinha quais módulos do fecho uma corrida
 executou de fato — só a poda do motor desligado, que é decidível. Um digest condicionado ao que
