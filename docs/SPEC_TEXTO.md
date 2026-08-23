@@ -1964,10 +1964,45 @@ acertar 127 de 127 sem retreinar).
 no treino. São 82 recortes ao todo. O modelo passa a poder emitir esses rótulos, e ninguém mediu
 se ele acerta. Das 258 medidas, 191 têm recall perfeita e 28 ficam abaixo de 0,90.
 
-**O que continua devendo do critério de aceite:** a grade de variantes. Este é o controle — sem
-aumento de dados e sem pesos de classe (`--pesos-de-classe` e o aumento existem como opção
-justamente para medir o outro braço). A hipótese herdada da Fase 5 deste projeto — pesos de
-classe **não** ajudaram para peças — continua não medida para caractere.
+**O que continua devendo do critério de aceite:** a grade de variantes. Falta o aumento de dados
+(`augment.py` aplicado a caractere). Os pesos de classe já foram medidos — ver abaixo.
+
+### Pesos de classe: medidos, e a resposta é a mesma da Fase 5
+
+`docs/metrics/texto_treino_20260823_pesos.json`, mesma semente, mesmo split, mesma receita, só a
+perda ponderada por `1/sqrt(contagem)` normalizada:
+
+    val macro       0,9690  ->  0,9781    (+0,0091)
+    TESTE macro     0,9679  ->  0,9691    (+0,0013)
+    TESTE acurácia  0,9910  ->  0,9903    (-0,0007)
+
+**O ganho no teste é menor que um único acerto.** Nesta base, um acerto a mais na menor classe que
+vota na macro vale 0,00136; a diferença medida foi 0,00126. E a acurácia piorou. Os pesos **não
+ajudaram** — a mesma conclusão que a Fase 5 deste projeto tinha chegado para peças, agora medida
+para caractere em vez de assumida.
+
+Eles fazem exatamente o que prometem, e o problema é que a troca sai no zero a zero:
+
+| classes (por amostras no teste) | sem pesos | com pesos | |
+|---|---:|---:|---|
+| gordas (100+) | 0,9964 | 0,9941 | −0,0023 |
+| médias (20–99) | 0,9790 | 0,9800 | +0,0010 |
+| **raras (5–19)** | 0,9433 | **0,9467** | **+0,0034** |
+
+Os pesos levam 42,1% do gradiente das dez maiores classes para 19,4%, e as raras sobem — só que o
+que elas ganham as gordas perdem. Por classe, `sym_39` vai de 0,1667 a 0,3333 e `upper_V` de
+0,8333 a 1,0000; do outro lado, `upper_K` cai de 1,0000 a 0,8000 e `lower_s` de 0,9878 a 0,9390.
+
+> **O achado de método é o `val` contra o `test`, e ele vale mais que o veredito.** Na validação
+> os pesos ganham 0,0091 — sete vezes o que ganham no teste. Quem comparasse os dois braços no
+> `val`, que é onde a grade roda, concluiria "pesos ajudam" com folga aparente. Parte disso é
+> viés de seleção: a época 34 foi escolhida **porque** maximizava a macro do `val`, então o `val`
+> da época escolhida é otimista por construção. É exatamente por isso que o item manda a grade
+> rodar no `val` e a vencedora ser **confirmada no `test`**, que fica intocado até o fim.
+
+**O modelo com pesos não foi promovido.** Ele está em `models/experiments/char_pesos.pt`, e
+`models/` continua com o de `texto_treino_20260823_s202quase.json`. Trocar o publicado por outro
+que empata na métrica que decide e perde na outra seria mexer por mexer.
 
 **Uma decisão que o item não previa: o treino usa uma imagem por grupo de cópia exata**, não os
 608.407 recortes. Treinar com as cópias custaria 3,5× por época para reapresentar imagem já

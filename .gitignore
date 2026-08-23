@@ -134,3 +134,9 @@ Proposta de interface/
 # `cvoff-texto-conflitos --desfazer <manifesto>` os devolve. O que **fica** versionado e o
 # julgamento humano, em data/texto_conflitos.json.
 data/quarentena_texto/
+# Metadado dos modelos de experimento (S-204). Os pesos ja estao fora por `models/**/*.pt`, e um
+# `*_meta.json` de experimento tem a MESMA forma do par de producao -- schema 2, idx_to_char,
+# temperatura -- sem os pesos que ele descreve. Versiona-lo poria no repositorio um metadado que
+# parece carregavel e nao e, que e exatamente a confusao que o `modelo_sha256` do text/modelo.py
+# existe para impedir. Os numeros do experimento moram em docs/metrics/, que e onde se lê.
+models/experiments/*.json

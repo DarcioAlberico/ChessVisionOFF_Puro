@@ -1,0 +1,3157 @@
+{
+  "base": "C:\\Python-Chess2\\ChessVisionOFF_Puro\\training_data",
+  "amostras": {
+    "treino": 143276,
+    "validacao": 13693,
+    "teste": 13693
+  },
+  "imagens_distintas": 178370,
+  "grupos_em_conflito": 0,
+  "treinou_com_copias": false,
+  "procedencia": {
+    "humano": 0,
+    "modelo": 0,
+    "desconhecida": 607713
+  },
+  "split": "grupo de copia exata (SHA-256 do PNG); NAO por livro -- a base nao registra livro",
+  "copias_exatas": 429343,
+  "quase_duplicata": {
+    "limiar": 0.03,
+    "lado_descritor": 24,
+    "grupos_antes": 178370,
+    "grupos_depois": 136798,
+    "fusoes": 41572,
+    "maior_grupo": 9954
+  },
+  "metricas": {
+    "val_macro": 0.9781064864072471,
+    "val_acuracia": 0.9918936682976703,
+    "teste_macro": 0.9691131395405274,
+    "teste_acuracia": 0.9902870079602717
+  },
+  "treinado_em": "2026-08-23T06:26:34",
+  "modelo_sha256": "0296ce3259673ac5bc4d99bececd0c905bb9e062b60dd3a887af9b78fad40b6d",
+  "temperatura": 1.8589364051326192,
+  "epocas": [
+    {
+      "numero": 1,
+      "perda": 1.9224351990039552,
+      "acuracia": 0.9629007522091579,
+      "macro": 0.9080491999751172,
+      "segundos": 70.09930419999
+    },
+    {
+      "numero": 2,
+      "perda": 0.6951774431551624,
+      "acuracia": 0.97590009493902,
+      "macro": 0.9312649397269745,
+      "segundos": 63.95791100000497
+    },
+    {
+      "numero": 3,
+      "perda": 0.4824554633800866,
+      "acuracia": 0.9753158548163295,
+      "macro": 0.9339828733263177,
+      "segundos": 66.12220589999924
+    },
+    {
+      "numero": 4,
+      "perda": 0.3915274874398868,
+      "acuracia": 0.979551595705835,
+      "macro": 0.9414787957649492,
+      "segundos": 64.24876020000374
+    },
+    {
+      "numero": 5,
+      "perda": 0.33426767733515816,
+      "acuracia": 0.981450376104579,
+      "macro": 0.946980701369075,
+      "segundos": 83.55248630000278
+    },
+    {
+      "numero": 6,
+      "perda": 0.285962755596915,
+      "acuracia": 0.9810852260278975,
+      "macro": 0.9440956254605452,
+      "segundos": 91.02002989999892
+    },
+    {
+      "numero": 7,
+      "perda": 0.25122880014533483,
+      "acuracia": 0.9822537062732783,
+      "macro": 0.9487752694414928,
+      "segundos": 77.34088650000922
+    },
+    {
+      "numero": 8,
+      "perda": 0.21524105657700893,
+      "acuracia": 0.9858321770247572,
+      "macro": 0.9575655949747796,
+      "segundos": 68.38269509999373
+    },
+    {
+      "numero": 9,
+      "perda": 0.19757539609693037,
+      "acuracia": 0.9870736872854743,
+      "macro": 0.9647156583510247,
+      "segundos": 64.59182889999647
+    },
+    {
+      "numero": 10,
+      "perda": 0.1739031949999837,
+      "acuracia": 0.9856861169940846,
+      "macro": 0.9580818511043467,
+      "segundos": 66.18462829999044
+    },
+    {
+      "numero": 11,
+      "perda": 0.1623902780466478,
+      "acuracia": 0.9857591470094209,
+      "macro": 0.9564227653120954,
+      "segundos": 65.44146909999836
+    },
+    {
+      "numero": 12,
+      "perda": 0.1454917446667866,
+      "acuracia": 0.9892645877455635,
+      "macro": 0.9630079304688495,
+      "segundos": 69.09121400000004
+    },
+    {
+      "numero": 13,
+      "perda": 0.1412492628741555,
+      "acuracia": 0.98795004746951,
+      "macro": 0.9639700566481526,
+      "segundos": 98.01301409999724
+    },
+    {
+      "numero": 14,
+      "perda": 0.13094754543328804,
+      "acuracia": 0.9883882275615278,
+      "macro": 0.965383282766313,
+      "segundos": 204.4696444000001
+    },
+    {
+      "numero": 15,
+      "perda": 0.11795775584984493,
+      "acuracia": 0.9899218578835901,
+      "macro": 0.9689767187955913,
+      "segundos": 210.06962729999213
+    },
+    {
+      "numero": 16,
+      "perda": 0.10608868988698267,
+      "acuracia": 0.9891185277148908,
+      "macro": 0.9655557295033916,
+      "segundos": 181.98844739999913
+    },
+    {
+      "numero": 17,
+      "perda": 0.10161078833015494,
+      "acuracia": 0.9888264076535456,
+      "macro": 0.9661833496993677,
+      "segundos": 83.14447579999978
+    },
+    {
+      "numero": 18,
+      "perda": 0.10351357969196635,
+      "acuracia": 0.9885342875922004,
+      "macro": 0.9640313412765708,
+      "segundos": 85.9438017999928
+    },
+    {
+      "numero": 19,
+      "perda": 0.08653699506314749,
+      "acuracia": 0.9902139779449354,
+      "macro": 0.9704940188688126,
+      "segundos": 90.80182799999602
+    },
+    {
+      "numero": 20,
+      "perda": 0.09008997484603556,
+      "acuracia": 0.990360037975608,
+      "macro": 0.9655181492857112,
+      "segundos": 80.42992860000231
+    },
+    {
+      "numero": 21,
+      "perda": 0.07942417062468098,
+      "acuracia": 0.9908712480829621,
+      "macro": 0.9690384492527263,
+      "segundos": 65.69422720000148
+    },
+    {
+      "numero": 22,
+      "perda": 0.08096799203830267,
+      "acuracia": 0.9908712480829621,
+      "macro": 0.9660774357324382,
+      "segundos": 73.05179060000228
+    },
+    {
+      "numero": 23,
+      "perda": 0.08651514643804123,
+      "acuracia": 0.9906521580369532,
+      "macro": 0.9689311457781759,
+      "segundos": 109.25019940000493
+    },
+    {
+      "numero": 24,
+      "perda": 0.06951885389510888,
+      "acuracia": 0.9908712480829621,
+      "macro": 0.97082799931015,
+      "segundos": 149.79154070001096
+    },
+    {
+      "numero": 25,
+      "perda": 0.06467170019583965,
+      "acuracia": 0.9889724676842182,
+      "macro": 0.9636947213269932,
+      "segundos": 72.57230400000117
+    },
+    {
+      "numero": 26,
+      "perda": 0.06513497471001699,
+      "acuracia": 0.9909442780982984,
+      "macro": 0.9698849323444271,
+      "segundos": 62.45658189999813
+    },
+    {
+      "numero": 27,
+      "perda": 0.07071840669291563,
+      "acuracia": 0.9914554882056525,
+      "macro": 0.9736889421636998,
+      "segundos": 60.69077839999227
+    },
+    {
+      "numero": 28,
+      "perda": 0.06241732749176596,
+      "acuracia": 0.9911633681443073,
+      "macro": 0.9725042111529674,
+      "segundos": 62.80407220000052
+    },
+    {
+      "numero": 29,
+      "perda": 0.05288788346870796,
+      "acuracia": 0.9907982180676258,
+      "macro": 0.9666541711053467,
+      "segundos": 71.07434239999566
+    },
+    {
+      "numero": 30,
+      "perda": 0.06308497629927427,
+      "acuracia": 0.9916015482363252,
+      "macro": 0.9729000756068253,
+      "segundos": 80.66203680000035
+    },
+    {
+      "numero": 31,
+      "perda": 0.055396304693935326,
+      "acuracia": 0.991820638282334,
+      "macro": 0.9706228217770037,
+      "segundos": 75.72316280000086
+    },
+    {
+      "numero": 32,
+      "perda": 0.054682481028569124,
+      "acuracia": 0.9919666983130067,
+      "macro": 0.973785289616847,
+      "segundos": 65.30759599999874
+    },
+    {
+      "numero": 33,
+      "perda": 0.04978137265015988,
+      "acuracia": 0.991820638282334,
+      "macro": 0.9729630497097591,
+      "segundos": 65.88462060000165
+    },
+    {
+      "numero": 34,
+      "perda": 0.04954037190309636,
+      "acuracia": 0.9918936682976703,
+      "macro": 0.9781064864072471,
+      "segundos": 69.4375529000099
+    },
+    {
+      "numero": 35,
+      "perda": 0.0466982732852254,
+      "acuracia": 0.991820638282334,
+      "macro": 0.9692633607565306,
+      "segundos": 86.09482220000064
+    },
+    {
+      "numero": 36,
+      "perda": 0.05330094369140047,
+      "acuracia": 0.9916745782516614,
+      "macro": 0.9681202122007558,
+      "segundos": 71.183285600011
+    },
+    {
+      "numero": 37,
+      "perda": 0.043147893486013396,
+      "acuracia": 0.9911633681443073,
+      "macro": 0.9696172422920339,
+      "segundos": 93.13788990001194
+    },
+    {
+      "numero": 38,
+      "perda": 0.042254994412834555,
+      "acuracia": 0.990360037975608,
+      "macro": 0.9709943635084826,
+      "segundos": 67.84776859999693
+    },
+    {
+      "numero": 39,
+      "perda": 0.04438842409351345,
+      "acuracia": 0.9916745782516614,
+      "macro": 0.9710743414679186,
+      "segundos": 65.587606400004
+    },
+    {
+      "numero": 40,
+      "perda": 0.04035786621697105,
+      "acuracia": 0.9912363981596436,
+      "macro": 0.9722607409238768,
+      "segundos": 67.5652434000076
+    }
+  ],
+  "epoca_escolhida": 34,
+  "hiperparametros": {
+    "epocas": 40,
+    "lote": 256,
+    "taxa": 0.001,
+    "paciencia": 10,
+    "semente": 20260823,
+    "pesos_de_classe": true,
+    "device": "cpu"
+  },
+  "ilegiveis": [],
+  "pastas_indecifraveis": [],
+  "por_classe": [
+    {
+      "pasta": "digit_0",
+      "caractere": "0",
+      "total": 698,
+      "treino": 191,
+      "val": 24,
+      "teste": 24,
+      "recall_teste": 0.9583333333333334
+    },
+    {
+      "pasta": "digit_1",
+      "caractere": "1",
+      "total": 26757,
+      "treino": 7208,
+      "val": 901,
+      "teste": 901,
+      "recall_teste": 0.9900110987791343
+    },
+    {
+      "pasta": "digit_2",
+      "caractere": "2",
+      "total": 21961,
+      "treino": 7403,
+      "val": 926,
+      "teste": 926,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "digit_3",
+      "caractere": "3",
+      "total": 4043,
+      "treino": 1183,
+      "val": 148,
+      "teste": 148,
+      "recall_teste": 0.9932432432432432
+    },
+    {
+      "pasta": "digit_4",
+      "caractere": "4",
+      "total": 10671,
+      "treino": 1420,
+      "val": 178,
+      "teste": 178,
+      "recall_teste": 0.9943820224719101
+    },
+    {
+      "pasta": "digit_5",
+      "caractere": "5",
+      "total": 10388,
+      "treino": 1476,
+      "val": 185,
+      "teste": 185,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "digit_6",
+      "caractere": "6",
+      "total": 8883,
+      "treino": 1375,
+      "val": 172,
+      "teste": 172,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "digit_7",
+      "caractere": "7",
+      "total": 6361,
+      "treino": 822,
+      "val": 103,
+      "teste": 103,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "digit_8",
+      "caractere": "8",
+      "total": 6409,
+      "treino": 1171,
+      "val": 146,
+      "teste": 146,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "digit_9",
+      "caractere": "9",
+      "total": 10756,
+      "treino": 827,
+      "val": 103,
+      "teste": 103,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_+-",
+      "caractere": "+-",
+      "total": 14,
+      "treino": 10,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_-+",
+      "caractere": "-+",
+      "total": 19,
+      "treino": 11,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_-g",
+      "caractere": "-g",
+      "total": 28,
+      "treino": 12,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_a2",
+      "caractere": "a2",
+      "total": 57,
+      "treino": 17,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_a3",
+      "caractere": "a3",
+      "total": 245,
+      "treino": 104,
+      "val": 13,
+      "teste": 13,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_a6",
+      "caractere": "a6",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_a8",
+      "caractere": "a8",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_ac",
+      "caractere": "ac",
+      "total": 21,
+      "treino": 12,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_agr",
+      "caractere": "agr",
+      "total": 11,
+      "treino": 8,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ai",
+      "caractere": "ai",
+      "total": 4,
+      "treino": 2,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ak",
+      "caractere": "ak",
+      "total": 23,
+      "treino": 11,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_al",
+      "caractere": "al",
+      "total": 5,
+      "treino": 3,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_am",
+      "caractere": "am",
+      "total": 277,
+      "treino": 83,
+      "val": 10,
+      "teste": 10,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_an",
+      "caractere": "an",
+      "total": 338,
+      "treino": 142,
+      "val": 18,
+      "teste": 18,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ar",
+      "caractere": "ar",
+      "total": 10,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_as",
+      "caractere": "as",
+      "total": 48,
+      "treino": 27,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_aw",
+      "caractere": "aw",
+      "total": 20,
+      "treino": 14,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ax",
+      "caractere": "ax",
+      "total": 172,
+      "treino": 41,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_b3",
+      "caractere": "b3",
+      "total": 7,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_b4",
+      "caractere": "b4",
+      "total": 99,
+      "treino": 57,
+      "val": 7,
+      "teste": 7,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_b5",
+      "caractere": "b5",
+      "total": 11,
+      "treino": 4,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_b6",
+      "caractere": "b6",
+      "total": 39,
+      "treino": 21,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ba",
+      "caractere": "ba",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_be",
+      "caractere": "be",
+      "total": 70,
+      "treino": 22,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_Bl",
+      "caractere": "Bl",
+      "total": 7,
+      "treino": 3,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_bo",
+      "caractere": "bo",
+      "total": 13,
+      "treino": 7,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_c2",
+      "caractere": "c2",
+      "total": 15,
+      "treino": 8,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_c3",
+      "caractere": "c3",
+      "total": 22,
+      "treino": 14,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_c4",
+      "caractere": "c4",
+      "total": 67,
+      "treino": 46,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_c5",
+      "caractere": "c5",
+      "total": 37,
+      "treino": 26,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_c6",
+      "caractere": "c6",
+      "total": 102,
+      "treino": 37,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_c8",
+      "caractere": "c8",
+      "total": 12,
+      "treino": 9,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ck",
+      "caractere": "ck",
+      "total": 42,
+      "treino": 14,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_co",
+      "caractere": "co",
+      "total": 50,
+      "treino": 40,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ct",
+      "caractere": "ct",
+      "total": 57,
+      "treino": 15,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_cx",
+      "caractere": "cx",
+      "total": 76,
+      "treino": 12,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_d2",
+      "caractere": "d2",
+      "total": 177,
+      "treino": 35,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_d3",
+      "caractere": "d3",
+      "total": 107,
+      "treino": 37,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_d4",
+      "caractere": "d4",
+      "total": 11,
+      "treino": 7,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_d5",
+      "caractere": "d5",
+      "total": 12,
+      "treino": 8,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_d6",
+      "caractere": "d6",
+      "total": 14,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_d8",
+      "caractere": "d8",
+      "total": 24,
+      "treino": 12,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_da",
+      "caractere": "da",
+      "total": 3,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_do",
+      "caractere": "do",
+      "total": 14,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_dx",
+      "caractere": "dx",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_dz",
+      "caractere": "dz",
+      "total": 35,
+      "treino": 11,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "ligature_e3",
+      "caractere": "e3",
+      "total": 11,
+      "treino": 8,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_e4",
+      "caractere": "e4",
+      "total": 30,
+      "treino": 22,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_e6",
+      "caractere": "e6",
+      "total": 82,
+      "treino": 40,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_e8",
+      "caractere": "e8",
+      "total": 14,
+      "treino": 9,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ea",
+      "caractere": "ea",
+      "total": 65,
+      "treino": 7,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_em",
+      "caractere": "em",
+      "total": 81,
+      "treino": 21,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_en",
+      "caractere": "en",
+      "total": 67,
+      "treino": 20,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_Ex",
+      "caractere": "Ex",
+      "total": 367,
+      "treino": 143,
+      "val": 18,
+      "teste": 18,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ey",
+      "caractere": "ey",
+      "total": 10,
+      "treino": 8,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_f1",
+      "caractere": "f1",
+      "total": 1024,
+      "treino": 188,
+      "val": 24,
+      "teste": 24,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_f2",
+      "caractere": "f2",
+      "total": 2242,
+      "treino": 351,
+      "val": 44,
+      "teste": 44,
+      "recall_teste": 0.9772727272727273
+    },
+    {
+      "pasta": "ligature_f3",
+      "caractere": "f3",
+      "total": 2575,
+      "treino": 156,
+      "val": 20,
+      "teste": 20,
+      "recall_teste": 0.95
+    },
+    {
+      "pasta": "ligature_f5",
+      "caractere": "f5",
+      "total": 392,
+      "treino": 73,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_f6",
+      "caractere": "f6",
+      "total": 438,
+      "treino": 69,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_f7",
+      "caractere": "f7",
+      "total": 3782,
+      "treino": 308,
+      "val": 38,
+      "teste": 38,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_f8",
+      "caractere": "f8",
+      "total": 2254,
+      "treino": 127,
+      "val": 16,
+      "teste": 16,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_fb",
+      "caractere": "fb",
+      "total": 33,
+      "treino": 11,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ff",
+      "caractere": "ff",
+      "total": 181,
+      "treino": 41,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 0.8
+    },
+    {
+      "pasta": "ligature_ffi",
+      "caractere": "ffi",
+      "total": 67,
+      "treino": 20,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ffl",
+      "caractere": "ffl",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_fi",
+      "caractere": "fi",
+      "total": 439,
+      "treino": 80,
+      "val": 10,
+      "teste": 10,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_fl",
+      "caractere": "fl",
+      "total": 78,
+      "treino": 47,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 0.8333333333333334
+    },
+    {
+      "pasta": "ligature_fr",
+      "caractere": "fr",
+      "total": 43,
+      "treino": 32,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ft",
+      "caractere": "ft",
+      "total": 103,
+      "treino": 29,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_fu",
+      "caractere": "fu",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_fx",
+      "caractere": "fx",
+      "total": 311,
+      "treino": 68,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_g3",
+      "caractere": "g3",
+      "total": 21,
+      "treino": 8,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_g4",
+      "caractere": "g4",
+      "total": 7,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_g5",
+      "caractere": "g5",
+      "total": 37,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_g6",
+      "caractere": "g6",
+      "total": 171,
+      "treino": 46,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_g8",
+      "caractere": "g8",
+      "total": 3,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_gu",
+      "caractere": "gu",
+      "total": 19,
+      "treino": 11,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_h2",
+      "caractere": "h2",
+      "total": 51,
+      "treino": 14,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_h3",
+      "caractere": "h3",
+      "total": 16,
+      "treino": 6,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_h4",
+      "caractere": "h4",
+      "total": 15,
+      "treino": 10,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_h5",
+      "caractere": "h5",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_h6",
+      "caractere": "h6",
+      "total": 20,
+      "treino": 12,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ha",
+      "caractere": "ha",
+      "total": 43,
+      "treino": 8,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_hex_00210021",
+      "caractere": "!!",
+      "total": 2,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_hex_0021003f",
+      "caractere": "!?",
+      "total": 3,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_hex_002e2657",
+      "caractere": ".♗",
+      "total": 116,
+      "treino": 76,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_hex_003f0021",
+      "caractere": "?!",
+      "total": 3,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_hex_003f003f",
+      "caractere": "??",
+      "total": 3,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_hex_00e70061",
+      "caractere": "ça",
+      "total": 37,
+      "treino": 29,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_hex_00e700e3",
+      "caractere": "çã",
+      "total": 59,
+      "treino": 47,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_hex_010d0009",
+      "caractere": "č\t",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_hex_26540065",
+      "caractere": "♔e",
+      "total": 4,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "ligature_hex_26550066",
+      "caractere": "♕f",
+      "total": 68,
+      "treino": 39,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_hex_26550078",
+      "caractere": "♕x",
+      "total": 22,
+      "treino": 15,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_hex_26570061",
+      "caractere": "♗a",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_hex_26570078",
+      "caractere": "♗x",
+      "total": 282,
+      "treino": 170,
+      "val": 21,
+      "teste": 21,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_in",
+      "caractere": "in",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_is",
+      "caractere": "is",
+      "total": 4,
+      "treino": 2,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_it",
+      "caractere": "it",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_Kh",
+      "caractere": "Kh",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_ki",
+      "caractere": "ki",
+      "total": 31,
+      "treino": 24,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ks",
+      "caractere": "ks",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_ky",
+      "caractere": "ky",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_la",
+      "caractere": "la",
+      "total": 2,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_ll",
+      "caractere": "ll",
+      "total": 16,
+      "treino": 2,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ls",
+      "caractere": "ls",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_od",
+      "caractere": "od",
+      "total": 13,
+      "treino": 3,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_of",
+      "caractere": "of",
+      "total": 8,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ok",
+      "caractere": "ok",
+      "total": 4,
+      "treino": 2,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_om",
+      "caractere": "om",
+      "total": 74,
+      "treino": 10,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_on",
+      "caractere": "on",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_oo",
+      "caractere": "oo",
+      "total": 4,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_or",
+      "caractere": "or",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_ow",
+      "caractere": "ow",
+      "total": 12,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_pe",
+      "caractere": "pe",
+      "total": 38,
+      "treino": 30,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ra",
+      "caractere": "ra",
+      "total": 41,
+      "treino": 33,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ri",
+      "caractere": "ri",
+      "total": 122,
+      "treino": 92,
+      "val": 12,
+      "teste": 12,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_rt",
+      "caractere": "rt",
+      "total": 311,
+      "treino": 241,
+      "val": 30,
+      "teste": 30,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ru",
+      "caractere": "ru",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_rv",
+      "caractere": "rv",
+      "total": 105,
+      "treino": 43,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_rw",
+      "caractere": "rw",
+      "total": 16,
+      "treino": 6,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ry",
+      "caractere": "ry",
+      "total": 27,
+      "treino": 20,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_sp",
+      "caractere": "sp",
+      "total": 27,
+      "treino": 17,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ta",
+      "caractere": "ta",
+      "total": 146,
+      "treino": 116,
+      "val": 15,
+      "teste": 15,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_Th",
+      "caractere": "Th",
+      "total": 664,
+      "treino": 60,
+      "val": 7,
+      "teste": 7,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ti",
+      "caractere": "ti",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_tl",
+      "caractere": "tl",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "ligature_tr",
+      "caractere": "tr",
+      "total": 56,
+      "treino": 37,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ts",
+      "caractere": "ts",
+      "total": 8,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "ligature_tt",
+      "caractere": "tt",
+      "total": 3,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_ty",
+      "caractere": "ty",
+      "total": 245,
+      "treino": 121,
+      "val": 15,
+      "teste": 15,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_um",
+      "caractere": "um",
+      "total": 12,
+      "treino": 10,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_Wh",
+      "caractere": "Wh",
+      "total": 2533,
+      "treino": 513,
+      "val": 64,
+      "teste": 64,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_wn",
+      "caractere": "wn",
+      "total": 61,
+      "treino": 13,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_xf",
+      "caractere": "xf",
+      "total": 16,
+      "treino": 12,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_xf3",
+      "caractere": "xf3",
+      "total": 47,
+      "treino": 28,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_xf6",
+      "caractere": "xf6",
+      "total": 50,
+      "treino": 33,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "ligature_xf8",
+      "caractere": "xf8",
+      "total": 15,
+      "treino": 9,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_a",
+      "caractere": "a",
+      "total": 63055,
+      "treino": 2210,
+      "val": 276,
+      "teste": 276,
+      "recall_teste": 0.9927536231884058
+    },
+    {
+      "pasta": "lower_b",
+      "caractere": "b",
+      "total": 7675,
+      "treino": 572,
+      "val": 72,
+      "teste": 72,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_c",
+      "caractere": "c",
+      "total": 12755,
+      "treino": 896,
+      "val": 112,
+      "teste": 112,
+      "recall_teste": 0.9732142857142857
+    },
+    {
+      "pasta": "lower_d",
+      "caractere": "d",
+      "total": 13198,
+      "treino": 1064,
+      "val": 133,
+      "teste": 133,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_e",
+      "caractere": "e",
+      "total": 33855,
+      "treino": 1667,
+      "val": 208,
+      "teste": 208,
+      "recall_teste": 0.9903846153846154
+    },
+    {
+      "pasta": "lower_f",
+      "caractere": "f",
+      "total": 10023,
+      "treino": 2334,
+      "val": 292,
+      "teste": 292,
+      "recall_teste": 0.9863013698630136
+    },
+    {
+      "pasta": "lower_g",
+      "caractere": "g",
+      "total": 8966,
+      "treino": 580,
+      "val": 73,
+      "teste": 73,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_h",
+      "caractere": "h",
+      "total": 21659,
+      "treino": 637,
+      "val": 80,
+      "teste": 80,
+      "recall_teste": 0.9875
+    },
+    {
+      "pasta": "lower_i",
+      "caractere": "i",
+      "total": 18903,
+      "treino": 1124,
+      "val": 140,
+      "teste": 140,
+      "recall_teste": 0.9857142857142858
+    },
+    {
+      "pasta": "lower_j",
+      "caractere": "j",
+      "total": 205,
+      "treino": 74,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_k",
+      "caractere": "k",
+      "total": 5049,
+      "treino": 281,
+      "val": 35,
+      "teste": 35,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_l",
+      "caractere": "l",
+      "total": 2573,
+      "treino": 477,
+      "val": 60,
+      "teste": 60,
+      "recall_teste": 0.95
+    },
+    {
+      "pasta": "lower_m",
+      "caractere": "m",
+      "total": 1816,
+      "treino": 412,
+      "val": 52,
+      "teste": 52,
+      "recall_teste": 0.9807692307692307
+    },
+    {
+      "pasta": "lower_n",
+      "caractere": "n",
+      "total": 6023,
+      "treino": 1140,
+      "val": 142,
+      "teste": 142,
+      "recall_teste": 0.9929577464788732
+    },
+    {
+      "pasta": "lower_o",
+      "caractere": "o",
+      "total": 5703,
+      "treino": 850,
+      "val": 106,
+      "teste": 106,
+      "recall_teste": 0.9528301886792453
+    },
+    {
+      "pasta": "lower_p",
+      "caractere": "p",
+      "total": 1627,
+      "treino": 332,
+      "val": 42,
+      "teste": 42,
+      "recall_teste": 0.9523809523809523
+    },
+    {
+      "pasta": "lower_q",
+      "caractere": "q",
+      "total": 215,
+      "treino": 92,
+      "val": 12,
+      "teste": 12,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_r",
+      "caractere": "r",
+      "total": 4136,
+      "treino": 776,
+      "val": 97,
+      "teste": 97,
+      "recall_teste": 0.979381443298969
+    },
+    {
+      "pasta": "lower_s",
+      "caractere": "s",
+      "total": 4511,
+      "treino": 657,
+      "val": 82,
+      "teste": 82,
+      "recall_teste": 0.9390243902439024
+    },
+    {
+      "pasta": "lower_t",
+      "caractere": "t",
+      "total": 6150,
+      "treino": 789,
+      "val": 99,
+      "teste": 99,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_u",
+      "caractere": "u",
+      "total": 2237,
+      "treino": 485,
+      "val": 61,
+      "teste": 61,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "lower_v",
+      "caractere": "v",
+      "total": 1025,
+      "treino": 236,
+      "val": 29,
+      "teste": 29,
+      "recall_teste": 0.9655172413793104
+    },
+    {
+      "pasta": "lower_w",
+      "caractere": "w",
+      "total": 1118,
+      "treino": 156,
+      "val": 19,
+      "teste": 19,
+      "recall_teste": 0.9473684210526315
+    },
+    {
+      "pasta": "lower_x",
+      "caractere": "x",
+      "total": 4283,
+      "treino": 341,
+      "val": 43,
+      "teste": 43,
+      "recall_teste": 0.9767441860465116
+    },
+    {
+      "pasta": "lower_y",
+      "caractere": "y",
+      "total": 953,
+      "treino": 173,
+      "val": 22,
+      "teste": 22,
+      "recall_teste": 0.9545454545454546
+    },
+    {
+      "pasta": "lower_z",
+      "caractere": "z",
+      "total": 77,
+      "treino": 48,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 0.6666666666666666
+    },
+    {
+      "pasta": "sym_10005",
+      "caractere": "✕",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_10013",
+      "caractere": "✝",
+      "total": 2901,
+      "treino": 146,
+      "val": 18,
+      "teste": 18,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_10218",
+      "caractere": "⟪",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_10227",
+      "caractere": "⟳",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_10752",
+      "caractere": "⨀",
+      "total": 3,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_10812",
+      "caractere": "⨼",
+      "total": 13,
+      "treino": 10,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_10865",
+      "caractere": "⩱",
+      "total": 82,
+      "treino": 53,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 0.8333333333333334
+    },
+    {
+      "pasta": "sym_10866",
+      "caractere": "⩲",
+      "total": 100,
+      "treino": 76,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 0.8888888888888888
+    },
+    {
+      "pasta": "sym_11012",
+      "caractere": "⬄",
+      "total": 48,
+      "treino": 38,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_11164",
+      "caractere": "⮜",
+      "total": 293,
+      "treino": 204,
+      "val": 25,
+      "teste": 25,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_11166",
+      "caractere": "⮞",
+      "total": 363,
+      "treino": 280,
+      "val": 35,
+      "teste": 35,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_11257",
+      "caractere": "⯹",
+      "total": 46,
+      "treino": 31,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 0.75
+    },
+    {
+      "pasta": "sym_11258",
+      "caractere": "⯺",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_11259",
+      "caractere": "⯻",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_11260",
+      "caractere": "⯼",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_11261",
+      "caractere": "⯽",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_124",
+      "caractere": "|",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_126",
+      "caractere": "~",
+      "total": 2,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_128504",
+      "caractere": "🗸",
+      "total": 81,
+      "treino": 13,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_169",
+      "caractere": "©",
+      "total": 11,
+      "treino": 9,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_177",
+      "caractere": "±",
+      "total": 136,
+      "treino": 75,
+      "val": 10,
+      "teste": 10,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_189",
+      "caractere": "½",
+      "total": 54,
+      "treino": 42,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_193",
+      "caractere": "Á",
+      "total": 9,
+      "treino": 7,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_195",
+      "caractere": "Ã",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_196",
+      "caractere": "Ä",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_197",
+      "caractere": "Å",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_200",
+      "caractere": "È",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_201",
+      "caractere": "É",
+      "total": 83,
+      "treino": 64,
+      "val": 8,
+      "teste": 8,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_203",
+      "caractere": "Ë",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_205",
+      "caractere": "Í",
+      "total": 90,
+      "treino": 72,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 0.8888888888888888
+    },
+    {
+      "pasta": "sym_209",
+      "caractere": "Ñ",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_211",
+      "caractere": "Ó",
+      "total": 3,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "sym_213",
+      "caractere": "Õ",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_214",
+      "caractere": "Ö",
+      "total": 5,
+      "treino": 2,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_218",
+      "caractere": "Ú",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_221",
+      "caractere": "Ý",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_224",
+      "caractere": "à",
+      "total": 183,
+      "treino": 144,
+      "val": 18,
+      "teste": 18,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_225",
+      "caractere": "á",
+      "total": 1478,
+      "treino": 1153,
+      "val": 144,
+      "teste": 144,
+      "recall_teste": 0.9930555555555556
+    },
+    {
+      "pasta": "sym_226",
+      "caractere": "â",
+      "total": 54,
+      "treino": 41,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 0.8
+    },
+    {
+      "pasta": "sym_227",
+      "caractere": "ã",
+      "total": 3797,
+      "treino": 3013,
+      "val": 377,
+      "teste": 377,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_228",
+      "caractere": "ä",
+      "total": 15,
+      "treino": 10,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_229",
+      "caractere": "å",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_231",
+      "caractere": "ç",
+      "total": 93,
+      "treino": 55,
+      "val": 7,
+      "teste": 7,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_232",
+      "caractere": "è",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_233",
+      "caractere": "é",
+      "total": 1751,
+      "treino": 1376,
+      "val": 172,
+      "teste": 172,
+      "recall_teste": 0.9941860465116279
+    },
+    {
+      "pasta": "sym_234",
+      "caractere": "ê",
+      "total": 347,
+      "treino": 276,
+      "val": 34,
+      "teste": 34,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_237",
+      "caractere": "í",
+      "total": 32,
+      "treino": 13,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "sym_243",
+      "caractere": "ó",
+      "total": 371,
+      "treino": 293,
+      "val": 37,
+      "teste": 37,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_244",
+      "caractere": "ô",
+      "total": 11,
+      "treino": 8,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_245",
+      "caractere": "õ",
+      "total": 1241,
+      "treino": 981,
+      "val": 122,
+      "teste": 122,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_246",
+      "caractere": "ö",
+      "total": 3,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_250",
+      "caractere": "ú",
+      "total": 128,
+      "treino": 102,
+      "val": 13,
+      "teste": 13,
+      "recall_teste": 0.9230769230769231
+    },
+    {
+      "pasta": "sym_252",
+      "caractere": "ü",
+      "total": 144,
+      "treino": 101,
+      "val": 13,
+      "teste": 13,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_253",
+      "caractere": "ý",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_262",
+      "caractere": "Ć",
+      "total": 3,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_263",
+      "caractere": "ć",
+      "total": 171,
+      "treino": 44,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_268",
+      "caractere": "Č",
+      "total": 3,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_269",
+      "caractere": "č",
+      "total": 59,
+      "treino": 31,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_324",
+      "caractere": "ń",
+      "total": 16,
+      "treino": 12,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_33",
+      "caractere": "!",
+      "total": 13788,
+      "treino": 2238,
+      "val": 280,
+      "teste": 280,
+      "recall_teste": 0.9928571428571429
+    },
+    {
+      "pasta": "sym_34",
+      "caractere": "\"",
+      "total": 89,
+      "treino": 69,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 0.8888888888888888
+    },
+    {
+      "pasta": "sym_35",
+      "caractere": "#",
+      "total": 366,
+      "treino": 151,
+      "val": 19,
+      "teste": 19,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_352",
+      "caractere": "Š",
+      "total": 9,
+      "treino": 7,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "sym_353",
+      "caractere": "š",
+      "total": 7,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_37",
+      "caractere": "%",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_38",
+      "caractere": "&",
+      "total": 2,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_381",
+      "caractere": "Ž",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_382",
+      "caractere": "ž",
+      "total": 2,
+      "treino": 2,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_39",
+      "caractere": "'",
+      "total": 95,
+      "treino": 51,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 0.3333333333333333
+    },
+    {
+      "pasta": "sym_40",
+      "caractere": "(",
+      "total": 5676,
+      "treino": 949,
+      "val": 118,
+      "teste": 118,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_41",
+      "caractere": ")",
+      "total": 6385,
+      "treino": 1231,
+      "val": 154,
+      "teste": 154,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_42",
+      "caractere": "*",
+      "total": 3353,
+      "treino": 2505,
+      "val": 313,
+      "teste": 313,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_43",
+      "caractere": "+",
+      "total": 9696,
+      "treino": 1691,
+      "val": 212,
+      "teste": 212,
+      "recall_teste": 0.9952830188679245
+    },
+    {
+      "pasta": "sym_44",
+      "caractere": ",",
+      "total": 521,
+      "treino": 191,
+      "val": 24,
+      "teste": 24,
+      "recall_teste": 0.9166666666666666
+    },
+    {
+      "pasta": "sym_45",
+      "caractere": "-",
+      "total": 536,
+      "treino": 154,
+      "val": 19,
+      "teste": 19,
+      "recall_teste": 0.8421052631578947
+    },
+    {
+      "pasta": "sym_46",
+      "caractere": ".",
+      "total": 20434,
+      "treino": 3908,
+      "val": 488,
+      "teste": 488,
+      "recall_teste": 0.9774590163934426
+    },
+    {
+      "pasta": "sym_47",
+      "caractere": "/",
+      "total": 3325,
+      "treino": 443,
+      "val": 55,
+      "teste": 55,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_58",
+      "caractere": ":",
+      "total": 1449,
+      "treino": 464,
+      "val": 58,
+      "teste": 58,
+      "recall_teste": 0.9655172413793104
+    },
+    {
+      "pasta": "sym_59",
+      "caractere": ";",
+      "total": 225,
+      "treino": 96,
+      "val": 12,
+      "teste": 12,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_61",
+      "caractere": "=",
+      "total": 164,
+      "treino": 100,
+      "val": 12,
+      "teste": 12,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_63",
+      "caractere": "?",
+      "total": 6245,
+      "treino": 800,
+      "val": 100,
+      "teste": 100,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_64",
+      "caractere": "@",
+      "total": 9,
+      "treino": 7,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_8211",
+      "caractere": "–",
+      "total": 95,
+      "treino": 37,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "sym_8212",
+      "caractere": "—",
+      "total": 1317,
+      "treino": 179,
+      "val": 22,
+      "teste": 22,
+      "recall_teste": 0.9545454545454546
+    },
+    {
+      "pasta": "sym_8226",
+      "caractere": "•",
+      "total": 90,
+      "treino": 28,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_8593",
+      "caractere": "↑",
+      "total": 15,
+      "treino": 7,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "sym_8594",
+      "caractere": "→",
+      "total": 129,
+      "treino": 25,
+      "val": 3,
+      "teste": 3,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_8644",
+      "caractere": "⇄",
+      "total": 24,
+      "treino": 18,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_8660",
+      "caractere": "⇔",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_8663",
+      "caractere": "⇗",
+      "total": 3,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "sym_8723",
+      "caractere": "∓",
+      "total": 94,
+      "treino": 38,
+      "val": 5,
+      "teste": 5,
+      "recall_teste": 0.8
+    },
+    {
+      "pasta": "sym_8734",
+      "caractere": "∞",
+      "total": 175,
+      "treino": 32,
+      "val": 4,
+      "teste": 4,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_8735",
+      "caractere": "∟",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_8862",
+      "caractere": "⊞",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_8869",
+      "caractere": "⊥",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_8979",
+      "caractere": "⌓",
+      "total": 64,
+      "treino": 45,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_91",
+      "caractere": "[",
+      "total": 932,
+      "treino": 658,
+      "val": 82,
+      "teste": 82,
+      "recall_teste": 0.975609756097561
+    },
+    {
+      "pasta": "sym_916",
+      "caractere": "Δ",
+      "total": 4,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "sym_93",
+      "caractere": "]",
+      "total": 941,
+      "treino": 665,
+      "val": 83,
+      "teste": 83,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_95",
+      "caractere": "_",
+      "total": 11,
+      "treino": 6,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "sym_9632",
+      "caractere": "■",
+      "total": 7,
+      "treino": 1,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9633",
+      "caractere": "□",
+      "total": 26,
+      "treino": 12,
+      "val": 2,
+      "teste": 2,
+      "recall_teste": 0.5
+    },
+    {
+      "pasta": "sym_9651",
+      "caractere": "△",
+      "total": 717,
+      "treino": 471,
+      "val": 59,
+      "teste": 59,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9660",
+      "caractere": "▼",
+      "total": 414,
+      "treino": 272,
+      "val": 34,
+      "teste": 34,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9675",
+      "caractere": "○",
+      "total": 1,
+      "treino": 1,
+      "val": 0,
+      "teste": 0,
+      "recall_teste": null
+    },
+    {
+      "pasta": "sym_9733",
+      "caractere": "★",
+      "total": 748,
+      "treino": 430,
+      "val": 54,
+      "teste": 54,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9734",
+      "caractere": "☆",
+      "total": 38,
+      "treino": 5,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9812",
+      "caractere": "♔",
+      "total": 18954,
+      "treino": 3813,
+      "val": 476,
+      "teste": 476,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9813",
+      "caractere": "♕",
+      "total": 19270,
+      "treino": 5424,
+      "val": 678,
+      "teste": 678,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9814",
+      "caractere": "♖",
+      "total": 25190,
+      "treino": 7589,
+      "val": 949,
+      "teste": 949,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9815",
+      "caractere": "♗",
+      "total": 17979,
+      "treino": 4420,
+      "val": 552,
+      "teste": 552,
+      "recall_teste": 0.9981884057971014
+    },
+    {
+      "pasta": "sym_9816",
+      "caractere": "♘",
+      "total": 21336,
+      "treino": 6051,
+      "val": 756,
+      "teste": 756,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "sym_9817",
+      "caractere": "♙",
+      "total": 93,
+      "treino": 52,
+      "val": 7,
+      "teste": 7,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_A",
+      "caractere": "A",
+      "total": 7070,
+      "treino": 2081,
+      "val": 260,
+      "teste": 260,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_B",
+      "caractere": "B",
+      "total": 7545,
+      "treino": 464,
+      "val": 58,
+      "teste": 58,
+      "recall_teste": 0.9655172413793104
+    },
+    {
+      "pasta": "upper_C",
+      "caractere": "C",
+      "total": 537,
+      "treino": 286,
+      "val": 36,
+      "teste": 36,
+      "recall_teste": 0.9722222222222222
+    },
+    {
+      "pasta": "upper_D",
+      "caractere": "D",
+      "total": 2120,
+      "treino": 569,
+      "val": 71,
+      "teste": 71,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_E",
+      "caractere": "E",
+      "total": 1865,
+      "treino": 681,
+      "val": 85,
+      "teste": 85,
+      "recall_teste": 0.9882352941176471
+    },
+    {
+      "pasta": "upper_F",
+      "caractere": "F",
+      "total": 1412,
+      "treino": 382,
+      "val": 48,
+      "teste": 48,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_G",
+      "caractere": "G",
+      "total": 1793,
+      "treino": 547,
+      "val": 68,
+      "teste": 68,
+      "recall_teste": 0.9705882352941176
+    },
+    {
+      "pasta": "upper_H",
+      "caractere": "H",
+      "total": 2303,
+      "treino": 527,
+      "val": 66,
+      "teste": 66,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_I",
+      "caractere": "I",
+      "total": 786,
+      "treino": 155,
+      "val": 20,
+      "teste": 20,
+      "recall_teste": 0.85
+    },
+    {
+      "pasta": "upper_J",
+      "caractere": "J",
+      "total": 318,
+      "treino": 89,
+      "val": 11,
+      "teste": 11,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_K",
+      "caractere": "K",
+      "total": 405,
+      "treino": 85,
+      "val": 10,
+      "teste": 10,
+      "recall_teste": 0.8
+    },
+    {
+      "pasta": "upper_L",
+      "caractere": "L",
+      "total": 1316,
+      "treino": 232,
+      "val": 29,
+      "teste": 29,
+      "recall_teste": 0.9655172413793104
+    },
+    {
+      "pasta": "upper_M",
+      "caractere": "M",
+      "total": 1722,
+      "treino": 320,
+      "val": 40,
+      "teste": 40,
+      "recall_teste": 0.925
+    },
+    {
+      "pasta": "upper_N",
+      "caractere": "N",
+      "total": 1677,
+      "treino": 303,
+      "val": 38,
+      "teste": 38,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_O",
+      "caractere": "O",
+      "total": 162,
+      "treino": 73,
+      "val": 9,
+      "teste": 9,
+      "recall_teste": 0.6666666666666666
+    },
+    {
+      "pasta": "upper_P",
+      "caractere": "P",
+      "total": 569,
+      "treino": 161,
+      "val": 20,
+      "teste": 20,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_Q",
+      "caractere": "Q",
+      "total": 119,
+      "treino": 52,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_R",
+      "caractere": "R",
+      "total": 1310,
+      "treino": 293,
+      "val": 36,
+      "teste": 36,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_S",
+      "caractere": "S",
+      "total": 432,
+      "treino": 130,
+      "val": 16,
+      "teste": 16,
+      "recall_teste": 0.875
+    },
+    {
+      "pasta": "upper_T",
+      "caractere": "T",
+      "total": 5881,
+      "treino": 908,
+      "val": 114,
+      "teste": 114,
+      "recall_teste": 0.9912280701754386
+    },
+    {
+      "pasta": "upper_U",
+      "caractere": "U",
+      "total": 115,
+      "treino": 52,
+      "val": 7,
+      "teste": 7,
+      "recall_teste": 0.8571428571428571
+    },
+    {
+      "pasta": "upper_V",
+      "caractere": "V",
+      "total": 91,
+      "treino": 44,
+      "val": 6,
+      "teste": 6,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_W",
+      "caractere": "W",
+      "total": 1417,
+      "treino": 148,
+      "val": 19,
+      "teste": 19,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_X",
+      "caractere": "X",
+      "total": 8,
+      "treino": 6,
+      "val": 1,
+      "teste": 1,
+      "recall_teste": 0.0
+    },
+    {
+      "pasta": "upper_Y",
+      "caractere": "Y",
+      "total": 1723,
+      "treino": 164,
+      "val": 21,
+      "teste": 21,
+      "recall_teste": 1.0
+    },
+    {
+      "pasta": "upper_Z",
+      "caractere": "Z",
+      "total": 2158,
+      "treino": 152,
+      "val": 19,
+      "teste": 19,
+      "recall_teste": 1.0
+    }
+  ]
+}
