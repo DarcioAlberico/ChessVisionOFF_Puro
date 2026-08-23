@@ -507,45 +507,45 @@ barrado antes de chegar ao gate.
 abaixo do alvo, e os ≥5 diagramas na faixa de confiança 0,60–0,80. O conjunto mede melhor
 **leitura** agora; ele continua sem poder distinguir dois modelos.
 
-### O fechamento (2026-08-22): 63 páginas, e a régua passou a separar modelos
+### O fechamento (2026-08-22): 66 páginas, e a régua passou a separar modelos
 
 **Os quatro critérios de aceite, medidos:**
 
 | critério | alvo | medido |
 |---|---|---|
-| páginas revisadas | 60 | **63** ✅ |
+| páginas revisadas | 60 | **66** ✅ |
 | `comparable` | ≥ 30 | **93** ✅ |
 | diagramas na faixa 0,60–0,80 | ≥ 5 | **6** ✅ |
 | cinco regimes no alvo | — | ✅ (abaixo) |
 
 | regime | antes | alvo | **agora** |
 |---|---|---|---|
-| `scan-puro` | 6 | 15 | **17** |
+| `scan-puro` | 6 | 15 | **19** |
 | `scan-hachurado` | 5 | 12 | **13** |
 | `vetorial` | 3 | 12 | **12** |
 | `fonte` | 1 | 6 | **6** |
-| `sem-diagrama` | 4 | 15 | **15** |
-| **total** | **19** | **60** | **63** |
+| `sem-diagrama` | 4 | 15 | **16** |
+| **total** | **19** | **60** | **66** |
 
-O conjunto passou de 40 para **110 diagramas anotados** e de 10 para **30 livros**: as páginas
+O conjunto passou de 40 para **115 diagramas anotados** e de 10 para **30 livros**: as páginas
 novas vieram de 20 livros que não estavam nele — inclusive os dois que exportavam zero, que a
 spec pedia por nome.
 
 **O número da produção sobre o conjunto novo** (`docs/metrics/field_20260822_s99.json`):
 
 ```
-    Páginas ...................... 63  (15 sem diagrama)
-    Anotados ..................... 110
-    Recall de detecção ........... 0.9364     precisão 0.9904  (1 falso positivo)
-    **Taxa de exportação** ....... 0.7455  (82/110)
-    Conferíveis .................. 93 de 110  (85%)
+    Páginas ...................... 66  (17 sem diagrama)
+    Anotados ..................... 115
+    Recall de detecção ........... 0.9217     precisão 0.9725  (3 falsos positivos)
+    **Taxa de exportação** ....... 0.7391  (85/115)
+    Conferíveis .................. 93 de 115  (81%)
     **Exatidão de campo** ........ 0.9878  (81/82 exportados)
     Exatidão condicional ......... 0.9570  (89/93)
     **Exportados e errados** ..... 1
 ```
 
 **O achado que justifica a S-99 inteira: a exatidão de campo deixou de ser 1,0000.** O conjunto
-de 19 páginas dizia que a produção nunca exporta errado. O de 63 achou o contrário, e é um caso
+de 19 páginas dizia que a produção nunca exporta errado. O de 66 achou o contrário, e é um caso
 que nenhuma quantidade de páginas fáceis encontraria:
 
 > `Dvoretsky p450`, diagrama 16-92. O modelo lê a posição **girada 180°** (a S-13 escolhe a
@@ -554,16 +554,16 @@ que nenhuma quantidade de páginas fáceis encontraria:
 > está errada.
 
 **E a régua passou a separar os modelos, que era o motivo declarado da 7.7.** Os quatro
-medidos sobre as mesmas 63 páginas:
+medidos sobre as mesmas 66 páginas:
 
 | | produção | **controle** | `mhsp` | tratamento S-108 |
 |---|---|---|---|---|
-| taxa de exportação | 0,7455 | **0,7727** | 0,7182 | 0,7273 |
+| taxa de exportação | 0,7391 | **0,7652** | 0,7130 | 0,7217 |
 | `exact` (de 93) | **89** | 86 | 82 | 88 |
 | exatidão condicional | **0,9570** | 0,9247 | 0,8817 | 0,9462 |
 | exportados e errados | 1 | **0** | 1 | 1 |
 | exatidão de campo | 0,9878 | **1,0000** | 0,9873 | 0,9875 |
-| exportação limpa | 0,7228 | **0,7525** | 0,6931 | 0,7129 |
+| exportação limpa | 0,7170 | **0,7453** | 0,6887 | 0,7075 |
 
 Três leituras deste quadro, e as três são novas:
 
@@ -574,12 +574,75 @@ Três leituras deste quadro, e as três são novas:
    S-108 quebram no `Burgess p60` — a dama **preta** em e5 lida como branca, com 0,998 e 0,901
    de confiança. O controle não erra nenhum dos dois. **A decisão de 2026-08-18 de não trocar
    o modelo de produção pelo controle foi tomada sobre o conjunto de 19 páginas, em que a
-   diferença era "um diagrama sem FEN de referência". Sobre 63 páginas a diferença existe, e a
+   diferença era "um diagrama sem FEN de referência". Sobre 66 páginas a diferença existe, e a
    decisão volta a ser do dono do acervo.**
 3. **A faixa 0,60–0,80 encheu com página nova, e não com modelo novo.** São 6, em quatro
    livros diferentes (`Neumann` ×3, `Gunderam`, `Burgess`, `Euwe Band 7`) — todos scans ou
    fontes de impressão antiga. A rota que a S-108 abriu (domínio aprendido cria vizinhança de
    corte) e a rota original (faltam páginas difíceis) valem as duas.
+
+### Os quatro relatórios foram remedidos em 2026-08-23, e o motivo é a própria S-100
+
+**O que estava errado.** O commit de 22/08 diz "63 páginas, 110 diagramas", e é o número que
+os quatro relatórios declaram. O `data/field_set.jsonl` que ele commitou tem **65 páginas e
+112 diagramas**: duas páginas do Yusupov (`p2`, sem diagrama, e `p11`, com dois) foram
+anotadas **depois** da medição e entraram no mesmo commit. A guarda da S-100 pegou exatamente
+isso — que é para o que ela existe — e foi só ela que pegou. A terceira, a `p14`, foi anotada
+em 23/08, e a seção abaixo é sobre ela.
+
+**O que a remedição mudou, e o que não mudou.** Os quatro modelos foram medidos de novo sobre
+as 66, com o mesmo código commitado; os números acima já são os novos. O deslocamento é todo
+das três páginas do Yusupov que faltavam ser medidas:
+
+| | 63 páginas | 66 páginas | de onde vem |
+|---|---|---|---|
+| anotados | 110 | **115** | dois do `p11`, três do `p14` |
+| casados | 103 | **106** | os do `p11` e um dos três do `p14` |
+| detectados | 104 | **109** | e dois deles não são diagrama |
+| falsos positivos | 1 | **3** | o `p2` (arte de capa, 0,177) e dois fragmentos de scan do `p14` |
+| recall de detecção | 0,9364 | **0,9217** | o detector perde dois dos três do `p14` |
+| precisão de detecção | 0,9904 | **0,9725** | idem |
+| exportados (produção) | 82 | **85** | +3 sobre um denominador que subiu 5 |
+| `comparable`, `exact`, exatidão de campo, exportados e errados | — | **iguais** | as cinco anotações novas são só caixa |
+
+**Nenhuma leitura do quadro dos quatro modelos muda**: as três conclusões acima valem com os
+números novos, porque a parte que decide correção — `exact`, exatidão condicional, exportados
+e errados, exatidão de campo — é idêntica nas quatro colunas. O que se moveu foi denominador.
+
+### A `p14` do Yusupov, e o defeito de detecção que ela mede
+
+**Ela quase entrou como `sem-diagrama`, e tem três diagramas** (1-9, 1-10, 1-11). Assim teria
+transformado dois diagramas reais em falsos positivos e publicado precisão 0,9633 — o defeito
+da S-95 visto do outro lado: ali uma leitura alucinada servia de referência, aqui uma página
+cheia de diagramas afirmaria não ter nenhum. Comparar com a `p2`, do mesmo livro, mostra a
+distinção: ela é capa da série, o detector lê um tabuleiro na arte a 0,177, e esse falso
+positivo é **legítimo** — é exatamente para isso que página sem diagrama entra no conjunto.
+
+**Como as três caixas foram anotadas.** Do detector de **contorno**
+(`board_detection.detect_boards`), sobre a página rasterizada a 220 DPI, e conferidas
+desenhadas sobre a página.
+Ele devolve os três, e devolve quadrados: `138,4×138,4`, `136,5×136,5` e `139,1×138,4` pontos,
+todos com razão entre 1,0000 e 1,0047, alinhados na mesma coluna — do mesmo tamanho das caixas
+já anotadas na `p11`, que é do mesmo livro. Ficaram **só com a caixa**: a FEN não foi
+transcrita, e enquanto não for a página não entra em `comparable`.
+
+**O que ela mede, e por que o número piora.** O `cvoff-field` não usa o contorno nesta página:
+usa a imagem embutida, e as imagens embutidas da `p14` são **fragmentos de scan**, não
+diagramas. O relatório vê:
+
+| | |
+|---|---|
+| detectados na página | 2 |
+| casados com a anotação | 1 (o 1-11, IoU 0,76) |
+| falsos positivos | 1 — o retângulo `(-9, 12, 451, 415)`, que é o fragmento de topo do scan |
+| perdidos | 2 (1-9 e 1-10) |
+
+O livro inteiro cai para recall 0,500 e precisão 0,600, e é o pior do conjunto. **É medição
+correta de um defeito real**, e o defeito tem nome: nesta página o caminho de imagem embutida
+vence o de contorno, e o de contorno é o que está certo. O `detection/__init__.py` já
+documenta a divisão — "a página inteira é um scan: uma imagem só, cobrindo tudo" — e o Yusupov
+é um desses livros, mas a `p14` tem o scan quebrado em três imagens em vez de uma, o que faz o
+caminho embutido parecer aplicável quando não é. A régua agora tem um caso que exercita isso.
 
 ### Como foi anotado, e o que eu errei
 

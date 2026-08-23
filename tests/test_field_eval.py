@@ -621,7 +621,7 @@ if __name__ == "__main__":
 RAIZ = Path(__file__).resolve().parents[1]
 
 RELATORIOS_CORRENTES = {
-    "field_20260822_s99.json": "a régua da S-99 fechada: a produção sobre as 63 páginas",
+    "field_20260822_s99.json": "a régua da S-99 fechada: a produção sobre as 66 páginas",
     "controle_20260822.json": "o controle da S-107, regravado sobre o conjunto de hoje",
     "mhsp_20260822.json": "o candidato da S-107, regravado no mesmo conjunto",
     "s108_20260822.json": "o tratamento da S-108, medido pela primeira vez com régua que separa",
@@ -642,12 +642,25 @@ conjunto deles.
 Quando a S-99 crescer o conjunto para 60 páginas, esta suíte falha em bloco -- e é o ponto:
 cada linha aqui tem de ser remedida ou sair da lista, e a decisão passa a ser explícita.
 
-**Foi o que aconteceu em 2026-08-22.** O conjunto passou de 17/40 para 63/110 e as quatro
+**Foi o que aconteceu em 2026-08-22.** O conjunto passou de 17/40 para 65/112 e as quatro
 linhas de 2026-08-16 caíram juntas. Os quatro modelos foram remedidos sobre o conjunto novo --
 `producao_20260816.json` sai da lista porque `field_20260822_s99.json` é a produção sobre o
 conjunto de hoje, e `s108_20260822.json` entra porque a decisão da Fase 15 passou a depender
 dele. Os de 2026-08-16 viram registro histórico: eles declaram `"pages": 19` e é assim que se
-confere."""
+confere.
+
+**E aconteceu de novo em 2026-08-23, dentro do mesmo commit que fechou a S-99.** Os quatro
+relatórios de 22/08 declaravam `63/110`; o `field_set.jsonl` daquele commit tem `65/112`, porque
+duas páginas do Yusupov foram anotadas depois de a medição rodar. Ninguém percebeu na hora --
+a mensagem do commit repete `63/110` cinco vezes -- e foi esta guarda que pegou, que é para o
+que ela existe. O conjunto foi para `66/115` com a `p14` do Yusupov, que estava por anotar, e
+os quatro foram remedidos sobre ele com o mesmo código.
+
+O que se moveu foi denominador e **detecção**: `exact`, exatidão condicional, exportados e
+errados e exatidão de campo ficaram idênticos nas quatro colunas, porque as cinco anotações
+novas são só caixa. O recall caiu de 0,9364 para 0,9217 e a precisão de 0,9904 para 0,9725,
+e as duas quedas são o mesmo caso -- a `p14`, em que o caminho de imagem embutida devolve
+fragmento de scan em vez de diagrama. Está na S-99 da `SPEC_FASE14.md`."""
 
 
 class ConjuntoVigenteTests(unittest.TestCase):

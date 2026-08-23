@@ -31,7 +31,7 @@ PERMITIDAS = {
     "labels.py": "grava o **backup**, não o destino: o original fica intacto enquanto a cópia é feita",
     "cli/evaluate.py": "relatório de medição em JSON pedido por --json; refeito rodando o comando de novo",
     "cli/export_onnx.py": "relatório de exportação ONNX em JSON, derivado do checkpoint que continua no disco",
-    "cli/field.py": "relatório de campo em JSON; refeito com cvoff-field, ~20 s sobre o conjunto atual",
+    "cli/field.py": "relatório de campo em JSON; refeito com cvoff-field, ~1 min por modelo sobre o conjunto atual",
     "cli/provenance.py": "relatório de procedência em JSON, derivado do índice de dHash",
     "cli/games.py": "o JSON de casamentos do --save-matches: caro de refazer, mas derivado da base",
     "detection_census.py": "o censo de detecção: derivado do acervo, refeito com cvoff-census",
