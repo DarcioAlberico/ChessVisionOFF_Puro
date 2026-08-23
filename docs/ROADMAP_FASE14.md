@@ -230,17 +230,24 @@ Reconhecer, corrigir, `Ctrl+S`, treinar, e o app usar. Funciona até o penúltim
 | `augment_version` | `aug0` |
 | `git_commit` · data | `88daa9a` · 2026-08-09 |
 
-| o dataset de hoje | |
-|---|---|
-| rótulos utilizáveis | **3.935** |
-| `train` / `val` / `test` | 2.879 / 346 / 354 |
-| **sem split** | **357** |
-| treino disponível | ≈ **3.128** |
+| o dataset | 2026-08-16 | 2026-08-23 |
+|---|---|---|
+| rótulos utilizáveis | **3.935** | **4.064** |
+| `train` / `val` / `test` registrados | 2.879 / 346 / 354 | 2.922 / 361 / 370 |
+| **sem split** | **357** | **412** |
+| treino disponível | ≈ **3.128** | ≈ **3.254** |
 
 **468 amostras (+17,6%) de correção humana que o modelo do app nunca viu** — 697 rótulos
 criados em agosto, nenhum no produto. E `models/s40_mhsp_16ep.pt` continua no disco desde
 2026-08-11, medido como dominante em tudo que era mensurável (−40% de reparo do decodificador),
 sem decisão, esperando justamente uma régua com resolução.
+
+**Remedido em 2026-08-23, e a distância cresceu.** Sobre o `labels.csv` e o `splits.csv` de
+`9eb6685`, que já trazem a coleta do app até 2026-08-23 04:38 (`board_20260823_073815_016751`):
+são **594 amostras (+22,3%)** que o modelo do produto nunca viu, contra as 468 de 2026-08-16. A
+coluna nova é medida e não estimada — "treino disponível" é o tamanho do `train` que o
+`cvoff-train` montaria hoje, com os 412 sem split recebendo o deles antes de o dataset ser
+montado (S-56). A decisão de promover continua sendo sua, e ficou maior.
 
 ---
 
@@ -886,6 +893,17 @@ aberta. Rodou o `cvoff-audit` normal: 3.935 rótulos utilizáveis, 0 ilegais fat
 sumido, redundância em **11,0%** (acima do teto de 10% da S-63) e 3 triplas cruzando split
 (S-98). Nenhum é impeditivo, mas nenhum foi barrado por gate — foi lido por gente, que é
 precisamente o que a S-102 existe para deixar de exigir.
+
+**A mesma auditoria em 2026-08-23**, ao lado e não no lugar da de cima: **4.064** rótulos
+utilizáveis, 0 ilegais fatais (mais 5 confirmadas à mão, que o comando lista à parte), 1 PNG
+sumido, **444 órfãos** sem linha no CSV, 412 sem split e **as mesmas 3 triplas** cruzando split.
+O que mudou de verdade é a redundância: de **11,0% para 1,2%** (47 amostras em 46 grupos), e não
+foi esta auditoria que a baixou — foi o `cvoff-audit --dedupe` de **2026-08-21** (S-108), que
+tirou **444 linhas de 382 grupos** e está registrado em `docs/metrics/dedupe_20260821_072042.json`.
+Os **444 órfãos** de hoje são o outro lado dessa remoção: o dedupe tira a linha do CSV e deixa o
+PNG no disco, e de fato **nenhum** órfão tem nome posterior a 2026-08-21 — tudo que o app gravou
+depois entrou rotulado. O teto de 10% da S-63 deixou de ser violado; o PNG sumido e as 3 triplas
+seguem de pé, e seguem sem gate, porque a S-102 continua aberta.
 
 ---
 
