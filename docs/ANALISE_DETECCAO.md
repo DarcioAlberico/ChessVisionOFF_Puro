@@ -1056,12 +1056,60 @@ inferior de `BAND_BOARD_CHECKER` citada em §6.
 antes, 1483 depois — diferença zero.** É o raio de alcance que se quer de uma correção
 dirigida, e é a mesma medição que reprovou a primeira versão da guarda com 1478.
 
+#### 9. No conjunto de campo, que é a régua
+
+Remedido em 2026-08-23 sobre as 66 páginas da S-99, com o código desta entrega
+(`cvoff-field --json`, os quatro relatórios de `docs/metrics/`):
+
+| | antes (S-99) | depois |
+|---|---|---|
+| detectados | 109 | **110** |
+| casados | 106 | **109** |
+| falsos positivos | **3** | **1** |
+| recall de detecção | 0,9217 | **0,9478** |
+| precisão de detecção | 0,9725 | **0,9909** |
+
+**Os dois falsos positivos que somem são as duas faixas da `p14` do Yusupov**, que a S-99 tinha
+nomeado como o defeito de detecção que aquela página media — *"dois fragmentos de scan do
+`p14`"*, *"o detector perde dois dos três do `p14`"*. Era essa página, e é ela que este item
+fecha.
+
+**A atribuição fecha por livro, e são dois — os outros 28 não se mexeram.** Diff do `per_book`
+contra o relatório de `9eb6685`:
+
+| livro | casados | falsos positivos | recall | `comparable` | `exact` |
+|---|---|---|---|---|---|
+| `Yusupov` | 3 → **5** | 2 → **1** | 0,500 → **0,833** | 1 → **3** | 1 → **3** |
+| `GALLAGHER` | 4 → **5** | 1 → **0** | 0,800 → **1,000** | — | — |
+
+No `GALLAGHER` é a p124: a única caixa da página era a faixa de 308×274 pt, e passa a ser o
+diagrama de contorno de 119×120 pt. E o `Yusupov` cruza um limiar que não é de detecção —
+`enough_comparable` vai de **`False` para `True`**: com um diagrama conferível o livro não tinha
+base para medir leitura, e com três passa a ter.
+
+**O falso positivo que sobra no `Yusupov` é o legítimo, e isso é o teste da guarda.** É a arte
+de capa da `p2`, lida a 0,177 — exatamente o que a S-99 pôs no conjunto para que houvesse
+página sem diagrama a medir. A S-176 matou as duas faixas fantasma **sem** matar a medição de
+falso positivo; uma guarda que zerasse a coluna teria zerado junto a capacidade de detectá-la.
+
+**O tempo caiu e não é ganho de desempenho.** Os `seconds` do HEAD anterior foram medidos sob
+contenção de CPU (um treino ocupando os 12 núcleos), e a diferença entre modelos ali chegava a
+113,3 s contra 84,0 s pelo mesmo motivo. Esta remedição rodou com a máquina mais livre. Nada em
+`seconds` ou `seconds_per_diagram` desta entrega mede a S-176 — ela mexe em quantos candidatos
+existem, não em quanto custa cada um.
+
+**Os quatro relatórios têm de ser remedidos junto com uma mudança de detecção, e a guarda da
+S-100 não avisa.** Ela compara `pages` e `annotated` do conjunto, e mudança de código não move
+nenhum dos dois: os JSON continuavam válidos aos olhos do teste enquanto descreviam um programa
+que já não existia. É o mesmo buraco que a S-175 encontrou no `deteccao_base.csv` versionado, e
+por ora o remédio é o mesmo — remedir à mão e dizer que se remediu.
+
 E a faixa passa a deixar rastro: `"faixa-da-pagina"` é o novo motivo em `RejectionRow`, e é o
 **primeiro** que barra candidato da fonte embutida — os outros três do `hybrid` julgam achado
 de contorno. `detection_census.RejectionRow` diz isso no docstring, porque era a premissa
 anterior.
 
-**Testes.** `tests/test_detection.py::PageBandGuardTests`, 9 casos. Os dois que carregam a
+**Testes.** `tests/test_detection.py::PageBandGuardTests`, 11 casos. Os dois que carregam a
 medição são `test_uma_casa_achada_dentro_do_diagrama_nao_o_transforma_em_faixa` (o par de §6,
 sem o qual a guarda apagaria dois diagramas do acervo) e
 `test_o_diagrama_de_dentro_da_faixa_e_recuperado_pelo_contorno` (§3: tirar a faixa não pode
