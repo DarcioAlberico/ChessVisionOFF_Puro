@@ -16,11 +16,13 @@ Duas coisas, e elas são independentes:
   separada da seguinte por um vão que atravessa todas as colunas, e prosa não tem esse vão.
 - **em que direção ela se lê?** -- `grade.direcao_pela_numeracao`, sobre os números impressos.
   Geometria nenhuma responde a isto: `Schiller` e `Karpov` têm grades indistinguíveis numeradas
-  ao contrário uma da outra.
+  ao contrário uma da outra. E onde não há número legível, a camada opina no lugar dele, sob
+  rótulo de hipótese -- ver "A segunda urna", abaixo.
 
 A segunda é **constante por livro**, e é isso que o relatório apura: cada livro recebe um
-`arranjo` calibrado, com o número de páginas que votaram de cada lado à vista. Uma divergência
-grande dentro de um livro é sinal de defeito na medição, e não de um livro que muda de ideia.
+`arranjo` calibrado, com o número de páginas que votaram de cada lado à vista e o campo `fonte`
+dizendo **de onde a direção veio**. Uma divergência grande dentro de um livro é sinal de defeito
+na medição, e não de um livro que muda de ideia.
 
 ## A procedência da camada entra no relatório, porque ela muda o que a medida vale
 
@@ -51,12 +53,23 @@ premia o atalho porque o `Karpov` tem mais páginas de grade que o `Schiller`, e
 atalho esteja certo. Por isso o `--baseline` deste comando trava o **acerto** contra o número
 impresso, e não o `tau`.
 
-## O que fica de fora, e é um quarto das páginas de grade
+## A segunda urna: o livro que o número impresso não alcança
 
 As 64 páginas de grade do `Yusupov` não têm numeração legível na camada -- o número do exercício
-não sai como inteiro isolado --, e o livro fica `indefinido`, isto é, em `prosa`. O `tau` dele
-sugere fortemente `grade` (0,181 contra 0,044), e **isso não basta**: é exatamente a evidência que
-o `Secrets` mostrou ser enganosa. Quem fecha esse caso é a S-188, lendo o número da imagem.
+não sai como inteiro isolado. Ele é calibrado pela **camada**, e sai marcado `"hipotese": true`.
+
+Isso não é o mesmo que medir, e o relatório não deixa confundir:
+
+- **o número impresso vence sempre.** Onde ele existe, a camada não é consultada para decidir --
+  é o caso do `Secrets`, em que consultá-la inverteria o livro;
+- **a hipótese não entra no `acerto`**, que é o que o `--baseline` trava. Conferir uma calibração
+  contra o próprio palpite não é régua;
+- **o `tau` sai em duas colunas**, `calibrado` e `so_confirmado`, e a diferença entre elas é
+  quanto do ganho está apoiado em palpite.
+
+Quanto vale a hipótese está medido em `CONCORDANCIA_DA_CAMADA`: por página a camada acerta 96,5%,
+e **por livro acerta 3 de 4**. Quem fecha o caso é a S-188, lendo o número da imagem -- e ela pode
+tanto confirmar o `Yusupov` quanto desmenti-lo.
 """
 
 from __future__ import annotations
@@ -102,6 +115,78 @@ nenhum deles, e existe para o livro que este acervo não tem: o que mistura duas
 
 QUEDA_TOLERADA = 0.02
 """Quanto o acerto pode cair contra o `--baseline` antes de o comando falhar."""
+
+MARGEM_DA_CAMADA = 0.02
+"""Quanto o `tau` tem de separar as duas leituras para a camada opinar sobre a direção da página.
+
+Abaixo disto as duas leituras explicam a emissão igualmente bem, e a página não vota. Medido: nas
+144 páginas em que o número impresso pode conferir, esta margem não calou nenhuma -- a camada ou
+tem preferência clara ou não tem página. No `Yusupov`, que é onde ela decide, cala 25 de 199."""
+
+CONCORDANCIA_DA_CAMADA = 0.70
+"""Concordância mínima para a **hipótese** da camada, e ela é mais baixa que a do número impresso.
+
+**Não é por a camada ser mais confiável -- é por ela não ser confiável de jeito nenhum.** Medido
+nos quatro livros em que o número impresso confere o palpite dela:
+
+    Karpov     49 de 49 páginas de acordo    e a direção do livro sai certa
+    Schiller   76 de 76                      certa
+    Burgess    14 de 16  (87,5%)             certa
+    Secrets     0 de  3  (100% ao contrário) **errada, e unânime**
+
+**Concordância alta não é acerto.** O `Secrets` é unânime e está errado; o `Burgess` é o menos
+unânime dos quatro e está certo. Logo o piso aqui não pode ser um portão de confiança -- ele não
+teria como sê-lo. O trabalho dele é só evitar chamar de direção o que é cara ou coroa, e quem
+carrega a incerteza é o rótulo `hipotese`, não o número.
+
+Ele é 0,70, e o `Yusupov` mostra por que não pode ser 0,80: a concordância dele **depende de
+quantas páginas se lê** -- 0,898 nas 64 primeiras de grade, que são as que este relatório mede, e
+0,799 nas 199 do livro inteiro. Um piso colado em 0,80 faria a direção do livro mudar conforme o
+`--por-livro`, que é a pior espécie de limiar.
+
+Livro a livro, a camada acertou **3 de 4** -- é isso que vale uma hipótese calibrada por ela, e
+não os 96,5% por página."""
+
+VOTOS_MINIMOS_DA_CAMADA = 8
+"""Quantas páginas a camada precisa ter votado para a hipótese ser sobre o **livro**.
+
+**Existe porque a primeira execução calibrou o `Neumann` com um voto.** Uma página unânime é
+unânime consigo mesma, e chamar isso de direção do livro é o defeito que o piso de concordância
+não pega -- 1 de 1 é 100%.
+
+O piso não é de confiança, e o `Secrets` diz por quê: **três votos unânimes da camada, e os três
+errados.** Um tamanho de amostra já provado insuficiente não pode passar. Daí a régua:
+
+    maior amostra da camada já provada insuficiente (Secrets, unânime e errada)     3
+    piso                                                                            8
+    menor livro que o acervo de fato calibra por hipótese (Yusupov)                 54
+
+2,7x acima do que já falhou e 6,8x abaixo do único caso real. E ele **não** vale para o número
+impresso: lá o `Secrets` é calibrado com 3 votos e está certo. Três verdades bastam; três palpites
+não -- é a assimetria inteira desta entrega em uma linha."""
+
+
+@dataclass(frozen=True)
+class Calibracao:
+    """A direção de um livro, e de onde ela veio.
+
+    **`fonte` não é metadado decorativo: é o que separa medição de palpite.** `numero impresso` é
+    a numeração que o editor escolheu, conferida página a página. `camada` é a preferência de um
+    motor de OCR -- e, medido nas páginas em que o número impresso responde, ele erra a direção
+    numa em cada sete. Um livro calibrado por ela recebe uma direção **plausível**, não verificada.
+    """
+
+    arranjo: str
+    fonte: str
+    votos_impressos_grade: int = 0
+    votos_impressos_prosa: int = 0
+    votos_da_camada_grade: int = 0
+    votos_da_camada_prosa: int = 0
+
+    @property
+    def hipotese(self) -> bool:
+        """Este `arranjo` é palpite da camada, e nada o confirmou."""
+        return self.fonte == "camada"
 
 
 @dataclass(frozen=True)
@@ -259,21 +344,67 @@ def medir_pagina(page: Any) -> PaginaDeGrade | None:
     )
 
 
-def calibrar(paginas: Sequence[PaginaDeGrade]) -> tuple[str, int, int]:
-    """`(arranjo, votos_grade, votos_prosa)` para um livro. Ver `CONCORDANCIA_MINIMA`.
+def direcao_pela_camada(pagina: PaginaDeGrade) -> str | None:
+    """A direção que a **camada de texto** prefere nesta página. Palpite, e não verdade.
 
-    Só votam as páginas que **são** grade e cuja numeração decide. Uma página de prosa não tem
-    opinião sobre a direção de uma grade, e deixá-la votar diluiria o sinal com ruído.
+    Medida pelo `tau`: se a nossa leitura em fileiras fica mais perto da ordem de emissão do que a
+    leitura em colunas, a camada está dizendo `grade`. É a mesma comparação da S-194, usada aqui
+    para o que ela pode fazer -- **opinar** --, e não para o que ela não pode: arbitrar.
+
+    `None` quando as duas leituras empatam dentro de `MARGEM_DA_CAMADA`, e quando a página não tem
+    `tau` (referência fora de ordem). Empate não é opinião.
     """
-    votos = [p.direcao_impressa for p in paginas if p.e_grade and p.direcao_impressa]
+    if pagina.tau_prosa is None or pagina.tau_grade is None:
+        return None
+    if abs(pagina.tau_prosa - pagina.tau_grade) < MARGEM_DA_CAMADA:
+        return None
+    return "grade" if pagina.tau_grade < pagina.tau_prosa else "prosa"
+
+
+def _vencedor(votos: list[str | None], *, piso: float) -> tuple[str, int, int]:
+    """`(arranjo, de_grade, de_prosa)` de uma urna, ou `indefinido` se ela não converge."""
     de_grade = votos.count("grade")
     de_prosa = votos.count("prosa")
-    if not votos:
+    validos = de_grade + de_prosa
+    if not validos:
         return "indefinido", 0, 0
     vencedor, quantos = ("grade", de_grade) if de_grade >= de_prosa else ("prosa", de_prosa)
-    if quantos / len(votos) < CONCORDANCIA_MINIMA:
+    if quantos / validos < piso:
         return "indefinido", de_grade, de_prosa
     return vencedor, de_grade, de_prosa
+
+
+def calibrar(paginas: Sequence[PaginaDeGrade]) -> Calibracao:
+    """A direção de um livro, e **de onde ela veio**. Ver `CONCORDANCIA_MINIMA`.
+
+    Duas urnas, nesta ordem, e a ordem é a entrega:
+
+    1. **o número impresso**, que é verdade -- e onde ele existe nada mais é consultado;
+    2. **a camada de texto**, que é palpite, e só fala quando a primeira urna está vazia.
+
+    O segundo caso sai marcado `hipotese`, e é o que permite dar uma direção às 64 páginas de
+    grade do `Yusupov` sem fingir que ela foi verificada. Ver `Calibracao.hipotese`.
+
+    Só votam as páginas que **são** grade: uma página de prosa não tem opinião sobre a direção de
+    uma grade, e deixá-la votar diluiria o sinal com ruído.
+    """
+    de_grade_paginas = [p for p in paginas if p.e_grade]
+    impressa, impressos_grade, impressos_prosa = _vencedor(
+        [p.direcao_impressa for p in de_grade_paginas], piso=CONCORDANCIA_MINIMA
+    )
+    palpite, palpites_grade, palpites_prosa = _vencedor(
+        [direcao_pela_camada(p) for p in de_grade_paginas], piso=CONCORDANCIA_DA_CAMADA
+    )
+    if palpites_grade + palpites_prosa < VOTOS_MINIMOS_DA_CAMADA:
+        palpite = "indefinido"  # uma página unânime é unânime consigo mesma
+    if impressa != "indefinido":
+        return Calibracao(impressa, "numero impresso", impressos_grade, impressos_prosa,
+                          palpites_grade, palpites_prosa)
+    if palpite != "indefinido":
+        return Calibracao(palpite, "camada", impressos_grade, impressos_prosa,
+                          palpites_grade, palpites_prosa)
+    return Calibracao("indefinido", "nenhuma", impressos_grade, impressos_prosa,
+                      palpites_grade, palpites_prosa)
 
 
 def medir(pdfs: list[Path], *, por_livro: int) -> dict[str, Any]:
@@ -316,16 +447,29 @@ def medir(pdfs: list[Path], *, por_livro: int) -> dict[str, Any]:
         if not medidas:
             continue
 
-        arranjo, de_grade, de_prosa = calibrar(medidas)
+        calibracao = calibrar(medidas)
         decidiveis = [p for p in medidas if p.direcao_impressa]
         concordam = sum(1 for p in decidiveis if p.direcao_emitida == p.direcao_impressa)
         com_tau = [p for p in medidas if p.tau_prosa is not None]
+        # O palpite da camada conferido onde o número impresso responde: é ele que diz quanto vale
+        # uma calibração por hipótese, e por isso é contado mesmo nos livros que não precisam dela.
+        palpite_certo = sum(1 for p in decidiveis if direcao_pela_camada(p) == p.direcao_impressa)
+        palpite_errado = sum(
+            1 for p in decidiveis if (opiniao := direcao_pela_camada(p)) and opiniao != p.direcao_impressa
+        )
         por_livro_saida[caminho.name] = {
             "camada": marca or "editorado",
             "paginas_de_grade": len(medidas),
             "paginas_decidiveis": len(decidiveis),
-            "arranjo": arranjo,
-            "votos": {"grade": de_grade, "prosa": de_prosa},
+            "arranjo": calibracao.arranjo,
+            "fonte": calibracao.fonte,
+            "hipotese": calibracao.hipotese,
+            "votos": {"grade": calibracao.votos_impressos_grade, "prosa": calibracao.votos_impressos_prosa},
+            "votos_da_camada": {
+                "grade": calibracao.votos_da_camada_grade,
+                "prosa": calibracao.votos_da_camada_prosa,
+            },
+            "camada_como_palpite": {"acertos": palpite_certo, "erros": palpite_errado},
             # A prova de que o `tau` não pode arbitrar: em quantas páginas a camada e o número
             # impresso discordam sobre a direção da própria grade.
             "emissao_contra_impresso": {
@@ -350,16 +494,24 @@ def _tau_agregado(por_livro: dict[str, Any]) -> dict[str, Any]:
     com_tau = [v for v in por_livro.values() if v.get("paginas_com_tau")]
     total = sum(v["paginas_com_tau"] for v in com_tau)
     if not total:
-        return {"paginas": 0, "prosa": None, "grade": None, "calibrado": None}
+        return {"paginas": 0, "prosa": None, "grade": None, "calibrado": None, "so_confirmado": None}
 
     def media(escolher: Any) -> float:
         return sum(escolher(v) * v["paginas_com_tau"] for v in com_tau) / total
+
+    def escolhido(v: dict[str, Any], *, aceitar_hipotese: bool) -> float:
+        vale = v["arranjo"] == "grade" and (aceitar_hipotese or not v.get("hipotese"))
+        return v["tau_grade"] if vale else v["tau_prosa"]
 
     return {
         "paginas": total,
         "prosa": media(lambda v: v["tau_prosa"]),
         "grade": media(lambda v: v["tau_grade"]),
-        "calibrado": media(lambda v: v["tau_grade"] if v["arranjo"] == "grade" else v["tau_prosa"]),
+        "calibrado": media(lambda v: escolhido(v, aceitar_hipotese=True)),
+        # **A hipótese sai separada, e não some dentro do número bom.** É a diferença entre os dois
+        # que diz quanto do ganho está apoiado em palpite -- e é ela que some quando a S-188
+        # confirmar (ou desmentir) o `Yusupov`.
+        "so_confirmado": media(lambda v: escolhido(v, aceitar_hipotese=False)),
     }
 
 
@@ -375,7 +527,17 @@ def _agregar(
     # está certa quando o `arranjo` calibrado para o livro dela é o que ela mostra impresso. O
     # livro `indefinido` não acerta nenhuma -- ele fica em `prosa` sem ter sido calibrado, e
     # contá-lo como acerto esconderia exatamente o caso que o piso de concordância existe para ver.
-    acertos = sum(v["votos"][v["arranjo"]] for v in por_livro.values() if v["arranjo"] != "indefinido")
+    # ...e o livro calibrado **por hipótese** também não acerta nenhuma: o `acerto` mede a
+    # calibração contra o número impresso, e a hipótese não tem número impresso para conferir.
+    # Deixá-la entrar aqui inflaria a régua com a coisa que ela existe para não confundir.
+    acertos = sum(
+        v["votos"][v["arranjo"]]
+        for v in por_livro.values()
+        if v["arranjo"] != "indefinido" and not v["hipotese"]
+    )
+    por_hipotese = {nome: v for nome, v in por_livro.items() if v["hipotese"]}
+    palpite_certo = sum(v["camada_como_palpite"]["acertos"] for v in por_livro.values())
+    palpite_errado = sum(v["camada_como_palpite"]["erros"] for v in por_livro.values())
     return {
         # **A tabela que decide o item, e por isso ela mora no relatório e não só no documento.**
         # `calibrado` usa o `arranjo` de cada livro -- e `indefinido` conta como `prosa`, que é o
@@ -389,6 +551,15 @@ def _agregar(
         "paginas_decidiveis": decidiveis,
         "acerto": (acertos / decidiveis) if decidiveis else None,
         "emissao_contra_impresso": {"de_acordo": decidiveis - contra, "contra": contra},
+        # **A hipótese é contada à parte, e com o que ela vale.** `livros` diz quais receberam
+        # direção sem que nada a confirmasse; `camada_como_palpite` é o placar da camada nas
+        # páginas em que o número impresso pôde conferi-la -- por página, que é o número
+        # otimista. O número honesto é por livro, e está na `CONCORDANCIA_DA_CAMADA`: 3 de 4.
+        "hipoteses": {
+            "livros": sorted(por_hipotese),
+            "paginas_de_grade": sum(v["paginas_de_grade"] for v in por_hipotese.values()),
+            "camada_como_palpite": {"acertos": palpite_certo, "erros": palpite_errado},
+        },
         "por_livro": dict(sorted(por_livro.items())),
         "avisos": avisos,
     }
@@ -438,16 +609,29 @@ def main(argv: list[str] | None = None) -> int:
         f"acerto {'-' if acerto is None else f'{acerto:.1%}'}"
     )
     for nome, v in relatorio["por_livro"].items():
-        if v["arranjo"] != "indefinido" or v["paginas_decidiveis"]:
-            print(
-                f"   {v['arranjo']:10s} {v['votos']['grade']:3d}x grade / {v['votos']['prosa']:3d}x prosa   "
-                f"{nome[:46]}"
-            )
+        if v["arranjo"] == "indefinido" and not v["paginas_decidiveis"]:
+            continue
+        if v["hipotese"]:
+            votos = f"{v['votos_da_camada']['grade']:3d}x grade / {v['votos_da_camada']['prosa']:3d}x prosa"
+            print(f"   {v['arranjo'] + '?':10s} {votos}   {nome[:40]}  (HIPOTESE: so a camada)")
+        else:
+            votos = f"{v['votos']['grade']:3d}x grade / {v['votos']['prosa']:3d}x prosa"
+            print(f"   {v['arranjo']:10s} {votos}   {nome[:46]}")
     tau = relatorio["tau"]
     if tau["paginas"]:
         print(
             f"tau nas {tau['paginas']} paginas de grade:  coluna a coluna {tau['prosa']:.4f}   "
-            f"tudo grade {tau['grade']:.4f}   calibrado por livro {tau['calibrado']:.4f}"
+            f"tudo grade {tau['grade']:.4f}   calibrado {tau['calibrado']:.4f}   "
+            f"(so o confirmado {tau['so_confirmado']:.4f})"
+        )
+    hip = relatorio["hipoteses"]
+    if hip["livros"]:
+        placar = hip["camada_como_palpite"]
+        print(
+            f"{len(hip['livros'])} livro(s) e {hip['paginas_de_grade']} paginas calibrados por "
+            f"HIPOTESE, so pela camada -- nada confirmou. Onde o numero impresso pode conferir a "
+            f"camada, ela acerta {placar['acertos']} paginas e erra {placar['erros']}; "
+            "por livro, 3 de 4."
         )
     contra = relatorio["emissao_contra_impresso"]["contra"]
     if contra:
@@ -476,7 +660,17 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["PaginaDeGrade", "calibrar", "camada_de_ocr", "main", "medir", "medir_pagina", "parse_args"]
+__all__ = [
+    "Calibracao",
+    "PaginaDeGrade",
+    "calibrar",
+    "camada_de_ocr",
+    "direcao_pela_camada",
+    "main",
+    "medir",
+    "medir_pagina",
+    "parse_args",
+]
 
 
 if __name__ == "__main__":  # pragma: no cover

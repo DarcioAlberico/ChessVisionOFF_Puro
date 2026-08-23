@@ -117,38 +117,112 @@ class PaginaTests(_ComPdf):
             return grade.medir_pagina(doc[0])
 
 
+def _pagina(
+    direcao: str | None,
+    *,
+    e_grade: bool = True,
+    camada: str | None = None,
+) -> grade.PaginaDeGrade:
+    """Uma página medida. `camada` fabrica o `tau` que faria a camada opinar naquela direção."""
+    taus: dict[str, float] = {}
+    if camada == "grade":
+        taus = {"tau_prosa": 0.30, "tau_grade": 0.02}
+    elif camada == "prosa":
+        taus = {"tau_prosa": 0.02, "tau_grade": 0.30}
+    elif camada == "empate":
+        taus = {"tau_prosa": 0.10, "tau_grade": 0.10}
+    return grade.PaginaDeGrade(
+        pagina=1,
+        e_grade=e_grade,
+        fracao_de_vao=0.7,
+        colunas=2,
+        direcao_impressa=direcao,
+        direcao_emitida=None,
+        **taus,
+    )
+
+
 class CalibrarTests(unittest.TestCase):
     """A direção é constante por livro, e o piso existe para o livro que não for."""
 
-    def _pagina(self, direcao: str | None, *, e_grade: bool = True) -> grade.PaginaDeGrade:
-        return grade.PaginaDeGrade(
-            pagina=1,
-            e_grade=e_grade,
-            fracao_de_vao=0.7,
-            colunas=2,
-            direcao_impressa=direcao,
-            direcao_emitida=None,
-        )
-
-    def test_o_livro_unanime_e_calibrado(self) -> None:
-        self.assertEqual(("grade", 5, 0), grade.calibrar([self._pagina("grade")] * 5))
-        self.assertEqual(("prosa", 0, 5), grade.calibrar([self._pagina("prosa")] * 5))
+    def test_o_livro_unanime_e_calibrado_pelo_numero_impresso(self) -> None:
+        calibracao = grade.calibrar([_pagina("grade")] * 5)
+        self.assertEqual(("grade", "numero impresso"), (calibracao.arranjo, calibracao.fonte))
+        self.assertFalse(calibracao.hipotese)
+        self.assertEqual((5, 0), (calibracao.votos_impressos_grade, calibracao.votos_impressos_prosa))
 
     def test_o_livro_dividido_fica_indefinido_e_segue_em_prosa(self) -> None:
         """Abaixo do piso de concordância a resposta é "não sei", e não a maioria simples.
 
         `indefinido` significa que o livro continua em `prosa`, que é o lado seguro do erro.
         """
-        paginas = [self._pagina("grade")] * 3 + [self._pagina("prosa")] * 2
-        self.assertEqual(("indefinido", 3, 2), grade.calibrar(paginas))
+        calibracao = grade.calibrar([_pagina("grade")] * 3 + [_pagina("prosa")] * 2)
+        self.assertEqual("indefinido", calibracao.arranjo)
+        self.assertEqual("nenhuma", calibracao.fonte)
 
     def test_a_pagina_que_nao_e_grade_nao_vota(self) -> None:
         """Prosa não tem opinião sobre a direção de uma grade; deixá-la votar dilui o sinal."""
-        paginas = [self._pagina("grade"), self._pagina("prosa", e_grade=False)]
-        self.assertEqual(("grade", 1, 0), grade.calibrar(paginas))
+        calibracao = grade.calibrar([_pagina("grade"), _pagina("prosa", e_grade=False)])
+        self.assertEqual("grade", calibracao.arranjo)
 
     def test_o_livro_sem_voto_nenhum_fica_indefinido(self) -> None:
-        self.assertEqual(("indefinido", 0, 0), grade.calibrar([self._pagina(None)] * 4))
+        self.assertEqual("indefinido", grade.calibrar([_pagina(None)] * 4).arranjo)
+
+
+class HipoteseTests(unittest.TestCase):
+    """A segunda urna: a camada calibra o livro que o número impresso não alcança."""
+
+    def test_uma_pagina_unanime_nao_calibra_um_livro(self) -> None:
+        """**Achado da primeira execução: o `Neumann` foi calibrado com um voto.**
+
+        Uma página unânime é unânime consigo mesma, e o piso de concordância não pega isso --
+        1 de 1 é 100%. Quem pega é `VOTOS_MINIMOS_DA_CAMADA`.
+        """
+        poucas = grade.VOTOS_MINIMOS_DA_CAMADA - 1
+        self.assertEqual("indefinido", grade.calibrar([_pagina(None, camada="grade")] * poucas).arranjo)
+        self.assertEqual("indefinido", grade.calibrar([_pagina(None, camada="grade")]).arranjo)
+
+    def test_o_piso_de_votos_nao_vale_para_o_numero_impresso(self) -> None:
+        """Três verdades bastam; três palpites não. É o `Secrets`, calibrado com 3 páginas."""
+        poucas = grade.VOTOS_MINIMOS_DA_CAMADA - 1
+        calibracao = grade.calibrar([_pagina("prosa")] * min(3, poucas))
+        self.assertEqual(("prosa", "numero impresso"), (calibracao.arranjo, calibracao.fonte))
+
+    def test_sem_numero_impresso_a_camada_calibra_como_hipotese(self) -> None:
+        """É o caso do `Yusupov`: 64 páginas de grade e nenhum número legível na camada."""
+        calibracao = grade.calibrar([_pagina(None, camada="grade")] * 8)
+        self.assertEqual(("grade", "camada"), (calibracao.arranjo, calibracao.fonte))
+        self.assertTrue(calibracao.hipotese)
+        self.assertEqual((8, 0), (calibracao.votos_da_camada_grade, calibracao.votos_da_camada_prosa))
+
+    def test_o_numero_impresso_vence_a_camada_quando_os_dois_falam(self) -> None:
+        """**O teste que sustenta a ordem das duas urnas, e é o caso do `Secrets`.**
+
+        Lá a numeração impressa diz `prosa` e a camada diz `grade` com unanimidade -- e a camada
+        está errada. Onde há número impresso, a camada não é nem consultada para decidir.
+        """
+        calibracao = grade.calibrar([_pagina("prosa", camada="grade")] * 3)
+        self.assertEqual(("prosa", "numero impresso"), (calibracao.arranjo, calibracao.fonte))
+        self.assertFalse(calibracao.hipotese)
+        # E o voto da camada fica registrado, contra o qual ela perdeu.
+        self.assertEqual(3, calibracao.votos_da_camada_grade)
+
+    def test_a_camada_dividida_nao_vira_hipotese(self) -> None:
+        """Cara ou coroa não é direção. Metade e metade fica `indefinido`, e o livro segue prosa."""
+        paginas = [_pagina(None, camada="grade")] * 5 + [_pagina(None, camada="prosa")] * 5
+        self.assertEqual("indefinido", grade.calibrar(paginas).arranjo)
+
+    def test_o_empate_no_tau_nao_e_opiniao(self) -> None:
+        self.assertIsNone(grade.direcao_pela_camada(_pagina(None, camada="empate")))
+        self.assertEqual("indefinido", grade.calibrar([_pagina(None, camada="empate")] * 6).arranjo)
+
+    def test_a_pagina_sem_tau_nao_opina(self) -> None:
+        """Referência fora de ordem: ali o `tau` mede a camada, e não a nossa leitura."""
+        self.assertIsNone(grade.direcao_pela_camada(_pagina(None)))
+
+    def test_a_camada_prefere_a_leitura_de_tau_menor(self) -> None:
+        self.assertEqual("grade", grade.direcao_pela_camada(_pagina(None, camada="grade")))
+        self.assertEqual("prosa", grade.direcao_pela_camada(_pagina(None, camada="prosa")))
 
 
 class ProcedenciaTests(_ComPdf):
@@ -195,9 +269,30 @@ class TauAgregadoTests(unittest.TestCase):
 
     def test_sem_pagina_com_tau_nao_inventa_media(self) -> None:
         self.assertEqual(
-            {"paginas": 0, "prosa": None, "grade": None, "calibrado": None},
+            {"paginas": 0, "prosa": None, "grade": None, "calibrado": None, "so_confirmado": None},
             grade._tau_agregado({"x.pdf": {"paginas_com_tau": 0}}),
         )
+
+    def test_a_hipotese_sai_separada_do_numero_confirmado(self) -> None:
+        """**O ganho apoiado em palpite não pode sumir dentro do número bom.**
+
+        `calibrado` aplica a hipótese; `so_confirmado` a lê como prosa. A diferença entre os dois
+        é exatamente o que a S-188 vai confirmar ou desmentir.
+        """
+        livros = {
+            "confirmado.pdf": {
+                "paginas_com_tau": 10, "arranjo": "grade", "hipotese": False,
+                "tau_prosa": 0.30, "tau_grade": 0.05,
+            },
+            "palpitado.pdf": {
+                "paginas_com_tau": 10, "arranjo": "grade", "hipotese": True,
+                "tau_prosa": 0.20, "tau_grade": 0.04,
+            },
+        }
+        tau = grade._tau_agregado(livros)
+        self.assertAlmostEqual(0.045, tau["calibrado"])       # (0,05 + 0,04) / 2
+        self.assertAlmostEqual(0.125, tau["so_confirmado"])   # (0,05 + 0,20) / 2
+        self.assertLess(tau["calibrado"], tau["so_confirmado"], "a hipótese só pode melhorar o número")
 
 
 class ComandoTests(_ComPdf):
@@ -213,9 +308,41 @@ class ComandoTests(_ComPdf):
         self.assertEqual(1.0, relatorio["acerto"])
         # A tabela que a S-216 cita mora aqui, e não só no documento: se o campo sair, a spec
         # passa a afirmar um número que nada produz -- que é a cicatriz da S-135.
-        self.assertEqual({"paginas", "prosa", "grade", "calibrado"}, set(relatorio["tau"]))
+        self.assertEqual(
+            {"paginas", "prosa", "grade", "calibrado", "so_confirmado"}, set(relatorio["tau"])
+        )
         self.assertEqual(1, relatorio["tau"]["paginas"])
         self.assertIn("emissao_contra_impresso", relatorio)
+        self.assertEqual([], relatorio["hipoteses"]["livros"], "este livro tem número impresso")
+        self.assertFalse(relatorio["por_livro"]["livro.pdf"]["hipotese"])
+
+    def test_o_livro_sem_numero_impresso_e_calibrado_por_hipotese(self) -> None:
+        """**O caso do `Yusupov`, reproduzido**: grade sem número legível, e a camada opinando.
+
+        A legenda não tem inteiro nenhum, então a primeira urna fica vazia; a camada emitiu
+        atravessando as colunas, e é ela que dá a direção -- marcada como hipótese.
+        """
+        doc = fitz.open()
+        # Um livro, e não uma página: abaixo de `VOTOS_MINIMOS_DA_CAMADA` a hipótese é sobre a
+        # página que calhou de ser lida, e não sobre o livro. Ver o `Neumann`.
+        for _ in range(grade.VOTOS_MINIMOS_DA_CAMADA):
+            page = doc.new_page(width=595.0, height=842.0)
+            for _, x, y in _celulas(por_fileira=True):  # a ordem da lista é a de emissão
+                page.insert_text((x, y), "White to move", fontsize=11)
+        doc.save(self.raiz / "sem_numero.pdf")
+        doc.close()
+
+        saida = self.raiz / "s.json"
+        self.assertEqual(0, grade.main(["--pdf-dir", str(self.raiz), "--saida", str(saida)]))
+        relatorio = json.loads(saida.read_text(encoding="utf-8"))
+        livro = relatorio["por_livro"]["sem_numero.pdf"]
+
+        self.assertEqual(("grade", "camada", True), (livro["arranjo"], livro["fonte"], livro["hipotese"]))
+        self.assertEqual(0, livro["paginas_decidiveis"], "não há número impresso a decidir")
+        self.assertEqual(["sem_numero.pdf"], relatorio["hipoteses"]["livros"])
+        # **E ela não entra na régua.** O `acerto` mede a calibração contra o número impresso, e
+        # a hipótese não tem número impresso -- contá-la inflaria o portão com o próprio palpite.
+        self.assertIsNone(relatorio["acerto"])
 
     def test_o_baseline_que_nao_existe_falha(self) -> None:
         self._pdf(_celulas(por_fileira=True))

@@ -42,6 +42,12 @@ grade do acervo:
 barata e confiável, e é por isso que o `arranjo` **chega de fora** desta camada: ele é calibrado
 uma vez por livro, e nunca adivinhado por página.
 
+**Nem todo `arranjo` que chega aqui foi verificado, e este módulo não tem como saber.** O livro
+sem numeração legível -- o `Yusupov`, com 64 páginas de grade -- é calibrado pela preferência da
+camada de texto, e sai marcado `hipotese` no relatório do `cvoff-texto-grade`. Aqui ele chega como
+um `Arranjo` igual a qualquer outro; **quem precisa distinguir medição de palpite lê o relatório**,
+e não esta assinatura. A distinção é do consumidor, não da ordenação.
+
 ## Por que o `tau` da S-194 não pode decidir isto
 
 A referência da S-194 é a ordem em que o PDF emite os spans, e a spec dela a descreve como vinda

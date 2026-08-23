@@ -245,9 +245,11 @@ cvoff-texto-status --exigir S-181   # portao: codigo 1 se o item nao esta inteir
 cvoff-texto-ordem --por-livro 5
 cvoff-texto-ordem --baseline docs/metrics/texto_ordem.json   # regressao de ordem e regressao
 
-# A direcao em que cada livro numera a grade de exercicios (S-216). Aqui a referencia e o
-# numero impresso na pagina, e nao a ordem de emissao: nos tres livros de grade do acervo a
-# camada e do Adobe Acrobat Paper Capture, e ela erra a direcao em 1 pagina de grade a cada 10.
+# A direcao em que cada livro numera a grade de exercicios (S-216). A referencia e o numero
+# impresso na pagina, e nao a ordem de emissao: nos livros de grade do acervo a camada e do
+# Adobe Acrobat Paper Capture, e ela erra a direcao em 1 pagina de grade a cada 7.
+# O livro sem numeracao legivel (o Yusupov) e calibrado pela camada mesmo, e sai marcado
+# "hipotese": true -- fora do acerto que o --baseline trava, e com o tau em duas colunas.
 cvoff-texto-grade --por-livro 40
 cvoff-texto-grade --baseline docs/metrics/texto_grade.json   # falha se o acerto cair
 ```

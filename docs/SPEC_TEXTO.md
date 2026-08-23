@@ -1062,11 +1062,16 @@ no fim daquela seção.
   pedaços) e 0,634–0,826 em grade. O limiar fica em 0,30 — 2,0x acima da maior prosa de verdade e
   2,1x abaixo da menor grade, com o outlier abaixo dele. Nenhuma das 103 densas é classificada
   como grade, e nenhuma das 62 grades é perdida.
-- **O número impresso diz a direção**, e é o único que diz: `grade.direcao_pela_numeracao`, sobre
-  a maior corrida de inteiros consecutivos da página. E ela é **constante por livro** — `Karpov`
-  66 de 66 páginas decidíveis, `Burgess` 18 de 18, `Schiller` 77 de 77, `Secrets` 3 de 3, sem uma
-  única contradição em 164 páginas —, o que faz da
-  calibração por livro uma medição barata em vez de um palpite por página.
+- **O número impresso diz a direção**, e é o único que a *prova*: `grade.direcao_pela_numeracao`,
+  sobre a maior corrida de inteiros consecutivos da página. E ela é **constante por livro** —
+  `Karpov` 66 de 66 páginas decidíveis, `Burgess` 18 de 18, `Schiller` 77 de 77, `Secrets` 3 de 3,
+  sem uma única contradição em 164 páginas —, o que faz da calibração por livro uma medição barata
+  em vez de um palpite por página.
+- **Onde não há número impresso, a camada opina — e isso sai rotulado.** `cvoff-texto-grade` tem
+  uma segunda urna: se a primeira ficar vazia, a direção vem da preferência da camada de texto,
+  medida pelo `tau`, e o livro sai com `"fonte": "camada"` e `"hipotese": true`. É o que dá
+  direção às 64 páginas do `Yusupov` sem fingir que ela foi verificada. Ver
+  "O livro que o número impresso não alcança", abaixo.
 
 `sequencia_de_leitura` ganha `arranjo: Arranjo = "prosa"`. **Não há detecção automática**, e a
 ausência dela é a entrega: o `arranjo` chega calibrado de fora, e o padrão é o lado seguro do
@@ -1088,15 +1093,50 @@ prosa. Medido nas páginas de prosa densa do acervo, o `tau` sob os dois arranjo
 > S-188 ler a linha da imagem, ela fornece os mesmos pares e nada nesta camada muda. É o que
 > permite calibrar os 11 livros sem camada de texto sem reabrir este item.
 
-**O que fica sem resposta, e é metade das páginas de grade do acervo.** O `Yusupov` tem **64
-páginas de grade e nenhuma decidível**: o número do exercício não sai da camada como inteiro
-isolado. O livro fica `indefinido` — isto é, em `prosa` — e o `tau` dele grita `grade` (0,181 sob
-prosa contra 0,044 sob grade). **Isso não basta, e o `Secrets` é a razão:** lá o `tau` gritava a
-direção errada com uma margem ainda maior. Quem fecha esse caso é a S-188, lendo o número da
-imagem em vez da camada; até lá, 64 páginas ficam lidas coluna a coluna, que é o lado seguro.
+**O livro que o número impresso não alcança é calibrado pela camada, e sai marcado `hipotese`.**
+O `Yusupov` tem 64 páginas de grade e **nenhuma decidível**: o número do exercício não sai da
+camada como inteiro isolado. Deixá-lo em `prosa` seria ignorar a única evidência que existe sobre
+ele; tratá-lo como medido seria mentir sobre a força dela. A saída é a segunda urna: a camada
+calibra, e o relatório carrega `"fonte": "camada"` e `"hipotese": true`.
 
-Na mesma prateleira ficam três livros com 1 a 6 páginas de grade cada (`Aagaard`, `Neumann`,
-`Niemeijer`) e os 10 sem camada de texto nenhuma.
+**E a hipótese vem com o preço dela medido.** Nas 144 páginas em que o número impresso pode
+conferir o palpite da camada, ela acerta 139 — 96,5%. Esse é o número otimista, e ele não é o que
+importa: o que se calibra é o **livro**, e livro a livro a camada acertou **3 de 4**.
+
+    Karpov     49 de 49 páginas de acordo   direção do livro: certa
+    Schiller   76 de 76                     certa
+    Burgess    14 de 16  (87,5%)            certa
+    Secrets     0 de  3  (unânime)          **errada**
+
+**Concordância alta não é acerto**, e o par `Secrets`/`Burgess` prova: o unânime está errado e o
+menos unânime está certo. Por isso o piso de concordância da segunda urna
+(`CONCORDANCIA_DA_CAMADA = 0,70`) não é um portão de confiança — não teria como ser. Ele só evita
+chamar de direção o que é cara ou coroa, e quem carrega a incerteza é o rótulo.
+
+> **E a primeira execução mostrou que só o piso de concordância não basta: ela calibrou o
+> `Neumann` com um voto.** Uma página unânime é unânime consigo mesma, e 1 de 1 passa por qualquer
+> régua de fração. Daí `VOTOS_MINIMOS_DA_CAMADA = 8`, e ele também é medido: o `Secrets` prova que
+> **três votos unânimes da camada podem estar todos errados**, então um tamanho de amostra já
+> reprovado não pode passar. O piso fica 2,7x acima dele e 6,8x abaixo do `Yusupov`, que é o único
+> livro que o acervo de fato calibra assim.
+>
+> O piso de votos **não vale para o número impresso**: lá o `Secrets` é calibrado com 3 páginas e
+> está certo. Três verdades bastam; três palpites não — é a assimetria inteira desta entrega em
+> uma linha.
+
+Três consequências ficam registradas no desenho:
+
+- o número impresso **vence sempre**: onde ele existe, a camada não é consultada para decidir — é
+  literalmente o caso do `Secrets`, em que consultá-la inverteria o livro;
+- a hipótese **não entra no `acerto`**, que é o que o `--baseline` trava. Uma calibração conferida
+  contra o próprio palpite não é uma régua;
+- o `tau` sai em duas colunas, `calibrado` e `so_confirmado`, e a diferença entre elas é
+  exatamente quanto do ganho está apoiado em palpite. Quem a zera é a S-188, lendo o número da
+  imagem — e ela pode tanto confirmar o `Yusupov` quanto desmenti-lo.
+
+Sem hipótese ficam três livros com 1 a 6 páginas de grade cada (`Aagaard`, `Neumann`,
+`Niemeijer`) — poucas demais para a camada opinar sobre o livro — e os 10 sem camada de texto
+nenhuma.
 
 **Um segundo limite, herdado da S-190.** Numa página de grade esparsa, `detectar_colunas`
 super-parte: a página 41 do `Burgess` é uma grade de 2 células de largura e sai com 3 colunas,
@@ -1120,6 +1160,8 @@ ninguém pôde medir.
   do módulo as distingue** — há teste que falha se alguma passar a distinguir;
 - ✅ o padrão de `sequencia_de_leitura` continua sendo prosa, e pedir `grade` numa página de prosa
   não muda nada;
+- ✅ o livro calibrado **pela camada** sai marcado `hipotese`, o número impresso vence a camada
+  onde os dois falam, e a hipótese não entra no `acerto` que o `--baseline` trava;
 - ✅ a direção medida por livro está em `docs/metrics/texto_grade.json`, com os votos de cada lado
   à vista e o desacordo entre a camada de texto e o número impresso contado;
 - ✅ `--baseline` falha quando o acerto cai, no mesmo desenho do `cvoff-texto-ordem --baseline`.
@@ -1128,7 +1170,10 @@ ninguém pôde medir.
 `test_as_duas_grades_sao_geometricamente_iguais`; `test_a_numeracao_atravessando_as_colunas_pede_grade`;
 `test_a_numeracao_descendo_a_coluna_pede_prosa`; `test_pedir_grade_numa_pagina_de_prosa_nao_muda_nada`;
 `test_qualquer_vao_transformaria_prosa_em_grade`; `test_uma_figura_no_meio_da_prosa_nao_faz_grade`;
-`test_o_diagrama_entra_na_fileira_da_celula_dele`.
+`test_o_diagrama_entra_na_fileira_da_celula_dele`;
+`test_o_numero_impresso_vence_a_camada_quando_os_dois_falam`;
+`test_o_livro_sem_numero_impresso_e_calibrado_por_hipotese`;
+`test_a_hipotese_sai_separada_do_numero_confirmado`; `test_a_camada_dividida_nao_vira_hipotese`.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.grade:direcao_pela_numeracao`, `metrica:texto_grade`.
 

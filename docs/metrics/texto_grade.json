@@ -3,7 +3,8 @@
     "paginas": 232,
     "prosa": 0.12707972217276411,
     "grade": 0.09430924533537956,
-    "calibrado": 0.06758194737126347
+    "calibrado": 0.03259830372459007,
+    "so_confirmado": 0.06758194737126347
   },
   "livros_medidos": 8,
   "livros_sem_camada_de_texto": [
@@ -38,15 +39,36 @@
     "de_acordo": 140,
     "contra": 24
   },
+  "hipoteses": {
+    "livros": [
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+      "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf"
+    ],
+    "paginas_de_grade": 66,
+    "camada_como_palpite": {
+      "acertos": 139,
+      "erros": 5
+    }
+  },
   "por_livro": {
     "A Matter of Endgame Technique – Jacob Aagaard.pdf": {
       "camada": "imagem de página inteira com texto por cima",
       "paginas_de_grade": 1,
       "paginas_decidiveis": 0,
       "arranjo": "indefinido",
+      "fonte": "nenhuma",
+      "hipotese": false,
       "votos": {
         "grade": 0,
         "prosa": 0
+      },
+      "votos_da_camada": {
+        "grade": 0,
+        "prosa": 0
+      },
+      "camada_como_palpite": {
+        "acertos": 0,
+        "erros": 0
       },
       "emissao_contra_impresso": {
         "de_acordo": 0,
@@ -61,9 +83,19 @@
       "paginas_de_grade": 85,
       "paginas_decidiveis": 66,
       "arranjo": "grade",
+      "fonte": "numero impresso",
+      "hipotese": false,
       "votos": {
         "grade": 66,
         "prosa": 0
+      },
+      "votos_da_camada": {
+        "grade": 62,
+        "prosa": 0
+      },
+      "camada_como_palpite": {
+        "acertos": 49,
+        "erros": 0
       },
       "emissao_contra_impresso": {
         "de_acordo": 49,
@@ -77,10 +109,20 @@
       "camada": "fonte invisível (Tesseract e afins)",
       "paginas_de_grade": 2,
       "paginas_decidiveis": 0,
-      "arranjo": "indefinido",
+      "arranjo": "grade",
+      "fonte": "camada",
+      "hipotese": true,
       "votos": {
         "grade": 0,
         "prosa": 0
+      },
+      "votos_da_camada": {
+        "grade": 1,
+        "prosa": 0
+      },
+      "camada_como_palpite": {
+        "acertos": 0,
+        "erros": 0
       },
       "emissao_contra_impresso": {
         "de_acordo": 0,
@@ -95,9 +137,19 @@
       "paginas_de_grade": 6,
       "paginas_decidiveis": 0,
       "arranjo": "indefinido",
+      "fonte": "nenhuma",
+      "hipotese": false,
       "votos": {
         "grade": 0,
         "prosa": 0
+      },
+      "votos_da_camada": {
+        "grade": 0,
+        "prosa": 0
+      },
+      "camada_como_palpite": {
+        "acertos": 0,
+        "erros": 0
       },
       "emissao_contra_impresso": {
         "de_acordo": 0,
@@ -112,9 +164,19 @@
       "paginas_de_grade": 91,
       "paginas_decidiveis": 77,
       "arranjo": "prosa",
+      "fonte": "numero impresso",
+      "hipotese": false,
       "votos": {
         "grade": 0,
         "prosa": 77
+      },
+      "votos_da_camada": {
+        "grade": 0,
+        "prosa": 89
+      },
+      "camada_como_palpite": {
+        "acertos": 76,
+        "erros": 0
       },
       "emissao_contra_impresso": {
         "de_acordo": 77,
@@ -129,9 +191,19 @@
       "paginas_de_grade": 4,
       "paginas_decidiveis": 3,
       "arranjo": "prosa",
+      "fonte": "numero impresso",
+      "hipotese": false,
       "votos": {
         "grade": 0,
         "prosa": 3
+      },
+      "votos_da_camada": {
+        "grade": 4,
+        "prosa": 0
+      },
+      "camada_como_palpite": {
+        "acertos": 0,
+        "erros": 3
       },
       "emissao_contra_impresso": {
         "de_acordo": 0,
@@ -146,9 +218,19 @@
       "paginas_de_grade": 18,
       "paginas_decidiveis": 18,
       "arranjo": "grade",
+      "fonte": "numero impresso",
+      "hipotese": false,
       "votos": {
         "grade": 18,
         "prosa": 0
+      },
+      "votos_da_camada": {
+        "grade": 14,
+        "prosa": 2
+      },
+      "camada_como_palpite": {
+        "acertos": 14,
+        "erros": 2
       },
       "emissao_contra_impresso": {
         "de_acordo": 14,
@@ -162,10 +244,20 @@
       "camada": "fontes Fd######## (Paper Capture)",
       "paginas_de_grade": 64,
       "paginas_decidiveis": 0,
-      "arranjo": "indefinido",
+      "arranjo": "grade",
+      "fonte": "camada",
+      "hipotese": true,
       "votos": {
         "grade": 0,
         "prosa": 0
+      },
+      "votos_da_camada": {
+        "grade": 48,
+        "prosa": 6
+      },
+      "camada_como_palpite": {
+        "acertos": 0,
+        "erros": 0
       },
       "emissao_contra_impresso": {
         "de_acordo": 0,

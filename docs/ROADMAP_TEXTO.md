@@ -358,6 +358,13 @@ deste plano que fecha inteira -- ela é geometria, e por isso não depende dos p
 > para todos -- também faz o agregado cair, para 0,094, **enquanto leva o `Schiller` de 0,0004 a
 > 0,1705**. Um portão de "o `tau` médio tem de cair" aprovaria justamente a mudança errada, e é
 > por isso que a régua da S-216 é o número impresso.
+>
+> **E o livro que o número impresso não alcança é calibrado pela camada, marcado como hipótese.**
+> O `Yusupov` tem 64 páginas de grade e nenhum número legível; ele recebe direção pela preferência
+> da camada, com `"hipotese": true` no relatório, fora do `acerto` que o `--baseline` trava, e com
+> o `tau` publicado em duas colunas (`calibrado` e `so_confirmado`) para que o ganho apoiado em
+> palpite não se misture ao medido. Quanto vale esse palpite também está medido: por página a
+> camada acerta 96,5%, e **por livro acerta 3 de 4** -- no `Secrets` ela erra por unanimidade.
 
 **Item S-216 (2026-08-23), acrescentado à fase depois de ela fechar.** A grade de exercícios, e a
 direção que só o número impresso diz. É o limite acima, medido e corrigido; a fase continua
