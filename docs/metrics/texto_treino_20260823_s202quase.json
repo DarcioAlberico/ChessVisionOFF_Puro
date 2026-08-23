@@ -24,113 +24,197 @@
     "maior_grupo": 9954
   },
   "metricas": {
-    "val_macro": 0.9632060399727042,
-    "val_acuracia": 0.9897757978529176,
-    "teste_macro": 0.9587119198767169,
-    "teste_acuracia": 0.9880961075001826
+    "val_macro": 0.9689759667817421,
+    "val_acuracia": 0.9917476082669977,
+    "teste_macro": 0.9678500885254406,
+    "teste_acuracia": 0.9910173081136348
   },
-  "treinado_em": "2026-08-23T04:41:12",
-  "modelo_sha256": "6188390633e7240abc5b474d5f920259b11837333f5d0c502fc64df5771dbef9",
-  "temperatura": 1.3401754487319308,
+  "treinado_em": "2026-08-23T05:08:33",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "temperatura": 1.5212009510304685,
   "epocas": [
     {
       "numero": 1,
       "perda": 0.7753188031155622,
       "acuracia": 0.9714452640035054,
       "macro": 0.9075515447791164,
-      "segundos": 64.3156944999937
+      "segundos": 61.532720100003644
     },
     {
       "numero": 2,
       "perda": 0.1400275656789597,
       "acuracia": 0.9791134156138173,
       "macro": 0.9239239895173554,
-      "segundos": 63.14617259999795
+      "segundos": 61.21969519999402
     },
     {
       "numero": 3,
       "perda": 0.09945067762122116,
       "acuracia": 0.9840064266413496,
       "macro": 0.9392342873849856,
-      "segundos": 64.78501580000739
+      "segundos": 69.62226350000128
     },
     {
       "numero": 4,
       "perda": 0.08155970561878859,
       "acuracia": 0.9856130869787483,
       "macro": 0.9489197737680746,
-      "segundos": 64.97034970000095
+      "segundos": 72.57201099999656
     },
     {
       "numero": 5,
       "perda": 0.06869476632911618,
       "acuracia": 0.9883151975461915,
       "macro": 0.9500597374122569,
-      "segundos": 64.39614260000235
+      "segundos": 68.1128555000032
     },
     {
       "numero": 6,
       "perda": 0.06073090026052983,
       "acuracia": 0.9880961075001826,
       "macro": 0.9517488474270859,
-      "segundos": 66.0369597000099
+      "segundos": 60.0919419000129
     },
     {
       "numero": 7,
       "perda": 0.05443163440924742,
       "acuracia": 0.9880230774848463,
       "macro": 0.9577582932761458,
-      "segundos": 64.99332009999489
+      "segundos": 60.83896259999892
     },
     {
       "numero": 8,
       "perda": 0.048573807234267415,
       "acuracia": 0.9897757978529176,
       "macro": 0.9632060399727042,
-      "segundos": 65.48669299999892
+      "segundos": 61.804428300005384
     },
     {
       "numero": 9,
       "perda": 0.04429031584256167,
       "acuracia": 0.990360037975608,
       "macro": 0.9605168414172972,
-      "segundos": 65.52631229998951
+      "segundos": 61.94960809999611
     },
     {
       "numero": 10,
       "perda": 0.03941257215226967,
       "acuracia": 0.9892645877455635,
       "macro": 0.953625655838797,
-      "segundos": 65.01466879999498
+      "segundos": 60.593304900001385
     },
     {
       "numero": 11,
       "perda": 0.03741630854136517,
       "acuracia": 0.9899218578835901,
       "macro": 0.9621297656057992,
-      "segundos": 64.20778490000521
+      "segundos": 60.45219569999608
     },
     {
       "numero": 12,
       "perda": 0.03443598816215334,
       "acuracia": 0.9901409479295991,
       "macro": 0.9623922425883911,
-      "segundos": 62.319223999991664
+      "segundos": 61.54870529999607
     },
     {
       "numero": 13,
       "perda": 0.03298368018207682,
       "acuracia": 0.9910173081136348,
       "macro": 0.9618502361758008,
-      "segundos": 61.78690189999179
+      "segundos": 61.016536300012376
+    },
+    {
+      "numero": 14,
+      "perda": 0.029655217889810452,
+      "acuracia": 0.9917476082669977,
+      "macro": 0.967998069171409,
+      "segundos": 61.191709700011415
+    },
+    {
+      "numero": 15,
+      "perda": 0.029497925657635975,
+      "acuracia": 0.9917476082669977,
+      "macro": 0.9689759667817421,
+      "segundos": 59.90192840000964
+    },
+    {
+      "numero": 16,
+      "perda": 0.026500774086879564,
+      "acuracia": 0.9910173081136348,
+      "macro": 0.9642213782396373,
+      "segundos": 59.82218059999286
+    },
+    {
+      "numero": 17,
+      "perda": 0.0258131322390666,
+      "acuracia": 0.9911633681443073,
+      "macro": 0.9624630916135872,
+      "segundos": 59.69103699999687
+    },
+    {
+      "numero": 18,
+      "perda": 0.024927176292282097,
+      "acuracia": 0.991090338128971,
+      "macro": 0.9631646274151532,
+      "segundos": 59.678329200003645
+    },
+    {
+      "numero": 19,
+      "perda": 0.0228279740616316,
+      "acuracia": 0.9913824581903162,
+      "macro": 0.9687830721936278,
+      "segundos": 59.698009499988984
+    },
+    {
+      "numero": 20,
+      "perda": 0.02244932580071663,
+      "acuracia": 0.9917476082669977,
+      "macro": 0.9672070994600649,
+      "segundos": 59.52809619999607
+    },
+    {
+      "numero": 21,
+      "perda": 0.021906756205698673,
+      "acuracia": 0.9916015482363252,
+      "macro": 0.966180972947904,
+      "segundos": 59.0655509000062
+    },
+    {
+      "numero": 22,
+      "perda": 0.01976350269997554,
+      "acuracia": 0.9912363981596436,
+      "macro": 0.9625322072376533,
+      "segundos": 59.46830100000079
+    },
+    {
+      "numero": 23,
+      "perda": 0.019158960630219,
+      "acuracia": 0.991090338128971,
+      "macro": 0.9636748545963831,
+      "segundos": 59.4820841000037
+    },
+    {
+      "numero": 24,
+      "perda": 0.01955961964005448,
+      "acuracia": 0.9914554882056525,
+      "macro": 0.9637623400011573,
+      "segundos": 59.220501899995725
+    },
+    {
+      "numero": 25,
+      "perda": 0.01814770389397878,
+      "acuracia": 0.9911633681443073,
+      "macro": 0.9675485740847617,
+      "segundos": 59.13305119999859
     }
   ],
-  "epoca_escolhida": 8,
+  "epoca_escolhida": 15,
   "hiperparametros": {
-    "epocas": 25,
+    "epocas": 40,
     "lote": 256,
     "taxa": 0.001,
-    "paciencia": 5,
+    "paciencia": 10,
     "semente": 20260823,
     "pesos_de_classe": false,
     "device": "cpu"
@@ -145,7 +229,7 @@
       "treino": 191,
       "val": 24,
       "teste": 24,
-      "recall_teste": 0.5833333333333334
+      "recall_teste": 0.8333333333333334
     },
     {
       "pasta": "digit_1",
@@ -154,7 +238,7 @@
       "treino": 7208,
       "val": 901,
       "teste": 901,
-      "recall_teste": 0.9933407325194229
+      "recall_teste": 0.9900110987791343
     },
     {
       "pasta": "digit_2",
@@ -172,7 +256,7 @@
       "treino": 1183,
       "val": 148,
       "teste": 148,
-      "recall_teste": 0.9932432432432432
+      "recall_teste": 1.0
     },
     {
       "pasta": "digit_4",
@@ -298,7 +382,7 @@
       "treino": 12,
       "val": 2,
       "teste": 2,
-      "recall_teste": 1.0
+      "recall_teste": 0.5
     },
     {
       "pasta": "ligature_agr",
@@ -334,7 +418,7 @@
       "treino": 3,
       "val": 1,
       "teste": 1,
-      "recall_teste": 0.0
+      "recall_teste": 1.0
     },
     {
       "pasta": "ligature_am",
@@ -343,7 +427,7 @@
       "treino": 83,
       "val": 10,
       "teste": 10,
-      "recall_teste": 1.0
+      "recall_teste": 0.9
     },
     {
       "pasta": "ligature_an",
@@ -613,7 +697,7 @@
       "treino": 1,
       "val": 1,
       "teste": 1,
-      "recall_teste": 0.0
+      "recall_teste": 1.0
     },
     {
       "pasta": "ligature_do",
@@ -811,7 +895,7 @@
       "treino": 20,
       "val": 3,
       "teste": 3,
-      "recall_teste": 1.0
+      "recall_teste": 0.6666666666666666
     },
     {
       "pasta": "ligature_ffl",
@@ -847,7 +931,7 @@
       "treino": 32,
       "val": 4,
       "teste": 4,
-      "recall_teste": 0.75
+      "recall_teste": 1.0
     },
     {
       "pasta": "ligature_ft",
@@ -919,7 +1003,7 @@
       "treino": 1,
       "val": 1,
       "teste": 1,
-      "recall_teste": 0.0
+      "recall_teste": 1.0
     },
     {
       "pasta": "ligature_gu",
@@ -1207,7 +1291,7 @@
       "treino": 5,
       "val": 1,
       "teste": 1,
-      "recall_teste": 0.0
+      "recall_teste": 1.0
     },
     {
       "pasta": "ligature_ok",
@@ -1333,7 +1417,7 @@
       "treino": 20,
       "val": 3,
       "teste": 3,
-      "recall_teste": 0.6666666666666666
+      "recall_teste": 1.0
     },
     {
       "pasta": "ligature_sp",
@@ -1405,7 +1489,7 @@
       "treino": 1,
       "val": 1,
       "teste": 1,
-      "recall_teste": 0.0
+      "recall_teste": 1.0
     },
     {
       "pasta": "ligature_ty",
@@ -1504,7 +1588,7 @@
       "treino": 896,
       "val": 112,
       "teste": 112,
-      "recall_teste": 0.9821428571428571
+      "recall_teste": 0.9732142857142857
     },
     {
       "pasta": "lower_d",
@@ -1513,7 +1597,7 @@
       "treino": 1064,
       "val": 133,
       "teste": 133,
-      "recall_teste": 0.9924812030075187
+      "recall_teste": 1.0
     },
     {
       "pasta": "lower_e",
@@ -1522,7 +1606,7 @@
       "treino": 1667,
       "val": 208,
       "teste": 208,
-      "recall_teste": 0.9855769230769231
+      "recall_teste": 0.9903846153846154
     },
     {
       "pasta": "lower_f",
@@ -1531,7 +1615,7 @@
       "treino": 2334,
       "val": 292,
       "teste": 292,
-      "recall_teste": 0.9897260273972602
+      "recall_teste": 0.9931506849315068
     },
     {
       "pasta": "lower_g",
@@ -1549,7 +1633,7 @@
       "treino": 637,
       "val": 80,
       "teste": 80,
-      "recall_teste": 0.9875
+      "recall_teste": 1.0
     },
     {
       "pasta": "lower_i",
@@ -1558,7 +1642,7 @@
       "treino": 1124,
       "val": 140,
       "teste": 140,
-      "recall_teste": 0.9857142857142858
+      "recall_teste": 0.9928571428571429
     },
     {
       "pasta": "lower_j",
@@ -1585,7 +1669,7 @@
       "treino": 477,
       "val": 60,
       "teste": 60,
-      "recall_teste": 0.85
+      "recall_teste": 0.95
     },
     {
       "pasta": "lower_m",
@@ -1594,7 +1678,7 @@
       "treino": 412,
       "val": 52,
       "teste": 52,
-      "recall_teste": 0.9423076923076923
+      "recall_teste": 0.9615384615384616
     },
     {
       "pasta": "lower_n",
@@ -1612,7 +1696,7 @@
       "treino": 850,
       "val": 106,
       "teste": 106,
-      "recall_teste": 1.0
+      "recall_teste": 0.9905660377358491
     },
     {
       "pasta": "lower_p",
@@ -1639,7 +1723,7 @@
       "treino": 776,
       "val": 97,
       "teste": 97,
-      "recall_teste": 0.9896907216494846
+      "recall_teste": 0.979381443298969
     },
     {
       "pasta": "lower_s",
@@ -1648,7 +1732,7 @@
       "treino": 657,
       "val": 82,
       "teste": 82,
-      "recall_teste": 1.0
+      "recall_teste": 0.9878048780487805
     },
     {
       "pasta": "lower_t",
@@ -1675,7 +1759,7 @@
       "treino": 236,
       "val": 29,
       "teste": 29,
-      "recall_teste": 0.9655172413793104
+      "recall_teste": 0.9310344827586207
     },
     {
       "pasta": "lower_w",
@@ -1711,7 +1795,7 @@
       "treino": 48,
       "val": 6,
       "teste": 6,
-      "recall_teste": 0.8333333333333334
+      "recall_teste": 0.6666666666666666
     },
     {
       "pasta": "sym_10005",
@@ -1774,7 +1858,7 @@
       "treino": 53,
       "val": 6,
       "teste": 6,
-      "recall_teste": 1.0
+      "recall_teste": 0.8333333333333334
     },
     {
       "pasta": "sym_10866",
@@ -1918,7 +2002,7 @@
       "treino": 7,
       "val": 1,
       "teste": 1,
-      "recall_teste": 1.0
+      "recall_teste": 0.0
     },
     {
       "pasta": "sym_195",
@@ -1981,7 +2065,7 @@
       "treino": 72,
       "val": 9,
       "teste": 9,
-      "recall_teste": 0.8888888888888888
+      "recall_teste": 0.7777777777777778
     },
     {
       "pasta": "sym_209",
@@ -2044,7 +2128,7 @@
       "treino": 144,
       "val": 18,
       "teste": 18,
-      "recall_teste": 1.0
+      "recall_teste": 0.8333333333333334
     },
     {
       "pasta": "sym_225",
@@ -2053,7 +2137,7 @@
       "treino": 1153,
       "val": 144,
       "teste": 144,
-      "recall_teste": 0.9861111111111112
+      "recall_teste": 0.9930555555555556
     },
     {
       "pasta": "sym_226",
@@ -2134,7 +2218,7 @@
       "treino": 13,
       "val": 2,
       "teste": 2,
-      "recall_teste": 0.0
+      "recall_teste": 0.5
     },
     {
       "pasta": "sym_243",
@@ -2143,7 +2227,7 @@
       "treino": 293,
       "val": 37,
       "teste": 37,
-      "recall_teste": 0.972972972972973
+      "recall_teste": 1.0
     },
     {
       "pasta": "sym_244",
@@ -2224,7 +2308,7 @@
       "treino": 1,
       "val": 1,
       "teste": 1,
-      "recall_teste": 0.0
+      "recall_teste": 1.0
     },
     {
       "pasta": "sym_269",
@@ -2251,7 +2335,7 @@
       "treino": 2238,
       "val": 280,
       "teste": 280,
-      "recall_teste": 0.9964285714285714
+      "recall_teste": 0.9928571428571429
     },
     {
       "pasta": "sym_34",
@@ -2287,7 +2371,7 @@
       "treino": 5,
       "val": 1,
       "teste": 1,
-      "recall_teste": 0.0
+      "recall_teste": 1.0
     },
     {
       "pasta": "sym_37",
@@ -2332,7 +2416,7 @@
       "treino": 51,
       "val": 6,
       "teste": 6,
-      "recall_teste": 0.3333333333333333
+      "recall_teste": 0.16666666666666666
     },
     {
       "pasta": "sym_40",
@@ -2350,7 +2434,7 @@
       "treino": 1231,
       "val": 154,
       "teste": 154,
-      "recall_teste": 0.9935064935064936
+      "recall_teste": 1.0
     },
     {
       "pasta": "sym_42",
@@ -2395,7 +2479,7 @@
       "treino": 3908,
       "val": 488,
       "teste": 488,
-      "recall_teste": 0.9918032786885246
+      "recall_teste": 0.9959016393442623
     },
     {
       "pasta": "sym_47",
@@ -2413,7 +2497,7 @@
       "treino": 464,
       "val": 58,
       "teste": 58,
-      "recall_teste": 0.9655172413793104
+      "recall_teste": 0.9827586206896551
     },
     {
       "pasta": "sym_59",
@@ -2431,7 +2515,7 @@
       "treino": 100,
       "val": 12,
       "teste": 12,
-      "recall_teste": 0.9166666666666666
+      "recall_teste": 1.0
     },
     {
       "pasta": "sym_63",
@@ -2458,7 +2542,7 @@
       "treino": 37,
       "val": 4,
       "teste": 4,
-      "recall_teste": 0.5
+      "recall_teste": 0.0
     },
     {
       "pasta": "sym_8212",
@@ -2467,7 +2551,7 @@
       "treino": 179,
       "val": 22,
       "teste": 22,
-      "recall_teste": 0.8181818181818182
+      "recall_teste": 0.9090909090909091
     },
     {
       "pasta": "sym_8226",
@@ -2683,7 +2767,7 @@
       "treino": 3813,
       "val": 476,
       "teste": 476,
-      "recall_teste": 0.9978991596638656
+      "recall_teste": 1.0
     },
     {
       "pasta": "sym_9813",
@@ -2692,7 +2776,7 @@
       "treino": 5424,
       "val": 678,
       "teste": 678,
-      "recall_teste": 1.0
+      "recall_teste": 0.9985250737463127
     },
     {
       "pasta": "sym_9814",
@@ -2710,7 +2794,7 @@
       "treino": 4420,
       "val": 552,
       "teste": 552,
-      "recall_teste": 0.9981884057971014
+      "recall_teste": 1.0
     },
     {
       "pasta": "sym_9816",
@@ -2755,7 +2839,7 @@
       "treino": 286,
       "val": 36,
       "teste": 36,
-      "recall_teste": 0.7777777777777778
+      "recall_teste": 0.9722222222222222
     },
     {
       "pasta": "upper_D",
@@ -2773,7 +2857,7 @@
       "treino": 681,
       "val": 85,
       "teste": 85,
-      "recall_teste": 0.9764705882352941
+      "recall_teste": 0.9882352941176471
     },
     {
       "pasta": "upper_F",
@@ -2827,7 +2911,7 @@
       "treino": 85,
       "val": 10,
       "teste": 10,
-      "recall_teste": 0.9
+      "recall_teste": 1.0
     },
     {
       "pasta": "upper_L",
@@ -2845,7 +2929,7 @@
       "treino": 320,
       "val": 40,
       "teste": 40,
-      "recall_teste": 0.925
+      "recall_teste": 0.95
     },
     {
       "pasta": "upper_N",
@@ -2863,7 +2947,7 @@
       "treino": 73,
       "val": 9,
       "teste": 9,
-      "recall_teste": 0.2222222222222222
+      "recall_teste": 0.6666666666666666
     },
     {
       "pasta": "upper_P",
@@ -2899,7 +2983,7 @@
       "treino": 130,
       "val": 16,
       "teste": 16,
-      "recall_teste": 0.5625
+      "recall_teste": 0.8125
     },
     {
       "pasta": "upper_T",
@@ -2908,7 +2992,7 @@
       "treino": 908,
       "val": 114,
       "teste": 114,
-      "recall_teste": 0.9824561403508771
+      "recall_teste": 0.9912280701754386
     },
     {
       "pasta": "upper_U",
@@ -2917,7 +3001,7 @@
       "treino": 52,
       "val": 7,
       "teste": 7,
-      "recall_teste": 0.5714285714285714
+      "recall_teste": 0.8571428571428571
     },
     {
       "pasta": "upper_V",
@@ -2926,7 +3010,7 @@
       "treino": 44,
       "val": 6,
       "teste": 6,
-      "recall_teste": 0.5
+      "recall_teste": 0.8333333333333334
     },
     {
       "pasta": "upper_W",

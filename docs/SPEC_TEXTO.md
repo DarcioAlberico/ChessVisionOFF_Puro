@@ -1710,6 +1710,34 @@ impôs. Então a guarda só decide quando **os dois** recortes do par trazem tam
 `test_a_altura_desconhecida_nao_decide`;
 `test_o_limiar_padrao_nao_e_o_do_projeto_de_origem`.
 
+#### O número honesto, e a parada antecipada que quase o escondeu
+
+    s202        macro 0,9741   acuracia 0,9928   teste com 17.844 imagens
+    s202quase   macro 0,9679   acuracia 0,9910   teste com 13.693 imagens
+
+**O teste encolheu 23% e o número caiu, e as duas coisas são o item funcionando.** As irmãs que
+antes contavam como amostras independentes agora contam uma vez, e as que estavam do lado errado
+do split saíram dele. A queda de 0,0062 na macro é o vazamento que existia; a de acurácia,
+0,0018, bate com os ~0,002 que a régua de vizinhança tinha previsto antes do retreino.
+
+**A queda se concentra nas classes pequenas, e isso é o previsto.** Nas 147 classes que votam na
+macro nas duas corridas: as 44 com 100+ amostras no teste caem de 0,9952 para 0,9928, e as 55 com
+menos de 20 caem de 0,9588 para 0,9315. Classe grande tem renderização de sobra; classe pequena,
+depois de tirar as irmãs, fica só com o caso difícil. As maiores quedas individuais são as
+suspeitas de sempre — `upper_V` 0,857→0,333, `upper_O` 0,750→0,333 — e `lower_l`, que **perdeu
+metade do conjunto de teste** (121 → 60 imagens): metade do teste dele era irmã de algo no treino.
+
+> **Uma parada antecipada mal ajustada quase virou "a quase-duplicata custou 0,015".** A primeira
+> corrida com o split honesto parou na época 13, com a melhor em 8 e a macro **ainda subindo** —
+> teste macro 0,9587. A `PACIENCIA_PADRAO` era 4; o `cvoff-train` deste projeto usa 15, e a recall
+> macro oscila entre épocas consecutivas com desvio de **0,0068**. Uma paciência menor que o ruído
+> da métrica que a governa mede o sorteio e não a convergência. Com 10, a mesma receita foi até a
+> época 25, escolheu a 15, e deu 0,9679 — **+0,0092 sem mudar mais nada**.
+>
+> O achado que fica não é o valor: é que **um número pior tinha explicação plausível e errada**
+> à mão. "O split honesto custou 0,015" é uma frase que se aceita sem conferir, e ela teria
+> escondido um defeito de hiperparâmetro atrás de um resultado esperado.
+
 ---
 
 ## S-203 · O split por livro, e a prova de que não vazou ⬜ planejada
@@ -1840,12 +1868,18 @@ Relatório completo em `docs/metrics/texto_treino_20260823_s204.json`. **O resul
 vem antes dele:** este número **não** mede generalização de fonte, porque a base não tem livro
 (S-203). Ele mede acerto em imagem distinta que não passou pelo treino.
 
-> **O modelo que está em `models/` hoje não é o desta corrida.** É o da S-202, treinado no mesmo
-> dia sobre a base já sem os rótulos contraditórios — `docs/metrics/texto_treino_20260823_s202.json`,
-> teste macro 0,9741 e acurácia 0,9928, temperatura 1,7320. A corrida descrita abaixo é a
-> **primeira**, e fica registrada porque é a linha de base contra a qual o conserto de rótulo foi
-> medido. As duas corridas estão as duas em `docs/metrics/`, pelo mesmo motivo que a ANALISE_DETECCAO
-> arquiva duas do detector: comparar contra um arquivo que foi sobrescrito não é comparar.
+> **O modelo que está em `models/` hoje não é o desta corrida.** É o de
+> `docs/metrics/texto_treino_20260823_s202quase.json` — teste macro **0,9679** e acurácia
+> **0,9910**, temperatura 1,5212 —, treinado no mesmo dia sobre a base já sem os rótulos
+> contraditórios e com o split que a quase-duplicata torna honesto. A corrida descrita abaixo é a
+> **primeira**, e fica registrada porque é a linha de base contra a qual as duas correções foram
+> medidas. As três corridas estão as três em `docs/metrics/`, pelo mesmo motivo que a
+> ANALISE_DETECCAO arquiva duas do detector: comparar contra um arquivo que foi sobrescrito não é
+> comparar.
+>
+>     s204        macro 0,9754   acuracia 0,9925   a base como veio
+>     s202        macro 0,9741   acuracia 0,9928   sem os rotulos contraditorios
+>     s202quase   macro 0,9679   acuracia 0,9910   irmas nao atravessam o split  <- em models/
 
     treino    142.740 imagens distintas    (497.303 recortes, uma por grupo de cópia exata)
     validação  17.840                       época escolhida e temperatura saem daqui
@@ -1943,8 +1977,8 @@ Duas travas:
 > existe caminho no comando que produza pesos sem temperatura, e `test_o_checkpoint_sai_com_
 > calibracao_e_impressao_digital` trava isso.
 >
-> Os dois treinos de 2026-08-23 acharam o modelo **otimista**: temperatura 1,8622 na primeira
-> corrida e 1,7320 na segunda, a que está em `models/`. Nos dois casos ela reduz a confiança que
+> Os três treinos de 2026-08-23 acharam o modelo **otimista**: temperatura 1,8622, 1,7320 e
+> 1,5212, esta última a do modelo que está em `models/`. Nos três casos ela reduz a confiança que
 > o modelo reporta. Isso importa mais do que parece — é essa confiança que
 > decide o corte de legenda, o árbitro do corte de glifo colado, o ângulo da pilha e a ordem da
 > fila de revisão. Um modelo a 0,99 de confiança crua sobre um `'` que ele acerta 57% das vezes
