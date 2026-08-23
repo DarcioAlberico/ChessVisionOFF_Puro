@@ -13,13 +13,16 @@ import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
 from chess_diagram_ocr.board_detection import NoBoardDetectedError
 from chess_diagram_ocr.cli import EXIT_BAD_INPUT
 from chess_diagram_ocr.cli import field as field_cli
+from chess_diagram_ocr.cli.field import _print_report
 from chess_diagram_ocr.fen_utils import check_position
 from chess_diagram_ocr.field_eval import (
     AnnotatedDiagram,
@@ -28,7 +31,9 @@ from chess_diagram_ocr.field_eval import (
     FieldReport,
     MissingFieldPdfError,
     _accumulate,
+    _code_revision,
     bbox_iou,
+    describe_measurement,
     evaluate_field,
     evaluate_page,
     field_set_identity,
@@ -621,6 +626,181 @@ class FieldRunTests(unittest.TestCase):
         json.dumps(dados)  # serializa
 
 
+class IdentidadeDaMedicaoTests(unittest.TestCase):
+    """S-219: o relatório diz **com o que** foi medido, e não só o que deu.
+
+    Em 2026-08-22 quatro modelos foram medidos sobre as mesmas 66 páginas
+    (`field_20260822_s99`, `controle_20260822`, `mhsp_20260822`, `s108_20260822`) e os quatro
+    JSON eram indistinguíveis por dentro. É a mesma classe de defeito que a S-100 fechou para
+    o **conjunto** -- e que continuava aberta para o **modelo**, o gate e o DPI.
+    """
+
+    def setUp(self) -> None:
+        """Os PDFs citados existem: desde a S-218 a medição os confere antes de medir.
+
+        Vazios, porque quem lê é o `_FakeService`. O que estes testes exercitam é o carimbo
+        de procedência, não a leitura -- mas o conjunto não pode citar arquivo que não há."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.pasta = Path(tmp.name)
+        (self.pasta / "a.pdf").write_bytes(b"")
+
+    def _relatorio(self, **kwargs: object) -> FieldReport:
+        servico = _FakeService({1: [lido((0, 0, 10, 10))]})
+        paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True, regime="facil",
+                             diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
+        return evaluate_field(paginas, service=servico, pdf_dir=self.pasta, **kwargs)  # type: ignore[arg-type]
+
+    def test_o_json_diz_com_que_modelo_o_numero_foi_medido(self) -> None:
+        """**O critério de aceite.** Sem esta chave, dois modelos sobre o mesmo conjunto
+        produzem dois arquivos iguais com nomes diferentes."""
+        opcoes = RecognitionOptions(model_path=Path("models") / "candidato.pt", dpi=300)
+
+        dados = self._relatorio(options=opcoes, accept_threshold=0.7).as_dict()
+
+        self.assertIn("measurement", dados)
+        self.assertTrue(dados["measurement"]["model"]["path"].endswith("candidato.pt"))
+        self.assertEqual(dados["measurement"]["accept_threshold"], 0.7)
+        self.assertEqual(dados["measurement"]["dpi"], 300)
+
+    def test_o_gate_e_o_dpi_gravados_sao_os_que_foram_usados(self) -> None:
+        """Os dois mudam o número e não apareciam. O gate é literalmente o corte de que a
+        `export_rate` fala; o DPI muda o que o detector vê antes de o modelo ver."""
+        conf_baixa = _FakeService({1: [lido((0, 0, 10, 10), conf=0.75)]})
+        paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                             diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
+
+        frouxo = evaluate_field(paginas, options=RecognitionOptions(), service=conf_baixa, pdf_dir=self.pasta,  # type: ignore[arg-type]
+                                accept_threshold=0.7)
+        apertado = evaluate_field(paginas, options=RecognitionOptions(), service=conf_baixa, pdf_dir=self.pasta,  # type: ignore[arg-type]
+                                  accept_threshold=0.8)
+
+        self.assertEqual((frouxo.exported, apertado.exported), (1, 0))
+        self.assertEqual(frouxo.as_dict()["measurement"]["accept_threshold"], 0.7)
+        self.assertEqual(apertado.as_dict()["measurement"]["accept_threshold"], 0.8)
+
+    def test_o_json_diz_de_que_codigo_o_numero_saiu(self) -> None:
+        """Metade do número é detecção, e detecção é **código**, não modelo. Dois relatórios
+        do mesmo `.pt` sobre o mesmo conjunto divergem quando o detector muda."""
+        _code_revision.cache_clear()
+        self.addCleanup(_code_revision.cache_clear)
+
+        with patch("chess_diagram_ocr.field_eval.git_commit", return_value="9eb6685"), \
+             patch("chess_diagram_ocr.field_eval.git_worktree_dirty", return_value=False):
+            medicao = self._relatorio(options=RecognitionOptions()).as_dict()["measurement"]
+
+        self.assertEqual(medicao["code_commit"], "9eb6685")
+        self.assertFalse(medicao["code_dirty"])
+
+    def test_a_arvore_suja_e_declarada_no_json_e_no_texto(self) -> None:
+        """Um `code_commit` sozinho numa árvore com mudança por commitar aponta para um
+        código que **não** é o que rodou -- e aponta com cara de confiança."""
+        _code_revision.cache_clear()
+        self.addCleanup(_code_revision.cache_clear)
+        saida = io.StringIO()
+
+        with patch("chess_diagram_ocr.field_eval.git_commit", return_value="db7abfd"), \
+             patch("chess_diagram_ocr.field_eval.git_worktree_dirty", return_value=True):
+            relatorio = self._relatorio(options=RecognitionOptions())
+            with redirect_stdout(saida):
+                _print_report(relatorio, limit=10)
+
+        self.assertTrue(relatorio.as_dict()["measurement"]["code_dirty"])
+        self.assertIn("db7abfd", saida.getvalue())
+        self.assertIn("não commitada", saida.getvalue())
+
+    def test_o_codigo_e_perguntado_uma_vez_por_processo(self) -> None:
+        """O que o campo descreve é o código **carregado**, e ele foi fixado no import.
+        Perguntar de novo apontaria para um commit que não foi o que mediu."""
+        _code_revision.cache_clear()
+        self.addCleanup(_code_revision.cache_clear)
+
+        with patch("chess_diagram_ocr.field_eval.git_commit", return_value="db7abfd") as sonda, \
+             patch("chess_diagram_ocr.field_eval.git_worktree_dirty", return_value=False):
+            self._relatorio(options=RecognitionOptions())
+            self._relatorio(options=RecognitionOptions())
+
+        sonda.assert_called_once()
+
+    def test_o_commit_do_treino_e_o_do_run_sao_campos_diferentes(self) -> None:
+        """`model.train_commit` é de onde saiu o **modelo**; `code_commit` é de onde saiu a
+        **medição**. Podem estar a semanas de distância, e confundi-los foi o que fez os
+        quatro relatórios de 2026-08-22 parecerem comparáveis."""
+        dados = self._relatorio(options=RecognitionOptions()).as_dict()["measurement"]
+
+        self.assertIn("train_commit", dados["model"])
+        self.assertIn("code_commit", dados)
+        self.assertNotIn("code_commit", dados["model"])
+
+    def test_a_identidade_nao_se_repete_nos_sub_relatorios(self) -> None:
+        """Por regime e por livro são fatias do mesmo run. Repetir a identidade em cada um
+        encheria o JSON de cópias da mesma frase."""
+        dados = self._relatorio(options=RecognitionOptions()).as_dict()
+
+        self.assertTrue(dados["per_regime"])
+        self.assertTrue(dados["per_book"])
+        for secao in ("per_regime", "per_book"):
+            for nome, parcial in dados[secao].items():
+                with self.subTest(secao=secao, chave=nome):
+                    self.assertNotIn("measurement", parcial)
+
+    def test_a_identidade_sai_mesmo_quando_nada_foi_medido(self) -> None:
+        """Um conjunto todo por revisar mede zero páginas -- e ainda assim o arquivo precisa
+        dizer com que modelo ele mediu zero, senão o run some sem deixar rastro."""
+        paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=False,
+                             diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
+
+        dados = evaluate_field(paginas, options=RecognitionOptions(), service=_FakeService({}),
+                                pdf_dir=self.pasta).as_dict()  # type: ignore[arg-type]
+
+        self.assertEqual(dados["pages"], 0)
+        self.assertIn("measurement", dados)
+
+    def test_o_campo_novo_nao_esconde_pages_e_annotated(self) -> None:
+        """A guarda da S-100 lê `pages` e `annotated` no topo destes JSON. Um campo novo que
+        os deslocasse quebraria a suíte que existe para pegar comparação suja."""
+        dados = self._relatorio(options=RecognitionOptions()).as_dict()
+
+        self.assertEqual({"pages": dados.get("pages"), "annotated": dados.get("annotated")},
+                         {"pages": 1, "annotated": 1})
+
+    def test_um_relatorio_sem_identidade_sai_como_antes(self) -> None:
+        """`evaluate_page` mede uma página contra uma leitura já pronta e legitimamente não
+        sabe de onde ela veio. A chave some em vez de sair nula."""
+        parcial = evaluate_page(
+            FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),)),
+            [lido((0, 0, 10, 10))],
+        )
+
+        self.assertIsNone(parcial.measurement)
+        self.assertNotIn("measurement", parcial.as_dict())
+
+    def test_o_relatorio_de_texto_tambem_nomeia_o_modelo(self) -> None:
+        """O JSON entra na tabela, mas o que se lê na hora é o terminal -- e ele tinha o
+        mesmo buraco. Sai **antes** dos números, que é onde a pergunta é feita."""
+        saida = io.StringIO()
+        medicao = describe_measurement(
+            RecognitionOptions(model_path=Path("models") / "candidato.pt", dpi=300),
+            accept_threshold=0.7,
+        )
+
+        with redirect_stdout(saida):
+            _print_report(FieldReport(measurement=medicao), limit=10)
+
+        texto = saida.getvalue()
+        self.assertIn("candidato.pt", texto)
+        self.assertIn("0.70", texto)
+        self.assertIn("300", texto)
+        self.assertLess(texto.index("candidato.pt"), texto.index("Nenhuma página revisada"))
+
+    def test_o_relatorio_de_texto_sem_identidade_nao_ganha_bloco_vazio(self) -> None:
+        """`evaluate_page` e os sub-relatórios não sabem de que run vieram; um bloco com
+        campos em branco diria que sabem."""
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            _print_report(FieldReport(), limit=10)
+
+        self.assertNotIn("Modelo", saida.getvalue())
 class PdfsDoConjuntoTests(unittest.TestCase):
     """**S-218: um PDF que não abre não pode virar recall baixo.**
 

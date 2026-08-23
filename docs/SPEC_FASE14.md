@@ -16,7 +16,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-171 a S-174, S-218, S-220, S-221 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-171 a S-174, S-218, S-219, S-220, S-221 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
@@ -3430,6 +3430,167 @@ o PDF.
 **Testes.** `tests/test_packaging.py::SelftestTests` — os dois códigos, as duas frases, e a
 guarda de que um checkpoint **bom** não cai nelas (uma guarda que transforma instalação boa em
 erro é pior que a falha que ela cobre).
+---
+
+## S-219 · O relatório de campo diz de que modelo e de que código ele é ✅ implementada (2026-08-23)
+
+**Problema.** `cvoff-field --json` grava `pages`, `annotated`, `export_rate`, `field_exact` e
+mais trinta números sobre **o resultado** — e nada sobre **o run**. Em 2026-08-22 quatro modelos
+foram medidos sobre o mesmo conjunto de 66 páginas e 115 diagramas, e os quatro arquivos são
+idênticos em todo campo que diria de quem eles são — só se distinguem pelo nome:
+
+| arquivo | o que a tabela da S-99 diz que ele é | o que o arquivo diz que ele é |
+|---|---|---|
+| `field_20260822_s99.json` | a régua | — |
+| `controle_20260822.json` | o controle | — |
+| `mhsp_20260822.json` | o candidato `mhsp` | — |
+| `s108_20260822.json` | o candidato da S-108 | — |
+
+A coluna da direita é vazia de propósito: é o item. A tabela comparativa depende de quem gravou
+ter lembrado o que rodou, e o caminho não resolveria sozinho — o treino reescreve sempre
+`models/piece_classifier.pt`, então os quatro citariam o mesmo `.pt`.
+
+**É a mesma classe de defeito que a S-100 fechou para o conjunto**, um nível ao lado. Lá, dois
+relatórios de conjuntos diferentes entravam na mesma tabela sem nada avisar; aqui, dois
+relatórios de **modelos** diferentes. A S-100 resolveu o dela publicando a identidade do
+conjunto (`pages`/`annotated`, que já saíam) e travando por teste; o modelo não tinha o que
+publicar.
+
+**Solução.** O relatório passa a sair carimbado, num bloco `measurement` no topo do JSON:
+
+- **`model.sha256`** — 16 dígitos do sha256 do `.pt`. É o que **decide**: dois relatórios com a
+  mesma impressão mediram o mesmo modelo, e o caminho pode mentir sobre isso.
+- **`model.best_metric` / `best_epoch` / `best_metric_name` / `arch_version` / `train_commit`** —
+  a Fase 5 já os grava **dentro** do `.pt` (S-27); o que faltava era alguém lê-los para fora. É
+  o que **explica**: dizem de que treino o arquivo saiu, que é o que um humano lendo a tabela
+  quer saber.
+- **`model.path`** — relativo à raiz quando está dentro dela, porque estes JSON vão para o
+  repositório e um caminho absoluto os torna incomparáveis entre máquinas.
+- **`accept_threshold` e `dpi`** — os dois mudam o número e não apareciam. O gate é literalmente
+  o corte de que a `export_rate` fala; o DPI muda o que o detector vê antes de o modelo ver
+  qualquer coisa.
+- **`code_commit` e `code_dirty`** — de que **código** o número saiu, e se a árvore que mediu
+  tinha mudança por commitar. Ver "O segundo eixo" abaixo: entrou por um caso medido.
+
+### O segundo eixo, e ele não estava no enunciado
+
+**Metade do número é detecção, e detecção é código, não modelo.** O item nasceu para responder
+*"qual `.pt`?"*, e responder só isso deixaria os mesmos quatro arquivos ambíguos por outro
+motivo. Os quatro relatórios de 2026-08-22 foram medidos com o código de `b603e31`; o commit
+`9eb6685` (S-176) mudou `detection/hybrid.py` e, em `GALLAGHER - Winning With the King's
+Gambit.pdf` p124, o recall passa de **0,800 para 1,000** e o falso positivo some. Nenhum campo
+dos quatro arquivos mudou.
+
+**E a guarda da S-100 não pega**, por construção: ela compara `pages` e `annotated` — a
+identidade do **conjunto** —, e mudança de código não move nenhum dos dois. O eixo do conjunto
+estava coberto desde a S-100, o do modelo passou a estar agora, e o do código não estava em
+lugar nenhum.
+
+**`code_dirty` existe porque o commit sozinho mente.** Um relatório que grava `db7abfd` numa
+árvore com 250 linhas de detecção ainda não commitadas aponta para um código que **não** é o
+que rodou — e aponta com a mesma cara de confiança de um que aponta certo. Num repositório com
+várias sessões escrevendo na mesma árvore, essa é a situação comum, não a exceção.
+
+**`code_commit` não é `model.train_commit`.** O primeiro é de onde saiu a **medição**; o
+segundo, de onde saiu o **treino**. Podem estar a semanas de distância, e é por isso que são
+dois campos com nomes diferentes em níveis diferentes do bloco.
+
+**Perguntado uma vez por processo** (`_code_revision`, com `lru_cache`). Não é só economia dos
+~120 ms de dois `git`: o que o campo descreve é o código **carregado**, e ele foi fixado quando
+o Python importou os módulos. Commitar no meio de uma sessão não troca o que já está rodando, e
+perguntar de novo faria o relatório apontar para um commit que não foi o que mediu.
+
+**Onde ele é montado.** Em `evaluate_field`, e não na CLI: a identidade é do que foi **medido**,
+e deixá-la com quem chama recria em outro lugar o "dependia de quem gravou lembrar". Um run que
+não mediu página nenhuma ainda sai carimbado.
+
+**Compatibilidade, e ela é o ponto de atenção.** `ConjuntoVigenteTests` (S-100) lê `pages` e
+`annotated` no topo destes JSON; o bloco novo é uma chave a mais, e há teste dizendo que os dois
+continuam onde estavam. Os sub-relatórios de `per_regime` e `per_book` **não** repetem o bloco —
+são fatias do mesmo run —, e `evaluate_page`, que mede uma página contra uma leitura já pronta,
+legitimamente não sabe de onde ela veio: ali a chave some em vez de sair nula.
+
+**O que ele não promete.** Orientação, `max_boards` e o leitor de legenda também mexem no
+número e ficaram de fora. Entram quando existirem dois relatórios que só diferem por eles — foi
+o que aconteceu com o modelo e com o código, e é o que justifica gravá-los.
+
+**Custo.** Uma leitura do `.pt` mais um `torch.load`, **uma vez por relatório**. Ao lado dos
+minutos de inferência de uma medição de campo, é ruído — e é por isso que `checkpoint_identity`
+(S-57), que roda a cada retomada de exportação, continua sendo tamanho e mtime e não hash.
+
+**Um `.pt` ilegível não derruba o relatório.** `.onnx`, arquivo truncado, modelo que sumiu: tudo
+vira `unreadable` com o motivo escrito, e a impressão e o tamanho ainda identificam o arquivo.
+Meia identidade vale mais que nenhuma; um relatório que morre por não conseguir se identificar
+troca um número incompleto por número nenhum.
+
+**Critério de aceite.** Dois modelos gravados no mesmo caminho produzem relatórios que se
+distinguem sem depender do nome do arquivo, e um relatório medido numa árvore suja diz que foi.
+
+**Testes.** `tests/test_checkpoint.py::DescricaoDoCheckpointTests` — a impressão sobre dois
+modelos no **mesmo** caminho com metadados **idênticos** (só os pesos diferem), o mesmo conteúdo
+em dois nomes, o `.pt` ilegível, o ausente, e o checkpoint pré-Fase 5 que não inventa métrica.
+`tests/test_checkpoint.py::RevisaoDoCodigoTests` — a árvore limpa e a suja distinguidas, e o
+`.exe` sem `.git` que responde "não sei" em vez de inventar. `tests/test_field_eval.py::
+IdentidadeDaMedicaoTests` — o campo do modelo no JSON, o gate e o DPI que de fato foram usados,
+o commit do run separado do commit do treino, a árvore suja declarada no JSON **e** no texto, a
+pergunta feita uma vez só, a ausência do bloco nos sub-relatórios, e a guarda de que `pages` e
+`annotated` seguem onde a S-100 os procura.
+
+### O que fica pendente
+
+**Os quatro relatórios de 2026-08-22 continuam sem identidade** — o carimbo vale para quem for
+gravado daqui em diante, e não há como reconstruir para trás qual `.pt` produziu cada um. O
+próximo `cvoff-field --json` sobre cada um resolve; é uma linha por modelo, ~1 min cada sobre as
+66 páginas:
+
+```
+cvoff-field                                     --json docs/metrics/field_20260822_s99.json
+cvoff-field --model models/controle_20260816.pt --json docs/metrics/controle_20260822.json
+cvoff-field --model models/mhsp_20260816.pt     --json docs/metrics/mhsp_20260822.json
+cvoff-field --model models/s108_20260821.pt     --json docs/metrics/s108_20260822.json
+```
+
+**Por código eles já estão em dia**, e a história vale mais que o estado. Em `9eb6685` os quatro
+diziam `detected 109 / matched 106 / false_positives 3`, medidos antes da S-176; em `c640012`
+foram regravados e dizem `110 / 109 / 1`. Ou seja: os quatro ficaram desatualizados **em bloco**
+por uma mudança de detecção, e ninguém tinha como ver isso nos arquivos — foi preciso alguém
+lembrar. É exatamente o buraco que `code_commit` fecha daqui em diante.
+
+**A guarda natural é a próxima**, e ela só pode nascer depois de eles serem regravados:
+`RELATORIOS_CORRENTES` passar a exigir que todo relatório citado como corrente traga o
+`measurement` — hoje isso falharia em bloco sobre os quatro, que é exatamente o efeito que a
+S-100 descreve e a razão de esta metade ficar registrada em vez de ser feita junto.
+
+**Há uma segunda guarda, e ela é a S-220.** Dois relatórios que declaram o mesmo conjunto têm
+de concordar em `detected`, `matched` e `false_positives`: nenhum dos três depende do modelo.
+`service._predict_boards` devolve **um** `RecognizedDiagram` por candidato do detector, sem
+filtrar por nada que o modelo diga, e `_match` casa por `bbox_iou` sobre as caixas do detector.
+Quatro relatórios de quatro modelos que divergissem nesses três campos estariam medindo códigos
+diferentes, e a `ConjuntoVigenteTests` não veria — ela compara `pages` e `annotated`.
+
+**As duas se completam, e nenhuma cobre o eixo da outra.** A S-220 compara os relatórios **entre
+si**: ela pega o quarteto meio medido com um código e meio com outro. Este item carimba cada
+relatório com o código que o produziu: ele pega o quarteto **inteiro** desatualizado, que é
+consistente entre si e passa limpo pela S-220 — foi a situação de `9eb6685`, em que os quatro
+diziam `109/106/3` em bloco e nada acusava.
+
+O caso da S-220 não é hipotético, e o `git log` sozinho não o mostra — foi por isso que ele
+quase passou por ficção. No histórico os quatro sempre andaram juntos: `104/103/1` em `49a83a6`,
+`109/106/3` em `373739c` e `9eb6685`, `110/109/1` em `c640012`. Mas eles foram regravados **um a
+um**, e os mtimes em `docs/metrics/` ainda registram isso:
+
+```
+controle_20260822.json    05:48:47
+mhsp_20260822.json        05:50:40
+s108_20260822.json        05:52:26
+field_20260822_s99.json   05:55:27
+```
+
+Por 6 min 40 s a árvore de trabalho teve arquivos medidos com **dois códigos ao mesmo tempo** —
+passando por um, dois e três regravados. Um commit dentro dessa janela teria publicado a tabela
+misturada, e nada acusaria. E o ponto que fecha o argumento: **um teste roda sobre a árvore, não
+sobre o `git log`** — a janela que a S-220 pega é exatamente a que nunca vira commit. Até hoje
+andarem em bloco foi disciplina de quem regravou; a S-220 é o que torna isso consequência.
 
 ---
 
