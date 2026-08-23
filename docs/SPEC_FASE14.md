@@ -3549,6 +3549,14 @@ entrega X. Um índice que cobre 170 de 174 itens **não avisa que não cobre**: 
 achei" com a mesma cara com que responderia sobre um item que não existe. É a mesma fenda que a
 tabela nasceu para fechar, um nível acima.
 
+**E a cauda se propaga, porque não parece dívida.** Enquanto este item era escrito, a sessão que
+entregou a S-219 deixou o número dela sem declaração **de propósito**, citando a S-171 a S-174
+como precedente: já estavam assim naquele arquivo, e nenhum teste cobrava. O raciocínio estava
+certo sobre o teste e errado sobre o precedente -- aquelas quatro não eram convenção, eram a
+dívida que ninguém tinha visto. Nas palavras dela: *"copiei um defeito achando que copiava um
+costume"*. É o argumento inteiro em uma frase. Um índice incompleto não se anuncia como
+incompleto; ele se parece com uma decisão, e a próxima pessoa o imita de boa-fé.
+
 **Solução.** `faixas_sem_declaracao` recebe as seções e as faixas -- os dois lados, em vez de
 ler o disco -- e devolve uma queixa por número descoberto, nomeando o arquivo onde a seção
 mora. A falha diz o que fazer:
