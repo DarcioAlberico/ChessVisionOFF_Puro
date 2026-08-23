@@ -205,10 +205,20 @@ class IndiceDoReadmeTests(unittest.TestCase):
         uma vez** -- e o README, que é o único errado, não entra na lista. É tudo ou nada nos
         sete.
 
-        O piso dizia `5` quando os documentos já eram seis (corrigido em 2026-08-23, junto com o
-        "Cinco cópias" acima). Um piso um abaixo da realidade tolera exatamente o que ele existe
-        para pegar: um documento perder a tabela sem que nada fale. Subir o piso é seguro --
-        documento novo que traga a tabela só faz a contagem crescer.
+        **O piso deixou de ser um número escrito à mão** (2026-08-23). Ele dizia `5` quando os
+        documentos já eram seis, e um piso um abaixo da realidade tolera exatamente o que ele
+        existe para pegar: um documento perder a tabela sem que nada fale.
+
+        Trocar `5` por `6` teria consertado o sintoma e mantido o defeito. O número cresce
+        sozinho e o literal não: na `fase-5-modelo-desempenho`, onde o projeto está, **oito**
+        documentos já trazem a tabela e a tabela declara **sete** arquivos de spec -- um `6`
+        cravado nasceria dois atrás, que é o `5` de ontem outra vez.
+
+        Então o piso passa a ser derivado: **quantos arquivos de spec a própria tabela declara**.
+        É a regra que já existe -- todo arquivo declarado como casa de spec traz o índice --
+        escrita como código em vez de como número. Medido nas duas árvores: na `main`, 6
+        declarados e 6 trazendo; na `fase-5`, 7 declarados e 8 trazendo (o `ROADMAP_TEXTO.md`
+        traz sem ser declarado, e por isso o piso é `>=` e não `==`).
         """
         referencia = faixas_declaradas(README.read_text(encoding="utf-8"))
         self.assertTrue(referencia, "O README perdeu a tabela de faixas.")
@@ -229,7 +239,13 @@ class IndiceDoReadmeTests(unittest.TestCase):
                 divergentes.append(f"{arquivo.name}: difere do README em {', '.join(diferenca)}")
 
         self.assertEqual([], divergentes)
-        self.assertGreaterEqual(copias, 6, "A tabela sumiu de algum dos seis documentos de spec.")
+        esperado = len(set(referencia.values()))
+        self.assertGreaterEqual(
+            copias,
+            esperado,
+            f"A tabela declara {esperado} arquivo(s) de spec e só {copias} traz(em) a tabela. "
+            "Um documento de spec perdeu o índice.",
+        )
 
 
 TOLERANCIA = 0.10
