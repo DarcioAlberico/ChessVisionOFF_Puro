@@ -75,6 +75,7 @@ class PdfPanelBoxesTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.cliques: list[int] = []
+        self.tiradas: list[int] = []
         self.marcacao: list[bool] = []
         self.status: list[str] = []
         self.host = tk.Frame(self.root)
@@ -94,6 +95,7 @@ class PdfPanelBoxesTests(unittest.TestCase):
             on_zoom_changed=lambda _zoom: None,
             initial_dir=Path("."),
             on_box_click=self.cliques.append,
+            on_box_drop=self.tiradas.append,
             on_prefs_changed=lambda: self.marcacao.append(bool(self.panel.show_boxes_var.get())),
         )
         # Uma página na tela sem abrir arquivo nenhum: o painel só precisa dos pixels e de
@@ -464,6 +466,63 @@ class PdfPanelBoxesTests(unittest.TestCase):
         self.assertEqual(str(self.panel.canvas.cget("cursor")), "hand2")
         self.panel._on_hover(_evento(280, 380))
         self.assertEqual(str(self.panel.canvas.cget("cursor")), "")
+
+    # ---------------------------------------------------- tirar a caixa errada (S-177)
+
+    def test_o_botao_direito_sobre_o_retangulo_pede_para_tira_lo(self) -> None:
+        """O gesto direto, e o único que funciona **antes** do OCR.
+
+        Até a página ser lida não há diagrama selecionado (`_sync_selected_box` limpa a seleção
+        para as caixas do detector), e é justamente aí que se quer matar a caixa errada -- para
+        não pagar o OCR dela.
+        """
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        self.panel._on_right_click(_evento(60, 200))
+        self.assertEqual(self.tiradas, [1])
+
+    def test_o_botao_direito_fora_de_qualquer_retangulo_nao_tira_nada(self) -> None:
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        self.panel._on_right_click(_evento(280, 380))
+        self.assertEqual(self.tiradas, [])
+
+    def test_o_botao_direito_cala_durante_a_selecao_de_area(self) -> None:
+        """Ali o botão direito não fala de caixa nenhuma: fala do retângulo sendo arrastado."""
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        self.panel.toggle_area_selection()
+        self.panel._on_right_click(_evento(60, 60))
+        self.assertEqual(self.tiradas, [])
+
+    def test_o_botao_tira_a_caixa_do_diagrama_selecionado(self) -> None:
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        self.panel.select_box(1)
+        self.panel.drop_selected_box()
+        self.assertEqual(self.tiradas, [1])
+
+    def test_sem_selecao_o_botao_diz_o_que_fazer_em_vez_de_tirar_a_primeira(self) -> None:
+        """Tirar "a primeira" apagaria uma caixa que ninguém apontou."""
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, CAIXAS))
+        self.panel.select_box(None)
+        self.panel.drop_selected_box()
+        self.assertEqual(self.tiradas, [])
+        self.assertIn("botão direito", self.status[-1])
+
+    def test_numa_pagina_sem_caixa_o_botao_diz_que_nao_ha_o_que_tirar(self) -> None:
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, ()))
+        self.panel.drop_selected_box()
+        self.assertEqual(self.tiradas, [])
+        self.assertIn("Nenhuma caixa", self.status[-1])
+
+    def test_o_indice_pedido_e_o_da_caixa_e_nao_a_posicao_na_lista(self) -> None:
+        """Depois de uma remoção a lista tem buraco na numeração, e é ela que vai para a tela.
+
+        `DroppedBoxes.apply` não renumera de propósito (o índice liga o retângulo ao editor e
+        ao `[Diagram "N"]` do PGN), então o painel recebe caixas 0 e 2 -- e clicar na segunda
+        tem de pedir a remoção da **2**, não da de posição 1.
+        """
+        com_buraco = (CAIXAS[0], DiagramBox(index=2, bbox_pdf=(10.0, 150.0, 110.0, 250.0)))
+        self.panel.set_diagram_boxes(PageBoxes(0, PARAMS, com_buraco))
+        self.panel._on_right_click(_evento(60, 200))
+        self.assertEqual(self.tiradas, [2])
 
 
 class LoadPdfEstadoTests(unittest.TestCase):

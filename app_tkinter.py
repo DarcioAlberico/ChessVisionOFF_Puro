@@ -11,7 +11,7 @@ parâmetros que o `OcrService` espera.
 |---|---|
 | detectar, prever, inferir a vez, gravar amostra | `service.py` |
 | PDF: exibir, navegar, selecionar área, marcar diagramas | `ui/pdf_panel.py` |
-| onde estão os diagramas da página e o que um clique neles significa | `ui/page_overlay.py` |
+| onde estão os diagramas da página, o que um clique neles significa e quais o usuário tirou | `ui/page_overlay.py` |
 | o que a roda do mouse faz e para onde o zoom puxa | `ui/viewport.py` |
 | editar o diagrama, legalidade, salvar, fila e dataset | `ui/result_panel.py` |
 | tabuleiro de estudo, variantes e PGN | `ui/study_panel.py` |
@@ -108,6 +108,7 @@ from chess_diagram_ocr.ui.field_draft import REGIMES, FieldDraft
 from chess_diagram_ocr.ui.gallery_panel import LARGURA_MINIMA_DA_GALERIA, GalleryPanel
 from chess_diagram_ocr.ui.page_overlay import (
     BoxClick,
+    DroppedBoxes,
     OverlayParams,
     PageBoxes,
     PageBoxesCache,
@@ -115,6 +116,8 @@ from chess_diagram_ocr.ui.page_overlay import (
     boxes_from_diagrams,
     choose_boxes,
     decide_box_click,
+    frase_de_caixa_tirada,
+    frase_de_caixas_devolvidas,
     mark_confirmed,
     mark_saved,
 )
@@ -188,6 +191,14 @@ class ChessOcrTkApp:
 
         self.page_boxes = PageBoxesCache()
         """Onde estão os diagramas de cada página já visitada (S-68)."""
+
+        self.dropped_boxes = DroppedBoxes()
+        """As caixas que o usuário tirou da página, nesta sessão (S-177).
+
+        Separado do `page_boxes` de propósito: aquele guarda o que o **detector** achou, e é
+        descartado quando os parâmetros mudam ou quando o cache enche. Este guarda um juízo
+        **humano** sobre a página, e um juízo humano não pode ser despejado por LRU nem
+        invalidado por uma troca de DPI -- o retângulo continua errado a 300 DPI."""
 
         self.saved_diagrams: dict[int, set[int]] = {}
         """Quais diagramas de cada página deste livro já têm amostra salva (S-71).
@@ -449,6 +460,7 @@ class ChessOcrTkApp:
             on_zoom_changed=lambda _valor: self._save_app_state(),
             initial_dir=ROOT,
             on_box_click=self._on_box_click,
+            on_box_drop=self._drop_box,
             on_prefs_changed=self._save_app_state,
             on_document_state=self.rodape.definir_documento,
         )
@@ -754,6 +766,9 @@ class ChessOcrTkApp:
         # chave já inclui o documento, então isto não é correção de bug: é não guardar
         # afirmação sobre um PDF que ninguém mais está olhando.
         self.page_boxes.clear()
+        # As remoções são por (documento, página) e não colidiriam, mas guardá-las de um livro
+        # que ninguém mais está olhando é memória sem pergunta que a leia.
+        self.dropped_boxes.clear()
         self._reload_saved_diagrams(pdf_path)
         if self.gallery_panel is not None:
             # Sem isto a galeria só conhecia o livro depois de uma varredura -- e o número do
@@ -912,13 +927,22 @@ class ChessOcrTkApp:
             return
 
         params = self._overlay_params()
+        documento = self._document_key()
         salvos = self.saved_diagrams.get(page_index, set())
-        detectadas = self.page_boxes.get(self._document_key(), page_index, params)
+        detectadas = self.page_boxes.get(documento, page_index, params)
+        # As caixas tiradas saem **antes** dos carimbos (S-177), pela mesma razão que os
+        # carimbos são aplicados aqui e não no cache: a lista que vai para a tela é montada a
+        # cada desenho, e é a única em que uma remoção do usuário e um `saved` recém-gravado
+        # convivem sem que um precise conhecer o outro.
         escolhidas = mark_confirmed(
             mark_saved(
-                choose_boxes(
-                    recognized=boxes_from_diagrams(self._page_items(page_index)),
-                    detected=detectadas.boxes if detectadas is not None else (),
+                self.dropped_boxes.apply(
+                    documento,
+                    page_index,
+                    choose_boxes(
+                        recognized=boxes_from_diagrams(self._page_items(page_index)),
+                        detected=detectadas.boxes if detectadas is not None else (),
+                    ),
                 ),
                 salvos,
             ),
@@ -932,11 +956,49 @@ class ChessOcrTkApp:
             return
         if detectadas is not None:
             # Página de prosa já visitada: sabe-se que não há diagrama, e dizê-lo é melhor que
-            # mandar o detector percorrê-la de novo a cada volta.
-            painel.set_diagram_boxes(detectadas)
+            # mandar o detector percorrê-la de novo a cada volta. Uma página em que **todas** as
+            # caixas foram tiradas chega aqui pelo mesmo caminho, e é a resposta certa: não há
+            # o que desenhar, e refazer a detecção só traria de volta o que o usuário recusou.
+            painel.set_diagram_boxes(PageBoxes(page_index, params, ()))
             return
 
         self._request_overlay(page_index, params)
+
+    # ------------------------------------------------- tirar a caixa que o detector errou (S-177)
+
+    def _drop_box(self, index: int) -> None:
+        """Tira da página o retângulo de índice `index`. Vem do botão e do botão direito.
+
+        **Guarda a caixa, e não o índice** -- ver `DroppedBoxes`. E não mexe no `page_boxes`: o
+        cache é o que o detector achou, e reescrevê-lo faria a remoção parecer detecção.
+        """
+        painel = self.pdf_panel
+        if painel is None or painel.boxes is None:
+            return
+        alvo = next((box for box in painel.boxes.boxes if box.index == index), None)
+        if alvo is None:
+            self._set_status(frase_de_caixa_tirada(None, 0))
+            return
+
+        pagina, documento = painel.page_index, self._document_key()
+        self.dropped_boxes.drop(documento, pagina, alvo.bbox_pdf)
+        self._refresh_overlay(pagina)
+        self._set_status(frase_de_caixa_tirada(alvo, self.dropped_boxes.count(documento, pagina)))
+
+    def restore_dropped_boxes(self) -> None:
+        """Devolve à página exibida todas as caixas que foram tiradas dela.
+
+        Página a página, e não um "desfazer" global: a remoção é sobre a página que está na
+        tela, e desfazê-la noutra página mudaria o que o usuário não está vendo.
+        """
+        painel = self.pdf_panel
+        if painel is None or painel.source is None:
+            return
+        pagina = painel.page_index
+        quantas = self.dropped_boxes.restore(self._document_key(), pagina)
+        if quantas:
+            self._refresh_overlay(pagina)
+        self._set_status(frase_de_caixas_devolvidas(quantas, pagina))
 
     def _announce_if_page_done(self, caixas: PageBoxes) -> None:
         """Diz na barra de status que esta página acabou -- e só isso (S-142).
@@ -1500,6 +1562,8 @@ class ChessOcrTkApp:
             "ajustar_largura": self._on_pdf(lambda p: p.fit_width()),
             "ajustar_pagina": self._on_pdf(lambda p: p.fit_page()),
             "marcar_diagramas": self._on_pdf(lambda p: p.on_boxes_toggle()),
+            "tirar_caixa": self._on_pdf(lambda p: p.drop_selected_box()),
+            "devolver_caixas": self.restore_dropped_boxes,
             "roda_vira_pagina": self._save_app_state,
             "ler_pagina": self.ocr_all,
             "ler_melhor": self.ocr_best,

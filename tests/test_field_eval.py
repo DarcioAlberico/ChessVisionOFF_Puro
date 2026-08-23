@@ -656,11 +656,17 @@ a mensagem do commit repete `63/110` cinco vezes -- e foi esta guarda que pegou,
 que ela existe. O conjunto foi para `66/115` com a `p14` do Yusupov, que estava por anotar, e
 os quatro foram remedidos sobre ele com o mesmo código.
 
-O que se moveu foi denominador e **detecção**: `exact`, exatidão condicional, exportados e
-errados e exatidão de campo ficaram idênticos nas quatro colunas, porque as cinco anotações
-novas são só caixa. O recall caiu de 0,9364 para 0,9217 e a precisão de 0,9904 para 0,9725,
-e as duas quedas são o mesmo caso -- a `p14`, em que o caminho de imagem embutida devolve
-fragmento de scan em vez de diagrama. Está na S-99 da `SPEC_FASE14.md`."""
+O que se moveu foi denominador e **detecção**: o recall caiu de 0,9364 para 0,9217 e a precisão
+de 0,9904 para 0,9725, e as duas quedas são o mesmo caso -- a `p14`, em que o caminho de imagem
+embutida devolve fragmento de scan em vez de diagrama, acha um dos três diagramas e inventa uma
+caixa. As FENs dos três foram transcritas depois, e aí `comparable` foi de 93 para 94 e `exact`
+subiu 1 nas quatro colunas: dos três, só o 1-11 é casado, e os quatro modelos o leem certo.
+Está na S-99 da `SPEC_FASE14.md`.
+
+**Repare no que esta guarda não pega.** Ela compara identidade -- `pages` e `annotated` -- e
+transcrever uma FEN não mexe em nenhum dos dois. Os relatórios ficaram materialmente velhos
+(`comparable` e `exact` mudaram) com a suíte verde. Quem acrescentar FEN, ou mexer no código
+de detecção, tem de remedir por conta própria."""
 
 
 class ConjuntoVigenteTests(unittest.TestCase):

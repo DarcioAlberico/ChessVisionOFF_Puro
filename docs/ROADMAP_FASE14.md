@@ -18,10 +18,10 @@ decisão, as duas do dono do acervo. Está assim, por medição e não por impre
 | fase | estado | o que falta |
 |---|---|---|
 | 0, 1, 3, 4, 5 | ✅ | — |
-| 2 | ✅ entregue | a 1ª parte do critério é exportar 39 livros: horas na máquina que os tem |
-| 6 | ⚠ | `app_tkinter.py` em 1.712 contra o alvo de 600 (S-31 aberta, com catraca) |
+| 2 | ✅ | critério de saída **fechado em 22/08**: 41 livros, 20.089 páginas, 3 h 25 min, e **0 posições ilegais** em 29.322 exportadas |
+| 6 | ⚠ | `app_tkinter.py` em 1.776 contra o alvo de 600 (S-31 aberta, com catraca; +64 na S-177, com o motivo no `test_packaging`) |
 | 7 a 13 | ✅ código completo | a 7 registra critério não atingido, com a razão medida |
-| **14 — a régua** | ✅ | S-99 fechada em 22/08: 66 páginas, `comparable` 93, faixa 0,60–0,80 com **6 de 5**. A régua achou o primeiro **exportado e errado** do projeto |
+| **14 — a régua** | ✅ | S-99 fechada em 22/08: 66 páginas, `comparable` 94, faixa 0,60–0,80 com **6 de 5**. A régua achou o primeiro **exportado e errado** do projeto |
 | **15 — dataset e treino** | ✅ | S-108 fechada em 21/08: 80 rótulos, dedupe registrado, controle e tratamento medidos. Promover segue sendo decisão sua |
 | 16, 17, 18, 19 | ✅ | — |
 | 20 a 24 — interface | ✅ | 27 de 27 |
@@ -400,7 +400,7 @@ a condição de qualquer medição, a segunda porque cada dia de uso acrescenta 
 | 14.2 | A exatidão de campo passa a existir, com `n` declarado | S-96 | ✅ |
 | 14.3 | O conjunto de campo declara a página que o modelo treinou | S-97 | ✅ |
 | 14.4 | O mesmo diagrama impresso não cruza split | S-98 | ✅ |
-| 14.5 | Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida | S-99 | ✅ **fechada em 22/08**: 66 páginas, 115 diagramas, `comparable` 93, cinco regimes no alvo, faixa 0,60-0,80 com **6** |
+| 14.5 | Crescer o conjunto: 60 páginas, cinco regimes, FEN conferida | S-99 | ✅ **fechada em 22/08**: 66 páginas, 115 diagramas, `comparable` 94, cinco regimes no alvo, faixa 0,60-0,80 com **6** |
 | 14.6 | O conjunto vigente é declarado e a comparação volta a ser honesta | S-100 | ✅ |
 
 **Critério de saída:** `cvoff-field` relata exatidão de campo com `comparable ≥ 30`, nenhuma
@@ -1029,10 +1029,10 @@ silêncio, os quatro são de horas, e os quatro pioram enquanto o programa é us
 |---|---|
 | **A régua contaminada invalida vereditos anteriores** | S-38b, S-40, S-62a e S-62b foram reprovados por uma métrica que mede confiança e não correção, sobre um conjunto com 18% de páginas treinadas. **Não** significa que estavam errados — significa que não foram julgados. Reabri-los é decisão sua, e o custo é uma medição cada |
 | **O `BASELINE.md` publica 0,9906 sobre um teste contaminado** | 3 triplas cruzam split, uma delas nas três partições. O número não está errado por muito, mas está errado para cima, e ninguém sabe por quanto até a S-98 |
-| ~~**Anotar 60 páginas com FEN custa ~3 h suas**~~ ✅ feito em 22/08 | 66 páginas, `comparable` 93. O que ficou de dívida: 22 dos 115 diagramas estão anotados só com a caixa — 17 porque a hachura do scan não deixava separar 64 casas com segurança, e 5 (as duas do `p11` e as três do `p14`, no Yusupov) porque a FEN não foi transcrita |
+| ~~**Anotar 60 páginas com FEN custa ~3 h suas**~~ ✅ feito em 22/08 | 66 páginas, `comparable` 94. O que ficou de dívida: 19 dos 115 diagramas estão anotados só com a caixa — 17 porque a hachura do scan não deixava separar 64 casas com segurança, e as duas do `p11` do Yusupov |
 | **`data/gallery/` fora do git** | 5.953 anotações, 21 delas escolha humana explícita. Versionar custa ~11 MB de texto no repositório; não versionar custa tudo isso num disco que falhe. A decisão é sua, mas **precisa ser tomada** |
 | **`cvoff-audit --dedupe` como está** | Não rodar até a S-101. Ele apagaria 6,2% do `test` e 8,4% do `val` |
 | **A base de 18 GB e o índice de 885 MB** | O índice guarda a mesma informação duas vezes; 476 MB bastariam. Refazê-lo custa uma reconstrução, e a decisão pode esperar a Fase 17 |
 | ~~**Retreinar produção com `mhsp`**~~ **decidido em 2026-08-16: não** | O `mhsp` exporta 28/39 contra 29/39 do controle, com exatidão de campo **idêntica** (1,0000 sobre os mesmos 28). Os −40% de reparo se confirmaram como −57% e não compram nada mensurável. O `AugmentConfig()` padrão continua `aug0` |
-| **Trocar `models/piece_classifier.pt` pelo controle** — **reaberto em 2026-08-22, e é sua** | O "não" de 18/08 dizia que a diferença era um diagrama sem FEN, sobre 19 páginas. Sobre as 66 da S-99 fechada, o controle **exporta mais** (0,7652 contra 0,7391) e **não exporta nenhum errado** (exatidão de campo 1,0000 contra 0,9878). Em troca, a produção lê certo mais diagramas no total (`exact` 89 contra 86). Os dois erram diagramas diferentes. Não é ruído, e a régua que faltava agora existe |
+| **Trocar `models/piece_classifier.pt` pelo controle** — **reaberto em 2026-08-22, e é sua** | O "não" de 18/08 dizia que a diferença era um diagrama sem FEN, sobre 19 páginas. Sobre as 66 da S-99 fechada, o controle **exporta mais** (0,7652 contra 0,7391) e **não exporta nenhum errado** (exatidão de campo 1,0000 contra 0,9880). Em troca, a produção lê certo mais diagramas no total (`exact` 90 contra 87). Os dois erram diagramas diferentes. Não é ruído, e a régua que faltava agora existe |
 | **Sem GPU** | Continua valendo: `torch 2.10.0+cpu`, época em ~9 min com a máquina livre. Os dois treinos da S-107 custam ~5 h de CPU |

@@ -110,7 +110,7 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | módulo | responsabilidade |
 |---|---|
 | `pdf_panel.py` | Exibir o PDF, navegar, zoom, seleção de área, modo leitura, e os diagramas marcados sobre a página (S-68). |
-| `page_overlay.py` | Onde estão os diagramas da página, o que um clique neles acerta e o que ele significa (S-68). **Sem Tk.** |
+| `page_overlay.py` | Onde estão os diagramas da página, o que um clique neles acerta e o que ele significa (S-68), e quais o usuário tirou da tela (S-177). **Sem Tk.** |
 | `viewport.py` | O que a roda faz, para onde o zoom puxa e quanto cabe na largura (S-70). **Sem Tk.** |
 | `result_panel.py` | O editor **desenhado**: widgets, diálogos e gravação. O estado é do `editor_model`. |
 | `editor_model.py` | As três listas paralelas, o índice e o vínculo — e o que `Ctrl+S` significa (S-49). **Sem Tk.** |

@@ -171,6 +171,7 @@ class PdfPanel(ttk.Frame):
         on_zoom_changed: Callable[[float], None],
         initial_dir: Path,
         on_box_click: Callable[[int], None] = lambda _indice: None,
+        on_box_drop: Callable[[int], None] = lambda _indice: None,
         on_prefs_changed: Callable[[], None] = lambda: None,
         on_document_state: Callable[[str, bool], None] = lambda _texto, _concluida: None,
     ) -> None:
@@ -192,6 +193,13 @@ class PdfPanel(ttk.Frame):
 
         Padrão inerte para que montar o painel sem a janela (nos testes) não exija inventar um
         destino para o clique."""
+
+        self._on_box_drop = on_box_drop
+        """O usuário quer **tirar** aquele retângulo da página (S-177). Índice em base 0.
+
+        Separado do `on_box_click` porque as duas respostas ao mesmo retângulo são opostas: uma
+        diz "leia isto", a outra diz "isto não é diagrama". Quem guarda a remoção é a janela --
+        o painel desenha o que lhe entregam."""
 
         self._on_prefs_changed = on_prefs_changed
         """Uma preferência de visualização mudou -- marcação de diagramas ou virada de página
@@ -305,6 +313,15 @@ class PdfPanel(ttk.Frame):
         self.btn_select = livro.adicionar(
             ttk.Button(livro, text="Selecionar área (OCR)", command=self.toggle_area_selection)
         )
+        self.btn_drop_box = livro.adicionar(
+            ttk.Button(livro, text="Tirar a caixa", command=self.drop_selected_box)
+        )
+        Tooltip(
+            self.btn_drop_box,
+            "Tira da página o retângulo do diagrama selecionado -- o que o detector marcou errado.\n"
+            "Botão direito sobre qualquer retângulo faz o mesmo, sem precisar selecioná-lo antes.\n"
+            "Depois, use Selecionar área (OCR) para recortar o diagrama de verdade.",
+        )
         self.btn_export = livro.adicionar(ttk.Button(livro, text=f"Exportar PDF {strings.SETA} PGN", command=on_export))
         self.btn_cancel_export = livro.adicionar(
             ttk.Button(livro, text="Cancelar exportação", command=on_cancel_export, state=tk.DISABLED)
@@ -398,6 +415,11 @@ class PdfPanel(ttk.Frame):
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<Motion>", self._on_hover)
+        # Botao direito tira o retangulo de baixo do ponteiro (S-177). E o gesto direto, e e o
+        # unico que funciona **antes** do OCR: ate a pagina ser lida nao ha diagrama
+        # selecionado (ver `_sync_selected_box`), e e justamente ai que se quer matar a caixa
+        # errada -- para nao pagar o OCR dela.
+        self.canvas.bind("<ButtonPress-3>", self._on_right_click)
         # Botão do meio: deslocar a página mesmo com a seleção de área ligada, que é quando o
         # botão esquerdo pertence ao retângulo verde.
         self.canvas.bind("<ButtonPress-2>", self._on_pan_start)
@@ -878,6 +900,40 @@ class PdfPanel(ttk.Frame):
     def on_boxes_toggle(self) -> None:
         self._draw_boxes()
         self._on_prefs_changed()
+
+    def drop_selected_box(self) -> None:
+        """Pede à janela que tire o retângulo do diagrama selecionado (S-177).
+
+        Sem seleção não há o que tirar, e dizer isso é melhor que tirar "o primeiro": até a
+        página ser lida, seleção nenhuma existe (`_sync_selected_box` a limpa para as caixas do
+        detector), e é aí que o botão direito é o caminho.
+        """
+        if self.boxes is None or not len(self.boxes):
+            self._on_status("Nenhuma caixa nesta página para tirar.")
+            return
+        if self._selected_box is None:
+            self._on_status(
+                "Nenhum diagrama selecionado. Clique com o botão direito sobre a caixa que "
+                "você quer tirar."
+            )
+            return
+        self._on_box_drop(self._selected_box)
+
+    def _on_right_click(self, event: tk.Event) -> str | None:
+        """Botão direito sobre um retângulo: tira aquele retângulo da página (S-177).
+
+        Fora de um retângulo, não faz nada -- e não abre menu de contexto: o painel não tem
+        outro comando por retângulo, e um menu de um item só é um clique a mais para a mesma
+        ação. Durante a seleção de área o gesto cala, porque ali o botão direito não fala de
+        caixa nenhuma.
+        """
+        if self._select_mode:
+            return None
+        indice = self._box_at_event(event)
+        if indice is None:
+            return None
+        self._on_box_drop(indice)
+        return "break"
 
     def _draw_boxes(self) -> None:
         """Redesenha os retângulos. Apagar por etiqueta, e não `delete("all")`: a página fica."""

@@ -32,6 +32,7 @@ vetoriais (ver o docstring do pacote).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 import cv2
 import fitz
@@ -160,6 +161,196 @@ def board_checker_contrast(board_rgb: np.ndarray) -> float:
     return board_checker_score(cv2.resize(board_rgb, (320, 320), interpolation=cv2.INTER_AREA))
 
 
+@dataclass(frozen=True)
+class ContourInside:
+    """O que o contorno achou **dentro** do bbox de um candidato embutido.
+
+    Uma passada só, dois clientes: `refine_candidate_with_contour` usa o recorte para
+    realinhar a grade (S-38) e `is_page_band` usa o quad para decidir se aquele bbox é um
+    diagrama ou uma faixa da página que contém um (S-176). Medir a mesma coisa duas vezes é o
+    que este dataclass existe para não fazer -- cada medida custa um `get_pixmap` e um
+    `detect_boards` por candidato, em toda página de todo livro exportado.
+    """
+
+    region_rgb: np.ndarray
+    """A região renderizada: o bbox mais `REFINE_PADDING_PT` de folga, cortada na página."""
+
+    board_rgb: np.ndarray
+    """O tabuleiro que o contorno achou ali, já em `BOARD_SIZE`."""
+
+    quad: np.ndarray | None
+    """Os quatro cantos dele, em pixels de `region_rgb`. `None` quando o achado é a região."""
+
+    @property
+    def board_fill(self) -> float:
+        """Que fração do lado maior da região o tabuleiro achado ocupa, em 0..1.
+
+        1,0 quando o bbox embutido **é** o tabuleiro, que é o caso de 99% do acervo. Bem
+        abaixo disso quando ele é uma faixa da página com um tabuleiro dentro -- ver
+        `BAND_BOARD_FILL`.
+        """
+        lado_regiao = max(self.region_rgb.shape[0], self.region_rgb.shape[1])
+        if lado_regiao <= 0:
+            return 0.0
+        if self.quad is None:
+            return 1.0
+        xs, ys = self.quad[:, 0], self.quad[:, 1]
+        lado = max(float(xs.max() - xs.min()), float(ys.max() - ys.min()))
+        return lado / float(lado_regiao)
+
+
+def contour_inside_candidate(
+    page: fitz.Page,
+    candidate: DiagramCandidate,
+    *,
+    padding_pt: float = REFINE_PADDING_PT,
+) -> ContourInside | None:
+    """Roda o detector de contorno dentro do bbox do candidato. `None` quando não acha nada.
+
+    A folga de `padding_pt` existe para o contorno ter borda onde achar a moldura, e é a mesma
+    desde a S-12; ela entra na conta do `board_fill`, então um diagrama pequeno num bbox justo
+    chega a ~0,93 e não a 1,00.
+    """
+    bbox = fitz.Rect(candidate.bbox_pdf)
+    padded = fitz.Rect(bbox.x0 - padding_pt, bbox.y0 - padding_pt, bbox.x1 + padding_pt, bbox.y1 + padding_pt)
+    padded = padded & page.rect
+    if padded.is_empty:
+        return None
+
+    region = _pixels_for_bbox(page, padded, native_side=max(candidate.native_size))
+    if region is None:
+        return None
+
+    found = detect_boards(region, max_boards=1, warn_on_cap=False)
+    if not found:
+        return None
+
+    board_rgb, quad = found[0]
+    return ContourInside(region_rgb=region, board_rgb=board_rgb, quad=quad)
+
+
+BAND_BOARD_FILL = 0.50
+"""Quanto do lado da imagem embutida o tabuleiro achado dentro dela precisa ocupar (S-176).
+
+**O relato.** A página 14 do `Yusupov` desenhava uma caixa de 460×403 pt sobre uma página de
+453×666 -- o texto do capítulo e os dois diagramas dele dentro de um retângulo só. A imagem
+embutida ali não é diagrama nenhum: é uma **faixa da página rasterizada** pelo produtor do PDF,
+porque as duas tarjas de vídeo reverso do cabeçalho de partida não são texto. Nas páginas
+vizinhas essa mesma faixa tem aspecto 2,22 e 7,36 e morre no `ASPECT_TOLERANCE`; nesta ela
+saiu em 1,140 -- dentro do limite -- e cobrindo 61% da página, abaixo do `MAX_PAGE_COVERAGE`.
+As duas guardas de entrada são sobre **forma**, e a forma daquela faixa era, por acidente, a de
+um diagrama.
+
+**E o dano não parava na caixa errada.** A faixa entra em `_typical_side` como um lado de 1405
+px contra os 516 px do diagrama de verdade da página; o desempate da S-79 é pelo maior, o
+gabarito da página vira 1405, e os **dois diagramas que o contorno tinha achado** (423 e 417
+px) morrem em `prior-de-tamanho`. A página entregava 2 caixas, uma delas absurda, onde havia 3
+diagramas.
+
+**O sinal, e por que não é o contraste de casa.** A tentação era estender o piso da S-143 à
+fonte embutida -- a faixa dá `board_checker_score` **0,0000**. Medido no acervo, isso reprova:
+24 dos 1287 candidatos embutidos dão zero, e **10 deles são diagramas impecáveis do
+`Schiller`**, cujo recorte inclui duas linhas de legenda acima do tabuleiro. Grade fora de
+registro dá zero pelo mesmo motivo que ausência de tabuleiro dá zero, e a nota não distingue os
+dois casos. É a terceira vez que o projeto tenta julgar recorte embutido por nota absoluta e a
+medição reprova -- ver a S-80 em `docs/ANALISE_DETECCAO.md`.
+
+**O sinal que separa é geométrico:** um diagrama contém um tabuleiro que o **preenche**; uma
+faixa contém um tabuleiro que é um pedaço dela. Medido nos 837 candidatos embutidos do acervo
+em que o contorno acha algum tabuleiro dentro do bbox:
+
+| população | `board_fill` |
+|---|---|
+| 831 candidatos | **0,7076 a 0,9829** |
+| 6 candidatos | **0,1083 a 0,3758** |
+
+O vão entre 0,3758 e 0,7076 é de 0,33, e qualquer corte dentro dele se comporta igual no
+acervo inteiro. 0,50 tem significado próprio: abaixo dele a imagem é mais longa que duas vezes
+o tabuleiro, ou seja, tem espaço para outra coisa que não é o diagrama.
+
+**Os 6 não são todos faixa, e é por isso que a segunda condição existe** -- ver
+`is_page_band` e `BAND_BOARD_CHECKER`."""
+
+
+BAND_BOARD_CHECKER = 0.06
+"""Contraste de casa mínimo para o achado dentro do bbox contar como **tabuleiro** (S-176).
+
+A segunda condição de `is_page_band`, e ela não é enfeite: **sem ela a guarda perde diagrama**.
+Medido no acervo, 24 páginas por livro, com a primeira condição sozinha: 1483 candidatos → 1478,
+**5 perdas e nenhum ganho**. As cinco são o mesmo caso -- diagrama inteiro e legítimo em que o
+contorno se prendeu a **uma casa** do próprio tabuleiro, o que dá preenchimento ~1/8 sem que
+haja faixa nenhuma.
+
+**Por que uma casa dá quase zero.** É o mecanismo da S-143 outra vez: `board_checker_score`
+exige que as 32 casas de uma paridade sejam sistematicamente mais claras que as 32 da outra,
+num reticulado 8×8. Um recorte de uma casa só divide tinta uniforme em 64 pedaços iguais, a
+diferença entre as paridades é ruído, e o `clip` em 0 quase morde.
+
+**O número, e por que 0,06.** As duas populações de `board_fill < 0,50`, medidas -- a de cima
+varrendo o `1001_Winning ... _hq` de três em três páginas (374 de 1121) mais o `La_Combinacion`
+inteiro, que é onde ela vive:
+
+| população | quantos | contraste do achado |
+|---|---|---|
+| casa do próprio diagrama | 25 | 0,0000 a **0,0061** |
+| faixa de página | 17 | **0,1310** a 0,7408 |
+
+O vão é de **fator 21**, e 0,06 fica dentro dele: dez vezes acima do maior ruído e duas vezes
+abaixo do menor sinal. Qualquer valor em (0,0061; 0,1310) se comporta igual no acervo.
+
+O preenchimento dessas 25 confirma o mecanismo sem depender da nota: **0,108 a 0,128**, que é
+1/8 -- quanto uma casa ocupa de um tabuleiro de oito.
+
+**Não é o piso da S-143, e reusá-lo seria o erro.** `MIN_CHECKER_CONTRAST` é **0,0**, e a
+primeira versão desta guarda o reusou -- foi assim que as 5 perdas apareceram: 0,0061 é maior
+que zero. Os dois pisos respondem perguntas diferentes. Lá a alternativa é uma **foto**, que dá
+exatamente zero; aqui é um **pedaço de tabuleiro**, que dá quase zero. E não vale generalizar
+0,06 de volta para lá: nesta mesma medição, 21 dos 831 tabuleiros que preenchem o próprio bbox
+ficam abaixo de 0,06 e são todos legítimos -- eles só não são alcançados aqui porque a primeira
+condição já os isentou.
+
+**O erro é conservador de propósito.** Uma faixa cujo tabuleiro interno tenha contraste muito
+baixo sobrevive, e volta a ser o defeito do relato naquela página. É a direção certa de errar:
+na dúvida, a declaração do PDF fica de pé, que é a regra desde a S-12."""
+
+
+def is_page_band(
+    found: ContourInside,
+    *,
+    min_fill: float = BAND_BOARD_FILL,
+    checker_floor: float | None = BAND_BOARD_CHECKER,
+) -> bool:
+    """Este bbox embutido é uma **faixa da página** com um diagrama dentro, e não o diagrama?
+
+    Duas condições, e a segunda é o que impede a primeira de apagar diagrama de verdade:
+
+    1. o tabuleiro achado dentro ocupa menos de `min_fill` do lado da região (`BAND_BOARD_FILL`);
+    2. **e o que foi achado é mesmo um tabuleiro**, e não um pedaço de um (`BAND_BOARD_CHECKER`).
+
+    Sem (2) a regra reprova, e reprova em produção -- ver `BAND_BOARD_CHECKER`, que é o número
+    e a medição. Dos 6 candidatos do acervo abaixo do corte de preenchimento, **2 são diagramas
+    inteiros e legítimos** em que o contorno se prendeu a uma casa do tabuleiro:
+
+    | livro, página | `board_fill` | contraste do achado | o que é |
+    |---|---|---|---|
+    | `1001_Winning ... _hq` p812 | 0,1083 | **0,0002** | uma casa clara do próprio diagrama |
+    | `La_Combinacion` p24 | 0,1140 | **0,0061** | idem |
+    | `Yusupov` p14 | 0,3051 | 0,2608 | faixa: o relato da S-176 |
+    | `Yusupov` p1950 | 0,3104 | 0,3110 | faixa |
+    | `Yusupov` p1820 | 0,3133 | 0,4133 | faixa |
+    | `GALLAGHER` p124 | 0,3758 | 0,7058 | faixa: duas colunas de texto e um diagrama |
+    | `GALLAGHER` p140 | 0,3355 | 0,7408 | faixa |
+
+    `checker_floor=None` desliga a segunda condição, e quem desliga assume perder os dois
+    primeiros.
+    """
+    if found.board_fill >= min_fill:
+        return False
+    if checker_floor is None:
+        return True
+    return board_checker_contrast(found.board_rgb) >= checker_floor
+
+
 def refine_candidate_with_contour(
     page: fitz.Page,
     candidate: DiagramCandidate,
@@ -193,22 +384,25 @@ def refine_candidate_with_contour(
     da S-12 mostrou valer 0,137 → 0,360 de confiança no `Schiller`. O que muda é passar a
     conferir o resultado, e é a mesma regra que a função já aplicava ao caso "não achou
     nada" -- só que agora aplicada ao caso "achou coisa pior".
+
+    A passada de contorno em si mora em `contour_inside_candidate` desde a S-176, porque a
+    guarda de faixa lê o **mesmo** achado. Esta função continua sendo a porta de quem só quer
+    o realinhamento.
     """
-    bbox = fitz.Rect(candidate.bbox_pdf)
-    padded = fitz.Rect(bbox.x0 - padding_pt, bbox.y0 - padding_pt, bbox.x1 + padding_pt, bbox.y1 + padding_pt)
-    padded = padded & page.rect
-    if padded.is_empty:
+    found = contour_inside_candidate(page, candidate, padding_pt=padding_pt)
+    if found is None:
         return candidate
+    return _apply_refinement(candidate, found, tolerance=tolerance)
 
-    region = _pixels_for_bbox(page, padded, native_side=max(candidate.native_size))
-    if region is None:
-        return candidate
 
-    found = detect_boards(region, max_boards=1, warn_on_cap=False)
-    if not found:
-        return candidate
-
-    board_rgb, _quad = found[0]
+def _apply_refinement(
+    candidate: DiagramCandidate,
+    found: ContourInside,
+    *,
+    tolerance: float = REFINE_TOLERANCE,
+) -> DiagramCandidate:
+    """A decisão da S-38 sobre um achado de contorno que já está em mãos."""
+    board_rgb = found.board_rgb
     # Do mesmo lado (S-130): o recorte embutido chega na resolução nativa do PDF e o do
     # contorno em `BOARD_SIZE`, e a nota dependia de qual dos dois era maior.
     antes, depois = texture_scores_side_by_side(candidate.board_rgb, board_rgb)
@@ -392,6 +586,7 @@ def detect_diagrams(
     refine_embedded: bool = True,
     size_prior_tolerance: float | None = EMBEDDED_SIZE_TOLERANCE,
     checker_contrast_floor: float | None = MIN_CHECKER_CONTRAST,
+    band_board_fill: float | None = BAND_BOARD_FILL,
     rejected: list[RejectedQuad] | None = None,
 ) -> list[DiagramCandidate]:
     """Todos os diagramas da página, das duas fontes, sem duplicar e em ordem de leitura.
@@ -420,19 +615,57 @@ def detect_diagrams(
     foto, o retrato e a moldura da S-143. `None` desliga. Não alcança imagem embutida: ali a
     declaração do PDF continua ganhando, como desde a S-12. Ver `MIN_CHECKER_CONTRAST`.
 
+    `band_board_fill` recusa imagem embutida que é uma **faixa da página** com um diagrama
+    dentro, e não o diagrama (S-176). `None` desliga. É a primeira guarda que alcança a fonte
+    embutida por conteúdo, e não contradiz a regra da S-12: o PDF declarou uma *imagem* ali, e
+    nunca declarou que ela é um diagrama. Ver `BAND_BOARD_FILL` e `is_page_band`.
+
     `rejected`, quando dado, recebe um `RejectedQuad` por achado de contorno **barrado** --
     tanto os do `detect_boards` (geometria, contraste de casa, score, IoU, teto) quanto os
-    daqui: prior de tamanho (S-79), disputa perdida com uma união de ladrilhos (S-81) e
-    o corte final por `max_boards`. É o instrumento da S-131, e as guardas deste laço só
-    deixavam rastro em `logger.info`, que ninguém agrega.
+    daqui: prior de tamanho (S-79), disputa perdida com uma união de ladrilhos (S-81), faixa
+    de página (S-176) e o corte final por `max_boards`. É o instrumento da S-131, e as guardas
+    deste laço só deixavam rastro em `logger.info`, que ninguém agrega.
     """
     scale_x = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
     scale_y = page_rgb.shape[0] / page.rect.height if page.rect.height else 1.0
     scale = (scale_x + scale_y) / 2.0
 
     embedded = candidates_from_embedded_images(page)
-    if refine_embedded:
-        embedded = [refine_candidate_with_contour(page, candidate) for candidate in embedded]
+    if refine_embedded or band_board_fill is not None:
+        # Uma passada de contorno por candidato, dois consumidores dela (S-176): a guarda de
+        # faixa pergunta *o que a imagem e* e o refino pergunta *onde a grade esta*. Medir duas
+        # vezes custaria um `get_pixmap` e um `detect_boards` a mais por candidato, em toda
+        # pagina de todo livro exportado -- e as duas leem o mesmo achado.
+        sobreviventes: list[DiagramCandidate] = []
+        for candidate in embedded:
+            achado = contour_inside_candidate(page, candidate)
+            if achado is None:
+                sobreviventes.append(candidate)
+                continue
+            if band_board_fill is not None and is_page_band(achado, min_fill=band_board_fill):
+                caixa = _pixel_bbox(candidate.bbox_pdf, scale)
+                # `info` e nao `debug`, pelo mesmo motivo do prior de tamanho: esta linha apaga
+                # um candidato inteiro, e sem ela o sintoma e uma caixa que simplesmente deixou
+                # de aparecer.
+                logger.info(
+                    "Imagem embutida %s descartada como faixa da pagina: o tabuleiro achado "
+                    "dentro dela ocupa %.0f%% do lado (piso de %.0f%%).",
+                    tuple(round(valor) for valor in candidate.bbox_pdf),
+                    achado.board_fill * 100,
+                    band_board_fill * 100,
+                )
+                if rejected is not None:
+                    rejected.append(
+                        RejectedQuad(
+                            caixa,
+                            round(candidate.detector_score, 4),
+                            round(board_checker_contrast(achado.board_rgb), 4),
+                            "faixa-da-pagina",
+                        )
+                    )
+                continue
+            sobreviventes.append(_apply_refinement(candidate, achado) if refine_embedded else candidate)
+        embedded = sobreviventes
 
     embedded_boxes = [_pixel_bbox(candidate.bbox_pdf, scale) for candidate in embedded]
     candidates = list(embedded)

@@ -21,13 +21,27 @@ que o render da página a 220 DPI produz.
 """
 
 from .embedded import DiagramCandidate, candidates_from_embedded_images, trim_to_frame, trim_to_grid
-from .hybrid import detect_diagrams, detect_diagrams_in_pdf_page, refine_candidate_with_contour
+from .hybrid import (
+    BAND_BOARD_CHECKER,
+    BAND_BOARD_FILL,
+    ContourInside,
+    contour_inside_candidate,
+    detect_diagrams,
+    detect_diagrams_in_pdf_page,
+    is_page_band,
+    refine_candidate_with_contour,
+)
 
 __all__ = [
+    "BAND_BOARD_CHECKER",
+    "BAND_BOARD_FILL",
+    "ContourInside",
     "DiagramCandidate",
     "candidates_from_embedded_images",
+    "contour_inside_candidate",
     "detect_diagrams",
     "detect_diagrams_in_pdf_page",
+    "is_page_band",
     "refine_candidate_with_contour",
     "trim_to_frame",
     "trim_to_grid",

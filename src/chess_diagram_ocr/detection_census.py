@@ -140,9 +140,10 @@ class RejectionRow:
     se vê o recall perdido. Mexer num limiar sem isto é medir metade do efeito: dá para ver o
     falso positivo que sumiu, e não o diagrama que sumiu junto.
 
-    Só existe para o caminho de **contorno**. O candidato embutido tem a declaração do PDF a
-    favor dele e guardas próprias, e as recusas dele já aparecem em `logger.debug` com o número
-    ao lado desde a S-78.
+    Era só para o caminho de **contorno** até a S-176. A fonte embutida tem a declaração do PDF
+    a favor dela e guardas próprias, e as recusas dela apareciam em `logger.debug` com o número
+    ao lado desde a S-78 -- mas `"faixa-da-pagina"` apaga um candidato embutido inteiro, e uma
+    guarda dessas precisa do mesmo instrumento que as outras. Ver `hybrid.BAND_BOARD_FILL`.
     """
 
     pdf: str

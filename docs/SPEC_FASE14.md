@@ -18,6 +18,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
+> | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa
@@ -514,7 +515,7 @@ abaixo do alvo, e os ≥5 diagramas na faixa de confiança 0,60–0,80. O conjun
 | critério | alvo | medido |
 |---|---|---|
 | páginas revisadas | 60 | **66** ✅ |
-| `comparable` | ≥ 30 | **93** ✅ |
+| `comparable` | ≥ 30 | **94** ✅ |
 | diagramas na faixa 0,60–0,80 | ≥ 5 | **6** ✅ |
 | cinco regimes no alvo | — | ✅ (abaixo) |
 
@@ -538,9 +539,9 @@ spec pedia por nome.
     Anotados ..................... 115
     Recall de detecção ........... 0.9217     precisão 0.9725  (3 falsos positivos)
     **Taxa de exportação** ....... 0.7391  (85/115)
-    Conferíveis .................. 93 de 115  (81%)
-    **Exatidão de campo** ........ 0.9878  (81/82 exportados)
-    Exatidão condicional ......... 0.9570  (89/93)
+    Conferíveis .................. 94 de 115  (82%)
+    **Exatidão de campo** ........ 0.9880  (82/83 exportados)
+    Exatidão condicional ......... 0.9574  (90/94)
     **Exportados e errados** ..... 1
 ```
 
@@ -559,10 +560,10 @@ medidos sobre as mesmas 66 páginas:
 | | produção | **controle** | `mhsp` | tratamento S-108 |
 |---|---|---|---|---|
 | taxa de exportação | 0,7391 | **0,7652** | 0,7130 | 0,7217 |
-| `exact` (de 93) | **89** | 86 | 82 | 88 |
-| exatidão condicional | **0,9570** | 0,9247 | 0,8817 | 0,9462 |
+| `exact` (de 94) | **90** | 87 | 83 | 89 |
+| exatidão condicional | **0,9574** | 0,9255 | 0,8830 | 0,9468 |
 | exportados e errados | 1 | **0** | 1 | 1 |
-| exatidão de campo | 0,9878 | **1,0000** | 0,9873 | 0,9875 |
+| exatidão de campo | 0,9880 | **1,0000** | 0,9875 | 0,9877 |
 | exportação limpa | 0,7170 | **0,7453** | 0,6887 | 0,7075 |
 
 Três leituras deste quadro, e as três são novas:
@@ -603,7 +604,8 @@ das três páginas do Yusupov que faltavam ser medidas:
 | recall de detecção | 0,9364 | **0,9217** | o detector perde dois dos três do `p14` |
 | precisão de detecção | 0,9904 | **0,9725** | idem |
 | exportados (produção) | 82 | **85** | +3 sobre um denominador que subiu 5 |
-| `comparable`, `exact`, exatidão de campo, exportados e errados | — | **iguais** | as cinco anotações novas são só caixa |
+| `comparable` | 93 | **94** | o 1-11 do `p14`, único dos três que é casado |
+| `exact` (produção) | 89 | **90** | e os quatro modelos o leem certo |
 
 **Nenhuma leitura do quadro dos quatro modelos muda**: as três conclusões acima valem com os
 números novos, porque a parte que decide correção — `exact`, exatidão condicional, exportados
@@ -619,12 +621,28 @@ distinção: ela é capa da série, o detector lê um tabuleiro na arte a 0,177,
 positivo é **legítimo** — é exatamente para isso que página sem diagrama entra no conjunto.
 
 **Como as três caixas foram anotadas.** Do detector de **contorno**
-(`board_detection.detect_boards`), sobre a página rasterizada a 220 DPI, e conferidas
-desenhadas sobre a página.
-Ele devolve os três, e devolve quadrados: `138,4×138,4`, `136,5×136,5` e `139,1×138,4` pontos,
-todos com razão entre 1,0000 e 1,0047, alinhados na mesma coluna — do mesmo tamanho das caixas
-já anotadas na `p11`, que é do mesmo livro. Ficaram **só com a caixa**: a FEN não foi
-transcrita, e enquanto não for a página não entra em `comparable`.
+(`board_detection.detect_boards`), sobre a página rasterizada a 220 DPI, e conferidas desenhadas
+sobre a página. Ele devolve os três, e devolve quadrados: `138,4×138,4`, `136,5×136,5` e
+`139,1×138,4` pontos, todos com razão entre 1,0000 e 1,0047, alinhados na mesma coluna — do
+mesmo tamanho das caixas já anotadas na `p11`, que é do mesmo livro.
+
+**E as três FENs, com uma verificação que os outros diagramas do conjunto não têm.** Foram
+transcritas do recorte a 960×960 com grade `a-h`/`1-8`, como manda o método acima. O que muda
+aqui é que **a página publica a análise**, e ela depende da posição exata:
+
+| | posição | o que a página afirma, e confere |
+|---|---|---|
+| 1-9 | `rb2r1k1/1p1b1ppp/p1nq4/3p4/3Nn3/1QB1PN2/PP2BPPP/2R2RK1`, pretas | `1...♘xd4! 2.♗xd4 ♘d2! 3.♕d1 ♘xf3† 4.♗xf3 ♕xh2#` — e o mate **existe** na posição transcrita, pelas duas rotas. Ele só funciona porque o bispo de `b8` defende `h2`: é a "queen-bishop battery" que o texto nomeia, e é o que fixa `b8` e `d6` |
+| 1-10 | `5rk1/pp1nqrp1/2p3p1/4p3/4P1P1/1BP2P2/PP2Q3/3RK2R`, brancas | `1.♕h2`, e "Black has no defence against ♕h8#". Exige `h7` **vazia** e a torre em `h1` atrás da dama — a "queen + rook battery" do título da seção |
+| 1-11 | `5rk1/qp1r2pp/1bpp1p1B/p1nPpP1Q/P1P1P3/2N4P/1P3P1K/1R4R1`, brancas | `1.♗xg7! ♖xg7 2.♖xg7† ♔xg7 3.♖g1† ♔h8 4.♕g4+−`, e a linha lateral `1.♖xg7† ♖xg7 2.♗xg7`. Ambas legais. O `4...♖f7` da ressalva exige `f7` vazia |
+
+As três são legais para o `check_position`, que **infere sozinho o mesmo lado a jogar** que a
+notação da página indica. E o 1-11, o único dos três que o detector casa, é lido **certo pelos
+quatro modelos** — `exact` sobe de 89 para 90 na produção e +1 em cada uma das outras três
+colunas. A ressalva do erro correlacionado continua valendo entre mim e os modelos; a análise
+impressa, essa, é independente dos dois.
+
+Os outros dois ficam de reserva: são referência conferida esperando o detector achar as caixas.
 
 **O que ela mede, e por que o número piora.** O `cvoff-field` não usa o contorno nesta página:
 usa a imagem embutida, e as imagens embutidas da `p14` são **fragmentos de scan**, não

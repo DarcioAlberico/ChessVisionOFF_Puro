@@ -30,6 +30,8 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from chess_diagram_ocr.field_eval import MATCH_IOU, bbox_iou
+
 if TYPE_CHECKING:  # pragma: no cover - só para os tipos
     from chess_diagram_ocr.detection import DiagramCandidate
     from chess_diagram_ocr.service import RecognizedDiagram
@@ -41,6 +43,7 @@ __all__ = [
     "TRACO_POR_ESTADO",
     "BoxClick",
     "DiagramBox",
+    "DroppedBoxes",
     "OverlayParams",
     "PageBoxes",
     "PageBoxesCache",
@@ -51,6 +54,8 @@ __all__ = [
     "choose_boxes",
     "decide_box_click",
     "estado_da_caixa",
+    "frase_de_caixa_tirada",
+    "frase_de_caixas_devolvidas",
     "hit_test",
     "mark_confirmed",
     "mark_saved",
@@ -396,6 +401,123 @@ def decide_box_click(*, recognized_count: int, index: int) -> BoxClick:
     if index < 0:
         raise ValueError(f"Índice de caixa negativo: {index}")
     return BoxClick.SELECT if index < recognized_count else BoxClick.RECOGNIZE
+
+
+def frase_de_caixa_tirada(box: DiagramBox | None, tiradas_na_pagina: int) -> str:
+    """O que a barra de status diz depois de tirar uma caixa (S-177).
+
+    Mora aqui e não na janela pela mesma razão que `rodape.descricao_dos_diagramas`: é decisão
+    de texto, é pura, e é o que se quer poder afirmar sem abrir janela.
+
+    **Diz três coisas, e cada uma responde a uma pergunta que o gesto abre.** Qual caixa saiu
+    (o número que estava desenhado nela), quantas já saíram desta página (para que remover cinco
+    por engano não seja invisível), e **os dois caminhos a partir dali** -- recortar o diagrama à
+    mão, que é o motivo de a remoção existir, e devolver o que foi tirado, que é a saída de quem
+    errou o alvo. Uma ação destrutiva que não nomeia o caminho de volta obriga a pessoa a
+    descobri-lo no menu depois de já ter perdido a caixa.
+
+    `box=None` é "aquele retângulo já não está na página" -- o duplo-clique no botão direito, ou
+    o botão disparado sobre uma lista que mudou embaixo dele.
+    """
+    if box is None:
+        return "Essa caixa não está mais na página."
+    plural = "s" if tiradas_na_pagina > 1 else ""
+    return (
+        f"Caixa {box.label} tirada da página "
+        f"({tiradas_na_pagina} caixa{plural} tirada{plural} aqui). "
+        "Use Selecionar área (OCR) para recortar o diagrama, ou Ver ▸ Devolver as caixas "
+        "tiradas desta página para trazê-la de volta."
+    )
+
+
+def frase_de_caixas_devolvidas(quantas: int, page_index: int) -> str:
+    """O que a barra diz ao devolver as caixas tiradas de uma página (S-177).
+
+    Zero tem frase própria, e não a mesma com um número: "0 caixas devolvidas" afirma que houve
+    uma devolução, e o que houve foi um comando sobre uma página que não tinha o que devolver.
+    """
+    if not quantas:
+        return "Nenhuma caixa foi tirada desta página."
+    plural = "s" if quantas > 1 else ""
+    return f"{quantas} caixa{plural} devolvida{plural} à página {page_index}."
+
+
+class DroppedBoxes:
+    """As caixas que o usuário **tirou** da página, por `(documento, página)` (S-177).
+
+    **O que isto existe para resolver.** O detector erra, e quando erra a caixa errada não é
+    inerte: ela ocupa uma vaga do `max_boards`, entra na numeração que o `[Diagram "N"]` do PGN
+    usa, e -- se for grande -- esconde os diagramas de verdade debaixo dela. Até aqui a única
+    resposta era desligar "Marcar diagramas" para a página inteira, que apaga junto o que estava
+    certo. A S-176 conserta uma classe de erro do detector; esta é a saída para as outras, que
+    são inesgotáveis por natureza.
+
+    **Guarda a caixa em pontos do PDF, e não o índice.** É a decisão que faz a remoção
+    sobreviver ao que acontece depois dela. O índice de uma caixa é a posição dela numa lista
+    que muda: as caixas do detector viram as do reconhecimento quando o OCR roda (`choose_boxes`),
+    e as duas listas podem ter tamanhos diferentes -- é exatamente o caso do "OCR melhor
+    diagrama". Uma remoção gravada por índice passaria a apagar outro diagrama. Gravada por
+    geometria, ela continua apagando **aquele retângulo**, venha ele de que fonte vier.
+
+    O casamento é por IoU, com o mesmo limiar do `field_draft` e do `field_eval`
+    (`field_eval.MATCH_IOU`): usar outro número aqui faria a tela chamar de "a mesma caixa" o
+    que a avaliação conta como duas.
+
+    **É de sessão, e não vai para arquivo.** O que sobrevive ao programa é o que foi
+    *afirmado* -- a amostra do `labels.csv`, a anotação do conjunto de campo --, e tirar uma
+    caixa da tela não é uma afirmação sobre o livro: é remover um estorvo do caminho para poder
+    usar `Selecionar área (OCR)` em cima do que ficou. Quem quer registrar que ali não há
+    diagrama tem `Tirar o selecionado`, que grava no conjunto de campo.
+    """
+
+    def __init__(self, same_box_iou: float = MATCH_IOU) -> None:
+        self.same_box_iou = float(same_box_iou)
+        self._dropped: dict[tuple[str, int], list[tuple[float, float, float, float]]] = {}
+
+    def __len__(self) -> int:
+        return sum(len(caixas) for caixas in self._dropped.values())
+
+    def drop(self, document: str, page_index: int, bbox_pdf: tuple[float, float, float, float]) -> None:
+        """Marca esta caixa como tirada. Repetir a mesma caixa não a duplica."""
+        guardadas = self._dropped.setdefault((document, page_index), [])
+        if any(bbox_iou(bbox_pdf, outra) >= self.same_box_iou for outra in guardadas):
+            return
+        guardadas.append(tuple(float(valor) for valor in bbox_pdf))  # type: ignore[arg-type]
+
+    def count(self, document: str, page_index: int) -> int:
+        """Quantas caixas foram tiradas desta página. É o que o rodapé precisa saber."""
+        return len(self._dropped.get((document, page_index), ()))
+
+    def restore(self, document: str, page_index: int) -> int:
+        """Devolve todas as caixas desta página. Retorna quantas voltaram.
+
+        Página a página, e não um "desfazer" global: a remoção é sobre a página que está na
+        tela, e desfazê-la noutra página seria mudar o que o usuário não está vendo.
+        """
+        return len(self._dropped.pop((document, page_index), ()))
+
+    def clear(self) -> None:
+        """Esquece tudo. Chamado ao trocar de livro, junto do resto do estado do documento."""
+        self._dropped.clear()
+
+    def apply(
+        self, document: str, page_index: int, boxes: Sequence[DiagramBox]
+    ) -> tuple[DiagramBox, ...]:
+        """Tira da lista as caixas que o usuário removeu desta página.
+
+        **Não renumera o que sobra, e isso é o ponto.** `DiagramBox.index` é o que liga o
+        retângulo ao seletor "Selecionado" e ao `[Diagram "N"]` do PGN; renumerar faria o clique
+        no retângulo "2" abrir o diagrama 3 do editor. O buraco na numeração é a informação
+        honesta: ali havia uma caixa, e você a tirou.
+        """
+        guardadas = self._dropped.get((document, page_index))
+        if not guardadas:
+            return tuple(boxes)
+        return tuple(
+            box
+            for box in boxes
+            if not any(bbox_iou(box.bbox_pdf, outra) >= self.same_box_iou for outra in guardadas)
+        )
 
 
 class PageBoxesCache:

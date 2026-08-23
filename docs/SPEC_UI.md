@@ -14,6 +14,7 @@ As fases de modelo e detecção não são tocadas por esta spec — elas seguem 
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
+> | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa é a
@@ -1050,3 +1051,86 @@ a seleção de um `Treeview` sem querer é um `Shift+clique` a mais e a única d
 
 E o teste fecha o par nos dois sentidos: quem apaga usa `DESTRUTIVO`, **e quem não apaga não usa**
 -- se tudo é vermelho, nada é.
+
+---
+
+## S-177 · Tirar da página a caixa que o detector marcou errado ✅ implementada (2026-08-22)
+
+**Problema.** O detector erra, e a caixa errada **não é inerte**. O relato que abriu este item
+é a página 14 do `Yusupov` — uma caixa de 460×403 pt cobrindo o texto do capítulo e dois
+diagramas —, e a [S-176](ANALISE_DETECCAO.md) conserta aquela classe. Mas o defeito da tela é
+outro e sobrevive à correção: **não havia como o usuário dizer "esta caixa está errada"**.
+
+O que a caixa errada custa, enquanto está lá:
+
+1. **Ocupa vaga.** `max_boards` é um teto por página, e uma caixa falsa empurra uma verdadeira
+   para fora dele (`teto-da-pagina`).
+2. **Desloca a numeração.** O índice da caixa é o mesmo do seletor "Selecionado" e o mesmo do
+   `[Diagram "N"]` do PGN (S-14). Uma caixa a mais antes de um diagrama renumera todos os
+   seguintes.
+3. **Esconde.** Uma caixa grande cobre os diagramas de verdade, e `hit_test` só devolve o
+   **menor** retângulo sob o dedo quando o menor existe na lista — se ele foi suprimido, o
+   clique abre a caixa errada.
+4. **Cobra OCR.** Clicar nela para conferir dispara o reconhecimento da página inteira.
+
+E as duas saídas que existiam não servem. Desligar "Marcar diagramas" apaga a página inteira,
+inclusive o que estava certo — e junto vai o verde da S-71, que é a resposta para "onde eu
+parei neste livro?". "Tirar o selecionado" (S-77) é do **conjunto de campo**: ele grava no
+disco uma afirmação revisada sobre o livro, e só funciona em página já anotada. Quem só quer
+limpar a tela para usar `Selecionar área (OCR)` não tem nada.
+
+**Solução.** Tirar uma caixa da página exibida, por três portas e com volta:
+
+- **Botão direito** sobre qualquer retângulo — o gesto direto, e o único que funciona **antes**
+  do OCR: até a página ser lida não há diagrama selecionado (`_sync_selected_box` limpa a
+  seleção para as caixas do detector), e é justamente aí que se quer matar a caixa errada, para
+  não pagar o OCR dela;
+- **botão "Tirar a caixa"** ao lado de `Selecionar área (OCR)`, sobre o diagrama selecionado —
+  o par do gesto que o usuário vai fazer em seguida;
+- **`Ver ▸ Tirar a caixa do diagrama selecionado`**, com `Ver ▸ Devolver as caixas tiradas
+  desta página` logo abaixo.
+
+**Critério de aceite.** A caixa tirada não volta ao virar a página e voltar, nem depois do OCR
+da página; o que sobra **não é renumerado**; devolver é por página; e a barra de status nomeia
+os dois caminhos a partir dali.
+
+**Testes.** `tests/test_page_overlay.py::DroppedBoxesTests` e `FrasesDaRemocaoTests` (a regra e
+o texto, sem janela), `tests/test_pdf_panel.py` (o gesto, com widget), `tests/test_box_drop.py`
+(a costura na janela).
+
+**Como ficou.** Três decisões, e as três são sobre *o que se guarda*.
+
+*A remoção é gravada como **caixa**, não como índice.* É o que a faz sobreviver ao que vem
+depois dela. O índice de uma caixa é a posição numa lista que muda: as do detector viram as do
+reconhecimento quando o OCR roda (`choose_boxes`), e as duas listas podem ter tamanhos
+diferentes — é exatamente o caso do "OCR melhor diagrama", que deixa a página com um resultado
+e seis retângulos. Uma remoção gravada por índice passaria a apagar **outro** diagrama.
+`DroppedBoxes` casa caixa com caixa por IoU, com `field_eval.MATCH_IOU` — o mesmo número com
+que a avaliação casa detecção e anotação, porque duas telas que discordam sobre o que é "a
+mesma caixa" acabam discordando sobre o que foi medido.
+
+*O que sobra **não** é renumerado.* Tirar a caixa 1 de três deixa 2 e 3 na tela, com o buraco
+à mostra. É a informação honesta — ali havia uma caixa, e você a tirou — e é o que mantém de
+pé a única coisa que o número promete: que o retângulo "2" abre o diagrama 2 do editor e é o
+`[Diagram "2"]` do PGN. Renumerar recriaria, entre a tela e ela mesma, o desencontro que a
+S-14 corrigiu entre a tela e o PGN.
+
+*É da sessão, e não vai para arquivo.* O que sobrevive ao programa é o que foi **afirmado** —
+a amostra do `labels.csv`, a página do conjunto de campo. Tirar um retângulo da tela não é uma
+afirmação sobre o livro: é remover um estorvo do caminho. Quem quer registrar que ali não há
+diagrama continua tendo "Tirar o selecionado", que grava. Por isso `DroppedBoxes` é separado
+do `PageBoxesCache`: aquele guarda o que o **detector** achou e é despejado por LRU e
+invalidado por troca de DPI; este guarda um juízo **humano**, que nenhuma das duas coisas pode
+descartar — o retângulo continua errado a 300 DPI.
+
+*Uma consequência que valia decidir e não descobrir.* Página em que **todas** as caixas foram
+tiradas fica vazia e **não** é remandada ao detector: redetectar traria de volta exatamente o
+que o usuário recusou. Ela entra pelo mesmo caminho da página de prosa já visitada, que é o
+estado certo — "não há o que desenhar aqui".
+
+*O tamanho da janela.* `app_tkinter.py` foi de 1.712 para 1.776 linhas, e a catraca do
+`test_packaging` foi subida com o motivo. O que **saiu** dela: a regra em
+`page_overlay.DroppedBoxes`, as duas frases da barra em `page_overlay.frase_de_caixa_tirada` e
+`frase_de_caixas_devolvidas`, o gesto em `pdf_panel`. O que ficou são `_drop_box` e
+`restore_dropped_boxes` — ler o painel, escrever no registro da sessão, mandar repintar —, que
+são as três coisas que **são** a janela.

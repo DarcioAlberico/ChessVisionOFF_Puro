@@ -7,11 +7,23 @@ import cv2
 import fitz
 import numpy as np
 
-from chess_diagram_ocr.board_detection import _bbox_iou, _checker_score, _grid_score, _small_gray
+from chess_diagram_ocr.board_detection import (
+    MIN_CHECKER_CONTRAST,
+    RejectedQuad,
+    _bbox_iou,
+    _checker_score,
+    _grid_score,
+    _small_gray,
+)
 from chess_diagram_ocr.detection import (
+    BAND_BOARD_CHECKER,
+    BAND_BOARD_FILL,
+    ContourInside,
     DiagramCandidate,
     candidates_from_embedded_images,
+    contour_inside_candidate,
     detect_diagrams,
+    is_page_band,
     trim_to_frame,
     trim_to_grid,
 )
@@ -1209,6 +1221,190 @@ class CheckerContrastGuardTests(unittest.TestCase):
         grande = board_checker_contrast(board_image(800))
         pequeno = board_checker_contrast(board_image(160))
         self.assertAlmostEqual(grande, pequeno, delta=0.15)
+
+
+class PageBandGuardTests(unittest.TestCase):
+    """A imagem embutida que é uma **faixa da página**, e não um diagrama (S-176).
+
+    Na página 14 do `Yusupov` o produtor do PDF rasterizou o topo inteiro da página -- texto
+    do capítulo e dois diagramas -- numa imagem só de 460×403 pt. As duas guardas de entrada
+    da fonte embutida são sobre forma (`ASPECT_TOLERANCE`, `MAX_PAGE_COVERAGE`), e a forma
+    daquela faixa era, por acidente, a de um diagrama: aspecto 1,140 contra o limite de 1,20 e
+    cobertura 0,614 contra o teto de 0,70.
+
+    O dano ia além da caixa absurda na tela: a faixa entrava em `_typical_side` com 1405 px
+    contra os 516 px do diagrama real da página, virava o gabarito, e os dois diagramas que o
+    contorno tinha achado morriam em `prior-de-tamanho`.
+    """
+
+    def _faixa(self, *, board_side: int = 200, largura: int = 900, altura: int = 800) -> np.ndarray:
+        """Uma faixa de página: fundo branco com **um** tabuleiro pequeno dentro dela.
+
+        É a forma do caso medido -- o tabuleiro ocupa uma fração do retângulo, e o resto é
+        outra coisa (texto, no livro; branco, aqui, que é o que basta para a geometria).
+        """
+        faixa = np.full((altura, largura, 3), 255, dtype=np.uint8)
+        tabuleiro = board_image(board_side, frame=True)
+        topo, esquerda = 60, largura - board_side - 60
+        faixa[topo : topo + board_side, esquerda : esquerda + board_side] = tabuleiro
+        return faixa
+
+    def test_a_faixa_com_um_diagrama_dentro_nao_e_diagrama(self) -> None:
+        rect = fitz.Rect(40, 40, 400, 360)  # aspecto 1,125: passa no filtro de forma
+        doc = pdf_with_images([(self._faixa(), rect)])
+        try:
+            page = doc[0]
+            embutidos = [c for c in detect_diagrams(page, render(page)) if c.source == "embedded"]
+            self.assertEqual(embutidos, [], "a faixa da página entrou como se fosse diagrama")
+        finally:
+            doc.close()
+
+    def test_o_diagrama_de_dentro_da_faixa_e_recuperado_pelo_contorno(self) -> None:
+        """Tirar a faixa não pode custar o diagrama que estava dentro dela.
+
+        É metade do ponto da S-176: na página do relato o achado de contorno já existia, e era
+        o gabarito de tamanho envenenado pela faixa que o matava.
+        """
+        rect = fitz.Rect(40, 40, 400, 360)
+        doc = pdf_with_images([(self._faixa(), rect)])
+        try:
+            page = doc[0]
+            achados = detect_diagrams(page, render(page))
+            self.assertTrue(achados, "o diagrama de dentro da faixa tinha de sobrar")
+            self.assertTrue(all(candidato.source == "contour" for candidato in achados))
+        finally:
+            doc.close()
+
+    def test_o_diagrama_que_preenche_o_proprio_bbox_continua_passando(self) -> None:
+        """A guarda não pode alcançar o caso normal: 99% do acervo preenche o próprio bbox."""
+        rect = fitz.Rect(80, 100, 380, 400)
+        doc = pdf_with_images([(board_image(320, border=20, frame=True), rect)])
+        try:
+            page = doc[0]
+            embutidos = [c for c in detect_diagrams(page, render(page)) if c.source == "embedded"]
+            self.assertTrue(embutidos, "diagrama que preenche o próprio bbox foi barrado")
+        finally:
+            doc.close()
+
+    def _achado(self, board_rgb: np.ndarray, lado_do_quad: int) -> ContourInside:
+        """Um achado de contorno de `lado_do_quad` px numa região de 900 -- fill baixo."""
+        return ContourInside(
+            region_rgb=np.full((900, 900, 3), 255, dtype=np.uint8),
+            board_rgb=board_rgb,
+            quad=np.array(
+                [[10, 10], [10 + lado_do_quad, 10], [10 + lado_do_quad, 10 + lado_do_quad], [10, 10 + lado_do_quad]],
+                dtype=np.float32,
+            ),
+        )
+
+    def test_uma_casa_achada_dentro_do_diagrama_nao_o_transforma_em_faixa(self) -> None:
+        """A segunda condição de `is_page_band`, e é ela que impede a primeira de errar.
+
+        Medido no acervo: dos 6 candidatos embutidos abaixo do corte de preenchimento, **2 são
+        diagramas legítimos** em que o contorno se prendeu a uma casa do próprio tabuleiro --
+        `1001_Winning ... _hq` p812 e `La_Combinacion` p24. Uma casa isolada não tem reticulado
+        8×8, então o contraste dela é ~0 contra 0,26 a 0,74 nas faixas de verdade.
+        """
+        achado = self._achado(np.full((80, 80, 3), 245, dtype=np.uint8), 80)
+        self.assertLess(achado.board_fill, BAND_BOARD_FILL)
+        self.assertEqual(board_checker_contrast(achado.board_rgb), 0.0, "uma casa só não tem xadrez")
+        self.assertFalse(is_page_band(achado), "a casa do próprio diagrama virou 'faixa'")
+
+    def test_um_contraste_de_scan_acima_de_zero_ainda_nao_e_faixa(self) -> None:
+        """**O caso que a primeira versão perdeu, e o motivo de `BAND_BOARD_CHECKER` existir.**
+
+        Uma casa de diagrama digitalizado não dá contraste **exatamente** zero: ela dá o resíduo
+        da digitalização. Medidos 25 desses no acervo -- 24 no `1001_Winning ... _hq` e um no
+        `La_Combinacion` --, a faixa vai de 0,0000 a **0,0061**. A primeira versão desta guarda
+        reusava `MIN_CHECKER_CONTRAST`, que é 0,0, então 0,0061 > 0,0 e o diagrama era apagado:
+        **5 perdas e nenhum ganho** em 1483 candidatos do acervo.
+
+        O xadrez de amplitude 2 sobre 255 vale 0,0188 -- acima de zero e abaixo do piso, que é
+        onde vivem os 25 casos reais.
+        """
+        casa = board_image(160)
+        casa[casa == 45] = 243  # xadrez de amplitude 2: sinal fraco demais para ser diagrama
+        contraste = board_checker_contrast(casa)
+        self.assertGreater(contraste, MIN_CHECKER_CONTRAST, "o piso da S-143 não alcança este")
+        self.assertLess(contraste, BAND_BOARD_CHECKER)
+        self.assertFalse(is_page_band(self._achado(casa, 160)))
+
+    def test_o_piso_da_faixa_nao_e_o_piso_da_S_143(self) -> None:
+        """Dois pisos, duas perguntas -- e reusar um pelo outro foi o defeito.
+
+        Lá a alternativa é uma **foto**, que dá exatamente zero; aqui é um **pedaço de
+        tabuleiro**, que dá quase zero. `MIN_CHECKER_CONTRAST` a 0,0 não separa o segundo par.
+        """
+        self.assertGreater(BAND_BOARD_CHECKER, MIN_CHECKER_CONTRAST)
+
+    def test_um_tabuleiro_pequeno_numa_regiao_grande_e_faixa(self) -> None:
+        """O outro lado do mesmo par: preenchimento baixo **e** xadrez de verdade."""
+        regiao = np.full((900, 900, 3), 255, dtype=np.uint8)
+        regiao[60:260, 60:260] = board_image(200, frame=True)
+        achado = ContourInside(
+            region_rgb=regiao,
+            board_rgb=board_image(320),
+            quad=np.array([[60, 60], [260, 60], [260, 260], [60, 260]], dtype=np.float32),
+        )
+        self.assertLess(achado.board_fill, BAND_BOARD_FILL)
+        self.assertGreater(board_checker_contrast(achado.board_rgb), 0.0)
+        self.assertTrue(is_page_band(achado))
+
+    def test_sem_quad_o_preenchimento_e_total(self) -> None:
+        """`quad=None` é "o achado é a região inteira", e região inteira preenche 1,0."""
+        regiao = board_image(320)
+        achado = ContourInside(region_rgb=regiao, board_rgb=regiao, quad=None)
+        self.assertEqual(achado.board_fill, 1.0)
+        self.assertFalse(is_page_band(achado))
+
+    def test_a_guarda_pode_ser_desligada(self) -> None:
+        rect = fitz.Rect(40, 40, 400, 360)
+        doc = pdf_with_images([(self._faixa(), rect)])
+        try:
+            page = doc[0]
+            pagina = render(page)
+            com = [c for c in detect_diagrams(page, pagina) if c.source == "embedded"]
+            sem = [
+                c
+                for c in detect_diagrams(page, pagina, band_board_fill=None)
+                if c.source == "embedded"
+            ]
+            self.assertEqual(com, [])
+            self.assertTrue(sem, "None tem de reproduzir o comportamento anterior à S-176")
+        finally:
+            doc.close()
+
+    def test_a_recusa_fica_registrada_com_o_motivo(self) -> None:
+        """S-131: guarda que apaga candidato sem deixar rastro é a que ninguém consegue medir."""
+        rect = fitz.Rect(40, 40, 400, 360)
+        doc = pdf_with_images([(self._faixa(), rect)])
+        try:
+            page = doc[0]
+            recusas: list[RejectedQuad] = []
+            detect_diagrams(page, render(page), rejected=recusas)
+            self.assertIn("faixa-da-pagina", [recusa.reason for recusa in recusas])
+        finally:
+            doc.close()
+
+    def test_o_contorno_dentro_do_bbox_e_medido_uma_vez_so(self) -> None:
+        """A passada de contorno é cara e serve às duas decisões (S-176).
+
+        `refine_candidate_with_contour` e a guarda de faixa perguntam coisas diferentes sobre o
+        **mesmo** achado. Enquanto fossem duas chamadas, cada candidato embutido custaria dois
+        `get_pixmap` e dois `detect_boards` -- em toda página de todo livro exportado.
+        """
+        rect = fitz.Rect(80, 100, 380, 400)
+        doc = pdf_with_images([(board_image(320, border=20, frame=True), rect)])
+        try:
+            page = doc[0]
+            with mock.patch(
+                "chess_diagram_ocr.detection.hybrid.contour_inside_candidate",
+                wraps=contour_inside_candidate,
+            ) as espia:
+                detect_diagrams(page, render(page))
+            self.assertEqual(espia.call_count, 1, "a região do candidato foi medida duas vezes")
+        finally:
+            doc.close()
 
 
 if __name__ == "__main__":

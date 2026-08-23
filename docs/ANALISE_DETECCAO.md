@@ -17,6 +17,7 @@
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
+> | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 
 ---
 
@@ -856,6 +857,224 @@ devolve **zero** tabuleiros.
 
 ---
 
+### S-176 · A faixa da página que passa por diagrama porque saiu quadrada ✅ implementada (2026-08-22)
+
+> Relatado da tela: *"A página 14 do `Yusupov Artur. Build Up Your Chess (all volumes).pdf`
+> criou um box equivocado."*
+
+#### 1. O que a página desenhava
+
+Página de índice 14 (a 15ª do arquivo, impressa como 11), a 220 DPI, na árvore de `49a83a6`:
+
+| # | fonte | caixa | o que é |
+|---|---|---|---|
+| 1 | embutida | **460×403 pt** em `(-9, 12)` | o topo inteiro da página: título, dois parágrafos, dois cabeçalhos de partida **e os diagramas 1‑9 e 1‑10** |
+| 2 | embutida | 150×169 pt em `(278, 438)` | o diagrama 1‑11 — correto |
+
+A página tem **três** diagramas e mede 453,6×666 pt. A caixa 1 é mais larga que a página.
+
+#### 2. A causa de entrada: as duas guardas da fonte embutida são sobre *forma*
+
+Este livro é híbrido — texto de verdade mais imagens —, e o produtor do PDF **rasterizou
+faixas inteiras da página** onde havia algo que a fonte não desenha: as tarjas de vídeo
+reverso do cabeçalho de partida (`M.Gerusel – G.Sosonko`). A faixa não é um diagrama; é um
+pedaço de página em bitmap que por acaso contém dois.
+
+`candidates_from_embedded_images` tem duas guardas de entrada, e **as duas são sobre a forma
+do retângulo**:
+
+| guarda | limite | a faixa desta página |
+|---|---|---|
+| `ASPECT_TOLERANCE` | 1,00 ± 0,20 | **1,140** — passa |
+| `MAX_PAGE_COVERAGE` | 0,70 da página | **0,614** — passa |
+
+E a prova de que é acidente e não propriedade do livro está nas páginas vizinhas, onde a mesma
+faixa existe e morre:
+
+| página | faixa | aspecto | o que acontece |
+|---|---|---|---|
+| 13 | 452×203 pt | 2,222 | recusada em `ASPECT_TOLERANCE` |
+| **14** | **460×403 pt** | **1,140** | **passa** |
+| 15 | 452×61 pt | 7,359 | recusada em `ASPECT_TOLERANCE` |
+
+Ou seja: a guarda que segurava esta classe inteira segurava por um sinal que não fala dela. Na
+página em que a faixa saiu quase quadrada, não havia guarda nenhuma.
+
+#### 3. O dano não parava na caixa absurda: ele comia os outros dois diagramas
+
+Esta é a metade que não se vê na tela. O contorno **tinha achado** os diagramas 1‑9 e 1‑10, e
+eles foram descartados por `prior-de-tamanho`:
+
+| candidato de contorno | lado | destino |
+|---|---|---|
+| diagrama 1‑9 | 423 px | `prior-de-tamanho` |
+| diagrama 1‑10 | 417 px | `prior-de-tamanho` |
+
+Porque `_typical_side` recebeu `[516, 1405]` — o diagrama 1‑11 e a faixa —, não conseguiu
+agrupá-los (a distância é 172% do menor, contra os 30% de `EMBEDDED_SIZE_TOLERANCE`), e o
+desempate da [S-79](#s-79--o-gabarito-de-tamanho-calculado-sobre-o-que-sobreviveu) é **pelo
+maior**. O gabarito da página virou 1405 px, e tudo do tamanho de um diagrama real caiu fora
+da janela.
+
+A S-79 fechou a classe "página com duas populações de tamanho" contra um **glifo de
+cabeçalho**, onde escolher o maior é certo. Contra uma **faixa**, escolher o maior é escolher
+justamente o que não é diagrama. A regra do desempate continua certa; o que faltava é a faixa
+não chegar até ela.
+
+#### 4. O sinal que **não** serve: contraste de casa
+
+A tentação era estender à fonte embutida o piso da
+[S-143](#s-143--a-foto-quadrada-que-o-contorno-lê-como-tabuleiro) — a faixa dá
+`board_checker_score` **0,0000**, e o diagrama 1‑11 da mesma página dá 0,3982.
+
+**Medido no acervo, e reprova.** 1287 candidatos embutidos, 40 páginas amostradas por livro:
+
+| população | quantos |
+|---|---|
+| contraste > 0 | 1263 |
+| **contraste == 0** | **24** |
+
+E os 24 não são faixas. **Dez deles são diagramas impecáveis do `Schiller`** — hachurados,
+com duas linhas de legenda acima do tabuleiro no recorte embutido. Grade fora de registro dá
+zero pelo mesmo motivo que ausência de tabuleiro dá zero, e a nota não distingue os dois casos.
+
+É a **terceira** vez que este projeto tenta julgar recorte embutido por uma nota absoluta e a
+medição reprova — ver a [S-80](#s-80--a-nota-de-textura-relativa-à-página) e as três guardas
+que calaram no docstring de `detection/embedded.py`. Fica valendo: nota absoluta sobre recorte
+embutido não separa "não é tabuleiro" de "está desalinhado".
+
+#### 5. O sinal que serve é geométrico, e é uma relação e não uma nota
+
+**Um diagrama contém um tabuleiro que o preenche; uma faixa contém um tabuleiro que é um
+pedaço dela.** É uma pergunta sobre a razão entre dois objetos, e não sobre o valor de um.
+
+Medido nos **837** candidatos embutidos do acervo em que o contorno acha algum tabuleiro
+dentro do bbox, tomando `lado do tabuleiro / lado da região`:
+
+| percentil | 0 | 0,5 | 1 | 5 | 25 | 50 | 75 |
+|---|---|---|---|---|---|---|---|
+| `board_fill` | 0,1083 | 0,3355 | **0,7076** | 0,7740 | 0,8396 | 0,8662 | 0,9075 |
+
+Duas populações e um vão de **0,33** entre elas: 831 candidatos de 0,7076 a 0,9829, e 6 de
+0,1083 a 0,3758. Qualquer corte em (0,38; 0,70) se comporta igual no acervo inteiro.
+`BAND_BOARD_FILL` é **0,50**, que tem significado próprio: abaixo dele a imagem é mais longa
+que dois tabuleiros, ou seja, tem espaço para outra coisa que não é o diagrama.
+
+#### 6. E os 6 de baixo não são todos faixa — a segunda condição, que o acervo cobrou
+
+**Esta seção começou como um refinamento e virou uma correção.** A primeira versão da guarda
+era só o preenchimento, e o acervo a reprovou: 24 páginas por livro, 1483 candidatos → 1478,
+**5 perdas e nenhum ganho**. As páginas em que ela ganha não caíram na amostra; as em que ela
+perde, sim.
+
+Conferidos um a um, com o quad desenhado sobre a região:
+
+| livro, página | `board_fill` | contraste do achado | o que é |
+|---|---|---|---|
+| `1001_Winning ... _hq` p812 | 0,1083 | **0,0002** | **diagrama inteiro**; o contorno prendeu **uma casa** |
+| `La_Combinacion` p24 | 0,1140 | **0,0061** | idem |
+| `Yusupov` p14 | 0,3051 | 0,2608 | faixa — o relato |
+| `Yusupov` p1950 | 0,3104 | 0,3110 | faixa |
+| `Yusupov` p1820 | 0,3133 | 0,4133 | faixa |
+| `GALLAGHER` p140 | 0,3355 | 0,7408 | faixa |
+| `GALLAGHER` p124 | 0,3758 | 0,7058 | faixa |
+
+Preenchimento baixo tem **duas** causas, e só uma delas é faixa. A outra é o contorno se
+prender a **uma casa** do próprio diagrama — e o preenchimento delas o diz: 0,108 a 0,128 é
+1/8, que é quanto uma casa ocupa de um tabuleiro de oito.
+
+Varrendo o `1001_Winning ... _hq` de três em três páginas (374 de 1121) saem **24** desses, e
+mais o do `La_Combinacion` — 25 casos reais, todos diagrama legítimo:
+
+| população, `board_fill` < 0,50 | quantos | contraste do achado |
+|---|---|---|
+| casa do próprio diagrama | 25 | **0,0000 a 0,0061** |
+| faixa de página | 17 | **0,1310 a 0,7408** |
+
+Vão de **fator 21**. `BAND_BOARD_CHECKER` é **0,06**: dez vezes acima do maior ruído, duas
+vezes abaixo do menor sinal. As faixas incluem as 12 do `Yusupov` que a §8 audita — a de
+contraste 0,1310 é a mais fraca do acervo e é o que aperta a margem inferior.
+
+**E não é o piso da S-143 — reusá-lo *foi* o defeito.** `MIN_CHECKER_CONTRAST` é 0,0, e
+0,0061 > 0,0: eram exatamente essas as 5 perdas. Os dois pisos respondem perguntas diferentes,
+e a diferença é o que está do outro lado. Lá a alternativa é uma **foto**, que dá zero exato
+porque não há estrutura nenhuma; aqui é um **pedaço de tabuleiro**, que dá quase zero porque a
+estrutura existe e o recorte não a contém. Nem vale generalizar 0,06 de volta: nesta mesma
+medição, **21 dos 831** tabuleiros que preenchem o próprio bbox ficam abaixo de 0,06 e são
+todos legítimos — eles só não são alcançados porque a primeira condição já os isentou.
+
+Então a guarda é um **par**, e as duas metades vêm de medições diferentes: uma separou faixa de
+diagrama, a outra separou faixa de pedaço-de-diagrama.
+
+O contraste volta a ser usado aqui, depois de §4 tê-lo reprovado — e não é contradição. Em §4
+ele julgaria **o candidato embutido**, que pode estar desalinhado; aqui ele julga **o achado
+de contorno**, que por construção já está alinhado à grade que ele mesmo encontrou. É a mesma
+distinção que faz o piso da S-143 valer no caminho de contorno e não no embutido.
+
+**O erro é conservador de propósito.** Uma faixa cujo tabuleiro interno tenha contraste muito
+baixo sobrevive à guarda, e volta a ser o defeito do relato naquela página. É a direção certa
+de errar: na dúvida, a declaração do PDF fica de pé, que é a regra desde a S-12.
+
+#### 7. Uma passada, dois consumidores
+
+`refine_candidate_with_contour` já rodava `detect_boards` dentro do bbox de cada candidato
+embutido desde a S-12 — e **descartava o quad**, usando só o recorte. É o mesmo achado que
+responde as duas perguntas: *onde está a grade* (o refino) e *o que esta imagem é* (a faixa).
+
+Por isso a passada saiu para `contour_inside_candidate`, que devolve região, recorte e quad, e
+`detect_diagrams` a chama **uma vez** por candidato. Medir duas vezes custaria um `get_pixmap`
+e um `detect_boards` a mais por imagem embutida, em toda página de todo livro exportado —
+`test_o_contorno_dentro_do_bbox_e_medido_uma_vez_so` prende isso.
+
+#### 8. O resultado, na página do relato
+
+| | antes | depois |
+|---|---|---|
+| caixas na tela | 2 | **3** |
+| caixa que cobre texto e dois diagramas | 1 | **0** |
+| diagramas 1‑9 e 1‑10 | ausentes | **presentes**, 138×138 e 137×137 pt |
+
+**E no livro inteiro, auditado caixa a caixa.** 373 páginas amostradas (uma em cada sete das
+2612), com e sem a guarda, comparando as caixas e não só a contagem:
+
+| | |
+|---|---|
+| candidatos | 752 → **760** |
+| páginas que mudaram | 12 |
+| caixas que **sumiram** | 12 — e **as 12 são faixa**, de 408×387 a 460×403 pt |
+| caixas que **apareceram** | 20 — todas de 136 a 142 pt, que é o tamanho de diagrama deste livro |
+
+Nenhuma remoção pegou outra coisa que não uma faixa, e é essa a afirmação que interessa: a
+contagem sozinha esconderia uma troca. Em duas das 12 páginas o saldo é **negativo** (7 → 6) e
+está certo — ali os quatro diagramas já estavam sendo achados pelo contorno, e o que saiu foi
+só a faixa que se somava a eles.
+
+Uma das 12 faixas tem contraste **0,1310**, a mais fraca do acervo; é ela que define a margem
+inferior de `BAND_BOARD_CHECKER` citada em §6.
+
+**E o resto do acervo não sentiu nada.** 32 livros, 24 páginas por livro: **1483 candidatos
+antes, 1483 depois — diferença zero.** É o raio de alcance que se quer de uma correção
+dirigida, e é a mesma medição que reprovou a primeira versão da guarda com 1478.
+
+E a faixa passa a deixar rastro: `"faixa-da-pagina"` é o novo motivo em `RejectionRow`, e é o
+**primeiro** que barra candidato da fonte embutida — os outros três do `hybrid` julgam achado
+de contorno. `detection_census.RejectionRow` diz isso no docstring, porque era a premissa
+anterior.
+
+**Testes.** `tests/test_detection.py::PageBandGuardTests`, 9 casos. Os dois que carregam a
+medição são `test_uma_casa_achada_dentro_do_diagrama_nao_o_transforma_em_faixa` (o par de §6,
+sem o qual a guarda apagaria dois diagramas do acervo) e
+`test_o_diagrama_de_dentro_da_faixa_e_recuperado_pelo_contorno` (§3: tirar a faixa não pode
+custar o diagrama que estava dentro dela).
+
+**O que fica em aberto.** A guarda alcança a faixa que **contém** um tabuleiro. Uma faixa que
+não contenha nenhum não produz achado de contorno, `contour_inside_candidate` devolve `None`,
+e ela sobrevive — como sobrevivia antes. É de propósito: ali não há nada a comparar, e recusar
+por ausência de achado transformaria "o contorno não conseguiu" em "não é diagrama", que é
+justamente a inferência que a S-12 recusa fazer contra a declaração do PDF.
+
+---
+
 ## 7. Sequenciamento sugerido
 
 | ordem | entrega | fecha | estado |
@@ -867,6 +1086,7 @@ devolve **zero** tabuleiros.
 | 5 | **S-81** imagem fatiada | o `GALLAGHER`, que nenhum limiar alcança | ✅ 2026-08-14 |
 | 6 | **S-143** contraste de casa | a foto quadrada, que era o alvo da S-80 | ✅ 2026-08-17 |
 | 7 | **S-175** reparo de quina | os 3 por página do `Reinfeld`, que a S-143 deixou em aberto | ✅ 2026-08-20 |
+| 8 | **S-176** faixa de página | a caixa de 460 pt do `Yusupov`, que a forma não separava | ✅ 2026-08-22 |
 
 A ordem se pagou quatro vezes, e todas antes de alguém abrir um PDF a olho:
 
@@ -951,3 +1171,21 @@ específica desta entrega: o `deteccao_base.csv` versionado não reproduzia nem 
 `0978c0d`, porque a S-160 mudou o recorte do acervo sem regravá-lo. Duas árvores é o que garante
 que os dois lados sejam **o programa inteiro**, e medir o "antes" em vez de lê-lo de arquivo é o
 que garante que ele seja o **antes de verdade**.
+
+### Os números da S-176
+
+| número | como |
+|---|---|
+| as três caixas embutidas da página, com aspecto e cobertura | `page.get_image_info()` nas páginas 13, 14 e 15, dividindo `bbox` pela área de `page.rect` |
+| as duas caixas que a tela desenhava, e as recusas | `detect_diagrams(page, render_pdf_page(pdf, 14, dpi=220), rejected=[...])` |
+| os 1287 candidatos e os 24 de contraste zero | `candidates_from_embedded_images` no acervo, 40 páginas por livro, com `board_checker_score(cv2.resize(c.board_rgb, (320, 320)))` |
+| os 837 `board_fill` e as duas populações | por candidato: `detect_boards` na região de `contour_inside_candidate`, `max(lado do quad) / max(lado da região)` |
+| a classificação dos 6 de baixo | o quad desenhado sobre a região com `cv2.polylines`, conferidos a olho um a um |
+| os 25 casos de "uma casa" | o `1001_Winning ... _hq` de três em três páginas (374 de 1121) e o `La_Combinacion` inteiro, filtrando `board_fill < 0,50` |
+| os 21 de 831 abaixo de 0,06 com `fill` alto | a mesma varredura, contando `board_checker_contrast` do achado na população de `board_fill >= 0,50` |
+| as 5 perdas da primeira versão | `detect_diagrams` com e sem `band_board_fill`, 24 páginas por livro, diff da contagem por página |
+
+**O `board_fill` é medido sobre a região com folga, e não sobre o bbox cru.** São os mesmos 6
+pt de `REFINE_PADDING_PT` que o refino usa, então um diagrama pequeno num bbox justo chega a
+~0,93 e não a 1,00 — e o corte precisa ser lido nessa escala. Medi-lo sobre o bbox cru daria
+outra distribuição e outro número.

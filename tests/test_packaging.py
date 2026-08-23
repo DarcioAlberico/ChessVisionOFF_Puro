@@ -171,7 +171,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1712
+    LIMITE = 1776
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
 
     **1.440 → 1.457 em 2026-08-17**, e a catraca funcionou: ela pegou o próprio crescimento.
@@ -267,6 +267,15 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     um PDF corrompido saíam os dois com **1 e um traceback em inglês**. onde 1 quer dizer "o
     programa falhou" e quem falhou era um arquivo. Carregar o modelo e abrir o PDF viraram passos
     próprios -- e passo próprio é o que dá para classificar.
+
+    **1.712 → 1.776 na S-177**, e o que ficou aqui é o mínimo do gesto de tirar uma caixa da
+    página. O que **saiu**: a regra da remoção é `page_overlay.DroppedBoxes` (casar caixa com
+    caixa por IoU, não renumerar o que sobra, ser por página e por livro), as duas frases da
+    barra de status são `page_overlay.frase_de_caixa_tirada` e `frase_de_caixas_devolvidas`, e o
+    gesto -- botão, botão direito, ausência de seleção -- é `pdf_panel`. O que sobrou são
+    `_drop_box` e `restore_dropped_boxes`, que leem o painel, escrevem no registro da sessão e
+    mandam repintar: as três coisas que **são** a janela, pela mesma razão que
+    `_reload_dataset_panel` ficou na S-116.
 
     Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
     crescer **sem decidir**."""

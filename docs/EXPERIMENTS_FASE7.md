@@ -17,7 +17,7 @@ mão, 38 diagramas**, 3 páginas sem diagrama. Reproduzir: `cvoff-field`.
 > O conjunto vigente tem **66 páginas e 115 diagramas** (S-99 fechada em 2026-08-22). Entre
 > esta página e ele houve duas trocas: 15/38 → 17/39 em 2026-08-15, e 19/40 → 66/115 em
 > 2026-08-22. A diferença não é só de tamanho — a S-95 tirou uma leitura alucinada que servia
-> de referência, e a S-99 acrescentou FEN conferida a 93 dos 115.
+> de referência, e a S-99 acrescentou FEN conferida a 96 dos 115.
 >
 > | | esta página (até 2026-08-11) | 2026-08-16 | **vigente (2026-08-22)** |
 > |---|---|---|---|

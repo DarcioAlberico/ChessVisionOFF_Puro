@@ -397,5 +397,144 @@ class CanalRedundanteTests(unittest.TestCase):
         self.assertEqual(max(espessuras, key=lambda estado: espessuras[estado]), "pronto")
 
 
+class DroppedBoxesTests(unittest.TestCase):
+    """As caixas que o usuário tirou da página (S-177).
+
+    O detector erra, e a caixa errada não é inerte: ela ocupa vaga do `max_boards`, entra na
+    numeração que o `[Diagram "N"]` do PGN usa e, se for grande, esconde os diagramas de
+    verdade debaixo dela. A única resposta antes disto era desligar a marcação da página
+    inteira, que apaga junto o que estava certo.
+    """
+
+    def setUp(self) -> None:
+        self.tiradas = page_overlay.DroppedBoxes()
+        self.caixas = (
+            caixa(0, 10, 10, 110, 110),
+            caixa(1, 200, 10, 300, 110),
+            caixa(2, 10, 200, 110, 300),
+        )
+
+    def test_a_caixa_tirada_some_e_as_outras_ficam(self) -> None:
+        self.tiradas.drop("livro.pdf", 7, self.caixas[1].bbox_pdf)
+        restantes = self.tiradas.apply("livro.pdf", 7, self.caixas)
+        self.assertEqual([box.index for box in restantes], [0, 2])
+
+    def test_o_que_sobra_nao_e_renumerado(self) -> None:
+        """O índice liga o retângulo ao seletor "Selecionado" e ao `[Diagram "N"]` do PGN.
+
+        Renumerar faria o clique no retângulo "2" abrir o diagrama 3 do editor -- o mesmo
+        desencontro que a S-14 corrigiu entre a tela e o PGN, recriado entre a tela e ela mesma.
+        """
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        restantes = self.tiradas.apply("livro.pdf", 7, self.caixas)
+        self.assertEqual([box.index for box in restantes], [1, 2])
+        self.assertEqual([box.label for box in restantes], ["2", "3"])
+
+    def test_a_remocao_e_por_geometria_e_nao_por_indice(self) -> None:
+        """É o que faz a remoção sobreviver ao OCR da página.
+
+        As caixas do detector viram as do reconhecimento quando o OCR roda (`choose_boxes`), e
+        as duas listas podem ter tamanhos diferentes -- é o caso do "OCR melhor diagrama". Uma
+        remoção gravada por índice passaria a apagar outro diagrama.
+        """
+        self.tiradas.drop("livro.pdf", 7, self.caixas[2].bbox_pdf)
+        # A mesma região, vinda da outra fonte e com outro índice: continua tirada.
+        depois_do_ocr = (caixa(0, 12, 202, 108, 298, recognized=True),)
+        self.assertEqual(self.tiradas.apply("livro.pdf", 7, depois_do_ocr), ())
+
+    def test_uma_caixa_vizinha_nao_e_a_mesma_caixa(self) -> None:
+        """Casar por geometria não pode virar casar por proximidade."""
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        self.assertEqual(
+            [box.index for box in self.tiradas.apply("livro.pdf", 7, self.caixas)], [1, 2]
+        )
+
+    def test_cada_pagina_tem_as_suas(self) -> None:
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        self.assertEqual(len(self.tiradas.apply("livro.pdf", 8, self.caixas)), 3)
+
+    def test_cada_livro_tem_as_suas(self) -> None:
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        self.assertEqual(len(self.tiradas.apply("outro.pdf", 7, self.caixas)), 3)
+
+    def test_tirar_a_mesma_caixa_duas_vezes_nao_a_duplica(self) -> None:
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        self.assertEqual(self.tiradas.count("livro.pdf", 7), 1)
+
+    def test_devolver_traz_de_volta_a_pagina_inteira(self) -> None:
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        self.tiradas.drop("livro.pdf", 7, self.caixas[1].bbox_pdf)
+        self.assertEqual(self.tiradas.restore("livro.pdf", 7), 2)
+        self.assertEqual(len(self.tiradas.apply("livro.pdf", 7, self.caixas)), 3)
+
+    def test_devolver_nao_alcanca_outra_pagina(self) -> None:
+        """Desfazer noutra página mudaria o que o usuário não está vendo."""
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        self.tiradas.drop("livro.pdf", 8, self.caixas[0].bbox_pdf)
+        self.tiradas.restore("livro.pdf", 7)
+        self.assertEqual(self.tiradas.count("livro.pdf", 8), 1)
+
+    def test_devolver_pagina_sem_remocao_devolve_zero(self) -> None:
+        self.assertEqual(self.tiradas.restore("livro.pdf", 7), 0)
+
+    def test_uma_pagina_sem_remocao_devolve_a_mesma_tupla(self) -> None:
+        """O caminho comum é não haver remoção nenhuma, e ele não pode custar nada."""
+        self.assertEqual(self.tiradas.apply("livro.pdf", 7, self.caixas), self.caixas)
+
+    def test_o_limiar_e_o_mesmo_do_field_eval(self) -> None:
+        """Um número só decide "a mesma caixa" na tela e na avaliação (S-77).
+
+        Usar outro aqui faria o visualizador chamar de "a mesma caixa" o que a avaliação conta
+        como duas -- e a remoção passaria a apagar um diagrama que a métrica ainda cobra.
+        """
+        from chess_diagram_ocr.field_eval import MATCH_IOU
+
+        self.assertEqual(page_overlay.DroppedBoxes().same_box_iou, MATCH_IOU)
+
+    def test_esquecer_tudo_ao_trocar_de_livro(self) -> None:
+        self.tiradas.drop("livro.pdf", 7, self.caixas[0].bbox_pdf)
+        self.tiradas.clear()
+        self.assertEqual(len(self.tiradas), 0)
+
+
+class FrasesDaRemocaoTests(unittest.TestCase):
+    """O que a barra de status diz ao tirar e ao devolver uma caixa (S-177).
+
+    Aqui pelo mesmo motivo que as três descrições do `rodape`: é decisão de texto e é pura, e
+    afirmar "a frase nomeia o caminho de volta" não deveria exigir uma janela aberta.
+    """
+
+    def test_a_frase_nomeia_a_caixa_que_saiu(self) -> None:
+        frase = page_overlay.frase_de_caixa_tirada(caixa(0, 0, 0, 10, 10), 1)
+        self.assertIn("Caixa 1", frase, "a frase precisa dizer qual retângulo saiu")
+
+    def test_a_frase_diz_quantas_ja_sairam_desta_pagina(self) -> None:
+        """Sem o total, tirar cinco caixas por engano é invisível até virar a página."""
+        self.assertIn("1 caixa tirada", page_overlay.frase_de_caixa_tirada(caixa(0, 0, 0, 1, 1), 1))
+        self.assertIn("3 caixas tiradas", page_overlay.frase_de_caixa_tirada(caixa(2, 0, 0, 1, 1), 3))
+
+    def test_a_frase_nomeia_os_dois_caminhos_a_partir_dali(self) -> None:
+        """Ação destrutiva que não nomeia a volta obriga a procurá-la depois de já ter perdido."""
+        frase = page_overlay.frase_de_caixa_tirada(caixa(0, 0, 0, 1, 1), 1)
+        self.assertIn("Selecionar área (OCR)", frase)
+        self.assertIn("Devolver as caixas tiradas", frase)
+
+    def test_caixa_que_ja_nao_esta_na_pagina_tem_frase_propria(self) -> None:
+        self.assertEqual(
+            page_overlay.frase_de_caixa_tirada(None, 0), "Essa caixa não está mais na página."
+        )
+
+    def test_devolver_concorda_em_numero(self) -> None:
+        self.assertIn("1 caixa devolvida", page_overlay.frase_de_caixas_devolvidas(1, 14))
+        self.assertIn("2 caixas devolvidas", page_overlay.frase_de_caixas_devolvidas(2, 14))
+
+    def test_devolver_zero_nao_afirma_que_houve_devolucao(self) -> None:
+        """"0 caixas devolvidas" afirma um evento que não aconteceu."""
+        self.assertEqual(
+            page_overlay.frase_de_caixas_devolvidas(0, 14), "Nenhuma caixa foi tirada desta página."
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

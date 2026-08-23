@@ -95,6 +95,12 @@ MENUS: tuple[Menu, ...] = (
             Item("Ajustar à página", "ajustar_pagina"),
             _sep(),
             Item("Marcar os diagramas na página", "marcar_diagramas", INTERRUPTOR),
+            # Ao lado do interruptor que liga a marcação, e não em Ferramentas: os dois falam
+            # do mesmo objeto -- os retângulos sobre a página --, e a diferença entre eles é
+            # "todos" contra "este" (S-177).
+            Item("Tirar a caixa do diagrama selecionado", "tirar_caixa"),
+            Item("Devolver as caixas tiradas desta página", "devolver_caixas"),
+            _sep(),
             Item("A roda do mouse vira a página", "roda_vira_pagina", INTERRUPTOR),
         ),
     ),
