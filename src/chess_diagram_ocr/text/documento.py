@@ -146,6 +146,26 @@ def contagem_por_faixa(pagina: PaginaLida) -> dict[str, int]:
     return contagem
 
 
+def estado_do_negrito(pagina: PaginaLida) -> str:
+    """O que dizer sobre negrito nesta página, em uma frase curta.
+
+    **Existe porque "nada em negrito" e "o livro não informa" pareciam a mesma coisa na tela**, e
+    o segundo caso é a maioria: 28 dos 41 livros do acervo não trazem peso de fonte na camada. Sem
+    esta frase, quem abre um deles conclui que a função está quebrada -- e foi exatamente o que
+    aconteceu com o `A Matter of Endgame Technique`, cuja camada escreve o livro inteiro numa fonte
+    só. Ver `text/negrito.py`.
+    """
+    pesos = [
+        linha.negrito
+        for bloco in pagina.blocos
+        for linha in getattr(bloco, "linhas", ())
+    ]
+    if not pesos or all(p is None for p in pesos):
+        return "negrito: o livro não informa"
+    quantas = sum(1 for p in pesos if p)
+    return f"{quantas} em negrito" if quantas else "nada em negrito"
+
+
 def resumo(pagina: PaginaLida) -> str:
     """A linha de status: o que a página tem, e quanto dela pede olho.
 
@@ -162,6 +182,7 @@ def resumo(pagina: PaginaLida) -> str:
     pedem_olho = contagem[REVISAR] + contagem[CONFERIR]
     if pedem_olho:
         partes.append(f"{pedem_olho} pedem conferência ({contagem[REVISAR]} adivinhados)")
+    partes.append(estado_do_negrito(pagina))
     return " · ".join(partes)
 
 
@@ -181,6 +202,7 @@ __all__ = [
     "contagem_por_faixa",
     "corte_de_revisar",
     "diagramas_visiveis",
+    "estado_do_negrito",
     "faixa_de_confianca",
     "resumo",
     "segmentos",

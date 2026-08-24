@@ -134,5 +134,56 @@ class ModeloTests(unittest.TestCase):
                 self.assertIs(segmento.negrito, esperado)
 
 
+class EstadoNaTelaTests(unittest.TestCase):
+    """"Nada em negrito" e "o livro não informa" não podem parecer a mesma coisa.
+
+    O segundo caso é a **maioria** -- 28 dos 41 livros do acervo --, e sem a frase quem abre um
+    deles conclui que a função está quebrada. Foi o que aconteceu com o `A Matter of Endgame
+    Technique`, cuja camada escreve o livro inteiro numa fonte só.
+    """
+
+    def _pagina(self, *pesos: bool | None):
+        from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
+
+        blocos = tuple(
+            BlocoDeTexto.de_linhas(
+                [LinhaLida(f"l{i}", (0.0, 0.0, 10.0, 10.0), 1.0, "glifo", p)]
+            )
+            for i, p in enumerate(pesos)
+        )
+        return PaginaLida(colunas=(Coluna(blocos=blocos),))
+
+    def test_o_livro_que_nao_informa_diz_isso(self) -> None:
+        from chess_diagram_ocr.text import documento
+
+        self.assertEqual(
+            documento.estado_do_negrito(self._pagina(None, None)), "negrito: o livro não informa"
+        )
+
+    def test_o_livro_que_informa_e_nao_tem_negrito_diz_outra_coisa(self) -> None:
+        from chess_diagram_ocr.text import documento
+
+        self.assertEqual(documento.estado_do_negrito(self._pagina(False, False)), "nada em negrito")
+
+    def test_o_que_tem_negrito_conta(self) -> None:
+        from chess_diagram_ocr.text import documento
+
+        self.assertEqual(documento.estado_do_negrito(self._pagina(True, False, True)), "2 em negrito")
+
+    def test_a_pagina_vazia_nao_estoura(self) -> None:
+        from chess_diagram_ocr.text import documento
+        from chess_diagram_ocr.text.pagina import PaginaLida
+
+        self.assertEqual(
+            documento.estado_do_negrito(PaginaLida()), "negrito: o livro não informa"
+        )
+
+    def test_a_frase_entra_no_resumo_da_aba(self) -> None:
+        from chess_diagram_ocr.text import documento
+
+        self.assertIn("o livro não informa", documento.resumo(self._pagina(None)))
+        self.assertIn("1 em negrito", documento.resumo(self._pagina(True)))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
