@@ -2722,7 +2722,7 @@ resolvido por prioridade fixa.
 
 ---
 
-## S-208 · A notação validada pelas regras, e o PGN que sai dela ⬜ planejada
+## S-208 · A notação validada pelas regras, e o PGN que sai dela ◐ parcial (2026-08-24)
 
 **Problema.** O projeto exporta PGN **de posições**: cada diagrama vira um `[FEN]`. A partida
 impressa em volta dele — `1...♗xb7 2.♗xb7 ♘d7 3.♗xa8 ♕xa8 4.♘f3±` — é ignorada.
@@ -2757,6 +2757,42 @@ da validação, não do classificador.
 **Testes.** `test_a_figurina_ganha_o_lado_pela_paridade`;
 `test_o_lance_ilegal_vai_para_revisao_e_nao_e_reescrito`;
 `test_prosa_e_lance_sao_fatiados_antes_de_qualquer_correcao`.
+
+### O que entrou em 2026-08-24: `fatiar`, e o número de lance partido
+
+Entrou a **peça central**, e só ela: `fatiar`. Não entrou `validar` -- a legalidade pela posição,
+com o `chess`, e o `.review.pgn` de quem não fecha --, e é ela que dá o PGN de partida. Por isso o
+item fica **parcial** e não implementado.
+
+O que `fatiar` já resolve sozinho é o **número de lance partido em dois**: `15 0-0?!` saía
+`1 5 0-0?!`, 44 vezes em 23 páginas. Ele **não** era consertável por geometria, e isso tinha sido
+medido antes: o vão entre os dois dígitos de `15` e o vão entre duas palavras têm o mesmo tamanho
+(dígito p10 0,46 · mediana 0,79 · p90 1,17; palavra p10 0,62 · mediana 0,86 · p90 1,60), e um
+corte em 0,55 juntaria 12 dos 44 e **destruiria 49 espaços de verdade**.
+
+A regra que só a notação permite: **em notação de xadrez não existem dois números seguidos.** Um
+número de lance é sempre seguido de lance ou de reticência, então dois tokens de dígito lado a lado
+*dentro de uma fatia de notação* são um número que a segmentação partiu. Fora dela a mesma
+sequência é legítima — `In 1968 he lost`, `capítulo 3 4`.
+
+| referência | páginas | `sem` | `com` | melhoram / pioram | partidos |
+|---|---:|---:|---:|---:|---:|
+| camada editorada (confiável) | 11 | 0,1065 | 0,1058 | 4 / 1 | 13 → 4 |
+| camada de OCR (suspeita) | 12 | 0,2326 | 0,2326 | 2 / 2 | 31 → 11 |
+| todas | 23 | 0,1723 | 0,1720 | 6 / 3 | **44 → 15** |
+
+**O CER quase não se move, e há uma razão medida**: nos livros de camada de OCR a *própria camada*
+parte o número — no `AAGAARD` ela escreve `4 1 .` e `1 7` —, então juntar nos afasta de uma
+referência que também está errada.
+
+**Duas guardas saíram de regressão medida**, e as duas ficam escritas porque cada uma custou um
+falso positivo: a fatia precisa de um **lance de verdade** e não só de números (sem isso `capítulo
+3 4 do livro` virava notação), e só **um dígito à esquerda** (sem isso `15 2 f3 xg5`, na notação
+espaçada do `Capablanca`, virava `152`).
+
+**O falso positivo que sobra**, e ele é honesto: `Capablanca` p72, `7` + `2` → `72`. É
+estruturalmente idêntico ao caso que se quer consertar — dígito, dígito, lance —, e só a
+**legalidade** separaria os dois: existe lance 72 nesta partida? Isso é `validar`.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.notacao:fatiar`,
 `simbolo:chess_diagram_ocr.text.notacao:validar`.

@@ -187,6 +187,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--sem-juntar-lance",
+        action="store_true",
+        help=(
+            "Não junta o número de lance que a segmentação partiu (1 5 -> 15). Ligado por padrão, "
+            "e só dentro de fatia de notação -- 'In 1968' fica. Ver "
+            "docs/metrics/texto_juntar_lance.json."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -252,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
                 dicionario=args.dicionario,
                 numeros=not args.sem_numeros,
                 marcar_negrito=not args.sem_negrito,
+                juntar_lance=not args.sem_juntar_lance,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)

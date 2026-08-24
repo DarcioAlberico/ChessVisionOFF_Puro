@@ -167,6 +167,7 @@ from . import italico as _italico
 from . import linhas as _linhas_mod
 from . import marca_fina as _marca_fina
 from . import negrito as _negrito
+from . import notacao as _notacao
 from . import numero as _numero
 from . import paragrafos as _paragrafos
 from .binarizacao import binarize
@@ -448,6 +449,7 @@ def linhas_do_glifo(
     italico: bool = True,
     dicionario: bool = False,
     numeros: bool = True,
+    juntar_lance: bool = True,
 ) -> tuple[list[_Cru], list[tuple[int, int]]]:
     """As linhas lidas pelo classificador de glifo, **coluna a coluna**, e as faixas achadas.
 
@@ -474,6 +476,10 @@ def linhas_do_glifo(
     desenho do `/`. Ligada, e o **controle importa mais que o ganho** -- `1/2-1/2` é resultado de
     partida, e o `/` legítimo é preservado porque a linha dele não é itálica. Ver
     `text/italico.py`.
+
+    `juntar_lance` junta o número de lance que a segmentação partiu (`1 5` -> `15`), e **só
+    dentro de fatia de notação** -- `In 1968` fica. Aplica-se apenas ao caminho do **glifo**: a
+    camada é a referência das medições deste subpacote, e normalizá-la mexeria na régua.
 
     `numeros` troca por `0` o oval que está dentro de um número (`2o` -> `20`) e conserta o roque
     (`O.O` -> `0-0`). Ligada: o sintoma cai de 29 para 2 em 22 páginas, e nenhuma piora. Ver
@@ -574,6 +580,10 @@ def linhas_do_glifo(
                 casados = em_bloco(cinza, grupo, lidos, leitor_de_linha)
                 lidos = [(item.caractere, item.confianca) for item in casados]
             texto = _colapsar_espaco(texto_da_linha(grupo, [char for char, _ in lidos]))
+            if juntar_lance:
+                # **Só a notação separa `1 5` de `In 1968`**, e a geometria não: os dois vãos têm
+                # o mesmo tamanho. Ver `text/notacao.py`, que traz a medição.
+                texto = _notacao.juntar_numero_de_lance(texto)
             if not texto:
                 continue
             cruas.append(
@@ -883,6 +893,7 @@ def ler_pagina(
     italico: bool = True,
     dicionario: bool = False,
     numeros: bool = True,
+    juntar_lance: bool = True,
     marcar_negrito: bool = True,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
@@ -943,6 +954,7 @@ def ler_pagina(
             imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina,
             empilhados=empilhados, italico=italico,
             dicionario=dicionario, numeros=numeros,
+            juntar_lance=juntar_lance,
         )
 
     if marcar_negrito and cruas:
