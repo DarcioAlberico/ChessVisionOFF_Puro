@@ -703,6 +703,34 @@ vantagem de +0,3 para +0,1 de F1, levado até o fim.
 **O padrão é `nunca`, e o código sai assim** (`colados.PADRAO`). O separador fica implementado,
 travado por teste e **não chamado** — exatamente como o `separar` da S-198, e pelo mesmo motivo.
 
+### Remedido na página em 2026-08-24, e o padrão não muda
+
+A medição acima é sobre **155 faixas de legenda**. A S-211 pôs a página inteira em uso e a
+pergunta reabriu com um caso concreto: numa folha lida na aba de texto, `40` saiu `co` e `44` saiu
+`M`. O argumento para reabrir era estrutural e parecia forte — o modelo **não tem nenhuma ligadura
+de dois dígitos** (não existe `ligature_40`), então um par colado só poderia sair como uma classe
+de um caractere ou como uma ligadura de **letras**, e cortar seria a única saída.
+
+Medido em 12 páginas de 4 livros, com a camada de texto da própria página como referência
+(`docs/metrics/texto_pagina.json`, bloco `colados`):
+
+| modo | CER | vs `nunca` | número de lance de 2 dígitos |
+|---|---:|---:|---:|
+| `nunca` | 0,2696 | — | 97 de 104 (93,3%) |
+| `auto` | 0,2688 | −0,0009 | 97 de 104 (93,3%) |
+| `sempre` | 0,2826 | +0,0129 | 97 de 104 (93,3%) |
+
+**Idêntico nos três modos**, e a razão é que a hipótese estava errada: os dígitos **não estão
+colados**. Só 2,1% das caixas da p30 do `Kemeri` passam do piso de largura, e os números perdidos
+não estão entre elas — `10.` sai `1o.`, com o zero lido como `o` minúsculo, em **dois boxes bem
+segmentados**; os de dois dígitos que acertam (`12. Ta1`, `16. c4`, `22. Db3`) já vinham separados.
+Não há o que cortar.
+
+O erro de diagnóstico é o achado, e por isso ele fica escrito: `40`→`co` **parece** um corte
+perdido e são duas confusões de um caractere. Quem for atrás dessa família deve ir para o léxico
+da S-209 ou para o treino, e não para a geometria. O separador passa a ser **chamável** por
+`text/leitor.py` (`colados=`) e por `cvoff-texto-pagina --colados`, e continua desligado.
+
 **Sonda.** `simbolo:chess_diagram_ocr.text.colados:separar`,
 `metrica:texto_colados`.
 

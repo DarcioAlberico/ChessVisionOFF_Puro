@@ -236,5 +236,187 @@
       "camada": "2.l0xd4 dxc2!",
       "livro": "AAGAARD, p60"
     }
+  },
+  "colados": {
+    "medido_em": "2026-08-24",
+    "item": "S-186",
+    "pergunta": "O separador de glifo colado paga na PAGINA? A medicao que existia (docs/metrics/texto_colados.json) e sobre 155 faixas de legenda, e la ele perde.",
+    "por_que_a_pergunta_reabriu": "Numa pagina lida pelo usuario, '40' saiu 'co' e '44' saiu 'M'. O modelo NAO tem nenhuma ligadura de dois digitos (nao existe ligature_40 nem ligature_44), entao um par de digitos colado so pode sair como uma classe de um caractere ou como uma ligadura de LETRAS -- e cortar seria a unica saida.",
+    "referencia": "a camada de texto da propria pagina, montada pelo mesmo text/leitor.py",
+    "reguas": {
+      "cer": "erro de caractere sobre a pagina inteira",
+      "numeros_de_lance": "recall dos numeros de lance de DOIS digitos da referencia"
+    },
+    "commit": "20f95d5cbf1a3606d7d3e91287aef8154fa68fff",
+    "paginas": [
+      {
+        "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+        "pagina": 118,
+        "referencia": 1072,
+        "numeros_de_2_digitos": 6,
+        "cer_nunca": 0.12640449438202248,
+        "achou_nunca": 5,
+        "cer_auto": 0.12640449438202248,
+        "achou_auto": 5,
+        "cer_sempre": 0.12827715355805244,
+        "achou_sempre": 5
+      },
+      {
+        "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+        "pagina": 120,
+        "referencia": 965,
+        "numeros_de_2_digitos": 2,
+        "cer_nunca": 0.13660062565172054,
+        "achou_nunca": 2,
+        "cer_auto": 0.13660062565172054,
+        "achou_auto": 2,
+        "cer_sempre": 0.14077163712200208,
+        "achou_sempre": 2
+      },
+      {
+        "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+        "pagina": 122,
+        "referencia": 1038,
+        "numeros_de_2_digitos": 4,
+        "cer_nunca": 0.1354775828460039,
+        "achou_nunca": 4,
+        "cer_auto": 0.1364522417153996,
+        "achou_auto": 4,
+        "cer_sempre": 0.13840155945419103,
+        "achou_sempre": 4
+      },
+      {
+        "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+        "pagina": 124,
+        "referencia": 979,
+        "numeros_de_2_digitos": 16,
+        "cer_nunca": 0.14654282765737875,
+        "achou_nunca": 15,
+        "cer_auto": 0.14654282765737875,
+        "achou_auto": 15,
+        "cer_sempre": 0.15067079463364294,
+        "achou_sempre": 15
+      },
+      {
+        "livro": "1937 Kemeri.pdf",
+        "pagina": 30,
+        "referencia": 2693,
+        "numeros_de_2_digitos": 22,
+        "cer_nunca": 0.35867519759126837,
+        "achou_nunca": 21,
+        "cer_auto": 0.3654497553631916,
+        "achou_auto": 21,
+        "cer_sempre": 0.35453519006398193,
+        "achou_sempre": 21
+      },
+      {
+        "livro": "1937 Kemeri.pdf",
+        "pagina": 34,
+        "referencia": 2714,
+        "numeros_de_2_digitos": 1,
+        "cer_nunca": 0.27679231337767923,
+        "achou_nunca": 1,
+        "cer_auto": 0.28713968957871394,
+        "achou_auto": 1,
+        "cer_sempre": 0.3377679231337768,
+        "achou_sempre": 1
+      },
+      {
+        "livro": "1937 Kemeri.pdf",
+        "pagina": 38,
+        "referencia": 2930,
+        "numeros_de_2_digitos": 6,
+        "cer_nunca": 0.2951436388508892,
+        "achou_nunca": 5,
+        "cer_auto": 0.30437756497948015,
+        "achou_auto": 5,
+        "cer_sempre": 0.35841313269493846,
+        "achou_sempre": 5
+      },
+      {
+        "livro": "1937 Kemeri.pdf",
+        "pagina": 42,
+        "referencia": 2724,
+        "numeros_de_2_digitos": 0,
+        "cer_nunca": 0.3264554163596168,
+        "achou_nunca": 0,
+        "cer_auto": 0.33603537214443624,
+        "achou_auto": 0,
+        "cer_sempre": 0.39388356669123065,
+        "achou_sempre": 0
+      },
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 58,
+        "referencia": 2136,
+        "numeros_de_2_digitos": 17,
+        "cer_nunca": 0.2073342736248237,
+        "achou_nunca": 16,
+        "cer_auto": 0.19699106723084156,
+        "achou_auto": 16,
+        "cer_sempre": 0.19887165021156558,
+        "achou_sempre": 16
+      },
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 60,
+        "referencia": 2311,
+        "numeros_de_2_digitos": 13,
+        "cer_nunca": 0.19991308126901347,
+        "achou_nunca": 11,
+        "cer_auto": 0.18252933507170796,
+        "achou_auto": 11,
+        "cer_sempre": 0.18252933507170796,
+        "achou_sempre": 11
+      },
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 62,
+        "referencia": 2073,
+        "numeros_de_2_digitos": 14,
+        "cer_nunca": 0.22162948593598447,
+        "achou_nunca": 14,
+        "cer_auto": 0.20223084384093112,
+        "achou_auto": 14,
+        "cer_sempre": 0.20223084384093112,
+        "achou_sempre": 14
+      },
+      {
+        "livro": "Schiller - The Big Book of Combinations (1994).pdf",
+        "pagina": 44,
+        "referencia": 1066,
+        "numeros_de_2_digitos": 3,
+        "cer_nunca": 0.8046198267564967,
+        "achou_nunca": 3,
+        "cer_auto": 0.8046198267564967,
+        "achou_auto": 3,
+        "cer_sempre": 0.8046198267564967,
+        "achou_sempre": 3
+      }
+    ],
+    "resumo": {
+      "paginas": 12,
+      "numeros_de_2_digitos_na_referencia": 104,
+      "nunca": {
+        "cer": 0.26963239702524144,
+        "numeros_achados": 97,
+        "recall": 0.9326923076923077
+      },
+      "auto": {
+        "cer": 0.26878113703102674,
+        "numeros_achados": 97,
+        "recall": 0.9326923076923077
+      },
+      "sempre": {
+        "cer": 0.2825810511027098,
+        "numeros_achados": 97,
+        "recall": 0.9326923076923077
+      },
+      "ganho_do_auto": -0.0008512599942147037,
+      "custo_do_sempre": 0.012948654077468369
+    },
+    "resultado": "NEGATIVO, e o padrao continua 'nunca'. O auto ganha 0,0009 de CER -- ruido -- e o sempre custa 0,0129. O recall de numero de lance e IDENTICO nos tres modos: 97 de 104.",
+    "por_que_nao_muda_nada": "A hipotese estava errada: os digitos NAO estao colados. Medido na p30 do Kemeli e na p60 do AAGAARD, so 2,1% e 2,7% das caixas passam do piso de largura, e os numeros perdidos nao estao entre elas. O que acontece e confusao de UM caractere: '10.' sai '1o.' (zero lido como o minusculo), '14' sai '1 4' (espaco espurio). Os de dois digitos que acertam -- '12. Ta1', '16. c4', '22. Db3', '24. Kg1' -- ja vinham segmentados separados. Nao ha o que cortar, e por isso os tres modos empatam.",
+    "onde_o_caso_do_usuario_se_encaixa": "'40'->'co' e provavelmente '4'->'c' e '0'->'o', dois boxes e duas confusoes, e nao um box cortado errado. '44'->'M' pode ser colado de verdade, mas e raro demais para aparecer nas 12 paginas."
   }
 }

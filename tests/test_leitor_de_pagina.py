@@ -246,5 +246,49 @@ class MotorTests(unittest.TestCase):
                     self.assertIn(resposta, PROCEDENCIAS)
 
 
+class SeparadorDeColadoTests(unittest.TestCase):
+    """O separador da S-186 entra desligado, e o número que decidiu isso é da **página**.
+
+    A medição que já existia era sobre 155 faixas de legenda. Esta é sobre 12 páginas de 4 livros
+    (`docs/metrics/texto_pagina.json`, bloco `colados`), e o resultado é empate: os três modos
+    acham os mesmos 97 de 104 números de lance, o `auto` ganha 0,0009 de CER -- ruído -- e o
+    `sempre` custa 0,0129. Os dígitos **não estão colados**; ver o cabeçalho de `text/leitor.py`.
+    """
+
+    def test_o_padrao_e_nao_separar(self) -> None:
+        from chess_diagram_ocr.text import colados
+
+        self.assertEqual(colados.PADRAO, colados.NUNCA)
+
+    def test_a_opcao_existe_e_e_um_dos_tres_modos(self) -> None:
+        """Ela fica exposta mesmo perdendo: o modo `sempre` é a linha que a tabela precisa ter."""
+        from chess_diagram_ocr.text import colados
+
+        self.assertEqual(set(colados.MODOS), {"auto", "sempre", "nunca"})
+
+    def test_desligado_nao_toca_em_caixa_nenhuma(self) -> None:
+        """`nunca` tem de ser identidade -- senão o padrão medido não é o padrão que roda."""
+        import numpy as np
+
+        from chess_diagram_ocr.text import colados
+
+        binaria = np.zeros((40, 120), np.uint8)
+        binaria[10:30, 10:100] = 255
+        caixas = [Caixa(10, 10, 100, 30)]
+        self.assertEqual(colados.separar(binaria, caixas, escala=12, modo=colados.NUNCA), caixas)
+
+    def test_sem_arbitro_o_auto_nao_corta(self) -> None:
+        """**Sem árbitro, não mexer**: separar sem confirmação custou 2,3 pontos de F1 na origem."""
+        import numpy as np
+
+        from chess_diagram_ocr.text import colados
+
+        binaria = np.zeros((40, 120), np.uint8)
+        binaria[10:30, 10:45] = 255
+        binaria[10:30, 60:100] = 255
+        caixa = Caixa(10, 10, 100, 30)
+        self.assertEqual(colados.partir(caixa, 52, arbitro=None, modo=colados.AUTO), [caixa])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -116,6 +116,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--colados",
+        choices=("nunca", "auto", "sempre"),
+        default="nunca",
+        help=(
+            "Separador de glifo colado (S-186). Padrão nunca: medido na página em "
+            "docs/metrics/texto_pagina.json, os três modos empatam no número de lance e 'sempre' "
+            "custa 0,0129 de CER."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -173,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
                 arranjo=args.arranjo,
                 reconhecedor=reconhecedor,
                 modo_bloco=args.bloco,
+                colados=args.colados,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)

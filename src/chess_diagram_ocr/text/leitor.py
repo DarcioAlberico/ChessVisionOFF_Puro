@@ -62,6 +62,31 @@ pesos não carregarem -- e nesse caso quem cai avisa, em vez de trocar de motor 
 **Continua não havendo voto entre os dois**, e por isso a `PaginaLida` registra em cada bloco de
 qual deles ele veio: a procedência é o que permite comparar depois sem remedir.
 
+## O separador de colado não paga na página tampouco, e o porquê é melhor que o número
+
+A S-186 estava medida só em **faixa de legenda** (`docs/metrics/texto_colados.json`), onde perde.
+A pergunta reabriu com um caso concreto de página: `40` saiu `co` e `44` saiu `M`. O argumento
+para reabrir era estrutural e parecia forte -- o modelo **não tem nenhuma ligadura de dois
+dígitos** (não existe `ligature_40`), então um par colado só poderia sair como uma classe de um
+caractere ou como uma ligadura de **letras**, e cortar seria a única saída.
+
+Medido em 12 páginas de 4 livros (`docs/metrics/texto_pagina.json`, bloco `colados`):
+
+    modo      CER      vs nunca    número de lance de 2 dígitos
+    nunca     0,2696    --         97 de 104   (93,3%)
+    auto      0,2688    -0,0009    97 de 104   (93,3%)
+    sempre    0,2826    +0,0129    97 de 104   (93,3%)
+
+**Idêntico nos três modos.** E a razão é que a hipótese estava errada: os dígitos **não estão
+colados**. Só 2,1% das caixas da p30 do `Kemeri` passam do piso de largura, e os números perdidos
+não estão entre elas -- `10.` sai `1o.`, com o zero lido como `o` minúsculo, em **dois boxes bem
+segmentados**. Os de dois dígitos que acertam (`12. Ta1`, `16. c4`, `22. Db3`) já vinham separados.
+Não há o que cortar.
+
+Fica registrado porque o erro de diagnóstico é o achado: `40`→`co` **parece** um corte perdido e é
+duas confusões de um caractere. Quem for atrás dessa família de erro deve ir para o léxico da
+S-209 ou para o treino, e não para a geometria.
+
 ## O modo bloco da S-188 entra desligado, e o número é o motivo
 
 A S-188 prometia o maior ganho do plano -- 72,8% para 91,2% de acerto de caractere, medido no
@@ -93,13 +118,14 @@ from __future__ import annotations
 
 import logging
 import re as _re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
 
 from . import boxes as _boxes
+from . import colados as _colados
 from . import colunas as _colunas
 from . import paragrafos as _paragrafos
 from .binarizacao import binarize
@@ -287,8 +313,8 @@ def segmentar(
     diagramas: Sequence[Retangulo] = (),
     *,
     escala: int | None = None,
-) -> tuple[np.ndarray, int, list[_boxes.Caixa], list[tuple[int, int]]]:
-    """`(cinza, escala, caixas de caractere, faixas de coluna)` -- a página antes de haver linha.
+) -> tuple[np.ndarray, np.ndarray, int, list[_boxes.Caixa], list[tuple[int, int]]]:
+    """`(cinza, binaria, escala, caixas de caractere, faixas de coluna)` -- a página antes da linha.
 
     **A ordem destas quatro coisas é o item, e ela estava invertida.** A primeira versão deste
     módulo mandava a página inteira para `GlyphRecognizer.read`, que é um leitor de **faixa**: ele
@@ -316,7 +342,7 @@ def segmentar(
     if escala is None:
         escala = escala_fora_dos_diagramas(binaria, diagramas)
     if escala <= 0:
-        return (cinza, 0, [], [])
+        return (cinza, binaria, 0, [], [])
 
     caixas = _boxes.unir_pingos(_boxes.caixas_de_caractere(binaria, escala=escala), escala=escala)
     if diagramas:
@@ -324,7 +350,27 @@ def segmentar(
             caixas, [_retangulo(r) for r in diagramas], escala=escala
         )
     faixas = _colunas.detectar_colunas(caixas) if caixas else []
-    return (cinza, escala, caixas, faixas)
+    return (cinza, binaria, escala, caixas, faixas)
+
+
+def _arbitro_de_confianca(
+    cinza: np.ndarray, classificador: object
+) -> Callable[[Sequence[_boxes.Caixa]], float]:
+    """Caixas -> confiança média delas. **O mesmo árbitro que o `cvoff-texto-colados` mede.**
+
+    Escrito igual ao de lá de propósito: se o separador for medido com um árbitro e rodar com
+    outro, a tabela que decidiu ligá-lo deixa de descrever o que está ligado.
+    """
+
+    def julgar(caixas: Sequence[_boxes.Caixa]) -> float:
+        recortes = [c.recortar(cinza) for c in caixas]
+        recortes = [r for r in recortes if r.size]
+        if not recortes:
+            return 0.0
+        lidos = classificador.classificar(recortes)  # type: ignore[attr-defined]
+        return float(sum(c for _, c in lidos) / len(lidos)) if lidos else 0.0
+
+    return julgar
 
 
 def linhas_do_glifo(
@@ -334,12 +380,16 @@ def linhas_do_glifo(
     reconhecedor: object | None = None,
     escala: int | None = None,
     modo_bloco: bool = False,
+    colados: str = _colados.PADRAO,
 ) -> tuple[list[_Cru], list[tuple[int, int]]]:
     """As linhas lidas pelo classificador de glifo, **coluna a coluna**, e as faixas achadas.
 
     `escala=None` a mede com `escala_fora_dos_diagramas`. `modo_bloco=True` liga a S-188 -- ler a
     linha, e não o caractere. **Desligado por padrão, e o número que decidiu isso está no cabeçalho
     deste módulo**: na página inteira ele custa ~50x o tempo e piora o livro nativo digital.
+
+    `colados` liga o separador de glifo colado (S-186), e também entra **desligado** -- ver "O
+    separador de colado não paga na página tampouco" no cabeçalho.
 
     Devolve as faixas junto porque quem monta não pode redescobri-las: as caixas de caractere já
     foram consumidas aqui, e detectá-las de novo a partir das linhas é o defeito que `segmentar`
@@ -348,7 +398,7 @@ def linhas_do_glifo(
     from .duas_linhas import descartar_fragmentos
     from .linhas import envolve, ordem_em_faixa, quebrar_em_linhas, texto_da_linha
 
-    cinza, escala, caixas, faixas = segmentar(imagem_rgb, diagramas, escala=escala)
+    cinza, binaria, escala, caixas, faixas = segmentar(imagem_rgb, diagramas, escala=escala)
     if not caixas:
         return ([], faixas)
 
@@ -360,6 +410,19 @@ def linhas_do_glifo(
         )
     classificador = reconhecedor.classifier  # type: ignore[attr-defined]
     leitor_de_linha = getattr(reconhecedor, "_leitor_de_linha", None)
+
+    # **O separador de colado entra aqui, e entra desligado** (S-186). Ele parte um contorno que
+    # tem dois glifos, e o arbitro -- o proprio classificador -- confirma o corte comparando a
+    # confianca media dos dois pedacos com a do inteiro. Sem arbitro nao corta: custou 2,3 pontos
+    # de F1 no projeto de origem, e a regra e a mesma da S-197 e da S-198.
+    if colados != _colados.NUNCA and caixas:
+        caixas = _colados.separar(
+            binaria,
+            caixas,
+            escala=escala,
+            arbitro=_arbitro_de_confianca(cinza, classificador),
+            modo=colados,
+        )
 
     cruas: list[_Cru] = []
     for indice, _faixa in enumerate(faixas or [(0, 0)]):
@@ -682,6 +745,7 @@ def ler_pagina(
     reconhecedor: object | None = None,
     imagem_rgb: np.ndarray | None = None,
     modo_bloco: bool = False,
+    colados: str = _colados.PADRAO,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
@@ -732,7 +796,7 @@ def ler_pagina(
     faixas: list[tuple[int, int]] | None = None
     if qual == "glifo":
         cruas, faixas = linhas_do_glifo(
-            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco
+            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados
         )
 
     cabecalho, rodape = _margens(margem, altura, qual)
