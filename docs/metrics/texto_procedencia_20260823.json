@@ -1,0 +1,1905 @@
+{
+  "quando": "2026-08-23",
+  "base": "training_data",
+  "recortes": 607713,
+  "registro": "sem registro de procedência: toda amostra entra como desconhecida",
+  "arquivo": "data/texto_procedencia.csv",
+  "total": {
+    "humano": 0,
+    "modelo": 0,
+    "desconhecida": 607713
+  },
+  "aviso_de_distribuicao": "",
+  "decisao_sobre_a_origem": {
+    "pergunta": "a training_data_2 do PyBoxEditor, cujos rótulos a spec de lá declara suspeitos de serem do modelo, está dentro desta base?",
+    "resposta": null,
+    "decidida_em": null,
+    "por": null
+  },
+  "por_classe": [
+    {
+      "pasta": "digit_0",
+      "procedencia": {
+        "desconhecida": 698
+      }
+    },
+    {
+      "pasta": "digit_1",
+      "procedencia": {
+        "desconhecida": 26757
+      }
+    },
+    {
+      "pasta": "digit_2",
+      "procedencia": {
+        "desconhecida": 21961
+      }
+    },
+    {
+      "pasta": "digit_3",
+      "procedencia": {
+        "desconhecida": 4043
+      }
+    },
+    {
+      "pasta": "digit_4",
+      "procedencia": {
+        "desconhecida": 10671
+      }
+    },
+    {
+      "pasta": "digit_5",
+      "procedencia": {
+        "desconhecida": 10388
+      }
+    },
+    {
+      "pasta": "digit_6",
+      "procedencia": {
+        "desconhecida": 8883
+      }
+    },
+    {
+      "pasta": "digit_7",
+      "procedencia": {
+        "desconhecida": 6361
+      }
+    },
+    {
+      "pasta": "digit_8",
+      "procedencia": {
+        "desconhecida": 6409
+      }
+    },
+    {
+      "pasta": "digit_9",
+      "procedencia": {
+        "desconhecida": 10756
+      }
+    },
+    {
+      "pasta": "ligature_+-",
+      "procedencia": {
+        "desconhecida": 14
+      }
+    },
+    {
+      "pasta": "ligature_-+",
+      "procedencia": {
+        "desconhecida": 19
+      }
+    },
+    {
+      "pasta": "ligature_-g",
+      "procedencia": {
+        "desconhecida": 28
+      }
+    },
+    {
+      "pasta": "ligature_a2",
+      "procedencia": {
+        "desconhecida": 57
+      }
+    },
+    {
+      "pasta": "ligature_a3",
+      "procedencia": {
+        "desconhecida": 245
+      }
+    },
+    {
+      "pasta": "ligature_a6",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_a8",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_ac",
+      "procedencia": {
+        "desconhecida": 21
+      }
+    },
+    {
+      "pasta": "ligature_agr",
+      "procedencia": {
+        "desconhecida": 11
+      }
+    },
+    {
+      "pasta": "ligature_ai",
+      "procedencia": {
+        "desconhecida": 4
+      }
+    },
+    {
+      "pasta": "ligature_ak",
+      "procedencia": {
+        "desconhecida": 23
+      }
+    },
+    {
+      "pasta": "ligature_al",
+      "procedencia": {
+        "desconhecida": 5
+      }
+    },
+    {
+      "pasta": "ligature_am",
+      "procedencia": {
+        "desconhecida": 277
+      }
+    },
+    {
+      "pasta": "ligature_an",
+      "procedencia": {
+        "desconhecida": 338
+      }
+    },
+    {
+      "pasta": "ligature_ar",
+      "procedencia": {
+        "desconhecida": 10
+      }
+    },
+    {
+      "pasta": "ligature_as",
+      "procedencia": {
+        "desconhecida": 48
+      }
+    },
+    {
+      "pasta": "ligature_aw",
+      "procedencia": {
+        "desconhecida": 20
+      }
+    },
+    {
+      "pasta": "ligature_ax",
+      "procedencia": {
+        "desconhecida": 172
+      }
+    },
+    {
+      "pasta": "ligature_b3",
+      "procedencia": {
+        "desconhecida": 7
+      }
+    },
+    {
+      "pasta": "ligature_b4",
+      "procedencia": {
+        "desconhecida": 99
+      }
+    },
+    {
+      "pasta": "ligature_b5",
+      "procedencia": {
+        "desconhecida": 11
+      }
+    },
+    {
+      "pasta": "ligature_b6",
+      "procedencia": {
+        "desconhecida": 39
+      }
+    },
+    {
+      "pasta": "ligature_ba",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_be",
+      "procedencia": {
+        "desconhecida": 70
+      }
+    },
+    {
+      "pasta": "ligature_Bl",
+      "procedencia": {
+        "desconhecida": 7
+      }
+    },
+    {
+      "pasta": "ligature_bo",
+      "procedencia": {
+        "desconhecida": 13
+      }
+    },
+    {
+      "pasta": "ligature_c2",
+      "procedencia": {
+        "desconhecida": 15
+      }
+    },
+    {
+      "pasta": "ligature_c3",
+      "procedencia": {
+        "desconhecida": 22
+      }
+    },
+    {
+      "pasta": "ligature_c4",
+      "procedencia": {
+        "desconhecida": 67
+      }
+    },
+    {
+      "pasta": "ligature_c5",
+      "procedencia": {
+        "desconhecida": 37
+      }
+    },
+    {
+      "pasta": "ligature_c6",
+      "procedencia": {
+        "desconhecida": 102
+      }
+    },
+    {
+      "pasta": "ligature_c8",
+      "procedencia": {
+        "desconhecida": 12
+      }
+    },
+    {
+      "pasta": "ligature_ck",
+      "procedencia": {
+        "desconhecida": 42
+      }
+    },
+    {
+      "pasta": "ligature_co",
+      "procedencia": {
+        "desconhecida": 50
+      }
+    },
+    {
+      "pasta": "ligature_ct",
+      "procedencia": {
+        "desconhecida": 57
+      }
+    },
+    {
+      "pasta": "ligature_cx",
+      "procedencia": {
+        "desconhecida": 76
+      }
+    },
+    {
+      "pasta": "ligature_d2",
+      "procedencia": {
+        "desconhecida": 177
+      }
+    },
+    {
+      "pasta": "ligature_d3",
+      "procedencia": {
+        "desconhecida": 107
+      }
+    },
+    {
+      "pasta": "ligature_d4",
+      "procedencia": {
+        "desconhecida": 11
+      }
+    },
+    {
+      "pasta": "ligature_d5",
+      "procedencia": {
+        "desconhecida": 12
+      }
+    },
+    {
+      "pasta": "ligature_d6",
+      "procedencia": {
+        "desconhecida": 14
+      }
+    },
+    {
+      "pasta": "ligature_d8",
+      "procedencia": {
+        "desconhecida": 24
+      }
+    },
+    {
+      "pasta": "ligature_da",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "ligature_do",
+      "procedencia": {
+        "desconhecida": 14
+      }
+    },
+    {
+      "pasta": "ligature_dx",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_dz",
+      "procedencia": {
+        "desconhecida": 35
+      }
+    },
+    {
+      "pasta": "ligature_e3",
+      "procedencia": {
+        "desconhecida": 11
+      }
+    },
+    {
+      "pasta": "ligature_e4",
+      "procedencia": {
+        "desconhecida": 30
+      }
+    },
+    {
+      "pasta": "ligature_e6",
+      "procedencia": {
+        "desconhecida": 82
+      }
+    },
+    {
+      "pasta": "ligature_e8",
+      "procedencia": {
+        "desconhecida": 14
+      }
+    },
+    {
+      "pasta": "ligature_ea",
+      "procedencia": {
+        "desconhecida": 65
+      }
+    },
+    {
+      "pasta": "ligature_em",
+      "procedencia": {
+        "desconhecida": 81
+      }
+    },
+    {
+      "pasta": "ligature_en",
+      "procedencia": {
+        "desconhecida": 67
+      }
+    },
+    {
+      "pasta": "ligature_Ex",
+      "procedencia": {
+        "desconhecida": 367
+      }
+    },
+    {
+      "pasta": "ligature_ey",
+      "procedencia": {
+        "desconhecida": 10
+      }
+    },
+    {
+      "pasta": "ligature_f1",
+      "procedencia": {
+        "desconhecida": 1024
+      }
+    },
+    {
+      "pasta": "ligature_f2",
+      "procedencia": {
+        "desconhecida": 2242
+      }
+    },
+    {
+      "pasta": "ligature_f3",
+      "procedencia": {
+        "desconhecida": 2575
+      }
+    },
+    {
+      "pasta": "ligature_f5",
+      "procedencia": {
+        "desconhecida": 392
+      }
+    },
+    {
+      "pasta": "ligature_f6",
+      "procedencia": {
+        "desconhecida": 438
+      }
+    },
+    {
+      "pasta": "ligature_f7",
+      "procedencia": {
+        "desconhecida": 3782
+      }
+    },
+    {
+      "pasta": "ligature_f8",
+      "procedencia": {
+        "desconhecida": 2254
+      }
+    },
+    {
+      "pasta": "ligature_fb",
+      "procedencia": {
+        "desconhecida": 33
+      }
+    },
+    {
+      "pasta": "ligature_ff",
+      "procedencia": {
+        "desconhecida": 181
+      }
+    },
+    {
+      "pasta": "ligature_ffi",
+      "procedencia": {
+        "desconhecida": 67
+      }
+    },
+    {
+      "pasta": "ligature_ffl",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_fi",
+      "procedencia": {
+        "desconhecida": 439
+      }
+    },
+    {
+      "pasta": "ligature_fl",
+      "procedencia": {
+        "desconhecida": 78
+      }
+    },
+    {
+      "pasta": "ligature_fr",
+      "procedencia": {
+        "desconhecida": 43
+      }
+    },
+    {
+      "pasta": "ligature_ft",
+      "procedencia": {
+        "desconhecida": 103
+      }
+    },
+    {
+      "pasta": "ligature_fu",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_fx",
+      "procedencia": {
+        "desconhecida": 311
+      }
+    },
+    {
+      "pasta": "ligature_g3",
+      "procedencia": {
+        "desconhecida": 21
+      }
+    },
+    {
+      "pasta": "ligature_g4",
+      "procedencia": {
+        "desconhecida": 7
+      }
+    },
+    {
+      "pasta": "ligature_g5",
+      "procedencia": {
+        "desconhecida": 37
+      }
+    },
+    {
+      "pasta": "ligature_g6",
+      "procedencia": {
+        "desconhecida": 171
+      }
+    },
+    {
+      "pasta": "ligature_g8",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "ligature_gu",
+      "procedencia": {
+        "desconhecida": 19
+      }
+    },
+    {
+      "pasta": "ligature_h2",
+      "procedencia": {
+        "desconhecida": 51
+      }
+    },
+    {
+      "pasta": "ligature_h3",
+      "procedencia": {
+        "desconhecida": 16
+      }
+    },
+    {
+      "pasta": "ligature_h4",
+      "procedencia": {
+        "desconhecida": 15
+      }
+    },
+    {
+      "pasta": "ligature_h5",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_h6",
+      "procedencia": {
+        "desconhecida": 20
+      }
+    },
+    {
+      "pasta": "ligature_ha",
+      "procedencia": {
+        "desconhecida": 43
+      }
+    },
+    {
+      "pasta": "ligature_hex_00210021",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_hex_0021003f",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "ligature_hex_002e2657",
+      "procedencia": {
+        "desconhecida": 116
+      }
+    },
+    {
+      "pasta": "ligature_hex_003f0021",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "ligature_hex_003f003f",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "ligature_hex_00e70061",
+      "procedencia": {
+        "desconhecida": 37
+      }
+    },
+    {
+      "pasta": "ligature_hex_00e700e3",
+      "procedencia": {
+        "desconhecida": 59
+      }
+    },
+    {
+      "pasta": "ligature_hex_010d0009",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_hex_26540065",
+      "procedencia": {
+        "desconhecida": 4
+      }
+    },
+    {
+      "pasta": "ligature_hex_26550066",
+      "procedencia": {
+        "desconhecida": 68
+      }
+    },
+    {
+      "pasta": "ligature_hex_26550078",
+      "procedencia": {
+        "desconhecida": 22
+      }
+    },
+    {
+      "pasta": "ligature_hex_26570061",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_hex_26570078",
+      "procedencia": {
+        "desconhecida": 282
+      }
+    },
+    {
+      "pasta": "ligature_in",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_is",
+      "procedencia": {
+        "desconhecida": 4
+      }
+    },
+    {
+      "pasta": "ligature_it",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_Kh",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_ki",
+      "procedencia": {
+        "desconhecida": 31
+      }
+    },
+    {
+      "pasta": "ligature_ks",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_ky",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_la",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_ll",
+      "procedencia": {
+        "desconhecida": 16
+      }
+    },
+    {
+      "pasta": "ligature_ls",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_od",
+      "procedencia": {
+        "desconhecida": 13
+      }
+    },
+    {
+      "pasta": "ligature_of",
+      "procedencia": {
+        "desconhecida": 8
+      }
+    },
+    {
+      "pasta": "ligature_ok",
+      "procedencia": {
+        "desconhecida": 4
+      }
+    },
+    {
+      "pasta": "ligature_om",
+      "procedencia": {
+        "desconhecida": 74
+      }
+    },
+    {
+      "pasta": "ligature_on",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_oo",
+      "procedencia": {
+        "desconhecida": 4
+      }
+    },
+    {
+      "pasta": "ligature_or",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_ow",
+      "procedencia": {
+        "desconhecida": 12
+      }
+    },
+    {
+      "pasta": "ligature_pe",
+      "procedencia": {
+        "desconhecida": 38
+      }
+    },
+    {
+      "pasta": "ligature_ra",
+      "procedencia": {
+        "desconhecida": 41
+      }
+    },
+    {
+      "pasta": "ligature_ri",
+      "procedencia": {
+        "desconhecida": 122
+      }
+    },
+    {
+      "pasta": "ligature_rt",
+      "procedencia": {
+        "desconhecida": 311
+      }
+    },
+    {
+      "pasta": "ligature_ru",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_rv",
+      "procedencia": {
+        "desconhecida": 105
+      }
+    },
+    {
+      "pasta": "ligature_rw",
+      "procedencia": {
+        "desconhecida": 16
+      }
+    },
+    {
+      "pasta": "ligature_ry",
+      "procedencia": {
+        "desconhecida": 27
+      }
+    },
+    {
+      "pasta": "ligature_sp",
+      "procedencia": {
+        "desconhecida": 27
+      }
+    },
+    {
+      "pasta": "ligature_ta",
+      "procedencia": {
+        "desconhecida": 146
+      }
+    },
+    {
+      "pasta": "ligature_Th",
+      "procedencia": {
+        "desconhecida": 664
+      }
+    },
+    {
+      "pasta": "ligature_ti",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "ligature_tl",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "ligature_tr",
+      "procedencia": {
+        "desconhecida": 56
+      }
+    },
+    {
+      "pasta": "ligature_ts",
+      "procedencia": {
+        "desconhecida": 8
+      }
+    },
+    {
+      "pasta": "ligature_tt",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "ligature_ty",
+      "procedencia": {
+        "desconhecida": 245
+      }
+    },
+    {
+      "pasta": "ligature_um",
+      "procedencia": {
+        "desconhecida": 12
+      }
+    },
+    {
+      "pasta": "ligature_Wh",
+      "procedencia": {
+        "desconhecida": 2533
+      }
+    },
+    {
+      "pasta": "ligature_wn",
+      "procedencia": {
+        "desconhecida": 61
+      }
+    },
+    {
+      "pasta": "ligature_xf",
+      "procedencia": {
+        "desconhecida": 16
+      }
+    },
+    {
+      "pasta": "ligature_xf3",
+      "procedencia": {
+        "desconhecida": 47
+      }
+    },
+    {
+      "pasta": "ligature_xf6",
+      "procedencia": {
+        "desconhecida": 50
+      }
+    },
+    {
+      "pasta": "ligature_xf8",
+      "procedencia": {
+        "desconhecida": 15
+      }
+    },
+    {
+      "pasta": "lower_a",
+      "procedencia": {
+        "desconhecida": 63055
+      }
+    },
+    {
+      "pasta": "lower_b",
+      "procedencia": {
+        "desconhecida": 7675
+      }
+    },
+    {
+      "pasta": "lower_c",
+      "procedencia": {
+        "desconhecida": 12755
+      }
+    },
+    {
+      "pasta": "lower_d",
+      "procedencia": {
+        "desconhecida": 13198
+      }
+    },
+    {
+      "pasta": "lower_e",
+      "procedencia": {
+        "desconhecida": 33855
+      }
+    },
+    {
+      "pasta": "lower_f",
+      "procedencia": {
+        "desconhecida": 10023
+      }
+    },
+    {
+      "pasta": "lower_g",
+      "procedencia": {
+        "desconhecida": 8966
+      }
+    },
+    {
+      "pasta": "lower_h",
+      "procedencia": {
+        "desconhecida": 21659
+      }
+    },
+    {
+      "pasta": "lower_i",
+      "procedencia": {
+        "desconhecida": 18903
+      }
+    },
+    {
+      "pasta": "lower_j",
+      "procedencia": {
+        "desconhecida": 205
+      }
+    },
+    {
+      "pasta": "lower_k",
+      "procedencia": {
+        "desconhecida": 5049
+      }
+    },
+    {
+      "pasta": "lower_l",
+      "procedencia": {
+        "desconhecida": 2573
+      }
+    },
+    {
+      "pasta": "lower_m",
+      "procedencia": {
+        "desconhecida": 1816
+      }
+    },
+    {
+      "pasta": "lower_n",
+      "procedencia": {
+        "desconhecida": 6023
+      }
+    },
+    {
+      "pasta": "lower_o",
+      "procedencia": {
+        "desconhecida": 5703
+      }
+    },
+    {
+      "pasta": "lower_p",
+      "procedencia": {
+        "desconhecida": 1627
+      }
+    },
+    {
+      "pasta": "lower_q",
+      "procedencia": {
+        "desconhecida": 215
+      }
+    },
+    {
+      "pasta": "lower_r",
+      "procedencia": {
+        "desconhecida": 4136
+      }
+    },
+    {
+      "pasta": "lower_s",
+      "procedencia": {
+        "desconhecida": 4511
+      }
+    },
+    {
+      "pasta": "lower_t",
+      "procedencia": {
+        "desconhecida": 6150
+      }
+    },
+    {
+      "pasta": "lower_u",
+      "procedencia": {
+        "desconhecida": 2237
+      }
+    },
+    {
+      "pasta": "lower_v",
+      "procedencia": {
+        "desconhecida": 1025
+      }
+    },
+    {
+      "pasta": "lower_w",
+      "procedencia": {
+        "desconhecida": 1118
+      }
+    },
+    {
+      "pasta": "lower_x",
+      "procedencia": {
+        "desconhecida": 4283
+      }
+    },
+    {
+      "pasta": "lower_y",
+      "procedencia": {
+        "desconhecida": 953
+      }
+    },
+    {
+      "pasta": "lower_z",
+      "procedencia": {
+        "desconhecida": 77
+      }
+    },
+    {
+      "pasta": "sym_10005",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_10013",
+      "procedencia": {
+        "desconhecida": 2901
+      }
+    },
+    {
+      "pasta": "sym_10218",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_10227",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_10752",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "sym_10812",
+      "procedencia": {
+        "desconhecida": 13
+      }
+    },
+    {
+      "pasta": "sym_10865",
+      "procedencia": {
+        "desconhecida": 82
+      }
+    },
+    {
+      "pasta": "sym_10866",
+      "procedencia": {
+        "desconhecida": 100
+      }
+    },
+    {
+      "pasta": "sym_11012",
+      "procedencia": {
+        "desconhecida": 48
+      }
+    },
+    {
+      "pasta": "sym_11164",
+      "procedencia": {
+        "desconhecida": 293
+      }
+    },
+    {
+      "pasta": "sym_11166",
+      "procedencia": {
+        "desconhecida": 363
+      }
+    },
+    {
+      "pasta": "sym_11257",
+      "procedencia": {
+        "desconhecida": 46
+      }
+    },
+    {
+      "pasta": "sym_11258",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_11259",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_11260",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_11261",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_124",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "sym_126",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "sym_128504",
+      "procedencia": {
+        "desconhecida": 81
+      }
+    },
+    {
+      "pasta": "sym_169",
+      "procedencia": {
+        "desconhecida": 11
+      }
+    },
+    {
+      "pasta": "sym_177",
+      "procedencia": {
+        "desconhecida": 136
+      }
+    },
+    {
+      "pasta": "sym_189",
+      "procedencia": {
+        "desconhecida": 54
+      }
+    },
+    {
+      "pasta": "sym_193",
+      "procedencia": {
+        "desconhecida": 9
+      }
+    },
+    {
+      "pasta": "sym_195",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_196",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "sym_197",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "sym_200",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_201",
+      "procedencia": {
+        "desconhecida": 83
+      }
+    },
+    {
+      "pasta": "sym_203",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_205",
+      "procedencia": {
+        "desconhecida": 90
+      }
+    },
+    {
+      "pasta": "sym_209",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_211",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "sym_213",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_214",
+      "procedencia": {
+        "desconhecida": 5
+      }
+    },
+    {
+      "pasta": "sym_218",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_221",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_224",
+      "procedencia": {
+        "desconhecida": 183
+      }
+    },
+    {
+      "pasta": "sym_225",
+      "procedencia": {
+        "desconhecida": 1478
+      }
+    },
+    {
+      "pasta": "sym_226",
+      "procedencia": {
+        "desconhecida": 54
+      }
+    },
+    {
+      "pasta": "sym_227",
+      "procedencia": {
+        "desconhecida": 3797
+      }
+    },
+    {
+      "pasta": "sym_228",
+      "procedencia": {
+        "desconhecida": 15
+      }
+    },
+    {
+      "pasta": "sym_229",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_231",
+      "procedencia": {
+        "desconhecida": 93
+      }
+    },
+    {
+      "pasta": "sym_232",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "sym_233",
+      "procedencia": {
+        "desconhecida": 1751
+      }
+    },
+    {
+      "pasta": "sym_234",
+      "procedencia": {
+        "desconhecida": 347
+      }
+    },
+    {
+      "pasta": "sym_237",
+      "procedencia": {
+        "desconhecida": 32
+      }
+    },
+    {
+      "pasta": "sym_243",
+      "procedencia": {
+        "desconhecida": 371
+      }
+    },
+    {
+      "pasta": "sym_244",
+      "procedencia": {
+        "desconhecida": 11
+      }
+    },
+    {
+      "pasta": "sym_245",
+      "procedencia": {
+        "desconhecida": 1241
+      }
+    },
+    {
+      "pasta": "sym_246",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "sym_250",
+      "procedencia": {
+        "desconhecida": 128
+      }
+    },
+    {
+      "pasta": "sym_252",
+      "procedencia": {
+        "desconhecida": 144
+      }
+    },
+    {
+      "pasta": "sym_253",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_262",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "sym_263",
+      "procedencia": {
+        "desconhecida": 171
+      }
+    },
+    {
+      "pasta": "sym_268",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "sym_269",
+      "procedencia": {
+        "desconhecida": 59
+      }
+    },
+    {
+      "pasta": "sym_324",
+      "procedencia": {
+        "desconhecida": 16
+      }
+    },
+    {
+      "pasta": "sym_33",
+      "procedencia": {
+        "desconhecida": 13788
+      }
+    },
+    {
+      "pasta": "sym_34",
+      "procedencia": {
+        "desconhecida": 89
+      }
+    },
+    {
+      "pasta": "sym_35",
+      "procedencia": {
+        "desconhecida": 366
+      }
+    },
+    {
+      "pasta": "sym_352",
+      "procedencia": {
+        "desconhecida": 9
+      }
+    },
+    {
+      "pasta": "sym_353",
+      "procedencia": {
+        "desconhecida": 7
+      }
+    },
+    {
+      "pasta": "sym_37",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_38",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "sym_381",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_382",
+      "procedencia": {
+        "desconhecida": 2
+      }
+    },
+    {
+      "pasta": "sym_39",
+      "procedencia": {
+        "desconhecida": 95
+      }
+    },
+    {
+      "pasta": "sym_40",
+      "procedencia": {
+        "desconhecida": 5676
+      }
+    },
+    {
+      "pasta": "sym_41",
+      "procedencia": {
+        "desconhecida": 6385
+      }
+    },
+    {
+      "pasta": "sym_42",
+      "procedencia": {
+        "desconhecida": 3353
+      }
+    },
+    {
+      "pasta": "sym_43",
+      "procedencia": {
+        "desconhecida": 9696
+      }
+    },
+    {
+      "pasta": "sym_44",
+      "procedencia": {
+        "desconhecida": 521
+      }
+    },
+    {
+      "pasta": "sym_45",
+      "procedencia": {
+        "desconhecida": 536
+      }
+    },
+    {
+      "pasta": "sym_46",
+      "procedencia": {
+        "desconhecida": 20434
+      }
+    },
+    {
+      "pasta": "sym_47",
+      "procedencia": {
+        "desconhecida": 3325
+      }
+    },
+    {
+      "pasta": "sym_58",
+      "procedencia": {
+        "desconhecida": 1449
+      }
+    },
+    {
+      "pasta": "sym_59",
+      "procedencia": {
+        "desconhecida": 225
+      }
+    },
+    {
+      "pasta": "sym_61",
+      "procedencia": {
+        "desconhecida": 164
+      }
+    },
+    {
+      "pasta": "sym_63",
+      "procedencia": {
+        "desconhecida": 6245
+      }
+    },
+    {
+      "pasta": "sym_64",
+      "procedencia": {
+        "desconhecida": 9
+      }
+    },
+    {
+      "pasta": "sym_8211",
+      "procedencia": {
+        "desconhecida": 95
+      }
+    },
+    {
+      "pasta": "sym_8212",
+      "procedencia": {
+        "desconhecida": 1317
+      }
+    },
+    {
+      "pasta": "sym_8226",
+      "procedencia": {
+        "desconhecida": 90
+      }
+    },
+    {
+      "pasta": "sym_8593",
+      "procedencia": {
+        "desconhecida": 15
+      }
+    },
+    {
+      "pasta": "sym_8594",
+      "procedencia": {
+        "desconhecida": 129
+      }
+    },
+    {
+      "pasta": "sym_8644",
+      "procedencia": {
+        "desconhecida": 24
+      }
+    },
+    {
+      "pasta": "sym_8660",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_8663",
+      "procedencia": {
+        "desconhecida": 3
+      }
+    },
+    {
+      "pasta": "sym_8723",
+      "procedencia": {
+        "desconhecida": 94
+      }
+    },
+    {
+      "pasta": "sym_8734",
+      "procedencia": {
+        "desconhecida": 175
+      }
+    },
+    {
+      "pasta": "sym_8735",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_8862",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_8869",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_8979",
+      "procedencia": {
+        "desconhecida": 64
+      }
+    },
+    {
+      "pasta": "sym_91",
+      "procedencia": {
+        "desconhecida": 932
+      }
+    },
+    {
+      "pasta": "sym_916",
+      "procedencia": {
+        "desconhecida": 4
+      }
+    },
+    {
+      "pasta": "sym_93",
+      "procedencia": {
+        "desconhecida": 941
+      }
+    },
+    {
+      "pasta": "sym_95",
+      "procedencia": {
+        "desconhecida": 11
+      }
+    },
+    {
+      "pasta": "sym_9632",
+      "procedencia": {
+        "desconhecida": 7
+      }
+    },
+    {
+      "pasta": "sym_9633",
+      "procedencia": {
+        "desconhecida": 26
+      }
+    },
+    {
+      "pasta": "sym_9651",
+      "procedencia": {
+        "desconhecida": 717
+      }
+    },
+    {
+      "pasta": "sym_9660",
+      "procedencia": {
+        "desconhecida": 414
+      }
+    },
+    {
+      "pasta": "sym_9675",
+      "procedencia": {
+        "desconhecida": 1
+      }
+    },
+    {
+      "pasta": "sym_9733",
+      "procedencia": {
+        "desconhecida": 748
+      }
+    },
+    {
+      "pasta": "sym_9734",
+      "procedencia": {
+        "desconhecida": 38
+      }
+    },
+    {
+      "pasta": "sym_9812",
+      "procedencia": {
+        "desconhecida": 18954
+      }
+    },
+    {
+      "pasta": "sym_9813",
+      "procedencia": {
+        "desconhecida": 19270
+      }
+    },
+    {
+      "pasta": "sym_9814",
+      "procedencia": {
+        "desconhecida": 25190
+      }
+    },
+    {
+      "pasta": "sym_9815",
+      "procedencia": {
+        "desconhecida": 17979
+      }
+    },
+    {
+      "pasta": "sym_9816",
+      "procedencia": {
+        "desconhecida": 21336
+      }
+    },
+    {
+      "pasta": "sym_9817",
+      "procedencia": {
+        "desconhecida": 93
+      }
+    },
+    {
+      "pasta": "upper_A",
+      "procedencia": {
+        "desconhecida": 7070
+      }
+    },
+    {
+      "pasta": "upper_B",
+      "procedencia": {
+        "desconhecida": 7545
+      }
+    },
+    {
+      "pasta": "upper_C",
+      "procedencia": {
+        "desconhecida": 537
+      }
+    },
+    {
+      "pasta": "upper_D",
+      "procedencia": {
+        "desconhecida": 2120
+      }
+    },
+    {
+      "pasta": "upper_E",
+      "procedencia": {
+        "desconhecida": 1865
+      }
+    },
+    {
+      "pasta": "upper_F",
+      "procedencia": {
+        "desconhecida": 1412
+      }
+    },
+    {
+      "pasta": "upper_G",
+      "procedencia": {
+        "desconhecida": 1793
+      }
+    },
+    {
+      "pasta": "upper_H",
+      "procedencia": {
+        "desconhecida": 2303
+      }
+    },
+    {
+      "pasta": "upper_I",
+      "procedencia": {
+        "desconhecida": 786
+      }
+    },
+    {
+      "pasta": "upper_J",
+      "procedencia": {
+        "desconhecida": 318
+      }
+    },
+    {
+      "pasta": "upper_K",
+      "procedencia": {
+        "desconhecida": 405
+      }
+    },
+    {
+      "pasta": "upper_L",
+      "procedencia": {
+        "desconhecida": 1316
+      }
+    },
+    {
+      "pasta": "upper_M",
+      "procedencia": {
+        "desconhecida": 1722
+      }
+    },
+    {
+      "pasta": "upper_N",
+      "procedencia": {
+        "desconhecida": 1677
+      }
+    },
+    {
+      "pasta": "upper_O",
+      "procedencia": {
+        "desconhecida": 162
+      }
+    },
+    {
+      "pasta": "upper_P",
+      "procedencia": {
+        "desconhecida": 569
+      }
+    },
+    {
+      "pasta": "upper_Q",
+      "procedencia": {
+        "desconhecida": 119
+      }
+    },
+    {
+      "pasta": "upper_R",
+      "procedencia": {
+        "desconhecida": 1310
+      }
+    },
+    {
+      "pasta": "upper_S",
+      "procedencia": {
+        "desconhecida": 432
+      }
+    },
+    {
+      "pasta": "upper_T",
+      "procedencia": {
+        "desconhecida": 5881
+      }
+    },
+    {
+      "pasta": "upper_U",
+      "procedencia": {
+        "desconhecida": 115
+      }
+    },
+    {
+      "pasta": "upper_V",
+      "procedencia": {
+        "desconhecida": 91
+      }
+    },
+    {
+      "pasta": "upper_W",
+      "procedencia": {
+        "desconhecida": 1417
+      }
+    },
+    {
+      "pasta": "upper_X",
+      "procedencia": {
+        "desconhecida": 8
+      }
+    },
+    {
+      "pasta": "upper_Y",
+      "procedencia": {
+        "desconhecida": 1723
+      }
+    },
+    {
+      "pasta": "upper_Z",
+      "procedencia": {
+        "desconhecida": 2158
+      }
+    }
+  ]
+}

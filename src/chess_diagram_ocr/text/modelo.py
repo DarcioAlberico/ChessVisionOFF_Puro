@@ -91,6 +91,61 @@ def impressao_das_classes(idx_to_char: dict[int, str]) -> str:
 
 
 @dataclass(frozen=True)
+class Arquitetura:
+    """A forma da rede, como **dado** e não como código (S-204).
+
+    **Ela precisou virar dado no dia em que a grade de variantes começou.** Até aqui a forma era
+    a `SimpleCNN` do projeto de origem, cravada: 1→32→64→128, densa 2.048→256. Um braço de grade
+    que mude os canais ou a densa produz pesos que `load_state_dict` recusa -- que é o
+    comportamento certo --, e a única saída honesta é a que a S-204 já pedia: **a grade muda os
+    dois lados de uma vez ou não muda nenhum.** O metadado passa a dizer qual forma carregar.
+
+    Metadado sem este campo é o formato de antes da grade, e ele carrega como a forma padrão --
+    que é literalmente a que ele descreve.
+    """
+
+    canais: tuple[int, int, int] = (32, 64, 128)
+    densa: int = 256
+
+    @property
+    def versao(self) -> str:
+        """Identidade da forma, para o metadado e para a tabela da grade."""
+        return f"c{'-'.join(str(c) for c in self.canais)}d{self.densa}"
+
+    @property
+    def parametros(self) -> int:
+        """Contagem aproximada, para a tabela: é o número que a hipótese da S-204 questiona.
+
+        A densa domina: com (32, 64, 128) e 256, ela sozinha são 128×4×4×256 = 524.288 dos
+        620.300 parâmetros -- 85%. Para 12 classes de peça isso não pagava; para 314 de texto,
+        ninguém tinha medido.
+        """
+        a, b, c = self.canais
+        conv = (1 * a * 9 + a) + (a * b * 9 + b) + (b * c * 9 + c)
+        return conv + (c * 4 * 4 * self.densa + self.densa)
+
+    def como_dicionario(self) -> dict[str, Any]:
+        return {"canais": list(self.canais), "densa": self.densa}
+
+    @classmethod
+    def de_dicionario(cls, dados: Any) -> Arquitetura:
+        """O que o metadado trouxe, ou a forma padrão quando ele não traz nada."""
+        if not isinstance(dados, dict):
+            return cls()
+        canais = dados.get("canais")
+        if not (isinstance(canais, list) and len(canais) == 3 and all(isinstance(c, int) for c in canais)):
+            raise ModeloInvalido(f"arquitetura com canais inválidos: {canais!r}")
+        densa = dados.get("densa")
+        if not isinstance(densa, int) or densa <= 0:
+            raise ModeloInvalido(f"arquitetura com densa inválida: {densa!r}")
+        return cls(canais=(canais[0], canais[1], canais[2]), densa=densa)
+
+
+ARQUITETURA_PADRAO = Arquitetura()
+"""A do projeto de origem, e a do par que está publicado."""
+
+
+@dataclass(frozen=True)
 class MetadadoDeClasses:
     """O `models/char_meta.json` já validado. Construído só por `ler_metadado`."""
 
@@ -100,6 +155,7 @@ class MetadadoDeClasses:
     modelo_sha256: str
     classes_sha256: str
     treinado_em: str
+    arquitetura: Arquitetura = ARQUITETURA_PADRAO
 
     @property
     def alfabeto(self) -> tuple[str, ...]:
@@ -201,6 +257,7 @@ def ler_metadado(caminho: Path = CAMINHO_PADRAO_META) -> MetadadoDeClasses:
         modelo_sha256=modelo_sha,
         classes_sha256=classes_sha or recalculado,
         treinado_em=str(bruto.get("treinado_em", "") or ""),
+        arquitetura=Arquitetura.de_dicionario(bruto.get("arquitetura")),
     )
 
 
@@ -213,35 +270,42 @@ def pastas_do_metadado(meta: MetadadoDeClasses) -> dict[str, str]:
     return {char_to_folder(c): c for c in meta.idx_to_char.values()}
 
 
-def _construir_rede(num_classes: int) -> torch.nn.Module:
-    """A `SimpleCNN` do projeto de origem, com a mesma forma exata.
+def _construir_rede(num_classes: int, arquitetura: Arquitetura = ARQUITETURA_PADRAO) -> torch.nn.Module:
+    """A `SimpleCNN` do projeto de origem, com a forma que o metadado disser.
 
-    **A forma não é escolha nossa: ela é ditada pelos pesos.** 3 blocos conv (1->32->64->128)
-    com `MaxPool2d(2)` cada, achatamento de 128*4*4, densa 2048->256, `Dropout(0.5)`, densa
-    256->num_classes. Qualquer desvio faz `load_state_dict` recusar -- o que é o comportamento
-    certo, e é por isso que este porte é literal.
+    **A forma continua sendo ditada pelos pesos, e é por isso que ela virou dado.** Três blocos
+    conv com `MaxPool2d(2)` cada, achatamento de `canais[2]*4*4`, densa até `densa`,
+    `Dropout(0.5)`, densa até `num_classes`. Qualquer desvio entre o que se constrói e o que o
+    `.pt` tem faz `load_state_dict` recusar -- o que é o comportamento certo. O padrão é
+    exatamente a forma do porte literal, e é a do par publicado.
+
+    **Os nomes das camadas não mudam com a forma**, e isso não é detalhe: um `.pt` do projeto de
+    origem tem de continuar carregando aqui, e ele traz `conv1`, `fc1` e companhia.
     """
     import torch.nn as nn
     import torch.nn.functional as F
 
+    a, b, c = arquitetura.canais
+    achatado = c * 4 * 4
+
     class SimpleCNN(nn.Module):
         def __init__(self, num_classes: int) -> None:
             super().__init__()
-            self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+            self.conv1 = nn.Conv2d(1, a, kernel_size=3, padding=1)
             self.pool1 = nn.MaxPool2d(2, 2)
-            self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+            self.conv2 = nn.Conv2d(a, b, kernel_size=3, padding=1)
             self.pool2 = nn.MaxPool2d(2, 2)
-            self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+            self.conv3 = nn.Conv2d(b, c, kernel_size=3, padding=1)
             self.pool3 = nn.MaxPool2d(2, 2)
-            self.fc1 = nn.Linear(128 * 4 * 4, 256)
+            self.fc1 = nn.Linear(achatado, arquitetura.densa)
             self.dropout = nn.Dropout(0.5)
-            self.fc2 = nn.Linear(256, num_classes)
+            self.fc2 = nn.Linear(arquitetura.densa, num_classes)
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             x = self.pool1(F.relu(self.conv1(x)))
             x = self.pool2(F.relu(self.conv2(x)))
             x = self.pool3(F.relu(self.conv3(x)))
-            x = x.view(-1, 128 * 4 * 4)
+            x = x.view(-1, achatado)
             x = F.relu(self.fc1(x))
             x = self.dropout(x)
             return self.fc2(x)
@@ -394,7 +458,7 @@ def carregar_classificador(
 
     import torch
 
-    rede = _construir_rede(metadado.num_classes)
+    rede = _construir_rede(metadado.num_classes, metadado.arquitetura)
     try:
         rede.load_state_dict(torch.load(pesos, map_location=device))
     except (RuntimeError, KeyError) as exc:
@@ -418,18 +482,40 @@ def carregar_classificador(
     return classificador
 
 
+def dispositivo_em_uso() -> str | None:
+    """O dispositivo do classificador de caracteres carregado nesta sessão, ou `None`.
+
+    **Pergunta ao cache, e não carrega nada.** É o que o rodapé precisa saber (S-182), e ele não
+    pode ser o motivo de 2,6 MB de pesos subirem para a memória: quem decide carregar é quem vai
+    classificar.
+
+    `None` quer dizer "não há classificador carregado", e as duas razões normais para isso são
+    os pesos não estarem no disco e o motor de leitura escolhido ser outro (S-42). Distinguir as
+    duas é da configuração, não daqui.
+
+    Devolve o **último** carregado quando há mais de um: o cache guarda uma entrada por par de
+    arquivos, e um retreino no meio da sessão põe a nova ao lado da velha.
+    """
+    for classificador in reversed(_CACHE.values()):
+        return classificador.device
+    return None
+
+
 def limpar_cache() -> None:
     """Esvazia o cache de classificadores. Para os testes, e para quem retreina em sessão."""
     _CACHE.clear()
 
 
 __all__ = [
+    "ARQUITETURA_PADRAO",
     "CAMINHO_PADRAO_META",
     "LADO",
+    "Arquitetura",
     "ClassificadorDeGlifo",
     "MetadadoDeClasses",
     "ModeloInvalido",
     "carregar_classificador",
+    "dispositivo_em_uso",
     "impressao_das_classes",
     "impressao_do_arquivo",
     "ler_metadado",

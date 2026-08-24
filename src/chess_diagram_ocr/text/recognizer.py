@@ -33,6 +33,7 @@ import numpy as np
 from ..ocr import TextBox
 from .binarizacao import binarize
 from .boxes import Caixa, caixas_de_caractere, escala_de_texto, excluir_diagramas, unir_pingos
+from .duas_linhas import descartar_fragmentos
 from .linhas import envolve, ordem_em_faixa, quebrar_em_linhas, texto_da_linha
 from .modelo import ClassificadorDeGlifo, ModeloInvalido, carregar_classificador
 
@@ -87,6 +88,16 @@ class GlyphRecognizer:
         if diagramas:
             caixas = excluir_diagramas(caixas, diagramas, escala=escala)
         grupos = quebrar_em_linhas(ordem_em_faixa(caixas))
+        # **A linha que é só pedaço de descendente da vizinha some aqui** (S-198). A faixa que a
+        # `ocr_caption` manda ler é dilatada, então ela encosta na linha de cima e o que entra
+        # são caixas baixas demais para serem caractere -- e elas viram texto, com confiança de
+        # leitura normal. Medido em 2026-08-23 sobre 155 faixas de 11 livros de camada
+        # editorada (`docs/metrics/texto_duas_linhas.json`): **CER 0,2725 -> 0,2248**.
+        #
+        # O outro passo da S-198, `separar`, **não entra**: na mesma medição ele custou 0,0089
+        # de CER, disparando em 15 das 155 faixas. O item previa +0,3 de F1 no acervo de lá; aqui
+        # ele não paga, e o número está no relatório em vez de na intenção.
+        grupos = descartar_fragmentos(grupos, escala=escala)
         if not grupos:
             return []
 

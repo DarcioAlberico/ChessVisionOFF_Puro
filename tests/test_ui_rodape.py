@@ -118,6 +118,49 @@ class DocumentoTests(unittest.TestCase):
         self.assertEqual(rodape.descricao_do_documento("Livro", 500, 402), "Livro")
 
 
+class DispositivosTests(unittest.TestCase):
+    """A zona 4: dois modelos torch no mesmo processo, e qual dispositivo cada um usa (S-182).
+
+    O defeito que ela evita é o da S-30 repetido em dobro: uma máquina com placa mas com o torch
+    `+cpu` roda na CPU em silêncio, e agora há **dois** modelos que podem cair nisso de forma
+    independente.
+    """
+
+    def test_a_zona_diz_os_dois_modelos_e_nao_so_o_de_caracteres(self) -> None:
+        curto, _ = rodape.descricao_dos_dispositivos("cuda:0 (NVIDIA GeForce RTX 4060)", "cpu (torch 2.4.1)")
+        self.assertIn("peças cuda:0", curto)
+        self.assertIn("texto cpu", curto)
+
+    def test_o_nome_da_placa_sai_da_zona_e_fica_na_dica(self) -> None:
+        """A zona disputa largura com a mensagem; a placa tem 24 caracteres e não decide nada."""
+        curto, dica = rodape.descricao_dos_dispositivos("cuda:0 (NVIDIA GeForce RTX 4060)", "cuda:0 (NVIDIA GeForce RTX 4060)")
+        self.assertNotIn("NVIDIA", curto)
+        self.assertIn("NVIDIA GeForce RTX 4060", dica)
+
+    def test_o_modelo_de_pecas_nao_carregado_nao_e_dito_como_cpu(self) -> None:
+        """Supor o dispositivo antes da primeira leitura é o erro que a S-30 nomeia."""
+        curto, _ = rodape.descricao_dos_dispositivos(None, "cpu (torch 2.4.1)")
+        self.assertIn(rodape.SEM_MODELO, curto)
+        self.assertNotIn("peças cpu", curto)
+
+    def test_sem_pesos_a_dica_diz_onde_apontar_o_arquivo(self) -> None:
+        """O clone limpo cai aqui por construção: o metadado é versionado e o `.pt` não."""
+        curto, dica = rodape.descricao_dos_dispositivos(
+            "cpu (torch 2.4.1)", None, motivo="Aponte o arquivo em data/settings.json."
+        )
+        self.assertIn(f"texto {rodape.SEM_PESOS}", curto)
+        self.assertIn("data/settings.json", dica)
+
+    def test_com_os_pesos_no_disco_e_outro_motor_a_zona_nao_manda_procurar_arquivo(self) -> None:
+        """`rapidocr` escolhido não é `.pt` ausente, e a mesma palavra para os dois enganaria."""
+        curto, dica = rodape.descricao_dos_dispositivos(
+            "cpu (torch 2.4.1)", None, ausencia=rodape.DESLIGADO
+        )
+        self.assertIn(f"texto {rodape.DESLIGADO}", curto)
+        self.assertNotIn(rodape.SEM_PESOS, curto)
+        self.assertNotIn("data/settings.json", dica)
+
+
 class OcupacaoTests(unittest.TestCase):
     """A projeção de `BusyRegistry.running()` para o que a barra mostra."""
 
@@ -229,6 +272,32 @@ class WidgetTests(unittest.TestCase):
         self.janela.update()
 
         self.assertEqual(self.painel.winfo_reqheight(), vazio)
+
+    def test_a_zona_de_dispositivos_nao_muda_a_altura_do_rodape(self) -> None:
+        """A quarta zona entrou depois da S-163, e a regra dela é a mesma: nada aparece nem some."""
+        vazio = self.painel.winfo_reqheight()
+
+        self.painel.definir_dispositivos(
+            rodape.Dispositivos(pecas="cuda:0 (NVIDIA GeForce RTX 4060)", caracteres="cpu (torch 2.4.1)")
+        )
+        self.janela.update()
+
+        self.assertEqual(self.painel.winfo_reqheight(), vazio)
+        self.assertIn("texto cpu", self.painel.dispositivos())
+
+    def test_o_rodape_pergunta_os_dispositivos_no_mesmo_tique_da_ocupacao(self) -> None:
+        """Um segundo temporizador seria outra coisa para esquecer de cancelar (S-112)."""
+        perguntas = []
+
+        def responder() -> rodape.Dispositivos:
+            perguntas.append(1)
+            return rodape.Dispositivos(pecas="cpu (torch 2.4.1)", caracteres="cpu (torch 2.4.1)")
+
+        self.painel.acompanhar(lambda: [], dispositivos=responder, intervalo_ms=10_000)
+        self.janela.update()
+
+        self.assertEqual(len(perguntas), 1)
+        self.assertEqual(self.painel.dispositivos(), "peças cpu · texto cpu")
 
     def test_o_erro_se_distingue_da_informacao_sem_ler_o_texto(self) -> None:
         self.painel.mostrar("Exemplo salvo.")

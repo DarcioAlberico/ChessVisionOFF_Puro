@@ -1,0 +1,97 @@
+{
+  "quando": "2026-08-24",
+  "dpi": 220.0,
+  "raio_pt": 2.0,
+  "faixas": 155,
+  "livros_medidos": 11,
+  "livros_com_camada_de_ocr": {
+    "1937 Kemeri.pdf": "imagem de página inteira com texto por cima",
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf": "imagem de página inteira com texto por cima",
+    "AAGAARD - Practical Chess Defence.pdf": "paper capture",
+    "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf": "paper capture",
+    "Euwe, Kramer - Das Mittelspiel Band 7 (1958).pdf": "paper capture",
+    "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf": "imagem de página inteira com texto por cima",
+    "Karpov A - Chess Combinations -World Champions-1 (2011).pdf": "paper capture",
+    "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf": "imagem de página inteira com texto por cima",
+    "Koblenz - El dominio del arte de la combinacion (1978).pdf": "paper capture",
+    "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf": "paper capture",
+    "Mieses - Blind Schaken (1938).pdf": "imagem de página inteira com texto por cima",
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": "fonte invisível (Tesseract e afins)",
+    "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf": "imagem de página inteira com texto por cima",
+    "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf": "paper capture",
+    "Schiller - The Big Book of Combinations (1994).pdf": "paper capture",
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": "paper capture",
+    "Vishy_Anand_Great_Chess_Combinations.pdf": "paper capture",
+    "📚Burgess G. The Gambit Book of Instructive.pdf": "paper capture",
+    "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf": "fontes Fd######## (Paper Capture)",
+    "📚Болеславский_И_Избранные_партии.pdf": "abbyy"
+  },
+  "livros_sem_camada_de_texto": [
+    "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+    "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+    "GALLAGHER - Winning With the King's Gambit.pdf",
+    "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
+    "Levenfis - Cartea sahistului inceparator (1962).pdf",
+    "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
+    "Simple Chess - Stean, M_.pdf",
+    "Stefaniu - Problematica Deschideriliol in sah (1992).pdf",
+    "📚Aagaard J. Excelling at chess calculation.pdf",
+    "📚Silman J. The Complete Book of Chess Strategy.pdf"
+  ],
+  "referencia": "camada de texto editorada (nao-OCR). A referencia da S-183 -- as 123 faixas transcritas a mao -- ainda nao existe: elas estao semeadas com conferido=false.",
+  "cer": {
+    "nunca": 0.2247937555840515,
+    "auto": 0.23999521904818436,
+    "sempre": 0.5033565383600516
+  },
+  "ganho_do_auto": -0.015201463464132842,
+  "custo_do_sempre": 0.27856278277600005,
+  "cortes": {
+    "nunca": 0,
+    "auto": 48,
+    "sempre": 617
+  },
+  "faixas_com_corte": {
+    "nunca": 0,
+    "auto": 33,
+    "sempre": 127
+  },
+  "limiares": {
+    "largura_suspeita": 1.35,
+    "ganho_minimo": 0.05,
+    "padrao": "nunca"
+  },
+  "varredura_do_limiar": [
+    {
+      "largura_suspeita": 1.35,
+      "cer": 0.23999521904818436,
+      "cortes": 48
+    },
+    {
+      "largura_suspeita": 1.6,
+      "cer": 0.23920488017242797,
+      "cortes": 31
+    },
+    {
+      "largura_suspeita": 1.8,
+      "cer": 0.23891504598640564,
+      "cortes": 28
+    },
+    {
+      "largura_suspeita": 2.0,
+      "cer": 0.23753255750714303,
+      "cortes": 25
+    },
+    {
+      "largura_suspeita": 2.5,
+      "cer": 0.23642317113799433,
+      "cortes": 20
+    }
+  ],
+  "avisos": [],
+  "modelo": {
+    "classes": 314,
+    "temperatura": 1.5212009510304685,
+    "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162"
+  }
+}

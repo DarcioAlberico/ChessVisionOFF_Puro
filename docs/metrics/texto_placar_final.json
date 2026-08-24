@@ -1,0 +1,55 @@
+{
+  "quando": "2026-08-24",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "temperatura": 1.5212009510304685,
+  "regua_do_recorte": {
+    "relatorio": "texto_treino_20260823_s202quase.json",
+    "macro": 0.9678500885254406,
+    "acuracia": 0.9910173081136348,
+    "n": 13693,
+    "split": "grupo de copia exata (SHA-256 do PNG); NAO por livro -- a base nao registra livro"
+  },
+  "regua_da_pagina": {
+    "cer": 0.34449532727661253,
+    "precisao": 0.806733547359359,
+    "recall": 0.7297985337782413,
+    "f1": 0.7663399511667668,
+    "n": 22,
+    "livros": 11,
+    "referencia": "camada de texto editorada (nao-OCR)",
+    "livros_com_camada_de_ocr": {
+      "1937 Kemeri.pdf": "imagem de página inteira com texto por cima",
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": "imagem de página inteira com texto por cima",
+      "AAGAARD - Practical Chess Defence.pdf": "paper capture",
+      "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf": "paper capture",
+      "Euwe, Kramer - Das Mittelspiel Band 7 (1958).pdf": "paper capture",
+      "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf": "imagem de página inteira com texto por cima",
+      "Karpov A - Chess Combinations -World Champions-1 (2011).pdf": "paper capture",
+      "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf": "imagem de página inteira com texto por cima",
+      "Koblenz - El dominio del arte de la combinacion (1978).pdf": "paper capture",
+      "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf": "paper capture",
+      "Mieses - Blind Schaken (1938).pdf": "imagem de página inteira com texto por cima",
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": "fonte invisível (Tesseract e afins)",
+      "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf": "imagem de página inteira com texto por cima",
+      "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf": "paper capture",
+      "Schiller - The Big Book of Combinations (1994).pdf": "paper capture",
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": "paper capture",
+      "Vishy_Anand_Great_Chess_Combinations.pdf": "paper capture",
+      "📚Burgess G. The Gambit Book of Instructive.pdf": "paper capture",
+      "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf": "fontes Fd######## (Paper Capture)",
+      "📚Болеславский_И_Избранные_партии.pdf": "abbyy"
+    },
+    "avisos": []
+  },
+  "livro_novo": {
+    "macro": null,
+    "cer": null,
+    "n": 0,
+    "por_que_nao_existe": "esta base nao registra livro de origem (S-203), entao nenhum split deixa um livro inteiro de fora e nenhum numero desta fase mede generalizacao de fonte"
+  },
+  "distancia": {
+    "acuracia_do_recorte": 0.9910173081136348,
+    "acerto_na_pagina": 0.6555046727233875,
+    "o_que_ela_e": "trabalho de segmentacao pendente: o classificador acerta o recorte que lhe dao, e o que a pagina perde esta em achar o recorte. Os itens que atacam isso sao a S-186 (glifo colado), a S-188 (leitura por linha) e a S-197 (texto girado)."
+  }
+}

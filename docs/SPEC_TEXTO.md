@@ -1,4 +1,5 @@
 # Especificação do reconhecimento de texto — Fases 25 a 31 (S-178 a S-217)
+| S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 
 Base: [ROADMAP_TEXTO.md](ROADMAP_TEXTO.md), que traz o levantamento dos dois projetos, a decisão
 de portar e o sequenciamento. As fases de modelo, detecção e interface não são tocadas por esta
@@ -211,7 +212,7 @@ existe para cortar legenda adivinhada, e a média o burlaria.
 
 ---
 
-## S-182 · Onde moram os pesos, e o que o programa faz quando eles faltam ◐ parcial (2026-08-22)
+## S-182 · Onde moram os pesos, e o que o programa faz quando eles faltam ✅ implementada (2026-08-23)
 
 > **Este item mudou de forma na implementação, e o motivo fica registrado (2026-08-22).**
 >
@@ -259,12 +260,10 @@ usar, então ela liga o motor junto — a mesma leitura que `CVOFF_REMOTE_FEN_UR
   limpo;
 - ✅ sem os pesos, `build_recognizer` devolve `None` e loga o que falta e onde apontar;
 - ✅ a variável de ambiente vence o arquivo e liga o motor junto;
-- ⬜ a barra de status diz qual dispositivo o classificador de caracteres está usando, ao lado do
+- ✅ a barra de status diz qual dispositivo o classificador de caracteres está usando, ao lado do
   que já diz para o de peças;
-- ⬜ `packaging/cvoff.spec` decide explicitamente se o modelo de caracteres entra no bundle, e o
+- ✅ `packaging/cvoff.spec` decide explicitamente se o modelo de caracteres entra no bundle, e o
   `--selftest` cobre a decisão.
-
-Os dois últimos são o que falta para este item fechar, e é por isso que ele está `◐`.
 
 > **A sonda ganhou uma terceira entrada em 2026-08-23, e o motivo é um defeito que só aparece
 > quando o item começa a dar certo.** `arquivo:models/char_classifier.pt` era **falso em todo
@@ -273,6 +272,30 @@ Os dois últimos são o que falta para este item fechar, e é por isso que ele e
 > arquivo apareceu e o disco passou a dizer `implementada` para um item com dois critérios
 > abertos. A sonda nova aponta para um deles, e por isso responde `não` até o item fechar de
 > verdade, com ou sem `.pt` no disco.
+
+> **Os dois últimos fecharam em 2026-08-23, na Etapa 1 do [`PLANO_OCR_TEXTO.md`](PLANO_OCR_TEXTO.md).**
+>
+> **A barra de status.** A zona nova mostra os **dois** modelos -- `peças cuda:0 · texto cpu` --,
+> e não só o de caracteres, porque o critério dizia "ao lado do que já diz para o de peças" e a
+> janela **não dizia nada sobre nenhum dos dois**: `OcrService.device_label` existia desde a S-30
+> e só o `examples/streamlit_demo.py` o exibia. O nome da placa fica na dica, que é onde ele cabe
+> sem custar largura à mensagem.
+>
+> **Três estados, e o terceiro é o que faltava.** "sem pesos" (o `.pt` não está no disco, e a
+> dica diz onde apontar) é diferente de "desligado" (os pesos estão lá e o motor escolhido é
+> outro, ou o OCR de legenda está desligado). Dizer os dois com a mesma palavra mandaria metade
+> das pessoas procurar um arquivo que já está na pasta.
+>
+> **O empacotamento.** O `packaging/cvoff.spec` já deixava `models/` de fora, e agora nomeia o
+> classificador de caracteres na lista, com o motivo próprio dele: um retreino grava um `.pt`
+> novo, e um modelo embutido no `.exe` seria o único que o usuário não consegue trocar. O
+> `--selftest` diz em qual dos dois estados a instalação está e **não muda o código de saída** --
+> ausente não é falha.
+>
+> **Onde o código foi parar, e por quê.** A cola mora em `ui/dispositivos.py`, e não na janela: o
+> rodapé recebe descrições prontas (é o que o faz afirmável sem abrir janela) e `app_tkinter.py`
+> tem catraca de tamanho desde a S-31. Ela subiu de 1.776 para 1.788 linhas, com o motivo
+> registrado em `tests/test_packaging.py`.
 
 **Testes.** `test_sem_os_pesos_o_construtor_devolve_none_e_diz_o_que_falta`;
 `test_o_motivo_da_ausencia_esta_em_pt_br_nas_preferencias`;
@@ -375,6 +398,20 @@ o dado.
 `test_a_faixa_semeada_e_nunca_editada_e_contada_como_circular`;
 `test_semear_recusa_sobrescrever_conferencia_humana`;
 `test_o_n_de_cada_celula_esta_declarado`; `test_o_livro_tem_linha_propria`.
+
+> **O que trava este item é trabalho humano, e em 2026-08-24 ele ficou barato (Etapa 7 do
+> [`PLANO_OCR_TEXTO.md`](PLANO_OCR_TEXTO.md)).** As 123 faixas continuam com `conferido: false`, e
+> a medição as recusa -- que é o desenho certo, e não uma pendência de código. O que mudou é o
+> custo de transcrevê-las: `cvoff-texto-placar --exportar <pasta>` grava um PNG por faixa, **a
+> mesma imagem que os motores leem** (a banda dilatada em `radius_pt`, com o interior do diagrama
+> apagado). Transcrever deixou de exigir abrir 27 PDFs nas páginas certas 123 vezes.
+>
+> **Transcrever de outra imagem produziria uma referência que não corresponde ao que se mede**, e
+> é por isso que o export monta exatamente a banda da `CaptionReader.lines_around`.
+>
+> A regra que sustenta tudo continua: **a referência vem da página, e nunca de um motor.** Se ela
+> vier de um, a tabela mede o motor contra ele mesmo -- e as outras três medições desta fase
+> (S-186, S-188, S-198) tiveram de usar a camada editorada justamente por isso.
 
 **Sonda.** `simbolo:chess_diagram_ocr.cli.texto_placar:main`,
 `metrica:texto_faixa`.
@@ -603,7 +640,7 @@ margem eles entram no texto como linhas de um caractere — medido lá, oito lin
 
 ---
 
-## S-186 · O colado na horizontal, e o árbitro que confirma o corte ⬜ planejada
+## S-186 · O colado na horizontal, e o árbitro que confirma o corte ✅ implementada (2026-08-24)
 
 **Problema.** Dois caracteres que `findContours` devolve num contorno só. Medido lá: 231
 caracteres colados na horizontal em 10 páginas rotuladas.
@@ -623,14 +660,48 @@ O modo é `auto` / `sempre` / `nunca`, e o padrão sai da medição desta entreg
 
 **Critério de aceite.**
 
-- a tabela do modo (`auto`, `sempre`, `nunca`) sobre o conjunto de referência da S-183, com F1 e
-  contagem de cortes bons e ruins;
-- o padrão escolhido tem a tabela ao lado dele no documento;
-- um corte só acontece se o árbitro confirmar — teste com árbitro travado em "recusa" produz
-  zero cortes.
+- ✅ a tabela do modo (`auto`, `sempre`, `nunca`), com CER e contagem de cortes. **A referência não
+  é a da S-183** — as 123 faixas ainda não foram transcritas —, e sim a camada editorada da
+  S-198, que é independente do que se mede. Quando a humana existir, a tabela pode ser refeita;
+- ✅ o padrão escolhido tem a tabela ao lado dele, aqui e em `text/colados.py`;
+- ✅ um corte só acontece se o árbitro confirmar — `test_sem_arbitro_nenhum_corte_acontece`.
 
 **Testes.** `test_sem_arbitro_nenhum_corte_acontece`;
 `test_o_modo_nunca_deixa_o_colado_inteiro`; `test_a_ligadura_conhecida_nao_e_cortada`.
+
+### A tabela, medida em 2026-08-24 — e o separador fica desligado
+
+`cvoff-texto-colados`, **155 faixas de 11 livros**, as mesmas da S-198:
+
+    modo       CER      cortes   faixas com corte
+    nunca     0,2248        0        0            <- o padrão
+    auto      0,2400       48       33
+    sempre    0,5034      617      127
+
+**O árbitro não salva o separador: ele só reduz o estrago.** `sempre` custa 0,2786 de CER; `auto`
+custa 0,0152. Os dois são piores que não mexer — e a suspeita com que o item chegou estava certa.
+
+**E a conclusão não é do limiar.** O braço `auto` foi refeito em cinco larguras suspeitas, e em
+todas ele perde para `nunca`:
+
+    largura suspeita   CER do auto   cortes
+                1,35        0,2400       48
+                1,60        0,2392       31
+                1,80        0,2389       28
+                2,00        0,2375       25
+                2,50        0,2364       20
+
+A curva é monótona e aponta para o óbvio: **quanto menos ele corta, melhor fica** — o limite é
+não cortar. Sem a varredura, "o separador piora o CER" seria indistinguível de "o limiar estava
+mal escolhido", e este projeto já tem cicatriz de conclusão tirada de um parâmetro.
+
+**Por que ele não paga aqui, e a explicação estava na spec antes da medição:** as classes de
+ligadura já absorvem o problema. O modelo lê `fi`, `e4` e `xf6` inteiros; o que o separador acha
+para cortar são, em boa parte, glifos que ele já lia bem. É o mesmo movimento que lá derrubou a
+vantagem de +0,3 para +0,1 de F1, levado até o fim.
+
+**O padrão é `nunca`, e o código sai assim** (`colados.PADRAO`). O separador fica implementado,
+travado por teste e **não chamado** — exatamente como o `separar` da S-198, e pelo mesmo motivo.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.colados:separar`,
 `metrica:texto_colados`.
@@ -686,7 +757,7 @@ de mudança, porque ele já consome ordem e não coordenada.
 
 ---
 
-## S-188 · Ler a linha, e não o caractere ⬜ planejada
+## S-188 · Ler a linha, e não o caractere ✅ implementada (2026-08-24)
 
 **Problema.** Um classificador de glifo isolado descarta o contexto, e o contexto é o que resolve
 o que sobra. Medido lá, em 6.953 caracteres de 275 linhas rotuladas:
@@ -718,22 +789,43 @@ começar pelo RapidOCR, que já é extra declarado aqui, e medir — o número d
 
 **Critério de aceite.**
 
-- a tabela "por caractere / por linha" refeita **neste** acervo, com o leitor escolhido;
-- o box vazio não desloca o alinhamento — teste direto com uma leitura vazia no meio;
-- linha girada e linha em negativo caem no modo por caractere, e o teste prova que caem;
-- o ganho medido é registrado mesmo se for negativo, e nesse caso a leitura por linha fica
-  desligada com a tabela ao lado.
+- ✅ a tabela "por caractere / por linha" refeita **neste** acervo, com o RapidOCR;
+- ✅ o box vazio não desloca o alinhamento — `test_o_box_vazio_nao_desloca_o_alinhamento`;
+- ✅ linha girada cai no modo por caractere, e o teste prova que o leitor **nem é chamado**;
+- ✅ o ganho medido está registrado, e ele é de **0,0018** — a leitura por linha fica desligada,
+  com a tabela ao lado.
 
 **Testes.** `test_o_box_vazio_nao_desloca_o_alinhamento`;
 `test_a_linha_girada_cai_no_modo_por_caractere`;
 `test_a_string_maior_que_os_boxes_descarta_o_excedente`.
+
+### A tabela, medida em 2026-08-24 — e o ganho de 18,4 pontos virou 0,0018
+
+`cvoff-texto-linha`, **155 faixas de 11 livros**, com o RapidOCR como leitor de linha — a
+recomendação que o `ROADMAP_TEXTO` registra, medida.
+
+    CER por caractere   0,2248
+    CER por linha       0,2230     ganho de +0,0018
+
+**Lá foram 72,8% → 91,2%; aqui é ruído.** E o roadmap já avisava por quê: *"o número de 91,2% é do
+`english_g2` do EasyOCR, e não atravessa a troca de modelo sem medição"*. Atravessou como zero.
+
+**A leitura por linha fica desligada, que é o que o critério manda fazer com um ganho assim.** O
+módulo fica implementado e travado por teste — e não é desperdício, porque a metade dele que
+**paga** é a S-189, abaixo.
+
+> **O que quebrou primeiro, e vale como aviso de forma.** A âncora do alinhamento tinha um
+> caractere por box, e as **classes de ligadura devolvem dois** (`fi`, `xf6`, `♗a`): a âncora
+> ficava mais longa que a lista de caixas e o `zip` estrito estourava. A correção não é alargar a
+> âncora — é lembrar **de que box veio cada posição dela**, e regrupar depois. Uma ligadura ocupa
+> duas posições e continua sendo uma caixa.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.leitura_de_linha:em_bloco`,
 `metrica:texto_linha`.
 
 ---
 
-## S-189 · A confiança sai da concordância, e ela é calibrada ⬜ planejada
+## S-189 · A confiança sai da concordância, e ela é calibrada ✅ implementada (2026-08-24)
 
 **Problema.** O leitor de linha devolve **uma** confiança para a faixa inteira. Distribuí-la
 igual por todos os boxes seria inventar precisão que não foi medida — e este projeto tem o
@@ -750,14 +842,68 @@ Duas réguas não calibradas comparadas entre si não medem o que se pensa: lá,
 
 **Critério de aceite.**
 
-- a tabela de acerto por faixa de confiança, sobre o conjunto de referência: onde as duas
-  concordam o acerto é alto, e onde divergem é onde o erro se concentra;
-- a curva de calibração (confiança prevista × acerto observado) está em `docs/metrics/`;
-- um caso em que as duas divergem produz a confiança **menor**, travado por teste.
+- ✅ a tabela de acerto por faixa de concordância, e ela separa por **dois**: 98,6% onde as duas
+  leituras concordam contra 48,2% onde divergem;
+- ✅ a curva de calibração dessa confiança está em `docs/metrics/texto_calibracao_<data>.json`;
+- ✅ a divergência produz a confiança menor — `test_concordancia_vale_a_maior_e_divergencia_a_menor`.
 
 **Testes.** `test_concordancia_vale_a_maior_e_divergencia_a_menor`;
 `test_a_temperatura_e_aplicada_antes_de_comparar`;
 `test_a_curva_de_calibracao_e_gravada_com_o_n`.
+
+### A concordância paga, mesmo com o ganho da S-188 sendo zero
+
+Medido junto com a S-188, sobre os mesmos **6.816 caracteres** de 155 faixas:
+
+| as duas leituras | n | na referência | confiança média |
+|---|---:|---:|---:|
+| **concordam** | 4.935 | **0,9856** | 0,9672 |
+| **divergem** | 1.881 | **0,4822** | 0,8405 |
+
+**Onde as duas leituras discordam, metade está errada; onde concordam, 1,4% está.** A regra da
+S-189 separa o certo do errado por um fator de dois, e a confiança que ela produz acompanha:
+0,967 contra 0,840.
+
+**Isto é o que torna a S-188 valer a pena mesmo com ganho nulo.** A leitura por linha não melhora
+o texto neste acervo — mas a **discordância entre as duas leituras** é o melhor sinal de erro que
+este projeto tem, e é exatamente o que a fila de revisão da S-212 precisa para ordenar o trabalho
+humano. O leitor de linha entra como **segundo opinante**, não como leitor.
+
+> **A régua do acerto aqui é fraca, e ela está declarada.** Sem rótulo por box, o que dá para
+> medir é se o caractere lido **existe** na linha de referência — não se ele estava naquela
+> posição. A régua forte precisa da anotação que a S-212 vai produzir. A fraca já separa por dois,
+> e a forte só pode separar mais.
+
+### E a confiança que sai da concordância **não é calibrada** — a curva diz isso
+
+`docs/metrics/texto_calibracao_<data>.json`, 6.816 caracteres:
+
+    ECE ponderado   0,1490
+    ECE por faixa   0,3416
+
+    faixa        n      ele diz   ele acerta
+    0,33-0,40     56      0,363      0,982
+    0,73-0,80    193      0,761      0,549
+    0,87-0,93    534      0,900      0,607
+    0,93-1,00  5.314      0,991      0,881
+
+**Ela ordena bem e mede mal, e as duas coisas são verdade ao mesmo tempo.** Como *ranking* a regra
+funciona -- 98,6% contra 48,2% entre os dois grupos. Como *probabilidade*, não: onde ela diz 0,99
+acerta 0,88, e onde diz 0,36 acerta 0,98.
+
+**A causa está na spec deste item, escrita antes da medição:** *"a calibração de temperatura da
+S-179 é aplicada antes de qualquer comparação de confiança. Duas réguas não calibradas comparadas
+entre si não medem o que se pensa."* Metade da comparação está calibrada -- o glifo, pela S-205 --
+e a outra metade não: a confiança do RapidOCR nunca passou por calibração nenhuma. O `min` e o
+`max` entre uma escala calibrada e uma crua produzem uma escala crua.
+
+**Consequência prática, e ela é uma decisão:** a confiança da concordância serve para **ordenar** a
+fila da S-212, e **não** para cortar por limiar. Um corte em 0,9 aqui deixaria passar 12% de erro
+achando que deixa 1%.
+
+> **E a régua do acerto é a fraca**, como declarado acima: "existe na linha de referência" não é
+> "estava naquela posição". A curva refeita sobre anotação por box pode mudar de forma -- o que
+> ela não deve mudar é a conclusão de que duas escalas diferentes não se comparam sem calibrar.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.leitura_de_linha:confianca_por_concordancia`,
 `metrica:texto_calibracao`.
@@ -1007,9 +1153,10 @@ impresso. Ligar "grade ⇒ linha a linha" consertaria o `Karpov` (85 páginas de
 > **E a régua da S-194 aprovaria a mudança errada.** Medido nas 232 páginas de grade com
 > referência utilizável (`docs/metrics/texto_grade.json`, campo `tau`):
 >
->     coluna a coluna (o que a S-193 faz)     tau 0,1271
->     tudo lido como grade                    tau 0,0943   <- "melhora", e está errado
->     direção calibrada por livro             tau 0,0676
+>     coluna a coluna (o que a S-193 faz)      tau 0,1271
+>     tudo lido como grade                     tau 0,0943   <- "melhora", e está errado
+>     calibrado, só o que foi confirmado       tau 0,0676
+>     calibrado, com a hipótese do Yusupov     tau 0,0328
 >
 > **A leitura do meio é a armadilha, e ela é o motivo de este item não ser medido por `tau`.**
 > Ligar "grade ⇒ linha a linha" para todo mundo faz o número agregado **cair**, e um portão de "o
@@ -1018,15 +1165,20 @@ impresso. Ligar "grade ⇒ linha a linha" consertaria o `Karpov` (85 páginas de
 > premia o atalho porque o `Karpov` tem mais páginas de grade que o `Schiller`, e não porque o
 > atalho esteja certo.
 >
-> A terceira linha carrega as 60 páginas que ficaram **sem** direção (`Yusupov`, `Neumann`) lidas
-> como prosa. Nas 172 páginas dos quatro livros calibrados ela dá **0,0256**, e livro a livro:
+> Livro a livro, e é aqui que o critério mora:
 >
->     Karpov     0,2329 -> 0,0456
->     Burgess    0,1683 -> 0,0312
->     Schiller   0,0004 -> 0,0004   inalterado: o número impresso confirma a leitura de hoje
->     Secrets    0,2617 -> 0,2617   inalterado, e o tau segue alto -- ali quem erra é a camada
+>     Karpov     0,2329 -> 0,0456   número impresso
+>     Burgess    0,1683 -> 0,0312   número impresso
+>     Schiller   0,0004 -> 0,0004   número impresso; inalterado, ele confirma a leitura de hoje
+>     Secrets    0,2617 -> 0,2617   número impresso; inalterado, e o tau segue alto -- ali quem
+>                                   erra é a camada, e a calibração recusa segui-la
+>     Yusupov    0,1809 -> 0,0443   **hipótese**, só a camada
 >
 > **Nenhum livro piora.** É esse o critério, e não a média.
+>
+> As duas últimas linhas da tabela de cima são a mesma calibração com e sem o `Yusupov`, e a
+> distância entre elas — 0,0676 contra 0,0328 — é **quanto do ganho está apoiado em palpite**.
+> Metade. Por isso os dois números são publicados, em vez de só o menor.
 
 **A referência da S-194 não é da diagramação nos livros que interessam, e este item é quem
 descobriu.** A S-194 justifica o `tau` dizendo que a ordem dos spans vem do typesetter. Conferido
@@ -1096,7 +1248,8 @@ prosa. Medido nas páginas de prosa densa do acervo, o `tau` sob os dois arranjo
 **O livro que o número impresso não alcança é calibrado pela camada, e sai marcado `hipotese`.**
 O `Yusupov` tem 64 páginas de grade e **nenhuma decidível**: o número do exercício não sai da
 camada como inteiro isolado. Deixá-lo em `prosa` seria ignorar a única evidência que existe sobre
-ele; tratá-lo como medido seria mentir sobre a força dela. A saída é a segunda urna: a camada
+ele — a camada vota `grade` em 48 páginas contra 6, concordância 0,89 —; tratá-lo como medido
+seria mentir sobre a força dela. A saída é a segunda urna: a camada
 calibra, e o relatório carrega `"fonte": "camada"` e `"hipotese": true`.
 
 **E a hipótese vem com o preço dela medido.** Nas 144 páginas em que o número impresso pode
@@ -1266,7 +1419,7 @@ olhava para um lado, fazia as 276 caixas de dentro dela **sumirem sem aviso**.
 
 ---
 
-## S-197 · O texto girado, que hoje sairia errado em silêncio ◐ parcial (2026-08-22)
+## S-197 · O texto girado, que hoje sairia errado em silêncio ✅ implementada (2026-08-23)
 
 **Problema.** Livros põem rótulos girados ao lado do diagrama — *"Analysis diagram"*. Este é o
 caso mais perigoso da fase, porque o programa **não falha: ele devolve outra letra, com confiança
@@ -1306,20 +1459,74 @@ classificador *saberia* separar 180°; ele não entra por não existir no materi
 - ✅ numa página só de prosa, zero pilhas propostas — a coluna de primeiras letras é recusada
   pelo vizinho lateral;
 - ✅ o mínimo de cinco caixas está declarado com o motivo medido;
-- ⬜ **a tabela dos quatro ângulos** (o argmax da média bate com o ângulo impresso em 99,7%),
-  refeita neste acervo. Ela precisa do classificador de verdade, e é por isso que este item
-  está `◐`.
+- ✅ **a tabela dos quatro ângulos**, refeita neste acervo: `cvoff-texto-vertical`,
+  `docs/metrics/texto_vertical.json`.
 
 **Testes.** `test_endireitar_e_transposicao_e_a_volta_fecha`; `test_sem_arbitro_nada_muda`;
 `test_a_coluna_de_primeiras_letras_nao_e_pilha`; `test_a_pilha_curta_demais_nao_e_candidata`;
 `test_a_folga_precisa_superar_a_margem`; `test_180_nao_e_candidato`.
+
+### A tabela dos quatro ângulos, medida aqui em 2026-08-23
+
+`cvoff-texto-vertical`, 534 linhas de 30 livros, com o classificador de 314 classes que a S-204
+treinou. **A linha é girada por transposição** (`vertical.girar`, o avesso de `endireitar`): o
+acervo é de texto de pé, e anotar rótulos girados à mão daria dezenas de amostras para uma régua
+que separa 94,2% de 8,4%. A ida e a volta fecham byte a byte, então a resposta certa vem ao lado
+da leitura sem custar anotação.
+
+**A confiança média, lendo cada linha nos quatro ângulos:**
+
+    lido a       0°       90°      180°     270°
+              0,8572   0,5061   0,6992   0,5143
+
+**A matriz é circulante, e isso não é coincidência: é a prova de que a simulação está certa.**
+Girar a página permuta as leituras e nada mais, então a fileira do texto impresso a 90 é a mesma
+deslocada de uma casa. A consequência prática é que **as quatro fileiras dão o mesmo acerto por
+construção** -- há um número, não quatro:
+
+    argmax da média = 0,9363   (500 de 534 linhas)
+
+**São 93,6%, e lá foram 99,7%.** A distância não é do método: é o acervo. Lá as 1.312 linhas
+simuladas vinham de páginas rotuladas; aqui elas vêm de 30 livros, com scan de 1870, meio-tom e
+fonte de diagrama no meio da prosa.
+
+**O 180° é o segundo colocado, e é ele que explica os erros.** Lido de cabeça para baixo o modelo
+ainda dá 0,6992 -- bem acima dos 0,51 de um giro de 90° --, porque o recorte mantém a proporção e
+metade dos glifos de texto tem parente ambíguo nessa volta.
+
+### A régua da produção, que é outra e mede o que o programa faz
+
+`decidir_angulo` só tenta 0, 90 e 270, e exige que o vencedor supere o de pé por `MARGEM` (0,05).
+
+| impresso | o que se espera | acerto | o que o erro é |
+|---|---|---:|---|
+| 0° | não mexer | 0,9775 | 12 linhas de 534 giradas à toa |
+| 90° | marcar 90 | 0,9195 | 43 pilhas não reconhecidas |
+| 180° | não mexer (não é candidato) | 0,9176 | 44 lidas como 90 ou 270 |
+| 270° | marcar 270 | 0,9326 | 36 pilhas não reconhecidas |
+
+**A folga é o que decide, e ela é folgada:** mediana de **+0,3761** a 90 e **+0,3881** a 270,
+contra a margem de 0,05 -- e **−0,3537** no texto de pé, que é o controle. A margem herdada não
+precisa ser remedida para este modelo, e a razão de ela sobreviver à calibração da S-205 é que a
+distância entre acertar e errar o ângulo é sete vezes maior que ela.
+
+> **Uma leitura preliminar de uma única linha disse o contrário, e fica registrada.** Na corrida
+> de fumaça, uma linha só, a folga foi de 0,024 -- abaixo da margem -- e a conclusão apressada
+> seria que a S-197 é um no-op em produção. Com 534 linhas ela é o oposto: 502 e 508 das 534
+> passam da margem a 90 e a 270. Uma amostra é uma anedota, e o item mede porque anedota não
+> decide.
+
+**O que a linha do 180° custa, dita por extenso:** 44 linhas de 534 (8,2%) impressas de cabeça
+para baixo sairiam marcadas como 90 ou 270 e seriam lidas erradas. Livro impresso não traz linha
+assim, que é o motivo declarado de 180 não ser candidato -- a fileira existe para que o preço
+dessa decisão esteja escrito em vez de suposto.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.vertical:candidatos`,
 `simbolo:chess_diagram_ocr.text.vertical:recorte_de_pe`, `metrica:texto_vertical`.
 
 ---
 
-## S-198 · O box que engoliu duas linhas ◐ parcial (2026-08-22)
+## S-198 · O box que engoliu duas linhas ✅ implementada (2026-08-23)
 
 **Problema.** O descendente de um `g` ou `p` encosta na linha de baixo, os dois contornos viram
 um, e um caractere some. Medido lá, o conserto valeu +0,3 de F1 nas 10 páginas rotuladas — e o
@@ -1350,13 +1557,43 @@ metadado.
 - ✅ **sem árbitro não corta** — a mesma regra da S-197;
 - ✅ sem vale no perfil, o corte usa a fronteira da banda; sem fronteira, a caixa fica inteira;
 - ✅ a linha que é só fragmento é descartada, e a linha com um ponto final não é;
-- ⬜ **a tabela do ganho** (+0,3 de F1 no projeto de origem), refeita aqui, e o teste que amarra
-  o limiar do corte à temperatura do modelo. Os dois precisam do classificador: a régua é uma
-  probabilidade, e por isso ela **não atravessa uma calibração**.
+- ✅ **a tabela do ganho**, refeita aqui: `cvoff-texto-duas-linhas`,
+  `docs/metrics/texto_duas_linhas.json`. O corte saiu **negativo**, e é isso que ele vale;
+- ✅ o teste que amarra o limiar à temperatura do modelo publicado
+  (`LimiarEcalibracaoTests`, em `tests/test_text_duas_linhas.py`).
 
 **Testes.** `test_sem_arbitro_nao_corta`; `test_o_ganho_precisa_superar_a_margem`;
 `test_sem_vale_a_fronteira_da_banda_decide`; `test_o_minimo_colado_na_borda_nao_e_vale`;
 `test_a_linha_de_texto_com_um_ponto_nao_e_fragmento`.
+
+### O ganho, medido aqui em 2026-08-23 — e um dos dois passos não paga
+
+`cvoff-texto-duas-linhas`, **155 faixas de 11 livros**, cada faixa sendo uma linha da camada de
+texto dilatada em **2 pt** -- que é a dilatação com que a S-185 mediu o defeito (0,14 -> 0,22).
+Três braços, cada um acrescentando um passo ao anterior:
+
+    cru                 CER 0,2725     o GlyphRecognizer como ele era
+    descarte            CER 0,2248     -> ganho de 0,0477
+    descarte e corte    CER 0,2337     -> o corte custa 0,0089
+
+**O descarte entrou no caminho de leitura; o corte não.** `descartar_fragmentos` está em
+`GlyphRecognizer.read` desde esta medição, com o número no comentário. `separar` continua
+implementado, travado por teste e **não chamado**: ele disparou em 15 das 155 faixas, partiu 18
+caixas e piorou o CER. O item herdou de lá um +0,3 de F1; aqui ele não paga, e a diferença fica
+registrada em vez de suposta.
+
+> **O achado que muda a leitura da própria Fase 26.** A primeira corrida deu CER **0,8644**, e a
+> causa não era o motor: **metade deste acervo tem camada de texto gerada por OCR**, e medir CER
+> contra ela é comparar dois palpites. `camada_de_ocr` (da S-216) nomeia 20 livros -- `paper
+> capture`, `fonte invisível (Tesseract e afins)`, `imagem de página inteira com texto por cima`
+> --, e eles saem da medição listados um a um no relatório.
+>
+> **O `AAGAARD` é um deles, e ele é a página 21 da medição da Fase 26.** O CER 0,14 que este
+> plano cita como linha de base da segmentação foi medido contra uma camada do Adobe Paper
+> Capture. Isso não invalida a comparação *relativa* que ela fez -- os três números de lá
+> saíram contra a mesma referência --, mas o 0,14 **não é erro contra a verdade**, e nenhum
+> número deste projeto deve ser lido como se fosse. É a mesma circularidade que a S-183 recusou
+> quando decidiu que a legenda de referência seria transcrita à mão.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.duas_linhas:partir`, `metrica:texto_duas_linhas`.
 
@@ -1424,7 +1661,7 @@ espaços. Quem exporta decide como desenhá-la.
 > generalização de fonte enquanto a procedência não for recuperada na origem. O `mtime` não
 > substitui: 70% dos arquivos carregam 2026-02-16, de uma migração que reescreveu todos.
 
-## S-200 · O inventário, antes do primeiro treino ⬜ planejada
+## S-200 · O inventário, antes do primeiro treino ✅ implementada (2026-08-23)
 
 **Problema.** O material prometido é *"as imagens de todas as classes de caracteres já
 verificadas manualmente, cerca de 700 mil"*. O `docs/SPEC.md` do PyBoxEditor, §5.2, descreve duas
@@ -1470,24 +1707,54 @@ apagou PNGs válidos. Usar `open()` + `cv2.imdecode`, e **mover para quarentena,
 
 **Critério de aceite.**
 
-- o manifesto sai em `docs/metrics/texto_inventario_<data>.json`, com o total e a contagem por
+- ✅ o manifesto sai em `docs/metrics/texto_inventario_<data>.json`, com o total e a contagem por
   classe;
-- classe vazia, classe abaixo do mínimo e nome de pasta que não decodifica aparecem como
+- ✅ classe vazia, classe abaixo do mínimo e nome de pasta que não decodifica aparecem como
   **achados nomeados**, não como linhas iguais às outras;
-- o comando **não escreve nada** dentro da pasta inventariada, travado por teste;
-- PNG ilegível é contado e listado, e o comando termina com sucesso mesmo assim.
+- ✅ o comando **não escreve nada** dentro da pasta inventariada, travado por teste;
+- ✅ PNG ilegível é contado e listado, e o comando termina com sucesso mesmo assim.
 
 **Testes.** `test_o_inventario_nao_escreve_na_pasta`;
 `test_classe_vazia_vira_achado_nomeado`;
 `test_png_ilegivel_e_contado_e_nao_derruba`;
 `test_a_leitura_usa_imdecode_e_nao_imread`.
 
+### O que o manifesto fixou, em 2026-08-23
+
+`cvoff-texto-inventario`, sobre a pasta inteira. **A pasta está limpa nas três coisas que o item
+existia para pegar** -- e isso é um resultado, não uma anticlímax: são exatamente os três defeitos
+que passam despercebidos entre 314 linhas iguais.
+
+    recortes                                607.713 em 314 pastas
+    tamanho em disco                        0,44 GB
+    imagens distintas (somadas por classe)  178.370
+    classes vazias                          0
+    pastas cujo nome não decodifica         0
+    PNGs ilegíveis                          0
+    classes com menos de 3 recortes         52
+
+**O número que estava divergindo tem explicação, e agora tem manifesto.** O `ROADMAP_TEXTO` cita
+178.420 imagens distintas e o relatório de treino gravou 178.370. Nenhum dos dois está errado: os
+694 recortes que a S-202 moveu para `data/quarentena_texto/` levaram junto **50 grupos inteiros**,
+e a diferença é essa. O mesmo vale para o total -- 608.407 antes da quarentena, 607.713 depois.
+Enquanto não havia manifesto, a única forma de saber isso era refazer a conta e lembrar de qual
+era qual.
+
+**As 52 classes abaixo de três recortes são o insumo de uma decisão da S-204**, e não um defeito:
+são elas que produzem as 58 classes sem uma única amostra no teste. `ligature_a8`, `ligature_ba`,
+`ligature_dx`, `ligature_ffl` e outras 12 têm **um** recorte. Cortá-las com `--minimo 3` ou
+mantê-las declarando `n=0` é a escolha que o item de treino tem de fazer com o número à vista.
+
+**O tamanho em disco é 0,44 GB e não 0,61 GB**, que é o que o roadmap diz. A diferença é o que se
+mede: aqui é a soma de `st_size` dos PNGs; 0,61 GB é o que o sistema de arquivos ocupa com eles,
+que numa base de 607 mil arquivos pequenos infla pelo tamanho do bloco.
+
 **Sonda.** `simbolo:chess_diagram_ocr.cli.texto_inventario:main`,
 `metrica:texto_inventario`.
 
 ---
 
-## S-201 · A procedência: humano, modelo, ou não se sabe ⬜ planejada
+## S-201 · A procedência: humano, modelo, ou não se sabe ◐ parcial (2026-08-23)
 
 **Problema.** A avaliação de 2026-08-18 deste projeto abriu com quatro achados, e o primeiro é
 que **a verdade de referência é a leitura do próprio modelo**. Do outro lado, a spec do
@@ -1519,18 +1786,59 @@ conjunto que se declara humano, o comando **avisa** — não bloqueia, avisa, co
 
 **Critério de aceite.**
 
-- o esquema de procedência está no manifesto e é obrigatório em toda amostra;
-- amostra `modelo` ou `desconhecida` no split de teste faz o `cvoff-audit` falhar;
-- o aviso de distribuição dispara na base sintética em que `digit_1` domina;
-- a decisão sobre a `training_data_2` está **registrada com data e com quem decidiu**, e o
-  documento diz qual foi.
+- ✅ o esquema de procedência está no manifesto e é obrigatório em toda amostra;
+- ✅ amostra `modelo` ou `desconhecida` no split de teste faz o `cvoff-audit` falhar;
+- ✅ o aviso de distribuição dispara na base sintética em que `digit_1` domina;
+- ⬜ a decisão sobre a `training_data_2` está **registrada com data e com quem decidiu**, e o
+  documento diz qual foi. **É o que mantém o item `◐`**, e ela não é nossa: o campo
+  `decisao_sobre_a_origem` de `docs/metrics/texto_procedencia_<data>.json` existe com
+  `resposta: null` para que a ausência tenha lugar em vez de sumir.
 
 **Testes.** `test_amostra_sem_procedencia_fica_fora_do_teste`;
 `test_o_aviso_de_distribuicao_dispara`;
 `test_o_audit_falha_com_rotulo_de_modelo_no_teste`.
 
+### O que foi entregue em 2026-08-23, e o que continua faltando
+
+**O contrato do arquivo, escrito antes de o arquivo existir.** `text/procedencia.py` define
+`data/texto_procedencia.csv` -- `uuid,livro,pagina,procedencia,rotulado_em` --, os três valores e
+a regra que eles carregam. Definir o formato depois que a origem responder seria convidar a duas
+migrações; definir agora dá alvo ao trabalho que só o `PyBoxEditor_Tkinter` pode fazer.
+
+**Célula vazia é permitida e não é o mesmo que a linha não existir.** A primeira é uma ausência
+declarada, a segunda é uma ausência descoberta -- e as duas caem na mesma regra (treino sim,
+medição não), mas aparecem separadas no relatório.
+
+**A regra entra no split por uma máscara, e não por um filtro.** `split_por_grupo` e
+`split_por_livro` recebem `medivel`, e o **grupo** que contiver uma amostra não-medível fica
+inteiro no treino. Filtrar amostra a amostra quebraria a atomicidade do grupo, que é a garantia
+mais forte das duas.
+
+**O `cvoff-audit` passou a cobrar, e ele lê um relatório porque o split não existe em disco.**
+`cvoff-texto-train --so-split` grava `docs/metrics/texto_vazamento.json` em um minuto a partir do
+cache; a auditoria reprova rótulo de `modelo` no teste sempre, e rótulo `desconhecido` no teste
+**quando há registro no disco**.
+
+> **Sem registro nenhum, a regra esvaziaria a medição -- e o caminho escolhido está aqui por
+> extenso.** Hoje as 607.713 amostras são `desconhecida`, e aplicar a regra ao pé da letra
+> deixaria validação e teste vazios: não haveria número nenhum. Um comando que não mede não é
+> mais honesto que um que mede com ressalva. Então o caminho sem registro **mede assim mesmo** e
+> grava a ressalva no relatório de vazamento e no de treino, no campo que é lido junto com o
+> número. No dia em que `data/texto_procedencia.csv` existir, a regra passa a valer sozinha, e
+> `--desconhecida-no-teste` é o único jeito de desligá-la -- deixando rastro no relatório.
+>
+> **E o sinal que a spec de lá propôs não dispara nesta base.** `aviso_de_distribuicao` compara
+> `digit_1` com `lower_e`, que é a assinatura do classificador confundindo `l`, `i` e `I`: aqui
+> `lower_a` (63.055) e `lower_e` (33.855) estão os dois acima de `digit_1` (26.792). Indício de
+> que a base não é dominada por rótulo de modelo -- **não é prova**, e a pergunta continua sendo
+> do dono dos dados.
+
+**A sonda ganhou uma terceira entrada, e ela é o dado e não o código:**
+`arquivo:data/texto_procedencia.csv`. Sem ela o item diria `implementada` com a metade que
+importa em aberto -- é a mesma correção que a S-182 recebeu em 2026-08-23, e pelo mesmo motivo.
+
 **Sonda.** `simbolo:chess_diagram_ocr.text.dataset:procedencia_de`,
-`metrica:texto_procedencia`.
+`metrica:texto_procedencia`, `arquivo:data/texto_procedencia.csv`.
 
 ---
 
@@ -1785,7 +2093,7 @@ metade do conjunto de teste** (121 → 60 imagens): metade do teste dele era irm
 
 ---
 
-## S-203 · O split por livro, e a prova de que não vazou ⬜ planejada
+## S-203 · O split por livro, e a prova de que não vazou ◐ parcial (2026-08-23)
 
 **Problema.** Este é o item que decide se o número final desta fase vale alguma coisa. A
 avaliação de agosto deste projeto nomeia três contaminações ao mesmo tempo: a verdade de
@@ -1807,21 +2115,59 @@ não podem ir para o teste (não há como provar que não vazaram) e ficam no tr
 
 **Critério de aceite.**
 
-- nenhum par (livro, página) aparece em dois splits;
-- nenhum grupo de quase-duplicata aparece em dois splits;
-- amostra sem livro de origem fica fora de validação e de teste;
-- existe um **relatório de vazamento** que roda depois do split e passa a fazer parte do
-  `cvoff-audit`;
-- o conjunto de teste tem pelo menos um livro que **não aparece no treino** — o teste do "livro
-  novo", que é o único que mede generalização de fonte.
+- ✅ nenhum par (livro, página) aparece em dois splits — `split_por_livro` parte por livro
+  inteiro, e `livros_em_dois_lados` confere depois;
+- ✅ nenhum grupo de quase-duplicata aparece em dois splits;
+- ✅ amostra sem livro de origem fica fora de validação e de teste;
+- ✅ existe um **relatório de vazamento** que roda depois do split e faz parte do `cvoff-audit`;
+- ✅ o conjunto de teste tem pelo menos um livro que **não aparece no treino** — garantido por
+  construção, e travado por `test_existe_um_livro_so_do_teste`.
+
+**E mesmo assim o item é `◐`, porque nada disso rodou sobre livro de verdade.** Os cinco critérios
+estão cumpridos *no código*, com testes que os afirmam sobre base sintética. A base real não tem
+livro, então `split_por_livro` nunca é chamado nela: o comando cai para `split_por_grupo` e grava
+a ressalva. A sonda `arquivo:data/texto_procedencia.csv` é o que impede este item de dizer
+`implementada` enquanto for assim.
 
 **Testes.** `test_nenhuma_pagina_atravessa_o_split`;
 `test_o_grupo_de_quase_duplicata_nao_atravessa`;
 `test_existe_um_livro_so_do_teste`;
 `test_amostra_sem_livro_fica_fora_do_teste`.
 
+### O que foi entregue em 2026-08-23: o split por livro existe e espera o livro
+
+`dataset.split_por_livro`, e ele é chamado por `cvoff-texto-train` **quando há registro de
+livro**; sem ele o comando cai para `split_por_grupo` e escreve por extenso qual dos dois usou.
+Três regras, e as três são a mesma vista de ângulos diferentes:
+
+- a amostra **sem livro** fica no treino: não há como provar que ela não vazou;
+- a amostra que a S-201 marca como não-medível fica no treino, pelo mesmo motivo;
+- o **grupo que atravessa dois livros** volta ao treino inteiro: ele não pode ser atômico e
+  livro-puro ao mesmo tempo, e a atomicidade do grupo é a garantia mais forte das duas.
+
+**Um livro de cada lado é reservado antes de distribuir o resto, e isso não é preciosismo.** A
+distribuição proporcional pura falha de um jeito que só aparece com livro desigual: com um livro
+de 900 amostras e dois de 50, encher o teste até a fração consome dois dos três e **deixa a
+validação vazia** -- sem validação não há época escolhida nem temperatura. Reservar primeiro é o
+que transforma "existe um livro só do teste" de probabilidade em garantia.
+
+**Menos de três livros levanta em vez de improvisar.** Com dois não há treino, validação e teste
+ao mesmo tempo, e escolher qual sacrificar é decisão de quem chama -- decidir aqui esconderia a
+decisão.
+
+**O relatório de vazamento saiu do treino e virou artefato próprio.** `cvoff-texto-train
+--so-split` parte, confere e grava `docs/metrics/texto_vazamento.json` em um minuto a partir do
+cache, sem treinar. O critério pedia um relatório que "rodasse de verdade", e um que só existisse
+depois de um treino inteiro não rodaria: ninguém o refaria a cada mudança de semente.
+
+**A ressalva de hoje, como ela sai gravada:**
+
+    "split": "grupo de copia exata",
+    "ressalva": "NAO por livro -- a base nao registra livro de origem",
+    "livros": {"total": 0, "so_no_teste": [], "sem_livro": 607713}
+
 **Sonda.** `simbolo:chess_diagram_ocr.text.dataset:split_por_livro`,
-`metrica:texto_vazamento`.
+`metrica:texto_vazamento`, `arquivo:data/texto_procedencia.csv`.
 
 > **Este item continua planejado porque o que ele promete não é executável nesta base, e a
 > marcação tem de dizer isso em vez de esconder.** Não há livro. Os recortes se chamam
@@ -1899,7 +2245,7 @@ hipótese aberta para caractere, e o item mede em vez de assumir.
 `test_o_checkpoint_registra_a_procedencia_das_amostras`.
 
 **Sonda.** `simbolo:chess_diagram_ocr.cli.texto_train:main`,
-`metrica:texto_treino`.
+`metrica:texto_treino`, `metrica:texto_variantes`.
 
 ### O que foi entregue em 2026-08-23
 
@@ -1964,8 +2310,8 @@ acertar 127 de 127 sem retreinar).
 no treino. São 82 recortes ao todo. O modelo passa a poder emitir esses rótulos, e ninguém mediu
 se ele acerta. Das 258 medidas, 191 têm recall perfeita e 28 ficam abaixo de 0,90.
 
-**O que continua devendo do critério de aceite:** a grade de variantes. Falta o aumento de dados
-(`augment.py` aplicado a caractere). Os pesos de classe já foram medidos — ver abaixo.
+**O que faltava do critério de aceite fechou em 2026-08-23:** a grade de variantes e o aumento de
+dados aplicado a caractere. Ver "A grade de variantes", abaixo.
 
 ### Pesos de classe: medidos, e a resposta é a mesma da Fase 5
 
@@ -2011,9 +2357,85 @@ recortes e 5.683 imagens. Deduplicar ainda **corrige** parte do desbalanceamento
 recortes `lower_a` (63.055) esmaga `digit_2` (21.962); em imagens distintas, `digit_2` (10.610)
 passa `lower_a` (5.683). `--todos-os-recortes` roda o outro braço para quem quiser medir.
 
+### A grade de variantes, medida em 2026-08-23 — e ela não achou vencedora
+
+`cvoff-texto-variantes`, seis braços, **10 épocas cada com a mesma semente e o mesmo split**, e o
+`test` tocado uma vez só, pela vencedora. Relatório em `docs/metrics/texto_variantes_<data>.json`.
+
+| braço | val macro | val acurácia | parâmetros | segundos |
+|---|---:|---:|---:|---:|
+| pesos-de-classe | **0,9647** | 0,9871 | 617.216 | 659 |
+| controle | 0,9632 | **0,9898** | 617.216 | 626 |
+| aumento-leve | 0,9598 | 0,9883 | 617.216 | 714 |
+| densa-128 | 0,9554 | 0,9882 | 354.944 | 661 |
+| canais-menores | 0,9430 | 0,9835 | 154.496 | **286** |
+| aumento-forte | 0,9420 | 0,9851 | 617.216 | 776 |
+
+**A vencedora ganha por 0,0015, e este projeto já mediu que 0,0015 não é nada.** A S-204 registrou
+o ruído da recall macro entre épocas consecutivas desta base: **0,0068**. A diferença entre o
+primeiro e o segundo colocado é **um quinto** dele — e o segundo colocado ganha na acurácia. A
+leitura honesta da tabela não é "os pesos de classe venceram": é **a grade não achou vencedora**,
+e o controle continua sendo o controle.
+
+O `test` confirmou a vencedora em macro **0,9543** e acurácia 0,9852, e o número existe para
+fechar o protocolo — não para promover nada. **Nada foi promovido**, pelo mesmo motivo que os
+pesos de classe não tinham sido em agosto: trocar o publicado por outro que empata dentro do
+ruído seria mexer por mexer.
+
+**O aumento de dados não paga, e é a terceira vez que este projeto mede isso.** `aumento-leve`
+fica 0,0034 abaixo do controle e `aumento-forte`, 0,0212 — e os dois custam mais tempo por época.
+A Fase 5 mediu que o aumento genérico não ajudou para peças; a S-204 mediu que os pesos de classe
+não ajudaram para caractere; agora o aumento dirigido também não. **Três hipóteses que todo mundo
+assume, três medições, três nãos.**
+
+> **E o módulo de aumento existe mesmo assim, porque ele responde uma pergunta que ninguém tinha
+> feito.** `text/aumento.py` não é o `augment.py` de peças aplicado a caractere: **espelhar é a
+> degradação mais barata lá e a mais danosa aqui.** Um `b` espelhado é um `d`, um `p` é um `q`, um
+> `(` é um `)` — e os pares que ele ensinaria a confundir são exatamente os 83 grupos de rótulo
+> contraditório que a S-202 nomeou. O módulo tem sete degradações de scanner e gráfica, nenhuma
+> troca de eixo, e dois testes que impedem uma de voltar por engano: um mede a assimetria da tinta
+> em 500 recortes, o outro varre a `ast` atrás de `flip`, `transpose` e `rot90`.
+
+**A hipótese da S-204 sobre a forma tem resposta, e ela é um trade-off e não um veredito.** A
+densa 2.048→256 são 85% dos parâmetros: cortá-la pela metade (`densa-128`) custa **0,0078** de
+macro e economiza 43% dos pesos; cortar os canais junto (`canais-menores`, 16→32→64) custa 0,0202
+e economiza 75% — **rodando em 286 s contra 626 s**, menos da metade do tempo. Para esta máquina,
+que treina em CPU, isso é uma tarde contra duas. Nenhum dos dois é melhor; os dois são mais
+baratos, e agora o preço está medido.
+
+**O terceiro eixo que o critério nomeia — a resolução — não tem braço, e o motivo não é
+esquecimento.** `modelo.LADO` é 32 e não é ajustável: **a base inteira foi gravada nesse tamanho**,
+e 58% dos recortes já chegaram assim da origem. Treinar em 48 ou 64 significaria ampliar um
+recorte de 32, que não acrescenta informação nenhuma — ou reextrair da página, que **esta base não
+permite**, porque nenhum recorte sabe de que página veio. É a mesma falta que trava a S-201 e a
+S-203, aparecendo pela terceira vez. O eixo fica aberto, e ele só abre quando o registro da origem
+chegar.
+
+> **A forma precisou virar dado para esta linha existir.** Até aqui a `SimpleCNN` era cravada em
+> `_construir_rede`, e um braço que mudasse canais ou densa produziria pesos que
+> `load_state_dict` recusa — que é o comportamento certo. `modelo.Arquitetura` é a saída que a
+> própria S-204 já apontava: **a grade muda os dois lados de uma vez ou não muda nenhum.** O
+> metadado grava a forma, `carregar_classificador` a lê, e metadado sem o campo carrega como a
+> forma padrão, que é literalmente a que ele descreve.
+
+### As 58 classes que nenhuma medição alcança: a decisão, com o número que faltava
+
+O item pedia a decisão e não tinha como tomá-la: 58 classes têm menos de três imagens distintas,
+caem inteiras no treino, e **o modelo passa a poder emitir esses rótulos sem que ninguém meça se
+ele acerta**. As duas saídas — mantê-las declarando `n=0`, ou cortá-las com `--minimo 3` — só se
+separam por um fato: elas *são* emitidas?
+
+**Duas vezes em 13.693 amostras de teste** (`ligature_hex_003f0021` e `sym_200`), com o modelo da
+vencedora. É 0,015% das previsões.
+
+**A decisão é mantê-las, declarando `n=0` por classe no relatório**, que é o que o
+`docs/metrics/texto_treino_*.json` já faz. Cortá-las tiraria do modelo 99 recortes de trabalho
+humano para eliminar duas previsões em treze mil — e a classe cortada não some do mundo: ela
+volta como erro na classe vizinha, que é onde ela cairia.
+
 ---
 
-## S-205 · A calibração entra no fim do treino, ou não sobrevive a ele ⬜ planejada
+## S-205 · A calibração entra no fim do treino, ou não sobrevive a ele ✅ implementada (2026-08-23)
 
 **Problema.** A confiança deste classificador é usada para quatro coisas: cortar legenda
 adivinhada (S-181), arbitrar corte de glifo colado (S-186, S-198), escolher ângulo de pilha
@@ -2036,21 +2458,85 @@ Duas travas:
 
 **Critério de aceite.**
 
-- treinar e não calibrar é impossível pelo caminho normal — o teste prova que o metadado sai
+- ✅ treinar e não calibrar é impossível pelo caminho normal — o teste prova que o metadado sai
   sempre com uma temperatura;
-- a curva de confiabilidade antes e depois vai para `docs/metrics/`, com o erro de calibração
+- ✅ a curva de confiabilidade antes e depois vai para `docs/metrics/`, com o erro de calibração
   esperado (ECE) nos dois momentos;
-- a temperatura gravada corresponde ao modelo gravado, travado pelo `modelo_sha256`.
+- ✅ a temperatura gravada corresponde ao modelo gravado, travado pelo `modelo_sha256` — e agora
+  **medida**: `cvoff-texto-train --so-calibracao` refaz a temperatura sobre a mesma validação e
+  publica as duas lado a lado.
 
 **Testes.** `test_o_metadado_sai_sempre_com_temperatura`;
 `test_a_falha_da_calibracao_nao_derruba_o_treino`;
 `test_a_temperatura_corresponde_ao_modelo_gravado`.
 
+### A curva, medida em 2026-08-23 — e ela desmente o número que a resumia
+
+`cvoff-texto-train --so-calibracao`, sobre as **13.693 imagens distintas de validação** e o par
+que está publicado. O comando não treina: ele carrega o `.pt` e o metadado, refaz os logits crus
+e mede. Relatório em `docs/metrics/texto_ece_<data>.json`.
+
+**A trava do item, em número:** temperatura publicada **1,5212**, refeita agora **1,5211**. O
+metadado descreve o modelo que está no disco, e agora isso é medido em vez de prometido.
+
+**Os dois ECE, e a distância entre eles é o achado:**
+
+    ECE ponderado    antes 0,0040  ->  depois 0,0037
+    ECE por faixa    antes 0,1131  ->  depois 0,1080     <- é este que decide
+
+**Trinta vezes.** O ECE ponderado é a média das faixas pelo tamanho delas, e nesta validação
+**96% das amostras caem numa faixa só** — a de 0,93 a 1,00, onde o modelo diz 0,9982 e acerta
+0,9979. O número ponderado mede aquela faixa e mais nada, e sai lisonjeiro por construção.
+
+**É a mesma lição da macro contra a acurácia, agora aplicada à calibração** — e é a segunda vez
+que ela aparece nesta fase. Lá, 44 classes gordas escondiam 143 raras; aqui, uma faixa de
+confiança esconde as outras treze.
+
+**E a faixa que o ponderado esconde é a única em que alguma coisa é decidida.** O corte de
+legenda adivinhada da S-42 está em 0,30; os árbitros da S-186, da S-197 e da S-198 comparam
+confianças no meio da escala. Nenhum deles consulta a faixa de 0,93 a 1,00.
+
+| faixa | n | ele diz | ele acerta |
+|---|---:|---:|---:|
+| 0,53–0,60 | 31 | 0,566 | 0,742 |
+| 0,60–0,67 | 40 | 0,630 | 0,775 |
+| 0,73–0,80 | 69 | 0,769 | 0,913 |
+| 0,80–0,87 | 91 | 0,830 | 0,945 |
+| 0,87–0,93 | 197 | 0,904 | 0,934 |
+| **0,93–1,00** | **13.164** | **0,998** | **0,998** |
+
+**No meio da escala o modelo é pessimista**: onde ele diz 0,83 ele acerta 0,94. Um árbitro que
+compare "0,83 contra 0,79" está comparando duas subestimativas, e o corte de 0,30 da S-42
+descarta legenda que estaria certa mais vezes do que o número sugere. A temperatura melhorou
+isso pouco (0,1131 → 0,1080) porque **ela minimiza a NLL, e não o ECE** — e essa distinção,
+antes deste relatório, não tinha como aparecer.
+
+**O que a temperatura fez de fato, visto pela contagem:** ela empurrou **258 amostras** para fora
+da faixa do topo (13.422 → 13.164), espalhando-as pelas faixas de 0,53 a 0,93. É exatamente a
+região que as quatro decisões consultam, e é por isso que o item pedia a curva e não só o
+parâmetro.
+
+### As duas travas, e onde elas estão
+
+**A calibração nunca derruba o treino.** `treinar` chama `calibracao.calibrar` dentro de um
+`try`: se ela falhar, o modelo é salvo com temperatura 1,0, o rastro vai para o log e o
+resultado carrega `falhou: True`. Um modelo com temperatura 1,0 e um aviso é pior que um
+calibrado e muito melhor que nenhum modelo depois de vinte épocas de CPU — o que não pode
+acontecer é o número sair sem ninguém saber. Travado por
+`test_a_falha_da_calibracao_nao_derruba_o_treino`.
+
+**O metadado sem temperatura é recusado na carga**, o que fecha o laço do outro lado (S-179).
+
+**E o módulo mudou de casa**, como a sonda deste item já mandava: `calibrar`, a curva, os dois
+ECE e a prosa moram em `text/calibracao.py`. `text/treino.py` importa. A separação não é
+arrumação: a curva é medida sobre um modelo que já existe tantas vezes quanto sobre um recém-
+treinado, e enterrá-la no treino obrigaria a retreinar para medir.
+
 **Sonda.** `simbolo:chess_diagram_ocr.text.calibracao:calibrar`,
 `metrica:texto_ece`.
 
-> **O defeito de processo está fechado desde 2026-08-23; a medição da calibração, não.** A
-> temperatura é ajustada em `treino.calibrar_temperatura` — busca em grade sobre a NLL da
+> **O defeito de processo fechou primeiro, e a medição veio no mesmo dia.** A
+> temperatura é ajustada em `calibracao.calibrar` — busca em grade sobre a NLL da
 > validação, com os pesos da **melhor** época e não os da última (calibrar os outros seria gravar
 > a temperatura de um modelo que não existe) — e `gravar_checkpoint` grava pesos e metadado
 > juntos, os pesos primeiro para que o `modelo_sha256` descreva o arquivo que está no disco. Não
@@ -2064,14 +2550,13 @@ Duas travas:
 > fila de revisão. Um modelo a 0,99 de confiança crua sobre um `'` que ele acerta 57% das vezes
 > desregularia as quatro.
 >
-> **O que mantém o item aberto:** a curva de confiabilidade e o ECE antes e depois, em
-> `docs/metrics/`. Hoje o relatório grava a temperatura e as métricas, não a curva. E o módulo
-> está em `text/treino.py`, não em `text/calibracao.py` — quando o ECE entrar, é o momento de
-> separá-los, e a sonda deste item já aponta para onde ele deve morar.
+> **O que mantinha o item aberto, e fechou em 2026-08-23:** a curva de confiabilidade e o ECE
+> antes e depois, em `docs/metrics/`. O módulo saiu de `text/treino.py` para
+> `text/calibracao.py` no mesmo movimento, como a sonda já mandava. Ver a seção seguinte.
 
 ---
 
-## S-206 · O placar honesto: o classificador, e a página ⬜ planejada
+## S-206 · O placar honesto: o classificador, e a página ✅ implementada (2026-08-24)
 
 **Problema.** Publicar "99,8% de acerto" sobre recorte já segmentado quando a página real dá 94 é
 a forma de número enganoso que este projeto já cometeu e corrigiu. Os dois números são
@@ -2090,15 +2575,54 @@ fonte nova.
 
 **Critério de aceite.**
 
-- as duas réguas aparecem sempre juntas, no mesmo arquivo e no mesmo parágrafo do documento;
-- o livro novo tem coluna própria;
-- o `n` de cada célula está declarado;
-- o documento registra a distância entre as duas e a nomeia como o que ela é — trabalho de
-  segmentação pendente, com os itens que o atacam.
+- ✅ as duas réguas aparecem sempre juntas, e o comando **falha** se a da página não puder ser
+  medida — `test_o_relatorio_recusa_publicar_so_a_regua_de_recorte`;
+- ✅ o livro novo tem coluna própria, com `null` e o motivo ao lado: esta base não registra livro
+  (S-203). Omiti-la faria a tabela parecer completa;
+- ✅ o `n` de cada célula está declarado;
+- ✅ a distância está registrada e nomeada — ver abaixo.
 
 **Testes.** `test_o_relatorio_traz_as_duas_reguas`;
 `test_o_livro_novo_tem_coluna_propria`;
 `test_o_relatorio_recusa_publicar_so_a_regua_de_recorte`.
+
+### As duas réguas, medidas em 2026-08-24 — e a distância entre elas é de 33,5 pontos
+
+`cvoff-texto-placar-final`. **Nenhuma das duas linhas abaixo pode ser publicada sozinha**, e o
+comando recusa gravar só a primeira.
+
+| régua | valor | n | o que ela não diz |
+|---|---:|---:|---|
+| acurácia do classificador | **0,9910** | 13.693 recortes | nada sobre **achar** o recorte |
+| macro do classificador | 0,9679 | 13.693 recortes | idem |
+| acerto na página (1 − CER) | **0,6555** | 22 páginas | é a que conta para o usuário |
+| F1 de caractere na página | 0,7663 | 22 páginas | — |
+| **livro novo** | **n/d** | 0 | não existe nesta base (S-203) |
+
+**0,9910 contra 0,6555.** Os dois números são verdadeiros, medem coisas diferentes, e **a
+distância entre eles é o trabalho que sobra**: o classificador acerta o recorte que lhe dão; o que
+a página perde está em *achar* o recorte. Publicar o primeiro sozinho seria repetir a forma de
+número enganoso que este projeto já cometeu e corrigiu na Fase 19.
+
+**A régua da página é a pipeline inteira**, e não uma faixa: renderizar, **detectar o diagrama e
+excluí-lo**, binarizar, achar caixa, quebrar em linha, classificar. A referência é a camada de
+texto editorada dos 11 livros que não são digitalização com OCR por cima — a mesma escolha da
+S-198, pelo mesmo motivo.
+
+**E a página é mais difícil que a faixa, o que também é informação:** o CER da faixa é 0,2248
+(S-198) e o da página é 0,3445. A diferença é tudo o que uma página tem e uma faixa não —
+cabeçalho, número de página, título corrido, e o que sobra de diagrama que o detector não pegou.
+
+> **Um defeito que a primeira corrida escondeu, e o número mudou quando ele foi consertado.** O
+> detector era chamado com `page.parent` — um `fitz.Document` — onde ele espera o **caminho**; a
+> abertura falhava, o `except` engolia, e a página era medida **sem exclusão de diagrama**. O erro
+> era silencioso por construção: aquele `except` existe justamente para a detecção não derrubar a
+> medição.
+
+**Os itens que atacam a distância estão nomeados no relatório**, e depois desta fase eles são
+menos do que se esperava: a S-186 mediu que o separador de colado **piora**, e a S-188 que a
+leitura por linha **empata**. O que sobra apontando para o meio da distância é a segmentação
+(S-185), o texto girado (S-197) e o que a S-212 vier a corrigir com trabalho humano.
 
 **Sonda.** `metrica:texto_placar_final`.
 

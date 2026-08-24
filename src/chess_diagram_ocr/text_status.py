@@ -133,8 +133,16 @@ MANIFESTO: tuple[Item, ...] = (
     # ---------------------------------------------------------------- Fase 29
     Item("S-200", 29, "O inventário, antes do primeiro treino",
          ("simbolo:chess_diagram_ocr.cli.texto_inventario:main", "metrica:texto_inventario")),
+    # A terceira sonda das duas abaixo é o **dado**, e não o código, e ela entrou em 2026-08-23
+    # pelo mesmo motivo que a terceira da S-182: sem ela os dois itens diriam `implementada` com
+    # a metade que importa em aberto. `data/texto_procedencia.csv` é o arquivo que só o
+    # `PyBoxEditor_Tkinter` pode produzir -- ele carrega quem rotulou (S-201) e de que livro
+    # (S-203) --, e enquanto ele não existe nenhum número desta base separa rótulo humano de
+    # palpite de modelo nem mede generalização de fonte. O código dos dois itens está pronto e
+    # espera por ele.
     Item("S-201", 29, "A procedência: humano, modelo, ou não se sabe",
-         ("simbolo:chess_diagram_ocr.text.dataset:procedencia_de", "metrica:texto_procedencia")),
+         ("simbolo:chess_diagram_ocr.text.dataset:procedencia_de", "metrica:texto_procedencia",
+          "arquivo:data/texto_procedencia.csv")),
     # A sonda de `text.conflitos:achar` entrou em 2026-08-23 e nao substitui a de `dedupe`: sao
     # as duas metades do item. `conflitos` acha a copia **exata** (hash) e o que ela revelou --
     # a mesma imagem sob dois rotulos --, e `dedupe:agrupar` continua devendo a quase-duplicata,
@@ -144,9 +152,14 @@ MANIFESTO: tuple[Item, ...] = (
          ("simbolo:chess_diagram_ocr.text.conflitos:achar", "simbolo:chess_diagram_ocr.text.dedupe:agrupar",
           "metrica:texto_dedupe")),
     Item("S-203", 29, "O split por livro, e a prova de que não vazou",
-         ("simbolo:chess_diagram_ocr.text.dataset:split_por_livro", "metrica:texto_vazamento")),
+         ("simbolo:chess_diagram_ocr.text.dataset:split_por_livro", "metrica:texto_vazamento",
+          "arquivo:data/texto_procedencia.csv")),
     Item("S-204", 29, "O treino do classificador de caracteres",
-         ("simbolo:chess_diagram_ocr.cli.texto_train:main", "metrica:texto_treino")),
+         ("simbolo:chess_diagram_ocr.cli.texto_train:main", "metrica:texto_treino",
+          # A terceira entrou em 2026-08-23 com a grade de variantes: ela é o critério de aceite
+          # que o item ficou devendo desde agosto, e sem sonda ele diria `implementada` com a
+          # tabela por fazer -- que foi exatamente o estado dele por três semanas.
+          "metrica:texto_variantes")),
     Item("S-205", 29, "A calibração entra no fim do treino, ou não sobrevive a ele",
          ("simbolo:chess_diagram_ocr.text.calibracao:calibrar", "metrica:texto_ece")),
     Item("S-206", 29, "O placar honesto: o classificador, e a página",

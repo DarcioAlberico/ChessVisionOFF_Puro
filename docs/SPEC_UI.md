@@ -15,6 +15,7 @@ As fases de modelo e detecção não são tocadas por esta spec — elas seguem 
 > | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
+> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa é a

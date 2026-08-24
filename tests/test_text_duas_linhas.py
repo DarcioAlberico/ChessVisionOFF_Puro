@@ -8,8 +8,10 @@ descendente que entram custam 8 pontos de CER (0,14 -> 0,22).
 
 from __future__ import annotations
 
+import json
 import unittest
 from collections.abc import Sequence
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -24,6 +26,8 @@ from chess_diagram_ocr.text.duas_linhas import (
     separar,
     vale,
 )
+
+RAIZ = Path(__file__).resolve().parents[1]
 
 ESCALA = 20
 
@@ -157,6 +161,51 @@ class FragmentoTests(unittest.TestCase):
         boa = [Caixa(i * 20, 30, i * 20 + 12, 30 + ESCALA) for i in range(5)]
         ruim = [Caixa(i * 20, 0, i * 20 + 10, 4) for i in range(4)]
         self.assertEqual([boa], descartar_fragmentos([ruim, boa], escala=ESCALA))
+
+
+class LimiarEcalibracaoTests(unittest.TestCase):
+    """**A régua é uma probabilidade, e por isso ela não atravessa uma calibração.**
+
+    `GANHO_MINIMO` compara a confiança dos dois pedaços contra a do inteiro. Confiança é uma
+    escala que a temperatura move -- foi o achado da F69 no projeto de origem --, então um
+    retreino que mude a temperatura muda o significado do limiar sem tocar no número.
+
+    O que este teste faz é o que a S-198 pede: **falhar** quando o relatório do ganho descreve
+    outro modelo. Ele não adivinha o limiar novo; ele obriga alguém a remedir.
+    """
+
+    RELATORIO = RAIZ / "docs" / "metrics" / "texto_duas_linhas.json"
+    METADADO = RAIZ / "models" / "char_meta.json"
+
+    def _relatorio(self) -> dict:
+        if not self.RELATORIO.exists():
+            self.skipTest("o ganho ainda não foi medido: rode `cvoff-texto-duas-linhas`")
+        return json.loads(self.RELATORIO.read_text(encoding="utf-8"))
+
+    def test_o_ganho_medido_descreve_o_modelo_que_esta_publicado(self) -> None:
+        relatorio = self._relatorio()
+        if not self.METADADO.exists():  # pragma: no cover - clone sem o metadado
+            self.skipTest("sem models/char_meta.json")
+        publicado = json.loads(self.METADADO.read_text(encoding="utf-8"))
+
+        self.assertAlmostEqual(
+            relatorio["modelo"]["temperatura"],
+            publicado["temperatura"],
+            places=4,
+            msg="A temperatura do modelo publicado mudou desde que o ganho foi medido. O limiar "
+            "do corte é uma probabilidade: remeça com `cvoff-texto-duas-linhas`.",
+        )
+        self.assertEqual(
+            relatorio["modelo"]["modelo_sha256"],
+            publicado["modelo_sha256"],
+            "O relatório do ganho foi medido com outros pesos.",
+        )
+
+    def test_o_limiar_gravado_no_relatorio_e_o_que_o_codigo_usa(self) -> None:
+        """Mudar `GANHO_MINIMO` sem remedir deixaria o número descrevendo outro corte."""
+        relatorio = self._relatorio()
+        self.assertAlmostEqual(relatorio["limiares"]["ganho_minimo"], GANHO_MINIMO, places=6)
+        self.assertAlmostEqual(relatorio["limiares"]["altura_suspeita"], ALTURA_SUSPEITA, places=6)
 
 
 if __name__ == "__main__":  # pragma: no cover

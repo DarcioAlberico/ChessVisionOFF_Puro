@@ -40,11 +40,13 @@ a prova, e não uma nota de rodapé.
 
 ## O bloco `tau`, e por que ele está aqui para ser desobedecido
 
-O relatório traz as páginas de grade sob as três leituras. Na execução de 2026-08-23, 232 páginas:
+O relatório traz as páginas de grade sob as leituras que importam. Execução de 2026-08-23, 232
+páginas:
 
-    coluna a coluna (o que a S-193 faz)     0,1271
-    tudo lido como grade                    0,0943   <- "melhora", e está errado
-    direção calibrada por livro             0,0676
+    coluna a coluna (o que a S-193 faz)      0,1271
+    tudo lido como grade                     0,0943   <- "melhora", e está errado
+    calibrado, só o que foi confirmado       0,0676
+    calibrado, com a hipótese do Yusupov     0,0328
 
 **A leitura do meio é a armadilha.** Ligar `grade` para todo mundo faz o agregado cair, e um
 portão de "o `tau` médio tem de cair" a aprovaria -- enquanto ela leva o `Schiller` de 0,0004 para

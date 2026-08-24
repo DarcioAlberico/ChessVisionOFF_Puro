@@ -25,6 +25,7 @@ from chess_diagram_ocr.text.vertical import (
     confianca_media,
     decidir_angulo,
     endireitar,
+    girar,
     marcar,
     recorte_de_pe,
 )
@@ -101,6 +102,35 @@ class GiroTests(unittest.TestCase):
         girado = recorte_de_pe(imagem, Caixa(10, 10, 30, 40, 90))
         self.assertEqual((30, 20), de_pe.shape)
         self.assertEqual((20, 30), girado.shape)
+
+
+class SimulacaoTests(unittest.TestCase):
+    """`girar` é o avesso de `endireitar`, e é o que torna a tabela dos quatro ângulos possível.
+
+    O acervo é de texto de pé. Sem simulação, medir a S-197 exigiria anotar rótulos girados à
+    mão -- dezenas de amostras para uma régua que separa 94,2% de 8,4%.
+    """
+
+    def test_o_glifo_girado_e_o_mesmo_glifo_depois_de_endireitado(self) -> None:
+        """A ida e a volta fecham **byte a byte**: é transposição dos dois lados."""
+        imagem = np.arange(40 * 60, dtype=np.uint32).astype(np.uint8).reshape(40, 60)
+        caixa = Caixa(10, 5, 22, 19)
+        esperado = caixa.recortar(imagem)
+
+        for angulo in (0, 90, 180, 270):
+            with self.subTest(angulo=angulo):
+                virada, caixas = girar(imagem, [caixa], angulo)
+                np.testing.assert_array_equal(esperado, endireitar(caixas[0].recortar(virada), angulo))
+
+    def test_a_caixa_simulada_nao_ja_traz_a_resposta(self) -> None:
+        """Em produção ninguém sabe o ângulo antes do classificador; a simulação também não pode."""
+        _, caixas = girar(np.zeros((20, 30), dtype=np.uint8), [Caixa(1, 2, 5, 9, 90)], 270)
+        self.assertEqual(0, caixas[0].angulo)
+
+    def test_a_pagina_gira_junto_com_as_caixas(self) -> None:
+        virada, _ = girar(np.zeros((20, 30), dtype=np.uint8), [], 90)
+        self.assertEqual((30, 20), virada.shape)
+        self.assertTrue(virada.flags["C_CONTIGUOUS"])
 
 
 class GeometriaTests(unittest.TestCase):

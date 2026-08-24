@@ -237,6 +237,25 @@ class CosturaTests(unittest.TestCase):
         self.assertEqual([], self.reconhecedor.read(faixa, escala=400))
         self.assertTrue(self.reconhecedor.read(faixa))
 
+    def test_a_linha_que_e_so_fragmento_nao_vira_texto(self) -> None:
+        """S-198: a faixa dilatada encosta na linha de cima, e o que entra são pedaços de tinta.
+
+        Eles viravam texto **com confiança de leitura normal**, que é a forma de erro que este
+        projeto trata como a pior. Medido em 155 faixas de camada editorada: CER 0,2725 -> 0,2248
+        (`docs/metrics/texto_duas_linhas.json`).
+        """
+        import cv2
+
+        imagem = np.full((190, 420, 3), 245, dtype=np.uint8)
+        cv2.putText(imagem, "ABCDEFGH", (12, 60), FONTE, 1.2, (20, 20, 20), 2, cv2.LINE_AA)
+        for i in range(8):  # o renque de fragmentos, abaixo da linha e baixo demais para ser letra
+            imagem[168:174, 16 + i * 46 : 16 + i * 46 + 26] = 20
+
+        lidas = self.reconhecedor.read(imagem)
+
+        self.assertEqual(1, len(lidas), f"saíram {[c.text for c in lidas]}")
+        self.assertLess(lidas[0].bbox[3], 160.0)
+
     def test_o_diagrama_e_excluido_com_margem(self) -> None:
         """O que está dentro do tabuleiro não é texto -- e os rótulos das casas moram fora dele."""
         imagem = _pagina_com_texto(("ABC",))

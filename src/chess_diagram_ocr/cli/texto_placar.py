@@ -71,7 +71,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..atomic_io import atomic_write_json, atomic_write_text
+from ..atomic_io import atomic_write_bytes, atomic_write_json, atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..ocr import KNOWN_ENGINES, build_recognizer
@@ -292,6 +292,63 @@ def _leitor_de(motor: str) -> Any:
     return build_caption_reader(reconhecedor)
 
 
+def exportar(faixas: list[Faixa], destino: Path, *, pdf_dir: Path) -> int:
+    """Grava um PNG por faixa, **exatamente a imagem que os motores leem**, para transcrever.
+
+    **É a única parte da S-183 que dá para automatizar, e ela é a que decide se o item anda.** A
+    referência tem de ser transcrita por um humano olhando a página impressa -- se ela vier de um
+    motor, a tabela mede o motor contra ele mesmo. O que não precisa ser humano é *achar* a
+    faixa, abrir o PDF na página certa e recortar: hoje quem for transcrever tem de fazer isso
+    123 vezes à mão, e é esse o custo que trava o portão da Fase 25.
+
+    A imagem é a faixa dilatada em `radius_pt` com o interior do diagrama **apagado**, que é o que
+    `CaptionReader.lines_around` monta. Transcrever de outra imagem produziria uma referência que
+    não corresponde ao que se mede.
+    """
+    import cv2
+    import fitz
+
+    from ..ocr_caption import DEFAULT_OCR_DPI, MIN_BAND_PT, _blank_region, _render_band
+    from ..pdf_text import DEFAULT_RADIUS_PT
+
+    destino = Path(destino)
+    destino.mkdir(parents=True, exist_ok=True)
+    gravadas = 0
+    indice: list[dict[str, Any]] = []
+
+    for numero, faixa in enumerate(faixas, start=1):
+        caminho = pdf_dir / faixa.pdf
+        if not caminho.exists():
+            logger.warning("%s não está em %s; a faixa %d fica de fora.", faixa.pdf, pdf_dir, numero)
+            continue
+        with fitz.open(caminho) as doc:
+            page = doc[faixa.pagina - 1]
+            x0, y0, x1, y1 = faixa.bbox_pt
+            banda = fitz.Rect(
+                x0 - DEFAULT_RADIUS_PT, y0 - DEFAULT_RADIUS_PT,
+                x1 + DEFAULT_RADIUS_PT, y1 + DEFAULT_RADIUS_PT,
+            ) & page.rect
+            if banda.is_empty or banda.width < MIN_BAND_PT or banda.height < MIN_BAND_PT:
+                continue
+            imagem, origem, zoom = _render_band(page, banda, dpi=DEFAULT_OCR_DPI)
+            _blank_region(imagem, fitz.Rect(*faixa.bbox_pt), origin=origem, zoom=zoom)
+
+        nome = f"{numero:03d}_p{faixa.pagina}.png"
+        ok, buffer = cv2.imencode(".png", cv2.cvtColor(imagem, cv2.COLOR_RGB2BGR))
+        if not ok:  # pragma: no cover - o encoder do OpenCV não falha em PNG de memória
+            continue
+        atomic_write_bytes(destino / nome, buffer.tobytes())
+        indice.append({"n": numero, "arquivo": nome, "pdf": faixa.pdf, "pagina": faixa.pagina})
+        gravadas += 1
+
+    atomic_write_text(
+        destino / "indice.json",
+        json.dumps({"faixas": indice, "conferidas": 0, "total": len(faixas)}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return gravadas
+
+
 def medir(faixas: list[Faixa], fontes: tuple[str, ...], *, pdf_dir: Path) -> dict[str, Any]:
     """A tabela: uma célula por (fonte, régua), com o `n` de cada uma."""
     import fitz
@@ -482,6 +539,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--exemplo", action="store_true", help="Imprime uma linha do formato e sai.")
     parser.add_argument(
+        "--exportar",
+        type=Path,
+        help="Grava um PNG por faixa nessa pasta -- a mesma imagem que os motores leem -- e sai. "
+        "E o que torna a transcricao possivel sem abrir 123 vezes o PDF na pagina certa.",
+    )
+    parser.add_argument(
         "--semear",
         action="store_true",
         help=(
@@ -501,6 +564,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.exemplo:
         print(json.dumps(EXEMPLO, ensure_ascii=False))
+        return 0
+
+    if args.exportar:
+        if not args.referencia.exists():
+            logger.error("%s não existe. Semeie primeiro com --semear.", args.referencia)
+            return 2
+        faixas = carregar_referencia(args.referencia)
+        gravadas = exportar(faixas, args.exportar, pdf_dir=args.pdf_dir)
+        pendentes = sum(1 for f in faixas if not f.conferido)
+        print(f"{gravadas} faixa(s) em {args.exportar}")
+        for aviso in (
+            f"  {pendentes} de {len(faixas)} ainda estao com `conferido: false`, e a medicao as recusa.",
+            "  Transcreva o que esta impresso em cada PNG para o campo `texto` da linha de",
+            f"  mesmo numero em {args.referencia}, e troque `conferido` por true.",
+            "  **A referencia tem de vir da pagina, e nao de um motor** -- se ela vier de um,",
+            "  a tabela mede o motor contra ele mesmo, que e o defeito que a S-183 evita.",
+        ):
+            print(aviso)
         return 0
 
     if args.semear:

@@ -42,15 +42,17 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
+from . import procedencia
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
 from .modelo import LADO
+from .procedencia import Registro
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +99,17 @@ class Varredura:
     `(0, 0)` marca "não se sabe". Nesta base 58% dos recortes chegaram já em 32x32 da origem, e
     para eles a altura e a proporção não são informação -- são o valor que a normalização impôs.
     Ver `ler_recorte` e `dedupe.agrupar`."""
+
+    nomes: np.ndarray = field(default_factory=lambda: np.empty(0, dtype="<U1"))
+    """O nome do arquivo (sem extensão) de cada amostra, na mesma ordem de `X`.
+
+    **É a única chave que liga a linha de `X` ao que o mundo sabe dela.** A procedência (S-201) e
+    o livro (S-203) moram num arquivo à parte, indexado por esse nome -- e sem ele as duas
+    perguntas não têm como ser feitas. Custa ~87 MB nesta base, ao lado dos 623 MB de pixels.
+
+    **Vazio é permitido, e significa "esta varredura não guardou nomes"** -- é o caso de um cache
+    gravado antes da S-201. Quem depende deles trata o vazio como "nenhum registro casa", que é
+    o mesmo resultado que a base de hoje produz."""
 
     ilegiveis: list[str] = field(default_factory=list)
     pastas_indecifraveis: list[str] = field(default_factory=list)
@@ -154,8 +167,14 @@ def cv2_imdecode_cinza(bruto: bytes) -> np.ndarray | None:
 
 def _varrer_pasta(
     caminho: Path, lado: int, tarefas: int
-) -> tuple[np.ndarray, list[bytes], np.ndarray, list[str]]:
-    """Uma classe: `(recortes (n, lado*lado), hashes, dimensões nativas, nomes ilegíveis)`."""
+) -> tuple[np.ndarray, list[bytes], np.ndarray, list[str], list[str]]:
+    """Uma classe: `(recortes, hashes, dimensões nativas, nomes ilegíveis, nomes aceitos)`.
+
+    **Os nomes aceitos saem daqui porque só aqui se sabe quais foram.** O recorte que não
+    decodifica é pulado, então a lista de arquivos da pasta não serve de índice para as linhas
+    de `X` -- e é esse índice que a procedência (S-201) e o livro (S-203) precisam para casar
+    cada amostra com o que o registro diz dela.
+    """
     import cv2
 
     cv2.setNumThreads(1)  # o paralelismo é nosso, e aninhá-lo derruba a taxa
@@ -172,6 +191,7 @@ def _varrer_pasta(
     hashes: list[bytes] = []
     dims: list[tuple[int, int]] = []
     ilegiveis: list[str] = []
+    aceitos: list[str] = []
     with ThreadPoolExecutor(max(1, tarefas)) as executor:
         for nome, digest, imagem, nativa in executor.map(um, nomes, chunksize=256):
             if imagem is None or digest is None:
@@ -180,14 +200,16 @@ def _varrer_pasta(
             recortes.append(imagem.reshape(-1))
             hashes.append(digest)
             dims.append(nativa)
+            aceitos.append(Path(nome).stem)
 
     if not recortes:
-        return np.empty((0, lado * lado), dtype=np.uint8), [], np.empty((0, 2), np.int16), ilegiveis
+        return np.empty((0, lado * lado), dtype=np.uint8), [], np.empty((0, 2), np.int16), ilegiveis, []
     return (
         np.stack(recortes).astype(np.uint8, copy=False),
         hashes,
         np.asarray(dims, dtype=np.int16),
         ilegiveis,
+        aceitos,
     )
 
 
@@ -217,6 +239,7 @@ def varrer(
     classes: list[Classe] = []
     ilegiveis: list[str] = []
     indecifraveis: list[str] = []
+    nomes: list[str] = []
     hash_para_grupo: dict[bytes, int] = {}
     grupos: list[int] = []
 
@@ -237,7 +260,7 @@ def varrer(
             indecifraveis.append(pasta.name)
             continue
 
-        recortes, hashes, dims_da_classe, sem_ler = _varrer_pasta(pasta, lado, tarefas)
+        recortes, hashes, dims_da_classe, sem_ler, aceitos = _varrer_pasta(pasta, lado, tarefas)
         ilegiveis.extend(sem_ler)
         if recortes.shape[0] == 0:
             # Classe vazia é achado nomeado (S-200): a `lower_ä` de lá ficou assim porque
@@ -252,6 +275,7 @@ def varrer(
         classes.append(Classe(pasta.name, caractere, int(recortes.shape[0]), len(sem_ler)))
         blocos.append(recortes)
         blocos_dims.append(dims_da_classe)
+        nomes.extend(aceitos)
         rotulos.append(np.full(recortes.shape[0], indice, dtype=np.int32))
         for digest in hashes:
             grupo = hash_para_grupo.get(digest)
@@ -269,6 +293,7 @@ def varrer(
         grupos=np.asarray(grupos, dtype=np.int32),
         classes=classes,
         dims=np.concatenate(blocos_dims),
+        nomes=np.array(nomes),
         ilegiveis=ilegiveis,
         pastas_indecifraveis=indecifraveis,
     )
@@ -316,10 +341,82 @@ def representantes(grupos: np.ndarray) -> np.ndarray:
     return mascara
 
 
+def procedencia_de(nome: str, registro: Mapping[str, Registro] | None = None) -> str:
+    """A procedência de um recorte, pelo nome do arquivo. `desconhecida` quando ninguém sabe.
+
+    **Não recusa, marca.** É a regra da S-201 num lugar só: o recorte que o registro não menciona
+    entra no treino como `desconhecida` e fica fora de validação e de teste. Recusar 607 mil
+    imagens porque ninguém sabe de onde vieram desperdiça o ativo; deixá-las medir o modelo torna
+    o número sem significado.
+
+    O formato do registro e o porquê de ele existir estão em `text/procedencia.py`.
+    """
+    if not registro:
+        return procedencia.DESCONHECIDA
+    achado = registro.get(nome)
+    return achado.procedencia if achado is not None else procedencia.DESCONHECIDA
+
+
+def codigos_de_procedencia(
+    nomes: np.ndarray, registro: Mapping[str, Registro] | None = None
+) -> np.ndarray:
+    """`(n,)` `int8` com a procedência de cada amostra, na ordem de `X`. Ver `procedencia.CODIGO`."""
+    if nomes.size == 0 or not registro:
+        return np.zeros(int(nomes.shape[0]), dtype=np.int8)
+    return np.fromiter(
+        (procedencia.CODIGO[procedencia_de(str(nome), registro)] for nome in nomes),
+        dtype=np.int8,
+        count=int(nomes.shape[0]),
+    )
+
+
+def livros_de(
+    nomes: np.ndarray, registro: Mapping[str, Registro] | None = None
+) -> tuple[np.ndarray, list[str]]:
+    """`((n,) int32 com o índice do livro, os nomes dos livros)`. `-1` é "não se sabe".
+
+    O índice existe para o split poder trabalhar com inteiros; o nome fica ao lado para o
+    relatório poder dizer **qual** livro ficou só no teste, que é a única forma de alguém
+    conferir a promessa da S-203.
+    """
+    if nomes.size == 0 or not registro:
+        return np.full(int(nomes.shape[0]), -1, dtype=np.int32), []
+
+    indice: dict[str, int] = {}
+    saida = np.full(int(nomes.shape[0]), -1, dtype=np.int32)
+    for posicao, nome in enumerate(nomes):
+        achado = registro.get(str(nome))
+        if achado is None or not achado.tem_livro:
+            continue
+        saida[posicao] = indice.setdefault(achado.livro, len(indice))
+    return saida, [livro for livro, _ in sorted(indice.items(), key=lambda par: par[1])]
+
+
+def aviso_de_distribuicao(classes: Sequence[Classe]) -> str:
+    """O aviso da S-201 sobre a base que se declara humana e parece saída de um classificador.
+
+    **Avisa, não bloqueia, e diz o número ao lado.** O argumento é do `docs/SPEC.md` do
+    PyBoxEditor: em texto de livro o `e` domina com folga, e um excesso de `1` é a assinatura do
+    classificador confundindo `l`, `i` e `I`. Nesta base o sinal **não** dispara -- `lower_a`
+    (63.055) e `lower_e` (33.855) estão os dois acima de `digit_1` (26.792) --, e isso é indício
+    de que a base não é dominada por rótulo de modelo, não é prova.
+    """
+    contagem = {c.pasta: c.total for c in classes}
+    um, e = contagem.get("digit_1"), contagem.get("lower_e")
+    if um is None or e is None or um <= e:
+        return ""
+    return (
+        f"digit_1 ({um:,}) passa lower_e ({e:,}) numa base que se declara conferida por humano. "
+        "Em texto de livro o `e` domina com folga, e o excesso de `1` é a assinatura de um "
+        "classificador confundindo `l`, `i` e `I` -- ver a S-201."
+    ).replace(",", ".")
+
+
 def split_por_grupo(
     y: np.ndarray,
     grupos: np.ndarray,
     *,
+    medivel: np.ndarray | None = None,
     fracoes: tuple[float, float, float] = (0.8, 0.1, 0.1),
     semente: int = 0,
 ) -> np.ndarray:
@@ -334,6 +431,11 @@ def split_por_grupo(
     tirar validação sem esvaziar o treino, e uma classe de 1 recorte é exatamente o caso: ela
     entra no modelo (o rótulo passa a ser emitível) e **não** aparece em nenhuma medição. Quem lê
     o número final precisa saber disso, e é `contagem_por_lado` que mostra.
+
+    `medivel` é a máscara da S-201: `False` na amostra que **não pode medir** o modelo -- rótulo
+    de classificador, ou de origem desconhecida. O grupo que contiver uma dessas fica inteiro no
+    treino, pela mesma razão que o grupo contraditório fica: um grupo é atômico, e deixar metade
+    dele medir seria medir contra o rótulo que não se pode conferir.
     """
     if y.shape != grupos.shape:
         raise ValueError(f"y tem {y.shape} e grupos tem {grupos.shape}; são o mesmo eixo.")
@@ -345,6 +447,10 @@ def split_por_grupo(
     _, val_frac, teste_frac = (f / sum(fracoes) for f in fracoes)
 
     travados = set(grupos_em_conflito(y, grupos).tolist())
+    if medivel is not None:
+        if medivel.shape != y.shape:
+            raise ValueError(f"medivel tem {medivel.shape} e y tem {y.shape}; são o mesmo eixo.")
+        travados |= {int(g) for g in np.unique(grupos[~medivel])}
     destino_do_grupo: dict[int, int] = dict.fromkeys(travados, TREINO)
 
     for classe in np.unique(y):
@@ -377,6 +483,125 @@ def split_por_grupo(
         lado[casou] = valores[ordem][posicao][casou]
 
     return lado
+
+
+def split_por_livro(
+    y: np.ndarray,
+    grupos: np.ndarray,
+    livros: np.ndarray,
+    *,
+    fracoes: tuple[float, float, float] = (0.8, 0.1, 0.1),
+    semente: int = 0,
+) -> np.ndarray:
+    """O split da S-203: **livros inteiros** em validação e teste, e nada de um livro nos dois.
+
+    É este split que mede generalização de fonte, e o mecanismo é simples de dizer: uma fonte
+    nova é um livro novo, então o único teste honesto é deixar um livro inteiro de fora. Um
+    split aleatório sobre recortes de caractere é a pior versão do defeito oposto -- o mesmo `e`
+    da mesma fonte da mesma página cai no treino e no teste, e o modelo mede a própria memória.
+
+    **Duas coisas ficam no treino, e as duas são a mesma regra vista de ângulos diferentes:**
+
+    - a amostra **sem livro** (`-1`): não há como provar que ela não vazou;
+    - o **grupo que atravessa dois livros**: ele não pode ser atômico e livro-puro ao mesmo
+      tempo, e a atomicidade do grupo é a garantia mais forte das duas.
+
+    **A máscara da S-201 não entra aqui, e a razão é que ela brigaria com o livro.** Tirar do
+    teste a amostra que não pode medir e deixá-la no treino põe o **mesmo livro dos dois lados** --
+    que é exatamente o vazamento que este split existe para impedir, e a versão que fazia isso
+    foi pega pela trava de `livros_em_dois_lados` na primeira corrida sobre base com livro. O
+    livro é atômico; quem tira a amostra não-medível da conta é quem monta os índices de
+    medição, depois. Ver `cvoff-texto-train`.
+
+    **`fracoes` são de amostras, e não de livros**, e a diferença importa: livro grande e livro
+    pequeno não valem o mesmo. Os livros entram em teste até a fração de amostras ser alcançada,
+    e depois em validação -- o que garante, por construção, **pelo menos um livro só do teste**
+    sempre que houver livro utilizável.
+
+    Levanta `BaseVazia` quando não há livro nenhum: quem chama tem de decidir se cai para
+    `split_por_grupo` (com a ressalva escrita) ou se para. Decidir aqui esconderia a decisão.
+    """
+    if not (y.shape == grupos.shape == livros.shape):
+        raise ValueError(f"y {y.shape}, grupos {grupos.shape} e livros {livros.shape} são o mesmo eixo.")
+
+    lado = np.full(y.shape[0], TREINO, dtype=np.int8)
+    utilizavel = livros >= 0
+    if not utilizavel.any():
+        raise BaseVazia(
+            "nenhuma amostra tem livro de origem utilizável: o split por livro não é executável "
+            "nesta base. Ver a S-203 em docs/SPEC_TEXTO.md."
+        )
+
+    # O grupo que atravessa dois livros perde o livro: ele volta para o treino inteiro.
+    por_grupo: dict[int, int] = {}
+    atravessados: set[int] = set()
+    for grupo, livro, serve in zip(grupos.tolist(), livros.tolist(), utilizavel.tolist(), strict=True):
+        if not serve:
+            atravessados.add(int(grupo))
+            continue
+        anterior = por_grupo.setdefault(int(grupo), int(livro))
+        if anterior != int(livro):
+            atravessados.add(int(grupo))
+
+    aptos = np.array([g not in atravessados for g in grupos.tolist()], dtype=bool) & utilizavel
+    if not aptos.any():
+        raise BaseVazia("todo grupo com livro atravessa mais de um livro; não há o que medir.")
+
+    _, val_frac, teste_frac = (f / sum(fracoes) for f in fracoes)
+    aleatorio = np.random.default_rng(semente)
+    contagem = {int(livro): int((livros[aptos] == livro).sum()) for livro in np.unique(livros[aptos])}
+    ordem = aleatorio.permutation(np.array(sorted(contagem), dtype=np.int64))
+    if ordem.size < 3:
+        # **Três é o mínimo aritmético, não uma preferência**: com dois livros, pôr um no teste
+        # deixa a validação vazia, e sem validação não há época escolhida nem temperatura.
+        raise BaseVazia(
+            f"são {ordem.size} livro(s) utilizável(is), e o split por livro precisa de três "
+            "(treino, validação e teste). Ver a S-203 em docs/SPEC_TEXTO.md."
+        )
+
+    # **Um livro de cada lado primeiro, o resto por proporção.** A distribuição greedy pura
+    # falha de um jeito que só aparece com livro desigual: com um livro de 900 amostras e dois
+    # de 50, encher o teste até a fração pode consumir dois dos três e deixar a validação vazia.
+    # Reservar um de cada lado antes de distribuir é o que torna o piso da S-203 -- "existe um
+    # livro só do teste" -- uma garantia em vez de uma probabilidade.
+    total = sum(contagem.values())
+    alvos = {TESTE: teste_frac * total, VALIDACAO: val_frac * total}
+    alvos[TREINO] = max(0.0, total - alvos[TESTE] - alvos[VALIDACAO])
+
+    lista = [int(livro) for livro in ordem.tolist()]
+    destino: dict[int, int] = {lista[0]: TESTE, lista[1]: VALIDACAO, lista[2]: TREINO}
+    acumulado = {
+        TESTE: float(contagem[lista[0]]),
+        VALIDACAO: float(contagem[lista[1]]),
+        TREINO: float(contagem[lista[2]]),
+    }
+    for livro in lista[3:]:
+        # O lado mais atrasado em relação ao próprio alvo leva o próximo livro. Empate vai para
+        # o treino, que é o lado que sobra quando não há o que decidir.
+        faltando = {alvo: alvos[alvo] - acumulado[alvo] for alvo in (TREINO, VALIDACAO, TESTE)}
+        atrasado = max(faltando, key=lambda alvo: (faltando[alvo], alvo == TREINO))
+        destino[livro] = atrasado
+        acumulado[atrasado] += contagem[livro]
+
+    for posicao in np.flatnonzero(aptos):
+        do_livro = destino.get(int(livros[posicao]))
+        if do_livro is not None:
+            lado[posicao] = do_livro
+    return lado
+
+
+def livros_em_dois_lados(livros: np.ndarray, lado: np.ndarray) -> list[int]:
+    """Os livros que aparecem em mais de um lado do split. Vazio é o que a S-203 promete.
+
+    Gêmeo de `vazamento`, e existe pelo mesmo motivo: a garantia que ninguém confere é a que
+    quebra calada. O livro `-1` (sem origem) não conta -- ele está inteiro no treino por regra,
+    e checá-lo diria sempre "um lado só" sem provar nada.
+    """
+    culpados: list[int] = []
+    for livro in np.unique(livros[livros >= 0]):
+        if np.unique(lado[livros == livro]).size > 1:
+            culpados.append(int(livro))
+    return culpados
 
 
 def contagem_por_lado(y: np.ndarray, lado: np.ndarray, n_classes: int) -> np.ndarray:
@@ -425,6 +650,11 @@ def gravar_cache(caminho: Path, varredura: Varredura) -> None:
         y=varredura.y,
         grupos=varredura.grupos,
         dims=varredura.dims,
+        # **Os nomes entram; a procedência e o livro, não.** Nome de arquivo é fato da varredura
+        # e não envelhece. Procedência é leitura de um registro que pode mudar entre duas
+        # corridas, e guardá-la aqui criaria exatamente o estado que o parágrafo acima recusa --
+        # um conserto em `data/texto_procedencia.csv` não alcançaria quem lê do cache.
+        nomes=varredura.nomes,
         pastas=np.array([c.pasta for c in varredura.classes]),
         caracteres=np.array([c.caractere for c in varredura.classes]),
         ilegiveis=np.array(varredura.ilegiveis),
@@ -448,6 +678,7 @@ def ler_cache(caminho: Path) -> Varredura:
         grupos=dados["grupos"],
         classes=classes,
         dims=dados["dims"] if "dims" in dados.files else np.zeros((y.size, 2), np.int16),
+        nomes=dados["nomes"] if "nomes" in dados.files else np.empty(0, dtype="<U1"),
         ilegiveis=[str(x) for x in dados["ilegiveis"]],
         pastas_indecifraveis=[str(x) for x in dados["indecifraveis"]],
     )

@@ -171,7 +171,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1776
+    LIMITE = 1788
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
 
     **1.440 → 1.457 em 2026-08-17**, e a catraca funcionou: ela pegou o próprio crescimento.
@@ -276,6 +276,14 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     `_drop_box` e `restore_dropped_boxes`, que leem o painel, escrevem no registro da sessão e
     mandam repintar: as três coisas que **são** a janela, pela mesma razão que
     `_reload_dataset_panel` ficou na S-116.
+
+    **1.776 → 1.788 na Etapa 1 do `PLANO_OCR_TEXTO`**, e as 12 são o segundo modelo torch da
+    janela (S-182). O que **saiu**: a pergunta inteira -- em que dispositivo cada modelo está,
+    e por que às vezes não há classificador de caracteres -- é `ui/dispositivos.py`, e o texto
+    que o rodapé mostra é `ui/rodape.descricao_dos_dispositivos`. O que ficou são três linhas de
+    `acompanhar`, um `import` e a linha do `--selftest` que diz se o `.pt` de caracteres veio
+    junto: ler o serviço e a configuração desta janela é o que **é** a janela, pela mesma razão
+    que `_reload_dataset_panel` ficou na S-116.
 
     Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
     crescer **sem decidir**."""

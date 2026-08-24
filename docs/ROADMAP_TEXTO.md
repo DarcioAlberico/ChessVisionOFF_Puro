@@ -4,6 +4,12 @@ Como o reconhecedor de caracteres do **PyBoxEditor_Tkinter** entra neste projeto
 muda: hoje uma página vira uma FEN e mais nada; no fim destas fases ela vira **colunas, linhas
 de texto, tabelas e diagramas**, na ordem em que se lê.
 
+**O plano de execução deste roadmap** — as dez etapas, em ordem, com o que fecha cada item e o
+que depende do dono — está em [PLANO_OCR_TEXTO.md](PLANO_OCR_TEXTO.md), escrito depois que o
+classificador foi treinado em 2026-08-23. **Onde este documento diz que um item "depende dos
+pesos que faltam", leia a seção 2 de lá**: os pesos deixaram de faltar naquele dia, e seis itens
+trocaram de bloqueio.
+
 A especificação item a item está em [SPEC_TEXTO.md](SPEC_TEXTO.md). O verificador que responde
 "o que disto já existe no disco?" é `cvoff-texto-status`, e a seção
 [Como conferir](#como-conferir-o-que-ja-foi-implementado) explica como usá-lo.
@@ -19,6 +25,7 @@ A especificação item a item está em [SPEC_TEXTO.md](SPEC_TEXTO.md). O verific
 > | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
+> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 
 ---
 
@@ -183,6 +190,12 @@ pode começar — e ele é o item de maior risco do plano inteiro, então deve c
 **Itens S-178 a S-183.** Entregues em 2026-08-22: S-178, S-179, S-180 e S-181 fechados; S-182 e
 S-183 parciais, e o que falta em cada um está na seção dele na spec.
 
+**A S-182 fechou em 2026-08-23** (Etapa 1 do [`PLANO_OCR_TEXTO.md`](PLANO_OCR_TEXTO.md)): o
+rodapé passou a dizer o dispositivo dos **dois** modelos torch, e o empacotamento nomeia o
+classificador de caracteres na lista do que fica fora do bundle. **A S-183 continua parcial, e o
+que falta nela não é código:** as 123 faixas de referência estão semeadas e nenhuma foi
+transcrita.
+
 > **O que a implementação achou, e não estava previsto.**
 >
 > 1. **O extra `texto` sairia vazio.** O classificador traz `torch`, `opencv-python` e `pillow`,
@@ -258,13 +271,26 @@ seguintes têm justificativa medida em vez de herdada.
 
 ---
 
-## Fase 26 — Do pixel à linha ◐ **S-184, S-185 e S-187 entregues; três itens dependem dos pesos**
+## Fase 26 — Do pixel à linha ✅ **concluída (2026-08-24)**
 
 **Itens S-184 a S-189.** Entregues em 2026-08-22: S-184 (binarização), S-185 (caixa de caractere)
-e S-187 (linha). Os outros três **não podem começar** e o motivo não é sequenciamento: a S-186
-precisa de um árbitro, que é o classificador; a S-188 precisa da tabela da S-183 para escolher o
-leitor de linha; a S-189 mede confiança calibrada. Todos os três dependem dos pesos de 292 classes
-que não estão nesta máquina.
+e S-187 (linha). Os outros três dependiam dos pesos de 292 classes que não estavam nesta máquina,
+e fecharam em 2026-08-24 — nas Etapas 8 e 9 do [`PLANO_OCR_TEXTO.md`](PLANO_OCR_TEXTO.md), com o
+classificador que a S-204 treinou.
+
+**E os dois maiores números que esta fase prometia não se confirmaram, o que é o resultado:**
+
+- **S-186, o separador de glifo colado: piora.** 155 faixas de 11 livros — `nunca` CER 0,2248,
+  `auto` 0,2400, `sempre` 0,5034. O árbitro não salva o separador, só reduz o estrago; e a
+  conclusão sobrevive a cinco limiares de largura. As classes de ligadura já absorviam o problema,
+  como a spec suspeitava. **Padrão: desligado.**
+- **S-188, ler a linha em vez do caractere: empata.** 0,2248 contra 0,2230 — ganho de **0,0018**,
+  onde lá foram 18,4 pontos. O roadmap avisava que o 91,2% era do EasyOCR e não atravessaria a
+  troca de motor sem medição; atravessou como zero. **Padrão: desligado.**
+- **S-189, a confiança por concordância: paga sozinha.** Onde as duas leituras concordam, 98,6%
+  dos caracteres estão na referência; onde divergem, 48,2%. É o melhor sinal de erro que este
+  projeto tem, e é o que a fila da S-212 precisa. **O leitor de linha entra como segundo
+  opinante, e não como leitor.**
 
 > **O que a entrega mediu, e é a primeira vez que a segmentação deste projeto tem número.**
 > Página 21 do `AAGAARD`, seis linhas, sempre com o mesmo modelo de diagnóstico de 155 classes --
@@ -361,9 +387,10 @@ deste plano que fecha inteira -- ela é geometria, e por isso não depende dos p
 >
 > **E o livro que o número impresso não alcança é calibrado pela camada, marcado como hipótese.**
 > O `Yusupov` tem 64 páginas de grade e nenhum número legível; ele recebe direção pela preferência
-> da camada, com `"hipotese": true` no relatório, fora do `acerto` que o `--baseline` trava, e com
-> o `tau` publicado em duas colunas (`calibrado` e `so_confirmado`) para que o ganho apoiado em
-> palpite não se misture ao medido. Quanto vale esse palpite também está medido: por página a
+> da camada (48 páginas votam `grade` contra 6), com `"hipotese": true` no relatório, fora do
+> `acerto` que o `--baseline` trava, e com o `tau` publicado em duas colunas: **0,0676 só com o
+> confirmado, 0,0328 com a hipótese**. A distância entre os dois é metade do ganho, e é o que a
+> S-188 vai confirmar ou desmentir. Quanto vale esse palpite também está medido: por página a
 > camada acerta 96,5%, e **por livro acerta 3 de 4** -- no `Secrets` ela erra por unanimidade.
 
 **Item S-216 (2026-08-23), acrescentado à fase depois de ela fechar.** A grade de exercícios, e a
@@ -389,11 +416,25 @@ Duas armadilhas que a F70 e a F61 de lá compraram com medição, e que esta fas
 
 ---
 
-## Fase 28 — Os casos que apagam texto ◐ **três fechados; dois esperam o árbitro**
+## Fase 28 — Os casos que apagam texto ✅ **concluída (2026-08-23)**
 
-**Itens S-195 a S-199.** Entregues em 2026-08-22: S-195 (tarja), S-196 (trama) e S-199 (tabela)
-fechados; S-197 (texto girado) e S-198 (duas linhas) com o código inteiro e **a tabela pendente**
-— as duas medem contra um árbitro, e o árbitro é o classificador que falta.
+**Itens S-195 a S-199.** Entregues em 2026-08-22: S-195 (tarja), S-196 (trama) e S-199 (tabela).
+A S-197 e a S-198 esperavam o árbitro — o classificador que não estava nesta máquina —, e
+fecharam em 2026-08-23, na Etapa 1 do [`PLANO_OCR_TEXTO.md`](PLANO_OCR_TEXTO.md):
+
+- **S-197, a tabela dos quatro ângulos**, 534 linhas de 30 livros giradas por transposição:
+  argmax da média **0,9363** (lá, 99,7%). Em produção, 0,9775 de não mexer no texto de pé e
+  0,9195/0,9326 de marcar o girado — e a folga mediana é **sete vezes** a margem exigida, que
+  por isso sobrevive à calibração.
+- **S-198, o ganho do corte**, 155 faixas de 11 livros: o **descarte de fragmento paga**
+  (CER 0,2725 → 0,2248) e entrou no `GlyphRecognizer`; o **corte não paga** (0,2337) e continua
+  fora, com o número no relatório. Lá ele valia +0,3 de F1.
+
+> **A medição da S-198 achou um defeito de referência que vale para todo este documento.**
+> Metade do acervo tem camada de texto **gerada por OCR**, e medir CER contra ela é comparar dois
+> palpites — a primeira corrida deu 0,8644 por isso. O `AAGAARD` é um desses livros, e é a página
+> com que a Fase 26 mediu 0,21 → 0,14 → 0,22: aquela comparação relativa continua válida, e o
+> 0,14 **não é erro contra a verdade**.
 
 > **O árbitro é injetado, e é o que permitiu entregar sem os pesos.** `vertical.decidir_angulo` e
 > `duas_linhas.partir` recebem um chamável que devolve confiança por recorte, em vez de importar
@@ -433,12 +474,35 @@ custa confiança no programa inteiro.
 
 ---
 
-## Fase 29 — A base de 608 mil
+## Fase 29 — A base de 608 mil ◐ **seis fechados; dois esperam a origem responder**
 
 **Itens S-200 a S-206.** É a fase de maior risco do plano, e a razão está na próxima seção.
 
 O que ela faz, em ordem: inventariar → separar por procedência → deduplicar → **partir por
 livro** → treinar → calibrar → medir honesto.
+
+**Estado em 2026-08-23**, depois das Etapas 2 a 4 do [`PLANO_OCR_TEXTO.md`](PLANO_OCR_TEXTO.md):
+
+| item | estado | o que falta |
+|---|---|---|
+| S-200 · inventário | ✅ | — |
+| S-201 · procedência | ◐ | o registro na origem, e a decisão sobre a `training_data_2` |
+| S-202 · duplicata | ✅ | — |
+| S-203 · split por livro | ◐ | o livro; o código existe e é exercido em base sintética |
+| S-204 · treino | ✅ | — |
+| S-205 · calibração | ✅ | — |
+| S-206 · placar honesto | ✅ | — |
+
+**A S-201 e a S-203 ficaram paradas na mesma coisa, e é por isso que as duas carregam a mesma
+sonda nova:** `arquivo:data/texto_procedencia.csv`. O contrato do arquivo está escrito
+(`text/procedencia.py`), o split por livro está implementado e travado por teste, o `cvoff-audit`
+já reprova rótulo de modelo no teste — **e nada disso roda sobre livro nenhum**, porque a pasta
+não tem. Só o `PyBoxEditor_Tkinter` pode produzir esse arquivo: foi quem recortou.
+
+**O inventário fixou os números que divergiam entre documentos.** 607.713 recortes, 314 pastas,
+178.370 imagens distintas, **zero** classes vazias, zero pastas indecifráveis e zero PNGs
+ilegíveis. Os 178.420 que este documento citava eram de antes de a S-202 mover 694 recortes para
+quarentena — eles levaram junto 50 grupos inteiros.
 
 **O split é por livro, e isto não é negociável.** A avaliação de 2026-08-18 deste projeto abriu
 com quatro achados, e três são de contaminação: a verdade de referência é a leitura do próprio
@@ -448,6 +512,21 @@ e desta vez com autoridade estatística, que é pior.
 
 A calibração de temperatura entra no fim do treino, e não como passo separado: lá, a F25 mediu
 que **o retreino apaga a calibração** e ninguém notava.
+
+> **A grade não achou vencedora, e isso é uma resposta (S-204, 2026-08-23).** Seis braços, 10
+> épocas cada, e o primeiro colocado ganha do controle por **0,0015** — um quinto do ruído de
+> 0,0068 que a própria S-204 mediu entre épocas consecutivas. **O aumento de dados dirigido ao
+> glifo não paga** (0,9598 contra 0,9632 do controle), e é a terceira vez que este projeto mede
+> uma hipótese que todo mundo assume e recebe um não: aumento genérico para peças, pesos de classe
+> para caractere, e agora aumento dirigido. O que a grade rendeu de utilizável é um trade-off:
+> `canais-menores` perde 0,0202 de macro e roda em **menos da metade do tempo**.
+
+> **A curva mediu o que a temperatura sozinha não dizia (S-205, 2026-08-23).** O ECE ponderado
+> desta validação é 0,0037 e o ECE **por faixa** é 0,1080 — trinta vezes maior. A diferença é que
+> 96% das amostras caem numa faixa só, a de 0,93 a 1,00, onde o modelo é quase perfeito; o número
+> ponderado mede aquela faixa e mais nada. **E é no meio da escala que as quatro decisões que
+> consultam confiança acontecem** — lá o modelo é pessimista, dizendo 0,83 onde acerta 0,94. É a
+> mesma lição da macro contra a acurácia, pela segunda vez nesta fase.
 
 ---
 

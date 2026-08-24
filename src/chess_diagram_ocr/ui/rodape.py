@@ -56,12 +56,19 @@ __all__ = [
     "PAPEL_DE_TEXTO",
     "PARADO",
     "SEVERIDADES",
+    "Dispositivos",
     "Estado",
+    "DESLIGADO",
+    "SEM_MODELO",
+    "SEM_PESOS",
     "Ocupacao",
     "RodapeDaJanela",
     "compor",
     "descricao_do_documento",
     "descricao_dos_diagramas",
+    "descricao_dos_dispositivos",
+    "dispositivo_do_classificador_de_caracteres",
+    "dispositivo_do_classificador_de_pecas",
     "expira_em_ms",
     "ocupacao",
     "papel_do_documento",
@@ -232,6 +239,109 @@ def descricao_do_documento(livro: str, pagina: int | None = None, total: int | N
     return " · ".join(partes)
 
 
+# ------------------------------------------------------ os dois modelos torch (zona 4)
+
+# **Desde 2026-08-23 a janela tem dois modelos torch.** O de peças (8,8 MB) e o de caracteres
+# (2,6 MB) passam a conviver no mesmo processo, e cada um escolhe o dispositivo por conta
+# própria: `inference.load_model` e `text.modelo._escolher_device` fazem a mesma pergunta ao
+# torch em dois lugares diferentes. É o risco 5 do `ROADMAP_TEXTO`, e o que ele prevê é a
+# repetição do defeito que a S-30 mediu -- uma máquina com placa mas com o torch `+cpu`
+# instalado roda na CPU **em silêncio**, e a diferença entre 7,5 min e ~45 s por época era
+# invisível.
+#
+# Com dois modelos o silêncio fica pior, porque eles podem discordar: nada impede que o de peças
+# esteja em `cuda:0` e o de caracteres em `cpu` na mesma sessão. A zona diz os dois, sempre, e a
+# dica carrega a descrição inteira -- o nome da placa não cabe no rodapé e não deve custar
+# largura à mensagem.
+
+SEM_MODELO = "ainda não"
+"""O de peças carrega na primeira leitura, e não ao abrir a janela: até lá não há dispositivo.
+
+Dizer "ainda não" e não "cpu" é a diferença entre o que se sabe e o que se supõe -- e supor aqui
+é o mesmo erro que a S-30 nomeia."""
+
+SEM_PESOS = "sem pesos"
+"""O de caracteres não vem no repositório: 2,6 MB de binário, e `*.pt` é ignorado desde a S-29.
+
+Este é o estado de **todo clone**, e por isso ele é um texto normal da zona e não um aviso: a
+janela funciona inteira sem o classificador de caracteres. Onde apontar o arquivo é a dica, que
+vem de `OcrSettings.glyph_disabled_reason` (S-182)."""
+
+DESLIGADO = "desligado"
+"""Os pesos estão no disco, e mesmo assim não há classificador de caracteres carregado.
+
+**São dois estados diferentes e dizê-los com a mesma palavra esconderia o mais comum dos dois.**
+O motor de leitura é uma preferência (S-42): com `rapidocr` escolhido, ou com o OCR de legenda
+desligado, o `glifo` não sobe -- e ninguém precisa procurar um arquivo que já está lá."""
+
+
+def _dispositivo_curto(descricao: str) -> str:
+    """`cuda:0 (NVIDIA GeForce RTX 4060)` -> `cuda:0`. O resto vai para a dica."""
+    return descricao.strip().split(" ", 1)[0]
+
+
+def dispositivo_do_classificador_de_pecas(descricao: str | None) -> str:
+    """`peças cuda:0`. `None` é "ainda não carregado", que é o estado ao abrir a janela.
+
+    `descricao` é o que `inference.describe_device` devolve -- a longa, com o nome da placa --,
+    e não o `"cuda"` cru: quem sabe se a CUDA pedida está de fato disponível é aquela função, e
+    duplicar a pergunta aqui daria duas respostas para um fato só.
+    """
+    return f"peças {_dispositivo_curto(descricao) if descricao else SEM_MODELO}"
+
+
+def dispositivo_do_classificador_de_caracteres(descricao: str | None, *, ausencia: str = SEM_PESOS) -> str:
+    """`texto cpu`. `None` é "não há classificador de caracteres carregado" (S-182).
+
+    **`None` não é falha.** O metadado das classes é versionado e os pesos não, então o clone
+    limpo cai aqui por construção -- e a zona diz isso em vez de ficar muda, que era o defeito
+    que o item nomeia: o motor `glifo` silenciosamente desligado, sem ninguém saber por quê.
+
+    `ausencia` distingue as duas razões de não haver um: `SEM_PESOS`, o padrão, e `DESLIGADO`,
+    para quando os pesos estão no disco e o motor escolhido é outro. Quem sabe qual é o caso é
+    quem lê a configuração, e não o rodapé.
+    """
+    return f"texto {_dispositivo_curto(descricao) if descricao else ausencia}"
+
+
+@dataclass(frozen=True)
+class Dispositivos:
+    """O que a zona 4 mostra, vindo de quem carrega os modelos.
+
+    Existe para que `acompanhar` peça **uma** coisa por tique em vez de quatro argumentos
+    posicionais que ninguém lê na ordem certa -- o mesmo motivo de `Ocupacao`. Os padrões são o
+    estado de quem acabou de abrir a janela num clone limpo.
+    """
+
+    pecas: str | None = None
+    caracteres: str | None = None
+    motivo: str = ""
+    ausencia: str = SEM_PESOS
+
+
+def descricao_dos_dispositivos(
+    pecas: str | None, caracteres: str | None, *, motivo: str = "", ausencia: str = SEM_PESOS
+) -> tuple[str, str]:
+    """`(o que a zona mostra, a dica que ela carrega)`.
+
+    A dica traz as descrições por extenso porque é onde elas cabem, e o `motivo` da ausência dos
+    pesos quando há um -- ele diz **onde apontar o arquivo**, e uma zona de rodapé não tem
+    largura para um caminho.
+    """
+    curto = (
+        f"{dispositivo_do_classificador_de_pecas(pecas)} · "
+        f"{dispositivo_do_classificador_de_caracteres(caracteres, ausencia=ausencia)}"
+    )
+
+    longo = [
+        f"Classificador de peças: {pecas or 'ainda não carregado; ele entra na primeira leitura.'}",
+        f"Classificador de caracteres: {caracteres or 'pesos ausentes.'}",
+    ]
+    if not caracteres and motivo.strip():
+        longo.append(motivo.strip())
+    return curto, "\n".join(longo)
+
+
 # ---------------------------------------------------------- a operação em curso (zona 3)
 
 PARADO = "PARADO"
@@ -373,6 +483,17 @@ class RodapeDaJanela(ttk.Frame):
             foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
         )
         self._lbl_documento.pack(side=tk.RIGHT, padx=(FOLGA_ENTRE_ZONAS, FOLGA_ENTRE_ZONAS))
+        # A quarta zona entra **à esquerda do documento** e não à direita dele: livro e página
+        # são o que a pessoa consulta o tempo todo, e o dispositivo é o que ela olha uma vez por
+        # sessão. Quem fica mais perto da mensagem é quem cede espaço primeiro.
+        self._lbl_dispositivos = ttk.Label(
+            linha,
+            text="",
+            font=theme.fonte_atual(tipografia.AUXILIAR),
+            foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
+        )
+        self._lbl_dispositivos.pack(side=tk.RIGHT)
+        self._dica_dos_dispositivos = Tooltip(self._lbl_dispositivos, "")
         self._lbl_mensagem = ttk.Label(linha, text="", anchor="w", font=theme.fonte_atual(tipografia.CORPO))
         self._lbl_mensagem.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
@@ -422,6 +543,28 @@ class RodapeDaJanela(ttk.Frame):
             text=texto, foreground=theme.cor_atual(papel_do_documento(todos_salvos))
         )
 
+    # -------------------------------------------------------------- dispositivo dos modelos
+
+    def definir_dispositivos(self, dispositivos: Dispositivos) -> None:
+        """A zona dos dois modelos torch: o curto na tela, o longo na dica (S-182).
+
+        Recebe as **descrições**, e não os objetos: o rodapé não importa `torch` nem sabe que
+        existe um `OcrService` -- é a mesma fronteira que faz `compor` ser afirmável sem abrir
+        janela.
+        """
+        texto, dica = descricao_dos_dispositivos(
+            dispositivos.pecas,
+            dispositivos.caracteres,
+            motivo=dispositivos.motivo,
+            ausencia=dispositivos.ausencia,
+        )
+        self._lbl_dispositivos.configure(text=texto)
+        self._dica_dos_dispositivos.set_text(dica)
+
+    def dispositivos(self) -> str:
+        """O que a zona mostra agora. Existe pelo mesmo motivo que `mensagem()`."""
+        return str(self._lbl_dispositivos.cget("text"))
+
     # ------------------------------------------------------------------ operação em curso
 
     def aplicar_ocupacao(self, operacoes: Sequence[BusyOperation]) -> None:
@@ -455,6 +598,7 @@ class RodapeDaJanela(ttk.Frame):
         self,
         operacoes: Callable[[], Sequence[BusyOperation]],
         *,
+        dispositivos: Callable[[], Dispositivos] | None = None,
         intervalo_ms: int = INTERVALO_DE_ACOMPANHAMENTO_MS,
     ) -> None:
         """Relê o registro a cada `intervalo_ms`, até a janela ser destruída.
@@ -462,9 +606,20 @@ class RodapeDaJanela(ttk.Frame):
         O rodapé é quem pergunta, e não as sete operações que avisam: um `BusyToken` que se
         esquecesse de avisar o rodapé deixaria a barra girando para sempre, e a S-112 registra
         que `release()` esquecido é o erro que de fato acontece.
+
+        `dispositivos` entra **no mesmo tique**, e não num segundo temporizador, porque a
+        pergunta é da mesma natureza: o modelo de peças carrega na primeira leitura e o de
+        caracteres pode ser trocado por um retreino, então nenhum dos dois avisa quando muda.
+        Ler dois atributos já em memória 2,5 vezes por segundo não custa nada -- o que custaria
+        é perguntar ao torch, e quem pergunta é quem carrega.
         """
         self.aplicar_ocupacao(operacoes())
-        self._acompanhamento = self.after(intervalo_ms, lambda: self.acompanhar(operacoes, intervalo_ms=intervalo_ms))
+        if dispositivos is not None:
+            self.definir_dispositivos(dispositivos())
+        self._acompanhamento = self.after(
+            intervalo_ms,
+            lambda: self.acompanhar(operacoes, dispositivos=dispositivos, intervalo_ms=intervalo_ms),
+        )
 
     def _ao_cancelar(self) -> None:
         if self._cancelar is not None:

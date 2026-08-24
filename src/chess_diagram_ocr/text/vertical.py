@@ -120,6 +120,37 @@ def endireitar(recorte: np.ndarray, angulo: int) -> np.ndarray:
     return np.ascontiguousarray(np.rot90(recorte, voltas))
 
 
+def girar(imagem: np.ndarray, caixas: Sequence[Caixa], angulo: int) -> tuple[np.ndarray, list[Caixa]]:
+    """A página como se o texto dela tivesse sido impresso em `angulo`. **O avesso de `endireitar`.**
+
+    Existe para a medição do item: a tabela dos quatro ângulos precisa de linhas girada e o acervo
+    só tem linhas de pé. Girar o que já se conhece é o único jeito de ter a resposta certa ao lado
+    da leitura -- anotar texto girado à mão daria dezenas de amostras, e a régua precisa de
+    milhares.
+
+    Gira a imagem **e** as caixas, para que `caixa.recortar` continue pegando o mesmo glifo. É
+    transposição, como `endireitar`: nenhum pixel é reamostrado, e por isso a ida e a volta fecham
+    byte a byte.
+
+    As caixas saem com `angulo=0`, e isso é deliberado: em produção ninguém sabe o ângulo antes de
+    o classificador dizer, e uma simulação que já entregasse a resposta mediria outra coisa.
+    """
+    voltas = -_voltas(angulo)
+    if voltas == 0:
+        return imagem, [Caixa(c.x1, c.y1, c.x2, c.y2) for c in caixas]
+
+    altura, largura = imagem.shape[:2]
+    virada = np.ascontiguousarray(np.rot90(imagem, voltas))
+
+    if voltas % 4 == 1:  # anti-horário: (x, y) -> (y, largura - 1 - x)
+        novas = [Caixa(c.y1, largura - c.x2, c.y2, largura - c.x1) for c in caixas]
+    elif voltas % 4 == 2:
+        novas = [Caixa(largura - c.x2, altura - c.y2, largura - c.x1, altura - c.y1) for c in caixas]
+    else:  # horário: (x, y) -> (altura - 1 - y, x)
+        novas = [Caixa(altura - c.y2, c.x1, altura - c.y1, c.x2) for c in caixas]
+    return virada, novas
+
+
 def recorte_de_pe(imagem: np.ndarray, caixa: Caixa) -> np.ndarray:
     """O recorte da caixa na página, já desgirado. **O funil onde a volta acontece.**"""
     return endireitar(caixa.recortar(imagem), caixa.angulo)
@@ -301,6 +332,7 @@ __all__ = [
     "confianca_media",
     "decidir_angulo",
     "endireitar",
+    "girar",
     "marcar",
     "recorte_de_pe",
 ]

@@ -1,0 +1,215 @@
+{
+  "faixas": 15,
+  "amostras": 13693,
+  "temperatura": 1.5212009510304685,
+  "leitura": "o modelo era otimista: a temperatura 1.5212 **reduz** a confiança que ele reporta, e o ECE por faixa caiu de 0.1131 para 0.1080. O ECE ponderado, que a faixa mais cheia domina, foi de 0.0040 para 0.0037",
+  "antes": {
+    "temperatura": 1.0,
+    "ece": 0.003960890344462225,
+    "ece_por_faixa": 0.1131308962636727,
+    "curva": [
+      {
+        "de": 0.1333,
+        "ate": 0.2,
+        "amostras": 3,
+        "confianca": 0.16915318342917096,
+        "acerto": 0.0
+      },
+      {
+        "de": 0.2,
+        "ate": 0.2667,
+        "amostras": 1,
+        "confianca": 0.22201166409060155,
+        "acerto": 0.0
+      },
+      {
+        "de": 0.2667,
+        "ate": 0.3333,
+        "amostras": 3,
+        "confianca": 0.2912187511602658,
+        "acerto": 0.0
+      },
+      {
+        "de": 0.3333,
+        "ate": 0.4,
+        "amostras": 3,
+        "confianca": 0.38651735433026707,
+        "acerto": 0.3333333333333333
+      },
+      {
+        "de": 0.4,
+        "ate": 0.4667,
+        "amostras": 7,
+        "confianca": 0.4360868311546368,
+        "acerto": 0.2857142857142857
+      },
+      {
+        "de": 0.4667,
+        "ate": 0.5333,
+        "amostras": 8,
+        "confianca": 0.49610518048731855,
+        "acerto": 0.625
+      },
+      {
+        "de": 0.5333,
+        "ate": 0.6,
+        "amostras": 21,
+        "confianca": 0.5642632368093669,
+        "acerto": 0.47619047619047616
+      },
+      {
+        "de": 0.6,
+        "ate": 0.6667,
+        "amostras": 21,
+        "confianca": 0.6332712771702101,
+        "acerto": 0.5714285714285714
+      },
+      {
+        "de": 0.6667,
+        "ate": 0.7333,
+        "amostras": 33,
+        "confianca": 0.7006970765956841,
+        "acerto": 0.7272727272727273
+      },
+      {
+        "de": 0.7333,
+        "ate": 0.8,
+        "amostras": 30,
+        "confianca": 0.7660412706918913,
+        "acerto": 0.8666666666666667
+      },
+      {
+        "de": 0.8,
+        "ate": 0.8667,
+        "amostras": 42,
+        "confianca": 0.8330861566445307,
+        "acerto": 0.6904761904761905
+      },
+      {
+        "de": 0.8667,
+        "ate": 0.9333,
+        "amostras": 99,
+        "confianca": 0.9057891075738826,
+        "acerto": 0.9393939393939394
+      },
+      {
+        "de": 0.9333,
+        "ate": 1.0,
+        "amostras": 13422,
+        "confianca": 0.9992571558267974,
+        "acerto": 0.9967218000298018
+      }
+    ]
+  },
+  "depois": {
+    "temperatura": 1.5212009510304685,
+    "ece": 0.00372455062562734,
+    "ece_por_faixa": 0.10800949205698794,
+    "confianca_media": 0.9889480538354133,
+    "acerto": 0.9917476082669977,
+    "curva": [
+      {
+        "de": 0.0667,
+        "ate": 0.1333,
+        "amostras": 4,
+        "confianca": 0.09010989978100145,
+        "acerto": 0.0
+      },
+      {
+        "de": 0.1333,
+        "ate": 0.2,
+        "amostras": 2,
+        "confianca": 0.157014136311656,
+        "acerto": 0.0
+      },
+      {
+        "de": 0.2,
+        "ate": 0.2667,
+        "amostras": 6,
+        "confianca": 0.2334434581384012,
+        "acerto": 0.3333333333333333
+      },
+      {
+        "de": 0.2667,
+        "ate": 0.3333,
+        "amostras": 9,
+        "confianca": 0.30263597419203103,
+        "acerto": 0.3333333333333333
+      },
+      {
+        "de": 0.3333,
+        "ate": 0.4,
+        "amostras": 9,
+        "confianca": 0.36627123493421565,
+        "acerto": 0.2222222222222222
+      },
+      {
+        "de": 0.4,
+        "ate": 0.4667,
+        "amostras": 12,
+        "confianca": 0.4286000937295846,
+        "acerto": 0.6666666666666666
+      },
+      {
+        "de": 0.4667,
+        "ate": 0.5333,
+        "amostras": 14,
+        "confianca": 0.4969042429183656,
+        "acerto": 0.42857142857142855
+      },
+      {
+        "de": 0.5333,
+        "ate": 0.6,
+        "amostras": 31,
+        "confianca": 0.5657179515673464,
+        "acerto": 0.7419354838709677
+      },
+      {
+        "de": 0.6,
+        "ate": 0.6667,
+        "amostras": 40,
+        "confianca": 0.6303793336582201,
+        "acerto": 0.775
+      },
+      {
+        "de": 0.6667,
+        "ate": 0.7333,
+        "amostras": 45,
+        "confianca": 0.7046126652331693,
+        "acerto": 0.7777777777777778
+      },
+      {
+        "de": 0.7333,
+        "ate": 0.8,
+        "amostras": 69,
+        "confianca": 0.7689674127376485,
+        "acerto": 0.9130434782608695
+      },
+      {
+        "de": 0.8,
+        "ate": 0.8667,
+        "amostras": 91,
+        "confianca": 0.8296162435501628,
+        "acerto": 0.945054945054945
+      },
+      {
+        "de": 0.8667,
+        "ate": 0.9333,
+        "amostras": 197,
+        "confianca": 0.9038137038686015,
+        "acerto": 0.934010152284264
+      },
+      {
+        "de": 0.9333,
+        "ate": 1.0,
+        "amostras": 13164,
+        "confianca": 0.9982076434256687,
+        "acerto": 0.9979489516864175
+      }
+    ]
+  },
+  "temperatura_publicada": 1.5212009510304685,
+  "temperatura_refeita": 1.5210890784660567,
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "split": "grupo de copia exata"
+}

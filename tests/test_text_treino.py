@@ -23,9 +23,8 @@ from chess_diagram_ocr.text.treino import (
     MINIMO_PARA_MACRO,
     Resultado,
     avaliar_split,
-    calibrar_temperatura,
-    esperanca_de_confianca,
     gravar_checkpoint,
+    logits_de,
     metrica_que_decide,
     recall_por_classe,
     treinar,
@@ -76,22 +75,6 @@ class MetricaTests(unittest.TestCase):
         self.assertTrue(np.isnan(recalls[1]))
 
 
-class CalibracaoTests(unittest.TestCase):
-    def test_a_temperatura_encolhe_a_confianca_de_um_modelo_otimista(self) -> None:
-        """Logits inflados e metade errada: a calibração tem de achar temperatura > 1."""
-        aleatorio = np.random.default_rng(0)
-        verdade = aleatorio.integers(0, 3, 400)
-        logits = aleatorio.normal(0, 1, (400, 3)).astype(np.float32)
-        logits[np.arange(400), verdade] += 6.0  # confiança muito acima do acerto real
-        logits[:200] = logits[:200][:, ::-1]  # metade fica errada, com a mesma folga
-        self.assertGreater(calibrar_temperatura(logits, verdade), 1.0)
-
-    def test_a_frase_da_calibracao_diz_a_direcao(self) -> None:
-        self.assertIn("reduz", esperanca_de_confianca(2.5))
-        self.assertIn("aumenta", esperanca_de_confianca(0.5))
-        self.assertIn("calibrado", esperanca_de_confianca(1.0))
-
-
 class TreinoTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = TemporaryDirectory()
@@ -132,6 +115,69 @@ class TreinoTests(unittest.TestCase):
             [(e.perda, e.macro) for e in a.historico],
             [(e.perda, e.macro) for e in b.historico],
         )
+
+    def test_o_metadado_sai_sempre_com_temperatura(self) -> None:
+        """**Treinar e não calibrar é impossível pelo caminho normal** -- é a trava da S-205.
+
+        A calibração não é um passo que alguém possa esquecer de chamar: ela acontece dentro de
+        `treinar`, com os pesos da melhor época, e o resultado já sai com ela.
+        """
+        X, y = base_sintetica()
+        indices = np.arange(y.size)
+        resultado = treinar(X, y, indices, indices, 4, epocas=1, lote=64, semente=0)
+
+        self.assertGreater(resultado.temperatura, 0.0)
+        self.assertTrue(resultado.calibracao)
+        self.assertIn("antes", resultado.calibracao)
+        self.assertIn("depois", resultado.calibracao)
+
+    def test_a_falha_da_calibracao_nao_derruba_o_treino(self) -> None:
+        """Um modelo salvo com temperatura 1,0 e um aviso é muito melhor que nenhum modelo.
+
+        O que não pode acontecer é o número sair sem ninguém saber -- e por isso a falha vira
+        `falhou: True` no resultado e rastro no log, e não um `.pt` calado.
+        """
+        from chess_diagram_ocr.text import calibracao as cal
+        from chess_diagram_ocr.text import treino as tr
+
+        def explodir(*_args: object, **_kwargs: object) -> float:
+            raise RuntimeError("a algebra nao convergiu")
+
+        original = cal.calibrar
+        tr.calibracao.calibrar = explodir  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(tr.calibracao, "calibrar", original))
+
+        X, y = base_sintetica()
+        indices = np.arange(y.size)
+        with self.assertLogs("chess_diagram_ocr.text.treino", level="ERROR"):
+            resultado = treinar(X, y, indices, indices, 4, epocas=1, lote=64, semente=0)
+
+        self.assertEqual(1.0, resultado.temperatura)
+        self.assertTrue(resultado.calibracao["falhou"])
+        self.assertTrue(resultado.estado, "os pesos da melhor época têm de sobreviver à falha")
+
+    def test_os_logits_de_um_checkpoint_saem_crus(self) -> None:
+        """A calibração precisa do que a rede produziu **antes** de dividir pela temperatura.
+
+        `ClassificadorDeGlifo.probabilidades` já divide -- é o que a inferência quer, e o oposto
+        do que a medição da S-205 precisa.
+        """
+        X, y = base_sintetica()
+        indices = np.arange(y.size)
+        resultado = treinar(X, y, indices, indices, 4, epocas=1, lote=64, semente=0)
+
+        logits, verdade = logits_de(resultado.estado, X, y, indices, 4)
+
+        self.assertEqual((y.size, 4), logits.shape)
+        np.testing.assert_array_equal(y, verdade)
+        # Logit cru não soma 1: se somasse, alguém já teria aplicado softmax no caminho.
+        self.assertFalse(np.allclose(logits.sum(axis=1), 1.0))
+
+    def test_logits_de_conjunto_vazio_nao_derruba(self) -> None:
+        X, y = base_sintetica()
+        logits, verdade = logits_de({}, X, y, np.empty(0, np.int64), 4)
+        self.assertEqual(0, logits.shape[0])
+        self.assertEqual(0, verdade.size)
 
     def test_a_avaliacao_de_um_conjunto_vazio_nao_derruba(self) -> None:
         resultado = treinar(self.X, self.y, self.treino, self.validacao, 4, epocas=1, lote=32)

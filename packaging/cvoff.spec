@@ -35,6 +35,12 @@ O QUE **NÃO** VAI DENTRO, DE PROPÓSITO
 - `data/`, `models/`, `PDF/`, `PGN/` -- são do usuário, e ficam **ao lado** do executável.
   `config._project_root()` resolve para a pasta do `.exe` quando `sys.frozen` está posto,
   e é isso que faz reinstalar não apagar 3.313 rótulos de trabalho humano.
+- **O classificador de caracteres** (`models/char_classifier.pt`, 2,6 MB) -- a decisão é
+  explícita e não herdada da linha acima, porque desde a S-204 ele é o **segundo** modelo
+  torch do programa e alguém vai perguntar. Ele fica fora pelo mesmo motivo que o de peças:
+  um retreino grava um `.pt` novo, e um modelo embutido no `.exe` seria o único que o usuário
+  não consegue trocar. Ausente, a janela abre inteira -- o motor `glifo` é uma preferência
+  (S-42) e o `--selftest` diz em qual dos dois estados a instalação está.
 - **WebView2** -- não é mais assunto: a aba "Leitura" que o embutia saiu na S-69, e com ela
   `pythonnet` e `pywebview`. O bundle deixou de depender de um runtime do sistema, e o
   visualizador do app não degrada em máquina nenhuma porque não há nada para degradar.

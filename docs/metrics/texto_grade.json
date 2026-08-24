@@ -3,7 +3,7 @@
     "paginas": 232,
     "prosa": 0.12707972217276411,
     "grade": 0.09430924533537956,
-    "calibrado": 0.03259830372459007,
+    "calibrado": 0.032835135857973936,
     "so_confirmado": 0.06758194737126347
   },
   "livros_medidos": 8,
@@ -41,10 +41,9 @@
   },
   "hipoteses": {
     "livros": [
-      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
       "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf"
     ],
-    "paginas_de_grade": 66,
+    "paginas_de_grade": 64,
     "camada_como_palpite": {
       "acertos": 139,
       "erros": 5
@@ -109,9 +108,9 @@
       "camada": "fonte invisível (Tesseract e afins)",
       "paginas_de_grade": 2,
       "paginas_decidiveis": 0,
-      "arranjo": "grade",
-      "fonte": "camada",
-      "hipotese": true,
+      "arranjo": "indefinido",
+      "fonte": "nenhuma",
+      "hipotese": false,
       "votos": {
         "grade": 0,
         "prosa": 0

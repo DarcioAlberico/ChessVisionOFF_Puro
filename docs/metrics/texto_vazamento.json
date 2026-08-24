@@ -1,0 +1,38 @@
+{
+  "quando": "2026-08-23",
+  "base": "training_data",
+  "split": "grupo de copia exata",
+  "ressalva": "NAO por livro -- a base nao registra livro de origem",
+  "semente": 20260823,
+  "amostras": {
+    "treino": 143276,
+    "validacao": 13693,
+    "teste": 13693
+  },
+  "grupos_em_dois_lados": 0,
+  "livros_em_dois_lados": 0,
+  "livros": {
+    "total": 0,
+    "so_no_teste": [],
+    "sem_livro": 607713
+  },
+  "procedencia_por_lado": {
+    "treino": {
+      "humano": 0,
+      "modelo": 0,
+      "desconhecida": 143276
+    },
+    "validacao": {
+      "humano": 0,
+      "modelo": 0,
+      "desconhecida": 13693
+    },
+    "teste": {
+      "humano": 0,
+      "modelo": 0,
+      "desconhecida": 13693
+    }
+  },
+  "registro_de_procedencia": "sem registro de procedência: toda amostra entra como desconhecida",
+  "desconhecida_no_teste_permitida": false
+}

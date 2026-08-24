@@ -557,6 +557,42 @@ class LimitesDeclaradosTests(unittest.TestCase):
         self.assertEqual(cli_audit.main([*comum, "--strict"]), 1)
         self.assertEqual(cli_audit.main(comum), 0)
 
+    def test_o_rotulo_de_modelo_no_teste_de_caractere_reprova_o_estrito(self) -> None:
+        """A S-201 no portão: a base de caractere não é do `labels.csv`, e quem responde "esta
+        base pode publicar um número?" é este comando.
+
+        O relatório vem de `cvoff-texto-train --so-split`, porque o split de caractere **não
+        existe em disco** -- ele é função pura da semente e é refeito a cada corrida.
+        """
+        import json
+
+        self.fixture.add("a.png", LEGAL)
+        self.fixture.add("b.png", LEGAL_OTHER)
+        self.fixture.write()
+        vazamento = Path(self.fixture.csv).parent / "texto_vazamento.json"
+        vazamento.write_text(
+            json.dumps(
+                {
+                    "grupos_em_dois_lados": 0,
+                    "livros_em_dois_lados": 0,
+                    "procedencia_por_lado": {"teste": {"humano": 90, "modelo": 10}},
+                    "registro_de_procedencia": "100 recorte(s) registrado(s)",
+                    "desconhecida_no_teste_permitida": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        comum = [
+            "--csv", str(self.fixture.csv),
+            "--samples", str(self.fixture.samples),
+            "--skip-duplicates",
+            "--vazamento-de-texto", str(vazamento),
+        ]
+        self.assertEqual(cli_audit.main([*comum, "--strict"]), 1)
+        # Sem `--strict` continua saindo 0, pela mesma regra do teste acima: quem olha, olha.
+        self.assertEqual(cli_audit.main(comum), 0)
+
     def test_estrito_sobre_dataset_limpo_sai_0(self) -> None:
         self.fixture.add("a.png", LEGAL)
         self.fixture.add("b.png", LEGAL_OTHER)

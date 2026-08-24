@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 from collections.abc import Mapping, Sequence
 from datetime import datetime
@@ -82,6 +83,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Sai com código 1 quando um limite declarado é violado (S-102). Sem ele o comando "
             "relata e sai 0, que é o contrato de quem usa a auditoria para olhar."
         ),
+    )
+    parser.add_argument(
+        "--vazamento-de-texto",
+        type=Path,
+        help="Relatorio de vazamento da base de caractere. Padrao: docs/metrics/texto_vazamento.json.",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
@@ -250,6 +256,26 @@ def _print_report(
     print()
 
 
+def violacoes_do_texto(caminho: Path | None = None) -> list[str]:
+    """As violações do último split da base de caractere, ou `[]` quando não há relatório.
+
+    **Não medir não é violação.** Um clone limpo não tem `docs/metrics/texto_vazamento.json`, e
+    tratar a ausência como falha faria a auditoria do dataset de diagramas depender de alguém ter
+    rodado o treino de texto. Quem produz o arquivo é `cvoff-texto-train`, inclusive no modo
+    `--so-split`, que custa um minuto.
+    """
+    from ..text import procedencia as pr
+
+    alvo = Path(caminho) if caminho is not None else pr.CAMINHO_DO_VAZAMENTO
+    if not alvo.exists():
+        return []
+    try:
+        relatorio = json.loads(alvo.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:  # pragma: no cover - arquivo truncado
+        return [f"o relatório de vazamento de caractere não pôde ser lido ({exc})"]
+    return pr.violacoes_do_split(relatorio)
+
+
 @cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
@@ -261,6 +287,15 @@ def main(argv: list[str] | None = None) -> int:
         split_leaks(label_origins(args.csv), load_splits(args.splits)) if Path(args.splits).exists() else []
     )
     _print_report(report, limit=args.limit_examples, sem_split=sem_split, vazamentos=vazamentos)
+
+    # A metade da S-201/S-203 que mora aqui: o split da base de caractere não é do `labels.csv`,
+    # mas quem responde "esta base pode publicar um número?" é este comando.
+    do_texto = violacoes_do_texto(args.vazamento_de_texto)
+    if do_texto:
+        print("Base de caractere (S-201/S-203):")
+        for violacao in do_texto:
+            print(f"  - {violacao}")
+        print()
 
     mutating = args.fix_side_to_move or args.quarantine or args.dedupe or args.prune_orphans or args.drop_missing
     if not mutating:
@@ -284,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
             # comando cujo contrato e "sem flag, so relata".
             print(f"{len(sem_split)} amostra(s) sem split. O próximo `cvoff-train` as inclui.")
             print()
-        return _codigo_de_saida(report, strict=args.strict)
+        return _codigo_de_saida(report, strict=args.strict, extras=do_texto)
 
     backup_csv(args.csv)
 
@@ -345,14 +380,14 @@ def main(argv: list[str] | None = None) -> int:
     return _codigo_de_saida(after, strict=args.strict)
 
 
-def _codigo_de_saida(report: AuditReport, *, strict: bool) -> int:
+def _codigo_de_saida(report: AuditReport, *, strict: bool, extras: Sequence[str] = ()) -> int:
     """`1` quando `--strict` e há violação; `0` sempre que não (S-102).
 
     **Sem `--strict` continua saindo 0 mesmo reprovado**, e isso é decisão: o comando é usado
     para *olhar*, e quebrar o código de saída de quem olha trocaria um problema por outro. Quem
     quer o portão pede o portão -- é a CI e o `cvoff-train` que pedem.
     """
-    violacoes = report.violations()
+    violacoes = [*report.violations(), *extras]
     if not violacoes:
         if strict:
             print("Auditoria estrita: nenhum limite declarado violado.")

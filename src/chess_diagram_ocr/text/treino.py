@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,9 +38,18 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from ..atomic_io import atomic_write_text
+from . import aumento as aumento_de_texto
+from . import calibracao
 from .classes import char_to_folder
 from .dataset import Classe
-from .modelo import LADO, _construir_rede, impressao_das_classes, impressao_do_arquivo
+from .modelo import (
+    ARQUITETURA_PADRAO,
+    LADO,
+    Arquitetura,
+    _construir_rede,
+    impressao_das_classes,
+    impressao_do_arquivo,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     import torch
@@ -91,6 +99,16 @@ class Resultado:
     historico: list[Epoca] = field(default_factory=list)
     melhor: int = 0
     metricas: dict[str, Any] = field(default_factory=dict)
+    arquitetura: Arquitetura = ARQUITETURA_PADRAO
+    """A forma com que estes pesos foram treinados. **Vai para o metadado**, e é o que permite a
+    `carregar_classificador` construir a rede certa -- ver `modelo.Arquitetura`."""
+
+    calibracao: dict[str, Any] = field(default_factory=dict)
+    """A curva de confiabilidade e o ECE antes e depois, medidos na validação (S-205).
+
+    Sai daqui e não de um passo à parte porque é aqui que existem os logits da **melhor** época
+    -- os mesmos que a temperatura calibrou. Refazê-los depois custaria outra passada e abriria
+    a porta para medir um modelo e publicar a curva de outro."""
 
 
 def _lotes(n: int, tamanho: int, aleatorio: np.random.Generator | None) -> list[np.ndarray]:
@@ -104,10 +122,20 @@ def _para_tensor(X: np.ndarray, indices: np.ndarray, device: str) -> torch.Tenso
     **É o mesmo pré-processamento de `ClassificadorDeGlifo._entrada`, e tem de continuar sendo.**
     Lá é `resize` + `/255`; o `resize` já aconteceu na varredura, e o que sobra é a divisão.
     """
+
+    return _tensor_de(X[indices], device)
+
+
+def _tensor_de(bloco: np.ndarray, device: str) -> torch.Tensor:
+    """A metade de `_para_tensor` que não indexa, para quem já tem o lote na mão.
+
+    É por aqui que o aumento entra: ele devolve um lote **novo**, e reindexar `X` depois dele
+    jogaria o trabalho fora.
+    """
     import torch
 
-    bloco = X[indices].astype(np.float32) / 255.0
-    return torch.from_numpy(bloco.reshape(-1, 1, LADO, LADO)).to(device)
+    normalizado = bloco.astype(np.float32) / 255.0
+    return torch.from_numpy(normalizado.reshape(-1, 1, LADO, LADO)).to(device)
 
 
 def _avaliar(
@@ -153,38 +181,6 @@ def metrica_que_decide(
     return macro, acuracia
 
 
-def calibrar_temperatura(logits: np.ndarray, verdade: np.ndarray) -> float:
-    """A temperatura que minimiza a NLL na validação (S-205).
-
-    Busca em grade log-espaçada e depois refina -- e não LBFGS -- porque o problema é escalar,
-    convexo e barato, e uma grade não tem estado escondido que possa divergir em silêncio.
-    """
-    if logits.size == 0:
-        return 1.0
-
-    def nll(temperatura: float) -> float:
-        z = logits / temperatura
-        z = z - z.max(axis=1, keepdims=True)
-        log_soma = np.log(np.exp(z).sum(axis=1))
-        return float((log_soma - z[np.arange(z.shape[0]), verdade]).mean())
-
-    melhor, melhor_perda = 1.0, nll(1.0)
-    for temperatura in np.geomspace(0.05, 20.0, 120):
-        perda = nll(float(temperatura))
-        if perda < melhor_perda:
-            melhor, melhor_perda = float(temperatura), perda
-    passo = melhor * 0.05
-    for _ in range(40):
-        for candidato in (melhor - passo, melhor + passo):
-            if candidato <= 0.01:
-                continue
-            perda = nll(candidato)
-            if perda < melhor_perda:
-                melhor, melhor_perda = candidato, perda
-        passo *= 0.7
-    return float(melhor)
-
-
 def treinar(
     X: np.ndarray,
     y: np.ndarray,
@@ -199,6 +195,8 @@ def treinar(
     semente: int = 0,
     device: str = "cpu",
     pesos_de_classe: bool = False,
+    aumento: aumento_de_texto.Config | None = None,
+    arquitetura: Arquitetura = ARQUITETURA_PADRAO,
     callback: Callable[[Epoca], None] | None = None,
 ) -> Resultado:
     """Treina, escolhe a época pela métrica que decide, e calibra na validação antes de devolver.
@@ -210,6 +208,10 @@ def treinar(
     `pesos_de_classe` é hipótese aberta e por isso é opção: a Fase 5 deste projeto mediu que
     pesos **não** ajudaram para peças, e ninguém mediu para caractere. O padrão é sem, que é o
     controle; ligá-lo produz o outro braço da comparação.
+
+    `aumento` é opção pela mesma razão, e **só toca o lote de treino**: validação e teste veem a
+    imagem como ela está no disco, senão a régua mediria o aumento junto com o modelo. `None` é o
+    controle. Ver `text/aumento.py` para o que entra e por que espelhar não entra.
     """
     import torch
     import torch.nn as nn
@@ -227,7 +229,7 @@ def treinar(
             "temperatura que calibre. Ver `dataset.split_por_grupo`."
         )
 
-    rede = _construir_rede(n_classes).to(device)
+    rede = _construir_rede(n_classes, arquitetura).to(device)
     otimizador = torch.optim.Adam(rede.parameters(), lr=taxa)
 
     peso = None
@@ -239,7 +241,7 @@ def treinar(
         peso = torch.tensor(bruto / bruto[bruto > 0].mean(), dtype=torch.float32, device=device)
     criterio = nn.CrossEntropyLoss(weight=peso)
 
-    resultado = Resultado(estado={}, temperatura=1.0)
+    resultado = Resultado(estado={}, temperatura=1.0, arquitetura=arquitetura)
     melhor_macro = -1.0
     sem_melhora = 0
 
@@ -251,7 +253,10 @@ def treinar(
         soma, vistos = 0.0, 0
         for pedaco in _lotes(treino.size, lote, aleatorio):
             indices = treino[pedaco]
-            entrada = _para_tensor(X, indices, device)
+            if aumento is not None and aumento.probabilidade > 0:
+                entrada = _tensor_de(aumento_de_texto.aplicar(X[indices], aleatorio, aumento), device)
+            else:
+                entrada = _para_tensor(X, indices, device)
             alvo = torch.from_numpy(y[indices].astype(np.int64)).to(device)
             otimizador.zero_grad(set_to_none=True)
             perda = criterio(rede(entrada), alvo)
@@ -285,7 +290,21 @@ def treinar(
     # disco, e calibrar o outro é gravar a temperatura de um modelo que não existe.
     rede.load_state_dict(resultado.estado)
     logits, verdade = _avaliar(rede, X, y, validacao, device, lote)
-    resultado.temperatura = calibrar_temperatura(logits, verdade)
+
+    # **A calibração nunca derruba o treino.** É a segunda trava da S-205, e ela não é cautela
+    # genérica: um modelo salvo com temperatura 1,0 e um aviso é pior que um calibrado, e é
+    # muito melhor que nenhum modelo depois de vinte épocas de CPU. O que não pode acontecer é
+    # o número sair sem ninguém saber -- e por isso a falha vira aviso no log e `temperatura`
+    # 1,0 no metadado, que `esperanca_de_confianca` descreve como "já saiu calibrado".
+    try:
+        resultado.temperatura = calibracao.calibrar(logits, verdade)
+    except Exception:  # noqa: BLE001 - o que a álgebra levanta aqui não tem tipo próprio
+        logger.exception("A calibração falhou; o modelo sai com temperatura 1,0.")
+        resultado.temperatura = 1.0
+        resultado.calibracao = {"falhou": True, "temperatura": 1.0}
+    else:
+        resultado.calibracao = calibracao.relatorio(logits, verdade, resultado.temperatura)
+
     macro, acuracia = metrica_que_decide(logits, verdade, n_classes)
     resultado.metricas = {
         "val_macro": macro,
@@ -306,17 +325,43 @@ def avaliar_split(
     *,
     device: str = "cpu",
     lote: int = LOTE_PADRAO,
+    arquitetura: Arquitetura = ARQUITETURA_PADRAO,
 ) -> tuple[dict[str, float], np.ndarray]:
     """`(métricas, recall por classe)` sobre os índices pedidos. O teste só é tocado no fim."""
     indices = np.asarray(indices)
     if indices.size == 0:
         return {"macro": 0.0, "acuracia": 0.0, "amostras": 0}, np.full(n_classes, np.nan)
-    rede = _construir_rede(n_classes).to(device)
+    rede = _construir_rede(n_classes, arquitetura).to(device)
     rede.load_state_dict(estado)
     logits, verdade = _avaliar(rede, X, y, indices, device, lote)
     macro, acuracia = metrica_que_decide(logits, verdade, n_classes)
     recalls = recall_por_classe(logits.argmax(axis=1), verdade, n_classes)
     return {"macro": macro, "acuracia": acuracia, "amostras": int(indices.size)}, recalls
+
+
+def logits_de(
+    estado: dict[str, Any],
+    X: np.ndarray,
+    y: np.ndarray,
+    indices: np.ndarray,
+    n_classes: int,
+    *,
+    device: str = "cpu",
+    lote: int = LOTE_PADRAO,
+    arquitetura: Arquitetura = ARQUITETURA_PADRAO,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(logits crus, verdade)` de um checkpoint que já existe, sobre os índices pedidos.
+
+    **Crus, e é o ponto**: a calibração precisa do que a rede produziu antes de qualquer divisão
+    por temperatura. `ClassificadorDeGlifo.probabilidades` já divide -- é o que a inferência quer
+    e o oposto do que a medição da S-205 precisa.
+    """
+    indices = np.asarray(indices)
+    if indices.size == 0:
+        return np.empty((0, n_classes), np.float32), np.empty(0, y.dtype)
+    rede = _construir_rede(n_classes, arquitetura).to(device)
+    rede.load_state_dict(estado)
+    return _avaliar(rede, X, y, indices, device, lote)
 
 
 def gravar_checkpoint(
@@ -351,6 +396,7 @@ def gravar_checkpoint(
         "idx_to_char": {str(i): c for i, c in idx_to_char.items()},
         "num_classes": len(classes),
         "temperatura": resultado.temperatura,
+        "arquitetura": resultado.arquitetura.como_dicionario(),
         "modelo_sha256": impressao_do_arquivo(caminho_pesos),
         "classes_sha256": impressao_das_classes(idx_to_char),
         "treinado_em": datetime.now().replace(microsecond=0).isoformat(),
@@ -365,15 +411,6 @@ def gravar_checkpoint(
     return meta
 
 
-def esperanca_de_confianca(temperatura: float) -> str:
-    """Uma frase sobre o que a temperatura achada diz. Para o relatório, não para decidir."""
-    if math.isclose(temperatura, 1.0, rel_tol=0.02):
-        return "o modelo já saiu calibrado: a temperatura ficou em 1,0"
-    if temperatura > 1.0:
-        return f"o modelo era otimista: a temperatura {temperatura:.4f} **reduz** a confiança que ele reporta"
-    return f"o modelo era pessimista: a temperatura {temperatura:.4f} **aumenta** a confiança que ele reporta"
-
-
 __all__ = [
     "EPOCAS_PADRAO",
     "LOTE_PADRAO",
@@ -383,9 +420,8 @@ __all__ = [
     "Epoca",
     "Resultado",
     "avaliar_split",
-    "calibrar_temperatura",
-    "esperanca_de_confianca",
     "gravar_checkpoint",
+    "logits_de",
     "metrica_que_decide",
     "recall_por_classe",
     "treinar",

@@ -100,13 +100,34 @@ cvoff-texto-placar = "chess_diagram_ocr.cli.texto_placar:main"
 cvoff-texto-ordem = "chess_diagram_ocr.cli.texto_ordem:main"
 # O treino do classificador de caracteres (S-204): varre training_data/, parte por grupo de
 # copia exata, treina, calibra na validacao e grava o par pinado que text/modelo.py exige.
+# O inventario da base de caractere (S-200): varre training_data/, grava o manifesto e o
+# relatorio de procedencia, e nao escreve nada dentro da pasta que inventaria.
+cvoff-texto-inventario = "chess_diagram_ocr.cli.texto_inventario:main"
 cvoff-texto-train = "chess_diagram_ocr.cli.texto_train:main"
 # A mesma imagem arquivada sob dois caracteres (S-202): acha por hash, mostra os glifos em
 # disputa para alguem julgar, e move o rotulo perdedor para quarentena -- nunca apaga.
 cvoff-texto-conflitos = "chess_diagram_ocr.cli.texto_conflitos:main"
+# A grade de variantes do treino de caractere (S-204): roda cada braco no val com o mesmo
+# orcamento, e toca o teste uma vez so, com a vencedora.
+cvoff-texto-variantes = "chess_diagram_ocr.cli.texto_variantes:main"
 # A direcao em que cada livro numera a grade de exercicios (S-216), medida contra o numero
 # impresso na pagina -- que e a unica referencia que a camada de OCR nao contamina.
 cvoff-texto-grade = "chess_diagram_ocr.cli.texto_grade:main"
+# A tabela dos quatro angulos do texto girado (S-197): a linha e girada por transposicao, e o
+# relatorio traz duas reguas -- o argmax da media (o classificador) e o que decidir_angulo faz.
+cvoff-texto-vertical = "chess_diagram_ocr.cli.texto_vertical:main"
+# O ganho do corte de linha e do descarte de fragmento (S-198), medido em faixa dilatada em
+# 2 pt -- que e onde o defeito aparece, e o numero da S-185 com que se compara.
+cvoff-texto-duas-linhas = "chess_diagram_ocr.cli.texto_duas_linhas:main"
+# O separador de glifo colado (S-186), medido nos tres modos antes de ser ligado: as classes de
+# ligadura ja absorvem parte do problema, e o padrao sai desta tabela e nao de heranca.
+cvoff-texto-colados = "chess_diagram_ocr.cli.texto_colados:main"
+# O ganho de ler a linha em vez do caractere (S-188/S-189), com o leitor que o roadmap
+# recomenda. O numero de 91,2% e do acervo de la e nao atravessa a troca de motor sem medicao.
+cvoff-texto-linha = "chess_diagram_ocr.cli.texto_linha:main"
+# As duas reguas lado a lado (S-206): a acuracia do classificador sobre recorte ja segmentado e
+# o CER da pagina inteira. O comando recusa publicar so a primeira, que e a lisonjeira.
+cvoff-texto-placar-final = "chess_diagram_ocr.cli.texto_placar_final:main"
 
 [build-system]
 requires = ["setuptools>=68"]

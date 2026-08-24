@@ -19,16 +19,23 @@ from chess_diagram_ocr.text.dataset import (
     TREINO,
     VALIDACAO,
     BaseVazia,
+    aviso_de_distribuicao,
+    codigos_de_procedencia,
     contagem_por_lado,
     gravar_cache,
     grupos_em_conflito,
     ler_cache,
     ler_recorte,
+    livros_de,
+    livros_em_dois_lados,
+    procedencia_de,
     representantes,
     split_por_grupo,
+    split_por_livro,
     varrer,
     vazamento,
 )
+from chess_diagram_ocr.text.procedencia import CODIGO, DESCONHECIDA, HUMANO, MODELO, Registro
 
 
 def png(imagem: np.ndarray) -> bytes:
@@ -138,6 +145,140 @@ class VarreduraTests(unittest.TestCase):
         np.testing.assert_array_equal(varredura.grupos, de_volta.grupos)
         self.assertEqual(varredura.alfabeto, de_volta.alfabeto)
         self.assertNotIn("lado", np.load(alvo).files)
+
+
+class ProcedenciaTests(unittest.TestCase):
+    """A S-201 no lado da varredura: marcar, e nunca recusar."""
+
+    REGISTRO = {
+        "a1": Registro(livro="Yusupov", pagina=1, procedencia=HUMANO),
+        "a2": Registro(livro="Yusupov", pagina=2, procedencia=MODELO),
+        "a3": Registro(livro="", pagina=None, procedencia=DESCONHECIDA),
+    }
+
+    def test_sem_registro_tudo_e_desconhecida(self) -> None:
+        """Não é o mesmo que recusar: a amostra entra no treino, e só não mede o modelo."""
+        self.assertEqual(DESCONHECIDA, procedencia_de("a1"))
+        self.assertEqual(DESCONHECIDA, procedencia_de("a1", {}))
+
+    def test_o_nome_que_o_registro_nao_menciona_e_desconhecida(self) -> None:
+        self.assertEqual(DESCONHECIDA, procedencia_de("nao-existe", self.REGISTRO))
+
+    def test_os_codigos_saem_na_ordem_das_amostras(self) -> None:
+        nomes = np.array(["a2", "a1", "zz"])
+        np.testing.assert_array_equal(
+            np.array([CODIGO[MODELO], CODIGO[HUMANO], CODIGO[DESCONHECIDA]], dtype=np.int8),
+            codigos_de_procedencia(nomes, self.REGISTRO),
+        )
+
+    def test_o_livro_vira_indice_e_o_sem_livro_fica_em_menos_um(self) -> None:
+        indices, nomes = livros_de(np.array(["a1", "a3", "a2"]), self.REGISTRO)
+        self.assertEqual(["Yusupov"], nomes)
+        np.testing.assert_array_equal(np.array([0, -1, 0], dtype=np.int32), indices)
+
+    def test_amostra_sem_procedencia_fica_fora_do_teste(self) -> None:
+        """A regra inteira da S-201, do lado do split: o grupo dela é travado no treino."""
+        y = np.repeat(np.arange(4), 40).astype(np.int32)
+        grupos = np.arange(y.size, dtype=np.int32)
+        medivel = np.zeros(y.size, dtype=bool)
+        medivel[::2] = True
+
+        lado = split_por_grupo(y, grupos, medivel=medivel, semente=3)
+
+        self.assertEqual({TREINO}, set(lado[~medivel].tolist()))
+        self.assertIn(TESTE, set(lado[medivel].tolist()))
+
+    def test_o_aviso_de_distribuicao_dispara(self) -> None:
+        """`digit_1` acima de `lower_e` é a assinatura do classificador confundindo l, i e I."""
+        from chess_diagram_ocr.text.dataset import Classe
+
+        suspeita = [Classe("digit_1", "1", 16962, 0), Classe("lower_e", "e", 16090, 0)]
+        normal = [Classe("digit_1", "1", 26792, 0), Classe("lower_e", "e", 33855, 0)]
+
+        self.assertIn("digit_1", aviso_de_distribuicao(suspeita))
+        self.assertEqual("", aviso_de_distribuicao(normal))
+
+    def test_o_aviso_nao_dispara_sem_uma_das_duas_classes(self) -> None:
+        from chess_diagram_ocr.text.dataset import Classe
+
+        self.assertEqual("", aviso_de_distribuicao([Classe("digit_1", "1", 10, 0)]))
+
+
+class SplitPorLivroTests(unittest.TestCase):
+    """A S-203: livros inteiros de um lado só, e o teste com livro que o treino não viu."""
+
+    def _base(self, n_livros: int = 5, por_livro: int = 40):
+        n = n_livros * por_livro
+        y = np.tile(np.arange(4), n // 4).astype(np.int32)
+        grupos = np.arange(n, dtype=np.int32)
+        livros = np.repeat(np.arange(n_livros), por_livro).astype(np.int32)
+        return y, grupos, livros
+
+    def test_nenhuma_pagina_atravessa_o_split(self) -> None:
+        """Página vive dentro de livro: livro inteiro de um lado é a garantia mais forte."""
+        y, grupos, livros = self._base()
+        lado = split_por_livro(y, grupos, livros, semente=1)
+        self.assertEqual([], livros_em_dois_lados(livros, lado))
+        self.assertEqual([], vazamento(grupos, lado))
+
+    def test_existe_um_livro_so_do_teste(self) -> None:
+        """É o único número que fala sobre fonte nova, e sem ele a fase não mede o que promete."""
+        y, grupos, livros = self._base()
+        lado = split_por_livro(y, grupos, livros, semente=1)
+        no_teste = set(livros[lado == TESTE].tolist())
+        no_treino = set(livros[lado == TREINO].tolist())
+        self.assertTrue(no_teste)
+        self.assertTrue(no_teste.isdisjoint(no_treino))
+
+    def test_validacao_e_teste_existem_mesmo_com_livro_grande(self) -> None:
+        """Um livro que estoura as duas frações de uma vez deixaria a validação vazia."""
+        y = np.tile(np.arange(4), 250).astype(np.int32)
+        grupos = np.arange(y.size, dtype=np.int32)
+        livros = np.array([0] * 900 + [1] * 50 + [2] * 50, dtype=np.int32)
+        lado = split_por_livro(y, grupos, livros, semente=0)
+        self.assertTrue((lado == VALIDACAO).any())
+        self.assertTrue((lado == TESTE).any())
+
+    def test_amostra_sem_livro_fica_fora_do_teste(self) -> None:
+        y, grupos, livros = self._base()
+        livros[:40] = -1
+        lado = split_por_livro(y, grupos, livros, semente=1)
+        self.assertEqual({TREINO}, set(lado[livros == -1].tolist()))
+
+    def test_o_grupo_de_quase_duplicata_nao_atravessa(self) -> None:
+        """Irmã em dois livros não pode ser atômica e livro-pura ao mesmo tempo: volta ao treino."""
+        y, grupos, livros = self._base()
+        grupos[40] = grupos[0]  # une uma amostra do livro 0 com uma do livro 1
+        lado = split_por_livro(y, grupos, livros, semente=1)
+        self.assertEqual(TREINO, lado[0])
+        self.assertEqual(TREINO, lado[40])
+        self.assertEqual([], vazamento(grupos, lado))
+
+    def test_o_livro_e_atomico_e_a_regra_da_procedencia_nao_o_parte(self) -> None:
+        """**A trava pegou isto na primeira corrida sobre base com livro.**
+
+        A versão anterior recebia a máscara da S-201 e mandava a amostra não-medível para o
+        treino. Com rótulo de modelo espalhado -- um a cada sete, no caso -- isso punha o mesmo
+        livro dos dois lados: `livros_em_dois_lados` acusou dois livros, e o comando recusou
+        treinar. Quem tira a amostra da conta é quem monta os índices de medição, depois.
+        """
+        y, grupos, livros = self._base()
+        lado = split_por_livro(y, grupos, livros, semente=1)
+
+        for livro in np.unique(livros):
+            with self.subTest(livro=int(livro)):
+                self.assertEqual(1, len(set(lado[livros == livro].tolist())))
+
+    def test_menos_de_tres_livros_levanta_em_vez_de_esvaziar_a_validacao(self) -> None:
+        y, grupos, livros = self._base(n_livros=2)
+        with self.assertRaises(BaseVazia):
+            split_por_livro(y, grupos, livros)
+
+    def test_sem_livro_nenhum_levanta_para_quem_chama_decidir(self) -> None:
+        """Decidir aqui esconderia a decisão de cair para o split por grupo."""
+        y, grupos, livros = self._base()
+        with self.assertRaises(BaseVazia):
+            split_por_livro(y, grupos, np.full_like(livros, -1))
 
 
 class SplitTests(unittest.TestCase):

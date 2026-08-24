@@ -103,6 +103,7 @@ from chess_diagram_ocr.ui import (
 from chess_diagram_ocr.ui.board_widget import PieceImages
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
+from chess_diagram_ocr.ui.dispositivos import dispositivos_da_janela
 from chess_diagram_ocr.ui.export_controller import ExportController, ExportSettings
 from chess_diagram_ocr.ui.field_draft import REGIMES, FieldDraft
 from chess_diagram_ocr.ui.gallery_panel import LARGURA_MINIMA_DA_GALERIA, GalleryPanel
@@ -250,7 +251,10 @@ class ChessOcrTkApp:
         janela encolhia. Empacotado **antes** do `PanedWindow`, que é o que o faz sobreviver ao
         encolher -- o `pack` reparte na ordem em que recebe."""
         self.rodape.pack(side=tk.BOTTOM, fill=tk.X)
-        self.rodape.acompanhar(self.busy.running)
+        self.rodape.acompanhar(
+            self.busy.running,
+            dispositivos=lambda: dispositivos_da_janela(self.service, self.settings.ocr),
+        )
 
         self.main_pane: tk.PanedWindow | None = None
         self.left_tabs: ttk.Notebook | None = None
@@ -1725,6 +1729,14 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
         logger.exception("Auto-teste: a leitura funciona, mas o caminho de TREINO não montou.")
         return 4
     logger.info("Auto-teste: o caminho de treino também montou (leitor + treinador).")
+
+    # **O segundo modelo torch do programa não entra no bundle**, e ausente não é falha: a
+    # decisão e o porquê estão em `packaging/cvoff.spec`. O auto-teste diz em qual dos dois
+    # estados a instalação está, sem mexer no código de saída (S-182).
+    logger.info(
+        "Auto-teste: classificador de caracteres -- %s",
+        Settings().ocr.glyph_disabled_reason() or f"presente em {PROJECT_ROOT / 'models'}.",
+    )
 
     # Zero diagrama nao e falha: ha paginas de prosa. O que se testa aqui e o caminho
     # inteiro -- render, deteccao, torch, decodificacao -- ter rodado sem estourar.

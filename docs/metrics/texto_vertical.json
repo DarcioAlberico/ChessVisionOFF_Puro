@@ -1,0 +1,243 @@
+{
+  "dpi": 220.0,
+  "linhas": 534,
+  "livros_medidos": 30,
+  "livros_sem_camada_de_texto": [
+    "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+    "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+    "GALLAGHER - Winning With the King's Gambit.pdf",
+    "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
+    "Levenfis - Cartea sahistului inceparator (1962).pdf",
+    "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
+    "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf",
+    "Simple Chess - Stean, M_.pdf",
+    "Stefaniu - Problematica Deschideriliol in sah (1992).pdf",
+    "📚Aagaard J. Excelling at chess calculation.pdf",
+    "📚Silman J. The Complete Book of Chess Strategy.pdf"
+  ],
+  "argmax_da_media": {
+    "0": {
+      "acertos": 500,
+      "de": 534,
+      "taxa": 0.9363295880149812
+    },
+    "90": {
+      "acertos": 500,
+      "de": 534,
+      "taxa": 0.9363295880149812
+    },
+    "180": {
+      "acertos": 500,
+      "de": 534,
+      "taxa": 0.9363295880149812
+    },
+    "270": {
+      "acertos": 500,
+      "de": 534,
+      "taxa": 0.9363295880149812
+    }
+  },
+  "decisao_de_producao": {
+    "0": {
+      "acertos": 522,
+      "de": 534,
+      "taxa": 0.9775280898876404
+    },
+    "90": {
+      "acertos": 491,
+      "de": 534,
+      "taxa": 0.9194756554307116
+    },
+    "180": {
+      "acertos": 490,
+      "de": 534,
+      "taxa": 0.9176029962546817
+    },
+    "270": {
+      "acertos": 498,
+      "de": 534,
+      "taxa": 0.9325842696629213
+    }
+  },
+  "folga_contra_o_de_pe": {
+    "0": {
+      "mediana": -0.3536683296163876,
+      "media": -0.3199910659685274,
+      "acima_da_margem": 12,
+      "de": 534
+    },
+    "90": {
+      "mediana": 0.3760533889390698,
+      "media": 0.3436131395172632,
+      "acima_da_margem": 502,
+      "de": 534
+    },
+    "180": {
+      "mediana": -0.1810925335933765,
+      "media": -0.16191526896303257,
+      "acima_da_margem": 44,
+      "de": 534
+    },
+    "270": {
+      "mediana": 0.3881476840402033,
+      "media": 0.3518408647804941,
+      "acima_da_margem": 508,
+      "de": 534
+    }
+  },
+  "margem": 0.05,
+  "confianca_media": {
+    "0": {
+      "0": 0.8572330955517651,
+      "90": 0.5061202296005551,
+      "180": 0.6991572985462715,
+      "270": 0.5143479548637865
+    },
+    "90": {
+      "0": 0.5143479548637865,
+      "90": 0.8572330955517651,
+      "180": 0.5061202296005551,
+      "270": 0.6991572985462715
+    },
+    "180": {
+      "0": 0.6991572985462715,
+      "90": 0.5143479548637865,
+      "180": 0.8572330955517651,
+      "270": 0.5061202296005551
+    },
+    "270": {
+      "0": 0.5061202296005551,
+      "90": 0.6991572985462715,
+      "180": 0.5143479548637865,
+      "270": 0.8572330955517651
+    }
+  },
+  "por_livro": {
+    "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf": {
+      "linhas": 3,
+      "paginas": 3
+    },
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf": {
+      "linhas": 10,
+      "paginas": 3
+    },
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf": {
+      "linhas": 14,
+      "paginas": 3
+    },
+    "1937 Kemeri.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "AAGAARD - Practical Chess Defence.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": {
+      "linhas": 18,
+      "paginas": 3
+    },
+    "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Euwe, Kramer - Das Mittelspiel Band 7 (1958).pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Karpov A - Chess Combinations -World Champions-1 (2011).pdf": {
+      "linhas": 3,
+      "paginas": 3
+    },
+    "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf": {
+      "linhas": 3,
+      "paginas": 3
+    },
+    "Koblenz - El dominio del arte de la combinacion (1978).pdf": {
+      "linhas": 15,
+      "paginas": 3
+    },
+    "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Mieses - Blind Schaken (1938).pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf": {
+      "linhas": 13,
+      "paginas": 3
+    },
+    "Polgar,_Laszlo_Chess_5334_Problems,_Combinations,_and_Games.pdf": {
+      "linhas": 3,
+      "paginas": 3
+    },
+    "Schiller - The Big Book of Combinations (1994).pdf": {
+      "linhas": 3,
+      "paginas": 3
+    },
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    },
+    "Vishy_Anand_Great_Chess_Combinations.pdf": {
+      "linhas": 3,
+      "paginas": 3
+    },
+    "📚Burgess G. The Gambit Book of Instructive.pdf": {
+      "linhas": 17,
+      "paginas": 3
+    },
+    "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf": {
+      "linhas": 21,
+      "paginas": 3
+    },
+    "📚Болеславский_И_Избранные_партии.pdf": {
+      "linhas": 24,
+      "paginas": 3
+    }
+  },
+  "avisos": [],
+  "modelo": {
+    "classes": 314,
+    "temperatura": 1.5212009510304685,
+    "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162"
+  }
+}

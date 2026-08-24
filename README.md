@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **23 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **30 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -230,6 +230,7 @@ cvoff-batch PDF --limit 3                 # so os tres primeiros livros
 cvoff-review "PDF\1937 Kemeri.pdf" --start-page 10 --end-page 70
 
 # O que do plano de reconhecimento de texto (S-178 a S-217) ja existe no disco.
+| S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 # Olha o disco -- arquivo no lugar, simbolo definido, extra declarado --, e nao o
 # documento; quem compara os dois e tests/test_text_status.py.
 cvoff-texto-status                  # tudo, agrupado por fase
@@ -252,6 +253,54 @@ cvoff-texto-ordem --baseline docs/metrics/texto_ordem.json   # regressao de orde
 # "hipotese": true -- fora do acerto que o --baseline trava, e com o tau em duas colunas.
 cvoff-texto-grade --por-livro 40
 cvoff-texto-grade --baseline docs/metrics/texto_grade.json   # falha se o acerto cair
+
+# O inventario da base de caractere (S-200/S-201). Nao escreve nada dentro de training_data/,
+# le com imdecode e nunca com imread, e nomeia os achados em vez de enfileira-los: classe
+# vazia, classe abaixo do minimo e pasta cujo nome nao decodifica.
+cvoff-texto-inventario                 # manifesto + relatorio de procedencia em docs/metrics/
+cvoff-texto-inventario --minimo 3      # abaixo disto a classe vira achado
+
+# O split, o relatorio de vazamento e a procedencia, sem treinar (S-201/S-203). Um minuto a
+# partir do cache; e o arquivo que o `cvoff-audit` le para reprovar rotulo de modelo no teste.
+cvoff-texto-train --so-split
+
+# A grade de variantes do treino (S-204): aumento de dados, pesos de classe e forma da rede,
+# cada braco com o mesmo orcamento curto e medido **so no val**. O teste e tocado uma vez, pela
+# vencedora -- e a vencedora aqui e a que merece a corrida cheia, nao a que deve ser publicada.
+cvoff-texto-variantes --epocas 10
+cvoff-texto-variantes --bracos controle aumento-leve
+
+# A curva de confiabilidade e o ECE do par ja publicado, sem treinar (S-205). Mede o modelo que
+# o programa usa: retreinar para produzir a curva daria a curva de outro modelo com a mesma cara.
+cvoff-texto-train --so-calibracao
+
+# A tabela dos quatro angulos (S-197). A linha de pe e girada por transposicao -- a ida e a
+# volta fecham byte a byte --, e o relatorio traz duas reguas: o argmax da media, que mede o
+# classificador, e a decisao de producao, que so tenta 90 e 270 e exige superar o de pe.
+cvoff-texto-vertical --por-livro 3
+cvoff-texto-vertical --baseline docs/metrics/texto_vertical.json
+
+# O ganho do corte de linha e do descarte de fragmento (S-198). A faixa de cada linha e
+# dilatada em 2 pt, que e onde o defeito aparece e o numero com que a S-185 comparou.
+cvoff-texto-duas-linhas --por-livro 3
+cvoff-texto-duas-linhas --baseline docs/metrics/texto_duas_linhas.json
+
+# O separador de glifo colado (S-186) nos tres modos -- nunca, auto, sempre. A linha do `sempre`
+# e o preco de ignorar o arbitro; a varredura de limiar mostra se a conclusao e do limiar.
+cvoff-texto-colados --por-livro 3
+
+# O ganho de ler a linha em vez do caractere (S-188/S-189). O motor de linha e uma decisao do
+# dono do projeto: o padrao e o RapidOCR, que ja e extra declarado e nao baixa nada.
+cvoff-texto-linha --motor rapidocr
+
+# As duas reguas lado a lado (S-206). O comando **recusa** publicar so a do recorte: publicar
+# "99,1% de acerto" sobre recorte segmentado quando a pagina da outro numero e a forma de
+# numero enganoso que este projeto ja cometeu e corrigiu.
+cvoff-texto-placar-final --por-livro 2
+
+# Os 123 recortes da referencia da S-183, para transcrever sem abrir o PDF 123 vezes. A
+# transcricao e humana por desenho: se ela vier de um motor, a tabela mede o motor contra si.
+cvoff-texto-placar --exportar faixas/
 ```
 
 Os scripts `train_model.py`, `infer_pdf.py` e `export_pdf_pgn.py` na raiz continuam
@@ -789,6 +838,20 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   casos que apagam texto (tarja, trama, texto girado, box de duas linhas, tabela), a base de
   608 mil, o que o texto lido serve e o laco que faz a base crescer. Cada item traz uma **sonda**,
   e `cvoff-texto-status` responde quais ja existem no disco
+- [docs/PLANO_OCR_TEXTO.md](docs/PLANO_OCR_TEXTO.md) -- o plano de execucao do OCR de texto:
+  o que os pesos treinados em `training_data/` destravaram, as dez etapas ate a pagina lida, o
+  portao que decide se as tres ultimas acontecem, e as duas dividas que so a origem dos
+  recortes pode pagar -- procedencia e livro
+- [docs/ROADMAP_APARENCIA.md](docs/ROADMAP_APARENCIA.md) -- **Fases 32 a 35**, a leitura das duas
+  propostas de interface de `Proposta de interface/` e o plano para adota-las sem aposentar a
+  interface de hoje: as duas imagens mostram 4 e 13 comandos onde a janela tem 21 nas barras do
+  PDF, 6 na linha de campo, 6 abas e 27 itens de menu -- dai a regra de que pele e apresentacao do
+  mesmo conjunto de comandos, nunca um conjunto menor
+- [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) -- especificacao das Fases 32 a 35 (S-219 a
+  S-234): o catalogo de comandos declarado uma vez e desenhado de tres jeitos, o icone que nasce
+  do token, a pele "Foco" com cromo escuro e documento claro, a fita de grupos com orcamento de
+  altura, o desfazer que a Imagem 2 promete e o programa nao tem, e o inventario que faz nenhuma
+  pele esconder um comando
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
