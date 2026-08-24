@@ -358,26 +358,63 @@ def measured_modules(
     return sorted(arquivos)
 
 
+def _fonte_normalizada(caminho: Path) -> bytes:
+    """O código-fonte como o **repositório** o guarda, e não como este disco o guarda.
+
+    `CRLF -> LF`, e nada além disso: é exatamente a conversão que o `.gitattributes` manda o
+    git fazer (`*.py text eol=lf`). Um `CR` solto não é fim de linha para o git, continua no
+    blob versionado e por isso continua entrando no digest -- normalizar mais que o
+    versionamento normaliza esconderia diferença real de conteúdo, que é o oposto do que a
+    guarda existe para fazer.
+    """
+    return caminho.read_bytes().replace(b"\r\n", b"\n")
+
+
 def _digest_of(caminhos: Iterable[Path], raiz: Path) -> str:
-    """Digest de código: **o nome entra junto com o conteúdo.**
+    """Digest de código: **o nome entra junto com o conteúdo, e a quebra de linha não.**
 
     Para módulo o nome é significado -- renomear `hybrid.py` muda o que roda tanto quanto
     editá-lo, e um digest cego ao nome diria que nada mudou. É o oposto do modelo, ver
     `_digest_file`.
+
+    **O conteúdo entra normalizado a LF, porque é assim que o commit o guarda.** Este digest
+    responde "de que código saiu este número", e a resposta não pode depender de como a máquina
+    que perguntou configurou o checkout. Com `*.py text eol=lf` no `.gitattributes`, o blob tem
+    LF e a cópia no disco tem o que a máquina escreveu -- e o `git status` fica limpo nos dois
+    casos, porque o git normaliza na leitura. Hasheando os bytes crus, o mesmo commit dava dois
+    digests.
+
+    **Aconteceu, e o estrago foi o pior possível: a guarda reprovando relatório correto.** Em
+    2026-08-24, no c4034a9, `test_todo_relatorio_corrente_mediu_o_codigo_de_hoje` passava na
+    árvore de quem mediu e falhava num `git worktree` do **mesmo commit**, acusando
+    `board_detection`, `field_eval`, `inference`, `service` e `splits` de terem mudado quando
+    nenhum tinha: o `inference.py` tinha 18.370 bytes e 449 `CR` numa árvore e 17.921 bytes e
+    zero `CR` na outra. Num clone limpo -- que é o que a CI faz -- ela reprovaria os quatro.
+
+    **Não é nenhuma das duas famílias da S-218.** Lá o número gravado ou envelheceu (DERIVA) ou
+    nasceu errado na origem. Aqui ele nasceu **certo**, gravado de um jeito que só vale onde foi
+    gravado -- e uma guarda que só aprova na máquina que mediu não é uma guarda.
     """
     acumulador = hashlib.sha256()
     for caminho in sorted(caminhos):
         acumulador.update(caminho.relative_to(raiz).as_posix().encode("utf-8"))
-        acumulador.update(caminho.read_bytes())
+        acumulador.update(_fonte_normalizada(caminho))
     return acumulador.hexdigest()[:16]
 
 
 def _digest_file(caminho: Path) -> str:
-    """Digest de artefato: **só o conteúdo.**
+    """Digest de artefato: **só o conteúdo, e os bytes crus.**
 
     Para o modelo o nome não é significado, é rótulo -- e um rótulo enganoso foi exatamente o
     problema. Copiar `piece_classifier.pt` para `controle_20260816.pt` não faz dois modelos, e
     dois arquivos de mesmo nome em máquinas diferentes podem ser pesos distintos.
+
+    **E aqui não se normaliza quebra de linha, ao contrário de `_digest_of`.** A assimetria é
+    deliberada e vale nas duas pontas. O `.gitattributes` declara `*.pt binary`, então o git
+    nunca converte esses bytes e não existe representação de checkout que divirja -- a doença
+    que motivou a normalização lá não alcança aqui. E a cura seria pior que a doença: `0d 0a`
+    aparece dentro de peso serializado como qualquer outro par de bytes, e trocá-lo por `0a`
+    faria dois modelos **diferentes** caírem no mesmo digest. Ver `_fonte_normalizada`.
     """
     acumulador = hashlib.sha256()
     with caminho.open("rb") as arquivo:

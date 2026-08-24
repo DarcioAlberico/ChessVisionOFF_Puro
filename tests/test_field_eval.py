@@ -860,6 +860,90 @@ class ImpressaoDaMedicaoTests(unittest.TestCase):
             # O que não mudou continua igual: a guarda nomeia o módulo, e não só o conjunto.
             self.assertEqual(antes["code"]["modules"]["cli.field"], depois["code"]["modules"]["cli.field"])
 
+    def _raiz_com(self, base: Path, fim_de_linha: bytes) -> Path:
+        """Uma árvore mínima do caminho de medição, escrita byte a byte.
+
+        `write_bytes` e não `write_text`: no Windows o modo texto traduz o `LF` para `CRLF`
+        sozinho, e um teste sobre quebra de linha que deixa a plataforma escolher a quebra de
+        linha mede a plataforma, e não a regra.
+        """
+        pacote = base / "src" / "chess_diagram_ocr"
+        (pacote / "cli").mkdir(parents=True)
+        fonte = {
+            pacote / "__init__.py": b"",
+            pacote / "cli" / "__init__.py": b"",
+            pacote / "cli" / "field.py": b"from ..detector import ler" + fim_de_linha,
+            pacote / "detector.py": b"def ler():" + fim_de_linha + b"    return 1" + fim_de_linha,
+        }
+        for caminho, conteudo in fonte.items():
+            caminho.write_bytes(conteudo)
+        return base
+
+    def test_a_quebra_de_linha_do_checkout_nao_muda_o_digest(self) -> None:
+        """**O critério de aceite: o mesmo conteúdo em `CRLF` e em `LF` dá o mesmo digest.**
+
+        O digest responde "de que código saiu este número", e a resposta não pode depender de
+        como a máquina que pergunta configurou o checkout. Quando depende, a guarda só aprova na
+        máquina que mediu -- e reprova, num clone limpo, relatório que está certo.
+
+        Foi o que fez em 2026-08-24, no c4034a9: verde na árvore principal, vermelha num
+        `git worktree` do **mesmo commit**, acusando `board_detection`, `field_eval`,
+        `inference`, `service` e `splits` de terem mudado quando nenhum tinha. Como o
+        `.gitattributes` declara `*.py text eol=lf`, o git normaliza na leitura e o `git status`
+        fica limpo dos dois lados -- então nada apontava para a causa.
+
+        Não é DERIVA nem valor errado na origem, as duas famílias que a S-218 separa: é valor
+        certo gravado de um jeito que só vale onde foi gravado.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            com_lf = self._raiz_com(base / "lf", b"\n")
+            com_crlf = self._raiz_com(base / "crlf", b"\r\n")
+
+            lf = measurement_fingerprint(root=com_lf)["code"]
+            crlf = measurement_fingerprint(root=com_crlf)["code"]
+
+            self.assertEqual(lf["digest"], crlf["digest"])
+            # E módulo a módulo, que é o que a mensagem da guarda nomeia.
+            self.assertEqual(lf["modules"], crlf["modules"])
+
+    def test_normalizar_nao_pode_cegar_o_digest_para_conteudo(self) -> None:
+        """A cura tem um jeito óbvio de errar para o outro lado, e este teste fecha esse lado.
+
+        Ler com `newline=None`, ou passar um `splitlines()`, também faz `CRLF` e `LF` baterem --
+        e de quebra faz um `CR` solto bater com `LF`, que para o git é diferença **real** de
+        conteúdo e continua no blob versionado. Um digest que engole diferença que o
+        versionamento guarda aprova relatório obsoleto, que é o defeito que a guarda existe
+        para pegar. Normaliza-se exatamente o que o git normaliza, nem um byte a mais.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            com_lf = self._raiz_com(base / "lf", b"\n")
+            com_cr = self._raiz_com(base / "cr", b"\r")
+
+            self.assertNotEqual(
+                measurement_fingerprint(root=com_lf)["code"]["digest"],
+                measurement_fingerprint(root=com_cr)["code"]["digest"],
+            )
+
+    def test_o_digest_do_modelo_nao_normaliza_nada(self) -> None:
+        """A assimetria com `_digest_of` é deliberada, e este teste impede que alguém a empareje.
+
+        `*.pt` é `binary` no `.gitattributes`: o git nunca converte esses bytes, então não há
+        checkout que divirja e não há o que curar. Normalizar ali faria dois modelos
+        **diferentes** -- um com `0d 0a` dentro do peso, outro com `0a` -- caírem no mesmo
+        digest, que é o erro de identidade que a S-218 veio consertar.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = self._raiz_com(Path(tmp), b"\n")
+            com_crlf, com_lf = raiz / "crlf.pt", raiz / "lf.pt"
+            com_crlf.write_bytes(b"peso\r\npeso")
+            com_lf.write_bytes(b"peso\npeso")
+            self.assertNotEqual(
+                measurement_fingerprint(com_crlf, root=raiz)["model"]["digest"],
+                measurement_fingerprint(com_lf, root=raiz)["model"]["digest"],
+            )
+
     def test_o_modelo_entra_por_conteudo_e_nao_por_nome(self) -> None:
         """Dois arquivos de nome diferente e conteúdo igual são o mesmo modelo; o mesmo nome
         com conteúdo diferente não é. Foi o nome do arquivo que custou meia hora de arqueologia

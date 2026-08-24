@@ -1010,6 +1010,31 @@ E ele mora nos testes de propósito: `tests/` não está no fecho de importaçã
 **não vence relatório nenhum** — verificado, o `code.digest` seguiu `e0a6c677499bccff` depois
 dela. É o raro caso em que a cobertura sai de graça.
 
+> **Uma terceira família apareceu em 2026-08-24, e não é nenhuma das duas.** O `_digest_of`
+> hasheava `read_bytes()` — os bytes *daquela árvore*. Como o `.gitattributes` declara
+> `*.py text eol=lf`, o git normaliza na leitura: um arquivo com CRLF no disco casa com um blob
+> em LF e o `git status` fica limpo, então o mesmo commit dava dois digests conforme o checkout.
+> Medido no c4034a9: `test_todo_relatorio_corrente_mediu_o_codigo_de_hoje` passava na árvore
+> principal e falhava num `git worktree` do **mesmo commit**, acusando `board_detection`,
+> `field_eval`, `inference`, `service` e `splits` — o `inference.py` tinha 18.370 bytes e 449
+> `CR` de um lado e 17.921 bytes e zero do outro. Nenhum dos cinco tinha mudado.
+>
+> Não é DERIVA — o número não envelheceu — nem valor errado na origem — o número está certo. É
+> **valor certo gravado de um jeito que só vale onde foi gravado**, e o sintoma é o pior que uma
+> guarda pode ter: ela reprova o correto, e reprova justamente num clone limpo, que é o que a CI
+> faz. Guarda que fica vermelha em clone limpo é apagada antes de pegar o primeiro defeito real.
+>
+> A cura é hashear o conteúdo **como o repositório o guarda**: `CRLF -> LF` antes do hash, em
+> `_fonte_normalizada`, e nada além disso — um `CR` solto é conteúdo para o git, sobrevive no
+> blob e por isso continua entrando no digest. O digest do **modelo** não normaliza, e a
+> assimetria é o ponto: `*.pt` é `binary`, o git nunca converte esses bytes, e trocar `0d 0a` por
+> `0a` faria dois pesos diferentes caírem num digest só.
+>
+> **A ordem importou.** Primeiro a função, depois a remedição dos quatro: remedir antes teria
+> gravado de novo o digest da máquina que mediu, e movido o problema para a próxima. A remedição
+> reproduziu os quatro relatórios chave a chave — `seconds` à parte, que é condição de máquina —
+> e o modelo bateu bit a bit nos quatro. O único campo que mudou foi o digest.
+
 **O que este item deliberadamente não faz.** Não adivinha quais módulos do fecho uma corrida
 executou de fato — só a poda do motor desligado, que é decidível. Um digest condicionado ao que
 rodou seria mais justo e é exatamente por onde um digest passa batido.
@@ -1021,7 +1046,10 @@ rodou seria mais justo e é exatamente por onde um digest passa batido.
 `test_o_modelo_entra_por_conteudo_e_nao_por_nome`;
 `test_modelo_ausente_nao_derruba_a_impressao`;
 `test_todo_relatorio_corrente_declara_com_que_codigo_mediu`;
-`test_todo_relatorio_corrente_mediu_o_codigo_de_hoje`.
+`test_todo_relatorio_corrente_mediu_o_codigo_de_hoje`;
+`test_a_quebra_de_linha_do_checkout_nao_muda_o_digest`;
+`test_normalizar_nao_pode_cegar_o_digest_para_conteudo`;
+`test_o_digest_do_modelo_nao_normaliza_nada`.
 
 ---
 
