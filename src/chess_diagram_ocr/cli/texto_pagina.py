@@ -135,6 +135,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--sem-marca-fina",
+        action="store_true",
+        help=(
+            "Desliga a promoção a apóstrofo da marca que assenta no alto da linha "
+            "(Black,s -> Black's). Ligada por padrão -- e não pelo CER, que não se move: ver "
+            "docs/metrics/texto_marca_fina.json."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -194,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
                 modo_bloco=args.bloco,
                 colados=args.colados,
                 caixa_alta=not args.sem_caixa_alta,
+                marca_fina=not args.sem_marca_fina,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)

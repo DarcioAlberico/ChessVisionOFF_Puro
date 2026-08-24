@@ -2927,6 +2927,36 @@ não no mínimo: o meio do platô é o que tem margem dos dois lados.
 prosa é quase toda minúscula. O que está bem medido é que minúscula fica em 1,00; o lado que
 decide se o corte rebaixa maiúscula legítima está medido em 25 casos.
 
+### O quinto: o apóstrofo, e um item cujo CER não se move de propósito
+
+Mesmo defeito de fundo do anterior, outra geometria. `'`, `,` e `.` só diferem por **onde
+assentam na linha**, e o recorte é o bbox apertado: isolados e redimensionados, são a mesma mancha.
+`Black's` saía `Black,s`.
+
+Medido nas mesmas 13 páginas, sobre 355 marcas finas casadas com a camada:
+
+| marca | n | topo do box, em alturas de linha |
+|---|---:|---|
+| alta (`'` `’` `”`) | 13 | p10 0,00 · mediana 0,03 · p90 0,03 |
+| baixa (`,` `.` `;` `:`) | 342 | p10 0,79 · mediana 0,85 · p90 0,87 |
+
+Não há sobreposição; o corte fica em 0,30. **Uma segunda guarda entrou depois de dois falsos
+positivos**: `Qualquer` saía `Qua'quer` porque um `l` que o classificador já lia como vírgula
+também começa no topo da linha. A marca de verdade vai até 0,35 da altura da linha e a letra mede
+0,97, então o teto de altura fica em 0,50 — no meio do vão.
+
+**O teto deste item é baixo, e a spec diz por quê.** O modelo não tem as aspas curvas: `’ ‘ “ ”`
+não são classes. Dos 28 erros de marca fina, **13 são de classe ausente** — não há resposta que o
+decodificador pudesse dar. O módulo escreve `'`, que é o certo para **ler**, e continua contando
+como erro contra uma camada que escreveu `’`.
+
+    CER 0,1114 -> 0,1115    (ruído, e previsto)
+    palavras quebradas por vírgula ou ponto no meio: 10 -> 2
+
+**Entra ligado, e não pelo CER.** É o primeiro item deste plano cuja justificativa não é a régua
+principal: `Black,s` está errado de um jeito que salta aos olhos, e `Black's` não. Quem julgar o
+item pelo CER vai concluir, corretamente, que ele não mexeu no CER.
+
 A medição está em `docs/metrics/texto_pagina.json`, e ela também é o que decidiu **desligar** o
 modo bloco da S-188 na página: ele custa ~50x o tempo e, no livro nativo digital, piora 22,5%.
 

@@ -587,6 +587,12 @@ redimensionado para 32x32, o que apaga exatamente o que as separa. Sem isso, `po
 medido em 11 paginas de 4 livros, CER **0,1434 -> 0,1114** (-22,3%), com 11 melhorando e nenhuma
 piorando. Vem ligado; `--sem-caixa-alta` desliga.
 
+**O apostrofo tambem sai da geometria**, e pelo mesmo motivo: `'`, `,` e `.` so diferem por onde
+assentam na linha, e o recorte apertado apaga isso. `Black's` saia `Black,s`. Medido nas mesmas
+paginas: 10 palavras quebradas por virgula ou ponto no meio viram 2. **O CER nao se move** -- o
+ganho e de legibilidade, e o modelo nao tem as aspas curvas (`’ ‘ “ ”` nao sao classes), entao ele
+escreve o apostrofo reto. `--sem-marca-fina` desliga.
+
 O que **pede olho** aparece colorido no editor, em tres faixas: abaixo de `MIN_CONFIDENCE` o
 motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto sai na cor normal.
 A camada de texto e a correcao humana nunca pedem revisao.

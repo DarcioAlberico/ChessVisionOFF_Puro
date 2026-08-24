@@ -1,0 +1,176 @@
+{
+  "item": "S-211",
+  "medido_em": "2026-08-24",
+  "dpi": 220,
+  "pergunta": "Promover a apostrofo a marca baixa que assenta no ALTO da linha paga? O recorte e bbox apertado, entao onde a marca mora na linha e apagado antes de o modelo ver a imagem -- e ' , e . viram a mesma mancha.",
+  "referencia": "a camada de texto da propria pagina; SO livros de camada editorada",
+  "caminho_medido": "ler_pagina (producao)",
+  "commit": "0924b99c9cfb74c07e5ac8d278d52f474d6fc4f9",
+  "modelo": "models/char_classifier.pt",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "geometria": {
+    "posicao_do_topo_em_alturas_de_linha": {
+      "marca_alta": {
+        "n": 13,
+        "p10": 0.0,
+        "mediana": 0.03,
+        "p90": 0.03
+      },
+      "marca_baixa": {
+        "n": 342,
+        "p10": 0.79,
+        "mediana": 0.85,
+        "p90": 0.87
+      }
+    },
+    "altura_do_box_em_alturas_de_linha": {
+      "marca_alta": {
+        "n": 13,
+        "mediana": 0.34,
+        "max": 0.35
+      },
+      "letra_alta_lida_como_marca": {
+        "n": 1,
+        "mediana": 0.97
+      }
+    },
+    "corte_de_posicao": 0.3,
+    "teto_de_altura": 0.5
+  },
+  "teto_do_conserto": "O modelo NAO tem as aspas curvas: ’ ‘ “ ” nao sao classes, so existem o apostrofo reto ' e as aspas retas \". Dos 28 erros de marca fina medidos, 13 sao de CLASSE AUSENTE -- nao ha resposta que o decodificador pudesse dar. Escrever ' e o certo para LER, e continua contando como erro contra uma camada que escreveu ’.",
+  "paginas": [
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 118,
+      "cer_sem": 0.06273408239700375,
+      "cer_com": 0.06273408239700375,
+      "contracoes_na_referencia": 2,
+      "contracoes_sem": 0,
+      "contracoes_com": 2,
+      "quebradas_sem": 2,
+      "quebradas_com": 0
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 120,
+      "cer_sem": 0.0667361835245047,
+      "cer_com": 0.0667361835245047,
+      "contracoes_na_referencia": 1,
+      "contracoes_sem": 0,
+      "contracoes_com": 1,
+      "quebradas_sem": 2,
+      "quebradas_com": 1
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 122,
+      "cer_sem": 0.07115009746588694,
+      "cer_com": 0.07115009746588694,
+      "contracoes_na_referencia": 2,
+      "contracoes_sem": 0,
+      "contracoes_com": 2,
+      "quebradas_sem": 2,
+      "quebradas_com": 0
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 124,
+      "cer_sem": 0.0804953560371517,
+      "cer_com": 0.0804953560371517,
+      "contracoes_na_referencia": 1,
+      "contracoes_sem": 0,
+      "contracoes_com": 1,
+      "quebradas_sem": 1,
+      "quebradas_com": 0
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 126,
+      "cer_sem": 0.0880281690140845,
+      "cer_com": 0.0880281690140845,
+      "contracoes_na_referencia": 1,
+      "contracoes_sem": 0,
+      "contracoes_com": 1,
+      "quebradas_sem": 1,
+      "quebradas_com": 0
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 60,
+      "cer_sem": 0.24322033898305084,
+      "cer_com": 0.24322033898305084,
+      "contracoes_na_referencia": 0,
+      "contracoes_sem": 0,
+      "contracoes_com": 0,
+      "quebradas_sem": 0,
+      "quebradas_com": 0
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 64,
+      "cer_sem": 0.03543647363872083,
+      "cer_com": 0.03543647363872083,
+      "contracoes_na_referencia": 0,
+      "contracoes_sem": 0,
+      "contracoes_com": 0,
+      "quebradas_sem": 0,
+      "quebradas_com": 0
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 68,
+      "cer_sem": 0.12476190476190477,
+      "cer_com": 0.12571428571428572,
+      "contracoes_na_referencia": 0,
+      "contracoes_sem": 0,
+      "contracoes_com": 0,
+      "quebradas_sem": 0,
+      "quebradas_com": 0
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 72,
+      "cer_sem": 0.10357142857142858,
+      "cer_com": 0.10357142857142858,
+      "contracoes_na_referencia": 0,
+      "contracoes_sem": 0,
+      "contracoes_com": 0,
+      "quebradas_sem": 0,
+      "quebradas_com": 0
+    },
+    {
+      "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+      "pagina": 80,
+      "cer_sem": 0.31890660592255127,
+      "cer_com": 0.31890660592255127,
+      "contracoes_na_referencia": 0,
+      "contracoes_sem": 0,
+      "contracoes_com": 0,
+      "quebradas_sem": 1,
+      "quebradas_com": 1
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "pagina": 200,
+      "cer_sem": 0.030020703933747412,
+      "cer_com": 0.030020703933747412,
+      "contracoes_na_referencia": 0,
+      "contracoes_sem": 0,
+      "contracoes_com": 1,
+      "quebradas_sem": 1,
+      "quebradas_com": 0
+    }
+  ],
+  "resumo": {
+    "paginas": 11,
+    "cer_sem": 0.11136921311363958,
+    "cer_com": 0.11145579320021967,
+    "contracoes_na_referencia": 7,
+    "contracoes_lidas_sem": 0,
+    "contracoes_lidas_com": 8,
+    "palavras_quebradas_sem": 10,
+    "palavras_quebradas_com": 2
+  },
+  "decisao": "LIGADA por padrao, e NAO pelo CER: o ganho de CER e 0,0001 -- ruido, e previsto. O que ela paga e legibilidade: 8 de 10 palavras quebradas por virgula ou ponto no meio voltam a ser palavras. Quem julgar este item pelo CER vai concluir que ele nao fez nada.",
+  "falso_positivo_que_sobra": "Uma contracao a mais que a referencia, e ela e um pingo de 'i' que unir_pingos nao uniu: solto, o pingo e pequeno e alto, igual a um apostrofo. Ja saia como ponto antes desta regra -- ela troca qual caractere errado aparece, nao cria erro."
+}
