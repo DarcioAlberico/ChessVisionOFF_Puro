@@ -39,6 +39,7 @@ import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Literal
 
 from ..text import documento
@@ -314,7 +315,8 @@ class TextoPanel(ttk.Frame):
             if segmento.e_diagrama and isinstance(segmento.bloco, BlocoDeDiagrama):
                 self._inserir_diagrama(segmento.bloco)
                 continue
-            self.editor.insert(tk.END, segmento.texto, (segmento.faixa,))
+            etiquetas = (segmento.faixa, "negrito") if segmento.negrito else (segmento.faixa,)
+            self.editor.insert(tk.END, segmento.texto, etiquetas)
 
         self.status_var.set(documento.resumo(pagina))
         self.editor.edit_reset()
@@ -368,6 +370,25 @@ class TextoPanel(ttk.Frame):
             if papel:
                 self.editor.tag_configure(faixa, foreground=tokens.cor(papel))
         self.editor.tag_configure("marca", foreground=tokens.cor(PAPEL_DA_MARCA))
+        self.editor.tag_configure("negrito", font=self._fonte_negrito())
+
+    def _fonte_negrito(self) -> tkfont.Font | tuple[str, int, str]:
+        """A fonte do editor em negrito. Cai na do sistema se o Tk não souber responder.
+
+        **Derivada da fonte do próprio editor**, e não cravada: quem aumentou a fonte do Windows
+        tem de ver o negrito no mesmo corpo do resto, e um nome de família fixo aqui ignoraria a
+        escolha dele -- é a mesma razão de `ui/texto.largura_media_do_caractere`.
+        """
+        try:
+            base = tkfont.Font(font=self.editor.cget("font")).actual()
+            return tkfont.Font(
+                family=str(base.get("family", "TkDefaultFont")),
+                size=int(base.get("size", 0)),
+                weight="bold",
+            )
+        except Exception as exc:  # noqa: BLE001 - fonte exótica ou widget sem janela ainda
+            logger.debug("Fonte de negrito não derivada (%s): usando a do sistema.", exc)
+            return ("TkDefaultFont", 0, "bold")
 
     def _marcar_sujo(self, _evento: object = None) -> None:
         if self.editor.edit_modified():

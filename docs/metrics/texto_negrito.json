@@ -1,0 +1,65 @@
+{
+  "item": "S-211",
+  "medido_em": "2026-08-24",
+  "pergunta": "Da para reconhecer o texto em negrito?",
+  "resposta": "Sim pela CAMADA de texto, que e metadado e nao erra. NAO pela imagem, e o numero abaixo e o motivo.",
+  "a_via_da_imagem_foi_medida_e_recusada": {
+    "amostra": "940 palavras rotuladas pelo nome da fonte na camada, em 3 livros",
+    "espessura_do_traco": {
+      "melhor_acerto": 0.822,
+      "chutar_normal_sempre": 0.827,
+      "veredito": "NAO passa do acaso"
+    },
+    "densidade_de_tinta": {
+      "melhor_acerto_220dpi": 0.856,
+      "melhor_acerto_400dpi": 0.866,
+      "chutar_normal_sempre": 0.827
+    },
+    "curva_da_densidade": [
+      {
+        "corte": 0.41,
+        "cobertura": 0.81,
+        "precisao": 0.468
+      },
+      {
+        "corte": 0.448,
+        "cobertura": 0.54,
+        "precisao": 0.583
+      },
+      {
+        "corte": 0.474,
+        "cobertura": 0.294,
+        "precisao": 0.632
+      }
+    ],
+    "melhor_f1": {
+      "valor": 0.6,
+      "cobertura": 0.785,
+      "precisao": 0.487
+    },
+    "veredito": "metade do que fosse marcado sairia errado. A regua deste projeto para aplicar em lote e 99,29% de precisao (S-213). Subir o dpi de 220 para 400 nao muda: o problema nao e resolucao, e que a densidade depende mais do limiar de binarizacao e do corpo da fonte.",
+    "erro_de_metodo_no_caminho": "a primeira medicao normalizou a espessura pela MEDIANA DA LINHA, o que apaga o sinal justamente quando a linha inteira e negrito -- que e o caso comum: titulo, lance principal."
+  },
+  "cobertura_da_camada": {
+    "livros_com_negrito": 13,
+    "com_camada_sem_negrito": 16,
+    "sem_camada": 12,
+    "total": 41,
+    "exemplos": {
+      "Gunderam": "194 de 619 spans",
+      "Dvoretsky Endgame Manual": "108 de 1604",
+      "1937 Kemeri": "80 de 4273",
+      "Minhas 60 partidas": "36 de 405"
+    }
+  },
+  "commit": "00e90d36aed37d8413ca5f9eafe63fc6e0084c90",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "desenho": "negrito e `bool | None` e nao `bool`: None e 'nao se sabe', e e diferente de False. Um livro cuja camada nao registra peso nao pode declarar que nada ali e negrito. Quem separa os dois e o DOCUMENTO, amostrado em 6 paginas, e nao a pagina.",
+  "limitacao_declarada": "a unidade e a LINHA, porque a PaginaLida nao tem uma menor. Uma linha meio em negrito e decidida pela maioria da largura (60%). Onde o negrito e a linha inteira -- titulo, variante principal -- e exato; onde e um lance no meio da prosa, e grosso.",
+  "verificado_de_ponta_a_ponta": {
+    "Dvoretsky p118": "7 linhas em negrito, e sao os lances da variante principal",
+    "Minhas 60 partidas p84": "1 linha, 'Empatada'",
+    "Secrets of Chess Training p310": "todas None -- a camada dele nao registra peso",
+    "Simple Chess p40": "todas None -- nao tem camada"
+  }
+}

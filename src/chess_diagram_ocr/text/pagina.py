@@ -291,6 +291,12 @@ class LinhaLida:
     bbox: tuple[float, float, float, float]
     confianca: float = 1.0
     procedencia: Procedencia = "camada"
+    negrito: bool | None = None
+    """A linha está em negrito? **`None` é "não se sabe", e não é o mesmo que `False`.**
+
+    Dos 42 livros do acervo, 13 registram peso de fonte na camada de texto e 29 não -- e um livro
+    que não registra não pode declarar que nada ali é negrito. Ver `text/negrito.py`, que também
+    explica por que isto **não** sai da imagem."""
 
     def para_json(self) -> dict[str, Any]:
         return {
@@ -298,6 +304,7 @@ class LinhaLida:
             "bbox": list(self.bbox),
             "confianca": self.confianca,
             "procedencia": self.procedencia,
+            "negrito": self.negrito,
         }
 
     @classmethod
@@ -309,7 +316,20 @@ class LinhaLida:
             bbox=_bbox_de(dados.get("bbox"), onde),
             confianca=float(dados.get("confianca", 1.0)),
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
+            negrito=_negrito_de(dados.get("negrito"), onde),
         )
+
+
+def _negrito_de(valor: Any, onde: str) -> bool | None:
+    """`True`, `False` ou `None` -- e um arquivo antigo, sem o campo, vira `None`.
+
+    Campo ausente é "não se sabe", que é exatamente o que um arquivo gravado antes deste campo
+    existir sabe sobre negrito. Não paga versão de esquema por isso."""
+    if valor is None:
+        return None
+    if isinstance(valor, bool):
+        return valor
+    raise PaginaInvalida(f"{onde}: negrito é True, False ou ausente -- veio {valor!r}")
 
 
 @dataclass(frozen=True)
@@ -327,6 +347,8 @@ class BlocoDeTexto:
     confianca: float = 1.0
     procedencia: Procedencia = "camada"
     recuado: bool = False
+    negrito: bool | None = None
+    """O parágrafo inteiro em negrito. `None` é "não se sabe"; ver `LinhaLida.negrito`."""
     """Este parágrafo abriu por recuo. A interface o usa para reproduzir a diagramação; o domínio
     o usa para nada, e é por isso que ele é um `bool` e não um número de pontos."""
 
@@ -344,12 +366,17 @@ class BlocoDeTexto:
         """
         if not linhas:
             return cls()
+        pesos = {linha.negrito for linha in linhas}
         return cls(
             linhas=tuple(linhas),
             bbox=_envolver([linha.bbox for linha in linhas]),
             confianca=min(linha.confianca for linha in linhas),
             procedencia=menos_confiavel([linha.procedencia for linha in linhas]),
             recuado=recuado,
+            # **O bloco só é negrito se TODAS as linhas forem.** Um parágrafo com uma linha em
+            # negrito não é um parágrafo em negrito, e `None` em qualquer linha contamina o
+            # conjunto -- não se sabe do todo o que não se sabe de uma parte.
+            negrito=pesos.pop() if len(pesos) == 1 else None,
         )
 
     def para_json(self) -> dict[str, Any]:
@@ -359,6 +386,7 @@ class BlocoDeTexto:
             "confianca": self.confianca,
             "procedencia": self.procedencia,
             "recuado": self.recuado,
+            "negrito": self.negrito,
             "linhas": [linha.para_json() for linha in self.linhas],
         }
 
@@ -372,6 +400,7 @@ class BlocoDeTexto:
             confianca=float(dados.get("confianca", 1.0)),
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
             recuado=bool(dados.get("recuado", False)),
+            negrito=_negrito_de(dados.get("negrito"), onde),
         )
 
 

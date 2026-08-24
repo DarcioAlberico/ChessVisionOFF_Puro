@@ -80,6 +80,10 @@ class Segmento:
     faixa: str = TRANQUILO
     bloco: Bloco | None = None
     coluna: int = 0
+    negrito: bool = False
+    """O bloco está em negrito. **`None` do modelo vira `False` aqui, e é deliberado**: a tela
+    desenha ou não desenha, não tem um terceiro estado -- e "não se sabe" se desenha como normal,
+    que é o lado seguro. Quem precisa da diferença lê `PaginaLida`."""
 
     @property
     def e_diagrama(self) -> bool:
@@ -114,6 +118,7 @@ def segmentos(pagina: PaginaLida) -> Iterator[Segmento]:
                 faixa=faixa_de_confianca(bloco.confianca, bloco.procedencia),
                 bloco=bloco,
                 coluna=coluna.indice,
+                negrito=getattr(bloco, "negrito", None) is True,
             )
 
 

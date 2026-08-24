@@ -624,6 +624,17 @@ pergunta se alguma combinacao das letras que o classificador ja pos no topo form
 conhecida. Vem **desligado**, e o motivo e o numero: medido, ele corrige **zero**, porque as
 quatro correcoes de geometria acima ja levaram o que era alcancavel. `--dicionario` liga.
 
+**O negrito e mostrado na aba**, e vem da **camada de texto** -- nome da fonte e bit de peso,
+que sao metadado e nao erram. No Dvoretsky ele marca exatamente os lances da variante principal.
+A cobertura e irregular: **13 dos 41 livros** registram peso, 16 tem camada sem peso e 12 nao tem
+camada. Nos outros 28 o campo fica em "nao se sabe" (`None`), que **nao** e a mesma coisa que
+"nada aqui e negrito".
+
+A via da imagem foi **medida e recusada**: espessura de traco nao passa do acaso (82,2% contra
+82,7% de chutar "normal" sempre), e densidade de tinta chega a F1 0,60 -- precisao **48,7%**, ou
+seja, metade das marcacoes erradas. Subir de 220 para 400 dpi nao muda. Ver
+`docs/metrics/texto_negrito.json`.
+
 O que **pede olho** aparece colorido no editor, em tres faixas: abaixo de `MIN_CONFIDENCE` o
 motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto sai na cor normal.
 A camada de texto e a correcao humana nunca pedem revisao.
@@ -951,6 +962,15 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   do token, a pele "Foco" com cromo escuro e documento claro, a fita de grupos com orcamento de
   altura, o desfazer que a Imagem 2 promete e o programa nao tem, e o inventario que faz nenhuma
   pele esconder um comando
+- [docs/ROADMAP_EDITOR.md](docs/ROADMAP_EDITOR.md) -- **Fases 36 a 40**, a analise da aba Texto e o
+  plano para transforma-la num editor: a aba tem 6 controles, 3 tags de cor e **1** formato de
+  saida, e devolve uma `str` -- dai a regra de que todo atributo (negrito, italico, cor, estilo)
+  mora no documento e nao no widget, porque tag do Tk nao sobrevive ao botao Salvar
+- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 40 (S-235 a S-256):
+  o documento rico como dado, o italico que o leitor ja mede e joga fora, o negrito medido pela
+  espessura do traco (a camada declara estilo em 14 dos 41 livros), o arquivo que reabre com
+  diagrama e faixa, a paleta gerada das 314 classes do modelo, `Ctrl+S` no editor -- que hoje nao
+  faz nada --, e a exportacao para `.md`, `.html`, `.rtf` e PDF pesquisavel
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

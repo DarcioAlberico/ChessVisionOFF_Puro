@@ -178,6 +178,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--sem-negrito",
+        action="store_true",
+        help=(
+            "Não anota o peso da fonte. Ligado por padrão, e vem da CAMADA de texto -- 13 dos 41 "
+            "livros a registram; nos outros o campo fica 'não se sabe'. A via da imagem foi "
+            "medida e recusada: ver docs/metrics/texto_negrito.json."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -242,6 +251,7 @@ def main(argv: list[str] | None = None) -> int:
                 italico=not args.sem_italico,
                 dicionario=args.dicionario,
                 numeros=not args.sem_numeros,
+                marcar_negrito=not args.sem_negrito,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)

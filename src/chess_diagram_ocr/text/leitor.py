@@ -166,6 +166,7 @@ from . import empilhados as _empilhados
 from . import italico as _italico
 from . import linhas as _linhas_mod
 from . import marca_fina as _marca_fina
+from . import negrito as _negrito
 from . import numero as _numero
 from . import paragrafos as _paragrafos
 from .binarizacao import binarize
@@ -249,6 +250,9 @@ class _Cru:
     confianca: float
     procedencia: Procedencia
     coluna: int = 0
+    negrito: bool | None = None
+    """`None` é "não se sabe" -- ver `text/negrito.py`. Quem preenche é `ler_pagina`, que é quem
+    tem o documento na mão; `linhas_do_glifo` e `linhas_da_camada` deixam em `None`."""
 
 
 def _envolver(caixas: Sequence[Retangulo]) -> Retangulo:
@@ -474,6 +478,10 @@ def linhas_do_glifo(
     `numeros` troca por `0` o oval que está dentro de um número (`2o` -> `20`) e conserta o roque
     (`O.O` -> `0-0`). Ligada: o sintoma cai de 29 para 2 em 22 páginas, e nenhuma piora. Ver
     `text/numero.py`, que também registra o que **não** dá para consertar assim.
+
+    `marcar_negrito` anota o peso da fonte em cada linha, **da camada de texto e nunca da
+    imagem**: 13 dos 41 livros o registram, e nos outros o campo fica `None` -- "não se sabe", que
+    não é `False`. Ver `text/negrito.py`, que traz o número da via recusada.
 
     `dicionario` deixa o léxico desempatar entre os candidatos do modelo. **Desligado, e o número
     é zero**: medido em 6 páginas, ele não corrige nada -- as correções de geometria acima já
@@ -807,6 +815,7 @@ def _blocos_de_texto(
                     bbox=_para_pontos(cru.caixa, escala_px),
                     confianca=cru.confianca,
                     procedencia=cru.procedencia,
+                    negrito=cru.negrito,
                 )
             )
         if not lidas:
@@ -874,6 +883,7 @@ def ler_pagina(
     italico: bool = True,
     dicionario: bool = False,
     numeros: bool = True,
+    marcar_negrito: bool = True,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
@@ -905,6 +915,12 @@ def ler_pagina(
         margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
         numero = running_page_number(doc, indice)
         documento = str(getattr(doc, "name", "") or "")
+        spans_negrito = _negrito.spans_de_negrito(page) if marcar_negrito else []
+        registra_negrito = (
+            bool(spans_negrito) or _negrito.documento_registra_negrito(doc)
+            if marcar_negrito
+            else False
+        )
 
     if max_boards:
         candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem, max_boards=max_boards)  # type: ignore[arg-type]
@@ -929,6 +945,9 @@ def ler_pagina(
             dicionario=dicionario, numeros=numeros,
         )
 
+    if marcar_negrito and cruas:
+        cruas = _com_negrito(cruas, spans_negrito, registra_negrito, escala_px)
+
     cabecalho, rodape = _margens(margem, altura, qual)
     return PaginaLida(
         documento=documento,
@@ -948,6 +967,24 @@ def ler_pagina(
         rodape=rodape,
         numero_impresso=numero,
     )
+
+
+def _com_negrito(
+    cruas: Sequence[_Cru],
+    spans: Sequence[Retangulo],
+    registra: bool,
+    escala_px: float,
+) -> list[_Cru]:
+    """As mesmas linhas, com o peso da fonte anotado. Ver `text/negrito.py`.
+
+    Os spans vêm em **pontos** e as caixas em **pixels**; a conversão acontece aqui, no único
+    lugar em que as duas se encontram.
+    """
+    from dataclasses import replace
+
+    bboxes = [_para_pontos(c.caixa, escala_px) for c in cruas]
+    pesos = _negrito.marcar(bboxes, spans, registra=registra)
+    return [replace(c, negrito=p) for c, p in zip(cruas, pesos, strict=True)]
 
 
 def _margens(linhas: Sequence[object], altura: float, procedencia: MotorResolvido) -> tuple[LinhaLida | None, LinhaLida | None]:
