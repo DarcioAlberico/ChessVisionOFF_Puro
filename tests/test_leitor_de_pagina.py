@@ -207,27 +207,43 @@ class EspacoDoModoBlocoTests(unittest.TestCase):
 
 
 class MotorTests(unittest.TestCase):
-    class _Pagina:
-        def __init__(self, texto: str) -> None:
-            self._texto = texto
+    """O padrão é o classificador deste projeto, e a camada de texto é a exceção.
 
-        def get_text(self, _modo: str) -> str:
-            return self._texto
+    **Isto estava invertido até 2026-08-24.** `auto` media quanto texto a camada trazia e a
+    preferia acima de um piso. A pergunta estava errada: não é *quanto* a camada traz, é *o que* --
+    e para notação de xadrez ela não traz nada de aproveitável. Medido em 16 páginas de 4 livros
+    que têm camada: **zero** figurinas Unicode contra 360 do classificador.
+    """
 
-    def test_uma_pagina_com_camada_e_lida_pela_camada(self) -> None:
-        self.assertEqual(leitor.motor_escolhido(self._Pagina("x" * 400)), "camada")
+    def test_o_padrao_e_o_classificador_deste_projeto(self) -> None:
+        self.assertEqual(leitor.MOTOR_PADRAO, "glifo")
+        self.assertEqual(leitor.motor_escolhido(), "glifo")
 
-    def test_uma_pagina_sem_camada_cai_para_o_glifo(self) -> None:
-        self.assertEqual(leitor.motor_escolhido(self._Pagina("")), "glifo")
+    def test_auto_e_o_glifo_quando_ha_modelo(self) -> None:
+        self.assertEqual(leitor.motor_escolhido("auto", tem_modelo=True), "glifo")
 
-    def test_a_camada_de_tres_caracteres_do_reinfeld_nao_conta_como_camada(self) -> None:
-        """Cada folha traz só o número do exercício como texto; o resto é imagem escaneada."""
-        self.assertEqual(leitor.motor_escolhido(self._Pagina("10")), "glifo")
+    def test_auto_cai_para_a_camada_so_sem_modelo(self) -> None:
+        """Sem classificador não há leitura nenhuma, e camada imperfeita ganha de página em branco."""
+        self.assertEqual(leitor.motor_escolhido("auto", tem_modelo=False), "camada")
 
-    def test_o_motor_pedido_a_mao_nunca_e_sobreposto(self) -> None:
-        """`--motor glifo` numa página com camada é como se mede o glifo. Ver o CLI."""
-        self.assertEqual(leitor.motor_escolhido(self._Pagina("x" * 400), "glifo"), "glifo")
-        self.assertEqual(leitor.motor_escolhido(self._Pagina(""), "camada"), "camada")
+    def test_a_camada_pedida_a_mao_nunca_e_sobreposta(self) -> None:
+        """`--motor camada` é o que serve à comparação entre os dois lados."""
+        self.assertEqual(leitor.motor_escolhido("camada", tem_modelo=True), "camada")
+
+    def test_o_glifo_pedido_a_mao_nao_cai_para_a_camada(self) -> None:
+        """Pedir o glifo e receber a camada em silêncio seria trocar o motor sem avisar."""
+        self.assertEqual(leitor.motor_escolhido("glifo", tem_modelo=False), "glifo")
+
+    def test_a_resposta_nunca_e_auto(self) -> None:
+        """`auto` é uma pergunta, não uma origem -- e a resposta vira procedência de cada bloco."""
+        from chess_diagram_ocr.text.pagina import PROCEDENCIAS
+
+        for motor in leitor.MOTORES:
+            for tem in (True, False):
+                with self.subTest(motor=motor, tem_modelo=tem):
+                    resposta = leitor.motor_escolhido(motor, tem_modelo=tem)
+                    self.assertIn(resposta, ("camada", "glifo"))
+                    self.assertIn(resposta, PROCEDENCIAS)
 
 
 if __name__ == "__main__":  # pragma: no cover

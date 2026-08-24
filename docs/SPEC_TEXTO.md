@@ -2867,6 +2867,27 @@ Nenhum deles era de reconhecimento, e é isso que os torna interessantes: o clas
 A medição está em `docs/metrics/texto_pagina.json`, e ela também é o que decidiu **desligar** o
 modo bloco da S-188 na página: ele custa ~50x o tempo e, no livro nativo digital, piora 22,5%.
 
+### O terceiro defeito, e este era de premissa: a camada de texto não codifica figurina
+
+`MOTOR_PADRAO` nasceu `auto`, preferindo a **camada de texto do PDF** onde ela existisse -- 25 dos
+42 livros --, com o argumento de que a camada não é OCR e vale 1,0 de confiança. O argumento vale
+para prosa e é falso para notação de xadrez. Medido em 2026-08-24 sobre 16 páginas de 4 livros que
+**têm** camada:
+
+| fonte | figurinas Unicode (♔-♟) | notação ASCII (Nf3, Bxd4) |
+|---|---:|---:|
+| camada de texto | **0** | 212 |
+| classificador de glifo | **360** | 52 |
+
+Zero. Onde o livro imprime `♘`, a camada traz o codepoint cru da fonte de xadrez: `2.♘xd4 dxc2!`
+sai como `2.l0xd4 dxc2!`, e `33.♕a6!` como `33.fta6!`. O texto **parece** prosa e passa por
+qualquer verificação de "esta página tem texto?" -- e foi por isso que a premissa atravessou a
+primeira versão sem ninguém tropeçar nela.
+
+E não há convenção comum: nos mesmos 4 livros a camada usa três codificações diferentes. O padrão
+passou a ser `glifo`; `camada` continua acessível, e `auto` é o glifo com a camada como reserva
+declarada para quando os pesos não carregam.
+
 ---
 
 # Fase 31 — O que faz a base crescer

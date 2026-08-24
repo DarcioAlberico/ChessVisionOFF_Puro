@@ -4,7 +4,7 @@
   "dpi": 220,
   "pergunta": "Qual o CER do glifo na pagina inteira, e o modo bloco da S-188 paga na pagina?",
   "referencia": "a camada de texto da propria pagina, montada pelo mesmo text/leitor.py",
-  "ressalva": "A camada nao e verdade de referencia humana: no AAGAARD ela e OCR de terceiro e traz os proprios erros. O valor absoluto tem piso que nao e do glifo; a comparacao entre as duas colunas continua valida por serem medidas contra a mesma referencia.",
+  "ressalva": "A camada nao e verdade de referencia humana: no AAGAARD ela e OCR de terceiro e traz os proprios erros. O valor absoluto tem piso que nao e do glifo; a comparacao entre as duas colunas continua valida por serem medidas contra a mesma referencia. Ver tambem o bloco 'figurinas': a camada nao representa figurina, entao para NOTACAO ela nao e referencia de coisa nenhuma -- o CER acima mede prosa, e o glifo e penalizado justamente onde acerta a figurina.",
   "commit": "81ecb566c8eff97fef4b93dbeed3991c6e3d7303",
   "modelo": "models/char_classifier.pt",
   "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
@@ -86,5 +86,155 @@
     "cer_glifo_medio": 0.13967823721711078,
     "cer_glifo_com_bloco_medio": 0.14460376647575574
   },
-  "decisao": "modo_bloco entra DESLIGADO por padrao em text/leitor.py: na media ele piora, e onde ajuda custa ~50x o tempo. Continua exposto em --bloco porque a medicao de origem era sobre faixa de legenda, que e outro caso."
+  "decisao": "modo_bloco entra DESLIGADO por padrao em text/leitor.py: na media ele piora, e onde ajuda custa ~50x o tempo. Continua exposto em --bloco porque a medicao de origem era sobre faixa de legenda, que e outro caso.",
+  "figurinas": {
+    "medido_em": "2026-08-24",
+    "pergunta": "A camada de texto do PDF codifica figurina de xadrez? E o classificador?",
+    "criterio": "figurina = codepoint Unicode de peca (U+2654..U+265F, U+2BF0..U+2BFF); ascii = notacao algebrica com letra de peca ASCII (Nf3, Bxd4).",
+    "so_livros_com_camada": true,
+    "commit": "275eb7effabc1ffb433eae0f0be1fc8ad958a6d7",
+    "paginas": [
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 58,
+        "camada_figurinas": 0,
+        "camada_ascii": 7,
+        "glifo_figurinas": 65,
+        "glifo_ascii": 1
+      },
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 60,
+        "camada_figurinas": 0,
+        "camada_ascii": 2,
+        "glifo_figurinas": 65,
+        "glifo_ascii": 1
+      },
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 62,
+        "camada_figurinas": 0,
+        "camada_ascii": 0,
+        "glifo_figurinas": 43,
+        "glifo_ascii": 1
+      },
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 64,
+        "camada_figurinas": 0,
+        "camada_ascii": 0,
+        "glifo_figurinas": 25,
+        "glifo_ascii": 0
+      },
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 66,
+        "camada_figurinas": 0,
+        "camada_ascii": 1,
+        "glifo_figurinas": 5,
+        "glifo_ascii": 1
+      },
+      {
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "pagina": 68,
+        "camada_figurinas": 0,
+        "camada_ascii": 1,
+        "glifo_figurinas": 1,
+        "glifo_ascii": 1
+      },
+      {
+        "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+        "pagina": 118,
+        "camada_figurinas": 0,
+        "camada_ascii": 36,
+        "glifo_figurinas": 35,
+        "glifo_ascii": 1
+      },
+      {
+        "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+        "pagina": 120,
+        "camada_figurinas": 0,
+        "camada_ascii": 32,
+        "glifo_figurinas": 32,
+        "glifo_ascii": 0
+      },
+      {
+        "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+        "pagina": 122,
+        "camada_figurinas": 0,
+        "camada_ascii": 33,
+        "glifo_figurinas": 35,
+        "glifo_ascii": 0
+      },
+      {
+        "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+        "pagina": 124,
+        "camada_figurinas": 0,
+        "camada_ascii": 46,
+        "glifo_figurinas": 51,
+        "glifo_ascii": 0
+      },
+      {
+        "livro": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+        "pagina": 40,
+        "camada_figurinas": 0,
+        "camada_ascii": 0,
+        "glifo_figurinas": 0,
+        "glifo_ascii": 0
+      },
+      {
+        "livro": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+        "pagina": 44,
+        "camada_figurinas": 0,
+        "camada_ascii": 0,
+        "glifo_figurinas": 0,
+        "glifo_ascii": 1
+      },
+      {
+        "livro": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+        "pagina": 48,
+        "camada_figurinas": 0,
+        "camada_ascii": 0,
+        "glifo_figurinas": 0,
+        "glifo_ascii": 1
+      },
+      {
+        "livro": "1937 Kemeri.pdf",
+        "pagina": 30,
+        "camada_figurinas": 0,
+        "camada_ascii": 16,
+        "glifo_figurinas": 1,
+        "glifo_ascii": 16
+      },
+      {
+        "livro": "1937 Kemeri.pdf",
+        "pagina": 34,
+        "camada_figurinas": 0,
+        "camada_ascii": 18,
+        "glifo_figurinas": 1,
+        "glifo_ascii": 15
+      },
+      {
+        "livro": "1937 Kemeri.pdf",
+        "pagina": 38,
+        "camada_figurinas": 0,
+        "camada_ascii": 20,
+        "glifo_figurinas": 1,
+        "glifo_ascii": 13
+      }
+    ],
+    "resumo": {
+      "paginas": 16,
+      "camada_figurinas": 0,
+      "camada_ascii": 212,
+      "glifo_figurinas": 360,
+      "glifo_ascii": 52
+    },
+    "decisao": "MOTOR_PADRAO passa de 'auto' (que preferia a camada) para 'glifo'. A camada nao erra pouco na notacao: ela nao a representa -- zero figurinas em 16 paginas de 4 livros que TEM camada -- e a codificacao do que sobra muda de livro para livro.",
+    "exemplo": {
+      "impresso": "2.♞xd4 dxc2!",
+      "camada": "2.l0xd4 dxc2!",
+      "livro": "AAGAARD, p60"
+    }
+  }
 }

@@ -28,17 +28,39 @@ sobraram 3 caixas. A página lia uma linha.
 melhor que a que ela mediria -- e mexer na ordem interna dela mexeria no caminho da legenda, que
 está medido e não é o que este item pediu.
 
-## Dois motores, e quem escolhe é o disco
+## O padrão é o classificador deste projeto, e a camada de texto é a exceção
 
-Medido sobre os 42 livros de `PDF/` em 2026-08-24: **25 têm camada de texto** (mediana acima de
-400 caracteres por página) e **11 não têm nenhuma** (mediana zero). Ler com glifo um PDF que já
-traz a camada é trocar registro por palpite -- a camada de texto **não é OCR**, é o que o editor
-escreveu, e vale 1,0 de confiança. Por isso `motor="auto"` prefere a camada e cai para o glifo
-só quando ela não existe, e a `PaginaLida` registra qual dos dois em cada bloco.
+**A primeira versão deste módulo tinha isto invertido.** Ela preferia a camada de texto do PDF
+onde ela existisse -- 25 dos 42 livros de `PDF/` --, com o argumento de que a camada não é OCR: é
+o que o editor escreveu, e vale 1,0 de confiança. O argumento vale para prosa. Para **notação de
+xadrez** ele é falso, e o número diz de que tamanho.
 
-**Não há voto entre os dois, e é decisão e não falta de tempo.** Um árbitro entre camada e glifo
-precisaria de uma medição que este item não tem, e sem ela ele trocaria acerto por empate. Quem
-quiser comparar os dois roda o comando duas vezes com `--motor` fixo.
+### A camada de texto não codifica figurina
+
+Medido em 2026-08-24 sobre 16 páginas de 4 livros que **têm** camada:
+
+    fonte da leitura     figurinas Unicode (♔-♟)     notação ASCII (Nf3, Bxd4)
+    camada de texto                            0                          212
+    classificador                            360                           52
+
+**Zero.** Não é "pouca precisão": onde o livro imprime `♘`, a camada devolve o codepoint cru da
+fonte de xadrez, sem mapeamento nenhum -- no `AAGAARD`, `2.♘xd4 dxc2!` sai da camada como
+`2.l0xd4 dxc2!`, e `33.♕a6!` sai como `33.fta6!`. O texto **parece** prosa e passa por qualquer
+verificação de "tem texto?", e é justamente por isso que o defeito atravessou a primeira versão.
+
+### E não há convenção comum entre livros
+
+Nos mesmos 4 livros a camada usa três codificações diferentes: o `Dvoretsky` escreve o lance em
+ASCII (`1.Kf2`), o `AAGAARD` numa fonte de xadrez sem mapeamento, e o `Kemeri` em ASCII outra vez.
+Um consumidor da camada teria de saber de qual livro veio a página para saber o que a string
+significa -- que é o oposto do que um formato de texto deveria custar.
+
+Por isso `MOTOR_PADRAO` é `glifo`. `--motor camada` continua existindo para quem quiser a camada
+de um livro específico, e `auto` é o glifo com a camada como **reserva**, só para o caso de os
+pesos não carregarem -- e nesse caso quem cai avisa, em vez de trocar de motor em silêncio.
+
+**Continua não havendo voto entre os dois**, e por isso a `PaginaLida` registra em cada bloco de
+qual deles ele veio: a procedência é o que permite comparar depois sem remedir.
 
 ## O modo bloco da S-188 entra desligado, e o número é o motivo
 
@@ -100,6 +122,13 @@ MotorResolvido = Literal["camada", "glifo"]
 Tipo próprio e não `MotorDeTexto` porque a resposta vira **procedência** de cada bloco, e
 "auto" não é procedência de coisa nenhuma -- é uma pergunta, não uma origem."""
 MOTORES: tuple[MotorDeTexto, ...] = ("auto", "camada", "glifo")
+
+MOTOR_PADRAO: MotorDeTexto = "glifo"
+"""Quem lê por omissão: **o classificador treinado neste projeto**, e não a camada do PDF.
+
+O porquê inteiro está em "A camada de texto não codifica figurina", no cabeçalho. Em uma linha:
+a camada não erra *um pouco* na notação de xadrez, ela **não a representa** -- e para o que sobra
+não há convenção comum entre livros."""
 
 MIN_CARACTERES_DE_CAMADA = 40
 """Abaixo disto a camada de texto não conta como camada, e `auto` vai para o glifo.
@@ -604,19 +633,42 @@ def _blocos_de_texto(
     return blocos
 
 
-def motor_escolhido(page: object, motor: MotorDeTexto = "auto") -> MotorResolvido:
-    """Qual dos dois vai ler esta página. `auto` prefere a camada; ver o cabeçalho.
+def motor_escolhido(motor: MotorDeTexto = MOTOR_PADRAO, *, tem_modelo: bool = True) -> MotorResolvido:
+    """Qual dos dois vai ler. `auto` é o glifo, com a camada como **reserva**; ver o cabeçalho.
 
     Devolve `camada` ou `glifo`, nunca `auto` -- quem chama registra a resposta na `PaginaLida`, e
     "auto" não é uma procedência.
+
+    **Não olha mais a página, e a mudança é o item.** Até 2026-08-24 ela media quanto texto a
+    camada trazia e a preferia acima de `MIN_CARACTERES_DE_CAMADA`. A pergunta estava errada: o
+    que decide não é *quanto* a camada traz, é *o que* ela traz -- e para notação de xadrez ela
+    não traz nada de aproveitável. Ver a medição das figurinas no cabeçalho.
+
+    `tem_modelo=False` é o único caso em que `auto` cai para a camada: sem classificador não há
+    leitura nenhuma, e uma camada imperfeita é melhor que uma página em branco. É reserva
+    declarada, e quem a aciona **avisa** -- ver `ler_pagina`.
     """
     if motor in ("camada", "glifo"):
-        return motor
+        return motor  # type: ignore[return-value]
+    return "glifo" if tem_modelo else "camada"
+
+
+def _ha_classificador(reconhecedor: object | None = None) -> bool:
+    """Dá para ler com o glifo? Só isto decide a reserva do `auto`.
+
+    Um reconhecedor já construído responde sozinho. Sem ele, a pergunta é se os pesos carregam --
+    e ela é feita **uma vez**, porque `carregar_classificador` guarda o resultado em cache.
+    """
+    if reconhecedor is not None:
+        return True
     try:
-        bruto = page.get_text("text")  # type: ignore[attr-defined]
-    except Exception:  # pragma: no cover - PDF sem camada nenhuma
-        return "glifo"
-    return "camada" if len(str(bruto).strip()) >= MIN_CARACTERES_DE_CAMADA else "glifo"
+        from .modelo import CAMINHO_PADRAO_META, carregar_classificador
+
+        carregar_classificador(CAMINHO_PADRAO_META, None)
+    except Exception as exc:  # noqa: BLE001 - pesos ausentes é caminho normal, não erro
+        logger.debug("Classificador de glifo indisponível: %s", exc)
+        return False
+    return True
 
 
 def ler_pagina(
@@ -624,7 +676,7 @@ def ler_pagina(
     indice: int,
     *,
     dpi: int = 220,
-    motor: MotorDeTexto = "auto",
+    motor: MotorDeTexto = MOTOR_PADRAO,
     max_boards: int | None = None,
     arranjo: Arranjo = "prosa",
     reconhecedor: object | None = None,
@@ -645,11 +697,18 @@ def ler_pagina(
     escala_px = dpi / 72.0
     imagem = render_pdf_page(pdf_source, indice, dpi=dpi) if imagem_rgb is None else imagem_rgb  # type: ignore[arg-type]
 
+    qual = motor_escolhido(motor, tem_modelo=_ha_classificador(reconhecedor))
+    if motor == "auto" and qual == "camada":
+        logger.warning(
+            "Sem classificador de glifo: a folha %d vai pela camada de texto do PDF, que não "
+            "representa figurina de xadrez. Ver text/leitor.py.",
+            indice + 1,
+        )
+
     with open_document(pdf_source) as doc:  # type: ignore[arg-type]
         page = doc[indice]
         largura = float(page.rect.width)
         altura = float(page.rect.height)
-        qual = motor_escolhido(page, motor)
         cruas = linhas_da_camada(page, escala_px=escala_px) if qual == "camada" else []
         margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
         numero = running_page_number(doc, indice)
@@ -727,6 +786,7 @@ __all__ = [
     "FOLGA_DA_MASCARA",
     "MIN_CARACTERES_DE_CAMADA",
     "MOTORES",
+    "MOTOR_PADRAO",
     "MotorResolvido",
     "MotorDeTexto",
     "e_fila_de_eixo",

@@ -76,7 +76,7 @@ peça papel nenhum: pintá-lo de preto é o que quebraria o tema escuro."""
 PAPEL_DA_MARCA = tokens.TEXTO_SECUNDARIO
 """A cor de `[Diagrama N]`. Secundário porque a marca é referência, e não texto do livro."""
 
-MOTORES: tuple[MotorDeTexto, ...] = ("auto", "camada", "glifo")
+MOTORES: tuple[MotorDeTexto, ...] = ("glifo", "camada", "auto")
 """Os mesmos três de `text/leitor.py`, e a caixa da barra os oferece nesta ordem.
 
 **`text/leitor.py` não é importado no topo deste arquivo, e é regra e não descuido.** Por
@@ -122,7 +122,7 @@ class TextoPanel(ttk.Frame):
         self._sujo = False
 
         self.folha_var = tk.StringVar(value="1")
-        self.motor_var = tk.StringVar(value="auto")
+        self.motor_var = tk.StringVar(value=MOTORES[0])
         self.bloco_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Abra um PDF e clique em Ler folha.")
 
@@ -205,10 +205,10 @@ class TextoPanel(ttk.Frame):
         """O motor escolhido na caixa, ou `auto` se ela trouxer algo que não é motor.
 
         A caixa é `readonly`, então o valor de fora só chega por estado gravado de outra versão --
-        e cair em `auto` é o certo: é o padrão, e o que ele faz é justamente decidir sozinho.
+        e cair no primeiro da tupla é o certo: ele é o padrão do projeto, o classificador de casa.
         """
         escolhido = str(self.motor_var.get()).strip()
-        return escolhido if escolhido in MOTORES else "auto"  # type: ignore[return-value]
+        return escolhido if escolhido in MOTORES else MOTORES[0]  # type: ignore[return-value]
 
     def ler(self) -> None:
         """Lê a folha pedida numa thread e desenha o resultado quando ele chega."""

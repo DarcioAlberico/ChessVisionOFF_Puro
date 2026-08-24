@@ -1,7 +1,7 @@
 """`cvoff-texto-pagina` — a página inteira lida como texto, e não só a faixa de legenda (S-211).
 
     cvoff-texto-pagina "PDF/AAGAARD - Practical Chess Defence.pdf" --paginas 58-62
-    cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor glifo --json saida.json
+    cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor camada --json saida.json
 
 **Para que ele existe.** `text/leitor.py` monta a `PaginaLida`, e sem um comando ela só seria
 observável de dentro da janela -- que é onde nenhuma medição deveria precisar entrar. Este é o
@@ -18,10 +18,14 @@ diagrama entra. É o que se lê para conferir e o que se cola em outro lugar.
 
 ## O motor não é escolha de gosto
 
-`auto` (o padrão) prefere a camada de texto do PDF e cai para o glifo quando ela não existe. Ver
-`text/leitor.py`: 25 dos 42 livros do acervo têm camada, e para eles o glifo seria trocar registro
-por palpite. `--motor glifo` força a leitura por imagem -- é o que se usa para **medir** o glifo
-numa página que tem camada, que é exatamente como `docs/metrics/texto_pagina.json` foi feito.
+O padrão é `glifo` -- o classificador treinado neste projeto --, e não a camada de texto do PDF.
+Medido em 2026-08-24 sobre 16 páginas de 4 livros **com** camada: a camada devolveu **zero**
+figurinas de xadrez contra 360 do classificador, porque onde o livro imprime `♘` ela traz o
+codepoint cru da fonte, sem mapeamento (`2.♘xd4` vira `2.l0xd4`). E a codificação muda de livro
+para livro. O raciocínio inteiro está no cabeçalho de `text/leitor.py`.
+
+`--motor camada` continua existindo para quem quiser a camada de um livro específico, e é o que
+serve à comparação: `docs/metrics/texto_pagina.json` foi feito rodando os dois lados.
 """
 
 from __future__ import annotations
@@ -89,9 +93,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--motor",
-        choices=("auto", "camada", "glifo"),
-        default="auto",
-        help="auto prefere a camada de texto e cai para o glifo. Padrão: auto.",
+        choices=("glifo", "camada", "auto"),
+        default="glifo",
+        help=(
+            "glifo (padrão) lê com o classificador deste projeto; camada usa a camada de texto do "
+            "PDF; auto é o glifo com a camada como reserva se os pesos não carregarem."
+        ),
     )
     parser.add_argument("--dpi", type=int, default=220, help="DPI de renderização. Padrão: 220.")
     parser.add_argument(

@@ -562,10 +562,23 @@ Na janela, a aba **Texto** (entre a Revisao e o Dataset) abre um editor com o te
 miniatura de cada diagrama no meio dele. O texto e editavel e sai em `.txt` pelo botao `Salvar`.
 Sem janela, o mesmo caminho e o `cvoff-texto-pagina`.
 
-**Dois motores, e quem escolhe e o disco.** `auto` prefere a camada de texto do PDF e cai para o
-classificador de glifo so quando ela nao existe. Medido em 2026-08-24 sobre os 42 livros de `PDF/`:
-**25 tem camada de texto** e **11 nao tem nenhuma**. Onde a camada existe ela nao e um palpite --
-e o que o editor do PDF escreveu --, e cada bloco lido registra de qual dos dois ele veio.
+**Quem le por padrao e o classificador treinado aqui, e nao a camada de texto do PDF.** A camada
+nao erra *um pouco* na notacao de xadrez: ela **nao a representa**. Medido em 2026-08-24 sobre 16
+paginas de 4 livros que **tem** camada:
+
+| fonte da leitura | figurinas Unicode (♔-♟) | notacao ASCII (Nf3, Bxd4) |
+|---|---:|---:|
+| camada de texto do PDF | **0** | 212 |
+| nosso classificador | **360** | 52 |
+
+Onde o livro imprime `♘`, a camada devolve o codepoint cru da fonte de xadrez, sem mapeamento: no
+AAGAARD, `2.♘xd4 dxc2!` sai da camada como `2.l0xd4 dxc2!`. E nao ha convencao comum -- nos mesmos
+4 livros a camada usa tres codificacoes diferentes, entao um consumidor teria de saber de qual
+livro veio a pagina para saber o que a string significa.
+
+`--motor camada` continua existindo para quem quiser a camada de um livro especifico, e `auto` e o
+glifo com a camada como **reserva**, so para o caso de os pesos nao carregarem -- e ai quem cai
+avisa. Cada bloco lido registra de qual dos dois ele veio.
 
 O que **pede olho** aparece colorido no editor, em tres faixas: abaixo de `MIN_CONFIDENCE` o
 motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto sai na cor normal.
@@ -574,7 +587,9 @@ A camada de texto e a correcao humana nunca pedem revisao.
 **O numero, e o que ele nao prova.** Medido em 10 paginas de 2 livros, com a camada de texto da
 propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,1397**. Esse valor tem
 um piso que nao e do modelo -- num dos dois livros a propria camada e OCR de terceiro e traz os
-proprios erros --, entao ele **nao** vira "86% de acerto". O que a medicao decide de fato e o
+proprios erros --, entao ele **nao** vira "86% de acerto". E ele mede **prosa**: pela tabela acima,
+na notacao a camada nao e referencia de coisa nenhuma, e ali o glifo e penalizado justamente onde
+acerta a figurina. O que a medicao decide de fato e o
 padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e, no livro nativo
 digital, piora 22,5%. `--bloco` liga para quem quiser medir de novo.
 
