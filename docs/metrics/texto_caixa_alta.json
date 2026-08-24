@@ -1,0 +1,170 @@
+{
+  "item": "S-211",
+  "medido_em": "2026-08-24",
+  "dpi": 220,
+  "pergunta": "Decidir maiuscula/minuscula pela ALTURA do box, em vez do argmax, paga? Oito letras (c o s u v w x z) tem maiuscula e minuscula com a MESMA forma, e _entrada faz cv2.resize(32,32) em todo glifo -- o resize apaga o que as separa.",
+  "referencia": "a camada de texto da propria pagina, montada pelo mesmo text/leitor.py. SO livros de camada EDITORADA: a camada de OCR traz os proprios erros.",
+  "caminho_medido": "ler_pagina (producao): diagramas detectados, escala fora deles, montagem de coluna",
+  "commit": "780e6caaa8c23513a2d54ba54e3cc517f228bf5b",
+  "modelo": "models/char_classifier.pt",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "diagnostico": {
+    "substituicoes_analisadas": 617,
+    "em_212_linhas_casadas": true,
+    "familias": {
+      "figurina_vs_ascii_NAO_e_erro": 192,
+      "caixa_alta": 241,
+      "caractere_espurio": 96,
+      "digito_lido_como_letra": 3
+    },
+    "classe_certa_em_rank_2": "237 de 237 casos",
+    "altura_por_x_height": {
+      "minuscula_mediana": 1.0,
+      "maiuscula_mediana": 1.41,
+      "n_minuscula": 1001,
+      "n_maiuscula": 25
+    }
+  },
+  "paginas": [
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 118,
+      "referencia": 1072,
+      "cer_desligado": 0.11610486891385768,
+      "cer_ligado": 0.06273408239700375,
+      "s_desligado": 0.6391012668609619,
+      "s_ligado": 0.6721324920654297
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 120,
+      "referencia": 965,
+      "cer_desligado": 0.11157455683003129,
+      "cer_ligado": 0.0667361835245047,
+      "s_desligado": 0.6487195491790771,
+      "s_ligado": 0.6573214530944824
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 122,
+      "referencia": 1038,
+      "cer_desligado": 0.11208576998050682,
+      "cer_ligado": 0.07115009746588694,
+      "s_desligado": 0.7080459594726562,
+      "s_ligado": 0.7159228324890137
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 124,
+      "referencia": 979,
+      "cer_desligado": 0.1217750257997936,
+      "cer_ligado": 0.0804953560371517,
+      "s_desligado": 0.6996588706970215,
+      "s_ligado": 0.817206621170044
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 126,
+      "referencia": 859,
+      "cer_desligado": 0.12910798122065728,
+      "cer_ligado": 0.0880281690140845,
+      "s_desligado": 0.613715410232544,
+      "s_ligado": 0.6930487155914307
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 60,
+      "referencia": 1244,
+      "cer_desligado": 0.25084745762711863,
+      "cer_ligado": 0.24322033898305084,
+      "s_desligado": 0.7594106197357178,
+      "s_ligado": 0.73410964012146
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 64,
+      "referencia": 1173,
+      "cer_desligado": 0.05099394987035436,
+      "cer_ligado": 0.03543647363872083,
+      "s_desligado": 0.838803768157959,
+      "s_ligado": 0.8669185638427734
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 68,
+      "referencia": 1107,
+      "cer_desligado": 0.13238095238095238,
+      "cer_ligado": 0.12476190476190477,
+      "s_desligado": 0.6040384769439697,
+      "s_ligado": 0.6080760955810547
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 72,
+      "referencia": 1730,
+      "cer_desligado": 0.11666666666666667,
+      "cer_ligado": 0.10357142857142858,
+      "s_desligado": 1.2709498405456543,
+      "s_ligado": 1.248551845550537
+    },
+    {
+      "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+      "pagina": 80,
+      "referencia": 447,
+      "cer_desligado": 0.3416856492027335,
+      "cer_ligado": 0.31890660592255127,
+      "s_desligado": 0.22118711471557617,
+      "s_ligado": 0.23809385299682617
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "pagina": 200,
+      "referencia": 972,
+      "cer_desligado": 0.09420289855072464,
+      "cer_ligado": 0.030020703933747412,
+      "s_desligado": 0.6044890880584717,
+      "s_ligado": 0.5662972927093506
+    }
+  ],
+  "resumo": {
+    "paginas": 11,
+    "cer_desligado": 0.1434023433675815,
+    "cer_ligado": 0.11136921311363958,
+    "ganho_relativo": 0.22337940581509041,
+    "paginas_que_melhoram": 11,
+    "paginas_que_pioram": 0
+  },
+  "varredura_do_corte": [
+    {
+      "corte": 1.1,
+      "cer": 0.11127539568236085
+    },
+    {
+      "corte": 1.15,
+      "cer": 0.11127539568236085
+    },
+    {
+      "corte": 1.2,
+      "cer": 0.11136921311363958
+    },
+    {
+      "corte": 1.25,
+      "cer": 0.11136921311363958
+    },
+    {
+      "corte": 1.3,
+      "cer": 0.11136921311363958
+    },
+    {
+      "corte": 1.4,
+      "cer": 0.11161096053030958
+    },
+    {
+      "corte": 1.5,
+      "cer": 0.11388535422680189
+    }
+  ],
+  "decisao": "LIGADA por padrao (caixa_alta=True). Corte 1,25, escolhido no MEIO do plato (1,10 a 1,30 empatam ate o quarto decimal; 1,40 e 1,50 degradam), e nao no minimo, porque o meio do plato e o que tem margem dos dois lados.",
+  "ressalva": "A amostra de maiuscula tem 25 casos contra 1.001 de minuscula -- prosa e quase toda minuscula. O que esta bem medido e que minuscula fica em 1,00; o lado que decide se o corte rebaixa maiuscula legitima esta medido em 25 casos.",
+  "nao_toca": "O caminho da faixa de legenda (GlyphRecognizer.read) NAO usa isto: a correcao mora em text/leitor.py, e os numeros publicados da legenda nao mudam."
+}

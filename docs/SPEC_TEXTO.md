@@ -2892,6 +2892,41 @@ Nenhum deles era de reconhecimento, e é isso que os torna interessantes: o clas
    texto da mesma página: **CER 0,7861 com o texto intercalado, 0,1559 depois de a coluna ser
    achada nas caixas de caractere**. Correção: `leitor.segmentar`.
 
+### O quarto defeito, e o maior: a caixa alta é decidida por uma informação que o modelo não recebe
+
+Oito letras do alfabeto latino — `c o s u v w x z` — têm maiúscula e minúscula com a **mesma
+forma**, mudando só o tamanho. E `ClassificadorDeGlifo._entrada` faz `cv2.resize(recorte, (32,
+32))` em todo glifo: depois disso as duas são a mesma imagem. O modelo não erra por ser fraco; ele
+erra porque a informação que decide foi apagada antes de ele ver o recorte.
+
+Diagnosticado em 13 páginas de 3 livros de camada **editorada**, 212 linhas casadas contra a
+camada, 617 substituições:
+
+| família | n | o que é |
+|---|---:|---|
+| `♔`→`K`, `♖`→`R`, `♕`→`Q` | 192 | **não é erro** — o glifo acerta a figurina, a camada usa ASCII |
+| caixa alta (`S`→`s`, `V`→`v`, `W`→`w`…) | 241 | isto |
+| caractere espúrio onde há espaço | 96 | segmentação |
+| dígito lido como letra (`0`→`o`) | 3 | — |
+
+Duas medições fecham o caso: **a classe certa está em rank 2 em 237 de 237 casos** — o modelo diz
+`S` com 0,96 e `s` com 0,03, sempre nessa ordem —, e **a altura separa**: minúscula mede 1,00 da
+mediana de altura da linha, maiúscula 1,41.
+
+`text/caixa_alta.py` escolhe entre as duas classes do par pela altura do box relativa à x-height
+da **linha** (e nunca da página: um título em corpo maior promoveria todas as letras). Medido
+ponta a ponta pelo caminho de produção (`docs/metrics/texto_caixa_alta.json`):
+
+    CER 0,1434 -> 0,1114   (-22,3%)   11 páginas melhoram, nenhuma piora, sem custo de tempo
+
+**Entra ligado** — o único dos três interruptores da página que entra assim. O corte é 1,25,
+escolhido no **meio do platô** (1,10 a 1,30 empatam até o quarto decimal; 1,40 e 1,50 degradam), e
+não no mínimo: o meio do platô é o que tem margem dos dois lados.
+
+**A ressalva, e ela é séria.** A amostra de maiúscula tem 25 casos contra 1.001 de minúscula —
+prosa é quase toda minúscula. O que está bem medido é que minúscula fica em 1,00; o lado que
+decide se o corte rebaixa maiúscula legítima está medido em 25 casos.
+
 A medição está em `docs/metrics/texto_pagina.json`, e ela também é o que decidiu **desligar** o
 modo bloco da S-188 na página: ele custa ~50x o tempo e, no livro nativo digital, piora 22,5%.
 

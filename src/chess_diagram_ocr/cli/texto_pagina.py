@@ -126,6 +126,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--sem-caixa-alta",
+        action="store_true",
+        help=(
+            "Desliga a decisão de maiúscula/minúscula pela altura do box. Ligada por padrão: "
+            "medido em docs/metrics/texto_caixa_alta.json, CER 0,1434 -> 0,1114 em 11 páginas, "
+            "com 11 melhorando e nenhuma piorando."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -184,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
                 reconhecedor=reconhecedor,
                 modo_bloco=args.bloco,
                 colados=args.colados,
+                caixa_alta=not args.sem_caixa_alta,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)

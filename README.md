@@ -580,6 +580,13 @@ livro veio a pagina para saber o que a string significa.
 glifo com a camada como **reserva**, so para o caso de os pesos nao carregarem -- e ai quem cai
 avisa. Cada bloco lido registra de qual dos dois ele veio.
 
+**Oito letras sao decididas pela ALTURA, e nao pela forma.** `c o s u v w x z` tem maiuscula e
+minuscula com o mesmo desenho, mudando so o tamanho -- e o classificador recebe todo glifo
+redimensionado para 32x32, o que apaga exatamente o que as separa. Sem isso, `position` sai
+`poSition` e `However` sai `HoWeVer`. A caixa passa a sair da altura do box relativa a linha:
+medido em 11 paginas de 4 livros, CER **0,1434 -> 0,1114** (-22,3%), com 11 melhorando e nenhuma
+piorando. Vem ligado; `--sem-caixa-alta` desliga.
+
 O que **pede olho** aparece colorido no editor, em tres faixas: abaixo de `MIN_CONFIDENCE` o
 motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto sai na cor normal.
 A camada de texto e a correcao humana nunca pedem revisao.

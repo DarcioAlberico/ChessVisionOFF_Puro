@@ -125,6 +125,7 @@ from typing import Literal
 import numpy as np
 
 from . import boxes as _boxes
+from . import caixa_alta as _caixa_alta
 from . import colados as _colados
 from . import colunas as _colunas
 from . import paragrafos as _paragrafos
@@ -381,6 +382,7 @@ def linhas_do_glifo(
     escala: int | None = None,
     modo_bloco: bool = False,
     colados: str = _colados.PADRAO,
+    caixa_alta: bool = True,
 ) -> tuple[list[_Cru], list[tuple[int, int]]]:
     """As linhas lidas pelo classificador de glifo, **coluna a coluna**, e as faixas achadas.
 
@@ -390,6 +392,10 @@ def linhas_do_glifo(
 
     `colados` liga o separador de glifo colado (S-186), e também entra **desligado** -- ver "O
     separador de colado não paga na página tampouco" no cabeçalho.
+
+    `caixa_alta` decide maiúscula/minúscula das oito letras de mesma forma pela **altura** do box.
+    É o único dos três que entra **ligado**, e é o maior ganho medido deste subpacote: CER 0,1434
+    -> 0,1114 em 11 páginas, 11 melhoram e nenhuma piora. Ver `text/caixa_alta.py`.
 
     Devolve as faixas junto porque quem monta não pode redescobri-las: as caixas de caractere já
     foram consumidas aqui, e detectá-las de novo a partir das linhas é o defeito que `segmentar`
@@ -435,7 +441,17 @@ def linhas_do_glifo(
             continue
         grupos = descartar_fragmentos(quebrar_em_linhas(ordem_em_faixa(desta)), escala=escala)
         for grupo in grupos:
-            lidos = classificador.classificar([c.recortar(cinza) for c in grupo])
+            recortes = [c.recortar(cinza) for c in grupo]
+            if caixa_alta:
+                # A caixa das oito letras de mesma forma sai da **altura**, e não do argmax. O
+                # resto da linha é `argmax` puro -- ver `text/caixa_alta.decidir`.
+                lidos = _caixa_alta.decidir(
+                    classificador.probabilidades(recortes),
+                    [c.altura for c in grupo],
+                    classificador.meta.idx_to_char,
+                )
+            else:
+                lidos = classificador.classificar(recortes)
             if not lidos:
                 continue
             if leitor_de_linha is not None:
@@ -746,6 +762,7 @@ def ler_pagina(
     imagem_rgb: np.ndarray | None = None,
     modo_bloco: bool = False,
     colados: str = _colados.PADRAO,
+    caixa_alta: bool = True,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
@@ -796,7 +813,7 @@ def ler_pagina(
     faixas: list[tuple[int, int]] | None = None
     if qual == "glifo":
         cruas, faixas = linhas_do_glifo(
-            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados
+            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta
         )
 
     cabecalho, rodape = _margens(margem, altura, qual)
