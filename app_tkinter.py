@@ -129,6 +129,7 @@ from chess_diagram_ocr.ui.review_panel import ReviewPanel, ScanRequest
 from chess_diagram_ocr.ui.shortcuts import bind_shortcuts
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 from chess_diagram_ocr.ui.study_panel import StudyPanel
+from chess_diagram_ocr.ui.texto_panel import TextoPanel
 from chess_diagram_ocr.ui.theme import apply_theme
 from chess_diagram_ocr.ui.tooltip import Tooltip
 from chess_diagram_ocr.ui.training_dialog import TrainingController, TrainingRequest
@@ -265,6 +266,7 @@ class ChessOcrTkApp:
         self.review_panel: ReviewPanel | None = None
         self.dataset_panel: DatasetPanel | None = None
         self.gallery_panel: GalleryPanel | None = None
+        self.texto_panel: TextoPanel | None = None
 
         self.training = TrainingController(
             self.root,
@@ -372,6 +374,16 @@ class ChessOcrTkApp:
         )
         tabs.add(self.review_panel, text="Revisão")
         self.result_panel.set_review_settler(self._settle_review_item)
+
+        self.texto_panel = TextoPanel(
+            tabs,
+            pdf_path=self._pdf_path_or_none,
+            page_index=lambda: self.page_index,
+            on_status=self._set_status,
+            busy=self.busy,
+            on_page_request=self._gallery_page_request,
+        )
+        tabs.add(self.texto_panel, text="Texto")
 
         self.dataset_panel = DatasetPanel(
             tabs,

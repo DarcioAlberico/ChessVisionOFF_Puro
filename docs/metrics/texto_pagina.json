@@ -1,0 +1,90 @@
+{
+  "item": "S-211",
+  "medido_em": "2026-08-24",
+  "dpi": 220,
+  "pergunta": "Qual o CER do glifo na pagina inteira, e o modo bloco da S-188 paga na pagina?",
+  "referencia": "a camada de texto da propria pagina, montada pelo mesmo text/leitor.py",
+  "ressalva": "A camada nao e verdade de referencia humana: no AAGAARD ela e OCR de terceiro e traz os proprios erros. O valor absoluto tem piso que nao e do glifo; a comparacao entre as duas colunas continua valida por serem medidas contra a mesma referencia.",
+  "commit": "81ecb566c8eff97fef4b93dbeed3991c6e3d7303",
+  "modelo": "models/char_classifier.pt",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "leitor_de_linha": "rapidocr",
+  "paginas": [
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 58,
+      "caracteres_da_referencia": 2136,
+      "cer_glifo": 0.20545369064409968,
+      "cer_glifo_com_bloco": 0.2068641278796427
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 60,
+      "caracteres_da_referencia": 2311,
+      "cer_glifo": 0.1981747066492829,
+      "cer_glifo_com_bloco": 0.18687527162103434
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 62,
+      "caracteres_da_referencia": 2073,
+      "cer_glifo": 0.21968962172647916,
+      "cer_glifo_com_bloco": 0.20077594568380214
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 64,
+      "caracteres_da_referencia": 1096,
+      "cer_glifo": 0.14442413162705667,
+      "cer_glifo_com_bloco": 0.1316270566727605
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 66,
+      "caracteres_da_referencia": 2806,
+      "cer_glifo": 0.0475,
+      "cer_glifo_com_bloco": 0.013571428571428571
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 68,
+      "caracteres_da_referencia": 1107,
+      "cer_glifo": 0.12,
+      "cer_glifo_com_bloco": 0.1409090909090909
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 118,
+      "caracteres_da_referencia": 1072,
+      "cer_glifo": 0.11610486891385768,
+      "cer_glifo_com_bloco": 0.09831460674157304
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 120,
+      "caracteres_da_referencia": 965,
+      "cer_glifo": 0.11157455683003129,
+      "cer_glifo_com_bloco": 0.1897810218978102
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 122,
+      "caracteres_da_referencia": 1038,
+      "cer_glifo": 0.11208576998050682,
+      "cer_glifo_com_bloco": 0.1276803118908382
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 124,
+      "caracteres_da_referencia": 979,
+      "cer_glifo": 0.1217750257997936,
+      "cer_glifo_com_bloco": 0.14963880288957687
+    }
+  ],
+  "resumo": {
+    "paginas": 10,
+    "cer_glifo_medio": 0.13967823721711078,
+    "cer_glifo_com_bloco_medio": 0.14460376647575574
+  },
+  "decisao": "modo_bloco entra DESLIGADO por padrao em text/leitor.py: na media ele piora, e onde ajuda custa ~50x o tempo. Continua exposto em --bloco porque a medicao de origem era sobre faixa de legenda, que e outro caso."
+}

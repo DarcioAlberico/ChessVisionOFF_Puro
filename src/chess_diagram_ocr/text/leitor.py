@@ -1,0 +1,743 @@
+"""A página inteira lida como texto, e não só a faixa de legenda (S-211).
+
+**Por que este módulo nasceu.** Da S-184 à S-199 o projeto montou tudo que é preciso para ler
+texto de página -- binarização, box de caractere, linha, coluna, parágrafo, tabela, tarja -- e o
+único cliente disso era `recognizer.GlyphRecognizer`, que lê **um recorte**: a faixa de legenda
+que a `ocr_caption` manda. Ler o livro é outro pedido, e ele não estava servido por ninguém.
+
+## O defeito que este módulo existe para não ter: a escala medida antes de excluir o diagrama
+
+`GlyphRecognizer.read` faz, nesta ordem, `escala_de_texto(binaria)` e depois
+`excluir_diagramas(...)`. Para uma faixa de legenda a ordem não importa, porque não há diagrama
+dentro dela. Para a página inteira ela é o defeito: a escala é uma **mediana ponderada por massa
+de tinta**, e as peças de um diagrama impresso têm 86 px de altura contra 23 de uma letra -- e
+massa de tinta muito maior. A escala sai medindo o tabuleiro.
+
+Medido em 2026-08-24, página 20 do `Reinfeld 1001` a 220 dpi:
+
+    escala na página inteira            86      <- é a altura de uma peça
+    escala com o diagrama mascarado     42
+    altura real da letra (mediana)      23
+
+E o efeito na leitura é total, não parcial: com escala 86 a peneira de área
+(`MIN_AREA_GLIFO x escala²`) descarta **todas** as letras, e das 441 componentes da página
+sobraram 3 caixas. A página lia uma linha.
+
+`escala_fora_dos_diagramas` é a correção, e ela é uma função à parte em vez de uma mudança em
+`read`: a assinatura de `read` já aceita `escala=`, exatamente para o caso de quem tem uma régua
+melhor que a que ela mediria -- e mexer na ordem interna dela mexeria no caminho da legenda, que
+está medido e não é o que este item pediu.
+
+## Dois motores, e quem escolhe é o disco
+
+Medido sobre os 42 livros de `PDF/` em 2026-08-24: **25 têm camada de texto** (mediana acima de
+400 caracteres por página) e **11 não têm nenhuma** (mediana zero). Ler com glifo um PDF que já
+traz a camada é trocar registro por palpite -- a camada de texto **não é OCR**, é o que o editor
+escreveu, e vale 1,0 de confiança. Por isso `motor="auto"` prefere a camada e cai para o glifo
+só quando ela não existe, e a `PaginaLida` registra qual dos dois em cada bloco.
+
+**Não há voto entre os dois, e é decisão e não falta de tempo.** Um árbitro entre camada e glifo
+precisaria de uma medição que este item não tem, e sem ela ele trocaria acerto por empate. Quem
+quiser comparar os dois roda o comando duas vezes com `--motor` fixo.
+
+## O modo bloco da S-188 entra desligado, e o número é o motivo
+
+A S-188 prometia o maior ganho do plano -- 72,8% para 91,2% de acerto de caractere, medido no
+projeto de origem sobre faixas de legenda -- e na página ela **não paga**. Medido em 2026-08-24
+sobre 10 páginas de 2 livros, com a camada de texto da própria página como referência
+(`docs/metrics/texto_pagina.json`):
+
+    livro                       páginas    glifo    + bloco (S-188)    custo
+    AAGAARD (camada de OCR)           6   0,1559             0,1468    1,0 s -> 40,7 s
+    Dvoretsky (nativo digital)        4   0,1154             0,1414    0,5 s -> 33,6 s
+    ---------------------------------------------------------------------------------
+    média                            10   0,1397             0,1446      ~50x
+
+No livro nativo digital ele **piora** 22,5%, e mesmo onde ajuda o ganho é de 0,009 de CER por 40
+vezes o tempo. Ele fica, e fica exposto em `--bloco`: o ganho da medição de origem era sobre
+**faixa de legenda**, que é texto curto e isolado, e ali ele pode continuar valendo. O que a
+medição diz é que a página não é aquele caso -- e o padrão segue a medição.
+
+## O que o número de CER inclui, e o que ele não prova
+
+A referência é a camada de texto da mesma página, e ela **não é verdade de referência humana**: no
+`AAGAARD` a camada é OCR de terceiro e traz os próprios erros (`6Jm gdd 1 7.gee 1` é literal do
+arquivo). Isso põe um piso no CER que não é do glifo. A comparação entre as duas colunas continua
+válida -- as duas são medidas contra a mesma referência --, mas **o valor absoluto de 0,14 não é o
+erro do modelo**, e transformá-lo em "86% de acerto" seria inventar um número.
+"""
+
+from __future__ import annotations
+
+import logging
+import re as _re
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Literal
+
+import numpy as np
+
+from . import boxes as _boxes
+from . import colunas as _colunas
+from . import paragrafos as _paragrafos
+from .binarizacao import binarize
+from .grade import Arranjo
+from .pagina import (
+    BlocoDeDiagrama,
+    BlocoDeTexto,
+    Coluna,
+    LinhaLida,
+    PaginaLida,
+    Procedencia,
+)
+
+logger = logging.getLogger(__name__)
+
+MotorDeTexto = Literal["auto", "camada", "glifo"]
+MotorResolvido = Literal["camada", "glifo"]
+"""O que `motor_escolhido` devolve: **nunca** `auto`.
+
+Tipo próprio e não `MotorDeTexto` porque a resposta vira **procedência** de cada bloco, e
+"auto" não é procedência de coisa nenhuma -- é uma pergunta, não uma origem."""
+MOTORES: tuple[MotorDeTexto, ...] = ("auto", "camada", "glifo")
+
+MIN_CARACTERES_DE_CAMADA = 40
+"""Abaixo disto a camada de texto não conta como camada, e `auto` vai para o glifo.
+
+**Não é zero, e o motivo está no acervo.** O `Reinfeld 1001` tem mediana de 3 caracteres por
+página: cada página traz o número do exercício como texto de verdade e o resto como imagem
+escaneada. Aceitar essa camada como "a página tem texto" faria o livro inteiro sair com uma linha
+por página. 40 é uma linha curta de prosa -- menos que isso não é o corpo de uma página."""
+
+FOLGA_DA_MASCARA = 8
+"""Pixels a mais de cada lado ao mascarar o diagrama antes de medir a escala.
+
+Serve só para a borda do tabuleiro não sobrar na máscara; **não** é a margem que tira o rótulo
+das casas do texto -- essa é a `MARGEM_DIAGRAMA` da S-185, medida em alturas de caractere, e ela
+não pode ser usada aqui porque é justamente a escala que ainda não se sabe."""
+
+
+Retangulo = tuple[float, float, float, float]
+
+
+def _retangulo(valores: Sequence[float]) -> Retangulo:
+    """Quatro floats, com a **forma** que o resto do módulo declara.
+
+    Existe porque `tuple(float(v) for v in r)` é `tuple[float, ...]` para o verificador de tipo, e
+    um retângulo de três ou de cinco números atravessaria o módulo inteiro sem ninguém reclamar.
+    """
+    x0, y0, x1, y1 = valores
+    return (float(x0), float(y0), float(x1), float(y1))
+
+
+@dataclass(frozen=True)
+class _Cru:
+    """Uma linha lida, antes de virar parágrafo. Geometria em **pixels** da página.
+
+    `coluna` vem de quem leu, e não de quem monta. **É a correção do defeito central deste
+    módulo**: no caminho do glifo a coluna é achada nas caixas de **caractere**, antes de as linhas
+    existirem, porque `quebrar_em_linhas` junta numa linha só as duas colunas que compartilham a
+    mesma banda -- e daí em diante não há como desfazer. Ver `segmentar`.
+    """
+
+    texto: str
+    caixa: _boxes.Caixa
+    confianca: float
+    procedencia: Procedencia
+    coluna: int = 0
+
+
+def _envolver(caixas: Sequence[Retangulo]) -> Retangulo:
+    if not caixas:
+        return (0.0, 0.0, 0.0, 0.0)
+    return (
+        min(c[0] for c in caixas),
+        min(c[1] for c in caixas),
+        max(c[2] for c in caixas),
+        max(c[3] for c in caixas),
+    )
+
+
+def escala_fora_dos_diagramas(
+    binaria: np.ndarray,
+    diagramas: Sequence[Retangulo] = (),
+    *,
+    folga: int = FOLGA_DA_MASCARA,
+) -> int:
+    """A altura de caractere da página, medida **sem** o que está dentro de um diagrama.
+
+    Ver "O defeito que este módulo existe para não ter", no cabeçalho. Os retângulos vêm em pixels
+    da mesma imagem. Sem diagrama nenhum é `escala_de_texto` e não copia a imagem.
+    """
+    if binaria.size == 0:
+        return 0
+    if not diagramas:
+        return _boxes.escala_de_texto(binaria)
+
+    altura, largura = binaria.shape[:2]
+    mascarada = binaria.copy()
+    for x0, y0, x1, y1 in diagramas:
+        ex0 = max(0, int(x0) - folga)
+        ey0 = max(0, int(y0) - folga)
+        ex1 = min(largura, int(x1) + folga)
+        ey1 = min(altura, int(y1) + folga)
+        if ex1 > ex0 and ey1 > ey0:
+            mascarada[ey0:ey1, ex0:ex1] = 0
+
+    escala = _boxes.escala_de_texto(mascarada)
+    if escala > 0:
+        return escala
+    # A página é **só** diagrama: mascarar apagou toda a tinta. Devolver 0 faria a peneira de área
+    # aceitar tudo; medir na imagem inteira dá a régua do tabuleiro, que é a única que existe ali.
+    return _boxes.escala_de_texto(binaria)
+
+
+def _caixa_de(retangulo: Sequence[float]) -> _boxes.Caixa:
+    x0, y0, x1, y1 = retangulo
+    return _boxes.Caixa(int(x0), int(y0), int(x1), int(y1))
+
+
+def linhas_da_camada(page: object, *, escala_px: float) -> list[_Cru]:
+    """As linhas da camada de texto do PDF, em pixels da página renderizada.
+
+    `escala_px` é `dpi / 72`: a camada mora em pontos e a geometria deste módulo é em pixels, e
+    converter aqui em vez de mais tarde é o que impede as duas de se misturarem.
+
+    Confiança 1,0 e procedência `camada` para todas, e não é otimismo: a camada de texto **não é
+    uma leitura**, é o que o gerador do PDF escreveu. Ver `pdf_text.TextLine.confidence`.
+    """
+    from ..pdf_text import page_text_lines
+
+    cruas: list[_Cru] = []
+    for linha in page_text_lines(page):  # type: ignore[arg-type]
+        texto = linha.text.strip()
+        if not texto:
+            continue
+        x0, y0, x1, y1 = linha.bbox
+        cruas.append(
+            _Cru(
+                texto=texto,
+                caixa=_caixa_de((x0 * escala_px, y0 * escala_px, x1 * escala_px, y1 * escala_px)),
+                confianca=float(linha.confidence),
+                procedencia="camada",
+            )
+        )
+    return cruas
+
+
+def leitor_de_linha_padrao() -> object | None:
+    """O segundo opinante da S-188, ou `None` quando o extra não está instalado.
+
+    RapidOCR e não outro pelo motivo que a S-42 já mediu: é o único que não baixa nada na primeira
+    execução -- os modelos vêm no wheel. `None` é caminho normal e não erro: sem ele o leitor cai
+    para a leitura por caractere, que é a que sempre existiu.
+    """
+    from ..ocr import build_recognizer
+    from ..settings import OcrSettings
+
+    try:
+        return build_recognizer(OcrSettings(enabled=True, engine="rapidocr"))
+    except Exception as exc:  # pragma: no cover - extra ausente
+        logger.debug("Sem leitor de linha para o modo bloco da S-188: %s", exc)
+        return None
+
+
+def _colapsar_espaco(texto: str) -> str:
+    """Espaços repetidos viram um. Existe porque o modo bloco os produz aos pares.
+
+    `texto_da_linha` põe um espaço onde o vão entre boxes é largo, e a leitura de bloco **já
+    trouxe** o espaço dentro do pedaço casado àquele box -- então `e5, but` sai `e5,  but`. Colapsar
+    aqui, e não em `texto_da_linha`: aquela função está medida no caminho da legenda, e um espaço a
+    menos ali mudaria um CER publicado.
+    """
+    return " ".join(texto.split())
+
+
+def segmentar(
+    imagem_rgb: np.ndarray,
+    diagramas: Sequence[Retangulo] = (),
+    *,
+    escala: int | None = None,
+) -> tuple[np.ndarray, int, list[_boxes.Caixa], list[tuple[int, int]]]:
+    """`(cinza, escala, caixas de caractere, faixas de coluna)` -- a página antes de haver linha.
+
+    **A ordem destas quatro coisas é o item, e ela estava invertida.** A primeira versão deste
+    módulo mandava a página inteira para `GlyphRecognizer.read`, que é um leitor de **faixa**: ele
+    quebra em linhas sobre a imagem toda, e numa página de duas colunas as duas linhas que
+    compartilham a banda viram **uma** linha. Medido em 2026-08-24 na página 58 do `AAGAARD`:
+
+        `This is a big mistake. The rook is needed to after 44...Qxd1 45.c8=Q Kf6! ...`
+                    coluna da esquerda            coluna da direita
+
+    Depois disso não há como desfazer -- a linha já está costurada --, e a coluna detectada a
+    partir dessas caixas é **uma**. O CER contra a camada de texto foi de 0,7861 com o texto
+    intercalado contra 0,0475 na página de coluna única do mesmo livro: o erro era todo de ordem,
+    e nenhum dele era de reconhecimento.
+
+    Por isso a coluna é achada aqui, nas caixas de **caractere**, que é a população para que
+    `colunas.calha` foi medida -- e por isso ela é chamada sem `calha_minima`: o piso de largura
+    mediana de caractere é o certo quando as caixas são caracteres. Ver `calha_de_linhas`, que é o
+    remendo do caminho da camada, onde só existem linhas.
+    """
+    import cv2
+
+    cinza = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY) if imagem_rgb.ndim == 3 else imagem_rgb
+    cinza = np.ascontiguousarray(cinza)
+    binaria = binarize(cinza)
+    if escala is None:
+        escala = escala_fora_dos_diagramas(binaria, diagramas)
+    if escala <= 0:
+        return (cinza, 0, [], [])
+
+    caixas = _boxes.unir_pingos(_boxes.caixas_de_caractere(binaria, escala=escala), escala=escala)
+    if diagramas:
+        caixas = _boxes.excluir_diagramas(
+            caixas, [_retangulo(r) for r in diagramas], escala=escala
+        )
+    faixas = _colunas.detectar_colunas(caixas) if caixas else []
+    return (cinza, escala, caixas, faixas)
+
+
+def linhas_do_glifo(
+    imagem_rgb: np.ndarray,
+    diagramas: Sequence[Retangulo] = (),
+    *,
+    reconhecedor: object | None = None,
+    escala: int | None = None,
+    modo_bloco: bool = False,
+) -> tuple[list[_Cru], list[tuple[int, int]]]:
+    """As linhas lidas pelo classificador de glifo, **coluna a coluna**, e as faixas achadas.
+
+    `escala=None` a mede com `escala_fora_dos_diagramas`. `modo_bloco=True` liga a S-188 -- ler a
+    linha, e não o caractere. **Desligado por padrão, e o número que decidiu isso está no cabeçalho
+    deste módulo**: na página inteira ele custa ~50x o tempo e piora o livro nativo digital.
+
+    Devolve as faixas junto porque quem monta não pode redescobri-las: as caixas de caractere já
+    foram consumidas aqui, e detectá-las de novo a partir das linhas é o defeito que `segmentar`
+    documenta.
+    """
+    from .duas_linhas import descartar_fragmentos
+    from .linhas import envolve, ordem_em_faixa, quebrar_em_linhas, texto_da_linha
+
+    cinza, escala, caixas, faixas = segmentar(imagem_rgb, diagramas, escala=escala)
+    if not caixas:
+        return ([], faixas)
+
+    if reconhecedor is None:
+        from .recognizer import build_glyph_recognizer
+
+        reconhecedor = build_glyph_recognizer(
+            leitor_de_linha=leitor_de_linha_padrao() if modo_bloco else None
+        )
+    classificador = reconhecedor.classifier  # type: ignore[attr-defined]
+    leitor_de_linha = getattr(reconhecedor, "_leitor_de_linha", None)
+
+    cruas: list[_Cru] = []
+    for indice, _faixa in enumerate(faixas or [(0, 0)]):
+        desta = (
+            [c for c in caixas if max(0, _colunas.atribuir_coluna(c, faixas)) == indice]
+            if len(faixas) > 1
+            else list(caixas)
+        )
+        if not desta:
+            continue
+        grupos = descartar_fragmentos(quebrar_em_linhas(ordem_em_faixa(desta)), escala=escala)
+        for grupo in grupos:
+            lidos = classificador.classificar([c.recortar(cinza) for c in grupo])
+            if not lidos:
+                continue
+            if leitor_de_linha is not None:
+                from .leitura_de_linha import em_bloco
+
+                casados = em_bloco(cinza, grupo, lidos, leitor_de_linha)
+                lidos = [(item.caractere, item.confianca) for item in casados]
+            texto = _colapsar_espaco(texto_da_linha(grupo, [char for char, _ in lidos]))
+            if not texto:
+                continue
+            cruas.append(
+                _Cru(
+                    texto=texto,
+                    caixa=_caixa_de(envolve(grupo)),
+                    confianca=min(conf for _, conf in lidos),
+                    procedencia="glifo",
+                    coluna=indice,
+                )
+            )
+    return (sem_rotulos_de_eixo(cruas), faixas)
+
+
+def _para_pontos(caixa: _boxes.Caixa, escala_px: float) -> Retangulo:
+    """Pixels da página renderizada -> pontos do PDF.
+
+    **A `PaginaLida` sai em pontos, e não em pixels do DPI com que se leu.** É a lição da S-41: a
+    anotação precisa sobreviver a uma troca de DPI, e um bbox em pixels de 220 lido como de 300
+    aponta para outro lugar da folha sem nada estourar.
+    """
+    fator = escala_px or 1.0
+    return (caixa.x1 / fator, caixa.y1 / fator, caixa.x2 / fator, caixa.y2 / fator)
+
+
+EIXO_SOLTO = _re.compile(r"^[a-h1-8]$")
+"""Uma linha que é só um rótulo de eixo. A mesma régua da `pdf_text._AXIS_LABEL`."""
+
+MIN_EIXOS_NA_FILA = 6
+"""Quantos rótulos distintos numa linha só a fazem ser a borda de um tabuleiro.
+
+Seis, e não oito, e o número é o mesmo `_MIN_AXIS_LABELS` da S-217 pela mesma razão: o scan perde
+rótulo de canto, e exigir os oito faria a régua falhar justamente nas páginas piores."""
+
+
+def e_fila_de_eixo(texto: str) -> bool:
+    """A linha é a fila `a b c d e f g h` (ou a coluna de filas) de um tabuleiro?
+
+    **A régua é estrutural, e não o texto literal, e isso foi medido.** A primeira versão casava
+    `^a b c d e f g h$` e funcionou -- até o modo bloco da S-188 entrar: o segundo opinante lê a
+    fila como `a b d f a C e h`, porque rótulo isolado é o pior caso para um leitor de linha, e a
+    régua literal deixou de casar. A borda voltou ao texto da página em todo diagrama.
+
+    O que ela é de fato é o mesmo da `pdf_text._axis_label_strip`: rótulos **de um caractere só**,
+    do alfabeto do tabuleiro, e **distintos**. É por serem distintos que a coluna de resultados de
+    uma tabela de torneio (`1 1 0 1`) não cai aqui -- ver a docstring de lá, que mediu o caso.
+    """
+    partes = texto.split()
+    if len(partes) < MIN_EIXOS_NA_FILA:
+        return False
+    marcas = [p.lower() for p in partes]
+    if any(not EIXO_SOLTO.match(m) for m in marcas):
+        return False
+    return len(set(marcas)) >= MIN_EIXOS_NA_FILA
+
+
+def sem_rotulos_de_eixo(cruas: Sequence[_Cru]) -> list[_Cru]:
+    """Tira as bordas de diagrama que sobraram como texto, pela régua medida na S-217.
+
+    `excluir_diagramas` já tira o que está **dentro** do retângulo do tabuleiro, com margem; os
+    rótulos moram fora dele, e alargar a margem até alcançá-los comeria a legenda, que fica à
+    mesma distância. Quem os separa de texto de verdade não é a distância: é serem **alinhados** e
+    **distintos** -- as oito filas, cada uma uma vez. A coluna de resultados de uma tabela de
+    torneio também é alinhada, mas é `1`, `1`, `0`, `1`, e sobrevive à conta. Ver
+    `pdf_text._axis_label_strip`, que é a função que decide, reusada aqui em vez de reescrita.
+    """
+    from ..pdf_text import _MIN_AXIS_LABELS, _axis_label_strip
+
+    fora: set[int] = {i for i, c in enumerate(cruas) if e_fila_de_eixo(c.texto)}
+    soltos = [i for i, c in enumerate(cruas) if EIXO_SOLTO.match(c.texto.strip())]
+    if len(soltos) >= _MIN_AXIS_LABELS:
+        itens = [
+            (cruas[i].texto.strip(), (float(cruas[i].caixa.x1), float(cruas[i].caixa.y1),
+                                      float(cruas[i].caixa.x2), float(cruas[i].caixa.y2)))
+            for i in soltos
+        ]
+        fora |= {soltos[k] for k in _axis_label_strip(itens)}
+    return [c for i, c in enumerate(cruas) if i not in fora]
+
+
+def calha_de_linhas(caixas: Sequence[_boxes.Caixa]) -> int:
+    """O piso de largura de calha para quem projeta **linhas**, e não caracteres.
+
+    **O piso de `colunas.calha` sai da largura mediana de caractere, e alimentá-lo com caixas de
+    linha o multiplica por vinte.** Medido em 2026-08-24 na página 60 do `AAGAARD`, duas colunas
+    a 220 dpi:
+
+        largura mediana da caixa de linha    552 px  ->  piso 441 px
+        calha de verdade                      34 px
+        largura mediana de caractere real     ~14 px  ->  piso  ~11 px
+
+    Com o piso em 441 a calha nunca é achada e a página sai com as duas colunas intercaladas linha
+    a linha -- que foi exatamente o que a primeira versão deste módulo produziu.
+
+    O termo de caractere **sai da conta** em vez de ser estimado: uma largura de caractere
+    adivinhada a partir da altura da linha erra por fonte, e o que sobra (1% da largura do texto,
+    e o piso absoluto) já é a régua que a S-190 mediu para o caso do `Nunn`. Quem impede que um vão
+    de sumário passe por calha continua sendo `COLUNA_MINIMA`, que funde a faixa estreita demais
+    para ser coluna -- e ele não depende deste piso.
+    """
+    if not caixas:
+        return _colunas.CALHA_MINIMA_ABSOLUTA
+    largura = max(c.x2 for c in caixas) - min(c.x1 for c in caixas)
+    return max(int(largura * _colunas.CALHA_DA_PAGINA), _colunas.CALHA_MINIMA_ABSOLUTA)
+
+
+def montar(
+    cruas: Sequence[_Cru],
+    diagramas: Sequence[Retangulo] = (),
+    *,
+    escala_px: float = 1.0,
+    arranjo: Arranjo = "prosa",
+    confiancas: Sequence[float] = (),
+    placements: Sequence[str] = (),
+    faixas: Sequence[tuple[int, int]] | None = None,
+) -> tuple[Coluna, ...]:
+    """Linhas e diagramas -> colunas de blocos, na ordem em que a página se lê.
+
+    Os retângulos de diagrama vêm em **pixels**, como as linhas: a ordem de leitura e a atribuição
+    de coluna são geometria, e geometria com duas unidades na mesma conta é o defeito que
+    `_para_pontos` documenta.
+    """
+    from .pagina import Diagrama, sequencia_de_leitura
+
+    if not cruas and not diagramas:
+        return ()
+
+    por_id = {id(c.caixa): c for c in cruas}
+    caixas = [c.caixa for c in cruas]
+    objetos = [Diagrama(bbox=_retangulo(r), indice=i) for i, r in enumerate(diagramas)]
+
+    # **Quem leu manda na coluna.** O caminho do glifo já a achou nas caixas de caractere, que é a
+    # população certa (ver `segmentar`); redescobri-la aqui, a partir das linhas, é o defeito que
+    # produziu texto intercalado. `faixas=None` é o caminho da camada, onde só existem linhas -- e
+    # aí o piso da calha é o de `calha_de_linhas`.
+    if faixas is None:
+        faixas = _colunas.detectar_colunas(caixas, calha_minima=calha_de_linhas(caixas)) if caixas else []
+        de_linha = {id(c.caixa): max(0, _colunas.atribuir_coluna(c.caixa, faixas)) for c in cruas}
+    else:
+        faixas = list(faixas)
+        de_linha = {id(c.caixa): c.coluna for c in cruas}
+    ordem = sequencia_de_leitura(caixas, objetos, colunas=faixas or None, arranjo=arranjo)
+
+    # **As métricas de recuo são da página inteira, e por coluna.** Ver o cabeçalho de
+    # `paragrafos`: a mediana de cinco linhas entre dois diagramas não diz onde fica a margem.
+    de_paragrafo: dict[int, _paragrafos.Linha] = {}
+    todas: list[_paragrafos.Linha] = []
+    for c in cruas:
+        linha = _paragrafos.Linha(
+            topo=c.caixa.y1,
+            esquerda=c.caixa.x1,
+            altura=c.caixa.altura,
+            texto=c.texto,
+            coluna=de_linha.get(id(c.caixa), 0),
+        )
+        de_paragrafo[id(c.caixa)] = linha
+        todas.append(linha)
+    metricas = _paragrafos.metricas_por_coluna(todas) if todas else {}
+
+    # Uma tira por coluna, preservando a ordem de leitura dentro dela. O diagrama fecha a tira
+    # corrente: é o que o põe **entre** os parágrafos, e não no fim da coluna (S-193).
+    tiras: dict[int, list[list[_Cru] | Diagrama]] = {}
+    corrente: dict[int, list[_Cru]] = {}
+
+    def coluna_de(caixa: _boxes.Caixa) -> int:
+        """A coluna de uma caixa: a que a linha já trouxe, ou a geometria para o diagrama."""
+        conhecida = de_linha.get(id(caixa))
+        if conhecida is not None:
+            return conhecida
+        return max(0, _colunas.atribuir_coluna(caixa, faixas)) if len(faixas) > 1 else 0
+
+    def fechar(indice: int) -> None:
+        acumulado = corrente.pop(indice, None)
+        if acumulado:
+            tiras.setdefault(indice, []).append(acumulado)
+
+    for elemento in ordem:
+        if isinstance(elemento, Diagrama):
+            indice = coluna_de(elemento.caixa)
+            fechar(indice)
+            tiras.setdefault(indice, []).append(elemento)
+            continue
+        cru = por_id.get(id(elemento))
+        if cru is None:
+            continue
+        indice = coluna_de(elemento)
+        corrente.setdefault(indice, []).append(cru)
+    for indice in list(corrente):
+        fechar(indice)
+
+    saida: list[Coluna] = []
+    for indice in sorted(tiras):
+        blocos: list[BlocoDeTexto | BlocoDeDiagrama] = []
+        for tira in tiras[indice]:
+            if isinstance(tira, Diagrama):
+                blocos.append(
+                    BlocoDeDiagrama(
+                        indice=tira.indice,
+                        bbox=_para_pontos(_caixa_de(tira.bbox), escala_px),
+                        confianca=float(confiancas[tira.indice]) if tira.indice < len(confiancas) else 1.0,
+                        placement=str(placements[tira.indice]) if tira.indice < len(placements) else "",
+                    )
+                )
+                continue
+            blocos.extend(_blocos_de_texto(tira, de_paragrafo, metricas, escala_px))
+        if blocos:
+            saida.append(
+                Coluna(
+                    indice=indice,
+                    blocos=tuple(blocos),
+                    bbox=_envolver([b.bbox for b in blocos]),
+                )
+            )
+    return tuple(saida)
+
+
+def _blocos_de_texto(
+    tira: Sequence[_Cru],
+    de_paragrafo: dict[int, _paragrafos.Linha],
+    metricas: dict[int, tuple[int, int]],
+    escala_px: float,
+) -> list[BlocoDeTexto]:
+    """Uma tira de linhas contíguas -> parágrafos, com a régua de recuo da página."""
+    linhas = [de_paragrafo[id(c.caixa)] for c in tira if id(c.caixa) in de_paragrafo]
+    if not linhas:
+        return []
+    volta = {id(de_paragrafo[id(c.caixa)]): c for c in tira if id(c.caixa) in de_paragrafo}
+
+    blocos: list[BlocoDeTexto] = []
+    for paragrafo in _paragrafos.cortar(linhas, metricas or None):
+        lidas: list[LinhaLida] = []
+        for linha in paragrafo.linhas:
+            cru = volta.get(id(linha))
+            if cru is None:
+                continue
+            lidas.append(
+                LinhaLida(
+                    texto=cru.texto,
+                    bbox=_para_pontos(cru.caixa, escala_px),
+                    confianca=cru.confianca,
+                    procedencia=cru.procedencia,
+                )
+            )
+        if not lidas:
+            continue
+        margem = metricas.get(paragrafo.coluna, (0, 1))
+        primeira = paragrafo.linhas[0]
+        recuado = primeira.esquerda > margem[0] + margem[1] * _paragrafos.RECUO_DE_PARAGRAFO
+        blocos.append(BlocoDeTexto.de_linhas(lidas, recuado=recuado))
+    return blocos
+
+
+def motor_escolhido(page: object, motor: MotorDeTexto = "auto") -> MotorResolvido:
+    """Qual dos dois vai ler esta página. `auto` prefere a camada; ver o cabeçalho.
+
+    Devolve `camada` ou `glifo`, nunca `auto` -- quem chama registra a resposta na `PaginaLida`, e
+    "auto" não é uma procedência.
+    """
+    if motor in ("camada", "glifo"):
+        return motor
+    try:
+        bruto = page.get_text("text")  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover - PDF sem camada nenhuma
+        return "glifo"
+    return "camada" if len(str(bruto).strip()) >= MIN_CARACTERES_DE_CAMADA else "glifo"
+
+
+def ler_pagina(
+    pdf_source: object,
+    indice: int,
+    *,
+    dpi: int = 220,
+    motor: MotorDeTexto = "auto",
+    max_boards: int | None = None,
+    arranjo: Arranjo = "prosa",
+    reconhecedor: object | None = None,
+    imagem_rgb: np.ndarray | None = None,
+    modo_bloco: bool = False,
+) -> PaginaLida:
+    """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
+
+    `imagem_rgb` deixa quem já renderizou a página (a interface, sempre) não renderizá-la de novo:
+    são ~200 ms por página a 220 dpi, e a aba de texto abriria com um atraso que ela não precisa
+    ter. Quando vem, o `dpi` tem de ser o mesmo com que ela foi renderizada -- é o que liga pixels
+    a pontos, e não há como conferir aqui.
+    """
+    from ..detection.hybrid import detect_diagrams_in_pdf_page
+    from ..pdf_io import open_document, render_pdf_page
+    from ..pdf_text import page_margin_lines, running_page_number
+
+    escala_px = dpi / 72.0
+    imagem = render_pdf_page(pdf_source, indice, dpi=dpi) if imagem_rgb is None else imagem_rgb  # type: ignore[arg-type]
+
+    with open_document(pdf_source) as doc:  # type: ignore[arg-type]
+        page = doc[indice]
+        largura = float(page.rect.width)
+        altura = float(page.rect.height)
+        qual = motor_escolhido(page, motor)
+        cruas = linhas_da_camada(page, escala_px=escala_px) if qual == "camada" else []
+        margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
+        numero = running_page_number(doc, indice)
+        documento = str(getattr(doc, "name", "") or "")
+
+    if max_boards:
+        candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem, max_boards=max_boards)  # type: ignore[arg-type]
+    else:
+        candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem)  # type: ignore[arg-type]
+    retangulos = [
+        (
+            c.bbox_pdf[0] * escala_px,
+            c.bbox_pdf[1] * escala_px,
+            c.bbox_pdf[2] * escala_px,
+            c.bbox_pdf[3] * escala_px,
+        )
+        for c in candidatos
+    ]
+    confiancas = [float(c.detector_score) for c in candidatos]
+
+    faixas: list[tuple[int, int]] | None = None
+    if qual == "glifo":
+        cruas, faixas = linhas_do_glifo(
+            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco
+        )
+
+    cabecalho, rodape = _margens(margem, altura, qual)
+    return PaginaLida(
+        documento=documento,
+        pagina=indice,
+        largura=largura,
+        altura=altura,
+        unidade="pt",
+        colunas=montar(
+            cruas,
+            retangulos,
+            escala_px=escala_px,
+            arranjo=arranjo,
+            confiancas=confiancas,
+            faixas=faixas,
+        ),
+        cabecalho=cabecalho,
+        rodape=rodape,
+        numero_impresso=numero,
+    )
+
+
+def _margens(linhas: Sequence[object], altura: float, procedencia: MotorResolvido) -> tuple[LinhaLida | None, LinhaLida | None]:
+    """A linha de cabeçalho e a de rodapé, das que moram na faixa de margem.
+
+    A faixa vale para os dois lados, então quem separa é o `y`: acima da metade é cabeçalho. Só
+    **uma** de cada, e a mais externa -- uma faixa de margem com três linhas tem um cabeçalho e
+    duas linhas de texto que a régua da S-43 pegou por estarem perto da borda.
+    """
+    if not linhas:
+        return (None, None)
+    meio = altura / 2.0
+
+    def como_lida(linha: object) -> LinhaLida:
+        return LinhaLida(
+            texto=str(linha.text).strip(),  # type: ignore[attr-defined]
+            bbox=_retangulo(linha.bbox),  # type: ignore[attr-defined]
+            confianca=float(getattr(linha, "confidence", 1.0)),
+            procedencia=procedencia,
+        )
+
+    acima = [x for x in linhas if float(x.bbox[1]) < meio]  # type: ignore[attr-defined]
+    abaixo = [x for x in linhas if float(x.bbox[1]) >= meio]  # type: ignore[attr-defined]
+    cabecalho = como_lida(min(acima, key=lambda x: float(x.bbox[1]))) if acima else None  # type: ignore[attr-defined]
+    rodape = como_lida(max(abaixo, key=lambda x: float(x.bbox[3]))) if abaixo else None  # type: ignore[attr-defined]
+    return (cabecalho, rodape)
+
+
+__all__ = [
+    "FOLGA_DA_MASCARA",
+    "MIN_CARACTERES_DE_CAMADA",
+    "MOTORES",
+    "MotorResolvido",
+    "MotorDeTexto",
+    "e_fila_de_eixo",
+    "escala_fora_dos_diagramas",
+    "ler_pagina",
+    "linhas_da_camada",
+    "leitor_de_linha_padrao",
+    "linhas_do_glifo",
+    "segmentar",
+    "calha_de_linhas",
+    "montar",
+    "sem_rotulos_de_eixo",
+    "motor_escolhido",
+]

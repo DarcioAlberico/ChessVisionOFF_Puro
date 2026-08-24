@@ -171,8 +171,17 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1788
+    LIMITE = 1800
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **1.788 → 1.800 na S-211**, e as 12 são a aba de texto entrando. Nenhuma delas decide nada: o
+    `import`, o campo do painel, a chamada do construtor com seis argumentos -- os mesmos seis que
+    as outras abas recebem -- e o `tabs.add`. **O que dava para extrair já nasceu extraído**: a aba
+    inteira é `ui/texto_panel.py`, e o que ela decide (onde o diagrama entra no texto, o que merece
+    destaque, o que vai para o arquivo) é `text/documento.py`, que não importa `tkinter`. Até o
+    comentário que explicava a **posição** da aba na barra saiu daqui para o docstring do painel,
+    que é onde ele continua verdadeiro se alguém reordenar as abas.
+
 
     **1.440 → 1.457 em 2026-08-17**, e a catraca funcionou: ela pegou o próprio crescimento.
     As 17 linhas são da S-144 (o botão "Anotar página" quebrado em cinco linhas para receber

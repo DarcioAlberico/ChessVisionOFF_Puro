@@ -133,6 +133,9 @@ cvoff-texto-linha = "chess_diagram_ocr.cli.texto_linha:main"
 # o CER da pagina inteira. O comando recusa publicar so a primeira, que e a lisonjeira.
 cvoff-texto-placar-final = "chess_diagram_ocr.cli.texto_placar_final:main"
 
+# S-211: a pagina inteira lida como texto, e nao so a faixa de legenda.
+cvoff-texto-pagina = "chess_diagram_ocr.cli.texto_pagina:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

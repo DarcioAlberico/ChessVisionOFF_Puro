@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **31 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **32 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -292,6 +292,13 @@ cvoff-texto-colados --por-livro 3
 # O ganho de ler a linha em vez do caractere (S-188/S-189). O motor de linha e uma decisao do
 # dono do projeto: o padrao e o RapidOCR, que ja e extra declarado e nao baixa nada.
 cvoff-texto-linha --motor rapidocr
+
+# A pagina inteira lida como texto, e nao so a faixa de legenda (S-211). `--motor auto` prefere
+# a camada de texto do PDF e cai para o glifo so quando ela nao existe: dos 42 livros do acervo,
+# 25 tem camada, e para eles o glifo seria trocar registro por palpite. `--json` grava a
+# `PaginaLida` -- coluna, bloco, linha, bbox, confianca e procedencia -- em vez do texto.
+cvoff-texto-pagina "PDF/AAGAARD - Practical Chess Defence.pdf" --paginas 58-62
+cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor glifo --json saida.json
 
 # As duas reguas lado a lado (S-206). O comando **recusa** publicar so a do recorte: publicar
 # "99,1% de acerto" sobre recorte segmentado quando a pagina da outro numero e a forma de
@@ -539,10 +546,37 @@ O plano completo do reconhecimento de texto (colunas, tabelas, tarjas, PDF pesqu
 Tres coisas que o recurso **nao** faz, de proposito:
 
 - nao roda na pagina inteira -- so na faixa em volta do diagrama, com o interior do tabuleiro
-  apagado antes de o motor ver a imagem;
+  apagado antes de o motor ver a imagem. (Quem le a pagina inteira e outro caminho, e ele existe:
+  ver **Texto da pagina inteira** logo abaixo.);
 - nao roda onde a camada de texto respondeu, diagrama a diagrama;
 - nao se disfarca de camada de texto: o PGN sai com `[SideToMoveSource "ocr"]` e, quando o
   motor nao teve certeza, com `[SideToMoveConfidence]` ao lado.
+
+### Texto da pagina inteira, e a aba `Texto` (S-211)
+
+Isto **nao** e o OCR de legenda acima. Aquele le a faixa em volta de um diagrama para descobrir o
+lado a jogar; este le a **folha inteira** -- colunas, paragrafos, tabelas, com os diagramas no
+lugar em que eles aparecem no texto.
+
+Na janela, a aba **Texto** (entre a Revisao e o Dataset) abre um editor com o texto da folha e a
+miniatura de cada diagrama no meio dele. O texto e editavel e sai em `.txt` pelo botao `Salvar`.
+Sem janela, o mesmo caminho e o `cvoff-texto-pagina`.
+
+**Dois motores, e quem escolhe e o disco.** `auto` prefere a camada de texto do PDF e cai para o
+classificador de glifo so quando ela nao existe. Medido em 2026-08-24 sobre os 42 livros de `PDF/`:
+**25 tem camada de texto** e **11 nao tem nenhuma**. Onde a camada existe ela nao e um palpite --
+e o que o editor do PDF escreveu --, e cada bloco lido registra de qual dos dois ele veio.
+
+O que **pede olho** aparece colorido no editor, em tres faixas: abaixo de `MIN_CONFIDENCE` o
+motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto sai na cor normal.
+A camada de texto e a correcao humana nunca pedem revisao.
+
+**O numero, e o que ele nao prova.** Medido em 10 paginas de 2 livros, com a camada de texto da
+propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,1397**. Esse valor tem
+um piso que nao e do modelo -- num dos dois livros a propria camada e OCR de terceiro e traz os
+proprios erros --, entao ele **nao** vira "86% de acerto". O que a medicao decide de fato e o
+padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e, no livro nativo
+digital, piora 22,5%. `--bloco` liga para quem quiser medir de novo.
 
 ## Resolucao de problemas
 

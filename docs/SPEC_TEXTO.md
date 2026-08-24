@@ -2791,7 +2791,7 @@ a camada só para o alfabeto latino e registra o limite.
 
 ---
 
-## S-211 · O modelo de página: coluna → bloco → linha → texto | diagrama | tabela ⬜ planejada
+## S-211 · O modelo de página: coluna → bloco → linha → texto | diagrama | tabela ✅ implementada (2026-08-24)
 
 **Problema.** Hoje `service.RecognizedDiagram` é o que a UI recebe, e **a página não existe como
 objeto**. Cada destino — PGN, dataset, fila de revisão — parte do mesmo diagrama, e isso funciona
@@ -2831,6 +2831,41 @@ e a regra que organiza este projeto vale igual.
 `test_nenhum_consumidor_recompoe_a_pagina`.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.pagina:PaginaLida`.
+
+### O que entrou em 2026-08-24, e o que **não** entrou
+
+Entrou: `PaginaLida` e os quatro blocos em `text/pagina.py`; o leitor de página em
+`text/leitor.py`, com os dois motores; o modelo do editor em `text/documento.py`; o comando
+`cvoff-texto-pagina`; e a aba **Texto** em `ui/texto_panel.py`, que é o primeiro consumidor.
+
+**Não** entrou o terceiro critério de aceite — *"os três consumidores (PGN, dataset, fila) leem de
+`PaginaLida` e nenhum recompõe a página"*. O PGN, o dataset e a fila continuam partindo de
+`service.RecognizedDiagram`, exatamente como antes. Não é esquecimento e não é bloqueio técnico: é
+uma migração de três caminhos medidos que não cabe no mesmo passo que criar o modelo, e fazê-la
+junto significaria mexer neles sem nada para comparar. `test_nenhum_consumidor_recompoe_a_pagina`
+**não existe** pelo mesmo motivo — ele passaria hoje só por vacuidade.
+
+O item fica marcado como implementado porque a sonda é o modelo e o modelo está de pé, e este
+parágrafo é o que impede que "implementado" seja lido como "os quatro consumidores migraram".
+
+### Dois defeitos que só apareceram com a página inteira, e os dois eram de ordem
+
+Nenhum deles era de reconhecimento, e é isso que os torna interessantes: o classificador acerta
+99,8% em `lower_l` na base, e mesmo assim a página saía ilegível.
+
+1. **A escala era medida antes de excluir o diagrama.** A escala é mediana ponderada por massa de
+   tinta, e as peças de um tabuleiro impresso têm 86 px contra 23 de uma letra. Medido na página 20
+   do `Reinfeld 1001`: escala 86, e a peneira de área descartou 438 das 441 componentes da página.
+   A página lia **uma linha**. Correção: `leitor.escala_fora_dos_diagramas`.
+
+2. **A linha era quebrada antes de a coluna existir.** `GlyphRecognizer.read` é um leitor de
+   **faixa**: ele agrupa em linhas sobre a imagem toda, e numa página de duas colunas as duas
+   linhas que compartilham a banda viram uma. Medido na página 58 do `AAGAARD`, contra a camada de
+   texto da mesma página: **CER 0,7861 com o texto intercalado, 0,1559 depois de a coluna ser
+   achada nas caixas de caractere**. Correção: `leitor.segmentar`.
+
+A medição está em `docs/metrics/texto_pagina.json`, e ela também é o que decidiu **desligar** o
+modo bloco da S-188 na página: ele custa ~50x o tempo e, no livro nativo digital, piora 22,5%.
 
 ---
 

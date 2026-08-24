@@ -51,8 +51,14 @@ def _cinza(imagem: np.ndarray) -> np.ndarray:
 class GlyphRecognizer:
     """Segmenta o recorte, classifica cada glifo, agrupa em linha, devolve `TextBox`."""
 
-    def __init__(self, classificador: ClassificadorDeGlifo) -> None:
+    def __init__(self, classificador: ClassificadorDeGlifo, leitor_de_linha: object | None = None) -> None:
         self._classificador = classificador
+        self._leitor_de_linha = leitor_de_linha
+        """O segundo opinante da S-188, que lê a **faixa da linha** em vez de o glifo.
+
+        `None` é o caminho de sempre, e é o padrão: a medição da faixa de legenda foi feita sem
+        ele, e ligá-lo por omissão mudaria um número já publicado. Quem o passa é o leitor de
+        página (`text/leitor.py`), onde ele foi medido -- ver a docstring de lá."""
 
     @property
     def name(self) -> str:
@@ -107,6 +113,11 @@ class GlyphRecognizer:
             lidos = self._classificar([c.recortar(cinza) for c in grupo], permitidos)
             if not lidos:
                 continue
+            if self._leitor_de_linha is not None:
+                from .leitura_de_linha import em_bloco
+
+                casados = em_bloco(cinza, grupo, lidos, self._leitor_de_linha)
+                lidos = [(item.caractere, item.confianca) for item in casados]
             texto = texto_da_linha(grupo, [char for char, _ in lidos])
             if not texto:
                 continue
@@ -161,7 +172,12 @@ class GlyphRecognizer:
         ]
 
 
-def build_glyph_recognizer(model_path: str | Path = "", meta_path: str | Path | None = None) -> GlyphRecognizer:
+def build_glyph_recognizer(
+    model_path: str | Path = "",
+    meta_path: str | Path | None = None,
+    *,
+    leitor_de_linha: object | None = None,
+) -> GlyphRecognizer:
     """O construtor que `ocr.build_recognizer` chama. Levanta `ModeloInvalido` com o motivo.
 
     `model_path` vazio deixa `carregar_classificador` procurar o `.pt` ao lado do metadado, que é
@@ -171,7 +187,7 @@ def build_glyph_recognizer(model_path: str | Path = "", meta_path: str | Path | 
 
     meta = Path(meta_path) if meta_path else CAMINHO_PADRAO_META
     pesos = Path(model_path) if str(model_path).strip() else None
-    return GlyphRecognizer(carregar_classificador(meta, pesos))
+    return GlyphRecognizer(carregar_classificador(meta, pesos), leitor_de_linha)
 
 
 __all__ = ["NOME", "Caixa", "GlyphRecognizer", "ModeloInvalido", "build_glyph_recognizer"]
