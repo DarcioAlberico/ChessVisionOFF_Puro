@@ -392,6 +392,14 @@ tabela medir o motor contra ele mesmo.
 motores leem**, a banda dilatada em `radius_pt` com o interior do diagrama apagado. Transcrever
 deixou de exigir abrir 27 PDFs nas páginas certas 123 vezes; virou olhar 123 imagens.
 
+**E o outro lado da mesma conta: `cvoff-texto-transcrever`.** Olhar 123 imagens ainda deixava
+a metade chata — achar a linha certa do `.jsonl`, digitar com aspas escapadas e trocar a marca,
+123 vezes, sem nada que contasse quanto falta. A janela põe o PNG à esquerda e o campo à
+direita, abre na primeira pendente, grava na forma que o placar lê e mostra o placar de
+conferidas. **Ela não tem, e não vai ter, um botão de preencher com OCR** — pelo mesmo motivo
+que a medição recusa o não-conferido. O que a janela não muda é o portão: a transcrição
+continua humana, e continua sendo 123.
+
 **É o único pedido humano que trava três coisas ao mesmo tempo:** o portão da Fase 25, o critério
 de aceite da S-186 (que teve de medir contra a camada editorada) e a régua forte da S-189.
 
@@ -528,7 +536,8 @@ livro**, que continuam abertos até a origem responder, e é assim que devem apa
 
 1. **Transcrever as 123 faixas de referência** (Etapa 7). É o portão do plano inteiro, e a única
    coisa que nenhum comando pode fazer sozinho sem virar circularidade -- a referência não pode
-   ser a leitura de um motor.
+   ser a leitura de um motor. O que existe para ajudar é `cvoff-texto-placar --exportar` (os
+   PNGs) e `cvoff-texto-transcrever` (a janela); o que sobra é olhar e digitar.
 2. **Exportar `uuid -> (livro, página, quem rotulou)` do `PyBoxEditor_Tkinter`** para
    `data/texto_procedencia.csv` (Etapas 3 e 4, e o formato já está definido). Sem esse arquivo
    nenhum número deste plano mede generalização de fonte, e a regra da S-201 não pode valer sem

@@ -140,3 +140,8 @@ data/quarentena_texto/
 # parece carregavel e nao e, que e exatamente a confusao que o `modelo_sha256` do text/modelo.py
 # existe para impedir. Os numeros do experimento moram em docs/metrics/, que e onde se lê.
 models/experiments/*.json
+# Os PNGs das 123 faixas exportadas para a transcricao da S-183 (`cvoff-texto-placar
+# --exportar`). Sao recorte de PDF protegido, pela mesma regra do review_cache/ e da galeria, e
+# sao reconstruiveis a qualquer momento a partir de docs/metrics/texto_faixa_referencia.jsonl. O
+# que **fica** versionado e a transcricao humana, que vai para o campo `texto` daquele arquivo.
+data/faixas_para_transcrever/

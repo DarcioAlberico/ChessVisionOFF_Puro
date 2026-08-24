@@ -94,6 +94,10 @@ cvoff-texto-status = "chess_diagram_ocr.cli.text_status:main"
 # O placar da S-183: a mesma faixa de legenda lida pela camada de texto, pelo RapidOCR e
 # pelo classificador de glifo. E o item que decide se a Fase 26 acontece.
 cvoff-texto-placar = "chess_diagram_ocr.cli.texto_placar:main"
+# A janela que transcreve as 123 faixas da S-183 com o PNG exportado ao lado (Etapa 7 do
+# PLANO_OCR_TEXTO). Nao tem, e nao vai ter, um botao de preencher com OCR: a referencia
+# vinda de um motor faria o placar acima medir o motor contra ele mesmo.
+cvoff-texto-transcrever = "chess_diagram_ocr.cli.texto_transcrever:main"
 # A regua da ordem de leitura (S-194): mede a nossa contra a da camada de texto do proprio
 # PDF. Independente da nossa medicao -- mas em parte do acervo a camada e de OCR, e nao da
 # diagramacao, e ali ela nao arbitra grade de exercicio (S-216).

@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **30 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **31 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -301,6 +301,12 @@ cvoff-texto-placar-final --por-livro 2
 # Os 123 recortes da referencia da S-183, para transcrever sem abrir o PDF 123 vezes. A
 # transcricao e humana por desenho: se ela vier de um motor, a tabela mede o motor contra si.
 cvoff-texto-placar --exportar faixas/
+
+# A janela que transcreve essas 123 faixas com o PNG ao lado, marca `conferido` e grava o
+# .jsonl na forma que o placar le. Abre na primeira pendente; Ctrl+Enter marca e pula para
+# a proxima. Nao tem botao de preencher com OCR, e e por isso que a tabela significa algo.
+cvoff-texto-transcrever
+cvoff-texto-transcrever --pngs data/faixas_para_transcrever
 ```
 
 Os scripts `train_model.py`, `infer_pdf.py` e `export_pdf_pgn.py` na raiz continuam
