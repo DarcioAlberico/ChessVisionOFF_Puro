@@ -38,16 +38,25 @@ DARK_SQUARE = tokens.RESERVA[tokens.CASA_ESCURA]
 SELECTION_OUTLINE = tokens.RESERVA[tokens.CONTORNO_DE_SELECAO]
 """A casa selecionada: um anel, e não uma cor de fundo (S-160)."""
 
+# Marcação resolve pela reserva e não por `tokens.cor`, e agora há motivo escrito para isso: a
+# reserva é o valor medido contra as três casas (`tokens.CASAS_DO_TABULEIRO`), e o que um tema
+# responderia seria uma cor de letra escolhida contra o fundo da janela -- ver `_DO_TEMA`.
+
 LAST_MOVE_SQUARE = tokens.RESERVA[tokens.CASA_ULTIMO_LANCE]
 TARGET_MARK = tokens.RESERVA[tokens.ALVO]
 CHANGED_OUTLINE = tokens.RESERVA[tokens.CORRIGIDO]
 PROBLEM_OUTLINE = tokens.RESERVA[tokens.PROBLEMA]
 DISPUTED_OUTLINE = tokens.RESERVA[tokens.DIVERGENTE]
-"""Roxo: as duas leituras discordam desta casa (S-66).
+"""Violeta: as duas leituras discordam desta casa (S-66).
 
-Cor própria, e não o vermelho da ilegalidade nem o azul da decodificação: as três dizem
+Cor própria, e não o vermelho da ilegalidade nem a azeitona da decodificação: as três dizem
 coisas diferentes e podem acender juntas. "Ilegal" é um fato sobre a posição, "reescrita" é
-algo que já aconteceu, e "em disputa" é um pedido -- olhe esta casa."""
+algo que já aconteceu, e "em disputa" é um pedido -- olhe esta casa.
+
+**As cinco marcações desta lista são escuras, e isso é medido e não gosto** (S-158, S-160,
+S-257). Metade das casas é `#b58863`: só cor escura passa o piso gráfico de 3,0:1 sobre a casa
+escura **e** sobre a clara ao mesmo tempo -- nenhuma cor saturada é clara o bastante para o
+outro lado do piso. O que separa uma marcação da outra aqui são matiz e forma, não brilho."""
 BOARD_FRAME = tokens.RESERVA[tokens.MOLDURA]
 """A reserva da moldura. O desenho resolve contra o tema em uso -- ver `_cor_de_moldura`."""
 

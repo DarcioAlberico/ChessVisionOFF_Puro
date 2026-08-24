@@ -90,13 +90,18 @@ SEVERIDADES: tuple[str, ...] = (INFORMACAO, AVISO, ERRO)
 PAPEL_DE_TEXTO: dict[str, str] = {
     INFORMACAO: tokens.TEXTO_PADRAO,
     AVISO: tokens.ATENCAO,
-    ERRO: tokens.PROBLEMA,
+    ERRO: tokens.PROBLEMA_TEXTO,
 }
 """Severidade → papel de cor da S-145. Os três são papéis de **texto**, e isso não é detalhe.
 
 `ATENCAO` é o âmbar escuro `#8a5a00` e não o `#ffb02e` da marcação, justamente porque este aqui
 vai ser lido como letra: a S-146 mediu que o âmbar da caixa reprova em contraste como texto. O
-teste deste módulo afirma os três contra a superfície da janela, com número."""
+teste deste módulo afirma os três contra a superfície da janela, com número.
+
+`PROBLEMA_TEXTO` é o mesmo caso, e ele passou a ter nome na S-257: o vermelho que a marcação de
+casa ilegal usa hoje é escuro o bastante para ser visto sobre a casa escura do tabuleiro, e uma
+mensagem de erro escrita nele seria quase preta. Aqui vale o `#c0392b` de sempre, que é o valor
+que este rodapé já desenhava."""
 
 MARCAS_DE_ERRO: tuple[str, ...] = (
     "falha",

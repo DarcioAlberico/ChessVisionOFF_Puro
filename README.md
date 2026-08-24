@@ -692,7 +692,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-78 a S-82, S-143 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
 | S-95 a S-142, S-218, S-219 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
-| S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
+| S-144 a S-170, S-257 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -730,7 +730,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   2026-08-17 em tres passadas: o tema `ttkbootstrap` esta instalado e nenhum widget pede estilo,
   abaixo de ~1500x840 a janela apaga controles (em 1100x760 a fila de salvar fica inalcancavel),
   e azul e violeta significam coisas diferentes na pagina e no tabuleiro
-- [docs/SPEC_UI.md](docs/SPEC_UI.md) -- especificacao das Fases 20 a 24 (S-144 a S-170):
+- [docs/SPEC_UI.md](docs/SPEC_UI.md) -- especificacao das Fases 20 a 24 (S-144 a S-170) e a S-257:
   tokens de cor e tipografia, o piso da janela, cor com um significado so, barra de menus e
   rodape de janela, vocabulario e estados vazios
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados

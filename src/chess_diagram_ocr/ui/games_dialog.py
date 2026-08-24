@@ -103,7 +103,7 @@ class GamesDialog(tk.Toplevel):
         self.tree.tag_configure("escolhida", font=theme.fonte_atual(tipografia.CORPO, negrito=True))
         self.tree.tag_configure("legenda", foreground=tokens.RESERVA[tokens.PRONTO_TEXTO])
         self.tree.tag_configure("vizinha", foreground=tokens.RESERVA[tokens.VIZINHA_TEXTO])
-        self.tree.tag_configure("porNome", foreground=tokens.RESERVA[tokens.DIVERGENTE])
+        self.tree.tag_configure("porNome", foreground=tokens.RESERVA[tokens.DIVERGENTE_TEXTO])
 
         rodape = ttk.Frame(self, padding=8)
         rodape.pack(fill=tk.X)

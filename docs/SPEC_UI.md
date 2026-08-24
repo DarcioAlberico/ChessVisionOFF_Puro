@@ -1,4 +1,4 @@
-# Especificação da interface — Fases 20 a 24 (S-144 a S-170)
+# Especificação da interface — Fases 20 a 24 (S-144 a S-170), e a S-257
 
 Base: [ROADMAP_UI.md](ROADMAP_UI.md), que traz a avaliação de 2026-08-17 e o sequenciamento.
 As fases de modelo e detecção não são tocadas por esta spec — elas seguem em
@@ -13,7 +13,7 @@ As fases de modelo e detecção não são tocadas por esta spec — elas seguem 
 > | S-78 a S-82, S-143 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
-> | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
+> | S-144 a S-170, S-257 | [SPEC_UI.md](SPEC_UI.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa é a
@@ -1050,3 +1050,91 @@ a seleção de um `Treeview` sem querer é um `Shift+clique` a mais e a única d
 
 E o teste fecha o par nos dois sentidos: quem apaga usa `DESTRUTIVO`, **e quem não apaga não usa**
 -- se tudo é vermelho, nada é.
+
+---
+
+# Depois da Fase 24 — o que a medição continuou achando
+
+> Não é fase nova. É correção de coisa que as fases acima mediram e deixaram passar, e ela mora
+> aqui porque é aqui que a paleta e a regra que ela emenda estão escritas.
+
+## S-257 · Os três contornos que sumiam na metade escura do tabuleiro ✅ implementada (2026-08-24)
+
+**Problema.** `ui/board_render.py:42-45` desenha três marcações de casa como **contorno**, e as
+três reprovam o piso gráfico de 3,0:1 contra a casa escura. Medido em 2026-08-24 com
+`chess_diagram_ocr.ui.tokens.razao_de_contraste`:
+
+| marcação | valor | sobre `CASA_CLARA` | sobre `CASA_ESCURA` | sobre `CASA_ULTIMO_LANCE` |
+|---|---|---|---|---|
+| `ALVO` — "a peça arrastada pode ir para cá" | `#3f7f4c` | 3,52 | **1,53** | **2,99** |
+| `DIVERGENTE` — "as duas leituras discordam" | `#8e44ad` | 4,27 | **1,86** | 3,64 |
+| `PROBLEMA` — "esta casa torna a posição ilegal" | `#c0392b` | 3,96 | **1,73** | 3,37 |
+
+Sobre a casa clara os três passam, e é isso que fazia o defeito não aparecer: metade do tabuleiro
+está certa. É a mesma família que a S-158 mediu e consertou para o `CORRIGIDO` — *"o azul dava
+3,01:1 sobre a casa clara e 1,31:1 sobre a escura: uma borda que sumia em metade do tabuleiro"* —,
+em três papéis que ela não olhou.
+
+**Por que a suíte não pegou.** `test_ui_semantica_cor.py` media **um** papel contra **duas**
+casas: o `CORRIGIDO`, que era o que a S-158 tinha acabado de consertar. Um teste que afirma o
+conserto não é o mesmo que um teste que afirma a regra, e a distância entre os dois é o que
+sobreviveu aqui. O quarto número da tabela nunca tinha sido medido por ninguém: o amarelo do
+último lance é o **terceiro** fundo do tabuleiro, cobre duas casas o tempo todo na aba Análise, e
+não aparecia em lista de pares nenhuma.
+
+**Solução: luminosidade, e não matiz.** A S-158 trocou de faixa de matiz porque o defeito dela
+*era* matiz — `A_FAZER` e `CORRIGIDO` a 3,6° um do outro. Aqui as três já estão a mais de 40° de
+todas as marcações da mesma superfície: o que as reprovava é brilho. Trocar matiz trocaria o
+significado, que é justamente o defeito que a S-158 existe para não deixar voltar.
+
+E a escolha não tinha o outro lado. Para passar 3,0:1 sobre a casa escura **por cima**, uma cor
+precisaria de luminância relativa ≥ 0,95; sobre a casa clara, ≥ 2,24 — que não existe, porque o
+branco puro é 1,0. Não há cor clara que sirva às duas casas ao mesmo tempo. Toda marcação medida
+contra o tabuleiro inteiro é escura, e as duas que já tinham sido medidas — `CORRIGIDO` (S-158) e
+`CONTORNO_DE_SELECAO` (S-160) — já eram.
+
+| marcação | de | para | clara | escura | último lance | matiz |
+|---|---|---|---|---|---|---|
+| `ALVO` | `#3f7f4c` | `#204127` | 8,28 | **3,61** | 7,05 | 132,2° → 132,7° |
+| `DIVERGENTE` | `#8e44ad` | `#532865` | 8,23 | **3,59** | 7,00 | 282,3° → 282,3° |
+| `PROBLEMA` | `#c0392b` | `#6c2018` | 8,24 | **3,59** | 7,01 | 5,6° → 5,7° |
+
+As três caem na faixa que a S-158 mediu para o `CORRIGIDO` (8,32 / 3,62 / 7,08), o desvio máximo
+de matiz é **0,5°**, e as separações da regra dos 40° não só sobrevivem como melhoram no par mais
+apertado: `ALVO` × `CORRIGIDO` vai de 49,7° a 50,2°.
+
+**A separação que a correção obrigou.** `PROBLEMA` e `DIVERGENTE` não eram só marcações:
+`ui/rodape.py:93`, `ui/campos.py:119` e `ui/games_dialog.py:106` os desenham como **texto**. Um
+valor não cumpre os dois pisos — o que passa 3,0:1 sobre `#b58863` é quase preto como letra, e o
+vermelho que se lê como erro sobre o cinza da janela dá 1,73:1 sobre a casa escura. É a regra da
+S-146 (`PRONTO` e `PRONTO_TEXTO` são dois papéis) encontrada pelo lado oposto: lá foi a marcação
+que reprovava como texto. `PROBLEMA_TEXTO` e `DIVERGENTE_TEXTO` nascem com o valor que os três
+painéis já desenhavam — **separar os nomes não muda um pixel de texto**.
+
+Junto vai uma contradição que estava escrita e que ninguém tinha ligado às duas pontas: `_DO_TEMA`
+mapeava `PROBLEMA` para `danger.TLabel`, autorizando um tema a responder a cor de uma marcação de
+tabuleiro — que é literalmente o que a docstring daquela tabela proíbe ("perguntar ao `Style` ali
+devolveria uma cor pensada para outro fundo"). O desenho escapava por ler `RESERVA` direto, não
+por contrato. A entrada passa a ser `PROBLEMA_TEXTO`.
+
+**Critério de aceite.** Nenhuma marcação declarada em `SIGNIFICADO` na superfície `TABULEIRO`
+fica abaixo de 3,0:1 contra **qualquer** das três casas; a matiz de cada uma continua onde estava
+(desvio < 1°) e nenhuma vira cinza; nenhum papel de marcação de tabuleiro aparece em `_DO_TEMA`;
+e o texto do rodapé, do campo e da lista de partidas continua com o valor de hoje.
+
+**Testes.** `tests/test_ui_semantica_cor.py`: a varredura passa a ser **gerada** de `SIGNIFICADO`
+× `tokens.CASAS_DO_TABULEIRO` — todas as marcações, todos os fundos —, e os quatro valores antigos
+ficam registrados num teste que afirma que eles reprovavam, que é o controle sem o qual um piso
+frouxo passaria despercebido; a conta de "nenhuma cor clara serve às duas casas" é afirmada com
+número; `MarcacaoContraTextoTests` afirma que o valor de texto **não** serviria de marcação — sem
+isso, dois papéis seriam luxo em vez de necessidade. `tests/test_ui_tokens.py`: nenhuma marcação
+de tabuleiro em `_DO_TEMA`, e os pares de texto passam a citar os papéis de texto.
+
+**Como ficou.** O item que faltava era um substantivo: `tokens.CASAS_DO_TABULEIRO`. Enquanto "o
+fundo do tabuleiro" não tinha nome, cada teste escolhia à mão contra quantas casas medir — e
+escolher à mão foi como duas casas viraram a régua e a terceira nunca entrou. Com a tupla
+declarada, a próxima marcação é medida contra os três fundos sem ninguém lembrar disso.
+
+O que **não** mudou é metade do valor do item: a página, as cinco marcações dela e os sete pares
+de texto da S-146 estão intactos, e os dois valores de texto que ganharam nome novo continuam
+`#c0392b` e `#8e44ad`. A correção é do tabuleiro, e só.

@@ -32,9 +32,9 @@ HEX = re.compile(r'"#[0-9a-fA-F]{6}"')
 PARES_DE_TEXTO = (
     (tokens.TEXTO_SECUNDARIO, tokens.SUPERFICIE_PADRAO),
     (tokens.PRONTO_TEXTO, tokens.SUPERFICIE_PADRAO),
-    (tokens.PROBLEMA, tokens.SUPERFICIE_PADRAO),
+    (tokens.PROBLEMA_TEXTO, tokens.SUPERFICIE_PADRAO),
     (tokens.ATENCAO, tokens.SUPERFICIE_PADRAO),
-    (tokens.DIVERGENTE, tokens.SUPERFICIE_PADRAO),
+    (tokens.DIVERGENTE_TEXTO, tokens.SUPERFICIE_PADRAO),
     (tokens.VIZINHA_TEXTO, tokens.SUPERFICIE_PADRAO),
     (tokens.TEXTO_PADRAO, tokens.SUPERFICIE_PADRAO),
 )
@@ -47,7 +47,11 @@ sobre a esteira são as coordenadas, e elas não têm cor fixa a medir — `sobr
 resolve contra o fundo real, que é o teste logo abaixo.
 
 Manter os pares falsos custava mais do que não medir nada: com a esteira escura da S-147 eles
-reprovariam, e a correção seria clarear a esteira por causa de um texto que não existe."""
+reprovariam, e a correção seria clarear a esteira por causa de um texto que não existe.
+
+**Dois pares trocaram de papel na S-257, e não de valor.** Eram `PROBLEMA` e `DIVERGENTE`, que
+faziam texto e marcação de casa com um nome só; o valor medido aqui é o mesmo de antes, e o que
+mudou é que a marcação deixou de ser obrigada a caber nele -- ver `test_ui_semantica_cor`."""
 
 PARES_DE_MARCACAO = (
     (tokens.PRONTO, tokens.SUPERFICIE_PAGINA),
@@ -160,7 +164,7 @@ class PaletaTests(unittest.TestCase):
                 return "#0b5ed7" if layout == "success.TLabel" else ""
 
         self.assertEqual(cor(tokens.PRONTO_TEXTO, EstiloFalso()), "#0b5ed7")
-        self.assertEqual(cor(tokens.PROBLEMA, EstiloFalso()), RESERVA[tokens.PROBLEMA])
+        self.assertEqual(cor(tokens.PROBLEMA_TEXTO, EstiloFalso()), RESERVA[tokens.PROBLEMA_TEXTO])
 
     def test_o_tema_que_so_herda_a_cor_do_estilo_base_nao_esta_respondendo(self) -> None:
         """O defeito que o rodapé da S-163 expôs, e ele valia para os três papéis de texto.
@@ -188,6 +192,24 @@ class PaletaTests(unittest.TestCase):
 
         resolvidas = {cor(papel, EstiloQueSoHerda()) for papel in tokens._DO_TEMA}
         self.assertEqual(len(resolvidas), len(tokens._DO_TEMA))
+
+    def test_nenhuma_marcacao_de_tabuleiro_resolve_pelo_tema(self) -> None:
+        """O que um tema responde é cor de **letra**, medida contra o fundo da janela (S-257).
+
+        `PROBLEMA` estava em `_DO_TEMA` desde a S-145, e ninguém tinha ligado as duas pontas: o
+        mesmo papel é contorno de casa em `board_render`, medido contra `CASAS_DO_TABULEIRO`.
+        Sob um tema que declare `danger.TLabel`, `cor(PROBLEMA, style)` devolveria o vermelho
+        vivo do tema -- **1,7:1 sobre a casa escura**, que é o defeito que este item veio tirar,
+        de volta por uma porta que nenhum teste olhava.
+
+        Hoje o desenho lê `RESERVA` direto e escapa por sorte. A guarda é sobre o contrato: um
+        papel que é marcação de tabuleiro não pode estar nesta tabela, independentemente de quem
+        o desenha hoje.
+        """
+        do_tabuleiro = {
+            papel for papel, (superficie, _) in tokens.SIGNIFICADO.items() if superficie == tokens.TABULEIRO
+        }
+        self.assertEqual(set(), do_tabuleiro & set(tokens._DO_TEMA), "marcação de tabuleiro perguntando ao Style")
 
     def test_o_tema_que_levanta_nao_derruba_a_janela(self) -> None:
         """Aparência não pode derrubar ferramenta -- é o contrato do `ui/theme.py` desde a S-53."""

@@ -20,7 +20,9 @@ veio; é o que permite testar a paleta inteira sem abrir janela, e é a mesma di
 **A regra de cor-de-marcação contra cor-de-texto (S-146).** Um verde que serve de borda de
 retângulo sobre a página **não** serve de texto sobre branco: a razão de contraste que importa
 é outra em cada caso. Por isso `PRONTO` e `PRONTO_TEXTO` são dois papéis, e não um com dois
-usos — ver `razao_de_contraste`, que é o instrumento que decide.
+usos — ver `razao_de_contraste`, que é o instrumento que decide. A regra vale nos dois sentidos,
+e a S-257 a encontrou pelo outro: um vermelho que serve de texto sobre o cinza da janela não
+serve de contorno sobre a casa escura do tabuleiro.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from __future__ import annotations
 from typing import Protocol
 
 __all__ = [
+    "CASAS_DO_TABULEIRO",
     "PAPEIS",
     "RESERVA",
     "SUPERFICIES",
@@ -69,11 +72,32 @@ DISPENSADO = "DISPENSADO"
 """Marcação de "a base reconheceu, não precisa de olho nenhum" (S-75)."""
 
 ATENCAO = "ATENCAO"
+"""Aviso **como texto**: algo não aconteceu e alguém precisa agir. Âmbar escuro por medição --
+o `#ffb02e` da marcação reprova como letra, e é a S-146 que separou os dois."""
+
 PROBLEMA = "PROBLEMA"
-"""Casa culpada, posição ilegal, ação destrutiva."""
+"""**Marcação** de casa que torna a posição ilegal. Contorno de casa, sobre o tabuleiro."""
 
 DIVERGENTE = "DIVERGENTE"
-"""Casa em que duas leituras discordam (a 2ª opinião da S-66)."""
+"""**Marcação** de casa em que duas leituras discordam (a 2ª opinião da S-66)."""
+
+PROBLEMA_TEXTO = "PROBLEMA_TEXTO"
+DIVERGENTE_TEXTO = "DIVERGENTE_TEXTO"
+"""Os mesmos dois significados, como **texto**: o aviso do campo (`ui/campos.py`), a mensagem de
+erro do rodapé (`ui/rodape.py`) e a linha "achada por nome" da lista de partidas.
+
+**Nasceram na S-257, e quem os separou foi o contraste.** Até aqui `PROBLEMA` e `DIVERGENTE`
+faziam as duas coisas com um nome só, e na paleta clara isso passava despercebido porque o mesmo
+valor servia aos dois -- `#c0392b` dava 4,77:1 sobre o cinza da janela **e** 3,96:1 sobre a casa
+clara. Sobre a casa **escura** ele dava 1,73:1, e aí os dois usos passam a pedir valores opostos:
+a letra sobre fundo claro tem um piso de luminosidade, e o contorno medido contra as três casas
+tem um teto abaixo dele. Um valor não cumpre os dois.
+
+É a S-146 outra vez -- *`PRONTO` e `PRONTO_TEXTO` são dois papéis, e não um com dois usos* --,
+encontrada pelo outro lado: lá foi a marcação que reprovava como texto, aqui é o texto que
+reprovava como marcação. O valor destes dois é o que os três painéis já desenhavam, então
+separar os nomes **não muda um pixel de texto**; o que ele muda é o tabuleiro, que era o
+defeito."""
 
 CORRIGIDO = "CORRIGIDO"
 """**Marcação** de casa que o decodificador reescreveu em relação ao que o modelo leu.
@@ -127,9 +151,15 @@ COORDENADA = "COORDENADA"
 CASA_CLARA = "CASA_CLARA"
 CASA_ESCURA = "CASA_ESCURA"
 CASA_ULTIMO_LANCE = "CASA_ULTIMO_LANCE"
-ALVO = "ALVO"
 """A identidade do tabuleiro. Não segue tema: xadrez impresso é claro-e-escuro em qualquer
 tema, e um tabuleiro que muda de cor com a janela deixa de ser reconhecível como tabuleiro."""
+
+ALVO = "ALVO"
+"""**Marcação** de "a peça arrastada pode ir para cá": anel na casa ocupada, disco na vazia.
+
+Também não segue tema, pelo mesmo motivo das casas -- mas é **marcação e não identidade**, e a
+diferença tem consequência: ela é medida *contra* as três casas, e não junto com elas. Era
+`#3f7f4c`, um verde escolhido contra a casa clara, e sobre a escura dava **1,53:1** (S-257)."""
 
 CONTORNO_DE_SELECAO = "CONTORNO_DE_SELECAO"
 """A casa que está selecionada agora. **Contorno, e não preenchimento** (S-160).
@@ -174,6 +204,8 @@ PAPEIS: tuple[str, ...] = (
     ATENCAO,
     PROBLEMA,
     DIVERGENTE,
+    PROBLEMA_TEXTO,
+    DIVERGENTE_TEXTO,
     CORRIGIDO,
     VIZINHA_TEXTO,
     SUPERFICIE_PAGINA,
@@ -202,8 +234,10 @@ RESERVA: dict[str, str] = {
     LIDO: "#ffb02e",
     DISPENSADO: "#9aa1ad",
     ATENCAO: "#8a5a00",
-    PROBLEMA: "#c0392b",
-    DIVERGENTE: "#8e44ad",
+    PROBLEMA: "#6c2018",
+    DIVERGENTE: "#532865",
+    PROBLEMA_TEXTO: "#c0392b",
+    DIVERGENTE_TEXTO: "#8e44ad",
     CORRIGIDO: "#2b4008",
     VIZINHA_TEXTO: "#1565c0",
     SUPERFICIE_PAGINA: "#1c1c1c",
@@ -215,7 +249,7 @@ RESERVA: dict[str, str] = {
     CASA_ESCURA: "#b58863",
     CASA_ULTIMO_LANCE: "#cdd26a",
     CONTORNO_DE_SELECAO: "#141414",
-    ALVO: "#3f7f4c",
+    ALVO: "#204127",
     TEXTO_SOBRE_MARCACAO: "#101010",
     TRACEJADO: "#ff5cc8",
     TEXTO_PADRAO: "#000000",
@@ -231,6 +265,12 @@ Duas entradas mudaram de valor em relação ao que estava cravado, e as duas por
 `COORDENADA` era `#d8d8d8`, que sobre o antigo `#f2f2f2` do tabuleiro do Resultado dá **1,27:1**
 — desenhado e ilegível; e `ATENCAO` ganhou um âmbar escuro porque o `#ffb02e` da marcação
 reprova como texto.
+
+**Outras três desceram de luminosidade na S-257**, e por medição também: `ALVO`, `PROBLEMA` e
+`DIVERGENTE` davam 1,53:1, 1,73:1 e 1,86:1 sobre a casa escura, contra o piso gráfico de 3,0 —
+três contornos desenhados e invisíveis em metade do tabuleiro. A matiz de cada um ficou onde
+estava (desvio máximo de 0,5°): o que os reprovava era luminosidade, e trocar matiz trocaria o
+significado, que é o defeito da S-158.
 
 **Esta tabela é a do tema claro.** As superfícies têm um segundo valor em `_NO_ESCURO`, e a
 escolha entre os dois é de `tema_e_escuro` — ver `SUPERFICIES`.
@@ -277,7 +317,7 @@ do tabuleiro de Análise não foi jogada fora, virou o valor de tema escuro da s
 
 _DO_TEMA: dict[str, tuple[str, str]] = {
     PRONTO_TEXTO: ("success.TLabel", "foreground"),
-    PROBLEMA: ("danger.TLabel", "foreground"),
+    PROBLEMA_TEXTO: ("danger.TLabel", "foreground"),
     TEXTO_SECUNDARIO: ("secondary.TLabel", "foreground"),
 }
 """Papéis que o tema **pode** responder melhor que a reserva, e onde perguntar.
@@ -285,6 +325,13 @@ _DO_TEMA: dict[str, tuple[str, str]] = {
 **Só três, e de propósito.** O resto ou é identidade do tabuleiro (que não segue tema) ou é
 marcação sobre a página renderizada, onde o fundo é a página e não o tema — perguntar ao
 `Style` ali devolveria uma cor pensada para outro fundo.
+
+**`PROBLEMA_TEXTO` e não `PROBLEMA`, e isso é o item da S-257.** Enquanto os dois papéis eram
+um só, esta tabela autorizava um tema a responder o vermelho de "posição ilegal" — e o que um
+tema responde é um `foreground` de rótulo, escolhido contra o fundo da janela. Aplicado ao
+contorno de casa, ele seria exatamente a cor pensada para outro fundo que o parágrafo acima
+proíbe: o `danger` de `bootstrap-light` dá 1,7:1 sobre a casa escura. Marcação de tabuleiro
+resolve pela reserva, que é medida contra as casas, e não pelo `Style`.
 
 **"Pode" e não "responde"**: nos 30 temas do `ttkbootstrap` 2.2.0 medidos aqui, nenhum dos três
 estilos declara `foreground` próprio, e `style.lookup` devolve o do `TLabel` base para os três —
@@ -444,6 +491,20 @@ TABULEIRO = "tabuleiro"
 quais papéis podem ser confundidos. Duas marcações na **mesma** superfície competem pelo mesmo
 olhar; em superfícies diferentes, a forma já as separa (a página usa retângulo com etiqueta
 preenchida, o tabuleiro usa contorno de casa)."""
+
+CASAS_DO_TABULEIRO: tuple[str, ...] = (CASA_CLARA, CASA_ESCURA, CASA_ULTIMO_LANCE)
+"""Os três fundos sobre os quais uma marcação de tabuleiro pode cair (S-257).
+
+**A superfície é uma, os fundos são três**, e é por isso que a tupla existe separada de
+`TABULEIRO`. Uma marcação medida só contra a casa clara está medida contra um terço do lugar em
+que ela é desenhada — foi assim que `ALVO`, `PROBLEMA` e `DIVERGENTE` ficaram invisíveis em
+metade do tabuleiro com três contrastes aprovados no papel.
+
+O terceiro fundo não é enfeite. O amarelo do último lance cobre duas casas o tempo todo na aba
+Análise, e a casa de destino do lance recém-jogado é justamente a que se seleciona e para a
+qual se arrasta: `ALVO` sobre ela dava **2,99:1**, abaixo do piso, e nenhuma lista de pares o
+citava. A tupla existe para o teste **gerar** os pares em vez de alguém lembrar do terceiro.
+"""
 
 SIGNIFICADO: dict[str, tuple[str, str]] = {
     A_FAZER: (PAGINA, "o detector achou isto e ninguém leu ainda"),

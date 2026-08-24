@@ -92,6 +92,14 @@ por teste:
 - **Depois da S-158 não sobrou matiz livre no tabuleiro** (S-160). Azul, violeta, vermelho,
   verde e azeitona têm dono, e a única faixa vaga era um ciano a 21° do azul da página. A
   seleção da casa saiu do canal de cor: virou forma, e é acromática por eliminação medida.
+- **O `CORRIGIDO` era um de quatro, e a S-158 olhou um** (S-257). Os outros três contornos de
+  casa reprovavam o mesmo piso sobre a mesma casa escura: `ALVO` a **1,53:1**, `PROBLEMA` a
+  **1,73:1**, `DIVERGENTE` a **1,86:1**. O teste da S-158 media o papel que ela tinha acabado de
+  consertar contra duas casas, e não a regra contra as três — e o terceiro fundo, o amarelo do
+  último lance, não aparecia em lista nenhuma: `ALVO` dava **2,99:1** ali, abaixo do piso, sem
+  nunca ter sido medido. A correção é de luminosidade e não de matiz, porque não existe cor clara
+  que passe sobre as duas casas ao mesmo tempo; e ela obrigou a separar texto de marcação em dois
+  papéis, que é a S-146 chegando pelo lado oposto.
 
 ---
 
