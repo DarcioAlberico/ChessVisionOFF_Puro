@@ -62,7 +62,40 @@ pesos não carregarem -- e nesse caso quem cai avisa, em vez de trocar de motor 
 **Continua não havendo voto entre os dois**, e por isso a `PaginaLida` registra em cada bloco de
 qual deles ele veio: a procedência é o que permite comparar depois sem remedir.
 
-## O separador de colado não paga na página tampouco, e o porquê é melhor que o número
+## O separador de colado paga na página, e a primeira medição não viu
+
+**Esta seção existia dizendo o contrário, e a correção é o item.** Em 2026-08-24 eu medi o
+separador da S-186 na página, achei ruído e o deixei desligado. O dono do projeto trouxe então uma
+página de texto **itálico**, e ali a conclusão se inverte -- em itálico as letras encostam, e é
+justamente onde o separador serve.
+
+O que a primeira medição não viu, e por quê:
+
+1. **a população.** Foram 12 páginas de prosa **em pé**. Itálico não estava lá, e é o caso;
+2. **a régua.** Media CER e recall de número de lance. Nenhuma das duas enxerga `M♔king`, que é um
+   par de letras colado lido como um símbolo de xadrez -- o erro custa dois caracteres num texto de
+   mil, e apaga um nome próprio;
+3. **a ordem.** Ela rodou **antes** das quatro correções de geometria. Com elas dentro, o que
+   sobra para o separador é outro conjunto.
+
+Remedido em 21 páginas de 7 livros, com as correções de geometria ligadas:
+
+    referência                         páginas   nunca    auto      melhoram/pioram
+    camada editorada (confiável)            11   0,1077   0,1071    3 / 0
+    camada de OCR (suspeita)                10   0,2032   0,1953    6 / 3
+    só as páginas com itálico                4   0,1227   0,1207    3 / 0
+
+**Na referência confiável, `auto` não piora uma única página.** O ganho de CER é pequeno -- 0,0006
+--, e a evidência forte não é ele: é o caso nomeado.
+
+    nunca   Thus we s♔ that   ·   M♔king   ·   Mcoking
+    auto    Thus we see that  ·   Mecking  ·   Mecking
+
+O modo `sempre` continua fora, e agora com o motivo à vista: ele parte **figurina correta**
+(`♘f4` vira `♘1f4`), e é exatamente isso que o árbitro do `auto` recusa. Custo do `auto`: 1,58 s
+para 1,67 s por página.
+
+## O separador na faixa de legenda continua desligado
 
 A S-186 estava medida só em **faixa de legenda** (`docs/metrics/texto_colados.json`), onde perde.
 A pergunta reabriu com um caso concreto de página: `40` saiu `co` e `44` saiu `M`. O argumento
@@ -154,6 +187,15 @@ MotorResolvido = Literal["camada", "glifo"]
 Tipo próprio e não `MotorDeTexto` porque a resposta vira **procedência** de cada bloco, e
 "auto" não é procedência de coisa nenhuma -- é uma pergunta, não uma origem."""
 MOTORES: tuple[MotorDeTexto, ...] = ("auto", "camada", "glifo")
+
+COLADOS_NA_PAGINA = _colados.AUTO
+"""O separador de glifo colado (S-186) na **página**, que não é o padrão dele na faixa.
+
+`colados.PADRAO` continua `nunca`, e tem de continuar: aquele número foi medido sobre 155 faixas
+de legenda, e é o que descreve o que roda lá. Aqui a população é outra, e a medição também.
+
+**Este item já tinha sido medido e recusado, e a recusa estava errada.** Ver "O separador de
+colado paga na página, e a primeira medição não viu" no cabeçalho."""
 
 MOTOR_PADRAO: MotorDeTexto = "glifo"
 """Quem lê por omissão: **o classificador treinado neste projeto**, e não a camada do PDF.
@@ -394,7 +436,7 @@ def linhas_do_glifo(
     reconhecedor: object | None = None,
     escala: int | None = None,
     modo_bloco: bool = False,
-    colados: str = _colados.PADRAO,
+    colados: str = COLADOS_NA_PAGINA,
     caixa_alta: bool = True,
     marca_fina: bool = True,
     empilhados: bool = True,
@@ -407,8 +449,8 @@ def linhas_do_glifo(
     linha, e não o caractere. **Desligado por padrão, e o número que decidiu isso está no cabeçalho
     deste módulo**: na página inteira ele custa ~50x o tempo e piora o livro nativo digital.
 
-    `colados` liga o separador de glifo colado (S-186), e também entra **desligado** -- ver "O
-    separador de colado não paga na página tampouco" no cabeçalho.
+    `colados` liga o separador de glifo colado (S-186). Entra em `auto` na página -- e não em
+    `nunca`, que é o padrão dele na faixa de legenda. Ver `COLADOS_NA_PAGINA`.
 
     `caixa_alta` decide maiúscula/minúscula das oito letras de mesma forma pela **altura** do box:
     CER 0,1434 -> 0,1114 em 11 páginas, 11 melhoram e nenhuma piora. Ver `text/caixa_alta.py`.
@@ -816,7 +858,7 @@ def ler_pagina(
     reconhecedor: object | None = None,
     imagem_rgb: np.ndarray | None = None,
     modo_bloco: bool = False,
-    colados: str = _colados.PADRAO,
+    colados: str = COLADOS_NA_PAGINA,
     caixa_alta: bool = True,
     marca_fina: bool = True,
     empilhados: bool = True,
@@ -927,6 +969,7 @@ def _margens(linhas: Sequence[object], altura: float, procedencia: MotorResolvid
 __all__ = [
     "FOLGA_DA_MASCARA",
     "MIN_CARACTERES_DE_CAMADA",
+    "COLADOS_NA_PAGINA",
     "MOTORES",
     "MOTOR_PADRAO",
     "MotorResolvido",

@@ -117,12 +117,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--colados",
-        choices=("nunca", "auto", "sempre"),
-        default="nunca",
+        choices=("auto", "nunca", "sempre"),
+        default="auto",
         help=(
-            "Separador de glifo colado (S-186). Padrão nunca: medido na página em "
-            "docs/metrics/texto_pagina.json, os três modos empatam no número de lance e 'sempre' "
-            "custa 0,0129 de CER."
+            "Separador de glifo colado (S-186). Padrão auto: o árbitro confirma cada corte. "
+            "Em itálico as letras encostam, e sem ele 'Mecking' sai 'M♔king'. 'sempre' parte "
+            "figurina correta e fica fora. Ver docs/metrics/texto_colados_pagina.json."
         ),
     )
     parser.add_argument(

@@ -1,0 +1,294 @@
+{
+  "item": "S-186, remedido na pagina",
+  "medido_em": "2026-08-24",
+  "pergunta": "O separador de glifo colado paga na pagina, DEPOIS das quatro correcoes de geometria?",
+  "corrige_uma_medicao_anterior": {
+    "arquivo": "docs/metrics/texto_pagina.json, bloco 'colados'",
+    "o_que_ela_dizia": "auto ganha 0,0009 de CER -- ruido -- e os tres modos empatam no numero de lance",
+    "o_que_ela_nao_viu": [
+      "a POPULACAO: 12 paginas de prosa EM PE. Italico nao estava la, e e onde as letras encostam.",
+      "a REGUA: CER e recall de numero de lance. Nenhuma enxerga 'M(rei)king' -- um par de letras colado lido como simbolo de xadrez custa dois caracteres num texto de mil, e apaga um nome.",
+      "a ORDEM: ela rodou ANTES das quatro correcoes de geometria; com elas, o que sobra e outro conjunto."
+    ]
+  },
+  "commit": "32aac6ea1a91291d5829a8eb38ff31d1e78fb90e",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "paginas": [
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 118,
+      "referencia": 1072,
+      "cer_nunca": 0.05898876404494382,
+      "simbolo_em_palavra_nunca": 5,
+      "s_nunca": 0.68155837059021,
+      "cer_auto": 0.05898876404494382,
+      "simbolo_em_palavra_auto": 5,
+      "s_auto": 0.7187516689300537
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 120,
+      "referencia": 965,
+      "cer_nunca": 0.061522419186652764,
+      "simbolo_em_palavra_nunca": 6,
+      "s_nunca": 0.687913179397583,
+      "cer_auto": 0.061522419186652764,
+      "simbolo_em_palavra_auto": 6,
+      "s_auto": 0.7126979827880859
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 122,
+      "referencia": 1038,
+      "cer_nunca": 0.06627680311890838,
+      "simbolo_em_palavra_nunca": 1,
+      "s_nunca": 0.7515106201171875,
+      "cer_auto": 0.06530214424951267,
+      "simbolo_em_palavra_auto": 1,
+      "s_auto": 0.737058162689209
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 124,
+      "referencia": 979,
+      "cer_nunca": 0.07327141382868937,
+      "simbolo_em_palavra_nunca": 2,
+      "s_nunca": 0.7196846008300781,
+      "cer_auto": 0.07327141382868937,
+      "simbolo_em_palavra_auto": 2,
+      "s_auto": 0.789710521697998
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 126,
+      "referencia": 859,
+      "cer_nunca": 0.07746478873239436,
+      "simbolo_em_palavra_nunca": 3,
+      "s_nunca": 0.6383261680603027,
+      "cer_auto": 0.07746478873239436,
+      "simbolo_em_palavra_auto": 3,
+      "s_auto": 0.6239714622497559
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 60,
+      "referencia": 1244,
+      "cer_nunca": 0.23813559322033898,
+      "simbolo_em_palavra_nunca": 0,
+      "s_nunca": 0.735267162322998,
+      "cer_auto": 0.23813559322033898,
+      "simbolo_em_palavra_auto": 0,
+      "s_auto": 0.7355329990386963
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 64,
+      "referencia": 1173,
+      "cer_nunca": 0.03197925669835782,
+      "simbolo_em_palavra_nunca": 0,
+      "s_nunca": 0.8665745258331299,
+      "cer_auto": 0.03197925669835782,
+      "simbolo_em_palavra_auto": 0,
+      "s_auto": 0.9349400997161865
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 68,
+      "referencia": 1107,
+      "cer_nunca": 0.12571428571428572,
+      "simbolo_em_palavra_nunca": 2,
+      "s_nunca": 0.6406497955322266,
+      "cer_auto": 0.12571428571428572,
+      "simbolo_em_palavra_auto": 2,
+      "s_auto": 0.6307597160339355
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 72,
+      "referencia": 1730,
+      "cer_nunca": 0.10238095238095238,
+      "simbolo_em_palavra_nunca": 3,
+      "s_nunca": 1.2279541492462158,
+      "cer_auto": 0.10178571428571428,
+      "simbolo_em_palavra_auto": 3,
+      "s_auto": 1.5686874389648438
+    },
+    {
+      "livro": "Minhas 60 partidas memoraveis Bobby Fischer pt-br algebrico.pdf",
+      "pagina": 80,
+      "referencia": 447,
+      "cer_nunca": 0.31890660592255127,
+      "simbolo_em_palavra_nunca": 6,
+      "s_nunca": 0.2866034507751465,
+      "cer_auto": 0.31890660592255127,
+      "simbolo_em_palavra_auto": 6,
+      "s_auto": 0.3115377426147461
+    },
+    {
+      "livro": "400 Quebra-cabecas de Estrategia de Xadrez.pdf",
+      "pagina": 200,
+      "referencia": 972,
+      "cer_nunca": 0.030020703933747412,
+      "simbolo_em_palavra_nunca": 1,
+      "s_nunca": 0.660836935043335,
+      "cer_auto": 0.024844720496894408,
+      "simbolo_em_palavra_auto": 1,
+      "s_auto": 0.7335355281829834
+    },
+    {
+      "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+      "pagina": 310,
+      "referencia": 2900,
+      "cer_nunca": 0.08987210508123056,
+      "simbolo_em_palavra_nunca": 10,
+      "s_nunca": 3.1805598735809326,
+      "cer_auto": 0.08434151399930867,
+      "simbolo_em_palavra_auto": 7,
+      "s_auto": 3.077010154724121
+    },
+    {
+      "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+      "pagina": 311,
+      "referencia": 2446,
+      "cer_nunca": 0.12706270627062707,
+      "simbolo_em_palavra_nunca": 19,
+      "s_nunca": 2.209980010986328,
+      "cer_auto": 0.1254125412541254,
+      "simbolo_em_palavra_auto": 19,
+      "s_auto": 2.311779260635376
+    },
+    {
+      "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+      "pagina": 312,
+      "referencia": 2088,
+      "cer_nunca": 0.15425531914893617,
+      "simbolo_em_palavra_nunca": 9,
+      "s_nunca": 2.0348291397094727,
+      "cer_auto": 0.1532882011605416,
+      "simbolo_em_palavra_auto": 9,
+      "s_auto": 2.065929412841797
+    },
+    {
+      "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+      "pagina": 313,
+      "referencia": 2167,
+      "cer_nunca": 0.11973807296538821,
+      "simbolo_em_palavra_nunca": 11,
+      "s_nunca": 1.8792345523834229,
+      "cer_auto": 0.11973807296538821,
+      "simbolo_em_palavra_auto": 11,
+      "s_auto": 1.8655126094818115
+    },
+    {
+      "livro": "1937 Kemeri.pdf",
+      "pagina": 30,
+      "referencia": 2693,
+      "cer_nunca": 0.37749341362438843,
+      "simbolo_em_palavra_nunca": 0,
+      "s_nunca": 2.883063316345215,
+      "cer_auto": 0.38426797139631164,
+      "simbolo_em_palavra_auto": 0,
+      "s_auto": 3.364774227142334
+    },
+    {
+      "livro": "1937 Kemeri.pdf",
+      "pagina": 34,
+      "referencia": 2714,
+      "cer_nunca": 0.2675535846267554,
+      "simbolo_em_palavra_nunca": 0,
+      "s_nunca": 3.1594154834747314,
+      "cer_auto": 0.27827050997782704,
+      "simbolo_em_palavra_auto": 0,
+      "s_auto": 2.894737958908081
+    },
+    {
+      "livro": "1937 Kemeri.pdf",
+      "pagina": 38,
+      "referencia": 2930,
+      "cer_nunca": 0.2862517099863201,
+      "simbolo_em_palavra_nunca": 0,
+      "s_nunca": 3.1736652851104736,
+      "cer_auto": 0.2954856361149111,
+      "simbolo_em_palavra_auto": 0,
+      "s_auto": 3.370330572128296
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 58,
+      "referencia": 2136,
+      "cer_nunca": 0.20216267042783262,
+      "simbolo_em_palavra_nunca": 15,
+      "s_nunca": 2.240912914276123,
+      "cer_auto": 0.18852844381758346,
+      "simbolo_em_palavra_auto": 16,
+      "s_auto": 2.3563153743743896
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 60,
+      "referencia": 2311,
+      "cer_nunca": 0.19035202086049544,
+      "simbolo_em_palavra_nunca": 18,
+      "s_nunca": 2.383392572402954,
+      "cer_auto": 0.17209908735332463,
+      "simbolo_em_palavra_auto": 25,
+      "s_auto": 2.449047565460205
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 62,
+      "referencia": 2073,
+      "cer_nunca": 0.21726479146459748,
+      "simbolo_em_palavra_nunca": 11,
+      "s_nunca": 2.174114465713501,
+      "cer_auto": 0.1513094083414161,
+      "simbolo_em_palavra_auto": 15,
+      "s_auto": 2.805436134338379
+    }
+  ],
+  "grupos": {
+    "camada editorada (referencia confiavel)": {
+      "paginas": 11,
+      "cer_nunca": 0.10769650788925657,
+      "cer_auto": 0.10708324603457595,
+      "melhoram": 3,
+      "pioram": 0,
+      "iguais": 8
+    },
+    "camada de OCR (referencia suspeita)": {
+      "paginas": 10,
+      "cer_nunca": 0.20320063944565714,
+      "cer_auto": 0.1952741386380738,
+      "melhoram": 6,
+      "pioram": 3,
+      "iguais": 1
+    },
+    "so as paginas com italico": {
+      "paginas": 4,
+      "cer_nunca": 0.12273205086654551,
+      "cer_auto": 0.12069508234484097,
+      "melhoram": 3,
+      "pioram": 0,
+      "iguais": 1
+    }
+  },
+  "o_caso_nomeado": {
+    "nunca": [
+      "Thus we s(rei) that",
+      "M(rei)king",
+      "Mcoking"
+    ],
+    "auto": [
+      "Thus we see that",
+      "Mecking",
+      "Mecking"
+    ],
+    "por_que_importa": "o CER nao enxerga isto, e e a evidencia forte do item"
+  },
+  "o_sempre_continua_fora": "Ele parte FIGURINA CORRETA: (cavalo)f4 vira (cavalo)1f4, e (rei)h8 vira e(rei)h8. E exatamente isso que o arbitro do auto recusa.",
+  "custo": {
+    "segundos_por_pagina_nunca": 1.581716503415789,
+    "segundos_por_pagina_auto": 1.6694312663305373
+  },
+  "decisao": "leitor.COLADOS_NA_PAGINA passa a ser 'auto'. colados.PADRAO continua 'nunca', e tem de continuar: aquele numero descreve a faixa de legenda, medida sobre 155 faixas. Na referencia confiavel o auto NAO PIORA uma unica pagina -- 3 melhoram, 8 iguais, 0 pioram."
+}

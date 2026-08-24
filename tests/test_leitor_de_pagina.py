@@ -249,16 +249,40 @@ class MotorTests(unittest.TestCase):
 class SeparadorDeColadoTests(unittest.TestCase):
     """O separador da S-186 entra desligado, e o número que decidiu isso é da **página**.
 
-    A medição que já existia era sobre 155 faixas de legenda. Esta é sobre 12 páginas de 4 livros
-    (`docs/metrics/texto_pagina.json`, bloco `colados`), e o resultado é empate: os três modos
-    acham os mesmos 97 de 104 números de lance, o `auto` ganha 0,0009 de CER -- ruído -- e o
-    `sempre` custa 0,0129. Os dígitos **não estão colados**; ver o cabeçalho de `text/leitor.py`.
+    **A conclusão desta classe mudou, e a mudança é o item.** A primeira medição de página deu
+    empate e o separador ficou desligado. Ela não viu três coisas: a população (12 páginas de prosa
+    **em pé**, sem itálico, que é onde as letras encostam), a régua (CER e número de lance não
+    enxergam `M♔king`) e a ordem (rodou antes das quatro correções de geometria). Remedida em 21
+    páginas de 7 livros, o `auto` **não piora uma única página** na referência confiável --
+    `docs/metrics/texto_colados_pagina.json`.
+
+    O que continua valendo da primeira: os dígitos **não estão colados**, e o `sempre` custa CER --
+    agora com o motivo à vista, ele parte figurina correta.
     """
 
-    def test_o_padrao_e_nao_separar(self) -> None:
+    def test_a_faixa_de_legenda_continua_sem_separar(self) -> None:
+        """`colados.PADRAO` descreve a **faixa**, medida sobre 155 delas. Não pode mudar aqui."""
         from chess_diagram_ocr.text import colados
 
         self.assertEqual(colados.PADRAO, colados.NUNCA)
+
+    def test_a_pagina_separa_com_arbitro(self) -> None:
+        """A página é outra população, e a primeira medição dela estava errada.
+
+        Ela rodou antes das correções de geometria, sobre prosa **em pé**, com uma régua que não
+        enxerga `M♔king`. Remedida em 21 páginas de 7 livros: na referência confiável o `auto`
+        não piora uma única página. Ver `docs/metrics/texto_colados_pagina.json`.
+        """
+        from chess_diagram_ocr.text import colados
+
+        self.assertEqual(leitor.COLADOS_NA_PAGINA, colados.AUTO)
+
+    def test_o_sempre_continua_fora_dos_dois(self) -> None:
+        """Ele parte figurina correta -- `♘f4` vira `♘1f4` --, e é o que o árbitro recusa."""
+        from chess_diagram_ocr.text import colados
+
+        self.assertNotEqual(leitor.COLADOS_NA_PAGINA, colados.SEMPRE)
+        self.assertNotEqual(colados.PADRAO, colados.SEMPRE)
 
     def test_a_opcao_existe_e_e_um_dos_tres_modos(self) -> None:
         """Ela fica exposta mesmo perdendo: o modo `sempre` é a linha que a tabela precisa ter."""

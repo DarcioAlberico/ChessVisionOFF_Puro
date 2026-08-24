@@ -598,6 +598,11 @@ tres, e nao por falta de classe (o modelo sabe os tres). `defense: he` saia `def
 `g1=Q` saia `g1 Q`. Fundidos, voltam: **9/9, 4/4 e 14/14**, com CER 0,1115 -> 0,1078.
 `--sem-empilhados` desliga.
 
+**Par de letras colado vira simbolo de xadrez** em italico, onde as letras encostam: `Mecking`
+saia `M♔king` e `we see` saia `we s♔`. O separador da S-186 conserta, com um arbitro confirmando
+cada corte -- e na referencia confiavel ele **nao piora uma unica pagina**. `--colados nunca`
+desliga; `sempre` existe so para a tabela, porque ele parte figurina correta.
+
 **Em texto italico o `l` vira `/`** -- `player` saia `p/ayer` --, porque em italico o `l` e um
 traco inclinado, que e o desenho do `/`. Quem decide e o **pendor da linha**, e nao a palavra:
 `1/2-1/2` e resultado de partida, e a barra legitima e preservada porque a linha dela nao e

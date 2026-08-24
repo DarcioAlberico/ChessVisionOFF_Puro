@@ -729,7 +729,36 @@ Não há o que cortar.
 O erro de diagnóstico é o achado, e por isso ele fica escrito: `40`→`co` **parece** um corte
 perdido e são duas confusões de um caractere. Quem for atrás dessa família deve ir para o léxico
 da S-209 ou para o treino, e não para a geometria. O separador passa a ser **chamável** por
-`text/leitor.py` (`colados=`) e por `cvoff-texto-pagina --colados`, e continua desligado.
+`text/leitor.py` (`colados=`) e por `cvoff-texto-pagina --colados`.
+
+### E a conclusão desta medição foi revista no mesmo dia
+
+Ela deixou o separador **desligado** na página, e estava errada. O dono do projeto trouxe uma
+página de texto **itálico**, e ali a conclusão se inverte: em itálico as letras encostam, e é
+justamente onde o separador serve. Três coisas escaparam à primeira medição:
+
+1. **a população** — 12 páginas de prosa **em pé**, sem itálico;
+2. **a régua** — CER e recall de número de lance. Nenhuma enxerga `M♔king`, que é um par de letras
+   colado lido como símbolo de xadrez: custa dois caracteres num texto de mil e apaga um nome
+   próprio;
+3. **a ordem** — ela rodou **antes** das quatro correções de geometria.
+
+Remedido em 21 páginas de 7 livros (`docs/metrics/texto_colados_pagina.json`):
+
+| referência | páginas | `nunca` | `auto` | melhoram / pioram |
+|---|---:|---:|---:|---:|
+| camada editorada (confiável) | 11 | 0,1077 | 0,1071 | 3 / **0** |
+| camada de OCR (suspeita) | 10 | 0,2032 | 0,1953 | 6 / 3 |
+| só as páginas com itálico | 4 | 0,1227 | 0,1207 | 3 / **0** |
+
+**Na referência confiável o `auto` não piora uma única página.** O ganho de CER é pequeno; a
+evidência forte é o caso nomeado — `Thus we s♔ that` vira `Thus we see that`, e `M♔king` vira
+`Mecking`.
+
+`leitor.COLADOS_NA_PAGINA` passa a ser `auto`. **`colados.PADRAO` continua `nunca`**, e tem de
+continuar: aquele número descreve a faixa de legenda, medida sobre 155 delas. O modo `sempre`
+continua fora dos dois, e agora com o motivo à vista — ele parte **figurina correta** (`♘f4` vira
+`♘1f4`), que é exatamente o que o árbitro do `auto` recusa.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.colados:separar`,
 `metrica:texto_colados`.
