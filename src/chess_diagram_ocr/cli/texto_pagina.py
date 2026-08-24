@@ -153,6 +153,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--sem-italico",
+        action="store_true",
+        help=(
+            "Desliga a correção de `/` para `l` em linha inclinada. Ligada por padrão: em texto "
+            "itálico o `l` é um traço pendido, que é o desenho do `/`. Ver "
+            "docs/metrics/texto_italico.json."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -214,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
                 caixa_alta=not args.sem_caixa_alta,
                 marca_fina=not args.sem_marca_fina,
                 empilhados=not args.sem_empilhados,
+                italico=not args.sem_italico,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)

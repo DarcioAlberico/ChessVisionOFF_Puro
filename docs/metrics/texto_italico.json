@@ -1,0 +1,175 @@
+{
+  "item": "S-211",
+  "medido_em": "2026-08-24",
+  "dpi": 220,
+  "pergunta": "Em linha italica o 'l' sai '/'. Da para consertar sem apagar o '/' legitimo?",
+  "de_onde_veio": "Diagnostico do dono do projeto, com a pagina na mao: 'o caractere / aparece muito no lugar do l em textos italicos'. A medicao confirmou: no trecho citado da p311 do Secrets of Chess Training, TODO l e todo I viram /.",
+  "a_classe_certa_esta_em_rank_2": "16 de 16 casos",
+  "por_que_nao_dava_para_trocar_direto": "'/' legitimo existe e e caro errar: 1/2-1/2 e resultado de partida. Medido em 4 paginas de cada um dos 42 livros, as 25 ocorrencias de '/' sao todas entre digitos (1/2, 2/4, 51/2) ou em +/-.",
+  "regua": {
+    "o_que_e": "centroide de tinta da metade de cima do glifo menos o da metade de baixo, em larguras de box",
+    "linhas_em_italico": {
+      "n": 12,
+      "p10": 0.11,
+      "mediana": 0.116,
+      "p90": 0.126
+    },
+    "linhas_em_pe": {
+      "n": 145,
+      "p10": -0.018,
+      "mediana": 0.0,
+      "p90": 0.01
+    },
+    "corte": 0.05,
+    "min_boxes_para_medir": 8
+  },
+  "commit": "8c3ffc565a4d9863ee69b17351d322308aab57f2",
+  "modelo": "models/char_classifier.pt",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "grupos": {
+    "controle (texto em pe)": {
+      "paginas": [
+        {
+          "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+          "pagina": 118,
+          "cer_sem": 0.05898876404494382,
+          "cer_com": 0.05898876404494382,
+          "barras_sem": 0,
+          "barras_com": 0,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+          "pagina": 120,
+          "cer_sem": 0.061522419186652764,
+          "cer_com": 0.061522419186652764,
+          "barras_sem": 3,
+          "barras_com": 3,
+          "barras_na_camada": 3
+        },
+        {
+          "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+          "pagina": 122,
+          "cer_sem": 0.06627680311890838,
+          "cer_com": 0.06627680311890838,
+          "barras_sem": 0,
+          "barras_com": 0,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+          "pagina": 124,
+          "cer_sem": 0.07327141382868937,
+          "cer_com": 0.07327141382868937,
+          "barras_sem": 0,
+          "barras_com": 0,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+          "pagina": 126,
+          "cer_sem": 0.07746478873239436,
+          "cer_com": 0.07746478873239436,
+          "barras_sem": 2,
+          "barras_com": 2,
+          "barras_na_camada": 2
+        },
+        {
+          "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+          "pagina": 60,
+          "cer_sem": 0.23813559322033898,
+          "cer_com": 0.23813559322033898,
+          "barras_sem": 3,
+          "barras_com": 3,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+          "pagina": 64,
+          "cer_sem": 0.03197925669835782,
+          "cer_com": 0.03197925669835782,
+          "barras_sem": 10,
+          "barras_com": 6,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+          "pagina": 68,
+          "cer_sem": 0.12571428571428572,
+          "cer_com": 0.12571428571428572,
+          "barras_sem": 6,
+          "barras_com": 1,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+          "pagina": 72,
+          "cer_sem": 0.10357142857142858,
+          "cer_com": 0.10238095238095238,
+          "barras_sem": 8,
+          "barras_com": 6,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "Minhas 60 partidas memoraveis Bobby Fischer pt-br algebrico.pdf",
+          "pagina": 80,
+          "cer_sem": 0.31890660592255127,
+          "cer_com": 0.31890660592255127,
+          "barras_sem": 0,
+          "barras_com": 0,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "400 Quebra-cabecas de Estrategia de Xadrez.pdf",
+          "pagina": 200,
+          "cer_sem": 0.030020703933747412,
+          "cer_com": 0.030020703933747412,
+          "barras_sem": 0,
+          "barras_com": 0,
+          "barras_na_camada": 0
+        }
+      ],
+      "cer_sem": 0.10780473299748167,
+      "cer_com": 0.10769650788925657,
+      "melhoram": 1,
+      "pioram": 0
+    },
+    "pagina com italico": {
+      "paginas": [
+        {
+          "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+          "pagina": 310,
+          "cer_sem": 0.0967853439336329,
+          "cer_com": 0.08987210508123056,
+          "barras_sem": 23,
+          "barras_com": 0,
+          "barras_na_camada": 0
+        },
+        {
+          "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+          "pagina": 311,
+          "cer_sem": 0.12706270627062707,
+          "cer_com": 0.12706270627062707,
+          "barras_sem": 0,
+          "barras_com": 0,
+          "barras_na_camada": 1
+        },
+        {
+          "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+          "pagina": 312,
+          "cer_sem": 0.15425531914893617,
+          "cer_com": 0.15425531914893617,
+          "barras_sem": 0,
+          "barras_com": 0,
+          "barras_na_camada": 0
+        }
+      ],
+      "cer_sem": 0.12603445645106537,
+      "cer_com": 0.1237300435002646,
+      "melhoram": 1,
+      "pioram": 0
+    }
+  },
+  "decisao": "LIGADA por padrao. Na pagina com italico, 23 barras espurias viram ZERO e o CER cai de 0,0968 para 0,0899. No CONTROLE de 11 paginas de texto em pe o CER fica em 0,1077 contra 0,1078 -- nenhum dano --, e as 5 barras legitimas do Dvoretsky sao preservadas, porque as linhas delas nao sao italicas.",
+  "o_que_nao_entra": "O 'I' maiusculo tambem sai '/' no mesmo trecho e NAO e trocado: escolher entre l e I precisa de contexto, nao de geometria -- os dois sao hastes da mesma altura. 'but I am sure' continua saindo 'but l am sure'. Isso e do lexico."
+}
