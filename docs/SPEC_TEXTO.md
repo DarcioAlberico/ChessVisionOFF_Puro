@@ -2957,6 +2957,36 @@ como erro contra uma camada que escreveu `’`.
 principal: `Black,s` está errado de um jeito que salta aos olhos, e `Black's` não. Quem julgar o
 item pelo CER vai concluir, corretamente, que ele não mexeu no CER.
 
+### O sexto: `:`, `;` e `=` nunca chegavam inteiros ao classificador
+
+    caractere   na camada   no glifo   recall
+    :                   9          0       0%
+    ;                   4          0       0%
+    =                  14          0       0%
+    .                 362        469     130%     <- os dois-pontos partidos ao meio
+
+Zero nos três, e **não por falta de classe**: `:` tem 1.449 amostras na base, `;` tem 225 e `=`
+tem 164. O modelo sabe os três; ninguém nunca os mostrou a ele inteiros. Os três são **dois
+contornos**, e chegavam separados — `defense: he` saía `defense.. he`, e `g1=♕` saía `g1 ♕`.
+
+`unir_pingos` (S-185) une pingo a uma **base alta**, e a docstring dela já dizia o que ficava de
+fora: *"dois pontos e ponto e vírgula, que não têm base alta com que se unir"*. `text/empilhados.py`
+é essa exceção virada de regra.
+
+**As duas metades chegam por caminhos diferentes.** O ponto de `:` passa pela peneira da S-185; a
+barra do `=` **não** — ela tem proporção 8 a 12 de largura sobre altura, e `PROPORCAO_MAXIMA` corta
+em 6,0 para separar glifo de filete. `barras()` recolhe o que aquela régua rejeitou, e **só devolve
+ao texto o que casa com um par vertical**: barra sozinha continua sendo filete. Medido: 38
+contornos rejeitados, 28 com parceiro — isto é, 14 pares, exatamente os 14 `=` da camada.
+
+**E fundir não bastou.** O resize para 32x32 apaga a **proporção** junto com o tamanho, então duas
+barras largas e dois pontos viram a mesma imagem: metade dos `=` saía `:`. Medido, `=` fica entre
+2,40 e 2,67 de largura sobre altura e `:`/`;` entre 0,24 e 0,25 — fator de dez, e o corte fica no
+quadrado.
+
+    recall depois:  :  9/9      ;  4/4      =  14/14
+    CER 0,1115 -> 0,1078   (-3,3%)   7 páginas melhoram, nenhuma piora
+
 A medição está em `docs/metrics/texto_pagina.json`, e ela também é o que decidiu **desligar** o
 modo bloco da S-188 na página: ele custa ~50x o tempo e, no livro nativo digital, piora 22,5%.
 

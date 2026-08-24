@@ -1,0 +1,135 @@
+{
+  "item": "S-211",
+  "medido_em": "2026-08-24",
+  "dpi": 220,
+  "pergunta": "Fundir o glifo de dois contornos empilhados -- dois-pontos, ponto-e-virgula e igual -- devolve os tres ao texto?",
+  "diagnostico": "Os tres nunca chegavam INTEIROS ao classificador. unir_pingos (S-185) une pingo a uma base alta, e a docstring dela exclui explicitamente dois-pontos e ponto-e-virgula, que nao tem base alta. As barras do igual nem sobrevivem: tem proporcao 8 a 12 de largura sobre altura, e boxes.PROPORCAO_MAXIMA corta em 6,0 para separar glifo de filete.",
+  "nao_e_falta_de_classe": "dois-pontos tem 1449 amostras na base, ponto-e-virgula 225 e igual 164. O modelo sabe os tres; ninguem nunca os mostrou a ele inteiros.",
+  "referencia": "a camada de texto da propria pagina; SO livros de camada editorada",
+  "caminho_medido": "ler_pagina (producao)",
+  "commit": "e67f05d5e754f57a8bd297fa972de3f9b356f44a",
+  "modelo": "models/char_classifier.pt",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "recall_por_caractere": {
+    "antes": {
+      "dois_pontos": "0 de 9",
+      "ponto_e_virgula": "0 de 4",
+      "igual": "0 de 14",
+      "ponto": "469 de 362 (130% -- os dois-pontos partidos ao meio)"
+    },
+    "depois": {
+      "dois_pontos": "9 de 9",
+      "ponto_e_virgula": "4 de 4",
+      "igual": "14 de 14",
+      "ponto": "447 de 362 (123%)"
+    }
+  },
+  "duas_correcoes_necessarias": {
+    "1_fusao": "unir os dois contornos empilhados num box so",
+    "2_proporcao": "fundir nao bastou: o resize para 32x32 apaga a PROPORCAO junto com o tamanho, entao duas barras largas e dois pontos viram a mesma imagem, e metade dos iguais saia como dois-pontos. Medido: igual fica entre 2,40 e 2,67 de largura sobre altura, dois-pontos e ponto-e-virgula entre 0,24 e 0,25 -- fator de dez, qualquer corte no meio separa 100%."
+  },
+  "geometria": {
+    "vao_vertical_em_escalas": {
+      "pares_reais": "0,33 a 0,46",
+      "corte": 0.6
+    },
+    "sobreposicao_em_x": {
+      "pares_reais": "0,71 a 1,00",
+      "corte": 0.5
+    },
+    "altura_da_uniao_em_escalas": {
+      "pares_reais": "0,67 a 1,23",
+      "corte": 1.3
+    },
+    "barras_rejeitadas_pela_regua_de_proporcao": 38,
+    "com_parceiro_vertical": "28, isto e, 14 pares -- exatamente os 14 iguais da camada"
+  },
+  "paginas": [
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 118,
+      "referencia": 1072,
+      "cer_sem": 0.06273408239700375,
+      "cer_com": 0.05898876404494382
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 120,
+      "referencia": 965,
+      "cer_sem": 0.0667361835245047,
+      "cer_com": 0.061522419186652764
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 122,
+      "referencia": 1038,
+      "cer_sem": 0.07115009746588694,
+      "cer_com": 0.06627680311890838
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 124,
+      "referencia": 979,
+      "cer_sem": 0.0804953560371517,
+      "cer_com": 0.07327141382868937
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "pagina": 126,
+      "referencia": 859,
+      "cer_sem": 0.0880281690140845,
+      "cer_com": 0.07746478873239436
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 60,
+      "referencia": 1244,
+      "cer_sem": 0.24322033898305084,
+      "cer_com": 0.23813559322033898
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 64,
+      "referencia": 1173,
+      "cer_sem": 0.03543647363872083,
+      "cer_com": 0.03197925669835782
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 68,
+      "referencia": 1107,
+      "cer_sem": 0.12571428571428572,
+      "cer_com": 0.12571428571428572
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 72,
+      "referencia": 1730,
+      "cer_sem": 0.10357142857142858,
+      "cer_com": 0.10357142857142858
+    },
+    {
+      "livro": "Minhas 60 partidas memoraveis Bobby Fischer pt-br algebrico.pdf",
+      "pagina": 80,
+      "referencia": 447,
+      "cer_sem": 0.31890660592255127,
+      "cer_com": 0.31890660592255127
+    },
+    {
+      "livro": "400 Quebra-cabecas de Estrategia de Xadrez.pdf",
+      "pagina": 200,
+      "referencia": 972,
+      "cer_sem": 0.030020703933747412,
+      "cer_com": 0.030020703933747412
+    }
+  ],
+  "resumo": {
+    "paginas": 11,
+    "cer_sem": 0.11145579320021967,
+    "cer_com": 0.10780473299748167,
+    "melhoram": 7,
+    "pioram": 0
+  },
+  "decisao": "LIGADA por padrao. CER 0,1115 -> 0,1078, 7 paginas melhoram e nenhuma piora.",
+  "a_barra_solta_continua_fora": "Uma barra sem parceiro vertical continua sendo filete e continua fora do texto -- e o que impede a regua de proporcao da S-185 de ser desfeita por acidente."
+}

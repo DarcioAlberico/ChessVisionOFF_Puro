@@ -128,6 +128,8 @@ from . import boxes as _boxes
 from . import caixa_alta as _caixa_alta
 from . import colados as _colados
 from . import colunas as _colunas
+from . import empilhados as _empilhados
+from . import linhas as _linhas_mod
 from . import marca_fina as _marca_fina
 from . import paragrafos as _paragrafos
 from .binarizacao import binarize
@@ -315,6 +317,7 @@ def segmentar(
     diagramas: Sequence[Retangulo] = (),
     *,
     escala: int | None = None,
+    empilhados: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, int, list[_boxes.Caixa], list[tuple[int, int]]]:
     """`(cinza, binaria, escala, caixas de caractere, faixas de coluna)` -- a página antes da linha.
 
@@ -347,6 +350,13 @@ def segmentar(
         return (cinza, binaria, 0, [], [])
 
     caixas = _boxes.unir_pingos(_boxes.caixas_de_caractere(binaria, escala=escala), escala=escala)
+    if empilhados:
+        # **`:`, `;` e `=` são dois contornos**, e sem isto o classificador nunca vê nenhum dos
+        # três inteiro -- ele responde `.` duas vezes, corretamente. Ver `text/empilhados.py`.
+        caixas = _empilhados.unir(
+            caixas, escala=escala, extras=_empilhados.barras(binaria, escala=escala)
+        )
+        caixas = _linhas_mod.ordem_em_faixa(caixas)
     if diagramas:
         caixas = _boxes.excluir_diagramas(
             caixas, [_retangulo(r) for r in diagramas], escala=escala
@@ -385,6 +395,7 @@ def linhas_do_glifo(
     colados: str = _colados.PADRAO,
     caixa_alta: bool = True,
     marca_fina: bool = True,
+    empilhados: bool = True,
 ) -> tuple[list[_Cru], list[tuple[int, int]]]:
     """As linhas lidas pelo classificador de glifo, **coluna a coluna**, e as faixas achadas.
 
@@ -403,6 +414,10 @@ def linhas_do_glifo(
     que ela paga é legibilidade. Ver o cabeçalho de `text/marca_fina.py`, que explica por que o
     teto é baixo -- o modelo não tem as aspas curvas.
 
+    `empilhados` funde o glifo de dois contornos -- `:`, `;` e `=`. Sem ela os três têm recall
+    **zero**: nunca chegam inteiros ao classificador, que responde `.` duas vezes, corretamente.
+    CER 0,1115 -> 0,1078. Ver `text/empilhados.py`.
+
     Devolve as faixas junto porque quem monta não pode redescobri-las: as caixas de caractere já
     foram consumidas aqui, e detectá-las de novo a partir das linhas é o defeito que `segmentar`
     documenta.
@@ -410,7 +425,9 @@ def linhas_do_glifo(
     from .duas_linhas import descartar_fragmentos
     from .linhas import envolve, ordem_em_faixa, quebrar_em_linhas, texto_da_linha
 
-    cinza, binaria, escala, caixas, faixas = segmentar(imagem_rgb, diagramas, escala=escala)
+    cinza, binaria, escala, caixas, faixas = segmentar(
+        imagem_rgb, diagramas, escala=escala, empilhados=empilhados
+    )
     if not caixas:
         return ([], faixas)
 
@@ -448,7 +465,7 @@ def linhas_do_glifo(
         grupos = descartar_fragmentos(quebrar_em_linhas(ordem_em_faixa(desta)), escala=escala)
         for grupo in grupos:
             recortes = [c.recortar(cinza) for c in grupo]
-            if caixa_alta or marca_fina:
+            if caixa_alta or marca_fina or empilhados:
                 # **Duas correções de geometria, e a mesma razão para as duas**: o recorte que o
                 # classificador recebe é o bbox apertado, então o que distingue dois glifos pelo
                 # *tamanho* (`s`/`S`) ou pela *posição na linha* (`'`/`,`) é apagado antes de ele
@@ -462,6 +479,9 @@ def linhas_do_glifo(
                 )
                 if marca_fina:
                     lidos = _marca_fina.corrigir(lidos, probs, grupo, i2c)
+                if empilhados:
+                    # O resize apaga a proporção junto com o tamanho: fundido, o `=` sai `:`.
+                    lidos = _empilhados.corrigir(lidos, probs, grupo, i2c)
             else:
                 lidos = classificador.classificar(recortes)
             if not lidos:
@@ -776,6 +796,7 @@ def ler_pagina(
     colados: str = _colados.PADRAO,
     caixa_alta: bool = True,
     marca_fina: bool = True,
+    empilhados: bool = True,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
@@ -826,7 +847,8 @@ def ler_pagina(
     faixas: list[tuple[int, int]] | None = None
     if qual == "glifo":
         cruas, faixas = linhas_do_glifo(
-            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina
+            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina,
+            empilhados=empilhados,
         )
 
     cabecalho, rodape = _margens(margem, altura, qual)

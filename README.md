@@ -593,6 +593,11 @@ paginas: 10 palavras quebradas por virgula ou ponto no meio viram 2. **O CER nao
 ganho e de legibilidade, e o modelo nao tem as aspas curvas (`’ ‘ “ ”` nao sao classes), entao ele
 escreve o apostrofo reto. `--sem-marca-fina` desliga.
 
+**`:`, `;` e `=` sao dois contornos**, e chegavam partidos ao classificador -- recall **zero** nos
+tres, e nao por falta de classe (o modelo sabe os tres). `defense: he` saia `defense.. he` e
+`g1=Q` saia `g1 Q`. Fundidos, voltam: **9/9, 4/4 e 14/14**, com CER 0,1115 -> 0,1078.
+`--sem-empilhados` desliga.
+
 O que **pede olho** aparece colorido no editor, em tres faixas: abaixo de `MIN_CONFIDENCE` o
 motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto sai na cor normal.
 A camada de texto e a correcao humana nunca pedem revisao.

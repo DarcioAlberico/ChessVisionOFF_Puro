@@ -144,6 +144,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--sem-empilhados",
+        action="store_true",
+        help=(
+            "Desliga a fusão do glifo de dois contornos (: ; =). Ligada por padrão: sem ela os "
+            "três têm recall ZERO -- nunca chegam inteiros ao classificador. Ver "
+            "docs/metrics/texto_empilhados.json."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -204,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
                 colados=args.colados,
                 caixa_alta=not args.sem_caixa_alta,
                 marca_fina=not args.sem_marca_fina,
+                empilhados=not args.sem_empilhados,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)
