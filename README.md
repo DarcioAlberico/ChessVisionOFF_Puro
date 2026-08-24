@@ -598,6 +598,17 @@ tres, e nao por falta de classe (o modelo sabe os tres). `defense: he` saia `def
 `g1=Q` saia `g1 Q`. Fundidos, voltam: **9/9, 4/4 e 14/14**, com CER 0,1115 -> 0,1078.
 `--sem-empilhados` desliga.
 
+**Em texto italico o `l` vira `/`** -- `player` saia `p/ayer` --, porque em italico o `l` e um
+traco inclinado, que e o desenho do `/`. Quem decide e o **pendor da linha**, e nao a palavra:
+`1/2-1/2` e resultado de partida, e a barra legitima e preservada porque a linha dela nao e
+italica. `--sem-italico` desliga.
+
+Ha tambem um **dicionario** (`assets/lexico/acervo.txt.gz`, 7.588 palavras tiradas da camada
+editorada do proprio acervo, offline). Ele **nao** aproxima da palavra mais parecida -- so
+pergunta se alguma combinacao das letras que o classificador ja pos no topo forma palavra
+conhecida. Vem **desligado**, e o motivo e o numero: medido, ele corrige **zero**, porque as
+quatro correcoes de geometria acima ja levaram o que era alcancavel. `--dicionario` liga.
+
 O que **pede olho** aparece colorido no editor, em tres faixas: abaixo de `MIN_CONFIDENCE` o
 motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto sai na cor normal.
 A camada de texto e a correcao humana nunca pedem revisao.

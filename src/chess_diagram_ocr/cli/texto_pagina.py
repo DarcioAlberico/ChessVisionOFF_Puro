@@ -162,6 +162,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--dicionario",
+        action="store_true",
+        help=(
+            "Liga o léxico para desempatar entre os candidatos do modelo. Desligado por padrão: "
+            "medido, ele corrige ZERO -- ver docs/metrics/texto_dicionario.json."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -224,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
                 marca_fina=not args.sem_marca_fina,
                 empilhados=not args.sem_empilhados,
                 italico=not args.sem_italico,
+                dicionario=args.dicionario,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)

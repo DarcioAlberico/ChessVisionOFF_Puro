@@ -1,0 +1,27 @@
+{
+  "item": "nao e a S-209 -- ver o cabecalho de text/dicionario.py",
+  "medido_em": "2026-08-24",
+  "pergunta": "Um dicionario que desempata entre os candidatos do PROPRIO modelo -- e nunca aproxima da palavra mais parecida -- corrige quanto?",
+  "por_que_nao_e_a_S209": "A S-209 decidiu, com medicao, que palavra fora do dicionario e SINALIZADA e nunca aproximada: dos 18 lances tao maltratados que caem no lexico, nenhum esta no dicionario, e com correcao automatica seriam 18 lances reescritos como palavra. Este modulo nao faz isso: ele so pergunta se alguma combinacao das letras que o classificador JA pos no topo forma palavra conhecida. Quem propoe e sempre o modelo.",
+  "lexico": {
+    "arquivo": "assets/lexico/acervo.txt.gz",
+    "palavras": 7588,
+    "de_onde": "camada de texto EDITORADA dos 11 livros do acervo que a tem; os 20 de camada de OCR ficam de fora. Palavra entra se aparece 3 vezes, tem 4 letras ou mais e nao casa com o padrao de notacao.",
+    "nada_baixa_da_rede": true
+  },
+  "commit": "13f7c87d8160f57665416b9f8047695a7bf99522",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "resultado": {
+    "paginas": 6,
+    "tokens_examinados": 1992,
+    "corrigidas": 0,
+    "ja_conhecidas": 660,
+    "nao_e_palavra_curta_digito_ou_poucas_letras": 1137,
+    "nenhuma_variante_conhecida": 122,
+    "tem_ligadura": 71,
+    "ambiguas": 2
+  },
+  "por_que_zero": "Duas razoes, e as duas medidas. (1) As quatro correcoes de GEOMETRIA que entraram antes -- caixa alta, marca fina, empilhados, italico -- ja levaram o que era alcancavel; o que sobra nao se alcanca trocando ate 2 posicoes pelo top-3 do modelo. (2) O lexico do acervo tem pouco ingles: dos 11 livros de camada editorada a maioria e em portugues, e das 25 palavras inglesas corretas que caem no balde 'variante desconhecida', o lexico cobre 10.",
+  "decisao": "DESLIGADO por padrao (`dicionario=False`, `--dicionario` liga). Entregar ligado seria custo sem ganho, que e a mesma decisao do modo bloco da S-188 e do separador da S-186. A maquina fica pronta: com uma lista de palavras de verdade empacotada -- que e o que a S-209 preve em assets/lexico/en.txt.gz -- ela passa a corrigir sem mudar uma linha de codigo.",
+  "o_que_nao_da_para_consertar_assim": "Palavra de uma letra: 'but I am' sai 'but l am', e `I` tem 1 caractere, abaixo de MIN_TAMANHO. E hifenizacao na quebra de linha ('under-' + 'stand'), que a S-209 trata a parte e este modulo nao faz."
+}

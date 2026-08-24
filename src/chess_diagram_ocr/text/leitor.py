@@ -128,6 +128,7 @@ from . import boxes as _boxes
 from . import caixa_alta as _caixa_alta
 from . import colados as _colados
 from . import colunas as _colunas
+from . import dicionario as _dicionario
 from . import empilhados as _empilhados
 from . import italico as _italico
 from . import linhas as _linhas_mod
@@ -398,6 +399,7 @@ def linhas_do_glifo(
     marca_fina: bool = True,
     empilhados: bool = True,
     italico: bool = True,
+    dicionario: bool = False,
 ) -> tuple[list[_Cru], list[tuple[int, int]]]:
     """As linhas lidas pelo classificador de glifo, **coluna a coluna**, e as faixas achadas.
 
@@ -425,6 +427,11 @@ def linhas_do_glifo(
     partida, e o `/` legítimo é preservado porque a linha dele não é itálica. Ver
     `text/italico.py`.
 
+    `dicionario` deixa o léxico desempatar entre os candidatos do modelo. **Desligado, e o número
+    é zero**: medido em 6 páginas, ele não corrige nada -- as correções de geometria acima já
+    levaram o que era alcançável, e o léxico do acervo tem pouco inglês. Ver
+    `docs/metrics/texto_dicionario.json`.
+
     Devolve as faixas junto porque quem monta não pode redescobri-las: as caixas de caractere já
     foram consumidas aqui, e detectá-las de novo a partir das linhas é o defeito que `segmentar`
     documenta.
@@ -446,6 +453,7 @@ def linhas_do_glifo(
         )
     classificador = reconhecedor.classifier  # type: ignore[attr-defined]
     leitor_de_linha = getattr(reconhecedor, "_leitor_de_linha", None)
+    lexico = _dicionario.carregar() if dicionario else frozenset()
 
     # **O separador de colado entra aqui, e entra desligado** (S-186). Ele parte um contorno que
     # tem dois glifos, e o arbitro -- o proprio classificador -- confirma o corte comparando a
@@ -472,7 +480,7 @@ def linhas_do_glifo(
         grupos = descartar_fragmentos(quebrar_em_linhas(ordem_em_faixa(desta)), escala=escala)
         for grupo in grupos:
             recortes = [c.recortar(cinza) for c in grupo]
-            if caixa_alta or marca_fina or empilhados or italico:
+            if caixa_alta or marca_fina or empilhados or italico or lexico:
                 # **Duas correções de geometria, e a mesma razão para as duas**: o recorte que o
                 # classificador recebe é o bbox apertado, então o que distingue dois glifos pelo
                 # *tamanho* (`s`/`S`) ou pela *posição na linha* (`'`/`,`) é apagado antes de ele
@@ -492,6 +500,11 @@ def linhas_do_glifo(
                 if italico:
                     # Em linha inclinada o `l` é um traço pendido, que é o desenho do `/`.
                     lidos = _italico.corrigir(lidos, probs, grupo, i2c, binaria)
+                if lexico:
+                    # **Por último, e é a ordem certa**: as correções de geometria acima mudam a
+                    # palavra que o dicionário vai julgar, e julgá-la antes delas seria julgar um
+                    # texto que não é o que sai.
+                    lidos = _dicionario.corrigir(lidos, probs, grupo, i2c, lexico)
             else:
                 lidos = classificador.classificar(recortes)
             if not lidos:
@@ -808,6 +821,7 @@ def ler_pagina(
     marca_fina: bool = True,
     empilhados: bool = True,
     italico: bool = True,
+    dicionario: bool = False,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
@@ -860,6 +874,7 @@ def ler_pagina(
         cruas, faixas = linhas_do_glifo(
             imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina,
             empilhados=empilhados, italico=italico,
+            dicionario=dicionario,
         )
 
     cabecalho, rodape = _margens(margem, altura, qual)
