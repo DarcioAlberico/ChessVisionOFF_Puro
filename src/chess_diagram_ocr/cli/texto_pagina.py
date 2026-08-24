@@ -170,6 +170,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--sem-numeros",
+        action="store_true",
+        help=(
+            "Desliga a troca do oval por zero dentro de número (2o -> 20) e o conserto do roque "
+            "(O.O -> 0-0). Ligada por padrão: ver docs/metrics/texto_numero.json."
+        ),
+    )
+    parser.add_argument(
         "--json",
         type=Path,
         default=None,
@@ -233,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                 empilhados=not args.sem_empilhados,
                 italico=not args.sem_italico,
                 dicionario=args.dicionario,
+                numeros=not args.sem_numeros,
             )
         except (IndexError, ValueError) as exc:
             logger.warning("Página %d não pôde ser lida: %s", indice + 1, exc)

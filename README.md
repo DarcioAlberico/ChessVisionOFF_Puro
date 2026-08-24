@@ -598,6 +598,16 @@ tres, e nao por falta de classe (o modelo sabe os tres). `defense: he` saia `def
 `g1=Q` saia `g1 Q`. Fundidos, voltam: **9/9, 4/4 e 14/14**, com CER 0,1115 -> 0,1078.
 `--sem-empilhados` desliga.
 
+**O zero de um numero sai como letra**: `20` vira `2o` e `15 0-0` vira `1 5 O.O`. `0`, `o` e `O`
+sao o mesmo oval, e o que os separa e o tamanho -- que o redimensionamento apaga. Quem decide e a
+companhia: nenhuma palavra e digito seguido de `o`. O sintoma cai de 29 para 2 em 22 paginas.
+`--sem-numeros` desliga.
+
+**O que continua errado, e foi medido para saber**: o numero de lance partido em dois (`15`
+saindo `1 5`), 41 casos. O vao entre dois digitos e o vao entre duas palavras tem o **mesmo**
+tamanho, entao geometria nao separa -- um corte que juntasse 12 dos 44 digitos destruiria 49
+espacos de verdade. Isso e de quem sabe que ali se espera um numero de lance (S-208).
+
 **Par de letras colado vira simbolo de xadrez** em italico, onde as letras encostam: `Mecking`
 saia `M♔king` e `we see` saia `we s♔`. O separador da S-186 conserta, com um arbitro confirmando
 cada corte -- e na referencia confiavel ele **nao piora uma unica pagina**. `--colados nunca`
