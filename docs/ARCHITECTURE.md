@@ -165,7 +165,7 @@ disparar, e não antes:
 | a Fase 8 exigir sobreposição **editável** sobre a página renderizada | é onde o canvas do Tk deixa de ser desconforto e vira trabalho desproporcional |
 | o `labels.csv` passar de **10 mil linhas** | a paginação da S-23 deixa de ser mitigação e vira obstáculo ao fluxo |
 
-Hoje o `labels.csv` tem **3.936** linhas — 39% do gatilho (medido em 2026-08-17; o número é
+Hoje o `labels.csv` tem **4.450** linhas — 45% do gatilho (medido em 2026-08-25; o número é
 conferido por `tests/test_docs.py`, S-135). Quando a hora chegar, `Qt` dá
 `QTableView` com modelo virtual (30 mil linhas sem paginar), `QGraphicsScene` para tabuleiro
 e sobreposições, `QThread` + sinais no lugar de `root.after`, `QPdfView` nativo, DPI correto
