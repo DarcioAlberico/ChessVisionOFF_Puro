@@ -63,23 +63,35 @@ class OrdemEAberturaTests(unittest.TestCase):
     depois o acervo -- e a Configuração no fim, porque é a aba do primeiro dia e quase nunca depois.
     """
 
-    DO_DIAGRAMA = ("Resultado", "Análise", "Revisão")
-    DO_ACERVO = ("Dataset", "Galeria", "Configuração")
-
     def _ordem_no_codigo(self) -> list[str]:
+        """A ordem em que a janela monta as abas, lida do código.
+
+        **Procura a constante e não o literal** (S-226): os nomes passaram a ser declarados em
+        `ui/abas.py`, e o teste que caçava `"Resultado"` no `app_tkinter` deixaria de achar
+        qualquer coisa -- em silêncio, dando por bom um painel com as abas em qualquer ordem.
+        """
+        constantes = {getattr(abas, nome): nome for nome in dir(abas) if getattr(abas, nome, None) in abas.ABAS}
         fonte = (RAIZ / "app_tkinter.py").read_text(encoding="utf-8")
         trecho = fonte.split("def _build_left_panel", 1)[1].split("def _build_config_tab", 1)[0]
         achados = []
         for linha in trecho.splitlines():
-            for nome in (*self.DO_DIAGRAMA, *self.DO_ACERVO):
-                if f'"{nome}"' in linha and ("aba_rolavel" in linha or "tabs.add" in linha):
-                    achados.append(nome)
+            if "aba_rolavel" not in linha and "tabs.add" not in linha:
+                continue
+            for valor, constante in constantes.items():
+                if f"abas.{constante}" in linha:
+                    achados.append(valor)
         return achados
+
+    def test_a_janela_monta_as_abas_declaradas_na_ordem_declarada(self) -> None:
+        """Uma aba nova que entre no `app_tkinter` sem entrar em `abas.ABAS` falha aqui -- e é
+        o que impede a lista de virar índice que ninguém verifica (S-134)."""
+        self.assertEqual(list(abas.ABAS), self._ordem_no_codigo())
 
     def test_as_do_diagrama_vem_antes_das_do_acervo(self) -> None:
         ordem = self._ordem_no_codigo()
-        self.assertEqual(ordem[:3], list(self.DO_DIAGRAMA))
-        self.assertEqual(ordem[3:], list(self.DO_ACERVO))
+        corte = len(abas.DO_DIAGRAMA)
+        self.assertEqual(ordem[:corte], list(abas.DO_DIAGRAMA))
+        self.assertEqual(ordem[corte:], list(abas.DO_ACERVO))
 
     def test_a_janela_abre_na_aba_de_trabalho_num_checkout_novo(self) -> None:
         """O critério de aceite: a primeira abertura cai onde o trabalho começa."""

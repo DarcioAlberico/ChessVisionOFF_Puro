@@ -150,6 +150,7 @@ class InteractiveBoard(ttk.Frame):
             highlightthickness=0,
             cursor="hand2",
         )
+        theme.ao_repintar(lambda: self.canvas.configure(bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO)))
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)

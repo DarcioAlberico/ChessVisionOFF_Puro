@@ -85,6 +85,9 @@ class Segmento:
     desenha ou não desenha, não tem um terceiro estado -- e "não se sabe" se desenha como normal,
     que é o lado seguro. Quem precisa da diferença lê `PaginaLida`."""
 
+    italico: bool = False
+    """O bloco está em itálico. `None` vira `False` pela mesma razão do `negrito` acima (S-236)."""
+
     @property
     def e_diagrama(self) -> bool:
         return self.tipo == "diagrama"
@@ -119,6 +122,7 @@ def segmentos(pagina: PaginaLida) -> Iterator[Segmento]:
                 bloco=bloco,
                 coluna=coluna.indice,
                 negrito=getattr(bloco, "negrito", None) is True,
+                italico=getattr(bloco, "italico", None) is True,
             )
 
 

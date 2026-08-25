@@ -93,6 +93,11 @@ MAPA_DE_INCERTEZA = "Mapa de incerteza"
 ZOOM_DO_TABULEIRO = "Zoom do tabuleiro"
 """Era "Zoom board". "Zoom" fica: entrou no português e não tem substituto de uma palavra."""
 
+ZOOM_DA_PAGINA = "Zoom PDF"
+"""O rótulo do zoom do visualizador. Estava cravado em `ui/pdf_panel.py`, e a S-225 lhe deu um
+segundo cliente -- o deslizador da pele "Foco". Dois rótulos escritos à mão para o mesmo controle
+é como eles divergem, que é o defeito que a S-219 mediu nos comandos."""
+
 VIRAR_TABULEIRO = "Virar o tabuleiro"
 """Era "Virar board" -- verbo em português e substantivo em inglês na mesma frase de duas palavras."""
 
@@ -125,6 +130,15 @@ PRIMEIRO = "⏮"
 ANTERIOR = "◀"
 PROXIMO = "▶"
 ULTIMO = "⏭"
+CONJUNTO_DE_PECAS = "Conjunto de peças"
+"""O rótulo da escolha da S-230, na Configuração.
+
+Ao lado dos outros rótulos de campo e não no menu de aparência: conjunto é eixo próprio, e a
+pergunta que ele responde -- com que desenho as peças aparecem -- não é a pergunta da pele."""
+
+PASTA_DE_PECAS = "Pasta de peças"
+"""O caminho dos 12 PNGs do usuário. Só vale com o conjunto "Pasta do usuário" escolhido."""
+
 SETA = "→"
 """Os glifos de navegação, no lugar de `|<`, `<<`, `>>`, `>|` e `->` (S-166).
 

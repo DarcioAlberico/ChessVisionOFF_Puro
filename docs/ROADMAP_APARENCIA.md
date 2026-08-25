@@ -23,6 +23,7 @@ seguem em [ROADMAP_FASE14.md](ROADMAP_FASE14.md) e [ROADMAP_TEXTO.md](ROADMAP_TE
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-235 a S-256 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 
 ---
 
@@ -158,27 +159,149 @@ Vem primeiro porque **as duas outras fases desenham a partir dela**, e porque é
 justifica o custo total: sem catálogo, cada pele é uma cópia da lista de comandos, e três cópias
 divergem no primeiro comando novo.
 
-- **S-219** · O catálogo de comandos, declarado como dado
-- **S-220** · O ícone que nasce do token, e não do disco
-- **S-221** · A pele como estado da janela, e a clássica como padrão
-- **S-222** · Trocar de pele sem fechar a janela, e sem perder o lugar
+- **S-219** · O catálogo de comandos, declarado como dado — ✅ **implementada em 2026-08-24**
+- **S-220** · O ícone que nasce do token, e não do disco — ✅ **implementada em 2026-08-24**
+- **S-221** · A pele como estado da janela, e a clássica como padrão — ✅ **implementada em 2026-08-24**
+- **S-222** · Trocar de pele sem fechar a janela, e sem perder o lugar — ✅ **implementada em 2026-08-24**
 
 Ao fim da fase a janela é **a de hoje, sem diferença visível** — e `Ver ▸ Aparência` lista uma
-opção. É de propósito: a fundação se prova quando ela não muda nada.
+opção. É de propósito: a fundação se prova quando ela não muda nada. **Cumprido em 2026-08-24.**
 
-## Fase 33 — a pele "Foco"
+> **Onde a fase está.** A S-219 entregou `ui/comandos.py` com os 35 comandos da janela, e os três
+> lugares que os declaravam passaram a lê-los de lá: `ui/menu.py`, as duas barras de
+> `ui/pdf_panel.py` e a linha de conjunto de campo. Nenhum rótulo mudou, e o teste compara os 29
+> itens de menu com o registro para garantir isso. Ela também mediu o que o item previa em
+> palavras: **11 dos 35 comandos tinham dois textos diferentes**, um no menu e outro no botão.
+>
+> Dois achados da implementação são decisões que caem na S-223, e estão escritos lá: dois dos
+> quatro comandos em `destaque` não têm atalho de teclado, e a ênfase do grupo OCR está no botão
+> que o critério de `ui/estilos.py` não escolheria.
+>
+> A S-220 entregou `ui/icones.py` com os **catorze** traços — a união das duas imagens, restrita
+> ao que existe como comando. Os três que faltam da Imagem 2 são os que não existem: Desfazer e
+> Refazer, que a S-229 cria. A cor sai do chamador, e a implementação achou o caminho pelo qual
+> ela vazaria mesmo assim: reduzir uma imagem colorida desloca o hexadecimal pedido em um degrau
+> por canal, que num ícone claro sobre cromo escuro vira halo. O traço passou a ser máscara, e a
+> cor entra chapada — medido, sem desvio.
+>
+> A S-221 entregou `ui/pele.py`, o campo `skin` no estado (`STATE_VERSION` 2 → 3), a variável
+> `CVOFF_SKIN` e o submenu `Ver ▸ Aparência` — **com uma opção**, a clássica, marcada. É de
+> propósito: registrar "Foco" e "Fita" antes de elas existirem seria oferecer no menu uma escolha
+> que não faz nada. A decisão que a implementação virou foi manter `skin` vazio em vez de gravar
+> `"classica"`: o nome da pele padrão é de `ui/pele.py`, e cravá-lo em `ui/state.py` reabriria no
+> arquivo ao lado a fenda que a S-219 fechou.
+>
+> A S-222 fechou a fase. A troca remonta o cromo -- as duas barras, a linha de campo e o menu --
+> e não toca o conteúdo, e a descoberta foi que **os seis itens que a spec mandava preservar não
+> precisam de máquina nenhuma**: eles continuam de pé porque a remontagem não os alcança. Viraram
+> asserções, e não um `Contexto` que os fotografasse. A spec também estava errada num ponto que,
+> seguido à letra, produziria o defeito que ela proíbe: refazer os `bind_all` a cada troca é o
+> que deixaria N ligações da mesma tecla depois de N trocas. A resposta é não religar.
+>
+> **A Fase 32 está completa, e a janela é a de hoje** -- é o que ela prometia. O catálogo, os
+> ícones, o registro de peles e a remontagem existem, são testados e ainda não mudam um pixel.
+> Quem os liga é a Fase 33: a S-223 registra a segunda pele, e é aí que a fundação vira tela.
 
-- **S-223** · A fila única de ações, e o resto onde ele já estava
-- **S-224** · Cromo escuro, documento claro, marcações remedidas
-- **S-225** · O deslizador de zoom, sem tirar o teclado nem os botões de enquadrar
-- **S-226** · A faixa de abas discreta, e o rodapé que não pode sumir
+## Fase 33 — a pele "Foco" — ✅ **completa em 2026-08-24**
 
-## Fase 34 — a pele "Fita"
+- **S-223** · A fila única de ações, e o resto onde ele já estava — ✅ **implementada em 2026-08-24**
+- **S-224** · Cromo escuro, documento claro, marcações remedidas — ✅ **implementada em 2026-08-24**
+- **S-225** · O deslizador de zoom, sem tirar o teclado nem os botões de enquadrar — ✅ **implementada em 2026-08-24**
+- **S-226** · A faixa de abas discreta, e o rodapé que não pode sumir — ✅ **implementada em 2026-08-24**
 
-- **S-227** · A fita de grupos nomeados, gerada do catálogo
-- **S-228** · Ícone grande com rótulo, e o orçamento de altura que ele respeita
-- **S-229** · Desfazer e refazer, que a fita promete e o programa não tem
-- **S-230** · O conjunto de peças como escolha, e não como pasta cravada
+> **Onde a fase está.** A S-223 registrou a segunda pele e desenhou a fila: quatro pílulas com
+> ícone, em uma linha a 1100 px, geradas do catálogo. É o primeiro item destas quatro fases que
+> muda a tela -- e só para quem abrir `Ver ▸ Aparência` e escolher "Foco".
+>
+> A fila não é a da imagem, e a diferença foi medida. A regra "destaque exige atalho" reprovava
+> dois dos quatro comandos que a Imagem 1 desenha, e os dois lados cederam: `aplicar_fen` ganhou
+> `Ctrl+Enter` -- o décimo primeiro atalho, e ele fechava o ciclo corrigir → salvar sem tecla --,
+> e `exportar_pgn` deu lugar a `salvar`, porque se exporta uma vez por livro e se salva uma vez
+> por diagrama. Uma fila dimensionada por importância em vez de frequência é a barra de 21 botões
+> outra vez.
+>
+> Os três comandos que só existiam como botão -- cancelar exportação e os dois de zoom -- ganharam
+> item de menu, e agora há um teste que cobra a regra 2 diretamente: todo comando está no menu ou
+> na linha de conjunto de campo, sem terceiro destino.
+>
+> A S-224 escureceu o cromo, e o preço foi medido: **cinco dos sete pares de texto reprovavam** o
+> piso AA sobre o cinza escuro, porque tinham sido escolhidos contra um fundo claro. Os cinco
+> ganharam valor de cromo escuro com a matiz preservada — o desvio máximo é de 0,2°. E um deles
+> obrigou a separar dois papéis que carregavam significados diferentes com um nome só: `PROBLEMA`
+> e `DIVERGENTE` são contorno de casa **e** letra, e sobre cromo escuro os dois usos pedem valores
+> opostos. É a S-158 de novo, achada por um caminho novo.
+>
+> Dois outros achados: oito rótulos liam a paleta clara direto, contornando `cor()` — todos
+> ilegíveis na pele escura, todos corrigidos —, e `tb.Style` leva do tema claro ao escuro mas
+> **não** de volta, o que deixaria a janela escura para sempre depois da primeira troca.
+>
+> A S-225 trocou os cinco controles de zoom por um deslizador de escala **logarítmica** — e a
+> escolha tem número: na linear o meio do curso seria 112,5%, e na logarítmica é 70,7%, que é o
+> zoom em que a janela abre. Ela também faz o deslizador concordar com a roda por construção,
+> porque `zoomed` já era multiplicativo. Ele substitui **três** controles e não cinco: enquadrar
+> não é um valor de zoom, e continua existindo.
+>
+> A S-226 fechou a fase, e ela é o item em que a regra 2 mais precisava valer: a Imagem 1 não tem
+> faixa de abas nem rodapé, e seguir a imagem apagaria sete painéis e o **cancelamento** de uma
+> varredura de dez horas. O que entra da imagem é o peso da faixa, e não o conteúdo. De passagem,
+> corrigiu um número: são **sete** abas e não seis — a `Texto` da S-211 —, e os sete rótulos, que
+> só existiam como literal dentro do `app_tkinter`, viraram declaração em `ui/abas.py`. O teste que
+> conferia a ordem procurava esses literais, e a mudança o teria deixado cego passando em verde.
+>
+> **A Fase 33 está completa.** A pele "Foco" existe: fila de quatro pílulas com ícone, cromo
+> escuro com documento claro, deslizador de zoom logarítmico e faixa de abas discreta -- e a
+> clássica continua sendo, pixel a pixel, a janela de sempre.
+
+## Fase 34 — a pele "Fita" — ✅ **completa em 2026-08-25**
+
+- **S-227** · A fita de grupos nomeados, gerada do catálogo — ✅ **implementada em 2026-08-24**
+- **S-228** · Ícone grande com rótulo, e o orçamento de altura que ele respeita — ✅ **implementada em 2026-08-25**
+- **S-229** · Desfazer e refazer, que a fita promete e o programa não tem — ✅ **implementada em 2026-08-25**
+- **S-230** · O conjunto de peças como escolha, e não como pasta cravada — ✅ **implementada em 2026-08-25**
+
+> **Onde a fase está.** A S-227 registrou a terceira pele e desenhou a fita: quatro grupos com
+> cabeçalho, catorze botões de ícone com rótulo, uma linha a partir de 1.400 px. Ela mostra quem
+> tem ícone -- um botão de fita é ícone com rótulo, e comando sem ícone não tem como ser um --, e
+> os grupos `Acervo` e `Ajuda` ficam vazios, sem cabeçalho. Os vinte e dois comandos de fora
+> continuam no menu, com teste cobrando.
+>
+> **Custou três linhas no `app_tkinter.py`**, contra dezesseis da primeira pele. É a medida do que
+> a fundação comprou.
+>
+> **E o achado da fase inteira saiu daqui:** fotografar a fita mostrou o grupo `Arquivo` em
+> branco. O primeiro item de **toda** `BarraFluida` estava coberto pela moldura de linha, desde a
+> S-151 -- na janela clássica isso são "Abrir PDF" e "Página anterior", invisíveis. `pack(in_=)`
+> muda quem arruma e não quem é o pai, e irmão criado depois desenha por cima. O conserto é uma
+> linha, e a pele clássica ganhou dois botões que deviam estar lá desde sempre.
+
+> **A Fase 34 fechou, e as três últimas foram de outras sessões** -- estas notas são de quem
+> escreveu o plano, lendo o que elas deixaram no disco e medindo antes de escrever.
+>
+> A **S-228** deu à fita um orçamento de altura declarado e verificado: 120 px no modo pleno,
+> 64 no compacto. Medidos: **99 e 44**. E ela reprovou uma linha da própria spec: o modo compacto
+> que a Imagem 2 sugeria -- rótulo em **uma** linha ao lado do ícone -- é 940 px **mais largo** que
+> o pleno, e pediria três linhas de fita em 1366, que é a tela para a qual o modo foi inventado. O
+> compacto entregue herda a quebra em duas linhas, e o que o faz compacto são as outras três
+> decisões: ícone menor, rótulo ao lado e cabeçalho na dica. A conta é função pura sobre o `linespace` das fontes --
+> nada de `winfo_height` no critério --, e as três constantes do `ttk.Button` que ela usa foram
+> medidas nas seis combinações de ícone e linha, o que é o que permite prometer 2 px de tolerância
+> contra o widget montado. Ela também acrescentou o que a spec não previa: uma **histerese** de 24
+> px, sem a qual a troca de modo é reversível no mesmo pixel e a fita pisca.
+>
+> A **S-229** trouxe o desfazer que a Imagem 2 promete e que o programa não tinha -- uma pilha de
+> **posições** e não de gestos, com o argumento de que uma pilha de gestos precisa saber inverter
+> cada operação e o sintoma de esquecer uma é um desfazer que devolve posição que nunca existiu.
+> `Ctrl+Z` e `Ctrl+Y` entraram na tabela de atalhos e chegaram ao menu, à legenda, ao catálogo e à
+> fita **sem ninguém escrevê-los lá** -- que é a propriedade que a S-161 e a S-219 existem para dar.
+>
+> A **S-230** fez do conjunto de peças um eixo próprio, e derivou o conjunto de traço grosso em vez
+> de desenhar doze arquivos novos. As duas decisões que podiam dar errado saíram certas: engrossar
+> **depois** de reduzir, que é onde o problema está, e dilatar a **máscara de traço** e não o alfa,
+> que é o que preserva o miolo claro das peças brancas.
+>
+> **As três peles existem.** O pedido que abriu esta fase -- *"o programa deve ter a opção da
+> interface atual e essas duas das imagens"* -- está atendido, e a clássica continua sendo, pixel a
+> pixel, a janela de sempre. Falta a Fase 35: o que as três ganham juntas.
 
 ## Fase 35 — o que as três peles ganham juntas
 

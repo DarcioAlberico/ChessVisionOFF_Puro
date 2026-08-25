@@ -16,6 +16,7 @@ from chess_diagram_ocr.text.transcricao import (
     ReferenciaMudouNoDisco,
     SessaoDeTranscricao,
     normalizar_texto,
+    so_scan,
 )
 
 
@@ -201,6 +202,139 @@ class GravacaoConcorrenteTests(unittest.TestCase):
             gravado = json.loads(caminho.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(gravado["texto"], "segundo")
             self.assertFalse(sessao.sujo)
+
+
+class FiltroDeScanTests(unittest.TestCase):
+    """O filtro governa a navegação, e nunca o arquivo."""
+
+    def _tres(self, pasta: Path) -> Path:
+        """Uma de scan no meio de duas com camada."""
+        return _gravar(
+            pasta,
+            _linha(pagina=11, semeado_de="camada", texto_semente="a", texto="a"),
+            _linha(pagina=12),
+            _linha(pagina=13, semeado_de="camada", texto_semente="c", texto="c"),
+        )
+
+    def test_gravar_com_filtro_nao_perde_as_faixas_de_fora(self) -> None:
+        """**O defeito que este filtro poderia introduzir.** Recortar a lista faria `salvar`
+        escrever 1 linha onde havia 3, e as outras duas sumiriam sem nada avisar."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = self._tres(Path(tmp))
+            sessao = SessaoDeTranscricao.carregar(caminho, filtro=so_scan)
+
+            sessao.editar(texto="transcrito à mão", conferido=True)
+            sessao.salvar()
+
+            linhas = [json.loads(bruta) for bruta in caminho.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(linhas), 3)
+            self.assertEqual([d["texto"] for d in linhas], ["a", "transcrito à mão", "c"])
+            self.assertEqual([d["conferido"] for d in linhas], [False, True, False])
+
+    def test_o_placar_do_arquivo_e_o_da_vista_sao_diferentes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sessao = SessaoDeTranscricao.carregar(self._tres(Path(tmp)), filtro=so_scan)
+
+            self.assertTrue(sessao.filtrada)
+            self.assertEqual(sessao.total, 3)
+            self.assertEqual(sessao.total_visivel, 1)
+
+    def test_a_sessao_abre_na_primeira_pendente_da_vista(self) -> None:
+        """Sem filtro ela abriria na faixa 1, que é de camada e está fora da vista."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sessao = SessaoDeTranscricao.carregar(self._tres(Path(tmp)), filtro=so_scan)
+
+            self.assertEqual(sessao.indice, 1)
+
+    def test_navegar_pula_o_que_esta_fora_da_vista(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp)
+            caminho = _gravar(
+                pasta,
+                _linha(pagina=11),
+                _linha(pagina=12, semeado_de="camada", texto_semente="b", texto="b"),
+                _linha(pagina=13),
+            )
+            sessao = SessaoDeTranscricao.carregar(caminho, filtro=so_scan)
+
+            self.assertEqual(sessao.indice, 0)
+            self.assertTrue(sessao.proximo())
+            self.assertEqual(sessao.indice, 2, "a 2 é de camada e a navegação passou por cima")
+            self.assertFalse(sessao.proximo())
+            self.assertTrue(sessao.anterior())
+            self.assertEqual(sessao.indice, 0)
+
+    def test_ir_para_alcanca_faixa_de_fora_da_vista(self) -> None:
+        """O filtro é da navegação, e não do direito de olhar uma faixa pelo número."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sessao = SessaoDeTranscricao.carregar(self._tres(Path(tmp)), filtro=so_scan)
+
+            self.assertTrue(sessao.ir_para(2))
+            self.assertEqual(sessao.atual.faixa.texto, "c")
+
+    def test_proxima_pendente_nao_sai_da_vista(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp)
+            caminho = _gravar(
+                pasta,
+                _linha(pagina=11),  # scan, pendente
+                _linha(pagina=12),  # scan, pendente
+                _linha(pagina=13, semeado_de="camada", texto_semente="c", texto="c"),
+            )
+            sessao = SessaoDeTranscricao.carregar(caminho, filtro=so_scan)
+            sessao.editar(conferido=True)
+
+            self.assertTrue(sessao.proxima_pendente())
+            self.assertEqual(sessao.indice, 1)
+
+            sessao.editar(conferido=True)
+            self.assertFalse(
+                sessao.proxima_pendente(), "a 3 é de camada: pendente, mas não desta sessão"
+            )
+
+    def test_a_faixa_nao_sai_da_vista_por_ter_sido_transcrita(self) -> None:
+        """A pertinência sai de `semeado_de`, e editar não a muda -- senão a faixa desapareceria
+        no instante em que se acaba de digitar nela."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sessao = SessaoDeTranscricao.carregar(self._tres(Path(tmp)), filtro=so_scan)
+
+            sessao.editar(texto="agora tem texto", conferido=True)
+
+            self.assertEqual(sessao.total_visivel, 1)
+            self.assertEqual(sessao.conferidas_visiveis, 1)
+            self.assertTrue(so_scan(sessao.atual))
+
+    def test_sem_filtro_a_vista_e_o_arquivo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sessao = SessaoDeTranscricao.carregar(self._tres(Path(tmp)))
+
+            self.assertFalse(sessao.filtrada)
+            self.assertEqual(sessao.total_visivel, sessao.total)
+
+
+class SoScanTests(unittest.TestCase):
+    def test_semeada_e_corrigida_a_mao_continua_sendo_de_camada(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = _gravar(
+                Path(tmp), _linha(semeado_de="camada", texto_semente="Mat em 2", texto="Mat em 3")
+            )
+            sessao = SessaoDeTranscricao.carregar(caminho)
+
+            self.assertFalse(so_scan(sessao.atual))
+
+    def test_semeada_com_texto_vazio_continua_sendo_de_camada(self) -> None:
+        """A camada existia e não tinha nada naquela banda -- é diferente de não haver camada."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = _gravar(Path(tmp), _linha(semeado_de="camada", texto_semente="", texto=""))
+            sessao = SessaoDeTranscricao.carregar(caminho)
+
+            self.assertFalse(so_scan(sessao.atual))
+
+    def test_sem_semeado_de_e_de_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sessao = SessaoDeTranscricao.carregar(_gravar(Path(tmp), _linha()))
+
+            self.assertTrue(so_scan(sessao.atual))
 
 
 class AvisosTests(unittest.TestCase):

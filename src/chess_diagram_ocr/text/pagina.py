@@ -298,6 +298,17 @@ class LinhaLida:
     que não registra não pode declarar que nada ali é negrito. Ver `text/negrito.py`, que também
     explica por que isto **não** sai da imagem."""
 
+    italico: bool | None = None
+    """A linha está inclinada? `None` é "não se sabe", como em `negrito` -- e por razão oposta.
+
+    **O itálico sai da imagem, e o negrito não.** `text/italico.py` mede o pendor da linha e separa:
+    +0,116 de mediana nas linhas itálicas contra +0,000 nas linhas em pé, sem sobreposição, em 157
+    linhas da folha 311 do `Secrets of Chess Training`. O negrito não teve essa sorte -- a espessura
+    do traço não passou do acaso (82,2% contra 82,7%), e por isso ele vem da camada.
+
+    `None` aqui é o caminho da **camada**, que não passa pela binária e não tem pendor para medir --
+    e a linha curta demais, que não tem população (`italico.MIN_BOXES_PARA_MEDIR`). Ver S-236."""
+
     def para_json(self) -> dict[str, Any]:
         return {
             "texto": self.texto,
@@ -305,6 +316,7 @@ class LinhaLida:
             "confianca": self.confianca,
             "procedencia": self.procedencia,
             "negrito": self.negrito,
+            "italico": self.italico,
         }
 
     @classmethod
@@ -317,19 +329,28 @@ class LinhaLida:
             confianca=float(dados.get("confianca", 1.0)),
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
             negrito=_negrito_de(dados.get("negrito"), onde),
+            italico=_tres_estados(dados.get("italico"), onde, "italico"),
         )
 
 
-def _negrito_de(valor: Any, onde: str) -> bool | None:
+def _tres_estados(valor: Any, onde: str, campo: str) -> bool | None:
     """`True`, `False` ou `None` -- e um arquivo antigo, sem o campo, vira `None`.
 
     Campo ausente é "não se sabe", que é exatamente o que um arquivo gravado antes deste campo
-    existir sabe sobre negrito. Não paga versão de esquema por isso."""
+    existir sabe sobre ele. Não paga versão de esquema por isso.
+
+    Um só leitor para `negrito` e `italico`: são a mesma pergunta de três estados, e dois leitores
+    iguais lado a lado seriam dois lugares para consertar quando o terceiro campo chegasse."""
     if valor is None:
         return None
     if isinstance(valor, bool):
         return valor
-    raise PaginaInvalida(f"{onde}: negrito é True, False ou ausente -- veio {valor!r}")
+    raise PaginaInvalida(f"{onde}: {campo} é True, False ou ausente -- veio {valor!r}")
+
+
+def _negrito_de(valor: Any, onde: str) -> bool | None:
+    """Ver `_tres_estados`."""
+    return _tres_estados(valor, onde, "negrito")
 
 
 @dataclass(frozen=True)
@@ -349,6 +370,9 @@ class BlocoDeTexto:
     recuado: bool = False
     negrito: bool | None = None
     """O parágrafo inteiro em negrito. `None` é "não se sabe"; ver `LinhaLida.negrito`."""
+
+    italico: bool | None = None
+    """O parágrafo inteiro em itálico. `None` é "não se sabe"; ver `LinhaLida.italico`."""
     """Este parágrafo abriu por recuo. A interface o usa para reproduzir a diagramação; o domínio
     o usa para nada, e é por isso que ele é um `bool` e não um número de pontos."""
 
@@ -367,6 +391,7 @@ class BlocoDeTexto:
         if not linhas:
             return cls()
         pesos = {linha.negrito for linha in linhas}
+        pendores = {linha.italico for linha in linhas}
         return cls(
             linhas=tuple(linhas),
             bbox=_envolver([linha.bbox for linha in linhas]),
@@ -377,6 +402,10 @@ class BlocoDeTexto:
             # negrito não é um parágrafo em negrito, e `None` em qualquer linha contamina o
             # conjunto -- não se sabe do todo o que não se sabe de uma parte.
             negrito=pesos.pop() if len(pesos) == 1 else None,
+            # A mesma regra para o pendor, e ela é mais exigente do que parece: um parágrafo de
+            # prosa com **uma** frase em itálico sai `None`, e é o certo. A régua da S-236 é da
+            # linha, e o bloco não sabe mais do que as linhas dele.
+            italico=pendores.pop() if len(pendores) == 1 else None,
         )
 
     def para_json(self) -> dict[str, Any]:
@@ -387,6 +416,7 @@ class BlocoDeTexto:
             "procedencia": self.procedencia,
             "recuado": self.recuado,
             "negrito": self.negrito,
+            "italico": self.italico,
             "linhas": [linha.para_json() for linha in self.linhas],
         }
 
@@ -401,6 +431,7 @@ class BlocoDeTexto:
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
             recuado=bool(dados.get("recuado", False)),
             negrito=_negrito_de(dados.get("negrito"), onde),
+            italico=_tres_estados(dados.get("italico"), onde, "italico"),
         )
 
 

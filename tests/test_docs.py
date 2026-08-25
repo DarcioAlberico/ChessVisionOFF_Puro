@@ -31,8 +31,23 @@ README = RAIZ / "README.md"
 SECAO = re.compile(r"^#{1,4} (S-\d{1,3})\b")
 """Uma seção de item: `## S-95 · ...` ou `### S-78 · ...`. O nível varia entre os arquivos."""
 
-LINHA_DA_TABELA = re.compile(r"^>?\s*\|\s*(S-\d.*?)\s*\|\s*(.*?)\s*\|\s*$")
-"""Uma linha da tabela "faixa de itens → arquivo", com ou sem o `>` de citação."""
+CABECALHO_DA_TABELA = re.compile(r"^(?:>\s*)?\|\s*itens\s*\|\s*arquivo\s*\|\s*$")
+"""O cabeçalho `| itens | arquivo |` que abre a tabela de faixas, com ou sem o `>` de citação."""
+
+SEPARADOR_DA_TABELA = re.compile(r"^(?:>\s*)?\|\s*-{3,}\s*\|\s*-{3,}\s*\|\s*$")
+"""O `|---|---|` logo abaixo do cabeçalho. Sem ele, o que veio antes não era cabeçalho de tabela."""
+
+LINHA_DA_TABELA = re.compile(r"^(?:>\s*)?\|\s*(S-\d[^|]*?)\s*\|\s*([^|]*?)\s*\|\s*$")
+"""Uma linha da tabela "faixa de itens → arquivo", com ou sem o `>` de citação.
+
+As células são `[^|]*` e não `.*`: **exatamente duas colunas**. Os documentos trazem outras
+tabelas cuja primeira coluna também é `S-NN` -- o quadro de prioridades do `PLANO_BASE_PARTIDAS`
+(quatro colunas) e o índice de fases do `SPEC` (três) --, e casá-las aqui só não corrompeu a
+leitura porque nenhuma delas cita um `.md` na segunda célula. Isso é sorte, não critério.
+"""
+
+ARQUIVO_NA_CELULA = re.compile(r"([A-Z_0-9]+\.md)")
+"""O documento apontado pela célula da direita, seja `[SPEC.md](SPEC.md)` ou `docs/SPEC.md`."""
 
 ARQUIVOS_DE_MEDICAO = {"EXPERIMENTS.md", "EXPERIMENTS_FASE7.md", "BASELINE.md", "ROADMAP_FASE7.md"}
 """Trazem seções `S-NN` que **não** são spec: são o que foi medido daquele item.
@@ -97,6 +112,50 @@ def secoes_por_arquivo() -> dict[str, set[int]]:
     }
 
 
+def _linhas_dentro_da_tabela(texto: str) -> list[tuple[int, re.Match[str]]]:
+    """As linhas de faixa que estão **dentro** da tabela, com o índice de cada uma.
+
+    Estar dentro é: vir depois de um `| itens | arquivo |` seguido de `|---|---|`, e antes da
+    primeira linha que não é de faixa. Ler linha a linha, sem exigir a moldura, foi o que deixou
+    passar uma linha da tabela solta dentro da cerca ```bash do README -- ela não é comentário
+    do shell, quebrava para quem copiasse o bloco, e a suíte a lia como se fosse índice.
+    """
+    linhas = texto.splitlines()
+    dentro: list[tuple[int, re.Match[str]]] = []
+    indice = 0
+    while indice < len(linhas):
+        abre = CABECALHO_DA_TABELA.match(linhas[indice]) and indice + 1 < len(linhas)
+        if not (abre and SEPARADOR_DA_TABELA.match(linhas[indice + 1])):
+            indice += 1
+            continue
+        indice += 2
+        while indice < len(linhas):
+            casamento = LINHA_DA_TABELA.match(linhas[indice])
+            if casamento is None:
+                break
+            dentro.append((indice, casamento))
+            indice += 1
+    return dentro
+
+
+def linhas_de_faixa_soltas(texto: str) -> list[str]:
+    """Linhas com a forma de uma faixa (`| S-NN a S-NN | algum.md |`) fora de qualquer tabela.
+
+    A moldura sozinha só faria a linha solta ser ignorada em silêncio -- e ignorada em silêncio
+    ela continua no arquivo, quebrando o bloco de comandos de quem o copia. Esta função é o outro
+    lado: o que não conta como índice precisa ser acusado, não descartado.
+    """
+    dentro = {indice for indice, _ in _linhas_dentro_da_tabela(texto)}
+    soltas = []
+    for indice, linha in enumerate(texto.splitlines()):
+        if indice in dentro:
+            continue
+        casamento = LINHA_DA_TABELA.match(linha)
+        if casamento is not None and ARQUIVO_NA_CELULA.search(casamento.group(2)):
+            soltas.append(f"linha {indice + 1}: {linha.strip()}")
+    return soltas
+
+
 def faixas_declaradas(texto: str) -> dict[int, str]:
     """A tabela "faixa de itens → arquivo" de um documento, achatada em `numero → arquivo`.
 
@@ -104,12 +163,9 @@ def faixas_declaradas(texto: str) -> dict[int, str]:
     contígua de propósito, e o formato precisa dizer isso sem virar prosa.
     """
     declarado: dict[int, str] = {}
-    for linha in texto.splitlines():
-        casamento = LINHA_DA_TABELA.match(linha)
-        if casamento is None:
-            continue
+    for _, casamento in _linhas_dentro_da_tabela(texto):
         celula_itens, celula_arquivo = casamento.groups()
-        arquivo = re.search(r"([A-Z_0-9]+\.md)", celula_arquivo)
+        arquivo = ARQUIVO_NA_CELULA.search(celula_arquivo)
         if arquivo is None:
             continue
         for parte in celula_itens.split(","):
@@ -219,6 +275,26 @@ class IndiceDoReadmeTests(unittest.TestCase):
 
         self.assertEqual([], divergentes)
         self.assertGreaterEqual(copias, 5, "A tabela sumiu de algum dos cinco documentos de spec.")
+
+    def test_nenhuma_linha_de_faixa_esta_solta_fora_da_tabela(self) -> None:
+        """A linha certa no lugar errado — o defeito que a comparação acima não vê.
+
+        Aconteceu duas vezes no mesmo dia: uma inserção automática pôs `| S-219 a S-234 | ... |`
+        dentro da cerca ```bash do README e logo abaixo do `#` do título do `SPEC_TEXTO`. As duas
+        cópias ficaram *idênticas* por causa do lixo, e a comparação passou em verde sobre um
+        bloco de comandos que já não podia ser colado num terminal.
+        """
+        soltas = []
+        for arquivo in [README, *sorted(DOCS.glob("*.md"))]:
+            for linha in linhas_de_faixa_soltas(arquivo.read_text(encoding="utf-8")):
+                soltas.append(f"{arquivo.name}: {linha}")
+
+        self.assertEqual(
+            [],
+            soltas,
+            "Linha da tabela de faixas fora de qualquer tabela. Mova-a para dentro da tabela "
+            "do documento — solta, ela não é índice de nada e ainda quebra o texto que a cerca.",
+        )
 
 
 TOLERANCIA = 0.10

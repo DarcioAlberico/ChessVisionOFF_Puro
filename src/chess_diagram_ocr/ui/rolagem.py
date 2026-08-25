@@ -88,6 +88,7 @@ class AbaRolavel(ttk.Frame):
             background=theme.cor_atual(tokens.SUPERFICIE_PADRAO),
         )
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        theme.ao_repintar(lambda: self.canvas.configure(background=theme.cor_atual(tokens.SUPERFICIE_PADRAO)))
         self._barra = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=self._ao_rolar)
         self._barra_visivel = False

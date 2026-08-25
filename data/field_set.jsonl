@@ -3,6 +3,8 @@
 {"pdf": "1937 Kemeri.pdf", "page": 80, "reviewed": true, "diagrams": [{"bbox": [211.3, 196.2, 352.6, 337.32], "placement": "5rkn/1R3p1p/5p2/3Bp2P/4P3/6P1/5P2/6K1"}], "regime": "scan-hachurado"}
 {"pdf": "1937 Kemeri.pdf", "page": 144, "reviewed": true, "diagrams": [], "regime": "sem-diagrama", "note": "fotografia do castelo de Rundale, nenhum diagrama"}
 {"pdf": "1937 Kemeri.pdf", "page": 187, "reviewed": true, "diagrams": [{"bbox": [210.2, 321.5, 352.6, 464.0], "placement": "8/k1r2p2/4p1p1/1p2N3/1P1n4/3P4/6PP/4R1K1", "note": "recorte apertado: o embutido incluia a legenda"}], "regime": "scan-hachurado"}
+{"pdf": "1937 Kemeri.pdf", "page": 276, "reviewed": true, "diagrams": [], "regime": "sem-diagrama"}
+{"pdf": "1937 Kemeri.pdf", "page": 279, "reviewed": true, "diagrams": [], "regime": "sem-diagrama"}
 {"pdf": "A Matter of Endgame Technique – Jacob Aagaard.pdf", "page": 179, "reviewed": true, "diagrams": [{"bbox": [75.27, 109.96, 221.56, 256.25], "placement": "8/4RR2/8/3k4/3p2p1/5b2/4pK2/2r5"}, {"bbox": [276.21, 461.45, 422.5, 608.06], "placement": "8/B6p/3p4/3k1P2/7b/1Pp4P/2P5/2K5"}], "regime": "vetorial"}
 {"pdf": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf", "page": 8, "reviewed": true, "diagrams": [], "regime": "sem-diagrama", "note": "introducao em duas colunas"}
 {"pdf": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf", "page": 100, "reviewed": true, "diagrams": [{"bbox": [59.89, 292.58, 258.55, 491.24], "placement": "8/pp1r1pp1/3k3p/3p4/3K2P1/2P2P2/PP6/3R4", "side_to_move": "w"}, {"bbox": [377.67, 308.29, 570.76, 501.71], "placement": "8/pp6/3k4/5p2/1PP4p/4KP2/P7/8", "side_to_move": "b"}], "regime": "vetorial"}

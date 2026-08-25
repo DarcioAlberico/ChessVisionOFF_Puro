@@ -34,8 +34,13 @@ from ..atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
-STATE_VERSION = 2
-"""Versão 1 é o formato sem o campo `version`, que existe em disco hoje."""
+STATE_VERSION = 4
+"""Versão 1 é o formato sem o campo `version`, que existe em disco hoje.
+
+A **3** é a S-221, e ela só acrescenta `skin`. A **4** é a S-230, e acrescenta `piece_set` e
+`piece_dir`. Um arquivo de qualquer versão anterior abre sem perder nada: o campo que falta cai no
+padrão, que é "nada escolhido" -- e nada escolhido é a pele clássica com o conjunto de peças de
+sempre."""
 
 MAX_PDF_HISTORY = 50
 """Tamanho do histórico de páginas por PDF. Sem teto ele cresce para sempre."""
@@ -105,6 +110,32 @@ class AppState:
     é, literalmente, reordená-las. Um rótulo que não existe mais cai na primeira aba, que é o
     mesmo comportamento de não ter nada guardado."""
 
+    skin: str = ""
+    """Nome da pele escolhida em `Ver ▸ Aparência` (S-221). Vazio = nunca escolhida.
+
+    **Vazio e não `"classica"`**, embora a spec tenha escrito o segundo. O nome da pele padrão é
+    de `ui/pele.py`, e cravá-lo aqui o declararia num segundo lugar -- exatamente a fenda que a
+    S-219 acabou de fechar para os comandos. Vazio já significa "cai no padrão", e é o que
+    `active_tab`, `window_geometry` e `review_queue_path` neste mesmo arquivo já querem dizer.
+
+    **E não é validado aqui**, pelo mesmo motivo da geometria: pele registrada é pergunta de quem
+    vai aplicá-la. `pele.escolhida` responde, e nomeia no log a que não existe."""
+
+    piece_set: str = ""
+    """Nome do conjunto de peças escolhido na Configuração (S-230). Vazio = nunca escolhido.
+
+    **Vazio e não `"padrao"`**, pela mesma razão de `skin`: o nome do conjunto padrão é de
+    `ui/conjuntos.py`, e cravá-lo aqui o declararia num segundo lugar. E, como a pele, **não é
+    validado aqui**: conjunto registrado é pergunta de quem vai desenhá-lo, e `conjuntos.escolhido`
+    responde nomeando no log o que não existe."""
+
+    piece_dir: str = ""
+    """A pasta de peças do usuário (S-230). Vazio = nenhuma escolhida.
+
+    Guardada **junto** e não em lugar do nome: quem experimenta a pasta própria, volta ao padrão e
+    depois quer a sua de novo não deve ter de reencontrá-la no disco. É a mesma decisão de
+    `sash_fraction`, onde "não guardado" e "guardado" são estados diferentes."""
+
     def recentes(
         self, limite: int = MAX_RECENTES, *, existe: Callable[[Path], bool] | None = None
     ) -> list[str]:
@@ -155,6 +186,9 @@ class AppState:
             "window_geometry": self.window_geometry,
             "sash_fraction": float(self.sash_fraction),
             "active_tab": self.active_tab,
+            "skin": self.skin,
+            "piece_set": self.piece_set,
+            "piece_dir": self.piece_dir,
         }
 
 
@@ -243,6 +277,20 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     tab = raw.get("active_tab")
     if isinstance(tab, str):
         state.active_tab = tab
+
+    skin = raw.get("skin")
+    if isinstance(skin, str):
+        state.skin = skin
+
+    # Os dois da S-230, e nenhum é validado aqui além do tipo -- pelo mesmo motivo da pele e da
+    # geometria: conjunto registrado e pasta que existe são perguntas de quem vai usá-los.
+    piece_set = raw.get("piece_set")
+    if isinstance(piece_set, str):
+        state.piece_set = piece_set
+
+    piece_dir = raw.get("piece_dir")
+    if isinstance(piece_dir, str):
+        state.piece_dir = piece_dir
 
     return state
 

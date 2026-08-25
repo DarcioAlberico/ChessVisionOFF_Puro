@@ -32,13 +32,17 @@ HEX = re.compile(r'"#[0-9a-fA-F]{6}"')
 PARES_DE_TEXTO = (
     (tokens.TEXTO_SECUNDARIO, tokens.SUPERFICIE_PADRAO),
     (tokens.PRONTO_TEXTO, tokens.SUPERFICIE_PADRAO),
-    (tokens.PROBLEMA, tokens.SUPERFICIE_PADRAO),
+    (tokens.PROBLEMA_TEXTO, tokens.SUPERFICIE_PADRAO),
     (tokens.ATENCAO, tokens.SUPERFICIE_PADRAO),
-    (tokens.DIVERGENTE, tokens.SUPERFICIE_PADRAO),
+    (tokens.DIVERGENTE_TEXTO, tokens.SUPERFICIE_PADRAO),
     (tokens.VIZINHA_TEXTO, tokens.SUPERFICIE_PADRAO),
     (tokens.TEXTO_PADRAO, tokens.SUPERFICIE_PADRAO),
 )
 """Todo par (texto, fundo) que a janela de fato desenha. Piso AA de 4,5:1.
+
+**Dois deles trocaram de papel na S-224**: `PROBLEMA` e `DIVERGENTE` viraram `PROBLEMA_TEXTO` e
+`DIVERGENTE_TEXTO`. Os dois primeiros são contorno de casa no tabuleiro, e estavam aqui fazendo
+dois trabalhos com um nome -- o que passou despercebido enquanto o mesmo valor servia aos dois.
 
 **A lista encolheu na S-147, e por honestidade.** Metade dela media texto contra
 `SUPERFICIE_TABULEIRO`, e a janela nunca escreveu uma letra ali: os rótulos de material, de
@@ -142,17 +146,48 @@ class PaletaTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             cor("VERDE_BONITO")
 
+    COINCIDEM_DE_PROPOSITO = (
+        frozenset({tokens.PROBLEMA, tokens.PROBLEMA_TEXTO}),
+        frozenset({tokens.DIVERGENTE, tokens.DIVERGENTE_TEXTO}),
+    )
+    """Os pares que **devem** ter a mesma cor na paleta clara (S-224).
+
+    São contorno-de-casa e letra com o mesmo significado, separados quando o cromo escuro pediu
+    valores opostos: a letra precisa clarear para ser lida e o contorno precisa **não** clarear,
+    porque ele é medido contra as casas, que não seguem pele nenhuma.
+
+    Aqui eles coincidem porque **um valor serve aos dois**: `#c0392b` dá 3,96:1 sobre a casa
+    clara e 4,77:1 sobre o cinza do cromo. Inventar uma diferença na paleta clara só para
+    separar os nomes mudaria pixel de hoje sem nenhuma medida pedindo -- e é justamente o tipo de
+    troca que a S-158 recusou."""
+
     def test_dois_papeis_de_significado_diferente_nao_compartilham_hex(self) -> None:
         """"Três verdes com três significados de bom" era o achado; o inverso também é defeito.
 
-        As exceções declaradas são as que **devem** coincidir: nada, hoje. Se um dia duas
-        entradas precisarem da mesma cor, o par entra aqui com o motivo.
+        As exceções declaradas são as que **devem** coincidir. Se um dia duas entradas
+        precisarem da mesma cor, o par entra em `COINCIDEM_DE_PROPOSITO` com o motivo.
         """
         por_cor: dict[str, list[str]] = {}
         for papel, valor in RESERVA.items():
             por_cor.setdefault(valor, []).append(papel)
-        repetidas = {valor: papeis for valor, papeis in por_cor.items() if len(papeis) > 1}
+        repetidas = {
+            valor: papeis
+            for valor, papeis in por_cor.items()
+            if len(papeis) > 1 and frozenset(papeis) not in self.COINCIDEM_DE_PROPOSITO
+        }
         self.assertEqual({}, repetidas, "dois papéis resolvendo para a mesma cor")
+
+    def test_o_par_declarado_deixa_de_coincidir_no_cromo_escuro(self) -> None:
+        """A exceção acima só vale na paleta clara. Se os dois continuassem iguais na escura, a
+        separação não teria servido para nada -- e o rótulo de erro seguiria ilegível."""
+        for par in self.COINCIDEM_DE_PROPOSITO:
+            marcacao, letra = sorted(par, key=len)
+            with self.subTest(par=sorted(par)):
+                self.assertEqual(RESERVA[marcacao], RESERVA[letra])
+                self.assertNotEqual(
+                    cor(marcacao, cromo_escuro=True),
+                    cor(letra, cromo_escuro=True),
+                )
 
     def test_o_tema_vence_a_reserva_quando_responde(self) -> None:
         class EstiloFalso:

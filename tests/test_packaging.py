@@ -171,8 +171,95 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1800
+    LIMITE = 1919
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **1.868 → 1.919 na Fase 34**, e as cinquenta e uma se dividem em três e quarenta e oito.
+
+    As **três** são a S-229: `desfazer`, `refazer` e `limpar_tabuleiro` entrando em `_comandos`,
+    uma linha cada, ligando o nome ao `ResultPanel`. A pilha, o teto de cem estados, as sete
+    origens de mudança, os dois botões e o motivo de cada um estar cinza são `ui/historico.py` e
+    `ui/result_panel.py` -- a janela só amarra os nomes, que é o que o catálogo da S-219 comprou.
+
+    As **quarenta e oito** são a S-230, e elas se pagam por não existirem em outro lugar: a linha
+    de escolha do conjunto na Configuração (`_build_piece_set_row`, com os três `Radiobutton` e o
+    campo de pasta que `ui/campos.py` valida), a troca em execução (`_escolher_conjunto`, que
+    redesenha e grava) e as três linhas que restauram do disco o que estava guardado. **O registro
+    de conjuntos e o desenho não estão aqui**: `ui/conjuntos.py` declara os três e `PieceImages`
+    os desenha, e nenhum dos dois conhece a janela.
+
+    É a linha do meio do argumento da S-31, e ela continua valendo: o que fica aqui é a **ligação**
+    -- qual widget, em que aba, chamando qual nome --, e o que decide alguma coisa desce para
+    `ui/`. Quarenta e oito linhas de widget de Configuração são caras, e são a parte deste arquivo
+    que a decomposição do `ROADMAP_UI` ainda vai alcançar.
+
+    **1.865 → 1.868 na S-227**, e as três são a terceira pele entrando: o `import`, e o `elif` que
+    manda montar a fita na mesma faixa em que a "Foco" monta a fila. A fita inteira -- os quatro
+    grupos, o cabeçalho, o botão de ícone com rótulo e a quebra por grupo -- é `ui/fita.py`, que
+    não conhece a janela.
+
+    **É a medida do que as S-219 a S-222 compraram**: a primeira pele custou dezesseis linhas
+    aqui; a terceira custou três.
+
+    **1.862 → 1.865 na S-226**, e as três são a faixa de abas trocando de peso na pele "Foco":
+    o `if` do painel, a linha que aplica o estilo e o comentário que diz por que as sete abas
+    continuam lá. Os sete rótulos **não** custaram linha nenhuma: eles já estavam escritos, e o
+    que a S-226 fez foi movê-los para `ui/abas.py` e referenciá-los no lugar do literal.
+
+    **1.859 → 1.862 na S-224**, e as três são o cromo escuro chegando à janela: a linha que
+    pergunta à pele qual tema aplicar na abertura, e as duas que fazem a mesma pergunta na troca.
+    `registrar_estilos` saiu daqui e virou `apply_theme`, que escolhe o tema, reaplica os estilos
+    nomeados **e** repinta o que foi pintado fora do `Style`. A paleta inteira -- nove papéis de
+    cromo escuro, a fronteira do documento e a separação de `PROBLEMA_TEXTO` -- é `ui/tokens.py`.
+
+    **1.843 → 1.859 na S-223**, e as dezesseis são a pele "Foco" entrando na janela. Três são a faixa
+    onde a fila mora -- um `Frame` vazio acima do divisor, que na pele clássica não custa altura
+    nenhuma. Seis estão no `remontar_cromo`: descobrir a montagem da pele, esvaziar a faixa,
+    desenhar a fila quando for o caso, e passar a montagem adiante. As quatro últimas remontam o
+    cromo depois de o disco ser lido -- a janela sobe na clássica porque o menu é montado antes
+    de haver estado, e sem isso quem fechou na "Foco" reabriria na clássica.
+
+    As três últimas amarram os comandos que até aqui só existiam como botão -- cancelar
+    exportação e os dois de zoom --, e é a trava de `menu.montar` que as cobrou: declarar o item
+    sem amarrar a função levanta, e foi o que aconteceu na primeira tentativa.
+
+    **A fila em si é `ui/fila.py`**, que não conhece a janela: ela recebe um pai e o mapa de
+    comandos, e sai do catálogo.
+
+    **1.821 → 1.843 na S-222**, e as vinte e duas são o `remontar_cromo` com o docstring que
+    explica **o que ele não faz** -- que é a metade cara do item. As quatro linhas de código são
+    quatro chamadas: reaplicar os estilos nomeados, esvaziar o cache de ícones, mandar o painel
+    de PDF refazer as barras, e refazer a barra de menus. As outras duas são a comparação em
+    `_escolher_pele` que evita remontar quando a pele escolhida já é a que está valendo.
+
+    **O trabalho de verdade não está aqui**, e por isso a subida foi de vinte e duas e não de
+    duzentas: destruir e refazer as duas barras, devolver o `state` dos seis botões e
+    ressincronizar o nome do livro, o zoom e o rótulo de quem estava ligado são tudo de
+    `ui/pdf_panel.remontar_cromo`, junto dos widgets que ele mesmo criou.
+
+    **1.808 → 1.821 na S-221**, e as treze são a pele virando estado da janela. Seis são o
+    `_escolher_pele`, que é a amarração que só este objeto pode fazer -- ele tem o `AppState` e o
+    `StringVar`; três são a variável e o docstring que explica por que ela nasce do ambiente (o
+    menu é montado **antes** de o estado ser lido, e é a linha do `_restore_state` que a corrige);
+    as quatro restantes são o `import`, a entrada em `_comandos`, o `escolhas=` do menu e o
+    `set` da restauração.
+
+    **O registro em si não está aqui**, e é o que faz esta subida ser de treze e não de cinquenta:
+    quais peles existem, qual é a padrão, o que fazer com um nome inválido e de onde vem a
+    variável de ambiente são todos de `ui/pele.py`, que não importa `tkinter` e tem os seus
+    dezesseis testes sem abrir janela.
+
+    **1.800 → 1.808 na S-219**, e as oito são o preço de a linha do conjunto de campo passar a
+    tirar o rótulo do catálogo. Nenhuma é lógica: `comandos.rotulo_de_botao("tirar_do_campo")` é
+    mais largo que `"Tirar o selecionado"`, e dois botões que cabiam numa linha e em três passaram
+    a caber em seis cada. **O import não cresceu** -- `estilos` saiu e `comandos` entrou no lugar,
+    porque a ênfase do "Anotar página" também vem do registro agora.
+
+    É uma troca, e ela está registrada dos dois lados: a janela ficou 8 linhas maior e o programa
+    ficou com **um** lugar onde se lê o que cada comando é. Enquanto eram três lugares, o mesmo
+    `ler_pagina` se chamava "Ler esta página" no menu e "OCR todos diagramas" no botão -- e nada
+    comparava os dois. O que deve encolher aqui é `_build_field_row` inteira, que é layout de um
+    painel dentro da janela; a S-31 continua sendo esse alvo, e a S-219 não era a hora.
 
     **1.788 → 1.800 na S-211**, e as 12 são a aba de texto entrando. Nenhuma delas decide nada: o
     `import`, o campo do painel, a chamada do construtor com seis argumentos -- os mesmos seis que

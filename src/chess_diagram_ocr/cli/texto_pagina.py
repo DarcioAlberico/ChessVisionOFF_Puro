@@ -162,11 +162,12 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
-        "--dicionario",
+        "--sem-dicionario",
         action="store_true",
         help=(
-            "Liga o léxico para desempatar entre os candidatos do modelo. Desligado por padrão: "
-            "medido, ele corrige ZERO -- ver docs/metrics/texto_dicionario.json."
+            "Desliga o léxico que desempata entre os candidatos do modelo. Ligado por padrão "
+            "desde que as listas foram empacotadas: 6 correções em 40 páginas, as 6 confirmadas "
+            "pela camada, nenhuma palavra certa quebrada. Ver docs/metrics/texto_dicionario.json."
         ),
     )
     parser.add_argument(
@@ -258,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
                 marca_fina=not args.sem_marca_fina,
                 empilhados=not args.sem_empilhados,
                 italico=not args.sem_italico,
-                dicionario=args.dicionario,
+                dicionario=not args.sem_dicionario,
                 numeros=not args.sem_numeros,
                 marcar_negrito=not args.sem_negrito,
                 juntar_lance=not args.sem_juntar_lance,

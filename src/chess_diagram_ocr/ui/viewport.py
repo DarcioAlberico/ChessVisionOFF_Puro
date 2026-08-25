@@ -25,9 +25,11 @@ jeito que só se percebe usando, e nenhuma delas deveria exigir uma janela para 
 
 from __future__ import annotations
 
+import math
 from enum import Enum
 
 __all__ = [
+    "LADO_DO_DESLIZADOR",
     "MAX_ZOOM",
     "MIN_ZOOM",
     "PAGE_FLIP_COOLDOWN_S",
@@ -39,8 +41,10 @@ __all__ = [
     "desvio_de_centralizacao",
     "fit_page_zoom",
     "fit_width_zoom",
+    "posicao_do_zoom",
     "regiao_de_rolagem",
     "wheel_direction",
+    "zoom_da_posicao",
     "zoomed",
 ]
 
@@ -114,6 +118,36 @@ def decide_wheel(
 
 def clamp_zoom(value: float) -> float:
     return max(MIN_ZOOM, min(MAX_ZOOM, float(value)))
+
+
+LADO_DO_DESLIZADOR = 100.0
+"""A escala do deslizador de zoom da pele "Foco" (S-225). Vai de 0 a 100, e não de 25 a 200.
+
+O deslizador fala em **posição**, e não em zoom: quem converte é o par de funções abaixo. É o que
+permite trocar a faixa de `clamp_zoom` sem mexer no widget, e afirmar a conversão sem abrir
+janela."""
+
+
+def posicao_do_zoom(zoom: float) -> float:
+    """A posição `0..100` do deslizador para um zoom, em escala **logarítmica**.
+
+    **Por que logarítmica.** Numa escala linear entre 25% e 200%, metade do curso do deslizador
+    fica acima de 112% -- e a metade que importa, a de enquadrar um diagrama pequeno, se espreme
+    nos primeiros milímetros. A diferença entre 40% e 50% é de um quarto do tamanho na tela; a
+    entre 190% e 200%, de um vigésimo. O olho vê razão, e a escala tem de falar em razão.
+
+    É a mesma aritmética que `zoomed` já usa para a roda: lá o passo é multiplicativo
+    (`ZOOM_STEP`), e aqui o curso inteiro é. As duas concordam por construção -- um giro de roda
+    move o deslizador sempre a mesma distância, em qualquer ponto do curso.
+    """
+    grampeado = clamp_zoom(zoom)
+    return LADO_DO_DESLIZADOR * math.log(grampeado / MIN_ZOOM) / math.log(MAX_ZOOM / MIN_ZOOM)
+
+
+def zoom_da_posicao(posicao: float) -> float:
+    """O zoom de uma posição `0..100`, já grampeado. Inverso exato de `posicao_do_zoom`."""
+    fracao = max(0.0, min(LADO_DO_DESLIZADOR, float(posicao))) / LADO_DO_DESLIZADOR
+    return clamp_zoom(MIN_ZOOM * (MAX_ZOOM / MIN_ZOOM) ** fracao)
 
 
 def zoomed(current: float, direction: int, *, step: float = ZOOM_STEP) -> float:

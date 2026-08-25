@@ -94,12 +94,32 @@ def pendor_da_linha(binaria: np.ndarray, caixas: Sequence[Caixa]) -> float | Non
     return float(np.median(medidos))
 
 
-def e_italica(binaria: np.ndarray, caixas: Sequence[Caixa], *, corte: float | None = None) -> bool:
-    """A linha está inclinada? `corte=None` lê `PENDOR_DE_ITALICO` na hora da chamada."""
+def declarar(
+    binaria: np.ndarray, caixas: Sequence[Caixa], *, corte: float | None = None
+) -> bool | None:
+    """A linha está inclinada -- ou **não deu para medir** (S-236).
+
+    Três estados, e o terceiro é o item: `None` é "não se sabe", e não é o mesmo que `False`. Uma
+    linha de três boxes não tem população para medir inclinação nenhuma (ver `MIN_BOXES_PARA_MEDIR`),
+    e dizer que ela está em pé seria afirmar sobre o que não se olhou. É o mesmo idioma de
+    `LinhaLida.negrito`, e pela mesma razão.
+
+    `e_italica` continua existindo e continua achatando `None` em `False`, porque no caminho da
+    **correção** é isso que se quer: não se troca `/` por `l` sobre uma dúvida.
+    """
     pendor = pendor_da_linha(binaria, caixas)
     if pendor is None:
-        return False
+        return None
     return pendor >= (PENDOR_DE_ITALICO if corte is None else corte)
+
+
+def e_italica(binaria: np.ndarray, caixas: Sequence[Caixa], *, corte: float | None = None) -> bool:
+    """A linha está inclinada? `corte=None` lê `PENDOR_DE_ITALICO` na hora da chamada.
+
+    Não medir é responder `False`: quem chama isto vai **trocar um caractere**, e a dúvida não
+    autoriza a troca. Quem quer a diferença entre "está em pé" e "não se mediu" chama `declarar`.
+    """
+    return declarar(binaria, caixas, corte=corte) is True
 
 
 def corrigir(
@@ -110,15 +130,21 @@ def corrigir(
     binaria: np.ndarray,
     *,
     corte: float | None = None,
+    italica: bool | None = None,
 ) -> list[tuple[str, float]]:
     """Numa linha itálica, `/` vira `l`. Fora dela, a saída é a entrada.
 
     A troca só acontece se a classe de destino existir no modelo, e a confiança devolvida é a
     **dela** -- a mesma regra dos módulos irmãos, e pelo mesmo motivo.
+
+    `italica` é a resposta de `declarar` quando quem chama **já a mediu**. Serve para o leitor não
+    varrer os boxes duas vezes na mesma linha -- uma para gravar o campo da S-236, outra para
+    decidir a troca -- e é o que sustenta a frase de que a S-236 custa zero de tempo de leitura.
     """
     if not lidos or not caixas:
         return list(lidos)
-    if not e_italica(binaria, caixas, corte=corte):
+    inclinada = e_italica(binaria, caixas, corte=corte) if italica is None else italica
+    if not inclinada:
         return list(lidos)
 
     indices = {c: i for i, c in idx_to_char.items() if c in TROCA.values()}
@@ -137,6 +163,7 @@ __all__ = [
     "PENDOR_DE_ITALICO",
     "TROCA",
     "corrigir",
+    "declarar",
     "e_italica",
     "pendor_da_linha",
     "pendor_do_box",

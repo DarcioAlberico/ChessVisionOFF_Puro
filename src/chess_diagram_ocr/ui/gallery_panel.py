@@ -48,7 +48,7 @@ from chess_diagram_ocr.games_db import (
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
 from chess_diagram_ocr.service import OcrService
 
-from . import database_choice, scan_scope, strings, texto, tokens
+from . import database_choice, scan_scope, strings, texto, theme, tokens
 from .busy import BusyRegistry, BusyToken
 from .gallery_model import HEADER_FIELDS, GalleryModel, describe_origin
 from .games_dialog import GamesDialog
@@ -406,7 +406,7 @@ class GalleryPanel(ttk.Frame):
         # status: a barra fala do ultimo gesto, e esta pergunta ("quem preencheu isto?") se faz
         # ao chegar num diagrama, que pode ser dias depois da busca.
         texto.acompanhar(
-            ttk.Label(lateral, textvariable=self.origin_var, foreground=tokens.RESERVA[tokens.PRONTO_TEXTO])
+            theme.pintar(ttk.Label(lateral, textvariable=self.origin_var), "foreground", tokens.PRONTO_TEXTO)
         ).grid(row=livre + 5, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         # A lista de partidas fica **junto da procedencia**: as duas respondem "de onde veio

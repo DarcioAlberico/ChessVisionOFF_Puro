@@ -78,7 +78,7 @@ class JanelaTests(unittest.TestCase):
         self.pai = tk.Toplevel(self.root)
         self.addCleanup(self.pai.destroy)
 
-    def test_a_legenda_mostra_os_dez_com_a_mesma_descricao_da_tabela(self) -> None:
+    def test_a_legenda_mostra_todos_com_a_mesma_descricao_da_tabela(self) -> None:
         """O critério de aceite: a legenda mostra os atalhos com a descrição do menu."""
         janela = legenda.abrir(self.pai)
         self.addCleanup(janela.destroy)

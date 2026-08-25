@@ -248,5 +248,39 @@ class PainelDoPdfTests(unittest.TestCase):
                 self.assertEqual([], ausentes, f"{len(ausentes)} controles fora da tela em {largura} px")
 
 
+class ItemVisivelTests(unittest.TestCase):
+    """O primeiro item da barra estava **coberto**, e ninguém tinha olhado (S-227).
+
+    `pack(in_=)` muda quem arruma o widget e não quem é o pai dele: a moldura de linha continua
+    irmã dos itens, e irmão criado depois desenha por cima. A primeira moldura nasce no primeiro
+    `adicionar` -- **depois** do item de índice 0 e antes de todos os outros --, então ela cobria
+    exatamente um item: o primeiro. Em toda `BarraFluida` do programa.
+
+    Na janela clássica isso são "Abrir PDF" e "Página anterior", invisíveis desde a S-151. O
+    defeito apareceu ao fotografar a fita da pele nova, e o conserto é uma linha: `lift`.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz()
+
+    def test_nenhum_item_fica_atras_da_moldura_de_linha(self) -> None:
+        janela = tk.Toplevel(self.root)
+        self.addCleanup(janela.destroy)
+        barra_ = BarraFluida(janela)
+        barra_.pack(fill=tk.X)
+        for nome in ("Primeiro", "Segundo", "Terceiro"):
+            barra_.adicionar(ttk.Button(barra_, text=nome))
+        self.root.update_idletasks()
+
+        # `winfo_children` devolve em ordem de empilhamento: quem vem depois desenha por cima.
+        classes = [filho.winfo_class() for filho in barra_.winfo_children()]
+        ultima_moldura = max(i for i, classe in enumerate(classes) if classe == "TFrame")
+        primeiro_item = min(i for i, classe in enumerate(classes) if classe == "TButton")
+        self.assertGreater(primeiro_item, ultima_moldura, "há item desenhado atrás de uma moldura")
+
+
 if __name__ == "__main__":
     unittest.main()

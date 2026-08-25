@@ -30,7 +30,7 @@ from typing import Any
 
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from ..text.transcricao import Item, ReferenciaMudouNoDisco, SessaoDeTranscricao
+from ..text.transcricao import Item, ReferenciaMudouNoDisco, SessaoDeTranscricao, so_scan
 from . import EXIT_BAD_INPUT, EXIT_OK, cli_errors
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,8 @@ class JanelaDeTranscricao:
         self._imagem_atual: Any = None
         self._largura_canvas = 0
 
-        root.title("Transcrever as faixas de referência · S-183")
+        titulo = "Transcrever as faixas de referência · S-183"
+        root.title(f"{titulo} — só as de scan" if sessao.filtrada else titulo)
         root.geometry("1440x900")
         root.minsize(900, 600)
 
@@ -139,11 +140,7 @@ class JanelaDeTranscricao:
 
         root.after(50, self._posicionar_divisor)
 
-        # Abre onde o trabalho parou. O `if` não é detalhe: `proxima_pendente` pula a atual de
-        # propósito -- é o que o botão precisa fazer --, e sem a guarda a janela abriria na
-        # faixa 2 de um arquivo em que nenhuma foi conferida.
-        if not self.sessao.atual.pendente:
-            self.sessao.proxima_pendente()
+        # Onde o trabalho parou já é a posição inicial da sessão -- a primeira pendente da vista.
         self._mostrar()
 
     # ------------------------------------------------------------------ o que a janela mostra
@@ -193,6 +190,15 @@ class JanelaDeTranscricao:
     def _atualizar_progresso(self) -> None:
         s = self.sessao
         circulares = f" · {s.circulares} circular(es)" if s.circulares else ""
+        if s.filtrada:
+            # Com filtro, o placar que interessa é o da vista -- mas o do arquivo continua ao
+            # lado: é o arquivo que se grava, e é sobre ele que o `cvoff-texto-placar` mede.
+            self.var_progresso.set(
+                f"faixa {s.indice + 1}   ·   scan: {s.conferidas_visiveis} de {s.total_visivel} "
+                f"conferidas, {s.total_visivel - s.conferidas_visiveis} pendentes   ·   "
+                f"no arquivo: {s.conferidas} de {s.total}{circulares}"
+            )
+            return
         self.var_progresso.set(
             f"faixa {s.indice + 1} de {s.total}   ·   {s.conferidas} conferidas, "
             f"{s.total - s.conferidas} pendentes{circulares}"
@@ -316,16 +322,24 @@ class JanelaDeTranscricao:
         if self.sessao.proxima_pendente():
             self._mostrar()
         else:
-            self.var_status.set("Não sobrou nenhuma pendente: as 123 estão conferidas.")
+            self.var_status.set(self._recado_de_fim())
 
     def marcar_e_seguir(self) -> None:
         self.var_conferido.set(True)
         self._sair_da_faixa()
-        if self.sessao.proxima_pendente():
-            self._mostrar()
-        else:
-            self._mostrar()
-            self.var_status.set("Todas conferidas. Rode `cvoff-texto-placar` para a tabela da S-183.")
+        seguiu = self.sessao.proxima_pendente()
+        self._mostrar()
+        if not seguiu:
+            self.var_status.set(self._recado_de_fim())
+
+    def _recado_de_fim(self) -> str:
+        s = self.sessao
+        if s.filtrada:
+            return (
+                f"Não sobrou pendente entre as {s.total_visivel} de scan. No arquivo ainda "
+                f"faltam {s.total - s.conferidas} -- reabra sem `--so-scan` para elas."
+            )
+        return f"As {s.total} estão conferidas. Rode `cvoff-texto-placar` para a tabela da S-183."
 
     def restaurar_semente(self) -> None:
         if self.sessao.restaurar_semente():
@@ -365,6 +379,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--referencia", type=Path, default=REFERENCIA_PADRAO)
     parser.add_argument("--pngs", type=Path, default=PNGS_PADRAO, help="A pasta do `--exportar`.")
+    parser.add_argument(
+        "--so-scan",
+        action="store_true",
+        help=(
+            "Navega so pelas faixas de livro sem camada de texto -- as que decidem a fase. As "
+            "outras continuam no arquivo e continuam sendo gravadas; o filtro e da navegacao."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -379,10 +401,27 @@ def main(argv: list[str] | None = None) -> int:
         )
         return EXIT_BAD_INPUT
 
-    sessao = SessaoDeTranscricao.carregar(args.referencia, args.pngs)
+    sessao = SessaoDeTranscricao.carregar(
+        args.referencia, args.pngs, filtro=so_scan if args.so_scan else None
+    )
     if not sessao.total:
         logger.warning("%s está vazio: não há faixa para transcrever.", args.referencia)
         return EXIT_OK
+    if args.so_scan and not sessao.total_visivel:
+        # Sair em vez de abrir uma janela vazia: sem faixa de scan não há o que fazer aqui, e
+        # uma janela em branco não diz por quê.
+        logger.warning(
+            "Nenhuma das %d faixas de %s é de livro sem camada de texto. "
+            "Rode sem `--so-scan`.", sessao.total, args.referencia,
+        )
+        return EXIT_OK
+    if args.so_scan:
+        logger.info(
+            "Só as de scan: %d faixas, %d ainda pendentes. As outras %d continuam no arquivo.",
+            sessao.total_visivel,
+            sessao.total_visivel - sessao.conferidas_visiveis,
+            sessao.total - sessao.total_visivel,
+        )
     sem_png = sum(1 for item in sessao.itens if item.imagem is None)
     if sem_png:
         logger.warning(

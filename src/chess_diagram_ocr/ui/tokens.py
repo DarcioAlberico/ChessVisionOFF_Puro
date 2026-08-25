@@ -28,9 +28,11 @@ from __future__ import annotations
 from typing import Protocol
 
 __all__ = [
+    "NO_CROMO_ESCURO",
     "PAPEIS",
     "RESERVA",
     "SUPERFICIES",
+    "SUPERFICIES_DE_DOCUMENTO",
     "cor",
     "paleta",
     "distancia_de_matiz",
@@ -74,6 +76,22 @@ PROBLEMA = "PROBLEMA"
 
 DIVERGENTE = "DIVERGENTE"
 """Casa em que duas leituras discordam (a 2ª opinião da S-66)."""
+
+PROBLEMA_TEXTO = "PROBLEMA_TEXTO"
+DIVERGENTE_TEXTO = "DIVERGENTE_TEXTO"
+"""Os mesmos dois significados, como **texto** -- a mensagem de erro do rodapé, o aviso do campo,
+a linha "achada por nome" da lista de partidas.
+
+**Nasceram na S-224, e o cromo escuro é quem os separou.** Até aqui `PROBLEMA` e `DIVERGENTE`
+faziam as duas coisas com um nome só: contorno de casa no tabuleiro e letra sobre o cromo. Na
+paleta clara isso passou despercebido porque **o mesmo valor serve aos dois** -- `#c0392b` dá
+3,96:1 sobre a casa clara e 4,77:1 sobre o cinza do cromo. Sobre um cromo escuro os dois usos
+pedem valores opostos: a letra precisa clarear para ser lida, e o contorno precisa **não**
+clarear, porque ele é medido contra as casas, que não seguem pele nenhuma.
+
+É a S-158 outra vez -- *um papel, um significado* --, encontrada por um caminho novo. Na pele
+clássica os dois pares têm o mesmo valor de propósito: separar os nomes não muda um pixel de
+hoje, e é o que permite que só a pele escura os afaste."""
 
 CORRIGIDO = "CORRIGIDO"
 """**Marcação** de casa que o decodificador reescreveu em relação ao que o modelo leu.
@@ -174,6 +192,8 @@ PAPEIS: tuple[str, ...] = (
     ATENCAO,
     PROBLEMA,
     DIVERGENTE,
+    PROBLEMA_TEXTO,
+    DIVERGENTE_TEXTO,
     CORRIGIDO,
     VIZINHA_TEXTO,
     SUPERFICIE_PAGINA,
@@ -204,6 +224,8 @@ RESERVA: dict[str, str] = {
     ATENCAO: "#8a5a00",
     PROBLEMA: "#c0392b",
     DIVERGENTE: "#8e44ad",
+    PROBLEMA_TEXTO: "#c0392b",
+    DIVERGENTE_TEXTO: "#8e44ad",
     CORRIGIDO: "#2b4008",
     VIZINHA_TEXTO: "#1565c0",
     SUPERFICIE_PAGINA: "#1c1c1c",
@@ -273,6 +295,51 @@ abrir janela nos 30 temas.
 O `#171614` do tabuleiro é o antigo `SUPERFICIE_ESTUDO` (`#262421`) mais escuro um degrau: a cor
 do tabuleiro de Análise não foi jogada fora, virou o valor de tema escuro da superfície única.
 """
+
+
+SUPERFICIES_DE_DOCUMENTO: tuple[str, ...] = (SUPERFICIE_PAGINA, SUPERFICIE_TABULEIRO, MOLDURA)
+"""As superfícies em que o **documento** é desenhado: a folha do livro e o tabuleiro (S-224).
+
+Elas seguem o tema, como desde a S-147 -- e **não seguem a pele**. É a fronteira inteira da
+S-224: o produto é comparar diagrama impresso em papel branco com o que o modelo leu, e a paleta
+que faz isso funcionar foi medida (S-146, S-158, S-159). Uma aparência nova pode escurecer o
+cromo em volta; o que ela não pode é mudar o fundo contra o qual as doze marcações foram
+medidas."""
+
+NO_CROMO_ESCURO: dict[str, str] = {
+    SUPERFICIE_DICA: "#33312a",
+    SUPERFICIE_PADRAO: "#1f2124",
+    TEXTO_PADRAO: "#e9eaec",
+    TEXTO_SECUNDARIO: "#a7adb6",
+    # Os cinco abaixo são a conta que registrar uma pele escura obriga a assinar. Sobre
+    # `#1f2124` os valores da paleta clara dão 2,50, 2,97, 2,72, 2,75 e 2,81 -- todos abaixo do
+    # piso AA de 4,5:1, porque foram escolhidos contra um fundo claro. Aqui eles sobem em
+    # **luminosidade**, com matiz e saturação preservadas: `PROBLEMA` continua sendo o vermelho
+    # de "pare", e `PRONTO_TEXTO` o verde de "já rendeu amostra". Um papel que trocasse de matiz
+    # entre peles seria dois significados com um nome, que é o defeito da S-158.
+    PRONTO_TEXTO: "#1ea466",
+    PROBLEMA_TEXTO: "#dd7065",
+    ATENCAO: "#c78200",
+    DIVERGENTE_TEXTO: "#b37acb",
+    VIZINHA_TEXTO: "#4492eb",
+}
+"""O valor de cada papel de **cromo** quando a pele declara `cromo_escuro` (S-224).
+
+Nove: os dois que a spec nomeia, os dois de texto que eles obrigam, e os cinco que a medição
+cobrou. Um cromo escuro com `TEXTO_PADRAO` preto é texto invisível, e -- desde a S-220 --
+**ícone** invisível, que é literalmente o defeito que o ícone-como-traço existe para não ter.
+
+**A matiz é preservada em todos os cinco, e isso foi medido**: o desvio máximo é de 0,2°. O que
+muda é a luminosidade, o mínimo para cruzar 5,0:1 -- com folga sobre o piso de 4,5, porque um
+valor que passa por 0,04 é um valor que a próxima mexida derruba sem avisar.
+
+`SUPERFICIE_DICA` repete o valor de `_NO_ESCURO` de propósito: a dica é cromo, e escurecer por
+tema ou por pele tem de dar no mesmo lugar. Ter duas dicas escuras diferentes seria a mesma cor
+com dois donos, que é o defeito que a S-145 mediu.
+
+**A pele ganha do tema para estes quatro.** "Cromo segue a pele" é literal: quem escolher a
+"Foco" e forçar um tema claro por `CVOFF_TTK_THEME` recebe o cromo da pele, porque foi a pele
+que ele escolheu por último e é ela que a janela está desenhando."""
 
 
 _DO_TEMA: dict[str, tuple[str, str]] = {
@@ -374,30 +441,40 @@ def tema_e_escuro(style: Estilo | None = None) -> bool:
     return fundo is not None and _luminancia(fundo) < LIMIAR_DE_TEMA_ESCURO
 
 
-def cor(papel: str, style: Estilo | None = None) -> str:
+def cor(papel: str, style: Estilo | None = None, *, cromo_escuro: bool = False) -> str:
     """O hexadecimal de um papel. `style=None` devolve a reserva.
 
     Levanta `KeyError` para papel desconhecido, em vez de devolver um cinza: um papel escrito
     errado que resolvesse para *alguma* cor viraria um widget de cor plausível e sem
     significado, que é exatamente o estado de que este módulo veio tirar o projeto.
 
-    Três caminhos, nesta ordem: o que o tema responde melhor (`_DO_TEMA`), a superfície de
-    canvas sob tema escuro (`_NO_ESCURO`, S-147), e a reserva.
+    Quatro caminhos, nesta ordem: o **cromo da pele** (`NO_CROMO_ESCURO`, S-224), o que o tema
+    responde melhor (`_DO_TEMA`), a superfície de canvas sob tema escuro (`_NO_ESCURO`, S-147),
+    e a reserva.
+
+    **`cromo_escuro` faz duas coisas opostas, e é a fronteira da S-224.** Escurece o cromo, e
+    **prende** as superfícies de documento na paleta medida: a folha e o tabuleiro não escurecem
+    porque alguém trocou de aparência. Trocar de *tema* continua movendo as duas, como desde a
+    S-147 -- tema é o eixo de cor, e essa escolha é de quem a faz.
     """
     if papel not in RESERVA:
         raise KeyError(f"papel de cor desconhecido: {papel!r}. Os válidos estão em PAPEIS.")
+    if cromo_escuro and papel in NO_CROMO_ESCURO:
+        return NO_CROMO_ESCURO[papel]
     if style is not None and papel in _DO_TEMA:
         do_tema = _resposta_do_tema(style, *_DO_TEMA[papel])
         if do_tema is not None:
             return do_tema
+    if cromo_escuro and papel in SUPERFICIES_DE_DOCUMENTO:
+        return RESERVA[papel]
     if papel in _NO_ESCURO and tema_e_escuro(style):
         return _NO_ESCURO[papel]
     return RESERVA[papel]
 
 
-def paleta(style: Estilo | None = None) -> dict[str, str]:
+def paleta(style: Estilo | None = None, *, cromo_escuro: bool = False) -> dict[str, str]:
     """A paleta inteira resolvida. É o que o teste percorre para afirmar totalidade."""
-    return {papel: cor(papel, style) for papel in PAPEIS}
+    return {papel: cor(papel, style, cromo_escuro=cromo_escuro) for papel in PAPEIS}
 
 
 # ------------------------------------------------------------------- contraste (S-146)

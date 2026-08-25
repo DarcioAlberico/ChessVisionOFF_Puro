@@ -80,7 +80,9 @@ class GamesDialog(tk.Toplevel):
         # A cada tecla, e nao no Return: com 32 candidatas o filtro e para *reduzir enquanto se
         # olha*, e exigir confirmacao a cada tentativa faria a pessoa digitar o nome inteiro.
         self.filter_var.trace_add("write", lambda *_: self._repopulate())
-        ttk.Label(topo, textvariable=self.count_var, foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO]).pack(side=tk.RIGHT)
+        theme.pintar(
+            ttk.Label(topo, textvariable=self.count_var), "foreground", tokens.TEXTO_SECUNDARIO
+        ).pack(side=tk.RIGHT)
 
         corpo = ttk.Frame(self, padding=(8, 0))
         corpo.pack(fill=tk.BOTH, expand=True)
@@ -101,9 +103,15 @@ class GamesDialog(tk.Toplevel):
         # Negrito no corpo, e não um degrau acima: a linha escolhida precisa de peso e não de
         # nível -- subir de tamanho faria a linha crescer e a lista pular ao trocar de escolha.
         self.tree.tag_configure("escolhida", font=theme.fonte_atual(tipografia.CORPO, negrito=True))
-        self.tree.tag_configure("legenda", foreground=tokens.RESERVA[tokens.PRONTO_TEXTO])
-        self.tree.tag_configure("vizinha", foreground=tokens.RESERVA[tokens.VIZINHA_TEXTO])
-        self.tree.tag_configure("porNome", foreground=tokens.RESERVA[tokens.DIVERGENTE])
+        # A `Treeview` colore por etiqueta e não por widget, então quem repinta é a chamada
+        # inteira -- `theme.pintar` serve a `configure`, e isto não é um `configure`.
+        def _pintar_etiquetas() -> None:
+            self.tree.tag_configure("legenda", foreground=theme.cor_atual(tokens.PRONTO_TEXTO))
+            self.tree.tag_configure("vizinha", foreground=theme.cor_atual(tokens.VIZINHA_TEXTO))
+            self.tree.tag_configure("porNome", foreground=theme.cor_atual(tokens.DIVERGENTE_TEXTO))
+
+        _pintar_etiquetas()
+        theme.ao_repintar(_pintar_etiquetas)
 
         rodape = ttk.Frame(self, padding=8)
         rodape.pack(fill=tk.X)

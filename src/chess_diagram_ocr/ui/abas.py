@@ -19,9 +19,45 @@ from __future__ import annotations
 
 from . import formato
 
-__all__ = ["ABA_DE_TRABALHO", "contagem_no_rotulo", "nome_base", "rotulo"]
+__all__ = [
+    "ABAS",
+    "ABA_DE_TRABALHO",
+    "DO_ACERVO",
+    "DO_DIAGRAMA",
+    "contagem_no_rotulo",
+    "nome_base",
+    "rotulo",
+]
 
-ABA_DE_TRABALHO = "Resultado"
+RESULTADO = "Resultado"
+ANALISE = "Análise"
+REVISAO = "Revisão"
+TEXTO = "Texto"
+DATASET = "Dataset"
+GALERIA = "Galeria"
+CONFIGURACAO = "Configuração"
+
+DO_DIAGRAMA: tuple[str, ...] = (RESULTADO, ANALISE, REVISAO, TEXTO)
+"""As abas que mudam de conteúdo quando se clica num retângulo da página."""
+
+DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, CONFIGURACAO)
+"""As que falam do livro inteiro. A Configuração fecha a fila: é a aba do primeiro dia."""
+
+ABAS: tuple[str, ...] = DO_DIAGRAMA + DO_ACERVO
+"""As abas do painel esquerdo, **na ordem** -- e a ordem é o item (S-162).
+
+Elas misturavam dois níveis, e **o corte entre os dois grupos é onde a barra muda de assunto**.
+Seis abas de peso igual escondiam que quatro delas seguem o diagrama aberto e três não.
+
+**São sete, e não seis.** A S-162 arrumou seis; a S-211 acrescentou a `Texto`, do lado do diagrama
+aberto -- ela responde "o que está escrito nesta folha?", que é a mesma pergunta de contexto que o
+`Resultado` e a `Revisão` respondem. A spec da S-226 ainda dizia seis, e é este número que vale.
+
+**Declarada aqui porque uma pele não pode esconder aba nenhuma** (regra 2 da SPEC_APARENCIA). A
+Imagem 1 não desenha faixa de abas; o que a S-226 muda é o **peso** dela, não o conteúdo -- e o
+teste compara a barra montada com esta tupla, em cada pele registrada."""
+
+ABA_DE_TRABALHO = RESULTADO
 """Onde a janela abre num checkout novo (S-162).
 
 Era a Configuração: três caminhos de arquivo e os parâmetros de treino, isto é, a aba do primeiro

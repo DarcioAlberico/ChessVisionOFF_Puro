@@ -42,9 +42,10 @@ from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import LocalReaderSettings, RemoteFenSettings
 
-from . import board_edit, estilos, strings, texto, theme, tipografia, tokens
+from . import atalhos, board_edit, comandos, estilos, strings, texto, theme, tipografia, tokens
 from .board_widget import InteractiveBoard, PieceImages
 from .editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
+from .historico import Historico
 from .legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
 from .net_button import NetCorrectionButton
 from .page_results import PageOcrParams, PageResults, PageResultsCache, PageSwitch, decide_page_switch
@@ -111,6 +112,15 @@ def read_board_image(path_text: str) -> np.ndarray | None:
     if image_bgr is None:
         return None
     return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+
+
+MOTIVO_SEM_DIAGRAMA = "Fica cinza enquanto não há diagrama aberto."
+MOTIVO_SEM_DESFAZER = "Fica cinza enquanto nada foi mudado neste diagrama: a pilha é por diagrama."
+MOTIVO_SEM_REFAZER = "Fica cinza enquanto nada foi desfeito -- só há o que refazer depois de um Ctrl+Z."
+"""Por que cada botão do histórico está cinza (S-165/S-229).
+
+Três frases e não uma: "não há diagrama" e "não há o que desfazer" são situações diferentes, e uma
+dica que servisse às duas não responderia a pergunta que a pessoa tem diante do botão."""
 
 
 class ResultPanel(ttk.Frame):
@@ -196,6 +206,15 @@ class ResultPanel(ttk.Frame):
 
         self.page_results = PageResultsCache()
 
+        self.historico = Historico()
+        """Desfazer e refazer do tabuleiro (S-229). Uma pilha de posições, **por diagrama**.
+
+        Mora no painel e não no `DiagramEditorModel` porque o que ele guarda é do **diagrama
+        aberto agora**, e não do carregamento: as listas do modelo sobrevivem à navegação entre
+        diagramas da mesma página, e a pilha não pode -- desfazer para dentro de outra posição é
+        pior que não desfazer. `_zerar_historico` é chamado de todo lugar que troca o que está no
+        tabuleiro, e é a única forma de a pilha começar."""
+
         self.fen_var = tk.StringVar(value="")
         self.side_to_move_var = tk.StringVar(value="w")
         self.side_source_var = tk.StringVar(value="")
@@ -209,6 +228,9 @@ class ResultPanel(ttk.Frame):
         self.board_zoom_var = tk.DoubleVar(value=0.85)
 
         self._settle_review: Callable[[int, str, str], None] | None = None
+
+        self._dicas_de_historico: dict[str, Tooltip] = {}
+        """A dica de cada botão do histórico, para ser **reescrita** e não recriada (S-229)."""
 
         self._build(piece_images)
         # **Depois de montar, e não só ao limpar** (S-170): sem esta chamada o tabuleiro abria na
@@ -278,6 +300,24 @@ class ResultPanel(ttk.Frame):
             zoom_row, text=strings.MAPA_DE_INCERTEZA, variable=self.heatmap_var, command=self.on_heatmap_toggle
         ).pack(side=tk.RIGHT)
 
+        # Desfazer, refazer e limpar (S-229), **junto do tabuleiro** e não na caixa da FEN: o que
+        # os três revertem é a posição, e a distância entre o controle e o objeto que ele muda é o
+        # que faz a pessoa procurar no menu. Os rótulos saem do catálogo (S-219) -- os três botões
+        # antigos desta janela ainda os escrevem à mão, e essa dívida está registrada lá.
+        edicao_row = ttk.Frame(caixa)
+        edicao_row.pack(fill=tk.X, padx=8, pady=(4, 0))
+        self.btn_desfazer = self._botao_de_historico(edicao_row, "desfazer", self.desfazer)
+        self.btn_refazer = self._botao_de_historico(edicao_row, "refazer", self.refazer)
+        self.btn_limpar = ttk.Button(
+            edicao_row, text=comandos.rotulo_de_botao("limpar_tabuleiro"), command=self.limpar_tabuleiro
+        )
+        self.btn_limpar.pack(side=tk.LEFT, padx=6)
+        Tooltip(
+            self.btn_limpar,
+            "Esvazia as 64 casas para montar a posição do zero.\n"
+            "Fica cinza sem diagrama aberto, e é desfazível com Ctrl+Z.",
+        )
+
         # O editor da S-20 no lugar do canvas somente-leitura: corrigir uma peça passa de
         # "contar casas e reescrever a FEN" para um arraste.
         self.board = InteractiveBoard(
@@ -296,19 +336,21 @@ class ResultPanel(ttk.Frame):
         # A frase do estado vazio (S-170). Um `Label` que existe sempre e fica em branco quando há
         # diagrama: aparecer e sumir mudaria a altura do painel a cada leitura.
         self.vazio_var = tk.StringVar(value=MENSAGEM_VAZIA)
-        texto.acompanhar(
-            ttk.Label(
-                caixa,
-                textvariable=self.vazio_var,
-                justify=tk.LEFT,
-                foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
-            )
-        ).pack(anchor="w", padx=8, pady=(0, 6))
+        lbl_vazio = ttk.Label(
+            caixa,
+            textvariable=self.vazio_var,
+            justify=tk.LEFT,
+            foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
+        )
+        texto.acompanhar(lbl_vazio).pack(anchor="w", padx=8, pady=(0, 6))
+        theme.ao_repintar(lambda: lbl_vazio.configure(foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO)))
 
         legal = ttk.Frame(caixa)
         legal.pack(fill=tk.X, padx=8, pady=(0, 6))
         texto.acompanhar(ttk.Label(legal, textvariable=self.legality_var, justify=tk.LEFT)).pack(anchor="w")
-        ttk.Label(legal, textvariable=self.material_var, foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO]).pack(anchor="w")
+        theme.pintar(
+            ttk.Label(legal, textvariable=self.material_var), "foreground", tokens.TEXTO_SECUNDARIO
+        ).pack(anchor="w")
 
         nav = ttk.Frame(caixa)
         nav.pack(fill=tk.X, padx=8, pady=(0, 6))
@@ -331,6 +373,11 @@ class ResultPanel(ttk.Frame):
         entry = ttk.Entry(fen_box, textvariable=self.fen_var, font=theme.fonte_atual(tipografia.DADO))
         entry.pack(fill=tk.X, padx=8, pady=(0, 4))
         entry.bind("<Return>", lambda _event: self.apply_fen_edit())
+        # E a tecla da tabela, ligada aqui de propósito (S-223). A guarda de foco de
+        # `ui/shortcuts.py` cede **qualquer** atalho a um campo de texto, e é dentro deste campo
+        # que `Ctrl+Enter` mais faz sentido -- então quem a liga é o próprio campo, pelo caminho
+        # que a S-117 abriu. A sequência vem de `ui/atalhos.py`: a declaração continua sendo uma.
+        entry.bind(atalhos.por_acao["aplicar_fen"].sequencia, lambda _event: self.apply_fen_edit())
 
         # Lado a jogar visivel e editavel (S-16/S-19). Até a Fase 3 o app não tinha onde
         # mostrar isso, e a informação -- quando o PDF a dava -- morria na exportação.
@@ -586,6 +633,7 @@ class ResultPanel(ttk.Frame):
 
     def _sync_widgets_to_model(self, *, total: int) -> None:
         idx = self.model.clamped_index()
+        self._zerar_historico(idx)
         self.selected_diag_var.set(idx + 1)
         self.spin_diag.config(from_=1, to=total)
         self.fen_var.set(self.model.fen_at(idx))
@@ -596,6 +644,7 @@ class ResultPanel(ttk.Frame):
 
     def clear(self) -> None:
         self.model.clear()
+        self.historico.zerar()
         self.selected_diag_var.set(1)
         self.spin_diag.config(from_=1, to=1)
         self.fen_var.set("")
@@ -719,6 +768,7 @@ class ResultPanel(ttk.Frame):
         if not self.model.items:
             return
         idx = self.model.clamped_index()
+        self._zerar_historico(idx)
         self.selected_diag_var.set(idx + 1)
         self.fen_var.set(self.model.fen_at(idx))
         self.sync_side_widgets(idx)
@@ -740,6 +790,9 @@ class ResultPanel(ttk.Frame):
         if not self.model.items:
             return
         self.sync_fen_from_entry()
+        # A quarta origem (S-229). Só o campo de peças entra na pilha, que é o que ela guarda --
+        # e é o mesmo recorte que `on_board_changed` já grava em `fen_edits` a cada clique.
+        self.historico.registrar(board_edit.placement_of(self.model.fen_at()))
         self.update_views()
 
     def _mostrar_estado_vazio(self, vazio: bool) -> None:
@@ -754,8 +807,12 @@ class ResultPanel(ttk.Frame):
         """
         self.vazio_var.set(MENSAGEM_VAZIA if vazio else "")
         estado = tk.DISABLED if vazio else tk.NORMAL
-        for botao in (self.btn_apply_fen, self.btn_save, self.btn_save_all):
+        for botao in (self.btn_apply_fen, self.btn_save, self.btn_save_all, self.btn_limpar):
             botao.configure(state=estado)
+        # Os dois do histórico têm uma segunda razão para ficar cinza -- pilha vazia --, e por
+        # isso não entram no laço: quem decide os dois é `_atualizar_botoes_de_historico`, que já
+        # sabe das duas razões e escreve a certa na dica.
+        self._atualizar_botoes_de_historico()
 
     def update_views(self) -> None:
         self._mostrar_estado_vazio(not self.items)
@@ -810,12 +867,19 @@ class ResultPanel(ttk.Frame):
         self._on_status(f"Diagrama {idx + 1}: lado a jogar definido como {lado}.")
 
     def on_board_changed(self, placement: str) -> None:
-        """Toda edição no tabuleiro reescreve a FEN -- o campo de texto segue funcionando."""
+        """Toda edição no tabuleiro reescreve a FEN -- o campo de texto segue funcionando.
+
+        **Três das sete origens da S-229 passam por aqui**: pôr peça à mão, arrastar e apagar
+        casa. É o que a pilha de estados compra sobre a pilha de gestos -- as três chegam como a
+        posição de depois, e nenhuma delas precisou saber o próprio inverso.
+        """
         if not self.model.apply_placement(placement):
             return
+        self.historico.registrar(placement)
         self.fen_var.set(placement)
         self.update_legality()
         self._on_sync_study()
+        self._atualizar_botoes_de_historico()
 
     def on_square_selected(self, index: int | None) -> None:
         if index is None:
@@ -830,6 +894,89 @@ class ResultPanel(ttk.Frame):
         if self.board.delete_selected():
             return
         self._on_status("Selecione uma casa do tabuleiro para apagar a peça.")
+
+    # ------------------------------------------------------------ desfazer e refazer (S-229)
+
+    def _botao_de_historico(self, pai: tk.Misc, acao: str, funcao: Callable[[], None]) -> ttk.Button:
+        """Um dos dois botões do histórico, com a dica **trocável** presa a ele.
+
+        Uma dica por botão, criada aqui e reescrita em `_atualizar_botoes_de_historico`. Recriar
+        o `Tooltip` a cada mudança de estado perderia os `bind` -- é o que o docstring de
+        `ui/tooltip.py` diz, e `set_text` existe por causa disso.
+        """
+        botao = ttk.Button(pai, text=comandos.rotulo_de_botao(acao), command=funcao)
+        botao.pack(side=tk.LEFT, padx=(0, 6))
+        self._dicas_de_historico[acao] = Tooltip(botao, "")
+        return botao
+
+    def _atualizar_botoes_de_historico(self) -> None:
+        """Acende, apaga e **diz por quê** -- a regra da S-165, que achou 13 botões cinzas mudos.
+
+        As duas razões de estar cinza são diferentes, e quem olha precisa saber qual é a sua: sem
+        diagrama aberto não há posição nenhuma; com diagrama e a pilha vazia, não há mudança
+        anterior *neste* diagrama -- que é a consequência de a pilha ser por diagrama, e a única
+        forma de essa decisão aparecer para quem usa o programa.
+        """
+        tem_diagrama = bool(self.model.items)
+        for botao, acao, pode, vazia in (
+            (self.btn_desfazer, "desfazer", self.historico.pode_desfazer, MOTIVO_SEM_DESFAZER),
+            (self.btn_refazer, "refazer", self.historico.pode_refazer, MOTIVO_SEM_REFAZER),
+        ):
+            botao.configure(state=tk.NORMAL if (tem_diagrama and pode) else tk.DISABLED)
+            motivo = comandos.rotulo(acao) if tem_diagrama and pode else (vazia if tem_diagrama else MOTIVO_SEM_DIAGRAMA)
+            tecla = atalhos.acelerador(acao)
+            self._dicas_de_historico[acao].set_text(f"{motivo}\nTecla: {tecla}" if tecla else motivo)
+
+    def desfazer(self) -> None:
+        """`Ctrl+Z`: devolve a posição anterior deste diagrama."""
+        self._voltar_no_historico(self.historico.desfazer(), "Não há mudança anterior neste diagrama para desfazer.")
+
+    def refazer(self) -> None:
+        """`Ctrl+Y`: repõe o que o desfazer tirou."""
+        self._voltar_no_historico(self.historico.refazer(), "Não há o que refazer: nada foi desfeito.")
+
+    def limpar_tabuleiro(self) -> None:
+        """Esvazia as 64 casas -- e a pilha guarda a posição de antes, então é desfazível.
+
+        **Limpar é a posição, e não o editor.** Ver a nota do comando em `ui/comandos.py`: o que a
+        S-229 pede é uma das sete origens de mudança que o desfazer reverte, e esvaziar o editor
+        inteiro não é uma delas.
+        """
+        if not self.model.items:
+            self._on_status("Não há diagrama aberto para limpar.")
+            return
+        if board_edit.placement_of(self.model.fen_at()) == board_edit.EMPTY_PLACEMENT:
+            self._on_status("O tabuleiro já está vazio.")
+            return
+        self.on_board_changed(board_edit.EMPTY_PLACEMENT)
+        self.board.set_position(board_edit.EMPTY_PLACEMENT)
+        self._on_status("Tabuleiro limpo. Ctrl+Z devolve a posição.")
+
+    def _voltar_no_historico(self, placement: str | None, recusa: str) -> None:
+        """Põe na tela a posição que a pilha devolveu, ou diz por que não há uma."""
+        if placement is None:
+            self._on_status(recusa)
+            self._atualizar_botoes_de_historico()
+            return
+        if not self.model.apply_placement(placement):
+            return
+        self.fen_var.set(placement)
+        # `set_position` e não `on_board_changed`: o widget não dispara `on_change` quando a
+        # posição vem de fora, e é o que impede a volta de entrar na pilha como edição nova --
+        # o laço em que desfazer empilha o próprio efeito e o refazer nunca acontece.
+        self.board.set_position(placement)
+        self.update_legality()
+        self._on_sync_study()
+        self._atualizar_botoes_de_historico()
+
+    def _zerar_historico(self, idx: int) -> None:
+        """A pilha recomeça na posição do diagrama que passou a estar na tela.
+
+        **Trocar de diagrama zera as duas pilhas** (S-229): desfazer para dentro de outra posição
+        é pior que não desfazer -- a pessoa apertaria `Ctrl+Z` esperando a casa de trás e receberia
+        o tabuleiro do diagrama anterior, gravável por cima do atual com um `Ctrl+S`.
+        """
+        self.historico.zerar(board_edit.placement_of(self.model.fen_at(idx)) if self.model.items else "")
 
     # --------------------------------------------------------------------------- gravação
 
@@ -1073,6 +1220,9 @@ class ResultPanel(ttk.Frame):
             self._on_status("Segunda leitura recebida, mas o OCR atual mudou.")
             return
         if idx == self.model.clamped_index():
+            # A quinta origem (S-229): a leitura do segundo modelo é adotada, e desfazer devolve
+            # a do primeiro. Sem isto, discordar do segundo leitor custaria reler a página.
+            self.historico.registrar(board_edit.placement_of(parecer.placement))
             self.fen_var.set(parecer.placement)
             self.update_views()
         self._on_status(parecer.describe())
@@ -1092,6 +1242,9 @@ class ResultPanel(ttk.Frame):
             self._on_status("Correção recebida, mas o OCR atual mudou.")
             return
         if idx == self.model.clamped_index():
+            # A sexta origem (S-229). A correção vem de fora da máquina, e é justamente a que
+            # mais precisa de volta: quem discorda dela não tem como pedir a leitura de novo.
+            self.historico.registrar(board_edit.placement_of(fen))
             self.fen_var.set(fen)
             self.update_views()
         self._on_status(f"FEN corrigida via Net (diagrama {idx + 1}).")

@@ -20,20 +20,31 @@ from __future__ import annotations
 import logging
 import os
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
+from typing import TypeVar
 
 from . import tipografia, tokens
 
 logger = logging.getLogger(__name__)
 
+_Pintavel = TypeVar("_Pintavel", bound=tk.Misc)
+"""Devolver o **mesmo** tipo é o que preserva `lbl.config(text=...)` no ponto de chamada --
+a mesma razão de `barra.BarraFluida.adicionar` ser genérica."""
+
 __all__ = [
     "DEFAULT_THEME",
+    "ESTILO_DE_ABAS_DISCRETO",
+    "TEMA_ESCURO",
+    "ao_repintar",
     "apply_theme",
     "available_themes",
     "cor_atual",
     "estilo_atual",
     "fonte_atual",
     "fonte_base",
+    "pintar",
+    "repintar",
 ]
 
 DEFAULT_THEME = "bootstrap-light"
@@ -49,7 +60,29 @@ resolvem, mas cada abertura da janela emitiria um `DeprecationWarning`, e a bibl
 que eles saem na 3.0.
 """
 
+TEMA_ESCURO = "bootstrap-dark"
+"""O par escuro do padrão, para a pele que declara `cromo_escuro` (S-224).
+
+Não é um tema novo nem uma paleta nova: é o irmão do `bootstrap-light` na mesma família, e a
+biblioteca declara os dois. Escolher um tema de outra família mudaria acento e raio de borda
+junto com o fundo, e a pele "Foco" não pediu isso -- ela pediu cromo escuro."""
+
 THEME_ENV = "CVOFF_TTK_THEME"
+
+_cromo_escuro = False
+"""Se a pele em uso declara cromo escuro. Módulo e não parâmetro porque `cor_atual` é chamada
+de quinze lugares que não conhecem pele nenhuma -- e não deviam conhecer."""
+
+_repinturas: list[Callable[[], None]] = []
+"""O que precisa ser repintado quando o tema ou a pele mudam (S-224).
+
+**O defeito que isto fecha.** Seis pontos da janela leem a cor **na construção** e a guardam no
+widget: o fundo do canvas do PDF, o do tabuleiro, o do quadro rolável e três rótulos. Trocar de
+pele em execução -- que a S-222 passou a permitir -- deixava os seis com a cor da pele anterior,
+e o docstring de `registrar_estilos` já previa por escrito que trocar de tema em execução
+"precisa reaplicá-la". Reaplicar o estilo nomeado não alcança quem pintou fora do `Style`.
+
+Quem pinta se registra ao lado de onde pintou, numa linha; quem troca a pele chama `repintar`."""
 
 
 def available_themes() -> list[str]:
@@ -61,13 +94,21 @@ def available_themes() -> list[str]:
     return sorted(tb.Style().theme_names())
 
 
-def apply_theme(root: tk.Misc, theme: str | None = None) -> str:
+def apply_theme(root: tk.Misc, theme: str | None = None, *, cromo_escuro: bool = False) -> str:
     """Aplica o tema e devolve o que de fato ficou valendo.
 
     Devolve o nome do tema `ttkbootstrap` em uso, ou `"ttk"` quando a biblioteca não está
     instalada. Nunca levanta: chamar isto não pode ser o motivo de a janela não abrir.
+
+    **A pele só sugere, e o eixo continua separado** (S-221/S-224). A ordem é: o argumento
+    explícito, a variável de ambiente, o padrão da pele, o padrão do programa. Quem escreveu
+    `CVOFF_TTK_THEME` continua mandando -- e é o que mantém possível a combinação que a S-221
+    quis preservar: a pele escura com o tema claro, se alguém decidir isso.
     """
-    escolhido = theme or os.environ.get(THEME_ENV) or DEFAULT_THEME
+    padrao_da_pele = TEMA_ESCURO if cromo_escuro else DEFAULT_THEME
+    escolhido = theme or os.environ.get(THEME_ENV) or padrao_da_pele
+    global _cromo_escuro
+    _cromo_escuro = cromo_escuro
 
     try:
         import ttkbootstrap as tb
@@ -86,6 +127,13 @@ def apply_theme(root: tk.Misc, theme: str | None = None) -> str:
 
     try:
         style = tb.Style(theme=escolhido)
+        # **O `theme=` do construtor não volta atrás, e isso foi medido** (S-224). `tb.Style` é
+        # um singleton: instanciá-lo de novo com outro tema leva do claro ao escuro e **não**
+        # leva do escuro ao claro -- o objeto continua o mesmo e o nome não muda. Só a troca de
+        # pele expôs isso, porque até a S-222 ninguém trocava de tema com a janela aberta.
+        # `theme_use` faz os dois sentidos, e chamá-lo quando o tema já é o pedido custa nada.
+        if str(getattr(style.theme, "name", "")) != escolhido:
+            style.theme_use(escolhido)
     except (tk.TclError, ValueError, KeyError, AttributeError) as exc:
         logger.warning(
             "Tema %r recusado (%s). Voltando para %r. Temas disponíveis: %s",
@@ -106,6 +154,7 @@ def apply_theme(root: tk.Misc, theme: str | None = None) -> str:
     # sobrescrito pelo tema, e deixar a ordem a cargo do chamador é o tipo de dependência
     # invisível que produz "funciona aqui e não lá". Aplicar o tema é aplicá-lo inteiro.
     registrar_estilos()
+    repintar()
     return nome
 
 
@@ -128,6 +177,56 @@ def estilo_atual() -> ttk.Style | None:
         return None
 
 
+def ao_repintar(repintura: Callable[[], None]) -> None:
+    """Registra o que refazer quando o tema ou a pele mudarem. Chame ao lado de onde pintou.
+
+    A alternativa era um método `repintar()` em cada painel, e ela erra por onde a S-224 mediu:
+    o painel que pinta **um** canvas passaria a ter um método público sobre cor, e quem trocasse
+    a pele teria de lembrar de chamá-lo em cinco painéis. Aqui a lembrança é local -- quem pinta
+    registra na linha seguinte -- e quem troca a pele chama um lugar só.
+    """
+    _repinturas.append(repintura)
+
+
+def repintar() -> None:
+    """Refaz o que foi pintado fora do `Style`. Nunca levanta, e esquece o que já morreu.
+
+    Um widget destruído entre o registro e a troca não é erro: é a janela de antes. Ele sai da
+    lista em vez de derrubar a repintura dos outros -- aparência não derruba ferramenta.
+    """
+    vivos: list[Callable[[], None]] = []
+    for repintura in _repinturas:
+        try:
+            repintura()
+        except tk.TclError:
+            continue
+        except Exception as exc:  # noqa: BLE001 - uma repintura que falha não derruba as outras
+            logger.warning("Repintura falhou e foi descartada: %s", exc)
+            continue
+        vivos.append(repintura)
+    _repinturas[:] = vivos
+
+
+def pintar(widget: _Pintavel, opcao: str, papel: str) -> _Pintavel:
+    """Pinta a opção do widget com a cor do papel, **e a repinta quando a pele mudar**.
+
+    Devolve o próprio widget, para caber no ponto de chamada onde o widget já era anônimo --
+    `texto.acompanhar(theme.pintar(ttk.Label(...), "foreground", tokens.TEXTO_SECUNDARIO))`.
+
+    É o par de `ao_repintar` para o caso comum, e existe porque o caso comum é justamente o que
+    se esquece: um `foreground=` no construtor guarda a cor no widget e nunca mais olha para o
+    papel. Numa janela de um tema só isso nunca apareceu; com uma pele escura, é meia dúzia de
+    rótulos ilegíveis (S-224).
+    """
+
+    def aplicar() -> None:
+        widget.configure(**{opcao: cor_atual(papel)})
+
+    aplicar()
+    ao_repintar(aplicar)
+    return widget
+
+
 def cor_atual(papel: str) -> str:
     """Um papel da S-145 resolvido contra o tema em uso (S-147).
 
@@ -137,7 +236,7 @@ def cor_atual(papel: str) -> str:
     Papel desconhecido **levanta**, e isso é de propósito: a tolerância aqui é a tema ausente,
     não a papel escrito errado (ver `tokens.cor`).
     """
-    return tokens.cor(papel, estilo_atual())
+    return tokens.cor(papel, estilo_atual(), cromo_escuro=_cromo_escuro)
 
 
 FAMILIA_DE_RESERVA = ("Segoe UI", "Consolas")
@@ -186,6 +285,18 @@ ESTILO_DE_TABELA_DE_DADOS = "Dado.Treeview"
 """Nome do estilo de `Treeview` cujo corpo é monoespaçado. Pedido por quem quer, e são poucos."""
 
 ESTILO_DE_TITULO = "TLabelframe.Label"
+
+ESTILO_DE_ABAS_DISCRETO = "Discreta.TNotebook"
+"""A faixa de abas da pele "Foco" (S-226): sem moldura em relevo, e a diferença no **peso**.
+
+A Imagem 1 não desenha faixa de abas nenhuma, e adotá-la ao pé da letra apagaria sete abas -- o
+que a regra 2 proíbe. O que entra da imagem é o peso: a barra deixa de ser um relevo com sete
+caixas e passa a ser sete palavras, das quais uma está acesa.
+
+**A aba ativa se separa por cor e por negrito, e não por sublinhado.** Sublinhar exigiria um
+`layout` de elemento próprio para a aba, que é escrito por tema e quebra em cada um dos trinta;
+cor e peso de fonte são opções que todo tema aceita. A diferença que importa -- qual aba está
+aberta -- fica dita por dois canais em vez de um."""
 """O rótulo de `LabelFrame`, **sem** prefixo: todo `LabelFrame` desta janela é título de grupo.
 
 Um estilo nomeado exigiria `style=` nos 20 e poucos grupos da janela, e o primeiro que alguém
@@ -220,3 +331,19 @@ def registrar_estilos() -> None:
         style.configure(ESTILO_DE_TITULO, font=fonte_atual(tipografia.TITULO))
     except tk.TclError as exc:  # pragma: no cover - Style exótico: a janela abre sem a escala
         logger.info("Estilos de tipografia não registrados (%s).", exc)
+
+    # Bloco próprio: um tema que recuse o estilo de abas não pode levar junto a tipografia, que
+    # é de outro item. Aparência não derruba ferramenta, e uma metade não derruba a outra.
+    try:
+        style.configure(ESTILO_DE_ABAS_DISCRETO, borderwidth=0, tabmargins=(2, 6, 2, 0))
+        style.configure(f"{ESTILO_DE_ABAS_DISCRETO}.Tab", borderwidth=0, padding=(14, 6))
+        style.map(
+            f"{ESTILO_DE_ABAS_DISCRETO}.Tab",
+            foreground=[
+                ("selected", cor_atual(tokens.TEXTO_PADRAO)),
+                ("!selected", cor_atual(tokens.TEXTO_SECUNDARIO)),
+            ],
+            font=[("selected", fonte_atual(tipografia.CORPO, negrito=True))],
+        )
+    except tk.TclError as exc:  # pragma: no cover - tema que não aceita estilo de Notebook
+        logger.info("Estilo de abas discreto não registrado (%s).", exc)

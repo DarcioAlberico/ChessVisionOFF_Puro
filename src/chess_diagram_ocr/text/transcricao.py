@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -37,7 +38,13 @@ from pathlib import Path
 from ..atomic_io import atomic_write_text
 from ..cli.texto_placar import Faixa, carregar_referencia
 
-__all__ = ["Item", "ReferenciaMudouNoDisco", "SessaoDeTranscricao", "normalizar_texto"]
+__all__ = [
+    "Item",
+    "ReferenciaMudouNoDisco",
+    "SessaoDeTranscricao",
+    "normalizar_texto",
+    "so_scan",
+]
 
 
 class ReferenciaMudouNoDisco(RuntimeError):
@@ -93,20 +100,61 @@ class Item:
         return f"{self.numero:03d} · {self.faixa.pdf} · p. {self.faixa.pagina}"
 
 
+def so_scan(item: Item) -> bool:
+    """A faixa é de um livro sem camada de texto ali -- o `--semear` não teve o que semear.
+
+    **São elas que decidem a fase**, e é isso que as torna um filtro que vale a pena: nos livros
+    com camada, a coluna de controle é a própria camada, e conferir a semente mede pouco. Onde
+    não há camada, a transcrição é a única referência que existe, e o glifo é comparado com ela
+    sem atalho nenhum.
+
+    O sinal é `semeado_de` estar vazio, e não o texto: uma faixa semeada e depois corrigida à
+    mão continua sendo de livro com camada, e uma semeada com texto vazio -- a camada existia e
+    não tinha nada naquela banda -- continua não sendo de scan.
+    """
+    return not item.faixa.semeado_de
+
+
 class SessaoDeTranscricao:
     """Onde estou, o que editei e o que isso grava."""
 
-    def __init__(self, referencia: Path, itens: list[Item], *, digest: str) -> None:
+    def __init__(
+        self,
+        referencia: Path,
+        itens: list[Item],
+        *,
+        digest: str,
+        filtro: Callable[[Item], bool] | None = None,
+    ) -> None:
         self.referencia = Path(referencia)
         self.itens = itens
         self._digest = digest
-        self._indice = 0
         self.sujo = False
+
+        # **O filtro é uma vista, e nunca um recorte da lista.** `salvar` reescreve o arquivo
+        # inteiro a partir de `self.itens`; uma sessão que guardasse só as faixas filtradas
+        # gravaria 42 linhas onde havia 123, e apagaria as outras 81 sem nada avisar.
+        self._visiveis = [i for i, item in enumerate(itens) if filtro is None or filtro(item)]
+        """Os índices que a navegação visita. Calculado uma vez: a pertinência sai de
+        `semeado_de`, que a edição não muda -- uma faixa não deve sair da vista por ter sido
+        transcrita, senão ela desapareceria no instante em que se acaba de digitar nela."""
+
+        self._indice = self._visiveis[0] if self._visiveis else 0
+        for indice in self._visiveis:
+            if self.itens[indice].pendente:
+                self._indice = indice
+                break
 
     # ------------------------------------------------------------------ carga e gravação
 
     @classmethod
-    def carregar(cls, referencia: Path, pngs: Path | None = None) -> SessaoDeTranscricao:
+    def carregar(
+        cls,
+        referencia: Path,
+        pngs: Path | None = None,
+        *,
+        filtro: Callable[[Item], bool] | None = None,
+    ) -> SessaoDeTranscricao:
         """Lê a referência e casa cada linha com o PNG de mesmo número, quando ele existe."""
         referencia = Path(referencia)
         faixas = carregar_referencia(referencia)
@@ -115,7 +163,7 @@ class SessaoDeTranscricao:
             Item(numero=numero, faixa=faixa, imagem=por_numero.get(numero))
             for numero, faixa in enumerate(faixas, start=1)
         ]
-        return cls(referencia, itens, digest=_digest(referencia))
+        return cls(referencia, itens, digest=_digest(referencia), filtro=filtro)
 
     def salvar(self) -> None:
         """Regrava o `.jsonl` inteiro, na mesma serialização do `--semear`.
@@ -158,28 +206,55 @@ class SessaoDeTranscricao:
     def circulares(self) -> int:
         return sum(1 for item in self.itens if item.circular)
 
+    # As três abaixo contam **dentro da vista**, e são o que o placar da janela mostra quando
+    # há filtro. As de cima continuam contando o arquivo: é ele que se grava, e é sobre ele
+    # que o `cvoff-texto-placar` mede.
+
+    @property
+    def filtrada(self) -> bool:
+        return len(self._visiveis) != len(self.itens)
+
+    @property
+    def total_visivel(self) -> int:
+        return len(self._visiveis)
+
+    @property
+    def conferidas_visiveis(self) -> int:
+        return sum(1 for indice in self._visiveis if self.itens[indice].faixa.conferido)
+
     def ir_para(self, indice: int) -> bool:
-        """Move para `indice` **0-based**. `False` quando ele está fora da lista."""
+        """Move para `indice` **0-based**, filtro ou não. `False` quando ele está fora da lista.
+
+        Aceita índice de fora da vista de propósito: o filtro governa a **navegação**, e não o
+        direito de olhar uma faixa. Quem pede um número específico está pedindo aquele.
+        """
         if not 0 <= indice < len(self.itens) or indice == self._indice:
             return False
         self._indice = indice
         return True
 
+    def _ordem_visivel(self, *, a_partir_do_seguinte: bool) -> list[int]:
+        """Os índices visíveis, começando depois do atual e dando a volta."""
+        adiante = [i for i in self._visiveis if i > self._indice]
+        atras = [i for i in self._visiveis if i <= self._indice]
+        return adiante + atras if a_partir_do_seguinte else adiante
+
     def proximo(self) -> bool:
-        return self.ir_para(self._indice + 1)
+        seguintes = self._ordem_visivel(a_partir_do_seguinte=False)
+        return self.ir_para(seguintes[0]) if seguintes else False
 
     def anterior(self) -> bool:
-        return self.ir_para(self._indice - 1)
+        anteriores = [i for i in self._visiveis if i < self._indice]
+        return self.ir_para(anteriores[-1]) if anteriores else False
 
     def proxima_pendente(self) -> bool:
-        """A próxima ainda não conferida, dando a volta. `False` quando não sobrou nenhuma.
+        """A próxima ainda não conferida **da vista**, dando a volta. `False` quando não sobrou.
 
         **Dá a volta de propósito**: quem começa pela faixa 60 e chega ao fim ainda tem 59
         pendentes atrás, e um botão que só olha para a frente pararia dizendo "acabou" com
         metade do trabalho aberta.
         """
-        ordem = list(range(self._indice + 1, len(self.itens))) + list(range(0, self._indice + 1))
-        for indice in ordem:
+        for indice in self._ordem_visivel(a_partir_do_seguinte=True):
             if self.itens[indice].pendente:
                 return self.ir_para(indice)
         return False

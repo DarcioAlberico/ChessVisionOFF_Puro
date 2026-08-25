@@ -42,10 +42,11 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Literal
 
-from ..text import documento
+from ..text import arquivo, correcao, documento, rico
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
-from . import estilos, tokens
+from . import estilos, texto_etiquetas, tokens
 from . import texto as texto_ui
+from .barra import BarraFluida
 from .busy import BusyRegistry
 
 if TYPE_CHECKING:  # pragma: no cover - só o verificador de tipo precisa disto
@@ -76,6 +77,9 @@ peça papel nenhum: pintá-lo de preto é o que quebraria o tema escuro."""
 
 PAPEL_DA_MARCA = tokens.TEXTO_SECUNDARIO
 """A cor de `[Diagrama N]`. Secundário porque a marca é referência, e não texto do livro."""
+
+NEGRITO_ITALICO = "negrito_italico"
+"""A tag que desenha os dois juntos. **É desenho, e não documento** -- ver `_etiquetas` (S-236)."""
 
 MOTORES: tuple[MotorDeTexto, ...] = ("glifo", "camada", "auto")
 """Os mesmos três de `text/leitor.py`, e a caixa da barra os oferece nesta ordem.
@@ -132,34 +136,42 @@ class TextoPanel(ttk.Frame):
     # ------------------------------------------------------------------------------ construção
 
     def _montar(self) -> None:
-        barra = ttk.Frame(self)
+        # `BarraFluida` e não `Frame`: com "Abrir" e "Salvar" a fila passou de oito para dez itens
+        # (S-238), e `pack(side=LEFT)` numa linha só **não desenha** o que passa da borda -- sem
+        # aviso e sem reticências, que é o defeito medido pela S-151.
+        barra = BarraFluida(self)
         barra.pack(fill=tk.X, pady=(0, 6))
 
-        ttk.Label(barra, text="Folha").pack(side=tk.LEFT)
-        ttk.Spinbox(barra, from_=1, to=99999, width=7, textvariable=self.folha_var).pack(
-            side=tk.LEFT, padx=(4, 10)
+        barra.adicionar(ttk.Label(barra, text="Folha"))
+        barra.adicionar(
+            ttk.Spinbox(barra, from_=1, to=99999, width=7, textvariable=self.folha_var)
         )
-        ttk.Button(barra, text="Da página aberta", command=self.sincronizar_com_a_pagina).pack(
-            side=tk.LEFT, padx=(0, 10)
-        )
-
-        ttk.Label(barra, text="Motor").pack(side=tk.LEFT)
-        combo = ttk.Combobox(
-            barra, values=MOTORES, textvariable=self.motor_var, width=8, state="readonly"
-        )
-        combo.pack(side=tk.LEFT, padx=(4, 10))
-
-        ttk.Checkbutton(barra, text="Modo bloco (lento)", variable=self.bloco_var).pack(
-            side=tk.LEFT, padx=(0, 10)
+        barra.adicionar(
+            ttk.Button(barra, text="Da página aberta", command=self.sincronizar_com_a_pagina)
         )
 
-        ttk.Button(
-            barra,
-            text="Ler folha",
-            style=estilos.estilo_de_botao(estilos.PRIMARIO),
-            command=self.ler,
-        ).pack(side=tk.LEFT)
-        ttk.Button(barra, text="Salvar .txt", command=self.salvar).pack(side=tk.LEFT, padx=(6, 0))
+        barra.adicionar(ttk.Label(barra, text="Motor"))
+        barra.adicionar(
+            ttk.Combobox(
+                barra, values=MOTORES, textvariable=self.motor_var, width=8, state="readonly"
+            )
+        )
+
+        barra.adicionar(
+            ttk.Checkbutton(barra, text="Modo bloco (lento)", variable=self.bloco_var)
+        )
+
+        barra.adicionar(
+            ttk.Button(
+                barra,
+                text="Ler folha",
+                style=estilos.estilo_de_botao(estilos.PRIMARIO),
+                command=self.ler,
+            )
+        )
+        barra.adicionar(ttk.Button(barra, text="Abrir…", command=self.abrir_documento))
+        barra.adicionar(ttk.Button(barra, text="Salvar", command=self.salvar_documento))
+        barra.adicionar(ttk.Button(barra, text="Salvar .txt", command=self.salvar))
 
         corpo = ttk.Frame(self)
         corpo.pack(fill=tk.BOTH, expand=True)
@@ -284,7 +296,6 @@ class TextoPanel(ttk.Frame):
     def _chegou(self, pagina: PaginaLida, caminho: Path, indice: int, token: object) -> None:
         token.release()  # type: ignore[attr-defined]
         self._lendo = False
-        self._pagina = pagina
         self._pagina_rgb = self._renderizar(caminho, indice)
         self.desenhar(pagina)
         self._on_status(f"Folha {indice + 1} lida: {documento.resumo(pagina)}")
@@ -302,35 +313,72 @@ class TextoPanel(ttk.Frame):
     # ---------------------------------------------------------------------------------- desenho
 
     def desenhar(self, pagina: PaginaLida) -> None:
-        """Põe a página no editor: texto com faixa de confiança, e a miniatura de cada diagrama."""
+        """Põe a página no editor. A ponte é `text/rico.de_pagina`, e é a única (S-235).
+
+        Guardar a página aqui, e não só em `_chegou`, é o que faz `documento_atual` ter origem para
+        devolver -- e o que permite desenhar uma página em teste sem simular a thread de leitura.
+        """
+        self._pagina = pagina
+        self.desenhar_documento(rico.de_pagina(pagina))
+        self.status_var.set(documento.resumo(pagina))
+
+    def desenhar_documento(self, doc: rico.DocumentoRico) -> None:
+        """Desenha o documento -- venha ele de uma leitura ou, um dia, de um arquivo (S-238).
+
+        **Este laço não decide nada.** Faixa, ordem, separador e atributo já vieram decididos por
+        `text/rico.py`; o que sobra aqui é `insert` e `image_create`. É a mesma fronteira que
+        `text/documento.py` já mantinha, agora com o documento no meio -- e é ela que faz o negrito
+        de uma corrida poder sobreviver ao arquivo, em vez de existir só enquanto o widget existir.
+        """
         self.editor.configure(state=tk.NORMAL)
         self._pintar_faixas()
         self.editor.delete("1.0", tk.END)
         self._imagens.clear()
 
-        for segmento in documento.segmentos(pagina):
-            if segmento.tipo == "separador":
-                self.editor.insert(tk.END, segmento.texto)
-                continue
-            if segmento.e_diagrama and isinstance(segmento.bloco, BlocoDeDiagrama):
-                self._inserir_diagrama(segmento.bloco)
-                continue
-            etiquetas = (segmento.faixa, "negrito") if segmento.negrito else (segmento.faixa,)
-            self.editor.insert(tk.END, segmento.texto, etiquetas)
+        for corrida in doc.corridas:
+            bloco = doc.bloco_de(corrida) if corrida.e_diagrama else None
+            if isinstance(bloco, BlocoDeDiagrama):
+                self._inserir_miniatura(bloco)
+            # **Toda corrida leva etiqueta, o separador inclusive.** Ele é indistinguível de duas
+            # quebras digitadas à mão, e sem a etiqueta voltaria do widget como texto comum -- o
+            # documento reaberto deixaria de ser igual ao salvo (S-238).
+            self.editor.insert(tk.END, corrida.texto, self._etiquetas(corrida))
 
-        self.status_var.set(documento.resumo(pagina))
         self.editor.edit_reset()
         self.editor.edit_modified(False)
         self._sujo = False
 
-    def _inserir_diagrama(self, bloco: BlocoDeDiagrama) -> None:
-        """A miniatura, e **depois** a marca. Ver "O diagrama é desenhado no meio do texto"."""
+    def _etiquetas(self, corrida: rico.Corrida) -> tuple[str, ...]:
+        """As etiquetas do Tk desta corrida. A tabela mora em `ui/texto_etiquetas.py` (S-238).
+
+        Ela saiu daqui porque a **volta** passou a existir: gravar precisa ler as etiquetas de novo,
+        e duas tabelas -- uma para desenhar, outra para ler -- divergiriam no primeiro atributo novo.
+
+        O que sobra aqui é a única etiqueta que **não** é documento: `NEGRITO_ITALICO`, que existe
+        porque uma tag do Tk não sabe somar duas fontes. O par já está declarado nas duas etiquetas
+        que vêm de lá, então `corrida_de` a ignora sozinha na volta -- ela não mapeia atributo nenhum.
+        """
+        etiquetas = texto_etiquetas.etiquetas_de(corrida)
+        if corrida.atributos.negrito and corrida.atributos.italico:
+            return (*etiquetas, NEGRITO_ITALICO)
+        return etiquetas
+
+    def _inserir_miniatura(self, bloco: BlocoDeDiagrama) -> None:
+        """A imagem do diagrama, **antes** da marca. Ver "O diagrama é desenhado no meio do texto".
+
+        Só a imagem: `[Diagrama N]` é o texto da própria corrida, e quem o insere é o laço de
+        `desenhar_documento`. Separar as duas é o que garante que a marca continue no texto mesmo
+        quando não há folha renderizada de onde recortar a miniatura.
+        """
         miniatura = self._miniatura(bloco)
-        if miniatura is not None:
-            self._imagens.append(miniatura)
-            self.editor.image_create(tk.END, image=miniatura, padx=6, pady=4)
-            self.editor.insert(tk.END, "\n")
-        self.editor.insert(tk.END, bloco.texto, ("marca",))
+        if miniatura is None:
+            return
+        self._imagens.append(miniatura)
+        self.editor.image_create(tk.END, image=miniatura, padx=6, pady=4)
+        # **Marcada como desenho, e não solta.** Esta quebra é para a marca cair embaixo da
+        # miniatura -- ela não é do documento. Sem a etiqueta, ela voltaria como texto ao gravar e o
+        # desenho seguinte acrescentaria outra: uma quebra a mais a cada salvar-e-reabrir (S-238).
+        self.editor.insert(tk.END, "\n", (texto_etiquetas.DESENHO,))
 
     def _miniatura(self, bloco: BlocoDeDiagrama):  # noqa: ANN202 - tk.PhotoImage | None
         """O recorte do diagrama como imagem do Tk, ou `None` quando não há folha renderizada.
@@ -354,7 +402,11 @@ class TextoPanel(ttk.Frame):
                 return None
             recorte = Image.fromarray(self._pagina_rgb[y0:y1, x0:x1]).convert("RGB")
             recorte.thumbnail((LADO_DA_MINIATURA, LADO_DA_MINIATURA))
-            return ImageTk.PhotoImage(recorte)
+            # **`master=` e não o padrão**: sem ele a Pillow registra a imagem no *default root* do
+            # `tkinter`, que não é necessariamente o interpretador deste widget. Com um `Tk` só --
+            # o programa -- dá no mesmo; com dois, o `image_create` levanta
+            # `TclError: image "pyimageN" doesn't exist`, porque a imagem nasceu no outro.
+            return ImageTk.PhotoImage(recorte, master=self.editor)
         except Exception as exc:  # noqa: BLE001 - miniatura é conforto, não função
             logger.debug("Miniatura do diagrama %d não pôde ser feita: %s", bloco.indice + 1, exc)
             return None
@@ -370,25 +422,38 @@ class TextoPanel(ttk.Frame):
             if papel:
                 self.editor.tag_configure(faixa, foreground=tokens.cor(papel))
         self.editor.tag_configure("marca", foreground=tokens.cor(PAPEL_DA_MARCA))
-        self.editor.tag_configure("negrito", font=self._fonte_negrito())
+        # **A ordem importa, e o combinado vem por último.** No Tk a prioridade da tag é a ordem de
+        # criação, e uma tag só pode dar *uma* fonte ao trecho: sem `NEGRITO_ITALICO` no fim, um
+        # trecho com os dois sairia só itálico -- e o negrito que a S-237 leu da camada sumiria da
+        # tela sem sumir do documento.
+        self.editor.tag_configure("negrito", font=self._fonte(peso="bold"))
+        self.editor.tag_configure("italico", font=self._fonte(pendor="italic"))
+        self.editor.tag_configure(NEGRITO_ITALICO, font=self._fonte(peso="bold", pendor="italic"))
 
-    def _fonte_negrito(self) -> tkfont.Font | tuple[str, int, str]:
-        """A fonte do editor em negrito. Cai na do sistema se o Tk não souber responder.
+    def _fonte(
+        self,
+        *,
+        peso: Literal["normal", "bold"] = "normal",
+        pendor: Literal["roman", "italic"] = "roman",
+    ) -> tkfont.Font | str:
+        """A fonte do editor com outro peso ou outro pendor. Cai na do sistema se o Tk não responder.
 
-        **Derivada da fonte do próprio editor**, e não cravada: quem aumentou a fonte do Windows
-        tem de ver o negrito no mesmo corpo do resto, e um nome de família fixo aqui ignoraria a
-        escolha dele -- é a mesma razão de `ui/texto.largura_media_do_caractere`.
+        **Derivada da fonte do próprio editor**, e não cravada: quem aumentou a fonte do Windows tem
+        de ver o negrito e o itálico no mesmo corpo do resto, e um nome de família fixo aqui
+        ignoraria a escolha dele -- é a mesma razão de `ui/texto.largura_media_do_caractere`.
         """
         try:
             base = tkfont.Font(font=self.editor.cget("font")).actual()
             return tkfont.Font(
                 family=str(base.get("family", "TkDefaultFont")),
                 size=int(base.get("size", 0)),
-                weight="bold",
+                weight=peso,
+                slant=pendor,
             )
         except Exception as exc:  # noqa: BLE001 - fonte exótica ou widget sem janela ainda
-            logger.debug("Fonte de negrito não derivada (%s): usando a do sistema.", exc)
-            return ("TkDefaultFont", 0, "bold")
+            logger.debug("Fonte %s/%s não derivada (%s): usando a do sistema.", peso, pendor, exc)
+            partes = [p for p in ("TkDefaultFont", peso, pendor) if p not in ("normal", "roman")]
+            return " ".join(partes)
 
     def _marcar_sujo(self, _evento: object = None) -> None:
         if self.editor.edit_modified():
@@ -401,6 +466,100 @@ class TextoPanel(ttk.Frame):
         """O que está no editor agora -- com as edições à mão, e não o que o OCR leu."""
         return self.editor.get("1.0", "end-1c")
 
+    def documento_atual(self) -> rico.DocumentoRico:
+        """O documento como ele está **na tela**, e não como a leitura o entregou (S-238).
+
+        O widget é o estado vivo: faixa, atributo, bloco e procedência viajam como etiquetas do Tk,
+        e é o `dump` que os devolve. A `PaginaLida` o widget não tem como devolver -- ela é a que
+        está guardada aqui desde a leitura, e vai junto para que reabrir ainda tenha bbox e diagrama.
+        """
+        despejo = self.editor.dump("1.0", "end-1c", text=True, tag=True, image=True)
+        bruto = texto_etiquetas.de_despejo(despejo, origem=self._pagina)
+        # **A marcação é aplicada aqui, e não na gravação** (S-239): o que se salva, o que se exporta
+        # e o que se conta no rodapé têm de ser o mesmo documento. Ela é derivada da `PaginaLida`, é
+        # idempotente, e não toca no que o motor leu -- é a comparação com ele que a decide.
+        return correcao.com_procedencia_humana(bruto)
+
+    def salvar_documento(self) -> None:
+        """Grava o `.cvtxt`: o texto, a formatação, a faixa, os diagramas e a página que os originou.
+
+        **É este que fecha o ciclo**, e o `.txt` continua ao lado: quem quer colar o texto num e-mail
+        quer o `.txt`, e quem quer voltar a corrigir amanhã quer este.
+        """
+        doc = self.documento_atual()
+        if not doc.para_texto().strip():
+            self._on_status("Não há texto nesta aba para salvar.")
+            return
+        destino = filedialog.asksaveasfilename(
+            parent=self,
+            title="Salvar o texto da folha",
+            defaultextension=arquivo.EXTENSAO,
+            initialfile=arquivo.sugestao_de_nome(doc),
+            filetypes=[(arquivo.NOME_DO_FORMATO, f"*{arquivo.EXTENSAO}"), ("Todos", "*.*")],
+        )
+        if not destino:
+            return
+        try:
+            arquivo.gravar(Path(destino), doc)
+        except OSError as erro:
+            # Modal, e não rodapé: falha de gravação que ninguém vê é trabalho humano perdido em
+            # silêncio, que é o critério declarado em `tests/test_ui_retorno_modal.py`.
+            logger.exception("Falha ao gravar o documento em %s.", destino)
+            messagebox.showerror("Texto", f"O arquivo não pôde ser gravado: {erro}", parent=self)
+            return
+        self._sujo = False
+        # A conta aparece porque a correção é o que o `.cvtxt` tem de mais caro -- e porque um
+        # número no rodapé é o que faz alguém notar quando ele vem zerado (S-239).
+        feitas = len(correcao.correcoes(doc))
+        quanto = f" · {feitas} correção(ões) sobre o que o motor leu" if feitas else ""
+        self._on_status(f"Texto gravado em {destino}{quanto}")
+
+    def abrir_documento(self) -> None:
+        """Abre um `.cvtxt` gravado antes, com os diagramas de volta se o livro ainda estiver lá."""
+        if self._sujo and not messagebox.askyesno(
+            "Texto",
+            "O texto desta aba foi editado. Abrir outro arquivo descarta as alterações. Continuar?",
+            parent=self,
+        ):
+            return
+        origem = filedialog.askopenfilename(
+            parent=self,
+            title="Abrir texto de folha",
+            filetypes=[(arquivo.NOME_DO_FORMATO, f"*{arquivo.EXTENSAO}"), ("Todos", "*.*")],
+        )
+        if not origem:
+            return
+        try:
+            doc = arquivo.carregar(Path(origem))
+        except (arquivo.ArquivoInvalido, OSError) as erro:
+            logger.debug("Documento não abriu (%s): %s", origem, erro)
+            messagebox.showerror("Texto", str(erro), parent=self)
+            return
+        self.abrir(doc)
+
+    def abrir(self, doc: rico.DocumentoRico) -> None:
+        """Põe o documento na tela e recupera o que só o PDF pode dar: as miniaturas.
+
+        **O PDF ausente não é erro.** O texto abre igual, as miniaturas faltam, e o rodapé diz qual
+        livro não foi encontrado -- a regra de degradação de `ui/theme.py`. O contrário faria uma
+        pasta de trabalho movida de lugar bloquear o acesso ao que se corrigiu nela.
+        """
+        self._pagina = doc.origem
+        self._pagina_rgb = None
+        aviso = ""
+        caminho = arquivo.pdf_de(doc)
+        if caminho is not None and doc.origem is not None:
+            if caminho.exists():
+                self._pagina_rgb = self._renderizar(caminho, doc.origem.pagina)
+            else:
+                aviso = f" · o livro {caminho.name} não está no lugar de antes: sem miniaturas"
+        if doc.origem is not None:
+            self.folha_var.set(str(doc.origem.pagina + 1))
+        self.desenhar_documento(doc)
+        resumo = documento.resumo(doc.origem) if doc.origem is not None else "texto sem página de origem"
+        self.status_var.set(resumo + aviso)
+        self._on_status(f"Texto aberto: {resumo}{aviso}")
+
     def salvar(self) -> None:
         """Grava o texto do editor num `.txt`, com o cabeçalho de procedência do `documento`.
 
@@ -411,10 +570,7 @@ class TextoPanel(ttk.Frame):
         if not conteudo:
             self._on_status("Não há texto nesta aba para salvar.")
             return
-        sugestao = "texto.txt"
-        if self._pagina is not None:
-            origem = Path(self._pagina.documento or "texto").stem
-            sugestao = f"{origem}_folha{self._pagina.pagina + 1}.txt"
+        sugestao = arquivo.sugestao_de_nome(self.documento_atual(), extensao=".txt")
         destino = filedialog.asksaveasfilename(
             parent=self,
             title="Salvar o texto da folha",

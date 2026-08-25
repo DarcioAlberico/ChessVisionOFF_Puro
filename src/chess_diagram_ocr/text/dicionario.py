@@ -27,15 +27,43 @@ modelo, e uma letra que ele não considerou nunca entra.
 4. **Ambiguidade não corrige.** Se duas combinações diferentes formam palavras conhecidas, o
    token fica como está: escolher entre elas seria exatamente o palpite que este módulo evita.
 
-## De onde vem o léxico
+## De onde vem o léxico: três arquivos, três procedências
 
-`assets/lexico/acervo.txt.gz`, 5.617 palavras extraídas da **camada de texto editorada dos 11
-livros do acervo que a têm** -- os 20 de camada de OCR ficam de fora, porque trariam os erros do
-OCR de terceiro para dentro do dicionário. Uma palavra entra se aparece 3 vezes em 2 livros
-distintos, tem 4 letras ou mais e não casa com o padrão de notação.
+| arquivo | palavras | de onde |
+|---|---:|---|
+| `acervo.txt.gz` | 6.947 | camada de texto **editorada** dos 11 livros do acervo que a têm |
+| `idioma.txt.gz` | 10.002 | as listas de palavras entregues, o que começa em minúscula |
+| `nomes.txt.gz` | 150.186 | as mesmas listas, o que começa em maiúscula: jogador, cidade, torneio |
 
-**Nada baixa da rede**, aqui como no resto do projeto. A contrapartida é que o léxico é do acervo:
-palavra que ele não tem simplesmente não é corrigida, o que é o lado seguro do erro.
+União, depois do `casefold`: **164.723** palavras.
+
+O `acervo` sai da camada editorada e **não** dos 20 livros de camada de OCR, que trariam os erros
+do OCR de terceiro para dentro do dicionário; uma palavra entra se aparece 3 vezes em 2 livros
+distintos. Os outros dois saem de `cvoff-texto-lexico`, que empacota uma pasta de listas -- trocar
+a lista não é mexer em código, que é o que a S-209 pede.
+
+**Nada baixa da rede**, aqui como no resto do projeto.
+
+### O que as listas mudaram, medido em 40 páginas de 11 livros
+
+**Nenhum caractere.** As correções são as mesmas 6 com o acervo sozinho e com os três arquivos
+juntos, e o CER fica em 0,1181 nos três casos. O que muda é o balde em que cada palavra cai:
+
+    palavra já conhecida        2.428 -> 2.467 -> 2.489     (+61)
+    nenhuma variante conhecida    255 ->   216 ->   195     (-60)
+                                acervo  +idioma  +nomes
+
+**E isso é ganho, ainda que o texto saia igual.** A primeira guarda de `escolher` é *a palavra já
+está no léxico?* -- e palavra conhecida é palavra que este módulo **nunca reescreve**. As 61 que
+mudaram de balde deixaram de ser candidatas a correção: o léxico maior protege o que já estava
+certo, e é por isso que `Nimzowitsch` agora está no arquivo em vez de depender da sorte da busca.
+Medido à parte: com o acervo sozinho, `Let's` seria reescrito como `Lets`; com as listas, não.
+
+**O que as listas não trazem é correção nova**, e a razão está medida em
+`docs/metrics/texto_dicionario.json`: o que sobra errado precisa de *inserção* ou *remoção* de
+letra -- o `i` em itálico que a segmentação parte em `l` + `'` (`técnl'ca`), a palavra colada
+(`ofthe`), a hifenização na quebra de linha --, e esta busca só **troca** letra por letra. Nenhuma
+lista conserta isso; a caixa do pingo, sim.
 """
 
 from __future__ import annotations
@@ -51,7 +79,17 @@ import numpy as np
 from ..config import PROJECT_ROOT
 from .boxes import Caixa
 
-CAMINHO_PADRAO = PROJECT_ROOT / "assets" / "lexico" / "acervo.txt.gz"
+PASTA_DO_LEXICO = PROJECT_ROOT / "assets" / "lexico"
+
+CAMINHO_ACERVO = PASTA_DO_LEXICO / "acervo.txt.gz"
+CAMINHO_IDIOMA = PASTA_DO_LEXICO / "idioma.txt.gz"
+CAMINHO_NOMES = PASTA_DO_LEXICO / "nomes.txt.gz"
+
+CAMINHO_PADRAO = CAMINHO_ACERVO
+"""O nome antigo do arquivo do acervo, quando ele era o único. Mantido para quem o importa."""
+
+EMPACOTADOS = (CAMINHO_ACERVO, CAMINHO_IDIOMA, CAMINHO_NOMES)
+"""Os três arquivos que `carregar()` sem argumento une. Ver a tabela no cabeçalho."""
 
 MIN_TAMANHO = 4
 """Menos letras que isto não é palavra: é notação. Ver a guarda 2 no cabeçalho."""
@@ -72,15 +110,31 @@ existe para não fazer."""
 PALAVRA = re.compile(r"^[A-Za-zÀ-ÿ]+(?:['’-][A-Za-zÀ-ÿ]+)*$")
 
 
-@lru_cache(maxsize=4)
-def carregar(caminho: Path = CAMINHO_PADRAO) -> frozenset[str]:
-    """As palavras do léxico, dobradas para minúscula. Vazio quando o arquivo não existe.
+@lru_cache(maxsize=8)
+def carregar(caminho: Path | None = None, *, nomes: bool = True) -> frozenset[str]:
+    """As palavras do léxico, dobradas para minúscula. Vazio quando não há arquivo nenhum.
+
+    Sem argumento são **as listas empacotadas do projeto**, unidas: acervo, idioma e nomes. Com um
+    caminho é aquele arquivo e só ele -- é como a medição compara uma lista contra outra.
+
+    `nomes=False` deixa a lista de nomes próprios de fora. A escolha existe porque a S-209 a mediu:
+    nome próprio baixa o alarme falso de 12,1% para 5,8% **e esconde erro**, e quem sabe o perfil
+    do livro é quem chama. O padrão os inclui -- medido em 40 páginas, eles não mudam um caractere
+    do que sai, e protegem 73 palavras de serem tocadas. Ver o cabeçalho.
 
     **Ausente não é erro**, e é a mesma regra dos outros recursos opcionais deste projeto: sem
     léxico o leitor devolve o que o modelo leu, que é o que ele sempre fez.
 
     Em cache porque um livro de 300 páginas o consultaria 300 vezes, e ele não muda entre elas.
     """
+    if caminho is not None:
+        return _de_um_arquivo(caminho)
+    escolhidos = EMPACOTADOS if nomes else tuple(c for c in EMPACOTADOS if c != CAMINHO_NOMES)
+    return frozenset().union(*(_de_um_arquivo(c) for c in escolhidos))
+
+
+def _de_um_arquivo(caminho: Path) -> frozenset[str]:
+    """Um `.txt.gz` de uma palavra por linha, ou o conjunto vazio se ele não estiver lá."""
     try:
         with gzip.open(caminho, "rt", encoding="utf-8") as fh:
             return frozenset(linha.strip().casefold() for linha in fh if linha.strip())
@@ -172,16 +226,28 @@ def variantes(palavra: str, candidatos: Sequence[Sequence[str]], *, max_trocas: 
     return achadas
 
 
-def escolher(palavra: str, candidatos: Sequence[Sequence[str]], lexico: frozenset[str]) -> str | None:
+def escolher(
+    palavra: str,
+    candidatos: Sequence[Sequence[str]],
+    lexico: frozenset[str],
+    *,
+    max_trocas: int = MAX_TROCAS,
+) -> str | None:
     """A única palavra conhecida alcançável, ou `None`. Ver as guardas 3 e 4 no cabeçalho.
 
     `None` em quatro situações, e as quatro são caminho normal: a palavra já é conhecida, não é
     candidata a palavra, nenhuma variante é conhecida, ou **mais de uma** é. A última é a guarda
     da ambiguidade -- escolher entre duas seria o palpite que este módulo evita.
+
+    **`max_trocas` chega até aqui de propósito.** `corrigir` sempre teve o parâmetro e nunca o
+    repassava: quem pedisse um teto diferente recebia o teto padrão em silêncio, e a medição que
+    varresse o teto mediria sempre a mesma coisa.
     """
     if not lexico or not e_palavra(palavra) or conhecida(palavra, lexico):
         return None
-    conhecidas = {v for v in variantes(palavra, candidatos) if conhecida(v, lexico)}
+    conhecidas = {
+        v for v in variantes(palavra, candidatos, max_trocas=max_trocas) if conhecida(v, lexico)
+    }
     return conhecidas.pop() if len(conhecidas) == 1 else None
 
 
@@ -240,7 +306,7 @@ def corrigir(
         candidatos = [
             alternativas(probs, inicio + i, idx_to_char, topo=topo) for i in range(fim - inicio)
         ]
-        escolhida = escolher(palavra, candidatos, lexico)
+        escolhida = escolher(palavra, candidatos, lexico, max_trocas=max_trocas)
         if escolhida is None or len(escolhida) != len(palavra):
             continue
         for i, novo in enumerate(escolhida):
@@ -253,7 +319,11 @@ def corrigir(
 
 
 __all__ = [
+    "CAMINHO_ACERVO",
+    "CAMINHO_IDIOMA",
+    "CAMINHO_NOMES",
     "CAMINHO_PADRAO",
+    "EMPACOTADOS",
     "FRACAO_DE_LETRAS",
     "MAX_TROCAS",
     "MIN_TAMANHO",

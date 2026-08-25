@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **32 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **33 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -230,7 +230,6 @@ cvoff-batch PDF --limit 3                 # so os tres primeiros livros
 cvoff-review "PDF\1937 Kemeri.pdf" --start-page 10 --end-page 70
 
 # O que do plano de reconhecimento de texto (S-178 a S-217) ja existe no disco.
-| S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 # Olha o disco -- arquivo no lugar, simbolo definido, extra declarado --, e nao o
 # documento; quem compara os dois e tests/test_text_status.py.
 cvoff-texto-status                  # tudo, agrupado por fase
@@ -299,6 +298,13 @@ cvoff-texto-linha --motor rapidocr
 # `PaginaLida` -- coluna, bloco, linha, bbox, confianca e procedencia -- em vez do texto.
 cvoff-texto-pagina "PDF/AAGAARD - Practical Chess Defence.pdf" --paginas 58-62
 cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor glifo --json saida.json
+
+# O que a mao corrigiu nos .cvtxt do editor de texto, agrupado por troca (S-239). A correcao
+# **nao** esta gravada no arquivo: ele guarda os dois lados -- a pagina que o motor leu e o que
+# esta na tela --, e a diferenca entre eles e o que este comando deriva. Nao rotula nada: quem
+# transforma correcao em rotulo e a fila de revisao de caractere, que tem o criterio.
+cvoff-texto-correcoes trabalho/
+cvoff-texto-correcoes folha58.cvtxt --todas --json docs/metrics/texto_correcoes.json
 
 # As duas reguas lado a lado (S-206). O comando **recusa** publicar so a do recorte: publicar
 # "99,1% de acerto" sobre recorte segmentado quando a pagina da outro numero e a forma de
@@ -899,6 +905,8 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-95 a S-142, S-218 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
 | S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 | S-178 a S-217 | [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) |
+| S-219 a S-234 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
+| S-235 a S-256 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da

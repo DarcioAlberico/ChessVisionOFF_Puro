@@ -180,7 +180,9 @@ class StudyPanel(ttk.Frame):
         self.advantage = ttk.Progressbar(caixa, maximum=100.0, value=50.0)
         self.advantage.pack(fill=tk.X, padx=6, pady=(6, 0))
         texto.acompanhar(
-            ttk.Label(caixa, textvariable=self.engine_line_var, foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO])
+            theme.pintar(
+                ttk.Label(caixa, textvariable=self.engine_line_var), "foreground", tokens.TEXTO_SECUNDARIO
+            )
         ).pack(anchor="w", padx=6, pady=(4, 6))
 
     # ------------------------------------------------------------------------------ motor

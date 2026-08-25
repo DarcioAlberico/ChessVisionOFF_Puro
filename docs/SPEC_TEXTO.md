@@ -1,5 +1,4 @@
 # Especificação do reconhecimento de texto — Fases 25 a 31 (S-178 a S-217)
-| S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 
 Base: [ROADMAP_TEXTO.md](ROADMAP_TEXTO.md), que traz o levantamento dos dois projetos, a decisão
 de portar e o sequenciamento. As fases de modelo, detecção e interface não são tocadas por esta
@@ -16,6 +15,8 @@ spec.
 > | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
+> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-235 a S-256 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 
 Cada item tem **Problema**, **Solução**, **Critério de aceite**, **Testes** e **Sonda**. A
 convenção é a de sempre: nome de módulo é sugestão, o que importa é a fronteira de

@@ -10,8 +10,16 @@ import unittest
 
 import numpy as np
 
+from chess_diagram_ocr.text import documento
 from chess_diagram_ocr.text import italico as it
 from chess_diagram_ocr.text.boxes import Caixa
+from chess_diagram_ocr.text.pagina import (
+    BlocoDeTexto,
+    Coluna,
+    LinhaLida,
+    PaginaInvalida,
+    PaginaLida,
+)
 
 I2C = {0: "/", 1: "l", 2: "a"}
 
@@ -122,6 +130,110 @@ class CorrigirTests(unittest.TestCase):
     def test_so_a_barra_esta_na_tabela_de_troca(self) -> None:
         """`I` também sai `/`, e **não** entra: escolher entre `l` e `I` é do léxico."""
         self.assertEqual(it.TROCA, {"/": "l"})
+
+
+class DeclararTests(unittest.TestCase):
+    """Os três estados da S-236. `None` é "não se mediu", e não é o mesmo que "não é itálica"."""
+
+    def test_a_linha_pendida_e_declarada_italica(self) -> None:
+        img, caixas = _linha(True)
+        self.assertIs(it.declarar(img, caixas), True)
+
+    def test_a_linha_em_pe_e_declarada_em_pe(self) -> None:
+        img, caixas = _linha(False)
+        self.assertIs(it.declarar(img, caixas), False)
+
+    def test_a_linha_curta_nao_e_declarada(self) -> None:
+        """Uma linha de três boxes -- um número de lance, um rótulo de eixo -- não tem população."""
+        img, caixas = _linha(True, n=it.MIN_BOXES_PARA_MEDIR - 1)
+        self.assertIsNone(it.declarar(img, caixas))
+
+    def test_e_italica_achata_o_desconhecido_em_falso(self) -> None:
+        """No caminho da correção é isso que se quer: a dúvida não autoriza trocar `/` por `l`."""
+        img, caixas = _linha(True, n=it.MIN_BOXES_PARA_MEDIR - 1)
+        self.assertIsNone(it.declarar(img, caixas))
+        self.assertFalse(it.e_italica(img, caixas))
+
+    def test_o_corte_vale_para_declarar(self) -> None:
+        img, caixas = _linha(True)
+        self.assertIs(it.declarar(img, caixas, corte=9.0), False)
+
+
+class MedirUmaVezTests(unittest.TestCase):
+    """`corrigir` aceita a medição pronta -- é o que sustenta "a S-236 custa zero" (S-236)."""
+
+    def _probs(self, n: int) -> np.ndarray:
+        probs = np.zeros((n, len(I2C)), np.float32)
+        probs[:, 0] = 0.9
+        probs[:, 1] = 0.6
+        return probs
+
+    def test_a_medicao_passada_da_o_mesmo_que_medir_dentro(self) -> None:
+        img, caixas = _linha(True)
+        lidos = [("/", 0.9)] * len(caixas)
+        probs = self._probs(len(caixas))
+        dentro = it.corrigir(lidos, probs, caixas, I2C, img)
+        passada = it.corrigir(lidos, probs, caixas, I2C, img, italica=it.declarar(img, caixas))
+        self.assertEqual(dentro, passada)
+        self.assertEqual([c for c, _ in passada], ["l"] * len(caixas))
+
+    def test_a_medicao_passada_como_falsa_nao_troca(self) -> None:
+        img, caixas = _linha(True)
+        lidos = [("/", 0.9)] * len(caixas)
+        saida = it.corrigir(lidos, self._probs(len(caixas)), caixas, I2C, img, italica=False)
+        self.assertEqual([c for c, _ in saida], ["/"] * len(caixas))
+
+    def test_a_medicao_desconhecida_nao_troca(self) -> None:
+        """`None` chega de linha curta, e ali trocar `/` seria estragar `1/2-1/2`."""
+        img, caixas = _linha(True)
+        lidos = [("/", 0.9)] * len(caixas)
+        saida = it.corrigir(lidos, self._probs(len(caixas)), caixas, I2C, img, italica=None)
+        self.assertEqual([c for c, _ in saida], ["l"] * len(caixas))
+
+
+class CampoNaPaginaTests(unittest.TestCase):
+    """O campo que a S-236 acrescenta: como ele serializa, e o que ele **não** muda."""
+
+    def _linha_lida(self, pendor: bool | None) -> LinhaLida:
+        return LinhaLida("texto", (0.0, 0.0, 10.0, 10.0), 0.9, "glifo", italico=pendor)
+
+    def test_o_campo_serializa_e_volta(self) -> None:
+        for pendor in (True, False, None):
+            with self.subTest(italico=pendor):
+                volta = LinhaLida.de_json(self._linha_lida(pendor).para_json())
+                self.assertIs(volta.italico, pendor)
+
+    def test_a_pagina_antiga_carrega_sem_o_campo(self) -> None:
+        """Arquivo gravado antes da S-236: ausente é "não se sabe", e não paga versão de esquema."""
+        antigo = {"texto": "a", "bbox": [0, 0, 1, 1], "confianca": 1.0, "procedencia": "camada"}
+        self.assertIsNone(LinhaLida.de_json(antigo).italico)
+
+    def test_um_italico_que_nao_e_booleano_recusa(self) -> None:
+        antigo = {"texto": "a", "bbox": [0, 0, 1, 1], "italico": "sim"}
+        with self.assertRaises(PaginaInvalida):
+            LinhaLida.de_json(antigo)
+
+    def test_o_bloco_so_e_italico_se_todas_as_linhas_forem(self) -> None:
+        todas = BlocoDeTexto.de_linhas([self._linha_lida(True), self._linha_lida(True)])
+        self.assertIs(todas.italico, True)
+        mista = BlocoDeTexto.de_linhas([self._linha_lida(True), self._linha_lida(False)])
+        self.assertIsNone(mista.italico)
+        duvida = BlocoDeTexto.de_linhas([self._linha_lida(True), self._linha_lida(None)])
+        self.assertIsNone(duvida.italico)
+
+    def test_a_camada_nao_declara_italico_pela_geometria(self) -> None:
+        """A camada de texto não passa pela binária: sem pendor medido, o campo fica em `None`."""
+        da_camada = LinhaLida("lido", (0.0, 0.0, 10.0, 10.0), 1.0, "camada")
+        self.assertIsNone(da_camada.italico)
+
+    def test_o_texto_da_pagina_nao_muda_com_o_campo(self) -> None:
+        """O item acrescenta atributo, e não muda leitura -- é a promessa de CER inalterado."""
+        textos = []
+        for pendor in (True, False, None):
+            bloco = BlocoDeTexto.de_linhas([self._linha_lida(pendor)])
+            pagina = PaginaLida(colunas=(Coluna(indice=0, blocos=(bloco,)),))
+            textos.append(documento.texto_para_arquivo(pagina, com_cabecalho=False))
+        self.assertEqual(len(set(textos)), 1, "o campo mudou o texto que sai da página")
 
 
 if __name__ == "__main__":  # pragma: no cover

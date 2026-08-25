@@ -45,7 +45,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 45
+LIMITE = 48
 """Quantas chamadas de `messagebox` a interface ainda faz.
 
 **66 → 44 na S-164**, e as 22 que saíram estão nas linhas 1 a 3 da tabela do docstring: dois fins
@@ -61,6 +61,13 @@ linhas.
 Ela é a exceção que a tabela acima não cobria -- uma caixa que a pessoa **pediu**, por um item de
 menu, não interrompe nada: ela é a resposta a um clique, e some no clique seguinte. O que a S-164
 tirou foi caixa que aparecia sem ninguém pedir.
+
+**45 → 48 na S-238**, e as três são o editor de texto ganhando arquivo próprio. Duas são erro --
+o `.cvtxt` que não gravou e o que não abriu --, e caem na última linha da tabela pelo motivo que
+ela declara: falha de gravação que ninguém vê é trabalho humano perdido em silêncio, e uma sessão
+de correção é a coisa mais cara desta aba. A terceira é pergunta: abrir outro arquivo com o texto
+editado descarta o que está na tela, e descartar é decisão -- é a mesma caixa que `ler` já faz
+antes de reler a folha, e pela mesma razão.
 
 Baixar este número é o item continuando; subi-lo exige vir aqui e escrever por que aquela caixa
 precisava ser modal."""

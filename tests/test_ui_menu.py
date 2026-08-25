@@ -22,14 +22,23 @@ if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app_tkinter  # noqa: E402 - depende do `sys.path` ajustado acima
-from chess_diagram_ocr.ui import atalhos, menu  # noqa: E402
+from chess_diagram_ocr.ui import atalhos, menu, pele  # noqa: E402
 from chess_diagram_ocr.ui.state import AppState  # noqa: E402
 
 
 class TabelaDeAtalhosTests(unittest.TestCase):
-    def test_sao_dez_atalhos_e_nao_onze(self) -> None:
-        """A avaliação escreveu "onze" e listou dez; `_bind_shortcuts` ligava dez (S-135)."""
-        self.assertEqual(len(atalhos.ATALHOS), 10)
+    def test_sao_treze_e_cada_um_novo_tem_dono(self) -> None:
+        """Eram dez -- a avaliação escreveu "onze" e listou dez (S-135). O décimo primeiro é o
+        `Ctrl+Enter` da S-223, e ele entrou por uma razão que o teste consegue cobrar: a fila da
+        pele "Foco" só admite comando com tecla, e `aplicar_fen` não tinha uma.
+
+        O décimo segundo e o décimo terceiro são da S-229, e a razão deles é a mesma medida por
+        outro lado: dez das onze teclas agiam sobre o diagrama, e nenhuma o devolvia ao estado
+        anterior."""
+        self.assertEqual(len(atalhos.ATALHOS), 13)
+        self.assertEqual("Ctrl+Enter", atalhos.acelerador("aplicar_fen"))
+        self.assertEqual("Ctrl+Z", atalhos.acelerador("desfazer"))
+        self.assertEqual("Ctrl+Y", atalhos.acelerador("refazer"))
 
     def test_cada_atalho_tem_sequencia_do_tk_rotulo_e_descricao(self) -> None:
         for atalho in atalhos.ATALHOS:
@@ -114,15 +123,18 @@ class MontagemTests(unittest.TestCase):
         self.comandos = {
             acao: (lambda nome=acao: self.chamados.append(nome)) for acao in menu.comandos_faltando({})
         }
+        # A variável do submenu de aparência (S-221). `montar` a exige: um `radiobutton` sem
+        # variável desenha as opções sem nenhuma marcada, e a escolha parece não ter pegado.
+        self.escolhas = {"aparencia": tk.StringVar(value=pele.CLASSICA)}
 
     def test_a_barra_tem_os_cinco_menus_na_ordem_declarada(self) -> None:
-        barra = menu.montar(self.janela, self.comandos)
+        barra = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
         titulos = [barra.entrycget(i, "label") for i in range(1, barra.index(tk.END) + 1)]
         self.assertEqual(titulos, [declarado.titulo for declarado in menu.MENUS])
 
     def test_o_item_com_atalho_carrega_o_acelerador_no_widget(self) -> None:
         """Não basta a declaração dizer: é o `tk.Menu` que a pessoa lê."""
-        barra = menu.montar(self.janela, self.comandos)
+        barra = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
         editar = self.janela.nametowidget(barra.entrycget(2, "menu"))
         aceleradores = {
             str(editar.entrycget(i, "label")): str(editar.entrycget(i, "accelerator"))
@@ -133,7 +145,7 @@ class MontagemTests(unittest.TestCase):
         self.assertEqual(aceleradores["Salvar todas as posições da página"], "Ctrl+Shift+S")
 
     def test_clicar_no_item_chama_o_comando_amarrado(self) -> None:
-        barra = menu.montar(self.janela, self.comandos)
+        barra = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
         ferramentas = self.janela.nametowidget(barra.entrycget(4, "menu"))
         ferramentas.invoke(0)
         self.assertEqual(self.chamados, ["ler_pagina"])
@@ -150,13 +162,14 @@ class MontagemTests(unittest.TestCase):
             self.janela,
             self.comandos,
             interruptores={"marcar_diagramas": marcada, "roda_vira_pagina": tk.BooleanVar(value=False)},
+            escolhas=self.escolhas,
         )
         ver = self.janela.nametowidget(barra.entrycget(3, "menu"))
         tipos = [str(ver.type(i)) for i in range(ver.index(tk.END) + 1)]
         self.assertEqual(tipos.count("checkbutton"), 2)
 
     def test_sem_livro_recente_o_submenu_diz_isso_em_vez_de_ficar_vazio(self) -> None:
-        barra = menu.montar(self.janela, self.comandos, recentes=list)
+        barra = menu.montar(self.janela, self.comandos, recentes=list, escolhas=self.escolhas)
         arquivo = self.janela.nametowidget(barra.entrycget(1, "menu"))
         recentes = self.janela.nametowidget(arquivo.entrycget(1, "menu"))
         recentes.event_generate("<<MenuSelect>>")
@@ -166,7 +179,7 @@ class MontagemTests(unittest.TestCase):
     def test_o_submenu_de_recentes_e_refeito_a_cada_abertura(self) -> None:
         """A lista muda a cada PDF aberto; montá-la uma vez mostraria o acervo de quando a janela subiu."""
         livros: list[tuple[str, object]] = []
-        barra = menu.montar(self.janela, self.comandos, recentes=lambda: list(livros))
+        barra = menu.montar(self.janela, self.comandos, recentes=lambda: list(livros), escolhas=self.escolhas)
         arquivo = self.janela.nametowidget(barra.entrycget(1, "menu"))
         recentes = self.janela.nametowidget(arquivo.entrycget(1, "menu"))
 

@@ -89,15 +89,21 @@ from chess_diagram_ocr.ui import (
     abas,
     atalhos,
     campos,
-    estilos,
+    comandos,
+    conjuntos,
+    fila,
+    fita,
     geometria,
+    icones,
     legenda,
     menu,
+    pele,
     plataforma,
     rodape,
     rolagem,
     strings,
     texto,
+    theme,
     tokens,
 )
 from chess_diagram_ocr.ui.board_widget import PieceImages
@@ -167,14 +173,23 @@ class ChessOcrTkApp:
         # existe um botao ali. O numero sai dos `minsize` dos paineis, logo abaixo.
         self.root.minsize(*geometria.piso_da_janela(LARGURA_MINIMA_ESQUERDA, LARGURA_MINIMA_DIREITA))
 
-        self.theme = apply_theme(root)
+        self.theme = apply_theme(root, cromo_escuro=pele.registrada(pele.escolhida()).cromo_escuro)
         """Tema em uso (S-53), ou `"ttk"` quando o `ttkbootstrap` não está instalado.
 
         Aplicado antes de qualquer widget: trocar tema depois de a árvore montada refaz o
         layout inteiro, e a diferença aparece como um piscar."""
 
-        self.piece_images = PieceImages(PIECE_IMAGE_DIR)
+        self.piece_images = PieceImages(PIECE_IMAGE_DIR, conjunto=conjuntos.escolhido())
         self.state = AppState()
+        self.piece_set_var = tk.StringVar(value=self.piece_images.conjunto)
+        self.piece_dir_var = tk.StringVar(value="")
+        """O conjunto de peças e a pasta dele (S-230). Nascem do ambiente pela mesma razão da
+        pele: a Configuração é montada antes de o estado ser lido, e `_restore_state_or_default_pdf`
+        os corrige com o que estava no disco."""
+
+        self.skin_var = tk.StringVar(value=pele.escolhida())
+        """A pele escolhida (S-221). Nasce do ambiente porque o menu é montado antes de o
+        estado ser lido; `_restore_state_or_default_pdf` a corrige com o que estava no disco."""
         self.settings: Settings = load_settings()
         """Preferências do usuário (S-32). Por padrão nada sai da máquina."""
 
@@ -301,6 +316,10 @@ class ChessOcrTkApp:
     # ------------------------------------------------------------------------------ layout
 
     def _build_ui(self) -> None:
+        self.fila_de_acoes = ttk.Frame(self.root)
+        """Onde a pele "Foco" desenha a fila (S-223). Vazia na clássica, e vazia não ocupa nada."""
+        self.fila_de_acoes.pack(fill=tk.X)
+
         self.main_pane = tk.PanedWindow(
             self.root, orient=tk.HORIZONTAL, sashrelief=tk.RAISED, sashwidth=10, showhandle=True, handlesize=10
         )
@@ -327,7 +346,7 @@ class ChessOcrTkApp:
         # passam a vir nessa ordem, e o corte entre os dois grupos é onde a barra muda de assunto.
         # A Configuração vai para o fim porque é a aba do primeiro dia e quase nunca depois.
         self.result_panel = ResultPanel(
-            rolagem.aba_rolavel(tabs, "Resultado"),
+            rolagem.aba_rolavel(tabs, abas.RESULTADO),
             service=self.service,
             piece_images=self.piece_images,
             paths=lambda: (Path(self.dataset_csv_var.get()), Path(self.samples_dir_var.get())),
@@ -359,7 +378,7 @@ class ChessOcrTkApp:
             initial_dir=ROOT,
             analyzer=self.analyzer,
         )
-        tabs.add(self.study_panel, text="Análise")
+        tabs.add(self.study_panel, text=abas.ANALISE)
 
         self.review_panel = ReviewPanel(
             tabs,
@@ -372,7 +391,7 @@ class ChessOcrTkApp:
             service=self.service,
             busy=self.busy,
         )
-        tabs.add(self.review_panel, text="Revisão")
+        tabs.add(self.review_panel, text=abas.REVISAO)
         self.result_panel.set_review_settler(self._settle_review_item)
 
         self.texto_panel = TextoPanel(
@@ -383,7 +402,7 @@ class ChessOcrTkApp:
             busy=self.busy,
             on_page_request=self._gallery_page_request,
         )
-        tabs.add(self.texto_panel, text="Texto")
+        tabs.add(self.texto_panel, text=abas.TEXTO)
 
         self.dataset_panel = DatasetPanel(
             tabs,
@@ -393,10 +412,10 @@ class ChessOcrTkApp:
             on_status=self._set_status,
             busy=self.busy,
         )
-        tabs.add(self.dataset_panel, text="Dataset")
+        tabs.add(self.dataset_panel, text=abas.DATASET)
 
         self.gallery_panel = GalleryPanel(
-            rolagem.aba_rolavel(tabs, "Galeria"),
+            rolagem.aba_rolavel(tabs, abas.GALERIA),
             service=self.service,
             pdf_path=self._pdf_path_or_none,
             model_path=lambda: Path(self.model_path_var.get().strip()),
@@ -411,12 +430,48 @@ class ChessOcrTkApp:
         )
         self.gallery_panel.pack(fill=tk.BOTH, expand=True)
 
-        self._build_config_tab(rolagem.aba_rolavel(tabs, "Configuração", padding=6))
+        self._build_config_tab(rolagem.aba_rolavel(tabs, abas.CONFIGURACAO, padding=6))
+
+    def _build_piece_set_row(self, cfg_tab: ttk.Frame) -> None:
+        """O conjunto de peças, e a pasta dele quando for a do usuário (S-230).
+
+        Na Configuração e não em `Ver ▸ Aparência` porque **conjunto não é pele**: são eixos
+        próprios, e qualquer conjunto vale com qualquer pele. Pô-lo no menu de aparência amarraria
+        os dois no lugar em que a S-221 os separou de propósito.
+        """
+        linha = ttk.Frame(cfg_tab)
+        linha.pack(anchor="w", fill="x", padx=8, pady=4)
+        ttk.Label(linha, text=strings.CONJUNTO_DE_PECAS, width=24).pack(side="left")
+        for registro in conjuntos.CONJUNTOS:
+            ttk.Radiobutton(
+                linha,
+                text=registro.rotulo,
+                value=registro.nome,
+                variable=self.piece_set_var,
+                command=self._escolher_conjunto,
+            ).pack(side="left", padx=4)
+        campos.linha_de_caminho(
+            cfg_tab,
+            strings.PASTA_DE_PECAS,
+            self.piece_dir_var,
+            tipo=campos.PASTA,
+        )
+
+    def _escolher_conjunto(self) -> None:
+        """Troca o conjunto em execução, redesenha os tabuleiros e grava (S-230/S-222)."""
+        self.piece_images.usar_conjunto(self.piece_set_var.get(), pasta=self.piece_dir_var.get().strip())
+        self.state.piece_set = self.piece_images.conjunto
+        self.state.piece_dir = self.piece_dir_var.get().strip()
+        self.piece_set_var.set(self.state.piece_set)
+        if self.result_panel is not None:
+            self.result_panel.board.redraw()
+        self._save_app_state()
 
     def _build_config_tab(self, cfg_tab: ttk.Frame) -> None:
         campos.linha_de_caminho(cfg_tab, "Modelo (.pt)", self.model_path_var)
         campos.linha_de_caminho(cfg_tab, "CSV labels", self.dataset_csv_var)
         campos.linha_de_caminho(cfg_tab, "Pasta samples", self.samples_dir_var, tipo=campos.PASTA)
+        self._build_piece_set_row(cfg_tab)
 
         # Tri-estado no lugar do checkbox: "auto" decide por diagrama, o que resolve livro
         # com orientações misturadas -- o booleano valia para todos de uma vez (S-13).
@@ -498,8 +553,8 @@ class ChessOcrTkApp:
 
         botao = ttk.Button(
             parent,
-            text="Anotar página",
-            style=estilos.estilo_de_botao(estilos.PRIMARIO),
+            text=comandos.rotulo_de_botao("anotar_pagina"),
+            style=comandos.estilo("anotar_pagina"),
             command=self.annotate_field_page,
         )
         botao.pack(side=tk.LEFT)
@@ -507,10 +562,18 @@ class ChessOcrTkApp:
             "Grava as caixas desta página como verdade de referência, revisada por você. "
             "Confira antes: é isto que mede o pipeline, e um erro aqui vira erro na métrica."
         )
-        ttk.Button(parent, text="Sem diagrama", command=lambda: self.annotate_field_page(empty=True)).pack(
-            side=tk.LEFT, padx=6
-        )
-        ttk.Button(parent, text="Tirar o selecionado", command=self.field_drop_selected).pack(side=tk.LEFT)
+        ttk.Button(
+            parent,
+            text=comandos.rotulo_de_botao("anotar_sem_diagrama"),
+            style=comandos.estilo("anotar_sem_diagrama"),
+            command=lambda: self.annotate_field_page(empty=True),
+        ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(
+            parent,
+            text=comandos.rotulo_de_botao("tirar_do_campo"),
+            style=comandos.estilo("tirar_do_campo"),
+            command=self.field_drop_selected,
+        ).pack(side=tk.LEFT)
         self.field_status_var = tk.StringVar(value="")
         ttk.Label(parent, textvariable=self.field_status_var).pack(side=tk.LEFT, padx=10)
 
@@ -595,6 +658,13 @@ class ChessOcrTkApp:
     def _restore_state_or_default_pdf(self) -> None:
         """Restaura o estado gravado. Sem PDF utilizável, cai no primeiro PDF da pasta."""
         self.state = load_state(APP_STATE_PATH)
+        self.piece_dir_var.set(self.state.piece_dir)
+        self.piece_set_var.set(conjuntos.escolhido(self.state.piece_set))
+        self._escolher_conjunto()
+        self.skin_var.set(pele.escolhida(self.state.skin))
+        if self.skin_var.get() != pele.CLASSICA:
+            # A janela subiu na clássica porque o cromo é montado antes de o disco ser lido.
+            self.remontar_cromo()
 
         if self.pdf_panel is not None:
             # `last_pdf` vazio = nunca houve execução anterior, e então não há zoom escolhido a
@@ -1444,9 +1514,9 @@ class ChessOcrTkApp:
         if self.left_tabs is None:
             return
         contagens = {
-            "Revisão": len(self.review_panel.queue.pending()) if self.review_panel is not None else None,
-            "Dataset": self.dataset_panel.contagem_de_amostras() if self.dataset_panel is not None else None,
-            "Galeria": len(self.gallery_panel.model) if self.gallery_panel is not None else None,
+            abas.REVISAO: len(self.review_panel.queue.pending()) if self.review_panel is not None else None,
+            abas.DATASET: self.dataset_panel.contagem_de_amostras() if self.dataset_panel is not None else None,
+            abas.GALERIA: len(self.gallery_panel.model) if self.gallery_panel is not None else None,
         }
         for indice in range(int(self.left_tabs.index("end"))):
             nome = abas.nome_base(str(self.left_tabs.tab(indice, "text")))
@@ -1563,9 +1633,15 @@ class ChessOcrTkApp:
             "abrir_pdf": self._on_pdf(lambda p: p.open_pdf()),
             "abrir_no_leitor": self._on_pdf(lambda p: p.open_in_system_reader()),
             "exportar_pgn": lambda: self.export.start(self.pdf_source),
+            "cancelar_exportacao": self._cancel_export,
             "sair": self._on_close,
             "aplicar_fen": self._on_result(lambda p: p.apply_fen_edit()),
             "apagar_casa": self._on_result(lambda p: p.delete_selected_square()),
+            # Os três da S-229. Ficam no painel de resultado porque o que eles revertem é a
+            # posição do diagrama aberto, e a pilha é dele -- a janela só liga o nome à função.
+            "desfazer": self._on_result(lambda p: p.desfazer()),
+            "refazer": self._on_result(lambda p: p.refazer()),
+            "limpar_tabuleiro": self._on_result(lambda p: p.limpar_tabuleiro()),
             "salvar": self._on_result(lambda p: p.save_current()),
             "salvar_todos": self._on_result(lambda p: p.save_all()),
             "diagrama_anterior": self._on_result(lambda p: p.prev_diagram()),
@@ -1575,11 +1651,14 @@ class ChessOcrTkApp:
             # página é a outra navegação que a leitura pede o tempo todo (S-70).
             "pagina_anterior": self._on_pdf(lambda p: p.prev_page()),
             "proxima_pagina": self._on_pdf(lambda p: p.next_page()),
+            "zoom_menos": self._on_pdf(lambda p: p.diminuir_zoom()),
+            "zoom_mais": self._on_pdf(lambda p: p.aumentar_zoom()),
             "ajustar_largura": self._on_pdf(lambda p: p.fit_width()),
             "ajustar_pagina": self._on_pdf(lambda p: p.fit_page()),
             "marcar_diagramas": self._on_pdf(lambda p: p.on_boxes_toggle()),
             "tirar_caixa": self._on_pdf(lambda p: p.drop_selected_box()),
             "devolver_caixas": self.restore_dropped_boxes,
+            "aparencia": self._escolher_pele,
             "roda_vira_pagina": self._save_app_state,
             "ler_pagina": self.ocr_all,
             "ler_melhor": self.ocr_best,
@@ -1600,7 +1679,47 @@ class ChessOcrTkApp:
             self._comandos(),
             interruptores={} if painel is None else painel.interruptores_de_vista,
             recentes=self._livros_recentes,
+            escolhas={"aparencia": self.skin_var},
         )
+
+    def _escolher_pele(self) -> None:
+        """`Ver ▸ Aparência`: remonta o cromo e grava na hora (S-221/S-222)."""
+        anterior = pele.escolhida(self.state.skin)
+        self.state.skin = pele.valida(self.skin_var.get())
+        self.skin_var.set(self.state.skin)
+        if self.state.skin != anterior:
+            self.remontar_cromo()
+        self._save_app_state()
+
+    def remontar_cromo(self) -> None:
+        """Refaz o cromo sem tocar o conteúdo (S-222).
+
+        Quatro coisas, nesta ordem: os estilos nomeados, que `theme.registrar_estilos` já previa
+        ter de reaplicar numa troca em execução; o cache de ícones, que é por cor; as barras do
+        painel de PDF, com a linha de conjunto de campo junto; e a barra de menus.
+
+        **O que não está aqui é metade do item.** Página, zoom, diagrama selecionado, FEN em
+        edição, aba aberta, divisor e a frase do rodapé não são salvos nem restaurados -- eles
+        continuam de pé porque a remontagem não os alcança, e essa fronteira já estava paga.
+        """
+        escolhida = pele.registrada(pele.escolhida(self.state.skin))
+        montagem = escolhida.montar_cromo
+        # `apply_theme` e não `registrar_estilos`: é ela que escolhe o tema `ttkbootstrap` da
+        # pele, reaplica os estilos nomeados **e** repinta o que foi pintado fora do `Style`.
+        self.theme = theme.apply_theme(self.root, cromo_escuro=escolhida.cromo_escuro)
+        icones.limpar_cache()
+        for filho in self.fila_de_acoes.winfo_children():
+            filho.destroy()
+        if montagem == pele.CROMO_FOCO:
+            fila.montar(self.fila_de_acoes, self._comandos()).pack(fill=tk.X, padx=10, pady=(6, 0))
+        elif montagem == pele.CROMO_FITA:
+            fita.montar(self.fila_de_acoes, self._comandos()).pack(fill=tk.X, padx=10, pady=(6, 0))
+        if self.pdf_panel is not None:
+            self.pdf_panel.remontar_cromo(montagem, refazer_linha_de_campo=self._build_field_row)
+        if self.left_tabs is not None:
+            # As sete abas ficam em toda pele (regra 2); o que muda é o peso da faixa (S-226).
+            self.left_tabs.configure(style=theme.ESTILO_DE_ABAS_DISCRETO if montagem == pele.CROMO_FOCO else "")
+        self._build_menu()
 
     def _livros_recentes(self) -> list[tuple[str, Callable[[], None]]]:
         """Os livros que o estado lembra, para o submenu "Abrir recente" (S-161)."""

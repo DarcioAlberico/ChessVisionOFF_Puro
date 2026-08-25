@@ -116,7 +116,7 @@ def _linha(pai: tk.Misc, rotulo: str, largura_do_rotulo: int) -> ttk.Frame:
 
 
 def _aviso(linha: ttk.Frame) -> ttk.Label:
-    aviso = ttk.Label(linha, text="", foreground=tokens.RESERVA[tokens.PROBLEMA])
+    aviso = theme.pintar(ttk.Label(linha, text=""), "foreground", tokens.PROBLEMA_TEXTO)
     aviso.pack(side=tk.RIGHT, padx=(8, 0))
     return aviso
 

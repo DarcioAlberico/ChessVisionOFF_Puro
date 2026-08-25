@@ -61,13 +61,24 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
 
     O teste conta por arquivo e não por barra porque a barra não é um objeto que dê para
     contar de fora — mas o efeito é o mesmo onde importa: nenhum painel tem duas ênfases.
+
+    **`ui/comandos.py` é a exceção, e ela é o oposto de uma folga** (S-219). O catálogo declara
+    a ênfase de todos os comandos da janela, então contar literal ali mede o arquivo inteiro e
+    não uma barra. Lá a regra deixou de precisar de proxy: `comandos.primarios_por_grupo()`
+    devolve o grupo e os primários dele, e `test_ui_comandos.test_um_primario_por_grupo` afirma
+    a propriedade em vez de contar ocorrências de texto.
     """
 
     LIMITE_POR_ARQUIVO = 1
 
+    SEM_PROXY = {"comandos.py"}
+    """Arquivos onde a regra é cobrada pela propriedade, e não pela contagem de literais."""
+
     def test_nenhum_painel_tem_duas_acoes_primarias(self) -> None:
         excessos = {}
         for arquivo in ARQUIVOS:
+            if arquivo.name in self.SEM_PROXY:
+                continue
             texto = arquivo.read_text(encoding="utf-8")
             quantos = len(re.findall(r"estilos\.PRIMARIO", texto))
             if quantos > self.LIMITE_POR_ARQUIVO:

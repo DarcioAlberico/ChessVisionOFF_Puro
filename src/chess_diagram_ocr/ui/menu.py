@@ -15,6 +15,12 @@ vez de desenhar um item de menu que não faz nada.
 **O que o menu não é.** Ele não substitui botão: dá casa ao comando raro e ao que não cabia em
 barra nenhuma. O botão de salvar continua na tela porque salvar é o gesto do minuto a minuto; o
 "Abrir o log" nunca teve botão e nem devia ter.
+
+**O rótulo saiu daqui na S-219, e a fronteira é essa.** Este módulo decide *onde na barra de
+menus*; `ui/comandos.py` decide *o que o comando é* -- como ele se chama, a que grupo pertence,
+com que ênfase se desenha. `MENUS` referencia o catálogo em vez de repetir o texto, e `montar`
+ganhou a trava no sentido que faltava: item cujo `acao` ninguém registrou levanta, como já
+levantava o item que ninguém amarrou a uma função.
 """
 
 from __future__ import annotations
@@ -24,11 +30,25 @@ import tkinter as tk
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from . import atalhos, strings
+from . import atalhos, pele
+
+# Apelidado: neste módulo `comandos` já é o nome do mapa `acao -> função` que `montar` recebe, e
+# duas coisas com o mesmo nome no mesmo arquivo é como se lê o errado. `strings` saiu junto: o
+# único uso dele aqui era o rótulo de "Varrer o livro", que agora mora no catálogo.
+from . import comandos as catalogo
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MENUS", "Item", "Menu", "acoes_declaradas", "comandos_faltando", "montar"]
+__all__ = [
+    "APARENCIA",
+    "MENUS",
+    "Item",
+    "Menu",
+    "acoes_declaradas",
+    "acoes_fora_do_catalogo",
+    "comandos_faltando",
+    "montar",
+]
 
 COMANDO = "COMANDO"
 INTERRUPTOR = "INTERRUPTOR"
@@ -38,14 +58,31 @@ SEPARADOR = "SEPARADOR"
 RECENTES = "RECENTES"
 """Submenu montado na hora, com os livros que o `AppState` lembra (S-156)."""
 
+APARENCIA = "APARENCIA"
+"""Submenu de `radiobutton`, um por pele registrada em `ui/pele.py` (S-221).
+
+**Montado do registro, e não listado à mão** -- é o mesmo princípio de `RECENTES`, com uma
+diferença: o acervo muda enquanto o programa roda e por isso o submenu de livros se refaz a cada
+abertura; o registro de peles é fixo na importação. O que varia aqui é a **marca**, e disso quem
+cuida é o `StringVar`."""
+
 
 @dataclass(frozen=True)
 class Item:
-    """Uma linha de menu. `acao` é o nome do comando, não a função (ver `ui/atalhos.py`)."""
+    """Uma linha de menu: **qual** comando e de que tipo. O que ele *é* mora em `ui/comandos.py`.
 
-    rotulo: str = ""
+    O rótulo saiu daqui na S-219. Ele continua legível como `item.rotulo` -- agora derivado do
+    catálogo, e não guardado -- porque o menu escrevia o texto que `ui/pdf_panel.py` escrevia de
+    novo, com outra redação, e nada comparava os dois.
+    """
+
     acao: str = ""
     tipo: str = COMANDO
+
+    @property
+    def rotulo(self) -> str:
+        """O texto da linha, tirado do catálogo. Vazio no separador, que não tem comando."""
+        return catalogo.rotulo(self.acao) if self.acao else ""
 
 
 @dataclass(frozen=True)
@@ -62,71 +99,82 @@ MENUS: tuple[Menu, ...] = (
     Menu(
         "Arquivo",
         (
-            Item("Abrir PDF…", "abrir_pdf"),
-            Item("Abrir recente", "abrir_recente", RECENTES),
-            Item("Abrir no leitor do sistema", "abrir_no_leitor"),
+            Item("abrir_pdf"),
+            Item("abrir_recente", RECENTES),
+            Item("abrir_no_leitor"),
             _sep(),
-            Item("Exportar o livro para PGN…", "exportar_pgn"),
+            Item("exportar_pgn"),
+            Item("cancelar_exportacao"),
             _sep(),
-            Item("Sair", "sair"),
+            Item("sair"),
         ),
     ),
     Menu(
         "Editar",
         (
-            Item("Aplicar a FEN digitada", "aplicar_fen"),
-            Item("Apagar a peça da casa selecionada", "apagar_casa"),
+            # Os três da S-229 abrem o menu, que é onde todo editor os põe -- e é onde quem
+            # procura por eles olha primeiro, antes de saber que existe `Ctrl+Z` aqui.
+            Item("desfazer"),
+            Item("refazer"),
             _sep(),
-            Item("Salvar a posição", "salvar"),
-            Item("Salvar todas as posições da página", "salvar_todos"),
+            Item("aplicar_fen"),
+            Item("apagar_casa"),
+            Item("limpar_tabuleiro"),
             _sep(),
-            Item("Diagrama anterior", "diagrama_anterior"),
-            Item("Próximo diagrama", "proximo_diagrama"),
-            Item("Próximo item da fila de revisão", "proximo_da_fila"),
+            Item("salvar"),
+            Item("salvar_todos"),
+            _sep(),
+            Item("diagrama_anterior"),
+            Item("proximo_diagrama"),
+            Item("proximo_da_fila"),
         ),
     ),
     Menu(
         "Ver",
         (
-            Item("Página anterior", "pagina_anterior"),
-            Item("Próxima página", "proxima_pagina"),
+            Item("pagina_anterior"),
+            Item("proxima_pagina"),
             _sep(),
-            Item("Ajustar à largura", "ajustar_largura"),
-            Item("Ajustar à página", "ajustar_pagina"),
+            Item("zoom_menos"),
+            Item("zoom_mais"),
+            Item("ajustar_largura"),
+            Item("ajustar_pagina"),
             _sep(),
-            Item("Marcar os diagramas na página", "marcar_diagramas", INTERRUPTOR),
+            Item("marcar_diagramas", INTERRUPTOR),
             # Ao lado do interruptor que liga a marcação, e não em Ferramentas: os dois falam
             # do mesmo objeto -- os retângulos sobre a página --, e a diferença entre eles é
             # "todos" contra "este" (S-177).
-            Item("Tirar a caixa do diagrama selecionado", "tirar_caixa"),
-            Item("Devolver as caixas tiradas desta página", "devolver_caixas"),
+            Item("tirar_caixa"),
+            Item("devolver_caixas"),
             _sep(),
-            Item("A roda do mouse vira a página", "roda_vira_pagina", INTERRUPTOR),
+            Item("roda_vira_pagina", INTERRUPTOR),
+            _sep(),
+            Item("aparencia", APARENCIA),
         ),
     ),
     Menu(
         "Ferramentas",
         (
-            Item("Ler esta página", "ler_pagina"),
-            Item("Ler o melhor diagrama da página", "ler_melhor"),
-            Item("Selecionar área para ler", "selecionar_area"),
+            Item("ler_pagina"),
+            Item("ler_melhor"),
+            Item("selecionar_area"),
             _sep(),
             # Um comando, e não dois: a varredura do livro alimenta a Galeria **e** a fila de
             # revisão na mesma passada (S-119). Enquanto eram duas passadas, "Varrer a fila de
             # revisão" era um segundo item aqui, com o mesmo custo do primeiro.
-            Item(strings.VARRER_LIVRO, "varrer_livro"),
+            Item("varrer_livro"),
             _sep(),
-            Item("Recarregar o modelo", "recarregar_modelo"),
-            Item("Treinar o modelo", "treinar"),
+            Item("recarregar_modelo"),
+            Item("treinar"),
         ),
     ),
     Menu(
         "Ajuda",
         (
-            Item("Atalhos de teclado", "legenda_de_atalhos"),
-            Item("Abrir o arquivo de log", "abrir_log"),
+            Item("legenda_de_atalhos"),
+            Item("abrir_log"),
             _sep(),
-            Item("Sobre o ChessVisionOFF", "sobre"),
+            Item("sobre"),
         ),
     ),
 )
@@ -153,8 +201,18 @@ def comandos_faltando(comandos: Mapping[str, object]) -> list[str]:
     O submenu de recentes fica de fora: ele não tem função própria -- quem o preenche é o
     `recentes` de `montar`, e cada livro vira uma função na hora de abrir o menu.
     """
-    exigidos = {item.acao for menu in MENUS for item in menu.itens if item.tipo in (COMANDO, INTERRUPTOR)}
+    exigidos = {item.acao for menu in MENUS for item in menu.itens if item.tipo in (COMANDO, INTERRUPTOR, APARENCIA)}
     return sorted(exigidos - set(comandos))
+
+
+def acoes_fora_do_catalogo() -> list[str]:
+    """Os itens declarados que `ui/comandos.py` não conhece. Vazio é o estado correto.
+
+    O sentido que faltava. `comandos_faltando` pega o item que ninguém amarrou a uma função;
+    este pega o item que ninguém declarou como comando -- o que, depois da S-219, é o que faria
+    uma pele desenhar uma linha sem rótulo, ou nenhuma linha.
+    """
+    return catalogo.acoes_fora_do_catalogo(acoes_declaradas())
 
 
 def montar(
@@ -163,6 +221,7 @@ def montar(
     *,
     interruptores: Mapping[str, tk.BooleanVar] | None = None,
     recentes: Callable[[], Sequence[tuple[str, Callable[[], None]]]] = list,
+    escolhas: Mapping[str, tk.StringVar] | None = None,
 ) -> tk.Menu:
     """Constrói a barra e a pendura na janela. Devolve a barra montada.
 
@@ -172,16 +231,30 @@ def montar(
 
     `recentes` é chamado **na hora de abrir** o menu Arquivo, e não aqui: a lista de livros muda a
     cada PDF aberto, e um submenu montado uma vez mostraria o acervo de quando a janela subiu.
+
+    `escolhas` traz o `StringVar` de cada item de `APARENCIA`, e a falta dele **levanta** pela
+    mesma razão que a falta de comando: um submenu de `radiobutton` sem variável desenha três
+    opções em que nenhuma aparece marcada, e a pessoa conclui que a escolha não pegou.
     """
+    if fora := acoes_fora_do_catalogo():
+        raise KeyError(f"item de menu fora do catálogo de comandos: {', '.join(fora)}")
     if faltando := comandos_faltando(comandos):
         raise KeyError(f"item de menu sem comando: {', '.join(faltando)}")
+    variaveis = escolhas or {}
+    if sem_variavel := sorted(
+        item.acao
+        for declarado in MENUS
+        for item in declarado.itens
+        if item.tipo == APARENCIA and item.acao not in variaveis
+    ):
+        raise KeyError(f"item de aparência sem variável de escolha: {', '.join(sem_variavel)}")
 
     marcas = interruptores or {}
     barra = tk.Menu(root)
     for declarado in MENUS:
         menu = tk.Menu(barra, tearoff=False)
         for item in declarado.itens:
-            _acrescentar(menu, item, comandos, marcas, recentes)
+            _acrescentar(menu, item, comandos, marcas, recentes, variaveis)
         barra.add_cascade(label=declarado.titulo, menu=menu)
     root.configure(menu=barra)  # type: ignore[call-arg]
     return barra
@@ -193,12 +266,17 @@ def _acrescentar(
     comandos: Mapping[str, Callable[[], None]],
     marcas: Mapping[str, tk.BooleanVar],
     recentes: Callable[[], Sequence[tuple[str, Callable[[], None]]]],
+    variaveis: Mapping[str, tk.StringVar],
 ) -> None:
     if item.tipo == SEPARADOR:
         menu.add_separator()
         return
     if item.tipo == RECENTES:
         menu.add_cascade(label=item.rotulo, menu=_submenu_recentes(menu, recentes))
+        return
+    if item.tipo == APARENCIA:
+        submenu = _submenu_de_peles(menu, variaveis[item.acao], comandos[item.acao])
+        menu.add_cascade(label=item.rotulo, menu=submenu)
         return
     if item.tipo == INTERRUPTOR and item.acao in marcas:
         menu.add_checkbutton(label=item.rotulo, variable=marcas[item.acao], command=comandos[item.acao])
@@ -207,6 +285,19 @@ def _acrescentar(
     # `bind` da S-20 tem a guarda de foco (`←` dentro do campo de FEN é do campo), e o
     # acelerador do Tk não tem guarda nenhuma. Duas ligações da mesma tecla disparariam duas vezes.
     menu.add_command(label=item.rotulo, command=comandos[item.acao], accelerator=atalhos.acelerador(item.acao))
+
+
+def _submenu_de_peles(pai: tk.Menu, escolha: tk.StringVar, ao_escolher: Callable[[], None]) -> tk.Menu:
+    """Um `radiobutton` por pele registrada, na ordem de `pele.PELES` (S-221).
+
+    O `value` é o nome que vai para o disco e o `label` é o que a pessoa lê -- separados porque
+    o primeiro é chave e o segundo é texto de interface, e a S-166 já fixou que os dois não são
+    a mesma coisa.
+    """
+    submenu = tk.Menu(pai, tearoff=False)
+    for registro in pele.PELES:
+        submenu.add_radiobutton(label=registro.rotulo, value=registro.nome, variable=escolha, command=ao_escolher)
+    return submenu
 
 
 def _submenu_recentes(pai: tk.Menu, recentes: Callable[[], Sequence[tuple[str, Callable[[], None]]]]) -> tk.Menu:

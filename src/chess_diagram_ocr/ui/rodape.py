@@ -97,7 +97,7 @@ SEVERIDADES: tuple[str, ...] = (INFORMACAO, AVISO, ERRO)
 PAPEL_DE_TEXTO: dict[str, str] = {
     INFORMACAO: tokens.TEXTO_PADRAO,
     AVISO: tokens.ATENCAO,
-    ERRO: tokens.PROBLEMA,
+    ERRO: tokens.PROBLEMA_TEXTO,
 }
 """Severidade → papel de cor da S-145. Os três são papéis de **texto**, e isso não é detalhe.
 
@@ -483,6 +483,7 @@ class RodapeDaJanela(ttk.Frame):
             foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
         )
         self._lbl_documento.pack(side=tk.RIGHT, padx=(FOLGA_ENTRE_ZONAS, FOLGA_ENTRE_ZONAS))
+        theme.ao_repintar(lambda: self._lbl_documento.configure(foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO)))
         # A quarta zona entra **à esquerda do documento** e não à direita dele: livro e página
         # são o que a pessoa consulta o tempo todo, e o dispositivo é o que ela olha uma vez por
         # sessão. Quem fica mais perto da mensagem é quem cede espaço primeiro.
@@ -493,6 +494,9 @@ class RodapeDaJanela(ttk.Frame):
             foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
         )
         self._lbl_dispositivos.pack(side=tk.RIGHT)
+        theme.ao_repintar(
+            lambda: self._lbl_dispositivos.configure(foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO))
+        )
         self._dica_dos_dispositivos = Tooltip(self._lbl_dispositivos, "")
         self._lbl_mensagem = ttk.Label(linha, text="", anchor="w", font=theme.fonte_atual(tipografia.CORPO))
         self._lbl_mensagem.pack(side=tk.LEFT, fill=tk.X, expand=True)

@@ -23,15 +23,15 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageTk
+from PIL import Image, ImageChops, ImageFilter, ImageTk
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
-from . import theme, tokens
+from . import conjuntos, theme, tokens
 from .board_model import BoardModel
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["BoardGeometry", "BoardRenderer", "PieceImages", "heatmap_color"]
+__all__ = ["BoardGeometry", "BoardRenderer", "PieceImages", "engrossar_traco", "heatmap_color"]
 
 LIGHT_SQUARE = tokens.RESERVA[tokens.CASA_CLARA]
 DARK_SQUARE = tokens.RESERVA[tokens.CASA_ESCURA]
@@ -153,31 +153,141 @@ class BoardGeometry:
         return (row, col) if 0 <= row <= 7 and 0 <= col <= 7 else None
 
 
+LIMIAR_DE_TRACO = 160
+"""Abaixo de que luminância um pixel conta como **traço** e não como miolo, ao engrossar (S-230).
+
+160 de 255, e não 128: as peças brancas destes PNGs têm o contorno em preto puro sobre um miolo
+branco puro, e a antialiasing da redução produz cinzas intermediários -- um limiar no meio da
+escala deixaria de fora justamente a borda que a redução acabou de esmaecer, que é a parte que o
+conjunto de traço grosso existe para recuperar."""
+
+
+def engrossar_traco(imagem: Image.Image) -> Image.Image:
+    """O mesmo desenho com a linha escura um pixel mais grossa (S-230). Puro sobre a imagem.
+
+    **Derivado, e não redesenhado.** A 20-24 px -- que é como a paleta de edição e a Galeria
+    desenham as peças -- a redução apaga o contorno fino, e as seis peças brancas viram manchas
+    parecidas entre si. Engrossar **depois** de reduzir devolve a linha no tamanho em que ela é
+    exibida, que é onde o problema está; engrossar antes seria engrossá-la na fonte e perdê-la de
+    novo na mesma redução.
+
+    O que ele dilata é a máscara de traço, e não a peça: o miolo claro fica onde está, e o que
+    cresce é a borda escura para dentro e para fora dela.
+    """
+    rgba = imagem.convert("RGBA")
+    alfa = rgba.getchannel("A")
+    luz = rgba.convert("L")
+    # `MinFilter` e não `MaxFilter`: a máscara é clara onde o pixel é **escuro**, e dilatar o
+    # escuro numa imagem em `L` é tomar o mínimo da vizinhança.
+    escuro = luz.point(lambda valor: 255 if valor < LIMIAR_DE_TRACO else 0)
+    dentro = ImageChops.multiply(escuro, alfa.point(lambda valor: 255 if valor > 128 else 0))
+    grosso = dentro.filter(ImageFilter.MaxFilter(3))
+    tinta = Image.new("RGBA", rgba.size, (0, 0, 0, 255))
+    saida = rgba.copy()
+    saida.paste(tinta, (0, 0), grosso)
+    return saida
+
+
 class PieceImages:
-    """Cache de imagens de peça por tamanho, com fallback para símbolo Unicode.
+    """Cache de imagens de peça por conjunto e tamanho, com fallback para símbolo Unicode.
 
     Estava embutido no `app_tkinter`; virou classe porque agora há mais de um tabuleiro na
     tela e recarregar/redimensionar PNG por tabuleiro seria desperdício visível ao arrastar.
+
+    **O conjunto é uma chave, e não uma instância nova** (S-230). Trocar de conjunto com uma
+    segunda `PieceImages` jogaria fora o cache do primeiro, e quem compara dois conjuntos os
+    alterna -- é exatamente o caso em que o cache paga. O nome do conjunto entra na chave, então
+    a mesma peça, no mesmo tamanho, em dois conjuntos, são duas imagens que convivem.
     """
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        *,
+        conjunto: str = conjuntos.PADRAO,
+        pasta_do_usuario: Path | str | None = None,
+    ) -> None:
         self.directory = Path(directory)
-        self._sources: dict[str, Image.Image] = {}
-        self._cache: dict[tuple[str, int, str | None], ImageTk.PhotoImage] = {}
-        self._load_sources()
+        self._conjunto = conjuntos.valida(conjunto)
+        self._pasta_do_usuario = Path(pasta_do_usuario) if pasta_do_usuario else None
+        self._sources: dict[str, dict[str, Image.Image]] = {}
+        self._cache: dict[tuple[str, str, int, str | None], ImageTk.PhotoImage] = {}
+        self._avisadas: set[str] = set()
+        """As pastas cujo aviso de peça faltando já saiu. O log diz uma vez, e não a cada
+        redesenho -- um tabuleiro arrastado pede imagem dezenas de vezes por segundo."""
 
-    def _load_sources(self) -> None:
-        for color_code in ("w", "b"):
-            for piece_code in ("p", "n", "b", "r", "q", "k"):
-                key = f"{color_code}{piece_code}"
-                path = self.directory / f"{key}.png"
+    @property
+    def conjunto(self) -> str:
+        """Qual conjunto está desenhando agora."""
+        return self._conjunto
+
+    @property
+    def pasta_do_usuario(self) -> Path | None:
+        return self._pasta_do_usuario
+
+    def usar_conjunto(self, nome: str, *, pasta: Path | str | None = None) -> str:
+        """Troca o conjunto em execução e devolve o que de fato ficou valendo.
+
+        Não limpa o cache de propósito: ele é indexado por conjunto, então voltar ao anterior
+        reaproveita o que já foi desenhado. É a mesma decisão de `BarraFluida._rearranjar` ao
+        desempacotar em vez de destruir a moldura -- quem alterna paga uma vez, e não sempre.
+        """
+        self._conjunto = conjuntos.valida(nome)
+        if pasta is not None:
+            self._pasta_do_usuario = Path(pasta) if pasta else None
+        return self._conjunto
+
+    def _diretorio_de(self, conjunto: str) -> Path | None:
+        """De onde saem os arquivos daquele conjunto, ou `None` quando não há de onde.
+
+        O conjunto do usuário sem pasta escolhida não é erro: é configuração incompleta, e a
+        resposta certa é o Unicode que já existe -- não uma exceção no meio de um redesenho.
+        """
+        if conjuntos.registrado(conjunto).do_usuario:
+            return self._pasta_do_usuario
+        return self.directory
+
+    def _load_sources(self, conjunto: str) -> dict[str, Image.Image]:
+        """Os PNGs daquele conjunto, lidos uma vez. Peça que falta simplesmente não entra."""
+        if conjunto in self._sources:
+            return self._sources[conjunto]
+
+        carregadas: dict[str, Image.Image] = {}
+        diretorio = self._diretorio_de(conjunto)
+        if diretorio is not None:
+            for key in conjuntos.PECAS:
+                path = diretorio / f"{key}.png"
                 if not path.exists():
                     continue
                 try:
                     with Image.open(path) as img:
-                        self._sources[key] = img.convert("RGBA")
+                        carregadas[key] = img.convert("RGBA")
                 except (OSError, ValueError) as exc:
                     logger.warning("Imagem de peça inválida em %s: %s", path, exc)
+            self._avisar_incompleta(conjunto, diretorio, carregadas)
+        self._sources[conjunto] = carregadas
+        return carregadas
+
+    def _avisar_incompleta(self, conjunto: str, diretorio: Path, carregadas: dict[str, Image.Image]) -> None:
+        """Nomeia as peças que faltam, uma vez por pasta -- **avisar e usar o que houver**.
+
+        Recusar o conjunto inteiro por causa de um arquivo seria trocar um comportamento que já
+        existe (o Unicode, peça a peça) por um erro que não precisa existir. E nomear as que
+        faltam é metade do valor: "faltam wq e bk" diz o que copiar para lá.
+        """
+        faltando = [peca for peca in conjuntos.PECAS if peca not in carregadas]
+        if not faltando:
+            return
+        marca = f"{conjunto}:{diretorio}"
+        if marca in self._avisadas:
+            return
+        self._avisadas.add(marca)
+        logger.warning(
+            "Conjunto de peças %r incompleto em %s: faltam %s. As ausentes caem no símbolo Unicode.",
+            conjunto,
+            diretorio,
+            ", ".join(f"{peca}.png" for peca in faltando),
+        )
 
     def photo(self, symbol: str, cell: int) -> ImageTk.PhotoImage | None:
         """Imagem da peça para uma casa de `cell` pixels. `None` cai no Unicode."""
@@ -199,23 +309,27 @@ class PieceImages:
         parecem no tabuleiro, que é o que a paleta está prometendo.
         """
         key = f"{'w' if symbol.isupper() else 'b'}{symbol.lower()}"
-        source = self._sources.get(key)
+        source = self._load_sources(self._conjunto).get(key)
         if source is None:
             return None
 
         size = max(8, int(size))
-        cached = self._cache.get((key, size, background))
+        cached = self._cache.get((self._conjunto, key, size, background))
         if cached is not None:
             return cached
 
         resized = source.resize((size, size), resample=Image.Resampling.LANCZOS)
+        # **Depois de reduzir** (S-230): é no tamanho de exibição que o traço some, e é nele que
+        # engrossá-lo devolve a diferença entre um peão branco e um bispo branco a 20 px.
+        if conjuntos.registrado(self._conjunto).engrossa:
+            resized = engrossar_traco(resized)
         if background is not None:
             tile = Image.new("RGBA", (size, size), background)
             tile.alpha_composite(resized)
             resized = tile
 
         photo = ImageTk.PhotoImage(resized)
-        self._cache[(key, size, background)] = photo
+        self._cache[(self._conjunto, key, size, background)] = photo
         return photo
 
 

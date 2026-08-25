@@ -47,11 +47,12 @@ from PIL import Image, ImageTk
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 
-from . import estilos, rodape, strings, theme, tipografia, tokens
+from . import comandos, formato, pele, rodape, strings, theme, tipografia, tokens
 from .barra import BarraFluida
 from .page_overlay import DiagramBox, PageBoxes, traco_da_caixa
 from .tooltip import Tooltip
 from .viewport import (
+    LADO_DO_DESLIZADOR,
     WheelAction,
     anchor_after_zoom,
     clamp_zoom,
@@ -59,12 +60,18 @@ from .viewport import (
     desvio_de_centralizacao,
     fit_page_zoom,
     fit_width_zoom,
+    posicao_do_zoom,
     regiao_de_rolagem,
     wheel_direction,
+    zoom_da_posicao,
     zoomed,
 )
 
 logger = logging.getLogger(__name__)
+
+PASSO_DE_ZOOM = 0.1
+"""Quanto um clique em `+` ou `-` muda o zoom. Aditivo, e não multiplicativo: um clique, um
+passo previsível."""
 
 MIN_SELECTION_PX = 12
 """Arrasto menor que isto é clique errado, não seleção. Abaixo disso o recorte não
@@ -272,6 +279,13 @@ class PdfPanel(ttk.Frame):
         self._last_page_flip = 0.0
         self._panning = False
 
+        self._deslizador: ttk.Scale | None = None
+        self._lbl_zoom_deslizador: ttk.Label | None = None
+        self._rodape_de_zoom: ttk.Frame | None = None
+        self._movendo_o_deslizador = False
+        """Guarda contra o laço: `Scale.set` dispara o `command`, e o `command` chama
+        `apply_zoom`, que chama `update_zoom_label`, que chama `Scale.set` (S-225)."""
+
         self._build(on_ocr_best, on_ocr_all, on_export, on_cancel_export)
 
     # ------------------------------------------------------------------------------ layout
@@ -283,102 +297,23 @@ class PdfPanel(ttk.Frame):
         on_export: Callable[[], None],
         on_cancel_export: Callable[[], None],
     ) -> None:
+        # Guardados porque a troca de pele refaz as barras, e refazer um botão é precisar de
+        # novo da função que ele chama (S-222). O painel não as executa; ele só as segura.
+        self._on_ocr_best = on_ocr_best
+        self._on_ocr_all = on_ocr_all
+        self._on_export = on_export
+        self._on_cancel_export = on_cancel_export
+
         box = ttk.LabelFrame(self, text=strings.LIVRO_EM_PDF)
         box.pack(fill=tk.BOTH, expand=True)
+        self._box = box
 
         # **Duas barras, e não cinco** (S-151). O agrupamento é por pergunta, e não por ordem
         # histórica de quem escreveu cada linha: a primeira é *o que fazer com este livro*, a
         # segunda é *onde estou e quão perto*. Navegação de página e zoom eram duas barras e são
         # um eixo só -- as duas respondem à mesma pergunta com unidades diferentes.
-        self.barra_livro = BarraFluida(box)
-        self.barra_livro.pack(fill=tk.X, padx=8, pady=6)
-        self.barra_vista = BarraFluida(box)
-        self.barra_vista.pack(fill=tk.X, padx=8, pady=(0, 4))
+        self._montar_barras()
 
-        livro, vista = self.barra_livro, self.barra_vista
-        livro.adicionar(ttk.Button(livro, text="Abrir PDF", command=self.open_pdf))
-        self.btn_system_reader = livro.adicionar(
-            ttk.Button(livro, text="Abrir no leitor do sistema", command=self.open_in_system_reader, state=tk.DISABLED)
-        )
-        Tooltip(
-            self.btn_system_reader,
-            "Abre este PDF no leitor padrão do sistema, numa janela própria.\n"
-            "Para ler o livro: rolagem contínua e busca de texto, que esta tela não tem.",
-        )
-        self.lbl_pdf = livro.adicionar(ttk.Label(livro, text="Nenhum PDF"))
-        self.btn_ocr_best = livro.adicionar(
-            ttk.Button(livro, text="OCR melhor diagrama", style=estilos.estilo_de_botao(estilos.PRIMARIO), command=on_ocr_best)
-        )
-        self.btn_ocr_all = livro.adicionar(ttk.Button(livro, text="OCR todos diagramas", command=on_ocr_all))
-        self.btn_select = livro.adicionar(
-            ttk.Button(livro, text="Selecionar área (OCR)", command=self.toggle_area_selection)
-        )
-        self.btn_drop_box = livro.adicionar(
-            ttk.Button(livro, text="Tirar a caixa", command=self.drop_selected_box)
-        )
-        Tooltip(
-            self.btn_drop_box,
-            "Tira da página o retângulo do diagrama selecionado -- o que o detector marcou errado.\n"
-            "Botão direito sobre qualquer retângulo faz o mesmo, sem precisar selecioná-lo antes.\n"
-            "Depois, use Selecionar área (OCR) para recortar o diagrama de verdade.",
-        )
-        self.btn_export = livro.adicionar(ttk.Button(livro, text=f"Exportar PDF {strings.SETA} PGN", command=on_export))
-        self.btn_cancel_export = livro.adicionar(
-            ttk.Button(livro, text="Cancelar exportação", command=on_cancel_export, state=tk.DISABLED)
-        )
-        Tooltip(
-            self.btn_export,
-            "Fica cinza durante a exportação, que roda uma por vez. Precisa de um PDF aberto.\n"
-            "A exportação grava um parcial a cada 5 páginas e retoma de onde parou.",
-        )
-        Tooltip(
-            self.btn_cancel_export,
-            "Só fica ativo durante a exportação. O que já foi gravado no parcial continua valendo;\n"
-            "a exportação seguinte retoma dali.",
-        )
-
-        vista.adicionar(ttk.Button(vista, text="Página anterior", command=self.prev_page))
-        vista.adicionar(ttk.Button(vista, text="Próxima página", command=self.next_page))
-        vista.adicionar(ttk.Label(vista, text="Página"))
-        self.spin_page = vista.adicionar(
-            ttk.Spinbox(vista, from_=0, to=0, textvariable=self.page_index_var, width=8, command=self.on_page_spin)
-        )
-        vista.adicionar(ttk.Label(vista, text="Zoom PDF"))
-        vista.adicionar(ttk.Button(vista, text="-", width=3, command=lambda: self.zoom(-0.1)))
-        vista.adicionar(ttk.Button(vista, text="+", width=3, command=lambda: self.zoom(0.1)))
-        self.lbl_zoom = vista.adicionar(ttk.Label(vista, text="70%"))
-        self.btn_fit_width = vista.adicionar(ttk.Button(vista, text="Ajustar à largura", command=self.fit_width))
-        Tooltip(
-            self.btn_fit_width,
-            "Ctrl + roda do mouse faz o mesmo, com o ponteiro como âncora.\n"
-            "A roda rola a página; na borda, ela vira para a página seguinte.",
-        )
-        self.btn_fit_page = vista.adicionar(ttk.Button(vista, text="Ajustar à página", command=self.fit_page))
-        Tooltip(
-            self.btn_fit_page,
-            "A folha inteira na tela. É o enquadramento de escolher qual diagrama abrir;\n"
-            "'Ajustar à largura' é o de ler o enunciado de um.",
-        )
-        self.chk_flip = vista.adicionar(
-            ttk.Checkbutton(
-                vista, text="Roda vira a página", variable=self.flip_pages_var, command=self._on_prefs_changed
-            )
-        )
-        Tooltip(
-            self.chk_flip,
-            "Ligado: rolar além do fim da página vai para a próxima, no topo.\n"
-            "Desligado: a roda só rola dentro da página exibida.",
-        )
-        self.chk_boxes = vista.adicionar(
-            ttk.Checkbutton(
-                vista, text="Marcar diagramas", variable=self.show_boxes_var, command=self.on_boxes_toggle
-            )
-        )
-        Tooltip(
-            self.chk_boxes,
-            "Desenha um retângulo sobre cada diagrama que o detector achou na página.\n"
-            "Clique num deles para abri-lo na aba Resultado.",
-        )
         # O que se sabe dos diagramas da página **não** entra nesta barra (S-163): ele é estado
         # do documento e vai para o rodapé da janela, via `_on_document_state`. Era o último item
         # da barra de zoom -- o lugar de onde ele saía da tela primeiro.
@@ -404,6 +339,7 @@ class PdfPanel(ttk.Frame):
         wrap = ttk.Frame(view)
         wrap.pack(fill=tk.BOTH, expand=True)
         self.canvas = tk.Canvas(wrap, bg=theme.cor_atual(tokens.SUPERFICIE_PAGINA), highlightthickness=0)
+        theme.ao_repintar(lambda: self.canvas.configure(bg=theme.cor_atual(tokens.SUPERFICIE_PAGINA)))
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vscroll = ttk.Scrollbar(wrap, orient=tk.VERTICAL, command=self.canvas.yview)
         vscroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -426,6 +362,302 @@ class PdfPanel(ttk.Frame):
         self.canvas.bind("<B2-Motion>", self._on_pan_move)
         self.canvas.bind("<ButtonRelease-2>", self._on_pan_end)
         self._bind_wheel()
+
+    def _montar_barras(self, montagem: str = pele.CROMO_CLASSICO, *, antes: tk.Misc | None = None) -> None:
+        """As duas barras do painel. Chamada na construção e de novo a cada troca de pele (S-222).
+
+        `antes` diz onde elas entram no `pack`: na construção não há nada abaixo delas ainda; na
+        remontagem há -- e sem isso as barras refeitas nasceriam **depois** do canvas, que é a
+        ordem em que o `pack` empilha quem chega por último.
+
+        **Na pele "Foco" os controles são criados e não empacotados** (S-223). Parece desperdício
+        e é o contrário: `set_ocr_controls_enabled`, `_open_pdf` e `update_zoom_label` escrevem
+        nesses widgets o tempo todo, e fazê-los existir mantém o painel com um contrato só. O que
+        a pele decide é o que aparece na tela, não o que o painel sabe fazer -- e os 21 controles
+        continuam alcançáveis pelo menu, que é o que a regra 2 exige e a S-233 mede.
+        """
+        box = self._box
+        embalagem: dict[str, object] = {} if antes is None else {"before": antes}
+        na_tela = montagem == pele.CROMO_CLASSICO
+
+        self.barra_livro = BarraFluida(box)
+        self.barra_vista = BarraFluida(box)
+        if na_tela:
+            self.barra_livro.pack(fill=tk.X, padx=8, pady=6, **embalagem)
+            self.barra_vista.pack(fill=tk.X, padx=8, pady=(0, 4), **embalagem)
+
+        livro, vista = self.barra_livro, self.barra_vista
+        livro.adicionar(ttk.Button(livro, text=comandos.rotulo_de_botao("abrir_pdf"), style=comandos.estilo("abrir_pdf"), command=self.open_pdf))
+        self.btn_system_reader = livro.adicionar(
+            ttk.Button(
+                livro,
+                text=comandos.rotulo_de_botao("abrir_no_leitor"),
+                style=comandos.estilo("abrir_no_leitor"),
+                command=self.open_in_system_reader,
+                state=tk.DISABLED,
+            )
+        )
+        Tooltip(
+            self.btn_system_reader,
+            "Abre este PDF no leitor padrão do sistema, numa janela própria.\n"
+            "Para ler o livro: rolagem contínua e busca de texto, que esta tela não tem.",
+        )
+        self.lbl_pdf = livro.adicionar(ttk.Label(livro, text="Nenhum PDF"))
+        self.btn_ocr_best = livro.adicionar(
+            ttk.Button(
+                livro,
+                text=comandos.rotulo_de_botao("ler_melhor"),
+                style=comandos.estilo("ler_melhor"),
+                command=self._on_ocr_best,
+            )
+        )
+        self.btn_ocr_all = livro.adicionar(ttk.Button(
+                livro, text=comandos.rotulo_de_botao("ler_pagina"), style=comandos.estilo("ler_pagina"), command=self._on_ocr_all
+            ))
+        self.btn_select = livro.adicionar(
+            ttk.Button(
+                livro,
+                text=comandos.rotulo_de_botao("selecionar_area"),
+                style=comandos.estilo("selecionar_area"),
+                command=self.toggle_area_selection,
+            )
+        )
+        self.btn_drop_box = livro.adicionar(
+            ttk.Button(
+                livro,
+                text=comandos.rotulo_de_botao("tirar_caixa"),
+                style=comandos.estilo("tirar_caixa"),
+                command=self.drop_selected_box,
+            )
+        )
+        Tooltip(
+            self.btn_drop_box,
+            "Tira da página o retângulo do diagrama selecionado -- o que o detector marcou errado.\n"
+            "Botão direito sobre qualquer retângulo faz o mesmo, sem precisar selecioná-lo antes.\n"
+            "Depois, use Selecionar área (OCR) para recortar o diagrama de verdade.",
+        )
+        self.btn_export = livro.adicionar(ttk.Button(
+                livro,
+                text=comandos.rotulo_de_botao("exportar_pgn"),
+                style=comandos.estilo("exportar_pgn"),
+                command=self._on_export,
+            ))
+        self.btn_cancel_export = livro.adicionar(
+            ttk.Button(
+                livro,
+                text=comandos.rotulo_de_botao("cancelar_exportacao"),
+                style=comandos.estilo("cancelar_exportacao"),
+                command=self._on_cancel_export,
+                state=tk.DISABLED,
+            )
+        )
+        Tooltip(
+            self.btn_export,
+            "Fica cinza durante a exportação, que roda uma por vez. Precisa de um PDF aberto.\n"
+            "A exportação grava um parcial a cada 5 páginas e retoma de onde parou.",
+        )
+        Tooltip(
+            self.btn_cancel_export,
+            "Só fica ativo durante a exportação. O que já foi gravado no parcial continua valendo;\n"
+            "a exportação seguinte retoma dali.",
+        )
+
+        vista.adicionar(ttk.Button(
+                vista,
+                text=comandos.rotulo_de_botao("pagina_anterior"),
+                style=comandos.estilo("pagina_anterior"),
+                command=self.prev_page,
+            ))
+        vista.adicionar(ttk.Button(
+                vista,
+                text=comandos.rotulo_de_botao("proxima_pagina"),
+                style=comandos.estilo("proxima_pagina"),
+                command=self.next_page,
+            ))
+        vista.adicionar(ttk.Label(vista, text="Página"))
+        self.spin_page = vista.adicionar(
+            ttk.Spinbox(vista, from_=0, to=0, textvariable=self.page_index_var, width=8, command=self.on_page_spin)
+        )
+        vista.adicionar(ttk.Label(vista, text=strings.ZOOM_DA_PAGINA))
+        vista.adicionar(ttk.Button(
+                vista,
+                text=comandos.rotulo_de_botao("zoom_menos"),
+                style=comandos.estilo("zoom_menos"),
+                width=3,
+                command=self.diminuir_zoom,
+            ))
+        vista.adicionar(ttk.Button(
+                vista,
+                text=comandos.rotulo_de_botao("zoom_mais"),
+                style=comandos.estilo("zoom_mais"),
+                width=3,
+                command=self.aumentar_zoom,
+            ))
+        self.lbl_zoom = vista.adicionar(ttk.Label(vista, text="70%"))
+        self.btn_fit_width = vista.adicionar(ttk.Button(
+                vista,
+                text=comandos.rotulo_de_botao("ajustar_largura"),
+                style=comandos.estilo("ajustar_largura"),
+                command=self.fit_width,
+            ))
+        Tooltip(
+            self.btn_fit_width,
+            "Ctrl + roda do mouse faz o mesmo, com o ponteiro como âncora.\n"
+            "A roda rola a página; na borda, ela vira para a página seguinte.",
+        )
+        self.btn_fit_page = vista.adicionar(ttk.Button(
+                vista,
+                text=comandos.rotulo_de_botao("ajustar_pagina"),
+                style=comandos.estilo("ajustar_pagina"),
+                command=self.fit_page,
+            ))
+        Tooltip(
+            self.btn_fit_page,
+            "A folha inteira na tela. É o enquadramento de escolher qual diagrama abrir;\n"
+            "'Ajustar à largura' é o de ler o enunciado de um.",
+        )
+        self.chk_flip = vista.adicionar(
+            ttk.Checkbutton(
+                vista,
+                text=comandos.rotulo_de_botao("roda_vira_pagina"),
+                variable=self.flip_pages_var,
+                command=self._on_prefs_changed,
+            )
+        )
+        Tooltip(
+            self.chk_flip,
+            "Ligado: rolar além do fim da página vai para a próxima, no topo.\n"
+            "Desligado: a roda só rola dentro da página exibida.",
+        )
+        self.chk_boxes = vista.adicionar(
+            ttk.Checkbutton(
+                vista,
+                text=comandos.rotulo_de_botao("marcar_diagramas"),
+                variable=self.show_boxes_var,
+                command=self.on_boxes_toggle,
+            )
+        )
+        Tooltip(
+            self.chk_boxes,
+            "Desenha um retângulo sobre cada diagrama que o detector achou na página.\n"
+            "Clique num deles para abri-lo na aba Resultado.",
+        )
+
+        # **Depois das barras, e não antes.** `update_zoom_label` escreve no `lbl_zoom`, que
+        # é criado acima -- montar o rodapé primeiro escreveria no rótulo da montagem
+        # anterior, que a remontagem acabou de destruir.
+        if montagem == pele.CROMO_FOCO:
+            self._montar_rodape_de_zoom()
+
+    def _montar_rodape_de_zoom(self) -> None:
+        """O deslizador da pele "Foco", no rodapé do painel (S-225).
+
+        **O que ele substitui são três controles, e não cinco**: os botões `-` e `+` e o rótulo,
+        que ele passa a dizer. "Ajustar à largura" e "Ajustar à página" continuam existindo --
+        enquadrar não é um valor de zoom, é uma pergunta sobre a página que o deslizador não sabe
+        responder --, e nesta pele elas moram no menu, como os outros dezoito controles.
+
+        `Ctrl+0`, a roda com `Ctrl` e as duas de enquadrar continuam funcionando e **movem** o
+        deslizador: quem sincroniza é `update_zoom_label`, que já era chamada por todos eles.
+        """
+        rodape_do_painel = ttk.Frame(self._box)
+        rodape_do_painel.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 6))
+        self._rodape_de_zoom = rodape_do_painel
+
+        ttk.Label(rodape_do_painel, text=strings.ZOOM_DA_PAGINA).pack(side=tk.LEFT)
+        self._lbl_zoom_deslizador = ttk.Label(rodape_do_painel, width=6, anchor="e")
+        self._lbl_zoom_deslizador.pack(side=tk.RIGHT)
+        self._deslizador = ttk.Scale(
+            rodape_do_painel,
+            from_=0.0,
+            to=LADO_DO_DESLIZADOR,
+            orient=tk.HORIZONTAL,
+            command=self._ao_arrastar_zoom,
+        )
+        self._deslizador.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
+        self.update_zoom_label()
+
+    def _ao_arrastar_zoom(self, valor: str) -> None:
+        """O arrasto. Sem âncora, então o ponto preservado é o centro da vista -- que é o que
+        `apply_zoom` já faz para os botões `+` e `-`."""
+        if self._movendo_o_deslizador:
+            return
+        self.apply_zoom(zoom_da_posicao(float(valor)))
+
+    def _sincronizar_deslizador(self) -> None:
+        """Põe o deslizador no zoom em vigor, venha ele de onde vier."""
+        if self._deslizador is None:
+            return
+        self._movendo_o_deslizador = True
+        try:
+            self._deslizador.set(posicao_do_zoom(self.zoom_var.get()))
+        finally:
+            self._movendo_o_deslizador = False
+
+    BOTOES_COM_ESTADO = (
+        "btn_system_reader",
+        "btn_ocr_best",
+        "btn_ocr_all",
+        "btn_select",
+        "btn_export",
+        "btn_cancel_export",
+    )
+    """Os botões das barras cujo `state` é **estado de trabalho**, e não de construção.
+
+    Ler o `state` de cada um antes de destruir e devolvê-lo depois é mais curto e mais exato que
+    guardar bandeiras: "Cancelar exportação" só está ativo durante uma exportação, e os três de
+    OCR ficam cinzas enquanto um roda. Uma troca de pele no meio de uma exportação devolveria os
+    seis ao estado de janela recém-aberta, que é a mentira mais cara que a remontagem pode contar.
+    """
+
+    def remontar_cromo(
+        self,
+        montagem: str = pele.CROMO_CLASSICO,
+        *,
+        refazer_linha_de_campo: Callable[[ttk.Frame], None] | None = None,
+    ) -> None:
+        """Destrói as duas barras e a linha de campo, e as refaz no lugar (S-222).
+
+        **O que ela não toca é o item.** O canvas, a página renderizada, o `page_rgb`, os `Var`
+        de zoom e de página, as ligações de roda e o PDF aberto continuam onde estavam -- então
+        nada precisa ser salvo e restaurado. É a fronteira que a Fase 6 e a S-49 já pagaram: o
+        conteúdo não mora nos widgets do cromo.
+
+        **E é por isso que as ligações não se refazem.** `_bind_wheel` usa `bind_all` com
+        `add="+"`, que **acumula**; refazê-la a cada troca deixaria N cópias da mesma tecla depois
+        de N trocas. Ela é do painel, o painel sobrevive à troca, e a resposta certa é não
+        chamá-la de novo. O mesmo vale para os dez atalhos, que são da janela.
+        """
+        estados = {nome: str(getattr(self, nome).cget("state")) for nome in self.BOTOES_COM_ESTADO}
+        for barra in (self.barra_livro, self.barra_vista):
+            barra.destroy()
+        if self._rodape_de_zoom is not None:
+            self._rodape_de_zoom.destroy()
+            self._rodape_de_zoom = self._deslizador = self._lbl_zoom_deslizador = None
+        self._montar_barras(montagem, antes=self.field_row)
+        for nome, estado in estados.items():
+            getattr(self, nome).configure(state=estado)
+        self._resincronizar_barras()
+
+        if refazer_linha_de_campo is not None:
+            for filho in self.field_row.winfo_children():
+                filho.destroy()
+            refazer_linha_de_campo(self.field_row)
+
+    def _resincronizar_barras(self) -> None:
+        """O que as barras recém-nascidas não sabem: o livro aberto, o zoom e a seleção em curso.
+
+        Os `Var` sobrevivem à destruição dos widgets -- eles são do painel --, mas o que é escrito
+        num `config` na hora do evento, não: o nome do PDF, o teto do `Spinbox` e o rótulo que o
+        `selecionar_area` troca quando liga.
+        """
+        self.update_zoom_label()
+        if self.source is not None:
+            self.lbl_pdf.config(text=f"{self.name} ({self.page_count} págs)")
+            self.btn_system_reader.configure(state=tk.NORMAL)
+            self.spin_page.config(to=max(self.page_count - 1, 0))
+        if self._select_mode:
+            self.btn_select.configure(text=comandos.rotulo_alternado("selecionar_area"))
 
     def _bind_wheel(self) -> None:
         """Liga a roda na janela inteira, e não no canvas -- ver `_pointer_over_canvas`."""
@@ -450,6 +682,14 @@ class PdfPanel(ttk.Frame):
     def zoom(self, delta: float) -> None:
         """Os botões `+` e `-`. Continuam aditivos: um clique, um passo previsível."""
         self.apply_zoom(self.zoom_var.get() + delta)
+
+    def aumentar_zoom(self) -> None:
+        """Um passo para mais. Existe como método porque o botão e o item de menu da S-223
+        precisam do **mesmo** passo, e dois lambdas com o número dentro são dois números."""
+        self.zoom(PASSO_DE_ZOOM)
+
+    def diminuir_zoom(self) -> None:
+        self.zoom(-PASSO_DE_ZOOM)
 
     def apply_zoom(self, value: float, *, anchor: tuple[int, int] | None = None) -> None:
         """Troca o zoom preservando o ponto de referência. `anchor` é (x, y) no widget.
@@ -667,7 +907,17 @@ class PdfPanel(ttk.Frame):
         self.update_zoom_label()
 
     def update_zoom_label(self) -> None:
-        self.lbl_zoom.config(text=f"{int(self.zoom_var.get() * 100)}%")
+        """O texto do zoom, nos dois lugares onde ele aparece, e a posição do deslizador.
+
+        O texto vem de `ui/formato.py` desde a S-225: era um `f"{int(...)}%"` cravado aqui, e a
+        pele "Foco" o mostraria num segundo rótulo -- duas formatações do mesmo número é como
+        elas divergem.
+        """
+        texto = formato.porcentagem(self.zoom_var.get(), casas=0)
+        self.lbl_zoom.config(text=texto)
+        if self._lbl_zoom_deslizador is not None:
+            self._lbl_zoom_deslizador.config(text=texto)
+        self._sincronizar_deslizador()
 
     def set_ocr_controls_enabled(self, enabled: bool) -> None:
         estado = tk.NORMAL if enabled else tk.DISABLED
@@ -1053,7 +1303,7 @@ class PdfPanel(ttk.Frame):
         self._select_start = None
         self._clear_overlay()
         self.canvas.configure(cursor="crosshair")
-        self.btn_select.configure(text="Cancelar seleção")
+        self.btn_select.configure(text=comandos.rotulo_alternado("selecionar_area"))
         self._on_status("Seleção ativa: arraste no PDF para reconhecer a área automaticamente.")
 
     def disable_area_selection(self, status_text: str = "") -> None:
@@ -1062,7 +1312,7 @@ class PdfPanel(ttk.Frame):
         self._hover_box = None
         self._clear_overlay()
         self.canvas.configure(cursor="")
-        self.btn_select.configure(text="Selecionar área (OCR)")
+        self.btn_select.configure(text=comandos.rotulo_de_botao("selecionar_area"))
         if status_text:
             self._on_status(status_text)
 

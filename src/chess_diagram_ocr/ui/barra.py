@@ -120,6 +120,24 @@ class BarraFluida(ttk.Frame):
 
         self.bind("<Configure>", lambda evento: self._rearranjar(int(evento.width)))
 
+    def esvaziar(self) -> None:
+        """Tira e **destrói** todos os itens, deixando a barra pronta para ser remontada.
+
+        Existe para a fita da S-228, que troca de modo em execução: o ícone muda de tamanho, o
+        rótulo muda de lado e o cabeçalho vira dica -- e nada disso é uma opção que se reconfigure
+        num `ttk.Button` já criado (`compound` sim, `wraplength` não, e o cabeçalho é outro
+        widget). Remontar é o caminho, e remontar sem esvaziar duplicaria a barra.
+
+        As molduras de linha ficam: elas não têm conteúdo próprio, e recriá-las a cada troca de
+        modo é o mesmo desperdício que `_rearranjar` já evita ao só desempacotá-las.
+        """
+        for item in self._itens:
+            item.destroy()
+        self._itens.clear()
+        # Zerado para que o próximo `adicionar` reaplique o arranjo: `_rearranjar` é idempotente
+        # por comparação, e comparar contra o arranjo de itens que já morreram não repõe nada.
+        self._arranjo_aplicado = []
+
     def adicionar(self, widget: W) -> W:
         """Registra um controle na barra, na ordem em que ele deve aparecer. Devolve-o.
 
@@ -159,13 +177,31 @@ class BarraFluida(ttk.Frame):
                 moldura.pack_forget()
         for numero, linha in enumerate(novo):
             for coluna, indice in enumerate(linha):
-                self._itens[indice].pack(
+                item = self._itens[indice]
+                item.pack(
                     in_=self._molduras[numero],
                     side=tk.LEFT,
                     padx=(0 if coluna == 0 else self._espaco, 0),
                 )
+                # **`lift` e não decoração** (S-227). `pack(in_=)` muda quem arruma o widget e
+                # não quem é o pai dele, então a moldura de linha continua **irmã** dos itens --
+                # e irmão criado depois desenha por cima. A primeira moldura nasce no primeiro
+                # `adicionar`, ou seja, **depois** do primeiro item e antes de todos os outros:
+                # o resultado era o item de índice 0 coberto pela moldura, invisível, em toda
+                # `BarraFluida` do programa. Sem esta linha, "Abrir PDF" e "Página anterior" não
+                # aparecem na janela clássica -- e não apareciam desde a S-151.
+                item.lift()
 
     @property
     def linhas(self) -> int:
         """Quantas linhas a barra está ocupando agora. É o que o teste de aceite lê."""
         return len(self._arranjo_aplicado)
+
+    def linhas_em(self, largura: int) -> int:
+        """Quantas linhas ela ocuparia naquela largura, **sem** mudar o que está na tela.
+
+        Pergunta pura sobre um widget montado, e existe porque os critérios de aceite falam de
+        larguras que o teste não quer ter de simular -- a S-151 mede em 1100, que é onde o
+        defeito original apareceu, e a S-223 exige que a fila caiba em uma linha ali.
+        """
+        return linhas_necessarias(self._larguras(), largura, espaco=self._espaco)

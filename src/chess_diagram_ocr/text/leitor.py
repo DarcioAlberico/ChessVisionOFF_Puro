@@ -255,6 +255,11 @@ class _Cru:
     """`None` é "não se sabe" -- ver `text/negrito.py`. Quem preenche é `ler_pagina`, que é quem
     tem o documento na mão; `linhas_do_glifo` e `linhas_da_camada` deixam em `None`."""
 
+    italico: bool | None = None
+    """`None` é "não se sabe" -- ver `text/italico.py`. Ao contrário do negrito, quem preenche é
+    `linhas_do_glifo`, que é quem tem a **binária** na mão: o pendor sai da imagem, e a camada de
+    texto não passa por ela. Ver S-236."""
+
 
 def _envolver(caixas: Sequence[Retangulo]) -> Retangulo:
     if not caixas:
@@ -447,7 +452,7 @@ def linhas_do_glifo(
     marca_fina: bool = True,
     empilhados: bool = True,
     italico: bool = True,
-    dicionario: bool = False,
+    dicionario: bool = True,
     numeros: bool = True,
     juntar_lance: bool = True,
 ) -> tuple[list[_Cru], list[tuple[int, int]]]:
@@ -489,10 +494,13 @@ def linhas_do_glifo(
     imagem**: 13 dos 41 livros o registram, e nos outros o campo fica `None` -- "não se sabe", que
     não é `False`. Ver `text/negrito.py`, que traz o número da via recusada.
 
-    `dicionario` deixa o léxico desempatar entre os candidatos do modelo. **Desligado, e o número
-    é zero**: medido em 6 páginas, ele não corrige nada -- as correções de geometria acima já
-    levaram o que era alcançável, e o léxico do acervo tem pouco inglês. Ver
-    `docs/metrics/texto_dicionario.json`.
+    `dicionario` deixa o léxico desempatar entre os candidatos do modelo -- e **nunca** aproxima
+    da palavra mais parecida, que é a decisão medida da S-209. Entrou **ligado** quando as listas
+    de palavras foram empacotadas: em 40 páginas de 11 livros de camada editorada, 6 correções,
+    **as 6 confirmadas pela camada**, nenhuma palavra certa quebrada, 5 páginas melhoram e nenhuma
+    piora (CER 0,1183 -> 0,1181). Custo medido: +1,1% de tempo de página e 65 ms de carga do
+    léxico, uma vez. Antes das listas ele corrigia zero, e por isso vinha desligado. Ver
+    `docs/metrics/texto_dicionario.json` e `text/dicionario.py`.
 
     Devolve as faixas junto porque quem monta não pode redescobri-las: as caixas de caractere já
     foram consumidas aqui, e detectá-las de novo a partir das linhas é o defeito que `segmentar`
@@ -542,6 +550,10 @@ def linhas_do_glifo(
         grupos = descartar_fragmentos(quebrar_em_linhas(ordem_em_faixa(desta)), escala=escala)
         for grupo in grupos:
             recortes = [c.recortar(cinza) for c in grupo]
+            # **Uma medição por linha, e ela serve aos dois usos** (S-236): declarar o pendor no
+            # `_Cru` e decidir a troca de `/` por `l`. Medir nos dois lugares dobraria o custo do
+            # que este item promete entregar de graça -- a varredura já roda desde a S-186.
+            pendor = _italico.declarar(binaria, grupo)
             if caixa_alta or marca_fina or empilhados or italico or numeros or lexico:
                 # **Duas correções de geometria, e a mesma razão para as duas**: o recorte que o
                 # classificador recebe é o bbox apertado, então o que distingue dois glifos pelo
@@ -561,7 +573,8 @@ def linhas_do_glifo(
                     lidos = _empilhados.corrigir(lidos, probs, grupo, i2c)
                 if italico:
                     # Em linha inclinada o `l` é um traço pendido, que é o desenho do `/`.
-                    lidos = _italico.corrigir(lidos, probs, grupo, i2c, binaria)
+                    # `italica=pendor` passa a medição já feita no topo do laço: ver ali.
+                    lidos = _italico.corrigir(lidos, probs, grupo, i2c, binaria, italica=pendor)
                 if numeros:
                     # O oval dentro de um número é zero, e nenhuma palavra é dígito seguido de `o`.
                     lidos = _numero.corrigir(lidos, probs, grupo, i2c)
@@ -593,6 +606,10 @@ def linhas_do_glifo(
                     confianca=min(conf for _, conf in lidos),
                     procedencia="glifo",
                     coluna=indice,
+                    # **Independente de `italico`**, que liga a *correção* de `/` para `l`. Declarar
+                    # o pendor e trocar um caractere por causa dele são duas coisas, e quem mede o
+                    # ganho da troca com ela desligada não deve perder o campo junto (S-236).
+                    italico=pendor,
                 )
             )
     return (sem_rotulos_de_eixo(cruas), faixas)
@@ -826,6 +843,7 @@ def _blocos_de_texto(
                     confianca=cru.confianca,
                     procedencia=cru.procedencia,
                     negrito=cru.negrito,
+                    italico=cru.italico,
                 )
             )
         if not lidas:
@@ -891,7 +909,7 @@ def ler_pagina(
     marca_fina: bool = True,
     empilhados: bool = True,
     italico: bool = True,
-    dicionario: bool = False,
+    dicionario: bool = True,
     numeros: bool = True,
     juntar_lance: bool = True,
     marcar_negrito: bool = True,

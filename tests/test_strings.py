@@ -55,6 +55,24 @@ def _literais_visiveis(caminho: Path) -> list[str]:
                 if isinstance(item.value.value, str):
                     ignorados.add(id(item.value))
 
+    # **A chave que é o próprio nome** (S-230). `PADRAO = "padrao"` não é texto de tela: é o
+    # identificador do registro de conjuntos, escrito minúsculo e sem acento de propósito porque
+    # é ele que vai para o `app_tkinter_state.json` -- do mesmo modo que `pele.CLASSICA` e
+    # `abas.DATASET`. Acentuá-lo mudaria o formato gravado em disco para satisfazer uma varredura
+    # sobre **texto de interface**, que é o mesmo argumento com que `__all__` ficou de fora.
+    #
+    # A regra é estreita e não uma permissão: só escapa o literal que é **exatamente** o nome
+    # MAIÚSCULO ao qual ele é atribuído, em minúsculas. Um `PADRAO = "Padrão do sistema"` -- que
+    # é texto -- continua sendo varrido, e um rótulo que diga "padrao" em qualquer outro lugar
+    # também.
+    for no in ast.walk(arvore):
+        alvos = getattr(no, "targets", None) or ([no.target] if isinstance(no, ast.AnnAssign) else [])
+        nomes = {alvo.id for alvo in alvos if isinstance(alvo, ast.Name) and alvo.id.isupper()}
+        valor = getattr(no, "value", None)
+        if nomes and isinstance(valor, ast.Constant) and isinstance(valor.value, str):
+            if valor.value in {nome.lower() for nome in nomes}:
+                ignorados.add(id(valor))
+
     for no in ast.walk(arvore):
         alvos = getattr(no, "targets", None) or ([no.target] if isinstance(no, ast.AnnAssign) else [])
         if not any(isinstance(alvo, ast.Name) and alvo.id == "__all__" for alvo in alvos):
