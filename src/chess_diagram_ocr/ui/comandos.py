@@ -42,6 +42,7 @@ __all__ = [
     "Comando",
     "EDICAO",
     "GRUPOS",
+    "NAS_BARRAS_DO_PDF",
     "NA_LINHA_DE_CAMPO",
     "OCR",
     "VISUALIZACAO",
@@ -321,6 +322,36 @@ os botões de navegação da Galeria. `ui/result_panel.py` é o caso de fronteir
 dele ("Aplicar FEN", "Salvar posição reconhecida", "Salvar todos") **são** comandos da janela e
 estão aqui, mas o painel ainda escreve os rótulos dele à mão -- por isso os três não declaram
 `rotulo_curto`, que seria uma promessa que ninguém cumpre. Registrado para a S-233."""
+
+
+NAS_BARRAS_DO_PDF: tuple[str, ...] = (
+    "abrir_pdf",
+    "abrir_no_leitor",
+    "ler_melhor",
+    "ler_pagina",
+    "selecionar_area",
+    "tirar_caixa",
+    "exportar_pgn",
+    "cancelar_exportacao",
+    "pagina_anterior",
+    "proxima_pagina",
+    "zoom_menos",
+    "zoom_mais",
+    "ajustar_largura",
+    "ajustar_pagina",
+    "roda_vira_pagina",
+    "marcar_diagramas",
+)
+"""Os comandos que as duas barras de `ui/pdf_panel.py` desenham -- a tela da pele clássica (S-233).
+
+**Declarado aqui e montado lá, e a distância entre os dois tem guarda.** `_montar_barras` constrói
+os dezesseis botões à mão, com `state`, dica e `command` diferentes em cada um; transformá-la numa
+tabela é a decomposição que o `ROADMAP_UI` persegue, e não cabia neste item. O que cabia foi
+declarar a lista onde o inventário da S-233 possa lê-la sem abrir janela --
+`tests/test_ui_alcance.py` varre aquela função por `ast` e cobra que as duas concordem.
+
+**Na pele "Foco" e na "Fita" estes controles existem e não são empacotados** (S-223), e por isso a
+lista é a tela da **clássica** e não do painel: o que a pele decide é o que aparece."""
 
 
 NA_LINHA_DE_CAMPO: tuple[str, ...] = ("anotar_pagina", "anotar_sem_diagrama", "tirar_do_campo")

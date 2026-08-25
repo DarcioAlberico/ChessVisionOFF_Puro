@@ -1483,44 +1483,92 @@ E três em `tests/test_ui_troca_de_pele.py`, com os métodos reais da janela:
 
 ---
 
-## S-233 · Nenhuma pele esconde um comando: o inventário de alcance ⬜ planejada
+## S-233 · Nenhuma pele esconde um comando: o inventário de alcance ✅ implementada (2026-08-25)
 
 **Problema.** É o risco central de todo este plano, e ele não é técnico: **três peles convidam a
 resolver rápido só numa delas.** Um comando novo entra na fita porque foi lá que quem o escreveu
 estava trabalhando, e some da "Foco" e da clássica — e ninguém descobre até alguém que usa a pele
-errada precisar dele.
+errada precisar dele. A regra 2 — *pele é apresentação, nunca conjunto menor* — não vale nada sem
+uma máquina que a cobre.
 
-A regra 2 desta spec — *pele é apresentação, nunca conjunto menor* — não vale nada sem uma máquina
-que a cobre.
+**Solução.** `ui/alcance.py`: para cada pele registrada, o conjunto de comandos **alcançáveis**, e
+a afirmação de que ele é igual ao catálogo inteiro. `perdidos()` devolve `pele → o que ela perdeu`
+e `relato()` transforma isso na mensagem de falha.
 
-**Solução.** Um inventário: para cada pele registrada, o conjunto de comandos **alcançáveis**, e a
-afirmação de que ele é igual ao catálogo inteiro.
+### A terceira forma não conta, e é a decisão que faz o módulo medir alguma coisa
 
-"Alcançável" tem três formas, e só três:
+"Alcançável" tem três formas: um controle na tela daquela pele, um item de `menu.MENUS`, ou uma
+entrada da paleta de comandos (S-231). **A paleta percorre `comandos.CATALOGO`** — incluí-la faria
+`alcancaveis(pele) == catálogo` ser verdade por definição, e o teste passaria para sempre sem olhar
+para nada.
 
-1. um controle na tela daquela pele (fila, fita, barra, linha de campo, painel);
-2. um item de `menu.MENUS`;
-3. uma entrada da paleta de comandos (S-231) — que, por construção, cobre o catálogo inteiro.
+A prova de que ela está fora não é uma afirmação no docstring: é `test_a_paleta_nao_conta_para_o_inventario`,
+que zera as duas formas restantes e cobra que o inventário **acuse as três peles**. Um inventário
+que não sabe falhar é uma tautologia com nome de teste.
 
-A terceira forma sozinha tornaria o teste trivial, e por isso ela **não conta para o inventário**:
-o critério é que todo comando esteja em (1) **ou** (2) em cada pele. A paleta é atalho para quem
-sabe o nome, não o mapa de quem procura.
+### O que o inventário encontrou hoje
 
-O inventário é montado por reflexão sobre a declaração de cada pele — não abrindo janela e
-varrendo widget —, e é isso que o torna barato o bastante para rodar em toda execução da suíte.
+    catálogo ......................... 41 comandos
+    alcançáveis pelo menu ............ 38  (a mesma declaração para as três peles)
+    fora do menu ..................... 3   -- exatamente `comandos.NA_LINHA_DE_CAMPO`
+
+    na tela, por pele:   clássica 19   |   "Foco" 7   |   "Fita" 20
+
+**A barra de menus é a rede de segurança da regra 2**, e o número diz por quê: `menu.MENUS` é uma
+declaração só, nenhuma montagem de cromo a filtra, e ela sozinha cobre 38 dos 41. É o que permite à
+"Foco" tirar 23 controles da tela sem esconder um único comando.
+
+**Os três que sobram são a linha de conjunto de campo**, e ela é de todas as peles — `remontar_cromo`
+a refaz em toda troca, e a S-77 a pôs junto da página exibida de propósito. São a única forma 1 que
+hoje decide alguma coisa no inventário, e é por isso que `test_a_linha_de_campo_e_a_unica_casa_dos_tres_de_anotacao`
+existe: no dia em que um deles ganhar item de menu, ou em que um quarto comando sair do menu, o
+número muda e alguém precisa saber.
+
+### Reflexão sobre a declaração, e a única declaração que pode mentir
+
+Nada aqui abre janela. Cada forma tem um dono que já declara o que desenha — `fila.acoes_da_fila`,
+`fita.acoes_da_fita`, `menu.acoes_declaradas`, `comandos.NA_LINHA_DE_CAMPO`. Foi preciso acrescentar
+**uma**: `comandos.NAS_BARRAS_DO_PDF`, os dezesseis comandos que as duas barras de `ui/pdf_panel.py`
+desenham na pele clássica.
+
+**Ela é escrita à mão, e `_montar_barras` também — então elas podem divergir, e a divergência seria
+silenciosa *e favorável*:** uma lista maior que a realidade faria o inventário afirmar que a
+clássica alcança um comando que ela não desenha. É a mesma família de defeito que a S-219 mediu nos
+rótulos, e a resposta é a mesma: `test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha`
+varre aquela função por `ast` e compara os dois conjuntos.
+
+Transformar `_montar_barras` numa tabela — dezesseis botões com `state`, dica e `command`
+diferentes — é a decomposição que o `ROADMAP_UI` persegue, e não cabia neste item. **O que cabia
+foi declarar a lista onde o inventário possa lê-la, e travar a distância entre as duas.**
+
+**E `na_tela` levanta para montagem de cromo desconhecida**, como `tokens.cor`: um nome escrito
+errado que caísse na clássica devolveria um inventário plausível para a pele errada — e um
+inventário que erra a pele é pior que nenhum, porque ele passa em verde.
 
 **Critério de aceite.**
 
-- para cada pele registrada, `alcancaveis(pele) == set(catalogo)`;
-- a mensagem de falha **nomeia** a pele e os comandos que ela perdeu, e não devolve um booleano;
-- acrescentar um comando ao catálogo sem lhe dar casa em alguma pele **falha a suíte**;
-- remover um comando da fita da "Fita" sem lhe dar item de menu falha a suíte;
-- o teste não abre janela.
+- ✅ para cada pele registrada, `alcancaveis(pele) == set(catalogo)` — as três, 41 de 41;
+- ✅ a mensagem de falha **nomeia** a pele e os comandos que ela perdeu, e não devolve um booleano:
+  `relato` sai como `"classica: comando_x; foco: comando_x"`;
+- ✅ acrescentar um comando ao catálogo sem lhe dar casa em alguma pele falha a suíte — simulado
+  com um catálogo sintético, e o inventário acusa as três;
+- ✅ remover um comando da fita da "Fita" sem lhe dar item de menu falha a suíte — e o teste
+  também cobra o outro lado, que é o que mantém a regra 2 aplicável: tirar da fita um comando que
+  **tem** menu não é perda, e é assim que a "Foco" esconde 23 controles sem violar nada;
+- ✅ o teste não abre janela, e a afirmação é direta: `tk.Tk` e `tk.Toplevel` passam a levantar
+  durante a conta. Quem trocar a reflexão por uma varredura de árvore de widgets é avisado.
 
-**Testes.** `test_toda_pele_alcanca_o_catalogo_inteiro`;
-`test_a_falha_nomeia_a_pele_e_o_comando`;
-`test_comando_novo_sem_casa_falha`;
-`test_o_inventario_nao_abre_janela`.
+**Testes.** `tests/test_ui_alcance.py`, **11 casos**. O inventário:
+`test_toda_pele_alcanca_o_catalogo_inteiro`; `test_a_falha_nomeia_a_pele_e_o_comando`;
+`test_comando_novo_sem_casa_falha`; `test_remover_da_fita_um_comando_sem_item_de_menu_falha`;
+`test_a_paleta_nao_conta_para_o_inventario`; `test_montagem_desconhecida_levanta`;
+`test_o_relato_e_vazio_quando_nao_ha_falta`. Sem janela: `test_o_inventario_nao_abre_janela`.
+A declaração das barras: `test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha`;
+`test_toda_acao_declarada_nas_barras_esta_no_catalogo`;
+`test_a_linha_de_campo_e_a_unica_casa_dos_tres_de_anotacao`.
+
+E `alcance.py` entra em `SEM_TKINTER` (S-137), que é a lista dos módulos de `ui/` que decidiram não
+importar `tkinter` — sem ela, um módulo novo sem Tk não é vigiado.
 
 ---
 

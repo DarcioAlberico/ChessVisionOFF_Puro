@@ -315,6 +315,7 @@ class SecondOpinionTests(unittest.TestCase):
 
 SEM_TKINTER = {
     "abas.py": "o rótulo de uma aba e a contagem dentro dele (S-162)",
+    "alcance.py": "o inventário de alcance de cada pele, por reflexão e sem widget (S-233)",
     "atalhos.py": "a tabela de atalhos: tecla, comando e descrição, sem widget (S-161/S-165)",
     "board_edit.py": "as regras de edição do tabuleiro (S-49)",
     "board_model.py": "o estado do tabuleiro, sem widget",
