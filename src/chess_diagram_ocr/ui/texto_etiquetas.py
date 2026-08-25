@@ -67,22 +67,36 @@ vivo sem um segundo buffer ao lado."""
 ETIQUETA_DO_ATRIBUTO: dict[str, str] = {
     "negrito": "negrito",
     "italico": "italico",
+    "sublinhado": "sublinhado",
+    "fora_do_modelo": "fora_do_modelo",
 }
-"""Atributo de `rico.Atributos` -> etiqueta que o desenha.
+"""Atributo **booleano** de `rico.Atributos` -> etiqueta que o desenha.
 
-**Só os booleanos que a aba já sabe desenhar.** `sublinhado` entra com a S-241, e `cor`/`estilo`
-não são booleanos -- eles vão precisar de etiqueta com valor, como
-`bloco:`. Declarar agora a etiqueta de um atributo que ninguém pinta seria a promessa vazia que a
-S-161 registra como defeito."""
+Os quatro que existem, e agora nenhum fica de fora: `sublinhado` entrou com a S-241 e
+`fora_do_modelo` com a S-247. Os que têm **valor** -- `cor`, `realce`, `estilo` -- não cabem aqui,
+porque etiqueta é string e o valor vai no nome: ver `ATRIBUTO_COM_VALOR`."""
 
 
-SEM_ETIQUETA: tuple[str, ...] = ("sublinhado",)
+SEM_ETIQUETA: tuple[str, ...] = ()
 """Booleanos de `Atributos` que existem no documento e a aba **ainda não desenha**.
 
-Declarados, e não esquecidos: `ETIQUETA_DO_ATRIBUTO` mais esta tupla têm de cobrir todos os
-booleanos de `rico.Atributos`, e o teste falha quando não cobrem. É o que faz um atributo novo
-exigir uma decisão -- desenha-se ou declara-se que ainda não -- em vez de entrar em silêncio e
-sumir na gravação. A S-236 já tirou `italico` daqui; a S-241 tira `sublinhado`."""
+Vazio desde a S-241/S-247, e é o estado certo. A tupla fica: `ETIQUETA_DO_ATRIBUTO` mais esta têm
+de cobrir todos os booleanos de `rico.Atributos`, e o teste falha quando não cobrem -- é o que faz
+um atributo novo exigir uma decisão (desenha-se, ou declara-se que ainda não) em vez de entrar em
+silêncio e sumir na gravação."""
+
+
+ATRIBUTO_COM_VALOR: dict[str, str] = {
+    "cor": "cor:",
+    "realce": "realce:",
+    "estilo": "estilo:",
+}
+"""Atributo de valor -> prefixo da etiqueta que o carrega (S-242, S-249).
+
+`cor:destaque` e `estilo:titulo` são o mesmo desenho de `bloco:3` e `proc:glifo`: nome de etiqueta
+no Tk é string, e um atributo que não é sim-ou-não precisa carregar o valor no próprio nome. A
+diferença é que estes **são** desenháveis -- quem os configura é `ui/texto_panel._pintar_faixas`,
+com a cor vinda de `ui/texto_cores.py` e o corpo de `ui/tipografia.py`."""
 
 
 def _booleanos_de_atributo() -> tuple[str, ...]:
@@ -112,6 +126,10 @@ def etiquetas_de(corrida: rico.Corrida) -> tuple[str, ...]:
         for atributo, etiqueta in ETIQUETA_DO_ATRIBUTO.items():
             if getattr(corrida.atributos, atributo, False):
                 etiquetas.append(etiqueta)
+        for atributo, prefixo in ATRIBUTO_COM_VALOR.items():
+            valor = getattr(corrida.atributos, atributo, "")
+            if valor:
+                etiquetas.append(f"{prefixo}{valor}")
     if corrida.bloco != rico.SEM_BLOCO:
         etiquetas.append(f"{PREFIXO_DE_BLOCO}{corrida.bloco}")
     if corrida.procedencia is not None:
@@ -135,7 +153,8 @@ def corrida_de(texto: str, etiquetas: Iterable[str]) -> rico.Corrida:
         for atributo, etiqueta in ETIQUETA_DO_ATRIBUTO.items()
         if etiqueta in presentes
     }
-    atributos = rico.Atributos(**ligados)
+    ligados.update(_com_valor(presentes))
+    atributos = _atributos(ligados)
     return rico.Corrida(
         texto=texto,
         atributos=atributos if tipo == rico.TEXTO else rico.PADRAO,
@@ -144,6 +163,38 @@ def corrida_de(texto: str, etiquetas: Iterable[str]) -> rico.Corrida:
         procedencia=_procedencia_de(presentes),
         tipo=tipo,
     )
+
+
+def _com_valor(etiquetas: set[str]) -> dict[str, Any]:
+    """Os atributos de valor que aquelas etiquetas trazem: `cor:destaque` -> `{"cor": "destaque"}`.
+
+    Etiqueta repetida do mesmo atributo -- duas cores no mesmo trecho, que o Tk permite -- é
+    resolvida pela **ordem alfabética**, para a volta ser determinística. Na prática ela não
+    acontece: quem aplica cor tira a anterior no mesmo gesto (`ui/texto_panel.pintar`).
+    """
+    achados: dict[str, Any] = {}
+    for atributo, prefixo in ATRIBUTO_COM_VALOR.items():
+        valores = sorted(e[len(prefixo) :] for e in etiquetas if e.startswith(prefixo))
+        if valores:
+            achados[atributo] = valores[0]
+    return achados
+
+
+def _atributos(ligados: dict[str, Any]) -> rico.Atributos:
+    """`Atributos` com o que veio das etiquetas, **perdoando o valor que o domínio recusa**.
+
+    `rico.Atributos` levanta para cor ou estilo que ninguém declarou, e aqui isso não pode
+    acontecer: esta função roda no caminho de *salvar*. Uma etiqueta de uma versão mais nova --
+    ou estragada -- viraria perda do trabalho de quem estava corrigindo a página. Cai no padrão
+    daquele campo e registra no log, como o resto do módulo.
+    """
+    try:
+        return rico.Atributos(**ligados)
+    except KeyError as erro:
+        logger.debug("Atributo de valor recusado pelo domínio (%s): o trecho fica sem ele.", erro)
+        for atributo in ATRIBUTO_COM_VALOR:
+            ligados.pop(atributo, None)
+        return rico.Atributos(**ligados)
 
 
 def _bloco_de(etiquetas: set[str]) -> int:
@@ -166,6 +217,30 @@ def _procedencia_de(etiquetas: set[str]):  # noqa: ANN202 - Procedencia | None
             return nome
         logger.debug("Procedência desconhecida na etiqueta (%s): a corrida fica sem ela.", etiqueta)
     return None
+
+
+def deslocamento(itens: Sequence[Sequence[str]]) -> int:
+    """Quantos caracteres **do documento** há naquele despejo (S-241).
+
+    É a metade que falta para o editor: o painel converte um índice do Tk (`"sel.first"`) em
+    deslocamento de caractere, e é com deslocamento que as funções puras de `text/rico.py` falam.
+
+    A conta não é `len(texto)` do widget, e é essa a razão de a função existir: a miniatura do
+    diagrama conta **um** caractere para o Tk e **zero** para o documento, e a quebra de linha que
+    o desenho acrescenta embaixo dela não é do documento tampouco. Somar os dois daria um
+    deslocamento adiantado, e o negrito cairia uma letra à frente a cada diagrama da página.
+    """
+    abertas: set[str] = set()
+    total = 0
+    for item in itens:
+        chave, valor = str(item[0]), str(item[1])
+        if chave == "tagon":
+            abertas.add(valor)
+        elif chave == "tagoff":
+            abertas.discard(valor)
+        elif chave == "text" and DESENHO not in abertas:
+            total += len(valor)
+    return total
 
 
 def de_despejo(itens: Sequence[Sequence[str]], origem=None) -> rico.DocumentoRico:  # noqa: ANN001
@@ -200,6 +275,7 @@ def de_despejo(itens: Sequence[Sequence[str]], origem=None) -> rico.DocumentoRic
 
 
 __all__ = [
+    "ATRIBUTO_COM_VALOR",
     "DESENHO",
     "ETIQUETA_DO_ATRIBUTO",
     "MARCA",
@@ -209,5 +285,6 @@ __all__ = [
     "SEPARADOR",
     "corrida_de",
     "de_despejo",
+    "deslocamento",
     "etiquetas_de",
 ]

@@ -38,16 +38,29 @@ adivinhou" seriam a mesma informação -- e é a colisão que a S-242 vai ter de
    `LinhaLida.negrito` da S-237 -- e quem carimba `"humano"` de fato é a S-239, no momento em que a
    edição acontece.
 
-2. **`cor` e `estilo` nascem com o registro vazio.** Os dois são campos reais e validados, e hoje o
-   único valor válido é `""`, porque quem povoa `CORES_DE_AUTOR` é a S-242 e quem povoa `ESTILOS` é
-   a S-249. É a mesma decisão do `Comando.icone` da S-219: o campo existe e recusa nome que ninguém
-   desenhou, em vez de aceitar qualquer coisa e virar promessa vazia.
+2. **`cor` e `estilo` nasceram com o registro vazio, e deixaram de nascer.** Na S-235 os dois eram
+   campos reais e validados cujo único valor válido era `""`, pela decisão do `Comando.icone` da
+   S-219: o campo existe e recusa nome que ninguém desenhou. A S-242 povoou `CORES_DE_AUTOR` (e
+   acrescentou `realce`, que é o canal do autor), a S-249 povoou `ESTILOS`, e a S-247 acrescentou
+   `fora_do_modelo`. A trava continua igual dos dois lados: nome fora do registro levanta, e nome
+   no registro sem quem o desenhe é reprovado por `tests/test_texto_rico.py`.
+
+## A edição, e por que ela mora aqui
+
+Da S-241 em diante este módulo deixou de ser só uma estrutura e passou a ter **verbos**:
+`alternar`, `aplicar`, `aplicar_estilo`, `inserir`, `substituir_intervalo`. Todos são puros, todos
+falam em **deslocamento de caractere** -- e nenhum sabe o que é um índice do Tk.
+
+É essa fronteira que faz o editor ser testável: o painel converte `"sel.first"` em deslocamento,
+chama a função e redesenha. A conversão é o único pedaço que precisa do widget, e ela é pequena por
+construção. Um `tag_add` na seleção resolveria o negrito **na tela** em quatro linhas e entregaria,
+no botão Salvar, exatamente o `.txt` de antes -- que é o achado 1 do ROADMAP_EDITOR.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from typing import Any, get_args
 
 from . import documento
@@ -74,22 +87,28 @@ PROCEDENCIAS: tuple[str, ...] = get_args(Procedencia)
 Copiar a lista aqui seria a segunda declaração do mesmo conjunto -- e a que ficaria para trás no dia
 em que uma quinta procedência entrasse."""
 
-CORES_DE_AUTOR: tuple[str, ...] = ()
-"""Os nomes de cor que o autor pode aplicar. **Vazio hoje, e é a resposta certa.**
-
-Quem povoa isto é a S-242, que ainda precisa decidir o canal: a aba já usa cor de letra para dizer
-confiança (`revisar` em `tokens.PROBLEMA`), e uma cor de autor no mesmo canal seria a mesma tinta com
-dois significados na mesma linha.
+CORES_DE_AUTOR: tuple[str, ...] = ("destaque", "citacao", "nota", "variante")
+"""Os nomes de cor que o autor pode aplicar, nos dois canais -- letra (`cor`) e fundo (`realce`).
 
 **São nomes, e nunca hexadecimal nem papel de `ui/tokens.py`.** O domínio nomeia o conceito e a
 interface o resolve em cor -- é o que `PAPEL_DA_FAIXA` já faz com `revisar` e `conferir`, e é o que
-mantém este módulo sem saber que existe uma janela."""
+mantém este módulo sem saber que existe uma janela.
 
-ESTILOS: tuple[str, ...] = ()
-"""Os estilos de parágrafo -- título, prosa, notação, legenda. **Vazio até a S-249.**
+**Os nomes dizem o que o autor quis marcar, e nenhum deles fala de confiança.** "destaque",
+"citação", "nota" e "variante" são intenções de quem escreve; "duvidoso" ou "erro" seriam a língua
+da faixa dita por outra boca, e é exatamente isso que a S-242 proíbe. A S-242 decidiu o canal: a cor da
+letra já diz confiança nesta aba (`revisar` em `tokens.PROBLEMA`, `conferir` em `tokens.ATENCAO`), e
+uma cor de autor que falasse a mesma língua produziria duas tintas iguais com dois significados na
+mesma linha. Quem garante a separação é `ui/texto_cores.py`, que mapeia estes quatro nomes a papéis
+**disjuntos** dos da faixa -- e o teste afirma a interseção vazia."""
 
-Pelo mesmo motivo do acima: um estilo declarado que nada aplica é o item de menu sem comando que a
-S-161 registra como defeito."""
+ESTILOS: tuple[str, ...] = ("titulo", "prosa", "notacao", "legenda")
+"""Os estilos de parágrafo da S-249, e o conjunto é fechado como `GRUPOS` em `ui/comandos.py`.
+
+Cada um tem um dono na página lida -- tarja vira título, bloco recuado vira prosa, a linha atada a
+um diagrama vira legenda --, e `notacao` é o único **sem** derivação automática: o corte que separa
+uma linha de lances de uma linha de prosa não foi medido, e a regra 5 da SPEC_EDITOR manda entregar
+o pincel manual em vez de pintar palpite."""
 
 
 @dataclass(frozen=True)
@@ -100,17 +119,36 @@ class Atributos:
     italico: bool = False
     sublinhado: bool = False
     cor: str = ""
-    """Nome em `CORES_DE_AUTOR`. `""` é "sem cor de autor", e é o único válido até a S-242."""
+    """Nome em `CORES_DE_AUTOR`, aplicado à **letra**. `""` é "sem cor de autor"."""
+
+    realce: str = ""
+    """Nome em `CORES_DE_AUTOR`, aplicado ao **fundo** -- o canal do autor (S-242).
+
+    Separado de `cor` porque os dois canais dizem coisas diferentes nesta aba: a letra já carrega a
+    faixa de confiança, e o realce é o canal livre. Um campo só, com um interruptor "é fundo?", faria
+    a mesma escolha caber em dois lugares e obrigaria quem lê o documento a perguntar qual valia."""
 
     estilo: str = ""
-    """Nome em `ESTILOS`. `""` é "sem estilo declarado", e é o único válido até a S-249."""
+    """Nome em `ESTILOS` -- o atributo do **parágrafo**, e não do trecho (S-249).
+
+    Mora aqui, e não numa segunda estrutura de parágrafo, porque o documento não tem parágrafo: tem
+    corridas. O estilo é o mesmo em todas as corridas de um parágrafo, e quem o aplica escreve nas
+    corridas do intervalo inteiro -- ver `aplicar_estilo`."""
+
+    fora_do_modelo: bool = False
+    """Este trecho traz símbolo que **nenhuma classe do modelo pode confirmar** (S-247).
+
+    Não é defeito nem aviso: é declaração. Quem escreve prosa própria insere `♞` e segue a vida; a
+    marca existe para quem depois perguntar *"isto veio da página?"* -- e para a S-212 não tratar
+    como leitura corrigida um caractere que leitura nenhuma produziu."""
 
     def __post_init__(self) -> None:
         # Levanta em vez de cair no vazio, pela razão de `estilos.estilo_de_botao`: um nome escrito
         # errado que virasse "sem cor" é exatamente o estado que este campo veio impedir, e ele
         # voltaria sem ninguém notar.
-        if self.cor and self.cor not in CORES_DE_AUTOR:
-            raise KeyError(f"cor de autor desconhecida: {self.cor!r}. As válidas estão em CORES_DE_AUTOR.")
+        for campo, valor in (("cor", self.cor), ("realce", self.realce)):
+            if valor and valor not in CORES_DE_AUTOR:
+                raise KeyError(f"{campo} de autor desconhecido: {valor!r}. Os válidos estão em CORES_DE_AUTOR.")
         if self.estilo and self.estilo not in ESTILOS:
             raise KeyError(f"estilo desconhecido: {self.estilo!r}. Os válidos estão em ESTILOS.")
 
@@ -144,6 +182,14 @@ class Atributos:
 
 PADRAO = Atributos()
 """O trecho sem escolha nenhuma. Instância única para a comparação da fusão ser barata."""
+
+BOOLEANOS: tuple[str, ...] = tuple(
+    campo.name for campo in fields(Atributos) if campo.type in ("bool", bool)
+)
+"""Os atributos que se **alternam** -- derivados de `Atributos`, e não recopiados.
+
+É o que faz um booleano novo entrar em `alternar` sozinho, e é a mesma disciplina de
+`texto_etiquetas._booleanos_de_atributo`, que cobra decisão de desenho para cada um deles."""
 
 
 @dataclass(frozen=True)
@@ -410,10 +456,261 @@ def de_texto(texto: str) -> DocumentoRico:
     return DocumentoRico(corridas=corridas_de_texto(texto))
 
 
+# ----------------------------------------------------------------- a edição (S-241, S-242, S-249)
+
+LETRAS_DE_PALAVRA_EXTRA = "'-’"
+"""Além de `str.isalnum()`, o que ainda é palavra: apóstrofo e hífen.
+
+**O limite de palavra é declarado aqui e em nenhum outro lugar** (critério de aceite da S-241).
+`Black's` é uma palavra e não três, e `em-barrassment` na quebra de linha é o caso que a S-209 já
+trata do outro lado. Figurina (`♘`) **não** entra: ela é símbolo, e um `♘` colado num lance faria
+"a palavra sob o cursor" engolir o lance inteiro."""
+
+
+def _e_de_palavra(caractere: str) -> bool:
+    return caractere.isalnum() or caractere in LETRAS_DE_PALAVRA_EXTRA
+
+
+def palavra_em(texto: str, posicao: int) -> tuple[int, int]:
+    """O começo e o fim da palavra sob aquela posição. Intervalo vazio quando não há palavra.
+
+    Olha para trás **e** para a frente a partir do cursor. O cursor logo depois da última letra
+    ainda está na palavra -- é onde ele fica quando alguém acaba de digitá-la, e é o momento em que
+    se aperta `Ctrl+B`.
+    """
+    if not texto:
+        return (0, 0)
+    limite = max(0, min(int(posicao), len(texto)))
+    inicio = limite
+    while inicio > 0 and _e_de_palavra(texto[inicio - 1]):
+        inicio -= 1
+    fim = limite
+    while fim < len(texto) and _e_de_palavra(texto[fim]):
+        fim += 1
+    return (inicio, fim)
+
+
+def intervalo_alvo(doc: DocumentoRico, inicio: int, fim: int) -> tuple[int, int]:
+    """O intervalo em que o comando vai agir: o selecionado, ou a palavra sob o cursor.
+
+    **Sem seleção, o alvo é a palavra** -- é o comportamento que evita a pergunta *"por que não
+    aconteceu nada?"*, e ele é decidido aqui, na função pura, e não no widget.
+    """
+    texto = doc.para_texto()
+    inicio, fim = sorted((max(0, min(int(inicio), len(texto))), max(0, min(int(fim), len(texto)))))
+    if inicio != fim:
+        return (inicio, fim)
+    return palavra_em(texto, inicio)
+
+
+def _fatiado(doc: DocumentoRico, inicio: int, fim: int) -> list[tuple[Corrida, bool]]:
+    """As corridas partidas nos dois limites, cada uma com "está dentro do intervalo?".
+
+    Partir aqui é o que permite todo o resto ser um `replace` por corrida: quem aplica não precisa
+    saber que o intervalo pode cair no meio de uma corrida, e a fusão de `fundir` desfaz depois os
+    cortes que não separaram nada.
+    """
+    saida: list[tuple[Corrida, bool]] = []
+    posicao = 0
+    for corrida in doc.corridas:
+        comeco, termino = posicao, posicao + len(corrida.texto)
+        posicao = termino
+        cortes = sorted({comeco, termino, *(c for c in (inicio, fim) if comeco < c < termino)})
+        for a, b in zip(cortes, cortes[1:]):
+            pedaco = corrida.texto[a - comeco : b - comeco]
+            if pedaco:
+                saida.append((replace(corrida, texto=pedaco), inicio <= a and b <= fim))
+    return saida
+
+
+def _editavel(corrida: Corrida) -> bool:
+    """Só corrida de texto recebe atributo.
+
+    A marca do diagrama e o separador não são texto do livro: o widget os devolve com `PADRAO` por
+    construção (`texto_etiquetas.corrida_de`), e pintar de negrito um `[Diagrama 3]` seria um
+    atributo que morre na primeira gravação -- o defeito que a S-235 existe para impedir.
+    """
+    return corrida.tipo == TEXTO
+
+
+def vale_em_todo(doc: DocumentoRico, inicio: int, fim: int, atributo: str) -> bool:
+    """O atributo vale em **todo** o intervalo? É a pergunta que decide ligar ou desligar.
+
+    "Vale no primeiro caractere?" daria o comportamento errado no caso mais comum: selecionar uma
+    frase cuja primeira palavra já está em negrito e apertar `Ctrl+B` tem de **completar** o
+    negrito, e não apagá-lo.
+
+    Intervalo sem corrida de texto nenhuma responde `False`: não há o que desligar.
+    """
+    dentro = [c for c, esta in _fatiado(doc, inicio, fim) if esta and _editavel(c)]
+    if not dentro:
+        return False
+    return all(bool(getattr(c.atributos, atributo)) for c in dentro)
+
+
+def aplicar(doc: DocumentoRico, inicio: int, fim: int, **valores: Any) -> DocumentoRico:
+    """Escreve estes atributos nas corridas de texto do intervalo, e carimba `humano`.
+
+    **O carimbo é o item da S-239 aplicado a atributo.** Desmarcar à mão um itálico que a régua da
+    S-236 detectou é uma correção sobre o que o motor leu -- e é exatamente o tipo de informação
+    que a fila da S-212 quer. Sem ele, a marcação humana só apareceria quando o *texto* mudasse.
+    """
+    if not valores:
+        return doc
+    for nome in valores:
+        if nome not in {campo.name for campo in fields(Atributos)}:
+            raise KeyError(f"atributo desconhecido: {nome!r}. Os válidos estão em `Atributos`.")
+    novas = [
+        replace(corrida, atributos=replace(corrida.atributos, **valores), procedencia="humano")
+        if esta and _editavel(corrida)
+        else corrida
+        for corrida, esta in _fatiado(doc, inicio, fim)
+    ]
+    return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
+
+
+def alternar(doc: DocumentoRico, inicio: int, fim: int, atributo: str) -> DocumentoRico:
+    """Liga o atributo no intervalo -- ou desliga, se ele já vale em todo ele (S-241).
+
+    Sem seleção (`inicio == fim`), o alvo é a palavra sob o cursor: ver `intervalo_alvo`.
+    """
+    if atributo not in BOOLEANOS:
+        raise KeyError(f"atributo alternável desconhecido: {atributo!r}. Os válidos estão em BOOLEANOS.")
+    inicio, fim = intervalo_alvo(doc, inicio, fim)
+    if inicio == fim:
+        return doc
+    return aplicar(doc, inicio, fim, **{atributo: not vale_em_todo(doc, inicio, fim, atributo)})
+
+
+def limpar_formato(doc: DocumentoRico, inicio: int, fim: int) -> DocumentoRico:
+    """Tira negrito, itálico e sublinhado do intervalo. **Não** toca em cor nem em estilo.
+
+    A cor tem comando próprio (`limpar_cor`, S-242) porque ela é de outro canal e de outra decisão:
+    quem quer tirar a ênfase tipográfica de um trecho quase nunca quer também apagar a marcação
+    colorida que fez para si.
+    """
+    inicio, fim = intervalo_alvo(doc, inicio, fim)
+    if inicio == fim:
+        return doc
+    return aplicar(doc, inicio, fim, negrito=False, italico=False, sublinhado=False)
+
+
+def limpar_cor(doc: DocumentoRico, inicio: int, fim: int) -> DocumentoRico:
+    """Tira a cor do autor -- letra e realce -- e **não** toca na faixa de confiança (S-242).
+
+    A faixa não é atributo: ela mora em `Corrida.faixa`, que este caminho não escreve. É a mesma
+    fronteira do cabeçalho deste módulo, e é o que faz "limpar cor" não apagar a informação de que
+    o motor estava adivinhando ali.
+    """
+    inicio, fim = intervalo_alvo(doc, inicio, fim)
+    if inicio == fim:
+        return doc
+    return aplicar(doc, inicio, fim, cor="", realce="")
+
+
+def aplicar_estilo(doc: DocumentoRico, inicio: int, fim: int, estilo: str) -> DocumentoRico:
+    """Põe o estilo de parágrafo no intervalo, **estendido ao parágrafo inteiro** (S-249).
+
+    Estilo é do parágrafo, e o documento não tem parágrafo: tem corridas. O parágrafo é o conjunto
+    de corridas do mesmo bloco -- que é como a página chegou --, então marcar meia frase marcaria
+    meio parágrafo, e o desenho ficaria com dois corpos de fonte na mesma linha.
+
+    Texto escrito do zero (`SEM_BLOCO`) não tem bloco a que se estender: ali o alvo são as corridas
+    tocadas, inteiras.
+    """
+    if estilo and estilo not in ESTILOS:
+        raise KeyError(f"estilo desconhecido: {estilo!r}. Os válidos estão em ESTILOS.")
+    inicio, fim = intervalo_alvo(doc, inicio, fim)
+    if inicio == fim:
+        return doc
+    blocos = {c.bloco for c, esta in _fatiado(doc, inicio, fim) if esta and _editavel(c) and c.da_pagina}
+    novas: list[Corrida] = []
+    posicao = 0
+    for corrida in doc.corridas:
+        comeco, termino = posicao, posicao + len(corrida.texto)
+        posicao = termino
+        tocada = comeco < fim and termino > inicio
+        if _editavel(corrida) and (corrida.bloco in blocos or tocada):
+            novas.append(replace(corrida, atributos=replace(corrida.atributos, estilo=estilo), procedencia="humano"))
+            continue
+        novas.append(corrida)
+    return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
+
+
+def substituir_intervalo(doc: DocumentoRico, inicio: int, fim: int, novo: str) -> DocumentoRico:
+    """Troca o texto do intervalo por outro, **mantendo os atributos** de quem estava ali (S-245).
+
+    "Trocar uma palavra em negrito devolve a palavra nova em negrito" é critério de aceite da busca,
+    e é aqui que ele mora: o texto novo herda os atributos, a faixa e o bloco da primeira corrida do
+    intervalo. O bloco é o que faz a troca continuar sendo uma **correção sobre aquele bloco** --
+    sem ele, `text/correcao.py` deixaria de ver o que a substituição em massa fez.
+    """
+    inicio, fim = sorted((max(0, inicio), max(0, fim)))
+    if inicio == fim:
+        return inserir(doc, inicio, novo)
+    partido = _fatiado(doc, inicio, fim)
+    novas: list[Corrida] = []
+    posto = False
+    for corrida, esta in partido:
+        if not esta or not _editavel(corrida):
+            # Marca de diagrama e separador atravessam a troca inteiros: apagá-los seria a busca
+            # editando a estrutura do texto, e não o texto (a regra do cabeçalho de `documento.py`).
+            novas.append(corrida)
+            continue
+        if not posto and novo:
+            novas.append(replace(corrida, texto=novo, procedencia="humano"))
+            posto = True
+    return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
+
+
+def inserir(doc: DocumentoRico, posicao: int, texto: str, *, fora_do_modelo: bool = False) -> DocumentoRico:
+    """Insere texto na posição, herdando os atributos de quem está à esquerda (S-248).
+
+    **Herda da esquerda, e não do padrão**, pela mesma regra que o Tk já usa para a digitação: quem
+    põe uma figurina no meio de um lance em negrito quer a figurina em negrito. `fora_do_modelo`
+    entra por cima, porque é declaração sobre o que foi inserido e não sobre o que estava lá.
+    """
+    if not texto:
+        return doc
+    posicao = max(0, min(int(posicao), len(doc.para_texto())))
+    esquerda = None
+    caminhado = 0
+    for corrida in doc.corridas:
+        caminhado += len(corrida.texto)
+        if _editavel(corrida) and caminhado >= posicao > caminhado - len(corrida.texto):
+            esquerda = corrida
+            break
+    atributos = esquerda.atributos if esquerda is not None else PADRAO
+    if fora_do_modelo:
+        atributos = replace(atributos, fora_do_modelo=True)
+    nova = Corrida(
+        texto=texto,
+        atributos=atributos,
+        faixa=esquerda.faixa if esquerda is not None else documento.TRANQUILO,
+        bloco=esquerda.bloco if esquerda is not None else SEM_BLOCO,
+        procedencia="humano",
+    )
+    partido = _fatiado(doc, posicao, posicao)
+    novas: list[Corrida] = []
+    caminhado = 0
+    inseriu = False
+    for corrida, _esta in partido:
+        if not inseriu and caminhado == posicao:
+            novas.append(nova)
+            inseriu = True
+        novas.append(corrida)
+        caminhado += len(corrida.texto)
+    if not inseriu:
+        novas.append(nova)
+    return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
+
+
 __all__ = [
+    "BOOLEANOS",
     "CORES_DE_AUTOR",
     "DIAGRAMA",
     "ESTILOS",
+    "LETRAS_DE_PALAVRA_EXTRA",
     "PADRAO",
     "PROCEDENCIAS",
     "SEM_BLOCO",
@@ -423,8 +720,18 @@ __all__ = [
     "Atributos",
     "Corrida",
     "DocumentoRico",
+    "alternar",
+    "aplicar",
+    "aplicar_estilo",
     "corridas_de_texto",
     "de_pagina",
     "de_texto",
     "fundir",
+    "inserir",
+    "intervalo_alvo",
+    "substituir_intervalo",
+    "limpar_cor",
+    "limpar_formato",
+    "palavra_em",
+    "vale_em_todo",
 ]

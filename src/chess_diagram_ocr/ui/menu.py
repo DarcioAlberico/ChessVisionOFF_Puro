@@ -178,6 +178,37 @@ MENUS: tuple[Menu, ...] = (
         ),
     ),
     Menu(
+        "Texto",
+        (
+            # A aba tem barra própria, e mesmo assim tudo isto tem item de menu -- é a regra 2 da
+            # SPEC_APARENCIA: o que a pele esconde, o menu alcança. Com vinte e oito comandos
+            # novos, um menu só é o que impede a barra da aba de virar a pilha de botões que a
+            # S-151 mediu.
+            Item("ler_folha"),
+            Item("folha_da_pagina_aberta"),
+            Item("modo_bloco", INTERRUPTOR),
+            _sep(),
+            Item("abrir_texto"),
+            Item("salvar_texto"),
+            Item("salvar_texto_como"),
+            _sep(),
+            Item("negrito"),
+            Item("italico"),
+            Item("sublinhado"),
+            Item("limpar_formato"),
+            _sep(),
+            Item("cor_do_texto"),
+            Item("realce"),
+            Item("limpar_cor"),
+            _sep(),
+            Item("achar"),
+            Item("substituir"),
+            Item("substituir_todos"),
+            _sep(),
+            Item("exportar_txt"),
+        ),
+    ),
+    Menu(
         "Ajuda",
         (
             Item("paleta_de_comandos"),
@@ -190,9 +221,15 @@ MENUS: tuple[Menu, ...] = (
 )
 """A barra inteira, como dado.
 
-**Cinco menus, e o critério de cada um é uma pergunta.** Arquivo: que documento. Editar: o que
-muda no diagrama aberto. Ver: como a página aparece. Ferramentas: o que roda sobre o livro. Ajuda:
-o que o programa sabe sobre si.
+**Seis menus, e o critério de cada um é uma pergunta.** Arquivo: que documento. Editar: o que
+muda no diagrama aberto. Ver: como a página aparece. Ferramentas: o que roda sobre o livro. Texto:
+o que muda no texto da folha aberta. Ajuda: o que o programa sabe sobre si.
+
+**O sexto nasceu com a Fase 37**, e nasceu por tamanho: os vinte e oito comandos do editor cabem
+em "Editar" pela pergunta -- os dois mexem no que está aberto agora --, e não cabem pelo desenho.
+"Editar" tem catorze itens sobre o **diagrama**, e afogá-los em vinte e oito sobre o **texto**
+tornaria os dois grupos igualmente difíceis de achar. O grupo do catálogo continua sendo EDICAO e
+ARQUIVO, que é outra pergunta: o grupo diz *o que o comando é*, o menu diz *onde ele mora*.
 
 O que **não** entrou: os campos de configuração (são estado, não comando), as anotações do conjunto
 de campo (pertencem à página exibida e a S-77 as põe junto dela de propósito) e os botões de

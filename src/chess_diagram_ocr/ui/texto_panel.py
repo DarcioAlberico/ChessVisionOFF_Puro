@@ -6,7 +6,8 @@ Galeria lista o livro. Nenhuma dessas abas mostra o *texto* da página, e por is
 conferir o que o OCR leu era abrir o JSON.
 
 **Quase nada é decidido aqui.** Onde o diagrama entra no fluxo, o que merece destaque e o que vai
-para o arquivo são de `text/documento.py`, que não importa `tkinter` e é onde os testes moram.
+para o arquivo são de `text/documento.py`; o que a edição faz com um trecho é de `text/rico.py`; o
+que a busca acha é de `text/busca.py`. Nenhum dos três importa `tkinter`, e é onde os testes moram.
 Este arquivo é o que sobra depois disso: widgets, uma thread e um `after`.
 
 ## Onde a aba fica na barra, e por quê
@@ -29,6 +30,35 @@ Ler uma página de scan com o classificador de glifo custa ~1 s a 220 dpi, e ~40
 bloco da S-188 ligado (`docs/metrics/texto_pagina.json`). Os dois travariam a janela -- o segundo
 por tempo suficiente para o Windows a declarar "não respondendo". A leitura roda numa thread, o
 resultado volta por `after`, e o `BusyRegistry` é quem avisa que há trabalho em curso.
+
+# As ferramentas de edição (Fase 37)
+
+## O deslocamento é a fronteira, e ela é estreita de propósito
+
+As funções que decidem o que uma ferramenta faz são puras e falam em **deslocamento de
+caractere**: `rico.alternar`, `rico.aplicar`, `busca.achar`. O que este arquivo acrescenta é a
+conversão entre o índice do Tk (`"sel.first"`, `"insert"`) e esse deslocamento -- e ela é pequena
+por construção, porque é justamente o pedaço que precisa do widget.
+
+Não é `len` do texto do widget: a miniatura do diagrama vale um caractere para o Tk e nenhum para
+o documento, e a quebra que o desenho acrescenta embaixo dela também não é do documento. Quem
+conta certo é `texto_etiquetas.deslocamento`.
+
+## Formato entra por etiqueta; texto entra por documento
+
+Duas classes de comando, e a diferença decide o desfazer:
+
+- **negrito, itálico, cor, realce** não mudam um caractere. São `tag_add`/`tag_remove` no
+  intervalo, sem redesenho: o cursor fica onde estava, a rolagem não salta e a pilha de desfazer
+  do Tk -- que é a do texto digitado -- continua inteira;
+- **substituir em massa** muda o texto. Aí o caminho é o documento: a função pura devolve um
+  `DocumentoRico` novo, o painel guarda um instantâneo do anterior e redesenha.
+
+O redesenho **zera a pilha do Tk**, e isso foi medido aqui: desligar `-undo`, redesenhar e ligar de
+novo *não* protege a pilha -- ela sobrevive com índices que já não descrevem o texto, e o
+`Ctrl+Z` seguinte apaga um pedaço qualquer. Por isso `desenhar_documento` chama `edit_reset()`, e
+por isso a substituição tem instantâneo próprio: sem ele, desfazer uma troca em massa seria
+impossível em vez de ser inteira.
 """
 
 from __future__ import annotations
@@ -42,9 +72,9 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Literal
 
-from ..text import arquivo, correcao, documento, rico
+from ..text import arquivo, busca, correcao, documento, rico
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
-from . import estilos, texto_etiquetas, tokens
+from . import atalhos, comandos, texto_busca, texto_cores, texto_etiquetas, tokens
 from . import texto as texto_ui
 from .barra import BarraFluida
 from .busy import BusyRegistry
@@ -73,13 +103,29 @@ PAPEL_DA_FAIXA = {
 Papel e não hexadecimal, pela regra que `tokens` inteiro existe para manter: uma cor cravada aqui
 seria a mesma tinta com outro significado nos dois painéis lado a lado, e no tema escuro ela pode
 simplesmente sumir. `""` é "a cor normal do texto" -- e é deliberado que o trecho tranquilo **não**
-peça papel nenhum: pintá-lo de preto é o que quebraria o tema escuro."""
+peça papel nenhum: pintá-lo de preto é o que quebraria o tema escuro.
+
+**Este mapa é o outro lado da S-242.** É ele que faz a cor da letra querer dizer confiança nesta
+aba -- e é por isso que a paleta do autor não pode oferecer os mesmos papéis. Quem afirma a
+interseção vazia é `tests/test_ui_texto_cor.py`, comparando este mapa com
+`ui/texto_cores.PAPEIS_DA_FAIXA`."""
 
 PAPEL_DA_MARCA = tokens.TEXTO_SECUNDARIO
 """A cor de `[Diagrama N]`. Secundário porque a marca é referência, e não texto do livro."""
 
 NEGRITO_ITALICO = "negrito_italico"
 """A tag que desenha os dois juntos. **É desenho, e não documento** -- ver `_etiquetas` (S-236)."""
+
+ACOES_PROPRIAS: frozenset[str] = frozenset({"salvar", "desfazer", "refazer", "achar", "substituir"})
+"""As ações globais que esta aba atende **enquanto tem o foco** (S-244).
+
+`Ctrl+S` com o cursor no texto salva o texto, e não a posição do tabuleiro. Não é tecla nova: é a
+mesma tecla com destino conforme o foco, que é o que qualquer programa faz e o que esta aba não
+fazia -- a guarda de `ui/shortcuts.py` cedia a tecla a todo campo de texto (por medição, desde a
+S-20), e do outro lado ninguém a ligava. O resultado era um silêncio de duas camadas.
+
+Quem confere que cada ação declarada é de fato atendida é `atalhos.conferir_dono`, na montagem:
+declarar e não atender come a tecla e não faz nada, que é pior que não declarar."""
 
 MOTORES: tuple[MotorDeTexto, ...] = ("glifo", "camada", "auto")
 """Os mesmos três de `text/leitor.py`, e a caixa da barra os oferece nesta ordem.
@@ -125,6 +171,17 @@ class TextoPanel(ttk.Frame):
         self._pagina_rgb = None
         self._lendo = False
         self._sujo = False
+        self._edicoes = 0
+        """Quantas edições a aba recebeu. É o `edicao` do `ui/desfazivel.py` -- ver `contem`."""
+        self._redesenhando = False
+        self._instantaneos: list[tuple[int, rico.DocumentoRico]] = []
+        self._refeitos: list[rico.DocumentoRico] = []
+        self._janela_de_busca: texto_busca.JanelaDeBusca | None = None
+
+        self.formato_var: dict[str, tk.BooleanVar] = {
+            atributo: tk.BooleanVar(value=False) for atributo in ("negrito", "italico", "sublinhado")
+        }
+        """O espelho do que vale sob o cursor, para os três interruptores da barra (S-241)."""
 
         self.folha_var = tk.StringVar(value="1")
         self.motor_var = tk.StringVar(value=MOTORES[0])
@@ -136,9 +193,9 @@ class TextoPanel(ttk.Frame):
     # ------------------------------------------------------------------------------ construção
 
     def _montar(self) -> None:
-        # `BarraFluida` e não `Frame`: com "Abrir" e "Salvar" a fila passou de oito para dez itens
-        # (S-238), e `pack(side=LEFT)` numa linha só **não desenha** o que passa da borda -- sem
-        # aviso e sem reticências, que é o defeito medido pela S-151.
+        # `BarraFluida` e não `Frame`: a fila passou de dez itens para dezesseis com as
+        # ferramentas da Fase 37, e `pack(side=LEFT)` numa linha só **não desenha** o que passa da
+        # borda -- sem aviso e sem reticências, que é o defeito medido pela S-151.
         barra = BarraFluida(self)
         barra.pack(fill=tk.X, pady=(0, 6))
 
@@ -146,9 +203,7 @@ class TextoPanel(ttk.Frame):
         barra.adicionar(
             ttk.Spinbox(barra, from_=1, to=99999, width=7, textvariable=self.folha_var)
         )
-        barra.adicionar(
-            ttk.Button(barra, text="Da página aberta", command=self.sincronizar_com_a_pagina)
-        )
+        barra.adicionar(self._botao(barra, "folha_da_pagina_aberta", self.sincronizar_com_a_pagina))
 
         barra.adicionar(ttk.Label(barra, text="Motor"))
         barra.adicionar(
@@ -157,21 +212,26 @@ class TextoPanel(ttk.Frame):
             )
         )
 
+        # Rótulo do catálogo também aqui: a varredura da S-219 olha `Checkbutton`, e este era o
+        # único texto de comando desta barra que não era botão.
         barra.adicionar(
-            ttk.Checkbutton(barra, text="Modo bloco (lento)", variable=self.bloco_var)
-        )
-
-        barra.adicionar(
-            ttk.Button(
+            ttk.Checkbutton(
                 barra,
-                text="Ler folha",
-                style=estilos.estilo_de_botao(estilos.PRIMARIO),
-                command=self.ler,
+                text=comandos.rotulo_de_botao("modo_bloco"),
+                variable=self.bloco_var,
             )
         )
-        barra.adicionar(ttk.Button(barra, text="Abrir…", command=self.abrir_documento))
-        barra.adicionar(ttk.Button(barra, text="Salvar", command=self.salvar_documento))
-        barra.adicionar(ttk.Button(barra, text="Salvar .txt", command=self.salvar))
+
+        barra.adicionar(self._botao(barra, "ler_folha", self.ler))
+        barra.adicionar(self._botao(barra, "abrir_texto", self.abrir_documento))
+        barra.adicionar(self._botao(barra, "salvar_texto", self.salvar_documento))
+        barra.adicionar(self._botao(barra, "exportar_txt", self.salvar))
+
+        for atributo in self.formato_var:
+            barra.adicionar(self._interruptor_de_formato(barra, atributo))
+        barra.adicionar(self._menu_de_cor(barra, "cor_do_texto", self.pintar_letra))
+        barra.adicionar(self._menu_de_cor(barra, "realce", self.pintar_realce))
+        barra.adicionar(self._botao(barra, "achar", self.achar))
 
         corpo = ttk.Frame(self)
         corpo.pack(fill=tk.BOTH, expand=True)
@@ -191,10 +251,104 @@ class TextoPanel(ttk.Frame):
         self.editor.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._pintar_faixas()
         self.editor.bind("<<Modified>>", self._marcar_sujo)
+        # O espelho dos interruptores segue o cursor. `<<Selection>>` não cobre a seta que anda sem
+        # selecionar, e por isso as quatro estão aqui: um botão que diz "negrito" onde o texto não
+        # é negrito é pior que um botão sem estado nenhum.
+        for gatilho in ("<<Selection>>", "<ButtonRelease-1>", "<KeyRelease-Left>", "<KeyRelease-Right>"):
+            self.editor.bind(gatilho, self._atualizar_ferramentas, add="+")
+        self._ligar_teclas()
 
         rodape = ttk.Frame(self)
         rodape.pack(fill=tk.X, pady=(6, 0))
         texto_ui.acompanhar(ttk.Label(rodape, textvariable=self.status_var)).pack(side=tk.LEFT)
+
+    def _interruptor_de_formato(self, pai: tk.Misc, acao: str) -> ttk.Checkbutton:
+        """O botão de negrito, itálico ou sublinhado -- **e ele mostra o estado do cursor** (S-241).
+
+        `Checkbutton` com estilo de botão, e não `Button`: o critério de aceite pede que o controle
+        diga se o atributo já vale onde o cursor está, e um botão comum não tem onde dizê-lo. A
+        variável é atualizada por `_atualizar_ferramentas`, que roda quando a seleção ou o cursor
+        se movem -- ela é **espelho**, e não fonte: quem decide continua sendo `rico.vale_em_todo`.
+
+        O rótulo vem do catálogo, como todo o resto desta barra (S-240): a varredura da S-219 olha
+        `Checkbutton` também, e este é exatamente o caso que ela existe para pegar.
+        """
+        return ttk.Checkbutton(
+            pai,
+            text=comandos.rotulo_de_botao(acao),
+            variable=self.formato_var[acao],
+            style="Toolbutton",
+            command=lambda: self.alternar(acao),
+        )
+
+    def _botao(self, pai: tk.Misc, acao: str, funcao: Callable[[], None]) -> ttk.Button:
+        """Um botão da barra, **com o rótulo e a ênfase vindos do catálogo** (S-240).
+
+        Nenhum `text=` escrito à mão sobra nesta aba, e é o critério de aceite do item: com três
+        peles, o que não está no catálogo não aparece em nenhuma delas -- é a S-161 outra vez,
+        *"o que não era botão não existia"*.
+        """
+        return ttk.Button(
+            pai,
+            text=comandos.rotulo_de_botao(acao),
+            style=comandos.estilo(acao),
+            command=funcao,
+        )
+
+    def _menu_de_cor(self, pai: tk.Misc, acao: str, ao_escolher: Callable[[str], None]) -> ttk.Menubutton:
+        """O botão que abre a lista de cores do autor (S-242)."""
+        botao = ttk.Menubutton(pai, text=comandos.rotulo_de_botao(acao))
+        botao.configure(menu=self._lista_de_cores(botao, ao_escolher))
+        return botao
+
+    def _lista_de_cores(self, pai: tk.Misc, ao_escolher: Callable[[str], None]) -> tk.Menu:
+        """A lista de cores do autor, para o botão da barra e para o item de menu (S-242).
+
+        As cores saem de `rico.CORES_DE_AUTOR` pelo caminho de `ui/texto_cores.py`: nome no
+        documento, papel na interface, hexadecimal em lugar nenhum. Um item por nome, mais
+        "Limpar", que é o comando `limpar_cor` do catálogo -- e ele **não** tira a faixa.
+
+        Uma função só para os dois clientes: duas listas divergiriam na primeira cor nova, que é o
+        defeito que o catálogo de comandos tirou dos rótulos.
+        """
+        menu = tk.Menu(pai, tearoff=False)
+        for nome in texto_cores.nomes():
+            menu.add_command(label=nome.capitalize(), command=lambda n=nome: ao_escolher(n))
+        menu.add_separator()
+        menu.add_command(label=comandos.rotulo_de_botao("limpar_cor"), command=self.limpar_cor)
+        return menu
+
+    def escolher_cor(self) -> None:
+        """Abre a lista de cores junto do ponteiro -- é por aqui que o item de menu entra."""
+        self._abrir_lista_de_cores(self.pintar_letra)
+
+    def escolher_realce(self) -> None:
+        """O mesmo para o realce, que é o canal do autor (S-242)."""
+        self._abrir_lista_de_cores(self.pintar_realce)
+
+    def _abrir_lista_de_cores(self, ao_escolher: Callable[[str], None]) -> None:
+        menu = self._lista_de_cores(self, ao_escolher)
+        try:
+            menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+        finally:
+            menu.grab_release()
+
+    def _ligar_teclas(self) -> None:
+        """As três teclas de formato, e a guarda que o `Ctrl+I` obriga (S-241).
+
+        Em `tk8.6/text.tcl:211`, `bind Text <Control-i>` insere **uma tabulação**. Quem ligar a
+        tecla sem devolver `"break"` recebe as duas coisas: o itálico e o tab. `Ctrl+B` e `Ctrl+U`
+        caem em `bind Text <Control-KeyPress> {# nothing}` e não têm o problema -- e é justamente
+        por isso que as três devolvem `"break"` aqui: quem acrescentar a quarta não vai reler este
+        parágrafo.
+
+        As sequências saem de `atalhos.TECLAS_DO_EDITOR` e não de literais aqui: elas **não** são
+        atalhos da janela -- só valem dentro deste widget --, mas a declaração de tecla mora num
+        lugar só neste projeto, e é `ui/atalhos.py`. Ver o docstring de lá.
+        """
+        funcoes = {"negrito": self.negrito, "italico": self.italico, "sublinhado": self.sublinhado}
+        for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
+            self.editor.bind(sequencia, lambda _e, f=funcoes[acao]: (f(), "break")[1])
 
     # -------------------------------------------------------------------------------- comandos
 
@@ -323,30 +477,37 @@ class TextoPanel(ttk.Frame):
         self.status_var.set(documento.resumo(pagina))
 
     def desenhar_documento(self, doc: rico.DocumentoRico) -> None:
-        """Desenha o documento -- venha ele de uma leitura ou, um dia, de um arquivo (S-238).
+        """Desenha o documento -- venha ele de uma leitura ou de um arquivo (S-238).
 
         **Este laço não decide nada.** Faixa, ordem, separador e atributo já vieram decididos por
         `text/rico.py`; o que sobra aqui é `insert` e `image_create`. É a mesma fronteira que
         `text/documento.py` já mantinha, agora com o documento no meio -- e é ela que faz o negrito
         de uma corrida poder sobreviver ao arquivo, em vez de existir só enquanto o widget existir.
         """
-        self.editor.configure(state=tk.NORMAL)
-        self._pintar_faixas()
-        self.editor.delete("1.0", tk.END)
-        self._imagens.clear()
+        self._redesenhando = True
+        try:
+            self.editor.configure(state=tk.NORMAL)
+            self._pintar_faixas()
+            self.editor.delete("1.0", tk.END)
+            self._imagens.clear()
 
-        for corrida in doc.corridas:
-            bloco = doc.bloco_de(corrida) if corrida.e_diagrama else None
-            if isinstance(bloco, BlocoDeDiagrama):
-                self._inserir_miniatura(bloco)
-            # **Toda corrida leva etiqueta, o separador inclusive.** Ele é indistinguível de duas
-            # quebras digitadas à mão, e sem a etiqueta voltaria do widget como texto comum -- o
-            # documento reaberto deixaria de ser igual ao salvo (S-238).
-            self.editor.insert(tk.END, corrida.texto, self._etiquetas(corrida))
+            for corrida in doc.corridas:
+                bloco = doc.bloco_de(corrida) if corrida.e_diagrama else None
+                if isinstance(bloco, BlocoDeDiagrama):
+                    self._inserir_miniatura(bloco)
+                # **Toda corrida leva etiqueta, o separador inclusive.** Ele é indistinguível de
+                # duas quebras digitadas à mão, e sem a etiqueta voltaria do widget como texto
+                # comum -- o documento reaberto deixaria de ser igual ao salvo (S-238).
+                self.editor.insert(tk.END, corrida.texto, self._etiquetas(corrida))
 
-        self.editor.edit_reset()
-        self.editor.edit_modified(False)
-        self._sujo = False
+            # **Zera a pilha do Tk, e é obrigatório.** Ela guarda índices, não conteúdo: depois de
+            # o texto inteiro ser trocado, desfazer apagaria um pedaço qualquer do texto novo.
+            # Medido -- desligar `-undo` durante o redesenho não protege coisa nenhuma.
+            self.editor.edit_reset()
+            self.editor.edit_modified(False)
+            self._sujo = False
+        finally:
+            self._redesenhando = False
 
     def _etiquetas(self, corrida: rico.Corrida) -> tuple[str, ...]:
         """As etiquetas do Tk desta corrida. A tabela mora em `ui/texto_etiquetas.py` (S-238).
@@ -412,16 +573,25 @@ class TextoPanel(ttk.Frame):
             return None
 
     def _pintar_faixas(self) -> None:
-        """Dá cor a cada faixa pelo papel dela em `ui/tokens.py`.
+        """Dá cor a cada faixa, a cada cor de autor e a cada realce, pelo papel deles em `tokens`.
 
         Chamado no desenho e não só na construção porque a paleta depende do tema, e o tema pode
         mudar com a janela aberta -- ver `ui/theme.py`. Uma cor resolvida uma vez ficaria com a do
-        tema de quando a aba nasceu.
+        tema de quando a aba nasceu. **A cor do autor e a faixa se repintam juntas**, pelo mesmo
+        caminho, que é critério de aceite da S-242.
         """
         for faixa, papel in PAPEL_DA_FAIXA.items():
             if papel:
                 self.editor.tag_configure(faixa, foreground=tokens.cor(papel))
         self.editor.tag_configure("marca", foreground=tokens.cor(PAPEL_DA_MARCA))
+        for nome in texto_cores.nomes():
+            self.editor.tag_configure(
+                texto_cores.etiqueta_de_cor(nome), foreground=tokens.cor(texto_cores.papel_de_cor(nome))
+            )
+            self.editor.tag_configure(
+                texto_cores.etiqueta_de_realce(nome),
+                background=tokens.cor(texto_cores.papel_de_realce(nome)),
+            )
         # **A ordem importa, e o combinado vem por último.** No Tk a prioridade da tag é a ordem de
         # criação, e uma tag só pode dar *uma* fonte ao trecho: sem `NEGRITO_ITALICO` no fim, um
         # trecho com os dois sairia só itálico -- e o negrito que a S-237 leu da camada sumiria da
@@ -429,6 +599,7 @@ class TextoPanel(ttk.Frame):
         self.editor.tag_configure("negrito", font=self._fonte(peso="bold"))
         self.editor.tag_configure("italico", font=self._fonte(pendor="italic"))
         self.editor.tag_configure(NEGRITO_ITALICO, font=self._fonte(peso="bold", pendor="italic"))
+        self.editor.tag_configure("sublinhado", underline=True)
 
     def _fonte(
         self,
@@ -459,6 +630,320 @@ class TextoPanel(ttk.Frame):
         if self.editor.edit_modified():
             self._sujo = True
             self.editor.edit_modified(False)
+            if not self._redesenhando:
+                self._edicoes += 1
+
+    # ------------------------------------------------- deslocamento <-> índice do Tk (S-241)
+
+    def deslocamento_de(self, indice: str) -> int:
+        """O índice do Tk como deslocamento de caractere no documento. Ver o cabeçalho."""
+        return texto_etiquetas.deslocamento(self.editor.dump("1.0", indice, text=True, tag=True))
+
+    def indice_de(self, deslocamento: int) -> str:
+        """O caminho de volta: deslocamento no documento -> índice do Tk.
+
+        Percorre o despejo somando só o que é documento, e para no pedaço que contém o alvo. Sem
+        isso, `f"1.0 + {n} chars"` erraria uma posição por diagrama da página -- a miniatura e a
+        quebra do desenho contam para o Tk e não para o documento.
+        """
+        alvo = max(0, int(deslocamento))
+        caminhado = 0
+        abertas: set[str] = set()
+        for item in self.editor.dump("1.0", tk.END, text=True, tag=True):
+            chave, valor, indice = str(item[0]), str(item[1]), str(item[2])
+            if chave == "tagon":
+                abertas.add(valor)
+            elif chave == "tagoff":
+                abertas.discard(valor)
+            elif chave == "text" and texto_etiquetas.DESENHO not in abertas:
+                if caminhado + len(valor) >= alvo:
+                    return f"{indice} + {alvo - caminhado} chars"
+                caminhado += len(valor)
+        return "end-1c"
+
+    def intervalo_alvo(self) -> tuple[int, int]:
+        """O intervalo em que a próxima ferramenta age: a seleção, ou a palavra sob o cursor.
+
+        Quem decide é `rico.intervalo_alvo`, com o documento na mão -- aqui só se lê onde o cursor
+        e a seleção estão. É a fronteira do cabeçalho: a regra de limite de palavra mora num lugar
+        só, e ele não é este.
+        """
+        doc = self.documento_atual()
+        try:
+            inicio = self.deslocamento_de("sel.first")
+            fim = self.deslocamento_de("sel.last")
+        except tk.TclError:
+            inicio = fim = self.deslocamento_de("insert")
+        return rico.intervalo_alvo(doc, inicio, fim)
+
+    # --------------------------------------------------------- as ferramentas de formato (S-241)
+
+    def negrito(self) -> None:
+        """Liga ou desliga o negrito no alvo. Ver `alternar`."""
+        self.alternar("negrito")
+
+    def italico(self) -> None:
+        self.alternar("italico")
+
+    def sublinhado(self) -> None:
+        self.alternar("sublinhado")
+
+    def alternar(self, atributo: str) -> None:
+        """Alterna um atributo booleano no alvo -- **por etiqueta, sem redesenhar** (S-241).
+
+        Quem decide ligar ou desligar é `rico.vale_em_todo`, sobre o documento: "vale em **todo** o
+        intervalo?" e não "vale no primeiro caractere?". Selecionar uma frase cuja primeira palavra
+        já está em negrito e apertar `Ctrl+B` tem de **completar** o negrito, e não apagá-lo.
+
+        A escrita é `tag_add`/`tag_remove` porque nenhum caractere muda: assim o cursor fica onde
+        estava, a rolagem não salta, e a pilha de desfazer do texto digitado continua inteira.
+        """
+        doc = self.documento_atual()
+        inicio, fim = self.intervalo_alvo()
+        if inicio == fim:
+            return
+        ligar = not rico.vale_em_todo(doc, inicio, fim, atributo)
+        i0, i1 = self.indice_de(inicio), self.indice_de(fim)
+        etiqueta = texto_etiquetas.ETIQUETA_DO_ATRIBUTO[atributo]
+        (self.editor.tag_add if ligar else self.editor.tag_remove)(etiqueta, i0, i1)
+        self._combinar_negrito_italico(i0, i1)
+        self._carimbar_humano(i0, i1)
+        self._depois_de_editar()
+
+    def _combinar_negrito_italico(self, i0: str, i1: str) -> None:
+        """Mantém a tag combinada em dia no intervalo. Ver `_pintar_faixas` sobre por que ela existe.
+
+        Ela é **desenho e não documento** -- `corrida_de` a ignora na volta --, mas precisa
+        acompanhar as duas de que depende: sem isto, ligar o negrito num trecho já itálico daria um
+        trecho que o Tk desenha só em itálico, e a pessoa concluiria que o botão não funcionou.
+        """
+        self.editor.tag_remove(NEGRITO_ITALICO, i0, i1)
+        deslocamento = self.deslocamento_de(i0)
+        for corrida in self._corridas_entre(i0, i1):
+            fim = deslocamento + len(corrida.texto)
+            if corrida.atributos.negrito and corrida.atributos.italico:
+                self.editor.tag_add(NEGRITO_ITALICO, self.indice_de(deslocamento), self.indice_de(fim))
+            deslocamento = fim
+
+    def _corridas_entre(self, i0: str, i1: str) -> tuple[rico.Corrida, ...]:
+        """As corridas daquele trecho do widget, já traduzidas -- sem reconstruir o documento todo."""
+        return texto_etiquetas.de_despejo(self.editor.dump(i0, i1, text=True, tag=True)).corridas
+
+    def _carimbar_humano(self, i0: str, i1: str) -> None:
+        """Troca a procedência do trecho por `humano` (S-239/S-241).
+
+        Desmarcar à mão um itálico que a régua da S-236 detectou é uma **correção sobre o que o
+        motor leu**, e é exatamente o tipo de informação que a fila da S-212 quer. Sem este
+        carimbo, a marcação humana só apareceria quando o *texto* mudasse -- e o pincel manual
+        seria invisível para o relatório.
+        """
+        for etiqueta in self.editor.tag_names():
+            if etiqueta.startswith(texto_etiquetas.PREFIXO_DE_PROCEDENCIA):
+                self.editor.tag_remove(etiqueta, i0, i1)
+        self.editor.tag_add(f"{texto_etiquetas.PREFIXO_DE_PROCEDENCIA}humano", i0, i1)
+
+    def limpar_formato(self) -> None:
+        """Tira negrito, itálico e sublinhado do alvo. **Não** toca em cor nem em faixa."""
+        inicio, fim = self.intervalo_alvo()
+        if inicio == fim:
+            return
+        i0, i1 = self.indice_de(inicio), self.indice_de(fim)
+        for atributo in ("negrito", "italico", "sublinhado"):
+            self.editor.tag_remove(texto_etiquetas.ETIQUETA_DO_ATRIBUTO[atributo], i0, i1)
+        self.editor.tag_remove(NEGRITO_ITALICO, i0, i1)
+        self._carimbar_humano(i0, i1)
+        self._depois_de_editar()
+
+    def pintar_letra(self, nome: str) -> None:
+        """Põe a cor do autor na **letra** do alvo (S-242)."""
+        self._pintar(nome, texto_cores.etiqueta_de_cor, texto_cores.PREFIXO_DE_COR)
+
+    def pintar_realce(self, nome: str) -> None:
+        """Põe a cor do autor no **fundo** do alvo -- o canal que a confiança não usa (S-242)."""
+        self._pintar(nome, texto_cores.etiqueta_de_realce, texto_cores.PREFIXO_DE_REALCE)
+
+    def _pintar(self, nome: str, etiqueta_de: Callable[[str], str], prefixo: str) -> None:
+        inicio, fim = self.intervalo_alvo()
+        if inicio == fim:
+            return
+        i0, i1 = self.indice_de(inicio), self.indice_de(fim)
+        # Uma cor por canal: a anterior sai antes de a nova entrar, senão o trecho carregaria duas
+        # etiquetas do mesmo prefixo e a volta teria de escolher uma delas por desempate.
+        for existente in self.editor.tag_names():
+            if existente.startswith(prefixo):
+                self.editor.tag_remove(existente, i0, i1)
+        self.editor.tag_add(etiqueta_de(nome), i0, i1)
+        self._carimbar_humano(i0, i1)
+        self._depois_de_editar()
+
+    def limpar_cor(self) -> None:
+        """Tira a cor do autor -- letra e realce -- e **não** tira a faixa de confiança (S-242).
+
+        A faixa é de outro dono: ela é a régua do reconhecimento, e apagá-la aqui esconderia que o
+        motor estava adivinhando naquele trecho.
+        """
+        inicio, fim = self.intervalo_alvo()
+        if inicio == fim:
+            return
+        i0, i1 = self.indice_de(inicio), self.indice_de(fim)
+        for existente in self.editor.tag_names():
+            if existente.startswith(texto_cores.PREFIXO_DE_COR) or existente.startswith(
+                texto_cores.PREFIXO_DE_REALCE
+            ):
+                self.editor.tag_remove(existente, i0, i1)
+        self._carimbar_humano(i0, i1)
+        self._depois_de_editar()
+
+    def _depois_de_editar(self) -> None:
+        """O que toda ferramenta faz depois de escrever: marca sujo, conta a edição e espelha."""
+        self._sujo = True
+        self._edicoes += 1
+        self._atualizar_ferramentas()
+
+    def _atualizar_ferramentas(self, _evento: object = None) -> None:
+        """Põe nos interruptores o que vale sob o cursor agora (S-241).
+
+        Quem responde é `rico.vale_em_todo`, sobre o documento -- a mesma função que decide ligar ou
+        desligar. Duas respostas para a mesma pergunta divergiriam, e a que ficaria errada seria a
+        da tela, porque ninguém a testa.
+        """
+        try:
+            doc = self.documento_atual()
+            inicio, fim = self.intervalo_alvo()
+        except tk.TclError:  # pragma: no cover - widget destruído entre o evento e o laço
+            return
+        for atributo, variavel in self.formato_var.items():
+            variavel.set(inicio != fim and rico.vale_em_todo(doc, inicio, fim, atributo))
+
+    # ------------------------------------------------------------- achar e substituir (S-245)
+
+    def achar(self) -> None:
+        """Abre a janela de busca. Uma por vez -- reabrir traz a que já está aberta."""
+        self._abrir_busca(substituindo=False)
+
+    def substituir(self) -> None:
+        """Abre a mesma janela, já com o campo de substituição à mostra."""
+        self._abrir_busca(substituindo=True)
+
+    def substituir_todos(self) -> None:
+        """Abre a janela de busca no modo de confirmação: a lista antes da troca.
+
+        **Não troca nada direto**, e é o item: `substituir todos` sobre uma página de OCR é a
+        operação que apaga trabalho, e a S-76 é o registro do que custa um botão destrutivo que não
+        parece um -- 1.405 diagramas sobrescritos por um clique.
+        """
+        self._abrir_busca(substituindo=True)
+
+    def _abrir_busca(self, *, substituindo: bool) -> None:
+        janela = self._janela_de_busca
+        if janela is not None and janela.winfo_exists():
+            janela.mostrar(substituindo=substituindo)
+            return
+        self._janela_de_busca = texto_busca.JanelaDeBusca(
+            self,
+            documento=self.documento_atual,
+            ao_substituir=self.aplicar_substituicao,
+            ao_mostrar=self.mostrar_intervalo,
+            substituindo=substituindo,
+        )
+
+    def mostrar_intervalo(self, inicio: int, fim: int) -> None:
+        """Rola até aquele trecho e o seleciona. É o que a lista da busca chama ao clicar."""
+        i0, i1 = self.indice_de(inicio), self.indice_de(fim)
+        self.editor.tag_remove(tk.SEL, "1.0", tk.END)
+        self.editor.tag_add(tk.SEL, i0, i1)
+        self.editor.mark_set(tk.INSERT, i0)
+        self.editor.see(i0)
+        self.editor.focus_set()
+
+    def aplicar_substituicao(self, ocorrencias, novo: str) -> int:  # noqa: ANN001
+        """Troca as ocorrências escolhidas e redesenha. Devolve quantas trocou.
+
+        O instantâneo do documento anterior vai para a pilha **antes** do redesenho: é o que faz
+        `desfazer` reverter a substituição **inteira**, e não troca a troca. Ver o cabeçalho sobre
+        por que a pilha do Tk não serve para isto.
+        """
+        doc = self.documento_atual()
+        novo_doc = busca.substituir(doc, ocorrencias, novo)
+        if novo_doc.para_texto() == doc.para_texto():
+            return 0
+        self._guardar_instantaneo(doc)
+        self.desenhar_documento(novo_doc)
+        self._sujo = True
+        return len(ocorrencias)
+
+    # ------------------------------------------------------------------ desfazer e refazer (S-243)
+
+    def _guardar_instantaneo(self, doc: rico.DocumentoRico) -> None:
+        self._instantaneos.append((self._edicoes, doc))
+        self._refeitos.clear()
+
+    def desfazer(self) -> None:
+        """Desfaz a última edição **deste** painel: primeiro a digitação, depois o documento.
+
+        A ordem não é preferência: a pilha do Tk só tem o que foi digitado **depois** do último
+        redesenho, então esgotá-la primeiro é o que devolve as coisas na ordem em que aconteceram.
+        Quando ela acaba, o Tk levanta `TclError` -- e é aí que a substituição em massa é revertida.
+        """
+        try:
+            self.editor.edit_undo()
+            self._sujo = True
+            return
+        except tk.TclError:
+            pass
+        if not self._instantaneos:
+            self._on_status("Não há mais nada para desfazer nesta aba.")
+            return
+        _, anterior = self._instantaneos.pop()
+        self._refeitos.append(self.documento_atual())
+        self.desenhar_documento(anterior)
+        self._sujo = True
+
+    def refazer(self) -> None:
+        """Refaz o que o desfazer tirou, na mesma ordem invertida."""
+        if self._refeitos:
+            proximo = self._refeitos.pop()
+            self._instantaneos.append((self._edicoes, self.documento_atual()))
+            self.desenhar_documento(proximo)
+            self._sujo = True
+            return
+        try:
+            self.editor.edit_redo()
+            self._sujo = True
+        except tk.TclError:
+            self._on_status("Não há nada para refazer nesta aba.")
+
+    def contem(self, widget: object) -> bool:
+        """Aquele widget é este painel ou está dentro dele? É como o foco escolhe o desfazível."""
+        atual = widget
+        for _ in range(40):
+            if atual is None:
+                return False
+            if atual is self:
+                return True
+            atual = getattr(atual, "master", None)
+        return False
+
+    @property
+    def edicao(self) -> int:
+        """Quantas edições esta aba recebeu -- o critério de "o último editado" (S-243)."""
+        return self._edicoes
+
+    # ------------------------------------------------------------ o dono das ações (S-244)
+
+    def acoes_proprias(self) -> frozenset[str]:
+        """As ações globais que esta aba atende enquanto tem o foco. Ver `ACOES_PROPRIAS`."""
+        return ACOES_PROPRIAS
+
+    def atender(self, acao: str) -> Callable[[], None] | None:
+        """A função desta aba para aquela ação, ou `None` se ela não a atende."""
+        return {
+            "salvar": self.salvar_documento,
+            "desfazer": self.desfazer,
+            "refazer": self.refazer,
+            "achar": self.achar,
+            "substituir": self.substituir,
+        }.get(acao)
 
     # ----------------------------------------------------------------------------------- saída
 
@@ -546,6 +1031,8 @@ class TextoPanel(ttk.Frame):
         """
         self._pagina = doc.origem
         self._pagina_rgb = None
+        self._instantaneos.clear()
+        self._refeitos.clear()
         aviso = ""
         caminho = arquivo.pdf_de(doc)
         if caminho is not None and doc.origem is not None:
@@ -590,4 +1077,11 @@ class TextoPanel(ttk.Frame):
         self._on_status(f"Texto gravado em {destino}")
 
 
-__all__ = ["LADO_DA_MINIATURA", "MOTORES", "PAPEL_DA_FAIXA", "PAPEL_DA_MARCA", "TextoPanel"]
+__all__ = [
+    "ACOES_PROPRIAS",
+    "LADO_DA_MINIATURA",
+    "MOTORES",
+    "PAPEL_DA_FAIXA",
+    "PAPEL_DA_MARCA",
+    "TextoPanel",
+]

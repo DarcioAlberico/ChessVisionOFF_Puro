@@ -50,12 +50,13 @@ class JanelaDeAtalhos(tk.Toplevel):
             ttk.Label(moldura, text=atalho.rotulo, font=theme.fonte_atual(tipografia.DADO)).grid(
                 row=linha, column=0, sticky="w", padx=(0, 18), pady=2
             )
-            ttk.Label(moldura, text=atalho.descricao).grid(row=linha, column=1, sticky="w", pady=2)
+            ttk.Label(moldura, text=_descricao(atalho)).grid(row=linha, column=1, sticky="w", pady=2)
 
         ttk.Label(
             moldura,
             text="A tecla é do editor quando o foco está num campo de texto: ali "
-            "← e Delete pertencem ao campo.",
+            "← e Delete pertencem ao campo. As que têm segunda linha acima mudam de destino "
+            "conforme o foco.",
             foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
             font=theme.fonte_atual(tipografia.AUXILIAR),
         ).grid(row=len(atalhos.ATALHOS) + 1, column=0, columnspan=2, sticky="w", pady=(12, 0))
@@ -72,6 +73,19 @@ class JanelaDeAtalhos(tk.Toplevel):
         # A primeira é o título e a última é a nota de rodapé; o meio são os pares em duas colunas.
         pares = celulas[1:-1]
         return [(str(pares[i].cget("text")), str(pares[i + 1].cget("text"))) for i in range(0, len(pares) - 1, 2)]
+
+
+def _descricao(atalho: atalhos.Atalho) -> str:
+    """O que a tecla faz -- **e o que ela faz no editor de texto**, quando difere (S-244).
+
+    Numa etiqueta só, e não em duas: `linhas()` lê os rótulos aos pares, e uma terceira coluna
+    faria a legenda mentir sobre a própria estrutura. Duas linhas dentro do mesmo `Label` é o que a
+    S-244 pede -- *"uma tecla que faz duas coisas e uma legenda que só conta uma é pior que não ter
+    legenda"* -- sem mexer em quem já lê esta janela.
+    """
+    if not atalho.no_editor:
+        return atalho.descricao
+    return f"{atalho.descricao}" + chr(10) + f"No editor de texto: {atalho.no_editor}"
 
 
 def abrir(pai: tk.Misc) -> JanelaDeAtalhos:

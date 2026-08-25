@@ -23,7 +23,7 @@ from chess_diagram_ocr.text.pagina import (
     LinhaLida,
     PaginaLida,
 )
-from chess_diagram_ocr.ui import texto_panel
+from chess_diagram_ocr.ui import atalhos, texto_cores, texto_panel
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.texto_panel import TextoPanel
 
@@ -351,6 +351,140 @@ class PendorNaTelaTests(_ComJanela, unittest.TestCase):
             caminho = arquivo.gravar(Path(pasta) / "a.cvtxt", painel.documento_atual())
             volta = arquivo.carregar(caminho)
         self.assertTrue(volta.corridas[0].atributos.italico)
+
+
+class FerramentasDeFormatoTests(_ComJanela, unittest.TestCase):
+    """As três teclas, o carimbo de humano e o espelho dos interruptores (S-241)."""
+
+    def _com_texto(self, conteudo: str = "uma frase para formatar") -> TextoPanel:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto(conteudo)))
+        return painel
+
+    def test_o_negrito_entra_na_palavra_sob_o_cursor(self) -> None:
+        painel = self._com_texto()
+        painel.editor.mark_set("insert", "1.6")
+        painel.negrito()
+        doc = painel.documento_atual()
+        self.assertEqual([c.texto for c in doc.corridas if c.atributos.negrito], ["frase"])
+
+    def test_alternar_duas_vezes_volta_ao_que_era(self) -> None:
+        painel = self._com_texto()
+        antes = painel.documento_atual().para_texto()
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        painel.negrito()
+        painel.negrito()
+        doc = painel.documento_atual()
+        self.assertFalse(any(c.atributos.negrito for c in doc.corridas))
+        self.assertEqual(doc.para_texto(), antes)
+
+    def test_ctrl_i_nao_insere_tabulacao(self) -> None:
+        """Em `tk8.6/text.tcl:211`, `bind Text <Control-i>` insere **uma tabulação**. Sem o
+        `"break"`, a tecla entregaria o itálico e o tab -- e o texto de quem corrige uma página
+        ganharia um caractere que ninguém digitou."""
+        painel = self._com_texto()
+        painel.editor.mark_set("insert", "1.6")
+        painel.editor.focus_set()
+        painel.editor.event_generate("<Control-i>")
+        painel.update()
+        self.assertNotIn("	", painel.texto_atual())
+
+    def test_as_tres_teclas_devolvem_break(self) -> None:
+        """A afirmação vale para as três, e não só para o `Ctrl+I`: quem acrescentar a quarta não
+        vai reler o parágrafo que explica por que ela precisa disso."""
+        painel = self._com_texto()
+        antes = painel.texto_atual()
+        painel.editor.focus_set()
+        for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
+            with self.subTest(acao=acao):
+                painel.editor.mark_set("insert", "1.6")
+                painel.editor.event_generate(sequencia)
+                painel.update()
+                self.assertEqual(painel.texto_atual(), antes, "a tecla mexeu no texto")
+
+    def test_desmarcar_o_italico_detectado_carimba_humano(self) -> None:
+        """O pincel manual vence a régua da linha, e a corrida passa a `humano` (S-239/S-236)."""
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("citação lida em itálico", italico=True)))
+        painel.editor.tag_add("sel", "1.0", "1.7")
+        painel.italico()
+        doc = painel.documento_atual()
+        primeira = doc.corridas[0]
+        self.assertFalse(primeira.atributos.italico)
+        self.assertEqual(primeira.procedencia, "humano")
+
+    def test_o_botao_reflete_o_estado_do_cursor(self) -> None:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("negrito da camada", negrito=True)))
+        painel.editor.mark_set("insert", "1.3")
+        painel._atualizar_ferramentas()
+        self.assertTrue(painel.formato_var["negrito"].get())
+        self.assertFalse(painel.formato_var["italico"].get())
+
+    def test_a_cor_do_autor_nao_apaga_a_faixa(self) -> None:
+        """Critério de aceite da S-242: "limpar cor" tira a do autor e **não** tira a faixa."""
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("adivinhado", 0.1, "glifo")))
+        painel.editor.tag_add("sel", "1.0", "1.10")
+        painel.pintar_realce("destaque")
+        self.assertEqual(painel.documento_atual().corridas[0].atributos.realce, "destaque")
+        painel.limpar_cor()
+        corrida = painel.documento_atual().corridas[0]
+        self.assertEqual(corrida.atributos.realce, "")
+        self.assertEqual(corrida.faixa, documento.REVISAR)
+
+    def test_o_txt_nao_carrega_marca_de_cor(self) -> None:
+        """O `.txt` é texto puro: um marcador de cor ali seria lixo no arquivo de quem só queria
+        colar o texto num e-mail."""
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("um trecho pintado")))
+        painel.editor.tag_add("sel", "1.0", "1.9")
+        painel.pintar_letra("nota")
+        self.assertEqual(painel.texto_atual(), "um trecho pintado")
+
+    def test_a_troca_de_tema_repinta_os_dois_canais(self) -> None:
+        """Cor de autor e faixa se repintam pelo mesmo caminho -- critério de aceite da S-242."""
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("texto")))
+        painel._pintar_faixas()
+        for nome in texto_cores.nomes():
+            with self.subTest(nome=nome):
+                etiqueta = texto_cores.etiqueta_de_cor(nome)
+                self.assertTrue(str(painel.editor.tag_cget(etiqueta, "foreground")))
+        self.assertTrue(str(painel.editor.tag_cget(documento.REVISAR, "foreground")))
+
+
+class DeslocamentoTests(_ComJanela, unittest.TestCase):
+    """A conversão entre índice do Tk e deslocamento do documento (S-241).
+
+    É a fronteira estreita do painel, e o caso que a torna necessária é o diagrama: a miniatura
+    conta um caractere para o Tk e zero para o documento, e a quebra que o desenho acrescenta
+    embaixo dela não é do documento tampouco.
+    """
+
+    def test_o_deslocamento_ignora_o_que_o_desenho_acrescenta(self) -> None:
+        pagina = _pagina(
+            _texto("antes do diagrama"),
+            BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 50.0, 50.0)),
+            _texto("depois dele"),
+        )
+        painel = self._painel()
+        painel.desenhar(pagina)
+        esperado = painel.documento_atual().para_texto()
+        self.assertEqual(painel.deslocamento_de("end-1c"), len(esperado))
+
+    def test_a_ida_e_a_volta_se_fecham(self) -> None:
+        pagina = _pagina(
+            _texto("primeiro bloco"),
+            BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 50.0, 50.0)),
+            _texto("segundo bloco"),
+        )
+        painel = self._painel()
+        painel.desenhar(pagina)
+        total = len(painel.documento_atual().para_texto())
+        for alvo in range(0, total + 1, 3):
+            with self.subTest(alvo=alvo):
+                self.assertEqual(painel.deslocamento_de(painel.indice_de(alvo)), alvo)
 
 
 if __name__ == "__main__":  # pragma: no cover

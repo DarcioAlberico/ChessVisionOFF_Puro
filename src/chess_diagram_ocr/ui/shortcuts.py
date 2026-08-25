@@ -16,6 +16,8 @@ import tkinter as tk
 from collections.abc import Callable, Mapping
 from tkinter import ttk
 
+from . import atalhos
+
 TEXT_ENTRY_WIDGETS: tuple[type, ...] = (tk.Entry, ttk.Entry, tk.Text, ttk.Combobox, ttk.Spinbox)
 """Widgets em que as teclas de navegação são do widget, não do app.
 
@@ -68,6 +70,18 @@ def guard(handler: Callable[[], None], sequence: str = "") -> Callable[[tk.Event
 
     def _wrapped(event: tk.Event) -> str | None:
         alvo = getattr(event, "widget", None)
+        # **Antes de ceder, pergunta se o painel em foco declarou esta ação para si** (S-244).
+        # A guarda abaixo é de 2026-08 e vale: `←` dentro de um campo pertence ao campo. Mas ela
+        # cedia *tudo*, e o efeito era que `Ctrl+S` com o cursor no editor de texto não salvava
+        # nada -- nem a posição (a guarda cedeu) nem o texto (ninguém ligou). Quem declara é o
+        # painel, em `acoes_proprias`; quem confere que a declaração é cumprida é
+        # `atalhos.conferir_dono`, na montagem.
+        acao = atalhos.acao_de(sequence) if sequence else ""
+        if acao:
+            proprio = atalhos.destino(acao, alvo, {})
+            if proprio is not None:
+                proprio()
+                return "break"
         if ignores_widget(alvo):
             return None
         if sequence and owns_key(alvo, sequence):

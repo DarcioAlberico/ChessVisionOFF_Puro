@@ -31,8 +31,21 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
-__all__ = ["ATALHOS", "Atalho", "acelerador", "ligacoes", "por_acao"]
+__all__ = [
+    "ATALHOS",
+    "TECLAS_DO_EDITOR",
+    "Atalho",
+    "DonoDeAcoes",
+    "acao_de",
+    "acelerador",
+    "conferir_dono",
+    "destino",
+    "ligacoes",
+    "por_acao",
+    "por_sequencia",
+]
 
 
 @dataclass(frozen=True)
@@ -52,6 +65,16 @@ class Atalho:
     descricao: str
     """O que ele faz, em pt-BR, como a legenda e o menu vão dizer."""
 
+    no_editor: str = ""
+    """O que a **mesma tecla** faz quando o foco está no editor de texto (S-244). Vazio = o mesmo.
+
+    Existe porque a tecla passou a ter dois destinos, e uma legenda que contasse um só seria pior
+    que não ter legenda: quem lesse "Ctrl+S salva a posição" e apertasse dentro do texto veria o
+    texto ser gravado, e concluiria que a legenda mente sobre o resto.
+
+    **Não é um atalho novo.** `ATALHOS` continua com as catorze sequências de sempre -- o que a
+    S-244 acrescentou foi destino conforme o foco, e não tecla."""
+
 
 ATALHOS: tuple[Atalho, ...] = (
     Atalho("<Left>", "←", "diagrama_anterior", "Diagrama anterior desta página"),
@@ -61,15 +84,33 @@ ATALHOS: tuple[Atalho, ...] = (
     # é dentro do campo de FEN que esta faz sentido -- por isso o campo declara a mesma sequência
     # para si (S-117), e a tabela continua sendo a única declaração dela.
     Atalho("<Control-Return>", "Ctrl+Enter", "aplicar_fen", "Aplicar ao tabuleiro a FEN digitada"),
-    Atalho("<Control-s>", "Ctrl+S", "salvar", "Salvar a posição do diagrama selecionado"),
+    Atalho(
+        "<Control-s>",
+        "Ctrl+S",
+        "salvar",
+        "Salvar a posição do diagrama selecionado",
+        no_editor="Grava o texto da folha no arquivo do editor (.cvtxt)",
+    ),
     Atalho("<Control-S>", "Ctrl+Shift+S", "salvar_todos", "Salvar todos os diagramas lidos da página"),
     Atalho("<Control-r>", "Ctrl+R", "ler_pagina", "Ler esta página de novo (OCR de todos os diagramas)"),
     Atalho("<Delete>", "Del", "apagar_casa", "Apagar a peça da casa selecionada no tabuleiro"),
     # Depois do apagar porque é o que vem depois no gesto: erra-se a casa e desfaz-se. As duas
     # teclas são as do sistema, e a escolha é de reconhecimento e não de gosto -- `Ctrl+Z` num
     # editor que fizesse outra coisa seria a pior surpresa possível num programa de correção.
-    Atalho("<Control-z>", "Ctrl+Z", "desfazer", "Desfazer a última mudança no tabuleiro"),
-    Atalho("<Control-y>", "Ctrl+Y", "refazer", "Refazer a mudança que o desfazer tirou"),
+    Atalho(
+        "<Control-z>",
+        "Ctrl+Z",
+        "desfazer",
+        "Desfazer a última mudança no tabuleiro",
+        no_editor="Desfaz a última edição do texto",
+    ),
+    Atalho(
+        "<Control-y>",
+        "Ctrl+Y",
+        "refazer",
+        "Refazer a mudança que o desfazer tirou",
+        no_editor="Refaz a edição do texto que o desfazer tirou",
+    ),
     Atalho("<Control-n>", "Ctrl+N", "proximo_da_fila", "Abrir o próximo item pendente da fila de revisão"),
     Atalho("<Prior>", "Page Up", "pagina_anterior", "Página anterior do livro"),
     Atalho("<Next>", "Page Down", "proxima_pagina", "Próxima página do livro"),
@@ -95,8 +136,35 @@ documento. Entrar aqui é o que lhe dá a legenda e o acelerador no menu Ajuda d
 `<Control...>` de todo o `ui/`."""
 
 
+TECLAS_DO_EDITOR: dict[str, str] = {
+    "negrito": "<Control-b>",
+    "italico": "<Control-i>",
+    "sublinhado": "<Control-u>",
+}
+"""As três teclas de formato do editor de texto (S-241) -- **e por que elas não estão em `ATALHOS`**.
+
+`ATALHOS` é a tabela dos atalhos **da janela**: cada linha vale em qualquer lugar dela, passa pela
+guarda de foco de `ui/shortcuts.py` e ganha item de menu, acelerador e linha na legenda. Estas três
+não são isso: elas só existem **dentro** do widget de texto, ligadas por `Text.bind`, e fora dele
+não fazem nada. Pô-las lá dentro seria prometer `Ctrl+B` na Galeria.
+
+Ficam aqui mesmo assim, e o motivo é o teste: `test_ui_legenda` varre todo o `ui/` atrás de
+literais `<Control...>` e só perdoa este arquivo, justamente para que nenhuma tecla seja declarada
+num painel. É a mesma disciplina, com o campo de FEN da S-117 como precedente.
+
+**O `Ctrl+I` obriga a guarda.** Em `tk8.6/text.tcl:211`, `bind Text <Control-i>` insere uma
+tabulação; quem ligar a tecla sem devolver `"break"` recebe o itálico **e** o tab. `Ctrl+B` e
+`Ctrl+U` caem em `bind Text <Control-KeyPress> {# nothing}` e não têm o problema -- e é por isso que
+as três devolvem `"break"`: quem acrescentar a quarta não vai reler este parágrafo."""
+
+
 por_acao: dict[str, Atalho] = {atalho.acao: atalho for atalho in ATALHOS}
 """Índice por nome de comando. É por aqui que o menu descobre o acelerador de um item."""
+
+por_sequencia: dict[str, Atalho] = {atalho.sequencia: atalho for atalho in ATALHOS}
+"""Índice pela tecla. É por aqui que a guarda de foco descobre **que ação** aquela tecla pede
+(S-244) -- sem isso ela teria de receber o nome por parâmetro em todo `bind`, e a tabela deixaria
+de ser a única declaração da ligação tecla-ação."""
 
 
 def acelerador(acao: str) -> str:
@@ -120,3 +188,83 @@ def ligacoes(comandos: Mapping[str, Callable[[], None]]) -> dict[str, Callable[[
     if faltando:
         raise KeyError(f"atalho declarado sem comando: {', '.join(faltando)}")
     return {atalho.sequencia: comandos[atalho.acao] for atalho in ATALHOS}
+
+
+# ------------------------------------------------- o destino conforme o foco (S-244)
+
+
+@runtime_checkable
+class DonoDeAcoes(Protocol):
+    """Um painel que **toma para si** algumas ações globais enquanto tem o foco.
+
+    `ui/shortcuts.guard` cede a tecla a qualquer campo de texto desde a S-20, e por medição: `←`
+    dentro de um campo pertence ao campo, e `Del` apaga um caractere em vez da peça. O efeito
+    colateral é que os catorze atalhos globais **passam direto** por um `tk.Text` -- e, do lado do
+    Tk, `bind Text <Control-KeyPress> {# nothing}` come o que sobrou. Com o cursor no editor de
+    texto, `Ctrl+S` não salvava a posição (a guarda cedeu) e não salvava o texto (ninguém ligou):
+    a tecla mais esperada de um editor era um silêncio de duas camadas.
+
+    A saída não é tirar a guarda -- ela existe por medição -- e não é acrescentar tecla. É tornar o
+    ceder **tipado**: o painel em foco declara quais ações são dele, e a guarda pergunta antes de
+    ceder.
+    """
+
+    def acoes_proprias(self) -> frozenset[str]:
+        """Os nomes de comando que este painel atende enquanto tem o foco."""
+
+    def atender(self, acao: str) -> Callable[[], None] | None:
+        """A função deste painel para aquela ação, ou `None` se ele não a atende."""
+
+
+def conferir_dono(dono: DonoDeAcoes, nome: str = "") -> None:
+    """Levanta se o painel **declara** uma ação e não a atende (critério de aceite da S-244).
+
+    É a mesma disciplina de `ligacoes`, que recusa atalho declarado sem comando, e pelo mesmo
+    motivo: declarar "eu trato salvar" e não tratar é a promessa vazia que este módulo veio proibir
+    -- com o agravante de que aqui ela **come a tecla**, e o global também deixa de responder.
+    """
+    faltando = sorted(acao for acao in dono.acoes_proprias() if dono.atender(acao) is None)
+    if faltando:
+        quem = nome or type(dono).__name__
+        raise KeyError(f"{quem} declara ação que não atende: {', '.join(faltando)}")
+
+
+def _cadeia(foco: object) -> list[object]:
+    """O widget em foco e os pais dele, do mais interno para o mais externo.
+
+    Sobe pelo `master` porque quem declara ações é o **painel**, e quem tem o foco é o `tk.Text`
+    dentro dele. Duck typing de propósito: este módulo não importa `tkinter`, e o teste passa
+    objetos de mentira com um `master`.
+    """
+    cadeia: list[object] = []
+    atual = foco
+    while atual is not None and len(cadeia) < 40:
+        cadeia.append(atual)
+        atual = getattr(atual, "master", None)
+    return cadeia
+
+
+def destino(acao: str, foco: object, globais: Mapping[str, Callable[[], None]]) -> Callable[[], None] | None:
+    """A função que atende esta ação agora: a do widget em foco, se ele a declarar; senão a global.
+
+    Devolve `None` quando ninguém a atende -- e quem chama decide o que fazer com isso. Devolver uma
+    função vazia esconderia o caso, que é o de uma tecla ligada a um comando que a janela ainda não
+    montou (o roteiro headless faz isso).
+    """
+    for widget in _cadeia(foco):
+        if not isinstance(widget, DonoDeAcoes):
+            continue
+        try:
+            if acao in widget.acoes_proprias():
+                atendida = widget.atender(acao)
+                if atendida is not None:
+                    return atendida
+        except Exception:  # noqa: BLE001 - painel meio construído não pode derrubar a tecla
+            continue
+    return globais.get(acao)
+
+
+def acao_de(sequencia: str) -> str:
+    """Que ação aquela tecla pede, ou `""` para uma sequência que a tabela não declara."""
+    atalho = por_sequencia.get(sequencia)
+    return atalho.acao if atalho is not None else ""

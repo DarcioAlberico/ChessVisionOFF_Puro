@@ -23,7 +23,32 @@ if str(RAIZ) not in sys.path:
 from chess_diagram_ocr.ui import atalhos, comandos, estilos, menu  # noqa: E402
 
 PDF_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "pdf_panel.py"
+TEXTO_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "texto_panel.py"
 JANELA = RAIZ / "app_tkinter.py"
+
+COMANDOS_DO_EDITOR: tuple[str, ...] = (
+    "abrir_texto",
+    "achar",
+    "cor_do_texto",
+    "exportar_txt",
+    "folha_da_pagina_aberta",
+    "italico",
+    "ler_folha",
+    "limpar_cor",
+    "limpar_formato",
+    "modo_bloco",
+    "negrito",
+    "realce",
+    "salvar_texto",
+    "salvar_texto_como",
+    "sublinhado",
+    "substituir",
+    "substituir_todos",
+)
+"""Os comandos que a Fase 37 acrescentou (S-240).
+
+Escritos aqui e não derivados de propósito: derivar do próprio catálogo faria o teste concordar
+com qualquer coisa que ele contivesse, inclusive com um comando que sumisse."""
 
 WIDGETS_DE_COMANDO = ("Button", "Checkbutton")
 """Os dois que carregam comando. `Label`, `Spinbox` e `Combobox` mostram ou colhem estado."""
@@ -140,6 +165,18 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
         divergem = {registro.acao for registro in comandos.CATALOGO if registro.rotulo_curto}
         self.assertEqual(
             {
+                # Os oito da Fase 37 nascem divergentes, e é a divergência certa: o menu diz
+                # "Exportar o texto para .txt" porque é onde cabe dizê-lo, e o botão da aba diz
+                # "Salvar .txt" porque é o rótulo que a janela mostra hoje -- trocá-lo mudaria a
+                # aba sem pedido, que é o achado 1 do ROADMAP_APARENCIA.
+                "abrir_texto",
+                "exportar_txt",
+                "folha_da_pagina_aberta",
+                "ler_folha",
+                "limpar_cor",
+                "limpar_formato",
+                "modo_bloco",
+                "salvar_texto",
                 "abrir_pdf",
                 "cancelar_exportacao",
                 "desfazer",
@@ -221,6 +258,62 @@ class DisciplinaDoRegistroTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ComandosDoEditorTests(unittest.TestCase):
+    """A aba Texto entra no catálogo, ou as três peles não a verão (S-240)."""
+
+    def test_os_comandos_do_editor_estao_no_catalogo(self) -> None:
+        self.assertEqual([], comandos.acoes_fora_do_catalogo(COMANDOS_DO_EDITOR))
+
+    def test_a_aba_texto_nao_escreve_rotulo_a_mao(self) -> None:
+        """A varredura da S-219 passa a cobrir `ui/texto_panel.py`, que ela não cobria.
+
+        Com os vinte e poucos comandos desta spec, o rótulo escrito à mão é a S-161 outra vez --
+        *"o que não era botão não existia"* --, agora com três peles para divergir.
+        """
+        arvore = ast.parse(TEXTO_PANEL.read_text(encoding="utf-8"))
+        self.assertEqual([], _rotulos_literais(arvore), "rótulo escrito à mão em ui/texto_panel.py")
+        self.assertEqual([], _rotulos_reconfigurados(arvore))
+
+    def test_edicao_continua_com_um_primario(self) -> None:
+        """`EDICAO` já tem o seu -- `salvar`, a posição do tabuleiro --, e nenhum comando do editor
+        pede ênfase: duas ações de salvar em grupos vizinhos, as duas em azul, é o mesmo que
+        nenhuma (`ui/estilos.py`)."""
+        self.assertEqual(comandos.primarios_por_grupo()[comandos.EDICAO], ["salvar"])
+        self.assertEqual(comandos.primarios_por_grupo()[comandos.ARQUIVO], [])
+
+    def test_desfazer_e_refazer_aparecem_uma_vez(self) -> None:
+        """A S-229 os cria para o tabuleiro e a S-243 os aponta para o editor conforme o foco.
+        Dois pares com o mesmo nome em português seria a divergência que o catálogo impede."""
+        acoes = [registro.acao for registro in comandos.CATALOGO]
+        self.assertEqual(acoes.count("desfazer"), 1)
+        self.assertEqual(acoes.count("refazer"), 1)
+
+    def test_todo_comando_novo_tem_icone_ou_o_declara_vazio(self) -> None:
+        """`icone=""` é declaração e não esquecimento: a fita desenha o cromo da **janela**, e
+        estes moram na barra da própria aba e no menu Texto."""
+        for acao in COMANDOS_DO_EDITOR:
+            with self.subTest(acao=acao):
+                self.assertEqual(comandos.comando(acao).icone, "")
+
+    def test_todo_comando_do_editor_alcanca_o_menu(self) -> None:
+        """A regra 2 da SPEC_APARENCIA: o que a pele esconde, o menu alcança."""
+        declaradas = set(menu.acoes_declaradas())
+        fora = sorted(acao for acao in COMANDOS_DO_EDITOR if acao not in declaradas)
+        self.assertEqual([], fora)
+
+    def test_o_rotulo_do_botao_da_aba_nao_mudou(self) -> None:
+        """Nenhum rótulo muda em relação ao de hoje para os controles que já existiam (S-240).
+
+        É o achado 1 do ROADMAP_APARENCIA: as propostas são visuais, não são propostas de texto.
+        """
+        self.assertEqual(comandos.rotulo_de_botao("ler_folha"), "Ler folha")
+        self.assertEqual(comandos.rotulo_de_botao("folha_da_pagina_aberta"), "Da página aberta")
+        self.assertEqual(comandos.rotulo_de_botao("modo_bloco"), "Modo bloco (lento)")
+        self.assertEqual(comandos.rotulo_de_botao("exportar_txt"), "Salvar .txt")
+        self.assertEqual(comandos.rotulo_de_botao("salvar_texto"), "Salvar")
+        self.assertEqual(comandos.rotulo_de_botao("abrir_texto"), "Abrir…")
 
 
 class RotuloAlternadoTests(unittest.TestCase):

@@ -173,6 +173,36 @@ TEXTO_SOBRE_MARCACAO = "TEXTO_SOBRE_MARCACAO"
 TRACEJADO = "TRACEJADO"
 """O tracejado da seleção de área, desenhado sobre a página renderizada."""
 
+AUTOR_DESTAQUE = "AUTOR_DESTAQUE"
+AUTOR_CITACAO = "AUTOR_CITACAO"
+AUTOR_NOTA = "AUTOR_NOTA"
+AUTOR_VARIANTE = "AUTOR_VARIANTE"
+"""As quatro cores que **quem escreve** aplica à letra, no editor de texto (S-242).
+
+Elas existem separadas de tudo o mais por uma razão de significado, e não de gosto: naquela aba a
+cor da letra **já quer dizer** confiança -- `revisar` sai em `PROBLEMA` e `conferir` em `ATENCAO`
+--, e uma paleta de autor que oferecesse aquelas duas tintas produziria a mesma cor com dois
+significados na mesma linha. Nenhum papel da faixa entra na paleta do autor, e quem afirma a
+interseção vazia é `tests/test_ui_texto_cor.py`.
+
+**As matizes são escolhidas por distância, como manda a S-158**: 310°, 185°, 130° e 230°, com no
+mínimo 45° entre si e 66° do vermelho da faixa. Os valores foram procurados, e não escolhidos: são
+os mais claros de cada matiz que ainda passam 4,8:1 sobre `#f0f0f0` **e** sobre o branco."""
+
+REALCE_DESTAQUE = "REALCE_DESTAQUE"
+REALCE_CITACAO = "REALCE_CITACAO"
+REALCE_NOTA = "REALCE_NOTA"
+REALCE_VARIANTE = "REALCE_VARIANTE"
+"""O mesmo conceito no **fundo** da letra -- o canal que a S-242 dá ao autor.
+
+Realce e não cor de letra é a decisão do item: o fundo é um canal livre naquela aba, e ninguém lê
+"amarelo atrás da palavra" como *"o motor adivinhou"*.
+
+**A régua deles é ao contrário**: o que se afirma não é o contraste do realce, e sim o do que vai
+**por cima** dele. Cada valor é o mais saturado da sua matiz que mantém as três tintas que podem
+cair ali -- `PROBLEMA`, `ATENCAO` e o texto normal -- acima de 4,7:1. É por isso que eles são
+superfícies (`SUPERFICIES`) e escurecem com o tema, como a dica."""
+
 TEXTO_PADRAO = "TEXTO_PADRAO"
 SUPERFICIE_PADRAO = "SUPERFICIE_PADRAO"
 """A reserva de quando o próprio `Style` não responde.
@@ -208,6 +238,14 @@ PAPEIS: tuple[str, ...] = (
     ALVO,
     TEXTO_SOBRE_MARCACAO,
     TRACEJADO,
+    AUTOR_DESTAQUE,
+    AUTOR_CITACAO,
+    AUTOR_NOTA,
+    AUTOR_VARIANTE,
+    REALCE_DESTAQUE,
+    REALCE_CITACAO,
+    REALCE_NOTA,
+    REALCE_VARIANTE,
     TEXTO_PADRAO,
     SUPERFICIE_PADRAO,
 )
@@ -240,6 +278,14 @@ RESERVA: dict[str, str] = {
     ALVO: "#3f7f4c",
     TEXTO_SOBRE_MARCACAO: "#101010",
     TRACEJADO: "#ff5cc8",
+    AUTOR_DESTAQUE: "#bb1ea1",
+    AUTOR_CITACAO: "#14747d",
+    AUTOR_NOTA: "#147925",
+    AUTOR_VARIANTE: "#425ce0",
+    REALCE_DESTAQUE: "#ffe8fb",
+    REALCE_CITACAO: "#bdf9ff",
+    REALCE_NOTA: "#b9ffc5",
+    REALCE_VARIANTE: "#eaeeff",
     TEXTO_PADRAO: "#000000",
     SUPERFICIE_PADRAO: "#f0f0f0",
 }
@@ -264,6 +310,10 @@ SUPERFICIES: tuple[str, ...] = (
     SUPERFICIE_TABULEIRO,
     SUPERFICIE_DICA,
     MOLDURA,
+    REALCE_DESTAQUE,
+    REALCE_CITACAO,
+    REALCE_NOTA,
+    REALCE_VARIANTE,
 )
 """Os papéis que são **fundo de canvas**, e por isso os únicos que seguem o tema (S-147).
 
@@ -285,6 +335,10 @@ _NO_ESCURO: dict[str, str] = {
     SUPERFICIE_TABULEIRO: "#171614",
     SUPERFICIE_DICA: "#33312a",
     MOLDURA: "#0a0908",
+    REALCE_DESTAQUE: "#290022",
+    REALCE_CITACAO: "#002529",
+    REALCE_NOTA: "#002907",
+    REALCE_VARIANTE: "#000729",
 }
 """O valor de cada superfície quando o tema em uso é escuro.
 
@@ -322,6 +376,19 @@ NO_CROMO_ESCURO: dict[str, str] = {
     ATENCAO: "#c78200",
     DIVERGENTE_TEXTO: "#b37acb",
     VIZINHA_TEXTO: "#4492eb",
+    # As oito da S-242, pela mesma conta e com a matiz preservada ao grau: as quatro de letra
+    # sobem em luminosidade até cruzar 5,0:1 sobre `#1f2124`, e os quatro realces descem até que o
+    # que cai por cima deles -- as duas tintas de faixa do cromo escuro e o texto claro -- passe
+    # 4,7:1. Repetem `_NO_ESCURO` de propósito, como `SUPERFICIE_DICA`: escurecer por tema ou por
+    # pele tem de dar no mesmo lugar.
+    AUTOR_DESTAQUE: "#da61c6",
+    AUTOR_CITACAO: "#289ea9",
+    AUTOR_NOTA: "#27a53c",
+    AUTOR_VARIANTE: "#798ae0",
+    REALCE_DESTAQUE: "#290022",
+    REALCE_CITACAO: "#002529",
+    REALCE_NOTA: "#002907",
+    REALCE_VARIANTE: "#000729",
 }
 """O valor de cada papel de **cromo** quando a pele declara `cromo_escuro` (S-224).
 

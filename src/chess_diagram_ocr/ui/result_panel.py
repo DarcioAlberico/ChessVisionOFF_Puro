@@ -232,6 +232,14 @@ class ResultPanel(ttk.Frame):
         self._dicas_de_historico: dict[str, Tooltip] = {}
         """A dica de cada botão do histórico, para ser **reescrita** e não recriada (S-229)."""
 
+        self._edicoes = 0
+        """Quantas mudanças de posição este painel registrou. É o `edicao` do `ui/desfazivel.py`.
+
+        Existe por causa da tecla, e não por curiosidade: com o foco fora dos dois desfazíveis --
+        o cursor num botão da barra, que é onde ele fica depois de qualquer clique -- quem desfaz é
+        **o último que recebeu edição** (S-243). Sem este número, `Ctrl+Z` logo depois de uma
+        edição não faria nada, que é o defeito clássico deste desenho."""
+
         self._build(piece_images)
         # **Depois de montar, e não só ao limpar** (S-170): sem esta chamada o tabuleiro abria na
         # posição inicial que o `InteractiveBoard` desenha por padrão, com a FEN vazia ao lado.
@@ -786,13 +794,41 @@ class ResultPanel(ttk.Frame):
         self.side_to_move_var.set(self.model.side_edits[idx])
         self.side_source_var.set(side_source_label(self.model.items[idx]))
 
+    def _registrar_no_historico(self, placement: str) -> bool:
+        """Põe a posição na pilha e conta a edição (S-229/S-243).
+
+        As duas coisas juntas num lugar só porque elas são a mesma: o que entra na pilha é o que
+        conta como "este painel recebeu edição", e contar num lugar e empilhar noutro é como as
+        duas divergiriam na próxima origem de mudança de posição.
+        """
+        mudou = self.historico.registrar(placement)
+        if mudou:
+            self._edicoes += 1
+        return mudou
+
+    @property
+    def edicao(self) -> int:
+        """Quantas edições de posição este painel recebeu -- ver `_edicoes` e `ui/desfazivel.py`."""
+        return self._edicoes
+
+    def contem(self, widget: object) -> bool:
+        """Aquele widget é este painel ou está dentro dele? É como o foco escolhe o desfazível."""
+        atual = widget
+        for _ in range(40):
+            if atual is None:
+                return False
+            if atual is self:
+                return True
+            atual = getattr(atual, "master", None)
+        return False
+
     def apply_fen_edit(self) -> None:
         if not self.model.items:
             return
         self.sync_fen_from_entry()
         # A quarta origem (S-229). Só o campo de peças entra na pilha, que é o que ela guarda --
         # e é o mesmo recorte que `on_board_changed` já grava em `fen_edits` a cada clique.
-        self.historico.registrar(board_edit.placement_of(self.model.fen_at()))
+        self._registrar_no_historico(board_edit.placement_of(self.model.fen_at()))
         self.update_views()
 
     def _mostrar_estado_vazio(self, vazio: bool) -> None:
@@ -875,7 +911,7 @@ class ResultPanel(ttk.Frame):
         """
         if not self.model.apply_placement(placement):
             return
-        self.historico.registrar(placement)
+        self._registrar_no_historico(placement)
         self.fen_var.set(placement)
         self.update_legality()
         self._on_sync_study()

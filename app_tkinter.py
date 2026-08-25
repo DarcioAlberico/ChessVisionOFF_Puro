@@ -92,6 +92,7 @@ from chess_diagram_ocr.ui import (
     comandos,
     conjuntos,
     degradacao,
+    desfazivel,
     fila,
     fita,
     geometria,
@@ -1655,8 +1656,11 @@ class ChessOcrTkApp:
             "apagar_casa": self._on_result(lambda p: p.delete_selected_square()),
             # Os três da S-229. Ficam no painel de resultado porque o que eles revertem é a
             # posição do diagrama aberto, e a pilha é dele -- a janela só liga o nome à função.
-            "desfazer": self._on_result(lambda p: p.desfazer()),
-            "refazer": self._on_result(lambda p: p.refazer()),
+            # **O foco escolhe quem desfaz** (S-243). Duas pilhas, dois donos, uma tecla só: a
+            # do tabuleiro é a da S-229, a do editor é a do próprio widget. A regra mora em
+            # `ui/desfazivel.py`, e aqui só se pergunta quem está com o foco.
+            "desfazer": lambda: self._desfazivel(lambda alvo: alvo.desfazer()),
+            "refazer": lambda: self._desfazivel(lambda alvo: alvo.refazer()),
             "limpar_tabuleiro": self._on_result(lambda p: p.limpar_tabuleiro()),
             "salvar": self._on_result(lambda p: p.save_current()),
             "salvar_todos": self._on_result(lambda p: p.save_all()),
@@ -1687,18 +1691,54 @@ class ChessOcrTkApp:
             "legenda_de_atalhos": self._abrir_legenda,
             "abrir_log": self._abrir_log,
             "sobre": self._sobre,
+            # ------------------------------------------------- o editor de texto (S-240)
+            #
+            # Todos passam pelo `_on_texto`, que é o mesmo molde de `_on_result` e `_on_pdf`: a
+            # janela liga o **nome** à função, e quem tem o estado é o painel. O guarda de `None`
+            # não é zelo -- o roteiro headless monta a janela sem os painéis, e sem ele o menu
+            # montaria e o primeiro clique estouraria.
+            "ler_folha": self._on_texto(lambda p: p.ler()),
+            "folha_da_pagina_aberta": self._on_texto(lambda p: p.sincronizar_com_a_pagina()),
+            "modo_bloco": self._on_texto(lambda p: None),
+            "abrir_texto": self._on_texto(lambda p: p.abrir_documento()),
+            "salvar_texto": self._on_texto(lambda p: p.salvar_documento()),
+            "salvar_texto_como": self._on_texto(lambda p: p.salvar_documento()),
+            "exportar_txt": self._on_texto(lambda p: p.salvar()),
+            "negrito": self._on_texto(lambda p: p.negrito()),
+            "italico": self._on_texto(lambda p: p.italico()),
+            "sublinhado": self._on_texto(lambda p: p.sublinhado()),
+            "limpar_formato": self._on_texto(lambda p: p.limpar_formato()),
+            "cor_do_texto": self._on_texto(lambda p: p.escolher_cor()),
+            "realce": self._on_texto(lambda p: p.escolher_realce()),
+            "limpar_cor": self._on_texto(lambda p: p.limpar_cor()),
+            "achar": self._on_texto(lambda p: p.achar()),
+            "substituir": self._on_texto(lambda p: p.substituir()),
+            "substituir_todos": self._on_texto(lambda p: p.substituir_todos()),
         }
 
     def _build_menu(self) -> None:
         """A barra de menus (S-161). Depois dos painéis: os comandos falam com eles."""
-        painel = self.pdf_panel
         menu.montar(
             self.root,
             self._comandos(),
-            interruptores={} if painel is None else painel.interruptores_de_vista,
+            interruptores=self._interruptores(),
             recentes=self._livros_recentes,
             escolhas={"aparencia": self.skin_var, "densidade": self.densidade_var},
         )
+
+    def _interruptores(self) -> dict[str, tk.BooleanVar]:
+        """As marcas de ligado/desligado do menu: as da vista mais a da aba de texto (S-240).
+
+        `modo_bloco` é interruptor e não comando porque é isso que ele é na aba -- um
+        `Checkbutton` que decide como a próxima leitura roda. Item de menu sem a marca desenharia
+        uma linha que parece ação e é estado.
+        """
+        marcas: dict[str, tk.BooleanVar] = {}
+        if self.pdf_panel is not None:
+            marcas.update(self.pdf_panel.interruptores_de_vista)
+        if self.texto_panel is not None:
+            marcas["modo_bloco"] = self.texto_panel.bloco_var
+        return marcas
 
     def _densidade(self) -> str:
         """A densidade que vale agora: a escolha guardada, ou o que a pele sugere (S-232)."""
@@ -1800,7 +1840,16 @@ class ChessOcrTkApp:
         messagebox.showinfo(f"Sobre o {strings.PRODUTO}", strings.sobre_o_produto(self.theme))
 
     def _bind_shortcuts(self) -> None:
-        """Atalhos do ciclo corrigir → salvar → próximo (S-20), da tabela de `ui/atalhos.py`."""
+        """Atalhos do ciclo corrigir → salvar → próximo (S-20), da tabela de `ui/atalhos.py`.
+
+        Antes de ligar, **confere quem declarou ação para si** (S-244): um painel que diz atender
+        `salvar` e não atende come a tecla e não faz nada -- pior que não declarar, porque o
+        global também deixa de responder. É a mesma disciplina de `atalhos.ligacoes`, que recusa
+        atalho declarado sem comando.
+        """
+        for painel in (self.texto_panel,):
+            if painel is not None:
+                atalhos.conferir_dono(painel, type(painel).__name__)
         bind_shortcuts(self.root, atalhos.ligacoes(self._comandos()))
 
     def _on_result(self, action: Callable[[ResultPanel], None]) -> Callable[[], None]:
@@ -1816,6 +1865,38 @@ class ChessOcrTkApp:
                 action(self.pdf_panel)
 
         return _run
+
+    def _on_texto(self, action: Callable[[TextoPanel], None]) -> Callable[[], None]:
+        """O mesmo molde dos dois de cima, para a aba de texto (S-240)."""
+
+        def _run() -> None:
+            if self.texto_panel is not None:
+                action(self.texto_panel)
+
+        return _run
+
+    def _desfazivel(self, acao: Callable[[desfazivel.Desfazivel], None]) -> None:
+        """Roda a ação no desfazível que o foco escolhe -- ou avisa que não há nenhum (S-243)."""
+        alvo = desfazivel.alvo_de_desfazer(self._foco(), self._desfaziveis())
+        if alvo is None:
+            self._set_status("Não há nada para desfazer.")
+            return
+        acao(alvo)
+
+    def _desfaziveis(self) -> list[desfazivel.Desfazivel]:
+        """Os painéis que disputam o `Ctrl+Z`, na ordem de registro -- que é a de construção.
+
+        A ordem decide o empate de `ultimo_editado`, e por isso ela é uma lista e não um conjunto:
+        uma tecla que fizesse coisas diferentes em dois dias iguais é pior que uma que não faz nada.
+        """
+        return [p for p in (self.result_panel, self.texto_panel) if p is not None]
+
+    def _foco(self) -> object:
+        """O widget com o foco de teclado, ou `None` -- a janela pode nem estar em primeiro plano."""
+        try:
+            return self.root.focus_get()
+        except (tk.TclError, KeyError):
+            return None
 
     def _open_next_review_item(self) -> None:
         if self.review_panel is not None:

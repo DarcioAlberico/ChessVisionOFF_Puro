@@ -176,6 +176,15 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Cancelar exportação",
     ),
+    # Os do **editor de texto** que são sobre arquivo (S-240). O grupo é ARQUIVO e não EDICAO --
+    # que é o que a spec da S-240 escreveu -- pela pergunta que separa os seis: Arquivo é *que
+    # documento*, e `exportar_pgn` já mora aqui. Pôr `exportar_rtf` em EDICAO seria a divergência
+    # que o catálogo existe para impedir, com dois exportadores em dois grupos. O que a spec
+    # pedia junto disso -- que EDICAO continue com um PRIMARIO só -- vale igual, e vale nos dois.
+    Comando("abrir_texto", "Abrir texto de folha…", ARQUIVO, estilos.NEUTRO, rotulo_curto="Abrir…"),
+    Comando("salvar_texto", "Salvar o texto da folha", ARQUIVO, estilos.NEUTRO, rotulo_curto="Salvar"),
+    Comando("salvar_texto_como", "Salvar o texto da folha como…", ARQUIVO, estilos.NEUTRO),
+    Comando("exportar_txt", "Exportar o texto para .txt", ARQUIVO, estilos.NEUTRO, rotulo_curto="Salvar .txt"),
     Comando("sair", "Sair", ARQUIVO, estilos.NEUTRO),
     # ----------------------------------------------------------------------------- EDICAO
     Comando("aplicar_fen", "Aplicar a FEN digitada", EDICAO, estilos.NEUTRO, icone="aplicar_fen", destaque=True),
@@ -202,6 +211,29 @@ CATALOGO: tuple[Comando, ...] = (
     # decide a leitura: ele lista "limpar" entre as **sete origens de mudança de posição** que o
     # desfazer tem de reverter. Então limpar é esvaziar as 64 casas, e é desfazível.
     Comando("limpar_tabuleiro", "Limpar o tabuleiro", EDICAO, estilos.NEUTRO, icone="limpar_tabuleiro", rotulo_curto="Limpar"),
+    # ------------------------------------------------- o editor de texto (S-240 a S-249)
+    #
+    # **Nenhum deles pede ênfase, e nenhum tem ícone.** A ênfase: EDICAO já tem o seu primário --
+    # `salvar`, a posição do tabuleiro --, e duas ênfases na mesma barra é o mesmo que nenhuma
+    # (`ui/estilos.py`). O ícone: `icone=""` é declaração e não esquecimento -- a fita da S-227
+    # desenha o cromo da **janela**, e estes moram na barra da própria aba e no menu Texto. Um
+    # ícone aqui os poria na fita ao lado de "Abrir PDF", que não é onde eles agem.
+    Comando("negrito", "Negrito", EDICAO, estilos.NEUTRO),
+    Comando("italico", "Itálico", EDICAO, estilos.NEUTRO),
+    Comando("sublinhado", "Sublinhado", EDICAO, estilos.NEUTRO),
+    Comando(
+        "limpar_formato",
+        "Limpar a formatação do trecho",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Limpar formato",
+    ),
+    Comando("cor_do_texto", "Cor do texto…", EDICAO, estilos.NEUTRO),
+    Comando("realce", "Realce do trecho…", EDICAO, estilos.NEUTRO),
+    Comando("limpar_cor", "Limpar a cor do autor", EDICAO, estilos.NEUTRO, rotulo_curto="Limpar cor"),
+    Comando("achar", "Achar no texto…", EDICAO, estilos.NEUTRO),
+    Comando("substituir", "Substituir no texto…", EDICAO, estilos.NEUTRO),
+    Comando("substituir_todos", "Substituir todos", EDICAO, estilos.NEUTRO),
     # ----------------------------------------------------------------------- VISUALIZACAO
     Comando("pagina_anterior", "Página anterior", VISUALIZACAO, estilos.NEUTRO),
     Comando("proxima_pagina", "Próxima página", VISUALIZACAO, estilos.NEUTRO),
@@ -280,6 +312,26 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.PRIMARIO,
         icone="ler_melhor",
         rotulo_curto="OCR melhor diagrama",
+    ),
+    # Os três da aba de texto: ler a folha é OCR pela pergunta do grupo -- age sobre a página
+    # aberta agora. `ler_folha` **não** é primário, e é a única perda visível desta fase: hoje o
+    # botão da aba sai em azul, e OCR já tem o seu primário (`ler_melhor`). O critério de
+    # `estilos.PRIMARIO` é "a ação que o atalho de teclado também faz", e `Ler folha` não tem
+    # tecla -- a ênfase de hoje já contrariava o critério, e é ela que sai.
+    Comando("ler_folha", "Ler o texto desta folha", OCR, estilos.NEUTRO, rotulo_curto="Ler folha"),
+    Comando(
+        "folha_da_pagina_aberta",
+        "Pôr no campo a folha que o visualizador mostra",
+        OCR,
+        estilos.NEUTRO,
+        rotulo_curto="Da página aberta",
+    ),
+    Comando(
+        "modo_bloco",
+        "Ler o texto em modo bloco (lento)",
+        OCR,
+        estilos.NEUTRO,
+        rotulo_curto="Modo bloco (lento)",
     ),
     Comando(
         "selecionar_area",

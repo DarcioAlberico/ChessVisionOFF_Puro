@@ -673,7 +673,7 @@ item entrega o registro e o relatório, que é o que faltava para elas. E `cvoff
 > A fase que aparece na tela. Nenhum item dela escreve formatação no widget sem passar pelo
 > documento da S-235 — e é a S-256 que faz isso falhar na suíte quando alguém tentar o atalho.
 
-## S-240 · Os comandos do editor entram no catálogo, ou as três peles não os verão ⬜ planejada
+## S-240 · Os comandos do editor entram no catálogo, ou as três peles não os verão ✅ implementada (2026-08-25)
 
 **Problema.** `ui/comandos.py` registra os comandos da janela — 36 em 2026-08-24 — e **nenhum
 deles é da aba Texto**. Os seis controles da barra (`ui/texto_panel.py:137-161`) são montados à
@@ -726,9 +726,48 @@ visualmente vizinhos, e duas ênfases na mesma barra é o mesmo que nenhuma (`ui
 `test_os_comandos_do_editor_estao_no_catalogo`; `test_edicao_continua_com_um_primario`;
 `test_desfazer_e_refazer_aparecem_uma_vez`; `test_todo_comando_novo_tem_icone_ou_o_declara_vazio`.
 
+### O que a implementação virou (2026-08-25)
+
+**Três decisões divergem do desenho acima, e as três estão registradas aqui.**
+
+**1 · O grupo dos comandos de arquivo é `ARQUIVO`, e não `EDICAO`.** O item escreveu *"no grupo
+`EDICAO`"* para os vinte e poucos comandos, com o argumento certo para negrito — *age sobre o que
+está aberto agora*. Ele não vale para `abrir_texto`, `salvar_texto` e os exportadores: o critério
+que separa os seis grupos é uma pergunta, e a de `ARQUIVO` é **que documento**. `exportar_pgn` já
+mora lá; pôr `exportar_rtf` em `EDICAO` seria dois exportadores em dois grupos, que é a divergência
+que o catálogo existe para impedir. O critério de aceite que o item pedia junto disso — `EDICAO`
+com exatamente um `PRIMARIO` — vale igual, e agora vale nos dois grupos.
+
+**2 · A barra da aba perde a ênfase do botão "Ler folha".** Ele sai em azul hoje
+(`style=PRIMARIO`), e `OCR` já tem o seu primário (`ler_melhor`). Manter os dois seria duas ênfases
+no mesmo grupo, que `primarios_por_grupo` reprova desde a S-219. O que decide qual sai é o critério
+escrito em `ui/estilos.PRIMARIO`: *"a ação que o atalho de teclado também faz"* — e `Ler folha` não
+tem tecla. **A ênfase de hoje já contrariava o critério**, e é ela que sai. É a única mudança
+visível desta fase na aparência de um controle que já existia.
+
+**3 · Nasce um sexto menu, "Texto".** Os comandos do editor cabem em "Editar" pela pergunta — os
+dois mexem no que está aberto agora —, e não cabem pelo desenho: "Editar" tem catorze itens sobre o
+**diagrama**, e afogá-los em vinte e oito sobre o **texto** tornaria os dois igualmente difíceis de
+achar. O grupo do catálogo continua sendo `EDICAO`/`ARQUIVO`, que é outra pergunta: o grupo diz *o
+que o comando é*; o menu diz *onde ele mora*.
+
+**E uma decisão de sequenciamento:** os comandos entram **na fase que os implementa**. A Fase 37
+registra dezessete; `paleta_de_glifos`, `inserir_figurina`, `inserir_avaliacao` e os quatro
+`estilo_*` entram com a Fase 38, e os quatro exportadores com a Fase 39. Declarar os vinte e oito
+agora obrigaria a amarrar função a sete comandos que ainda não existem — e um item de menu que não
+faz nada é o defeito que `menu.montar` recusa desde a S-161.
+
+**A conta da janela.** `app_tkinter.py` foi de 1.972 para 2.081 linhas, e a catraca de
+`tests/test_packaging.py` subiu junto com o motivo escrito: dezessete linhas são entradas em
+`_comandos`, quinze são `_on_texto` e a escolha do desfazível, catorze são `_interruptores`, e o
+resto é docstring.
+
+**Testes.** `tests/test_ui_comandos.py::ComandosDoEditorTests`, seis casos, com a varredura de
+rótulo à mão agora cobrindo `ui/texto_panel.py`.
+
 ---
 
-## S-241 · Negrito, itálico e sublinhado: o atributo, o botão e a tecla que insere tab ⬜ planejada
+## S-241 · Negrito, itálico e sublinhado: o atributo, o botão e a tecla que insere tab ✅ implementada (2026-08-25)
 
 **Problema.** Não existem. E a forma óbvia de os fazer é a errada: `tag_configure("negrito",
 font=...)` mais um `tag_add` na seleção resolve os três em poucas linhas, na tela, e entrega no
@@ -791,9 +830,38 @@ correção sobre o que o motor leu, e é exatamente o tipo de informação que a
 `test_as_tres_teclas_devolvem_break`; `test_desmarcar_o_italico_detectado_carimba_humano`;
 `test_o_botao_reflete_o_estado_do_cursor`.
 
+### O que a implementação virou (2026-08-25)
+
+**O formato entra por etiqueta, e não por documento — e a razão foi medida.** O desenho acima diz
+que o painel *"chama a função, e redesenha"*. Redesenhar é o que **não** se pode fazer aqui: o
+redesenho troca o texto inteiro do widget, e a pilha de desfazer do Tk guarda **índices**, não
+conteúdo. Medido nesta máquina: desligar `-undo`, redesenhar e ligar de novo não protege a pilha —
+ela sobrevive descrevendo um texto que já não existe, e o `Ctrl+Z` seguinte apaga um pedaço
+qualquer. Por isso `desenhar_documento` chama `edit_reset()`, e por isso as ferramentas de formato
+escrevem com `tag_add`/`tag_remove`: nenhum caractere muda, o cursor fica onde estava, a rolagem
+não salta e o que foi digitado continua desfazível.
+
+**Quem decide continua sendo a função pura.** `rico.intervalo_alvo` responde *onde* (a seleção, ou
+a palavra sob o cursor) e `rico.vale_em_todo` responde *ligar ou desligar* — as duas sobre o
+documento, e as duas testadas sem janela. O painel só traduz deslocamento em índice do Tk.
+
+**Os botões viraram `Checkbutton` de estilo `Toolbutton`.** O critério de aceite pede que o
+controle mostre o estado conforme o cursor, e um `Button` não tem onde dizê-lo. A variável é
+espelho: quem a preenche é `_atualizar_ferramentas`, com a mesma `vale_em_todo` que decide a ação —
+duas respostas para a mesma pergunta divergiriam, e a que ficaria errada seria a da tela.
+
+**As três teclas são declaradas em `ui/atalhos.TECLAS_DO_EDITOR`**, e não no painel. Elas **não**
+são atalhos da janela — só valem dentro do widget, e por isso não entram em `ATALHOS`, que continua
+com catorze —, mas neste projeto tecla escrita num painel é o que `test_ui_legenda` proíbe, varrendo
+todo o `ui/` atrás de literais `<Control...>`.
+
+**Testes.** `tests/test_texto_rico.py::EdicaoTests` (quinze casos, sem janela) e
+`tests/test_ui_texto_editor.py::FerramentasDeFormatoTests` (nove, com widget), incluindo o
+`Ctrl+I` que não insere tabulação e o carimbo `humano` sobre o itálico detectado.
+
 ---
 
-## S-242 · A cor do autor não pode falar a língua da confiança ⬜ planejada
+## S-242 · A cor do autor não pode falar a língua da confiança ✅ implementada (2026-08-25)
 
 **Problema.** A aba já pinta o texto, e a tinta já tem significado. `revisar` sai em
 `tokens.PROBLEMA`, `conferir` em `tokens.ATENCAO`, `marca` em `TEXTO_SECUNDARIO`
@@ -844,9 +912,39 @@ três peles.
 `test_o_realce_sobrevive_ao_arquivo`; `test_o_txt_nao_carrega_marca_de_cor`;
 `test_trocar_o_tema_repinta_os_dois_canais`; `test_limpar_cor_nao_apaga_a_faixa`.
 
+### O que a implementação virou (2026-08-25)
+
+**Oito papéis novos, e os valores foram procurados e não escolhidos.** Quatro de letra
+(`AUTOR_DESTAQUE`, `AUTOR_CITACAO`, `AUTOR_NOTA`, `AUTOR_VARIANTE`) e quatro de fundo
+(`REALCE_*`), com as matizes em 310°, 185°, 130° e 230° — no mínimo 45° entre si e 66° do vermelho
+da faixa, que é a régua da S-158. Cada valor de letra é **o mais claro da sua matiz** que ainda
+passa 4,8:1 sobre `#f0f0f0` e sobre o branco; cada realce é **o mais saturado** que mantém acima
+de 4,7:1 as três tintas que podem cair sobre ele (`PROBLEMA`, `ATENCAO` e o texto normal).
+
+**A régua do realce é ao contrário**, e é o que o item obriga: o que se afirma não é o contraste do
+realce, e sim o do que vai por cima dele. Um realce que "passasse no contraste" contra o fundo da
+janela e engolisse a letra vermelha da faixa seria o mesmo defeito noutra direção.
+
+**Os quatro nomes dizem intenção, e não cor**: `destaque`, `citacao`, `nota`, `variante`.
+"duvidoso" ou "erro" seriam a língua da faixa dita por outra boca — é o que o item proíbe, e ele
+proíbe no nome também, não só na tinta.
+
+**A pele escura tem conta própria.** Os oito entram em `NO_CROMO_ESCURO` com a matiz preservada ao
+grau, subindo (letra) ou descendo (realce) só em luminosidade — a mesma disciplina que a S-224
+impôs aos cinco papéis de texto. Sem isso, uma paleta escolhida contra fundo claro morre na pele
+"Foco".
+
+**A interseção vazia é afirmada comparando duas declarações.** `ui/texto_cores.py` não pode
+importar o painel (ele traz `tkinter`), então `PAPEIS_DA_FAIXA` é declarado lá e **comparado** com
+`texto_panel.PAPEL_DA_FAIXA` no teste: uma faixa nova no painel quebra o teste em vez de aparecer
+calada na paleta do autor.
+
+**Testes.** `tests/test_ui_texto_cor.py`, onze casos — interseção vazia, contraste nos dois cromos,
+o que cai sobre o realce, separação de matiz e a varredura de hexadecimal nos dois arquivos.
+
 ---
 
-## S-243 · Desfazer e refazer que sabem quem tem o foco ⬜ planejada
+## S-243 · Desfazer e refazer que sabem quem tem o foco ✅ implementada (2026-08-25)
 
 **Problema.** O editor tem `undo=True` (`ui/texto_panel.py:169`), e portanto tem a pilha do Tk e as
 teclas que o Tk liga a `<<Undo>>`/`<<Redo>>` (`text.tcl:341, 354`). O que ele não tem é **comando,
@@ -886,9 +984,31 @@ documento é reconstruído do widget quando se salva, e a pilha é do widget por
 `test_o_foco_no_tabuleiro_desfaz_posicao`; `test_sem_foco_vale_o_ultimo_editado`;
 `test_reler_limpa_so_a_pilha_do_editor`; `test_o_menu_mostra_o_acelerador_do_tk`.
 
+### O que a implementação virou (2026-08-25)
+
+**`ui/desfazivel.py` carrega a regra, e ela é afirmada com objetos de mentira** — foco no editor,
+foco no tabuleiro, sem foco em nenhum dos dois, empate e painel que levanta. O `Desfazivel` pede
+três coisas: `contem`, `desfazer`/`refazer` e um contador `edicao` que só cresce.
+
+**O contador é a parte que não estava no desenho.** "O último que recebeu edição" precisa de um
+número, e ele não pode ser relógio: duas edições no mesmo milissegundo empatariam, e um relógio
+depende de a máquina estar com a hora certa. `ResultPanel._registrar_no_historico` conta junto com
+a pilha da S-229 — o que entra na pilha é o que conta como edição, e contar num lugar e empilhar
+noutro é como os dois divergiriam na próxima origem de mudança de posição.
+
+**A pilha do editor ganhou um instantâneo, e a fronteira mudou de lugar.** O item dizia *"a pilha
+do editor continua sendo a do Tk"*, e continua — para o que é digitado. O que a do Tk **não** pode
+guardar é a substituição em massa da S-245: ela redesenha, o redesenho zera a pilha (ver a nota da
+S-241), e sem um instantâneo do documento anterior desfazer uma troca em massa seria impossível em
+vez de ser inteira. `desfazer` esgota a pilha do Tk primeiro e só então volta ao instantâneo — que
+é a ordem em que as coisas aconteceram.
+
+**Testes.** `tests/test_ui_desfazer.py`, catorze casos: seis sobre a regra pura, sete sobre a pilha
+do painel de verdade e um sobre o acelerador do menu.
+
 ---
 
-## S-244 · `Ctrl+S` no editor salva o editor ⬜ planejada
+## S-244 · `Ctrl+S` no editor salva o editor ✅ implementada (2026-08-25)
 
 **Problema.** Hoje ele não faz nada, e são duas camadas somadas.
 
@@ -946,9 +1066,33 @@ Duas guardas de honestidade:
 `test_ctrl_s_fora_do_editor_salva_a_posicao`; `test_as_setas_continuam_do_editor`;
 `test_acao_declarada_sem_implementacao_levanta`; `test_a_legenda_mostra_os_dois_destinos`.
 
+### O que a implementação virou (2026-08-25)
+
+**A guarda passou a perguntar antes de ceder, e nada mais mudou.** `shortcuts.guard` descobre a
+ação pela **própria sequência** (`atalhos.acao_de`), consulta `atalhos.destino` e, se o painel em
+foco declarou aquela ação, chama a função dele e devolve `"break"`. Quando ninguém declarou, o
+código antigo roda inteiro: `←` e `Del` continuam sendo do campo de texto, pela medição da S-20.
+
+**Descobrir a ação pela sequência é o que mantém a tabela como única declaração.** A alternativa
+era passar o nome da ação em todo `bind`, e aí a ligação tecla→ação estaria escrita duas vezes.
+
+**`conferir_dono` roda em `_bind_shortcuts`**, antes de ligar: um painel que declara `salvar` e não
+atende **come a tecla** e não faz nada — pior que não declarar, porque o global também deixa de
+responder.
+
+**A legenda ganhou a segunda linha na mesma célula**, e não uma terceira coluna: `linhas()` lê os
+rótulos aos pares, e uma coluna a mais faria a janela mentir sobre a própria estrutura.
+`Atalho.no_editor` é o campo, e ele está preenchido em três teclas — `Ctrl+S`, `Ctrl+Z` e `Ctrl+Y`.
+
+**Nenhuma sequência nova entrou em `ATALHOS`**, e o teste conta: continuam catorze.
+
+**Testes.** `tests/test_ui_atalhos_destino.py`, treze casos, incluindo os dois que são o item —
+`Ctrl+S` no editor grava o documento, `Ctrl+S` fora dele salva a posição — e o
+`test_as_setas_continuam_do_editor`, que é a guarda antiga continuando de pé.
+
 ---
 
-## S-245 · Achar e substituir, e o que a substituição em massa sabe sobre o OCR ⬜ planejada
+## S-245 · Achar e substituir, e o que a substituição em massa sabe sobre o OCR ✅ implementada (2026-08-25)
 
 **Problema.** Não existe busca no editor. Numa aba cujo conteúdo é OCR, isso é mais caro do que
 parece: **o erro do OCR se repete**. A S-211 mediu, nas 13 páginas de diagnóstico, 241 substituições
@@ -992,6 +1136,32 @@ aqui é o que o interruptor de figurina já resolve. Fica registrado como recusa
 `test_a_contagem_bate_com_as_trocas`; `test_a_figurina_casa_com_a_letra_quando_ligado`;
 `test_o_desmarcado_nao_e_trocado`; `test_cada_troca_vira_correcao`;
 `test_a_troca_preserva_o_atributo`; `test_desfazer_desfaz_a_substituicao_inteira`.
+
+### O que a implementação virou (2026-08-25)
+
+**A `Correcao` da S-239 é derivada, e a substituição só precisa não estragá-la.** O item pedia que
+cada troca "virasse uma `Correcao`"; a S-239 já decidiu que correção **não se guarda, se calcula** —
+a diferença entre o que o motor leu (a `PaginaLida`, intocada) e o que está na tela. O que a
+substituição tem de fazer, então, é preservar o `bloco` da corrida, e é o que
+`rico.substituir_intervalo` faz: o texto novo herda atributos, faixa e bloco de quem estava ali.
+Com o bloco, `correcao.correcoes` vê o par `(",", "'")` com a contagem, que é o que a S-213 quer.
+
+**O casamento de figurina é só do inglês, e é decisão medida em risco.** `KQRBNP` ↔ `♔♕♖♗♘♙♚♛♜♝♞♟`
+entram; as outras notações do acervo colidem entre si — `R` é *rook* em inglês e *rei* em
+português, `C` é *cavalo* e nada em inglês. Uma tabela com todas ofereceria, na busca por `R`, a
+torre **e** o rei — e a oferta que traz o que não se pediu é pior que oferta nenhuma. A tabela mora
+em `text/notacao.py`, junto de `FIGURINAS` e `LETRAS_DE_PECA`, e o caminho inverso é derivado.
+
+**A lista da confirmação é `Listbox` com tudo marcado.** Quem quer trocar tudo aperta o botão; quem
+não quer **desmarca**. Começar vazia faria o gesto comum custar um clique por ocorrência — e o
+público desta aba é alguém corrigindo a mesma troca dezenas de vezes na mesma página.
+
+**A marca do diagrama atravessa a troca inteira.** `[Diagrama 3]` pode casar com a agulha (procurar
+`a` acha o `a` de "Diagrama"), e mesmo assim a corrida sai intacta: apagá-la seria a busca editando
+a **estrutura** do texto, e a primeira exportação perderia o diagrama.
+
+**Testes.** `tests/test_texto_busca.py`, catorze casos sem janela, mais os três da pilha em
+`tests/test_ui_desfazer.py` que afirmam que desfazer reverte a troca **inteira**.
 
 ---
 

@@ -44,6 +44,30 @@ quem decide a cor é a paridade do número do lance -- que é trabalho da valida
 LETRAS_DE_PECA = "KQRBNSTLDCP"
 """As iniciais de peça nas notações que o acervo tem: inglesa, alemã, portuguesa, espanhola."""
 
+FIGURINAS_DA_LETRA: dict[str, str] = {
+    "K": "♔♚",
+    "Q": "♕♛",
+    "R": "♖♜",
+    "B": "♗♝",
+    "N": "♘♞",
+    "P": "♙♟",
+}
+"""Inicial **inglesa** de peça -> as duas figurinas daquela peça. Quem consome é a busca (S-245).
+
+**Só o inglês, e é decisão medida em risco.** As outras notações do acervo colidem entre si:
+`R` é *rook* em inglês e *rei* em português, `C` é *cavalo* em português e nada em inglês, `B` é
+*bispo* e *Bauer*. Uma tabela que mapeasse todas ofereceria, na busca por `R`, tanto a torre quanto
+o rei -- e a S-245 é explícita sobre o que a busca faz: ela **oferece**, e oferta que traz o que
+não se pediu é pior que oferta nenhuma. O inglês entra porque é a notação do SAN, que é o que
+alguém digita quando procura um lance.
+
+O caminho contrário -- figurina -> letra -- é derivado em `LETRA_DA_FIGURINA`, e não recopiado."""
+
+LETRA_DA_FIGURINA: dict[str, str] = {
+    figurina: letra for letra, figurinas in FIGURINAS_DA_LETRA.items() for figurina in figurinas
+}
+"""Figurina -> a inicial inglesa da peça. Derivado de `FIGURINAS_DA_LETRA`, e não escrito de novo."""
+
 _CASA = r"[a-h][1-8]"
 _PECA = f"[{LETRAS_DE_PECA}{FIGURINAS}]"
 _SUFIXO = r"[+#!?±∓⩲⩱=]*"

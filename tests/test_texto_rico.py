@@ -204,10 +204,21 @@ class RecusaTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             rico.Atributos(estilo="TITULO")
 
-    def test_o_registro_de_cor_nasce_vazio(self) -> None:
-        """A S-242 é quem o povoa; declarar nome que nada aplica é a promessa vazia da S-161."""
-        self.assertEqual(rico.CORES_DE_AUTOR, ())
-        self.assertEqual(rico.ESTILOS, ())
+    def test_realce_fora_do_registro_levanta(self) -> None:
+        """O segundo canal da S-242 tem a mesma trava do primeiro, e o mesmo registro."""
+        with self.assertRaises(KeyError):
+            rico.Atributos(realce="amarelo")
+
+    def test_os_dois_registros_estao_povoados_e_quem_os_aplica_existe(self) -> None:
+        """Nasceram vazios na S-235 -- *"declarar nome que nada aplica é a promessa vazia da
+        S-161"* --, e deixaram de estar quando os itens que os aplicam entraram: a S-242 povoa as
+        cores e a S-249 os estilos. O que este teste guarda é a outra metade da mesma regra: nome
+        no registro **sem** quem o desenhe é a promessa vazia ao contrário."""
+        from chess_diagram_ocr.ui import texto_cores
+
+        self.assertEqual(set(rico.CORES_DE_AUTOR), set(texto_cores.PAPEL_DA_COR))
+        self.assertEqual(set(rico.CORES_DE_AUTOR), set(texto_cores.PAPEL_DO_REALCE))
+        self.assertEqual(("titulo", "prosa", "notacao", "legenda"), rico.ESTILOS)
 
     def test_tipo_desconhecido_levanta(self) -> None:
         with self.assertRaises(KeyError):
@@ -224,6 +235,110 @@ class RecusaTests(unittest.TestCase):
     def test_as_procedencias_saem_do_Literal(self) -> None:
         """Derivadas, e não recopiadas: a lista copiada é a que fica para trás."""
         self.assertEqual(set(rico.PROCEDENCIAS), {"camada", "glifo", "rapidocr", "humano"})
+
+
+class EdicaoTests(unittest.TestCase):
+    """As ferramentas de formato, decididas fora do widget (S-241/S-242/S-249)."""
+
+    def test_alternar_liga_quando_o_intervalo_nao_e_uniforme(self) -> None:
+        """Selecionar uma frase cuja primeira palavra já está em negrito e apertar `Ctrl+B` tem de
+        **completar** o negrito -- e não apagá-lo. É o que "vale em todo o intervalo?" resolve."""
+        doc = rico.alternar(rico.de_texto("negrito e o resto"), 0, 7, "negrito")
+        inteiro = rico.alternar(doc, 0, 17, "negrito")
+        self.assertTrue(all(c.atributos.negrito for c in inteiro.corridas))
+
+    def test_alternar_desliga_quando_e_uniforme(self) -> None:
+        doc = rico.alternar(rico.de_texto("tudo negrito"), 0, 12, "negrito")
+        de_volta = rico.alternar(doc, 0, 12, "negrito")
+        self.assertFalse(any(c.atributos.negrito for c in de_volta.corridas))
+
+    def test_sem_selecao_vale_a_palavra_sob_o_cursor(self) -> None:
+        doc = rico.alternar(rico.de_texto("uma palavra sozinha"), 6, 6, "italico")
+        italicas = [c.texto for c in doc.corridas if c.atributos.italico]
+        self.assertEqual(italicas, ["palavra"])
+
+    def test_o_cursor_no_fim_da_palavra_ainda_e_da_palavra(self) -> None:
+        """É onde o cursor fica quando alguém acaba de digitá-la, e é quando se aperta `Ctrl+B`."""
+        self.assertEqual(rico.palavra_em("uma palavra", 11), (4, 11))
+
+    def test_o_limite_de_palavra_e_declarado_num_lugar_so(self) -> None:
+        """Apóstrofo e hífen são palavra; figurina não é -- senão o alvo engoliria o lance inteiro."""
+        self.assertEqual(rico.palavra_em("Black's move", 3), (0, 7))
+        self.assertEqual(rico.palavra_em("1.♘f3", 3), (3, 5))
+
+    def test_alternar_sem_palavra_sob_o_cursor_nao_muda_nada(self) -> None:
+        doc = rico.de_texto("   ")
+        self.assertEqual(rico.alternar(doc, 1, 1, "negrito"), doc)
+
+    def test_a_edicao_carimba_humano(self) -> None:
+        """Desmarcar à mão o itálico que a régua da S-236 detectou é uma correção sobre o que o
+        motor leu -- e é o que a fila da S-212 quer saber."""
+        doc = rico.DocumentoRico(
+            corridas=(rico.Corrida(texto="citação", atributos=rico.Atributos(italico=True), bloco=0, procedencia="glifo"),)
+        )
+        depois = rico.alternar(doc, 0, 7, "italico")
+        self.assertEqual([c.procedencia for c in depois.corridas], ["humano"])
+        self.assertFalse(depois.corridas[0].atributos.italico)
+
+    def test_a_edicao_nao_muda_um_caractere_do_texto(self) -> None:
+        doc = rico.de_texto("o texto continua o mesmo")
+        for atributo in rico.BOOLEANOS:
+            with self.subTest(atributo=atributo):
+                self.assertEqual(rico.alternar(doc, 2, 7, atributo).para_texto(), doc.para_texto())
+
+    def test_atributo_desconhecido_levanta(self) -> None:
+        with self.assertRaises(KeyError):
+            rico.alternar(rico.de_texto("texto"), 0, 5, "riscado")
+
+    def test_a_marca_do_diagrama_nao_recebe_atributo(self) -> None:
+        """Pintar `[Diagrama 3]` de negrito seria um atributo que morre na primeira gravação."""
+        doc = rico.DocumentoRico(corridas=(rico.Corrida(texto="[Diagrama 1]", tipo=rico.DIAGRAMA, bloco=0),))
+        depois = rico.alternar(doc, 0, 12, "negrito")
+        self.assertFalse(depois.corridas[0].atributos.negrito)
+
+    def test_limpar_formato_nao_toca_na_cor(self) -> None:
+        doc = rico.aplicar(rico.de_texto("trecho pintado"), 0, 14, negrito=True, cor="nota")
+        limpo = rico.limpar_formato(doc, 0, 14)
+        self.assertFalse(limpo.corridas[0].atributos.negrito)
+        self.assertEqual(limpo.corridas[0].atributos.cor, "nota")
+
+    def test_limpar_cor_nao_toca_na_faixa(self) -> None:
+        """A faixa é do reconhecimento, e apagá-la aqui esconderia que o motor estava adivinhando."""
+        doc = rico.DocumentoRico(corridas=(rico.Corrida(texto="duvidoso", faixa=documento.REVISAR, bloco=0),))
+        pintado = rico.aplicar(doc, 0, 8, realce="destaque")
+        limpo = rico.limpar_cor(pintado, 0, 8)
+        self.assertEqual(limpo.corridas[0].atributos.realce, "")
+        self.assertEqual(limpo.corridas[0].faixa, documento.REVISAR)
+
+    def test_inserir_herda_o_atributo_da_esquerda(self) -> None:
+        doc = rico.alternar(rico.de_texto("lance "), 0, 5, "negrito")
+        depois = rico.inserir(doc, 5, "♘")
+        self.assertTrue(depois.corridas[0].atributos.negrito)
+        self.assertEqual(depois.para_texto(), "lance♘ ")
+
+    def test_inserir_fora_do_modelo_marca_a_corrida(self) -> None:
+        depois = rico.inserir(rico.de_texto("texto"), 5, "♞", fora_do_modelo=True)
+        marcadas = [c.texto for c in depois.corridas if c.atributos.fora_do_modelo]
+        self.assertEqual(marcadas, ["♞"])
+
+    def test_o_estilo_vale_para_o_paragrafo_inteiro(self) -> None:
+        """Estilo é do parágrafo: marcar meia frase marcaria meio parágrafo, e o desenho ficaria
+        com dois corpos de fonte na mesma linha."""
+        doc = rico.DocumentoRico(
+            corridas=(
+                rico.Corrida(texto="primeira metade ", bloco=3),
+                rico.Corrida(texto="segunda metade", bloco=3),
+                rico.Corrida(texto="outro bloco", bloco=4),
+            )
+        )
+        depois = rico.aplicar_estilo(doc, 0, 5, "titulo")
+        estilos = {c.bloco: c.atributos.estilo for c in depois.corridas}
+        self.assertEqual(estilos[3], "titulo")
+        self.assertEqual(estilos[4], "")
+
+    def test_estilo_desconhecido_levanta(self) -> None:
+        with self.assertRaises(KeyError):
+            rico.aplicar_estilo(rico.de_texto("texto"), 0, 5, "epigrafe")
 
 
 class FronteiraTests(unittest.TestCase):

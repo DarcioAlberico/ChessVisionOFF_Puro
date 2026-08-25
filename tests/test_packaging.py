@@ -171,8 +171,21 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2000
+    LIMITE = 2090
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **2.000 → 2.090 na Fase 37**, e as 109 são o editor de texto chegando à janela. Nenhuma delas
+    decide coisa nenhuma sobre texto:
+
+    - **dezessete** são entradas em `_comandos`, uma por comando novo do catálogo (S-240). Elas são
+      a amarração nome → função, que é a única coisa deste assunto que precisa dos widgets;
+    - **quinze** são `_on_texto` e `_desfazivel`/`_desfaziveis`/`_foco`: o molde de `_on_result`, e
+      a escolha de quem desfaz -- que **não** é decidida aqui: a regra mora em `ui/desfazivel.py`, e
+      esta janela só pergunta quem tem o foco (S-243);
+    - **catorze** são `_interruptores`, que junta a marca de vista do PDF com a de modo bloco da aba
+      de texto -- um item de menu sem a marca desenharia estado como se fosse ação;
+    - as demais são docstring e comentário, inclusive o da conferência de `conferir_dono` no
+      `_bind_shortcuts` (S-244), que é o que faz "declarei e não atendo" levantar na montagem.
 
     **1.972 → 2.000 na S-234**, e as vinte e oito são o auto-teste passando pelo cromo. Quinze são
     `_provar_as_peles` -- criar a raiz retirada, desistir em silêncio numa máquina sem display, e

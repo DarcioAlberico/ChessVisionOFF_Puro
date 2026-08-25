@@ -79,15 +79,34 @@ class JanelaTests(unittest.TestCase):
         self.addCleanup(self.pai.destroy)
 
     def test_a_legenda_mostra_todos_com_a_mesma_descricao_da_tabela(self) -> None:
-        """O critério de aceite: a legenda mostra os atalhos com a descrição do menu."""
+        """O critério de aceite: a legenda mostra os atalhos com a descrição do menu.
+
+        A descrição é a primeira linha da célula. A segunda, quando existe, é o destino da mesma
+        tecla dentro do editor de texto (S-244) -- e é ela que o teste seguinte cobra."""
         janela = legenda.abrir(self.pai)
         self.addCleanup(janela.destroy)
         self.root.update()
 
         self.assertEqual(
-            janela.linhas(),
+            [(tecla, frase.split(chr(10))[0]) for tecla, frase in janela.linhas()],
             [(atalho.rotulo, atalho.descricao) for atalho in atalhos.ATALHOS],
         )
+
+    def test_a_legenda_mostra_os_dois_destinos(self) -> None:
+        """S-244: `Ctrl+S` salva a posição **e** grava o texto, conforme o foco. Uma legenda que
+        contasse um destino só seria pior que não ter legenda -- quem lesse a metade errada
+        concluiria que ela mente sobre o resto."""
+        janela = legenda.abrir(self.pai)
+        self.addCleanup(janela.destroy)
+        self.root.update()
+
+        por_tecla = dict(janela.linhas())
+        com_dois = [a for a in atalhos.ATALHOS if a.no_editor]
+        self.assertTrue(com_dois, "nenhuma tecla declara destino no editor")
+        for atalho in com_dois:
+            with self.subTest(tecla=atalho.rotulo):
+                self.assertIn(atalho.descricao, por_tecla[atalho.rotulo])
+                self.assertIn(atalho.no_editor, por_tecla[atalho.rotulo])
 
     def test_um_atalho_novo_aparece_sem_ninguem_editar_a_legenda(self) -> None:
         """A propriedade que o item existe para garantir, dita como teste.
