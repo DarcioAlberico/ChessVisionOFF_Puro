@@ -97,6 +97,7 @@ from chess_diagram_ocr.ui import (
     icones,
     legenda,
     menu,
+    paleta_de_comandos,
     pele,
     plataforma,
     rodape,
@@ -1666,6 +1667,7 @@ class ChessOcrTkApp:
             "varrer_livro": lambda: self.gallery_panel.scan() if self.gallery_panel is not None else None,
             "recarregar_modelo": self.reload_model,
             "treinar": self.training.start,
+            "paleta_de_comandos": self._abrir_paleta,
             "legenda_de_atalhos": self._abrir_legenda,
             "abrir_log": self._abrir_log,
             "sobre": self._sobre,
@@ -1724,6 +1726,15 @@ class ChessOcrTkApp:
     def _livros_recentes(self) -> list[tuple[str, Callable[[], None]]]:
         """Os livros que o estado lembra, para o submenu "Abrir recente" (S-161)."""
         return [(Path(caminho).name, partial(self.load_pdf, Path(caminho))) for caminho in self.state.recentes()]
+
+    def _abrir_paleta(self) -> None:
+        """A paleta de comandos do `Ctrl+Shift+P` (S-231). A lista dela é o catálogo.
+
+        Recebe o **mesmo** mapa que o menu e os atalhos recebem, e é isso que faz "a paleta
+        cobre o catálogo inteiro" ser consequência e não promessa: o que for amarrado aqui
+        aparece lá, e o que não for aparece cinza dizendo por quê.
+        """
+        paleta_de_comandos.abrir(self.root, self._comandos())
 
     def _abrir_legenda(self) -> None:
         """A legenda de atalhos do menu Ajuda (S-165). Ela se escreve da tabela de `ui/atalhos.py`."""

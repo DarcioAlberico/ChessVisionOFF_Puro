@@ -171,6 +171,7 @@ MENUS: tuple[Menu, ...] = (
     Menu(
         "Ajuda",
         (
+            Item("paleta_de_comandos"),
             Item("legenda_de_atalhos"),
             Item("abrir_log"),
             _sep(),

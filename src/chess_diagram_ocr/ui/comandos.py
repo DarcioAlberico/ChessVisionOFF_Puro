@@ -294,6 +294,10 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("anotar_sem_diagrama", "Sem diagrama", ACERVO, estilos.NEUTRO),
     Comando("tirar_do_campo", "Tirar o selecionado", ACERVO, estilos.NEUTRO),
     # ------------------------------------------------------------------------------ AJUDA
+    # Antes da legenda porque as duas são a mesma pergunta em duas metades -- "o que existe"
+    # e "que tecla faz" --, e a paleta é a que responde primeiro. Sem ícone e sem `destaque`:
+    # ela não é comando de fita nem de fila, e a porta dela é a tecla (S-231).
+    Comando("paleta_de_comandos", "Paleta de comandos", AJUDA, estilos.NEUTRO),
     Comando("legenda_de_atalhos", "Atalhos de teclado", AJUDA, estilos.NEUTRO),
     Comando("abrir_log", "Abrir o arquivo de log", AJUDA, estilos.NEUTRO),
     Comando("sobre", "Sobre o ChessVisionOFF", AJUDA, estilos.NEUTRO),

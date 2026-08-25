@@ -171,8 +171,17 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1919
+    LIMITE = 1930
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **1.919 → 1.930 na S-231**, e as onze são a paleta de comandos ligada à janela: o `import`, a
+    entrada em `_comandos` e o método de sete linhas que abre a paleta passando o **mesmo** mapa
+    que o menu e os atalhos recebem -- que é o que faz "a paleta cobre o catálogo inteiro" ser
+    consequência da amarração, e não uma segunda lista.
+
+    **A paleta em si não está aqui**, e é o que faz a subida ser de onze e não de duzentas: o
+    filtro, a ordem, o motivo da linha cinza e a janela são `ui/paleta_de_comandos.py`, que não
+    conhece esta classe. O filtro é puro e tem os testes dele sem abrir janela nenhuma.
 
     **1.868 → 1.919 na Fase 34**, e as cinquenta e uma se dividem em três e quarenta e oito.
 

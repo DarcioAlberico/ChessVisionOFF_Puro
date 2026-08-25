@@ -74,15 +74,25 @@ ATALHOS: tuple[Atalho, ...] = (
     Atalho("<Prior>", "Page Up", "pagina_anterior", "Página anterior do livro"),
     Atalho("<Next>", "Page Down", "proxima_pagina", "Próxima página do livro"),
     Atalho("<Control-0>", "Ctrl+0", "ajustar_largura", "Ajustar a página à largura do visualizador"),
+    # Fora do gesto, e por isso no fim: as treze de cima agem sobre o diagrama ou sobre a página,
+    # e esta age sobre o **programa** -- ela é como se acha um comando quando não se sabe em que
+    # menu ele mora. `<Control-P>` e não `<Control-Shift-p>` pela mesma razão do `Ctrl+Shift+S`:
+    # o Tk entrega a maiúscula, e o modificador escrito à mão nunca chega no Windows (S-20).
+    Atalho("<Control-P>", "Ctrl+Shift+P", "paleta_de_comandos", "Abrir a paleta de comandos e procurar pelo nome"),
 )
-"""Os treze atalhos do ciclo corrigir → salvar → próximo (S-20/S-70/S-223/S-229).
+"""Os catorze atalhos do ciclo corrigir → salvar → próximo (S-20/S-70/S-223/S-229/S-231).
 
 A ordem é a do gesto, e não a alfabética: navegar entre diagramas, aplicar a FEN, salvar, reler,
 corrigir casa, desfazer, puxar da fila, virar página, enquadrar. É a mesma ordem em que a legenda
 os mostra.
 
-**Os dois últimos são da S-229**, e eles fecham um buraco que a tabela tornava visível: dez das
-onze teclas agiam sobre o diagrama, e nenhuma o devolvia ao estado anterior."""
+**O décimo segundo e o décimo terceiro são da S-229**, e eles fecham um buraco que a tabela tornava
+visível: dez das onze teclas agiam sobre o diagrama, e nenhuma o devolvia ao estado anterior.
+
+**O décimo quarto é a paleta de comandos (S-231)**, e ele é o primeiro que não age sobre o
+documento. Entrar aqui é o que lhe dá a legenda e o acelerador no menu Ajuda de graça -- e é a
+única declaração da tecla no programa, que é o que `test_ui_legenda` cobra varrendo os literais
+`<Control...>` de todo o `ui/`."""
 
 
 por_acao: dict[str, Atalho] = {atalho.acao: atalho for atalho in ATALHOS}

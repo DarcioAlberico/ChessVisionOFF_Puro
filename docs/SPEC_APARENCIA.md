@@ -1232,37 +1232,122 @@ E o desenho: `test_o_conjunto_padrao_e_o_de_hoje`; `test_o_cache_separa_conjunto
 > Os quatro itens que só fazem sentido depois de existir mais de uma pele. Dois deles são o preço
 > de ter três; dois são o troco.
 
-## S-231 · A paleta de comandos, que sai de graça do catálogo ⬜ planejada
+## S-231 · A paleta de comandos, que sai de graça do catálogo ✅ implementada (2026-08-25)
 
 **Problema.** A pele "Foco" tira 23 controles da tela e os põe no menu. Cinco menus com 27 itens já
-é um mapa que se decora; 50 itens é um mapa em que se procura. E procurar comando em menu é o
-gesto que a S-161 descreveu ao contrário: *"o que não era botão não existia"* — vira "o que não
-está no menu que eu abri, eu não acho".
+é um mapa que se decora; 50 itens é um mapa em que se procura — e procurar comando em menu é o
+gesto que a S-161 descreveu ao contrário: *"o que não era botão não existia"* vira "o que não está
+no menu que eu abri, eu não acho".
 
-**Solução.** `Ctrl+Shift+P`: um campo, uma lista filtrada, Enter executa.
+**Solução.** `Ctrl+Shift+P`: um campo, uma lista filtrada, Enter executa. `ui/paleta_de_comandos.py`,
+com a metade que decide separada da que desenha — `filtrar` é `(consulta, entradas) → entradas`,
+sem `tkinter` e sem estado.
 
-**O item é barato porque o catálogo da S-219 já é a lista.** Rótulo, grupo, atalho e estado
-(habilitado ou não) estão todos lá; o que falta é o filtro e a janela. O filtro é função pura sobre
-`(consulta, catálogo) → lista ordenada` — casamento por subsequência, com o comando de atalho
-subindo, e o grupo mostrado à direita como o menu faz.
+**O item foi barato, e a medida disso é a janela:** `app_tkinter.py` cresceu **onze linhas** —
+o `import`, a entrada em `_comandos` e o método que abre a paleta passando o mesmo mapa que o menu
+e os atalhos já recebem. Nada aqui declara comando: o catálogo da S-219 é a lista, e a paleta o
+percorre por `comandos.GRUPOS`.
 
-**Isto é o que torna segura a regra 2 na pele "Foco".** Esconder comando é aceitável quando há um
-caminho de um gesto até qualquer comando; sem paleta, "está no menu" é uma promessa que se cumpre
-em três cliques e cinco menus.
+**O nome do módulo é longo porque `paleta` já era duas coisas** — a paleta de peças do editor e
+`tokens.paleta`, a de cores. É a mesma disciplina que fez `ui/menu.py` apelidar o próprio import.
+
+### As três decisões que a implementação teve de tomar, e a medida de cada uma
+
+**1 · A ordem, e os três degraus que só se acertam medindo.** A spec pedia *"casamento por
+subsequência, com o comando de atalho subindo"*, e a ordem entre as metades é o item inteiro. A
+chave ficou: **vão** do casamento; início; casou no rótulo antes de casou no grupo; habilitado
+antes de cinza; tem tecla; ordem do catálogo. As três tentativas anteriores, e o caso que derrubou
+cada uma:
+
+- **a tecla acima da qualidade do casamento inverte o resultado.** `"l"` casa em início 0 e vão 0
+  em "Ler esta página" (`Ctrl+R`) e em "Limpar o tabuleiro" (sem tecla) — é aí que ela decide, e
+  decide bem. Posta acima do vão, ela traria "Ajustar à largura" (`Ctrl+0`, que casa no `l` da
+  décima letra) na frente das duas.
+- **"casou no rótulo" acima do vão também inverte.** Medido no catálogo de hoje: `"ocr"` casa no
+  *rótulo* de "Devolver as caixas tiradas desta página" — o…c…r espalhado por 26 letras — e no
+  *grupo* de "Ler esta página", cravado em três. Com o rótulo acima do vão, a primeira subia.
+- **"desabilitado sempre no fim" é a leitura literal de "Enter executa o primeiro", e ela custa o
+  item vizinho.** Com ela, `"anotar"` trazia "Desfazer a última mudança no tabuleiro" — a…n…o…t…a…r
+  espalhado pela frase — **acima** de "Anotar página", que é a resposta à pergunta. A linha cinza
+  existe para ser **achada** e dizer por quê; enterrá-la sob casamento ruim desfaz isso. Ela desce
+  **entre iguais** (`"tirar"` → "Tirar a caixa" antes de "Tirar o selecionado"), e quem garante
+  que nada dispare por engano é o Enter, que sobre linha cinza não faz nada e não fecha.
+
+**O grupo casa por trecho contíguo, e o rótulo por subsequência.** Não é inconsistência: o rótulo é
+frase e o grupo é palavra, e uma palavra curta casa qualquer coisa por subsequência. Medido: `"sal"`
+é subsequência de "visualizacao" — o *s*, o *a* e o *l* —, e a régua única trazia os catorze
+comandos daquele grupo atrás de "Salvar a posição". Por trecho, `"ocr"`, `"arquivo"` e `"edicao"`
+continuam achando o grupo, que é o que alguém digita quando quer o grupo.
+
+**2 · O motivo é o estado, e não um campo ao lado.** O critério de aceite pede que o comando
+desabilitado apareça *"cinza e com o motivo, e não some"*. `Entrada.habilitado` é `not motivo`:
+não há como construir uma linha cinza e muda. É a mesma forma de `comandos.fila_de_destaque`, que
+devolve grupos para que não haja onde pôr um separador sobrando.
+
+**3 · Nem todo comando não-executável é falta de amarração**, e chamar os cinco de "indisponível"
+seria a paleta mentindo sobre a janela. Os motivos saem de **declaração alheia**, e nenhuma lista
+é reescrita no módulo:
+
+| comando | motivo | quem declara |
+|---|---|---|
+| `abrir_recente`, `aparencia` | é um submenu: a escolha está na barra de menus | `menu.MENUS`, pelo `tipo` do item |
+| os três de anotação | fica na linha de conjunto de campo, junto da página exibida | `comandos.NA_LINHA_DE_CAMPO` (S-77) |
+| qualquer outro não amarrado | esta janela não amarra este comando a nenhuma função | o próprio mapa de `_comandos` |
+
+`aparencia` é o caso que obriga o motivo declarado a **ganhar** da amarração: ela tem função ligada
+e mesmo assim não é executável daqui — disparada fora do gesto do `radiobutton`, reaplica a pele
+que já vale. Mostrá-la preta seria prometer um clique que não faz nada, que é o defeito que
+`menu.montar` recusa desde a S-161, na outra ponta.
+
+**O que ficou registrado e não entrou.** A paleta **não** conta para o inventário da S-233. Se
+contasse, o teste de lá passaria por construção: ela cobre o catálogo inteiro por definição, e
+"todo comando alcançável" viraria uma tautologia em vez de uma medição. A paleta é atalho para
+quem sabe o nome; o mapa de quem procura é o menu.
 
 **Critério de aceite.**
 
-- o filtro é puro e testado sem janela: consulta vazia devolve tudo, em ordem de grupo;
-- comando desabilitado aparece **cinza e com o motivo**, e não some — sumir é o defeito que a S-165
-  registrou nos 13 controles sem tooltip;
-- Enter executa o primeiro; setas navegam; Esc fecha sem executar;
-- a paleta existe nas três peles — ela não é da "Foco";
-- `Ctrl+Shift+P` entra em `atalhos.ATALHOS`, e daí para a legenda e o menu Ajuda de graça.
+- ✅ o filtro é puro e testado sem janela — consulta vazia devolve tudo, em ordem de grupo, e há
+  varredura por `ast` afirmando que nenhuma função pura do módulo alcança `tk` ou `ttk`;
+- ✅ comando desabilitado aparece cinza (`tag_configure` com `TEXTO_SECUNDARIO`) e com o motivo na
+  coluna do rótulo, e não some — a lista tem sempre as 40 linhas do catálogo;
+- ✅ Enter executa o primeiro; setas navegam sem dar a volta na ponta; Esc fecha sem executar.
+  **Com a exceção medida acima:** quando o primeiro é uma linha cinza, o Enter não faz nada e não
+  fecha — o critério que importa é que nada dispare por engano, e não que a primeira linha seja
+  sempre executável ao preço de esconder a resposta;
+- ✅ a paleta existe nas três peles: a barra de menus é uma declaração só, e `bind_shortcuts` não
+  sabe qual pele está valendo;
+- ✅ `Ctrl+Shift+P` entra em `atalhos.ATALHOS` — que passa a ter **catorze** teclas —, e daí para a
+  legenda e o acelerador do menu Ajuda de graça. `<Control-P>` e não `<Control-Shift-p>`, pela
+  mesma razão do `Ctrl+Shift+S` da S-20: é a maiúscula que o Tk entrega no Windows.
 
-**Testes.** `test_o_filtro_e_puro`;
-`test_consulta_vazia_devolve_tudo_em_ordem_de_grupo`;
-`test_comando_desabilitado_aparece_com_motivo`;
-`test_a_paleta_existe_nas_tres_peles`.
+**Como a janela é testada sem dirigir o Tk.** A S-117 já registrou que `event_generate` numa suíte
+mede o roteamento de evento do Tk, e não a decisão: sem foco de verdade a tecla não chega, e com
+`focus_force` o teste passa a depender do gerenciador de janelas. Então `executar`, `mover` e
+`fechar` são públicos e chamados direto, e o que sobra — que a tecla chega neles — é uma pergunta
+própria, `ligada("<Return>")`.
+
+**Testes.** `tests/test_ui_paleta_de_comandos.py`, **31 casos**. O filtro, sem janela:
+`test_o_filtro_e_puro`; `test_o_filtro_nao_toca_tkinter`;
+`test_consulta_vazia_devolve_tudo_em_ordem_de_grupo`; `test_a_paleta_cobre_o_catalogo_inteiro`;
+`test_o_acento_nao_e_cobrado_de_quem_digita`; `test_o_espaco_da_consulta_nao_precisa_casar`;
+`test_o_casamento_e_por_subsequencia_e_nao_por_prefixo`;
+`test_o_vao_ordena_antes_do_rotulo_e_o_ocr_e_a_medida`; `test_a_tecla_desempata_e_so_desempata`;
+`test_o_grupo_casa_por_trecho_e_nao_por_subsequencia`;
+`test_comando_desabilitado_aparece_com_motivo`; `test_o_motivo_declarado_ganha_da_amarracao`;
+`test_os_motivos_declarados_saem_de_declaracao_alheia`;
+`test_a_linha_cinza_desce_so_no_empate_e_o_anotar_e_a_medida`;
+`test_consulta_que_nao_acha_nada_devolve_vazio_e_nao_tudo`. As portas:
+`test_a_paleta_existe_nas_tres_peles`; `test_a_tecla_e_ctrl_shift_p_e_a_maiuscula`;
+`test_a_paleta_esta_no_catalogo_e_no_menu_ajuda`; `test_a_paleta_nao_entra_na_fila_de_destaque`.
+E a janela: `test_a_janela_desenha_o_que_o_filtro_devolve`;
+`test_a_linha_cinza_leva_a_marca_e_o_motivo_na_coluna`;
+`test_a_coluna_da_direita_e_o_grupo_e_a_do_meio_e_a_tecla`;
+`test_as_teclas_da_paleta_estao_ligadas_no_campo`; `test_enter_executa_o_primeiro`;
+`test_a_paleta_fecha_ao_executar`; `test_as_setas_navegam_e_o_enter_executa_o_selecionado`;
+`test_a_seta_nao_passa_da_ponta`; `test_esc_fecha_sem_executar`;
+`test_enter_sobre_linha_cinza_nao_faz_nada_e_nao_fecha`;
+`test_consulta_sem_resultado_nao_tem_selecao_e_o_enter_nao_estoura`;
+`test_abrir_duas_vezes_traz_a_mesma_janela`.
 
 ---
 
