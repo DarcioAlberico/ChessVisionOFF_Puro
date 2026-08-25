@@ -1699,7 +1699,7 @@ class ChessOcrTkApp:
             # montaria e o primeiro clique estouraria.
             "ler_folha": self._on_texto(lambda p: p.ler()),
             "folha_da_pagina_aberta": self._on_texto(lambda p: p.sincronizar_com_a_pagina()),
-            "modo_bloco": self._on_texto(lambda p: None),
+            "modo_bloco": self._on_texto(lambda p: p.modo_bloco_mudou()),
             "abrir_texto": self._on_texto(lambda p: p.abrir_documento()),
             "salvar_texto": self._on_texto(lambda p: p.salvar_documento()),
             "salvar_texto_como": self._on_texto(lambda p: p.salvar_documento()),

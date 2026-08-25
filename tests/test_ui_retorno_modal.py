@@ -45,8 +45,14 @@ RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 48
+LIMITE = 49
 """Quantas chamadas de `messagebox` a interface ainda faz.
+
+**48 -> 49 na S-255**, e a nova é a pergunta de recuperação do rascunho. Ela é decisão pela
+régua da tabela acima: o que está na tela muda conforme a resposta, e a resposta não pode ser
+adivinhada -- um rascunho de dez minutos atrás é o trabalho que a pessoa acabou de perder, e
+um de três semanas é lixo que ela já esqueceu. Por isso a pergunta **diz a data**, e por isso
+recusar não apaga nada.
 
 **66 → 44 na S-164**, e as 22 que saíram estão nas linhas 1 a 3 da tabela do docstring: dois fins
 de operação longa (a exportação de 402 páginas e o treino de horas), nove pré-condições, três "já

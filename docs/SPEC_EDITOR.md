@@ -1815,7 +1815,7 @@ que não escreve, e fechar a aba no meio sem levantar.
 
 > Dois itens que só fazem sentido depois de o editor existir, e que são o preço de ele existir.
 
-## S-255 · O rascunho automático, e a recuperação depois do fechamento ⬜ planejada
+## S-255 · O rascunho automático, e a recuperação depois do fechamento ✅ implementada (2026-08-25)
 
 **Problema.** Uma sessão de correção custa caro e não é reproduzível. A leitura da folha custa ~1 s
 com o glifo e ~40 s com o modo bloco (`docs/metrics/texto_pagina.json`); a correção à mão custa a
@@ -1857,9 +1857,41 @@ sobra tem teto por documento, e o mais antigo sai primeiro.
 `test_recusar_nao_apaga`; `test_salvar_apaga`; `test_a_chave_distingue_documentos_homonimos`;
 `test_a_pasta_tem_teto`.
 
+### O que a implementação virou (2026-08-25)
+
+**A chave carrega o nome legível *e* a impressão do caminho.** `ui/state._history_key` resolve o
+caminho e usa a string inteira como chave de um dicionário; aqui a chave vira **nome de arquivo**, e
+o Windows recusa metade da pontuação de um caminho. O nome fica `kemeri_f58_3f2a1b9c04.cvtxt`: o
+`stem` do livro para a pasta ser legível por quem a abrir, a folha em base 1 como a tela a escreve,
+e dez hexadecimais do SHA-1 do caminho resolvido -- que é o que separa dois livros de mesmo nome em
+pastas diferentes, o caso que aquele módulo já tratava.
+
+**O rascunho é um `.cvtxt`, e não um formato novo.** Recuperar um rascunho é reabrir um documento, e
+o formato da S-238 já grava tudo: faixa, atributo, bloco, procedência e a `PaginaLida`.
+
+**A poda é por documento, e não pela pasta.** Quem trabalha em dois livros na mesma semana não pode
+perder o rascunho de um porque abriu muitas folhas do outro. Teto de oito por livro, e o mais antigo
+sai primeiro.
+
+**A pergunta de recuperação é o quadragésimo nono `messagebox` da interface**, e a catraca de
+`tests/test_ui_retorno_modal.py` subiu com o motivo escrito: é **decisão** pela régua daquele
+arquivo -- o que está na tela muda conforme a resposta. Por isso ela diz a data: um rascunho de dez
+minutos atrás é o trabalho que a pessoa acabou de perder, e um de três semanas é lixo que ela já
+esqueceu.
+
+**A oferta acontece depois de desenhar**, e não antes: se a pessoa recusar, o que fica na tela é a
+leitura que ela acabou de pedir.
+
+**O painel recebeu `pasta_de_rascunhos=`**, e é por causa da suíte: sem isso os testes leriam
+`data/rascunhos/` da máquina de quem os roda, e um rascunho ali abriria a pergunta de recuperação no
+meio de um teste -- que trava tudo esperando um clique que ninguém vai dar.
+
+**Testes.** `tests/test_texto_rascunho.py`, dezoito casos: cinco sobre a chave, seis sobre o disco e
+sete com a aba de verdade, incluindo o "grava só se sujo", o "recusar não apaga" e o "salvar apaga".
+
 ---
 
-## S-256 · O inventário do editor: nada de recurso sem comando, atalho e teste ⬜ planejada
+## S-256 · O inventário do editor: nada de recurso sem comando, atalho e teste ✅ implementada (2026-08-25)
 
 **Problema.** Este plano acrescenta mais de vinte recursos a uma aba que hoje tem seis controles, e
 **cada um deles é fácil de fazer errado rápido**. `tag_configure("negrito", font=...)` mais um
@@ -1905,6 +1937,41 @@ def test_todo_atributo_sobrevive_ao_ciclo(self) -> None:
 **Testes.** `tests/test_texto_inventario_editor.py`: `test_todo_atributo_sobrevive_ao_ciclo`;
 `test_nenhum_rotulo_a_mao_no_painel`; `test_todo_comando_do_editor_esta_no_inventario`;
 `test_todo_atributo_esta_declarado_por_formato`; `test_o_inventario_publica_data_e_commit`.
+
+### O que a implementação virou (2026-08-25)
+
+**O teste paramétrico ganhou uma tabela de valores, e ela é conferida.** `fields(Atributos)` diz
+quais campos existem; o que ele não diz é **que valor não-padrão** usar em cada um -- e um campo novo
+sem valor faria o laço passar em verde sem exercitar nada. `VALOR_DE_TESTE` é a tabela, e
+`test_todo_atributo_tem_valor_de_teste` cobra que ela cubra os campos.
+
+**O ciclo afirmado é tela → widget → arquivo, e não só arquivo.** O defeito que o item persegue é o
+atributo que existe **como tag do Tk** e morre na gravação -- então o documento tem de passar pelo
+widget e voltar de lá antes de ir para o disco. É o `documento_atual()` no meio do caminho que faz o
+teste valer.
+
+**O inventário é publicado por um comando novo, `cvoff-editor-inventario`.** O
+`cvoff-texto-inventario` que já existia é outro assunto (conta recorte de caractere em
+`training_data/`), e juntar os dois num só faria um comando que responde a duas perguntas sem
+relação. O novo grava `docs/metrics/editor_inventario_AAAAMMDD.json` com data e commit, e **devolve
+1** quando alguma pele esconde comando ou algum atributo não tem formato que o suporte -- assim ele
+serve de porta de CI, e não só de relatório.
+
+**A tabela comando → método do painel é declarada.** Oito dos vinte e oito divergem no nome
+(`ler_folha` é `ler`, `exportar_txt` é `salvar`, `cor_do_texto` é `escolher_cor`), e todos por razão
+anterior ao catálogo. Declarar a tabela é o que permite ao teste cobrar que **todo comando do editor
+tenha dono** -- e é ela que o inventário publica.
+
+**Um comando ganhou método por causa deste item:** `modo_bloco` apontava para a variável do
+`Checkbutton`, que não é dono de nada. Virou `modo_bloco_mudou`, que reage à mudança dizendo o preço
+no rodapé -- ~40 s por folha contra ~1 s do glifo. Uma caixa marcada em silêncio é a explicação que
+falta quando a leitura seguinte demora quarenta vezes mais.
+
+**O que o inventário publicado diz hoje:** 28 comandos do editor, 7 atributos do documento, 4
+formatos de exportação, 124 símbolos na paleta, **nenhuma** pele perdendo comando, **nenhum**
+atributo sem formato que o suporte e **nenhum** comando fora do menu.
+
+**Testes.** `tests/test_texto_inventario_editor.py`, treze casos e 54 subtestes.
 
 ---
 

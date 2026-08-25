@@ -74,7 +74,7 @@ from typing import TYPE_CHECKING, Literal
 
 from ..text import arquivo, busca, correcao, documento, exportacao
 from ..text import paleta as _paleta
-from ..text import pdf_pesquisavel, rico
+from ..text import pdf_pesquisavel, rascunho, rico
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
 from . import atalhos, comandos, texto_busca, texto_cores, texto_etiquetas, theme, tipografia, tokens
 from . import texto as texto_ui
@@ -173,6 +173,7 @@ class TextoPanel(ttk.Frame):
         busy: BusyRegistry,
         on_page_request: Callable[[int], None] | None = None,
         dpi: int = 220,
+        pasta_de_rascunhos: Path | None = None,
     ) -> None:
         super().__init__(master, padding=8)
         self._pdf_path = pdf_path
@@ -207,6 +208,10 @@ class TextoPanel(ttk.Frame):
         self._painel_da_paleta: ttk.Frame | None = None
         self._exportando = False
         self._cancelar_exportacao = threading.Event()
+        self._rascunho_agendado: str | None = None
+        self._pasta_de_rascunhos: Path | None = pasta_de_rascunhos
+        """Onde o rascunho da S-255 é gravado. `None` usa `text/rascunho.PASTA_PADRAO`; o teste
+        passa uma pasta própria para não escrever em `data/` da máquina de quem roda a suíte."""
 
         self.formato_var: dict[str, tk.BooleanVar] = {
             atributo: tk.BooleanVar(value=False) for atributo in ("negrito", "italico", "sublinhado")
@@ -249,6 +254,7 @@ class TextoPanel(ttk.Frame):
                 barra,
                 text=comandos.rotulo_de_botao("modo_bloco"),
                 variable=self.bloco_var,
+                command=self.modo_bloco_mudou,
             )
         )
 
@@ -394,6 +400,22 @@ class TextoPanel(ttk.Frame):
         """
         self.folha_var.set(str(int(self._page_index()) + 1))
 
+    def modo_bloco_mudou(self) -> None:
+        """Diz no rodapé o que a próxima leitura vai custar (S-240).
+
+        O comando **não** inverte a variável: quem a inverte é o widget que a carrega -- o
+        `Checkbutton` da barra e o `checkbutton` do menu --, e inverter de novo aqui desfaria o
+        clique. O que sobra para o comando é reagir, que é o mesmo desenho de `marcar_diagramas`.
+
+        E reagir aqui é dizer o preço: o modo bloco custa ~40 s por folha contra ~1 s do glifo
+        (`docs/metrics/texto_pagina.json`), e uma caixa marcada em silêncio é a explicação que
+        falta quando a leitura seguinte demora quarenta vezes mais.
+        """
+        if bool(self.bloco_var.get()):
+            self._on_status("Modo bloco ligado: a próxima leitura desta folha vai demorar mais.")
+        else:
+            self._on_status("Modo bloco desligado.")
+
     def folha_pedida(self) -> int:
         """O índice 0-based da folha no campo. `0` quando o campo não é um número."""
         try:
@@ -508,6 +530,9 @@ class TextoPanel(ttk.Frame):
         self._pagina = pagina
         self.desenhar_documento(rico.de_pagina(pagina))
         self.status_var.set(documento.resumo(pagina))
+        # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é a
+        # leitura que ela acabou de pedir (S-255).
+        self.oferecer_rascunho(pagina)
 
     def desenhar_documento(self, doc: rico.DocumentoRico) -> None:
         """Desenha o documento -- venha ele de uma leitura ou de um arquivo (S-238).
@@ -719,6 +744,7 @@ class TextoPanel(ttk.Frame):
             self.editor.edit_modified(False)
             if not self._redesenhando:
                 self._edicoes += 1
+                self._agendar_rascunho()
 
     # ------------------------------------------------- deslocamento <-> índice do Tk (S-241)
 
@@ -1304,6 +1330,63 @@ class TextoPanel(ttk.Frame):
         self.status_var.set(relatorio.replace(chr(10), " · "))
         self._on_status(primeira or "Exportação concluída.")
 
+    # ----------------------------------------------------------- o rascunho automático (S-255)
+
+    def _agendar_rascunho(self) -> None:
+        """Reagenda a gravação do rascunho para daqui a alguns segundos **de inatividade**.
+
+        Reagendar a cada tecla é o item: um relógio fixo gravaria no meio da digitação e disputaria
+        o disco com quem está trabalhando. Quem para de digitar tem o trabalho no disco alguns
+        segundos depois; quem não parou não é interrompido.
+        """
+        if self._rascunho_agendado is not None:
+            try:
+                self.after_cancel(self._rascunho_agendado)
+            except (tk.TclError, ValueError):  # pragma: no cover - agendamento já disparado
+                pass
+        try:
+            self._rascunho_agendado = self.after(int(rascunho.ESPERA_SEGUNDOS * 1000), self.gravar_rascunho)
+        except tk.TclError:  # pragma: no cover - aba destruída entre a tecla e o agendamento
+            self._rascunho_agendado = None
+
+    def gravar_rascunho(self) -> Path | None:
+        """Grava o rascunho **se houver o que gravar**. Devolve o caminho, ou `None`.
+
+        Só com o documento sujo: reescrever o mesmo arquivo a cada quatro segundos é desgaste de
+        disco por nada, e a aba já rastreia a sujeira desde a S-238.
+        """
+        self._rascunho_agendado = None
+        if not self._sujo or self._pagina is None:
+            return None
+        try:
+            return rascunho.gravar(self.documento_atual(), pasta=self._pasta_de_rascunhos)
+        except OSError as erro:  # noqa: BLE001 - rascunho é rede de segurança, não função
+            logger.debug("Rascunho não pôde ser gravado: %s", erro)
+            return None
+
+    def oferecer_rascunho(self, pagina: PaginaLida) -> bool:
+        """Se houver rascunho daquela folha, **oferece** recuperá-lo. Devolve se recuperou.
+
+        Oferece e não aplica: sobrescrever o que a pessoa acabou de ler com um rascunho de ontem é
+        o contrário do que ela quer. E recusar **não apaga** -- na próxima abertura a oferta volta.
+        """
+        achado = rascunho.achar(pagina.documento, pagina.pagina, pasta=self._pasta_de_rascunhos)
+        if achado is None:
+            return False
+        if not messagebox.askyesno("Texto", rascunho.frase_de_recuperacao(achado), parent=self):
+            return False
+        try:
+            doc = rascunho.carregar(achado)
+        except (arquivo.ArquivoInvalido, OSError) as erro:
+            logger.debug("Rascunho não abriu (%s): %s", achado.caminho, erro)
+            self._on_status(f"O rascunho não pôde ser aberto: {erro}")
+            return False
+        self.abrir(doc)
+        # Recuperado é trabalho que chegou a um lugar melhor -- a tela --, e o arquivo sai.
+        rascunho.descartar(pagina.documento, pagina.pagina, pasta=self._pasta_de_rascunhos)
+        self._on_status(f"Rascunho de {achado.data_legivel} recuperado.")
+        return True
+
     # ----------------------------------------------------------------------------------- saída
 
     def texto_atual(self) -> str:
@@ -1352,6 +1435,11 @@ class TextoPanel(ttk.Frame):
             messagebox.showerror("Texto", f"O arquivo não pôde ser gravado: {erro}", parent=self)
             return
         self._sujo = False
+        # O trabalho chegou a um lugar melhor: o rascunho da S-255 sai.
+        if self._pagina is not None:
+            rascunho.descartar(
+                self._pagina.documento, self._pagina.pagina, pasta=self._pasta_de_rascunhos
+            )
         # A conta aparece porque a correção é o que o `.cvtxt` tem de mais caro -- e porque um
         # número no rodapé é o que faz alguém notar quando ele vem zerado (S-239).
         feitas = len(correcao.correcoes(doc))

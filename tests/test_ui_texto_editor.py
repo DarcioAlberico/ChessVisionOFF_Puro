@@ -83,6 +83,11 @@ class _ComJanela:
     """
 
     def _painel(self) -> TextoPanel:
+        """O painel com uma pasta de rascunho **própria** (S-255).
+
+        Sem isto a suíte leria `data/rascunhos/` da máquina de quem a roda -- e um rascunho ali
+        abriria a pergunta de recuperação no meio de um teste, que trava tudo esperando um clique.
+        """
         assert _RAIZ is not None
         return TextoPanel(
             _RAIZ,
@@ -90,6 +95,7 @@ class _ComJanela:
             page_index=lambda: 0,
             on_status=lambda _mensagem: None,
             busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
         )
 
 

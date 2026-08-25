@@ -1,0 +1,126 @@
+{
+  "item": "S-256 · o inventário do editor de texto",
+  "quando": "2026-08-25",
+  "commit": "941300ae56fd780603819bcbc02af1f111c5ffcd",
+  "atributos_do_documento": [
+    "negrito",
+    "italico",
+    "sublinhado",
+    "cor",
+    "realce",
+    "estilo",
+    "fora_do_modelo"
+  ],
+  "suporte_por_formato": {
+    ".txt": {
+      "negrito": false,
+      "italico": false,
+      "sublinhado": false,
+      "cor": false,
+      "realce": false,
+      "estilo": false,
+      "fora_do_modelo": false
+    },
+    ".md": {
+      "negrito": true,
+      "italico": true,
+      "sublinhado": false,
+      "cor": false,
+      "realce": false,
+      "estilo": true,
+      "fora_do_modelo": false
+    },
+    ".html": {
+      "negrito": true,
+      "italico": true,
+      "sublinhado": true,
+      "cor": true,
+      "realce": true,
+      "estilo": true,
+      "fora_do_modelo": true
+    },
+    ".rtf": {
+      "negrito": true,
+      "italico": true,
+      "sublinhado": true,
+      "cor": false,
+      "realce": false,
+      "estilo": true,
+      "fora_do_modelo": false
+    }
+  },
+  "atributos_sem_formato_que_os_suporte": [],
+  "comandos_do_editor": [
+    "abrir_texto",
+    "salvar_texto",
+    "salvar_texto_como",
+    "exportar_txt",
+    "ler_folha",
+    "folha_da_pagina_aberta",
+    "modo_bloco",
+    "cor_do_texto",
+    "realce",
+    "paleta_de_glifos",
+    "negrito",
+    "italico",
+    "sublinhado",
+    "limpar_formato",
+    "limpar_cor",
+    "achar",
+    "substituir",
+    "substituir_todos",
+    "inserir_figurina",
+    "inserir_avaliacao",
+    "estilo_titulo",
+    "estilo_prosa",
+    "estilo_notacao",
+    "estilo_legenda",
+    "exportar_md",
+    "exportar_html",
+    "exportar_rtf",
+    "exportar_pdf_pesquisavel"
+  ],
+  "comandos_do_editor_fora_do_menu": [],
+  "peles_que_perdem_comando": {},
+  "teclas_proprias_do_editor": {
+    "negrito": "<Control-b>",
+    "italico": "<Control-i>",
+    "sublinhado": "<Control-u>"
+  },
+  "acoes_que_a_aba_toma_para_si": [
+    "achar",
+    "desfazer",
+    "refazer",
+    "salvar",
+    "substituir"
+  ],
+  "paleta": {
+    "prateleiras": {
+      "Figurinas": 6,
+      "Avaliação": 5,
+      "Anotação de lance": 5,
+      "Setas e ideias": 8,
+      "Formas": 12,
+      "Pontuação": 19,
+      "Tipografia": 5,
+      "Acentuados": 41,
+      "Não identificado": 12,
+      "O modelo não lê": 11
+    },
+    "simbolos": 124,
+    "fora_do_modelo": [
+      "‘",
+      "’",
+      "“",
+      "”",
+      "…",
+      "♚",
+      "♛",
+      "♜",
+      "♝",
+      "♞",
+      "♟"
+    ],
+    "sequencias": 18
+  }
+}

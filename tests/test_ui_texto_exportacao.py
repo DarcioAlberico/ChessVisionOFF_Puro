@@ -52,14 +52,17 @@ class ExportacaoDaAbaTests(unittest.TestCase):
         assert _RAIZ is not None
         self.avisos: list[str] = []
         self.busy = BusyRegistry()
+        self.pasta = Path(tempfile.mkdtemp())
         self.painel = TextoPanel(
             _RAIZ,
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=self.avisos.append,
             busy=self.busy,
+            # Pasta própria: um rascunho em `data/rascunhos/` abriria a pergunta de recuperação no
+            # meio do teste, e ela espera um clique que ninguém vai dar (S-255).
+            pasta_de_rascunhos=self.pasta / "rascunhos",
         )
-        self.pasta = Path(tempfile.mkdtemp())
 
     def _responder_dialogo(self, destino: Path) -> None:
         original = filedialog.asksaveasfilename

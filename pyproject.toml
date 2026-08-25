@@ -107,6 +107,8 @@ cvoff-texto-ordem = "chess_diagram_ocr.cli.texto_ordem:main"
 # O inventario da base de caractere (S-200): varre training_data/, grava o manifesto e o
 # relatorio de procedencia, e nao escreve nada dentro da pasta que inventaria.
 cvoff-texto-inventario = "chess_diagram_ocr.cli.texto_inventario:main"
+# O inventario do EDITOR (S-256): o outro esta acima e conta recorte de caractere.
+cvoff-editor-inventario = "chess_diagram_ocr.cli.editor_inventario:main"
 cvoff-texto-train = "chess_diagram_ocr.cli.texto_train:main"
 # A mesma imagem arquivada sob dois caracteres (S-202): acha por hash, mostra os glifos em
 # disputa para alguem julgar, e move o rotulo perdedor para quarentena -- nunca apaga.

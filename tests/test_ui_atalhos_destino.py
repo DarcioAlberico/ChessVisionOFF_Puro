@@ -13,8 +13,10 @@ declara quais ações são dele, e a guarda pergunta antes de ceder.
 
 from __future__ import annotations
 
+import tempfile
 import tkinter as tk
 import unittest
+from pathlib import Path
 
 from chess_diagram_ocr.ui import atalhos, shortcuts, texto_panel
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -94,6 +96,7 @@ class DestinoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
         )
         atalhos.conferir_dono(painel, "TextoPanel")
         self.assertEqual(painel.acoes_proprias(), texto_panel.ACOES_PROPRIAS)
@@ -164,6 +167,7 @@ class GuardaComFocoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
         )
         gravou: list[str] = []
         painel.salvar_documento = lambda: gravou.append("texto")  # type: ignore[method-assign]
@@ -194,6 +198,7 @@ class GuardaComFocoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
         )
         tratador = shortcuts.guard(lambda: self.chamadas.append("diagrama"), "<Left>")
         resposta = tratador(self._evento(painel.editor))

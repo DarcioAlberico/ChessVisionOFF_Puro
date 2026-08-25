@@ -12,8 +12,10 @@ classe faz. As duas seguintes montam os painéis de verdade.
 
 from __future__ import annotations
 
+import tempfile
 import tkinter as tk
 import unittest
+from pathlib import Path
 
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 from chess_diagram_ocr.ui import desfazivel
@@ -120,6 +122,11 @@ class PilhaDoEditorTests(unittest.TestCase):
     """O painel de verdade: o que a pilha do editor guarda, e o que o redesenho faz com ela."""
 
     def _painel(self) -> TextoPanel:
+        """O painel com uma pasta de rascunho **própria** (S-255).
+
+        Sem isto a suíte leria `data/rascunhos/` da máquina de quem a roda -- e um rascunho ali
+        abriria a pergunta de recuperação no meio de um teste, que trava tudo esperando um clique.
+        """
         assert _RAIZ is not None
         return TextoPanel(
             _RAIZ,
@@ -127,6 +134,7 @@ class PilhaDoEditorTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
         )
 
     def test_desfazer_desfaz_a_digitacao(self) -> None:

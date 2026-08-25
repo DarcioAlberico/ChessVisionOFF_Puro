@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **34 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **35 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -258,6 +258,12 @@ cvoff-texto-grade --baseline docs/metrics/texto_grade.json   # falha se o acerto
 # vazia, classe abaixo do minimo e pasta cujo nome nao decodifica.
 cvoff-texto-inventario                 # manifesto + relatorio de procedencia em docs/metrics/
 cvoff-texto-inventario --minimo 3      # abaixo disto a classe vira achado
+
+# O inventario do EDITOR de texto (S-256), que e outro assunto: nao conta recorte de
+# caractere, e sim o que a aba faz -- os comandos do catalogo, os atributos do documento, o
+# que cada formato de exportacao suporta e a paleta. Sai com data e commit, e devolve 1
+# quando alguma pele esconde comando ou algum atributo nao tem formato que o suporte.
+cvoff-editor-inventario                # docs/metrics/editor_inventario_AAAAMMDD.json
 
 # O split, o relatorio de vazamento e a procedencia, sem treinar (S-201/S-203). Um minuto a
 # partir do cache; e o arquivo que o `cvoff-audit` le para reprovar rotulo de modelo no teste.
