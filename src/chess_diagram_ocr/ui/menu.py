@@ -215,6 +215,10 @@ MENUS: tuple[Menu, ...] = (
             Item("substituir_todos"),
             _sep(),
             Item("exportar_txt"),
+            Item("exportar_md"),
+            Item("exportar_html"),
+            Item("exportar_rtf"),
+            Item("exportar_pdf_pesquisavel"),
         ),
     ),
     Menu(

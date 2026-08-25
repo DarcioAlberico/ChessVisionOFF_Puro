@@ -72,7 +72,9 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Literal
 
-from ..text import arquivo, busca, correcao, documento, paleta as _paleta, rico
+from ..text import arquivo, busca, correcao, documento, exportacao
+from ..text import paleta as _paleta
+from ..text import pdf_pesquisavel, rico
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
 from . import atalhos, comandos, texto_busca, texto_cores, texto_etiquetas, theme, tipografia, tokens
 from . import texto as texto_ui
@@ -203,6 +205,8 @@ class TextoPanel(ttk.Frame):
         """As etiquetas de fonte combinada já configuradas -- ver `_etiqueta_de_fonte`."""
 
         self._painel_da_paleta: ttk.Frame | None = None
+        self._exportando = False
+        self._cancelar_exportacao = threading.Event()
 
         self.formato_var: dict[str, tk.BooleanVar] = {
             atributo: tk.BooleanVar(value=False) for atributo in ("negrito", "italico", "sublinhado")
@@ -1155,6 +1159,150 @@ class TextoPanel(ttk.Frame):
             "achar": self.achar,
             "substituir": self.substituir,
         }.get(acao)
+
+    # -------------------------------------------------------------- a exportação (S-250 a S-254)
+
+    def exportar_md(self) -> None:
+        """`.md` **porque ele diffa**: duas correções da mesma folha comparam linha a linha."""
+        self._exportar(".md")
+
+    def exportar_html(self) -> None:
+        """`.html` **porque ele abre**: é o formato para mandar a folha corrigida para alguém."""
+        self._exportar(".html")
+
+    def exportar_rtf(self) -> None:
+        """`.rtf` porque o Word abre -- e sem dependência nova nenhuma (S-252)."""
+        self._exportar(".rtf")
+
+    def _cores_do_html(self) -> dict[str, str]:
+        """`classe do HTML -> hexadecimal`, resolvido **agora** contra o tema em uso (S-251).
+
+        É a única vez em toda a spec do editor em que um hexadecimal é escrito num arquivo, e ele é
+        **derivado**: `text/exportacao.py` não conhece uma cor sequer, e o teste afirma que nenhum
+        literal de cor aparece lá.
+        """
+        cores = {
+            f"cor-{nome}": tokens.cor(texto_cores.papel_de_cor(nome)) for nome in texto_cores.nomes()
+        }
+        cores.update(
+            {f"realce-{nome}": tokens.cor(texto_cores.papel_de_realce(nome)) for nome in texto_cores.nomes()}
+        )
+        cores.update(
+            {f"faixa-{faixa}": tokens.cor(papel) for faixa, papel in PAPEL_DA_FAIXA.items() if papel}
+        )
+        return cores
+
+    def _exportar(self, extensao: str) -> None:
+        """Pergunta o destino e exporta **fora da thread da janela** (S-254).
+
+        O `.txt` de uma folha é imperceptível, e a aba estava certa em gravá-lo na thread da janela.
+        Deixa de estar com o `.rtf` de imagens embutidas e com o PDF pesquisável, que abre o livro,
+        escreve a camada e grava um arquivo novo -- e o molde para isso já existe duas vezes no
+        programa: `ui/export_controller.py` e a leitura desta própria aba.
+        """
+        if self._exportando:
+            self._on_status("Já há uma exportação em curso nesta aba.")
+            return
+        doc = self.documento_atual()
+        if not doc.para_texto().strip():
+            # Rodapé e não caixa: é um passo que falta, e não uma escolha (`test_ui_retorno_modal`).
+            self._on_status("Não há texto nesta aba para exportar.")
+            return
+        formato = exportacao.formato_de(
+            extensao, **({"cores": self._cores_do_html()} if extensao == ".html" else {})
+        )
+        destino = filedialog.asksaveasfilename(
+            parent=self,
+            title=f"Exportar o texto da folha para {formato.nome}",
+            defaultextension=extensao,
+            initialfile=arquivo.sugestao_de_nome(doc, extensao=extensao),
+            filetypes=[(formato.nome, f"*{extensao}"), ("Todos", "*.*")],
+        )
+        if not destino:
+            return
+        self._exportar_em_thread(
+            f"Exportando a folha para {formato.nome}",
+            lambda: self._gravar_exportacao(doc, formato, Path(destino)),
+        )
+
+    def _gravar_exportacao(self, doc: rico.DocumentoRico, formato: object, destino: Path) -> str:
+        relatorio = exportacao.exportar(doc, formato)  # type: ignore[arg-type]
+        if self._cancelar_exportacao.is_set():
+            return "Exportação cancelada: nada foi gravado."
+        # **Atômica**: cancelar ou falhar no meio não deixa arquivo pela metade, que é a mesma
+        # regra de `labels.csv` desde a S-111 -- o que está no disco é trabalho humano.
+        exportacao.escrever(destino, relatorio)
+        return exportacao.texto_do_relatorio(destino, relatorio, tamanho=destino.stat().st_size)
+
+    def exportar_pdf_pesquisavel(self) -> None:
+        """A folha com a camada de texto invisível, feita do que a pessoa corrigiu (S-253)."""
+        if self._exportando:
+            self._on_status("Já há uma exportação em curso nesta aba.")
+            return
+        doc = self.documento_atual()
+        if doc.origem is None:
+            self._on_status("O PDF pesquisável precisa da folha de origem: leia a folha primeiro.")
+            return
+        destino = filedialog.asksaveasfilename(
+            parent=self,
+            title="Exportar a folha como PDF pesquisável",
+            defaultextension=".pdf",
+            initialfile=arquivo.sugestao_de_nome(doc, extensao=".pdf"),
+            filetypes=[("PDF", "*.pdf"), ("Todos", "*.*")],
+        )
+        if not destino:
+            return
+
+        def trabalhar() -> str:
+            relatorio = pdf_pesquisavel.escrever(
+                doc, Path(destino), seco=self._cancelar_exportacao.is_set()
+            )
+            return pdf_pesquisavel.texto_do_relatorio(relatorio)
+
+        self._exportar_em_thread("Escrevendo a camada de texto da folha", trabalhar)
+
+    def _exportar_em_thread(self, titulo: str, trabalho: Callable[[], str]) -> None:
+        """O molde da S-254: thread para o trabalho, `after` para voltar, `BusyRegistry` no meio.
+
+        **`loses_work=True`, ao contrário da leitura**: fechar no meio de uma exportação deixa
+        trabalho pela metade, e o registro precisa dizer isso quando alguém tentar fechar a janela.
+        """
+        self._exportando = True
+        self._cancelar_exportacao.clear()
+        token = self._busy.register(
+            titulo,
+            loses_work=True,
+            cancellable=True,
+            cancel=self._cancelar_exportacao.set,
+        )
+
+        def rodar() -> None:
+            try:
+                relatorio = trabalho()
+            except Exception as erro:  # noqa: BLE001 - a thread não pode derrubar a janela
+                falha = erro
+                logger.exception("Falha ao exportar o texto da folha.")
+                _na_janela(lambda: self._exportou(f"A exportação falhou: {falha}", token))
+                return
+            _na_janela(lambda: self._exportou(relatorio, token))
+
+        def _na_janela(acao: Callable[[], None]) -> None:
+            """A mesma guarda da leitura: fechar a aba no meio não pode levantar dentro da thread."""
+            try:
+                self.after(0, acao)
+            except (tk.TclError, RuntimeError):
+                token.release()
+                self._exportando = False
+                logger.debug("A aba de texto fechou antes de a exportação voltar.")
+
+        threading.Thread(target=rodar, name="escrita-de-texto", daemon=True).start()
+
+    def _exportou(self, relatorio: str, token: object) -> None:
+        token.release()  # type: ignore[attr-defined]
+        self._exportando = False
+        primeira = relatorio.splitlines()[0] if relatorio else ""
+        self.status_var.set(relatorio.replace(chr(10), " · "))
+        self._on_status(primeira or "Exportação concluída.")
 
     # ----------------------------------------------------------------------------------- saída
 

@@ -171,8 +171,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2090
+    LIMITE = 2098
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **2.090 → 2.092 na Fase 39**, e as onze são as quatro linhas de exportação (`.md`, `.html`,
+    `.rtf` e o PDF pesquisável) mais as sete da Fase 38 -- todas entradas em `_comandos`, uma por
+    comando do catálogo. A janela continua sem decidir nada sobre texto: ela liga nome a função.
 
     **2.000 → 2.090 na Fase 37**, e as 109 são o editor de texto chegando à janela. Nenhuma delas
     decide coisa nenhuma sobre texto:

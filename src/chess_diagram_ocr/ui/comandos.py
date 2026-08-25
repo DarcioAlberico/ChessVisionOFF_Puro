@@ -185,6 +185,15 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("salvar_texto", "Salvar o texto da folha", ARQUIVO, estilos.NEUTRO, rotulo_curto="Salvar"),
     Comando("salvar_texto_como", "Salvar o texto da folha como…", ARQUIVO, estilos.NEUTRO),
     Comando("exportar_txt", "Exportar o texto para .txt", ARQUIVO, estilos.NEUTRO, rotulo_curto="Salvar .txt"),
+    Comando("exportar_md", "Exportar o texto para Markdown…", ARQUIVO, estilos.NEUTRO),
+    Comando("exportar_html", "Exportar o texto para HTML…", ARQUIVO, estilos.NEUTRO),
+    Comando("exportar_rtf", "Exportar o texto para RTF…", ARQUIVO, estilos.NEUTRO),
+    Comando(
+        "exportar_pdf_pesquisavel",
+        "Exportar a folha como PDF pesquisável…",
+        ARQUIVO,
+        estilos.NEUTRO,
+    ),
     Comando("sair", "Sair", ARQUIVO, estilos.NEUTRO),
     # ----------------------------------------------------------------------------- EDICAO
     Comando("aplicar_fen", "Aplicar a FEN digitada", EDICAO, estilos.NEUTRO, icone="aplicar_fen", destaque=True),

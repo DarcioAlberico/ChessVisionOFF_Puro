@@ -1721,6 +1721,10 @@ class ChessOcrTkApp:
             "estilo_prosa": self._on_texto(lambda p: p.estilo_prosa()),
             "estilo_notacao": self._on_texto(lambda p: p.estilo_notacao()),
             "estilo_legenda": self._on_texto(lambda p: p.estilo_legenda()),
+            "exportar_md": self._on_texto(lambda p: p.exportar_md()),
+            "exportar_html": self._on_texto(lambda p: p.exportar_html()),
+            "exportar_rtf": self._on_texto(lambda p: p.exportar_rtf()),
+            "exportar_pdf_pesquisavel": self._on_texto(lambda p: p.exportar_pdf_pesquisavel()),
         }
 
     def _build_menu(self) -> None:

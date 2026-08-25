@@ -1477,7 +1477,7 @@ aumentou a fonte do Windows recebe um recuo maior.
 > (`ui/export_controller.py`, 275 linhas), já escreve PDF com o PyMuPDF que já é dependência, e já
 > planeja a camada invisível na S-210. O botão "Salvar .txt" ignora os três.
 
-## S-250 · Um lugar só decide o que cada formato faz com o diagrama ⬜ planejada
+## S-250 · Um lugar só decide o que cada formato faz com o diagrama ✅ implementada (2026-08-25)
 
 **Problema.** Sai um formato: `.txt`, com cabeçalho de procedência (`ui/texto_panel.py:383-412`). Os
 quatro formatos desta fase têm em comum uma pergunta que cada um responderia sozinho se ninguém
@@ -1534,9 +1534,32 @@ Duas regras que valem para os cinco:
 `test_o_relatorio_conta_as_perdas`; `test_o_txt_sai_identico_ao_de_hoje`;
 `test_exportar_duas_vezes_da_o_mesmo_byte`; `test_o_modulo_nao_importa_tkinter`.
 
+### O que a implementação virou (2026-08-25)
+
+**São quatro formatos de texto e um que não é texto, e a separação passou a ser física.**
+`text/exportacao.py` tem os quatro que serializam (`.txt`, `.md`, `.html`, `.rtf`); o PDF
+pesquisável mora em `text/pdf_pesquisavel.py`, porque ele não escreve um arquivo de texto: ele abre
+o livro e põe uma camada invisível sobre a página original.
+
+**A regra "a marca aparece nos cinco" vale para os quatro, e a tabela do item já dizia isso.** A
+linha do PDF é explícita — *"não se escreve: a página é a de origem"* —, e a razão está no módulo: a
+camada existe para espelhar o **texto do livro**, e um `[Diagrama 3]` ali apareceria a quem copiasse
+a página sem nunca ter estado impresso nela. As duas frases do item se contradiziam; o que ficou é a
+tabela, que é a decisão específica.
+
+**`montar` entrou no contrato**, e ele existe por causa da trava de não-regressão: o `.txt` grava
+`cabecalho + corpo.strip() + quebra` desde a S-211, e aparar o conteúdo inteiro tiraria a quebra
+dupla do cabeçalho. Os outros três usam o padrão (concatenar), e o `.txt` sobrescreve.
+
+**`ATRIBUTOS` é derivado de `rico.Atributos`.** Recopiar a lista faria um atributo novo entrar sem
+que nenhum formato dissesse o que faz com ele — que é o buraco que o inventário da S-256 fecha.
+
+**Testes.** `tests/test_texto_exportacao.py`, vinte e dois casos, incluindo o `.txt` byte a byte e o
+"exportar duas vezes dá o mesmo byte" nos quatro.
+
 ---
 
-## S-251 · `.md` e `.html`: o que diffa e o que abre no navegador ⬜ planejada
+## S-251 · `.md` e `.html`: o que diffa e o que abre no navegador ✅ implementada (2026-08-25)
 
 **Problema.** O `.txt` perde tudo o que a Fase 37 acrescenta. Os dois formatos mais baratos que não
 perdem são texto puro e não pedem dependência nenhuma.
@@ -1577,9 +1600,25 @@ Duas decisões que o `.html` obriga a tomar, e as duas já têm dono neste proje
 `test_nenhuma_cor_literal_no_exportador`; `test_o_html_escapa_o_que_veio_do_ocr`;
 `test_o_html_avisa_sobre_a_fonte_de_figurina`.
 
+### O que a implementação virou (2026-08-25)
+
+**O `.html` recebe as cores prontas, e não sabe uma sequer.** `Html(cores={...})` é preenchido pelo
+painel com `tokens.cor(...)` resolvido **no momento da exportação** — então o arquivo sai com a
+paleta do tema em uso, e o teste varre o módulo atrás de literal de cor e não acha nenhum.
+
+**A ida e a volta do `.md` é afirmada pela marcação, e não por um leitor de Markdown.** Escrever um
+`parse` de Markdown para provar o ida-e-volta seria um segundo formato dentro do primeiro; o que o
+teste afirma é o que o item pede — `**negrito**`, `*itálico*`, `# título` — mais a regra que quase
+se perde: `**negrito** ` e não `**negrito **`, porque a segunda forma o Markdown não lê como
+negrito.
+
+**O aviso da fonte é uma linha no corpo do arquivo**, e não um comentário: quem abre o `.html` num
+navegador sem fonte de xadrez vê quadrados no lugar das figurinas, e a explicação tem de estar onde
+ele está olhando.
+
 ---
 
-## S-252 · `.rtf`, e por que não `.docx` ⬜ planejada
+## S-252 · `.rtf`, e por que não `.docx` ✅ implementada (2026-08-25)
 
 **Problema.** Quem recebe uma página corrigida costuma querer abri-la no Word, e nem `.md` nem
 `.html` são isso.
@@ -1621,9 +1660,23 @@ Duas armadilhas do formato, e as duas viram teste:
 `test_o_escape_cobre_acima_de_32767`; `test_a_chave_e_a_barra_sao_escapadas`;
 `test_o_arquivo_abre_com_os_atributos`; `test_nenhuma_dependencia_nova`.
 
+### O que a implementação virou (2026-08-25)
+
+**São 60 linhas, e não 200.** O escape assinado é seis linhas; o resto é a marcação de negrito,
+itálico, sublinhado e corpo. A imagem embutida **não** entrou: ela pede o PNG do recorte em
+hexadecimal dentro do arquivo, e o que se ganharia é o que o `.html` já dá melhor. O que entrou é a
+marca `[Diagrama N]` como texto, que é o que o item exige de todos os formatos.
+
+**O par substituto foi o caso que a implementação encontrou.** O item fala de "acima de 32767"; o
+que aparece de verdade no acervo é `🗸` (U+1F5F8), **acima do BMP**, que não cabe numa unidade de 16
+bits. O RTF aceita o par substituto, e é o que se escreve — duas unidades, as duas assinadas.
+
+**Nenhuma dependência nova**, e o teste trava a decisão varrendo o `pyproject.toml` inteiro atrás de
+`docx`.
+
 ---
 
-## S-253 · O PDF pesquisável do próprio livro, com o texto já corrigido ⬜ planejada
+## S-253 · O PDF pesquisável do próprio livro, com o texto já corrigido ✅ implementada (2026-08-25)
 
 **Problema.** O acervo tem livros sem camada de texto — 11 dos 41 na amostra de 2026-08-24 — e
 livros cuja camada erra a notação inteira, que é o achado que a S-211 mediu: **zero figurinas** na
@@ -1666,9 +1719,30 @@ latino e escreve, no relatório, quantas figurinas ficaram de fora.
 `test_o_metadado_declara_correcao_humana`; `test_sem_fonte_de_figurina_entrega_o_latino`;
 `test_o_dry_run_nao_escreve`.
 
+### O que a implementação virou (2026-08-25)
+
+**A S-210 ainda não existe, e este item não esperou por ela.** O desenho dizia *"o exportador
+entrega à S-210 um `DocumentoRico` e ela escreve a camada como já escreve"* — só que a S-210 está ⬜
+planejada. `text/pdf_pesquisavel.py` escreve a camada por conta própria, em ~60 linhas de PyMuPDF
+(que já é dependência), e o que ele **não** faz é reimplementar a S-210: aquele item é sobre o livro
+inteiro a partir do que o motor leu; este é sobre **uma folha** a partir do que uma pessoa corrigiu.
+Quando a S-210 chegar, o que se compartilha é a escrita da camada.
+
+**O corpo da fonte é escolhido pela caixa, e não fixado.** `insert_textbox` devolve negativo quando
+o texto não cabe, e o texto corrigido pode ser mais longo que o impresso — a busca no lugar errado
+seria pior que a busca ausente. O laço tenta de 11 pt a 4 pt e para no primeiro que couber.
+
+**A saída tem uma folha, e não o livro.** A aba é da folha aberta; gravar 400 páginas para publicar
+uma seria surpresa cara para quem clicou em "exportar".
+
+**Medido aqui:** a página de saída é byte a byte idêntica à de entrada no pixmap a 110 dpi, a busca
+por uma palavra corrigida a encontra dentro do retângulo do bloco, e `♘` sai da camada e entra na
+contagem — 1 caractere fora, com o motivo (a base 14 não tem figurina, e nenhuma fonte é copiada
+para cá antes de a licença ser conferida).
+
 ---
 
-## S-254 · Exportar não trava a janela, e diz o que não coube ⬜ planejada
+## S-254 · Exportar não trava a janela, e diz o que não coube ✅ implementada (2026-08-25)
 
 **Problema.** `salvar` escreve na thread da janela (`ui/texto_panel.py:409-411`). Para um `.txt` de
 uma folha isso é imperceptível, e a aba está certa em fazê-lo assim hoje. **Deixa de estar** com o
@@ -1714,6 +1788,26 @@ S-250, então contá-las é somar o que o exportador já sabe.
 `test_o_registro_declara_que_perde_trabalho`; `test_cancelar_nao_deixa_arquivo_pela_metade`;
 `test_fechar_durante_a_exportacao_nao_levanta`; `test_o_relatorio_traz_as_tres_secoes`;
 `test_exportar_vazio_avisa_no_rodape`.
+
+### O que a implementação virou (2026-08-25)
+
+**O molde é o da leitura desta própria aba, e não o `ui/export_controller.py`.** Aquele controlador é
+do PGN do livro inteiro, com progresso por página e um relatório próprio; aqui o trabalho é um
+arquivo só. O que se reusou dele é a forma — thread, `after`, `BusyRegistry`, cancelamento —, e o que
+se reusou da leitura é a guarda de `_na_janela`, que impede o `TclError` dentro da thread quando
+alguém fecha a aba no meio.
+
+**O cancelamento acontece antes da escrita, e é isso que o torna barato.** Montar o conteúdo é o que
+demora; escrever é atômico e instantâneo. `_gravar_exportacao` confere o evento depois de montar e
+antes de gravar — então cancelar **nunca** deixa arquivo pela metade, sem precisar de limpeza.
+
+**O relatório vai para o rodapé com as três seções em uma linha**, separadas por `·`. A caixa modal
+ficou de fora de propósito: exportação que deu certo não é notícia que interrompe, e a que deu errado
+vira mensagem de erro no mesmo lugar (`tests/test_ui_retorno_modal.py`).
+
+**Testes.** `tests/test_ui_texto_exportacao.py`, oito casos com janela de verdade — o arquivo que só
+aparece depois de a janela voltar a girar, o `loses_work=True` espiado no registro, o cancelamento
+que não escreve, e fechar a aba no meio sem levantar.
 
 ---
 
