@@ -41,6 +41,22 @@ diferente de `False`. Um livro cuja camada não registra peso nenhum não pode d
 A `PaginaLida` não tem unidade menor que a `LinhaLida`, então uma linha meio em negrito é decidida
 pela **maioria** da largura dela. Onde o negrito é um lance no meio da prosa, o resultado é
 grosso; onde ele é a linha inteira -- título, variante principal --, é exato.
+
+## O peso também corta parágrafo (2026-08-25)
+
+**Ler o peso certo não basta: ele tem de sobreviver à montagem do bloco.** `BlocoDeTexto.de_linhas`
+só declara o negrito do bloco quando **todas** as linhas concordam, e por boa razão -- ver o
+comentário lá. Mas isso torna o corte de parágrafo parte desta régua: um parágrafo que junta prosa
+e lance sai `negrito=None`, e a aba passa a dizer *"o livro não informa"* numa página em que o
+livro informa cada lance.
+
+Na folha 51 do `Dvoretsky` era o que acontecia em **cinco dos oito** parágrafos de texto: lá a
+prosa e a notação se alternam com entrelinhamento constante, e nem o recuo nem o salto de
+`text/paragrafos.py` veem o corte. A quarta regra de lá -- *o peso mudou* -- é o conserto, e a
+população em que ela vale é a mesma deste módulo: onde `negrito` é `None`, ela fica inerte.
+
+Medido em 2026-08-25 sobre 96 folhas dos 12 livros que registram peso: **94 dos 1.557 blocos de
+texto (6,0%) misturavam peso dentro de si**, e todos eram parágrafo grudado.
 """
 
 from __future__ import annotations

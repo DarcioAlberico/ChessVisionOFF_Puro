@@ -1,4 +1,4 @@
-# Especificação do editor de texto — Fases 36 a 40 (S-235 a S-256)
+# Especificação do editor de texto — Fases 36 a 40 (S-235 a S-257)
 
 Base: [ROADMAP_EDITOR.md](ROADMAP_EDITOR.md), que traz a medição da aba de hoje, os oito achados e
 o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
@@ -17,7 +17,7 @@ o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-256 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-257 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -381,6 +381,69 @@ exatamente a regra 5 desta spec: **um item que se declara não-medido é um item
 
 **O que falta para o item fechar:** o lado do itálico. `pdf_text` continua sem ler o bit 1 de
 `span["flags"]`, e a régua geométrica do itálico — que existe, é boa e é jogada fora — é a S-236.
+
+### O peso lido certo que a montagem do parágrafo perdia (2026-08-25)
+
+**A régua estava certa e a folha saía errada mesmo assim.** Na folha 51 do `Dvoretsky` — a das
+posições 1-46 e 1-47, com *Tragicomedies* — a camada marca dez linhas em negrito e
+`text/negrito.py` acerta as dez. Ainda assim, **cinco dos oito parágrafos de texto da página
+saíam `negrito=None`**, que é a aba dizendo *"o livro não informa"* sobre um livro que informa
+cada lance.
+
+O defeito não estava na leitura do peso, e sim no corte do parágrafo. `BlocoDeTexto.de_linhas` só
+declara o peso do bloco quando **todas** as linhas concordam — e está certo: não se sabe do todo o
+que não se sabe de uma parte. Mas ali o lance em negrito estava *dentro* do parágrafo de prosa:
+
+```
+The only saving line starts with a paradoxical move that forces the black pawn to advance.
+1.♔c8!! b5                                    ← em negrito, e no mesmo bloco do de cima
+```
+
+Naquela página nem o recuo nem o salto de `text/paragrafos.py` veem esse corte. O entrelinhamento é
+**constante** — 19 pt de uma linha à seguinte, dentro do parágrafo e entre parágrafos —, e o recuo,
+que existe (29 pt de margem contra 40 pt de recuo), está morto por outra razão registrada abaixo.
+**O que separa a prosa da notação naquele livro é só o peso da fonte.**
+
+**Solução: uma quarta regra em `paragrafos.cortar` — *o peso mudou*.** Ela só vale entre dois pesos
+**conhecidos**: `None` de um lado não abre parágrafo nenhum, e nos 26 livros do acervo cuja camada
+não registra peso ela fica inerte. É o mesmo idioma de três estados do resto do item.
+
+Medido em 2026-08-25 sobre 96 folhas dos 12 livros do acervo que registram peso:
+
+| | blocos |
+|---|---:|
+| blocos de texto na amostra | 1.557 |
+| **de peso misto — parágrafo grudado** | **94 (6,0%)** |
+| dos 94, parágrafo real que a regra fosse partir ao meio | 0 |
+
+Na folha 51 o efeito é direto: 20 blocos de texto viram 25, os dez negritos ficam cada um no seu
+parágrafo, e **nenhum bloco da página sai `None`**. Medido pelo que a aba desenha —
+`documento.segmentos` sobre a mesma folha, antes e depois:
+
+| | trechos em negrito na tela |
+|---|---:|
+| antes | 5 — só os títulos e os números de diagrama |
+| depois | **10** |
+
+Os cinco que faltavam eram os lances: `1.♔c8!! b5`, `2.♔d7 b4 3.♔d6 ♗f5`, `4.♔e5! ♗c8 5.♔d4=`,
+`1.♔c3? b1=♕ 2.♕xb1+ ♔xb1 3.♔b4` e `3...♔b2! 4.♗xa4 ♔c3, with a draw.` — todos lidos como negrito
+pela camada, e todos perdendo o peso na montagem do parágrafo. **O `.cvtxt` salvo os gravava sem
+negrito**, que é o defeito chegando ao arquivo de quem passou a tarde corrigindo a página.
+
+> **O defeito vizinho que este item NÃO conserta, e o número dele.** Na mesma folha, dois
+> parágrafos de prosa continuam grudados em cada coluna — *"…is hopeless,"* com *"as is 1.♔d6?…"*,
+> e *"…stalemate."* com *"But White wins easily…"*. A causa é outra: `metricas_por_coluna` toma a
+> **mediana** das esquerdas como margem da coluna, e numa diagramação de recuo de primeira linha
+> com parágrafos curtos quase metade das linhas começa no recuo. Ali a mediana devolve 40 pt — o
+> recuo — no lugar de 29 pt, e `recuou` fica morto na coluna inteira. Trocar por um quantil baixo
+> conserta a folha 51 e mexe em muito mais: medido sobre 54 folhas de 10 livros, o quartil de 25%
+> produz **1.046 blocos contra 835**, e blocos de uma linha só passam de 56,2% para 61,9%. Parte
+> disso é corte certo e parte é despedaçamento — a distinção precisa de referência rotulada, e é
+> a **S-257**, ao fim desta spec: lá estão os três passos e o portão que a decidem.
+
+**Testes.** `test_a_mudanca_de_peso_abre_paragrafo`; `test_sem_o_peso_a_mesma_folha_sai_grudada`;
+`test_o_desconhecido_nao_abre_paragrafo`; `test_o_peso_igual_nao_abre_paragrafo`;
+`test_a_mudanca_de_peso_corta_o_paragrafo`; `test_sem_peso_conhecido_o_mesmo_fixture_sai_num_bloco_so`.
 
 ---
 
@@ -1486,6 +1549,71 @@ def test_todo_atributo_sobrevive_ao_ciclo(self) -> None:
 **Testes.** `tests/test_texto_inventario_editor.py`: `test_todo_atributo_sobrevive_ao_ciclo`;
 `test_nenhum_rotulo_a_mao_no_painel`; `test_todo_comando_do_editor_esta_no_inventario`;
 `test_todo_atributo_esta_declarado_por_formato`; `test_o_inventario_publica_data_e_commit`.
+
+---
+
+# O item que a Fase 36 mediu e não é do editor
+
+> Um item só, e ele não pertence a nenhuma das cinco fases: saiu da medição da S-237, mexe no
+> **leitor** e não no editor, e está aqui porque foi aqui que foi encontrado e medido. Fica com
+> número em vez de ficar como observação, porque observação sem número volta como surpresa — é o
+> que a S-135 registrou sobre este projeto.
+
+## S-257 · A margem da coluna sai da mediana, e onde há muito recuo ela é o recuo ⬜ planejada
+
+**Problema.** `paragrafos.metricas_por_coluna` toma a **mediana** das esquerdas das linhas como
+margem da coluna, e a regra `recuou` compara cada linha com ela. Numa diagramação de recuo de
+primeira linha com parágrafos curtos, quase metade das linhas começa no recuo — e a mediana devolve
+o **recuo** no lugar da margem.
+
+Medido na folha 51 do `Dvoretsky - Dvoretsky's Endgame Manual (2025)`, que é a folha da medição do
+peso da S-237:
+
+| | pt |
+|---|---:|
+| margem da coluna | 29 |
+| recuo de primeira linha | 40 |
+| **o que a mediana devolve** | **40** |
+
+Com a margem valendo o recuo, `recuou` é falso para **toda** linha da coluna: a régua não morre num
+parágrafo, morre na coluna inteira, e em silêncio. Na folha 51 sobram dois parágrafos de prosa
+grudados em cada coluna **depois** de a quarta regra da S-237 já ter separado o que o peso separa —
+*"…is hopeless,"* com *"as is 1.♔d6?…"*, e *"…stalemate."* com *"But White wins easily…"*.
+
+**A medição que existe, e por que ela não fecha o item.** Trocar a mediana por um quantil baixo é
+uma linha de código, e o efeito é grande: medido em 2026-08-25 sobre 54 folhas de 10 livros, o
+quartil de 25% produz **1.046 blocos contra 835**, e os blocos de uma linha só passam de **56,2%
+para 61,9%**.
+
+Esses dois números não dizem se a troca é boa. Parte dos 211 cortes novos é parágrafo que estava
+grudado e passou a sair certo; parte é parágrafo inteiro despedaçado em linhas soltas — e as duas
+coisas mexem os mesmos contadores na mesma direção. **Sem referência rotulada, "mais blocos" é
+indistinguível de "pior".**
+
+**Solução, em três passos e nesta ordem.**
+
+1. **A referência.** Folhas com o começo de cada parágrafo marcado à mão, em livros das duas
+   diagramações — recuo de primeira linha e linha em branco. É a regra da S-201 aplicada a
+   parágrafo: a saída do próprio leitor não é verdade de referência.
+2. **A medição.** Mediana contra candidato, com precisão e recall **do corte** — quantos cortes
+   propostos são reais, e quantos reais foram propostos —, e não contagem de blocos.
+3. **O portão.** A troca entra ligada só se a medição mostrar vão, como o itálico da S-236 mostrou
+   e como a espessura da S-237 não mostrou. É a regra 5 desta spec, e ela vale igual para um item
+   que parece óbvio.
+
+**Critério de aceite.**
+
+- existe conjunto de referência de parágrafo, versionado, com o livro e a folha de cada marca;
+- a medição publica precisão e recall do corte para a mediana e para o candidato, sobre o mesmo
+  conjunto, em `docs/metrics/`, na disciplina da S-218;
+- o quantil escolhido — se algum for — é o que a medição apontar, e o número aparece no módulo com
+  a data;
+- sem vão medido, `metricas_por_coluna` fica como está e o item declara-se não-medido;
+- a folha 51 do `Dvoretsky` está no conjunto: ela é o caso que originou o item.
+
+**Testes.** `tests/test_text_paragrafos.py` (ampliado): `test_a_margem_sai_do_quantil_declarado`;
+`test_a_coluna_de_recuo_frequente_nao_perde_a_margem`;
+`test_o_conjunto_de_referencia_cobre_as_duas_diagramacoes`.
 
 ---
 

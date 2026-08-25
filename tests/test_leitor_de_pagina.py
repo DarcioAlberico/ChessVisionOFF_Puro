@@ -80,13 +80,15 @@ class EscalaForaDosDiagramasTests(unittest.TestCase):
 
 
 def _cru(texto: str, x1: int, y1: int, x2: int, y2: int, *, coluna: int = 0,
-         procedencia: str = "camada", confianca: float = 1.0) -> leitor._Cru:
+         procedencia: str = "camada", confianca: float = 1.0,
+         negrito: bool | None = None) -> leitor._Cru:
     return leitor._Cru(
         texto=texto,
         caixa=Caixa(x1, y1, x2, y2),
         confianca=confianca,
         procedencia=procedencia,  # type: ignore[arg-type]
         coluna=coluna,
+        negrito=negrito,
     )
 
 
@@ -182,6 +184,33 @@ class MontagemTests(unittest.TestCase):
         bloco = colunas[0].blocos[0]
         self.assertEqual(bloco.procedencia, "glifo")
         self.assertAlmostEqual(bloco.confianca, 0.4)
+
+    def test_a_mudanca_de_peso_corta_o_paragrafo(self) -> None:
+        """A quarta regra de `paragrafos.cortar` só funciona se `montar` levar o peso até ela.
+
+        Este é o fixture da folha 51 do Dvoretsky reduzido: entrelinhamento constante, mesma
+        margem, e a única diferença entre a prosa e o lance é o negrito. Sem a passagem do peso,
+        os três saem num bloco só -- e o bloco sai `negrito=None`.
+        """
+        cruas = [
+            _cru("pawn to advance.", 20, 20, 240, 34, negrito=False),
+            _cru("1.Kc8!! b5", 20, 40, 240, 54, negrito=True),
+            _cru("As in Reti's study,", 20, 60, 240, 74, negrito=False),
+        ]
+        blocos = [b for c in leitor.montar(cruas, escala_px=1.0) for b in c.blocos]
+        self.assertEqual([b.texto for b in blocos], ["pawn to advance.", "1.Kc8!! b5", "As in Reti's study,"])
+        self.assertEqual([b.negrito for b in blocos], [False, True, False])
+
+    def test_sem_peso_conhecido_o_mesmo_fixture_sai_num_bloco_so(self) -> None:
+        """O outro lado: nos livros cuja camada não registra peso, a regra fica inerte."""
+        cruas = [
+            _cru("pawn to advance.", 20, 20, 240, 34),
+            _cru("1.Kc8!! b5", 20, 40, 240, 54),
+            _cru("As in Reti's study,", 20, 60, 240, 74),
+        ]
+        blocos = [b for c in leitor.montar(cruas, escala_px=1.0) for b in c.blocos]
+        self.assertEqual(len(blocos), 1)
+        self.assertIsNone(blocos[0].negrito)
 
     def test_montar_sem_nada_devolve_nenhuma_coluna(self) -> None:
         self.assertEqual(leitor.montar([], []), ())

@@ -2,7 +2,7 @@
 
 O que a aba **Texto** é hoje, o que falta para ela ser um editor, e o plano para chegar lá **sem
 que nenhum recurso novo morra junto com o widget**. Especificação item a item em
-[SPEC_EDITOR.md](SPEC_EDITOR.md) (S-235 a S-256).
+[SPEC_EDITOR.md](SPEC_EDITOR.md) (S-235 a S-257).
 
 O reconhecimento que alimenta a aba está em [ROADMAP_TEXTO.md](ROADMAP_TEXTO.md) e
 [SPEC_TEXTO.md](SPEC_TEXTO.md); a fundação de interface que este plano usa — tokens, tipografia,
@@ -24,7 +24,7 @@ estilos, catálogo de comandos, ícones — está em [SPEC_UI.md](SPEC_UI.md) e
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-256 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-257 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 
 ---
 

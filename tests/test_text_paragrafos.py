@@ -65,6 +65,61 @@ class SaltoTests(unittest.TestCase):
         self.assertEqual(1, len(cortar(corrida(6))))
 
 
+class PesoTests(unittest.TestCase):
+    """A quarta regra, e a folha 51 do Dvoretsky que a mediu.
+
+    **Naquela página nem o recuo nem o salto veem o corte.** A prosa e a notação em negrito se
+    alternam num entrelinhamento constante, e o que as separa é só o peso da fonte. Sem esta
+    regra, cinco dos oito parágrafos de texto da folha saíam grudados -- e o bloco grudado sai
+    `negrito=None`, que é a aba dizendo "o livro não informa" numa página em que ele informa.
+    """
+
+    def _folha(self) -> list[Linha]:
+        """Prosa, lance em negrito, prosa: sem recuo e sem salto, como no Dvoretsky."""
+        pesos = [False, False, False, True, False, False]
+        return [
+            Linha(
+                topo=100 + i * PASSO,
+                esquerda=MARGEM_ESQUERDA,
+                altura=ALTURA,
+                texto=f"linha {i}",
+                negrito=peso,
+            )
+            for i, peso in enumerate(pesos)
+        ]
+
+    def test_a_mudanca_de_peso_abre_paragrafo(self) -> None:
+        paragrafos = cortar(self._folha())
+        self.assertEqual(3, len(paragrafos))
+        self.assertEqual("linha 3", paragrafos[1].texto)
+
+    def test_sem_o_peso_a_mesma_folha_sai_grudada(self) -> None:
+        """O fixture só vale se as outras três regras estiverem mesmo cegas a este corte."""
+        sem_peso = [
+            Linha(topo=ln.topo, esquerda=ln.esquerda, altura=ln.altura, texto=ln.texto)
+            for ln in self._folha()
+        ]
+        self.assertEqual(1, len(cortar(sem_peso)), "o fixture ganhou recuo ou salto; refazê-lo")
+
+    def test_o_desconhecido_nao_abre_paragrafo(self) -> None:
+        """**`None` de um lado é "não se sabe"**, e não se abre parágrafo sobre o que não se sabe.
+
+        É o caminho dos 26 livros do acervo cuja camada não registra peso: toda linha é `None`, e
+        a regra fica inerte.
+        """
+        linhas = self._folha()
+        meio = linhas[3]
+        linhas[3] = Linha(topo=meio.topo, esquerda=meio.esquerda, altura=meio.altura, texto=meio.texto)
+        self.assertEqual(1, len(cortar(linhas)))
+
+    def test_o_peso_igual_nao_abre_paragrafo(self) -> None:
+        linhas = [
+            Linha(topo=100 + i * PASSO, esquerda=MARGEM_ESQUERDA, altura=ALTURA, texto=f"l{i}", negrito=True)
+            for i in range(4)
+        ]
+        self.assertEqual(1, len(cortar(linhas)))
+
+
 class ColunaTests(unittest.TestCase):
     """S-192 e a lição da F61."""
 

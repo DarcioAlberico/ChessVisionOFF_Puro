@@ -750,6 +750,11 @@ def montar(
 
     # **As métricas de recuo são da página inteira, e por coluna.** Ver o cabeçalho de
     # `paragrafos`: a mediana de cinco linhas entre dois diagramas não diz onde fica a margem.
+    #
+    # **O peso vem junto, e por isso `_com_negrito` roda antes de `montar`.** A quarta regra de
+    # `paragrafos.cortar` corta onde o negrito muda, e ela só tem o que ler se a linha já chegar
+    # aqui com ele. Quem chama `montar` direto -- teste, camada sem peso -- passa `None`, e a
+    # regra fica inerte.
     de_paragrafo: dict[int, _paragrafos.Linha] = {}
     todas: list[_paragrafos.Linha] = []
     for c in cruas:
@@ -759,6 +764,7 @@ def montar(
             altura=c.caixa.altura,
             texto=c.texto,
             coluna=de_linha.get(id(c.caixa), 0),
+            negrito=c.negrito,
         )
         de_paragrafo[id(c.caixa)] = linha
         todas.append(linha)
