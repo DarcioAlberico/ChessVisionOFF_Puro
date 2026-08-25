@@ -2911,6 +2911,60 @@ livros: **0 partições certas contra 5 erradas**, e as erradas vêm dos nomes �
 para as cinco. Fica **fora** até haver referência que a justifique; o número está em
 `docs/metrics/texto_dicionario.json`.
 
+### Depois, no mesmo dia: as bases de PGN entram na lista de nomes
+
+A tabela acima é a **primeira** empacotagem. No mesmo 2026-08-25 as bases de partidas entraram na
+lista de nomes, e o que está no disco hoje é isto:
+
+| arquivo | palavras | o que mudou |
+|---|---:|---|
+| `assets/lexico/acervo.txt.gz` | 7.588 | nada neste passo |
+| `assets/lexico/idioma.txt.gz` | 10.010 | +8 |
+| `assets/lexico/nomes.txt.gz` | **349.565** | **+199.379** |
+
+Desses 349.565 nomes, **199.104 (57,0%) só existem nas bases de PGN** — nenhuma das listas
+anteriores os trazia. E a conta se inverteu: os nomes que **só** vêm da MegaDatabase caíram para
+**1.433 (0,4%)**, contra os 75.872 (51%) que a empacotagem anterior media.
+
+De onde saem: 6 bases de `pgn_database/` mais os PGN de `PGN/` e `PGN_fase2_20260822/` — 18,3 GB,
+21.232.058 partidas, sete campos de cabeçalho (`White`, `Black`, `Event`, `Site`, `Annotator`,
+`Composer`, `Source`), 1.850.926 valores distintos, 362.273 tokens aceitos contra 1.281.942
+recusados.
+
+**Só o que começa em maiúscula entra**, e os 8.024 tokens minúsculos ficam de fora com o motivo
+medido: não são palavras nem nomes — são handles de servidor de xadrez e códigos de torneio
+(`hiredgoon`, `dXsGKXJU`, `beercan`, `ch-IBCA`, `op-FIDE`). Eles entrariam em `idioma.txt.gz`, que
+é a lista que vale mesmo com `carregar(nomes=False)`, e deixá-los de fora não custou nada
+mensurável: as quatro palavras que o léxico novo passa a aceitar e a camada desmente vêm **todas**
+de nome maiúsculo.
+
+**O resultado, e ele é o contrário do que o tamanho sugere.** Medido sobre 36 folhas de 4 livros de
+camada editorada, 2.036 tokens, contra a camada da própria página:
+
+| | correções tentadas | confirmadas pela camada | **não** confirmadas |
+|---|---:|---:|---:|
+| léxico antigo | 9 | 6 | **3** |
+| léxico com PGN | 6 | 6 | **0** |
+
+O léxico maior não corrige *mais*: corrige **menos e erra menos**. `escolher()` devolve `None`
+quando a palavra já é conhecida, então um nome a mais no léxico **impede** uma tentativa de
+correção — e nas 36 folhas as três tentativas impedidas eram todas erradas (`afer`→`aTer`,
+`pate.`→`Date.`, `p:te:`→`oTte:`).
+
+**O custo, publicado junto:** quatro leituras erradas que o léxico novo passa a aceitar como
+palavra (`certal`, `afer`, `pate.`, `gande`). Duas delas o léxico antigo também não consertava —
+ele as *piorava* —, e as outras duas ele também deixava passar. Saldo nestas 36 folhas: nenhuma
+saída piorou. A amostra é pequena, e o relatório diz o que isso implica: o efeito de esconder erro
+cresce com o tamanho do léxico, e o de evitar correção errada não. **Remedir quando houver conjunto
+maior.**
+
+**O que esta atualização não alcança**, e está escrito no relatório: nome acentuado. As bases de
+PGN são ASCII — `Prokes` está lá, `Prokeš` não —, e por isso ela não move o par `š`/`Š` da S-211.
+
+Números, conjunto e reprodução em [`docs/metrics/texto_lexico_pgn.json`](metrics/texto_lexico_pgn.json).
+**Um clone limpo não reconstrói estes dois `.txt.gz`**: as listas de origem vivem em
+`Lista de Palavras/`, que não é versionada — ver `assets/lexico/PROCEDENCIA.md`.
+
 **O que falta para o item fechar:** `text/lexico.py`, a sinalização da palavra desconhecida, e a
 junção da hifenizada na quebra de linha.
 

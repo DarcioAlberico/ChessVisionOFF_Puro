@@ -1,0 +1,62 @@
+{
+  "item": "as bases de PGN entram no lexico de nomes",
+  "medido_em": "2026-08-25",
+  "pergunta": "Somar os nomes das bases de partidas ao lexico ajuda ou atrapalha a leitura?",
+  "nao_substitui": "docs/metrics/texto_dicionario.json -- aquele relatorio mediu 40 paginas de 11 livros e a lista dele nao esta registrada em lugar nenhum. Este mede OUTRO conjunto, declarado abaixo, e mede o DELTA entre dois lexicos, nao o valor absoluto do dicionario.",
+  "de_onde": {
+    "pgn_varridos": "6 bases em pgn_database/ mais os PGN de PGN/ e PGN_fase2_20260822/",
+    "bytes": 18300000000,
+    "partidas": 21232058,
+    "campos": ["White", "Black", "Event", "Site", "Annotator", "Composer", "Source"],
+    "valores_de_cabecalho_distintos": 1850926,
+    "tokens_aceitos": 362273,
+    "tokens_recusados": 1281942,
+    "acervo_casado": "data/games_matches_v2.json e data/gallery_human.jsonl -- 2.370 valores, 2.846 tokens; sao os nomes que a base ja casou COM as paginas dos livros"
+  },
+  "o_que_ficou_de_fora_e_por_que": {
+    "minusculas_do_pgn": 8024,
+    "razao": "nao sao palavras nem nomes: sao handles de servidor de xadrez e codigos de torneio -- 'hiredgoon', 'dXsGKXJU', 'apudooo', 'beercan', 'scratchwalters', 'ch-IBCA', 'op-FIDE'. Entrariam em idioma.txt.gz, que e a lista que vale mesmo com carregar(nomes=False).",
+    "custou_alguma_coisa_deixar_de_fora": "nada medido: as 4 palavras que o lexico novo passa a aceitar e a camada desmente vem TODAS de nome maiusculo (Certal, Afer, Pate, GANDE). As minusculas nao produziram um so efeito na medicao -- so risco.",
+    "games_index_sqlite": "20.996.743 linhas, mas o esquema e (pair, offset, file): indice de posicao, sem nome nenhum."
+  },
+  "lexico": {
+    "antes": {"acervo": 6947, "idioma": 10002, "nomes": 150186, "uniao": 164723},
+    "depois": {"acervo": 6947, "idioma": 10010, "nomes": 349565, "uniao": 363799},
+    "nomes_novos": 199076
+  },
+  "referencia": "camada de texto editorada da propria pagina, montada pelo mesmo ler_pagina (motor=camada), como manda docs/metrics/texto_dicionario.json",
+  "conjunto": {
+    "paginas": 36,
+    "livros": 4,
+    "quais": [
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf, folhas 118-131",
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf, folhas 60-75",
+      "Minhas 60 partidas memoraveis Bobby Fischer pt-br algebrico.pdf, folhas 80-83",
+      "400 Quebra-cabecas de Estrategia de Xadrez.pdf, folhas 200-201"
+    ],
+    "por_que_estes": "os 4 livros de camada editorada do acervo com paginas de prosa; os 11 do relatorio de empilhados estao dentro deste conjunto"
+  },
+  "resultado": {
+    "tokens": 2036,
+    "antes": {"ja_conhecida": 1840, "correcoes": 9, "confirmadas_pela_camada": 6, "NAO_confirmadas": 3},
+    "depois": {"ja_conhecida": 1850, "correcoes": 6, "confirmadas_pela_camada": 6, "NAO_confirmadas": 0},
+    "as_tres_correcoes_erradas_que_sumiram": [
+      {"de": "afer", "para_errado": "aTer"},
+      {"de": "pate.", "para_errado": "Date."},
+      {"de": "p:te:", "para_errado": "oTte:"}
+    ],
+    "leitura": "o lexico maior nao corrige MAIS -- ele corrige MENOS e erra menos. escolher() devolve None quando a palavra ja e conhecida, entao um nome a mais no lexico impede uma tentativa de correcao. Nas 36 paginas as tres tentativas impedidas eram todas erradas."
+  },
+  "o_custo_que_esta_medicao_mostra": {
+    "esconde_erro": 4,
+    "quais": ["certal", "afer", "pate.", "gande"],
+    "detalhe": "sao leituras erradas que o lexico novo passa a aceitar como palavra. Duas delas (afer, pate.) o lexico antigo tambem nao consertava -- ele as PIORAVA. As outras duas (certal, gande) o antigo tambem deixava passar. Saldo nestas 36 paginas: nenhuma saida piorou.",
+    "ressalva": "a amostra e pequena -- 2.036 tokens, 9 correcoes contra 6. A diferenca de 3 e real mas o intervalo e largo, e o efeito de esconder erro cresce com o tamanho do lexico enquanto o de evitar correcao errada nao. Remedir quando houver conjunto maior."
+  },
+  "o_que_esta_medicao_recusa": {
+    "nomes_acentuados": "as bases de PGN sao ASCII: 'Prokes' esta la, 'Prokeš' nao, e ZERO token acentuado saiu dos 18 GB. Esta atualizacao nao alcanca ProkeŠ -- e nem alcancaria, porque carregar() dobra tudo com casefold e o dicionario e cego a caixa por construcao.",
+    "smdy_e_simation": "fora de alcance: sao 4 caixas para uma palavra de 5 letras, e corrigir() descarta candidato de comprimento diferente. Ver o cabeçalho de text/dicionario.py."
+  },
+  "arvore_suja": true,
+  "nota": "assets/lexico/{idioma,nomes}.txt.gz reconstruidos por cvoff-texto-lexico a partir de 'Lista de Palavras', que e pasta NAO versionada. Os dois .txt novos ('PGN Bases (nomes de partida).txt' e 'Acervo (nomes casados aos livros).txt') vivem so no disco: um clone limpo nao reproduz esta construcao."
+}
