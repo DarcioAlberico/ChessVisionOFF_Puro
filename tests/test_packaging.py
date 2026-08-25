@@ -171,8 +171,19 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1972
+    LIMITE = 2000
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **1.972 → 2.000 na S-234**, e as vinte e oito são o auto-teste passando pelo cromo. Quinze são
+    `_provar_as_peles` -- criar a raiz retirada, desistir em silêncio numa máquina sem display, e
+    destruí-la no `finally` --, seis são o passo novo no fim do `selftest` com o código de saída
+    **5**, e as outras sete são o `import` e o comentário que diz por que o auto-teste é o lugar
+    disto: ele já é o roteiro headless que o `CONTRIBUTING` manda usar para dirigir a interface sem
+    clicar, e o cromo é justamente onde a Fase 35 acrescentou modos de falha.
+
+    **O laço não está aqui**, e é o que torna a afirmação testável: `degradacao.provar_as_peles`
+    recebe uma raiz, então a suíte faz a mesma pergunta com a raiz compartilhada do processo em vez
+    de criar uma segunda -- que é o que `tests/tk_root.py` documenta como não confiável no Windows.
 
     **1.930 → 1.972 na S-232**, e as quarenta e duas são o eixo de densidade chegando à janela.
     Nenhuma delas decide o que "compacta" significa:

@@ -1266,6 +1266,11 @@ cada uma:
 - **"casou no rótulo" acima do vão também inverte.** Medido no catálogo de hoje: `"ocr"` casa no
   *rótulo* de "Devolver as caixas tiradas desta página" — o…c…r espalhado por 26 letras — e no
   *grupo* de "Ler esta página", cravado em três. Com o rótulo acima do vão, a primeira subia.
+- **E vale o melhor dos dois casamentos, nunca "o rótulo se ele casar"** — corrigido durante a
+  S-234, quando o catálogo cresceu e o caso apareceu: "Folha da página aberta" **é** do grupo OCR,
+  e o rótulo dela casa `"ocr"` espalhado por dezoito letras. Preferindo o rótulo por existir, ela
+  ia para trás de um comando que não é do grupo. É por isso que a regra é "o melhor", e "casou no
+  rótulo" é só o desempate entre dois igualmente apertados.
 - **"desabilitado sempre no fim" é a leitura literal de "Enter executa o primeiro", e ela custa o
   item vizinho.** Com ela, `"anotar"` trazia "Desfazer a última mudança no tabuleiro" — a…n…o…t…a…r
   espalhado pela frase — **acima** de "Anotar página", que é a resposta à pergunta. A linha cinza
@@ -1572,50 +1577,106 @@ importar `tkinter` — sem ela, um módulo novo sem Tk não é vigiado.
 
 ---
 
-## S-234 · A pele não derruba a janela: o contrato de degradação nas três ⬜ planejada
+## S-234 · A pele não derruba a janela: o contrato de degradação nas três ✅ implementada (2026-08-25)
 
 **Problema.** `ui/theme.py:12-15` estabelece o contrato: *"um checkout sem o extra, um bundle que
 não o incluiu ou um tema com nome errado não podem impedir o app de abrir — tema é aparência, e
-aparência não derruba ferramenta"*. `apply_theme` o cumpre: tema recusado cai no padrão, padrão
-recusado cai no `ttk` puro, e nada levanta.
+aparência não derruba ferramenta"*. `apply_theme` o cumpre. Esta fase acrescentou quatro eixos —
+pele, densidade, ícone, conjunto de peças — e cada eixo é um modo de falha novo, todos na abertura,
+que é o pior momento: uma exceção ali não degrada nada, ela apaga o programa antes de ele existir.
 
-Esta fase acrescenta **três** modos de falha novos que o contrato ainda não cobre: pele
-desconhecida no disco ou na variável de ambiente; ícone que não desenhou; conjunto de peças cuja
-pasta sumiu. Os três acontecem exatamente na abertura, que é o pior momento.
+**Solução.** `ui/degradacao.py`, com três coisas: o contrato **como dado** (`QUEDAS`), o "registra
+uma vez" (`avisar_uma_vez`), e a prova de que as três peles montam (`abrir_cromo_de_prova`).
 
-E há um quarto, específico do bundle: `packaging/cvoff.spec` empacota `assets/`, e o catálogo de
-ícones da S-220 é código — mas o conjunto de peças da S-230 é dado, e uma pasta de usuário
-apontando para fora do bundle é o caso normal, não o excepcional.
+### As seis quedas, e o que já existia
 
-**Solução.** O contrato estendido, com a mesma forma de `apply_theme`: cair um degrau, registrar
-uma vez, nunca levantar.
+Quatro das seis já estavam cumpridas quando o item começou — `pele.valida` (S-221),
+`pele.densidade_em_vigor` (S-232), `conjuntos.valida` e `PieceImages` (S-230). **O que faltava não
+era o comportamento: era a tabela ser dado e o "uma vez" ser verdade.**
 
-| falha | queda | registro |
+| falha | queda | quem cumpre |
 |---|---|---|
-| pele desconhecida | `classica` | `warning` nomeando a pele pedida e as registradas |
-| ícone sem traço | botão só com texto | `warning` uma vez por nome |
-| Pillow indisponível ou desenho falho | botão só com texto | `warning` uma vez |
-| pasta de peças ausente | conjunto `padrao` | `warning` com o caminho |
-| conjunto padrão ausente (bundle quebrado) | símbolo Unicode | `warning`, e o tabuleiro desenha |
-| densidade desconhecida | `confortavel` | `warning` |
+| pele desconhecida | `classica` | `pele.valida` |
+| densidade desconhecida | `confortavel` | `pele.densidade_em_vigor` |
+| ícone sem traço | botão só com texto | `icones.imagem` |
+| Pillow indisponível ou desenho falho | botão só com texto | `icones.imagem` |
+| pasta de peças ausente ou incompleta | símbolo Unicode, peça a peça | `board_render.PieceImages` |
+| conjunto de peças desconhecido | conjunto `padrao` | `conjuntos.valida` |
 
-E o `selftest` (`app_tkinter.py:1636`) passa a rodar **uma vez por pele registrada**. Ele já é o
-roteiro headless que o `CONTRIBUTING` manda usar para dirigir a interface sem clicar; estendê-lo é
-o que faz "as três peles abrem" ser uma afirmação verificada e não uma esperança.
+Enquanto o contrato foi prosa em quatro docstrings, "as seis quedas funcionam" era uma frase.
+Declarado, ele virou o que `test_as_seis_quedas` percorre — **e `test_toda_queda_declarada_tem_reproducao`
+cobra que a tabela e o teste não divirjam**, porque uma linha nova sem caso viraria uma promessa
+que ninguém confere.
+
+### O "uma vez" era falso, e a fita é quem o tornava caro
+
+`icones.imagem` registrava o aviso **a cada chamada** — ou seja, uma vez por botão. A fita desenha
+dezessete botões e os redesenha a cada troca de pele e a cada mudança de densidade: um nome de
+ícone errado escrevia dezessete linhas iguais por remontagem, e um log que se repete assim deixa de
+ser lido, que é o mesmo custo de não registrar nada.
+
+`avisar_uma_vez(logger, chave, ...)` resolve, e **duas decisões dele são o item**:
+
+- **o `logger` é do chamador.** Um aviso de ícone que saísse como `ui.degradacao` mandaria quem o
+  lê procurar no módulo errado. É a mesma razão de `icones.icone` receber a cor em vez de perguntá-la.
+- **a chave carrega o valor, e não só o assunto.** `("icone", "abrir_pdf")` cala o segundo botão
+  que pede o mesmo ícone que faltou, e **não** cala um ícone diferente que também falte — o segundo
+  nome é informação nova.
+
+Os quatro validadores de valor continuam avisando **por evento** (uma abertura, uma troca de pele),
+e isso é o comportamento certo: quem escolhe um valor inválido de novo merece saber de novo. O
+"uma vez por widget" era o defeito, e é ele que a guarda fecha.
+
+### O import da Pillow ficou guardado, e o que isso **não** promete
+
+`ui/fila.py` e `ui/fita.py` importam `ui/icones.py`, e um `ImportError` no topo dele apaga o
+programa antes de ele existir. O import passou a ser guardado, e o desenho também: cor inválida,
+Pillow ausente ou `PhotoImage` recusada caem no botão só com texto, com aviso.
+
+**E fica dito o que isso não promete:** que o programa inteiro abra sem a Pillow.
+`ui/board_render.py` a importa sem guarda porque as peças são o **documento** e não cromo — um
+tabuleiro que não desenha não é uma janela degradada, é uma janela sem produto. O contrato de
+degradação é da aparência, e esta linha é a parte dele que cabe aqui. Registrado como limite, e não
+escondido atrás de um ✅.
+
+### O auto-teste passa pelo cromo
+
+`--selftest` já era o roteiro headless que o `CONTRIBUTING` manda usar para dirigir a interface sem
+clicar, e ele não passava por widget nenhum. Ganhou um passo final: **uma prova de cromo por pele
+registrada**, com o código de saída **5** quando alguma não monta.
+
+`abrir_cromo_de_prova` monta exatamente o que as peles diferem em montar — o tema (que escolhe o
+`ttkbootstrap` da pele e a altura de linha da densidade), a faixa de cromo e a barra de menus, numa
+`Toplevel` retirada que é destruída no fim. **Não monta os painéis**: eles são conteúdo, e a regra 2
+diz que são os mesmos nas três.
+
+**O laço mora em `ui/degradacao.py` e não no auto-teste**, e isso é o que torna a afirmação
+testável: `provar_as_peles(root)` recebe a raiz, então a suíte pergunta a mesma coisa com a raiz
+compartilhada do processo em vez de criar uma segunda — que é o que `tests/tk_root.py` documenta
+como não confiável no Windows.
 
 **Critério de aceite.**
 
-- cada uma das seis falhas da tabela produz a queda descrita, sem levantar;
-- cada uma registra **uma** vez, e não uma por widget;
-- o `selftest` roda nas três peles e devolve 0 nas três;
-- com a Pillow presente mas sem `ttkbootstrap`, as três peles abrem em `ttk` puro;
-- nenhum caminho de aparência aparece num `traceback` de abertura, em nenhuma combinação de pele,
-  tema, densidade e conjunto.
+- ✅ cada uma das seis falhas produz a queda descrita, sem levantar — e o teste cobra as três
+  coisas juntas: o degrau certo, o aviso, e a ausência de exceção;
+- ✅ cada uma registra **uma** vez e não uma por widget: dezessete chamadas ao mesmo ícone que
+  falta produzem **uma** linha de log;
+- ✅ o `selftest` roda nas três peles e devolve 0 nas três (o passo novo; o auto-teste completo
+  continua exigindo checkpoint e PDF, como sempre);
+- ✅ com a Pillow presente mas sem `ttkbootstrap`, as três peles abrem em `ttk` puro — medido com
+  `sys.modules["ttkbootstrap"] = None`, que é o `ImportError` que um checkout sem o extra dá;
+- ✅ nenhum caminho de aparência aparece num `traceback` de abertura, em nenhuma combinação de
+  pele, tema e densidade — nove combinações, com o tema recusado por nome inválido em todas.
 
-**Testes.** `test_as_seis_quedas` (parametrizado);
-`test_o_aviso_sai_uma_vez_so`;
-`test_o_selftest_roda_nas_tres_peles`;
-`test_as_tres_peles_abrem_sem_ttkbootstrap`.
+**Testes.** `tests/test_ui_degradacao.py`, **12 casos**. A tabela:
+`test_toda_queda_declarada_tem_reproducao`; `test_as_seis_quedas`;
+`test_a_falha_nomeia_o_valor_que_a_causou`; `test_nenhuma_queda_levanta`. O aviso:
+`test_o_aviso_sai_uma_vez_so`; `test_um_nome_novo_nao_e_calado`;
+`test_esquecer_avisos_devolve_a_voz`. E as três peles: `test_o_selftest_roda_nas_tres_peles`;
+`test_cada_pele_monta_o_cromo_dela`;
+`test_pele_desconhecida_volta_como_problema_e_nao_como_excecao`;
+`test_as_tres_peles_abrem_sem_ttkbootstrap`;
+`test_nenhum_caminho_de_aparencia_aparece_num_traceback`.
 
 ---
 

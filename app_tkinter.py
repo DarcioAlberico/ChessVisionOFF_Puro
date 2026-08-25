@@ -91,6 +91,7 @@ from chess_diagram_ocr.ui import (
     campos,
     comandos,
     conjuntos,
+    degradacao,
     fila,
     fita,
     geometria,
@@ -1821,6 +1822,25 @@ class ChessOcrTkApp:
             self.review_panel.open_next_pending()
 
 
+def _provar_as_peles() -> list[str]:
+    """As peles registradas montam o cromo? Numa máquina sem display a pergunta não se aplica.
+
+    A raiz é criada e destruída aqui porque o auto-teste roda sem janela nenhuma aberta; o laço
+    mora em `ui/degradacao.py`, e é por isso que a suíte pode fazer a mesma pergunta com a raiz
+    compartilhada do processo em vez de criar uma segunda.
+    """
+    try:
+        raiz = tk.Tk()
+    except tk.TclError as exc:  # pragma: no cover - máquina sem display
+        logger.info("Auto-teste: sem display para provar as peles (%s).", exc)
+        return []
+    raiz.withdraw()
+    try:
+        return degradacao.provar_as_peles(raiz)
+    finally:
+        raiz.destroy()
+
+
 def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
     """Abre um PDF e reconhece uma página, sem janela. `0` se o essencial funciona.
 
@@ -1921,6 +1941,14 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
         "Auto-teste: classificador de caracteres -- %s",
         Settings().ocr.glyph_disabled_reason() or f"presente em {PROJECT_ROOT / 'models'}.",
     )
+
+    # **"As três peles abrem" vira afirmação verificada** (S-234). O auto-teste já é o roteiro
+    # headless que o CONTRIBUTING manda usar para dirigir a interface sem clicar; o que faltava
+    # era ele passar pelo cromo, que é justamente onde a Fase 35 acrescentou modos de falha.
+    if problemas := _provar_as_peles():
+        logger.error("Auto-teste: cromo de pele que não montou -- %s", "; ".join(problemas))
+        return 5
+    logger.info("Auto-teste: as %d peles registradas montam o cromo.", len(pele.PELES))
 
     # Zero diagrama nao e falha: ha paginas de prosa. O que se testa aqui e o caminho
     # inteiro -- render, deteccao, torch, decodificacao -- ter rodado sem estourar.

@@ -301,9 +301,11 @@ opção. É de propósito: a fundação se prova quando ela não muda nada. **Cu
 >
 > **As três peles existem.** O pedido que abriu esta fase -- *"o programa deve ter a opção da
 > interface atual e essas duas das imagens"* -- está atendido, e a clássica continua sendo, pixel a
-> pixel, a janela de sempre. Falta a Fase 35: o que as três ganham juntas.
+> pixel, a janela de sempre. **E a Fase 35 fechou em 2026-08-25**: a paleta de comandos, a
+> densidade, o inventário que prova que nenhuma pele esconde comando, e o contrato de
+> degradação medido nas três.
 
-## Fase 35 — o que as três peles ganham juntas
+## Fase 35 — o que as três peles ganham juntas — ✅ **completa em 2026-08-25**
 
 Os quatro itens que **só fazem sentido depois** de existir mais de uma pele, e que são o preço de
 ter três.
@@ -311,7 +313,7 @@ ter três.
 - **S-231** · A paleta de comandos, que sai de graça do catálogo — ✅ **implementada em 2026-08-25**
 - **S-232** · Densidade: compacta ou confortável — ✅ **implementada em 2026-08-25**
 - **S-233** · Nenhuma pele esconde um comando: o inventário de alcance — ✅ **implementada em 2026-08-25**
-- **S-234** · A pele não derruba a janela: o contrato de degradação nas três
+- **S-234** · A pele não derruba a janela: o contrato de degradação nas três — ✅ **implementada em 2026-08-25**
 
 ---
 

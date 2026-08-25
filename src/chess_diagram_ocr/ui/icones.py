@@ -29,7 +29,22 @@ from __future__ import annotations
 
 import logging
 
-from PIL import Image, ImageDraw, ImageTk
+# **A Pillow é dependência obrigatória, e mesmo assim o import é guardado** (S-234).
+#
+# Não é zelo: `ui/fila.py` e `ui/fita.py` importam este módulo, e um `ImportError` aqui em cima
+# apaga o programa antes de ele existir -- que é exatamente o que a regra 4 proíbe. Guardado, um
+# checkout quebrado desenha botões só com texto e diz por quê.
+#
+# **O que isto não promete:** que o programa inteiro abra sem a Pillow. `ui/board_render.py` a
+# importa sem guarda porque as peças são o **documento**, e não cromo -- um tabuleiro que não
+# desenha não é uma janela degradada, é uma janela sem produto. O contrato de degradação é da
+# aparência, e esta linha é a parte dele que cabe aqui.
+try:
+    from PIL import Image, ImageDraw, ImageTk
+except ImportError:  # pragma: no cover - checkout ou bundle sem a Pillow
+    Image = ImageDraw = ImageTk = None  # type: ignore[assignment]
+
+from . import degradacao
 
 logger = logging.getLogger(__name__)
 
@@ -235,9 +250,35 @@ def imagem(nome: str, tamanho: int, cor: str) -> Image.Image | None:
     """
     tracos = ICONES.get(nome)
     if tracos is None:
-        logger.warning("Ícone desconhecido: %r. O botão fica só com o texto.", nome)
+        # **Uma vez por nome, e não uma por botão** (S-234). A fita pede o mesmo ícone a cada
+        # remontagem de cromo e a cada mudança de densidade; sem isto, um nome errado escreve
+        # uma linha de log por botão desenhado, e o log deixa de ser lido.
+        degradacao.avisar_uma_vez(
+            logger, ("icone", nome), "Ícone desconhecido: %r. O botão fica só com o texto.", nome
+        )
         return None
 
+    if Image is None or ImageDraw is None:
+        degradacao.avisar_uma_vez(
+            logger, "pillow", "Pillow indisponível: os botões ficam só com o texto (S-234)."
+        )
+        return None
+
+    try:
+        return _desenhar(tracos, tamanho, cor)
+    except Exception as exc:  # noqa: BLE001 - desenho falho é queda, e não motivo para não abrir
+        degradacao.avisar_uma_vez(
+            logger,
+            ("desenho", nome),
+            "Ícone %r não desenhou (%s). O botão fica só com o texto.",
+            nome,
+            exc,
+        )
+        return None
+
+
+def _desenhar(tracos: tuple[Traco, ...], tamanho: int, cor: str) -> Image.Image:
+    """O desenho propriamente dito. Separado para que `imagem` seja só a guarda e a decisão."""
     tamanho = max(1, int(tamanho))
     lado = tamanho * SUPERAMOSTRA
     largura = _largura_do_traco(lado)
@@ -303,10 +344,16 @@ def icone(nome: str, tamanho: int, cor: str) -> ImageTk.PhotoImage | None:
         return guardado
 
     desenho = imagem(nome, tamanho, cor)
-    if desenho is None:
+    if desenho is None or ImageTk is None:
         return None
 
-    foto = ImageTk.PhotoImage(desenho)
+    try:
+        foto = ImageTk.PhotoImage(desenho)
+    except Exception as exc:  # noqa: BLE001 - sem raiz Tk, ou Tk que recusa a imagem
+        degradacao.avisar_uma_vez(
+            logger, ("foto", nome), "Ícone %r não virou imagem do Tk (%s).", nome, exc
+        )
+        return None
     _cache[chave] = foto
     return foto
 

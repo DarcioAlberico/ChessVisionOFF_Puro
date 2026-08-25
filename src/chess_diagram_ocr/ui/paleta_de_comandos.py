@@ -247,12 +247,14 @@ def filtrar(consulta: str, entradas: Sequence[Entrada]) -> tuple[Entrada, ...]:
        casamento ruim desfaz o item ao lado, que existe para que ela seja **achada** e diga por
        quê. Então ela desce entre iguais, e o Enter sobre ela não faz nada -- que é a única parte
        do critério que importa: nada dispara por engano.
-    3. **casou no rótulo ganha de casou no grupo.** A consulta corre nos dois -- digitar "ocr"
-       tem de trazer o grupo OCR inteiro --, mas isto é *desempate*, e a ordem importa: medido,
-       `"ocr"` casa no rótulo de "Devolver as caixas tiradas desta página" (o…c…r, espalhado por
-       26 letras) e no grupo de "Ler esta página" (vão 2, cravado). Com o rótulo acima do vão, o
-       primeiro subia -- uma resposta que ninguém consegue ler como certa. O casamento no grupo
-       é por **trecho** e não por subsequência, e `_no_grupo` diz por quê.
+    3. **casou no rótulo ganha de casou no grupo**, e isto é *desempate* -- entre dois casamentos
+       igualmente apertados, quem casou pelo nome é quem foi procurado. A consulta corre nos dois
+       e **vale o melhor dos dois**, nunca "o rótulo se ele casar": medido, `"ocr"` casa no rótulo
+       de "Devolver as caixas tiradas desta página" (o…c…r, espalhado por 26 letras) e no grupo de
+       "Ler esta página" (vão 2, cravado). Com o rótulo acima do vão, a primeira subia; e
+       preferindo o rótulo só por existir, "Folha da página aberta" -- que **é** do grupo OCR --
+       ia para trás dela. O casamento no grupo é por **trecho** e não por subsequência, e
+       `_no_grupo` diz por quê.
     4. **quem tem tecla sobe.** É o desempate que a spec pede, e ele também é *desempate* de
        propósito: posto acima da qualidade do casamento, `"l"` traria "Ajustar à largura"
        (`Ctrl+0`) na frente de "Ler esta página", que casa na primeira letra. Aqui ele decide
@@ -266,12 +268,21 @@ def filtrar(consulta: str, entradas: Sequence[Entrada]) -> tuple[Entrada, ...]:
 
     pontuadas: list[tuple[tuple[int, int, bool, bool, bool, int], Entrada]] = []
     for posicao, entrada in enumerate(entradas):
-        no_rotulo = _casamento(agulha, _dobrado(entrada.rotulo))
-        casamento = no_rotulo if no_rotulo is not None else _no_grupo(agulha, _dobrado(entrada.grupo))
-        if casamento is None:
+        # **O melhor dos dois, e não "o rótulo se ele casar".** Medido no catálogo depois de ele
+        # crescer: "Folha da página aberta" é do grupo OCR e o rótulo dela casa `"ocr"` espalhado
+        # por dezoito letras. Preferir o rótulo por existir jogava um comando **do grupo OCR**
+        # para trás de um que não é dele -- uma resposta impossível de ler como certa.
+        candidatos: list[tuple[int, int, bool]] = []
+        for achado, veio_do_grupo in (
+            (_casamento(agulha, _dobrado(entrada.rotulo)), False),
+            (_no_grupo(agulha, _dobrado(entrada.grupo)), True),
+        ):
+            if achado is not None:
+                candidatos.append((achado[1], achado[0], veio_do_grupo))
+        if not candidatos:
             continue
-        inicio, vao = casamento
-        chave = (vao, inicio, no_rotulo is None, not entrada.habilitado, not entrada.tecla, posicao)
+        vao, inicio, veio_do_grupo = min(candidatos)
+        chave = (vao, inicio, veio_do_grupo, not entrada.habilitado, not entrada.tecla, posicao)
         pontuadas.append((chave, entrada))
     return tuple(entrada for _, entrada in sorted(pontuadas, key=lambda par: par[0]))
 

@@ -109,8 +109,12 @@ class FiltroPuroTests(unittest.TestCase):
         rótulo" acima do vão, a primeira subia: uma resposta que ninguém lê como certa.
         """
         achadas = [entrada.acao for entrada in paleta.filtrar("ocr", self.todas)]
-        self.assertEqual(["ler_pagina", "ler_melhor", "selecionar_area"], achadas[:3])
-        self.assertIn("devolver_caixas", achadas)
+        do_grupo = [registro.acao for registro in comandos.do_grupo(comandos.OCR)]
+        self.assertIn("devolver_caixas", achadas, "o caso escolhido perdeu o casamento espalhado")
+        # **A afirmação é relacional de propósito**: o catálogo cresce, e travar a lista exata
+        # faria este teste medir "quantos comandos de OCR existem hoje" em vez do que ele mede.
+        self.assertEqual(do_grupo, achadas[: len(do_grupo)], "o grupo OCR não veio inteiro na frente")
+        self.assertLess(max(achadas.index(acao) for acao in do_grupo), achadas.index("devolver_caixas"))
 
     def test_a_tecla_desempata_e_so_desempata(self) -> None:
         """A spec pede o comando de atalho subindo; posto acima do casamento ele atrapalha.
@@ -261,10 +265,11 @@ class JanelaTests(unittest.TestCase):
         janela = self._janela()
         self.assertEqual(len(comandos.CATALOGO), len(janela.lista.get_children()))
         janela.digitar("salv")
-        self.assertEqual(
-            ["salvar", "salvar_todos"],
-            [entrada.acao for entrada in janela.visiveis()],
-        )
+        # **A janela desenha o que o filtro devolve** -- é essa a afirmação, e comparar contra o
+        # próprio filtro é o que a mantém verdadeira enquanto o catálogo cresce.
+        esperado = paleta.filtrar("salv", paleta.inventario(self.amarrados))
+        self.assertEqual([e.acao for e in esperado], [e.acao for e in janela.visiveis()])
+        self.assertIn("salvar", [e.acao for e in janela.visiveis()])
         self.assertEqual(len(janela.visiveis()), len(janela.lista.get_children()))
 
     def test_a_linha_cinza_leva_a_marca_e_o_motivo_na_coluna(self) -> None:
@@ -312,23 +317,26 @@ class JanelaTests(unittest.TestCase):
     def test_as_setas_navegam_e_o_enter_executa_o_selecionado(self) -> None:
         janela = self._janela()
         janela.digitar("salvar")
-        self.assertEqual("salvar", janela.selecionada().acao)
+        visiveis = [entrada.acao for entrada in janela.visiveis()]
+        self.assertGreater(len(visiveis), 1, "o caso escolhido não tem por onde navegar")
+        self.assertEqual(visiveis[0], janela.selecionada().acao)
         janela.mover(1)
-        self.assertEqual("salvar_todos", janela.selecionada().acao)
+        self.assertEqual(visiveis[1], janela.selecionada().acao)
         janela.mover(-1)
-        self.assertEqual("salvar", janela.selecionada().acao)
+        self.assertEqual(visiveis[0], janela.selecionada().acao)
         janela.executar()
-        self.assertEqual(["salvar"], self.chamados)
+        self.assertEqual([visiveis[0]], self.chamados)
 
     def test_a_seta_nao_passa_da_ponta(self) -> None:
         """Uma lista que dá a volta faz a última linha parecer a primeira em qualquer rolagem."""
         janela = self._janela()
         janela.digitar("salvar")
+        visiveis = [entrada.acao for entrada in janela.visiveis()]
         janela.mover(-1)
-        self.assertEqual("salvar", janela.selecionada().acao)
-        for _ in range(5):
+        self.assertEqual(visiveis[0], janela.selecionada().acao)
+        for _ in range(len(visiveis) + 3):
             janela.mover(1)
-        self.assertEqual("salvar_todos", janela.selecionada().acao)
+        self.assertEqual(visiveis[-1], janela.selecionada().acao)
 
     def test_esc_fecha_sem_executar(self) -> None:
         janela = self._janela()

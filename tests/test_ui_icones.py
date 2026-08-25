@@ -16,7 +16,7 @@ import unittest
 
 from tk_root import raiz
 
-from chess_diagram_ocr.ui import comandos, icones
+from chess_diagram_ocr.ui import comandos, degradacao, icones
 
 PRETO = "#101010"
 BRANCO = "#f0f0f0"
@@ -189,6 +189,9 @@ class DesenhoNoTkTests(unittest.TestCase):
         que mente sobre a própria importância; ícone que falta desenha um botão só com texto,
         que é legível.
         """
+        # O aviso é **uma vez por nome** desde a S-234, e este processo pode já ter avisado
+        # este: sem zerar, o `assertLogs` mediria o silêncio correto e reprovaria.
+        degradacao.esquecer_avisos()
         with self.assertLogs(icones.logger, level="WARNING") as registro:
             self.assertIsNone(icones.icone("nao_existe", 24, PRETO))
         self.assertIn("nao_existe", "\n".join(registro.output))
