@@ -234,6 +234,16 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("achar", "Achar no texto…", EDICAO, estilos.NEUTRO),
     Comando("substituir", "Substituir no texto…", EDICAO, estilos.NEUTRO),
     Comando("substituir_todos", "Substituir todos", EDICAO, estilos.NEUTRO),
+    # A paleta e os estilos (S-246 a S-249). `inserir_figurina` e `inserir_avaliacao` são comandos
+    # **com argumento**: a paleta de comandos da S-231 os mostra uma vez, e a escolha do símbolo é
+    # da lista que eles abrem -- é o mesmo desenho de `aparencia`, que abre um submenu.
+    Comando("paleta_de_glifos", "Paleta de glifos e símbolos", EDICAO, estilos.NEUTRO, rotulo_curto="Paleta"),
+    Comando("inserir_figurina", "Inserir figurina", EDICAO, estilos.NEUTRO),
+    Comando("inserir_avaliacao", "Inserir símbolo de avaliação", EDICAO, estilos.NEUTRO),
+    Comando("estilo_titulo", "Estilo do parágrafo: título", EDICAO, estilos.NEUTRO, rotulo_curto="Título"),
+    Comando("estilo_prosa", "Estilo do parágrafo: prosa", EDICAO, estilos.NEUTRO, rotulo_curto="Prosa"),
+    Comando("estilo_notacao", "Estilo do parágrafo: notação", EDICAO, estilos.NEUTRO, rotulo_curto="Notação"),
+    Comando("estilo_legenda", "Estilo do parágrafo: legenda", EDICAO, estilos.NEUTRO, rotulo_curto="Legenda"),
     # ----------------------------------------------------------------------- VISUALIZACAO
     Comando("pagina_anterior", "Página anterior", VISUALIZACAO, estilos.NEUTRO),
     Comando("proxima_pagina", "Próxima página", VISUALIZACAO, estilos.NEUTRO),

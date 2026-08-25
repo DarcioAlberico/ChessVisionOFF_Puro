@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from chess_diagram_ocr.text import arquivo, correcao, documento, rico
+from chess_diagram_ocr.text import paleta as _paleta
 from chess_diagram_ocr.text.pagina import (
     BlocoDeDiagrama,
     BlocoDeTexto,
@@ -485,6 +486,155 @@ class DeslocamentoTests(_ComJanela, unittest.TestCase):
         for alvo in range(0, total + 1, 3):
             with self.subTest(alvo=alvo):
                 self.assertEqual(painel.deslocamento_de(painel.indice_de(alvo)), alvo)
+
+
+class PaletaNoWidgetTests(_ComJanela, unittest.TestCase):
+    """As três portas de inserção e a marca da S-247, com o widget na mão (S-246 a S-248)."""
+
+    def _com_texto(self, conteudo: str = "1.") -> TextoPanel:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto(conteudo)))
+        painel.editor.mark_set("insert", "end-1c")
+        return painel
+
+    def test_inserir_pelo_painel_poe_o_simbolo_no_cursor(self) -> None:
+        painel = self._com_texto()
+        painel.inserir_simbolo("♘")
+        self.assertTrue(painel.texto_atual().endswith("♘"))
+
+    def test_inserir_fora_do_modelo_marca_a_corrida(self) -> None:
+        """Inserir da segunda prateleira é permitido **e sinalizado** -- nunca silencioso."""
+        painel = self._com_texto()
+        painel.inserir_simbolo("♞")
+        marcadas = [c.texto for c in painel.documento_atual().corridas if c.atributos.fora_do_modelo]
+        self.assertEqual(marcadas, ["♞"])
+
+    def test_o_que_o_modelo_le_nao_e_marcado(self) -> None:
+        painel = self._com_texto()
+        painel.inserir_simbolo("♘")
+        self.assertFalse(any(c.atributos.fora_do_modelo for c in painel.documento_atual().corridas))
+
+    def test_a_marca_sobrevive_ao_arquivo(self) -> None:
+        painel = self._com_texto()
+        painel.inserir_simbolo("♞")
+        de_volta = arquivo.de_json(arquivo.para_json(painel.documento_atual()))
+        self.assertTrue(any(c.atributos.fora_do_modelo for c in de_volta.corridas))
+
+    def test_a_marca_nao_conta_como_correcao(self) -> None:
+        """É texto novo, e não leitura corrigida: a S-239 já separa `bloco == -1`."""
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("lance lido")))
+        painel.editor.mark_set("insert", "end-1c")
+        painel.inserir_simbolo("♞")
+        doc = painel.documento_atual()
+        pares = [(c.antes, c.depois) for c in correcao.correcoes(doc)]
+        self.assertNotIn(("", "♞"), pares)
+
+    def test_a_sequencia_de_teclado_fecha_e_vira_simbolo(self) -> None:
+        """A barra mais `N` vira `♘` quando a sequência **fecha** -- a segunda porta (S-248)."""
+        painel = self._com_texto()
+        painel.editor.insert("insert", chr(92) + "N")
+        painel._fechar_sequencia()
+        self.assertTrue(painel.texto_atual().endswith("♘"))
+        self.assertNotIn(chr(92), painel.texto_atual())
+
+    def test_a_barra_sozinha_continua_barra(self) -> None:
+        painel = self._com_texto()
+        painel.editor.insert("insert", chr(92))
+        painel._fechar_sequencia()
+        self.assertTrue(painel.texto_atual().endswith(chr(92)))
+
+    def test_a_barra_com_tecla_que_nao_abre_sequencia_devolve_as_duas(self) -> None:
+        painel = self._com_texto()
+        painel.editor.insert("insert", chr(92) + "Z")
+        painel._fechar_sequencia()
+        self.assertTrue(painel.texto_atual().endswith(chr(92) + "Z"))
+
+    def test_nada_e_trocado_automaticamente(self) -> None:
+        """`Nf3` continua `Nf3`: troca silenciosa sobre texto de OCR é o que a S-209 proíbe."""
+        painel = self._com_texto()
+        painel.editor.insert("insert", "Nf3")
+        painel._fechar_sequencia()
+        self.assertTrue(painel.texto_atual().endswith("Nf3"))
+
+    def test_as_tres_entradas_produzem_a_mesma_corrida(self) -> None:
+        """Painel, sequência de teclado e comando chegam ao mesmo símbolo com a mesma marca."""
+        corridas = []
+        for gesto in ("painel", "sequencia", "comando"):
+            painel = self._com_texto()
+            if gesto == "painel":
+                painel.inserir_simbolo("♞")
+            elif gesto == "sequencia":
+                painel.editor.insert("insert", chr(92) + "n")
+                painel._fechar_sequencia()
+            else:
+                # A porta do comando: `inserir_figurina` abre a lista e chama isto com o escolhido.
+                escolhido = [s for s in _paleta.figurinas(painel._paleta) if s == "♞"][0]
+                painel.inserir_simbolo(escolhido)
+            ultima = painel.documento_atual().corridas[-1]
+            corridas.append((ultima.texto, ultima.atributos.fora_do_modelo))
+        self.assertEqual(len(set(corridas)), 1, corridas)
+
+    def test_inserir_nao_tira_o_foco_do_editor(self) -> None:
+        """O critério de aceite: inserir com o painel aberto não tira a mão do texto (S-248).
+
+        O que se afirma é o **mecanismo**, e não `focus_get`: numa janela retirada da tela o foco de
+        teclado é do sistema, e a resposta dele não diz nada sobre o desenho. O mecanismo é
+        `takefocus=False` em todo botão da paleta, mais o cursor que continua depois do que se
+        inseriu -- é isso que faz a próxima tecla digitar onde se estava.
+        """
+        painel = self._com_texto()
+        painel.alternar_paleta()
+        botoes = [
+            filho
+            for grupo in painel._painel_da_paleta.winfo_children()
+            for filho in grupo.winfo_children()
+        ]
+        self.assertTrue(botoes)
+        for botao in botoes[:12]:
+            with self.subTest(simbolo=str(botao.cget("text"))):
+                self.assertIn(str(botao.cget("takefocus")), ("0", "false", ""))
+
+        painel.inserir_simbolo("♘")
+        self.assertEqual(painel.editor.get("insert - 1 chars", "insert"), "♘")
+
+    def test_a_paleta_abre_e_fecha(self) -> None:
+        painel = self._com_texto()
+        painel.alternar_paleta()
+        self.assertIsNotNone(painel._painel_da_paleta)
+        painel.alternar_paleta()
+        self.assertIsNone(painel._painel_da_paleta)
+
+
+class EstiloNoWidgetTests(_ComJanela, unittest.TestCase):
+    """O estilo desenhado: geometria na etiqueta do estilo, fonte na combinada (S-249)."""
+
+    def test_o_estilo_da_pagina_aparece_sem_ninguem_pedir(self) -> None:
+        from chess_diagram_ocr.text.pagina import BlocoDeTarja
+
+        painel = self._painel()
+        pagina = _pagina(BlocoDeTarja(linhas=(LinhaLida("CAPÍTULO", (0.0, 0.0, 9.0, 9.0), 1.0, "camada"),)))
+        painel.desenhar(pagina)
+        self.assertIn("estilo:titulo", painel.editor.tag_names("1.0"))
+
+    def test_aplicar_a_mao_redesenha_com_a_etiqueta(self) -> None:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("uma linha de lances")))
+        painel.editor.mark_set("insert", "1.2")
+        painel.estilo_notacao()
+        self.assertIn("estilo:notacao", painel.editor.tag_names("1.0"))
+        self.assertEqual(painel.documento_atual().corridas[0].atributos.estilo, "notacao")
+
+    def test_a_fonte_do_estilo_nao_apaga_o_negrito(self) -> None:
+        """No Tk **uma** etiqueta dá a fonte ao trecho: sem a combinada, o negrito de dentro de um
+        título sumiria da tela sem sumir do documento."""
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("titulo com negrito", negrito=True)))
+        painel.editor.mark_set("insert", "1.2")
+        painel.estilo_titulo()
+        etiquetas = set(painel.editor.tag_names("1.0"))
+        self.assertIn("estilo:titulo", etiquetas)
+        self.assertIn("fonte:titulo:b", etiquetas)
 
 
 if __name__ == "__main__":  # pragma: no cover

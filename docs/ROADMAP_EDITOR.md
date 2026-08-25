@@ -230,7 +230,7 @@ botão "Salvar .txt" ignora os três. → **S-250 a S-254**
 |---|---|---|
 | **36** — o documento que sobrevive ao widget ✅ | S-235 a S-239 | o texto rico como dado, o itálico que já se mede, o negrito medido ou declarado não-medido, o arquivo que reabre e a procedência da correção |
 | **37** — as ferramentas de edição ✅ | S-240 a S-245 | negrito/itálico/sublinhado, cor de autor sem colidir com a confiança, desfazer, `Ctrl+S`, achar e substituir |
-| **38** — a paleta de glifos e símbolos | S-246 a S-249 | a paleta gerada do modelo, a prateleira do que ele não lê, as três formas de inserir e o estilo de parágrafo |
+| **38** — a paleta de glifos e símbolos ✅ | S-246 a S-249 | a paleta gerada do modelo, a prateleira do que ele não lê, as três formas de inserir e o estilo de parágrafo (S-249 ◐: `legenda` depende do vínculo que a `PaginaLida` não carrega) |
 | **39** — a exportação | S-250 a S-254 | um lugar só decide o diagrama, `.md`/`.html`/`.rtf`, o PDF pesquisável do próprio livro, e nada disso na thread da janela |
 | **40** — o que sustenta o resto | S-255, S-256 | o rascunho automático e o inventário que impede recurso sem comando |
 

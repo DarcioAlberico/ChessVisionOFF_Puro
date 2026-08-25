@@ -1714,6 +1714,13 @@ class ChessOcrTkApp:
             "achar": self._on_texto(lambda p: p.achar()),
             "substituir": self._on_texto(lambda p: p.substituir()),
             "substituir_todos": self._on_texto(lambda p: p.substituir_todos()),
+            "paleta_de_glifos": self._on_texto(lambda p: p.alternar_paleta()),
+            "inserir_figurina": self._on_texto(lambda p: p.inserir_figurina()),
+            "inserir_avaliacao": self._on_texto(lambda p: p.inserir_avaliacao()),
+            "estilo_titulo": self._on_texto(lambda p: p.estilo_titulo()),
+            "estilo_prosa": self._on_texto(lambda p: p.estilo_prosa()),
+            "estilo_notacao": self._on_texto(lambda p: p.estilo_notacao()),
+            "estilo_legenda": self._on_texto(lambda p: p.estilo_legenda()),
         }
 
     def _build_menu(self) -> None:

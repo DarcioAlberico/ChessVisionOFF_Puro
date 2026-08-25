@@ -72,9 +72,9 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Literal
 
-from ..text import arquivo, busca, correcao, documento, rico
+from ..text import arquivo, busca, correcao, documento, paleta as _paleta, rico
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
-from . import atalhos, comandos, texto_busca, texto_cores, texto_etiquetas, tokens
+from . import atalhos, comandos, texto_busca, texto_cores, texto_etiquetas, theme, tipografia, tokens
 from . import texto as texto_ui
 from .barra import BarraFluida
 from .busy import BusyRegistry
@@ -115,6 +115,22 @@ PAPEL_DA_MARCA = tokens.TEXTO_SECUNDARIO
 
 NEGRITO_ITALICO = "negrito_italico"
 """A tag que desenha os dois juntos. **É desenho, e não documento** -- ver `_etiquetas` (S-236)."""
+
+PAPEL_DO_ESTILO: dict[str, str] = {
+    rico.ESTILO_TITULO: tipografia.TITULO,
+    rico.ESTILO_PROSA: tipografia.CORPO,
+    rico.ESTILO_NOTACAO: tipografia.DADO,
+    rico.ESTILO_LEGENDA: tipografia.AUXILIAR,
+}
+"""Estilo de parágrafo -> papel de fonte de `ui/tipografia.py` (S-249).
+
+**Nenhum tamanho em pixel entra aqui**, e é critério de aceite: `tipografia` escala pela fonte do
+sistema desde a S-147, e cravar `12` quebraria quem aumentou a fonte do Windows -- o mesmo defeito
+que `ui/texto.py` corrigiu para o `wraplength`. `NOTACAO` cai em `DADO` porque `DADO` é a
+monoespaçada, e uma linha de lances alinhada é o que a proporcional estraga."""
+
+ESCAPE_DA_PALETA = "\\"
+"""O prefixo das sequências de teclado da S-248. Ver `text/paleta.SEQUENCIAS_DECLARADAS`."""
 
 ACOES_PROPRIAS: frozenset[str] = frozenset({"salvar", "desfazer", "refazer", "achar", "substituir"})
 """As ações globais que esta aba atende **enquanto tem o foco** (S-244).
@@ -177,6 +193,16 @@ class TextoPanel(ttk.Frame):
         self._instantaneos: list[tuple[int, rico.DocumentoRico]] = []
         self._refeitos: list[rico.DocumentoRico] = []
         self._janela_de_busca: texto_busca.JanelaDeBusca | None = None
+        self._paleta = _paleta.paleta()
+        """A paleta de glifos, derivada do metadado do modelo (S-246). Degrada sozinha."""
+
+        self._sequencias = self._paleta.sequencias()
+        r"""`\N` -> `♘`, conferido contra a paleta na montagem (S-248)."""
+
+        self._fontes_desenhadas: set[str] = set()
+        """As etiquetas de fonte combinada já configuradas -- ver `_etiqueta_de_fonte`."""
+
+        self._painel_da_paleta: ttk.Frame | None = None
 
         self.formato_var: dict[str, tk.BooleanVar] = {
             atributo: tk.BooleanVar(value=False) for atributo in ("negrito", "italico", "sublinhado")
@@ -232,9 +258,11 @@ class TextoPanel(ttk.Frame):
         barra.adicionar(self._menu_de_cor(barra, "cor_do_texto", self.pintar_letra))
         barra.adicionar(self._menu_de_cor(barra, "realce", self.pintar_realce))
         barra.adicionar(self._botao(barra, "achar", self.achar))
+        barra.adicionar(self._botao(barra, "paleta_de_glifos", self.alternar_paleta))
 
         corpo = ttk.Frame(self)
         corpo.pack(fill=tk.BOTH, expand=True)
+        self._corpo = corpo
         barra_de_rolagem = ttk.Scrollbar(corpo, orient=tk.VERTICAL)
         self.editor = tk.Text(
             corpo,
@@ -256,6 +284,7 @@ class TextoPanel(ttk.Frame):
         # é negrito é pior que um botão sem estado nenhum.
         for gatilho in ("<<Selection>>", "<ButtonRelease-1>", "<KeyRelease-Left>", "<KeyRelease-Right>"):
             self.editor.bind(gatilho, self._atualizar_ferramentas, add="+")
+        self.editor.bind("<KeyRelease>", self._fechar_sequencia, add="+")
         self._ligar_teclas()
 
         rodape = ttk.Frame(self)
@@ -520,9 +549,8 @@ class TextoPanel(ttk.Frame):
         que vêm de lá, então `corrida_de` a ignora sozinha na volta -- ela não mapeia atributo nenhum.
         """
         etiquetas = texto_etiquetas.etiquetas_de(corrida)
-        if corrida.atributos.negrito and corrida.atributos.italico:
-            return (*etiquetas, NEGRITO_ITALICO)
-        return etiquetas
+        de_fonte = self._etiqueta_de_fonte(corrida)
+        return (*etiquetas, de_fonte) if de_fonte else etiquetas
 
     def _inserir_miniatura(self, bloco: BlocoDeDiagrama) -> None:
         """A imagem do diagrama, **antes** da marca. Ver "O diagrama é desenhado no meio do texto".
@@ -600,6 +628,61 @@ class TextoPanel(ttk.Frame):
         self.editor.tag_configure("italico", font=self._fonte(pendor="italic"))
         self.editor.tag_configure(NEGRITO_ITALICO, font=self._fonte(peso="bold", pendor="italic"))
         self.editor.tag_configure("sublinhado", underline=True)
+        self._pintar_estilos()
+
+    def _pintar_estilos(self) -> None:
+        """A geometria de cada estilo de parágrafo. **A fonte não entra aqui** (S-249).
+
+        A etiqueta `estilo:X` leva recuo e espaço; a fonte vai numa etiqueta combinada, criada sob
+        demanda em `_etiqueta_de_fonte`. Separá-las é o que permite um parágrafo de título ter uma
+        palavra em negrito: no Tk **uma** etiqueta dá a fonte ao trecho, e a última criada vence --
+        com a fonte na etiqueta do estilo, o negrito de dentro dele sumiria.
+        """
+        recuo = self._largura_do_recuo()
+        for estilo in rico.ESTILOS:
+            etiqueta = f"{texto_etiquetas.ATRIBUTO_COM_VALOR['estilo']}{estilo}"
+            opcoes: dict[str, object] = {"lmargin1": 0, "lmargin2": 0, "spacing1": 0}
+            if estilo == rico.ESTILO_PROSA:
+                # Recuo de primeira linha, que é a diagramação que a S-199 mede na página.
+                opcoes["lmargin1"] = recuo
+            elif estilo == rico.ESTILO_TITULO:
+                opcoes["spacing1"] = recuo
+            elif estilo == rico.ESTILO_LEGENDA:
+                opcoes["lmargin1"] = opcoes["lmargin2"] = recuo
+            self.editor.tag_configure(etiqueta, **opcoes)
+        self._fontes_desenhadas.clear()
+
+    def _largura_do_recuo(self) -> int:
+        """O recuo em pixels, **derivado da fonte do editor** e não cravado.
+
+        Quatro espaços da fonte em uso: quem aumentou a fonte do Windows recebe um recuo maior,
+        que é o que a S-147 impôs a toda medida desta interface."""
+        try:
+            return int(tkfont.Font(font=self.editor.cget("font")).measure("    "))
+        except Exception as exc:  # noqa: BLE001 - widget sem janela ainda
+            logger.debug("Recuo não derivado da fonte (%s): usando o do corpo.", exc)
+            return 24
+
+    def _etiqueta_de_fonte(self, corrida: rico.Corrida) -> str:
+        """A etiqueta de **desenho** que dá a fonte a esta corrida, ou `""` quando não precisa.
+
+        Uma etiqueta do Tk só pode dar **uma** fonte ao trecho, e três coisas a disputam: o estilo
+        do parágrafo (corpo), o negrito e o itálico. A saída é a mesma da S-236 com
+        `NEGRITO_ITALICO`, generalizada: uma etiqueta por combinação, criada sob demanda, e nenhuma
+        delas mapeia atributo nenhum -- `corrida_de` as ignora sozinha na volta.
+        """
+        atributos = corrida.atributos
+        estilo = atributos.estilo
+        if not estilo:
+            return NEGRITO_ITALICO if (atributos.negrito and atributos.italico) else ""
+        nome = f"fonte:{estilo}:{'b' if atributos.negrito else ''}{'i' if atributos.italico else ''}"
+        if nome not in self._fontes_desenhadas:
+            papel = PAPEL_DO_ESTILO[estilo]
+            base = theme.fonte_atual(papel, negrito=atributos.negrito)
+            fonte = list(base) + (["italic"] if atributos.italico else [])
+            self.editor.tag_configure(nome, font=tuple(fonte))
+            self._fontes_desenhadas.add(nome)
+        return nome
 
     def _fonte(
         self,
@@ -814,6 +897,134 @@ class TextoPanel(ttk.Frame):
             return
         for atributo, variavel in self.formato_var.items():
             variavel.set(inicio != fim and rico.vale_em_todo(doc, inicio, fim, atributo))
+
+    # ------------------------------------------- a paleta e os estilos (S-246 a S-249)
+
+    def alternar_paleta(self) -> None:
+        """Abre ou fecha o painel lateral de glifos. **O foco não sai do texto** (S-248)."""
+        if self._painel_da_paleta is not None:
+            self._painel_da_paleta.destroy()
+            self._painel_da_paleta = None
+            self.editor.focus_set()
+            return
+        self._painel_da_paleta = self._montar_paleta(self._corpo)
+        self._painel_da_paleta.pack(side=tk.RIGHT, fill=tk.Y, padx=(6, 0))
+        self.editor.focus_set()
+
+    def _montar_paleta(self, pai: tk.Misc) -> ttk.Frame:
+        """As prateleiras, uma abaixo da outra, com um botão por símbolo.
+
+        A prateleira "o modelo não lê" (S-247) é desenhada igual e **diz o que é**: inserir dali é
+        permitido e marca a corrida, e esconder isso faria arquivos em que ninguém distingue o que
+        foi lido do que foi inventado.
+        """
+        moldura = ttk.Frame(pai)
+        for prateleira in self._paleta.prateleiras:
+            grupo = ttk.LabelFrame(moldura, text=prateleira.nome)
+            grupo.pack(fill=tk.X, pady=(0, 4))
+            for k, simbolo in enumerate(prateleira.simbolos):
+                # `takefocus=False` é o item: inserir com o painel aberto não pode tirar o cursor
+                # do texto -- a próxima tecla tem de digitar no lugar em que se estava.
+                ttk.Button(
+                    grupo,
+                    text=simbolo,
+                    width=3,
+                    takefocus=False,
+                    command=lambda s=simbolo: self.inserir_simbolo(s),
+                ).grid(row=k // 8, column=k % 8, padx=1, pady=1)
+        return moldura
+
+    def inserir_simbolo(self, simbolo: str) -> None:
+        """Insere o símbolo no cursor, **marcando a corrida** se o modelo não o lê (S-247).
+
+        A marca é `fora_do_modelo`, e ela viaja como etiqueta: sobrevive a salvar, reabrir e
+        exportar, e é o que diz a quem receber o arquivo que aquele caractere não veio da página.
+        """
+        if not simbolo:
+            return
+        etiquetas: list[str] = []
+        if self._paleta.marca(simbolo):
+            etiquetas.append(texto_etiquetas.ETIQUETA_DO_ATRIBUTO["fora_do_modelo"])
+        self.editor.insert(tk.INSERT, simbolo, tuple(etiquetas))
+        self.editor.focus_set()
+        self._depois_de_editar()
+
+    def inserir_figurina(self) -> None:
+        """Abre a lista de figurinas junto do ponteiro -- a porta de menu do mesmo gesto (S-248)."""
+        self._menu_de_simbolos(_paleta.figurinas(self._paleta))
+
+    def inserir_avaliacao(self) -> None:
+        """O mesmo para os símbolos de avaliação."""
+        self._menu_de_simbolos(_paleta.avaliacoes(self._paleta))
+
+    def _menu_de_simbolos(self, simbolos: tuple[str, ...]) -> None:
+        menu = tk.Menu(self, tearoff=False)
+        for simbolo in simbolos:
+            rotulo = f"{simbolo}  ·  fora do modelo" if self._paleta.marca(simbolo) else simbolo
+            menu.add_command(label=rotulo, command=lambda s=simbolo: self.inserir_simbolo(s))
+        try:
+            menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+        finally:
+            menu.grab_release()
+
+    def _fechar_sequencia(self, _evento: object = None) -> None:
+        r"""Troca `\N` por `♘` **quando a sequência fecha** (S-248).
+
+        Três regras, e as três são critério de aceite: a barra sozinha continua sendo barra; uma
+        barra seguida de tecla que não abre sequência devolve os dois caracteres; e nada é trocado
+        automaticamente enquanto se digita -- `Nf3` continua `Nf3`, porque a troca silenciosa sobre
+        texto de OCR é o que a S-209 proíbe ao léxico com a frase que dá nome ao item.
+        """
+        if not self._sequencias:
+            return
+        maior = max(len(s) for s in self._sequencias) + len(ESCAPE_DA_PALETA)
+        try:
+            inicio = self.editor.index(f"insert - {maior} chars")
+            trecho = self.editor.get(inicio, tk.INSERT)
+        except tk.TclError:  # pragma: no cover - widget destruído entre a tecla e o laço
+            return
+        corte = trecho.rfind(ESCAPE_DA_PALETA)
+        if corte < 0:
+            return
+        chave = trecho[corte + len(ESCAPE_DA_PALETA) :]
+        simbolo = self._sequencias.get(chave)
+        if simbolo is None:
+            return
+        quantos = len(chave) + len(ESCAPE_DA_PALETA)
+        self.editor.delete(f"insert - {quantos} chars", tk.INSERT)
+        self.inserir_simbolo(simbolo)
+
+    def aplicar_estilo(self, estilo: str) -> None:
+        """Põe o estilo no parágrafo do alvo e carimba `humano` (S-249).
+
+        Quem decide o alcance é `rico.aplicar_estilo`: estilo é do **parágrafo**, e o parágrafo é o
+        conjunto de corridas do mesmo bloco. Marcar meia frase marcaria meio parágrafo, e o desenho
+        ficaria com dois corpos de fonte na mesma linha.
+
+        Aqui o caminho é o do documento (e não o da etiqueta) porque o alcance passa das corridas
+        tocadas: aplicar por etiqueta exigiria descobrir de novo, no widget, onde o bloco começa.
+        """
+        doc = self.documento_atual()
+        inicio, fim = self.intervalo_alvo()
+        novo = rico.aplicar_estilo(doc, inicio, fim, estilo)
+        if novo == doc:
+            return
+        self._guardar_instantaneo(doc)
+        self.desenhar_documento(novo)
+        self._sujo = True
+        self.mostrar_intervalo(inicio, fim)
+
+    def estilo_titulo(self) -> None:
+        self.aplicar_estilo(rico.ESTILO_TITULO)
+
+    def estilo_prosa(self) -> None:
+        self.aplicar_estilo(rico.ESTILO_PROSA)
+
+    def estilo_notacao(self) -> None:
+        self.aplicar_estilo(rico.ESTILO_NOTACAO)
+
+    def estilo_legenda(self) -> None:
+        self.aplicar_estilo(rico.ESTILO_LEGENDA)
 
     # ------------------------------------------------------------- achar e substituir (S-245)
 

@@ -102,7 +102,12 @@ uma cor de autor que falasse a mesma língua produziria duas tintas iguais com d
 mesma linha. Quem garante a separação é `ui/texto_cores.py`, que mapeia estes quatro nomes a papéis
 **disjuntos** dos da faixa -- e o teste afirma a interseção vazia."""
 
-ESTILOS: tuple[str, ...] = ("titulo", "prosa", "notacao", "legenda")
+ESTILO_TITULO = "titulo"
+ESTILO_PROSA = "prosa"
+ESTILO_NOTACAO = "notacao"
+ESTILO_LEGENDA = "legenda"
+
+ESTILOS: tuple[str, ...] = (ESTILO_TITULO, ESTILO_PROSA, ESTILO_NOTACAO, ESTILO_LEGENDA)
 """Os estilos de parágrafo da S-249, e o conjunto é fechado como `GRUPOS` em `ui/comandos.py`.
 
 Cada um tem um dono na página lida -- tarja vira título, bloco recuado vira prosa, a linha atada a
@@ -390,10 +395,11 @@ def _corridas_do_segmento(segmento: documento.Segmento, *, bloco: int, procedenc
     vale mais que o atributo, e é ele que a S-235 travou.
     """
     tipo = _tipo_do_segmento(segmento)
+    estilo = estilo_do_segmento(segmento)
     comum = {"faixa": segmento.faixa, "bloco": bloco, "procedencia": procedencia, "tipo": tipo}
     inteiro = Corrida(
         texto=segmento.texto,
-        atributos=Atributos(negrito=segmento.negrito, italico=segmento.italico),
+        atributos=Atributos(negrito=segmento.negrito, italico=segmento.italico, estilo=estilo),
         **comum,
     )
     linhas = getattr(segmento.bloco, "linhas", ())
@@ -411,11 +417,38 @@ def _corridas_do_segmento(segmento: documento.Segmento, *, bloco: int, procedenc
         saida.append(
             Corrida(
                 texto=junta if k == len(grupos) - 1 else junta + " ",
-                atributos=Atributos(negrito=negrito, italico=italico),
+                atributos=Atributos(negrito=negrito, italico=italico, estilo=estilo),
                 **comum,
             )
         )
     return saida
+
+
+def estilo_do_segmento(segmento: documento.Segmento) -> str:
+    """O estilo de parágrafo que a **página** declara para aquele bloco (S-249).
+
+    Dois dos quatro saem da página lida, e os dois têm dono no modelo da S-211:
+
+        BlocoDeTarja              -> título    texto claro sobre fundo escuro é cabeçalho (S-195)
+        BlocoDeTexto com recuado  -> prosa     o recuo que a S-199 mede para separar parágrafo
+
+    **Os outros dois entram só pela mão, e cada um por um motivo.** `notacao` não tem corte medido
+    -- a proporção de figurina e dígito que separa uma linha de lances da prosa não foi medida, e a
+    regra 5 da SPEC_EDITOR manda entregar o pincel em vez de pintar palpite. `legenda` tem dono, e
+    o dono não está aqui: quem casa linha com diagrama é `pdf_text.assign_lines_to_diagrams`, que
+    trabalha sobre `TextLine` (o tipo da camada do PDF) e pede `fitz`. A `PaginaLida` não carrega
+    esse casamento, e redecidi-lo aqui com uma regra parecida-mas-diferente seria a segunda
+    declaração da mesma regra -- que é o defeito que este projeto passa o tempo tirando de si.
+    """
+    bloco = segmento.bloco
+    if bloco is None or segmento.tipo != TEXTO:
+        return ""
+    tipo = getattr(bloco, "tipo", "")
+    if tipo == "tarja":
+        return ESTILO_TITULO
+    if tipo == "texto" and getattr(bloco, "recuado", False):
+        return ESTILO_PROSA
+    return ""
 
 
 def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool], list[str]]]:
@@ -710,6 +743,10 @@ __all__ = [
     "CORES_DE_AUTOR",
     "DIAGRAMA",
     "ESTILOS",
+    "ESTILO_LEGENDA",
+    "ESTILO_NOTACAO",
+    "ESTILO_PROSA",
+    "ESTILO_TITULO",
     "LETRAS_DE_PALAVRA_EXTRA",
     "PADRAO",
     "PROCEDENCIAS",
@@ -726,6 +763,7 @@ __all__ = [
     "corridas_de_texto",
     "de_pagina",
     "de_texto",
+    "estilo_do_segmento",
     "fundir",
     "inserir",
     "intervalo_alvo",

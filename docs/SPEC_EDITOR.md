@@ -1170,7 +1170,7 @@ a **estrutura** do texto, e a primeira exportação perderia o diagrama.
 > O pedido nomeia esta fase, e o achado 5 do roadmap decide como ela é feita: a paleta já existe, e
 > ela é o metadado do modelo.
 
-## S-246 · A paleta sai do `char_meta.json`, e não de uma lista escrita à mão ⬜ planejada
+## S-246 · A paleta sai do `char_meta.json`, e não de uma lista escrita à mão ✅ implementada (2026-08-25)
 
 **Problema.** Não há como inserir `♘`, `±` ou `⩲` no editor sem sair do programa. O teclado não os
 tem, e o acervo é feito deles: a S-211 mediu **360 figurinas** contra 212 notações ASCII em 16
@@ -1223,9 +1223,30 @@ colado no papel, não porque alguém queira inserir "xf6" como símbolo — quem
 `test_nenhum_simbolo_e_descartado`; `test_sem_metadado_a_paleta_degrada`;
 `test_as_ligaduras_ficam_fora_da_paleta`; `test_o_modulo_nao_importa_tkinter`.
 
+### O que a implementação virou (2026-08-25)
+
+**As prateleiras ficaram nove, e o nome de cada uma está na tabela.** Figurinas, Avaliação,
+Anotação de lance, Setas e ideias, Formas, Pontuação, Tipografia, Acentuados e "Não identificado".
+Somadas dão **113 símbolos** -- exatamente os 24 ASCII mais os 89 Unicode do quadro acima, e o
+teste afirma que nenhum se perde no caminho.
+
+**A tabela nomeia o destino, e não a existência.** As doze figurinas estão declaradas em
+"Figurinas", e o modelo lê seis: as pretas entram pela prateleira da S-247 enquanto nenhuma classe
+as confirma, e passam para "Figurinas" **sozinhas** no dia em que um modelo as aprender. Sem o
+destino declarado, o critério de aceite da S-247 -- mover de prateleira sem tocar em código -- não
+se cumpriria: elas cairiam em "não identificado".
+
+**O módulo não importa `torch`**, e isso precisou ser conferido: ele lê o metadado por
+`text/modelo.ler_metadado`, que só importa `torch` sob `TYPE_CHECKING`. A aba é construída na
+abertura da janela, e pagar um framework de aprendizado para desenhar uma lista de símbolos
+atrasaria a janela inteira -- a mesma razão do import tardio de `text/leitor.py`.
+
+**Testes.** `tests/test_texto_paleta.py`, vinte e um casos, incluindo o que confere as três
+famílias contra o `char_meta.json` versionado (314 classes, 139 ligaduras, 62 alfanuméricas).
+
 ---
 
-## S-247 · O que o Unicode tem e o modelo não lê: a prateleira marcada ⬜ planejada
+## S-247 · O que o Unicode tem e o modelo não lê: a prateleira marcada ✅ implementada (2026-08-25)
 
 **Problema.** As seis figurinas do modelo são **só as brancas**: `♔♕♖♗♘♙` são classes,
 `♚♛♜♝♞♟` não são. Não é buraco da base — é o que o acervo imprime, porque em notação figurina o
@@ -1272,9 +1293,24 @@ campo não pode ficar vazio: então ele fica **declarado**.
 `test_a_marca_sobrevive_ao_arquivo`; `test_a_marca_nao_conta_como_correcao`;
 `test_a_prateleira_e_derivada_do_metadado`; `test_um_modelo_novo_move_o_simbolo_de_prateleira`.
 
+### O que a implementação virou (2026-08-25)
+
+**Os extras declarados são onze, e não seis.** As seis figurinas pretas pelo motivo do item, mais
+`…` e as quatro aspas tipográficas `“ ” ‘ ’`: livro impresso as usa e o modelo só conhece `.` e `'`
+de ASCII. Quem escreve um texto próprio nesta aba quer as certas, e quem corrige uma página quer
+saber que elas não vieram de leitura nenhuma.
+
+**A marca não conta como correção, e isso caiu de graça.** `text/correcao.py` já ignora corrida com
+`bloco == SEM_BLOCO`, e um símbolo inserido é exatamente isso -- não precisou de regra nova, só do
+teste que trava a propriedade.
+
+**Testes.** `tests/test_texto_paleta.py::PrateleiraQueOModeloNaoLeTests` e
+`tests/test_ui_texto_editor.py::PaletaNoWidgetTests`, com o metadado de mentira que já conhece as
+pretas provando que elas trocam de prateleira sem uma linha de código.
+
 ---
 
-## S-248 · Três formas de inserir, e nenhuma tira a mão do texto ⬜ planejada
+## S-248 · Três formas de inserir, e nenhuma tira a mão do texto ✅ implementada (2026-08-25)
 
 **Problema.** Uma paleta que só se abre por botão obriga a ir ao mouse a cada figurina. Numa linha
 de notação — `1...♗xb7 2.♗xb7 ♘d7 3.♗xa8 ♕xa8 4.♘f3±` — são seis viagens numa linha só.
@@ -1330,9 +1366,32 @@ léxico com a frase que dá nome ao item: *"o léxico sinaliza, e nunca troca"*.
 `test_nada_e_trocado_automaticamente`; `test_inserir_nao_tira_o_foco_do_editor`;
 `test_a_barra_sozinha_continua_barra`.
 
+### O que a implementação virou (2026-08-25)
+
+**As dezoito sequências saem da paleta, e são conferidas na montagem.** Doze figurinas (maiúscula
+para a branca, minúscula para a preta), quatro de avaliação, `\inf` e `\...`. `conferir_sequencias`
+levanta para sequência que aponta para símbolo que a paleta não oferece e para a mesma sequência
+apontando para dois símbolos -- e o teste que prova a segunda regra **junta duas tabelas** em vez de
+escrever um literal repetido, porque um `dict` literal com chave repetida não guarda as duas.
+
+**A sequência fecha por acréscimo, e não por temporizador.** `_fechar_sequencia` roda a cada tecla
+solta, olha para trás até o tamanho da maior sequência e só troca quando o que está depois da barra
+**é** uma sequência inteira. A barra sozinha continua barra; a barra seguida de tecla que não abre
+sequência devolve as duas; e `Nf3` continua `Nf3`.
+
+**A terceira porta é o comando, e ela abre uma lista.** `inserir_figurina` e `inserir_avaliacao` não
+inserem um símbolo fixo: abrem o menu junto do ponteiro, com a marca "fora do modelo" escrita ao
+lado dos que a carregam. É o mesmo desenho de `aparencia`, que também é um comando que abre uma
+escolha.
+
+**O foco é afirmado pelo mecanismo, e não por `focus_get`.** Todo botão da paleta é
+`takefocus=False`, e o teste confere isso mais o cursor que continua depois do símbolo inserido --
+numa janela retirada da tela o foco de teclado é do sistema, e a resposta dele não diz nada sobre o
+desenho.
+
 ---
 
-## S-249 · Estilo de parágrafo: título, prosa, notação e legenda ⬜ planejada
+## S-249 · Estilo de parágrafo: título, prosa, notação e legenda ◐ parcial (2026-08-25)
 
 **Problema.** Negrito e itálico são atributos de trecho; o que falta é o atributo do **parágrafo**.
 E este projeto tem uma razão específica para o querer, que um editor genérico não tem: o modelo de
@@ -1376,6 +1435,39 @@ Duas regras que impedem o item de virar um segundo sistema de layout:
 `test_estilo_desconhecido_levanta`; `test_a_tarja_vira_titulo`; `test_o_recuo_vira_prosa`;
 `test_a_legenda_segue_o_diagrama`; `test_aplicar_a_mao_sobrepoe_e_carimba_humano`;
 `test_nenhum_tamanho_de_fonte_cravado`; `test_notacao_automatica_so_com_corte_medido`.
+
+### O que a implementação virou (2026-08-25) — e o que falta
+
+**Dois dos quatro estilos são derivados da página, e os outros dois entram pela mão.**
+
+    BlocoDeTarja              -> título    texto claro sobre fundo escuro é cabeçalho (S-195)
+    BlocoDeTexto com recuado  -> prosa     o recuo que a S-199 mede para separar parágrafo
+    notação                   -- só à mão: o corte não foi medido (regra 5 desta spec)
+    legenda                   -- só à mão: ver abaixo
+
+**`legenda` é a divergência, e ela tem motivo.** O item aponta para
+`pdf_text.assign_lines_to_diagrams`, que é de fato quem casa linha com diagrama -- e ele trabalha
+sobre `TextLine`, o tipo da **camada do PDF**, e pede `fitz`. A `PaginaLida` não carrega esse
+casamento: ela tem o `BlocoDeDiagrama` e os `BlocoDeTexto` lado a lado, sem o vínculo. Redecidir o
+vínculo aqui, com uma regra parecida-mas-diferente ("o bloco logo abaixo do diagrama"), seria a
+**segunda declaração da mesma regra** -- que é o defeito que este projeto passa o tempo tirando de
+si, e seria uma regra não medida ainda por cima.
+
+**O que falta para o item fechar:** ou a `PaginaLida` passa a carregar o vínculo que
+`assign_lines_to_diagrams` já calcula na leitura, ou o editor chama aquela função com os dois
+conjuntos que já tem. A primeira é a boa: o vínculo é informação da leitura, e gravá-la no modelo de
+página serve também à S-253 (o PDF pesquisável) e ao `[Caption]` do PGN.
+
+**A fonte não mora na etiqueta do estilo, e essa foi a descoberta da implementação.** No Tk **uma**
+etiqueta dá a fonte ao trecho, e três coisas a disputam: o corpo do estilo, o negrito e o itálico.
+Com a fonte na etiqueta `estilo:titulo`, uma palavra em negrito dentro de um título sairia sem
+negrito -- e o atributo continuaria no documento, invisível. A saída é a mesma da S-236 com
+`NEGRITO_ITALICO`, generalizada: `estilo:X` leva **geometria** (recuo, espaço acima) e uma etiqueta
+`fonte:X:bi`, criada sob demanda, leva a fonte da combinação.
+
+**Nenhum tamanho é cravado**, e o teste varre o painel atrás de `font=` e `size=` com número
+literal. O recuo em pixel é derivado da fonte em uso (`measure("    ")`), e não escolhido: quem
+aumentou a fonte do Windows recebe um recuo maior.
 
 ---
 
