@@ -547,6 +547,13 @@ spec pedia por nome.
     **Exportados e errados** ..... 1
 ```
 
+> **O arquivo citado foi remedido em 2026-08-25**, e o bloco acima é o que ele dizia sobre as 66
+> páginas. O conjunto passou a 68 — duas folhas sem diagrama do `Kemeri` —, e o que se moveu foi
+> só a detecção: 112 detectados, **3 falsos positivos** e precisão **0,9732**. Recall, taxa de
+> exportação, conferíveis, exatidão de campo e condicional ficaram idênticos, porque as duas
+> folhas novas não têm diagrama nenhum a ler. Os quatro relatórios correntes se moveram juntos,
+> que é o que se espera de detecção: ela não depende do modelo.
+
 **O achado que justifica a S-99 inteira: a exatidão de campo deixou de ser 1,0000.** O conjunto
 de 19 páginas dizia que a produção nunca exporta errado. O de 66 achou o contrário, e é um caso
 que nenhuma quantidade de páginas fáceis encontraria:

@@ -14,17 +14,18 @@ mão, 38 diagramas**, 3 páginas sem diagrama. Reproduzir: `cvoff-field`.
 
 > ## ⚠ O conjunto mudou duas vezes, e **nada nesta página é comparável ao de hoje**
 >
-> O conjunto vigente tem **66 páginas e 115 diagramas** (S-99 fechada em 2026-08-22). Entre
-> esta página e ele houve duas trocas: 15/38 → 17/39 em 2026-08-15, e 19/40 → 66/115 em
-> 2026-08-22. A diferença não é só de tamanho — a S-95 tirou uma leitura alucinada que servia
-> de referência, e a S-99 acrescentou FEN conferida a 96 dos 115.
+> O conjunto vigente tem **68 páginas e 115 diagramas**. Entre esta página e ele houve três
+> trocas: 15/38 → 17/39 em 2026-08-15, 19/40 → 66/115 em 2026-08-22 (S-99), e 66/115 → 68/115
+> em 2026-08-25 — duas folhas **sem diagrama** do `Kemeri`, que medem falso positivo e não
+> mexem em leitura nenhuma. A diferença não é só de tamanho — a S-95 tirou uma leitura
+> alucinada que servia de referência, e a S-99 acrescentou FEN conferida a 96 dos 115.
 >
-> | | esta página (até 2026-08-11) | 2026-08-16 | **vigente (2026-08-22)** |
-> |---|---|---|---|
-> | páginas / diagramas | 15 / 38 | 19 / 40 | **66 / 115** |
-> | taxa de exportação da produção | 0,7368 | 0,8500 | **0,7652** |
-> | precisão de detecção | 0,9722 (1 falso positivo) | 0,9730 | **0,9909** (1 falso positivo) |
-> | exportado e **errado** | não media | 0 | **1** |
+> | | esta página (até 2026-08-11) | 2026-08-16 | 2026-08-22 | **vigente (2026-08-25)** |
+> |---|---|---|---|---|
+> | páginas / diagramas | 15 / 38 | 19 / 40 | 66 / 115 | **68 / 115** |
+> | taxa de exportação da produção | 0,7368 | 0,8500 | 0,7652 | **0,7652** |
+> | precisão de detecção | 0,9722 (1 falso positivo) | 0,9730 | 0,9909 (1 falso positivo) | **0,9732** (3 falsos positivos) |
+> | exportado e **errado** | não media | 0 | 1 | **1** |
 >
 > **As tabelas que reprovaram S-38b, S-40, S-62a e S-62b comparam variantes sobre 38
 > diagramas.** Uma variante medida hoje entra nelas sem ser comparável — e a diferença de
