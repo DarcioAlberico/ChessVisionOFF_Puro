@@ -213,6 +213,8 @@ def _janela():  # noqa: ANN202
         (),
         {
             "_escolher_pele": app_tkinter.ChessOcrTkApp._escolher_pele,
+            "_escolher_densidade": app_tkinter.ChessOcrTkApp._escolher_densidade,
+            "_densidade": app_tkinter.ChessOcrTkApp._densidade,
             "remontar_cromo": app_tkinter.ChessOcrTkApp.remontar_cromo,
             "_build_menu": lambda self: self.menus.append(1),
             "_build_field_row": lambda self, _pai: None,
@@ -225,6 +227,7 @@ def _janela():  # noqa: ANN202
     janela = tipo()
     janela.state = AppState()
     janela.skin_var = tk.StringVar(value=pele.CLASSICA)
+    janela.densidade_var = tk.StringVar(value=pele.CONFORTAVEL)
     janela.pdf_panel = _PainelDeCromoFalso()
     janela.result_panel = _PainelDeConteudoFalso()
     janela.root = raiz()
@@ -248,6 +251,44 @@ class TrocaNaJanelaTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.janela = _janela()
+
+    def test_sem_escolha_cada_pele_traz_a_densidade_que_ela_sugere(self) -> None:
+        """A sugestão é da pele (S-232), e ela vale enquanto ninguém decidiu nada."""
+        for registro in pele.PELES:
+            self.janela.state.skin = registro.nome
+            self.janela.remontar_cromo()
+            with self.subTest(pele=registro.nome):
+                self.assertEqual(registro.densidade, self.janela.densidade_var.get())
+
+    def test_a_escolha_de_densidade_sobrevive_a_troca_de_pele(self) -> None:
+        """**É o critério de aceite que uma implementação apressada troca por "a fita é compacta".**
+
+        Quem escolheu confortável continua confortável na fita, que sugere o contrário -- porque o
+        que está guardado é a decisão da pessoa, e não o efeito dela.
+        """
+        self.janela.densidade_var.set(pele.CONFORTAVEL)
+        self.janela._escolher_densidade()
+        self.assertEqual(pele.CONFORTAVEL, self.janela.state.densidade)
+
+        self.janela.state.skin = pele.FITA
+        self.janela.remontar_cromo()
+        self.assertEqual(pele.CONFORTAVEL, self.janela._densidade())
+        self.assertEqual(pele.CONFORTAVEL, self.janela.densidade_var.get())
+
+    def test_escolher_a_densidade_que_a_pele_sugeria_ainda_a_torna_explicita(self) -> None:
+        """Escolher "compacta" na fita parece um clique sem efeito, e não é: a partir dele a
+        densidade é decisão da pessoa, e deixa de mudar quando a pele muda."""
+        self.janela.state.skin = pele.FITA
+        self.janela.remontar_cromo()
+        self.assertEqual("", self.janela.state.densidade, "a remontagem não pode gravar escolha")
+
+        self.janela.densidade_var.set(pele.COMPACTA)
+        self.janela._escolher_densidade()
+        self.assertEqual(pele.COMPACTA, self.janela.state.densidade)
+
+        self.janela.state.skin = pele.CLASSICA
+        self.janela.remontar_cromo()
+        self.assertEqual(pele.COMPACTA, self.janela._densidade())
 
     def test_a_troca_grava_a_escolha_na_hora(self) -> None:
         """E não só no fechamento: quem experimenta três peles e desliga na energia teria
@@ -299,7 +340,9 @@ class TrocaNaJanelaTests(unittest.TestCase):
 
         with patch.object(app_tkinter.theme, "apply_theme") as reaplicou:
             self.janela.remontar_cromo()
-        reaplicou.assert_called_once_with(self.janela.root, cromo_escuro=False)
+        reaplicou.assert_called_once_with(
+            self.janela.root, cromo_escuro=False, densidade=pele.CONFORTAVEL
+        )
 
     def test_as_sete_abas_existem_em_toda_pele(self) -> None:
         """A regra 2 no lugar em que a tentação de seguir a imagem é maior: a Imagem 1 não tem

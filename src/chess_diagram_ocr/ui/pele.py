@@ -39,14 +39,18 @@ __all__ = [
     "CROMO_FITA",
     "CROMO_FOCO",
     "DENSIDADES",
+    "DENSIDADE_ENV",
     "FITA",
     "FOCO",
     "PELES",
     "PELE_ENV",
+    "ROTULOS_DE_DENSIDADE",
     "Pele",
+    "densidade_em_vigor",
     "escolhida",
     "por_nome",
     "registrada",
+    "rotulo_de_densidade",
     "valida",
 ]
 
@@ -68,6 +72,13 @@ FITA = "fita"
 
 PELE_ENV = "CVOFF_SKIN"
 """Acompanha `CVOFF_TTK_THEME`, para quem dirige o programa por script."""
+
+DENSIDADE_ENV = "CVOFF_DENSITY"
+"""O terceiro eixo por variável de ambiente, ao lado de `CVOFF_TTK_THEME` e `CVOFF_SKIN` (S-232)."""
+
+ROTULOS_DE_DENSIDADE: dict[str, str] = {COMPACTA: "Compacta", CONFORTAVEL: "Confortável"}
+"""Como cada densidade se escreve no menu. `"compacta"` é chave e "Compacta" é texto de
+interface, separados pela mesma razão da S-166: o primeiro vai para o disco."""
 
 CROMO_CLASSICO = "classico"
 CROMO_FOCO = "foco"
@@ -111,7 +122,12 @@ PELES: tuple[Pele, ...] = (
     # Clara, e a Imagem 2 é clara: o que ela propõe é agrupamento nomeado, não cromo escuro. Uma
     # fita escura seria uma decisão que ninguém tomou -- e a S-221 separou os eixos justamente
     # para que "a fita clara com o tabuleiro escuro" continuasse sendo escolha de quem a faz.
-    Pele(FITA, "Fita", CROMO_FITA),
+    #
+    # **Compacta desde a S-232**, e é sugestão e não imposição: a fita é a pele que gasta altura
+    # com cromo (a S-228 mediu 99 px de linha contra os ~28 de uma barra), e é a que mais precisa
+    # devolver pixel ao documento. Quem a quiser confortável escolhe em `Ver ▸ Aparência`, e a
+    # escolha ganha daqui.
+    Pele(FITA, "Fita", CROMO_FITA, densidade=COMPACTA),
 )
 """As peles registradas, na ordem em que o menu as lista.
 
@@ -157,3 +173,42 @@ def escolhida(guardada: str = "", *, ambiente: Mapping[str, str] | None = None) 
     """
     fonte = ambiente if ambiente is not None else os.environ
     return valida(fonte.get(PELE_ENV, "") or guardada)
+
+
+def rotulo_de_densidade(nome: str) -> str:
+    """Como aquela densidade se escreve no menu. Levanta `KeyError` para nome que não existe.
+
+    Levanta, e não devolve o nome cru: uma densidade escrita errada que virasse rótulo desenharia
+    `"folgada"` no menu como se fosse uma opção -- que é o defeito que `menu.montar` recusa.
+    """
+    if nome not in ROTULOS_DE_DENSIDADE:
+        raise KeyError(f"densidade desconhecida: {nome!r}. As válidas estão em DENSIDADES.")
+    return ROTULOS_DE_DENSIDADE[nome]
+
+
+def densidade_em_vigor(
+    pele_atual: Pele,
+    guardada: str = "",
+    *,
+    ambiente: Mapping[str, str] | None = None,
+) -> str:
+    """A densidade que vale: `CVOFF_DENSITY`, senão a escolhida no menu, senão a que a pele sugere.
+
+    **A pele sugere e a pessoa decide, e essa é a forma do item (S-232).** A fita sugere compacta
+    porque é a pele que gasta altura com cromo; a "Foco" sugere confortável porque a fila dela já
+    é curta. Nenhuma das duas *impõe*, e é isso que faz a escolha explícita **sobreviver à troca
+    de pele**: o que está guardado é a decisão da pessoa, não o efeito dela.
+
+    **"Inválida" e "não escolhida" são estados diferentes**, e por isso caem em lugares
+    diferentes. Não escolhida cai na sugestão da pele, que é o padrão. Inválida cai em
+    `CONFORTAVEL` com um `warning` que a nomeia -- é o que a tabela de degradação da S-234
+    declara, e é a resposta conservadora: quem escreveu um nome errado não pediu nada apertado.
+    """
+    fonte = ambiente if ambiente is not None else os.environ
+    pedida = fonte.get(DENSIDADE_ENV, "") or guardada
+    if not pedida:
+        return pele_atual.densidade
+    if pedida in DENSIDADES:
+        return pedida
+    logger.warning("Densidade desconhecida: %r. Abrindo na %s.", pedida, CONFORTAVEL)
+    return CONFORTAVEL

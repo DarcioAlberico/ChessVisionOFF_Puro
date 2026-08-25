@@ -34,13 +34,13 @@ from ..atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
-STATE_VERSION = 4
+STATE_VERSION = 5
 """Versão 1 é o formato sem o campo `version`, que existe em disco hoje.
 
 A **3** é a S-221, e ela só acrescenta `skin`. A **4** é a S-230, e acrescenta `piece_set` e
-`piece_dir`. Um arquivo de qualquer versão anterior abre sem perder nada: o campo que falta cai no
-padrão, que é "nada escolhido" -- e nada escolhido é a pele clássica com o conjunto de peças de
-sempre."""
+`piece_dir`. A **5** é a S-232, e acrescenta `densidade`. Um arquivo de qualquer versão anterior
+abre sem perder nada: o campo que falta cai no padrão, que é "nada escolhido" -- e nada escolhido é
+a pele clássica, com o conjunto de peças de sempre e a densidade que a pele sugerir."""
 
 MAX_PDF_HISTORY = 50
 """Tamanho do histórico de páginas por PDF. Sem teto ele cresce para sempre."""
@@ -129,6 +129,20 @@ class AppState:
     validado aqui**: conjunto registrado é pergunta de quem vai desenhá-lo, e `conjuntos.escolhido`
     responde nomeando no log o que não existe."""
 
+    densidade: str = ""
+    """A densidade escolhida em `Ver ▸ Aparência ▸ Densidade` (S-232). Vazio = nunca escolhida.
+
+    **Vazio e não `"confortavel"`**, e aqui o vazio significa mais do que "cai no padrão": ele é a
+    diferença entre *não decidi* e *decidi o que a pele sugeria*. A fita sugere compacta; quem
+    nunca abriu o menu tem o vazio e recebe a sugestão de cada pele ao trocar. Quem escolheu
+    confortável guarda `"confortavel"` e continua confortável **também na fita** -- que é o
+    critério de aceite "a escolha explícita sobrepõe a sugestão da pele, e sobrevive à troca".
+    Cravar o padrão aqui apagaria essa diferença no primeiro salvamento.
+
+    **E não é validada aqui**, pela mesma razão de `skin` e `piece_set`: densidade registrada é
+    pergunta de quem vai aplicá-la, e `pele.densidade_em_vigor` responde nomeando no log a que não
+    existe."""
+
     piece_dir: str = ""
     """A pasta de peças do usuário (S-230). Vazio = nenhuma escolhida.
 
@@ -187,6 +201,7 @@ class AppState:
             "sash_fraction": float(self.sash_fraction),
             "active_tab": self.active_tab,
             "skin": self.skin,
+            "densidade": self.densidade,
             "piece_set": self.piece_set,
             "piece_dir": self.piece_dir,
         }
@@ -284,6 +299,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
 
     # Os dois da S-230, e nenhum é validado aqui além do tipo -- pelo mesmo motivo da pele e da
     # geometria: conjunto registrado e pasta que existe são perguntas de quem vai usá-los.
+    densidade = raw.get("densidade")
+    if isinstance(densidade, str):
+        state.densidade = densidade
+
     piece_set = raw.get("piece_set")
     if isinstance(piece_set, str):
         state.piece_set = piece_set

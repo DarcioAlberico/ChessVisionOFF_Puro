@@ -31,6 +31,7 @@ __all__ = [
     "VISIVEL_MINIMO",
     "Geometria",
     "fracao_de_divisor",
+    "fracao_do_documento",
     "geometria_corrigida",
     "geometria_de_texto",
     "piso_da_janela",
@@ -91,6 +92,31 @@ def piso_da_janela(
     """
     somado = (largura_esquerda + largura_direita + chrome_horizontal, altura_do_conteudo + chrome_vertical)
     return (max(somado[0], PISO_MEDIDO[0]), max(somado[1], PISO_MEDIDO[1]))
+
+
+def fracao_do_documento(
+    altura_da_janela: int,
+    *,
+    altura_do_cromo: int,
+    chrome_vertical: int = CHROME_VERTICAL,
+) -> float:
+    """Que fração da altura da janela sobra para o documento. Pura (S-232).
+
+    `altura_do_cromo` é o que a faixa de cromo da pele gasta -- a fita ou a fila --, e
+    `chrome_vertical` é o resto, que sempre esteve lá: abas, barra de status e moldura.
+
+    **Existe para que "o painel do PDF fica com >= 60% da altura" seja uma conta e não uma
+    fotografia.** É a mesma escolha de `fita.altura_da_fita`: um orçamento medido no widget
+    montado só falha depois de a janela já estar errada, e numa largura que o teste por acaso
+    escolheu.
+
+    **O que ela não modela**, e fica dito para que ninguém a leia como mais do que é: as duas
+    barras do próprio painel de PDF e a linha de conjunto de campo entram por `chrome_vertical`,
+    que é uma estimativa e não uma soma item a item. A fração devolvida é um **teto**.
+    """
+    if altura_da_janela <= 0:
+        return 0.0
+    return max(0.0, (altura_da_janela - chrome_vertical - altura_do_cromo) / altura_da_janela)
 
 
 # ------------------------------------------------------- a janela lembrada entre execuções (S-156)

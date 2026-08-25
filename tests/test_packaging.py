@@ -171,8 +171,27 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1930
+    LIMITE = 1972
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **1.930 → 1.972 na S-232**, e as quarenta e duas são o eixo de densidade chegando à janela.
+    Nenhuma delas decide o que "compacta" significa:
+
+    - **catorze** são `_escolher_densidade`, que é a amarração que só este objeto pode fazer -- ele
+      tem o `AppState` e o `StringVar`, e é onde mora a diferença entre *não decidi* e *decidi o
+      que a pele sugeria*, que é o item inteiro;
+    - **nove** estão no `remontar_cromo`: resolver a densidade, sincronizar a variável, passá-la ao
+      tema e à fita, e trocar o `padx=10, pady=6` cravados pelo que `tipografia.folgas` devolve;
+    - **doze** são a variável e o docstring que explica por que ela guarda a densidade **resolvida**
+      enquanto o estado guarda a **escolhida** -- `radiobutton` não sabe marcar "vazio";
+    - as **sete** restantes são o `import`, a entrada em `_comandos`, o `escolhas=` do menu, o
+      `set` da restauração e o `apply_theme` da abertura, que passou a caber em cinco linhas para
+      levar a densidade da pele antes de o disco ser lido.
+
+    **A escala não está aqui**, e é o que faz a subida ser de quarenta e duas e não de duzentas:
+    quanto vale cada folga, como ela deriva da fonte do sistema, o fator de cada densidade e o piso
+    da altura de linha são de `ui/tipografia.py`, que não importa `tkinter` -- e a resolução
+    "ambiente, senão escolha, senão sugestão da pele" é de `ui/pele.py`.
 
     **1.919 → 1.930 na S-231**, e as onze são a paleta de comandos ligada à janela: o `import`, a
     entrada em `_comandos` e o método de sete linhas que abre a paleta passando o **mesmo** mapa

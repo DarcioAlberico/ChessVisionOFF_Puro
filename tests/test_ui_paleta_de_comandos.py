@@ -163,7 +163,7 @@ class FiltroPuroTests(unittest.TestCase):
             item.acao
             for declarado in menu.MENUS
             for item in declarado.itens
-            if item.tipo in (menu.RECENTES, menu.APARENCIA)
+            if item.tipo in (menu.RECENTES, menu.APARENCIA, menu.DENSIDADE)
         }
         declarados = paleta.motivos_declarados()
         self.assertEqual(submenus | set(comandos.NA_LINHA_DE_CAMPO), set(declarados))

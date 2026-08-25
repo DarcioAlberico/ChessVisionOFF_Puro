@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "APARENCIA",
+    "DENSIDADE",
     "MENUS",
     "Item",
     "Menu",
@@ -57,6 +58,13 @@ INTERRUPTOR = "INTERRUPTOR"
 SEPARADOR = "SEPARADOR"
 RECENTES = "RECENTES"
 """Submenu montado na hora, com os livros que o `AppState` lembra (S-156)."""
+
+DENSIDADE = "DENSIDADE"
+"""Submenu de `radiobutton`, um por densidade de `ui/pele.py` (S-232).
+
+Irmão de `APARENCIA` e não filho: os dois são eixos de aparência, e o que os separa é que a pele
+**sugere** a densidade e a pessoa **decide**. Ver o comentário no catálogo sobre por que o caminho
+ficou `Ver > Densidade` e não `Ver > Aparência > Densidade`."""
 
 APARENCIA = "APARENCIA"
 """Submenu de `radiobutton`, um por pele registrada em `ui/pele.py` (S-221).
@@ -150,6 +158,7 @@ MENUS: tuple[Menu, ...] = (
             Item("roda_vira_pagina", INTERRUPTOR),
             _sep(),
             Item("aparencia", APARENCIA),
+            Item("densidade", DENSIDADE),
         ),
     ),
     Menu(
@@ -202,7 +211,12 @@ def comandos_faltando(comandos: Mapping[str, object]) -> list[str]:
     O submenu de recentes fica de fora: ele não tem função própria -- quem o preenche é o
     `recentes` de `montar`, e cada livro vira uma função na hora de abrir o menu.
     """
-    exigidos = {item.acao for menu in MENUS for item in menu.itens if item.tipo in (COMANDO, INTERRUPTOR, APARENCIA)}
+    exigidos = {
+        item.acao
+        for menu in MENUS
+        for item in menu.itens
+        if item.tipo in (COMANDO, INTERRUPTOR, APARENCIA, DENSIDADE)
+    }
     return sorted(exigidos - set(comandos))
 
 
@@ -246,7 +260,7 @@ def montar(
         item.acao
         for declarado in MENUS
         for item in declarado.itens
-        if item.tipo == APARENCIA and item.acao not in variaveis
+        if item.tipo in (APARENCIA, DENSIDADE) and item.acao not in variaveis
     ):
         raise KeyError(f"item de aparência sem variável de escolha: {', '.join(sem_variavel)}")
 
@@ -275,8 +289,9 @@ def _acrescentar(
     if item.tipo == RECENTES:
         menu.add_cascade(label=item.rotulo, menu=_submenu_recentes(menu, recentes))
         return
-    if item.tipo == APARENCIA:
-        submenu = _submenu_de_peles(menu, variaveis[item.acao], comandos[item.acao])
+    if item.tipo in (APARENCIA, DENSIDADE):
+        valores = pele.PELES if item.tipo == APARENCIA else pele.DENSIDADES
+        submenu = _submenu_de_escolha(menu, valores, variaveis[item.acao], comandos[item.acao])
         menu.add_cascade(label=item.rotulo, menu=submenu)
         return
     if item.tipo == INTERRUPTOR and item.acao in marcas:
@@ -288,16 +303,27 @@ def _acrescentar(
     menu.add_command(label=item.rotulo, command=comandos[item.acao], accelerator=atalhos.acelerador(item.acao))
 
 
-def _submenu_de_peles(pai: tk.Menu, escolha: tk.StringVar, ao_escolher: Callable[[], None]) -> tk.Menu:
-    """Um `radiobutton` por pele registrada, na ordem de `pele.PELES` (S-221).
+def _submenu_de_escolha(
+    pai: tk.Menu,
+    valores: Sequence[object],
+    escolha: tk.StringVar,
+    ao_escolher: Callable[[], None],
+) -> tk.Menu:
+    """Um `radiobutton` por opção, na ordem em que o registro as declara (S-221/S-232).
 
     O `value` é o nome que vai para o disco e o `label` é o que a pessoa lê -- separados porque
     o primeiro é chave e o segundo é texto de interface, e a S-166 já fixou que os dois não são
     a mesma coisa.
+
+    **Um montador para os dois eixos**, e não um por eixo: peles e densidades são a mesma linha de
+    menu com outra lista atrás. Duas cópias divergiriam na primeira vez que uma ganhasse um
+    separador -- que é o argumento de `ui/barra.py` sobre não haver duas implementações de quebra.
     """
     submenu = tk.Menu(pai, tearoff=False)
-    for registro in pele.PELES:
-        submenu.add_radiobutton(label=registro.rotulo, value=registro.nome, variable=escolha, command=ao_escolher)
+    for valor in valores:
+        nome = valor.nome if isinstance(valor, pele.Pele) else str(valor)
+        rotulo = valor.rotulo if isinstance(valor, pele.Pele) else pele.rotulo_de_densidade(nome)
+        submenu.add_radiobutton(label=rotulo, value=nome, variable=escolha, command=ao_escolher)
     return submenu
 
 

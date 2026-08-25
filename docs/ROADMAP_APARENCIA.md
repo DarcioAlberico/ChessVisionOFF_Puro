@@ -309,7 +309,7 @@ Os quatro itens que **só fazem sentido depois** de existir mais de uma pele, e 
 ter três.
 
 - **S-231** · A paleta de comandos, que sai de graça do catálogo — ✅ **implementada em 2026-08-25**
-- **S-232** · Densidade: compacta ou confortável
+- **S-232** · Densidade: compacta ou confortável — ✅ **implementada em 2026-08-25**
 - **S-233** · Nenhuma pele esconde um comando: o inventário de alcance
 - **S-234** · A pele não derruba a janela: o contrato de degradação nas três
 

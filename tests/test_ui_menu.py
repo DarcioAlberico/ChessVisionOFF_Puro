@@ -131,7 +131,10 @@ class MontagemTests(unittest.TestCase):
         }
         # A variável do submenu de aparência (S-221). `montar` a exige: um `radiobutton` sem
         # variável desenha as opções sem nenhuma marcada, e a escolha parece não ter pegado.
-        self.escolhas = {"aparencia": tk.StringVar(value=pele.CLASSICA)}
+        self.escolhas = {
+            "aparencia": tk.StringVar(value=pele.CLASSICA),
+            "densidade": tk.StringVar(value=pele.CONFORTAVEL),
+        }
 
     def test_a_barra_tem_os_cinco_menus_na_ordem_declarada(self) -> None:
         barra = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)

@@ -24,7 +24,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TypeVar
 
-from . import tipografia, tokens
+from . import pele, tipografia, tokens
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ __all__ = [
     "DEFAULT_THEME",
     "ESTILO_DE_ABAS_DISCRETO",
     "TEMA_ESCURO",
+    "altura_de_linha_atual",
     "ao_repintar",
     "apply_theme",
     "available_themes",
@@ -94,7 +95,13 @@ def available_themes() -> list[str]:
     return sorted(tb.Style().theme_names())
 
 
-def apply_theme(root: tk.Misc, theme: str | None = None, *, cromo_escuro: bool = False) -> str:
+def apply_theme(
+    root: tk.Misc,
+    theme: str | None = None,
+    *,
+    cromo_escuro: bool = False,
+    densidade: str = pele.CONFORTAVEL,
+) -> str:
     """Aplica o tema e devolve o que de fato ficou valendo.
 
     Devolve o nome do tema `ttkbootstrap` em uso, ou `"ttk"` quando a biblioteca não está
@@ -153,7 +160,7 @@ def apply_theme(root: tk.Misc, theme: str | None = None, *, cromo_escuro: bool =
     # Depois do tema, e dentro desta função de propósito (S-149): estilo declarado antes é
     # sobrescrito pelo tema, e deixar a ordem a cargo do chamador é o tipo de dependência
     # invisível que produz "funciona aqui e não lá". Aplicar o tema é aplicá-lo inteiro.
-    registrar_estilos()
+    registrar_estilos(densidade=densidade)
     repintar()
     return nome
 
@@ -281,6 +288,28 @@ def fonte_atual(papel: str, *, negrito: bool = False) -> tuple[str, int] | tuple
     return tipografia.fonte(papel, base=tamanho, familia=proporcional, mono=monoespacada, negrito=negrito)
 
 
+def altura_de_linha_atual(densidade: str = pele.CONFORTAVEL) -> int:
+    """A altura de linha do `Treeview` para esta fonte e esta densidade, em pixel (S-232).
+
+    O `linespace` vem do Tk quando há janela e da conta de `tipografia` quando não há -- a mesma
+    reserva de `fita.linhas_de_fonte`, e pela mesma razão: a decisão continua afirmável sem root.
+
+    **É `"Treeview"` e não um estilo nomeado.** Um estilo próprio exigiria `style=` nas duas
+    tabelas do programa, e a primeira que alguém esquecesse ficaria na altura de fábrica -- que é
+    o argumento de `ESTILO_DE_TITULO`, aqui ao lado, e o defeito que a S-153 mediu quando as duas
+    tabelas erravam a mesma coisa por serem duas cópias.
+    """
+    base, _proporcional, _mono = fonte_base()
+    reserva = round(tipografia.escala(base)[tipografia.CORPO] * 5 / 3)
+    try:
+        from tkinter import font as tkfont
+
+        linha = int(tkfont.Font(font=fonte_atual(tipografia.CORPO)).metrics("linespace")) or reserva
+    except Exception:  # noqa: BLE001 - sem root ou fonte exótica: a reserva serve
+        linha = reserva
+    return tipografia.altura_de_linha(linha, densidade=densidade)
+
+
 ESTILO_DE_TABELA_DE_DADOS = "Dado.Treeview"
 """Nome do estilo de `Treeview` cujo corpo é monoespaçado. Pedido por quem quer, e são poucos."""
 
@@ -305,7 +334,7 @@ construção -- e se um dia existir um `LabelFrame` que não seja título, ele �
 prefixo."""
 
 
-def registrar_estilos() -> None:
+def registrar_estilos(*, densidade: str = pele.CONFORTAVEL) -> None:
     """Declara no `Style` os papéis que só um estilo nomeado alcança (S-149). Nunca levanta.
 
     **Por que dois deles não cabem num `font=` de widget.**
@@ -331,6 +360,13 @@ def registrar_estilos() -> None:
         style.configure(ESTILO_DE_TITULO, font=fonte_atual(tipografia.TITULO))
     except tk.TclError as exc:  # pragma: no cover - Style exótico: a janela abre sem a escala
         logger.info("Estilos de tipografia não registrados (%s).", exc)
+
+    # Bloco próprio, pela razão de sempre: a altura de linha é da S-232 e a tipografia é da
+    # S-149, e um tema que recuse uma não pode levar a outra junto.
+    try:
+        style.configure("Treeview", rowheight=altura_de_linha_atual(densidade))
+    except tk.TclError as exc:  # pragma: no cover - tema que não aceita `rowheight`
+        logger.info("Altura de linha da tabela não registrada (%s).", exc)
 
     # Bloco próprio: um tema que recuse o estilo de abas não pode levar junto a tipografia, que
     # é de outro item. Aparência não derruba ferramenta, e uma metade não derruba a outra.

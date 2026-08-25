@@ -1351,38 +1351,135 @@ E a janela: `test_a_janela_desenha_o_que_o_filtro_devolve`;
 
 ---
 
-## S-232 · Densidade: compacta ou confortável ⬜ planejada
+## S-232 · Densidade: compacta ou confortável ✅ implementada (2026-08-25)
 
 **Problema.** A S-151 mediu o defeito em **1100×760**, e a solução dela — quebrar em vez de cortar
 — resolve o descarte mas não o aperto: em 1366×768, que é a tela de notebook mais comum, as duas
 barras quebram em quatro linhas e a página fica com o que sobrar. A fita da S-228 piora isso, e por
 isso já nasce com um modo compacto — mas o modo compacto é decisão da fita, não da janela.
 
-**Solução.** Densidade como eixo da janela, com dois valores, derivado de `ui/tipografia.py` —
-que já escala pela fonte do sistema (`theme.fonte_base`), e é por isso que uma escala de números
-fixos não serviria aqui.
+**Solução.** Densidade como eixo da janela, com dois valores, derivada de `ui/tipografia.py` — que
+já escala pela fonte do sistema (`theme.fonte_base`), e é por isso que uma escala de números fixos
+não serviria aqui.
+
+### O espaço virou dado, e ele já estava escrito
+
+`tipografia.FOLGAS` declara quatro papéis de espaço, e os quatro valores **são os números que já
+estavam na janela**: 14 é o `padding` da legenda de atalhos, 10 e 6 são o `padx`/`pady` da faixa de
+cromo, 2 é o `padx` entre dois botões de fita que a S-228 mediu. `ALTURA_DE_LINHA_NA_BASE = 20` é a
+altura de linha de fábrica do `Treeview`, medida.
+
+**É o que torna "na densidade confortável nada muda" verdadeiro por construção**, e não por
+coincidência: a confortável não *parece* a janela de hoje, ela **é** — o mesmo movimento que a
+S-219 fez com os rótulos, virar dado sem virar outro texto. `folga(FOLGA, base=9)` devolve 10
+porque 10 é o que estava lá.
 
 | densidade | espaçamento | altura de linha de tabela | ícone da fita |
 |---|---|---|---|
-| confortável | como hoje | como hoje | 32 px |
-| compacta | ×0,7 | ×0,8 | 20 px |
+| confortável | ×1,0 (14 / 10 / 6 / 2) | `linespace + 5` = 20 | 32 px (modo pleno) |
+| compacta | ×0,7 (10 / 7 / 4 / 1) | `×0,8`, com piso | 20 px (modo compacto) |
 
-A densidade é **sugerida** pela pele (`Pele.densidade`, S-221) e **decidida** por quem usa: a fita
-sugere compacta, a "Foco" sugere confortável, e `Ver ▸ Aparência ▸ Densidade` sobrepõe as duas.
+**Dois fatores e não um, e a diferença é o conteúdo.** Espaço vazio encolhe até sumir sem custo;
+altura de linha carrega texto, e abaixo do `linespace` ela corta a perna do `g`. Daí `0,8` contra
+`0,7`, e daí os dois pisos: `folga` nunca desce de **1 px** — dois vizinhos colados viram um
+controle só para o olho — e `altura_de_linha` nunca desce de `linespace + 1`.
+
+**O piso da altura de linha não é teórico: ele já morde na fonte 12.** Com `linespace` 20 a
+compacta calcula 20 e o piso responde 21. Ou seja, **da fonte 12 para cima a densidade compacta
+deixa de encolher a tabela**, porque não há o que encolher sem cortar letra. É a resposta certa, e
+fica dita aqui em vez de virar um relato de "a compacta não faz nada nesta máquina".
+
+### A pele sugere, a pessoa decide — e o vazio é o que guarda a diferença
+
+`pele.densidade_em_vigor(pele, guardada)` resolve na ordem `CVOFF_DENSITY` → escolha guardada →
+sugestão da pele. A fita passa a sugerir **compacta** (é a pele que gasta ~99 px de altura por
+linha de cromo, contra ~28 de uma barra); a clássica e a "Foco" sugerem confortável.
+
+**`AppState.densidade` nasce vazio, e o vazio carrega o item inteiro:** ele é a diferença entre
+*não decidi* e *decidi o que a pele sugeria*. Quem nunca abriu o menu recebe a sugestão de cada
+pele ao trocar; quem escolheu confortável continua confortável **também na fita**, que sugere o
+contrário. Cravar `"confortavel"` no estado apagaria essa diferença no primeiro salvamento — é a
+mesma decisão de `skin` e `piece_set`, com uma consequência a mais.
+
+**Inválida e não escolhida caem em lugares diferentes.** Não escolhida cai na sugestão da pele.
+Inválida cai em `confortavel` com um `warning` que a nomeia, que é o que a tabela de degradação da
+S-234 declara — quem escreveu um nome errado não pediu nada apertado.
+
+### Duas decisões que a implementação teve de tomar
+
+**1 · A densidade compacta crava o modo compacto da fita, e não inventa um terceiro ícone.** A
+tabela deste item pede 20 px na compacta, e o modo compacto da S-228 **é** o ícone de 20. O que
+muda é quem decide: o modo sai da largura disponível, a densidade sai da pessoa, e quando ela pede
+compacta a largura deixa de ter voto — senão um monitor largo devolveria o ícone de 32 px a quem
+acabou de pedir o de 20.
+
+**2 · O caminho ficou `Ver ▸ Densidade`, e não `Ver ▸ Aparência ▸ Densidade`.** A spec escreveu o
+segundo; aninhar custaria a disciplina que vale mais. Neste programa toda linha de menu é um `Item`
+de `menu.MENUS`, contável por `acoes_declaradas` — que é de onde a **S-233** vai tirar o inventário
+de alcance. Um comando montado por dentro do submenu de outro não aparece em lista nenhuma, e a
+S-233 mediria um catálogo com um buraco. Os dois eixos ficam irmãos no menu Ver, e `_submenu_de_escolha`
+é um montador só para os dois: peles e densidades são a mesma linha de menu com outra lista atrás.
+
+### O que foi medido em 1366×768, e o que a medição refutou
+
+**A metade "a fita cabe em uma linha" é falsa, e a S-228 já dizia por quê.** O modo compacto pede
+**1.726 px** de largura — *mais* que os 1.375 do pleno, porque o rótulo sai de baixo do ícone e vai
+para o lado dele. Em 1366 a fita quebra em duas linhas nos dois modos. Não é uma falha desta
+implementação: é uma premissa que já estava refutada quando o critério foi escrito.
+
+A metade que importa acontece. Medido com a fonte de referência, em 768 de altura:
+
+    fita                  altura     documento
+    plena, 2 linhas       198 px     61,7%
+    compacta, 2 linhas     88 px     76,0%
+    ganho                 110 px     +14,3 pontos
+
+Os 60% são atendidos nos dois — e **o confortável passa por 1,7 ponto**, a uma linha de cromo de
+reprovar. O que a compacta devolve ao documento são 110 px.
+
+`geometria.fracao_do_documento` é pura, e a razão é a de `fita.altura_da_fita`: um orçamento medido
+no widget montado só falha depois de a janela já estar errada, numa largura que o teste por acaso
+escolheu. **O que ela não modela está declarado no docstring** — as barras do próprio painel de PDF
+e a linha de conjunto de campo entram por `CHROME_VERTICAL`, que é estimativa; a fração devolvida é
+um **teto**.
 
 **Critério de aceite.**
 
-- a densidade deriva da fonte do sistema; aumentar a fonte do Windows aumenta os dois valores;
-- nenhum espaçamento é escrito fora de `ui/tipografia.py`;
-- em 1366×768, densidade compacta, a fita cabe em uma linha e o painel do PDF fica com ≥ 60% da
-  altura;
-- a escolha explícita da pessoa sobrepõe a sugestão da pele, e sobrevive à troca de pele;
-- na densidade confortável com a pele clássica, nada muda em relação a hoje.
+- ✅ a densidade deriva da fonte do sistema: os quatro papéis de folga e a altura de linha sobem
+  todos de base 9 para base 12, nas duas densidades;
+- ◐ **nenhum espaçamento é escrito fora de `ui/tipografia.py`** — verdadeiro para o espaçamento que
+  a densidade controla (a faixa de cromo da janela, os dois vãos da fita e a altura de linha do
+  `Treeview`), e **falso como afirmação global**: os `padx`/`pady` dos painéis continuam literais.
+  Movê-los todos é a decomposição do `ROADMAP_UI`, e não cabia aqui; fica registrado como dívida em
+  vez de virar um ✅ que ninguém consegue reproduzir;
+- ⬜ **em 1366×768 a fita cabe em uma linha** — MEDIDO E REFUTADO, ver acima;
+- ✅ em 1366×768, densidade compacta, o painel do PDF fica com **76,0%** da altura (≥ 60%);
+- ✅ a escolha explícita sobrepõe a sugestão da pele, e sobrevive à troca de pele — afirmado na
+  resolução pura e na janela, com os métodos reais de `remontar_cromo`;
+- ✅ na densidade confortável com a pele clássica, nada muda em relação a hoje: os quatro valores de
+  folga e a altura de linha na base de referência são exatamente os de antes.
 
-**Testes.** `test_a_densidade_deriva_da_fonte_do_sistema`;
-`test_a_escolha_explicita_sobrepoe_a_pele`;
-`test_em_1366_compacta_o_pdf_fica_com_60_por_cento`;
-`test_a_classica_confortavel_e_identica_a_hoje`.
+**Testes.** `tests/test_ui_densidade.py`, **22 casos**. A escala:
+`test_a_densidade_deriva_da_fonte_do_sistema`;
+`test_a_compacta_e_menor_que_a_confortavel_nos_dois_valores`;
+`test_a_classica_confortavel_e_identica_a_hoje`; `test_a_folga_nunca_chega_a_zero`;
+`test_a_altura_de_linha_nunca_corta_a_letra`; `test_papel_e_densidade_desconhecidos_levantam`.
+A sugestão e a escolha: `test_a_fita_sugere_compacta_e_as_outras_confortavel`;
+`test_sem_escolha_cada_pele_traz_a_sugestao_dela`; `test_a_escolha_explicita_sobrepoe_a_pele`;
+`test_o_ambiente_ganha_da_guardada`; `test_densidade_invalida_cai_na_confortavel_e_diz_qual_era`;
+`test_todo_rotulo_de_densidade_e_legivel`; `test_a_densidade_vai_e_volta_do_disco`;
+`test_estado_de_versao_anterior_abre_sem_densidade_escolhida`. A fita e o documento:
+`test_a_densidade_compacta_crava_o_modo_compacto_da_fita`;
+`test_em_1366_compacta_o_pdf_fica_com_60_por_cento`; `test_a_fracao_nunca_e_negativa_nem_estoura`;
+`test_a_fita_continua_dentro_do_orcamento_nas_duas_densidades`. E a janela:
+`test_a_altura_de_linha_entra_no_estilo_do_treeview`; `test_o_menu_ver_tem_o_submenu_de_densidade`;
+`test_o_submenu_lista_as_densidades_registradas`;
+`test_montar_recusa_item_de_densidade_sem_variavel`.
+
+E três em `tests/test_ui_troca_de_pele.py`, com os métodos reais da janela:
+`test_sem_escolha_cada_pele_traz_a_densidade_que_ela_sugere`;
+`test_a_escolha_de_densidade_sobrevive_a_troca_de_pele`;
+`test_escolher_a_densidade_que_a_pele_sugeria_ainda_a_torna_explicita`.
 
 ---
 

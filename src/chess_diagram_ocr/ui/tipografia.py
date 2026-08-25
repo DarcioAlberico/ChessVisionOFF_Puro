@@ -25,16 +25,32 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from . import pele
+
 __all__ = [
+    "ALTURA_DE_LINHA_NA_BASE",
     "AUXILIAR",
+    "BASE_DE_REFERENCIA",
     "CORPO",
     "DADO",
     "DEGRAUS",
+    "FATOR_DE_FOLGA",
+    "FATOR_DE_LINHA",
+    "FOLGA",
+    "FOLGAS",
+    "FOLGA_DE_LINHA",
+    "FOLGA_DE_MOLDURA",
+    "FOLGA_MINIMA",
+    "LINHA_NA_BASE",
     "MONOESPACADAS_PREFERIDAS",
+    "PAPEIS_DE_FOLGA",
     "PAPEIS_DE_FONTE",
     "TITULO",
+    "altura_de_linha",
     "escala",
     "familia_monoespacada",
+    "folga",
+    "folgas",
     "fonte",
 ]
 
@@ -150,3 +166,118 @@ def fonte(
     tamanho = escala(base)[papel]
     nome = mono if papel == DADO else familia
     return (nome, tamanho, "bold") if (negrito or papel == TITULO) else (nome, tamanho)
+
+
+# ------------------------------------------------------- a densidade, e o espaço dela (S-232)
+#
+# **Por que o espaço mora no módulo da fonte.** Ele não é uma segunda escala: é a mesma, medida na
+# outra direção. A S-149 já derivou os tamanhos da `TkDefaultFont` porque quem aumenta a fonte do
+# Windows quer o programa maior -- e uma janela de fonte 12 com o vão de fonte 9 fica *mais*
+# apertada, não igual. Os dois números têm de sair da mesma base ou eles divergem, que é a mesma
+# razão de `ui/comandos.py` existir para os rótulos.
+
+BASE_DE_REFERENCIA = 9
+"""O tamanho em que a janela de hoje foi desenhada -- a Segoe UI 9 do topo deste arquivo.
+
+É o que faz `FOLGAS` ser uma leitura da janela e não uma escala inventada: nesta base, cada papel
+devolve exatamente o número que já está escrito no `padx`/`pady` correspondente."""
+
+LINHA_NA_BASE = 15
+"""O `linespace` do corpo nesta base, em pixel. É o `round(9 * 5 / 3)` de `fita.linhas_de_fonte`."""
+
+ALTURA_DE_LINHA_NA_BASE = 20
+"""A altura de linha do `ttk.Treeview` nesta base, em pixel -- **o padrão do Tk, medido**.
+
+Está aqui para que a densidade confortável reproduza a janela de hoje **por construção** e não
+por coincidência: `altura_de_linha` devolve `linha + 5` porque 20 − 15 = 5, e não porque 5 é um
+número bonito."""
+
+FOLGA_DE_MOLDURA = "FOLGA_DE_MOLDURA"
+"""A moldura interna de uma janela de diálogo: o `padding=14` da legenda e da paleta."""
+
+FOLGA = "FOLGA"
+"""O vão do cromo da janela contra a borda: o `padx=10` da faixa onde a fila e a fita moram."""
+
+FOLGA_DE_LINHA = "FOLGA_DE_LINHA"
+"""Entre uma linha de cromo e a seguinte: o `pady=6` da mesma faixa, e o de uma barra para a outra."""
+
+FOLGA_MINIMA = "FOLGA_MINIMA"
+"""Entre dois vizinhos do mesmo grupo: o `padx=2` entre dois botões de fita.
+
+O piso é 1 e não 0, e a razão é de desenho: dois botões colados viram um controle só para o olho,
+e a densidade compacta existe para caber, não para fundir."""
+
+PAPEIS_DE_FOLGA: tuple[str, ...] = (FOLGA_DE_MOLDURA, FOLGA, FOLGA_DE_LINHA, FOLGA_MINIMA)
+"""Todos os papéis de espaço. Existe para o teste afirmar que a resolução é total, como
+`PAPEIS_DE_FONTE`."""
+
+FOLGAS: dict[str, int] = {
+    FOLGA_DE_MOLDURA: 14,
+    FOLGA: 10,
+    FOLGA_DE_LINHA: 6,
+    FOLGA_MINIMA: 2,
+}
+"""Quantos pixels cada papel vale na densidade confortável, na base de referência.
+
+**São os números que já estão na janela**, e não uma escala nova: 14 é o `padding` da legenda de
+atalhos, 10 e 6 são o `padx`/`pady` da faixa de cromo, e 2 é o `padx` entre dois botões de fita
+que a S-228 mediu. A densidade confortável não muda a janela de hoje porque ela **é** a janela de
+hoje escrita como dado -- o mesmo movimento que a S-219 fez com os rótulos."""
+
+FATOR_DE_FOLGA: dict[str, float] = {pele.CONFORTAVEL: 1.0, pele.COMPACTA: 0.7}
+"""O multiplicador de espaço por densidade. O 0,7 é o da tabela da S-232."""
+
+FATOR_DE_LINHA: dict[str, float] = {pele.CONFORTAVEL: 1.0, pele.COMPACTA: 0.8}
+"""O multiplicador da altura de linha de tabela. **0,8 e não 0,7, e a diferença é o conteúdo.**
+
+Espaço vazio encolhe até sumir sem custo; altura de linha carrega texto, e abaixo do `linespace`
+ela corta a letra em vez de aproximá-la. A tabela da S-232 já separa os dois fatores, e o piso de
+`altura_de_linha` é quem garante que o menor dos dois nunca alcance a letra."""
+
+
+def folga(papel: str, *, base: int = BASE_DE_REFERENCIA, densidade: str = pele.CONFORTAVEL) -> int:
+    """O espaço daquele papel, em pixel, para esta fonte e esta densidade. Pura.
+
+    Levanta `KeyError` para papel ou densidade desconhecidos, como `fonte` e `tokens.cor`: um
+    papel escrito errado que caísse no menor devolveria um vão plausível e sem significado.
+
+    O piso é **1 px** e não 0. Dois vizinhos colados viram um controle só para o olho, e a
+    densidade compacta existe para caber -- não para fundir. Sem o piso, `FOLGA_MINIMA` a 0,7
+    chegaria a 0 na primeira fonte pequena.
+    """
+    if papel not in FOLGAS:
+        raise KeyError(f"papel de folga desconhecido: {papel!r}. Os válidos estão em PAPEIS_DE_FOLGA.")
+    if densidade not in FATOR_DE_FOLGA:
+        raise KeyError(f"densidade desconhecida: {densidade!r}. As válidas estão em pele.DENSIDADES.")
+    if base <= 0:
+        base = MINIMO_LEGIVEL
+    proporcional = FOLGAS[papel] * base / BASE_DE_REFERENCIA
+    return max(1, round(proporcional * FATOR_DE_FOLGA[densidade]))
+
+
+def folgas(*, base: int = BASE_DE_REFERENCIA, densidade: str = pele.CONFORTAVEL) -> dict[str, int]:
+    """Os quatro papéis de uma vez. É o que um painel pergunta quando monta várias linhas."""
+    return {papel: folga(papel, base=base, densidade=densidade) for papel in PAPEIS_DE_FOLGA}
+
+
+def altura_de_linha(linha_de_texto: int, *, densidade: str = pele.CONFORTAVEL) -> int:
+    """A altura de uma linha de tabela, em pixel -- o `rowheight` do `Treeview`. Pura.
+
+    `linha_de_texto` é o `linespace` da fonte de corpo, e é por ele que a altura acompanha a fonte
+    do sistema em vez de cravar pixel.
+
+    **O piso é o próprio texto mais um.** Uma linha mais baixa que o `linespace` não é uma tabela
+    apertada: é uma tabela que corta a perna do `g` e o acento do `á`, e numa coluna de FEN e de
+    nome de livro isso é o dado.
+
+    O piso não é teórico: ele **já morde na base de referência**. Com `linespace` 15 a compacta dá
+    `round(20 x 0,8) = 16` e o piso é 16 -- empatam. Com a fonte do Windows em 12 (`linespace` 20)
+    a conta dá 20 e o piso 21, e é o piso que responde. Ou seja: **da fonte 12 para cima, a
+    densidade compacta deixa de encolher a tabela**, porque não há o que encolher sem cortar
+    letra. É a resposta certa, e ela fica dita aqui em vez de virar um relato de "a compacta não
+    faz nada nesta máquina".
+    """
+    if densidade not in FATOR_DE_LINHA:
+        raise KeyError(f"densidade desconhecida: {densidade!r}. As válidas estão em pele.DENSIDADES.")
+    confortavel = linha_de_texto + (ALTURA_DE_LINHA_NA_BASE - LINHA_NA_BASE)
+    return max(linha_de_texto + 1, round(confortavel * FATOR_DE_LINHA[densidade]))

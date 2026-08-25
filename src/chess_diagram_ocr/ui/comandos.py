@@ -243,6 +243,12 @@ CATALOGO: tuple[Comando, ...] = (
     # A escolha de pele (S-221). Fica em VISUALIZACAO porque é o menu onde ela mora, e não
     # ganha ícone: quem desenha submenu com ícone é a fita, e aparência não é comando de fita.
     Comando("aparencia", "Aparência", VISUALIZACAO, estilos.NEUTRO),
+    # O segundo eixo de aparência (S-232), e ele fica **ao lado** da pele e não dentro dela. A
+    # spec escreveu o caminho `Ver > Aparência > Densidade`, e aninhá-lo custaria a disciplina que
+    # vale mais: aqui toda linha de menu é um `Item` de `menu.MENUS`, contável por
+    # `acoes_declaradas` -- que é de onde a S-233 vai tirar o inventário de alcance. Um comando
+    # montado por dentro de outro submenu não aparece em lista nenhuma.
+    Comando("densidade", "Densidade", VISUALIZACAO, estilos.NEUTRO),
     Comando(
         "roda_vira_pagina",
         "A roda do mouse vira a página",

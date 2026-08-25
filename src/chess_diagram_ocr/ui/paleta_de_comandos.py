@@ -58,9 +58,11 @@ Não é falha: `_comandos` de `app_tkinter` é montado com os painéis, e um rot
 sem eles amarra menos. O que a paleta não pode fazer é **sumir** com a linha -- ver `Entrada`."""
 
 MOTIVO_SUBMENU = "é um submenu: a escolha está na barra de menus"
-"""Abrir recente e Aparência. Os dois têm função amarrada e nenhuma delas é executável daqui: a
-primeira monta uma lista de livros na hora de abrir o menu; a segunda aplica o `StringVar` que o
-`radiobutton` acabou de mudar, e disparada sem esse gesto ela reaplica a pele que já vale."""
+"""Abrir recente, Aparência e Densidade. Os três têm função amarrada e nenhuma delas é executável
+daqui: a primeira monta uma lista de livros na hora de abrir o menu; as outras duas aplicam o
+`StringVar` que o `radiobutton` acabou de mudar, e disparadas sem esse gesto reaplicam o que já
+vale. **A lista cresceu sozinha na S-232**, que é o que `motivos_declarados` prometia: o motivo
+sai do `tipo` do item em `menu.MENUS`, e ninguém veio aqui acrescentar "densidade"."""
 
 MOTIVO_NA_LINHA_DE_CAMPO = "fica na linha de conjunto de campo, junto da página exibida"
 """Os três da S-77, e a razão de eles não terem item de menu é a mesma de não terem paleta: eles
@@ -77,7 +79,7 @@ def motivos_declarados() -> dict[str, str]:
     módulo seria a divergência que a S-219 veio fechar -- e ela apareceria no dia em que alguém
     acrescentasse o terceiro submenu.
     """
-    submenus = (menu.RECENTES, menu.APARENCIA)
+    submenus = (menu.RECENTES, menu.APARENCIA, menu.DENSIDADE)
     declarados = dict.fromkeys(comandos.NA_LINHA_DE_CAMPO, MOTIVO_NA_LINHA_DE_CAMPO)
     declarados.update(
         {item.acao: MOTIVO_SUBMENU for declarado in menu.MENUS for item in declarado.itens if item.tipo in submenus}

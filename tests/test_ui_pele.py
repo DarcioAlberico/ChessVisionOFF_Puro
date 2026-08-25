@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 
 from tk_root import raiz
 
-from chess_diagram_ocr.ui import menu, pele
+from chess_diagram_ocr.ui import comandos, menu, pele
 from chess_diagram_ocr.ui.state import STATE_VERSION, AppState, load_state, save_state, state_from_dict
 
 
@@ -149,10 +149,18 @@ class SubmenuTests(unittest.TestCase):
         self.comandos["aparencia"] = lambda: self.escolhido.append(self.variavel.get())
 
     def _aparencia(self) -> tk.Menu:
-        barra = menu.montar(self.janela, self.comandos, escolhas={"aparencia": self.variavel})
+        """O submenu de **peles**, que desde a S-232 não é mais o último item do menu Ver.
+
+        O de densidade entrou ao lado dele, e procurar "o último" traria a densidade -- que é o
+        tipo de teste que continua verde medindo outra coisa. Aqui a linha é achada pelo rótulo,
+        que é o que o item declara.
+        """
+        escolhas = {"aparencia": self.variavel, "densidade": tk.StringVar(value=pele.CONFORTAVEL)}
+        barra = menu.montar(self.janela, self.comandos, escolhas=escolhas)
         ver = self.janela.nametowidget(barra.entrycget(3, "menu"))
-        ultimo = ver.index(tk.END)
-        return self.janela.nametowidget(ver.entrycget(ultimo, "menu"))
+        alvo = comandos.rotulo("aparencia")
+        indice = next(i for i in range(ver.index(tk.END) + 1) if ver.type(i) == "cascade" and ver.entrycget(i, "label") == alvo)
+        return self.janela.nametowidget(ver.entrycget(indice, "menu"))
 
     def test_o_menu_lista_as_peles_registradas(self) -> None:
         submenu = self._aparencia()

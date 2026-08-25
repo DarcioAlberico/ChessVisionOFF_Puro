@@ -48,6 +48,8 @@ __all__ = [
     "acoes_da_fita",
     "altura_atual",
     "altura_da_fita",
+    "espaco_ate_o_cabecalho",
+    "espaco_entre_botoes",
     "grupos",
     "montar",
     "quebrar_rotulo",
@@ -140,14 +142,24 @@ FOLGA_ACIMA_DO_ROTULO = 4
 MOLDURA_DO_CABECALHO = 4
 """Borda mais preenchimento vertical do `ttk.Label` que desenha o nome do grupo."""
 
-ESPACO_ATE_O_CABECALHO: dict[str, int] = {pele.CONFORTAVEL: 2, pele.COMPACTA: 0}
-"""O vão entre a fila de botões e o cabeçalho do grupo, por densidade.
+def espaco_ate_o_cabecalho(densidade: str, *, base: int = tipografia.BASE_DE_REFERENCIA) -> int:
+    """O vão entre a fila de botões e o cabeçalho do grupo. **Altura: entra no orçamento.**
 
-É o único canal de densidade que esta fase liga -- o eixo inteiro é da S-232. Estar aqui como
-parâmetro, e não como constante, é o que faz `altura_da_fita` continuar valendo quando ela chegar."""
+    Era um `dict` cravado aqui, com 2 e 0. A S-228 já o deixou como parâmetro dizendo que o eixo
+    inteiro seria da S-232, e é isto: o número sai de `tipografia.folga`, e passa a acompanhar a
+    fonte do sistema junto com o resto do espaço da janela. Na densidade compacta ele vale 1 e não
+    0, pelo piso de `folga` -- dois vizinhos colados viram um controle só para o olho.
+    """
+    return tipografia.folga(tipografia.FOLGA_MINIMA, base=base, densidade=densidade)
 
-ESPACO_ENTRE_BOTOES: dict[str, int] = {pele.CONFORTAVEL: 2, pele.COMPACTA: 1}
-"""O `padx` entre dois botões do mesmo grupo. Largura, e não altura: não entra no orçamento."""
+
+def espaco_entre_botoes(densidade: str, *, base: int = tipografia.BASE_DE_REFERENCIA) -> int:
+    """O `padx` entre dois botões do mesmo grupo. Largura, e não altura: não entra no orçamento.
+
+    Mesmo papel de folga do vão do cabeçalho, e é de propósito que os dois saiam da mesma chamada:
+    são o mesmo espaço -- "entre dois vizinhos do mesmo grupo" -- medido em direções diferentes.
+    """
+    return tipografia.folga(tipografia.FOLGA_MINIMA, base=base, densidade=densidade)
 
 
 def quebrar_rotulo(texto: str, *, linhas: int = LINHAS_DO_ROTULO) -> str:
@@ -177,6 +189,7 @@ def altura_da_fita(
     linha_de_texto: int,
     linha_de_apoio: int,
     densidade: str = pele.CONFORTAVEL,
+    base: int = tipografia.BASE_DE_REFERENCIA,
 ) -> int:
     """A altura que a fita vai ocupar naquele modo, em pixel. **Pura** -- é o item.
 
@@ -194,7 +207,7 @@ def altura_da_fita(
     """
     if modo not in LADO_DO_ICONE:
         raise KeyError(f"modo de fita desconhecido: {modo!r}. Os válidos estão em MODOS.")
-    if densidade not in ESPACO_ATE_O_CABECALHO:
+    if densidade not in pele.DENSIDADES:
         raise KeyError(f"densidade desconhecida: {densidade!r}. As válidas estão em pele.DENSIDADES.")
 
     lado = LADO_DO_ICONE[modo]
@@ -205,7 +218,7 @@ def altura_da_fita(
         return max(lado, rotulo) + MOLDURA_DO_BOTAO
 
     botao = lado + FOLGA_ACIMA_DO_ROTULO + rotulo + MOLDURA_DO_BOTAO
-    return botao + ESPACO_ATE_O_CABECALHO[densidade] + linha_de_apoio + MOLDURA_DO_CABECALHO
+    return botao + espaco_ate_o_cabecalho(densidade, base=base) + linha_de_apoio + MOLDURA_DO_CABECALHO
 
 
 def linhas_de_fonte() -> tuple[int, int]:
@@ -231,7 +244,10 @@ def linhas_de_fonte() -> tuple[int, int]:
 def altura_atual(modo: str, *, densidade: str = pele.CONFORTAVEL) -> int:
     """`altura_da_fita` resolvida contra a fonte deste sistema. É o que o painel pergunta."""
     corpo, apoio = linhas_de_fonte()
-    return altura_da_fita(modo, linha_de_texto=corpo, linha_de_apoio=apoio, densidade=densidade)
+    base, _proporcional, _mono = theme.fonte_base()
+    return altura_da_fita(
+        modo, linha_de_texto=corpo, linha_de_apoio=apoio, densidade=densidade, base=base
+    )
 
 
 @dataclass(frozen=True)
@@ -295,13 +311,22 @@ class Fita(BarraFluida):
         super().__init__(pai)
         if modo is not None and modo not in LADO_DO_ICONE:
             raise KeyError(f"modo de fita desconhecido: {modo!r}. Os válidos estão em MODOS.")
+        if densidade not in pele.DENSIDADES:
+            raise KeyError(f"densidade desconhecida: {densidade!r}. As válidas estão em pele.DENSIDADES.")
         self._amarrados = dict(amarrados)
         self._densidade = densidade
-        self._fixo = modo is not None
+        self._base = theme.fonte_base()[0]
+        self._fixo = modo is not None or densidade == pele.COMPACTA
         """Modo pedido de fora é modo cravado: quem monta a fita num tamanho para fotografá-la ou
-        para medi-la não quer que a largura da janela decida por ele."""
+        para medi-la não quer que a largura da janela decida por ele.
 
-        self._modo = modo or PLENO
+        **E densidade compacta também crava** (S-232). O modo é decidido pela largura disponível e
+        a densidade é decidida pela pessoa; quando ela pede compacta, a largura deixa de ter voto
+        -- senão um monitor largo devolveria o ícone de 32 px a quem acabou de pedir o de 20. A
+        tabela da S-232 diz "ícone da fita: 20 px na compacta", e é isto que a cumpre: o modo
+        compacto **é** o ícone de 20, e não há um terceiro tamanho a inventar."""
+
+        self._modo = modo or (COMPACTO if densidade == pele.COMPACTA else PLENO)
         self._botoes: dict[str, ttk.Button] = {}
         self._largura_plena = 0
         self._construir()
@@ -410,7 +435,7 @@ class Fita(BarraFluida):
         corpo.pack(side=tk.TOP)
         for registro in grupo.itens:
             botao = self._botao(corpo, registro, grupo)
-            botao.pack(side=tk.LEFT, padx=ESPACO_ENTRE_BOTOES[self._densidade])
+            botao.pack(side=tk.LEFT, padx=espaco_entre_botoes(self._densidade, base=self._base))
             self._botoes[registro.acao] = botao
         if self._modo == COMPACTO:
             # **O cabeçalho vira dica** (S-228). Ele custa uma linha de texto por fita, e no modo
@@ -420,7 +445,7 @@ class Fita(BarraFluida):
         cabecalho = ttk.Label(moldura, text=grupo.rotulo, anchor="center")
         # O cabeçalho **embaixo**, como a Imagem 2 desenha: o nome do grupo é a legenda de uma fila
         # de botões, e uma legenda acima competiria com a barra de menus por leitura.
-        cabecalho.pack(side=tk.TOP, fill=tk.X, pady=(ESPACO_ATE_O_CABECALHO[self._densidade], 0))
+        cabecalho.pack(side=tk.TOP, fill=tk.X, pady=(espaco_ate_o_cabecalho(self._densidade, base=self._base), 0))
         theme.pintar(cabecalho, "foreground", tokens.TEXTO_SECUNDARIO)
         cabecalho.configure(font=theme.fonte_atual(tipografia.AUXILIAR))
         return moldura

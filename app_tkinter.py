@@ -105,6 +105,7 @@ from chess_diagram_ocr.ui import (
     strings,
     texto,
     theme,
+    tipografia,
     tokens,
 )
 from chess_diagram_ocr.ui.board_widget import PieceImages
@@ -174,7 +175,12 @@ class ChessOcrTkApp:
         # existe um botao ali. O numero sai dos `minsize` dos paineis, logo abaixo.
         self.root.minsize(*geometria.piso_da_janela(LARGURA_MINIMA_ESQUERDA, LARGURA_MINIMA_DIREITA))
 
-        self.theme = apply_theme(root, cromo_escuro=pele.registrada(pele.escolhida()).cromo_escuro)
+        pele_inicial = pele.registrada(pele.escolhida())
+        self.theme = apply_theme(
+            root,
+            cromo_escuro=pele_inicial.cromo_escuro,
+            densidade=pele.densidade_em_vigor(pele_inicial),
+        )
         """Tema em uso (S-53), ou `"ttk"` quando o `ttkbootstrap` não está instalado.
 
         Aplicado antes de qualquer widget: trocar tema depois de a árvore montada refaz o
@@ -191,6 +197,13 @@ class ChessOcrTkApp:
         self.skin_var = tk.StringVar(value=pele.escolhida())
         """A pele escolhida (S-221). Nasce do ambiente porque o menu é montado antes de o
         estado ser lido; `_restore_state_or_default_pdf` a corrige com o que estava no disco."""
+
+        self.densidade_var = tk.StringVar(value=self._densidade())
+        """A densidade em vigor (S-232) -- **a resolvida, e não a guardada**.
+
+        O `radiobutton` do menu precisa de um valor concreto para marcar, e "vazio" não é uma
+        opção desenhável. Quem sabe a diferença entre *não decidi* e *decidi isto* é o
+        `AppState.densidade`, e é ele que `_escolher_densidade` grava."""
         self.settings: Settings = load_settings()
         """Preferências do usuário (S-32). Por padrão nada sai da máquina."""
 
@@ -663,7 +676,8 @@ class ChessOcrTkApp:
         self.piece_set_var.set(conjuntos.escolhido(self.state.piece_set))
         self._escolher_conjunto()
         self.skin_var.set(pele.escolhida(self.state.skin))
-        if self.skin_var.get() != pele.CLASSICA:
+        self.densidade_var.set(self._densidade())
+        if self.skin_var.get() != pele.CLASSICA or self.state.densidade:
             # A janela subiu na clássica porque o cromo é montado antes de o disco ser lido.
             self.remontar_cromo()
 
@@ -1660,6 +1674,7 @@ class ChessOcrTkApp:
             "tirar_caixa": self._on_pdf(lambda p: p.drop_selected_box()),
             "devolver_caixas": self.restore_dropped_boxes,
             "aparencia": self._escolher_pele,
+            "densidade": self._escolher_densidade,
             "roda_vira_pagina": self._save_app_state,
             "ler_pagina": self.ocr_all,
             "ler_melhor": self.ocr_best,
@@ -1681,8 +1696,12 @@ class ChessOcrTkApp:
             self._comandos(),
             interruptores={} if painel is None else painel.interruptores_de_vista,
             recentes=self._livros_recentes,
-            escolhas={"aparencia": self.skin_var},
+            escolhas={"aparencia": self.skin_var, "densidade": self.densidade_var},
         )
+
+    def _densidade(self) -> str:
+        """A densidade que vale agora: a escolha guardada, ou o que a pele sugere (S-232)."""
+        return pele.densidade_em_vigor(pele.registrada(pele.escolhida(self.state.skin)), self.state.densidade)
 
     def _escolher_pele(self) -> None:
         """`Ver ▸ Aparência`: remonta o cromo e grava na hora (S-221/S-222)."""
@@ -1691,6 +1710,21 @@ class ChessOcrTkApp:
         self.skin_var.set(self.state.skin)
         if self.state.skin != anterior:
             self.remontar_cromo()
+        self._save_app_state()
+
+    def _escolher_densidade(self) -> None:
+        """`Ver ▸ Densidade`: grava a **escolha** e remonta o cromo (S-232).
+
+        Grava mesmo quando a densidade escolhida é a que a pele já sugeria, e é o item: a partir
+        daqui ela é decisão da pessoa, e sobrevive à troca de pele. Enquanto `state.densidade`
+        estiver vazio, cada pele traz a sugestão dela.
+        """
+        pedida = self.densidade_var.get()
+        if pedida == self._densidade() and self.state.densidade == pedida:
+            return
+        self.state.densidade = pedida
+        self.densidade_var.set(self._densidade())
+        self.remontar_cromo()
         self._save_app_state()
 
     def remontar_cromo(self) -> None:
@@ -1706,16 +1740,24 @@ class ChessOcrTkApp:
         """
         escolhida = pele.registrada(pele.escolhida(self.state.skin))
         montagem = escolhida.montar_cromo
+        densidade = self._densidade()
+        self.densidade_var.set(densidade)
         # `apply_theme` e não `registrar_estilos`: é ela que escolhe o tema `ttkbootstrap` da
         # pele, reaplica os estilos nomeados **e** repinta o que foi pintado fora do `Style`.
-        self.theme = theme.apply_theme(self.root, cromo_escuro=escolhida.cromo_escuro)
+        self.theme = theme.apply_theme(self.root, cromo_escuro=escolhida.cromo_escuro, densidade=densidade)
         icones.limpar_cache()
         for filho in self.fila_de_acoes.winfo_children():
             filho.destroy()
+        # O `padx`/`pady` da faixa sai de `ui/tipografia.py` desde a S-232: era `10` e `6`
+        # cravados, que são exatamente o que `FOLGA` e `FOLGA_DE_LINHA` devolvem na confortável.
+        recheio = tipografia.folgas(base=theme.fonte_base()[0], densidade=densidade)
+        lado, alto = recheio[tipografia.FOLGA], recheio[tipografia.FOLGA_DE_LINHA]
         if montagem == pele.CROMO_FOCO:
-            fila.montar(self.fila_de_acoes, self._comandos()).pack(fill=tk.X, padx=10, pady=(6, 0))
+            fila.montar(self.fila_de_acoes, self._comandos()).pack(fill=tk.X, padx=lado, pady=(alto, 0))
         elif montagem == pele.CROMO_FITA:
-            fita.montar(self.fila_de_acoes, self._comandos()).pack(fill=tk.X, padx=10, pady=(6, 0))
+            fita.montar(self.fila_de_acoes, self._comandos(), densidade=densidade).pack(
+                fill=tk.X, padx=lado, pady=(alto, 0)
+            )
         if self.pdf_panel is not None:
             self.pdf_panel.remontar_cromo(montagem, refazer_linha_de_campo=self._build_field_row)
         if self.left_tabs is not None:
