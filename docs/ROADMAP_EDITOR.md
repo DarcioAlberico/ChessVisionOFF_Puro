@@ -58,6 +58,14 @@ nada.
 
 # A aba de hoje, medida
 
+> **Esta tabela é de 2026-08-24, e as cinco fases fecharam em 2026-08-25.** Ela fica como estava
+> porque é a medição que motivou o plano -- trocá-la pelos números de agora apagaria o *porquê* de
+> cada item. O estado de hoje é publicado por `cvoff-editor-inventario`, em
+> [`docs/metrics/editor_inventario_20260825.json`](metrics/editor_inventario_20260825.json): 28
+> comandos no catálogo, 7 atributos de documento, 5 formatos de saída, 2 de entrada (`.cvtxt` e o
+> rascunho), 124 símbolos na paleta e 3 teclas próprias do editor.
+
+
 | o que ela tem | onde | quanto |
 |---|---|---|
 | controles na barra | `ui/texto_panel.py:137-161` | **6** — folha, "Da página aberta", motor, modo bloco, "Ler folha", "Salvar .txt" |
