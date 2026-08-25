@@ -236,5 +236,53 @@ class CampoNaPaginaTests(unittest.TestCase):
         self.assertEqual(len(set(textos)), 1, "o campo mudou o texto que sai da página")
 
 
+class InclinacaoTests(unittest.TestCase):
+    """`pendor_do_box` e `inclinacao_do_box` são duas grandezas, e confundi-las já custou caro.
+
+    Uma fórmula que multiplicava o pendor (larguras de box) por um Δy (pixels) chegou a ser
+    publicada como conclusão conferida em `docs/metrics/texto_dicionario.json`. Estes testes são
+    o que impede a confusão de voltar.
+    """
+
+    def _traco(self, inclinacao: float, espessura: int = 3, altura: int = 40):
+        """Um traço reto de inclinação conhecida (`dx/dy`), no bbox apertado dele."""
+        import numpy as np
+
+        from chess_diagram_ocr.text.boxes import Caixa
+
+        largura = int(abs(inclinacao) * altura) + espessura + 2
+        img = np.zeros((altura, largura), np.uint8)
+        for y in range(altura):
+            x = int(round((altura - 1 - y) * inclinacao))
+            img[y, x : x + espessura] = 255
+        xs = np.nonzero(img.any(axis=0))[0]
+        return img, Caixa(int(xs[0]), 0, int(xs[-1]) + 1, altura)
+
+    def test_a_inclinacao_devolve_o_dx_por_dy_de_verdade(self) -> None:
+        for real in (0.35, 0.20, 0.10):
+            with self.subTest(inclinacao=real):
+                img, caixa = self._traco(real)
+                self.assertAlmostEqual(real, it.inclinacao_do_box(img, caixa), places=1)
+
+    def test_a_inclinacao_nao_depende_da_espessura_do_traco_e_o_pendor_depende(self) -> None:
+        """**É o motivo de a conversão existir**, e o número está no docstring da função.
+
+        Num bbox apertado a largura cresce junto com o pendor, e o divisor cancela o sinal: o
+        pendor bruto de um traço fino a 0,10 chega a passar o de um traço grosso a 0,35.
+        """
+        img, caixa = self._traco(0.35, espessura=3)
+        outra_img, outra = self._traco(0.35, espessura=10)
+        brutos = (it.pendor_do_box(img, caixa), it.pendor_do_box(outra_img, outra))
+        convertidos = (it.inclinacao_do_box(img, caixa), it.inclinacao_do_box(outra_img, outra))
+        self.assertGreater(abs(brutos[0] - brutos[1]), 0.05, "o pendor bruto deixou de variar")
+        self.assertAlmostEqual(convertidos[0], convertidos[1], places=1)
+
+    def test_a_linha_sem_boxes_bastantes_nao_declara_inclinacao(self) -> None:
+        img, caixa = self._traco(0.20)
+        self.assertIsNone(it.inclinacao_da_linha(img, [caixa] * (it.MIN_BOXES_PARA_MEDIR - 1)))
+        medida = it.inclinacao_da_linha(img, [caixa] * it.MIN_BOXES_PARA_MEDIR)
+        self.assertAlmostEqual(0.20, medida, places=1)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

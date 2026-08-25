@@ -404,7 +404,11 @@ def segmentar(
     if escala <= 0:
         return (cinza, binaria, 0, [], [])
 
-    caixas = _boxes.unir_pingos(_boxes.caixas_de_caractere(binaria, escala=escala), escala=escala)
+    # **A binária entra para o pingo do itálico** (`i` que sai `l` + `'`): sem ela a régua de
+    # sobreposição é horizontal e o itálico é uma inclinação. Ver `boxes.unir_pingos`.
+    caixas = _boxes.unir_pingos(
+        _boxes.caixas_de_caractere(binaria, escala=escala), escala=escala, binaria=binaria
+    )
     if empilhados:
         # **`:`, `;` e `=` são dois contornos**, e sem isto o classificador nunca vê nenhum dos
         # três inteiro -- ele responde `.` duas vezes, corretamente. Ver `text/empilhados.py`.

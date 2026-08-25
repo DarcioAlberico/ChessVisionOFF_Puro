@@ -1,0 +1,224 @@
+{
+  "item": "S-185 -- unir_pingos, a metade que o italico quebrava",
+  "medido_em": "2026-08-25",
+  "pergunta": "O pingo do `i` em italico volta para a haste sem levar o ponto final junto?",
+  "problema": "A regua de unir_pingos e sobreposicao HORIZONTAL de x cru contra SOBREPOSICAO_MINIMA = 0.55, e o docstring diz para que ela existe: o ponto final vem AO LADO da letra e o pingo vem SOBRE ela. Em italico o pingo tambem vem ao lado -- deslocado para a direita pela inclinacao --, cai na regra do ponto final e fica solto. Resultado no texto: `tecnica` sai `tecnl'ca`, `Fischer` sai `Fl'scher`, `rapida` sai `rapl'da`.",
+  "por_que_nao_da_para_consertar_depois": "O classificador NAO propoe `i` em caixa nenhuma: na haste ele responde '/' com 0,915 e 'l' com 0,069; no pingo, '.' com 0,997. O `i` so existe na imagem das duas caixas FUNDIDAS. Nenhum dicionario alcanca uma letra que o modelo nunca propos -- ver docs/metrics/texto_dicionario.json.",
+  "solucao": "unir_pingos aceita a binaria e projeta o x da caixa curta para onde ele estaria se o glifo fosse reto (`inclinacao x vao`) antes de medir a sobreposicao. Duas guardas: so a caixa ACIMA da base e projetada, e so quando a base e uma HASTE (altura >= 2x largura), porque so um traco carrega pingo. Sem a binaria nada muda, e esse e o padrao de todo chamador que nao e a pagina.",
+  "a_grandeza_certa": {
+    "problema_de_unidade": "italico.pendor_do_box devolve (topo - base) / largura -- deslocamento em LARGURAS DE BOX, que e a regua calibrada do classificador de italico (corte 0,05). Nao e inclinacao, e multiplica-lo por um delta-y nao da pixel.",
+    "conversao": "inclinacao_do_box = 2 * pendor * largura / altura; o 2 e a meia altura, porque os dois centroides comparados distam ~altura/2",
+    "por_que_funcao_nova_e_nao_troca": "trocar o que pendor_do_box devolve recalibraria em silencio o PENDOR_DE_ITALICO e a S-236 junto. Sao duas grandezas: uma e traco de forma para separar italico de reto, a outra e dx/dy para deslocar um x.",
+    "tabela_sintetica_slope_espessura_bruto_convertido": [
+      [
+        0.35,
+        3,
+        0.409,
+        0.348
+      ],
+      [
+        0.35,
+        6,
+        0.348,
+        0.348
+      ],
+      [
+        0.35,
+        10,
+        0.29,
+        0.348
+      ],
+      [
+        0.2,
+        3,
+        0.364,
+        0.2
+      ],
+      [
+        0.2,
+        6,
+        0.286,
+        0.2
+      ],
+      [
+        0.2,
+        10,
+        0.222,
+        0.2
+      ],
+      [
+        0.1,
+        3,
+        0.286,
+        0.1
+      ],
+      [
+        0.1,
+        6,
+        0.2,
+        0.1
+      ],
+      [
+        0.1,
+        10,
+        0.143,
+        0.1
+      ]
+    ],
+    "o_que_a_tabela_mostra": "o pendor bruto de um traco FINO a 0,10 (0,286) e maior que o de um traco GROSSO a 0,35 (0,290): ele confunde inclinacao com espessura. O convertido devolve o slope real nas nove linhas."
+  },
+  "geometria_real_do_caso": {
+    "pagina": "Minhas 60 partidas memoraveis, folha 77, 220 dpi",
+    "pingo_px": {
+      "x": [
+        1449,
+        1453
+      ],
+      "y": [
+        1037,
+        1041
+      ],
+      "largura": 4
+    },
+    "haste_px": {
+      "x": [
+        1445,
+        1451
+      ],
+      "y": [
+        1044,
+        1061
+      ],
+      "largura": 6,
+      "altura": 17
+    },
+    "sobreposicao": 0.5,
+    "minima": 0.55,
+    "vao_vertical_px": 3,
+    "inclinacao_da_haste": 0.191,
+    "inclinacao_da_linha": 0.198,
+    "deslocamento_px": 0.6,
+    "faltavam_px": 0.2,
+    "observacao": "faltavam 0,2 px de um pingo de 4 px e a projecao entrega 0,6 px. A margem e pequena e esta declarada: e por isso que a medicao abaixo e de TEXTO DE SAIDA, e nao de decisao de merge.",
+    "quantizacao": "A sobreposicao e QUANTIZADA: com coordenada de caixa inteira ela so assume multiplos de 1/largura, e num pingo de 4 px os degraus sao 0,25. Medido aqui: as quatro caixas do padrao nas folhas 77 e 64 saem em 0,500 CRAVADO, nenhuma espalhada. Outra sessao contou oito casos em 15 folhas, as oito tambem em 0,500. Isso quer dizer que o ganho inteiro esta a UM DEGRAU DE PIXEL do limiar de 0,55 -- nao e argumento contra o conserto, e o numero que a proxima pessoa vai querer quando mexer no 0,55 ou na resolucao de leitura (220 dpi). A projecao entrega 0,6 px onde faltam 0,2: folga de 3x sobre o que falta, e menos de um degrau de sobra."
+  },
+  "commit_base": "5b46036",
+  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+  "modulos_sha256": {
+    "text/boxes.py": "0cc8a707322e1b47",
+    "text/italico.py": "b89571223cfcb33a",
+    "text/leitor.py": "36c05ba590269f61"
+  },
+  "referencia": "camada de texto editorada da propria pagina, montada pelo mesmo ler_pagina (motor=camada)",
+  "medicao": {
+    "paginas": 40,
+    "livros": 11,
+    "dicionario": "ligado nos dois lados, para isolar o efeito do pingo",
+    "cer_antes": 0.1181,
+    "cer_depois": 0.1173,
+    "paginas_que_melhoram": 7,
+    "paginas_que_pioram": 0,
+    "contagens_no_texto_de_saida": {
+      "apostrofo_interno": [
+        46,
+        35
+      ],
+      "ponto_final": [
+        1140,
+        1140
+      ],
+      "virgula": [
+        263,
+        263
+      ],
+      "letra_i": [
+        1659,
+        1670
+      ],
+      "letra_l": [
+        944,
+        933
+      ]
+    },
+    "as_nove_trocas": [
+      [
+        "rapl'da",
+        "rapida",
+        "400 Quebra-cabecas de Estrategia",
+        197
+      ],
+      [
+        "rapl'da",
+        "rapida",
+        "400 Quebra-cabecas de Estrategia",
+        200
+      ],
+      [
+        "rapl'da",
+        "rapida",
+        "400 Quebra-cabecas de Estrategia (copia)",
+        197
+      ],
+      [
+        "Lvl'v",
+        "Lviv",
+        "400 Quebra-cabecas de Estrategia",
+        199
+      ],
+      [
+        "Lvl'v",
+        "Lviv",
+        "400 Quebra-cabecas de Estrategia (copia)",
+        199
+      ],
+      [
+        "Bll't:",
+        "Blit:",
+        "400 Quebra-cabecas de Estrategia",
+        196
+      ],
+      [
+        "Fl'scher",
+        "Fischer",
+        "Minhas 60 partidas memoraveis",
+        77
+      ],
+      [
+        "tecnl'ca",
+        "tecnica",
+        "Minhas 60 partidas memoraveis",
+        77
+      ],
+      [
+        "prl'ncl'pl'antel.",
+        "principiantel.",
+        "Minhas 60 partidas memoraveis",
+        77
+      ]
+    ],
+    "todas_certas": true,
+    "o_ponto_final_sobreviveu": "1.140 pontos antes e 1.140 depois, 263 virgulas antes e 263 depois -- medido no TEXTO, e nao so na decisao de merge. E o desenho que garante isso: o deslocamento e proporcional ao vao, e o ponto final esta na altura da letra (vao ~0), entao o x dele nao se move."
+  },
+  "o_que_esta_medicao_nao_diz": "Que o padrao existe em todo livro. Outra sessao procurou em 7 folhas de `Secrets of Chess Training` e `AAGAARD` e nao o reproduziu -- sao livros de prosa em pe. O padrao aparece onde ha italico: das 19 caixas curtas reprovadas e alcancaveis nas folhas medidas aqui, 18 estao acima da base e 16 em linha inclinada; nas folhas dela, 14 de 15 estao em linha reta. Sao regimes diferentes e os dois numeros convivem.",
+  "custo": "nenhum chamador fora da pagina passa a binaria, e uma medicao de inclinacao por base -- e nao por par -- com cache no laco.",
+  "a_guarda_da_haste_e_o_seletor_da_populacao": {
+    "medido_por": "outra sessao, sobre 15 folhas de 5 livros e 2.976 caixas curtas, separando quem virou uniao de quem nao virou",
+    "viraram_uniao": {
+      "n": 8,
+      "px_faltando": 0.25,
+      "px_oferecidos": 0.61,
+      "acima_da_base": "8/8",
+      "base_e_haste": "8/8"
+    },
+    "nao_viraram": {
+      "n": 11,
+      "px_faltando_mediana": 7.25,
+      "px_oferecidos_mediana": 0.0,
+      "acima_da_base": "10/11",
+      "base_e_haste": "1/11"
+    },
+    "o_que_isso_diz": "HASTE_ESTREITA nao e so seguranca: e o SELETOR DA POPULACAO. Das que viram uniao, 8/8 tem haste por baixo; das que nao viram, 1/11. Estar acima da base nao separa (10/11 das que nao viram tambem estao). Se alguem propuser afrouxar a guarda para 'pegar mais casos', este e o numero da resposta: afrouxar traz os 11, e os 11 precisam de ~7 px que inclinacao nenhuma vai dar.",
+    "por_que_a_mediana_de_3_2px_nao_contradiz": "Uma medicao anterior da mesma sessao dizia 'faltam ~3,2 px na mediana e a formula entrega ~0,1' e concluia que a alavanca estava errada. Era populacao misturada: os 11 que nenhuma inclinacao alcanca puxavam a mediana. Separados, os 8 do padrao precisam de 0,25 px e recebem 0,61."
+  },
+  "duas_medicoes_independentes": "A guarda da pontuacao foi medida por dois caminhos que nao se falam: decisao de merge (zero unioes perdidas em 2.976 caixas curtas, outra sessao) e texto de saida (ponto final 1.140 -> 1.140 e virgula 263 -> 263 em 40 paginas, aqui). Concordam."
+}

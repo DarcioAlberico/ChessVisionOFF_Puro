@@ -632,9 +632,61 @@ margem eles entram no texto como linhas de um caractere — medido lá, oito lin
 - ✅ o pingo do `i` volta para o `i`, e o ponto final não é unido à letra anterior;
 - ✅ a exclusão do diagrama usa o bbox que a S-12 já carrega, e não um detector novo.
 
+### O que entrou em 2026-08-25: o pingo que o itálico deslocava
+
+**A régua de sobreposição é horizontal, e o itálico é uma inclinação: faltava o eixo.** O pingo do
+`i` em itálico pousa à *direita* da haste, cai na regra que separa ponto final de pingo — *"o ponto
+final vem ao lado e não sobre a letra"* — e fica solto. No texto isso saía assim:
+
+    técnica  ->  técnl'ca        Fischer  ->  Fl'scher        rápida  ->  rápl'da
+
+**E não havia conserto depois da segmentação.** Sondado na página 77 do `Minhas 60 partidas
+memoráveis`: na haste o classificador responde `/` com 0,915 e `l` com 0,069; no pingo, `.` com
+0,997. **O `i` não está entre os candidatos de caixa nenhuma** — ele só existe na imagem das duas
+fundidas, e nenhum léxico alcança uma letra que o modelo nunca propôs. Foi assim que o item chegou
+aqui: pela porta do dicionário, que o recusou pelo motivo certo.
+
+`unir_pingos` passa a aceitar a binária e a projetar o x da caixa curta para onde ele estaria se o
+glifo fosse reto (`inclinação × vão`) antes de medir. Duas guardas, e cada uma tem um caso atrás:
+só a caixa **acima** da base é projetada, e só quando a base é uma **haste** (`HASTE_ESTREITA`) —
+o que pousa sobre `a` é acento, e a base de um ponto final costuma ser letra larga.
+
+**O que protege a pontuação é a forma da conta, e não um limiar novo**: o deslocamento é
+proporcional ao vão, e o ponto final está na altura da letra — vão ~0, deslocamento ~0.
+
+Medido em 40 páginas de 11 livros, com o dicionário ligado dos dois lados para isolar o efeito:
+
+    CER ........................ 0,1181 -> 0,1173   (7 páginas melhoram, nenhuma piora)
+    trocas ..................... 9, todas certas
+    apóstrofo interno .......... 46 -> 35
+    ponto final no texto ....... 1.140 -> 1.140     <- a guarda, medida na saída
+    vírgula no texto ........... 263 -> 263
+
+A grandeza precisou nascer: `pendor_do_box` devolve deslocamento **em larguras de box** — a régua
+calibrada da S-236, com corte em 0,05 —, e não inclinação. `inclinacao_do_box` converte
+(`2 · pendor · largura / altura`) e vive ao lado dela, porque trocar o que a primeira devolve
+recalibraria a S-236 em silêncio.
+
+**Duas coisas que a próxima pessoa vai querer, e as duas são medidas.**
+
+A margem é de um degrau de pixel, e o degrau existe: com coordenada de caixa inteira a
+sobreposição só assume múltiplos de `1/largura`, e num pingo de 4 px isso é 0,25 de cada vez. As
+quatro caixas do padrão medidas aqui saem em **0,500 cravado** — e as oito que outra sessão contou
+em 15 folhas, também. Faltam 0,2 px, a projeção entrega 0,6, e não há degrau de sobra. **Quem
+mexer no 0,55 ou no DPI de leitura mexe nisto.**
+
+E `HASTE_ESTREITA` **não é só segurança: é o seletor da população.** Medido lá, separando quem
+virou união de quem não virou: das que viraram, 8 de 8 têm haste por baixo; das que não viraram, 1
+de 11 — e estar acima da base *não* separa, porque 10 das 11 também estão. Afrouxar a guarda para
+"pegar mais casos" traria os 11, que precisam de ~7 px que inclinação nenhuma dá.
+
+O número completo está em `docs/metrics/texto_pingo_italico.json`.
+
 **Testes.** `test_a_regua_e_area_e_nao_altura`; `test_a_mediana_ponderada_sobrevive_a_trama`;
 `test_a_ponderada_degrada_quando_a_trama_pesa_tanto_quanto_o_texto`; `test_a_margem_tira_o_rotulo_da_casa`;
-`test_o_bloco_grande_fica_fora_da_conta`; `test_o_limiar_de_area_esta_no_vao_entre_respingo_e_pontuacao`.
+`test_o_bloco_grande_fica_fora_da_conta`; `test_o_limiar_de_area_esta_no_vao_entre_respingo_e_pontuacao`;
+`test_com_binaria_o_pingo_italico_volta_para_a_haste`; `test_o_ponto_final_nao_e_arrastado_junto`;
+`test_a_inclinacao_nao_depende_da_espessura_do_traco_e_o_pendor_depende`.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.boxes:caixas_de_caractere`,
 `simbolo:chess_diagram_ocr.text.boxes:escala_de_texto`.

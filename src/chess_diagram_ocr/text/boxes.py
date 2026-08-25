@@ -187,8 +187,30 @@ VAO_MAXIMO_DO_PINGO = 0.40
 **É o guarda contra o merge atravessar a linha de texto**, e ele tem cicatriz no projeto de
 origem (F3.11). Entre linhas o vão é de ~1 escala; dentro do glifo é uma fração dela."""
 
+HASTE_ESTREITA = 2.0
+"""Quantas vezes mais alta que larga uma base precisa ser para valer a correção de itálico.
 
-def unir_pingos(caixas: list[Caixa], *, escala: int) -> list[Caixa]:
+**Só um traço carrega pingo.** `i` e `j` são haste (medido: 6 x 17 px numa página a 220 dpi); `a`
+e `e` são largos e o que pousa sobre eles é acento, não pingo. Restringir a correção à haste é o
+que a mantém longe do resto -- e do ponto final, cuja base costuma ser letra larga."""
+
+
+def _inclinacao_da_haste(binaria: np.ndarray | None, base: Caixa) -> float:
+    """A inclinação `dx/dy` da base, ou `0.0` quando não há imagem ou não é haste.
+
+    Zero é "não corrige", e é o caminho normal: sem `binaria` (a maioria dos chamadores) e em
+    qualquer base que não seja estreita, o deslocamento some e `unir_pingos` decide como sempre.
+    """
+    if binaria is None or base.altura < HASTE_ESTREITA * base.largura:
+        return 0.0
+    from .italico import inclinacao_do_box
+
+    return inclinacao_do_box(binaria, base) or 0.0
+
+
+def unir_pingos(
+    caixas: list[Caixa], *, escala: int, binaria: np.ndarray | None = None
+) -> list[Caixa]:
     """Devolve o pingo do `i`, o acento e o ponto do `!` ao glifo a que pertencem.
 
     **Sem isto a régua de área da S-185 fica pior que a régua de altura que ela substituiu**, e a
@@ -205,6 +227,22 @@ def unir_pingos(caixas: list[Caixa], *, escala: int) -> list[Caixa]:
     - qualquer coisa a mais de `VAO_MAXIMO_DO_PINGO` de distância, que é o guarda contra o merge
       atravessar a linha de texto -- entre linhas o vão é de ~1 escala;
     - dois pontos e ponto e vírgula, que não têm base alta com que se unir.
+
+    ## `binaria` conserta o pingo do itálico, e nada mais
+
+    **A régua de sobreposição é horizontal e o itálico é uma inclinação: falta o eixo.** Em
+    itálico o pingo do `i` pousa à *direita* da haste, e a régua que separa ponto final de pingo
+    -- "o ponto final vem ao lado e não sobre a letra" -- o classifica como ponto final. Medido:
+    `tecnica` sai `tecnl'ca`, `Fischer` sai `Fl'scher`, e o `i` **não** é recuperável depois,
+    porque o classificador nunca o vê inteiro (na haste ele responde `/` com 0,915).
+
+    Com `binaria`, o x do pingo é projetado para onde ele estaria se o glifo fosse reto --
+    `inclinacao × vão` -- antes de medir a sobreposição. **O deslocamento é proporcional ao vão, e
+    é isso que protege a pontuação**: o ponto final está na altura da letra, o vão dele é ~0, e o
+    x dele não se move. Medido na página do `Fischer`: pingo em 0,500 de sobreposição contra o
+    mínimo de 0,55, deslocamento de 0,6 px, e o par passa a unir.
+
+    Sem `binaria` nada disso acontece, e é o padrão de todos os chamadores que não são a página.
     """
     if not caixas:
         return caixas
@@ -223,9 +261,13 @@ def unir_pingos(caixas: list[Caixa], *, escala: int) -> list[Caixa]:
     if not bases:
         return list(caixas)
 
-    def sobreposicao(curta: Caixa, base: Caixa) -> float:
-        comum = min(curta.x2, base.x2) - max(curta.x1, base.x1)
+    def sobreposicao(curta: Caixa, base: Caixa, *, deslocamento: float = 0.0) -> float:
+        comum = min(curta.x2 + deslocamento, base.x2) - max(curta.x1 + deslocamento, base.x1)
         return comum / curta.largura if curta.largura else 0.0
+
+    # Uma medição por base, e não uma por par: a haste não muda de inclinação entre os pingos que
+    # se oferecem a ela, e medi-la no laço de dentro custaria um recorte de imagem por par.
+    inclinacoes: dict[int, float] = {}
 
     absorvido: dict[int, Caixa] = {}
     for indice, caixa in enumerate(caixas):
@@ -236,7 +278,14 @@ def unir_pingos(caixas: list[Caixa], *, escala: int) -> list[Caixa]:
         for outro, base in enumerate(caixas):
             if base.altura < piso_de_letra:
                 continue
-            if sobreposicao(caixa, base) < SOBREPOSICAO_MINIMA:
+            if outro not in inclinacoes:
+                inclinacoes[outro] = _inclinacao_da_haste(binaria, base)
+            # **Só o pingo acima da haste é projetado**, e o sinal é o do itálico: o topo pende à
+            # direita, então o pingo volta para a esquerda pelo tanto que a inclinação o levou.
+            deslocamento = (
+                -inclinacoes[outro] * (base.y1 - caixa.y2) if caixa.y2 <= base.y1 else 0.0
+            )
+            if sobreposicao(caixa, base, deslocamento=deslocamento) < SOBREPOSICAO_MINIMA:
                 continue
             # Acima da base (pingo, acento) ou abaixo dela (o ponto do `!` e do `?`).
             vao = base.y1 - caixa.y2 if caixa.y2 <= base.y1 else caixa.y1 - base.y2

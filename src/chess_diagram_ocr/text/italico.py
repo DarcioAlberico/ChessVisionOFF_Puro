@@ -82,6 +82,49 @@ def pendor_do_box(binaria: np.ndarray, caixa: Caixa) -> float | None:
     return (topo - base) / caixa.largura
 
 
+def inclinacao_do_box(binaria: np.ndarray, caixa: Caixa) -> float | None:
+    """A inclinação do traço em `dx/dy` -- que **não** é o que `pendor_do_box` devolve.
+
+    **As duas funções existem porque são duas grandezas, e confundi-las já custou uma fórmula
+    errada num relatório.** `pendor_do_box` devolve o deslocamento dos centroides *em larguras de
+    box*: é um traço de forma, e serve para o que ele foi calibrado -- separar linha itálica de
+    linha reta, com o corte de `PENDOR_DE_ITALICO` medido nessa escala. Esta devolve `dx/dy`, que
+    é o que se multiplica por um Δy para achar quantos **pixels** um ponto se desloca.
+
+    A conversão é `2 · pendor · largura / altura`, e o `2` é a meia altura: os dois centroides que
+    `pendor_do_box` compara distam ~`altura/2`.
+
+    **Sem ela o número é quase cego para a inclinação**, porque num bbox apertado a largura cresce
+    junto com o pendor e o divisor cancela o sinal. Medido em traços sintéticos de inclinação
+    conhecida, em três espessuras cada:
+
+        inclinação real   pendor bruto            convertido
+        0,35              0,409 / 0,348 / 0,290   0,348 nas três
+        0,20              0,364 / 0,286 / 0,222   0,200 nas três
+        0,10              0,286 / 0,200 / 0,143   0,100 nas três
+
+    O bruto de um traço **fino** a 0,10 (0,286) é maior que o de um traço **grosso** a 0,35
+    (0,290): ordenar por pendor bruto não ordena por inclinação.
+    """
+    pendor = pendor_do_box(binaria, caixa)
+    if pendor is None or caixa.altura <= 0:
+        return None
+    return 2.0 * pendor * caixa.largura / caixa.altura
+
+
+def inclinacao_da_linha(binaria: np.ndarray, caixas: Sequence[Caixa]) -> float | None:
+    """A mediana das inclinações dos boxes da linha, em `dx/dy`.
+
+    **A conversão entra antes da mediana, e essa ordem é obrigatória**: a mediana de valores
+    normalizados cada um pela *sua* largura não tem largura única que a desfaça depois. Os três
+    valores brutos da tabela acima, para a mesma inclinação real, são a prova.
+    """
+    medidas = [i for i in (inclinacao_do_box(binaria, c) for c in caixas) if i is not None]
+    if len(medidas) < MIN_BOXES_PARA_MEDIR:
+        return None
+    return float(np.median(medidas))
+
+
 def pendor_da_linha(binaria: np.ndarray, caixas: Sequence[Caixa]) -> float | None:
     """A mediana do pendor dos boxes da linha. `None` quando não há boxes o bastante.
 

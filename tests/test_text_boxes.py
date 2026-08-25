@@ -225,6 +225,71 @@ class UnirPingosTests(unittest.TestCase):
         self.assertEqual([], unir_pingos([], escala=20))
 
 
+class PingoDeItalicoTests(unittest.TestCase):
+    """Em itálico o pingo pousa **à direita** da haste, e a régua horizontal o perde.
+
+    Medido na página 77 do `Minhas 60 partidas memoráveis`, com as medidas reais deste fixture:
+    sobreposição 0,500 contra o mínimo de 0,55, e `técnica` saía `técnl'ca`. O `i` **não** é
+    recuperável depois -- na haste o classificador responde `/` com 0,915 --, porque ele só existe
+    na imagem das duas caixas fundidas.
+    """
+
+    def _pagina(self, inclinacao: float) -> tuple[np.ndarray, Caixa, Caixa]:
+        """Uma haste inclinada e o pingo dela, nas medidas reais da página do Fischer.
+
+        A haste é desenhada de verdade porque é dela que a inclinação é **medida**: passar um
+        número por fora testaria o teste, e não a função.
+        """
+        img = np.zeros((80, 80), np.uint8)
+        altura, base_y = 17, 30
+        for k in range(altura):
+            y = base_y + altura - 1 - k
+            x = 20 + int(round(k * inclinacao))
+            img[y, x : x + 3] = 255
+        xs = np.nonzero(img.any(axis=0))[0]
+        haste = Caixa(int(xs[0]), base_y, int(xs[-1]) + 1, base_y + altura)
+        # o pingo acompanha o topo da haste: 3 px acima, e 4 px de largura
+        pingo = Caixa(haste.x2 - 2, base_y - 7, haste.x2 + 2, base_y - 3)
+        img[pingo.y1 : pingo.y2, pingo.x1 : pingo.x2] = 255
+        return img, haste, pingo
+
+    def _outras(self) -> list[Caixa]:
+        return [Caixa(60, 30, 74, 47), Caixa(60, 55, 74, 72)]
+
+    def test_sem_binaria_o_pingo_italico_continua_perdido(self) -> None:
+        """É o comportamento de hoje, e ele fica travado: o conserto é opt-in."""
+        img, haste, pingo = self._pagina(0.20)
+        self.assertEqual(4, len(unir_pingos([haste, pingo, *self._outras()], escala=20)))
+
+    def test_com_binaria_o_pingo_italico_volta_para_a_haste(self) -> None:
+        img, haste, pingo = self._pagina(0.20)
+        unidas = unir_pingos([haste, pingo, *self._outras()], escala=20, binaria=img)
+        self.assertEqual(3, len(unidas), "o pingo do itálico continuou solto")
+        self.assertEqual(pingo.y1, unidas[0].y1, "a união não subiu até o pingo")
+
+    def test_o_ponto_final_nao_e_arrastado_junto(self) -> None:
+        """**O deslocamento é proporcional ao vão, e é isso que protege a pontuação.**
+
+        O ponto final está na altura da letra: o vão dele é ~0, o x dele não se move, e ele
+        continua fora. Medido em 40 páginas: 1.140 pontos antes e 1.140 depois.
+        """
+        img, haste, _ = self._pagina(0.20)
+        ponto = Caixa(haste.x2 + 1, haste.y2 - 4, haste.x2 + 5, haste.y2)
+        img[ponto.y1 : ponto.y2, ponto.x1 : ponto.x2] = 255
+        unidas = unir_pingos([haste, ponto, *self._outras()], escala=20, binaria=img)
+        self.assertEqual(4, len(unidas), "o ponto final foi absorvido")
+
+    def test_a_letra_larga_nao_ganha_correcao(self) -> None:
+        """`HASTE_ESTREITA`: só um traço carrega pingo, e o que pousa sobre `a` é acento."""
+        img, _, _ = self._pagina(0.20)
+        larga = Caixa(20, 30, 40, 47)  # 20x17: mais larga que alta/2
+        img[larga.y1 : larga.y2, larga.x1 : larga.x2] = 255
+        vizinha = Caixa(larga.x2 + 1, 23, larga.x2 + 5, 27)
+        img[vizinha.y1 : vizinha.y2, vizinha.x1 : vizinha.x2] = 255
+        unidas = unir_pingos([larga, vizinha, *self._outras()], escala=20, binaria=img)
+        self.assertEqual(4, len(unidas))
+
+
 class ExclusaoTests(unittest.TestCase):
     def test_o_que_esta_dentro_do_diagrama_sai(self) -> None:
         caixas = [Caixa(10, 10, 20, 25), Caixa(100, 100, 112, 118)]
