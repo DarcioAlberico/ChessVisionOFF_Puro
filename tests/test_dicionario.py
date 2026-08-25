@@ -101,6 +101,64 @@ class CarregarTests(unittest.TestCase):
         curtas = [p for p in lexico if len(p) < dic.MIN_TAMANHO]
         self.assertEqual(curtas, [], "palavra curta no léxico é notação disfarçada")
 
+    def test_nenhuma_palavra_do_lexico_tem_digito(self) -> None:
+        """Palavra com dígito no léxico seria lance entrando como alvo de correção."""
+        lexico = dic.carregar()
+        if not lexico:
+            self.skipTest("assets/lexico não está no checkout")
+        com_digito = [p for p in lexico if any(c.isdigit() for c in p)][:5]
+        self.assertEqual([], com_digito)
+
+    def test_sem_argumento_e_a_uniao_das_listas_empacotadas(self) -> None:
+        """`carregar()` é o léxico do projeto; `carregar(caminho)` é um arquivo só."""
+        uniao = dic.carregar()
+        if not uniao:
+            self.skipTest("assets/lexico não está no checkout")
+        for caminho in dic.EMPACOTADOS:
+            parte = dic.carregar(caminho)
+            if parte:
+                self.assertTrue(parte <= uniao, f"{caminho.name} ficou de fora da união")
+
+    def test_os_nomes_proprios_saem_quando_nao_sao_pedidos(self) -> None:
+        """A S-209 mediu a troca: nome próprio baixa o alarme falso **e esconde erro**."""
+        nomes = dic.carregar(dic.CAMINHO_NOMES)
+        if not nomes:
+            self.skipTest("assets/lexico/nomes.txt.gz não está no checkout")
+        sem_nomes = dic.carregar(nomes=False)
+        self.assertTrue(sem_nomes < dic.carregar())
+        self.assertFalse(nomes <= sem_nomes, "a lista de nomes continuou dentro")
+
+
+class TetoDeTrocasTests(unittest.TestCase):
+    """`max_trocas` chegava até `corrigir` e morria ali: `escolher` sempre usava o padrão."""
+
+    def test_o_teto_pedido_e_o_teto_usado(self) -> None:
+        cand = _cand("xw", "wo", "zr", "yl", "vd")
+        self.assertEqual("world", dic.escolher("xwzyv", cand, LEXICO, max_trocas=5))
+        self.assertIsNone(
+            dic.escolher("xwzyv", cand, LEXICO, max_trocas=2),
+            "com teto 2 não se alcança uma palavra a 5 trocas de distância",
+        )
+
+    def test_corrigir_repassa_o_teto(self) -> None:
+        """Sem o repasse, medir o teto mediria sempre a mesma coisa."""
+        palavra = "p/ayer"
+        caixas = [Caixa(i * 10, 0, i * 10 + 8, 20) for i in range(len(palavra))]
+        lidos = [(c, 0.9) for c in palavra]
+        i2c = {0: "p", 1: "/", 2: "a", 3: "y", 4: "e", 5: "r", 6: "l"}
+        probs = np.zeros((len(caixas), 7), np.float32)
+        for k, (c, _) in enumerate(lidos):
+            probs[k, [i for i, v in i2c.items() if v == c][0]] = 0.9
+        probs[1, 6] = 0.05
+        self.assertEqual(
+            "player", "".join(c for c, _ in dic.corrigir(lidos, probs, caixas, i2c, LEXICO, max_trocas=1))
+        )
+        self.assertEqual(
+            palavra,
+            "".join(c for c, _ in dic.corrigir(lidos, probs, caixas, i2c, LEXICO, max_trocas=0)),
+            "teto zero não troca nada",
+        )
+
 
 class CorrigirLinhaTests(unittest.TestCase):
     def _linha(self, palavra: str) -> tuple[list[Caixa], list[tuple[str, float]]]:

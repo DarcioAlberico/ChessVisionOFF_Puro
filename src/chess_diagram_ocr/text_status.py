@@ -170,7 +170,7 @@ MANIFESTO: tuple[Item, ...] = (
     Item("S-208", 30, "A notação validada pelas regras, e o PGN que sai dela",
          ("simbolo:chess_diagram_ocr.text.notacao:fatiar", "simbolo:chess_diagram_ocr.text.notacao:validar")),
     Item("S-209", 30, "O léxico sinaliza, e nunca troca",
-         ("simbolo:chess_diagram_ocr.text.lexico:carregar", "arquivo:assets/lexico/en.txt.gz")),
+         ("simbolo:chess_diagram_ocr.text.lexico:carregar", "arquivo:assets/lexico/idioma.txt.gz")),
     Item("S-210", 30, "A camada de texto invisível: o PDF pesquisável",
          ("simbolo:chess_diagram_ocr.text.pdf_pesquisavel:escrever_camada",)),
     Item("S-211", 30, "O modelo de página: coluna, bloco, linha, texto | diagrama | tabela",

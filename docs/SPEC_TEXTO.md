@@ -2800,7 +2800,7 @@ estruturalmente idêntico ao caso que se quer consertar — dígito, dígito, la
 
 ---
 
-## S-209 · O léxico sinaliza, e nunca troca ⬜ planejada
+## S-209 · O léxico sinaliza, e nunca troca ◐ parcial (2026-08-25)
 
 **Problema.** Depois de fatiar, sobra a prosa. Um `Bib1i0g[aPhY` na prosa é um erro que o
 dicionário vê e a legalidade não.
@@ -2834,8 +2834,36 @@ dicionário.
 `test_o_nome_proprio_hifenizado_nao_e_juntado`;
 `test_a_palavra_boa_que_decomporia_nao_e_partida`.
 
+### O que entrou em 2026-08-25: as duas listas, e uma partição recusada
+
+Entrou a metade de **dados** do item, e ela é a que o critério de aceite descreve como *"as duas
+listas são arquivos de dados, escolhidos por perfil, e trocá-las não exige mudar código"*:
+
+| arquivo | palavras | de onde |
+|---|---:|---|
+| `assets/lexico/idioma.txt.gz` | 10.002 | as listas entregues, o que começa em minúscula |
+| `assets/lexico/nomes.txt.gz` | 150.186 | as mesmas listas, o que começa em maiúscula |
+
+`cvoff-texto-lexico` empacota uma pasta de listas nos dois arquivos, e reconstruir dá byte a byte
+o mesmo resultado. Quem as consome hoje é `text/dicionario.py` — que **não** é este item, e cujo
+cabeçalho explica a diferença. Uma lista foi **recusada por estar corrompida**, e o motivo está no
+cabeçalho do comando: `MegaDatabase(Jogadores with dot).txt` traria 39.409 palavras falsas como
+`Cortesulio`, e palavra falsa no léxico é pior que palavra faltando — a que falta só deixa de
+corrigir, a falsa vira **alvo**.
+
+**A partição de colada foi medida, e ela não paga neste acervo.** O item a prevê (`ofthe` → `of`
+`the`), e a régua é a certa — só parte o que não está no dicionário. Sobre 40 páginas de 11
+livros: **0 partições certas contra 5 erradas**, e as erradas vêm dos nomes — `carrying` vira
+`carr ying`, porque `Carr` e `Ying` são sobrenomes de jogador. As colagens reais (`ofthe`,
+`timefor`) têm metade com menos de 4 letras, e baixar esse piso é exatamente o que abre a porta
+para as cinco. Fica **fora** até haver referência que a justifique; o número está em
+`docs/metrics/texto_dicionario.json`.
+
+**O que falta para o item fechar:** `text/lexico.py`, a sinalização da palavra desconhecida, e a
+junção da hifenizada na quebra de linha.
+
 **Sonda.** `simbolo:chess_diagram_ocr.text.lexico:carregar`,
-`arquivo:assets/lexico/en.txt.gz`.
+`arquivo:assets/lexico/idioma.txt.gz`.
 
 ---
 

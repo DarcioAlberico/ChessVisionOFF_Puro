@@ -299,6 +299,14 @@ cvoff-texto-linha --motor rapidocr
 cvoff-texto-pagina "PDF/AAGAARD - Practical Chess Defence.pdf" --paginas 58-62
 cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor glifo --json saida.json
 
+# Empacota uma pasta de listas de palavras em assets/lexico/idioma.txt.gz e nomes.txt.gz -- as
+# duas listas que o dicionario le. Reconstruir da byte a byte o mesmo arquivo (o gzip vai com
+# mtime=0), entao trocar a lista nao suja a arvore sem ninguem ter mudado uma palavra. O
+# dicionario nunca aproxima da palavra mais parecida: ele so desempata entre os candidatos que o
+# proprio classificador ja pos no topo. Medido em docs/metrics/texto_dicionario.json.
+cvoff-texto-lexico "Lista de Palavras"
+cvoff-texto-lexico "Lista de Palavras" --dry-run   # conta e imprime, sem escrever nada
+
 # O que a mao corrigiu nos .cvtxt do editor de texto, agrupado por troca (S-239). A correcao
 # **nao** esta gravada no arquivo: ele guarda os dois lados -- a pagina que o motor leu e o que
 # esta na tela --, e a diferenca entre eles e o que este comando deriva. Nao rotula nada: quem

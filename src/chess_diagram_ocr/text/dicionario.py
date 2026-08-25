@@ -57,7 +57,12 @@ juntos, e o CER fica em 0,1181 nos três casos. O que muda é o balde em que cad
 está no léxico?* -- e palavra conhecida é palavra que este módulo **nunca reescreve**. As 61 que
 mudaram de balde deixaram de ser candidatas a correção: o léxico maior protege o que já estava
 certo, e é por isso que `Nimzowitsch` agora está no arquivo em vez de depender da sorte da busca.
-Medido à parte: com o acervo sozinho, `Let's` seria reescrito como `Lets`; com as listas, não.
+
+Essa proteção não é hipótese: na sonda de uma regra que **apagasse** o apóstrofo -- regra que não
+entrou --, o acervo sozinho reescrevia `Let's` como `Lets`, e com as listas `let's` já é palavra
+conhecida e o token nem chega a ser candidato. A busca de hoje só **troca** letra, então ela não
+alcançaria essa reescrita de qualquer forma; o que a sonda mostra é o que o léxico maior evita
+quando a busca cresce.
 
 **O que as listas não trazem é correção nova**, e a razão está medida em
 `docs/metrics/texto_dicionario.json`: o que sobra errado precisa de *inserção* ou *remoção* de

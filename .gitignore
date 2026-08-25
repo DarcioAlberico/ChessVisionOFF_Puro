@@ -145,3 +145,8 @@ models/experiments/*.json
 # sao reconstruiveis a qualquer momento a partir de docs/metrics/texto_faixa_referencia.jsonl. O
 # que **fica** versionado e a transcricao humana, que vai para o campo `texto` daquele arquivo.
 data/faixas_para_transcrever/
+# As listas de palavras de origem (11 MB de .txt de fora do projeto). O que fica versionado e o
+# que o programa le: assets/lexico/idioma.txt.gz e nomes.txt.gz, 480 KB, reconstruiveis com
+# `cvoff-texto-lexico "Lista de Palavras"` -- byte a byte, porque o gzip vai com mtime=0. E a
+# mesma regra do PDF/: a fonte fica na maquina, o derivado versionado fica no repositorio.
+Lista de Palavras/

@@ -545,6 +545,15 @@ O léxico (S-209) tem uma propriedade que vale repetir porque ela contraria o in
 18 lances tão maltratados que escapam do detector de notação e caem no léxico, **nenhum** está
 no dicionário; com correção automática, seriam 18 lances reescritos como palavra.
 
+Em 2026-08-25 entrou a metade de **dados** desse item: as duas listas empacotadas
+(`assets/lexico/idioma.txt.gz` e `nomes.txt.gz`, 160 mil palavras), construídas por
+`cvoff-texto-lexico` a partir de listas de fora. Com elas o dicionário de `text/dicionario.py`
+passou a **ligado por padrão** — 6 correções em 40 páginas, as 6 confirmadas pela camada
+editorada, nenhuma palavra certa quebrada, ao custo de 1% do tempo de página. E há um número que
+o plano não esperava: **partir palavra colada, que o item prevê, dá 0 acertos contra 5 erros
+neste acervo** — os nomes próprios são o que estraga (`carrying` → `carr ying`, de `Carr` e
+`Ying`). Está tudo em `docs/metrics/texto_dicionario.json`.
+
 ---
 
 ## Fase 31 — O que faz a base crescer
