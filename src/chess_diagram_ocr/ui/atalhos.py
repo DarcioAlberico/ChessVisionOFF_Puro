@@ -35,6 +35,7 @@ from typing import Protocol, runtime_checkable
 
 __all__ = [
     "ATALHOS",
+    "SOBREPOSICOES_NO_EDITOR",
     "TECLAS_DO_EDITOR",
     "Atalho",
     "DonoDeAcoes",
@@ -140,8 +141,17 @@ TECLAS_DO_EDITOR: dict[str, str] = {
     "negrito": "<Control-b>",
     "italico": "<Control-i>",
     "sublinhado": "<Control-u>",
+    "alinhar_esquerda": "<Control-l>",
+    "alinhar_centro": "<Control-e>",
+    "alinhar_direita": "<Control-r>",
+    "justificar": "<Control-j>",
+    "aumentar_corpo": "<Control-bracketright>",
+    "diminuir_corpo": "<Control-bracketleft>",
+    "selecionar_tudo": "<Control-a>",
+    "aproximar_texto": "<Control-plus>",
+    "afastar_texto": "<Control-minus>",
 }
-"""As três teclas de formato do editor de texto (S-241) -- **e por que elas não estão em `ATALHOS`**.
+"""As teclas próprias do editor de texto (S-241/S-259/S-260) -- **e por que não estão em `ATALHOS`**.
 
 `ATALHOS` é a tabela dos atalhos **da janela**: cada linha vale em qualquer lugar dela, passa pela
 guarda de foco de `ui/shortcuts.py` e ganha item de menu, acelerador e linha na legenda. Estas três
@@ -155,7 +165,47 @@ num painel. É a mesma disciplina, com o campo de FEN da S-117 como precedente.
 **O `Ctrl+I` obriga a guarda.** Em `tk8.6/text.tcl:211`, `bind Text <Control-i>` insere uma
 tabulação; quem ligar a tecla sem devolver `"break"` recebe o itálico **e** o tab. `Ctrl+B` e
 `Ctrl+U` caem em `bind Text <Control-KeyPress> {# nothing}` e não têm o problema -- e é por isso que
-as três devolvem `"break"`: quem acrescentar a quarta não vai reler este parágrafo."""
+todas devolvem `"break"`: quem acrescentar a próxima não vai reler este parágrafo.
+
+**As seis da Fase 41 são as do Word, e três delas tomam tecla que o `tk.Text` já usa.** `Ctrl+E`
+leva o cursor ao fim da linha no binding de fábrica, `Ctrl+L` centraliza a rolagem e `Ctrl+J` insere
+uma quebra; as três são de teclado Emacs, e nenhuma delas é o que se espera num editor de texto do
+Windows. O `"break"` é o que as substitui, e é a mesma decisão que o `Ctrl+I` obrigou -- a diferença
+é que ali o binding de fábrica **somava** com o nosso, e aqui ele seria o único a acontecer.
+
+`Ctrl+]` e `Ctrl+[` para o corpo são as do Word também. Elas entram por nome de tecla
+(`bracketright`) e não por caractere, porque o caractere depende do teclado: num ABNT2 o `]` está
+noutro lugar, e o nome da tecla é o que o Tk resolve igual nos dois.
+
+**`Ctrl+A` é a tecla que faltava, e ela é uma correção e não um acréscimo** (S-263). No `tk.Text`
+de fábrica ela leva o cursor ao **início da linha** -- herança de Emacs que nenhum programa de
+Windows faz --, e "selecionar tudo" não tinha tecla nenhuma. Quem apertava `Ctrl+A` para selecionar
+a folha via o cursor pular e concluía que a aba não fazia aquilo.
+
+**Recortar, copiar e colar não estão aqui, e é decisão.** O Tk liga `<<Cut>>`, `<<Copy>>` e
+`<<Paste>>` a `Ctrl+X/C/V` no widget de fábrica, e declará-las de novo aqui seria a segunda
+declaração da mesma tecla -- o defeito que esta tabela existe para impedir. O que faltava a elas era
+**comando**, e não tecla: ver `ui/comandos.py`."""
+
+
+SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
+    "<Control-r>": "ler_pagina",
+}
+"""Sequências que estão nas **duas** tabelas, e por que cada uma pode estar (S-259).
+
+**Sobreposição declarada, e não colisão.** `Ctrl+R` é "ler esta página" desde a S-165 e continua
+sendo -- em toda a janela menos dentro de um campo de texto, onde a guarda de foco de
+`ui/shortcuts.ignores_widget` **já cedia a tecla desde a S-20**. Quer dizer: com o cursor no editor,
+esta sequência não fazia nada antes de a Fase 41 a ligar a "alinhar à direita". Ligá-la ali não tira
+nada de ninguém; ocupa uma tecla que estava morta naquele widget.
+
+O que não pode acontecer é a **próxima** entrar em silêncio, e é isso que esta tabela compra: a
+sobreposição seguinte reprova `test_ui_atalhos_destino` até alguém escrever aqui por que ela é
+aceitável -- ou trocar a tecla, que é a resposta certa quando a ação da janela **não** é cedida
+dentro do editor (as de `texto_panel.ACOES_PROPRIAS`, que a aba toma para si).
+
+`Ctrl+L`, `Ctrl+E` e `Ctrl+J` **não** estão aqui: elas não são atalho da janela nenhum. O que elas
+sobrepõem é o binding de fábrica do `tk.Text`, que é outro assunto e está no docstring acima."""
 
 
 por_acao: dict[str, Atalho] = {atalho.acao: atalho for atalho in ATALHOS}

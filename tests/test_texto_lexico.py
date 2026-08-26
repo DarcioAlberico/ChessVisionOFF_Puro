@@ -44,6 +44,64 @@ class ReguasDeEntradaTests(unittest.TestCase):
         self.assertFalse(lex.e_nome("attack"))
 
 
+class ConferenciaSemCorrecaoTests(unittest.TestCase):
+    """`desconhecidas` sinaliza e **nunca** propõe -- a S-209 aplicada à aba de texto (S-266)."""
+
+    LEXICO = frozenset({"study", "position", "player", "nimzowitsch", "prokes"})
+
+    def test_a_palavra_fora_do_lexico_e_devolvida_com_o_intervalo(self) -> None:
+        """`study` -> `smdy` é o defeito real: a barra do `t` encosta no `u` e o par vira `m`."""
+        achadas = dic.desconhecidas("the smdy of position", self.LEXICO)
+        self.assertEqual(achadas, ((4, 8, "smdy"),))
+
+    def test_a_notacao_nao_e_candidata(self) -> None:
+        """Sem esta guarda a folha inteira ficaria marcada, e uma marca que acende em tudo não
+        distingue coisa nenhuma."""
+        self.assertEqual(dic.desconhecidas("1.Nf3 d5 2.c4 e6 15 0-0", self.LEXICO), ())
+
+    def test_a_marca_do_diagrama_e_pulada_por_intervalo(self) -> None:
+        """A marca é referência que o **programa** escreveu, e não texto do livro (S-266).
+
+        `ignorar` é parâmetro, e não regra dentro do módulo: quem sabe o que é marca é o documento,
+        e `text/dicionario.py` não o conhece. Quem passa os intervalos é
+        `ui/texto_panel._fora_do_livro`."""
+        texto = "antes [Diagrama 3] depois"
+        sem_veto = [p for _i, _f, p in dic.desconhecidas(texto, self.LEXICO)]
+        self.assertIn("Diagrama", sem_veto, "o teste não mediria nada sem o casamento")
+        com_veto = [p for _i, _f, p in dic.desconhecidas(texto, self.LEXICO, ignorar=[(6, 18)])]
+        self.assertNotIn("Diagrama", com_veto)
+
+    def test_o_intervalo_e_o_da_palavra_e_nao_o_do_token(self) -> None:
+        """Sublinhar `(position)` incluindo os parênteses é marcar o que não é a palavra."""
+        achadas = dic.desconhecidas("(smdy)", self.LEXICO)
+        self.assertEqual(achadas, ((1, 5, "smdy"),))
+
+    def test_a_caixa_errada_passa_como_conhecida(self) -> None:
+        """E é o certo: quem separa `s` de `S` é a altura do box na S-211, com medição. Uma segunda
+        régua discordando dela na tela seria pior que nenhuma."""
+        self.assertEqual(dic.desconhecidas("poSition", self.LEXICO), ())
+
+    def test_o_nome_proprio_do_lexico_nao_e_marcado(self) -> None:
+        """O que a S-209 protege: `Nimzowitsch` no léxico é `Nimzowitsch` que ninguém reescreve."""
+        self.assertEqual(dic.desconhecidas("Nimzowitsch e Prokes", self.LEXICO), ())
+
+    def test_a_conta_de_palavras_usa_a_mesma_regua(self) -> None:
+        """"3 fora do léxico" não diz nada sem "de 412", e duas réguas dariam uma fração que não
+        fecha."""
+        texto = "the smdy of position 1.Nf3 15"
+        # `the` e `of` ficam de fora pelo `MIN_TAMANHO`, que é a guarda 2 do módulo -- e ela vale
+        # nos dois lados da fração, senão o denominador mede uma coisa e o numerador outra.
+        self.assertEqual(dic.palavras_de(texto), ("smdy", "position"))
+        self.assertLessEqual(len(dic.desconhecidas(texto, self.LEXICO)), len(dic.palavras_de(texto)))
+
+    def test_o_lexico_de_verdade_reconhece_o_acervo(self) -> None:
+        """Sobre o léxico empacotado, e não sobre um de brinquedo: o caso que a S-209 registra."""
+        lexico = dic.carregar()
+        achadas = {p: (i, f) for i, f, p in dic.desconhecidas("the smdy of Nimzowitsch", lexico)}
+        self.assertIn("smdy", achadas)
+        self.assertNotIn("Nimzowitsch", achadas)
+
+
 class ConstruirTests(unittest.TestCase):
     def _pasta(self, arquivos: dict[str, str]) -> Path:
         pasta = Path(tempfile.mkdtemp())

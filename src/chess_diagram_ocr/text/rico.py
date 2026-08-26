@@ -48,8 +48,19 @@ adivinhou" seriam a mesma informação -- e é a colisão que a S-242 vai ter de
 ## A edição, e por que ela mora aqui
 
 Da S-241 em diante este módulo deixou de ser só uma estrutura e passou a ter **verbos**:
-`alternar`, `aplicar`, `aplicar_estilo`, `inserir`, `substituir_intervalo`. Todos são puros, todos
-falam em **deslocamento de caractere** -- e nenhum sabe o que é um índice do Tk.
+`alternar`, `aplicar`, `aplicar_no_paragrafo`, `mudar_corpo`, `mudar_caixa`, `inserir`,
+`substituir_intervalo`. Todos são puros, todos falam em **deslocamento de caractere** -- e nenhum
+sabe o que é um índice do Tk.
+
+Eles se dividem em três, e a divisão decide o que o painel faz depois de chamar cada um:
+
+    do trecho       alternar, aplicar, limpar_formato, limpar_cor, mudar_corpo
+    do parágrafo    aplicar_no_paragrafo -- e com ela aplicar_estilo e aplicar_alinhamento
+    do texto        mudar_caixa, substituir_intervalo, inserir
+
+Os dois primeiros grupos não mudam um caractere, e o painel os desenha por etiqueta, sem redesenhar.
+O terceiro muda, e ali o painel guarda um instantâneo antes -- porque o redesenho zera a pilha de
+desfazer do Tk. É a fronteira que o cabeçalho de `ui/texto_panel.py` explica do outro lado.
 
 É essa fronteira que faz o editor ser testável: o painel converte `"sel.first"` em deslocamento,
 chama a função e redesenha. A conversão é o único pedaço que precisa do widget, e ela é pequena por
@@ -115,6 +126,55 @@ um diagrama vira legenda --, e `notacao` é o único **sem** derivação automá
 uma linha de lances de uma linha de prosa não foi medido, e a regra 5 da SPEC_EDITOR manda entregar
 o pincel manual em vez de pintar palpite."""
 
+ALINHAMENTO_ESQUERDA = "esquerda"
+ALINHAMENTO_CENTRO = "centro"
+ALINHAMENTO_DIREITA = "direita"
+ALINHAMENTO_JUSTIFICADO = "justificado"
+
+ALINHAMENTOS: tuple[str, ...] = (
+    ALINHAMENTO_ESQUERDA,
+    ALINHAMENTO_CENTRO,
+    ALINHAMENTO_DIREITA,
+    ALINHAMENTO_JUSTIFICADO,
+)
+"""Onde o parágrafo se apoia na coluna (S-259). Conjunto fechado como `ESTILOS`.
+
+**`""` e `esquerda` não são a mesma coisa, e a diferença é a de quem escolheu.** `""` é o parágrafo
+que ninguém alinhou -- ele se desenha à esquerda porque é assim que texto se desenha, e a página o
+entregou assim. `esquerda` é uma escolha: alguém centralizou e voltou atrás, e essa decisão
+sobrevive ao arquivo em vez de virar indistinguível do que nunca foi tocado. É a mesma fronteira que
+`cor` mantém entre "sem cor" e "cor que o autor escolheu"."""
+
+CORPO_MINIMO = -3
+CORPO_MAXIMO = 6
+"""Os limites do degrau de corpo (S-260). **A faixa é curta, e os dois lados têm razão diferente.**
+
+Embaixo, o piso é de legibilidade e ele é de `ui/tipografia.MINIMO_LEGIVEL`: −3 sobre a Segoe UI 9
+já chega em 6, e o módulo da escala não deixa passar de 7. Encurtar mais aqui seria repetir aquela
+decisão num segundo lugar; deixar aberto faria a interface oferecer um degrau que a fonte recusa.
+
+Em cima, o teto é do editor: esta aba desenha uma folha de livro, e um trecho oito pontos maior que
+o resto não é ênfase -- é outro documento. Seis degraus cobrem de legenda a título de capítulo."""
+
+
+def corpo_no_limite(degrau: int) -> int:
+    """O degrau grampeado na faixa. É o que todo comando de corpo chama antes de escrever.
+
+    Grampear e não levantar, **aqui**: quem aperta "aumentar" oito vezes num trecho que já está no
+    teto está pedindo o teto, e não um erro. Quem levanta é `Atributos`, sobre um valor que veio de
+    fora do gesto -- ver o `__post_init__`."""
+    return max(CORPO_MINIMO, min(CORPO_MAXIMO, int(degrau)))
+
+
+CAIXA_ALTA = "alta"
+CAIXA_BAIXA = "baixa"
+CAIXA_INICIAIS = "iniciais"
+
+CAIXAS: tuple[str, ...] = (CAIXA_ALTA, CAIXA_BAIXA, CAIXA_INICIAIS)
+"""As três trocas de caixa (S-262). **Não são atributo**: elas mudam o texto, e não como ele é
+desenhado -- por isso não há campo em `Atributos` para elas, e por isso `mudar_caixa` devolve
+documento com texto novo, no caminho que a substituição em massa já usa."""
+
 
 @dataclass(frozen=True)
 class Atributos:
@@ -123,6 +183,13 @@ class Atributos:
     negrito: bool = False
     italico: bool = False
     sublinhado: bool = False
+    tachado: bool = False
+    """A linha que corta o trecho (S-261) -- o quarto da ênfase, e o único que **retira**.
+
+    Negrito, itálico e sublinhado dizem "olhe para isto"; o tachado diz "isto sai". Numa aba cuja
+    matéria é OCR corrigido, é a marca de quem já decidiu que um trecho é lixo de leitura e ainda não
+    quer apagá-lo -- apagar é irreversível depois do próximo redesenho, e riscar não é."""
+
     cor: str = ""
     """Nome em `CORES_DE_AUTOR`, aplicado à **letra**. `""` é "sem cor de autor"."""
 
@@ -140,6 +207,27 @@ class Atributos:
     corridas. O estilo é o mesmo em todas as corridas de um parágrafo, e quem o aplica escreve nas
     corridas do intervalo inteiro -- ver `aplicar_estilo`."""
 
+    alinhamento: str = ""
+    """Nome em `ALINHAMENTOS` -- atributo do **parágrafo**, como `estilo` (S-259).
+
+    Mora aqui pela mesma razão que `estilo` mora: o documento não tem parágrafo, tem corridas, e o
+    parágrafo é o conjunto de corridas do mesmo bloco. Quem o aplica escreve nas corridas do bloco
+    inteiro -- ver `aplicar_alinhamento`.
+
+    **É o único atributo que a marca do diagrama aceita**, e é o que faz "centralizar a figura" ser a
+    mesma escolha que "centralizar o parágrafo" em vez de um segundo mecanismo ao lado. Ver
+    `ATRIBUTOS_DA_MARCA`."""
+
+    corpo: int = 0
+    """Quantos degraus **acima ou abaixo** do corpo que aquele trecho teria (S-260).
+
+    Degrau, e nunca ponto nem pixel: quem transforma isto em tamanho é `ui/tipografia.corpo`, sobre
+    a fonte do sistema. Um `12` cravado aqui ignoraria quem aumentou a fonte do Windows -- a regra 3
+    da SPEC_EDITOR, e o mesmo defeito que `PAPEL_DO_ESTILO` evita do outro lado.
+
+    `0` é "o corpo do estilo deste parágrafo", e é por isso que ele soma em vez de substituir: um
+    trecho de título com `+1` continua sendo título, um degrau maior."""
+
     fora_do_modelo: bool = False
     """Este trecho traz símbolo que **nenhuma classe do modelo pode confirmar** (S-247).
 
@@ -156,6 +244,20 @@ class Atributos:
                 raise KeyError(f"{campo} de autor desconhecido: {valor!r}. Os válidos estão em CORES_DE_AUTOR.")
         if self.estilo and self.estilo not in ESTILOS:
             raise KeyError(f"estilo desconhecido: {self.estilo!r}. Os válidos estão em ESTILOS.")
+        if self.alinhamento and self.alinhamento not in ALINHAMENTOS:
+            raise KeyError(
+                f"alinhamento desconhecido: {self.alinhamento!r}. Os válidos estão em ALINHAMENTOS."
+            )
+        # **Levanta, e não grampeia.** Quem grampeia é `corpo_no_limite`, no gesto -- ali um degrau
+        # a mais é o pedido de quem apertou o botão pela sétima vez. Aqui o valor veio de um arquivo
+        # ou de uma etiqueta, e um `corpo=40` que virasse 6 em silêncio seria um documento que se
+        # abre diferente do que foi gravado sem nada dizer. Quem perdoa é `texto_etiquetas`, no
+        # caminho de salvar, onde recusar custaria o trabalho da tarde.
+        if not CORPO_MINIMO <= self.corpo <= CORPO_MAXIMO:
+            raise KeyError(
+                f"degrau de corpo fora da faixa: {self.corpo!r}. "
+                f"O válido vai de {CORPO_MINIMO} a {CORPO_MAXIMO}."
+            )
 
     @property
     def padrao(self) -> bool:
@@ -555,6 +657,31 @@ def intervalo_alvo(doc: DocumentoRico, inicio: int, fim: int) -> tuple[int, int]
     return palavra_em(texto, inicio)
 
 
+def intervalo_de_paragrafo(doc: DocumentoRico, inicio: int, fim: int) -> tuple[int, int]:
+    """O intervalo em que um comando **de parágrafo** age. Não é `intervalo_alvo` (S-259).
+
+    **O defeito que ele conserta, medido na tela.** `intervalo_alvo` cai na *palavra* sob o cursor
+    quando não há seleção, e sobre um caractere que não é de palavra a palavra é **vazia** -- então
+    o comando não faz nada. Para negrito isso é o certo: não há o que emboldecer num espaço. Para
+    alinhamento e estilo é o contrário: o cursor sobre o `[` de `[Diagrama 1]` é exatamente onde
+    alguém está quando quer centralizar a figura, e ali "não acontece nada" é a resposta errada.
+
+    A regra: seleção manda; senão a palavra sob o cursor; senão o **caractere** sob o cursor, que
+    basta -- quem estende ao bloco inteiro é `aplicar_no_paragrafo`. Num documento vazio devolve
+    `(0, 0)`, e o comando não tem o que fazer mesmo.
+    """
+    texto = doc.para_texto()
+    inicio, fim = sorted((max(0, min(int(inicio), len(texto))), max(0, min(int(fim), len(texto)))))
+    if inicio != fim:
+        return (inicio, fim)
+    palavra = palavra_em(texto, inicio)
+    if palavra[0] != palavra[1]:
+        return palavra
+    if inicio < len(texto):
+        return (inicio, inicio + 1)
+    return (max(0, inicio - 1), inicio)
+
+
 def _fatiado(doc: DocumentoRico, inicio: int, fim: int) -> list[tuple[Corrida, bool]]:
     """As corridas partidas nos dois limites, cada uma com "está dentro do intervalo?".
 
@@ -583,6 +710,35 @@ def _editavel(corrida: Corrida) -> bool:
     atributo que morre na primeira gravação -- o defeito que a S-235 existe para impedir.
     """
     return corrida.tipo == TEXTO
+
+
+ATRIBUTOS_DA_MARCA: frozenset[str] = frozenset({"alinhamento"})
+"""O que a marca do diagrama aceita, e é **um só** (S-259).
+
+`_editavel` recusa atributo em `[Diagrama N]` porque atributo de marca morre na gravação -- e essa
+regra continua valendo para os outros nove. O alinhamento é a exceção porque ele não descreve a
+marca: descreve **onde a figura fica na coluna**, que é uma pergunta que a página faz e o editor
+precisa responder. Sem ele, "centralizar a figura" teria de virar um segundo mecanismo ao lado do
+alinhamento do texto -- dois caminhos para a mesma escolha, que é a divergência que `ui/comandos.py`
+existe para impedir noutro lugar.
+
+O outro lado desta exceção mora em `ui/texto_etiquetas.py`: a marca **emite e devolve** a etiqueta
+de alinhamento, e nada mais. Os dois têm de concordar, e o teste de ida e volta é quem os compara.
+"""
+
+
+def _recebe(corrida: Corrida, valores: Iterable[str]) -> bool:
+    """Aquela corrida aceita **estes** atributos? É `_editavel` com a exceção da marca.
+
+    Separado de `_editavel` porque a pergunta passou a depender do que se está escrevendo: negrito
+    numa marca continua recusado, alinhamento não. Um `_editavel` que dissesse `True` para a marca
+    abriria os dez.
+    """
+    if _editavel(corrida):
+        return True
+    if corrida.tipo == DIAGRAMA:
+        return bool(valores) and set(valores) <= ATRIBUTOS_DA_MARCA
+    return False
 
 
 def vale_em_todo(doc: DocumentoRico, inicio: int, fim: int, atributo: str) -> bool:
@@ -660,32 +816,163 @@ def limpar_cor(doc: DocumentoRico, inicio: int, fim: int) -> DocumentoRico:
     return aplicar(doc, inicio, fim, cor="", realce="")
 
 
-def aplicar_estilo(doc: DocumentoRico, inicio: int, fim: int, estilo: str) -> DocumentoRico:
-    """Põe o estilo de parágrafo no intervalo, **estendido ao parágrafo inteiro** (S-249).
+def aplicar_no_paragrafo(doc: DocumentoRico, inicio: int, fim: int, **valores: Any) -> DocumentoRico:
+    """Escreve estes atributos no **parágrafo inteiro** que o intervalo toca (S-249/S-259).
 
-    Estilo é do parágrafo, e o documento não tem parágrafo: tem corridas. O parágrafo é o conjunto
-    de corridas do mesmo bloco -- que é como a página chegou --, então marcar meia frase marcaria
-    meio parágrafo, e o desenho ficaria com dois corpos de fonte na mesma linha.
+    Estilo e alinhamento são do parágrafo, e o documento não tem parágrafo: tem corridas. O
+    parágrafo é o conjunto de corridas do mesmo bloco -- que é como a página chegou --, então marcar
+    meia frase marcaria meio parágrafo, e o desenho ficaria com dois corpos de fonte na mesma linha.
 
     Texto escrito do zero (`SEM_BLOCO`) não tem bloco a que se estender: ali o alvo são as corridas
     tocadas, inteiras.
+
+    **A marca do diagrama entra quando -- e só quando -- o atributo é dela** (`ATRIBUTOS_DA_MARCA`).
+    É o que faz centralizar um parágrafo que contém uma figura centralizar a figura junto, sem abrir
+    a marca para os outros atributos.
+
+    O alvo sai de `intervalo_de_paragrafo`, e **não** de `intervalo_alvo`: o cursor parado no `[` de
+    `[Diagrama 1]` é onde alguém está quando quer centralizar a figura, e ali não há palavra.
     """
-    if estilo and estilo not in ESTILOS:
-        raise KeyError(f"estilo desconhecido: {estilo!r}. Os válidos estão em ESTILOS.")
-    inicio, fim = intervalo_alvo(doc, inicio, fim)
+    inicio, fim = intervalo_de_paragrafo(doc, inicio, fim)
     if inicio == fim:
         return doc
-    blocos = {c.bloco for c, esta in _fatiado(doc, inicio, fim) if esta and _editavel(c) and c.da_pagina}
+    blocos = {
+        c.bloco for c, esta in _fatiado(doc, inicio, fim) if esta and _recebe(c, valores) and c.da_pagina
+    }
     novas: list[Corrida] = []
     posicao = 0
     for corrida in doc.corridas:
         comeco, termino = posicao, posicao + len(corrida.texto)
         posicao = termino
         tocada = comeco < fim and termino > inicio
-        if _editavel(corrida) and (corrida.bloco in blocos or tocada):
-            novas.append(replace(corrida, atributos=replace(corrida.atributos, estilo=estilo), procedencia="humano"))
+        if _recebe(corrida, valores) and (corrida.bloco in blocos or tocada):
+            novas.append(
+                replace(
+                    corrida,
+                    atributos=replace(corrida.atributos, **valores),
+                    procedencia="humano",
+                )
+            )
             continue
         novas.append(corrida)
+    return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
+
+
+def aplicar_estilo(doc: DocumentoRico, inicio: int, fim: int, estilo: str) -> DocumentoRico:
+    """O estilo de parágrafo do intervalo (S-249). Ver `aplicar_no_paragrafo` sobre o alcance."""
+    if estilo and estilo not in ESTILOS:
+        raise KeyError(f"estilo desconhecido: {estilo!r}. Os válidos estão em ESTILOS.")
+    return aplicar_no_paragrafo(doc, inicio, fim, estilo=estilo)
+
+
+def aplicar_alinhamento(doc: DocumentoRico, inicio: int, fim: int, alinhamento: str) -> DocumentoRico:
+    """O alinhamento do parágrafo do intervalo -- **e o da figura dentro dele** (S-259)."""
+    if alinhamento and alinhamento not in ALINHAMENTOS:
+        raise KeyError(f"alinhamento desconhecido: {alinhamento!r}. Os válidos estão em ALINHAMENTOS.")
+    return aplicar_no_paragrafo(doc, inicio, fim, alinhamento=alinhamento)
+
+
+def aplicar_corpo(doc: DocumentoRico, inicio: int, fim: int, degrau: int) -> DocumentoRico:
+    """Põe **este** degrau de corpo no intervalo. É o "voltar ao normal", com `degrau=0` (S-260)."""
+    inicio, fim = intervalo_alvo(doc, inicio, fim)
+    if inicio == fim:
+        return doc
+    return aplicar(doc, inicio, fim, corpo=corpo_no_limite(degrau))
+
+
+def mudar_corpo(doc: DocumentoRico, inicio: int, fim: int, passo: int) -> DocumentoRico:
+    """Soma `passo` ao corpo de **cada** corrida do intervalo, grampeado na faixa (S-260).
+
+    Soma por corrida, e não um valor só para todas: selecionar um título (`+2`) junto de duas linhas
+    de prosa (`0`) e apertar "aumentar" tem de subir os três um degrau, e não achatar os três no
+    mesmo número. É a mesma pergunta que `vale_em_todo` responde para o negrito -- o comando age
+    sobre o que está lá, e não sobre um estado que ele supõe.
+
+    Corrida que já está no limite fica onde está, e as outras andam: parar o gesto inteiro porque uma
+    palavra chegou ao teto seria o botão que "não faz nada" sem dizer por quê.
+    """
+    inicio, fim = intervalo_alvo(doc, inicio, fim)
+    if inicio == fim or not passo:
+        return doc
+    novas = [
+        replace(
+            corrida,
+            atributos=replace(
+                corrida.atributos, corpo=corpo_no_limite(corrida.atributos.corpo + int(passo))
+            ),
+            procedencia="humano",
+        )
+        if esta and _editavel(corrida)
+        else corrida
+        for corrida, esta in _fatiado(doc, inicio, fim)
+    ]
+    return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
+
+
+NAO_ABREM_PALAVRA = "'’"
+"""Os apóstrofos: eles ficam **dentro** da palavra quando se capitaliza (S-262).
+
+**É `LETRAS_DE_PALAVRA_EXTRA` menos o hífen, e a diferença é medida no acervo.** Para achar o alvo de
+um comando (`palavra_em`), `saint-amant` é uma palavra só -- o duplo clique de qualquer editor a
+seleciona inteira. Para capitalizar, ela é **duas**: o jogador se chama Saint-Amant, e um
+`Saint-amant` num índice de nomes é um erro que ninguém revisa depois.
+
+O apóstrofo é o contrário nos dois: `don't` capitalizado é `Don't`, e não `Don'T` -- que é
+exatamente o que `str.title()` devolve, e a razão de esta função existir em vez daquela."""
+
+
+def _capitular(texto: str) -> str:
+    """Iniciais maiúsculas -- o Title Case que o Word faz, e não o de `str.title()` (S-262).
+
+    Duas regras, e as duas são critério de aceite: o apóstrofo **não** abre palavra (`don't` ->
+    `Don't`), e o hífen **abre** (`saint-amant` -> `Saint-Amant`). Ver `NAO_ABREM_PALAVRA` sobre
+    por que este corte não é o mesmo de `palavra_em`.
+    """
+    saida: list[str] = []
+    comecando = True
+    for caractere in texto:
+        if not (caractere.isalnum() or caractere in NAO_ABREM_PALAVRA):
+            comecando = True
+            saida.append(caractere)
+            continue
+        saida.append(caractere.upper() if comecando else caractere.lower())
+        comecando = False
+    return "".join(saida)
+
+
+_TROCAS_DE_CAIXA = {
+    CAIXA_ALTA: str.upper,
+    CAIXA_BAIXA: str.lower,
+    CAIXA_INICIAIS: _capitular,
+}
+
+
+def mudar_caixa(doc: DocumentoRico, inicio: int, fim: int, caixa: str) -> DocumentoRico:
+    """Troca a caixa do texto do intervalo, **corrida a corrida** (S-262).
+
+    Corrida a corrida, e não sobre o texto junto, porque cada uma carrega atributo, faixa e bloco
+    próprios: passar o intervalo por `substituir_intervalo` daria o texto certo com a formatação da
+    primeira corrida em todas -- um negrito que engole o parágrafo.
+
+    A marca do diagrama e o separador atravessam inteiros. `[Diagrama 3]` em maiúscula deixaria de
+    ser a marca que `text/documento.py` escreve, e o que se perderia não é a caixa: é o vínculo entre
+    o texto e a figura.
+    """
+    if caixa not in _TROCAS_DE_CAIXA:
+        raise KeyError(f"caixa desconhecida: {caixa!r}. As válidas estão em CAIXAS.")
+    inicio, fim = intervalo_alvo(doc, inicio, fim)
+    if inicio == fim:
+        return doc
+    troca = _TROCAS_DE_CAIXA[caixa]
+    novas: list[Corrida] = []
+    for corrida, esta in _fatiado(doc, inicio, fim):
+        if not esta or not _editavel(corrida):
+            novas.append(corrida)
+            continue
+        trocado = troca(corrida.texto)
+        novas.append(
+            corrida if trocado == corrida.texto else replace(corrida, texto=trocado, procedencia="humano")
+        )
     return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
 
 
@@ -767,6 +1054,7 @@ __all__ = [
     "ESTILO_PROSA",
     "ESTILO_TITULO",
     "LETRAS_DE_PALAVRA_EXTRA",
+    "NAO_ABREM_PALAVRA",
     "PADRAO",
     "PROCEDENCIAS",
     "SEM_BLOCO",
@@ -776,9 +1064,25 @@ __all__ = [
     "Atributos",
     "Corrida",
     "DocumentoRico",
+    "ALINHAMENTOS",
+    "ALINHAMENTO_CENTRO",
+    "ALINHAMENTO_DIREITA",
+    "ALINHAMENTO_ESQUERDA",
+    "ALINHAMENTO_JUSTIFICADO",
+    "ATRIBUTOS_DA_MARCA",
+    "CAIXAS",
+    "CAIXA_ALTA",
+    "CAIXA_BAIXA",
+    "CAIXA_INICIAIS",
+    "CORPO_MAXIMO",
+    "CORPO_MINIMO",
     "alternar",
     "aplicar",
+    "aplicar_alinhamento",
+    "aplicar_corpo",
     "aplicar_estilo",
+    "aplicar_no_paragrafo",
+    "corpo_no_limite",
     "corridas_de_texto",
     "de_pagina",
     "de_texto",
@@ -786,9 +1090,12 @@ __all__ = [
     "fundir",
     "inserir",
     "intervalo_alvo",
+    "intervalo_de_paragrafo",
     "substituir_intervalo",
     "limpar_cor",
     "limpar_formato",
+    "mudar_caixa",
+    "mudar_corpo",
     "palavra_em",
     "vale_em_todo",
 ]

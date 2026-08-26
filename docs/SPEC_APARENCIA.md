@@ -17,7 +17,7 @@ Base: [ROADMAP_APARENCIA.md](ROADMAP_APARENCIA.md), que traz a leitura das duas 
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-258 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-266 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.

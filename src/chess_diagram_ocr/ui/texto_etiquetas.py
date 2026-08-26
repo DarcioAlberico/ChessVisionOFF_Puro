@@ -36,7 +36,7 @@ afirmável sem abrir janela, como `ui/tokens.py` e `ui/comandos.py`. Quem chama 
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import fields
 from typing import Any
 
@@ -68,13 +68,15 @@ ETIQUETA_DO_ATRIBUTO: dict[str, str] = {
     "negrito": "negrito",
     "italico": "italico",
     "sublinhado": "sublinhado",
+    "tachado": "tachado",
     "fora_do_modelo": "fora_do_modelo",
 }
 """Atributo **booleano** de `rico.Atributos` -> etiqueta que o desenha.
 
-Os quatro que existem, e agora nenhum fica de fora: `sublinhado` entrou com a S-241 e
-`fora_do_modelo` com a S-247. Os que têm **valor** -- `cor`, `realce`, `estilo` -- não cabem aqui,
-porque etiqueta é string e o valor vai no nome: ver `ATRIBUTO_COM_VALOR`."""
+Os cinco que existem, e nenhum fica de fora: `sublinhado` entrou com a S-241, `fora_do_modelo` com
+a S-247 e `tachado` com a S-261. Os que têm **valor** -- `cor`, `realce`, `estilo`, `alinhamento`,
+`corpo` -- não cabem aqui, porque etiqueta é string e o valor vai no nome: ver
+`ATRIBUTO_COM_VALOR`."""
 
 
 SEM_ETIQUETA: tuple[str, ...] = ()
@@ -90,13 +92,23 @@ ATRIBUTO_COM_VALOR: dict[str, str] = {
     "cor": "cor:",
     "realce": "realce:",
     "estilo": "estilo:",
+    "alinhamento": "alinhamento:",
+    "corpo": "corpo:",
 }
-"""Atributo de valor -> prefixo da etiqueta que o carrega (S-242, S-249).
+"""Atributo de valor -> prefixo da etiqueta que o carrega (S-242, S-249, S-259, S-260).
 
 `cor:destaque` e `estilo:titulo` são o mesmo desenho de `bloco:3` e `proc:glifo`: nome de etiqueta
 no Tk é string, e um atributo que não é sim-ou-não precisa carregar o valor no próprio nome. A
 diferença é que estes **são** desenháveis -- quem os configura é `ui/texto_panel._pintar_faixas`,
 com a cor vinda de `ui/texto_cores.py` e o corpo de `ui/tipografia.py`."""
+
+CONVERSOR_DO_VALOR: dict[str, Callable[[str], Any]] = {"corpo": int}
+"""Como o valor volta da etiqueta ao tipo do campo. `str` é o padrão, e `corpo` é a exceção.
+
+**Nome de etiqueta no Tk é string, e `Atributos.corpo` é `int`.** Sem esta tabela a volta devolveria
+`corpo="2"`, que passa pelo `dataclass` sem reclamar e reprova toda comparação depois -- um
+documento reaberto que não é igual ao salvo, com a diferença invisível a olho nu. O valor ilegível
+(`corpo:x`) cai no padrão do campo pelo caminho de `_com_valor`, na mesma tolerância de `bloco:`."""
 
 
 def _booleanos_de_atributo() -> tuple[str, ...]:
@@ -119,6 +131,13 @@ def etiquetas_de(corrida: rico.Corrida) -> tuple[str, ...]:
     etiquetas: list[str] = []
     if corrida.tipo == rico.DIAGRAMA:
         etiquetas.append(MARCA)
+        # **A marca leva o alinhamento, e só ele** (S-259). É `rico.ATRIBUTOS_DA_MARCA` deste lado
+        # do espelho: sem esta linha, centralizar a figura seria um efeito que existe na tela e
+        # desaparece no arquivo -- o achado 1 do ROADMAP_EDITOR aplicado a um atributo novo.
+        for atributo in sorted(rico.ATRIBUTOS_DA_MARCA):
+            valor = getattr(corrida.atributos, atributo, "")
+            if valor:
+                etiquetas.append(f"{ATRIBUTO_COM_VALOR[atributo]}{valor}")
     elif corrida.tipo == rico.SEPARADOR:
         etiquetas.append(SEPARADOR)
     else:
@@ -155,9 +174,16 @@ def corrida_de(texto: str, etiquetas: Iterable[str]) -> rico.Corrida:
     }
     ligados.update(_com_valor(presentes))
     atributos = _atributos(ligados)
+    if tipo == rico.DIAGRAMA:
+        # Só o que a marca aceita atravessa. Um `negrito` que tivesse escapado para a marca -- por
+        # digitação na emenda, que é como o Tk herda etiqueta -- morreria na gravação seguinte, e o
+        # que se vê é um atributo que "não funciona" de vez em quando (S-259).
+        atributos = _atributos(
+            {nome: getattr(atributos, nome) for nome in sorted(rico.ATRIBUTOS_DA_MARCA)}
+        )
     return rico.Corrida(
         texto=texto,
-        atributos=atributos if tipo == rico.TEXTO else rico.PADRAO,
+        atributos=atributos if tipo in (rico.TEXTO, rico.DIAGRAMA) else rico.PADRAO,
         faixa=faixas[0] if tipo == rico.TEXTO and faixas else documento.TRANQUILO,
         bloco=_bloco_de(presentes),
         procedencia=_procedencia_de(presentes),
@@ -175,8 +201,13 @@ def _com_valor(etiquetas: set[str]) -> dict[str, Any]:
     achados: dict[str, Any] = {}
     for atributo, prefixo in ATRIBUTO_COM_VALOR.items():
         valores = sorted(e[len(prefixo) :] for e in etiquetas if e.startswith(prefixo))
-        if valores:
-            achados[atributo] = valores[0]
+        if not valores:
+            continue
+        converter = CONVERSOR_DO_VALOR.get(atributo, str)
+        try:
+            achados[atributo] = converter(valores[0])
+        except (TypeError, ValueError):
+            logger.debug("Etiqueta de %s ilegível (%s): o trecho fica sem ela.", atributo, valores[0])
     return achados
 
 
@@ -276,6 +307,7 @@ def de_despejo(itens: Sequence[Sequence[str]], origem=None) -> rico.DocumentoRic
 
 __all__ = [
     "ATRIBUTO_COM_VALOR",
+    "CONVERSOR_DO_VALOR",
     "DESENHO",
     "ETIQUETA_DO_ATRIBUTO",
     "MARCA",

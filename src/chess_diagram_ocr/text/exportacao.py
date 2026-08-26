@@ -39,7 +39,7 @@ Nada de `tkinter` aqui: quem escolhe o arquivo é o painel; quem decide o conte�
 from __future__ import annotations
 
 import html as _html
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Protocol
@@ -48,7 +48,9 @@ from . import documento
 from .rico import Atributos, Corrida, DocumentoRico
 
 __all__ = [
+    "ALINHAMENTOS_DO_HTML",
     "ATRIBUTOS",
+    "CONTROLE_DE_ALINHAMENTO_RTF",
     "FORMATOS",
     "Formato",
     "Html",
@@ -56,10 +58,47 @@ __all__ = [
     "Relatorio",
     "Rtf",
     "Texto",
+    "classe_de_corpo",
     "exportar",
     "formato_de",
     "suporte_por_formato",
 ]
+
+ALINHAMENTOS_DO_HTML: dict[str, str] = {
+    "esquerda": "left",
+    "centro": "center",
+    "direita": "right",
+    "justificado": "justify",
+}
+"""Alinhamento do documento -> `text-align` do CSS (S-259).
+
+**Os quatro saem inteiros aqui, o justificado inclusive** -- e é a diferença entre este formato e a
+tela. `JUSTIFICACAO_DO_ALINHAMENTO`, em `ui/texto_panel.py`, deixa cair o justificado porque o
+`tk.Text` não sabe esticar espaço entre palavras; o navegador sabe. O atributo atravessa o documento
+inteiro e cada saída faz o que pode com ele, que é o que a tabela de perdas deste módulo mede."""
+
+CONTROLE_DE_ALINHAMENTO_RTF: dict[str, str] = {
+    "esquerda": "\\ql",
+    "centro": "\\qc",
+    "direita": "\\qr",
+    "justificado": "\\qj",
+}
+"""O mesmo em RTF. Os quatro existem no formato desde o RTF 1.0, e nenhum é aproximação."""
+
+PREFIXO_DE_CORPO = "corpo"
+"""O começo do nome de classe de um degrau de corpo no HTML: `corpo-mais-2`, `corpo-menos-1`."""
+
+
+def classe_de_corpo(degrau: int) -> str:
+    """O nome de classe daquele degrau (S-260). `+2` -> `corpo-mais-2`, `-1` -> `corpo-menos-1`.
+
+    **Nome com palavra, e não com sinal**, porque `-` abre nome de classe negativo em CSS e `+` não
+    é caractere de nome nenhum: `.corpo--1` e `.corpo-+2` são seletores que o navegador descarta em
+    silêncio. Uma função e não um `f-string` espalhado porque quem escreve a classe (`_classes`) e
+    quem escreve a regra (`ui/texto_panel`) têm de produzir exatamente o mesmo nome."""
+    lado = "mais" if degrau > 0 else "menos"
+    return f"{PREFIXO_DE_CORPO}-{lado}-{abs(int(degrau))}"
+
 
 ATRIBUTOS: tuple[str, ...] = tuple(campo.name for campo in fields(Atributos))
 """Os atributos que um formato pode ou não expressar -- **derivados de `Atributos`**.
@@ -94,7 +133,13 @@ class Relatorio:
 
 
 class Formato(Protocol):
-    """O contrato de um formato. Quem o cumpre não sabe que existe um arquivo."""
+    """O contrato de um formato. Quem o cumpre não sabe que existe um arquivo.
+
+    **`montar` e `paragrafo` são opcionais**, e `exportar` os procura com `getattr`. Não é frouxidão:
+    é o que permite um formato dizer "não tenho isto" sem escrever um método que devolve o argumento
+    intacto. Os dois nasceram assim -- `montar` para o `.txt` sair byte a byte igual ao de antes
+    (S-250), `paragrafo` para o alinhamento da S-259, que dois dos quatro formatos não expressam.
+    """
 
     extensao: str
     nome: str
@@ -109,6 +154,8 @@ class Formato(Protocol):
     def rodape(self, doc: DocumentoRico) -> str: ...
 
     def montar(self, cabecalho: str, corpo: str, rodape: str) -> str: ...
+
+    def paragrafo(self, alinhamento: str, corpo: str) -> str: ...
 
 
 def _cabecalho_de_procedencia(doc: DocumentoRico) -> str:
@@ -155,13 +202,14 @@ class Markdown:
     """`.md`: **porque ele diffa.**
 
     Uma página corrigida hoje e recorrigida amanhã produz duas versões comparáveis linha a linha, e
-    é assim que se vê o que mudou. Negrito é `**`, itálico é `*`, título é `#`. A cor de autor não
-    tem sintaxe e é declarada como perda; a faixa de confiança também.
+    é assim que se vê o que mudou. Negrito é `**`, itálico é `*`, tachado é `~~`, título é `#`. A cor
+    de autor não tem sintaxe e é declarada como perda; a faixa de confiança, o alinhamento e o corpo
+    também -- e é por isso que o `.md` **não** é o formato para mandar a folha diagramada a alguém.
     """
 
     extensao: str = ".md"
     nome: str = "Markdown"
-    suporta: frozenset[str] = frozenset({"negrito", "italico", "estilo"})
+    suporta: frozenset[str] = frozenset({"negrito", "italico", "tachado", "estilo"})
     pasta_de_imagens: str = "diagramas"
 
     def cabecalho(self, doc: DocumentoRico) -> str:
@@ -173,9 +221,14 @@ class Markdown:
             return texto
         # A ordem importa: `***texto***` é o que o Markdown lê como negrito **e** itálico.
         if c.atributos.italico:
-            texto = f"*{texto.strip()}*" + _cauda(texto)
+            texto = _cercado(texto, "*")
         if c.atributos.negrito:
-            texto = f"**{texto.strip()}**" + _cauda(texto)
+            texto = _cercado(texto, "**")
+        # `~~` é do GitHub Flavored Markdown e não do Markdown de 2004. Entra assim mesmo: o motivo
+        # de este formato existir é diffar, e quem diffa é um servidor de git -- todos os quais o
+        # entendem. Alinhamento e corpo **não** têm sintaxe nem no GFM, e saem como perda contada.
+        if c.atributos.tachado:
+            texto = _cercado(texto, "~~")
         if c.atributos.estilo == "titulo":
             texto = f"# {texto.lstrip()}"
         return texto
@@ -210,6 +263,17 @@ class Html:
     cores: Mapping[str, str] = field(default_factory=dict)
     """`nome de cor de autor -> hexadecimal`, e `faixa -> hexadecimal`. Vem de fora."""
 
+    corpos: Mapping[str, str] = field(default_factory=dict)
+    """`classe de degrau -> tamanho de fonte`, e ele **vem de fora pela mesma razão que a cor**.
+
+    O documento guarda `corpo=+2`, que é um degrau; quanto isso mede é decisão de
+    `ui/tipografia.corpo`, sobre a fonte do sistema de quem exporta. Um `font-size: 11pt` escrito
+    aqui seria a regra 3 da SPEC_EDITOR quebrada no mesmo arquivo em que ela já é respeitada para a
+    cor -- e o teste que varre este módulo atrás de literais de aparência pegaria os dois.
+
+    Vazio é degradação e não defeito: sem o mapa, o HTML sai sem as regras de corpo, e o texto
+    aparece no tamanho do navegador. É o que já acontece com `cores` quando ninguém as passa."""
+
     pasta_de_imagens: str = "diagramas"
     fontes: str = "'Segoe UI Symbol', 'DejaVu Sans', 'Noto Sans Symbols 2', sans-serif"
 
@@ -223,6 +287,10 @@ class Html:
             f"<title>{titulo}</title>\n<style>\n"
             f"    body {{ font-family: {self.fontes}; max-width: 42em; margin: 2em auto; }}\n"
             "    .diagrama { display: block; margin: 1em 0; }\n"
+            # A figura centralizada precisa das duas: o `text-align` do `div` alinha o texto, e a
+            # margem automática alinha o bloco da imagem (S-259).
+            "    .alinhar-centro .diagrama { margin: 1em auto; }\n"
+            "    .alinhar-direita .diagrama { margin: 1em 0 1em auto; }\n"
             f"{estilo}\n</style>\n</head>\n<body>\n"
             f"<!-- {titulo} -->\n"
             "<p class=\"aviso\">As figurinas de xadrez dependem de uma fonte com os glifos "
@@ -234,6 +302,10 @@ class Html:
         for nome, cor in sorted(self.cores.items()):
             propriedade = "background-color" if nome.startswith("realce-") else "color"
             regras.append((nome, propriedade, cor))
+        for nome, tamanho in sorted(self.corpos.items()):
+            regras.append((nome, "font-size", tamanho))
+        for nome in ALINHAMENTOS_DO_HTML:
+            regras.append((f"alinhar-{nome}", "text-align", ALINHAMENTOS_DO_HTML[nome]))
         return regras
 
     def corrida(self, c: Corrida) -> str:
@@ -247,6 +319,11 @@ class Html:
             texto = f"<em>{texto}</em>"
         if atributos.sublinhado:
             texto = f"<u>{texto}</u>"
+        if atributos.tachado:
+            # `<s>`, e não `<del>`: `del` é *texto removido de uma versão para a outra*, com
+            # semântica de revisão de documento. Aqui o trecho continua no documento e está riscado
+            # porque quem corrige o marcou assim -- que é exatamente o que o HTML5 define para `s`.
+            texto = f"<s>{texto}</s>"
         classes = self._classes(c)
         if classes:
             texto = f'<span class="{" ".join(classes)}">{texto}</span>'
@@ -266,6 +343,8 @@ class Html:
             classes.append("fora-do-modelo")
         if c.atributos.estilo and c.atributos.estilo != "titulo":
             classes.append(f"estilo-{c.atributos.estilo}")
+        if c.atributos.corpo:
+            classes.append(classe_de_corpo(c.atributos.corpo))
         return classes
 
     def diagrama(self, c: Corrida, recorte: Path | None) -> str:
@@ -273,6 +352,22 @@ class Html:
         if recorte is None:
             return marca
         return f'<img class="diagrama" src="{self.pasta_de_imagens}/{recorte.name}" alt="{marca}">'
+
+    def paragrafo(self, alinhamento: str, corpo: str) -> str:
+        """O trecho alinhado num `<div>` (S-259). **Bloco, porque `text-align` não é de inline.**
+
+        Um `<span style="text-align:center">` não faz nada num navegador -- a propriedade alinha o
+        conteúdo de um bloco, e o span não é um. Envolver aqui, e não em `corrida`, é o que faz um
+        parágrafo com uma palavra em negrito sair num `div` só em vez de um `div` por corrida: quem
+        agrupa as corridas vizinhas de mesmo alinhamento é `exportar`.
+
+        `.diagrama` é `display:block` desde a S-251, e `margin: 0 auto` é o que centraliza um bloco
+        de largura fixa. Sem essa segunda regra a figura ficaria à esquerda dentro de um `div`
+        centralizado, que é o defeito clássico de centralizar imagem em HTML.
+        """
+        if not alinhamento:
+            return corpo
+        return f'<div class="alinhar-{alinhamento}">{corpo}</div>\n'
 
     def rodape(self, doc: DocumentoRico) -> str:
         return "</body>\n</html>\n"
@@ -293,7 +388,18 @@ class Rtf:
 
     extensao: str = ".rtf"
     nome: str = "RTF"
-    suporta: frozenset[str] = frozenset({"negrito", "italico", "sublinhado", "estilo"})
+    suporta: frozenset[str] = frozenset(
+        {"negrito", "italico", "sublinhado", "tachado", "estilo", "alinhamento", "corpo"}
+    )
+    meio_ponto_por_degrau: int = 2
+    """Quantos meios-pontos vale um degrau de corpo. **Dois, porque o RTF conta em meios-pontos.**
+
+    `\\fs20` é corpo 10, e um degrau de `rico` vale um ponto (`ui/tipografia.corpo`): o degrau `+2`
+    é `\\fs24`. O número mora aqui e não no corpo do método porque é uma conversão de unidade do
+    **formato**, e não uma escolha de tamanho -- a escolha continua sendo do documento."""
+
+    corpo_base: int = 20
+    """O `\\fs` do corpo do texto, em meios-pontos. É o `\\fs20` que o cabeçalho já declarava."""
 
     def cabecalho(self, doc: DocumentoRico) -> str:
         return "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Segoe UI;}}\\fs20\n"
@@ -307,9 +413,27 @@ class Rtf:
             marcas += "\\i "
         if c.atributos.sublinhado:
             marcas += "\\ul "
+        if c.atributos.tachado:
+            marcas += "\\strike "
         if c.atributos.estilo == "titulo":
             marcas += "\\fs28 "
+        if c.atributos.corpo:
+            # **Depois do `\\fs28` do título, e é a ordem que decide.** No RTF a última declaração
+            # do mesmo controle vence, e um título com `+1` tem de sair um degrau acima do título --
+            # não do corpo comum. Somar sobre `corpo_base` daria o segundo comportamento.
+            base = 28 if c.atributos.estilo == "titulo" else self.corpo_base
+            marcas += f"\\fs{base + c.atributos.corpo * self.meio_ponto_por_degrau} "
         return f"{{{marcas}{texto}}}" if marcas else texto
+
+    def paragrafo(self, alinhamento: str, corpo: str) -> str:
+        """O grupo alinhado (S-259). `\\qc` e irmãos valem até o `\\par` que fecha o parágrafo.
+
+        Grupo com chaves, e não o controle solto, porque o RTF é de estado: um `\\qc` sem grupo
+        alinharia tudo o que vem depois dele até alguém escrever `\\ql` -- e o "alguém" seria o
+        parágrafo seguinte, que não pediu nada.
+        """
+        controle = CONTROLE_DE_ALINHAMENTO_RTF.get(alinhamento, "")
+        return f"{{{controle} {corpo}}}" if controle else corpo
 
     def diagrama(self, c: Corrida, recorte: Path | None) -> str:
         return escapar_rtf(c.texto)
@@ -344,6 +468,22 @@ def _unidades_utf16(ponto: int) -> list[int]:
         return [ponto]
     resto = ponto - 0x10000
     return [0xD800 + (resto >> 10), 0xDC00 + (resto & 0x3FF)]
+
+
+def _cercado(texto: str, marca: str) -> str:
+    """`texto` entre as marcas, **com o espaço das duas pontas por fora**.
+
+    O Markdown não abre ênfase antes de um espaço nem a fecha depois de um: `** negrito **` sai
+    literal na tela. A saída é aparar as pontas e devolvê-las por fora -- e são as **duas**, e não
+    só a final. Cercar só a cauda engolia o espaço da esquerda, e duas corridas vizinhas saíam
+    coladas (`um**negrito**`) no meio de uma frase. Aparecia em toda corrida que começa com espaço,
+    que é o caso de todo trecho que não abre parágrafo."""
+    return _cabeca(texto) + f"{marca}{texto.strip()}{marca}" + _cauda(texto)
+
+
+def _cabeca(texto: str) -> str:
+    """O espaço do começo, que a marcação não pode engolir."""
+    return texto[: len(texto) - len(texto.lstrip())]
 
 
 def _cauda(texto: str) -> str:
@@ -402,7 +542,7 @@ def exportar(
     """
     imagens = recortes or {}
     perdas = dict.fromkeys(ATRIBUTOS, 0)
-    partes: list[str] = []
+    partes: list[tuple[str, str]] = []
     diagramas = 0
     sem_recorte = 0
     for corrida in doc.corridas:
@@ -415,11 +555,11 @@ def exportar(
             recorte = imagens.get(corrida.bloco)
             if recorte is None:
                 sem_recorte += 1
-            partes.append(formato.diagrama(corrida, recorte))
+            partes.append((corrida.atributos.alinhamento, formato.diagrama(corrida, recorte)))
             continue
-        partes.append(formato.corrida(corrida))
+        partes.append((corrida.atributos.alinhamento, formato.corrida(corrida)))
     montar = getattr(formato, "montar", None)
-    corpo = "".join(partes)
+    corpo = _juntar(partes, formato)
     cabecalho, rodape = formato.cabecalho(doc), formato.rodape(doc)
     conteudo = montar(cabecalho, corpo, rodape) if montar else cabecalho + corpo + rodape
     return Relatorio(
@@ -429,6 +569,34 @@ def exportar(
         diagramas=diagramas,
         sem_recorte=sem_recorte,
     )
+
+
+def _juntar(partes: Sequence[tuple[str, str]], formato: Formato) -> str:
+    """Junta os pedaços, agrupando os **vizinhos de mesmo alinhamento** (S-259).
+
+    Um formato sem `paragrafo` recebe a concatenação de sempre, e é por isso que o `.txt` e o `.md`
+    saem byte a byte iguais ao que saíam. Os que o têm recebem um grupo por corrida contígua de mesmo
+    alinhamento -- e a contiguidade é o que importa: um parágrafo com uma palavra em negrito são três
+    corridas, e três `<div>` no lugar de um seriam três parágrafos na tela de quem abre o arquivo.
+
+    Alinhamento vazio atravessa sem grupo. É o parágrafo que ninguém alinhou, e envolvê-lo num
+    `<div>` mudaria o HTML de toda folha exportada por um atributo que ninguém usou.
+    """
+    envolver = getattr(formato, "paragrafo", None)
+    if envolver is None:
+        return "".join(pedaco for _alinhamento, pedaco in partes)
+    saida: list[str] = []
+    grupo: list[str] = []
+    atual = ""
+    for alinhamento, pedaco in partes:
+        if alinhamento != atual:
+            if grupo:
+                saida.append(envolver(atual, "".join(grupo)) if atual else "".join(grupo))
+            grupo, atual = [], alinhamento
+        grupo.append(pedaco)
+    if grupo:
+        saida.append(envolver(atual, "".join(grupo)) if atual else "".join(grupo))
+    return "".join(saida)
 
 
 def _avisos(doc: DocumentoRico, formato: Formato, sem_recorte: int) -> tuple[str, ...]:

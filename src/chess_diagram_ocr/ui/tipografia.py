@@ -47,6 +47,7 @@ __all__ = [
     "PAPEIS_DE_FONTE",
     "TITULO",
     "altura_de_linha",
+    "corpo",
     "escala",
     "familia_monoespacada",
     "folga",
@@ -142,6 +143,30 @@ def escala(base: int) -> dict[str, int]:
     if base <= 0:
         base = MINIMO_LEGIVEL
     return {papel: max(MINIMO_LEGIVEL, base + degrau) for papel, degrau in DEGRAUS.items()}
+
+
+def corpo(degrau: int, *, base: int, papel: str = CORPO) -> int:
+    """O tamanho em pontos daquele papel, `degrau` degraus acima ou abaixo dele (S-260). Pura.
+
+    **É aqui que o degrau vira ponto, e em nenhum outro lugar.** O documento guarda `corpo=+2`
+    porque `+2` é uma escolha do autor que vale em qualquer fonte de sistema; quem tem de saber
+    quanto isso mede é este módulo, que já sabe quanto medem os quatro papéis. Um `12` cravado na
+    aba de texto ou no exportador ignoraria quem aumentou a fonte do Windows -- a regra 3 da
+    SPEC_EDITOR, e o defeito de DPI da S-148 num lugar menor.
+
+    O degrau vale **um ponto**, como os degraus de `DEGRAUS`: a escala curta do topo deste arquivo é
+    a mesma para os dois, e dois passos diferentes na mesma janela dariam um título de estilo e um
+    título de mão com corpos que não coincidem.
+
+    O piso é `MINIMO_LEGIVEL`, e ele é o mesmo de `escala` pela mesma razão -- abaixo de 7 pt as
+    hastes de `l`, `i` e `1` colapsam, e distinguir esses três é o trabalho desta janela. É o piso
+    que fecha a faixa por baixo, e é por isso que `rico.CORPO_MINIMO` não precisa repeti-lo.
+    """
+    if papel not in DEGRAUS:
+        raise KeyError(f"papel de fonte desconhecido: {papel!r}. Os válidos estão em PAPEIS_DE_FONTE.")
+    if base <= 0:
+        base = MINIMO_LEGIVEL
+    return max(MINIMO_LEGIVEL, escala(base)[papel] + int(degrau))
 
 
 def fonte(

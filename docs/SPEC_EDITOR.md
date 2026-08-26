@@ -1,4 +1,4 @@
-# Especificação do editor de texto — Fases 36 a 40 (S-235 a S-258)
+# Especificação do editor de texto — Fases 36 a 42 (S-235 a S-266)
 
 Base: [ROADMAP_EDITOR.md](ROADMAP_EDITOR.md), que traz a medição da aba de hoje, os oito achados e
 o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
@@ -17,7 +17,7 @@ o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-258 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-266 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2240,13 +2240,435 @@ de 14 — que hoje não abre parágrafo e passaria a abrir.
 
 ---
 
+# Fase 41 — As ferramentas que faltavam na barra
+
+> A Fase 37 entregou os pincéis do **trecho** — negrito, cor, realce — e a S-249 entregou o estilo do
+> **parágrafo**. O que nenhuma das duas entregou foi o que se faz com uma folha depois de corrigi-la:
+> centralizar o diagrama e a legenda dele, subir o corpo de um título, riscar o que sai, arrumar a
+> caixa de um nome que o OCR leu em versalete. São quatro ferramentas, onze comandos, e nenhuma delas
+> inventa fronteira nova: as duas primeiras são atributo de parágrafo e de trecho, como o estilo e o
+> negrito já eram; a terceira é o quarto booleano de ênfase; a quarta muda texto, pelo caminho que a
+> substituição em massa já usava.
+
+## S-259 · Alinhamento é do parágrafo, e a figura dentro dele vai junto ✅ implementada (2026-08-26)
+
+**Problema.** A aba não tem alinhamento nenhum. Tudo sai encostado na margem esquerda — inclusive a
+miniatura do diagrama, que `_inserir_miniatura` insere com `image_create(tk.END, ...)` sem etiqueta
+alguma. Numa folha de livro de xadrez o diagrama é quase sempre centralizado na coluna, e a legenda
+embaixo dele também: exportar a folha corrigida devolvia uma página que não se parece com a página.
+
+O caso é mais estreito do que parece, e é aí que ele fica interessante. A marca `[Diagrama N]` é uma
+`Corrida` de tipo `DIAGRAMA`, e `rico._editavel` recusa atributo nela desde a S-235 — com razão
+declarada: *"pintar de negrito um `[Diagrama 3]` seria um atributo que morre na primeira gravação"*,
+porque `texto_etiquetas.corrida_de` devolve a marca com `PADRAO`. Só que "onde a figura fica na
+coluna" **não** é um atributo da marca: é a mesma escolha que alinha o parágrafo em volta dela.
+
+**Solução.** `Atributos.alinhamento`, com `ALINHAMENTOS` fechado em quatro
+(`text/rico.py:123`), aplicado por `aplicar_no_paragrafo` (`:808`) — que é `aplicar_estilo`
+generalizada, com o mesmo alcance de bloco da S-249. E uma fronteira nova de uma linha:
+
+```python
+ATRIBUTOS_DA_MARCA: frozenset[str] = frozenset({"alinhamento"})   # text/rico.py:704
+```
+
+A marca **emite e devolve** essa etiqueta e nenhuma outra; os demais nove atributos continuam
+recusados. No widget, a etiqueta vai também na **imagem** — o `-justify` do Tk é lido no primeiro
+item de cada linha de tela, e o primeiro item da linha da figura é a figura, não a marca embaixo
+dela. Uma etiqueta que chegasse só à marca passa num teste de `tag_names` e deixa a imagem na
+margem, que é o defeito que este item existe para não ter.
+
+**Duas perdas declaradas, e as duas são de quem desenha.** `JUSTIFICACAO_DO_ALINHAMENTO`
+(`ui/texto_panel.py:156`) manda `justificado` para `left`: o `tk.Text` não estica espaço entre
+palavras, e justificar de verdade seria um motor de composição dentro de uma aba de correção de OCR.
+O atributo continua no documento e sai justificado nos formatos que sabem justificar — `.html` por
+`text-align: justify`, `.rtf` por `\qj`. O `.md` não tem sintaxe e conta a perda.
+
+**O alvo de um comando de parágrafo não é `intervalo_alvo`.** Ela cai na *palavra* sob o cursor, e
+sobre um caractere que não é de palavra a palavra é vazia — então o comando não fazia nada. Para o
+negrito isso é o certo; para o alinhamento é a resposta errada no caso mais comum de todos, que é o
+cursor parado no `[` de `[Diagrama 1]`. `intervalo_de_paragrafo` (`text/rico.py:649`) cai no
+**caractere** sob o cursor, e quem estende ao bloco é `aplicar_no_paragrafo`. O estilo da S-249 tinha
+o mesmo buraco e sai consertado junto.
+
+**Critério de aceite.**
+
+- alinhar uma palavra alinha o parágrafo inteiro, e não o vizinho;
+- centralizar um parágrafo que contém um diagrama move **a miniatura e a marca**;
+- a marca continua recusando todo atributo que não seja o alinhamento;
+- `esquerda` e `""` são estados distintos, e os dois sobrevivem ao arquivo;
+- o justificado cai em `left` na tela e sai justificado no `.html` e no `.rtf`.
+
+**Testes.** `tests/test_texto_ferramentas.py::AlinhamentoTests`;
+`tests/test_ui_texto_editor.py::FerramentasNoWidgetTests::test_centralizar_pelo_cursor_na_marca_alcanca_a_miniatura`
+e `::test_o_cursor_num_caractere_sem_palavra_ainda_alinha_o_paragrafo`.
+
+---
+
+## S-260 · O corpo sobe e desce por degraus, e o degrau nunca é pixel ✅ implementada (2026-08-26)
+
+**Problema.** Não há como aumentar nem diminuir o texto. O estilo de parágrafo da S-249 dá quatro
+corpos fixos — título, prosa, notação, legenda —, e é tudo. Um subtítulo que precisa ficar entre o
+título e a prosa não tem onde caber, e a legenda de um diagrama de duas linhas não tem como encolher.
+
+A armadilha aqui é a regra 3 da spec. `PAPEL_DO_ESTILO` já diz, em letras grandes, que *"nenhum
+tamanho em pixel entra aqui"*: `tipografia` escala pela fonte do sistema desde a S-147, e um `12`
+cravado quebra quem aumentou a fonte do Windows. Uma ferramenta de tamanho é justamente o recurso
+que convida a cravar um número.
+
+**Solução.** `Atributos.corpo`, um **degrau relativo** inteiro, com faixa fechada de
+`CORPO_MINIMO = -3` a `CORPO_MAXIMO = 6`. O degrau vira ponto num lugar só:
+
+```python
+def corpo(degrau: int, *, base: int, papel: str = CORPO) -> int:   # ui/tipografia.py:148
+    return max(MINIMO_LEGIVEL, escala(base)[papel] + int(degrau))
+```
+
+O piso é o `MINIMO_LEGIVEL` que a S-149 já tinha, e é ele que fecha a faixa por baixo — abaixo de
+7 pt as hastes de `l`, `i` e `1` colapsam, e distinguir esses três é o trabalho desta janela.
+
+**O degrau soma sobre o que está lá, corrida a corrida** (`text/rico.py:872`). Selecionar um título
+(`+2`) junto de duas linhas de prosa (`0`) e apertar "aumentar" sobe os três um degrau, e não achata
+os três no mesmo número — a mesma pergunta que `vale_em_todo` responde para o negrito. Corrida que já
+está no limite fica onde está e as outras andam; o rodapé diz que o limite chegou, porque um botão
+que deixa de fazer efeito em silêncio é o botão que a pessoa aperta mais cinco vezes.
+
+**A origem do degrau não é o papel `CORPO` quando não há estilo**, e isso foi medido: o `tk.Text`
+nasce em `TkFixedFont` — Courier New 10 no Windows — enquanto o papel `CORPO` é Segoe UI 9. Derivar
+do papel faria "aumentar" trocar a família **e** diminuir o tamanho. `_fonte_do_trecho`
+(`ui/texto_panel.py:929`) parte do papel quando há estilo e da fonte do próprio editor quando não há
+— a mesma escolha que `_fonte` já fazia para o negrito e o itálico. E parte sempre da **origem**,
+nunca do que está desenhado: somar ao tamanho já na tela faria a fonte crescer sozinha a cada
+redesenho.
+
+**Critério de aceite.**
+
+- nenhum tamanho em pontos ou pixels aparece fora de `ui/tipografia.py`;
+- o degrau soma por corrida e para no limite sem parar o gesto, com aviso no rodapé;
+- aumentar e redesenhar não acumula: a fonte da etiqueta é a mesma depois de `desenhar_documento`;
+- sem estilo, o degrau mantém a família do editor;
+- `.rtf` e `.html` expressam o degrau; `.md` e `.txt` contam a perda.
+
+**Testes.** `tests/test_texto_ferramentas.py::CorpoTests`;
+`tests/test_ui_texto_editor.py::FerramentasNoWidgetTests` — `test_o_degrau_nao_se_acumula_a_cada_redesenho`,
+`test_o_degrau_sai_da_fonte_do_editor_e_nao_do_papel_corpo`, `test_o_corpo_para_no_limite_e_o_rodape_diz`.
+
+---
+
+## S-261 · O tachado, e por que ele é o quarto e não o quinto ✅ implementada (2026-08-26)
+
+**Problema.** A ênfase tinha três pincéis — negrito, itálico, sublinhado — e nenhum deles diz "isto
+sai". Numa aba cuja matéria é OCR corrigido essa é uma marca frequente: um trecho que o motor
+inventou, uma linha de cabeçalho que não é do texto, um resto de marca d'água lido como palavra.
+Apagar resolve e é irreversível depois do próximo redesenho; riscar não é.
+
+**Solução.** `Atributos.tachado`, e o custo dele é o que o item tem de interessante: **quase nada**.
+`BOOLEANOS` é derivado de `fields(Atributos)` desde a S-241, `SEM_ETIQUETA` obriga uma decisão de
+desenho para cada booleano novo, `ATRIBUTOS` de `text/exportacao.py` é derivado do mesmo lugar, e o
+teste paramétrico da S-256 percorre os campos. O atributo entra, e a suíte cobra sozinha a etiqueta,
+a persistência e a declaração por formato. É a S-256 pagando o que prometeu.
+
+No widget ele é `overstrike=True` — **opção de etiqueta, e não de fonte**, e por isso soma com a
+etiqueta que dá a fonte ao trecho em vez de disputá-la. Riscar um título em negrito continua sendo um
+título em negrito riscado, sem a etiqueta combinada que `NEGRITO_ITALICO` teve de inventar do outro
+lado. No `.md` é `~~`, do GitHub Flavored Markdown; no `.html`, `<s>` e não `<del>` — `del` é *texto
+removido de uma versão para a outra*, e aqui o trecho continua no documento.
+
+`limpar_formato` passou a ler `ATRIBUTOS_DE_ENFASE` (`ui/texto_panel.py:128`) em vez de uma lista
+escrita no corpo do método: o quarto pincel tinha de sair por aquele botão junto dos três, e uma
+lista repetida é a que fica para trás. Corpo e alinhamento **não** entram lá, e a constante diz por
+quê — cada um tem o seu comando de volta ao normal.
+
+**Critério de aceite.**
+
+- o tachado alterna como os três, e "completa" quando parte do intervalo já está riscado;
+- `limpar_formato` o apaga junto dos outros três, e não toca em corpo nem alinhamento;
+- o risco não substitui a fonte do trecho.
+
+**Testes.** `tests/test_texto_ferramentas.py::TachadoTests`;
+`tests/test_ui_texto_editor.py::FerramentasNoWidgetTests::test_o_tachado_e_risco_e_nao_fonte`.
+
+---
+
+## S-262 · A caixa do trecho, e o que ela não pode tocar ✅ implementada (2026-08-26)
+
+**Problema.** O acervo tem nome próprio lido em versalete, título de capítulo em caixa alta que
+deveria ser prosa, e a S-211 já registrou que o resize 32×32 do classificador apaga o que separa `s`
+de `S`. Corrigir isso à mão é redigitar a palavra — e redigitar perde o `bloco:` da corrida, que é o
+que faz a correção voltar para a fila da S-212 atada ao bloco que ela corrige.
+
+**Solução.** `mudar_caixa` (`text/rico.py:939`), com três modos em `CAIXAS`: alta, baixa e iniciais.
+Ela é a única das quatro ferramentas desta fase que **muda o texto**, e por isso vai pelo caminho do
+documento: instantâneo antes, redesenho depois — o mesmo de `aplicar_substituicao`, e pela mesma
+razão, que o redesenho zera a pilha do Tk.
+
+**Corrida a corrida, e não sobre o texto junto.** Passar o intervalo por `substituir_intervalo` daria
+o texto certo com os atributos da primeira corrida em todas — um negrito que engole o parágrafo. E a
+marca do diagrama atravessa intacta: `[DIAGRAMA 3]` deixaria de ser a marca que `text/documento.py`
+escreve, e o que se perde não é a caixa, é o vínculo entre o texto e a figura.
+
+**As iniciais são o Title Case do Word, e não o de `str.title()`.** Duas regras, e as duas foram
+decididas contra o acervo: o apóstrofo **não** abre palavra (`don't` → `Don't`, e não `Don'T`, que é
+o que `str.title()` devolve) e o hífen **abre** (`saint-amant` → `Saint-Amant`, porque o jogador se
+chama assim e um `Saint-amant` num índice de nomes ninguém revisa depois). O corte não é o de
+`palavra_em`, que trata os dois como internos — e `NAO_ABREM_PALAVRA` existe para dizer isso por
+escrito, já que reusar a constante da S-241 era o caminho óbvio e errado.
+
+**O carimbo `humano` só vai no que mudou.** Trecho que já estava na caixa pedida não é correção sobre
+o que o motor leu — ele não foi corrigido —, e contá-lo inflaria o número que a S-239 mostra no
+rodapé ao salvar.
+
+**Critério de aceite.**
+
+- a caixa preserva atributo, faixa e bloco de cada corrida;
+- a marca do diagrama e o separador atravessam inteiros;
+- `don't` → `Don't` e `saint-amant` → `Saint-Amant`;
+- a troca é desfazível **inteira**, e não caractere a caractere;
+- a faixa de confiança sobrevive: trocar a caixa não é dizer que o motor acertou.
+
+**Testes.** `tests/test_texto_ferramentas.py::CaixaTests`;
+`tests/test_ui_texto_editor.py::FerramentasNoWidgetTests::test_a_troca_de_caixa_e_desfazivel_inteira`.
+
+---
+
+## O que a Fase 41 arrumou de passagem
+
+Três coisas que não são item e ficam registradas porque mudam código que outra pessoa vai ler:
+
+| o que | por quê |
+|---|---|
+| `app_tkinter._comandos` deixou de repetir quarenta `lambda p: p.negrito()` | o par comando-método passou a sair de `texto_panel.COMANDOS_DA_ABA`, que é onde os métodos estão. Era a segunda declaração do mesmo par, e a janela estava a cinco linhas do limite de tamanho da S-31 |
+| `atalhos.SOBREPOSICOES_NO_EDITOR` | `Ctrl+R` está nas duas tabelas de tecla. É aceitável porque a guarda de foco já cedia a sequência a todo widget de texto desde a S-20 — mas isso precisava estar **escrito**, para a próxima sobreposição não entrar em silêncio |
+| o espaço engolido pela ênfase do `.md` | `_cauda` devolvia só o espaço final, e `um **negrito**` saía `um**negrito**`. Aparecia em toda corrida que começa com espaço, que é quase toda. `_cercado` devolve as duas pontas |
+
+---
+
+# Fase 42 — O que dois editores prontos ainda tinham a dizer
+
+> Esta fase saiu de uma leitura de código alheio: dois editores de texto pequenos, guardados no
+> repositório como referência — um em Tkinter (`Text-Editor-master`) e um em GTK
+> (`impress-writer-master`). Nenhum dos dois é melhor que esta aba em nada que importe a um livro de
+> xadrez, e é justamente por isso que a comparação foi útil: o que eles têm e ela não tinha é o
+> **básico de editor** que o assunto do projeto nunca obrigou a escrever.
+>
+> Quatro coisas sobreviveram ao filtro. Três são deles quase intactas — área de transferência, zoom
+> de leitura, modo de quebra de linha. A quarta é a única do impress-writer que valia a pena, e ela
+> chega **virada do avesso**: onde ele corrige a ortografia por consulta à internet, aqui o léxico
+> confere e **não** corrige, offline, porque foi isso que a S-209 mediu.
+
+## O que foi lido e o que foi recusado
+
+| do `Text-Editor-master` | decisão |
+|---|---|
+| Cut / Copy / Paste / Delete / Select All no menu **Edit** | **entra** (S-263). As teclas já funcionavam; o que faltava era comando |
+| Align left / center / right / justify | já entrou na Fase 41 (S-259) |
+| Bold / Italic / Underline / **Strike** | as três, desde a S-241; o tachado entrou na S-261 |
+| Highlight, Change Color | S-242 |
+| combobox de **família de fonte** | **fora.** Esta aba desenha uma folha de livro, e a família é de quem a imprimiu -- não de quem a corrige. Um seletor de família convidaria a "consertar" na tela o que a página tem, e o `.cvtxt` guardaria uma escolha que nenhum formato de saída consegue honrar por igual |
+| combobox de **tamanho em pontos** | **fora**, e a S-260 diz por quê: tamanho absoluto quebra quem aumentou a fonte do Windows. O que entrou foi o degrau |
+| barra com ícones e *tooltips* | **fora**, e já estava decidido: `Comando.icone` é `""` de propósito, porque o repositório não tem um ícone e nome de ícone que ninguém desenha é promessa vazia (S-219) |
+| "Clear All" (esvaziar o documento) | **fora.** `Ler folha` refaz a folha inteira e é reversível; um botão que apaga tudo ao lado dele é a S-76 outra vez |
+
+| do `impress-writer-master` | decisão |
+|---|---|
+| corretor ortográfico que **troca** a palavra | **fora**, e é o único item desta lista que a spec já recusava por escrito. Ver "O que esta spec deliberadamente não faz" |
+| a mesma ideia, **sem trocar nada** | **entra** (S-266). É a S-209 tal como ela foi medida |
+| dicionário e sinônimos por consulta à web | **fora.** O produto é offline -- é o que o nome dele diz --, e nenhuma outra parte do programa baixa coisa alguma |
+| radio de **modo de quebra de linha** | **entra** (S-265), com dois modos em vez de três: "caractere" quebra palavra ao meio, e num texto de OCR isso esconde o erro que se está procurando |
+| caixas "Editable" e "Cursor Visible" | **fora.** São estados de demonstração de widget, e não recursos de um editor |
+| zoom de leitura | não é dele, é de todo editor -- e faltava (S-264) |
+
+---
+
+## S-263 · Recortar, copiar, colar e selecionar tudo — o que era tecla e não era comando ✅ implementada (2026-08-26)
+
+**Problema.** O menu **Texto** tem vinte e nove linhas e nenhuma delas é "Copiar". As teclas
+funcionam — o `tk.Text` liga `<<Cut>>`, `<<Copy>>` e `<<Paste>>` a `Ctrl+X/C/V` de fábrica —, e é
+esse justamente o problema que a S-161 registra numa frase: *"o que não era botão não existia"*. Quem
+não sabe que a tecla existe não tem onde descobrir, e um menu de edição sem "Copiar" diz, sem
+querer, que a aba não copia.
+
+E uma delas **não** funcionava. `Ctrl+A` no `tk.Text` leva o cursor ao **início da linha** — herança
+de Emacs que nenhum programa de Windows faz —, e "selecionar tudo" não tinha tecla nem comando. Quem
+apertava `Ctrl+A` para selecionar a folha via o cursor pular e concluía que a aba não fazia aquilo.
+Com as ferramentas da Fase 41 isso passou a custar caro: "selecionar tudo e centralizar" e
+"selecionar tudo e pôr em maiúsculas" são os dois gestos mais naturais que existem sobre uma folha
+recém-lida.
+
+**Solução.** Quatro comandos no catálogo, quatro itens no menu, e **uma** tecla nova:
+`selecionar_tudo` em `Ctrl+A`. As outras três não entram em `TECLAS_DO_EDITOR`, e isso é decisão: o
+Tk já as liga, e declará-las de novo seria a segunda declaração da mesma tecla — o defeito que
+aquela tabela existe para impedir.
+
+Recortar, copiar e colar disparam o **evento virtual** do Tk (`_area_de_transferencia`) em vez de
+uma implementação própria. O Tk já resolve a seleção, a área de transferência do sistema e o
+desfazer; um segundo caminho divergiria do `Ctrl+C` no primeiro caso de canto — e o caso de canto de
+um editor com imagem embutida no meio do texto é justamente o que ninguém testa.
+
+**O que o texto colado traz, e o que ele não traz.** Ele herda os atributos dos dois lados do
+cursor, que é a regra do próprio Tk e já era a regra da digitação desde a S-238: colar dentro de um
+bloco herda `bloco:3`, e a correção fica atada ao bloco que ela corrige — que é o que a fila da
+S-212 precisa receber. O que **não** vem junto é formatação de outro programa: a área de
+transferência do Tk carrega texto, e não corridas.
+
+**Critério de aceite.**
+
+- os quatro têm comando, item de menu e método no painel;
+- `Ctrl+A` seleciona a folha inteira **sem** a quebra final que o Tk mantém e o documento não tem;
+- selecionar tudo e aplicar uma ferramenta age sobre a folha inteira;
+- recortar e colar continuam sendo os eventos virtuais do Tk.
+
+**Testes.** `tests/test_ui_texto_editor.py::VistaESelecaoTests` — `test_selecionar_tudo_pega_a_folha_sem_a_quebra_final`,
+`test_selecionar_tudo_e_depois_uma_ferramenta_pega_a_folha`,
+`test_copiar_e_colar_passam_pelo_evento_virtual_do_tk`.
+
+---
+
+## S-264 · O zoom da vista, que não é o corpo do trecho ✅ implementada (2026-08-26)
+
+**Problema.** A S-260 deu corpo por degraus ao **trecho**, e ela resolve hierarquia: um título maior
+que a prosa. Não resolve o outro caso, que é mais frequente e mais banal — **enxergar**. Quem confere
+uma folha de scan ruim quer a letra maior por dez minutos e depois quer ela de volta, e nada disso
+tem a ver com o documento. Fazer isso com a ferramenta de corpo seria gravar, no `.cvtxt` e em toda
+exportação, uma decisão que era da vista de quem estava lendo.
+
+**Solução.** `aproximar_texto` / `afastar_texto` / `zoom_do_texto_normal`, em degraus de
+`ZOOM_MINIMO` a `ZOOM_MAXIMO`, sobre a fonte do **widget**. Nada entra no documento, nada é
+exportado, nada é gravado — e é o teste `test_o_zoom_muda_a_fonte_do_editor_e_nao_o_documento` que
+mantém isso assim.
+
+Os rótulos longos dizem "(não muda o documento)", e é a única confusão possível entre dois pares de
+comandos que fazem a letra crescer na tela. O grupo também separa: zoom é `VISUALIZACAO`, corpo é
+`EDICAO`.
+
+**Duas armadilhas, e as duas viram teste.**
+
+- **Sem redesenhar.** Redesenhar zera a pilha de desfazer do Tk (o cabeçalho de `ui/texto_panel.py`
+  explica por quê), e perder o desfazer da digitação por ter aproximado a letra seria uma troca
+  ruim. `_aplicar_zoom` troca a fonte do editor e **reconfigura** as etiquetas de fonte que já
+  existem — e é para isso que `_fontes_desenhadas` passou de `set` a `dict`, guardando os atributos
+  que geraram cada uma. Decompor o nome da etiqueta de volta era a alternativa, e é a forma de
+  acoplamento que se descobre quebrada meses depois.
+- **A conta parte sempre da fonte original.** Reler a fonte do editor a cada zoom devolveria a **já
+  ampliada**, e dois cliques dariam `+1` e depois `+2` sobre o `+1`. É o mesmo defeito que
+  `_fonte_do_trecho` evita do lado do documento, e a defesa é a mesma: guardar a origem
+  (`_fonte_original_do_editor`) em vez de medir o que está na tela.
+
+**Critério de aceite.**
+
+- o zoom muda a fonte do editor e **não** muda o documento;
+- dois cliques dão exatamente dois degraus, e "normal" volta à fonte de origem;
+- o zoom não zera o desfazer da digitação;
+- para no limite com aviso no rodapé, como o corpo.
+
+**Testes.** `tests/test_ui_texto_editor.py::VistaESelecaoTests` — `test_o_zoom_muda_a_fonte_do_editor_e_nao_o_documento`,
+`test_o_zoom_parte_sempre_da_fonte_original`, `test_o_zoom_nao_zera_o_desfazer`,
+`test_o_zoom_para_no_limite_e_o_rodape_diz`.
+
+---
+
+## S-265 · A quebra de linha é escolha, e a notação é o caso ✅ implementada (2026-08-26)
+
+**Problema.** O editor nasceu em `wrap=tk.WORD` e nunca teve outra opção. Para prosa é o certo. Para
+**notação** não: uma linha de lances quebrada no meio deixa de ser uma linha de lances, e comparar a
+tela com a folha impressa — que é o trabalho de quem corrige — passa a exigir contar de novo onde a
+linha começava.
+
+**Solução.** Um interruptor, com dois modos e não três: quebra na largura da janela, ou linha
+inteira com rolagem horizontal. O terceiro modo do `impress-writer` — quebrar no **caractere** —
+fica de fora porque ele parte palavra ao meio, e num texto de OCR isso esconde exatamente o erro que
+se está procurando.
+
+A barra de rolagem horizontal existe desde a montagem e só é **empacotada** quando a quebra é
+desligada. Criá-la sob demanda daria um widget novo a cada troca de modo, e o `pack` de um widget
+novo entra depois dos que já estavam — a barra apareceria embaixo do editor na primeira vez e no
+lugar certo na segunda. Uma barra que não rola também não fica: com `wrap=word` nenhuma linha passa
+da largura, e ela ficaria ali inteira e imóvel.
+
+**Critério de aceite.**
+
+- o interruptor troca o `wrap` do editor e a rolagem horizontal aparece com ele;
+- a quebra **não** entra no documento;
+- o rodapé diz o que mudou, como `modo_bloco` faz.
+
+**Testes.** `tests/test_ui_texto_editor.py::VistaESelecaoTests::test_a_quebra_troca_o_wrap_e_a_rolagem_horizontal`
+e `::test_a_quebra_nao_entra_no_documento`.
+
+---
+
+## S-266 · O léxico marca o que ele não conhece — e não corrige nada ✅ implementada (2026-08-26)
+
+**Problema.** O acervo tem um léxico de **363.799 palavras** empacotado (`text/dicionario.py`), e a
+aba de texto nunca perguntou nada a ele. O léxico é usado no caminho da *leitura*, para desempatar
+entre os candidatos que o próprio classificador já pôs no topo da lista; depois que a folha está na
+tela, ele fica calado. Quem corrige uma página procura `smdy` com o olho.
+
+`smdy` é o exemplo real: `study` sai `smdy` porque a barra do `t` encosta no `u` e o par vira `m`
+(registrado desde a S-186). É invisível numa leitura rápida e é exatamente o que um dicionário acha
+em milissegundos.
+
+**Solução, e o que ela deliberadamente não faz.** `marcar_fora_do_lexico` marca; e só. A frase da
+S-209 é a especificação inteira do comando:
+
+> *"Palavra fora do dicionário é sinalizada, nunca aproximada da mais parecida."*
+
+Ela não é preferência: dos 18 lances tão maltratados que escapam do fatiador e caem no léxico,
+**nenhum** está no dicionário — com correção automática seriam 18 lances reescritos como palavra. É
+por isso que o botão que existe é "Conferir palavras", e não "Corrigir ortografia"; e é por isso que
+o rótulo longo do comando diz as duas coisas, porque a segunda é a que dá confiança para usar a
+primeira sobre uma folha de OCR.
+
+**A marca não é do documento, e é a única desta aba que não é.** Faixa, atributo, bloco e
+procedência descrevem o texto e voltam de `texto_etiquetas.corrida_de`; esta é **derivada** do texto
+e do léxico. Gravá-la daria um `.cvtxt` com as marcas de um léxico que já mudou — pior que nenhuma
+marca. Como `corrida_de` ignora etiqueta que não conhece, ela atravessa a gravação sem deixar
+rastro, e `test_a_marca_do_lexico_nao_entra_no_documento` é o item inteiro numa asserção.
+
+**O canal de desenho é a borda, e ele estava livre.** A cor da letra é a faixa de confiança
+(S-211), o fundo é o realce do autor (S-242), a fonte é o estilo mais o corpo, e
+negrito/itálico/sublinhado/tachado são os quatro pincéis de ênfase. Uma quinta marca em qualquer um
+deles seria a mesma tinta com dois significados na mesma linha — o defeito que a S-242 gastou um
+item inteiro para não ter.
+
+**Três coisas que a conferência não marca**, e cada uma tem um caso atrás:
+
+- **notação.** `Nf3`, `1.d4`, `15`, `0-0`: `e_palavra` já os recusa, pela guarda 1 do módulo. Sem
+  isso a folha inteira acenderia, e uma marca que acende em tudo não distingue coisa nenhuma;
+- **a marca do diagrama.** `[Diagrama 3]` é referência que o **programa** escreveu; marcá-la seria a
+  aba avisando sobre si mesma, em toda folha que tenha diagrama. Quem sabe o que é marca é o
+  documento, então o veto entra por parâmetro (`ignorar`) e não por regra dentro do dicionário — a
+  mesma fronteira que mantém `text/` sem saber o que é um widget;
+- **caixa errada.** `poSition` passa como conhecida, porque o léxico compara em `casefold`. E é o
+  certo: quem separa `s` de `S` é a altura do box na S-211, **com medição** (CER 0,1434 → 0,1114), e
+  uma segunda régua discordando dela na tela seria pior que nenhuma.
+
+**A conta vai para o rodapé** porque ela é o resultado: "3 de 412" e "80 de 412" pedem coisas
+diferentes de quem está conferindo a folha. O denominador sai do mesmo laço do numerador
+(`palavras_de`), porque duas contagens com réguas diferentes dariam uma fração que não fecha.
+
+**Custo medido:** 0,16 s para carregar os três arquivos comprimidos, uma vez por sessão, guardado
+depois. É o que faz este comando caber na thread da janela em vez de pedir uma segunda — ao
+contrário da leitura da folha, que custa de 1 s a 40 s.
+
+**Critério de aceite.**
+
+- nenhuma palavra é trocada, em nenhum caminho;
+- notação, marca de diagrama e caixa errada não são marcadas;
+- a marca não sobrevive à gravação, e o documento é idêntico antes e depois de conferir;
+- conferir duas vezes dá o mesmo resultado;
+- a conta aparece no rodapé com o denominador.
+
+**Testes.** `tests/test_texto_lexico.py::ConferenciaSemCorrecaoTests`;
+`tests/test_ui_texto_editor.py::LexicoNaAbaTests`.
+
+---
+
 # O que esta spec deliberadamente não faz
 
 | não faz | por quê |
 |---|---|
 | tabela editável no texto | `BlocoDeTabela` existe (`text/pagina.py:433`) e o editor a mostra como texto. Editar célula a célula é um segundo editor dentro deste, e o acervo tem poucas tabelas — a S-198 mediu quantas |
 | montar o livro inteiro numa aba | a aba é da folha aberta, por decisão de custo já registrada em `sincronizar_com_a_pagina`. Nada aqui impede a folha seguinte; o que não entra é a montagem |
-| corretor ortográfico | o acervo é multilíngue por página e cheio de notação. O que faz sentido é o léxico de xadrez da S-209, que sinaliza e nunca troca |
+| corretor ortográfico **que troca a palavra** | o acervo é multilíngue por página e cheio de notação. O que faz sentido é o léxico de xadrez da S-209, que sinaliza e nunca troca -- e é o que a **S-266** entrega: ele marca, e a correção continua sendo de quem lê |
 | autocompletar notação enquanto se digita | troca silenciosa sobre texto de OCR — a S-209 outra vez, e a S-248 registra a recusa |
 | expressão regular na substituição | maior razão entre poder e estrago da lista; o que ela resolveria aqui, o casamento de figurina da S-245 já resolve |
 | exportar PGN a partir do texto | é a S-208, que valida a notação contra as regras. O editor entrega o texto; quem o transforma em partida é aquele item |

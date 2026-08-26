@@ -44,21 +44,44 @@ Não é `len` do texto do widget: a miniatura do diagrama vale um caractere para
 o documento, e a quebra que o desenho acrescenta embaixo dela também não é do documento. Quem
 conta certo é `texto_etiquetas.deslocamento`.
 
-## Formato entra por etiqueta; texto entra por documento
+## Formato entra por etiqueta; texto e parágrafo entram por documento
 
-Duas classes de comando, e a diferença decide o desfazer:
+Três classes de comando, e a diferença decide o desfazer:
 
-- **negrito, itálico, cor, realce** não mudam um caractere. São `tag_add`/`tag_remove` no
-  intervalo, sem redesenho: o cursor fica onde estava, a rolagem não salta e a pilha de desfazer
-  do Tk -- que é a do texto digitado -- continua inteira;
-- **substituir em massa** muda o texto. Aí o caminho é o documento: a função pura devolve um
-  `DocumentoRico` novo, o painel guarda um instantâneo do anterior e redesenha.
+- **negrito, itálico, tachado, cor, realce, corpo** não mudam um caractere e não passam do trecho
+  tocado. São `tag_add`/`tag_remove` no intervalo, sem redesenho: o cursor fica onde estava, a
+  rolagem não salta e a pilha de desfazer do Tk -- que é a do texto digitado -- continua inteira;
+- **estilo e alinhamento** também não mudam caractere, mas o alcance deles passa do que foi
+  selecionado: eles são do **parágrafo**, e o parágrafo é o conjunto de corridas do mesmo bloco.
+  Aplicar por etiqueta exigiria descobrir de novo, no widget, onde o bloco começa -- então o caminho
+  é o documento, com redesenho (`_pelo_documento`);
+- **substituir em massa e trocar a caixa** mudam o texto. Mesmo caminho, e aí o instantâneo é o que
+  torna a operação desfazível **inteira** em vez de impossível.
 
 O redesenho **zera a pilha do Tk**, e isso foi medido aqui: desligar `-undo`, redesenhar e ligar de
 novo *não* protege a pilha -- ela sobrevive com índices que já não descrevem o texto, e o
 `Ctrl+Z` seguinte apaga um pedaço qualquer. Por isso `desenhar_documento` chama `edit_reset()`, e
 por isso a substituição tem instantâneo próprio: sem ele, desfazer uma troca em massa seria
 impossível em vez de ser inteira.
+
+# A barra, e por que ela não cresce em botão (Fase 41)
+
+A Fase 37 levou a fila de dez para dezesseis itens, e foi o que obrigou a `BarraFluida`. A Fase 41
+trouxe **onze comandos** -- quatro alinhamentos, três de corpo, três de caixa e o tachado -- e a
+barra cresceu em **quatro** controles.
+
+O critério é o que o gesto é, e não quantos comandos ele cobre:
+
+- **escolha exclusiva** vira lista. Um parágrafo tem um alinhamento só e um trecho tem uma caixa
+  só; quatro interruptores lado a lado sugerem que dois podem valer ao mesmo tempo, que é o que
+  `_menu_de_cor` já tinha resolvido para a cor do autor;
+- **passo repetível** fica solto. `A+` e `A-` são apertados três, quatro vezes seguidas, e cada
+  clique atrás de um menu custaria dois;
+- **pincel que liga e desliga** é interruptor, e mostra o estado do cursor. O tachado entra ao lado
+  dos outros três, por `formato_var`.
+
+O que a lista mostra sai do catálogo de comandos, item por item (`COMANDO_DA_ESCOLHA`); o rótulo do
+botão que a abre sai de `ui/strings.py`, porque ele não é ação nenhuma.
 """
 
 from __future__ import annotations
@@ -72,11 +95,21 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Literal
 
-from ..text import arquivo, busca, correcao, documento, exportacao
+from ..text import arquivo, busca, correcao, dicionario, documento, exportacao
 from ..text import paleta as _paleta
 from ..text import pdf_pesquisavel, rascunho, rico
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
-from . import atalhos, comandos, texto_busca, texto_cores, texto_etiquetas, theme, tipografia, tokens
+from . import (
+    atalhos,
+    comandos,
+    strings,
+    texto_busca,
+    texto_cores,
+    texto_etiquetas,
+    theme,
+    tipografia,
+    tokens,
+)
 from . import texto as texto_ui
 from .barra import BarraFluida
 from .busy import BusyRegistry
@@ -115,6 +148,18 @@ interseção vazia é `tests/test_ui_texto_cor.py`, comparando este mapa com
 PAPEL_DA_MARCA = tokens.TEXTO_SECUNDARIO
 """A cor de `[Diagrama N]`. Secundário porque a marca é referência, e não texto do livro."""
 
+ATRIBUTOS_DE_ENFASE: tuple[str, ...] = ("negrito", "italico", "sublinhado", "tachado")
+"""Os pincéis que `limpar_formato` apaga -- e o critério do que entra aqui (S-261).
+
+São os atributos de **ênfase**: quatro maneiras de dizer "olhe para isto" (ou, no tachado, "isto
+sai"), que quem limpa a formatação de um trecho quer limpar juntas.
+
+**Corpo e alinhamento ficam de fora, e não é esquecimento.** Alinhamento é do parágrafo, e limpar a
+formatação de uma palavra não pode reposicionar a linha inteira; corpo é escolha de hierarquia --
+quem aumentou um título e depois tira o negrito dele não pediu o título de volta ao corpo do texto.
+Cada um tem o seu comando de volta ao normal (`alinhar_esquerda`, `corpo_normal`), que é a mesma
+razão de `limpar_cor` ser um comando separado desde a S-242."""
+
 NEGRITO_ITALICO = "negrito_italico"
 """A tag que desenha os dois juntos. **É desenho, e não documento** -- ver `_etiquetas` (S-236)."""
 
@@ -131,8 +176,142 @@ sistema desde a S-147, e cravar `12` quebraria quem aumentou a fonte do Windows 
 que `ui/texto.py` corrigiu para o `wraplength`. `NOTACAO` cai em `DADO` porque `DADO` é a
 monoespaçada, e uma linha de lances alinhada é o que a proporcional estraga."""
 
+JUSTIFICACAO_DO_ALINHAMENTO: dict[str, str] = {
+    rico.ALINHAMENTO_ESQUERDA: tk.LEFT,
+    rico.ALINHAMENTO_CENTRO: tk.CENTER,
+    rico.ALINHAMENTO_DIREITA: tk.RIGHT,
+    rico.ALINHAMENTO_JUSTIFICADO: tk.LEFT,
+}
+"""Alinhamento do documento -> `-justify` do Tk (S-259).
+
+**Justificado cai em `left`, e isso é perda declarada e não esquecimento.** O `tk.Text` tem três
+justificações -- `left`, `center`, `right` -- e nenhuma delas estica o espaço entre palavras;
+justificar de verdade exigiria remedir a linha a cada redesenho, que é um motor de composição dentro
+de uma aba de correção de OCR. O atributo continua no documento, viaja para o arquivo e sai
+justificado nos formatos que sabem justificar (`.html`, `.rtf`) -- o que não acontece é a tela
+mostrar o que ela não sabe fazer. É a mesma disciplina da tabela de perdas de `text/exportacao.py`,
+do lado de cá.
+
+**A figura entra por aqui junto com o texto.** O `-justify` do Tk vale para o primeiro caractere de
+cada linha de tela, e a miniatura do diagrama é o primeiro item da linha dela: é por isso que
+`_inserir_miniatura` põe a etiqueta na imagem, e é o que faz "centralizar" centralizar a figura sem
+um segundo mecanismo ao lado (`rico.ATRIBUTOS_DA_MARCA`)."""
+
+ALINHAMENTO = "alinhamento"
+CAIXA = "caixa"
+"""Os dois grupos de escolha exclusiva da barra. Chave de `COMANDO_DA_ESCOLHA`, e nada mais."""
+
+COMANDO_DA_ESCOLHA: dict[str, dict[str, str]] = {
+    ALINHAMENTO: {
+        rico.ALINHAMENTO_ESQUERDA: "alinhar_esquerda",
+        rico.ALINHAMENTO_CENTRO: "alinhar_centro",
+        rico.ALINHAMENTO_DIREITA: "alinhar_direita",
+        rico.ALINHAMENTO_JUSTIFICADO: "justificar",
+    },
+    CAIXA: {
+        rico.CAIXA_ALTA: "maiusculas",
+        rico.CAIXA_BAIXA: "minusculas",
+        rico.CAIXA_INICIAIS: "capitular",
+    },
+}
+"""Nome do domínio -> comando do catálogo, para as listas da barra (S-259/S-262).
+
+**Existe para o rótulo do item da lista não ser escrito aqui.** `centro` é o nome que o documento
+guarda; "Centralizar" é como a interface o chama, e quem tem os rótulos é `ui/comandos.py` desde a
+S-219. Sem esta tabela, cada item de menu levaria um `label="Centralizar"` em literal -- o `text=`
+à mão que a varredura de `tests/test_texto_inventario_editor.py` persegue neste arquivo.
+
+Os dois lados são conferidos por teste: nome fora do domínio e comando fora do catálogo reprovam."""
+
+ETIQUETA_DO_LEXICO = "fora_do_lexico"
+"""A marca de "o léxico não conhece esta palavra" (S-266).
+
+**Ela não é do documento, e é a única etiqueta desta aba que não é.** Faixa, atributo, bloco e
+procedência descrevem o texto e voltam de `texto_etiquetas.corrida_de`; esta é **derivada** do texto
+e do léxico, e recalculá-la é mais barato e mais correto do que gravá-la -- um `.cvtxt` de ontem com
+marcas de um léxico que mudou seria pior que nenhuma marca. Como `corrida_de` ignora etiqueta que
+não conhece, ela atravessa a gravação sem deixar rastro, e o teste afirma isso.
+
+**O canal é a borda, e ele estava livre.** A cor da letra é a faixa de confiança (S-211), o fundo é
+o realce do autor (S-242), a fonte é o estilo mais o corpo, e negrito/itálico/sublinhado/tachado são
+os quatro pincéis de ênfase. Uma quinta marca em qualquer um deles seria a mesma tinta com dois
+significados na mesma linha -- o defeito que a S-242 gastou um item inteiro para não ter."""
+
+ZOOM_MINIMO = -3
+ZOOM_MAXIMO = 8
+"""Os limites do zoom **da vista** (S-264), em degraus, como o corpo do trecho.
+
+Sobe mais que `rico.CORPO_MAXIMO` porque a pergunta é outra: o corpo de um trecho é hierarquia
+dentro da folha, e oito degraus ali seriam outro documento; o zoom é **acuidade de quem lê**, e quem
+está conferindo um scan ruim de perto quer o dobro da letra sem mudar nada do que vai ser gravado."""
+
 ESCAPE_DA_PALETA = "\\"
 """O prefixo das sequências de teclado da S-248. Ver `text/paleta.SEQUENCIAS_DECLARADAS`."""
+
+COMANDOS_DA_ABA: dict[str, str] = {
+    "abrir_texto": "abrir_documento",
+    "salvar_texto": "salvar_documento",
+    "salvar_texto_como": "salvar_documento",
+    "exportar_txt": "salvar",
+    "ler_folha": "ler",
+    "folha_da_pagina_aberta": "sincronizar_com_a_pagina",
+    "modo_bloco": "modo_bloco_mudou",
+    "cor_do_texto": "escolher_cor",
+    "realce": "escolher_realce",
+    "paleta_de_glifos": "alternar_paleta",
+    "negrito": "negrito",
+    "italico": "italico",
+    "sublinhado": "sublinhado",
+    "tachado": "tachado",
+    "limpar_formato": "limpar_formato",
+    "limpar_cor": "limpar_cor",
+    "achar": "achar",
+    "substituir": "substituir",
+    "substituir_todos": "substituir_todos",
+    "inserir_figurina": "inserir_figurina",
+    "inserir_avaliacao": "inserir_avaliacao",
+    "estilo_titulo": "estilo_titulo",
+    "estilo_prosa": "estilo_prosa",
+    "estilo_notacao": "estilo_notacao",
+    "estilo_legenda": "estilo_legenda",
+    "recortar": "recortar",
+    "copiar": "copiar",
+    "colar": "colar",
+    "selecionar_tudo": "selecionar_tudo",
+    "aproximar_texto": "aproximar_texto",
+    "afastar_texto": "afastar_texto",
+    "zoom_do_texto_normal": "zoom_do_texto_normal",
+    "quebrar_linha": "quebrar_linha",
+    "marcar_fora_do_lexico": "marcar_fora_do_lexico",
+    "limpar_marcas_do_lexico": "limpar_marcas_do_lexico",
+    "alinhar_esquerda": "alinhar_esquerda",
+    "alinhar_centro": "alinhar_centro",
+    "alinhar_direita": "alinhar_direita",
+    "justificar": "justificar",
+    "aumentar_corpo": "aumentar_corpo",
+    "diminuir_corpo": "diminuir_corpo",
+    "corpo_normal": "corpo_normal",
+    "maiusculas": "maiusculas",
+    "minusculas": "minusculas",
+    "capitular": "capitular",
+    "exportar_md": "exportar_md",
+    "exportar_html": "exportar_html",
+    "exportar_rtf": "exportar_rtf",
+    "exportar_pdf_pesquisavel": "exportar_pdf_pesquisavel",
+}
+"""Comando do catálogo -> método desta classe que o atende (S-240/S-256).
+
+**A tabela mora aqui, e não na janela nem no inventário, porque o dono do método é esta classe.**
+Ela tinha nascido em `cli/editor_inventario.py`, para o inventário poder cobrar que todo comando do
+editor tivesse dono; do outro lado, `app_tkinter._comandos` repetia as mesmas linhas em `lambda`.
+Duas listas do mesmo par, e a segunda com quarenta linhas de `lambda p: p.negrito()` -- exatamente
+a divergência que `ui/comandos.py` tirou dos rótulos, com o agravante de que aqui o sintoma é um
+item de menu que não faz nada.
+
+Agora a janela **gera** as ligações desta tabela e o inventário a lê, e um comando novo entra numa
+linha só. O nome do comando e o do método divergem em oito casos, e todos por bom motivo:
+`ler_folha` é `ler` porque o painel só lê folha, `exportar_txt` é `salvar` porque era assim antes do
+catálogo, e `cor_do_texto` é `escolher_cor` porque o comando abre uma lista em vez de pintar."""
 
 ACOES_PROPRIAS: frozenset[str] = frozenset({"salvar", "desfazer", "refazer", "achar", "substituir"})
 """As ações globais que esta aba atende **enquanto tem o foco** (S-244).
@@ -158,6 +337,26 @@ import tardio de `ocr_caption` em `cli/_ocr.py`.
 O `cv2` e o `numpy` **entram assim mesmo**, por `text/documento.py` -> `text/pagina.py` ->
 `text/boxes.py`, e isso é anterior a esta aba: `pagina.py` importa `Caixa` no topo desde a S-193.
 Fica dito para o próximo leitor não concluir, do parágrafo acima, que este arquivo é leve."""
+
+
+def _fora_do_livro(doc: rico.DocumentoRico) -> tuple[tuple[int, int], ...]:
+    """Os intervalos do documento que **não** são texto do livro: a marca e o separador (S-266).
+
+    É o que a conferência do léxico pula. `[Diagrama 3]` é referência que o *programa* escreveu, e
+    marcá-la como palavra desconhecida seria a aba avisando sobre si mesma -- um aviso que aparece
+    em toda folha com diagrama e não diz nada sobre a leitura.
+
+    Fora da classe porque é decisão sobre o documento, e não sobre o widget: dá para afirmá-la sem
+    abrir janela, que é o critério que mantém `text/` e `ui/` separados neste projeto.
+    """
+    intervalos: list[tuple[int, int]] = []
+    posicao = 0
+    for corrida in doc.corridas:
+        fim = posicao + len(corrida.texto)
+        if corrida.tipo != rico.TEXTO:
+            intervalos.append((posicao, fim))
+        posicao = fim
+    return tuple(intervalos)
 
 
 class TextoPanel(ttk.Frame):
@@ -202,8 +401,19 @@ class TextoPanel(ttk.Frame):
         self._sequencias = self._paleta.sequencias()
         r"""`\N` -> `♘`, conferido contra a paleta na montagem (S-248)."""
 
-        self._fontes_desenhadas: set[str] = set()
-        """As etiquetas de fonte combinada já configuradas -- ver `_etiqueta_de_fonte`."""
+        self._fontes_desenhadas: dict[str, rico.Atributos] = {}
+        """Etiqueta de fonte combinada -> os atributos que a geraram (`_etiqueta_de_fonte`).
+
+        **Dicionário e não conjunto, por causa do zoom** (S-264). Mudar o zoom muda a fonte de cada
+        uma delas, e refazê-las exige saber de que estilo, peso, pendor e degrau cada uma veio.
+        Guardar os atributos é mais honesto que decompor o nome da etiqueta de volta -- que é o que
+        um `set` obrigaria, e é a forma de acoplamento que se descobre quebrada meses depois."""
+
+        self._zoom_da_vista = 0
+        """Degraus de zoom **da tela**. Não entra no documento nem no arquivo (S-264)."""
+
+        self._lexico: frozenset[str] | None = None
+        """O léxico da S-209, carregado na primeira conferência. `None` é "ainda não custou nada"."""
 
         self._painel_da_paleta: ttk.Frame | None = None
         self._exportando = False
@@ -214,9 +424,18 @@ class TextoPanel(ttk.Frame):
         passa uma pasta própria para não escrever em `data/` da máquina de quem roda a suíte."""
 
         self.formato_var: dict[str, tk.BooleanVar] = {
-            atributo: tk.BooleanVar(value=False) for atributo in ("negrito", "italico", "sublinhado")
+            atributo: tk.BooleanVar(value=False)
+            for atributo in ("negrito", "italico", "sublinhado", "tachado")
         }
-        """O espelho do que vale sob o cursor, para os três interruptores da barra (S-241)."""
+        """O espelho do que vale sob o cursor, para os interruptores da barra (S-241/S-261).
+
+        **A tupla é a ordem da barra, e não o conjunto dos booleanos de `rico.Atributos`.**
+        `fora_do_modelo` também é booleano e **não** entra aqui: ele é declaração sobre a procedência
+        de um caractere, e não um pincel que se liga e desliga -- um interruptor para ele ofereceria
+        "marcar isto como não-lido", que é mentir sobre o que a página trouxe."""
+
+        self.quebra_var = tk.BooleanVar(value=True)
+        """A folha quebra na largura da janela? Interruptor da barra e do menu (S-265)."""
 
         self.folha_var = tk.StringVar(value="1")
         self.motor_var = tk.StringVar(value=MOTORES[0])
@@ -267,12 +486,44 @@ class TextoPanel(ttk.Frame):
             barra.adicionar(self._interruptor_de_formato(barra, atributo))
         barra.adicionar(self._menu_de_cor(barra, "cor_do_texto", self.pintar_letra))
         barra.adicionar(self._menu_de_cor(barra, "realce", self.pintar_realce))
+        # **As ferramentas da Fase 41 entram como dois menus e dois botões, e não como onze
+        # botões.** A barra passou de dez para dezesseis itens na Fase 37, e onze a mais é a pilha
+        # que a S-151 mediu -- com a diferença de que agora ela quebra em três linhas em vez de
+        # sumir. Alinhamento e caixa são escolhas **exclusivas** (um parágrafo tem um alinhamento
+        # só), e escolha exclusiva é lista, não fila de interruptores: o desenho de `_menu_de_cor`.
+        barra.adicionar(
+            self._menu_de_escolhas(barra, strings.ALINHAR, ALINHAMENTO, rico.ALINHAMENTOS, self.alinhar)
+        )
+        barra.adicionar(
+            self._menu_de_escolhas(barra, strings.CAIXA, CAIXA, rico.CAIXAS, self.mudar_caixa)
+        )
+        # Os dois de corpo ficam soltos porque eles **não** são escolha exclusiva: são um passo
+        # repetível, e um passo repetível atrás de um menu custa dois cliques por degrau.
+        barra.adicionar(self._botao(barra, "diminuir_corpo", self.diminuir_corpo))
+        barra.adicionar(self._botao(barra, "aumentar_corpo", self.aumentar_corpo))
         barra.adicionar(self._botao(barra, "achar", self.achar))
         barra.adicionar(self._botao(barra, "paleta_de_glifos", self.alternar_paleta))
+        # A conferência do léxico fica na barra, e o "limpar" dela **não** (S-266): a marcação é o
+        # gesto que se repete a cada trecho corrigido, e limpar é o que se faz uma vez no fim. Quem
+        # alcança o segundo é o menu, que é a regra 2 da SPEC_APARENCIA.
+        barra.adicionar(self._botao(barra, "marcar_fora_do_lexico", self.marcar_fora_do_lexico))
+        barra.adicionar(
+            ttk.Checkbutton(
+                barra,
+                text=comandos.rotulo_de_botao("quebrar_linha"),
+                variable=self.quebra_var,
+                command=self.quebrar_linha,
+            )
+        )
 
         corpo = ttk.Frame(self)
         corpo.pack(fill=tk.BOTH, expand=True)
         self._corpo = corpo
+        # **A rolagem horizontal existe desde a montagem e só aparece quando a quebra é desligada**
+        # (S-265). Criá-la sob demanda daria um widget novo a cada troca de modo, e o `pack` de um
+        # widget novo entra **depois** dos que já estavam -- a barra apareceria embaixo do editor na
+        # primeira vez e no lugar certo na segunda.
+        self._rolagem_horizontal = ttk.Scrollbar(corpo, orient=tk.HORIZONTAL)
         barra_de_rolagem = ttk.Scrollbar(corpo, orient=tk.VERTICAL)
         self.editor = tk.Text(
             corpo,
@@ -283,10 +534,20 @@ class TextoPanel(ttk.Frame):
             spacing2=2,
             spacing3=8,
             yscrollcommand=barra_de_rolagem.set,
+            xscrollcommand=self._rolagem_horizontal.set,
         )
         barra_de_rolagem.config(command=self.editor.yview)
+        self._rolagem_horizontal.config(command=self.editor.xview)
         barra_de_rolagem.pack(side=tk.RIGHT, fill=tk.Y)
+        self._rolagem_horizontal.pack(side=tk.BOTTOM, fill=tk.X)
         self.editor.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._fonte_original_do_editor = self._base_do_editor()
+        """A fonte com que o editor nasceu -- a base de que o zoom parte (S-264).
+
+        Guardada uma vez, e não relida a cada zoom: relê-la devolveria a fonte **já ampliada**, e o
+        degrau seguinte partiria dela. Dois cliques em "aproximar" dariam +1 e depois +2 sobre o +1,
+        que é o mesmo defeito que `_fonte_do_trecho` evita do lado do documento."""
+        self._aplicar_quebra()
         self._pintar_faixas()
         self.editor.bind("<<Modified>>", self._marcar_sujo)
         # O espelho dos interruptores segue o cursor. `<<Selection>>` não cobre a seta que anda sem
@@ -357,6 +618,41 @@ class TextoPanel(ttk.Frame):
         menu.add_command(label=comandos.rotulo_de_botao("limpar_cor"), command=self.limpar_cor)
         return menu
 
+    def _menu_de_escolhas(
+        self,
+        pai: tk.Misc,
+        rotulo: str,
+        grupo: str,
+        nomes: tuple[str, ...],
+        ao_escolher: Callable[[str], None],
+    ) -> ttk.Menubutton:
+        """O botão que abre uma lista de escolhas exclusivas -- alinhamento, caixa (S-259/S-262).
+
+        O molde é o de `_menu_de_cor`, com uma diferença: aqui **cada item é um comando** do
+        catálogo, e é de lá que o rótulo dele sai. O rótulo do botão vem de `ui/strings.py` porque
+        ele não é ação nenhuma -- ver `strings.ALINHAR`.
+        """
+        botao = ttk.Menubutton(pai, text=rotulo)
+        botao.configure(menu=self._lista_de_escolhas(botao, grupo, nomes, ao_escolher))
+        return botao
+
+    def _lista_de_escolhas(
+        self, pai: tk.Misc, grupo: str, nomes: tuple[str, ...], ao_escolher: Callable[[str], None]
+    ) -> tk.Menu:
+        """Um item por nome, com o rótulo do comando correspondente no catálogo.
+
+        `COMANDO_DA_ESCOLHA` é quem ata o nome do domínio (`centro`) ao comando da interface
+        (`alinhar_centro`) -- sem ela o rótulo teria de ser escrito aqui, que é exatamente o `text=`
+        à mão que a S-219 proíbe e que `tests/test_texto_inventario_editor.py` varre neste arquivo.
+        """
+        menu = tk.Menu(pai, tearoff=False)
+        for nome in nomes:
+            menu.add_command(
+                label=comandos.rotulo_de_botao(COMANDO_DA_ESCOLHA[grupo][nome]),
+                command=lambda n=nome: ao_escolher(n),
+            )
+        return menu
+
     def escolher_cor(self) -> None:
         """Abre a lista de cores junto do ponteiro -- é por aqui que o item de menu entra."""
         self._abrir_lista_de_cores(self.pintar_letra)
@@ -373,7 +669,7 @@ class TextoPanel(ttk.Frame):
             menu.grab_release()
 
     def _ligar_teclas(self) -> None:
-        """As três teclas de formato, e a guarda que o `Ctrl+I` obriga (S-241).
+        """As teclas do editor, e a guarda que o `Ctrl+I` obriga (S-241).
 
         Em `tk8.6/text.tcl:211`, `bind Text <Control-i>` insere **uma tabulação**. Quem ligar a
         tecla sem devolver `"break"` recebe as duas coisas: o itálico e o tab. `Ctrl+B` e `Ctrl+U`
@@ -385,9 +681,14 @@ class TextoPanel(ttk.Frame):
         atalhos da janela -- só valem dentro deste widget --, mas a declaração de tecla mora num
         lugar só neste projeto, e é `ui/atalhos.py`. Ver o docstring de lá.
         """
-        funcoes = {"negrito": self.negrito, "italico": self.italico, "sublinhado": self.sublinhado}
+        # **O nome do comando é o nome do método, e a ligação é `getattr`.** A tabela de funções
+        # que estava aqui repetia `TECLAS_DO_EDITOR` linha a linha, e uma tecla nova em `atalhos.py`
+        # sem a linha correspondente aqui levantaria `KeyError` na montagem da aba -- a janela
+        # inteira, por uma tecla. Quem confere que todo nome tem método é
+        # `tests/test_ui_texto_editor.py`, sem abrir janela nenhuma.
         for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
-            self.editor.bind(sequencia, lambda _e, f=funcoes[acao]: (f(), "break")[1])
+            funcao = getattr(self, acao)
+            self.editor.bind(sequencia, lambda _e, f=funcao: (f(), "break")[1])
 
     # -------------------------------------------------------------------------------- comandos
 
@@ -552,7 +853,7 @@ class TextoPanel(ttk.Frame):
             for corrida in doc.corridas:
                 bloco = doc.bloco_de(corrida) if corrida.e_diagrama else None
                 if isinstance(bloco, BlocoDeDiagrama):
-                    self._inserir_miniatura(bloco)
+                    self._inserir_miniatura(bloco, self._etiquetas(corrida))
                 # **Toda corrida leva etiqueta, o separador inclusive.** Ele é indistinguível de
                 # duas quebras digitadas à mão, e sem a etiqueta voltaria do widget como texto
                 # comum -- o documento reaberto deixaria de ser igual ao salvo (S-238).
@@ -581,18 +882,34 @@ class TextoPanel(ttk.Frame):
         de_fonte = self._etiqueta_de_fonte(corrida)
         return (*etiquetas, de_fonte) if de_fonte else etiquetas
 
-    def _inserir_miniatura(self, bloco: BlocoDeDiagrama) -> None:
+    def _inserir_miniatura(self, bloco: BlocoDeDiagrama, etiquetas: tuple[str, ...] = ()) -> None:
         """A imagem do diagrama, **antes** da marca. Ver "O diagrama é desenhado no meio do texto".
 
         Só a imagem: `[Diagrama N]` é o texto da própria corrida, e quem o insere é o laço de
         `desenhar_documento`. Separar as duas é o que garante que a marca continue no texto mesmo
         quando não há folha renderizada de onde recortar a miniatura.
+
+        `etiquetas` são as da corrida da marca, e a imagem recebe **só as de alinhamento** (S-259):
+        o `-justify` do Tk vale para o primeiro item da linha de tela, e o primeiro item da linha da
+        figura é a figura. Sem isto, centralizar um diagrama centralizaria a marca embaixo dele e
+        deixaria a imagem encostada na margem esquerda.
+
+        As outras ficam de fora de propósito. `bloco:3` e `proc:glifo` são **dado**, e a imagem não é
+        conteúdo do documento -- `de_despejo` a ignora inteira. Marcá-la com o bloco não mudaria nada
+        na volta e faria a mesma etiqueta descrever duas coisas diferentes.
         """
         miniatura = self._miniatura(bloco)
         if miniatura is None:
             return
         self._imagens.append(miniatura)
+        # `"end-1c"` e não `tk.END`: `END` é depois da quebra final que o Tk mantém sozinho, e um
+        # intervalo que começasse ali não cobriria a imagem que vai ser inserida antes dela.
+        inicio = self.editor.index("end-1c")
         self.editor.image_create(tk.END, image=miniatura, padx=6, pady=4)
+        prefixo = texto_etiquetas.ATRIBUTO_COM_VALOR["alinhamento"]
+        for etiqueta in etiquetas:
+            if etiqueta.startswith(prefixo):
+                self.editor.tag_add(etiqueta, inicio, f"{inicio} + 1 chars")
         # **Marcada como desenho, e não solta.** Esta quebra é para a marca cair embaixo da
         # miniatura -- ela não é do documento. Sem a etiqueta, ela voltaria como texto ao gravar e o
         # desenho seguinte acrescentaria outra: uma quebra a mais a cada salvar-e-reabrir (S-238).
@@ -657,7 +974,21 @@ class TextoPanel(ttk.Frame):
         self.editor.tag_configure("italico", font=self._fonte(pendor="italic"))
         self.editor.tag_configure(NEGRITO_ITALICO, font=self._fonte(peso="bold", pendor="italic"))
         self.editor.tag_configure("sublinhado", underline=True)
+        # **`overstrike` e não uma fonte com `overstrike`**: é opção de etiqueta, e não de fonte, e
+        # por isso ela **soma** com a etiqueta que dá a fonte ao trecho em vez de disputá-la. Riscar
+        # um título em negrito continua sendo um título em negrito riscado -- que é o que
+        # `NEGRITO_ITALICO` teve de resolver à mão do outro lado, onde o Tk só aceita uma fonte.
+        self.editor.tag_configure("tachado", overstrike=True)
+        self._pintar_alinhamentos()
+        # A borda do léxico (S-266). Ver `ETIQUETA_DO_LEXICO` sobre por que ela não é cor.
+        self.editor.tag_configure(ETIQUETA_DO_LEXICO, relief=tk.SOLID, borderwidth=1)
         self._pintar_estilos()
+
+    def _pintar_alinhamentos(self) -> None:
+        """O `-justify` de cada alinhamento (S-259). Ver `JUSTIFICACAO_DO_ALINHAMENTO`."""
+        for nome, justificacao in JUSTIFICACAO_DO_ALINHAMENTO.items():
+            etiqueta = f"{texto_etiquetas.ATRIBUTO_COM_VALOR['alinhamento']}{nome}"
+            self.editor.tag_configure(etiqueta, justify=justificacao)
 
     def _pintar_estilos(self) -> None:
         """A geometria de cada estilo de parágrafo. **A fonte não entra aqui** (S-249).
@@ -702,16 +1033,62 @@ class TextoPanel(ttk.Frame):
         """
         atributos = corrida.atributos
         estilo = atributos.estilo
-        if not estilo:
+        degrau = atributos.corpo
+        if not estilo and not degrau:
             return NEGRITO_ITALICO if (atributos.negrito and atributos.italico) else ""
-        nome = f"fonte:{estilo}:{'b' if atributos.negrito else ''}{'i' if atributos.italico else ''}"
+        peso = "b" if atributos.negrito else ""
+        pendor = "i" if atributos.italico else ""
+        nome = f"fonte:{estilo}:{peso}{pendor}:{degrau}"
         if nome not in self._fontes_desenhadas:
-            papel = PAPEL_DO_ESTILO[estilo]
-            base = theme.fonte_atual(papel, negrito=atributos.negrito)
-            fonte = list(base) + (["italic"] if atributos.italico else [])
-            self.editor.tag_configure(nome, font=tuple(fonte))
-            self._fontes_desenhadas.add(nome)
+            self.editor.tag_configure(nome, font=self._fonte_do_trecho(atributos))
+            self._fontes_desenhadas[nome] = atributos
         return nome
+
+    def _fonte_do_trecho(self, atributos: rico.Atributos) -> tuple[str, ...]:
+        """A fonte de um trecho: a família e o corpo de onde ele vem, mais o degrau, o peso, o pendor.
+
+        **O degrau vira ponto em `ui/tipografia.corpo`, e em nenhum outro lugar** (S-260). O que se
+        decide aqui é *sobre o quê* ele incide, e são duas origens diferentes:
+
+        - **com estilo de parágrafo**, a origem é o papel dele (`PAPEL_DO_ESTILO`), resolvido contra
+          a fonte do sistema -- é o que `_pintar_estilos` já fazia;
+        - **sem estilo**, a origem é a fonte do **próprio editor**, e não o papel `CORPO`. O
+          `tk.Text` nasce em `TkFixedFont` -- Courier New 10 no Windows --, enquanto `CORPO` é a
+          Segoe UI 9: derivar do papel faria "aumentar o corpo" trocar a família e *diminuir* o
+          tamanho. É a mesma razão de `_fonte` derivar do widget para o negrito e o itálico.
+
+        Somar o degrau ao tamanho **já desenhado** daria um número que acumula o degrau anterior a
+        cada redesenho -- a fonte cresceria sozinha a cada `desenhar_documento`. Por isso a conta
+        parte sempre da origem, e nunca do que está na tela.
+        """
+        if atributos.estilo:
+            papel = PAPEL_DO_ESTILO[atributos.estilo]
+            especificacao = tuple(theme.fonte_atual(papel, negrito=atributos.negrito))
+            familia, base = str(especificacao[0]), theme.fonte_base()[0]
+            # O que sobrar da especificação é o `"bold"` que `tipografia.fonte` acrescenta -- ao
+            # papel TITULO sempre, e aos outros quando o trecho é negrito.
+            extras = [str(pedaco) for pedaco in especificacao[2:]]
+        else:
+            papel = tipografia.CORPO
+            familia, base = self._base_do_editor()
+            extras = ["bold"] if atributos.negrito else []
+        partes = [familia, str(tipografia.corpo(atributos.corpo, base=base, papel=papel)), *extras]
+        if atributos.italico:
+            partes.append("italic")
+        return tuple(partes)
+
+    def _base_do_editor(self) -> tuple[str, int]:
+        """`(família, tamanho)` da fonte que o editor está usando. Cai na do sistema se o Tk não responde.
+
+        O sinal do tamanho some, como em `theme.fonte_base`: o Tk o devolve negativo quando o
+        expressa em pixels, e a escala só precisa da magnitude.
+        """
+        try:
+            atual = tkfont.Font(font=self.editor.cget("font")).actual()
+            return str(atual.get("family", "TkDefaultFont")), abs(int(atual.get("size", 0)))
+        except Exception as exc:  # noqa: BLE001 - fonte exótica ou widget sem janela ainda
+            logger.debug("Fonte do editor não lida (%s): o degrau parte da do sistema.", exc)
+            return "TkDefaultFont", theme.fonte_base()[0]
 
     def _fonte(
         self,
@@ -801,6 +1178,10 @@ class TextoPanel(ttk.Frame):
     def sublinhado(self) -> None:
         self.alternar("sublinhado")
 
+    def tachado(self) -> None:
+        """Risca ou desrisca o alvo (S-261). O caminho é o de `alternar`, sem redesenho."""
+        self.alternar("tachado")
+
     def alternar(self, atributo: str) -> None:
         """Alterna um atributo booleano no alvo -- **por etiqueta, sem redesenhar** (S-241).
 
@@ -856,12 +1237,17 @@ class TextoPanel(ttk.Frame):
         self.editor.tag_add(f"{texto_etiquetas.PREFIXO_DE_PROCEDENCIA}humano", i0, i1)
 
     def limpar_formato(self) -> None:
-        """Tira negrito, itálico e sublinhado do alvo. **Não** toca em cor nem em faixa."""
+        """Tira a ênfase tipográfica do alvo. **Não** toca em cor, faixa, corpo nem alinhamento.
+
+        A lista vem de `ATRIBUTOS_DE_ENFASE` e não está escrita aqui: o dia em que um quinto pincel
+        entrar, ele tem de sair por este botão também, e uma lista repetida é a que fica para trás.
+        Corpo e alinhamento **não** são ênfase -- ver a constante.
+        """
         inicio, fim = self.intervalo_alvo()
         if inicio == fim:
             return
         i0, i1 = self.indice_de(inicio), self.indice_de(fim)
-        for atributo in ("negrito", "italico", "sublinhado"):
+        for atributo in ATRIBUTOS_DE_ENFASE:
             self.editor.tag_remove(texto_etiquetas.ETIQUETA_DO_ATRIBUTO[atributo], i0, i1)
         self.editor.tag_remove(NEGRITO_ITALICO, i0, i1)
         self._carimbar_humano(i0, i1)
@@ -1034,15 +1420,7 @@ class TextoPanel(ttk.Frame):
         Aqui o caminho é o do documento (e não o da etiqueta) porque o alcance passa das corridas
         tocadas: aplicar por etiqueta exigiria descobrir de novo, no widget, onde o bloco começa.
         """
-        doc = self.documento_atual()
-        inicio, fim = self.intervalo_alvo()
-        novo = rico.aplicar_estilo(doc, inicio, fim, estilo)
-        if novo == doc:
-            return
-        self._guardar_instantaneo(doc)
-        self.desenhar_documento(novo)
-        self._sujo = True
-        self.mostrar_intervalo(inicio, fim)
+        self._pelo_documento(lambda doc, inicio, fim: rico.aplicar_estilo(doc, inicio, fim, estilo))
 
     def estilo_titulo(self) -> None:
         self.aplicar_estilo(rico.ESTILO_TITULO)
@@ -1055,6 +1433,252 @@ class TextoPanel(ttk.Frame):
 
     def estilo_legenda(self) -> None:
         self.aplicar_estilo(rico.ESTILO_LEGENDA)
+
+    # ------------------------------------- o alinhamento, o corpo e a caixa (S-259 a S-262)
+
+    def alinhar(self, alinhamento: str) -> None:
+        """Alinha o parágrafo do alvo -- **e a figura que estiver nele** (S-259).
+
+        Caminho do documento, e não da etiqueta, pela mesma razão de `aplicar_estilo`: o alcance
+        passa das corridas tocadas, e descobrir de novo no widget onde o bloco começa seria a
+        segunda implementação de `rico.aplicar_no_paragrafo`.
+        """
+        self._pelo_documento(lambda doc, inicio, fim: rico.aplicar_alinhamento(doc, inicio, fim, alinhamento))
+
+    def alinhar_esquerda(self) -> None:
+        self.alinhar(rico.ALINHAMENTO_ESQUERDA)
+
+    def alinhar_centro(self) -> None:
+        self.alinhar(rico.ALINHAMENTO_CENTRO)
+
+    def alinhar_direita(self) -> None:
+        self.alinhar(rico.ALINHAMENTO_DIREITA)
+
+    def justificar(self) -> None:
+        self.alinhar(rico.ALINHAMENTO_JUSTIFICADO)
+
+    def aumentar_corpo(self) -> None:
+        """Sobe um degrau o corpo do alvo (S-260). Ver `rico.mudar_corpo` sobre o alcance."""
+        self._mudar_corpo(+1)
+
+    def diminuir_corpo(self) -> None:
+        self._mudar_corpo(-1)
+
+    def _mudar_corpo(self, passo: int) -> None:
+        """O passo, com o aviso no rodapé quando ele não tem mais para onde ir.
+
+        **O aviso é o item.** Um botão que deixa de fazer efeito sem dizer nada é o botão que a
+        pessoa aperta mais cinco vezes -- e a faixa de `rico.CORPO_MINIMO` a `CORPO_MAXIMO` é curta
+        justamente porque ela é fechada. Dizer onde ela acaba custa uma linha e evita a conclusão de
+        que a ferramenta quebrou.
+        """
+        antes = self.documento_atual()
+        self._pelo_documento(lambda doc, inicio, fim: rico.mudar_corpo(doc, inicio, fim, passo))
+        if self.documento_atual().corridas == antes.corridas:
+            limite = rico.CORPO_MAXIMO if passo > 0 else rico.CORPO_MINIMO
+            self._on_status(f"O corpo deste trecho já está no limite ({limite:+d} degraus).")
+
+    def corpo_normal(self) -> None:
+        """Devolve o alvo ao corpo do estilo dele -- o degrau zero (S-260)."""
+        self._pelo_documento(lambda doc, inicio, fim: rico.aplicar_corpo(doc, inicio, fim, 0))
+
+    def mudar_caixa(self, caixa: str) -> None:
+        """MAIÚSCULAS, minúsculas ou Iniciais no alvo (S-262).
+
+        **Muda o texto**, e por isso o caminho é o mesmo da substituição em massa: instantâneo antes,
+        redesenho depois. Sem o instantâneo, desfazer uma troca de caixa sobre um parágrafo seria
+        impossível -- o redesenho zera a pilha do Tk, e é o que o cabeçalho deste arquivo explica.
+        """
+        self._pelo_documento(lambda doc, inicio, fim: rico.mudar_caixa(doc, inicio, fim, caixa))
+
+    def maiusculas(self) -> None:
+        self.mudar_caixa(rico.CAIXA_ALTA)
+
+    def minusculas(self) -> None:
+        self.mudar_caixa(rico.CAIXA_BAIXA)
+
+    def capitular(self) -> None:
+        self.mudar_caixa(rico.CAIXA_INICIAIS)
+
+    def _pelo_documento(
+        self, mudanca: Callable[[rico.DocumentoRico, int, int], rico.DocumentoRico]
+    ) -> None:
+        """Aplica uma função pura ao documento, guarda o anterior e redesenha.
+
+        É o molde que `aplicar_estilo` já usava, extraído porque a Fase 41 trouxe mais seis clientes
+        dele. As quatro linhas que ele guarda são as que decidem se a ferramenta é desfazível: o
+        instantâneo **antes** do redesenho, e o redesenho zerando a pilha do Tk.
+
+        Devolver ao mesmo intervalo depois é o que faz aplicar duas ferramentas seguidas sem
+        reselecionar: o redesenho refaz o widget inteiro, e sem `mostrar_intervalo` a seleção morre
+        com ele.
+        """
+        doc = self.documento_atual()
+        inicio, fim = self.intervalo_alvo()
+        novo = mudanca(doc, inicio, fim)
+        if novo == doc:
+            return
+        self._guardar_instantaneo(doc)
+        self.desenhar_documento(novo)
+        self._sujo = True
+        self.mostrar_intervalo(inicio, fim)
+
+    # ------------------------------------- a área de transferência e a seleção (S-263)
+
+    def selecionar_tudo(self) -> None:
+        """Seleciona o texto inteiro da folha.
+
+        **É uma correção, e não um acréscimo.** No `tk.Text` de fábrica `Ctrl+A` leva o cursor ao
+        início da linha -- herança de Emacs que nenhum programa de Windows faz --, e selecionar tudo
+        não tinha tecla nem comando. Ver `atalhos.TECLAS_DO_EDITOR`.
+
+        Vai até `"end-1c"` e não `tk.END`: o Tk mantém uma quebra final que não é do documento, e
+        incluí-la faria toda ferramenta agir sobre um caractere que ninguém escreveu.
+        """
+        self.editor.tag_remove(tk.SEL, "1.0", tk.END)
+        self.editor.tag_add(tk.SEL, "1.0", "end-1c")
+        self.editor.mark_set(tk.INSERT, "1.0")
+        self.editor.focus_set()
+        self._atualizar_ferramentas()
+
+    def recortar(self) -> None:
+        """Recorta a seleção. É o `<<Cut>>` do Tk, agora com nome e lugar no menu (S-263)."""
+        self._area_de_transferencia("<<Cut>>")
+
+    def copiar(self) -> None:
+        self._area_de_transferencia("<<Copy>>")
+
+    def colar(self) -> None:
+        """Cola no cursor. **O texto colado herda os atributos dos dois lados**, como o digitado.
+
+        É a regra do próprio Tk (`texto_etiquetas`, "O widget é o estado vivo"), e ela é a certa
+        aqui: colar dentro de um bloco herda `bloco:3`, e a correção fica atada ao bloco que ela
+        corrige -- que é o que a fila da S-212 precisa receber. O que **não** vem junto é formatação
+        de outro programa: a área de transferência do Tk carrega texto, e não corridas.
+        """
+        self._area_de_transferencia("<<Paste>>")
+
+    def _area_de_transferencia(self, evento: str) -> None:
+        """Dispara o evento virtual do Tk no editor.
+
+        **Evento virtual, e não uma implementação própria de recortar e colar.** O Tk já resolve a
+        seleção, a área de transferência do sistema e o desfazer; reimplementar isso daria um
+        segundo caminho que diverge do `Ctrl+C` no primeiro caso de canto -- e o caso de canto de um
+        editor com imagem embutida é justamente o que ninguém testa.
+        """
+        self.editor.focus_set()
+        self.editor.event_generate(evento)
+
+    # ------------------------------------------------- o zoom da vista (S-264)
+
+    def aproximar_texto(self) -> None:
+        """Aumenta a letra **na tela**. Não muda o documento, não é gravado, não é exportado."""
+        self._mudar_zoom(+1)
+
+    def afastar_texto(self) -> None:
+        self._mudar_zoom(-1)
+
+    def zoom_do_texto_normal(self) -> None:
+        """Volta a folha ao tamanho de tela normal."""
+        self._aplicar_zoom(0)
+
+    def _mudar_zoom(self, passo: int) -> None:
+        alvo = max(ZOOM_MINIMO, min(ZOOM_MAXIMO, self._zoom_da_vista + passo))
+        if alvo == self._zoom_da_vista:
+            limite = ZOOM_MAXIMO if passo > 0 else ZOOM_MINIMO
+            self._on_status(f"O zoom do texto já está no limite ({limite:+d} degraus).")
+            return
+        self._aplicar_zoom(alvo)
+
+    def _aplicar_zoom(self, degraus: int) -> None:
+        """Troca a fonte do editor e **refaz as etiquetas de fonte**, sem redesenhar (S-264).
+
+        Sem redesenho é o item: redesenhar zera a pilha de desfazer do Tk (ver o cabeçalho), e
+        perder o desfazer da digitação por ter aproximado a letra seria uma troca ruim. As etiquetas
+        continuam onde estão no texto; o que muda é a fonte que cada uma declara -- e é para isso
+        que `_fontes_desenhadas` guarda os atributos de origem de cada uma.
+        """
+        self._zoom_da_vista = degraus
+        familia, tamanho = self._fonte_original_do_editor
+        self.editor.configure(font=(familia, tipografia.corpo(degraus, base=tamanho)))
+        self._pintar_faixas()
+        for nome, atributos in self._fontes_desenhadas.items():
+            self.editor.tag_configure(nome, font=self._fonte_do_trecho(atributos))
+        self._on_status(f"Zoom do texto: {degraus:+d} degraus (a folha não mudou).")
+
+    # ------------------------------------------------- a quebra de linha (S-265)
+
+    def quebrar_linha(self) -> None:
+        """Liga ou desliga a quebra na largura da janela (S-265).
+
+        **O comando não inverte a variável**: quem a inverte é o widget que a carrega -- o
+        `Checkbutton` da barra e o `checkbutton` do menu --, e inverter de novo aqui desfaria o
+        clique. É o mesmo desenho de `modo_bloco_mudou`.
+        """
+        self._aplicar_quebra()
+        if bool(self.quebra_var.get()):
+            self._on_status("As linhas voltam a quebrar na largura da janela.")
+        else:
+            self._on_status("Linha inteira: use a rolagem de baixo para ver o fim das linhas longas.")
+
+    def _aplicar_quebra(self) -> None:
+        """Põe o `wrap` no editor e mostra a rolagem horizontal só quando ela serve.
+
+        Uma barra de rolagem que não rola é ruído: com `wrap=word` nenhuma linha passa da largura, e
+        a barra ficaria ali inteira e imóvel embaixo do texto.
+        """
+        quebra = bool(self.quebra_var.get())
+        self.editor.configure(wrap=tk.WORD if quebra else tk.NONE)
+        if quebra:
+            self._rolagem_horizontal.pack_forget()
+        else:
+            self._rolagem_horizontal.pack(side=tk.BOTTOM, fill=tk.X, before=self.editor)
+
+    # ------------------------------------------------- o léxico confere e não corrige (S-266)
+
+    def marcar_fora_do_lexico(self) -> None:
+        """Marca as palavras que o léxico da S-209 não conhece. **Não corrige nada** (S-266).
+
+        A frase da S-209 é a especificação inteira deste comando: *"palavra fora do dicionário é
+        sinalizada, nunca aproximada da mais parecida"*. Dos 18 lances tão maltratados que caem no
+        léxico, nenhum está no dicionário -- com correção automática seriam 18 lances reescritos como
+        palavra, e é por isso que o botão que existe é este, e não "corrigir ortografia".
+
+        A conta vai para o rodapé porque ela é o resultado: "3 de 412" e "80 de 412" pedem coisas
+        diferentes de quem está conferindo a folha.
+        """
+        doc = self.documento_atual()
+        texto = doc.para_texto()
+        try:
+            lexico = self._lexico_carregado()
+        except OSError as erro:
+            logger.debug("Léxico não carregou: %s", erro)
+            self._on_status(f"O léxico não pôde ser carregado: {erro}")
+            return
+        self.limpar_marcas_do_lexico()
+        achadas = dicionario.desconhecidas(texto, lexico, ignorar=_fora_do_livro(doc))
+        for inicio, fim, _palavra in achadas:
+            self.editor.tag_add(ETIQUETA_DO_LEXICO, self.indice_de(inicio), self.indice_de(fim))
+        total = len(dicionario.palavras_de(texto))
+        self._on_status(
+            f"{len(achadas)} de {total} palavra(s) fora do léxico. Nada foi corrigido (S-209)."
+        )
+
+    def limpar_marcas_do_lexico(self) -> None:
+        """Tira as marcas da conferência. **Não é desfazer**: elas nunca foram documento."""
+        self.editor.tag_remove(ETIQUETA_DO_LEXICO, "1.0", tk.END)
+
+    def _lexico_carregado(self) -> frozenset[str]:
+        """O léxico, carregado na primeira conferência e guardado depois.
+
+        Não é carregado na montagem da aba: são três arquivos comprimidos e 364 mil palavras, e a
+        aba é construída na abertura da janela junto com as outras seis. É a mesma razão do import
+        tardio de `text/leitor.py` no topo deste arquivo -- com a diferença de que aqui o custo
+        medido é de 0,16 s, e por isso ele cabe na thread da janela em vez de pedir uma segunda.
+        """
+        if self._lexico is None:
+            self._lexico = dicionario.carregar()
+        return self._lexico
 
     # ------------------------------------------------------------- achar e substituir (S-245)
 
@@ -1218,6 +1842,22 @@ class TextoPanel(ttk.Frame):
         )
         return cores
 
+    def _corpos_do_html(self) -> dict[str, str]:
+        """`classe de degrau -> tamanho de fonte`, resolvido **agora** contra a fonte do sistema.
+
+        O irmão de `_cores_do_html`, e pela mesma razão (S-260): `text/exportacao.py` não conhece um
+        tamanho de fonte sequer, e o degrau que o documento guarda só vira ponto em
+        `ui/tipografia.corpo`. Quem exporta numa máquina de fonte 12 leva um HTML de fonte 12.
+
+        A faixa inteira entra, e não só os degraus em uso: são dez regras de CSS, e percorrer o
+        documento para descobrir quais aparecem custaria mais que escrevê-las.
+        """
+        return {
+            exportacao.classe_de_corpo(degrau): f"{tipografia.corpo(degrau, base=theme.fonte_base()[0])}pt"
+            for degrau in range(rico.CORPO_MINIMO, rico.CORPO_MAXIMO + 1)
+            if degrau
+        }
+
     def _exportar(self, extensao: str) -> None:
         """Pergunta o destino e exporta **fora da thread da janela** (S-254).
 
@@ -1235,7 +1875,12 @@ class TextoPanel(ttk.Frame):
             self._on_status("Não há texto nesta aba para exportar.")
             return
         formato = exportacao.formato_de(
-            extensao, **({"cores": self._cores_do_html()} if extensao == ".html" else {})
+            extensao,
+            **(
+                {"cores": self._cores_do_html(), "corpos": self._corpos_do_html()}
+                if extensao == ".html"
+                else {}
+            ),
         )
         destino = filedialog.asksaveasfilename(
             parent=self,
@@ -1526,9 +2171,18 @@ class TextoPanel(ttk.Frame):
 
 __all__ = [
     "ACOES_PROPRIAS",
+    "ALINHAMENTO",
+    "COMANDOS_DA_ABA",
+    "ATRIBUTOS_DE_ENFASE",
+    "CAIXA",
+    "COMANDO_DA_ESCOLHA",
+    "ETIQUETA_DO_LEXICO",
+    "JUSTIFICACAO_DO_ALINHAMENTO",
     "LADO_DA_MINIATURA",
     "MOTORES",
     "PAPEL_DA_FAIXA",
     "PAPEL_DA_MARCA",
     "TextoPanel",
+    "ZOOM_MAXIMO",
+    "ZOOM_MINIMO",
 ]

@@ -106,6 +106,7 @@ from chess_diagram_ocr.ui import (
     rolagem,
     strings,
     texto,
+    texto_panel,
     theme,
     tipografia,
     tokens,
@@ -1646,7 +1647,7 @@ class ChessOcrTkApp:
         Os guardas de `None` não são zelo: os painéis são criados em `_build_ui`, e um roteiro de
         teste monta a janela sem eles. Sem o guarda, o menu montaria e o primeiro clique estouraria.
         """
-        return {
+        acoes: dict[str, Callable[[], None]] = {
             "abrir_pdf": self._on_pdf(lambda p: p.open_pdf()),
             "abrir_no_leitor": self._on_pdf(lambda p: p.open_in_system_reader()),
             "exportar_pgn": lambda: self.export.start(self.pdf_source),
@@ -1691,41 +1692,22 @@ class ChessOcrTkApp:
             "legenda_de_atalhos": self._abrir_legenda,
             "abrir_log": self._abrir_log,
             "sobre": self._sobre,
-            # ------------------------------------------------- o editor de texto (S-240)
-            #
-            # Todos passam pelo `_on_texto`, que é o mesmo molde de `_on_result` e `_on_pdf`: a
-            # janela liga o **nome** à função, e quem tem o estado é o painel. O guarda de `None`
-            # não é zelo -- o roteiro headless monta a janela sem os painéis, e sem ele o menu
-            # montaria e o primeiro clique estouraria.
-            "ler_folha": self._on_texto(lambda p: p.ler()),
-            "folha_da_pagina_aberta": self._on_texto(lambda p: p.sincronizar_com_a_pagina()),
-            "modo_bloco": self._on_texto(lambda p: p.modo_bloco_mudou()),
-            "abrir_texto": self._on_texto(lambda p: p.abrir_documento()),
-            "salvar_texto": self._on_texto(lambda p: p.salvar_documento()),
-            "salvar_texto_como": self._on_texto(lambda p: p.salvar_documento()),
-            "exportar_txt": self._on_texto(lambda p: p.salvar()),
-            "negrito": self._on_texto(lambda p: p.negrito()),
-            "italico": self._on_texto(lambda p: p.italico()),
-            "sublinhado": self._on_texto(lambda p: p.sublinhado()),
-            "limpar_formato": self._on_texto(lambda p: p.limpar_formato()),
-            "cor_do_texto": self._on_texto(lambda p: p.escolher_cor()),
-            "realce": self._on_texto(lambda p: p.escolher_realce()),
-            "limpar_cor": self._on_texto(lambda p: p.limpar_cor()),
-            "achar": self._on_texto(lambda p: p.achar()),
-            "substituir": self._on_texto(lambda p: p.substituir()),
-            "substituir_todos": self._on_texto(lambda p: p.substituir_todos()),
-            "paleta_de_glifos": self._on_texto(lambda p: p.alternar_paleta()),
-            "inserir_figurina": self._on_texto(lambda p: p.inserir_figurina()),
-            "inserir_avaliacao": self._on_texto(lambda p: p.inserir_avaliacao()),
-            "estilo_titulo": self._on_texto(lambda p: p.estilo_titulo()),
-            "estilo_prosa": self._on_texto(lambda p: p.estilo_prosa()),
-            "estilo_notacao": self._on_texto(lambda p: p.estilo_notacao()),
-            "estilo_legenda": self._on_texto(lambda p: p.estilo_legenda()),
-            "exportar_md": self._on_texto(lambda p: p.exportar_md()),
-            "exportar_html": self._on_texto(lambda p: p.exportar_html()),
-            "exportar_rtf": self._on_texto(lambda p: p.exportar_rtf()),
-            "exportar_pdf_pesquisavel": self._on_texto(lambda p: p.exportar_pdf_pesquisavel()),
         }
+        # ------------------------------------------------- o editor de texto (S-240)
+        #
+        # **Geradas da tabela do painel, e não escritas uma a uma.** Todas passam pelo `_on_texto`,
+        # que é o molde de `_on_result` e `_on_pdf`: a janela liga o **nome** à função, e quem tem o
+        # estado é o painel. O guarda de `None` não é zelo -- o roteiro headless monta a janela sem
+        # os painéis, e sem ele o menu montaria e o primeiro clique estouraria.
+        #
+        # Quarenta linhas de `lambda p: p.negrito()` eram a segunda declaração do par
+        # comando-método, e a primeira mora em `texto_panel.COMANDOS_DA_ABA` -- que é onde os
+        # métodos estão. Um comando novo do editor entra lá, numa linha, e chega aqui sozinho.
+        acoes.update(
+            (acao, self._on_texto(lambda painel, nome=metodo: getattr(painel, nome)()))
+            for acao, metodo in texto_panel.COMANDOS_DA_ABA.items()
+        )
+        return acoes
 
     def _build_menu(self) -> None:
         """A barra de menus (S-161). Depois dos painéis: os comandos falam com eles."""

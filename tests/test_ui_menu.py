@@ -22,7 +22,7 @@ if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app_tkinter  # noqa: E402 - depende do `sys.path` ajustado acima
-from chess_diagram_ocr.ui import atalhos, menu, pele  # noqa: E402
+from chess_diagram_ocr.ui import atalhos, menu, pele, texto_panel  # noqa: E402
 from chess_diagram_ocr.ui.state import AppState  # noqa: E402
 
 
@@ -106,10 +106,20 @@ class DeclaracaoDoMenuTests(unittest.TestCase):
 
         Sem janela de verdade -- percorre o **código** de `_comandos` procurando cada nome, que é o
         que permite este teste rodar sem Tk, sem checkpoint e sem PDF.
+
+        **Os do editor de texto não aparecem no código de `_comandos`, e é de propósito**: a janela
+        os gera de `texto_panel.COMANDOS_DA_ABA` em vez de repetir quarenta `lambda` (S-259). Por
+        isso a tabela entra na conta ao lado da varredura -- o que o teste cobra continua sendo o
+        mesmo: item de menu que ninguém amarra é o item inerte da S-161.
         """
         fonte = (Path(app_tkinter.__file__).read_text(encoding="utf-8")).split("def _comandos", 1)[1]
         fonte = fonte.split("def _build_menu", 1)[0]
-        faltando = [acao for acao in menu.comandos_faltando({}) if f'"{acao}"' not in fonte]
+        gerados = set(texto_panel.COMANDOS_DA_ABA)
+        faltando = [
+            acao
+            for acao in menu.comandos_faltando({})
+            if f'"{acao}"' not in fonte and acao not in gerados
+        ]
         self.assertEqual(faltando, [], "comando de menu que a janela não amarra")
 
 

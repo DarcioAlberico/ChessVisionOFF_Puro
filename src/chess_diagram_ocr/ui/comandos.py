@@ -230,6 +230,7 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("negrito", "Negrito", EDICAO, estilos.NEUTRO),
     Comando("italico", "Itálico", EDICAO, estilos.NEUTRO),
     Comando("sublinhado", "Sublinhado", EDICAO, estilos.NEUTRO),
+    Comando("tachado", "Tachado", EDICAO, estilos.NEUTRO),
     Comando(
         "limpar_formato",
         "Limpar a formatação do trecho",
@@ -253,7 +254,131 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("estilo_prosa", "Estilo do parágrafo: prosa", EDICAO, estilos.NEUTRO, rotulo_curto="Prosa"),
     Comando("estilo_notacao", "Estilo do parágrafo: notação", EDICAO, estilos.NEUTRO, rotulo_curto="Notação"),
     Comando("estilo_legenda", "Estilo do parágrafo: legenda", EDICAO, estilos.NEUTRO, rotulo_curto="Legenda"),
+    # ------------------------------------- as ferramentas da Fase 41 (S-259 a S-262)
+    #
+    # **Os onze entram um a um, e o agrupador da barra não é comando.** A barra da aba mostra
+    # "Alinhar" e "Caixa", que abrem listas -- mas quem *faz* alguma coisa é o item da lista, e é ele
+    # que precisa de nome: a paleta da S-231 procura por nome, e "centralizar" é o que quem procura
+    # digita. Os dois rótulos de grupo moram em `ui/strings.py`, que é onde o vocabulário que não é
+    # ação já mora; pô-los aqui obrigaria o menu a uma linha "Alinhamento…" ao lado dos quatro itens
+    # que ela abriria, pela regra de alcance da S-233.
+    Comando(
+        "alinhar_esquerda",
+        "Alinhar o parágrafo à esquerda",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Esquerda",
+    ),
+    # O rótulo longo diz "e a figura" porque é o que ele faz, e porque é a pergunta que traz alguém
+    # ao menu: centralizar um diagrama é a mesma escolha que centralizar o parágrafo dele (S-259).
+    Comando(
+        "alinhar_centro",
+        "Centralizar o parágrafo e a figura",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Centralizar",
+    ),
+    Comando(
+        "alinhar_direita",
+        "Alinhar o parágrafo à direita",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Direita",
+    ),
+    Comando("justificar", "Justificar o parágrafo", EDICAO, estilos.NEUTRO, rotulo_curto="Justificar"),
+    # Os dois de um caractere e meio, pela mesma razão de `zoom_mais` e `zoom_menos`: um rótulo tão
+    # curto é o caso em que "escrito à mão" parece inofensivo, e é onde ninguém descobre depois o
+    # que o botão fazia.
+    Comando(
+        "aumentar_corpo",
+        "Aumentar o corpo do texto",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="A+",
+    ),
+    Comando(
+        "diminuir_corpo",
+        "Diminuir o corpo do texto",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="A-",
+    ),
+    Comando(
+        "corpo_normal",
+        "Voltar o corpo do texto ao normal",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Corpo normal",
+    ),
+    # **Os três rótulos curtos são escritos na caixa que eles produzem**, e isso é decisão e não
+    # descuido: "MAIÚSCULAS" numa lista de três itens diz o que o item faz sem precisar de exemplo.
+    Comando("maiusculas", "Trecho em MAIÚSCULAS", EDICAO, estilos.NEUTRO, rotulo_curto="MAIÚSCULAS"),
+    Comando("minusculas", "Trecho em minúsculas", EDICAO, estilos.NEUTRO, rotulo_curto="minúsculas"),
+    Comando(
+        "capitular",
+        "Trecho com Iniciais Maiúsculas",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Iniciais Maiúsculas",
+    ),
+    # ------------------------------------- a Fase 42 (S-263 a S-266)
+    #
+    # **Os quatro da área de transferência existiam como tecla e não como comando**, e a diferença
+    # é a da S-161: `Ctrl+C` funciona no `tk.Text` de fábrica desde sempre, mas quem não sabe disso
+    # não tem onde descobrir. Um menu Texto com vinte e nove linhas e sem "Copiar" diz, sem querer,
+    # que a aba não copia.
+    Comando("recortar", "Recortar o trecho", EDICAO, estilos.NEUTRO, rotulo_curto="Recortar"),
+    Comando("copiar", "Copiar o trecho", EDICAO, estilos.NEUTRO, rotulo_curto="Copiar"),
+    Comando("colar", "Colar no cursor", EDICAO, estilos.NEUTRO, rotulo_curto="Colar"),
+    Comando(
+        "selecionar_tudo",
+        "Selecionar o texto inteiro da folha",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Selecionar tudo",
+    ),
+    # Os quatro da vista da aba e os dois do léxico **não** ficam aqui: eles são de VISUALIZACAO e
+    # de OCR, e são declarados nos blocos daqueles grupos. A ordem de declaração é a ordem em que
+    # `do_grupo` os devolve, e é a ordem em que a paleta da S-231 os mostra -- um comando de OCR
+    # declarado no meio do bloco de EDICAO aparece antes de `ler_pagina` numa busca por "ocr", que
+    # é uma resposta que ninguém lê como certa.
     # ----------------------------------------------------------------------- VISUALIZACAO
+    # ---------------------------------- a vista da **aba de texto** (S-264/S-265)
+    #
+    # **Zoom é da vista, corpo é do documento**, e os rótulos longos dizem isso porque é a única
+    # confusão possível entre dois pares de comandos que fazem a letra crescer na tela. O zoom não
+    # entra no arquivo, não é exportado e vale para a folha inteira.
+    #
+    # Ficam **antes** dos da página do PDF porque o grupo é lido de cima para baixo na paleta, e um
+    # comando de zoom de texto entre "Página anterior" e "Próxima página" leria como navegação.
+    Comando(
+        "aproximar_texto",
+        "Aproximar o texto na tela (não muda o documento)",
+        VISUALIZACAO,
+        estilos.NEUTRO,
+        rotulo_curto="Aproximar",
+    ),
+    Comando(
+        "afastar_texto",
+        "Afastar o texto na tela (não muda o documento)",
+        VISUALIZACAO,
+        estilos.NEUTRO,
+        rotulo_curto="Afastar",
+    ),
+    Comando(
+        "zoom_do_texto_normal",
+        "Voltar o texto ao tamanho de tela normal",
+        VISUALIZACAO,
+        estilos.NEUTRO,
+        rotulo_curto="Zoom normal",
+    ),
+    Comando(
+        "quebrar_linha",
+        "Quebrar as linhas na largura da janela",
+        VISUALIZACAO,
+        estilos.NEUTRO,
+        rotulo_curto="Quebrar linha",
+    ),
     Comando("pagina_anterior", "Página anterior", VISUALIZACAO, estilos.NEUTRO),
     Comando("proxima_pagina", "Próxima página", VISUALIZACAO, estilos.NEUTRO),
     Comando("ajustar_largura", "Ajustar à largura", VISUALIZACAO, estilos.NEUTRO, icone="ajustar_largura"),
@@ -360,6 +485,23 @@ CATALOGO: tuple[Comando, ...] = (
         icone="selecionar_area",
         rotulo_alternado="Cancelar seleção",
         rotulo_curto="Selecionar área (OCR)",
+    ),
+    # O léxico da S-209 na aba de texto (S-266). É OCR pela pergunta do grupo -- ele confere o que
+    # o motor leu da folha aberta --, e o rótulo longo diz as **duas** coisas que ele faz e não faz,
+    # porque a segunda é a que dá confiança para usar a primeira sobre uma página de OCR.
+    Comando(
+        "marcar_fora_do_lexico",
+        "Marcar o que o léxico não conhece (não corrige nada)",
+        OCR,
+        estilos.NEUTRO,
+        rotulo_curto="Conferir palavras",
+    ),
+    Comando(
+        "limpar_marcas_do_lexico",
+        "Limpar as marcas do léxico",
+        OCR,
+        estilos.NEUTRO,
+        rotulo_curto="Limpar marcas",
     ),
     # ----------------------------------------------------------------------------- ACERVO
     Comando("varrer_livro", strings.VARRER_LIVRO, ACERVO, estilos.NEUTRO),

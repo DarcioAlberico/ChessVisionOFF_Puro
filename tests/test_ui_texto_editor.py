@@ -640,7 +640,415 @@ class EstiloNoWidgetTests(_ComJanela, unittest.TestCase):
         painel.estilo_titulo()
         etiquetas = set(painel.editor.tag_names("1.0"))
         self.assertIn("estilo:titulo", etiquetas)
-        self.assertIn("fonte:titulo:b", etiquetas)
+        # O `:0` do fim é o degrau de corpo da S-260: a etiqueta combinada passou a distinguir
+        # também o tamanho, senão um título `+1` e um título normal disputariam o mesmo nome.
+        self.assertIn("fonte:titulo:b:0", etiquetas)
+
+
+class FerramentasNoWidgetTests(_ComJanela, unittest.TestCase):
+    """As ferramentas da Fase 41 desenhadas: alinhamento, corpo, tachado e caixa (S-259 a S-262).
+
+    O que `tests/test_texto_ferramentas.py` afirma sem janela é o alcance de cada função pura. O que
+    só se vê com um `tk.Text` na mão é o **desenho**: que a etiqueta chegou ao widget, que ela
+    alcança a imagem do diagrama, e que a ida e volta pelo widget devolve o mesmo documento -- que é
+    o achado 1 do ROADMAP_EDITOR, e a única forma de defeito que "na tela está tudo certo".
+    """
+
+    def _com_texto(self, conteudo: str = "uma frase para formatar") -> TextoPanel:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto(conteudo)))
+        return painel
+
+    def test_o_tachado_vira_etiqueta_e_volta_como_atributo(self) -> None:
+        painel = self._com_texto()
+        painel.editor.mark_set("insert", "1.6")
+        painel.tachado()
+        self.assertIn("tachado", painel.editor.tag_names("1.5"))
+        doc = painel.documento_atual()
+        self.assertEqual([c.texto for c in doc.corridas if c.atributos.tachado], ["frase"])
+
+    def test_o_tachado_e_risco_e_nao_fonte(self) -> None:
+        """`overstrike` é opção de etiqueta: ela soma com a que dá a fonte em vez de disputá-la."""
+        painel = self._com_texto()
+        self.assertEqual(str(painel.editor.tag_cget("tachado", "overstrike")), "1")
+        self.assertEqual(str(painel.editor.tag_cget("tachado", "font")), "")
+
+    def test_centralizar_poe_a_etiqueta_e_a_justificacao(self) -> None:
+        painel = self._com_texto()
+        painel.editor.mark_set("insert", "1.2")
+        painel.alinhar_centro()
+        self.assertIn("alinhamento:centro", painel.editor.tag_names("1.0"))
+        self.assertEqual(str(painel.editor.tag_cget("alinhamento:centro", "justify")), "center")
+
+    def test_o_justificado_cai_em_esquerda_na_tela_e_nao_no_documento(self) -> None:
+        """A perda é da tela, e ela é declarada: o `tk.Text` não estica espaço entre palavras."""
+        painel = self._com_texto()
+        painel.editor.mark_set("insert", "1.2")
+        painel.justificar()
+        self.assertEqual(str(painel.editor.tag_cget("alinhamento:justificado", "justify")), "left")
+        self.assertEqual(painel.documento_atual().corridas[0].atributos.alinhamento, "justificado")
+
+    def test_o_alinhamento_sobrevive_a_ida_e_volta_pelo_widget(self) -> None:
+        painel = self._com_texto()
+        painel.editor.mark_set("insert", "1.2")
+        painel.alinhar_direita()
+        self.assertEqual(painel.documento_atual().corridas[0].atributos.alinhamento, "direita")
+
+    def _com_diagrama(self) -> TextoPanel:
+        """Um painel com uma folha renderizada de mentira, para a miniatura existir."""
+        painel = self._painel()
+        painel.pack()
+        painel._pagina_rgb = np.full((80, 80, 3), 200, dtype=np.uint8)
+        painel.desenhar(
+            _pagina(
+                _texto("antes do diagrama"),
+                BlocoDeDiagrama(indice=0, bbox=(0.0, 10.0, 40.0, 50.0), confianca=0.9),
+            )
+        )
+        painel.update()
+        return painel
+
+    def test_centralizar_pelo_cursor_na_marca_alcanca_a_miniatura(self) -> None:
+        """**O caso que dá nome à fase.**
+
+        Três afirmações, e as três precisam valer juntas para a figura sair da margem:
+
+        1. a etiqueta de alinhamento chega à **imagem**, e não só à marca embaixo dela;
+        2. a imagem é o **primeiro item da linha**, que é onde o `-justify` do Tk é lido;
+        3. a etiqueta centraliza de fato (`tag_cget`).
+
+        **Não é medido em pixel**, e a razão é da suíte: `bbox` devolve `None` num toplevel
+        escondido, e a janela deste módulo é `withdraw`n de propósito. As três acima distinguem o
+        caso certo do defeito real -- uma etiqueta que chegasse só à marca passaria num teste de
+        `tag_names` e deixaria a imagem encostada na esquerda.
+        """
+        painel = self._com_diagrama()
+        marca = painel.editor.search("[Diagrama", "1.0")
+        # O cursor **sobre o `[`**, sem seleção: é onde alguém está quando quer centralizar a
+        # figura, e é o caso em que "a palavra sob o cursor" é vazia (`intervalo_de_paragrafo`).
+        painel.editor.tag_remove(tk.SEL, "1.0", tk.END)
+        painel.editor.mark_set(tk.INSERT, marca)
+        painel.alinhar_centro()
+        painel.update()
+
+        imagem = painel.editor.dump("1.0", tk.END, image=True)
+        self.assertTrue(imagem, "a miniatura não foi desenhada: o teste não mediria nada")
+        indice = imagem[0][2]
+        self.assertIn("alinhamento:centro", painel.editor.tag_names(indice))
+        self.assertEqual(painel.editor.index(f"{indice} linestart"), painel.editor.index(indice))
+        self.assertEqual(str(painel.editor.tag_cget("alinhamento:centro", "justify")), "center")
+        self.assertIn(
+            "alinhamento:centro", painel.editor.tag_names(painel.editor.search("[Diagrama", "1.0"))
+        )
+
+    def test_o_cursor_num_caractere_sem_palavra_ainda_alinha_o_paragrafo(self) -> None:
+        """`intervalo_alvo` cai na palavra sob o cursor, e fora de uma palavra ela é **vazia**.
+
+        Para o negrito isso é o certo -- não há o que emboldecer num colchete. Para um comando de
+        parágrafo é a resposta errada, e era o que fazia "centralizar" com o cursor parado no `[`
+        de `[Diagrama 1]` não fazer nada (S-259)."""
+        painel = self._com_texto("[nota] uma frase")
+        painel.editor.tag_remove(tk.SEL, "1.0", tk.END)
+        painel.editor.mark_set(tk.INSERT, "1.0")  # sobre o `[`, que não é letra de palavra
+        self.assertEqual(painel.intervalo_alvo(), (0, 0))
+        painel.alinhar_centro()
+        self.assertEqual(painel.documento_atual().corridas[0].atributos.alinhamento, "centro")
+
+    def test_a_miniatura_nao_leva_as_etiquetas_de_dado(self) -> None:
+        """`bloco:` e `proc:` descrevem conteúdo do documento, e a imagem não é conteúdo."""
+        painel = self._painel()
+        painel._pagina_rgb = np.zeros((60, 60, 3), dtype=np.uint8)
+        painel.desenhar(_pagina(BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 20.0, 20.0))))
+        despejo = painel.editor.dump("1.0", tk.END, image=True)
+        self.assertTrue(despejo)
+        nomes = set(painel.editor.tag_names(despejo[0][2]))
+        self.assertEqual([n for n in nomes if n.startswith(("bloco:", "proc:"))], [])
+
+    def test_aumentar_o_corpo_cria_a_etiqueta_de_fonte_do_degrau(self) -> None:
+        painel = self._com_texto()
+        painel.editor.mark_set("insert", "1.6")
+        painel.aumentar_corpo()
+        # `fonte:::1` é `fonte:<estilo>:<peso e pendor>:<degrau>` com os dois primeiros vazios.
+        self.assertIn("fonte:::1", painel.editor.tag_names("1.5"))
+        self.assertEqual(painel.documento_atual().corridas[1].atributos.corpo, 1)
+
+    def test_o_degrau_nao_se_acumula_a_cada_redesenho(self) -> None:
+        """**O defeito que `_fonte_do_trecho` evita**: somar o degrau ao tamanho lido do widget
+        faria a fonte crescer sozinha a cada `desenhar_documento`."""
+        painel = self._com_texto()
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        painel.aumentar_corpo()
+        primeira = painel.editor.tag_cget("fonte:::1", "font")
+        painel.desenhar_documento(painel.documento_atual())
+        self.assertEqual(painel.editor.tag_cget("fonte:::1", "font"), primeira)
+
+    def test_o_corpo_para_no_limite_e_o_rodape_diz(self) -> None:
+        avisos: list[str] = []
+        assert _RAIZ is not None
+        painel = TextoPanel(
+            _RAIZ,
+            pdf_path=lambda: None,
+            page_index=lambda: 0,
+            on_status=avisos.append,
+            busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+        )
+        painel.desenhar(_pagina(_texto("uma palavra")))
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        for _ in range(rico.CORPO_MAXIMO + 2):
+            painel.aumentar_corpo()
+        self.assertEqual(painel.documento_atual().corridas[0].atributos.corpo, rico.CORPO_MAXIMO)
+        self.assertTrue(any("limite" in mensagem for mensagem in avisos), avisos)
+
+    def test_voltar_ao_normal_desfaz_os_degraus(self) -> None:
+        painel = self._com_texto()
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        painel.aumentar_corpo()
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        painel.corpo_normal()
+        self.assertEqual(painel.documento_atual().corridas[0].atributos.corpo, 0)
+
+    def test_o_degrau_sai_da_fonte_do_editor_e_nao_do_papel_corpo(self) -> None:
+        """**O `tk.Text` nasce em `TkFixedFont`, e o papel `CORPO` é outra família e outro corpo.**
+
+        Derivar do papel faria "aumentar" trocar Courier New 10 por Segoe UI 10 -- uma troca de
+        família disfarçada de degrau. A afirmação é sobre a família, que é o que denuncia a origem
+        errada mesmo quando os tamanhos por acaso coincidem."""
+        painel = self._com_texto()
+        familia, tamanho = painel._base_do_editor()
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        painel.aumentar_corpo()
+        fonte = str(painel.editor.tag_cget("fonte:::1", "font"))
+        self.assertIn(familia, fonte)
+        self.assertIn(str(tamanho + 1), fonte)
+
+    def test_a_caixa_muda_o_texto_do_widget(self) -> None:
+        painel = self._com_texto()
+        painel.editor.mark_set("insert", "1.6")
+        painel.maiusculas()
+        self.assertEqual(painel.texto_atual(), "uma FRASE para formatar")
+
+    def test_a_troca_de_caixa_e_desfazivel_inteira(self) -> None:
+        """Ela redesenha, e o redesenho zera a pilha do Tk: sem o instantâneo, desfazer uma troca
+        de caixa seria impossível em vez de ser inteira (o cabeçalho de `ui/texto_panel.py`)."""
+        painel = self._com_texto()
+        antes = painel.texto_atual()
+        painel.editor.tag_add("sel", "1.0", "1.9")
+        painel.maiusculas()
+        self.assertNotEqual(painel.texto_atual(), antes)
+        painel.desfazer()
+        self.assertEqual(painel.texto_atual(), antes)
+
+    def test_toda_tecla_do_editor_tem_metodo(self) -> None:
+        """`_ligar_teclas` liga por `getattr`: um nome sem método derrubaria a montagem da aba."""
+        for acao in atalhos.TECLAS_DO_EDITOR:
+            with self.subTest(acao=acao):
+                self.assertTrue(callable(getattr(TextoPanel, acao, None)))
+
+    def test_toda_escolha_da_barra_aponta_para_um_comando_do_catalogo(self) -> None:
+        """A tabela que ata o nome do domínio ao rótulo da interface, conferida dos dois lados."""
+        from chess_diagram_ocr.ui import comandos as catalogo
+
+        self.assertEqual(
+            set(texto_panel.COMANDO_DA_ESCOLHA[texto_panel.ALINHAMENTO]), set(rico.ALINHAMENTOS)
+        )
+        self.assertEqual(set(texto_panel.COMANDO_DA_ESCOLHA[texto_panel.CAIXA]), set(rico.CAIXAS))
+        for grupo in texto_panel.COMANDO_DA_ESCOLHA.values():
+            for nome, acao in grupo.items():
+                with self.subTest(nome=nome):
+                    self.assertIn(acao, catalogo.por_acao)
+
+
+class VistaESelecaoTests(_ComJanela, unittest.TestCase):
+    """A Fase 42: seleção, área de transferência, zoom da vista e quebra de linha (S-263 a S-265).
+
+    O que estas quatro têm em comum é **não mexer no documento**. É por isso que quase todo teste
+    daqui termina comparando o documento antes com o depois: um zoom que gravasse alguma coisa, ou
+    uma quebra de linha que virasse atributo, seriam formatação inventada dentro do arquivo de quem
+    corrigiu a página.
+    """
+
+    def _com_texto(self, conteudo: str = "uma frase para formatar") -> TextoPanel:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto(conteudo)))
+        return painel
+
+    def test_selecionar_tudo_pega_a_folha_sem_a_quebra_final(self) -> None:
+        """O Tk mantém uma quebra final que não é do documento; incluí-la faria toda ferramenta
+        agir sobre um caractere que ninguém escreveu."""
+        painel = self._com_texto("uma frase para formatar")
+        painel.selecionar_tudo()
+        inicio, fim = painel.intervalo_alvo()
+        self.assertEqual((inicio, fim), (0, len(painel.documento_atual().para_texto())))
+
+    def test_selecionar_tudo_e_depois_uma_ferramenta_pega_a_folha(self) -> None:
+        """É o gesto que o comando existe para servir -- e o que `Ctrl+A` não fazia."""
+        painel = self._com_texto("uma frase para formatar")
+        painel.selecionar_tudo()
+        painel.maiusculas()
+        self.assertEqual(painel.texto_atual(), "UMA FRASE PARA FORMATAR")
+
+    def test_copiar_e_colar_passam_pelo_evento_virtual_do_tk(self) -> None:
+        """Recortar e colar são o `<<Cut>>`/`<<Paste>>` do Tk, e não uma segunda implementação."""
+        painel = self._com_texto("uma frase para formatar")
+        painel.editor.tag_remove(tk.SEL, "1.0", tk.END)
+        painel.editor.tag_add(tk.SEL, "1.0", "1.3")
+        painel.copiar()
+        painel.update()
+        painel.editor.mark_set(tk.INSERT, "end-1c")
+        painel.colar()
+        painel.update()
+        self.assertTrue(painel.texto_atual().endswith("uma"), painel.texto_atual())
+
+    def test_o_zoom_muda_a_fonte_do_editor_e_nao_o_documento(self) -> None:
+        painel = self._com_texto("uma frase para formatar")
+        antes_documento = painel.documento_atual()
+        antes_fonte = str(painel.editor.cget("font"))
+        painel.aproximar_texto()
+        painel.update()
+        self.assertNotEqual(str(painel.editor.cget("font")), antes_fonte)
+        self.assertEqual(painel.documento_atual(), antes_documento)
+
+    def test_o_zoom_parte_sempre_da_fonte_original(self) -> None:
+        """**O defeito que `_fonte_original_do_editor` evita**: reler a fonte a cada zoom devolveria
+        a já ampliada, e dois cliques dariam +1 e depois +2 sobre o +1."""
+        painel = self._com_texto()
+        familia, tamanho = painel._fonte_original_do_editor
+        painel.aproximar_texto()
+        painel.aproximar_texto()
+        painel.update()
+        self.assertIn(str(tamanho + 2), str(painel.editor.cget("font")))
+        painel.zoom_do_texto_normal()
+        painel.update()
+        self.assertIn(str(tamanho), str(painel.editor.cget("font")))
+        self.assertIn(familia, str(painel.editor.cget("font")))
+
+    def test_o_zoom_nao_zera_o_desfazer(self) -> None:
+        """Redesenhar zeraria a pilha do Tk, e perder o desfazer da digitação por ter aproximado a
+        letra seria uma troca ruim -- por isso `_aplicar_zoom` só reconfigura etiquetas."""
+        painel = self._com_texto("uma frase para formatar")
+        painel.editor.mark_set(tk.INSERT, "end-1c")
+        painel.editor.insert(tk.INSERT, " digitado")
+        painel.update()
+        painel.aproximar_texto()
+        painel.desfazer()
+        self.assertNotIn("digitado", painel.texto_atual())
+
+    def test_o_zoom_para_no_limite_e_o_rodape_diz(self) -> None:
+        avisos: list[str] = []
+        painel = self._painel_com_status(avisos)
+        painel.desenhar(_pagina(_texto("uma frase")))
+        for _ in range(texto_panel.ZOOM_MAXIMO + 2):
+            painel.aproximar_texto()
+        self.assertEqual(painel._zoom_da_vista, texto_panel.ZOOM_MAXIMO)
+        self.assertTrue(any("limite" in mensagem for mensagem in avisos), avisos)
+
+    def test_a_quebra_troca_o_wrap_e_a_rolagem_horizontal(self) -> None:
+        painel = self._com_texto()
+        painel.pack()
+        painel.update()
+        # `winfo_manager` e não `winfo_ismapped`: a janela deste módulo é `withdraw`n, e nela nada
+        # é mapeado. O que se afirma é o **empacotamento**, que é o que o comando decide.
+        self.assertEqual(str(painel.editor.cget("wrap")), "word")
+        self.assertEqual(painel._rolagem_horizontal.winfo_manager(), "")
+        painel.quebra_var.set(False)
+        painel.quebrar_linha()
+        painel.update()
+        self.assertEqual(str(painel.editor.cget("wrap")), "none")
+        self.assertEqual(painel._rolagem_horizontal.winfo_manager(), "pack")
+
+    def test_a_quebra_nao_entra_no_documento(self) -> None:
+        painel = self._com_texto()
+        antes = painel.documento_atual()
+        painel.quebra_var.set(False)
+        painel.quebrar_linha()
+        self.assertEqual(painel.documento_atual(), antes)
+
+    def _painel_com_status(self, avisos: list[str]) -> TextoPanel:
+        assert _RAIZ is not None
+        return TextoPanel(
+            _RAIZ,
+            pdf_path=lambda: None,
+            page_index=lambda: 0,
+            on_status=avisos.append,
+            busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+        )
+
+
+class LexicoNaAbaTests(_ComJanela, unittest.TestCase):
+    """O léxico da S-209 conferindo a folha -- e não deixando rastro nenhum (S-266)."""
+
+    def _com_texto(self, conteudo: str) -> TextoPanel:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto(conteudo)))
+        return painel
+
+    def test_a_palavra_desconhecida_recebe_a_marca(self) -> None:
+        painel = self._com_texto("the smdy of the position")
+        painel.marcar_fora_do_lexico()
+        inicio = painel.indice_de(4)
+        self.assertIn(texto_panel.ETIQUETA_DO_LEXICO, painel.editor.tag_names(inicio))
+
+    def test_a_palavra_conhecida_nao_recebe_nada(self) -> None:
+        painel = self._com_texto("the smdy of the position")
+        painel.marcar_fora_do_lexico()
+        inicio = painel.indice_de(painel.documento_atual().para_texto().index("position"))
+        self.assertNotIn(texto_panel.ETIQUETA_DO_LEXICO, painel.editor.tag_names(inicio))
+
+    def test_a_marca_do_lexico_nao_entra_no_documento(self) -> None:
+        """**O item inteiro numa asserção.** A conferência é derivada do texto e do léxico; gravá-la
+        daria um `.cvtxt` com marcas de um léxico que já mudou. Como `corrida_de` ignora etiqueta
+        que não conhece, ela atravessa a gravação sem deixar rastro."""
+        painel = self._com_texto("the smdy of the position")
+        antes = painel.documento_atual()
+        painel.marcar_fora_do_lexico()
+        self.assertEqual(painel.documento_atual(), antes)
+
+    def test_a_marca_do_diagrama_nao_e_conferida(self) -> None:
+        """`[Diagrama 3]` é referência que o programa escreveu: marcá-la seria a aba avisando sobre
+        si mesma, em toda folha que tenha diagrama."""
+        painel = self._painel()
+        painel.desenhar(
+            _pagina(
+                _texto("the position"),
+                BlocoDeDiagrama(indice=2, bbox=(0.0, 0.0, 10.0, 10.0), confianca=0.9),
+            )
+        )
+        painel.marcar_fora_do_lexico()
+        marca = painel.editor.search("Diagrama", "1.0")
+        self.assertTrue(marca, "a marca não foi desenhada: o teste não mediria nada")
+        self.assertNotIn(texto_panel.ETIQUETA_DO_LEXICO, painel.editor.tag_names(marca))
+
+    def test_limpar_tira_todas_as_marcas(self) -> None:
+        painel = self._com_texto("the smdy of the position")
+        painel.marcar_fora_do_lexico()
+        painel.limpar_marcas_do_lexico()
+        self.assertEqual(painel.editor.tag_ranges(texto_panel.ETIQUETA_DO_LEXICO), ())
+
+    def test_conferir_de_novo_nao_acumula(self) -> None:
+        """Marcar duas vezes tem de dar o mesmo resultado: a segunda limpa antes de marcar."""
+        painel = self._com_texto("the smdy of the position")
+        painel.marcar_fora_do_lexico()
+        uma_vez = painel.editor.tag_ranges(texto_panel.ETIQUETA_DO_LEXICO)
+        painel.marcar_fora_do_lexico()
+        self.assertEqual(painel.editor.tag_ranges(texto_panel.ETIQUETA_DO_LEXICO), uma_vez)
+
+    def test_a_conta_vai_para_o_rodape(self) -> None:
+        """"3 de 412" e "80 de 412" pedem coisas diferentes de quem está conferindo a folha."""
+        avisos: list[str] = []
+        assert _RAIZ is not None
+        painel = TextoPanel(
+            _RAIZ,
+            pdf_path=lambda: None,
+            page_index=lambda: 0,
+            on_status=avisos.append,
+            busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+        )
+        painel.desenhar(_pagina(_texto("the smdy of the position")))
+        painel.marcar_fora_do_lexico()
+        self.assertTrue(any("fora do léxico" in mensagem for mensagem in avisos), avisos)
 
 
 if __name__ == "__main__":  # pragma: no cover

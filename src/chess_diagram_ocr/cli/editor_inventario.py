@@ -35,42 +35,12 @@ logger = logging.getLogger(__name__)
 
 DESTINO_PADRAO = PROJECT_ROOT / "docs" / "metrics" / f"editor_inventario_{date.today():%Y%m%d}.json"
 
-_APELIDOS: dict[str, str] = {
-    "abrir_texto": "abrir_documento",
-    "salvar_texto": "salvar_documento",
-    "salvar_texto_como": "salvar_documento",
-    "exportar_txt": "salvar",
-    "ler_folha": "ler",
-    "folha_da_pagina_aberta": "sincronizar_com_a_pagina",
-    "modo_bloco": "modo_bloco_mudou",
-    "cor_do_texto": "escolher_cor",
-    "realce": "escolher_realce",
-    "paleta_de_glifos": "alternar_paleta",
-    "negrito": "negrito",
-    "italico": "italico",
-    "sublinhado": "sublinhado",
-    "limpar_formato": "limpar_formato",
-    "limpar_cor": "limpar_cor",
-    "achar": "achar",
-    "substituir": "substituir",
-    "substituir_todos": "substituir_todos",
-    "inserir_figurina": "inserir_figurina",
-    "inserir_avaliacao": "inserir_avaliacao",
-    "estilo_titulo": "estilo_titulo",
-    "estilo_prosa": "estilo_prosa",
-    "estilo_notacao": "estilo_notacao",
-    "estilo_legenda": "estilo_legenda",
-    "exportar_md": "exportar_md",
-    "exportar_html": "exportar_html",
-    "exportar_rtf": "exportar_rtf",
-    "exportar_pdf_pesquisavel": "exportar_pdf_pesquisavel",
-}
-"""Comando -> método do painel que o atende.
+_APELIDOS: dict[str, str] = texto_panel.COMANDOS_DA_ABA
+"""Comando -> método do painel, **lido de quem tem os métodos** (`ui/texto_panel.py`).
 
-**Declarada, e conferida por teste**: o nome do comando e o do método divergem em oito casos, e
-todos por bom motivo (`ler_folha` é `ler` porque o painel só lê folha; `exportar_txt` é `salvar`
-porque era assim antes do catálogo). Uma tabela declarada é o que permite ao teste cobrar que todo
-comando do editor tenha dono -- e que nenhum método órfão finja ser comando."""
+O apelido continua aqui para o inventário e para os testes que o nomeiam; a declaração mudou de casa
+quando a janela passou a gerar as ligações dela em vez de repeti-las em `lambda`. Ver o docstring de
+`texto_panel.COMANDOS_DA_ABA`."""
 
 
 def _commit() -> str:

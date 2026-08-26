@@ -37,9 +37,12 @@ VALOR_DE_TESTE: dict[str, object] = {
     "negrito": True,
     "italico": True,
     "sublinhado": True,
+    "tachado": True,
     "cor": "nota",
     "realce": "destaque",
     "estilo": "titulo",
+    "alinhamento": "centro",
+    "corpo": 2,
     "fora_do_modelo": True,
 }
 """Um valor **não padrão** por atributo, para o ciclo ter o que perder.

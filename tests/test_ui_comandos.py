@@ -29,7 +29,18 @@ JANELA = RAIZ / "app_tkinter.py"
 COMANDOS_DO_EDITOR: tuple[str, ...] = (
     "abrir_texto",
     "achar",
+    "afastar_texto",
+    "alinhar_centro",
+    "alinhar_direita",
+    "alinhar_esquerda",
+    "aproximar_texto",
+    "aumentar_corpo",
+    "capitular",
+    "colar",
+    "copiar",
     "cor_do_texto",
+    "corpo_normal",
+    "diminuir_corpo",
     "estilo_legenda",
     "estilo_notacao",
     "estilo_prosa",
@@ -43,23 +54,38 @@ COMANDOS_DO_EDITOR: tuple[str, ...] = (
     "inserir_avaliacao",
     "inserir_figurina",
     "italico",
+    "justificar",
     "ler_folha",
     "limpar_cor",
     "limpar_formato",
+    "limpar_marcas_do_lexico",
+    "maiusculas",
+    "marcar_fora_do_lexico",
+    "minusculas",
     "modo_bloco",
     "negrito",
     "paleta_de_glifos",
+    "quebrar_linha",
     "realce",
+    "recortar",
     "salvar_texto",
     "salvar_texto_como",
+    "selecionar_tudo",
     "sublinhado",
     "substituir",
     "substituir_todos",
+    "tachado",
+    "zoom_do_texto_normal",
 )
-"""Os comandos que a Fase 37 acrescentou (S-240).
+"""Os comandos do editor de texto -- Fase 37 (S-240), Fase 41 (S-259 a S-262), Fase 42 (S-263 a
+S-266).
 
 Escritos aqui e não derivados de propósito: derivar do próprio catálogo faria o teste concordar
-com qualquer coisa que ele contivesse, inclusive com um comando que sumisse."""
+com qualquer coisa que ele contivesse, inclusive com um comando que sumisse.
+
+**Os dois agrupadores da barra não estão aqui, e é a mesma decisão de "Alinhar" e "Caixa" não serem
+comandos:** eles abrem uma lista, quem age é o item dela, e o rótulo dos dois mora em
+`ui/strings.py`. Ver o comentário do bloco da Fase 41 em `ui/comandos.py`."""
 
 WIDGETS_DE_COMANDO = ("Button", "Checkbutton")
 """Os dois que carregam comando. `Label`, `Spinbox` e `Combobox` mostram ou colhem estado."""
@@ -176,23 +202,43 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
         divergem = {registro.acao for registro in comandos.CATALOGO if registro.rotulo_curto}
         self.assertEqual(
             {
-                # Os oito da Fase 37 nascem divergentes, e é a divergência certa: o menu diz
+                # Os da Fase 37 e os da Fase 41 nascem divergentes, e é a divergência certa: o menu diz
                 # "Exportar o texto para .txt" porque é onde cabe dizê-lo, e o botão da aba diz
                 # "Salvar .txt" porque é o rótulo que a janela mostra hoje -- trocá-lo mudaria a
                 # aba sem pedido, que é o achado 1 do ROADMAP_APARENCIA.
                 "abrir_texto",
+                "afastar_texto",
+                "alinhar_centro",
+                "alinhar_direita",
+                "alinhar_esquerda",
+                "aproximar_texto",
+                "aumentar_corpo",
+                "capitular",
+                "colar",
+                "copiar",
+                "corpo_normal",
+                "diminuir_corpo",
                 "estilo_legenda",
                 "estilo_notacao",
                 "estilo_prosa",
                 "estilo_titulo",
                 "exportar_txt",
                 "folha_da_pagina_aberta",
+                "justificar",
                 "ler_folha",
                 "limpar_cor",
                 "limpar_formato",
+                "limpar_marcas_do_lexico",
+                "maiusculas",
+                "marcar_fora_do_lexico",
+                "minusculas",
                 "modo_bloco",
                 "paleta_de_glifos",
+                "quebrar_linha",
+                "recortar",
                 "salvar_texto",
+                "selecionar_tudo",
+                "zoom_do_texto_normal",
                 "abrir_pdf",
                 "cancelar_exportacao",
                 "desfazer",

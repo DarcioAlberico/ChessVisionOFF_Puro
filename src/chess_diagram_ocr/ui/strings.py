@@ -139,6 +139,20 @@ pergunta que ele responde -- com que desenho as peças aparecem -- não é a per
 PASTA_DE_PECAS = "Pasta de peças"
 """O caminho dos 12 PNGs do usuário. Só vale com o conjunto "Pasta do usuário" escolhido."""
 
+ALINHAR = "Alinhar"
+CAIXA = "Caixa"
+"""Os dois agrupadores da barra da aba de texto (S-259/S-262). **Não são comandos.**
+
+A regra 4 da SPEC_EDITOR manda todo comando do editor para `ui/comandos.py`, e estes dois não são
+comandos: são o rótulo do botão que **abre a lista** de quatro alinhamentos e de três caixas. Quem
+faz alguma coisa é o item da lista, e cada um deles é um comando do catálogo, com item de menu
+próprio.
+
+A diferença tem consequência medida: um comando no catálogo precisa de casa numa das três peles ou
+de item de menu (`ui/alcance.py`), e um agrupador que fosse comando obrigaria o menu a ter uma linha
+"Alinhamento…" ao lado dos quatro itens que ela abriria -- a redundância que o menu existe para não
+ter. É a mesma decisão que `LADO_A_JOGAR` e `CONJUNTO` já são: rótulo de grupo, e não de ação."""
+
 SETA = "→"
 """Os glifos de navegação, no lugar de `|<`, `<<`, `>>`, `>|` e `->` (S-166).
 

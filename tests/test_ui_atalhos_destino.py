@@ -114,10 +114,68 @@ class NenhumaTeclaNovaTests(unittest.TestCase):
         self.assertTrue(atalhos.por_acao["refazer"].no_editor)
 
     def test_as_teclas_do_editor_estao_declaradas_na_tabela(self) -> None:
-        """As três de formato não são atalhos da janela e mesmo assim são declaradas em
-        `ui/atalhos.py`: neste projeto, tecla escrita num painel é o que o teste da legenda proíbe."""
-        self.assertEqual(set(atalhos.TECLAS_DO_EDITOR), {"negrito", "italico", "sublinhado"})
+        """As do editor não são atalhos da janela e mesmo assim são declaradas em `ui/atalhos.py`:
+        neste projeto, tecla escrita num painel é o que o teste da legenda proíbe."""
+        self.assertEqual(
+            set(atalhos.TECLAS_DO_EDITOR),
+            {
+                "negrito",
+                "italico",
+                "sublinhado",
+                "alinhar_esquerda",
+                "alinhar_centro",
+                "alinhar_direita",
+                "justificar",
+                "aumentar_corpo",
+                "diminuir_corpo",
+                "selecionar_tudo",
+                "aproximar_texto",
+                "afastar_texto",
+            },
+        )
         self.assertEqual(atalhos.TECLAS_DO_EDITOR["italico"], "<Control-i>")
+
+    def test_toda_sobreposicao_entre_as_duas_tabelas_esta_declarada(self) -> None:
+        """**As duas tabelas são desligadas, e é isso que as faz poder se sobrepor.**
+
+        `ATALHOS` passa pela guarda de foco de `ui/shortcuts.py`; `TECLAS_DO_EDITOR` é `Text.bind` e
+        só vale dentro do widget -- mas os dois `bind` existem ao mesmo tempo, e a mesma sequência
+        nas duas põe a tecla com dois donos quando o cursor está no texto. Nenhum dos dois lados
+        olhava para o outro; este teste é o que os olha, e ele exige **declaração**, não ausência --
+        ver `atalhos.SOBREPOSICOES_NO_EDITOR`."""
+        sobrepostas = set(atalhos.TECLAS_DO_EDITOR.values()) & set(atalhos.por_sequencia)
+        self.assertEqual(
+            sobrepostas,
+            set(atalhos.SOBREPOSICOES_NO_EDITOR),
+            "sobreposição entre as duas tabelas sem declaração em SOBREPOSICOES_NO_EDITOR",
+        )
+
+    def test_a_sobreposicao_declarada_nomeia_a_acao_certa(self) -> None:
+        """A declaração diz **que** ação da janela a tecla tem; errar isso a tornaria inútil."""
+        for sequencia, acao in atalhos.SOBREPOSICOES_NO_EDITOR.items():
+            with self.subTest(sequencia=sequencia):
+                self.assertEqual(atalhos.acao_de(sequencia), acao)
+
+    def test_a_tecla_sobreposta_e_cedida_pela_guarda_dentro_do_editor(self) -> None:
+        """**A razão de a sobreposição ser aceitável, virada teste.**
+
+        Ela só vale porque a guarda cede a tecla a todo widget de texto (S-20) *e* porque a aba não
+        toma aquela ação para si (S-244). Se um dos dois deixar de valer, a tecla passa a ter dois
+        donos de verdade -- e é aqui que isso aparece."""
+        self.assertIn(tk.Text, shortcuts.TEXT_ENTRY_WIDGETS)
+        for acao in atalhos.SOBREPOSICOES_NO_EDITOR.values():
+            with self.subTest(acao=acao):
+                self.assertNotIn(acao, texto_panel.ACOES_PROPRIAS)
+
+    def test_toda_tecla_do_editor_tem_metodo_no_painel(self) -> None:
+        """O nome do comando **é** o nome do método (`texto_panel._ligar_teclas`, por `getattr`).
+
+        Uma tecla nova sem método levantaria `AttributeError` na montagem da aba -- e a montagem da
+        aba acontece na abertura da janela, o que faria uma tecla mal declarada derrubar o programa
+        inteiro. Aqui isso custa um teste sem Tk."""
+        for acao in atalhos.TECLAS_DO_EDITOR:
+            with self.subTest(acao=acao):
+                self.assertTrue(hasattr(TextoPanel, acao), f"{acao} não tem método no painel")
 
     def test_a_acao_sai_da_sequencia(self) -> None:
         """É por aqui que a guarda descobre que ação a tecla pede, sem receber o nome de fora."""

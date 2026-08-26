@@ -579,8 +579,32 @@ lado a jogar; este le a **folha inteira** -- colunas, paragrafos, tabelas, com o
 lugar em que eles aparecem no texto.
 
 Na janela, a aba **Texto** (entre a Revisao e o Dataset) abre um editor com o texto da folha e a
-miniatura de cada diagrama no meio dele. O texto e editavel e sai em `.txt` pelo botao `Salvar`.
-Sem janela, o mesmo caminho e o `cvoff-texto-pagina`.
+miniatura de cada diagrama no meio dele. Sem janela, o mesmo caminho e o `cvoff-texto-pagina`.
+
+**As ferramentas do editor** (Fases 37 e 41): negrito, italico, sublinhado e tachado; cor da letra
+e realce; estilo de paragrafo (titulo, prosa, notacao, legenda); **alinhamento** -- esquerda,
+centro, direita, justificado --, que vale para o paragrafo inteiro e **leva a figura junto**, e e
+assim que se centraliza um diagrama; **corpo** por degraus (`A+` e `A-`, e "voltar ao normal"), que
+sobe e desce sobre a fonte do sistema em vez de cravar um tamanho; **caixa** do trecho
+(MAIUSCULAS, minusculas, Iniciais Maiusculas), util no nome proprio que o classificador leu em
+versalete; achar e substituir; recortar, copiar, colar e selecionar tudo; e a paleta de figurinas
+e simbolos.
+
+**O que ajuda a conferir** (Fase 42): **zoom** do texto na tela (`Ctrl++` e `Ctrl+-`), que aumenta
+a letra para ler **sem** mudar o documento; **quebrar linha**, que se desliga para ver uma linha de
+lances inteira; e **Conferir palavras**, que marca com uma caixa o que o lexico de 363 mil palavras
+nao conhece -- e **nao corrige nada**. `study` lido como `smdy` aparece; `Nf3`, `[Diagrama 3]` e
+`poSition` nao, porque notacao nao e palavra, a marca do diagrama foi o programa que escreveu, e
+quem separa `s` de `S` e a altura do box, com medicao. A regra e a mesma da S-209: **palavra fora do
+dicionario e sinalizada, nunca aproximada da mais parecida** -- dos 18 lances tao maltratados que
+caem no lexico, nenhum esta no dicionario, e corrigir automaticamente seriam 18 lances reescritos
+como palavra.
+
+Nada disso vive so na tela: **todo atributo esta no documento**, e por isso ele sobrevive a salvar,
+reabrir e exportar. O `.cvtxt` guarda o documento inteiro (formatacao, faixa de confianca, diagramas
+e a folha que os originou); `.txt`, `.md`, `.html`, `.rtf` e o PDF pesquisavel saem pelo menu
+**Texto**, e cada formato **declara** o que nao sabe expressar em vez de perde-lo em silencio -- o
+`.md` nao tem alinhamento nem corpo, e o relatorio da exportacao conta quantos trechos cairam.
 
 **Quem le por padrao e o classificador treinado aqui, e nao a camada de texto do PDF.** A camada
 nao erra *um pouco* na notacao de xadrez: ela **nao a representa**. Medido em 2026-08-24 sobre 16
@@ -920,7 +944,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 | S-178 a S-217 | [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) |
 | S-219 a S-234 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
-| S-235 a S-258 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
+| S-235 a S-266 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -988,11 +1012,16 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   plano para transforma-la num editor: a aba tem 6 controles, 3 tags de cor e **1** formato de
   saida, e devolve uma `str` -- dai a regra de que todo atributo (negrito, italico, cor, estilo)
   mora no documento e nao no widget, porque tag do Tk nao sobrevive ao botao Salvar
-- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 40 (S-235 a S-258):
+- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 42 (S-235 a S-266):
   o documento rico como dado, o italico que o leitor ja mede e joga fora, o negrito medido pela
   espessura do traco (a camada declara estilo em 14 dos 41 livros), o arquivo que reabre com
   diagrama e faixa, a paleta gerada das 314 classes do modelo, `Ctrl+S` no editor -- que hoje nao
-  faz nada --, e a exportacao para `.md`, `.html`, `.rtf` e PDF pesquisavel
+  faz nada --, e a exportacao para `.md`, `.html`, `.rtf` e PDF pesquisavel. A **Fase 41** e a que
+  fecha a barra de ferramentas: alinhamento de paragrafo (que centraliza a figura junto, pela unica
+  fronteira que a marca do diagrama abre), corpo por degraus derivados da fonte do sistema, tachado
+  e troca de caixa. A **Fase 42** saiu da leitura de dois editores de texto guardados como
+  referencia -- area de transferencia, zoom de leitura, modo de quebra de linha --, mais o unico
+  item do corretor ortografico deles que cabia aqui: o lexico que **confere e nao troca**
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
