@@ -73,31 +73,62 @@ lista conserta isso; a caixa do pingo, sim.
 
 from __future__ import annotations
 
-import gzip
-import re
-from collections.abc import Iterator, Sequence
-from functools import lru_cache
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 
-from ..config import PROJECT_ROOT
+from . import lexico as _lexico
 from .boxes import Caixa
 
-PASTA_DO_LEXICO = PROJECT_ROOT / "assets" / "lexico"
+# **As constantes e as perguntas puras sobre palavra moram em `text/lexico.py`** (S-209), e são
+# importadas aqui em vez de repetidas. A fronteira: lá está o que o dicionário **sabe** e o que ele
+# **decide sozinho** (a lista, a palavra desconhecida, a hifenizada da quebra de linha); aqui está
+# o que ele **desempata** entre os candidatos que o modelo já pôs no topo. Duas cópias de
+# `e_palavra` divergiriam no primeiro ajuste, e a divergência sairia como marca na tela discordando
+# da correção no texto -- o mesmo defeito que este projeto persegue nos rótulos e nas teclas.
+from .lexico import (
+    CAMINHO_ACERVO,
+    CAMINHO_IDIOMA,
+    CAMINHO_NOMES,
+    CAMINHO_PADRAO,
+    EMPACOTADOS,
+    FRACAO_DE_LETRAS,
+    MIN_TAMANHO,
+    PALAVRA,
+    PASTA_DO_LEXICO,
+    PONTUACAO_DE_BORDA,
+    conhecida,
+    desconhecidas,
+    e_palavra,
+    palavras_de,
+)
 
-CAMINHO_ACERVO = PASTA_DO_LEXICO / "acervo.txt.gz"
-CAMINHO_IDIOMA = PASTA_DO_LEXICO / "idioma.txt.gz"
-CAMINHO_NOMES = PASTA_DO_LEXICO / "nomes.txt.gz"
-
-CAMINHO_PADRAO = CAMINHO_ACERVO
-"""O nome antigo do arquivo do acervo, quando ele era o único. Mantido para quem o importa."""
-
-EMPACOTADOS = (CAMINHO_ACERVO, CAMINHO_IDIOMA, CAMINHO_NOMES)
-"""Os três arquivos que `carregar()` sem argumento une. Ver a tabela no cabeçalho."""
-
-MIN_TAMANHO = 4
-"""Menos letras que isto não é palavra: é notação. Ver a guarda 2 no cabeçalho."""
+__all__ = [
+    "CAMINHO_ACERVO",
+    "CAMINHO_IDIOMA",
+    "CAMINHO_NOMES",
+    "CAMINHO_PADRAO",
+    "EMPACOTADOS",
+    "FRACAO_DE_LETRAS",
+    "MAX_TROCAS",
+    "MIN_TAMANHO",
+    "PALAVRA",
+    "PASTA_DO_LEXICO",
+    "PISO_DE_CANDIDATO",
+    "PONTUACAO_DE_BORDA",
+    "TOPO",
+    "alternativas",
+    "carregar",
+    "conhecida",
+    "corrigir",
+    "desconhecidas",
+    "e_palavra",
+    "escolher",
+    "palavras",
+    "palavras_de",
+    "variantes",
+]
 
 MAX_TROCAS = 2
 """Quantas posições podem mudar de uma vez. `wi//` precisa de duas; `p/ayer`, de uma."""
@@ -112,142 +143,15 @@ Sem piso, a busca inclui classes que o modelo praticamente descartou, e o dicion
 escolher entre ruído -- que é a porta de entrada da correção por semelhança que este módulo
 existe para não fazer."""
 
-PALAVRA = re.compile(r"^[A-Za-zÀ-ÿ]+(?:['’-][A-Za-zÀ-ÿ]+)*$")
 
-
-@lru_cache(maxsize=8)
 def carregar(caminho: Path | None = None, *, nomes: bool = True) -> frozenset[str]:
-    """As palavras do léxico, dobradas para minúscula. Vazio quando não há arquivo nenhum.
+    """As palavras do léxico. **É `lexico.carregar` com a assinatura que este módulo sempre teve.**
 
-    Sem argumento são **as listas empacotadas do projeto**, unidas: acervo, idioma e nomes. Com um
-    caminho é aquele arquivo e só ele -- é como a medição compara uma lista contra outra.
-
-    `nomes=False` deixa a lista de nomes próprios de fora. A escolha existe porque a S-209 a mediu:
-    nome próprio baixa o alarme falso de 12,1% para 5,8% **e esconde erro**, e quem sabe o perfil
-    do livro é quem chama. O padrão os inclui -- medido em 40 páginas, eles não mudam um caractere
-    do que sai, e protegem 73 palavras de serem tocadas. Ver o cabeçalho.
-
-    **Ausente não é erro**, e é a mesma regra dos outros recursos opcionais deste projeto: sem
-    léxico o leitor devolve o que o modelo leu, que é o que ele sempre fez.
-
-    Em cache porque um livro de 300 páginas o consultaria 300 vezes, e ele não muda entre elas.
+    Fica como envoltório em vez de virar um alias porque `nomes: bool` é o que os chamadores deste
+    módulo escrevem desde a S-209, e trocá-los por `perfil=` mudaria seis lugares para não mudar
+    nada. O perfil é a forma nova, e é ela que `PERFIS` documenta.
     """
-    if caminho is not None:
-        return _de_um_arquivo(caminho)
-    escolhidos = EMPACOTADOS if nomes else tuple(c for c in EMPACOTADOS if c != CAMINHO_NOMES)
-    return frozenset().union(*(_de_um_arquivo(c) for c in escolhidos))
-
-
-def _de_um_arquivo(caminho: Path) -> frozenset[str]:
-    """Um `.txt.gz` de uma palavra por linha, ou o conjunto vazio se ele não estiver lá."""
-    try:
-        with gzip.open(caminho, "rt", encoding="utf-8") as fh:
-            return frozenset(linha.strip().casefold() for linha in fh if linha.strip())
-    except OSError:
-        return frozenset()
-
-
-def conhecida(palavra: str, lexico: frozenset[str]) -> bool:
-    """A palavra está no léxico, ignorando caixa? Pontuação nas pontas não é considerada."""
-    return palavra.strip(".,;:!?()[]'\"").casefold() in lexico
-
-
-FRACAO_DE_LETRAS = 0.6
-"""Quanto do token tem de ser letra para ele ser candidato a palavra.
-
-**Não pode ser "só letras", e essa foi a primeira coisa que quebrou aqui.** O token que interessa
-é justamente o que veio *errado* -- `p/ayer` tem uma barra no meio, e uma régua de só-letras o
-rejeita antes de olhar. O que separa palavra de notação não é a pureza: é o dígito (guarda 1) e a
-proporção de letras."""
-
-
-PONTUACAO_DE_BORDA = ".,;:!?()[]'\""
-"""O que se apara das pontas de um token antes de perguntar se ele é palavra.
-
-Uma constante, e não o literal repetido em `e_palavra` e em `desconhecidas`: as duas têm de aparar
-**a mesma coisa**, senão a conferência marca `[Diagrama` e a correção não o vê -- duas réguas sobre
-o mesmo token, que é o defeito que este projeto persegue nos rótulos e nas tabelas de tecla."""
-
-
-def e_palavra(texto: str) -> bool:
-    """Isto é candidato a palavra? Ver as guardas 1 e 2 no cabeçalho.
-
-    Três condições: comprimento, **nenhum dígito** -- é o que mantém lance fora --, e letras na
-    maioria. A palavra *lida* pode ter um caractere estranho no meio; é para isso que se corrige.
-    """
-    limpo = texto.strip(PONTUACAO_DE_BORDA)
-    if len(limpo) < MIN_TAMANHO or any(c.isdigit() for c in limpo):
-        return False
-    letras = sum(1 for c in limpo if c.isalpha())
-    return letras / len(limpo) >= FRACAO_DE_LETRAS
-
-
-def palavras_de(texto: str) -> tuple[str, ...]:
-    """Os tokens de `texto` que **são palavra** por `e_palavra`, já aparados (S-266).
-
-    É o denominador da conferência: "3 fora do léxico" não diz nada sem "de 412". Sai do mesmo laço
-    de `desconhecidas`, porque duas contagens com réguas diferentes dariam uma fração que não fecha.
-
-    **`MIN_TAMANHO` vale aqui também**, e por isso `the` e `of` não entram na conta: a guarda 2
-    existe para manter `Kf` e `Nc` fora, e afrouxá-la só para o denominador faria a fração medir
-    duas coisas."""
-    return tuple(palavra for _inicio, _fim, palavra in _tokens_de_palavra(texto))
-
-
-def _tokens_de_palavra(texto: str) -> Iterator[tuple[int, int, str]]:
-    """`(inicio, fim, palavra aparada)` de cada token que é candidato a palavra.
-
-    O intervalo é o da palavra **aparada**, e não o do token bruto: numa marca `[Diagrama 3]` o que
-    se conferiria seria `[Diagrama`, e o que se sublinharia na tela incluiria o colchete."""
-    for casamento in _TOKEN.finditer(texto):
-        bruto = casamento.group()
-        limpo = bruto.strip(PONTUACAO_DE_BORDA)
-        if not limpo or not e_palavra(limpo):
-            continue
-        inicio = casamento.start() + (len(bruto) - len(bruto.lstrip(PONTUACAO_DE_BORDA)))
-        yield (inicio, inicio + len(limpo), limpo)
-
-
-def desconhecidas(
-    texto: str,
-    lexico: frozenset[str],
-    *,
-    ignorar: Sequence[tuple[int, int]] = (),
-) -> tuple[tuple[int, int, str], ...]:
-    """Os trechos de `texto` que são palavra e o léxico **não** conhece (S-266).
-
-    Devolve `(inicio, fim, palavra)` em deslocamento de caractere -- que é a moeda das ferramentas
-    do editor (`text/rico.py`). Não propõe nada, não ordena por semelhança e não olha o modelo: é a
-    pergunta mais simples que este módulo sabe responder, e é a única que a S-209 autoriza sobre
-    texto já lido. *"Palavra fora do dicionário é sinalizada, nunca aproximada da mais parecida."*
-
-    **O que não é palavra fica de fora**, e é `e_palavra` quem decide: `Nf3`, `1.d4` e `15` não são
-    candidatos a nada. Sem essa guarda a folha inteira ficaria marcada, e uma marcação que acende em
-    tudo não distingue coisa nenhuma.
-
-    `ignorar` são intervalos que não se confere, e o cliente é a aba de texto: `[Diagrama 3]` é
-    **referência ao diagrama**, e não texto do livro. Conferir a marca marcaria uma palavra que o
-    programa escreveu, e o aviso seria sobre o próprio programa. Fica como parâmetro em vez de uma
-    regra aqui dentro porque quem sabe o que é marca é o documento, e este módulo não o conhece.
-
-    **A caixa não é conferida aqui.** O léxico compara em `casefold`, então `poSition` passa como
-    conhecida -- e é o certo: quem separa `s` de `S` é a altura do box na S-211, com medição, e uma
-    segunda régua discordando dela na tela seria pior que nenhuma.
-    """
-    vetados = tuple((min(a, b), max(a, b)) for a, b in ignorar)
-    achados: list[tuple[int, int, str]] = []
-    for inicio, fim, palavra in _tokens_de_palavra(texto):
-        if conhecida(palavra, lexico):
-            continue
-        if any(inicio < veto_fim and fim > veto_inicio for veto_inicio, veto_fim in vetados):
-            continue
-        achados.append((inicio, fim, palavra))
-    return tuple(achados)
-
-
-_TOKEN = re.compile(r"[^\s]+")
-r"""O que se separa por espaço. **Não** é `\w+`: `Black's` e `Saint-Amant` são um token só, e é
-assim que `PALAVRA` e `e_palavra` já os leem."""
+    return _lexico.carregar("completo" if nomes else "sem-nomes", caminho=caminho)
 
 
 def alternativas(

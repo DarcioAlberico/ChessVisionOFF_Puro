@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **38 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **39 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -312,6 +312,7 @@ cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor glifo --json saida.json
 # proprio classificador ja pos no topo. Medido em docs/metrics/texto_dicionario.json.
 cvoff-texto-lexico "Lista de Palavras"
 cvoff-texto-lexico "Lista de Palavras" --dry-run   # conta e imprime, sem escrever nada
+cvoff-texto-lexico --medir --com-glifo             # o alarme falso por perfil, e a juncao (S-209)
 
 # Quanto o texto soma a varredura, etapa a etapa (S-215). As duas pontas da divisao sao medidas
 # na mesma corrida -- a varredura de diagramas como ela e hoje, e a leitura de texto --, porque
@@ -331,6 +332,15 @@ cvoff-texto-semelhanca --amostras 3000 --curva
 # 146 diagramas assumidos (2,1%), e o motivo de nao ser mais e que os livros que declaram o lado
 # por diagrama ja tem camada de texto, onde o motor nem chega a ser chamado.
 cvoff-texto-lado --livros 10 --paginas 8
+
+# O livro com a camada de texto invisivel do que o motor leu (S-210). A pagina nao muda um pixel
+# -- `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra, e nao
+# o paragrafo. Figurina entra como letra do algebrico ingles: a camada e um indice, e nao uma
+# renderizacao, e "buscar Nf3 num livro de xadrez" e o problema que o item existe para resolver.
+# Linha que o motor leu abaixo do piso NAO entra: a camada e invisivel, e um acerto de busca falso
+# nao tem como ser desmentido.
+cvoff-texto-pesquisavel "PDF/AAGAARD - Practical Chess Defence.pdf" --paginas 58-62
+cvoff-texto-pesquisavel LIVRO.pdf --paginas 1-40 --seco   # diz o que faria, sem gravar
 
 # O que a mao corrigiu nos .cvtxt do editor de texto, agrupado por troca (S-239). A correcao
 # **nao** esta gravada no arquivo: ele guarda os dois lados -- a pagina que o motor leu e o que

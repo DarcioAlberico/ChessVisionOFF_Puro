@@ -2950,7 +2950,7 @@ houver um comando de linha que valide o livro inteiro de uma vez; até lá, seri
 
 ---
 
-## S-209 · O léxico sinaliza, e nunca troca ◐ parcial (2026-08-25)
+## S-209 · O léxico sinaliza, e nunca troca ✅ implementada (2026-08-26)
 
 **Problema.** Depois de fatiar, sobra a prosa. Um `Bib1i0g[aPhY` na prosa é um erro que o
 dicionário vê e a legalidade não.
@@ -3063,15 +3063,100 @@ Números, conjunto e reprodução em [`docs/metrics/texto_lexico_pgn.json`](metr
 **Um clone limpo não reconstrói estes dois `.txt.gz`**: as listas de origem vivem em
 `Lista de Palavras/`, que não é versionada — ver `assets/lexico/PROCEDENCIA.md`.
 
-**O que falta para o item fechar:** `text/lexico.py`, a sinalização da palavra desconhecida, e a
-junção da hifenizada na quebra de linha.
+
+### O que fechou o item em 2026-08-26: `text/lexico.py`, a sinalização e a junção
+
+**O módulo nasceu tirando código de `dicionario.py`, e não escrevendo código novo.** A fronteira
+entre os dois é o que autoriza os dois a existirem, e ela agora é estrutural em vez de estar só
+escrita:
+
+    lexico.py       o que o dicionário SABE, e o que ele DECIDE sozinho
+                    -- a lista, a palavra desconhecida, a hifenizada da quebra de linha
+    dicionario.py   o que ele DESEMPATA entre os candidatos que o modelo já pôs no topo
+
+`carregar`, `conhecida`, `e_palavra`, `palavras_de` e `desconhecidas` **mudaram de arquivo, não de
+comportamento** -- `dicionario` as importa e reexporta, e as medições da S-209 e da S-266 não se
+movem. Duas cópias de `e_palavra` divergiriam no primeiro ajuste, e a divergência sairia como marca
+na tela discordando da correção no texto.
+
+**O perfil virou dado, que é o critério de aceite.** `PERFIS` mapeia nome -> tupla de arquivos, e
+acrescentar uma lista é acrescentar uma linha ali. Os quatro: `completo`, `sem-nomes`, `so-idioma`,
+`so-acervo`.
+
+#### A sinalização precisou de uma porta mais larga que a da correção, e o motivo é o exemplo do próprio item
+
+`e_palavra` proíbe **qualquer dígito** -- guarda certa no caminho da *correção*, e é a cicatriz que
+esta spec registra: lance maltratado não pode virar palavra. Só que a mesma proibição derruba o
+exemplo com que este item abre:
+
+    Bib1i0g[aPhY     dois dígitos entre dez letras -- e `e_palavra` o descarta antes de olhar
+
+Então o item entregaria uma sinalização que não sinaliza o caso que a motiva. **A pergunta certa
+não é "tem dígito?", é "isto é notação?"** -- e essa já tinha sido respondida com medição pela
+S-208. `suspeita` troca o veto de dígito por `notacao.peso_de_notacao`, e `sinalizar` é a entrada
+do item; `desconhecidas` fica como está, com a porta estreita, porque é ela que o editor usa desde
+a S-266 e mudá-la em silêncio mudaria o que a aba sublinha.
+
+**O que autoriza duas portas é o custo de errar ser diferente dos dois lados**: marcar um lance por
+engano custa um sublinhado que a pessoa ignora; *corrigir* um lance por engano custa um lance
+reescrito no PGN.
+
+#### O alarme falso foi remedido aqui, e ele confirma o número de lá
+
+Sobre 5 livros de camada **editorada** -- onde o texto está certo, e portanto toda marca é falso
+alarme --, 4.038 linhas, 2.918 tokens candidatos:
+
+| perfil | listas | alarme falso |
+|---|---|---:|
+| `completo` | acervo + idioma + nomes | **5,65%** |
+| `sem-nomes` | acervo + idioma | 6,79% |
+| `so-acervo` | acervo | 7,09% |
+| `so-idioma` | idioma | **60,01%** |
+
+**A S-209 citou 5,8% com os nomes e 12,1% sem, *medido lá*. Aqui o `completo` dá 5,65%** -- a
+direção e quase a magnitude se confirmam, e a regra nº 1 desta spec fica satisfeita com número
+próprio.
+
+**E um achado que o plano não previa: a lista de idioma sozinha não serve neste acervo.** 60% de
+alarme falso, contra 7,09% do acervo sozinho. As 10.010 palavras de `idioma.txt.gz` são de listas
+de fora e não cobrem os oito idiomas das páginas; quem carrega o peso é `acervo.txt.gz`, que saiu
+da camada editorada destes livros. Não muda decisão nenhuma -- o padrão é `completo` --, mas
+desmente a leitura de que as duas listas empacotadas são a espinha do léxico.
+
+#### A junção fecha, e o terceiro guarda é o que salva a prosa de xadrez
+
+As três condições: a linha da esquerda termina em hífen, **a junção sem o hífen está no léxico**, e
+**a forma com o hífen não está**.
+
+A segunda recusa `Xue-` + `Fierro` e `Saint-` + `Amant`, que são os dois casos que o critério de
+aceite nomeia. A terceira não estava no plano e é a que mais trabalha neste acervo: **das 5 quebras
+hifenizadas das camadas editoradas, as 5 são termo de xadrez ou lance** -- `f-pawn`, `a-pawn`,
+`h-file`, `h6-h5`, `a2-♗` --, e três delas *juntariam* (`fpawn`, `apawn` e `hfile` estão na lista,
+porque saíram da camada do próprio acervo). Sem a terceira condição, a passada apagaria a grafia
+que o livro escolheu na construção mais comum da prosa de xadrez.
+
+**A população da hifenização não está na camada editorada, e a medição teve de ir buscá-la.** As
+camadas editoradas do acervo vêm de conversão de ebook: **5 quebras em 4.038 linhas**, e as 5 são
+as de xadrez do parágrafo acima. Onde a hifenização de diagramação mora é o livro tipografado de
+coluna justificada, lido pelo classificador -- e ali, em 8 folhas do `AAGAARD` e do `Euwe`
+(466 linhas), **9 quebras hifenizadas e 2 junções**: `keines-`+`wegs` e `ei-`+`nen`, as duas
+certas.
+
+**As 7 recusadas são, na maioria, quebras legítimas cujo segundo pedaço o OCR leu errado**
+(`s♔ne1l`, `Co11e-`, `m6g-`): o léxico não confirma a junção, e por isso não junta -- que é a regra
+do item funcionando, e não uma falta dela. O teto da junção neste acervo é, portanto, o **teto da
+leitura**: ela conserta a quebra quando as duas metades saíram legíveis, e cala quando não. Numa
+folha em que o CER caia, a junção sobe junto, sem uma linha de código.
+
+`cvoff-texto-lexico --medir --com-glifo` refaz as duas tabelas;
+[`docs/metrics/texto_lexico.json`](metrics/texto_lexico.json) as guarda.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.lexico:carregar`,
 `arquivo:assets/lexico/idioma.txt.gz`.
 
 ---
 
-## S-210 · A camada de texto invisível: o PDF pesquisável ⬜ planejada
+## S-210 · A camada de texto invisível: o PDF pesquisável ✅ implementada (2026-08-26)
 
 **Problema.** Os livros do acervo ou não têm camada de texto, ou têm uma que erra a notação
 inteira. Um leitor não consegue buscar `Nf3` num livro de xadrez — que é a coisa mais óbvia a
@@ -3112,6 +3197,60 @@ a camada só para o alfabeto latino e registra o limite.
 **Testes.** `test_a_pagina_nao_muda_um_pixel`;
 `test_a_busca_encontra_a_palavra_no_lugar_certo`;
 `test_o_glifo_sem_votacao_folgada_nao_entra`; `test_o_dry_run_nao_escreve`.
+> **O caminho vizinho não tem material neste acervo, e a medição é o que sustenta a recusa
+> (2026-08-26).** A spec descreve o `ToUnicode` como o caminho mais barato para o PDF já digital
+> cujo defeito é só de mapeamento, e cita 216 pares no Yusupov e 101 no Aagaard -- *medido lá*.
+>
+> Medido aqui, 40 folhas de cada um dos 14 primeiros livros do acervo: **zero `U+FFFD`.** Nenhum,
+> em nenhum deles. O defeito de mapeamento **deste** acervo é outro, e a S-211 já o tinha medido:
+> a camada não devolve losango, devolve o **codepoint cru da fonte de xadrez** -- `2.♘xd4` sai como
+> `2.l0xd4` no AAGAARD. Não há o que reescrever numa tabela que existe e está preenchida com outra
+> coisa.
+>
+> Então o reescritor **não foi construído**, e `pdf_pesquisavel.pares_sem_mapeamento` é a medição
+> que sustenta a recusa -- regra nº 1 desta spec. Ela fica no disco porque um acervo com um livro à
+> la Yusupov faria o número deixar de ser zero, e `cvoff-texto-pesquisavel` a roda em toda corrida:
+> se um livro trouxer pares, ele os imprime.
+>
+> **A trava herdada mudou de matéria, e não de regra.** *"Glifo cuja votação não fecha continua
+> `U+FFFD` e vai para o relatório com o motivo"* existe porque trocar o losango por um palpite
+> errado é pior que o losango, que pelo menos se vê. A matéria aqui é a **linha lida**, e a regra
+> cai igual: linha abaixo de `PISO_DA_CAMADA` não entra, e o relatório diz por quê. O argumento é o
+> mesmo e é mais forte, porque a camada é **invisível**: quem busca `Nf3` e recebe um acerto
+> acredita no acerto, e não há nada na tela para desmenti-lo. O piso é o `ocr.MIN_CONFIDENCE` da
+> S-42, e não um número novo.
+>
+> **A camada é por LINHA, e é isso que faz o segundo critério de aceite ser verdade.** A `camada`
+> da S-253 escreve por bloco, e ali é o certo -- o `DocumentoRico` só tem bbox de bloco. Aqui a
+> `PaginaLida` tem bbox de linha, e com um retângulo de parágrafo a busca acharia a palavra e
+> devolveria o parágrafo inteiro, que é a mesma coisa que não saber onde ela está. Medido nas
+> folhas 58-60 do `AAGAARD`: a busca por `Nf3` devolve **um** retângulo de 12,4 x 11,0 pt --
+> tamanho de palavra.
+>
+> **E a fonte, que a spec declara como bloqueio, foi contornada sem quebrar a declaração.** A base
+> 14 do PDF cobre Latin-1 e não tem `♘`; nenhuma fonte é copiada para cá antes de a licença ser
+> conferida, e isso continua valendo. O que mudou é o que se escreve: **a camada é um índice, e não
+> uma renderização**, então `♘` entra nela como `N`. A página continua mostrando a figurina; o que
+> muda é o que a busca encontra -- e "buscar `Nf3` num livro de xadrez" é literalmente o problema
+> com que o item abre.
+>
+> A ambiguidade está declarada: a letra depende do idioma (`N`/`S`/`C`/`T`), e a tabela escolhe o
+> **inglês**, que é a única convenção comum entre os oito idiomas do acervo. `--sem-figurinas`
+> desliga a troca, com a contagem ao lado.
+>
+> Medido nas folhas 58-60 do `AAGAARD`: 122 linhas na camada, **168 figurinas como letra**, 65
+> linhas fora pelo piso, 31 caracteres fora da fonte. Sem a troca, as 168 entrariam nos 31.
+>
+> **Uma terceira coisa que a implementação teve de decidir, e que a spec não previa: a folha que já
+> tem camada.** Não dá para tirar a de origem -- num PDF digital ela **é** o conteúdo da página, e
+> removê-la mudaria o pixel, que é o primeiro critério de aceite. Então a nossa **soma** à dela, o
+> relatório conta as folhas em que isso aconteceu e avisa, e `--so-sem-camada` pula essas folhas
+> para quem quiser um livro sem texto duplicado. O padrão escreve, porque a S-211 mediu que a
+> camada de origem não representa figurina: para notação ela não é alternativa à nossa.
+>
+> Os quatro critérios de aceite viram quatro testes com o nome que a spec deu, e o primeiro compara
+> os **pixmaps** de antes e depois -- não o código.
+
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.pdf_pesquisavel:escrever_camada`.
 

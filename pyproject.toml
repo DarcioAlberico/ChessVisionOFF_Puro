@@ -159,6 +159,10 @@ cvoff-texto-semelhanca = "chess_diagram_ocr.cli.texto_semelhanca:main"
 # Mede os dois lados na mesma corrida -- so a camada de texto, e a camada mais o glifo.
 cvoff-texto-lado = "chess_diagram_ocr.cli.texto_lado:main"
 
+# S-210: o livro com a camada de texto invisivel do que o motor leu. A pagina nao muda um pixel --
+# `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra.
+cvoff-texto-pesquisavel = "chess_diagram_ocr.cli.texto_pesquisavel:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

@@ -532,19 +532,31 @@ que **o retreino apaga a calibração** e ninguém notava.
 
 ---
 
-## Fase 30 — O que o texto lido serve ◐ **três de cinco; falta o PDF pesquisável e a metade do léxico**
+## Fase 30 — O que o texto lido serve ✅ **completa em 2026-08-26**
 
 **Itens S-207 a S-211.** É onde o texto vira produto.
 
-**Estado em 2026-08-26:**
+| item | o que ele entregou |
+|---|---|
+| **S-207** · lado a jogar pelo glifo | `glifo` e `glifo-page-scope` como fontes declaradas, e a tabela por livro: **3 de 146 diagramas assumidos (2,1%)** deixam de sair `default` |
+| **S-208** · notação validada, e o PGN | `text/notacao.py`: fatiar, validar, e o PGN que sai das regras |
+| **S-209** · o léxico | `text/lexico.py`: a sinalização que nunca troca, os quatro perfis como dados, e a junção da hifenizada |
+| **S-210** · PDF pesquisável | `escrever_camada`: a camada invisível **por linha**, do que o motor leu, com a página idêntica pixel a pixel |
+| **S-211** · modelo de página | `PaginaLida`: coluna → bloco → linha → texto \| diagrama \| tabela |
 
-| item | estado | o que falta |
-|---|---|---|
-| S-207 · lado a jogar pelo glifo | ✅ | — |
-| S-208 · notação validada, e o PGN | ✅ | — |
-| S-209 · léxico | ◐ | o módulo `text/lexico.py` que a sonda espera; os dados e a correção estão em `text/dicionario.py` |
-| S-210 · PDF pesquisável | ⬜ | `escrever_camada` a partir da `PaginaLida` -- o `text/pdf_pesquisavel.escrever` de hoje parte do `DocumentoRico` do editor (S-253) |
-| S-211 · modelo de página | ✅ | — |
+**Os três números que a fase produziu e que não estavam no plano:**
+
+1. **A lista de idioma sozinha não serve neste acervo.** 60,0% de alarme falso contra 7,1% do
+   acervo sozinho e 5,65% dos três juntos. As 10.010 palavras de `idioma.txt.gz` vêm de listas de
+   fora e não cobrem os oito idiomas das páginas; quem carrega o peso é `acervo.txt.gz`. O 5,65%
+   do perfil `completo`, esse sim, **confirma o 5,8% que a S-209 citou do projeto de origem**.
+2. **Zero `U+FFFD` no acervo.** O caminho `ToUnicode` da S-210 -- o mais barato, que a spec cita
+   com 216 pares no Yusupov -- não tem material aqui, e por isso não foi construído. O defeito de
+   mapeamento destes livros é o codepoint cru da fonte de xadrez, não o losango.
+3. **O terceiro guarda da junção é o que mais trabalha.** Das 5 quebras hifenizadas das camadas
+   editoradas, as 5 são termo de xadrez (`f-pawn`, `h-file`, `a-pawn`) ou lance -- e três delas
+   *juntariam*, porque estão na lista. Sem ele, a passada apagaria a grafia que o livro escolheu
+   na construção mais comum da prosa de xadrez.
 
 O item que muda mais coisa é o **modelo de página** (S-211): hoje `RecognizedDiagram` é o que a
 UI recebe, e a página não existe como objeto. Com coluna, linha, tabela e diagrama num só

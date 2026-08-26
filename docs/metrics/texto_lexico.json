@@ -1,0 +1,87 @@
+{
+  "item": "S-209",
+  "livros": [
+    "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf",
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+    "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf"
+  ],
+  "paginas_por_livro": 12,
+  "linhas": 4038,
+  "alarme_falso": {
+    "completo": {
+      "candidatos": 2918,
+      "marcados": 165,
+      "alarme": 0.0565,
+      "arquivos": [
+        "acervo.txt.gz",
+        "idioma.txt.gz",
+        "nomes.txt.gz"
+      ]
+    },
+    "sem-nomes": {
+      "candidatos": 2918,
+      "marcados": 198,
+      "alarme": 0.0679,
+      "arquivos": [
+        "acervo.txt.gz",
+        "idioma.txt.gz"
+      ]
+    },
+    "so-idioma": {
+      "candidatos": 2918,
+      "marcados": 1751,
+      "alarme": 0.6001,
+      "arquivos": [
+        "idioma.txt.gz"
+      ]
+    },
+    "so-acervo": {
+      "candidatos": 2918,
+      "marcados": 207,
+      "alarme": 0.0709,
+      "arquivos": [
+        "acervo.txt.gz"
+      ]
+    }
+  },
+  "juncao": {
+    "quebras_hifenizadas": 5,
+    "juntadas": 0,
+    "exemplos": [],
+    "recusadas": [
+      "ing is in the square of the f-",
+      "lack has the reserve tempo h6-",
+      "= So White must give up his a-",
+      "the rook invasion along the h-",
+      "a2-"
+    ]
+  },
+  "juncao_no_glifo": {
+    "medida": true,
+    "livros": [
+      "AAGAARD - Practical Chess Defence.pdf",
+      "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf"
+    ],
+    "folhas_lidas": 8,
+    "linhas": 466,
+    "quebras_hifenizadas": 9,
+    "juntadas": 2,
+    "exemplos": [
+      "linha 368: keineswegs -> keineswegs",
+      "linha 433: einen -> einen"
+    ],
+    "recusadas": [
+      "y a piece up, but both the b8-",
+      "iB kann das jetzt fo1gende Ma-",
+      "i Beispielen für jede Figuren-",
+      "da0 unter çãnstigen Vorausset-",
+      "áwer maáen kann. unter Umstãn-",
+      "t der Drohung 16. h5 und Fort-",
+      " Df5 20. g4 Dd7 21. d5 keines-",
+      "waf2 darum. co s♔ne1l wie m6g-",
+      "0 dann s♔on einen Turm und ei-"
+    ]
+  }
+}
