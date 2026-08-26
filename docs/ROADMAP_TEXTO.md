@@ -532,9 +532,19 @@ que **o retreino apaga a calibração** e ninguém notava.
 
 ---
 
-## Fase 30 — O que o texto lido serve
+## Fase 30 — O que o texto lido serve ◐ **três de cinco; falta o PDF pesquisável e a metade do léxico**
 
 **Itens S-207 a S-211.** É onde o texto vira produto.
+
+**Estado em 2026-08-26:**
+
+| item | estado | o que falta |
+|---|---|---|
+| S-207 · lado a jogar pelo glifo | ✅ | — |
+| S-208 · notação validada, e o PGN | ✅ | — |
+| S-209 · léxico | ◐ | o módulo `text/lexico.py` que a sonda espera; os dados e a correção estão em `text/dicionario.py` |
+| S-210 · PDF pesquisável | ⬜ | `escrever_camada` a partir da `PaginaLida` -- o `text/pdf_pesquisavel.escrever` de hoje parte do `DocumentoRico` do editor (S-253) |
+| S-211 · modelo de página | ✅ | — |
 
 O item que muda mais coisa é o **modelo de página** (S-211): hoje `RecognizedDiagram` é o que a
 UI recebe, e a página não existe como objeto. Com coluna, linha, tabela e diagrama num só
@@ -557,13 +567,38 @@ neste acervo** — os nomes próprios são o que estraga (`carrying` → `carr y
 
 ---
 
-## Fase 31 — O que faz a base crescer
+## Fase 31 — O que faz a base crescer ✅ **completa em 2026-08-26**
 
 **Itens S-212 a S-215.**
 
+| item | estado | o que ele entregou |
+|---|---|---|
+| S-212 · fila de revisão de caractere | ✅ | `text/fila.py`: ordena pela confiança da S-189 -- que **é** a divergência -- e a cor da tela sai da mesma função, então elas não têm como discordar |
+| S-213 · aplicar a todos os semelhantes | ✅ | `text/semelhanca.py` + `cvoff-texto-semelhanca`: os três rigores medidos nesta base, e a pré-visualização como tipo e não como conselho |
+| S-214 · coleta em quarentena | ✅ | `text/coleta.py`: reservatório, dedução dupla, confiança na frente do nome -- e `promover` gravando procedência `humano` |
+| S-215 · orçamento por página | ✅ | `text/custo.py` + `cvoff-texto-custo`: **fator 2,21x, política `sob-demanda`** |
+
 Este projeto já tem o laço para diagramas: reconhecer → corrigir no tabuleiro → `Ctrl+S` →
-dataset. Para caractere o laço não existe, e sem ele as 700 mil imagens são um número que só
+dataset. Para caractere o laço não existia, e sem ele as 700 mil imagens são um número que só
 diminui de valor.
+
+**Os três números que a fase produziu, e que não estavam no plano:**
+
+1. **O texto custa 2,21x a varredura de hoje** (0,833 s/página contra 0,377), e a política que
+   isso escolhe é *texto sob demanda, por página* -- não em toda varredura. `contornos` é a maior
+   etapa do lado do texto (0,186 s/página), **acima da classificação** (0,156): o gargalo é a
+   segmentação, e não a rede.
+2. **A segunda condição da S-213 vale muito mais aqui do que no projeto de origem.** No limiar de
+   0,30 ela leva a precisão de 82,76% para **99,71%**, com a cobertura igual até a quarta casa --
+   ela remove quase só os pares errados. É ela que permite um rigor `amplo` com 56,8% de cobertura.
+3. **O limiar da quase-duplicata não serve a este item.** O `dedupe.LIMIAR_PADRAO` (0,03) entrega
+   100% de precisão com 6% de cobertura: um lote que não alcança nada. Os dois assuntos usam a
+   mesma régua e não o mesmo corte.
+
+**E a S-214 destravou metade da S-201.** `procedencia.acrescentar` nasceu com ela -- o módulo só
+sabia ler --, e toda amostra promovida da quarentena entra com livro, página, data e `humano`. Os
+608 mil recortes que já existem continuam com UUID puro e origem perdida: isso é pergunta para o
+dono dos dados, e não código.
 
 Três peças, e uma regra:
 
@@ -648,10 +683,18 @@ S-42 já usa para motores.
 **2. A procedência das 700 mil.** Sem resposta, a Fase 29 entrega um número que não se pode
 publicar. Ver a seção acima.
 
-**3. O custo por página, e o teto.** A S-61 mediu ~2,95 s por página só do pipeline de
-diagramas; a varredura do acervo leva ~10 h. OCR de glifo em página inteira **soma** a isso. A
-S-215 mede antes de a Fase 30 embarcar, e o número pode obrigar a uma decisão de escopo — por
-exemplo, texto só sob demanda, e não em toda varredura.
+**3. O custo por página, e o teto. ✅ medido em 2026-08-26 (S-215).** A S-61 mediu ~2,95 s por
+página só do pipeline de diagramas, e a varredura do acervo leva ~10 h. OCR de glifo em página
+inteira **soma** a isso, e o número que ninguém tinha agora existe:
+
+    hoje (só diagramas)   0,377 s/página
+    o texto soma          0,456 s/página
+    total                 0,833 s/página     fator 2,21x  ->  política `sob-demanda`
+
+**O `hoje` não é o 2,95 s da S-61, e nenhum dos dois está errado**: aquele perfil é de uma página
+com **6 diagramas**, e a inferência -- 76% do tempo -- escala com o número deles. Por isso o fator
+é medido contra a mesma amostra, na mesma corrida, e não contra o número arquivado. Ver
+`docs/metrics/texto_custo_20260826.json`.
 
 **4. As fontes.** O PyBoxEditor redistribui `NotoSansSymbols2-Regular.ttf` (com `OFL.txt`),
 `SimbolosDeXadrez.ttf`, `SkakNew-Diagram.otf` e `IS-TT-01.TTF`. Só a primeira traz licença no
@@ -699,7 +742,10 @@ Três regras de sequenciamento:
 2. **A Fase 29 começa junto com a 26**, não depois. O inventário das 700 mil é trabalho de
    disco e de decisão humana; ele não bloqueia a segmentação e é bloqueado por nada.
 3. **Nada da Fase 30 embarca antes da S-215.** Um leitor de página que triplique o custo de uma
-   varredura de 10 h é uma regressão, e o lugar de descobrir isso é antes.
+   varredura de 10 h é uma regressão, e o lugar de descobrir isso é antes. **Cumprido em
+   2026-08-26**: o fator é 2,21x, e a política que ele escolhe é *texto sob demanda, por página*.
+    reprova a corrida em que o custo por página piorar além de 10%,
+   e nomeia a etapa.
 
 ---
 
@@ -734,3 +780,14 @@ com a `SPEC_TEXTO.md` e falha quando os dois discordam: item marcado `✅ implem
 documento cuja sonda não acha nada, item no manifesto sem seção na spec, item na spec fora do
 manifesto. É a mesma ideia da S-134 — documentação não tem compilador, então o que ela tem é uma
 suíte que falha quando alguém escreve o que não entregou.
+**Três comandos novos respondem a perguntas de escopo, e não de qualidade** (Fase 31 e S-207):
+
+```bash
+uv run cvoff-texto-custo        # quanto o texto soma a varredura, etapa a etapa (S-215)
+uv run cvoff-texto-semelhanca   # a precisao de "aplicar a todos os semelhantes" (S-213)
+uv run cvoff-texto-lado         # quantos diagramas deixam de sair `default` com o glifo (S-207)
+```
+
+O primeiro tem `--baseline`: ele **reprova** a corrida em que o custo por página piorar além da
+margem, e nomeia a etapa. É a mesma trava do `cvoff-census --fail-on-loss` -- regressão de
+desempenho é regressão.

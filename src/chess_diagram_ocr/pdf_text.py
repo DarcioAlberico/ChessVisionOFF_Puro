@@ -66,26 +66,23 @@ import chess
 import fitz
 
 from .pdf_io import PdfSource
+from .procedencias import DA_CAMADA, DE_TERCEIROS, LineOrigin, SideOrigin, escopo_de_pagina
 
 logger = logging.getLogger(__name__)
 
 Placement = Literal["above", "below", "left", "right", "overlapping"]
 
-LineOrigin = Literal["text", "ocr"]
-"""De onde a linha veio: a camada de texto do PDF, ou o motor de OCR da S-42.
-
-Não é metadado decorativo. Um lado a jogar decidido por OCR com 0,62 de confiança não é o
-mesmo dado que um lido da camada de texto, e o `[SideToMoveSource]` do PGN -- que a Fase 3
-criou justamente para que um palpite pareça um palpite -- precisa distinguir os dois.
-"""
-
-SideOrigin = Literal["text", "ocr", "text-page-scope", "ocr-page-scope"]
-"""Como a declaração de lado a jogar chegou: de qual fonte, e em que escala.
-
-`*-page-scope` é a declaração que vale para a página inteira (`LAS BLANCAS JUEGAN PRIMERO`
-no topo do `Reinfeld`), e não para um diagrama. Vale menos que uma legenda e mais que o
-padrão "brancas" -- e precisa poder ser distinguida das duas na hora de conferir.
-"""
+# **`LineOrigin` e `SideOrigin` moram em `procedencias.py`, e não aqui** (S-207). Este módulo não
+# pode nomear motor nenhum -- é a regra que
+# `test_text_recognizer.py::test_a_s43_nao_precisou_saber_que_o_glifo_existe` cobra desde a S-181,
+# e um `Literal` com o nome de um motor escrito dentro dele a quebraria tanto quanto um `if`.
+#
+# O que eles significam continua o mesmo, e está documentado lá: um lado a jogar decidido por um
+# motor com 0,62 de confiança não é o mesmo dado que um lido da camada de texto, e o
+# `[SideToMoveSource]` do PGN -- que a Fase 3 criou justamente para que um palpite pareça um
+# palpite -- precisa distinguir os dois. `*-page-scope` é a declaração que vale para a página
+# inteira (`LAS BLANCAS JUEGAN PRIMERO` no topo do `Reinfeld`) e não para um diagrama: vale menos
+# que uma legenda e mais que o padrão "brancas".
 
 DEFAULT_RADIUS_PT = 60.0
 """Raio de busca em pontos do PDF. As legendas medidas ficam a 0-20 pt do diagrama."""
@@ -1142,8 +1139,17 @@ class CaptionSource(Protocol):
     valendo sem uma linha de mudança.
     """
 
-    def lines_around(self, page: fitz.Page, bbox_pdf: tuple[float, float, float, float]) -> list[TextLine]:
-        """Linhas na vizinhança do diagrama, em coordenadas do PDF."""
+    def lines_around(
+        self,
+        page: fitz.Page,
+        bbox_pdf: tuple[float, float, float, float],
+        vizinhos: Sequence[tuple[float, float, float, float]] = (),
+    ) -> list[TextLine]:
+        """Linhas na vizinhança do diagrama, em coordenadas do PDF.
+
+        `vizinhos` são os outros diagramas da página, apagados do recorte junto com o alvo -- sem
+        eles as peças quebram a escala do texto (S-207). Opcional: um leitor que os ignore lê
+        como sempre leu."""
 
     def margin_lines(self, page: fitz.Page) -> list[TextLine]:
         """Linhas da faixa de margem, em coordenadas do PDF."""
@@ -1198,9 +1204,14 @@ def _scope_candidates(
     page: fitz.Page,
     caption_reader: CaptionSource | None,
 ) -> Iterable[tuple[list[TextLine], SideOrigin]]:
-    yield page_margin_lines(page), "text-page-scope"
+    yield page_margin_lines(page), escopo_de_pagina(DA_CAMADA)
     if caption_reader is not None:
-        yield caption_reader.margin_lines(page), "ocr-page-scope"
+        # **A procedência sai do leitor, e não é fixa em `ocr-page-scope`** (S-207). Ele declara
+        # qual é (`CaptionReader.procedencia`), o escopo é sufixo, e este módulo segue sem saber
+        # que motores existem -- que é a regra da S-181. Um leitor que não declare procedência
+        # continua sendo o de terceiros, que é o que ele sempre foi.
+        motor = getattr(caption_reader, "procedencia", DE_TERCEIROS)
+        yield caption_reader.margin_lines(page), escopo_de_pagina(motor)
 
 
 def _apply_page_scope(context: DiagramContext, scope: PageScope) -> DiagramContext:
@@ -1241,7 +1252,12 @@ def _lines_with_ocr(
         if lines_near(text_lines, bbox, radius_pt=radius_pt):
             continue
         lidos += 1
-        novas = caption_reader.lines_around(page, bbox)
+        # **Os outros diagramas da página vão junto, para serem apagados do recorte** (S-207).
+        # A faixa tem 60 pt de raio, e numa folha de quatro problemas ela contém pedaços dos
+        # outros três -- as peças deles quebram a escala do texto e a leitura sai vazia. Ver
+        # `CaptionReader.lines_around`, que traz a medição.
+        vizinhos = [outro for outro in bboxes if outro != bbox]
+        novas = caption_reader.lines_around(page, bbox, vizinhos)
         if not novas:
             continue
 

@@ -188,15 +188,22 @@ exercícios saíam como "brancas jogam"** e em livro de tática cerca de metade 
 | fonte | `[SideToMoveSource]` | quando responde | alcance medido |
 |---|---|---|---|
 | legenda na camada de texto (S-16) | `text` | há legenda ao lado do diagrama | 41 de 645 diagramas amostrados |
-| legenda lida por OCR (S-43) | `ocr` | a camada calou **naquele diagrama** e há motor | 25 de 645 |
+| legenda lida por motor de terceiros (S-43) | `ocr` | a camada calou **naquele diagrama** e há motor | 25 de 645 |
+| legenda lida pelo classificador de casa (S-207) | `glifo` | idem, com `--ocr-engine glifo` | 3 de 146 assumidos, em 10 livros (2026-08-26) |
 | cabeçalho da página, camada de texto (S-43) | `text-page-scope` | a legenda calou e a faixa de margem declara | 9 de 645 |
-| cabeçalho da página, por OCR (S-43) | `ocr-page-scope` | idem, sem camada de texto | **45 de 645** — quase todos do `Reinfeld` |
+| cabeçalho da página, por motor de terceiros (S-43) | `ocr-page-scope` | idem, sem camada de texto | **45 de 645** — quase todos do `Reinfeld` |
+| cabeçalho da página, pelo classificador de casa (S-207) | `glifo-page-scope` | idem, com `--ocr-engine glifo` | 0 na amostra de 2026-08-26 |
 | legalidade (S-17) | `legality` | quem não joga está em xeque | 27 de 645 |
 | padrão "brancas" | `default` | nenhuma das anteriores | 498 de 645 (77,2%) |
 
 Os números vêm de `cvoff-sides`, 12 páginas por livro nos 32 livros do acervo, em 2026-08-11.
 Sem motor de OCR o `default` fica em **87,8%**; com ele, em **77,2%**. Reproduzir:
 `cvoff-sides --ocr rapidocr`.
+
+As duas linhas do `glifo` são de outra medição, e a coluna diz qual: `cvoff-texto-lado`, 10 livros
+e 8 páginas com diagrama de cada, em 2026-08-26 (`docs/metrics/texto_lado.json`). **Ele acrescenta
+2,1% dos diagramas que saíam `default`**, e o motivo de não ser mais está na tabela e não no motor:
+os livros que declaram o lado por diagrama já têm camada de texto, e ali o motor nem é chamado.
 
 O PGN grava `[SideToMoveSource]` **sempre**. A maioria do acervo cai no padrão, e um palpite
 precisa parecer um palpite — é essa a diferença entre um dado e uma suposição herdada. As

@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **35 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **38 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -313,6 +313,25 @@ cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor glifo --json saida.json
 cvoff-texto-lexico "Lista de Palavras"
 cvoff-texto-lexico "Lista de Palavras" --dry-run   # conta e imprime, sem escrever nada
 
+# Quanto o texto soma a varredura, etapa a etapa (S-215). As duas pontas da divisao sao medidas
+# na mesma corrida -- a varredura de diagramas como ela e hoje, e a leitura de texto --, porque
+# dividir por um numero de outro dia mede a maquina e nao o codigo. Medido em 2026-08-26: fator
+# 2,21x, e a politica que esse numero escolhe e "texto sob demanda, por pagina".
+cvoff-texto-custo --livros 6 --paginas-por-livro 3
+cvoff-texto-custo --baseline docs/metrics/texto_custo_20260826.json   # sai 1 se piorou
+
+# A precisao de "aplicar a todos os semelhantes" (S-213). O criterio e a IMAGEM e nao o caractere
+# lido: procurar "todos os c" acharia os 300 que sao `e` e junto todos os `c` legitimos. A
+# segunda condicao -- a mesma leitura -- vale muito aqui: no limiar de 0,30 ela leva a precisao
+# de 82,76% para 99,71% com a mesma cobertura. `--curva` varre a tabela inteira.
+cvoff-texto-semelhanca --amostras 3000 --curva
+
+# Quantos diagramas deixam de sair `default` com o classificador de casa lendo a legenda (S-207).
+# Mede os dois lados: so a camada de texto, e a camada mais o glifo. Medido em 2026-08-26: 3 de
+# 146 diagramas assumidos (2,1%), e o motivo de nao ser mais e que os livros que declaram o lado
+# por diagrama ja tem camada de texto, onde o motor nem chega a ser chamado.
+cvoff-texto-lado --livros 10 --paginas 8
+
 # O que a mao corrigiu nos .cvtxt do editor de texto, agrupado por troca (S-239). A correcao
 # **nao** esta gravada no arquivo: ele guarda os dois lados -- a pagina que o motor leu e o que
 # esta na tela --, e a diferenca entre eles e o que este comando deriva. Nao rotula nada: quem
@@ -349,15 +368,17 @@ a ultima concluida -- desde que os parametros sejam os mesmos. Concluir apaga o 
 O lado a jogar sai da legenda do PDF quando ela declara, da legalidade da posicao quando
 ela impoe (o lado que nao joga nao pode estar em xeque), da partida que a base casou, da
 escolha de quem estava com o livro aberto, e do padrao "brancas" quando nenhuma das outras
-responde. O header `[SideToMoveSource]` diz **qual das 8** foi, sempre -- a maioria dos livros
+responde. O header `[SideToMoveSource]` diz **qual das 10** foi, sempre -- a maioria dos livros
 do acervo nao declara nada, e um palpite precisa parecer um palpite.
 
 | valor | de onde veio |
 |---|---|
 | `text` | declarado no texto do PDF |
-| `ocr` | lido por OCR da legenda (S-42/S-43) |
+| `ocr` | lido por OCR da legenda, com motor de terceiros (S-42/S-43) |
+| `glifo` | lido na legenda pelo classificador de caractere deste projeto (S-207) |
 | `text-page-scope` | declarado no cabecalho da pagina |
 | `ocr-page-scope` | lido por OCR do cabecalho da pagina |
+| `glifo-page-scope` | lido no cabecalho da pagina pelo classificador deste projeto (S-207) |
 | `legality` | deduzido da legalidade da posicao |
 | `database` | da partida que a base casou (S-72) |
 | `manual` | escolhido a mao na Galeria |

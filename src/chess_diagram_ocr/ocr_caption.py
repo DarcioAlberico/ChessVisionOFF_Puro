@@ -50,6 +50,7 @@ import numpy as np
 
 from .ocr import TextBox, TextRecognizer, build_recognizer
 from .pdf_text import DEFAULT_RADIUS_PT, TextLine
+from .procedencias import DE_TERCEIROS, LineOrigin, procedencia_do_motor
 from .settings import OcrSettings
 
 logger = logging.getLogger(__name__)
@@ -116,14 +117,51 @@ class CaptionReader:
     def name(self) -> str:
         return self._recognizer.name
 
+    @property
+    def procedencia(self) -> LineOrigin:
+        """`glifo` quando quem lê é o classificador deste projeto, `ocr` para os de terceiros (S-207).
+
+        **Sai do nome do motor, e não de um argumento de construção**, porque o nome é o que o
+        motor declara sobre si e um argumento seria uma segunda fonte para a mesma pergunta -- que
+        divergiria da primeira vez que alguém construísse o leitor sem passá-lo.
+
+        Quem traduz nome em procedência é `procedencias.procedencia_do_motor`: este módulo passa o
+        nome e recebe a resposta, **sem saber que motores existem** -- é a regra da S-181, e é o
+        que permite um motor novo entrar sem uma linha de mudança aqui.
+        """
+        return procedencia_do_motor(self._recognizer.name)
+
     # ------------------------------------------------------------------ leitura por diagrama
 
-    def lines_around(self, page: fitz.Page, bbox_pdf: tuple[float, float, float, float]) -> list[TextLine]:
+    def lines_around(
+        self,
+        page: fitz.Page,
+        bbox_pdf: tuple[float, float, float, float],
+        vizinhos: Sequence[tuple[float, float, float, float]] = (),
+    ) -> list[TextLine]:
         """Linhas na vizinhança do diagrama, em pontos do PDF.
 
         O interior de `bbox_pdf` é apagado antes da leitura -- ver o desenho no topo do
         módulo. Devolve lista vazia quando não há texto legível ali, que é o caso normal
         num livro de diagramas sem legenda.
+
+        ## `vizinhos`, e o defeito que a S-207 mediu
+
+        **Apagar só o diagrama alvo não basta numa página com mais de um.** O raio de busca é de
+        60 pt, e numa folha de quatro problemas a faixa em volta de um deles contém pedaços dos
+        outros três. As peças ficam, e a leitura de glifo mede a escala do texto por **massa de
+        tinta**: uma peça impressa tem 86 px de altura contra 23 de uma letra, e a peneira de área
+        passa a descartar todas as letras. É o mesmo defeito que `text/leitor.escala_fora_dos_diagramas`
+        corrige na página inteira, e ele reaparece aqui porque a faixa também tem tabuleiro.
+
+        Medido em 2026-08-26, página 17 do `1000 Chess Problems` (4 diagramas), com o glifo:
+
+            apagando só o alvo        8 caixas, todas figurina e ruído -- nenhum texto
+            apagando os quatro        3 caixas, e uma delas é a legenda: `MaT B 2 xoua 4+3`
+
+        `vizinhos` é opcional e vazio por omissão: um chamador antigo continua funcionando
+        exatamente como antes, e quem tem a lista de bboxes da página -- que é
+        `pdf_text._lines_with_ocr`, e ele sempre a teve -- passa a ler o que estava ali.
         """
         x0, y0, x1, y1 = bbox_pdf
         faixa = fitz.Rect(
@@ -136,7 +174,16 @@ class CaptionReader:
         if faixa.is_empty or faixa.width < MIN_BAND_PT or faixa.height < MIN_BAND_PT:
             return []
 
-        return self._read_band(page, faixa, blank=fitz.Rect(*bbox_pdf))
+        # O alvo primeiro, e os vizinhos que tocam a faixa depois. Apagar um retângulo que não
+        # cruza o recorte é trabalho sem efeito, e `_blank_region` já o ignora -- filtrar aqui é
+        # para o caso comum de uma página com muitos diagramas e uma faixa pequena.
+        apagar = [fitz.Rect(*bbox_pdf)]
+        apagar += [
+            retangulo
+            for outro in vizinhos
+            if not (retangulo := fitz.Rect(*outro)).is_empty and retangulo.intersects(faixa)
+        ]
+        return self._read_band(page, faixa, blank=apagar)
 
     # -------------------------------------------------------------------- faixa de margem
 
@@ -171,7 +218,7 @@ class CaptionReader:
         page: fitz.Page,
         band: fitz.Rect,
         *,
-        blank: fitz.Rect | None = None,
+        blank: Sequence[fitz.Rect] = (),
         group_offset: int = 0,
     ) -> list[TextLine]:
         try:
@@ -180,8 +227,8 @@ class CaptionReader:
             logger.warning("Nao foi possivel renderizar a faixa %s para OCR (%s).", band, exc)
             return []
 
-        if blank is not None:
-            _blank_region(image_rgb, blank, origin=origin, zoom=zoom)
+        for retangulo in blank:
+            _blank_region(image_rgb, retangulo, origin=origin, zoom=zoom)
 
         try:
             boxes = self._recognizer.read(image_rgb)
@@ -189,7 +236,9 @@ class CaptionReader:
             logger.warning("Motor de OCR %r falhou nesta faixa (%s); a página segue sem ele.", self.name, exc)
             return []
 
-        return _boxes_to_lines(boxes, origin=origin, zoom=zoom, group_offset=group_offset)
+        return _boxes_to_lines(
+            boxes, origin=origin, zoom=zoom, group_offset=group_offset, procedencia=self.procedencia
+        )
 
 
 # --------------------------------------------------------------------------------------
@@ -257,6 +306,7 @@ def _boxes_to_lines(
     origin: tuple[float, float],
     zoom: float,
     group_offset: int = 0,
+    procedencia: LineOrigin = DE_TERCEIROS,
 ) -> list[TextLine]:
     """Converte as caixas do motor em `TextLine` agrupadas por bloco.
 
@@ -292,7 +342,7 @@ def _boxes_to_lines(
             bbox=bbox,
             block_words=palavras[grupo],
             group_id=group_offset + grupo,
-            origin="ocr",
+            origin=procedencia,
             confidence=confianca,
         )
         for (bbox, texto, confianca), grupo in zip(convertidas, grupos, strict=True)

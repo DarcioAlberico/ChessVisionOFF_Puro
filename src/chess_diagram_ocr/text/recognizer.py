@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..ocr import TextBox
+from ..ocr import MOTOR_DE_CASA, TextBox
 from .binarizacao import binarize
 from .boxes import Caixa, caixas_de_caractere, escala_de_texto, excluir_diagramas, unir_pingos
 from .duas_linhas import descartar_fragmentos
@@ -39,7 +39,7 @@ from .modelo import ClassificadorDeGlifo, ModeloInvalido, carregar_classificador
 
 logger = logging.getLogger(__name__)
 
-NOME = "glifo"
+NOME = MOTOR_DE_CASA
 
 
 def _cinza(imagem: np.ndarray) -> np.ndarray:

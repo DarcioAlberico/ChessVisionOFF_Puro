@@ -146,6 +146,19 @@ cvoff-texto-correcoes = "chess_diagram_ocr.cli.texto_correcoes:main"
 # e mexer em codigo -- e o que a S-209 pede das duas listas.
 cvoff-texto-lexico = "chess_diagram_ocr.cli.texto_lexico:main"
 
+# S-215: quanto o texto soma a varredura, etapa a etapa, com as duas pontas da divisao medidas na
+# mesma corrida. `--baseline` reprova quando o custo por pagina piora -- regressao de desempenho
+# e regressao, e e a trava do `cvoff-census --fail-on-loss`.
+cvoff-texto-custo = "chess_diagram_ocr.cli.texto_custo:main"
+
+# S-213: a precisao e a cobertura de "aplicar a todos os semelhantes", medidas nesta base. O
+# criterio e a IMAGEM, e nao o caractere lido -- casar por caractere traria junto os legitimos.
+cvoff-texto-semelhanca = "chess_diagram_ocr.cli.texto_semelhanca:main"
+
+# S-207: quantos diagramas deixam de sair `default` com o classificador de casa lendo a legenda.
+# Mede os dois lados na mesma corrida -- so a camada de texto, e a camada mais o glifo.
+cvoff-texto-lado = "chess_diagram_ocr.cli.texto_lado:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

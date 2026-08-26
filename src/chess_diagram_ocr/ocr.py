@@ -54,7 +54,14 @@ from .settings import OcrSettings
 
 logger = logging.getLogger(__name__)
 
-KNOWN_ENGINES: tuple[str, ...] = ("rapidocr", "easyocr", "tesseract", "glifo")
+MOTOR_DE_CASA = "glifo"
+"""O nome do único motor deste projeto. **Uma definição, e três módulos a leem** (S-207).
+
+`text/recognizer.NOME` é ele, `build_recognizer` o despacha por ele, e `ocr_caption` decide por
+ele se a linha lida sai com procedência `glifo` ou `ocr`. Escrito três vezes, a primeira troca de
+nome deixaria dois lugares certos e um errado -- e o errado seria o que grava o header do PGN."""
+
+KNOWN_ENGINES: tuple[str, ...] = ("rapidocr", "easyocr", "tesseract", MOTOR_DE_CASA)
 """`glifo` entrou na S-181, e é o único de casa: o classificador de caractere portado do
 PyBoxEditor_Tkinter (`text/recognizer.py`). Ele não baixa nada -- os pesos são apontados por
 `OcrSettings.glyph_model` --, e é o único que restringe o **decodificador** pelo `allowlist` em

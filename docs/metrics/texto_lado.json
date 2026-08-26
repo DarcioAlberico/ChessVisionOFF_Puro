@@ -1,0 +1,231 @@
+{
+  "item": "S-207",
+  "fonte": "glifo",
+  "livros": 10,
+  "paginas_por_livro": 8,
+  "sem_motor": [
+    {
+      "livro": "1000 Chess Problems - Yakov Vladimirov 2015 ",
+      "diagramas": 32,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 32,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Br",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 8,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfel",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 8,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfel",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 8,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "1937 Kemeri",
+      "diagramas": 13,
+      "lidos": 0,
+      "de_outra_fonte": 6,
+      "assumidos": 7,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 7,
+      "assumidos": 1,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_h",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 7,
+      "assumidos": 1,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "A Matter of Endgame Technique – Jacob Aagaard",
+      "diagramas": 61,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 61,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence",
+      "diagramas": 14,
+      "lidos": 0,
+      "de_outra_fonte": 6,
+      "assumidos": 8,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025)",
+      "diagramas": 12,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 12,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    }
+  ],
+  "com_glifo": [
+    {
+      "livro": "1000 Chess Problems - Yakov Vladimirov 2015 ",
+      "diagramas": 32,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 32,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Br",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 8,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfel",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 8,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfel",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 8,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "1937 Kemeri",
+      "diagramas": 13,
+      "lidos": 0,
+      "de_outra_fonte": 6,
+      "assumidos": 7,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 7,
+      "assumidos": 1,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_h",
+      "diagramas": 8,
+      "lidos": 0,
+      "de_outra_fonte": 7,
+      "assumidos": 1,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "A Matter of Endgame Technique – Jacob Aagaard",
+      "diagramas": 61,
+      "lidos": 0,
+      "de_outra_fonte": 0,
+      "assumidos": 61,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence",
+      "diagramas": 14,
+      "lidos": 1,
+      "de_outra_fonte": 6,
+      "assumidos": 7,
+      "contradicoes": 0,
+      "duvidosos": 0,
+      "cobertura": 0.0714
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025)",
+      "diagramas": 12,
+      "lidos": 2,
+      "de_outra_fonte": 0,
+      "assumidos": 10,
+      "contradicoes": 0,
+      "duvidosos": 2,
+      "cobertura": 0.1667
+    }
+  ],
+  "total_sem_motor": {
+    "livro": "todos",
+    "diagramas": 172,
+    "lidos": 0,
+    "de_outra_fonte": 26,
+    "assumidos": 146,
+    "contradicoes": 0,
+    "duvidosos": 0,
+    "cobertura": 0.0
+  },
+  "total_com_glifo": {
+    "livro": "todos",
+    "diagramas": 172,
+    "lidos": 3,
+    "de_outra_fonte": 26,
+    "assumidos": 143,
+    "contradicoes": 0,
+    "duvidosos": 2,
+    "cobertura": 0.0174
+  },
+  "deixaram_de_ser_palpite": 3
+}

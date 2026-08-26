@@ -232,3 +232,48 @@ __all__ = [
     "resumo",
     "violacoes_do_split",
 ]
+
+
+def acrescentar(
+    novos: Mapping[str, Registro],
+    caminho: Path | str | None = None,
+) -> Path:
+    """Junta registros ao CSV, criando-o com cabeçalho quando ele ainda não existe (S-214).
+
+    **Este módulo só tinha `ler`, e é por isso que a S-201 estava parada.** O arquivo dependia de
+    um trabalho no projeto de origem para os 608 mil recortes que já existem -- e continua
+    dependendo, porque o nome deles é UUID puro e a origem se perdeu. O que muda aqui é o
+    **daqui para a frente**: o recorte que a coleta da S-214 promove entra com livro, página e
+    `humano` no mesmo arquivo, porque quem o rotulou moveu a pasta com a mão.
+
+    **Registro repetido é atualizado, e não duplicado.** O arquivo é lido antes, fundido, e
+    reescrito inteiro: um CSV com dois `uuid` iguais e procedências diferentes não tem resposta,
+    e `ler` devolveria o último em silêncio. O custo é reler um arquivo que a base inteira não
+    passa de 608 mil linhas.
+    """
+    alvo = Path(caminho) if caminho is not None else CAMINHO_PADRAO
+    juntos = dict(ler(alvo)) if alvo.exists() else {}
+    juntos.update(novos)
+
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    linhas = [",".join(COLUNAS)]
+    for uuid in sorted(juntos):
+        r = juntos[uuid]
+        pagina = "" if r.pagina is None else str(r.pagina)
+        linhas.append(",".join((uuid, _sem_virgula(r.livro), pagina, r.procedencia, r.rotulado_em)))
+
+    from ..atomic_io import atomic_write_text
+
+    atomic_write_text(alvo, "\n".join(linhas) + "\n")
+    logger.info("Procedência: %d registro(s) em %s (%d novo(s)).", len(juntos), alvo, len(novos))
+    return alvo
+
+
+def _sem_virgula(valor: str) -> str:
+    """O nome do livro sem vírgula, porque este CSV não cita campo.
+
+    **Um livro do acervo tem vírgula no nome** (`1001_Winning_Chess_Sacrifices_and_Combinations,_Fred...`),
+    e escrito cru ele partiria a linha em seis campos -- `ler` leria a página como procedência e
+    levantaria `ArquivoInvalido` sobre um arquivo que este módulo mesmo escreveu. Trocar por espaço
+    perde menos que citar: a chave é o `uuid`, e o livro é para o humano ler."""
+    return valor.replace(",", " ").strip()

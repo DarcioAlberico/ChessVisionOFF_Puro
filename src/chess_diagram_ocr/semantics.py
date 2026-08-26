@@ -38,20 +38,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SideSource = Literal[
-    "text", "ocr", "text-page-scope", "ocr-page-scope", "legality", "database", "manual", "default"
+    "text",
+    "ocr",
+    "glifo",
+    "text-page-scope",
+    "ocr-page-scope",
+    "glifo-page-scope",
+    "legality",
+    "database",
+    "manual",
+    "default",
 ]
 
 _SOURCE_LABELS: dict[SideSource, str] = {
     "text": "declarado no texto do PDF",
     "ocr": "lido por OCR da legenda",
+    "glifo": "lido pelo classificador de caractere deste projeto, na legenda",
     "text-page-scope": "declarado no cabeçalho da página",
     "ocr-page-scope": "lido por OCR do cabeçalho da página",
+    "glifo-page-scope": "lido pelo classificador deste projeto, no cabeçalho da página",
     "legality": "deduzido da legalidade da posição",
     "database": "da partida que a base casou",
     "manual": "declarado à mão na galeria",
     "default": "assumido (nada no PDF diz de quem é a vez)",
 }
-"""As quatro procedências textuais não são preciosismo de rótulo (S-43).
+"""As seis procedências textuais não são preciosismo de rótulo (S-43, S-207).
 
 A S-16 tinha uma fonte de texto e podia chamá-la de `"text"`. Com o OCR são quatro
 respostas de valores diferentes, e colapsá-las faria o header `[SideToMoveSource "text"]`
@@ -60,7 +71,9 @@ significar tanto "está escrito na legenda deste diagrama, no arquivo" quanto "u
 a Fase 3 pede: o header existe para que um palpite pareça um palpite.
 """
 
-_TEXT_SOURCES: frozenset[str] = frozenset({"text", "ocr", "text-page-scope", "ocr-page-scope"})
+_TEXT_SOURCES: frozenset[str] = frozenset(
+    {"text", "ocr", "glifo", "text-page-scope", "ocr-page-scope", "glifo-page-scope"}
+)
 """As procedências que vêm de texto lido, seja qual for a fonte. A cascata as trata igual --
 o que muda é só o que fica registrado."""
 

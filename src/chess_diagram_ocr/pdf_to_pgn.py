@@ -310,11 +310,15 @@ def _normalize_fen_for_pgn(fen: str) -> str:
     return normalized
 
 
-_OCR_SOURCES = frozenset({"ocr", "ocr-page-scope"})
-"""Procedências em que o lado a jogar foi lido por um motor, e não do arquivo (S-43).
+_OCR_SOURCES = frozenset({"ocr", "ocr-page-scope", "glifo", "glifo-page-scope"})
+"""Procedências em que o lado a jogar foi lido por um motor, e não do arquivo (S-43, S-207).
 
 São as únicas em que `[SideToMoveConfidence]` significa alguma coisa.
-"""
+
+**As duas do `glifo` entraram junto com o valor, e não depois.** O classificador devolve confiança
+por caractere e a legenda sai com a mínima delas -- é exatamente o número que este header existe
+para carregar. Deixá-las de fora faria a leitura de casa sair sem a régua que a de terceiros tem,
+que é o contrário do que a S-207 pede: `[SideToMoveConfidence]` ao lado quando houve dúvida."""
 
 
 def _flatten_caption(caption: str) -> str:

@@ -2743,9 +2743,9 @@ leitura por linha **empata**. O que sobra apontando para o meio da distância é
 
 > Aqui o texto vira produto. Nada desta fase embarca antes da S-215, que mede o custo por página.
 
-## S-207 · O lado a jogar deixa de depender de motor de fora ⬜ planejada
+## S-207 · O lado a jogar deixa de depender de motor de fora ✅ implementada (2026-08-26)
 
-**Problema.** Hoje o lado a jogar tem oito fontes declaradas em `semantics.SideSource`, e para os
+**Problema.** Hoje o lado a jogar tem oito fontes declaradas em `semantics.SideSource` (dez depois deste item), e para os
 7 livros sem camada de texto a que sobra é `default` — o palpite. A S-42 abriu o caminho do OCR
 para eles, com RapidOCR, opt-in e desligado por padrão.
 
@@ -2770,6 +2770,69 @@ resolvido por prioridade fixa.
 
 **Testes.** `test_o_glifo_entra_como_fonte_declarada`;
 `test_a_contradicao_vai_para_a_fila_e_nao_e_resolvida_calada`.
+> **A costura existia, e o que faltava era honestidade e medição (2026-08-26).**
+>
+> **O disfarce não era o que a spec supunha.** Ela diz "nunca disfarçado de camada de texto", e
+> disso o programa já se defendia: uma legenda lida por motor saía `ocr`, e não `text`. O disfarce
+> real era outro -- **o classificador desta casa saía como `ocr`, indistinguível do RapidOCR**.
+> Duas qualidades muito diferentes no mesmo valor de header, que é o oposto do que a Fase 3 quer.
+>
+> `SideSource` foi de 8 para 10 valores: `glifo` e `glifo-page-scope`. **Os dois, e não um.** O
+> caminho de escopo de página (`page_scope_declaration`) usa o mesmo motor, e deixar só o de
+> legenda distinto faria o cabeçalho lido pelo classificador sair dizendo `ocr-page-scope` -- um
+> item que existe para acabar com o disfarce não pode deixar metade disfarçada.
+>
+> **E a implementação esbarrou numa regra da S-181, que estava certa.**
+> `test_a_s43_nao_precisou_saber_que_o_glifo_existe` cobra que `ocr_caption.py` e `pdf_text.py`
+> **não mencionem motor nenhum pelo nome** -- porque no dia em que mencionarem, a próxima fonte de
+> texto vai precisar de uma segunda porta. Um `if nome == "glifo"` a quebraria; um `Literal` com
+> `"glifo"` escrito dentro, também. A resposta foi `procedencias.py`: o vocabulário
+> (`LineOrigin`, `SideOrigin`, `procedencia_do_motor`, `escopo_de_pagina`) mora num lugar só, os
+> dois módulos genéricos passam o nome do motor e recebem a procedência, e continuam sem saber
+> quais existem. O escopo de página é **sufixo**, e por isso não há uma segunda tabela para
+> divergir da primeira.
+>
+> **A medição encontrou um defeito de leitura que não é deste item, e o consertou.** A faixa de
+> legenda tem 60 pt de raio, e `_blank_region` apagava **só o diagrama alvo**: numa folha de quatro
+> problemas, a faixa contém pedaços dos outros três. As peças ficam, e a leitura de glifo mede a
+> escala do texto por massa de tinta -- uma peça tem 86 px de altura contra 23 de uma letra, e a
+> peneira de área descarta todas as letras. É o mesmo defeito que `escala_fora_dos_diagramas`
+> corrige na página inteira. Medido na página 17 do `1000 Chess Problems`:
+>
+>     apagando só o alvo     8 caixas, todas figurina e ruído -- nenhum texto
+>     apagando os quatro     3 caixas, e uma é a legenda: `MaT B 2 xoua 4+3`
+>
+> `lines_around` passou a receber os vizinhos, opcionais e vazios por omissão. **O caminho do
+> RapidOCR ganha o mesmo conserto de graça.**
+>
+> **A tabela por livro, que é o que o item acrescenta à S-43.** 10 livros, 8 páginas com diagrama
+> de cada, 172 diagramas, com as duas pontas na mesma corrida:
+>
+>     lado a jogar          sem motor de legenda    com o glifo
+>     lido pelo glifo                          0              3
+>     de outra fonte                          26             26
+>     continuou `default`                    146            143
+>     contradições                             0              0
+>
+> **3 de 146 diagramas assumidos deixam de sair `default` (2,1%), e 2 dos 3 vêm abaixo do piso de
+> confiança** -- saem com `[SideToMoveConfidence]` ao lado, que é a segunda regra da S-43.
+>
+> **O número é pequeno, e o motivo está na tabela e não no motor.** Os livros que declaram o lado
+> por diagrama (`400 Quebra-cabeças`, `Kemeri`, `AAGAARD`) **já têm camada de texto**, e ali o
+> motor nem chega a ser chamado -- `_lines_with_ocr` só o aciona onde a camada calou. Os que calam
+> ou não declaram (`A Matter of Endgame Technique`: 61 diagramas, nenhuma declaração) ou estão
+> num alfabeto que o classificador não tem: o `1000 Chess Problems` é **russo**, e a spec já
+> declarava que "um livro em russo não é lido por ele" -- o `MaT B 2 xoua` acima é `Мат в 2 хода`
+> transliterado por um modelo que só tem latino.
+>
+> **Nenhuma contradição apareceu nesta amostra**, e a máquina que a trataria está de pé e testada:
+> `infer_side_to_move` marca `conflicting`, a legalidade vence, e a fila da S-22 pontua com
+> `WEIGHT_SOURCES_DISAGREE`. `test_a_contradicao_vai_para_a_fila_e_nao_e_resolvida_calada` a
+> exercita com xeque invertido, porque um caminho que só roda quando o acervo colabora é um caminho
+> que ninguém sabe se funciona.
+>
+> Tudo em `docs/metrics/texto_lado.json`, com as duas tabelas lado a lado.
+
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.lado:lado_por_glifo`,
 `metrica:texto_lado`.
@@ -3254,7 +3317,7 @@ declarada para quando os pesos não carregam.
 > dataset. Para caractere o laço não existe, e sem ele as 700 mil imagens são um número que só
 > perde valor com o tempo.
 
-## S-212 · A fila de revisão de caractere ⬜ planejada
+## S-212 · A fila de revisão de caractere ✅ implementada (2026-08-26)
 
 **Problema.** Uma página tem ~2.000 caracteres. A 98% de acerto, são 40 erros por página, e
 achá-los a olho é o que torna a revisão inviável. A S-22 resolveu isso para diagramas ordenando
@@ -3283,12 +3346,52 @@ Duas coisas que a série de fases de lá mediu e que economizam trabalho aqui:
 **Testes.** `test_a_fila_ordena_por_divergencia`;
 `test_salvar_e_reabrir_preserva_a_fila`;
 `test_a_cor_do_box_e_a_posicao_na_fila_concordam`.
+> **A régua não foi reinventada, e essa é a decisão do item (2026-08-26).** A "divergência entre a
+> leitura por linha e a por caractere" já é um número: a S-189 a transformou em confiança --
+> `max` quando as duas concordam, `min` quando divergem. Ordenar por `1 - confiança` **é** ordenar
+> por divergência, com a calibração que já foi medida. Um segundo escalar de divergência daria
+> dois números para a mesma pergunta, e a primeira vez que discordassem não haveria como dizer
+> qual estava certo.
+>
+> **E é isso que faz a cor e a posição concordarem por construção, e não por disciplina.** A cor
+> sai de `documento.faixa_de_confianca`; a fila ordena pelo mesmo número, pela mesma função. O
+> critério de aceite negativo -- *nunca um box verde no topo* -- não depende de ninguém lembrar.
+>
+> **A tentação recusada foi a banda de peso da S-22.** Pôr a divergência numa faixa acima da
+> confiança poria um box divergente de 0,99 na frente de um de 0,10, isto é, um box verde no topo
+> -- exatamente o que o item proíbe.
+>
+> **Mas a admissão não é a ordenação, e a primeira versão perdia informação por confundi-las.**
+> Um box em que o glifo leu `c`, o leitor de linha leu `e` e a confiança combinada ficou em 0,90
+> tem faixa `tranquilo` e **não entrava na fila** -- só que 0,90 divergente quer dizer que as
+> *duas* leituras estavam confiantes e ainda assim discordaram, que é a informação mais forte que
+> a página produz. Ele passou a entrar, e entra no **fim** da fila, onde a confiança dele o põe.
+>
+> **A régua muda quando o leitor de linha não roda, e a fila diz qual usou.** `modo_bloco` está
+> desligado por padrão desde a S-188 (~50x o tempo na página inteira), e sem ele não há segunda
+> leitura -- todo box tem `do_glifo == do_bloco`, e a fila ordena pela confiança do classificador
+> sozinho. `Fila.regua` declara em qual dos dois mundos ela foi montada, e o valor viaja no JSON.
+>
+> **A margem ficou de fora, como o item manda.** `ClassificadorDeGlifo.margem` existe e custa zero,
+> viaja em `Item.margem` para que a tabela possa ser feita sem remontar a fila, e **não é lida por
+> `ordenar`** -- é a recusa que o próprio docstring dela já registrava.
+>
+> **Duas granularidades, e nenhuma delas mente.** A `PaginaLida` guarda `LinhaLida`; os boxes de
+> caractere são consumidos dentro de `linhas_do_glifo` e descartados, e guardá-los custaria ~2.000
+> registros por página -- que a S-215 acabou de pôr preço. Então `de_lidos` serve quem tem os boxes
+> na mão (o leitor, durante a leitura) e `de_pagina` serve quem tem só o arquivo, e o campo `box`
+> (`-1` para linha) diz qual é qual em vez de a fila fingir que são a mesma coisa.
+>
+> **E `distribuicao` responde a uma pergunta que estava aberta desde a S-242:**
+> `documento.CORTE_DE_CONFERIR` (0,75) foi declarado com um comentário dizendo que quem decidiria
+> se ele está no lugar certo seria esta S-212. A contagem por faixa é o instrumento.
+
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.fila:ordenar`.
 
 ---
 
-## S-213 · Aplicar a todos os semelhantes ⬜ planejada
+## S-213 · Aplicar a todos os semelhantes ✅ implementada (2026-08-26)
 
 **Problema.** Corrigir um `e` lido como `c` e ter de repetir a correção nos outros 300 é o que faz
 uma página custar horas.
@@ -3325,13 +3428,57 @@ fica no fim, que é onde o olho deve parar.
 **Testes.** `test_o_lote_exige_previsualizacao`;
 `test_a_lista_sai_ordenada_por_distancia`;
 `test_a_mesma_leitura_segura_a_precisao_no_limiar_frouxo`.
+> **A tabela foi refeita nesta base, e ela desmente os limiares de lá e confirma a segunda
+> condição com folga (2026-08-26).** 3.000 recortes de 299 classes de `training_data/`, amostrados
+> por classe com semente 0, par a par completo -- 4,5 milhões de pares:
+>
+>     limiar |  imagem só          |  imagem + mesma leitura
+>            |  precisão cobertura |  precisão cobertura
+>      0,03  |  1,0000   0,0599    |  1,0000   0,0599
+>      0,10  |  0,9999   0,1124    |  1,0000   0,1124
+>      0,14  |  0,9986   0,2180    |  1,0000   0,2180     <- estrito
+>      0,18  |  0,9930   0,3055    |  0,9994   0,3055
+>      0,22  |  0,9828   0,3829    |  0,9991   0,3829     <- normal
+>      0,26  |  0,9569   0,4788    |  0,9983   0,4787
+>      0,30  |  0,8276   0,5683    |  0,9971   0,5682     <- amplo
+>      0,35  |  0,6983   0,6563    |  0,9968   0,6562
+>      0,40  |  0,4540   0,7445    |  0,9969   0,7444
+>
+> **A segunda condição vale muito mais aqui do que lá.** No projeto de origem ela comprava 0,4
+> ponto de precisão; nesta base, no limiar de 0,30, ela leva a precisão de **82,76% para 99,71%**
+> -- e a cobertura fica igual até a quarta casa (0,5683 contra 0,5682). Isto é: ela remove quase
+> **só** os pares errados. A tabela de lá dizia que ela "segura a precisão quando se afrouxa o
+> limiar"; aqui ela é o que torna o afrouxamento possível.
+>
+> **Os três rigores saem daí, e o critério de aceite passa a ter dentes.** Com a segunda condição
+> ligada -- o padrão de `semelhantes` -- os três ficam acima do piso de 99%. **Desligada, só o
+> `estrito` fica**, e é por isso que `Placar.entrega_lote` responde por rigor e não por módulo.
+>
+> **E o limiar de 0,03 -- o `dedupe.LIMIAR_PADRAO` -- foi recusado com número.** A primeira versão
+> deste módulo o usava, por ser o único já medido: ele entrega 100% de precisão com **6% de
+> cobertura**, isto é, um lote que quase nunca alcança nada. Os dois assuntos usam a mesma régua e
+> não o mesmo corte -- lá é quase-duplicata (a mesma renderização com meio pixel de deslocamento),
+> aqui é o mesmo glifo que saiu da classe.
+>
+> **A cobertura é metade da de lá, e a diferença é de material, não de código.** Em 0,18 a precisão
+> bate com a que lá se mediu em 0,20 (99,30% contra 98,91%), mas a cobertura é 30,6% contra 64,6%.
+> A amostra de lá eram 9 páginas de um livro; esta são 299 classes do acervo inteiro, onde os pares
+> da mesma classe são muito mais heterogêneos. Herdar o número de lá teria produzido uma tabela que
+> descreve outro material.
+>
+> **A pré-visualização não é conselho: é tipo.** `aplicar` só aceita uma `Previsao`, e `Previsao`
+> só sai de `previsualizar` com `olhada=False`. Um lote sem pré-visualização não é expressável, e
+> o teste ainda cobra o valor -- a trava do tipo pega o descuido, a do valor pega a esperteza.
+>
+> Tudo em `docs/metrics/texto_semelhanca.json`, com a curva inteira ao lado dos três rigores.
+
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.semelhanca:semelhantes`,
 `metrica:texto_semelhanca`.
 
 ---
 
-## S-214 · A coleta em quarentena ⬜ planejada
+## S-214 · A coleta em quarentena ✅ implementada (2026-08-26)
 
 **Problema.** Quando um livro inteiro passa pela extração, o modelo já diz onde é fraco: são os
 caracteres abaixo do piso de confiança. Medido lá, **3.943 deles em 264 páginas** — material de
@@ -3373,13 +3520,49 @@ Medido lá, no modo "todos": dos arquivos que caem em `revisao_ocr/lower_o/`, **
 `test_a_promocao_registra_procedencia_humana`;
 `test_o_teto_sorteia_do_livro_inteiro`;
 `test_o_nome_do_arquivo_ordena_por_confianca`.
+> **O fluxo entrou inteiro, e a etapa do meio continua sendo a mão (2026-08-26).** `coletar` grava
+> em `revisao_ocr/<palpite>/` e **não recebe o caminho da base de treino** -- não é disciplina de
+> quem chama, é falta de argumento na função. `test_a_coleta_nunca_grava_na_base_de_treino` afirma
+> isso sobre o disco, e não sobre a intenção.
+>
+> **As três lições de lá entraram desde o início, e cada uma tem um teste que não olha o código:**
+>
+> | lição | como entrou | o que o teste olha |
+> |---|---|---|
+> | a mesma renderização enchia a pasta | impressão SHA-256 **e** quase-duplicata da S-202 dentro do mesmo palpite | duas cópias e uma quase-cópia viram um arquivo |
+> | o teto guardava as primeiras páginas | amostragem de reservatório, semente declarada | a **distribuição de páginas** do que sobrou, e não o algoritmo |
+> | "mais duvidoso primeiro" não funcionava | confiança em milésimos com zeros à esquerda, **antes** da página, no nome | ordenar por nome é ordenar por dúvida |
+>
+> A quase-duplicata só vale **dentro do mesmo palpite**: duas imagens quase iguais lidas de dois
+> jeitos são homóglifo, e isso é assunto de `conflitos.py`, não de coleta.
+>
+> **`promover` lê o rótulo do nome da pasta, e o palpite do modelo não é consultado em lugar
+> nenhum dela.** `base_de_treino=None` é o padrão e não grava nada -- uma função que escreve na
+> base de treino não deve fazê-lo porque alguém esqueceu um argumento.
+>
+> **E o `strict=True` de `folder_to_char` é o item, não detalhe.** Sem ele, uma pasta cujo nome não
+> decodifica devolve `"?"`, e a promoção **criaria** `training_data/sym_63/` com o que estivesse
+> ali dentro -- o defeito da S-180 (127 amostras na classe errada) com o agravante de fabricar a
+> classe. Um teste cobra que a régua daqui seja **a mesma** de `dataset.varrer`: mais estrita, a
+> promoção travaria material legítimo em formato antigo; mais frouxa, inventaria classe.
+>
+> **A promoção destrava metade da S-201, e a outra metade continua sendo pergunta do dono dos
+> dados.** `procedencia.acrescentar` nasceu aqui -- o módulo só tinha `ler` --, e toda amostra que
+> entrar por este caminho entra com livro, página, data e `humano`, porque quem a rotulou moveu a
+> pasta com a mão. Os 608 mil recortes que já existem continuam com UUID puro e origem perdida:
+> isso é o que trava a S-201 e a S-203, e não é código.
+>
+> Um detalhe achado ao escrever: um livro do acervo tem **vírgula no nome**, e o CSV de procedência
+> não cita campo. Escrito cru, ele partiria a linha em seis campos e `ler` levantaria
+> `ArquivoInvalido` sobre um arquivo que o próprio módulo escreveu.
+
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.coleta:coletar`,
 `simbolo:chess_diagram_ocr.text.coleta:promover`.
 
 ---
 
-## S-215 · O orçamento por página, e o teto que a varredura respeita ⬜ planejada
+## S-215 · O orçamento por página, e o teto que a varredura respeita ✅ implementada (2026-08-26)
 
 **Problema.** A S-61 mediu ~2,95 s por página só do pipeline de diagramas, e a varredura do
 acervo leva ~10 h. OCR de glifo em página inteira **soma** a isso — e o número que ninguém tem é
@@ -3412,6 +3595,52 @@ por página piora além de uma margem. Regressão de desempenho é regressão.
 **Testes.** `test_o_perfil_separa_as_etapas`;
 `test_o_baseline_falha_quando_o_custo_piora`;
 `test_o_relatorio_traz_as_duas_unidades`.
+> **O número saiu, e ele escolhe `sob-demanda` (2026-08-26).** 18 páginas de 6 livros, amostradas
+> por passo constante ao longo de cada livro, com as duas pontas medidas na mesma corrida:
+>
+>     hoje (só diagramas)   0,377 s/página     1,26 h para o acervo
+>     o texto soma          0,456 s/página     1,52 h
+>     total                 0,833 s/página     2,78 h      fator 2,21x
+>
+> **Fator 2,21 cai na faixa do meio da tabela deste item, e a política é `sob-demanda`** -- texto
+> por página, e não em toda varredura.
+>
+> **O `hoje` não é o 2,95 s/página da S-61, e nenhum dos dois está errado.** Aquele perfil é de uma
+> página do `Karpov` com **6 diagramas**, e a inferência -- que é 76% do tempo -- escala com o
+> número deles. A amostra daqui atravessa 6 livros com passo constante, e a média de diagramas por
+> página é muito menor. Os dois números descrevem páginas diferentes, e é por isso que o fator é
+> medido contra a **mesma amostra** e não contra o número arquivado.
+>
+> **A primeira medição errou com o sinal cômodo, e vale registrar.** Ela deixava
+> `iter_pdf_diagrams` carregar o `.pt` de peças por página -- 18 linhas de "Modelo carregado" no
+> log de 18 páginas. Uma varredura de verdade paga essa carga uma vez por livro, então contá-la por
+> página **inflava o lado `hoje`** e fazia o fator sair menor do que é. Corrigido com o mesmo
+> `model_session` que a fila da S-22 usa.
+>
+> **E o perfil por etapa desmentiu a intuição.** Não é o modelo o gargalo do texto:
+>
+>     etapa              s/página   chamadas/página
+>     renderizacao         0,0452       1,00
+>     deteccao             0,1719       1,00
+>     binarizacao          0,0056       1,00
+>     contornos            0,1862       4,72     <- a maior etapa de texto
+>     colados              0,0037       1,00
+>     linhas               0,0027       5,00
+>     classificacao        0,1557      85,61
+>     correcoes            0,0299     175,83
+>     leitura_de_linha     0,0000       0,00     <- desligada por padrão (S-188)
+>     coluna               0,0005       1,00
+>     nao_instrumentado    0,0721
+>
+> **`contornos` (0,186) custa mais que `classificacao` (0,156)** -- a segmentação, e não a rede. E
+> as duas etapas que mais pesam do lado do texto (`contornos` e `correcoes`) **não existiam na
+> primeira lista de etapas**: elas caíam no resíduo, que saiu com 0,267 s/página, 32% da folha. Um
+> perfil cujo maior número é "não sei" não serve para escolher escopo; declaradas, o resíduo caiu
+> para 0,072 (8,7%).
+>
+> Tudo em `docs/metrics/texto_custo_20260826.json`, com o `n`, os livros e a política ao lado do
+> fator que a escolheu.
+
 
 **Sonda.** `simbolo:chess_diagram_ocr.cli.texto_custo:main`,
 `metrica:texto_custo`.
