@@ -824,6 +824,72 @@ def montar(
                     bbox=_envolver([b.bbox for b in blocos]),
                 )
             )
+    return _atar_legendas(tuple(saida))
+
+
+def _atar_legendas(colunas: tuple[Coluna, ...]) -> tuple[Coluna, ...]:
+    """Diz qual parágrafo é a **legenda** de qual diagrama, e grava isso na página (S-249).
+
+    **Não decide nada: pergunta a quem já decide.** `pdf_text.assign_lines_to_diagrams` é o dono
+    dessa pergunta desde a S-16, com a régua medida -- raio de 60 pt, sobreposição mínima no eixo
+    transversal, lado dominante do livro, e a distribuição por **grupo** e não por linha solta (a
+    legenda de três linhas do `Schiller` foi o caso que fixou isso). Redecidir aqui, com uma regra
+    parecida-mas-diferente, seria a segunda declaração da mesma regra -- e é o que a S-249 registrou
+    como o motivo de o item ter ficado parcial.
+
+    O que muda é só o **destino**: até agora o resultado morria dentro do caminho de legenda do PGN,
+    e a `PaginaLida` ficava sem saber. Agora ele vira `BlocoDeTexto.legenda_de`, e daí o editor
+    pinta o estilo `legenda` (S-249) e a camada da S-253 sabe o que aquele parágrafo é.
+
+    **O grupo é o parágrafo**, que é a unidade que aquela função já espera -- linhas do mesmo bloco
+    e da mesma coluna. E o filtro de tamanho é o de lá (`is_caption_like`, 25 palavras): um
+    parágrafo de prosa que passa perto de um diagrama é comentário, não legenda.
+    """
+    from ..pdf_text import TextLine, assign_lines_to_diagrams
+
+    grupos: list[BlocoDeTexto] = []
+    onde: list[tuple[int, int]] = []
+    diagramas: list[BlocoDeDiagrama] = []
+    for i, coluna in enumerate(colunas):
+        for j, bloco in enumerate(coluna.blocos):
+            if isinstance(bloco, BlocoDeTexto):
+                onde.append((i, j))
+                grupos.append(bloco)
+            elif isinstance(bloco, BlocoDeDiagrama):
+                diagramas.append(bloco)
+    if not grupos or not diagramas:
+        return colunas
+
+    linhas: list[TextLine] = []
+    for grupo, bloco in enumerate(grupos):
+        palavras = len(bloco.texto.split())
+        for linha in bloco.linhas:
+            linhas.append(
+                TextLine(text=linha.texto, bbox=linha.bbox, block_words=palavras, group_id=grupo)
+            )
+    baldes = assign_lines_to_diagrams(linhas, [d.bbox for d in diagramas])
+
+    de_grupo: dict[int, int] = {}
+    for k, balde in enumerate(baldes):
+        primarias = [n for n in balde if n.primary and n.line.is_caption_like]
+        if not primarias:
+            continue
+        # Um grupo serve a um diagrama só -- `assign_lines_to_diagrams` já garante isso do outro
+        # lado; o `setdefault` fecha o caso de duas linhas do mesmo grupo virem em baldes
+        # diferentes, e faz a primeira valer.
+        de_grupo.setdefault(primarias[0].line.group_id, diagramas[k].indice)
+    if not de_grupo:
+        return colunas
+
+    from dataclasses import replace
+
+    novos: dict[tuple[int, int], BlocoDeTexto] = {
+        onde[grupo]: replace(grupos[grupo], legenda_de=indice) for grupo, indice in de_grupo.items()
+    }
+    saida: list[Coluna] = []
+    for i, coluna in enumerate(colunas):
+        blocos = [novos.get((i, j), bloco) for j, bloco in enumerate(coluna.blocos)]
+        saida.append(replace(coluna, blocos=tuple(blocos)))
     return tuple(saida)
 
 
@@ -923,6 +989,7 @@ def ler_pagina(
     numeros: bool = True,
     juntar_lance: bool = True,
     marcar_negrito: bool = True,
+    marcar_italico: bool = True,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
@@ -960,6 +1027,15 @@ def ler_pagina(
             if marcar_negrito
             else False
         )
+        # **O itálico da camada tem a mesma máquina do peso** (S-237), e a mesma pergunta de
+        # documento: uma folha sem itálico num livro que o registra é `False`; num livro que não o
+        # registra é `None`.
+        spans_italico = _italico.spans_de_italico(page) if marcar_italico else []
+        registra_italico = (
+            bool(spans_italico) or _italico.documento_registra_italico(doc)
+            if marcar_italico
+            else False
+        )
 
     if max_boards:
         candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem, max_boards=max_boards)  # type: ignore[arg-type]
@@ -987,6 +1063,8 @@ def ler_pagina(
 
     if marcar_negrito and cruas:
         cruas = _com_negrito(cruas, spans_negrito, registra_negrito, escala_px)
+    if marcar_italico and cruas:
+        cruas = _com_italico_da_camada(cruas, spans_italico, registra_italico, escala_px)
 
     cabecalho, rodape = _margens(margem, altura, qual)
     return PaginaLida(
@@ -1025,6 +1103,36 @@ def _com_negrito(
     bboxes = [_para_pontos(c.caixa, escala_px) for c in cruas]
     pesos = _negrito.marcar(bboxes, spans, registra=registra)
     return [replace(c, negrito=p) for c, p in zip(cruas, pesos, strict=True)]
+
+
+def _com_italico_da_camada(
+    cruas: Sequence[_Cru],
+    spans: Sequence[Retangulo],
+    registra: bool,
+    escala_px: float,
+) -> list[_Cru]:
+    """As mesmas linhas, com o pendor que a **camada** declara -- e só onde ele falta (S-237).
+
+    **A precedência é por ausência, e não por preferência.** A régua geométrica da S-211 mede a
+    binária e responde onde o classificador de glifo rodou; a camada responde onde ela não rodou,
+    isto é, onde `italico` ainda é `None`. Nenhuma das duas sobrescreve a outra: sobrescrever
+    exigiria decidir qual erra menos, e isso ninguém mediu.
+
+    Na prática são caminhos disjuntos -- `motor="glifo"` preenche todas as linhas, `motor="camada"`
+    não preenche nenhuma --, e a regra escrita assim continua valendo no dia em que deixarem de
+    ser.
+    """
+    from dataclasses import replace
+
+    faltando = [i for i, c in enumerate(cruas) if c.italico is None]
+    if not faltando:
+        return list(cruas)
+    bboxes = [_para_pontos(cruas[i].caixa, escala_px) for i in faltando]
+    pendores = _italico.marcar_da_camada(bboxes, spans, registra=registra)
+    saida = list(cruas)
+    for indice, pendor in zip(faltando, pendores, strict=True):
+        saida[indice] = replace(saida[indice], italico=pendor)
+    return saida
 
 
 def _margens(linhas: Sequence[object], altura: float, procedencia: MotorResolvido) -> tuple[LinhaLida | None, LinhaLida | None]:

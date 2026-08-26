@@ -287,7 +287,7 @@ em pé não é detectada, e quem quiser marcá-la usa o pincel da S-241.
 
 ---
 
-## S-237 · O negrito: a espessura medida, ou dita não-medida ◐ parcial (2026-08-24)
+## S-237 · O negrito: a espessura medida, ou dita não-medida ✅ implementada (2026-08-25)
 
 **Problema.** Não há detecção de negrito em lugar nenhum, e há o contrário: `text/aumento.py:23`
 lista `espessura` entre as **augmentações** — *"tinta gorda contra tinta fina: `bold`, papel
@@ -379,8 +379,8 @@ exatamente a regra 5 desta spec: **um item que se declara não-medido é um item
 > critério de aceite; a medição mostrou que ela é o erro. O texto acima fica como estava, e esta
 > nota é a correção.
 
-**O que falta para o item fechar:** o lado do itálico. `pdf_text` continua sem ler o bit 1 de
-`span["flags"]`, e a régua geométrica do itálico — que existe, é boa e é jogada fora — é a S-236.
+**O que faltava para o item fechar:** o lado do itálico. Ele entrou em duas etapas — a régua
+geométrica na S-236, e a camada de texto na nota "O itálico da camada fecha o item", abaixo.
 
 ### O peso lido certo que a montagem do parágrafo perdia (2026-08-25)
 
@@ -444,6 +444,53 @@ negrito**, que é o defeito chegando ao arquivo de quem passou a tarde corrigind
 **Testes.** `test_a_mudanca_de_peso_abre_paragrafo`; `test_sem_o_peso_a_mesma_folha_sai_grudada`;
 `test_o_desconhecido_nao_abre_paragrafo`; `test_o_peso_igual_nao_abre_paragrafo`;
 `test_a_mudanca_de_peso_corta_o_paragrafo`; `test_sem_peso_conhecido_o_mesmo_fixture_sai_num_bloco_so`.
+
+### O itálico da camada fecha o item (2026-08-25)
+
+**Faltava a outra metade da mesma fonte.** A S-236 trouxe o itálico da **imagem** -- o pendor
+medido sobre a binária -- e registrou por escrito o que sobrava: *"o itálico da camada de texto, o
+bit 1 de `span["flags"]` e o nome de fonte com `italic`/`oblique`. A máquina para isso já existe em
+`text/negrito.py` (spans → cobertura → `marcar`), e generalizá-la é o que falta para os livros
+lidos por `motor="camada"`, que hoje saem com o campo em `None`."* É o que este passo faz.
+
+**A máquina saiu do módulo do negrito.** `spans → cobertura → marcar` era geometria genérica
+escrita dentro dele; agora mora em `text/camada.py`, e os dois módulos de estilo dizem só *o que*
+procurar -- `text/negrito.py` o nome de fonte e o bit `2**4`, `text/italico.py` o nome e o bit
+`2**1`. `negrito.py` continua exportando `cobertura` e `marcar`, delegando: quem os importa não
+mudou uma linha.
+
+**A precedência é por ausência, e não por preferência.** A régua da imagem responde onde ela roda;
+a camada responde onde `italico` ainda é `None`. Nenhuma sobrescreve a outra -- sobrescrever
+exigiria decidir qual erra menos, e isso ninguém mediu. Na prática são caminhos disjuntos
+(`motor="glifo"` preenche tudo, `motor="camada"` não preenche nada), e a regra escrita assim
+continua valendo no dia em que deixarem de ser.
+
+**A medição, e ela desmente o que o item supunha** (`docs/metrics/texto_italico_camada.json`, 4
+folhas de cada um dos 42 livros de `PDF/`):
+
+| | livros |
+|---|---:|
+| têm camada de texto | 32 |
+| **declaram itálico** | **12** |
+| declaram negrito | 13 |
+| camada sem estilo nenhum | 18 |
+| não têm camada | 10 |
+
+**Doze, e não mais que o negrito.** Só **um** livro declara itálico sem declarar negrito
+(`Vishy_Anand_Great_Chess_Combinations.pdf`); nos outros onze a camada já registrava peso. O ganho
+não é alcance novo: é a **outra metade do mesmo livro** -- onde a S-237 já lia negrito e o itálico
+saía `None`. E ele é fino: 138 linhas itálicas em 8.379 na amostra (**1,6%**), concentradas em
+citação e nome de abertura, com o `Kmoch` no extremo (36 de 310, 11,6%).
+
+**Um caso que a implementação encontrou:** `-it` no nome da fonte precisa da guarda `(?![a-z])`, e
+não de `\b`. Com `\b`, `MS-Item` viraria itálico -- a fronteira de palavra existe entre `t` e `e`.
+
+**O que este item deixa de dever.** Nada: a S-237 fecha. O negrito da imagem continua **recusado
+com número** (82,2% contra 82,7% de chutar "normal"), que é a outra metade e é uma recusa, não uma
+falta.
+
+**Testes.** `tests/test_italico.py::CamadaTests` e `::PrecedenciaTests`, treze casos -- incluindo o
+que afirma que a máquina é literalmente a mesma do negrito (`ne.cobertura is camada.cobertura`).
 
 ---
 
@@ -1391,7 +1438,7 @@ desenho.
 
 ---
 
-## S-249 · Estilo de parágrafo: título, prosa, notação e legenda ◐ parcial (2026-08-25)
+## S-249 · Estilo de parágrafo: título, prosa, notação e legenda ✅ implementada (2026-08-25)
 
 **Problema.** Negrito e itálico são atributos de trecho; o que falta é o atributo do **parágrafo**.
 E este projeto tem uma razão específica para o querer, que um editor genérico não tem: o modelo de
@@ -1436,16 +1483,20 @@ Duas regras que impedem o item de virar um segundo sistema de layout:
 `test_a_legenda_segue_o_diagrama`; `test_aplicar_a_mao_sobrepoe_e_carimba_humano`;
 `test_nenhum_tamanho_de_fonte_cravado`; `test_notacao_automatica_so_com_corte_medido`.
 
-### O que a implementação virou (2026-08-25) — e o que falta
+### O que a implementação virou, na Fase 38 (2026-08-25)
 
-**Dois dos quatro estilos são derivados da página, e os outros dois entram pela mão.**
+> **Esta nota é do primeiro passo do item, e a `legenda` ainda estava de fora.** O que ela conta --
+> por que a fonte não mora na etiqueta do estilo -- continua valendo; o que ela diz sobre a legenda
+> foi resolvido no mesmo dia, e está na nota seguinte.
+
+**Dois dos quatro estilos eram derivados da página, e os outros dois entravam pela mão.**
 
     BlocoDeTarja              -> título    texto claro sobre fundo escuro é cabeçalho (S-195)
     BlocoDeTexto com recuado  -> prosa     o recuo que a S-199 mede para separar parágrafo
     notação                   -- só à mão: o corte não foi medido (regra 5 desta spec)
-    legenda                   -- só à mão: ver abaixo
+    legenda                   -- só à mão então; ver a nota seguinte
 
-**`legenda` é a divergência, e ela tem motivo.** O item aponta para
+**`legenda` era a divergência, e ela tinha motivo.** O item aponta para
 `pdf_text.assign_lines_to_diagrams`, que é de fato quem casa linha com diagrama -- e ele trabalha
 sobre `TextLine`, o tipo da **camada do PDF**, e pede `fitz`. A `PaginaLida` não carrega esse
 casamento: ela tem o `BlocoDeDiagrama` e os `BlocoDeTexto` lado a lado, sem o vínculo. Redecidir o
@@ -1453,10 +1504,10 @@ vínculo aqui, com uma regra parecida-mas-diferente ("o bloco logo abaixo do dia
 **segunda declaração da mesma regra** -- que é o defeito que este projeto passa o tempo tirando de
 si, e seria uma regra não medida ainda por cima.
 
-**O que falta para o item fechar:** ou a `PaginaLida` passa a carregar o vínculo que
-`assign_lines_to_diagrams` já calcula na leitura, ou o editor chama aquela função com os dois
-conjuntos que já tem. A primeira é a boa: o vínculo é informação da leitura, e gravá-la no modelo de
-página serve também à S-253 (o PDF pesquisável) e ao `[Caption]` do PGN.
+**O que faltava para o item fechar:** que a `PaginaLida` passasse a carregar o vínculo que
+`assign_lines_to_diagrams` já calcula na leitura. Foi por aí — e ver a nota "A legenda fecha o
+item", abaixo: o vínculo é informação da leitura, e gravá-lo no modelo de página serve também à
+S-253 e ao `[Caption]` do PGN.
 
 **A fonte não mora na etiqueta do estilo, e essa foi a descoberta da implementação.** No Tk **uma**
 etiqueta dá a fonte ao trecho, e três coisas a disputam: o corpo do estilo, o negrito e o itálico.
@@ -1468,6 +1519,48 @@ negrito -- e o atributo continuaria no documento, invisível. A saída é a mesm
 **Nenhum tamanho é cravado**, e o teste varre o painel atrás de `font=` e `size=` com número
 literal. O recuo em pixel é derivado da fonte em uso (`measure("    ")`), e não escolhido: quem
 aumentou a fonte do Windows recebe um recuo maior.
+
+### A legenda fecha o item (2026-08-25)
+
+**O que faltava era o vínculo, e ele agora mora na página.** `BlocoDeTexto.legenda_de` guarda o
+índice do diagrama de que aquele parágrafo é legenda, e quem o preenche é `leitor._atar_legendas`
+chamando **`pdf_text.assign_lines_to_diagrams`** -- o dono daquela pergunta desde a S-16, com a
+régua já medida: raio de 60 pt, sobreposição mínima no eixo transversal, lado dominante do livro, e
+a distribuição por **grupo** (o parágrafo) e não por linha solta.
+
+Nada foi redecidido: o que mudou é o **destino** da resposta. Até aqui ela morria dentro do caminho
+de legenda do PGN, e a `PaginaLida` ficava com o diagrama e os parágrafos lado a lado sem dizer
+qual descreve qual. Agora ela sobrevive à leitura, serializa no `.cvtxt` e serve também à S-253 --
+que passa a saber que aquele parágrafo é legenda.
+
+**A medição, e a guarda que ela obrigou** (`docs/metrics/texto_legenda.json`, as 68 folhas anotadas
+do conjunto de campo, 112 diagramas):
+
+| | diagramas |
+|---|---:|
+| detectados | 112 |
+| **com parágrafo atado** | **83 (74,1%)** |
+| dos atados, que são linha de lances | 15 (18%) |
+| **que viram estilo `legenda`** | **68 (60,7%)** |
+
+A régua da S-16 mede **distância**, não conteúdo -- e a variante logo abaixo do diagrama fica tão
+perto quanto a legenda. Pintar `1...♖a8+! 2.♔b5 g3` com o corpo de legenda seria um erro visível,
+então o estilo tem uma guarda: `notacao.e_linha_de_notacao`, a régua de lance que este subpacote já
+tinha, aplicada por **maioria** dos tokens. `Ivkov—Dueckstein 1967` traz um número que parece
+número de lance e continua sendo legenda; seis lances em dez tokens não.
+
+**O vínculo entra na página mesmo quando o estilo não entra.** São duas perguntas: *"este parágrafo
+está atado àquele diagrama?"* é da leitura, e *"ele deve ser desenhado como legenda?"* é do editor.
+Guardar só a segunda perderia informação que o PGN e o PDF pesquisável querem.
+
+**`notacao` continua entrando só pela mão**, e é a única coisa que este item deixa de dever: o
+corte que separa uma linha de lances da prosa **dentro do corpo do texto** não foi medido. A guarda
+acima não serve: ela decide sobre um parágrafo que já se sabe atado a um diagrama -- população
+muito menor e muito mais fácil.
+
+**Testes.** `tests/test_leitor_de_pagina.py::VinculoDaLegendaTests` (sete casos, do parágrafo logo
+abaixo ao vínculo estragado que recusa) e `tests/test_texto_estilos.py` (a legenda que ganha do
+recuo, e a variante que não vira legenda).
 
 ---
 

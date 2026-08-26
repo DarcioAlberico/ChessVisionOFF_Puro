@@ -14,9 +14,18 @@ import unittest
 
 import numpy as np
 
+from dataclasses import replace
+
 from chess_diagram_ocr.text import leitor
 from chess_diagram_ocr.text.boxes import Caixa, escala_de_texto
-from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
+from chess_diagram_ocr.text.pagina import (
+    BlocoDeDiagrama,
+    BlocoDeTexto,
+    Coluna,
+    LinhaLida,
+    PaginaInvalida,
+    PaginaLida,
+)
 
 
 def _pagina_com_diagrama(escala_do_texto: int = 12, lado_da_peca: int = 48) -> np.ndarray:
@@ -341,6 +350,85 @@ class SeparadorDeColadoTests(unittest.TestCase):
         binaria[10:30, 60:100] = 255
         caixa = Caixa(10, 10, 100, 30)
         self.assertEqual(colados.partir(caixa, 52, arbitro=None, modo=colados.AUTO), [caixa])
+
+class VinculoDaLegendaTests(unittest.TestCase):
+    """O que a `PaginaLida` passou a carregar: qual parágrafo é legenda de qual diagrama (S-249).
+
+    **Quem decide continua sendo `pdf_text.assign_lines_to_diagrams`** -- a régua da S-16, com raio
+    de 60 pt e lado dominante do livro. O que estes testes travam é que a resposta dela **chegue** à
+    página, que era exatamente o que faltava para o editor pintar a legenda de legenda.
+    """
+
+    def _linha(self, texto: str, bbox: tuple[float, float, float, float]) -> LinhaLida:
+        return LinhaLida(texto, bbox, 1.0, "camada")
+
+    def _pagina(self, *blocos: object) -> PaginaLida:
+        return PaginaLida(
+            documento="livro.pdf",
+            pagina=0,
+            colunas=(Coluna(indice=0, blocos=tuple(blocos)),),  # type: ignore[arg-type]
+        )
+
+    def test_o_paragrafo_logo_abaixo_do_diagrama_e_a_legenda(self) -> None:
+        from chess_diagram_ocr.text.leitor import _atar_legendas
+
+        diagrama = BlocoDeDiagrama(indice=3, bbox=(100.0, 100.0, 250.0, 250.0))
+        legenda = BlocoDeTexto.de_linhas([self._linha("Daugavpils 1986", (100.0, 256.0, 250.0, 266.0))])
+        longe = BlocoDeTexto.de_linhas([self._linha("outro parágrafo", (100.0, 600.0, 250.0, 610.0))])
+        colunas = _atar_legendas((Coluna(indice=0, blocos=(diagrama, legenda, longe)),))
+        blocos = colunas[0].blocos
+        self.assertEqual(blocos[1].legenda_de, 3)
+        self.assertIsNone(blocos[2].legenda_de)
+
+    def test_o_indice_e_o_do_detector_e_nao_a_posicao_na_coluna(self) -> None:
+        """É por ele que a interface reencontra o diagrama -- o mesmo de `BlocoDeDiagrama.indice`."""
+        from chess_diagram_ocr.text.leitor import _atar_legendas
+
+        diagrama = BlocoDeDiagrama(indice=7, bbox=(100.0, 100.0, 250.0, 250.0))
+        legenda = BlocoDeTexto.de_linhas([self._linha("Bratislava 1956", (100.0, 256.0, 250.0, 266.0))])
+        colunas = _atar_legendas((Coluna(indice=0, blocos=(diagrama, legenda)),))
+        self.assertEqual(colunas[0].blocos[1].legenda_de, 7)
+
+    def test_o_paragrafo_comprido_nao_e_legenda(self) -> None:
+        """Acima de 25 palavras o bloco é comentário, não legenda -- a régua é a de `pdf_text`."""
+        from chess_diagram_ocr.text.leitor import _atar_legendas
+
+        comprido = " ".join(["palavra"] * 40)
+        diagrama = BlocoDeDiagrama(indice=0, bbox=(100.0, 100.0, 250.0, 250.0))
+        prosa = BlocoDeTexto.de_linhas([self._linha(comprido, (100.0, 256.0, 250.0, 266.0))])
+        colunas = _atar_legendas((Coluna(indice=0, blocos=(diagrama, prosa)),))
+        self.assertIsNone(colunas[0].blocos[1].legenda_de)
+
+    def test_a_pagina_sem_diagrama_nao_muda(self) -> None:
+        from chess_diagram_ocr.text.leitor import _atar_legendas
+
+        coluna = Coluna(indice=0, blocos=(BlocoDeTexto.de_linhas([self._linha("só texto", (0, 0, 10, 10))]),))
+        self.assertEqual(_atar_legendas((coluna,)), (coluna,))
+
+    def test_o_vinculo_sobrevive_a_ida_e_volta(self) -> None:
+        """A `PaginaLida` serializa sem perda por critério de aceite da S-211."""
+        legenda = BlocoDeTexto.de_linhas([self._linha("Diagramm 45", (0.0, 0.0, 50.0, 10.0))])
+        pagina = self._pagina(replace(legenda, legenda_de=2))
+        de_volta = PaginaLida.de_json(pagina.para_json())
+        self.assertEqual(de_volta.blocos[0].legenda_de, 2)
+
+    def test_o_arquivo_antigo_sem_o_campo_nao_tem_legenda(self) -> None:
+        """Ausente é "este parágrafo não é legenda de ninguém". Não paga versão de esquema."""
+        bruto = self._pagina(
+            BlocoDeTexto.de_linhas([self._linha("texto", (0.0, 0.0, 50.0, 10.0))])
+        ).para_json()
+        del bruto["colunas"][0]["blocos"][0]["legenda_de"]
+        self.assertIsNone(PaginaLida.de_json(bruto).blocos[0].legenda_de)
+
+    def test_um_vinculo_estragado_recusa(self) -> None:
+        """O campo aponta para um diagrama da mesma página: apontador quebrado desenharia a
+        legenda no lugar errado, em silêncio."""
+        bruto = self._pagina(
+            BlocoDeTexto.de_linhas([self._linha("texto", (0.0, 0.0, 50.0, 10.0))])
+        ).para_json()
+        bruto["colunas"][0]["blocos"][0]["legenda_de"] = "primeiro"
+        with self.assertRaises(PaginaInvalida):
+            PaginaLida.de_json(bruto)
 
 
 if __name__ == "__main__":  # pragma: no cover

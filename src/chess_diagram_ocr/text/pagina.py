@@ -353,6 +353,25 @@ def _negrito_de(valor: Any, onde: str) -> bool | None:
     return _tres_estados(valor, onde, "negrito")
 
 
+def _indice_de_legenda(valor: Any, onde: str) -> int | None:
+    """O índice de diagrama de `legenda_de`, ou `None` -- e ausente é `None` (S-249).
+
+    Ausente é "este parágrafo não é legenda de ninguém", que é exatamente o que um arquivo gravado
+    antes deste campo existir sabe sobre ele. Não paga versão de esquema por isso.
+
+    Valor que **não** é índice levanta, como em `_tres_estados`: aqui o campo aponta para um
+    diagrama da mesma página, e um apontador estragado desenharia a legenda no lugar errado --
+    silenciosamente.
+    """
+    if valor is None:
+        return None
+    if isinstance(valor, bool) or not isinstance(valor, int):
+        raise PaginaInvalida(f"{onde}: legenda_de é um índice de diagrama ou ausente -- veio {valor!r}")
+    if valor < 0:
+        raise PaginaInvalida(f"{onde}: legenda_de não pode ser negativo -- veio {valor!r}")
+    return valor
+
+
 @dataclass(frozen=True)
 class BlocoDeTexto:
     """Um parágrafo, com as linhas que o compõem.
@@ -368,13 +387,26 @@ class BlocoDeTexto:
     confianca: float = 1.0
     procedencia: Procedencia = "camada"
     recuado: bool = False
+    """Este parágrafo abriu por recuo. A interface o usa para reproduzir a diagramação; o domínio
+    o usa para nada, e é por isso que ele é um `bool` e não um número de pontos."""
+
     negrito: bool | None = None
     """O parágrafo inteiro em negrito. `None` é "não se sabe"; ver `LinhaLida.negrito`."""
 
     italico: bool | None = None
     """O parágrafo inteiro em itálico. `None` é "não se sabe"; ver `LinhaLida.italico`."""
-    """Este parágrafo abriu por recuo. A interface o usa para reproduzir a diagramação; o domínio
-    o usa para nada, e é por isso que ele é um `bool` e não um número de pontos."""
+
+    legenda_de: int | None = None
+    """O índice do diagrama de que este parágrafo é a **legenda**, ou `None` (S-249).
+
+    **É o vínculo que faltava na `PaginaLida`.** Quem casa linha com diagrama é
+    `pdf_text.assign_lines_to_diagrams`, e ele roda dentro do caminho de leitura, com a página
+    aberta. Até 2026-08-25 o resultado morria ali: a página ficava com o `BlocoDeDiagrama` e os
+    `BlocoDeTexto` lado a lado, **sem** dizer qual descreve qual -- e o editor não tinha como
+    pintar a legenda de legenda (S-249), nem a S-253 como saber que aquele parágrafo é legenda.
+
+    Guardar o índice, e não o bloco, é o mesmo desenho de `BlocoDeDiagrama.indice`: índice
+    serializa, referência não -- e é por ele que a interface reencontra o diagrama."""
 
     @property
     def texto(self) -> str:
@@ -417,6 +449,7 @@ class BlocoDeTexto:
             "recuado": self.recuado,
             "negrito": self.negrito,
             "italico": self.italico,
+            "legenda_de": self.legenda_de,
             "linhas": [linha.para_json() for linha in self.linhas],
         }
 
@@ -432,6 +465,7 @@ class BlocoDeTexto:
             recuado=bool(dados.get("recuado", False)),
             negrito=_negrito_de(dados.get("negrito"), onde),
             italico=_tres_estados(dados.get("italico"), onde, "italico"),
+            legenda_de=_indice_de_legenda(dados.get("legenda_de"), onde),
         )
 
 

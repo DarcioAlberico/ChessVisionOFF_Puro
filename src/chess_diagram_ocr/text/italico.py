@@ -27,6 +27,37 @@ traço pende. Medido em 157 linhas da mesma página:
 
 Não há sobreposição, e o corte fica em 0,05 -- bem no meio do vão.
 
+## As duas fontes, e qual responde onde (2026-08-25)
+
+O pendor mede a **imagem**, e por isso só responde onde o classificador de glifo roda. Nos livros
+lidos pela **camada de texto** não há binária para medir, e o campo saía `None` -- o que fazia a
+S-236 desenhar em pé uma citação que o PDF declara itálica.
+
+A segunda fonte é a mesma do negrito: o nome da fonte e o bit de `span["flags"]`. Ela é **metadado
+e não palpite**, e a máquina para lê-la já existia -- `spans → cobertura → marcar`, hoje em
+`text/camada.py`.
+
+**A precedência é por ausência, e não por preferência.** A régua da imagem responde onde ela roda;
+a camada responde onde ela não rodou (`italico is None`). Nenhuma das duas sobrescreve a outra --
+sobrescrever exigiria decidir qual erra menos, e isso ninguém mediu.
+
+Medido em 2026-08-25 sobre 4 folhas de cada um dos 42 livros de `PDF/`
+(`docs/metrics/texto_italico_camada.json`):
+
+    livros com camada de texto             32
+    **declaram itálico**                   **12**
+    declaram negrito                       13
+    camada sem estilo nenhum               18
+    sem camada                             10
+
+**Doze, e não mais que o negrito** -- que é o contrário do que se supunha ao escrever o item. Só
+**um** livro declara itálico sem declarar negrito (`Vishy_Anand_Great_Chess_Combinations.pdf`);
+nos outros onze a camada já registrava peso, e o pendor vem junto. O ganho, então, não é alcance
+novo: é a **outra metade do mesmo livro** -- onde a S-237 já lia negrito e o itálico saía `None`.
+
+E ele é fino: 138 linhas itálicas em 8.379 linhas da amostra (**1,6%**), concentradas em citação e
+nome de abertura. O `Kmoch` é o extremo, com 36 de 310 (11,6%).
+
 ## O que este módulo não faz
 
 Não conserta `pesition` nem `f6w`: aquilo é confusão de letra por letra, e quem trata disso é o
@@ -35,11 +66,64 @@ léxico. Aqui só se decide `/` contra `l`, e só dentro de linha inclinada.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 import numpy as np
 
+from . import camada
 from .boxes import Caixa
+
+FONTE_ITALICO = re.compile(r"italic|oblique|-it(?![a-z])|kursiv", re.I)
+"""O nome da fonte que denuncia pendor. `Times-Italic`, `Arial-Oblique`, `FreeSerif-It`.
+
+Vale junto com o bit `2**1` de `flags`, pela mesma razão do negrito: há PDF com o nome sem o bit e
+vice-versa. `kursiv` está aqui porque o acervo tem livros alemães, e é como as fontes deles se
+chamam.
+
+**O `-it` pede a guarda `(?![a-z])`**, e não ``: sem ela, `MS-Item` viraria itálico -- o ``
+depois de `-it` casa com a fronteira antes do `e`, que não existe. A negativa de classe é o que
+pega o caso: `-It` no fim do nome é abreviação de itálico, `-Item` é outra palavra."""
+
+BIT_DE_ITALICO = 2**1
+"""O bit de itálico em `span["flags"]` do `get_text("dict")`. O de negrito é o `2**4`."""
+
+
+def _span_e_italico(span: dict) -> bool:
+    """O nome da fonte **ou** o bit. Ver `FONTE_ITALICO`."""
+    return bool(FONTE_ITALICO.search(str(span.get("font", "")))) or bool(
+        int(span.get("flags", 0)) & BIT_DE_ITALICO
+    )
+
+
+def marcar_da_camada(
+    bboxes: Sequence[camada.Retangulo],
+    spans: Sequence[camada.Retangulo],
+    *,
+    registra: bool,
+    minimo: float = camada.COBERTURA_MINIMA,
+) -> list[bool | None]:
+    """Uma resposta por linha, a partir do que a camada declara. Ver `text/camada.marcar`.
+
+    Existe como nome próprio -- em vez de o leitor chamar `camada.marcar` direto -- porque é aqui
+    que mora o **critério** do itálico, e o dia em que a cobertura mínima dele precisar ser
+    diferente da do negrito é este o lugar de mudar.
+    """
+    return camada.marcar(bboxes, spans, registra=registra, minimo=minimo)
+
+
+def spans_de_italico(page: object) -> list[camada.Retangulo]:
+    """Os retângulos em itálico da página, em **pontos do PDF**. Vazio quando não há nenhum."""
+    return camada.spans_com(page, _span_e_italico)
+
+
+def documento_registra_italico(doc: object, *, amostra: int = camada.PAGINAS_DE_AMOSTRA) -> bool:
+    """Este documento registra pendor de fonte em algum lugar? Ver `text/camada.py`.
+
+    **É a pergunta que separa `False` de `None`**: uma página sem itálico num livro que o registra
+    é "aqui não tem"; num livro que não o registra é "não se sabe".
+    """
+    return camada.documento_registra(doc, _span_e_italico, amostra=amostra)
 
 PENDOR_DE_ITALICO = 0.05
 """Deslocamento do centroide de tinta do topo em relação ao da base, em larguras de box.
@@ -202,9 +286,13 @@ def corrigir(
 
 
 __all__ = [
+    "BIT_DE_ITALICO",
+    "FONTE_ITALICO",
     "MIN_BOXES_PARA_MEDIR",
     "PENDOR_DE_ITALICO",
     "TROCA",
+    "documento_registra_italico",
+    "spans_de_italico",
     "corrigir",
     "declarar",
     "e_italica",

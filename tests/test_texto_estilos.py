@@ -68,19 +68,52 @@ class DerivadoDaPaginaTests(unittest.TestCase):
         doc = rico.de_pagina(_pagina(BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 9.0, 9.0))))
         self.assertEqual({c.atributos.estilo for c in doc.corridas}, {""})
 
-    def test_notacao_e_legenda_nao_entram_sozinhas(self) -> None:
-        """**Os dois sem dono medido só entram pela mão** -- e o motivo de cada um está escrito.
+    def test_a_legenda_segue_o_diagrama(self) -> None:
+        """**O vínculo vem da página** (S-249): `BlocoDeTexto.legenda_de`, gravado pelo leitor a
+        partir de `pdf_text.assign_lines_to_diagrams` -- a régua da S-16, e não uma regra nova."""
+        from dataclasses import replace
 
-        `notacao` não tem corte medido (regra 5). `legenda` tem dono, e o dono não é a
-        `PaginaLida`: quem casa linha com diagrama é `pdf_text.assign_lines_to_diagrams`, sobre o
-        tipo da camada do PDF. Redecidir isso aqui seria a segunda declaração da mesma regra.
-        """
-        pagina = _pagina(
-            BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 9.0, 9.0)),
-            BlocoDeTexto.de_linhas([_linha("Diagrama 12: brancas jogam.", 12.0)]),
-            BlocoDeTexto.de_linhas([_linha("1.♘f3 ♘f6 2.c4 e6", 30.0)]),
+        legenda = replace(
+            BlocoDeTexto.de_linhas([_linha("Daugavpils 1986", 12.0)]), legenda_de=0
         )
-        doc = rico.de_pagina(pagina)
+        doc = rico.de_pagina(_pagina(BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 9.0, 9.0)), legenda))
+        estilos = {c.texto.strip(): c.atributos.estilo for c in doc.corridas if c.texto.strip()}
+        self.assertEqual(estilos["Daugavpils 1986"], "legenda")
+
+    def test_a_linha_de_lances_atada_ao_diagrama_nao_vira_legenda(self) -> None:
+        """A guarda de conteúdo da S-249, com número: **15 dos 83** parágrafos que a régua ata a um
+        diagrama no conjunto de campo são linha de lances, e pintá-los com o corpo de legenda seria
+        um erro visível. Quem separa é `notacao.e_linha_de_notacao`."""
+        from dataclasses import replace
+
+        variante = replace(
+            BlocoDeTexto.de_linhas([_linha("1...♖a8+! 2.♔b5 g3 3.♔c6", 12.0)]), legenda_de=0
+        )
+        doc = rico.de_pagina(_pagina(BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 9.0, 9.0)), variante))
+        self.assertEqual({c.atributos.estilo for c in doc.corridas}, {""})
+
+    def test_a_legenda_ganha_do_recuo(self) -> None:
+        """Um parágrafo pode ser as duas coisas, e o que ele **é** para quem lê é a legenda."""
+        from dataclasses import replace
+
+        legenda = replace(
+            BlocoDeTexto.de_linhas([_linha("Bratislava 1956", 12.0)], recuado=True), legenda_de=1
+        )
+        doc = rico.de_pagina(_pagina(BlocoDeDiagrama(indice=1, bbox=(0.0, 0.0, 9.0, 9.0)), legenda))
+        # Só as corridas de texto: a marca do diagrama não recebe estilo, por construção.
+        estilos = {
+            c.atributos.estilo for c in doc.corridas if c.tipo == rico.TEXTO and c.texto.strip()
+        }
+        self.assertEqual(estilos, {"legenda"})
+
+    def test_notacao_nao_entra_sozinha(self) -> None:
+        """**O único sem dono medido continua entrando só pela mão** (regra 5).
+
+        O corte que separa uma linha de lances da prosa **dentro do corpo do texto** não foi
+        medido. A guarda da legenda não serve para isso: ela decide sobre um parágrafo que já se
+        sabe atado a um diagrama, que é população muito menor e muito mais fácil.
+        """
+        doc = rico.de_pagina(_pagina(BlocoDeTexto.de_linhas([_linha("1.♘f3 ♘f6 2.c4 e6")])))
         self.assertEqual({c.atributos.estilo for c in doc.corridas}, {""})
 
     def test_o_motivo_de_cada_um_esta_escrito_no_modulo(self) -> None:

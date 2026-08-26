@@ -283,6 +283,139 @@ class InclinacaoTests(unittest.TestCase):
         medida = it.inclinacao_da_linha(img, [caixa] * it.MIN_BOXES_PARA_MEDIR)
         self.assertAlmostEqual(0.20, medida, places=1)
 
+class _PaginaDeMentira:
+    """Uma página com os spans que o teste quiser, no formato de `get_text("dict")`."""
+
+    def __init__(self, spans: list[dict]) -> None:
+        self._spans = spans
+
+    def get_text(self, formato: str) -> dict:
+        assert formato == "dict"
+        return {"blocks": [{"lines": [{"spans": self._spans}]}]}
+
+
+class _DocumentoDeMentira:
+    def __init__(self, paginas: list[_PaginaDeMentira]) -> None:
+        self._paginas = paginas
+
+    @property
+    def page_count(self) -> int:
+        return len(self._paginas)
+
+    def __getitem__(self, indice: int) -> _PaginaDeMentira:
+        return self._paginas[indice]
+
+
+def _span(font: str = "Times", flags: int = 0, bbox=(0.0, 0.0, 100.0, 10.0)) -> dict:
+    return {"font": font, "flags": flags, "bbox": bbox}
+
+
+class CamadaTests(unittest.TestCase):
+    """O itálico que a **camada de texto** declara -- a metade que faltava à S-237."""
+
+    def test_o_nome_da_fonte_denuncia_o_pendor(self) -> None:
+        for nome in ("Times-Italic", "Arial-Oblique", "FreeSerif-It", "Garamond-Kursiv"):
+            with self.subTest(fonte=nome):
+                self.assertTrue(it._span_e_italico(_span(font=nome)))
+
+    def test_a_fonte_em_pe_nao(self) -> None:
+        for nome in ("Times-Roman", "Arial", "Calibri-Bold"):
+            with self.subTest(fonte=nome):
+                self.assertFalse(it._span_e_italico(_span(font=nome)))
+
+    def test_o_bit_vale_sem_o_nome(self) -> None:
+        """Há PDF com o bit e sem o nome, e vice-versa -- por isso os dois valem."""
+        self.assertTrue(it._span_e_italico(_span(font="Arial", flags=it.BIT_DE_ITALICO)))
+        self.assertFalse(it._span_e_italico(_span(font="Arial", flags=0)))
+
+    def test_o_bit_do_negrito_nao_e_o_do_italico(self) -> None:
+        """`2**4` é peso e `2**1` é pendor: trocá-los marcaria itálico onde há negrito."""
+        from chess_diagram_ocr.text import negrito as ne
+
+        self.assertNotEqual(it.BIT_DE_ITALICO, ne.BIT_DE_NEGRITO)
+        self.assertFalse(it._span_e_italico(_span(font="Arial", flags=ne.BIT_DE_NEGRITO)))
+
+    def test_os_spans_saem_em_pontos(self) -> None:
+        pagina = _PaginaDeMentira([_span(font="Times-Italic", bbox=(10.0, 20.0, 90.0, 30.0))])
+        self.assertEqual(it.spans_de_italico(pagina), [(10.0, 20.0, 90.0, 30.0)])
+
+    def test_a_pagina_sem_camada_nao_estoura(self) -> None:
+        class Cega:
+            def get_text(self, _formato: str) -> dict:
+                raise RuntimeError("sem camada")
+
+        self.assertEqual(it.spans_de_italico(Cega()), [])
+
+    def test_o_documento_que_registra_e_o_que_separa_falso_de_desconhecido(self) -> None:
+        com = _DocumentoDeMentira([_PaginaDeMentira([_span(font="Times-Italic")])] * 8)
+        sem = _DocumentoDeMentira([_PaginaDeMentira([_span(font="Times")])] * 8)
+        self.assertTrue(it.documento_registra_italico(com))
+        self.assertFalse(it.documento_registra_italico(sem))
+
+    def test_marcar_devolve_desconhecido_quando_o_livro_nao_registra(self) -> None:
+        """**`False` ali seria afirmar que nada é itálico**, e ninguém mediu isso."""
+        marcas = it.marcar_da_camada([(0.0, 0.0, 100.0, 10.0)], [], registra=False)
+        self.assertEqual(marcas, [None])
+
+    def test_a_maioria_da_largura_decide_a_linha(self) -> None:
+        linha = (0.0, 0.0, 100.0, 10.0)
+        pouco = it.marcar_da_camada([linha], [(0.0, 0.0, 30.0, 10.0)], registra=True)
+        muito = it.marcar_da_camada([linha], [(0.0, 0.0, 70.0, 10.0)], registra=True)
+        self.assertEqual(pouco, [False])
+        self.assertEqual(muito, [True])
+
+    def test_a_maquina_e_a_mesma_do_negrito(self) -> None:
+        """Uma régua geométrica, um lugar: `text/camada.py`. Duas cópias divergiriam."""
+        from chess_diagram_ocr.text import camada
+        from chess_diagram_ocr.text import negrito as ne
+
+        self.assertIs(ne.cobertura, camada.cobertura)
+        self.assertIs(ne.marcar, camada.marcar)
+        linha = (0.0, 0.0, 100.0, 10.0)
+        span = [(0.0, 0.0, 80.0, 10.0)]
+        self.assertEqual(
+            it.marcar_da_camada([linha], span, registra=True),
+            ne.marcar([linha], span, registra=True),
+        )
+
+
+class PrecedenciaTests(unittest.TestCase):
+    """A régua da imagem responde onde ela roda; a camada responde onde ela não rodou."""
+
+    def _cru(self, italico):  # noqa: ANN001, ANN202
+        from chess_diagram_ocr.text.leitor import _Cru
+
+        return _Cru(
+            texto="uma linha",
+            caixa=Caixa(0, 0, 100, 10),
+            confianca=1.0,
+            procedencia="camada",
+            italico=italico,
+        )
+
+    def test_a_camada_preenche_o_que_esta_vazio(self) -> None:
+        from chess_diagram_ocr.text.leitor import _com_italico_da_camada
+
+        saida = _com_italico_da_camada(
+            [self._cru(None)], [(0.0, 0.0, 100.0, 10.0)], registra=True, escala_px=1.0
+        )
+        self.assertEqual([c.italico for c in saida], [True])
+
+    def test_a_camada_nao_sobrescreve_a_medicao_da_imagem(self) -> None:
+        """Sobrescrever exigiria decidir qual erra menos, e isso ninguém mediu."""
+        from chess_diagram_ocr.text.leitor import _com_italico_da_camada
+
+        saida = _com_italico_da_camada(
+            [self._cru(False)], [(0.0, 0.0, 100.0, 10.0)], registra=True, escala_px=1.0
+        )
+        self.assertEqual([c.italico for c in saida], [False])
+
+    def test_sem_registro_o_campo_continua_desconhecido(self) -> None:
+        from chess_diagram_ocr.text.leitor import _com_italico_da_camada
+
+        saida = _com_italico_da_camada([self._cru(None)], [], registra=False, escala_px=1.0)
+        self.assertEqual([c.italico for c in saida], [None])
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

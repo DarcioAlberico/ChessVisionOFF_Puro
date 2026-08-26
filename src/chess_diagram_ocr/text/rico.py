@@ -63,7 +63,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, fields, replace
 from typing import Any, get_args
 
-from . import documento
+from . import documento, notacao
 from .pagina import PaginaLida, Procedencia
 
 SEM_BLOCO = -1
@@ -432,13 +432,22 @@ def estilo_do_segmento(segmento: documento.Segmento) -> str:
         BlocoDeTarja              -> título    texto claro sobre fundo escuro é cabeçalho (S-195)
         BlocoDeTexto com recuado  -> prosa     o recuo que a S-199 mede para separar parágrafo
 
-    **Os outros dois entram só pela mão, e cada um por um motivo.** `notacao` não tem corte medido
-    -- a proporção de figurina e dígito que separa uma linha de lances da prosa não foi medida, e a
-    regra 5 da SPEC_EDITOR manda entregar o pincel em vez de pintar palpite. `legenda` tem dono, e
-    o dono não está aqui: quem casa linha com diagrama é `pdf_text.assign_lines_to_diagrams`, que
-    trabalha sobre `TextLine` (o tipo da camada do PDF) e pede `fitz`. A `PaginaLida` não carrega
-    esse casamento, e redecidi-lo aqui com uma regra parecida-mas-diferente seria a segunda
-    declaração da mesma regra -- que é o defeito que este projeto passa o tempo tirando de si.
+    **`legenda` entrou em 2026-08-25**, e ela não é decidida aqui: é lida de `BlocoDeTexto.legenda_de`,
+    que o leitor grava a partir de `pdf_text.assign_lines_to_diagrams` -- o dono daquela pergunta
+    desde a S-16, com a régua medida. O que este módulo acrescenta é **uma guarda de conteúdo**, e
+    ela tem número: dos 83 parágrafos que aquela régua ata a um diagrama no conjunto de campo,
+    **15 (18%) são linha de lances**, não legenda. A régua mede distância, não conteúdo -- e pintar
+    uma variante com o corpo de legenda seria um erro visível. Quem separa é
+    `notacao.e_linha_de_notacao`, que é a régua de lance que este subpacote já tinha.
+
+    Com a guarda, **68 dos 112 diagramas do conjunto de campo (60,7%) ganham legenda desenhada**;
+    sem ela seriam 83 (74,1%), com quinze variantes pintadas de legenda.
+
+    **`notacao` continua entrando só pela mão**: a proporção de figurina e dígito que separa uma
+    linha de lances da prosa **dentro do corpo do texto** não foi medida, e a regra 5 da
+    SPEC_EDITOR manda entregar o pincel em vez de pintar palpite. A guarda acima não serve para
+    isso: ela decide sobre um parágrafo que já se sabe atado a um diagrama, que é uma população
+    muito menor e muito mais fácil.
     """
     bloco = segmento.bloco
     if bloco is None or segmento.tipo != TEXTO:
@@ -446,7 +455,13 @@ def estilo_do_segmento(segmento: documento.Segmento) -> str:
     tipo = getattr(bloco, "tipo", "")
     if tipo == "tarja":
         return ESTILO_TITULO
-    if tipo == "texto" and getattr(bloco, "recuado", False):
+    if tipo != "texto":
+        return ""
+    if getattr(bloco, "legenda_de", None) is not None and not notacao.e_linha_de_notacao(segmento.texto):
+        # A legenda ganha do recuo: um parágrafo pode ser as duas coisas, e o que ele **é** para
+        # quem lê a página é a legenda do diagrama ao lado.
+        return ESTILO_LEGENDA
+    if getattr(bloco, "recuado", False):
         return ESTILO_PROSA
     return ""
 

@@ -26,6 +26,10 @@ data/review_queue.json
 # reconstruivel varrendo o livro de novo.
 data/review_cache/
 data/quarantine.csv
+# Rascunho automatico da aba de texto (S-255): trabalho em curso de UMA pessoa numa folha, com
+# o caminho do livro dela na chave. E rede de seguranca contra fechar a janela, nao artefato do
+# projeto -- e ele some sozinho quando alguem salva ou recupera.
+data/rascunhos/
 data/labels.csv.bak-*
 data/splits.csv.bak-*
 data/field_set.jsonl.bak-*

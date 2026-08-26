@@ -1,0 +1,397 @@
+{
+  "item": "S-237 · o itálico que a camada de texto declara",
+  "medido_em": "2026-08-26",
+  "protocolo": "4 páginas de cada livro de PDF/, espaçadas pelo documento",
+  "livros": 42,
+  "livros_com_camada": 32,
+  "livros_que_declaram_italico": 12,
+  "livros_que_declaram_negrito": 13,
+  "livros_com_camada_sem_estilo": 18,
+  "livros_sem_camada": 10,
+  "livros_que_declaram_italico_e_nao_negrito": [
+    "Vishy_Anand_Great_Chess_Combinations.pdf"
+  ],
+  "linhas_na_amostra": 8379,
+  "linhas_italicas_na_amostra": 138,
+  "por_livro": [
+    {
+      "livro": "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf",
+      "paginas": 4,
+      "caracteres": 318,
+      "linhas": 106,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf",
+      "paginas": 4,
+      "caracteres": 16,
+      "linhas": 4,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf",
+      "paginas": 4,
+      "caracteres": 313,
+      "linhas": 102,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "1937 Kemeri.pdf",
+      "paginas": 4,
+      "caracteres": 11178,
+      "linhas": 483,
+      "linhas_italicas": 7,
+      "spans_italico": 48,
+      "spans_negrito": 139
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+      "paginas": 4,
+      "caracteres": 1142,
+      "linhas": 32,
+      "linhas_italicas": 5,
+      "spans_italico": 5,
+      "spans_negrito": 4
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
+      "paginas": 4,
+      "caracteres": 1754,
+      "linhas": 141,
+      "linhas_italicas": 4,
+      "spans_italico": 4,
+      "spans_negrito": 4
+    },
+    {
+      "livro": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+      "paginas": 4,
+      "caracteres": 5658,
+      "linhas": 306,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "paginas": 4,
+      "caracteres": 8822,
+      "linhas": 240,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "paginas": 4,
+      "caracteres": 5981,
+      "linhas": 791,
+      "linhas_italicas": 14,
+      "spans_italico": 14,
+      "spans_negrito": 108
+    },
+    {
+      "livro": "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf",
+      "paginas": 4,
+      "caracteres": 8606,
+      "linhas": 385,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 7 (1958).pdf",
+      "paginas": 4,
+      "caracteres": 6189,
+      "linhas": 294,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "GALLAGHER - Winning With the King's Gambit.pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+      "paginas": 4,
+      "caracteres": 4951,
+      "linhas": 71,
+      "linhas_italicas": 9,
+      "spans_italico": 12,
+      "spans_negrito": 90
+    },
+    {
+      "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
+      "paginas": 4,
+      "caracteres": 9443,
+      "linhas": 396,
+      "linhas_italicas": 20,
+      "spans_italico": 25,
+      "spans_negrito": 150
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champions-1 (2011).pdf",
+      "paginas": 4,
+      "caracteres": 3712,
+      "linhas": 128,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+      "paginas": 4,
+      "caracteres": 7310,
+      "linhas": 310,
+      "linhas_italicas": 36,
+      "spans_italico": 55,
+      "spans_negrito": 10
+    },
+    {
+      "livro": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+      "paginas": 4,
+      "caracteres": 5546,
+      "linhas": 285,
+      "linhas_italicas": 1,
+      "spans_italico": 1,
+      "spans_negrito": 25
+    },
+    {
+      "livro": "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf",
+      "paginas": 4,
+      "caracteres": 3081,
+      "linhas": 143,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Levenfis - Cartea sahistului inceparator (1962).pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "paginas": 4,
+      "caracteres": 5416,
+      "linhas": 445,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 3
+    },
+    {
+      "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf",
+      "paginas": 4,
+      "caracteres": 5510,
+      "linhas": 470,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 3
+    },
+    {
+      "livro": "Mieses - Blind Schaken (1938).pdf",
+      "paginas": 4,
+      "caracteres": 5846,
+      "linhas": 272,
+      "linhas_italicas": 5,
+      "spans_italico": 9,
+      "spans_negrito": 11
+    },
+    {
+      "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+      "paginas": 4,
+      "caracteres": 2801,
+      "linhas": 85,
+      "linhas_italicas": 28,
+      "spans_italico": 28,
+      "spans_negrito": 36
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+      "paginas": 4,
+      "caracteres": 3446,
+      "linhas": 265,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf",
+      "paginas": 4,
+      "caracteres": 1890,
+      "linhas": 205,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Polgar,_Laszlo_Chess_5334_Problems,_Combinations,_and_Games.pdf",
+      "paginas": 4,
+      "caracteres": 2689,
+      "linhas": 608,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Schiller - The Big Book of Combinations (1994).pdf",
+      "paginas": 4,
+      "caracteres": 4000,
+      "linhas": 419,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+      "paginas": 4,
+      "caracteres": 10603,
+      "linhas": 307,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Simple Chess - Stean, M_.pdf",
+      "paginas": 4,
+      "caracteres": 8,
+      "linhas": 4,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Stefaniu - Problematica Deschideriliol in sah (1992).pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Vishy_Anand_Great_Chess_Combinations.pdf",
+      "paginas": 4,
+      "caracteres": 897,
+      "linhas": 33,
+      "linhas_italicas": 5,
+      "spans_italico": 7,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "Журавлев_Н_The_Manual_of_Chess_Combinations_5_2021.pdf",
+      "paginas": 4,
+      "caracteres": 3324,
+      "linhas": 128,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "📚Aagaard J. Excelling at chess calculation.pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "📚Burgess G. The Gambit Book of Instructive.pdf",
+      "paginas": 4,
+      "caracteres": 8117,
+      "linhas": 230,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "📚Silman J. The Complete Book of Chess Strategy.pdf",
+      "paginas": 4,
+      "caracteres": 0,
+      "linhas": 0,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "paginas": 4,
+      "caracteres": 3917,
+      "linhas": 222,
+      "linhas_italicas": 0,
+      "spans_italico": 0,
+      "spans_negrito": 0
+    },
+    {
+      "livro": "📚Болеславский_И_Избранные_партии.pdf",
+      "paginas": 4,
+      "caracteres": 6803,
+      "linhas": 469,
+      "linhas_italicas": 4,
+      "spans_italico": 4,
+      "spans_negrito": 9
+    }
+  ],
+  "como_reproduzir": "para cada PDF de PDF/, abrir com fitz, tomar 4 páginas espaçadas (passo = total//5) e contar os spans que `text/italico._span_e_italico` aceita e os que `text/negrito._span_e_negrito` aceita; um livro 'declara' o estilo quando aparece ao menos um span dele na amostra."
+}

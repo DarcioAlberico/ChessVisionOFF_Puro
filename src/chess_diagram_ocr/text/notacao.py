@@ -175,6 +175,29 @@ def _e_lance(texto: str) -> bool:
     return bool(LANCE.match(texto.rstrip(".")))
 
 
+def e_linha_de_notacao(texto: str, *, maioria: float = 0.5) -> bool:
+    """A **maioria** dos tokens deste trecho é notação? Ver `peso_de_notacao` (S-249).
+
+    Existe porque a legenda de um diagrama e a linha de lances logo abaixo dele são vizinhas na
+    página, e a régua que casa linha com diagrama (`pdf_text.assign_lines_to_diagrams`) não sabe
+    distinguir as duas -- ela mede distância, não conteúdo. Medido no conjunto de campo
+    (`docs/metrics/texto_legenda.json`): dos 83 parágrafos atados a um diagrama, **15 (18%) são
+    linha de lances**.
+
+    Maioria, e não "tem um lance": `Ivkov—Dueckstein 1967` traz um `1967` que parece número de
+    lance, e continua sendo legenda. Dois tokens de notação num parágrafo de dez é comentário; seis
+    em dez é notação.
+
+    Trecho vazio responde `False`: não há o que decidir, e "não é notação" é o lado que não muda o
+    desenho.
+    """
+    tokens = [t for t in texto.split() if t]
+    if not tokens:
+        return False
+    de_notacao = sum(1 for token in tokens if peso_de_notacao(token) > 0)
+    return de_notacao >= max(2, int(len(tokens) * maioria))
+
+
 def fatiar(tokens: Sequence[str], *, minimo: int = 2) -> list[Fatia]:
     """Os tokens partidos em fatias de `lance` e de `prosa`, na ordem.
 
@@ -306,6 +329,7 @@ __all__ = [
     "RESULTADOS",
     "RETICENCIA",
     "Fatia",
+    "e_linha_de_notacao",
     "e_numero_de_lance",
     "fatiar",
     "juntar_numero_de_lance",

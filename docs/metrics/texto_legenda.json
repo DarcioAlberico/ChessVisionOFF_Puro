@@ -1,0 +1,681 @@
+{
+  "item": "S-249 · o vínculo linha-diagrama na PaginaLida",
+  "medido_em": "2026-08-26",
+  "conjunto": "data/field_set.jsonl -- as folhas anotadas do conjunto de campo",
+  "paginas_lidas": 68,
+  "diagramas_detectados": 112,
+  "diagramas_com_legenda": 83,
+  "cobertura": 0.7411,
+  "atadas_que_sao_linha_de_lances": 15,
+  "viram_estilo_legenda": 68,
+  "cobertura_do_estilo": 0.6071,
+  "falhas": [],
+  "exemplos": [
+    {
+      "livro": "1000 Chess Problems - Yakov Vladimirov 2015 ",
+      "folha": 60,
+      "diagrama": 0,
+      "texto": "aT B xoua",
+      "palavras": 3,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "1000 Chess Problems - Yakov Vladimirov 2015 ",
+      "folha": 60,
+      "diagrama": 1,
+      "texto": "MaT B 2 xoua 6",
+      "palavras": 5,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "1000 Chess Problems - Yakov Vladimirov 2015 ",
+      "folha": 60,
+      "diagrama": 2,
+      "texto": "aT B xoua",
+      "palavras": 3,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "1000 Chess Problems - Yakov Vladimirov 2015 ",
+      "folha": 60,
+      "diagrama": 3,
+      "texto": "6 MaT B 2 xoIa 8 4",
+      "palavras": 7,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "1937 Kemeri.pdf",
+      "folha": 80,
+      "diagrama": 0,
+      "texto": "33. h4—h5! . . . . .",
+      "palavras": 7,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "1937 Kemeri.pdf",
+      "folha": 187,
+      "diagrama": 0,
+      "texto": ". g g",
+      "palavras": 3,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "1937 Kemeri.pdf",
+      "folha": 276,
+      "diagrama": 0,
+      "texto": "274",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "A Matter of Endgame Technique – Jacob Aagaar",
+      "folha": 179,
+      "diagrama": 1,
+      "texto": "g",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025",
+      "folha": 100,
+      "diagrama": 0,
+      "texto": "Daugavpils 1986",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025",
+      "folha": 100,
+      "diagrama": 1,
+      "texto": "2.♖xe7?! ♔xe7 3.♔xd5 g6! 4.c4 h5 5.gxh5 gxh5 6.♔e5 h4 7.♔f4 f5 8.b4 ♔d6 9.♔e3",
+      "palavras": 15,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025",
+      "folha": 300,
+      "diagrama": 1,
+      "texto": "g",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025",
+      "folha": 450,
+      "diagrama": 0,
+      "texto": "In both cases, your task is to fi1nd whether Black can achieve a draw.",
+      "palavras": 14,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025",
+      "folha": 450,
+      "diagrama": 1,
+      "texto": "1...♖a8+! 2.♔b5 g3",
+      "palavras": 3,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025",
+      "folha": 600,
+      "diagrama": 0,
+      "texto": "g",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025",
+      "folha": 700,
+      "diagrama": 0,
+      "texto": "21...g5 22.hxg5 hxg5 23.fxg5 ♕d4 24.♔h2 ♕h8+ +",
+      "palavras": 8,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025",
+      "folha": 700,
+      "diagrama": 1,
+      "texto": "Bratislava 1956",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Estrin - Bauernopfer in der Eroeffnung (1980",
+      "folha": 40,
+      "diagrama": 0,
+      "texto": "Diagramm 45",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Estrin - Bauernopfer in der Eroeffnung (1980",
+      "folha": 40,
+      "diagrama": 1,
+      "texto": "Diagram",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 1-2 (195",
+      "folha": 25,
+      "diagrama": 0,
+      "texto": "(Kanpf des Springers gegen de'n Lau. fer in einer offenen Stel1ung. aus der partie Midie1l",
+      "palavras": 18,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 1-2 (195",
+      "folha": 100,
+      "diagrama": 0,
+      "texto": "(1. e4 sf6 sb6 5. ed6: ed6: 6 sc3 Le7 7. Le3 sc6 8. Le2 H 9. sf3)'.",
+      "palavras": 18,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 7 (1958)",
+      "folha": 25,
+      "diagrama": 0,
+      "texto": "Havanna 1892)",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 7 (1958)",
+      "folha": 25,
+      "diagrama": 1,
+      "texto": "Moskau 1956)",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 7 (1958)",
+      "folha": 25,
+      "diagrama": 2,
+      "texto": "12. jugos1. M'eistersáaft i957)'",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 7 (1958)",
+      "folha": 40,
+      "diagrama": 1,
+      "texto": ". in den fo1genden Hau' ptabsánitt",
+      "palavras": 6,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "GALLAGHER - Winning With the King's Gambit.p",
+      "folha": 60,
+      "diagrama": 0,
+      "texto": "13 bs (58)",
+      "palavras": 3,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "GALLAGHER - Winning With the King's Gambit.p",
+      "folha": 80,
+      "diagrama": 0,
+      "texto": "s ♗c4 (76)",
+      "palavras": 3,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "GALLAGHER - Winning With the King's Gambit.p",
+      "folha": 95,
+      "diagrama": 0,
+      "texto": "17 ♘f♖5!",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "GALLAGHER - Winning With the King's Gambit.p",
+      "folha": 124,
+      "diagrama": 0,
+      "texto": "19 d6 (l27) 1—o",
+      "palavras": 4,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "GALLAGHER - Winning With the King's Gambit.p",
+      "folha": 140,
+      "diagrama": 0,
+      "texto": "2s ... ♔h7!?",
+      "palavras": 3,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Pr",
+      "folha": 70,
+      "diagrama": 0,
+      "texto": "(stellung nGch i6. Db3)",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 80,
+      "diagrama": 0,
+      "texto": "N9417. Aeáh' e — Ff2iman",
+      "palavras": 5,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 80,
+      "diagrama": 1,
+      "texto": "N9419. Aekbe — Yldman",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 80,
+      "diagrama": 2,
+      "texto": "N9421. Aekhne — chajes",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 80,
+      "diagrama": 3,
+      "texto": "N9418. Aekb' e — Tenner",
+      "palavras": 5,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 80,
+      "diagrama": 4,
+      "texto": "N9420. Aeáhe — E.coh",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 80,
+      "diagrama": 5,
+      "texto": "N9422. Aekbe — I♗venExh",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 140,
+      "diagrama": 0,
+      "texto": "N9768. Eu♕ — B.Mi' 'c",
+      "palavras": 5,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 140,
+      "diagrama": 1,
+      "texto": "N9770. Eu♕ — Toran",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 140,
+      "diagrama": 2,
+      "texto": "9 . u♕— ano b",
+      "palavras": 5,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 140,
+      "diagrama": 3,
+      "texto": "N9769. n' ak' — Eu♕",
+      "palavras": 5,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 140,
+      "diagrama": 4,
+      "texto": "N9771. Eu♕ — chtf6n",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champio",
+      "folha": 140,
+      "diagrama": 5,
+      "texto": "N9773. Eu♕ — Yano6b",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Koblenz - El dominio del arte de la combinac",
+      "folha": 30,
+      "diagrama": 0,
+      "texto": "1. DxA!",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Koblenz - El dominio del arte de la combinac",
+      "folha": 30,
+      "diagrama": 1,
+      "texto": "RET1",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Koblenz - El dominio del arte de la combinac",
+      "folha": 50,
+      "diagrama": 0,
+      "texto": "MRczA",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Koblenz - El dominio del arte de la combinac",
+      "folha": 50,
+      "diagrama": 1,
+      "texto": "DAL",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "La_Combinacion_En_El_Ajedrez_Constantin_Dobo",
+      "folha": 40,
+      "diagrama": 0,
+      "texto": "F4 igura( 20",
+      "palavras": 3,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Levenfis - Cartea sahistului inceparator (19",
+      "folha": 150,
+      "diagrama": 0,
+      "texto": "2. ..8",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Levenfis - Cartea sahistului inceparator (19",
+      "folha": 150,
+      "diagrama": 1,
+      "texto": "229",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Mauricio Flores Rios - Chess Structures - A ",
+      "folha": 200,
+      "diagrama": 1,
+      "texto": "g 20.♖c1?",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Mauricio Flores Rios - Chess Structures - A ",
+      "folha": 450,
+      "diagrama": 0,
+      "texto": "a c e g",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des éche",
+      "folha": 25,
+      "diagrama": 0,
+      "texto": "1 18",
+      "palavras": 2,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des éche",
+      "folha": 25,
+      "diagrama": 1,
+      "texto": "2) d8 h8✝m.",
+      "palavras": 3,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des éche",
+      "folha": 25,
+      "diagrama": 2,
+      "texto": "15. '",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des éche",
+      "folha": 30,
+      "diagrama": 0,
+      "texto": "Exemp1e:",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des éche",
+      "folha": 30,
+      "diagrama": 1,
+      "texto": "—' Dan8 la posifi'on 8ui▼ante— 1e8 ! — o1u.",
+      "palavras": 9,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des éche",
+      "folha": 30,
+      "diagrama": 2,
+      "texto": "' Roi et Tour contre 1e RoL —",
+      "palavras": 8,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des éche",
+      "folha": 40,
+      "diagrama": 0,
+      "texto": "et es anc8 on une r 8 onne p e",
+      "palavras": 10,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Neumann - Traité élémentaire du jeu des éche",
+      "folha": 50,
+      "diagrama": 0,
+      "texto": "1 1) e4 d5 : c6 b4 12) b1 a8 h8 e8✝ 28) e1 d1 bfd5:",
+      "palavras": 16,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "Polgar,_Laszlo_Chess_5334_Problems,_Combinat",
+      "folha": 300,
+      "diagrama": 0,
+      "texto": "5334 PRoBLENIs,",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Polgar,_Laszlo_Chess_5334_Problems,_Combinat",
+      "folha": 300,
+      "diagrama": 3,
+      "texto": "(451—3514)",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Reinfeld_1001_Sacrificios_y_Combinaciones_Br",
+      "folha": 40,
+      "diagrama": 4,
+      "texto": "E♖T''.T♖–——.♘..T♗——.♖...T'⩲'TT♕T⩲",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Reinfeld_1001_Sacrificios_y_Combinaciones_Br",
+      "folha": 150,
+      "diagrama": 4,
+      "texto": "784",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Schiller - The Big Book of Combinations (199",
+      "folha": 100,
+      "diagrama": 0,
+      "texto": "Ivkov—Dueckstein sa a e o 1967",
+      "palavras": 6,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Schiller - The Big Book of Combinations (199",
+      "folha": 100,
+      "diagrama": 1,
+      "texto": "s i t u i 1967 Karasev—Klaman",
+      "palavras": 7,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Schiller - The Big Book of Combinations (199",
+      "folha": 100,
+      "diagrama": 2,
+      "texto": "481",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Schiller - The Big Book of Combinations (199",
+      "folha": 100,
+      "diagrama": 3,
+      "texto": "Larsen—Bednarski H 1967",
+      "palavras": 3,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Schiller - The Big Book of Combinations (199",
+      "folha": 100,
+      "diagrama": 4,
+      "texto": "LarLsen—Ivkov P l D M ll 1967",
+      "palavras": 7,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Schiller - The Big Book of Combinations (199",
+      "folha": 100,
+      "diagrama": 5,
+      "texto": "Larsen—Kuijpers B k 6",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "Vishy_Anand_Great_Chess_Combinations.pdf",
+      "folha": 62,
+      "diagrama": 0,
+      "texto": "N955. Korchnoi — Anand",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Aagaard J. Excelling at chess calculation.p",
+      "folha": 60,
+      "diagrama": 0,
+      "texto": "Excelling a t Chess Calcula tion",
+      "palavras": 6,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Aagaard J. Excelling at chess calculation.p",
+      "folha": 60,
+      "diagrama": 1,
+      "texto": "Dortmund 2002",
+      "palavras": 2,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Aagaard J. Excelling at chess calculation.p",
+      "folha": 60,
+      "diagrama": 2,
+      "texto": "53 ♔d3!",
+      "palavras": 2,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "📚Aagaard J. Excelling at chess calculation.p",
+      "folha": 100,
+      "diagrama": 0,
+      "texto": "'gs\" ma ofi.vsL et ios- fncoatnodbi.dviaoteusLsL aotnaUm. IefpIrsuetiariroteuds",
+      "palavras": 8,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Aagaard J. Excelling at chess calculation.p",
+      "folha": 120,
+      "diagrama": 0,
+      "texto": "for me h6—kri'ght and a general onslaught on the dark, squaxesL . 1 4 . . .d 5 ! !",
+      "palavras": 20,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Aagaard J. Excelling at chess calculation.p",
+      "folha": 180,
+      "diagrama": 0,
+      "texto": "Exercise 89 I.Vandecasteele Eclal♔ur de Nl'ce 1999",
+      "palavras": 7,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Aagaard J. Excelling at chess calculation.p",
+      "folha": 180,
+      "diagrama": 1,
+      "texto": "5 ♔d7!! (10 pomts)",
+      "palavras": 4,
+      "barrada_por_ser_notacao": true
+    },
+    {
+      "livro": "📚Burgess G. The Gambit Book of Instructive.p",
+      "folha": 60,
+      "diagrama": 1,
+      "texto": "212 Black to play",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Burgess G. The Gambit Book of Instructive.p",
+      "folha": 60,
+      "diagrama": 2,
+      "texto": "211 Black to play",
+      "palavras": 4,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Burgess G. The Gambit Book of Instructive.p",
+      "folha": 60,
+      "diagrama": 3,
+      "texto": "213 white to play Karakekhayov — N. Mamedov",
+      "palavras": 8,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Yusupov Artur. Build Up Your Chess (all vol",
+      "folha": 11,
+      "diagrama": 0,
+      "texto": "△",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Yusupov Artur. Build Up Your Chess (all vol",
+      "folha": 11,
+      "diagrama": 1,
+      "texto": "△",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    },
+    {
+      "livro": "📚Yusupov Artur. Build Up Your Chess (all vol",
+      "folha": 14,
+      "diagrama": 0,
+      "texto": "▼",
+      "palavras": 1,
+      "barrada_por_ser_notacao": false
+    }
+  ],
+  "como_reproduzir": "para cada folha de data/field_set.jsonl, `text.leitor.ler_pagina(pdf, page)` com o motor padrão, contando os blocos com `legenda_de is not None` e, entre eles, os que `text.notacao.e_linha_de_notacao` recusa.",
+  "o_que_esta_medicao_nao_diz": "se o parágrafo atado é a legenda CERTA. O conjunto de campo anota a caixa do diagrama e a FEN, não a legenda -- então o que se mede aqui é cobertura, e não precisão. Os exemplos ficam no relatório justamente para que a precisão possa ser julgada por quem ler."
+}
