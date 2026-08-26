@@ -159,3 +159,15 @@ data/faixas_para_transcrever/
 # `cvoff-texto-lexico "Lista de Palavras"` -- byte a byte, porque o gzip vai com mtime=0. E a
 # mesma regra do PDF/: a fonte fica na maquina, o derivado versionado fica no repositorio.
 Lista de Palavras/
+# As tres pastas de referencia largadas na raiz. E a mesma regra de `Proposta de interface/`
+# acima, com um motivo a mais: elas nao sao nossas. O `obsidian-chess-study` que deu origem as
+# Fases 43 a 50 (docs/ROADMAP_ESTUDO.md) e GPL-3.0 de outra pessoa, e po-lo no historico deste
+# repositorio o redistribuiria daqui -- de onde nao sai. Os dois editores de texto que a Fase 42
+# leu (docs/SPEC_EDITOR.md) e o pacote de fontes estao aqui pela mesma razao.
+#
+# O que **fica** versionado e a leitura delas, e ela esta escrita: o roadmap diz quais ideias se
+# copiam e quais nao, com o arquivo e a linha de cada uma. Um documento que cita o codigo de
+# fora vale mais que uma copia dele que ninguem vai reler.
+Ideias para implementar na aba 'Texto'/
+Ideias para o board da aba de análise/
+fonts (2)/
