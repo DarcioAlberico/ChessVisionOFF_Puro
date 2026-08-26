@@ -128,11 +128,18 @@ parágrafo seguinte continuar visível. Não é o tabuleiro do editor -- quem qu
 vai para a aba Resultado."""
 
 PAPEL_DA_FAIXA = {
-    documento.REVISAR: tokens.PROBLEMA,
+    documento.REVISAR: tokens.PROBLEMA_TEXTO,
     documento.CONFERIR: tokens.ATENCAO,
     documento.TRANQUILO: "",
 }
 """O papel de cor de cada faixa de `documento`, resolvido em `ui/tokens.py`.
+
+**É `PROBLEMA_TEXTO` e não `PROBLEMA`, e a troca é o item** (S-295). `PROBLEMA` está declarado em
+`tokens.SIGNIFICADO` como marcação de **tabuleiro** -- contorno de casa --, e usá-lo aqui pintava
+letra com o papel do contorno: um papel, dois significados, que é o defeito que a S-158 nomeou e a
+S-224 separou para o cromo escuro. Na pele clássica os dois valores são iguais e nada muda de
+aparência; o que muda é que escurecer o contorno para ele ser visível na casa escura deixou de
+escurecer também a letra desta aba.
 
 Papel e não hexadecimal, pela regra que `tokens` inteiro existe para manter: uma cor cravada aqui
 seria a mesma tinta com outro significado nos dois painéis lado a lado, e no tema escuro ela pode

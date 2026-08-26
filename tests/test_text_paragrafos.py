@@ -289,3 +289,66 @@ class ReferenciaDeParagrafoTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class VarreduraDoRecuoTests(unittest.TestCase):
+    """O corte de recuo saiu da medição, e a S-258 registrou a varredura inteira."""
+
+    RAIZ = Path(__file__).resolve().parents[1]
+    AMPLIADA = RAIZ / "docs" / "metrics" / "texto_paragrafo_ampliada.jsonl"
+    RELATORIO = RAIZ / "docs" / "metrics" / "texto_paragrafo.json"
+
+    def relatorio(self) -> dict:
+        return json.loads(self.RELATORIO.read_text(encoding="utf-8"))
+
+    def test_o_recuo_em_uso_e_o_que_a_medicao_escolheu(self) -> None:
+        """Era 0,8 e nunca tinha sido medido; a S-257 deu a referência e a S-258 varreu."""
+        self.assertAlmostEqual(0.4, RECUO_DE_PARAGRAFO)
+        self.assertAlmostEqual(RECUO_DE_PARAGRAFO, self.relatorio()["em_uso"]["recuo"])
+
+    def test_o_recuo_curto_passa_a_abrir_paragrafo(self) -> None:
+        """O caso que a S-258 nomeia: 11 pt de recuo sobre altura de 14 -- 0,79 alturas.
+
+        Com o corte em 0,8 ele **não** abria parágrafo, e a folha que originou a S-257 é feita
+        dele. Com 0,4, abre.
+        """
+        linhas = [
+            Linha(topo=0, esquerda=29, altura=14, texto="primeira"),
+            Linha(topo=16, esquerda=29, altura=14, texto="segunda"),
+            Linha(topo=32, esquerda=29, altura=14, texto="terceira"),
+            Linha(topo=48, esquerda=40, altura=14, texto="recuada em 11 pt"),
+        ]
+        cortes = cortar(linhas)
+        self.assertEqual(2, len(cortes), "o recuo de 0,79 altura não abriu parágrafo")
+        self.assertEqual("recuada em 11 pt", cortes[1].texto)
+        # E com o corte antigo ele continuaria grudado -- é a diferença que o item entrega.
+        self.assertEqual(1, len(cortar(linhas, recuo=0.8)))
+
+    def test_a_varredura_traz_o_valor_em_uso_e_o_antigo(self) -> None:
+        """Uma varredura que não contivesse os dois não permitiria comparar."""
+        recuos = {c["recuo"] for c in self.relatorio()["varredura"]}
+        self.assertIn(0.4, recuos, "o valor em uso não foi medido")
+        self.assertIn(0.8, recuos, "o valor antigo saiu do relatório")
+
+    def test_a_referencia_ampliada_tem_folha_lida_pelo_glifo(self) -> None:
+        """Critério de aceite da S-258: o leitor roda sobre livro que não tem camada."""
+        registros = [
+            json.loads(linha)
+            for linha in self.AMPLIADA.read_text(encoding="utf-8").splitlines()
+            if linha.strip()
+        ]
+        motores = {r.get("motor") for r in registros}
+        self.assertIn("glifo", motores, "a referência não ganhou folha sem camada")
+        self.assertIn("camada", motores)
+
+    def test_o_relatorio_separa_os_dois_motores(self) -> None:
+        """A média das duas esconderia as duas: a camada julga a 0,94 e o glifo a 0,43."""
+        por_motor = self.relatorio()["varredura_por_motor"]
+        self.assertEqual({"camada", "glifo"}, set(por_motor))
+        for motor, linhas in por_motor.items():
+            with self.subTest(motor=motor):
+                self.assertTrue(linhas)
+
+    def test_o_salto_continua_o_de_antes(self) -> None:
+        """Varrido junto e sem vão: baixá-lo é troca, e não ganho."""
+        self.assertAlmostEqual(0.6, SALTO_DE_PARAGRAFO)

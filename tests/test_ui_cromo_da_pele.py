@@ -82,27 +82,26 @@ def _reprovas_de_marcacao(paleta: dict[str, str]) -> set[str]:
     return reprovas
 
 
-REPROVAS_ANTERIORES_A_S224: set[str] = {
-    "ALVO sobre CASA_ESCURA",
-    "ALVO sobre CASA_ULTIMO_LANCE",
-    "DIVERGENTE sobre CASA_ESCURA",
-    "PROBLEMA sobre CASA_ESCURA",
-}
-"""Quatro contornos de casa que somem no fundo em que são desenhados -- **e já sumiam**
-(2026-08-24).
+REPROVAS_ANTERIORES_A_S224: set[str] = set()
+"""Os contornos de casa que somem no fundo em que são desenhados. **Vazio desde a S-295.**
 
-Medidos contra o piso de 3,0: `ALVO` dá **1,53** na casa escura e **2,99** no amarelo do último
-lance; `DIVERGENTE`, 1,86; `PROBLEMA`, 1,73. É a mesma família do defeito que a S-158 mediu e
-consertou para o `CORRIGIDO` -- *"uma borda desenhada e invisível em metade das casas"* --, em três
-papéis que ela não olhou.
+Eram quatro (2026-08-24), medidos contra o piso de 3,0: `ALVO` dava **1,53** na casa escura e
+**2,99** no amarelo do último lance; `DIVERGENTE`, 1,86; `PROBLEMA`, 1,73. Mesma família do defeito
+que a S-158 mediu e consertou para o `CORRIGIDO` -- *"uma borda desenhada e invisível em metade das
+casas"* --, em três papéis que ela não olhou.
 
-**O quarto par não estava aqui e nem era medido**, porque este teste só percorria a casa clara e a
-escura. A S-257, noutro ramo, o encontrou; a cobertura por pele entrou junto com ele (ver `CASAS`).
+**A S-295 os consertou pela via que a S-158 já tinha aberto: luminosidade, com matiz e saturação
+intactas.** `ALVO` foi de `#3f7f4c` para `#24482b`, `PROBLEMA` de `#c0392b` para `#77231b`, e
+`DIVERGENTE` de `#8e44ad` para `#5b2c6f`. O pior par de cada um passou de 1,53/1,73/1,86 para
+3,27/3,27/3,28, e o melhor de ~4 para ~7,5. Nenhuma matiz se moveu, então a regra dos 40° da S-158
+sai intacta -- é o que torna a troca barata: ela não disputa faixa de matiz com ninguém.
 
-**Entram como registro, e não como perdão.** O que a S-224 cobra é que **nenhuma pele acrescente um
-quinto**: a lista é a mesma nas três peles, e é isso que o teste afirma. Corrigi-los é item próprio
--- mexer no vermelho de "posição ilegal" é mexer numa cor que a S-158 escolheu por eliminação de
-matiz, e não é o que "cromo escuro" autoriza. É o que a S-257 faz."""
+**O que a S-224 cobra continua valendo, e agora com a lista vazia**: nenhuma pele pode acrescentar
+uma reprova. Com o conjunto vazio a igualdade do teste passou a afirmar que **nenhum** par de
+marcação reprova em pele nenhuma -- que é mais forte do que ela afirmava, e é o estado certo.
+
+O nome ficou como está, com o número da S que os registrou: renomeá-lo perderia o rastro de quando
+o defeito foi medido, e é o rastro que explica por que a lista existia."""
 
 
 class FronteiraDoDocumentoTests(unittest.TestCase):

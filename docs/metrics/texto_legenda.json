@@ -4,11 +4,11 @@
   "conjunto": "data/field_set.jsonl -- as folhas anotadas do conjunto de campo",
   "paginas_lidas": 68,
   "diagramas_detectados": 112,
-  "diagramas_com_legenda": 83,
-  "cobertura": 0.7411,
+  "diagramas_com_legenda": 86,
+  "cobertura": 0.7679,
   "atadas_que_sao_linha_de_lances": 14,
-  "viram_estilo_legenda": 69,
-  "cobertura_do_estilo": 0.6161,
+  "viram_estilo_legenda": 72,
+  "cobertura_do_estilo": 0.6429,
   "falhas": [],
   "exemplos": [
     {
@@ -677,5 +677,6 @@
     }
   ],
   "como_reproduzir": "para cada folha de data/field_set.jsonl, `text.leitor.ler_pagina(pdf, page)` com o motor padrão, contando os blocos com `legenda_de is not None` e, entre eles, os que `text.notacao.e_linha_de_notacao` recusa.",
-  "o_que_esta_medicao_nao_diz": "se o parágrafo atado é a legenda CERTA. O conjunto de campo anota a caixa do diagrama e a FEN, não a legenda -- então o que se mede aqui é cobertura, e não precisão. Os exemplos ficam no relatório justamente para que a precisão possa ser julgada por quem ler."
+  "o_que_esta_medicao_nao_diz": "se o parágrafo atado é a legenda CERTA. O conjunto de campo anota a caixa do diagrama e a FEN, não a legenda -- então o que se mede aqui é cobertura, e não precisão. Os exemplos ficam no relatório justamente para que a precisão possa ser julgada por quem ler.",
+  "remedido_por": "S-258 -- RECUO_DE_PARAGRAFO passou de 0,8 para 0,4, e o corte de paragrafo decide que bloco e atado ao diagrama. Os numeros anteriores (cobertura 0.7411, estilo 0.6161) sao do corte antigo."
 }

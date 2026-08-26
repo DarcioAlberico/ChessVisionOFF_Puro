@@ -2197,7 +2197,7 @@ entrega, e com ele os relatórios que medem página e legenda.
 
 ---
 
-## S-258 · O limiar de recuo é 0,8 altura de linha, e a medição diz 0,4 ⬜ planejada
+## S-258 · O limiar de recuo é 0,8 altura de linha, e a medição diz 0,4 ✅ implementada (2026-08-26)
 
 **Problema.** `paragrafos.RECUO_DE_PARAGRAFO` vale `0.8`: a linha só abre parágrafo se começar
 0,8 altura de linha à direita da margem. O número nunca foi medido contra referência — ele veio
@@ -2238,6 +2238,64 @@ recall para 0,7771 e derruba a precisão para 0,8715. É troca, e não ganho —
 
 **Testes.** `tests/test_text_paragrafos.py` (ampliado): o caso do recuo curto — 11 pt sobre altura
 de 14 — que hoje não abre parágrafo e passaria a abrir.
+> **Trocado para 0,4 em 2026-08-26, e a medição ampliada trouxe um achado maior que o item.**
+>
+> **O instrumento foi versionado primeiro**, e essa era uma dívida: a medição da S-257 saiu de um
+> `medir_paragrafo.py` no diretório de trabalho da sessão -- o campo `como_reproduzir` daquele
+> relatório diz isso com todas as letras. Um número que só um script perdido reproduz é um número
+> que ninguém confere, e o critério de aceite deste item pede a varredura registrada.
+> `cvoff-texto-paragrafo` monta a referência e varre os dois cortes.
+>
+> **A referência ganhou folha de livro sem camada, como o item exige** -- 23 folhas de 16 livros,
+> **16 delas lidas pelo glifo**. Ela ficou em arquivo próprio (`texto_paragrafo_ampliada.jsonl`) em
+> vez de crescer por cima da de lá: `texto_paragrafo_referencia.jsonl` é a evidência de uma medição
+> que **decidiu** -- a S-257 recusou a troca do quantil sobre aquelas 24 folhas --, e sobrescrevê-la
+> deixaria aquele relatório citando um conjunto que já não existe.
+>
+> **E foi por causa dessas folhas que o número saiu.** Separada por motor:
+>
+> | motor | folhas | precisão | recuo 0,80 | recuo 0,40 |
+> |---|---:|---:|---:|---:|
+> | camada | 7 | 0,94 | F1 0,7521 | **F1 0,7934** |
+> | glifo | 16 | **0,43** | F1 0,5193 | F1 0,5137 |
+>
+> Onde a referência sabe julgar, ela **confirma** a previsão deste item: quatro cortes certos a
+> mais, **sem um falso a mais**, e o platô entre 0,20 e 0,45 continua chato -- o sinal de que o
+> valor não está sintonizado num acaso do conjunto. As contagens absolutas diferem das da tabela
+> acima porque a referência é outra; a forma e a decisão, não.
+>
+> **Onde ela não sabe julgar, nenhum candidato se distingue de outro** -- e é esse o achado. Nas
+> folhas lidas pelo glifo a precisão é 0,43: `cortar` faz ali mais que o dobro de blocos que a
+> referência vê começos, e 0,80 aparece como nominalmente "melhor", que é a assinatura de ruído e
+> não de ótimo. O corte não é o problema: **a população de "linha" que a segmentação entrega não é
+> a que estas regras descrevem** -- entram cabeçalho, número de página, rótulo de diagrama e
+> fragmento, que o modelo de coluna não separou. Está em `varredura_por_motor`, e é item próprio.
+>
+> **Um filtro teve de entrar na semeadura, e a falta dele quase inverteu a conclusão.** A primeira
+> corrida automática deu precisão ~0,47 em *todos* os candidatos. A causa não era o corte: numa
+> coluna de **notação** toda linha é curta -- `28. Txe5 Dd7` não alcança margem nenhuma --, então o
+> sinal do fim de linha marca começo de parágrafo em quase toda linha. A referência estava medindo
+> a própria inadequação dela. Quem separa notação de prosa é `notacao.e_linha_de_notacao`, medida na
+> S-249, e ela entrou como `MAX_FRACAO_DE_NOTACAO`.
+>
+> **Os relatórios que a troca move foram remedidos no mesmo commit**, na disciplina da S-100, e os
+> dois melhoraram:
+>
+> | relatório | régua | antes | depois |
+> |---|---|---:|---:|
+> | `texto_pagina.json` (S-211) | CER de página, glifo | 0,1397 | **0,1001** |
+> | `texto_pagina.json` (S-211) | CER de página, modo bloco | 0,1446 | **0,1331** |
+> | `texto_legenda.json` (S-249) | cobertura da legenda | 0,7411 | **0,7679** |
+> | `texto_legenda.json` (S-249) | cobertura do estilo | 0,6161 | **0,6429** |
+>
+> O CER melhorou em **todas as dez folhas**, e a decisão de cada relatório continua a mesma: o modo
+> bloco segue não pagando (0,1331 contra 0,1001), e a legenda segue coberta em ~3/4 dos diagramas.
+>
+> **O modo bloco teve de ser remedido junto, e não copiado.** Ele custa ~50x o tempo, e a tentação
+> de carregar o número antigo ao lado do novo é exatamente o defeito que a S-218 nomeia: a decisão
+> daquele relatório é a **comparação** entre os dois, e comparar um número fresco com um velho não é
+> comparação nenhuma.
+
 
 ---
 

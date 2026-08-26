@@ -72,10 +72,17 @@ DISPENSADO = "DISPENSADO"
 
 ATENCAO = "ATENCAO"
 PROBLEMA = "PROBLEMA"
-"""Casa culpada, posição ilegal, ação destrutiva."""
+"""**Contorno** de casa culpada, posição ilegal, ação destrutiva. Ver `PROBLEMA_TEXTO`.
+
+Era `#c0392b` e dava **1,73:1** sobre a casa escura -- uma borda desenhada e invisível em metade
+do tabuleiro (S-295). Escureceu para `#77231b`, com **matiz e saturação intactas**: 7,50 na casa
+clara, 3,27 na escura, 6,38 no amarelo do último lance."""
 
 DIVERGENTE = "DIVERGENTE"
-"""Casa em que duas leituras discordam (a 2ª opinião da S-66)."""
+"""**Contorno** de casa em que duas leituras discordam (a 2ª opinião da S-66). Ver `DIVERGENTE_TEXTO`.
+
+Era `#8e44ad` e dava **1,86:1** sobre a casa escura. Escureceu para `#5b2c6f` pela mesma régua da
+`PROBLEMA`: 7,52 / 3,28 / 6,40 (S-295)."""
 
 PROBLEMA_TEXTO = "PROBLEMA_TEXTO"
 DIVERGENTE_TEXTO = "DIVERGENTE_TEXTO"
@@ -147,7 +154,11 @@ CASA_ESCURA = "CASA_ESCURA"
 CASA_ULTIMO_LANCE = "CASA_ULTIMO_LANCE"
 ALVO = "ALVO"
 """A identidade do tabuleiro. Não segue tema: xadrez impresso é claro-e-escuro em qualquer
-tema, e um tabuleiro que muda de cor com a janela deixa de ser reconhecível como tabuleiro."""
+tema, e um tabuleiro que muda de cor com a janela deixa de ser reconhecível como tabuleiro.
+
+`ALVO` era `#3f7f4c` e dava **1,53:1** sobre a casa escura e **2,99** sobre o amarelo do último
+lance -- o pior dos quatro contornos que a S-224 registrou como reprovados. Escureceu para
+`#24482b`, matiz e saturação intactas: 7,51 / 3,27 / 6,39 (S-295)."""
 
 CONTORNO_DE_SELECAO = "CONTORNO_DE_SELECAO"
 """A casa que está selecionada agora. **Contorno, e não preenchimento** (S-160).
@@ -281,8 +292,8 @@ RESERVA: dict[str, str] = {
     LIDO: "#ffb02e",
     DISPENSADO: "#9aa1ad",
     ATENCAO: "#8a5a00",
-    PROBLEMA: "#c0392b",
-    DIVERGENTE: "#8e44ad",
+    PROBLEMA: "#77231b",
+    DIVERGENTE: "#5b2c6f",
     PROBLEMA_TEXTO: "#c0392b",
     DIVERGENTE_TEXTO: "#8e44ad",
     CORRIGIDO: "#2b4008",
@@ -296,7 +307,7 @@ RESERVA: dict[str, str] = {
     CASA_ESCURA: "#b58863",
     CASA_ULTIMO_LANCE: "#cdd26a",
     CONTORNO_DE_SELECAO: "#141414",
-    ALVO: "#3f7f4c",
+    ALVO: "#24482b",
     SETA_VERDE: "#15781b",
     SETA_VERMELHA: "#882020",
     SETA_AZUL: "#003088",

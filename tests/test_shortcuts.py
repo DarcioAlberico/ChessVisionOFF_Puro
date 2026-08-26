@@ -13,7 +13,14 @@ import tkinter as tk
 import unittest
 from tkinter import ttk
 
-from chess_diagram_ocr.ui.shortcuts import guard, ignores_widget, owns_key
+from chess_diagram_ocr.ui.shortcuts import (
+    CEDIDAS_A_TODO_CAMPO,
+    CEDIDAS_SO_AO_MULTILINHA,
+    cede_a_tecla,
+    guard,
+    ignores_widget,
+    owns_key,
+)
 
 
 class _FakeEvent:
@@ -150,3 +157,79 @@ class WidgetQueJaDeclarouATeclaTests(unittest.TestCase):
     def test_um_objeto_sem_bind_nao_derruba_a_guarda(self) -> None:
         self.assertFalse(owns_key(object(), "<Left>"))
         self.assertFalse(owns_key(None, "<Left>"))
+
+
+class CedeATeclaTests(unittest.TestCase):
+    """A guarda cede a tecla, e não o teclado (S-294).
+
+    Até este item ela perguntava só "é campo de texto?" e cedia **os dezoito** atalhos da janela.
+    A `SPEC_APARENCIA` da S-223 anotou o sintoma por escrito: digitar uma FEN e apertar `Ctrl+S`
+    não salvava, e ninguém tinha decidido isso.
+    """
+
+    def campo(self) -> object:
+        return ttk.Entry.__new__(ttk.Entry)
+
+    def editor(self) -> object:
+        return tk.Text.__new__(tk.Text)
+
+    def test_o_campo_fica_com_as_teclas_que_ele_usa(self) -> None:
+        for tecla in ("<Left>", "<Right>", "<Home>", "<End>", "<Delete>", "<Control-z>", "<Control-y>"):
+            with self.subTest(tecla=tecla):
+                self.assertTrue(cede_a_tecla(self.campo(), tecla))
+
+    def test_o_campo_nao_engole_a_tecla_que_ele_nao_usa(self) -> None:
+        """São nove, e as três que a SPEC_APARENCIA nomeia estão entre elas."""
+        for tecla in ("<Control-s>", "<Control-S>", "<Control-n>", "<Control-P>", "<Control-0>", "<Control-Return>"):
+            with self.subTest(tecla=tecla):
+                self.assertFalse(cede_a_tecla(self.campo(), tecla))
+
+    def test_o_ctrl_s_no_campo_de_fen_passa_a_salvar(self) -> None:
+        """O sintoma que a SPEC_APARENCIA registrou, afirmado no caminho que a janela usa."""
+        chamadas: list[int] = []
+        resultado = guard(lambda: chamadas.append(1), "<Control-s>")(_FakeEvent(self.campo()))
+        self.assertEqual([1], chamadas)
+        self.assertEqual("break", resultado)
+
+    def test_a_seta_no_campo_de_fen_continua_do_campo(self) -> None:
+        """O que a guarda existe para proteger desde a S-20, e que não pode ter se perdido."""
+        chamadas: list[int] = []
+        resultado = guard(lambda: chamadas.append(1), "<Left>")(_FakeEvent(self.campo()))
+        self.assertEqual([], chamadas)
+        self.assertIsNone(resultado)
+
+    def test_a_rolagem_e_so_de_quem_rola(self) -> None:
+        """`PgUp` num campo de uma linha não faz nada: cedê-la ali era desligar a virada de página."""
+        for tecla in ("<Prior>", "<Next>"):
+            with self.subTest(tecla=tecla):
+                self.assertTrue(cede_a_tecla(self.editor(), tecla))
+                self.assertFalse(cede_a_tecla(self.campo(), tecla))
+
+    def test_fora_de_campo_de_texto_nada_e_cedido(self) -> None:
+        canvas = tk.Canvas.__new__(tk.Canvas)
+        for tecla in ("<Left>", "<Control-s>", "<Prior>"):
+            with self.subTest(tecla=tecla):
+                self.assertFalse(cede_a_tecla(canvas, tecla))
+
+    def test_sem_sequencia_cede_tudo_como_antes(self) -> None:
+        """Quem chama `guard` sem dizer que tecla ligou não dá como responder: o lado seguro é o
+        comportamento anterior."""
+        self.assertTrue(cede_a_tecla(self.campo(), ""))
+
+    def test_toda_tecla_cedida_e_um_atalho_da_janela_ou_uma_tecla_de_edicao(self) -> None:
+        """Uma tecla cedida que não existe em lugar nenhum é linha morta na tabela."""
+        from chess_diagram_ocr.ui import atalhos as tabela
+
+        da_janela = {a.sequencia for a in tabela.ATALHOS}
+        de_edicao = {"<Up>", "<Down>", "<BackSpace>"}
+        for tecla in CEDIDAS_A_TODO_CAMPO | CEDIDAS_SO_AO_MULTILINHA:
+            with self.subTest(tecla=tecla):
+                self.assertIn(tecla, da_janela | de_edicao)
+
+    def test_a_tecla_declarada_pelo_widget_continua_dele(self) -> None:
+        """A S-117 não pode ter se perdido: é ela que segura o `Ctrl+R` do editor agora."""
+        from chess_diagram_ocr.ui import atalhos as tabela
+
+        self.assertIn("alinhar_direita", tabela.TECLAS_DO_EDITOR)
+        self.assertEqual("<Control-r>", tabela.TECLAS_DO_EDITOR["alinhar_direita"])
+        self.assertFalse(cede_a_tecla(self.editor(), "<Control-r>"), "o cobertor voltou")

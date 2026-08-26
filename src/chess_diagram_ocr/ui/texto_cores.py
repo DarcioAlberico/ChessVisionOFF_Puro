@@ -64,7 +64,7 @@ PAPEL_DO_REALCE: dict[str, str] = {
 }
 """O mesmo nome -> papel do **fundo**. É este o canal do autor; o de cima é a concessão."""
 
-PAPEIS_DA_FAIXA: frozenset[str] = frozenset({tokens.PROBLEMA, tokens.ATENCAO})
+PAPEIS_DA_FAIXA: frozenset[str] = frozenset({tokens.PROBLEMA_TEXTO, tokens.ATENCAO})
 """Os papéis que a **faixa de confiança** usa na aba, declarados aqui para o teste os comparar.
 
 Derivados não dá: `ui/texto_panel.PAPEL_DA_FAIXA` importa `tkinter` por tabela, e este módulo não

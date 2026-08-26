@@ -112,7 +112,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **39 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **40 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -341,6 +341,13 @@ cvoff-texto-lado --livros 10 --paginas 8
 # nao tem como ser desmentido.
 cvoff-texto-pesquisavel "PDF/AAGAARD - Practical Chess Defence.pdf" --paginas 58-62
 cvoff-texto-pesquisavel LIVRO.pdf --paginas 1-40 --seco   # diz o que faria, sem gravar
+
+# A referencia de paragrafo e a varredura dos dois cortes (S-257/S-258). O sinal e o fim da linha:
+# em texto justificado toda linha alcanca a margem direita, menos a ultima de cada paragrafo -- e
+# ele nao olha nem o recuo nem o vao vertical, que sao as reguas sob medicao. `--com-glifo` semeia
+# tambem livro SEM camada de texto, que e onde o leitor de verdade roda.
+cvoff-texto-paragrafo --semear --com-glifo   # monta a referencia a partir de PDF/
+cvoff-texto-paragrafo                        # varre os candidatos sobre a referencia do disco
 
 # O que a mao corrigiu nos .cvtxt do editor de texto, agrupado por troca (S-239). A correcao
 # **nao** esta gravada no arquivo: ele guarda os dois lados -- a pagina que o motor leu e o que

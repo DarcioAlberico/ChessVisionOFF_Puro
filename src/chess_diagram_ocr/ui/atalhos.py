@@ -252,7 +252,15 @@ declaração da mesma tecla -- o defeito que esta tabela existe para impedir. O 
 
 
 CEDIDA_PELA_GUARDA = "cedida-pela-guarda"
-"""A tecla é da janela, e a guarda de foco já a cedia dentro do editor: ali ela estava morta."""
+"""A tecla é da janela, e dentro do editor ela é do editor: ali a da janela está morta.
+
+**Quem cede mudou, e o valor continua certo** (S-294). Até aquele item quem cedia era o cobertor de
+`shortcuts.ignores_widget`, que entregava *toda* tecla a *todo* campo de texto. Agora quem cede é
+`owns_key`: o editor **declara** `<Control-r>` em `TECLAS_DO_EDITOR` e liga a tecla no próprio
+widget, e a regra da S-117 -- quem declarou a tecla fica com ela -- é o que a segura.
+
+A troca é para melhor, e a diferença aparece se alguém tirar a tecla do editor: antes ela
+continuaria morta ali (o cobertor cedia de qualquer jeito), e agora ela volta a ser da janela."""
 
 GANHA_DO_TK = "ganha-do-tk"
 """A tecla é da janela e a aba a toma para si; o `bind` no widget existe para vencer a **classe**
@@ -267,10 +275,13 @@ SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
 **Sobreposição declarada, e não colisão.** São dois motivos diferentes, e a diferença tem teste:
 
 `CEDIDA_PELA_GUARDA` -- `Ctrl+R` é "ler esta página" desde a S-165 e continua sendo, em toda a
-janela menos dentro de um campo de texto, onde a guarda de `ui/shortcuts.ignores_widget` **já cedia
-a tecla desde a S-20**. Com o cursor no editor essa sequência não fazia nada antes de a Fase 41 a
-ligar a "alinhar à direita": ligá-la ali não tira nada de ninguém, ocupa uma tecla morta naquele
-widget. O sinal disso é a ação **não** estar em `texto_panel.ACOES_PROPRIAS`.
+janela menos dentro do editor, onde ela é "alinhar à direita" desde a Fase 41. Quem a cede ali é
+`ui/shortcuts.owns_key`: o editor a declara em `TECLAS_DO_EDITOR` e a liga no próprio widget. O
+sinal disso é a ação **não** estar em `texto_panel.ACOES_PROPRIAS`.
+
+**Até a S-294 quem cedia era outra coisa**, e vale registrar porque o valor desta entrada não
+mudou e o mecanismo sim: era o cobertor de `ignores_widget`, que entregava *toda* tecla a *todo*
+campo de texto -- e com ele `Ctrl+S` também morria ali, sem que ninguém tivesse decidido isso.
 
 `GANHA_DO_TK` -- `Ctrl+H` é "substituir" nas duas tabelas, a mesma ação, e a duplicata é
 obrigatória: a classe `Text` liga essa tecla a **backspace**, e um `bind_all` roda depois dela. Sem

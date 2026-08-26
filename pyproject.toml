@@ -163,6 +163,10 @@ cvoff-texto-lado = "chess_diagram_ocr.cli.texto_lado:main"
 # `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra.
 cvoff-texto-pesquisavel = "chess_diagram_ocr.cli.texto_pesquisavel:main"
 
+# S-257/S-258: a referencia de paragrafo pelo sinal do fim de linha, e a varredura dos dois cortes.
+# Versiona o instrumento -- a medicao da S-257 saiu de um script no diretorio da sessao.
+cvoff-texto-paragrafo = "chess_diagram_ocr.cli.texto_paragrafo:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

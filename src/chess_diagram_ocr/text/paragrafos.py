@@ -51,11 +51,44 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-RECUO_DE_PARAGRAFO = 0.8
-"""Recuo que abre parágrafo, em alturas de linha."""
+RECUO_DE_PARAGRAFO = 0.4
+"""Recuo que abre parágrafo, em alturas de linha.
+
+**Era 0,8, e o número nunca tinha sido medido** -- ele veio com a S-192, quando referência de
+parágrafo não existia. Ela existe desde a S-257, e a S-258 varreu o corte contra ela.
+
+Medido em 2026-08-26 sobre `docs/metrics/texto_paragrafo_referencia.jsonl`, nas folhas que a
+referência sabe julgar -- as lidas pela **camada de texto**, onde o sinal do fim de linha é
+confiável (precisão 0,94):
+
+    recuo   acertos  falsos  perdidos  precisão  recall      F1
+     0,80        44       3        26    0,9362  0,6286  0,7521   <- o valor antigo
+     0,40        48       3        22    0,9412  0,6857  0,7934
+     0,30        48       3        22    0,9412  0,6857  0,7934
+     0,15        48       4        22    0,9231  0,6857  0,7869
+
+**Os dois lados melhoram**: quatro cortes certos a mais, sem um falso a mais. E o platô entre 0,20
+e 0,45 é chato, que é o sinal de que o valor não está sintonizado num acaso do conjunto -- abaixo
+de 0,20 a precisão começa a cair. 0,40 é o meio dele.
+
+O valor bate com o que a S-258 tinha previsto sobre a referência de 24 folhas (F1 0,7832 -> 0,8328);
+as contagens absolutas diferem porque a referência foi refeita, e o relatório da S-258 diz por quê.
+
+**`SALTO_DE_PARAGRAFO` foi varrido junto e não mostra vão** -- ver o docstring dele.
+
+**E a varredura achou uma coisa maior que este item.** Nas folhas lidas pelo **glifo** -- os livros
+sem camada, que são a razão de o leitor existir -- a referência dá precisão de **0,43**, e nenhum
+candidato de recuo se distingue de outro. `cortar` faz ali mais que o dobro de blocos que a
+referência vê começos. O corte não é o problema: é que a população de "linha" que a segmentação
+entrega não é a que estas regras descrevem. Está em `docs/metrics/texto_paragrafo.json`, na chave
+`varredura_por_motor`, e é item próprio."""
 
 SALTO_DE_PARAGRAFO = 0.6
-"""Salto vertical extra que abre parágrafo, em alturas de linha. O corte é `1 + este valor`."""
+"""Salto vertical extra que abre parágrafo, em alturas de linha. O corte é `1 + este valor`.
+
+**Varrido junto com o recuo na S-258, e não mostra vão.** Baixá-lo de 0,6 para 0,3 sobe o recall e
+derruba a precisão: é troca, e não ganho. Ele fica, e a varredura está em
+`docs/metrics/texto_paragrafo.json` para que a afirmação continue conferível."""
 
 
 @dataclass(frozen=True)
@@ -140,11 +173,21 @@ def metricas_por_coluna(
     return metricas
 
 
-def cortar(linhas: Sequence[Linha], metricas: dict[int, tuple[int, int]] | None = None) -> list[Paragrafo]:
+def cortar(
+    linhas: Sequence[Linha],
+    metricas: dict[int, tuple[int, int]] | None = None,
+    *,
+    recuo: float = RECUO_DE_PARAGRAFO,
+    salto: float = SALTO_DE_PARAGRAFO,
+) -> list[Paragrafo]:
     """Linhas -> parágrafos, pelas quatro regras do cabeçalho.
 
     `metricas=None` as tira destas mesmas linhas, que é o que serve a quem chama com a página
     toda. Quem chama com um trecho passa as da página -- ver o cabeçalho.
+
+    **`recuo` e `salto` são parâmetros pelo mesmo motivo que `quantil` é** (S-257): a medição
+    varre candidatos, e varrer com monkeypatch mede um módulo remendado em vez do que roda. Os
+    padrões são os valores em uso, então quem não os passa não muda de comportamento.
     """
     if not linhas:
         return []
@@ -157,11 +200,11 @@ def cortar(linhas: Sequence[Linha], metricas: dict[int, tuple[int, int]] | None 
     for linha in linhas:
         margem, altura = metricas.get(linha.coluna, (linha.esquerda, linha.altura or 1))
         trocou = anterior is not None and linha.coluna != anterior.coluna
-        recuou = linha.esquerda > margem + altura * RECUO_DE_PARAGRAFO
+        recuou = linha.esquerda > margem + altura * recuo
         saltou = (
             anterior is not None
             and not trocou
-            and linha.topo - anterior.topo > altura * (1 + SALTO_DE_PARAGRAFO)
+            and linha.topo - anterior.topo > altura * (1 + salto)
         )
         # **Só entre dois pesos conhecidos.** `None` de um lado é "não se sabe", e não se abre
         # parágrafo sobre o que não se sabe -- ver "O peso" no cabeçalho.

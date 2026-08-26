@@ -146,20 +146,22 @@ class PaletaTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             cor("VERDE_BONITO")
 
-    COINCIDEM_DE_PROPOSITO = (
-        frozenset({tokens.PROBLEMA, tokens.PROBLEMA_TEXTO}),
-        frozenset({tokens.DIVERGENTE, tokens.DIVERGENTE_TEXTO}),
-    )
-    """Os pares que **devem** ter a mesma cor na paleta clara (S-224).
+    COINCIDEM_DE_PROPOSITO: tuple[frozenset[str], ...] = ()
+    """Os pares que **devem** ter a mesma cor na paleta clara. **Vazio desde a S-295.**
 
-    São contorno-de-casa e letra com o mesmo significado, separados quando o cromo escuro pediu
-    valores opostos: a letra precisa clarear para ser lida e o contorno precisa **não** clarear,
-    porque ele é medido contra as casas, que não seguem pele nenhuma.
+    Ele existia com dois pares -- `PROBLEMA`/`PROBLEMA_TEXTO` e `DIVERGENTE`/`DIVERGENTE_TEXTO` --,
+    separados na S-224 quando o cromo escuro pediu valores opostos: a letra precisa clarear para
+    ser lida e o contorno precisa **não** clarear, porque ele é medido contra as casas, que não
+    seguem pele nenhuma. Na paleta clara os dois coincidiam porque **um valor servia aos dois**, e
+    inventar uma diferença só para separar os nomes teria mudado pixel de hoje sem medida pedindo.
 
-    Aqui eles coincidem porque **um valor serve aos dois**: `#c0392b` dá 3,96:1 sobre a casa
-    clara e 4,77:1 sobre o cinza do cromo. Inventar uma diferença na paleta clara só para
-    separar os nomes mudaria pixel de hoje sem nenhuma medida pedindo -- e é justamente o tipo de
-    troca que a S-158 recusou."""
+    **A medida chegou** (S-295): o contorno dava 1,73:1 e 1,86:1 sobre a casa escura -- borda
+    desenhada e invisível em metade do tabuleiro. Escurecê-lo afastou os pares na paleta clara
+    também, e a exceção deixou de ser necessária. A separação da S-224 estava certa e agora é real
+    em toda pele.
+
+    A tupla fica, vazia, porque o dia em que dois papéis precisarem mesmo da mesma cor é aqui que
+    o motivo se escreve."""
 
     def test_dois_papeis_de_significado_diferente_nao_compartilham_hex(self) -> None:
         """"Três verdes com três significados de bom" era o achado; o inverso também é defeito.
@@ -178,8 +180,8 @@ class PaletaTests(unittest.TestCase):
         self.assertEqual({}, repetidas, "dois papéis resolvendo para a mesma cor")
 
     def test_o_par_declarado_deixa_de_coincidir_no_cromo_escuro(self) -> None:
-        """A exceção acima só vale na paleta clara. Se os dois continuassem iguais na escura, a
-        separação não teria servido para nada -- e o rótulo de erro seguiria ilegível."""
+        """A exceção acima só valeria na paleta clara. Com ela vazia, o laço não roda -- e o que
+        garante a separação passou a ser o teste abaixo, que vale nas duas paletas."""
         for par in self.COINCIDEM_DE_PROPOSITO:
             marcacao, letra = sorted(par, key=len)
             with self.subTest(par=sorted(par)):
@@ -187,6 +189,23 @@ class PaletaTests(unittest.TestCase):
                 self.assertNotEqual(
                     cor(marcacao, cromo_escuro=True),
                     cor(letra, cromo_escuro=True),
+                )
+
+    def test_o_contorno_e_a_letra_do_mesmo_significado_nao_compartilham_valor(self) -> None:
+        """A separação da S-224, agora real em **toda** paleta (S-295).
+
+        Contorno de casa e letra são medidos contra fundos diferentes -- as casas, que não seguem
+        pele, e o cromo, que segue. Enquanto um valor servia aos dois a diferença era só de nome;
+        desde que o contorno escureceu para ser visível na casa escura, ela é de tinta.
+        """
+        for marcacao, letra in (
+            (tokens.PROBLEMA, tokens.PROBLEMA_TEXTO),
+            (tokens.DIVERGENTE, tokens.DIVERGENTE_TEXTO),
+        ):
+            with self.subTest(par=(marcacao, letra)):
+                self.assertNotEqual(RESERVA[marcacao], RESERVA[letra])
+                self.assertNotEqual(
+                    cor(marcacao, cromo_escuro=True), cor(letra, cromo_escuro=True)
                 )
 
     def test_o_tema_vence_a_reserva_quando_responde(self) -> None:

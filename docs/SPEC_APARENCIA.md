@@ -1711,3 +1711,114 @@ combinações legítimas impossíveis sem que ninguém tivesse decidido isso.
 **Não faz uma quarta pele "alto contraste".** Ela quase sai de graça depois da S-224 — os limiares
 já estão medidos —, mas quase não é de graça, e ninguém pediu. Fica registrada como o próximo
 passo barato, se alguém pedir.
+
+---
+
+## S-294 · A guarda de foco cede a tecla, e não o teclado ✅ implementada (2026-08-26)
+
+**Problema.** A S-223 anotou isto por escrito e não consertou, porque não era o que "a fila única de
+ações" autorizava:
+
+> A mesma guarda cede **os onze** atalhos dentro de qualquer `Entry`, inclusive `Ctrl+S`, `Ctrl+R` e
+> `Ctrl+N`, que campo de texto nenhum usa. O docstring dela só justifica `←`, `→` e `Del`. Digitar
+> uma FEN e apertar `Ctrl+S` não salva hoje, e ninguém registrou isso. Fica anotado para um item
+> próprio.
+
+São dezoito atalhos hoje, e **nove morriam** com o cursor num campo de texto: `Ctrl+S`,
+`Ctrl+Shift+S`, `Ctrl+N`, `Ctrl+P`, `Ctrl+0`, `Ctrl+Enter`, `Ctrl+R`, `Ctrl+F` e `Ctrl+H`. Nenhum
+faz coisa alguma dentro de um `Entry`: a tecla sumia, e o usuário concluía que o programa não fazia
+aquilo.
+
+**Solução.** A pergunta certa é sobre a **tecla**, e não sobre o widget. `ignores_widget` respondia
+*"é campo de texto?"* e, se fosse, cedia tudo; `cede_a_tecla` responde sobre o par (widget, tecla).
+
+| tecla | quem fica com ela num campo |
+|---|---|
+| `←` `→` `↑` `↓` `Home` `End` `Del` `Backspace` | o campo — cada uma tem comportamento de fábrica ali |
+| `Ctrl+Z` `Ctrl+Y` | o campo — é o desfazer do próprio widget |
+| `PgUp` `PgDn` | só quem **rola**: num campo de uma linha elas não fazem nada |
+| as outras nove | a janela |
+
+**As cedidas são declaradas por ação, e não por sequência.** Só `ui/atalhos.py` escreve tecla neste
+projeto — é o que `test_ui_legenda.test_so_a_tabela_escreve_sequencia_de_tecla` cobra —, e a regra é
+a certa: remapear `desfazer` lá e esquecer aqui deixaria a guarda cedendo uma tecla que já não é a
+do desfazer. Aqui se diz o significado; a tecla sai da tabela.
+
+**O que não muda, e é o que mantém a S-117 e a S-267 de pé.** Tecla que o widget declarou para si
+continua dele, por `owns_key` — e é por ali que `Ctrl+R` segue sendo "alinhar à direita" dentro do
+editor e `Ctrl+Enter` segue sendo do campo de FEN. A entrada `CEDIDA_PELA_GUARDA` de
+`SOBREPOSICOES_NO_EDITOR` continua com o mesmo valor, e o docstring dela passou a dizer **quem**
+cede: era o cobertor, agora é a declaração. A diferença aparece se alguém tirar a tecla do editor —
+antes ela continuaria morta ali, agora volta a ser da janela.
+
+**Critério de aceite.**
+
+- `Ctrl+S` com o cursor no campo de FEN salva, e o teste o afirma pelo caminho que a janela usa;
+- `←` no campo de FEN continua movendo o cursor — o que a guarda existe para proteger desde a S-20;
+- nenhuma sequência de tecla é escrita fora de `ui/atalhos.py`;
+- toda tecla cedida ou é atalho da janela, ou é tecla de edição declarada — cedida que não existe
+  em lugar nenhum é linha morta.
+
+**Testes.** `test_o_ctrl_s_no_campo_de_fen_passa_a_salvar`;
+`test_a_seta_no_campo_de_fen_continua_do_campo`; `test_a_rolagem_e_so_de_quem_rola`;
+`test_a_tecla_declarada_pelo_widget_continua_dele`;
+`test_toda_tecla_cedida_e_um_atalho_da_janela_ou_uma_tecla_de_edicao`.
+---
+
+## S-295 · Os quatro contornos que somem na casa em que são desenhados ✅ implementada (2026-08-26)
+
+**Problema.** `REPROVAS_ANTERIORES_A_S224` guardava quatro pares abaixo do piso `AA_GRAFICO` (3,0),
+medidos em 2026-08-24 e registrados **como registro e não como perdão**:
+
+    ALVO sobre CASA_ESCURA           1,53
+    ALVO sobre CASA_ULTIMO_LANCE     2,99
+    PROBLEMA sobre CASA_ESCURA       1,73
+    DIVERGENTE sobre CASA_ESCURA     1,86
+
+É a mesma família do defeito que a S-158 mediu e consertou para o `CORRIGIDO` — *"uma borda
+desenhada e invisível em metade das casas"* —, em três papéis que ela não olhou. A nota da S-224
+dizia que corrigi-los era item próprio, e apontava para a S-257 — que acabou virando outro assunto.
+Os quatro continuaram reprovando por dois dias e meio.
+
+**Solução.** A via que a S-158 já tinha aberto: **luminosidade, com matiz e saturação intactas**. É
+o mesmo movimento que `tokens.paleta(cromo_escuro=True)` faz para o cromo, e a razão é a mesma —
+`PROBLEMA` continua sendo o vermelho de posição ilegal.
+
+| papel | era | é | pior par |
+|---|---|---|---|
+| `ALVO` | `#3f7f4c` | `#24482b` | 1,53 → **3,27** |
+| `PROBLEMA` | `#c0392b` | `#77231b` | 1,73 → **3,27** |
+| `DIVERGENTE` | `#8e44ad` | `#5b2c6f` | 1,86 → **3,28** |
+
+O melhor par de cada um foi de ~4 para ~7,5. **Nenhuma matiz se moveu** — 132,2°, 5,6° e 282,3°
+continuam onde estavam —, então a regra dos 40° da S-158 sai de graça e nenhuma faixa nova é
+disputada. Era essa a objeção registrada: *"mexer no vermelho de posição ilegal é mexer numa cor
+que a S-158 escolheu por eliminação de matiz"*. Mexer na **luminosidade** dela não é.
+
+### O conserto desenterrou um papel com dois significados
+
+`texto_panel.PAPEL_DA_FAIXA` pintava a faixa `revisar` da aba Texto com `tokens.PROBLEMA` — que
+`tokens.SIGNIFICADO` declara como marcação de **tabuleiro**, contorno de casa. Escurecer o contorno
+teria escurecido a letra daquela aba junto, sem que nada tivesse pedido.
+
+É o defeito da S-158 outra vez — *um papel, um significado* —, e a peça que faltava já existia:
+`PROBLEMA_TEXTO` nasceu na S-224 exatamente para isso. Na pele clássica os dois valiam o mesmo, e
+por isso ninguém tinha notado que a aba usava o papel errado.
+
+Com a troca, **`COINCIDEM_DE_PROPOSITO` ficou vazia**: ela era a exceção que permitia aos dois pares
+compartilharem cor na paleta clara, e a S-224 a justificava com *"inventar uma diferença na paleta
+clara só para separar os nomes mudaria pixel de hoje sem nenhuma medida pedindo"*. A medida chegou.
+No lugar dela entrou uma afirmação mais forte: contorno e letra do mesmo significado **não
+compartilham valor em paleta nenhuma**.
+
+**Critério de aceite.**
+
+- `REPROVAS_ANTERIORES_A_S224` está vazio, e com ele vazio o teste da S-224 passa a afirmar que
+  nenhum par de marcação reprova em pele nenhuma;
+- a matiz de cada papel é a mesma de antes, e a regra dos 40° continua valendo em toda pele;
+- nenhum papel de **texto** mudou de valor: os sete pares da S-146 saem intactos;
+- a faixa da aba Texto usa papel de texto, e o teste que compara as duas declarações prova.
+
+**Testes.** `test_toda_marcacao_atinge_aa_grafico_em_toda_pele` (a lista vazia);
+`test_o_contorno_e_a_letra_do_mesmo_significado_nao_compartilham_valor`;
+`test_a_lista_de_papeis_de_faixa_e_a_do_painel`.
