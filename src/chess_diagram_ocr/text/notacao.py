@@ -175,23 +175,47 @@ def _e_lance(texto: str) -> bool:
     return bool(LANCE.match(texto.rstrip(".")))
 
 
+SO_PONTUACAO = re.compile(r"^[.,;:!?+=…()\[\]{}'\"\-—–△⌓✝#]+$")
+"""Token que é só pontuação ou símbolo de anotação, e **não vota** em `e_linha_de_notacao`.
+
+Ele não é evidência de prosa nem de lance: é o que sobra quando o OCR separa a marca do lance que
+ela qualifica. `28 . . . b6 ! !` são sete tokens, dos quais cinco são pontuação solta -- e com eles
+no denominador uma linha de lances inteira fica em minoria de si mesma.
+
+Medido: ver `e_linha_de_notacao`."""
+
+
 def e_linha_de_notacao(texto: str, *, maioria: float = 0.5) -> bool:
     """A **maioria** dos tokens deste trecho é notação? Ver `peso_de_notacao` (S-249).
 
     Existe porque a legenda de um diagrama e a linha de lances logo abaixo dele são vizinhas na
     página, e a régua que casa linha com diagrama (`pdf_text.assign_lines_to_diagrams`) não sabe
     distinguir as duas -- ela mede distância, não conteúdo. Medido no conjunto de campo
-    (`docs/metrics/texto_legenda.json`): dos 83 parágrafos atados a um diagrama, **15 (18%) são
+    (`docs/metrics/texto_legenda.json`): dos 83 parágrafos atados a um diagrama, **14 (17%) são
     linha de lances**.
 
     Maioria, e não "tem um lance": `Ivkov—Dueckstein 1967` traz um `1967` que parece número de
     lance, e continua sendo legenda. Dois tokens de notação num parágrafo de dez é comentário; seis
     em dez é notação.
 
+    **Pontuação solta não entra na conta**, nem de um lado nem do outro -- ver `SO_PONTUACAO`.
+    Medido em 2026-08-26 contra `docs/metrics/texto_notacao_referencia.jsonl`, 305 blocos rotulados
+    à mão em 24 folhas de 15 livros:
+
+        régua                          precisão   recall     F1
+        pontuação votava                  0,8800   0,6822   0,7686
+        pontuação não vota                0,8899   0,7519   0,8151
+
+    Nove linhas de lances a mais reconhecidas, sem nenhum falso a mais -- os mesmos 12. É o vão que
+    a regra 5 da SPEC_EDITOR pede para uma troca entrar ligada.
+
+    **E o que a mesma medição diz que esta régua não serve para fazer**: derivar o estilo `notacao`
+    sozinha, no editor. Ver `docs/metrics/texto_notacao_estilo.json` e a S-249 na SPEC_EDITOR.
+
     Trecho vazio responde `False`: não há o que decidir, e "não é notação" é o lado que não muda o
     desenho.
     """
-    tokens = [t for t in texto.split() if t]
+    tokens = [t for t in texto.split() if t and not SO_PONTUACAO.match(t)]
     if not tokens:
         return False
     de_notacao = sum(1 for token in tokens if peso_de_notacao(token) > 0)

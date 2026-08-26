@@ -2,7 +2,7 @@
 
 O que a aba **Texto** é hoje, o que falta para ela ser um editor, e o plano para chegar lá **sem
 que nenhum recurso novo morra junto com o widget**. Especificação item a item em
-[SPEC_EDITOR.md](SPEC_EDITOR.md) (S-235 a S-257).
+[SPEC_EDITOR.md](SPEC_EDITOR.md) (S-235 a S-258).
 
 O reconhecimento que alimenta a aba está em [ROADMAP_TEXTO.md](ROADMAP_TEXTO.md) e
 [SPEC_TEXTO.md](SPEC_TEXTO.md); a fundação de interface que este plano usa — tokens, tipografia,
@@ -24,7 +24,7 @@ estilos, catálogo de comandos, ícones — está em [SPEC_UI.md](SPEC_UI.md) e
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-257 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-258 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 
 ---
 
@@ -241,6 +241,18 @@ botão "Salvar .txt" ignora os três. → **S-250 a S-254**
 | **38** — a paleta de glifos e símbolos ✅ | S-246 a S-249 | a paleta gerada do modelo, a prateleira do que ele não lê, as três formas de inserir e o estilo de parágrafo |
 | **39** — a exportação ✅ | S-250 a S-254 | um lugar só decide o diagrama, `.md`/`.html`/`.rtf`, o PDF pesquisável do próprio livro, e nada disso na thread da janela |
 | **40** — o que sustenta o resto ✅ | S-255, S-256 | o rascunho automático e o inventário que impede recurso sem comando |
+
+**Fora das cinco fases, dois itens de medição.** Eles não entregam recurso: entregam número sobre
+uma régua que o editor já usa.
+
+| item | estado | o que ela disse |
+|---|---|---|
+| **S-257** · a margem da coluna: mediana ou quantil baixo | ✅ medida e **recusada** | dois acertos em 323 separam os dois candidatos — a mediana fica. No caminho, achou a régua vizinha que **tem** vão |
+| **S-258** · o limiar de recuo é 0,8, e a medição diz 0,4 | ⬜ planejada | 25 cortes certos a mais por um falso a mais. Mexe no texto que o leitor entrega, e por isso é item com remedição junto |
+
+A referência de parágrafo que as duas usam está versionada em
+`docs/metrics/texto_paragrafo_referencia.jsonl`, e a de notação, que fechou a dívida da S-249, em
+`docs/metrics/texto_notacao_referencia.jsonl`.
 
 ## Fase 36 — O documento que sobrevive ao widget
 

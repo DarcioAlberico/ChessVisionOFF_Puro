@@ -8,9 +8,12 @@ parágrafo), ou a da esquerda perde todos os recuos que tem.
 
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 from chess_diagram_ocr.text.paragrafos import (
+    QUANTIL_DA_MARGEM,
     RECUO_DE_PARAGRAFO,
     SALTO_DE_PARAGRAFO,
     Linha,
@@ -193,6 +196,96 @@ class MetricasTests(unittest.TestCase):
         self.assertEqual("linha 0 linha 1 linha 2", paragrafos[0].texto)
         self.assertEqual(3, len(paragrafos[0].linhas))
 
+
+
+class QuantilDaMargemTests(unittest.TestCase):
+    """A margem sai de um quantil declarado, e a S-257 mediu qual (`docs/metrics/`)."""
+
+    def test_a_margem_sai_do_quantil_declarado(self) -> None:
+        """`quantil=` escolhe a posição na lista ordenada das esquerdas, e o padrão é a mediana."""
+        linhas = [
+            Linha(topo=i * PASSO, esquerda=MARGEM_ESQUERDA + salto, altura=ALTURA, texto="x")
+            for i, salto in enumerate((0, 0, 40, 40, 40))
+        ]
+        # Três das cinco linhas estão no recuo: a mediana cai nele, o décimo não.
+        self.assertEqual(MARGEM_ESQUERDA + 40, metricas_por_coluna(linhas)[0][0])
+        self.assertEqual(MARGEM_ESQUERDA, metricas_por_coluna(linhas, quantil=0.10)[0][0])
+        self.assertEqual(QUANTIL_DA_MARGEM, 0.5, "o padrão é a mediana -- ver a S-257")
+
+    def test_a_coluna_de_recuo_frequente_perde_a_margem_na_mediana(self) -> None:
+        """O defeito que originou a S-257 existe, e o teste o guarda em vez de escondê-lo.
+
+        Ele **não** é o critério de aceite do item: a medição contra referência disse que consertá-lo
+        pelo quantil não paga (dois acertos em 323). O que este teste trava é que o fenômeno é real,
+        para que quem mexer na régua saiba o que está mexendo.
+        """
+        linhas = [
+            Linha(topo=i * PASSO, esquerda=MARGEM_ESQUERDA + salto, altura=ALTURA, texto=f"l{i}")
+            for i, salto in enumerate((40, 0, 40, 0, 40, 0, 40))
+        ]
+        # Quatro das sete no recuo: com a mediana, nenhuma linha parece recuada e tudo vira um só.
+        self.assertEqual(1, len(cortar(linhas)))
+        # Com o quantil baixo, os quatro parágrafos aparecem.
+        metricas = metricas_por_coluna(linhas, quantil=0.10)
+        self.assertEqual(4, len(cortar(linhas, metricas)))
+
+    def test_a_altura_nao_segue_o_quantil(self) -> None:
+        """A altura continua sendo a mediana: ela mede o corpo da fonte, que é simétrico."""
+        linhas = [
+            Linha(topo=i * PASSO, esquerda=MARGEM_ESQUERDA, altura=altura, texto="x")
+            for i, altura in enumerate((10, 20, 20, 20, 60))
+        ]
+        self.assertEqual(20, metricas_por_coluna(linhas, quantil=0.10)[0][1])
+        self.assertEqual(20, metricas_por_coluna(linhas)[0][1])
+
+
+class ReferenciaDeParagrafoTests(unittest.TestCase):
+    """O conjunto que a S-257 mediu está no disco, e os números do relatório saem dele."""
+
+    RAIZ = Path(__file__).resolve().parents[1]
+    REFERENCIA = RAIZ / "docs" / "metrics" / "texto_paragrafo_referencia.jsonl"
+    RELATORIO = RAIZ / "docs" / "metrics" / "texto_paragrafo_referencia.json"
+
+    def registros(self) -> list[dict]:
+        bruto = self.REFERENCIA.read_text(encoding="utf-8")
+        return [json.loads(linha) for linha in bruto.splitlines() if linha.strip()]
+
+    def test_a_referencia_esta_versionada_com_livro_folha_e_marca(self) -> None:
+        registros = self.registros()
+        self.assertTrue(registros, "a referência da S-257 sumiu do disco")
+        for registro in registros:
+            self.assertIn("livro", registro)
+            self.assertIn("folha", registro)
+            for linha in registro["linhas"]:
+                self.assertIn("texto", linha)
+                self.assertEqual(4, len(linha["bbox"]))
+                # `None` é "esta coluna não é justificada, não se sabe" -- e ele é declarado.
+                self.assertIn(linha["comeca"], (True, False, None))
+
+    def test_o_relatorio_bate_com_a_referencia_no_disco(self) -> None:
+        """S-135 aplicada a estes dois arquivos: o número publicado é contável no conjunto."""
+        registros = self.registros()
+        relatorio = json.loads(self.RELATORIO.read_text(encoding="utf-8"))
+        self.assertEqual(len(registros), relatorio["folhas"])
+        self.assertEqual(
+            sum(1 for r in registros for x in r["linhas"] if x["comeca"] is not None),
+            relatorio["linhas_com_referencia"],
+        )
+        self.assertEqual(
+            sum(1 for r in registros for x in r["linhas"] if x["comeca"] is True),
+            relatorio["paragrafos_na_referencia"],
+        )
+        self.assertEqual("docs/metrics/texto_paragrafo_referencia.jsonl", relatorio["referencia"])
+
+    def test_o_relatorio_traz_os_dois_candidatos_e_o_que_ficou(self) -> None:
+        """Sem os dois lados no relatório, "não há vão" é afirmação sem conta."""
+        relatorio = json.loads(self.RELATORIO.read_text(encoding="utf-8"))
+        quantis = [c["quantil"] for c in relatorio["candidatos"]]
+        self.assertIn(QUANTIL_DA_MARGEM, quantis, "o valor em uso não foi medido")
+        self.assertIn(0.10, quantis, "o candidato que a S-257 recusou saiu do relatório")
+        for candidato in relatorio["candidatos"]:
+            for chave in ("precisao", "recall", "f1", "blocos"):
+                self.assertIn(chave, candidato)
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

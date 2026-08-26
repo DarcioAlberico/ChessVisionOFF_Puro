@@ -6,9 +6,9 @@
   "diagramas_detectados": 112,
   "diagramas_com_legenda": 83,
   "cobertura": 0.7411,
-  "atadas_que_sao_linha_de_lances": 15,
-  "viram_estilo_legenda": 68,
-  "cobertura_do_estilo": 0.6071,
+  "atadas_que_sao_linha_de_lances": 14,
+  "viram_estilo_legenda": 69,
+  "cobertura_do_estilo": 0.6161,
   "falhas": [],
   "exemplos": [
     {
@@ -241,7 +241,7 @@
       "diagrama": 0,
       "texto": "2s ... ♔h7!?",
       "palavras": 3,
-      "barrada_por_ser_notacao": true
+      "barrada_por_ser_notacao": false
     },
     {
       "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Pr",

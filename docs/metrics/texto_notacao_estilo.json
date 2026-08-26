@@ -1,0 +1,2645 @@
+{
+  "item": "S-249 · o estilo `notacao` derivado automático, e a régua que o decidiria",
+  "medido_em": "2026-08-26",
+  "pergunta": "`notacao.e_linha_de_notacao` separa bem o bastante para o editor aplicar o estilo `notacao` sozinho, como já aplica título, prosa e legenda?",
+  "resposta": "não. Com a melhor régua medida, 11% do que ela estilaria é prosa -- inclusive título corrente e número de página -- e um quarto das linhas de lances fica sem estilo. O estilo `notacao` continua sendo aplicado à mão, e a paleta é o caminho. A mesma medição, porém, mostrou vão para uma troca DENTRO da régua: pontuação solta deixou de votar, e é o que está em uso.",
+  "de_onde_vem_o_texto": "`text.leitor.ler_pagina` com o motor padrão (glifo) -- o mesmo caminho que enche a aba de texto. Medir sobre a camada limpa do PDF mediria outra população, e mais fácil: a camada não passa por OCR.",
+  "referencia": "docs/metrics/texto_notacao_referencia.jsonl",
+  "criterio_do_rotulo": "editorial, e não o da régua: o editor poria este bloco no estilo `notacao`? `lance` é corrida de lances e seu aparato; `prosa` é frase de língua natural, ainda que ela CITE lances por dentro; `misto` é bloco que o leitor colou (frase inteira MAIS a linha de lances seguinte), e não tem estilo certo; `ilegivel` é OCR que não permite dizer. Os dois últimos ficam fora de precisão e recall, e a fração deles é resultado.",
+  "amostra": {
+    "folhas": 24,
+    "livros": 14,
+    "blocos": 415,
+    "por_rotulo": {
+      "misto": 38,
+      "prosa": 176,
+      "ilegivel": 72,
+      "lance": 129
+    },
+    "julgaveis": 305
+  },
+  "candidatos": [
+    {
+      "regra": "pontuação votava (régua até 2026-08-26)",
+      "maioria": 0.4,
+      "verdadeiros_positivos": 102,
+      "falsos_positivos": 18,
+      "falsos_negativos": 27,
+      "verdadeiros_negativos": 158,
+      "precisao": 0.85,
+      "recall": 0.7907,
+      "f1": 0.8193,
+      "erros": [
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "b5 23. L : d5 e : d5 u. s. Nv. 1iebst re."
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "o Level 1 1 71"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "l½2—½"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "5.♗b6?!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "to Lvel 3 255"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "4...♗xh3!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "' 1 01"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "[oder ouch 9. . . . De7 nebst H"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "3. sc3 sf6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "4. . . . ef —"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "5. sf3:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 15...♘:d4! 16. ed [ 16. ♘:d7 ♘:e2+ 17. ♘:e2 ♘ :d7] 16...♗:c5 17. a3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1914 27...♘:c3 28. ♖:c3 ♖:c3 29. ♖:c3 ♕b2..! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 37...e3+! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "19. . . . . . , P3c., 20. T (—1 ) 1AR, P3A., 21—. P4TR!, R1T., 22. T(5)3A, P4A; 23. P)(P"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "23 D)( c. 24 P)(P T)(T. 25. P' 7c' '+' ', ' ie1c., 2C. A')(P+! ' '"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "26. . . . . . , R)(A; 27. T)(T, c5R!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "30. . . . . . , T2T."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 16 ♔ The Development of a"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♕a4 was threatened."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♘xd4!? cxd4 20 b3 also came into consideration."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "Threatening 25 h5."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 70 ♔ Grandmaste"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "258. G. zakhodiaki'n (fi1nal), 1966. l .♘e3! ♖xe3 2.♘e4! + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "259. G. zakhodiaki'n (fi1nal), 1967. l .♖ee5! de 2.♖f2! + △ 3.♖h2+, 4.♖g2+, 5.♖f87, 6.a5"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "268. L. Kubbel, l 907. 1 .♘c3+ ♔c2 2.♘d l ! (2.♘d5? ♔d2 =) 2...♔xd l 3.♔h8! fl♕ (3...♔e "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "269. A. Troitzky, 1 897. l .♗c6! ♖b l +"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "fi1ght on but after 29fxe3 ♖xf7 30 ♖d1 h6 31 ♔f4 ♘6 32 g4 ♘d8 33 h4 Hou."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "64) Gudok — 0. saenko"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "28...♘a5!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "a) 28...♕c8? 29 ♗xg6 hxg6 30♖xc4 ♕f5 31 ♗xf6 ♗xf6 32 ♕e4 is at least oK for white."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "66) 43 ♗xd4 ! uses a little piece oftac- tics to pick offa pawn\"and gives White a techni"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 23...♖xd6 24 ♖xd6 ♘a4 25 b3 gives White a material advantage and a strong attack"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The game continuation showed why the other option is wrong: 23 ♖e7? ♘a4! (this musthavec"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "164) 34...♗g7! is cof7ecL as the ttreat of ...e4+ must be rf5peted, while the at. tack o"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 37 ♕xb6 ♘xb6 38 ♖xg5 ♖xa3+ 39 ♔bl hxg5 and Black will have the better of an ending th"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "Other moves are poor. 34...♕xg4?! 35 fxg4 ♗g7 36 ♕xh8 ♗xh8 37 ♖b1 favours White while in"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...fx6"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "Mate is forced: after 39...hxg5 40 ♕xg5 Black can't defend both g7 and g8."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I I. 24. Kf3 Ke4++ 25. Kpe1 ! (25. Kpf 1? ♔ : g3!) 25 . . . ♔e3 26. K : e4 h6! ! 27. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "32. Kpe2 cc5+) 27 . . . ♔: e4+ (Ho He 27 . . . de 28. nd6!) 28. ♔ : e4 de 29. Kd4 hg, H "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "1) 27. Kgf5 (HnH 27. Kh 1) 27 . . . ne1 + 28. n : e1 ♔:el + 29. Kph2 ♔ : c1 c AByMn nHm."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "3) 27. Kge2 n : e2 28. K:e2 Kd3+ 29. Kd4 ♔f2+ 30. Kph 1 Ke1 31 . nd2 (31 . n : e1 ♔:e1 +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Tenepb HeAocTaToqHo HH 24. . . . Ke6 25. ce3 f5 26. Kd:f5 ♔f4+ 27. Kpe2 HH 24 . . Ke4+ 2"
+        }
+      ]
+    },
+    {
+      "regra": "pontuação votava (régua até 2026-08-26)",
+      "maioria": 0.5,
+      "verdadeiros_positivos": 88,
+      "falsos_positivos": 12,
+      "falsos_negativos": 41,
+      "verdadeiros_negativos": 164,
+      "precisao": 0.88,
+      "recall": 0.6822,
+      "f1": 0.7686,
+      "erros": [
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "b5 23. L : d5 e : d5 u. s. Nv. 1iebst re."
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "o Level 1 1 71"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "l½2—½"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "5.♗b6?!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "to Lvel 3 255"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "4...♗xh3!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "' 1 01"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "T ) 9. d5 ed nebsf Lc3 :✝"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "[oder ouch 9. . . . De7 nebst H"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "3. sc3 sf6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "4. . . . ef —"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "5. sf3:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 15...♘:d4! 16. ed [ 16. ♘:d7 ♘:e2+ 17. ♘:e2 ♘ :d7] 16...♗:c5 17. a3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1914 27...♘:c3 28. ♖:c3 ♖:c3 29. ♖:c3 ♕b2..! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 37...e3+! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 35...♗c5! [ 36. ♕:d3 cd 37. ♔f2 (37. ♗ :c5 d2 +) 37...d2 +] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "19. . . . . . , P3c., 20. T (—1 ) 1AR, P3A., 21—. P4TR!, R1T., 22. T(5)3A, P4A; 23. P)(P"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "23 D)( c. 24 P)(P T)(T. 25. P' 7c' '+' ', ' ie1c., 2C. A')(P+! ' '"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "26. . . . . . , R)(A; 27. T)(T, c5R!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "28. P5T, c(2)3A., 29. D6c+, R1c; 30. P6T."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "30. . . . . . , T2T."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♕a4 was threatened."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♘xd4!? cxd4 20 b3 also came into consideration."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "Threatening 25 h5."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 70 ♔ Grandmaste"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "28 . . . b6 ! !"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "258. G. zakhodiaki'n (fi1nal), 1966. l .♘e3! ♖xe3 2.♘e4! + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "259. G. zakhodiaki'n (fi1nal), 1967. l .♖ee5! de 2.♖f2! + △ 3.♖h2+, 4.♖g2+, 5.♖f87, 6.a5"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "260. Klovans Beliavsky, 1974. 1 .♕e5 ♕c7 ( l ...♕d6 2.fg+ ♔g8 3.♕xd6 ♖xd6 4.♘e4 + ) 2.fg"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "262. Knank Libert l975 l ♖xh7!! ♔á7 2.♕h4+ ♔g8 3.♗f6 ♗g'7 4' .♗f87"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "266. shirow Geof8adze, 1989. l .♖f86!! ♘f86 2.♖g2 ♖c7 3.♖f86 ♖f8 4.♖f87+ ♖f87 5.♗f3 ♖h7 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "268. L. Kubbel, l 907. 1 .♘c3+ ♔c2 2.♘d l ! (2.♘d5? ♔d2 =) 2...♔xd l 3.♔h8! fl♕ (3...♔e "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "269. A. Troitzky, 1 897. l .♗c6! ♖b l +"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "fi1ght on but after 29fxe3 ♖xf7 30 ♖d1 h6 31 ♔f4 ♘6 32 g4 ♘d8 33 h4 Hou."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "64) Gudok — 0. saenko"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "28...♘a5!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "a) 28...♕c8? 29 ♗xg6 hxg6 30♖xc4 ♕f5 31 ♗xf6 ♗xf6 32 ♕e4 is at least oK for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "29 ♖c3 (the main idea is 29 ♖xc7 ♘b3+ 30 ♔xa2 ♖a8+ 31 ♔b1 ♖xc7 with ...♖al# to follow) 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "e) 23...♘xh5 24 gxh6 g6 25 ♖gl ♘4 26 b3 with way too many threaf5 for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 37 ♕xb6 ♘xb6 38 ♖xg5 ♖xa3+ 39 ♔bl hxg5 and Black will have the better of an ending th"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "Other moves are poor. 34...♕xg4?! 35 fxg4 ♗g7 36 ♕xh8 ♗xh8 37 ♖b1 favours White while in"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...fx6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 31 gxh3 ♗xf1 32 ♘xe8+ (32 ♖xf1 ♖c8 !) 32...♔h6!! (this move lea♔ to a beautiful fored"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "2 1 . . . . e2 :"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "24. cg5 c1 . . ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I. 24. ♔b4 ♔ : g5 2a. ♔:b6 ♔e3+ 26. Kpf 1 Kd3, H qep- HbIe BbIHrpHBamT;"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I I. 24. Kf3 Ke4++ 25. Kpe1 ! (25. Kpf 1? ♔ : g3!) 25 . . . ♔e3 26. K : e4 h6! ! 27. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "32. Kpe2 cc5+) 27 . . . ♔: e4+ (Ho He 27 . . . de 28. nd6!) 28. ♔ : e4 de 29. Kd4 hg, H "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "1) 27. Kgf5 (HnH 27. Kh 1) 27 . . . ne1 + 28. n : e1 ♔:el + 29. Kph2 ♔ : c1 c AByMn nHm."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "3) 27. Kge2 n : e2 28. K:e2 Kd3+ 29. Kd4 ♔f2+ 30. Kph 1 Ke1 31 . nd2 (31 . n : e1 ♔:e1 +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Tenepb HeAocTaToqHo HH 24. . . . Ke6 25. ce3 f5 26. Kd:f5 ♔f4+ 27. Kpe2 HH 24 . . Ke4+ 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "HepHbIM npHmnocb 6bI orpa- HHqHTbcfl 24 . . . ♔ : g5 25. bc ♔e3+ 26. Kpf 1 ♔f4+ 27. Kpe "
+        }
+      ]
+    },
+    {
+      "regra": "pontuação votava (régua até 2026-08-26)",
+      "maioria": 0.6,
+      "verdadeiros_positivos": 62,
+      "falsos_positivos": 10,
+      "falsos_negativos": 67,
+      "verdadeiros_negativos": 166,
+      "precisao": 0.8611,
+      "recall": 0.4806,
+      "f1": 0.6169,
+      "erros": [
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": ". se5 27 Td6✝ Kh7 28 Lg3 Tae8 '29. ''Td5, sc'6 30— +d7, Te7' 31. 'T : e7, s : e7 32. Kd2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "b5 23. L : d5 e : d5 u. s. Nv. 1iebst re."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "de1t) 28 d : c5 b : c5 29 f : e4 Db7"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "o Level 1 1 71"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "l½2—½"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "5.♗b6?!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "to Lvel 3 255"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "4...♗xh3!!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "(1. e . c . c g5 Le7 5. e3 0-0 6. sf3 be4 7. Le7: De7: 8. cd5: sc3: '9. bc3: ed5: 10. Db"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "' 1 01"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "T ) 9. d5 ed nebsf Lc3 :✝"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "[oder ouch 9. . . . De7 nebst H"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "3. sc3 sf6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "4. . . . ef —"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "5. sf3:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "New York 1913 13. ♘ :f7! ♔ :f7 14. ♘g5+ ♔f8 15. ♕h5! [ 15...♕e7 16. ♘:h7+ ♔g8 17. ♕:d5++"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 33...♕ c2.. (xb2) 34. ♔ h2 [34. ♖ :c2 bc△ ♖d 1 +; 34. ♖b1 ♗:f2+ +] "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 15...♘:d4! 16. ed [ 16. ♘:d7 ♘:e2+ 17. ♘:e2 ♘ :d7] 16...♗:c5 17. a3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1914 27...♘:c3 28. ♖:c3 ♖:c3 29. ♖:c3 ♕b2..! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1967 35...♖:e3+! 36. ♔:e3 ♗h6+ 37. ♔e2 ♘g3+ [38. ♔d1 ♕c 1#] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 47. ♘:g6! ♘:d5 [47...♔ :g6 48. ♕h8! ♔f7 49. ♘:h5 ♗d7 50. ♕g7+ ♔e8 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 37...e3+! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 35...♗c5! [ 36. ♕:d3 cd 37. ♔f2 (37. ♗ :c5 d2 +) 37...d2 +] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1967 38...g5! [38...♔f6 39. ♔g3♔f5 4. e4+ ♔ :e441."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 23. f6! ♕e6 [23...gf 24. ♕g4+ ♔h8 (24...♔f8 25. ♕h4+ ) 25. ♖ :f6! ♘ :f6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 27. ♕:h7+.. [27...♔ :h7 28. ♖h5+ ♔g8 29. ♖h8+ ♘:h8 30. ♔♕#] 1:0"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 16. ♖:c7! ♗c6 17. ♖ 1:c6! [ 17. ♖7:c6 ♘:c6=] 17...bc 18. ♖:f7.... h6 [ "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "19. . . . . . , P3c., 20. T (—1 ) 1AR, P3A., 21—. P4TR!, R1T., 22. T(5)3A, P4A; 23. P)(P"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "23 D)( c. 24 P)(P T)(T. 25. P' 7c' '+' ', ' ie1c., 2C. A')(P+! ' '"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "26. . . . . . , R)(A; 27. T)(T, c5R!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "28. P5T, c(2)3A., 29. D6c+, R1c; 30. P6T."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "30. . . . . . , T2T."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "17 . . . dxc4"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♕a4 was threatened."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♘xd4!? cxd4 20 b3 also came into consideration."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 . . . ♘xf3+?!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "21 . . . ♖c7"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "Threatening 25 h5."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "24 . . . h5"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 70 ♔ Grandmaste"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "28 . . . b6 ! !"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "258. G. zakhodiaki'n (fi1nal), 1966. l .♘e3! ♖xe3 2.♘e4! + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "259. G. zakhodiaki'n (fi1nal), 1967. l .♖ee5! de 2.♖f2! + △ 3.♖h2+, 4.♖g2+, 5.♖f87, 6.a5"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "260. Klovans Beliavsky, 1974. 1 .♕e5 ♕c7 ( l ...♕d6 2.fg+ ♔g8 3.♕xd6 ♖xd6 4.♘e4 + ) 2.fg"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "262. Knank Libert l975 l ♖xh7!! ♔á7 2.♕h4+ ♔g8 3.♗f6 ♗g'7 4' .♗f87"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "cd +) 3...c4!! 4.♖b4 a5 5.♘a4 (5.♖b5 c2 +; 5.♖c4 cb +) 5...ab + (0: 1 )."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "265. L. Kubbel (fi1nal), l922. 1 .d3! a2 2.c4+ ♔c5 (2...dc 3.♗xc3 + ) 3.♔b7 ♔d6 (3...al♕"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "266. shirow Geof8adze, 1989. l .♖f86!! ♘f86 2.♖g2 ♖c7 3.♖f86 ♖f8 4.♖f87+ ♖f87 5.♗f3 ♖h7 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "268. L. Kubbel, l 907. 1 .♘c3+ ♔c2 2.♘d l ! (2.♘d5? ♔d2 =) 2...♔xd l 3.♔h8! fl♕ (3...♔e "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "269. A. Troitzky, 1 897. l .♗c6! ♖b l +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "270. o. Duras, 1903. l .♖d2+ ♔e7 2.♖d6! ♖c3 (2...♔xd6 3.♔c8 + ) 3.♖c6! ♖xc6 4.♔a7 + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "27 1 . Ragozin Veresov, 1 945. 1.♗f87 ♔f87 2.♖f86+! fg 3.♖f7+! ♔xf7 4.♕xh7+ ♔e6 (4...♔f8"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "272. Kef2s Laurentius, 1935. 1 .♗xf6! ( l ...gf2.♕h5+ ♔g8 3.♕g4+ ♔f7 4.♕g7+ ♔e8 5.♘c7#) "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "274. Rubinstein Teichmann, 1908. 1 .♗xh7+ ♔xh7 2.g6+ ♔g8 (2...fg 3.♘xe4 de 4.♘g5+ ♔h6 5."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "fi1ght on but after 29fxe3 ♖xf7 30 ♖d1 h6 31 ♔f4 ♘6 32 g4 ♘d8 33 h4 Hou."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "28...♘a5!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "a) 28...♕c8? 29 ♗xg6 hxg6 30♖xc4 ♕f5 31 ♗xf6 ♗xf6 32 ♕e4 is at least oK for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "29 ♖c3 (the main idea is 29 ♖xc7 ♘b3+ 30 ♔xa2 ♖a8+ 31 ♔b1 ♖xc7 with ...♖al# to follow) 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "e) 23...♘xh5 24 gxh6 g6 25 ♖gl ♘4 26 b3 with way too many threaf5 for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "b) 37 ♖xe4+?! ♕f7 38 hxg6+ ♕xg6 39 ♖f4+ ♔g8 40 ♕xa8+ ♔h7 leaves white stmggling to survi"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 37 ♕xb6 ♘xb6 38 ♖xg5 ♖xa3+ 39 ♔bl hxg5 and Black will have the better of an ending th"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...fx6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 31 gxh3 ♗xf1 32 ♘xe8+ (32 ♖xf1 ♖c8 !) 32...♔h6!! (this move lea♔ to a beautiful fored"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "2 1 . . . . e2 :"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "24. cg5 c1 . . ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I. 24. cd2 Kd3+ 25. Kpf1 c : d4 26. cd ♔f6+ 27. Kpg1 ♔f2+ 28. Kph 1 Ke1 !."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I. 24. ♔b4 ♔ : g5 2a. ♔:b6 ♔e3+ 26. Kpf 1 Kd3, H qep- HbIe BbIHrpHBamT;"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I I. 24. Kf3 Ke4++ 25. Kpe1 ! (25. Kpf 1? ♔ : g3!) 25 . . . ♔e3 26. K : e4 h6! ! 27. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "32. Kpe2 cc5+) 27 . . . ♔: e4+ (Ho He 27 . . . de 28. nd6!) 28. ♔ : e4 de 29. Kd4 hg, H "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Iv. 24. h4 h6 25. cc1 ♔f6+ 26. Kpg1 ♔ : h4 H Tenepb:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "1) 27. Kgf5 (HnH 27. Kh 1) 27 . . . ne1 + 28. n : e1 ♔:el + 29. Kph2 ♔ : c1 c AByMn nHm."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "2) 27. Kdf5 Kd3+ 28. Kpf1 ♔h2 29. ce3 c : e3 an. K : e3 n : e3."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "3) 27. Kge2 n : e2 28. K:e2 Kd3+ 29. Kd4 ♔f2+ 30. Kph 1 Ke1 31 . nd2 (31 . n : e1 ♔:e1 +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "4) 27. Kf 1 ♔g4 28. nd2 (28. b4 ♔ : d1 29. bc ne1) 28 . . . ne1 29. b4 Ke4 ♔. nd3 (30. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Tenepb HeAocTaToqHo HH 24. . . . Ke6 25. ce3 f5 26. Kd:f5 ♔f4+ 27. Kpe2 HH 24 . . Ke4+ 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "HepHbIM npHmnocb 6bI orpa- HHqHTbcfl 24 . . . ♔ : g5 25. bc ♔e3+ 26. Kpf 1 ♔f4+ 27. Kpe "
+        }
+      ]
+    },
+    {
+      "regra": "pontuação votava (régua até 2026-08-26)",
+      "maioria": 0.7,
+      "verdadeiros_positivos": 42,
+      "falsos_positivos": 7,
+      "falsos_negativos": 87,
+      "verdadeiros_negativos": 169,
+      "precisao": 0.8571,
+      "recall": 0.3256,
+      "f1": 0.4719,
+      "erros": [
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": ". se5 27 Td6✝ Kh7 28 Lg3 Tae8 '29. ''Td5, sc'6 30— +d7, Te7' 31. 'T : e7, s : e7 32. Kd2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "b5 23. L : d5 e : d5 u. s. Nv. 1iebst re."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "de1t) 28 d : c5 b : c5 29 f : e4 Db7"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "o Level 1 1 71"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "l½2—½"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "5.♗b6?!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "to Lvel 3 255"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "4...♗xh3!!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "(1. e . c . c g5 Le7 5. e3 0-0 6. sf3 be4 7. Le7: De7: 8. cd5: sc3: '9. bc3: ed5: 10. Db"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "' 1 01"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "T ) 9. d5 ed nebsf Lc3 :✝"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "[oder ouch 9. . . . De7 nebst H"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "3. sc3 sf6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "4. . . . ef —"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "5. sf3:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "New York 1913 13. ♘ :f7! ♔ :f7 14. ♘g5+ ♔f8 15. ♕h5! [ 15...♕e7 16. ♘:h7+ ♔g8 17. ♕:d5++"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "NewYork 19 13 29. c5.. dc [29...♖d8 30. c6!+↑('] 30. d6! ♕e5 31. ♕:e5 ♖:e5 32. bc ♘d7 [3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "New York 19 13 22. ♘g5! h6 23. ♘:f7.. ♔ :f7 24. ♕f5+ ♔g8 25. ♕:g6 ♘:e3 26. ♕h7+ ♔f7 27. "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "NewYork 19 13 43. ♕ f7 ! ♕c8 [43. . .♖ :f7 44. ♖ e8 ++ ; 43...♖g8 44. ♖e8 ♕d1+ 45. ♔h2 ♕"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 28. ♘f5!.. fe [28...gf 29. ♕:f5 ♔g7 30. ♕:h7+ ♔f6 31. ef♕d7 32. ♕g6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "34. ♕e4#; 28...♔h8 29. ♕e4 fe 30. ♘:e7 ♕:e7 3 1 . de ♘c3 32. ♕:d4+ ♕f6 33. e7!+ ] 29. de"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 33...♕ c2.. (xb2) 34. ♔ h2 [34. ♖ :c2 bc△ ♖d 1 +; 34. ♖b1 ♗:f2+ +] "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 15...♘:d4! 16. ed [ 16. ♘:d7 ♘:e2+ 17. ♘:e2 ♘ :d7] 16...♗:c5 17. a3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1914 27...♘:c3 28. ♖:c3 ♖:c3 29. ♖:c3 ♕b2..! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 1914 22...♘f4.. 23. ♖d2 ♘:g2.. 24. ♔ :g2 ♕g4+ 25. ♔f1 ♕h3+ 26. ♔e2 [26. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1967 35...♖:e3+! 36. ♔:e3 ♗h6+ 37. ♔e2 ♘g3+ [38. ♔d1 ♕c 1#] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 21. ♖d7+↑ [2 1 . ♘f6+! gf 22. ♕g4+ ♔h7 23. ♖d7! (23. ♗e4+ f5 24. ♗"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 47. ♘:g6! ♘:d5 [47...♔ :g6 48. ♕h8! ♔f7 49. ♘:h5 ♗d7 50. ♕g7+ ♔e8 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 37...e3+! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 35...♗c5! [ 36. ♕:d3 cd 37. ♔f2 (37. ♗ :c5 d2 +) 37...d2 +] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "uRs 1967 34...♗ c3.. [34. . .♖ c7 35. ♕g5+ ♔ c8 36. ♕:a5+] 35. ♕g5+ [35. bc? ♕b5+ +; 35."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1967 38...g5! [38...♔f6 39. ♔g3♔f5 4. e4+ ♔ :e441."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 23. f6! ♕e6 [23...gf 24. ♕g4+ ♔h8 (24...♔f8 25. ♕h4+ ) 25. ♖ :f6! ♘ :f6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 27. ♕:h7+.. [27...♔ :h7 28. ♖h5+ ♔g8 29. ♖h8+ ♘:h8 30. ♔♕#] 1:0"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 16. ♖:c7! ♗c6 17. ♖ 1:c6! [ 17. ♖7:c6 ♘:c6=] 17...bc 18. ♖:f7.... h6 [ "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 21. ♘h4..! ♕:b7 22. ♘g6+ ♔h7 23. ♗e4.. ♗d6 [23. . .♘a6 24. ♘e7+ ♔ h8 25"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "19. . . . . . , P3c., 20. T (—1 ) 1AR, P3A., 21—. P4TR!, R1T., 22. T(5)3A, P4A; 23. P)(P"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "23 D)( c. 24 P)(P T)(T. 25. P' 7c' '+' ', ' ie1c., 2C. A')(P+! ' '"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "26. . . . . . , R)(A; 27. T)(T, c5R!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "28. P5T, c(2)3A., 29. D6c+, R1c; 30. P6T."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "30. . . . . . , T2T."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "17 . . . dxc4"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♕a4 was threatened."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 . . . ♘xf3+?!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "21 . . . ♖c7"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "Threatening 25 h5."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "24 . . . h5"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 70 ♔ Grandmaste"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "28 . . . b6 ! !"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Vishy_Anand_Great_Chess_Combinations.p",
+          "texto": "Dortmund 1992 13. ♘h5! ♗h3 [13...a6 14. ♘:c7! ♔:c7 (14... ♕c6 15. ♘f8±) 15. ♗f4+ ♔c8 16."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "258. G. zakhodiaki'n (fi1nal), 1966. l .♘e3! ♖xe3 2.♘e4! + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "259. G. zakhodiaki'n (fi1nal), 1967. l .♖ee5! de 2.♖f2! + △ 3.♖h2+, 4.♖g2+, 5.♖f87, 6.a5"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "260. Klovans Beliavsky, 1974. 1 .♕e5 ♕c7 ( l ...♕d6 2.fg+ ♔g8 3.♕xd6 ♖xd6 4.♘e4 + ) 2.fg"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "26 l . Duz-Khotimif5ky salwe, l9l 1 . 1 .♗d6+! ♔b5 (1 ...♔xd6 2.♖e6+ ♔c5 3.♕c2+ + ) 2.♖b"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "262. Knank Libert l975 l ♖xh7!! ♔á7 2.♕h4+ ♔g8 3.♗f6 ♗g'7 4' .♗f87"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "263. ortuetta sanz l934 1 ♖xb2! 2.♘xb2 c3! 3.♖xb6 (3.♘d3 c4'+ ' '5'.♖xb6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "cd +) 3...c4!! 4.♖b4 a5 5.♘a4 (5.♖b5 c2 +; 5.♖c4 cb +) 5...ab + (0: 1 )."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "264. Goldin Efi1mov l982 l ♖h6! ♕d3 2.♘h7 f5 3.♕g6 ♔d2 (' 3..'.♕c3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "♖f8 6.♘f6+ ( l :0) 6...gf7.♕g6#."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "265. L. Kubbel (fi1nal), l922. 1 .d3! a2 2.c4+ ♔c5 (2...dc 3.♗xc3 + ) 3.♔b7 ♔d6 (3...al♕"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "266. shirow Geof8adze, 1989. l .♖f86!! ♘f86 2.♖g2 ♖c7 3.♖f86 ♖f8 4.♖f87+ ♖f87 5.♗f3 ♖h7 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "267. L. Kubbel 1 9l6 1 f7 ♖f8 2 e6 b6! 3.♔b7! (3.e7? ♗xf7 +' ) 3' ...♔c5 4.'e7!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "268. L. Kubbel, l 907. 1 .♘c3+ ♔c2 2.♘d l ! (2.♘d5? ♔d2 =) 2...♔xd l 3.♔h8! fl♕ (3...♔e "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "269. A. Troitzky, 1 897. l .♗c6! ♖b l +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "270. o. Duras, 1903. l .♖d2+ ♔e7 2.♖d6! ♖c3 (2...♔xd6 3.♔c8 + ) 3.♖c6! ♖xc6 4.♔a7 + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "27 1 . Ragozin Veresov, 1 945. 1.♗f87 ♔f87 2.♖f86+! fg 3.♖f7+! ♔xf7 4.♕xh7+ ♔e6 (4...♔f8"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "272. Kef2s Laurentius, 1935. 1 .♗xf6! ( l ...gf2.♕h5+ ♔g8 3.♕g4+ ♔f7 4.♕g7+ ♔e8 5.♘c7#) "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "274. Rubinstein Teichmann, 1908. 1 .♗xh7+ ♔xh7 2.g6+ ♔g8 (2...fg 3.♘xe4 de 4.♘g5+ ♔h6 5."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "275. Palatnik Agzamov, 1 977. l .♕b5+ ♔d8 2.♖c8+! ♔xc8 3.♕e8+ ♗d8 4.♕c6+ ♗c7 (4...♘c7 5."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "276. J. K., 1 91 3. l ...♖xb1 +! 2.♔xb1 ♖a1+! 3.♔xa1 ♕a5+ 4.♔bl ♕a2+ 5.♔c l ♕al+ 6.♔d2 ♕"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "28...♘a5!!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "29 ♖c3 (the main idea is 29 ♖xc7 ♘b3+ 30 ♔xa2 ♖a8+ 31 ♔b1 ♖xc7 with ...♖al# to follow) 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "e) 23...♘xh5 24 gxh6 g6 25 ♖gl ♘4 26 b3 with way too many threaf5 for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "a) 37 ♕xa8? ♗xc3+ 38 ♔a2 ♖b2+ 39 ♔a1 ♖d2+40 ♔b1 ♖xdl+ and Black mates."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "b) 37 ♖xe4+?! ♕f7 38 hxg6+ ♕xg6 39 ♖f4+ ♔g8 40 ♕xa8+ ♔h7 leaves white stmggling to survi"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 37 ♕xb6 ♘xb6 38 ♖xg5 ♖xa3+ 39 ♔bl hxg5 and Black will have the better of an ending th"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...fx6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...♔xh7 f8 ♕b6! (threatening 39 ♕b7, cutting through to g7) 38...♖a2 39 ♕e6! (threaf5 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 31 gxh3 ♗xf1 32 ♘xe8+ (32 ♖xf1 ♖c8 !) 32...♔h6!! (this move lea♔ to a beautiful fored"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "2 1 . . . . e2 :"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "23. Kpg1 : f2 ♔c7- e5!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "24. cg5 c1 . . ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I. 24. cd2 Kd3+ 25. Kpf1 c : d4 26. cd ♔f6+ 27. Kpg1 ♔f2+ 28. Kph 1 Ke1 !."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I. 24. ♔b4 ♔ : g5 2a. ♔:b6 ♔e3+ 26. Kpf 1 Kd3, H qep- HbIe BbIHrpHBamT;"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I I. 24. Kf3 Ke4++ 25. Kpe1 ! (25. Kpf 1? ♔ : g3!) 25 . . . ♔e3 26. K : e4 h6! ! 27. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "32. Kpe2 cc5+) 27 . . . ♔: e4+ (Ho He 27 . . . de 28. nd6!) 28. ♔ : e4 de 29. Kd4 hg, H "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Iv. 24. h4 h6 25. cc1 ♔f6+ 26. Kpg1 ♔ : h4 H Tenepb:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "1) 27. Kgf5 (HnH 27. Kh 1) 27 . . . ne1 + 28. n : e1 ♔:el + 29. Kph2 ♔ : c1 c AByMn nHm."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "2) 27. Kdf5 Kd3+ 28. Kpf1 ♔h2 29. ce3 c : e3 an. K : e3 n : e3."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "3) 27. Kge2 n : e2 28. K:e2 Kd3+ 29. Kd4 ♔f2+ 30. Kph 1 Ke1 31 . nd2 (31 . n : e1 ♔:e1 +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "4) 27. Kf 1 ♔g4 28. nd2 (28. b4 ♔ : d1 29. bc ne1) 28 . . . ne1 29. b4 Ke4 ♔. nd3 (30. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Tenepb HeAocTaToqHo HH 24. . . . Ke6 25. ce3 f5 26. Kd:f5 ♔f4+ 27. Kpe2 HH 24 . . Ke4+ 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "HepHbIM npHmnocb 6bI orpa- HHqHTbcfl 24 . . . ♔ : g5 25. bc ♔e3+ 26. Kpf 1 ♔f4+ 27. Kpe "
+        }
+      ]
+    },
+    {
+      "regra": "pontuação não vota (régua em uso)",
+      "maioria": 0.4,
+      "verdadeiros_positivos": 114,
+      "falsos_positivos": 19,
+      "falsos_negativos": 15,
+      "verdadeiros_negativos": 157,
+      "precisao": 0.8571,
+      "recall": 0.8837,
+      "f1": 0.8702,
+      "erros": [
+        {
+          "tipo": "falso",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "schlieB1ich zur E— roherung des Bc6, ) zen Bauern e4) 27. . . —, c5 (Schwarz"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "o Level 1 1 71"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "l½2—½"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "5.♗b6?!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "to Lvel 3 255"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "4...♗xh3!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "' 1 01"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "3. sc3 sf6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "4. . . . ef —"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "5. sf3:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1914 27...♘:c3 28. ♖:c3 ♖:c3 29. ♖:c3 ♕b2..! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 37...e3+! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "19. . . . . . , P3c., 20. T (—1 ) 1AR, P3A., 21—. P4TR!, R1T., 22. T(5)3A, P4A; 23. P)(P"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "23 D)( c. 24 P)(P T)(T. 25. P' 7c' '+' ', ' ie1c., 2C. A')(P+! ' '"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "30. . . . . . , T2T."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 16 ♔ The Development of a"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♕a4 was threatened."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♘xd4!? cxd4 20 b3 also came into consideration."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "Threatening 25 h5."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 70 ♔ Grandmaste"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "fi1ght on but after 29fxe3 ♖xf7 30 ♖d1 h6 31 ♔f4 ♘6 32 g4 ♘d8 33 h4 Hou."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "64) Gudok — 0. saenko"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "28...♘a5!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "a) 28...♕c8? 29 ♗xg6 hxg6 30♖xc4 ♕f5 31 ♗xf6 ♗xf6 32 ♕e4 is at least oK for white."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "66) 43 ♗xd4 ! uses a little piece oftac- tics to pick offa pawn\"and gives White a techni"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 23...♖xd6 24 ♖xd6 ♘a4 25 b3 gives White a material advantage and a strong attack"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The game continuation showed why the other option is wrong: 23 ♖e7? ♘a4! (this musthavec"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "164) 34...♗g7! is cof7ecL as the ttreat of ...e4+ must be rf5peted, while the at. tack o"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 37 ♕xb6 ♘xb6 38 ♖xg5 ♖xa3+ 39 ♔bl hxg5 and Black will have the better of an ending th"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "Other moves are poor. 34...♕xg4?! 35 fxg4 ♗g7 36 ♕xh8 ♗xh8 37 ♖b1 favours White while in"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...fx6"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "Mate is forced: after 39...hxg5 40 ♕xg5 Black can't defend both g7 and g8."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "32. Kpe2 cc5+) 27 . . . ♔: e4+ (Ho He 27 . . . de 28. nd6!) 28. ♔ : e4 de 29. Kd4 hg, H "
+        }
+      ]
+    },
+    {
+      "regra": "pontuação não vota (régua em uso)",
+      "maioria": 0.5,
+      "verdadeiros_positivos": 97,
+      "falsos_positivos": 12,
+      "falsos_negativos": 32,
+      "verdadeiros_negativos": 164,
+      "precisao": 0.8899,
+      "recall": 0.7519,
+      "f1": 0.8151,
+      "erros": [
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "b5 23. L : d5 e : d5 u. s. Nv. 1iebst re."
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "o Level 1 1 71"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "l½2—½"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "5.♗b6?!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "to Lvel 3 255"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "4...♗xh3!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "' 1 01"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "[oder ouch 9. . . . De7 nebst H"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "3. sc3 sf6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "4. . . . ef —"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "5. sf3:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 15...♘:d4! 16. ed [ 16. ♘:d7 ♘:e2+ 17. ♘:e2 ♘ :d7] 16...♗:c5 17. a3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1914 27...♘:c3 28. ♖:c3 ♖:c3 29. ♖:c3 ♕b2..! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 37...e3+! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "19. . . . . . , P3c., 20. T (—1 ) 1AR, P3A., 21—. P4TR!, R1T., 22. T(5)3A, P4A; 23. P)(P"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "23 D)( c. 24 P)(P T)(T. 25. P' 7c' '+' ', ' ie1c., 2C. A')(P+! ' '"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "28. P5T, c(2)3A., 29. D6c+, R1c; 30. P6T."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "30. . . . . . , T2T."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♕a4 was threatened."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♘xd4!? cxd4 20 b3 also came into consideration."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "Threatening 25 h5."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 70 ♔ Grandmaste"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "258. G. zakhodiaki'n (fi1nal), 1966. l .♘e3! ♖xe3 2.♘e4! + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "259. G. zakhodiaki'n (fi1nal), 1967. l .♖ee5! de 2.♖f2! + △ 3.♖h2+, 4.♖g2+, 5.♖f87, 6.a5"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "262. Knank Libert l975 l ♖xh7!! ♔á7 2.♕h4+ ♔g8 3.♗f6 ♗g'7 4' .♗f87"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "266. shirow Geof8adze, 1989. l .♖f86!! ♘f86 2.♖g2 ♖c7 3.♖f86 ♖f8 4.♖f87+ ♖f87 5.♗f3 ♖h7 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "268. L. Kubbel, l 907. 1 .♘c3+ ♔c2 2.♘d l ! (2.♘d5? ♔d2 =) 2...♔xd l 3.♔h8! fl♕ (3...♔e "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "269. A. Troitzky, 1 897. l .♗c6! ♖b l +"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "fi1ght on but after 29fxe3 ♖xf7 30 ♖d1 h6 31 ♔f4 ♘6 32 g4 ♘d8 33 h4 Hou."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "64) Gudok — 0. saenko"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "28...♘a5!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "a) 28...♕c8? 29 ♗xg6 hxg6 30♖xc4 ♕f5 31 ♗xf6 ♗xf6 32 ♕e4 is at least oK for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "29 ♖c3 (the main idea is 29 ♖xc7 ♘b3+ 30 ♔xa2 ♖a8+ 31 ♔b1 ♖xc7 with ...♖al# to follow) 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "e) 23...♘xh5 24 gxh6 g6 25 ♖gl ♘4 26 b3 with way too many threaf5 for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 37 ♕xb6 ♘xb6 38 ♖xg5 ♖xa3+ 39 ♔bl hxg5 and Black will have the better of an ending th"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "Other moves are poor. 34...♕xg4?! 35 fxg4 ♗g7 36 ♕xh8 ♗xh8 37 ♖b1 favours White while in"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...fx6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 31 gxh3 ♗xf1 32 ♘xe8+ (32 ♖xf1 ♖c8 !) 32...♔h6!! (this move lea♔ to a beautiful fored"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I. 24. ♔b4 ♔ : g5 2a. ♔:b6 ♔e3+ 26. Kpf 1 Kd3, H qep- HbIe BbIHrpHBamT;"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I I. 24. Kf3 Ke4++ 25. Kpe1 ! (25. Kpf 1? ♔ : g3!) 25 . . . ♔e3 26. K : e4 h6! ! 27. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "32. Kpe2 cc5+) 27 . . . ♔: e4+ (Ho He 27 . . . de 28. nd6!) 28. ♔ : e4 de 29. Kd4 hg, H "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "1) 27. Kgf5 (HnH 27. Kh 1) 27 . . . ne1 + 28. n : e1 ♔:el + 29. Kph2 ♔ : c1 c AByMn nHm."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Tenepb HeAocTaToqHo HH 24. . . . Ke6 25. ce3 f5 26. Kd:f5 ♔f4+ 27. Kpe2 HH 24 . . Ke4+ 2"
+        }
+      ]
+    },
+    {
+      "regra": "pontuação não vota (régua em uso)",
+      "maioria": 0.6,
+      "verdadeiros_positivos": 88,
+      "falsos_positivos": 11,
+      "falsos_negativos": 41,
+      "verdadeiros_negativos": 165,
+      "precisao": 0.8889,
+      "recall": 0.6822,
+      "f1": 0.7719,
+      "erros": [
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "b5 23. L : d5 e : d5 u. s. Nv. 1iebst re."
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "o Level 1 1 71"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "l½2—½"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "5.♗b6?!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "to Lvel 3 255"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "4...♗xh3!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "' 1 01"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "[oder ouch 9. . . . De7 nebst H"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "3. sc3 sf6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "4. . . . ef —"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "5. sf3:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 15...♘:d4! 16. ed [ 16. ♘:d7 ♘:e2+ 17. ♘:e2 ♘ :d7] 16...♗:c5 17. a3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1914 27...♘:c3 28. ♖:c3 ♖:c3 29. ♖:c3 ♕b2..! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1967 35...♖:e3+! 36. ♔:e3 ♗h6+ 37. ♔e2 ♘g3+ [38. ♔d1 ♕c 1#] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 37...e3+! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 35...♗c5! [ 36. ♕:d3 cd 37. ♔f2 (37. ♗ :c5 d2 +) 37...d2 +] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1967 38...g5! [38...♔f6 39. ♔g3♔f5 4. e4+ ♔ :e441."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 27. ♕:h7+.. [27...♔ :h7 28. ♖h5+ ♔g8 29. ♖h8+ ♘:h8 30. ♔♕#] 1:0"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "19. . . . . . , P3c., 20. T (—1 ) 1AR, P3A., 21—. P4TR!, R1T., 22. T(5)3A, P4A; 23. P)(P"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "23 D)( c. 24 P)(P T)(T. 25. P' 7c' '+' ', ' ie1c., 2C. A')(P+! ' '"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "26. . . . . . , R)(A; 27. T)(T, c5R!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "28. P5T, c(2)3A., 29. D6c+, R1c; 30. P6T."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "30. . . . . . , T2T."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♕a4 was threatened."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♘xd4!? cxd4 20 b3 also came into consideration."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "Threatening 25 h5."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 70 ♔ Grandmaste"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "258. G. zakhodiaki'n (fi1nal), 1966. l .♘e3! ♖xe3 2.♘e4! + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "259. G. zakhodiaki'n (fi1nal), 1967. l .♖ee5! de 2.♖f2! + △ 3.♖h2+, 4.♖g2+, 5.♖f87, 6.a5"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "260. Klovans Beliavsky, 1974. 1 .♕e5 ♕c7 ( l ...♕d6 2.fg+ ♔g8 3.♕xd6 ♖xd6 4.♘e4 + ) 2.fg"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "262. Knank Libert l975 l ♖xh7!! ♔á7 2.♕h4+ ♔g8 3.♗f6 ♗g'7 4' .♗f87"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "266. shirow Geof8adze, 1989. l .♖f86!! ♘f86 2.♖g2 ♖c7 3.♖f86 ♖f8 4.♖f87+ ♖f87 5.♗f3 ♖h7 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "268. L. Kubbel, l 907. 1 .♘c3+ ♔c2 2.♘d l ! (2.♘d5? ♔d2 =) 2...♔xd l 3.♔h8! fl♕ (3...♔e "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "269. A. Troitzky, 1 897. l .♗c6! ♖b l +"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "fi1ght on but after 29fxe3 ♖xf7 30 ♖d1 h6 31 ♔f4 ♘6 32 g4 ♘d8 33 h4 Hou."
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "64) Gudok — 0. saenko"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "28...♘a5!!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "a) 28...♕c8? 29 ♗xg6 hxg6 30♖xc4 ♕f5 31 ♗xf6 ♗xf6 32 ♕e4 is at least oK for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "29 ♖c3 (the main idea is 29 ♖xc7 ♘b3+ 30 ♔xa2 ♖a8+ 31 ♔b1 ♖xc7 with ...♖al# to follow) 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "e) 23...♘xh5 24 gxh6 g6 25 ♖gl ♘4 26 b3 with way too many threaf5 for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "b) 37 ♖xe4+?! ♕f7 38 hxg6+ ♕xg6 39 ♖f4+ ♔g8 40 ♕xa8+ ♔h7 leaves white stmggling to survi"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 37 ♕xb6 ♘xb6 38 ♖xg5 ♖xa3+ 39 ♔bl hxg5 and Black will have the better of an ending th"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...fx6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 31 gxh3 ♗xf1 32 ♘xe8+ (32 ♖xf1 ♖c8 !) 32...♔h6!! (this move lea♔ to a beautiful fored"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I. 24. ♔b4 ♔ : g5 2a. ♔:b6 ♔e3+ 26. Kpf 1 Kd3, H qep- HbIe BbIHrpHBamT;"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I I. 24. Kf3 Ke4++ 25. Kpe1 ! (25. Kpf 1? ♔ : g3!) 25 . . . ♔e3 26. K : e4 h6! ! 27. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "32. Kpe2 cc5+) 27 . . . ♔: e4+ (Ho He 27 . . . de 28. nd6!) 28. ♔ : e4 de 29. Kd4 hg, H "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "1) 27. Kgf5 (HnH 27. Kh 1) 27 . . . ne1 + 28. n : e1 ♔:el + 29. Kph2 ♔ : c1 c AByMn nHm."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "3) 27. Kge2 n : e2 28. K:e2 Kd3+ 29. Kd4 ♔f2+ 30. Kph 1 Ke1 31 . nd2 (31 . n : e1 ♔:e1 +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Tenepb HeAocTaToqHo HH 24. . . . Ke6 25. ce3 f5 26. Kd:f5 ♔f4+ 27. Kpe2 HH 24 . . Ke4+ 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "HepHbIM npHmnocb 6bI orpa- HHqHTbcfl 24 . . . ♔ : g5 25. bc ♔e3+ 26. Kpf 1 ♔f4+ 27. Kpe "
+        }
+      ]
+    },
+    {
+      "regra": "pontuação não vota (régua em uso)",
+      "maioria": 0.7,
+      "verdadeiros_positivos": 60,
+      "falsos_positivos": 8,
+      "falsos_negativos": 69,
+      "verdadeiros_negativos": 168,
+      "precisao": 0.8824,
+      "recall": 0.4651,
+      "f1": 0.6091,
+      "erros": [
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": ". se5 27 Td6✝ Kh7 28 Lg3 Tae8 '29. ''Td5, sc'6 30— +d7, Te7' 31. 'T : e7, s : e7 32. Kd2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "b5 23. L : d5 e : d5 u. s. Nv. 1iebst re."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "1937 Kemeri.pdf",
+          "texto": "de1t) 28 d : c5 b : c5 29 f : e4 Db7"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "o Level 1 1 71"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "l½2—½"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "5.♗b6?!"
+        },
+        {
+          "tipo": "falso",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "to Lvel 3 255"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "texto": "4...♗xh3!!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "(1. e . c . c g5 Le7 5. e3 0-0 6. sf3 be4 7. Le7: De7: 8. cd5: sc3: '9. bc3: ed5: 10. Db"
+        },
+        {
+          "tipo": "falso",
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+          "texto": "' 1 01"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "T ) 9. d5 ed nebsf Lc3 :✝"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "[oder ouch 9. . . . De7 nebst H"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "3. sc3 sf6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "4. . . . ef —"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Gunderam - Neue Eröffnungswege Ein Sch",
+          "texto": "5. sf3:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "New York 1913 13. ♘ :f7! ♔ :f7 14. ♘g5+ ♔f8 15. ♕h5! [ 15...♕e7 16. ♘:h7+ ♔g8 17. ♕:d5++"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "NewYork 19 13 29. c5.. dc [29...♖d8 30. c6!+↑('] 30. d6! ♕e5 31. ♕:e5 ♖:e5 32. bc ♘d7 [3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 28. ♘f5!.. fe [28...gf 29. ♕:f5 ♔g7 30. ♕:h7+ ♔f6 31. ef♕d7 32. ♕g6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "34. ♕e4#; 28...♔h8 29. ♕e4 fe 30. ♘:e7 ♕:e7 3 1 . de ♘c3 32. ♕:d4+ ♕f6 33. e7!+ ] 29. de"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 33...♕ c2.. (xb2) 34. ♔ h2 [34. ♖ :c2 bc△ ♖d 1 +; 34. ♖b1 ♗:f2+ +] "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 19 13 15...♘:d4! 16. ed [ 16. ♘:d7 ♘:e2+ 17. ♘:e2 ♘ :d7] 16...♗:c5 17. a3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1914 27...♘:c3 28. ♖:c3 ♖:c3 29. ♖:c3 ♕b2..! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "st. Petef5burg 1914 22...♘f4.. 23. ♖d2 ♘:g2.. 24. ♔ :g2 ♕g4+ 25. ♔f1 ♕h3+ 26. ♔e2 [26. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1967 35...♖:e3+! 36. ♔:e3 ♗h6+ 37. ♔e2 ♘g3+ [38. ♔d1 ♕c 1#] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 47. ♘:g6! ♘:d5 [47...♔ :g6 48. ♕h8! ♔f7 49. ♘:h5 ♗d7 50. ♕g7+ ♔e8 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 37...e3+! 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Pa1ma de Majorca 1967 35...♗c5! [ 36. ♕:d3 cd 37. ♔f2 (37. ♗ :c5 d2 +) 37...d2 +] 0:1"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "uRs 1967 34...♗ c3.. [34. . .♖ c7 35. ♕g5+ ♔ c8 36. ♕:a5+] 35. ♕g5+ [35. bc? ♕b5+ +; 35."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Moscow 1967 38...g5! [38...♔f6 39. ♔g3♔f5 4. e4+ ♔ :e441."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 23. f6! ♕e6 [23...gf 24. ♕g4+ ♔h8 (24...♔f8 25. ♕h4+ ) 25. ♖ :f6! ♘ :f6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 27. ♕:h7+.. [27...♔ :h7 28. ♖h5+ ♔g8 29. ♖h8+ ♘:h8 30. ♔♕#] 1:0"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 16. ♖:c7! ♗c6 17. ♖ 1:c6! [ 17. ♖7:c6 ♘:c6=] 17...bc 18. ♖:f7.... h6 [ "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Karpov A - Chess Combinations -World C",
+          "texto": "Monte car1o 1968 21. ♘h4..! ♕:b7 22. ♘g6+ ♔h7 23. ♗e4.. ♗d6 [23. . .♘a6 24. ♘e7+ ♔ h8 25"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "19. . . . . . , P3c., 20. T (—1 ) 1AR, P3A., 21—. P4TR!, R1T., 22. T(5)3A, P4A; 23. P)(P"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "23 D)( c. 24 P)(P T)(T. 25. P' 7c' '+' ', ' ie1c., 2C. A')(P+! ' '"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "26. . . . . . , R)(A; 27. T)(T, c5R!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "28. P5T, c(2)3A., 29. D6c+, R1c; 30. P6T."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Koblenz - El dominio del arte de la co",
+          "texto": "30. . . . . . , T2T."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "19 ♕a4 was threatened."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "Threatening 25 h5."
+        },
+        {
+          "tipo": "falso",
+          "livro": "Secrets of Chess Training School of Fu",
+          "texto": "1 70 ♔ Grandmaste"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Vishy_Anand_Great_Chess_Combinations.p",
+          "texto": "Dortmund 1992 13. ♘h5! ♗h3 [13...a6 14. ♘:c7! ♔:c7 (14... ♕c6 15. ♘f8±) 15. ♗f4+ ♔c8 16."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "258. G. zakhodiaki'n (fi1nal), 1966. l .♘e3! ♖xe3 2.♘e4! + ."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "259. G. zakhodiaki'n (fi1nal), 1967. l .♖ee5! de 2.♖f2! + △ 3.♖h2+, 4.♖g2+, 5.♖f87, 6.a5"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "260. Klovans Beliavsky, 1974. 1 .♕e5 ♕c7 ( l ...♕d6 2.fg+ ♔g8 3.♕xd6 ♖xd6 4.♘e4 + ) 2.fg"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "262. Knank Libert l975 l ♖xh7!! ♔á7 2.♕h4+ ♔g8 3.♗f6 ♗g'7 4' .♗f87"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "263. ortuetta sanz l934 1 ♖xb2! 2.♘xb2 c3! 3.♖xb6 (3.♘d3 c4'+ ' '5'.♖xb6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "264. Goldin Efi1mov l982 l ♖h6! ♕d3 2.♘h7 f5 3.♕g6 ♔d2 (' 3..'.♕c3"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "265. L. Kubbel (fi1nal), l922. 1 .d3! a2 2.c4+ ♔c5 (2...dc 3.♗xc3 + ) 3.♔b7 ♔d6 (3...al♕"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "266. shirow Geof8adze, 1989. l .♖f86!! ♘f86 2.♖g2 ♖c7 3.♖f86 ♖f8 4.♖f87+ ♖f87 5.♗f3 ♖h7 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "268. L. Kubbel, l 907. 1 .♘c3+ ♔c2 2.♘d l ! (2.♘d5? ♔d2 =) 2...♔xd l 3.♔h8! fl♕ (3...♔e "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "269. A. Troitzky, 1 897. l .♗c6! ♖b l +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "27 1 . Ragozin Veresov, 1 945. 1.♗f87 ♔f87 2.♖f86+! fg 3.♖f7+! ♔xf7 4.♕xh7+ ♔e6 (4...♔f8"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "272. Kef2s Laurentius, 1935. 1 .♗xf6! ( l ...gf2.♕h5+ ♔g8 3.♕g4+ ♔f7 4.♕g7+ ♔e8 5.♘c7#) "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "274. Rubinstein Teichmann, 1908. 1 .♗xh7+ ♔xh7 2.g6+ ♔g8 (2...fg 3.♘xe4 de 4.♘g5+ ♔h6 5."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "Журавлев_Н_The_Manual_of_Chess_Combina",
+          "texto": "276. J. K., 1 91 3. l ...♖xb1 +! 2.♔xb1 ♖a1+! 3.♔xa1 ♕a5+ 4.♔bl ♕a2+ 5.♔c l ♕al+ 6.♔d2 ♕"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "64) Gudok — 0. saenko"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "28...♘a5!!"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "29 ♖c3 (the main idea is 29 ♖xc7 ♘b3+ 30 ♔xa2 ♖a8+ 31 ♔b1 ♖xc7 with ...♖al# to follow) 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "e) 23...♘xh5 24 gxh6 g6 25 ♖gl ♘4 26 b3 with way too many threaf5 for white."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "a) 37 ♕xa8? ♗xc3+ 38 ♔a2 ♖b2+ 39 ♔a1 ♖d2+40 ♔b1 ♖xdl+ and Black mates."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "b) 37 ♖xe4+?! ♕f7 38 hxg6+ ♕xg6 39 ♖f4+ ♔g8 40 ♕xa8+ ♔h7 leaves white stmggling to survi"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 37 ♕xb6 ♘xb6 38 ♖xg5 ♖xa3+ 39 ♔bl hxg5 and Black will have the better of an ending th"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...fx6"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "37...♔xh7 f8 ♕b6! (threatening 39 ♕b7, cutting through to g7) 38...♖a2 39 ♕e6! (threaf5 "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "c) 31 gxh3 ♗xf1 32 ♘xe8+ (32 ♖xf1 ♖c8 !) 32...♔h6!! (this move lea♔ to a beautiful fored"
+        },
+        {
+          "tipo": "falso",
+          "livro": "📚Burgess G. The Gambit Book of Instruc",
+          "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I. 24. cd2 Kd3+ 25. Kpf1 c : d4 26. cd ♔f6+ 27. Kpg1 ♔f2+ 28. Kph 1 Ke1 !."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I. 24. ♔b4 ♔ : g5 2a. ♔:b6 ♔e3+ 26. Kpf 1 Kd3, H qep- HbIe BbIHrpHBamT;"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "I I I. 24. Kf3 Ke4++ 25. Kpe1 ! (25. Kpf 1? ♔ : g3!) 25 . . . ♔e3 26. K : e4 h6! ! 27. ♔"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "32. Kpe2 cc5+) 27 . . . ♔: e4+ (Ho He 27 . . . de 28. nd6!) 28. ♔ : e4 de 29. Kd4 hg, H "
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Iv. 24. h4 h6 25. cc1 ♔f6+ 26. Kpg1 ♔ : h4 H Tenepb:"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "1) 27. Kgf5 (HnH 27. Kh 1) 27 . . . ne1 + 28. n : e1 ♔:el + 29. Kph2 ♔ : c1 c AByMn nHm."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "2) 27. Kdf5 Kd3+ 28. Kpf1 ♔h2 29. ce3 c : e3 an. K : e3 n : e3."
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "3) 27. Kge2 n : e2 28. K:e2 Kd3+ 29. Kd4 ♔f2+ 30. Kph 1 Ke1 31 . nd2 (31 . n : e1 ♔:e1 +"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "Tenepb HeAocTaToqHo HH 24. . . . Ke6 25. ce3 f5 26. Kd:f5 ♔f4+ 27. Kpe2 HH 24 . . Ke4+ 2"
+        },
+        {
+          "tipo": "perdido",
+          "livro": "📚Болеславский_И_Избранные_партии.pdf",
+          "texto": "HepHbIM npHmnocb 6bI orpa- HHqHTbcfl 24 . . . ♔ : g5 25. bc ♔e3+ 26. Kpf 1 ♔f4+ 27. Kpe "
+        }
+      ]
+    }
+  ],
+  "no_bloco_misto": {
+    "blocos": 38,
+    "a_regua_disse_notacao": 7,
+    "nota": "bloco misto é frase inteira colada à linha de lances que vinha depois. Não há estilo certo para ele, e por isso ele não entra em precisão nem em recall. O número diz de que tamanho é o problema que está ANTES do estilo: o corte."
+  },
+  "por_livro_na_regua_em_uso": {
+    "1937 Kemeri.pdf": {
+      "lances": 6,
+      "perdidos": 1,
+      "falsos": 0
+    },
+    "400 Quebra-cabeças de Estratégia de Xa": {
+      "lances": 0,
+      "perdidos": 0,
+      "falsos": 0
+    },
+    "AAGAARD - Practical Chess Defence.pdf": {
+      "lances": 6,
+      "perdidos": 3,
+      "falsos": 2
+    },
+    "Euwe, Kramer - Das Mittelspiel Band 1-": {
+      "lances": 2,
+      "perdidos": 0,
+      "falsos": 1
+    },
+    "Gaprindashvili, Paata - Imagination in": {
+      "lances": 0,
+      "perdidos": 0,
+      "falsos": 0
+    },
+    "Gunderam - Neue Eröffnungswege Ein Sch": {
+      "lances": 6,
+      "perdidos": 4,
+      "falsos": 0
+    },
+    "Karpov A - Chess Combinations -World C": {
+      "lances": 24,
+      "perdidos": 3,
+      "falsos": 0
+    },
+    "Koblenz - El dominio del arte de la co": {
+      "lances": 5,
+      "perdidos": 4,
+      "falsos": 0
+    },
+    "Secrets of Chess Training School of Fu": {
+      "lances": 17,
+      "perdidos": 0,
+      "falsos": 4
+    },
+    "Vishy_Anand_Great_Chess_Combinations.p": {
+      "lances": 1,
+      "perdidos": 0,
+      "falsos": 0
+    },
+    "Журавлев_Н_The_Manual_of_Chess_Combina": {
+      "lances": 27,
+      "perdidos": 6,
+      "falsos": 0
+    },
+    "📚Burgess G. The Gambit Book of Instruc": {
+      "lances": 20,
+      "perdidos": 6,
+      "falsos": 5
+    },
+    "📚Болеславский_И_Избранные_партии.pdf": {
+      "lances": 15,
+      "perdidos": 5,
+      "falsos": 0
+    }
+  },
+  "onde_a_regua_erra": {
+    "falsos": [
+      {
+        "tipo": "falso",
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "texto": "o Level 1 1 71"
+      },
+      {
+        "tipo": "falso",
+        "livro": "AAGAARD - Practical Chess Defence.pdf",
+        "texto": "to Lvel 3 255"
+      },
+      {
+        "tipo": "falso",
+        "livro": "Euwe, Kramer - Das Mittelspiel Band 1-",
+        "texto": "' 1 01"
+      },
+      {
+        "tipo": "falso",
+        "livro": "Secrets of Chess Training School of Fu",
+        "texto": "19 ♕a4 was threatened."
+      },
+      {
+        "tipo": "falso",
+        "livro": "Secrets of Chess Training School of Fu",
+        "texto": "19 ♘xd4!? cxd4 20 b3 also came into consideration."
+      },
+      {
+        "tipo": "falso",
+        "livro": "Secrets of Chess Training School of Fu",
+        "texto": "Threatening 25 h5."
+      },
+      {
+        "tipo": "falso",
+        "livro": "Secrets of Chess Training School of Fu",
+        "texto": "1 70 ♔ Grandmaste"
+      },
+      {
+        "tipo": "falso",
+        "livro": "📚Burgess G. The Gambit Book of Instruc",
+        "texto": "fi1ght on but after 29fxe3 ♖xf7 30 ♖d1 h6 31 ♔f4 ♘6 32 g4 ♘d8 33 h4 Hou."
+      },
+      {
+        "tipo": "falso",
+        "livro": "📚Burgess G. The Gambit Book of Instruc",
+        "texto": "64) Gudok — 0. saenko"
+      },
+      {
+        "tipo": "falso",
+        "livro": "📚Burgess G. The Gambit Book of Instruc",
+        "texto": "a) 28...♕c8? 29 ♗xg6 hxg6 30♖xc4 ♕f5 31 ♗xf6 ♗xf6 32 ♕e4 is at least oK for white."
+      },
+      {
+        "tipo": "falso",
+        "livro": "📚Burgess G. The Gambit Book of Instruc",
+        "texto": "Other moves are poor. 34...♕xg4?! 35 fxg4 ♗g7 36 ♕xh8 ♗xh8 37 ♖b1 favours White while in"
+      },
+      {
+        "tipo": "falso",
+        "livro": "📚Burgess G. The Gambit Book of Instruc",
+        "texto": "The next best option, 30...♕xg2+? 31 ♔xg2 ♗xf1+ only draws: 32 ♖xf1 (not 32 ♔xf1 ?? if4+"
+      }
+    ],
+    "perdidos_por_notacao_que_a_regua_nao_conhece": "descritiva espanhola (`P4TR`, `T(5)3A`), cirílica transliterada (`Kpf1`, `Kd3+`) e alemã de letra minúscula (`sf3`, `Lc3`) -- `LANCE` casa a algébrica inglesa e a de figurina. Ver a tabela por livro: os perdidos se concentram nos livros que escrevem lance de outro jeito."
+  },
+  "como_reproduzir": "`amostrar_notacao.py` lê as 24 folhas de `docs/metrics/texto_paragrafo_referencia.jsonl` com `ler_pagina` e grava os blocos; `rotulos_notacao.py` traz o rótulo escrito à mão; `medir_notacao.py` publica. A varredura sozinha não precisa de `PDF/`: ela lê `docs/metrics/texto_notacao_referencia.jsonl`."
+}

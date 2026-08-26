@@ -436,18 +436,22 @@ def estilo_do_segmento(segmento: documento.Segmento) -> str:
     que o leitor grava a partir de `pdf_text.assign_lines_to_diagrams` -- o dono daquela pergunta
     desde a S-16, com a régua medida. O que este módulo acrescenta é **uma guarda de conteúdo**, e
     ela tem número: dos 83 parágrafos que aquela régua ata a um diagrama no conjunto de campo,
-    **15 (18%) são linha de lances**, não legenda. A régua mede distância, não conteúdo -- e pintar
+    **14 (17%) são linha de lances**, não legenda. A régua mede distância, não conteúdo -- e pintar
     uma variante com o corpo de legenda seria um erro visível. Quem separa é
     `notacao.e_linha_de_notacao`, que é a régua de lance que este subpacote já tinha.
 
-    Com a guarda, **68 dos 112 diagramas do conjunto de campo (60,7%) ganham legenda desenhada**;
-    sem ela seriam 83 (74,1%), com quinze variantes pintadas de legenda.
+    Com a guarda, **69 dos 112 diagramas do conjunto de campo (61,6%) ganham legenda desenhada**;
+    sem ela seriam 83 (74,1%), com catorze variantes pintadas de legenda.
 
-    **`notacao` continua entrando só pela mão**: a proporção de figurina e dígito que separa uma
-    linha de lances da prosa **dentro do corpo do texto** não foi medida, e a regra 5 da
-    SPEC_EDITOR manda entregar o pincel em vez de pintar palpite. A guarda acima não serve para
-    isso: ela decide sobre um parágrafo que já se sabe atado a um diagrama, que é uma população
-    muito menor e muito mais fácil.
+    **`notacao` continua entrando só pela mão, e agora com número.** Medido em 2026-08-26 sobre
+    305 blocos rotulados à mão (`docs/metrics/texto_notacao_estilo.json`), a régua acerta 89% do
+    que estilaria e alcança 75% das linhas de lances -- e os 11% que ela erraria são título
+    corrente e número de página, que virariam notação na cara do leitor. Não é o bastante para
+    pintar sozinha, e a regra 5 da SPEC_EDITOR manda entregar o pincel em vez de pintar palpite.
+
+    A guarda acima não é a mesma pergunta: ela decide sobre um parágrafo que já se sabe atado a um
+    diagrama -- população muito menor, e muito mais fácil --, e ali um erro tira um estilo em vez
+    de pôr um errado.
     """
     bloco = segmento.bloco
     if bloco is None or segmento.tipo != TEXTO:

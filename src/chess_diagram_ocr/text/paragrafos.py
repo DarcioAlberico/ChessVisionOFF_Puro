@@ -88,17 +88,55 @@ class Paragrafo:
         return self.linhas[0].coluna if self.linhas else 0
 
 
-def metricas_por_coluna(linhas: Sequence[Linha]) -> dict[int, tuple[int, int]]:
+QUANTIL_DA_MARGEM = 0.5
+"""Que quantil das esquerdas é a margem da coluna. `0.5` é a mediana (S-257).
+
+**O parâmetro existe porque a pergunta foi medida, e não porque alguém quis afrouxá-la.** A
+suspeita era boa: a mediana morre numa diagramação de recuo de primeira linha com parágrafos
+curtos -- quase metade das linhas começa no recuo, a mediana devolve o recuo no lugar da margem,
+e `recuou` fica falso para a coluna inteira, em silêncio. Um quantil baixo conserta isso ali e
+despedaça parágrafo em outro lugar. Qual dos dois lados pesa mais é medição, e não argumento.
+
+Medido em 2026-08-26 contra `docs/metrics/texto_paragrafo_referencia.jsonl` -- 24 folhas de 14 livros, 1.273
+linhas com referência, 323 começos de parágrafo. O relatório está em
+`docs/metrics/texto_paragrafo_referencia.json`:
+
+    quantil   acertos   falsos   perdidos   blocos
+       0,10       226       25         97      484
+       0,50       224       25         99      409
+
+**Dois acertos em 323.** É a diferença inteira entre os dois candidatos sobre o que a referência
+sabe julgar, com o mesmo número de falsos. Os 75 blocos a mais do quantil baixo caem quase todos
+em linha que a referência não julga -- ela cobre 1.273 das 1.675 --, e por isso são cortes que
+ninguém mediu, nem a favor nem contra.
+
+E não é que os dois façam a mesma coisa: eles discordam sobre 1.952 linhas em 133 das 226 colunas
+do acervo (59%). Mexem muito e empatam -- a margem da coluna não é onde o corte de parágrafo se
+ganha ou se perde.
+
+Por isso a mediana fica. É a regra 5 da SPEC_EDITOR: régua sem vão medido não entra ligada, e
+isso vale igual para a troca que parecia óbvia."""
+
+
+def metricas_por_coluna(
+    linhas: Sequence[Linha], *, quantil: float = QUANTIL_DA_MARGEM
+) -> dict[int, tuple[int, int]]:
     """`{coluna: (margem esquerda, altura de linha)}`, medidas na **página inteira**.
 
-    Ver "A margem é por coluna" no cabeçalho.
+    Ver "A margem é por coluna" no cabeçalho. `quantil` é o parâmetro da S-257: ele existe para a
+    medição poder varrer candidatos sem monkeypatch, e o padrão é o que ela mandou manter -- ver
+    `QUANTIL_DA_MARGEM`.
+
+    **A altura continua sendo a mediana**, e não segue o quantil: ela mede o corpo da fonte, que é
+    simétrico por natureza -- não há "altura de primeira linha" como há recuo de primeira linha.
     """
     metricas: dict[int, tuple[int, int]] = {}
     for coluna in {linha.coluna for linha in linhas}:
         desta = [linha for linha in linhas if linha.coluna == coluna]
         esquerdas = sorted(linha.esquerda for linha in desta)
         alturas = sorted(linha.altura for linha in desta)
-        metricas[coluna] = (esquerdas[len(esquerdas) // 2], alturas[len(alturas) // 2] or 1)
+        posicao = min(len(esquerdas) - 1, max(0, int(len(esquerdas) * quantil)))
+        metricas[coluna] = (esquerdas[posicao], alturas[len(alturas) // 2] or 1)
     return metricas
 
 

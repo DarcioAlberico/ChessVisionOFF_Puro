@@ -7,7 +7,9 @@ errada. Cada uma das duas guardas aqui saiu de uma regressão medida.
 
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 from chess_diagram_ocr.text import notacao as nt
 
@@ -117,3 +119,98 @@ class JuntarTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+class LinhaDeNotacaoTests(unittest.TestCase):
+    """A régua de "este trecho é linha de lances?", e o que a S-249 mediu nela."""
+
+    def test_a_maioria_decide_e_um_lance_solto_nao(self) -> None:
+        self.assertTrue(nt.e_linha_de_notacao("1.e4 e5 2.Nf3 Nc6"))
+        self.assertFalse(nt.e_linha_de_notacao("Ivkov—Dueckstein 1967"))
+        self.assertFalse(
+            nt.e_linha_de_notacao("White has a strong attack after the natural 19.Qh5 here"),
+            "prosa que cita um lance não é linha de lances",
+        )
+
+    def test_pontuacao_solta_nao_vota(self) -> None:
+        """O que a medição da S-249 trocou: `!` e `.` separados do lance não contam para nenhum lado.
+
+        Sem isto, `28 . . . b6 ! !` são sete tokens com dois de notação -- uma linha de lances
+        inteira em minoria de si mesma.
+        """
+        self.assertTrue(nt.e_linha_de_notacao("28 . . . b6 ! !"))
+        self.assertTrue(nt.e_linha_de_notacao("2 1 . . . . e2 :"))
+        # E ela não passa a dizer "sim" para o que não tem lance nenhum.
+        self.assertFalse(nt.e_linha_de_notacao(". . . ! !"))
+        self.assertFalse(nt.e_linha_de_notacao(""))
+
+    def test_o_piso_de_dois_continua_valendo(self) -> None:
+        """Um token de notação sozinho não faz linha de lances, por mais curto que seja o trecho."""
+        self.assertFalse(nt.e_linha_de_notacao("Diagrama 45"))
+        self.assertFalse(nt.e_linha_de_notacao("e4"))
+
+
+class ReferenciaDeNotacaoTests(unittest.TestCase):
+    """O conjunto rotulado à mão da S-249 está no disco, e o relatório sai dele."""
+
+    RAIZ = Path(__file__).resolve().parents[1]
+    REFERENCIA = RAIZ / "docs" / "metrics" / "texto_notacao_referencia.jsonl"
+    RELATORIO = RAIZ / "docs" / "metrics" / "texto_notacao_estilo.json"
+    ROTULOS = ("lance", "prosa", "misto", "ilegivel")
+
+    def blocos(self) -> list[dict]:
+        bruto = self.REFERENCIA.read_text(encoding="utf-8")
+        return [json.loads(linha) for linha in bruto.splitlines() if linha.strip()]
+
+    def test_a_referencia_esta_versionada_com_o_texto_de_cada_bloco(self) -> None:
+        blocos = self.blocos()
+        self.assertTrue(blocos, "a referência da S-249 sumiu do disco")
+        for bloco in blocos:
+            self.assertIn(bloco["rotulo"], self.ROTULOS)
+            self.assertIn("livro", bloco)
+            self.assertIn("folha", bloco)
+            # O texto fica no arquivo para que o rótulo possa ser conferido -- ou contestado --
+            # sem `PDF/`, que não é versionado.
+            self.assertTrue(bloco["texto"].strip())
+
+    def test_o_relatorio_bate_com_a_referencia_no_disco(self) -> None:
+        blocos = self.blocos()
+        relatorio = json.loads(self.RELATORIO.read_text(encoding="utf-8"))
+        amostra = relatorio["amostra"]
+        self.assertEqual(len(blocos), amostra["blocos"])
+        for rotulo in self.ROTULOS:
+            self.assertEqual(
+                sum(1 for b in blocos if b["rotulo"] == rotulo),
+                amostra["por_rotulo"].get(rotulo, 0),
+                rotulo,
+            )
+        self.assertEqual(
+            sum(1 for b in blocos if b["rotulo"] in ("lance", "prosa")), amostra["julgaveis"]
+        )
+
+    def test_a_regua_em_uso_reproduz_a_precisao_publicada(self) -> None:
+        """O número do relatório é recontável a partir do conjunto, com a régua de hoje.
+
+        É a guarda que impede a régua de mudar sem a medição mudar junto: quem mexer em
+        `e_linha_de_notacao` e não remedir vê este teste vermelho.
+        """
+        blocos = [b for b in self.blocos() if b["rotulo"] in ("lance", "prosa")]
+        vp = fp = fn = 0
+        for bloco in blocos:
+            nosso = nt.e_linha_de_notacao(bloco["texto"])
+            if bloco["rotulo"] == "lance" and nosso:
+                vp += 1
+            elif bloco["rotulo"] == "lance":
+                fn += 1
+            elif nosso:
+                fp += 1
+        relatorio = json.loads(self.RELATORIO.read_text(encoding="utf-8"))
+        publicado = next(
+            c
+            for c in relatorio["candidatos"]
+            if c["maioria"] == 0.5 and c["regra"].startswith("pontuação não vota")
+        )
+        self.assertEqual(publicado["verdadeiros_positivos"], vp)
+        self.assertEqual(publicado["falsos_positivos"], fp)
+        self.assertEqual(publicado["falsos_negativos"], fn)
+        self.assertEqual(publicado["precisao"], round(vp / (vp + fp), 4))
+        self.assertEqual(publicado["recall"], round(vp / (vp + fn), 4))

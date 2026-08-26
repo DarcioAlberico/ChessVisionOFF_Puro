@@ -1,0 +1,385 @@
+{
+  "item": "S-257 · a margem da coluna: mediana ou quantil baixo",
+  "montada_em": "2026-08-26",
+  "sinal": "o fim da linha: em texto justificado toda linha alcança a margem direita, menos a última de cada parágrafo. É independente do recuo e do vão vertical, que são as duas réguas sob medição.",
+  "o_que_foi_recusado_como_referencia": "o `group_id` da camada do PDF (o bloco que o produtor gravou). Medido no `AAGAARD - Practical Chess Defence`: dezoito linhas com quatro parágrafos visíveis saem num bloco só. O bloco do produtor é a COLUNA de prosa, não o parágrafo.",
+  "criterio": {
+    "tolerancia_da_margem_direita": 0.02,
+    "fracao_minima_de_linhas_justificadas": 0.6,
+    "linhas_minimas_na_coluna": 6
+  },
+  "folhas": 24,
+  "livros": [
+    {
+      "livro": "1937 Kemeri.pdf",
+      "linhas": 188,
+      "linhas_com_referencia": 188,
+      "colunas_justificadas": 4
+    },
+    {
+      "livro": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
+      "linhas": 15,
+      "linhas_com_referencia": 15,
+      "colunas_justificadas": 1
+    },
+    {
+      "livro": "AAGAARD - Practical Chess Defence.pdf",
+      "linhas": 172,
+      "linhas_com_referencia": 123,
+      "colunas_justificadas": 4
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf",
+      "linhas": 107,
+      "linhas_com_referencia": 36,
+      "colunas_justificadas": 1
+    },
+    {
+      "livro": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+      "linhas": 24,
+      "linhas_com_referencia": 24,
+      "colunas_justificadas": 1
+    },
+    {
+      "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
+      "linhas": 104,
+      "linhas_com_referencia": 51,
+      "colunas_justificadas": 1
+    },
+    {
+      "livro": "Karpov A - Chess Combinations -World Champions-1 (2011).pdf",
+      "linhas": 154,
+      "linhas_com_referencia": 76,
+      "colunas_justificadas": 2
+    },
+    {
+      "livro": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+      "linhas": 124,
+      "linhas_com_referencia": 113,
+      "colunas_justificadas": 3
+    },
+    {
+      "livro": "Mieses - Blind Schaken (1938).pdf",
+      "linhas": 157,
+      "linhas_com_referencia": 89,
+      "colunas_justificadas": 3
+    },
+    {
+      "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+      "linhas": 151,
+      "linhas_com_referencia": 117,
+      "colunas_justificadas": 3
+    },
+    {
+      "livro": "Vishy_Anand_Great_Chess_Combinations.pdf",
+      "linhas": 14,
+      "linhas_com_referencia": 14,
+      "colunas_justificadas": 1
+    },
+    {
+      "livro": "Журавлев_Н_The_Manual_of_Chess_Combinations_5_2021.pdf",
+      "linhas": 93,
+      "linhas_com_referencia": 93,
+      "colunas_justificadas": 2
+    },
+    {
+      "livro": "📚Burgess G. The Gambit Book of Instructive.pdf",
+      "linhas": 286,
+      "linhas_com_referencia": 286,
+      "colunas_justificadas": 6
+    },
+    {
+      "livro": "📚Болеславский_И_Избранные_партии.pdf",
+      "linhas": 86,
+      "linhas_com_referencia": 48,
+      "colunas_justificadas": 1
+    }
+  ],
+  "medido_em": "2026-08-26",
+  "referencia": "docs/metrics/texto_paragrafo_referencia.jsonl",
+  "linhas_com_referencia": 1273,
+  "paragrafos_na_referencia": 323,
+  "candidatos": [
+    {
+      "quantil": 0.1,
+      "blocos": 484,
+      "verdadeiros_positivos": 226,
+      "falsos_positivos": 25,
+      "falsos_negativos": 97,
+      "verdadeiros_negativos": 925,
+      "precisao": 0.9004,
+      "recall": 0.6997,
+      "f1": 0.7875,
+      "sem_a_primeira_linha_da_coluna": {
+        "verdadeiros_positivos": 193,
+        "falsos_positivos": 25,
+        "falsos_negativos": 97,
+        "precisao": 0.8853,
+        "recall": 0.6655,
+        "f1": 0.7598
+      }
+    },
+    {
+      "quantil": 0.2,
+      "blocos": 481,
+      "verdadeiros_positivos": 224,
+      "falsos_positivos": 25,
+      "falsos_negativos": 99,
+      "verdadeiros_negativos": 925,
+      "precisao": 0.8996,
+      "recall": 0.6935,
+      "f1": 0.7832,
+      "sem_a_primeira_linha_da_coluna": {
+        "verdadeiros_positivos": 191,
+        "falsos_positivos": 25,
+        "falsos_negativos": 99,
+        "precisao": 0.8843,
+        "recall": 0.6586,
+        "f1": 0.7549
+      }
+    },
+    {
+      "quantil": 0.25,
+      "blocos": 465,
+      "verdadeiros_positivos": 224,
+      "falsos_positivos": 25,
+      "falsos_negativos": 99,
+      "verdadeiros_negativos": 925,
+      "precisao": 0.8996,
+      "recall": 0.6935,
+      "f1": 0.7832,
+      "sem_a_primeira_linha_da_coluna": {
+        "verdadeiros_positivos": 191,
+        "falsos_positivos": 25,
+        "falsos_negativos": 99,
+        "precisao": 0.8843,
+        "recall": 0.6586,
+        "f1": 0.7549
+      }
+    },
+    {
+      "quantil": 0.3,
+      "blocos": 439,
+      "verdadeiros_positivos": 224,
+      "falsos_positivos": 25,
+      "falsos_negativos": 99,
+      "verdadeiros_negativos": 925,
+      "precisao": 0.8996,
+      "recall": 0.6935,
+      "f1": 0.7832,
+      "sem_a_primeira_linha_da_coluna": {
+        "verdadeiros_positivos": 191,
+        "falsos_positivos": 25,
+        "falsos_negativos": 99,
+        "precisao": 0.8843,
+        "recall": 0.6586,
+        "f1": 0.7549
+      }
+    },
+    {
+      "quantil": 0.4,
+      "blocos": 415,
+      "verdadeiros_positivos": 224,
+      "falsos_positivos": 25,
+      "falsos_negativos": 99,
+      "verdadeiros_negativos": 925,
+      "precisao": 0.8996,
+      "recall": 0.6935,
+      "f1": 0.7832,
+      "sem_a_primeira_linha_da_coluna": {
+        "verdadeiros_positivos": 191,
+        "falsos_positivos": 25,
+        "falsos_negativos": 99,
+        "precisao": 0.8843,
+        "recall": 0.6586,
+        "f1": 0.7549
+      }
+    },
+    {
+      "quantil": 0.5,
+      "blocos": 409,
+      "verdadeiros_positivos": 224,
+      "falsos_positivos": 25,
+      "falsos_negativos": 99,
+      "verdadeiros_negativos": 925,
+      "precisao": 0.8996,
+      "recall": 0.6935,
+      "f1": 0.7832,
+      "sem_a_primeira_linha_da_coluna": {
+        "verdadeiros_positivos": 191,
+        "falsos_positivos": 25,
+        "falsos_negativos": 99,
+        "precisao": 0.8843,
+        "recall": 0.6586,
+        "f1": 0.7549
+      }
+    }
+  ],
+  "onde_a_escolha_muda_alguma_coisa": {
+    "o_que_e": "a coluna em que os dois candidatos discordam sobre alguma linha: ela e vista como recuada por um e nao pelo outro. E onde o colapso da mediana -- ela cair no recuo em vez da margem -- teria efeito, e fora dai a escolha e indiferente.",
+    "na_referencia": {
+      "colunas": 44,
+      "com_algum_recuo": 42,
+      "colunas_em_que_os_dois_candidatos_discordam": 9,
+      "linhas_em_disputa": 89,
+      "fracao_das_colunas": 0.2045,
+      "exemplos": [
+        {
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "folha": 42,
+          "coluna": 0,
+          "linhas": 18,
+          "recuadas_q0.10": 5,
+          "recuadas_q0.50": 2,
+          "linhas_em_disputa": 3
+        },
+        {
+          "livro": "AAGAARD - Practical Chess Defence.pdf",
+          "folha": 252,
+          "coluna": 1,
+          "linhas": 31,
+          "recuadas_q0.10": 6,
+          "recuadas_q0.50": 0,
+          "linhas_em_disputa": 6
+        },
+        {
+          "livro": "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf",
+          "folha": 102,
+          "coluna": 1,
+          "linhas": 71,
+          "recuadas_q0.10": 52,
+          "recuadas_q0.50": 24,
+          "linhas_em_disputa": 28
+        },
+        {
+          "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
+          "folha": 20,
+          "coluna": 0,
+          "linhas": 53,
+          "recuadas_q0.10": 34,
+          "recuadas_q0.50": 12,
+          "linhas_em_disputa": 22
+        },
+        {
+          "livro": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+          "folha": 10,
+          "coluna": 1,
+          "linhas": 11,
+          "recuadas_q0.10": 6,
+          "recuadas_q0.50": 5,
+          "linhas_em_disputa": 1
+        },
+        {
+          "livro": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+          "folha": 60,
+          "coluna": 0,
+          "linhas": 40,
+          "recuadas_q0.10": 1,
+          "recuadas_q0.50": 0,
+          "linhas_em_disputa": 1
+        },
+        {
+          "livro": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+          "folha": 60,
+          "coluna": 1,
+          "linhas": 28,
+          "recuadas_q0.10": 4,
+          "recuadas_q0.50": 0,
+          "linhas_em_disputa": 4
+        },
+        {
+          "livro": "Mieses - Blind Schaken (1938).pdf",
+          "folha": 40,
+          "coluna": 1,
+          "linhas": 18,
+          "recuadas_q0.10": 4,
+          "recuadas_q0.50": 0,
+          "linhas_em_disputa": 4
+        }
+      ]
+    },
+    "no_acervo": {
+      "livros": 28,
+      "colunas": 226,
+      "com_algum_recuo": 215,
+      "colunas_em_que_os_dois_candidatos_discordam": 133,
+      "linhas_em_disputa": 1952,
+      "fracao_das_colunas": 0.5885,
+      "exemplos": [
+        {
+          "livro": "1937 Kemeri.pdf",
+          "folha": 41,
+          "coluna": 0,
+          "linhas": 268,
+          "recuadas_q0.10": 224,
+          "recuadas_q0.50": 128,
+          "linhas_em_disputa": 96
+        },
+        {
+          "livro": "1937 Kemeri.pdf",
+          "folha": 82,
+          "coluna": 0,
+          "linhas": 65,
+          "recuadas_q0.10": 42,
+          "recuadas_q0.50": 18,
+          "linhas_em_disputa": 24
+        },
+        {
+          "livro": "1937 Kemeri.pdf",
+          "folha": 123,
+          "coluna": 1,
+          "linhas": 46,
+          "recuadas_q0.10": 31,
+          "recuadas_q0.50": 10,
+          "linhas_em_disputa": 21
+        },
+        {
+          "livro": "1937 Kemeri.pdf",
+          "folha": 164,
+          "coluna": 1,
+          "linhas": 68,
+          "recuadas_q0.10": 45,
+          "recuadas_q0.50": 17,
+          "linhas_em_disputa": 28
+        },
+        {
+          "livro": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+          "folha": 187,
+          "coluna": 0,
+          "linhas": 14,
+          "recuadas_q0.10": 7,
+          "recuadas_q0.50": 3,
+          "linhas_em_disputa": 4
+        },
+        {
+          "livro": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
+          "folha": 1116,
+          "coluna": 0,
+          "linhas": 16,
+          "recuadas_q0.10": 8,
+          "recuadas_q0.50": 4,
+          "linhas_em_disputa": 4
+        },
+        {
+          "livro": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+          "folha": 128,
+          "coluna": 0,
+          "linhas": 27,
+          "recuadas_q0.10": 18,
+          "recuadas_q0.50": 8,
+          "linhas_em_disputa": 10
+        },
+        {
+          "livro": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+          "folha": 128,
+          "coluna": 1,
+          "linhas": 49,
+          "recuadas_q0.10": 26,
+          "recuadas_q0.50": 20,
+          "linhas_em_disputa": 6
+        }
+      ]
+    }
+  },
+  "como_reproduzir": "`medir_paragrafo.py` no diretório de trabalho da sessão: monta a referência a partir de `PDF/` pelo sinal do fim de linha, varre os quantis com `text.paragrafos.metricas_por_coluna(..., quantil=)` e conta onde os dois candidatos discordam. A varredura sozinha não precisa de `PDF/`: ela lê `docs/metrics/texto_paragrafo_referencia.jsonl`."
+}

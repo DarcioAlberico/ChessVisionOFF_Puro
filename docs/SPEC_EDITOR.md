@@ -1,4 +1,4 @@
-# Especificação do editor de texto — Fases 36 a 40 (S-235 a S-257)
+# Especificação do editor de texto — Fases 36 a 40 (S-235 a S-258)
 
 Base: [ROADMAP_EDITOR.md](ROADMAP_EDITOR.md), que traz a medição da aba de hoje, os oito achados e
 o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
@@ -17,7 +17,7 @@ o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-257 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-258 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -1540,8 +1540,8 @@ do conjunto de campo, 112 diagramas):
 |---|---:|
 | detectados | 112 |
 | **com parágrafo atado** | **83 (74,1%)** |
-| dos atados, que são linha de lances | 15 (18%) |
-| **que viram estilo `legenda`** | **68 (60,7%)** |
+| dos atados, que são linha de lances | 14 (17%) |
+| **que viram estilo `legenda`** | **69 (61,6%)** |
 
 A régua da S-16 mede **distância**, não conteúdo -- e a variante logo abaixo do diagrama fica tão
 perto quanto a legenda. Pintar `1...♖a8+! 2.♔b5 g3` com o corpo de legenda seria um erro visível,
@@ -1553,10 +1553,54 @@ número de lance e continua sendo legenda; seis lances em dez tokens não.
 está atado àquele diagrama?"* é da leitura, e *"ele deve ser desenhado como legenda?"* é do editor.
 Guardar só a segunda perderia informação que o PGN e o PDF pesquisável querem.
 
-**`notacao` continua entrando só pela mão**, e é a única coisa que este item deixa de dever: o
-corte que separa uma linha de lances da prosa **dentro do corpo do texto** não foi medido. A guarda
-acima não serve: ela decide sobre um parágrafo que já se sabe atado a um diagrama -- população
-muito menor e muito mais fácil.
+**`notacao` continua entrando só pela mão, e agora isso é medido e não suposto.** Era a única
+coisa que este item deixava de dever: o corte que separa uma linha de lances da prosa **dentro do
+corpo do texto**. Ele foi medido em 2026-08-26 contra
+`docs/metrics/texto_notacao_referencia.jsonl` — 415 blocos de 24 folhas de 15 livros, lidos pelo
+**caminho do editor** (`ler_pagina` com o motor padrão) e rotulados à mão por critério editorial:
+*o editor poria este bloco no estilo `notacao`?*
+
+| rótulo | blocos | |
+|---|---:|---|
+| `lance` | 129 | corrida de lances e seu aparato |
+| `prosa` | 176 | frase de língua natural, ainda que cite lances por dentro |
+| `misto` | 38 | o leitor colou frase inteira **mais** a linha de lances seguinte — não há estilo certo |
+| `ilegivel` | 72 | OCR que não permite dizer |
+
+Os 110 blocos das duas últimas linhas ficam fora de precisão e recall, e a fração deles é
+resultado: **em 27% dos blocos desta amostra não há estilo certo a aplicar**, e isso é problema do
+corte, que vem antes do estilo.
+
+Sobre os 305 julgáveis, com a régua em uso:
+
+| | |
+|---|---:|
+| precisão | **0,8899** |
+| recall | **0,7519** |
+
+**Não entra.** Onze por cento do que ela estilaria é prosa — e os falsos não são aleatórios: são
+título corrente e número de página (`o Level 1 1 71`, `1 70 ♔ Grandmaste`), que virariam notação na
+cara de quem lê. Um quarto das linhas de lances ficaria sem estilo, e essas também se concentram:
+nos livros que escrevem lance em notação que `LANCE` não conhece — descritiva espanhola (`P4TR`,
+`T(5)3A`), cirílica transliterada (`Kpf1`) e alemã de letra minúscula (`sf3`, `Lc3`). É a regra 5
+desta spec: régua sem vão medido não entra ligada, e a paleta da S-248 já entrega o pincel.
+
+**A mesma medição mostrou vão para uma troca dentro da régua, e essa entrou.** Pontuação solta
+deixou de votar em `e_linha_de_notacao`: `28 . . . b6 ! !` são sete tokens, cinco deles pontuação
+que o OCR separou do lance que ela qualifica — e com eles no denominador uma linha de lances
+inteira fica em minoria de si mesma.
+
+| régua | precisão | recall | F1 |
+|---|---:|---:|---:|
+| pontuação votava | 0,8800 | 0,6822 | 0,7686 |
+| **pontuação não vota** | **0,8899** | **0,7519** | **0,8151** |
+
+Nove linhas de lances a mais, sem nenhum falso a mais. E como a régua é a guarda da legenda, o
+`docs/metrics/texto_legenda.json` foi remedido: os atados que são linha de lances caem de 15 para
+14, e os diagramas que ganham estilo `legenda` sobem de 68 para 69 (60,7% → 61,6%).
+
+O relatório está em `docs/metrics/texto_notacao_estilo.json`, com a varredura das duas réguas em
+quatro maiorias, a tabela de erros por livro e os falsos escritos por extenso.
 
 **Testes.** `tests/test_leitor_de_pagina.py::VinculoDaLegendaTests` (sete casos, do parágrafo logo
 abaixo ao vínculo estragado que recusa) e `tests/test_texto_estilos.py` (a legenda que ganha do
@@ -2075,61 +2119,124 @@ atributo sem formato que o suporte e **nenhum** comando fora do menu.
 > número em vez de ficar como observação, porque observação sem número volta como surpresa — é o
 > que a S-135 registrou sobre este projeto.
 
-## S-257 · A margem da coluna sai da mediana, e onde há muito recuo ela é o recuo ⬜ planejada
+## S-257 · A margem da coluna sai da mediana, e onde há muito recuo ela é o recuo ✅ medida e recusada (2026-08-26)
 
 **Problema.** `paragrafos.metricas_por_coluna` toma a **mediana** das esquerdas das linhas como
 margem da coluna, e a regra `recuou` compara cada linha com ela. Numa diagramação de recuo de
 primeira linha com parágrafos curtos, quase metade das linhas começa no recuo — e a mediana devolve
-o **recuo** no lugar da margem.
+o **recuo** no lugar da margem. Com a margem valendo o recuo, `recuou` é falso para **toda** linha
+da coluna: a régua não morre num parágrafo, morre na coluna inteira, e em silêncio.
 
-Medido na folha 51 do `Dvoretsky - Dvoretsky's Endgame Manual (2025)`, que é a folha da medição do
-peso da S-237:
+O fenômeno é real e foi confirmado: no `Dvoretsky - Dvoretsky's Endgame Manual (2025)`, folha 50 da
+camada, a coluna da esquerda tem margem em 29 pt, recuo em 40 pt, e a mediana devolve 40.
 
-| | pt |
-|---|---:|
-| margem da coluna | 29 |
-| recuo de primeira linha | 40 |
-| **o que a mediana devolve** | **40** |
+**A medição que faltava.** Trocar a mediana por um quantil baixo é uma linha de código, e o efeito
+é grande — mas "mais blocos" é indistinguível de "pior" sem referência: parte dos cortes novos é
+parágrafo que estava grudado e passou a sair certo, parte é parágrafo inteiro despedaçado, e as
+duas coisas mexem o mesmo contador na mesma direção.
 
-Com a margem valendo o recuo, `recuou` é falso para **toda** linha da coluna: a régua não morre num
-parágrafo, morre na coluna inteira, e em silêncio. Na folha 51 sobram dois parágrafos de prosa
-grudados em cada coluna **depois** de a quarta regra da S-237 já ter separado o que o peso separa —
-*"…is hopeless,"* com *"as is 1.♔d6?…"*, e *"…stalemate."* com *"But White wins easily…"*.
+**A referência, e a que foi recusada.** `docs/metrics/texto_paragrafo_referencia.jsonl` — 24 folhas
+de 14 livros, 1.675 linhas, das quais **1.273 com referência** e **323 começos de parágrafo**. O
+sinal é o **fim da linha**: em texto justificado toda linha alcança a margem direita, menos a última
+de cada parágrafo. Ele não olha nem o recuo nem o vão vertical, que são as duas réguas sob medição,
+e por isso não é circular. Onde a coluna não é justificada ele não diz nada, e ali a referência é
+`null` — declarado, e não escondido.
 
-**A medição que existe, e por que ela não fecha o item.** Trocar a mediana por um quantil baixo é
-uma linha de código, e o efeito é grande: medido em 2026-08-25 sobre 54 folhas de 10 livros, o
-quartil de 25% produz **1.046 blocos contra 835**, e os blocos de uma linha só passam de **56,2%
-para 61,9%**.
+O que foi **recusado** como referência: o `group_id` da camada do PDF, isto é, o bloco que o
+produtor gravou. Parecia a referência de terceiro ideal, e não é. Medido no `AAGAARD - Practical
+Chess Defence`: dezoito linhas com quatro parágrafos visíveis saem num bloco só. **O bloco do
+produtor é a COLUNA de prosa, não o parágrafo.**
 
-Esses dois números não dizem se a troca é boa. Parte dos 211 cortes novos é parágrafo que estava
-grudado e passou a sair certo; parte é parágrafo inteiro despedaçado em linhas soltas — e as duas
-coisas mexem os mesmos contadores na mesma direção. **Sem referência rotulada, "mais blocos" é
-indistinguível de "pior".**
+**O resultado.** `docs/metrics/texto_paragrafo_referencia.json`:
 
-**Solução, em três passos e nesta ordem.**
+| quantil | acertos | falsos | perdidos | precisão | recall | blocos |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0,10 | 226 | 25 | 97 | 0,9004 | 0,6997 | 484 |
+| **0,50** (mediana) | 224 | 25 | 99 | 0,8996 | 0,6935 | 409 |
 
-1. **A referência.** Folhas com o começo de cada parágrafo marcado à mão, em livros das duas
-   diagramações — recuo de primeira linha e linha em branco. É a regra da S-201 aplicada a
-   parágrafo: a saída do próprio leitor não é verdade de referência.
-2. **A medição.** Mediana contra candidato, com precisão e recall **do corte** — quantos cortes
-   propostos são reais, e quantos reais foram propostos —, e não contagem de blocos.
-3. **O portão.** A troca entra ligada só se a medição mostrar vão, como o itálico da S-236 mostrou
-   e como a espessura da S-237 não mostrou. É a regra 5 desta spec, e ela vale igual para um item
-   que parece óbvio.
+**Dois acertos em 323**, com o mesmo número de falsos. É a diferença inteira entre os dois
+candidatos sobre o que a referência sabe julgar. Os 75 blocos a mais do quantil baixo caem quase
+todos em linha que a referência não julga, e por isso são cortes que ninguém mediu — nem a favor,
+nem contra.
+
+E não é que os dois candidatos façam a mesma coisa: eles discordam sobre **1.952 linhas em 133 das
+226 colunas** do acervo (59%). Mexem muito e empatam.
+
+**Decisão: a mediana fica.** É a regra 5 desta spec — régua sem vão medido não entra ligada —, e
+ela vale igual para a troca que parecia óbvia. `QUANTIL_DA_MARGEM` existe como constante, com o
+número e a data no módulo, e `metricas_por_coluna(..., quantil=)` existe para a próxima medição
+poder varrer candidatos sem monkeypatch.
+
+**O que a medição achou no caminho, e que é maior que o item.** Na folha que originou a S-257, o
+recuo mede 11 pt contra uma altura de linha de 14 — 0,79 alturas, logo abaixo do corte de 0,8 de
+`RECUO_DE_PARAGRAFO`. Ali o que esconde o parágrafo **não é a margem, é o limiar**: com qualquer
+dos dois quantis a folha sai com os mesmos 11 blocos. Varrido o limiar sobre a mesma referência:
+
+| `RECUO_DE_PARAGRAFO` | acertos | falsos | perdidos | precisão | recall |
+|---:|---:|---:|---:|---:|---:|
+| **0,80** (em uso) | 224 | 25 | 99 | 0,8996 | 0,6935 |
+| 0,40 | 249 | 26 | 74 | 0,9055 | 0,7709 |
+
+Vinte e cinco cortes certos a mais por um falso a mais, com um platô largo e chato entre 0,20 e
+0,45. É vão de verdade, e é **outro item** — ver a S-258: mexer nele muda o texto que o leitor
+entrega, e com ele os relatórios que medem página e legenda.
+
+**Critério de aceite** — cumprido:
+
+- existe conjunto de referência de parágrafo, versionado, com o livro e a folha de cada marca ✅;
+- a medição publica precisão e recall **do corte** para a mediana e para os candidatos, sobre o
+  mesmo conjunto, em `docs/metrics/` ✅;
+- o quantil escolhido é o que a medição apontou ✅ — ela apontou que não há o que trocar;
+- sem vão medido, `metricas_por_coluna` fica como está e o item declara-se medido-e-recusado ✅;
+- a folha do `Dvoretsky` que originou o item está examinada, com o número que ela dá hoje ✅.
+
+**Testes.** `tests/test_text_paragrafos.py`: `test_a_margem_sai_do_quantil_declarado`;
+`test_a_coluna_de_recuo_frequente_perde_a_margem_na_mediana`;
+`test_a_referencia_de_paragrafo_esta_versionada_e_bate_com_o_relatorio`.
+
+---
+
+## S-258 · O limiar de recuo é 0,8 altura de linha, e a medição diz 0,4 ⬜ planejada
+
+**Problema.** `paragrafos.RECUO_DE_PARAGRAFO` vale `0.8`: a linha só abre parágrafo se começar
+0,8 altura de linha à direita da margem. O número nunca foi medido contra referência — ele veio
+com a S-192, quando referência de parágrafo não existia.
+
+Ela existe agora (S-257), e diz que o corte está alto demais:
+
+| `RECUO_DE_PARAGRAFO` | acertos | falsos | perdidos | precisão | recall | F1 |
+|---:|---:|---:|---:|---:|---:|---:|
+| **0,80** (em uso) | 224 | 25 | 99 | 0,8996 | 0,6935 | 0,7832 |
+| 0,50 | 247 | 26 | 76 | 0,9048 | 0,7647 | 0,8289 |
+| **0,40** | **249** | 26 | 74 | **0,9055** | **0,7709** | **0,8328** |
+| 0,20 | 249 | 26 | 74 | 0,9055 | 0,7709 | 0,8328 |
+| 0,15 | 249 | 29 | 74 | 0,8957 | 0,7709 | 0,8286 |
+
+Os dois lados melhoram — 25 cortes certos a mais por um falso a mais —, e o platô entre 0,20 e
+0,45 é chato, o que é o sinal de que o valor não está sintonizado num acaso do conjunto. Abaixo de
+0,20 a precisão começa a cair.
+
+O `SALTO_DE_PARAGRAFO` foi varrido junto e **não** mostra vão: baixá-lo de 0,6 para 0,3 sobe o
+recall para 0,7771 e derruba a precisão para 0,8715. É troca, e não ganho — ele fica.
+
+**Por que é item separado.** Mexer no limiar muda o texto que `ler_pagina` entrega, e com ele:
+
+- `docs/metrics/texto_pagina.json` — o CER de página é medido sobre a montagem;
+- `docs/metrics/texto_legenda.json` — o parágrafo atado ao diagrama pode passar a ser outro;
+- e o que mais dependa da composição de blocos, que o item tem de levantar antes de trocar.
 
 **Critério de aceite.**
 
-- existe conjunto de referência de parágrafo, versionado, com o livro e a folha de cada marca;
-- a medição publica precisão e recall do corte para a mediana e para o candidato, sobre o mesmo
-  conjunto, em `docs/metrics/`, na disciplina da S-218;
-- o quantil escolhido — se algum for — é o que a medição apontar, e o número aparece no módulo com
-  a data;
-- sem vão medido, `metricas_por_coluna` fica como está e o item declara-se não-medido;
-- a folha 51 do `Dvoretsky` está no conjunto: ela é o caso que originou o item.
+- o valor novo sai da medição da S-257, sobre a mesma referência, e o relatório registra a
+  varredura inteira, e não só o vencedor;
+- todo relatório que a troca move é remedido no mesmo commit, na disciplina da S-100;
+- a referência ganha folhas de livro **sem camada** antes da troca: as 24 de hoje vêm de livros
+  que têm camada de texto, porque é dela que sai o sinal do fim de linha — e o leitor roda sobre
+  livro que não a tem;
+- se a medição ampliada contradisser a de hoje, o número que vale é o dela.
 
-**Testes.** `tests/test_text_paragrafos.py` (ampliado): `test_a_margem_sai_do_quantil_declarado`;
-`test_a_coluna_de_recuo_frequente_nao_perde_a_margem`;
-`test_o_conjunto_de_referencia_cobre_as_duas_diagramacoes`.
+**Testes.** `tests/test_text_paragrafos.py` (ampliado): o caso do recuo curto — 11 pt sobre altura
+de 14 — que hoje não abre parágrafo e passaria a abrir.
 
 ---
 

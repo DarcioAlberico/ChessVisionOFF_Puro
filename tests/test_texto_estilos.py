@@ -107,20 +107,29 @@ class DerivadoDaPaginaTests(unittest.TestCase):
         self.assertEqual(estilos, {"legenda"})
 
     def test_notacao_nao_entra_sozinha(self) -> None:
-        """**O único sem dono medido continua entrando só pela mão** (regra 5).
+        """**O único que continua entrando só pela mão**, e agora por medição (regra 5).
 
-        O corte que separa uma linha de lances da prosa **dentro do corpo do texto** não foi
-        medido. A guarda da legenda não serve para isso: ela decide sobre um parágrafo que já se
-        sabe atado a um diagrama, que é população muito menor e muito mais fácil.
+        Medido em 2026-08-26 sobre 305 blocos rotulados à mão
+        (`docs/metrics/texto_notacao_estilo.json`): a régua acerta 89% do que estilaria e alcança
+        75% das linhas de lances, e os 11% que erra são título corrente e número de página. Não
+        chega para pintar sozinha. A guarda da legenda não é a mesma pergunta: ela decide sobre um
+        parágrafo que já se sabe atado a um diagrama, e ali errar tira um estilo em vez de pôr um
+        errado.
         """
         doc = rico.de_pagina(_pagina(BlocoDeTexto.de_linhas([_linha("1.♘f3 ♘f6 2.c4 e6")])))
         self.assertEqual({c.atributos.estilo for c in doc.corridas}, {""})
 
     def test_o_motivo_de_cada_um_esta_escrito_no_modulo(self) -> None:
-        """A regra 5 exige que item não-medido **se declare** não-medido, e não que ele suma."""
+        """A regra 5 exige que a decisão **se declare** no módulo, medida ou não.
+
+        A frase mudou quando a medição chegou -- de *"não foi medida"* para o número que ela deu --,
+        e é isso que este teste segue: o que ele exige é que o módulo diga de onde vem a decisão,
+        e não que ele repita uma frase.
+        """
         fonte = Path(rico.__file__).read_text(encoding="utf-8")
         self.assertIn("assign_lines_to_diagrams", fonte)
-        self.assertIn("não foi medida", fonte)
+        self.assertIn("texto_notacao_estilo.json", fonte)
+        self.assertIn("continua entrando só pela mão", fonte)
 
 
 class AplicarAMaoTests(unittest.TestCase):
