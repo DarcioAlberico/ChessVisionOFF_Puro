@@ -106,6 +106,20 @@ class BoardModel:
     "confira aqui", e apagá-la ao primeiro clique tiraria da tela justamente a lista do que
     ainda falta conferir. Quem a limpa é quem a pôs -- ver `set_disputed`."""
 
+    arrows: tuple[tuple[int, int, str], ...] = ()
+    """Setas e casas marcadas do lance corrente (S-279): `(origem, destino, cor)`.
+
+    Os índices são de **leitura** (0 = a8), como todo índice deste módulo; quem converte de e para
+    o índice do `chess` é quem fala com o PGN. `origem == destino` é casa marcada -- é a mesma
+    convenção de `chess.svg.Arrow`, e é a que `[%csl]` grava.
+
+    A cor é o nome do padrão (`green`, `red`, `blue`, `yellow`) e não um hexadecimal: é o
+    vocabulário que `[%cal]` sabe escrever, e o desenho o traduz em papel de `ui/tokens.py`. Guardar
+    hexadecimal aqui perderia a cor na gravação e cravaria número num modelo que não decide cor.
+
+    **Elas são do lance, não do tabuleiro** -- navegar troca o conjunto. Por isso vivem aqui e não
+    numa lista do painel: quem as põe na tela é quem põe a posição."""
+
     heatmap_enabled: bool = True
     uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD
 
@@ -228,6 +242,18 @@ class BoardModel:
     def set_disputed_squares(self, squares: Iterable[int]) -> None:
         """Casas em que os dois leitores discordam (S-66). Sequência vazia apaga a marca."""
         self.disputed = frozenset(int(index) for index in squares)
+
+    def set_arrows(self, arrows: Iterable[tuple[int, int, str]]) -> None:
+        """As setas do lance corrente (S-279). Sequência vazia apaga todas.
+
+        Índice fora das 64 casas é descartado em silêncio: um `[%cal]` malformado de um PGN de fora
+        não pode impedir a posição de aparecer.
+        """
+        self.arrows = tuple(
+            (int(origem), int(destino), str(cor))
+            for origem, destino, cor in arrows
+            if 0 <= int(origem) < 64 and 0 <= int(destino) < 64
+        )
 
     # ---------------------------------------------------------------------- interações
 

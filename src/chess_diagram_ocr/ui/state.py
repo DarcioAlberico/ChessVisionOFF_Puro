@@ -34,13 +34,14 @@ from ..atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
-STATE_VERSION = 5
+STATE_VERSION = 6
 """Versão 1 é o formato sem o campo `version`, que existe em disco hoje.
 
 A **3** é a S-221, e ela só acrescenta `skin`. A **4** é a S-230, e acrescenta `piece_set` e
-`piece_dir`. A **5** é a S-232, e acrescenta `densidade`. Um arquivo de qualquer versão anterior
-abre sem perder nada: o campo que falta cai no padrão, que é "nada escolhido" -- e nada escolhido é
-a pele clássica, com o conjunto de peças de sempre e a densidade que a pele sugerir."""
+`piece_dir`. A **5** é a S-232, e acrescenta `densidade`. A **6** é a S-271, e acrescenta
+`estudo_aberto` e `estudo_divisor`. Um arquivo de qualquer versão anterior abre sem perder nada: o campo que falta cai
+no padrão, que é "nada escolhido" -- e nada escolhido é a pele clássica, com o conjunto de peças de
+sempre, a densidade que a pele sugerir e nenhum estudo aberto."""
 
 MAX_PDF_HISTORY = 50
 """Tamanho do histórico de páginas por PDF. Sem teto ele cresce para sempre."""
@@ -160,6 +161,24 @@ class AppState:
     **notação** -- uma linha de lances quebrada deixa de ser uma linha de lances --, e essa escolha
     dura tanto quanto a de `wheel_flips_page`, que é o interruptor vizinho com o mesmo argumento."""
 
+    estudo_aberto: str = ""
+    """A chave do diagrama cujo estudo estava aberto na sala (S-271). Vazio = nenhum.
+
+    É `estudo.Ancora.chave()`, e não o caminho do PDF nem o número da página: a sala é do livro e o
+    estudo é do **diagrama**, e voltar ao livro sem voltar ao diagrama devolveria a pessoa à porta da
+    sala em vez de à mesa em que ela estava.
+
+    **Não é validada aqui**, pela mesma razão de `skin` e `window_geometry`: se aquele diagrama ainda
+    existe é pergunta de quem for abrir o livro, e uma chave que não casa com nada tem a mesma
+    resposta de não ter nada guardado."""
+
+    estudo_divisor: float = 0.0
+    """Onde está o divisor entre o tabuleiro e a lista de lances, como fração (S-276). `0.0` = nunca
+    guardado, e aí o peso do `PanedWindow` decide.
+
+    Zero e não 0,6, pela mesma razão de `sash_fraction`: "não guardado" e "guardado em 0,6" são
+    estados diferentes, e o segundo tem de sobreviver a alguém mudar o padrão."""
+
     piece_dir: str = ""
     """A pasta de peças do usuário (S-230). Vazio = nenhuma escolhida.
 
@@ -223,6 +242,8 @@ class AppState:
             "piece_dir": self.piece_dir,
             "texto_zoom": int(self.texto_zoom),
             "texto_quebra": bool(self.texto_quebra),
+            "estudo_aberto": self.estudo_aberto,
+            "estudo_divisor": float(self.estudo_divisor),
         }
 
 
@@ -341,6 +362,14 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     texto_quebra = raw.get("texto_quebra")
     if isinstance(texto_quebra, bool):
         state.texto_quebra = texto_quebra
+
+    estudo_aberto = raw.get("estudo_aberto")
+    if isinstance(estudo_aberto, str):
+        state.estudo_aberto = estudo_aberto
+
+    estudo_divisor = raw.get("estudo_divisor")
+    if isinstance(estudo_divisor, (int, float)) and not isinstance(estudo_divisor, bool):
+        state.estudo_divisor = _clamp(float(estudo_divisor), 0.0, 1.0)
 
     return state
 

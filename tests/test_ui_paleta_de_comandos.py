@@ -273,8 +273,12 @@ class JanelaTests(unittest.TestCase):
         self.assertEqual(len(janela.visiveis()), len(janela.lista.get_children()))
 
     def test_a_linha_cinza_leva_a_marca_e_o_motivo_na_coluna(self) -> None:
+        # **"treinar o modelo" e não "treinar"**: desde a S-290 há um segundo comando com essa
+        # palavra -- o treino da sala de estudo --, e ele *é* amarrado. Um termo que casa com dois
+        # comandos escolheria o alvo por ordem de catálogo, que é o que faz um teste passar a medir
+        # outra coisa sem ninguém notar.
         janela = self._janela()
-        janela.digitar("treinar")
+        janela.digitar("treinar o modelo")
         alvo = janela.lista.get_children()[0]
         self.assertIn(paleta.TAG_DESABILITADO, janela.lista.item(alvo, "tags"))
         self.assertIn(paleta.MOTIVO_SEM_FUNCAO, janela.lista.item(alvo, "values")[0])
@@ -349,7 +353,7 @@ class JanelaTests(unittest.TestCase):
         """Ela está lá para ser lida, e não para ser clicada -- e um `KeyError` aqui seria a
         paleta derrubando a janela por causa de um comando que ela mesma marcou como fora."""
         janela = self._janela()
-        janela.digitar("treinar")
+        janela.digitar("treinar o modelo")
         janela.executar()
         self.assertEqual([], self.chamados)
         self.assertTrue(janela.winfo_exists())

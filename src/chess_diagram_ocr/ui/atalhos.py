@@ -78,10 +78,34 @@ class Atalho:
     **Não é um atalho novo.** `ATALHOS` continua com as catorze sequências de sempre -- o que a
     S-244 acrescentou foi destino conforme o foco, e não tecla."""
 
+    na_sala: str = ""
+    """O que a **mesma tecla** faz quando o foco está na sala de estudo (S-281). Vazio = o mesmo.
+
+    Irmão de `no_editor`, e pela mesma razão: `←` é "diagrama anterior" em toda a janela e "lance
+    anterior" dentro da sala, e uma legenda que contasse um destino só seria pior que não ter
+    legenda. Quem atende é `study_panel.ACOES_PROPRIAS`, pelo mecanismo da S-244.
+
+    **E foi ele que trouxe `Home` e `End` para esta tabela.** A sala precisava de "início" e "fim
+    da linha", e aqui não entra tecla sem comando global -- então a pergunta virou *o que Home e
+    End fazem no resto da janela?*. A resposta estava faltando desde sempre: `Page Up` e `Page
+    Down` viram **uma** página, e nada levava à primeira nem à última."""
+
 
 ATALHOS: tuple[Atalho, ...] = (
-    Atalho("<Left>", "←", "diagrama_anterior", "Diagrama anterior desta página"),
-    Atalho("<Right>", "→", "proximo_diagrama", "Próximo diagrama desta página"),
+    Atalho(
+        "<Left>",
+        "←",
+        "diagrama_anterior",
+        "Diagrama anterior desta página",
+        na_sala="Lance anterior do estudo",
+    ),
+    Atalho(
+        "<Right>",
+        "→",
+        "proximo_diagrama",
+        "Próximo diagrama desta página",
+        na_sala="Próximo lance do estudo",
+    ),
     # Antes de salvar porque é o que vem antes no gesto: aplica-se a FEN digitada e **então**
     # se grava. A guarda de foco de `ui/shortcuts.py` cede a tecla a qualquer campo de texto, e
     # é dentro do campo de FEN que esta faz sentido -- por isso o campo declara a mesma sequência
@@ -128,6 +152,23 @@ ATALHOS: tuple[Atalho, ...] = (
     Atalho("<Control-n>", "Ctrl+N", "proximo_da_fila", "Abrir o próximo item pendente da fila de revisão"),
     Atalho("<Prior>", "Page Up", "pagina_anterior", "Página anterior do livro"),
     Atalho("<Next>", "Page Down", "proxima_pagina", "Próxima página do livro"),
+    # **As duas da S-281**, e elas fecham o par que faltava: virar uma página tinha tecla desde a
+    # S-70, e ir à primeira ou à última não tinha nenhuma. Ver `na_sala` para o outro motivo de
+    # elas existirem -- e para por que ele veio primeiro.
+    Atalho(
+        "<Home>",
+        "Home",
+        "primeira_pagina",
+        "Primeira página do livro",
+        na_sala="Início da linha do estudo",
+    ),
+    Atalho(
+        "<End>",
+        "End",
+        "ultima_pagina",
+        "Última página do livro",
+        na_sala="Fim da linha do estudo",
+    ),
     Atalho("<Control-0>", "Ctrl+0", "ajustar_largura", "Ajustar a página à largura do visualizador"),
     # Fora do gesto, e por isso no fim: as treze de cima agem sobre o diagrama ou sobre a página,
     # e esta age sobre o **programa** -- ela é como se acha um comando quando não se sabe em que
@@ -135,7 +176,7 @@ ATALHOS: tuple[Atalho, ...] = (
     # o Tk entrega a maiúscula, e o modificador escrito à mão nunca chega no Windows (S-20).
     Atalho("<Control-P>", "Ctrl+Shift+P", "paleta_de_comandos", "Abrir a paleta de comandos e procurar pelo nome"),
 )
-"""Os catorze atalhos do ciclo corrigir → salvar → próximo (S-20/S-70/S-223/S-229/S-231).
+"""Os dezoito atalhos do ciclo corrigir → salvar → próximo (S-20/S-70/S-223/S-229/S-231/S-267/S-281).
 
 A ordem é a do gesto, e não a alfabética: navegar entre diagramas, aplicar a FEN, salvar, reler,
 corrigir casa, desfazer, puxar da fila, virar página, enquadrar. É a mesma ordem em que a legenda

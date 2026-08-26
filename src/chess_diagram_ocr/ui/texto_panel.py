@@ -95,9 +95,8 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Literal
 
-from ..text import arquivo, busca, correcao, dicionario, documento, exportacao
+from ..text import arquivo, busca, correcao, dicionario, documento, exportacao, pdf_pesquisavel, rascunho, rico
 from ..text import paleta as _paleta
-from ..text import pdf_pesquisavel, rascunho, rico
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
 from . import (
     atalhos,
@@ -741,6 +740,38 @@ class TextoPanel(ttk.Frame):
         -- e a aba de texto passaria a ser a razão de o programa ficar lento ao folhear.
         """
         self.folha_var.set(str(int(self._page_index()) + 1))
+
+    def notacao_do_diagrama(self, pagina: int, diagrama: int) -> str:
+        """A notação que o livro imprimiu ao lado daquele diagrama, ou `""` (S-283).
+
+        **É o vínculo da S-249 finalmente com um cliente.** `BlocoDeTexto.legenda_de` diz de qual
+        diagrama cada parágrafo é a legenda desde 2026-08-25, e até aqui isso só pintava o estilo
+        `legenda` na tela. A sala de estudo pergunta a mesma coisa por outro motivo: o parágrafo ao
+        lado do diagrama 3 costuma trazer a linha que o autor dá para aquela posição.
+
+        **Devolve `""` em três casos, e todos são "ainda não sei"**: não há folha lida, a folha lida
+        é de outra página, ou nenhum parágrafo daquele diagrama é notação. Nenhum deles é erro --
+        ler a folha custa de 1 s a 40 s (`docs/metrics/texto_pagina.json`) e é decisão de quem lê,
+        não desta função.
+
+        O corte "é notação" é o de `text/notacao.e_linha_de_notacao`, o mesmo que a S-249 usa para
+        pintar o estilo: a **maioria** dos tokens do parágrafo é lance. Um parágrafo de prosa que
+        cite `e4` uma vez não entra, e é essa assimetria que o módulo de notação já documenta.
+        """
+        from ..text import notacao
+        from ..text import pagina as pagina_mod
+
+        lida = self._pagina
+        if lida is None or int(lida.pagina) != int(pagina):
+            return ""
+        trechos = [
+            bloco.texto
+            for bloco in lida.blocos
+            if isinstance(bloco, pagina_mod.BlocoDeTexto)
+            and bloco.legenda_de == int(diagrama)
+            and notacao.e_linha_de_notacao(bloco.texto)
+        ]
+        return " ".join(trechos).strip()
 
     def modo_bloco_mudou(self) -> None:
         """Diz no rodapé o que a próxima leitura vai custar (S-240).

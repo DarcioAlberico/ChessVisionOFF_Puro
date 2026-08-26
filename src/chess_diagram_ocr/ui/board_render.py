@@ -99,6 +99,26 @@ UNICODE_PIECES = {
 DRAG_TAG = "cvoff-drag"
 FRAME_TAG = "cvoff-frame"
 COORDS_TAG = "cvoff-coords"
+ARROWS_TAG = "cvoff-arrows"
+"""As setas e casas marcadas do lance (S-279). Tag própria porque elas ficam **por cima** das
+peças e precisam ser reerguidas depois de todo redesenho parcial."""
+
+PAPEL_DE_SETA: dict[str, str] = {
+    "green": tokens.SETA_VERDE,
+    "red": tokens.SETA_VERMELHA,
+    "blue": tokens.SETA_AZUL,
+    "yellow": tokens.SETA_AMARELA,
+}
+"""A cor do padrão `[%cal]` traduzida em papel de `ui/tokens.py`.
+
+O modelo guarda `"green"` porque é o que o PGN sabe escrever; o desenho pergunta ao tema. Cor
+desconhecida cai no verde, que é exatamente o que `chess.svg.Arrow.pgn` faz ao gravar."""
+
+LARGURA_DA_SETA = 0.16
+"""Espessura da haste, em fração da casa. A ponta é 2,6 vezes isso."""
+
+LARGURA_DO_CIRCULO = 0.055
+"""Espessura do anel da casa marcada, em fração da casa."""
 
 
 def heatmap_color(confidence: float, threshold: float = UNCERTAIN_SQUARE_THRESHOLD) -> str:
@@ -377,6 +397,7 @@ class BoardRenderer:
         self._draw_squares(canvas, model, geometry, range(64), drag=drag)
         if self.show_coordinates:
             self._draw_coordinates(canvas, model, geometry)
+        self.draw_arrows(canvas, model, geometry)
         self._draw_drag(canvas, geometry, drag)
 
     def draw_dirty(
@@ -397,8 +418,9 @@ class BoardRenderer:
             canvas.delete(self._tag(index))
         self._draw_squares(canvas, model, geometry, indices, drag=drag)
         # Uma casa recem-desenhada fica por cima de tudo que ja estava no canvas, inclusive
-        # da peca arrastada e das coordenadas -- dai o reerguer.
+        # da peca arrastada, das coordenadas e das setas -- dai o reerguer.
         canvas.tag_raise(COORDS_TAG)
+        canvas.tag_raise(ARROWS_TAG)
         self._draw_drag(canvas, geometry, drag)
 
     # -------------------------------------------------------------------------- internos
@@ -568,3 +590,90 @@ class BoardRenderer:
         if drag is None:
             return
         self._draw_piece(canvas, drag.symbol, drag.x, drag.y, geometry.cell, tags=(DRAG_TAG,))
+
+    # ---------------------------------------------------------------- setas (S-279)
+
+    def draw_arrows(
+        self,
+        canvas: tk.Canvas,
+        model: BoardModel,
+        geometry: BoardGeometry,
+        *,
+        extra: tuple[int, int, str] | None = None,
+    ) -> None:
+        """As setas e casas marcadas do lance, por cima das peças.
+
+        `extra` é a seta que está sendo arrastada agora e ainda não foi gravada -- ela é desenhada
+        junto e some quando o botão é solto. Sem ela o gesto pareceria não estar acontecendo.
+
+        Sempre apaga e redesenha o conjunto inteiro: são poucas por lance, e um desenho parcial de
+        seta exigiria saber quais casas ela cruza, que é mais caro do que refazê-las.
+        """
+        canvas.delete(ARROWS_TAG)
+        setas = list(model.arrows) + ([extra] if extra is not None else [])
+        for origem, destino, cor in setas:
+            papel = PAPEL_DE_SETA.get(str(cor), tokens.SETA_VERDE)
+            try:
+                tinta = theme.cor_atual(papel)
+            except tk.TclError:  # pragma: no cover - sem root o desenho nem acontece
+                tinta = tokens.RESERVA[papel]
+            if origem == destino:
+                self._draw_circle(canvas, model, geometry, origem, tinta)
+            else:
+                self._draw_arrow(canvas, model, geometry, origem, destino, tinta)
+
+    def _centro(self, model: BoardModel, geometry: BoardGeometry, index: int) -> tuple[float, float]:
+        row, col = model.display_from_index(index)
+        x0, y0, _, _ = geometry.rect(row, col)
+        return x0 + geometry.cell / 2, y0 + geometry.cell / 2
+
+    def _draw_circle(
+        self, canvas: tk.Canvas, model: BoardModel, geometry: BoardGeometry, index: int, tinta: str
+    ) -> None:
+        """Casa marcada: um anel, e não um preenchimento.
+
+        Preenchimento esconderia a peça que está na casa, e a casa marcada é quase sempre marcada
+        **por causa** da peça que está nela. É a mesma decisão da S-160 para a casa selecionada."""
+        centro_x, centro_y = self._centro(model, geometry, index)
+        raio = geometry.cell * 0.44
+        canvas.create_oval(
+            centro_x - raio,
+            centro_y - raio,
+            centro_x + raio,
+            centro_y + raio,
+            outline=tinta,
+            width=max(2.0, geometry.cell * LARGURA_DO_CIRCULO),
+            tags=(ARROWS_TAG,),
+        )
+
+    def _draw_arrow(
+        self,
+        canvas: tk.Canvas,
+        model: BoardModel,
+        geometry: BoardGeometry,
+        origem: int,
+        destino: int,
+        tinta: str,
+    ) -> None:
+        """A haste recuada nas duas pontas, para a peça de origem e a de destino continuarem à vista."""
+        x0, y0 = self._centro(model, geometry, origem)
+        x1, y1 = self._centro(model, geometry, destino)
+        dx, dy = x1 - x0, y1 - y0
+        comprimento = (dx * dx + dy * dy) ** 0.5
+        if comprimento < 1e-6:  # pragma: no cover - origem == destino já foi tratado
+            return
+        ux, uy = dx / comprimento, dy / comprimento
+        recuo = geometry.cell * 0.32
+        largura = max(2.0, geometry.cell * LARGURA_DA_SETA)
+        canvas.create_line(
+            x0 + ux * recuo,
+            y0 + uy * recuo,
+            x1 - ux * (geometry.cell * 0.12),
+            y1 - uy * (geometry.cell * 0.12),
+            fill=tinta,
+            width=largura,
+            arrow=tk.LAST,
+            arrowshape=(largura * 2.6, largura * 2.6, largura * 1.1),
+            capstyle=tk.ROUND,
+            tags=(ARROWS_TAG,),
+        )

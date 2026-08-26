@@ -20,7 +20,7 @@ import json
 import tempfile
 import tkinter as tk
 import unittest
-from dataclasses import fields, replace
+from dataclasses import fields
 from pathlib import Path
 
 from chess_diagram_ocr.cli import editor_inventario

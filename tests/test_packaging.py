@@ -171,7 +171,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2098
+    LIMITE = 2195
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
 
     **2.090 → 2.092 na Fase 39**, e as onze são as quatro linhas de exportação (`.md`, `.html`,
@@ -436,6 +436,21 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     `acompanhar`, um `import` e a linha do `--selftest` que diz se o `.pt` de caracteres veio
     junto: ler o serviço e a configuração desta janela é o que **é** a janela, pela mesma razão
     que `_reload_dataset_panel` ficou na S-116.
+
+    **2.098 → 2.173 nas Fases 46 a 48**, e as 66 são a sala de estudo chegando ao resto do
+    programa (S-280 a S-287). O que **saiu**: os vinte e quatro comandos moram em
+    `study_panel.COMANDOS_DA_ABA` e a janela os liga por tabela, como já fazia com os do editor --
+    não há um `lambda p: p.promover_variante()` sequer aqui. O que **ficou** são as quatro portas
+    por onde o livro entra na sala, e cada uma é a janela sendo a janela: qual recorte a aba
+    Resultado tem na memória, o que a aba Texto leu ao lado daquele diagrama, para que página o
+    visualizador deve ir, e onde estão os `.pgn` do usuário. Ligar painel a painel é o que só quem
+    montou os dois pode fazer, pela mesma razão que `_reload_dataset_panel` ficou na S-116.
+
+    **2.173 → 2.195 nas Fases 49 e 50**, e as 22 são as duas pontas que faltavam à sala: a linha do
+    estudo indo para a aba de texto (S-289) e a aba que ela alcança vindo para a frente. O que
+    **saiu**: a conversão do estudo em documento é `estudo_saida.py`, o que cada formato faz continua
+    sendo de `text/exportacao.py`, e os sete comandos novos chegam pela tabela de sempre. O que
+    **ficou** é ligar dois painéis -- que é o que só quem montou os dois pode fazer.
 
     Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
     crescer **sem decidir**."""

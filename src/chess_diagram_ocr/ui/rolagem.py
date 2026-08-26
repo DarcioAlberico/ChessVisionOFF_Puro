@@ -225,10 +225,14 @@ def selecionar_aba(notebook: ttk.Notebook, rotulo: str) -> bool:
 
     Devolve booleano em vez de silenciar: quem restaura estado precisa poder registrar que o
     guardado não valia mais.
+
+    **Pelo nome de hoje** (S-272): `abas.nome_atual` traduz o rótulo guardado por uma sessão
+    anterior antes da comparação. Sem isso, renomear uma aba faria a sessão seguinte cair na
+    primeira -- em silêncio, que é o pior jeito de esse defeito acontecer.
     """
     if not rotulo:
         return False
-    procurado = abas.nome_base(rotulo)
+    procurado = abas.nome_atual(rotulo)
     try:
         for indice in range(int(notebook.index("end"))):
             # Pelo **nome**, e não pelo rótulo inteiro: desde a S-162 ele carrega a contagem, e

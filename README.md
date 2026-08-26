@@ -451,9 +451,63 @@ novamente" fica gravado **por endereco** -- trocar o endpoint volta a perguntar.
 O servico que o projeto usava antes (`https://helpman.komtera.lt/predict`) continua
 funcionando se voce o escrever ali. Ele e de terceiro e sem contrato: pode sair do ar.
 
+### Sala de estudo (aba Estudo)
+
+A aba chamava-se **Analise** ate a S-272 e era um tabuleiro: carregava uma posicao de cada vez, e
+clicar no diagrama seguinte descartava toda a analise do anterior -- sem pergunta e sem desfazer.
+Hoje ela e uma **sala**: um estudo por diagrama do livro, que volta como estava quando se clica
+naquele diagrama de novo.
+
+- **o estudo abre com a vez e o roque que o livro diz** (S-269), e no numero de lance que a Galeria
+  anotou. Antes ele recebia so o campo de pecas e abria sempre com as brancas a jogar;
+- **lista de lances clicavel, com variantes e subvariantes** (S-273/S-274): o lance corrente fica
+  marcado e a vista o acompanha, e clicar em qualquer lance -- inclusive na posicao do diagrama --
+  vai ate ele;
+- **promover, rebaixar e apagar variante** (S-275), com `Ctrl+Z` no lugar em que o foco estiver;
+- **anotacao por lance**: comentario, simbolo (`!`, `?!`, `+-`) e setas desenhadas com o botao
+  direito -- `Shift` vermelho, `Alt` azul, `Ctrl` amarelo (S-277 a S-279);
+- **o estudo do livro fica em `data/estudos/<livro>.pgn`** (S-271), um PGN com uma partida por
+  diagrama e com `SourcePDF`, `Page` e `Diagram` nos headers. E PGN de verdade: abre no ChessBase e
+  no Scid como base de partidas. A pasta fica fora do git.
+
+E o que as Fases 46 a 48 acrescentaram:
+
+- **os 24 comandos da sala existem para o resto do programa** (S-280): menu **Estudo**, paleta de
+  comandos (`Ctrl+Shift+P`) e as tres peles. O catalogo ganhou o setimo grupo, `ESTUDO`;
+- **as teclas sairam do canvas** (S-281): `<-`/`->` andam pelos lances e `Home`/`End` vao ao inicio e
+  ao fim da linha **enquanto a aba tem o foco** -- e no resto da janela continuam sendo diagrama
+  anterior/proximo e primeira/ultima pagina do livro, que e um par que faltava;
+- **o recorte do diagrama ao lado do tabuleiro** (S-282), com clique para ampliar: conferir o que o
+  modelo leu contra o que esta impresso deixou de exigir troca de aba;
+- **a linha impressa no livro vira variante** (S-283). E o que fecha a S-208: `text/notacao.validar`
+  joga a notacao da pagina sobre a posicao e **para no primeiro lance que ela nao sustenta**, dizendo
+  qual foi. Exige a folha lida na aba Texto;
+- **voltar para a pagina do diagrama** (S-284);
+- **analise continua com o motor** (S-285), com a avaliacao gravada no lance em `[%eval]` -- que o
+  Lichess e o ChessBase leem --, **lances candidatos** em MultiPV e a linha do motor virando variante
+  com a procedencia escrita (S-286);
+- **que partidas da sua base chegaram a esta posicao** (S-287), lido do cache de `cvoff-games`. A
+  resposta tem quatro estados, e "esta posicao nunca foi perguntada a base" e um deles.
+
+E as Fases 49 e 50, que fecham o plano:
+
+- **colar uma FEN ou um PGN** no mesmo campo (S-288). Quem decide qual e o proprio dado: o programa
+  pergunta se o `chess` monta um tabuleiro com aquilo, e nao conta barras;
+- **abrir um `.pgn`**: o que este programa gravou volta **para a sala** com os estudos nos diagramas
+  certos -- e um `.pgn` de fora com muitas partidas abre uma lista para escolher;
+- **exportar o estudo** para `.md`, `.html` e `.rtf` (S-289), com o recorte do diagrama gravado ao
+  lado do arquivo, alem do PGN que ja existia. E **levar a linha para a aba Texto**, que e o inverso
+  exato da S-283;
+- **treinar** (S-290): a linha some da lista e o tabuleiro cobra o lance. Acertar avanca; errar
+  **nao cria variante** e diz como guardar o lance -- desligando o treino. O placar nao entra no
+  arquivo.
+
+O plano completo esta em [docs/ROADMAP_ESTUDO.md](docs/ROADMAP_ESTUDO.md) e
+[docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md).
+
 ### Motor de analise (Stockfish)
 
-Avalia a posicao na aba **Analise**: pontuacao, melhor lance, linha principal e barra de
+Avalia a posicao na aba **Estudo**: pontuacao, melhor lance, linha principal e barra de
 vantagem. Sem binario instalado, a secao simplesmente nao aparece -- nao ha botao cinza nem
 mensagem de erro.
 
@@ -508,7 +562,7 @@ sozinha -- adotar a leitura dela e um clique seu, e a procedencia registra que v
 Le o texto **em volta do diagrama** nas paginas que nao tem camada de texto. Medido em
 2026-08-14, quando o acervo tinha 27 livros: **7 deles sao scan puro** e saem inteiros como
 `[SideToMoveSource "default"]`, mesmo quando a pagina tem `LAS BLANCAS JUEGAN PRIMERO`
-impresso no topo. (Hoje o acervo tem 39 PDFs; os 12 que entraram depois nao foram
+impresso no topo. (Hoje o acervo tem 45 PDFs; os 18 que entraram depois nao foram
 classificados, e por isso o denominador aqui continua 27.) Outros 5 livros tem
 camada de texto que falha em parte das paginas.
 

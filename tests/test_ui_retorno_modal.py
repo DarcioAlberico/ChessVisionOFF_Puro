@@ -45,8 +45,25 @@ RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 49
+LIMITE = 52
 """Quantas chamadas de `messagebox` a interface ainda faz.
+
+**51 -> 52 na S-289**, e a nova é um `showerror` de falha ao **gravar** o estudo exportado --
+linha 6 da tabela: erro interrompe um gesto que a pessoa acabou de fazer, e ela acabou de escolher o
+arquivo. É a mesma caixa que `save_pgn` já tinha ao lado, pela mesma razão.
+
+**49 -> 51 nas S-270 e S-275**, e as duas são decisão pela régua da linha 4 da tabela: elas
+perguntam antes de **apagar análise humana**, que é a regra 7 da SPEC_ESTUDO.
+
+`_confirmar_abandono` só aparece para o estudo **avulso** -- o de uma FEN digitada à mão, que não
+está atado a diagrama nenhum e por isso não tem para onde ir quando se troca de posição. Estudo com
+âncora no livro não pergunta nada: ele fica guardado na sala e volta ao próximo clique naquele
+diagrama, que é exatamente o que a S-270 veio entregar. `_confirmar_apagar` só aparece quando há
+mais de um lance ou anotação a perder -- apagar um lance solto é o desfazer de um clique errado, e
+perguntar ali seria atrito.
+
+Ou seja: as duas caixas novas existem para que a interface **pare** de fazer em silêncio o que
+fazia antes -- `_set_board_state` descartava a árvore inteira sem uma palavra.
 
 **48 -> 49 na S-255**, e a nova é a pergunta de recuperação do rascunho. Ela é decisão pela
 régua da tabela acima: o que está na tela muda conforme a resposta, e a resposta não pode ser

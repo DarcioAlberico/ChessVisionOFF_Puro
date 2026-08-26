@@ -103,14 +103,22 @@ class DestinoTests(unittest.TestCase):
 
 
 class NenhumaTeclaNovaTests(unittest.TestCase):
-    def test_a_tabela_tem_as_dezesseis_teclas(self) -> None:
+    def test_a_tabela_tem_as_dezoito_teclas(self) -> None:
         """Catorze da S-244 -- que era o **oposto** de acrescentar teclas: `Ctrl+S` continua sendo
-        uma tecla só, e o que ela mudou foi o destino conforme o foco -- mais as duas da S-267.
+        uma tecla só, e o que ela mudou foi o destino conforme o foco --, mais as duas da S-267 e as
+        duas da S-281.
 
-        As duas novas não contradizem aquilo. Elas não dão um segundo destino a tecla nenhuma:
+        As da S-267 não contradizem aquilo. Elas não dão um segundo destino a tecla nenhuma:
         `achar` e `substituir` já estavam declarados em `texto_panel.ACOES_PROPRIAS` e **não tinham
-        tecla**, então a declaração da aba não fazia nada."""
-        self.assertEqual(len(atalhos.ATALHOS), 16)
+        tecla**, então a declaração da aba não fazia nada.
+
+        As da S-281 são o caso oposto e igualmente honesto: `Home` e `End` **têm** dois destinos --
+        primeira/última página na janela, início/fim da linha na sala --, e por isso elas declaram
+        `na_sala` e a legenda mostra as duas linhas. O que elas acrescentam ao resto do programa é o
+        par que faltava desde a S-70: virar uma página tinha tecla, e ir à ponta não tinha."""
+        self.assertEqual(len(atalhos.ATALHOS), 18)
+        self.assertEqual(atalhos.acao_de("<Home>"), "primeira_pagina")
+        self.assertEqual(atalhos.acao_de("<End>"), "ultima_pagina")
         self.assertEqual(atalhos.acao_de("<Control-f>"), "achar")
         self.assertEqual(atalhos.acao_de("<Control-h>"), "substituir")
 

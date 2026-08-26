@@ -126,7 +126,9 @@ class SemLiteralTests(unittest.TestCase):
             # Três: os dois que já existiam mais a linha de detalhe do motivo, que a S-153
             # acrescentou -- e que nasceu acompanhando a largura em vez de com um número.
             "review_panel.py": 3,
-            "study_panel.py": 2,
+            # Cinco: a linha de estado, a do motor, a dos símbolos do lance (S-280), o placar do
+            # treino (S-290) e a frase da caixa de colar (S-288).
+            "study_panel.py": 5,
             "training_dialog.py": 2,
         }
         contados = {}

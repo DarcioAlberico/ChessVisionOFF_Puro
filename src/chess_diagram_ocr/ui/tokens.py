@@ -167,6 +167,23 @@ página. Um cinza quase preto não disputa matiz com ninguém — e dá 13,42:1 
 5,85 sobre a escura e **11,42 sobre o amarelo do último lance**, que é o par que o item existe
 para separar."""
 
+SETA_VERDE = "SETA_VERDE"
+SETA_VERMELHA = "SETA_VERMELHA"
+SETA_AZUL = "SETA_AZUL"
+SETA_AMARELA = "SETA_AMARELA"
+"""As quatro cores de seta e de casa marcada do tabuleiro de estudo (S-279).
+
+**São quatro porque o formato só sabe quatro.** `chess.svg.Arrow.pgn` escreve `G`, `R`, `B` e `Y` e
+transforma qualquer outra cor em verde na gravação -- uma quinta cor seria uma cor que não sobrevive
+ao arquivo. Não é escolha de paleta: é o alfabeto de `[%cal]`/`[%csl]`, que é o mesmo do Lichess, do
+ChessBase e do Scid.
+
+**Elas moram aqui e não no tabuleiro** por uma razão que este módulo já registra em `CASA_CLARA`: a
+seta é desenhada sobre as duas casas, a clara e a escura, e um hexadecimal cravado no renderizador
+seria mais um número solto -- o defeito que a S-145 veio fechar. Os valores são escuros e saturados
+o bastante para se lerem sobre `#f0d9b5` e sobre `#b58863` sem depender de transparência, que o
+canvas do Tk não tem."""
+
 TEXTO_SOBRE_MARCACAO = "TEXTO_SOBRE_MARCACAO"
 """O número dentro do retângulo do diagrama, e o rótulo sobre a casa. Escuro, sobre marcação."""
 
@@ -236,6 +253,10 @@ PAPEIS: tuple[str, ...] = (
     CASA_ULTIMO_LANCE,
     CONTORNO_DE_SELECAO,
     ALVO,
+    SETA_VERDE,
+    SETA_VERMELHA,
+    SETA_AZUL,
+    SETA_AMARELA,
     TEXTO_SOBRE_MARCACAO,
     TRACEJADO,
     AUTOR_DESTAQUE,
@@ -276,6 +297,10 @@ RESERVA: dict[str, str] = {
     CASA_ULTIMO_LANCE: "#cdd26a",
     CONTORNO_DE_SELECAO: "#141414",
     ALVO: "#3f7f4c",
+    SETA_VERDE: "#15781b",
+    SETA_VERMELHA: "#882020",
+    SETA_AZUL: "#003088",
+    SETA_AMARELA: "#c07c00",
     TEXTO_SOBRE_MARCACAO: "#101010",
     TRACEJADO: "#ff5cc8",
     AUTOR_DESTAQUE: "#bb1ea1",

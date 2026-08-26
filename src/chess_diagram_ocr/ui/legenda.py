@@ -76,16 +76,22 @@ class JanelaDeAtalhos(tk.Toplevel):
 
 
 def _descricao(atalho: atalhos.Atalho) -> str:
-    """O que a tecla faz -- **e o que ela faz no editor de texto**, quando difere (S-244).
+    """O que a tecla faz -- **e o que ela faz nos dois lugares que a tomam para si** (S-244/S-281).
 
-    Numa etiqueta só, e não em duas: `linhas()` lê os rótulos aos pares, e uma terceira coluna
-    faria a legenda mentir sobre a própria estrutura. Duas linhas dentro do mesmo `Label` é o que a
+    Numa etiqueta só, e não em três colunas: `linhas()` lê os rótulos aos pares, e uma coluna a
+    mais faria a legenda mentir sobre a própria estrutura. Linhas dentro do mesmo `Label` é o que a
     S-244 pede -- *"uma tecla que faz duas coisas e uma legenda que só conta uma é pior que não ter
     legenda"* -- sem mexer em quem já lê esta janela.
+
+    **Três destinos e não dois, desde a S-281**: `←` é "diagrama anterior" na janela, e "lance
+    anterior" dentro da sala de estudo. O laço abaixo é o que faz o quarto destino, quando houver,
+    entrar sem ninguém editar esta função.
     """
-    if not atalho.no_editor:
-        return atalho.descricao
-    return f"{atalho.descricao}" + chr(10) + f"No editor de texto: {atalho.no_editor}"
+    linhas = [atalho.descricao]
+    for onde, texto in (("No editor de texto", atalho.no_editor), ("Na sala de estudo", atalho.na_sala)):
+        if texto:
+            linhas.append(f"{onde}: {texto}")
+    return chr(10).join(linhas)
 
 
 def abrir(pai: tk.Misc) -> JanelaDeAtalhos:

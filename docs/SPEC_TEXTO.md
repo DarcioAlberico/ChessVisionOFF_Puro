@@ -2776,7 +2776,7 @@ resolvido por prioridade fixa.
 
 ---
 
-## S-208 · A notação validada pelas regras, e o PGN que sai dela ◐ parcial (2026-08-24)
+## S-208 · A notação validada pelas regras, e o PGN que sai dela ✅ implementada (2026-08-26)
 
 **Problema.** O projeto exporta PGN **de posições**: cada diagrama vira um `[FEN]`. A partida
 impressa em volta dele — `1...♗xb7 2.♗xb7 ♘d7 3.♗xa8 ♕xa8 4.♘f3±` — é ignorada.
@@ -2847,6 +2847,40 @@ espaçada do `Capablanca`, virava `152`).
 **O falso positivo que sobra**, e ele é honesto: `Capablanca` p72, `7` + `2` → `72`. É
 estruturalmente idêntico ao caso que se quer consertar — dígito, dígito, lance —, e só a
 **legalidade** separaria os dois: existe lance 72 nesta partida? Isso é `validar`.
+
+### O que entrou em 2026-08-26: `validar`, e a metade que dá o PGN de partida
+
+Entrou a metade que faltava, e ela entrou porque **apareceu o cliente**: a sala de estudo da Fase 47
+(S-283). Uma linha impressa só vira lance quando há uma posição sobre a qual jogá-la, e a posição é
+a raiz do estudo daquele diagrama -- que só passou a existir na S-268.
+
+`validar(tokens, board)` devolve uma `LinhaValidada`: os lances que fecharam, e **onde parou** quando
+parou. O contrato é o da S-15, dito na assinatura em vez de na prosa: não há caminho por onde um
+lance ilegal seja reescrito, porque a função não reescreve nada -- ela para.
+
+**O tabuleiro é o dicionário**, e é isso que separa os dois falsos positivos que a metade de cima
+registrou. `Capablanca` p72, `7` + `2` → `72`: a fatia é *estruturalmente idêntica* ao caso que
+`juntar_numero_de_lance` existe para consertar -- dígito, dígito, lance --, e nenhuma régua de
+geometria ou de lista de palavras os separa. A legalidade separa: ou existe lance 72 nesta partida,
+ou não existe.
+
+**A figurina ganha o lado pela posição, e não pela paridade.** A S-208 escreveu que "quem decide é a
+paridade do número do lance", e com um tabuleiro na mão isso vira um caso particular de uma coisa
+mais forte: `♗xb7` é o bispo de quem está a jogar, e o tabuleiro sabe quem é. `para_ingles` troca a
+figurina pela inicial inglesa (`LETRA_DA_FIGURINA`, que já existia para a busca da S-245) e o
+`parse_san` faz o resto. O número impresso continua sendo lido -- e é **conferido, não obedecido**:
+um `15.` numa posição de pretas para a linha com o motivo, porque isso vale mais dito que corrigido.
+
+**As iniciais de outras línguas continuam fora**, pela razão que `FIGURINAS_DA_LETRA` já registrava:
+`R` é *rook* em inglês e *rei* em português, `C` é *cavalo* e nada em inglês. Traduzi-las exigiria
+saber a língua do livro, e errar a língua troca uma peça por outra **num lance que o tabuleiro
+aceita** -- o pior defeito possível aqui, porque ele não levanta.
+
+**O `.review.pgn` não entrou, e a razão é que ele deixou de ser o lugar certo.** A spec o previa
+como o destino do que não fecha, e quem consome `validar` hoje é uma aba: ela mostra o lance que
+travou e o motivo no rodapé, com os lances anteriores já na árvore, e quem lê decide na hora --
+que é melhor que um arquivo que alguém abriria depois. O arquivo volta a fazer sentido quando
+houver um comando de linha que valide o livro inteiro de uma vez; até lá, seria formato sem cliente.
 
 **Sonda.** `simbolo:chess_diagram_ocr.text.notacao:fatiar`,
 `simbolo:chess_diagram_ocr.text.notacao:validar`.

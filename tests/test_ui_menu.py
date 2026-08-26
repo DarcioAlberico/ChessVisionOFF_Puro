@@ -22,12 +22,12 @@ if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app_tkinter  # noqa: E402 - depende do `sys.path` ajustado acima
-from chess_diagram_ocr.ui import atalhos, menu, pele, texto_panel  # noqa: E402
+from chess_diagram_ocr.ui import atalhos, menu, pele, study_panel, texto_panel  # noqa: E402
 from chess_diagram_ocr.ui.state import AppState  # noqa: E402
 
 
 class TabelaDeAtalhosTests(unittest.TestCase):
-    def test_sao_dezesseis_e_cada_um_novo_tem_dono(self) -> None:
+    def test_sao_dezoito_e_cada_um_novo_tem_dono(self) -> None:
         """Eram dez -- a avaliação escreveu "onze" e listou dez (S-135). O décimo primeiro é o
         `Ctrl+Enter` da S-223, e ele entrou por uma razão que o teste consegue cobrar: a fila da
         pele "Foco" só admite comando com tecla, e `aplicar_fen` não tinha uma.
@@ -44,8 +44,14 @@ class TabelaDeAtalhosTests(unittest.TestCase):
         O décimo quinto e o décimo sexto são da S-267, e a razão deles é uma declaração vazia:
         `achar` e `substituir` estavam em `texto_panel.ACOES_PROPRIAS` -- "a aba atende esta ação
         global enquanto tem o foco" -- e a tabela não tinha as teclas, então não havia ação global
-        nenhuma para atender. `Ctrl+F` num editor de texto não fazia nada."""
-        self.assertEqual(len(atalhos.ATALHOS), 16)
+        nenhuma para atender. `Ctrl+F` num editor de texto não fazia nada.
+
+        O décimo sétimo e o décimo oitavo são da S-281, e eles fecham o par que faltava desde a
+        S-70: virar **uma** página tinha tecla (`Page Up`/`Page Down`) e ir à primeira ou à última
+        não tinha nenhuma. Eles nasceram de fora -- a sala de estudo precisava de "início" e "fim da
+        linha", e aqui não entra tecla sem comando global --, e o resultado é que a pergunta *o que
+        Home e End fazem no resto da janela?* finalmente foi feita."""
+        self.assertEqual(len(atalhos.ATALHOS), 18)
         self.assertEqual("Ctrl+Enter", atalhos.acelerador("aplicar_fen"))
         self.assertEqual("Ctrl+Z", atalhos.acelerador("desfazer"))
         self.assertEqual("Ctrl+Y", atalhos.acelerador("refazer"))
@@ -114,14 +120,15 @@ class DeclaracaoDoMenuTests(unittest.TestCase):
         Sem janela de verdade -- percorre o **código** de `_comandos` procurando cada nome, que é o
         que permite este teste rodar sem Tk, sem checkpoint e sem PDF.
 
-        **Os do editor de texto não aparecem no código de `_comandos`, e é de propósito**: a janela
-        os gera de `texto_panel.COMANDOS_DA_ABA` em vez de repetir quarenta `lambda` (S-259). Por
-        isso a tabela entra na conta ao lado da varredura -- o que o teste cobra continua sendo o
+        **Os do editor de texto e os da sala de estudo não aparecem no código de `_comandos`, e é
+        de propósito**: a janela os gera de `texto_panel.COMANDOS_DA_ABA` (S-259) e de
+        `study_panel.COMANDOS_DA_ABA` (S-280) em vez de repetir sessenta e quatro `lambda`. Por isso
+        as duas tabelas entram na conta ao lado da varredura -- o que o teste cobra continua sendo o
         mesmo: item de menu que ninguém amarra é o item inerte da S-161.
         """
         fonte = (Path(app_tkinter.__file__).read_text(encoding="utf-8")).split("def _comandos", 1)[1]
         fonte = fonte.split("def _build_menu", 1)[0]
-        gerados = set(texto_panel.COMANDOS_DA_ABA)
+        gerados = set(texto_panel.COMANDOS_DA_ABA) | set(study_panel.COMANDOS_DA_ABA)
         faltando = [
             acao
             for acao in menu.comandos_faltando({})

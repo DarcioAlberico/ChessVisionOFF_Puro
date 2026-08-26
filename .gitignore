@@ -30,6 +30,11 @@ data/quarantine.csv
 # o caminho do livro dela na chave. E rede de seguranca contra fechar a janela, nao artefato do
 # projeto -- e ele some sozinho quando alguem salva ou recupera.
 data/rascunhos/
+# A sala de estudo de cada livro (S-271): um PGN por PDF, com uma partida por diagrama. E
+# analise de UMA pessoa sobre um livro que nem esta no repositorio, e o caminho dele entra na
+# chave do arquivo. Fica fora pelo mesmo motivo do rascunho acima -- e o arquivo em si e PGN
+# de verdade: quem quiser levar embora abre no ChessBase.
+data/estudos/
 data/labels.csv.bak-*
 data/splits.csv.bak-*
 data/field_set.jsonl.bak-*

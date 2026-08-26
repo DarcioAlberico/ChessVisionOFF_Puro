@@ -28,6 +28,7 @@ import shutil
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import chess
 import chess.engine
@@ -227,21 +228,59 @@ class EngineAnalyzer:
             except chess.engine.EngineError as exc:
                 raise RuntimeError(f"O motor de analise falhou: {exc}") from exc
 
-        decorrido = time.monotonic() - inicio
-        pontuacao = info.get("score")
-        cp, mate = _to_white_pov(pontuacao) if pontuacao is not None else (None, None)
+        return _avaliacao_de(board, info, elapsed_s=time.monotonic() - inicio)
 
-        pv = list(info.get("pv") or [])
-        melhor = pv[0] if pv else None
-        return Evaluation(
-            score_cp=cp,
-            mate_in=mate,
-            best_move=melhor,
-            best_move_san=board.san(melhor) if melhor is not None else "",
-            pv_san=tuple(_variation_san(board, pv)),
-            depth=int(str(info.get("depth") or 0)),
-            elapsed_s=decorrido,
-        )
+
+    def analyse_multi(
+        self, board: chess.Board, *, count: int = 3, movetime_ms: int | None = None
+    ) -> list[Evaluation]:
+        """As `count` melhores linhas, da melhor para a pior (S-286).
+
+        **Uma linha diz "o motor prefere isto"; três dizem "estas são as opções"** -- e a segunda
+        frase é a que um estudo precisa. Para quem lê um livro a pergunta quase nunca é qual é o
+        melhor lance: é se o lance que o livro dá está entre os candidatos.
+
+        `MultiPV` é opção UCI, e nem todo motor a aceita. Motor que recusa devolve **uma** linha em
+        vez de erro: a degradação é a mesma que `start` já aplica a `Threads`, e é a regra do
+        projeto desde a S-33 -- aparência não derruba ferramenta.
+
+        A opção é reposta em 1 no fim. Deixá-la ligada faria a `analyse` seguinte -- que lê
+        `info["pv"]` de um `dict` e não de uma lista -- receber outra forma de resposta.
+        """
+        quantas = max(1, int(count))
+        limite = chess.engine.Limit(time=(movetime_ms or self.movetime_ms) / 1000.0)
+        with self._lock:
+            self.start()
+            assert self._engine is not None
+            try:
+                infos = self._engine.analyse(board, limite, multipv=quantas)
+            except chess.engine.EngineError as exc:
+                raise RuntimeError(f"O motor de analise falhou: {exc}") from exc
+
+        avaliacoes = [_avaliacao_de(board, info) for info in infos]
+        return avaliacoes or [_avaliacao_de(board, {})]
+
+
+def _avaliacao_de(board: chess.Board, info: Any, *, elapsed_s: float = 0.0) -> Evaluation:
+    """Uma resposta do UCI virada `Evaluation`. É o mesmo molde para a linha única e para o MultiPV.
+
+    Existe porque a S-286 precisava do mesmo desmonte duas vezes, e duas cópias dele divergiriam na
+    primeira vez que um campo mudasse -- é o mecanismo que a S-31 registra para todo par de
+    implementações da mesma coisa.
+    """
+    pontuacao = info.get("score")
+    cp, mate = _to_white_pov(pontuacao) if pontuacao is not None else (None, None)
+    pv = list(info.get("pv") or [])
+    melhor = pv[0] if pv and board.is_legal(pv[0]) else None
+    return Evaluation(
+        score_cp=cp,
+        mate_in=mate,
+        best_move=melhor,
+        best_move_san=board.san(melhor) if melhor is not None else "",
+        pv_san=tuple(_variation_san(board, pv)),
+        depth=int(str(info.get("depth") or 0)),
+        elapsed_s=elapsed_s,
+    )
 
 
 def _variation_san(board: chess.Board, moves: list[chess.Move], *, limit: int = 6) -> list[str]:

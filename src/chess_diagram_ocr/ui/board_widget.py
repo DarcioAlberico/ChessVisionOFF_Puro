@@ -63,7 +63,34 @@ from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["BoardMode", "InteractiveBoard", "PieceImages", "heatmap_color"]
+__all__ = ["BoardMode", "InteractiveBoard", "PieceImages", "cor_de_seta", "heatmap_color"]
+
+CORES_DE_SETA: tuple[str, ...] = ("green", "red", "blue", "yellow")
+"""As quatro cores de `[%cal]`, na ordem dos modificadores. Repetidas de `estudo.CORES_DE_SETA`
+**de propósito**: este módulo não importa o estudo -- ele desenha um tabuleiro, e um tabuleiro não
+sabe o que é uma partida anotada. Quem afirma que as duas tuplas são a mesma é o teste."""
+
+_SHIFT = 0x0001
+_CONTROL = 0x0004
+_ALT = 0x20000 | 0x0008
+"""Os bits de `event.state` do Tk. O Alt é declarado nos dois valores porque ele não é o mesmo em
+Windows e em X11, e a alternativa seria uma tecla que funciona numa máquina e não na outra."""
+
+
+def cor_de_seta(state: int) -> str:
+    """A cor da seta pelo modificador segurado: nada, `Shift`, `Alt`, `Ctrl` (S-279).
+
+    É a ordem do Lichess e do Chess.com, e a escolha é de reconhecimento e não de gosto: quem
+    desenha seta num tabuleiro já aprendeu esse gesto em outro lugar.
+    """
+    bits = int(state or 0)
+    if bits & _SHIFT:
+        return "red"
+    if bits & _ALT:
+        return "blue"
+    if bits & _CONTROL:
+        return "yellow"
+    return "green"
 
 CLASS_NAMES_PT: dict[str, str] = {"empty": "casa vazia", **board_edit.PIECE_NAMES_PT}
 
@@ -98,6 +125,7 @@ class InteractiveBoard(ttk.Frame):
         on_move: Callable[[chess.Move], None] | None = None,
         on_select: Callable[[int | None], None] | None = None,
         on_status: Callable[[str], None] | None = None,
+        on_arrow: Callable[[int, int, str], None] | None = None,
         promotion_chooser: Callable[[], int | None] | None = None,
         piece_images: PieceImages | None = None,
         show_palette: bool | None = None,
@@ -121,6 +149,15 @@ class InteractiveBoard(ttk.Frame):
         self._on_move = on_move
         self._on_select = on_select
         self._on_status = on_status
+        self._on_arrow = on_arrow
+        """Quem recebe a seta desenhada com o botão direito (S-279). `None` desliga o gesto.
+
+        O widget **não** guarda a seta: ele avisa quem sabe a que lance ela pertence. É a mesma
+        fronteira de `on_move` -- aqui se desenha, lá se decide o que aquilo significa."""
+
+        self._arrow_from: int | None = None
+        self._arrow_to: int | None = None
+        self._arrow_color: str = CORES_DE_SETA[0]
         self._min_size = min_size
         self._max_size = max_size
         self._show_coordinates = show_coordinates
@@ -155,7 +192,13 @@ class InteractiveBoard(ttk.Frame):
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
-        self.canvas.bind("<Button-3>", self._on_right_click)
+        # O botão direito faz duas coisas conforme o modo, e as duas são as do programa que a pessoa
+        # já usa: em edição ele **apaga** a peça (desde a S-20); em jogo ele **desenha seta**, que é
+        # o gesto do Lichess, do Chess.com e do ChessBase. Não há disputa: `BoardModel.erase` já
+        # começava com `if self.mode != "edit"`, então em jogo o clique direito não fazia nada.
+        self.canvas.bind("<ButtonPress-3>", self._on_right_press)
+        self.canvas.bind("<B3-Motion>", self._on_right_drag)
+        self.canvas.bind("<ButtonRelease-3>", self._on_right_release)
         self.canvas.bind("<Configure>", lambda _event: self.redraw())
         self.canvas.bind("<Motion>", self._on_motion)
         self.canvas.bind("<Leave>", lambda _event: self._hide_tooltip())
@@ -263,6 +306,11 @@ class InteractiveBoard(ttk.Frame):
 
     def set_heatmap_enabled(self, enabled: bool) -> None:
         self.model.heatmap_enabled = bool(enabled)
+        self.redraw()
+
+    def set_arrows(self, arrows: Iterable[tuple[int, int, str]]) -> None:
+        """As setas e casas marcadas do lance corrente (S-279). Vazio apaga todas."""
+        self.model.set_arrows(arrows)
         self.redraw()
 
     def top_classes(self, index: int, count: int = 3) -> list[tuple[str, float]]:
@@ -469,11 +517,49 @@ class InteractiveBoard(ttk.Frame):
         sujas = set(mudanca.dirty) | ({origem} if origem is not None else set())
         self._commit(mudanca, notify_select=True, extra_dirty=sujas)
 
-    def _on_right_click(self, event: tk.Event) -> None:
+    def _on_right_press(self, event: tk.Event) -> None:
         index = self._index_from_xy(event.x, event.y)
         if index is None:
             return
-        self._commit(self.model.erase(index))
+        if self.model.mode == "edit":
+            self._commit(self.model.erase(index))
+            return
+        self._arrow_from = index
+        self._arrow_to = index
+        self._arrow_color = cor_de_seta(getattr(event, "state", 0))
+
+    def _on_right_drag(self, event: tk.Event) -> None:
+        if self._arrow_from is None:
+            return
+        alvo = self._index_from_xy(event.x, event.y)
+        if alvo is None or alvo == self._arrow_to:
+            return
+        self._arrow_to = alvo
+        self._desenhar_previa()
+
+    def _on_right_release(self, event: tk.Event) -> None:
+        origem = self._arrow_from
+        self._arrow_from = None
+        self._arrow_to = None
+        if origem is None:
+            return
+        self.canvas.delete(board_render.ARROWS_TAG)
+        destino = self._index_from_xy(event.x, event.y)
+        if destino is None or self._on_arrow is None:
+            self.redraw()
+            return
+        self._on_arrow(origem, destino, self._arrow_color)
+
+    def _desenhar_previa(self) -> None:
+        """A seta que está sendo arrastada. Sem ela o gesto pareceria não estar acontecendo."""
+        if self._geometry is None or self._arrow_from is None or self._arrow_to is None:
+            return
+        self.renderer.draw_arrows(
+            self.canvas,
+            self.model,
+            self._geometry,
+            extra=(self._arrow_from, self._arrow_to, self._arrow_color),
+        )
 
     # ------------------------------------------------------------ repasse
 

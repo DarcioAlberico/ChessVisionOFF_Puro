@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from tkinter import ttk
 
-from chess_diagram_ocr.ui import estilos
+from chess_diagram_ocr.ui import comandos, estilos
 from chess_diagram_ocr.ui.estilos import DESTRUTIVO, NEUTRO, PAPEIS_DE_BOTAO, PRIMARIO, estilo_de_botao
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -90,12 +90,33 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
         dataset = (RAIZ / "src" / "chess_diagram_ocr" / "ui" / "dataset_panel.py").read_text(encoding="utf-8")
         self.assertEqual(len(re.findall(r"estilos\.DESTRUTIVO", dataset)), 2)
 
+    def test_o_destrutivo_alcanca_os_dois_da_sala_de_estudo(self) -> None:
+        """Apagar variante e apagar continuação tiram **análise humana** da árvore (S-280).
+
+        A régua é a mesma dos dois do Dataset: destrutivo é o que apaga trabalho que não sai de
+        graça de uma releitura. Uma variante com comentário e setas é a tarde de alguém, e é por
+        isso que os dois também **perguntam** antes quando há o que perder.
+
+        Eles vêm do catálogo e não de um `style=` no painel: desde a S-219 o papel é declarado uma
+        vez, e é `comandos.estilo` que o traduz em nome de estilo `ttk`.
+        """
+        self.assertEqual(
+            {registro.acao for registro in comandos.CATALOGO if registro.papel == estilos.DESTRUTIVO},
+            {"apagar_variante", "apagar_continuacao"},
+        )
+
     def test_nenhum_outro_botao_da_janela_e_destrutivo(self) -> None:
-        """Vermelho que aparece onde não se apaga nada deixa de significar "cuidado"."""
+        """Vermelho que aparece onde não se apaga nada deixa de significar "cuidado".
+
+        `comandos.py` sai da varredura de literais pela mesma razão que já o tirava de
+        `test_nenhum_painel_tem_duas_acoes_primarias`: lá o papel é **dado**, e contar ocorrências
+        de texto num catálogo é contar declarações, não botões. A propriedade dele é afirmada
+        acima, por nome.
+        """
         fora = {
             arquivo.name: len(re.findall(r"estilos\.DESTRUTIVO", arquivo.read_text(encoding="utf-8")))
             for arquivo in ARQUIVOS
-            if arquivo.name not in ("dataset_panel.py", "estilos.py")
+            if arquivo.name not in ("dataset_panel.py", "estilos.py", "comandos.py")
         }
         self.assertEqual({}, {nome: n for nome, n in fora.items() if n}, "danger fora do Dataset")
 

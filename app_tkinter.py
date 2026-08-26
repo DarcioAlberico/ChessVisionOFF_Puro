@@ -139,7 +139,10 @@ from chess_diagram_ocr.ui.result_panel import ResultPanel, read_board_image
 from chess_diagram_ocr.ui.review_panel import ReviewPanel, ScanRequest
 from chess_diagram_ocr.ui.shortcuts import bind_shortcuts
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
-from chess_diagram_ocr.ui.study_panel import StudyPanel
+from chess_diagram_ocr.ui.study_panel import (
+    COMANDOS_DA_ABA as COMANDOS_DO_ESTUDO,
+)
+from chess_diagram_ocr.ui.study_panel import StudyPanel, posicao_do_painel, recorte_do_painel
 from chess_diagram_ocr.ui.texto_panel import TextoPanel
 from chess_diagram_ocr.ui.theme import apply_theme
 from chess_diagram_ocr.ui.tooltip import Tooltip
@@ -389,13 +392,21 @@ class ChessOcrTkApp:
         self.study_panel = StudyPanel(
             tabs,
             piece_images=self.piece_images,
-            # Vinculo de mao única: o estudo le a FEN do diagrama selecionado e nunca
-            # escreve de volta. Um lance jogado na análise não e uma correção do OCR.
-            current_fen=lambda: self.result_panel.fen_var.get() if self.result_panel else "",
+            # Vinculo de mao única: o estudo le a posição do diagrama selecionado e nunca
+            # escreve de volta. Um lance jogado no estudo não e uma correção do OCR.
+            posicao=self._posicao_de_estudo,
             initial_dir=ROOT,
             analyzer=self.analyzer,
+            # As quatro portas por onde o **livro** entra na sala (Fase 47/48). Cada uma é uma
+            # pergunta que outro painel já sabe responder, e nenhuma delas deixa a sala escrever
+            # naquele painel: o vínculo continua de mão única.
+            recorte=lambda ancora: recorte_do_painel(self.result_panel, ancora),
+            linha_impressa=self._linha_impressa,
+            abrir_pagina=self._abrir_pagina_do_estudo,
+            bases_de_partidas=_bases_de_partidas,
+            para_o_texto=self._linha_para_o_texto,
         )
-        tabs.add(self.study_panel, text=abas.ANALISE)
+        tabs.add(self.study_panel, text=abas.ESTUDO)
 
         self.review_panel = ReviewPanel(
             tabs,
@@ -615,6 +626,8 @@ class ChessOcrTkApp:
         try:
             if self.main_pane is not None:
                 self.main_pane.sash_place(0, int(max(1, self.main_pane.winfo_width()) * fracao), 0)
+            if self.study_panel is not None:
+                self.study_panel.posicionar_divisor(self.state.estudo_divisor)
         except tk.TclError as exc:
             # Erro transitorio de geometria enquanto o primeiro layout se estabiliza.
             logger.debug("Não foi possível posicionar o divisor inicial: %s", exc)
@@ -756,6 +769,9 @@ class ChessOcrTkApp:
                 self.state.show_heatmap = bool(self.result_panel.heatmap_var.get())
             if self.review_panel is not None:
                 self.state.review_queue_path = str(self.review_panel.queue_path)
+            if self.study_panel is not None:
+                self.state.estudo_aberto = self.study_panel.chave_do_estudo_aberto
+                self.state.estudo_divisor = self.study_panel.fracao_do_divisor or self.state.estudo_divisor
             self._remember_window_arrangement()
         except tk.TclError as exc:
             logger.warning("Estado da aplicacao não pode ser montado: %s", exc)
@@ -773,6 +789,8 @@ class ChessOcrTkApp:
             self.busy.request_cancel()
 
         self._save_app_state()
+        if self.study_panel is not None:
+            self.study_panel.salvar_agora()  # o estudo e trabalho humano (S-271)
         if self.analyzer is not None:
             # O motor e um processo, nao um widget: fechar a janela nao o encerra.
             self.analyzer.close()
@@ -888,6 +906,8 @@ class ChessOcrTkApp:
             self.gallery_panel.load_pdf(pdf_path, request_page=False)
         if self.result_panel is not None:
             self.result_panel.discard_document_results(str(pdf_path))
+        if self.study_panel is not None:
+            self.study_panel.abrir_livro(str(pdf_path))  # a sala daquele livro volta do disco (S-271)
         self._atualizar_titulo()
         self._atualizar_abas()
 
@@ -1560,6 +1580,48 @@ class ChessOcrTkApp:
         if self.study_panel is not None:
             self.study_panel.sync_with_ocr()
 
+    def _linha_impressa(self, ancora) -> str:  # noqa: ANN001 - estudo.Ancora
+        """A notação que a aba Texto leu ao lado daquele diagrama, ou `""` (S-283)."""
+        if self.texto_panel is None:
+            return ""
+        return self.texto_panel.notacao_do_diagrama(ancora.pagina, ancora.diagrama)
+
+    def _linha_para_o_texto(self, linha: str) -> bool:
+        """Insere a linha do estudo no cursor da aba de texto (S-289). `False` se não há aba."""
+        if self.texto_panel is None:
+            return False
+        self.texto_panel.inserir_simbolo(linha)
+        self._focar_aba(self.texto_panel)
+        return True
+
+    def _focar_aba(self, painel: tk.Misc) -> None:
+        """Traz para a frente a aba que acabou de receber alguma coisa.
+
+        Inserir texto numa aba que ninguém está vendo é a mesma classe de silêncio que a S-161
+        registra: a ação acontece e nada na tela diz que aconteceu.
+        """
+        if self.left_tabs is None:
+            return
+        try:
+            self.left_tabs.select(painel)
+        except tk.TclError as exc:  # pragma: no cover - aba destruída
+            logger.debug("Não foi possível focar a aba: %s", exc)
+
+    def _abrir_pagina_do_estudo(self, ancora) -> bool:  # noqa: ANN001 - estudo.Ancora
+        """Leva o visualizador à página daquele diagrama (S-284). `False` se o livro não é este."""
+        if self.pdf_panel is None or self._document_key() != ancora.documento:
+            return False
+        self.pdf_panel.go_to_page(int(ancora.pagina))
+        return True
+
+    def _posicao_de_estudo(self):  # noqa: ANN202 - estudo.PosicaoDeEstudo | None
+        """A posição do diagrama selecionado, inteira, para a sala de estudo (S-269).
+
+        Quem decide é `ui/study_panel.posicao_do_painel`, que é afirmável sem janela; aqui só se
+        diz de onde vem o número do lance, que é anotação da Galeria (S-67).
+        """
+        return posicao_do_painel(self.result_panel, self._move_number_of)
+
     def _ask_remote_consent(self, configuracao: RemoteFenSettings) -> bool:
         """Aviso antes do primeiro envio, com "não perguntar novamente" (S-32).
 
@@ -1679,6 +1741,9 @@ class ChessOcrTkApp:
             # página é a outra navegação que a leitura pede o tempo todo (S-70).
             "pagina_anterior": self._on_pdf(lambda p: p.prev_page()),
             "proxima_pagina": self._on_pdf(lambda p: p.next_page()),
+            # As duas da S-281. Ver `ui/atalhos.py` para por que elas nasceram da sala de estudo.
+            "primeira_pagina": self._on_pdf(lambda p: p.go_to_page(0)),
+            "ultima_pagina": self._on_pdf(lambda p: p.go_to_page(max(0, p.page_count - 1))),
             "zoom_menos": self._on_pdf(lambda p: p.diminuir_zoom()),
             "zoom_mais": self._on_pdf(lambda p: p.aumentar_zoom()),
             "ajustar_largura": self._on_pdf(lambda p: p.fit_width()),
@@ -1711,8 +1776,15 @@ class ChessOcrTkApp:
         # comando-método, e a primeira mora em `texto_panel.COMANDOS_DA_ABA` -- que é onde os
         # métodos estão. Um comando novo do editor entra lá, numa linha, e chega aqui sozinho.
         acoes.update(
-            (acao, self._on_texto(lambda painel, nome=metodo: getattr(painel, nome)()))
+            (acao, self._on_texto(_metodo_do_painel(metodo)))
             for acao, metodo in texto_panel.COMANDOS_DA_ABA.items()
+        )
+        # ------------------------------------------------- a sala de estudo (S-280)
+        # Pelo mesmo molde, e pela mesma razão: os vinte e quatro comandos da sala moram em
+        # `study_panel.COMANDOS_DA_ABA`, que é onde os métodos estão.
+        acoes.update(
+            (acao, self._on_estudo(_metodo_do_painel(metodo)))
+            for acao, metodo in COMANDOS_DO_ESTUDO.items()
         )
         return acoes
 
@@ -1847,7 +1919,7 @@ class ChessOcrTkApp:
         global também deixa de responder. É a mesma disciplina de `atalhos.ligacoes`, que recusa
         atalho declarado sem comando.
         """
-        for painel in (self.texto_panel,):
+        for painel in (self.texto_panel, self.study_panel):
             if painel is not None:
                 atalhos.conferir_dono(painel, type(painel).__name__)
         bind_shortcuts(self.root, atalhos.ligacoes(self._comandos()))
@@ -1859,7 +1931,14 @@ class ChessOcrTkApp:
 
         return _run
 
-    def _on_pdf(self, action: Callable[[PdfPanel], None]) -> Callable[[], None]:
+    def _on_pdf(self, action: Callable[[PdfPanel], object]) -> Callable[[], None]:
+        """`object` e não `None` no retorno da ação: o que um comando devolve é ignorado.
+
+        `go_to_page` devolve *se mudou de página* -- resposta útil para a Galeria, que a chama para
+        arrastar o visualizador sem entrar em vaivém (S-67), e irrelevante para uma tecla. Exigir
+        `None` obrigaria a envolver a chamada num método só para descartar um `bool`.
+        """
+
         def _run() -> None:
             if self.pdf_panel is not None:
                 action(self.pdf_panel)
@@ -1872,6 +1951,15 @@ class ChessOcrTkApp:
         def _run() -> None:
             if self.texto_panel is not None:
                 action(self.texto_panel)
+
+        return _run
+
+    def _on_estudo(self, action: Callable[[StudyPanel], None]) -> Callable[[], None]:
+        """O mesmo molde, para a sala de estudo (S-280)."""
+
+        def _run() -> None:
+            if self.study_panel is not None:
+                action(self.study_panel)
 
         return _run
 
@@ -1889,7 +1977,7 @@ class ChessOcrTkApp:
         A ordem decide o empate de `ultimo_editado`, e por isso ela é uma lista e não um conjunto:
         uma tecla que fizesse coisas diferentes em dois dias iguais é pior que uma que não faz nada.
         """
-        return [p for p in (self.result_panel, self.texto_panel) if p is not None]
+        return [p for p in (self.result_panel, self.texto_panel, self.study_panel) if p is not None]
 
     def _foco(self) -> object:
         """O widget com o foco de teclado, ou `None` -- a janela pode nem estar em primeiro plano."""
@@ -1901,6 +1989,32 @@ class ChessOcrTkApp:
     def _open_next_review_item(self) -> None:
         if self.review_panel is not None:
             self.review_panel.open_next_pending()
+
+
+def _metodo_do_painel(nome: str) -> Callable[[Any], None]:
+    """`"negrito"` -> a função que chama `painel.negrito()`.
+
+    **Fechamento e não `lambda ...=nome`**, e a diferença é de verificação: o valor capturado por
+    argumento padrão faz o mypy desistir de inferir o tipo do `lambda`, e a linha passava a ser um
+    erro tolerado em vez de código conferido. As duas abas geradas por tabela usam esta -- a de
+    texto (S-240) e a de estudo (S-280) --, que é o que impede a terceira de recopiar a captura.
+    """
+
+    def _chamar(painel: Any) -> None:
+        getattr(painel, nome)()
+
+    return _chamar
+
+
+def _bases_de_partidas() -> list[Path]:
+    """Os `.pgn` de `pgn_database/` (S-287). Lista vazia = não há base a quem perguntar.
+
+    O `import` mora aqui e não no topo porque `games_db` alcança `pdf_text`, e esta função é
+    chamada quando alguém pergunta -- não quando a janela abre.
+    """
+    from chess_diagram_ocr.games_db import database_paths
+
+    return database_paths()
 
 
 def _provar_as_peles() -> list[str]:

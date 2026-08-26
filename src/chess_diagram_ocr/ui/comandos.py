@@ -41,6 +41,7 @@ __all__ = [
     "CATALOGO",
     "Comando",
     "EDICAO",
+    "ESTUDO",
     "GRUPOS",
     "NAS_BARRAS_DO_PDF",
     "NA_LINHA_DE_CAMPO",
@@ -66,10 +67,11 @@ EDICAO = "EDICAO"
 VISUALIZACAO = "VISUALIZACAO"
 OCR = "OCR"
 ACERVO = "ACERVO"
+ESTUDO = "ESTUDO"
 AJUDA = "AJUDA"
 
-GRUPOS: tuple[str, ...] = (ARQUIVO, EDICAO, VISUALIZACAO, OCR, ACERVO, AJUDA)
-"""Os seis, e o conjunto é fechado.
+GRUPOS: tuple[str, ...] = (ARQUIVO, EDICAO, VISUALIZACAO, OCR, ACERVO, ESTUDO, AJUDA)
+"""Os sete, e o conjunto é fechado.
 
 Não são invenção: são os cinco menus de `menu.MENUS` com **Ferramentas partido em dois**, que é a
 divisão que a Imagem 2 desenha e que o menu já insinuava com o separador de `menu.py:113`.
@@ -78,6 +80,15 @@ O corte entre `OCR` e `ACERVO` é uma pergunta, e não um gosto: **`OCR` age sob
 `ACERVO` age sobre o livro inteiro ou sobre o modelo que o lê.** Por isso "Ler esta página" é OCR
 e "Varrer o livro" é ACERVO, e por isso treinar e recarregar o modelo caem em ACERVO junto da
 anotação de conjunto de campo -- as três são sobre a máquina de ler, não sobre a folha na tela.
+
+**Eram seis, e o sétimo é `ESTUDO`** (S-280). A pergunta dele é a terceira que faltava: `OCR` age
+sobre a página aberta, `ACERVO` sobre o livro ou sobre o modelo, e `ESTUDO` sobre a **análise da
+posição** -- a árvore de variantes, a anotação do lance e o motor. Ele entra depois de `ACERVO` e
+antes de `AJUDA` porque a ordem desta tupla é a da barra de menus, e a Ajuda fecha a barra.
+
+O conjunto continua fechado, e um oitavo grupo continua levantando: o critério para abrir um é o
+que abriu este -- **haver uma pergunta que nenhum dos outros responde**, e não haver comandos
+demais num deles.
 """
 
 _ROTULOS_DE_GRUPO: dict[str, str] = {
@@ -86,6 +97,7 @@ _ROTULOS_DE_GRUPO: dict[str, str] = {
     VISUALIZACAO: "Visualização",
     OCR: "OCR",
     ACERVO: "Acervo",
+    ESTUDO: "Estudo",
     AJUDA: "Ajuda",
 }
 """Como o grupo se escreve quando ele vira cabeçalho (a fita da S-227).
@@ -106,7 +118,7 @@ class Comando:
     """Como o comando se chama, por extenso -- o texto do menu, que agora tem um dono só."""
 
     grupo: str
-    """Um dos seis de `GRUPOS`. Fora deles levanta, e é por isso que o conjunto é fechado."""
+    """Um dos sete de `GRUPOS`. Fora deles levanta, e é por isso que o conjunto é fechado."""
 
     papel: str
     """`estilos.PRIMARIO`, `DESTRUTIVO` ou `NEUTRO`. Papel desconhecido levanta `KeyError`."""
@@ -381,6 +393,13 @@ CATALOGO: tuple[Comando, ...] = (
     ),
     Comando("pagina_anterior", "Página anterior", VISUALIZACAO, estilos.NEUTRO),
     Comando("proxima_pagina", "Próxima página", VISUALIZACAO, estilos.NEUTRO),
+    # **As duas da S-281**, e elas não nasceram de um pedido: nasceram do par de teclas que a sala
+    # de estudo precisava. `Home` e `End` são "início e fim da linha" dentro do estudo, e a tabela
+    # da S-161 não aceita tecla sem comando global -- então a pergunta virou *o que Home e End
+    # fazem no resto da janela?*, e a resposta óbvia estava faltando desde sempre: `Page Up` e
+    # `Page Down` viram uma página, e nada levava à primeira ou à última.
+    Comando("primeira_pagina", "Primeira página do livro", VISUALIZACAO, estilos.NEUTRO),
+    Comando("ultima_pagina", "Última página do livro", VISUALIZACAO, estilos.NEUTRO),
     Comando("ajustar_largura", "Ajustar à largura", VISUALIZACAO, estilos.NEUTRO, icone="ajustar_largura"),
     Comando("ajustar_pagina", "Ajustar à página", VISUALIZACAO, estilos.NEUTRO, icone="ajustar_pagina"),
     # Os dois botões de um caractere. Um rótulo de um caractere é o caso em que "escrito à mão"
@@ -513,6 +532,162 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("anotar_pagina", "Anotar página", ACERVO, estilos.PRIMARIO),
     Comando("anotar_sem_diagrama", "Sem diagrama", ACERVO, estilos.NEUTRO),
     Comando("tirar_do_campo", "Tirar o selecionado", ACERVO, estilos.NEUTRO),
+    # ----------------------------------------------------------------------------- ESTUDO
+    #
+    # **O sétimo grupo, e ele é o item** (S-280). Medido antes: 13 botões na aba de estudo e
+    # **zero** comandos no catálogo -- logo, zero na paleta da S-231, zero na legenda da S-165,
+    # nenhum item de menu, e nenhuma das três peles capaz de desenhar um controle dela. É a S-161
+    # pela terceira vez: *"o que não era botão não existia"*, agora com uma aba inteira no papel.
+    #
+    # O conjunto dos seis era fechado porque era "os cinco menus com Ferramentas partido em dois",
+    # e a sala não é nenhum deles: promover variante não é `EDICAO` (que é edição de texto e de
+    # tabuleiro), não é `VISUALIZACAO` (que não muda dado) e não é `OCR`. Distribuí-los faria a
+    # fita da S-227 mostrar "Promover a variante" debaixo de "Edição", ao lado de "Colar" -- que é
+    # a vizinhança que este módulo existe para impedir.
+    Comando(
+        "estudo_do_diagrama",
+        "Estudar o diagrama selecionado",
+        ESTUDO,
+        estilos.PRIMARIO,
+        rotulo_curto="Carregar OCR atual",
+    ),
+    Comando(
+        "estudo_da_posicao_inicial",
+        "Estudar a posição inicial",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Posição inicial",
+    ),
+    Comando("virar_tabuleiro", strings.VIRAR_TABULEIRO, ESTUDO, estilos.NEUTRO),
+    Comando("trocar_vez", "Trocar o lado a jogar", ESTUDO, estilos.NEUTRO, rotulo_curto="Trocar vez"),
+    # `estudo_aplicar_fen` e não `aplicar_fen`: aquele é o do **editor de diagrama**, tem
+    # `Ctrl+Enter` desde a S-223 e escreve na posição que vai virar amostra. São dois campos de FEN
+    # em duas abas, e um nome só faria a tecla de uma agir na outra.
+    Comando(
+        "estudo_aplicar_fen",
+        "Aplicar a FEN digitada no estudo",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Aplicar FEN",
+    ),
+    Comando("copiar_fen", "Copiar a FEN do estudo", ESTUDO, estilos.NEUTRO, rotulo_curto="Copiar FEN"),
+    Comando("salvar_estudo", "Salvar o estudo em PGN…", ESTUDO, estilos.NEUTRO, rotulo_curto="Salvar PGN"),
+    Comando("lance_anterior", "Lance anterior", ESTUDO, estilos.NEUTRO, rotulo_curto=strings.ANTERIOR),
+    Comando("proximo_lance", "Próximo lance", ESTUDO, estilos.NEUTRO, rotulo_curto=strings.PROXIMO),
+    Comando("inicio_da_linha", "Início da linha", ESTUDO, estilos.NEUTRO, rotulo_curto=strings.PRIMEIRO),
+    Comando("fim_da_linha", "Fim da linha", ESTUDO, estilos.NEUTRO, rotulo_curto=strings.ULTIMO),
+    Comando(
+        "promover_variante",
+        "Promover a variante um nível",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Promover",
+    ),
+    Comando(
+        "promover_a_principal",
+        "Promover a variante a linha principal",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Principal",
+    ),
+    Comando("rebaixar_variante", "Rebaixar a variante", ESTUDO, estilos.NEUTRO, rotulo_curto="Rebaixar"),
+    # Os dois DESTRUTIVOS da aba, e são os únicos: apagar variante e apagar continuação são as
+    # duas ações que tiram trabalho humano da árvore. As duas perguntam antes quando há o que
+    # perder -- ver `study_panel._confirmar_apagar` --, e o papel é o que faz a pele desenhá-las
+    # como o que elas são.
+    Comando(
+        "apagar_variante",
+        "Apagar a variante",
+        ESTUDO,
+        estilos.DESTRUTIVO,
+        rotulo_curto="Apagar variante",
+    ),
+    Comando(
+        "apagar_continuacao",
+        "Apagar daqui em diante",
+        ESTUDO,
+        estilos.DESTRUTIVO,
+        rotulo_curto="Apagar daqui",
+    ),
+    Comando("simbolo_do_lance", "Símbolo do lance…", ESTUDO, estilos.NEUTRO, rotulo_curto="Símbolo"),
+    # ------------------------------------------------------- o livro dentro da sala (Fase 47)
+    Comando(
+        "mostrar_diagrama",
+        "Mostrar o recorte do diagrama",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Recorte",
+        rotulo_alternado="Esconder recorte",
+    ),
+    Comando(
+        "linha_do_livro",
+        "Jogar a linha impressa no livro",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Linha do livro",
+    ),
+    Comando(
+        "ir_para_a_pagina",
+        "Ir para a página do diagrama",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Ver a página",
+    ),
+    # --------------------------------------------------- o motor e a base de partidas (Fase 48)
+    Comando(
+        "analisar_posicao",
+        "Analisar a posição com o motor",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Analisar posição",
+    ),
+    Comando(
+        "analise_continua",
+        "Análise contínua enquanto se navega",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Análise contínua",
+        rotulo_alternado="Parar a análise",
+    ),
+    Comando(
+        "variante_do_motor",
+        "Pôr a linha do motor como variante",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Linha do motor",
+    ),
+    Comando(
+        "partidas_da_posicao",
+        "Partidas que chegaram a esta posição",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Partidas",
+    ),
+    # ----------------------------------------------------- o que entra e o que sai (Fase 49)
+    Comando("colar_estudo", "Colar posição ou partida…", ESTUDO, estilos.NEUTRO, rotulo_curto="Colar"),
+    Comando("abrir_pgn", "Abrir um .pgn…", ESTUDO, estilos.NEUTRO, rotulo_curto="Abrir PGN"),
+    # As três saídas são as da Fase 39, alimentadas pelo estudo em vez de pelo documento -- e por
+    # isso os rótulos são os mesmos daquela aba: o que muda é o que entra no exportador, não o
+    # formato. `salvar_estudo` (o PGN) já mora acima: ele é a saída que não perde nada.
+    Comando("exportar_estudo_md", "Exportar o estudo para Markdown…", ESTUDO, estilos.NEUTRO, rotulo_curto=".md"),
+    Comando("exportar_estudo_html", "Exportar o estudo para HTML…", ESTUDO, estilos.NEUTRO, rotulo_curto=".html"),
+    Comando("exportar_estudo_rtf", "Exportar o estudo para RTF…", ESTUDO, estilos.NEUTRO, rotulo_curto=".rtf"),
+    Comando(
+        "estudo_para_o_texto",
+        "Levar a linha do estudo para a aba Texto",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Para o texto",
+    ),
+    # ---------------------------------------------------------------------- treinar (Fase 50)
+    Comando(
+        "modo_treino",
+        "Treinar: adivinhar o lance da linha",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Treinar",
+        rotulo_alternado="Parar o treino",
+    ),
     # ------------------------------------------------------------------------------ AJUDA
     # Antes da legenda porque as duas são a mesma pergunta em duas metades -- "o que existe"
     # e "que tecla faz" --, e a paleta é a que responde primeiro. Sem ícone e sem `destaque`:

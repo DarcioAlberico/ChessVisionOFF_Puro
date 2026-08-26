@@ -11,10 +11,9 @@ estes testes perguntam. As imagens são sintéticas e as leituras são falsas, d
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 
 import numpy as np
-
-from dataclasses import replace
 
 from chess_diagram_ocr.text import leitor
 from chess_diagram_ocr.text.boxes import Caixa, escala_de_texto

@@ -37,6 +37,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import chess
+
 FIGURINAS = "♔♕♖♗♘♙♚♛♜♝♞♟"
 """As peças como o classificador as devolve. O livro usa **um** conjunto para os dois lados, e
 quem decide a cor é a paridade do número do lance -- que é trabalho da validação, não daqui."""
@@ -66,7 +68,13 @@ O caminho contrário -- figurina -> letra -- é derivado em `LETRA_DA_FIGURINA`,
 LETRA_DA_FIGURINA: dict[str, str] = {
     figurina: letra for letra, figurinas in FIGURINAS_DA_LETRA.items() for figurina in figurinas
 }
-"""Figurina -> a inicial inglesa da peça. Derivado de `FIGURINAS_DA_LETRA`, e não escrito de novo."""
+"""Figurina -> a inicial inglesa da peça. Derivado de `FIGURINAS_DA_LETRA`, e não escrito de novo.
+
+**A cor não está aqui, e não pode estar** (S-283). O livro imprime `♗xb7` para o bispo das brancas e
+para o das pretas -- é um conjunto só de glifos para os dois lados, e a S-208 registra isso como
+"insolúvel visualmente". Quem sabe de quem é a vez é o **tabuleiro**, e é por isso que `validar`
+recebe um e `fatiar` não: a mesma linha, começando numa posição de brancas ou de pretas, produz
+lances diferentes e os dois são legítimos."""
 
 _CASA = r"[a-h][1-8]"
 _PECA = f"[{LETRAS_DE_PECA}{FIGURINAS}]"
@@ -342,8 +350,167 @@ def juntar_numero_de_lance(texto: str, *, minimo: int = 2) -> str:
     return " ".join(saida)
 
 
+# --------------------------------------------------------------------------- validar (S-283)
+
+_SUFIXO_SOLTO = "+#!?±∓⩲⩱∞=→⊕↑"
+"""O que se tira do fim de um lance antes de o entregar ao tabuleiro.
+
+`=` está aqui e **não** quebra a promoção: `e8=Q` termina em `Q`, e só o que sobra depois da peça é
+que cai. `e8=Q+` perde o `+`, `13.♗g5!?` perde o `!?`, e `e4=` -- que é como alguns livros escrevem
+"igual" colado no lance -- perde o `=`."""
+
+
+@dataclass(frozen=True)
+class LanceLido:
+    """Um lance da linha impressa que o tabuleiro aceitou."""
+
+    token: str
+    """Como o livro escreveu, com figurina e sufixo. É o que se mostra a quem for conferir."""
+
+    san: str
+    """O SAN que o `chess` devolveu -- já com a peça em inglês e a desambiguação que a posição pede."""
+
+    move: chess.Move
+    numero: int | None = None
+    """O número de lance que o livro imprimiu junto, quando imprimiu. `None` = não disse."""
+
+
+@dataclass(frozen=True)
+class LinhaValidada:
+    """O que a linha impressa deu quando jogada sobre uma posição (S-208/S-283).
+
+    **Propõe, marca, não reescreve calado** -- é o contrato da S-15. Lance que fecha vira `move`;
+    lance que não fecha para a linha e sai com o motivo, e nada é adivinhado no lugar dele.
+    """
+
+    lances: tuple[LanceLido, ...] = ()
+    motivo: str = ""
+    """Por que a linha parou. Vazio = ela fechou inteira."""
+
+    token: str = ""
+    """O token que não fechou. É o que vai para a revisão junto com o motivo."""
+
+    posicao: int = -1
+    """O índice desse token na lista que entrou. `-1` quando a linha fechou."""
+
+    @property
+    def fechou(self) -> bool:
+        return not self.motivo
+
+    @property
+    def san(self) -> tuple[str, ...]:
+        return tuple(lance.san for lance in self.lances)
+
+
+def para_ingles(token: str) -> str:
+    """O lance com as figurinas trocadas pelas iniciais inglesas: `♗xb7` -> `Bxb7`.
+
+    Só as figurinas. As iniciais de outras línguas ficam como estão, e é a decisão que
+    `FIGURINAS_DA_LETRA` já documenta: `R` é *rook* em inglês e *rei* em português, `C` é *cavalo*
+    e nada em inglês. Traduzi-las exigiria saber a língua do livro, e errar a língua troca uma peça
+    por outra **num lance que o tabuleiro aceita** -- que é o pior defeito possível aqui.
+    """
+    return "".join(LETRA_DA_FIGURINA.get(caractere, caractere) for caractere in str(token or ""))
+
+
+def _limpo(token: str) -> str:
+    """O token pronto para o `parse_san`: sem envoltório, sem sufixo e com a peça em inglês."""
+    return para_ingles(_sem_envoltorio(token)).rstrip(_SUFIXO_SOLTO)
+
+
+def validar(tokens: Sequence[str], board: chess.Board) -> LinhaValidada:
+    """Joga a linha impressa sobre a posição, e para no primeiro lance que ela não sustenta.
+
+    **É a metade que faltava à S-208.** `fatiar` separa lance de prosa; isto responde se `♘d7` é
+    possível *nesta* posição -- e é a única coisa que separa os dois falsos positivos que aquele
+    item registrou: `Capablanca` p72, `7` + `2` -> `72`, "estruturalmente idêntico ao caso que se
+    quer consertar".
+
+    **O tabuleiro é o dicionário.** `Nf3` é válido numa posição e impossível na seguinte, e nenhuma
+    lista de palavras sabe disso. Por isso a assinatura pede uma posição, e por isso o resultado
+    diz *onde* parou: uma linha que fecha inteira é uma linha lida certo, e uma que para no quarto
+    lance diz que os três primeiros estão bons.
+
+    **O número de lance impresso é conferido, e não obedecido.** Quem decide de quem é a vez é a
+    posição; o número serve para acusar divergência -- um `15.` numa posição de pretas é sinal de
+    que a leitura perdeu ou inventou um meio-lance, e isso vale mais dito que corrigido.
+
+    `board` não é modificado: a linha é jogada numa cópia.
+    """
+    tabuleiro = board.copy(stack=False)
+    lidos: list[LanceLido] = []
+    numero: int | None = None
+
+    for indice, bruto in enumerate(tokens):
+        token = str(bruto or "").strip()
+        if not token:
+            continue
+
+        nu = _sem_envoltorio(token)
+        if nu in RESULTADOS:
+            # O resultado fecha a partida: o que vier depois dele é prosa, não lance.
+            break
+        if RETICENCIA.match(nu):
+            continue
+        if e_numero_de_lance(token):
+            numero = int(nu.rstrip(".…"))
+            continue
+
+        # **`token` continua sendo o que o livro escreveu**, e `parte` é o que vai ao tabuleiro. A
+        # distinção não é cosmética: quem for conferir procura `5.exd6` na página, e não `exd6`.
+        parte = token
+        composto = COMPOSTO.match(para_ingles(nu))
+        if composto is not None:
+            numero = int(composto.group(1))
+            parte = composto.group(3)
+
+        esperado = tabuleiro.fullmove_number
+        if numero is not None and numero != esperado:
+            return LinhaValidada(
+                tuple(lidos),
+                motivo=f"o livro escreveu o lance {numero} e a posição está no {esperado}",
+                token=token,
+                posicao=indice,
+            )
+
+        limpo = _limpo(parte)
+        if not limpo:
+            continue
+        try:
+            move = tabuleiro.parse_san(limpo)
+        except (chess.IllegalMoveError, chess.InvalidMoveError, chess.AmbiguousMoveError, ValueError) as erro:
+            return LinhaValidada(
+                tuple(lidos),
+                motivo=_motivo_de(erro, limpo),
+                token=token,
+                posicao=indice,
+            )
+
+        san = tabuleiro.san(move)
+        tabuleiro.push(move)
+        lidos.append(LanceLido(token=token, san=san, move=move, numero=numero))
+        numero = None
+
+    return LinhaValidada(tuple(lidos))
+
+
+def _motivo_de(erro: Exception, limpo: str) -> str:
+    """A frase que vai para a revisão. Nomeia o lance e o que houve com ele, e nada mais.
+
+    Três casos e não um: *ilegal* diz que a leitura está certa e a posição não bate; *não é lance*
+    diz que a leitura errou o glifo; *ambíguo* diz que faltou a coluna de desambiguação -- e os
+    três pedem coisas diferentes de quem for conferir.
+    """
+    if isinstance(erro, chess.IllegalMoveError):
+        return f"{limpo} não é legal nesta posição"
+    if isinstance(erro, chess.AmbiguousMoveError):
+        return f"{limpo} não diz qual das peças joga"
+    return f"{limpo} não é um lance"
+
 __all__ = [
     "COMPOSTO",
+    "LanceLido",
+    "LinhaValidada",
     "ENVOLVE",
     "FIGURINAS",
     "LANCE",
@@ -358,4 +525,6 @@ __all__ = [
     "fatiar",
     "juntar_numero_de_lance",
     "peso_de_notacao",
+    "para_ingles",
+    "validar",
 ]

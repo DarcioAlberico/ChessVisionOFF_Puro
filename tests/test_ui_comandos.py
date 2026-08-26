@@ -253,6 +253,43 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "tirar_caixa",
                 "zoom_mais",
                 "zoom_menos",
+                # Os vinte e três da sala de estudo (S-280) nascem divergentes pela mesma razão: o
+                # menu diz "Promover a variante a linha principal" porque é onde cabe dizê-lo, e o
+                # botão diz "Principal" porque a barra da sala tem três linhas e vinte e quatro
+                # comandos. Os quatro de navegação usam as setas de `ui/strings.py`, que são as
+                # mesmas que a aba já mostrava antes de haver catálogo.
+                "analisar_posicao",
+                "analise_continua",
+                "apagar_continuacao",
+                "apagar_variante",
+                "copiar_fen",
+                "estudo_aplicar_fen",
+                "estudo_da_posicao_inicial",
+                "estudo_do_diagrama",
+                "fim_da_linha",
+                "inicio_da_linha",
+                "ir_para_a_pagina",
+                "lance_anterior",
+                "linha_do_livro",
+                "mostrar_diagrama",
+                "partidas_da_posicao",
+                "promover_a_principal",
+                "promover_variante",
+                "proximo_lance",
+                "rebaixar_variante",
+                "salvar_estudo",
+                "simbolo_do_lance",
+                "trocar_vez",
+                "variante_do_motor",
+                # Os sete das Fases 49 e 50, pela mesma razão: o menu diz "Exportar o estudo para
+                # Markdown…" e o botão diz ".md", porque a barra da sala tem quatro linhas.
+                "abrir_pgn",
+                "colar_estudo",
+                "estudo_para_o_texto",
+                "exportar_estudo_html",
+                "exportar_estudo_md",
+                "exportar_estudo_rtf",
+                "modo_treino",
             },
             divergem,
         )
@@ -382,9 +419,19 @@ class RotuloAlternadoTests(unittest.TestCase):
     """O texto de "ligado", para os comandos que alternam (S-222)."""
 
     def test_so_alterna_quem_precisa(self) -> None:
-        """Um por enquanto, e é o único botão da janela que troca o próprio texto."""
+        """Quatro, e os três da sala são interruptores que **não** viraram `Checkbutton`
+        (S-222/S-280/S-290).
+
+        Os dois da sala de estudo entraram por uma razão de alcance, e não de estética: um
+        `Checkbutton` não é comando, então o estado dele viveria só na barra -- a mesma ação pela
+        paleta da S-231 ou pelo menu não teria onde ler o valor de antes, e o clique de lá seria uma
+        alternância cega. Com botão que troca de texto, `alternar_recorte` é uma função só, e as três
+        portas chamam a mesma.
+        """
         alternam = {registro.acao for registro in comandos.CATALOGO if registro.rotulo_alternado}
-        self.assertEqual({"selecionar_area"}, alternam)
+        self.assertEqual(
+            {"selecionar_area", "mostrar_diagrama", "analise_continua", "modo_treino"}, alternam
+        )
 
     def test_quem_nao_alterna_responde_o_proprio_rotulo(self) -> None:
         """`alternado` devolve o texto normal em vez de vazio: quem consome não precisa saber

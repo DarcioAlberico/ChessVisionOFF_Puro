@@ -24,20 +24,32 @@ __all__ = [
     "ABA_DE_TRABALHO",
     "DO_ACERVO",
     "DO_DIAGRAMA",
+    "RENOMEADAS",
     "contagem_no_rotulo",
+    "nome_atual",
     "nome_base",
     "rotulo",
 ]
 
 RESULTADO = "Resultado"
-ANALISE = "Análise"
+ESTUDO = "Estudo"
+"""Era `ANALISE = "Análise"` até a S-272.
+
+**O nome descrevia o que a aba fazia quando ela só tinha o motor**: analisar uma posição. Desde a
+Fase 43 ela guarda estudos -- um por diagrama do livro, com árvore de variantes, anotação e um PGN
+que sobrevive ao fechamento --, e "Análise" passou a nomear a menor parte do que ela é.
+
+**"Estudo" e não "Sala de estudo" nem "Tabuleiro de estudo".** As outras seis são substantivos de
+uma palavra, e a faixa de abas é onde a S-150 mediu o aperto de largura. A *sala* é o conceito, e
+ela está por extenso no `ui/study_panel.py` e no ROADMAP_ESTUDO."""
+
 REVISAO = "Revisão"
 TEXTO = "Texto"
 DATASET = "Dataset"
 GALERIA = "Galeria"
 CONFIGURACAO = "Configuração"
 
-DO_DIAGRAMA: tuple[str, ...] = (RESULTADO, ANALISE, REVISAO, TEXTO)
+DO_DIAGRAMA: tuple[str, ...] = (RESULTADO, ESTUDO, REVISAO, TEXTO)
 """As abas que mudam de conteúdo quando se clica num retângulo da página."""
 
 DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, CONFIGURACAO)
@@ -88,6 +100,29 @@ def nome_base(texto: str) -> str:
     if limpo.endswith(")") and " (" in limpo:
         return limpo.rsplit(" (", 1)[0].strip()
     return limpo
+
+
+RENOMEADAS: dict[str, str] = {"Análise": ESTUDO}
+"""Abas que já se chamaram outra coisa: nome guardado -> nome de hoje (S-272).
+
+**É a única memória disso no programa, e ela é para sempre.** O `AppState` guarda a aba aberta pelo
+**rótulo** desde a S-156, e `rolagem.selecionar_aba` compara nome com nome. Renomear uma aba sem
+esta tabela faz o guardado não casar com nada: `selecionar_aba` devolve `False`, a janela abre na
+primeira aba e ninguém fica sabendo -- que é exatamente o defeito silencioso contra o qual o
+cabeçalho deste módulo já avisava a propósito da contagem no rótulo.
+
+Uma linha por rename, e ela custa menos que o dia em que alguém for descobrir por que a aba deixou
+de ser lembrada."""
+
+
+def nome_atual(guardado: str) -> str:
+    """O nome de hoje da aba que uma sessão anterior guardou.
+
+    Nome que nunca foi renomeado passa igual, inclusive o que não existe mais -- e aí a resposta
+    continua sendo a de antes: a janela fica onde já estava.
+    """
+    base = nome_base(guardado)
+    return RENOMEADAS.get(base, base)
 
 
 def contagem_no_rotulo(texto: str) -> int | None:
