@@ -27,7 +27,7 @@ from chess_diagram_ocr.ui.state import AppState  # noqa: E402
 
 
 class TabelaDeAtalhosTests(unittest.TestCase):
-    def test_sao_catorze_e_cada_um_novo_tem_dono(self) -> None:
+    def test_sao_dezesseis_e_cada_um_novo_tem_dono(self) -> None:
         """Eram dez -- a avaliação escreveu "onze" e listou dez (S-135). O décimo primeiro é o
         `Ctrl+Enter` da S-223, e ele entrou por uma razão que o teste consegue cobrar: a fila da
         pele "Foco" só admite comando com tecla, e `aplicar_fen` não tinha uma.
@@ -39,12 +39,19 @@ class TabelaDeAtalhosTests(unittest.TestCase):
         O décimo quarto é o `Ctrl+Shift+P` da S-231, e ele é o primeiro que **não** age sobre o
         documento: com três peles e cinquenta itens de menu, achar um comando virou um gesto por
         si. O dono dele é a paleta, e a razão de a tecla estar nesta tabela e não no módulo dela é
-        a de sempre -- a legenda e o acelerador do menu saem daqui de graça."""
-        self.assertEqual(len(atalhos.ATALHOS), 14)
+        a de sempre -- a legenda e o acelerador do menu saem daqui de graça.
+
+        O décimo quinto e o décimo sexto são da S-267, e a razão deles é uma declaração vazia:
+        `achar` e `substituir` estavam em `texto_panel.ACOES_PROPRIAS` -- "a aba atende esta ação
+        global enquanto tem o foco" -- e a tabela não tinha as teclas, então não havia ação global
+        nenhuma para atender. `Ctrl+F` num editor de texto não fazia nada."""
+        self.assertEqual(len(atalhos.ATALHOS), 16)
         self.assertEqual("Ctrl+Enter", atalhos.acelerador("aplicar_fen"))
         self.assertEqual("Ctrl+Z", atalhos.acelerador("desfazer"))
         self.assertEqual("Ctrl+Y", atalhos.acelerador("refazer"))
         self.assertEqual("Ctrl+Shift+P", atalhos.acelerador("paleta_de_comandos"))
+        self.assertEqual("Ctrl+F", atalhos.acelerador("achar"))
+        self.assertEqual("Ctrl+H", atalhos.acelerador("substituir"))
 
     def test_cada_atalho_tem_sequencia_do_tk_rotulo_e_descricao(self) -> None:
         for atalho in atalhos.ATALHOS:

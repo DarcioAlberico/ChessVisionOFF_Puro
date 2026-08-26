@@ -237,6 +237,13 @@ o realce do autor (S-242), a fonte é o estilo mais o corpo, e negrito/itálico/
 os quatro pincéis de ênfase. Uma quinta marca em qualquer um deles seria a mesma tinta com dois
 significados na mesma linha -- o defeito que a S-242 gastou um item inteiro para não ter."""
 
+ROTULO_DO_CORPO_MISTO = "–"
+"""O que o mostrador de corpo diz quando não há **um** degrau no alvo (S-292).
+
+Meia-risca e não `"?"` nem `"0"`: `0` é um degrau de verdade -- "este trecho está no corpo do
+estilo dele" -- e mostrá-lo onde há dois degraus diferentes na seleção seria o mostrador afirmando
+o que ele não sabe. É a mesma distinção que `rico.valor_em_todo` mantém entre `""` e `None`."""
+
 ZOOM_MINIMO = -3
 ZOOM_MAXIMO = 8
 """Os limites do zoom **da vista** (S-264), em degraus, como o corpo do trecho.
@@ -339,6 +346,13 @@ O `cv2` e o `numpy` **entram assim mesmo**, por `text/documento.py` -> `text/pag
 Fica dito para o próximo leitor não concluir, do parágrafo acima, que este arquivo é leve."""
 
 
+def _rotulo_de_corpo(degrau: object) -> str:
+    """Como o mostrador escreve o degrau: `0`, `+2`, `-1` -- ou a meia-risca quando não há um só."""
+    if not isinstance(degrau, int):
+        return ROTULO_DO_CORPO_MISTO
+    return f"{degrau:+d}" if degrau else "0"
+
+
 def _fora_do_livro(doc: rico.DocumentoRico) -> tuple[tuple[int, int], ...]:
     """Os intervalos do documento que **não** são texto do livro: a marca e o separador (S-266).
 
@@ -415,6 +429,9 @@ class TextoPanel(ttk.Frame):
         self._lexico: frozenset[str] | None = None
         """O léxico da S-209, carregado na primeira conferência. `None` é "ainda não custou nada"."""
 
+        self._conferindo_lexico = False
+        """A conferência está ligada? Se sim, ela se refaz depois de todo redesenho (S-293)."""
+
         self._painel_da_paleta: ttk.Frame | None = None
         self._exportando = False
         self._cancelar_exportacao = threading.Event()
@@ -433,6 +450,16 @@ class TextoPanel(ttk.Frame):
         `fora_do_modelo` também é booleano e **não** entra aqui: ele é declaração sobre a procedência
         de um caractere, e não um pincel que se liga e desliga -- um interruptor para ele ofereceria
         "marcar isto como não-lido", que é mentir sobre o que a página trouxe."""
+
+        self.alinhamento_var = tk.StringVar(value="")
+        """O alinhamento sob o cursor, para a lista da barra marcar o item certo (S-292).
+
+        Espelho, e não fonte: quem decide continua sendo `rico.valor_em_todo`. `""` cobre dois
+        casos que a lista desenha igual -- "sem alinhamento" e "há mais de um no intervalo" --, e é
+        o certo: em nenhum dos dois há um item para marcar."""
+
+        self.corpo_var = tk.StringVar(value=ROTULO_DO_CORPO_MISTO)
+        """O degrau de corpo sob o cursor, como texto. Ver `_atualizar_ferramentas`."""
 
         self.quebra_var = tk.BooleanVar(value=True)
         """A folha quebra na largura da janela? Interruptor da barra e do menu (S-265)."""
@@ -500,6 +527,10 @@ class TextoPanel(ttk.Frame):
         # Os dois de corpo ficam soltos porque eles **não** são escolha exclusiva: são um passo
         # repetível, e um passo repetível atrás de um menu custa dois cliques por degrau.
         barra.adicionar(self._botao(barra, "diminuir_corpo", self.diminuir_corpo))
+        # O mostrador do degrau, entre os dois botões que o mudam. **É dado e não rótulo de
+        # comando** -- como o `lbl_zoom` de `ui/pdf_panel.py`, que mostra a porcentagem --, e por
+        # isso ele é um `Label` com `textvariable` e não passa pelo catálogo.
+        barra.adicionar(ttk.Label(barra, textvariable=self.corpo_var, width=3, anchor=tk.CENTER))
         barra.adicionar(self._botao(barra, "aumentar_corpo", self.aumentar_corpo))
         barra.adicionar(self._botao(barra, "achar", self.achar))
         barra.adicionar(self._botao(barra, "paleta_de_glifos", self.alternar_paleta))
@@ -647,10 +678,20 @@ class TextoPanel(ttk.Frame):
         """
         menu = tk.Menu(pai, tearoff=False)
         for nome in nomes:
-            menu.add_command(
-                label=comandos.rotulo_de_botao(COMANDO_DA_ESCOLHA[grupo][nome]),
-                command=lambda n=nome: ao_escolher(n),
-            )
+            rotulo = comandos.rotulo_de_botao(COMANDO_DA_ESCOLHA[grupo][nome])
+            if grupo == ALINHAMENTO:
+                # **Radiobutton, e não comando** (S-292): alinhamento é um estado do parágrafo, e a
+                # lista tem de dizer qual vale sob o cursor -- a mesma regra que a S-241 fixou para
+                # o negrito. A caixa continua em `add_command` porque ela **não** é estado: um
+                # trecho não "está em maiúsculas", ele foi posto em maiúsculas e virou texto.
+                menu.add_radiobutton(
+                    label=rotulo,
+                    value=nome,
+                    variable=self.alinhamento_var,
+                    command=lambda n=nome: ao_escolher(n),
+                )
+                continue
+            menu.add_command(label=rotulo, command=lambda n=nome: ao_escolher(n))
         return menu
 
     def escolher_cor(self) -> None:
@@ -867,6 +908,10 @@ class TextoPanel(ttk.Frame):
             self._sujo = False
         finally:
             self._redesenhando = False
+        # **Depois do `finally`, e é obrigatório** (S-293): a conferência lê o documento pelo
+        # `dump` do widget, e o widget só está pronto quando o laço acima terminou.
+        if self._conferindo_lexico:
+            self._conferir_lexico(avisar=False)
 
     def _etiquetas(self, corrida: rico.Corrida) -> tuple[str, ...]:
         """As etiquetas do Tk desta corrida. A tabela mora em `ui/texto_etiquetas.py` (S-238).
@@ -1313,6 +1358,14 @@ class TextoPanel(ttk.Frame):
             return
         for atributo, variavel in self.formato_var.items():
             variavel.set(inicio != fim and rico.vale_em_todo(doc, inicio, fim, atributo))
+        # Os dois de valor (S-292). O alcance do alinhamento é o do **parágrafo**, e é ele que a
+        # lista tem de refletir -- perguntar sobre a palavra sob o cursor diria "sem alinhamento"
+        # num parágrafo centralizado sempre que o cursor caísse fora de uma palavra.
+        p_inicio, p_fim = rico.intervalo_de_paragrafo(doc, inicio, fim)
+        alinhamento = rico.valor_em_todo(doc, p_inicio, p_fim, "alinhamento")
+        self.alinhamento_var.set(alinhamento if isinstance(alinhamento, str) else "")
+        corpo = rico.valor_em_todo(doc, inicio, fim, "corpo") if inicio != fim else None
+        self.corpo_var.set(_rotulo_de_corpo(corpo))
 
     # ------------------------------------------- a paleta e os estilos (S-246 a S-249)
 
@@ -1590,21 +1643,46 @@ class TextoPanel(ttk.Frame):
             return
         self._aplicar_zoom(alvo)
 
-    def _aplicar_zoom(self, degraus: int) -> None:
+    @property
+    def zoom_da_vista(self) -> int:
+        """Os degraus de zoom da tela agora. É o que a janela guarda no estado (S-291)."""
+        return self._zoom_da_vista
+
+    def _aplicar_zoom(self, degraus: int, *, avisar: bool = True) -> None:
         """Troca a fonte do editor e **refaz as etiquetas de fonte**, sem redesenhar (S-264).
 
         Sem redesenho é o item: redesenhar zera a pilha de desfazer do Tk (ver o cabeçalho), e
         perder o desfazer da digitação por ter aproximado a letra seria uma troca ruim. As etiquetas
         continuam onde estão no texto; o que muda é a fonte que cada uma declara -- e é para isso
         que `_fontes_desenhadas` guarda os atributos de origem de cada uma.
+
+        **Grampeia aqui, e não em `ui/state.py`** (S-291): os limites são desta aba, e validá-los no
+        arquivo de estado os declararia num segundo lugar -- a regra que aquele módulo já segue para
+        a pele, a geometria e o conjunto de peças.
+
+        `avisar=False` para a restauração da abertura: o rodapé é para quem acabou de apertar um
+        botão, e uma janela que abre dizendo "zoom +2" fala de uma coisa que ninguém acabou de fazer.
         """
+        degraus = max(ZOOM_MINIMO, min(ZOOM_MAXIMO, int(degraus)))
         self._zoom_da_vista = degraus
         familia, tamanho = self._fonte_original_do_editor
         self.editor.configure(font=(familia, tipografia.corpo(degraus, base=tamanho)))
         self._pintar_faixas()
         for nome, atributos in self._fontes_desenhadas.items():
             self.editor.tag_configure(nome, font=self._fonte_do_trecho(atributos))
-        self._on_status(f"Zoom do texto: {degraus:+d} degraus (a folha não mudou).")
+        if avisar:
+            self._on_status(f"Zoom do texto: {degraus:+d} degraus (a folha não mudou).")
+
+    def restaurar_vista(self, *, zoom: int = 0, quebra: bool = True) -> None:
+        """Põe a aba na vista guardada da sessão anterior. **Em silêncio** (S-291).
+
+        Existe para a janela não precisar mexer no estado interno do painel -- é o mesmo contrato de
+        `pdf_panel.set_zoom`, e é o que mantém `app_tkinter` amarrando nome a método em vez de
+        conhecer o widget por dentro.
+        """
+        self.quebra_var.set(bool(quebra))
+        self._aplicar_quebra()
+        self._aplicar_zoom(int(zoom), avisar=False)
 
     # ------------------------------------------------- a quebra de linha (S-265)
 
@@ -1637,7 +1715,7 @@ class TextoPanel(ttk.Frame):
     # ------------------------------------------------- o léxico confere e não corrige (S-266)
 
     def marcar_fora_do_lexico(self) -> None:
-        """Marca as palavras que o léxico da S-209 não conhece. **Não corrige nada** (S-266).
+        """Liga a conferência do léxico da S-209. **Não corrige nada** (S-266).
 
         A frase da S-209 é a especificação inteira deste comando: *"palavra fora do dicionário é
         sinalizada, nunca aproximada da mais parecida"*. Dos 18 lances tão maltratados que caem no
@@ -1646,6 +1724,22 @@ class TextoPanel(ttk.Frame):
 
         A conta vai para o rodapé porque ela é o resultado: "3 de 412" e "80 de 412" pedem coisas
         diferentes de quem está conferindo a folha.
+
+        **Ligar, e não marcar uma vez** (S-293). Toda ferramenta que muda texto redesenha, e o
+        redesenho apaga a marcação inteira -- então corrigir a primeira palavra marcada apagava as
+        outras, e a pessoa tinha de reconferir a cada correção. Isso é justamente o gesto que a
+        conferência existe para servir. Com o interruptor, ela se refaz sozinha depois de cada
+        redesenho, e quem a desliga é `limpar_marcas_do_lexico`.
+        """
+        self._conferindo_lexico = True
+        self._conferir_lexico(avisar=True)
+
+    def _conferir_lexico(self, *, avisar: bool) -> None:
+        """Refaz a marcação. `avisar=False` no redesenho: a conta já foi dita quando se ligou.
+
+        Um rodapé reescrito a cada tecla seria ruído -- e pior, esconderia o que a ferramenta que
+        acabou de rodar tinha a dizer (`aplicar_substituicao` conta as trocas, o corpo avisa o
+        limite).
         """
         doc = self.documento_atual()
         texto = doc.para_texto()
@@ -1655,17 +1749,19 @@ class TextoPanel(ttk.Frame):
             logger.debug("Léxico não carregou: %s", erro)
             self._on_status(f"O léxico não pôde ser carregado: {erro}")
             return
-        self.limpar_marcas_do_lexico()
+        self.editor.tag_remove(ETIQUETA_DO_LEXICO, "1.0", tk.END)
         achadas = dicionario.desconhecidas(texto, lexico, ignorar=_fora_do_livro(doc))
         for inicio, fim, _palavra in achadas:
             self.editor.tag_add(ETIQUETA_DO_LEXICO, self.indice_de(inicio), self.indice_de(fim))
-        total = len(dicionario.palavras_de(texto))
-        self._on_status(
-            f"{len(achadas)} de {total} palavra(s) fora do léxico. Nada foi corrigido (S-209)."
-        )
+        if avisar:
+            total = len(dicionario.palavras_de(texto))
+            self._on_status(
+                f"{len(achadas)} de {total} palavra(s) fora do léxico. Nada foi corrigido (S-209)."
+            )
 
     def limpar_marcas_do_lexico(self) -> None:
-        """Tira as marcas da conferência. **Não é desfazer**: elas nunca foram documento."""
+        """Desliga a conferência e tira as marcas. **Não é desfazer**: elas nunca foram documento."""
+        self._conferindo_lexico = False
         self.editor.tag_remove(ETIQUETA_DO_LEXICO, "1.0", tk.END)
 
     def _lexico_carregado(self) -> frozenset[str]:
@@ -2171,6 +2267,7 @@ class TextoPanel(ttk.Frame):
 
 __all__ = [
     "ACOES_PROPRIAS",
+    "ROTULO_DO_CORPO_MISTO",
     "ALINHAMENTO",
     "COMANDOS_DA_ABA",
     "ATRIBUTOS_DE_ENFASE",

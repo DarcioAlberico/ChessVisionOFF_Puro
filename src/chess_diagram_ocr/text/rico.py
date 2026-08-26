@@ -756,6 +756,27 @@ def vale_em_todo(doc: DocumentoRico, inicio: int, fim: int, atributo: str) -> bo
     return all(bool(getattr(c.atributos, atributo)) for c in dentro)
 
 
+def valor_em_todo(doc: DocumentoRico, inicio: int, fim: int, atributo: str) -> Any | None:
+    """O valor deste atributo, se ele for **o mesmo** em todo o intervalo. `None` se divergir.
+
+    É o irmão de `vale_em_todo` para atributo que não é sim-ou-não (S-292), e existe pela mesma
+    razão que aquele: a barra tem de dizer o que vale sob o cursor, e quem responde tem de ser a
+    **mesma** função que decide -- duas respostas para a mesma pergunta divergem, e a que fica
+    errada é a da tela, porque ninguém a testa.
+
+    **`None` e `""` são respostas diferentes, e a distinção é o item.** `""` é "todo o intervalo
+    está sem alinhamento"; `None` é "há mais de um alinhamento aqui" -- e é o que faz a lista da
+    barra não marcar nenhum item em vez de marcar um que vale só em metade da seleção.
+
+    Intervalo sem corrida de texto nenhuma responde `None`: não há valor a mostrar.
+    """
+    dentro = [c for c, esta in _fatiado(doc, inicio, fim) if esta and _editavel(c)]
+    if not dentro:
+        return None
+    valores = {getattr(c.atributos, atributo) for c in dentro}
+    return valores.pop() if len(valores) == 1 else None
+
+
 def aplicar(doc: DocumentoRico, inicio: int, fim: int, **valores: Any) -> DocumentoRico:
     """Escreve estes atributos nas corridas de texto do intervalo, e carimba `humano`.
 
@@ -1098,4 +1119,5 @@ __all__ = [
     "mudar_corpo",
     "palavra_em",
     "vale_em_todo",
+    "valor_em_todo",
 ]

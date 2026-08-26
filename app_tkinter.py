@@ -691,6 +691,10 @@ class ChessOcrTkApp:
                 self.pdf_panel.set_zoom(self.state.pdf_zoom)
             self.pdf_panel.show_boxes_var.set(self.state.show_diagram_boxes)
             self.pdf_panel.flip_pages_var.set(self.state.wheel_flips_page)
+        if self.texto_panel is not None:
+            self.texto_panel.restaurar_vista(
+                zoom=self.state.texto_zoom, quebra=self.state.texto_quebra
+            )
         if self.result_panel is not None:
             self.result_panel.board_zoom_var.set(self.state.board_zoom)
             self.result_panel.heatmap_var.set(self.state.show_heatmap)
@@ -744,6 +748,9 @@ class ChessOcrTkApp:
                 self.state.pdf_zoom = float(self.pdf_panel.zoom_var.get())
                 self.state.show_diagram_boxes = bool(self.pdf_panel.show_boxes_var.get())
                 self.state.wheel_flips_page = bool(self.pdf_panel.flip_pages_var.get())
+            if self.texto_panel is not None:
+                self.state.texto_zoom = int(self.texto_panel.zoom_da_vista)
+                self.state.texto_quebra = bool(self.texto_panel.quebra_var.get())
             if self.result_panel is not None:
                 self.state.board_zoom = float(self.result_panel.board_zoom_var.get())
                 self.state.show_heatmap = bool(self.result_panel.heatmap_var.get())

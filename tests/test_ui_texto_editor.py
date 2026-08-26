@@ -396,18 +396,27 @@ class FerramentasDeFormatoTests(_ComJanela, unittest.TestCase):
         painel.update()
         self.assertNotIn("	", painel.texto_atual())
 
-    def test_as_tres_teclas_devolvem_break(self) -> None:
-        """A afirmação vale para as três, e não só para o `Ctrl+I`: quem acrescentar a quarta não
-        vai reler o parágrafo que explica por que ela precisa disso."""
+    def test_toda_tecla_do_editor_esta_ligada_no_widget(self) -> None:
+        """**O que este teste mede, e o que ele não consegue medir** (S-267).
+
+        Ele afirmava "a tecla não mexeu no texto" gerando o evento numa janela `withdraw`n -- e ali
+        `event_generate` de teclado **não entrega a ninguém**, porque não há foco de verdade. O
+        texto ficava igual porque nada disparava, e o teste passava em verde sobre nove teclas sem
+        exercitar uma. Medido em 2026-08-26, com uma janela visível: a mesma tecla dispara, e sem o
+        `bind` do widget o `Ctrl+H` da classe `Text` **apaga um caractere** (`abcdef` -> `abdef`).
+
+        O que sobra de afirmável sem janela na tela é o que importa: que cada sequência declarada
+        tem um `bind` **no próprio widget**. É esse `bind` que roda antes da classe `Text` e a
+        impede -- as bindtags são widget, classe, toplevel, all, nessa ordem. Um `bind_all` chegaria
+        tarde. Que o método existe é `test_toda_tecla_do_editor_tem_metodo`; que a sobreposição com
+        a tabela da janela está declarada é `tests/test_ui_atalhos_destino.py`.
+        """
         painel = self._com_texto()
-        antes = painel.texto_atual()
-        painel.editor.focus_set()
         for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
             with self.subTest(acao=acao):
-                painel.editor.mark_set("insert", "1.6")
-                painel.editor.event_generate(sequencia)
-                painel.update()
-                self.assertEqual(painel.texto_atual(), antes, "a tecla mexeu no texto")
+                ligado = str(painel.editor.bind(sequencia)).strip()
+                self.assertTrue(ligado, f"{acao} declarada e sem bind no widget")
+                self.assertIn("break", ligado, "o bind não devolve break: a classe Text roda junto")
 
     def test_desmarcar_o_italico_detectado_carimba_humano(self) -> None:
         """O pincel manual vence a régua da linha, e a corrida passa a `humano` (S-239/S-236)."""
@@ -1049,6 +1058,153 @@ class LexicoNaAbaTests(_ComJanela, unittest.TestCase):
         painel.desenhar(_pagina(_texto("the smdy of the position")))
         painel.marcar_fora_do_lexico()
         self.assertTrue(any("fora do léxico" in mensagem for mensagem in avisos), avisos)
+
+
+class EstadoNaBarraTests(_ComJanela, unittest.TestCase):
+    """A barra diz o que vale sob o cursor -- alinhamento e corpo (S-292).
+
+    A S-241 fixou a regra para os quatro pincéis de ênfase: *"um botão que diz 'negrito' onde o
+    texto não é negrito é pior que um botão sem estado nenhum"*. Estes testes a estendem aos dois
+    atributos de valor que a Fase 41 acrescentou.
+    """
+
+    def _com_texto(self, conteudo: str = "uma frase para formatar") -> TextoPanel:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto(conteudo)))
+        return painel
+
+    def test_a_lista_marca_o_alinhamento_do_paragrafo(self) -> None:
+        painel = self._com_texto()
+        self.assertEqual(painel.alinhamento_var.get(), "")
+        painel.editor.mark_set(tk.INSERT, "1.2")
+        painel.alinhar_centro()
+        painel.update()
+        self.assertEqual(painel.alinhamento_var.get(), "centro")
+
+    def test_o_alinhamento_e_lido_do_paragrafo_e_nao_da_palavra(self) -> None:
+        """O cursor fora de uma palavra num parágrafo centralizado tem de continuar dizendo
+        "centro" -- e diria "" se a pergunta fosse sobre `intervalo_alvo` (S-259)."""
+        painel = self._com_texto("[nota] uma frase")
+        painel.editor.mark_set(tk.INSERT, "1.2")
+        painel.alinhar_direita()
+        painel.editor.tag_remove(tk.SEL, "1.0", tk.END)
+        painel.editor.mark_set(tk.INSERT, "1.0")  # sobre o `[`
+        painel._atualizar_ferramentas()
+        self.assertEqual(painel.alinhamento_var.get(), "direita")
+
+    def test_o_mostrador_de_corpo_segue_o_cursor(self) -> None:
+        painel = self._com_texto()
+        painel.editor.tag_add(tk.SEL, "1.0", "1.3")
+        painel._atualizar_ferramentas()
+        self.assertEqual(painel.corpo_var.get(), "0")
+        painel.aumentar_corpo()
+        painel.update()
+        self.assertEqual(painel.corpo_var.get(), "+1")
+
+    def test_o_mostrador_diz_misto_quando_a_selecao_tem_dois_degraus(self) -> None:
+        """`0` é um degrau de verdade, e mostrá-lo onde há dois seria o mostrador afirmando o que
+        ele não sabe."""
+        painel = self._com_texto("uma frase para formatar")
+        painel.editor.tag_add(tk.SEL, "1.0", "1.3")
+        painel.aumentar_corpo()
+        painel.editor.tag_remove(tk.SEL, "1.0", tk.END)
+        painel.editor.tag_add(tk.SEL, "1.0", "1.9")
+        painel._atualizar_ferramentas()
+        self.assertEqual(painel.corpo_var.get(), texto_panel.ROTULO_DO_CORPO_MISTO)
+
+
+class VistaGuardadaTests(_ComJanela, unittest.TestCase):
+    """O zoom e a quebra sobrevivem ao fechamento da janela (S-291)."""
+
+    def test_restaurar_poe_a_vista_sem_avisar_no_rodape(self) -> None:
+        """A janela que abre dizendo "zoom +2" fala de uma coisa que ninguém acabou de fazer."""
+        avisos: list[str] = []
+        assert _RAIZ is not None
+        painel = TextoPanel(
+            _RAIZ,
+            pdf_path=lambda: None,
+            page_index=lambda: 0,
+            on_status=avisos.append,
+            busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+        )
+        painel.restaurar_vista(zoom=2, quebra=False)
+        painel.update()
+        self.assertEqual(painel.zoom_da_vista, 2)
+        self.assertFalse(bool(painel.quebra_var.get()))
+        self.assertEqual(str(painel.editor.cget("wrap")), "none")
+        self.assertEqual(avisos, [])
+
+    def test_o_zoom_de_um_arquivo_estragado_e_grampeado(self) -> None:
+        """Os limites são desta aba, e é aqui que eles se aplicam -- `ui/state.py` valida só o tipo,
+        pela mesma regra que ele já segue para a pele e a geometria."""
+        painel = self._painel()
+        painel.restaurar_vista(zoom=900)
+        self.assertEqual(painel.zoom_da_vista, texto_panel.ZOOM_MAXIMO)
+        painel.restaurar_vista(zoom=-900)
+        self.assertEqual(painel.zoom_da_vista, texto_panel.ZOOM_MINIMO)
+
+
+class ConferenciaQueSeRefazTests(_ComJanela, unittest.TestCase):
+    """A marcação do léxico se refaz depois do redesenho (S-293)."""
+
+    def _com_erro(self) -> TextoPanel:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("the smdy of the position")))
+        return painel
+
+    def test_corrigir_uma_palavra_nao_apaga_as_marcas(self) -> None:
+        """**O defeito que o item fecha.** Toda ferramenta que muda texto redesenha, e o redesenho
+        apagava a marcação inteira -- então corrigir a primeira palavra marcada apagava as outras,
+        que é exatamente o gesto que a conferência existe para servir."""
+        painel = self._com_erro()
+        painel.marcar_fora_do_lexico()
+        self.assertTrue(painel.editor.tag_ranges(texto_panel.ETIQUETA_DO_LEXICO))
+        painel.editor.tag_add(tk.SEL, "1.0", "1.3")
+        painel.maiusculas()  # muda texto -> redesenha
+        painel.update()
+        self.assertTrue(
+            painel.editor.tag_ranges(texto_panel.ETIQUETA_DO_LEXICO),
+            "a marcação não voltou depois do redesenho",
+        )
+
+    def test_limpar_desliga_e_o_redesenho_nao_a_traz_de_volta(self) -> None:
+        painel = self._com_erro()
+        painel.marcar_fora_do_lexico()
+        painel.limpar_marcas_do_lexico()
+        painel.editor.tag_add(tk.SEL, "1.0", "1.3")
+        painel.maiusculas()
+        painel.update()
+        self.assertEqual(painel.editor.tag_ranges(texto_panel.ETIQUETA_DO_LEXICO), ())
+
+    def test_a_reconferencia_nao_reescreve_o_rodape(self) -> None:
+        """A conta já foi dita quando se ligou; repeti-la a cada redesenho esconderia o que a
+        ferramenta que acabou de rodar tinha a dizer."""
+        avisos: list[str] = []
+        assert _RAIZ is not None
+        painel = TextoPanel(
+            _RAIZ,
+            pdf_path=lambda: None,
+            page_index=lambda: 0,
+            on_status=avisos.append,
+            busy=BusyRegistry(),
+            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+        )
+        painel.desenhar(_pagina(_texto("the smdy of the position")))
+        painel.marcar_fora_do_lexico()
+        avisos.clear()
+        painel.editor.tag_add(tk.SEL, "1.0", "1.3")
+        painel.maiusculas()
+        painel.update()
+        self.assertEqual([a for a in avisos if "léxico" in a], [])
+
+    def test_a_conferencia_continua_fora_do_documento(self) -> None:
+        """Refazer-se sozinha não pode ter virado gravação: ela continua derivada (S-266)."""
+        painel = self._com_erro()
+        painel.marcar_fora_do_lexico()
+        antes = painel.documento_atual()
+        painel.desenhar_documento(antes)
+        self.assertEqual(painel.documento_atual(), antes)
 
 
 if __name__ == "__main__":  # pragma: no cover

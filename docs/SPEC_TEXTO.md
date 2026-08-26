@@ -16,7 +16,8 @@ spec.
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-266 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 
 Cada item tem **Problema**, **Solução**, **Critério de aceite**, **Testes** e **Sonda**. A
 convenção é a de sempre: nome de módulo é sugestão, o que importa é a fronteira de

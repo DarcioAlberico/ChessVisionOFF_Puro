@@ -112,6 +112,32 @@ class AlinhamentoTests(unittest.TestCase):
         self.assertNotEqual(volta.corridas[0].atributos.alinhamento, doc.corridas[0].atributos.alinhamento)
 
 
+class ValorEmTodoTests(unittest.TestCase):
+    """O que a barra pergunta para dizer o estado sob o cursor (S-292)."""
+
+    def test_o_valor_comum_e_devolvido(self) -> None:
+        doc = _doc(_texto("um ", alinhamento="centro"), _texto("paragrafo", alinhamento="centro"))
+        self.assertEqual(rico.valor_em_todo(doc, 0, len(doc.para_texto()), "alinhamento"), "centro")
+
+    def test_o_valor_divergente_devolve_none(self) -> None:
+        """**A distinção que o item existe para manter.** `None` e `""` não são a mesma resposta: a
+        lista da barra não pode marcar "centro" onde ele vale em metade da selecao."""
+        doc = _doc(_texto("um ", alinhamento="centro"), _texto("outro", alinhamento="direita"))
+        self.assertIsNone(rico.valor_em_todo(doc, 0, len(doc.para_texto()), "alinhamento"))
+
+    def test_sem_alinhamento_devolve_a_string_vazia_e_nao_none(self) -> None:
+        doc = _doc(_texto("um paragrafo comum"))
+        self.assertEqual(rico.valor_em_todo(doc, 0, 5, "alinhamento"), "")
+
+    def test_intervalo_sem_texto_devolve_none(self) -> None:
+        doc = _doc(_marca(bloco=0))
+        self.assertIsNone(rico.valor_em_todo(doc, 0, len(doc.para_texto()), "alinhamento"))
+
+    def test_o_corpo_tambem_responde(self) -> None:
+        doc = _doc(_texto("maior", corpo=2))
+        self.assertEqual(rico.valor_em_todo(doc, 0, 5, "corpo"), 2)
+
+
 class CorpoTests(unittest.TestCase):
     """S-260. O degrau soma sobre o que está lá, e para no limite sem parar o gesto."""
 

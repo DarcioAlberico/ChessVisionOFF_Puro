@@ -1,4 +1,4 @@
-# Especificação do editor de texto — Fases 36 a 42 (S-235 a S-266)
+# Especificação do editor de texto — Fases 36 a 42 e 51 (S-235 a S-267, S-291 a S-293)
 
 Base: [ROADMAP_EDITOR.md](ROADMAP_EDITOR.md), que traz a medição da aba de hoje, os oito achados e
 o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
@@ -17,7 +17,8 @@ o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-266 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2659,6 +2660,171 @@ contrário da leitura da folha, que custa de 1 s a 40 s.
 
 **Testes.** `tests/test_texto_lexico.py::ConferenciaSemCorrecaoTests`;
 `tests/test_ui_texto_editor.py::LexicoNaAbaTests`.
+
+---
+
+# Fase 51 — As quatro pontas que as Fases 41 e 42 deixaram
+
+> Nenhum comando novo entra aqui. Os quatro itens fecham buracos que as duas fases anteriores
+> deixaram visíveis — dois deles **anteriores** a elas, e descobertos só porque a barra cresceu o
+> bastante para a falta aparecer: uma declaração que não fazia nada, um estado que não sobrevivia ao
+> fechamento, dois controles que não diziam o que valia sob o cursor, e uma marcação que se apagava
+> justamente no gesto que ela existe para servir.
+
+## S-267 · `Ctrl+F` e `Ctrl+H`, e a declaração que não fazia nada ✅ implementada (2026-08-26)
+
+**Problema.** `texto_panel.ACOES_PROPRIAS` declara, desde a S-244, que a aba atende `achar` e
+`substituir` "enquanto tem o foco". Só que `ATALHOS` **não tinha essas teclas** — nem `Ctrl+F` nem
+`Ctrl+H` existiam na janela. A declaração descrevia um roteamento de tecla para uma tecla que
+ninguém apertava: `atalhos.destino` só é consultado a partir de uma sequência, e não havia
+sequência. As duas linhas existiam e não faziam nada, que é a S-161 outra vez — *"o que não era
+botão não existia"* — com o agravante de que aqui **parecia** existir.
+
+E é a falta mais visível de todas: com 49 comandos na aba, `Ctrl+F` não abrir a busca é o primeiro
+gesto que qualquer pessoa tenta.
+
+**Solução, e a medição que decidiu as duas teclas.** As duas entram em `ATALHOS`, com uma
+assimetria que **foi medida em 2026-08-26** e não é gosto:
+
+| tecla | classe `Text` do Tk faz | decisão |
+|---|---|---|
+| `Ctrl+F` | **nada** nesta versão | só `ATALHOS`. O `bind_all` basta |
+| `Ctrl+H` | **backspace** — apaga um caractere | `ATALHOS` **e** `TECLAS_DO_EDITOR` |
+
+O `Ctrl+H` é herança de terminal, e as bindtags do Tk são `widget, classe, toplevel, all`, nessa
+ordem: um `bind_all` roda **depois** da classe. Ligada só na janela, a tecla apagaria um caractere e
+**então** abriria a substituição, toda vez. O `bind` no widget roda primeiro e devolve `"break"`, que
+mata os dois de baixo — verificado nos dois sentidos: com o `bind`, o texto fica intacto e
+`substituir` é chamado; sem ele, `abcdef` vira `abdef`.
+
+**Elas não têm `no_editor`, e é o oposto do `Ctrl+S`.** Ali a mesma tecla tem dois destinos conforme
+o foco; aqui ela tem um só, porque a janela tem **uma** busca e ela é a do texto da folha. Fora do
+editor, `Ctrl+F` abre a mesma janela — que é melhor que não fazer nada, e é o que um programa com
+uma busca só deve fazer.
+
+**`SOBREPOSICOES_NO_EDITOR` passou a declarar o motivo**, e não só a ação, porque agora há dois
+motivos diferentes para a mesma tabela: `CEDIDA_PELA_GUARDA` (a tecla é da janela e a guarda de foco
+já a cedia dentro do editor — `Ctrl+R`) e `GANHA_DO_TK` (a mesma ação nos dois lados, e o `bind` do
+widget existe para vencer a classe `Text` — `Ctrl+H`). Os dois têm teste próprio, e o sinal que os
+separa é objetivo: a ação estar ou não em `ACOES_PROPRIAS`.
+
+**Um teste que passava sem exercitar nada, achado no caminho.** `test_as_tres_teclas_devolvem_break`
+gerava o evento numa janela `withdraw`n — e ali `event_generate` de teclado não entrega a ninguém,
+porque não há foco de verdade. O texto ficava igual porque **nada disparava**, e o teste passava em
+verde sobre nove teclas sem exercitar uma. Ele foi trocado pelo que é afirmável sem janela na tela:
+que cada sequência tem `bind` **no próprio widget** e que ele devolve `"break"`.
+
+**Critério de aceite.**
+
+- toda ação de `ACOES_PROPRIAS` tem tecla na janela — e é um teste, não uma revisão;
+- `Ctrl+H` dentro do editor abre a substituição **sem** apagar caractere;
+- toda sobreposição entre as duas tabelas declara qual dos dois motivos ela é.
+
+**Testes.** `tests/test_ui_atalhos_destino.py` — `test_toda_acao_propria_da_aba_tem_tecla`,
+`test_a_tecla_que_ganha_do_tk_faz_a_mesma_acao_nos_dois_lados`;
+`tests/test_ui_texto_editor.py::test_toda_tecla_do_editor_esta_ligada_no_widget`.
+
+---
+
+## S-291 · O zoom e a quebra sobrevivem ao fechamento ✅ implementada (2026-08-26)
+
+**Problema.** A S-264 acrescentou o **terceiro** zoom do programa, e foi o único que a janela não
+lembra. `pdf_zoom` e `board_zoom` estão em `AppState` desde a versão 1 do formato, e o próprio
+arquivo diz por quê, em `show_diagram_boxes`: *"essa escolha tem de sobreviver ao fechamento da
+janela — senão ela vira uma tarefa a refazer toda vez"*. Quem confere um scan ruim com a letra dois
+degraus maior a refazia a cada abertura. O mesmo vale para a quebra de linha da S-265: quem trabalha
+notação a desliga uma vez, não uma vez por sessão.
+
+**Solução.** `AppState.texto_zoom` e `AppState.texto_quebra`, gravados e lidos como os vizinhos, e
+`TextoPanel.restaurar_vista(zoom=, quebra=)` — um contrato só, no molde de `pdf_panel.set_zoom`, para
+a janela continuar amarrando nome a método em vez de conhecer o widget por dentro.
+
+**Duas decisões pequenas.**
+
+- **A restauração é silenciosa.** `_aplicar_zoom(avisar=False)`: o rodapé é para quem acabou de
+  apertar um botão, e uma janela que abre dizendo "zoom +2" fala de algo que ninguém acabou de fazer.
+- **`ui/state.py` valida só o tipo.** Os limites do zoom são da aba que o desenha, e repeti-los no
+  arquivo de estado os declararia num segundo lugar — a mesma regra que aquele módulo já segue para
+  a pele, a geometria e o conjunto de peças. Quem grampeia um `texto_zoom: 900` de arquivo estragado
+  é `_aplicar_zoom`, e agora ele grampeia (antes só `_mudar_zoom` o fazia).
+
+**Critério de aceite.**
+
+- o zoom e a quebra voltam como estavam na sessão anterior;
+- a restauração não escreve no rodapé;
+- valor absurdo no arquivo cai no limite da aba, e não derruba a abertura.
+
+**Testes.** `tests/test_ui_texto_editor.py::VistaGuardadaTests`.
+
+---
+
+## S-292 · A barra diz o alinhamento e o degrau que valem sob o cursor ✅ implementada (2026-08-26)
+
+**Problema.** A S-241 fixou a regra para os pincéis de ênfase, e a escreveu assim: *"um botão que
+diz 'negrito' onde o texto não é negrito é pior que um botão sem estado nenhum"*. Os quatro
+interruptores a cumprem. Os dois controles de valor que a Fase 41 acrescentou, não: a lista "Alinhar"
+mostra quatro itens iguais num parágrafo já centralizado, e `A+`/`A-` não dizem em que degrau o
+trecho está. Quem quer voltar ao normal não sabe de onde está voltando.
+
+**Solução.** `rico.valor_em_todo` — o irmão de `vale_em_todo` para atributo que não é sim-ou-não —,
+e ela existe pela mesma razão que aquele: quem responde à barra tem de ser a **mesma** função que
+decide, porque duas respostas para a mesma pergunta divergem e a que fica errada é a da tela.
+
+**`None` e `""` são respostas diferentes, e a distinção é o item.** `""` é "todo o intervalo está sem
+alinhamento"; `None` é "há mais de um aqui". Sem separá-las, a lista marcaria um item que vale em
+metade da seleção. O mesmo vale para o corpo, e por isso o mostrador tem três estados — `0`, `+2`,
+e a meia-risca de "não há um só degrau": mostrar `0` onde há dois seria o mostrador afirmando o que
+ele não sabe.
+
+**A lista de alinhamento virou `add_radiobutton`; a de caixa não.** Alinhamento é **estado** do
+parágrafo e tem de aparecer marcado; caixa não é estado — um trecho não "está em maiúsculas", ele
+foi posto em maiúsculas e virou texto.
+
+**O alinhamento é lido do parágrafo, e não da palavra sob o cursor.** Perguntar sobre
+`intervalo_alvo` diria "sem alinhamento" num parágrafo centralizado sempre que o cursor caísse fora
+de uma palavra — que é o mesmo buraco que a S-259 fechou do lado de quem aplica, agora do lado de
+quem mostra.
+
+**Critério de aceite.**
+
+- a lista marca o alinhamento do parágrafo, mesmo com o cursor fora de uma palavra;
+- o mostrador segue o cursor e distingue "zero" de "mais de um";
+- nenhum dos dois é fonte: quem decide continua sendo a função pura.
+
+**Testes.** `tests/test_texto_ferramentas.py::ValorEmTodoTests`;
+`tests/test_ui_texto_editor.py::EstadoNaBarraTests`.
+
+---
+
+## S-293 · A conferência do léxico se refaz depois do redesenho ✅ implementada (2026-08-26)
+
+**Problema.** `marcar_fora_do_lexico` marcava **uma vez**. Toda ferramenta que muda texto redesenha,
+e o redesenho apaga a marcação inteira — então corrigir a primeira palavra marcada apagava as
+outras, e a pessoa tinha de reconferir a cada correção. É exatamente o gesto que a conferência existe
+para servir: achar as suspeitas e corrigi-las uma a uma.
+
+**Solução.** O comando **liga** a conferência em vez de marcar uma vez, e `desenhar_documento` a
+refaz no fim. Quem a desliga é `limpar_marcas_do_lexico`, que passou a ser um interruptor de saída e
+não só uma limpeza.
+
+**Três detalhes que a implementação obriga.**
+
+- **Depois do `finally`.** A conferência lê o documento pelo `dump` do widget, e o widget só está
+  pronto quando o laço de desenho terminou.
+- **Sem reescrever o rodapé.** A conta já foi dita quando se ligou; repeti-la a cada redesenho seria
+  ruído — e pior, esconderia o que a ferramenta que acabou de rodar tinha a dizer (a substituição
+  conta as trocas, o corpo avisa o limite).
+- **Continua fora do documento.** Refazer-se sozinha não pode ter virado gravação: a marca segue
+  derivada, e o teste compara o documento antes e depois de um redesenho com a conferência ligada.
+
+**Critério de aceite.**
+
+- corrigir uma palavra marcada **não** apaga as marcas das outras;
+- limpar desliga, e o redesenho seguinte não as traz de volta;
+- a reconferência não escreve no rodapé;
+- o documento continua idêntico com a conferência ligada.
+
+**Testes.** `tests/test_ui_texto_editor.py::ConferenciaQueSeRefazTests`.
 
 ---
 

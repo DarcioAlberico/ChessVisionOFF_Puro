@@ -1,7 +1,7 @@
 {
   "item": "S-256 · o inventário do editor de texto",
   "quando": "2026-08-26",
-  "commit": "69f4a67310899064b1f6b71d0d862a8b638b5383",
+  "commit": "4efe9c8c2f8cd1e6bd5c2a42f9d46d3f6b8ab04c",
   "atributos_do_documento": [
     "negrito",
     "italico",
@@ -130,7 +130,8 @@
     "diminuir_corpo": "<Control-bracketleft>",
     "selecionar_tudo": "<Control-a>",
     "aproximar_texto": "<Control-plus>",
-    "afastar_texto": "<Control-minus>"
+    "afastar_texto": "<Control-minus>",
+    "substituir": "<Control-h>"
   },
   "acoes_que_a_aba_toma_para_si": [
     "achar",

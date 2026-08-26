@@ -35,6 +35,8 @@ from typing import Protocol, runtime_checkable
 
 __all__ = [
     "ATALHOS",
+    "CEDIDA_PELA_GUARDA",
+    "GANHA_DO_TK",
     "SOBREPOSICOES_NO_EDITOR",
     "TECLAS_DO_EDITOR",
     "Atalho",
@@ -112,6 +114,17 @@ ATALHOS: tuple[Atalho, ...] = (
         "Refazer a mudança que o desfazer tirou",
         no_editor="Refaz a edição do texto que o desfazer tirou",
     ),
+    # As duas da S-267, e elas fecham uma declaração vazia: `achar` e `substituir` estavam em
+    # `texto_panel.ACOES_PROPRIAS` -- "a aba atende esta ação global enquanto tem o foco" -- e não
+    # havia ação global nenhuma para atender. A tabela não tinha as teclas, então a declaração da
+    # aba não fazia nada, e `Ctrl+F` num editor de texto não fazia nada tampouco.
+    #
+    # **Elas não têm `no_editor`, e é o oposto do `Ctrl+S`.** Ali a mesma tecla tem dois destinos
+    # conforme o foco; aqui ela tem **um**, porque a janela só tem uma busca e ela é a do texto da
+    # folha. Fora do editor, `Ctrl+F` abre a mesma janela de busca -- que é melhor que não fazer
+    # nada, e é o que um programa com uma busca só deve fazer.
+    Atalho("<Control-f>", "Ctrl+F", "achar", "Achar no texto da folha"),
+    Atalho("<Control-h>", "Ctrl+H", "substituir", "Achar e substituir no texto da folha"),
     Atalho("<Control-n>", "Ctrl+N", "proximo_da_fila", "Abrir o próximo item pendente da fila de revisão"),
     Atalho("<Prior>", "Page Up", "pagina_anterior", "Página anterior do livro"),
     Atalho("<Next>", "Page Down", "proxima_pagina", "Próxima página do livro"),
@@ -150,6 +163,15 @@ TECLAS_DO_EDITOR: dict[str, str] = {
     "selecionar_tudo": "<Control-a>",
     "aproximar_texto": "<Control-plus>",
     "afastar_texto": "<Control-minus>",
+    # **`Ctrl+H` está aqui e em `ATALHOS`, e a duplicata é obrigatória** (S-267). Medido: em
+    # `tk8.6/text.tcl` o `Ctrl+H` da **classe** `Text` é backspace -- herança de terminal --, e um
+    # `bind_all` roda **depois** dela (bindtags: widget, classe, toplevel, all). Ligada só na
+    # janela, a tecla apagaria um caractere e **então** abriria a substituição, toda vez.
+    #
+    # O `bind` no widget roda primeiro e devolve `"break"`, que mata os dois de baixo. `Ctrl+F` não
+    # precisa disto e por isso não está aqui: medido no mesmo lugar, a classe `Text` não faz nada
+    # com ele nesta versão do Tk.
+    "substituir": "<Control-h>",
 }
 """As teclas próprias do editor de texto (S-241/S-259/S-260) -- **e por que não estão em `ATALHOS`**.
 
@@ -188,21 +210,35 @@ declaração da mesma tecla -- o defeito que esta tabela existe para impedir. O 
 **comando**, e não tecla: ver `ui/comandos.py`."""
 
 
-SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
-    "<Control-r>": "ler_pagina",
-}
-"""Sequências que estão nas **duas** tabelas, e por que cada uma pode estar (S-259).
+CEDIDA_PELA_GUARDA = "cedida-pela-guarda"
+"""A tecla é da janela, e a guarda de foco já a cedia dentro do editor: ali ela estava morta."""
 
-**Sobreposição declarada, e não colisão.** `Ctrl+R` é "ler esta página" desde a S-165 e continua
-sendo -- em toda a janela menos dentro de um campo de texto, onde a guarda de foco de
-`ui/shortcuts.ignores_widget` **já cedia a tecla desde a S-20**. Quer dizer: com o cursor no editor,
-esta sequência não fazia nada antes de a Fase 41 a ligar a "alinhar à direita". Ligá-la ali não tira
-nada de ninguém; ocupa uma tecla que estava morta naquele widget.
+GANHA_DO_TK = "ganha-do-tk"
+"""A tecla é da janela e a aba a toma para si; o `bind` no widget existe para vencer a **classe**
+`Text`, que roda antes de todo `bind_all` e faria outra coisa com ela."""
+
+SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
+    "<Control-r>": CEDIDA_PELA_GUARDA,
+    "<Control-h>": GANHA_DO_TK,
+}
+"""Sequências que estão nas **duas** tabelas, e por que cada uma pode estar (S-259/S-267).
+
+**Sobreposição declarada, e não colisão.** São dois motivos diferentes, e a diferença tem teste:
+
+`CEDIDA_PELA_GUARDA` -- `Ctrl+R` é "ler esta página" desde a S-165 e continua sendo, em toda a
+janela menos dentro de um campo de texto, onde a guarda de `ui/shortcuts.ignores_widget` **já cedia
+a tecla desde a S-20**. Com o cursor no editor essa sequência não fazia nada antes de a Fase 41 a
+ligar a "alinhar à direita": ligá-la ali não tira nada de ninguém, ocupa uma tecla morta naquele
+widget. O sinal disso é a ação **não** estar em `texto_panel.ACOES_PROPRIAS`.
+
+`GANHA_DO_TK` -- `Ctrl+H` é "substituir" nas duas tabelas, a mesma ação, e a duplicata é
+obrigatória: a classe `Text` liga essa tecla a **backspace**, e um `bind_all` roda depois dela. Sem
+o `bind` no widget, a tecla apagaria um caractere antes de abrir a substituição. O sinal disso é a
+ação **estar** em `ACOES_PROPRIAS` e a tecla do editor apontar para ela.
 
 O que não pode acontecer é a **próxima** entrar em silêncio, e é isso que esta tabela compra: a
-sobreposição seguinte reprova `test_ui_atalhos_destino` até alguém escrever aqui por que ela é
-aceitável -- ou trocar a tecla, que é a resposta certa quando a ação da janela **não** é cedida
-dentro do editor (as de `texto_panel.ACOES_PROPRIAS`, que a aba toma para si).
+sobreposição seguinte reprova `test_ui_atalhos_destino` até alguém escrever aqui de qual dos dois
+tipos ela é -- ou trocar a tecla.
 
 `Ctrl+L`, `Ctrl+E` e `Ctrl+J` **não** estão aqui: elas não são atalho da janela nenhum. O que elas
 sobrepõem é o binding de fábrica do `tk.Text`, que é outro assunto e está no docstring acima."""

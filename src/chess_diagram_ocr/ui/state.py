@@ -143,6 +143,23 @@ class AppState:
     pergunta de quem vai aplicá-la, e `pele.densidade_em_vigor` responde nomeando no log a que não
     existe."""
 
+    texto_zoom: int = 0
+    """Degraus de zoom da aba de texto (S-291). `0` = tamanho normal.
+
+    **É o terceiro zoom do programa**, e os outros dois já eram lembrados desde a versão 1 do
+    formato -- pela razão que este arquivo repete em `show_diagram_boxes` e em `sash_fraction`:
+    escolha de visualização que se perde a cada abertura vira tarefa a refazer toda vez.
+
+    `0` é o padrão **e** um valor válido, e aqui isso não custa nada: ao contrário de `skin` e
+    `sash_fraction`, "não guardado" e "guardado em zero" pedem exatamente o mesmo do programa."""
+
+    texto_quebra: bool = True
+    """As linhas da aba de texto quebram na largura da janela? (S-291)
+
+    Ligado por padrão porque é como a aba nasceu e é o certo para prosa. Quem desliga está lendo
+    **notação** -- uma linha de lances quebrada deixa de ser uma linha de lances --, e essa escolha
+    dura tanto quanto a de `wheel_flips_page`, que é o interruptor vizinho com o mesmo argumento."""
+
     piece_dir: str = ""
     """A pasta de peças do usuário (S-230). Vazio = nenhuma escolhida.
 
@@ -204,6 +221,8 @@ class AppState:
             "densidade": self.densidade,
             "piece_set": self.piece_set,
             "piece_dir": self.piece_dir,
+            "texto_zoom": int(self.texto_zoom),
+            "texto_quebra": bool(self.texto_quebra),
         }
 
 
@@ -310,6 +329,18 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     piece_dir = raw.get("piece_dir")
     if isinstance(piece_dir, str):
         state.piece_dir = piece_dir
+
+    # Os dois da S-291, e **nenhum é validado aqui além do tipo** -- a mesma regra de `skin`, da
+    # geometria e do conjunto de peças, três parágrafos acima: os limites do zoom são da aba que o
+    # desenha (`texto_panel.ZOOM_MINIMO`/`ZOOM_MAXIMO`), e repeti-los aqui os declararia num
+    # segundo lugar. Quem grampeia um `texto_zoom: 900` de arquivo estragado é `_aplicar_zoom`.
+    texto_zoom = raw.get("texto_zoom")
+    if isinstance(texto_zoom, int) and not isinstance(texto_zoom, bool):
+        state.texto_zoom = texto_zoom
+
+    texto_quebra = raw.get("texto_quebra")
+    if isinstance(texto_quebra, bool):
+        state.texto_quebra = texto_quebra
 
     return state
 

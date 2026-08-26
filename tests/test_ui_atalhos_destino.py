@@ -103,10 +103,25 @@ class DestinoTests(unittest.TestCase):
 
 
 class NenhumaTeclaNovaTests(unittest.TestCase):
-    def test_nenhuma_sequencia_nova_entra_na_tabela(self) -> None:
-        """O item é o **oposto** de acrescentar teclas: `Ctrl+S` continua sendo uma tecla só, com
-        um rótulo só na legenda, e o que muda é ela ter destino conforme o foco."""
-        self.assertEqual(len(atalhos.ATALHOS), 14)
+    def test_a_tabela_tem_as_dezesseis_teclas(self) -> None:
+        """Catorze da S-244 -- que era o **oposto** de acrescentar teclas: `Ctrl+S` continua sendo
+        uma tecla só, e o que ela mudou foi o destino conforme o foco -- mais as duas da S-267.
+
+        As duas novas não contradizem aquilo. Elas não dão um segundo destino a tecla nenhuma:
+        `achar` e `substituir` já estavam declarados em `texto_panel.ACOES_PROPRIAS` e **não tinham
+        tecla**, então a declaração da aba não fazia nada."""
+        self.assertEqual(len(atalhos.ATALHOS), 16)
+        self.assertEqual(atalhos.acao_de("<Control-f>"), "achar")
+        self.assertEqual(atalhos.acao_de("<Control-h>"), "substituir")
+
+    def test_toda_acao_propria_da_aba_tem_tecla(self) -> None:
+        """**A declaração vazia que a S-267 fecha.** `ACOES_PROPRIAS` diz "esta aba atende esta ação
+        global enquanto tem o foco"; sem tecla global, não há o que atender -- a linha existia e não
+        fazia nada. É a mesma classe de defeito do item de menu sem comando (S-161)."""
+        from chess_diagram_ocr.ui import texto_panel
+
+        sem_tecla = sorted(a for a in texto_panel.ACOES_PROPRIAS if a not in atalhos.por_acao)
+        self.assertEqual(sem_tecla, [], "ação declarada como própria da aba e sem tecla na janela")
 
     def test_a_tecla_de_salvar_declara_os_dois_destinos(self) -> None:
         self.assertTrue(atalhos.por_acao["salvar"].no_editor)
@@ -131,6 +146,8 @@ class NenhumaTeclaNovaTests(unittest.TestCase):
                 "selecionar_tudo",
                 "aproximar_texto",
                 "afastar_texto",
+                # `substituir` está nas duas tabelas de propósito -- ver `SOBREPOSICOES_NO_EDITOR`.
+                "substituir",
             },
         )
         self.assertEqual(atalhos.TECLAS_DO_EDITOR["italico"], "<Control-i>")
@@ -150,22 +167,37 @@ class NenhumaTeclaNovaTests(unittest.TestCase):
             "sobreposição entre as duas tabelas sem declaração em SOBREPOSICOES_NO_EDITOR",
         )
 
-    def test_a_sobreposicao_declarada_nomeia_a_acao_certa(self) -> None:
-        """A declaração diz **que** ação da janela a tecla tem; errar isso a tornaria inútil."""
-        for sequencia, acao in atalhos.SOBREPOSICOES_NO_EDITOR.items():
+    def test_toda_sobreposicao_declara_um_motivo_conhecido(self) -> None:
+        motivos = {atalhos.CEDIDA_PELA_GUARDA, atalhos.GANHA_DO_TK}
+        self.assertLessEqual(set(atalhos.SOBREPOSICOES_NO_EDITOR.values()), motivos)
+        for sequencia in atalhos.SOBREPOSICOES_NO_EDITOR:
             with self.subTest(sequencia=sequencia):
-                self.assertEqual(atalhos.acao_de(sequencia), acao)
+                self.assertTrue(atalhos.acao_de(sequencia), "sequência que não é atalho da janela")
 
-    def test_a_tecla_sobreposta_e_cedida_pela_guarda_dentro_do_editor(self) -> None:
-        """**A razão de a sobreposição ser aceitável, virada teste.**
+    def test_a_tecla_cedida_pela_guarda_nao_e_acao_propria_da_aba(self) -> None:
+        """**A razão do primeiro motivo, virada teste.**
 
-        Ela só vale porque a guarda cede a tecla a todo widget de texto (S-20) *e* porque a aba não
-        toma aquela ação para si (S-244). Se um dos dois deixar de valer, a tecla passa a ter dois
-        donos de verdade -- e é aqui que isso aparece."""
+        `CEDIDA_PELA_GUARDA` só vale porque a guarda cede a tecla a todo widget de texto (S-20) *e*
+        porque a aba **não** toma aquela ação para si. Se um dos dois deixar de valer, a tecla passa
+        a ter dois donos de verdade dentro do editor."""
         self.assertIn(tk.Text, shortcuts.TEXT_ENTRY_WIDGETS)
-        for acao in atalhos.SOBREPOSICOES_NO_EDITOR.values():
-            with self.subTest(acao=acao):
-                self.assertNotIn(acao, texto_panel.ACOES_PROPRIAS)
+        for sequencia, motivo in atalhos.SOBREPOSICOES_NO_EDITOR.items():
+            if motivo != atalhos.CEDIDA_PELA_GUARDA:
+                continue
+            with self.subTest(sequencia=sequencia):
+                self.assertNotIn(atalhos.acao_de(sequencia), texto_panel.ACOES_PROPRIAS)
+
+    def test_a_tecla_que_ganha_do_tk_faz_a_mesma_acao_nos_dois_lados(self) -> None:
+        """**A razão do segundo motivo.** `GANHA_DO_TK` é a mesma ação nas duas tabelas: o `bind` no
+        widget existe só para rodar **antes** da classe `Text`, que faria outra coisa com a tecla.
+        Duas ações diferentes ali seriam a colisão que esta tabela existe para não esconder."""
+        for sequencia, motivo in atalhos.SOBREPOSICOES_NO_EDITOR.items():
+            if motivo != atalhos.GANHA_DO_TK:
+                continue
+            with self.subTest(sequencia=sequencia):
+                acao = atalhos.acao_de(sequencia)
+                self.assertIn(acao, texto_panel.ACOES_PROPRIAS)
+                self.assertEqual(atalhos.TECLAS_DO_EDITOR.get(acao), sequencia)
 
     def test_toda_tecla_do_editor_tem_metodo_no_painel(self) -> None:
         """O nome do comando **é** o nome do método (`texto_panel._ligar_teclas`, por `getattr`).

@@ -598,7 +598,15 @@ nao conhece -- e **nao corrige nada**. `study` lido como `smdy` aparece; `Nf3`, 
 quem separa `s` de `S` e a altura do box, com medicao. A regra e a mesma da S-209: **palavra fora do
 dicionario e sinalizada, nunca aproximada da mais parecida** -- dos 18 lances tao maltratados que
 caem no lexico, nenhum esta no dicionario, e corrigir automaticamente seriam 18 lances reescritos
-como palavra.
+como palavra. A conferencia **fica ligada**: corrigir uma palavra marcada nao apaga as marcas das
+outras, que e o gesto que ela existe para servir.
+
+`Ctrl+F` acha e `Ctrl+H` substitui; `Ctrl+A` seleciona a folha inteira; `Ctrl+B`, `Ctrl+I` e
+`Ctrl+U` sao negrito, italico e sublinhado; `Ctrl+L`, `Ctrl+E`, `Ctrl+R` e `Ctrl+J` alinham o
+paragrafo; `Ctrl+]` e `Ctrl+[` mudam o corpo; `Ctrl++` e `Ctrl+-` aproximam e afastam a vista. O
+zoom e o modo de quebra **sobrevivem ao fechamento da janela**, como os outros dois zooms do
+programa. A barra diz o que vale sob o cursor: os quatro interruptores de enfase, o alinhamento
+marcado na lista e o degrau de corpo no mostrador entre `A-` e `A+`.
 
 Nada disso vive so na tela: **todo atributo esta no documento**, e por isso ele sobrevive a salvar,
 reabrir e exportar. O `.cvtxt` guarda o documento inteiro (formatacao, faixa de confianca, diagramas
@@ -944,7 +952,8 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 | S-178 a S-217 | [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) |
 | S-219 a S-234 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
-| S-235 a S-266 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
+| S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
+| S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1012,7 +1021,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   plano para transforma-la num editor: a aba tem 6 controles, 3 tags de cor e **1** formato de
   saida, e devolve uma `str` -- dai a regra de que todo atributo (negrito, italico, cor, estilo)
   mora no documento e nao no widget, porque tag do Tk nao sobrevive ao botao Salvar
-- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 42 (S-235 a S-266):
+- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 42 e 51 (S-235 a S-267, S-291 a S-293):
   o documento rico como dado, o italico que o leitor ja mede e joga fora, o negrito medido pela
   espessura do traco (a camada declara estilo em 14 dos 41 livros), o arquivo que reabre com
   diagrama e faixa, a paleta gerada das 314 classes do modelo, `Ctrl+S` no editor -- que hoje nao
@@ -1022,6 +1031,10 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   e troca de caixa. A **Fase 42** saiu da leitura de dois editores de texto guardados como
   referencia -- area de transferencia, zoom de leitura, modo de quebra de linha --, mais o unico
   item do corretor ortografico deles que cabia aqui: o lexico que **confere e nao troca**
+- [docs/ROADMAP_ESTUDO.md](docs/ROADMAP_ESTUDO.md) -- **Fases 43 a 50**, o que a aba
+  Analise e hoje, por que ela nao e uma sala de estudo e a leitura da pasta de referencia
+- [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) -- especificacao das Fases 43 a 50 (S-268 a S-290):
+  o estudo como dado fora do `tkinter`, um estudo por diagrama, o rascunho e o PGN por livro
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
