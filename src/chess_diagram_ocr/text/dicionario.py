@@ -105,6 +105,10 @@ from .lexico import (
 )
 
 __all__ = [
+    # **Um `__all__` só, e é este (S-316).** Havia um segundo no fim do arquivo, e como ele era
+    # o último a ser executado, era ele que valia -- sem `PALAVRA` e sem `PASTA_DO_LEXICO`, os
+    # dois nomes que este módulo reexporta de `text/lexico.py` de propósito, para que quem lê o
+    # dicionário não precise saber que a régua de palavra mora ao lado.
     "CAMINHO_ACERVO",
     "CAMINHO_IDIOMA",
     "CAMINHO_NOMES",
@@ -302,27 +306,3 @@ def corrigir(
             saida[inicio + i] = (novo, confianca)
     return saida
 
-
-__all__ = [
-    "CAMINHO_ACERVO",
-    "CAMINHO_IDIOMA",
-    "CAMINHO_NOMES",
-    "CAMINHO_PADRAO",
-    "EMPACOTADOS",
-    "FRACAO_DE_LETRAS",
-    "MAX_TROCAS",
-    "MIN_TAMANHO",
-    "PISO_DE_CANDIDATO",
-    "PONTUACAO_DE_BORDA",
-    "TOPO",
-    "alternativas",
-    "carregar",
-    "conhecida",
-    "corrigir",
-    "desconhecidas",
-    "palavras_de",
-    "e_palavra",
-    "escolher",
-    "palavras",
-    "variantes",
-]

@@ -345,7 +345,7 @@ def semear(
     camada só existem para o classificador, e é `--com-glifo` que os traz -- critério de aceite da
     S-258, porque um corte sintonizado só onde a camada existe pode estar sintonizado na camada.
     """
-    from ..text.leitor import ler_pagina
+    from ..text.leitor import MotorDeTexto, ler_pagina
 
     reconhecedor = None
     if com_glifo:
@@ -373,7 +373,7 @@ def semear(
         tem = _tem_camada(pdf)
         if not tem and not com_glifo:
             continue
-        motor = "camada" if tem else "glifo"
+        motor: MotorDeTexto = "camada" if tem else "glifo"
         passo = max(1, total // (folhas_por_livro + 1))
         achadas = 0
         for indice in range(passo, total, passo):

@@ -178,14 +178,23 @@ def guard(handler: Callable[[], None], sequence: str = "") -> Callable[[tk.Event
         # nada -- nem a posição (a guarda cedeu) nem o texto (ninguém ligou). Quem declara é o
         # painel, em `acoes_proprias`; quem confere que a declaração é cumprida é
         # `atalhos.conferir_dono`, na montagem.
+        # **A cessão é perguntada ANTES da declaração do painel (S-323).** A ordem inversa
+        # deixava `atalhos.destino` responder primeiro, e a declaração de um painel atropelava
+        # a regra que cede `←`, `→`, `Home` e `End` a todo campo de texto. Pior: como o
+        # `bind_all` roda na bindtag `all`, que é a **última**, a ligação de classe do `Entry`
+        # já moveu o cursor quando o `"break"` volta -- ele não desfaz nada. O resultado era a
+        # tecla valendo duas vezes: movia o cursor no campo **e** andava no estudo.
+        #
+        # Com esta ordem, nenhum painel precisa lembrar de excluir os campos dele: a regra da
+        # S-20 vale primeiro, sempre, e a declaração da S-244 decide o que sobra.
+        if cede_a_tecla(alvo, sequence):
+            return None
         acao = atalhos.acao_de(sequence) if sequence else ""
         if acao:
             proprio = atalhos.destino(acao, alvo, {})
             if proprio is not None:
                 proprio()
                 return "break"
-        if cede_a_tecla(alvo, sequence):
-            return None
         if sequence and owns_key(alvo, sequence):
             return None
         handler()

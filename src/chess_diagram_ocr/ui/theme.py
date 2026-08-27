@@ -74,7 +74,9 @@ _cromo_escuro = False
 """Se a pele em uso declara cromo escuro. Módulo e não parâmetro porque `cor_atual` é chamada
 de quinze lugares que não conhecem pele nenhuma -- e não deviam conhecer."""
 
-_repinturas: list[Callable[[], None]] = []
+_repinturas: list[Callable[[], object]] = []
+"""O retorno e ignorado de proposito: `Label.configure` devolve um dicionario e `Canvas.configure`
+nao devolve nada, e exigir `None` aqui faria a mesma `lambda` passar num painel e falhar no outro."""
 """O que precisa ser repintado quando o tema ou a pele mudam (S-224).
 
 **O defeito que isto fecha.** Seis pontos da janela leem a cor **na construção** e a guardam no
@@ -184,7 +186,7 @@ def estilo_atual() -> ttk.Style | None:
         return None
 
 
-def ao_repintar(repintura: Callable[[], None]) -> None:
+def ao_repintar(repintura: Callable[[], object]) -> None:
     """Registra o que refazer quando o tema ou a pele mudarem. Chame ao lado de onde pintou.
 
     A alternativa era um método `repintar()` em cada painel, e ela erra por onde a S-224 mediu:
@@ -201,7 +203,7 @@ def repintar() -> None:
     Um widget destruído entre o registro e a troca não é erro: é a janela de antes. Ele sai da
     lista em vez de derrubar a repintura dos outros -- aparência não derruba ferramenta.
     """
-    vivos: list[Callable[[], None]] = []
+    vivos: list[Callable[[], object]] = []
     for repintura in _repinturas:
         try:
             repintura()

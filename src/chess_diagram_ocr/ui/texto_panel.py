@@ -90,10 +90,11 @@ import logging
 import threading
 import tkinter as tk
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from ..text import arquivo, busca, correcao, dicionario, documento, exportacao, pdf_pesquisavel, rascunho, rico
 from ..text import paleta as _paleta
@@ -182,7 +183,7 @@ sistema desde a S-147, e cravar `12` quebraria quem aumentou a fonte do Windows 
 que `ui/texto.py` corrigiu para o `wraplength`. `NOTACAO` cai em `DADO` porque `DADO` é a
 monoespaçada, e uma linha de lances alinhada é o que a proporcional estraga."""
 
-JUSTIFICACAO_DO_ALINHAMENTO: dict[str, str] = {
+JUSTIFICACAO_DO_ALINHAMENTO: dict[str, Literal["left", "right", "center"]] = {
     rico.ALINHAMENTO_ESQUERDA: tk.LEFT,
     rico.ALINHAMENTO_CENTRO: tk.CENTER,
     rico.ALINHAMENTO_DIREITA: tk.RIGHT,
@@ -357,6 +358,22 @@ def _rotulo_de_corpo(degrau: object) -> str:
     if not isinstance(degrau, int):
         return ROTULO_DO_CORPO_MISTO
     return f"{degrau:+d}" if degrau else "0"
+
+
+def _tecla_que_para(funcao: Callable[[], object]) -> Callable[[Any], str]:
+    """O tratador de uma tecla do editor: chama o comando e devolve `"break"`.
+
+    O `"break"` e o item: sem ele o `tk.Text` roda **tambem** a ligacao de classe dele, e
+    `Ctrl+B` inseriria um caractere de controle depois de aplicar o negrito. Era uma
+    `lambda _e, f=funcao: (f(), "break")[1]`, que dizia a mesma coisa por um caminho que o
+    verificador de tipos nao consegue ler -- e nao ha nada a ganhar em escreve-la assim.
+    """
+
+    def _tratar(_evento: Any) -> str:
+        funcao()
+        return "break"
+
+    return _tratar
 
 
 def _fora_do_livro(doc: rico.DocumentoRico) -> tuple[tuple[int, int], ...]:
@@ -650,7 +667,7 @@ class TextoPanel(ttk.Frame):
         """
         menu = tk.Menu(pai, tearoff=False)
         for nome in texto_cores.nomes():
-            menu.add_command(label=nome.capitalize(), command=lambda n=nome: ao_escolher(n))
+            menu.add_command(label=nome.capitalize(), command=partial(ao_escolher, nome))
         menu.add_separator()
         menu.add_command(label=comandos.rotulo_de_botao("limpar_cor"), command=self.limpar_cor)
         return menu
@@ -694,10 +711,10 @@ class TextoPanel(ttk.Frame):
                     label=rotulo,
                     value=nome,
                     variable=self.alinhamento_var,
-                    command=lambda n=nome: ao_escolher(n),
+                    command=partial(ao_escolher, nome),
                 )
                 continue
-            menu.add_command(label=rotulo, command=lambda n=nome: ao_escolher(n))
+            menu.add_command(label=rotulo, command=partial(ao_escolher, nome))
         return menu
 
     def escolher_cor(self) -> None:
@@ -735,7 +752,7 @@ class TextoPanel(ttk.Frame):
         # `tests/test_ui_texto_editor.py`, sem abrir janela nenhuma.
         for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
             funcao = getattr(self, acao)
-            self.editor.bind(sequencia, lambda _e, f=funcao: (f(), "break")[1])
+            self.editor.bind(sequencia, _tecla_que_para(funcao))
 
     # -------------------------------------------------------------------------------- comandos
 
@@ -1084,7 +1101,9 @@ class TextoPanel(ttk.Frame):
         recuo = self._largura_do_recuo()
         for estilo in rico.ESTILOS:
             etiqueta = f"{texto_etiquetas.ATRIBUTO_COM_VALOR['estilo']}{estilo}"
-            opcoes: dict[str, object] = {"lmargin1": 0, "lmargin2": 0, "spacing1": 0}
+            # `Any` e nao `object`: isto vai por `**` para uma assinatura de `tkinter` feita de
+            # `Literal` e unioes, e nenhum tipo mais estreito a satisfaz.
+            opcoes: dict[str, Any] = {"lmargin1": 0, "lmargin2": 0, "spacing1": 0}
             if estilo == rico.ESTILO_PROSA:
                 # Recuo de primeira linha, que é a diagramação que a S-199 mede na página.
                 opcoes["lmargin1"] = recuo
@@ -1127,7 +1146,7 @@ class TextoPanel(ttk.Frame):
             self._fontes_desenhadas[nome] = atributos
         return nome
 
-    def _fonte_do_trecho(self, atributos: rico.Atributos) -> tuple[str, ...]:
+    def _fonte_do_trecho(self, atributos: rico.Atributos) -> list[str]:
         """A fonte de um trecho: a família e o corpo de onde ele vem, mais o degrau, o peso, o pendor.
 
         **O degrau vira ponto em `ui/tipografia.corpo`, e em nenhum outro lugar** (S-260). O que se
@@ -1158,7 +1177,9 @@ class TextoPanel(ttk.Frame):
         partes = [familia, str(tipografia.corpo(atributos.corpo, base=base, papel=papel)), *extras]
         if atributos.italico:
             partes.append("italic")
-        return tuple(partes)
+        # Lista e nao tupla: `tag_configure(font=...)` aceita `list`, e a tupla que o Tk aceita de
+        # verdade -- familia, corpo, extras -- nao e exprimivel como `tuple[str, ...]`.
+        return partes
 
     def _base_do_editor(self) -> tuple[str, int]:
         """`(família, tamanho)` da fonte que o editor está usando. Cai na do sistema se o Tk não responde.
@@ -1437,7 +1458,7 @@ class TextoPanel(ttk.Frame):
                     text=simbolo,
                     width=3,
                     takefocus=False,
-                    command=lambda s=simbolo: self.inserir_simbolo(s),
+                    command=partial(self.inserir_simbolo, simbolo),
                 ).grid(row=k // 8, column=k % 8, padx=1, pady=1)
         return moldura
 
@@ -1468,7 +1489,7 @@ class TextoPanel(ttk.Frame):
         menu = tk.Menu(self, tearoff=False)
         for simbolo in simbolos:
             rotulo = f"{simbolo}  ·  fora do modelo" if self._paleta.marca(simbolo) else simbolo
-            menu.add_command(label=rotulo, command=lambda s=simbolo: self.inserir_simbolo(s))
+            menu.add_command(label=rotulo, command=partial(self.inserir_simbolo, simbolo))
         try:
             menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
         finally:
@@ -2059,26 +2080,42 @@ class TextoPanel(ttk.Frame):
             return
 
         def trabalhar() -> str:
-            relatorio = pdf_pesquisavel.escrever(
-                doc, Path(destino), seco=self._cancelar_exportacao.is_set()
-            )
+            # **`seco` não sai do evento de cancelamento (S-315).** São duas perguntas
+            # diferentes: "simular" é uma escolha de quem chama, "cancelar" é uma interrupção de
+            # quem espera -- e juntá-las fazia o argumento ler o `Event` **uma vez**, na montagem
+            # da chamada, quando ninguém ainda teve tempo de clicar em nada. Um clique depois
+            # disso não era lido por ninguém.
+            relatorio = pdf_pesquisavel.escrever(doc, Path(destino))
             return pdf_pesquisavel.texto_do_relatorio(relatorio)
 
-        self._exportar_em_thread("Escrevendo a camada de texto da folha", trabalhar)
+        # `cancelavel=False`: escrever a camada de uma folha não tem ponto de parada com sentido
+        # -- o único seria antes do `save`, e cancelar ali economiza fração de segundo. Um botão
+        # "Cancelar" aceso sobre uma operação que não para é pior que nenhum botão: ele ensina
+        # que o botão não funciona, e a próxima operação, que para de verdade, herda a descrença.
+        self._exportar_em_thread(
+            "Escrevendo a camada de texto da folha", trabalhar, cancelavel=False
+        )
 
-    def _exportar_em_thread(self, titulo: str, trabalho: Callable[[], str]) -> None:
+    def _exportar_em_thread(
+        self, titulo: str, trabalho: Callable[[], str], *, cancelavel: bool = True
+    ) -> None:
         """O molde da S-254: thread para o trabalho, `after` para voltar, `BusyRegistry` no meio.
 
         **`loses_work=True`, ao contrário da leitura**: fechar no meio de uma exportação deixa
         trabalho pela metade, e o registro precisa dizer isso quando alguém tentar fechar a janela.
+
+        **`cancelavel` é por chamador, e não do molde (S-315).** Os irmãos `.txt`/`.rtf`/`.html`
+        conferem o evento no ponto certo e param de verdade; o PDF pesquisável de uma folha não
+        tem onde parar. Registrar tudo como cancelável dava um botão aceso sobre uma operação que
+        não para -- e essa é a mesma promessa falsa que a regra 3 desta revisão proíbe.
         """
         self._exportando = True
         self._cancelar_exportacao.clear()
         token = self._busy.register(
             titulo,
             loses_work=True,
-            cancellable=True,
-            cancel=self._cancelar_exportacao.set,
+            cancellable=cancelavel,
+            cancel=self._cancelar_exportacao.set if cancelavel else None,
         )
 
         def rodar() -> None:
@@ -2161,6 +2198,14 @@ class TextoPanel(ttk.Frame):
             self._on_status(f"O rascunho não pôde ser aberto: {erro}")
             return False
         self.abrir(doc)
+        # **Recuperado é trabalho por gravar, e não trabalho gravado (S-308).** `abrir` termina em
+        # `desenhar_documento`, que zera `_sujo` -- é o certo para um documento que veio do disco,
+        # e o errado para este, que veio de um arquivo que a linha seguinte apaga. Sem esta linha,
+        # o texto resgatado de um travamento voltava a existir **só na memória**: as duas guardas
+        # que perguntam antes de descartar (`ler` e `abrir_documento`) liam `_sujo` e passavam
+        # direto, e `gravar_rascunho` saía em `if not self._sujo` e não reescrevia nada. O segundo
+        # travamento perdia tudo -- e o recurso existe exatamente para o segundo travamento.
+        self._sujo = True
         # Recuperado é trabalho que chegou a um lugar melhor -- a tela --, e o arquivo sai.
         rascunho.descartar(pagina.documento, pagina.pagina, pasta=self._pasta_de_rascunhos)
         self._on_status(f"Rascunho de {achado.data_legivel} recuperado.")

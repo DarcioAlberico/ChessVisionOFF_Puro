@@ -336,9 +336,15 @@ class HygieneTests(unittest.TestCase):
             self.assertNotIn("sumiu.png", content)
 
     def test_drop_missing_preserves_the_fen_in_quarantine(self) -> None:
-        """A FEN é trabalho humano e a imagem é reextraível: apagar a linha inverteria o valor."""
+        """A FEN é trabalho humano e a imagem é reextraível: apagar a linha inverteria o valor.
+
+        A linha que **fica** não é enfeite: desde a S-321 esta função recusa esvaziar o CSV
+        inteiro, porque "faltam todas" não é poda, é um clone sem `data/samples/`. Poda parcial
+        é o que ela serve, e é o que este teste mede.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             fx = Fixture(tmp)
+            fx.add("fica.png", LEGAL)
             fx.add("sumiu.png", LEGAL_OTHER, write_image=False)
             fx.write()
             quarentena = Path(tmp) / "quarantine.csv"
@@ -349,6 +355,43 @@ class HygieneTests(unittest.TestCase):
             self.assertIn("sumiu.png", texto)
             self.assertIn(LEGAL_OTHER, texto)
             self.assertIn("imagem ausente", texto)
+
+    def test_faltando_todas_as_imagens_a_poda_recusa(self) -> None:
+        """S-321: num clone novo, `--drop-missing` reduzia o `labels.csv` a um cabeçalho.
+
+        `data/labels.csv` vem versionado com 4.454 linhas e `data/samples/` vem com um
+        `.gitkeep`; as imagens são 3,9 GB e ficam fora do git. O `cvoff-train` imprimia
+        "conserto: cvoff-audit --drop-missing", e seguir a instrução destruía o único dado que o
+        repositório de fato entrega -- sem destravar nada, porque os rótulos utilizáveis
+        continuavam zero. Havia backup, o que salvava o arquivo e não a confiança.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.add("uma.png", LEGAL, write_image=False)
+            fx.add("outra.png", LEGAL_OTHER, write_image=False)
+            fx.write()
+            antes = fx.csv.read_text(encoding="utf-8")
+
+            with self.assertRaises(ValueError) as erro:
+                drop_missing_labels(fx.csv, audit_dataset(fx.csv, fx.samples), Path(tmp) / "q.csv")
+
+            self.assertIn("data/samples/", str(erro.exception))
+            self.assertEqual(fx.csv.read_text(encoding="utf-8"), antes, "o CSV não foi tocado")
+
+    def test_o_conserto_impresso_muda_quando_faltam_todas(self) -> None:
+        """A outra metade: a violação **não pode** mandar rodar o comando que ela recusa."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.add("uma.png", LEGAL, write_image=False)
+            fx.write()
+
+            violacoes = audit_dataset(fx.csv, fx.samples).violations()
+
+            self.assertTrue(any("não vêm no repositório" in linha for linha in violacoes), violacoes)
+            self.assertFalse(
+                any("conserto: cvoff-audit --drop-missing" in linha for linha in violacoes),
+                violacoes,
+            )
 
     def test_the_two_actions_together_leave_the_same_set_of_names(self) -> None:
         """O critério de aceite da S-63, escrito como teste."""

@@ -38,6 +38,7 @@ import io
 import logging
 import re
 from pathlib import Path
+from typing import TextIO
 
 import chess.pgn
 
@@ -149,7 +150,13 @@ def carregar(documento: str | Path, *, pasta: Path | None = None) -> Sala:
     return sala
 
 
-def estudos_de_pgn(texto: str, *, documento: str = "", onde: str = "PGN colado") -> list[Estudo]:
+def estudos_de_pgn(
+    texto: str | TextIO,
+    *,
+    documento: str = "",
+    onde: str = "PGN colado",
+    limite: int | None = None,
+) -> list[Estudo]:
     """As partidas daquele PGN, uma por estudo, na ordem em que estão no arquivo (S-288).
 
     **Uma partida ilegível não derruba as outras**: ela vira uma linha de log e a leitura segue. Um
@@ -158,10 +165,23 @@ def estudos_de_pgn(texto: str, *, documento: str = "", onde: str = "PGN colado")
 
     `onde` só aparece no log, e existe porque este laço serve a dois chamadores: o arquivo da sala e
     o `.pgn` que alguém abriu. "Partida ilegível" sem dizer de onde é a mensagem que não ajuda.
+
+    **`texto` aceita um fluxo aberto (S-307).** Ler um `.pgn` inteiro para a memória antes de
+    fatiá-lo é o que fazia a aba engasgar: `pgn_database/` é a pasta que este projeto manda usar,
+    e tem arquivos de 8,6 GB e 10,3 GB. Passar o arquivo aberto faz o `read_game` consumir sob
+    demanda, que é o que ele sempre soube fazer.
+
+    **`limite` é parâmetro e não constante, e o padrão é "sem limite".** Este mesmo laço lê o
+    arquivo da sala em `carregar`: um teto global truncaria em silêncio a sala de quem tem mais
+    estudos que o teto -- perda de análise humana, o oposto do que o item quer. Quem trunca é
+    quem abre PGN de fora, e é ele quem avisa na tela.
     """
-    fluxo = io.StringIO(str(texto or ""))
+    fluxo: TextIO = io.StringIO(texto or "") if isinstance(texto, str) else texto
     achados: list[Estudo] = []
     while True:
+        if limite is not None and len(achados) >= limite:
+            logger.info("%s: leitura parada em %d partidas pelo teto pedido.", onde, limite)
+            break
         try:
             jogo = chess.pgn.read_game(fluxo)
         except Exception as erro:  # noqa: BLE001 - PGN de fora pode falhar de muitas formas

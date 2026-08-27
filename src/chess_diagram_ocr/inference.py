@@ -88,11 +88,26 @@ def load_model(
     model_path = Path(model_path)
 
     if not model_path.exists():
-        logger.warning("Checkpoint nao encontrado em %s: usando pesos aleatorios.", model_path)
-        model = build_model(arch or DEFAULT_ARCH, pretrained=False)
-        model.to(dev)
-        model.eval()
-        return model, dev
+        # **Levanta, e não devolve pesos aleatórios (S-320).** Devolver o modelo não treinado
+        # como se ele tivesse carregado fazia o programa **inventar uma FEN e dizer que deu
+        # certo**: `KKKKKKKK/KKKKKKKK/...` com confiança 0,081, o rodapé anunciando "Diagramas
+        # detectados: 1", e `cvoff-infer` saindo com código 0 -- a FEN falsa no stdout e o único
+        # aviso no stderr. Quem redirecionava a saída ficava com um arquivo limpo de mentiras.
+        #
+        # E `models/*.pt` está no `.gitignore`: este era o estado de **100% dos clones novos**.
+        # A primeira FEN da vida de quem instala era ruído de pesos aleatórios, e nada dizia
+        # isso -- a conclusão razoável é "este programa é ruim", e não "falta um arquivo".
+        #
+        # A mensagem segue o molde de `text/modelo.py`, que já acertou esta: o que falta, por
+        # que não vem no git, e como obter.
+        raise FileNotFoundError(
+            f"O classificador de peças não está em {model_path}.\n\n"
+            "Ele não vem no repositório: é um binário treinado, e o `.gitignore` manda `*.pt` "
+            "para fora. Aponte o arquivo no campo 'Modelo (.pt)' da aba Configuração, ou treine "
+            "um com `cvoff-train` depois de corrigir alguns diagramas na janela e salvá-los com "
+            "Ctrl+S. Sem ele não há leitura de peça: uma rede não treinada devolve uma posição "
+            "inventada, e é por isso que este caminho recusa em vez de seguir."
+        )
 
     checkpoint = load_checkpoint(model_path, map_location=dev)
     if arch is None:

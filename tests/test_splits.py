@@ -216,5 +216,39 @@ class PersistenceTests(unittest.TestCase):
                 load_splits(path)
 
 
+class ListaVaziaNaoPodaTests(unittest.TestCase):
+    """S-300: `labels.csv` ausente fazia o treino apagar o `data/splits.csv` inteiro.
+
+    A poda de um *subconjunto* é o comportamento desejado -- amostra que saiu do CSV sai daqui.
+    Podar *tudo* nunca foi: `filenames` vazio quer dizer "não consegui ler a lista", e não
+    "não há mais nenhuma amostra". O que a poda total custava não era dado, era a fronteira
+    entre treino e teste -- e ela não se reconstrói.
+    """
+
+    def test_lista_vazia_preserva_o_arquivo_inteiro(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "splits.csv"
+            save_splits(path, {"a.png": "test", "b.png": "train", "c.png": "val"})
+
+            devolvido = ensure_splits([], path)
+
+            self.assertEqual(load_splits(path), {"a.png": "test", "b.png": "train", "c.png": "val"})
+            self.assertEqual(devolvido, load_splits(path))
+
+    def test_a_poda_de_um_subconjunto_continua_valendo(self) -> None:
+        """O contrário do anterior, e é por isso que a guarda testa `not names` e não um limiar.
+
+        Uma fração mínima de sobrevivência exigiria uma política que ninguém tem; "a lista veio
+        vazia" é um fato, não uma escolha.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "splits.csv"
+            save_splits(path, {"a.png": "test", "b.png": "train", "c.png": "val"})
+
+            ensure_splits(["a.png", "b.png"], path)
+
+            self.assertEqual(load_splits(path), {"a.png": "test", "b.png": "train"})
+
+
 if __name__ == "__main__":
     unittest.main()

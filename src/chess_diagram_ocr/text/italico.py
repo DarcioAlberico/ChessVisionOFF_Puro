@@ -123,7 +123,7 @@ def documento_registra_italico(doc: object, *, amostra: int = camada.PAGINAS_DE_
     **É a pergunta que separa `False` de `None`**: uma página sem itálico num livro que o registra
     é "aqui não tem"; num livro que não o registra é "não se sabe".
     """
-    return camada.documento_registra(doc, _span_e_italico, amostra=amostra)
+    return camada.documento_registra(doc, _span_e_italico, amostra=amostra, marca="italico")
 
 PENDOR_DE_ITALICO = 0.05
 """Deslocamento do centroide de tinta do topo em relação ao da base, em larguras de box.

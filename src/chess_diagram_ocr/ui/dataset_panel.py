@@ -30,6 +30,7 @@ from ..dataset_browser import (
 )
 from . import estilos, formato, strings, tabela, texto, theme, tipografia
 from .busy import BusyRegistry, BusyToken
+from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,17 @@ class DatasetPanel(ttk.Frame):
         toolbar = ttk.Frame(self)
         toolbar.pack(fill=tk.X)
         ttk.Button(toolbar, text="Recarregar", command=self.reload).pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="Detectar duplicatas", command=self.detect_duplicates).pack(side=tk.LEFT, padx=6)
+        # Guardado em atributo porque ele precisa **ficar cinza** enquanto a detecção roda
+        # (S-314): era criado inline e não havia como desabilitá-lo.
+        self.btn_duplicatas = ttk.Button(
+            toolbar, text="Detectar duplicatas", command=self.detect_duplicates
+        )
+        self.btn_duplicatas.pack(side=tk.LEFT, padx=6)
+        Tooltip(self.btn_duplicatas).set_text(
+            "Compara todas as imagens do dataset por hash perceptual. Fica cinza enquanto uma "
+            "detecção está em andamento -- são 3.195 imagens de 800×800, e duas passadas ao "
+            "mesmo tempo leem o disco duas vezes para dar a mesma resposta."
+        )
         ttk.Button(toolbar, text="Estatísticas", command=self.show_statistics).pack(side=tk.LEFT)
 
         filters = ttk.LabelFrame(self, text="Filtros")
@@ -417,7 +428,24 @@ class DatasetPanel(ttk.Frame):
         self.reload()
 
     def detect_duplicates(self) -> None:
-        """Roda o hash perceptual em segundo plano: são 3.195 imagens de 800×800."""
+        """Roda o hash perceptual em segundo plano: são 3.195 imagens de 800×800.
+
+        **Um clique de cada vez (S-314).** Não havia guarda nenhuma: o segundo clique
+        sobrescrevia `self._busy_token` com uma chave nova, e a do primeiro ficava registrada
+        para sempre -- `_release_busy` só solta a que está no atributo. `BusyRegistry.running()`
+        não filtra por `loses_work`, então a chave vazada entra na pergunta de fechamento **de
+        toda sessão seguinte**: a janela passa a avisar que há uma operação em andamento que
+        terminou há horas, que é exatamente o que essa pergunta existe para não fazer.
+
+        **O botão cinza e não uma bandeira.** Uma bandeira sozinha deixa o botão vivo e joga a
+        resposta numa frase de rodapé que se perde; o botão cinza é a mesma resposta e não
+        depende de a pessoa estar olhando -- e é o molde que a própria janela já usa na Galeria
+        e na fila de revisão. A frase fica como rede para quem chegar pela paleta de comandos em
+        vez do botão.
+        """
+        if self._busy_token is not None:
+            self._on_status("A detecção de duplicatas já está em andamento.")
+            return
         if not self.rows:
             self.reload()
         csv_path, samples_dir, _splits = self._paths()
@@ -434,6 +462,7 @@ class DatasetPanel(ttk.Frame):
                 loses_work=False,
                 detail=f"{len(labels)} imagem(ns)",
             )
+        self.btn_duplicatas.configure(state=tk.DISABLED)
 
         def _worker() -> None:
             try:
@@ -451,9 +480,16 @@ class DatasetPanel(ttk.Frame):
         logger.debug("Detecção de duplicatas disparada sobre %s", csv_path)
 
     def _release_busy(self) -> None:
+        # No `finally` do worker, e não depois de `_apply_duplicates`: o caminho de exceção abre
+        # um modal e retorna, e reabilitar depois dele deixaria o botão cinza para sempre --
+        # trocar um travamento por outro (S-314).
         if self._busy_token is not None:
             self._busy_token.release()
             self._busy_token = None
+        try:
+            self.btn_duplicatas.configure(state=tk.NORMAL)
+        except tk.TclError:  # pragma: no cover - painel destruído antes de a thread voltar
+            pass
 
     def _apply_duplicates(self, groups: list[list[str]]) -> None:
         self._duplicate_groups = groups

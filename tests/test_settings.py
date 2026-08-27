@@ -36,6 +36,8 @@ from chess_diagram_ocr.settings import (
 )
 
 ENDPOINT = "https://exemplo.invalido/predict"
+HOST = "exemplo.invalido"
+"""O host do ENDPOINT. Existe porque o consentimento e por endereco desde a S-319."""
 
 
 class OcrSettingsTests(unittest.TestCase):
@@ -182,7 +184,9 @@ class MessageTests(unittest.TestCase):
 class PersistenceTests(unittest.TestCase):
     def test_settings_round_trip_through_the_file(self) -> None:
         original = Settings(
-            remote_fen=RemoteFenSettings(enabled=True, endpoint=ENDPOINT, timeout=7.5, acknowledged=True)
+            remote_fen=RemoteFenSettings(
+                enabled=True, endpoint=ENDPOINT, timeout=7.5, acknowledged_host=HOST
+            )
         )
         with tempfile.TemporaryDirectory() as tmp:
             caminho = Path(tmp) / "settings.json"
@@ -212,7 +216,34 @@ class PersistenceTests(unittest.TestCase):
     def test_acknowledging_is_what_the_dialog_persists(self) -> None:
         configuracao = RemoteFenSettings(enabled=True, endpoint=ENDPOINT)
         self.assertFalse(configuracao.acknowledged)
-        self.assertTrue(replace(configuracao, acknowledged=True).acknowledged)
+        self.assertTrue(replace(configuracao, acknowledged_host=configuracao.host).acknowledged)
+
+    def test_o_consentimento_e_daquele_endereco_e_nao_de_qualquer_um(self) -> None:
+        """S-319: `acknowledged` era um `bool` solto, e nada comparava host consentido com atual.
+
+        O docstring do campo afirmava que o consentimento ficava "gravado por endpoint
+        implicitamente", e `apply_environment` **preservava** o bit ao trocar o endereço: quem
+        consentiu uma vez passava a mandar a imagem do tabuleiro para qualquer outro host, posto
+        por `CVOFF_REMOTE_FEN_URL` ou por uma edição no `settings.json`, sem ver aviso nenhum.
+        """
+        consentida = replace(
+            RemoteFenSettings(enabled=True, endpoint=ENDPOINT),
+            acknowledged_host=RemoteFenSettings(endpoint=ENDPOINT).host,
+        )
+        self.assertTrue(consentida.acknowledged)
+
+        outro = replace(consentida, endpoint="https://outro.example/fen")
+
+        self.assertFalse(outro.acknowledged, "trocar o endereço tem de voltar a perguntar")
+
+    def test_o_arquivo_antigo_nao_traz_consentimento_migrado(self) -> None:
+        """`acknowledged: true` não diz para qual endereço valia -- e supor que valia para o de
+        hoje seria reintroduzir o defeito na migração. A pessoa vê o aviso uma vez a mais."""
+        antiga = RemoteFenSettings.from_dict(
+            {"enabled": True, "endpoint": ENDPOINT, "acknowledged": True}
+        )
+
+        self.assertFalse(antiga.acknowledged)
 
 
 class ProviderTests(unittest.TestCase):

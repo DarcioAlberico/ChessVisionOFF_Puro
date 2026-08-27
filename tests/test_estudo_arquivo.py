@@ -127,5 +127,69 @@ class ArquivoDaSalaTests(unittest.TestCase):
         self.assertEqual(len(estudo_arquivo.carregar(self.livro, pasta=self.pasta)), 2)
 
 
+class LerPgnSemCarregarTudoTests(unittest.TestCase):
+    """`estudos_de_pgn` lê de um fluxo, e o teto de partidas é de quem chama (S-307).
+
+    **O defeito.** `abrir_pgn` fazia `caminho.read_text()` na thread do Tk, e `pgn_database/` --
+    a pasta que este projeto manda usar -- tem arquivos de 8,6 GB e 10,3 GB. Medido: 5,2 MB de
+    PGN custam 18,8 s e 220 MB de pico, o que dá ~3,5 min de janela congelada num arquivo de
+    62 MB. Nos de gigabytes o `read_text` levanta `MemoryError`, que **não** é `OSError` e por
+    isso escapava da guarda e subia para o laço de eventos.
+
+    **O teto é argumento, e não constante.** Este mesmo laço lê o arquivo da sala em `carregar`:
+    um limite global truncaria em silêncio a sala de quem tem mais estudos que o teto -- perda
+    de análise humana, que é o oposto do que o item quer.
+    """
+
+    def _pgn(self, quantas: int) -> str:
+        return "\n\n".join(f'[Event "Partida {i}"]\n\n1. e4 e5 *' for i in range(quantas))
+
+    def test_le_de_um_fluxo_aberto(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "colecao.pgn"
+            caminho.write_text(self._pgn(3), encoding="utf-8")
+
+            with caminho.open(encoding="utf-8") as fluxo:
+                achados = estudo_arquivo.estudos_de_pgn(fluxo, onde=caminho.name)
+
+            self.assertEqual(len(achados), 3)
+
+    def test_o_texto_continua_valendo(self) -> None:
+        """A assinatura ganhou um caso; ela não pode ter perdido o que já servia."""
+        self.assertEqual(len(estudo_arquivo.estudos_de_pgn(self._pgn(2))), 2)
+
+    def test_o_teto_para_a_leitura_onde_foi_pedido(self) -> None:
+        self.assertEqual(len(estudo_arquivo.estudos_de_pgn(self._pgn(10), limite=4)), 4)
+
+    def test_sem_teto_le_tudo(self) -> None:
+        """O padrão é "sem limite", e é ele que protege a sala de ser truncada."""
+        self.assertEqual(len(estudo_arquivo.estudos_de_pgn(self._pgn(10))), 10)
+
+    def test_a_sala_e_lida_sem_teto(self) -> None:
+        """`carregar` não pode passar limite nenhum: a sala é trabalho humano acumulado.
+
+        É o risco que fez o teto virar argumento em vez de constante -- e é este teste que o
+        trava, porque um `LIMITE` global lá dentro passaria em todos os outros quatro.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp)
+            livro = str(pasta / "Livro.pdf")
+            sala = Sala(livro)
+            for diagrama in range(6):
+                estudo = sala.abrir(
+                    PosicaoDeEstudo(
+                        placement="rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R",
+                        vez="b",
+                        lance=4,
+                        ancora=Ancora(documento=livro, pagina=142, diagrama=diagrama),
+                    )
+                )
+                estudo.jogo.add_variation(chess.Move.from_uci("f8c5")).comment = f"nota {diagrama}"
+                sala.guardar(estudo)
+            estudo_arquivo.gravar(sala, pasta=pasta)
+
+            self.assertEqual(len(estudo_arquivo.carregar(livro, pasta=pasta)), 6)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

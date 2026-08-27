@@ -180,8 +180,13 @@ class _ServicoFalso:
 
     def __init__(self) -> None:
         self.chamadas: list[dict] = []
+        self.erro: Exception | None = None
+        """O que `save_sample` levanta. Existe para a S-318: separar "a gravação falhou" de
+        "a tela não pôde ser atualizada" exige poder produzir as duas."""
 
     def save_sample(self, diagram, fen, **kwargs) -> Path:  # noqa: ANN001, ANN003
+        if self.erro is not None:
+            raise self.erro
         self.chamadas.append({"fen": fen, **kwargs})
         return Path("data/samples/board_000.png")
 
@@ -390,6 +395,35 @@ class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
 
         self.assertEqual(len(caixas.perguntas), 1)
         self.assertEqual(servico.chamadas, [])
+
+    def test_falha_de_tela_nao_e_anunciada_como_falha_de_gravacao(self) -> None:
+        """S-318: o `try` cobria também o repintar da aba Dataset e a marca verde no diagrama.
+
+        Um `AttributeError` em qualquer um deles produzia a caixa "Falha ao salvar" sobre uma
+        amostra que **está no disco**. A pessoa acredita que perdeu a correção, refaz e salva de
+        novo -- e como `append_training_sample` nomeia por timestamp e sempre acrescenta, a
+        segunda gravação vira uma linha e um PNG duplicados no `labels.csv`. É o laço mais
+        repetido do projeto mentindo sobre o único gesto que ele tem.
+        """
+        painel, servico, caixas = self._painel(resposta=True)
+        painel._on_sample_saved = lambda _g: (_ for _ in ()).throw(AttributeError("painel morto"))
+        self._abrir(painel, [PLACEMENT])
+
+        painel.save_current()
+
+        self.assertEqual(len(servico.chamadas), 1, "a gravação aconteceu")
+        self.assertEqual(caixas.avisos, [], "e nenhuma caixa disse que ela falhou")
+
+    def test_falha_de_gravacao_continua_avisando(self) -> None:
+        """O contrário, e é ele que impede a correção de virar "erro nenhum aparece"."""
+        painel, servico, caixas = self._painel(resposta=True)
+        servico.erro = OSError("disco cheio")
+        self._abrir(painel, [PLACEMENT])
+
+        painel.save_current()
+
+        self.assertEqual(len(caixas.avisos), 1)
+        self.assertIn("disco cheio", caixas.avisos[0])
 
     def test_salvar_todos_pergunta_uma_vez_so(self) -> None:
         """Oito diagramas de estrutura numa página não podem virar oito caixas iguais."""

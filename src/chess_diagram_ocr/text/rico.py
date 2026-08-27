@@ -695,7 +695,9 @@ def _fatiado(doc: DocumentoRico, inicio: int, fim: int) -> list[tuple[Corrida, b
         comeco, termino = posicao, posicao + len(corrida.texto)
         posicao = termino
         cortes = sorted({comeco, termino, *(c for c in (inicio, fim) if comeco < c < termino)})
-        for a, b in zip(cortes, cortes[1:]):
+        # `strict=False`: `cortes[1:]` tem sempre um elemento a menos -- isto e um `pairwise`,
+        # e nao duas listas que deveriam andar juntas.
+        for a, b in zip(cortes, cortes[1:], strict=False):
             pedaco = corrida.texto[a - comeco : b - comeco]
             if pedaco:
                 saida.append((replace(corrida, texto=pedaco), inicio <= a and b <= fim))

@@ -41,6 +41,7 @@ from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
 import numpy as np
 from PIL import Image, ImageTk
@@ -377,7 +378,9 @@ class PdfPanel(ttk.Frame):
         continuam alcançáveis pelo menu, que é o que a regra 2 exige e a S-233 mede.
         """
         box = self._box
-        embalagem: dict[str, object] = {} if antes is None else {"before": antes}
+        # `Any` e nao `object`: isto vai para o `pack` por `**`, e a assinatura do `tkinter` e um
+        # mosaico de `Literal` que nenhum tipo mais estreito satisfaz.
+        embalagem: dict[str, Any] = {} if antes is None else {"before": antes}
         na_tela = montagem == pele.CROMO_CLASSICO
 
         self.barra_livro = BarraFluida(box)
@@ -478,6 +481,11 @@ class PdfPanel(ttk.Frame):
         self.spin_page = vista.adicionar(
             ttk.Spinbox(vista, from_=0, to=0, textvariable=self.page_index_var, width=8, command=self.on_page_spin)
         )
+        # As setas do `Spinbox` chamam `command`; **digitar não chama nada** (S-305). Sem estas
+        # duas ligações, o número no campo mudava e a imagem na tela ficava onde estava.
+        self.spin_page.bind("<Return>", self._on_page_typed)
+        self.spin_page.bind("<KP_Enter>", self._on_page_typed)
+        self.spin_page.bind("<FocusOut>", self._on_page_typed)
         vista.adicionar(ttk.Label(vista, text=strings.ZOOM_DA_PAGINA))
         vista.adicionar(ttk.Button(
                 vista,
@@ -1010,17 +1018,81 @@ class PdfPanel(ttk.Frame):
         self.page_loaded_for_index = None
         self.render_current_page()
 
-    def prev_page(self) -> None:
+    def _on_page_typed(self, _evento: object = None) -> None:
+        """O número **digitado** no campo de página vira navegação, e o lixo digitado volta atrás.
+
+        **Dois defeitos numa linha (S-305).** O `command` de um `ttk.Spinbox` só dispara nas
+        setas: digitar `15` e teclar `Enter` mudava `page_index_var` e não mudava a imagem.
+        Medido num livro de 20 folhas -- `page_index = 15` com `page_loaded_for_index = 0`, a
+        imagem da folha 1 na tela, e o rodapé passando a dizer "p. 16 de 20". As caixas de
+        diagrama da folha exibida eram então recusadas por serem "de outra página", e a
+        detecção passava a falar de uma folha que ninguém estava vendo.
+
+        E texto não numérico derrubava a navegação inteira: `page_index` faz
+        `int(self.page_index_var.get())` sobre um `IntVar`, e com `abc` no campo as cinco
+        funções que o leem levantam `TclError`. Não há `report_callback_exception` no projeto,
+        então isso ia para o stderr e o botão simplesmente não fazia nada.
+
+        **O lixo restaura o campo em vez de navegar.** Mandar para a página 1 seria escolher um
+        destino que ninguém pediu; deixar o texto inválido no widget manteria a dessincronia
+        que este item conserta. E o `<FocusOut>` com o campo vazio -- que acontece a cada
+        limpeza no meio da edição -- cai no mesmo caminho: repõe o número e não navega.
+        """
         if self.page_count == 0:
             return
-        self.page_index_var.set(max(0, self.page_index - 1))
-        self.page_loaded_for_index = None
-        self.render_current_page()
+        try:
+            alvo = int(str(self.spin_page.get()).strip())
+        except (ValueError, tk.TclError):
+            self._repor_numero_da_pagina()
+            return
+        # **Contra `page_loaded_for_index`, e não contra `page_index`.** O `Spinbox` tem o
+        # `page_index_var` como `textvariable`: digitar já mudou o índice antes de esta função
+        # ser chamada, e `go_to_page` -- que compara com `page_index` -- recusaria toda digitação
+        # por "já estou nessa página". Quem sabe que folha está na tela é `page_loaded_for_index`.
+        alvo = max(0, min(self.page_count - 1, alvo))
+        self.page_index_var.set(alvo)
+        if alvo != self.page_loaded_for_index or self.page_rgb is None:
+            self.page_loaded_for_index = None
+            self.render_current_page()
+        self._repor_numero_da_pagina()
+
+    def _repor_numero_da_pagina(self) -> None:
+        """Devolve ao campo o índice que a tela de fato mostra."""
+        try:
+            atual = self.page_index
+        except tk.TclError:
+            atual = self.page_loaded_for_index or 0
+            self.page_index_var.set(atual)
+        self.spin_page.delete(0, tk.END)
+        self.spin_page.insert(0, str(atual))
+
+    def prev_page(self) -> None:
+        self._ir_para(self.page_index - 1)
 
     def next_page(self) -> None:
+        self._ir_para(self.page_index + 1)
+
+    def _ir_para(self, alvo: int) -> None:
+        """A virada de uma folha, e o que ela faz quando **não há folha para onde virar** (S-304).
+
+        `prev_page` e `next_page` grampeavam o índice e mandavam rasterizar de qualquer jeito.
+        Na última página, cada giro da roda e cada `Page Down` re-rasterizava a **mesma** folha
+        -- medido: cinco giros, cinco `render_pdf_page(2)` --, e como `render_current_page`
+        termina em `yview_moveto(0)`, a vista voltava ao topo a cada um. Quem lia o fim de uma
+        página larga era jogado para o começo dela, repetidamente, sem que nada mudasse na tela
+        além da rolagem. A 220 DPI, que é o padrão da janela, cada uma dessas viagens é uma
+        rasterização inteira jogada fora, e `_on_page_rendered` ainda grava o estado em disco.
+
+        A guarda testa `page_rgb` além do índice de propósito: só o índice tiraria também o
+        único jeito de tentar de novo depois de um render que falhou -- com a imagem ausente,
+        um `Page Down` na última página ainda re-tenta.
+        """
         if self.page_count == 0:
             return
-        self.page_index_var.set(min(self.page_count - 1, self.page_index + 1))
+        alvo = max(0, min(self.page_count - 1, int(alvo)))
+        if alvo == self.page_index and self.page_rgb is not None:
+            return
+        self.page_index_var.set(alvo)
         self.page_loaded_for_index = None
         self.render_current_page()
 
@@ -1150,6 +1222,19 @@ class PdfPanel(ttk.Frame):
     def on_boxes_toggle(self) -> None:
         self._draw_boxes()
         self._on_prefs_changed()
+
+    @property
+    def selected_box(self) -> int | None:
+        """O índice do retângulo destacado na página, ou `None` quando não há nenhum.
+
+        **É a única resposta confiável a "qual é o selecionado" (S-306).** Quem escreve
+        `_selected_box` é só `select_box`, e quem chama `select_box` é só
+        `ChessOcrTkApp._sync_selected_box` -- que já aplica as três pré-condições (as caixas
+        são as reconhecidas, o editor mostra esta página, e há itens no editor) e põe `None`
+        fora delas. Ler daqui dá essas guardas de graça, e casa com o que a interface promete:
+        "o selecionado" é o retângulo que está destacado na folha.
+        """
+        return self._selected_box
 
     def drop_selected_box(self) -> None:
         """Pede à janela que tire o retângulo do diagrama selecionado (S-177).

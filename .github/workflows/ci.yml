@@ -1,8 +1,18 @@
 name: CI
 
 on:
+  # **Todo ramo, e nao so `main` (S-296).** Este projeto trabalha em ramos de fase
+  # (`fase-5-modelo-desempenho`, `claude/*`) e integra em `main` no fim. Com `branches: [main]`
+  # o `push` de um ramo de trabalho nao casava e o `pull_request` so contava com `main` de alvo:
+  # onze fases inteiras -- as Fases 41 a 51 e a sala de estudo -- entraram sem que nenhuma das
+  # tres verificacoes rodasse uma unica vez, e quando esta linha foi corrigida havia 4 erros de
+  # `ruff` e 30 de `mypy` acumulados em silencio. Guarda que nao roda e igual a guarda que nao
+  # existe.
+  #
+  # O `pull_request` continua preso a `main` de proposito: um PR do proprio repositorio para
+  # `main` dispara os dois eventos e roda duas vezes, e pagar isso so no PR de integracao e
+  # mais barato que perder a verificacao em todos os ramos de trabalho.
   push:
-    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:

@@ -58,10 +58,25 @@ class RemoteFenSettings:
     endpoint: str = ""
     timeout: float = 30.0
 
-    acknowledged: bool = False
-    """O usuário já viu o aviso de que a imagem sai da máquina e marcou "não perguntar
-    novamente". Fica gravado por endpoint implicitamente: trocar o endereço zera o
-    reconhecimento, porque o aviso nomeia o host."""
+    acknowledged_host: str = ""
+    """O host para o qual o usuário já viu o aviso e marcou "não perguntar novamente".
+
+    **O host, e não um `bool` (S-319).** Era `acknowledged: bool`, e o docstring afirmava que o
+    consentimento ficava "gravado por endpoint implicitamente" -- mas nenhuma linha do projeto
+    comparava o host consentido com o host atual, e `apply_environment` **preservava** o bit ao
+    trocar o endereço. Quem consentiu uma vez com um endereço passava a mandar a imagem do
+    tabuleiro para qualquer outro -- posto por `CVOFF_REMOTE_FEN_URL` ou por uma edição em
+    `data/settings.json` -- sem ver aviso nenhum. A promessa da S-32 ("o aviso nomeia o host de
+    destino, e o consentimento fica gravado por endereço") era cumprida pelo comentário e não
+    pelo código.
+
+    Guardar o host faz a comparação existir de verdade, e a troca de endereço volta a perguntar
+    de graça."""
+
+    @property
+    def acknowledged(self) -> bool:
+        """O consentimento vale para o endereço configurado **agora**."""
+        return bool(self.acknowledged_host) and self.acknowledged_host == self.host
 
     @property
     def host(self) -> str:
@@ -105,7 +120,7 @@ class RemoteFenSettings:
             "enabled": self.enabled,
             "endpoint": self.endpoint,
             "timeout": self.timeout,
-            "acknowledged": self.acknowledged,
+            "acknowledged_host": self.acknowledged_host,
         }
 
     @classmethod
@@ -114,7 +129,10 @@ class RemoteFenSettings:
             enabled=bool(data.get("enabled", False)),
             endpoint=str(data.get("endpoint", "") or "").strip(),
             timeout=_flutuante(data, "timeout", 30.0),
-            acknowledged=bool(data.get("acknowledged", False)),
+            # **O `acknowledged: true` de um arquivo antigo não é migrado (S-319).** Ele não
+            # diz para qual endereço valia, e supor que valia para o de hoje seria reintroduzir
+            # o defeito na migração: a pessoa vê o aviso uma vez a mais, e isso é o barato.
+            acknowledged_host=str(data.get("acknowledged_host", "") or ""),
         )
 
 

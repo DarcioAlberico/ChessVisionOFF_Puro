@@ -181,6 +181,48 @@ def faixas_declaradas(texto: str) -> dict[int, str]:
     return declarado
 
 
+def _raizes_do_repositorio() -> tuple[str, ...]:
+    """Toda árvore de trabalho deste repositório, e não só aquela em que a suíte está rodando.
+
+    **O furo que isto tapa (S-299).** A guarda abaixo comparava o caminho publicado contra
+    `RAIZ`, que é a árvore *atual*. Num `git worktree` a árvore atual é
+    `.claude/worktrees/algum-nome`, e um relatório que publicasse
+    `C:/Python-Chess2/ChessVisionOFF_Puro/models/piece_classifier.pt` -- o checkout principal, que
+    é onde os `.pt` e o `PDF/` de fato moram -- **não começava pela raiz atual e passava em
+    verde**. A guarda existia, rodava, e não olhava onde o arquivo defeituoso estava.
+
+    É a mesma classe de problema da S-296: guarda que não olha onde o trabalho está. E é o caso
+    normal aqui, não o exótico -- remedir campo a partir de um worktree é o procedimento, porque
+    os artefatos só existem no checkout principal.
+
+    Devolve pelo menos `RAIZ`: sem git, ou com um git que recusa, a guarda volta a ser o que era,
+    e não deixa de existir.
+    """
+    raizes = {str(RAIZ)}
+    try:
+        resultado = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=RAIZ,
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:  # pragma: no cover - maquina sem git no PATH
+        return (_normalizada(RAIZ),)
+    if resultado.returncode == 0:
+        for linha in resultado.stdout.splitlines():
+            if linha.startswith("worktree "):
+                raizes.add(linha[len("worktree ") :].strip())
+    return tuple(sorted({_normalizada(Path(raiz)) for raiz in raizes if raiz}))
+
+
+def _normalizada(caminho: Path) -> str:
+    """A forma em que os caminhos são comparados: barra para frente, sem barra final, minúscula."""
+    return str(caminho).replace("\\", "/").rstrip("/").lower()
+
+
 class ItemEntregueTemSpecTests(unittest.TestCase):
     """Entregar uma S-NN sem documentá-la faz a suíte falhar, nomeando o item e o commit."""
 
@@ -666,12 +708,13 @@ class CaminhoPublicadoTests(unittest.TestCase):
         return achados
 
     def test_nenhum_relatorio_publica_a_raiz_do_disco(self) -> None:
-        raiz = str(RAIZ).replace("\\", "/").rstrip("/").lower()
+        raizes = _raizes_do_repositorio()
         dentro = []
         for arquivo, onde, valor in self._caminhos_publicados():
             if not _ABSOLUTO.match(valor):
                 continue
-            if valor.replace("\\", "/").lower().startswith(raiz):
+            normalizado = valor.replace("\\", "/").lower()
+            if any(normalizado.startswith(raiz) for raiz in raizes):
                 dentro.append(f"{arquivo}: {onde} = {valor}")
 
         self.assertEqual(
@@ -681,6 +724,17 @@ class CaminhoPublicadoTests(unittest.TestCase):
             "-- `chess_diagram_ocr.field_eval._model_path_relativo` é o modelo a seguir. "
             "Absoluto só quando o arquivo mora fora do repositório.",
         )
+
+    def test_a_guarda_de_caminho_conhece_o_checkout_principal(self) -> None:
+        """S-299: num worktree, `RAIZ` sozinha deixava passar o caminho do checkout principal.
+
+        O teste não afirma que há mais de uma árvore -- num clone simples há uma só, e a lista
+        tem um elemento. O que ele trava é que a lista **venha do git** e não de `RAIZ`, e que a
+        raiz atual esteja sempre nela mesmo quando o git não responde.
+        """
+        raizes = _raizes_do_repositorio()
+        self.assertIn(_normalizada(RAIZ), raizes)
+        self.assertTrue(all(raiz == raiz.lower() and not raiz.endswith("/") for raiz in raizes))
 
     def test_a_regra_nao_confunde_o_glifo_da_barra_com_caminho(self) -> None:
         """O falso positivo que definiu o desenho: `"caractere": "/"` é uma classe do

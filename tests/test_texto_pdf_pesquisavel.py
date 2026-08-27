@@ -77,6 +77,31 @@ class CamadaTests(unittest.TestCase):
         finally:
             saida.close()
 
+    def test_cada_trecho_entra_na_camada_uma_vez_so(self) -> None:
+        """A sonda que escrevia (S-303).
+
+        `_corpo_que_cabe` tinha nome de medição e gravava: o `insert_textbox` do PyMuPDF termina
+        em `if rc >= 0: img.commit(overlay)`. Os dois chamadores gravavam de novo em seguida, e
+        toda linha entrava **duas vezes** na camada invisível. Nada disso aparecia na tela --
+        `render_mode=3` não pinta pixel --, e por isso os dois testes que existiam
+        (`test_a_pagina_nao_muda_um_pixel` e a busca, que já achava) continuavam verdes. O
+        defeito só aparece para quem copia o texto, indexa o arquivo, ou conta caracteres.
+
+        Contar **ocorrências** e não "achou": é a diferença entre este teste e o da busca.
+        """
+        doc = _documento(self.livro)
+        destino = self.pasta / "saida.pdf"
+        relatorio = PP.escrever(doc, destino)
+
+        saida = fitz.open(str(destino))
+        try:
+            camada = saida[0].get_text()
+        finally:
+            saida.close()
+
+        self.assertEqual(camada.count("texto corrigido a mao"), 1)
+        self.assertEqual(relatorio.trechos, 1, "o relatório já contava uma; era a camada que tinha duas")
+
     def test_a_corrida_sem_bloco_nao_entra(self) -> None:
         """Não há onde a pôr, e inventar posição é pior que não ter o texto. O relatório a conta."""
         doc = _documento(self.livro)

@@ -47,6 +47,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 from .pagina import BlocoDeDiagrama
 from .rico import DocumentoRico
@@ -219,13 +220,9 @@ def escrever(
         for trecho in trechos:
             x0, y0, x1, y1 = trecho.bbox
             caixa = fitz.Rect(x0 - FOLGA_DA_CAIXA, y0 - FOLGA_DA_CAIXA, x1 + FOLGA_DA_CAIXA, y1 + FOLGA_DA_CAIXA)
-            corpo = _corpo_que_cabe(folha, caixa, trecho.texto)
-            if corpo <= 0:
-                continue
             # `render_mode=3` é o texto invisível: ele entra na busca e não pinta um pixel.
-            folha.insert_textbox(
-                caixa, trecho.texto, fontsize=corpo, fontname=FONTE_DA_CAMADA, render_mode=3
-            )
+            if _escrever_no_maior_corpo(folha, caixa, trecho.texto) <= 0:
+                continue
             escritos += 1
         saida.set_metadata(_metadado(livro, doc, quando))
         relatorio = Relatorio(
@@ -247,16 +244,28 @@ def escrever(
         livro.close()
 
 
-def _corpo_que_cabe(folha: object, caixa: object, texto: str) -> float:
-    """O maior corpo, entre os candidatos, com que o texto cabe na caixa. `0` quando nenhum cabe.
+def _escrever_no_maior_corpo(folha: object, caixa: object, texto: str) -> float:
+    """Escreve o texto no maior corpo em que ele cabe na caixa. `0` quando nenhum coube.
 
     `insert_textbox` devolve o espaço que sobrou -- **negativo quando não coube** --, e é a única
     forma honesta de escolher o corpo: a caixa é a do bloco lido, e o texto corrigido pode ser mais
     longo que o que estava impresso. Escrever fora da caixa poria a busca no lugar errado.
+
+    **A sonda é a escrita, e não um ensaio dela (S-303).** Esta função chamava-se
+    `_corpo_que_cabe` e tinha nome de medição, mas `insert_textbox` do PyMuPDF termina em
+    `if rc >= 0: img.commit(overlay)` -- ela **grava**. Os dois chamadores gravavam de novo
+    logo depois, e toda linha entrava duas vezes na camada invisível: um PDF exportado devolvia
+    `Nf3 exd5\nNf3 exd5\n` onde a folha tem uma linha só. Invisível na tela, visível em toda
+    busca, em todo copiar-e-colar e em todo índice que leia o arquivo.
+
+    A saída **não** é medir com `fitz.get_text_length`: essa régua não reproduz a quebra de
+    linha do `insert_textbox`, e escolheria um corpo que depois não cabe -- e aí o trecho
+    sumiria sem ser contado. A saída é assumir o que a função sempre fez: o corpo que couber
+    é o que fica escrito, e `overlay` volta ao padrão, que é o que a escrita real usava.
     """
     for corpo in (11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0):
         sobra = folha.insert_textbox(  # type: ignore[attr-defined]
-            caixa, texto, fontsize=corpo, fontname=FONTE_DA_CAMADA, render_mode=3, overlay=False
+            caixa, texto, fontsize=corpo, fontname=FONTE_DA_CAMADA, render_mode=3
         )
         if sobra >= 0:
             return corpo
@@ -537,12 +546,8 @@ def escrever_camada(
             for linha in linhas:
                 x0, y0, x1, y1 = linha.bbox
                 caixa = fitz.Rect(x0 - FOLGA_DA_CAIXA, y0 - FOLGA_DA_CAIXA, x1 + FOLGA_DA_CAIXA, y1 + FOLGA_DA_CAIXA)
-                corpo = _corpo_que_cabe(folha, caixa, linha.texto)
-                if corpo <= 0:
+                if _escrever_no_maior_corpo(folha, caixa, linha.texto) <= 0:
                     continue
-                folha.insert_textbox(
-                    caixa, linha.texto, fontsize=corpo, fontname=FONTE_DA_CAMADA, render_mode=3
-                )
                 escritas += 1
             total = _somar(
                 total,
@@ -677,9 +682,12 @@ def contar_losangos(folhas: Sequence[Mapping[str, object]]) -> tuple[ParSemMapea
     """
     contagem: dict[str, int] = {}
     for folha in folhas:
-        for bloco in folha.get("blocks", []) or []:  # type: ignore[union-attr]
-            for linha in bloco.get("lines", []) or []:
-                for trecho in linha.get("spans", []) or []:
+        # O `get_text("dict")` do PyMuPDF devolve dicionarios aninhados sem tipo declarado; o
+        # `cast` diz o formato uma vez, em vez de um `type: ignore` por nivel de laco.
+        blocos = cast("Sequence[Mapping[str, Any]]", folha.get("blocks") or ())
+        for bloco in blocos:
+            for linha in cast("Sequence[Mapping[str, Any]]", bloco.get("lines") or ()):
+                for trecho in cast("Sequence[Mapping[str, Any]]", linha.get("spans") or ()):
                     quantos = str(trecho.get("text", "")).count(SEM_MAPEAMENTO)
                     if quantos:
                         fonte = str(trecho.get("font", "?"))

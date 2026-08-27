@@ -18,6 +18,7 @@ spec.
 > | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
+> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema**, **Solução**, **Critério de aceite**, **Testes** e **Sonda**. A
 convenção é a de sempre: nome de módulo é sugestão, o que importa é a fronteira de

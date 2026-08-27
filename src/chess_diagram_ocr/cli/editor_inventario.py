@@ -25,11 +25,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from . import cli_errors
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import exportacao, paleta, rico
-from ..ui import alcance, atalhos, comandos, menu, texto_panel
+from ..ui import alcance, atalhos, menu, texto_panel
+from . import cli_errors
 
 logger = logging.getLogger(__name__)
 

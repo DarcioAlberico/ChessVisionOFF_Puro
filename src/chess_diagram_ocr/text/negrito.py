@@ -113,7 +113,7 @@ def spans_de_negrito(page: object) -> list[Retangulo]:
 
 def documento_registra_negrito(doc: object, *, amostra: int = PAGINAS_DE_AMOSTRA) -> bool:
     """Este documento registra peso de fonte em algum lugar? Ver `text/camada.py`."""
-    return camada.documento_registra(doc, _span_e_negrito, amostra=amostra)
+    return camada.documento_registra(doc, _span_e_negrito, amostra=amostra, marca="negrito")
 
 
 cobertura = camada.cobertura

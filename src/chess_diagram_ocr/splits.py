@@ -244,9 +244,28 @@ def ensure_splits(
 
     Nunca altera a atribuição de uma amostra já registrada -- é essa garantia que
     mantém o conjunto de teste confiável ao longo do tempo.
+
+    **Lista vazia nunca é razão para podar (S-300).** Podar um *subconjunto* é o comportamento
+    desejado desta função -- amostra que saiu do CSV sai do arquivo de splits. Podar *tudo* é
+    outra coisa, e era o que acontecia: `labels.csv` inexistente faz `LabelStore._load_rows`
+    devolver `[]`, `training.resolve_splits` chegar aqui com `filenames` vazio, e `removed` virar
+    o arquivo inteiro. Reproduzido: um `splits.csv` de três amostras voltava a ser só o
+    cabeçalho.
+
+    O que se perde não é dado -- é a **fronteira** entre treino e teste, que é o que torna toda
+    medição do projeto comparável, e ela não se reconstrói: apagada, a amostra que era `test`
+    volta a ser sorteada. E o aviso que existia para isso, o `ValueError("Dataset vazio")` de
+    `Trainer.prepare`, só aparece **depois** da poda. Um `--csv` digitado errado bastava, e o
+    botão "Treinar modelo" da janela não tem portão nenhum antes daqui.
     """
     names = list(filenames)
     existing = load_splits(splits_path)
+    if not names:
+        logger.warning(
+            "Nenhuma amostra na lista: os %d splits gravados ficaram como estavam (S-300).",
+            len(existing),
+        )
+        return dict(existing)
     keys = group_keys(names, groups)
 
     result: dict[str, Split] = {}

@@ -1046,6 +1046,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-219 a S-234 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
 | S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
+| S-296 a S-410 | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1127,6 +1128,15 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   Analise e hoje, por que ela nao e uma sala de estudo e a leitura da pasta de referencia
 - [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) -- especificacao das Fases 43 a 50 (S-268 a S-290):
   o estudo como dado fora do `tkinter`, um estudo por diagrama, o rascunho e o PGN por livro
+- [docs/ROADMAP_REVISAO.md](docs/ROADMAP_REVISAO.md) -- **Fases 52 a 65**, a revisao geral de
+  2026-08-27: dezesseis leituras independentes do repositorio inteiro, 181 achados com
+  `arquivo:linha`, e a primeira linha do placar, que nao e sobre codigo nenhum -- a CI disparava
+  so em `main`, o trabalho acontece em ramo de fase, e onze fases entraram sem que nenhuma das
+  tres verificacoes rodasse uma vez
+- [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) -- especificacao das Fases 52 a 65 (S-296 em
+  diante): o portao que nunca foi aberto, os doze caminhos que apagam trabalho humano sem
+  perguntar, os tres botoes "Cancelar" que nao cancelam, e as cinco regras que valem para toda a
+  revisao -- entre elas a de que nenhum `# type: ignore` entra sem o motivo escrito
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

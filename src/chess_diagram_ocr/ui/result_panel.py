@@ -1099,9 +1099,27 @@ class ResultPanel(ttk.Frame):
             self._rewrite_dataset_row(alvo, allow_illegal=confirmada is True)
             return
 
+        # **O `try` cobre a gravação, e só ela (S-318).** Ele cobria também o repintar da aba
+        # Dataset, a marca verde no diagrama e a recontagem das abas -- e um `AttributeError`
+        # em qualquer um desses três produzia a caixa "Falha ao salvar" sobre uma amostra que
+        # **está no disco**. A pessoa acredita que perdeu a correção, refaz e salva de novo; e
+        # como `append_training_sample` nomeia por timestamp e sempre acrescenta, a segunda
+        # gravação vira uma linha e um PNG duplicados no `labels.csv`. É o laço mais repetido
+        # do projeto -- corrigir, `Ctrl+S`, seta -- mentindo sobre o único gesto que ele tem.
         try:
             path = self._save_one(alvo, allow_illegal=confirmada is True)
-            self._on_status(f"Exemplo salvo: {path}")
+        except Exception as exc:
+            # `logger.exception` antes do modal: no bundle da S-55 (`console=False`) o
+            # `str(exc)` da caixa era o único vestígio no mundo, e ele sumia quando ela era
+            # fechada. O `logger` deste módulo estava declarado e ocioso desde sempre.
+            logger.exception("Falha ao gravar a amostra corrigida.")
+            messagebox.showerror("Erro ao salvar a amostra", f"Falha ao salvar:\n{exc}")
+            return
+
+        self._on_status(f"Exemplo salvo: {path}")
+        # Daqui para baixo a amostra **já está gravada**: o que falhar aqui é acabamento de
+        # tela, e dizer "falha ao salvar" sobre isso é pior que a tela ficar desatualizada.
+        try:
             self._settle(alvo)
             # Só o caminho de regravação avisava. Sem isto, a aba Dataset não via a amostra
             # nova e o visualizador não pintava de verde o diagrama que acabou de ser salvo
@@ -1116,8 +1134,9 @@ class ResultPanel(ttk.Frame):
             # `Ctrl+S`, seta, corrigir. Quem quer confirmação visual tem a melhor delas: a
             # caixa do diagrama fica verde na hora (S-71). O modal de **erro** fica, porque
             # ali a informação não é redundante e a interrupção é o ponto.
-        except Exception as exc:
-            messagebox.showerror("Erro", f"Falha ao salvar:\n{exc}")
+        except Exception:  # noqa: BLE001 - acabamento de tela não derruba uma gravação boa
+            logger.exception("A amostra foi gravada, mas a tela não pôde ser atualizada.")
+            self._on_status(f"Exemplo salvo: {path} (a tela não pôde ser atualizada -- ver o log).")
 
     def _rewrite_dataset_row(self, alvo: SaveTarget, *, allow_illegal: bool = False) -> None:
         filename = alvo.filename or ""

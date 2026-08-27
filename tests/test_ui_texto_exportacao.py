@@ -116,6 +116,36 @@ class ExportacaoDaAbaTests(unittest.TestCase):
         self.assertTrue(pedidos[-1]["loses_work"])
         self.assertTrue(pedidos[-1]["cancellable"])
 
+    def test_o_pdf_pesquisavel_nao_promete_cancelamento(self) -> None:
+        """S-315: o botão "Cancelar" aceso sobre uma operação que não para é pior que nenhum.
+
+        O `Event` era lido **uma vez**, como argumento (`seco=self._cancelar_exportacao.is_set()`),
+        na montagem da chamada -- antes de qualquer pessoa ter tempo de clicar. O registro dizia
+        `cancellable=True`, o rodapé acendia o botão, e o clique não era lido por ninguém.
+
+        Escrever a camada de uma folha não tem ponto de parada com sentido: o único seria antes
+        do `save`, e cancelar ali economiza fração de segundo. Então a correção é parar de
+        prometer -- e o par com o teste acima é o item: os irmãos `.txt`/`.rtf`/`.html` param de
+        verdade e **continuam** cancelaveis.
+        """
+        pedidos: list[dict[str, object]] = []
+        original = self.busy.register
+
+        def espiar(nome: str, **kwargs: object):  # noqa: ANN202
+            pedidos.append({"nome": nome, **kwargs})
+            return original(nome, **kwargs)  # type: ignore[arg-type]
+
+        self.busy.register = espiar  # type: ignore[method-assign]
+        self.painel.desenhar(_pagina())
+        destino = self.pasta / "folha.pdf"
+        self._responder_dialogo(destino)
+        self.painel.exportar_pdf_pesquisavel()
+        self._esperar(destino)
+
+        self.assertTrue(pedidos)
+        self.assertFalse(pedidos[-1]["cancellable"])
+        self.assertTrue(pedidos[-1]["loses_work"], "perder trabalho continua valendo")
+
     def test_cancelar_nao_deixa_arquivo_pela_metade(self) -> None:
         """A escrita é atômica e o cancelamento acontece **antes** dela: ou o arquivo inteiro, ou
         arquivo nenhum. É a mesma regra de `labels.csv` desde a S-111."""

@@ -116,7 +116,7 @@ from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 from chess_diagram_ocr.ui.dispositivos import dispositivos_da_janela
 from chess_diagram_ocr.ui.export_controller import ExportController, ExportSettings
-from chess_diagram_ocr.ui.field_draft import REGIMES, FieldDraft
+from chess_diagram_ocr.ui.field_draft import REGIMES, FieldDraft, diagramas_ja_anotados
 from chess_diagram_ocr.ui.gallery_panel import LARGURA_MINIMA_DA_GALERIA, GalleryPanel
 from chess_diagram_ocr.ui.page_overlay import (
     BoxClick,
@@ -194,6 +194,8 @@ class ChessOcrTkApp:
 
         self.piece_images = PieceImages(PIECE_IMAGE_DIR, conjunto=conjuntos.escolhido())
         self.state = AppState()
+        self._estado_aplicado = False
+        """O estado lido do disco ja chegou aos widgets? Ver `_save_app_state` (S-322)."""
         self.piece_set_var = tk.StringVar(value=self.piece_images.conjunto)
         self.piece_dir_var = tk.StringVar(value="")
         """O conjunto de peças e a pasta dele (S-230). Nascem do ambiente pela mesma razão da
@@ -714,6 +716,9 @@ class ChessOcrTkApp:
             self.result_panel.board.set_heatmap_enabled(self.state.show_heatmap)
             self.result_panel.update_zoom_label()
 
+        # Daqui para baixo o estado lido já está nos widgets, e gravar volta a ser honesto.
+        self._estado_aplicado = True
+
         last_pdf = self.state.last_pdf.strip()
         if not last_pdf:
             self._set_default_pdf_if_exists()
@@ -742,7 +747,12 @@ class ChessOcrTkApp:
         self.state.window_geometry = (
             geometria.geometria_gravavel(str(self.root.winfo_geometry())) or self.state.window_geometry
         )
-        if self.main_pane is not None:
+        # **Divisor não mapeado não é divisor medido (S-311).** `_save_app_state` roda antes do
+        # `mainloop`, e ali `winfo_width()` devolve 1: `fracao_de_divisor(521, 1)` sai 0,85 -- o
+        # teto do grampo, e não a escolha de ninguém -- e apagava o valor da sessão anterior
+        # antes de a pessoa tocar em nada. `winfo_ismapped` porque a pergunta é "este widget já
+        # existe na tela?". Ver a S-311 na SPEC_REVISAO.
+        if self.main_pane is not None and self.main_pane.winfo_ismapped():
             self.state.sash_fraction = geometria.fracao_de_divisor(
                 int(self.main_pane.sash_coord(0)[0]), int(self.main_pane.winfo_width())
             )
@@ -752,6 +762,21 @@ class ChessOcrTkApp:
             self.state.active_tab = abas.nome_base(str(self.left_tabs.tab(self.left_tabs.select(), "text")))
 
     def _save_app_state(self) -> None:
+        # **Nada é gravado antes de o estado lido ser aplicado aos widgets (S-322).**
+        # `_restore_state_or_default_pdf` chama `_escolher_conjunto` três linhas depois de ler o
+        # disco, e ele termina aqui. Nesse instante nenhum widget recebeu o valor guardado, e
+        # esta função lia `zoom_var`, `show_boxes_var`, `flip_pages_var`, `zoom_da_vista`,
+        # `quebra_var`, `board_zoom_var` e `heatmap_var` **nos padrões de fábrica** -- e os
+        # escrevia por cima de `self.state`, no disco, antes de as linhas seguintes os
+        # restaurarem. Nada do que a S-156, a S-221 e a S-291 prometem lembrar sobrevivia a
+        # fechar a janela: quem trabalha com o heatmap desligado o desligava toda sessão.
+        #
+        # É a mesma família da S-311 -- ler um widget antes de ele existir na tela --, mas aqui
+        # o widget existe e é o **valor** que ainda não chegou nele. Por isso a guarda é um
+        # sinalizador de ordem, e não `winfo_ismapped`.
+        if not self._estado_aplicado:
+            logger.debug("Estado ainda não aplicado aos widgets: gravação adiada (S-322).")
+            return
         try:
             if self.pdf_source is not None:
                 self.state.remember_page(self.pdf_source, self.page_index)
@@ -771,7 +796,10 @@ class ChessOcrTkApp:
                 self.state.review_queue_path = str(self.review_panel.queue_path)
             if self.study_panel is not None:
                 self.state.estudo_aberto = self.study_panel.chave_do_estudo_aberto
-                self.state.estudo_divisor = self.study_panel.fracao_do_divisor or self.state.estudo_divisor
+                if self.study_panel.winfo_ismapped():  # S-311, ver `_remember_window_arrangement`
+                    self.state.estudo_divisor = (
+                        self.study_panel.fracao_do_divisor or self.state.estudo_divisor
+                    )
             self._remember_window_arrangement()
         except tk.TclError as exc:
             logger.warning("Estado da aplicacao não pode ser montado: %s", exc)
@@ -1379,6 +1407,8 @@ class ChessOcrTkApp:
         if self.pdf_source is None:
             self._set_status("Abra um PDF antes de anotar a página.")
             return
+        if empty and not self._confirma_apagar_anotacao():
+            return
 
         rascunho = FieldDraft(pdf_name=self.pdf_source.name, page=self.page_index) if empty else self._field_draft()
         rascunho.regime = "sem-diagrama" if empty else (self.field_regime_var.get() or rascunho.regime)
@@ -1389,17 +1419,51 @@ class ChessOcrTkApp:
             f"O conjunto tem {total} página(s) revisada(s)."
         )
 
+    def _confirma_apagar_anotacao(self) -> bool:
+        """"Sem diagrama" sobre folha já anotada: pergunta nomeando o que se perde (S-301).
+
+        Quem decide se há o que perder é `field_draft.diagramas_ja_anotados`, e o docstring de
+        lá diz por que a pergunta é sobre o **arquivo** e não sobre o rascunho da tela.
+        """
+        if self.pdf_source is None:
+            return True
+        quantos = diagramas_ja_anotados(
+            load_field_set(FIELD_SET_PATH), self.pdf_source.name, self.page_index
+        )
+        if not quantos:
+            return True
+        plural = "s" if quantos > 1 else ""
+        return bool(
+            messagebox.askyesno(
+                "Marcar a página como sem diagrama",
+                f"A página {self.page_index + 1} está anotada com {quantos} diagrama{plural} "
+                f"revisado{plural}.\n\nMarcá-la como sem diagrama descarta essa anotação, e ela "
+                f"não volta. Continuar?",
+                default=messagebox.NO,
+            )
+        )
+
     def field_drop_selected(self) -> None:
-        """Tira da anotação o diagrama selecionado -- o falso positivo que o detector achou."""
-        if self.pdf_source is None or self.result_panel is None:
+        """Tira da anotação o diagrama selecionado -- o falso positivo que o detector achou.
+
+        **A seleção vem do visualizador, e não do editor (S-306).** Vinha de
+        `ResultPanel.selected_index`, que vale **0** com a lista vazia: a guarda passava sempre e
+        o comando tirava do `data/field_set.jsonl` o diagrama nº 1, que ninguém selecionara. Por
+        que `pdf_panel.selected_box` é a resposta confiável está no docstring dele; a frase de
+        recusa é a de `drop_selected_box`, porque dois comandos de tirar não ensinam dois gestos.
+        """
+        if self.pdf_source is None or self.pdf_panel is None:
             return
-        caixas = self.pdf_panel.boxes if self.pdf_panel is not None else None
+        caixas = self.pdf_panel.boxes
         if caixas is None or not len(caixas):
             self._set_status("Nenhuma caixa nesta página para tirar.")
             return
-        selecionado = self.result_panel.selected_index
-        if not 0 <= selecionado < len(caixas.boxes):
-            self._set_status("Selecione o diagrama na página antes de tirá-lo da anotação.")
+        selecionado = self.pdf_panel.selected_box
+        if selecionado is None or not 0 <= selecionado < len(caixas.boxes):
+            self._set_status(
+                "Nenhum diagrama selecionado. Clique com o botão direito sobre a caixa que "
+                "você quer tirar."
+            )
             return
 
         rascunho = self._field_draft()
@@ -1661,7 +1725,9 @@ class ChessOcrTkApp:
             # `engine` e `ocr` aos padroes, e a linha seguinte gravava isso por cima do
             # arquivo -- marcar "nao perguntar novamente" apagava o caminho do motor UCI e a
             # configuracao de OCR de quem os tinha declarado.
-            self.settings = replace(self.settings, remote_fen=replace(configuracao, acknowledged=True))
+            # O host, e não `True`: o consentimento é para **este** endereço (S-319).
+            marcada = replace(configuracao, acknowledged_host=configuracao.host)
+            self.settings = replace(self.settings, remote_fen=marcada)
             save_settings(DEFAULT_SETTINGS_PATH, self.settings)
         return bool(resposta["enviar"])
 

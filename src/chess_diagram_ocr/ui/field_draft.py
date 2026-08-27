@@ -30,7 +30,7 @@ from chess_diagram_ocr.field_eval import AnnotatedDiagram, Bbox, FieldPage, bbox
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["REGIMES", "FieldDraft"]
+__all__ = ["REGIMES", "FieldDraft", "diagramas_ja_anotados"]
 
 REGIMES: tuple[str, ...] = (
     "scan-puro",
@@ -44,6 +44,30 @@ REGIMES: tuple[str, ...] = (
 Não é taxonomia por gosto: a 7.4 mostra a taxa de exportação em 1,000 nos dois primeiros
 regimes e em 0,429 no scan puro. Uma média sobre os quatro esconde exatamente a diferença que
 decide onde vale trabalhar."""
+
+def diagramas_ja_anotados(paginas: Iterable[FieldPage], pdf_nome: str, pagina: int) -> int:
+    """Quantos diagramas o conjunto de campo já tem para esta folha. `0` se ela não está lá.
+
+    **Existe para a guarda do "Sem diagrama" (S-301).** `annotate_field_page(empty=True)` é o
+    único caminho que monta o rascunho *do zero* -- todos os outros passam por `_field_draft`,
+    que retoma o que está gravado --, e `field_eval.upsert_page` substitui a página inteira.
+    Uma folha com diagramas revisados à mão sumia num clique, sem confirmação e sem desfazer.
+
+    **A pergunta é sobre o ARQUIVO, e é isso que esta função garante.** A janela não pode
+    perguntar a `_field_draft`: sem nada gravado, ele devolve um rascunho montado a partir das
+    caixas da *tela*, e a caixa modal abriria em toda página de prosa que o detector marcou por
+    engano -- isto é, no gesto mais repetido de quem monta o conjunto. Página **sem** diagrama é
+    obrigatória no conjunto de campo (S-41): são as únicas que medem falso positivo, e uma
+    pergunta no caminho delas é a fricção que a S-164 removeu de `_on_ocr_empty`.
+
+    Pelo mesmo motivo o botão continua com o papel neutro do catálogo: vermelho permanente no
+    gesto normal ensina a ignorar vermelho.
+    """
+    for anotada in paginas:
+        if anotada.pdf == pdf_nome and anotada.page == pagina:
+            return len(anotada.diagrams)
+    return 0
+
 
 def _referencia_aceitavel(placement: str, confirmada: bool) -> str:
     """A colocação que pode virar verdade de referência, ou string vazia (S-95).

@@ -48,10 +48,10 @@ import chess.pgn
 from chess_diagram_ocr import estudo as estudo_mod
 from chess_diagram_ocr import estudo_arquivo
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
-from chess_diagram_ocr.estudo import Ancora, Caminho, Estudo, PosicaoDeEstudo, Sala, no_em
+from chess_diagram_ocr.estudo import Ancora, Caminho, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
 
-from . import comandos, estudo_lista, geometria, texto, theme, tipografia, tokens
+from . import comandos, estudo_lista, geometria, shortcuts, texto, theme, tipografia, tokens
 from .board_widget import InteractiveBoard, PieceImages
 from .historico import Historico
 from .tooltip import Tooltip
@@ -142,6 +142,27 @@ CANDIDATOS_DO_MOTOR = 3
 Três e não cinco: a quarta e a quinta de um motor a 800 ms já são ruído, e a pergunta de quem estuda
 um livro quase nunca é qual é o melhor lance -- é se o lance que o livro dá está entre os
 candidatos."""
+
+
+TAMANHO_MAXIMO_DE_PGN = 20 * 1024 * 1024
+"""O maior `.pgn` que o comando "Abrir PGN…" aceita, em bytes (S-307).
+
+**Por que existe um teto.** `abrir_pgn` lia o arquivo inteiro para a memória na thread do Tk, e
+`pgn_database/` -- a pasta que `estudo_partidas.py` manda usar -- tem arquivos de 8,6 GB e
+10,3 GB. Medido: 5,2 MB de PGN custam 18,8 s e 220 MB de pico, o que dá ~3,5 min de janela
+congelada num arquivo de 62 MB; nos de gigabytes o `read_text` levanta `MemoryError`, que **não**
+é `OSError` e por isso escapava da guarda e subia para o laço de eventos.
+
+Vinte megabytes é o corte entre "coleção de um livro" e "base de partidas". A base grande não
+deixa de ser consultável: quem a consulta é a busca por posição da S-73, que indexa em vez de
+carregar."""
+
+PARTIDAS_MAXIMAS_DE_PGN = 5000
+"""E um teto de partidas, para o arquivo pequeno com muita partida dentro.
+
+O teto é **argumento** de `estudos_de_pgn`, e não constante lá dentro: o mesmo laço lê o arquivo
+da sala, e um limite global truncaria em silêncio a sala de quem tem mais estudos que o teto --
+perda de análise humana, o oposto do que este item quer."""
 
 
 class StudyPanel(ttk.Frame):
@@ -839,8 +860,23 @@ class StudyPanel(ttk.Frame):
         self._gravacao_agendada = self.after(atraso, self.salvar_agora)
 
     def salvar_agora(self) -> Path | None:
-        """Grava a sala. Chamada pela inatividade, ao trocar de livro e ao fechar a janela."""
+        """Grava a sala. Chamada pela inatividade, ao trocar de livro e ao fechar a janela.
+
+        **A primeira linha é `gravar_comentario`, e a ordem é o item (S-302).** O que está
+        digitado na caixa de comentário só entra no nó quando ela perde o foco -- os onze
+        chamadores de `gravar_comentario` são todos de navegação e exportação. Quem escreve uma
+        nota e fecha o programa com o cursor ainda dentro dela perdia a nota: `salvar_agora` saía
+        em `if not self._sujo` sem olhar a caixa, e `_on_close` chama exatamente esta função.
+        Reproduzido no painel real -- comentário digitado, `salvar_agora()`, e o texto não estava
+        nem no arquivo nem no nó.
+
+        Depois do teste de `_sujo` não adiantaria: é `gravar_comentario` quem liga `_sujo`.
+        """
         self._gravacao_agendada = None
+        try:
+            self.gravar_comentario()
+        except tk.TclError:  # pragma: no cover - painel destruído entre o agendamento e agora
+            pass
         if not self._sujo or not self.sala.documento:
             return None
         try:
@@ -873,7 +909,7 @@ class StudyPanel(ttk.Frame):
             self.set_status("Não há FEN para carregar no tabuleiro de estudo.")
             return
         if not is_valid_fen(fen):
-            messagebox.showerror("Erro", "A FEN informada para estudo e inválida.")
+            messagebox.showerror("FEN inválida", "A FEN informada para estudo é inválida.")
             return
         if not self._confirmar_abandono("aplicar outra FEN"):
             return
@@ -1183,12 +1219,19 @@ class StudyPanel(ttk.Frame):
     def acoes_proprias(self) -> frozenset[str]:
         """As ações globais que esta aba atende enquanto tem o foco. Ver `ACOES_PROPRIAS`.
 
-        **Vazio enquanto o cursor está na caixa de comentário**, e isso é o item e não um detalhe:
-        ali `←` é do texto, como a guarda de `ui/shortcuts.ignores_widget` garante desde a S-20 para
-        todo campo. Sem esta pergunta, escrever um comentário moveria o estudo a cada seta.
+        **Vazio enquanto o cursor está em qualquer campo de texto**, e isso é o item e não um
+        detalhe: ali `←` é do texto, como a guarda de `ui/shortcuts.ignores_widget` garante desde
+        a S-20 para todo campo. Sem esta pergunta, escrever um comentário moveria o estudo a cada
+        seta.
+
+        **Era `is self.comentario_text`, e a sala tem quatro campos (S-323):** o `Entry` de FEN e
+        as duas `Text` da lista e da anotação também. Com o cursor no campo de FEN, a seta
+        esquerda movia o cursor **e** desfazia um lance -- e quem estava conferindo uma FEN à mão
+        perdia a posição da árvore sem nenhum sinal. `ignores_widget` já responde por `Entry`,
+        `Text`, `Combobox` e `Spinbox` de uma vez, e é a régua que o resto da janela usa.
         """
         try:
-            if self.focus_get() is self.comentario_text:
+            if shortcuts.ignores_widget(self.focus_get()):
                 return frozenset()
         except (tk.TclError, KeyError):  # pragma: no cover - janela sem foco, ou destruída
             pass
@@ -1319,10 +1362,18 @@ class StudyPanel(ttk.Frame):
             return
 
         no = self.estudo.no
+        # **O primeiro nó da linha é guardado enquanto ele é criado, e não procurado depois
+        # (S-312).** Era `no_em(jogo, caminho() + (0,))` -- "o primeiro filho do nó corrente" --,
+        # e isso só é a linha do livro quando o nó corrente não tinha continuação nenhuma. Quem
+        # já tinha jogado um lance a partir do diagrama recebia a marca "linha impressa no livro"
+        # no **seu** lance, e a linha do livro entrava ao lado sem procedência: o PGN saía
+        # `{ linha impressa no livro } 4. d4 ( 4. Ng5 d5 )`, atribuindo ao livro o que a pessoa
+        # jogou. É o mesmo recurso que o laço abaixo já usa quinze linhas adiante.
+        primeiro: chess.pgn.GameNode | None = None
         for lance in lida.lances:
             existente = next((filho for filho in no.variations if filho.move == lance.move), None)
             no = existente if existente is not None else no.add_variation(lance.move)
-        primeiro = no_em(self.estudo.jogo, self.estudo.caminho() + (0,))
+            primeiro = primeiro or no
         if primeiro is not None and not primeiro.starting_comment:
             # A procedência do que **não** foi jogado por quem estuda, dita no próprio PGN.
             primeiro.starting_comment = "linha impressa no livro"
@@ -1491,15 +1542,37 @@ class StudyPanel(ttk.Frame):
             return
         caminho = Path(nome)
         try:
-            texto = caminho.read_text(encoding="utf-8", errors="replace")
+            tamanho = caminho.stat().st_size
+        except OSError as erro:
+            self.set_status(f"Não foi possível ler {caminho.name}: {erro}")
+            return
+        if tamanho > TAMANHO_MAXIMO_DE_PGN:
+            self.set_status(
+                f"{caminho.name} tem {tamanho / 1_048_576:.0f} MB, e a sala abre até "
+                f"{TAMANHO_MAXIMO_DE_PGN // 1_048_576} MB. Base de partidas desse tamanho se "
+                f"consulta pela busca por posição, que não carrega o arquivo inteiro."
+            )
+            return
+        try:
+            with caminho.open(encoding="utf-8", errors="replace") as fluxo:
+                achados = estudo_arquivo.estudos_de_pgn(
+                    fluxo,
+                    documento=self.sala.documento,
+                    onde=caminho.name,
+                    limite=PARTIDAS_MAXIMAS_DE_PGN,
+                )
         except OSError as erro:
             self.set_status(f"Não foi possível ler {caminho.name}: {erro}")
             return
 
-        achados = estudo_arquivo.estudos_de_pgn(texto, documento=self.sala.documento, onde=caminho.name)
         if not achados:
             self.set_status(f"{caminho.name} não tem nenhuma partida legível.")
             return
+        if len(achados) >= PARTIDAS_MAXIMAS_DE_PGN:
+            self.set_status(
+                f"{caminho.name}: lidas as primeiras {PARTIDAS_MAXIMAS_DE_PGN} partidas; "
+                f"o arquivo tem mais."
+            )
 
         # Os que têm âncora deste livro entram na sala; `guardar` recusa os demais sozinho.
         anexados = [e for e in achados if self.sala.guardar(e)]

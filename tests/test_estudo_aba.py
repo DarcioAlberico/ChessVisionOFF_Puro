@@ -805,6 +805,28 @@ class LinhaDoLivroTests(_Sala):
         self.assertIn("5.exd6", self.painel.status_var.get())
         self.assertIn("não é legal", self.painel.status_var.get())
 
+    def test_a_marca_vai_no_ramo_do_livro_e_nao_no_que_a_pessoa_jogou(self) -> None:
+        """S-312: a marca era posta no **primeiro filho** do nó corrente, e não no da linha lida.
+
+        Os dois coincidem quando o nó corrente não tinha continuação -- que é o caso dos quatro
+        testes acima, e é por isso que nenhum deles pegava o defeito. Quem já tinha jogado um
+        lance a partir do diagrama recebia "linha impressa no livro" no **seu** lance, e o PGN
+        saía atribuindo ao livro o que a pessoa jogou.
+
+        `assertIn("linha impressa no livro", pgn)` sozinho não prova nada aqui: a frase está no
+        PGN nos dois casos. O que decide é **em qual ramo** ela está.
+        """
+        self.impressa = "4.♘g5 d5"
+        self._no_diagrama(0, vez="w")
+        self._jogar("d2d4")
+        self.painel.go_to_start_of_line()
+
+        self.painel.jogar_a_linha_do_livro()
+
+        ramos = {no.move.uci(): (no.starting_comment or "") for no in self.painel.estudo.jogo.variations}
+        self.assertIn("linha impressa no livro", ramos["f3g5"])
+        self.assertEqual(ramos["d2d4"], "", "o lance de quem estuda ficou marcado como do livro")
+
     def test_sem_folha_lida_a_aba_diz_o_que_fazer(self) -> None:
         self.impressa = ""
         self._no_diagrama(0, vez="w")
@@ -1253,6 +1275,64 @@ class TreinoTests(_Sala):
         self.assertEqual(str(botao.cget("text")), comandos.rotulo_de_botao("modo_treino"))
         self.painel.alternar_treino()
         self.assertEqual(str(botao.cget("text")), comandos.rotulo_alternado("modo_treino"))
+
+
+class ComentarioNaoConfirmadoTests(_Sala):
+    """O comentário digitado e não confirmado sobrevive ao fechamento (S-302).
+
+    **O defeito.** O texto da caixa só entra no nó quando ela perde o foco: os onze chamadores
+    de `gravar_comentario` são todos de navegação e de exportação. `salvar_agora` -- que é o
+    que `app_tkinter._on_close` chama ao fechar a janela, e o que a inatividade agenda -- saía
+    em `if not self._sujo` sem olhar a caixa. Quem escrevia uma nota e fechava o programa com o
+    cursor ainda dentro dela perdia a nota, e nada avisava: o `tem_trabalho_por_gravar` que
+    alimenta o aviso de fechamento também lê `_sujo`, então ele dizia que não havia trabalho.
+
+    **A ordem é o item.** `gravar_comentario` tem de vir *antes* do teste de `_sujo`, porque é
+    ela quem liga `_sujo`.
+    """
+
+    def _com_um_lance(self) -> None:
+        self._no_diagrama(1)
+        self._jogar("f8c5")
+        self.painel.salvar_agora()
+
+    def test_o_comentario_digitado_e_nao_confirmado_e_gravado(self) -> None:
+        self._com_um_lance()
+        self.painel.comentario_text.insert("1.0", "o centro fecha e a coluna abre")
+
+        self.painel.salvar_agora()
+
+        self.assertIn("o centro fecha e a coluna abre", self.painel.estudo.no.comment or "")
+
+    def test_o_texto_so_na_tela_e_invisivel_ao_aviso_de_fechamento(self) -> None:
+        """A metade que explica por que nada avisava.
+
+        `tem_trabalho_por_gravar` -- o `loses_work` do `BusyRegistry` aplicado à sala -- também
+        lê `_sujo`. Com a nota apenas na caixa, ele responde "nada a gravar", e o fechamento não
+        pergunta. Ou seja: o programa não só perdia a nota, ele afirmava que não havia nada a
+        perder. Por isso a correção tem de estar em `salvar_agora`, e não numa pergunta a mais
+        no fechamento.
+
+        `_sujo = False` à mão é a sala recém-gravada: a gravação de verdade precisaria de um
+        livro aberto, que não é o que este teste mede.
+        """
+        self._com_um_lance()
+        self.painel._sujo = False
+
+        self.painel.comentario_text.insert("1.0", "ainda por confirmar")
+        self.assertFalse(self.painel.tem_trabalho_por_gravar())
+
+        self.painel.salvar_agora()
+
+        self.assertIn("ainda por confirmar", self.painel.estudo.no.comment or "")
+        self.assertTrue(self.painel.tem_trabalho_por_gravar())
+
+    def test_sala_limpa_e_sem_comentario_novo_nao_grava(self) -> None:
+        """A correção não pode fazer toda inatividade regravar o arquivo: `gravar_comentario`
+        sai cedo quando o texto é o mesmo, e `salvar_agora` continua devolvendo `None`."""
+        self._com_um_lance()
+
+        self.assertIsNone(self.painel.salvar_agora())
 
 
 if __name__ == "__main__":  # pragma: no cover

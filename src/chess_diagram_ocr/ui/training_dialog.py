@@ -78,8 +78,18 @@ def summarize_run(run: TrainingRun) -> str:
 
     Mostrar a última faria o usuário ler uma métrica que não corresponde ao arquivo salvo:
     desde a S-27 o treino só grava por cima quando melhora.
+
+    **A melhor época é a que `is_best` marca, e não `history[best_epoch - 1]` (S-310).** Os dois
+    coincidem num treino do zero e divergem em toda retomada: `best_epoch` é do **checkpoint**,
+    e pode valer 7 sobre um histórico de duas épocas -- o `IndexError` daí subia como "Falha no
+    treino" ao fim de um treino bem-sucedido. E quando não estoura, mente: indexa a época errada
+    desta execução e mostra a métrica dela.
+
+    Nenhuma época melhor que o incumbente é um resultado, e não uma falha: aí o resumo fica
+    vazio de propósito, e quem diz o que aconteceu é a frase de status.
     """
-    melhor = run.history[run.best_epoch - 1] if run.history and run.best_epoch else {}
+    melhores = [linha for linha in run.history if linha.get("is_best")]
+    melhor = melhores[-1] if melhores else {}
     resumo = format_metrics(melhor)
     if run.ece_after is not None:
         resumo += f" | T={run.temperature:.3f}"
@@ -232,13 +242,31 @@ class TrainingController:
                 progress_cb=self._on_progress,
                 splits_path=pedido.splits_path,
                 fresh=pedido.fresh,
+                # **O `Event` que o botão "Cancelar" do rodapé aciona (S-309).** Ele existia em
+                # três lugares -- `start` registra a operação como `cancellable=True`, o rodapé
+                # habilita o botão, e `Trainer` sabe parar entre épocas -- e faltava nesta linha.
+                # O botão respondia ao clique e o treino seguia até o fim.
+                cancel_event=cancel,
             )
             resumo = summarize_run(run)
             # Sem caixa modal ao fim (S-164): o modal do treino **já está aberto** e mostra o
             # resumo em `metrics_var` -- a caixa era uma segunda cópia do que está a 20 px dela,
             # e um treino de uma hora terminava exigindo um clique para liberar a janela.
-            self._on_status(f"Treino concluído. Melhor época: {run.best_epoch} de {len(run.history)}. {resumo}")
-            self.set_text("Treino concluído.", resumo)
+            #
+            # Cancelado não é concluído nem falhou (S-309): o checkpoint da melhor época gravada
+            # continua no disco e continua sendo o melhor conhecido. Dizer "Treino concluído"
+            # sobre uma parada na época 2 de 8 seria a interface mentindo sobre o que ela fez.
+            if run.cancelled:
+                epocas = len(run.history)
+                feito = f"Treino cancelado na época {epocas} de {self._total_epochs}."
+                sobrou = resumo or "nenhuma época superou o checkpoint que já existia."
+                self._on_status(f"{feito} {sobrou}")
+                self.set_text(feito, sobrou)
+            else:
+                self._on_status(
+                    f"Treino concluído. Melhor época: {run.best_epoch} de {len(run.history)}. {resumo}"
+                )
+                self.set_text("Treino concluído.", resumo)
         except Exception as exc:
             logger.exception("Falha no treino disparado pela interface.")
             self._on_status("Falha no treino.")

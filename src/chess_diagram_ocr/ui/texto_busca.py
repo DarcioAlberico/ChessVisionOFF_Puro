@@ -31,7 +31,8 @@ from tkinter import ttk
 
 from ..text import busca as _busca
 from ..text.rico import DocumentoRico
-from . import comandos, texto as texto_ui
+from . import comandos
+from . import texto as texto_ui
 
 __all__ = ["JanelaDeBusca", "TITULO"]
 

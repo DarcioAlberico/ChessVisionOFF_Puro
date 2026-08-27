@@ -21,6 +21,7 @@ da decisão; o resto é o painel de verdade.
 from __future__ import annotations
 
 import sys
+import threading
 import tkinter as tk
 import unittest
 from pathlib import Path
@@ -30,6 +31,7 @@ from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.labels import SavedSample
 from chess_diagram_ocr.ui import dataset_panel as modulo
+from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.dataset_panel import DatasetPanel
 
 
@@ -255,6 +257,63 @@ class CorteDoisTests(unittest.TestCase):
 
         self.assertIn("LabelStore", self.leituras)
         self.assertIn("load_annotations", self.leituras)
+
+
+class UmaDeteccaoDeCadaVezTests(unittest.TestCase):
+    """O segundo clique em "Detectar duplicatas" não vaza um registro de operação longa (S-314).
+
+    **O dano ficava na sessão seguinte.** `detect_duplicates` sobrescrevia `_busy_token` a cada
+    clique, e `_release_busy` só solta a chave que está no atributo -- a do primeiro clique
+    ficava registrada para sempre. `BusyRegistry.running()` não filtra por `loses_work`, então a
+    chave vazada entra na pergunta de fechamento: a janela passa a avisar que há uma operação em
+    andamento que terminou há horas, que é exatamente o que essa pergunta existe para não fazer.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz_do_processo()
+
+    def setUp(self) -> None:
+        host = tk.Frame(self.root)
+        self.addCleanup(host.destroy)
+        self.registro = BusyRegistry()
+        self.frases: list[str] = []
+        remendo = mock.patch.object(modulo, "load_rows", lambda *_a, **_k: [])
+        remendo.start()
+        self.addCleanup(remendo.stop)
+        # A detecção nunca termina: é o estado que o segundo clique encontra.
+        self._solta = threading.Event()
+        self.addCleanup(self._solta.set)
+        parada = mock.patch.object(
+            modulo, "find_duplicate_groups", lambda *_a, **_k: (self._solta.wait(), [])[1]
+        )
+        parada.start()
+        self.addCleanup(parada.stop)
+        self.painel = DatasetPanel(
+            host,
+            paths=lambda: (Path("labels.csv"), Path("samples"), Path("splits.csv")),
+            on_edit=lambda _linha: None,
+            on_status=self.frases.append,
+            busy=self.registro,
+        )
+
+    def test_o_segundo_clique_nao_registra_uma_segunda_operacao(self) -> None:
+        self.painel.detect_duplicates()
+        self.painel.detect_duplicates()
+        self.painel.detect_duplicates()
+
+        self.assertEqual(len(self.registro.running()), 1)
+        self.assertTrue(any("já está em andamento" in frase for frase in self.frases), self.frases)
+
+    def test_o_botao_fica_cinza_enquanto_ela_roda(self) -> None:
+        """O botão cinza é a mesma resposta da frase, e não depende de a pessoa estar olhando."""
+        self.assertEqual(str(self.painel.btn_duplicatas.cget("state")), "normal")
+
+        self.painel.detect_duplicates()
+
+        self.assertEqual(str(self.painel.btn_duplicatas.cget("state")), "disabled")
 
 
 if __name__ == "__main__":

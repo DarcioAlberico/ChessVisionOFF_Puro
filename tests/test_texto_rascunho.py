@@ -200,6 +200,26 @@ class NaAbaTests(unittest.TestCase):
         self.painel.desenhar(_pagina())
         self.assertIsNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
 
+    def test_o_recuperado_continua_sendo_trabalho_por_gravar(self) -> None:
+        """A outra metade da linha acima (S-308).
+
+        `abrir` termina em `desenhar_documento`, que zera `_sujo` -- o certo para um documento
+        que veio do disco, e o errado para este, que veio de um arquivo que a linha seguinte
+        apaga. Sem a marca, o texto resgatado de um travamento voltava a existir **só na
+        memória**: as duas guardas que perguntam antes de descartar (`ler` e `abrir_documento`)
+        liam `_sujo` e passavam direto, e `gravar_rascunho` saía cedo e não reescrevia nada. O
+        segundo travamento perdia tudo -- e o recurso existe para o segundo travamento.
+        """
+        rascunho.gravar(rico.de_pagina(_pagina(texto="versão do rascunho")), pasta=self.pasta)
+        self._responder(True)
+        self.painel.desenhar(_pagina())
+
+        self.assertIsNotNone(
+            self.painel.gravar_rascunho(),
+            "recuperar apagou o arquivo e desligou o rascunho automático",
+        )
+        self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
+
     def test_salvar_apaga(self) -> None:
         from tkinter import filedialog
 

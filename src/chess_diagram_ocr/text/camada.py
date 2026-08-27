@@ -30,6 +30,7 @@ vezes; sem isso uma linha poderia "cobrir" mais que 100% de si mesma.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
 __all__ = [
     "COBERTURA_MINIMA",
@@ -74,18 +75,57 @@ def spans_com(page: object, e_do_estilo: Callable[[dict], bool]) -> list[Retangu
     return saida
 
 
+_RESPOSTAS: dict[tuple[str, str, float, int], bool] = {}
+"""A resposta de `documento_registra` por (marca, arquivo, mtime, amostra). Ver o docstring dela."""
+
+
+def _identidade(doc: object) -> tuple[str, float] | None:
+    """`(caminho, mtime)` do PDF, ou `None` quando ele não tem identidade estável no disco.
+
+    `PdfSource` aceita `bytes` e um documento já aberto, e nesses casos `doc.name` é vazio: um
+    cache chaveado por nome vazio devolveria a resposta de **outro** documento. Sem identidade,
+    sem memória -- e a conta volta a ser a de antes, que é correta e só é lenta.
+
+    O `mtime` entra na chave porque um PDF reescrito no lugar é outro livro com o mesmo nome.
+    """
+    nome = str(getattr(doc, "name", "") or "")
+    if not nome:
+        return None
+    try:
+        return nome, Path(nome).stat().st_mtime
+    except OSError:  # pragma: no cover - arquivo sumiu entre abrir e perguntar
+        return None
+
+
 def documento_registra(
     doc: object,
     e_do_estilo: Callable[[dict], bool],
     *,
     amostra: int = PAGINAS_DE_AMOSTRA,
+    marca: str = "",
 ) -> bool:
     """Este documento registra aquele estilo em algum lugar? Ver `PAGINAS_DE_AMOSTRA`.
 
     **É a pergunta que separa `False` de `None`.** Uma página sem itálico num livro que o registra é
     "aqui não tem"; num livro que não o registra é "não se sabe", e as duas não podem virar a mesma
     coisa.
+
+    **É uma pergunta sobre o LIVRO, e era refeita a cada folha (S-313).** Ela abre uma amostra de
+    páginas e varre os spans delas; `ler_pagina` a fazia duas vezes por folha, uma para o peso e
+    outra para o pendor. Medido no `A Matter of Endgame Technique` (898 folhas): 1,612 s + 1,300 s
+    = **2,912 s por folha**, contra 0,233 s + 0,166 s da leitura dos spans da folha em si. Nos 45
+    PDFs do acervo, onze livros custam mais de 0,5 s por folha só nestas duas perguntas.
+
+    `marca` é o nome do estilo, e é o que torna a memória possível: `e_do_estilo` é uma função, e
+    duas funções diferentes com o mesmo comportamento não têm chave comum. Sem `marca`, não há
+    cache -- é o padrão, para que nenhum chamador ganhe memória sem pedir.
     """
+    identidade = _identidade(doc) if marca else None
+    if identidade is not None:
+        chave = (marca, identidade[0], identidade[1], amostra)
+        guardada = _RESPOSTAS.get(chave)
+        if guardada is not None:
+            return guardada
     try:
         total = int(doc.page_count)  # type: ignore[attr-defined]
     except Exception:  # pragma: no cover
@@ -93,13 +133,22 @@ def documento_registra(
     if total <= 0:
         return False
     passos = max(1, total // (amostra + 1))
+    resposta = False
     for indice in range(passos, total, passos):
         try:
             if spans_com(doc[indice], e_do_estilo):  # type: ignore[index]
-                return True
+                resposta = True
+                break
         except Exception:  # pragma: no cover - página ilegível
             continue
-    return False
+    if identidade is not None:
+        _RESPOSTAS[(marca, identidade[0], identidade[1], amostra)] = resposta
+    return resposta
+
+
+def esquecer_documentos() -> None:
+    """Apaga a memória de `documento_registra`. Para os testes, e para quem reabre o acervo."""
+    _RESPOSTAS.clear()
 
 
 def cobertura(bbox: Retangulo, spans: Sequence[Retangulo]) -> float:

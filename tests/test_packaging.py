@@ -171,7 +171,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2195
+    LIMITE = 2261
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
 
     **2.090 → 2.092 na Fase 39**, e as onze são as quatro linhas de exportação (`.md`, `.html`,
@@ -451,6 +451,22 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     **saiu**: a conversão do estudo em documento é `estudo_saida.py`, o que cada formato faz continua
     sendo de `text/exportacao.py`, e os sete comandos novos chegam pela tabela de sempre. O que
     **ficou** é ligar dois painéis -- que é o que só quem montou os dois pode fazer.
+
+    **2.195 → 2.261 nas Fases 53 a 55**, e as 66 são seis defeitos de perda de trabalho humano sendo
+    consertados na única camada que podia consertá-los. O que **saiu**: a leitura do conjunto de
+    campo virou `field_draft.diagramas_ja_anotados`, e é lá que mora o docstring que explica por
+    que a guarda pergunta ao arquivo e não ao rascunho da tela (S-301); a resposta a "qual
+    retângulo está selecionado" virou `pdf_panel.selected_box`, com a explicação junto (S-306).
+    O que **ficou** aqui são as duas perguntas que só a janela pode fazer -- ela é quem tem o
+    `messagebox` e quem sabe que folha está aberta --, e ligar o visualizador ao conjunto de
+    campo, que é o mesmo tipo de costura entre painéis que a S-116 já tinha deixado. As oito
+    últimas são a guarda de mapeamento da S-311, o consentimento por endereço da S-319 e o
+    sinalizador de ordem da S-322 -- e as três **têm** de morar aqui: quem grava o estado da
+    janela é a janela, quem marca o consentimento é quem mostrou a caixa que o pediu, e quem
+    sabe se o estado lido já chegou aos widgets é quem os montou. A S-322 é a que mais custa em
+    linhas e a que mais paga: sem ela, **nada** do que a S-156, a S-221 e a S-291 prometem
+    lembrar sobrevivia a fechar a janela -- o arquivo em disco era reescrito com os padrões de
+    fábrica antes de a primeira linha de restauração rodar.
 
     Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
     crescer **sem decidir**."""

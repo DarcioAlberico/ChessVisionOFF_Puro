@@ -141,7 +141,20 @@ class AuditReport:
         if sintaxe:
             violacoes.append(f"{sintaxe} FEN(s) não interpretável(is) -- conserto: corrija pela aba Dataset")
         ausentes = len(self.of_kind("imagem-ausente"))
-        if ausentes:
+        if ausentes and ausentes >= self.total_rows > 0:
+            # **Faltam TODAS: isto não é poda, é um clone novo (S-321).** `data/labels.csv` vem
+            # versionado com 4.454 linhas e `data/samples/` vem com um `.gitkeep` -- as imagens
+            # são 3,9 GB e ficam fora do git. O conserto genérico mandava rodar
+            # `cvoff-audit --drop-missing`, e seguir a instrução impressa reduzia o CSV de 4.455
+            # para **1 linha**, sem destravar nada: os rótulos utilizáveis continuavam zero.
+            # O primeiro comando que o recém-chegado roda mandava destruir o único dado que o
+            # repositório de fato entrega.
+            violacoes.append(
+                f"{ausentes} rótulo(s) sem PNG -- e são todos: as imagens de data/samples/ não "
+                "vêm no repositório (3,9 GB). Traga as suas, ou corrija diagramas na janela e "
+                "salve com Ctrl+S. **Não** use --drop-missing aqui: ele esvaziaria o labels.csv"
+            )
+        elif ausentes:
             violacoes.append(f"{ausentes} rótulo(s) com PNG ausente -- conserto: cvoff-audit --drop-missing")
         if self.duplicates_above_ceiling:
             violacoes.append(
@@ -586,6 +599,19 @@ def drop_missing_labels(csv_path: Path, report: AuditReport, quarantine_path: Pa
     ausentes = {issue.filename for issue in report.of_kind("imagem-ausente")}
     if not ausentes:
         return 0
+    if len(ausentes) >= report.total_rows > 0:
+        # **Recusa esvaziar o arquivo inteiro (S-321).** Poda parcial é o que esta função é
+        # para; tirar *todas* as linhas não é poda, é o estado de um clone que ainda não tem
+        # `data/samples/`. Havia backup automático, o que salvava o arquivo mas não a confiança
+        # de quem acabou de ver 4.454 rótulos virarem um cabeçalho.
+        raise ValueError(
+            f"Os {len(ausentes)} rótulos do CSV estão todos sem PNG, e --drop-missing os moveria "
+            "todos para a quarentena -- o que sobraria seria um arquivo vazio.\n\n"
+            "As imagens de data/samples/ não vêm no repositório: são 3,9 GB, e o `.gitignore` as "
+            "mantém fora. Traga as suas para data/samples/, ou corrija diagramas na janela e "
+            "salve com Ctrl+S. Esta bandeira existe para a poda parcial, quando alguns PNGs "
+            "sumiram e o resto do dataset continua de pé."
+        )
 
     movidas = LabelStore(csv_path).move_to(
         LabelStore(quarantine_path),

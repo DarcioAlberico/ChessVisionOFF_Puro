@@ -45,7 +45,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 52
+LIMITE = 53
 """Quantas chamadas de `messagebox` a interface ainda faz.
 
 **51 -> 52 na S-289**, e a nova é um `showerror` de falha ao **gravar** o estudo exportado --
@@ -92,14 +92,23 @@ de correção é a coisa mais cara desta aba. A terceira é pergunta: abrir outr
 editado descarta o que está na tela, e descartar é decisão -- é a mesma caixa que `ler` já faz
 antes de reler a folha, e pela mesma razão.
 
+**52 → 53 na S-301**, e a linha a mais é uma pergunta: "Sem diagrama" sobre uma folha já anotada
+descartava, num clique e sem desfazer, os diagramas que alguém tinha revisado à mão -- e
+`field_eval.upsert_page` substitui a página inteira, então a anotação não volta. Cai na linha da
+tabela que trata de decisão irreversível, e a caixa **não** entra no gesto normal: página nunca
+anotada e página já marcada como sem diagrama passam direto. Essa condição é o item, e não a
+caixa -- página sem diagrama é obrigatória no conjunto de campo (S-41), e uma pergunta no caminho
+dela seria a fricção que a S-164 removeu.
+
 Baixar este número é o item continuando; subi-lo exige vir aqui e escrever por que aquela caixa
 precisava ser modal."""
 
-MODAIS_DE_DECISAO = 13
+MODAIS_DE_DECISAO = 14
 """Quantas das que sobram fazem uma pergunta -- `askyesno`, `askokcancel`, `askyesnocancel`.
 
 Ela é a metade honesta da conta: "a contagem cai" não vale nada se o que caiu foram as perguntas.
-Nenhuma das 22 convertidas era uma; as 13 continuam de pé, e este número é o que trava isso."""
+Nenhuma das 22 convertidas era uma; as 13 continuaram de pé, e a 14ª é a da S-301 -- este número é
+o que trava isso."""
 
 
 def _chamadas_de_messagebox(caminho: Path) -> list[str]:
