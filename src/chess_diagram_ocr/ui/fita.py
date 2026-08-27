@@ -4,7 +4,7 @@
 cabeçalho -- Arquivo, OCR, Edição, Visualização -- e treze comandos distribuídos entre eles. Quando
 a spec foi escrita, não havia agrupamento declarado em lugar nenhum: as duas barras do PDF eram
 duas listas planas, e o único agrupamento existente era o separador visual de `menu.py`, que só o
-menu conhecia. A S-219 declarou os seis grupos, e a fita é a primeira pele que os desenha.
+menu conhecia. A S-324 declarou os seis grupos, e a fita é a primeira pele que os desenha.
 
 **A fita mostra quem tem ícone, e essa regra não é arbitrária.** Um botão de fita é ícone com
 rótulo; um comando sem ícone não tem como ser um. Os da S-220 caem exatamente nos quatro grupos da

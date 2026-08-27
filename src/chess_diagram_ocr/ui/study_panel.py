@@ -322,7 +322,7 @@ class StudyPanel(ttk.Frame):
         chamam a mesma.
 
         O texto de ligado é `Comando.rotulo_alternado`, que existe desde a S-222 justamente porque a
-        varredura da S-219 só olhava o `text=` do construtor e perdia o que era trocado depois.
+        varredura da S-324 só olhava o `text=` do construtor e perdia o que era trocado depois.
         """
         botao = self._botao(pai, acao, **empacotar)
         self._alternaveis[acao] = (botao, variavel)

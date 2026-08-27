@@ -2,7 +2,7 @@
 
 A Imagem 2 desenha quatro grupos com cabeçalho e treze comandos entre eles. Quando a spec foi
 escrita não havia agrupamento declarado em lugar nenhum -- as duas barras do PDF eram listas
-planas. A S-219 declarou os seis grupos; esta é a primeira pele que os desenha.
+planas. A S-324 declarou os seis grupos; esta é a primeira pele que os desenha.
 
 **O grupo é a unidade de quebra**, e é o que distingue esta fita de uma barra de botões: um grupo
 partido ao meio não é um grupo. Ela não escreve uma segunda implementação de quebra -- usa a

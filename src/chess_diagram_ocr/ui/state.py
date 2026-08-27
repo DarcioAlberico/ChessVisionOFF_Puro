@@ -116,7 +116,7 @@ class AppState:
 
     **Vazio e não `"classica"`**, embora a spec tenha escrito o segundo. O nome da pele padrão é
     de `ui/pele.py`, e cravá-lo aqui o declararia num segundo lugar -- exatamente a fenda que a
-    S-219 acabou de fechar para os comandos. Vazio já significa "cai no padrão", e é o que
+    S-324 acabou de fechar para os comandos. Vazio já significa "cai no padrão", e é o que
     `active_tab`, `window_geometry` e `review_queue_path` neste mesmo arquivo já querem dizer.
 
     **E não é validado aqui**, pelo mesmo motivo da geometria: pele registrada é pergunta de quem

@@ -62,7 +62,7 @@ class EscalaTests(unittest.TestCase):
         A densidade confortável não *parece* a janela de hoje: ela **é**, porque `FOLGAS` são os
         números que já estavam escritos nos `padx`/`pady` -- 14 na moldura da legenda, 10 e 6 na
         faixa de cromo, 2 entre dois botões de fita. E 20 é a altura de linha de fábrica do
-        `Treeview`. É o mesmo movimento da S-219 com os rótulos: virar dado sem virar outro texto.
+        `Treeview`. É o mesmo movimento da S-324 com os rótulos: virar dado sem virar outro texto.
         """
         self.assertEqual(
             {

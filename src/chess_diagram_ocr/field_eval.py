@@ -36,12 +36,16 @@ import json
 import logging
 import subprocess
 import time
+import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from .atomic_io import atomic_write_text
+from .board_detection import NoBoardDetectedError
+from .checkpoint import CheckpointDescription, describe_checkpoint, git_commit, git_worktree_dirty
 from .config import ACCEPT_MIN_CONFIDENCE, PROJECT_ROOT
 from .service import OcrService, RecognitionOptions, RecognizedDiagram
 
@@ -249,7 +253,7 @@ def field_set_identity(pages: Iterable[FieldPage]) -> dict[str, int]:
 # ------------------------------------------------------- com que código, e com que modelo
 
 MEASUREMENT_ENTRY = "chess_diagram_ocr.cli.field"
-"""Onde o fecho de importação começa (S-218).
+"""Onde o fecho de importação começa (S-219).
 
 **No CLI, e não em `field_eval`.** É o comando que monta o conjunto e fixa `dpi`,
 `accept-threshold` e `max-boards`, e mudança ali move número tanto quanto mudança no
@@ -425,7 +429,7 @@ def measurement_fingerprint(
     ocr_engine: str = "off",
     note: str = "",
 ) -> dict[str, Any]:
-    """Com que código e com que modelo este relatório foi medido (S-218).
+    """Com que código e com que modelo este relatório foi medido (S-219).
 
     **O que isto conserta.** Até 2026-08-23 o relatório de campo não gravava nem uma coisa nem
     outra, e os quatro JSON de 2026-08-22 só se distinguiam pelo nome do arquivo. Custou meia
@@ -490,6 +494,99 @@ def measurement_fingerprint(
 
 
 # --------------------------------------------------------------------------- relatório
+
+
+@dataclass(frozen=True)
+class Measurement:
+    """**Com o que** este relatório foi medido (S-324).
+
+    O relatório dizia tudo sobre *o resultado* e nada sobre *o run*. Em 2026-08-22 quatro
+    modelos foram medidos sobre as mesmas 66 páginas e os quatro JSON de `docs/metrics/` só
+    se distinguiam pelo **nome do arquivo** -- a tabela comparativa da S-99 dependia de quem
+    gravou ter lembrado o que rodou, o que é a mesma classe de defeito que a S-100 fechou
+    para o *conjunto* e que aqui continuava aberta para o *modelo*.
+
+    Os campos são os que mudam o número e não apareciam:
+
+    - o **modelo**, que é a pergunta que a tabela faz;
+    - o **gate**, porque `export_rate` é literalmente "quantos passaram deste corte";
+    - o **DPI**, porque ele muda o que o detector vê antes de o modelo ver qualquer coisa;
+    - o **código**, porque metade do número é detecção, e detecção é código e não modelo.
+
+    O código entrou por um caso medido, e não por simetria. Os mesmos quatro relatórios de
+    2026-08-22 foram medidos antes de uma mudança na detecção que levou o recall de uma
+    página de 0,800 para 1,000 e sumiu com um falso positivo. Nenhum campo deles mudou, e a
+    guarda da S-100 não pega: ela compara `pages` e `annotated` do **conjunto**, e mudança de
+    código não move nenhum dos dois.
+
+    Não pretende ser o run inteiro. Orientação, `max_boards` e o leitor de legenda também
+    mexem no número; entram aqui quando alguém tiver dois relatórios que só diferem por eles
+    -- é o que aconteceu com o modelo e com o código, e é o que justifica gravá-los.
+    """
+
+    model: CheckpointDescription
+    accept_threshold: float
+    dpi: int
+    """Os três sem valor padrão, de propósito.
+
+    Um padrão aqui seria um número que o relatório afirma sem ter sido informado -- e afirmar
+    o gate errado é pior que não afirmar nada, porque tem a mesma aparência de uma medição.
+    Quem monta isto é `describe_measurement`, a partir do que o pipeline de fato usou."""
+
+    code_commit: str = ""
+    """O commit da árvore que **rodou a medição**. Vazio quando não há `git` para perguntar.
+
+    Diferente de `model.train_commit`, que é o commit de que saiu o **treino**. Os dois
+    respondem perguntas distintas e podem estar a semanas de distância."""
+
+    code_dirty: bool = False
+    """A árvore tinha mudança não commitada quando mediu.
+
+    Sem isto o `code_commit` mente por omissão: ele aponta para o HEAD, e o que rodou foi o
+    HEAD **mais** o que estava por commitar. Um relatório assim não é reproduzível, e é o
+    campo que diz isso em voz alta em vez de deixar o commit dar a impressão contrária."""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "model": self.model.as_dict(),
+            "accept_threshold": round(self.accept_threshold, 4),
+            "dpi": self.dpi,
+            "code_commit": self.code_commit,
+            "code_dirty": self.code_dirty,
+        }
+
+
+@lru_cache(maxsize=1)
+def _code_revision() -> tuple[str, bool]:
+    """O commit e a sujeira da árvore, perguntados uma vez por processo (S-324).
+
+    Cache não é só economia dos ~120 ms de dois `git` -- é a resposta mais correta. O que o
+    campo descreve é **o código que está rodando**, e esse foi fixado quando o Python
+    importou os módulos. Commitar no meio de uma sessão não troca o que já está carregado, e
+    perguntar de novo faria o relatório apontar para um commit que não foi o que mediu.
+    """
+    return git_commit(), git_worktree_dirty()
+
+
+def describe_measurement(
+    options: RecognitionOptions,
+    *,
+    accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
+) -> Measurement:
+    """Monta a identidade a partir do que já foi decidido para o run (S-324).
+
+    A partir das `options`, e não de argumentos soltos: o que se quer gravar é o que o
+    pipeline **de fato usou**, e um segundo caminho para a mesma informação é um segundo
+    lugar onde ela pode divergir.
+    """
+    commit, sujo = _code_revision()
+    return Measurement(
+        model=describe_checkpoint(options.model_path),
+        accept_threshold=accept_threshold,
+        dpi=options.dpi,
+        code_commit=commit,
+        code_dirty=sujo,
+    )
 
 
 @dataclass
@@ -583,6 +680,17 @@ class FieldReport:
     verdade**, com confiança alta, e ninguém olha. Somar os dois numa taxa só esconde
     exatamente a diferença que decide onde vale trabalhar."""
 
+    measurement: Measurement | None = None
+    """Com que modelo, gate e DPI este relatório foi medido (S-324).
+
+    **Só o total tem.** Os sub-relatórios por regime e por livro são fatias do mesmo run, e
+    repetir a identidade dentro de cada um encheria o JSON de cópias da mesma frase. Por isso
+    `as_dict` omite a chave quando ela é `None`, e por isso `_accumulate` não a propaga.
+
+    `None` também é o que sai de `evaluate_page`, que mede uma página contra uma leitura já
+    pronta e legitimamente não sabe de onde a leitura veio.
+    """
+
     @property
     def detection_recall(self) -> float:
         return self.matched / self.annotated if self.annotated else 0.0
@@ -668,7 +776,7 @@ class FieldReport:
         return self.seconds / self.detected if self.detected else 0.0
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        dados: dict[str, Any] = {
             "pages": self.pages,
             "pages_without_diagram": self.pages_without_diagram,
             "annotated": self.annotated,
@@ -707,6 +815,11 @@ class FieldReport:
             "per_regime": {nome: relatorio.as_dict() for nome, relatorio in sorted(self.per_regime.items())},
             "per_book": {nome: relatorio.as_dict() for nome, relatorio in sorted(self.per_book.items())},
         }
+        if self.measurement is None:
+            return dados
+        # A identidade na frente, e de proposito: quem abre um relatorio precisa saber **de
+        # quem** e o numero antes de ler o numero (S-324).
+        return {"measurement": self.measurement.as_dict(), **dados}
 
     def summary(self) -> str:
         exatidao = (
@@ -862,6 +975,127 @@ def evaluate_page(
     return relatorio
 
 
+class MissingFieldPdfError(FileNotFoundError):
+    """Um PDF citado pelo conjunto de campo não está onde a medição vai procurá-lo (S-219).
+
+    **É uma falha, e não um dado.** Até 2026-08-22 o laço de `evaluate_field` capturava
+    `Exception` inteira e transformava qualquer tropeço em `lidos = []` -- e "o arquivo não
+    existe" é indistinguível, nessa forma, de "esta página não tem tabuleiro". Naquele dia 11
+    páginas entraram no conjunto com o nome do livro em codificação dupla
+    (`Eröffnungswege` gravado como `ErÃ¶ffnungswege`), nenhum dos arquivos abriu, e o
+    relatório saiu com `detection_recall` **0,7596** onde o pipeline valia **0,9364**. O
+    único sinal foi um WARNING com a mesma frase que uma página legitimamente vazia produz.
+
+    Uma métrica medida sobre arquivos que não abriram não é uma métrica ruim, é um número
+    sobre outra coisa -- e ele foi para os documentos como se fosse regressão do detector.
+    Por isso isto derruba a medição em vez de baixá-la.
+
+    `FileNotFoundError` e não uma classe solta porque `cli.run_main` já traduz `OSError` para
+    pt-BR e devolve `EXIT_BAD_INPUT`: um caminho errado no conjunto é entrada inválida, que é
+    exatamente a classe 2.
+    """
+
+
+class FieldPageReadError(RuntimeError):
+    """Falha ao ler uma página do conjunto que **não** é "esta página não tem tabuleiro".
+
+    PDF que existe mas não abre, página fora do arquivo, backend sem checkpoint: nada disso é
+    resultado de medição. A mensagem carrega o caminho, o número da página e o texto original
+    da exceção -- o original porque é ele que `cli.message_for` traduz e `cli.classify` lê.
+    """
+
+
+def _pdf_path(page: FieldPage, pdf_dir: Path | None) -> Path:
+    """Onde a medição procura o PDF desta página. Um lugar só, para o pré-voo e o laço."""
+    return Path(pdf_dir) / page.pdf if pdf_dir is not None else Path(page.pdf)
+
+
+def _undo_double_encoding(nome: str) -> str | None:
+    """`"ErÃ¶ffnungswege.pdf"` → `"Eröffnungswege.pdf"`, quando o nome passou por UTF-8 duas vezes.
+
+    `None` quando a volta não muda nada ou não é possível -- o nome já estava certo.
+    """
+    try:
+        recuperado = nome.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return None
+    return recuperado if recuperado != nome else None
+
+
+def _name_keys(nome: str) -> set[str]:
+    """As formas do nome que são "o mesmo arquivo" para efeito de sugestão.
+
+    Codificação dupla desfeita, NFC (o macOS grava NFD) e caixa dobrada: são as três maneiras
+    de o conjunto e o disco discordarem sobre um nome que um humano leria como igual.
+    """
+    variantes = {nome}
+    recuperado = _undo_double_encoding(nome)
+    if recuperado:
+        variantes.add(recuperado)
+    return {unicodedata.normalize("NFC", variante).casefold() for variante in variantes}
+
+
+def _look_alike(caminho: Path) -> str | None:
+    """Um arquivo da mesma pasta que só difere do procurado pela codificação do nome.
+
+    A sugestão é o que separa "arrume o conjunto" de "procure o que aconteceu": sem ela, o
+    incidente de 2026-08-22 continua sendo 11 caminhos que não existem e nenhuma pista de que
+    os arquivos estavam ali o tempo todo, com o nome certo.
+    """
+    pasta = caminho.parent
+    procuradas = _name_keys(caminho.name)
+    try:
+        existentes = sorted(item.name for item in pasta.iterdir() if item.is_file())
+    except OSError:
+        return None
+    return next((nome for nome in existentes if _name_keys(nome) & procuradas), None)
+
+
+def missing_field_pdfs(pages: Sequence[FieldPage], *, pdf_dir: Path | None = None) -> list[Path]:
+    """Os PDFs das páginas **revisadas** que não estão onde a medição vai procurar.
+
+    Só as revisadas porque só elas são medidas: um rascunho pendente citando um PDF que ainda
+    não chegou à máquina não pode impedir a medição do resto.
+    """
+    caminhos: dict[Path, None] = {}
+    for pagina in pages:
+        if pagina.reviewed:
+            caminhos.setdefault(_pdf_path(pagina, pdf_dir), None)
+    return [caminho for caminho in caminhos if not caminho.is_file()]
+
+
+def require_field_pdfs(pages: Sequence[FieldPage], *, pdf_dir: Path | None = None) -> None:
+    """Confere **antes de medir** que todo PDF citado abre, ou levanta `MissingFieldPdfError`.
+
+    Pré-voo e não checagem no laço por dois motivos. O primeiro é tempo: uma medição de campo
+    leva minutos por livro, e descobrir no oitavo que o terceiro não existia é descobrir tarde.
+    O segundo é que a lista completa é o diagnóstico -- 11 nomes com o mesmo defeito dizem
+    "codificação", um nome de cada vez diz "arquivo faltando".
+    """
+    faltando = missing_field_pdfs(pages, pdf_dir=pdf_dir)
+    if not faltando:
+        return
+
+    pasta = Path(pdf_dir) if pdf_dir is not None else Path.cwd()
+    linhas = []
+    for caminho in faltando:
+        rotulo = caminho.name if caminho.parent == pasta else str(caminho)
+        parecido = _look_alike(caminho)
+        sugestao = f'  (a pasta tem "{parecido}" -- nome em codificação dupla?)' if parecido else ""
+        linhas.append(f"  - {rotulo}{sugestao}")
+
+    cabecalho = (
+        f"{len(faltando)} PDF(s) citados pelo conjunto de campo não foram encontrados.\n"
+        f"Pasta procurada: {pasta}"
+    )
+    raise MissingFieldPdfError(
+        "\n".join([cabecalho, *linhas]) + "\n"
+        "Corrija o campo `pdf` do conjunto ou aponte --pdf-dir para a pasta certa. "
+        "A medição não roda sem eles: o recall sairia baixo por arquivo ausente, e não por "
+        "falha do pipeline -- e os dois números têm a mesma aparência no relatório."
+    )
+
+
 def evaluate_field(
     pages: Sequence[FieldPage],
     *,
@@ -877,16 +1111,29 @@ def evaluate_field(
     Páginas com `reviewed=False` são **puladas com aviso**. Contá-las inflaria o número com
     a própria saída do modelo, que é exatamente o que o conjunto existe para não fazer.
 
-    Uma página que falha ao ser lida vira zero diagramas detectados, e não uma exceção: o
-    relatório precisa cobrir o livro inteiro, e uma página quebrada é um resultado -- é a
-    mesma decisão que a S-34 tomou para o livro que falha no meio da varredura em lote.
+    **Página sem tabuleiro é resultado; arquivo que não abre é falha (S-219).** Só
+    `NoBoardDetectedError` vira zero diagramas detectados -- é a mesma decisão que a S-34
+    tomou para o livro que falha no meio da varredura em lote, e é o que permite ao relatório
+    cobrir o livro inteiro. Qualquer outra exceção derruba a medição: um número medido sobre
+    arquivos que não abriram descreve outra coisa, e no relatório ele tem a mesma aparência de
+    uma regressão do detector. Ver `MissingFieldPdfError` para o dia em que teve.
+
+    Os PDFs citados são conferidos **antes** da primeira leitura, por `require_field_pdfs`.
 
     `training_pages` vem de `labels.pages_with_training_samples` e marca as páginas de que
     há amostra em `train` (S-97). `None` desliga a checagem -- é o que os testes usam, e é
     o comportamento anterior.
+
+    O relatório sai carimbado com **que modelo, que gate e que DPI** produziram estes números
+    (S-324): sem isso, dois relatórios de dois modelos sobre o mesmo conjunto são dois
+    arquivos idênticos com nomes diferentes.
     """
+    require_field_pdfs(pages, pdf_dir=pdf_dir)
     service = service or OcrService(model_path=options.model_path)
-    total = FieldReport()
+    # Antes do laco, e nao no fim: um run que nao mediu pagina nenhuma ainda tem de dizer com
+    # que modelo ele nao mediu nada. E aqui, e nao na CLI, porque a identidade e do que foi
+    # medido -- deixa-la com quem chama recria o "dependia de quem gravou lembrar" (S-324).
+    total = FieldReport(measurement=describe_measurement(options, accept_threshold=accept_threshold))
     puladas = 0
 
     for pagina in pages:
@@ -894,13 +1141,21 @@ def evaluate_field(
             puladas += 1
             continue
 
-        caminho = Path(pdf_dir) / pagina.pdf if pdf_dir is not None else Path(pagina.pdf)
+        caminho = _pdf_path(pagina, pdf_dir)
         inicio = time.perf_counter()
         try:
             lidos = service.recognize_page(caminho, pagina.page, options=options)
-        except Exception as exc:  # noqa: BLE001 - página quebrada é resultado, não crash
-            logger.warning("Falha ao ler %s p%d: %s", pagina.pdf, pagina.page, exc)
+        except NoBoardDetectedError as exc:
+            # A única falha que é medição: a página existe, foi aberta, e não tem tabuleiro --
+            # que é o mesmo que o detector dizer "nenhum". Vale recall zero nesta página, e o
+            # `debug` basta porque a página já aparece no relatório, em `misses`.
+            logger.debug("Nenhum tabuleiro em %s p%d (%s).", pagina.pdf, pagina.page, exc)
             lidos = []
+        except Exception as exc:
+            # Tudo o mais -- PDF que não abre, página fora do arquivo, backend sem checkpoint --
+            # é defeito de entrada ou de ambiente, e até a S-219 virava zero detectados sem
+            # nada avisar. O `from` preserva a causa; a mensagem acrescenta qual página parou.
+            raise FieldPageReadError(f"Falha ao ler {caminho} (página {pagina.page}): {exc}") from exc
         decorrido = time.perf_counter() - inicio
 
         parcela = evaluate_page(

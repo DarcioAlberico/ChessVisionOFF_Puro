@@ -16,13 +16,13 @@ Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); a base de partidas que a Fase 48 con
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -793,7 +793,7 @@ criar o grupo `ESTUDO` e distribuir os comandos pelos seis que existem.
 partido em dois", e a sala não é nenhum dos cinco: promover variante não é `EDICAO` (que é edição de
 texto e de tabuleiro), não é `VISUALIZACAO` (que não muda dado) e não é `OCR`. Distribuí-los faria a
 fita da S-227 mostrar "promover variante" debaixo de "Edição", ao lado de "colar" — o que é
-exatamente o tipo de vizinhança que a S-219 existe para impedir.
+exatamente o tipo de vizinhança que a S-324 existe para impedir.
 
 **Critério de aceite.**
 

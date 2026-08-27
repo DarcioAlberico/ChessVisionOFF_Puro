@@ -247,7 +247,7 @@ FOLGAS: dict[str, int] = {
 **São os números que já estão na janela**, e não uma escala nova: 14 é o `padding` da legenda de
 atalhos, 10 e 6 são o `padx`/`pady` da faixa de cromo, e 2 é o `padx` entre dois botões de fita
 que a S-228 mediu. A densidade confortável não muda a janela de hoje porque ela **é** a janela de
-hoje escrita como dado -- o mesmo movimento que a S-219 fez com os rótulos."""
+hoje escrita como dado -- o mesmo movimento que a S-324 fez com os rótulos."""
 
 FATOR_DE_FOLGA: dict[str, float] = {pele.CONFORTAVEL: 1.0, pele.COMPACTA: 0.7}
 """O multiplicador de espaço por densidade. O 0,7 é o da tabela da S-232."""

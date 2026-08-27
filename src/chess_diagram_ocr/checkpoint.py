@@ -16,6 +16,7 @@ apareceram na prática, não em revisão de código:
 
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 import subprocess
@@ -26,7 +27,7 @@ from typing import Any
 import torch
 
 from .atomic_io import atomic_write_bytes
-from .config import PIECE_CLASSES
+from .config import PIECE_CLASSES, PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,182 @@ def checkpoint_identity(path: Path) -> str:
     return f"{info.st_size}-{info.st_mtime_ns}"
 
 
+FINGERPRINT_DIGITS = 16
+"""Quantos dígitos hexadecimais do sha256 entram na impressão digital.
+
+16 dígitos são 64 bits. Colisão acidental entre dois checkpoints do mesmo projeto é
+inconcebível nessa largura, e a impressão continua cabendo numa linha de tabela -- que é
+onde ela vai ser lida."""
+
+
+def checkpoint_fingerprint(path: Path, *, digits: int = FINGERPRINT_DIGITS) -> str:
+    """Hash curto do **conteúdo** do `.pt`, para dizer qual modelo sem depender do caminho.
+
+    Complemento de `checkpoint_identity`, e a diferença entre as duas é o orçamento de quem
+    chama. Aquela responde *"trocaram o arquivo debaixo de mim?"* a cada retomada de
+    exportação, e por isso não pode ler 8,7 MB; esta responde *"que modelo produziu este
+    número?"* uma vez por relatório, onde ler o arquivo inteiro custa menos que renderizar
+    uma página de PDF.
+
+    O caminho não serve para essa pergunta: o treino reescreve sempre
+    `models/piece_classifier.pt`, então quatro medições de quatro modelos citam o mesmo
+    caminho. O conteúdo distingue; o nome não.
+
+    Lê em blocos porque um checkpoint não cabe confortavelmente na memória de quem já tem o
+    modelo carregado, e arquivo ausente ou ilegível devolve `""` -- um relatório não deve
+    morrer por não conseguir se identificar.
+    """
+    digest = hashlib.sha256()
+    try:
+        with Path(path).open("rb") as arquivo:
+            for bloco in iter(lambda: arquivo.read(1024 * 1024), b""):
+                digest.update(bloco)
+    except OSError:
+        return ""
+    return digest.hexdigest()[:digits]
+
+
+@dataclass(frozen=True)
+class CheckpointDescription:
+    """Quem é o `.pt` que produziu um número, em campos que cabem num relatório (S-324).
+
+    Existe porque `docs/metrics/` acumulou relatórios que só se distinguem pelo **nome do
+    arquivo**: em 2026-08-22 quatro modelos foram medidos sobre as mesmas 66 páginas e os
+    quatro JSON saíram idênticos na parte que diz de quem eles são -- que era nenhuma. A
+    tabela comparativa dependia de quem gravou ter lembrado o que rodou.
+
+    Os três níveis de resposta, do que decide ao que localiza, e todos os três saem:
+
+    - `sha256` **decide**: dois relatórios com a mesma impressão mediram o mesmo modelo, e o
+      caminho pode mentir sobre isso;
+    - `best_metric`/`best_epoch` **explicam**: dizem de que treino o arquivo saiu, que é o
+      que um humano lendo a tabela quer saber (a Fase 5 já os grava dentro do `.pt`);
+    - `path` **localiza**: é por onde se acha o arquivo de novo, quando ele ainda existe.
+    """
+
+    path: str
+    """Relativo à raiz do projeto quando está dentro dela -- ver `_report_path`."""
+
+    sha256: str = ""
+    size_bytes: int = 0
+    arch_version: str = ""
+    best_metric: float | None = None
+    best_metric_name: str = ""
+    best_epoch: int | None = None
+
+    train_commit: str = ""
+    """`metadata["git_commit"]`: o commit de que saiu o **treino**.
+
+    Renomeado aqui de propósito. Dentro de um relatório de campo, um campo chamado
+    `git_commit` seria lido como o commit que fez a medição, que é outra coisa e outro dia."""
+
+    temperature: float = 1.0
+
+    unreadable: str = ""
+    """Por que os metadados não puderam ser lidos. Vazio -- e ausente do JSON -- quando deu certo."""
+
+    def as_dict(self) -> dict[str, Any]:
+        """As chaves saem sempre, inclusive nulas: o uso é comparar quatro arquivos campo a
+        campo, e uma chave que some num deles vira ruído na comparação. A exceção é
+        `unreadable`, que só aparece quando há o que dizer."""
+        dados: dict[str, Any] = {
+            "path": self.path,
+            "sha256": self.sha256,
+            "size_bytes": self.size_bytes,
+            "arch_version": self.arch_version,
+            "best_metric": round(self.best_metric, 6) if self.best_metric is not None else None,
+            "best_metric_name": self.best_metric_name,
+            "best_epoch": self.best_epoch,
+            "train_commit": self.train_commit,
+            "temperature": round(self.temperature, 4),
+        }
+        if self.unreadable:
+            dados["unreadable"] = self.unreadable
+        return dados
+
+
+MOTIVO_MAX = 120
+"""Corte do texto de `unreadable`. Um traceback de `torch` inteiro num JSON versionado é
+diff sem informação, e o que decide já está nas primeiras palavras."""
+
+
+def _motivo(exc: BaseException) -> str:
+    """Por que o arquivo não foi lido, em uma linha curta e igual em qualquer máquina.
+
+    `FileNotFoundError` tem tratamento próprio porque é o caso comum e porque a mensagem do
+    sistema vem traduzida pelo locale e carrega o caminho absoluto -- dois motivos para o
+    mesmo relatório sair diferente em duas máquinas, num campo que existe justamente para
+    comparar relatórios.
+    """
+    if isinstance(exc, FileNotFoundError):
+        return "arquivo não encontrado"
+    texto = f"{type(exc).__name__}: {exc}".replace("\n", " ").strip()
+    return texto if len(texto) <= MOTIVO_MAX else texto[: MOTIVO_MAX - 1] + "…"
+
+
+def _report_path(path: Path) -> str:
+    """O caminho como ele deve aparecer num relatório versionado.
+
+    Relativo à raiz quando o arquivo está dentro dela. Estes JSON moram em `docs/metrics/` e
+    vão para o repositório: um caminho absoluto os torna incomparáveis entre máquinas e
+    ainda publica a pasta de quem mediu.
+    """
+    path = Path(path)
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
+    except (OSError, ValueError):
+        return path.as_posix()
+
+
+def describe_checkpoint(path: Path) -> CheckpointDescription:
+    """Lê o `.pt` uma vez e devolve quem ele é. **Nunca levanta** (S-324).
+
+    Um relatório que morre porque o modelo sumiu troca um número incompleto por número
+    nenhum -- e a informação que mais interessa nesse caso, o caminho que foi pedido, é
+    justamente a que ainda existe. Toda falha vira `unreadable`, com o motivo escrito.
+
+    O custo é uma leitura do arquivo mais um `torch.load`, **uma vez por relatório**. Ao lado
+    dos minutos de inferência que a medição de campo gasta, é ruído; ao lado da
+    `checkpoint_identity`, que roda a cada retomada de exportação, seria caro -- e é por isso
+    que são duas funções e não uma.
+    """
+    path = Path(path)
+    try:
+        tamanho = path.stat().st_size
+    except OSError as exc:
+        return CheckpointDescription(path=_report_path(path), unreadable=_motivo(exc))
+
+    impressao = checkpoint_fingerprint(path)
+
+    try:
+        # A leitura dos metadados entra no mesmo `try` da carga, e nao depois dela: um
+        # `best_epoch` que nao e numero derrubaria a funcao que promete nunca levantar, e um
+        # relatorio nao deve morrer por causa de um campo estranho dentro do `.pt`.
+        checkpoint = load_checkpoint(path)
+        epoca = checkpoint.metadata.get("best_epoch")
+        return CheckpointDescription(
+            path=_report_path(path),
+            sha256=impressao,
+            size_bytes=tamanho,
+            arch_version=checkpoint.arch_version,
+            best_metric=checkpoint.best_metric,
+            best_metric_name=str(checkpoint.metadata.get("best_metric_name", "")),
+            best_epoch=int(epoca) if epoca is not None else None,
+            train_commit=str(checkpoint.metadata.get("git_commit", "")),
+            temperature=checkpoint.temperature,
+        )
+    except Exception as exc:  # noqa: BLE001 - um .onnx, um .pt truncado, um torch mais novo
+        # A impressão e o tamanho já identificam o arquivo; o que se perde é o que está
+        # **dentro** dele. Metade da identidade vale mais que nenhuma, e o motivo fica escrito.
+        logger.debug("Metadados de %s ilegíveis (%s); a identidade sai só com a impressão.", path, exc)
+        return CheckpointDescription(
+            path=_report_path(path),
+            sha256=impressao,
+            size_bytes=tamanho,
+            unreadable=_motivo(exc),
+        )
+
+
 def check_compatible(checkpoint: Checkpoint, arch_version: str, *, class_names: list[str] | None = None) -> None:
     """Levanta se os metadados do checkpoint contradizem a arquitetura pedida.
 
@@ -192,11 +369,15 @@ def check_compatible(checkpoint: Checkpoint, arch_version: str, *, class_names: 
         )
 
 
-def git_commit() -> str:
-    """Commit atual, para o checkpoint dizer de que código ele saiu. Vazio se não der."""
+def _git(*args: str) -> str | None:
+    """Roda um `git` na árvore do projeto. `None` quando não deu -- e não dar é normal.
+
+    Um `.exe` congelado não tem `.git`, e um clone de tarball também não. Quem chama trata
+    a ausência como "não sei", que é a resposta honesta.
+    """
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+        resultado = subprocess.run(
+            ["git", *args],
             capture_output=True,
             text=True,
             timeout=5,
@@ -204,5 +385,30 @@ def git_commit() -> str:
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return ""
-    return result.stdout.strip() if result.returncode == 0 else ""
+        return None
+    return resultado.stdout if resultado.returncode == 0 else None
+
+
+def git_commit() -> str:
+    """Commit atual, para o checkpoint dizer de que código ele saiu. Vazio se não der."""
+    saida = _git("rev-parse", "--short", "HEAD")
+    return saida.strip() if saida is not None else ""
+
+
+def git_worktree_dirty() -> bool:
+    """Se a árvore que está rodando tem mudança não commitada (S-324).
+
+    Anda junto com `git_commit`, e sozinho ele mente. Um relatório que grava `db7abfd` numa
+    árvore com 250 linhas de detecção ainda não commitadas aponta para um código que **não**
+    é o que rodou -- e aponta com a mesma cara de confiança de um que aponta certo.
+
+    O caso não é hipotético: em 2026-08-22 quatro relatórios de campo em `docs/metrics/`
+    foram medidos com uma versão da detecção e um commit posterior mudou o recall de uma das
+    páginas de 0,800 para 1,000, sem que nada nos arquivos mudasse.
+
+    `false` quando não há `git` para perguntar -- ver `_git`. É a mesma escolha do
+    `git_commit`, que devolve `""`: aqui não se sabe, e não se sabe é o que o commit vazio
+    ao lado já diz.
+    """
+    saida = _git("status", "--porcelain")
+    return bool(saida is not None and saida.strip())

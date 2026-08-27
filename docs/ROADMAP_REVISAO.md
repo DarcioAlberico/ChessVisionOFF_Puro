@@ -21,13 +21,13 @@ segunda passada de céticos, com a tarefa de **derrubar** cada achado antes de e
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -155,7 +155,7 @@ Os oito caçadores percorreram o que a primeira passada não tinha percorrido, e
 |---|---|---|
 | exceções engolidas | 10 | as 105 capturas largas, uma a uma: o que cada uma esconde quando o erro **não** é o esperado |
 | segurança e rede | 10 | o único caminho em que bytes saem da máquina, mais `subprocess` e `os.startfile` |
-| métricas e relatórios | 10 | os 100 arquivos de `docs/metrics/` contra a disciplina da S-218 |
+| métricas e relatórios | 10 | os 100 arquivos de `docs/metrics/` contra a disciplina da S-219 |
 | atalhos e catálogo | 10 | as quatro listas de comando cruzadas por script: catálogo, teclas, menu, peles |
 | ida e volta dos dados | 10 | escrever e reler cada formato com valor de borda -- acento, aspas, campo vazio |
 | primeiro dia | 9 | um clone sem `models/*.pt` e sem `data/samples/`, dirigido do zero |
@@ -313,7 +313,7 @@ desordenados, um import morto em `cli/editor_inventario.py:32`, e um `zip()` sem
 `dict[str, Any]` onde o `tkinter` não deixa ser outra coisa — e um `# type: ignore` **com o
 motivo escrito** só onde a biblioteca é que está errada.
 
-**Um quarto item, e ele é sobre a guarda e não sobre o erro.** A guarda de caminho da S-218
+**Um quarto item, e ele é sobre a guarda e não sobre o erro.** A guarda de caminho da S-219
 (`tests/test_docs.py`, "nenhum relatório publica a raiz do disco") só acusa o que começa pela
 raiz **atual** — num *worktree* ela passa em verde sobre um arquivo defeituoso. É a mesma classe
 de problema da CI: uma guarda que não olha onde o trabalho está.
@@ -613,7 +613,7 @@ defeito.
   tenha. Tudo é conserto ou acabamento do que já existe.
 - **Nenhum treino de modelo.** Nenhuma fase muda `models/piece_classifier.pt` nem os pesos de
   caractere. As Fases 58 e 59 tocam custo e caminho de decisão, não parâmetro aprendido — e a
-  disciplina da S-218 continua valendo: quem mexer no caminho de medição remede os quatro
+  disciplina da S-219 continua valendo: quem mexer no caminho de medição remede os quatro
   relatórios de campo.
 - **Nenhuma reescrita de módulo.** `ui/texto_panel.py` tem 2.323 linhas e `ui/study_panel.py`
   tem 2.020; ambos foram apontados como grandes por mais de um revisor. Parti-los é uma

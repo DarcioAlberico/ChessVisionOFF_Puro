@@ -1,4 +1,4 @@
-"""O catálogo de comandos da janela, declarado como dado (S-219).
+"""O catálogo de comandos da janela, declarado como dado (S-324).
 
 **Três lugares declaravam comando, e nenhum deles era a lista.** `ui/menu.py` sabia o rótulo e a
 posição na barra de menus; `ui/atalhos.py`, a tecla e como ela se escreve; `ui/pdf_panel.py`
@@ -135,7 +135,7 @@ class Comando:
     """O texto do botão **enquanto o comando está ligado**, para os que alternam. Vazio = não alterna.
 
     Existe porque a S-222 encontrou o buraco: o `selecionar_area` troca o próprio rótulo para
-    "Cancelar seleção" por `configure(text=...)`, e a varredura da S-219 só olhava o `text=` do
+    "Cancelar seleção" por `configure(text=...)`, e a varredura da S-324 só olhava o `text=` do
     **construtor**. Eram dois literais escritos à mão que o teste dava por limpos -- e, na
     remontagem de cromo, dois rótulos que voltariam errados com a seleção ainda ligada."""
 
@@ -701,7 +701,7 @@ CATALOGO: tuple[Comando, ...] = (
 
 **O que entrou:** tudo o que `menu.MENUS` declara, tudo o que `atalhos.ATALHOS` liga, os botões
 das duas barras de `ui/pdf_panel.py` e os três da linha de conjunto de campo. São os quatro
-lugares que a S-219 nomeia, e o teste cobra os quatro.
+lugares que a S-324 nomeia, e o teste cobra os quatro.
 
 **O que não entrou, e por quê.** Os controles de dentro de uma aba -- Galeria, Dataset, Revisão,
 Configuração -- não são comandos da *janela*: eles pertencem ao painel que os desenha e não
@@ -840,7 +840,7 @@ def fila_de_destaque() -> tuple[tuple[Comando, ...], ...]:
 
     A ordem é a do catálogo, e não a da imagem. A Imagem 1 começa por "ler"; aqui a Edição vem
     antes do OCR porque é a ordem de `GRUPOS`, que é a da barra de menus. Reordenar a fila seria
-    declarar pela segunda vez em que ordem os comandos vivem -- e é disso que a S-219 tirou o
+    declarar pela segunda vez em que ordem os comandos vivem -- e é disso que a S-324 tirou o
     programa.
     """
     grupos = tuple(tuple(registro for registro in do_grupo(grupo) if registro.destaque) for grupo in GRUPOS)

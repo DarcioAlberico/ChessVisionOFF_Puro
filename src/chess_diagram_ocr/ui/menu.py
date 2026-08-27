@@ -16,7 +16,7 @@ vez de desenhar um item de menu que não faz nada.
 barra nenhuma. O botão de salvar continua na tela porque salvar é o gesto do minuto a minuto; o
 "Abrir o log" nunca teve botão e nem devia ter.
 
-**O rótulo saiu daqui na S-219, e a fronteira é essa.** Este módulo decide *onde na barra de
+**O rótulo saiu daqui na S-324, e a fronteira é essa.** Este módulo decide *onde na barra de
 menus*; `ui/comandos.py` decide *o que o comando é* -- como ele se chama, a que grupo pertence,
 com que ênfase se desenha. `MENUS` referencia o catálogo em vez de repetir o texto, e `montar`
 ganhou a trava no sentido que faltava: item cujo `acao` ninguém registrou levanta, como já
@@ -79,7 +79,7 @@ cuida é o `StringVar`."""
 class Item:
     """Uma linha de menu: **qual** comando e de que tipo. O que ele *é* mora em `ui/comandos.py`.
 
-    O rótulo saiu daqui na S-219. Ele continua legível como `item.rotulo` -- agora derivado do
+    O rótulo saiu daqui na S-324. Ele continua legível como `item.rotulo` -- agora derivado do
     catálogo, e não guardado -- porque o menu escrevia o texto que `ui/pdf_panel.py` escrevia de
     novo, com outra redação, e nada comparava os dois.
     """
@@ -360,7 +360,7 @@ def acoes_fora_do_catalogo() -> list[str]:
     """Os itens declarados que `ui/comandos.py` não conhece. Vazio é o estado correto.
 
     O sentido que faltava. `comandos_faltando` pega o item que ninguém amarrou a uma função;
-    este pega o item que ninguém declarou como comando -- o que, depois da S-219, é o que faria
+    este pega o item que ninguém declarou como comando -- o que, depois da S-324, é o que faria
     uma pele desenhar uma linha sem rótulo, ou nenhuma linha.
     """
     return catalogo.acoes_fora_do_catalogo(acoes_declaradas())

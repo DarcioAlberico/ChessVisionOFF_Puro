@@ -1,4 +1,4 @@
-"""A paleta de comandos, que sai do catálogo da S-219 (S-231).
+"""A paleta de comandos, que sai do catálogo da S-324 (S-231).
 
 A pele "Foco" tira 23 controles da tela e os põe no menu. Cinco menus com 27 itens é um mapa que
 se decora; 50 itens é um mapa em que se procura -- e é a S-161 ao contrário: *"o que não era botão
@@ -161,7 +161,7 @@ class FiltroPuroTests(unittest.TestCase):
         """Nenhuma das duas listas é escrita neste módulo pela segunda vez.
 
         É o que faz um submenu novo em `menu.MENUS` ganhar o motivo certo sem que ninguém venha
-        aqui -- e é a disciplina que a S-219 impôs quando três lugares declaravam comando.
+        aqui -- e é a disciplina que a S-324 impôs quando três lugares declaravam comando.
         """
         submenus = {
             item.acao

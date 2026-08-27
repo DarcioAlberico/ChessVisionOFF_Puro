@@ -1,4 +1,4 @@
-"""O catálogo de comandos: um comando declarado uma vez, e quem o consome (S-219).
+"""O catálogo de comandos: um comando declarado uma vez, e quem o consome (S-324).
 
 Os comandos da janela estavam declarados em três lugares que não se conheciam -- o menu, a tabela
 de atalhos e o botão montado à mão --, e nenhum era a lista completa. O sintoma não é duplicação:
@@ -170,7 +170,7 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                     self.assertEqual(comandos.rotulo(item.acao), item.rotulo)
 
     def test_nenhum_rotulo_de_botao_escrito_a_mao(self) -> None:
-        """O critério de aceite do item, nos dois lugares que a S-219 nomeia.
+        """O critério de aceite do item, nos dois lugares que a S-324 nomeia.
 
         `ui/pdf_panel.py` inteiro -- as duas barras são os únicos botões dele -- e a linha do
         conjunto de campo, que mora em `_build_field_row` porque é a janela que a monta.
@@ -366,7 +366,7 @@ class ComandosDoEditorTests(unittest.TestCase):
         self.assertEqual([], comandos.acoes_fora_do_catalogo(COMANDOS_DO_EDITOR))
 
     def test_a_aba_texto_nao_escreve_rotulo_a_mao(self) -> None:
-        """A varredura da S-219 passa a cobrir `ui/texto_panel.py`, que ela não cobria.
+        """A varredura da S-324 passa a cobrir `ui/texto_panel.py`, que ela não cobria.
 
         Com os vinte e poucos comandos desta spec, o rótulo escrito à mão é a S-161 outra vez --
         *"o que não era botão não existia"* --, agora com três peles para divergir.

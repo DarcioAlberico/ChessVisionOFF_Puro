@@ -17,13 +17,13 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -149,7 +149,7 @@ por lista atravessam a montagem da aba Texto, que `tests/test_ui_texto_editor.py
 
 ## S-299 · A guarda de caminho passa a conhecer o checkout principal
 
-**Problema.** A guarda da S-218 (`tests/test_docs.py`, "nenhum relatório publica a raiz do
+**Problema.** A guarda da S-219 (`tests/test_docs.py`, "nenhum relatório publica a raiz do
 disco") comparava o caminho publicado contra `RAIZ`, que é a árvore **atual**:
 
 ```python
@@ -659,7 +659,7 @@ abortando em silêncio no meio do laço, e o `abrir_pgn` que carimba o livro abe
 `SourcePDF` de cada partida.
 
 **A S-300 obrigou a remedir os quatro relatórios de campo, e o resultado é o melhor possível: os
-números não mudaram.** `splits.py` está no caminho de medição da S-218, então a guarda de lista
+números não mudaram.** `splits.py` está no caminho de medição da S-219, então a guarda de lista
 vazia mudou o digest do módulo e `test_todo_relatorio_corrente_mediu_o_codigo_de_hoje` acusou --
 que é a guarda funcionando. Remedidos com os mesmos quatro modelos e o mesmo conjunto de 68
 páginas, `controle_20260822` devolveu `export_rate` 0,7913, `exact` 89 e `repaired_squares` 39,

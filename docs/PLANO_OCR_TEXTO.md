@@ -172,7 +172,7 @@ instalação está sem mexer no código de saída.
    Está registrado na spec porque é o argumento de por que o item mede em vez de amostrar.
 3. **Perguntar o dispositivo ao `CaptionReader` quebrava o digest dos relatórios de campo.**
    `ocr_caption.py` está no fecho de importação do `cvoff-field`, e uma propriedade nova ali
-   invalidaria a S-218 por causa de uma linha de rodapé. A pergunta passou a ir ao cache de
+   invalidaria a S-219 por causa de uma linha de rodapé. A pergunta passou a ir ao cache de
    `text/modelo.py`, que é podado desse digest.
 
 **O que ficou de dívida, e é pequena:** a catraca de `app_tkinter.py` subiu de 1.776 para 1.788

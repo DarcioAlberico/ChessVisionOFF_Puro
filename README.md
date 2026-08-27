@@ -1017,7 +1017,7 @@ por tamanho ou por direito autoral:
 | Caminho | Conteudo | Por que fora |
 |---|---|---|
 | `PDF/` | livros de origem | material protegido por direito autoral |
-| `data/samples/` | 4.508 PNGs de tabuleiros, 3,9 GB | tamanho |
+| `data/samples/` | 5.156 PNGs de tabuleiros, 4,3 GB | tamanho |
 | `models/*.pt` | checkpoint treinado, ~8,7 MB | binario que muda a cada treino |
 | `PGN/` | saida gerada | reproduzivel a partir dos PDFs |
 | `pgn_database/` | sua base de partidas em PGN (as duas gigabases medidas aqui tem 18,9 GB) | material de terceiro, e o GitHub recusa acima de 100 MB |
@@ -1040,13 +1040,13 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-37 a S-77 | [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) |
 | S-78 a S-82, S-143, S-175 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
-| S-95 a S-142, S-218 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
+| S-95 a S-142, S-218, S-219 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
 | S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 | S-178 a S-217 | [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) |
-| S-219 a S-234 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
+| S-220 a S-234, S-324 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
 | S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
-| S-296 a S-410 | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
+| S-296 a S-323 | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1105,7 +1105,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   interface de hoje: as duas imagens mostram 4 e 13 comandos onde a janela tem 21 nas barras do
   PDF, 6 na linha de campo, 6 abas e 27 itens de menu -- dai a regra de que pele e apresentacao do
   mesmo conjunto de comandos, nunca um conjunto menor
-- [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) -- especificacao das Fases 32 a 35 (S-219 a
+- [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) -- especificacao das Fases 32 a 35 (S-324 a
   S-234): o catalogo de comandos declarado uma vez e desenhado de tres jeitos, o icone que nasce
   do token, a pele "Foco" com cromo escuro e documento claro, a fita de grupos com orcamento de
   altura, o desfazer que a Imagem 2 promete e o programa nao tem, e o inventario que faz nenhuma

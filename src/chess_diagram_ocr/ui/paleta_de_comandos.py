@@ -5,7 +5,7 @@ da tela e os põe no menu (S-223). Cinco menus com 27 itens já é um mapa que s
 um mapa em que se procura -- e procurar comando em menu é a S-161 ao contrário: *"o que não era
 botão não existia"* vira *"o que não está no menu que eu abri, eu não acho"*.
 
-**O item é barato porque o catálogo da S-219 já é a lista.** Rótulo, grupo, tecla e ordem estão
+**O item é barato porque o catálogo da S-324 já é a lista.** Rótulo, grupo, tecla e ordem estão
 todos lá; o que faltava eram o filtro e a janela. Ninguém escreve comando aqui: acrescentar uma
 linha a `comandos.CATALOGO` acrescenta uma linha à paleta, como já acontece com a fila e a fita.
 
@@ -76,7 +76,7 @@ def motivos_declarados() -> dict[str, str]:
     **Nenhum dos dois grupos é escrito aqui pela segunda vez.** Quem sabe que os três de anotação
     moram na linha de campo é `comandos.NA_LINHA_DE_CAMPO`; quem sabe que "Abrir recente" e
     "Aparência" são submenus é `ui/menu.py`, pelo `tipo` do item. Uma cópia dessas listas neste
-    módulo seria a divergência que a S-219 veio fechar -- e ela apareceria no dia em que alguém
+    módulo seria a divergência que a S-324 veio fechar -- e ela apareceria no dia em que alguém
     acrescentasse o terceiro submenu.
     """
     submenus = (menu.RECENTES, menu.APARENCIA, menu.DENSIDADE)

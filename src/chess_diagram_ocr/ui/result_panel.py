@@ -310,7 +310,7 @@ class ResultPanel(ttk.Frame):
 
         # Desfazer, refazer e limpar (S-229), **junto do tabuleiro** e não na caixa da FEN: o que
         # os três revertem é a posição, e a distância entre o controle e o objeto que ele muda é o
-        # que faz a pessoa procurar no menu. Os rótulos saem do catálogo (S-219) -- os três botões
+        # que faz a pessoa procurar no menu. Os rótulos saem do catálogo (S-324) -- os três botões
         # antigos desta janela ainda os escrevem à mão, e essa dívida está registrada lá.
         edicao_row = ttk.Frame(caixa)
         edicao_row.pack(fill=tk.X, padx=8, pady=(4, 0))

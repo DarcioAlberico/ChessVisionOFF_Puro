@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tempfile
 import unittest
+from collections.abc import Iterable
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -155,6 +157,31 @@ def linhas_de_faixa_soltas(texto: str) -> list[str]:
             soltas.append(f"linha {indice + 1}: {linha.strip()}")
     return soltas
 
+def secoes_de_spec(arquivos: Iterable[Path] | None = None) -> dict[int, list[str]]:
+    """`número do item → ["arquivo.md:linha", ...]`, contando **repetição**.
+
+    Existe separado de `secoes_por_arquivo` porque aquele monta um `set` por arquivo, e um
+    `set` é exatamente o que não enxerga duas seções com o mesmo número: elas colapsam numa só,
+    em silêncio.
+
+    Os arquivos de medição ficam de fora pela mesma razão de sempre: `EXPERIMENTS.md` traz a
+    seção `S-26` do que foi **medido** da S-26, ao lado da seção `S-26` que é a spec dela, no
+    `SPEC.md`. São 18 números nessa situação, e nenhum deles é repetição -- é a medição morando
+    onde a S-133 decidiu que ela mora.
+
+    O parâmetro serve para exercitar a guarda contra um diretório de mentira. Uma guarda que
+    não sabe falhar não é guarda, e esta nasceu de um dia em que a suíte inteira passou verde
+    sobre o defeito.
+    """
+    ocorrencias: dict[int, list[str]] = {}
+    for arquivo in sorted(arquivos if arquivos is not None else DOCS.glob("*.md")):
+        if arquivo.name in ARQUIVOS_DE_MEDICAO:
+            continue
+        for numero_da_linha, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), start=1):
+            if m := SECAO.match(linha):
+                ocorrencias.setdefault(_numero(m.group(1)), []).append(f"{arquivo.name}:{numero_da_linha}")
+    return ocorrencias
+
 
 def faixas_declaradas(texto: str) -> dict[int, str]:
     """A tabela "faixa de itens → arquivo" de um documento, achatada em `numero → arquivo`.
@@ -273,6 +300,91 @@ class ItemEntregueTemSpecTests(unittest.TestCase):
         self.assertEqual([], vazios, "O índice cita um arquivo que não existe em docs/.")
 
 
+class NumeroDeItemUnicoTests(unittest.TestCase):
+    """Duas coisas **diferentes** com o mesmo `S-NN` passavam limpo por toda a suíte.
+
+    **O defeito, e ele é desta casa.** O `ItemEntregueTemSpecTests` acima confere *presença*:
+    toda S-NN citada em mensagem de commit tem de ter seção. Ninguém conferia *identidade* --
+    que cada número nomeie um item só. As duas guardas parecem a mesma e não são, e a distância
+    entre elas custou um dia inteiro em 2026-08-23.
+
+    Aconteceu duas vezes no mesmo dia, com o mesmo mecanismo. Um item foi numerado lendo o
+    disco de um worktree que parte de um commit antigo, onde o último era o `S-174`; o número
+    escolhido, `S-175`, já era a quina da rasterização desde quatro dias antes, no
+    `ANALISE_DETECCAO.md`. Corrigido para `S-219` -- e `S-219` colidiu com outra sessão, que
+    tinha escolhido o mesmo número pelo mesmo caminho, na mesma hora. Nove sessões escreviam na
+    mesma árvore, e a suíte não tinha como dizer nada: cada worktree, sozinho, estava coerente.
+
+    **Por que `secoes_por_arquivo` não podia pegar.** Ela devolve `set[int]` por arquivo. Duas
+    seções `## S-219` no mesmo arquivo viram um elemento só, e a repetição desaparece antes de
+    qualquer teste olhar -- não é um teste que deixa passar, é a duplicata sumindo da estrutura
+    de dados. E o mesmo arquivo é o caso mais provável de todos, porque todo mundo dá append no
+    fim do `SPEC_FASE14.md`. Entre arquivos diferentes também não havia checagem: a única que
+    compara número com arquivo é a da tabela de faixas, e ela só age sobre número que a tabela
+    declara. No dia das colisões as faixas paravam no `S-170` -- o intervalo em que se estava
+    numerando era o único inteiramente descoberto.
+
+    **O que esta guarda não é.** Ela confere que cada número nomeia um item só. Não confere que
+    o número esteja **declarado** na tabela de faixas: um número fora de faixa continua passando
+    pela `test_a_secao_esta_no_arquivo_que_o_indice_declara` sem ser olhado, e fechar isso é
+    outro item, com uma decisão pela frente que não é técnica -- estender a tabela a cada
+    entrega, ou aceitar que a cauda fique sem dono até a próxima consolidação.
+
+    A correção que a colisão não resolve é humana e fica registrada aqui: **escolha o número
+    lendo o disco do checkout principal, nunca só o do próprio worktree.**
+    """
+
+    def _docs(self, arquivos: dict[str, str]) -> list[Path]:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        pasta = Path(tmp.name)
+        for nome, texto in arquivos.items():
+            (pasta / nome).write_text(texto, encoding="utf-8")
+        return sorted(pasta.glob("*.md"))
+
+    def test_nenhum_numero_de_item_nomeia_duas_coisas(self) -> None:
+        """**O critério de aceite.** Falha nomeando o número e os dois lugares."""
+        repetidos = [
+            f"S-{numero:02d} aparece em {', '.join(onde)}"
+            for numero, onde in sorted(secoes_de_spec().items())
+            if len(onde) > 1
+        ]
+        self.assertEqual(
+            [],
+            repetidos,
+            "Duas seções com o mesmo S-NN. Um número nomeia um item só -- renumere a mais nova "
+            "escolhendo o próximo livre pelo disco do checkout principal, não pelo do worktree.",
+        )
+
+    def test_a_guarda_pega_o_mesmo_numero_em_dois_arquivos(self) -> None:
+        docs = self._docs(
+            {
+                "SPEC.md": "## S-218 · um assunto\n",
+                "SPEC_UI.md": "## S-218 · outro assunto, completamente\n",
+            }
+        )
+        self.assertEqual(secoes_de_spec(docs)[218], ["SPEC.md:1", "SPEC_UI.md:1"])
+
+    def test_a_guarda_pega_o_mesmo_numero_no_mesmo_arquivo(self) -> None:
+        """O caso que o `set` engolia, e o mais provável: os dois lados dão append no fim."""
+        docs = self._docs({"SPEC.md": "## S-218 · um assunto\n\ntexto\n\n## S-218 · outro\n"})
+        self.assertEqual(secoes_de_spec(docs)[218], ["SPEC.md:1", "SPEC.md:5"])
+
+    def test_medicao_ao_lado_da_spec_nao_conta_como_repeticao(self) -> None:
+        """Uma guarda que transforma o arranjo correto em erro é pior que o defeito que cobre.
+
+        `EXPERIMENTS.md` e `SPEC.md` trazem a mesma S-NN de propósito -- uma é o que foi medido,
+        a outra é o critério de aceite. São 18 números assim no disco de hoje.
+        """
+        docs = self._docs(
+            {
+                "SPEC.md": "## S-26 · a spec do item\n",
+                "EXPERIMENTS.md": "## S-26 · o que foi medido dele\n",
+            }
+        )
+        self.assertEqual(secoes_de_spec(docs)[26], ["SPEC.md:1"])
+
+
 class IndiceDoReadmeTests(unittest.TestCase):
     """Todo `docs/*.md` aparece no índice do README, e a tabela de faixas é a mesma em todos."""
 
@@ -291,11 +403,32 @@ class IndiceDoReadmeTests(unittest.TestCase):
         )
 
     def test_a_tabela_de_faixas_e_a_mesma_em_todos_os_documentos_que_a_trazem(self) -> None:
-        """Cinco cópias da tabela; divergir entre elas seria pior que não tê-la.
+        """Seis cópias em `docs/`, mais o README que serve de referência; divergir entre elas
+        seria pior que não tê-la.
 
         A cópia é deliberada: quem abre o `SPEC_FASE7` direto não passa pelo README, e mandá-lo
         procurar o índice noutro arquivo é o mesmo obstáculo que criou a fenda. O preço é este
         teste.
+
+        **O README não é mais uma cópia, é a referência**, e isso muda como a falha aparece:
+        editar os seis documentos e esquecer o README não acusa um arquivo, acusa **os seis de
+        uma vez** -- e o README, que é o único errado, não entra na lista. É tudo ou nada nos
+        sete.
+
+        **O piso deixou de ser um número escrito à mão** (2026-08-23). Ele dizia `5` quando os
+        documentos já eram seis, e um piso um abaixo da realidade tolera exatamente o que ele
+        existe para pegar: um documento perder a tabela sem que nada fale.
+
+        Trocar `5` por `6` teria consertado o sintoma e mantido o defeito. O número cresce
+        sozinho e o literal não: na `fase-5-modelo-desempenho`, onde o projeto está, **oito**
+        documentos já trazem a tabela e a tabela declara **sete** arquivos de spec -- um `6`
+        cravado nasceria dois atrás, que é o `5` de ontem outra vez.
+
+        Então o piso passa a ser derivado: **quantos arquivos de spec a própria tabela declara**.
+        É a regra que já existe -- todo arquivo declarado como casa de spec traz o índice --
+        escrita como código em vez de como número. Medido nas duas árvores: na `main`, 6
+        declarados e 6 trazendo; na `fase-5`, 7 declarados e 8 trazendo (o `ROADMAP_TEXTO.md`
+        traz sem ser declarado, e por isso o piso é `>=` e não `==`).
         """
         referencia = faixas_declaradas(README.read_text(encoding="utf-8"))
         self.assertTrue(referencia, "O README perdeu a tabela de faixas.")
@@ -316,12 +449,18 @@ class IndiceDoReadmeTests(unittest.TestCase):
                 divergentes.append(f"{arquivo.name}: difere do README em {', '.join(diferenca)}")
 
         self.assertEqual([], divergentes)
-        self.assertGreaterEqual(copias, 5, "A tabela sumiu de algum dos cinco documentos de spec.")
+        esperado = len(set(referencia.values()))
+        self.assertGreaterEqual(
+            copias,
+            esperado,
+            f"A tabela declara {esperado} arquivo(s) de spec e só {copias} traz(em) a tabela. "
+            "Um documento de spec perdeu o índice.",
+        )
 
     def test_nenhuma_linha_de_faixa_esta_solta_fora_da_tabela(self) -> None:
         """A linha certa no lugar errado — o defeito que a comparação acima não vê.
 
-        Aconteceu duas vezes no mesmo dia: uma inserção automática pôs `| S-219 a S-234 | ... |`
+        Aconteceu duas vezes no mesmo dia: uma inserção automática pôs `| S-220 a S-234, S-324 | ... |`
         dentro da cerca ```bash do README e logo abaixo do `#` do título do `SPEC_TEXTO`. As duas
         cópias ficaram *idênticas* por causa do lixo, e a comparação passou em verde sobre um
         bloco de comandos que já não podia ser colado num terminal.
@@ -654,7 +793,7 @@ class NumerosVivosTests(unittest.TestCase):
 
 
 CHAVES_DE_CAMINHO = ("path", "base", "dir", "diretorio", "caminho", "pasta", "arquivo")
-"""Campos de `docs/metrics/*.json` que guardam caminho, e só eles (S-218).
+"""Campos de `docs/metrics/*.json` que guardam caminho, e só eles (S-219).
 
 **Varrer toda string seria a implementação errada, e foi medido.** O
 `texto_treino_20260823_s204.json` traz `{"pasta": "sym_47", "caractere": "/"}` -- o `/` é o
@@ -668,7 +807,7 @@ _ABSOLUTO = re.compile(r"^(?:[A-Za-z]:[\\/]|[\\/]{1,2}[^\\/])")
 
 
 class CaminhoPublicadoTests(unittest.TestCase):
-    """Nenhum relatório publica a raiz do disco de quem mediu (S-218).
+    """Nenhum relatório publica a raiz do disco de quem mediu (S-219).
 
     **É a família de defeito que o digest de código não alcança.** Um caminho absoluto não é
     deriva -- não muda com o tempo, não vence, nenhuma remedição o revela. É o valor certo

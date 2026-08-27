@@ -40,7 +40,7 @@ adivinhou" seriam a mesma informação -- e é a colisão que a S-242 vai ter de
 
 2. **`cor` e `estilo` nasceram com o registro vazio, e deixaram de nascer.** Na S-235 os dois eram
    campos reais e validados cujo único valor válido era `""`, pela decisão do `Comando.icone` da
-   S-219: o campo existe e recusa nome que ninguém desenhou. A S-242 povoou `CORES_DE_AUTOR` (e
+   S-324: o campo existe e recusa nome que ninguém desenhou. A S-242 povoou `CORES_DE_AUTOR` (e
    acrescentou `realce`, que é o canal do autor), a S-249 povoou `ESTILOS`, e a S-247 acrescentou
    `fora_do_modelo`. A trava continua igual dos dois lados: nome fora do registro levanta, e nome
    no registro sem quem o desenhe é reprovado por `tests/test_texto_rico.py`.

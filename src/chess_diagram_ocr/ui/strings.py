@@ -96,7 +96,7 @@ ZOOM_DO_TABULEIRO = "Zoom do tabuleiro"
 ZOOM_DA_PAGINA = "Zoom PDF"
 """O rótulo do zoom do visualizador. Estava cravado em `ui/pdf_panel.py`, e a S-225 lhe deu um
 segundo cliente -- o deslizador da pele "Foco". Dois rótulos escritos à mão para o mesmo controle
-é como eles divergem, que é o defeito que a S-219 mediu nos comandos."""
+é como eles divergem, que é o defeito que a S-324 mediu nos comandos."""
 
 VIRAR_TABULEIRO = "Virar o tabuleiro"
 """Era "Virar board" -- verbo em português e substantivo em inglês na mesma frase de duas palavras."""

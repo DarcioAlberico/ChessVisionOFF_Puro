@@ -2,7 +2,7 @@
 
 Avaliação das duas propostas de interface em `Proposta de interface/` e o plano para adotá-las
 **sem aposentar a interface de hoje**. Especificação detalhada em
-[SPEC_APARENCIA.md](SPEC_APARENCIA.md) (S-219 a S-234).
+[SPEC_APARENCIA.md](SPEC_APARENCIA.md) (S-324 a S-234).
 
 Para a avaliação de interface que produziu a fundação que este plano usa,
 [ROADMAP_UI.md](ROADMAP_UI.md) e [SPEC_UI.md](SPEC_UI.md); para o *como* de hoje,
@@ -19,13 +19,13 @@ seguem em [ROADMAP_FASE14.md](ROADMAP_FASE14.md) e [ROADMAP_TEXTO.md](ROADMAP_TE
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -150,7 +150,7 @@ justamente isso. O que entra da imagem é a *escolha* de conjunto de peças (S-2
 
 | fase | itens | o que ela entrega |
 |---|---|---|
-| **32** — o catálogo, o ícone e a pele | S-219 a S-222 | a fundação: um comando declarado uma vez, um ícone que segue o tema, e a pele como estado |
+| **32** — o catálogo, o ícone e a pele | S-324 a S-222 | a fundação: um comando declarado uma vez, um ícone que segue o tema, e a pele como estado |
 | **33** — a pele "Foco" (Imagem 1) | S-223 a S-226 | a fila única, o cromo escuro com documento claro, o deslizador de zoom |
 | **34** — a pele "Fita" (Imagem 2) | S-227 a S-230 | a fita de grupos, o desfazer que ela promete, o conjunto de peças |
 | **35** — o que as três ganham juntas | S-231 a S-234 | paleta de comandos, densidade, o inventário de alcance e o contrato de degradação |
@@ -161,7 +161,7 @@ Vem primeiro porque **as duas outras fases desenham a partir dela**, e porque é
 justifica o custo total: sem catálogo, cada pele é uma cópia da lista de comandos, e três cópias
 divergem no primeiro comando novo.
 
-- **S-219** · O catálogo de comandos, declarado como dado — ✅ **implementada em 2026-08-24**
+- **S-324** · O catálogo de comandos, declarado como dado — ✅ **implementada em 2026-08-24**
 - **S-220** · O ícone que nasce do token, e não do disco — ✅ **implementada em 2026-08-24**
 - **S-221** · A pele como estado da janela, e a clássica como padrão — ✅ **implementada em 2026-08-24**
 - **S-222** · Trocar de pele sem fechar a janela, e sem perder o lugar — ✅ **implementada em 2026-08-24**
@@ -169,7 +169,7 @@ divergem no primeiro comando novo.
 Ao fim da fase a janela é **a de hoje, sem diferença visível** — e `Ver ▸ Aparência` lista uma
 opção. É de propósito: a fundação se prova quando ela não muda nada. **Cumprido em 2026-08-24.**
 
-> **Onde a fase está.** A S-219 entregou `ui/comandos.py` com os 35 comandos da janela, e os três
+> **Onde a fase está.** A S-324 entregou `ui/comandos.py` com os 35 comandos da janela, e os três
 > lugares que os declaravam passaram a lê-los de lá: `ui/menu.py`, as duas barras de
 > `ui/pdf_panel.py` e a linha de conjunto de campo. Nenhum rótulo mudou, e o teste compara os 29
 > itens de menu com o registro para garantir isso. Ela também mediu o que o item previa em
@@ -191,7 +191,7 @@ opção. É de propósito: a fundação se prova quando ela não muda nada. **Cu
 > propósito: registrar "Foco" e "Fita" antes de elas existirem seria oferecer no menu uma escolha
 > que não faz nada. A decisão que a implementação virou foi manter `skin` vazio em vez de gravar
 > `"classica"`: o nome da pele padrão é de `ui/pele.py`, e cravá-lo em `ui/state.py` reabriria no
-> arquivo ao lado a fenda que a S-219 fechou.
+> arquivo ao lado a fenda que a S-324 fechou.
 >
 > A S-222 fechou a fase. A troca remonta o cromo -- as duas barras, a linha de campo e o menu --
 > e não toca o conteúdo, e a descoberta foi que **os seis itens que a spec mandava preservar não
@@ -294,7 +294,7 @@ opção. É de propósito: a fundação se prova quando ela não muda nada. **Cu
 > **posições** e não de gestos, com o argumento de que uma pilha de gestos precisa saber inverter
 > cada operação e o sintoma de esquecer uma é um desfazer que devolve posição que nunca existiu.
 > `Ctrl+Z` e `Ctrl+Y` entraram na tabela de atalhos e chegaram ao menu, à legenda, ao catálogo e à
-> fita **sem ninguém escrevê-los lá** -- que é a propriedade que a S-161 e a S-219 existem para dar.
+> fita **sem ninguém escrevê-los lá** -- que é a propriedade que a S-161 e a S-324 existem para dar.
 >
 > A **S-230** fez do conjunto de peças um eixo próprio, e derivou o conjunto de traço grosso em vez
 > de desenhar doze arquivos novos. As duas decisões que podiam dar errado saíram certas: engrossar
@@ -327,7 +327,7 @@ está amarrada a um item, e nenhuma é enfeite.
 | sugestão | item | por que ela é barata aqui | por que ela vale |
 |---|---|---|---|
 | **Desfazer/refazer da edição do tabuleiro** | S-229 | `board_edit` é puro; a pilha é de `str` | a S-76 é o registro do que custa não tê-lo: 1.405 diagramas |
-| **Paleta de comandos** (`Ctrl+Shift+P`) | S-231 | o catálogo da S-219 **é** a lista da paleta | é o que torna seguro a pele "Foco" esconder 60 comandos |
+| **Paleta de comandos** (`Ctrl+Shift+P`) | S-231 | o catálogo da S-324 **é** a lista da paleta | é o que torna seguro a pele "Foco" esconder 60 comandos |
 | **Densidade compacta/confortável** | S-232 | deriva de `ui/tipografia.py`, que já escala pela fonte do sistema | a S-151 mediu o defeito em 1100×760; um notebook 1366×768 é o caso comum |
 | **Deslizador de zoom** | S-225 | `viewport.clamp_zoom` e `anchor_after_zoom` já existem | `-`/`+` de 0,1 em 0,1 são 8 cliques para ir de 70% a 150% |
 | **Troca de pele em execução** | S-222 | `theme.registrar_estilos` já foi escrita prevendo isto (docstring) | escolher aparência reiniciando o programa é escolher no escuro |

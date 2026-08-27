@@ -165,7 +165,7 @@ class CicloCompletoTests(unittest.TestCase):
 
 class ComandoEAlcanceTests(unittest.TestCase):
     def test_nenhum_rotulo_a_mao_no_painel(self) -> None:
-        """A varredura da S-219, agora sobre `ui/texto_panel.py`."""
+        """A varredura da S-324, agora sobre `ui/texto_panel.py`."""
         arvore = ast.parse(PAINEL.read_text(encoding="utf-8"))
         achados: list[str] = []
         for no in ast.walk(arvore):
@@ -211,7 +211,7 @@ class ComandoEAlcanceTests(unittest.TestCase):
 
 class InventarioPublicadoTests(unittest.TestCase):
     def test_o_inventario_publica_data_e_commit(self) -> None:
-        """Na disciplina da S-218: um relatório que não diz quando e com que código foi medido é um
+        """Na disciplina da S-219: um relatório que não diz quando e com que código foi medido é um
         número que ninguém reproduz."""
         dados = editor_inventario.inventario()
         self.assertRegex(dados["quando"], r"^\d{4}-\d{2}-\d{2}$")

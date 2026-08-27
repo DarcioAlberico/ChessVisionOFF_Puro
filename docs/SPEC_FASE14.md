@@ -1,4 +1,4 @@
-# Especificação das melhorias — Fases 14 a 19 (S-95 a S-142, S-218)
+# Especificação das melhorias — Fases 14 a 19 (S-95 a S-142, S-219)
 
 Base: [ROADMAP_FASE14.md](ROADMAP_FASE14.md), que traz a avaliação de 2026-08-16 e o
 sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
@@ -16,13 +16,13 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa
@@ -756,7 +756,7 @@ derrubar a medição, não baratear o número.
 > codificação do nome, qual é ele. O `cvoff-field` sai com código 2 em vez de publicar um número
 > mais barato.
 >
-> **Cuidado com o número ao fazer o merge: `S-218` foi usado duas vezes, para coisas
+> **Cuidado com o número ao fazer o merge: `S-219` foi usado duas vezes, para coisas
 > diferentes.** Lá é este conserto do `except Exception`; aqui é o item de procedência no JSON,
 > mais abaixo neste mesmo arquivo. Duas sessões escolheram o número lendo cada uma o disco do
 > próprio worktree. Por isso o parágrafo acima aponta o **commit**, e não o número.
@@ -831,7 +831,7 @@ resposta.
 
 ---
 
-## S-218 · O relatório diz com que código e com que modelo foi medido ✅ implementada (2026-08-23)
+## S-219 · O relatório diz com que código e com que modelo foi medido ✅ implementada (2026-08-23)
 
 > Acrescentado à Fase 14 depois de ela fechar, e mora aqui porque é a outra metade da S-100 —
 > não ao lado do número da numeração. Nasceu de um incidente de 2026-08-23, descrito abaixo.
@@ -4068,3 +4068,82 @@ o PDF.
 **Testes.** `tests/test_packaging.py::SelftestTests` — os dois códigos, as duas frases, e a
 guarda de que um checkpoint **bom** não cai nelas (uma guarda que transforma instalação boa em
 erro é pior que a falha que ela cobre).
+
+---
+
+> **Esta secao veio da `main` na integracao dos dois ramos.** O item foi entregue la, e o
+> codigo dele -- `missing_field_pdfs` e a separacao entre `NoBoardDetectedError` e falha de
+> verdade -- entrou por este merge. A spec vem junto porque item entregue sem secao e a fenda
+> que a S-134 existe para fechar.
+
+## S-218 · Um PDF que não abre virava recall baixo ✅ implementada (2026-08-23)
+
+**Problema.** `field_eval.evaluate_field` capturava `Exception` inteira ao ler a página:
+
+```python
+try:
+    lidos = service.recognize_page(caminho, pagina.page, options=options)
+except Exception as exc:  # página quebrada é resultado, não crash
+    logger.warning("Falha ao ler %s p%d: %s", pagina.pdf, pagina.page, exc)
+    lidos = []
+```
+
+A intenção era a da S-34 -- um livro que falha no meio não derruba a varredura inteira --, e
+ela está certa para *uma página que não tem tabuleiro*. O que a guarda não separava é que
+**"o arquivo não existe" entrava pela mesma porta**, e saía pelo mesmo `lidos = []`.
+
+Em **2026-08-22**, 11 páginas do conjunto de campo entraram com o nome do PDF em codificação
+dupla -- `Eröffnungswege` gravado como `ErÃ¶ffnungswege`. Nenhum dos arquivos abriu. O
+relatório publicou `detection_recall` **0,7596** onde o pipeline valia **0,9364**, e o único
+sinal foi um `WARNING` com **a mesma frase** que uma página legitimamente vazia produz.
+
+O peso disto é o mesmo da S-100: uma métrica medida sobre arquivos que não abriram não é uma
+métrica ruim, é um número **sobre outra coisa** -- e no relatório ele tem exatamente a
+aparência de uma regressão do detector. Foi para os documentos como se fosse.
+
+**Solução.** Separar as duas situações, e conferir a mais provável antes de medir.
+
+*Só `NoBoardDetectedError` continua virando `lidos = []`.* É a única falha que é medição: a
+página abriu, foi lida, e não tem tabuleiro -- que é o detector dizendo "nenhum", e vale
+recall zero naquela página. Ela cai para `logger.debug`, porque a página já aparece no
+relatório, em `misses`.
+
+*Qualquer outra exceção derruba a medição*, embrulhada em `FieldPageReadError` com o caminho,
+o número da página e o **texto original** da causa -- o original porque é ele que
+`cli.message_for` traduz e `cli.classify` lê para escolher o código de saída.
+
+*Os PDFs são conferidos antes da primeira leitura*, por `require_field_pdfs`. Pré-voo e não
+checagem no laço por duas razões: uma medição de campo leva minutos por livro, e descobrir no
+oitavo que o terceiro não existia é descobrir tarde; e **a lista completa é o diagnóstico** --
+11 nomes com o mesmo defeito dizem "codificação", um nome de cada vez diz "sumiu um arquivo".
+
+A mensagem diz o nome, a pasta em que procurou, e -- quando a pasta tem um arquivo que só
+difere pela codificação do nome -- **qual é ele**:
+
+```
+Erro: 2 PDF(s) citados pelo conjunto de campo não foram encontrados.
+Pasta procurada: C:\Python-Chess2\ChessVisionOFF_Puro\PDF
+  - ErÃ¶ffnungswege.pdf  (a pasta tem "Eröffnungswege.pdf" -- nome em codificação dupla?)
+  - sumiu de vez.pdf
+Corrija o campo `pdf` do conjunto ou aponte --pdf-dir para a pasta certa. [...]
+```
+
+A sugestão é o que separa "arrume o conjunto" de "investigue o que houve": sem ela o
+incidente continua sendo 11 caminhos que não existem, e nenhuma pista de que os arquivos
+estavam ali o tempo todo com o nome bem escrito. Ela cobre as três maneiras de o conjunto e o
+disco discordarem sobre um nome que um humano leria como igual -- codificação dupla desfeita,
+NFC (o macOS grava NFD) e caixa dobrada.
+
+Só as páginas **revisadas** entram no pré-voo, pela mesma regra do resto do módulo: um
+rascunho pendente citando um PDF que ainda não chegou à máquina não pode impedir a medição do
+que já foi anotado.
+
+**Critério de aceite.** `cvoff-field` sobre um conjunto que cita um PDF inexistente **não
+imprime relatório nenhum** e sai com código **2** (entrada inválida, não defeito do programa),
+citando o nome do arquivo e a pasta. Nenhuma página é lida antes da falha.
+
+**Testes.** `tests/test_field_eval.py::PdfsDoConjuntoTests` -- a mensagem com nome e pasta, a
+lista com todos os que faltam, a sugestão do nome bem escrito, o rascunho pendente que não
+atrapalha, `missing_field_pdfs` respondendo sem levantar, e o fim a fim pelo CLI com o código
+de saída. Em `FieldRunTests`, o par que fecha a separação: `NoBoardDetectedError` continua
+valendo zero detectados, e qualquer outra falha derruba com a página nomeada.

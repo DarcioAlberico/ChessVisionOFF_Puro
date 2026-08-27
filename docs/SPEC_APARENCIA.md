@@ -1,4 +1,4 @@
-# Especificação da aparência — Fases 32 a 35 (S-219 a S-234)
+# Especificação da aparência — Fases 32 a 35 (S-324 a S-234)
 
 Base: [ROADMAP_APARENCIA.md](ROADMAP_APARENCIA.md), que traz a leitura das duas propostas de
 `Proposta de interface/`, os sete achados e o sequenciamento. A fundação visual que esta spec usa
@@ -13,13 +13,13 @@ Base: [ROADMAP_APARENCIA.md](ROADMAP_APARENCIA.md), que traz a leitura das duas 
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -47,7 +47,7 @@ aceite** e **Testes**. Nome de módulo é sugestão; o que importa é a fronteir
 > A fundação. Ao fim dela a janela é a de hoje, sem diferença visível, e `Ver ▸ Aparência` lista
 > uma opção. A fundação se prova quando ela não muda nada.
 
-## S-219 · O catálogo de comandos, declarado como dado ✅ implementada (2026-08-24)
+## S-324 · O catálogo de comandos, declarado como dado ✅ implementada (2026-08-24)
 
 **Problema.** Os comandos da janela estavam declarados em **três lugares que não se conheciam**, e
 nenhum deles era a lista completa:
@@ -290,7 +290,7 @@ caminho, então um ponto em `0` desenharia metade fora da imagem. A caixa `0..10
 **O que ainda não acontece.** Nenhum widget mostra ícone: os catorze existem, são conferidos e não
 são desenhados em lugar nenhum da janela. É de propósito — a pele clássica não muda (regra 1), e
 quem põe ícone em botão é a fila da S-223 e a fita da S-228. Até lá o valor entregue é o registro,
-como na S-219.
+como na S-324.
 
 ---
 
@@ -335,7 +335,7 @@ Fora do submenu, **nada na janela mudou**: mesmos widgets, mesma ordem, mesma ge
 
 1. **`skin` nasce vazio, e não `"classica"`.** A spec escreveu o segundo. O nome da pele padrão é
    de `ui/pele.py`, e cravá-lo em `ui/state.py` o declararia num segundo lugar — a fenda que a
-   S-219 acabou de fechar para os comandos, reaberta no arquivo ao lado. Vazio já quer dizer "cai
+   S-324 acabou de fechar para os comandos, reaberta no arquivo ao lado. Vazio já quer dizer "cai
    no padrão", e é o que `active_tab`, `window_geometry` e `review_queue_path` **neste mesmo
    arquivo** já significam. Quem responde "qual pele, então?" é `pele.escolhida`.
 2. **O ambiente ganha da guardada**, e isso é o inverso de `theme.apply_theme`, onde o argumento
@@ -453,7 +453,7 @@ curto e mais exato que manter bandeiras espelhando o que o widget já sabe.
 quem chega por último. E a linha de conjunto de campo precisa ser esvaziada antes de refeita, ou
 duplica a cada troca.
 
-**Um buraco na guarda da S-219, achado por este item.** O `selecionar_area` troca o próprio rótulo
+**Um buraco na guarda da S-324, achado por este item.** O `selecionar_area` troca o próprio rótulo
 por `configure(text="Cancelar seleção")`, e a varredura de `test_nenhum_rotulo_de_botao_escrito_a_mao`
 só olhava o `text=` do **construtor** — dois literais escritos à mão passavam por limpos. O
 catálogo ganhou `rotulo_alternado`, o painel passou a pedi-lo, e a varredura agora olha também o
@@ -506,7 +506,7 @@ botões de peso igual, o olho não encontra a ação do minuto a minuto. É o me
 `ui/estilos.py:12-16`, agora sobre quantidade em vez de ênfase.
 
 **Solução.** A fila da pele "Foco" é **gerada** dos comandos com `destaque=True` no catálogo
-(S-219), agrupados por `grupo`, com um separador vertical entre grupos — que é exatamente o que a
+(S-324), agrupados por `grupo`, com um separador vertical entre grupos — que é exatamente o que a
 imagem desenha entre a 2ª e a 3ª pílula. `ui/fila.py` monta; `comandos.fila_de_destaque()` decide.
 
 **O separador não é um item da lista, e é o que torna a regra estrutural.** `fila_de_destaque`
@@ -525,7 +525,7 @@ consecutivas, e não sobra onde pôr uma.
 
 A regra desta S é que `destaque` exige atalho de teclado, pela mesma lógica com que
 `estilos.PRIMARIO` é definido como *"a ação que o atalho também faz"*. A spec afirmava que os
-quatro da imagem eram "quatro dos dez que já têm atalho"; a S-219 mediu e **dois não tinham**. Os
+quatro da imagem eram "quatro dos dez que já têm atalho"; a S-324 mediu e **dois não tinham**. Os
 dois lados cederam, cada um por uma razão própria:
 
 1. **`aplicar_fen` ganhou `Ctrl+Enter`** — o décimo primeiro atalho. Ele fecha o ciclo
@@ -539,7 +539,7 @@ dois lados cederam, cada um por uma razão própria:
 
 **A ordem é a do catálogo, e não a da imagem.** A Imagem 1 começa por "ler"; a fila começa pela
 Edição, porque é a ordem de `GRUPOS`, que é a da barra de menus. Reordenar seria declarar pela
-segunda vez em que ordem os comandos vivem, e é disso que a S-219 tirou o programa. Medido a
+segunda vez em que ordem os comandos vivem, e é disso que a S-324 tirou o programa. Medido a
 1100 px, a fila fica assim, em **uma** linha:
 
 ```
@@ -762,7 +762,7 @@ sincroniza é `update_zoom_label`, que já era chamada por todos eles.
    O `TclError` apareceu no primeiro teste de troca de pele.
 3. **O rótulo tinha dois donos em potencial.** O texto era um `f"{int(zoom * 100)}%"` cravado no
    painel, e a pele "Foco" o mostraria num segundo rótulo. Passou a vir de `formato.porcentagem`,
-   e o rótulo "Zoom PDF" virou `strings.ZOOM_DA_PAGINA` — uma declaração, dois clientes. É a S-219
+   e o rótulo "Zoom PDF" virou `strings.ZOOM_DA_PAGINA` — uma declaração, dois clientes. É a S-324
    aplicada a um controle que não é comando.
 
 **Critério de aceite.**
@@ -873,7 +873,7 @@ custaram nenhuma: eles já estavam escritos, e o que a S-226 fez foi movê-los p
 **Problema.** A Imagem 2 mostra quatro grupos com cabeçalho — Arquivo, OCR, Edição, Visualização —
 e 13 comandos distribuídos entre eles. Quando esta spec foi escrita não existia agrupamento
 declarado em lugar nenhum: as duas barras do PDF eram duas listas planas, e o único agrupamento
-que existia era o separador visual de `menu.py:113`, que só o menu conhecia. **A S-219 declarou os
+que existia era o separador visual de `menu.py:113`, que só o menu conhecia. **A S-324 declarou os
 seis grupos, e esta é a primeira pele que os desenha.**
 
 **Solução.** A fita é uma sequência de `GrupoDeFita`, cada um gerado dos comandos do catálogo com
@@ -958,7 +958,7 @@ janela: `test_a_fita_usa_a_barra_e_nao_uma_segunda_quebra`; `test_a_quebra_e_sem
 `test_nenhum_item_fica_atras_da_moldura_de_linha`.
 
 **O que custou.** `app_tkinter.py` foi de 1.865 para 1.868 linhas: o `import` e o `elif` que manda
-montar a fita na mesma faixa em que a "Foco" monta a fila. **É a medida do que as S-219 a S-222
+montar a fita na mesma faixa em que a "Foco" monta a fila. **É a medida do que as S-324 a S-222
 compraram** — a primeira pele custou dezesseis linhas na janela; a terceira custou três.
 
 ---
@@ -1121,7 +1121,7 @@ O custo de memória não é argumento contra: `placement` é uma string de ~70 b
 
 `Ctrl+Z` e `Ctrl+Y` entraram em `atalhos.ATALHOS`, que subiu de 11 para **13** — e daí para o menu
 Editar, para a legenda e para o catálogo **sem ninguém escrevê-los lá**, que é a propriedade que a
-S-161 e a S-219 existem para dar. Há teste com esse nome.
+S-161 e a S-324 existem para dar. Há teste com esse nome.
 
 Os três comandos novos ganharam ícone (`ui/icones.py` foi de 14 para **17**) e, por isso, entraram
 na fita da S-227 — o grupo Edição passou de 5 para 8 botões sem ninguém tocar em `ui/fita.py`.
@@ -1247,7 +1247,7 @@ sem `tkinter` e sem estado.
 
 **O item foi barato, e a medida disso é a janela:** `app_tkinter.py` cresceu **onze linhas** —
 o `import`, a entrada em `_comandos` e o método que abre a paleta passando o mesmo mapa que o menu
-e os atalhos já recebem. Nada aqui declara comando: o catálogo da S-219 é a lista, e a paleta o
+e os atalhos já recebem. Nada aqui declara comando: o catálogo da S-324 é a lista, e a paleta o
 percorre por `comandos.GRUPOS`.
 
 **O nome do módulo é longo porque `paleta` já era duas coisas** — a paleta de peças do editor e
@@ -1378,7 +1378,7 @@ altura de linha de fábrica do `Treeview`, medida.
 
 **É o que torna "na densidade confortável nada muda" verdadeiro por construção**, e não por
 coincidência: a confortável não *parece* a janela de hoje, ela **é** — o mesmo movimento que a
-S-219 fez com os rótulos, virar dado sem virar outro texto. `folga(FOLGA, base=9)` devolve 10
+S-324 fez com os rótulos, virar dado sem virar outro texto. `folga(FOLGA, base=9)` devolve 10
 porque 10 é o que estava lá.
 
 | densidade | espaçamento | altura de linha de tabela | ícone da fita |
@@ -1540,7 +1540,7 @@ desenham na pele clássica.
 
 **Ela é escrita à mão, e `_montar_barras` também — então elas podem divergir, e a divergência seria
 silenciosa *e favorável*:** uma lista maior que a realidade faria o inventário afirmar que a
-clássica alcança um comando que ela não desenha. É a mesma família de defeito que a S-219 mediu nos
+clássica alcança um comando que ela não desenha. É a mesma família de defeito que a S-324 mediu nos
 rótulos, e a resposta é a mesma: `test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha`
 varre aquela função por `ast` e compara os dois conjuntos.
 

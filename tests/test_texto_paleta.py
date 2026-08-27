@@ -2,7 +2,7 @@
 
 **O defeito que estes testes impedem é uma segunda lista.** Escrever os símbolos à mão criaria uma
 lista ao lado da que o modelo usa, e a primeira divergência entre as duas é um símbolo que a pessoa
-insere e que o OCR nunca poderá ler de volta — o mesmo defeito que a S-219 tirou dos comandos.
+insere e que o OCR nunca poderá ler de volta — o mesmo defeito que a S-324 tirou dos comandos.
 
 O segundo grupo trava a honestidade da S-247: a prateleira "o modelo não lê" é a **diferença** entre
 o que se oferece e o que o modelo conhece, e não uma lista à parte. Um modelo treinado com as

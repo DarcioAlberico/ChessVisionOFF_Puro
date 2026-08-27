@@ -28,6 +28,7 @@ from ..field_eval import (
     MIN_COMPARABLE_SHARE,
     FieldPage,
     FieldReport,
+    Measurement,
     draft_page,
     evaluate_field,
     load_field_set,
@@ -169,11 +170,48 @@ def _run_draft(args: argparse.Namespace, options: RecognitionOptions, service: O
     return 0
 
 
+def _print_measurement(measurement: Measurement | None) -> None:
+    """Com o que este número foi medido, impresso **antes** dele (S-324).
+
+    Antes e não depois porque é a pergunta que se faz ao colar o relatório numa tabela, e
+    quem cola lê o começo. O JSON de `--json` traz estes campos e mais alguns -- tamanho,
+    commit do treino --, e é ele que entra na tabela; isto aqui é para quem está olhando.
+    """
+    if measurement is None:
+        return
+
+    modelo = measurement.model
+    print(f"  Modelo ........................ {modelo.path}")
+    if modelo.sha256:
+        print(f"    impressão (sha256) .......... {modelo.sha256}")
+    if modelo.best_metric is not None:
+        epoca = f", época {modelo.best_epoch}" if modelo.best_epoch is not None else ""
+        print(f"    treino ...................... {modelo.best_metric_name or 'melhor métrica'} "
+              f"{modelo.best_metric:.4f}{epoca}")
+    if modelo.arch_version:
+        print(f"    arquitetura ................. {modelo.arch_version}")
+    if modelo.temperature != 1.0:
+        print(f"    temperatura ................. {modelo.temperature:.4f}")
+    if modelo.unreadable:
+        # Nao e detalhe: um relatorio medido com um `.pt` que nao pode ser identificado nao
+        # entra em tabela comparativa nenhuma, e quem esta olhando precisa saber disso agora.
+        print(f"    identidade .................. incompleta ({modelo.unreadable})")
+    print(f"  Gate de confiança ............. {measurement.accept_threshold:.2f}")
+    print(f"  DPI ........................... {measurement.dpi}")
+    if measurement.code_commit:
+        # Metade do numero e deteccao, e deteccao e codigo. Um relatorio medido numa arvore
+        # suja nao e reproduzivel, e quem for cola-lo numa tabela precisa ver isso aqui.
+        sujo = "  **árvore com mudança não commitada**" if measurement.code_dirty else ""
+        print(f"  Código ........................ {measurement.code_commit}{sujo}")
+    print()
+
+
 def _print_report(report: FieldReport, limit: int) -> None:
     print()
     print("=" * 78)
     print("Avaliação de campo")
     print("=" * 78)
+    _print_measurement(report.measurement)
     if report.pages == 0:
         print("  Nenhuma página revisada no conjunto. Nada foi medido.")
         print()
@@ -340,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        # **A impressão entra aqui, e não no `as_dict` (S-218).** O `as_dict` também serve os
+        # **A impressão entra aqui, e não no `as_dict` (S-219).** O `as_dict` também serve os
         # relatórios por livro e por regime, e a impressão repetida em cada um deles diria a
         # mesma coisa dezenas de vezes. Ela é do arquivo, não do recorte.
         dados = report.as_dict()

@@ -13,13 +13,13 @@ o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -726,7 +726,7 @@ item entrega o registro e o relatório, que é o que faltava para elas. E `cvoff
 
 **Problema.** `ui/comandos.py` registra os comandos da janela — 36 em 2026-08-24 — e **nenhum
 deles é da aba Texto**. Os seis controles da barra (`ui/texto_panel.py:137-161`) são montados à
-mão, com o rótulo em literal — exatamente o estado de que a S-219 tirou `ui/pdf_panel.py`.
+mão, com o rótulo em literal — exatamente o estado de que a S-324 tirou `ui/pdf_panel.py`.
 
 Com a aba de hoje isso é dívida pequena: são seis botões numa aba só. **Com os vinte e poucos
 comandos desta spec, é a S-161 outra vez** — *"o que não era botão não existia"* —, e agora com três
@@ -736,7 +736,7 @@ passa em verde: ele compara o catálogo com as peles, e um comando fora do catá
 os dois lados da comparação.
 
 **Solução.** Os comandos do editor entram em `CATALOGO`, no grupo `EDICAO`, com ícone da S-220.
-Um grupo novo **não** é criado: `GRUPOS` é fechado por decisão da S-219, e "negrito" é edição pela
+Um grupo novo **não** é criado: `GRUPOS` é fechado por decisão da S-324, e "negrito" é edição pela
 mesma pergunta que separa `OCR` de `ACERVO` — age sobre o que está aberto agora.
 
 O que entra, agrupado por item desta spec:
@@ -756,14 +756,14 @@ O que entra, agrupado por item desta spec:
 tabuleiro, este os aponta para o editor, e quem escolhe o alvo é o foco (S-243). Dois pares de
 comandos com o mesmo nome em português seria a divergência que o catálogo existe para impedir.
 
-**Um achado da S-219 volta a valer aqui, e este item o resolve para o editor:** *no máximo um
+**Um achado da S-324 volta a valer aqui, e este item o resolve para o editor:** *no máximo um
 `PRIMARIO` por grupo*. `EDICAO` já tem o seu — `salvar`, a posição do tabuleiro. Nenhum comando
 desta spec pede ênfase, e `salvar_texto` **não** vira primário: são duas ações de salvar em grupos
 visualmente vizinhos, e duas ênfases na mesma barra é o mesmo que nenhuma (`ui/estilos.py:22, 29-36`).
 
 **Critério de aceite.**
 
-- todo comando do editor está no catálogo, e a varredura da S-219 continua sem achar rótulo escrito
+- todo comando do editor está no catálogo, e a varredura da S-324 continua sem achar rótulo escrito
   à mão — inclusive na aba Texto, que hoje ela não cobre;
 - `EDICAO` continua com exatamente um `PRIMARIO`;
 - todo comando novo tem ícone declarado em `ui/icones.py`, ou declara `icone=""` de propósito;
@@ -789,7 +789,7 @@ com exatamente um `PRIMARIO` — vale igual, e agora vale nos dois grupos.
 
 **2 · A barra da aba perde a ênfase do botão "Ler folha".** Ele sai em azul hoje
 (`style=PRIMARIO`), e `OCR` já tem o seu primário (`ler_melhor`). Manter os dois seria duas ênfases
-no mesmo grupo, que `primarios_por_grupo` reprova desde a S-219. O que decide qual sai é o critério
+no mesmo grupo, que `primarios_por_grupo` reprova desde a S-324. O que decide qual sai é o critério
 escrito em `ui/estilos.PRIMARIO`: *"a ação que o atalho de teclado também faz"* — e `Ler folha` não
 tem tecla. **A ênfase de hoje já contrariava o critério**, e é ela que sai. É a única mudança
 visível desta fase na aparência de um controle que já existia.
@@ -1227,7 +1227,7 @@ páginas de 4 livros.
 
 E a solução óbvia é a errada. Escrever a lista de símbolos à mão cria uma **segunda lista ao lado da
 que o modelo usa**, e a primeira divergência entre as duas é um símbolo que a pessoa insere e que o
-OCR nunca poderá ler de volta — o mesmo defeito que a S-219 tirou dos comandos, agora em símbolo.
+OCR nunca poderá ler de volta — o mesmo defeito que a S-324 tirou dos comandos, agora em símbolo.
 
 **Solução.** A paleta é **derivada** de `models/char_meta.json`, que já traz `idx_to_char` e já é
 carregado com verificação de `classes_sha256` (`text/modelo.py`). Medido em 2026-08-24, 314 classes:
@@ -1836,7 +1836,7 @@ item acrescenta é a ligação e três regras:
   (`Corrida.bloco`, S-235), e o bloco tem bbox. Corrida escrita do zero (`bloco == -1`) **não entra
   na camada**: não há onde a pôr, e inventar posição é pior que não ter o texto.
 - **A procedência vai no metadado do PDF.** Um PDF cuja camada foi corrigida à mão é um documento
-  diferente de um cuja camada saiu do OCR, e quem o receber precisa poder saber. É a S-218 outra vez:
+  diferente de um cuja camada saiu do OCR, e quem o receber precisa poder saber. É a S-219 outra vez:
   o relatório diz com que código e com que modelo foi medido.
 
 **A dependência que trava, e ela é declarada:** a camada com figurina precisa de uma fonte que tenha
@@ -2047,7 +2047,7 @@ está escondido; aqui o recurso **existe e não persiste**, que é pior, porque 
    `Atributos`, então **um campo novo entra no teste sozinho**, e quem o acrescentar sem tratar a
    persistência descobre na suíte.
 2. **Todo recurso do editor é um comando do catálogo** (S-240), com rótulo, grupo e papel — e a
-   varredura sintática da S-219 cobre `ui/texto_panel.py`, que hoje ela não cobre.
+   varredura sintática da S-324 cobre `ui/texto_panel.py`, que hoje ela não cobre.
 3. **Todo comando alcançável de algum jeito nas três peles** — é a S-233 aplicada ao editor, e ela
    passa a incluir os comandos desta spec no inventário que já faz.
 4. **Todo atributo declarado em algum formato de exportação**, mesmo que a declaração seja "este
@@ -2071,7 +2071,7 @@ def test_todo_atributo_sobrevive_ao_ciclo(self) -> None:
 - todo atributo aparece na tabela de suporte por formato, com "não suporta" sendo uma resposta
   válida e explícita;
 - o inventário é publicado como o dos outros: um JSON em `docs/metrics/`, com data e commit, na
-  disciplina da S-218.
+  disciplina da S-219.
 
 **Testes.** `tests/test_texto_inventario_editor.py`: `test_todo_atributo_sobrevive_ao_ciclo`;
 `test_nenhum_rotulo_a_mao_no_painel`; `test_todo_comando_do_editor_esta_no_inventario`;
@@ -2293,7 +2293,7 @@ de 14 — que hoje não abre parágrafo e passaria a abrir.
 > bloco segue não pagando (0,1331 contra 0,1001), e a legenda segue coberta em ~3/4 dos diagramas.
 >
 > **O modo bloco teve de ser remedido junto, e não copiado.** Ele custa ~50x o tempo, e a tentação
-> de carregar o número antigo ao lado do novo é exatamente o defeito que a S-218 nomeia: a decisão
+> de carregar o número antigo ao lado do novo é exatamente o defeito que a S-219 nomeia: a decisão
 > daquele relatório é a **comparação** entre os dois, e comparar um número fresco com um velho não é
 > comparação nenhuma.
 
@@ -2525,7 +2525,7 @@ Três coisas que não são item e ficam registradas porque mudam código que out
 | Highlight, Change Color | S-242 |
 | combobox de **família de fonte** | **fora.** Esta aba desenha uma folha de livro, e a família é de quem a imprimiu -- não de quem a corrige. Um seletor de família convidaria a "consertar" na tela o que a página tem, e o `.cvtxt` guardaria uma escolha que nenhum formato de saída consegue honrar por igual |
 | combobox de **tamanho em pontos** | **fora**, e a S-260 diz por quê: tamanho absoluto quebra quem aumentou a fonte do Windows. O que entrou foi o degrau |
-| barra com ícones e *tooltips* | **fora**, e já estava decidido: `Comando.icone` é `""` de propósito, porque o repositório não tem um ícone e nome de ícone que ninguém desenha é promessa vazia (S-219) |
+| barra com ícones e *tooltips* | **fora**, e já estava decidido: `Comando.icone` é `""` de propósito, porque o repositório não tem um ícone e nome de ícone que ninguém desenha é promessa vazia (S-324) |
 | "Clear All" (esvaziar o documento) | **fora.** `Ler folha` refaz a folha inteira e é reversível; um botão que apaga tudo ao lado dele é a S-76 outra vez |
 
 | do `impress-writer-master` | decisão |

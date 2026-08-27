@@ -23,13 +23,13 @@ nem mexe em detecção.**
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -70,7 +70,7 @@ sem a qual as outras sete não valem nada.
 | o que ela tem | onde | quanto |
 |---|---|---|
 | botões na aba | `ui/study_panel.py:88-169` | **13** |
-| comandos no catálogo da S-219 | `ui/comandos.py` | **0 dos 13** — a aba inteira está fora dos 90 do registro |
+| comandos no catálogo da S-324 | `ui/comandos.py` | **0 dos 13** — a aba inteira está fora dos 90 do registro |
 | atalhos na tabela da S-161 | `ui/atalhos.py` | **0** — e 4 teclas ligadas por fora, no canvas (`:141-144`) |
 | linhas na legenda de atalhos (S-165) | — | **0** |
 | entradas na paleta de comandos (S-231) | — | **0** |
@@ -234,7 +234,7 @@ ao lado do diagrama 3 vira uma variante da posição do diagrama 3, ou vai para 
 partidas chegaram a esta posição* — é o que a S-72/S-73 usa para preencher os headers do PGN
 exportado. Do tabuleiro de estudo, não há botão. É o gesto mais usado do ChessBase. → **S-287**
 
-**12 · A aba está fora do programa.** Treze botões, **zero** comandos no catálogo de 90 da S-219 —
+**12 · A aba está fora do programa.** Treze botões, **zero** comandos no catálogo de 90 da S-324 —
 logo, zero na paleta de comandos (S-231), zero na legenda de atalhos (S-165) e nenhuma das três
 peles (S-221/S-223) consegue desenhar um só controle dela. É literalmente a S-161 outra vez: *"o que
 não era botão não existia"*, agora com uma aba inteira no papel do que não existe. → **S-280, S-281**
@@ -344,7 +344,7 @@ livro falam a mesma língua. → **S-268, S-271**
 
 | item | o que entrega |
 |---|---|
-| **S-280** | Os comandos do estudo no catálogo da S-219 — e o **sétimo grupo**, `ESTUDO` |
+| **S-280** | Os comandos do estudo no catálogo da S-324 — e o **sétimo grupo**, `ESTUDO` |
 | **S-281** | As teclas do estudo na tabela da S-161, e o fim do `bind` no canvas. De quebra, `Home` e `End` viraram "primeira/última página do livro", que faltavam desde a S-70 |
 
 ## Fase 47 — O livro entra na sala

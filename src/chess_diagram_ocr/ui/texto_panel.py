@@ -225,7 +225,7 @@ COMANDO_DA_ESCOLHA: dict[str, dict[str, str]] = {
 
 **Existe para o rótulo do item da lista não ser escrito aqui.** `centro` é o nome que o documento
 guarda; "Centralizar" é como a interface o chama, e quem tem os rótulos é `ui/comandos.py` desde a
-S-219. Sem esta tabela, cada item de menu levaria um `label="Centralizar"` em literal -- o `text=`
+S-324. Sem esta tabela, cada item de menu levaria um `label="Centralizar"` em literal -- o `text=`
 à mão que a varredura de `tests/test_texto_inventario_editor.py` persegue neste arquivo.
 
 Os dois lados são conferidos por teste: nome fora do domínio e comando fora do catálogo reprovam."""
@@ -516,7 +516,7 @@ class TextoPanel(ttk.Frame):
             )
         )
 
-        # Rótulo do catálogo também aqui: a varredura da S-219 olha `Checkbutton`, e este era o
+        # Rótulo do catálogo também aqui: a varredura da S-324 olha `Checkbutton`, e este era o
         # único texto de comando desta barra que não era botão.
         barra.adicionar(
             ttk.Checkbutton(
@@ -624,7 +624,7 @@ class TextoPanel(ttk.Frame):
         variável é atualizada por `_atualizar_ferramentas`, que roda quando a seleção ou o cursor
         se movem -- ela é **espelho**, e não fonte: quem decide continua sendo `rico.vale_em_todo`.
 
-        O rótulo vem do catálogo, como todo o resto desta barra (S-240): a varredura da S-219 olha
+        O rótulo vem do catálogo, como todo o resto desta barra (S-240): a varredura da S-324 olha
         `Checkbutton` também, e este é exatamente o caso que ela existe para pegar.
         """
         return ttk.Checkbutton(
@@ -697,7 +697,7 @@ class TextoPanel(ttk.Frame):
 
         `COMANDO_DA_ESCOLHA` é quem ata o nome do domínio (`centro`) ao comando da interface
         (`alinhar_centro`) -- sem ela o rótulo teria de ser escrito aqui, que é exatamente o `text=`
-        à mão que a S-219 proíbe e que `tests/test_texto_inventario_editor.py` varre neste arquivo.
+        à mão que a S-324 proíbe e que `tests/test_texto_inventario_editor.py` varre neste arquivo.
         """
         menu = tk.Menu(pai, tearoff=False)
         for nome in nomes:

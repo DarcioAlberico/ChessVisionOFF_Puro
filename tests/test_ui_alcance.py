@@ -83,7 +83,7 @@ class InventarioTests(unittest.TestCase):
     def test_comando_novo_sem_casa_falha(self) -> None:
         """Acrescentar linha ao catálogo sem dar casa a ela derruba a suíte, nas três peles.
 
-        É o caso que a S-233 existe para pegar, e ele não é hipotético: a S-219 registrou que o
+        É o caso que a S-233 existe para pegar, e ele não é hipotético: a S-324 registrou que o
         `cancelar_exportacao` viveu como botão sem item de menu, e a S-223 é que lhe deu um.
         """
         catalogo = [registro.acao for registro in comandos.CATALOGO] + ["comando_sem_casa"]
@@ -168,7 +168,7 @@ class DeclaracaoDasBarrasTests(unittest.TestCase):
         Enquanto as duas forem escritas à mão elas podem divergir, e a divergência seria
         silenciosa **e favorável**: uma lista maior que a realidade faria o inventário afirmar que
         a clássica alcança um comando que ela não desenha. É a mesma família de defeito que a
-        S-219 mediu nos rótulos, e a resposta é a mesma -- comparar as duas.
+        S-324 mediu nos rótulos, e a resposta é a mesma -- comparar as duas.
         """
         desenhadas = _acoes_montadas(PDF_PANEL.read_text(encoding="utf-8"), "_montar_barras")
         self.assertEqual(set(comandos.NAS_BARRAS_DO_PDF), desenhadas)

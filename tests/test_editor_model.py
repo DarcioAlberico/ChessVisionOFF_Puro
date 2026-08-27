@@ -321,7 +321,7 @@ SEM_TKINTER = {
     "board_model.py": "o estado do tabuleiro, sem widget",
     "busy.py": "o que se perde ao fechar a janela, decidido fora dela (S-60)",
     "conjuntos.py": "quais conjuntos de peças existem e de onde saem os arquivos (S-230)",
-    "comandos.py": "o catálogo: o que cada comando é, antes de virar botão ou item de menu (S-219)",
+    "comandos.py": "o catálogo: o que cada comando é, antes de virar botão ou item de menu (S-324)",
     "editor_model.py": "o que 'salvar' significa, dado o vínculo (S-49)",
     "desfazivel.py": "quem desfaz quando o foco decide, com objetos de mentira (S-243)",
     "dispositivos.py": "em que dispositivo cada um dos dois modelos torch está (S-182)",

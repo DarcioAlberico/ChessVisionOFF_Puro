@@ -235,7 +235,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     As **três** são a S-229: `desfazer`, `refazer` e `limpar_tabuleiro` entrando em `_comandos`,
     uma linha cada, ligando o nome ao `ResultPanel`. A pilha, o teto de cem estados, as sete
     origens de mudança, os dois botões e o motivo de cada um estar cinza são `ui/historico.py` e
-    `ui/result_panel.py` -- a janela só amarra os nomes, que é o que o catálogo da S-219 comprou.
+    `ui/result_panel.py` -- a janela só amarra os nomes, que é o que o catálogo da S-324 comprou.
 
     As **quarenta e oito** são a S-230, e elas se pagam por não existirem em outro lugar: a linha
     de escolha do conjunto na Configuração (`_build_piece_set_row`, com os três `Radiobutton` e o
@@ -254,7 +254,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     grupos, o cabeçalho, o botão de ícone com rótulo e a quebra por grupo -- é `ui/fita.py`, que
     não conhece a janela.
 
-    **É a medida do que as S-219 a S-222 compraram**: a primeira pele custou dezesseis linhas
+    **É a medida do que as S-324 a S-222 compraram**: a primeira pele custou dezesseis linhas
     aqui; a terceira custou três.
 
     **1.862 → 1.865 na S-226**, e as três são a faixa de abas trocando de peso na pele "Foco":
@@ -305,7 +305,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     variável de ambiente são todos de `ui/pele.py`, que não importa `tkinter` e tem os seus
     dezesseis testes sem abrir janela.
 
-    **1.800 → 1.808 na S-219**, e as oito são o preço de a linha do conjunto de campo passar a
+    **1.800 → 1.808 na S-324**, e as oito são o preço de a linha do conjunto de campo passar a
     tirar o rótulo do catálogo. Nenhuma é lógica: `comandos.rotulo_de_botao("tirar_do_campo")` é
     mais largo que `"Tirar o selecionado"`, e dois botões que cabiam numa linha e em três passaram
     a caber em seis cada. **O import não cresceu** -- `estilos` saiu e `comandos` entrou no lugar,
@@ -315,7 +315,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     ficou com **um** lugar onde se lê o que cada comando é. Enquanto eram três lugares, o mesmo
     `ler_pagina` se chamava "Ler esta página" no menu e "OCR todos diagramas" no botão -- e nada
     comparava os dois. O que deve encolher aqui é `_build_field_row` inteira, que é layout de um
-    painel dentro da janela; a S-31 continua sendo esse alvo, e a S-219 não era a hora.
+    painel dentro da janela; a S-31 continua sendo esse alvo, e a S-324 não era a hora.
 
     **1.788 → 1.800 na S-211**, e as 12 são a aba de texto entrando. Nenhuma delas decide nada: o
     `import`, o campo do painel, a chamada do construtor com seis argumentos -- os mesmos seis que

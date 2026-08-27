@@ -37,7 +37,7 @@ def descricao_do_classificador_de_caracteres() -> str | None:
 
     **Não passa pelo `CaptionReader` de propósito.** Ir do leitor até o classificador exigiria
     uma porta nova em `ocr_caption.py`, que está no fecho de importação de `cvoff-field`: mexer
-    ali invalidaria o digest dos relatórios de campo (S-218) por causa de uma linha de rodapé.
+    ali invalidaria o digest dos relatórios de campo (S-219) por causa de uma linha de rodapé.
     O `text/` é podado desse digest, e é onde esta pergunta já morava.
     """
     # Tarde, e não no topo: `text.modelo` alcança `torch` pelo caminho de carga, e este módulo é

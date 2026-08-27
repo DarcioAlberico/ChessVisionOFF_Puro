@@ -2,7 +2,7 @@
 
 **A solução óbvia é a errada.** Escrever a lista de símbolos à mão cria uma segunda lista ao lado da
 que o modelo usa, e a primeira divergência entre as duas é um símbolo que a pessoa insere e que o
-OCR nunca poderá ler de volta -- o mesmo defeito que a S-219 tirou dos comandos, agora em símbolo.
+OCR nunca poderá ler de volta -- o mesmo defeito que a S-324 tirou dos comandos, agora em símbolo.
 
 Por isso a paleta sai de `models/char_meta.json`, que já traz `idx_to_char` e já é carregado com
 verificação de `classes_sha256` (`text/modelo.py`). Medido em 2026-08-24, 314 classes:

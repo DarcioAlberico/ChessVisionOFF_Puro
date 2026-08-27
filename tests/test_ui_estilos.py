@@ -62,7 +62,7 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
     O teste conta por arquivo e não por barra porque a barra não é um objeto que dê para
     contar de fora — mas o efeito é o mesmo onde importa: nenhum painel tem duas ênfases.
 
-    **`ui/comandos.py` é a exceção, e ela é o oposto de uma folga** (S-219). O catálogo declara
+    **`ui/comandos.py` é a exceção, e ela é o oposto de uma folga** (S-324). O catálogo declara
     a ênfase de todos os comandos da janela, então contar literal ali mede o arquivo inteiro e
     não uma barra. Lá a regra deixou de precisar de proxy: `comandos.primarios_por_grupo()`
     devolve o grupo e os primários dele, e `test_ui_comandos.test_um_primario_por_grupo` afirma
@@ -97,7 +97,7 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
         graça de uma releitura. Uma variante com comentário e setas é a tarde de alguém, e é por
         isso que os dois também **perguntam** antes quando há o que perder.
 
-        Eles vêm do catálogo e não de um `style=` no painel: desde a S-219 o papel é declarado uma
+        Eles vêm do catálogo e não de um `style=` no painel: desde a S-324 o papel é declarado uma
         vez, e é `comandos.estilo` que o traduz em nome de estilo `ttk`.
         """
         self.assertEqual(

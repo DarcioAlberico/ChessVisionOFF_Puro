@@ -8,29 +8,42 @@ existe, no mesmo padrão de `data/samples/`.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
+from chess_diagram_ocr.board_detection import NoBoardDetectedError
+from chess_diagram_ocr.cli import EXIT_BAD_INPUT
+from chess_diagram_ocr.cli import field as field_cli
+from chess_diagram_ocr.cli.field import _print_report
 from chess_diagram_ocr.fen_utils import check_position
 from chess_diagram_ocr.field_eval import (
     AnnotatedDiagram,
     FieldPage,
+    FieldPageReadError,
     FieldReport,
+    MissingFieldPdfError,
     _accumulate,
+    _code_revision,
     bbox_iou,
+    describe_measurement,
     evaluate_field,
     evaluate_page,
     field_set_identity,
     load_field_set,
     measured_modules,
     measurement_fingerprint,
+    missing_field_pdfs,
     save_field_set,
 )
 from chess_diagram_ocr.labels import DatasetEntry, pages_with_training_samples
@@ -533,6 +546,19 @@ class ReparoSeparadoDoGateTests(unittest.TestCase):
 
 
 class FieldRunTests(unittest.TestCase):
+    """Os PDFs citados existem de verdade aqui: desde a S-219 a medição confere antes de medir.
+
+    Arquivos vazios, porque quem lê é o `_FakeService` -- o que se exercita é o laço, e o
+    pré-voo tem testes só dele em `PdfsDoConjuntoTests`.
+    """
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.pasta = Path(tmp.name)
+        for nome in ("a.pdf", "b.pdf"):
+            (self.pasta / nome).write_bytes(b"")
+
     def test_pagina_nao_revisada_e_pulada(self) -> None:
         """Medir contra o proprio rascunho daria recall 1,0 e nao significaria nada."""
         servico = _FakeService({1: [lido((0, 0, 10, 10))], 2: [lido((0, 0, 10, 10))]})
@@ -541,23 +567,42 @@ class FieldRunTests(unittest.TestCase):
             FieldPage(pdf="a.pdf", page=2, reviewed=False, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),)),
         ]
 
-        r = evaluate_field(paginas, options=RecognitionOptions(), service=servico)  # type: ignore[arg-type]
+        r = evaluate_field(paginas, options=RecognitionOptions(), service=servico, pdf_dir=self.pasta)  # type: ignore[arg-type]
 
         self.assertEqual(servico.paginas_lidas, [1])
         self.assertEqual(r.pages, 1)
         self.assertEqual(r.annotated, 1)
 
-    def test_pagina_que_falha_ao_ser_lida_vira_zero_detectados(self) -> None:
-        """Uma pagina quebrada e um resultado; derrubar o relatorio inteiro nao e."""
+    def test_pagina_sem_tabuleiro_vira_zero_detectados(self) -> None:
+        """Uma pagina que abriu e nao tem diagrama e um resultado; derrubar o relatorio nao e."""
+
+        class _SemTabuleiro(_FakeService):
+            def recognize_page(self, *_args: object, **_kwargs: object):
+                raise NoBoardDetectedError("Nenhum tabuleiro foi detectado na imagem.")
+
+        paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
+        r = evaluate_field(paginas, options=RecognitionOptions(), service=_SemTabuleiro({}), pdf_dir=self.pasta)  # type: ignore[arg-type]
+
+        self.assertEqual((r.pages, r.detected, r.exported), (1, 0, 0))
+
+    def test_falha_que_nao_e_pagina_sem_tabuleiro_derruba_a_medicao(self) -> None:
+        """**S-219.** PDF que existe mas nao abre, pagina fora do arquivo, backend quebrado: o
+        antigo `except Exception` transformava tudo isso em `lidos = []`, e o relatorio saia
+        com recall baixo dizendo o mesmo que uma pagina legitimamente vazia diria."""
 
         class _Quebrado(_FakeService):
             def recognize_page(self, *_args: object, **_kwargs: object):
-                raise RuntimeError("Nenhum tabuleiro foi detectado")
+                raise RuntimeError("Failed to open file")
 
-        paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
-        r = evaluate_field(paginas, options=RecognitionOptions(), service=_Quebrado({}))  # type: ignore[arg-type]
+        paginas = [FieldPage(pdf="a.pdf", page=7, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
 
-        self.assertEqual((r.pages, r.detected, r.exported), (1, 0, 0))
+        with self.assertRaises(FieldPageReadError) as capturado:
+            evaluate_field(paginas, options=RecognitionOptions(), service=_Quebrado({}), pdf_dir=self.pasta)  # type: ignore[arg-type]
+
+        mensagem = str(capturado.exception)
+        self.assertIn("a.pdf", mensagem)
+        self.assertIn("7", mensagem)
+        self.assertIn("Failed to open file", mensagem)  # o original, que `cli.message_for` traduz
 
     def test_o_relatorio_separa_por_regime_e_por_livro(self) -> None:
         servico = _FakeService({1: [lido((0, 0, 10, 10))], 2: []})
@@ -566,7 +611,7 @@ class FieldRunTests(unittest.TestCase):
             FieldPage(pdf="b.pdf", page=2, reviewed=True, regime="dificil", diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),)),
         ]
 
-        r = evaluate_field(paginas, options=RecognitionOptions(), service=servico)  # type: ignore[arg-type]
+        r = evaluate_field(paginas, options=RecognitionOptions(), service=servico, pdf_dir=self.pasta)  # type: ignore[arg-type]
 
         self.assertAlmostEqual(r.export_rate, 0.5)
         self.assertAlmostEqual(r.per_regime["facil"].export_rate, 1.0)
@@ -578,11 +623,304 @@ class FieldRunTests(unittest.TestCase):
         servico = _FakeService({1: [lido((0, 0, 10, 10))]})
         paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
 
-        dados = evaluate_field(paginas, options=RecognitionOptions(), service=servico).as_dict()  # type: ignore[arg-type]
+        relatorio = evaluate_field(paginas, options=RecognitionOptions(), service=servico, pdf_dir=self.pasta)  # type: ignore[arg-type]
+        dados = relatorio.as_dict()
 
         for chave in ("detection_recall", "detection_precision", "export_rate", "conditional_exact"):
             self.assertIn(chave, dados)
         json.dumps(dados)  # serializa
+
+
+class IdentidadeDaMedicaoTests(unittest.TestCase):
+    """S-324: o relatório diz **com o que** foi medido, e não só o que deu.
+
+    Em 2026-08-22 quatro modelos foram medidos sobre as mesmas 66 páginas
+    (`field_20260822_s99`, `controle_20260822`, `mhsp_20260822`, `s108_20260822`) e os quatro
+    JSON eram indistinguíveis por dentro. É a mesma classe de defeito que a S-100 fechou para
+    o **conjunto** -- e que continuava aberta para o **modelo**, o gate e o DPI.
+    """
+
+    def setUp(self) -> None:
+        """Os PDFs citados existem: desde a S-219 a medição os confere antes de medir.
+
+        Vazios, porque quem lê é o `_FakeService`. O que estes testes exercitam é o carimbo
+        de procedência, não a leitura -- mas o conjunto não pode citar arquivo que não há."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.pasta = Path(tmp.name)
+        (self.pasta / "a.pdf").write_bytes(b"")
+
+    def _relatorio(self, **kwargs: object) -> FieldReport:
+        servico = _FakeService({1: [lido((0, 0, 10, 10))]})
+        paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True, regime="facil",
+                             diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
+        return evaluate_field(paginas, service=servico, pdf_dir=self.pasta, **kwargs)  # type: ignore[arg-type]
+
+    def test_o_json_diz_com_que_modelo_o_numero_foi_medido(self) -> None:
+        """**O critério de aceite.** Sem esta chave, dois modelos sobre o mesmo conjunto
+        produzem dois arquivos iguais com nomes diferentes."""
+        opcoes = RecognitionOptions(model_path=Path("models") / "candidato.pt", dpi=300)
+
+        dados = self._relatorio(options=opcoes, accept_threshold=0.7).as_dict()
+
+        self.assertIn("measurement", dados)
+        self.assertTrue(dados["measurement"]["model"]["path"].endswith("candidato.pt"))
+        self.assertEqual(dados["measurement"]["accept_threshold"], 0.7)
+        self.assertEqual(dados["measurement"]["dpi"], 300)
+
+    def test_o_gate_e_o_dpi_gravados_sao_os_que_foram_usados(self) -> None:
+        """Os dois mudam o número e não apareciam. O gate é literalmente o corte de que a
+        `export_rate` fala; o DPI muda o que o detector vê antes de o modelo ver."""
+        conf_baixa = _FakeService({1: [lido((0, 0, 10, 10), conf=0.75)]})
+        paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                             diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
+
+        frouxo = evaluate_field(paginas, options=RecognitionOptions(), service=conf_baixa, pdf_dir=self.pasta,  # type: ignore[arg-type]
+                                accept_threshold=0.7)
+        apertado = evaluate_field(paginas, options=RecognitionOptions(), service=conf_baixa, pdf_dir=self.pasta,  # type: ignore[arg-type]
+                                  accept_threshold=0.8)
+
+        self.assertEqual((frouxo.exported, apertado.exported), (1, 0))
+        self.assertEqual(frouxo.as_dict()["measurement"]["accept_threshold"], 0.7)
+        self.assertEqual(apertado.as_dict()["measurement"]["accept_threshold"], 0.8)
+
+    def test_o_json_diz_de_que_codigo_o_numero_saiu(self) -> None:
+        """Metade do número é detecção, e detecção é **código**, não modelo. Dois relatórios
+        do mesmo `.pt` sobre o mesmo conjunto divergem quando o detector muda."""
+        _code_revision.cache_clear()
+        self.addCleanup(_code_revision.cache_clear)
+
+        with patch("chess_diagram_ocr.field_eval.git_commit", return_value="9eb6685"), \
+             patch("chess_diagram_ocr.field_eval.git_worktree_dirty", return_value=False):
+            medicao = self._relatorio(options=RecognitionOptions()).as_dict()["measurement"]
+
+        self.assertEqual(medicao["code_commit"], "9eb6685")
+        self.assertFalse(medicao["code_dirty"])
+
+    def test_a_arvore_suja_e_declarada_no_json_e_no_texto(self) -> None:
+        """Um `code_commit` sozinho numa árvore com mudança por commitar aponta para um
+        código que **não** é o que rodou -- e aponta com cara de confiança."""
+        _code_revision.cache_clear()
+        self.addCleanup(_code_revision.cache_clear)
+        saida = io.StringIO()
+
+        with patch("chess_diagram_ocr.field_eval.git_commit", return_value="db7abfd"), \
+             patch("chess_diagram_ocr.field_eval.git_worktree_dirty", return_value=True):
+            relatorio = self._relatorio(options=RecognitionOptions())
+            with redirect_stdout(saida):
+                _print_report(relatorio, limit=10)
+
+        self.assertTrue(relatorio.as_dict()["measurement"]["code_dirty"])
+        self.assertIn("db7abfd", saida.getvalue())
+        self.assertIn("não commitada", saida.getvalue())
+
+    def test_o_codigo_e_perguntado_uma_vez_por_processo(self) -> None:
+        """O que o campo descreve é o código **carregado**, e ele foi fixado no import.
+        Perguntar de novo apontaria para um commit que não foi o que mediu."""
+        _code_revision.cache_clear()
+        self.addCleanup(_code_revision.cache_clear)
+
+        with patch("chess_diagram_ocr.field_eval.git_commit", return_value="db7abfd") as sonda, \
+             patch("chess_diagram_ocr.field_eval.git_worktree_dirty", return_value=False):
+            self._relatorio(options=RecognitionOptions())
+            self._relatorio(options=RecognitionOptions())
+
+        sonda.assert_called_once()
+
+    def test_o_commit_do_treino_e_o_do_run_sao_campos_diferentes(self) -> None:
+        """`model.train_commit` é de onde saiu o **modelo**; `code_commit` é de onde saiu a
+        **medição**. Podem estar a semanas de distância, e confundi-los foi o que fez os
+        quatro relatórios de 2026-08-22 parecerem comparáveis."""
+        dados = self._relatorio(options=RecognitionOptions()).as_dict()["measurement"]
+
+        self.assertIn("train_commit", dados["model"])
+        self.assertIn("code_commit", dados)
+        self.assertNotIn("code_commit", dados["model"])
+
+    def test_a_identidade_nao_se_repete_nos_sub_relatorios(self) -> None:
+        """Por regime e por livro são fatias do mesmo run. Repetir a identidade em cada um
+        encheria o JSON de cópias da mesma frase."""
+        dados = self._relatorio(options=RecognitionOptions()).as_dict()
+
+        self.assertTrue(dados["per_regime"])
+        self.assertTrue(dados["per_book"])
+        for secao in ("per_regime", "per_book"):
+            for nome, parcial in dados[secao].items():
+                with self.subTest(secao=secao, chave=nome):
+                    self.assertNotIn("measurement", parcial)
+
+    def test_a_identidade_sai_mesmo_quando_nada_foi_medido(self) -> None:
+        """Um conjunto todo por revisar mede zero páginas -- e ainda assim o arquivo precisa
+        dizer com que modelo ele mediu zero, senão o run some sem deixar rastro."""
+        paginas = [FieldPage(pdf="a.pdf", page=1, reviewed=False,
+                             diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))]
+
+        dados = evaluate_field(paginas, options=RecognitionOptions(), service=_FakeService({}),
+                                pdf_dir=self.pasta).as_dict()  # type: ignore[arg-type]
+
+        self.assertEqual(dados["pages"], 0)
+        self.assertIn("measurement", dados)
+
+    def test_o_campo_novo_nao_esconde_pages_e_annotated(self) -> None:
+        """A guarda da S-100 lê `pages` e `annotated` no topo destes JSON. Um campo novo que
+        os deslocasse quebraria a suíte que existe para pegar comparação suja."""
+        dados = self._relatorio(options=RecognitionOptions()).as_dict()
+
+        self.assertEqual({"pages": dados.get("pages"), "annotated": dados.get("annotated")},
+                         {"pages": 1, "annotated": 1})
+
+    def test_um_relatorio_sem_identidade_sai_como_antes(self) -> None:
+        """`evaluate_page` mede uma página contra uma leitura já pronta e legitimamente não
+        sabe de onde ela veio. A chave some em vez de sair nula."""
+        parcial = evaluate_page(
+            FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),)),
+            [lido((0, 0, 10, 10))],
+        )
+
+        self.assertIsNone(parcial.measurement)
+        self.assertNotIn("measurement", parcial.as_dict())
+
+    def test_o_relatorio_de_texto_tambem_nomeia_o_modelo(self) -> None:
+        """O JSON entra na tabela, mas o que se lê na hora é o terminal -- e ele tinha o
+        mesmo buraco. Sai **antes** dos números, que é onde a pergunta é feita."""
+        saida = io.StringIO()
+        medicao = describe_measurement(
+            RecognitionOptions(model_path=Path("models") / "candidato.pt", dpi=300),
+            accept_threshold=0.7,
+        )
+
+        with redirect_stdout(saida):
+            _print_report(FieldReport(measurement=medicao), limit=10)
+
+        texto = saida.getvalue()
+        self.assertIn("candidato.pt", texto)
+        self.assertIn("0.70", texto)
+        self.assertIn("300", texto)
+        self.assertLess(texto.index("candidato.pt"), texto.index("Nenhuma página revisada"))
+
+    def test_o_relatorio_de_texto_sem_identidade_nao_ganha_bloco_vazio(self) -> None:
+        """`evaluate_page` e os sub-relatórios não sabem de que run vieram; um bloco com
+        campos em branco diria que sabem."""
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            _print_report(FieldReport(), limit=10)
+
+        self.assertNotIn("Modelo", saida.getvalue())
+class PdfsDoConjuntoTests(unittest.TestCase):
+    """**S-219: um PDF que não abre não pode virar recall baixo.**
+
+    Em 2026-08-22, 11 páginas do conjunto de campo entraram com o nome do livro em codificação
+    dupla (`Eröffnungswege` gravado como `ErÃ¶ffnungswege`). Nenhum dos arquivos abriu, o
+    `except Exception` do laço transformou cada falha em zero diagramas detectados, e o
+    relatório publicou `detection_recall` **0,7596** onde o pipeline valia **0,9364** -- sem
+    nada além de um WARNING com a mesma frase de uma página que legitimamente não tem diagrama.
+    """
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.pasta = Path(tmp.name)
+        (self.pasta / "existe.pdf").write_bytes(b"")
+
+    def _pagina(self, pdf: str, *, reviewed: bool = True) -> FieldPage:
+        return FieldPage(pdf=pdf, page=1, reviewed=reviewed, diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10)),))
+
+    def test_pdf_inexistente_derruba_a_medicao_dizendo_nome_e_pasta(self) -> None:
+        """**O critério de aceite.** Sem isto o relatório sai, e sai errado para menos."""
+        servico = _FakeService({1: [lido((0, 0, 10, 10))]})
+
+        with self.assertRaises(MissingFieldPdfError) as capturado:
+            evaluate_field(
+                [self._pagina("sumiu.pdf")],
+                options=RecognitionOptions(),
+                service=servico,  # type: ignore[arg-type]
+                pdf_dir=self.pasta,
+            )
+
+        mensagem = str(capturado.exception)
+        self.assertIn("sumiu.pdf", mensagem)
+        self.assertIn(str(self.pasta), mensagem)
+
+    def test_nada_e_medido_quando_falta_um_pdf(self) -> None:
+        """Pré-voo e não checagem no laço: a medição leva minutos, e um relatório parcial das
+        páginas que abriram é o mesmo número enganoso com outra roupa."""
+        servico = _FakeService({1: [lido((0, 0, 10, 10))]})
+
+        with self.assertRaises(MissingFieldPdfError):
+            evaluate_field(
+                [self._pagina("existe.pdf"), self._pagina("sumiu.pdf")],
+                options=RecognitionOptions(),
+                service=servico,  # type: ignore[arg-type]
+                pdf_dir=self.pasta,
+            )
+
+        self.assertEqual(servico.paginas_lidas, [])
+
+    def test_a_mensagem_lista_todos_os_que_faltam(self) -> None:
+        """11 nomes com o mesmo defeito dizem "codificação"; um de cada vez diz "sumiu"."""
+        paginas = [self._pagina("um.pdf"), self._pagina("dois.pdf"), self._pagina("existe.pdf")]
+
+        with self.assertRaises(MissingFieldPdfError) as capturado:
+            evaluate_field(paginas, options=RecognitionOptions(), service=_FakeService({}), pdf_dir=self.pasta)  # type: ignore[arg-type]
+
+        mensagem = str(capturado.exception)
+        self.assertIn("um.pdf", mensagem)
+        self.assertIn("dois.pdf", mensagem)
+        self.assertIn("2 PDF(s)", mensagem)
+
+    def test_a_mensagem_aponta_o_arquivo_com_o_nome_certo(self) -> None:
+        """O caso real: os arquivos estavam na pasta o tempo todo, com o nome bem escrito."""
+        (self.pasta / "Eröffnungswege.pdf").write_bytes(b"")
+
+        with self.assertRaises(MissingFieldPdfError) as capturado:
+            evaluate_field(
+                [self._pagina("ErÃ¶ffnungswege.pdf")],
+                options=RecognitionOptions(),
+                service=_FakeService({}),  # type: ignore[arg-type]
+                pdf_dir=self.pasta,
+            )
+
+        self.assertIn("Eröffnungswege.pdf", str(capturado.exception))
+        self.assertIn("codificação dupla", str(capturado.exception))
+
+    def test_rascunho_pendente_citando_pdf_ausente_nao_impede_a_medicao(self) -> None:
+        """Página não revisada não é medida, então o arquivo dela não é pré-requisito."""
+        servico = _FakeService({1: [lido((0, 0, 10, 10))]})
+        paginas = [self._pagina("existe.pdf"), self._pagina("sumiu.pdf", reviewed=False)]
+
+        r = evaluate_field(paginas, options=RecognitionOptions(), service=servico, pdf_dir=self.pasta)  # type: ignore[arg-type]
+
+        self.assertEqual(r.pages, 1)
+
+    def test_missing_field_pdfs_lista_sem_levantar(self) -> None:
+        """Quem quiser conferir antes -- uma tela, um script -- pergunta sem tratar exceção."""
+        paginas = [self._pagina("existe.pdf"), self._pagina("sumiu.pdf")]
+
+        faltando = missing_field_pdfs(paginas, pdf_dir=self.pasta)
+
+        self.assertEqual([caminho.name for caminho in faltando], ["sumiu.pdf"])
+
+    def test_o_cli_falha_com_codigo_de_entrada_invalida(self) -> None:
+        """Fim a fim: `cvoff-field` sobre um conjunto que cita um PDF que não existe **não**
+        imprime relatório nenhum, e sai com o código 2 -- entrada inválida, não defeito."""
+        conjunto = self.pasta / "field.jsonl"
+        save_field_set(conjunto, [self._pagina("sumiu.pdf")])
+        argv = [
+            "--set", str(conjunto),
+            "--pdf-dir", str(self.pasta),
+            "--labels", str(self.pasta / "sem-labels.csv"),
+            "--splits", str(self.pasta / "sem-splits.csv"),
+        ]
+
+        saida = io.StringIO()
+        with contextlib.redirect_stdout(saida):
+            codigo = field_cli.main(argv)
+
+        self.assertEqual(codigo, EXIT_BAD_INPUT)
+        texto = saida.getvalue()
+        self.assertIn("sumiu.pdf", texto)
+        self.assertIn(str(self.pasta), texto)
+        self.assertNotIn("Avaliação de campo", texto)  # nenhuma métrica foi publicada
 
 
 class RealFieldSetTests(unittest.TestCase):
@@ -749,7 +1087,7 @@ class ConjuntoVigenteTests(unittest.TestCase):
 
 
 class ImpressaoDaMedicaoTests(unittest.TestCase):
-    """Com que código e com que modelo o relatório foi medido (S-218).
+    """Com que código e com que modelo o relatório foi medido (S-219).
 
     A S-100 cobriu o **conjunto**; faltavam as outras duas entradas. Em 2026-08-22 os quatro
     relatórios correntes foram medidos metade antes e metade depois da S-176, e `detected`,

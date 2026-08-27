@@ -9,7 +9,7 @@ ROADMAP_EDITOR, que nenhum teste de interface pegaria porque **na tela está tud
 está escondido; aqui o recurso **existe e não persiste**, que é pior, porque parece funcionar.
 
 Este comando publica as quatro perguntas do item como um JSON em `docs/metrics/`, na disciplina da
-S-218 -- com a data e o commit em que ele foi medido. Quem cobra as respostas é
+S-219 -- com a data e o commit em que ele foi medido. Quem cobra as respostas é
 `tests/test_texto_inventario_editor.py`; o que este arquivo faz é **deixá-las escritas**, para quem
 ler o repositório em três meses não precisar rodar a suíte para saber o que a aba faz.
 """

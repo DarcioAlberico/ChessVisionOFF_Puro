@@ -53,14 +53,43 @@ class FonteUnicaTests(unittest.TestCase):
             and not any(gesto in no.value for gesto in self.GESTOS_DE_MOUSE)
         ]
 
+    def _infratores(self, caminho: Path) -> list[str]:
+        """As sequências que aquele arquivo não podia ter escrito.
+
+        `ui/atalhos.py` é a tabela, e escreve todas. `ui/shortcuts.py` é o caso de fronteira:
+        ele declara as teclas que o **Tk** usa dentro de um campo de texto, para ceder só essas
+        -- e elas não são atalhos do app, são o complemento deles. Pô-las em `atalhos.py` seria
+        misturar duas listas de donos diferentes numa tabela cujas colunas são "o que o comando
+        faz" e "como a legenda o escreve".
+
+        O que sobra da regra é a metade que importa: **nenhuma delas pode ser uma tecla do
+        app**. Se fosse, o campo estaria engolindo o atalho de novo, que é o defeito que a
+        lista veio tirar -- e a decisão sobre uma tecla disputada tem de ser tomada aqui, e
+        não descoberta por quem digita.
+        """
+        if caminho.name == "atalhos.py":
+            return []
+        literais = self._sequencias_literais(caminho)
+        if caminho.name == "shortcuts.py":
+            do_app = {atalho.sequencia for atalho in atalhos.ATALHOS}
+            return [seq for seq in literais if seq in do_app]
+        return literais
+
     def test_so_a_tabela_escreve_sequencia_de_tecla(self) -> None:
-        infratores = [
-            f"{caminho.name}: {seq}"
-            for caminho in ARQUIVOS_DE_UI
-            if caminho.name != "atalhos.py"
-            for seq in self._sequencias_literais(caminho)
-        ]
+        infratores = [f"{caminho.name}: {seq}" for caminho in ARQUIVOS_DE_UI for seq in self._infratores(caminho)]
         self.assertEqual(infratores, [], "sequência de atalho escrita fora de `ui/atalhos.py`")
+
+    def test_a_guarda_nao_declara_como_do_campo_uma_tecla_que_e_do_app(self) -> None:
+        """A metade da regra que `ui/shortcuts.py` continua devendo, dita de frente.
+
+        Sem este, o parágrafo acima seria só um comentário: bastaria alguém escrever
+        `"<Control-s>"` na lista de teclas cedidas para `Ctrl+S` voltar a não salvar dentro do
+        campo de FEN, e a varredura passaria em verde por causa da exceção.
+        """
+        guarda = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "shortcuts.py"
+        do_app = {atalho.sequencia for atalho in atalhos.ATALHOS}
+
+        self.assertEqual([seq for seq in self._sequencias_literais(guarda) if seq in do_app], [])
 
     def test_a_legenda_esta_no_menu_ajuda(self) -> None:
         """Uma legenda que existe e não tem porta é uma legenda que ninguém abre."""

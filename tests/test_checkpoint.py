@@ -9,8 +9,13 @@ import torch
 
 from chess_diagram_ocr.checkpoint import (
     CHECKPOINT_FORMAT,
+    MOTIVO_MAX,
     check_compatible,
+    checkpoint_fingerprint,
     checkpoint_identity,
+    describe_checkpoint,
+    git_commit,
+    git_worktree_dirty,
     load_checkpoint,
     load_state_dict,
     save_checkpoint,
@@ -190,6 +195,31 @@ class AtomicWriteTests(unittest.TestCase):
             self.assertEqual([p.name for p in Path(tmp).iterdir()], ["m.pt"])
 
 
+class RevisaoDoCodigoTests(unittest.TestCase):
+    """S-324: o commit sozinho mente numa árvore suja.
+
+    O caso é medido: em 2026-08-22 quatro relatórios de campo foram gravados, e um commit
+    posterior mudou a detecção o bastante para levar o recall de uma página de 0,800 para
+    1,000. Nada nos arquivos mudou, e a guarda da S-100 não pega -- ela compara o
+    **conjunto**, e mudança de código não move `pages` nem `annotated`.
+    """
+
+    def test_sem_git_o_commit_sai_vazio_e_a_arvore_nao_se_diz_suja(self) -> None:
+        """Um `.exe` congelado não tem `.git`. "Não sei" é a resposta, e quem lê a vê no
+        commit vazio -- dizer `dirty: true` ali seria inventar um defeito."""
+        with patch("chess_diagram_ocr.checkpoint._git", return_value=None):
+            self.assertEqual(git_commit(), "")
+            self.assertFalse(git_worktree_dirty())
+
+    def test_a_arvore_limpa_e_a_suja_se_distinguem(self) -> None:
+        with patch("chess_diagram_ocr.checkpoint._git", return_value="") as limpo:
+            self.assertFalse(git_worktree_dirty())
+            limpo.assert_called_once()
+
+        with patch("chess_diagram_ocr.checkpoint._git", return_value=" M src/x.py\n"):
+            self.assertTrue(git_worktree_dirty())
+
+
 class CheckpointIdentityTests(unittest.TestCase):
     """S-57: retomar uma exportação depois de treinar não pode misturar dois modelos."""
 
@@ -212,6 +242,152 @@ class CheckpointIdentityTests(unittest.TestCase):
     def test_arquivo_ausente_devolve_identidade_vazia(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(checkpoint_identity(Path(tmp) / "nao-existe.pt"), "")
+
+
+class DescricaoDoCheckpointTests(unittest.TestCase):
+    """S-324: um relatório tem de poder dizer **de que modelo** ele é.
+
+    O defeito que isto fecha tem data. Em 2026-08-22 quatro modelos foram medidos sobre as
+    mesmas 66 páginas e os quatro JSON de `docs/metrics/` só se distinguiam pelo nome do
+    arquivo -- a tabela comparativa dependia de quem gravou ter lembrado o que rodou.
+    """
+
+    def test_a_descricao_traz_o_treino_que_produziu_o_arquivo(self) -> None:
+        """`best_metric`/`best_epoch` já eram gravados dentro do `.pt` desde a Fase 5. O que
+        faltava era alguém lê-los para fora."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.pt"
+            save_checkpoint(
+                path,
+                PieceClassifier().state_dict(),
+                metadata=_metadata(best_metric_name="val_board_exact_acc", git_commit="abc1234"),
+                temperature=1.25,
+            )
+
+            descricao = describe_checkpoint(path)
+
+            self.assertEqual(descricao.best_epoch, 3)
+            self.assertAlmostEqual(descricao.best_metric or 0.0, 0.95)
+            self.assertEqual(descricao.best_metric_name, "val_board_exact_acc")
+            self.assertEqual(descricao.arch_version, ArchConfig().version)
+            self.assertEqual(descricao.train_commit, "abc1234")
+            self.assertAlmostEqual(descricao.temperature, 1.25)
+            self.assertEqual(descricao.unreadable, "")
+            self.assertGreater(descricao.size_bytes, 0)
+
+    def test_dois_modelos_no_mesmo_caminho_tem_impressoes_diferentes(self) -> None:
+        """**O caso que paga o item.** O treino reescreve sempre o mesmo `.pt`, então o
+        caminho é igual nos quatro relatórios e não distingue nada. O conteúdo distingue.
+
+        Metadados **idênticos** de propósito: assim a única diferença entre os dois arquivos
+        são os pesos, e o que o teste afirma é que a impressão vê o modelo -- e não o rótulo
+        que veio junto com ele."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "piece_classifier.pt"
+
+            torch.manual_seed(1)
+            save_checkpoint(path, PieceClassifier().state_dict(), metadata=_metadata())
+            primeiro = describe_checkpoint(path)
+
+            torch.manual_seed(2)
+            save_checkpoint(path, PieceClassifier().state_dict(), metadata=_metadata())
+            segundo = describe_checkpoint(path)
+
+            self.assertEqual(primeiro.path, segundo.path)
+            self.assertEqual(primeiro.best_epoch, segundo.best_epoch)
+            self.assertNotEqual(primeiro.sha256, segundo.sha256)
+
+    def test_o_mesmo_conteudo_em_dois_caminhos_tem_a_mesma_impressao(self) -> None:
+        """O outro lado da mesma moeda: renomear um checkpoint não o torna outro modelo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            original = Path(tmp) / "m.pt"
+            save_checkpoint(original, PieceClassifier().state_dict(), metadata=_metadata())
+            copia = Path(tmp) / "outro-nome.pt"
+            copia.write_bytes(original.read_bytes())
+
+            self.assertEqual(checkpoint_fingerprint(original), checkpoint_fingerprint(copia))
+            self.assertNotEqual(describe_checkpoint(original).path, describe_checkpoint(copia).path)
+
+    def test_um_pt_ilegivel_nao_derruba_o_relatorio_e_diz_por_que(self) -> None:
+        """Meia identidade vale mais que nenhuma: a impressão e o tamanho ainda identificam o
+        arquivo, e o motivo fica escrito no JSON em vez de virar traceback."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "nao-e-um-checkpoint.pt"
+            path.write_bytes(b"isto nao e um arquivo do torch")
+
+            descricao = describe_checkpoint(path)
+
+            self.assertNotEqual(descricao.sha256, "")
+            self.assertGreater(descricao.size_bytes, 0)
+            self.assertNotEqual(descricao.unreadable, "")
+            self.assertIsNone(descricao.best_metric)
+            self.assertIn("unreadable", descricao.as_dict())
+
+    def test_arquivo_ausente_devolve_o_caminho_pedido_e_um_motivo_estavel(self) -> None:
+        """A mensagem do sistema vem traduzida pelo locale e carrega o caminho absoluto --
+        dois motivos para o mesmo relatório sair diferente em duas máquinas, num campo que
+        existe justamente para comparar relatórios."""
+        with tempfile.TemporaryDirectory() as tmp:
+            descricao = describe_checkpoint(Path(tmp) / "nao-existe.pt")
+
+            self.assertEqual(descricao.unreadable, "arquivo não encontrado")
+            self.assertEqual(descricao.sha256, "")
+            self.assertEqual(descricao.size_bytes, 0)
+            self.assertTrue(descricao.path.endswith("nao-existe.pt"))
+
+    def test_um_checkpoint_pre_fase_5_nao_inventa_metrica(self) -> None:
+        """`piece_classifier_baseline.pt` não tem metadados, e continua carregando. Aqui isso
+        vira `best_metric = None` -- que é "não sei", e não um número plausível."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legado.pt"
+            torch.save(PieceClassifier().state_dict(), path)
+
+            descricao = describe_checkpoint(path)
+
+            self.assertEqual(descricao.unreadable, "")
+            self.assertNotEqual(descricao.sha256, "")
+            self.assertIsNone(descricao.best_metric)
+            self.assertIsNone(descricao.best_epoch)
+            self.assertEqual(descricao.arch_version, "")
+
+    def test_um_metadado_torto_tambem_vira_motivo_e_nao_traceback(self) -> None:
+        """A promessa é "nunca levanta", e ela vale para o que está **dentro** do `.pt`
+        também: um `best_epoch` que não é número não pode derrubar a medição de campo depois
+        de ela ter gasto minutos de inferência."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "torto.pt"
+            torch.save(
+                {"model_state": {"w": torch.zeros(2)}, "metadata": {"best_epoch": "doze"}},
+                path,
+            )
+
+            descricao = describe_checkpoint(path)
+
+            self.assertNotEqual(descricao.sha256, "")
+            self.assertIsNone(descricao.best_epoch)
+            self.assertIn("ValueError", descricao.unreadable)
+
+    def test_o_motivo_nao_carrega_um_traceback_inteiro(self) -> None:
+        """Estes JSON são versionados; um `except` do `torch` inteiro num campo de texto é
+        diff sem informação."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "nao-e-um-checkpoint.pt"
+            path.write_bytes(b"lixo" * 4096)
+
+            self.assertLessEqual(len(describe_checkpoint(path).unreadable), MOTIVO_MAX)
+
+    def test_o_json_tem_as_mesmas_chaves_com_e_sem_o_arquivo(self) -> None:
+        """O uso é comparar quatro arquivos campo a campo; uma chave que some num deles vira
+        ruído na comparação. `unreadable` é a exceção, e só aparece quando há o que dizer."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.pt"
+            save_checkpoint(path, PieceClassifier().state_dict(), metadata=_metadata())
+
+            presente = describe_checkpoint(path).as_dict()
+            ausente = describe_checkpoint(Path(tmp) / "sumiu.pt").as_dict()
+
+            self.assertEqual(set(ausente) - set(presente), {"unreadable"})
+            self.assertEqual(set(presente) - set(ausente), set())
 
 
 if __name__ == "__main__":

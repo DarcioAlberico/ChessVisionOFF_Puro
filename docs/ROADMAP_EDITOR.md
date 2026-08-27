@@ -20,13 +20,13 @@ estilos, catálogo de comandos, ícones — está em [SPEC_UI.md](SPEC_UI.md) e
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
 > | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-219 a S-234 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-410 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -52,7 +52,7 @@ recursos direto no widget dá um editor que funciona lindamente na tela e entreg
 Salvar, exatamente o mesmo `.txt` de hoje.
 
 Daí a arquitetura inteira deste plano, que é a mesma disciplina que a Fase 6 impôs ao pipeline e a
-S-219 impôs aos comandos: **o documento é dado, fora do `tkinter`; o widget é um desenho dele.**
+S-324 impôs aos comandos: **o documento é dado, fora do `tkinter`; o widget é um desenho dele.**
 Por isso a Fase 36 não entrega um só botão novo — e é a fase sem a qual as outras quatro não valem
 nada.
 
@@ -75,7 +75,7 @@ nada.
 | formatos de saída | `ui/texto_panel.py:383-412` | **1** — `.txt`, com cabeçalho de procedência |
 | formatos de entrada | — | **0** — não existe "abrir" |
 | comandos de edição | — | **0** — nenhum negrito, itálico, cor, busca, símbolo |
-| comandos no catálogo da S-219 | `ui/comandos.py` | **0 dos 6** — a aba inteira está fora dos 36 do registro |
+| comandos no catálogo da S-324 | `ui/comandos.py` | **0 dos 6** — a aba inteira está fora dos 36 do registro |
 | atalhos de teclado próprios | — | **0** (e ver o achado 6) |
 | decisões testáveis fora da janela | `text/documento.py` | **7 funções e um `Segmento`**, e é o que salva o resto |
 
@@ -163,7 +163,7 @@ contagem por família diz o que a paleta tem para oferecer:
 
 **Escrever a paleta à mão seria escrever uma segunda lista de símbolos ao lado da que o modelo
 usa** — e a primeira divergência entre as duas é um símbolo que a pessoa insere e que o OCR nunca
-poderá ler de volta. A paleta sai do metadado, como a barra de menus saiu do catálogo na S-219.
+poderá ler de volta. A paleta sai do metadado, como a barra de menus saiu do catálogo na S-324.
 → **S-246**
 
 **E um achado seco que sai da mesma contagem: as seis figurinas são só as brancas.** `♔♕♖♗♘♙` são

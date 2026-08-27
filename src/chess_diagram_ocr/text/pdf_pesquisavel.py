@@ -27,7 +27,7 @@ entra na camada**: não há onde a pôr, e inventar posição é pior que não t
 conta.
 
 **A procedência vai no metadado do PDF.** Um PDF cuja camada foi corrigida à mão é um documento
-diferente de um cuja camada saiu do OCR, e quem o receber precisa poder saber. É a S-218 outra vez:
+diferente de um cuja camada saiu do OCR, e quem o receber precisa poder saber. É a S-219 outra vez:
 o relatório diz com que código e com que modelo foi medido.
 
 ## A fonte é o bloqueio, e ele é declarado
@@ -273,7 +273,7 @@ def _escrever_no_maior_corpo(folha: object, caixa: object, texto: str) -> float:
 
 
 def _metadado(livro: object, doc: DocumentoRico, quando: str) -> Mapping[str, str]:
-    """O metadado do PDF, declarando **que a camada tem correção humana** e de quando (S-253/S-218).
+    """O metadado do PDF, declarando **que a camada tem correção humana** e de quando (S-253/S-219).
 
     Um PDF cuja camada foi corrigida à mão é outro documento, e quem o receber precisa poder saber.
     """
@@ -607,7 +607,7 @@ def _somar(a: RelatorioDaCamada, b: RelatorioDaCamada) -> RelatorioDaCamada:
 def _metadado_da_camada(livro: object, quando: str, piso: float, figurinas: bool) -> Mapping[str, str]:
     """A procedência da camada, no metadado do PDF.
 
-    **É a S-218 outra vez.** Um PDF cuja camada saiu do classificador deste projeto é um documento
+    **É a S-219 outra vez.** Um PDF cuja camada saiu do classificador deste projeto é um documento
     diferente de um cuja camada veio do editor, e quem o receber precisa poder saber qual é --
     inclusive com que piso ela foi feita, que é o que decide o que ficou de fora.
     """
