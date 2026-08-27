@@ -10,9 +10,7 @@ from __future__ import annotations
 
 import unittest
 
-from chess_diagram_ocr.text.boxes import Caixa, excluir_diagramas
-from chess_diagram_ocr.text.pagina import Diagrama, sequencia_de_leitura
-from tests.test_text_colunas import (
+from test_text_colunas import (
     ALTURA_DA_LETRA,
     DIREITA,
     ESQUERDA,
@@ -21,6 +19,9 @@ from tests.test_text_colunas import (
     POR_LINHA,
     _linha_de_caixas,
 )
+
+from chess_diagram_ocr.text.boxes import Caixa, excluir_diagramas
+from chess_diagram_ocr.text.pagina import Diagrama, sequencia_de_leitura
 
 
 def pagina_de_duas_colunas(linhas: int = 30) -> tuple[list[Caixa], list[Caixa], list[Caixa]]:

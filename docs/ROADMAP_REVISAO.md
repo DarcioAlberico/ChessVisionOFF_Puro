@@ -634,3 +634,30 @@ defeito.
 5. **Fases 62 a 64** por último entre as de conserto: empacotamento, aparência e documentação são
    o que se ajusta depois de o comportamento parar de mudar.
 6. **Fase 65 fecha**, e não abre: só depois de consertar é que se sabe qual teste faltava.
+
+---
+
+# O que a primeira execução da CI encontrou
+
+A S-296 fez a CI rodar num ramo de trabalho pela primeira vez, e ela **reprovou na primeira
+tentativa** -- por um defeito que não veio desta revisão. `tests/test_text_grade.py` e
+`tests/test_text_pagina.py` importavam um irmão como `from tests.test_text_colunas import ...`,
+e `tests` não é pacote: não há `__init__.py`, e o nome só resolve quando a raiz do repositório
+está no `sys.path`. Na máquina de desenvolvimento ela está, pelo `.pth` da instalação editável;
+na CI, não. Os outros **seis** arquivos que importam irmãos fazem `from test_X import ...`, sem
+prefixo -- esses dois eram os únicos fora do padrão, desde a Fase 29.
+
+Ele estava lá havia semanas, invisível, e ninguém podia tê-lo visto: a CI não rodava neste ramo.
+É a demonstração do argumento que abre este documento, e ela chegou uma hora depois do conserto.
+
+**Dois itens que a execução deixou registrados, e ainda não têm número:**
+
+- **O digest da S-219 conta comentário.** Ele é sobre o conteúdo do arquivo, então corrigir uma
+  docstring de `config.py` invalidou os quatro relatórios de campo e custou uma remedição de
+  quatro minutos. Comentário não muda medição. Um digest sobre a árvore sintática responderia a
+  pergunta certa -- mas é mais código, e o conservador de hoje nunca *deixa passar* uma mudança
+  real. Fica registrado como escolha, e não como esquecimento.
+- **A granularidade por classe de widget da cessão de tecla.** A `main` derivava a lista das
+  ligações de classe do próprio Tk, separando `Entry` de `Text`, de `Combobox` e de `Spinbox`; a
+  integração ficou com a versão deste ramo, que deriva do catálogo de ações e não separa por
+  classe. A da `main` é mais fina e continua no histórico.

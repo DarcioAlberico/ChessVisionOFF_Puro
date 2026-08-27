@@ -188,7 +188,7 @@ def caminho_para_relatorio(caminho: Path | str) -> str:
     ninguém revisa depois de gravado.
 
     **Fora da raiz sai absoluto de propósito**: aí o caminho completo é a informação -- diz que
-    aquilo não mora no repositório. Barras normalizadas para `/` porque `\` vira escape no JSON e
+    aquilo não mora no repositório. Barras normalizadas para `/` porque a barra invertida vira escape no JSON e
     o mesmo caminho sai diferente conforme o sistema.
     """
     caminho = Path(caminho)

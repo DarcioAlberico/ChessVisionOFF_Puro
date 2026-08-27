@@ -15,6 +15,15 @@ from __future__ import annotations
 
 import unittest
 
+from test_text_colunas import (
+    ALTURA_DA_LETRA,
+    DIREITA,
+    ESQUERDA,
+    PASSO_Y,
+    _linha_de_caixas,
+    duas_colunas,
+)
+
 from chess_diagram_ocr.text.boxes import Caixa
 from chess_diagram_ocr.text.colunas import detectar_colunas
 from chess_diagram_ocr.text.grade import (
@@ -29,14 +38,6 @@ from chess_diagram_ocr.text.grade import (
     vaos_entre_bandas,
 )
 from chess_diagram_ocr.text.pagina import sequencia_de_leitura
-from tests.test_text_colunas import (
-    ALTURA_DA_LETRA,
-    DIREITA,
-    ESQUERDA,
-    PASSO_Y,
-    _linha_de_caixas,
-    duas_colunas,
-)
 
 POR_CELULA = 8
 """Caixas por linha de legenda. 8 x 18 = 144 px de célula, contra os 276 px de calha que sobram."""
