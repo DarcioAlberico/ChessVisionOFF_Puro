@@ -129,12 +129,38 @@ class SpecEDiscoTests(unittest.TestCase):
     def test_a_marcacao_da_spec_corresponde_ao_disco(self) -> None:
         resultados = text_status.verificar(RAIZ)
         marcado = text_status.marcacoes_da_spec(RAIZ)
+
+        # **Sonda de artefato não-versionado não vale como divergência (S-327).** As sondas são
+        # de dois tipos: `simbolo:` pergunta ao código, que vem no clone, e `arquivo:` pergunta
+        # ao disco -- e alguns dos arquivos que ela procura são `models/*.pt`, que o
+        # `.gitignore` mantém fora. Num clone limpo, a S-182 aparecia como "parcial" contra uma
+        # spec que diz "implementada", e o teste falhava afirmando que o documento mentia sobre
+        # um item que **está** entregue: o que faltava era o binário, não o código.
+        #
+        # Foi a primeira execução da CI num ramo de trabalho (S-296) que mostrou isso. É a mesma
+        # regra que o CONTRIBUTING já escreve para `data/samples/`: teste que depende de dado
+        # não-versionado pula, não falha -- e aqui o pulo é por sonda, para o resto do item
+        # continuar sendo cobrado.
+        ausentes = {
+            resultado.item.id
+            for resultado in resultados
+            for sonda in resultado.faltando
+            if sonda.startswith("arquivo:") and not (RAIZ / sonda.removeprefix("arquivo:")).exists()
+        }
+        todas = cli._divergencias(resultados, marcado)
+        divergencias = [linha for linha in todas if linha.split(":")[0] not in ausentes]
+
         self.assertEqual(
             [],
-            cli._divergencias(resultados, marcado),
+            divergencias,
             "Atualize o cabeçalho da seção em docs/SPEC_TEXTO.md, ou entregue o que ele afirma. "
             "`cvoff-texto-status --sondas` mostra qual sonda está faltando.",
         )
+        # O pulo vem **depois** da afirmação, e só quando o filtro de fato escondeu alguma coisa:
+        # assim o resto do item continua cobrado, e uma execução que não pôde olhar tudo não se
+        # anuncia como se tivesse olhado.
+        if len(todas) != len(divergencias):
+            self.skipTest(f"artefato não-versionado ausente: {', '.join(sorted(ausentes))}")
 
 
 class RoadmapTests(unittest.TestCase):

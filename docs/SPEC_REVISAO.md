@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-327 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -991,3 +991,73 @@ decide o que sobra. A troca na sala fecha o caso concreto; a inversão fecha a c
 
 **Critério de aceite.** Com o foco num `Entry`, `←` não chega ao painel. Fora de campo de texto,
 a declaração do painel continua ganhando do comando global.
+
+---
+
+# Fase 56 — O que só a CI podia mostrar
+
+Três itens que **nenhuma execução local podia encontrar**, porque os três só falham fora da
+máquina onde a medição e o desenvolvimento acontecem. Eles são a S-296 pagando por si mesma na
+primeira hora de vida.
+
+## S-325 · O digest de código normaliza a quebra de linha
+
+**Problema.** `_digest_of` hasheava os bytes crus do arquivo, e o `.gitattributes` declara
+`*.py text eol=lf`: o repositório guarda LF e o disco de trabalho fica com o final de linha
+nativo. Nesta máquina, 52 dos 414 módulos estão em CRLF -- entre eles `board_detection.py`,
+`service.py` e `inference.py`. O mesmo arquivo, no mesmo commit, dava dois digests:
+
+```
+CRLF, como está no disco de quem mede    da3d01935c122469
+LF,   como está no git e na CI           fd5b4c1ccddd3297
+```
+
+Consequência: `test_todo_relatorio_corrente_mediu_o_codigo_de_hoje` **não podia passar** fora da
+máquina onde a medição foi feita -- nem na CI, nem em Linux, nem num worktree com outro final de
+linha. Ela acusava "o módulo mudou" sobre um arquivo idêntico, e quem obedecesse remediria os
+quatro relatórios para ver a mesma acusação de novo.
+
+**Solução.** `
+` vira `
+` antes de entrar no hash.
+
+**Não é um afrouxamento.** O que a guarda quer saber é se o **código** mudou, e trocar a quebra
+de linha não muda código nenhum -- o próprio `git` trata os dois como o mesmo arquivo. Quem
+precisa do byte cru é `_digest_file`, que é para artefato binário, e ali normalizar seria
+corromper.
+
+**Critério de aceite.** O digest de um módulo é o mesmo no disco CRLF e no checkout LF. Os
+quatro relatórios foram remedidos e voltaram idênticos pela sexta vez: 0,7913, 0,7652, 0,7304 e
+0,7478.
+
+## S-326 · A largura da fita plena é derivada, e não escolhida
+
+**Problema.** Três testes de `ModoDaFitaTests` montavam a fita em `self._em(2200)` -- 2.200 px é
+a largura em que ela cabe numa linha **com as fontes desta máquina**. O runner do Windows
+desenhou os mesmos dezessete botões mais largos, 2.200 não bastou, e os três falharam afirmando
+`1 != 2`, `1 != 3` e `'pleno' != 'compacto'` sobre um código correto.
+
+**Solução.** `_plena()` monta uma vez para perguntar `largura_de_troca` -- que a própria fita
+**mede**, somando os grupos mais o espaço entre eles --, e remonta com folga. O número certo
+nunca foi uma constante; o 2.200 era só um jeito de dizê-lo nesta máquina.
+
+`FOLGA_DA_FITA_PLENA = 80` existe porque `largura_de_troca` é o limiar **exato**: montar ali
+deixa a fita no fio, e um pixel de arredondamento do gerenciador de geometria a joga para duas
+linhas. Oitenta é margem, não medida, e é por isso que ela tem nome.
+
+## S-327 · Sonda de artefato não-versionado pula, e não reprova
+
+**Problema.** As sondas do `cvoff-texto-status` são de dois tipos: `simbolo:` pergunta ao código,
+que vem no clone, e `arquivo:` pergunta ao disco -- e alguns dos arquivos que ela procura são
+`models/*.pt`, que o `.gitignore` mantém fora. Num clone limpo, a S-182 aparecia como "parcial"
+contra uma spec que diz "implementada", e o teste falhava afirmando que o documento mentia sobre
+um item que **está** entregue. O que faltava era o binário, não o código.
+
+**Solução.** As divergências causadas por sonda de arquivo ausente saem da conta. É a mesma
+regra que o `CONTRIBUTING` já escreve para `data/samples/`: teste que depende de dado
+não-versionado pula, não falha.
+
+**O pulo vem depois da afirmação, e só quando o filtro escondeu alguma coisa.** Assim o resto do
+item continua cobrado, e uma execução que não pôde olhar tudo não se anuncia como se tivesse
+olhado. Verificado dos dois lados: com o `.pt` no disco o teste passa; sem ele, pula nomeando
+S-182, S-201 e S-203.

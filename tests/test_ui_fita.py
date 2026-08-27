@@ -257,6 +257,14 @@ class OrcamentoDeAlturaTests(unittest.TestCase):
             fita.altura_da_fita(fita.PLENO, linha_de_texto=15, linha_de_apoio=13, densidade="folgada")
 
 
+FOLGA_DA_FITA_PLENA = 80
+"""Quanto se soma a `largura_de_troca` para a fita caber com folga (S-326).
+
+Existe porque `largura_de_troca` é o limiar **exato**: montar ali deixa a fita no fio, e um
+pixel de arredondamento do gerenciador de geometria a joga para duas linhas. Oitenta é dois
+botões de folga -- não é medida, é margem, e é por isso que ela tem nome."""
+
+
 class ModoDaFitaTests(unittest.TestCase):
     """A troca de modo pela largura, com a janela dimensionada de propósito."""
 
@@ -273,6 +281,25 @@ class ModoDaFitaTests(unittest.TestCase):
         self.janela = tk.Toplevel(self.root)
         self.addCleanup(self.janela.destroy)
         self.amarrados = {acao: (lambda: None) for acao in fita.acoes_da_fita()}
+
+    def _plena(self, altura: int = 300) -> fita.Fita:
+        """Uma fita montada larga o bastante para caber em **uma** linha, nesta máquina (S-326).
+
+        Era `self._em(2200)`, e 2.200 px é a largura em que a fita plena cabe numa linha **com as
+        fontes desta máquina de desenvolvimento**. Na primeira execução da CI num ramo de trabalho
+        (S-296), o runner do Windows desenhou os mesmos dezessete botões mais largos, 2.200 não
+        bastou, e três testes falharam afirmando `1 != 2` e `'pleno' != 'compacto'` -- sobre um
+        código correto.
+
+        O número certo não é constante nenhuma: é `largura_de_troca`, que a própria fita **mede**
+        (a soma dos grupos mais o espaço entre eles). Montar uma vez para perguntar, e remontar
+        com folga, faz o teste dizer a mesma coisa em qualquer fonte -- que é o que ele sempre
+        quis dizer, e o 2.200 era só um jeito de dizê-lo aqui.
+        """
+        sonda = self._em(2200, altura)
+        largura = max(2200, sonda.largura_de_troca + FOLGA_DA_FITA_PLENA)
+        sonda.destroy()
+        return self._em(largura, altura)
 
     def _em(self, largura: int, altura: int = 300) -> fita.Fita:
         self.janela.geometry(f"{largura}x{altura}")
@@ -302,7 +329,7 @@ class ModoDaFitaTests(unittest.TestCase):
                 montada.destroy()
 
     def test_a_fita_larga_fica_plena(self) -> None:
-        montada = self._em(2200)
+        montada = self._plena()
         self.assertEqual(fita.PLENO, montada.modo)
         self.assertEqual(1, montada.linhas)
 
@@ -324,7 +351,7 @@ class ModoDaFitaTests(unittest.TestCase):
         """**Derivado, e não escolhido.** O limiar é a largura que a fita plena pede para caber
         em uma linha, lida do próprio widget -- então "entra em compacto antes de dobrar" deixa
         de ser regra a cobrar e vira consequência da forma."""
-        montada = self._em(2200)
+        montada = self._plena()
         self.assertEqual(1, montada.linhas_em(montada.largura_de_troca))
         self.assertEqual(2, montada.linhas_em(montada.largura_de_troca - 1))
 
@@ -382,7 +409,7 @@ class ModoDaFitaTests(unittest.TestCase):
         descrito não existia, e a justificativa não era verificável nem verdadeira. Esta é as
         duas coisas: o teste conta as remontagens.
         """
-        montada = self._em(2200)
+        montada = self._plena()
         limiar = montada.largura_de_troca
         self.assertGreater(limiar, 1, "sem limiar medido não há o que afirmar")
 

@@ -363,16 +363,35 @@ def measured_modules(
 
 
 def _digest_of(caminhos: Iterable[Path], raiz: Path) -> str:
-    """Digest de código: **o nome entra junto com o conteúdo.**
+    """Digest de código: **o nome entra junto com o conteúdo, e a quebra de linha não** (S-325).
 
     Para módulo o nome é significado -- renomear `hybrid.py` muda o que roda tanto quanto
     editá-lo, e um digest cego ao nome diria que nada mudou. É o oposto do modelo, ver
     `_digest_file`.
+
+    **`\r\n` vira `\n` antes de entrar no hash, e sem isso o digest não é reproduzível.** O
+    `.gitattributes` declara `*.py text eol=lf`: o repositório guarda LF e o disco de trabalho
+    fica com o final de linha nativo. Nesta máquina 52 dos 414 módulos estão em CRLF -- entre
+    eles `board_detection.py`, `service.py` e `inference.py` --, e o mesmo arquivo, no mesmo
+    commit, dava dois digests:
+
+        CRLF, como está no disco de quem mede    da3d01935c122469
+        LF,   como está no git e na CI           fd5b4c1ccddd3297
+
+    Ou seja: a guarda `test_todo_relatorio_corrente_mediu_o_codigo_de_hoje` **não podia passar**
+    fora da máquina onde a medição foi feita -- nem na CI, nem em Linux, nem num worktree. Ela
+    acusava "o módulo mudou" sobre um arquivo idêntico. Foi a primeira execução da CI num ramo
+    de trabalho (S-296) que mostrou isso; antes dela ninguém tinha como ver.
+
+    Normalizar é a resposta certa e não um afrouxamento: o que se quer saber é se o **código**
+    mudou, e trocar a quebra de linha não muda código nenhum -- o próprio `git` trata os dois
+    como o mesmo arquivo. Quem quiser o byte cru tem `_digest_file`, que é para artefato binário
+    e onde normalizar seria corromper.
     """
     acumulador = hashlib.sha256()
     for caminho in sorted(caminhos):
         acumulador.update(caminho.relative_to(raiz).as_posix().encode("utf-8"))
-        acumulador.update(caminho.read_bytes())
+        acumulador.update(caminho.read_bytes().replace(b"\r\n", b"\n"))
     return acumulador.hexdigest()[:16]
 
 
