@@ -198,16 +198,27 @@ CSV de 280 MB, contra 499 candidatos aceitos. Instrumento que ninguém abre não
 
 
 def order_quad_points(points: np.ndarray) -> np.ndarray:
-    pts = np.array(points, dtype=np.float32).reshape(4, 2)
-    s = pts.sum(axis=1)
-    diff = np.diff(pts, axis=1).reshape(-1)
+    """Os quatro cantos em `TL, TR, BR, BL`, **sem repetir nenhum** (S-363).
 
-    ordered = np.zeros((4, 2), dtype=np.float32)
-    ordered[0] = pts[np.argmin(s)]  # top-left
-    ordered[2] = pts[np.argmax(s)]  # bottom-right
-    ordered[1] = pts[np.argmin(diff)]  # top-right
-    ordered[3] = pts[np.argmax(diff)]  # bottom-left
-    return ordered
+    A regra antiga era a das somas e diferenças: canto de menor soma é o superior-esquerdo, de
+    maior soma o inferior-direito, e as diagonais saem da diferença `y - x`. Ela funciona para
+    quadrilátero de pé e **quebra no quad a 45°** -- que é justamente o candidato torto que a
+    geometria mais precisa julgar. Num losango de vértices `(100,0) (200,100) (100,200) (0,100)`
+    o mesmo ponto ganhava `argmin(soma)` e `argmin(diferença)`: a saída tinha três cantos e um
+    repetido, e `getPerspectiveTransform` sobre isso é uma matriz sem sentido.
+
+    O ângulo em torno do centro não empata: quatro pontos distintos de um quadrilátero convexo
+    têm quatro ângulos distintos, e ordená-los por ele dá a volta na figura. Com `y` crescendo
+    para baixo -- a convenção da imagem --, o sentido do ângulo crescente é o horário, que é a
+    ordem que `warp_from_quad` espera. O `roll` só escolhe **por onde começar**: o canto de menor
+    soma, que é o mesmo critério de superior-esquerdo de antes.
+    """
+    pts = np.array(points, dtype=np.float32).reshape(4, 2)
+    centro = pts.mean(axis=0)
+    angulos = np.arctan2(pts[:, 1] - centro[1], pts[:, 0] - centro[0])
+    horario = pts[np.argsort(angulos, kind="stable")]
+    inicio = int(np.argmin(horario.sum(axis=1)))
+    return np.roll(horario, -inicio, axis=0).astype(np.float32)
 
 
 def warp_from_quad(image_rgb: np.ndarray, quad: np.ndarray, target_size: int = BOARD_SIZE) -> np.ndarray:

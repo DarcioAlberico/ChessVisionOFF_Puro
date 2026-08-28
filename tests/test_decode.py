@@ -270,3 +270,48 @@ class ReparoNaoPassaNoGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrazoDaBuscaTests(unittest.TestCase):
+    """A busca sujeita às regras tem teto de **tempo**, e não só de expansões (S-358).
+
+    Um tabuleiro legal nem entra na busca (~0,1 ms); um tabuleiro ilegal gastava as 5.000
+    expansões inteiras para no fim admitir que não achou -- 3,5 s medidos aqui, e **duas vezes por
+    diagrama**, porque o modo `auto` lê a 0° e a 180°.
+    """
+
+    def _ilegal(self) -> np.ndarray:
+        """Rei branco como argmax em todas as 64 casas: o pior caso da busca."""
+        probs = np.full((64, len(PIECE_CLASSES)), 0.02)
+        probs[:, PIECE_CLASSES.index("K")] = 0.30
+        probs[:, PIECE_CLASSES.index("empty")] = 0.28
+        return probs / probs.sum(axis=1, keepdims=True)
+
+    def test_o_tabuleiro_ilegal_para_no_prazo(self) -> None:
+        import time
+
+        inicio = time.perf_counter()
+        resultado = decode_constrained(self._ilegal(), max_seconds=0.05)
+        gasto = time.perf_counter() - inicio
+
+        self.assertLess(gasto, 1.0, "a busca ignorou o prazo")
+        self.assertFalse(resultado.constraints_satisfied)
+
+    def test_o_prazo_desligado_continua_valendo_o_teto_de_expansoes(self) -> None:
+        """`max_seconds=0` é o comportamento de antes, e ele continua disponível."""
+        resultado = decode_constrained(self._ilegal(), max_seconds=0, max_expansions=50)
+        self.assertFalse(resultado.constraints_satisfied)
+
+    def test_o_tabuleiro_legal_nao_e_afetado(self) -> None:
+        probs = np.full((64, len(PIECE_CLASSES)), 0.001)
+        probs[:, PIECE_CLASSES.index("empty")] = 0.9
+        probs[4] = 0.001
+        probs[4, PIECE_CLASSES.index("K")] = 0.95
+        probs[60] = 0.001
+        probs[60, PIECE_CLASSES.index("k")] = 0.95
+        probs = probs / probs.sum(axis=1, keepdims=True)
+
+        resultado = decode_constrained(probs, max_seconds=0.05)
+
+        self.assertTrue(resultado.constraints_satisfied)
+        self.assertEqual(resultado.changed_square_count, 0)

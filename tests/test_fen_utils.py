@@ -170,3 +170,25 @@ class PawnDirectionScoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FenComCaractereEstranhoTests(unittest.TestCase):
+    """Caractere de peça desconhecido levanta, e não vira casa vazia (S-361).
+
+    O `.get(peca, empty)` transformava qualquer lixo numa casa vazia plausível, e o pior cliente
+    disso é a segunda opinião: as duas leituras viravam `empty` na mesma casa e ela anunciava
+    **acordo total** sobre um tabuleiro que nenhuma das duas leu.
+    """
+
+    def test_a_fen_valida_continua_valendo(self) -> None:
+        self.assertEqual(len(labels_from_fen("4k3/8/8/8/8/8/8/4K3")), 64)
+
+    def test_o_caractere_desconhecido_levanta(self) -> None:
+        with self.assertRaises(ValueError) as capturado:
+            labels_from_fen("4k3/8/8/8/8/8/8/4X3")
+        self.assertIn("X", str(capturado.exception))
+
+    def test_a_figurina_unicode_tambem(self) -> None:
+        """É o caso real: a leitura de glifo devolve `♔` e ninguém a converte antes."""
+        with self.assertRaises(ValueError):
+            labels_from_fen("4k3/8/8/8/8/8/8/4♔3")

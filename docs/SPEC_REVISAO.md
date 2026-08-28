@@ -1967,3 +1967,121 @@ vazio responde `False` para todos: **a folha inteira saía sublinhada**. E o cas
 apontando.
 
 **Testes.** `LexicoVazioDesligaTests`, dois casos.
+
+---
+
+# Fase 59 — O núcleo, revisitado
+
+Sete achados, seis itens (S-358 a S-364) e **um refutado**.
+
+## S-358 · A busca sujeita às regras tem prazo
+
+**Problema.** `decode_constrained` tem teto de **expansões** (5.000) e nenhum de tempo. Num
+tabuleiro legal ela nem começa -- o argmax já satisfaz as regras, ~0,1 ms --, e num tabuleiro
+ilegal ela gasta as cinco mil para no fim admitir que não achou. Medido aqui, com rei branco como
+argmax nas 64 casas: **3,5 s**. E `predict_with_orientation` lê a 0° e a 180°, então são sete
+segundos de janela parada num diagrama que vai ser recusado de qualquer jeito.
+
+**Solução.** `max_seconds=0.5`, conferido a cada 64 expansões -- `time.monotonic` custa ~50 ns e
+o corpo do laço custa pouco mais que isso, então perguntar as horas cinco mil vezes seria pagar
+pelo cronômetro o que se quer economizar na busca.
+
+Meio segundo é quatro mil vezes o caso normal e sete vezes menos que o pior medido: nenhum reparo
+que hoje termina é cortado por ele.
+
+**Critério de aceite.** O tabuleiro de 3,5 s termina dentro do prazo, com
+`constraints_satisfied=False`; o legal continua saindo sem troca nenhuma.
+
+**Testes.** `PrazoDaBuscaTests`, três casos.
+
+## S-359 · A lápide do candidato removido é `None`
+
+**Problema.** Quando um contorno vence uma união de ladrilhos, o candidato embutido sai da lista e
+a caixa dele era marcada com a sentinela `(0, 0, 1, 1)`. Só que **uma sentinela em forma de caixa
+continua sendo uma caixa**: `_same_region` a compara como tal, e qualquer contorno ancorado na
+origem da página volta a "casar" com ela -- e ancorado na origem não é caso raro, é a moldura da
+página inteira. O `candidates.remove` seguinte levantaria sobre um candidato que já não está lá.
+
+**Solução.** `None` é a lápide, e a busca por conflito pula quem já saiu. O prior de tamanho
+também passou a ignorar as lápides.
+
+**Critério de aceite.** `mypy` obriga o `None` a ser tratado nos dois pontos que leem a lista;
+nenhum contorno casa com um candidato removido.
+
+## S-360 · A `SingleLegalRule` que não dispara — **refutado**
+
+**O achado.** Com `CONSTRAINED_DECODING` ligado, a regra de legalidade da cascata de orientação
+nunca decide: a decodificação repara a leitura **antes** de a legalidade ser consultada, e as duas
+orientações chegam legais.
+
+**Por que ele cai.** O comportamento é deliberado, medido e **está afirmado por teste**:
+`test_constrained_decoding_makes_legality_a_rare_but_harmless_tiebreak` documenta que o filtro
+decide em 52 dos 320 tabuleiros do split de teste e que o sinal não se perde -- a casa reparada
+fica com a confiança real dela, que é baixa, e a margem de confiança decide a mesma orientação.
+"Ligar a S-11 transfere o sinal de ilegalidade para a confiança em vez de perdê-lo, e o veredito
+não muda."
+
+A tentativa de conserto foi escrita e desfeita: perguntar a legalidade ao `DecodeResult` -- "esta
+leitura precisou de reparo?" -- faz a regra voltar a disparar, e derruba o teste que declara a
+decisão. Trocar uma decisão medida por uma não medida não é conserto.
+
+## S-361 · Caractere desconhecido na FEN levanta
+
+**Problema.** `labels_from_fen` fazia `PIECE_TO_IDX.get(peca, PIECE_TO_IDX["empty"])`: qualquer
+caractere fora do alfabeto de peça -- um `X` da leitura, uma figurina Unicode -- virava **casa
+vazia**, silenciosamente. O pior cliente disso é a segunda opinião: as duas leituras viravam
+`empty` na mesma casa e ela anunciava **acordo total** sobre um tabuleiro que nenhuma das duas
+leu.
+
+**Solução.** `ValueError` nomeando o caractere e listando os válidos. FEN válida não passa por
+aqui: `PIECE_TO_IDX` tem exatamente as doze peças, e o dígito já foi expandido.
+
+**Critério de aceite.** `4k3/.../4X3` levanta nomeando o `X`; a FEN válida continua devolvendo 64
+rótulos.
+
+**Testes.** `FenComCaractereEstranhoTests`, três casos.
+
+## S-362 · O teto da página corta o pior, e avisa
+
+**Problema.** Duas coisas na mesma linha. O corte por `max_boards` era aplicado **depois** da
+ordenação de leitura: numa página de treze diagramas com teto de doze, o que sumia era o último a
+ser lido -- o do canto inferior direito --, e não o de menor score. E era a única recusa sem nada
+no log, enquanto `detect_boards` avisa desde a Fase 5.
+
+**Solução.** A seleção é por score; a ordem de leitura continua sendo a da saída, e só deixou de
+decidir *quem* fica. O aviso é o mesmo do irmão, com os scores cortados e o do último aceito.
+
+**Critério de aceite.** Numa página em que o pior candidato é o primeiro a ser lido, é ele que
+sai. O `rejected` continua recebendo os cortados com o motivo `teto-da-pagina`.
+
+**Testes.** `TetoDaPaginaTests`.
+
+## S-363 · Os quatro cantos do quad, sem repetir
+
+**Problema.** `order_quad_points` ordenava por soma e diferença das coordenadas -- regra que
+funciona para quadrilátero de pé e **quebra no quad a 45°**. Num losango de vértices
+`(100,0) (200,100) (100,200) (0,100)` o mesmo ponto ganha `argmin(soma)` e `argmin(diferença)`: a
+saída tinha três cantos, um repetido, e `getPerspectiveTransform` sobre isso é uma matriz sem
+sentido. É justamente o candidato torto que a geometria mais precisa julgar.
+
+**Solução.** Ângulo em torno do centro: quatro pontos distintos de um quadrilátero convexo têm
+quatro ângulos distintos. Com `y` crescendo para baixo, o sentido do ângulo crescente é o horário,
+que é a ordem que `warp_from_quad` espera; o `roll` só escolhe por onde começar -- o canto de
+menor soma, o mesmo critério de superior-esquerdo de antes.
+
+**Critério de aceite.** O losango sai com quatro cantos distintos, e o retângulo sai exatamente na
+ordem de antes -- afirmado com os pontos em ordem e fora de ordem.
+
+**Testes.** `QuadA45GrausTests`, três casos.
+
+## S-364 · O censo de recusas grava o contraste que ele mediu
+
+**Problema.** Duas recusas do `hybrid` gravavam `checker=0.0` num ponto em que o recorte **está na
+mão**: `perdeu-para-embutido` e `prior-de-tamanho`. E `RejectedQuad.checker` documenta o zero como
+"a recusa foi antes de haver recorte" -- então o censo de recusas afirmava que aqueles candidatos
+não tinham contraste nenhum, o que é uma afirmação, e falsa.
+
+**Solução.** `board_checker_contrast(board_rgb)` nos dois, como a recusa `faixa-da-pagina` já
+fazia quinze linhas acima.
+
+**Critério de aceite.** Nenhuma recusa com recorte disponível grava zero.

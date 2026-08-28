@@ -279,7 +279,7 @@ que teste faltava.
 | 56 | O que so a CI podia mostrar | S-325 a S-327 | **entregue** |  o digest que via CRLF, a fita medida nas fontes desta máquina, a sonda de artefato ausente |
 | 57 | A folha, o editor e a sala de estudo | S-328 a S-347 | **entregue** |  duas bases para a mesma folha, o desfazer que não vê formato, a sala que não grava |
 | 58 | O texto lido: o que erra e o que custa | S-348 a S-357 | **entregue** |  a camada pesquisável duplicada, e 53% do custo numa pergunta repetida |
-| 59 | O núcleo, revisitado | S-361 a S-367 | |  3,4 s num tabuleiro ilegal, e a sentinela que volta a casar |
+| 59 | O núcleo, revisitado | S-358 a S-364 | **entregue** |  3,4 s num tabuleiro ilegal, e a sentinela que volta a casar |
 | 60 | Os dados e o treino | S-368 a S-376 | **entregue** |  o `splits.csv` apagado, o "melhor época" que indexa a lista errada |
 | 61 | Os quarenta comandos | S-377 a S-385 | **entregue** |  o `-v` que a mensagem de erro manda usar e doze comandos recusam |
 | 62 | O que sai no `.exe` | S-386 a S-393 | |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |

@@ -209,7 +209,22 @@ def labels_from_fen(fen: str) -> list[int]:
                 expanded.append(ch)
         if len(expanded) != 8:
             raise ValueError("Cada fila da FEN deve resolver para 8 casas.")
-        labels.extend(PIECE_TO_IDX.get(piece, PIECE_TO_IDX["empty"]) for piece in expanded)
+        for peca in expanded:
+            # **Caractere desconhecido levanta, e não vira casa vazia (S-361).** O `.get(peca,
+            # empty)` de antes transformava qualquer lixo -- um `x` da leitura, uma figurina
+            # Unicode, uma letra fora do alfabeto de peça -- numa casa vazia perfeitamente
+            # plausível. E o pior cliente disso é a segunda opinião: as duas leituras viravam
+            # `empty` na mesma casa e ela anunciava **acordo total** sobre um tabuleiro que
+            # nenhuma das duas leu.
+            #
+            # As FEN válidas não passam por aqui: `PIECE_TO_IDX` tem exatamente as doze peças, e
+            # o dígito já foi expandido acima.
+            if peca not in PIECE_TO_IDX:
+                raise ValueError(
+                    f"Caractere de peça desconhecido na FEN: {peca!r}. "
+                    f"Os válidos são {''.join(sorted(k for k in PIECE_TO_IDX if k != 'empty'))}."
+                )
+            labels.append(PIECE_TO_IDX[peca])
     return labels
 
 

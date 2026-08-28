@@ -1409,3 +1409,37 @@ class PageBandGuardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TetoDaPaginaTests(unittest.TestCase):
+    """Quem passa do teto sai por **score**, e o log diz que saiu (S-362).
+
+    O corte era aplicado depois da ordenação de leitura: numa página de treze diagramas com teto
+    de doze, o que sumia era o último a ser lido -- o do canto inferior direito --, e não o pior.
+    E era a única recusa sem nada no log: `detect_boards` avisa desde a Fase 5.
+    """
+
+    def _candidato(self, indice: int, score: float):  # noqa: ANN202 - DiagramCandidate
+        from chess_diagram_ocr.detection.hybrid import DiagramCandidate
+
+        topo = 10.0 + indice * 100.0
+        return DiagramCandidate(
+            board_rgb=np.zeros((8, 8, 3), dtype=np.uint8),
+            bbox_pdf=(10.0, topo, 90.0, topo + 80.0),
+            source="contour",
+            detector_score=score,
+            native_size=(8, 8),
+        )
+
+    def test_o_pior_e_que_sai_e_nao_o_ultimo_da_pagina(self) -> None:
+        from chess_diagram_ocr.detection import hybrid
+
+        # O primeiro da página é o pior; o último é bom.
+        candidatos = [self._candidato(0, 0.10), self._candidato(1, 0.90), self._candidato(2, 0.80)]
+        ordenados = hybrid._order_candidates(candidatos, scale=1.0, reading_order="column")
+        self.assertEqual([round(c.detector_score, 2) for c in ordenados], [0.10, 0.90, 0.80])
+
+        por_score = sorted(candidatos, key=lambda c: -float(c.detector_score))[:2]
+        sobreviventes = hybrid._order_candidates(por_score, scale=1.0, reading_order="column")
+
+        self.assertEqual([round(c.detector_score, 2) for c in sobreviventes], [0.90, 0.80])
