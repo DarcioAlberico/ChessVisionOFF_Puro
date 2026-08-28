@@ -36,6 +36,27 @@ def _force_utf8_output() -> None:
             pass
 
 
+_verboso_pedido = False
+"""Se o comando que esta rodando pediu `-v`. Ver `verbosidade_pedida` (S-427)."""
+
+
+def verbosidade_pedida() -> bool:
+    """O `-v` **deste** comando, dito por quem o parseou (S-427).
+
+    **O que isto conserta.** `cli.run_main` decidia se mostrava o traceback varrendo o
+    `sys.argv` do processo, e num processo que nao e o comando isso e a linha de outra pessoa:
+    a CI roda `uv run pytest -v`, e o `-v` do pytest fazia o `run_main` levantar a excecao
+    original em vez de traduzi-la para pt-BR e devolver o codigo de saida. Dois testes de
+    `test_cli_errors` reprovavam **so na CI** por causa disso -- na maquina de desenvolvimento a
+    suite roda sem `-v`.
+
+    O funil e universal: os 40 comandos chamam `configure_logging(verbose=args.verbose)` depois
+    de parsear, entao a resposta certa ja passa por aqui uma vez por comando. Perguntar ao
+    argparse do proprio comando e o oposto de adivinhar pela linha do processo.
+    """
+    return _verboso_pedido
+
+
 def configure_logging(*, verbose: bool = False, log_file: Path | None = None) -> None:
     """Configura o logging da aplicacao. Idempotente: chamadas repetidas nao duplicam handlers.
 
@@ -48,7 +69,11 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
     `None`; num `.exe`, é a diferença entre ter e não ter rastro, que é o mesmo modo de falha
     que a S-127 fechou para o congelado.
     """
-    global _configured
+    global _configured, _verboso_pedido
+    # **Registrado antes do `return` de idempotencia** (S-427): o segundo comando de um mesmo
+    # processo nao reconfigura o logging, e mesmo assim e ele quem esta rodando -- quem pergunta
+    # depois quer saber o que **este** comando pediu, e nao o que o primeiro pediu.
+    _verboso_pedido = verbose
     if _configured:
         return
 

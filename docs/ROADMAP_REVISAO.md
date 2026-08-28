@@ -27,7 +27,7 @@ segunda passada de céticos, com a tarefa de **derrubar** cada achado antes de e
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-426 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-428 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -664,6 +664,27 @@ Ele estava lá havia semanas, invisível, e ninguém podia tê-lo visto: a CI n�
   separação por classe compraria já está comprado pelo significado, e agora está sob teste.
 
 ---
+
+---
+
+# O que a segunda execução da CI encontrou
+
+O PR desta revisão para a `main` foi o primeiro a rodar as três verificações sobre as nove fases
+juntas, e **reprovou** -- oito testes, e nenhum deles reproduzível nesta máquina. Dois vieram de
+um valor lido do ambiente errado e viraram item (S-427 e S-428, na
+[SPEC_REVISAO.md](SPEC_REVISAO.md)): o `-v` do `pytest` que o `run_main` tomava por `-v` de
+comando, e a guarda de tamanho de artefato que confundia *a pasta existe* com *o artefato está
+lá* -- `data/samples/` é versionado com um `.gitkeep`.
+
+Os outros são a medida de largura da fita, que depende da fonte da máquina e já estava sendo
+atacada pela S-326: a mesma classe que a Fase 56 registrou, e no mesmo arquivo.
+
+**É a terceira vez neste documento que a CI encontra o que a máquina de desenvolvimento não
+podia mostrar** -- a primeira foi o `from tests.` da Fase 29, a segunda foram os três defeitos da
+Fase 56. Vale escrever o que as três têm em comum: **nenhuma delas é sobre o programa.** São
+sobre o que o teste assume da máquina em que roda -- o caminho de import, o final de linha, a
+fonte, a linha de comando do processo, a pasta que existe vazia. É a superfície que só um segundo
+ambiente ilumina, e é por isso que a Fase 52 vem antes de tudo.
 
 # O que ficou entregue
 

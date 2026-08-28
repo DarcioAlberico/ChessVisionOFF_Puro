@@ -29,7 +29,7 @@ from ..config import (
     DEFAULT_SAMPLES_DIR,
     DEFAULT_SPLITS_PATH,
 )
-from ..logging_setup import onde_esta_o_rastro
+from ..logging_setup import onde_esta_o_rastro, verbosidade_pedida
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +202,19 @@ def saida_que_nao_quebra_em_caractere() -> None:
             continue
 
 
+def _pediu_verboso(argv: Sequence[str] | None) -> bool:
+    """Se **este comando** pediu `-v`, e não se a linha do processo por acaso tem um (S-427).
+
+    Quando o chamador passa `argv`, a resposta é o que ele passou -- é o caso dos testes, e ali a
+    intenção é explícita. Quando não passa, quem sabe é o comando que acabou de parsear: os 40
+    chamam `configure_logging(verbose=args.verbose)`, e `logging_setup.verbosidade_pedida` guarda
+    aquele valor. Varrer o `sys.argv` do processo era ler a linha de outra pessoa.
+    """
+    if argv is not None:
+        return any(arg in ("-v", "--verbose") for arg in argv)
+    return verbosidade_pedida()
+
+
 def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
     """Roda um `main` de CLI traduzindo falha em mensagem pt-BR e código de saída (S-126).
 
@@ -218,9 +231,14 @@ def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
     lista vazia: no uso real -- que é o único em que a pessoa digita `-v` -- a bandeira nunca
     era vista, e o traceback que ela pede não aparecia. Nos testes, que passam `argv`, ela
     sempre foi vista, e é por isso que ninguém percebeu.
+
+    **Mas `sys.argv` é a linha do processo, e nem todo processo é o comando (S-427).** A CI roda
+    `uv run pytest -v`, e aquele `-v` fazia o `run_main` levantar a exceção original em vez de
+    traduzi-la: dois testes de `test_cli_errors` reprovavam **só lá**. Quem sabe o que este
+    comando pediu é quem o parseou -- os 40 chamam `configure_logging(verbose=args.verbose)` --,
+    e é a ele que se pergunta agora, depois de `fn` ter rodado.
     """
     saida_que_nao_quebra_em_caractere()
-    verboso = any(arg in ("-v", "--verbose") for arg in (sys.argv[1:] if argv is None else argv))
     try:
         return fn(argv)
     except (KeyboardInterrupt, SystemExit):
@@ -229,6 +247,7 @@ def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
         # `debug` e nao `exception`: o traceback vai para o **log** e nao para a tela, que e o
         # que o item pede. O handler de arquivo esta em DEBUG desde a S-126 justamente aqui.
         logger.debug("O comando falhou.", exc_info=True)
+        verboso = _pediu_verboso(argv)
         print()
         print(f"Erro: {message_for(exc)}")
         print()
@@ -240,6 +259,7 @@ def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
         return classify(exc)
     except Exception as exc:  # noqa: BLE001 - falha inesperada e uma classe propria (codigo 1)
         logger.debug("Falha inesperada.", exc_info=True)
+        verboso = _pediu_verboso(argv)
         print()
         print(f"Falha inesperada: {type(exc).__name__}: {message_for(exc)}")
         print(f"{onde_esta_o_rastro()} Rode com -v para vê-lo aqui.")

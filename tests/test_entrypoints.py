@@ -112,16 +112,41 @@ class BandeiraVerboseTests(unittest.TestCase):
         self.assertGreaterEqual(len(self._modulos_de_comando()), 30)
 
     def test_a_bandeira_e_vista_quando_ninguem_passa_argv(self) -> None:
-        """Como *console script* o `main` é chamado sem argumento: `argv` chega `None` (S-377)."""
-        from unittest.mock import patch
+        """Como *console script* o `main` é chamado sem argumento: `argv` chega `None` (S-377).
 
+        **Quem diz que houve `-v` é o comando, e não a linha do processo** (S-427): o molde
+        aqui é o que os 40 fazem de verdade -- parsear e chamar `configure_logging` com o que
+        saiu do `argparse`. Era `sys.argv` que respondia, e ver o teste seguinte para o que
+        isso custou.
+        """
         from chess_diagram_ocr.cli import run_main
+        from chess_diagram_ocr.logging_setup import configure_logging
 
         def explode(argv: object) -> int:
+            configure_logging(verbose=True)
             raise ValueError("falha de teste")
 
-        with patch("sys.argv", ["cvoff-qualquer", "-v"]), self.assertRaises(ValueError):
+        with self.assertRaises(ValueError):
             run_main(explode, None)
+
+    def test_o_v_do_processo_nao_e_o_do_comando(self) -> None:
+        """A CI roda `uv run pytest -v`, e aquele `-v` não é de comando nenhum (S-427).
+
+        Era o defeito que só a CI podia mostrar: com o `sys.argv` do processo como fonte, o
+        `run_main` levantava a exceção original em vez de traduzi-la para pt-BR e devolver o
+        código de saída -- e dois testes de `test_cli_errors` reprovavam lá e passavam aqui.
+        """
+        from unittest.mock import patch
+
+        from chess_diagram_ocr.cli import EXIT_BAD_INPUT, run_main
+        from chess_diagram_ocr.logging_setup import configure_logging
+
+        def explode(argv: object) -> int:
+            configure_logging(verbose=False)
+            raise ValueError("falha de teste")
+
+        with patch("sys.argv", ["pytest", "-v", "tests/"]):
+            self.assertEqual(EXIT_BAD_INPUT, run_main(explode, None))
 
     def test_sem_a_bandeira_o_rastro_nao_sobe_a_tela(self) -> None:
         from unittest.mock import patch

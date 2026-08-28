@@ -199,7 +199,7 @@ def celula_ilegivel(celula: str) -> list[str]:
 
     **É a metade que faltava, e é o item (S-404).** `faixas_declaradas` descartava em silêncio a
     parte que não casasse com "um número" ou "dois números": a linha
-    `| S-296 a S-323, S-325 a S-426 (menos S-324) | SPEC_REVISAO.md |` tem **três** números na
+    `| S-296 a S-323, S-325 a S-428 (menos S-324) | SPEC_REVISAO.md |` tem **três** números na
     segunda parte, então ela era ignorada inteira -- e as 107 seções daquele arquivo passaram a
     não estar declaradas em lugar nenhum. As duas guardas que leem o índice continuavam verdes
     porque as duas só perguntam *"o que está declarado está no lugar certo?"*; nenhuma perguntava
@@ -222,7 +222,7 @@ def faixas_declaradas(texto: str) -> dict[int, str]:
 
     Aceita `S-37 a S-77` e `S-78 a S-82, S-143` na mesma célula: a faixa da detecção não é
     contígua de propósito, e o formato precisa dizer isso sem virar prosa. E aceita
-    `S-325 a S-426 (menos S-324)`, que é a mesma necessidade pelo avesso -- ver `celula_ilegivel`
+    `S-325 a S-428 (menos S-324)`, que é a mesma necessidade pelo avesso -- ver `celula_ilegivel`
     para o que custou não aceitar.
     """
     declarado: dict[int, str] = {}
@@ -349,7 +349,7 @@ class IndiceNaoEVacuoTests(unittest.TestCase):
     """O índice tem de **ser lido**, e não só existir (S-404).
 
     **O defeito, e ele é desta casa outra vez.** A célula
-    `S-296 a S-323, S-325 a S-426 (menos S-324)` tem três números na segunda parte, e o leitor
+    `S-296 a S-323, S-325 a S-428 (menos S-324)` tem três números na segunda parte, e o leitor
     descartava em silêncio toda parte que não tivesse um ou dois. O efeito: as 107 seções do
     `SPEC_REVISAO.md` -- metade dos itens deste projeto -- não estavam declaradas em lugar nenhum,
     e as duas guardas que leem o índice continuavam verdes. Elas perguntam *"o que está declarado
@@ -941,7 +941,13 @@ class NumerosVivosTests(unittest.TestCase):
     def test_os_tamanhos_de_artefato_citados_batem_com_o_disco(self) -> None:
         """Três estavam entre 20% e 80% fora (S-410): `samples/`, `review_cache/` e o índice
         sqlite. São artefatos que crescem com o uso -- por isso a régua é a tolerância da S-135,
-        e não a igualdade."""
+        e não a igualdade.
+
+        **Existir não é ter o artefato dentro** (S-428). `data/samples/` é versionado com um
+        `.gitkeep` e nada mais, então na CI a pasta existe e está vazia: o `exists()` passava,
+        a soma dava 79 bytes e a guarda acusava 5.696.202.431% de diferença sobre um clone
+        limpo, que é a única coisa que aquele número não significa. Quem decide é o conteúdo.
+        """
         alvos = {
             "data/samples/": (RAIZ / "data" / "samples", r"os PNGs 800×800 dos tabuleiros \| não \(([\d,]+) GB\)", 10**9),
             "data/review_cache/": (RAIZ / "data" / "review_cache", r"não reabrir o PDF \| não \(([\d,]+) GB", 10**9),
@@ -952,7 +958,10 @@ class NumerosVivosTests(unittest.TestCase):
                 if not caminho.exists():  # pragma: no cover - checkout sem o artefato
                     self.skipTest(f"{nome} não existe neste checkout")
                 if caminho.is_dir():
-                    bytes_reais = sum(f.stat().st_size for f in caminho.rglob("*") if f.is_file())
+                    conteudo = [f for f in caminho.rglob("*") if f.is_file() and f.name != ".gitkeep"]
+                    if not conteudo:  # pragma: no cover - clone limpo: só o `.gitkeep`
+                        self.skipTest(f"{nome} está vazia neste checkout (só o `.gitkeep`)")
+                    bytes_reais = sum(f.stat().st_size for f in conteudo)
                 else:
                     bytes_reais = caminho.stat().st_size
                 _perto(self, _citado(self.arquitetura, padrao), bytes_reais / unidade, f"tamanho de {nome}")

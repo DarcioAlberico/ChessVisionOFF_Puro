@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-426 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-428 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2891,3 +2891,60 @@ teste: `Up`/`Down` chegam a quem incrementa (o `Spinbox`) e a quem escolhe da li
 de campo entra em `TEXT_ENTRY_WIDGETS` ou perde as teclas dele, e o teste diz isso.
 
 **Testes.** `CessaoPorClasseDeWidgetTests` (5).
+
+---
+
+# O que a segunda execução da CI encontrou (S-427 e S-428)
+
+O PR desta revisão para a `main` foi o primeiro a rodar as três verificações sobre as nove fases
+juntas, e ele **reprovou**. Dos oito testes vermelhos, dois eram do `tests/test_ui_fita.py` -- a
+medida de largura que depende da fonte da máquina, que a S-326 já vinha atacando --, e os outros
+dois são desta revisão. Os dois são da mesma família: **um valor lido do ambiente errado**.
+
+## S-427 · O `-v` do processo não é o `-v` do comando
+
+**Problema.** A S-377 fez `run_main` procurar `-v` no `sys.argv` quando ninguém passa `argv` --
+que é o caso do *console script*. Mas `sys.argv` é a linha do **processo**, e nem todo processo é
+o comando: a CI roda `uv run pytest -v`, e aquele `-v`, que é do pytest, fazia o `run_main`
+**levantar a exceção original** em vez de traduzi-la para pt-BR e devolver o código de saída.
+
+Dois testes de `test_cli_errors` reprovavam só lá, e a razão de ninguém ter visto é a mesma de
+sempre: na máquina de desenvolvimento a suíte roda sem `-v`.
+
+E não é defeito só de teste. Qualquer processo que chame um `main` em memória -- outro comando, a
+janela no auto-teste, um script -- passa a receber traceback em vez de mensagem se a linha dele
+tiver um `-v` por outro motivo.
+
+**Solução.** Pergunta-se a quem parseou. Os 40 comandos chamam
+`configure_logging(verbose=args.verbose)` depois do `parse_args`, então `logging_setup` guarda
+aquele valor e `verbosidade_pedida()` o devolve. Quando o chamador **passa** `argv`, a resposta é
+o que ele passou -- é o caso dos testes, e ali a intenção é explícita.
+
+O registro acontece **antes** do `return` de idempotência do `configure_logging`: o segundo
+comando de um mesmo processo não reconfigura o logging, e mesmo assim é ele quem está rodando.
+
+**Critério de aceite.** Com `sys.argv` contendo `-v` por outro motivo, uma falha conhecida vira
+código de saída e linha em pt-BR; com o comando tendo pedido `-v`, o traceback sobe.
+
+**Testes.** `test_o_v_do_processo_nao_e_o_do_comando`,
+`test_a_bandeira_e_vista_quando_ninguem_passa_argv`.
+
+## S-428 · Existir não é ter o artefato dentro
+
+**Problema.** A guarda de tamanho de artefato da S-410 pulava quando o caminho não existe. Mas
+`data/samples/` é **versionado com um `.gitkeep`**: num clone limpo a pasta existe e está vazia,
+o `exists()` passava, a soma dava 79 bytes, e a guarda acusava *"o documento diz 4,5 GB e o disco
+tem 7,9e-08 -- 5.696.202.431% de diferença"* sobre um checkout perfeitamente correto.
+
+É o inverso exato do defeito que a S-417 cataloga: lá, uma guarda que pula para sempre e ninguém
+conta; aqui, uma guarda que **falha** para sempre num ambiente em que ela não tinha o que medir.
+As duas vêm de confundir *o caminho existe* com *o artefato está lá*.
+
+**Solução.** Para diretório, o critério passa a ser o conteúdo -- `.gitkeep` não conta --, e a
+pasta vazia pula dizendo isso. Para arquivo, `exists()` continua respondendo, porque ali não há
+essa distinção.
+
+**Critério de aceite.** Num clone sem `data/samples/` preenchido a guarda pula; com o artefato no
+lugar, ela mede.
+
+**Testes.** `test_os_tamanhos_de_artefato_citados_batem_com_o_disco`.
