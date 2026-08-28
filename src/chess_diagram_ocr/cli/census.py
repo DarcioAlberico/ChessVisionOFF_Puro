@@ -39,7 +39,7 @@ from ..detection_census import (
     write_rejections_csv,
 )
 from ..logging_setup import configure_logging, default_log_file
-from . import cli_errors
+from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_dpi_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +61,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     paginas.add_argument("--pages", type=int, default=DEFAULT_PAGES_PER_BOOK, help="Páginas amostradas por livro.")
     paginas.add_argument("--all-pages", action="store_true", help="Varre o livro inteiro, sem amostrar.")
 
-    parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--max-boards", type=int, default=DEFAULT_MAX_BOARDS)
-    parser.add_argument("--reading-order", default=DEFAULT_READING_ORDER, choices=("row", "column"))
+    add_dpi_argument(parser)
+    parser.add_argument("--max-boards", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de candidatos por página.")
+    parser.add_argument(
+        "--reading-order",
+        default=DEFAULT_READING_ORDER,
+        choices=("row", "column"),
+        help="Ordem em que os candidatos da página são contados.",
+    )
     parser.add_argument(
         "--suspect-below-pt",
         type=float,
@@ -99,7 +104,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Sai com código 1 se o diff perder algum candidato acima do limiar de suspeita.",
     )
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -246,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
         pdf_path = Path(args.pdf)
         if not pdf_path.is_file():
             print(f"PDF não encontrado: {pdf_path}")
-            return 2
+            return EXIT_BAD_INPUT
         alcance = "livro inteiro" if pages is None else f"{pages} página(s)"
         print(f"Varrendo {pdf_path.name} ({alcance})...")
         book = census_book(pdf_path, **comuns)  # type: ignore[arg-type]
@@ -264,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
         pdf_dir = Path(args.pdf_dir)
         if not pdf_dir.is_dir():
             print(f"Diretório de PDFs não encontrado: {pdf_dir}")
-            return 2
+            return EXIT_BAD_INPUT
         alcance = "livro inteiro" if pages is None else f"{pages} página(s) por livro"
         print(f"Varrendo {pdf_dir} ({alcance})...")
         census = census_collection(pdf_dir, on_book=_print_book, **comuns)  # type: ignore[arg-type]
@@ -288,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
         baseline = Path(args.baseline)
         if not baseline.is_file():
             print(f"Baseline não encontrada: {baseline}")
-            return 2
+            return EXIT_BAD_INPUT
         perdidos_reais = _print_diff(
             diff_census(read_census_csv(baseline), census.rows, suspect_below_pt=args.suspect_below_pt),
             baseline,
@@ -296,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.fail_on_loss and perdidos_reais:
         print(f"--fail-on-loss: {perdidos_reais} candidato(s) acima do limiar sumiram.", file=sys.stderr)
-        return 1
+        return EXIT_FAILURE
     return 0
 
 

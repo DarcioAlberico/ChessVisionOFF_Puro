@@ -26,11 +26,20 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..config import DEFAULT_MAX_BOARDS, DEFAULT_MODEL_PATH, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
+from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
 from ..gallery_scan import build_gallery_index, index_path_for, load_index, save_index
 from ..logging_setup import configure_logging, default_log_file
 from ..review_queue import DEFAULT_CACHE_DIR, ReviewQueue, ReviewQueueBuilder, merge_queues
-from . import cli_errors, message_for
+from . import (
+    EXIT_BAD_INPUT,
+    EXIT_FAILURE,
+    EXIT_OK,
+    add_dpi_argument,
+    add_model_argument,
+    add_verbose,
+    cli_errors,
+    message_for,
+)
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
@@ -102,20 +111,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("books", nargs="*", type=Path, help="PDFs a varrer. Vazio com --all: a pasta inteira.")
     parser.add_argument("--all", action="store_true", help="Varre todos os PDFs de --pdf-dir.")
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
-    parser.add_argument("--queue-dir", type=Path, default=DEFAULT_QUEUE_DIR)
-    parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--max-boards", type=int, default=DEFAULT_MAX_BOARDS)
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_model_argument(parser)
+    parser.add_argument("--queue-dir", type=Path, default=DEFAULT_QUEUE_DIR, help="Onde as filas de revisão são gravadas.")
+    add_dpi_argument(parser)
+    parser.add_argument("--max-boards", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de diagramas aceitos por página.")
     parser.add_argument(
         "--force",
         action="store_true",
         help="Revarre do zero, inclusive livros com índice completo.",
     )
     parser.add_argument("--no-queue", action="store_true", help="Só o índice da Galeria; não monta fila.")
-    parser.add_argument("--limit-books", type=int, default=None, help="Para depois de N livros.")
+    parser.add_argument("--limit-books", "--limite-livros", type=int, default=None, help="Para depois de N livros.")
     add_ocr_argument(parser)
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -197,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     if not livros:
         print("Nenhum livro pedido. Passe caminhos de PDF, ou --all para a pasta inteira.")
         print(f"Pasta padrão: {args.pdf_dir}")
-        return 2
+        return EXIT_BAD_INPUT
     if args.limit_books is not None:
         livros = livros[: args.limit_books]
 
@@ -217,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
         print(linha)
     print(f"Índices em {index_path_for(livros[0]).parent}; filas em {args.queue_dir}.")
     print()
-    return 1 if any(livro.error for livro in relatorio.books) else 0
+    return EXIT_FAILURE if any(livro.error for livro in relatorio.books) else EXIT_OK
 
 
 if __name__ == "__main__":

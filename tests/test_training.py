@@ -1144,3 +1144,127 @@ class MetadadosQueReproduzemTests(unittest.TestCase):
             output=OutputPlan(model_path=root / name / "m.pt", fresh=True, calibrate=False),
             optim=OptimPlan(epochs=2, batch_size=64, patience=0, seed=7, lr=lr),
         )
+
+
+class IncumbenteDaRetomadaTests(unittest.TestCase):
+    """O número que a primeira época da retomada precisa superar (S-370, S-371).
+
+    A pergunta é sempre a mesma -- *o valor gravado no checkpoint é comparável com o que este
+    treino vai medir?* --, e havia duas formas de responder "sim" errado: comparar métricas
+    de nomes diferentes, e chamar de "mesmo split" dois vazios.
+    """
+
+    def _checkpoint(self, **metadados: object):
+        from chess_diagram_ocr.checkpoint import Checkpoint
+
+        base = {
+            "best_metric": 0.99,
+            "best_epoch": 7,
+            "best_metric_name": "val_board_exact_acc",
+            "split_hash": "1a2b3c4d",
+        }
+        return Checkpoint(state={}, path=Path("m.pt"), metadata={**base, **metadados})
+
+    def _resolver(self, checkpoint, **kwargs):  # noqa: ANN001
+        from chess_diagram_ocr.training import _resolve_best_metric
+
+        argumentos = {
+            "model": nn.Identity(),
+            "val_loader": None,
+            "device": "cpu",
+            "criterion": nn.Identity(),
+            "split_hash": "1a2b3c4d",
+            "metric_name": "val_board_exact_acc",
+        }
+        argumentos.update(kwargs)
+        return _resolve_best_metric(checkpoint, **argumentos)  # type: ignore[arg-type]
+
+    def test_mesmo_split_e_mesma_metrica_reaproveitam_o_numero(self) -> None:
+        """O caso que a S-27 abriu, e que continua valendo: nada aqui o estreita."""
+        self.assertEqual(self._resolver(self._checkpoint()), (0.99, 7))
+
+    def test_metrica_de_outro_nome_nao_serve_de_incumbente(self) -> None:
+        """`-train_loss` contra acurácia por tabuleiro não é comparação, é acidente (S-370)."""
+        with self.assertLogs("chess_diagram_ocr.training", level="WARNING") as registro:
+            resultado = self._resolver(self._checkpoint(best_metric_name="train_loss", best_metric=-0.42))
+        self.assertEqual(resultado, (float("-inf"), 0))
+        self.assertIn("train_loss", "\n".join(registro.output))
+
+    def test_split_vazio_dos_dois_lados_nao_e_o_mesmo_split(self) -> None:
+        """Sem arquivo de splits, `""` == `""` dizia "mesma partição" sobre dois sorteios (S-371)."""
+        with self.assertLogs("chess_diagram_ocr.training", level="WARNING") as registro:
+            resultado = self._resolver(self._checkpoint(split_hash=""), split_hash="")
+        self.assertEqual(resultado, (float("-inf"), 0))
+        self.assertIn("outro split", "\n".join(registro.output))
+
+    def test_checkpoint_sem_nome_de_metrica_tambem_nao_serve(self) -> None:
+        """Um `.pt` anterior à S-105 grava `best_metric` e não diz de quê."""
+        resultado = self._resolver(self._checkpoint(best_metric_name=None))
+        self.assertEqual(resultado, (float("-inf"), 0))
+
+    def test_o_motivo_diz_as_duas_causas_quando_as_duas_valem(self) -> None:
+        """Dizer só a primeira faria o log mentir por omissão na retomada em que as duas valem."""
+        from chess_diagram_ocr.training import _motivo_para_medir
+
+        motivo = _motivo_para_medir(
+            0.5, mesmo_split=False, mesma_metrica=False,
+            nome_gravado="train_loss", metric_name="val_board_exact_acc",
+        )
+        self.assertIn("outro split", motivo)
+        self.assertIn("train_loss", motivo)
+
+
+class UnidadeDoLoteNosMetadadosTests(unittest.TestCase):
+    """O checkpoint declara o lote que **governou** o treino (S-372).
+
+    `batch_size` é do amostrador por janela da S-26; `boards_per_batch` é da cabeça por
+    tabuleiro da S-62b. Cada regime ignora o número do outro, e só o primeiro ia gravado --
+    então dois treinos com `boards_per_batch` 4 e 8 saíam com metadados idênticos, que é o
+    que a S-105 existiu para acabar.
+    """
+
+    def _metadados(self, *, head: str, boards_per_batch: int = 4):
+        from chess_diagram_ocr.model import ArchConfig
+        from chess_diagram_ocr.training import OptimPlan, _optim_metadata
+
+        return _optim_metadata(
+            OptimPlan(batch_size=128, boards_per_batch=boards_per_batch),
+            ArchConfig(head=head),  # type: ignore[arg-type]
+        )
+
+    def test_os_dois_numeros_vao_gravados(self) -> None:
+        metadados = self._metadados(head="linear")
+        self.assertEqual(metadados["batch_size"], 128)
+        self.assertEqual(metadados["boards_per_batch"], 4)
+
+    def test_a_unidade_diz_qual_dos_dois_valeu(self) -> None:
+        self.assertEqual(self._metadados(head="linear")["batch_unit"], "square")
+        self.assertEqual(self._metadados(head="board")["batch_unit"], "board")
+
+    def test_dois_treinos_da_cabeca_por_tabuleiro_sao_distinguiveis(self) -> None:
+        """O critério de aceite: era este o par que saía idêntico."""
+        quatro = self._metadados(head="board", boards_per_batch=4)
+        oito = self._metadados(head="board", boards_per_batch=8)
+        self.assertNotEqual(quatro, oito)
+
+
+class ProbabilidadeDasGenericasTests(unittest.TestCase):
+    """`jitter` e `affine` são probabilidades, e agora a pipeline as lê (S-376)."""
+
+    def _tipos(self, **kwargs: float) -> list[str]:
+        from chess_diagram_ocr.augment import AugmentConfig
+
+        return [type(etapa).__name__ for etapa in build_train_transform(AugmentConfig(**kwargs)).transforms]
+
+    def test_o_padrao_monta_a_pipeline_de_sempre(self) -> None:
+        """**O treino do padrão tem de sair idêntico**: `RandomApply` sorteia mesmo com `p=1`."""
+        self.assertEqual(self._tipos(), ["RandomApply", "ColorJitter", "RandomAffine", "Lambda"])
+
+    def test_jitter_zero_tira_o_jitter_da_lista(self) -> None:
+        self.assertEqual(self._tipos(jitter=0.0), ["RandomApply", "RandomAffine", "Lambda"])
+
+    def test_affine_zero_tira_o_afim_da_lista(self) -> None:
+        self.assertEqual(self._tipos(affine=0.0), ["RandomApply", "ColorJitter", "Lambda"])
+
+    def test_probabilidade_intermediaria_envolve_em_random_apply(self) -> None:
+        self.assertEqual(self._tipos(jitter=0.5), ["RandomApply", "RandomApply", "RandomAffine", "Lambda"])

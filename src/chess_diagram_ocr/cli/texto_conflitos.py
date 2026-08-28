@@ -24,7 +24,7 @@ from pathlib import Path
 from ..atomic_io import atomic_write_bytes, atomic_write_text
 from ..config import PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
-from . import cli_errors
+from . import add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +38,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Acha a mesma imagem arquivada sob dois caracteres, e move o rotulo perdedor."
     )
-    parser.add_argument("--base", type=Path, default=BASE_PADRAO)
-    parser.add_argument("--decisoes", type=Path, default=DECISOES)
-    parser.add_argument("--quarentena", type=Path, default=QUARENTENA)
-    parser.add_argument("--aplicar", action="store_true", help="Move os perdedores. Sem isto, so relata.")
+    parser.add_argument("--base", type=Path, default=BASE_PADRAO, help="Base de amostras de caractere.")
+    parser.add_argument("--decisoes", type=Path, default=DECISOES, help="Onde as decisões tomadas ficam registradas.")
+    parser.add_argument("--quarentena", type=Path, default=QUARENTENA, help="Para onde vão as amostras perdedoras.")
+    parser.add_argument("--aplicar", "--apply", action="store_true", help="Move os perdedores. Sem isto, so relata.")
     parser.add_argument("--desfazer", type=Path, metavar="MANIFESTO", help="Devolve a base o que um manifesto moveu.")
     parser.add_argument("--folha", type=Path, metavar="PNG", help="Desenha os glifos em disputa para revisao humana.")
     parser.add_argument("--relatorio", type=Path, help="Padrao: docs/metrics/texto_dedupe_<data>.json")
@@ -51,8 +51,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Mede tambem a quase-duplicata (S-202). Decodifica a base, entao custa alguns minutos.",
     )
     parser.add_argument("--limiar-quase", type=float, default=None, help="Padrao: 0,03, medido nesta base.")
-    parser.add_argument("--tarefas", type=int, default=None)
-    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--tarefas", type=int, default=None, help="Só as N primeiras tarefas do relatório.")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 

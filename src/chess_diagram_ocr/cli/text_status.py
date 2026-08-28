@@ -38,7 +38,7 @@ from ..text_status import (
     resumo,
     verificar,
 )
-from . import cli_errors
+from . import EXIT_FAILURE, add_verbose, cli_errors
 
 FASES = sorted(TITULO_DA_FASE)
 
@@ -82,6 +82,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Falha (código 1) se o item não estiver com todas as sondas atendidas. Repetível.",
     )
     parser.add_argument("--sondas", action="store_true", help="Mostra cada sonda e o que ela respondeu.")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -152,7 +153,7 @@ def _divergencias(resultados: list[Resultado], marcado: dict[str, str]) -> list[
 @cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    configure_logging()
+    configure_logging(verbose=args.verbose)
     raiz = Path(args.raiz)
 
     resultados = verificar(raiz, fase=args.fase)
@@ -204,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Exigido e não atendido:")
             for linha in faltando:
                 print(f"  {linha}")
-            return 1
+            return EXIT_FAILURE
 
     return 0
 

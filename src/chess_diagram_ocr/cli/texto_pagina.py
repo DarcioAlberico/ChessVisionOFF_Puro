@@ -38,9 +38,29 @@ from pathlib import Path
 from typing import Any
 
 from ..logging_setup import configure_logging
-from . import EXIT_BAD_INPUT, cli_errors
+from . import EXIT_BAD_INPUT, add_dpi_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
+
+
+def _numero_de_pagina(texto: str, pedaco: str) -> int:
+    """Um número de página, ou um `ValueError` em pt-BR (S-385).
+
+    `int("58a")` levanta `invalid literal for int() with base 10: '58a'`, e essa frase chegava
+    inteira à tela dentro de "--paginas inválido: ...". É a mesma inconsistência que a S-126
+    fechou para as três falhas mais prováveis: o programa fala português até a linha em que a
+    biblioteca padrão fala por ele.
+
+    A frase diz também **o que teria funcionado**, porque um erro de digitação em `--paginas`
+    é quase sempre de forma, e não de intenção.
+    """
+    limpo = texto.strip()
+    if not limpo.isdigit():
+        raise ValueError(
+            f"{limpo or '(vazio)'!r} não é número de página em {pedaco!r}. "
+            "Use 58, 58-62 ou 58,60,62 -- a numeração começa em 1."
+        )
+    return int(limpo)
 
 
 def intervalo_de_paginas(texto: str) -> list[int]:
@@ -57,12 +77,12 @@ def intervalo_de_paginas(texto: str) -> list[int]:
             continue
         if "-" in pedaco[1:]:
             inicio, _, fim = pedaco.partition("-")
-            a, b = int(inicio), int(fim)
+            a, b = _numero_de_pagina(inicio, pedaco), _numero_de_pagina(fim, pedaco)
             if b < a:
                 raise ValueError(f"intervalo invertido: {pedaco!r}")
             saida.extend(range(a - 1, b))
         else:
-            saida.append(int(pedaco) - 1)
+            saida.append(_numero_de_pagina(pedaco, pedaco) - 1)
     if any(i < 0 for i in saida):
         raise ValueError("página 0 não existe: a numeração da linha de comando começa em 1")
     return saida
@@ -100,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
             "PDF; auto é o glifo com a camada como reserva se os pesos não carregarem."
         ),
     )
-    parser.add_argument("--dpi", type=int, default=220, help="DPI de renderização. Padrão: 220.")
+    add_dpi_argument(parser)
     parser.add_argument(
         "--arranjo",
         choices=("prosa", "grade"),
@@ -207,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Não escreve [Diagrama N] no texto -- para quem quer só a prosa.",
     )
-    parser.add_argument("--verbose", action="store_true", help="Log em DEBUG.")
+    add_verbose(parser)
     args = parser.parse_args(argv)
 
     configure_logging(verbose=args.verbose)

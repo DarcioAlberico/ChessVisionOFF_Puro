@@ -44,7 +44,7 @@ from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import lado as _lado
-from . import EXIT_BAD_INPUT, EXIT_OK, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--livros", type=int, default=LIVROS, help=f"Quantos livros. Padrão: {LIVROS}.")
     parser.add_argument("--paginas", type=int, default=PAGINAS, help=f"Páginas com diagrama por livro. Padrão: {PAGINAS}.")
     parser.add_argument("--json", type=Path, default=DESTINO_PADRAO, help="Onde gravar a tabela.")
-    parser.add_argument("--verbose", action="store_true", help="Log em DEBUG.")
+    add_verbose(parser)
     args = parser.parse_args(argv)
 
     configure_logging(verbose=args.verbose)

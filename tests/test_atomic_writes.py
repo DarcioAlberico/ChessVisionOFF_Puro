@@ -17,6 +17,8 @@ sendo tomada por omissão.
 from __future__ import annotations
 
 import ast
+import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -28,12 +30,6 @@ ESCRITAS_DIRETAS = {"write_text", "write_bytes"}
 
 PERMITIDAS = {
     "atomic_io.py": "é a implementação da escrita atômica; é aqui que o temporário é escrito",
-    "labels.py": "grava o **backup**, não o destino: o original fica intacto enquanto a cópia é feita",
-    "cli/evaluate.py": "relatório de medição em JSON pedido por --json; refeito rodando o comando de novo",
-    "cli/export_onnx.py": "relatório de exportação ONNX em JSON, derivado do checkpoint que continua no disco",
-    "cli/field.py": "relatório de campo em JSON; refeito com cvoff-field, ~1 min por modelo sobre o conjunto atual",
-    "cli/provenance.py": "relatório de procedência em JSON, derivado do índice de dHash",
-    "cli/games.py": "o JSON de casamentos do --save-matches: caro de refazer, mas derivado da base",
     "detection_census.py": "o censo de detecção: derivado do acervo, refeito com cvoff-census",
     "experiments.py": "os resultados da grade: derivados dos treinos, e o .pt de cada variante sobrevive",
     "pdf_to_pgn.py": "o PGN exportado e o .review.pgn: saída do produto, e a S-24 já grava parcial a cada 5 páginas",
@@ -46,10 +42,19 @@ O critério é o mesmo que a S-25 usou: **trabalho humano acumulado passa por `a
 artefato derivado e reproduzível pode ser escrito direto.** Um relatório de medição perdido
 pela metade custa rodar o comando de novo; meio `labels.csv` custa meses de correção.
 
-O `labels.py` está na lista por um motivo diferente dos outros, e ele é o mais interessante: a
-escrita direta ali é a do **backup**, não a do destino. O original fica intacto enquanto a
-cópia é feita, que é o oposto do defeito -- e o destino, esse, passa por
-`atomic_write_bytes`.
+**Cinco relatórios saíram da lista na S-380**, e o argumento que os punha nela não sobrevive ao
+próprio critério: "refeito rodando o comando de novo" vale para `cvoff-evaluate`, e não vale
+para o `--save-matches` do `cvoff-games`, que é o artefato dos **104 minutos** de varredura
+(`docs/ARCHITECTURE.md`), nem para o relatório de campo, que é a régua primária do projeto. E
+mesmo nos baratos a escrita atômica não custa nada: são as mesmas três linhas, e um JSON
+truncado é pior que um JSON ausente, porque `json.load` falha longe de onde a interrupção
+aconteceu.
+
+O `labels.py` esteve nesta lista, e saiu na S-375. A escrita direta dele era a do **backup**,
+não a do destino -- o original fica intacto enquanto a cópia é feita, que é o oposto do
+defeito. Mas um `.bak-` truncado se parece com um backup e não é, e o `write_bytes` deixava
+exatamente isso quando a cópia era interrompida. Hoje o backup nasce por `O_EXCL` e some no
+caminho da exceção, e o módulo não precisa mais de exceção nenhuma.
 """
 
 
@@ -96,6 +101,79 @@ class EscritaAtomicaTests(unittest.TestCase):
         for nome in ("splits.py", "gallery.py", "field_eval.py"):
             with self.subTest(modulo=nome):
                 self.assertNotIn(nome, PERMITIDAS)
+
+
+class SubstituicaoTravadaTests(unittest.TestCase):
+    """O `os.replace` que o Windows recusa, e o que o usuário lê (S-373).
+
+    Um `handle` aberto no destino faz o rename falhar com `PermissionError: [WinError 5]`, e
+    quem estava na frente da tela recebia essa frase crua -- que manda procurar permissão de
+    pasta num problema que é o Excel com o `labels.csv` aberto.
+    """
+
+    def _grava(self, destino: Path) -> None:
+        from chess_diagram_ocr.atomic_io import atomic_write_text
+
+        atomic_write_text(destino, "conteúdo novo\n")
+
+    def test_insiste_e_a_segunda_tentativa_grava(self) -> None:
+        """O antivírus solta sozinho em milissegundos: insistir resolve sem ninguém saber."""
+        from unittest.mock import patch as _patch
+
+        import chess_diagram_ocr.atomic_io as io_mod
+
+        with tempfile.TemporaryDirectory() as pasta:
+            alvo = Path(pasta) / "estado.json"
+            alvo.write_text("antigo\n", encoding="utf-8")
+            real = os.replace
+            respostas = [PermissionError(5, "Acesso negado")]
+
+            def travando(origem, destino):  # noqa: ANN001, ANN202
+                if respostas:
+                    raise respostas.pop()
+                return real(origem, destino)
+
+            with _patch.object(io_mod.os, "replace", side_effect=travando), \
+                 _patch.object(io_mod, "ESPERA_ENTRE_TROCAS", 0.0):
+                self._grava(alvo)
+
+            self.assertEqual(alvo.read_text(encoding="utf-8"), "conteúdo novo\n")
+
+    def test_travado_ate_o_fim_diz_o_que_aconteceu_e_nao_perde_o_antigo(self) -> None:
+        from unittest.mock import patch as _patch
+
+        import chess_diagram_ocr.atomic_io as io_mod
+
+        with tempfile.TemporaryDirectory() as pasta:
+            alvo = Path(pasta) / "labels.csv"
+            alvo.write_text("filename,fen\n", encoding="utf-8")
+
+            with _patch.object(io_mod.os, "replace", side_effect=PermissionError(5, "Acesso negado")), \
+                 _patch.object(io_mod, "ESPERA_ENTRE_TROCAS", 0.0), \
+                 self.assertRaises(PermissionError) as capturado:
+                self._grava(alvo)
+
+            recado = str(capturado.exception)
+            self.assertIn("aberto em outro programa", recado)
+            self.assertIn(alvo.name, recado)
+            self.assertEqual(alvo.read_text(encoding="utf-8"), "filename,fen\n", "o antigo fica intacto")
+
+    def test_nao_deixa_temporario_para_tras(self) -> None:
+        """O `.tmp` vizinho é interno: ele não pode sobreviver ao erro."""
+        from unittest.mock import patch as _patch
+
+        import chess_diagram_ocr.atomic_io as io_mod
+
+        with tempfile.TemporaryDirectory() as pasta:
+            alvo = Path(pasta) / "estado.json"
+            alvo.write_text("antigo\n", encoding="utf-8")
+
+            with _patch.object(io_mod.os, "replace", side_effect=PermissionError(5, "Acesso negado")), \
+                 _patch.object(io_mod, "ESPERA_ENTRE_TROCAS", 0.0), \
+                 self.assertRaises(PermissionError):
+                self._grava(alvo)
+
+            self.assertEqual(sorted(p.name for p in Path(pasta).iterdir()), ["estado.json"])
 
 
 if __name__ == "__main__":

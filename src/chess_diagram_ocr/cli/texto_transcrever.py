@@ -31,7 +31,7 @@ from typing import Any
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text.transcricao import Item, ReferenciaMudouNoDisco, SessaoDeTranscricao, so_scan
-from . import EXIT_BAD_INPUT, EXIT_OK, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +377,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "`cvoff-texto-placar --exportar`."
         ),
     )
-    parser.add_argument("--referencia", type=Path, default=REFERENCIA_PADRAO)
+    parser.add_argument(
+        "--referencia", type=Path, default=REFERENCIA_PADRAO, help="O .jsonl conferido à mão que serve de gabarito."
+    )
     parser.add_argument("--pngs", type=Path, default=PNGS_PADRAO, help="A pasta do `--exportar`.")
     parser.add_argument(
         "--so-scan",
@@ -387,13 +389,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "outras continuam no arquivo e continuam sendo gravadas; o filtro e da navegacao."
         ),
     )
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
 @cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    configure_logging()
+    configure_logging(verbose=args.verbose)
 
     if not args.referencia.exists():
         logger.error(

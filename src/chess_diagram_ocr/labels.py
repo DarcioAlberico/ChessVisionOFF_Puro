@@ -278,6 +278,22 @@ class DatasetEntry:
         return cls(**{campo.name: _clean(row.get(campo.name, "")) for campo in fields(cls)})
 
 
+ENCODING_DE_LEITURA = "utf-8-sig"
+"""Como o CSV de rótulos é **lido**. Escrever continua em `utf-8` puro (S-374).
+
+O `labels.csv` é um arquivo que gente abre: 4.454 linhas, sete colunas, e a planilha na frente
+é a ferramenta natural para conferir uma coluna inteira. O Excel, ao salvar em "CSV UTF-8",
+grava o BOM `EF BB BF` no começo -- e a primeira coluna passava a chamar-se pelo BOM
+seguido de `filename`, que não é `filename`. O efeito era total e o recado, mudo: `REQUIRED_COLUMNS.issubset` falhava,
+a mensagem listava dois conjuntos que se leem **iguais** na tela ("Encontradas:
+{'filename', ...}"), e o dataset inteiro ficava ilegível por três bytes invisíveis.
+
+`utf-8-sig` na leitura aceita os dois arquivos, com BOM e sem. Na escrita ele **acrescentaria**
+o BOM, e é por isso que só a leitura muda: quem lê o `labels.csv` fora deste módulo -- e há
+quem leia -- continua vendo o arquivo que sempre existiu.
+"""
+
+
 def _clean(value: object) -> str:
     """Valor textual de uma célula. `None` e o `"nan"` herdado viram string vazia.
 
@@ -326,7 +342,7 @@ class LabelStore:
         """As colunas que o arquivo tem, na ordem em que estão nele."""
         if not self.path.exists():
             return LABEL_COLUMNS
-        with self.path.open("r", encoding="utf-8", newline="") as handle:
+        with self.path.open("r", encoding=ENCODING_DE_LEITURA, newline="") as handle:
             header = next(csv.reader(handle), [])
         return tuple(name.strip() for name in header)
 
@@ -352,7 +368,7 @@ class LabelStore:
         if not self.path.exists():
             return []
 
-        with self.path.open("r", encoding="utf-8", newline="") as handle:
+        with self.path.open("r", encoding=ENCODING_DE_LEITURA, newline="") as handle:
             reader = csv.DictReader(handle)
             colunas = reader.fieldnames or []
             if not REQUIRED_COLUMNS.issubset(colunas):
@@ -494,13 +510,46 @@ class LabelStore:
     # -------------------------------------------------------------------------- backup
 
     def backup(self) -> Path:
-        """Copia o arquivo para um irmão datado. Levanta se não há o que copiar."""
+        """Copia o arquivo para um irmão datado, **sem nunca escrever por cima** (S-375).
+
+        O nome tem resolução de um segundo, e duas cópias no mesmo segundo não são hipótese:
+        `move_to` faz backup da origem e do destino em sequência, e a auditoria em lote faz um
+        por operação. A segunda apagava a primeira -- e a primeira era, justamente, o estado
+        anterior que alguém ia querer de volta.
+
+        `O_EXCL` é o que resolve, e não um `if destino.exists()`: entre a pergunta e a escrita
+        cabe o outro processo. Quem perde a corrida acrescenta `-2`, `-3`, e assim por diante.
+
+        **A cópia também não era atômica.** `write_bytes` num arquivo de 4.454 linhas
+        interrompido no meio deixa um `.bak-` truncado, que se parece com um backup e não é.
+        Aqui o arquivo parcial é apagado no caminho da exceção, então ou o backup existe
+        inteiro, ou não existe.
+        """
         if not self.path.exists():
             raise FileNotFoundError(f"CSV de rótulos não encontrado: {self.path}")
 
+        dados = self.path.read_bytes()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        destino = self.path.with_name(f"{self.path.name}.bak-{stamp}")
-        destino.write_bytes(self.path.read_bytes())
+        base = f"{self.path.name}.bak-{stamp}"
+        sufixo = 1
+        while True:
+            destino = self.path.with_name(base if sufixo == 1 else f"{base}-{sufixo}")
+            try:
+                descritor = os.open(destino, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0))
+            except FileExistsError:
+                sufixo += 1
+                continue
+            break
+
+        try:
+            with os.fdopen(descritor, "wb") as handle:
+                handle.write(dados)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException:
+            destino.unlink(missing_ok=True)
+            raise
+
         logger.info("Backup do CSV de rótulos em %s", destino)
         return destino
 

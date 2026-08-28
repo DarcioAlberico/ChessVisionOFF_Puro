@@ -6,35 +6,31 @@ import logging
 import textwrap
 from pathlib import Path
 
+from ..atomic_io import atomic_write_text
 from ..calibration import confidence_for_accuracy
 from ..config import (
     ACCEPT_MIN_CONFIDENCE,
-    DEFAULT_DATASET_CSV,
-    DEFAULT_MODEL_PATH,
-    DEFAULT_SAMPLES_DIR,
     MAX_DECODE_CHANGES,
-    PROJECT_ROOT,
 )
 from ..evaluation import EvaluationReport, evaluate_split
 from ..inference import describe_device
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
-from . import cli_errors
+from . import EXIT_BAD_INPUT, add_dataset_arguments, add_model_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SPLITS_PATH = PROJECT_ROOT / "data" / "splits.csv"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Avalia o modelo em um split, reportando acurácia exata por tabuleiro.",
     )
-    parser.add_argument("--split", choices=("train", "val", "test"), default="test")
-    parser.add_argument("--csv", type=Path, default=DEFAULT_DATASET_CSV)
-    parser.add_argument("--samples", type=Path, default=DEFAULT_SAMPLES_DIR)
-    parser.add_argument("--splits", type=Path, default=DEFAULT_SPLITS_PATH)
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
+    parser.add_argument(
+        "--split", choices=("train", "val", "test"), default="test", help="Qual partição medir."
+    )
+    add_dataset_arguments(parser)
+    add_model_argument(parser)
     parser.add_argument("--device", type=str, default=None, help="cpu ou cuda. Padrão: detecta.")
     parser.add_argument("--batch-boards", type=int, default=8, help="Tabuleiros por lote de inferência.")
     parser.add_argument("--json", type=Path, default=None, help="Grava as métricas em JSON.")
@@ -52,7 +48,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Deriva o limiar de aceite (S-15) da curva: menor confianca minima cuja "
         "fracao de tabuleiros exatos atinge este alvo (ex.: 0.95).",
     )
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -188,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     if not splits:
         print(f"Arquivo de splits vazio ou ausente: {args.splits}")
         print("Gere-o antes de avaliar (ver docs/SPEC.md, S-07).")
-        return 1
+        return EXIT_BAD_INPUT
 
     report = evaluate_split(
         args.csv,
@@ -204,8 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     _print_report(report, show_errors=args.show_errors, calibration_target=args.calibration_target)
 
     if args.json:
-        args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(report.as_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_text(args.json, json.dumps(report.as_dict(), indent=2, ensure_ascii=False))
         print(f"Métricas gravadas em {args.json}")
         print()
 

@@ -154,5 +154,40 @@ class ComandosContraLixoTests(unittest.TestCase):
         self.assertEqual(faltando, [], "Todo `main` de CLI precisa do decorador `@cli_errors`.")
 
 
+class IntervaloDePaginasTests(unittest.TestCase):
+    """`--paginas` inválido fala português, como o resto do programa (S-385).
+
+    `int("58a")` levanta `invalid literal for int() with base 10: '58a'`, e a frase chegava
+    inteira à tela dentro de `--paginas inválido: ...`. A S-126 tirou o inglês das três falhas
+    mais prováveis; esta é a quarta, e está no argumento que mais se digita à mão.
+    """
+
+    def _erro(self, texto: str) -> str:
+        from chess_diagram_ocr.cli.texto_pagina import intervalo_de_paginas
+
+        with self.assertRaises(ValueError) as capturado:
+            intervalo_de_paginas(texto)
+        return str(capturado.exception)
+
+    def test_o_que_vale_continua_valendo(self) -> None:
+        from chess_diagram_ocr.cli.texto_pagina import intervalo_de_paginas
+
+        self.assertEqual(intervalo_de_paginas("58-62"), [57, 58, 59, 60, 61])
+        self.assertEqual(intervalo_de_paginas("58,60"), [57, 59])
+        self.assertEqual(intervalo_de_paginas(" 7 "), [6])
+
+    def test_numero_com_letra_nao_vaza_a_frase_do_int(self) -> None:
+        recado = self._erro("58a")
+        self.assertNotIn("invalid literal", recado)
+        self.assertIn("não é número de página", recado)
+        self.assertIn("58-62", recado, "a frase diz o que teria funcionado")
+
+    def test_intervalo_pela_metade_tambem(self) -> None:
+        self.assertNotIn("invalid literal", self._erro("58-"))
+
+    def test_intervalo_invertido_continua_recusado(self) -> None:
+        self.assertIn("invertido", self._erro("62-58"))
+
+
 if __name__ == "__main__":
     unittest.main()

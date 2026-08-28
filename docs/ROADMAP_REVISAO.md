@@ -27,7 +27,7 @@ segunda passada de céticos, com a tarefa de **derrubar** cada achado antes de e
 > | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-327 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-327, S-368 a S-385 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -276,12 +276,12 @@ que teste faltava.
 | 53 | O trabalho humano que some | S-300 a S-313 | **entregue** | doze caminhos que apagam sem perguntar e sem desfazer |
 | 54 | O que trava, e o que não cancela | S-314 a S-319 | **entregue** |  a janela congela, e três botões "Cancelar" não cancelam nada |
 | 55 | O primeiro dia, e o estado entre abas | S-320 a S-328 | S-320 a S-323 entregues | um clone novo lê FEN inventada, e o conserto impresso apaga os 4.454 rótulos |
-| 56 | O que so a CI podia mostrar | S-325 a S-327 | **entregue** |  atributo fora do desfazer, zoom que não redimensiona, `.md` sem imagem |
+| 56 | O que so a CI podia mostrar | S-325 a S-327 | **entregue** |  o digest que via CRLF, a fita medida nas fontes desta máquina, a sonda de artefato ausente |
 | 57 | A folha do livro, e o editor que promete | S-328 a S-347 | |  o comentário que some, o PGN de 10 GB na thread do Tk |
 | 58 | O texto lido: o que erra e o que custa | S-348 a S-360 | |  a camada pesquisável duplicada, e 53% do custo numa pergunta repetida |
 | 59 | O núcleo, revisitado | S-361 a S-367 | |  3,4 s num tabuleiro ilegal, e a sentinela que volta a casar |
-| 60 | Os dados e o treino | S-368 a S-376 | |  o `splits.csv` apagado, o "melhor época" que indexa a lista errada |
-| 61 | Os quarenta comandos | S-377 a S-385 | |  o `-v` que a mensagem de erro manda usar e doze comandos recusam |
+| 60 | Os dados e o treino | S-368 a S-376 | **entregue** |  o `splits.csv` apagado, o "melhor época" que indexa a lista errada |
+| 61 | Os quarenta comandos | S-377 a S-385 | **entregue** |  o `-v` que a mensagem de erro manda usar e doze comandos recusam |
 | 62 | O que sai no `.exe` | S-386 a S-393 | |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |
 | 63 | A cor, o foco e a tecla | S-394 a S-404 | |  três painéis fora do sistema de cor, onze diálogos sem Esc |
 | 64 | A documentação que envelheceu | S-405 a S-413 | |  oito itens entregues fora do índice, e o CER que o próprio relatório desmente |

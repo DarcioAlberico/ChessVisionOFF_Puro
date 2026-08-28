@@ -323,11 +323,15 @@ class SemearTests(unittest.TestCase):
         self.addCleanup(self._dir.cleanup)
 
     def test_semear_recusa_sobrescrever_conferencia_humana(self) -> None:
-        """Sobrescrever apagaria a coisa mais cara do processo."""
+        """Sobrescrever apagaria a coisa mais cara do processo.
+
+        O código é o 2 da tabela da S-126 -- o caminho que se apontou já existe --, e não o 1,
+        que é reservado a defeito do programa (S-378).
+        """
         existente = self.raiz / "ref.jsonl"
         existente.write_text("", encoding="utf-8")
         with self.assertLogs(placar.__name__, level=logging.ERROR):
-            self.assertEqual(1, placar.main(["--semear", "--referencia", str(existente)]))
+            self.assertEqual(2, placar.main(["--semear", "--referencia", str(existente)]))
 
     def test_sem_pdf_nenhum_nao_derruba(self) -> None:
         with self.assertLogs(placar.__name__, level=logging.WARNING):

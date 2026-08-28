@@ -8,41 +8,30 @@ from ..audit import audit_dataset
 from ..augment import AugmentConfig
 from ..config import (
     DEFAULT_BOARD_CACHE_SIZE,
-    DEFAULT_DATASET_CSV,
-    DEFAULT_MODEL_PATH,
-    DEFAULT_SAMPLES_DIR,
-    PROJECT_ROOT,
 )
 from ..logging_setup import configure_logging, default_log_file
 from ..model import ArchConfig
 from ..training import DEFAULT_CLASS_WEIGHTS, OptimPlan, train_model
-from . import cli_errors
+from . import EXIT_BAD_INPUT, add_dataset_arguments, add_model_argument, add_splits_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SPLITS_PATH = PROJECT_ROOT / "data" / "splits.csv"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Treina o classificador de pecas do Chess Diagram OCR.")
-    parser.add_argument("--csv", type=Path, default=DEFAULT_DATASET_CSV, help="CSV de rotulos (filename,fen).")
-    parser.add_argument("--samples", type=Path, default=DEFAULT_SAMPLES_DIR, help="Pasta com as imagens dos tabuleiros.")
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH, help="Caminho do checkpoint .pt.")
-    parser.add_argument("--epochs", type=int, default=8)
-    parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    add_dataset_arguments(parser, splits=False)
+    add_model_argument(parser, help="Caminho do checkpoint .pt.")
+    parser.add_argument("--epochs", type=int, default=8, help="Épocas de treino. A parada antecipada pode encurtar.")
+    parser.add_argument("--batch-size", type=int, default=128, help="Casas por lote (cabeça por janela).")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Taxa de aprendizado do Adam.")
     parser.add_argument(
         "--patience",
         type=int,
         default=15,
         help="Epocas sem melhora antes de parar antecipadamente. 0 desativa.",
     )
-    parser.add_argument(
-        "--splits",
-        type=Path,
-        default=DEFAULT_SPLITS_PATH,
-        help="Arquivo de splits persistido. O split 'test' nunca e usado no treino.",
-    )
+    add_splits_argument(parser, help="Arquivo de splits persistido. O split 'test' nunca e usado no treino.")
     parser.add_argument(
         "--no-splits",
         action="store_true",
@@ -106,9 +95,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     grupo_arch = parser.add_argument_group("arquitetura (S-29)")
-    grupo_arch.add_argument("--backbone", choices=["cnn", "mobilenet_v3_small"], default="cnn")
-    grupo_arch.add_argument("--channels", choices=["gray", "rgb"], default="gray")
-    grupo_arch.add_argument("--image-size", type=int, default=64)
+    grupo_arch.add_argument(
+        "--backbone", choices=["cnn", "mobilenet_v3_small"], default="cnn", help="Extrator de características."
+    )
+    grupo_arch.add_argument(
+        "--channels", choices=["gray", "rgb"], default="gray", help="Canais da entrada do modelo."
+    )
+    grupo_arch.add_argument("--image-size", type=int, default=64, help="Lado da casa em pixels, na entrada.")
     grupo_arch.add_argument(
         "--head",
         choices=["linear", "gap", "board"],
@@ -131,7 +124,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
 
-    parser.add_argument("-v", "--verbose", action="store_true", help="Log em nivel DEBUG.")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -204,7 +197,7 @@ def _audit_gate(args: argparse.Namespace) -> int | None:
     print()
     print("Confira o quadro inteiro com: cvoff-audit")
     print("Para treinar assim mesmo:     cvoff-train --force")
-    return 2
+    return EXIT_BAD_INPUT
 
 
 @cli_errors
@@ -216,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         augment = _augment_from_letters(args.augment)
     except ValueError as exc:
         print(f"Erro: {exc}")
-        return 2
+        return EXIT_BAD_INPUT
     if not augment.version.endswith("0"):
         logger.info("Aumento dirigido ligado: %s. Isto muda o modelo (S-40).", augment.version)
 

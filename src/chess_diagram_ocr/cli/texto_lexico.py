@@ -50,7 +50,7 @@ from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text.lexico import CAMINHO_IDIOMA, CAMINHO_NOMES, MIN_TAMANHO, PALAVRA
 from ..text.notacao import LANCE
-from . import EXIT_BAD_INPUT, EXIT_OK, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Pasta de saída. Padrão: assets/lexico/",
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="Conta e imprime, sem escrever arquivo nenhum."
+        "--dry-run", "--seco", action="store_true", help="Conta e imprime, sem escrever arquivo nenhum."
     )
     parser.add_argument(
         "--medir",
@@ -368,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
             "junção onde ela mora. Custa segundos por folha (S-215)."
         ),
     )
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     args = parser.parse_args(argv)
     configure_logging(verbose=args.verbose)
 

@@ -17,10 +17,9 @@ import json
 import logging
 from pathlib import Path
 
+from ..atomic_io import atomic_write_text
 from ..config import (
-    ACCEPT_MIN_CONFIDENCE,
     DEFAULT_DATASET_CSV,
-    DEFAULT_MODEL_PATH,
     DEFAULT_PDF_DIR,
     PROJECT_ROOT,
 )
@@ -39,13 +38,20 @@ from ..labels import LabelStore, pages_with_training_samples
 from ..logging_setup import configure_logging, default_log_file
 from ..service import OcrService, RecognitionOptions
 from ..splits import load_splits
-from . import cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    add_accept_threshold_argument,
+    add_dpi_argument,
+    add_model_argument,
+    add_splits_argument,
+    add_verbose,
+    cli_errors,
+)
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_FIELD_SET = PROJECT_ROOT / "data" / "field_set.jsonl"
-DEFAULT_SPLITS = DEFAULT_DATASET_CSV.parent / "splits.csv"
 
 
 def _training_pages(labels: Path, splits: Path) -> dict[tuple[str, int], int]:
@@ -68,13 +74,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "quantos saem detectados, legais e acima do gate."
         ),
     )
-    parser.add_argument("--set", type=Path, default=DEFAULT_FIELD_SET, dest="field_set")
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
-    parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--max-boards", type=int, default=12)
-    parser.add_argument("--orientation", default="auto", choices=("auto", "0", "180"))
-    parser.add_argument("--accept-threshold", type=float, default=ACCEPT_MIN_CONFIDENCE)
+    parser.add_argument(
+        "--set", type=Path, default=DEFAULT_FIELD_SET, dest="field_set", help="O conjunto de campo anotado à mão."
+    )
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_model_argument(parser)
+    add_dpi_argument(parser)
+    parser.add_argument("--max-boards", type=int, default=12, help="Teto de diagramas aceitos por página.")
+    parser.add_argument(
+        "--orientation",
+        default="auto",
+        choices=("auto", "0", "180"),
+        help="Rotação do tabuleiro. `auto` decide pela confiança das duas leituras.",
+    )
+    add_accept_threshold_argument(parser)
     parser.add_argument("--json", type=Path, default=None, help="Grava o relatório em JSON.")
     parser.add_argument(
         "--nota",
@@ -110,10 +123,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_DATASET_CSV,
         help="Rótulos, para marcar as páginas de que há amostra de treino (S-97).",
     )
-    parser.add_argument("--splits", type=Path, default=DEFAULT_SPLITS, help="Partição, para o mesmo fim.")
+    add_splits_argument(parser, help="Partição, para o mesmo fim.")
     parser.add_argument("--show-misses", type=int, default=10, help="Quantos diagramas perdidos listar.")
     add_ocr_argument(parser)
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -141,7 +154,7 @@ def _run_draft(args: argparse.Namespace, options: RecognitionOptions, service: O
         caminho = Path(nome) if Path(nome).exists() else Path(args.pdf_dir) / nome
         if not caminho.exists():
             print(f"PDF não encontrado: {caminho}")
-            return 2
+            return EXIT_BAD_INPUT
 
         for numero in paginas:
             chave = (caminho.name, numero)
@@ -355,13 +368,13 @@ def main(argv: list[str] | None = None) -> int:
             return _run_draft(args, options, service)
         except ValueError as exc:
             print(f"Erro: {exc}")
-            return 2
+            return EXIT_BAD_INPUT
 
     paginas: list[FieldPage] = load_field_set(args.field_set)
     if not paginas:
         print(f"Conjunto de campo vazio ou inexistente: {args.field_set}")
         print('Comece com: cvoff-field --draft "1937 Kemeri.pdf:80,140,201" --regime scan')
-        return 1
+        return EXIT_BAD_INPUT
 
     revisadas = sum(1 for pagina in paginas if pagina.reviewed)
     print(f"{len(paginas)} página(s) no conjunto, {revisadas} revisada(s).")
@@ -383,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
         # mesma coisa dezenas de vezes. Ela é do arquivo, não do recorte.
         dados = report.as_dict()
         dados["measured_with"] = measurement_fingerprint(args.model, ocr_engine=args.ocr, note=args.nota)
-        args.json.write_text(json.dumps(dados, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_text(args.json, json.dumps(dados, indent=2, ensure_ascii=False) + "\n")
         print(f"Relatório em {args.json}")
         print()
     return 0

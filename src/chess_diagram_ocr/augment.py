@@ -33,7 +33,7 @@ espelhado continua sendo um cavalo. Dobra o dataset de graça, e é a mais barat
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import torch
 import torch.nn as nn
@@ -75,6 +75,12 @@ class AugmentConfig:
 
         Sem isto, "o modelo A é melhor que o B" pode estar comparando dois regimes de
         aumento -- que é a mesma armadilha que a S-27 fechou para arquitetura e semente.
+
+        **E ela estava meio aberta (S-376).** Só as cinco dirigidas entravam na assinatura:
+        `AugmentConfig(jitter=0.0)` e `AugmentConfig()` -- dois regimes que treinam modelos
+        diferentes -- saíam ambos como `aug0`, e o checkpoint não guardava nada que os
+        separasse. Quem só usa os padrões não vê diferença nenhuma: a assinatura antiga é a
+        que continua saindo, e o sufixo só aparece quando algum genérico sai do padrão.
         """
         ativos = "".join(
             letra
@@ -87,7 +93,17 @@ class AugmentConfig:
             )
             if valor > 0.0
         )
-        return f"aug{ativos}" if ativos else "aug0"
+        base = f"aug{ativos}" if ativos else "aug0"
+
+        padrao = {campo.name: campo.default for campo in fields(self)}
+        fora_do_padrao = "".join(
+            f"{letra}{getattr(self, nome):g}"
+            for letra, nome in (("b", "blur"), ("j", "jitter"), ("a", "affine"))
+            if getattr(self, nome) != padrao[nome]
+        )
+        if self.hatch > 0.0 and self.hatch_period_px != padrao["hatch_period_px"]:
+            fora_do_padrao += "t{}x{}".format(*self.hatch_period_px)
+        return f"{base}-{fora_do_padrao}" if fora_do_padrao else base
 
 
 DEFAULT_AUGMENT = AugmentConfig()

@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-327 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-327, S-368 a S-385 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -1061,3 +1061,359 @@ não-versionado pula, não falha.
 item continua cobrado, e uma execução que não pôde olhar tudo não se anuncia como se tivesse
 olhado. Verificado dos dois lados: com o `.pt` no disco o teste passa; sem ele, pula nomeando
 S-182, S-201 e S-203.
+
+---
+
+# Fase 60 — Os dados e o treino
+
+Nove itens, e **dois já estavam entregues quando a fase chegou**: a poda total do `splits.csv`
+saiu na S-300 e o `best_epoch` que indexava o histórico errado, na S-310. Ficam registrados
+aqui com o número que o roadmap lhes deu, e a spec deles é a da Fase 53.
+
+## S-368 · A poda total do `splits.csv` — entregue como [S-300](#s-300--lista-vazia-nunca-é-razão-para-podar-o-splitscsv)
+
+## S-369 · O `best_epoch` do checkpoint sobre o histórico desta execução — entregue como [S-310](#s-310--a-melhor-época-é-a-que-is_best-marca)
+
+## S-370 · Métrica de outro nome não é incumbente
+
+**Problema.** `_resolve_best_metric` decidia o que a primeira época da retomada precisa superar
+comparando dois números que podem não ser da mesma grandeza:
+
+```python
+gravado = resumed.best_metric
+mesmo_split = str(resumed.metadata.get("split_hash", "")) == split_hash
+if gravado is not None and mesmo_split:
+```
+`training.py:451`
+
+O nome da métrica estava gravado nos metadados desde a S-105 -- `best_metric_name` é
+`"val_board_exact_acc"` com validação e `"train_loss"` sem ela -- e **ninguém o lia**. Um
+checkpoint treinado sem validação registra `-0,42`; retomá-lo com validação põe esse `-0,42` na
+disputa de um número que vive em `[0, 1]`, e a primeira época grava por cima do que não devia.
+No sentido contrário -- checkpoint com validação, retomada sem --, o `0,98` gravado nunca é
+superado por um `-train_loss`, e **nenhuma** época grava.
+
+**Solução.** O nome entra na comparação: só reaproveita o número quem foi medido com a mesma
+métrica *e* no mesmo split. Nos demais casos vale o que a função já fazia para o checkpoint sem
+métrica -- **medir** o modelo recém-carregado na validação atual, ~20 s, e ter o incumbente de
+verdade.
+
+**Critério de aceite.** Checkpoint com `best_metric_name="train_loss"` retomado num treino com
+validação não devolve o número gravado. Mesmo nome e mesmo split continuam devolvendo `(0.99, 7)`
+sem medir nada.
+
+**Testes.** `test_metrica_de_outro_nome_nao_serve_de_incumbente`,
+`test_checkpoint_sem_nome_de_metrica_tambem_nao_serve` e
+`test_mesmo_split_e_mesma_metrica_reaproveitam_o_numero`, em `tests/test_training.py`.
+
+## S-371 · Vazio não é identidade de partição
+
+**Problema.** Na mesma linha, `str(resumed.metadata.get("split_hash", "")) == split_hash`
+respondia **verdadeiro** quando os dois lados eram `""`. Sem arquivo de splits -- que é o caso
+de quem treina com `--val-ratio` e nenhum `--splits` -- o `split_hash` é vazio dos dois lados, e
+a igualdade dizia "mesma partição" sobre dois sorteios diferentes, feitos em datasets de
+tamanhos diferentes. O incumbente vinha de outra partição, e a comparação que decide sobrescrever
+8,7 MB de pesos estava medindo outra coisa.
+
+**Solução.** `mesmo_split` exige hash **não vazio** dos dois lados. Vazio quer dizer "não se
+sabe", e não se sabe leva à medição.
+
+**Critério de aceite.** Dois `""` não reaproveitam o número gravado; dois hashes iguais e não
+vazios continuam reaproveitando.
+
+**Testes.** `test_split_vazio_dos_dois_lados_nao_e_o_mesmo_split`.
+
+## S-372 · O checkpoint declara o lote que governou
+
+**Problema.** Os metadados gravavam `batch_size` sempre, e `boards_per_batch` nunca. Desde a
+S-62b há dois regimes: a cabeça por tabuleiro monta o `DataLoader` com `boards_per_batch` e
+**ignora** `batch_size`; a cabeça por janela faz o contrário. Dois treinos da cabeça nova com 4
+e com 8 tabuleiros por lote saíam com metadados idênticos -- que é exatamente o que a S-105
+existiu para acabar, e ela o fechou só para o regime antigo.
+
+**Solução.** `_optim_metadata` passa a receber a `ArchConfig` e grava os dois números mais
+`batch_unit`, que diz qual deles governou (`"board"` ou `"square"`).
+
+**Critério de aceite.** `boards_per_batch` 4 e 8 produzem metadados diferentes na cabeça por
+tabuleiro; `batch_size` continua saindo com o mesmo valor de antes na cabeça por janela.
+
+**Testes.** `UnidadeDoLoteNosMetadadosTests`, três casos.
+
+## S-373 · `os.replace` recusado diz que o arquivo está aberto
+
+**Problema.** No POSIX, renomear por cima de um arquivo aberto funciona. **No Windows, não:** um
+`handle` no destino sem `FILE_SHARE_DELETE` faz o rename falhar com `PermissionError: [WinError 5]
+Acesso negado`, e essa frase crua chegava a quem estava na frente da tela. Ela manda procurar
+permissão de pasta num problema que é o Excel com o `labels.csv` aberto -- e o Excel é
+exatamente o programa em que alguém abriria um CSV de 4.454 linhas. O antivírus produz o mesmo
+erro por alguns milissegundos, sem que nada esteja errado.
+
+**Solução.** `atomic_io._substituir` insiste cinco vezes com espera crescente (1,2 s no total) e,
+se ainda assim falhar, levanta `PermissionError` com a frase que diz a causa provável, o que
+fazer, e que o arquivo anterior continua intacto. Os dois casos ficam atendidos: o antivírus
+solta sozinho, e o Excel precisa ser fechado.
+
+**Critério de aceite.** Uma falha seguida de sucesso grava sem ninguém saber. Falha em todas as
+tentativas levanta com "aberto em outro programa", o arquivo antigo intacto e nenhum `.tmp`
+vizinho para trás.
+
+**Testes.** `SubstituicaoTravadaTests`, em `tests/test_atomic_writes.py`.
+
+## S-374 · O CSV salvo pelo Excel continua legível
+
+**Problema.** O Excel, ao salvar "CSV UTF-8", escreve o BOM `EF BB BF` no começo. `LabelStore`
+abria o arquivo com `encoding="utf-8"`, e a primeira coluna passava a se chamar o BOM seguido de
+`filename` -- que não é `filename`. `REQUIRED_COLUMNS.issubset` falhava e a mensagem listava dois
+conjuntos que **se leem iguais na tela**: `precisa das colunas {'filename', 'fen'}. Encontradas:
+{'filename', 'fen', ...}`. O dataset inteiro ficava ilegível por três bytes invisíveis, com um
+recado que não dizia a causa.
+
+**Solução.** A leitura passa a `utf-8-sig`, que aceita os dois arquivos. A **escrita** continua
+`utf-8` puro: `utf-8-sig` acrescentaria o BOM, e quem lê o `labels.csv` de fora deste módulo
+continua vendo o arquivo que sempre existiu.
+
+**Critério de aceite.** Um `labels.csv` com BOM lê as mesmas linhas e as mesmas colunas; reescrevê-lo
+não devolve o BOM ao disco.
+
+**Testes.** `BomDoExcelTests`, três casos, em `tests/test_labels.py`.
+
+## S-375 · Backup não escreve por cima de backup
+
+**Problema.** O nome do backup tem resolução de **um segundo**
+(`labels.csv.bak-20260828_120000`), e duas cópias no mesmo segundo não são hipótese: `move_to`
+faz backup da origem e do destino em sequência. A segunda apagava a primeira -- e a primeira era
+justamente o estado anterior que alguém ia querer de volta. Além disso a cópia era um
+`write_bytes` direto: interrompida no meio, deixa um `.bak-` truncado, que se parece com um
+backup e não é.
+
+**Solução.** O nome é reservado com `O_EXCL` -- e não com um `if exists()`, porque entre a
+pergunta e a escrita cabe o outro processo --, e quem perde a corrida acrescenta `-2`, `-3`. O
+conteúdo é escrito no descritor reservado, com `fsync`, e o arquivo parcial é apagado no caminho
+da exceção.
+
+**Critério de aceite.** Dois backups no mesmo segundo produzem dois arquivos, e o primeiro
+mantém o conteúdo dele. Cópia interrompida não deixa `.bak-` nenhum. `labels.py` saiu da lista
+`PERMITIDAS` de `tests/test_atomic_writes.py`: não há mais escrita direta no módulo.
+
+**Testes.** `test_dois_backups_no_mesmo_segundo_nao_se_apagam` e
+`test_copia_interrompida_nao_deixa_backup_pela_metade`.
+
+## S-376 · `jitter` e `affine` são probabilidades, e a assinatura as vê
+
+**Problema.** `AugmentConfig` declara oito probabilidades. Cinco são lidas por
+`build_augmentations`; `blur` é lida por `build_train_transform`; **`jitter` e `affine` não eram
+lidas em lugar nenhum** -- `ColorJitter` e `RandomAffine` estavam sempre na lista.
+`AugmentConfig(jitter=0.0)` treinava com jitter ligado. E o `version`, que existe para que "o
+modelo A é melhor que o B" não compare dois regimes de aumento, só olhava as cinco dirigidas:
+os dois regimes saíam ambos como `aug0`, e o checkpoint não guardava nada que os separasse.
+
+**Solução.** As três genéricas passam por `_com_probabilidade`, e o `version` ganha um sufixo
+quando alguma delas sai do padrão (`aug0-j0`), mais o período da hachura quando a hachura está
+ligada.
+
+**`p >= 1` devolve a etapa crua, e isso não é otimização.** `RandomApply.forward` sorteia um
+número antes de decidir, mesmo com `p=1,0`; envolver as duas etapas que hoje são incondicionais
+consumiria dois sorteios por casa e mudaria toda a sequência do RNG. **O treino do padrão sai
+idêntico ao de antes deste item**, e é isso que o primeiro teste trava.
+
+**Critério de aceite.** `build_train_transform()` monta a mesma lista de sempre, tipo por tipo.
+`jitter=0` tira o `ColorJitter`; `jitter=0.5` o envolve em `RandomApply`. `AugmentConfig()`,
+`(jitter=0)`, `(affine=0)` e `(blur=0)` têm quatro assinaturas distintas, e a do padrão continua
+sendo `aug0` -- os checkpoints que existem foram gravados com ela.
+
+**Testes.** `ProbabilidadeDasGenericasTests` em `tests/test_training.py`; três testes novos em
+`tests/test_augment.py`.
+
+---
+
+# Fase 61 — Os quarenta comandos
+
+## S-377 · Todo comando aceita `-v`
+
+**Problema.** O README garante `-v` nos 40 comandos, e a mensagem de erro da S-126 termina com
+"Rode de novo com -v para ver o rastro completo". **Doze comandos respondiam `error: unrecognized
+arguments: -v`** -- seis deles sem nem a forma longa. Quem seguia a instrução impressa pelo
+próprio programa recebia um segundo erro, agora do `argparse`, e código de saída 2 sobre uma
+falha que era outra coisa.
+
+E havia a metade invisível: `run_main` lia a bandeira de `argv or []`, e como *console script* o
+`main` é chamado **sem argumento nenhum** -- `argv` chega `None`, a lista fica vazia, e no uso
+real (o único em que alguém digita `-v`) a bandeira nunca era vista. Nos testes, que passam
+`argv`, ela sempre foi vista: é por isso que ninguém percebeu.
+
+**Solução.** `cli.add_verbose(parser)` declara a bandeira num molde só, e os 40 comandos passaram
+a usá-lo -- inclusive os 28 que a declaravam à mão. `run_main` cai para `sys.argv[1:]` quando
+`argv` é `None`.
+
+**Critério de aceite.** Nenhum módulo de comando declara `-v` por conta própria. Com
+`sys.argv = ["cvoff-x", "-v"]` e `argv=None`, a exceção volta em vez de virar código de saída.
+
+**Testes.** `BandeiraVerboseTests`, quatro casos, em `tests/test_entrypoints.py`.
+
+## S-378 · Código de saída é classe, e não número solto
+
+**Problema.** A tabela da S-126 dá três classes de falha -- 1 defeito do programa, 2 entrada
+inválida, 3 checkpoint --, e trinta e cinco `return` escreviam o número à mão. Em onze deles o
+número dizia a classe errada: `cvoff-evaluate` e `cvoff-experiment` classificavam "o arquivo de
+splits que você apontou não existe" como **defeito do programa**; `cvoff-batch`, `cvoff-gallery`,
+`cvoff-field`, `cvoff-provenance` (duas vezes), `cvoff-texto-grade`, `cvoff-texto-ordem` e
+`cvoff-texto-placar` faziam o mesmo com o caminho vazio ou ausente; e `cvoff-infer` devolvia 1
+quando a página apontada simplesmente não tem tabuleiro.
+
+Quem consome isso é script -- `cvoff-scan --all && cvoff-...` --, e para ele "o livro estava
+corrompido" e "houve um defeito no programa" têm de ser distinguíveis.
+
+**Solução.** Todos os retornos de falha passam pelas constantes `EXIT_FAILURE`, `EXIT_BAD_INPUT`
+e `EXIT_NO_CHECKPOINT`, e os onze foram reclassificados pela tabela. `return 0` continua
+permitido como literal: "deu certo" não tem classe para errar.
+
+**Três testes existentes mudaram de número, e é a mudança de interface que este item é:**
+`--baseline` inexistente no `texto-grade` e no `texto-ordem`, `--semear` sobre arquivo já
+existente no `texto-placar`, e os dois do `cvoff-experiment` -- todos de 1 para 2.
+
+**Critério de aceite.** Nenhum `return` de função `-> int` em `cli/` é um literal 1, 2 ou 3.
+
+**Testes.** `CodigoDeSaidaPelaTabelaTests`, em `tests/test_entrypoints.py`.
+
+## S-379 · Os dois códigos do `cvoff-export-onnx` estavam trocados entre si
+
+**Problema.** O caso que dá nome ao item, e que a S-378 encontrou por varredura:
+
+```python
+if not Path(args.model).exists():
+    print(f"Checkpoint nao encontrado: {args.model}")
+    return 1              # a classe 3 existe exatamente para isto
+...
+return 0 if report.passes else 2   # paridade reprovada não é entrada inválida
+```
+`cli/export_onnx.py:79,132`
+
+Checkpoint ausente saía como "falha inesperada", e a paridade numérica reprovada -- que é uma
+falha do artefato que o próprio comando acabou de gravar -- saía como "entrada inválida". Um
+script que confie nos códigos toma as duas decisões erradas.
+
+**Solução.** 3 para o checkpoint ausente, 1 para a paridade reprovada, 2 para os splits vazios e
+para o split sem amostra. Os dois pontos ganharam comentário dizendo o que aconteceu.
+
+**Critério de aceite.** Coberto pela varredura da S-378 mais a leitura do arquivo.
+
+## S-380 · Cinco relatórios saíram da lista de escrita direta
+
+**Problema.** `tests/test_atomic_writes.py` mantém a lista `PERMITIDAS` de escritas que podem
+não ser atômicas, com o motivo de cada uma. Cinco relatórios de CLI estavam lá sob o argumento
+"artefato derivado, refeito rodando o comando de novo" -- e o argumento não sobrevive ao próprio
+critério: o `--save-matches` do `cvoff-games` é o artefato dos **104 minutos** de varredura de
+2026-08-13 (`docs/ARCHITECTURE.md`), e o relatório de campo é a régua primária do projeto desde a
+Fase 7.
+
+**Solução.** Os cinco passam por `atomic_write_text` e saíram da lista. Mesmo nos baratos a
+escrita atômica não custa nada -- são as mesmas linhas --, e um JSON truncado é pior que um JSON
+ausente, porque `json.load` falha longe de onde a interrupção aconteceu.
+
+**Critério de aceite.** `PERMITIDAS` não tem mais nenhuma entrada de `cli/`, e a varredura de
+escrita direta continua verde.
+
+**Testes.** Os de `tests/test_atomic_writes.py`, que já existiam: a lista **é** o teste.
+
+## S-381 · `--baseline` é conferido antes de medir, não depois
+
+**Problema.** Os cinco comandos de regressão têm o mesmo desenho: medem o acervo e, no fim,
+comparam o número com o de um relatório anterior. A conferência do caminho ficava **junto da
+comparação**, depois da medição inteira:
+
+```python
+relatorio = medir(pdfs, por_livro=args.por_livro)   # o acervo inteiro
+...
+if args.baseline:
+    if not args.baseline.exists():
+        logger.error("O baseline %s não existe.", args.baseline)
+```
+`cli/texto_grade.py:603,651`
+
+Um nome digitado errado custava a varredura completa para então dizer que o arquivo não existe.
+No `texto-duas-linhas` e no `texto-vertical` não havia conferência nenhuma: o `json.loads`
+estourava `FileNotFoundError` no fim, com o mesmo prejuízo.
+
+**Solução.** `cli.confere_baseline` devolve `EXIT_BAD_INPUT` logo depois do `configure_logging`,
+nos cinco comandos. Um caminho que não existe é sabido antes de a primeira página abrir.
+
+**Critério de aceite.** Com `--baseline` inexistente, a função de medição **não é chamada** e o
+`--saida` não é escrito.
+
+**Testes.** `test_o_baseline_inexistente_e_recusado_antes_de_medir`, que troca `medir` por um
+`side_effect` que falha se for chamado.
+
+## S-382 · A mesma bandeira, nas duas grafias
+
+**Problema.** Três bandeiras existiam nas duas línguas, em comandos irmãos: `--apply` (games,
+provenance) contra `--aplicar` (texto-conflitos); `--limit` (batch, review) e `--limit-books`
+(scan) contra `--limite` (sete comandos de texto); `--dry-run` (texto-lexico) contra `--seco`
+(texto-pesquisavel). Quem usa a linha de comando decora o que digitou ontem, e errar a língua
+devolve `unrecognized arguments` -- a mesma parede da S-377, por outro caminho.
+
+**Solução.** **Nenhuma bandeira foi renomeada** -- renomear quebraria script e documento. As duas
+grafias passaram a ser a mesma bandeira, declaradas na mesma `add_argument`; o `dest` continua
+sendo o da primeira, então nenhum código de leitura mudou.
+
+**Critério de aceite.** `cvoff-texto-grade --limit 3` e `cvoff-batch --limite 2` funcionam, e
+`cvoff-games --aplicar` liga `args.apply`.
+
+**Testes.** `VocabularioDasBandeirasTests`, que varre os pares e falha se um comando declarar só
+uma das grafias.
+
+## S-383 · O bloco de medição é declarado num lugar só
+
+**Problema.** `--csv`, `--samples`, `--splits`, `--model`, `--dpi` e `--accept-threshold` eram
+copiados à mão comando a comando. O caminho da partição estava escrito **seis vezes**, sob dois
+nomes (`DEFAULT_SPLITS` e `DEFAULT_SPLITS_PATH`) e por duas fórmulas diferentes
+(`PROJECT_ROOT / "data" / "splits.csv"` e `DEFAULT_DATASET_CSV.parent / "splits.csv"`). O DPI era
+o literal `220` em doze declarações, e `DEFAULT_DPI` numa décima terceira -- definido dentro de
+`provenance.py`.
+
+Iguais hoje, e é aí que mora o defeito: mudar o `labels.csv` de pasta faria metade dos comandos
+seguir e a outra metade ficar, e a diferença apareceria como "o `cvoff-eval` mede outro conjunto
+que o `cvoff-audit`".
+
+**Solução.** `config.DEFAULT_SPLITS_PATH` e `config.DEFAULT_DPI` passam a ser os donos dos dois
+valores, e `cli/__init__.py` ganha `add_dataset_arguments`, `add_model_argument`,
+`add_dpi_argument`, `add_splits_argument` e `add_accept_threshold_argument` -- com o `help` que
+faltava em todos eles. As seis constantes locais foram apagadas.
+
+**Critério de aceite.** Nenhum módulo de `cli/` declara os seis argumentos à mão nem define um
+`DEFAULT_SPLITS*` próprio. O `--csv` do `cvoff-census` está de fora da varredura, com o motivo
+escrito: ali ele é **saída**, e não o dataset.
+
+**Testes.** `BlocoDeMedicaoTests`, dois casos.
+
+## S-384 · O `--help` explica os 373 argumentos
+
+**Problema.** Cento e onze argumentos não tinham `help`, e o `--help` os listava como nome e nada
+mais. Entre eles `--epochs`, `--batch-size` e `--lr` do `cvoff-train` -- os três que alguém
+ajusta antes de um treino de duas horas --, `--orientation`, `--reading-order` e
+`--max-boards-per-page`, que decidem o que entra no PGN. Um argumento sem ajuda é um argumento
+cujo efeito só se descobre lendo o fonte.
+
+**Solução.** Todos ganharam uma linha dizendo o efeito, e o padrão quando ele não é óbvio. Vinte
+e oito deles eram o próprio `-v`, que a S-377 resolveu de uma vez.
+
+**Critério de aceite.** Nenhuma chamada de `add_argument` em `cli/` sem `help=`.
+
+**Testes.** `AjudaDeTodoArgumentoTests`, com a guarda-da-guarda que confere que a varredura
+enxerga mais de 300 argumentos -- um scanner cego passaria sempre.
+
+## S-385 · `--paginas` inválido fala português
+
+**Problema.** `intervalo_de_paginas` chamava `int()` direto sobre o pedaço digitado, e
+`int("58a")` levanta `invalid literal for int() with base 10: '58a'`. A frase chegava inteira à
+tela dentro de `--paginas inválido: ...`. A S-126 tirou o inglês das três falhas mais prováveis;
+esta é a quarta, e está no argumento que mais se digita à mão. `"58-"` produzia a mesma frase
+sobre uma string vazia.
+
+**Solução.** `_numero_de_pagina` valida antes de converter e levanta em pt-BR dizendo **o que
+teria funcionado** -- `58`, `58-62`, `58,60,62` --, porque um erro de digitação em `--paginas` é
+quase sempre de forma, e não de intenção.
+
+**Critério de aceite.** Nenhuma mensagem de `--paginas` contém "invalid literal". O intervalo
+invertido continua recusado com a frase que já tinha.
+
+**Testes.** `IntervaloDePaginasTests`, quatro casos, em `tests/test_cli_errors.py`.

@@ -353,7 +353,28 @@ class ComandoTests(_ComPdf):
                 "--baseline", str(self.raiz / "nao.json"),
             ]
         )
-        self.assertEqual(1, codigo)
+        # Caminho apontado que não existe é a classe 2 da S-126, e não a 1 (S-378).
+        self.assertEqual(2, codigo)
+
+    def test_o_baseline_inexistente_e_recusado_antes_de_medir(self) -> None:
+        """Horas de varredura não podem morrer num caminho digitado errado (S-381).
+
+        A conferência ficava junto da comparação, no fim do comando: o acervo inteiro era lido
+        para então dizer que o arquivo não existe.
+        """
+        from unittest.mock import patch
+
+        self._pdf(_celulas(por_fileira=True))
+        with patch.object(grade, "medir", side_effect=AssertionError("mediu antes de conferir")):
+            codigo = grade.main(
+                [
+                    "--pdf-dir", str(self.raiz),
+                    "--saida", str(self.raiz / "s.json"),
+                    "--baseline", str(self.raiz / "nao.json"),
+                ]
+            )
+        self.assertEqual(2, codigo)
+        self.assertFalse((self.raiz / "s.json").exists(), "nada foi medido, nada foi gravado")
 
     def test_o_baseline_falha_quando_o_acerto_cai(self) -> None:
         """Regressão de calibração é regressão -- mesmo desenho do `cvoff-texto-ordem --baseline`."""

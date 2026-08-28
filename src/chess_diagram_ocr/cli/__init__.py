@@ -15,8 +15,20 @@ assim. O `cli_errors` abaixo é o que fecha isso.
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Callable, Sequence
 from functools import wraps
+from pathlib import Path
+from typing import Any
+
+from ..config import (
+    ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_DATASET_CSV,
+    DEFAULT_DPI,
+    DEFAULT_MODEL_PATH,
+    DEFAULT_SAMPLES_DIR,
+    DEFAULT_SPLITS_PATH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +94,86 @@ def classify(exc: BaseException) -> int:
     return EXIT_BAD_INPUT
 
 
+def add_verbose(parser: Any) -> None:
+    """Declara `-v/--verbose` no molde único dos 40 comandos (S-377).
+
+    O README garante que todo `cvoff-*` aceita `-v`, e a mensagem de erro da S-126 manda usá-lo
+    -- "Rode de novo com -v para ver o rastro completo". **Doze comandos respondiam a isso com
+    `error: unrecognized arguments: -v`**, e seis deles nem a forma longa tinham. Quem seguia a
+    instrução impressa recebia um segundo erro, agora do `argparse`, e código de saída 2 sobre
+    uma falha que era outra coisa.
+
+    Declarar aqui e não em cada arquivo é o que impede o décimo terceiro: um comando novo que
+    esqueça a linha continua sem `-v`, mas a varredura de `tests/test_entrypoints.py` acusa.
+    """
+    parser.add_argument("-v", "--verbose", action="store_true", help="Log em nível DEBUG.")
+
+
+def add_model_argument(parser: Any, *, help: str = "Checkpoint .pt do classificador de peças.") -> None:
+    """`--model`, com o padrão que vale para os catorze comandos que o aceitam (S-383)."""
+    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH, help=help)
+
+
+def add_dpi_argument(parser: Any, *, help: str = f"DPI de renderização da página. Padrão: {DEFAULT_DPI}.") -> None:
+    """`--dpi`. O número mora no `config`, e não em doze literais iguais (S-383)."""
+    parser.add_argument("--dpi", type=int, default=DEFAULT_DPI, help=help)
+
+
+def add_accept_threshold_argument(
+    parser: Any,
+    *,
+    help: str = "Confiança mínima por casa para a posição ser aceita. "
+    f"Padrão: {ACCEPT_MIN_CONFIDENCE}.",
+) -> None:
+    """`--accept-threshold`, o portão da S-13."""
+    parser.add_argument("--accept-threshold", type=float, default=ACCEPT_MIN_CONFIDENCE, help=help)
+
+
+def add_splits_argument(parser: Any, *, help: str = "Arquivo de partição treino/val/teste.") -> None:
+    """`--splits`. O caminho mora no `config` desde a S-383 -- eram seis declarações."""
+    parser.add_argument("--splits", type=Path, default=DEFAULT_SPLITS_PATH, help=help)
+
+
+def add_dataset_arguments(parser: Any, *, splits: bool = True, samples: bool = True) -> None:
+    """`--csv`, `--samples` e `--splits`: de onde a medição tira o dado (S-383).
+
+    O bloco era copiado à mão em sete comandos, e a cópia divergia: o `--splits` do
+    `cvoff-audit` e o do `cvoff-field` vinham de `DEFAULT_DATASET_CSV.parent`, e o dos outros
+    quatro de `PROJECT_ROOT / "data"`. Iguais hoje, e o dia em que deixassem de ser não teria
+    sintoma nenhum além de dois comandos medirem conjuntos diferentes.
+    """
+    parser.add_argument("--csv", type=Path, default=DEFAULT_DATASET_CSV, help="CSV de rótulos (filename,fen).")
+    if samples:
+        parser.add_argument(
+            "--samples", type=Path, default=DEFAULT_SAMPLES_DIR, help="Pasta com as imagens dos tabuleiros."
+        )
+    if splits:
+        add_splits_argument(parser)
+
+
+def confere_baseline(caminho: Any | None, *, rotulo: str = "--baseline") -> int | None:
+    """`None` libera; `EXIT_BAD_INPUT` recusa **antes** de medir (S-381).
+
+    Os cinco comandos de regressão têm o mesmo desenho: medem o acervo inteiro e, no fim,
+    comparam o número com o de um relatório anterior. A conferência do caminho ficava junto da
+    comparação -- **depois** da medição --, e `cvoff-texto-grade --baseline docs/metrics/tex.json`
+    com o nome errado varria os livros todos para então dizer que o arquivo não existe. No
+    `texto-duas-linhas` e no `texto-vertical` nem conferência havia: o `json.loads` estourava
+    `FileNotFoundError` no fim, com o mesmo prejuízo.
+
+    Um caminho que não existe é sabido antes de a primeira página abrir, e é aí que ele tem de
+    ser dito.
+    """
+    if caminho is None:
+        return None
+    from pathlib import Path
+
+    if Path(caminho).exists():
+        return None
+    logger.error("%s não encontrado: %s. Nada foi medido -- confira o caminho.", rotulo, caminho)
+    return EXIT_BAD_INPUT
+
+
 def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
     """Roda um `main` de CLI traduzindo falha em mensagem pt-BR e código de saída (S-126).
 
@@ -92,8 +184,14 @@ def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
 
     `-v` continua mostrando o traceback, porque é o que quem está depurando pede -- e o
     traceback vai para o **log** em todos os casos, pelo `logger.exception`.
+
+    **E `-v` vinha de `sys.argv` quando ninguém passa `argv` (S-377).** Como *console script*
+    o `main` é chamado sem argumento nenhum, então `argv` chega `None` e `argv or []` é uma
+    lista vazia: no uso real -- que é o único em que a pessoa digita `-v` -- a bandeira nunca
+    era vista, e o traceback que ela pede não aparecia. Nos testes, que passam `argv`, ela
+    sempre foi vista, e é por isso que ninguém percebeu.
     """
-    verboso = any(arg in ("-v", "--verbose") for arg in (argv or []))
+    verboso = any(arg in ("-v", "--verbose") for arg in (sys.argv[1:] if argv is None else argv))
     try:
         return fn(argv)
     except (KeyboardInterrupt, SystemExit):

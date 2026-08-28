@@ -40,6 +40,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR
 from ..gallery import DEFAULT_GALLERY_DIR, load_annotations, save_annotations
 from ..gallery_scan import GalleryIndex, load_index
@@ -60,7 +61,7 @@ from ..games_db import (
 from ..games_index import DEFAULT_INDEX_PATH, build_index
 from ..logging_setup import configure_logging, default_log_file
 from ..ui.gallery_model import GalleryModel
-from . import EXIT_FAILURE, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         const=MODE_NAMES,
         help="busca por nome: só os diagramas cuja legenda traz os jogadores, ~150 s.",
     )
-    parser.add_argument("--apply", action="store_true", help="grava nas anotações. Sem isto, só relata.")
+    parser.add_argument("--apply", "--aplicar", action="store_true", help="grava nas anotações. Sem isto, só relata.")
     parser.add_argument(
         "--database",
         type=Path,
@@ -97,8 +98,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         help=f"um .pgn. Repetível. Padrão: TODOS os .pgn de {DEFAULT_DATABASE_DIR}",
     )
-    parser.add_argument("--gallery-dir", type=Path, default=DEFAULT_GALLERY_DIR)
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
+    parser.add_argument("--gallery-dir", type=Path, default=DEFAULT_GALLERY_DIR, help="Pasta dos índices da Galeria.")
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
     parser.add_argument("--workers", type=int, default=None, help="processos na busca por posição. 1 = sem paralelismo.")
     parser.add_argument(
         "--max-games",
@@ -140,7 +141,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="constrói o índice por nome (~11 min, ~428 MB) e sai. Torna a busca por nome interativa.",
     )
     parser.add_argument("--index", type=Path, default=DEFAULT_INDEX_PATH, help="onde fica o índice por nome.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -324,7 +325,7 @@ def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
         perguntadas, com_resposta = len(cache), cache.answered
         if not perguntadas:
             print(f"Cache vazio em {args.cache}. Para produzi-lo:  cvoff-games --all")
-            return 2
+            return EXIT_BAD_INPUT
 
         placares = []
         for livro, indice in indices.items():
@@ -381,7 +382,7 @@ def main(argv: list[str] | None = None) -> int:
         bases = _bases(args)
         if not bases:
             logger.error("Base de partidas não encontrada. Ponha um .pgn em %s.", DEFAULT_DATABASE_DIR)
-            return 2
+            return EXIT_BAD_INPUT
         # `indexadas`, e nao `partidas`: mais abaixo o mesmo nome recebe o dicionario de
         # `scan_by_players`, e uma variavel com dois tipos na mesma funcao e o tipo de
         # coincidencia que o verificador aponta e o leitor nao.
@@ -394,11 +395,11 @@ def main(argv: list[str] | None = None) -> int:
     livros = _books(args)
     if not livros:
         logger.error("Nada a fazer: use --all ou --book com um livro já varrido na Galeria.")
-        return 2
+        return EXIT_BAD_INPUT
 
     indices = {livro: indice for livro in livros if (indice := _load(livro, args.gallery_dir)) is not None}
     if not indices:
-        return 2
+        return EXIT_BAD_INPUT
 
     # O censo vem antes da checagem da base: ele conta o que já foi respondido, e exigir o
     # .pgn de 10,3 GB para relatar o estado do acervo seria uma pré-condição inventada.
@@ -408,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
     bases = _bases(args)
     if not bases:
         logger.error("Base de partidas não encontrada. Ponha um .pgn em %s ou passe --database.", DEFAULT_DATABASE_DIR)
-        return 2
+        return EXIT_BAD_INPUT
 
     if args.from_matches is not None:
         # Reaplicar sem varrer: a varredura por posicao custa ~104 min, e nada nela depende do
@@ -460,9 +461,8 @@ def _finish(
 ) -> int:
     """Relata, grava se pedido, e guarda os casamentos se pedido."""
     if args.save_matches is not None:
-        args.save_matches.parent.mkdir(parents=True, exist_ok=True)
-        args.save_matches.write_text(
-            json.dumps(_matches_to_json(matches_by_book), ensure_ascii=False, indent=1), encoding="utf-8"
+        atomic_write_text(
+            args.save_matches, json.dumps(_matches_to_json(matches_by_book), ensure_ascii=False, indent=1)
         )
         print(f"casamentos gravados em {args.save_matches}")
 

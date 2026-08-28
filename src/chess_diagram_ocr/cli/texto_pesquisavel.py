@@ -38,7 +38,7 @@ from typing import Any
 
 from ..logging_setup import configure_logging
 from ..text import pdf_pesquisavel as _camada
-from . import EXIT_BAD_INPUT, EXIT_OK, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_dpi_argument, add_verbose, cli_errors
 from .texto_pagina import intervalo_de_paginas
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Páginas 1-based a ler: '58', '58-62' ou '58,60,62'. Padrão: a primeira.",
     )
     parser.add_argument("--saida", type=Path, default=None, help=f"Padrão: o nome do livro com '{SUFIXO}'.")
-    parser.add_argument("--dpi", type=int, default=220, help="DPI da leitura. Padrão: 220.")
+    add_dpi_argument(parser, help="DPI da leitura. Padrão: 220.")
     parser.add_argument(
         "--motor",
         choices=("glifo", "camada", "auto"),
@@ -85,8 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Pula as folhas que já têm texto, em vez de somar a nossa camada à delas.",
     )
-    parser.add_argument("--seco", action="store_true", help="Diz o que faria e não grava nada.")
-    parser.add_argument("--verbose", action="store_true", help="Log em DEBUG.")
+    parser.add_argument("--seco", "--dry-run", action="store_true", help="Diz o que faria e não grava nada.")
+    add_verbose(parser)
     args = parser.parse_args(argv)
 
     configure_logging(verbose=args.verbose)

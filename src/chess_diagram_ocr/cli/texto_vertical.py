@@ -56,7 +56,7 @@ from ..atomic_io import atomic_write_json
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import vertical
-from . import cli_errors
+from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
 
 logger = logging.getLogger(__name__)
 
@@ -278,14 +278,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Mede a tabela dos quatro angulos do texto girado, neste acervo (S-197).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO)
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
     parser.add_argument("--por-livro", type=int, default=3, help="Paginas medidas por livro (padrao 3).")
     parser.add_argument("--por-pagina", type=int, default=8, help="Linhas medidas por pagina (padrao 8).")
-    parser.add_argument("--limite", type=int, help="So os N primeiros livros.")
+    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
     parser.add_argument("--modelo", type=Path, help="Pesos. Padrao: ao lado do char_meta.json.")
     parser.add_argument("--baseline", type=Path, help="Relatorio anterior: falha se o acerto cair.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -295,6 +295,9 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parse_args(argv)
     configure_logging(verbose=args.verbose)
+
+    if (codigo := confere_baseline(args.baseline)) is not None:
+        return codigo
 
     pdfs = sorted(Path(args.pdf_dir).glob("*.pdf"))
     if args.limite:
@@ -332,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
             agora = relatorio["argmax_da_media"][str(angulo)]["taxa"]
             if agora < antes - PIORA_TOLERADA:
                 logger.error("Regressao a %d graus: %.4f contra %.4f do baseline.", angulo, agora, antes)
-                return 1
+                return EXIT_FAILURE
 
     return 0
 

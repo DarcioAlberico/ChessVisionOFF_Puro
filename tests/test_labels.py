@@ -298,6 +298,75 @@ class BackupTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 LabelStore(Path(pasta) / "labels.csv").backup()
 
+    def test_dois_backups_no_mesmo_segundo_nao_se_apagam(self) -> None:
+        """`move_to` faz backup da origem e do destino em sequência (S-375)."""
+        from unittest.mock import patch as _patch
+
+        from chess_diagram_ocr import labels as labels_mod
+
+        with tempfile.TemporaryDirectory() as pasta:
+            csv_path = Path(pasta) / "labels.csv"
+            store = LabelStore(csv_path)
+            store.rewrite([entry("a.png")])
+
+            with _patch.object(labels_mod, "datetime") as relogio:
+                relogio.now.return_value.strftime.return_value = "20260828_120000"
+                primeiro = store.backup()
+                conteudo_do_primeiro = primeiro.read_bytes()
+                store.rewrite([entry("a.png"), entry("b.png")])
+                segundo = store.backup()
+
+            self.assertNotEqual(primeiro, segundo)
+            self.assertEqual(primeiro.read_bytes(), conteudo_do_primeiro, "o primeiro não pode ser sobrescrito")
+            self.assertEqual(segundo.name, f"{primeiro.name}-2")
+
+    def test_copia_interrompida_nao_deixa_backup_pela_metade(self) -> None:
+        """Um `.bak-` truncado se parece com um backup e não é."""
+        from unittest.mock import patch as _patch
+
+        with tempfile.TemporaryDirectory() as pasta:
+            csv_path = Path(pasta) / "labels.csv"
+            store = LabelStore(csv_path)
+            store.rewrite([entry("a.png")])
+
+            with _patch("os.fsync", side_effect=OSError("disco cheio")), self.assertRaises(OSError):
+                store.backup()
+
+            self.assertEqual(list(Path(pasta).glob("*.bak-*")), [])
+
+
+class BomDoExcelTests(unittest.TestCase):
+    """Três bytes invisíveis tornavam o dataset inteiro ilegível (S-374).
+
+    O `labels.csv` é um arquivo que gente abre numa planilha, e o Excel salva "CSV UTF-8" com
+    BOM. A primeira coluna deixava de se chamar `filename` e a mensagem de erro listava dois
+    conjuntos que se leem iguais na tela.
+    """
+
+    def _com_bom(self, pasta: str) -> Path:
+        csv_path = Path(pasta) / "labels.csv"
+        store = LabelStore(csv_path)
+        store.rewrite([entry("a.png")])
+        csv_path.write_bytes(b"\xef\xbb\xbf" + csv_path.read_bytes())
+        return csv_path
+
+    def test_o_csv_salvo_pelo_excel_continua_legivel(self) -> None:
+        with tempfile.TemporaryDirectory() as pasta:
+            store = LabelStore(self._com_bom(pasta))
+            self.assertEqual([linha["filename"] for linha in store.read_rows()], ["a.png"])
+
+    def test_as_colunas_saem_sem_o_bom_grudado_na_primeira(self) -> None:
+        with tempfile.TemporaryDirectory() as pasta:
+            self.assertEqual(LabelStore(self._com_bom(pasta)).columns()[0], "filename")
+
+    def test_reescrever_nao_devolve_o_bom_ao_arquivo(self) -> None:
+        """Ler aceita os dois; escrever continua em `utf-8` puro, para quem lê de fora."""
+        with tempfile.TemporaryDirectory() as pasta:
+            csv_path = self._com_bom(pasta)
+            store = LabelStore(csv_path)
+            store.rewrite(store.read_rows())
+            self.assertFalse(csv_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+
 
 class SinglePortTests(unittest.TestCase):
     """O critério que impede a sexta porta de aparecer."""
