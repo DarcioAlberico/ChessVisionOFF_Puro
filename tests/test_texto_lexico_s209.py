@@ -179,3 +179,19 @@ class PerfilTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class LexicoVazioDesligaTests(unittest.TestCase):
+    """Sem lista, a conferência não acende (S-357).
+
+    `conhecida` responde `False` para tudo com o conjunto vazio, e a folha inteira saía
+    sublinhada -- num clone sem `assets/lexico/`, que é o estado de quem acabou de instalar. É a
+    mesma regra que `escolher` e `juntar_hifenizadas` já seguiam.
+    """
+
+    def test_lexico_vazio_nao_marca_nada(self) -> None:
+        self.assertEqual(lexico.desconhecidas("the position features a vital difference", frozenset()), ())
+
+    def test_com_lista_a_conferencia_continua_apontando(self) -> None:
+        achados = lexico.desconhecidas("the positon features", frozenset({"the", "features"}))
+        self.assertEqual([texto for _i, _f, texto in achados], ["positon"])

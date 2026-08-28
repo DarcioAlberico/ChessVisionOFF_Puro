@@ -1787,3 +1787,183 @@ a anotação de qualquer profundidade; sem âncora o botão está `disabled`.
 
 **Testes.** `ComentarioDaRaizTests` e `ContagemDaSubarvoreTests` em `tests/test_estudo_saida.py`;
 `ReabrirAMesaTests` e o par do botão em `tests/test_estudo_aba.py`.
+
+---
+
+# Fase 58 — O texto lido: o que erra e o que custa
+
+Onze achados em dez itens (S-348 a S-357). **Dois já estavam entregues quando a fase chegou**: a
+camada pesquisável duplicada saiu na S-303, e a amostragem de negrito e itálico refeita a cada
+folha, na S-313 -- as duas na Fase 53, e as duas com a medição registrada lá.
+
+## S-348 · A camada pesquisável duplicada — entregue como [S-303](#s-303--a-sonda-é-a-escrita-e-não-um-ensaio-dela)
+
+## S-349 · Pontuação de borda não é ambiguidade
+
+**Problema.** `dicionario.escolher` recusa corrigir quando **mais de uma** variante é conhecida --
+a guarda da ambiguidade, e ela está certa. Só que `conhecida` apara `.,;:!?()[]'"` antes de olhar
+o léxico: `black.` e `black,` são a **mesma** resposta do dicionário, e chegavam à guarda como
+duas. Uma palavra com o ponto final entre os candidatos da última caixa era recusada por
+"ambígua", e a correção era uma só.
+
+**Solução.** A caixa da ambiguidade passa a ser o conjunto dos **núcleos aparados**; um núcleo só
+é resposta única. A pontuação que sai é a do **original**, e não a da variante escolhida: o
+dicionário decide letra, e trocar `black.` por `black,` seria corrigir o que ninguém pediu.
+
+`Black` e `black` continuam sendo duas respostas -- a comparação é sem `casefold`, de propósito.
+
+**Critério de aceite.** `blaek.` com `.`/`,` entre os candidatos devolve `black.`; `black`/`block`
+continua devolvendo `None`.
+
+**Testes.** `PontuacaoNaoEAmbiguidadeTests`, quatro casos.
+
+## S-350 · O pingo procura a base numa janela
+
+**Problema.** `unir_pingos` comparava cada caixa curta com **toda** caixa da folha, e a
+comparação começava pela parte cara: `_inclinacao_da_haste` recorta a imagem binária da base para
+medir o traço do itálico. Numa folha de duas mil caixas isso é duas mil recortadas por pingo --
+quase todas a linhas de distância dele, e todas recusadas depois pelo vão.
+
+**Solução.** Três mudanças, e nenhuma muda a decisão:
+
+- o teste de **vão** (aritmética pura) vem antes do recorte;
+- as bases plausíveis saem de duas listas ordenadas por `y1` e `y2`, com busca binária: o pingo
+  só se une a quem está a `vao_maximo` dele, acima ou abaixo;
+- a janela horizontal é **provada**, e não estimada: `pendor` vive em `[-1, 1]` e `HASTE_ESTREITA`
+  garante `largura/altura <= 0,5`, então `|inclinacao| <= 1` e o deslocamento do itálico nunca
+  passa de `vao_maximo`.
+
+E o índice da base escolhida passou a ser guardado em vez de reprocurado com `caixas.index(base)`
+-- busca linear que, com duas caixas iguais, achava a **primeira** e não a que o pingo escolheu.
+
+**Medido** numa folha sintética de 2.120 caixas com 120 pingos, com imagem binária:
+
+```
+antes   133 ms
+depois    4,1 ms        os mesmos 120 pingos unidos
+```
+
+**Critério de aceite.** O mesmo conjunto de uniões, e a medição da inclinação só nas bases
+vizinhas do pingo.
+
+**Testes.** `JanelaDosPingosTests`, dois casos -- um de resultado, um com espião sobre
+`_inclinacao_da_haste`.
+
+## S-351 · Uma abertura de documento por folha
+
+**Problema.** `ler_pagina` recebia o **caminho** do PDF e o entregava a três clientes que abrem o
+documento cada um: `render_pdf_page`, a leitura da camada e o detector de diagramas. Três
+aberturas por folha, numa varredura de 402 páginas.
+
+**Solução.** `opened(pdf_source)` uma vez no topo, e o `OpenPdf` desce para os três. O empréstimo
+existe desde a S-61 exatamente para isto e nunca havia chegado ao caminho de texto; é reentrante,
+então quem já chega com um documento aberto não paga nada.
+
+**Critério de aceite.** `pdf_io.open_count()` sobe **um** por `ler_pagina`. Medido também num
+livro real: 1 abertura, contra as 3 de antes.
+
+**Testes.** `UmaAberturaPorFolhaTests`.
+
+## S-352 · A folha é rasterizada uma vez por leitura
+
+**Problema.** A aba de texto lia a folha numa thread -- `ler_pagina` sem `imagem_rgb`, então ela
+rasterizava a página -- e, quando o resultado voltava, `_chegou` rasterizava **a mesma folha de
+novo** para as miniaturas. A segunda rasterização roda na thread da janela: ~355 ms de interface
+congelada a cada leitura.
+
+**Solução.** A rasterização acontece uma vez, na thread de trabalho, e a imagem viaja com a
+página lida: `ler_pagina(imagem_rgb=imagem)` e `_chegou(pagina, imagem, ...)`.
+
+**Critério de aceite.** `_chegou` guarda a imagem que recebeu e não chama `_renderizar`.
+
+**Testes.** `UmaRasterizacaoPorLeituraTests`, dois casos.
+
+## S-353 · A hifenizada da quebra de linha é juntada
+
+**Problema.** `lexico.juntar_hifenizadas` existe desde a S-209, com as três condições medidas --
+6 de 6 junções certas, e as 2 que não devem juntar recusadas --, e **nenhum caminho a chamava**.
+O texto lido saía `devel- opment` em toda folha em que a diagramação partiu uma palavra. É o
+mesmo caso do `validar` na S-208 e do `recortes=` na S-338: a peça estava pronta e faltava a
+pergunta.
+
+**Solução.** `montar` recebe o léxico e junta **dentro do parágrafo**, que é onde a quebra de
+linha acontece -- a última linha de um parágrafo não continua na primeira do seguinte, e juntar
+através da fronteira casaria `Xue-` com o `Fierro` do parágrafo de baixo. A bbox de cada linha
+não muda: ela é a geometria do que foi impresso.
+
+Léxico vazio -- ou `dicionario=False` -- não junta nada, que é o comportamento de antes.
+
+**Critério de aceite.** `a nice devel-` + `opment for white` vira `a nice development` +
+`for white`; `Xue-` + `Fierro` sobrevive.
+
+**Testes.** `HifenDaQuebraTests`, três casos.
+
+## S-354 · O diagrama que atravessa a calha quebra as duas colunas
+
+**Problema.** `sequencia_de_leitura` trata o elemento transversal desde a S-193 -- tudo o que
+está acima dele sai primeiro, depois ele, depois o resto. `montar` então remonta a página **por
+coluna**, e ali a regra se perdia: a coluna do diagrama saía de `atribuir_coluna`, que decide
+pelo **centro** -- e o centro de um diagrama largo cai dentro da calha, então a coluna era um
+desempate de proximidade, esquerda ou direita conforme um pixel. A tira da outra coluna continuava
+aberta, e o parágrafo de cima se juntava ao de baixo.
+
+**Solução.** Diagrama que `colunas.atravessa` fecha a tira corrente de **todas** as colunas, e a
+coluna dele passa a ser a primeira que ele cobre -- determinística, e a que a leitura alcança
+antes.
+
+**O que este item não resolve, e fica registrado:** a `PaginaLida` é uma sequência de colunas, e
+não sabe dizer "este bloco não é de coluna nenhuma". Um transversal continua morando numa delas;
+o que ele deixou de fazer é juntar parágrafos através de si.
+
+**Critério de aceite.** Com um diagrama cobrindo as duas colunas, nenhuma delas tem parágrafo com
+linhas de antes **e** de depois dele.
+
+**Testes.** `test_o_diagrama_que_atravessa_a_calha_fecha_as_duas_colunas`.
+
+## S-355 · A fila de rótulos só sai quando há diagrama perto
+
+**Problema.** `e_fila_de_eixo` é estrutural de propósito -- rótulos de um caractere, do alfabeto
+do tabuleiro, distintos --, e é isso que a faz aceitar `1 2 3 4 5 6 7 8`: oito rótulos, todos
+distintos. Essa é a linha de cabeçalho de toda tabela de torneio de oito rodadas, e ela era
+apagada da página **em silêncio**, sem nada no texto dizendo que faltava uma linha.
+
+**Solução.** Rótulo de eixo é borda de tabuleiro, e borda de tabuleiro fica encostada num
+tabuleiro: a fila só sai quando está a duas alturas de linha de um diagrama detectado, com o
+centro dela dentro da faixa horizontal dele. Sem diagrama na folha, nada é apagado -- que é a
+resposta certa para "não sei onde estão os tabuleiros".
+
+**Critério de aceite.** A mesma fila é apagada junto de um diagrama e preservada longe dele.
+
+**Testes.** `test_a_fila_so_sai_quando_ha_diagrama_perto` e `test_sem_diagrama_nenhum_nada_e_apagado`.
+
+## S-356 · Cabeçalho e rodapé são da camada
+
+**Problema.** `_margens` carimbava as duas linhas com a procedência do **motor da página**: numa
+folha lida pelo glifo, o cabeçalho saía marcado como "glifo". Mas ele vem de
+`pdf_text.page_margin_lines`, que lê a camada de texto do PDF -- sempre, inclusive nessa folha.
+
+Procedência é a resposta a "de onde veio este texto?", e a interface pinta as duas diferente de
+propósito: dizer que o cabeçalho foi **reconhecido** quando ele foi **lido** é a mesma classe de
+erro que a S-04 fechou nos rótulos.
+
+**Solução.** `camada`, sempre, com o porquê no docstring. O parâmetro saiu da assinatura: ele só
+podia estar errado.
+
+**Critério de aceite.** `_margens` devolve procedência `camada` para as duas linhas.
+
+**Testes.** `MargemVemDaCamadaTests`.
+
+## S-357 · Léxico vazio desliga a conferência
+
+**Problema.** `desconhecidas` pergunta `conhecida(palavra, lexico)` para cada token, e o conjunto
+vazio responde `False` para todos: **a folha inteira saía sublinhada**. E o caso não é hipotético
+-- é o de um clone sem `assets/lexico/`, onde `carregar` devolve o conjunto vazio de propósito
+("ausente não é erro").
+
+**Solução.** Sem lista, a conferência não acende. É a mesma regra que `escolher` e
+`juntar_hifenizadas` já seguiam, aplicada à terceira porta do módulo.
+
+**Critério de aceite.** `desconhecidas(texto, frozenset())` devolve `()`; com lista, continua
+apontando.
+
+**Testes.** `LexicoVazioDesligaTests`, dois casos.

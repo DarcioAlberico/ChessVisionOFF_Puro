@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 
@@ -167,8 +169,46 @@ class RotuloDeEixoTests(unittest.TestCase):
     def test_prosa_nunca_e_fila_de_eixo(self) -> None:
         self.assertFalse(leitor.e_fila_de_eixo("the position features a vital difference"))
 
+    def test_a_fila_so_sai_quando_ha_diagrama_perto(self) -> None:
+        """`1 2 3 4 5 6 7 8` é o cabeçalho de uma tabela de oito rodadas, e era apagado em
+        silêncio (S-355). Rótulo de eixo é borda de tabuleiro, e borda fica encostada num."""
+        fila = _cru("1 2 3 4 5 6 7 8", 40, 300, 240, 314)
+        longe = leitor.sem_rotulos_de_eixo([fila], [(40.0, 20.0, 240.0, 200.0)])
+        perto = leitor.sem_rotulos_de_eixo([fila], [(40.0, 100.0, 240.0, 295.0)])
+
+        self.assertEqual([c.texto for c in longe], ["1 2 3 4 5 6 7 8"])
+        self.assertEqual(perto, [])
+
+    def test_sem_diagrama_nenhum_nada_e_apagado(self) -> None:
+        """A folha sem tabuleiro não tem borda de tabuleiro para tirar."""
+        fila = _cru("a b c d e f g h", 40, 300, 240, 314)
+        self.assertEqual(len(leitor.sem_rotulos_de_eixo([fila])), 1)
+
 
 class MontagemTests(unittest.TestCase):
+    def test_o_diagrama_que_atravessa_a_calha_fecha_as_duas_colunas(self) -> None:
+        """A regra de transversal da S-193 valia na ordem de leitura e se perdia na remontagem
+        por coluna: a tira da outra coluna continuava aberta, e o parágrafo de cima se juntava
+        ao de baixo (S-354)."""
+        cruas = [
+            _cru("esquerda antes", 20, 20, 240, 34, coluna=0),
+            _cru("direita antes", 320, 20, 540, 34, coluna=1),
+            _cru("esquerda depois", 20, 300, 240, 314, coluna=0),
+            _cru("direita depois", 320, 300, 540, 314, coluna=1),
+        ]
+        # O diagrama cobre as duas colunas: x de 60 a 500, sobre a calha de 240 a 320.
+        colunas = leitor.montar(
+            cruas, [(60.0, 60.0, 500.0, 280.0)], escala_px=1.0, faixas=[(20, 240), (320, 540)]
+        )
+        blocos = {c.indice: [b.tipo for b in c.blocos] for c in colunas}
+
+        self.assertEqual(blocos[0], ["texto", "diagrama", "texto"])
+        self.assertEqual(blocos[1], ["texto", "texto"], "a direita também tem de ser cortada")
+        for coluna in colunas:
+            for bloco in coluna.blocos:
+                if bloco.tipo == "texto":
+                    self.assertEqual(len(bloco.linhas), 1, "nenhum parágrafo atravessa o diagrama")
+
     def test_o_diagrama_fecha_o_paragrafo_corrente(self) -> None:
         """Sem isto o diagrama iria para o fim da coluna, que é o defeito que a S-193 corrige."""
         cruas = [
@@ -432,3 +472,91 @@ class VinculoDaLegendaTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class UmaAberturaPorFolhaTests(unittest.TestCase):
+    """`ler_pagina` abre o livro uma vez, e não três (S-351).
+
+    A rasterização, a leitura da camada e o detector recebiam o **caminho** e abriam o documento
+    cada um. O empréstimo da S-61 existe desde então para isto, e nunca havia chegado ao caminho
+    de texto.
+    """
+
+    def test_a_leitura_de_uma_folha_abre_o_documento_uma_vez(self) -> None:
+        import fitz
+
+        from chess_diagram_ocr import pdf_io
+
+        with TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "livro.pdf"
+            doc = fitz.open()
+            pagina = doc.new_page(width=300.0, height=400.0)
+            pagina.insert_text((40.0, 60.0), "uma linha de prosa", fontsize=11)
+            doc.save(str(caminho))
+            doc.close()
+
+            antes = pdf_io.open_count()
+            leitor.ler_pagina(caminho, 0, dpi=110, motor="camada", marcar_negrito=False, marcar_italico=False)
+
+            self.assertEqual(pdf_io.open_count() - antes, 1)
+
+
+class HifenDaQuebraTests(unittest.TestCase):
+    """A palavra que a quebra de linha partiu volta inteira (S-353).
+
+    `lexico.juntar_hifenizadas` existe desde a S-209, com as três condições medidas, e ninguém a
+    chamava: o texto saía `devel- opment` em toda folha em que a diagramação partiu uma palavra.
+    """
+
+    LEXICO = frozenset({"development", "for", "white", "nice"})
+
+    def test_a_hifenizada_e_juntada_dentro_do_paragrafo(self) -> None:
+        cruas = [
+            _cru("a nice devel-", 20, 20, 240, 34),
+            _cru("opment for white", 20, 36, 240, 50),
+        ]
+        colunas = leitor.montar(cruas, (), escala_px=1.0, lexico=self.LEXICO)
+        linhas = [linha.texto for c in colunas for b in c.blocos for linha in b.linhas]
+
+        self.assertEqual(linhas, ["a nice development", "for white"])
+
+    def test_sem_lexico_nada_e_juntado(self) -> None:
+        """É o comportamento de antes, e o de quem lê com o dicionário desligado."""
+        cruas = [
+            _cru("a nice devel-", 20, 20, 240, 34),
+            _cru("opment for white", 20, 36, 240, 50),
+        ]
+        colunas = leitor.montar(cruas, (), escala_px=1.0)
+        linhas = [linha.texto for c in colunas for b in c.blocos for linha in b.linhas]
+
+        self.assertEqual(linhas, ["a nice devel-", "opment for white"])
+
+    def test_o_nome_composto_nao_e_juntado(self) -> None:
+        """A condição 2 da S-209: `Xue-Fierro` não está no léxico, e por isso sobrevive."""
+        cruas = [
+            _cru("a game by Xue-", 20, 20, 240, 34),
+            _cru("Fierro in 1998", 20, 36, 240, 50),
+        ]
+        colunas = leitor.montar(cruas, (), escala_px=1.0, lexico=self.LEXICO)
+        linhas = [linha.texto for c in colunas for b in c.blocos for linha in b.linhas]
+
+        self.assertEqual(linhas, ["a game by Xue-", "Fierro in 1998"])
+
+
+class MargemVemDaCamadaTests(unittest.TestCase):
+    """Cabeçalho e rodapé são da camada do PDF, mesmo numa folha lida pelo glifo (S-356)."""
+
+    def test_a_procedencia_da_margem_e_camada(self) -> None:
+        class _Linha:
+            def __init__(self, texto: str, bbox: tuple[float, float, float, float]) -> None:
+                self.text = texto
+                self.bbox = bbox
+
+        cabecalho, rodape = leitor._margens(
+            [_Linha("O CAPÍTULO", (40.0, 20.0, 200.0, 32.0)), _Linha("142", (40.0, 760.0, 200.0, 772.0))],
+            800.0,
+        )
+
+        assert cabecalho is not None and rodape is not None
+        self.assertEqual(cabecalho.procedencia, "camada")
+        self.assertEqual(rodape.procedencia, "camada")

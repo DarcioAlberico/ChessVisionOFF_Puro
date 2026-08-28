@@ -221,6 +221,15 @@ def desconhecidas(
     **A caixa não é conferida aqui.** O léxico compara em `casefold`, então `poSition` passa como
     conhecida -- e é o certo: quem separa `s` de `S` é a altura do box na S-211, com medição.
     """
+    # **Léxico vazio desliga a conferência (S-357).** Sem palavra nenhuma na lista, `conhecida`
+    # responde `False` para tudo e a folha inteira saía sublinhada -- que é o mesmo sintoma que a
+    # guarda de `e_palavra` acima existe para evitar, por outra porta. E o caso não é hipotético:
+    # é o de um clone sem `data/lexico/`, onde `carregar` devolve o conjunto vazio.
+    #
+    # É a mesma regra que `escolher` e `juntar_hifenizadas` já seguem: sem lista, o dicionário não
+    # decide nada.
+    if not lexico:
+        return ()
     vetados = tuple((min(a, b), max(a, b)) for a, b in ignorar)
     achados: list[tuple[int, int, str]] = []
     for inicio, fim, palavra in _tokens_de_palavra(texto):

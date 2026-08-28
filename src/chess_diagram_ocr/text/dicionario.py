@@ -237,7 +237,32 @@ def escolher(
     conhecidas = {
         v for v in variantes(palavra, candidatos, max_trocas=max_trocas) if conhecida(v, lexico)
     }
-    return conhecidas.pop() if len(conhecidas) == 1 else None
+    if not conhecidas:
+        return None
+    # **Pontuação de borda não é ambiguidade (S-349).** `conhecida` apara `.,;:!?()[]'"` antes de
+    # olhar o léxico, então `black.` e `black,` são a **mesma** resposta do dicionário -- e duas
+    # respostas iguais chegavam aqui como duas variantes distintas, disparando a guarda da
+    # ambiguidade. `blaek.` com o ponto entre os candidatos da última caixa era recusado por
+    # "duas conhecidas", quando a correção era uma só: `black`.
+    #
+    # A caixa é comparada **sem** `casefold`: `Black` e `black` são duas respostas de verdade, e
+    # decidir entre elas é o palpite que este módulo não dá.
+    nucleos = {v.strip(PONTUACAO_DE_BORDA) for v in conhecidas}
+    if len(nucleos) != 1:
+        return None
+    return _com_a_pontuacao_de(palavra, nucleos.pop())
+
+
+def _com_a_pontuacao_de(original: str, nucleo: str) -> str:
+    """O núcleo corrigido, com a pontuação de borda que o original tinha (S-349).
+
+    A pontuação vem do original e não da variante escolhida porque é o **original** que a leitura
+    viu: trocar `black.` por `black,` porque a vírgula estava entre os candidatos da caixa seria
+    corrigir o que ninguém pediu -- o dicionário decide letra, e não sinal.
+    """
+    dianteira = original[: len(original) - len(original.lstrip(PONTUACAO_DE_BORDA))]
+    traseira = original[len(original.rstrip(PONTUACAO_DE_BORDA)) :]
+    return f"{dianteira}{nucleo}{traseira}"
 
 
 def palavras(caixas: Sequence[Caixa], lidos: Sequence[tuple[str, float]]) -> list[tuple[int, int]]:

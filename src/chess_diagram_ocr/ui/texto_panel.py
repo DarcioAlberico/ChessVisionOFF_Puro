@@ -424,7 +424,7 @@ class TextoPanel(ttk.Frame):
         self._imagens: list[tk.PhotoImage] = []
         """As miniaturas vivas. **O Tk não segura a imagem** -- sem esta lista elas somem assim que
         o coletor passar, e o texto fica com buracos brancos onde havia diagrama."""
-        self._pagina_rgb = None
+        self._pagina_rgb: np.ndarray | None = None
         self._caminho_do_documento: Path | None = None
         """O `.cvtxt` deste documento, quando ele já tem um. Ver `salvar_documento` (S-343)."""
         self._lendo = False
@@ -888,8 +888,14 @@ class TextoPanel(ttk.Frame):
             from ..text.leitor import ler_pagina
 
             try:
+                # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza
+                # sozinha quando ninguém lhe dá a imagem, e `_chegou` a renderizava **de novo**
+                # para as miniaturas -- na thread da janela, que congelava ~355 ms por leitura.
+                # O parâmetro `imagem_rgb` existe desde sempre justamente para isto, e o mesmo
+                # `dpi` dos dois lados é o que liga pixel a ponto.
+                imagem = self._renderizar(caminho, indice)
                 pagina = ler_pagina(
-                    caminho, indice, dpi=self._dpi, motor=motor, modo_bloco=bloco
+                    caminho, indice, dpi=self._dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem
                 )
             except Exception as erro:  # noqa: BLE001 - a thread não pode derrubar a janela
                 # **O nome tem de sair do `except` antes da lambda.** Em Python 3 o `as erro` é
@@ -900,7 +906,7 @@ class TextoPanel(ttk.Frame):
                 logger.exception("Falha ao ler o texto da folha %d.", indice + 1)
                 _na_janela(lambda: self._falhou(falha, token))
                 return
-            _na_janela(lambda: self._chegou(pagina, caminho, indice, token))
+            _na_janela(lambda: self._chegou(pagina, imagem, indice, token))
 
         def _na_janela(acao: Callable[[], None]) -> None:
             """Executa `acao` na thread da janela, e desiste em silêncio se ela já fechou.
@@ -925,14 +931,15 @@ class TextoPanel(ttk.Frame):
         self.status_var.set(f"A folha não pôde ser lida: {exc}")
         self._on_status("A leitura de texto falhou; o motivo está no log.")
 
-    def _chegou(self, pagina: PaginaLida, caminho: Path, indice: int, token: object) -> None:
+    def _chegou(self, pagina: PaginaLida, imagem: np.ndarray | None, indice: int, token: object) -> None:
+        """A folha lida voltou da thread. **A imagem vem com ela** (S-352)."""
         token.release()  # type: ignore[attr-defined]
         self._lendo = False
-        self._pagina_rgb = self._renderizar(caminho, indice)
+        self._pagina_rgb = imagem
         self.desenhar(pagina)
         self._on_status(f"Folha {indice + 1} lida: {documento.resumo(pagina)}")
 
-    def _renderizar(self, caminho: Path, indice: int):  # noqa: ANN202 - np.ndarray | None
+    def _renderizar(self, caminho: Path, indice: int) -> np.ndarray | None:
         """A folha renderizada, de onde saem as miniaturas. `None` quando ela não pôde ser aberta."""
         try:
             from ..pdf_io import render_pdf_page

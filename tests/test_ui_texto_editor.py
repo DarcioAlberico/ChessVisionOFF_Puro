@@ -1404,3 +1404,36 @@ class BarraDeFormatoSegueOCursorTests(_ComJanela, unittest.TestCase):
                       "<KeyRelease-End>", "<KeyRelease-Prior>", "<KeyRelease-Next>"):
             with self.subTest(tecla=tecla):
                 self.assertIn(tecla, ligadas)
+
+
+class UmaRasterizacaoPorLeituraTests(_ComJanela, unittest.TestCase):
+    """A folha é rasterizada uma vez, e na thread de trabalho (S-352).
+
+    `ler_pagina` renderiza a folha quando ninguém lhe dá a imagem, e `_chegou` a renderizava **de
+    novo** para as miniaturas -- na thread da janela, que congelava ~355 ms por leitura.
+    """
+
+    class _Ficha:
+        def release(self) -> None:
+            return None
+
+    def test_a_imagem_que_volta_da_thread_e_a_que_fica(self) -> None:
+        import numpy as np
+
+        painel = self._painel()
+        pedidos: list[int] = []
+        painel._renderizar = lambda _c, _i: pedidos.append(1)  # type: ignore[method-assign]
+        imagem = np.zeros((8, 8, 3), dtype=np.uint8)
+
+        painel._chegou(_pagina(_texto("uma folha")), imagem, 0, self._Ficha())
+
+        self.assertIs(painel._pagina_rgb, imagem)
+        self.assertEqual(pedidos, [], "a folha foi rasterizada de novo na thread da janela")
+
+    def test_a_leitura_entrega_a_imagem_ao_leitor(self) -> None:
+        """O parâmetro `imagem_rgb` existe desde sempre; o que faltava era passá-lo."""
+        import inspect
+
+        fonte = inspect.getsource(TextoPanel.ler)
+        self.assertIn("imagem_rgb=imagem", fonte)
+        self.assertIn("self._renderizar(caminho, indice)", fonte)
