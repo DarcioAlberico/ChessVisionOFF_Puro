@@ -67,7 +67,7 @@ from chess_diagram_ocr.labels import (
     pages_with_training_samples,
     saved_diagrams_by_page,
 )
-from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
+from chess_diagram_ocr.logging_setup import configure_logging, default_log_file, onde_esta_o_rastro
 from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
 from chess_diagram_ocr.pdf_io import get_pdf_page_count
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
@@ -1623,7 +1623,8 @@ class ChessOcrTkApp:
 
     def _on_ocr_error(self, exc: Exception) -> None:
         self._set_status("Falha no OCR.")
-        messagebox.showerror("Ler o diagrama", f"Falha no OCR:\n{exc}\n\nO traceback está no arquivo de log.")
+        # A frase diz **onde** o rastro está, e num checkout ela diz que não há um (S-421).
+        messagebox.showerror("Ler o diagrama", f"Falha no OCR:\n{exc}\n\n{onde_esta_o_rastro()}")
 
     def _finish_ocr_ui(self) -> None:
         self._is_running_ocr = False
@@ -2177,10 +2178,10 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
         logger.exception("Auto-teste: o checkpoint não pôde ser lido.")
         logger.error(
             "Auto-teste: o checkpoint em %s existe mas não pôde ser lido (%s). Ele pode estar "
-            "truncado, ter vindo pela metade, ou ser de outra arquitetura -- ver `arch_version`. "
-            "O rastro completo está no log.",
+            "truncado, ter vindo pela metade, ou ser de outra arquitetura -- ver `arch_version`. %s",
             modelo,
             message_for(exc),
+            onde_esta_o_rastro(),
         )
         return 3
 

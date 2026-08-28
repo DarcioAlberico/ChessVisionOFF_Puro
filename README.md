@@ -806,6 +806,8 @@ padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e 
 
 | sintoma | causa provavel | o que fazer |
 |---|---|---|
+| **Num clone novo:** a janela diz que "o classificador de pecas nao esta em models/piece_classifier.pt" | os `.pt` nao vem no repositorio -- sao binarios treinados, e o `.gitignore` manda `*.pt` para fora | apontar um `.pt` no campo **Modelo (.pt)** da aba Configuracao, ou treinar um com `cvoff-train` depois de corrigir alguns diagramas e salva-los com `Ctrl+S`. **A recusa e o recurso** (S-320): sem ele uma rede nao treinada devolveria uma FEN inventada com ar de certa |
+| **Num clone novo:** a aba Texto le a pagina pela camada do PDF e avisa no log | o motor `auto` caiu na reserva porque falta `models/char_classifier.pt` | e o esperado, e a leitura continua: `auto` e o glifo com a camada como reserva. Para o glifo de verdade, ver a linha do `--ocr glifo` abaixo |
 | Sumiu a aba **Leitura** do visualizador | saiu na S-69, junto com o WebView2 | o botao **Abrir no leitor do sistema** faz o mesmo, no leitor padrao da maquina. A pagina no app continua sendo a que reconhece, marca e recorta diagramas |
 | Treino muito lento (~9 min por epoca) | `torch` `+cpu`, sem CUDA | ver [Desempenho](#desempenho-cpu-gpu-e-onnx). A barra de status diz qual dispositivo esta em uso |
 | Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros medidos em 2026-08-14. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
@@ -1079,7 +1081,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-220 a S-234, S-294, S-295, S-324 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
 | S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
-| S-296 a S-323, S-325 a S-420 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
+| S-296 a S-323, S-325 a S-424 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da

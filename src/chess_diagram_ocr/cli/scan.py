@@ -28,7 +28,7 @@ from pathlib import Path
 
 from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
 from ..gallery_scan import build_gallery_index, index_path_for, load_index, save_index
-from ..logging_setup import configure_logging, default_log_file
+from ..logging_setup import configure_logging, default_log_file, onde_esta_o_rastro
 from ..review_queue import DEFAULT_CACHE_DIR, ReviewQueue, ReviewQueueBuilder, merge_queues
 from . import (
     EXIT_BAD_INPUT,
@@ -99,7 +99,7 @@ class ScanReport:
             linhas.append(f"  {len(pulados)} pulado(s) -- use --force para revarrer.")
         erros = [livro for livro in self.books if livro.error]
         if erros:
-            linhas.append(f"  {len(erros)} com erro. O rastro completo está no log.")
+            linhas.append(f"  {len(erros)} com erro. {onde_esta_o_rastro()}")
         linhas.append("")
         return linhas
 

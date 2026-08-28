@@ -96,6 +96,8 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Any, Literal
 
+from chess_diagram_ocr.logging_setup import onde_esta_o_rastro
+
 from ..text import arquivo, busca, correcao, dicionario, documento, exportacao, pdf_pesquisavel, rascunho, rico
 from ..text import paleta as _paleta
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
@@ -339,8 +341,18 @@ S-20), e do outro lado ninguém a ligava. O resultado era um silêncio de duas c
 Quem confere que cada ação declarada é de fato atendida é `atalhos.conferir_dono`, na montagem:
 declarar e não atender come a tecla e não faz nada, que é pior que não declarar."""
 
-MOTORES: tuple[MotorDeTexto, ...] = ("glifo", "camada", "auto")
+MOTORES: tuple[MotorDeTexto, ...] = ("auto", "glifo", "camada")
 """Os mesmos três de `text/leitor.py`, e a caixa da barra os oferece nesta ordem.
+
+**O primeiro é o padrão, e ele era o `glifo` (S-423).** O glifo precisa de
+`models/char_classifier.pt`, que **não vem no repositório** -- `*.pt` está no `.gitignore`.
+Num clone novo a aba abria com o motor que não pode funcionar, tendo `auto` na mesma caixa:
+a primeira leitura de texto da vida de quem instala falhava por falta de um arquivo, e a
+escolha certa estava a um clique de distância sem que nada dissesse isso.
+
+`auto` é o glifo **com a camada como reserva** (`text/leitor.py`): com o classificador no
+lugar ele lê igual, e sem ele cai na camada de texto do PDF avisando no log. É a mesma
+regra do resto do programa -- degradar dizendo, em vez de recusar em silêncio.
 
 **`text/leitor.py` não é importado no topo deste arquivo, e é regra e não descuido.** Por
 `text/recognizer.py` ele alcança o **torch**, e a aba de texto é construída na abertura da janela,
@@ -929,7 +941,7 @@ class TextoPanel(ttk.Frame):
         token.release()  # type: ignore[attr-defined]
         self._lendo = False
         self.status_var.set(f"A folha não pôde ser lida: {exc}")
-        self._on_status("A leitura de texto falhou; o motivo está no log.")
+        self._on_status(f"A leitura de texto falhou. {onde_esta_o_rastro()}")
 
     def _chegou(self, pagina: PaginaLida, imagem: np.ndarray | None, indice: int, token: object) -> None:
         """A folha lida voltou da thread. **A imagem vem com ela** (S-352)."""

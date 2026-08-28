@@ -46,6 +46,7 @@ from chess_diagram_ocr.games_db import (
     scan_by_positions,
 )
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
+from chess_diagram_ocr.logging_setup import onde_esta_o_rastro
 from chess_diagram_ocr.service import OcrService
 
 from . import database_choice, scan_scope, shortcuts, strings, texto, theme, tokens
@@ -791,7 +792,7 @@ class GalleryPanel(ttk.Frame):
         if pulados:
             partes.append(f"{len(pulados)} pulado(s) por índice já completo")
         if erros:
-            partes.append(f"{len(erros)} com erro (o rastro está no log)")
+            partes.append(f"{len(erros)} com erro -- {onde_esta_o_rastro()}")
         faltaram = len(escopo.books) - len(resultados)
         if faltaram:
             partes.append(f"cancelada com {faltaram} livro(s) sem varrer")
@@ -1073,7 +1074,8 @@ class GalleryPanel(ttk.Frame):
         self._on_status(
             "A busca por posição foi interrompida: um dos processos de leitura da base morreu. "
             "Nada foi gravado, e as posições continuam por perguntar -- dá para tentar de novo. "
-            "O arquivo de log tem a linha com o que aconteceu."
+            # Onde o rastro está, e não "no log" (S-421): num checkout não há arquivo de log.
+            + onde_esta_o_rastro()
         )
 
     def _positions_cancelled(self) -> None:

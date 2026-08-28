@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-420 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-424 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2756,3 +2756,81 @@ humano, que é a linha 4 da tabela do arquivo.
 de existir.
 
 **Testes.** `test_o_que_sobrou_de_pergunta_continua_de_pe`.
+
+---
+
+# Fase 55, o resto — o primeiro dia (S-421 a S-424)
+
+A Fase 55 entregou os dois achados que **mentiam** -- a FEN inventada sem classificador (S-320) e o
+conserto impresso que apagava os rótulos (S-321) -- e deixou quatro que **atrapalham**. Eles
+estavam sem número desde 2026-08-27, e o motivo de terem sobrevivido é o mesmo dos dois primeiros:
+**nenhum deles aparece para quem já tem o acervo montado**, que é toda a gente que já leu este
+código. Só existem no estado de 100% de quem instala, e ninguém que trabalha aqui volta a ele.
+
+## S-421 · O log que não existe num checkout
+
+**Problema.** Sete mensagens mandavam olhar "o log": a caixa de erro do OCR, o resumo da varredura
+da Galeria, a leitura de texto que falhou, o auto-teste, o resumo do `cvoff-scan` e as duas do
+`cli_errors`. **Num checkout não há arquivo de log** -- `default_log_file()` devolve `None` sem
+`CVOFF_LOG_DIR`, de propósito, porque ali o terminal é o rastro. Quem tenta seguir a instrução
+procura um arquivo que ninguém escreveu, e conclui que perdeu o rastro. Ele nunca existiu.
+
+O programa **já sabia disso** num lugar: `Ajuda ▸ Abrir o arquivo de log` responde *"não há arquivo
+de log neste ambiente: defina CVOFF_LOG_DIR"* desde a S-127. A informação estava a uma função de
+distância das outras sete mensagens.
+
+**Solução.** `logging_setup.onde_esta_o_rastro()` devolve o caminho quando há um, e o que fazer
+para haver quando não há. As sete passam a chamá-la, e uma varredura recusa a frase escrita à mão.
+
+**Critério de aceite.** Nenhuma mensagem promete um log sem perguntar se há um.
+
+**Testes.** `OndeEstaORastroTests` (3).
+
+## S-422 · Dois `--help` não conseguiam ser impressos
+
+**Problema.** `cvoff-texto-pagina --help > ajuda.txt` saía com **código 2** e um arquivo com uma
+mensagem de erro dentro. O mesmo em `cvoff-texto-pesquisavel`. A causa é a figurina de xadrez que
+os dois trazem na ajuda (`♔`, `♘`): no Windows a saída **redirecionada** não é UTF-8, é a página de
+código do sistema (cp1252 aqui), e o `print` do argparse levanta `UnicodeEncodeError`. Medido nos
+40 comandos: só estes dois falham, e falham exatamente no gesto de quem quer ler a ajuda com calma.
+
+**Solução.** `saida_que_nao_quebra_em_caractere()`, chamada no `run_main` -- que é por onde os 40
+passam --, põe `errors="backslashreplace"` em `stdout` e `stderr`. **Não troca a codificação**:
+forçar UTF-8 faria o acento virar mojibake num console cp1252, que é o caso comum e o que hoje
+funciona. O que não couber sai como `\\u2654`, e o comando **termina**.
+
+**Critério de aceite.** Os 40 imprimem `--help` inteiro com a saída redirecionada numa página de
+código que não tem figurina.
+
+**Testes.** `AjudaComSaidaRedirecionadaTests` (2).
+
+## S-423 · A aba Texto abria com o motor que não pode funcionar
+
+**Problema.** A caixa de motor da aba Texto oferecia `("glifo", "camada", "auto")` e o padrão era o
+primeiro. O glifo precisa de `models/char_classifier.pt`, que **não vem no repositório** -- `*.pt`
+está no `.gitignore`. Num clone novo, a primeira leitura de texto falhava por falta de um arquivo,
+com a escolha certa a um clique de distância e nada dizendo isso.
+
+**Solução.** A ordem passa a ser a de `text/leitor.py`, com `auto` primeiro. `auto` é o glifo **com
+a camada como reserva**: com o classificador no lugar lê igual, e sem ele cai na camada de texto do
+PDF avisando no log. É a regra do resto do programa -- degradar dizendo, em vez de recusar calado.
+
+**Critério de aceite.** O padrão da aba é `auto`, e os três motores continuam oferecidos.
+
+**Testes.** `MotorPadraoDaAbaTextoTests` (2).
+
+## S-424 · A tabela de problemas cobria o modelo errado
+
+**Problema.** A "Resolução de problemas" do README tinha **duas linhas** sobre o classificador de
+**caractere** -- o motor `glifo`, que quase ninguém usa -- e **nenhuma** sobre o classificador de
+**peças**, que falta em 100% dos clones e sem o qual não se lê diagrama nenhum. A mensagem que a
+S-320 escreveu é boa; a tabela onde se procura por sintoma não a alcançava.
+
+**Solução.** Duas linhas novas, **no topo**, porque numa tabela de sintomas o que acontece com todo
+mundo vem primeiro: a do `piece_classifier.pt` ausente -- com o porquê de a recusa ser o recurso --
+e a da aba Texto caindo na camada, que é o par da S-423.
+
+**Critério de aceite.** A tabela cita `piece_classifier.pt` e diz como obtê-lo, antes das linhas do
+`char_classifier.pt`.
+
+**Testes.** `TabelaDoPrimeiroDiaTests` (2).

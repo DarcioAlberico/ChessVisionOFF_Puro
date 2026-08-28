@@ -129,3 +129,24 @@ def default_log_file() -> Path | None:
 
         return config.PROJECT_ROOT / "logs" / "chessvisionoff.log"
     return None
+
+
+def onde_esta_o_rastro() -> str:
+    """A frase que diz **onde** ficou o traceback -- ou que não ficou em lugar nenhum (S-421).
+
+    **Toda mensagem de erro deste programa mandava olhar "o log", e num checkout não há um.**
+    `default_log_file` devolve `None` sem `CVOFF_LOG_DIR`, de propósito: no terminal o rastro
+    é o terminal. Mas a caixa de erro da janela e o `cli_errors` diziam a mesma frase nos dois
+    casos, e no caso comum -- alguém que clonou e rodou -- ela manda procurar um arquivo que
+    ninguém escreveu. Quem tenta seguir a instrução conclui que perdeu o rastro; ele nunca
+    existiu.
+
+    Devolve o caminho quando há um, e o que fazer para haver quando não há.
+    """
+    destino = default_log_file()
+    if destino is None:
+        return (
+            "Não há arquivo de log neste ambiente: defina CVOFF_LOG_DIR para criar um, ou "
+            "rode o comando pelo terminal com -v."
+        )
+    return f"O rastro completo está em {destino}."

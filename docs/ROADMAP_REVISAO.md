@@ -27,7 +27,7 @@ segunda passada de céticos, com a tarefa de **derrubar** cada achado antes de e
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-420 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-424 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -275,7 +275,7 @@ que teste faltava.
 | 52 | O portão que nunca foi aberto | S-296 a S-299 | **entregue** | a CI não roda neste ramo, e duas verificações estão vermelhas |
 | 53 | O trabalho humano que some | S-300 a S-313 | **entregue** | doze caminhos que apagam sem perguntar e sem desfazer |
 | 54 | O que trava, e o que não cancela | S-314 a S-319 | **entregue** |  a janela congela, e três botões "Cancelar" não cancelam nada |
-| 55 | O primeiro dia, e o estado entre abas | S-320 a S-328 | S-320 a S-323 entregues | um clone novo lê FEN inventada, e o conserto impresso apaga os 4.454 rótulos |
+| 55 | O primeiro dia, e o estado entre abas | S-320 a S-323, S-421 a S-424 | **entregue** | um clone novo lê FEN inventada, e o conserto impresso apaga os 4.454 rótulos |
 | 56 | O que so a CI podia mostrar | S-325 a S-327 | **entregue** |  o digest que via CRLF, a fita medida nas fontes desta máquina, a sonda de artefato ausente |
 | 57 | A folha, o editor e a sala de estudo | S-328 a S-347 | **entregue** |  duas bases para a mesma folha, o desfazer que não vê formato, a sala que não grava |
 | 58 | O texto lido: o que erra e o que custa | S-348 a S-357 | **entregue** |  a camada pesquisável duplicada, e 53% do custo numa pergunta repetida |
@@ -387,11 +387,11 @@ limpo, `data/labels.csv` vem com 4.454 linhas e `data/samples/` vem com um `.git
 CSV a **um cabeçalho** -- sem destravar nada, porque os rótulos utilizáveis continuavam zero. O
 primeiro comando que o recém-chegado roda mandava apagar o único dado que o repositório entrega.
 
-**O que sobra desta fase, e ainda não tem item:** toda mensagem de erro manda olhar um log que
-não existe num checkout; dois comandos não conseguem imprimir o `--help` com a saída
-redirecionada no Windows; a aba Texto vem com o motor que nunca funciona num clone novo, tendo
-`auto` ao lado; e a tabela "Resolução de problemas" do README cobre o modelo que quase ninguém
-usa e não o que falta sempre.
+**O que sobrava desta fase virou a S-421 a S-424, entregues em 2026-08-28:** toda mensagem de erro
+mandava olhar um log que não existe num checkout (S-421); dois comandos não conseguiam imprimir o
+`--help` com a saída redirecionada no Windows (S-422); a aba Texto vinha com o motor que nunca
+funciona num clone novo, tendo `auto` ao lado (S-423); e a tabela "Resolução de problemas" do
+README cobria o modelo que quase ninguém usa e não o que falta sempre (S-424).
 
 ## Fase 57 — A folha do livro, o editor e a sala de estudo
 

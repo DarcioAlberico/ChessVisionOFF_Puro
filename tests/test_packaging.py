@@ -257,7 +257,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2291
+    LIMITE = 2292
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
 
     **2.090 → 2.092 na Fase 39**, e as onze são as quatro linhas de exportação (`.md`, `.html`,
@@ -570,6 +570,9 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     de pele e a escolha do usuário voltava ao primeiro regime da lista (S-399); e a Galeria
     entrando na conferência de `atalhos.conferir_dono`, que é uma linha e é onde ela tinha de
     entrar -- quem confere os donos de ação é quem liga os atalhos (S-400).
+
+    **2.291 → 2.292 na S-421**, e a linha é um comentário: a caixa de erro do OCR passou a
+    perguntar **onde** o rastro está em vez de prometer um log que num checkout não existe.
 
     Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
     crescer **sem decidir**."""

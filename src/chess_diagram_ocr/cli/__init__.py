@@ -29,6 +29,7 @@ from ..config import (
     DEFAULT_SAMPLES_DIR,
     DEFAULT_SPLITS_PATH,
 )
+from ..logging_setup import onde_esta_o_rastro
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,33 @@ def confere_baseline(caminho: Any | None, *, rotulo: str = "--baseline") -> int 
     return EXIT_BAD_INPUT
 
 
+def saida_que_nao_quebra_em_caractere() -> None:
+    """Faz `stdout` e `stderr` trocarem o caractere que não cabem, em vez de levantar (S-422).
+
+    **Dois `--help` não conseguiam ser impressos.** `cvoff-texto-pagina` e `cvoff-texto-pesquisavel`
+    trazem figurina de xadrez na ajuda -- `♔`, `♘` --, e no Windows a saída **redirecionada** não é
+    UTF-8: é a página de código do sistema (cp1252 aqui). O `print` do argparse levantava
+    `UnicodeEncodeError`, o comando saía com código 2 e a ajuda não aparecia. `cvoff-texto-pagina
+    --help > ajuda.txt` era o gesto mais natural do mundo, e não funcionava.
+
+    **`backslashreplace` e não `replace`, e não trocar de codificação.** Trocar para UTF-8 à força
+    faria o acento sair como mojibake num console cp1252 -- que é o caso comum, e o que hoje
+    funciona. `backslashreplace` mantém a codificação do terminal e escreve `♔` no lugar do
+    que não cabe: quem lê continua entendendo a frase, e o comando **termina**.
+
+    Não faz nada quando a saída não é reconfigurável (um `StringIO` de teste, um `pytest` que
+    captura), que é a mesma tolerância a ambiente do resto deste módulo.
+    """
+    for fluxo in (sys.stdout, sys.stderr):
+        reconfigurar = getattr(fluxo, "reconfigure", None)
+        if reconfigurar is None:  # pragma: no cover - saída substituída por teste
+            continue
+        try:
+            reconfigurar(errors="backslashreplace")
+        except (ValueError, OSError):  # pragma: no cover - fluxo fechado ou não reconfigurável
+            continue
+
+
 def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
     """Roda um `main` de CLI traduzindo falha em mensagem pt-BR e código de saída (S-126).
 
@@ -191,6 +219,7 @@ def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
     era vista, e o traceback que ela pede não aparecia. Nos testes, que passam `argv`, ela
     sempre foi vista, e é por isso que ninguém percebeu.
     """
+    saida_que_nao_quebra_em_caractere()
     verboso = any(arg in ("-v", "--verbose") for arg in (sys.argv[1:] if argv is None else argv))
     try:
         return fn(argv)
@@ -205,13 +234,15 @@ def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
         print()
         if verboso:
             raise
-        print("Rode de novo com -v para ver o rastro completo; ele também está no log.")
+        # **Onde o rastro está, e não "no log"** (S-421): num checkout não há arquivo de log,
+        # e mandar procurá-lo é mandar procurar o que ninguém escreveu.
+        print(f"Rode de novo com -v para ver o rastro completo. {onde_esta_o_rastro()}")
         return classify(exc)
     except Exception as exc:  # noqa: BLE001 - falha inesperada e uma classe propria (codigo 1)
         logger.debug("Falha inesperada.", exc_info=True)
         print()
         print(f"Falha inesperada: {type(exc).__name__}: {message_for(exc)}")
-        print("O rastro completo está no log. Rode com -v para vê-lo aqui.")
+        print(f"{onde_esta_o_rastro()} Rode com -v para vê-lo aqui.")
         print()
         if verboso:
             raise
