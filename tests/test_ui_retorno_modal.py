@@ -103,12 +103,22 @@ dela seria a fricção que a S-164 removeu.
 Baixar este número é o item continuando; subi-lo exige vir aqui e escrever por que aquela caixa
 precisava ser modal."""
 
-MODAIS_DE_DECISAO = 14
+MODAIS_DE_DECISAO = 19
 """Quantas das que sobram fazem uma pergunta -- `askyesno`, `askokcancel`, `askyesnocancel`.
 
 Ela é a metade honesta da conta: "a contagem cai" não vale nada se o que caiu foram as perguntas.
-Nenhuma das 22 convertidas era uma; as 13 continuaram de pé, e a 14ª é a da S-301 -- este número é
-o que trava isso."""
+Nenhuma das 22 convertidas era uma; as 13 continuaram de pé, e a 14ª foi a da S-301.
+
+**14 -> 19 na S-420, e as cinco já estavam lá.** Este número é catraca de piso -- ele existe para
+que uma pergunta não vire aviso de rodapé sem que alguém decida --, e um piso cinco abaixo do
+chão não trava nada: dava para apagar quatro perguntas e a suíte continuaria verde. As cinco que
+faltavam entraram entre a S-301 e a S-347, com as fases da sala de estudo e da aba Texto: as três
+do `texto_panel` (o rascunho a recuperar e as duas de sair sem gravar), o "Estudo em andamento" e
+o `askyesnocancel` do PGN existente. Nenhuma delas é notificação disfarçada -- todas as cinco
+perguntam antes de **apagar trabalho humano**, que é a linha 4 da tabela acima.
+
+Contar por varredura, e não à mão, é o que impede o número de envelhecer de novo: quem baixar
+este piso tem de vir aqui e dizer qual pergunta deixou de existir."""
 
 
 def _chamadas_de_messagebox(caminho: Path) -> list[str]:
@@ -154,6 +164,85 @@ class ContagemDeModaisTests(unittest.TestCase):
             "Uma pergunta virou mensagem de rodapé. Decisão precisa de resposta, e o rodapé não "
             "tem como colher uma.",
         )
+
+
+SEM_ESC = {
+    "tooltip.py:janela_de_dica": "a dica não é diálogo: não tem foco, não pede resposta e some sozinha",
+    "degradacao.py:abrir_cromo_de_prova": "janela `withdraw`n e descartável do auto-teste, que ninguém vê",
+}
+"""As duas `Toplevel` que **não** são diálogo, com o motivo escrito.
+
+A lista existe para que a exceção seja uma decisão e não um esquecimento -- é a mesma disciplina
+das exceções de `test_strings`. Uma terceira linha aqui precisa vir com a razão junto.
+"""
+
+
+def _liga_escape(no: ast.AST) -> bool:
+    """Se algum `X.bind("<Escape>", ...)` aparece dentro daquele nó."""
+    return any(
+        isinstance(filho, ast.Call)
+        and ast.unparse(filho.func).endswith(".bind")
+        and filho.args
+        and isinstance(filho.args[0], ast.Constant)
+        and filho.args[0].value == "<Escape>"
+        for filho in ast.walk(no)
+    )
+
+
+def _cria_toplevel(no: ast.AST) -> bool:
+    """Se aquele nó instancia `tk.Toplevel(...)` -- ignorando o que está em funções aninhadas."""
+    return any(
+        isinstance(filho, ast.Call) and ast.unparse(filho.func).endswith("Toplevel")
+        for filho in ast.walk(no)
+    )
+
+
+class EscFechaODialogoTests(unittest.TestCase):
+    """Toda janela de diálogo fecha com `Esc` (S-395).
+
+    **Catorze janelas, e onze não fechavam.** Inclusive a legenda de atalhos -- a que mais se abre,
+    e a que menos tem o que consentir. `Esc` é a saída que todo diálogo tem em todo programa; sem
+    ela, a única porta é achar o botão de fechar, e três destas janelas não tinham botão de fechar
+    nenhum: só o X da barra de título.
+
+    **E em nenhuma delas `Esc` aplica.** Sair sem consentir é sempre a resposta segura -- é a
+    mesma régua da linha 4 da tabela deste arquivo, do outro lado: a decisão precisa de resposta,
+    e "nenhuma" é uma resposta que não estraga nada.
+    """
+
+    def _dialogos(self) -> list[tuple[str, bool]]:
+        achados: list[tuple[str, bool]] = []
+        for caminho in ARQUIVOS_DE_UI:
+            arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+            for no in ast.walk(arvore):
+                if isinstance(no, ast.ClassDef) and any(ast.unparse(b).endswith("Toplevel") for b in no.bases):
+                    achados.append((f"{caminho.name}:{no.name}", _liga_escape(no)))
+                elif isinstance(no, ast.FunctionDef) and _cria_toplevel(no):
+                    achados.append((f"{caminho.name}:{no.name}", _liga_escape(no)))
+        return [(nome, tem) for nome, tem in achados if nome not in SEM_ESC]
+
+    def test_a_varredura_acha_os_dialogos(self) -> None:
+        """Sem isto, renomear `Toplevel` faria o teste abaixo passar sobre lista vazia."""
+        self.assertGreaterEqual(len(self._dialogos()), 12)
+
+    def test_todo_dialogo_fecha_com_esc(self) -> None:
+        sem = sorted(nome for nome, tem in self._dialogos() if not tem)
+        self.assertEqual(
+            sem,
+            [],
+            "Janela de diálogo sem `<Escape>`. Ligue-o ao mesmo que o botão Cancelar faz -- e "
+            "se ela não for diálogo, ponha o motivo em SEM_ESC:\n" + "\n".join(sem),
+        )
+
+    def test_a_lista_de_excecoes_nao_cobre_quem_nao_existe(self) -> None:
+        """Exceção que sobra é exceção que esconde: a janela pode ter virado diálogo desde então."""
+        nomes = {
+            f"{caminho.name}:{no.name}"
+            for caminho in ARQUIVOS_DE_UI
+            for no in ast.walk(ast.parse(caminho.read_text(encoding="utf-8")))
+            if isinstance(no, (ast.ClassDef, ast.FunctionDef))
+        }
+        self.assertEqual([], sorted(set(SEM_ESC) - nomes))
 
 
 class OperacoesLongasTests(unittest.TestCase):

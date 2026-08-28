@@ -54,7 +54,7 @@ from typing import Any
 from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import cli_errors
+from . import add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +229,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--minimo", type=int, default=3, help="Abaixo disto a classe vira achado (padrao 3).")
     parser.add_argument("--tarefas", type=int, default=TAREFAS_PADRAO, help="Threads da leitura.")
     parser.add_argument("--procedencia", type=Path, help="Padrao: data/texto_procedencia.csv, se existir.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 

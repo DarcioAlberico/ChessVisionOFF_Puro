@@ -226,7 +226,7 @@ class EngineAnalyzer:
             try:
                 info = self._engine.analyse(board, limite)
             except chess.engine.EngineError as exc:
-                raise RuntimeError(f"O motor de analise falhou: {exc}") from exc
+                raise RuntimeError(f"O motor de análise falhou: {exc}") from exc
 
         return _avaliacao_de(board, info, elapsed_s=time.monotonic() - inicio)
 
@@ -255,7 +255,7 @@ class EngineAnalyzer:
             try:
                 infos = self._engine.analyse(board, limite, multipv=quantas)
             except chess.engine.EngineError as exc:
-                raise RuntimeError(f"O motor de analise falhou: {exc}") from exc
+                raise RuntimeError(f"O motor de análise falhou: {exc}") from exc
 
         avaliacoes = [_avaliacao_de(board, info) for info in infos]
         return avaliacoes or [_avaliacao_de(board, {})]

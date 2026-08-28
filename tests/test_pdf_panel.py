@@ -12,13 +12,13 @@ são as mesmas da tela. Com 220 as contas teriam de ser refeitas a cada leitura.
 from __future__ import annotations
 
 import shutil
-import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
 
 import fitz
 import numpy as np
+from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui import pdf_panel
@@ -540,7 +540,7 @@ class LoadPdfEstadoTests(unittest.TestCase):
         cls.root = _raiz()
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-s123-"))
+        self.tmp = pasta_temporaria(self, prefixo="cvoff-s123-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
         self.bom = self.tmp / "bom.pdf"
@@ -586,6 +586,31 @@ class LoadPdfEstadoTests(unittest.TestCase):
         self.assertEqual(self.panel.name, "bom.pdf")
         self.assertEqual(self.panel.page_count, 2)
         self.assertEqual(self.abertos, [self.bom])
+
+    def test_o_pdf_com_senha_nao_troca_o_estado_do_valido(self) -> None:
+        """A S-123 pôs a contagem antes da troca; o PDF cifrado passava por ela (S-331).
+
+        `fitz.open` aceita o arquivo, `needs_pass` fica ligado e `page_count` responde **1**:
+        a validação dizia sim, o programa inteiro trocava de livro -- Galeria, resultados,
+        estudo -- e só o render falhava, com a tela ainda mostrando o livro anterior.
+        """
+        cifrado = self.tmp / "com_senha.pdf"
+        doc = fitz.open()
+        doc.new_page(width=200, height=300)
+        doc.save(str(cifrado), encryption=fitz.PDF_ENCRYPT_AES_256, owner_pw="dono", user_pw="segredo")
+        doc.close()
+
+        self.panel.load_pdf(self.bom)
+        self.abertos.clear()
+
+        self.panel.load_pdf(cifrado)
+
+        self.assertEqual(self.panel.source, self.bom)
+        self.assertEqual(self.panel.page_count, 2)
+        self.assertEqual(self.abertos, [], "nenhum callback disparou para o livro que não abre")
+        self.assertEqual(len(self.erros), 1)
+        self.assertIn("senha", self.erros[0][1])
+        self.assertIn("bom.pdf continua aberto", self.erros[0][1])
 
     def test_o_pdf_corrompido_nao_troca_o_estado_do_valido(self) -> None:
         """O defeito da S-123: a tela mostrava o livro anterior e o estado era o do quebrado."""
@@ -795,3 +820,144 @@ class EnquadramentoInicialTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DpiEZoomTests(unittest.TestCase):
+    """Rasterização e roda: o que envelhece a imagem, e quem manda no giro (S-329, S-330, S-332)."""
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    def setUp(self) -> None:
+        self.dpi_var = tk.IntVar(master=self.root, value=220)
+        self.regioes: list[tuple[int, int, int, int]] = []
+        self.status: list[str] = []
+        self.host = tk.Frame(self.root)
+        self.panel = PdfPanel(
+            self.host,
+            dpi=lambda: int(self.dpi_var.get()),
+            initial_page_for=lambda _caminho: 0,
+            on_status=self.status.append,
+            on_ocr_best=lambda: None,
+            on_ocr_all=lambda: None,
+            on_region=lambda _imagem, regiao: self.regioes.append(regiao),
+            on_export=lambda: None,
+            on_cancel_export=lambda: None,
+            on_pdf_opened=lambda _caminho: None,
+            on_before_page_change=lambda: None,
+            on_page_rendered=lambda _indice: None,
+            on_zoom_changed=lambda _zoom: None,
+            initial_dir=Path("."),
+            on_box_click=lambda _i: None,
+            on_box_drop=lambda _i: None,
+            on_prefs_changed=lambda: None,
+        )
+        self.addCleanup(self.host.destroy)
+        self.panel.source = Path("livro.pdf")
+        self.panel.page_count = 3
+        self.panel.page_rgb = np.zeros((400, 300, 3), dtype=np.uint8)
+        self.panel.page_loaded_for_index = 0
+        self.panel.zoom_var.set(1.0)
+        self.panel.refresh_view()
+        self.renderizadas: list[int] = []
+        self.panel.render_current_page = (  # type: ignore[method-assign]
+            lambda: self.renderizadas.append(self.panel.page_index) or True
+        )
+
+    # ------------------------------------------------------------------ DPI (S-329)
+
+    def test_trocar_o_dpi_invalida_a_folha_rasterizada(self) -> None:
+        """A imagem ficava no DPI antigo e a detecção passava a medir no novo: os retângulos
+        saíam do lugar sobre a própria imagem."""
+        self.panel.observar_dpi(self.dpi_var)
+        self.dpi_var.set(300)
+
+        self.panel._aplicar_dpi()
+
+        self.assertIsNone(self.panel.page_loaded_for_index)
+        self.assertEqual(self.renderizadas, [0])
+
+    def test_o_mesmo_dpi_nao_re_rasteriza(self) -> None:
+        """O `trace` dispara a cada tecla, e re-render de graça custa 0,3 s cada."""
+        self.panel.observar_dpi(self.dpi_var)
+        self.panel._aplicar_dpi()
+        self.renderizadas.clear()
+
+        self.panel._aplicar_dpi()
+
+        self.assertEqual(self.renderizadas, [])
+
+    def test_o_campo_vazio_no_meio_da_digitacao_nao_derruba(self) -> None:
+        self.panel.observar_dpi(self.dpi_var)
+        self.panel._dpi = lambda: int(self.dpi_var.get())  # type: ignore[method-assign]
+        chamadas: list[int] = []
+        self.panel.invalidar_rasterizacao = lambda: chamadas.append(1)  # type: ignore[method-assign]
+
+        def explode() -> int:
+            raise tk.TclError("empty")
+
+        self.panel._dpi = explode  # type: ignore[method-assign]
+        self.panel._aplicar_dpi()
+
+        self.assertEqual(chamadas, [])
+
+    # -------------------------------------------------- piso da seleção (S-330)
+
+    def _arrastar(self, largura: int, *, zoom: float) -> None:
+        self.panel.zoom_var.set(zoom)
+        self.panel.toggle_area_selection()
+        inicio, fim = _evento(0, 0), _evento(largura, largura)
+        for evento in (inicio, fim):
+            evento.x_root = self.panel.canvas.winfo_rootx() + evento.x
+            evento.y_root = self.panel.canvas.winfo_rooty() + evento.y
+        self.panel._on_press(inicio)
+        self.panel._on_release(fim)
+
+    def test_o_piso_da_selecao_e_medido_na_pagina(self) -> None:
+        """20 px de tela a 200% são 10 px de página: menos de uma casa, e o piso recusa."""
+        self._arrastar(20, zoom=2.0)
+        self.assertEqual(self.regioes, [])
+        self.assertTrue(any("pequena" in texto for texto in self.status))
+
+    def test_o_mesmo_arrasto_a_menos_zoom_e_recorte_valido(self) -> None:
+        """20 px de tela a 50% são 40 px de página -- e era este par que o piso invertia."""
+        self._arrastar(20, zoom=0.5)
+        self.assertEqual(self.regioes, [(0, 0, 40, 40)])
+
+    # ---------------------------------------------------------- roda (S-332)
+
+    def _ponteiro_no_meio_do_canvas(self) -> tk.Event:
+        canvas = self.panel.canvas
+        canvas.winfo_ismapped = lambda: True  # type: ignore[method-assign]
+        canvas.winfo_rootx = lambda: 100  # type: ignore[method-assign]
+        canvas.winfo_rooty = lambda: 200  # type: ignore[method-assign]
+        canvas.winfo_width = lambda: 400  # type: ignore[method-assign]
+        canvas.winfo_height = lambda: 300  # type: ignore[method-assign]
+        evento = _roda(120)
+        evento.x_root, evento.y_root = 150, 250
+        return evento
+
+    def test_a_roda_nao_e_do_canvas_quando_ha_widget_por_cima(self) -> None:
+        """Paleta, lista suspensa ou diálogo sobre a folha: a roda era do PDF atrás deles."""
+        evento = self._ponteiro_no_meio_do_canvas()
+        outro = tk.Frame(self.root)
+        self.addCleanup(outro.destroy)
+        self.panel.canvas.winfo_containing = lambda _x, _y: outro  # type: ignore[method-assign]
+
+        self.assertFalse(self.panel._pointer_over_canvas(evento))
+
+    def test_janela_de_outro_programa_por_cima_nao_tira_a_roda(self) -> None:
+        """`winfo_containing` devolve `None` aí, e foi por isso que a conta é aritmética."""
+        evento = self._ponteiro_no_meio_do_canvas()
+        self.panel.canvas.winfo_containing = lambda _x, _y: None  # type: ignore[method-assign]
+
+        self.assertTrue(self.panel._pointer_over_canvas(evento))
+
+    def test_o_canvas_sob_o_ponteiro_continua_dono_da_roda(self) -> None:
+        evento = self._ponteiro_no_meio_do_canvas()
+        self.panel.canvas.winfo_containing = lambda _x, _y: self.panel.canvas  # type: ignore[method-assign]
+
+        self.assertTrue(self.panel._pointer_over_canvas(evento))

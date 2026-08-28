@@ -9,10 +9,15 @@ posto — e o resto o `--selftest` responde na máquina de destino.
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from ambiente_de_teste import pasta_temporaria
+from subprocesso import rodar_roteiro
 
 PROJETO = Path(__file__).resolve().parents[1]
 
@@ -149,6 +154,87 @@ class FrozenLogFileTests(unittest.TestCase):
         self.assertIn("Tcl morreu", registro.output[0])
 
 
+class LogQueNaoCresceParaSempreTests(unittest.TestCase):
+    """O arquivo de log rotaciona, e sem console não há handler de console (S-389).
+
+    O arquivo grava em DEBUG por decisão da S-126, e DEBUG num programa que lê 402 páginas são
+    dezenas de MB por sessão. E no bundle da S-55 o `.exe` é montado com `console=False`: aí
+    `sys.stderr` é `None`, o `StreamHandler` nasce sem fluxo e **falha a cada registro**.
+    """
+
+    def setUp(self) -> None:
+        import shutil
+
+        import chess_diagram_ocr.logging_setup as setup
+
+        # A pasta some **depois** de os handlers fecharem: no Windows um arquivo aberto não é
+        # apagável, e o `addCleanup` roda na ordem inversa do registro.
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(shutil.rmtree, self.pasta, True)
+        self.setup = setup
+        self.raiz = logging.getLogger()
+        self.handlers_antes = list(self.raiz.handlers)
+        self.configurado_antes = setup._configured
+
+        def restaurar() -> None:
+            for handler in list(self.raiz.handlers):
+                if handler not in self.handlers_antes:
+                    self.raiz.removeHandler(handler)
+                    handler.close()
+            for handler in self.handlers_antes:
+                if handler not in self.raiz.handlers:
+                    self.raiz.addHandler(handler)
+            setup._configured = self.configurado_antes
+
+        self.addCleanup(restaurar)
+        setup._configured = False
+        # `basicConfig` não faz nada com a raiz já povoada, e o pytest põe os dele lá:
+        # sem esvaziar, o teste afirmaria sobre os handlers do runner.
+        for handler in list(self.raiz.handlers):
+            self.raiz.removeHandler(handler)
+
+    def test_o_arquivo_de_log_rotaciona(self) -> None:
+        from logging.handlers import RotatingFileHandler
+
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        rotativos = [h for h in self.raiz.handlers if isinstance(h, RotatingFileHandler)]
+
+        self.assertEqual(len(rotativos), 1)
+        self.assertGreater(rotativos[0].maxBytes, 0)
+        self.assertGreater(rotativos[0].backupCount, 0)
+
+    def test_sem_stderr_nao_ha_handler_de_console(self) -> None:
+        with patch.object(sys, "stderr", None):
+            self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        de_fluxo = [
+            h
+            for h in self.raiz.handlers
+            if type(h) is logging.StreamHandler  # noqa: E721 - o de arquivo herda dele
+        ]
+
+        self.assertEqual(de_fluxo, [])
+        logging.getLogger(__name__).info("um registro que não pode levantar")
+
+    def test_com_stderr_o_console_continua_la(self) -> None:
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        de_fluxo = [h for h in self.raiz.handlers if type(h) is logging.StreamHandler]  # noqa: E721
+
+        self.assertEqual(len(de_fluxo), 1)
+
+    def test_sem_destino_o_padrao_e_o_de_default_log_file(self) -> None:
+        """Vinte e três dos 41 comandos não passavam `log_file`, e o `.exe` ficava sem rastro."""
+        with patch.dict("os.environ", {"CVOFF_LOG_DIR": str(self.pasta)}):
+            self.setup.configure_logging()
+
+        arquivos = [h for h in self.raiz.handlers if hasattr(h, "baseFilename")]
+
+        self.assertEqual(len(arquivos), 1)
+        self.assertTrue(str(arquivos[0].baseFilename).startswith(str(self.pasta)))
+
+
 class TamanhoDaJanelaTests(unittest.TestCase):
     """`app_tkinter.py` não volta a crescer sem alguém decidir (S-136).
 
@@ -171,7 +257,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2261
+    LIMITE = 2292
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
 
     **2.090 → 2.092 na Fase 39**, e as onze são as quatro linhas de exportação (`.md`, `.html`,
@@ -468,6 +554,26 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     lembrar sobrevivia a fechar a janela -- o arquivo em disco era reescrito com os padrões de
     fábrica antes de a primeira linha de restauração rodar.
 
+    **2.261 → 2.274 na Fase 57**, e as treze são de dois itens que só a janela podia costurar. A
+    S-329 liga o campo de DPI ao visualizador -- **três linhas**, porque a espera pelo fim da
+    digitação e a re-rasterização foram para `pdf_panel.observar_dpi`, que é quem sabe que a
+    imagem em memória envelheceu. A S-347 guarda a chave do estudo que a sessão anterior deixou
+    aberto e a entrega ao painel quando o livro dela abre: quem lê o `AppState` é a janela, e o
+    campo `estudo_aberto` existia desde a S-271 sendo gravado e nunca lido.
+
+    **2.274 → 2.291 na Fase 63**, e as dezessete são de cinco itens da janela: o `Esc` do
+    diálogo de correção remota (S-395); o docstring de `_focus_result_tab`, que passou a
+    explicar por que a seleção é pelo **rótulo** da aba e não pelo painel -- o painel nunca foi
+    aba, e o `TclError` disso morria num `logger.debug` (S-397); a contagem das abas refeita
+    depois de varrer o livro, que é o gesto que a muda (S-398); e o `StringVar` do conjunto de
+    campo, que subiu para o `__init__` porque a linha que o hospedava é refeita a cada troca
+    de pele e a escolha do usuário voltava ao primeiro regime da lista (S-399); e a Galeria
+    entrando na conferência de `atalhos.conferir_dono`, que é uma linha e é onde ela tinha de
+    entrar -- quem confere os donos de ação é quem liga os atalhos (S-400).
+
+    **2.291 → 2.292 na S-421**, e a linha é um comentário: a caixa de erro do OCR passou a
+    perguntar **onde** o rastro está em vez de prometer um log que num checkout não existe.
+
     Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
     crescer **sem decidir**."""
 
@@ -540,6 +646,71 @@ class SpecTests(unittest.TestCase):
         self.assertIn("COLLECT(", self.texto)
         self.assertIn("exclude_binaries=True", self.texto)
 
+    def test_o_que_nao_e_dependencia_nao_entra_no_bundle(self) -> None:
+        """`scipy` e `scikit-image` vêm no ambiente pelo clone da segunda opinião local, e o
+        PyInstaller coleta o que **está instalado** -- 95 MB que ninguém declarou (S-387)."""
+        excludes = self.texto.split("excludes = [", 1)[1].split("\n]", 1)[0]
+        for pacote in ("scipy", "skimage", "pyarrow"):
+            with self.subTest(pacote=pacote):
+                self.assertIn(f'"{pacote}"', excludes)
+
+    def test_o_spec_e_lintado(self) -> None:
+        """O arquivo tem `# noqa` espalhado, que só faz sentido se alguém estiver lintando --
+        e até a S-391 nem `ruff` nem `mypy` o viam, porque os dois olham `.py`."""
+        pyproject = (PROJETO / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('extend-include = ["*.spec"]', pyproject)
+
+
+class DependenciasDoBundleTests(unittest.TestCase):
+    """O que é obrigatório viaja dentro do `.exe`; o que só o teste usa, não (S-386)."""
+
+    def setUp(self) -> None:
+        self.pyproject = (PROJETO / "pyproject.toml").read_text(encoding="utf-8")
+        self.obrigatorias = self.pyproject.split("dependencies = [", 1)[1].split("\n]", 1)[0]
+
+    def test_o_pandas_nao_e_dependencia_obrigatoria(self) -> None:
+        self.assertNotIn('"pandas', self.obrigatorias)
+
+    def test_o_pandas_continua_disponivel_para_o_teste(self) -> None:
+        """Quatro arquivos de teste o usam como segunda régua do CSV de rótulos."""
+        dev = self.pyproject.split("dev = [", 1)[1].split("\n]", 1)[0]
+        self.assertIn('"pandas', dev)
+
+    def test_nenhum_modulo_de_producao_importa_pandas(self) -> None:
+        """A guarda que impede a dependência de voltar por uma linha de import."""
+        raiz = PROJETO / "src" / "chess_diagram_ocr"
+        culpados = [
+            caminho.relative_to(PROJETO).as_posix()
+            for caminho in raiz.rglob("*.py")
+            if "import pandas" in caminho.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(culpados, [])
+
+
+class ModelosAoLadoDoExecutavelTests(unittest.TestCase):
+    """O build leva os três modelos para `models/`, e diz o que falta sem cada um (S-388).
+
+    O motor `glifo` precisa dos pesos **e** do `char_meta.json` -- `carregar_classificador` acha
+    o `.pt` ao lado do metadado --, e o build copiava só o de peças: no `.exe`, a aba Texto
+    oferecia um motor que nunca subia.
+    """
+
+    def test_os_tres_modelos_estao_declarados(self) -> None:
+        import importlib.util
+
+        caminho = PROJETO / "packaging" / "build_windows.py"
+        spec = importlib.util.spec_from_file_location("build_windows_teste", caminho)
+        assert spec is not None and spec.loader is not None
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+
+        nomes = [nome for nome, _motivo in modulo.MODELOS_QUE_ACOMPANHAM]
+
+        self.assertEqual(nomes, ["piece_classifier.pt", "char_classifier.pt", "char_meta.json"])
+        for _nome, motivo in modulo.MODELOS_QUE_ACOMPANHAM:
+            self.assertGreater(len(motivo), 20, "cada ausência diz a consequência dela")
+
+
 
 class SelftestTests(unittest.TestCase):
     """O `--selftest` é o que responde "esta instalação funciona?" numa máquina limpa."""
@@ -577,7 +748,6 @@ class SelftestTests(unittest.TestCase):
         `cli._CHECKPOINT_PISTAS` teriam de adivinhar isso de uma mensagem do `torch` que não
         contém nem `.pt` nem `state_dict`.
         """
-        import tempfile
 
         app_tkinter = self._app_tkinter()
         with tempfile.TemporaryDirectory() as pasta:
@@ -607,7 +777,6 @@ class SelftestTests(unittest.TestCase):
         checkpoint não guarda a CI, que é justamente onde o `.exe` de outra pessoa é montado.
         O modelo é dispensado com um `model_session` neutro; o que se testa aqui é o PDF.
         """
-        import tempfile
         from contextlib import contextmanager
 
         app_tkinter = self._app_tkinter()
@@ -795,7 +964,6 @@ if __name__ == "__main__":
 '''
 
     def _roda(self, pasta: Path) -> tuple[int, str]:
-        import subprocess
 
         base = pasta / "base.pgn"
         base.write_text(
@@ -810,15 +978,15 @@ if __name__ == "__main__":
             ),
             encoding="utf-8",
         )
-        concluido = subprocess.run(
-            [sys.executable, str(roteiro)], capture_output=True, text=True, timeout=300
-        )
+        # O ambiente é o de `tests/subprocesso.py`, e não o `sys.path` escrito dentro do
+        # roteiro (S-419): quatro testes lançavam subprocesso de quatro jeitos, e num
+        # worktree três deles importavam o pacote do checkout errado.
+        concluido = rodar_roteiro(roteiro)
         self.assertEqual(concluido.returncode, 0, concluido.stderr)
         return len(rastro.read_text(encoding="utf-8").splitlines()), concluido.stdout
 
     def test_o_filho_nao_reexecuta_o_script_do_pai(self) -> None:
         """**O item.** Uma linha no rastro é o pai; três seriam o pai mais os dois filhos."""
-        import tempfile
 
         with tempfile.TemporaryDirectory() as pasta:
             execucoes, saida = self._roda(Path(pasta))

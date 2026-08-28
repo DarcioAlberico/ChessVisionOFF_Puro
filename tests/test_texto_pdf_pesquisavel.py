@@ -11,9 +11,10 @@ figurina que a fonte da base 14 não escreve é **contada** em vez de virar `?`.
 
 from __future__ import annotations
 
-import tempfile
 import unittest
 from pathlib import Path
+
+from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr.text import pdf_pesquisavel as PP
 from chess_diagram_ocr.text import rico
@@ -44,7 +45,7 @@ def _documento(livro: Path, *, texto: str = "texto corrigido a mao") -> rico.Doc
 @unittest.skipIf(fitz is None, "PyMuPDF não instalado")
 class CamadaTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.pasta = Path(tempfile.mkdtemp())
+        self.pasta = pasta_temporaria(self)
         self.livro = _livro(self.pasta)
 
     def test_a_pagina_nao_muda_um_pixel(self) -> None:

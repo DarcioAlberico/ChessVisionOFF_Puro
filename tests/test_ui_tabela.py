@@ -13,11 +13,10 @@ das larguras mínimas contra a largura mínima que o painel pode ter. Se a soma 
 from __future__ import annotations
 
 import shutil
-import tempfile
 import tkinter as tk
 import unittest
-from pathlib import Path
 
+from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz
 
 from chess_diagram_ocr.review_queue import ReviewItem
@@ -191,7 +190,7 @@ class MotivoInteiroTests(unittest.TestCase):
     def setUp(self) -> None:
         self.host = tk.Frame(raiz())
         self.addCleanup(self.host.destroy)
-        self.pasta = Path(tempfile.mkdtemp())
+        self.pasta = pasta_temporaria(self)
         self.addCleanup(shutil.rmtree, self.pasta, True)
 
     @staticmethod

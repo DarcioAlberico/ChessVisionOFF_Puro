@@ -21,7 +21,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+from ambiente_de_teste import pasta_temporaria
 
+from chess_diagram_ocr import field_eval
 from chess_diagram_ocr.board_detection import NoBoardDetectedError
 from chess_diagram_ocr.cli import EXIT_BAD_INPUT
 from chess_diagram_ocr.cli import field as field_cli
@@ -1084,6 +1086,88 @@ class ConjuntoVigenteTests(unittest.TestCase):
             with self.subTest(relatorio=caminho.name):
                 self.assertIn("pages", dados, "sem a identidade, o relatório não é auditável")
                 self.assertIn("annotated", dados)
+
+
+class DigestSobreAArvoreTests(unittest.TestCase):
+    """O digest de código responde sobre **código**, e não sobre texto (S-425).
+
+    **O que ele custava.** Ele era sobre o conteúdo do arquivo, então corrigir uma docstring de
+    `config.py` invalidava os quatro relatórios de campo e pedia uma remedição de quatro minutos --
+    por um texto que nenhuma medição lê. Aconteceu três vezes num dia só desta revisão, sempre com
+    acento em comentário, e a resposta certa nunca foi "não escreva comentário".
+
+    **E o que ele não pode perder.** Um digest frouxo é pior que digest nenhum, porque quem lê
+    confia nele: a segunda metade destes testes é a que garante que toda mudança de código continua
+    entrando -- número, condição, argumento, nome e constante.
+    """
+
+    def _digest(self, fonte: str) -> str:
+        pasta = pasta_temporaria(self)
+        arquivo = pasta / "modulo.py"
+        arquivo.write_bytes(fonte.encode("utf-8"))
+        return field_eval._digest_of([arquivo], pasta)
+
+    # ---------------------------------------------------------------- o que não conta
+
+    def test_comentario_nao_muda_o_digest(self) -> None:
+        um = self._digest("X = 1  # o comentário de ontem\n")
+        outro = self._digest("X = 1  # o comentário de hoje, com acento\n")
+        self.assertEqual(um, outro)
+
+    def test_docstring_nao_muda_o_digest(self) -> None:
+        """O caso real: um acento corrigido num docstring do `config.py`."""
+        um = self._digest('"""Configuracao do pacote."""\n\nX = 1\n')
+        outro = self._digest('"""Configuração do pacote."""\n\nX = 1\n')
+        self.assertEqual(um, outro)
+
+    def test_docstring_de_funcao_e_de_classe_tambem_nao(self) -> None:
+        um = self._digest('def f():\n    """Faz."""\n    return 1\n')
+        outro = self._digest('def f():\n    """Faz outra coisa, diz o texto."""\n    return 1\n')
+        self.assertEqual(um, outro)
+
+    def test_linha_em_branco_e_quebra_de_linha_nao_contam(self) -> None:
+        """A normalização de CRLF da S-325 continua valendo, agora por construção."""
+        um = self._digest("X = 1\nY = 2\n")
+        outro = self._digest("X = 1\r\n\r\n\r\nY = 2\r\n")
+        self.assertEqual(um, outro)
+
+    # ------------------------------------------------------------------- o que conta
+
+    def test_um_numero_trocado_muda_o_digest(self) -> None:
+        self.assertNotEqual(self._digest("LIMIAR = 0.8\n"), self._digest("LIMIAR = 0.9\n"))
+
+    def test_uma_condicao_invertida_muda_o_digest(self) -> None:
+        um = self._digest("def f(n):\n    return n > 0\n")
+        outro = self._digest("def f(n):\n    return n >= 0\n")
+        self.assertNotEqual(um, outro)
+
+    def test_um_argumento_a_mais_muda_o_digest(self) -> None:
+        um = self._digest("def f(n):\n    return n\n")
+        outro = self._digest("def f(n, m=2):\n    return n\n")
+        self.assertNotEqual(um, outro)
+
+    def test_uma_string_de_dado_muda_o_digest(self) -> None:
+        """Só a **docstring** sai: uma string que é dado continua sendo código."""
+        um = self._digest('MOTOR = "glifo"\n')
+        outro = self._digest('MOTOR = "camada"\n')
+        self.assertNotEqual(um, outro)
+
+    def test_o_nome_do_arquivo_continua_entrando(self) -> None:
+        """A S-325 pôs o nome no hash porque renomear um módulo muda o que roda."""
+        pasta = pasta_temporaria(self)
+        (pasta / "um.py").write_bytes(b"X = 1\n")
+        (pasta / "outro.py").write_bytes(b"X = 1\n")
+        self.assertNotEqual(
+            field_eval._digest_of([pasta / "um.py"], pasta),
+            field_eval._digest_of([pasta / "outro.py"], pasta),
+        )
+
+    def test_arquivo_que_nao_compila_ainda_tem_digest(self) -> None:
+        """Um módulo quebrado não roda, mas o digest não é o lugar de descobrir isso."""
+        um = self._digest("def f(:\n")
+        outro = self._digest("def g(:\n")
+        self.assertTrue(um)
+        self.assertNotEqual(um, outro)
 
 
 class ImpressaoDaMedicaoTests(unittest.TestCase):

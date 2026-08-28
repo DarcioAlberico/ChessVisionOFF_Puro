@@ -201,3 +201,34 @@ class CorrigirLinhaTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class PontuacaoNaoEAmbiguidadeTests(unittest.TestCase):
+    """Duas variantes que só diferem na pontuação de borda são a mesma resposta (S-349).
+
+    `conhecida` apara `.,;:!?()[]'"` antes de olhar o léxico, então `black.` e `black,` **são** a
+    mesma palavra para o dicionário -- e chegavam à guarda da ambiguidade como duas, fazendo o
+    módulo recusar uma correção que era única.
+    """
+
+    LEXICO = frozenset({"black", "blaek"})
+
+    def test_a_correcao_sai_com_a_pontuacao_do_original(self) -> None:
+        candidatos = [["b"], ["l"], ["a"], ["e", "c"], ["k"], [".", ","]]
+        self.assertEqual(dic.escolher("blaek.", candidatos, frozenset({"black"})), "black.")
+
+    def test_sem_pontuacao_nada_muda(self) -> None:
+        candidatos = [["b"], ["l"], ["a"], ["e", "c"], ["k"]]
+        self.assertEqual(dic.escolher("blaek", candidatos, frozenset({"black"})), "black")
+
+    def test_duas_palavras_diferentes_continuam_ambiguas(self) -> None:
+        """A guarda que importa segue de pé: o que ela recusa é escolher entre **palavras**."""
+        candidatos = [["b"], ["l"], ["a", "o"], ["e", "c"], ["k"]]
+        self.assertIsNone(
+            dic.escolher("blaek", candidatos, frozenset({"black", "block"}))
+        )
+
+    def test_a_caixa_continua_sendo_ambiguidade(self) -> None:
+        """`Black` e `black` são duas respostas de verdade, e decidir entre elas é palpite."""
+        candidatos = [["b", "B"], ["l"], ["a"], ["e", "c"], ["k"]]
+        self.assertIsNone(dic.escolher("blaek", candidatos, frozenset({"black"})))

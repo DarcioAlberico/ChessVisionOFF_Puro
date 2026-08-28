@@ -67,7 +67,7 @@ from chess_diagram_ocr.labels import (
     pages_with_training_samples,
     saved_diagrams_by_page,
 )
-from chess_diagram_ocr.logging_setup import configure_logging, default_log_file
+from chess_diagram_ocr.logging_setup import configure_logging, default_log_file, onde_esta_o_rastro
 from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
 from chess_diagram_ocr.pdf_io import get_pdf_page_count
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
@@ -194,6 +194,10 @@ class ChessOcrTkApp:
 
         self.piece_images = PieceImages(PIECE_IMAGE_DIR, conjunto=conjuntos.escolhido())
         self.state = AppState()
+        self.field_regime_var = tk.StringVar(value=REGIMES[0])
+        """O regime do conjunto de campo. Da janela, e não da linha de campo, que é remontada (S-399)."""
+        self._estudo_a_reabrir = ""
+        """A chave do estudo que a sessão anterior deixou aberto. Ver `_restore_state_or_default_pdf` (S-347)."""
         self._estado_aplicado = False
         """O estado lido do disco ja chegou aos widgets? Ver `_save_app_state` (S-322)."""
         self.piece_set_var = tk.StringVar(value=self.piece_images.conjunto)
@@ -567,6 +571,9 @@ class ChessOcrTkApp:
         )
         self.pdf_panel.pack(fill=tk.BOTH, expand=True)
         self._build_field_row(self.pdf_panel.field_row)
+        # Trocar o DPI invalida a imagem que está na tela (S-329). Quem sabe re-rasterizar é o
+        # painel, e é lá que mora a espera pelo fim da digitação.
+        self.pdf_panel.observar_dpi(self.dpi_var)
 
     def _build_field_row(self, parent: ttk.Widget) -> None:
         """Os controles do conjunto de campo (S-77), junto da página exibida.
@@ -576,7 +583,10 @@ class ChessOcrTkApp:
         são as únicas que medem falso positivo (S-41).
         """
         ttk.Label(parent, text="Conjunto de campo").pack(side=tk.LEFT)
-        self.field_regime_var = tk.StringVar(value=REGIMES[0])
+        # **O regime sobrevive à remontagem** (S-399): esta função é chamada de novo a cada
+        # troca de pele, e criar um `StringVar` aqui zerava a escolha de quem estava anotando
+        # `scan` de volta para o primeiro da lista -- em silêncio, no meio do trabalho. A
+        # variável nasce com a janela (`__init__`), e aqui só se liga o widget novo a ela.
         ttk.Combobox(
             parent, textvariable=self.field_regime_var, values=list(REGIMES), width=15, state="readonly"
         ).pack(side=tk.LEFT, padx=6)
@@ -690,6 +700,8 @@ class ChessOcrTkApp:
     def _restore_state_or_default_pdf(self) -> None:
         """Restaura o estado gravado. Sem PDF utilizável, cai no primeiro PDF da pasta."""
         self.state = load_state(APP_STATE_PATH)
+        # A mesa da sessão anterior, guardada até o livro dela abrir (S-347).
+        self._estudo_a_reabrir = self.state.estudo_aberto
         self.piece_dir_var.set(self.state.piece_dir)
         self.piece_set_var.set(conjuntos.escolhido(self.state.piece_set))
         self._escolher_conjunto()
@@ -936,6 +948,12 @@ class ChessOcrTkApp:
             self.result_panel.discard_document_results(str(pdf_path))
         if self.study_panel is not None:
             self.study_panel.abrir_livro(str(pdf_path))  # a sala daquele livro volta do disco (S-271)
+            # E a mesa em que a sessão anterior parou (S-347). Só na **primeira** abertura: depois
+            # dela, `estudo_aberto` é o que o usuário abriu nesta sessão, e reabri-lo a cada troca
+            # de livro puxaria a pessoa de volta para um diagrama que ela acabou de deixar.
+            if self._estudo_a_reabrir:
+                self.study_panel.reabrir_por_chave(self._estudo_a_reabrir)
+                self._estudo_a_reabrir = ""
         self._atualizar_titulo()
         self._atualizar_abas()
 
@@ -1038,6 +1056,9 @@ class ChessOcrTkApp:
         anotações do livro a cada amostra salva (15,0 ms) sem que salvar amostra pudesse mudar
         confirmação nenhuma.
         """
+        # A contagem das abas muda pelos mesmos gestos que chegam aqui -- varrer o livro é o
+        # maior deles (S-398).
+        self._atualizar_abas()
         if self.pdf_source is None:
             self.confirmed_diagrams = {}
             return
@@ -1176,7 +1197,7 @@ class ChessOcrTkApp:
         """
         if caixas.all_saved:
             self._set_status(
-                f"Página {caixas.page_index} concluída: todos os {len(caixas)} diagrama(s) "
+                f"Página {caixas.page_index + 1} concluída: todos os {len(caixas)} diagrama(s) "
                 "já têm amostra salva."
             )
 
@@ -1265,7 +1286,7 @@ class ChessOcrTkApp:
 
         if len(caixas):
             self._set_status(
-                f"Página {caixas.page_index}: {len(caixas)} diagrama(s) marcado(s). "
+                f"Página {caixas.page_index + 1}: {len(caixas)} diagrama(s) marcado(s). "
                 "Clique num deles para lê-lo."
             )
         # Depois do aviso, e pelo `_refresh_overlay` em vez de direto na tela (S-142). Duas
@@ -1532,7 +1553,7 @@ class ChessOcrTkApp:
             return
         image_bgr = read_image(filename)
         if image_bgr is None:
-            messagebox.showerror("Erro", "Não foi possível abrir a imagem.")
+            messagebox.showerror("Abrir imagem", "Não foi possível abrir a imagem.")
             return
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         options = self._recognition_options(max_boards, refine_detected_boards=True)
@@ -1602,7 +1623,8 @@ class ChessOcrTkApp:
 
     def _on_ocr_error(self, exc: Exception) -> None:
         self._set_status("Falha no OCR.")
-        messagebox.showerror("Erro", f"Falha no OCR:\n{exc}\n\nO traceback está no arquivo de log.")
+        # A frase diz **onde** o rastro está, e num checkout ela diz que não há um (S-421).
+        messagebox.showerror("Ler o diagrama", f"Falha no OCR:\n{exc}\n\n{onde_esta_o_rastro()}")
 
     def _finish_ocr_ui(self) -> None:
         self._is_running_ocr = False
@@ -1633,12 +1655,18 @@ class ChessOcrTkApp:
                 self.left_tabs.tab(indice, text=abas.rotulo(nome, contagens[nome]))
 
     def _focus_result_tab(self) -> None:
+        """Traz a aba Resultado para a frente. **Por rótulo, e não pelo painel** (S-397).
+
+        `left_tabs.select(self.result_panel)` nunca funcionou: o painel não é aba do `Notebook`
+        -- ele mora dentro do `rolagem.aba_rolavel`, que é quem é. O `TclError` disso caía num
+        `logger.debug`, então clicar num diagrama da página selecionava o diagrama e **não trazia
+        a aba**, sem nada dizer por quê. `rolagem.selecionar_aba` é o mesmo caminho que a
+        restauração de estado usa desde a S-156, e ele acha a aba pelo nome.
+        """
         if self.left_tabs is None or self.result_panel is None:
             return
-        try:
-            self.left_tabs.select(self.result_panel)
-        except tk.TclError as exc:
-            logger.debug("Não foi possível focar a aba de resultados: %s", exc)
+        if not rolagem.selecionar_aba(self.left_tabs, abas.RESULTADO):
+            logger.debug("A aba %s não está montada nesta janela.", abas.RESULTADO)
 
     def _sync_study(self) -> None:
         if self.study_panel is not None:
@@ -1696,6 +1724,8 @@ class ChessOcrTkApp:
         dlg = tk.Toplevel(self.root)
         dlg.title("Correção remota")
         dlg.resizable(False, False)
+        # `Esc` é o "não enviar": sair sem consentir é sempre a resposta segura (S-395).
+        dlg.bind("<Escape>", lambda _evento: dlg.destroy())
         dlg.transient(self.root)
         dlg.grab_set()
 
@@ -1985,7 +2015,8 @@ class ChessOcrTkApp:
         global também deixa de responder. É a mesma disciplina de `atalhos.ligacoes`, que recusa
         atalho declarado sem comando.
         """
-        for painel in (self.texto_panel, self.study_panel):
+        # A galeria entrou na lista com a S-400: quatro botões de navegação e nenhuma tecla.
+        for painel in (self.texto_panel, self.study_panel, self.gallery_panel):
             if painel is not None:
                 atalhos.conferir_dono(painel, type(painel).__name__)
         bind_shortcuts(self.root, atalhos.ligacoes(self._comandos()))
@@ -2147,10 +2178,10 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
         logger.exception("Auto-teste: o checkpoint não pôde ser lido.")
         logger.error(
             "Auto-teste: o checkpoint em %s existe mas não pôde ser lido (%s). Ele pode estar "
-            "truncado, ter vindo pela metade, ou ser de outra arquitetura -- ver `arch_version`. "
-            "O rastro completo está no log.",
+            "truncado, ter vindo pela metade, ou ser de outra arquitetura -- ver `arch_version`. %s",
             modelo,
             message_for(exc),
+            onde_esta_o_rastro(),
         )
         return 3
 

@@ -22,11 +22,11 @@ import json
 import logging
 from pathlib import Path
 
-from ..config import DEFAULT_DATASET_CSV, DEFAULT_PDF_DIR, DEFAULT_SAMPLES_DIR
+from ..atomic_io import atomic_write_text
+from ..config import DEFAULT_PDF_DIR, DEFAULT_SAMPLES_DIR
 from ..labels import LabelStore
 from ..logging_setup import configure_logging, default_log_file
 from ..provenance import (
-    DEFAULT_DPI,
     DEFAULT_INDEX_PATH,
     DEFAULT_MAX_DISTANCE,
     MatchReport,
@@ -36,7 +36,7 @@ from ..provenance import (
     match_samples,
     samples_without_provenance,
 )
-from . import cli_errors
+from . import EXIT_BAD_INPUT, add_dataset_arguments, add_dpi_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +49,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "recorte à mão ou de PDF fora do acervo não casa. O relatório diz quanto sobrou."
         ),
     )
-    parser.add_argument("--index", type=Path, default=DEFAULT_INDEX_PATH)
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--csv", type=Path, default=DEFAULT_DATASET_CSV)
-    parser.add_argument("--samples-dir", type=Path, default=DEFAULT_SAMPLES_DIR)
+    parser.add_argument("--index", type=Path, default=DEFAULT_INDEX_PATH, help="Índice de dHash dos diagramas.")
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_dataset_arguments(parser, splits=False, samples=False)
+    parser.add_argument(
+        "--samples-dir", type=Path, default=DEFAULT_SAMPLES_DIR, help="Pasta das imagens de treino a casar."
+    )
 
     parser.add_argument("--build", action="store_true", help="Constrói (ou amplia) o índice. Caro.")
     parser.add_argument(
@@ -62,13 +64,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="LIVRO.pdf",
         help="Indexa só estes livros. Repetível. Um livro reindexado substitui o que havia dele.",
     )
-    parser.add_argument("--dpi", type=int, default=DEFAULT_DPI)
+    add_dpi_argument(parser)
     parser.add_argument("--pages", type=int, default=None, help="Teto de páginas por livro (para ensaiar).")
 
     parser.add_argument("--match", action="store_true", help="Casa as amostras órfãs contra o índice.")
-    parser.add_argument("--max-distance", type=int, default=DEFAULT_MAX_DISTANCE)
+    parser.add_argument(
+        "--max-distance", type=int, default=DEFAULT_MAX_DISTANCE, help="Distância de Hamming máxima para o casamento valer."
+    )
     parser.add_argument(
         "--apply",
+        "--aplicar",
         action="store_true",
         help="Grava o resultado no labels.csv. Sem isto, o comando só relata.",
     )
@@ -78,10 +83,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Sobrescreve também as 46 linhas que já têm procedência. Elas vieram da "
         "RecognitionOrigin no momento da gravação, que é fonte melhor que um casamento.",
     )
-    parser.add_argument("--no-backup", dest="backup", action="store_false")
+    parser.add_argument(
+        "--no-backup", dest="backup", action="store_false", help="Não copia o labels.csv antes de gravar procedência."
+    )
     parser.add_argument("--json", type=Path, default=None, help="Grava o relatório em JSON.")
     parser.add_argument("--show-distances", type=int, default=12, help="Faixas do histograma listadas.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -89,7 +96,7 @@ def _run_build(args: argparse.Namespace) -> int:
     base = ProvenanceIndex.load(args.index)
     if base.entries and base.dpi != args.dpi:
         print(f"O índice existente foi construído com dpi={base.dpi}; use --dpi {base.dpi} ou apague-o.")
-        return 2
+        return EXIT_BAD_INPUT
 
     def _progress(livro: str, pagina: int, total: int, encontrados: int) -> None:
         if pagina % 25 == 0 or pagina == total:
@@ -151,10 +158,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.build and not args.match:
         print("Nada a fazer: use --build para indexar os PDFs ou --match para casar as amostras.")
-        return 2
+        return EXIT_BAD_INPUT
 
     if args.build and _run_build(args) != 0:
-        return 2
+        return EXIT_BAD_INPUT
 
     if not args.match:
         return 0
@@ -163,12 +170,12 @@ def main(argv: list[str] | None = None) -> int:
     if not indice.entries:
         print(f"Índice vazio ou inexistente: {args.index}")
         print("Construa-o primeiro: cvoff-provenance --build --book \"1937 Kemeri.pdf\"")
-        return 1
+        return EXIT_BAD_INPUT
 
     store = LabelStore(args.csv)
     if not store.exists():
         print(f"CSV de rótulos não encontrado: {args.csv}")
-        return 1
+        return EXIT_BAD_INPUT
 
     orfaos = samples_without_provenance(store)
     print(f"Índice: {len(indice.entries)} diagramas de {len(indice.pages_by_book)} livro(s).")
@@ -178,8 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     _print_report(report, limit=args.show_distances)
 
     if args.json is not None:
-        args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(report.as_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_text(args.json, json.dumps(report.as_dict(), indent=2, ensure_ascii=False) + "\n")
         print(f"Relatório em {args.json}")
         print()
 

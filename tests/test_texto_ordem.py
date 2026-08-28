@@ -148,7 +148,8 @@ class ComandoTests(unittest.TestCase):
             codigo = ordem.main(
                 ["--pdf-dir", tmp, "--saida", str(raiz / "s.json"), "--baseline", str(raiz / "nao.json")]
             )
-            self.assertEqual(1, codigo)
+            # Caminho apontado que não existe é a classe 2 da S-126, e não a 1 (S-378).
+            self.assertEqual(2, codigo)
 
     def test_o_baseline_falha_quando_a_ordem_piora(self) -> None:
         """Regressão de ordem é regressão — mesma trava do `cvoff-census --fail-on-loss`."""

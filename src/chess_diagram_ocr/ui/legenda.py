@@ -39,6 +39,9 @@ class JanelaDeAtalhos(tk.Toplevel):
         self.title(TITULO)
         self.transient(pai if isinstance(pai, (tk.Tk, tk.Toplevel)) else None)
         self.resizable(False, False)
+        # **A legenda das teclas fechando com tecla** (S-395). Ela é a janela que mais se abre
+        # para consultar e fechar, e era preciso ir ao X do título para sair dela.
+        self.bind("<Escape>", lambda _evento: self.destroy())
 
         moldura = ttk.Frame(self, padding=14)
         moldura.pack(fill=tk.BOTH, expand=True)

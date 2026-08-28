@@ -467,6 +467,9 @@ class Fita(BarraFluida):
         if foto is not None:
             botao.configure(image=foto)
         Tooltip(botao, self._dica(registro, grupo))
+        if registro.rotulo_alternado:
+            # "Selecionar área" é um modo, e a fita não dizia em qual estado ele está (S-396).
+            comandos.ao_alternar(registro.acao, lambda texto: botao.configure(text=quebrar_rotulo(texto)))
         return botao
 
     def _dica(self, registro: comandos.Comando, grupo: GrupoDeFita) -> str:

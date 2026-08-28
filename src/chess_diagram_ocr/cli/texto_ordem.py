@@ -63,7 +63,7 @@ from typing import Any
 from ..atomic_io import atomic_write_json
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import cli_errors
+from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
 
 logger = logging.getLogger(__name__)
 
@@ -255,22 +255,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "relatorio como 'sem referencia', que e o que sao."
         ),
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO)
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
     parser.add_argument("--por-livro", type=int, default=5, help="Paginas medidas por livro (padrao 5).")
-    parser.add_argument("--limite", type=int, help="So os N primeiros livros.")
+    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
     parser.add_argument(
         "--baseline",
         type=Path,
         help="Falha (codigo 1) se a distancia media piorar contra este relatorio. Regressao de ordem e regressao.",
     )
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
 @cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    configure_logging()
+    configure_logging(verbose=args.verbose)
+
+    if (codigo := confere_baseline(args.baseline)) is not None:
+        return codigo
 
     pdfs = sorted(p for p in args.pdf_dir.glob("*.pdf") if p.is_file())
     if args.limite:
@@ -301,9 +305,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"   pior: {pior['tau']:.3f}  {pior['pdf'][:52]} p.{pior['pagina']}")
 
     if args.baseline:
-        if not args.baseline.exists():
-            logger.error("O baseline %s não existe.", args.baseline)
-            return 1
+        # A existência do caminho já foi conferida antes de medir (S-381).
         antes = json.loads(args.baseline.read_text(encoding="utf-8")).get("tau_medio")
         if antes is not None and medio is not None and medio > antes + PIORA_TOLERADA:
             logger.error(
@@ -312,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
                 antes,
                 PIORA_TOLERADA,
             )
-            return 1
+            return EXIT_FAILURE
     return 0
 
 

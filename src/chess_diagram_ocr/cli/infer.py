@@ -5,28 +5,28 @@ import logging
 from pathlib import Path
 
 from ..board_detection import NoBoardDetectedError, detect_board
-from ..config import DEFAULT_MODEL_PATH, DEFAULT_ORIENTATION_MODE
+from ..config import DEFAULT_ORIENTATION_MODE
 from ..inference import load_model, predict_with_orientation
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_io import render_pdf_page
-from . import cli_errors
+from . import EXIT_BAD_INPUT, add_dpi_argument, add_model_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Reconhece a FEN do melhor diagrama de uma pagina de PDF.")
-    parser.add_argument("pdf", type=Path)
+    parser.add_argument("pdf", type=Path, help="O livro de onde vem a página.")
     parser.add_argument("--page", type=int, default=0, help="Indice da pagina, base 0.")
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
+    add_model_argument(parser)
     parser.add_argument(
         "--orientation",
         choices=("auto", "0", "180"),
         default=DEFAULT_ORIENTATION_MODE,
         help=f"Orientacao do diagrama (S-13). Padrao: {DEFAULT_ORIENTATION_MODE}.",
     )
-    parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("-v", "--verbose", action="store_true", help="Log em nivel DEBUG.")
+    add_dpi_argument(parser)
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         board_rgb, _quad = detect_board(page_rgb)
     except NoBoardDetectedError as exc:
         logger.error("%s", exc)
-        return 1
+        return EXIT_BAD_INPUT
 
     model, device = load_model(args.model)
     oriented = predict_with_orientation(board_rgb, model, device, mode=args.orientation)

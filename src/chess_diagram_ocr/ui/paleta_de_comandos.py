@@ -65,6 +65,9 @@ vale. **A lista cresceu sozinha na S-232**, que é o que `motivos_declarados` pr
 sai do `tipo` do item em `menu.MENUS`, e ninguém veio aqui acrescentar "densidade"."""
 
 MOTIVO_NA_LINHA_DE_CAMPO = "fica na linha de conjunto de campo, junto da página exibida"
+
+MOTIVO_NA_JANELA_DE_BUSCA = "é o botão da janela de achar e substituir: precisa da lista de ocorrências"
+"""Ver `comandos.NA_JANELA_DE_BUSCA` (S-343)."""
 """Os três da S-77, e a razão de eles não terem item de menu é a mesma de não terem paleta: eles
 anotam *aquela* página, e um comando que age sobre a página exibida sem que ela esteja à vista é o
 gesto que grava verdade de referência errada."""
@@ -81,6 +84,7 @@ def motivos_declarados() -> dict[str, str]:
     """
     submenus = (menu.RECENTES, menu.APARENCIA, menu.DENSIDADE)
     declarados = dict.fromkeys(comandos.NA_LINHA_DE_CAMPO, MOTIVO_NA_LINHA_DE_CAMPO)
+    declarados.update(dict.fromkeys(comandos.NA_JANELA_DE_BUSCA, MOTIVO_NA_JANELA_DE_BUSCA))
     declarados.update(
         {item.acao: MOTIVO_SUBMENU for declarado in menu.MENUS for item in declarado.itens if item.tipo in submenus}
     )

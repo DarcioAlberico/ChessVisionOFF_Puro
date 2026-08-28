@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 import tkinter as tk
 import unittest
 from pathlib import Path
@@ -285,7 +286,8 @@ class UmaDeteccaoDeCadaVezTests(unittest.TestCase):
         self.addCleanup(remendo.stop)
         # A detecção nunca termina: é o estado que o segundo clique encontra.
         self._solta = threading.Event()
-        self.addCleanup(self._solta.set)
+        self._antes = set(threading.enumerate())
+        self.addCleanup(self._encerrar_a_deteccao)
         parada = mock.patch.object(
             modulo, "find_duplicate_groups", lambda *_a, **_k: (self._solta.wait(), [])[1]
         )
@@ -298,6 +300,26 @@ class UmaDeteccaoDeCadaVezTests(unittest.TestCase):
             on_status=self.frases.append,
             busy=self.registro,
         )
+
+    def _encerrar_a_deteccao(self) -> None:
+        """Solta o worker **de dentro do laço do Tk**, e espera ele morrer (S-413).
+
+        Soltar e ir embora era o que este teste fazia, e custava um rastro no teste seguinte: o
+        worker acorda, chama `self.after(0, ...)` e o Tk recusa a chamada de outra thread enquanto
+        a thread principal não está dentro do laço -- `RuntimeError: main thread is not in main
+        loop`, levantado depois que este teste já terminou. O `conftest` passou a acusar isso, e o
+        conserto é dar ao worker o laço de que ele precisa: `after` agenda a soltura, `mainloop`
+        entra, e a espera abaixo confirma que a thread de fato acabou.
+        """
+        self.root.after(10, self._solta.set)
+        prazo = time.monotonic() + 5.0
+        while time.monotonic() < prazo:
+            vivas = [t for t in threading.enumerate() if t not in self._antes and t.is_alive()]
+            if not vivas:
+                return
+            self.root.after(50, self.root.quit)
+            self.root.mainloop()
+        raise AssertionError("a thread da detecção não terminou")
 
     def test_o_segundo_clique_nao_registra_uma_segunda_operacao(self) -> None:
         self.painel.detect_duplicates()

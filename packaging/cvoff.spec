@@ -1,4 +1,3 @@
-# -*- mode: python ; coding: utf-8 -*-
 """Bundle Windows do ChessVisionOFF (S-55, reabre a S-36).
 
 Rode pela raiz do projeto:
@@ -115,6 +114,18 @@ excludes = [
     "notebook",
     "matplotlib",
     "tensorboard",
+    # **95 MB que entraram sem ninguém declarar (S-387).** `scipy` e `scikit-image` não são
+    # dependência deste projeto: eles vêm no ambiente por causa do clone de
+    # `tsoj/Chess_diagram_to_FEN`, que é a segunda opinião **local** da S-66 -- um caminho que
+    # exige o usuário clonar um repositório de terceiro e baixar 232 MiB de pesos, e que
+    # portanto não é um caminho do executável. O PyInstaller coleta o que está **instalado**, e
+    # não o que o `pyproject.toml` declara: é o mesmo modo de falha que a S-137 mediu com o
+    # `pythonnet`, com dois zeros a mais.
+    #
+    # `tsoj_reader` diz isso em pt-BR quando alguém tenta a opção no `.exe`, em vez de deixar
+    # aparecer um `No module named 'skimage'`.
+    "scipy",
+    "skimage",
 ]
 
 a = Analysis(  # noqa: F821

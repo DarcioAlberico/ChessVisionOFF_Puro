@@ -178,7 +178,6 @@ dependencies = [
     { name = "chess" },
     { name = "numpy" },
     { name = "opencv-python" },
-    { name = "pandas" },
     { name = "pillow" },
     { name = "pymupdf" },
     { name = "torch" },
@@ -192,6 +191,7 @@ demo = [
 ]
 dev = [
     { name = "mypy" },
+    { name = "pandas" },
     { name = "pandas-stubs" },
     { name = "pytest" },
     { name = "ruff" },
@@ -227,7 +227,7 @@ requires-dist = [
     { name = "onnxruntime", marker = "extra == 'ocr'", specifier = ">=1.18" },
     { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.18" },
     { name = "opencv-python", specifier = ">=4.9.0" },
-    { name = "pandas", specifier = ">=2.2.0" },
+    { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.2.0" },
     { name = "pandas-stubs", marker = "extra == 'dev'" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "pyfastnoiselite", marker = "extra == 'second-opinion'", specifier = ">=0.0.7" },

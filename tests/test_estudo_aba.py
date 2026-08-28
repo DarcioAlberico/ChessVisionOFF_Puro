@@ -772,11 +772,29 @@ class RecorteTests(_Sala):
 
     def test_o_botao_troca_de_texto_em_vez_de_virar_checkbutton(self) -> None:
         """Um `Checkbutton` não é comando: o estado dele viveria só na barra, e o mesmo comando
-        pela paleta da S-231 não teria onde ler o valor de antes (S-280)."""
+        pela paleta da S-231 não teria onde ler o valor de antes (S-280).
+
+        **Com âncora**, porque é ela que dá recorte: sem uma, o botão fica cinza e o rótulo não
+        troca -- ele descreveria uma miniatura que não existe (S-347).
+        """
+        self._no_diagrama(0)
         botao, _ = self.painel._alternaveis["mostrar_diagrama"]
         self.assertEqual(str(botao.cget("text")), comandos.rotulo_de_botao("mostrar_diagrama"))
         self.painel.alternar_recorte()
         self.assertEqual(str(botao.cget("text")), comandos.rotulo_alternado("mostrar_diagrama"))
+
+    def test_sem_ancora_o_botao_fica_cinza_e_o_rotulo_nao_troca(self) -> None:
+        """A dica promete "fica cinza quando o estudo não veio de um diagrama do livro" desde a
+        S-282, e ele nunca ficava: o clique trocava o rótulo sem nada ter aparecido (S-347)."""
+        botao, _ = self.painel._alternaveis["mostrar_diagrama"]
+        self.painel.refresh()
+
+        self.assertEqual(str(botao.cget("state")), "disabled")
+
+        self.painel.alternar_recorte()
+
+        self.assertEqual(str(botao.cget("text")), comandos.rotulo_de_botao("mostrar_diagrama"))
+        self.assertIn("não veio de um diagrama", self.painel.status_var.get())
 
 
 class LinhaDoLivroTests(_Sala):
@@ -955,15 +973,47 @@ class MotorTests(_Sala):
         self.painel.variante_do_motor()
         self.assertIn("ainda não respondeu", self.painel.status_var.get())
 
+    def _analise_sincrona(self):  # noqa: ANN202
+        """A análise **sem thread**, para o teste poder afirmar o resultado dela (S-413).
+
+        `analyse` sobe uma thread de verdade -- o motor é de mentira, a thread não -- e ela volta
+        por `after(0, ...)`. Num teste isso não funciona e ainda vaza: o Tk recusa a chamada de
+        outra thread enquanto a principal não está **dentro** do laço (`RuntimeError: main thread
+        is not in main loop`), e a thread morre com esse erro depois que o `tearDown` já destruiu
+        o painel -- então o rastro aparece no teste seguinte. Era o defeito que o
+        `sem_thread_vazada` do `conftest` passou a acusar.
+
+        Rodar o alvo na hora troca a corrida por uma ordem: o `after(0, ...)` sai da thread
+        principal, que é onde ele é legal, e o `update` abaixo o executa.
+        """
+
+        class Imediata:
+            def __init__(self, *, target, args=(), daemon=False, **_):  # noqa: ANN001, ANN003, ARG002
+                self._alvo, self._args = target, args
+
+            def start(self) -> None:
+                self._alvo(*self._args)
+
+        return mock.patch.object(study_panel.threading, "Thread", Imediata)
+
     def test_a_analise_continua_alterna_e_o_botao_conta(self) -> None:
         self._no_diagrama(0)
-        self.painel.alternar_analise_continua()
-        self.assertTrue(self.painel.continua_var.get())
-        botao, _ = self.painel._alternaveis["analise_continua"]
-        self.assertEqual(str(botao.cget("text")), comandos.rotulo_alternado("analise_continua"))
-        self.painel.alternar_analise_continua()
-        self.assertFalse(self.painel.continua_var.get())
-        self.assertEqual(self.painel.engine_var.get(), "")
+        with self._analise_sincrona():
+            self.painel.alternar_analise_continua()
+            self.assertTrue(self.painel.continua_var.get())
+            botao, _ = self.painel._alternaveis["analise_continua"]
+            self.assertEqual(str(botao.cget("text")), comandos.rotulo_alternado("analise_continua"))
+
+            self.painel.alternar_analise_continua()
+            self.assertFalse(self.painel.continua_var.get())
+            self.assertEqual(self.painel.engine_var.get(), "")
+
+            # **O `update` fica aqui dentro, e depois de desligar.** Ele executa os `after(0, ...)`
+            # que o trabalho enfileirou -- e é o que impede que eles rodem num teste seguinte,
+            # sobre um painel destruído. Com a análise contínua **ligada** ele não poderia rodar:
+            # `_finish_analysis` pede a próxima, que com a thread síncrona seria a mesma chamada
+            # de novo, para sempre.
+            self.root.update()
 
 
 class SemMotorTests(_Sala):
@@ -1337,3 +1387,125 @@ class ComentarioNaoConfirmadoTests(_Sala):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class GravacaoPorInatividadeTests(_Sala):
+    """A escrita do motor não adia a gravação da sala (S-345).
+
+    Com a análise contínua ligada, o motor grava `[%eval ...]` a cada ~800 ms, e cada escrita
+    cancelava e reagendava o prazo de inatividade: ele nunca vencia, e a sala **nunca chegava ao
+    disco** enquanto o motor estivesse ligado.
+    """
+
+    def test_a_avaliacao_do_motor_nao_empurra_o_relogio(self) -> None:
+        self._no_diagrama(0)
+        self.painel._marcar_sujo()
+        agendada = self.painel._gravacao_agendada
+        self.assertIsNotNone(agendada, "uma edição de gente marca a gravação")
+
+        self.painel._marcar_sujo(historico=False, da_maquina=True)
+
+        self.assertIs(self.painel._gravacao_agendada, agendada, "o motor reagendou o prazo")
+
+    def test_a_edicao_de_gente_continua_empurrando(self) -> None:
+        self._no_diagrama(0)
+        self.painel._marcar_sujo()
+        agendada = self.painel._gravacao_agendada
+
+        self.painel._marcar_sujo()
+
+        self.assertIsNotNone(self.painel._gravacao_agendada)
+        self.assertNotEqual(self.painel._gravacao_agendada, agendada)
+
+    def test_sem_nada_marcado_a_maquina_marca(self) -> None:
+        """Senão a avaliação de um estudo que ninguém mais tocar não chegaria ao disco."""
+        self._no_diagrama(0)
+        self.painel.salvar_agora()
+        self.assertIsNone(self.painel._gravacao_agendada)
+
+        self.painel._marcar_sujo(historico=False, da_maquina=True)
+
+        self.assertIsNotNone(self.painel._gravacao_agendada)
+
+
+class VirarTabuleiroTests(_Sala):
+    """Virar o tabuleiro é vista, e não edição (S-346)."""
+
+    def test_virar_nao_conta_como_edicao(self) -> None:
+        """`_edicao` é o que diz a `ui/desfazivel.py` qual painel recebe o `Ctrl+Z`: virar o
+        tabuleiro sequestrava a tecla e não desfazia nada."""
+        self._no_diagrama(0)
+        antes = self.painel.edicao
+        orientacao = self.painel.estudo.invertido
+
+        self.painel.flip_board()
+
+        self.assertEqual(self.painel.edicao, antes)
+        self.assertNotEqual(self.painel.estudo.invertido, orientacao)
+
+    def test_virar_continua_marcando_a_sala_como_suja(self) -> None:
+        """`invertido` é gravado com o estudo: a orientação sobrevive a fechar a janela."""
+        self._no_diagrama(0)
+        self.painel.salvar_agora()
+
+        self.painel.flip_board()
+
+        self.assertTrue(self.painel._sujo)
+        self.assertIsNotNone(self.painel._gravacao_agendada, "gesto de gente empurra o relógio")
+
+
+class PgnAtomicoTests(_Sala):
+    """Sobrescrever o PGN de um estudo não pode truncar o que estava lá (S-346)."""
+
+    def test_sobrescrever_passa_pela_escrita_atomica(self) -> None:
+        from chess_diagram_ocr import atomic_io
+
+        self._no_diagrama(0)
+        destino = Path(self.tmp.name) / "estudo.pgn"
+        destino.write_text("PGN de outro dia\n", encoding="utf-8")
+        chamadas: list[Path] = []
+        original = atomic_io.atomic_write_text
+
+        def espiao(caminho, payload, **kwargs):  # noqa: ANN001, ANN202
+            chamadas.append(Path(caminho))
+            return original(caminho, payload, **kwargs)
+
+        atomic_io.atomic_write_text = espiao  # type: ignore[assignment]
+        self.addCleanup(setattr, atomic_io, "atomic_write_text", original)
+
+        self.painel.write_pgn(destino, append=False)
+
+        self.assertEqual(chamadas, [destino])
+        self.assertNotIn("outro dia", destino.read_text(encoding="utf-8"))
+
+    def test_acrescentar_continua_acrescentando(self) -> None:
+        """O `append` nunca trunca: o risco dele é outro, e está escrito no docstring."""
+        self._no_diagrama(0)
+        destino = Path(self.tmp.name) / "colecao.pgn"
+        destino.write_text('[Event "de ontem"]\n\n*\n', encoding="utf-8")
+
+        self.painel.write_pgn(destino, append=True)
+
+        self.assertIn("de ontem", destino.read_text(encoding="utf-8"))
+
+
+class ReabrirAMesaTests(_Sala):
+    """`estudo_aberto` era gravado no estado e nunca lido (S-347)."""
+
+    def test_reabrir_por_chave_volta_ao_estudo_daquele_diagrama(self) -> None:
+        self._no_diagrama(1)
+        self._jogar("f8c5")  # um lance de verdade: estudo vazio não fica guardado na sala
+        chave = self.painel.chave_do_estudo_aberto
+        self.assertTrue(chave)
+        self._no_diagrama(0)
+        self.assertNotEqual(self.painel.chave_do_estudo_aberto, chave)
+
+        self.assertTrue(self.painel.reabrir_por_chave(chave))
+
+        self.assertEqual(self.painel.chave_do_estudo_aberto, chave)
+
+    def test_chave_que_nao_existe_mais_nao_levanta(self) -> None:
+        """Livro revarrido, diagrama com outro número: voltar à porta da sala é a degradação certa."""
+        self._no_diagrama(0)
+        self.assertFalse(self.painel.reabrir_por_chave("nao_existe_p9_d9"))
+        self.assertFalse(self.painel.reabrir_por_chave(""))

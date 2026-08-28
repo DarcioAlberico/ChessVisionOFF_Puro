@@ -9,11 +9,12 @@ possa ser provocada de propósito sem depender de um PDF corrompido de verdade.
 from __future__ import annotations
 
 import json
-import tempfile
 import threading
 import unittest
 from pathlib import Path
 from unittest import mock
+
+from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr.batch import (
     STATUS_CANCELLED,
@@ -50,10 +51,10 @@ def _report(saida: Path, *, aceitos: int = 2, revisao: int = 1, ilegais: int = 1
 
 
 class _Biblioteca:
-    """Uma pasta com PDFs de mentira. O conteúdo não importa: a exportação é substituída."""
+    """Uma pasta com PDFs de mentira, apagada com o teste. O conteúdo não importa: a exportação é substituída."""
 
-    def __init__(self, nomes: list[str]) -> None:
-        self.dir = Path(tempfile.mkdtemp(prefix="cvoff-lote-"))
+    def __init__(self, caso: unittest.TestCase, nomes: list[str]) -> None:
+        self.dir = pasta_temporaria(caso, prefixo="cvoff-lote-")
         self.pdfs = self.dir / "PDF"
         self.pdfs.mkdir()
         self.saida = self.dir / "PGN"
@@ -64,15 +65,15 @@ class _Biblioteca:
 class FindTests(unittest.TestCase):
     def test_a_directory_yields_its_pdfs_in_name_order(self) -> None:
         """Ordem estável importa: uma varredura retomada tem de repetir a mesma sequência."""
-        biblioteca = _Biblioteca(["c.pdf", "a.pdf", "b.pdf"])
+        biblioteca = _Biblioteca(self, ["c.pdf", "a.pdf", "b.pdf"])
         self.assertEqual([p.name for p in find_pdfs(biblioteca.pdfs)], ["a.pdf", "b.pdf", "c.pdf"])
 
     def test_a_single_file_is_accepted_too(self) -> None:
-        biblioteca = _Biblioteca(["um.pdf"])
+        biblioteca = _Biblioteca(self, ["um.pdf"])
         self.assertEqual(find_pdfs(biblioteca.pdfs / "um.pdf"), [biblioteca.pdfs / "um.pdf"])
 
     def test_subdirectories_are_swept(self) -> None:
-        biblioteca = _Biblioteca(["raiz.pdf"])
+        biblioteca = _Biblioteca(self, ["raiz.pdf"])
         (biblioteca.pdfs / "sub").mkdir()
         (biblioteca.pdfs / "sub" / "fundo.pdf").write_bytes(b"%PDF-1.4\n")
         self.assertEqual(len(find_pdfs(biblioteca.pdfs)), 2)
@@ -80,7 +81,7 @@ class FindTests(unittest.TestCase):
 
 class RunTests(unittest.TestCase):
     def test_every_book_gets_a_result(self) -> None:
-        biblioteca = _Biblioteca(["a.pdf", "b.pdf", "c.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf", "b.pdf", "c.pdf"])
         with mock.patch(
             "chess_diagram_ocr.batch.save_pdf_positions_to_pgn",
             side_effect=lambda **kw: _report(kw["output_path"]),
@@ -93,7 +94,7 @@ class RunTests(unittest.TestCase):
 
     def test_a_failing_book_does_not_stop_the_sweep(self) -> None:
         """O critério de aceite da S-34, na forma em que ele pode ser provado."""
-        biblioteca = _Biblioteca(["a.pdf", "b.pdf", "c.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf", "b.pdf", "c.pdf"])
 
         def _exportar(**kw: object) -> ExportReport:
             saida = kw["output_path"]
@@ -111,7 +112,7 @@ class RunTests(unittest.TestCase):
 
     def test_the_failure_reason_survives_into_the_report(self) -> None:
         """"3 livros falharam" não permite agir; o motivo por nome permite."""
-        biblioteca = _Biblioteca(["a.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf"])
         with mock.patch(
             "chess_diagram_ocr.batch.save_pdf_positions_to_pgn",
             side_effect=RuntimeError("PDF corrompido"),
@@ -124,7 +125,7 @@ class RunTests(unittest.TestCase):
 
     def test_an_existing_pgn_is_the_progress_record(self) -> None:
         """`--skip-existing` torna a varredura retomável sem inventar estado próprio."""
-        biblioteca = _Biblioteca(["a.pdf", "b.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf", "b.pdf"])
         biblioteca.saida.mkdir(parents=True)
         (biblioteca.saida / "a.pgn").write_text("[Event \"antigo\"]\n", encoding="utf-8")
 
@@ -138,7 +139,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual(exportar.call_count, 1, "O livro já exportado não deve ser lido de novo.")
 
     def test_skipping_can_be_turned_off(self) -> None:
-        biblioteca = _Biblioteca(["a.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf"])
         biblioteca.saida.mkdir(parents=True)
         (biblioteca.saida / "a.pgn").write_text("[Event \"antigo\"]\n", encoding="utf-8")
 
@@ -153,7 +154,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual(relatorio.books[0].status, STATUS_OK)
 
     def test_cancelling_stops_between_books(self) -> None:
-        biblioteca = _Biblioteca(["a.pdf", "b.pdf", "c.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf", "b.pdf", "c.pdf"])
         cancelar = threading.Event()
 
         def _exportar(**kw: object) -> ExportReport:
@@ -171,7 +172,7 @@ class RunTests(unittest.TestCase):
 class ReportFileTests(unittest.TestCase):
     def test_the_report_is_written_after_each_book_and_not_only_at_the_end(self) -> None:
         """Se o processo morrer por algo que o `try` não pega, o já medido fica no disco."""
-        biblioteca = _Biblioteca(["a.pdf", "b.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf", "b.pdf"])
         caminho = biblioteca.dir / "relatorio.json"
         vistos: list[int] = []
 
@@ -189,7 +190,7 @@ class ReportFileTests(unittest.TestCase):
         self.assertEqual(vistos, [1])
 
     def test_the_report_json_carries_the_numbers_the_txt_never_had(self) -> None:
-        biblioteca = _Biblioteca(["a.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf"])
         caminho = biblioteca.dir / "relatorio.json"
         with mock.patch(
             "chess_diagram_ocr.batch.save_pdf_positions_to_pgn",
@@ -209,7 +210,7 @@ class ConfidenceTests(unittest.TestCase):
     def test_the_mean_confidence_counts_every_diagram_and_not_only_the_accepted(self) -> None:
         """Média só dos aceitos subiria quando o gate rejeitasse mais -- o número melhoraria
         justamente nos livros em que a leitura piorou."""
-        biblioteca = _Biblioteca(["a.pdf"])
+        biblioteca = _Biblioteca(self, ["a.pdf"])
         with mock.patch(
             "chess_diagram_ocr.batch.save_pdf_positions_to_pgn",
             side_effect=lambda **kw: _report(kw["output_path"], aceitos=1, revisao=1, ilegais=0),

@@ -6,10 +6,8 @@ import random
 from pathlib import Path
 
 from ..config import (
-    ACCEPT_MIN_CONFIDENCE,
     DEFAULT_DATASET_CSV,
     DEFAULT_MAX_BOARDS,
-    DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
 )
@@ -23,7 +21,7 @@ from ..review_queue import (
     merge_queues,
     rare_classes_from_labels,
 )
-from . import cli_errors
+from . import add_accept_threshold_argument, add_dpi_argument, add_model_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +30,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Varre um PDF e monta a fila de revisao ordenada por valor de informacao (S-22).",
     )
-    parser.add_argument("pdf", type=Path)
+    parser.add_argument("pdf", type=Path, help="O livro a enfileirar para revisão.")
     parser.add_argument("--queue", type=Path, default=DEFAULT_QUEUE_PATH, help=f"Padrao: {DEFAULT_QUEUE_PATH}")
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
+    add_model_argument(parser)
     parser.add_argument("--labels", type=Path, default=DEFAULT_DATASET_CSV, help="CSV usado para achar classes raras.")
-    parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
-    parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS)
-    parser.add_argument("--orientation", choices=("auto", "0", "180"), default=DEFAULT_ORIENTATION_MODE)
-    parser.add_argument("--start-page", type=int, default=0)
+    parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR, help="Onde os recortes da fila são gravados.")
+    add_dpi_argument(parser)
+    parser.add_argument(
+        "--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de diagramas aceitos por página."
+    )
+    parser.add_argument(
+        "--orientation",
+        choices=("auto", "0", "180"),
+        default=DEFAULT_ORIENTATION_MODE,
+        help="Rotação do tabuleiro. `auto` decide pela confiança das duas leituras.",
+    )
+    parser.add_argument("--start-page", type=int, default=0, help="Primeira página a varrer, base 0.")
     parser.add_argument("--end-page", type=int, default=None, help="Exclusivo. Padrao: ate o fim do PDF.")
-    parser.add_argument("--reading-order", choices=("column", "row"), default=DEFAULT_READING_ORDER)
-    parser.add_argument("--accept-threshold", type=float, default=ACCEPT_MIN_CONFIDENCE)
-    parser.add_argument("--limit", type=int, default=None, help="Corta a fila apos ordenar.")
+    parser.add_argument(
+        "--reading-order",
+        choices=("column", "row"),
+        default=DEFAULT_READING_ORDER,
+        help="Ordem em que os diagramas da página entram na fila.",
+    )
+    add_accept_threshold_argument(parser)
+    parser.add_argument("--limit", "--limite", type=int, default=None, help="Corta a fila apos ordenar.")
     parser.add_argument("--show", type=int, default=20, help="Itens listados no fim.")
     parser.add_argument(
         "--no-merge",
@@ -62,7 +72,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "a de N itens sorteados entre todos os diagramas varridos."
         ),
     )
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 

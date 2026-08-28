@@ -139,7 +139,7 @@ def encode_multipart_png(image_rgb: np.ndarray, *, field: str = "file", filename
 
     ok, buffer = cv2.imencode(".png", cv2.cvtColor(image_rgb.astype(np.uint8), cv2.COLOR_RGB2BGR))
     if not ok:
-        raise ValueError("Nao foi possivel codificar a imagem do tabuleiro em PNG.")
+        raise ValueError("Não foi possível codificar a imagem do tabuleiro em PNG.")
 
     boundary = f"----ChessVisionBoundary{uuid.uuid4().hex}"
     body = b"".join(
@@ -165,12 +165,12 @@ def parse_net_response(payload: str) -> str:
     try:
         parsed = json.loads(payload)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("Resposta da API nao esta em JSON.") from exc
+        raise RuntimeError("Resposta da API não está em JSON.") from exc
 
     results = parsed.get("results") if isinstance(parsed, dict) else None
     if not isinstance(results, list) or not results:
         message = parsed.get("message") if isinstance(parsed, dict) else ""
-        raise RuntimeError(str(message or "API nao retornou resultados."))
+        raise RuntimeError(str(message or "API não retornou resultados."))
 
     primeiro = results[0]
     fen = str(primeiro.get("fen", "")).strip() if isinstance(primeiro, dict) else ""

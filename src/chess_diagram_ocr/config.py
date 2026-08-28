@@ -168,6 +168,22 @@ DEFAULT_SAMPLES_DIR = PROJECT_ROOT / "data" / "samples"
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "piece_classifier.pt"
 DEFAULT_PDF_DIR = PROJECT_ROOT / "PDF"
 
+DEFAULT_SPLITS_PATH = PROJECT_ROOT / "data" / "splits.csv"
+"""A partição, aqui e em nenhum outro lugar (S-383).
+
+Ela estava declarada **seis vezes** dentro de `cli/`, sob dois nomes -- `DEFAULT_SPLITS_PATH`
+em quatro comandos e `DEFAULT_SPLITS` em dois -- e por dois caminhos diferentes:
+`PROJECT_ROOT / "data" / "splits.csv"` num grupo e `DEFAULT_DATASET_CSV.parent / "splits.csv"`
+no outro. Hoje as duas fórmulas dão o mesmo arquivo, e é justamente aí que mora o defeito:
+mudar o `labels.csv` de pasta faria metade dos comandos seguir e a outra metade ficar, e a
+diferença apareceria como "o `cvoff-eval` mede outro conjunto que o `cvoff-audit`"."""
+
+DEFAULT_DPI = 220
+"""DPI de renderização de página. Era o literal `220` em doze declarações de `--dpi` (S-383).
+
+O número tem razão medida -- é o DPI em que a detecção da S-08 foi calibrada -- e um literal
+repetido doze vezes é um número sem dono: mudá-lo obrigaria a achar as doze."""
+
 
 def find_default_pdf_path() -> Path | None:
     if not DEFAULT_PDF_DIR.exists():

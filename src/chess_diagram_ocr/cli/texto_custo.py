@@ -49,10 +49,19 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_MODEL_PATH, DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import custo as _custo
-from . import EXIT_BAD_INPUT, EXIT_FAILURE, EXIT_OK, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    EXIT_FAILURE,
+    EXIT_OK,
+    add_dpi_argument,
+    add_model_argument,
+    add_verbose,
+    cli_errors,
+    confere_baseline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -259,8 +268,8 @@ def main(argv: list[str] | None = None) -> int:
         default=PAGINAS_POR_LIVRO,
         help=f"Páginas por livro, espalhadas pelo livro inteiro. Padrão: {PAGINAS_POR_LIVRO}.",
     )
-    parser.add_argument("--dpi", type=int, default=220, help="DPI de renderização. Padrão: 220.")
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH, help="Modelo de peças da varredura de hoje.")
+    add_dpi_argument(parser)
+    add_model_argument(parser, help="Modelo de peças da varredura de hoje.")
     parser.add_argument(
         "--paginas-do-acervo",
         type=int,
@@ -280,10 +289,13 @@ def main(argv: list[str] | None = None) -> int:
         default=_custo.MARGEM_PADRAO,
         help=f"Quanto pode piorar antes de --baseline acusar. Padrão: {_custo.MARGEM_PADRAO}.",
     )
-    parser.add_argument("--verbose", action="store_true", help="Log em DEBUG.")
+    add_verbose(parser)
     args = parser.parse_args(argv)
 
     configure_logging(verbose=args.verbose)
+
+    if (codigo := confere_baseline(args.baseline)) is not None:
+        return codigo
 
     if args.pdf is not None:
         if not args.pdf.exists():
@@ -343,9 +355,7 @@ def main(argv: list[str] | None = None) -> int:
     print(tabela)
 
     if args.baseline is not None:
-        if not args.baseline.exists():
-            logger.error("--baseline não encontrado: %s", args.baseline)
-            return EXIT_BAD_INPUT
+        # A existência do caminho já foi conferida antes de medir (S-381).
         arquivado = json.loads(args.baseline.read_text(encoding="utf-8"))
         pioras = _custo.comparar(arquivado, perfil, margem=args.margem)
         if pioras:

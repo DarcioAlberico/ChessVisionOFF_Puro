@@ -96,6 +96,8 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 from typing import TYPE_CHECKING, Any, Literal
 
+from chess_diagram_ocr.logging_setup import onde_esta_o_rastro
+
 from ..text import arquivo, busca, correcao, dicionario, documento, exportacao, pdf_pesquisavel, rascunho, rico
 from ..text import paleta as _paleta
 from ..text.pagina import BlocoDeDiagrama, PaginaLida
@@ -115,6 +117,8 @@ from .barra import BarraFluida
 from .busy import BusyRegistry
 
 if TYPE_CHECKING:  # pragma: no cover - só o verificador de tipo precisa disto
+    import numpy as np
+
     from ..text.leitor import MotorDeTexto
 else:
     MotorDeTexto = Literal["auto", "camada", "glifo"]
@@ -265,7 +269,7 @@ ESCAPE_DA_PALETA = "\\"
 COMANDOS_DA_ABA: dict[str, str] = {
     "abrir_texto": "abrir_documento",
     "salvar_texto": "salvar_documento",
-    "salvar_texto_como": "salvar_documento",
+    "salvar_texto_como": "salvar_documento_como",
     "exportar_txt": "salvar",
     "ler_folha": "ler",
     "folha_da_pagina_aberta": "sincronizar_com_a_pagina",
@@ -281,7 +285,6 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "limpar_cor": "limpar_cor",
     "achar": "achar",
     "substituir": "substituir",
-    "substituir_todos": "substituir_todos",
     "inserir_figurina": "inserir_figurina",
     "inserir_avaliacao": "inserir_avaliacao",
     "estilo_titulo": "estilo_titulo",
@@ -338,8 +341,18 @@ S-20), e do outro lado ninguém a ligava. O resultado era um silêncio de duas c
 Quem confere que cada ação declarada é de fato atendida é `atalhos.conferir_dono`, na montagem:
 declarar e não atender come a tecla e não faz nada, que é pior que não declarar."""
 
-MOTORES: tuple[MotorDeTexto, ...] = ("glifo", "camada", "auto")
+MOTORES: tuple[MotorDeTexto, ...] = ("auto", "glifo", "camada")
 """Os mesmos três de `text/leitor.py`, e a caixa da barra os oferece nesta ordem.
+
+**O primeiro é o padrão, e ele era o `glifo` (S-423).** O glifo precisa de
+`models/char_classifier.pt`, que **não vem no repositório** -- `*.pt` está no `.gitignore`.
+Num clone novo a aba abria com o motor que não pode funcionar, tendo `auto` na mesma caixa:
+a primeira leitura de texto da vida de quem instala falhava por falta de um arquivo, e a
+escolha certa estava a um clique de distância sem que nada dissesse isso.
+
+`auto` é o glifo **com a camada como reserva** (`text/leitor.py`): com o classificador no
+lugar ele lê igual, e sem ele cai na camada de texto do PDF avisando no log. É a mesma
+regra do resto do programa -- degradar dizendo, em vez de recusar em silêncio.
 
 **`text/leitor.py` não é importado no topo deste arquivo, e é regra e não descuido.** Por
 `text/recognizer.py` ele alcança o **torch**, e a aba de texto é construída na abertura da janela,
@@ -423,7 +436,9 @@ class TextoPanel(ttk.Frame):
         self._imagens: list[tk.PhotoImage] = []
         """As miniaturas vivas. **O Tk não segura a imagem** -- sem esta lista elas somem assim que
         o coletor passar, e o texto fica com buracos brancos onde havia diagrama."""
-        self._pagina_rgb = None
+        self._pagina_rgb: np.ndarray | None = None
+        self._caminho_do_documento: Path | None = None
+        """O `.cvtxt` deste documento, quando ele já tem um. Ver `salvar_documento` (S-343)."""
         self._lendo = False
         self._sujo = False
         self._edicoes = 0
@@ -603,11 +618,34 @@ class TextoPanel(ttk.Frame):
         que é o mesmo defeito que `_fonte_do_trecho` evita do lado do documento."""
         self._aplicar_quebra()
         self._pintar_faixas()
+        # **A aba passou a seguir a pele e o tema (S-337).** As cores saíam de `tokens.cor(papel)`
+        # sem estilo, que é a reserva clara e nunca muda -- a aba Texto era a única superfície da
+        # janela congelada no tema de fábrica. Trocado por `theme.cor_atual`, falta quem refaça a
+        # pintura quando a pele muda: é este registro, feito ao lado de onde se pintou, como o
+        # `ui/theme.py` manda.
+        theme.ao_repintar(lambda: self._pintar_faixas())
         self.editor.bind("<<Modified>>", self._marcar_sujo)
         # O espelho dos interruptores segue o cursor. `<<Selection>>` não cobre a seta que anda sem
-        # selecionar, e por isso as quatro estão aqui: um botão que diz "negrito" onde o texto não
+        # selecionar, e por isso as teclas estão aqui: um botão que diz "negrito" onde o texto não
         # é negrito é pior que um botão sem estado nenhum.
-        for gatilho in ("<<Selection>>", "<ButtonRelease-1>", "<KeyRelease-Left>", "<KeyRelease-Right>"):
+        #
+        # **Eram duas setas, e o cursor anda de seis maneiras (S-344).** `↑`, `↓`, `Home`, `End`,
+        # `PgUp` e `PgDn` mudavam o trecho sob o cursor sem avisar ninguém: descer uma linha de um
+        # título para a prosa deixava "Título" aceso, e o clique seguinte no botão de negrito
+        # decidia pelo estado errado. `KeyRelease` e não `KeyPress` porque o cursor só está no
+        # lugar novo depois que a classe `Text` tratou a tecla.
+        for gatilho in (
+            "<<Selection>>",
+            "<ButtonRelease-1>",
+            "<KeyRelease-Left>",
+            "<KeyRelease-Right>",
+            "<KeyRelease-Up>",
+            "<KeyRelease-Down>",
+            "<KeyRelease-Home>",
+            "<KeyRelease-End>",
+            "<KeyRelease-Prior>",
+            "<KeyRelease-Next>",
+        ):
             self.editor.bind(gatilho, self._atualizar_ferramentas, add="+")
         self.editor.bind("<KeyRelease>", self._fechar_sequencia, add="+")
         self._ligar_teclas()
@@ -862,8 +900,14 @@ class TextoPanel(ttk.Frame):
             from ..text.leitor import ler_pagina
 
             try:
+                # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza
+                # sozinha quando ninguém lhe dá a imagem, e `_chegou` a renderizava **de novo**
+                # para as miniaturas -- na thread da janela, que congelava ~355 ms por leitura.
+                # O parâmetro `imagem_rgb` existe desde sempre justamente para isto, e o mesmo
+                # `dpi` dos dois lados é o que liga pixel a ponto.
+                imagem = self._renderizar(caminho, indice)
                 pagina = ler_pagina(
-                    caminho, indice, dpi=self._dpi, motor=motor, modo_bloco=bloco
+                    caminho, indice, dpi=self._dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem
                 )
             except Exception as erro:  # noqa: BLE001 - a thread não pode derrubar a janela
                 # **O nome tem de sair do `except` antes da lambda.** Em Python 3 o `as erro` é
@@ -874,7 +918,7 @@ class TextoPanel(ttk.Frame):
                 logger.exception("Falha ao ler o texto da folha %d.", indice + 1)
                 _na_janela(lambda: self._falhou(falha, token))
                 return
-            _na_janela(lambda: self._chegou(pagina, caminho, indice, token))
+            _na_janela(lambda: self._chegou(pagina, imagem, indice, token))
 
         def _na_janela(acao: Callable[[], None]) -> None:
             """Executa `acao` na thread da janela, e desiste em silêncio se ela já fechou.
@@ -897,16 +941,17 @@ class TextoPanel(ttk.Frame):
         token.release()  # type: ignore[attr-defined]
         self._lendo = False
         self.status_var.set(f"A folha não pôde ser lida: {exc}")
-        self._on_status("A leitura de texto falhou; o motivo está no log.")
+        self._on_status(f"A leitura de texto falhou. {onde_esta_o_rastro()}")
 
-    def _chegou(self, pagina: PaginaLida, caminho: Path, indice: int, token: object) -> None:
+    def _chegou(self, pagina: PaginaLida, imagem: np.ndarray | None, indice: int, token: object) -> None:
+        """A folha lida voltou da thread. **A imagem vem com ela** (S-352)."""
         token.release()  # type: ignore[attr-defined]
         self._lendo = False
-        self._pagina_rgb = self._renderizar(caminho, indice)
+        self._pagina_rgb = imagem
         self.desenhar(pagina)
         self._on_status(f"Folha {indice + 1} lida: {documento.resumo(pagina)}")
 
-    def _renderizar(self, caminho: Path, indice: int):  # noqa: ANN202 - np.ndarray | None
+    def _renderizar(self, caminho: Path, indice: int) -> np.ndarray | None:
         """A folha renderizada, de onde saem as miniaturas. `None` quando ela não pôde ser aberta."""
         try:
             from ..pdf_io import render_pdf_page
@@ -1015,8 +1060,13 @@ class TextoPanel(ttk.Frame):
         # desenho seguinte acrescentaria outra: uma quebra a mais a cada salvar-e-reabrir (S-238).
         self.editor.insert(tk.END, "\n", (texto_etiquetas.DESENHO,))
 
-    def _miniatura(self, bloco: BlocoDeDiagrama):  # noqa: ANN202 - tk.PhotoImage | None
-        """O recorte do diagrama como imagem do Tk, ou `None` quando não há folha renderizada.
+    def recorte_do_bloco(self, bloco: BlocoDeDiagrama) -> np.ndarray | None:
+        """O pedaço da folha renderizada que é aquele diagrama, em RGB. `None` sem folha.
+
+        Separado de `_miniatura` porque ele tem **dois** clientes desde a S-338: a imagem da tela,
+        que é do Tk e só existe na thread da janela, e o PNG da exportação, que é da thread de
+        trabalho e não pode tocar em widget nenhum. A conta -- e o cuidado com o DPI -- é a mesma
+        nos dois, e é ela que não pode ficar escrita duas vezes.
 
         O bbox do bloco está em **pontos** (ver `text/leitor._para_pontos`) e a folha em pixels; o
         fator entre os dois é o DPI com que ela foi renderizada, e é por isso que ele é o mesmo
@@ -1024,18 +1074,30 @@ class TextoPanel(ttk.Frame):
         """
         if self._pagina_rgb is None:
             return None
+        fator = self._dpi / 72.0
+        altura, largura = self._pagina_rgb.shape[:2]
+        x0 = max(0, int(bloco.bbox[0] * fator))
+        y0 = max(0, int(bloco.bbox[1] * fator))
+        x1 = min(largura, int(bloco.bbox[2] * fator))
+        y1 = min(altura, int(bloco.bbox[3] * fator))
+        if x1 <= x0 or y1 <= y0:
+            return None
+        return self._pagina_rgb[y0:y1, x0:x1]
+
+    def _miniatura(self, bloco: BlocoDeDiagrama):  # noqa: ANN202 - tk.PhotoImage | None
+        """O recorte do diagrama como imagem do Tk, ou `None` quando não há folha renderizada.
+
+        O bbox do bloco está em **pontos** (ver `text/leitor._para_pontos`) e a folha em pixels; o
+        fator entre os dois é o DPI com que ela foi renderizada, e é por isso que ele é o mesmo
+        `self._dpi` dos dois lados. Usar outro aqui recortaria o lugar errado da folha em silêncio.
+        """
+        recorte_rgb = self.recorte_do_bloco(bloco)
+        if recorte_rgb is None:
+            return None
         try:
             from PIL import Image, ImageTk
 
-            fator = self._dpi / 72.0
-            altura, largura = self._pagina_rgb.shape[:2]
-            x0 = max(0, int(bloco.bbox[0] * fator))
-            y0 = max(0, int(bloco.bbox[1] * fator))
-            x1 = min(largura, int(bloco.bbox[2] * fator))
-            y1 = min(altura, int(bloco.bbox[3] * fator))
-            if x1 <= x0 or y1 <= y0:
-                return None
-            recorte = Image.fromarray(self._pagina_rgb[y0:y1, x0:x1]).convert("RGB")
+            recorte = Image.fromarray(recorte_rgb).convert("RGB")
             recorte.thumbnail((LADO_DA_MINIATURA, LADO_DA_MINIATURA))
             # **`master=` e não o padrão**: sem ele a Pillow registra a imagem no *default root* do
             # `tkinter`, que não é necessariamente o interpretador deste widget. Com um `Tk` só --
@@ -1056,15 +1118,15 @@ class TextoPanel(ttk.Frame):
         """
         for faixa, papel in PAPEL_DA_FAIXA.items():
             if papel:
-                self.editor.tag_configure(faixa, foreground=tokens.cor(papel))
-        self.editor.tag_configure("marca", foreground=tokens.cor(PAPEL_DA_MARCA))
+                self.editor.tag_configure(faixa, foreground=theme.cor_atual(papel))
+        self.editor.tag_configure("marca", foreground=theme.cor_atual(PAPEL_DA_MARCA))
         for nome in texto_cores.nomes():
             self.editor.tag_configure(
-                texto_cores.etiqueta_de_cor(nome), foreground=tokens.cor(texto_cores.papel_de_cor(nome))
+                texto_cores.etiqueta_de_cor(nome), foreground=theme.cor_atual(texto_cores.papel_de_cor(nome))
             )
             self.editor.tag_configure(
                 texto_cores.etiqueta_de_realce(nome),
-                background=tokens.cor(texto_cores.papel_de_realce(nome)),
+                background=theme.cor_atual(texto_cores.papel_de_realce(nome)),
             )
         # **A ordem importa, e o combinado vem por último.** No Tk a prioridade da tag é a ordem de
         # criação, e uma tag só pode dar *uma* fonte ao trecho: sem `NEGRITO_ITALICO` no fim, um
@@ -1174,7 +1236,13 @@ class TextoPanel(ttk.Frame):
             papel = tipografia.CORPO
             familia, base = self._base_do_editor()
             extras = ["bold"] if atributos.negrito else []
-        partes = [familia, str(tipografia.corpo(atributos.corpo, base=base, papel=papel)), *extras]
+        # **O zoom da vista entra aqui para quem tem estilo (S-336).** O trecho sem estilo o recebe
+        # de graça, porque a base dele é a fonte do **editor**, que `_aplicar_zoom` já redimensionou;
+        # o trecho com estilo deriva da fonte do **sistema**, que o zoom não toca -- e por isso um
+        # título ficava do mesmo tamanho enquanto a prosa em volta crescia. Degrau e zoom vivem na
+        # mesma unidade (um ponto), que é o que permite somá-los antes de virar tamanho.
+        degrau = atributos.corpo + (self._zoom_da_vista if atributos.estilo else 0)
+        partes = [familia, str(tipografia.corpo(degrau, base=base, papel=papel)), *extras]
         if atributos.italico:
             partes.append("italic")
         # Lista e nao tupla: `tag_configure(font=...)` aceita `list`, e a tupla que o Tk aceita de
@@ -1295,6 +1363,10 @@ class TextoPanel(ttk.Frame):
 
         A escrita é `tag_add`/`tag_remove` porque nenhum caractere muda: assim o cursor fica onde
         estava, a rolagem não salta, e a pilha de desfazer do texto digitado continua inteira.
+
+        **E o instantâneo é o que a põe no desfazer (S-334).** Nenhum caractere mudar quer dizer
+        que a pilha do Tk não vê nada disto: sem o instantâneo, o `Ctrl+Z` seguinte desfazia a
+        digitação anterior e deixava o negrito onde estava.
         """
         doc = self.documento_atual()
         inicio, fim = self.intervalo_alvo()
@@ -1303,10 +1375,12 @@ class TextoPanel(ttk.Frame):
         ligar = not rico.vale_em_todo(doc, inicio, fim, atributo)
         i0, i1 = self.indice_de(inicio), self.indice_de(fim)
         etiqueta = texto_etiquetas.ETIQUETA_DO_ATRIBUTO[atributo]
+        self._guardar_instantaneo(doc)
         (self.editor.tag_add if ligar else self.editor.tag_remove)(etiqueta, i0, i1)
         self._combinar_negrito_italico(i0, i1)
         self._carimbar_humano(i0, i1)
         self._depois_de_editar()
+        self._fechar_instantaneo()
 
     def _combinar_negrito_italico(self, i0: str, i1: str) -> None:
         """Mantém a tag combinada em dia no intervalo. Ver `_pintar_faixas` sobre por que ela existe.
@@ -1351,11 +1425,13 @@ class TextoPanel(ttk.Frame):
         if inicio == fim:
             return
         i0, i1 = self.indice_de(inicio), self.indice_de(fim)
+        self._guardar_instantaneo(self.documento_atual())  # nenhum caractere muda: só o instantâneo o desfaz (S-334)
         for atributo in ATRIBUTOS_DE_ENFASE:
             self.editor.tag_remove(texto_etiquetas.ETIQUETA_DO_ATRIBUTO[atributo], i0, i1)
         self.editor.tag_remove(NEGRITO_ITALICO, i0, i1)
         self._carimbar_humano(i0, i1)
         self._depois_de_editar()
+        self._fechar_instantaneo()
 
     def pintar_letra(self, nome: str) -> None:
         """Põe a cor do autor na **letra** do alvo (S-242)."""
@@ -1370,6 +1446,7 @@ class TextoPanel(ttk.Frame):
         if inicio == fim:
             return
         i0, i1 = self.indice_de(inicio), self.indice_de(fim)
+        self._guardar_instantaneo(self.documento_atual())  # S-334
         # Uma cor por canal: a anterior sai antes de a nova entrar, senão o trecho carregaria duas
         # etiquetas do mesmo prefixo e a volta teria de escolher uma delas por desempate.
         for existente in self.editor.tag_names():
@@ -1378,6 +1455,7 @@ class TextoPanel(ttk.Frame):
         self.editor.tag_add(etiqueta_de(nome), i0, i1)
         self._carimbar_humano(i0, i1)
         self._depois_de_editar()
+        self._fechar_instantaneo()
 
     def limpar_cor(self) -> None:
         """Tira a cor do autor -- letra e realce -- e **não** tira a faixa de confiança (S-242).
@@ -1389,6 +1467,7 @@ class TextoPanel(ttk.Frame):
         if inicio == fim:
             return
         i0, i1 = self.indice_de(inicio), self.indice_de(fim)
+        self._guardar_instantaneo(self.documento_atual())  # S-334
         for existente in self.editor.tag_names():
             if existente.startswith(texto_cores.PREFIXO_DE_COR) or existente.startswith(
                 texto_cores.PREFIXO_DE_REALCE
@@ -1396,6 +1475,7 @@ class TextoPanel(ttk.Frame):
                 self.editor.tag_remove(existente, i0, i1)
         self._carimbar_humano(i0, i1)
         self._depois_de_editar()
+        self._fechar_instantaneo()
 
     def _depois_de_editar(self) -> None:
         """O que toda ferramenta faz depois de escrever: marca sujo, conta a edição e espelha."""
@@ -1726,7 +1806,15 @@ class TextoPanel(ttk.Frame):
         self._zoom_da_vista = degraus
         familia, tamanho = self._fonte_original_do_editor
         self.editor.configure(font=(familia, tipografia.corpo(degraus, base=tamanho)))
+        # **O registro é guardado antes e devolvido depois (S-336).** `_pintar_faixas` termina em
+        # `_pintar_estilos`, que **esvazia** `_fontes_desenhadas` -- o que é certo no redesenho,
+        # onde cada corrida volta a pedir a etiqueta dela e o registro se refaz sozinho, e é
+        # exatamente errado aqui, onde não há redesenho: o laço de baixo percorria um dicionário
+        # vazio, e nenhum trecho com estilo de parágrafo ou corpo próprio mudava de tamanho. O
+        # zoom da vista mexia em tudo, menos no que tinha formato.
+        anteriores = dict(self._fontes_desenhadas)
         self._pintar_faixas()
+        self._fontes_desenhadas.update(anteriores)
         for nome, atributos in self._fontes_desenhadas.items():
             self.editor.tag_configure(nome, font=self._fonte_do_trecho(atributos))
         if avisar:
@@ -1898,13 +1986,54 @@ class TextoPanel(ttk.Frame):
         self._instantaneos.append((self._edicoes, doc))
         self._refeitos.clear()
 
-    def desfazer(self) -> None:
-        """Desfaz a última edição **deste** painel: primeiro a digitação, depois o documento.
+    def _fechar_instantaneo(self) -> None:
+        """Carimba no topo da pilha a contagem de edições **depois** da ferramenta (S-334).
 
-        A ordem não é preferência: a pilha do Tk só tem o que foi digitado **depois** do último
-        redesenho, então esgotá-la primeiro é o que devolve as coisas na ordem em que aconteceram.
-        Quando ela acaba, o Tk levanta `TclError` -- e é aí que a substituição em massa é revertida.
+        A marca responde a uma pergunta só, e é ela que ordena as duas pilhas: *foi digitado
+        alguma coisa depois deste instantâneo?* As ferramentas que redesenham fecham sozinhas --
+        o redesenho não conta edição --, e as que mexem só em etiqueta contam uma, porque
+        `_depois_de_editar` roda depois do instantâneo.
         """
+        if self._instantaneos:
+            self._instantaneos[-1] = (self._edicoes, self._instantaneos[-1][1])
+
+    def _lugar_atual(self) -> tuple[str, tuple[str, str] | None, float]:
+        """Onde a pessoa está: cursor, seleção e topo da rolagem (S-335)."""
+        try:
+            selecao: tuple[str, str] | None = (self.editor.index("sel.first"), self.editor.index("sel.last"))
+        except tk.TclError:
+            selecao = None
+        return self.editor.index(tk.INSERT), selecao, float(self.editor.yview()[0])
+
+    def _repor_lugar(self, lugar: tuple[str, tuple[str, str] | None, float]) -> None:
+        """Devolve o lugar depois de um redesenho. Índice que não existe mais é ignorado."""
+        cursor, selecao, topo = lugar
+        try:
+            self.editor.mark_set(tk.INSERT, cursor)
+            if selecao is not None:
+                self.editor.tag_add("sel", *selecao)
+            self.editor.yview_moveto(topo)
+        except tk.TclError:
+            pass
+
+    def desfazer(self) -> None:
+        """Desfaz a última edição **deste** painel, na ordem em que as coisas aconteceram.
+
+        Há duas pilhas: a do Tk, que tem o que foi digitado desde o último redesenho, e a de
+        instantâneos do documento, que tem o que as ferramentas fizeram. **Quem decide qual delas
+        atender é a marca de edição do topo** (S-334): instantâneo com a contagem de hoje é a
+        ação mais recente e vai primeiro; contagem antiga quer dizer que se digitou depois dele,
+        e aí a digitação é que é a última.
+
+        Antes, a digitação vinha sempre primeiro, e isso bastava enquanto **toda** ferramenta
+        redesenhava -- o redesenho zera a pilha do Tk, então não havia empate possível. O
+        negrito, a cor, o realce e o "limpar formato" não redesenham, de propósito: eles mexem
+        em etiqueta para não mover o cursor. Sem instantâneo nenhum, o `Ctrl+Z` seguinte
+        desfazia a digitação anterior e deixava a formatação onde estava -- desfazia outra coisa.
+        """
+        if self._instantaneos and self._instantaneos[-1][0] >= self._edicoes:
+            self._desfazer_instantaneo()
+            return
         try:
             self.editor.edit_undo()
             self._sujo = True
@@ -1914,17 +2043,25 @@ class TextoPanel(ttk.Frame):
         if not self._instantaneos:
             self._on_status("Não há mais nada para desfazer nesta aba.")
             return
+        self._desfazer_instantaneo()
+
+    def _desfazer_instantaneo(self) -> None:
+        """Volta ao documento do topo da pilha, **sem perder o lugar** (S-335)."""
+        lugar = self._lugar_atual()
         _, anterior = self._instantaneos.pop()
         self._refeitos.append(self.documento_atual())
         self.desenhar_documento(anterior)
+        self._repor_lugar(lugar)
         self._sujo = True
 
     def refazer(self) -> None:
         """Refaz o que o desfazer tirou, na mesma ordem invertida."""
         if self._refeitos:
+            lugar = self._lugar_atual()
             proximo = self._refeitos.pop()
             self._instantaneos.append((self._edicoes, self.documento_atual()))
             self.desenhar_documento(proximo)
+            self._repor_lugar(lugar)
             self._sujo = True
             return
         try:
@@ -1986,14 +2123,20 @@ class TextoPanel(ttk.Frame):
         **derivado**: `text/exportacao.py` não conhece uma cor sequer, e o teste afirma que nenhum
         literal de cor aparece lá.
         """
+        # `theme.cor_atual` e não `tokens.cor` (S-337): o docstring acima diz "contra o tema em
+        # uso" desde a S-251, e `tokens.cor(papel)` sem estilo devolve a reserva clara -- o HTML
+        # exportado saía sempre com a paleta de fábrica, dissesse o que dissesse a tela.
         cores = {
-            f"cor-{nome}": tokens.cor(texto_cores.papel_de_cor(nome)) for nome in texto_cores.nomes()
+            f"cor-{nome}": theme.cor_atual(texto_cores.papel_de_cor(nome)) for nome in texto_cores.nomes()
         }
         cores.update(
-            {f"realce-{nome}": tokens.cor(texto_cores.papel_de_realce(nome)) for nome in texto_cores.nomes()}
+            {
+                f"realce-{nome}": theme.cor_atual(texto_cores.papel_de_realce(nome))
+                for nome in texto_cores.nomes()
+            }
         )
         cores.update(
-            {f"faixa-{faixa}": tokens.cor(papel) for faixa, papel in PAPEL_DA_FAIXA.items() if papel}
+            {f"faixa-{faixa}": theme.cor_atual(papel) for faixa, papel in PAPEL_DA_FAIXA.items() if papel}
         )
         return cores
 
@@ -2051,8 +2194,51 @@ class TextoPanel(ttk.Frame):
             lambda: self._gravar_exportacao(doc, formato, Path(destino)),
         )
 
+    def _gravar_recortes(self, doc: rico.DocumentoRico, destino: Path) -> dict[int, Path]:
+        """Um PNG por diagrama da folha, ao lado do arquivo, e o mapa que `exportar` quer (S-338).
+
+        **A aba exportava sem imagem nenhuma.** O parâmetro `recortes=` existe em `exportar` desde
+        a S-250, a aba Estudo o usa desde a S-289, e aqui todo `![Diagrama 1]()` saía com o alvo
+        vazio -- a marca no texto e nada para ver. `Relatorio.sem_recorte` contava a falta e o
+        relatório a dizia, então o defeito estava anotado no próprio rodapé desde sempre.
+
+        `diagramas/` ao lado do destino porque é a pasta que os formatos escrevem no caminho da
+        imagem (`Markdown.pasta_de_imagens`). Sem folha renderizada -- documento aberto de arquivo,
+        sem o PDF na tela -- devolve `{}`, e o comportamento antigo é exatamente esse.
+
+        **Roda na thread de trabalho, e por isso nada de Tk aqui**: `recorte_do_bloco` é numpy, e o
+        PNG é da Pillow. Ver o docstring dele.
+        """
+        blocos = [
+            (corrida.bloco, doc.bloco_de(corrida)) for corrida in doc.corridas if corrida.e_diagrama
+        ]
+        if not blocos or self._pagina_rgb is None:
+            return {}
+        pasta = destino.parent / "diagramas"
+        recortes: dict[int, Path] = {}
+        # O import fica **fora** do laço: ele é o mais caro desta função na primeira vez, e pagá-lo
+        # por diagrama faria uma folha de doze diagramas pagá-lo doze vezes.
+        from PIL import Image
+
+        for chave, bloco in blocos:
+            if not isinstance(bloco, BlocoDeDiagrama):
+                continue
+            imagem = self.recorte_do_bloco(bloco)
+            if imagem is None:
+                continue
+            try:
+                pasta.mkdir(parents=True, exist_ok=True)
+                arquivo_png = pasta / f"{destino.stem}_d{bloco.indice + 1}.png"
+                Image.fromarray(imagem).convert("RGB").save(arquivo_png)
+            except Exception as erro:  # noqa: BLE001 - recorte é conforto, e a marca sai sem ele
+                logger.debug("Recorte do diagrama %d não gravado: %s", bloco.indice + 1, erro)
+                continue
+            recortes[chave] = arquivo_png
+        return recortes
+
     def _gravar_exportacao(self, doc: rico.DocumentoRico, formato: object, destino: Path) -> str:
-        relatorio = exportacao.exportar(doc, formato)  # type: ignore[arg-type]
+        recortes = self._gravar_recortes(doc, destino) if getattr(formato, "pasta_de_imagens", "") else {}
+        relatorio = exportacao.exportar(doc, formato, recortes=recortes)  # type: ignore[arg-type]
         if self._cancelar_exportacao.is_set():
             return "Exportação cancelada: nada foi gravado."
         # **Atômica**: cancelar ou falhar no meio não deixa arquivo pela metade, que é a mesma
@@ -2232,24 +2418,38 @@ class TextoPanel(ttk.Frame):
         return correcao.com_procedencia_humana(bruto)
 
     def salvar_documento(self) -> None:
-        """Grava o `.cvtxt`: o texto, a formatação, a faixa, os diagramas e a página que os originou.
+        """Grava o `.cvtxt` **no arquivo já escolhido**, e só pergunta na primeira vez (S-343).
 
-        **É este que fecha o ciclo**, e o `.txt` continua ao lado: quem quer colar o texto num e-mail
+        É este que fecha o ciclo, e o `.txt` continua ao lado: quem quer colar o texto num e-mail
         quer o `.txt`, e quem quer voltar a corrigir amanhã quer este.
+
+        **"Salvar" e "Salvar como…" eram o mesmo comando**, e os dois perguntavam o destino: o
+        catálogo mostrava dois rótulos, o menu dois itens e a paleta duas linhas para uma coisa
+        só. Num ciclo de correção, em que se grava a cada trecho conferido, o diálogo repetido é
+        o atrito -- e o rótulo "como…" prometia uma escolha que o outro tomava do mesmo jeito.
         """
+        self._salvar_documento_em(self._caminho_do_documento)
+
+    def salvar_documento_como(self) -> None:
+        """Pergunta o destino sempre, e passa a gravar nele. O par de `salvar_documento` (S-343)."""
+        self._salvar_documento_em(None)
+
+    def _salvar_documento_em(self, destino: Path | None) -> None:
         doc = self.documento_atual()
         if not doc.para_texto().strip():
             self._on_status("Não há texto nesta aba para salvar.")
             return
-        destino = filedialog.asksaveasfilename(
-            parent=self,
-            title="Salvar o texto da folha",
-            defaultextension=arquivo.EXTENSAO,
-            initialfile=arquivo.sugestao_de_nome(doc),
-            filetypes=[(arquivo.NOME_DO_FORMATO, f"*{arquivo.EXTENSAO}"), ("Todos", "*.*")],
-        )
-        if not destino:
-            return
+        if destino is None:
+            escolhido = filedialog.asksaveasfilename(
+                parent=self,
+                title="Salvar o texto da folha",
+                defaultextension=arquivo.EXTENSAO,
+                initialfile=arquivo.sugestao_de_nome(doc),
+                filetypes=[(arquivo.NOME_DO_FORMATO, f"*{arquivo.EXTENSAO}"), ("Todos", "*.*")],
+            )
+            if not escolhido:
+                return
+            destino = Path(escolhido)
         try:
             arquivo.gravar(Path(destino), doc)
         except OSError as erro:
@@ -2259,6 +2459,7 @@ class TextoPanel(ttk.Frame):
             messagebox.showerror("Texto", f"O arquivo não pôde ser gravado: {erro}", parent=self)
             return
         self._sujo = False
+        self._caminho_do_documento = Path(destino)
         # O trabalho chegou a um lugar melhor: o rascunho da S-255 sai.
         if self._pagina is not None:
             rascunho.descartar(
@@ -2292,6 +2493,7 @@ class TextoPanel(ttk.Frame):
             messagebox.showerror("Texto", str(erro), parent=self)
             return
         self.abrir(doc)
+        self._caminho_do_documento = Path(origem)  # `Salvar` grava de volta aqui (S-343)
 
     def abrir(self, doc: rico.DocumentoRico) -> None:
         """Põe o documento na tela e recupera o que só o PDF pode dar: as miniaturas.
@@ -2304,6 +2506,10 @@ class TextoPanel(ttk.Frame):
         self._pagina_rgb = None
         self._instantaneos.clear()
         self._refeitos.clear()
+        # Documento novo na tela, arquivo de destino zerado: gravar aqui é a **primeira** vez
+        # deste documento, e "Salvar" volta a perguntar onde (S-343). Quem abriu de um arquivo
+        # repõe o caminho logo abaixo, em `abrir_documento`.
+        self._caminho_do_documento = None
         aviso = ""
         caminho = arquivo.pdf_de(doc)
         if caminho is not None and doc.origem is not None:

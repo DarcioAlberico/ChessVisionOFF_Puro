@@ -137,18 +137,36 @@ def gravar_metricas() -> float:
     return float(mb)
 
 
+MODELOS_QUE_ACOMPANHAM = (
+    ("piece_classifier.pt", "sem ele o bundle abre e não lê diagrama nenhum"),
+    # **Os dois do texto, e eles vão juntos (S-388).** O motor `glifo` precisa dos pesos **e**
+    # do metadado -- `carregar_classificador` acha o `.pt` ao lado do `char_meta.json` --, e o
+    # build copiava só o de peças: no `.exe`, a aba Texto oferecia o motor `glifo` na caixa e
+    # ele nunca subia, nem com os pesos postos à mão em `models/`.
+    ("char_classifier.pt", "sem ele o motor `glifo` da aba Texto não sobe"),
+    ("char_meta.json", "sem ele os pesos de caractere não são carregáveis"),
+)
+"""O que é copiado para `models/` **ao lado** do executável, e o que falta sem cada um.
+
+Ao lado, e não dentro: um modelo embutido no `.exe` seria o único que o usuário não consegue
+trocar depois de um retreino -- é a decisão que o docstring de `cvoff.spec` explica."""
+
+
 def copiar_checkpoint() -> None:
-    origem = PROJETO / "models" / "piece_classifier.pt"
-    if not origem.exists():
-        logger.warning(
-            "Sem %s: o bundle abre, mas não lê diagrama nenhum até alguém pôr um checkpoint "
-            "em models/ ao lado do executável.",
-            origem.name,
-        )
-        return
-    destino = SAIDA / "models" / origem.name
-    shutil.copy2(origem, destino)
-    logger.info("Checkpoint incluído: %s (%.1f MB).", destino.name, destino.stat().st_size / (1024 * 1024))
+    """Põe os modelos ao lado do executável, e **diz o que falta** quando falta.
+
+    O aviso nomeia a consequência de cada ausência: um bundle sem `char_meta.json` abre, lê
+    diagrama, e a aba Texto oferece um motor que não sobe -- e sem esta linha ninguém saberia
+    por quê.
+    """
+    for nome, consequencia in MODELOS_QUE_ACOMPANHAM:
+        origem = PROJETO / "models" / nome
+        if not origem.exists():
+            logger.warning("Sem %s: %s. Ponha-o em models/ ao lado do executável.", nome, consequencia)
+            continue
+        destino = SAIDA / "models" / nome
+        shutil.copy2(origem, destino)
+        logger.info("Modelo incluído: %s (%.1f MB).", nome, destino.stat().st_size / (1024 * 1024))
 
 
 def main() -> int:

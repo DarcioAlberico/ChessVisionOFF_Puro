@@ -332,6 +332,10 @@ class StudyPanel(ttk.Frame):
     def _pintar_alternavel(self, acao: str) -> None:
         botao, variavel = self._alternaveis[acao]
         botao.configure(text=comandos.rotulo_alternado(acao) if variavel.get() else comandos.rotulo_de_botao(acao))
+        # Quem vira um modo avisa quem mais o desenha (S-396). Este botão é repintado acima
+        # porque ele é desta aba, e a aba existe nas três peles; o aviso é para a fita e a
+        # fila, que desenham o mesmo comando noutro lugar da janela.
+        comandos.alternou(acao, ligado=variavel.get())
 
     def _build_barra(self) -> None:
         """Três linhas, e o corte entre elas é o assunto: a posição, a linha, e o que vem de fora."""
@@ -374,9 +378,11 @@ class StudyPanel(ttk.Frame):
 
         de_fora = ttk.Frame(self)
         de_fora.pack(fill=tk.X, padx=4, pady=(0, 6))
-        self._alternavel(de_fora, "mostrar_diagrama", self.recorte_var, side=tk.LEFT)
+        # Guardado num atributo com nome (S-347): é ele que fica cinza sem âncora, e a varredura
+        # de `tests/test_ui_motivos.py` amarra o motivo ao **nome** do widget que se desabilita.
+        self.btn_recorte = self._alternavel(de_fora, "mostrar_diagrama", self.recorte_var, side=tk.LEFT)
         Tooltip(
-            self._alternaveis["mostrar_diagrama"][0],
+            self.btn_recorte,
             "O recorte que o modelo leu, ao lado do tabuleiro. Fica cinza quando o estudo não\n"
             "veio de um diagrama do livro -- uma FEN digitada à mão não tem recorte.",
         )
@@ -644,7 +650,7 @@ class StudyPanel(ttk.Frame):
             else chess.engine.Cp(int(avaliacao.score_cp or 0))
         )
         no.set_eval(chess.engine.PovScore(pontuacao, chess.WHITE), avaliacao.depth or None)
-        self._marcar_sujo(historico=False)
+        self._marcar_sujo(historico=False, da_maquina=True)
 
     def _show_engine_error(self, geracao: int, mensagem: str) -> None:
         if geracao != self._geracao:
@@ -681,6 +687,7 @@ class StudyPanel(ttk.Frame):
         self._mostrar_comentario()
         self._mostrar_nag()
         self._desenhar_recorte()
+        self._atualizar_botao_do_recorte()
         self._mostrar_placar()
         # A geração muda **aqui**, e não em cada método de navegação: `refresh` é o único ponto por
         # onde toda mudança de nó passa, e é isso que faz a resposta atrasada do motor ser sempre
@@ -689,19 +696,24 @@ class StudyPanel(ttk.Frame):
         self._candidatos = []
         self._analisar_se_continuo()
 
-    def _marcar_sujo(self, *, historico: bool = True) -> None:
+    def _marcar_sujo(self, *, historico: bool = True, da_maquina: bool = False) -> None:
         """A árvore mudou: a pilha registra, a sala guarda, e o disco recebe depois (S-271/S-275).
 
-        `historico=False` é para o que **a máquina** escreve -- hoje só a avaliação do motor
-        (S-285). Pôr um número que o motor gravou sozinho na pilha faria `Ctrl+Z` desfazer uma coisa
-        que ninguém fez, e a pilha de quem analisou dez lances seria dez passos de nada.
+        `historico=False` é para o que **não é edição desfazível** -- a avaliação que o motor
+        escreve (S-285) e a orientação do tabuleiro (S-346). Pôr qualquer um deles na pilha faria
+        `Ctrl+Z` desfazer uma coisa que ninguém fez.
+
+        `da_maquina=True` é mais estreito, e separa **quem** mexeu: só o motor. A inatividade que
+        decide a gravação é a do humano, e uma escrita automática a cada 800 ms adiava para sempre
+        a gravação de tudo (S-345). Virar o tabuleiro é gesto de gente: não entra na pilha e
+        **empurra** o relógio como qualquer outro.
         """
         self._sujo = True
         if historico:
             self._edicao += 1
             self._historico.registrar(self.estudo.para_pgn())
         self.sala.guardar(self.estudo)
-        self._agendar_gravacao()
+        self._agendar_gravacao(adiar=not da_maquina)
 
     # ------------------------------------------------------------------ desfazer (S-275)
 
@@ -832,6 +844,36 @@ class StudyPanel(ttk.Frame):
         else:
             self.set_status(status)
 
+    def reabrir_por_chave(self, chave: str) -> bool:
+        """Volta à mesa em que a sessão anterior parou. Devolve se achou (S-347).
+
+        **`estudo_aberto` era gravado no `AppState` e nunca lido.** O campo existe desde a S-271
+        com o docstring certo -- "voltar ao livro sem voltar ao diagrama devolveria a pessoa à
+        porta da sala em vez de à mesa em que ela estava" --, e era exatamente isso que acontecia:
+        a sala do livro voltava do disco e a mesa aberta era sempre a do último diagrama
+        reconhecido, ou nenhuma.
+
+        A chave é opaca (`sha1 do caminho_pNN_dNN`) e não se desmonta em âncora; quem sabe qual
+        estudo ela nomeia é a própria sala, que tem todos eles carregados. Procurar aqui é o que
+        evita um segundo formato de chave só para esta pergunta.
+
+        Silencioso quando não acha: o livro pode ter sido varrido de novo, o diagrama pode ter
+        mudado de número, e voltar à porta da sala é a degradação certa -- não é erro.
+        """
+        if not chave:
+            return False
+        alvo = next((estudo for estudo in self.sala.estudos() if estudo.ancora.chave() == chave), None)
+        if alvo is None:
+            return False
+        self.gravar_comentario()
+        self.sala.guardar(self.estudo)
+        self.estudo = alvo
+        self._historico.zerar(self.estudo.para_pgn())
+        self.origin_var.set(f"Base: {alvo.ancora.rotulo()}")
+        self.refresh()
+        self.set_status(f"Estudo reaberto: {alvo.ancora.rotulo()} · {alvo.contagem_de_lances()} lance(s).")
+        return True
+
     def abrir_livro(self, documento: str) -> None:
         """Carrega a sala daquele livro do disco. Chamado quando um PDF é aberto (S-271).
 
@@ -849,9 +891,23 @@ class StudyPanel(ttk.Frame):
         """O que o `AppState` guarda para voltar à mesma mesa (S-271)."""
         return self.estudo.ancora.chave() if self.estudo.ancora.valida else ""
 
-    def _agendar_gravacao(self) -> None:
-        """Grava depois da inatividade, e não por relógio -- é a régua da S-255."""
+    def _agendar_gravacao(self, *, adiar: bool = True) -> None:
+        """Grava depois da inatividade, e não por relógio -- é a régua da S-255.
+
+        **`adiar=False` não empurra o relógio, e é o que faz a gravação acontecer (S-345).** Com a
+        análise contínua ligada, o motor escreve `[%eval ...]` no lance a cada ~800 ms, e cada
+        escrita passava por aqui cancelando e reagendando: o prazo de inatividade nunca vencia, e a
+        sala **nunca era gravada** enquanto o motor estivesse ligado. Quem estuda com a análise
+        contínua -- que é o modo em que ela existe para ser usada -- ficava com o disco parado no
+        estado de antes de ligar o motor.
+
+        A inatividade é do **humano**: o que a máquina escreve entra na sala e no arquivo da
+        próxima gravação, e não adia a que já está marcada. Sem nenhuma marcada, ela marca uma --
+        senão a avaliação de um estudo que ninguém mais tocar não chegaria ao disco.
+        """
         if self._gravacao_agendada is not None:
+            if not adiar:
+                return
             try:
                 self.after_cancel(self._gravacao_agendada)
             except tk.TclError:  # pragma: no cover - painel destruído entre o agendamento e agora
@@ -955,10 +1011,21 @@ class StudyPanel(ttk.Frame):
         self.set_status("FEN do estudo copiada.")
 
     def flip_board(self) -> None:
+        """Vira o tabuleiro. **Fora da pilha de desfazer** (S-346).
+
+        A orientação é vista, e não árvore: `para_pgn` não muda com ela, então `registrar`
+        devolvia `False` e nada entrava na pilha -- mas `_edicao` subia, e é `_edicao` que diz a
+        `ui/desfazivel.py` **qual painel** recebe o `Ctrl+Z`. Virar o tabuleiro sequestrava a
+        tecla: ela vinha para a sala e não desfazia nada, enquanto a edição real de quem estava
+        no editor ao lado ficava lá, sem quem a desfizesse.
+
+        Continua sujando a sala, porque `invertido` é gravado com o estudo -- e continua
+        empurrando o prazo de gravação, porque é gesto de gente.
+        """
         self.estudo.invertido = not self.estudo.invertido
         self.flipped_var.set(self.estudo.invertido)
         self.board_widget.set_flipped(self.estudo.invertido)
-        self._marcar_sujo()
+        self._marcar_sujo(historico=False)
 
     def toggle_turn(self) -> None:
         board = self.estudo.raiz.board()
@@ -1070,6 +1137,9 @@ class StudyPanel(ttk.Frame):
             ttk.Button(wrap, text=rotulo, command=partial(_select, tipo)).pack(fill=tk.X, pady=2)
 
         ttk.Button(wrap, text="Cancelar", command=dlg.destroy).pack(fill=tk.X, pady=(8, 0))
+        # `Esc` faz o que o botão Cancelar faz: sair sem promover (S-395). A escolha fica
+        # `None`, que é o que `wait_window` devolve a quem chamou.
+        dlg.bind("<Escape>", lambda _evento: dlg.destroy())
         janela.wait_window(dlg)
         return escolha["piece_type"]
 
@@ -1141,9 +1211,8 @@ class StudyPanel(ttk.Frame):
         Apagar um lance solto é o desfazer de um clique errado, e perguntar ali seria atrito. Apagar
         uma subárvore com comentário ou com mais de um lance é perder trabalho.
         """
-        raiz = no.variations if so_continuacao else [no]
-        lances = sum(len(list(filho.mainline())) + 1 for filho in raiz)
-        anotado = any(filho.comment or filho.nags for filho in raiz)
+        raiz: Sequence[chess.pgn.GameNode] = list(no.variations) if so_continuacao else [no]
+        lances, anotado = _tamanho_da_subarvore(raiz)
         if lances <= 1 and not anotado:
             return True
         return bool(
@@ -1275,10 +1344,33 @@ class StudyPanel(ttk.Frame):
 
     def alternar_recorte(self) -> None:
         """Liga e desliga a miniatura do diagrama. Uma função só para as três portas -- ver
-        `_alternavel`."""
+        `_alternavel`.
+
+        **Sem âncora não há o que mostrar, e o botão diz isso** (S-347). A dica dele promete "fica
+        cinza quando o estudo não veio de um diagrama do livro" desde a S-282, e ele nunca ficava:
+        num estudo de FEN digitada à mão o clique trocava o rótulo para "Esconder recorte" sem que
+        nada tivesse aparecido, e o clique seguinte "escondia" o que não estava lá.
+        """
+        if not self.estudo.ancora.valida:
+            self.set_status("Este estudo não veio de um diagrama do livro: não há recorte para mostrar.")
+            self._atualizar_botao_do_recorte()
+            return
         self.recorte_var.set(not self.recorte_var.get())
         self._pintar_alternavel("mostrar_diagrama")
         self._desenhar_recorte()
+
+    def _atualizar_botao_do_recorte(self) -> None:
+        """Cinza sem âncora, e com o rótulo do que de fato está na tela (S-347)."""
+        tem_ancora = self.estudo.ancora.valida
+        try:
+            self.btn_recorte.configure(state=tk.NORMAL if tem_ancora else tk.DISABLED)
+        except tk.TclError:  # pragma: no cover - painel sendo destruído
+            return
+        if not tem_ancora and self.recorte_var.get():
+            # O estado ligado não sobrevive à mesa sem âncora: ele descreveria uma miniatura que
+            # não existe, e é o rótulo dele que mentia.
+            self.recorte_var.set(False)
+        self._pintar_alternavel("mostrar_diagrama")
 
     def _desenhar_recorte(self) -> None:
         """A miniatura do diagrama âncora, ou nada.
@@ -1329,6 +1421,7 @@ class StudyPanel(ttk.Frame):
         rotulo.image = foto  # type: ignore[attr-defined]
         rotulo.pack(padx=8, pady=8)
         ttk.Button(janela, text="Fechar", command=janela.destroy).pack(pady=(0, 8))
+        janela.bind("<Escape>", lambda _evento: janela.destroy())  # S-395
 
     # ------------------------------------------------------- a linha impressa (S-283/S-208)
 
@@ -1654,7 +1747,7 @@ class StudyPanel(ttk.Frame):
             relatorio = exportacao.exportar(estudo_saida.para_documento(self.estudo), formato, recortes=recortes)
             exportacao.escrever(caminho, relatorio)
         except OSError as erro:
-            messagebox.showerror("Erro", f"Falha ao exportar o estudo:\n{erro}")
+            messagebox.showerror("Exportar o estudo", f"Falha ao exportar o estudo:\n{erro}")
             return
         self.set_status(exportacao.texto_do_relatorio(caminho, relatorio, tamanho=caminho.stat().st_size))
 
@@ -1762,6 +1855,20 @@ class StudyPanel(ttk.Frame):
         return self.estudo.para_pgn()
 
     def write_pgn(self, path: Path, append: bool) -> None:
+        """Grava o estudo em PGN. **Sobrescrever é atômico** (S-346).
+
+        O caminho de sobrescrita usava `write_text`, que trunca antes de escrever: interrompido no
+        meio, ele deixa zero byte no lugar do PGN que estava lá -- e o que estava lá é análise
+        salva de outro dia. A exportação desta mesma aba passa por `atomic_io` desde a S-254, e a
+        gravação da sala também; era este o caminho de fora.
+
+        **Acrescentar continua sendo um `append`**, e a diferença é o modo de falha: ele nunca
+        trunca, então uma interrupção deixa o arquivo anterior inteiro com um jogo pela metade no
+        fim -- ruim de ler, e nada perdido. Reescrever o arquivo inteiro para acrescentar um jogo
+        trocaria esse risco pelo risco de perder tudo.
+        """
+        from ..atomic_io import atomic_write_text
+
         payload = self.pgn_payload()
         if append and path.exists() and path.stat().st_size > 0:
             with path.open("a", encoding="utf-8") as handle:
@@ -1769,7 +1876,7 @@ class StudyPanel(ttk.Frame):
                 handle.write(payload)
                 handle.write("\n")
             return
-        path.write_text(payload + "\n", encoding="utf-8")
+        atomic_write_text(path, payload + "\n")
 
     def save_pgn(self) -> None:
         self.gravar_comentario()
@@ -1800,7 +1907,31 @@ class StudyPanel(ttk.Frame):
             self.write_pgn(path, append=append)
             self.set_status(f"Análise acrescentada em {path.name}." if append else f"PGN salvo em {path.name}.")
         except Exception as exc:
-            messagebox.showerror("Erro", f"Falha ao salvar PGN:\n{exc}")
+            messagebox.showerror("Salvar PGN", f"Falha ao salvar PGN:\n{exc}")
+
+
+def _tamanho_da_subarvore(raizes: Sequence[chess.pgn.GameNode]) -> tuple[int, bool]:
+    """Quantos lances há embaixo daqueles nós, e se algum deles tem anotação (S-347).
+
+    **A conta era pela linha principal e a pergunta é sobre a subárvore.**
+    `len(list(filho.mainline())) + 1` percorre só a continuação principal, e `filho.comment or
+    filho.nags` olha só o primeiro nível: uma variante com três sublinhas anotadas anunciava "isto
+    apaga 2 lance(s)" e apagava dezoito, com os comentários todos. A caixa existe para dizer o que
+    se perde, e ela dizia menos do que se perdia -- que é pior que não perguntar, porque quem lê
+    "2 lances" clica em Sim.
+
+    Iterativa, e não recursiva: a árvore de um estudo longo passa de mil nós numa linha só, e a
+    profundidade do Python é 1000.
+    """
+    lances = 0
+    anotado = False
+    pilha = list(raizes)
+    while pilha:
+        atual = pilha.pop()
+        lances += 1
+        anotado = anotado or bool(atual.comment or atual.starting_comment or atual.nags)
+        pilha.extend(atual.variations)
+    return lances, anotado
 
 
 def _miniatura(imagem: Any, lado: int) -> Any:
@@ -1842,6 +1973,7 @@ class _JanelaDeColar(tk.Toplevel):
         super().__init__(pai)
         self.title("Colar posição ou partida")
         self.transient(pai.winfo_toplevel())
+        self.bind("<Escape>", lambda _evento: self.destroy())  # S-395
         self._ao_colar = ao_colar
 
         moldura = ttk.Frame(self, padding=12)
@@ -1882,6 +2014,7 @@ class _JanelaDeColecao(tk.Toplevel):
         super().__init__(pai)
         self.title(nome)
         self.transient(pai.winfo_toplevel())
+        self.bind("<Escape>", lambda _evento: self.destroy())  # S-395
         self._estudos = list(estudos)
         self._ao_escolher = ao_escolher
 
@@ -1942,6 +2075,7 @@ class _JanelaDePartidas(tk.Toplevel):
     def __init__(self, pai: tk.Misc, resposta: Any) -> None:
         super().__init__(pai)
         self.title("Partidas desta posição")
+        self.bind("<Escape>", lambda _evento: self.destroy())  # S-395
         self.transient(pai.winfo_toplevel())
 
         moldura = ttk.Frame(self, padding=12)

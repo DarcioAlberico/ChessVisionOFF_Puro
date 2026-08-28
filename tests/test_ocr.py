@@ -8,14 +8,12 @@ o pipeline ao faltar não é opcional, é uma dependência com aviso.
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 import unittest
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from subprocesso import rodar_python
 
 from chess_diagram_ocr import ocr
 from chess_diagram_ocr.ocr import (
@@ -110,13 +108,7 @@ class BuildRecognizerTests(unittest.TestCase):
             "import sys, chess_diagram_ocr.ocr\n"
             "print(sorted(m for m in ('rapidocr_onnxruntime', 'easyocr', 'pytesseract') if m in sys.modules))"
         )
-        resultado = subprocess.run(
-            [sys.executable, "-c", codigo],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "PYTHONPATH": str(SRC)},
-            check=True,
-        )
+        resultado = rodar_python(codigo)
         self.assertEqual(resultado.stdout.strip(), "[]")
 
     def test_motores_conhecidos_todos_tem_construtor(self) -> None:

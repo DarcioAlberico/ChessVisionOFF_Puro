@@ -17,6 +17,7 @@ não carrega. Xeque não entra aqui por isso (ver `fen_utils`, S-05).
 from __future__ import annotations
 
 import heapq
+import time
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -211,12 +212,26 @@ def _build_result(
     )
 
 
+SEGUNDOS_MAXIMOS = 0.5
+"""Quanto tempo a busca pode gastar num tabuleiro só (S-358).
+
+**O teto de expansões não é teto de tempo.** Um tabuleiro legal é resolvido em ~0,1 ms -- nem
+entra na busca --, e um tabuleiro ilegal gasta as 5.000 expansões inteiras para no fim admitir que
+não achou: medido em 3,4 s no relatório da revisão, e **duas vezes por diagrama**, porque o modo
+`auto` lê a 0° e a 180°. Sete segundos de janela parada num diagrama que vai ser recusado de
+qualquer jeito.
+
+Meio segundo é quatro mil vezes o caso normal e sete vezes menos que o pior medido: nenhum reparo
+que hoje termina é cortado por ele, e o que não termina para de custar o que custava."""
+
+
 def decode_constrained(
     probs: np.ndarray,
     *,
     max_changes: int = 6,
     max_expansions: int = 5000,
     alternatives_per_square: int = 4,
+    max_seconds: float = SEGUNDOS_MAXIMOS,
 ) -> DecodeResult:
     """Atribuição de maior probabilidade que respeita as regras verificáveis do xadrez.
 
@@ -274,7 +289,13 @@ def decode_constrained(
     best_state = base
     best_key = (len(_find_violations(base)), 0.0)
 
+    prazo = time.monotonic() + max_seconds if max_seconds > 0 else None
     while heap and expansions < max_expansions:
+        # **O relógio é conferido a cada 64 expansões**, e não a cada uma: `time.monotonic` custa
+        # ~50 ns e o corpo do laço custa pouco mais que isso -- perguntar as horas cinco mil vezes
+        # seria pagar pelo cronômetro o que se quer economizar na busca.
+        if prazo is not None and expansions % 64 == 0 and time.monotonic() > prazo:
+            break
         cost, _, state = heapq.heappop(heap)
         expansions += 1
 

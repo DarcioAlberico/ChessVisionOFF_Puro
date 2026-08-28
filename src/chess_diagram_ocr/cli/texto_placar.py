@@ -76,7 +76,7 @@ from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..ocr import KNOWN_ENGINES, build_recognizer
 from ..settings import OcrSettings, load_settings
-from . import cli_errors
+from . import EXIT_BAD_INPUT, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -528,9 +528,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "--exemplo para ver o formato de uma linha."
         ),
     )
-    parser.add_argument("--referencia", type=Path, default=REFERENCIA_PADRAO)
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO)
+    parser.add_argument(
+        "--referencia", type=Path, default=REFERENCIA_PADRAO, help="O .jsonl conferido à mão que serve de gabarito."
+    )
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
     parser.add_argument(
         "--fonte",
         action="append",
@@ -554,13 +556,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--por-livro", type=int, default=3, help="Quantas faixas semear por livro (padrao 3).")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
 @cli_errors
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    configure_logging()
+    configure_logging(verbose=args.verbose)
 
     if args.exemplo:
         print(json.dumps(EXEMPLO, ensure_ascii=False))
@@ -569,7 +572,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.exportar:
         if not args.referencia.exists():
             logger.error("%s não existe. Semeie primeiro com --semear.", args.referencia)
-            return 2
+            return EXIT_BAD_INPUT
         faixas = carregar_referencia(args.referencia)
         gravadas = exportar(faixas, args.exportar, pdf_dir=args.pdf_dir)
         pendentes = sum(1 for f in faixas if not f.conferido)
@@ -593,7 +596,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Use --referencia com outro caminho e mescle à mão.",
                 args.referencia,
             )
-            return 1
+            return EXIT_BAD_INPUT
         pdfs = sorted(p for p in args.pdf_dir.glob("*.pdf") if p.is_file())
         if not pdfs:
             logger.warning("Nenhum PDF em %s. Nada a semear.", args.pdf_dir)

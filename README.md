@@ -95,8 +95,13 @@ Uma ressalva honesta:
 ## Demonstracao no navegador (Streamlit)
 
 ```bash
+uv sync --extra demo
 uv run streamlit run examples/streamlit_demo.py
 ```
+
+O `streamlit` esta no extra `demo` e **nao** vem no ambiente padrao (S-386): ele arrasta o
+`pyarrow`, e nada em `src/` o importa. Sem o `uv sync` acima o comando falha com
+`No module named streamlit` num clone novo.
 
 **Isto nao e uma segunda interface, e sim um exemplo.** Ela abre um PDF, reconhece os
 diagramas e mostra a FEN e a legalidade -- tudo pelo mesmo `OcrService` que o Tkinter usa,
@@ -635,7 +640,7 @@ padrao" continua valendo com ele ligado. O **EasyOCR baixa ~100 MB de modelo na 
 execucao**: e uma escolha legitima, le mais idiomas, e por isso mesmo precisa ser sua e nao
 do padrao. O Tesseract usa o binario que voce ja tenha instalado.
 
-**O quarto motor e de casa: `glifo` (S-181).** E o classificador de 292 classes portado do
+**O quarto motor e de casa: `glifo` (S-181).** E o classificador de 314 classes portado do
 `PyBoxEditor_Tkinter` -- digitos, caixa alta e baixa, acentuacao latina, ligaduras tipograficas
 (`fi`, `ffl`), casas de xadrez coladas (`e4`, `xf6`), figurinas (`♔♕♖♗♘♙`) e simbolos de
 avaliacao (`±`, `∓`, `⩲`, `∞`). Ele nao baixa nada, e e o unico que aplica o `allowlist` no
@@ -762,11 +767,16 @@ traco inclinado, que e o desenho do `/`. Quem decide e o **pendor da linha**, e 
 `1/2-1/2` e resultado de partida, e a barra legitima e preservada porque a linha dela nao e
 italica. `--sem-italico` desliga.
 
-Ha tambem um **dicionario** (`assets/lexico/acervo.txt.gz`, 7.588 palavras tiradas da camada
-editorada do proprio acervo, offline). Ele **nao** aproxima da palavra mais parecida -- so
-pergunta se alguma combinacao das letras que o classificador ja pos no topo forma palavra
-conhecida. Vem **desligado**, e o motivo e o numero: medido, ele corrige **zero**, porque as
-quatro correcoes de geometria acima ja levaram o que era alcancavel. `--dicionario` liga.
+Ha tambem um **dicionario**, e desde a S-209 ele sao **tres listas** em `assets/lexico/`, com
+367.163 entradas no total: `acervo.txt.gz` (7.588 palavras tiradas da camada editorada do proprio
+acervo), `idioma.txt.gz` (10.010 do portugues e do ingles) e `nomes.txt.gz` (349.565 nomes de
+jogador, vindos da base de partidas -- so os que aparecem em maiuscula, porque os minusculos sao
+apelidos de servidor). Tudo offline. Ele **nao** aproxima da palavra mais parecida -- so pergunta
+se alguma combinacao das letras que o classificador ja pos no topo forma palavra conhecida.
+Vem **ligado** desde que as tres listas foram empacotadas: em 40 paginas de 11 livros, 6 correcoes,
+as 6 confirmadas pela camada de texto, nenhuma palavra certa quebrada, e +1,1% de tempo por pagina.
+Antes das listas ele corrigia zero, e por isso vinha desligado. `--sem-dicionario` desliga, e a
+procedencia de cada lista esta em `assets/lexico/PROCEDENCIA.md`.
 
 **O negrito e mostrado na aba**, e vem da **camada de texto** -- nome da fonte e bit de peso,
 que sao metadado e nao erram. No Dvoretsky ele marca exatamente os lances da variante principal.
@@ -784,23 +794,25 @@ motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto 
 A camada de texto e a correcao humana nunca pedem revisao.
 
 **O numero, e o que ele nao prova.** Medido em 10 paginas de 2 livros, com a camada de texto da
-propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,1397**. Esse valor tem
+propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,1001**. Esse valor tem
 um piso que nao e do modelo -- num dos dois livros a propria camada e OCR de terceiro e traz os
 proprios erros --, entao ele **nao** vira "86% de acerto". E ele mede **prosa**: pela tabela acima,
 na notacao a camada nao e referencia de coisa nenhuma, e ali o glifo e penalizado justamente onde
 acerta a figurina. O que a medicao decide de fato e o
-padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e, no livro nativo
-digital, piora 22,5%. `--bloco` liga para quem quiser medir de novo.
+padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e piora a media em
+33% -- 0,1001 contra 0,1331 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
 
 ## Resolucao de problemas
 
 | sintoma | causa provavel | o que fazer |
 |---|---|---|
+| **Num clone novo:** a janela diz que "o classificador de pecas nao esta em models/piece_classifier.pt" | os `.pt` nao vem no repositorio -- sao binarios treinados, e o `.gitignore` manda `*.pt` para fora | apontar um `.pt` no campo **Modelo (.pt)** da aba Configuracao, ou treinar um com `cvoff-train` depois de corrigir alguns diagramas e salva-los com `Ctrl+S`. **A recusa e o recurso** (S-320): sem ele uma rede nao treinada devolveria uma FEN inventada com ar de certa |
+| **Num clone novo:** a aba Texto le a pagina pela camada do PDF e avisa no log | o motor `auto` caiu na reserva porque falta `models/char_classifier.pt` | e o esperado, e a leitura continua: `auto` e o glifo com a camada como reserva. Para o glifo de verdade, ver a linha do `--ocr glifo` abaixo |
 | Sumiu a aba **Leitura** do visualizador | saiu na S-69, junto com o WebView2 | o botao **Abrir no leitor do sistema** faz o mesmo, no leitor padrao da maquina. A pagina no app continua sendo a que reconhece, marca e recorta diagramas |
 | Treino muito lento (~9 min por epoca) | `torch` `+cpu`, sem CUDA | ver [Desempenho](#desempenho-cpu-gpu-e-onnx). A barra de status diz qual dispositivo esta em uso |
 | Todo diagrama sai como "brancas jogam" | o PDF nao tem camada de texto que declare o lado | e o esperado em 24 dos 27 livros medidos em 2026-08-14. O header `[SideToMoveSource "default"]` marca o palpite como palpite. Para os 7 livros de scan puro, ver [OCR da legenda](#ocr-da-legenda-s-42s-43) |
 | `--ocr rapidocr` avisa que "o OCR pedido nao esta disponivel" | o extra nao esta instalado | `uv sync --extra ocr`. O comando segue sem OCR em vez de falhar, mas a saida nao tem legenda lida |
-| `--ocr glifo` diz que os pesos "nao estao em models/char_classifier.pt" | os 2,6 MB do classificador de caracteres nao vem no repositorio | apontar o arquivo em `CVOFF_OCR_GLYPH_MODEL` ou em `ocr.glyph_model` no `data/settings.json`. O metadado das 292 classes ja esta em `models/char_meta.json` |
+| `--ocr glifo` diz que os pesos "nao estao em models/char_classifier.pt" | os 2,6 MB do classificador de caracteres nao vem no repositorio | apontar o arquivo em `CVOFF_OCR_GLYPH_MODEL` ou em `ocr.glyph_model` no `data/settings.json`. O metadado das 314 classes ja esta em `models/char_meta.json` |
 | `--ocr glifo` diz que o `.pt` "nao e o modelo descrito por char_meta.json" | os pesos e o metadado sao de rodadas de treino diferentes | e o esperado, e a recusa e o recurso: indices de outro treino apontam para as letras erradas **sem erro nenhum**. Repor o par completo |
 | Poucos diagramas detectados numa pagina cheia | o teto "Max diagramas" cortou | o padrao e 12; o log avisa com os scores quando o teto corta candidato aprovado |
 | Diagramas de cabeca para baixo | orientacao fixa em 0 ou 180 | usar **Automatica** (padrao). Casos ambiguos entram na fila de revisao marcados |
@@ -933,6 +945,7 @@ src/chess_diagram_ocr/
   settings.py           preferencias do usuario (endpoint remoto, motor de analise)
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
+  augment.py            aumento de dados do treino: jitter, afim e ruido, com probabilidade
   batch.py              varredura da biblioteca inteira, com relatorio consolidado
   board_detection.py    deteccao do tabuleiro na pagina (OpenCV)
   calibration.py        temperature scaling e curva de confiabilidade
@@ -941,28 +954,50 @@ src/chess_diagram_ocr/
   dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
+  detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
   engine.py             motor UCI opcional (Stockfish)
+  estudo.py             a arvore de variantes da sala de estudo, e as regras de lance
+  estudo_arquivo.py     leitura e escrita dos estudos em disco, um arquivo por posicao
+  estudo_partidas.py    a partida da base carregada como linha principal do estudo
+  estudo_saida.py       o estudo exportado: PGN com variantes, comentarios e simbolos
   evaluation.py         metricas de qualidade do reconhecimento (sobre recortes rotulados)
-  field_eval.py         metricas sobre paginas reais anotadas: recall, precisao, exportacao
   experiments.py        grade de experimentos de arquitetura
   export_checkpoint.py  parcial da exportacao, para cancelar e retomar
   fen_utils.py          conversao de FEN e checagem de legalidade
+  field_eval.py         metricas sobre paginas reais anotadas: recall, precisao, exportacao
+  gallery.py            as anotacoes de exportacao de cada diagrama do livro
+  gallery_scan.py       o indice da galeria: varre o livro e guarda o que achou
+  games_cache.py        cache das posicoes da base, para a busca por posicao nao reler tudo
+  games_census.py       censo da base de partidas: quanto ha, e quanto disso e alcancavel
+  games_db.py           leitura dos .pgn e a busca por nome e por posicao
+  games_index.py        o indice sqlite da base, por nome e por posicao
   inference.py          carga do modelo, predicao de FEN e TTA
+  labels.py             a porta unica do labels.csv: LabelStore (S-51)
   logging_setup.py      configuracao de logging
   model.py              arquitetura do classificador, configuravel por ArchConfig
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
+  ocr.py                os motores de OCR de faixa, atras de uma interface so
+  ocr_caption.py        a legenda impressa lida da faixa abaixo do diagrama
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
+  orientation.py        a cascata de regras que decide a orientacao do diagrama
   pdf_io.py             render de paginas de PDF (PyMuPDF)
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
+  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le
+  procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
+  provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   review_queue.py       fila de revisao ordenada por valor de informacao
+  second_opinion.py     a segunda leitura local do tabuleiro, para conferir a primeira (S-66)
   semantics.py          lado a jogar e direitos de roque
+  side_survey.py        o levantamento do lado a jogar declarado nas legendas do acervo
   splits.py             divisao treino/validacao/teste estavel
-  orientation.py        a cascata de regras que decide a orientacao do diagrama
+  text_status.py        o que do plano de texto ja existe no disco, medido por sonda
   training.py           loop de treino (Trainer, TrainingPlan, BestEpochPolicy)
-  detection/            detector hibrido: imagem embutida + contorno
-  ui/                   paineis da interface: PDF, resultado, estudo, revisao, dataset
+  tsoj_reader.py        o leitor do formato TSOJ, de onde veio o classificador de caractere
   cli/                  entrypoints cvoff-*
+  detection/            detector hibrido: imagem embutida + contorno
+  text/                 leitura de texto da pagina: linha, glifo, lexico e camada pesquisavel
+  ui/                   paineis da interface: PDF, resultado, estudo, revisao, dataset
 app_tkinter.py          interface desktop (--selftest confere uma instalacao sem abrir janela)
 examples/               demonstracoes: streamlit_demo.py roda o servico no navegador
 packaging/              cvoff.spec e build_windows.py: o .zip para Windows (S-55)
@@ -1038,15 +1073,15 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 |---|---|
 | S-01 a S-36 | [docs/SPEC.md](docs/SPEC.md) |
 | S-37 a S-77 | [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) |
-| S-78 a S-82, S-143, S-175 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
+| S-78 a S-82, S-143, S-175, S-176 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
-| S-95 a S-142, S-218, S-219 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
-| S-144 a S-170 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
+| S-95 a S-142, S-171 a S-174, S-218, S-219 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
+| S-144 a S-170, S-177 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 | S-178 a S-217 | [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) |
-| S-220 a S-234, S-324 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
+| S-220 a S-234, S-294, S-295, S-324 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
 | S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
-| S-296 a S-323, S-325 a S-327 | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
+| S-296 a S-323, S-325 a S-428 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1088,7 +1123,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   tokens de cor e tipografia, o piso da janela, cor com um significado so, barra de menus e
   rodape de janela, vocabulario e estados vazios
 - [docs/ROADMAP_TEXTO.md](docs/ROADMAP_TEXTO.md) -- **Fases 25 a 31**, o plano de reconhecimento
-  de texto: o levantamento dos dois projetos, a decisao de portar o classificador de 292 classes
+  de texto: o levantamento dos dois projetos, a decisao de portar o classificador de 314 classes
   do PyBoxEditor_Tkinter em vez de depender dele ou reescrever, e os seis riscos que precisam de
   decisao do dono -- entre eles a procedencia das 608.407 imagens de caractere
 - [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) -- especificacao das Fases 25 a 31 (S-178 a S-217):

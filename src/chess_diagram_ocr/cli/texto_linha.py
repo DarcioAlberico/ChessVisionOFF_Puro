@@ -51,7 +51,7 @@ import numpy as np
 from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import cli_errors
+from . import add_verbose, cli_errors
 from .texto_duas_linhas import DPI, RAIO_PT, faixas_da_camada, recorte_da_faixa
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
@@ -243,14 +243,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Mede o ganho de ler a linha em vez do caractere, neste acervo (S-188/S-189).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO)
-    parser.add_argument("--por-livro", type=int, default=3)
-    parser.add_argument("--por-pagina", type=int, default=6)
-    parser.add_argument("--limite", type=int, help="So os N primeiros livros.")
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
+    parser.add_argument("--por-livro", type=int, default=3, help="Páginas medidas por livro.")
+    parser.add_argument("--por-pagina", type=int, default=6, help="Linhas medidas por página.")
+    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
     parser.add_argument("--motor", default=MOTOR_PADRAO, help="O leitor de linha. Padrao: rapidocr.")
     parser.add_argument("--modelo", type=Path, help="Pesos do classificador de caractere.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 

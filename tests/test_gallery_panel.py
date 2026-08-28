@@ -13,6 +13,7 @@ import unittest
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from tkinter import ttk
 from unittest import mock
 
 from tk_root import raiz as raiz_do_processo
@@ -21,7 +22,7 @@ from chess_diagram_ocr.gallery import GalleryAnnotations, load_annotations
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
 from chess_diagram_ocr.games_cache import PositionStore
 from chess_diagram_ocr.games_db import DiagramMatch, PositionHit, PositionIndex
-from chess_diagram_ocr.ui import gallery_panel, scan_scope
+from chess_diagram_ocr.ui import atalhos, gallery_panel, scan_scope
 from chess_diagram_ocr.ui.gallery_model import GalleryModel
 from chess_diagram_ocr.ui.gallery_panel import GalleryPanel
 from chess_diagram_ocr.ui.games_dialog import GamesDialog
@@ -761,6 +762,93 @@ class EscopoDaVarreduraTests(unittest.TestCase):
         ultima = self.status[-1]
         self.assertIn("1 com erro", ultima)
         self.assertIn("1 parcial(is)", ultima)
+
+
+class TecladoDaGaleriaTests(unittest.TestCase):
+    """As quatro teclas de navegação, que antes iam para outra aba (S-400).
+
+    A galeria tem os botões |◀ ◀ ▶ ▶| desde a S-88 e **nenhuma tecla chegava a eles**: `←` e `→`
+    são "diagrama anterior/próximo" da janela inteira, e enquanto a Galeria estava aberta eles
+    trocavam o diagrama do painel de resultado -- que não está na tela. É a mesma classe do
+    defeito que a S-281 mediu na sala de estudo, e a resposta é a mesma: o painel em foco declara
+    as ações que são dele (S-244), e `atalhos.destino` as prefere às globais.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz_do_processo()
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.host = tk.Frame(self.root)
+        self.addCleanup(self.host.destroy)
+        self.panel = GalleryPanel(
+            self.host,
+            service=None,  # type: ignore[arg-type] - a varredura não roda aqui
+            pdf_path=lambda: Path(self.pasta.name) / "livro.pdf",
+            model_path=lambda: Path("modelo.pt"),
+            max_boards=lambda: 12,
+            on_status=lambda _texto: None,
+            on_page_request=lambda _pagina: None,
+        )
+        self.panel.model = GalleryModel(
+            index=GalleryIndex(
+                entries=[
+                    GalleryEntry(0, 0, PLACEMENT, side_to_move="w"),
+                    GalleryEntry(4, 0, PLACEMENT, side_to_move="b"),
+                    GalleryEntry(9, 0, PLACEMENT, side_to_move="w"),
+                ]
+            ),
+            annotations=GalleryAnnotations(),
+            pdf_path=Path(self.pasta.name) / "livro.pdf",
+            gallery_dir=Path(self.pasta.name),
+        )
+        self.panel.refresh(request_page=False)
+
+    def test_declara_as_quatro_e_atende_as_quatro(self) -> None:
+        """`conferir_dono` levanta se declarar sem atender, e é o critério de aceite da S-244."""
+        self.assertEqual(gallery_panel.ACOES_PROPRIAS, self.panel.acoes_proprias())
+        atalhos.conferir_dono(self.panel, "GalleryPanel")
+
+    def test_as_setas_andam_na_galeria(self) -> None:
+        proxima = self.panel.atender("proximo_diagrama")
+        anterior = self.panel.atender("diagrama_anterior")
+        assert proxima is not None and anterior is not None
+
+        proxima()
+        self.assertEqual(1, self.panel.model.position)
+        anterior()
+        self.assertEqual(0, self.panel.model.position)
+
+    def test_home_e_end_vao_ao_primeiro_e_ao_ultimo(self) -> None:
+        ultimo = self.panel.atender("ultima_pagina")
+        primeiro = self.panel.atender("primeira_pagina")
+        assert ultimo is not None and primeiro is not None
+
+        ultimo()
+        self.assertEqual(len(self.panel.model) - 1, self.panel.model.position)
+        primeiro()
+        self.assertEqual(0, self.panel.model.position)
+
+    def test_a_tecla_e_do_campo_enquanto_o_cursor_esta_nele(self) -> None:
+        """A régua é `shortcuts.ignores_widget`, a mesma que vale desde a S-20 para a janela toda:
+        digitar o lance ou percorrer a legenda com `←` é do campo, e não da galeria."""
+        with mock.patch.object(self.panel, "focus_get", return_value=ttk.Entry(self.host)):
+            self.assertEqual(frozenset(), self.panel.acoes_proprias())
+
+    def test_o_foco_vem_com_a_aba(self) -> None:
+        """Sem isto a declaração acima não adianta: `atalhos.destino` procura o painel na cadeia
+        do widget **em foco**, e quem abre a aba não clicou em nada dentro dela ainda."""
+        # O evento é sintético, e o foco é observado no canvas em vez de perguntado ao Tk: a
+        # raiz da suíte é `withdraw`n (ver `tests/tk_root.py`), e num toplevel não mapeado
+        # `focus_get` responde pela janela. O que se afirma aqui é a ligação -- que abrir a
+        # aba dá o foco ao canvas --, e ela é o que faltava.
+        with mock.patch.object(self.panel.canvas, "focus_set") as focou:
+            self.panel.event_generate("<Map>")
+        focou.assert_called_once_with()
 
 
 @dataclass

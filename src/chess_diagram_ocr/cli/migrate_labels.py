@@ -8,19 +8,17 @@ from __future__ import annotations
 
 import argparse
 import logging
-from pathlib import Path
 
-from ..config import DEFAULT_DATASET_CSV
 from ..dataset import migrate_labels_csv
 from ..logging_setup import configure_logging, default_log_file
-from . import cli_errors
+from . import add_dataset_arguments, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Adiciona as colunas da S-19 ao labels.csv, com backup.")
-    parser.add_argument("--csv", type=Path, default=DEFAULT_DATASET_CSV)
+    add_dataset_arguments(parser, splits=False, samples=False)
     parser.add_argument(
         "--no-backup",
         dest="backup",
@@ -36,7 +34,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "O padrao e deduzir onde a posicao impoe a resposta."
         ),
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Log em nivel DEBUG.")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 

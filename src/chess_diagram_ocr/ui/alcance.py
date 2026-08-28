@@ -75,7 +75,11 @@ def na_tela(cromo: str) -> set[str]:
         controles = fita.acoes_da_fita()
     else:
         raise KeyError(f"montagem de cromo desconhecida: {cromo!r}. As válidas estão em ui/pele.py.")
-    return set(controles) | set(comandos.NA_LINHA_DE_CAMPO)
+    # **A janela de busca entra pelo mesmo motivo que a linha de campo (S-343):** ela é uma
+    # superfície da aba de texto que a pele não desenha e o menu não alcança, e o comando que
+    # mora lá dentro está na tela sempre que a janela está aberta. Sem isto, tirar o item de
+    # menu duplicado faria a guarda acusar as três peles de esconder um botão que elas não têm.
+    return set(controles) | set(comandos.NA_LINHA_DE_CAMPO) | set(comandos.NA_JANELA_DE_BUSCA)
 
 
 def alcancaveis(

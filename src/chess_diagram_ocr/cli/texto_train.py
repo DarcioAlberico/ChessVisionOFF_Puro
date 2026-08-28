@@ -25,7 +25,7 @@ import numpy as np
 from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
-from . import cli_errors
+from . import add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +48,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cache", type=Path, default=CACHE_PADRAO, help="Varredura em cache (.npz).")
     parser.add_argument("--revarrer", action="store_true", help="Ignora o cache e varre o disco de novo.")
     parser.add_argument("--so-varrer", action="store_true", help="Varre, relata e para. Nao treina.")
-    parser.add_argument("--modelo", type=Path, default=PESOS_PADRAO)
-    parser.add_argument("--meta", type=Path, default=META_PADRAO)
+    parser.add_argument("--modelo", type=Path, default=PESOS_PADRAO, help="Onde gravar os pesos do classificador.")
+    parser.add_argument("--meta", type=Path, default=META_PADRAO, help="Onde gravar os metadados do treino.")
     parser.add_argument("--relatorio", type=Path, help="Padrao: docs/metrics/texto_treino_<data>.json")
-    parser.add_argument("--epocas", type=int, default=None)
-    parser.add_argument("--lote", type=int, default=None)
-    parser.add_argument("--taxa", type=float, default=None)
-    parser.add_argument("--paciencia", type=int, default=None)
-    parser.add_argument("--semente", type=int, default=SEMENTE_PADRAO)
+    parser.add_argument("--epocas", type=int, default=None, help="Épocas de treino. Padrão: o da receita.")
+    parser.add_argument("--lote", type=int, default=None, help="Amostras por lote. Padrão: o da receita.")
+    parser.add_argument("--taxa", type=float, default=None, help="Taxa de aprendizado. Padrão: a da receita.")
+    parser.add_argument(
+        "--paciencia", type=int, default=None, help="Épocas sem melhora antes da parada antecipada."
+    )
+    parser.add_argument("--semente", type=int, default=SEMENTE_PADRAO, help="Semente das operações aleatórias.")
     parser.add_argument("--minimo", type=int, default=1, help="Classes abaixo deste corte ficam de fora.")
     parser.add_argument("--val", type=float, default=0.1, help="Fracao de grupos para validacao.")
     parser.add_argument("--teste", type=float, default=0.1, help="Fracao de grupos para teste.")
@@ -112,7 +114,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Deixa amostra sem procedencia medir o modelo. So faz diferenca com registro no disco.",
     )
     parser.add_argument("--device", default=None, help="cpu ou cuda. Padrao: cuda se houver.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 

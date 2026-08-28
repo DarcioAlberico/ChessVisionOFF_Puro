@@ -518,7 +518,7 @@ class ResultPanel(ttk.Frame):
             self._apply_page_results(guardado, documento)
         elif acao is PageSwitch.CLEAR:
             self.clear()
-            self._on_status(f"Página {page_index}: sem reconhecimento ainda. Rode o OCR.")
+            self._on_status(f"Página {page_index + 1}: sem reconhecimento ainda. Rode o OCR.")
 
     def _apply_page_results(self, guardado: PageResults, documento: str) -> None:
         self.model.adopt(
@@ -531,7 +531,7 @@ class ResultPanel(ttk.Frame):
         self._sync_widgets_to_model(total=max(guardado.count, 1))
         self.after_idle(self.board.redraw)
         self._on_status(
-            f"Página {guardado.page_index}: {guardado.count} diagrama(s) do reconhecimento anterior"
+            f"Página {guardado.page_index + 1}: {guardado.count} diagrama(s) do reconhecimento anterior"
             f"{', com correções suas' if guardado.has_hand_edits else ''}."
         )
 
@@ -1085,7 +1085,7 @@ class ResultPanel(ttk.Frame):
         self.sync_fen_from_entry()
         alvo = self.model.save_target()
         if not is_valid_fen(alvo.fen):
-            messagebox.showerror("Erro", "FEN atual inválida.")
+            messagebox.showerror("Aplicar a FEN", "FEN atual inválida.")
             return
 
         # A pergunta vem antes de decidir entre amostra nova e regravação porque a resposta

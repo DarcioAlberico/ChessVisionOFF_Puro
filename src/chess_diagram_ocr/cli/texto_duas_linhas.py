@@ -66,7 +66,7 @@ import numpy as np
 from ..atomic_io import atomic_write_json
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import cli_errors
+from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
 
@@ -279,14 +279,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Mede o ganho do corte de linha e do descarte de fragmento (S-198).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO)
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
     parser.add_argument("--por-livro", type=int, default=3, help="Paginas medidas por livro (padrao 3).")
     parser.add_argument("--por-pagina", type=int, default=6, help="Faixas medidas por pagina (padrao 6).")
-    parser.add_argument("--limite", type=int, help="So os N primeiros livros.")
+    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
     parser.add_argument("--modelo", type=Path, help="Pesos. Padrao: ao lado do char_meta.json.")
     parser.add_argument("--baseline", type=Path, help="Relatorio anterior: falha se o CER subir.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -297,6 +297,9 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parse_args(argv)
     configure_logging(verbose=args.verbose)
+
+    if (codigo := confere_baseline(args.baseline)) is not None:
+        return codigo
 
     pdfs = sorted(Path(args.pdf_dir).glob("*.pdf"))
     if args.limite:
@@ -343,7 +346,7 @@ def main(argv: list[str] | None = None) -> int:
             agora = relatorio["cer"][nome]
             if agora > antes + PIORA_TOLERADA:
                 logger.error("Regressao no braco %s: CER %.4f contra %.4f do baseline.", nome, agora, antes)
-                return 1
+                return EXIT_FAILURE
 
     return 0
 

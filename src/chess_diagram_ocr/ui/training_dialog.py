@@ -183,6 +183,10 @@ class TrainingController:
         # Fechar esconde em vez de destruir: o treino continua rodando, e destruir a janela
         # deixaria a thread escrevendo em widgets que já não existem.
         dlg.protocol("WM_DELETE_WINDOW", dlg.withdraw)
+        # `Esc` faz o mesmo que fechar, e pelo mesmo motivo (S-395): aqui ele **esconde**,
+        # e não cancela nada -- quem cancela o treino é o botão da aba, e a janela volta
+        # inteira no `open_dialog` seguinte.
+        dlg.bind("<Escape>", lambda _evento: dlg.withdraw())
 
         wrap = ttk.Frame(dlg, padding=12)
         wrap.pack(fill=tk.BOTH, expand=True)

@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import logging
 import shutil
-import tempfile
 import unittest
 from pathlib import Path
 
+from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.config import BUNDLE_ROOT
@@ -193,7 +193,7 @@ class CacheEDesenhoTests(unittest.TestCase):
     def test_pasta_incompleta_avisa_e_desenha_o_resto(self) -> None:
         """**Avisar e usar o que houver**, e não recusar: `PieceImages` já degrada para símbolo
         Unicode peça a peça, e trocar isso por um erro seria piorar um comportamento que existe."""
-        pasta = Path(tempfile.mkdtemp(prefix="cvoff-pecas-"))
+        pasta = pasta_temporaria(self, prefixo="cvoff-pecas-")
         self.addCleanup(shutil.rmtree, pasta, True)
         shutil.copy(PECAS / "wq.png", pasta / "wq.png")
 

@@ -8,13 +8,12 @@ from pathlib import Path
 from ..config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_MAX_BOARDS,
-    DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
 )
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_to_pgn import default_pgn_output_path, save_pdf_positions_to_pgn
-from . import cli_errors
+from . import add_accept_threshold_argument, add_dpi_argument, add_model_argument, add_verbose, cli_errors
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
@@ -31,11 +30,13 @@ SIDE_SOURCE_LABELS = {
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Varre um PDF inteiro e salva todas as posicoes encontradas em PGN.")
-    parser.add_argument("pdf", type=Path)
+    parser.add_argument("pdf", type=Path, help="O livro a exportar.")
     parser.add_argument("--output", type=Path, default=None, help="Padrao: PGN/<nome-do-pdf>.pgn")
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
-    parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS)
+    add_model_argument(parser)
+    add_dpi_argument(parser)
+    parser.add_argument(
+        "--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de diagramas aceitos por página."
+    )
     parser.add_argument(
         "--orientation",
         choices=("auto", "0", "180"),
@@ -45,7 +46,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"livro com orientacoes misturadas. Padrao: {DEFAULT_ORIENTATION_MODE}."
         ),
     )
-    parser.add_argument("--start-page", type=int, default=0)
+    parser.add_argument("--start-page", type=int, default=0, help="Primeira página a varrer, base 0.")
     parser.add_argument("--end-page", type=int, default=None, help="Exclusivo. Padrao: ate o fim do PDF.")
     parser.add_argument(
         "--reading-order",
@@ -53,11 +54,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_READING_ORDER,
         help=f"Ordem de numeracao dos diagramas na pagina (S-14). Padrao: {DEFAULT_READING_ORDER}.",
     )
-    parser.add_argument("--event", type=str, default="ChessVisionOFF PDF OCR")
     parser.add_argument(
-        "--accept-threshold",
-        type=float,
-        default=ACCEPT_MIN_CONFIDENCE,
+        "--event", type=str, default="ChessVisionOFF PDF OCR", help="Valor da tag Event no PGN gerado."
+    )
+    add_accept_threshold_argument(
+        parser,
         help=(
             "Confianca minima por casa para a posicao entrar no PGN principal (S-15). "
             f"Padrao: {ACCEPT_MIN_CONFIDENCE:.2f}. Use 0 para exportar tudo."
@@ -91,7 +92,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     add_ocr_argument(parser)
     parser.add_argument("--show-review", type=int, default=10, help="Itens de revisao listados no fim.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Log em nivel DEBUG.")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 

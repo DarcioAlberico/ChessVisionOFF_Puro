@@ -398,9 +398,9 @@ class ComandosDoEditorTests(unittest.TestCase):
 
     def test_todo_comando_do_editor_alcanca_o_menu(self) -> None:
         """A regra 2 da SPEC_APARENCIA: o que a pele esconde, o menu alcança."""
-        declaradas = set(menu.acoes_declaradas())
+        declaradas = set(menu.acoes_declaradas()) | set(comandos.NA_JANELA_DE_BUSCA)
         fora = sorted(acao for acao in COMANDOS_DO_EDITOR if acao not in declaradas)
-        self.assertEqual([], fora)
+        self.assertEqual([], fora, "comando do editor sem casa no menu nem na janela de busca")
 
     def test_o_rotulo_do_botao_da_aba_nao_mudou(self) -> None:
         """Nenhum rótulo muda em relação ao de hoje para os controles que já existiam (S-240).

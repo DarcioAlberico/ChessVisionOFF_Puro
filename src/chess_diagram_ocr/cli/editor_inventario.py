@@ -29,7 +29,7 @@ from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import exportacao, paleta, rico
 from ..ui import alcance, atalhos, menu, texto_panel
-from . import cli_errors
+from . import EXIT_FAILURE, EXIT_OK, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ def inventario() -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--json", type=Path, default=DESTINO_PADRAO, help="Onde gravar o inventário.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     args = parser.parse_args(argv)
     configure_logging(verbose=args.verbose)
 
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"símbolos na paleta .......... {dados['paleta']['simbolos']}")
     perdidos = dados["peles_que_perdem_comando"]
     print(f"peles que perdem comando .... {len(perdidos)}")
-    return 1 if perdidos or dados["comandos_do_editor_fora_do_menu"] else 0
+    return EXIT_FAILURE if perdidos or dados["comandos_do_editor_fora_do_menu"] else EXIT_OK
 
 
 if __name__ == "__main__":  # pragma: no cover

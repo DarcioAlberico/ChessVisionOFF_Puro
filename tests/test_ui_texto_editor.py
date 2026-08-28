@@ -14,6 +14,8 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from ambiente_de_teste import pasta_temporaria, quadro
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.text import arquivo, correcao, documento, rico
 from chess_diagram_ocr.text import paleta as _paleta
@@ -60,19 +62,9 @@ tê-los. Uma raiz por módulo, criada uma vez e destruída no fim.
 
 
 def setUpModule() -> None:
+    """A raiz é a do processo (`tests/tk_root.py`), e não uma deste módulo (S-416)."""
     global _RAIZ
-    try:
-        _RAIZ = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - maquina sem display
-        raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-    _RAIZ.withdraw()
-
-
-def tearDownModule() -> None:
-    global _RAIZ
-    if _RAIZ is not None:
-        _RAIZ.destroy()
-        _RAIZ = None
+    _RAIZ = raiz_do_processo()
 
 
 class _ComJanela:
@@ -90,12 +82,12 @@ class _ComJanela:
         """
         assert _RAIZ is not None
         return TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=lambda _mensagem: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
 
 
@@ -795,12 +787,12 @@ class FerramentasNoWidgetTests(_ComJanela, unittest.TestCase):
         avisos: list[str] = []
         assert _RAIZ is not None
         painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         painel.desenhar(_pagina(_texto("uma palavra")))
         painel.editor.tag_add("sel", "1.0", "1.3")
@@ -976,12 +968,12 @@ class VistaESelecaoTests(_ComJanela, unittest.TestCase):
     def _painel_com_status(self, avisos: list[str]) -> TextoPanel:
         assert _RAIZ is not None
         return TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
 
 
@@ -1048,12 +1040,12 @@ class LexicoNaAbaTests(_ComJanela, unittest.TestCase):
         avisos: list[str] = []
         assert _RAIZ is not None
         painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         painel.desenhar(_pagina(_texto("the smdy of the position")))
         painel.marcar_fora_do_lexico()
@@ -1121,12 +1113,12 @@ class VistaGuardadaTests(_ComJanela, unittest.TestCase):
         avisos: list[str] = []
         assert _RAIZ is not None
         painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         painel.restaurar_vista(zoom=2, quebra=False)
         painel.update()
@@ -1183,12 +1175,12 @@ class ConferenciaQueSeRefazTests(_ComJanela, unittest.TestCase):
         avisos: list[str] = []
         assert _RAIZ is not None
         painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         painel.desenhar(_pagina(_texto("the smdy of the position")))
         painel.marcar_fora_do_lexico()
@@ -1209,3 +1201,231 @@ class ConferenciaQueSeRefazTests(_ComJanela, unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ZoomComEstiloTests(_ComJanela, unittest.TestCase):
+    """O zoom da vista redimensiona **também** o que tem estilo ou corpo (S-336).
+
+    `_aplicar_zoom` refaz a fonte de cada etiqueta de desenho pelo registro `_fontes_desenhadas`, e
+    `_pintar_faixas` -- chamado uma linha antes -- **esvazia** esse registro: o laço percorria um
+    dicionário vazio. No redesenho o esvaziamento é certo, porque cada corrida volta a pedir a
+    etiqueta dela; aqui não há redesenho, e o registro era a única memória de quais existiam.
+    """
+
+    def _painel_com_estilo(self):  # noqa: ANN202 - TextoPanel
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("um título da folha")))
+        painel.editor.tag_add("sel", "1.0", "1.8")
+        painel.estilo_titulo()
+        return painel
+
+    def _fonte_do_titulo(self, painel) -> str:  # noqa: ANN001
+        etiquetas = [nome for nome in painel._fontes_desenhadas if nome.startswith("fonte:titulo")]
+        self.assertTrue(etiquetas, "o título tem de ter etiqueta de fonte própria")
+        return str(painel.editor.tag_cget(etiquetas[0], "font"))
+
+    def test_o_zoom_muda_a_fonte_do_trecho_com_estilo(self) -> None:
+        painel = self._painel_com_estilo()
+        antes = self._fonte_do_titulo(painel)
+
+        painel._aplicar_zoom(3, avisar=False)
+
+        self.assertNotEqual(antes, self._fonte_do_titulo(painel))
+
+    def test_o_registro_de_fontes_sobrevive_ao_zoom(self) -> None:
+        """Era ele que sumia, e por isso o laço não tinha o que refazer."""
+        painel = self._painel_com_estilo()
+        antes = set(painel._fontes_desenhadas)
+
+        painel._aplicar_zoom(2, avisar=False)
+
+        self.assertTrue(antes)
+        self.assertEqual(antes, set(painel._fontes_desenhadas))
+
+
+class CorDaAbaTests(_ComJanela, unittest.TestCase):
+    """A aba segue a pele e o tema, como as outras superfícies da janela (S-337)."""
+
+    def test_as_faixas_saem_do_tema_em_uso(self) -> None:
+        """`tokens.cor(papel)` sem estilo devolve a **reserva clara**, e é o que a aba usava."""
+        from chess_diagram_ocr.ui import texto_panel as modulo
+        from chess_diagram_ocr.ui import theme
+
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("um trecho")))
+        faixa, papel = next((f, p) for f, p in modulo.PAPEL_DA_FAIXA.items() if p)
+
+        self.assertEqual(str(painel.editor.tag_cget(faixa, "foreground")), theme.cor_atual(papel))
+
+    def test_a_aba_se_registra_para_repintar(self) -> None:
+        """Sem o registro, trocar de pele deixaria a aba na cor de quando ela nasceu."""
+        from chess_diagram_ocr.ui import theme
+
+        chamadas: list[int] = []
+        painel = self._painel()
+        painel._pintar_faixas = lambda: chamadas.append(1)  # type: ignore[method-assign]
+
+        theme.repintar()
+
+        self.assertTrue(chamadas, "a aba não está na lista de repintura de `ui/theme.py`")
+
+
+class JanelaDeBuscaTests(_ComJanela, unittest.TestCase):
+    """A caixa de achar e substituir responde ao teclado (S-342).
+
+    Ela tinha os dois botões e nenhuma tecla: `Enter` no campo não fazia nada, e fechá-la exigia o
+    X do título. As duas ligações são no `Toplevel` inteiro -- a lista e o campo de substituir
+    também recebem foco, e uma tecla que funciona num widget e não no vizinho é pior que nenhuma.
+    """
+
+    def _com_busca(self):  # noqa: ANN202 - (painel, janela)
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("a, b, c")))
+        painel.achar()
+        janela = painel._janela_de_busca
+        self.assertIsNotNone(janela)
+        return painel, janela
+
+    def test_enter_acha(self) -> None:
+        _painel, janela = self._com_busca()
+        janela.agulha_var.set(",")
+
+        janela._ao_teclar_enter()
+
+        self.assertEqual(len(janela._achadas), 2)
+
+    def test_enter_nao_substitui(self) -> None:
+        """A troca continua exigindo o botão: é a ação destrutiva desta janela."""
+        painel, janela = self._com_busca()
+        janela.agulha_var.set(",")
+        janela.novo_var.set(";")
+
+        janela._ao_teclar_enter()
+
+        self.assertEqual(painel.texto_atual(), "a, b, c")
+
+    def test_esc_fecha(self) -> None:
+        _painel, janela = self._com_busca()
+
+        janela._ao_teclar_esc()
+
+        self.assertFalse(janela.winfo_exists())
+
+    def test_as_teclas_estao_ligadas_na_janela_inteira(self) -> None:
+        """Ligadas só no campo, elas não valeriam na lista nem na caixa de substituir."""
+        _painel, janela = self._com_busca()
+        for sequencia in ("<Return>", "<Escape>"):
+            with self.subTest(tecla=sequencia):
+                self.assertTrue(janela.bind(sequencia), f"{sequencia} não está ligada no Toplevel")
+
+
+class SalvarEUmCaminhoSoTests(_ComJanela, unittest.TestCase):
+    """"Salvar" grava onde já se escolheu; "Salvar como…" é quem pergunta (S-343).
+
+    Os dois comandos existiam no catálogo, no menu e na paleta, e **faziam a mesma coisa**: os dois
+    abriam o diálogo. Num ciclo de correção, em que se grava a cada trecho conferido, o diálogo
+    repetido é o atrito -- e o rótulo "como…" prometia uma escolha que o outro tomava igual.
+    """
+
+    def _painel_com_texto(self):  # noqa: ANN202 - TextoPanel
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("uma folha corrigida")))
+        return painel
+
+    def _responder(self, destino: Path) -> list[int]:
+        from tkinter import filedialog
+
+        perguntas: list[int] = []
+        original = filedialog.asksaveasfilename
+
+        def falso(**_kwargs: object) -> str:
+            perguntas.append(1)
+            return str(destino)
+
+        filedialog.asksaveasfilename = falso  # type: ignore[assignment]
+        self.addCleanup(setattr, filedialog, "asksaveasfilename", original)
+        return perguntas
+
+    def test_a_primeira_gravacao_pergunta_e_a_segunda_nao(self) -> None:
+        painel = self._painel_com_texto()
+        destino = pasta_temporaria(self) / "folha.cvtxt"
+        perguntas = self._responder(destino)
+
+        painel.salvar_documento()
+        painel.salvar_documento()
+
+        self.assertEqual(len(perguntas), 1, "a segunda gravação perguntou de novo")
+        self.assertTrue(destino.exists())
+
+    def test_salvar_como_pergunta_sempre(self) -> None:
+        painel = self._painel_com_texto()
+        destino = pasta_temporaria(self) / "folha.cvtxt"
+        perguntas = self._responder(destino)
+
+        painel.salvar_documento()
+        painel.salvar_documento_como()
+
+        self.assertEqual(len(perguntas), 2)
+
+    def test_documento_novo_volta_a_perguntar(self) -> None:
+        """Outra folha é outro arquivo: gravar nela é a primeira vez dela."""
+        painel = self._painel_com_texto()
+        destino = pasta_temporaria(self) / "folha.cvtxt"
+        perguntas = self._responder(destino)
+        painel.salvar_documento()
+
+        painel.abrir(rico.de_texto("outro documento"))
+        painel.salvar_documento()
+
+        self.assertEqual(len(perguntas), 2)
+
+
+class BarraDeFormatoSegueOCursorTests(_ComJanela, unittest.TestCase):
+    """Os interruptores acompanham o cursor movido por tecla (S-344).
+
+    Eram duas setas ligadas, e o cursor anda de seis maneiras: descer uma linha de um título para a
+    prosa deixava "Título" aceso, e o clique seguinte decidia pelo estado errado.
+    """
+
+    def test_as_seis_teclas_de_navegacao_atualizam_a_barra(self) -> None:
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto("primeira linha")))
+        ligadas = painel.editor.bind()
+
+        for tecla in ("<KeyRelease-Up>", "<KeyRelease-Down>", "<KeyRelease-Home>",
+                      "<KeyRelease-End>", "<KeyRelease-Prior>", "<KeyRelease-Next>"):
+            with self.subTest(tecla=tecla):
+                self.assertIn(tecla, ligadas)
+
+
+class UmaRasterizacaoPorLeituraTests(_ComJanela, unittest.TestCase):
+    """A folha é rasterizada uma vez, e na thread de trabalho (S-352).
+
+    `ler_pagina` renderiza a folha quando ninguém lhe dá a imagem, e `_chegou` a renderizava **de
+    novo** para as miniaturas -- na thread da janela, que congelava ~355 ms por leitura.
+    """
+
+    class _Ficha:
+        def release(self) -> None:
+            return None
+
+    def test_a_imagem_que_volta_da_thread_e_a_que_fica(self) -> None:
+        import numpy as np
+
+        painel = self._painel()
+        pedidos: list[int] = []
+        painel._renderizar = lambda _c, _i: pedidos.append(1)  # type: ignore[method-assign]
+        imagem = np.zeros((8, 8, 3), dtype=np.uint8)
+
+        painel._chegou(_pagina(_texto("uma folha")), imagem, 0, self._Ficha())
+
+        self.assertIs(painel._pagina_rgb, imagem)
+        self.assertEqual(pedidos, [], "a folha foi rasterizada de novo na thread da janela")
+
+    def test_a_leitura_entrega_a_imagem_ao_leitor(self) -> None:
+        """O parâmetro `imagem_rgb` existe desde sempre; o que faltava era passá-lo."""
+        import inspect
+
+        fonte = inspect.getsource(TextoPanel.ler)
+        self.assertIn("imagem_rgb=imagem", fonte)
+        self.assertIn("self._renderizar(caminho, indice)", fonte)

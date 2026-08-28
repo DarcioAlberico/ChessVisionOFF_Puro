@@ -135,6 +135,25 @@ def _clamp01(x: torch.Tensor) -> torch.Tensor:
     return torch.clamp(x, 0.0, 1.0)
 
 
+def _com_probabilidade(etapa: Any, p: float) -> Any | None:
+    """A etapa envolvida em `RandomApply(p)` -- ou ela mesma, ou nada (S-376).
+
+    **`p >= 1` devolve a etapa crua, e isso não é otimização.** `RandomApply.forward` sorteia
+    um número antes de decidir, mesmo com `p=1,0`: envolver as duas etapas que hoje são
+    incondicionais consumiria dois sorteios por casa e mudaria toda a sequência do RNG. O
+    treino do padrão tem de sair **idêntico** ao de antes deste item, e sai: com
+    `jitter=1,0` e `affine=1,0` a lista montada é a mesma, objeto por objeto.
+
+    `p <= 0` devolve `None` pelo mesmo motivo, do outro lado: `RandomApply(p=0)` sortearia
+    para descartar sempre.
+    """
+    if p >= 1.0:
+        return etapa
+    if p <= 0.0:
+        return None
+    return v2.RandomApply([etapa], p=p)
+
+
 def build_train_transform(augment: AugmentConfig = DEFAULT_AUGMENT) -> Callable:
     """A pipeline de aumento. O padrão reproduz o treino anterior à S-40.
 
@@ -145,12 +164,20 @@ def build_train_transform(augment: AugmentConfig = DEFAULT_AUGMENT) -> Callable:
     A ordem coloca as dirigidas **depois** do afim de propósito. O afim reamostra, e
     reamostrar uma hachura sintética de período 6 px a borraria até sumir -- justamente a
     frequência que se quer ensinar.
+
+    **As três genéricas são probabilidades, e duas delas não eram lidas (S-376).**
+    `augment.jitter` e `augment.affine` existiam como campo, com valor documentado como
+    probabilidade, e não chegavam a lugar nenhum: `ColorJitter` e `RandomAffine` estavam
+    sempre na lista. `AugmentConfig(jitter=0.0)` -- que é como a grade de experimentos e
+    qualquer chamada de `train_model` desligariam o jitter -- treinava com ele ligado, e o
+    `augment_version` do checkpoint dizia a mesma coisa nos dois casos.
     """
     etapas: list[Any] = [
-        v2.RandomApply([v2.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0))], p=augment.blur),
-        v2.ColorJitter(brightness=0.3, contrast=0.3),
-        v2.RandomAffine(degrees=2, translate=(0.05, 0.05), scale=(0.95, 1.05)),
+        _com_probabilidade(v2.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)), augment.blur),
+        _com_probabilidade(v2.ColorJitter(brightness=0.3, contrast=0.3), augment.jitter),
+        _com_probabilidade(v2.RandomAffine(degrees=2, translate=(0.05, 0.05), scale=(0.95, 1.05)), augment.affine),
     ]
+    etapas = [etapa for etapa in etapas if etapa is not None]
     etapas.extend(build_augmentations(augment))
     etapas.append(v2.Lambda(_clamp01))
     return v2.Compose(etapas)
@@ -415,6 +442,30 @@ def _load_for_resume(model: nn.Module, model_path: Path, arch: ArchConfig, devic
     return checkpoint
 
 
+def _motivo_para_medir(
+    gravado: float | None,
+    *,
+    mesmo_split: bool,
+    mesma_metrica: bool,
+    nome_gravado: str,
+    metric_name: str,
+) -> str:
+    """Por que o número gravado não serve -- na frase que vai para o log.
+
+    São três causas independentes e elas se acumulam; dizer só a primeira faria o log mentir
+    por omissão justamente na retomada em que mais de uma vale.
+    """
+    if gravado is None:
+        return "não registra a métrica com que foi salvo"
+    motivos = []
+    if not mesmo_split:
+        motivos.append("foi medido em outro split")
+    if not mesma_metrica:
+        qual = f"registra {nome_gravado!r}" if nome_gravado else "não registra qual métrica gravou"
+        motivos.append(f"{qual} e este treino decide por {metric_name!r}")
+    return " e ".join(motivos)
+
+
 def _resolve_best_metric(
     resumed: Checkpoint | None,
     *,
@@ -423,6 +474,7 @@ def _resolve_best_metric(
     device: str,
     criterion: nn.Module,
     split_hash: str,
+    metric_name: str,
 ) -> tuple[float, int]:
     """Qual métrica a primeira época precisa superar para sobrescrever o checkpoint.
 
@@ -430,14 +482,22 @@ def _resolve_best_metric(
     retomar recomeçava o controle em infinito e a primeira época gravava por cima mesmo
     sendo pior -- foi assim que o treino do baseline quase se perdeu.
 
-    Gravar `best_metric` no checkpoint (S-27) resolve o caso fácil. Sobram dois em que o
+    Gravar `best_metric` no checkpoint (S-27) resolve o caso fácil. Sobram quatro em que o
     valor gravado não serve:
 
     - **checkpoint anterior à Fase 5**, que não registra métrica nenhuma;
     - **split diferente** do que produziu a métrica: 0,98 medido em outros 306 tabuleiros
-      não é comparável com 0,98 medido nestes, e o dataset cresce.
+      não é comparável com 0,98 medido nestes, e o dataset cresce;
+    - **split que nenhum dos dois lados sabe qual é** (S-371): sem arquivo de splits o
+      `split_hash` é `""` aqui e `""` no checkpoint, e a igualdade dizia "mesmo split" sobre
+      duas partições que o `val_ratio` sorteia a cada execução, em datasets que cresceram
+      entre uma e outra. Vazio não é identidade: é a ausência dela;
+    - **outra métrica** (S-370): um checkpoint salvo sem validação registra `-train_loss`, e
+      o `best_metric_name` que diz isso estava gravado e não era lido. Comparar `-0,42` com
+      uma acurácia por tabuleiro, que vive em `[0, 1]`, não decide nada -- na retomada com
+      validação a primeira época grava por cima sempre, e no sentido contrário nunca grava.
 
-    Nos dois, a resposta certa não é supor 0 nem confiar no número: é **medir** o modelo
+    Nos quatro, a resposta certa não é supor 0 nem confiar no número: é **medir** o modelo
     recém-carregado na validação atual, o que custa uma passada (~20 s) e dá o incumbente
     de verdade.
     """
@@ -447,21 +507,29 @@ def _resolve_best_metric(
         return float("-inf"), 0
 
     gravado = resumed.best_metric
-    mesmo_split = str(resumed.metadata.get("split_hash", "")) == split_hash
-    if gravado is not None and mesmo_split:
+    nome_gravado = str(resumed.metadata.get("best_metric_name", "") or "")
+    split_gravado = str(resumed.metadata.get("split_hash", "") or "")
+    # Vazio de qualquer um dos lados nao e "mesmo split": e "nao se sabe" (S-371).
+    mesmo_split = bool(split_gravado) and split_gravado == split_hash
+    mesma_metrica = bool(nome_gravado) and nome_gravado == metric_name
+    if gravado is not None and mesmo_split and mesma_metrica:
         epoca = int(resumed.metadata.get("best_epoch", 0))
         logger.info("Melhor métrica registrada no checkpoint: %.6f (época %d).", gravado, epoca)
         return gravado, epoca
 
+    motivo = _motivo_para_medir(
+        gravado, mesmo_split=mesmo_split, mesma_metrica=mesma_metrica,
+        nome_gravado=nome_gravado, metric_name=metric_name,
+    )
     if val_loader is None:
         logger.warning(
-            "Sem validação e sem métrica registrada em %s: a primeira época vai sobrescrever "
-            "o checkpoint. Faça uma cópia antes se ele importa.",
+            "Este treino não tem validação e %s %s: a primeira época vai sobrescrever o "
+            "checkpoint. Faça uma cópia antes se ele importa.",
             resumed.path.name,
+            motivo,
         )
         return float("-inf"), 0
 
-    motivo = "não registra a métrica com que foi salvo" if gravado is None else "foi medido em outro split"
     logger.info("%s %s: medindo-o na validação atual para saber o que a primeira época precisa superar...",
                 resumed.path.name, motivo)
     incumbente = evaluate_validation(model, val_loader, device, criterion).board_exact_accuracy
@@ -601,16 +669,25 @@ def labels_hash(entries: Iterable[DatasetEntry]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
-def _optim_metadata(optim: OptimPlan) -> dict[str, Any]:
+def _optim_metadata(optim: OptimPlan, arch: ArchConfig) -> dict[str, Any]:
     """Os hiperparâmetros que reproduzem o número, prefixados para não colidir (S-105).
 
     `asdict(optim)` traria `augment` como dicionário aninhado e `class_weights`/`seed`
     duplicados -- os três já estão nos metadados com nome próprio desde a S-27 e a S-40.
     O que faltava são estes quatro, e é neles que `--lr 1e-4` e `--lr 1e-3` diferem.
+
+    **E o lote tem duas unidades desde a S-62b (S-372).** A cabeça por tabuleiro monta o
+    `DataLoader` com `boards_per_batch` e ignora `batch_size`; a cabeça por janela faz o
+    contrário. Gravar só o `batch_size` deixava o checkpoint da cabeça nova declarando um
+    número que não governou nada e omitindo o que governou -- dois treinos com
+    `--boards-per-batch 4` e `8` saíam com metadados idênticos, que é exatamente o que a
+    S-105 existiu para acabar. Os dois vão gravados, e `batch_unit` diz qual valeu.
     """
     return {
         "lr": optim.lr,
         "batch_size": optim.batch_size,
+        "boards_per_batch": optim.boards_per_batch,
+        "batch_unit": "board" if arch.head == "board" else "square",
         "epochs_requested": optim.epochs,
         "patience": optim.patience,
         # Fixo hoje, e gravado mesmo assim: um metadado ausente e um metadado que diz "Adam"
@@ -881,7 +958,7 @@ class Trainer:
             # Os hiperparametros de otimizacao, inteiros (S-105). Sem eles, `--lr 1e-4` e
             # `--lr 1e-3` produziam dois arquivos indistinguiveis pelos metadados -- e ha 17
             # checkpoints em `models/` e nove treinos comparados no EXPERIMENTS_FASE7.
-            **_optim_metadata(optim),
+            **_optim_metadata(optim, arch),
             "split_hash": splits_hash(splits_map) if splits_map else "",
             # **Qual particao** e **qual verdade** sao perguntas diferentes, e ate aqui so a
             # primeira tinha resposta: as 468 amostras de correcao humana da S-107 entraram
@@ -919,6 +996,7 @@ class Trainer:
             device=self.device,
             criterion=self.cpu_criterion,
             split_hash=str(self.metadata_base.get("split_hash", "")),
+            metric_name=self.run.best_metric_name,
         )
         self.policy = BestEpochPolicy(
             self.run.best_metric_name, best_metric, patience=self.plan.optim.patience, best_epoch=best_epoch

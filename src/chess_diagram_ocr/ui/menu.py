@@ -288,7 +288,9 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("achar"),
             Item("substituir"),
-            Item("substituir_todos"),
+            # `substituir_todos` **não** está aqui: ele é o botão de dentro da janela de
+            # busca, e como item de menu abria a mesma janela que "Substituir…" -- dois
+            # rótulos para uma ação (S-343). Ver `comandos.NA_JANELA_DE_BUSCA`.
             Item("marcar_fora_do_lexico"),
             Item("limpar_marcas_do_lexico"),
             _sep(),
@@ -401,6 +403,7 @@ def montar(
         raise KeyError(f"item de aparência sem variável de escolha: {', '.join(sem_variavel)}")
 
     marcas = interruptores or {}
+    anterior = str(root.cget("menu") or "")
     barra = tk.Menu(root)
     for declarado in MENUS:
         menu = tk.Menu(barra, tearoff=False)
@@ -408,6 +411,19 @@ def montar(
             _acrescentar(menu, item, comandos, marcas, recentes, variaveis)
         barra.add_cascade(label=declarado.titulo, menu=menu)
     root.configure(menu=barra)  # type: ignore[call-arg]
+    # **A barra anterior é destruída, e não abandonada** (S-399). `montar` é chamada de novo a
+    # cada troca de pele, e `configure(menu=...)` só troca a que está pendurada: a antiga, com os
+    # seis submenus dela, continuava viva no interpretador Tcl. Trocar de pele cinco vezes numa
+    # sessão deixava cinco barras de menu inteiras na memória, cada uma com os comandos Tcl das
+    # linhas dela.
+    #
+    # Depois do `configure`, e não antes: destruir a barra que ainda está pendurada deixaria a
+    # janela um instante sem menu nenhum, e no Windows isso pisca.
+    if anterior and anterior != str(barra):
+        try:
+            root.nametowidget(anterior).destroy()
+        except (KeyError, tk.TclError):  # pragma: no cover - barra já removida por outro caminho
+            logger.debug("A barra de menus anterior (%s) já não existia.", anterior)
     return barra
 
 

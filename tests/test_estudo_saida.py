@@ -131,3 +131,67 @@ class ExportacaoTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ComentarioDaRaizTests(unittest.TestCase):
+    """O comentário da raiz sai **uma** vez em cada formato (S-347).
+
+    Ele saía duas: como parágrafo próprio, logo abaixo da FEN, e outra vez grudado no primeiro
+    lance -- "uma nota da raiz 1. e4" --, porque `notacao_do_estudo` não filtrava o comentário de
+    caminho vazio. A nota da raiz é sobre a **posição**; a linha é a dos lances.
+    """
+
+    def _com_nota(self) -> Estudo:
+        estudo = Estudo.de_posicao(PosicaoDeEstudo())
+        estudo.raiz.comment = "uma nota da raiz"
+        estudo.raiz.add_variation(chess.Move.from_uci("e2e4"))
+        return estudo
+
+    def test_a_nota_da_raiz_sai_uma_vez_so(self) -> None:
+        texto = estudo_saida.para_documento(self._com_nota()).para_texto()
+        self.assertEqual(texto.count("uma nota da raiz"), 1)
+
+    def test_a_linha_continua_trazendo_o_comentario_dos_lances(self) -> None:
+        """A guarda é só do comentário da raiz: o do lance é parte da linha."""
+        estudo = self._com_nota()
+        estudo.raiz.variations[0].comment = "boa jogada"
+
+        linha = estudo_saida.notacao_do_estudo(estudo)
+
+        self.assertIn("boa jogada", linha)
+        self.assertNotIn("uma nota da raiz", linha)
+
+
+class ContagemDaSubarvoreTests(unittest.TestCase):
+    """A confirmação de apagar conta a **subárvore**, e não a linha principal (S-347).
+
+    `len(list(no.mainline())) + 1` percorre só a continuação principal, e a busca por anotação
+    olhava um nível: uma variante com sublinhas anotadas anunciava "isto apaga 2 lance(s)" e
+    apagava dezoito, com os comentários todos. Quem lê "2 lances" clica em Sim.
+    """
+
+    def _arvore(self):  # noqa: ANN202 - GameNode
+        estudo = Estudo.de_posicao(PosicaoDeEstudo())
+        e4 = estudo.raiz.add_variation(chess.Move.from_uci("e2e4"))
+        e5 = e4.add_variation(chess.Move.from_uci("e7e5"))
+        e5.add_variation(chess.Move.from_uci("g1f3"))
+        sub = e4.add_variation(chess.Move.from_uci("c7c5"))
+        sub.comment = "a siciliana"
+        return e4
+
+    def test_conta_os_lances_de_todas_as_linhas(self) -> None:
+        from chess_diagram_ocr.ui.study_panel import _tamanho_da_subarvore
+
+        lances, anotado = _tamanho_da_subarvore([self._arvore()])
+
+        self.assertEqual(lances, 4, "e4 e as duas linhas embaixo dele: e5, Nf3 e c5")
+        self.assertTrue(anotado, "a anotação está na subvariante, e não no primeiro nível")
+
+    def test_lance_solto_continua_sendo_um(self) -> None:
+        """A caixa só aparece quando há o que perder: um lance sem nada embaixo não pergunta."""
+        from chess_diagram_ocr.ui.study_panel import _tamanho_da_subarvore
+
+        estudo = Estudo.de_posicao(PosicaoDeEstudo())
+        solto = estudo.raiz.add_variation(chess.Move.from_uci("e2e4"))
+
+        self.assertEqual(_tamanho_da_subarvore([solto]), (1, False))

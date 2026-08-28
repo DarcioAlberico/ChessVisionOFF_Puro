@@ -57,11 +57,38 @@ def open_count() -> int:
 
 
 def _open_document(pdf_source: PdfSource) -> fitz.Document:
+    """Abre o documento, e **recusa o que está protegido por senha** (S-331).
+
+    `fitz.open` aceita um PDF cifrado sem reclamar: `needs_pass` fica ligado, `page_count`
+    responde o número certo -- 1, no teste -- e só o primeiro acesso a uma página levanta
+    `ValueError: document closed or encrypted`, em inglês e longe daqui.
+
+    Isso furava a S-123, que pôs `get_pdf_page_count` como primeira linha de `load_pdf`
+    justamente para validar antes de mutar: a contagem **passava**, o painel trocava o livro do
+    programa inteiro -- Galeria, resultados, aba de estudo -- e a falha só aparecia no render,
+    com a tela ainda mostrando o livro anterior. O programa ficava por dentro num arquivo que
+    ele nunca conseguiria ler.
+
+    A recusa mora aqui, e não no painel, porque **nenhum** caminho deste programa sabe pedir
+    senha: o `cvoff-scan`, o censo e a exportação encontrariam o mesmo muro três camadas
+    adiante. `ValueError` porque é o que o `cli_errors` da S-126 traduz em código 2 e frase em
+    pt-BR, e é o que o `except` do painel já apanha.
+    """
     global _opens
     _opens += 1
     if isinstance(pdf_source, bytes):
-        return fitz.open(stream=pdf_source, filetype="pdf")
-    return fitz.open(str(pdf_source))
+        doc = fitz.open(stream=pdf_source, filetype="pdf")
+        nome = "O PDF recebido em memória"
+    else:
+        doc = fitz.open(str(pdf_source))
+        nome = Path(str(pdf_source)).name
+    if doc.needs_pass:
+        doc.close()
+        raise ValueError(
+            f"{nome} está protegido por senha. Este programa não tem onde pedi-la: abra o "
+            "arquivo no leitor de PDF do sistema, salve uma cópia sem senha, e use a cópia."
+        )
+    return doc
 
 
 @contextmanager
@@ -152,7 +179,7 @@ def render_pdf_page(pdf_source: PdfSource, page_index: int, dpi: int = 220) -> n
     """Renderiza uma pagina do PDF como array RGB (H, W, 3) proprio e gravavel."""
     with open_document(pdf_source) as doc:
         if page_index < 0 or page_index >= doc.page_count:
-            raise ValueError(f"Pagina {page_index} fora do intervalo (0..{doc.page_count - 1})")
+            raise ValueError(f"Página {page_index} fora do intervalo (0..{doc.page_count - 1})")
 
         page = doc[page_index]
         matrix = fitz.Matrix(dpi / 72.0, dpi / 72.0)

@@ -47,7 +47,7 @@ from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import colados
-from . import cli_errors
+from . import add_verbose, cli_errors
 from .texto_duas_linhas import DPI, RAIO_PT, faixas_da_camada, recorte_da_faixa
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
@@ -235,11 +235,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Mede o separador de glifo colado nos tres modos, antes de liga-lo (S-186).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR)
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO)
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
     parser.add_argument("--por-livro", type=int, default=3, help="Paginas medidas por livro.")
     parser.add_argument("--por-pagina", type=int, default=6, help="Faixas medidas por pagina.")
-    parser.add_argument("--limite", type=int, help="So os N primeiros livros.")
+    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
     parser.add_argument("--modelo", type=Path, help="Pesos. Padrao: ao lado do char_meta.json.")
     parser.add_argument(
         "--limiares",
@@ -248,7 +248,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[1.35, 1.6, 1.8, 2.0, 2.5],
         help="Larguras suspeitas em que o braco `auto` e refeito. Vazio desliga a varredura.",
     )
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 

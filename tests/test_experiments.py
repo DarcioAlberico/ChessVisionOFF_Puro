@@ -133,14 +133,15 @@ class GradeRecusaComecarTests(unittest.TestCase):
 
         codigo = cli_experiment.main(self._args(csv_path, samples, splits_path))
 
-        self.assertEqual(codigo, 1, "a grade não atribui split, então ela não pode começar assim")
+        # Dado apontado que a grade não pode usar é a classe 2 da S-126, e não a 1 (S-378).
+        self.assertEqual(codigo, 2, "a grade não atribui split, então ela não pode começar assim")
 
     def test_splits_ausente_continua_recusando_por_outro_motivo(self) -> None:
         """A guarda anterior a esta continua de pé, e a mensagem dela é outra."""
         csv_path, samples, _splits = _dataset(self.raiz, boards=6)
         vazio = self.raiz / "nao_existe.csv"
 
-        self.assertEqual(cli_experiment.main(self._args(csv_path, samples, vazio)), 1)
+        self.assertEqual(cli_experiment.main(self._args(csv_path, samples, vazio)), 2)
 
 
 if __name__ == "__main__":

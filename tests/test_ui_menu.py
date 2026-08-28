@@ -27,7 +27,7 @@ from chess_diagram_ocr.ui.state import AppState  # noqa: E402
 
 
 class TabelaDeAtalhosTests(unittest.TestCase):
-    def test_sao_dezoito_e_cada_um_novo_tem_dono(self) -> None:
+    def test_sao_vinte_e_um_e_cada_um_novo_tem_dono(self) -> None:
         """Eram dez -- a avaliação escreveu "onze" e listou dez (S-135). O décimo primeiro é o
         `Ctrl+Enter` da S-223, e ele entrou por uma razão que o teste consegue cobrar: a fila da
         pele "Foco" só admite comando com tecla, e `aplicar_fen` não tinha uma.
@@ -50,8 +50,14 @@ class TabelaDeAtalhosTests(unittest.TestCase):
         S-70: virar **uma** página tinha tecla (`Page Up`/`Page Down`) e ir à primeira ou à última
         não tinha nenhuma. Eles nasceram de fora -- a sala de estudo precisava de "início" e "fim da
         linha", e aqui não entra tecla sem comando global --, e o resultado é que a pergunta *o que
-        Home e End fazem no resto da janela?* finalmente foi feita."""
-        self.assertEqual(len(atalhos.ATALHOS), 18)
+        Home e End fazem no resto da janela?* finalmente foi feita.
+
+        O décimo nono, o vigésimo e o vigésimo primeiro são da S-333, e a razão é a da S-281
+        outra vez: `Ctrl+0` ajustava à largura desde a S-165, e aproximar, afastar e enquadrar a
+        folha inteira -- três botões que estão na mesma barra -- não tinham tecla nenhuma."""
+        self.assertEqual(len(atalhos.ATALHOS), 21)
+        self.assertEqual("Ctrl++", atalhos.acelerador("zoom_mais"))
+        self.assertEqual("Ctrl+9", atalhos.acelerador("ajustar_pagina"))
         self.assertEqual("Ctrl+Enter", atalhos.acelerador("aplicar_fen"))
         self.assertEqual("Ctrl+Z", atalhos.acelerador("desfazer"))
         self.assertEqual("Ctrl+Y", atalhos.acelerador("refazer"))
@@ -220,6 +226,33 @@ class MontagemTests(unittest.TestCase):
         menu._preencher_recentes(recentes, lambda: list(livros))
 
         self.assertEqual(str(recentes.entrycget(0, "label")), "Karpov A.pdf")
+
+
+    def test_a_barra_anterior_e_destruida(self) -> None:
+        """Trocar de pele monta a barra de novo, e a de antes não pode ficar viva (S-399).
+
+        `root.configure(menu=...)` **troca** a que está pendurada e não destrói nada: a antiga
+        continuava no interpretador Tcl com os seis submenus dela e um comando Tcl por linha.
+        Cinco trocas de pele numa sessão deixavam cinco barras inteiras na memória -- e o efeito
+        não aparece na tela, que é o que faz este ser o tipo de vazamento que dura anos.
+        """
+        primeira = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
+        filhos = primeira.winfo_children()
+        self.assertTrue(filhos, "a barra tem de ter submenus, ou o teste não mede nada")
+
+        segunda = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
+
+        self.assertNotEqual(str(primeira), str(segunda))
+        self.assertFalse(primeira.winfo_exists(), "a barra anterior continuou viva")
+        self.assertFalse(any(filho.winfo_exists() for filho in filhos), "os submenus dela também")
+        self.assertEqual(str(segunda), str(self.janela.cget("menu")))
+
+    def test_a_barra_de_agora_continua_de_pe(self) -> None:
+        """A ordem importa: destruir antes de pendurar a nova deixaria a janela um instante sem
+        menu nenhum, e no Windows isso pisca."""
+        barra = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
+        self.assertTrue(barra.winfo_exists())
+        self.assertEqual(len(menu.MENUS), barra.index(tk.END))
 
 
 class RecentesDoEstadoTests(unittest.TestCase):

@@ -170,6 +170,29 @@ ATALHOS: tuple[Atalho, ...] = (
         na_sala="Fim da linha do estudo",
     ),
     Atalho("<Control-0>", "Ctrl+0", "ajustar_largura", "Ajustar a página à largura do visualizador"),
+    # **As três da S-333**, e elas fecham o enquadramento: ajustar à largura tinha tecla desde a
+    # S-165, e aumentar, diminuir e ajustar à página não tinham nenhuma. As três estão a um botão
+    # de distância na barra do visualizador, e é justamente por isso que a falta passou -- quem
+    # está lendo uma folha já tem a mão no mouse. Quem não tem é quem lê pelo teclado.
+    #
+    # `Ctrl++` e `Ctrl+-` são as do navegador e as do leitor de PDF do sistema, e são as mesmas
+    # que o editor de texto usa para o corpo dele: a sobreposição está declarada logo abaixo, e
+    # dentro do editor a tecla continua sendo dele.
+    Atalho(
+        "<Control-plus>",
+        "Ctrl++",
+        "zoom_mais",
+        "Aproximar a página",
+        no_editor="Aumenta o corpo do texto da folha",
+    ),
+    Atalho(
+        "<Control-minus>",
+        "Ctrl+-",
+        "zoom_menos",
+        "Afastar a página",
+        no_editor="Diminui o corpo do texto da folha",
+    ),
+    Atalho("<Control-9>", "Ctrl+9", "ajustar_pagina", "Enquadrar a folha inteira na tela"),
     # Fora do gesto, e por isso no fim: as treze de cima agem sobre o diagrama ou sobre a página,
     # e esta age sobre o **programa** -- ela é como se acha um comando quando não se sabe em que
     # menu ele mora. `<Control-P>` e não `<Control-Shift-p>` pela mesma razão do `Ctrl+Shift+S`:
@@ -269,6 +292,12 @@ GANHA_DO_TK = "ganha-do-tk"
 SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
     "<Control-r>": CEDIDA_PELA_GUARDA,
     "<Control-h>": GANHA_DO_TK,
+    # As duas da S-333. `Ctrl++` e `Ctrl+-` aproximam a **página** na janela e o **corpo do
+    # texto** dentro do editor, que é o que as duas teclas fazem em qualquer programa com as duas
+    # coisas. Cedidas pela guarda, como o `Ctrl+R`: o editor as declara e as liga no próprio
+    # widget, e ali a da janela está morta.
+    "<Control-plus>": CEDIDA_PELA_GUARDA,
+    "<Control-minus>": CEDIDA_PELA_GUARDA,
 }
 """Sequências que estão nas **duas** tabelas, e por que cada uma pode estar (S-259/S-267).
 

@@ -3,10 +3,17 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 DATE_FORMAT = "%H:%M:%S"
+
+TAMANHO_DO_LOG = 2 * 1024 * 1024
+"""Bytes por arquivo de log antes de ele rotacionar (S-389)."""
+
+LOGS_GUARDADOS = 5
+"""Quantos arquivos anteriores ficam. Cinco de 2 MB: a sessão de ontem cabe, e o disco tem teto."""
 
 _configured = False
 
@@ -29,27 +36,75 @@ def _force_utf8_output() -> None:
             pass
 
 
+_verboso_pedido = False
+"""Se o comando que esta rodando pediu `-v`. Ver `verbosidade_pedida` (S-427)."""
+
+
+def verbosidade_pedida() -> bool:
+    """O `-v` **deste** comando, dito por quem o parseou (S-427).
+
+    **O que isto conserta.** `cli.run_main` decidia se mostrava o traceback varrendo o
+    `sys.argv` do processo, e num processo que nao e o comando isso e a linha de outra pessoa:
+    a CI roda `uv run pytest -v`, e o `-v` do pytest fazia o `run_main` levantar a excecao
+    original em vez de traduzi-la para pt-BR e devolver o codigo de saida. Dois testes de
+    `test_cli_errors` reprovavam **so na CI** por causa disso -- na maquina de desenvolvimento a
+    suite roda sem `-v`.
+
+    O funil e universal: os 40 comandos chamam `configure_logging(verbose=args.verbose)` depois
+    de parsear, entao a resposta certa ja passa por aqui uma vez por comando. Perguntar ao
+    argparse do proprio comando e o oposto de adivinhar pela linha do processo.
+    """
+    return _verboso_pedido
+
+
 def configure_logging(*, verbose: bool = False, log_file: Path | None = None) -> None:
     """Configura o logging da aplicacao. Idempotente: chamadas repetidas nao duplicam handlers.
 
     Deve ser chamado apenas pelos entrypoints (CLIs e frontends), nunca por modulos
     de biblioteca -- estes so obtem seu logger com `logging.getLogger(__name__)`.
+
+    **Sem `log_file`, o destino é o de `default_log_file()` (S-390).** Ele era um parâmetro que
+    cada comando tinha de lembrar de passar, e **23 dos 41 não passavam** -- entre eles uma
+    janela Tk. Num checkout isso não muda nada, porque sem `CVOFF_LOG_DIR` aquela função devolve
+    `None`; num `.exe`, é a diferença entre ter e não ter rastro, que é o mesmo modo de falha
+    que a S-127 fechou para o congelado.
     """
-    global _configured
+    global _configured, _verboso_pedido
+    # **Registrado antes do `return` de idempotencia** (S-427): o segundo comando de um mesmo
+    # processo nao reconfigura o logging, e mesmo assim e ele quem esta rodando -- quem pergunta
+    # depois quer saber o que **este** comando pediu, e nao o que o primeiro pediu.
+    _verboso_pedido = verbose
     if _configured:
         return
+
+    if log_file is None:
+        log_file = default_log_file()
 
     _force_utf8_output()
 
     level = logging.DEBUG if verbose else logging.INFO
-    console = logging.StreamHandler()
-    console.setLevel(level)
-    handlers: list[logging.Handler] = [console]
+    handlers: list[logging.Handler] = []
+    # **Sem console, não há handler de console (S-389).** No bundle da S-55 o `.exe` é montado
+    # com `console=False`, e aí `sys.stderr` é `None`: o `StreamHandler` nasce sem fluxo e
+    # **falha a cada registro** -- o logging imprime "--- Logging error ---" para o fluxo que
+    # não existe, e o que se vê é nada. O arquivo continuava recebendo, então o defeito era
+    # invisível e custava uma exceção por linha de log.
+    if sys.stderr is not None:
+        console = logging.StreamHandler()
+        console.setLevel(level)
+        handlers.append(console)
 
     if log_file is not None:
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            arquivo = logging.FileHandler(log_file, encoding="utf-8")
+            # **Rotativo, e não crescente para sempre (S-389).** O arquivo grava em DEBUG por
+            # decisão da S-126, e DEBUG num programa que lê 402 páginas são dezenas de MB por
+            # sessão: `logs/chessvisionoff.log` era um arquivo que só crescia, na pasta do
+            # usuário, sem nada que o aparasse. Cinco arquivos de 2 MB é rastro suficiente para
+            # a falha de ontem e teto para o disco de amanhã.
+            arquivo: logging.Handler = RotatingFileHandler(
+                log_file, maxBytes=TAMANHO_DO_LOG, backupCount=LOGS_GUARDADOS, encoding="utf-8"
+            )
             # **O arquivo sempre em DEBUG, a tela no nivel pedido** (S-126). E o que permite ao
             # `cli.run_main` mandar o traceback para o log sem despeja-lo na tela: sem isso, a
             # unica escolha era "traceback em ingles no terminal" ou "rastro nenhum em lugar
@@ -99,3 +154,24 @@ def default_log_file() -> Path | None:
 
         return config.PROJECT_ROOT / "logs" / "chessvisionoff.log"
     return None
+
+
+def onde_esta_o_rastro() -> str:
+    """A frase que diz **onde** ficou o traceback -- ou que não ficou em lugar nenhum (S-421).
+
+    **Toda mensagem de erro deste programa mandava olhar "o log", e num checkout não há um.**
+    `default_log_file` devolve `None` sem `CVOFF_LOG_DIR`, de propósito: no terminal o rastro
+    é o terminal. Mas a caixa de erro da janela e o `cli_errors` diziam a mesma frase nos dois
+    casos, e no caso comum -- alguém que clonou e rodou -- ela manda procurar um arquivo que
+    ninguém escreveu. Quem tenta seguir a instrução conclui que perdeu o rastro; ele nunca
+    existiu.
+
+    Devolve o caminho quando há um, e o que fazer para haver quando não há.
+    """
+    destino = default_log_file()
+    if destino is None:
+        return (
+            "Não há arquivo de log neste ambiente: defina CVOFF_LOG_DIR para criar um, ou "
+            "rode o comando pelo terminal com -v."
+        )
+    return f"O rastro completo está em {destino}."

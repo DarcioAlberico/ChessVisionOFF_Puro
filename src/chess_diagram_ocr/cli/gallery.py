@@ -30,7 +30,7 @@ from ..gallery import (
     write_human_extract,
 )
 from ..logging_setup import configure_logging, default_log_file
-from . import cli_errors
+from . import EXIT_BAD_INPUT, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "com `cvoff-games --apply`."
         ),
     )
-    parser.add_argument("--gallery-dir", type=Path, default=DEFAULT_GALLERY_DIR)
+    parser.add_argument(
+        "--gallery-dir", type=Path, default=DEFAULT_GALLERY_DIR, help="Pasta dos índices da Galeria."
+    )
     parser.add_argument("--extract", type=Path, default=DEFAULT_HUMAN_EXTRACT, help="O .jsonl do extrato.")
     grupo = parser.add_mutually_exclusive_group(required=True)
     grupo.add_argument("--export-human", action="store_true", help="Galeria -> extrato.")
@@ -53,7 +55,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Extrato -> galeria. O que veio da pessoa vence o que a base preencheu.",
     )
     grupo.add_argument("--census", action="store_true", help="Conta sem gravar nada.")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -90,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
         registros = read_human_extract(args.extract)
         if not registros:
             print(f"Extrato vazio ou inexistente: {args.extract}")
-            return 1
+            return EXIT_BAD_INPUT
         por_livro = restore_human(registros, directory=args.gallery_dir)
         print(f"{sum(por_livro.values())} diagrama(s) restaurados em {len(por_livro)} livro(s):")
         for livro, quantos in sorted(por_livro.items()):

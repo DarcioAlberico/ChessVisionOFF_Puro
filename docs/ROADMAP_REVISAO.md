@@ -19,15 +19,15 @@ segunda passada de céticos, com a tarefa de **derrubar** cada achado antes de e
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
-> | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
+> | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-327 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-428 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -275,17 +275,17 @@ que teste faltava.
 | 52 | O portão que nunca foi aberto | S-296 a S-299 | **entregue** | a CI não roda neste ramo, e duas verificações estão vermelhas |
 | 53 | O trabalho humano que some | S-300 a S-313 | **entregue** | doze caminhos que apagam sem perguntar e sem desfazer |
 | 54 | O que trava, e o que não cancela | S-314 a S-319 | **entregue** |  a janela congela, e três botões "Cancelar" não cancelam nada |
-| 55 | O primeiro dia, e o estado entre abas | S-320 a S-328 | S-320 a S-323 entregues | um clone novo lê FEN inventada, e o conserto impresso apaga os 4.454 rótulos |
-| 56 | O que so a CI podia mostrar | S-325 a S-327 | **entregue** |  atributo fora do desfazer, zoom que não redimensiona, `.md` sem imagem |
-| 57 | A folha do livro, e o editor que promete | S-328 a S-347 | |  o comentário que some, o PGN de 10 GB na thread do Tk |
-| 58 | O texto lido: o que erra e o que custa | S-348 a S-360 | |  a camada pesquisável duplicada, e 53% do custo numa pergunta repetida |
-| 59 | O núcleo, revisitado | S-361 a S-367 | |  3,4 s num tabuleiro ilegal, e a sentinela que volta a casar |
-| 60 | Os dados e o treino | S-368 a S-376 | |  o `splits.csv` apagado, o "melhor época" que indexa a lista errada |
-| 61 | Os quarenta comandos | S-377 a S-385 | |  o `-v` que a mensagem de erro manda usar e doze comandos recusam |
-| 62 | O que sai no `.exe` | S-386 a S-393 | |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |
-| 63 | A cor, o foco e a tecla | S-394 a S-404 | |  três painéis fora do sistema de cor, onze diálogos sem Esc |
-| 64 | A documentação que envelheceu | S-405 a S-413 | |  oito itens entregues fora do índice, e o CER que o próprio relatório desmente |
-| 65 | A suíte que não pegou nada disso | S-414 a S-421 | |  4.508 testes verdes sobre 70 defeitos de correção |
+| 55 | O primeiro dia, e o estado entre abas | S-320 a S-323, S-421 a S-424 | **entregue** | um clone novo lê FEN inventada, e o conserto impresso apaga os 4.454 rótulos |
+| 56 | O que so a CI podia mostrar | S-325 a S-327 | **entregue** |  o digest que via CRLF, a fita medida nas fontes desta máquina, a sonda de artefato ausente |
+| 57 | A folha, o editor e a sala de estudo | S-328 a S-347 | **entregue** |  duas bases para a mesma folha, o desfazer que não vê formato, a sala que não grava |
+| 58 | O texto lido: o que erra e o que custa | S-348 a S-357 | **entregue** |  a camada pesquisável duplicada, e 53% do custo numa pergunta repetida |
+| 59 | O núcleo, revisitado | S-358 a S-364 | **entregue** |  3,4 s num tabuleiro ilegal, e a sentinela que volta a casar |
+| 60 | Os dados e o treino | S-368 a S-376 | **entregue** |  o `splits.csv` apagado, o "melhor época" que indexa a lista errada |
+| 61 | Os quarenta comandos | S-377 a S-385 | **entregue** |  o `-v` que a mensagem de erro manda usar e doze comandos recusam |
+| 62 | O que sai no `.exe` | S-386 a S-391 | **entregue** |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |
+| 63 | A cor, o foco e a tecla | S-392 a S-403 | **entregue** |  três painéis fora do sistema de cor, onze diálogos sem Esc |
+| 64 | A documentação que envelheceu | S-404 a S-412 | **entregue** |  oito itens entregues fora do índice, e o CER que o próprio relatório desmente |
+| 65 | A suíte que não pegou nada disso | S-413 a S-420 | **entregue** |  4.508 testes verdes sobre 70 defeitos de correção |
 
 **A coluna "estado" é o que esta tabela serve para responder.** Ela é lida antes de qualquer
 outra coisa por quem retoma o trabalho: item sem marca é item por fazer, e a ordem de execução
@@ -387,13 +387,13 @@ limpo, `data/labels.csv` vem com 4.454 linhas e `data/samples/` vem com um `.git
 CSV a **um cabeçalho** -- sem destravar nada, porque os rótulos utilizáveis continuavam zero. O
 primeiro comando que o recém-chegado roda mandava apagar o único dado que o repositório entrega.
 
-**O que sobra desta fase, e ainda não tem item:** toda mensagem de erro manda olhar um log que
-não existe num checkout; dois comandos não conseguem imprimir o `--help` com a saída
-redirecionada no Windows; a aba Texto vem com o motor que nunca funciona num clone novo, tendo
-`auto` ao lado; e a tabela "Resolução de problemas" do README cobre o modelo que quase ninguém
-usa e não o que falta sempre.
+**O que sobrava desta fase virou a S-421 a S-424, entregues em 2026-08-28:** toda mensagem de erro
+mandava olhar um log que não existe num checkout (S-421); dois comandos não conseguiam imprimir o
+`--help` com a saída redirecionada no Windows (S-422); a aba Texto vinha com o motor que nunca
+funciona num clone novo, tendo `auto` ao lado (S-423); e a tabela "Resolução de problemas" do
+README cobria o modelo que quase ninguém usa e não o que falta sempre (S-424).
 
-## Fase 56 — A folha do livro, e o editor que promete
+## Fase 57 — A folha do livro, o editor e a sala de estudo
 
 O visualizador de PDF é o painel mais usado do programa e o que mais mistura convenções.
 
@@ -439,7 +439,7 @@ comandos do catálogo com rótulo próprio fazem a mesma coisa (`substituir_todo
 `salvar_texto_como` = `salvar_texto`); e a barra de formato não acompanha o cursor movido por
 seta, `Home`, `End` ou `PgUp`, então os interruptores mentem sobre o trecho.
 
-## Fase 57 — A sala de estudo, segunda volta
+### A sala de estudo, dentro da mesma fase
 
 A Fase 43 acertou a fundação: o estudo é dado. As pontas que ficaram:
 
@@ -650,14 +650,114 @@ prefixo -- esses dois eram os únicos fora do padrão, desde a Fase 29.
 Ele estava lá havia semanas, invisível, e ninguém podia tê-lo visto: a CI não rodava neste ramo.
 É a demonstração do argumento que abre este documento, e ela chegou uma hora depois do conserto.
 
-**Dois itens que a execução deixou registrados, e ainda não têm número:**
+**Dois itens que a execução deixou registrados, entregues em 2026-08-28 como S-425 e S-426:**
 
-- **O digest da S-219 conta comentário.** Ele é sobre o conteúdo do arquivo, então corrigir uma
-  docstring de `config.py` invalidou os quatro relatórios de campo e custou uma remedição de
-  quatro minutos. Comentário não muda medição. Um digest sobre a árvore sintática responderia a
-  pergunta certa -- mas é mais código, e o conservador de hoje nunca *deixa passar* uma mudança
-  real. Fica registrado como escolha, e não como esquecimento.
-- **A granularidade por classe de widget da cessão de tecla.** A `main` derivava a lista das
-  ligações de classe do próprio Tk, separando `Entry` de `Text`, de `Combobox` e de `Spinbox`; a
-  integração ficou com a versão deste ramo, que deriva do catálogo de ações e não separa por
-  classe. A da `main` é mais fina e continua no histórico.
+- **O digest da S-219 contava comentário** (S-425). Ele era sobre o conteúdo do arquivo, então
+  corrigir uma docstring de `config.py` invalidava os quatro relatórios de campo e custava uma
+  remedição de quatro minutos -- três vezes só nesta revisão. Comentário não muda medição, e o
+  digest passou a ser sobre a **árvore sintática**: `ast.parse` descarta comentário, as docstrings
+  saem, e toda mudança de código continua entrando.
+- **A granularidade por classe de widget da cessão de tecla** (S-426). A `main` derivava a lista
+  das ligações de classe do próprio Tk, separando `Entry` de `Text`, de `Combobox` e de `Spinbox`.
+  **A versão deste ramo fica**, e a razão está medida: derivar do `bind_class` cede toda tecla que
+  a classe liga, que é o defeito da S-294 -- `Ctrl+S` no campo de FEN não salvava. O que a
+  separação por classe compraria já está comprado pelo significado, e agora está sob teste.
+
+---
+
+---
+
+# O que a segunda execução da CI encontrou
+
+O PR desta revisão para a `main` foi o primeiro a rodar as três verificações sobre as nove fases
+juntas, e **reprovou** -- oito testes, e nenhum deles reproduzível nesta máquina. Dois vieram de
+um valor lido do ambiente errado e viraram item (S-427 e S-428, na
+[SPEC_REVISAO.md](SPEC_REVISAO.md)): o `-v` do `pytest` que o `run_main` tomava por `-v` de
+comando, e a guarda de tamanho de artefato que confundia *a pasta existe* com *o artefato está
+lá* -- `data/samples/` é versionado com um `.gitkeep`.
+
+Os outros são a medida de largura da fita, que depende da fonte da máquina e já estava sendo
+atacada pela S-326: a mesma classe que a Fase 56 registrou, e no mesmo arquivo.
+
+**É a terceira vez neste documento que a CI encontra o que a máquina de desenvolvimento não
+podia mostrar** -- a primeira foi o `from tests.` da Fase 29, a segunda foram os três defeitos da
+Fase 56. Vale escrever o que as três têm em comum: **nenhuma delas é sobre o programa.** São
+sobre o que o teste assume da máquina em que roda -- o caminho de import, o final de linha, a
+fonte, a linha de comando do processo, a pasta que existe vazia. É a superfície que só um segundo
+ambiente ilumina, e é por isso que a Fase 52 vem antes de tudo.
+
+# O que ficou entregue
+
+**Encerrada em 2026-08-28.** A coluna *estado* da tabela das catorze fases não tem mais linha sem
+marca, e o registro item a item -- problema com `arquivo:linha`, solução, critério de aceite e o
+teste que o trava -- está em [SPEC_REVISAO.md](SPEC_REVISAO.md).
+
+## As três verificações, que era por onde tudo começou
+
+```
+                              antes da revisão              hoje
+$ uv run pytest      4.508 passaram, 3.593 subtests   4.822 passaram, 3.640 subtests
+$ uv run ruff check .              4 erros            limpo
+$ uv run mypy            30 erros em 8 arquivos       limpo (216 arquivos)
+```
+
+Duas delas estavam vermelhas e ninguém tinha sido avisado, porque a CI não rodava neste ramo. A
+Fase 52 abriu o portão antes de qualquer conserto, e foi a primeira execução dela que achou um
+defeito de importação anterior à revisão -- a demonstração do argumento que abre este documento,
+uma hora depois do conserto.
+
+## A conta
+
+```
+seções de spec                  130   S-296 a S-426 (menos a S-324, que é da aparência)
+  itens que viraram código      121
+  refutados na implementação      2   S-360 e S-407
+  decididos, e não implementados  1   S-426
+  já entregues por outro item     3   S-348, S-368, S-369
+  números aposentados             3   S-365 a S-367, renumerados para S-386 a S-391
+
+commits                          32
+arquivos tocados                199   +11.082 linhas, -1.547
+  em `src/` e no `app_tkinter`   93
+arquivos de teste novos           5   mais dois ajudantes de suíte
+```
+
+**Os três refutados e decididos contam como entrega**, e é de propósito: o conserto da S-360 foi
+escrito e desfeito, porque derrubava o teste que declara a decisão medida da S-11 -- trocar uma
+decisão medida por uma não medida não é conserto; a S-407 era verdade quando o relatório foi
+escrito e deixou de ser na S-377; e a S-426 escolhe entre duas implementações que existiram ao
+mesmo tempo, com a razão medida. Achado que se investiga e não vira código continua sendo trabalho
+feito, e o único jeito de ele não ser refeito é estar escrito.
+
+## O que mudou de forma, e não só de conteúdo
+
+- **A medição parou de ser cara de manter.** O digest do caminho de medição passou a ser sobre a
+  árvore sintática (S-425): corrigir um comentário deixou de invalidar os quatro relatórios de
+  campo. Nas **doze** remedições desta revisão, todos os números de acerto voltaram idênticos --
+  que é o resultado desejado de uma fase de conserto, e a prova de que nenhum item mexeu no que
+  o programa lê.
+- **O índice de specs passou a ser lido.** A tabela *"Onde mora a spec de cada item"* não cobria
+  oito itens entregues, e o leitor dela descartava em silêncio a linha com três números -- metade
+  dos itens do projeto não estava declarada em lugar nenhum, com as duas guardas verdes (S-404).
+- **A suíte passou a alcançar o que ela não alcançava** (Fase 65): thread que vaza de um teste e
+  morre no seguinte, caixa modal de verdade que trava a rodada, mais de cem pastas por rodada em
+  `%TEMP%`, nove raízes Tk próprias e uma catraca de perguntas modais que declarava 14 sobre 19
+  reais. Cada uma virou guarda: elas falham no teste que causou o problema, e não no vizinho.
+- **O que o programa diz sobre si mesmo é conferido contra o disco.** Seis guardas novas de
+  "números vivos": o CER contra o relatório que o README cita, as classes contra o `char_meta`, o
+  léxico contra os `.gz`, as threads contra o `threading.Thread(` do código, os tamanhos de
+  artefato contra `data/`, e a árvore do README contra o pacote.
+
+## O que continua em aberto, e por escolha
+
+O que a seção [*O que esta revisão deliberadamente NÃO propõe*](#o-que-esta-revisão-deliberadamente-não-propõe)
+listou continua valendo, e um item dela merece o número de hoje: `ui/texto_panel.py` tem **2.574**
+linhas e `ui/study_panel.py` tem **2.227** -- os dois cresceram durante a revisão, porque as Fases
+57 e 63 acrescentaram comportamento a eles. Parti-los continua sendo refatoração de risco alto e
+valor não medido, e continua registrado como observação em vez de item.
+
+**A lição de processo que esta revisão pagou, e que a próxima não deveria pagar de novo:** numere
+pelo bloco que a tabela de fases reserva, e não pelo próximo número livre no disco. A Fase 62 saiu
+com S-365 a S-370, colidiu com três números da Fase 60, e a correção custou 25 substituições em
+oito arquivos mais três seções-ponteiro -- porque `tests/test_docs.py` lê os assuntos dos commits,
+e commit empurrado não se reescreve.

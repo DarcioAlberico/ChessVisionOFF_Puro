@@ -170,7 +170,8 @@ class FiltroPuroTests(unittest.TestCase):
             if item.tipo in (menu.RECENTES, menu.APARENCIA, menu.DENSIDADE)
         }
         declarados = paleta.motivos_declarados()
-        self.assertEqual(submenus | set(comandos.NA_LINHA_DE_CAMPO), set(declarados))
+        esperados = submenus | set(comandos.NA_LINHA_DE_CAMPO) | set(comandos.NA_JANELA_DE_BUSCA)
+        self.assertEqual(esperados, set(declarados))
 
     def test_o_grupo_casa_por_trecho_e_nao_por_subsequencia(self) -> None:
         """**Uma palavra curta casa qualquer coisa por subsequência, e o resultado é lixo.**

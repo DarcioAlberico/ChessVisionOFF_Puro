@@ -667,7 +667,9 @@ def detect_diagrams(
             sobreviventes.append(_apply_refinement(candidate, achado) if refine_embedded else candidate)
         embedded = sobreviventes
 
-    embedded_boxes = [_pixel_bbox(candidate.bbox_pdf, scale) for candidate in embedded]
+    embedded_boxes: list[tuple[int, int, int, int] | None] = [
+        _pixel_bbox(candidate.bbox_pdf, scale) for candidate in embedded
+    ]
     candidates = list(embedded)
 
     # Lado tipico do diagrama nesta pagina, em pixels, segundo as imagens embutidas. Serve de
@@ -683,7 +685,7 @@ def detect_diagrams(
         sides = [
             float(max(box[2], box[3]))
             for box, candidate in zip(embedded_boxes, embedded, strict=True)
-            if not candidate.merged_tiles
+            if box is not None and not candidate.merged_tiles
         ]
         expected_side = _typical_side(sides, size_prior_tolerance)
 
@@ -718,19 +720,29 @@ def detect_diagrams(
             (
                 indice
                 for indice, outra in enumerate(embedded_boxes)
-                if _same_region(box, outra, merged=bool(embedded[indice].merged_tiles))
+                # `None` é a lápide de quem já saiu da lista (S-359): a caixa `(0, 0, 1, 1)` que
+                # marcava isso antes **é uma caixa**, e `_same_region` a compara como tal --
+                # qualquer contorno ancorado na origem da página voltava a "casar" com um
+                # candidato que não existe mais, e o `candidates.remove` abaixo levantaria sobre
+                # ele. Ancorado na origem não é caso raro: é a moldura da página inteira.
+                if outra is not None
+                and _same_region(box, outra, merged=bool(embedded[indice].merged_tiles))
             ),
             None,
         )
         if conflito is not None:
             if not _contour_wins_over_merged(embedded[conflito], board_rgb):
-                _recusado(box, 0.0, "perdeu-para-embutido")
+                # O contraste é **medido**, e não zero (S-364): o recorte está aqui, e
+                # `RejectedQuad.checker` documenta o `0.0` como "a recusa foi antes de haver
+                # recorte". Gravar zero sobre um recorte existente faz o censo de recusas dizer
+                # que o candidato não tinha contraste nenhum -- que é uma afirmação, e falsa.
+                _recusado(box, board_checker_contrast(board_rgb), "perdeu-para-embutido")
                 continue
             # O contorno ganhou de uma uniao de ladrilhos: ele passa a ser o candidato daquela
             # regiao, e a uniao sai. Sem remover a caixa, o proximo achado de contorno da mesma
             # regiao seria suprimido por um candidato que ja nao esta na lista.
             candidates.remove(embedded[conflito])
-            embedded_boxes[conflito] = (0, 0, 1, 1)
+            embedded_boxes[conflito] = None
 
         if expected_side is not None and size_prior_tolerance is not None:
             side = max(box[2], box[3])
@@ -745,7 +757,7 @@ def detect_diagrams(
                     expected_side,
                     size_prior_tolerance * 100,
                 )
-                _recusado(box, 0.0, "prior-de-tamanho")
+                _recusado(box, board_checker_contrast(board_rgb), "prior-de-tamanho")
                 continue
 
         candidates.append(
@@ -758,16 +770,37 @@ def detect_diagrams(
             )
         )
 
-    ordered = _order_candidates(candidates, scale=scale, reading_order=reading_order)
+    # **Quem passa do teto sai por score, e não por posição na página (S-362).** O corte era
+    # aplicado depois da ordenação de leitura: numa página de treze diagramas com teto de doze,
+    # o que sumia era o **último a ser lido** -- o do canto inferior direito --, e não o pior. A
+    # S-14 já tinha visto o sintoma pela tela ("o nono pode ser o do canto superior direito").
+    # A ordem de leitura continua sendo a da saída; ela só deixou de decidir *quem* fica.
+    por_score = sorted(candidates, key=lambda c: -float(c.detector_score))
+    escolhidos = por_score[:max_boards]
+    cortados = por_score[max_boards:]
+    ordered = _order_candidates(escolhidos, scale=scale, reading_order=reading_order)
+
+    if cortados:
+        # `warning`, como em `detect_boards` (S-362): o corte por contagem é a recusa que mais
+        # engana -- o candidato passou por todas as guardas e sumiu porque não coube --, e era a
+        # única sem nada no log. Quem vê doze diagramas numa página de treze precisa saber por quê.
+        logger.warning(
+            "max_boards=%d cortou %d candidato(s) que passaram nas guardas (scores %s contra "
+            "%.4f do último aceito). Se a página tem mais diagramas que isso, aumente "
+            "'Max diagramas'.",
+            max_boards,
+            len(cortados),
+            ", ".join(f"{c.detector_score:.4f}" for c in cortados[:4]),
+            escolhidos[-1].detector_score if escolhidos else 0.0,
+        )
     if rejected is not None:
         # O corte final tambem e uma recusa, e e a que mais engana: o candidato passou por
-        # todas as guardas e sumiu por contagem. E o defeito que a S-14 ja tinha visto na tela
-        # ("o nono pode ser o do canto superior direito"), aqui do lado do relatorio.
-        for excedente in ordered[max_boards:]:
+        # todas as guardas e sumiu por contagem.
+        for excedente in cortados:
             x0, y0, x1, y1 = excedente.bbox_pdf
             caixa = (int(x0 * scale), int(y0 * scale), max(1, int((x1 - x0) * scale)), max(1, int((y1 - y0) * scale)))
             rejected.append(RejectedQuad(caixa, excedente.detector_score, 0.0, "teto-da-pagina"))
-    return ordered[:max_boards]
+    return ordered
 
 
 def detect_diagrams_in_pdf_page(
@@ -793,7 +826,7 @@ def detect_diagrams_in_pdf_page(
 
     with open_document(pdf_source) as doc:
         if page_index < 0 or page_index >= doc.page_count:
-            raise ValueError(f"Pagina {page_index} fora do intervalo (0..{doc.page_count - 1})")
+            raise ValueError(f"Página {page_index} fora do intervalo (0..{doc.page_count - 1})")
         return detect_diagrams(
             doc[page_index],
             page_rgb,

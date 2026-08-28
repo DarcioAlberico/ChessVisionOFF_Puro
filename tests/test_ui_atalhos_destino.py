@@ -13,10 +13,11 @@ declara quais ações são dele, e a guarda pergunta antes de ceder.
 
 from __future__ import annotations
 
-import tempfile
 import tkinter as tk
 import unittest
-from pathlib import Path
+
+from ambiente_de_teste import pasta_temporaria
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui import atalhos, shortcuts, texto_panel
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -96,14 +97,14 @@ class DestinoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         atalhos.conferir_dono(painel, "TextoPanel")
         self.assertEqual(painel.acoes_proprias(), texto_panel.ACOES_PROPRIAS)
 
 
 class NenhumaTeclaNovaTests(unittest.TestCase):
-    def test_a_tabela_tem_as_dezoito_teclas(self) -> None:
+    def test_a_tabela_tem_as_vinte_e_uma_teclas(self) -> None:
         """Catorze da S-244 -- que era o **oposto** de acrescentar teclas: `Ctrl+S` continua sendo
         uma tecla só, e o que ela mudou foi o destino conforme o foco --, mais as duas da S-267 e as
         duas da S-281.
@@ -115,12 +116,20 @@ class NenhumaTeclaNovaTests(unittest.TestCase):
         As da S-281 são o caso oposto e igualmente honesto: `Home` e `End` **têm** dois destinos --
         primeira/última página na janela, início/fim da linha na sala --, e por isso elas declaram
         `na_sala` e a legenda mostra as duas linhas. O que elas acrescentam ao resto do programa é o
-        par que faltava desde a S-70: virar uma página tinha tecla, e ir à ponta não tinha."""
-        self.assertEqual(len(atalhos.ATALHOS), 18)
+        par que faltava desde a S-70: virar uma página tinha tecla, e ir à ponta não tinha.
+
+        **As três da S-333 são do mesmo tipo das da S-281**: aumentar, diminuir e ajustar à
+        página são comandos que já existiam na barra do visualizador e não tinham tecla nenhuma.
+        Duas delas têm segundo destino declarado -- dentro do editor, `Ctrl++` e `Ctrl+-` mexem
+        no corpo do texto --, e é por isso que aparecem em `SOBREPOSICOES_NO_EDITOR`."""
+        self.assertEqual(len(atalhos.ATALHOS), 21)
         self.assertEqual(atalhos.acao_de("<Home>"), "primeira_pagina")
         self.assertEqual(atalhos.acao_de("<End>"), "ultima_pagina")
         self.assertEqual(atalhos.acao_de("<Control-f>"), "achar")
         self.assertEqual(atalhos.acao_de("<Control-h>"), "substituir")
+        self.assertEqual(atalhos.acao_de("<Control-plus>"), "zoom_mais")
+        self.assertEqual(atalhos.acao_de("<Control-minus>"), "zoom_menos")
+        self.assertEqual(atalhos.acao_de("<Control-9>"), "ajustar_pagina")
 
     def test_toda_acao_propria_da_aba_tem_tecla(self) -> None:
         """**A declaração vazia que a S-267 fecha.** `ACOES_PROPRIAS` diz "esta aba atende esta ação
@@ -232,19 +241,9 @@ def _raiz() -> tk.Tk:
 
 
 def setUpModule() -> None:
+    """A raiz é a do processo (`tests/tk_root.py`), e não uma deste módulo (S-416)."""
     global _RAIZ
-    try:
-        _RAIZ = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - maquina sem display
-        raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-    _RAIZ.withdraw()
-
-
-def tearDownModule() -> None:
-    global _RAIZ
-    if _RAIZ is not None:
-        _RAIZ.destroy()
-        _RAIZ = None
+    _RAIZ = raiz_do_processo()
 
 
 class GuardaComFocoTests(unittest.TestCase):
@@ -265,7 +264,7 @@ class GuardaComFocoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         gravou: list[str] = []
         painel.salvar_documento = lambda: gravou.append("texto")  # type: ignore[method-assign]
@@ -296,7 +295,7 @@ class GuardaComFocoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         tratador = shortcuts.guard(lambda: self.chamadas.append("diagrama"), "<Left>")
         resposta = tratador(self._evento(painel.editor))

@@ -17,10 +17,57 @@ import json
 import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+TENTATIVAS_DE_TROCA = 5
+"""Quantas vezes insistir no `os.replace` antes de desistir com recado (S-373)."""
+
+ESPERA_ENTRE_TROCAS = 0.08
+"""Segundos da primeira espera; as seguintes crescem em progressão (0,08 → 0,4 s)."""
+
+
+def _substituir(temp_path: Path, path: Path) -> None:
+    """`os.replace`, com a segunda chance e a frase que o Windows não dá (S-373).
+
+    No POSIX renomear por cima de um arquivo aberto funciona: quem o tinha aberto continua
+    lendo o inode antigo. **No Windows, não.** Um `handle` aberto no destino sem
+    `FILE_SHARE_DELETE` faz o `MoveFileEx` falhar com `ERROR_ACCESS_DENIED`, e o Python o
+    entrega como `PermissionError: [WinError 5] Acesso negado`, sem dizer qual arquivo o
+    prendia nem que essa é a causa. Acontece com o `labels.csv` aberto no Excel -- que é
+    exatamente o programa em que alguém abriria um CSV --, com o `.json` de estado aberto no
+    editor, e com o antivírus, que segura o arquivo recém-criado por alguns milissegundos
+    para varrer.
+
+    Os dois casos pedem respostas diferentes e esta função dá as duas: o antivírus solta
+    sozinho, então **insistir** resolve; o Excel não solta, então o que resta é **dizer** o
+    que aconteceu. O que não pode continuar é a mensagem crua, que mandava o usuário procurar
+    permissão de pasta num problema que é de arquivo aberto.
+
+    O arquivo antigo fica intacto nas duas saídas: `os.replace` ou troca tudo, ou não troca
+    nada.
+    """
+    ultima: OSError | None = None
+    for tentativa in range(TENTATIVAS_DE_TROCA):
+        try:
+            os.replace(temp_path, path)
+            return
+        except PermissionError as exc:
+            ultima = exc
+            if tentativa + 1 < TENTATIVAS_DE_TROCA:
+                time.sleep(ESPERA_ENTRE_TROCAS * (tentativa + 1))
+
+    espera = ESPERA_ENTRE_TROCAS * sum(range(1, TENTATIVAS_DE_TROCA))
+    raise PermissionError(
+        f"Não foi possível gravar {path}: o sistema recusou substituir o arquivo por "
+        f"{espera:.1f} s seguidos. No Windows isso quer dizer que ele está aberto em outro "
+        f"programa -- o Excel e o Bloco de Notas seguram o arquivo enquanto a janela estiver "
+        f"aberta. Feche-o e repita a operação; o arquivo anterior continua intacto e nada foi "
+        f"gravado pela metade. Detalhe do sistema: {ultima}"
+    ) from ultima
 
 
 def atomic_write_text(path: Path, payload: str, *, encoding: str = "utf-8") -> None:
@@ -45,7 +92,7 @@ def atomic_write_text(path: Path, payload: str, *, encoding: str = "utf-8") -> N
             # Sem o fsync, o rename pode chegar ao disco antes do conteudo: o arquivo
             # existe, tem o nome certo e esta vazio -- exatamente o que se quis evitar.
             os.fsync(handle.fileno())
-        os.replace(temp_path, path)
+        _substituir(temp_path, path)
     except BaseException:
         temp_path.unlink(missing_ok=True)
         raise
@@ -141,7 +188,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp_path, path)
+        _substituir(temp_path, path)
     except BaseException:
         temp_path.unlink(missing_ok=True)
         raise

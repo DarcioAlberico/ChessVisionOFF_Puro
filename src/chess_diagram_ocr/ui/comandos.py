@@ -29,7 +29,7 @@ quem decide é afirmável sem abrir janela.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from . import estilos, strings
@@ -44,6 +44,7 @@ __all__ = [
     "ESTUDO",
     "GRUPOS",
     "NAS_BARRAS_DO_PDF",
+    "NA_JANELA_DE_BUSCA",
     "NA_LINHA_DE_CAMPO",
     "OCR",
     "VISUALIZACAO",
@@ -742,6 +743,17 @@ declarar a lista onde o inventário da S-233 possa lê-la sem abrir janela --
 lista é a tela da **clássica** e não do painel: o que a pele decide é o que aparece."""
 
 
+NA_JANELA_DE_BUSCA: tuple[str, ...] = ("substituir_todos",)
+"""Os comandos que só existem **dentro** da janela de achar e substituir (S-343).
+
+`substituir_todos` é o botão que troca as ocorrências marcadas na lista, e a lista só existe
+naquela janela. Como comando da paleta ele abria a mesma janela que "Substituir…" -- dois rótulos
+para uma ação, e o segundo prometendo uma troca em massa que ele não fazia.
+
+Fica no catálogo porque é de lá que o botão tira o rótulo, e é declarado aqui para a paleta poder
+dizer **por que** não o executa, em vez de mostrá-lo como se executasse."""
+
+
 NA_LINHA_DE_CAMPO: tuple[str, ...] = ("anotar_pagina", "anotar_sem_diagrama", "tirar_do_campo")
 """Os comandos que moram na linha de conjunto de campo, e **não** ganham item de menu (S-223).
 
@@ -786,6 +798,43 @@ def rotulo_de_botao(acao: str) -> str:
 def rotulo_alternado(acao: str) -> str:
     """O rótulo de **ligado** daquele comando. Igual ao normal quando ele não alterna."""
     return comando(acao).alternado
+
+
+_SEGUIDORES: dict[str, list[Callable[[str], object]]] = {}
+"""Quem repinta o rótulo de um comando que alterna. Ver `ao_alternar` (S-396)."""
+
+
+def ao_alternar(acao: str, aplicar: Callable[[str], object]) -> None:
+    """Registra quem tem de mostrar o estado ligado/desligado daquele comando (S-396).
+
+    **"Selecionar área" é um modo, e só a pele clássica dizia isso.** O botão dela troca o texto
+    para "Cancelar seleção" desde a S-222; na "Foco" e na "Fita" o mesmo comando ligava o modo e
+    o botão continuava escrito "Selecionar área" -- ligar e desligar tinham o mesmo aspecto, e o
+    único jeito de saber em que estado se estava era arrastar o mouse sobre a folha e ver o que
+    acontecia.
+
+    Recebe uma função e não um widget de propósito: este módulo é o catálogo e não importa
+    `tkinter`. Quem registra decide o que fazer com o texto -- a fita o quebra em duas linhas, a
+    clássica o usa inteiro.
+    """
+    _SEGUIDORES.setdefault(acao, []).append(aplicar)
+
+
+def alternou(acao: str, *, ligado: bool) -> None:
+    """Avisa os seguidores daquele comando. Nunca levanta, e esquece o que já morreu.
+
+    Mesma disciplina de `theme.repintar`: um botão destruído entre o registro e a troca é a
+    janela de antes, e ele sai da lista em vez de derrubar os outros.
+    """
+    texto = rotulo_alternado(acao) if ligado else rotulo_de_botao(acao)
+    vivos: list[Callable[[str], object]] = []
+    for aplicar in _SEGUIDORES.get(acao, []):
+        try:
+            aplicar(texto)
+        except Exception:  # noqa: BLE001 - widget morto, ou pele remontada: sai da lista
+            continue
+        vivos.append(aplicar)
+    _SEGUIDORES[acao] = vivos
 
 
 def papel(acao: str) -> str:

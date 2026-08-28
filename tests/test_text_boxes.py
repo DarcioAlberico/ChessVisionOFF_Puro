@@ -314,3 +314,52 @@ class ExclusaoTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class JanelaDosPingosTests(unittest.TestCase):
+    """O pingo procura a base numa janela vertical, e não na folha inteira (S-350).
+
+    A medição da inclinação recorta a imagem binária, e o laço a pedia para **toda** caixa alta da
+    página: duas mil recortadas por folha, quase todas a linhas de distância do pingo. A decisão
+    não muda -- quem estava longe já era recusado pelo vão --, e o custo cai com ela.
+    """
+
+    def _pagina(self) -> list[Caixa]:
+        caixas: list[Caixa] = []
+        for linha in range(6):
+            y = 30 + linha * 40
+            for coluna in range(12):
+                x = 20 + coluna * 24
+                caixas.append(Caixa(x, y, x + 14, y + 26, 0.0))
+        # o pingo do `i` da terceira linha, sobre a segunda haste dela
+        caixas.append(Caixa(46, 30 + 2 * 40 - 8, 52, 30 + 2 * 40 - 2, 0.0))
+        return caixas
+
+    def test_o_pingo_continua_indo_para_a_haste_certa(self) -> None:
+        caixas = self._pagina()
+        unidas = unir_pingos(list(caixas), escala=26)
+
+        self.assertEqual(len(unidas), len(caixas) - 1)
+        alvo = next(c for c in unidas if c.x1 == 44 and c.y1 < 30 + 2 * 40)
+        self.assertLessEqual(alvo.y1, 30 + 2 * 40 - 8, "a caixa unida tem de subir até o pingo")
+
+    def test_a_inclinacao_so_e_medida_perto_do_pingo(self) -> None:
+        """O recorte é o caro, e ele passou a acontecer depois do teste de vão."""
+        import numpy as np
+
+        from chess_diagram_ocr.text import boxes
+
+        caixas = self._pagina()
+        medidas: list[float] = []
+        original = boxes._inclinacao_da_haste
+
+        def espiao(binaria, base):  # noqa: ANN001, ANN202
+            medidas.append(base.y1)
+            return original(binaria, base)
+
+        boxes._inclinacao_da_haste = espiao  # type: ignore[assignment]
+        self.addCleanup(setattr, boxes, "_inclinacao_da_haste", original)
+        boxes.unir_pingos(list(caixas), escala=26, binaria=np.zeros((400, 400), dtype=np.uint8))
+
+        self.assertTrue(medidas, "alguma base tinha de ser medida")
+        self.assertLess(len(medidas), 5, f"mediu {len(medidas)} bases para um pingo só")

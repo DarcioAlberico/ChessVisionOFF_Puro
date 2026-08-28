@@ -133,6 +133,17 @@ def _imported_module(checkout: Path) -> Any:
         except TsojUnavailableError:
             raise
         except Exception as exc:  # dependencia faltando, peso corrompido, versao incompativel
+            # **No `.exe` a resposta é outra, e ela é sabida (S-387).** O clone importa
+            # `skimage` e `scipy`, e o bundle não os leva -- 95 MB para um caminho que exige o
+            # usuário ter clonado um repositório de terceiro e baixado 232 MiB de pesos. Dizer
+            # "não pôde ser carregado: No module named 'skimage'" mandaria alguém procurar um
+            # defeito onde há uma decisão de empacotamento.
+            if getattr(sys, "frozen", False):
+                raise TsojUnavailableError(
+                    "A segunda opinião local não está disponível na versão empacotada: o leitor "
+                    "externo depende de bibliotecas que o executável não leva (scipy e "
+                    "scikit-image, 95 MB). Use a instalação de desenvolvimento para esta opção."
+                ) from exc
             raise TsojUnavailableError(
                 f"O leitor externo está em {checkout} mas não pôde ser carregado: {exc}"
             ) from exc

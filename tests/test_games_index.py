@@ -8,14 +8,13 @@ hash devolvendo a partida de outro par.
 from __future__ import annotations
 
 import sqlite3
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import chess
+from subprocesso import rodar_python
 
 from chess_diagram_ocr.games_db import GameRecord
 from chess_diagram_ocr.games_index import (
@@ -64,13 +63,10 @@ class ChaveTests(unittest.TestCase):
         nenhum. O teste roda um interpretador separado, que é onde isso apareceria.
         """
         codigo = (
-            "import sys; sys.path.insert(0, 'src');"
             "from chess_diagram_ocr.games_index import pair_hash;"
             "print(pair_hash(('anderssen', 'kieseritzky')))"
         )
-        saida = subprocess.run(
-            [sys.executable, "-c", codigo], capture_output=True, text=True, check=True, cwd=Path.cwd()
-        )
+        saida = rodar_python(codigo)
         self.assertEqual(int(saida.stdout.strip()), pair_hash(("anderssen", "kieseritzky")))
 
     def test_a_ordem_das_cores_muda_a_chave(self) -> None:

@@ -60,6 +60,30 @@ class ConfigTests(unittest.TestCase):
         }
         self.assertEqual(len(versoes), 6, f"versões colidiram: {versoes}")
 
+    def test_o_jitter_e_o_afim_tambem_mudam_a_versao(self) -> None:
+        """Dois regimes que treinam modelos diferentes saíam ambos como `aug0` (S-376)."""
+        versoes = {
+            AugmentConfig().version,
+            AugmentConfig(jitter=0.0).version,
+            AugmentConfig(affine=0.0).version,
+            AugmentConfig(blur=0.0).version,
+        }
+        self.assertEqual(len(versoes), 4, f"versões colidiram: {versoes}")
+
+    def test_a_assinatura_do_padrao_nao_muda(self) -> None:
+        """Os checkpoints que existem foram gravados com `aug0` e `augmhsp`: o sufixo só
+        aparece quando algum genérico sai do padrão, ou a comparação histórica se perde."""
+        self.assertEqual(AugmentConfig().version, "aug0")
+        self.assertEqual(AugmentConfig(hflip=0.5, hatch=0.3, speckle=0.25, paper=0.3).version, "augmhsp")
+
+    def test_o_periodo_da_hachura_entra_quando_a_hachura_esta_ligada(self) -> None:
+        """Período diferente é regime diferente; com a hachura desligada ele não diz nada."""
+        self.assertNotEqual(
+            AugmentConfig(hatch=0.3).version,
+            AugmentConfig(hatch=0.3, hatch_period_px=(2, 6)).version,
+        )
+        self.assertEqual(AugmentConfig(hatch_period_px=(2, 6)).version, "aug0")
+
     def test_a_versao_entra_nos_metadados_do_checkpoint(self) -> None:
         """Sem isso, comparar dois modelos pode estar comparando dois regimes de aumento.
 

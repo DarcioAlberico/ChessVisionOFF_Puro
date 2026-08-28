@@ -55,6 +55,7 @@ oito linhas contendo só "8", "7", "6"...
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 
 import cv2
@@ -269,14 +270,47 @@ def unir_pingos(
     # se oferecem a ela, e medi-la no laço de dentro custaria um recorte de imagem por par.
     inclinacoes: dict[int, float] = {}
 
-    absorvido: dict[int, Caixa] = {}
+    # **As bases plausíveis saem de duas janelas, e não da folha inteira (S-350).** O pingo só se
+    # une a uma base que esteja a `vao_maximo` dele **na vertical**: ou logo acima (o pingo do `i`,
+    # o acento) ou logo abaixo (o ponto do `!`). Duas listas ordenadas e uma busca binária dão
+    # exatamente essas, e o laço deixa de percorrer as duas mil caixas da folha por pingo.
+    #
+    # A ordem de índice é restaurada com `sorted`: em empate de vão, a original ficava com a
+    # **última** base examinada, e essa era a de maior índice.
+    altos = [i for i, c in enumerate(caixas) if c.altura >= piso_de_letra]
+    por_y1 = sorted(altos, key=lambda i: caixas[i].y1)
+    inicios = [caixas[i].y1 for i in por_y1]
+    por_y2 = sorted(altos, key=lambda i: caixas[i].y2)
+    fins = [caixas[i].y2 for i in por_y2]
+
+    absorvido: dict[int, int] = {}
     for indice, caixa in enumerate(caixas):
         if caixa.altura >= piso_de_letra:
             continue
+        acima = por_y1[bisect_left(inicios, caixa.y2) : bisect_right(inicios, caixa.y2 + vao_maximo)]
+        abaixo = por_y2[bisect_left(fins, caixa.y1 - vao_maximo) : bisect_right(fins, caixa.y1)]
         melhor: int | None = None
         melhor_vao = vao_maximo
-        for outro, base in enumerate(caixas):
-            if base.altura < piso_de_letra:
+        for outro in sorted(set(acima) | set(abaixo)):
+            base = caixas[outro]
+            # **O vão vem antes da inclinação, e é isso que tira 42% da leitura de glifo (S-350).**
+            # `_inclinacao_da_haste` recorta a imagem binária da base para medir o traço, e a
+            # memória por base não ajudava: o laço a pedia para **toda** caixa alta da folha --
+            # duas mil recortadas por página, quase todas a linhas de distância do pingo. O teste
+            # de vão é aritmética pura e derruba as mesmas duas mil antes do recorte.
+            #
+            # A decisão não muda: quem falha aqui falharia depois, no mesmo `0 <= vao <=
+            # melhor_vao` que fechava o laço. Só a ordem das duas guardas trocou.
+            vao = base.y1 - caixa.y2 if caixa.y2 <= base.y1 else caixa.y1 - base.y2
+            if not 0 <= vao <= melhor_vao:
+                continue
+            # **E a base tem de estar ao alcance na horizontal.** O deslocamento do itálico é
+            # `inclinacao × vao`, e a inclinação é limitada por construção: `pendor` vive em
+            # [-1, 1] (é uma diferença de centroides dividida pela largura) e `HASTE_ESTREITA`
+            # garante `largura/altura <= 0,5`, então `|inclinacao| <= 2 · 1 · 0,5 = 1`. Com isso o
+            # pingo nunca se desloca mais que `vao_maximo`, e uma base além dessa folga não pode
+            # sobrepô-lo -- é recusa por aritmética, e não por heurística.
+            if base.x1 > caixa.x2 + vao_maximo or base.x2 < caixa.x1 - vao_maximo:
                 continue
             if outro not in inclinacoes:
                 inclinacoes[outro] = _inclinacao_da_haste(binaria, base)
@@ -287,18 +321,19 @@ def unir_pingos(
             )
             if sobreposicao(caixa, base, deslocamento=deslocamento) < SOBREPOSICAO_MINIMA:
                 continue
-            # Acima da base (pingo, acento) ou abaixo dela (o ponto do `!` e do `?`).
-            vao = base.y1 - caixa.y2 if caixa.y2 <= base.y1 else caixa.y1 - base.y2
-            if 0 <= vao <= melhor_vao:
-                melhor, melhor_vao = outro, vao
+            melhor, melhor_vao = outro, vao
         if melhor is not None:
-            absorvido[indice] = caixas[melhor]
+            absorvido[indice] = melhor
 
     # **A ordem de entrada é preservada.** Quem ordena é `linhas.ordem_em_faixa`, e devolver uma
     # ordem diferente aqui esconderia um defeito dele atrás de um daqui.
+    #
+    # O índice da base é guardado no laço acima, e não procurado com `caixas.index(base)`: aquela
+    # busca era linear na folha inteira e, com caixas iguais, achava a **primeira** de valor igual
+    # em vez daquela que o pingo escolheu.
     uniao: dict[int, Caixa] = {}
-    for indice, base in absorvido.items():
-        chave = caixas.index(base)
+    for indice, chave in absorvido.items():
+        base = caixas[chave]
         atual = uniao.get(chave, base)
         pingo = caixas[indice]
         uniao[chave] = Caixa(

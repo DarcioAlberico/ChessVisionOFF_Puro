@@ -616,7 +616,7 @@ def linhas_do_glifo(
                     italico=pendor,
                 )
             )
-    return (sem_rotulos_de_eixo(cruas), faixas)
+    return (sem_rotulos_de_eixo(cruas, diagramas), faixas)
 
 
 def _para_pontos(caixa: _boxes.Caixa, escala_px: float) -> Retangulo:
@@ -661,7 +661,26 @@ def e_fila_de_eixo(texto: str) -> bool:
     return len(set(marcas)) >= MIN_EIXOS_NA_FILA
 
 
-def sem_rotulos_de_eixo(cruas: Sequence[_Cru]) -> list[_Cru]:
+VAOS_DE_ALTURA_ATE_O_DIAGRAMA = 2.0
+"""A que distância de um diagrama uma fila de rótulos ainda é a borda dele (S-355).
+
+Em alturas da própria linha, e não em pontos: o rótulo de eixo de um diagrama grande é maior que
+o de um pequeno, e a distância dele à borda cresce junto."""
+
+
+def _junto_de_diagrama(caixa: _boxes.Caixa, diagramas: Sequence[Retangulo]) -> bool:
+    """A caixa está encostada em algum diagrama, acima ou abaixo dele?"""
+    folga = VAOS_DE_ALTURA_ATE_O_DIAGRAMA * max(caixa.altura, 1.0)
+    centro = (caixa.x1 + caixa.x2) / 2.0
+    for x1, y1, x2, y2 in diagramas:
+        if not x1 <= centro <= x2:
+            continue
+        if y1 - folga <= caixa.y2 and caixa.y1 <= y2 + folga:
+            return True
+    return False
+
+
+def sem_rotulos_de_eixo(cruas: Sequence[_Cru], diagramas: Sequence[Retangulo] = ()) -> list[_Cru]:
     """Tira as bordas de diagrama que sobraram como texto, pela régua medida na S-217.
 
     `excluir_diagramas` já tira o que está **dentro** do retângulo do tabuleiro, com margem; os
@@ -670,10 +689,23 @@ def sem_rotulos_de_eixo(cruas: Sequence[_Cru]) -> list[_Cru]:
     **distintos** -- as oito filas, cada uma uma vez. A coluna de resultados de uma tabela de
     torneio também é alinhada, mas é `1`, `1`, `0`, `1`, e sobrevive à conta. Ver
     `pdf_text._axis_label_strip`, que é a função que decide, reusada aqui em vez de reescrita.
+
+    **E é preciso haver um diagrama por perto (S-355).** A régua estrutural aceita
+    `1 2 3 4 5 6 7 8` -- oito rótulos de um caractere, distintos --, e essa é a linha de cabeçalho
+    de toda tabela de torneio com oito rodadas: ela era apagada da página **em silêncio**, sem
+    nada no texto dizendo que faltava uma linha. Rótulo de eixo é borda de tabuleiro, e borda de
+    tabuleiro fica encostada num tabuleiro; a folha sem diagrama nenhum não tem o que apagar.
+
+    `diagramas` vazio é o caminho de quem não os tem -- e aí nada é apagado, que é a resposta
+    certa para "não sei onde estão os tabuleiros".
     """
     from ..pdf_text import _MIN_AXIS_LABELS, _axis_label_strip
 
-    fora: set[int] = {i for i, c in enumerate(cruas) if e_fila_de_eixo(c.texto)}
+    fora: set[int] = {
+        i
+        for i, c in enumerate(cruas)
+        if e_fila_de_eixo(c.texto) and _junto_de_diagrama(c.caixa, diagramas)
+    }
     soltos = [i for i, c in enumerate(cruas) if EIXO_SOLTO.match(c.texto.strip())]
     if len(soltos) >= _MIN_AXIS_LABELS:
         itens = [
@@ -720,6 +752,7 @@ def montar(
     confiancas: Sequence[float] = (),
     placements: Sequence[str] = (),
     faixas: Sequence[tuple[int, int]] | None = None,
+    lexico: frozenset[str] = frozenset(),
 ) -> tuple[Coluna, ...]:
     """Linhas e diagramas -> colunas de blocos, na ordem em que a página se lê.
 
@@ -789,8 +822,28 @@ def montar(
 
     for elemento in ordem:
         if isinstance(elemento, Diagrama):
-            indice = coluna_de(elemento.caixa)
-            fechar(indice)
+            # **O diagrama que atravessa a calha quebra as duas colunas (S-354).** `coluna_de`
+            # decide pelo **centro**, e o centro de um diagrama largo cai dentro da calha: a
+            # coluna saía por desempate de proximidade -- esquerda ou direita conforme um pixel --,
+            # e a tira da outra continuava aberta, juntando num parágrafo só o que está acima e o
+            # que está abaixo dele. `sequencia_de_leitura` já trata o transversal desde a S-193; o
+            # que se perdia era aqui, na remontagem por coluna.
+            #
+            # A coluna dele passa a ser a **primeira que ele cobre**, que é determinística e é a
+            # que a leitura alcança antes. O que a `PaginaLida` ainda não sabe dizer é "este bloco
+            # não é de coluna nenhuma": a estrutura é por coluna, e um bloco fora delas seria
+            # outra forma -- fica registrado, e não é este item.
+            atravessando = len(faixas) > 1 and _colunas.atravessa(elemento.caixa, faixas)
+            if atravessando:
+                for aberta in list(corrente):
+                    fechar(aberta)
+                indice = next(
+                    (i for i, (x1, x2) in enumerate(faixas) if elemento.caixa.x1 <= x2 and elemento.caixa.x2 >= x1),
+                    coluna_de(elemento.caixa),
+                )
+            else:
+                indice = coluna_de(elemento.caixa)
+                fechar(indice)
             tiras.setdefault(indice, []).append(elemento)
             continue
         cru = por_id.get(id(elemento))
@@ -815,7 +868,7 @@ def montar(
                     )
                 )
                 continue
-            blocos.extend(_blocos_de_texto(tira, de_paragrafo, metricas, escala_px))
+            blocos.extend(_blocos_de_texto(tira, de_paragrafo, metricas, escala_px, lexico))
         if blocos:
             saida.append(
                 Coluna(
@@ -898,6 +951,7 @@ def _blocos_de_texto(
     de_paragrafo: dict[int, _paragrafos.Linha],
     metricas: dict[int, tuple[int, int]],
     escala_px: float,
+    lexico: frozenset[str] = frozenset(),
 ) -> list[BlocoDeTexto]:
     """Uma tira de linhas contíguas -> parágrafos, com a régua de recuo da página."""
     linhas = [de_paragrafo[id(c.caixa)] for c in tira if id(c.caixa) in de_paragrafo]
@@ -927,8 +981,40 @@ def _blocos_de_texto(
         margem = metricas.get(paragrafo.coluna, (0, 1))
         primeira = paragrafo.linhas[0]
         recuado = primeira.esquerda > margem[0] + margem[1] * _paragrafos.RECUO_DE_PARAGRAFO
-        blocos.append(BlocoDeTexto.de_linhas(lidas, recuado=recuado))
+        blocos.append(BlocoDeTexto.de_linhas(_sem_hifen_de_quebra(lidas, lexico), recuado=recuado))
     return blocos
+
+
+def _sem_hifen_de_quebra(linhas: list[LinhaLida], lexico: frozenset[str]) -> list[LinhaLida]:
+    """As linhas do parágrafo com a palavra que a quebra partiu **juntada** (S-353).
+
+    `lexico.juntar_hifenizadas` existe desde a S-209, com as três condições medidas -- 6 de 6
+    junções certas e as 2 que não devem juntar recusadas --, e **ninguém a chamava**: o caminho de
+    leitura montava a página sem ela, e o texto saía `em- barrassment` em toda folha em que a
+    diagramação partiu uma palavra. A função estava pronta e faltava a pergunta, como o `validar`
+    da S-208 e o `recortes=` da S-338.
+
+    **Dentro do parágrafo, e não na folha inteira**: a hifenização é da quebra de linha, e a última
+    linha de um parágrafo não continua na primeira do seguinte. Fora dele, `Xue-` no fim de uma
+    legenda e `Fierro` no começo do parágrafo de baixo seriam candidatos a uma junção que a
+    diagramação nunca fez.
+
+    A bbox de cada linha **não** muda: ela é a geometria do que foi impresso, e a junção é sobre o
+    texto. Quem desenha a linha continua desenhando onde ela está.
+    """
+    if not lexico or len(linhas) < 2:
+        return linhas
+    from dataclasses import replace
+
+    from . import lexico as _lexico
+
+    novos, juncoes = _lexico.juntar_hifenizadas([linha.texto for linha in linhas], lexico)
+    if not juncoes:
+        return linhas
+    return [
+        linha if novo == linha.texto else replace(linha, texto=novo)
+        for linha, novo in zip(linhas, novos, strict=True)
+    ]
 
 
 def motor_escolhido(motor: MotorDeTexto = MOTOR_PADRAO, *, tem_modelo: bool = True) -> MotorResolvido:
@@ -998,12 +1084,9 @@ def ler_pagina(
     ter. Quando vem, o `dpi` tem de ser o mesmo com que ela foi renderizada -- é o que liga pixels
     a pontos, e não há como conferir aqui.
     """
-    from ..detection.hybrid import detect_diagrams_in_pdf_page
-    from ..pdf_io import open_document, render_pdf_page
-    from ..pdf_text import page_margin_lines, running_page_number
+    from ..pdf_io import opened
 
     escala_px = dpi / 72.0
-    imagem = render_pdf_page(pdf_source, indice, dpi=dpi) if imagem_rgb is None else imagem_rgb  # type: ignore[arg-type]
 
     qual = motor_escolhido(motor, tem_modelo=_ha_classificador(reconhecedor))
     if motor == "auto" and qual == "camada":
@@ -1012,6 +1095,52 @@ def ler_pagina(
             "representa figurina de xadrez. Ver text/leitor.py.",
             indice + 1,
         )
+
+    # **Uma abertura por folha, e não três (S-351).** `render_pdf_page`, a leitura da camada e o
+    # detector recebiam o **caminho** e abriam o documento cada um: três aberturas por página numa
+    # varredura de 402 folhas. O empréstimo da S-61 existe desde então para isto -- `opened`
+    # devolve um `OpenPdf` que os três aceitam, e é reentrante, então quem já chega com um
+    # documento aberto não paga nada aqui.
+    with opened(pdf_source) as livro:  # type: ignore[arg-type]
+        return _ler_pagina_do_livro(
+            livro, indice, dpi=dpi, imagem_rgb=imagem_rgb, qual=qual, escala_px=escala_px,
+            max_boards=max_boards, arranjo=arranjo, reconhecedor=reconhecedor, modo_bloco=modo_bloco,
+            colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina, empilhados=empilhados,
+            italico=italico, dicionario=dicionario, numeros=numeros, juntar_lance=juntar_lance,
+            marcar_negrito=marcar_negrito, marcar_italico=marcar_italico,
+        )
+
+
+def _ler_pagina_do_livro(
+    livro: object,
+    indice: int,
+    *,
+    dpi: int,
+    imagem_rgb: np.ndarray | None,
+    qual: MotorResolvido,
+    escala_px: float,
+    max_boards: int | None,
+    arranjo: Arranjo,
+    reconhecedor: object | None,
+    modo_bloco: bool,
+    colados: str,
+    caixa_alta: bool,
+    marca_fina: bool,
+    empilhados: bool,
+    italico: bool,
+    dicionario: bool,
+    numeros: bool,
+    juntar_lance: bool,
+    marcar_negrito: bool,
+    marcar_italico: bool,
+) -> PaginaLida:
+    """O corpo de `ler_pagina`, com o documento **já aberto**. Ver a nota da S-351."""
+    from ..detection.hybrid import detect_diagrams_in_pdf_page
+    from ..pdf_io import open_document, render_pdf_page
+    from ..pdf_text import page_margin_lines, running_page_number
+
+    pdf_source = livro
+    imagem = render_pdf_page(pdf_source, indice, dpi=dpi) if imagem_rgb is None else imagem_rgb  # type: ignore[arg-type]
 
     with open_document(pdf_source) as doc:  # type: ignore[arg-type]
         page = doc[indice]
@@ -1066,7 +1195,7 @@ def ler_pagina(
     if marcar_italico and cruas:
         cruas = _com_italico_da_camada(cruas, spans_italico, registra_italico, escala_px)
 
-    cabecalho, rodape = _margens(margem, altura, qual)
+    cabecalho, rodape = _margens(margem, altura)
     return PaginaLida(
         documento=documento,
         pagina=indice,
@@ -1080,6 +1209,9 @@ def ler_pagina(
             arranjo=arranjo,
             confiancas=confiancas,
             faixas=faixas,
+            # O léxico junta a hifenizada da quebra de linha (S-353). Vazio quando `dicionario`
+            # está desligado, e aí `montar` não junta nada -- que é o comportamento de antes.
+            lexico=_dicionario.carregar() if dicionario else frozenset(),
         ),
         cabecalho=cabecalho,
         rodape=rodape,
@@ -1135,12 +1267,18 @@ def _com_italico_da_camada(
     return saida
 
 
-def _margens(linhas: Sequence[object], altura: float, procedencia: MotorResolvido) -> tuple[LinhaLida | None, LinhaLida | None]:
+def _margens(linhas: Sequence[object], altura: float) -> tuple[LinhaLida | None, LinhaLida | None]:
     """A linha de cabeçalho e a de rodapé, das que moram na faixa de margem.
 
     A faixa vale para os dois lados, então quem separa é o `y`: acima da metade é cabeçalho. Só
     **uma** de cada, e a mais externa -- uma faixa de margem com três linhas tem um cabeçalho e
     duas linhas de texto que a régua da S-43 pegou por estarem perto da borda.
+
+    **A procedência é `camada`, sempre, e não a do motor da página (S-356).** Estas linhas saem de
+    `pdf_text.page_margin_lines`, que lê a camada de texto do PDF -- inclusive numa folha lida
+    pelo glifo, onde o resto do texto veio da imagem. Carimbá-las com o motor da página dizia que
+    o cabeçalho foi reconhecido quando ele foi **lido**, e a interface pinta as duas coisas
+    diferente de propósito: procedência é a resposta a "de onde veio este texto?".
     """
     if not linhas:
         return (None, None)
@@ -1151,7 +1289,7 @@ def _margens(linhas: Sequence[object], altura: float, procedencia: MotorResolvid
             texto=str(linha.text).strip(),  # type: ignore[attr-defined]
             bbox=_retangulo(linha.bbox),  # type: ignore[attr-defined]
             confianca=float(getattr(linha, "confidence", 1.0)),
-            procedencia=procedencia,
+            procedencia="camada",
         )
 
     acima = [x for x in linhas if float(x.bbox[1]) < meio]  # type: ignore[attr-defined]

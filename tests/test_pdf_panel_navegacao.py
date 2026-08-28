@@ -19,12 +19,11 @@ funções que o leem levantavam `TclError` num projeto sem `report_callback_exce
 from __future__ import annotations
 
 import shutil
-import tempfile
 import tkinter as tk
 import unittest
-from pathlib import Path
 
 import fitz
+from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui.pdf_panel import PdfPanel
@@ -41,7 +40,7 @@ class _Navegacao(unittest.TestCase):
         cls.root = raiz_do_processo()
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-nav-"))
+        self.tmp = pasta_temporaria(self, prefixo="cvoff-nav-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.livro = self.tmp / "livro.pdf"
         doc = fitz.open()
@@ -128,15 +127,20 @@ class LimiteDoLivroTests(_Navegacao):
 
 class NumeroDigitadoTests(_Navegacao):
     def test_o_numero_digitado_navega(self) -> None:
-        """S-305: `Enter` no campo mudava o número e deixava a imagem onde estava."""
+        """S-305: `Enter` no campo mudava o número e deixava a imagem onde estava.
+
+        **O campo é base 1 desde a S-328**: digitar `3` vai para o índice 2, que é a terceira
+        folha -- a mesma que o título da janela e o rodapé de documento sempre chamaram de 3.
+        """
         self.renderizadas.clear()
         self.panel.spin_page.delete(0, tk.END)
-        self.panel.spin_page.insert(0, "2")
+        self.panel.spin_page.insert(0, "3")
 
         self.panel._on_page_typed()
 
         self.assertEqual(self.panel.page_index, 2)
         self.assertEqual(self.renderizadas, [2])
+        self.assertEqual(str(self.panel.spin_page.get()), "3")
 
     def test_texto_invalido_nao_derruba_e_repoe_o_numero(self) -> None:
         """Antes: `TclError` em `page_index` e em mais quatro funções, direto no stderr.
@@ -152,7 +156,7 @@ class NumeroDigitadoTests(_Navegacao):
         self.panel._on_page_typed()
 
         self.assertEqual(self.panel.page_index, 1)
-        self.assertEqual(str(self.panel.spin_page.get()), "1")
+        self.assertEqual(str(self.panel.spin_page.get()), "2", "índice 1 é a folha 2 (S-328)")
         self.assertEqual(self.renderizadas, [])
 
     def test_campo_vazio_no_focus_out_repoe_o_numero(self) -> None:
@@ -163,7 +167,7 @@ class NumeroDigitadoTests(_Navegacao):
         self.panel._on_page_typed()
 
         self.assertEqual(self.panel.page_index, 1)
-        self.assertEqual(str(self.panel.spin_page.get()), "1")
+        self.assertEqual(str(self.panel.spin_page.get()), "2", "índice 1 é a folha 2 (S-328)")
 
     def test_numero_fora_da_faixa_volta_para_onde_a_tela_esta(self) -> None:
         self.panel.go_to_page(1)
@@ -174,7 +178,55 @@ class NumeroDigitadoTests(_Navegacao):
         self.panel._on_page_typed()
 
         self.assertEqual(self.panel.page_index, self.paginas - 1)
-        self.assertEqual(str(self.panel.spin_page.get()), str(self.paginas - 1))
+        self.assertEqual(str(self.panel.spin_page.get()), str(self.paginas))
+
+
+class BaseDaFolhaTests(_Navegacao):
+    """A folha é dita em base 1 na tela inteira (S-328).
+
+    O campo e os rodapés de mensagem diziam base 0; o rodapé de documento, o título da janela e
+    a anotação de campo diziam base 1. Quem lê a tela inteira via **dois números para a mesma
+    folha** -- e o docstring de `strings.titulo_da_janela` já afirmava, desde a S-167, que a
+    página é dita "em base 1, como o campo da tela", o que era falso sobre o campo.
+    """
+
+    def test_a_primeira_folha_aparece_como_1(self) -> None:
+        self.panel.go_to_page(0)
+        self.assertEqual(str(self.panel.spin_page.get()), "1")
+
+    def test_o_campo_acompanha_a_navegacao_por_botao(self) -> None:
+        """Sem `textvariable`, quem repõe o número é o painel: se ele esquecer, o campo mente."""
+        self.panel.go_to_page(0)
+        self.panel.next_page()
+        self.assertEqual(str(self.panel.spin_page.get()), "2")
+        self.panel.prev_page()
+        self.assertEqual(str(self.panel.spin_page.get()), "1")
+
+    def test_a_faixa_do_campo_vai_de_um_ate_o_total(self) -> None:
+        self.assertEqual(int(self.panel.spin_page.cget("from")), 1)
+        self.assertEqual(int(self.panel.spin_page.cget("to")), self.paginas)
+
+    def test_a_seta_do_campo_navega_pela_mesma_porta(self) -> None:
+        """`command` do `Spinbox` só dispara nas setas, e sem `textvariable` ele é o único
+        aviso de que o texto mudou."""
+        self.panel.go_to_page(0)
+        self.renderizadas.clear()
+        self.panel.spin_page.delete(0, tk.END)
+        self.panel.spin_page.insert(0, "2")
+
+        self.panel.on_page_spin()
+
+        self.assertEqual(self.panel.page_index, 1)
+        self.assertEqual(self.renderizadas, [1])
+
+    def test_o_titulo_da_janela_diz_o_mesmo_numero_que_o_campo(self) -> None:
+        """O critério de aceite do item: as duas superfícies, a mesma folha."""
+        from chess_diagram_ocr.ui import strings
+
+        self.panel.go_to_page(2)
+        titulo = strings.titulo_da_janela("livro.pdf", self.panel.page_index, self.paginas)
+
+        self.assertIn(f"p. {self.panel.spin_page.get()} de {self.paginas}", titulo)
 
 
 if __name__ == "__main__":  # pragma: no cover

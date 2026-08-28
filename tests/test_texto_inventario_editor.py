@@ -17,11 +17,13 @@ from __future__ import annotations
 
 import ast
 import json
-import tempfile
 import tkinter as tk
 import unittest
 from dataclasses import fields
 from pathlib import Path
+
+from ambiente_de_teste import pasta_temporaria, quadro
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.cli import editor_inventario
 from chess_diagram_ocr.text import arquivo, exportacao, rico
@@ -61,19 +63,9 @@ _RAIZ: tk.Tk | None = None
 
 
 def setUpModule() -> None:
+    """A raiz é a do processo (`tests/tk_root.py`), e não uma deste módulo (S-416)."""
     global _RAIZ
-    try:
-        _RAIZ = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - maquina sem display
-        raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-    _RAIZ.withdraw()
-
-
-def tearDownModule() -> None:
-    global _RAIZ
-    if _RAIZ is not None:
-        _RAIZ.destroy()
-        _RAIZ = None
+    _RAIZ = raiz_do_processo()
 
 
 class CicloCompletoTests(unittest.TestCase):
@@ -82,12 +74,12 @@ class CicloCompletoTests(unittest.TestCase):
     def _painel(self) -> TextoPanel:
         assert _RAIZ is not None
         return TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
 
     def test_todo_atributo_tem_valor_de_teste(self) -> None:
@@ -100,7 +92,7 @@ class CicloCompletoTests(unittest.TestCase):
         volta -- porque é assim que o defeito aparece: um atributo que só existe como tag do Tk
         atravessa a tela e morre na gravação, e na tela está tudo certo.
         """
-        pasta = Path(tempfile.mkdtemp())
+        pasta = pasta_temporaria(self)
         for campo in fields(rico.Atributos):
             with self.subTest(campo=campo.name):
                 atributos = rico.Atributos(**{campo.name: VALOR_DE_TESTE[campo.name]})

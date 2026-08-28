@@ -19,6 +19,8 @@ from collections import Counter
 from pathlib import Path
 
 import fitz
+from ambiente_de_teste import pasta_temporaria
+from subprocesso import rodar_python
 from test_detection import PAGE_HEIGHT, PAGE_WIDTH, board_image, pdf_with_images
 
 from chess_diagram_ocr.board_detection import MOTIVOS_DE_RECUSA, RejectedQuad
@@ -109,18 +111,8 @@ class SamplePagesMovedTests(unittest.TestCase):
         Um censo caro é um censo que não se roda a cada mudança, e rodar a cada mudança é a
         única coisa que ele existe para ser.
         """
-        import subprocess
-        import sys
-
-        resultado = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import sys; import chess_diagram_ocr.detection_census; print('torch' in sys.modules)",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
+        resultado = rodar_python(
+            "import sys; import chess_diagram_ocr.detection_census; print('torch' in sys.modules)"
         )
         self.assertEqual(resultado.stdout.strip(), "False")
 
@@ -367,7 +359,7 @@ class RecusasTests(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-s131-"))
+        self.tmp = pasta_temporaria(self, prefixo="cvoff-s131-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.pdf = _pdf_no_disco(
             self.tmp / "recusas.pdf",

@@ -18,6 +18,8 @@ que já está no `main` é.
 
 from __future__ import annotations
 
+import gzip
+import json
 import re
 import subprocess
 import tempfile
@@ -183,11 +185,45 @@ def secoes_de_spec(arquivos: Iterable[Path] | None = None) -> dict[int, list[str
     return ocorrencias
 
 
+EXCLUSAO = re.compile(r"\(\s*menos\s+((?:S-\d{1,3}[,\s]*)+)\)")
+"""`(menos S-324)` no fim de uma célula: a exceção que a faixa contígua não sabe dizer.
+
+Uma faixa e uma exceção é o formato mais curto que diz *"a S-324 é da aparência, e o resto do
+intervalo é da revisão"*. A alternativa -- quebrar a faixa em duas -- teria de ser refeita a cada
+item novo, que é o tipo de manutenção que ninguém faz.
+"""
+
+
+def celula_ilegivel(celula: str) -> list[str]:
+    """As partes daquela célula que o índice **não** sabe ler. Vazia é o normal.
+
+    **É a metade que faltava, e é o item (S-404).** `faixas_declaradas` descartava em silêncio a
+    parte que não casasse com "um número" ou "dois números": a linha
+    `| S-296 a S-323, S-325 a S-428 (menos S-324) | SPEC_REVISAO.md |` tem **três** números na
+    segunda parte, então ela era ignorada inteira -- e as 107 seções daquele arquivo passaram a
+    não estar declaradas em lugar nenhum. As duas guardas que leem o índice continuavam verdes
+    porque as duas só perguntam *"o que está declarado está no lugar certo?"*; nenhuma perguntava
+    se a declaração tinha sido lida.
+
+    É a S-134 com o furo que ela existiu para tapar: a fenda entre dois documentos, agora dentro
+    do próprio índice que a fechou.
+    """
+    problemas: list[str] = []
+    for parte in EXCLUSAO.sub("", celula).split(","):
+        if not parte.strip():
+            continue
+        if len(re.findall(r"S-\d{1,3}", parte)) not in (1, 2):
+            problemas.append(parte.strip())
+    return problemas
+
+
 def faixas_declaradas(texto: str) -> dict[int, str]:
     """A tabela "faixa de itens → arquivo" de um documento, achatada em `numero → arquivo`.
 
     Aceita `S-37 a S-77` e `S-78 a S-82, S-143` na mesma célula: a faixa da detecção não é
-    contígua de propósito, e o formato precisa dizer isso sem virar prosa.
+    contígua de propósito, e o formato precisa dizer isso sem virar prosa. E aceita
+    `S-325 a S-428 (menos S-324)`, que é a mesma necessidade pelo avesso -- ver `celula_ilegivel`
+    para o que custou não aceitar.
     """
     declarado: dict[int, str] = {}
     for _, casamento in _linhas_dentro_da_tabela(texto):
@@ -195,16 +231,25 @@ def faixas_declaradas(texto: str) -> dict[int, str]:
         arquivo = ARQUIVO_NA_CELULA.search(celula_arquivo)
         if arquivo is None:
             continue
-        for parte in celula_itens.split(","):
+        excluidos = {
+            int(numero)
+            for achado in EXCLUSAO.finditer(celula_itens)
+            for numero in re.findall(r"S-(\d{1,3})", achado.group(1))
+        }
+        for parte in EXCLUSAO.sub("", celula_itens).split(","):
             limites = [int(n) for n in re.findall(r"S-(\d{1,3})", parte)]
             if len(limites) == 2:
                 numeros = range(limites[0], limites[1] + 1)
             elif len(limites) == 1:
                 numeros = range(limites[0], limites[0] + 1)
             else:
+                # Descartar aqui é o que a S-404 achou; quem acusa é `celula_ilegivel`, porque
+                # esta função é usada por quatro testes e levantar faria os quatro dizerem a
+                # mesma coisa com a mensagem errada.
                 continue
             for numero in numeros:
-                declarado[numero] = arquivo.group(1)
+                if numero not in excluidos:
+                    declarado[numero] = arquivo.group(1)
     return declarado
 
 
@@ -298,6 +343,125 @@ class ItemEntregueTemSpecTests(unittest.TestCase):
 
         vazios = [arquivo for arquivo in por_arquivo if not (DOCS / arquivo).exists()]
         self.assertEqual([], vazios, "O índice cita um arquivo que não existe em docs/.")
+
+
+class IndiceNaoEVacuoTests(unittest.TestCase):
+    """O índice tem de **ser lido**, e não só existir (S-404).
+
+    **O defeito, e ele é desta casa outra vez.** A célula
+    `S-296 a S-323, S-325 a S-428 (menos S-324)` tem três números na segunda parte, e o leitor
+    descartava em silêncio toda parte que não tivesse um ou dois. O efeito: as 107 seções do
+    `SPEC_REVISAO.md` -- metade dos itens deste projeto -- não estavam declaradas em lugar nenhum,
+    e as duas guardas que leem o índice continuavam verdes. Elas perguntam *"o que está declarado
+    está no lugar certo?"*; nenhuma perguntava se a declaração fora lida.
+
+    É a S-134 com o furo que ela existiu para tapar. Os três testes abaixo são os três lados:
+    o que o leitor não entende é acusado, o que ele entende cobre todo item entregue, e a
+    exceção declarada continua sendo exceção.
+    """
+
+    def test_nenhuma_celula_do_indice_e_ilegivel(self) -> None:
+        ilegiveis = [
+            f"{arquivo.name}: {parte!r}"
+            for arquivo in [README, *sorted(DOCS.glob("*.md"))]
+            for _, casamento in _linhas_dentro_da_tabela(arquivo.read_text(encoding="utf-8"))
+            for parte in celula_ilegivel(casamento.group(1))
+        ]
+        self.assertEqual(
+            ilegiveis,
+            [],
+            "Célula do índice que o leitor descarta -- e descartar é o que o fazia mentir. "
+            "Use `S-N`, `S-N a S-M` ou `S-N a S-M (menos S-X)`:\n" + "\n".join(ilegiveis),
+        )
+
+    def test_todo_item_com_secao_esta_declarado_no_indice(self) -> None:
+        """O outro lado de `test_o_indice_nao_declara_faixa_sem_dono`: seção que o índice não
+        cita é seção que ninguém acha pelo índice -- que é para o que o índice existe."""
+        declarado = faixas_declaradas(README.read_text(encoding="utf-8"))
+        sem_faixa = sorted(
+            numero
+            for numero, onde in secoes_de_spec().items()
+            if numero not in declarado and not all(arquivo.startswith("ROADMAP") for arquivo in onde)
+        )
+        self.assertEqual(
+            [],
+            [_rotulo(numero) for numero in sem_faixa],
+            'Item com seção e sem faixa na tabela "Onde mora a spec de cada item". '
+            "Acrescente-o à linha do arquivo em que ele mora, no README **e** nos docs.",
+        )
+
+    def test_a_excecao_declarada_vale(self) -> None:
+        """`(menos S-324)` não é decoração: a S-324 é da aparência, e o resto da faixa é da
+        revisão. Ler a faixa e ignorar a exceção poria a S-324 no arquivo errado."""
+        declarado = faixas_declaradas(README.read_text(encoding="utf-8"))
+        self.assertEqual("SPEC_APARENCIA.md", declarado[324])
+        self.assertEqual("SPEC_REVISAO.md", declarado[325])
+        self.assertEqual("SPEC_REVISAO.md", declarado[403])
+
+
+def _ancora(titulo: str) -> str:
+    """O identificador que o GitHub dá a um título, pela regra dele (S-411).
+
+    Minúsculas, fora tudo que não é letra, dígito, `_`, espaço ou hífen, e espaço vira hífen. É
+    por isso que `S-79 · O gabarito` vira `s-79--o-gabarito`: o `·` some e sobram dois espaços.
+    O mesmo acontece com o `✅` no fim dos títulos do `ANALISE_DETECCAO.md` -- e foi ali que
+    quatro dos sete links quebraram, porque quem escreveu o link parou antes do emoji.
+    """
+    limpo = re.sub(r"[^\w\s-]", "", titulo.strip().lower().replace("`", ""), flags=re.UNICODE)
+    return limpo.strip().replace(" ", "-")
+
+
+def ancoras_do_documento(texto: str) -> set[str]:
+    """As âncoras que aquele documento oferece: uma por cabeçalho."""
+    return {
+        _ancora(achado.group(2))
+        for linha in texto.splitlines()
+        if (achado := re.match(r"^(#{1,6})\s+(.*)$", linha))
+    }
+
+
+class AncoraInternaTests(unittest.TestCase):
+    """Todo link `#ancora` entre documentos deste repositório leva a algum lugar (S-411).
+
+    **Sete estavam quebrados**, e o modo de falha é o mais silencioso que um documento tem: o
+    GitHub não avisa, o link simplesmente não move a página. Quatro deles apontavam para títulos
+    que ganharam `✅ implementada (data)` depois; um, para uma seção que virou `8. Como
+    reproduzir`; um escrevia `ja` onde o título tem `já`; e o último apontava para o título que a
+    S-348 tinha antes de ser reescrita.
+
+    A guarda vale para os links **internos** -- os que citam um `.md` deste repositório ou uma
+    âncora do próprio arquivo. `http` fica de fora: conferir link externo é pedir rede na suíte.
+    """
+
+    LINK = re.compile(r"\[[^\]]*\]\((#[^)]+|[\w./-]+\.md#[^)]+)\)")
+
+    def _documentos(self) -> dict[str, str]:
+        return {caminho.name: caminho.read_text(encoding="utf-8") for caminho in [README, *sorted(DOCS.glob("*.md"))]}
+
+    def test_a_varredura_acha_os_links(self) -> None:
+        """Sem isto, um regex que deixasse de casar faria o teste abaixo passar sobre nada."""
+        documentos = self._documentos()
+        total = sum(len(self.LINK.findall(texto)) for texto in documentos.values())
+        self.assertGreaterEqual(total, 20, "a varredura de âncoras deixou de achar links.")
+
+    def test_toda_ancora_interna_existe(self) -> None:
+        documentos = self._documentos()
+        ancoras = {nome: ancoras_do_documento(texto) for nome, texto in documentos.items()}
+        quebrados: list[str] = []
+        for nome, texto in documentos.items():
+            for destino in self.LINK.findall(texto):
+                arquivo, _, ancora = destino.partition("#")
+                alvo = Path(arquivo).name if arquivo else nome
+                if alvo not in ancoras:
+                    continue  # documento fora de docs/ -- outra guarda cuida da existência dele
+                if ancora not in ancoras[alvo]:
+                    quebrados.append(f"{nome} -> {alvo}#{ancora}")
+        self.assertEqual(
+            [],
+            sorted(quebrados),
+            "Link interno para âncora que não existe. O GitHub não avisa: o link só não move a "
+            "página.",
+        )
 
 
 class NumeroDeItemUnicoTests(unittest.TestCase):
@@ -541,6 +705,42 @@ def _perto(caso: unittest.TestCase, citado: float, real: float, o_que: str) -> N
     )
 
 
+CARDINAIS = {
+    "uma": 1, "duas": 2, "três": 3, "quatro": 4, "cinco": 5, "seis": 6, "sete": 7,
+    "oito": 8, "nove": 9, "dez": 10, "onze": 11, "doze": 12, "treze": 13, "catorze": 14,
+    "quinze": 15, "dezesseis": 16, "dezessete": 17, "dezoito": 18, "dezenove": 19, "vinte": 20,
+}
+"""Os números que a prosa escreve por extenso, porque ela os escreve por extenso (S-410).
+
+`_citado` lê algarismo; um documento que diz *"**Doze** threads rodam fora da thread da
+interface"* não é lido por ele, e foi assim que essa frase envelheceu doze meses. Escrever
+"12 threads" para satisfazer um teste seria o teste mandando na prosa -- então o teste aprende
+a ler.
+"""
+
+
+def _cardinal(texto: str, padrao: str) -> int:
+    """O número que aquele trecho diz, em algarismo ou por extenso."""
+    achado = re.search(padrao, texto)
+    assert achado is not None, f"o documento perdeu o trecho: {padrao}"
+    bruto = achado.group(1).strip().lower()
+    if bruto.isdigit():
+        return int(bruto)
+    assert bruto in CARDINAIS, f"cardinal não reconhecido: {bruto!r}"
+    return CARDINAIS[bruto]
+
+
+def _arvore_do_readme(texto: str) -> str:
+    """O bloco ```` ```text ```` da seção "Estrutura", e só ele.
+
+    Comparar contra o README inteiro é o que faria a guarda passar por acidente: `labels.py`
+    aparece em prosa, noutra seção, e a árvore continuaria sem ele.
+    """
+    marca = "```" + "text"
+    assert marca in texto, "o README perdeu a árvore da seção Estrutura."
+    return texto.split(marca, 1)[1].split("```", 1)[0]
+
+
 class NumerosVivosTests(unittest.TestCase):
     """Nenhum número citado em documento diverge do disco sem que a suíte falhe (S-135).
 
@@ -685,12 +885,127 @@ class NumerosVivosTests(unittest.TestCase):
             "Valor de `SideSource` que a tabela do README não explica.",
         )
 
+    def test_o_cer_de_pagina_citado_bate_com_o_relatorio(self) -> None:
+        """O README publicava **0,1397** e citava, na mesma linha, o arquivo que diz 0,1001 (S-405).
+
+        O número era do corte de parágrafo antigo, e o próprio relatório registra isso no campo
+        `remedido_por` -- a S-258 mudou `RECUO_DE_PARAGRAFO` e remediu os dois lados. É a S-135
+        outra vez, com o agravante de o documento apontar para a medição que o desmente.
+        """
+        relatorio = RAIZ / "docs" / "metrics" / "texto_pagina.json"
+        if not relatorio.exists():  # pragma: no cover - checkout sem os relatórios
+            self.skipTest("docs/metrics/texto_pagina.json não existe neste checkout")
+        real = json.loads(relatorio.read_text(encoding="utf-8"))["resumo"]["cer_glifo_medio"]
+        citado = _citado(self.readme, r"`docs/metrics/texto_pagina\.json`\): CER \*\*([\d,]+)\*\*")
+        _perto(self, citado, real, "CER de página do glifo")
+
+    def test_as_classes_de_caractere_citadas_batem_com_o_char_meta(self) -> None:
+        """Dizia 292 em três lugares e 314 num quarto, com o `char_meta.json` versionado ao lado
+        dizendo 314 (S-406). O 292 é de antes de as ligaduras entrarem."""
+        meta = RAIZ / "models" / "char_meta.json"
+        if not meta.exists():  # pragma: no cover - checkout sem o metadado
+            self.skipTest("models/char_meta.json não existe neste checkout")
+        real = int(json.loads(meta.read_text(encoding="utf-8"))["num_classes"])
+        citados = {int(n) for n in re.findall(r"classificador de (\d+) classes", self.readme)}
+        citados |= {int(n) for n in re.findall(r"metadado das (\d+) classes", self.readme)}
+        self.assertTrue(citados, "o README perdeu a contagem de classes do classificador.")
+        self.assertEqual({real}, citados, "O README cita um número de classes que o char_meta.json não tem.")
+
+    def test_o_dicionario_citado_tem_as_listas_que_o_disco_tem(self) -> None:
+        """Era "um arquivo de 7.588 palavras", e desde a S-209 são três listas e 367 mil (S-408).
+
+        A contagem é lida do `.gz` porque é assim que ele é usado: o número de palavras é o que
+        o léxico carrega, e não o tamanho do arquivo.
+        """
+        pasta = RAIZ / "assets" / "lexico"
+        listas = sorted(pasta.glob("*.txt.gz"))
+        if not listas:  # pragma: no cover - checkout sem o léxico
+            self.skipTest("assets/lexico/ não existe neste checkout")
+        real = sum(sum(1 for _ in gzip.open(lista, "rt", encoding="utf-8")) for lista in listas)
+        citado = _citado(self.readme, r"([\d.]+) entradas no total")
+        _perto(self, citado, real, "entradas do léxico")
+        ausentes = [lista.name for lista in listas if f"`{lista.name}`" not in self.readme]
+        self.assertEqual([], ausentes, "Lista do léxico que o README não menciona.")
+
+    def test_as_threads_citadas_batem_com_as_do_codigo(self) -> None:
+        """A ARCHITECTURE contava doze e havia treze: as duas da aba Texto ficaram de fora (S-410).
+
+        A varredura é a mesma de `tests/test_busy.py` -- `threading.Thread(` em `ui/*.py` e no
+        `app_tkinter.py` --, porque duas contagens da mesma coisa é o defeito que este teste pega.
+        """
+        arquivos = [*sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")), RAIZ / "app_tkinter.py"]
+        real = sum(arquivo.read_text(encoding="utf-8").count("threading.Thread(") for arquivo in arquivos)
+        citado = _cardinal(self.arquitetura, r"\*\*(\w+)\*\* threads rodam fora")
+        self.assertEqual(real, citado, "A ARCHITECTURE conta threads que o código não tem, ou vice-versa.")
+
+    def test_os_tamanhos_de_artefato_citados_batem_com_o_disco(self) -> None:
+        """Três estavam entre 20% e 80% fora (S-410): `samples/`, `review_cache/` e o índice
+        sqlite. São artefatos que crescem com o uso -- por isso a régua é a tolerância da S-135,
+        e não a igualdade.
+
+        **Existir não é ter o artefato dentro** (S-428). `data/samples/` é versionado com um
+        `.gitkeep` e nada mais, então na CI a pasta existe e está vazia: o `exists()` passava,
+        a soma dava 79 bytes e a guarda acusava 5.696.202.431% de diferença sobre um clone
+        limpo, que é a única coisa que aquele número não significa. Quem decide é o conteúdo.
+        """
+        alvos = {
+            "data/samples/": (RAIZ / "data" / "samples", r"os PNGs 800×800 dos tabuleiros \| não \(([\d,]+) GB\)", 10**9),
+            "data/review_cache/": (RAIZ / "data" / "review_cache", r"não reabrir o PDF \| não \(([\d,]+) GB", 10**9),
+            "data/games_index.sqlite": (RAIZ / "data" / "games_index.sqlite", r"\(S-72, S-73\) \| não \((\d+) MB", 10**6),
+        }
+        for nome, (caminho, padrao, unidade) in alvos.items():
+            with self.subTest(artefato=nome):
+                if not caminho.exists():  # pragma: no cover - checkout sem o artefato
+                    self.skipTest(f"{nome} não existe neste checkout")
+                if caminho.is_dir():
+                    conteudo = [f for f in caminho.rglob("*") if f.is_file() and f.name != ".gitkeep"]
+                    if not conteudo:  # pragma: no cover - clone limpo: só o `.gitkeep`
+                        self.skipTest(f"{nome} está vazia neste checkout (só o `.gitkeep`)")
+                    bytes_reais = sum(f.stat().st_size for f in conteudo)
+                else:
+                    bytes_reais = caminho.stat().st_size
+                _perto(self, _citado(self.arquitetura, padrao), bytes_reais / unidade, f"tamanho de {nome}")
+
+    def test_a_arvore_do_README_lista_todo_modulo_do_pacote(self) -> None:
+        """A árvore "Estrutura" tinha 30 dos 53 módulos de primeiro nível (S-412).
+
+        Entre os 23 ausentes estavam o `labels.py` -- a porta única do `labels.csv`, que a S-51
+        criou justamente para haver uma -- e o pacote `text/` inteiro. Uma árvore que lista metade
+        não é um mapa; é uma amostra, e quem a lê não sabe qual metade está vendo.
+        """
+        bloco = _arvore_do_readme(self.readme)
+        pacote = RAIZ / "src" / "chess_diagram_ocr"
+        modulos = sorted(p.name for p in pacote.glob("*.py") if p.name != "__init__.py")
+        pastas = sorted(f"{p.name}/" for p in pacote.iterdir() if p.is_dir() and not p.name.startswith("__"))
+        ausentes = [nome for nome in [*modulos, *pastas] if nome not in bloco]
+        self.assertEqual(
+            [],
+            ausentes,
+            'Módulo de `src/chess_diagram_ocr/` fora da árvore "Estrutura" do README. '
+            "Uma linha, com o que ele responde.",
+        )
+
     def test_todo_extra_do_pyproject_aparece_no_README(self) -> None:
-        """Pega o `second-opinion`: um botão na tela, 232,8 MiB de clone, e zero menções."""
+        """Pega o `second-opinion`: um botão na tela, 232,8 MiB de clone, e zero menções.
+
+        **E a régua deixou de ser "aparece o nome"** (S-409). Era `extra not in self.readme`, um
+        `in` de substring: `demo` casava dentro de "demonstracao" e de "demonstracoes", então o
+        extra do Streamlit passou a guarda sem nunca ter sido mencionado -- e o comando publicado
+        no README falhava com `No module named streamlit` num clone novo, que é exatamente o que
+        esta guarda existe para impedir.
+
+        A régua agora é `uv sync --extra <nome>`: a linha que **instala** o extra, e não o nome
+        dele solto no meio de uma frase. Os seis já a satisfaziam, menos o `demo`.
+        """
         extras = chaves_da_secao("project.optional-dependencies")
         self.assertTrue(extras, "o pyproject perdeu a seção de extras (ou o leitor quebrou).")
-        ausentes = sorted(extra for extra in extras if extra not in self.readme)
-        self.assertEqual([], ausentes, "Extra do pyproject que o README não menciona.")
+        ausentes = sorted(extra for extra in extras if f"--extra {extra}" not in self.readme)
+        self.assertEqual(
+            [],
+            ausentes,
+            "Extra do pyproject sem `uv sync --extra <nome>` no README. Citar o nome não basta: "
+            "quem lê precisa da linha que o instala.",
+        )
 
     def test_o_numero_de_comandos_citado_bate_com_project_scripts(self) -> None:
         """Dizia "os três comandos abaixo", e a lista tinha quinze."""

@@ -110,11 +110,101 @@ class AccentTests(unittest.TestCase):
 
         self.assertEqual(faltas, [], "Strings de UI sem acento:\n" + "\n".join(faltas[:20]))
 
+    def test_nenhuma_excecao_de_produto_usa_forma_sem_acento(self) -> None:
+        """A varredura de cima olha `ui/`, e a mensagem de exceção **também é interface** (S-392).
+
+        O que o `raise` de um módulo de produto carrega chega à tela por dois caminhos: a caixa de
+        erro da janela, que mostra `str(exc)`, e o `cli_errors` da S-126, que a imprime em pt-BR.
+        Nenhum dos dois passava por esta guarda, e "Selecao vazia: o retangulo escolhido nao cobre
+        nenhum pixel" era o que a janela mostrava a quem arrastava um retângulo vazio.
+
+        **`cli/` fica de fora, e `logger` também**: ali o texto é de terminal e de arquivo de log,
+        e a convenção do projeto é escrevê-los sem acento (o mesmo motivo do README).
+        """
+        raiz = RAIZ / "src" / "chess_diagram_ocr"
+        padrao = re.compile(
+            r"\b(" + "|".join(sorted(strings.WORDS_REQUIRING_ACCENTS, key=len, reverse=True)) + r")s?\b",
+            re.IGNORECASE,
+        )
+        faltas: list[str] = []
+        for caminho in sorted(raiz.rglob("*.py")):
+            if caminho.parent.name in ("ui", "cli"):
+                continue
+            arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+            for no in ast.walk(arvore):
+                if not isinstance(no, ast.Raise) or no.exc is None:
+                    continue
+                for item in ast.walk(no.exc):
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str):
+                        achado = padrao.search(item.value)
+                        if achado and achado.group(0).lower() not in PERMITIDOS:
+                            faltas.append(f"{caminho.name}:{no.lineno}: {item.value[:60]!r}")
+
+        self.assertEqual(faltas, [], "Mensagem de exceção sem acento:\n" + "\n".join(faltas[:20]))
+
     def test_the_word_list_itself_is_unaccented(self) -> None:
         """Ela lista as formas **erradas**; acentuá-la faria o teste acima nunca falhar."""
         for palavra in strings.WORDS_REQUIRING_ACCENTS:
             with self.subTest(palavra=palavra):
                 self.assertEqual(palavra, palavra.encode("ascii", "ignore").decode("ascii"))
+
+
+TITULOS_GENERICOS = frozenset({"erro", "erro!", "aviso", "alerta", "atenção", "atencao", "falha", "error", "warning"})
+"""Títulos de caixa que não dizem **o que** falhou. Ver `TituloDeCaixaTests` (S-401)."""
+
+
+class TituloDeCaixaTests(unittest.TestCase):
+    """Toda caixa de diálogo nomeia a operação, e não a categoria (S-401).
+
+    Nove das trinta e nove caixas se chamavam "Erro". O título é a primeira linha que se lê, e
+    muitas vezes a única: "Erro / Falha ao renderizar página" diz duas vezes que houve falha e
+    nenhuma vez qual gesto a produziu -- enquanto "Mostrar a página" já responde. Não é gosto:
+    quem tem três abas abertas e duas operações em curso precisa saber a **qual** delas responder,
+    e o `messagebox` do Tk não põe o nome do painel em lugar nenhum.
+
+    A guarda é a mesma classe da S-161 e da S-324: o que a janela mostra é declarado num lugar e
+    conferido de fora, em vez de depender de quem escreveu a linha se lembrar.
+    """
+
+    CHAMADAS = ("showerror", "showwarning", "showinfo", "askyesno", "askokcancel", "askyesnocancel", "askquestion")
+    """As sete do `tkinter.messagebox` que a janela usa. A primeira posicional delas é o título."""
+
+    def _titulos(self) -> list[tuple[str, int, str]]:
+        achados: list[tuple[str, int, str]] = []
+        for caminho in ARQUIVOS_DE_UI:
+            arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+            for no in ast.walk(arvore):
+                if not isinstance(no, ast.Call) or not isinstance(no.func, ast.Attribute):
+                    continue
+                if no.func.attr not in self.CHAMADAS or not no.args:
+                    continue
+                primeiro = no.args[0]
+                # Título vindo de variável ou de f-string sai da varredura: ele é montado com o
+                # nome do arquivo ou do livro, que é mais específico do que qualquer literal.
+                if isinstance(primeiro, ast.Constant) and isinstance(primeiro.value, str):
+                    achados.append((caminho.name, no.lineno, primeiro.value))
+        return achados
+
+    def test_a_varredura_acha_as_caixas(self) -> None:
+        """Sem isto, um `messagebox` renomeado faria o teste abaixo passar sobre lista vazia."""
+        self.assertGreaterEqual(len(self._titulos()), 30)
+
+    def test_nenhuma_caixa_se_chama_apenas_erro(self) -> None:
+        genericos = [
+            f"{arquivo}:{linha}: {titulo!r}"
+            for arquivo, linha, titulo in self._titulos()
+            if titulo.strip().lower() in TITULOS_GENERICOS
+        ]
+        self.assertEqual(
+            genericos,
+            [],
+            "Caixa de diálogo com título genérico. O título nomeia a operação -- "
+            '"Abrir PDF", "Ler o diagrama" --, e a mensagem diz o que houve:\n' + "\n".join(genericos),
+        )
+
+    def test_nenhuma_caixa_fica_sem_titulo(self) -> None:
+        vazios = [f"{a}:{n}" for a, n, titulo in self._titulos() if not titulo.strip()]
+        self.assertEqual(vazios, [], "Caixa sem título:\n" + "\n".join(vazios))
 
 
 class VocabularyTests(unittest.TestCase):

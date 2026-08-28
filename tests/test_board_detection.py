@@ -15,6 +15,7 @@ from chess_diagram_ocr.board_detection import (
     _threshold_passes,
     detect_board,
     detect_boards,
+    order_quad_points,
 )
 from chess_diagram_ocr.config import DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER
 from chess_diagram_ocr.pdf_to_pgn import save_pdf_positions_to_pgn, scan_pdf_positions
@@ -393,3 +394,32 @@ class DiagonalContactRepairTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuadA45GrausTests(unittest.TestCase):
+    """Os quatro cantos saem distintos, inclusive no losango (S-363).
+
+    A regra das somas e diferenças funciona para quadrilátero de pé e quebra a 45°: o mesmo ponto
+    ganhava `argmin(soma)` e `argmin(diferença)`, a saída tinha um canto repetido e um perdido, e
+    `getPerspectiveTransform` sobre isso é uma matriz sem sentido. É justamente o candidato torto
+    que a geometria mais precisa julgar.
+    """
+
+    def _ordenado(self, quad: list[list[float]]) -> list[tuple[float, float]]:
+        saida = order_quad_points(np.array(quad, dtype=np.float32))
+        return [(float(x), float(y)) for x, y in saida]
+
+    def test_o_losango_tem_quatro_cantos(self) -> None:
+        cantos = self._ordenado([[100, 0], [200, 100], [100, 200], [0, 100]])
+        self.assertEqual(len(set(cantos)), 4)
+
+    def test_o_retangulo_sai_na_ordem_de_sempre(self) -> None:
+        """TL, TR, BR, BL -- a convenção que `warp_from_quad` espera, e ela não mudou."""
+        esperado = [(10.0, 20.0), (110.0, 20.0), (110.0, 120.0), (10.0, 120.0)]
+        self.assertEqual(self._ordenado([[10, 20], [110, 20], [110, 120], [10, 120]]), esperado)
+        self.assertEqual(self._ordenado([[110, 120], [10, 20], [110, 20], [10, 120]]), esperado)
+
+    def test_o_quad_torto_da_a_volta_na_figura(self) -> None:
+        cantos = self._ordenado([[12, 25], [108, 18], [115, 121], [16, 128]])
+        self.assertEqual(len(set(cantos)), 4)
+        self.assertEqual(cantos[0], (12.0, 25.0), "começa pelo canto de menor soma")

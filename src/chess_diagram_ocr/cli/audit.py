@@ -22,16 +22,15 @@ from ..audit import (
     remove_duplicate_labels,
     write_dedupe_summary,
 )
-from ..config import DEFAULT_DATASET_CSV, DEFAULT_SAMPLES_DIR, PIECE_CLASSES, PROJECT_ROOT
+from ..config import DEFAULT_DATASET_CSV, PIECE_CLASSES, PROJECT_ROOT
 from ..labels import label_origins
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits, split_leaks
-from . import cli_errors
+from . import EXIT_FAILURE, add_dataset_arguments, add_splits_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_QUARANTINE = DEFAULT_DATASET_CSV.parent / "quarantine.csv"
-DEFAULT_SPLITS = DEFAULT_DATASET_CSV.parent / "splits.csv"
 DEFAULT_METRICS_DIR = PROJECT_ROOT / "docs" / "metrics"
 
 
@@ -40,15 +39,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Audita o dataset de rótulos: posições ilegais, duplicatas e arquivos órfãos.",
         epilog="Sem nenhuma flag de correção, apenas relata. Toda escrita cria backup do CSV.",
     )
-    parser.add_argument("--csv", type=Path, default=DEFAULT_DATASET_CSV)
-    parser.add_argument("--samples", type=Path, default=DEFAULT_SAMPLES_DIR)
-    parser.add_argument("--quarantine-path", type=Path, default=DEFAULT_QUARANTINE)
+    add_dataset_arguments(parser, splits=False)
     parser.add_argument(
-        "--splits",
-        type=Path,
-        default=DEFAULT_SPLITS,
-        help="Arquivo de splits, para relatar amostras que nenhum treino enxerga (S-56).",
+        "--quarantine-path", type=Path, default=DEFAULT_QUARANTINE, help="CSV de quarentena: para onde vão os rótulos recusados."
     )
+    add_splits_argument(parser, help="Arquivo de splits, para relatar amostras que nenhum treino enxerga (S-56).")
     parser.add_argument(
         "--fix-side-to-move",
         action="store_true",
@@ -89,7 +84,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="Relatorio de vazamento da base de caractere. Padrao: docs/metrics/texto_vazamento.json.",
     )
-    parser.add_argument("-v", "--verbose", action="store_true")
+    add_verbose(parser)
     return parser.parse_args(argv)
 
 
@@ -403,7 +398,7 @@ def _codigo_de_saida(report: AuditReport, *, strict: bool, extras: Sequence[str]
         print("  cvoff-audit --strict")
         print()
         return 0
-    return 1
+    return EXIT_FAILURE
 
 
 if __name__ == "__main__":

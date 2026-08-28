@@ -98,6 +98,15 @@ class JanelaDeBusca(tk.Toplevel):
         self.lista.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(4, 4))
         self.lista.bind("<Double-Button-1>", self._mostrar_escolhida)
 
+        # **Enter acha e Esc fecha (S-342).** A janela tinha os dois botões e nenhuma tecla: quem
+        # digita o que procurar e aperta `Enter` -- que é o gesto de toda caixa de busca -- não
+        # recebia nada, e para fechá-la era preciso ir ao X do título. As duas ligações são no
+        # `Toplevel` inteiro, e não só no campo, porque a lista e a caixa de substituir também
+        # recebem foco: uma tecla que funciona em um widget e não no vizinho é pior que nenhuma.
+        self.bind("<Return>", self._ao_teclar_enter)
+        self.bind("<KP_Enter>", self._ao_teclar_enter)
+        self.bind("<Escape>", self._ao_teclar_esc)
+
         texto_ui.acompanhar(ttk.Label(moldura, textvariable=self.status_var)).grid(
             row=5, column=0, columnspan=2, sticky="w"
         )
@@ -114,6 +123,22 @@ class JanelaDeBusca(tk.Toplevel):
         self.campo.focus_set()
         if substituindo:
             self.status_var.set("Digite o que achar e o que pôr no lugar, e confira a lista.")
+
+    def _ao_teclar_enter(self, _evento: object = None) -> str:
+        """`Enter` acha. **Não substitui**, e a diferença é a regra 2 desta revisão (S-342).
+
+        Trocar cento e vinte ocorrências é a ação destrutiva desta janela, e ela continua exigindo
+        o botão: uma tecla que a dispare pelo caminho de "achar" é exatamente o gesto que ninguém
+        pediu. Com a lista já na tela, `Enter` a refaz -- que é o que se quer depois de mudar o
+        que procurar.
+        """
+        self.listar()
+        return "break"
+
+    def _ao_teclar_esc(self, _evento: object = None) -> str:
+        """`Esc` fecha, como na paleta e nos dois diálogos que já a tinham."""
+        self.destroy()
+        return "break"
 
     def listar(self) -> tuple[_busca.Ocorrencia, ...]:
         """Acha e enche a lista, **toda marcada**. Devolve o que achou, para o teste comparar."""
