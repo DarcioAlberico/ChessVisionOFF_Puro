@@ -208,6 +208,63 @@ class PilhaDoEditorTests(unittest.TestCase):
         painel.update()
         self.assertEqual(painel.edicao, antes)
 
+    # ------------------------------------------------- a formatação no desfazer (S-334, S-335)
+
+    def test_o_negrito_entra_no_desfazer(self) -> None:
+        """Ele não muda caractere nenhum, então a pilha do Tk não o vê -- e o `Ctrl+Z` seguinte
+        desfazia a digitação anterior, deixando o negrito onde estava."""
+        painel = self._painel()
+        painel.desenhar(_pagina("uma frase inteira"))
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        painel.negrito()
+        self.assertTrue(painel.documento_atual().corridas[0].atributos.negrito)
+
+        painel.desfazer()
+
+        self.assertFalse(any(c.atributos.negrito for c in painel.documento_atual().corridas))
+
+    def test_a_cor_e_o_limpar_formato_tambem(self) -> None:
+        painel = self._painel()
+        painel.desenhar(_pagina("uma frase inteira"))
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        painel.pintar_letra("destaque")
+        com_cor = [c.atributos.cor for c in painel.documento_atual().corridas if c.atributos.cor]
+        self.assertTrue(com_cor)
+
+        painel.desfazer()
+
+        self.assertEqual([c.atributos.cor for c in painel.documento_atual().corridas if c.atributos.cor], [])
+
+    def test_a_digitacao_depois_da_formatacao_desfaz_primeiro(self) -> None:
+        """**A ordem é a dos acontecimentos**, e é a marca de edição do instantâneo que a decide."""
+        painel = self._painel()
+        painel.desenhar(_pagina("frase"))
+        painel.editor.tag_add("sel", "1.0", "1.3")
+        painel.negrito()
+        painel.editor.insert("end", " digitado")
+        painel.update()
+
+        painel.desfazer()
+
+        self.assertNotIn("digitado", painel.texto_atual())
+        self.assertTrue(
+            any(c.atributos.negrito for c in painel.documento_atual().corridas),
+            "o negrito veio antes da digitação: ele não pode sair primeiro",
+        )
+
+    def test_desfazer_devolve_o_cursor_e_a_rolagem(self) -> None:
+        """Desfazer jogava a pessoa para o topo do documento (S-335)."""
+        from chess_diagram_ocr.text import busca
+
+        painel = self._painel()
+        painel.desenhar(_pagina("a, b, c, d, e"))
+        painel.aplicar_substituicao(busca.achar(painel.documento_atual(), ","), ";")
+        painel.editor.mark_set(tk.INSERT, "1.5")
+
+        painel.desfazer()
+
+        self.assertEqual(str(painel.editor.index(tk.INSERT)), "1.5")
+
 
 class AceleradorTests(unittest.TestCase):
     def test_o_menu_mostra_o_acelerador_do_tk(self) -> None:

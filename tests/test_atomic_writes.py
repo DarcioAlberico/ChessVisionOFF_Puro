@@ -34,7 +34,6 @@ PERMITIDAS = {
     "experiments.py": "os resultados da grade: derivados dos treinos, e o .pt de cada variante sobrevive",
     "pdf_to_pgn.py": "o PGN exportado e o .review.pgn: saída do produto, e a S-24 já grava parcial a cada 5 páginas",
     "side_survey.py": "o levantamento de procedência do lado a jogar: medição derivada, refeita com cvoff-sides",
-    "ui/study_panel.py": "PGN de estudo, num caminho que o usuário acabou de escolher num diálogo de salvar",
 }
 """Onde a escrita direta é aceitável, **com o motivo de cada uma**.
 

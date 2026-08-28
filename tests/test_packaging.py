@@ -171,7 +171,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2261
+    LIMITE = 2274
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
 
     **2.090 → 2.092 na Fase 39**, e as onze são as quatro linhas de exportação (`.md`, `.html`,
@@ -467,6 +467,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     linhas e a que mais paga: sem ela, **nada** do que a S-156, a S-221 e a S-291 prometem
     lembrar sobrevivia a fechar a janela -- o arquivo em disco era reescrito com os padrões de
     fábrica antes de a primeira linha de restauração rodar.
+
+    **2.261 → 2.274 na Fase 57**, e as treze são de dois itens que só a janela podia costurar. A
+    S-329 liga o campo de DPI ao visualizador -- **três linhas**, porque a espera pelo fim da
+    digitação e a re-rasterização foram para `pdf_panel.observar_dpi`, que é quem sabe que a
+    imagem em memória envelheceu. A S-347 guarda a chave do estudo que a sessão anterior deixou
+    aberto e a entrega ao painel quando o livro dela abre: quem lê o `AppState` é a janela, e o
+    campo `estudo_aberto` existia desde a S-271 sendo gravado e nunca lido.
 
     Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
     crescer **sem decidir**."""

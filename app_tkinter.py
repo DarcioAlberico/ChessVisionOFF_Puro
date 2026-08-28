@@ -194,6 +194,8 @@ class ChessOcrTkApp:
 
         self.piece_images = PieceImages(PIECE_IMAGE_DIR, conjunto=conjuntos.escolhido())
         self.state = AppState()
+        self._estudo_a_reabrir = ""
+        """A chave do estudo que a sessão anterior deixou aberto. Ver `_restore_state_or_default_pdf` (S-347)."""
         self._estado_aplicado = False
         """O estado lido do disco ja chegou aos widgets? Ver `_save_app_state` (S-322)."""
         self.piece_set_var = tk.StringVar(value=self.piece_images.conjunto)
@@ -567,6 +569,9 @@ class ChessOcrTkApp:
         )
         self.pdf_panel.pack(fill=tk.BOTH, expand=True)
         self._build_field_row(self.pdf_panel.field_row)
+        # Trocar o DPI invalida a imagem que está na tela (S-329). Quem sabe re-rasterizar é o
+        # painel, e é lá que mora a espera pelo fim da digitação.
+        self.pdf_panel.observar_dpi(self.dpi_var)
 
     def _build_field_row(self, parent: ttk.Widget) -> None:
         """Os controles do conjunto de campo (S-77), junto da página exibida.
@@ -690,6 +695,8 @@ class ChessOcrTkApp:
     def _restore_state_or_default_pdf(self) -> None:
         """Restaura o estado gravado. Sem PDF utilizável, cai no primeiro PDF da pasta."""
         self.state = load_state(APP_STATE_PATH)
+        # A mesa da sessão anterior, guardada até o livro dela abrir (S-347).
+        self._estudo_a_reabrir = self.state.estudo_aberto
         self.piece_dir_var.set(self.state.piece_dir)
         self.piece_set_var.set(conjuntos.escolhido(self.state.piece_set))
         self._escolher_conjunto()
@@ -936,6 +943,12 @@ class ChessOcrTkApp:
             self.result_panel.discard_document_results(str(pdf_path))
         if self.study_panel is not None:
             self.study_panel.abrir_livro(str(pdf_path))  # a sala daquele livro volta do disco (S-271)
+            # E a mesa em que a sessão anterior parou (S-347). Só na **primeira** abertura: depois
+            # dela, `estudo_aberto` é o que o usuário abriu nesta sessão, e reabri-lo a cada troca
+            # de livro puxaria a pessoa de volta para um diagrama que ela acabou de deixar.
+            if self._estudo_a_reabrir:
+                self.study_panel.reabrir_por_chave(self._estudo_a_reabrir)
+                self._estudo_a_reabrir = ""
         self._atualizar_titulo()
         self._atualizar_abas()
 
@@ -1176,7 +1189,7 @@ class ChessOcrTkApp:
         """
         if caixas.all_saved:
             self._set_status(
-                f"Página {caixas.page_index} concluída: todos os {len(caixas)} diagrama(s) "
+                f"Página {caixas.page_index + 1} concluída: todos os {len(caixas)} diagrama(s) "
                 "já têm amostra salva."
             )
 
@@ -1265,7 +1278,7 @@ class ChessOcrTkApp:
 
         if len(caixas):
             self._set_status(
-                f"Página {caixas.page_index}: {len(caixas)} diagrama(s) marcado(s). "
+                f"Página {caixas.page_index + 1}: {len(caixas)} diagrama(s) marcado(s). "
                 "Clique num deles para lê-lo."
             )
         # Depois do aviso, e pelo `_refresh_overlay` em vez de direto na tela (S-142). Duas

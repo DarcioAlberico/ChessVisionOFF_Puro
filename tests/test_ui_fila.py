@@ -73,7 +73,11 @@ class DeclaracaoDaFilaTests(unittest.TestCase):
         perdidos = [
             registro.acao
             for registro in comandos.CATALOGO
-            if registro.acao not in no_menu and registro.acao not in comandos.NA_LINHA_DE_CAMPO
+            if registro.acao not in no_menu
+            and registro.acao not in comandos.NA_LINHA_DE_CAMPO
+            # A janela de achar e substituir é o terceiro lugar, e ela é declarado desde a S-343:
+            # o botão que troca as ocorrências marcadas precisa da lista, que só existe ali.
+            and registro.acao not in comandos.NA_JANELA_DE_BUSCA
         ]
         self.assertEqual([], perdidos, 'comando que a pele Foco esconde e o menu não alcança')
 

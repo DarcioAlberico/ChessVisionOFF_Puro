@@ -56,6 +56,8 @@ class DeclaracaoDaFitaTests(unittest.TestCase):
             if registro.acao not in na_fita
             and registro.acao not in no_menu
             and registro.acao not in comandos.NA_LINHA_DE_CAMPO
+            # O terceiro lugar, declarado na S-343: o botão de dentro da janela de busca.
+            and registro.acao not in comandos.NA_JANELA_DE_BUSCA
         ]
         self.assertEqual([], perdidos)
 

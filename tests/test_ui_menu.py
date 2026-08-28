@@ -27,7 +27,7 @@ from chess_diagram_ocr.ui.state import AppState  # noqa: E402
 
 
 class TabelaDeAtalhosTests(unittest.TestCase):
-    def test_sao_dezoito_e_cada_um_novo_tem_dono(self) -> None:
+    def test_sao_vinte_e_um_e_cada_um_novo_tem_dono(self) -> None:
         """Eram dez -- a avaliação escreveu "onze" e listou dez (S-135). O décimo primeiro é o
         `Ctrl+Enter` da S-223, e ele entrou por uma razão que o teste consegue cobrar: a fila da
         pele "Foco" só admite comando com tecla, e `aplicar_fen` não tinha uma.
@@ -50,8 +50,14 @@ class TabelaDeAtalhosTests(unittest.TestCase):
         S-70: virar **uma** página tinha tecla (`Page Up`/`Page Down`) e ir à primeira ou à última
         não tinha nenhuma. Eles nasceram de fora -- a sala de estudo precisava de "início" e "fim da
         linha", e aqui não entra tecla sem comando global --, e o resultado é que a pergunta *o que
-        Home e End fazem no resto da janela?* finalmente foi feita."""
-        self.assertEqual(len(atalhos.ATALHOS), 18)
+        Home e End fazem no resto da janela?* finalmente foi feita.
+
+        O décimo nono, o vigésimo e o vigésimo primeiro são da S-333, e a razão é a da S-281
+        outra vez: `Ctrl+0` ajustava à largura desde a S-165, e aproximar, afastar e enquadrar a
+        folha inteira -- três botões que estão na mesma barra -- não tinham tecla nenhuma."""
+        self.assertEqual(len(atalhos.ATALHOS), 21)
+        self.assertEqual("Ctrl++", atalhos.acelerador("zoom_mais"))
+        self.assertEqual("Ctrl+9", atalhos.acelerador("ajustar_pagina"))
         self.assertEqual("Ctrl+Enter", atalhos.acelerador("aplicar_fen"))
         self.assertEqual("Ctrl+Z", atalhos.acelerador("desfazer"))
         self.assertEqual("Ctrl+Y", atalhos.acelerador("refazer"))

@@ -44,6 +44,7 @@ __all__ = [
     "ESTUDO",
     "GRUPOS",
     "NAS_BARRAS_DO_PDF",
+    "NA_JANELA_DE_BUSCA",
     "NA_LINHA_DE_CAMPO",
     "OCR",
     "VISUALIZACAO",
@@ -740,6 +741,17 @@ declarar a lista onde o inventário da S-233 possa lê-la sem abrir janela --
 
 **Na pele "Foco" e na "Fita" estes controles existem e não são empacotados** (S-223), e por isso a
 lista é a tela da **clássica** e não do painel: o que a pele decide é o que aparece."""
+
+
+NA_JANELA_DE_BUSCA: tuple[str, ...] = ("substituir_todos",)
+"""Os comandos que só existem **dentro** da janela de achar e substituir (S-343).
+
+`substituir_todos` é o botão que troca as ocorrências marcadas na lista, e a lista só existe
+naquela janela. Como comando da paleta ele abria a mesma janela que "Substituir…" -- dois rótulos
+para uma ação, e o segundo prometendo uma troca em massa que ele não fazia.
+
+Fica no catálogo porque é de lá que o botão tira o rótulo, e é declarado aqui para a paleta poder
+dizer **por que** não o executa, em vez de mostrá-lo como se executasse."""
 
 
 NA_LINHA_DE_CAMPO: tuple[str, ...] = ("anotar_pagina", "anotar_sem_diagrama", "tirar_do_campo")

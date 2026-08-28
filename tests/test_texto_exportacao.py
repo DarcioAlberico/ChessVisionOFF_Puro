@@ -115,6 +115,43 @@ class PerdaExplicitaTests(unittest.TestCase):
         relatorio = exportacao.exportar(doc, exportacao.Markdown())
         self.assertEqual(relatorio.perdas.get("cor"), 1)
 
+    def test_o_md_declara_a_perda_do_estilo_que_ele_nao_escreve(self) -> None:
+        """`suporta` dizia "estilo: sim" por causa do `# ` do título (S-339).
+
+        Legenda, notação e prosa não têm sintaxe no Markdown: saíam como texto comum e o relatório
+        dizia "perdido: nada". Título continua sendo escrito, e continua sem perda.
+        """
+        legenda = rico.aplicar_estilo(rico.de_texto("uma legenda"), 0, 11, "legenda")
+        self.assertEqual(exportacao.exportar(legenda, exportacao.Markdown()).perdas.get("estilo"), 1)
+
+        titulo = rico.aplicar_estilo(rico.de_texto("um título"), 0, 9, "titulo")
+        self.assertIsNone(exportacao.exportar(titulo, exportacao.Markdown()).perdas.get("estilo"))
+
+    def test_o_rtf_conta_o_recorte_que_ele_joga_fora(self) -> None:
+        """O RTF não carrega imagem, e passar o recorte a ele zerava `sem_recorte`: o relatório
+        dizia "nenhum diagrama sem recorte" sobre um arquivo em que nenhum tem imagem (S-341)."""
+        from pathlib import Path as _Path
+
+        doc = rico.de_pagina(_pagina(_texto("antes"), BlocoDeDiagrama(indice=0), _texto("depois")))
+        diagrama = next(c for c in doc.corridas if c.e_diagrama)
+
+        relatorio = exportacao.exportar(doc, exportacao.Rtf(), recortes={diagrama.bloco: _Path("d.png")})
+
+        self.assertEqual(relatorio.sem_recorte, 0, "o recorte existia")
+        self.assertIn("não carrega", " ".join(relatorio.avisos))
+
+    def test_o_md_com_recorte_nao_avisa_nada_disso(self) -> None:
+        """A contrapartida: quem carrega a imagem não avisa perda nenhuma."""
+        from pathlib import Path as _Path
+
+        doc = rico.de_pagina(_pagina(BlocoDeDiagrama(indice=0)))
+        diagrama = next(c for c in doc.corridas if c.e_diagrama)
+
+        relatorio = exportacao.exportar(doc, exportacao.Markdown(), recortes={diagrama.bloco: _Path("d.png")})
+
+        self.assertNotIn("não carrega", " ".join(relatorio.avisos))
+        self.assertIn("d.png", relatorio.conteudo)
+
     def test_o_relatorio_avisa_o_que_nao_e_perda(self) -> None:
         doc = rico.inserir(rico.de_texto("prosa"), 5, "♞", fora_do_modelo=True)
         avisos = " ".join(exportacao.exportar(doc, exportacao.Html()).avisos)
@@ -211,6 +248,29 @@ class HtmlTests(unittest.TestCase):
         doc = rico.de_pagina(_pagina(_texto("adivinhado", 0.1, "glifo")))
         saida = exportacao.exportar(doc, exportacao.Html()).conteudo
         self.assertIn(f"faixa-{documento.REVISAR}", saida)
+
+    def test_o_html_tem_regra_para_cada_classe_de_estilo_que_emite(self) -> None:
+        """Quatro classes `estilo-*` eram emitidas e nenhuma tinha regra na folha (S-340).
+
+        O critério é o dos dois lados: toda classe emitida tem regra, e nenhuma regra existe para
+        classe que ninguém emite.
+        """
+        formato = exportacao.Html()
+        emitidas = set()
+        for estilo in ("titulo", "prosa", "notacao", "legenda"):
+            doc = rico.aplicar_estilo(rico.de_texto("um trecho"), 0, 9, estilo)
+            emitidas.update(c for c in formato._classes(doc.corridas[0]) if c.startswith("estilo-"))
+        com_regra = {f"{nome}" for nome, _p, _v in formato._regras() if nome.startswith("estilo-")}
+
+        self.assertEqual(emitidas, com_regra)
+        self.assertNotIn("estilo-prosa", emitidas, "prosa é o padrão do documento")
+        self.assertNotIn("estilo-titulo", emitidas, "título sai como <h2>")
+
+    def test_a_regra_do_estilo_chega_ao_arquivo(self) -> None:
+        doc = rico.aplicar_estilo(rico.de_texto("uma legenda"), 0, 11, "legenda")
+        conteudo = exportacao.exportar(doc, exportacao.Html()).conteudo
+        self.assertIn(".estilo-legenda {", conteudo)
+        self.assertIn('class="estilo-legenda"', conteudo)
 
 
 class FormatoDesconhecidoTests(unittest.TestCase):

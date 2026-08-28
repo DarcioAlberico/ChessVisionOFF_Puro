@@ -82,7 +82,8 @@ class RemontagemDoPainelTests(unittest.TestCase):
         self.assertEqual(1.25, self.panel.zoom_var.get())
         self.assertEqual("125%", str(self.panel.lbl_zoom.cget("text")))
         self.assertIn("livro.pdf", str(self.panel.lbl_pdf.cget("text")))
-        self.assertEqual(11, int(self.panel.spin_page.cget("to")), "o teto do Spinbox voltou zerado")
+        self.assertEqual(12, int(self.panel.spin_page.cget("to")), "o teto do Spinbox voltou zerado")
+        self.assertEqual("4", str(self.panel.spin_page.get()), "o campo é base 1 (S-328)")
         self.assertIs(pixels, self.panel.page_rgb, "a página foi re-renderizada")
 
     def test_a_troca_nao_re_renderiza_a_pagina(self) -> None:

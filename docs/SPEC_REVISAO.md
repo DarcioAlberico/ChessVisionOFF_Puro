@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-327, S-368 a S-385 | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-385 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -1417,3 +1417,373 @@ quase sempre de forma, e não de intenção.
 invertido continua recusado com a frase que já tinha.
 
 **Testes.** `IntervaloDePaginasTests`, quatro casos, em `tests/test_cli_errors.py`.
+
+---
+
+# Fase 57 — A folha do livro, o editor, e a sala de estudo
+
+Vinte itens para os vinte e seis achados das três frentes que a revisão manteve juntas: o
+visualizador de PDF, o editor de texto e a sala de estudo. Onde um item cobre mais de um achado,
+eles são da mesma família e o texto os nomeia.
+
+**Dois achados já estavam entregues quando a fase chegou**: o carimbo da linha impressa no nó
+errado saiu na S-312, e a `_pintar_faixas` que esvazia o registro de fontes é a metade de dentro
+da S-336.
+
+## S-328 · A folha é contada em base 1 na tela inteira
+
+**Problema.** O campo de página e os rodapés de mensagem diziam base 0; o rodapé de documento, o
+título da janela e a anotação de campo diziam base 1. Quem lê a tela inteira via **dois números
+para a mesma folha** -- e o docstring de `strings.titulo_da_janela` afirmava, desde a S-167, que
+a página é dita "em base 1, **como o campo da tela**", o que era falso justamente sobre o campo.
+
+**Solução.** O `Spinbox` perde o `textvariable` e passa a mostrar `índice + 1`, com faixa `1..n`;
+`page_index_var` continua sendo o índice interno base 0 que trinta chamadas leem. Seta e
+digitação passam pela mesma porta (`_on_page_typed`), e as mensagens de "Renderizando página" e
+"Página N pronta" -- mais as três de `result_panel` e `app_tkinter` -- somam 1.
+
+**Critério de aceite.** Com o índice 2 na tela, o campo diz `3` e o título diz `p. 3 de N`.
+
+**Testes.** `BaseDaFolhaTests`, cinco casos, em `tests/test_pdf_panel_navegacao.py`; os quatro de
+`NumeroDigitadoTests` passaram a afirmar a base nova.
+
+## S-329 · Trocar o DPI invalida a folha rasterizada
+
+**Problema.** `render_current_page` devolve cedo quando `page_loaded_for_index` bate com o índice.
+Mudar o DPI na aba Configurações não invalidava nada: a imagem continuava rasterizada no DPI
+antigo e a detecção passava a medir no novo, então os retângulos de diagrama saíam do lugar sobre
+a imagem embaixo deles.
+
+**Solução.** `pdf_panel.observar_dpi(var)` observa o campo e re-rasteriza **depois que ele para de
+mudar** -- o `trace` dispara a cada tecla, e `220` digitado à mão passa por `2` e `22`. O `after`
+de 400 ms espera, o `after_cancel` impede a fila, e `_dpi_rasterizado` evita o trabalho quando o
+valor volta ao que já estava na tela.
+
+**Critério de aceite.** Mudar o DPI e aplicar re-renderiza uma vez; aplicar de novo sem mudar não
+re-renderiza. Zoom continua **não** invalidando: ele reescala a mesma imagem, de propósito.
+
+**Testes.** `DpiEZoomTests`, três casos.
+
+## S-330 · O piso da seleção de área é medido na página
+
+**Problema.** `MIN_SELECTION_PX = 12` era comparado com as coordenadas do canvas, que já vêm
+multiplicadas pelo zoom: a 25% o piso valia 48 px de página e a 200%, 6 px -- o mesmo arrasto era
+"muito pequeno" numa vista e recorte válido na outra, e o recado não dizia nada disso.
+
+**Solução.** A comparação passa a ser feita **depois** da conversão para pixel de página. O que a
+constante quer dizer -- "menos que isto não contém casa nenhuma" -- é uma afirmação sobre a folha.
+
+**Critério de aceite.** 20 px de tela a 200% são recusados (10 px de página); os mesmos 20 px a
+50% viram o recorte `(0, 0, 40, 40)`.
+
+**Testes.** `test_o_piso_da_selecao_e_medido_na_pagina` e o par a menos zoom.
+
+## S-331 · O PDF protegido por senha não troca o livro por dentro
+
+**Problema.** A S-123 pôs `get_pdf_page_count` como primeira linha de `load_pdf` justamente para
+validar antes de mutar. O PDF cifrado passava por ela: `fitz.open` aceita o arquivo, `needs_pass`
+fica ligado e `page_count` responde o número certo -- **1**, no teste. O painel então trocava o
+livro do programa inteiro (Galeria, resultados, aba de estudo) e só o render falhava, com
+`ValueError: document closed or encrypted`, em inglês, e a tela ainda mostrando o livro anterior.
+
+**Solução.** `pdf_io._open_document` recusa o documento cifrado com um `ValueError` em pt-BR que
+diz o que fazer. Mora ali, e não no painel, porque **nenhum** caminho deste programa sabe pedir
+senha: o `cvoff-scan`, o censo e a exportação encontrariam o mesmo muro três camadas adiante --
+e `ValueError` é o que o `cli_errors` da S-126 traduz em código 2.
+
+**Critério de aceite.** Abrir um PDF válido e depois um cifrado deixa o estado no válido, sem
+callback nenhum disparado, e a caixa diz "senha" e "bom.pdf continua aberto".
+
+**Testes.** `test_o_pdf_com_senha_nao_troca_o_estado_do_valido`, ao lado do da S-123.
+
+## S-332 · A roda é de quem está por cima
+
+**Problema.** `_pointer_over_canvas` respondia "o ponteiro está na área do canvas", que não é a
+mesma coisa que "o canvas é o que está debaixo do ponteiro". Com a paleta de comandos, uma lista
+suspensa ou um diálogo sobre a folha, a roda rolava o PDF **atrás** deles e devolvia `"break"`:
+quem girava a roda sobre a lista via a página do livro passar.
+
+**Solução.** A conta aritmética continua -- ela existe porque `winfo_containing` devolve `None`
+quando uma janela de outro programa cobre o ponto, e isso foi medido --, e o `winfo_containing`
+volta como **desempate**: quando ele nomeia um widget desta aplicação, só o canvas (ou um filho
+dele) manda na roda; quando devolve `None`, vale o retângulo, como antes.
+
+**Critério de aceite.** Com outro widget sob o ponteiro, a roda não é do canvas; com `None`, é.
+
+**Testes.** Três casos em `DpiEZoomTests`.
+
+## S-333 · O zoom tem tecla, e a dica diz o que a roda faz
+
+**Problema.** Aumentar, diminuir e enquadrar a folha inteira não tinham tecla nenhuma -- `Ctrl+0`
+ajustava à largura desde a S-165 e era só. E a dica do botão "Ajustar à largura" prometia que
+`Ctrl + roda` "faz o mesmo", quando `Ctrl + roda` aproxima e afasta por passos: são dois gestos,
+e a frase juntava os dois.
+
+**Solução.** `Ctrl++`, `Ctrl+-` e `Ctrl+9` entram em `ATALHOS` -- as duas primeiras com destino
+declarado no editor, onde elas mexem no corpo do texto (`SOBREPOSICOES_NO_EDITOR`). A dica passa
+a dizer as três coisas separadas: o que o botão faz, o que `Ctrl + roda` faz, e o que a roda
+sozinha faz.
+
+**Critério de aceite.** `ATALHOS` tem 21 linhas, a legenda e o menu mostram as três novas, e
+nenhuma sequência se repete.
+
+**Testes.** `tests/test_ui_menu.py` e `tests/test_ui_atalhos_destino.py`, com o número atualizado
+e as três teclas afirmadas por nome.
+
+## S-334 · A formatação entra no desfazer
+
+**Problema.** Negrito, itálico, sublinhado, tachado, cor, realce, "limpar formato" e "limpar cor"
+mexem em **etiqueta** e não em caractere -- de propósito, para não mover o cursor. A consequência
+é que a pilha do Tk não vê nada disso: o `Ctrl+Z` seguinte desfazia a **digitação anterior** e
+deixava o negrito onde estava. Desfazia outra coisa, em silêncio.
+
+**Solução.** As quatro ferramentas de etiqueta guardam um instantâneo do documento antes de
+escrever e fecham a marca de edição depois (`_fechar_instantaneo`). E `desfazer` passa a escolher
+entre as duas pilhas pela marca do topo: **instantâneo com a contagem de hoje é a ação mais
+recente e vai primeiro**; contagem antiga quer dizer que se digitou depois dele.
+
+Antes, a digitação vinha sempre primeiro, e isso bastava enquanto toda ferramenta redesenhava --
+o redesenho zera a pilha do Tk, então não havia empate possível.
+
+**Critério de aceite.** `Ctrl+Z` depois de aplicar negrito tira o negrito. Negrito, depois
+digitação, depois `Ctrl+Z`: sai a digitação, e o negrito fica.
+
+**Testes.** Quatro casos em `PilhaDoEditorTests`, incluindo a cor e a ordem entre as duas pilhas.
+
+## S-335 · Desfazer e refazer devolvem o lugar
+
+**Problema.** Os dois passam por `desenhar_documento`, que refaz o widget inteiro: cursor no
+início, seleção perdida, rolagem no topo. Numa folha de sessenta linhas, desfazer uma substituição
+feita no rodapé jogava a pessoa para a primeira linha.
+
+**Solução.** `_lugar_atual` guarda cursor, seleção e topo da rolagem antes do redesenho, e
+`_repor_lugar` os devolve depois. Índice que não existe mais -- o documento encolheu -- é
+ignorado.
+
+**Critério de aceite.** Desfazer uma substituição com o cursor em `1.5` devolve o cursor a `1.5`.
+
+**Testes.** `test_desfazer_devolve_o_cursor_e_a_rolagem`.
+
+## S-336 · O zoom da vista redimensiona o que tem estilo
+
+**Problema.** Dois defeitos somados, e o segundo escondia o primeiro. `_aplicar_zoom` refaz a
+fonte de cada etiqueta de desenho percorrendo `_fontes_desenhadas` -- e chama `_pintar_faixas`
+uma linha antes, que termina em `_pintar_estilos`, que **esvazia** esse registro: o laço percorria
+um dicionário vazio. E, mesmo cheio, `_fonte_do_trecho` deriva a fonte de um trecho com estilo da
+fonte do **sistema**, que o zoom não toca -- só o trecho sem estilo herdava o zoom, por vir da
+fonte do editor.
+
+Resultado: aproximar a vista aumentava a prosa comum e deixava título, notação e legenda do mesmo
+tamanho.
+
+**Solução.** O registro é guardado antes de `_pintar_faixas` e devolvido depois (esvaziá-lo é
+certo no redesenho, onde cada corrida volta a pedir a etiqueta dela, e errado aqui, onde não há
+redesenho), e o degrau do zoom entra na conta do trecho com estilo. Degrau de corpo e degrau de
+zoom vivem na mesma unidade -- um ponto --, que é o que permite somá-los antes de virar tamanho.
+
+**Critério de aceite.** Aplicar zoom muda a fonte da etiqueta `fonte:titulo:*`, e o registro de
+fontes desenhadas sobrevive à chamada.
+
+**Testes.** `ZoomComEstiloTests`, dois casos.
+
+## S-337 · A aba Texto segue a pele e o tema
+
+**Problema.** A aba resolvia cor com `tokens.cor(papel)` **sem estilo**, e `tokens.cor` sem estilo
+devolve a reserva clara: a aba Texto era a única superfície da janela congelada no tema de
+fábrica, com faixa de confiança, cor de autor e realce iguais em qualquer pele. O mesmo valia
+para o HTML exportado, cujo docstring afirma desde a S-251 que as cores saem "contra o tema em
+uso".
+
+**Solução.** `theme.cor_atual` nas seis resoluções, e o registro em `theme.ao_repintar` ao lado de
+onde se pintou -- sem ele a aba ficaria com a cor de quando nasceu até o próximo redesenho.
+
+**Critério de aceite.** A cor de uma faixa na tela é igual a `theme.cor_atual(papel)`, e
+`theme.repintar()` alcança a aba.
+
+**Testes.** `CorDaAbaTests`, dois casos.
+
+## S-338 · A exportação da aba leva os recortes
+
+**Problema.** `exportar(recortes=...)` existe desde a S-250 e a aba Estudo o usa desde a S-289; a
+aba de **texto** nunca o passou. Todo diagrama saía como marca sem imagem -- o alvo do
+`![Diagrama 1]` vinha vazio --, e `Relatorio.sem_recorte` contava a falta no rodapé desde sempre:
+o defeito estava anotado no próprio relatório.
+
+**Solução.** `_gravar_recortes` grava um PNG por diagrama em `diagramas/`, ao lado do arquivo, e
+devolve o mapa que `exportar` quer. A conta do recorte saiu de `_miniatura` para
+`recorte_do_bloco`, que é numpy puro: a miniatura é do Tk e vive na thread da janela, o PNG é da
+thread de trabalho, e a aritmética do DPI não podia ficar escrita duas vezes.
+
+**Critério de aceite.** O `.md` de uma folha com diagrama aponta para
+`diagramas/<arquivo>_d1.png`, e o arquivo está lá. Sem folha renderizada, a marca sai sozinha e
+nenhuma pasta é criada.
+
+**Testes.** Dois casos em `ExportacaoDaAbaTests`.
+
+## S-339 · O `.md` conta o estilo que ele não escreve
+
+**Problema.** `Markdown.suporta` inclui `"estilo"` por causa do `#` do título, e o Markdown não
+tem sintaxe para prosa, notação e legenda: os três saíam como texto comum com o relatório dizendo
+"perdido: nada".
+
+**Solução.** O protocolo `Formato` ganhou `suporta_valor(atributo, valor)`, opcional, para o
+formato que carrega **alguns** valores de um atributo. O `.md` responde `True` só para `titulo`.
+
+**Critério de aceite.** Uma legenda exportada em `.md` conta perda de `estilo`; um título, não.
+
+**Testes.** `test_o_md_declara_a_perda_do_estilo_que_ele_nao_escreve`.
+
+## S-340 · O `.html` tem regra para cada classe que emite
+
+**Problema.** `_classes` emitia `estilo-titulo`, `estilo-prosa`, `estilo-notacao` e
+`estilo-legenda`, e a folha de estilo não tinha regra para nenhuma delas: quatro classes que não
+faziam nada, num arquivo que existe para mostrar o que a aba mostrava.
+
+**Solução.** `estilos_do_html` declara como cada estilo se escreve em CSS, e `_classes` só emite
+os que estão lá. `titulo` sai como cabeçalho e nunca precisou de classe; `prosa` é o padrão do
+documento, e marcá-lo seria dizer "isto é normal" em toda corrida normal da folha. Sobram os dois
+que **são** diferentes e que o editor desenha diferente: notação em monoespaçada, legenda em
+itálico.
+
+**Critério de aceite.** O conjunto de classes `estilo-*` emitidas é igual ao conjunto que tem
+regra -- afirmado nos dois sentidos.
+
+**Testes.** `test_o_html_tem_regra_para_cada_classe_de_estilo_que_emite` e o do arquivo gerado.
+
+## S-341 · O `.rtf` conta o recorte que ele joga fora
+
+**Problema.** `Rtf.diagrama` ignora o `recorte` -- o RTF carregaria a imagem só pelo grupo de
+figura, com o PNG em hexadecimal --, e `exportar` contava `sem_recorte` apenas quando o recorte
+**faltava**. Passar o recorte ao RTF zerava o contador: o relatório dizia "nenhum diagrama sem
+recorte" sobre um arquivo em que nenhum diagrama tem imagem.
+
+**Solução.** `exportar` distingue "não havia recorte" de "havia e o formato não o carrega", pela
+declaração de `pasta_de_imagens` do formato, e o segundo caso vira aviso nomeando o formato.
+
+**Critério de aceite.** RTF com recorte: `sem_recorte == 0` e o aviso "não carrega". Markdown com
+recorte: nenhum aviso, e o `.png` no conteúdo.
+
+**Testes.** `test_o_rtf_conta_o_recorte_que_ele_joga_fora` e o par no `.md`.
+
+## S-342 · A janela de busca responde a Enter e a Esc
+
+**Problema.** A caixa de achar e substituir tinha os dois botões e nenhuma tecla. Quem digita o
+que procurar e aperta `Enter` -- que é o gesto de toda caixa de busca -- não recebia nada, e para
+fechá-la era preciso ir ao X do título.
+
+**Solução.** `Enter` acha e `Esc` fecha, ligados no `Toplevel` inteiro: a lista e a caixa de
+substituir também recebem foco, e uma tecla que funciona num widget e não no vizinho é pior que
+nenhuma. **`Enter` não substitui**, e isso é a regra 2 desta revisão: trocar cento e vinte
+ocorrências é a ação destrutiva desta janela, e ela continua exigindo o botão.
+
+**Critério de aceite.** `Enter` enche a lista sem alterar o texto; `Esc` destrói a janela.
+
+**Testes.** `JanelaDeBuscaTests`, quatro casos.
+
+## S-343 · Um comando por rótulo
+
+**Problema.** Dois pares de comandos com rótulo próprio faziam exatamente a mesma coisa.
+`salvar_texto` e `salvar_texto_como` chamavam o mesmo método, que **sempre** abre o diálogo: num
+ciclo de correção em que se grava a cada trecho conferido, o diálogo repetido é o atrito, e o
+rótulo "como…" prometia uma escolha que o outro tomava igual. E `substituir` e `substituir_todos`
+abriam a mesma janela -- o segundo prometendo uma troca em massa que ele não fazia.
+
+**Solução.** "Salvar" grava no arquivo já escolhido e só pergunta na primeira vez; "Salvar como…"
+pergunta sempre e passa a gravar no novo caminho; abrir um `.cvtxt` adota o caminho dele, e
+documento novo o zera. `substituir_todos` sai do menu e do mapa da aba e passa a ser declarado em
+`comandos.NA_JANELA_DE_BUSCA`: ele é o **botão** de dentro da janela de busca, e precisa da lista
+de ocorrências que só existe ali. A paleta o mostra com o motivo, como já faz com os três da
+linha de campo.
+
+**Critério de aceite.** A segunda gravação não pergunta; "Salvar como…" pergunta sempre; a
+varredura de alcance da S-233 continua verde com o comando fora do menu.
+
+**Testes.** `SalvarEUmCaminhoSoTests`, três casos, mais as quatro guardas de alcance atualizadas.
+
+## S-344 · A barra de formato acompanha o cursor
+
+**Problema.** Os interruptores de formato seguiam `<<Selection>>`, o clique e as **duas setas
+laterais**. O cursor anda de mais seis maneiras: `↑`, `↓`, `Home`, `End`, `PgUp` e `PgDn`. Descer
+uma linha de um título para a prosa deixava "Título" aceso, e o clique seguinte no botão decidia
+pelo estado errado.
+
+**Solução.** As seis teclas entram na mesma lista de gatilhos. `KeyRelease` e não `KeyPress`,
+porque o cursor só está no lugar novo depois que a classe `Text` tratou a tecla.
+
+**Critério de aceite.** As seis sequências estão ligadas no widget de texto.
+
+**Testes.** `BarraDeFormatoSegueOCursorTests`.
+
+## S-345 · A gravação por inatividade dispara com o motor ligado
+
+**Problema.** `_agendar_gravacao` cancela o prazo pendente e marca outro a cada chamada -- que é o
+que "gravar depois da inatividade" quer dizer. Com a análise contínua ligada, o motor escreve
+`[%eval ...]` no lance a cada ~800 ms e cada escrita passava por ali: o prazo **nunca vencia**, e
+a sala nunca chegava ao disco enquanto o motor estivesse ligado. Quem estuda com a análise
+contínua -- que é o modo em que ela existe para ser usada -- ficava com o arquivo parado no estado
+de antes de ligar o motor.
+
+**Solução.** A inatividade é a do **humano**. `_marcar_sujo(da_maquina=True)` -- só a avaliação do
+motor -- entra na sala e no arquivo da próxima gravação sem adiar a que já está marcada; sem
+nenhuma marcada, ela marca uma, senão a avaliação de um estudo que ninguém mais tocasse não
+chegaria ao disco.
+
+**Critério de aceite.** Depois de uma edição de gente, uma escrita do motor não troca o
+identificador do `after` pendente; outra edição de gente troca.
+
+**Testes.** `GravacaoPorInatividadeTests`, três casos.
+
+## S-346 · Virar o tabuleiro é vista, e o PGN é gravado inteiro
+
+**Problema.** Dois achados da mesma sala.
+
+`flip_board` chamava `_marcar_sujo()`, que soma um em `_edicao` -- e é `_edicao` que diz a
+`ui/desfazivel.py` **qual painel** recebe o `Ctrl+Z`. A orientação não está no PGN, então
+`registrar` devolvia `False` e nada entrava na pilha: virar o tabuleiro sequestrava a tecla, não
+desfazia nada, e a edição real de quem estava no editor ao lado ficava sem quem a desfizesse.
+
+E `write_pgn` sobrescrevia com `write_text`, que trunca antes de escrever: interrompido no meio,
+ele deixa zero byte no lugar de um PGN que é análise salva de outro dia. A exportação desta mesma
+aba passa por `atomic_io` desde a S-254, e a gravação da sala também.
+
+**Solução.** Virar o tabuleiro é `_marcar_sujo(historico=False)` -- continua sujando a sala,
+porque `invertido` é gravado com o estudo, e continua empurrando o prazo de gravação, porque é
+gesto de gente. E a sobrescrita do PGN passa por `atomic_write_text`; acrescentar continua sendo
+um `append`, e a diferença é o modo de falha: ele nunca trunca.
+
+**Critério de aceite.** Virar não muda `edicao` e muda `invertido`. Sobrescrever passa por
+`atomic_write_text`; acrescentar preserva o que estava no arquivo. `ui/study_panel.py` saiu da
+lista `PERMITIDAS` de `tests/test_atomic_writes.py`.
+
+**Testes.** `VirarTabuleiroTests` e `PgnAtomicoTests`, dois casos cada.
+
+## S-347 · Quatro promessas da sala
+
+**Problema.** Quatro achados pequenos, e cada um é uma coisa que a sala **diz** e não faz.
+
+1. **O comentário da raiz saía duas vezes** em todo `.md`, `.html` e `.rtf`: como parágrafo
+   próprio, abaixo da FEN, e outra vez grudado no primeiro lance -- "uma nota da raiz 1. e4" --,
+   porque `notacao_do_estudo` não filtrava o comentário de caminho vazio.
+2. **`estudo_aberto` era gravado no `AppState` e nunca lido.** O campo existe desde a S-271 com o
+   docstring certo -- "voltar ao livro sem voltar ao diagrama devolveria a pessoa à porta da sala
+   em vez de à mesa em que ela estava" -- e era exatamente isso que acontecia.
+3. **A confirmação de apagar contava a linha principal**, não a subárvore: `len(list(
+   no.mainline())) + 1` ignora as subvariantes, e a busca por anotação olhava um nível só. Uma
+   variante com sublinhas anotadas anunciava "isto apaga 2 lance(s)" e apagava dezoito.
+4. **O botão "Recorte" nunca ficava cinza**, embora a dica prometesse isso desde a S-282 para o
+   estudo sem âncora -- e o clique trocava o rótulo para "Esconder recorte" sem nada ter
+   aparecido.
+
+**Solução.** (1) `notacao_do_estudo` pula o `COMENTARIO` de caminho vazio: a nota da raiz é sobre
+a **posição**, e quem mostra a posição é quem a mostra. (2) `reabrir_por_chave` procura na sala
+carregada o estudo daquela chave e abre a mesa; a janela guarda a chave até o livro dela abrir, e
+só na **primeira** abertura -- depois disso `estudo_aberto` é o que a pessoa abriu nesta sessão.
+(3) `_tamanho_da_subarvore` percorre a subárvore inteira, iterativa porque um estudo longo passa
+de mil nós. (4) O botão fica cinza sem âncora, o rótulo não troca, e o clique diz por quê.
+
+**Critério de aceite.** A nota da raiz aparece uma vez; `reabrir_por_chave` volta ao estudo certo
+e devolve `False` sem levantar para chave que não existe mais; a contagem inclui as subvariantes e
+a anotação de qualquer profundidade; sem âncora o botão está `disabled`.
+
+**Testes.** `ComentarioDaRaizTests` e `ContagemDaSubarvoreTests` em `tests/test_estudo_saida.py`;
+`ReabrirAMesaTests` e o par do botão em `tests/test_estudo_aba.py`.

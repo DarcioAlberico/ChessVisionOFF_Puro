@@ -41,7 +41,7 @@ from chess_diagram_ocr.text import rico
 # **O submódulo direto, e não o pacote.** `estudo_lista` mora em `ui/` por vizinhança de assunto e
 # não por dependência -- ele não importa `tkinter`, e está na lista de `SEM_TKINTER`. Importá-lo pelo
 # caminho dele deixa isso dito: o que este módulo usa é a travessia da árvore, e não a interface.
-from chess_diagram_ocr.ui.estudo_lista import RAIZ, RESULTADO, trechos
+from chess_diagram_ocr.ui.estudo_lista import COMENTARIO, RAIZ, RESULTADO, Trecho, trechos
 
 __all__ = ["BLOCO_DO_DIAGRAMA", "notacao_do_estudo", "para_documento"]
 
@@ -70,9 +70,24 @@ def notacao_do_estudo(estudo: Estudo) -> str:
     `Estudo.para_pgn`.
     """
     corpo = "".join(
-        trecho.texto for trecho in trechos(estudo) if trecho.papel not in (RAIZ, RESULTADO)
+        trecho.texto
+        for trecho in trechos(estudo)
+        if trecho.papel not in (RAIZ, RESULTADO) and not _e_comentario_da_raiz(trecho)
     )
     return " ".join(corpo.split())
+
+
+def _e_comentario_da_raiz(trecho: Trecho) -> bool:
+    """O comentário do nó raiz -- o único `COMENTARIO` de caminho vazio (S-347).
+
+    Ele sai **fora** da linha porque `para_documento` já o imprime como parágrafo próprio, logo
+    abaixo da FEN: sem esta guarda ele saía duas vezes em todo `.md`, `.html` e `.rtf` -- uma como
+    parágrafo e outra grudada no primeiro lance, "uma nota da raiz 1. e4".
+
+    A nota da raiz é sobre a **posição**, e a linha é a dos lances; quem mostra a posição é quem a
+    mostra. Vale também para a linha que vai à aba Texto, e pelo mesmo motivo.
+    """
+    return trecho.papel == COMENTARIO and not trecho.caminho
 
 
 def para_documento(estudo: Estudo) -> rico.DocumentoRico:

@@ -18,6 +18,10 @@ import unittest
 from pathlib import Path
 from tkinter import filedialog
 
+# A Pillow no topo, e não dentro da thread: o primeiro import dela no processo custa centenas
+# de milissegundos, e a exportação roda em thread enquanto o teste gira o laço da janela.
+from PIL import Image as _Image  # noqa: F401
+
 from chess_diagram_ocr.text import exportacao, rico
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -40,6 +44,7 @@ def tearDownModule() -> None:
     if _RAIZ is not None:
         _RAIZ.destroy()
         _RAIZ = None
+
 
 
 def _pagina(texto: str = "uma folha corrigida") -> PaginaLida:
@@ -75,6 +80,10 @@ class ExportacaoDaAbaTests(unittest.TestCase):
             self.painel.update()
             if destino.exists() and not self.painel._exportando:
                 return
+            # **Espera de verdade, e não só gira**: a thread de escrita precisa de fatia de CPU, e
+            # voltas de `update` sem pausa nenhuma terminavam antes de ela chegar ao disco.
+            # `after(ms)` sem função é a espera do próprio Tk, e ela bombeia o laço.
+            self.painel.after(5)
 
     def test_a_exportacao_sai_da_thread_da_janela(self) -> None:
         """O critério de aceite: nenhuma exportação escreve na thread da janela.
@@ -94,6 +103,61 @@ class ExportacaoDaAbaTests(unittest.TestCase):
         self.assertTrue(destino.exists(), "o arquivo não foi escrito")
         self.assertIn("escrita-de-texto", durante | {"escrita-de-texto"})
         self.assertIn("# livro.pdf", destino.read_text(encoding="utf-8"))
+
+    def test_o_md_da_aba_leva_a_imagem_do_diagrama(self) -> None:
+        """A aba exportava sem imagem nenhuma: todo `![Diagrama 1]()` saía com o alvo vazio (S-338).
+
+        A folha renderizada é sintética -- o que se afirma é a costura: o recorte vira PNG ao lado
+        do arquivo e o Markdown aponta para ele.
+        """
+        import numpy as np
+
+        from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
+
+        pagina = PaginaLida(
+            documento="livro.pdf",
+            pagina=0,
+            colunas=(
+                Coluna(
+                    indice=0,
+                    blocos=(
+                        BlocoDeTexto.de_linhas([LinhaLida("antes", (0.0, 0.0, 100.0, 9.0), 1.0, "camada")]),
+                        BlocoDeDiagrama(indice=0, bbox=(0.0, 10.0, 50.0, 60.0)),
+                    ),
+                ),
+            ),
+        )
+        self.painel.desenhar(pagina)
+        self.painel._pagina_rgb = np.zeros((400, 300, 3), dtype=np.uint8)
+        destino = self.pasta / "com_diagrama.md"
+        self._responder_dialogo(destino)
+
+        self.painel.exportar_md()
+        self._esperar(destino)
+
+        conteudo = destino.read_text(encoding="utf-8")
+        self.assertIn("diagramas/com_diagrama_d1.png", conteudo)
+        self.assertTrue((self.pasta / "diagramas" / "com_diagrama_d1.png").exists())
+
+    def test_sem_folha_renderizada_a_marca_sai_sozinha(self) -> None:
+        """O comportamento de antes continua sendo o de quem abre um `.cvtxt` sem o livro."""
+        from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
+
+        pagina = PaginaLida(
+            documento="livro.pdf",
+            pagina=0,
+            colunas=(Coluna(indice=0, blocos=(BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 9.0, 9.0)),)),),
+        )
+        self.painel.desenhar(pagina)
+        self.painel._pagina_rgb = None
+        destino = self.pasta / "sem_folha.md"
+        self._responder_dialogo(destino)
+
+        self.painel.exportar_md()
+        self._esperar(destino)
+
+        self.assertNotIn("diagramas/", destino.read_text(encoding="utf-8"))
+        self.assertFalse((self.pasta / "diagramas").exists())
 
     def test_o_registro_declara_que_perde_trabalho(self) -> None:
         """`loses_work=True` **na exportação**, ao contrário da leitura: fechar no meio deixa um

@@ -48,7 +48,7 @@ from PIL import Image, ImageTk
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 
-from . import comandos, formato, pele, rodape, strings, theme, tipografia, tokens
+from . import atalhos, comandos, formato, pele, rodape, strings, theme, tipografia, tokens
 from .barra import BarraFluida
 from .page_overlay import DiagramBox, PageBoxes, traco_da_caixa
 from .tooltip import Tooltip
@@ -76,7 +76,13 @@ passo previsível."""
 
 MIN_SELECTION_PX = 12
 """Arrasto menor que isto é clique errado, não seleção. Abaixo disso o recorte não
-conteria nem uma casa do tabuleiro."""
+conteria nem uma casa do tabuleiro.
+
+**Doze pixels de página, e não de tela (S-330).** A comparação era feita nas coordenadas do
+canvas, que já vêm multiplicadas pelo zoom: a 25% o piso valia 48 px de página, e a 200%,
+6 px. O mesmo arrasto era "muito pequeno" numa vista e recorte válido na outra, e o recado
+não dizia nada disso. O que a constante quer dizer -- "menos que isto não contém casa
+nenhuma" -- é uma afirmação sobre a folha, então é na folha que ela se mede."""
 
 WHEEL_SCROLL_UNITS = 3
 """Linhas de canvas por giro da roda. Três é o padrão do Windows, e o canvas mede "unidade"
@@ -244,6 +250,10 @@ class PdfPanel(ttk.Frame):
 
         self._page_photo: ImageTk.PhotoImage | None = None
         self._select_mode = False
+        self._dpi_var: tk.Variable | None = None
+        self._dpi_after: str | None = None
+        self._dpi_rasterizado: int | None = None
+        """O DPI com que a folha na tela foi rasterizada. `None` até a primeira (S-329)."""
         self._select_start: tuple[float, float] | None = None
         self._select_rect_id: int | None = None
         self._canvas_image_id: int | None = None
@@ -479,7 +489,10 @@ class PdfPanel(ttk.Frame):
             ))
         vista.adicionar(ttk.Label(vista, text="Página"))
         self.spin_page = vista.adicionar(
-            ttk.Spinbox(vista, from_=0, to=0, textvariable=self.page_index_var, width=8, command=self.on_page_spin)
+            # **Sem `textvariable`, e é isso que põe o campo em base 1 (S-328).** O `IntVar`
+            # continua sendo o índice interno, base 0, que trinta chamadas leem; o widget mostra
+            # `índice + 1`, que é a folha como o leitor de PDF e o título da janela a chamam.
+            ttk.Spinbox(vista, from_=1, to=1, width=8, command=self.on_page_spin)
         )
         # As setas do `Spinbox` chamam `command`; **digitar não chama nada** (S-305). Sem estas
         # duas ligações, o número no campo mudava e a imagem na tela ficava onde estava.
@@ -510,8 +523,12 @@ class PdfPanel(ttk.Frame):
             ))
         Tooltip(
             self.btn_fit_width,
-            "Ctrl + roda do mouse faz o mesmo, com o ponteiro como âncora.\n"
-            "A roda rola a página; na borda, ela vira para a página seguinte.",
+            # A dica dizia que `Ctrl + roda` "faz o mesmo" que este botão, e ele **não** faz:
+            # o botão enquadra a largura de uma vez, e a roda com Ctrl aproxima e afasta por
+            # passos, ancorada no ponteiro. São dois gestos, e a frase juntava os dois (S-333).
+            f"{atalhos.acelerador('ajustar_largura')} faz o mesmo pelo teclado.\n"
+            "Ctrl + roda do mouse aproxima e afasta, com o ponteiro como âncora.\n"
+            "A roda sozinha rola a página; na borda, ela vira para a página seguinte.",
         )
         self.btn_fit_page = vista.adicionar(ttk.Button(
                 vista,
@@ -663,7 +680,7 @@ class PdfPanel(ttk.Frame):
         if self.source is not None:
             self.lbl_pdf.config(text=f"{self.name} ({self.page_count} págs)")
             self.btn_system_reader.configure(state=tk.NORMAL)
-            self.spin_page.config(to=max(self.page_count - 1, 0))
+            self._faixa_do_campo_de_pagina()
         if self._select_mode:
             self.btn_select.configure(text=comandos.rotulo_alternado("selecionar_area"))
 
@@ -812,11 +829,34 @@ class PdfPanel(ttk.Frame):
         `winfo_containing` devolveu `None` e a roda não rolava nada. Um retângulo comparado com
         as coordenadas do próprio widget não depende de empilhamento -- nem do tooltip que o
         painel abre justamente por cima dele.
+
+        **E o retângulo sozinho era largo demais (S-332).** Ele diz "o ponteiro está na área do
+        canvas", que não é a mesma coisa que "o canvas é o que está debaixo do ponteiro": com a
+        paleta de comandos, uma lista suspensa ou um diálogo por cima da folha, a roda rolava o
+        PDF **atrás** deles e devolvia `"break"`, então o widget de cima não rolava nada. Quem
+        girava a roda sobre uma lista via a página do livro passar.
+
+        A conta continua sendo a mesma, e o `winfo_containing` volta como **desempate**: quando
+        ele nomeia um widget desta aplicação, ele sabe o que está por cima, e só o canvas (ou um
+        filho dele) manda na roda; quando devolve `None` -- janela de outro programa cobrindo o
+        ponto, que é o caso medido -- vale o retângulo, como antes.
         """
         if not self.canvas.winfo_exists() or not self.canvas.winfo_ismapped():
             return False
         x, y = self._canvas_event(event)
-        return 0 <= x < self.canvas.winfo_width() and 0 <= y < self.canvas.winfo_height()
+        if not (0 <= x < self.canvas.winfo_width() and 0 <= y < self.canvas.winfo_height()):
+            return False
+        return self._canvas_esta_por_cima(event)
+
+    def _canvas_esta_por_cima(self, event: tk.Event) -> bool:
+        """Se o widget desta aplicação sob o ponteiro é o canvas. `True` quando não se sabe."""
+        try:
+            alvo = self.canvas.winfo_containing(int(event.x_root), int(event.y_root))
+        except (tk.TclError, KeyError):
+            return True
+        if alvo is None:
+            return True
+        return alvo is self.canvas or str(alvo).startswith(f"{self.canvas}.")
 
     def _canvas_event(self, event: tk.Event) -> tuple[int, int]:
         """O evento em coordenadas do canvas. Vem da janela, então o deslocamento é relativo."""
@@ -1005,7 +1045,7 @@ class PdfPanel(ttk.Frame):
 
             alvo = self._initial_page_for(pdf_path)
             self.page_index_var.set(max(0, min(self.page_count - 1, alvo)))
-            self.spin_page.config(to=max(self.page_count - 1, 0))
+            self._faixa_do_campo_de_pagina()
             self.page_loaded_for_index = None
             self.render_current_page()
         except Exception as exc:
@@ -1015,8 +1055,13 @@ class PdfPanel(ttk.Frame):
             messagebox.showerror("Erro", f"Falha ao abrir {pdf_path.name}:\n{exc}{resto}")
 
     def on_page_spin(self) -> None:
-        self.page_loaded_for_index = None
-        self.render_current_page()
+        """As setas do campo. Sem `textvariable`, elas mudam o texto e mais nada (S-328).
+
+        Delegar a `_on_page_typed` é o que faz seta e digitação passarem pelo mesmo caminho --
+        a conversão de base, o corte na faixa do livro e a reposição do número ficam num lugar
+        só, que é o que a S-305 já queria e o `textvariable` dividia em dois.
+        """
+        self._on_page_typed()
 
     def _on_page_typed(self, _evento: object = None) -> None:
         """O número **digitado** no campo de página vira navegação, e o lixo digitado volta atrás.
@@ -1041,30 +1086,39 @@ class PdfPanel(ttk.Frame):
         if self.page_count == 0:
             return
         try:
-            alvo = int(str(self.spin_page.get()).strip())
+            digitado = int(str(self.spin_page.get()).strip())
         except (ValueError, tk.TclError):
             self._repor_numero_da_pagina()
             return
-        # **Contra `page_loaded_for_index`, e não contra `page_index`.** O `Spinbox` tem o
-        # `page_index_var` como `textvariable`: digitar já mudou o índice antes de esta função
-        # ser chamada, e `go_to_page` -- que compara com `page_index` -- recusaria toda digitação
-        # por "já estou nessa página". Quem sabe que folha está na tela é `page_loaded_for_index`.
-        alvo = max(0, min(self.page_count - 1, alvo))
+        # **Contra `page_loaded_for_index`, e não contra `page_index`.** `go_to_page` compara com
+        # `page_index` e recusaria a digitação de uma folha que o índice já aponta mas a tela
+        # ainda não mostra. Quem sabe que folha está na tela é `page_loaded_for_index`.
+        alvo = max(0, min(self.page_count - 1, digitado - 1))
         self.page_index_var.set(alvo)
         if alvo != self.page_loaded_for_index or self.page_rgb is None:
             self.page_loaded_for_index = None
             self.render_current_page()
         self._repor_numero_da_pagina()
 
+    def _faixa_do_campo_de_pagina(self) -> None:
+        """A faixa do `Spinbox` em base 1: de 1 até o total de folhas (S-328).
+
+        Livro nenhum aberto deixa `1..1` em vez de `0..0`, porque "página 0" não existe na
+        contagem que o campo passou a usar -- e um `Spinbox` vazio com teto 0 é o que fazia a
+        seta para baixo escrever o número que o resto da tela nega.
+        """
+        self.spin_page.config(from_=1, to=max(self.page_count, 1))
+        self._repor_numero_da_pagina()
+
     def _repor_numero_da_pagina(self) -> None:
-        """Devolve ao campo o índice que a tela de fato mostra."""
+        """Devolve ao campo a folha que a tela de fato mostra, em base 1 (S-328)."""
         try:
             atual = self.page_index
         except tk.TclError:
             atual = self.page_loaded_for_index or 0
             self.page_index_var.set(atual)
         self.spin_page.delete(0, tk.END)
-        self.spin_page.insert(0, str(atual))
+        self.spin_page.insert(0, str(atual + 1))
 
     def prev_page(self) -> None:
         self._ir_para(self.page_index - 1)
@@ -1093,6 +1147,7 @@ class PdfPanel(ttk.Frame):
         if alvo == self.page_index and self.page_rgb is not None:
             return
         self.page_index_var.set(alvo)
+        self._repor_numero_da_pagina()
         self.page_loaded_for_index = None
         self.render_current_page()
 
@@ -1109,9 +1164,56 @@ class PdfPanel(ttk.Frame):
         if alvo == self.page_index:
             return False
         self.page_index_var.set(alvo)
+        self._repor_numero_da_pagina()
         self.page_loaded_for_index = None
         self.render_current_page()
         return True
+
+    ESPERA_DO_DPI_MS = 400
+    """Quanto esperar o campo de DPI parar de mudar antes de re-rasterizar (S-329)."""
+
+    def observar_dpi(self, var: tk.Variable) -> None:
+        """Re-rasteriza a folha quando o DPI muda -- e só quando ele para de mudar (S-329).
+
+        O `trace_add` dispara a **cada tecla**: digitar `220` à mão passa por `2`, `22` e `220`,
+        e cada disparo custaria uma rasterização de ~0,3 s em dois DPI que ninguém pediu. O
+        `after` espera a pessoa terminar, e o `after_cancel` é o que impede a fila.
+
+        Mora no painel, e não na janela, porque quem sabe que a imagem em memória envelheceu é
+        quem a rasterizou -- e porque a catraca de `app_tkinter.py` cobra exatamente isso.
+        """
+        self._dpi_var = var
+        var.trace_add("write", self._on_dpi_changed)
+
+    def _on_dpi_changed(self, *_args: object) -> None:
+        if self._dpi_after is not None:
+            self.after_cancel(self._dpi_after)
+        self._dpi_after = self.after(self.ESPERA_DO_DPI_MS, self._aplicar_dpi)
+
+    def _aplicar_dpi(self) -> None:
+        self._dpi_after = None
+        try:
+            dpi = int(self._dpi())
+        except tk.TclError:
+            return  # campo vazio no meio da digitação: não há DPI para aplicar
+        if dpi == self._dpi_rasterizado:
+            return
+        self._dpi_rasterizado = dpi
+        self.invalidar_rasterizacao()
+
+    def invalidar_rasterizacao(self) -> None:
+        """A imagem em memória não vale mais: rasteriza de novo agora (S-329).
+
+        Quem chama é quem mudou uma decisão de **rasterização** -- hoje só o DPI. Zoom não entra
+        aqui: ele reescala a mesma imagem, de propósito, e re-renderizar a cada passo de zoom
+        seria trocar a fluidez por nitidez que o `refresh_view` já dá.
+
+        Sem livro aberto não há o que invalidar, e o `render_current_page` já sabe disso; a
+        guarda existe para não gastar a chamada.
+        """
+        self.page_loaded_for_index = None
+        if self.source is not None:
+            self.render_current_page()
 
     def render_current_page(self) -> bool:
         """Rasteriza a página atual, se ainda não estiver em memória. `True` se há imagem.
@@ -1134,11 +1236,11 @@ class PdfPanel(ttk.Frame):
         # de origem -- inclusive o texto que o usuário acabou de digitar no campo de FEN.
         self._on_before_page_change()
         try:
-            self._on_status(f"Renderizando página {idx}...")
+            self._on_status(f"Renderizando página {idx + 1}...")
             self.page_rgb = render_pdf_page(self.source, idx, dpi=self._dpi())
             self.page_loaded_for_index = idx
             self.refresh_view()
-            self._on_status(f"Página {idx} pronta.")
+            self._on_status(f"Página {idx + 1} pronta.")
         except Exception as exc:
             self.page_rgb = None
             self.page_loaded_for_index = None
@@ -1506,14 +1608,16 @@ class PdfPanel(ttk.Frame):
 
         x0c, x1c = sorted((x0, x1))
         y0c, y1c = sorted((y0, y1))
-        if (x1c - x0c) < MIN_SELECTION_PX or (y1c - y0c) < MIN_SELECTION_PX:
-            self._on_status("Seleção muito pequena. Tente novamente.")
-            return
 
         # Da coordenada do canvas para a do pixel da página -- a única parte que depende do
         # zoom. Recortar e grampear aos limites e do servico (S-31).
         zoom = float(self.zoom_var.get())
         regiao = (int(x0c / zoom), int(y0c / zoom), int(x1c / zoom), int(y1c / zoom))
+        # **Depois da conversão, e por isso (S-330):** o piso fala de casa de tabuleiro, que é
+        # medida da folha; medi-lo antes fazia o mínimo variar oito vezes entre 25% e 200%.
+        if (regiao[2] - regiao[0]) < MIN_SELECTION_PX or (regiao[3] - regiao[1]) < MIN_SELECTION_PX:
+            self._on_status("Seleção muito pequena. Tente novamente.")
+            return
         self._on_region(np.asarray(self.page_rgb).copy(), regiao)
 
     def _release_on_box(self, event: tk.Event) -> None:

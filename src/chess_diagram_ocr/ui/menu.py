@@ -288,7 +288,9 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("achar"),
             Item("substituir"),
-            Item("substituir_todos"),
+            # `substituir_todos` **não** está aqui: ele é o botão de dentro da janela de
+            # busca, e como item de menu abria a mesma janela que "Substituir…" -- dois
+            # rótulos para uma ação (S-343). Ver `comandos.NA_JANELA_DE_BUSCA`.
             Item("marcar_fora_do_lexico"),
             Item("limpar_marcas_do_lexico"),
             _sep(),

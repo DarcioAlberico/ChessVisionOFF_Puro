@@ -233,6 +233,16 @@ class Markdown:
             texto = f"# {texto.lstrip()}"
         return texto
 
+    def suporta_valor(self, atributo: str, valor: object) -> bool:
+        """O `.md` escreve **um** estilo de parágrafo, e é o título (S-339).
+
+        `suporta` responde por atributo e diz "estilo: sim" por causa do `# `; os outros três --
+        prosa, notação e legenda -- não têm sintaxe no Markdown e saíam como texto comum, com o
+        relatório dizendo "perdido: nada". Uma perda contada é o que separa "o formato não
+        carrega isto" de "o formato carregou".
+        """
+        return atributo != "estilo" or valor == "titulo"
+
     def diagrama(self, c: Corrida, recorte: Path | None) -> str:
         alvo = f"{self.pasta_de_imagens}/{recorte.name}" if recorte is not None else ""
         marca = c.texto
@@ -297,8 +307,31 @@ class Html:
             "instalada na máquina que abrir este arquivo.</p>\n"
         )
 
+    estilos_do_html: Mapping[str, tuple[str, str]] = field(
+        default_factory=lambda: {
+            "notacao": ("font-family", "'Consolas', 'DejaVu Sans Mono', monospace"),
+            "legenda": ("font-style", "italic"),
+        }
+    )
+    """Como cada estilo de parágrafo se escreve em CSS -- **e por que só dois estão aqui** (S-340).
+
+    `_classes` emitia `estilo-titulo`, `estilo-prosa`, `estilo-notacao` e `estilo-legenda`, e a
+    folha de estilo não tinha regra para nenhum deles: quatro classes que não faziam nada, num
+    arquivo que existe para mostrar o que a aba mostrava.
+
+    `titulo` sai como `<h2>` e nunca precisou de classe. `prosa` é o padrão do documento, e
+    marcá-lo seria dizer "isto é normal" em toda corrida normal da folha. Sobram os dois que
+    **são** diferentes e que o editor desenha diferente: a notação, em monoespaçada, e a legenda,
+    em itálico -- `PAPEL_DO_ESTILO`, no `ui/texto_panel.py`, é a origem dos dois.
+
+    Tamanho não entra: ele é degrau, mora em `corpos`, e vem de fora como a cor."""
+
     def _regras(self) -> list[tuple[str, str, str]]:
         regras = [("fora-do-modelo", "border-bottom", "1px dotted currentColor")]
+        regras.extend(
+            (f"estilo-{estilo}", propriedade, valor)
+            for estilo, (propriedade, valor) in sorted(self.estilos_do_html.items())
+        )
         for nome, cor in sorted(self.cores.items()):
             propriedade = "background-color" if nome.startswith("realce-") else "color"
             regras.append((nome, propriedade, cor))
@@ -341,7 +374,8 @@ class Html:
             classes.append(f"faixa-{c.faixa}")
         if c.atributos.fora_do_modelo:
             classes.append("fora-do-modelo")
-        if c.atributos.estilo and c.atributos.estilo != "titulo":
+        # Só os estilos que têm regra: `titulo` é `<h2>` e `prosa` é o padrão (S-340).
+        if c.atributos.estilo in self.estilos_do_html:
             classes.append(f"estilo-{c.atributos.estilo}")
         if c.atributos.corpo:
             classes.append(classe_de_corpo(c.atributos.corpo))
@@ -436,6 +470,13 @@ class Rtf:
         return f"{{{controle} {corpo}}}" if controle else corpo
 
     def diagrama(self, c: Corrida, recorte: Path | None) -> str:
+        """A marca, e **não** a imagem. O `recorte` é ignorado de propósito (S-341).
+
+        Embutir figura em RTF é o `pict` com o PNG em hexadecimal, e ela viajaria dentro do
+        arquivo -- é possível e é outro item. O que este não podia continuar sendo é **mudo**:
+        o `exportar` agora conta o recorte descartado e o relatório o diz, em vez de anunciar
+        "nenhum diagrama sem recorte" sobre um arquivo em que nenhum diagrama tem imagem.
+        """
         return escapar_rtf(c.texto)
 
     def rodape(self, doc: DocumentoRico) -> str:
@@ -545,16 +586,30 @@ def exportar(
     partes: list[tuple[str, str]] = []
     diagramas = 0
     sem_recorte = 0
+    imagem_descartada = 0
+    # **Formato que não declara pasta de imagens não carrega imagem** -- é o caso do `.txt` e do
+    # `.rtf`. Sem isto, passar o recorte a eles zerava `sem_recorte` e o relatório dizia que
+    # nenhum diagrama ficou sem imagem, num arquivo em que todos ficaram (S-341).
+    desenha_imagem = bool(getattr(formato, "pasta_de_imagens", ""))
+    aceita_valor = getattr(formato, "suporta_valor", None)
     for corrida in doc.corridas:
         for atributo in ATRIBUTOS:
             valor = getattr(corrida.atributos, atributo)
-            if valor and atributo not in formato.suporta:
+            if not valor:
+                continue
+            # `suporta` responde por atributo; `suporta_valor`, quando o formato o tem, responde
+            # pelo **valor** -- o `.md` escreve o estilo `titulo` e não sabe escrever os outros
+            # três, e declarar "estilo: sim" por causa de um deles é o que fazia o relatório
+            # dizer "perdido: nada" sobre uma legenda que virou prosa (S-339).
+            if atributo not in formato.suporta or (aceita_valor and not aceita_valor(atributo, valor)):
                 perdas[atributo] += 1
         if corrida.e_diagrama:
             diagramas += 1
             recorte = imagens.get(corrida.bloco)
             if recorte is None:
                 sem_recorte += 1
+            elif not desenha_imagem:
+                imagem_descartada += 1
             partes.append((corrida.atributos.alinhamento, formato.diagrama(corrida, recorte)))
             continue
         partes.append((corrida.atributos.alinhamento, formato.corrida(corrida)))
@@ -565,7 +620,7 @@ def exportar(
     return Relatorio(
         conteudo=conteudo,
         perdas={atributo: quantos for atributo, quantos in perdas.items() if quantos},
-        avisos=_avisos(doc, formato, sem_recorte),
+        avisos=_avisos(doc, formato, sem_recorte, imagem_descartada),
         diagramas=diagramas,
         sem_recorte=sem_recorte,
     )
@@ -599,7 +654,7 @@ def _juntar(partes: Sequence[tuple[str, str]], formato: Formato) -> str:
     return "".join(saida)
 
 
-def _avisos(doc: DocumentoRico, formato: Formato, sem_recorte: int) -> tuple[str, ...]:
+def _avisos(doc: DocumentoRico, formato: Formato, sem_recorte: int, imagem_descartada: int = 0) -> tuple[str, ...]:
     """O que não é perda e quem recebe o arquivo precisa saber (S-254)."""
     avisos: list[str] = []
     fora = sum(1 for c in doc.corridas if c.atributos.fora_do_modelo)
@@ -610,6 +665,8 @@ def _avisos(doc: DocumentoRico, formato: Formato, sem_recorte: int) -> tuple[str
         avisos.append(f"{sem_bloco} corrida(s) sem bloco de origem")
     if sem_recorte:
         avisos.append(f"{sem_recorte} diagrama(s) sem recorte no disco")
+    if imagem_descartada:
+        avisos.append(f"{imagem_descartada} diagrama(s) com recorte que o {formato.nome} não carrega")
     return tuple(avisos)
 
 

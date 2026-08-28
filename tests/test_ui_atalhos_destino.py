@@ -103,7 +103,7 @@ class DestinoTests(unittest.TestCase):
 
 
 class NenhumaTeclaNovaTests(unittest.TestCase):
-    def test_a_tabela_tem_as_dezoito_teclas(self) -> None:
+    def test_a_tabela_tem_as_vinte_e_uma_teclas(self) -> None:
         """Catorze da S-244 -- que era o **oposto** de acrescentar teclas: `Ctrl+S` continua sendo
         uma tecla só, e o que ela mudou foi o destino conforme o foco --, mais as duas da S-267 e as
         duas da S-281.
@@ -115,12 +115,20 @@ class NenhumaTeclaNovaTests(unittest.TestCase):
         As da S-281 são o caso oposto e igualmente honesto: `Home` e `End` **têm** dois destinos --
         primeira/última página na janela, início/fim da linha na sala --, e por isso elas declaram
         `na_sala` e a legenda mostra as duas linhas. O que elas acrescentam ao resto do programa é o
-        par que faltava desde a S-70: virar uma página tinha tecla, e ir à ponta não tinha."""
-        self.assertEqual(len(atalhos.ATALHOS), 18)
+        par que faltava desde a S-70: virar uma página tinha tecla, e ir à ponta não tinha.
+
+        **As três da S-333 são do mesmo tipo das da S-281**: aumentar, diminuir e ajustar à
+        página são comandos que já existiam na barra do visualizador e não tinham tecla nenhuma.
+        Duas delas têm segundo destino declarado -- dentro do editor, `Ctrl++` e `Ctrl+-` mexem
+        no corpo do texto --, e é por isso que aparecem em `SOBREPOSICOES_NO_EDITOR`."""
+        self.assertEqual(len(atalhos.ATALHOS), 21)
         self.assertEqual(atalhos.acao_de("<Home>"), "primeira_pagina")
         self.assertEqual(atalhos.acao_de("<End>"), "ultima_pagina")
         self.assertEqual(atalhos.acao_de("<Control-f>"), "achar")
         self.assertEqual(atalhos.acao_de("<Control-h>"), "substituir")
+        self.assertEqual(atalhos.acao_de("<Control-plus>"), "zoom_mais")
+        self.assertEqual(atalhos.acao_de("<Control-minus>"), "zoom_menos")
+        self.assertEqual(atalhos.acao_de("<Control-9>"), "ajustar_pagina")
 
     def test_toda_acao_propria_da_aba_tem_tecla(self) -> None:
         """**A declaração vazia que a S-267 fecha.** `ACOES_PROPRIAS` diz "esta aba atende esta ação

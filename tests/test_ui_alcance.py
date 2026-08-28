@@ -182,7 +182,10 @@ class DeclaracaoDasBarrasTests(unittest.TestCase):
         menu que age sobre a página sem que ela esteja à vista grava verdade de referência errada.
         """
         fora_do_menu = {registro.acao for registro in comandos.CATALOGO} - set(menu.acoes_declaradas())
-        self.assertEqual(set(comandos.NA_LINHA_DE_CAMPO), fora_do_menu)
+        # `NA_JANELA_DE_BUSCA` entrou na conta na S-343, e pelo mesmo argumento: `substituir_todos`
+        # é o botão de dentro da janela de achar e substituir, e como item de menu ele abria a
+        # mesma janela que "Substituir…" -- dois rótulos, uma ação.
+        self.assertEqual(set(comandos.NA_LINHA_DE_CAMPO) | set(comandos.NA_JANELA_DE_BUSCA), fora_do_menu)
         for registro in pele.PELES:
             with self.subTest(pele=registro.nome):
                 self.assertTrue(set(comandos.NA_LINHA_DE_CAMPO) <= alcance.na_tela(registro.montar_cromo))
