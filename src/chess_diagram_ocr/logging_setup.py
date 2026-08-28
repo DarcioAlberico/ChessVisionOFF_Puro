@@ -3,10 +3,17 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 DATE_FORMAT = "%H:%M:%S"
+
+TAMANHO_DO_LOG = 2 * 1024 * 1024
+"""Bytes por arquivo de log antes de ele rotacionar (S-368)."""
+
+LOGS_GUARDADOS = 5
+"""Quantos arquivos anteriores ficam. Cinco de 2 MB: a sessão de ontem cabe, e o disco tem teto."""
 
 _configured = False
 
@@ -34,22 +41,45 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
 
     Deve ser chamado apenas pelos entrypoints (CLIs e frontends), nunca por modulos
     de biblioteca -- estes so obtem seu logger com `logging.getLogger(__name__)`.
+
+    **Sem `log_file`, o destino é o de `default_log_file()` (S-369).** Ele era um parâmetro que
+    cada comando tinha de lembrar de passar, e **23 dos 41 não passavam** -- entre eles uma
+    janela Tk. Num checkout isso não muda nada, porque sem `CVOFF_LOG_DIR` aquela função devolve
+    `None`; num `.exe`, é a diferença entre ter e não ter rastro, que é o mesmo modo de falha
+    que a S-127 fechou para o congelado.
     """
     global _configured
     if _configured:
         return
 
+    if log_file is None:
+        log_file = default_log_file()
+
     _force_utf8_output()
 
     level = logging.DEBUG if verbose else logging.INFO
-    console = logging.StreamHandler()
-    console.setLevel(level)
-    handlers: list[logging.Handler] = [console]
+    handlers: list[logging.Handler] = []
+    # **Sem console, não há handler de console (S-368).** No bundle da S-55 o `.exe` é montado
+    # com `console=False`, e aí `sys.stderr` é `None`: o `StreamHandler` nasce sem fluxo e
+    # **falha a cada registro** -- o logging imprime "--- Logging error ---" para o fluxo que
+    # não existe, e o que se vê é nada. O arquivo continuava recebendo, então o defeito era
+    # invisível e custava uma exceção por linha de log.
+    if sys.stderr is not None:
+        console = logging.StreamHandler()
+        console.setLevel(level)
+        handlers.append(console)
 
     if log_file is not None:
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            arquivo = logging.FileHandler(log_file, encoding="utf-8")
+            # **Rotativo, e não crescente para sempre (S-368).** O arquivo grava em DEBUG por
+            # decisão da S-126, e DEBUG num programa que lê 402 páginas são dezenas de MB por
+            # sessão: `logs/chessvisionoff.log` era um arquivo que só crescia, na pasta do
+            # usuário, sem nada que o aparasse. Cinco arquivos de 2 MB é rastro suficiente para
+            # a falha de ontem e teto para o disco de amanhã.
+            arquivo: logging.Handler = RotatingFileHandler(
+                log_file, maxBytes=TAMANHO_DO_LOG, backupCount=LOGS_GUARDADOS, encoding="utf-8"
+            )
             # **O arquivo sempre em DEBUG, a tela no nivel pedido** (S-126). E o que permite ao
             # `cli.run_main` mandar o traceback para o log sem despeja-lo na tela: sem isso, a
             # unica escolha era "traceback em ingles no terminal" ou "rastro nenhum em lugar

@@ -9,7 +9,9 @@ posto — e o resto o `--selftest` responde na máquina de destino.
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -147,6 +149,87 @@ class FrozenLogFileTests(unittest.TestCase):
 
         self.assertIn("Traceback", registro.output[0])
         self.assertIn("Tcl morreu", registro.output[0])
+
+
+class LogQueNaoCresceParaSempreTests(unittest.TestCase):
+    """O arquivo de log rotaciona, e sem console não há handler de console (S-368).
+
+    O arquivo grava em DEBUG por decisão da S-126, e DEBUG num programa que lê 402 páginas são
+    dezenas de MB por sessão. E no bundle da S-55 o `.exe` é montado com `console=False`: aí
+    `sys.stderr` é `None`, o `StreamHandler` nasce sem fluxo e **falha a cada registro**.
+    """
+
+    def setUp(self) -> None:
+        import shutil
+
+        import chess_diagram_ocr.logging_setup as setup
+
+        # A pasta some **depois** de os handlers fecharem: no Windows um arquivo aberto não é
+        # apagável, e o `addCleanup` roda na ordem inversa do registro.
+        self.pasta = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.pasta, True)
+        self.setup = setup
+        self.raiz = logging.getLogger()
+        self.handlers_antes = list(self.raiz.handlers)
+        self.configurado_antes = setup._configured
+
+        def restaurar() -> None:
+            for handler in list(self.raiz.handlers):
+                if handler not in self.handlers_antes:
+                    self.raiz.removeHandler(handler)
+                    handler.close()
+            for handler in self.handlers_antes:
+                if handler not in self.raiz.handlers:
+                    self.raiz.addHandler(handler)
+            setup._configured = self.configurado_antes
+
+        self.addCleanup(restaurar)
+        setup._configured = False
+        # `basicConfig` não faz nada com a raiz já povoada, e o pytest põe os dele lá:
+        # sem esvaziar, o teste afirmaria sobre os handlers do runner.
+        for handler in list(self.raiz.handlers):
+            self.raiz.removeHandler(handler)
+
+    def test_o_arquivo_de_log_rotaciona(self) -> None:
+        from logging.handlers import RotatingFileHandler
+
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        rotativos = [h for h in self.raiz.handlers if isinstance(h, RotatingFileHandler)]
+
+        self.assertEqual(len(rotativos), 1)
+        self.assertGreater(rotativos[0].maxBytes, 0)
+        self.assertGreater(rotativos[0].backupCount, 0)
+
+    def test_sem_stderr_nao_ha_handler_de_console(self) -> None:
+        with patch.object(sys, "stderr", None):
+            self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        de_fluxo = [
+            h
+            for h in self.raiz.handlers
+            if type(h) is logging.StreamHandler  # noqa: E721 - o de arquivo herda dele
+        ]
+
+        self.assertEqual(de_fluxo, [])
+        logging.getLogger(__name__).info("um registro que não pode levantar")
+
+    def test_com_stderr_o_console_continua_la(self) -> None:
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        de_fluxo = [h for h in self.raiz.handlers if type(h) is logging.StreamHandler]  # noqa: E721
+
+        self.assertEqual(len(de_fluxo), 1)
+
+    def test_sem_destino_o_padrao_e_o_de_default_log_file(self) -> None:
+        """Vinte e três dos 41 comandos não passavam `log_file`, e o `.exe` ficava sem rastro."""
+        with patch.dict("os.environ", {"CVOFF_LOG_DIR": str(self.pasta)}):
+            self.setup.configure_logging()
+
+        arquivos = [h for h in self.raiz.handlers if hasattr(h, "baseFilename")]
+
+        self.assertEqual(len(arquivos), 1)
+        self.assertTrue(str(arquivos[0].baseFilename).startswith(str(self.pasta)))
 
 
 class TamanhoDaJanelaTests(unittest.TestCase):
@@ -546,6 +629,71 @@ class SpecTests(unittest.TestCase):
         """`--onefile` extrairia ~700 MB para o temp a cada execução."""
         self.assertIn("COLLECT(", self.texto)
         self.assertIn("exclude_binaries=True", self.texto)
+
+    def test_o_que_nao_e_dependencia_nao_entra_no_bundle(self) -> None:
+        """`scipy` e `scikit-image` vêm no ambiente pelo clone da segunda opinião local, e o
+        PyInstaller coleta o que **está instalado** -- 95 MB que ninguém declarou (S-366)."""
+        excludes = self.texto.split("excludes = [", 1)[1].split("\n]", 1)[0]
+        for pacote in ("scipy", "skimage", "pyarrow"):
+            with self.subTest(pacote=pacote):
+                self.assertIn(f'"{pacote}"', excludes)
+
+    def test_o_spec_e_lintado(self) -> None:
+        """O arquivo tem `# noqa` espalhado, que só faz sentido se alguém estiver lintando --
+        e até a S-370 nem `ruff` nem `mypy` o viam, porque os dois olham `.py`."""
+        pyproject = (PROJETO / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('extend-include = ["*.spec"]', pyproject)
+
+
+class DependenciasDoBundleTests(unittest.TestCase):
+    """O que é obrigatório viaja dentro do `.exe`; o que só o teste usa, não (S-365)."""
+
+    def setUp(self) -> None:
+        self.pyproject = (PROJETO / "pyproject.toml").read_text(encoding="utf-8")
+        self.obrigatorias = self.pyproject.split("dependencies = [", 1)[1].split("\n]", 1)[0]
+
+    def test_o_pandas_nao_e_dependencia_obrigatoria(self) -> None:
+        self.assertNotIn('"pandas', self.obrigatorias)
+
+    def test_o_pandas_continua_disponivel_para_o_teste(self) -> None:
+        """Quatro arquivos de teste o usam como segunda régua do CSV de rótulos."""
+        dev = self.pyproject.split("dev = [", 1)[1].split("\n]", 1)[0]
+        self.assertIn('"pandas', dev)
+
+    def test_nenhum_modulo_de_producao_importa_pandas(self) -> None:
+        """A guarda que impede a dependência de voltar por uma linha de import."""
+        raiz = PROJETO / "src" / "chess_diagram_ocr"
+        culpados = [
+            caminho.relative_to(PROJETO).as_posix()
+            for caminho in raiz.rglob("*.py")
+            if "import pandas" in caminho.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(culpados, [])
+
+
+class ModelosAoLadoDoExecutavelTests(unittest.TestCase):
+    """O build leva os três modelos para `models/`, e diz o que falta sem cada um (S-367).
+
+    O motor `glifo` precisa dos pesos **e** do `char_meta.json` -- `carregar_classificador` acha
+    o `.pt` ao lado do metadado --, e o build copiava só o de peças: no `.exe`, a aba Texto
+    oferecia um motor que nunca subia.
+    """
+
+    def test_os_tres_modelos_estao_declarados(self) -> None:
+        import importlib.util
+
+        caminho = PROJETO / "packaging" / "build_windows.py"
+        spec = importlib.util.spec_from_file_location("build_windows_teste", caminho)
+        assert spec is not None and spec.loader is not None
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+
+        nomes = [nome for nome, _motivo in modulo.MODELOS_QUE_ACOMPANHAM]
+
+        self.assertEqual(nomes, ["piece_classifier.pt", "char_classifier.pt", "char_meta.json"])
+        for _nome, motivo in modulo.MODELOS_QUE_ACOMPANHAM:
+            self.assertGreater(len(motivo), 20, "cada ausência diz a consequência dela")
+
 
 
 class SelftestTests(unittest.TestCase):

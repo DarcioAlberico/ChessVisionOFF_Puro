@@ -282,7 +282,7 @@ que teste faltava.
 | 59 | O núcleo, revisitado | S-358 a S-364 | **entregue** |  3,4 s num tabuleiro ilegal, e a sentinela que volta a casar |
 | 60 | Os dados e o treino | S-368 a S-376 | **entregue** |  o `splits.csv` apagado, o "melhor época" que indexa a lista errada |
 | 61 | Os quarenta comandos | S-377 a S-385 | **entregue** |  o `-v` que a mensagem de erro manda usar e doze comandos recusam |
-| 62 | O que sai no `.exe` | S-386 a S-393 | |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |
+| 62 | O que sai no `.exe` | S-365 a S-370 | **entregue** |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |
 | 63 | A cor, o foco e a tecla | S-394 a S-404 | |  três painéis fora do sistema de cor, onze diálogos sem Esc |
 | 64 | A documentação que envelheceu | S-405 a S-413 | |  oito itens entregues fora do índice, e o CER que o próprio relatório desmente |
 | 65 | A suíte que não pegou nada disso | S-414 a S-421 | |  4.508 testes verdes sobre 70 defeitos de correção |

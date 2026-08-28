@@ -2085,3 +2085,108 @@ não tinham contraste nenhum, o que é uma afirmação, e falsa.
 fazia quinze linhas acima.
 
 **Critério de aceite.** Nenhuma recusa com recorte disponível grava zero.
+
+---
+
+# Fase 62 — O que sai no `.exe`
+
+Sete achados, seis itens (S-365 a S-370) e **um refutado na segunda passada** -- o extra `onnx`,
+que a revisão já registrou: quem importa `onnx` é o exportador do próprio torch, e removê-lo
+teria quebrado a S-30.
+
+## S-365 · O `pandas` sai das dependências obrigatórias
+
+**Problema.** `pandas` era dependência obrigatória e **nenhum módulo de produção o importa**.
+Quem o importa são quatro arquivos de teste, que o usam como segunda régua do CSV de rótulos --
+"o que sai daqui é byte a byte igual ao que o pandas escreveria". Como obrigatório, ele viajava
+dentro do `.exe`, e o bundle é o lugar onde peso custa.
+
+**Solução.** Para o extra `dev`, ao lado do `pandas-stubs` que já estava lá. A CI instala
+`--extra dev`, então a suíte não muda.
+
+**Critério de aceite.** `dependencies` não tem `pandas`; `dev` tem; nenhum arquivo de
+`src/chess_diagram_ocr/` o importa -- e essa última é a guarda que impede a volta.
+
+**Testes.** `DependenciasDoBundleTests`, três casos.
+
+## S-366 · 95 MB que ninguém declarou
+
+**Problema.** `scipy` e `scikit-image` entravam no bundle sem constar de dependência nenhuma:
+eles vêm no ambiente por causa do clone de `tsoj/Chess_diagram_to_FEN`, que é a segunda opinião
+**local** da S-66. O PyInstaller coleta o que está **instalado**, e não o que o `pyproject.toml`
+declara -- é o mesmo modo de falha que a S-137 mediu com o `pythonnet`, com dois zeros a mais.
+
+**Solução.** Os dois entram em `excludes`. A segunda opinião local exige clonar um repositório de
+terceiro e baixar 232 MiB de pesos: não é caminho de executável, e agora `tsoj_reader` **diz
+isso** em pt-BR quando alguém tenta a opção no `.exe`, em vez de deixar aparecer um
+`No module named 'skimage'`.
+
+**Critério de aceite.** `excludes` nomeia os dois; a mensagem do congelado nomeia a razão.
+
+**Testes.** `test_o_que_nao_e_dependencia_nao_entra_no_bundle`.
+
+## S-367 · O `.exe` leva os três modelos, ou diz o que falta
+
+**Problema.** O motor `glifo` precisa dos pesos **e** do metadado -- `carregar_classificador` acha
+o `.pt` ao lado do `char_meta.json` --, e `copiar_checkpoint` copiava só `piece_classifier.pt`.
+No `.exe`, a aba Texto oferecia o motor `glifo` na caixa e ele nunca subia, nem com os pesos
+postos à mão em `models/`.
+
+**Solução.** `MODELOS_QUE_ACOMPANHAM` declara os três e **a consequência de cada ausência**, e o
+build avisa nomeando o que falta. Continuam ao lado do executável, e não dentro: um modelo
+embutido seria o único que um retreino não consegue trocar.
+
+**Critério de aceite.** Os três estão declarados, na ordem, e cada um com o motivo escrito.
+
+**Testes.** `ModelosAoLadoDoExecutavelTests`.
+
+## S-368 · O log rotaciona, e sem console não há handler de console
+
+**Problema.** Dois defeitos no mesmo arquivo.
+
+`logs/chessvisionoff.log` **crescia para sempre**: o handler é `FileHandler`, o arquivo grava em
+DEBUG por decisão da S-126, e DEBUG num programa que lê 402 páginas são dezenas de MB por sessão.
+
+E o bundle da S-55 monta o `.exe` com `console=False`: ali `sys.stderr` é `None`, o
+`StreamHandler` nasce sem fluxo e **falha a cada registro** -- o logging tenta escrever o
+"--- Logging error ---" no fluxo que não existe, e o que se vê é nada. O arquivo continuava
+recebendo, então o defeito era invisível e custava uma exceção por linha de log.
+
+**Solução.** `RotatingFileHandler` com 2 MB e cinco arquivos guardados -- a sessão de ontem cabe e
+o disco tem teto --, e o handler de console só é criado quando há `sys.stderr`.
+
+**Critério de aceite.** Um handler rotativo com teto e cópias; nenhum `StreamHandler` quando
+`sys.stderr` é `None`, e um registro nessa condição não levanta.
+
+**Testes.** `LogQueNaoCresceParaSempreTests`, quatro casos.
+
+## S-369 · `CVOFF_LOG_DIR` vale para os quarenta e um comandos
+
+**Problema.** `log_file` era um parâmetro que cada comando tinha de lembrar de passar, e **23 dos
+41 não passavam** -- entre eles uma janela Tk. Num checkout isso não muda nada, porque sem
+`CVOFF_LOG_DIR` a função devolve `None`; num `.exe`, é a diferença entre ter e não ter rastro,
+que é exatamente o modo de falha que a S-127 fechou para o congelado.
+
+**Solução.** Sem `log_file`, `configure_logging` usa `default_log_file()`. Deixa de ser uma
+lembrança e passa a ser o padrão -- e um comando novo não pode esquecê-lo.
+
+**Critério de aceite.** `configure_logging()` sem argumento, com `CVOFF_LOG_DIR` posto, abre o
+arquivo naquela pasta.
+
+**Testes.** `test_sem_destino_o_padrao_e_o_de_default_log_file`.
+
+## S-370 · O `.spec` é lintado
+
+**Problema.** `packaging/cvoff.spec` **não era visto por nenhuma das duas guardas**: `ruff` e
+`mypy` olham `.py`, e o arquivo é `.spec`. E as duas coisas que sugeriam o contrário estavam
+escritas: o `# noqa: F821` espalhado pelo arquivo -- que só faz sentido se alguém estiver
+lintando -- e o comentário do `[tool.mypy]` dizendo que `packaging/` entrava por causa dele.
+
+**Solução.** `extend-include = ["*.spec"]` no `ruff`, que ao ser ligado achou uma declaração de
+encoding obsoleta. O `mypy` fica de fora **com a razão escrita**: o PyInstaller executa o `.spec`
+injetando `SPECPATH`, `Analysis`, `EXE` e `COLLECT` como globais -- nomes que não existem em
+import nenhum, e que o verificador acusaria um por um.
+
+**Critério de aceite.** `ruff check .` cobre o `.spec` e passa.
+
+**Testes.** `test_o_spec_e_lintado`.
