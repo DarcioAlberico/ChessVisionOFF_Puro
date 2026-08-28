@@ -105,6 +105,35 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | `net_correction.py` · `settings.py` | Segunda opinião externa, e a configuração que a autoriza. |
 | `atomic_io.py` | Escrita que não deixa arquivo pela metade. |
 
+### O texto da página (`src/chess_diagram_ocr/text/`)
+
+**Cinquenta módulos, e este documento não os citava** (S-410). O pacote nasceu na Fase 25 e cresceu
+por sete fases; descrever a arquitetura deste projeto sem ele é descrever um terço do código como
+se não existisse — e é o mesmo modo de falha que a S-135 mediu nos números: o documento envelhece
+onde ninguém o lê contra o disco.
+
+**A fronteira que organiza o pacote é a mesma do resto**: quem lê pixel não sabe o que é uma
+palavra, e quem monta parágrafo não sabe o que é um pixel.
+
+| módulo | responsabilidade |
+|---|---|
+| `leitor.py` | **A fachada.** `ler_pagina` faz a página inteira: linhas, colunas, blocos e a montagem. É quem chama todo o resto, e o único que a interface e os CLIs importam. |
+| `boxes.py` · `linhas.py` · `colunas.py` | Da imagem para a geometria: caixas de caractere, a linha que as reúne e a coluna que as linhas formam. |
+| `modelo.py` · `classes.py` · `recognizer.py` | O classificador de caractere: os pesos pinados ao `char_meta.json`, as 314 classes e o leitor de faixa. |
+| `leitura_de_linha.py` · `colados.py` · `empilhados.py` | Ler a linha em vez do caractere (S-188), separar glifo colado (S-186) e desempilhar o que a binarização juntou. |
+| `dicionario.py` · `lexico.py` | O léxico que **desempata** entre os candidatos do modelo, e nunca aproxima da palavra mais parecida (S-209). |
+| `caixa_alta.py` · `italico.py` · `negrito.py` · `numero.py` · `notacao.py` | As correções que dependem do que a letra **é**: altura, pendor, peso da fonte, dígito e lance. |
+| `paragrafos.py` · `grade.py` · `tabela.py` · `vertical.py` | O que a página tem além de prosa: parágrafo, grade de exercício, tabela e texto girado. |
+| `camada.py` · `pdf_pesquisavel.py` | A camada de texto do próprio PDF — como referência (S-194) e como saída invisível sobre a página (S-210). |
+| `documento.py` · `exportacao.py` · `rico.py` | O documento do editor: o `.cvtxt`, o HTML e o texto com formato. |
+| `busca.py` · `paleta.py` · `semelhanca.py` | Achar no texto, colorir por confiança e "aplicar a todos os semelhantes" (S-213). |
+| `treino.py` · `dataset.py` · `coleta.py` · `dedupe.py` · `conflitos.py` · `procedencia.py` | A base de caractere: coletar, inventariar, treinar, e o que fazer com a mesma imagem sob dois rótulos (S-202). |
+| `custo.py` · `transcricao.py` · `calibracao.py` | Quanto o texto custa por página (S-215), a transcrição humana de referência (S-183) e a calibração do classificador. |
+
+Os outros doze são operações de imagem e utilidades da mesma cadeia: `binarizacao.py`,
+`trama.py`, `negativo.py`, `marca_fina.py`, `aumento.py`, `duas_linhas.py`, `correcao.py`,
+`lado.py`, `pagina.py`, `rascunho.py`, `fila.py` e `arquivo.py`.
+
 ### A interface (`src/chess_diagram_ocr/ui/`)
 
 | módulo | responsabilidade |
@@ -165,7 +194,7 @@ disparar, e não antes:
 | a Fase 8 exigir sobreposição **editável** sobre a página renderizada | é onde o canvas do Tk deixa de ser desconforto e vira trabalho desproporcional |
 | o `labels.csv` passar de **10 mil linhas** | a paginação da S-23 deixa de ser mitigação e vira obstáculo ao fluxo |
 
-Hoje o `labels.csv` tem **4.450** linhas — 45% do gatilho (medido em 2026-08-25; o número é
+Hoje o `labels.csv` tem **4.717** linhas — 47% do gatilho (medido em 2026-08-28; o número é
 conferido por `tests/test_docs.py`, S-135). Quando a hora chegar, `Qt` dá
 `QTableView` com modelo virtual (30 mil linhas sem paginar), `QGraphicsScene` para tabuleiro
 e sobreposições, `QThread` + sinais no lugar de `root.after`, `QPdfView` nativo, DPI correto
@@ -224,9 +253,13 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Doze** threads rodam fora da thread da interface, e todas voltam por `root.after`. Sete são
+**Treze** threads rodam fora da thread da interface, e todas voltam por `root.after`. Oito são
 operações longas e estão no `BusyRegistry`; as outras cinco são de segundos e estão
 **declaradas** em `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
+
+A contagem é conferida por `tests/test_docs.py` contra o `threading.Thread(` de `ui/` e do
+`app_tkinter.py` (S-410): ela dizia **doze** e ignorava as duas da aba Texto, que são justamente
+as que a Fase 25 acrescentou depois de este parágrafo ter sido escrito.
 
 | operação | onde | cancelável | perde trabalho ao fechar | empresta o modelo do serviço |
 |---|---|---|---|---|
@@ -237,6 +270,8 @@ operações longas e estão no `BusyRegistry`; as outras cinco são de segundos 
 | busca por nome na base | `ui/gallery_panel.py` | sim, entre partidas | não, é curta | não |
 | busca por posição na base | `ui/gallery_panel.py` | sim, entre pedaços | **sim**, a passada inteira | não |
 | detecção de duplicatas | `ui/dataset_panel.py` | não | não, é derivada | não |
+| leitura do texto da página | `ui/texto_panel.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
+| gravação do texto lido | `ui/texto_panel.py` | não (é curta) | não, escreve por `atomic_io` | não |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).
@@ -269,18 +304,18 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 |---|---|---|
 | `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split, e a confirmação de ilegalidade deliberada (`illegal_ok`) | sim |
 | `data/splits.csv` | partição treino/validação/teste, estável sob crescimento, atribuída às amostras novas pelo próprio treino (S-56) | sim |
-| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (3,4 GB) |
+| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (4,5 GB) |
 | `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
 | `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | não — `.gitignore:28` |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
 | `data/app_tkinter_state.json` | último PDF, página, zoom | não |
 | `data/review_queue.json` | a fila de revisão | não |
-| `data/review_cache/` | os recortes das páginas já varridas, para a fila não reabrir o PDF | não (8,3 GB — o maior artefato do projeto) |
+| `data/review_cache/` | os recortes das páginas já varridas, para a fila não reabrir o PDF | não (10,4 GB — o maior artefato do projeto) |
 | `data/orphans/` | os PNGs cujo rótulo sumiu do `labels.csv`, guardados em vez de apagados (S-63) | não |
 | `data/gallery/<livro>.json` | as anotações de exportação por diagrama: lance, vez, link, headers e a partida escolhida (S-67) | **não** — descreve o conteúdo de um livro protegido, como o `review_cache` |
 | `data/gallery/<livro>.index.json` | onde estão os diagramas daquele livro e o recorte de cada um | não — derivado do PDF, refeito varrendo o livro |
 | `data/gallery_human.jsonl` | **o extrato do que uma pessoa digitou ou escolheu** na galeria (S-115) | **sim** |
-| `data/games_index.sqlite` | o índice por nome e por posição da base de partidas (S-72, S-73) | não (884 MB — reconstruível a partir do `pgn_database/`) |
+| `data/games_index.sqlite` | o índice por nome e por posição da base de partidas (S-72, S-73) | não (490 MB — reconstruível a partir do `pgn_database/`) |
 | `data/games_positions.sqlite` | o cache de posições da varredura, **uma linha por colocação** (S-84, S-113, S-140) | não — **sob demanda**: nasce na primeira vez que alguém abre o cache |
 | `data/games_positions__<bases>.sqlite` | o mesmo cache, **de um conjunto de bases que não é a pasta inteira** — `ui/database_choice.store_path_for` nomeia o arquivo pelos `.pgn` escolhidos, para que experimentar uma base não descarte o cache da outra | não — **sob demanda**: um por conjunto que alguém selecionar |
 | `data/games_positions.json` | o mesmo cache no formato anterior. Lido **uma vez** e renomeado; depois disso não é lido por nada | não — **sob demanda**: só em quem usou o programa antes da S-140 |
@@ -298,9 +333,9 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 | `PGN/<livro>.review.pgn` | as rejeitadas e as de baixa confiança, com o motivo | não |
 | `PGN/<livro>.partial.jsonl` | checkpoint da exportação, apagado ao concluir | não |
 
-**A galeria entra pela metade, e a metade é escolhida** (S-115). São 13 MB e 5.953 anotações,
+**A galeria entra pela metade, e a metade é escolhida** (S-115). São 15,3 MB e 15.412 anotações,
 das quais o que a base preencheu volta com `cvoff-games --apply` a partir do cache de posições
-— o que **não** volta é a vez a jogar que alguém conferiu na legenda impressa e as 21 partidas
+— o que **não** volta é a vez a jogar que alguém conferiu na legenda impressa e as 23 partidas
 escolhidas a mão na lista de candidatas (S-86). O crivo é o `filled_fields`, que já responde a
 pergunta campo a campo, e o extrato são ~214 KB:
 
@@ -311,7 +346,7 @@ cvoff-gallery --import-human    # o caminho de volta; o que é da pessoa vence o
 ```
 
 Toda escrita de arquivo de trabalho passa por `atomic_io`: grava num temporário e troca. O
-`labels.csv` é 3.313 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
+`labels.csv` é 4.717 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
 cada correção. Desde a S-57 o `.pt` também passa por ali — era o maior dos arquivos, o mais
 demorado de escrever, e o único cuja escrita acontece numa thread de fundo enquanto outra
 pode estar lendo o mesmo caminho.

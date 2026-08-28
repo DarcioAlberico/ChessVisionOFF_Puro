@@ -2,7 +2,7 @@
 
 > Medido em 2026-08-14 sobre `Secrets of Chess Training School of Future Champions 1_ao_5.pdf`
 > (1181 páginas) e conferido nos outros 26 PDFs do acervo. Scripts de medição descritos ao
-> final, em [Como reproduzir](#como-reproduzir).
+> final, em [Como reproduzir](#8-como-reproduzir).
 
 > **Onde mora a spec de cada item (S-NN).** Este arquivo é o de **detecção**, e é por isso que
 > a faixa dele não é contígua: item de detecção mora aqui, ao lado da medição que o motivou, e
@@ -13,15 +13,15 @@
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
-> | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
+> | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-403 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-412 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -306,7 +306,7 @@ também tem glifo.
 
 > **O alvo desta entrega existia.** Ela foi arquivada em parte por ter "zero instâncias
 > confirmadas no acervo", e isso estava errado por um motivo que só a S-143 encontrou: o censo
-> **não amostra as páginas onde o defeito mora**. Ver [S-143](#s-143--a-foto-quadrada-que-o-contorno-lê-como-tabuleiro).
+> **não amostra as páginas onde o defeito mora**. Ver [S-143](#s-143--a-foto-quadrada-que-o-contorno-lê-como-tabuleiro--implementada-2026-08-17).
 > O que segue abaixo continua valendo inteiro — a *proposta* (textura relativa) segue reprovada,
 > e é a S-143 que explica por que aquele número não podia funcionar.
 
@@ -588,7 +588,7 @@ apesar disso.
 > A guarda esconde o sintoma (o recorte ruim some da tela); ela não conserta o recorte. Aqueles
 > 3 diagramas por página continuam não sendo detectados naquele livro.
 >
-> Fechado pela [S-175](#s-175--a-quina-que-a-rasterização-não-liga-e-o-tabuleiro-que-sai-pela-metade).
+> Fechado pela [S-175](#s-175--a-quina-que-a-rasterização-não-liga-e-o-tabuleiro-que-sai-pela-metade--implementada-2026-08-20).
 > A causa não era do livro nem da coluna: era a **fase sub-pixel** da grade contra a malha de
 > pixels do render, e o remédio é um terceiro passe de limiar. Depois dela aqueles 3 por página
 > saem 116×116 e leem 1,0000 — e não chegam mais a esta guarda.
@@ -916,7 +916,7 @@ eles foram descartados por `prior-de-tamanho`:
 
 Porque `_typical_side` recebeu `[516, 1405]` — o diagrama 1‑11 e a faixa —, não conseguiu
 agrupá-los (a distância é 172% do menor, contra os 30% de `EMBEDDED_SIZE_TOLERANCE`), e o
-desempate da [S-79](#s-79--o-gabarito-de-tamanho-calculado-sobre-o-que-sobreviveu) é **pelo
+desempate da [S-79](#s-79--o-gabarito-de-tamanho-calculado-sobre-o-que-sobreviveu--implementada-2026-08-14) é **pelo
 maior**. O gabarito da página virou 1405 px, e tudo do tamanho de um diagrama real caiu fora
 da janela.
 
@@ -928,7 +928,7 @@ não chegar até ela.
 #### 4. O sinal que **não** serve: contraste de casa
 
 A tentação era estender à fonte embutida o piso da
-[S-143](#s-143--a-foto-quadrada-que-o-contorno-lê-como-tabuleiro) — a faixa dá
+[S-143](#s-143--a-foto-quadrada-que-o-contorno-lê-como-tabuleiro--implementada-2026-08-17) — a faixa dá
 `board_checker_score` **0,0000**, e o diagrama 1‑11 da mesma página dá 0,3982.
 
 **Medido no acervo, e reprova.** 1287 candidatos embutidos, 40 páginas amostradas por livro:
@@ -943,7 +943,7 @@ com duas linhas de legenda acima do tabuleiro no recorte embutido. Grade fora de
 zero pelo mesmo motivo que ausência de tabuleiro dá zero, e a nota não distingue os dois casos.
 
 É a **terceira** vez que este projeto tenta julgar recorte embutido por uma nota absoluta e a
-medição reprova — ver a [S-80](#s-80--a-nota-de-textura-relativa-à-página) e as três guardas
+medição reprova — ver a [S-80](#s-80--a-nota-de-textura-relativa-à-página--não-implementada--a-medição-reprovou) e as três guardas
 que calaram no docstring de `detection/embedded.py`. Fica valendo: nota absoluta sobre recorte
 embutido não separa "não é tabuleiro" de "está desalinhado".
 

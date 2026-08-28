@@ -15,15 +15,15 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
-> | S-95 a S-142, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
-> | S-144 a S-170 | [SPEC_UI.md](SPEC_UI.md) |
+> | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
+> | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
-> | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
+> | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-403 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-412 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -1796,7 +1796,7 @@ Onze achados em dez itens (S-348 a S-357). **Dois já estavam entregues quando a
 camada pesquisável duplicada saiu na S-303, e a amostragem de negrito e itálico refeita a cada
 folha, na S-313 -- as duas na Fase 53, e as duas com a medição registrada lá.
 
-## S-348 · A camada pesquisável duplicada — entregue como [S-303](#s-303--a-sonda-é-a-escrita-e-não-um-ensaio-dela)
+## S-348 · A camada pesquisável duplicada — entregue como [S-303](#s-303--a-camada-invisível-do-pdf-pesquisável-entra-uma-vez-e-não-duas)
 
 ## S-349 · Pontuação de borda não é ambiguidade
 
@@ -2422,3 +2422,174 @@ de um botão).
 tem tempo próprio.
 
 **Testes.** `UmaDicaSoTests` (4).
+
+---
+
+# Fase 64 — A documentação que envelheceu
+
+Nove itens (S-404 a S-412), e um deles refutado. O que junta esta fase é o mecanismo, e ele é
+sempre o mesmo: **um número foi medido uma vez, escrito num documento, e nunca mais comparado com
+o disco.** A S-135 já tinha diagnosticado isso e criado a guarda dos "números vivos"; o que esta
+fase encontra é o que a guarda **não** olhava -- e, num caso, o que ela olhava de um jeito que
+nunca podia falhar.
+
+## S-404 · O índice que não era lido
+
+**Problema.** A tabela *"Onde mora a spec de cada item"* não cobria **oito itens entregues** --
+S-171 a S-174 (`SPEC_FASE14.md`), S-176 (`ANALISE_DETECCAO.md`), S-177 (`SPEC_UI.md`) e S-294 e
+S-295 (`SPEC_APARENCIA.md`).
+
+E o pior estava no leitor. A célula `S-296 a S-323, S-325 a S-403 (menos S-324)` tem **três**
+números na segunda parte, e `faixas_declaradas` descartava em silêncio toda parte que não tivesse
+um ou dois. Efeito: as 107 seções do `SPEC_REVISAO.md` -- metade dos itens deste projeto -- não
+estavam declaradas em lugar nenhum, e as duas guardas que leem o índice continuavam verdes. Elas
+perguntam *"o que está declarado está no lugar certo?"*; nenhuma perguntava se a declaração tinha
+sido lida. É a S-134 com o mesmo furo que ela existiu para tapar, agora dentro do próprio índice.
+
+**Solução.** O leitor entende `(menos S-NNN)`, e `celula_ilegivel` acusa o que ele **não** entende
+-- descartar em silêncio era o defeito, não o formato. As quatro linhas da tabela ganham os oito
+itens, nos dezoito documentos que carregam a cópia dela.
+
+**Critério de aceite.** Nenhuma célula do índice é ilegível; todo item com seção está declarado;
+a exceção declarada continua valendo (a S-324 é da aparência, a S-325 é da revisão).
+
+**Testes.** `IndiceNaoEVacuoTests` (3).
+
+## S-405 · O CER que o próprio relatório desmente
+
+**Problema.** O README publicava o CER de página do glifo como **0,1397** e citava, na mesma
+linha, `docs/metrics/texto_pagina.json` -- que diz **0,1001**. O número era do corte de parágrafo
+antigo, e o relatório registra isso no campo `remedido_por`: a S-258 mudou `RECUO_DE_PARAGRAFO` e
+remediu os dois lados. O documento apontava para a medição que o contradizia.
+
+**Solução.** O número passa a ser o do relatório, e a comparação do modo bloco também (33% pior na
+média, 0,1001 contra 0,1331 -- e não "22,5% no livro nativo digital", que era do corte antigo). Uma
+guarda lê o `resumo` do relatório e o compara com o que o README publica.
+
+**Critério de aceite.** O CER citado no README está a menos de 10% do `cer_glifo_medio` do
+relatório que ele cita.
+
+**Testes.** `test_o_cer_de_pagina_citado_bate_com_o_relatorio`.
+
+## S-406 · 292 classes contra as 314 do modelo versionado
+
+**Problema.** O README dizia **292 classes** em três lugares e **314** num quarto, com o
+`models/char_meta.json` versionado ao lado dizendo `num_classes: 314`. O 292 é de antes de as
+classes de ligadura entrarem -- e o metadado é o arquivo que o próprio README manda apontar quando
+os pesos não estão no lugar.
+
+**Solução.** As três menções passam a 314, e a guarda compara todas as menções contra o
+`char_meta.json`: um número diferente do outro no mesmo documento é o sintoma que ela pega.
+
+**Critério de aceite.** Toda menção a "classificador de N classes" e "metadado das N classes" bate
+com `num_classes`.
+
+**Testes.** `test_as_classes_de_caractere_citadas_batem_com_o_char_meta`.
+
+## S-407 · Refutado: os quarenta comandos e o `-v`
+
+**Achado.** *"O README garante que os 40 comandos aceitam `-v`, e doze recusam."*
+
+**Por que não é item.** Era verdade quando o relatório foi escrito, e deixou de ser na
+[S-377](#s-377--todo-comando-aceita--v): os doze passaram a chamar `add_verbose`, e
+`test_todo_comando_declara_a_bandeira` trava isso desde então. A contagem também está certa --
+`[project.scripts]` tem exatamente 40 chaves, e `test_o_numero_de_comandos_citado_bate_com_project_scripts`
+a confere. O que sobra aqui é o registro de que foi conferido, para o próximo leitor não refazer
+a checagem.
+
+## S-408 · O dicionário deixou de ser um arquivo
+
+**Problema.** O README descrevia o dicionário como *"um arquivo de 7.588 palavras"* que *"corrige
+zero"* e vem **desligado**. Desde a S-209 são **três listas** e 367.163 entradas -- `acervo.txt.gz`
+(7.588), `idioma.txt.gz` (10.010) e `nomes.txt.gz` (349.565) --, e ele entrou **ligado** com a
+medição que o justifica: 6 correções em 40 páginas de 11 livros, as 6 confirmadas pela camada de
+texto, nenhuma palavra certa quebrada, +1,1% de tempo por página. Três afirmações erradas numa
+linha, e a última fazia quem lesse desligar o que estava ligado.
+
+**Solução.** O parágrafo passa a descrever as três listas, o total, o padrão de hoje e a razão
+dele; a bandeira citada passa a ser `--sem-dicionario`, que é a que existe. A guarda conta as
+entradas dos `.gz` e cobra que cada lista seja nomeada.
+
+**Critério de aceite.** O total citado está a menos de 10% do que as listas trazem, e as três são
+nomeadas.
+
+**Testes.** `test_o_dicionario_citado_tem_as_listas_que_o_disco_tem`.
+
+## S-409 · O comando do Streamlit não roda num clone novo
+
+**Problema.** O README publica `uv run streamlit run examples/streamlit_demo.py` sem uma palavra
+sobre o extra `demo` -- e o `streamlit` saiu das dependências obrigatórias na S-386. Num ambiente
+novo o comando falha com `No module named streamlit`.
+
+**E a guarda que devia pegar isso passava por acidente**: ela era `extra not in self.readme`, um
+`in` de substring, e `demo` casa dentro de *"demonstracao"*. O extra nunca foi mencionado, e a
+guarda dizia que sim.
+
+**Solução.** O bloco ganha o `uv sync --extra demo` e a explicação de por que ele é preciso. A
+régua da guarda passa a ser a linha que **instala** -- `--extra <nome>` --, e não o nome solto:
+os outros cinco extras já a satisfaziam.
+
+**Critério de aceite.** Todo extra do `pyproject` aparece no README como `uv sync --extra <nome>`.
+
+**Testes.** `test_todo_extra_do_pyproject_aparece_no_README`.
+
+## S-410 · O `ARCHITECTURE.md` e o que ele não contava
+
+**Problema.** Quatro coisas, todas do mesmo mecanismo.
+
+- **Nenhuma linha sobre o pacote `text/`**, que tem **50 módulos** -- um terço do código descrito
+  como se não existisse.
+- **A seção Threads contava doze**, e há **treze**: as duas da aba Texto entraram depois de o
+  parágrafo ser escrito, e a tabela não as tinha.
+- **O `labels.csv` aparecia com 4.450 linhas e, 146 linhas depois, com 3.313** -- e 3.313 é
+  justamente o número que a S-135 existiu para matar. O disco tem 4.717.
+- **Três tamanhos de artefato entre 20% e 80% fora**: `data/samples/` (3,4 contra 4,5 GB),
+  `data/review_cache/` (8,3 contra 10,4 GB) e o índice sqlite (884 contra 490 MB). E a galeria,
+  com 13 MB e 5.953 anotações contra 15,3 MB e 15.412.
+
+**Solução.** Uma seção nova para o `text/`, com os 50 módulos agrupados por responsabilidade; a
+contagem de threads corrigida com as duas linhas que faltavam na tabela; os números remedidos. E
+três guardas novas, porque o que não é conferido volta a envelhecer: a das threads varre
+`threading.Thread(` como o `test_busy` faz, a dos tamanhos usa a tolerância da S-135, e a dos
+rótulos já existia.
+
+**Critério de aceite.** A contagem de threads bate com o código; os três tamanhos estão a menos de
+10% do disco; o `text/` tem seção e ela nomeia os 50 módulos.
+
+**Testes.** `test_as_threads_citadas_batem_com_as_do_codigo`,
+`test_os_tamanhos_de_artefato_citados_batem_com_o_disco`.
+
+## S-411 · Sete âncoras que não levam a lugar nenhum
+
+**Problema.** Sete links `#ancora` entre documentos apontavam para títulos que não existem. O modo
+de falha é o mais silencioso que um documento tem: o GitHub não avisa, e o link simplesmente não
+move a página. Quatro deles pararam antes do `✅ implementada (data)` que os títulos do
+`ANALISE_DETECCAO.md` ganharam depois; um apontava para `#como-reproduzir` quando a seção virou
+`8. Como reproduzir`; um escrevia `ja` onde o título tem `já`; e o último apontava para o título
+que a S-348 tinha antes de ser reescrita.
+
+**Solução.** Os sete corrigidos, e uma guarda que reconstrói a âncora pela regra do GitHub --
+minúsculas, fora tudo que não é letra, dígito, `_`, espaço ou hífen, espaço vira hífen -- e
+compara com os cabeçalhos de cada documento. Link `http` fica de fora: conferir link externo é
+pedir rede na suíte.
+
+**Critério de aceite.** Todo link interno com `#` leva a um cabeçalho que existe.
+
+**Testes.** `AncoraInternaTests` (2).
+
+## S-412 · A árvore que listava metade
+
+**Problema.** A árvore *"Estrutura"* do README tinha **30 dos 53 módulos** de primeiro nível.
+Entre os 23 ausentes: o `labels.py` -- a porta única do `labels.csv`, que a S-51 criou justamente
+para haver uma --, os seis módulos da sala de estudo, os cinco da base de partidas e o pacote
+`text/` inteiro. Uma árvore que lista metade não é um mapa: é uma amostra, e quem a lê não sabe
+qual metade está vendo.
+
+**Solução.** As 23 linhas que faltavam, cada uma com o que o módulo responde, e a árvore em ordem
+alfabética -- com `service.py`, `settings.py` e `atomic_io.py` abrindo a lista, que é como ela já
+estava. A guarda lê **o bloco da seção**, e não o README inteiro: `labels.py` aparece em prosa
+noutra seção, e comparar contra o documento todo é como esta guarda passaria por acidente.
+
+**Critério de aceite.** Todo `.py` de primeiro nível e todo subpacote aparecem no bloco.
+
+**Testes.** `test_a_arvore_do_README_lista_todo_modulo_do_pacote`.
