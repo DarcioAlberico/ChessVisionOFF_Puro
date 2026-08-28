@@ -36,11 +36,21 @@ têm camada. Por isso `negrito` é `bool | None` e não `bool`: `None` é **"nã
 diferente de `False`. Um livro cuja camada não registra peso nenhum não pode declarar que nada ali
 é negrito -- ele não sabe.
 
-## A unidade é a linha, e isso é uma limitação declarada
+## A unidade era a linha, e deixou de ser (2026-08-28)
 
-A `PaginaLida` não tem unidade menor que a `LinhaLida`, então uma linha meio em negrito é decidida
-pela **maioria** da largura dela. Onde o negrito é um lance no meio da prosa, o resultado é
-grosso; onde ele é a linha inteira -- título, variante principal --, é exato.
+A `PaginaLida` não tinha unidade menor que a `LinhaLida`, então uma linha meio em negrito era
+decidida pela **maioria** da largura dela: onde o negrito é a linha inteira -- título, variante
+principal -- o resultado é exato, e onde ele é um lance no meio da prosa era grosso.
+
+**Medido, o "grosso" era quase metade.** Em 8 folhas de cada um dos 45 PDFs do acervo, das 969
+linhas com peso na camada **428 (44,2%) misturam peso dentro de si**: 281 somem (cobrem menos de
+60% e a linha sai normal) e 147 incham (a linha toda sai em negrito por causa da maioria). A S-429
+desceu a régua ao caractere -- `linhas_de_negrito` mais `camada.trechos` --, e a `LinhaLida` passou
+a carregar os intervalos em `negrito_em`.
+
+O campo de linha **continua o que era**, com a mesma maioria de 60%: quem o lê -- `BlocoDeTexto`,
+`paragrafos.cortar`, `documento.estado_do_negrito` -- não mudou uma linha, e onde não há intervalo
+é ele que desenha. Ver "A régua desceu ao caractere" em `text/camada.py`.
 
 ## O peso também corta parágrafo (2026-08-25)
 
@@ -111,6 +121,15 @@ def spans_de_negrito(page: object) -> list[Retangulo]:
     return camada.spans_com(page, _span_e_negrito)
 
 
+def linhas_de_negrito(page: object) -> list[camada.LinhaDeCamada]:
+    """As linhas da camada com o peso marcado **caractere a caractere** (S-429).
+
+    O irmão fino de `spans_de_negrito`: aquele serve à régua de maioria da linha, este serve aos
+    intervalos que a `LinhaLida` carrega em `negrito_em`. Ver "A régua desceu ao caractere" em
+    `text/camada.py`, com o número que a mediu."""
+    return camada.linhas_com(page, _span_e_negrito)
+
+
 def documento_registra_negrito(doc: object, *, amostra: int = PAGINAS_DE_AMOSTRA) -> bool:
     """Este documento registra peso de fonte em algum lugar? Ver `text/camada.py`."""
     return camada.documento_registra(doc, _span_e_negrito, amostra=amostra, marca="negrito")
@@ -130,6 +149,7 @@ __all__ = [
     "PAGINAS_DE_AMOSTRA",
     "cobertura",
     "documento_registra_negrito",
+    "linhas_de_negrito",
     "marcar",
     "spans_de_negrito",
 ]

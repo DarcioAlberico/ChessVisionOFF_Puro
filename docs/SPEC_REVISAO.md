@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-428 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2960,3 +2960,83 @@ essa distinção.
 lugar, ela mede.
 
 **Testes.** `test_os_tamanhos_de_artefato_citados_batem_com_o_disco`.
+## S-429 · A régua de estilo desce da linha ao caractere
+
+**Problema.** `text/camada.py` responde negrito e itálico **por linha**, pela maioria da largura
+que os spans do estilo cobrem (60%). A limitação está declarada desde a S-211 -- *"onde ele é uma
+palavra no meio da prosa, é grosso"* --, e o que faltava era o tamanho dela. Medido em 2026-08-28
+sobre 8 folhas de cada um dos 45 PDFs de `PDF/` (18.207 linhas de camada):
+
+| estilo | linhas com ele | misturam dentro de si | somem (< 60%) | incham (>= 60%) |
+|---|---|---|---|---|
+| negrito | 969 | **428 (44,2%)** | 281 (29,0%) | 147 (15,2%) |
+| itálico | 407 | **279 (68,6%)** | 241 (59,2%) | 38 (9,3%) |
+
+Não é o caso raro que a limitação sugeria: é o caso comum. A régua erra nos **dois** sentidos --
+o lance em negrito no meio da prosa some, e a linha que é quase toda negrito engole as palavras em
+pé do fim. E a informação para acertar sempre esteve na mão: o span da camada traz o texto **e** o
+bbox, e a linha é a costura deles.
+
+**Solução.** `camada.linhas_com` devolve a linha da camada com um bool **por caractere**, e
+`camada.trechos` a casa com o que o leitor leu -- geometria para escolher a linha, `difflib` para
+alinhar o texto. `LinhaLida` ganha `negrito_em` e `italico_em`, e `rico._agrupar` passa a cortar o
+parágrafo onde a tipografia muda dentro da linha, e não só entre linhas.
+
+Três decisões que a implementação fixou:
+
+- **a palavra é a unidade final, e não o caractere.** O motor de glifo lê `smdy` onde a camada
+  escreve `study` (S-186), e marcar caractere a caractere devolveria a palavra rachada. Maioria dos
+  caracteres decide a palavra inteira;
+- **o campo de linha não muda.** `marcar` continua respondendo o que respondia, e quem o lê --
+  `BlocoDeTexto.de_linhas`, `paragrafos.cortar`, `documento.estado_do_negrito` -- não muda uma
+  linha. Os intervalos são o detalhe ao lado, e onde não há intervalo é o campo de linha que
+  desenha;
+- **vazio é "não sei", e devolve o comportamento de antes.** Folha sem camada, página girada
+  (`spans_com` também não gira) e camada que discorda demais do que foi lido -- o
+  `_OCR_Aprimorar_Aprimorar` do acervo é o palpite de outro OCR -- caem todos em vazio.
+
+A guarda `len(linhas) < 2` de `rico._corridas_do_segmento` caiu junto: ela foi escrita quando a
+menor unidade era a linha, e com ela o bloco de uma linha só -- todo título, toda legenda, toda
+linha de lances solta -- voltava inteiro e perdia justamente o corte que este item entrega.
+
+**Critério de aceite.** O texto da página não muda um caractere: `de_pagina(pagina).para_texto()`
+continua idêntico a `pagina.texto(com_marcas=True)`. Verificado em 8.489 linhas de 48 livros, com
+**zero** páginas divergentes. Sobre 178.556 caracteres lidos, 2.089 passam a ter a resposta certa
+onde tinham a errada (716 ganham negrito, 561 o perdem, 700 ganham itálico, 112 o perdem).
+
+**Testes.** `tests/test_texto_estilo_fino.py` -- o casamento, a palavra que não sai partida, as
+três formas de degradar para o comportamento antigo, o remapeamento pela junção de hífen, o corte
+do documento e a ida e volta do `.json`.
+
+## S-430 · O pincel de fonte não pintava sobre estilo nem sobre corpo
+
+**Problema.** No Tk uma etiqueta só pode dar **uma** fonte ao trecho, e vence a criada por último.
+`alternar` põe a etiqueta `negrito`, criada em `_pintar_faixas`; um trecho que já tenha estilo de
+parágrafo ou corpo mudado carrega também uma `fonte:...` criada **depois**, sob demanda, em
+`_etiqueta_de_fonte` -- e montada quando o trecho ainda não era negrito. Medido em 2026-08-28 num
+`tk.Text` de verdade:
+
+| trecho | o documento gravava | o que a tela desenhava |
+|---|---|---|
+| sem estilo e sem corpo | negrito | negrito ✔ |
+| com corpo +1 | negrito | peso normal ✘ |
+| com estilo de legenda | negrito | peso normal ✘ |
+
+Nos dois últimos o botão **não fazia nada visível**, e o arquivo salvo contradizia o que a pessoa
+viu -- o pior formato de defeito, e o mesmo achado 1 do `ROADMAP_EDITOR`: "na tela está tudo
+certo" é a única forma de erro que nenhum teste sobre o documento acusa. Valia para os quatro
+pincéis de fonte e também para `limpar_formato`, que tirava a ênfase do documento e deixava a
+fonte gorda na tela.
+
+**Solução.** `_combinar_negrito_italico` -- que refazia só `NEGRITO_ITALICO`, o caso particular de
+trecho sem estilo e sem corpo -- vira `_refazer_fontes`, que refaz a etiqueta que
+`_etiqueta_de_fonte` decide. É a mesma função que `desenhar_documento` chama, e assim o pincel e o
+redesenho não podem divergir.
+
+**Critério de aceite.** Em doze caminhos do pincel -- negrito, itálico, os dois, cada um sobre
+corpo mudado e sobre estilo de parágrafo, desligar e limpar formato --, o que o Tk desenha é o que
+o documento grava. `estilo_titulo` fica de fora de propósito: o papel `TITULO` de `ui/tipografia.py`
+sai em negrito sempre, por ser título.
+
+**Testes.** `PincelSobreEstiloTests` em `tests/test_ui_texto_editor.py` -- sete casos reprovam sem
+a correção.

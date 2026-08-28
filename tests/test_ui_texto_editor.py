@@ -12,6 +12,7 @@ import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
+from tkinter import font as tkfont
 
 import numpy as np
 from ambiente_de_teste import pasta_temporaria, quadro
@@ -1241,6 +1242,104 @@ class ZoomComEstiloTests(_ComJanela, unittest.TestCase):
 
         self.assertTrue(antes)
         self.assertEqual(antes, set(painel._fontes_desenhadas))
+
+
+class PincelSobreEstiloTests(_ComJanela, unittest.TestCase):
+    """O pincel de fonte pinta **também** onde já há estilo de parágrafo ou corpo mudado (S-430).
+
+    **O defeito que ela trava.** No Tk uma etiqueta só pode dar uma fonte ao trecho, e vence a
+    criada por último. `alternar` põe a etiqueta `negrito`, que nasce em `_pintar_faixas`; um trecho
+    com estilo ou com corpo carrega também uma `fonte:...` criada **depois**, sob demanda -- e
+    montada quando o trecho ainda não era negrito. O documento gravava `negrito=True` e a tela não
+    mudava nada, que é o pior formato: o arquivo salvo contradiz o que a pessoa viu.
+
+    O que só um `tk.Text` de verdade mede é justamente isto -- o documento estava certo o tempo
+    todo, e nenhum teste sobre ele acusaria.
+    """
+
+    def _com_texto(self, conteudo: str = "uma frase para formatar"):  # noqa: ANN202 - TextoPanel
+        painel = self._painel()
+        painel.desenhar(_pagina(_texto(conteudo)))
+        return painel
+
+    def _desenhado(self, painel, indice: str = "1.2") -> tuple[bool, bool]:  # noqa: ANN001
+        """`(negrito, itálico)` que o Tk **desenha** ali: a última etiqueta que declara fonte."""
+        fonte = str(painel.editor.cget("font"))
+        for etiqueta in painel.editor.tag_names(indice):
+            try:
+                valor = str(painel.editor.tag_cget(etiqueta, "font"))
+            except tk.TclError:  # pragma: no cover - etiqueta sem a opção
+                continue
+            if valor:
+                fonte = valor
+        real = tkfont.Font(root=_RAIZ, font=fonte).actual()
+        return real["weight"] == "bold", real["slant"] == "italic"
+
+    def _no_documento(self, painel, posicao: int = 2) -> tuple[bool, bool]:  # noqa: ANN001
+        deslocamento = 0
+        for corrida in painel.documento_atual().corridas:
+            if deslocamento <= posicao < deslocamento + len(corrida.texto):
+                return corrida.atributos.negrito, corrida.atributos.italico
+            deslocamento += len(corrida.texto)
+        raise AssertionError("posição fora do documento")
+
+    def _aplicar(self, painel, *acoes: str) -> None:  # noqa: ANN001
+        for acao in acoes:
+            painel.editor.tag_add("sel", "1.0", "1.9")
+            getattr(painel, acao)()
+            painel.editor.tag_remove("sel", "1.0", tk.END)
+
+    def test_o_negrito_sobre_corpo_mudado_chega_a_tela(self) -> None:
+        """O caso medido: documento em negrito, tela em peso normal."""
+        painel = self._com_texto()
+        self._aplicar(painel, "aumentar_corpo", "negrito")
+        self.assertEqual(self._desenhado(painel), (True, False))
+
+    def test_o_negrito_sobre_estilo_de_paragrafo_chega_a_tela(self) -> None:
+        painel = self._com_texto()
+        self._aplicar(painel, "estilo_legenda", "negrito")
+        self.assertEqual(self._desenhado(painel), (True, False))
+
+    def test_a_tela_e_o_documento_concordam_nos_caminhos_do_pincel(self) -> None:
+        """A pergunta inteira, e não o caso: o que está gravado é o que está desenhado.
+
+        `estilo_titulo` fica de fora **de propósito** -- o papel TITULO de `ui/tipografia.py` sai em
+        negrito sempre, por ser título, e ali a tela em negrito com o documento em pé é o desenho
+        correto e não uma divergência.
+        """
+        caminhos = (
+            ("negrito",),
+            ("italico",),
+            ("negrito", "italico"),
+            ("aumentar_corpo", "negrito"),
+            ("aumentar_corpo", "italico"),
+            ("aumentar_corpo", "negrito", "italico"),
+            ("estilo_legenda", "negrito"),
+            ("estilo_prosa", "italico"),
+            ("negrito", "negrito"),
+            ("aumentar_corpo", "negrito", "negrito"),
+            ("aumentar_corpo", "negrito", "limpar_formato"),
+            ("estilo_legenda", "negrito", "italico", "limpar_formato"),
+        )
+        for acoes in caminhos:
+            with self.subTest(caminho=" + ".join(acoes)):
+                painel = self._com_texto()
+                self._aplicar(painel, *acoes)
+                self.assertEqual(self._desenhado(painel), self._no_documento(painel))
+
+    def test_limpar_formato_tira_o_peso_da_tela_e_nao_so_do_documento(self) -> None:
+        """Ele tirava a ênfase do documento e deixava a fonte gorda na tela."""
+        painel = self._com_texto()
+        self._aplicar(painel, "aumentar_corpo", "negrito")
+        self._aplicar(painel, "limpar_formato")
+        self.assertEqual(self._desenhado(painel), (False, False))
+
+    def test_o_corpo_nao_e_perdido_quando_o_negrito_entra(self) -> None:
+        """Refazer a etiqueta de fonte não pode desfazer o que ela já carregava."""
+        painel = self._com_texto()
+        self._aplicar(painel, "aumentar_corpo", "negrito")
+        self.assertEqual(self._no_documento(painel), (True, False))
+        self.assertEqual(painel.documento_atual().corridas[0].atributos.corpo, 1)
 
 
 class CorDaAbaTests(_ComJanela, unittest.TestCase):

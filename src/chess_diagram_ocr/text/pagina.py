@@ -309,6 +309,30 @@ class LinhaLida:
     `None` aqui é o caminho da **camada**, que não passa pela binária e não tem pendor para medir --
     e a linha curta demais, que não tem população (`italico.MIN_BOXES_PARA_MEDIR`). Ver S-236."""
 
+    negrito_em: tuple[tuple[int, int], ...] = ()
+    """Onde, dentro de `texto`, está o negrito -- intervalos `[início, fim)` de caractere (S-429).
+
+    **Isto é o detalhe, e `negrito` é o resumo.** Os dois vêm da mesma camada e não se contradizem:
+    o campo acima responde "esta linha é de peso?" pela maioria da largura, este responde "quais
+    letras têm peso?". Vazio quer dizer *não há detalhe* -- ou porque nada ali é negrito, ou porque
+    não deu para casar o texto lido com o da camada --, e aí quem desenha usa o resumo, que é o
+    comportamento de antes deste campo existir.
+
+    Medido no acervo, 44,2% das linhas com peso misturam peso dentro de si, e é toda essa população
+    que o resumo sozinho erra -- para mais ou para menos. Ver `text/camada.py`."""
+
+    italico_em: tuple[tuple[int, int], ...] = ()
+    """Onde, dentro de `texto`, está o itálico. Mesmo contrato do `negrito_em` acima (S-429).
+
+    **A diferença é a origem, e ela deixa este campo mais vazio.** O peso só tem uma fonte, a
+    camada, então o detalhe dele vale sempre. O pendor tem duas -- a binária, que responde por
+    linha, e a camada, que responde por span --, e só a segunda sabe dizer *onde*. Por isso este
+    campo só é preenchido no motor `camada`: no de glifo a folha é scan, e a camada dali é palpite
+    de outro OCR sobre a mesma imagem, que não pode sobrescrever o pendor medido na binária. Ver o
+    comentário em `leitor.ler_pagina`, ao lado da chamada.
+
+    Nos 12 livros que declaram pendor, 68,6% das linhas itálicas o misturam dentro de si."""
+
     def para_json(self) -> dict[str, Any]:
         return {
             "texto": self.texto,
@@ -317,6 +341,8 @@ class LinhaLida:
             "procedencia": self.procedencia,
             "negrito": self.negrito,
             "italico": self.italico,
+            "negrito_em": [list(t) for t in self.negrito_em],
+            "italico_em": [list(t) for t in self.italico_em],
         }
 
     @classmethod
@@ -330,7 +356,35 @@ class LinhaLida:
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
             negrito=_negrito_de(dados.get("negrito"), onde),
             italico=_tres_estados(dados.get("italico"), onde, "italico"),
+            negrito_em=_trechos_de(dados.get("negrito_em"), onde, "negrito_em"),
+            italico_em=_trechos_de(dados.get("italico_em"), onde, "italico_em"),
         )
+
+
+def _trechos_de(valor: Any, onde: str, campo: str) -> tuple[tuple[int, int], ...]:
+    """Os intervalos de estilo de um arquivo, ou `PaginaInvalida` dizendo qual campo.
+
+    **Ausente é vazio, e ilegível levanta** -- as duas metades de `_tres_estados`, pela mesma razão:
+    um `.json` gravado antes da S-429 não tem o campo e não é inválido por isso, mas um campo que
+    está lá e não descreve intervalo nenhum é arquivo corrompido, e engoli-lo desenharia o negrito
+    no lugar errado sem ninguém saber por quê.
+
+    `fim > inicio >= 0` faz parte do contrato e não é conferido depois: um par vazio ou invertido
+    atravessaria `rico` sem erro e sumiria na tela, que é o defeito mais caro de achar."""
+    if valor is None:
+        return ()
+    if not isinstance(valor, (list, tuple)):
+        raise PaginaInvalida(f"{onde}: {campo} é uma lista de pares -- veio {valor!r}")
+    saida: list[tuple[int, int]] = []
+    for par in valor:
+        try:
+            inicio, fim = (int(v) for v in par)
+        except (TypeError, ValueError) as exc:
+            raise PaginaInvalida(f"{onde}: {campo} tem par que não é (início, fim): {par!r}") from exc
+        if not 0 <= inicio < fim:
+            raise PaginaInvalida(f"{onde}: {campo} tem par fora de ordem ou negativo: {par!r}")
+        saida.append((inicio, fim))
+    return tuple(saida)
 
 
 def _tres_estados(valor: Any, onde: str, campo: str) -> bool | None:

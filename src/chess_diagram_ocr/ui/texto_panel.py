@@ -1377,24 +1377,47 @@ class TextoPanel(ttk.Frame):
         etiqueta = texto_etiquetas.ETIQUETA_DO_ATRIBUTO[atributo]
         self._guardar_instantaneo(doc)
         (self.editor.tag_add if ligar else self.editor.tag_remove)(etiqueta, i0, i1)
-        self._combinar_negrito_italico(i0, i1)
+        self._refazer_fontes(i0, i1)
         self._carimbar_humano(i0, i1)
         self._depois_de_editar()
         self._fechar_instantaneo()
 
-    def _combinar_negrito_italico(self, i0: str, i1: str) -> None:
-        """Mantém a tag combinada em dia no intervalo. Ver `_pintar_faixas` sobre por que ela existe.
+    def _refazer_fontes(self, i0: str, i1: str) -> None:
+        """Refaz a etiqueta de **fonte** do intervalo. É a única que o pincel não acerta sozinho.
 
-        Ela é **desenho e não documento** -- `corrida_de` a ignora na volta --, mas precisa
-        acompanhar as duas de que depende: sem isto, ligar o negrito num trecho já itálico daria um
-        trecho que o Tk desenha só em itálico, e a pessoa concluiria que o botão não funcionou.
+        **O que ela conserta, e por que o botão parecia quebrado** (S-430). No Tk uma etiqueta só
+        pode dar *uma* fonte ao trecho, e a que vence é a criada por último. `alternar` põe a
+        etiqueta `negrito`, que é criada em `_pintar_faixas`, mas um trecho que já tenha estilo de
+        parágrafo ou corpo mudado carrega também uma `fonte:...` criada **depois**, sob demanda, em
+        `_etiqueta_de_fonte` -- e aquela fonte foi montada quando o trecho **não** era negrito.
+        Resultado medido em 2026-08-28, num `tk.Text` de verdade:
+
+            trecho                      documento    o que a tela desenhava
+            sem estilo e sem corpo      negrito      negrito          ✔
+            com corpo +1                negrito      peso normal      ✘
+            com estilo de legenda       negrito      peso normal      ✘
+
+        Nos dois últimos o documento gravava certo e a tela não mudava nada -- o pior formato de
+        defeito, porque o arquivo salvo contradiz o que a pessoa viu. Valia para os quatro pincéis
+        de fonte (negrito, itálico, os dois juntos) e também para `limpar_formato`, que tirava a
+        ênfase do documento e deixava a fonte gorda na tela.
+
+        A versão anterior desta função só refazia `NEGRITO_ITALICO`, que é o caso particular de
+        trecho **sem** estilo e **sem** corpo. Refazer a etiqueta que `_etiqueta_de_fonte` decide
+        cobre os dois casos com a mesma regra, e é ela quem já sabe qual etiqueta cada corrida quer
+        -- é a mesma função que `desenhar_documento` chama, e assim o pincel e o redesenho não
+        podem divergir.
         """
-        self.editor.tag_remove(NEGRITO_ITALICO, i0, i1)
+        # A remoção vem antes e sobre uma cópia das chaves: `_etiqueta_de_fonte` cria etiqueta sob
+        # demanda e mexe em `_fontes_desenhadas`, e iterar o dicionário enquanto ele cresce levanta.
+        for nome in (NEGRITO_ITALICO, *tuple(self._fontes_desenhadas)):
+            self.editor.tag_remove(nome, i0, i1)
         deslocamento = self.deslocamento_de(i0)
         for corrida in self._corridas_entre(i0, i1):
             fim = deslocamento + len(corrida.texto)
-            if corrida.atributos.negrito and corrida.atributos.italico:
-                self.editor.tag_add(NEGRITO_ITALICO, self.indice_de(deslocamento), self.indice_de(fim))
+            etiqueta = self._etiqueta_de_fonte(corrida)
+            if etiqueta:
+                self.editor.tag_add(etiqueta, self.indice_de(deslocamento), self.indice_de(fim))
             deslocamento = fim
 
     def _corridas_entre(self, i0: str, i1: str) -> tuple[rico.Corrida, ...]:
@@ -1428,7 +1451,7 @@ class TextoPanel(ttk.Frame):
         self._guardar_instantaneo(self.documento_atual())  # nenhum caractere muda: só o instantâneo o desfaz (S-334)
         for atributo in ATRIBUTOS_DE_ENFASE:
             self.editor.tag_remove(texto_etiquetas.ETIQUETA_DO_ATRIBUTO[atributo], i0, i1)
-        self.editor.tag_remove(NEGRITO_ITALICO, i0, i1)
+        self._refazer_fontes(i0, i1)
         self._carimbar_humano(i0, i1)
         self._depois_de_editar()
         self._fechar_instantaneo()

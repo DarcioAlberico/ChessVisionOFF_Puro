@@ -117,6 +117,16 @@ def spans_de_italico(page: object) -> list[camada.Retangulo]:
     return camada.spans_com(page, _span_e_italico)
 
 
+def linhas_de_italico(page: object) -> list[camada.LinhaDeCamada]:
+    """As linhas da camada com o pendor marcado **caractere a caractere** (S-429).
+
+    O irmão fino de `spans_de_italico`, e o que ele acrescenta é maior aqui que no peso: das 407
+    linhas com itálico da amostra do acervo, **279 (68,6%) misturam pendor dentro de si** -- a
+    citação que começa no meio da linha, o nome de abertura no meio da frase. Ver "A régua desceu
+    ao caractere" em `text/camada.py`."""
+    return camada.linhas_com(page, _span_e_italico)
+
+
 def documento_registra_italico(doc: object, *, amostra: int = camada.PAGINAS_DE_AMOSTRA) -> bool:
     """Este documento registra pendor de fonte em algum lugar? Ver `text/camada.py`.
 
@@ -292,6 +302,7 @@ __all__ = [
     "PENDOR_DE_ITALICO",
     "TROCA",
     "documento_registra_italico",
+    "linhas_de_italico",
     "spans_de_italico",
     "corrigir",
     "declarar",
