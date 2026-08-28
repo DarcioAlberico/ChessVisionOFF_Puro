@@ -662,3 +662,81 @@ Ele estava lá havia semanas, invisível, e ninguém podia tê-lo visto: a CI n�
   **A versão deste ramo fica**, e a razão está medida: derivar do `bind_class` cede toda tecla que
   a classe liga, que é o defeito da S-294 -- `Ctrl+S` no campo de FEN não salvava. O que a
   separação por classe compraria já está comprado pelo significado, e agora está sob teste.
+
+---
+
+# O que ficou entregue
+
+**Encerrada em 2026-08-28.** A coluna *estado* da tabela das catorze fases não tem mais linha sem
+marca, e o registro item a item -- problema com `arquivo:linha`, solução, critério de aceite e o
+teste que o trava -- está em [SPEC_REVISAO.md](SPEC_REVISAO.md).
+
+## As três verificações, que era por onde tudo começou
+
+```
+                              antes da revisão              hoje
+$ uv run pytest      4.508 passaram, 3.593 subtests   4.822 passaram, 3.640 subtests
+$ uv run ruff check .              4 erros            limpo
+$ uv run mypy            30 erros em 8 arquivos       limpo (216 arquivos)
+```
+
+Duas delas estavam vermelhas e ninguém tinha sido avisado, porque a CI não rodava neste ramo. A
+Fase 52 abriu o portão antes de qualquer conserto, e foi a primeira execução dela que achou um
+defeito de importação anterior à revisão -- a demonstração do argumento que abre este documento,
+uma hora depois do conserto.
+
+## A conta
+
+```
+seções de spec                  130   S-296 a S-426 (menos a S-324, que é da aparência)
+  itens que viraram código      121
+  refutados na implementação      2   S-360 e S-407
+  decididos, e não implementados  1   S-426
+  já entregues por outro item     3   S-348, S-368, S-369
+  números aposentados             3   S-365 a S-367, renumerados para S-386 a S-391
+
+commits                          32
+arquivos tocados                199   +11.082 linhas, -1.547
+  em `src/` e no `app_tkinter`   93
+arquivos de teste novos           5   mais dois ajudantes de suíte
+```
+
+**Os três refutados e decididos contam como entrega**, e é de propósito: o conserto da S-360 foi
+escrito e desfeito, porque derrubava o teste que declara a decisão medida da S-11 -- trocar uma
+decisão medida por uma não medida não é conserto; a S-407 era verdade quando o relatório foi
+escrito e deixou de ser na S-377; e a S-426 escolhe entre duas implementações que existiram ao
+mesmo tempo, com a razão medida. Achado que se investiga e não vira código continua sendo trabalho
+feito, e o único jeito de ele não ser refeito é estar escrito.
+
+## O que mudou de forma, e não só de conteúdo
+
+- **A medição parou de ser cara de manter.** O digest do caminho de medição passou a ser sobre a
+  árvore sintática (S-425): corrigir um comentário deixou de invalidar os quatro relatórios de
+  campo. Nas **doze** remedições desta revisão, todos os números de acerto voltaram idênticos --
+  que é o resultado desejado de uma fase de conserto, e a prova de que nenhum item mexeu no que
+  o programa lê.
+- **O índice de specs passou a ser lido.** A tabela *"Onde mora a spec de cada item"* não cobria
+  oito itens entregues, e o leitor dela descartava em silêncio a linha com três números -- metade
+  dos itens do projeto não estava declarada em lugar nenhum, com as duas guardas verdes (S-404).
+- **A suíte passou a alcançar o que ela não alcançava** (Fase 65): thread que vaza de um teste e
+  morre no seguinte, caixa modal de verdade que trava a rodada, mais de cem pastas por rodada em
+  `%TEMP%`, nove raízes Tk próprias e uma catraca de perguntas modais que declarava 14 sobre 19
+  reais. Cada uma virou guarda: elas falham no teste que causou o problema, e não no vizinho.
+- **O que o programa diz sobre si mesmo é conferido contra o disco.** Seis guardas novas de
+  "números vivos": o CER contra o relatório que o README cita, as classes contra o `char_meta`, o
+  léxico contra os `.gz`, as threads contra o `threading.Thread(` do código, os tamanhos de
+  artefato contra `data/`, e a árvore do README contra o pacote.
+
+## O que continua em aberto, e por escolha
+
+O que a seção [*O que esta revisão deliberadamente NÃO propõe*](#o-que-esta-revisão-deliberadamente-não-propõe)
+listou continua valendo, e um item dela merece o número de hoje: `ui/texto_panel.py` tem **2.574**
+linhas e `ui/study_panel.py` tem **2.227** -- os dois cresceram durante a revisão, porque as Fases
+57 e 63 acrescentaram comportamento a eles. Parti-los continua sendo refatoração de risco alto e
+valor não medido, e continua registrado como observação em vez de item.
+
+**A lição de processo que esta revisão pagou, e que a próxima não deveria pagar de novo:** numere
+pelo bloco que a tabela de fases reserva, e não pelo próximo número livre no disco. A Fase 62 saiu
+com S-365 a S-370, colidiu com três números da Fase 60, e a correção custou 25 substituições em
+oito arquivos mais três seções-ponteiro -- porque `tests/test_docs.py` lê os assuntos dos commits,
+e commit empurrado não se reescreve.
