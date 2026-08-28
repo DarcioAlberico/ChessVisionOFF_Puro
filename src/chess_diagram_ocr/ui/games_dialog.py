@@ -60,6 +60,8 @@ class GamesDialog(tk.Toplevel):
         """As que vieram da busca por nome (S-87), para a lista dizer de onde cada uma veio."""
 
         self.title("Partidas da base")
+        # `Esc` sai sem aplicar candidata nenhuma (S-395).
+        self.bind("<Escape>", lambda _evento: self.destroy())
         self.transient(parent.winfo_toplevel())
         self.geometry("900x420")
 

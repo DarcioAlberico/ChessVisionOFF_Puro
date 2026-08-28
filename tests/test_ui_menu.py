@@ -228,6 +228,33 @@ class MontagemTests(unittest.TestCase):
         self.assertEqual(str(recentes.entrycget(0, "label")), "Karpov A.pdf")
 
 
+    def test_a_barra_anterior_e_destruida(self) -> None:
+        """Trocar de pele monta a barra de novo, e a de antes não pode ficar viva (S-399).
+
+        `root.configure(menu=...)` **troca** a que está pendurada e não destrói nada: a antiga
+        continuava no interpretador Tcl com os seis submenus dela e um comando Tcl por linha.
+        Cinco trocas de pele numa sessão deixavam cinco barras inteiras na memória -- e o efeito
+        não aparece na tela, que é o que faz este ser o tipo de vazamento que dura anos.
+        """
+        primeira = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
+        filhos = primeira.winfo_children()
+        self.assertTrue(filhos, "a barra tem de ter submenus, ou o teste não mede nada")
+
+        segunda = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
+
+        self.assertNotEqual(str(primeira), str(segunda))
+        self.assertFalse(primeira.winfo_exists(), "a barra anterior continuou viva")
+        self.assertFalse(any(filho.winfo_exists() for filho in filhos), "os submenus dela também")
+        self.assertEqual(str(segunda), str(self.janela.cget("menu")))
+
+    def test_a_barra_de_agora_continua_de_pe(self) -> None:
+        """A ordem importa: destruir antes de pendurar a nova deixaria a janela um instante sem
+        menu nenhum, e no Windows isso pisca."""
+        barra = menu.montar(self.janela, self.comandos, escolhas=self.escolhas)
+        self.assertTrue(barra.winfo_exists())
+        self.assertEqual(len(menu.MENUS), barra.index(tk.END))
+
+
 class RecentesDoEstadoTests(unittest.TestCase):
     """De onde sai a lista: o `pdf_history` que a S-156 já guardava, sem arquivo novo."""
 

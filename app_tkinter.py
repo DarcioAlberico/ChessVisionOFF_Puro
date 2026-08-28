@@ -194,6 +194,8 @@ class ChessOcrTkApp:
 
         self.piece_images = PieceImages(PIECE_IMAGE_DIR, conjunto=conjuntos.escolhido())
         self.state = AppState()
+        self.field_regime_var = tk.StringVar(value=REGIMES[0])
+        """O regime do conjunto de campo. Da janela, e não da linha de campo, que é remontada (S-399)."""
         self._estudo_a_reabrir = ""
         """A chave do estudo que a sessão anterior deixou aberto. Ver `_restore_state_or_default_pdf` (S-347)."""
         self._estado_aplicado = False
@@ -581,7 +583,10 @@ class ChessOcrTkApp:
         são as únicas que medem falso positivo (S-41).
         """
         ttk.Label(parent, text="Conjunto de campo").pack(side=tk.LEFT)
-        self.field_regime_var = tk.StringVar(value=REGIMES[0])
+        # **O regime sobrevive à remontagem** (S-399): esta função é chamada de novo a cada
+        # troca de pele, e criar um `StringVar` aqui zerava a escolha de quem estava anotando
+        # `scan` de volta para o primeiro da lista -- em silêncio, no meio do trabalho. A
+        # variável nasce com a janela (`__init__`), e aqui só se liga o widget novo a ela.
         ttk.Combobox(
             parent, textvariable=self.field_regime_var, values=list(REGIMES), width=15, state="readonly"
         ).pack(side=tk.LEFT, padx=6)
@@ -1051,6 +1056,9 @@ class ChessOcrTkApp:
         anotações do livro a cada amostra salva (15,0 ms) sem que salvar amostra pudesse mudar
         confirmação nenhuma.
         """
+        # A contagem das abas muda pelos mesmos gestos que chegam aqui -- varrer o livro é o
+        # maior deles (S-398).
+        self._atualizar_abas()
         if self.pdf_source is None:
             self.confirmed_diagrams = {}
             return
@@ -1545,7 +1553,7 @@ class ChessOcrTkApp:
             return
         image_bgr = read_image(filename)
         if image_bgr is None:
-            messagebox.showerror("Erro", "Não foi possível abrir a imagem.")
+            messagebox.showerror("Abrir imagem", "Não foi possível abrir a imagem.")
             return
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         options = self._recognition_options(max_boards, refine_detected_boards=True)
@@ -1615,7 +1623,7 @@ class ChessOcrTkApp:
 
     def _on_ocr_error(self, exc: Exception) -> None:
         self._set_status("Falha no OCR.")
-        messagebox.showerror("Erro", f"Falha no OCR:\n{exc}\n\nO traceback está no arquivo de log.")
+        messagebox.showerror("Ler o diagrama", f"Falha no OCR:\n{exc}\n\nO traceback está no arquivo de log.")
 
     def _finish_ocr_ui(self) -> None:
         self._is_running_ocr = False
@@ -1646,12 +1654,18 @@ class ChessOcrTkApp:
                 self.left_tabs.tab(indice, text=abas.rotulo(nome, contagens[nome]))
 
     def _focus_result_tab(self) -> None:
+        """Traz a aba Resultado para a frente. **Por rótulo, e não pelo painel** (S-397).
+
+        `left_tabs.select(self.result_panel)` nunca funcionou: o painel não é aba do `Notebook`
+        -- ele mora dentro do `rolagem.aba_rolavel`, que é quem é. O `TclError` disso caía num
+        `logger.debug`, então clicar num diagrama da página selecionava o diagrama e **não trazia
+        a aba**, sem nada dizer por quê. `rolagem.selecionar_aba` é o mesmo caminho que a
+        restauração de estado usa desde a S-156, e ele acha a aba pelo nome.
+        """
         if self.left_tabs is None or self.result_panel is None:
             return
-        try:
-            self.left_tabs.select(self.result_panel)
-        except tk.TclError as exc:
-            logger.debug("Não foi possível focar a aba de resultados: %s", exc)
+        if not rolagem.selecionar_aba(self.left_tabs, abas.RESULTADO):
+            logger.debug("A aba %s não está montada nesta janela.", abas.RESULTADO)
 
     def _sync_study(self) -> None:
         if self.study_panel is not None:
@@ -1709,6 +1723,8 @@ class ChessOcrTkApp:
         dlg = tk.Toplevel(self.root)
         dlg.title("Correção remota")
         dlg.resizable(False, False)
+        # `Esc` é o "não enviar": sair sem consentir é sempre a resposta segura (S-395).
+        dlg.bind("<Escape>", lambda _evento: dlg.destroy())
         dlg.transient(self.root)
         dlg.grab_set()
 
@@ -1998,7 +2014,8 @@ class ChessOcrTkApp:
         global também deixa de responder. É a mesma disciplina de `atalhos.ligacoes`, que recusa
         atalho declarado sem comando.
         """
-        for painel in (self.texto_panel, self.study_panel):
+        # A galeria entrou na lista com a S-400: quatro botões de navegação e nenhuma tecla.
+        for painel in (self.texto_panel, self.study_panel, self.gallery_panel):
             if painel is not None:
                 atalhos.conferir_dono(painel, type(painel).__name__)
         bind_shortcuts(self.root, atalhos.ligacoes(self._comandos()))

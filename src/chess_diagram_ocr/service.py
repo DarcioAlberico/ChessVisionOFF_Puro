@@ -652,7 +652,7 @@ class OcrService:
         y1 = max(y0 + 1, min(h, int(y1)))
         cropped = np.ascontiguousarray(page_rgb[y0:y1, x0:x1])
         if cropped.size == 0:
-            raise ValueError("Selecao vazia: o retangulo escolhido nao cobre nenhum pixel.")
+            raise ValueError("Seleção vazia: o retângulo escolhido não cobre nenhum pixel.")
 
         return self.recognize_image(
             cropped,

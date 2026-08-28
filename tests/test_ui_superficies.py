@@ -18,13 +18,16 @@ errado, ele falha aqui e não na tela de alguém.
 
 from __future__ import annotations
 
+import ast
 import inspect
+import re
 import tkinter as tk
 import unittest
+from pathlib import Path
 
 from tk_root import raiz
 
-from chess_diagram_ocr.ui import theme, tokens
+from chess_diagram_ocr.ui import gallery_panel, theme, tokens
 from chess_diagram_ocr.ui.board_widget import InteractiveBoard
 from chess_diagram_ocr.ui.tokens import AA_TEXTO, RESERVA, razao_de_contraste, sobre_superficie
 
@@ -203,6 +206,38 @@ class CanvasSegueOPapelTests(unittest.TestCase):
 
         escolhida = BoardRenderer._cor_de_coordenada(tabuleiro.canvas)
         self.assertGreaterEqual(razao_de_contraste(escolhida, fundo), AA_TEXTO)
+
+    def test_o_canvas_da_galeria_nasce_com_o_papel_e_segue_a_troca(self) -> None:
+        """Era o **único canvas do `ui/` fora do sistema de cor** (S-394): fundo de fábrica do Tk
+        e um `#888` cravado no aviso de "sem recorte" -- o único hexadecimal literal do pacote,
+        e um retângulo branco no meio da pele escura."""
+        fonte = Path(gallery_panel.__file__).read_text(encoding="utf-8")
+        self.assertIn("theme.ao_repintar", fonte)
+        self.assertIn("tokens.SUPERFICIE_TABULEIRO", fonte)
+
+    def test_nenhum_modulo_de_ui_crava_cor(self) -> None:
+        """`ui/tokens.py` é o único que escreve `#rrggbb`, e é a definição dele fazer isso.
+
+        A varredura é por AST e não por `grep`: o `#` de comentário não conta, e o literal dentro
+        de uma f-string de log também não seria cor. O que ela pega é o que chega a um `configure`.
+        """
+        padrao = re.compile(r"^#[0-9a-fA-F]{3,8}$")
+        cravados: list[str] = []
+        for caminho in sorted((Path(tokens.__file__).parent).glob("*.py")):
+            if caminho.name == "tokens.py":
+                continue
+            arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+            cravados += [
+                f"{caminho.name}:{no.lineno}: {no.value}"
+                for no in ast.walk(arvore)
+                if isinstance(no, ast.Constant) and isinstance(no.value, str) and padrao.match(no.value)
+            ]
+        self.assertEqual(
+            cravados,
+            [],
+            "Cor cravada fora de `ui/tokens.py`. Quem precisa de cor pede o papel a "
+            "`theme.cor_atual`, e registra a repintura ao lado:" + chr(10) + chr(10).join(cravados),
+        )
 
     def test_cor_atual_resolve_e_nao_derruba(self) -> None:
         """A ponte entre painel e tokens: tolerante a tema, intolerante a papel errado."""

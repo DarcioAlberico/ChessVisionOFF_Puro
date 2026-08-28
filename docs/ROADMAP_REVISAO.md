@@ -27,7 +27,7 @@ segunda passada de céticos, com a tarefa de **derrubar** cada achado antes de e
 > | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-385 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-403 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -282,8 +282,8 @@ que teste faltava.
 | 59 | O núcleo, revisitado | S-358 a S-364 | **entregue** |  3,4 s num tabuleiro ilegal, e a sentinela que volta a casar |
 | 60 | Os dados e o treino | S-368 a S-376 | **entregue** |  o `splits.csv` apagado, o "melhor época" que indexa a lista errada |
 | 61 | Os quarenta comandos | S-377 a S-385 | **entregue** |  o `-v` que a mensagem de erro manda usar e doze comandos recusam |
-| 62 | O que sai no `.exe` | S-365 a S-370 | **entregue** |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |
-| 63 | A cor, o foco e a tecla | S-394 a S-404 | |  três painéis fora do sistema de cor, onze diálogos sem Esc |
+| 62 | O que sai no `.exe` | S-386 a S-391 | **entregue** |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |
+| 63 | A cor, o foco e a tecla | S-392 a S-403 | **entregue** |  três painéis fora do sistema de cor, onze diálogos sem Esc |
 | 64 | A documentação que envelheceu | S-405 a S-413 | |  oito itens entregues fora do índice, e o CER que o próprio relatório desmente |
 | 65 | A suíte que não pegou nada disso | S-414 a S-421 | |  4.508 testes verdes sobre 70 defeitos de correção |
 

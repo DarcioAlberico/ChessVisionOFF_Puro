@@ -523,6 +523,7 @@ class DatasetPanel(ttk.Frame):
         window = tk.Toplevel(self)
         window.title("Estatísticas do dataset")
         window.geometry("560x520")
+        window.bind("<Escape>", lambda _evento: window.destroy())  # S-395
         # `wrap="none"` mais monoespaçada: as estatísticas são colunas alinhadas por espaço, e
         # em proporcional elas deixam de ser colunas (S-149).
         text = tk.Text(window, wrap="none", font=theme.fonte_atual(tipografia.DADO))

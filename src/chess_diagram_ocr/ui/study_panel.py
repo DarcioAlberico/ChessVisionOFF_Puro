@@ -332,6 +332,10 @@ class StudyPanel(ttk.Frame):
     def _pintar_alternavel(self, acao: str) -> None:
         botao, variavel = self._alternaveis[acao]
         botao.configure(text=comandos.rotulo_alternado(acao) if variavel.get() else comandos.rotulo_de_botao(acao))
+        # Quem vira um modo avisa quem mais o desenha (S-396). Este botão é repintado acima
+        # porque ele é desta aba, e a aba existe nas três peles; o aviso é para a fita e a
+        # fila, que desenham o mesmo comando noutro lugar da janela.
+        comandos.alternou(acao, ligado=variavel.get())
 
     def _build_barra(self) -> None:
         """Três linhas, e o corte entre elas é o assunto: a posição, a linha, e o que vem de fora."""
@@ -1133,6 +1137,9 @@ class StudyPanel(ttk.Frame):
             ttk.Button(wrap, text=rotulo, command=partial(_select, tipo)).pack(fill=tk.X, pady=2)
 
         ttk.Button(wrap, text="Cancelar", command=dlg.destroy).pack(fill=tk.X, pady=(8, 0))
+        # `Esc` faz o que o botão Cancelar faz: sair sem promover (S-395). A escolha fica
+        # `None`, que é o que `wait_window` devolve a quem chamou.
+        dlg.bind("<Escape>", lambda _evento: dlg.destroy())
         janela.wait_window(dlg)
         return escolha["piece_type"]
 
@@ -1414,6 +1421,7 @@ class StudyPanel(ttk.Frame):
         rotulo.image = foto  # type: ignore[attr-defined]
         rotulo.pack(padx=8, pady=8)
         ttk.Button(janela, text="Fechar", command=janela.destroy).pack(pady=(0, 8))
+        janela.bind("<Escape>", lambda _evento: janela.destroy())  # S-395
 
     # ------------------------------------------------------- a linha impressa (S-283/S-208)
 
@@ -1739,7 +1747,7 @@ class StudyPanel(ttk.Frame):
             relatorio = exportacao.exportar(estudo_saida.para_documento(self.estudo), formato, recortes=recortes)
             exportacao.escrever(caminho, relatorio)
         except OSError as erro:
-            messagebox.showerror("Erro", f"Falha ao exportar o estudo:\n{erro}")
+            messagebox.showerror("Exportar o estudo", f"Falha ao exportar o estudo:\n{erro}")
             return
         self.set_status(exportacao.texto_do_relatorio(caminho, relatorio, tamanho=caminho.stat().st_size))
 
@@ -1899,7 +1907,7 @@ class StudyPanel(ttk.Frame):
             self.write_pgn(path, append=append)
             self.set_status(f"Análise acrescentada em {path.name}." if append else f"PGN salvo em {path.name}.")
         except Exception as exc:
-            messagebox.showerror("Erro", f"Falha ao salvar PGN:\n{exc}")
+            messagebox.showerror("Salvar PGN", f"Falha ao salvar PGN:\n{exc}")
 
 
 def _tamanho_da_subarvore(raizes: Sequence[chess.pgn.GameNode]) -> tuple[int, bool]:
@@ -1965,6 +1973,7 @@ class _JanelaDeColar(tk.Toplevel):
         super().__init__(pai)
         self.title("Colar posição ou partida")
         self.transient(pai.winfo_toplevel())
+        self.bind("<Escape>", lambda _evento: self.destroy())  # S-395
         self._ao_colar = ao_colar
 
         moldura = ttk.Frame(self, padding=12)
@@ -2005,6 +2014,7 @@ class _JanelaDeColecao(tk.Toplevel):
         super().__init__(pai)
         self.title(nome)
         self.transient(pai.winfo_toplevel())
+        self.bind("<Escape>", lambda _evento: self.destroy())  # S-395
         self._estudos = list(estudos)
         self._ao_escolher = ao_escolher
 
@@ -2065,6 +2075,7 @@ class _JanelaDePartidas(tk.Toplevel):
     def __init__(self, pai: tk.Misc, resposta: Any) -> None:
         super().__init__(pai)
         self.title("Partidas desta posição")
+        self.bind("<Escape>", lambda _evento: self.destroy())  # S-395
         self.transient(pai.winfo_toplevel())
 
         moldura = ttk.Frame(self, padding=12)

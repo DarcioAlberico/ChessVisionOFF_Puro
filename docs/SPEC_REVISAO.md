@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-385 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-403 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2090,11 +2090,31 @@ fazia quinze linhas acima.
 
 # Fase 62 — O que sai no `.exe`
 
-Sete achados, seis itens (S-365 a S-370) e **um refutado na segunda passada** -- o extra `onnx`,
+Sete achados, seis itens (S-386 a S-391) e **um refutado na segunda passada** -- o extra `onnx`,
 que a revisão já registrou: quem importa `onnx` é o exportador do próprio torch, e removê-lo
 teria quebrado a S-30.
 
-## S-365 · O `pandas` sai das dependências obrigatórias
+## Números aposentados: esta fase saiu numerada como S-365 a S-370
+
+O commit `c76b240` entregou a Fase 62 com os números **S-365 a S-370**, e três deles já eram da
+Fase 60: `S-368` (a poda do `splits.csv`), `S-369` (o `best_epoch`) e `S-370` (a métrica de outro
+nome, que o `training.py` cita). Duas seções com o mesmo `S-NNN` não são um detalhe de arquivo --
+a tabela *"Onde mora a spec de cada item"* mapeia número para documento, e um número que aponta
+para dois lugares é exatamente o furo que a S-134 existe para tapar.
+
+O conserto foi mover **esta** fase, e não a de lá: a Fase 60 já estava numerada segundo a reserva
+do roadmap, e a 62 é que tinha ido buscar o primeiro número livre depois da Fase 59. A reserva
+dizia S-386 em diante desde o commit `1ea8f3d`, e é onde ela está agora. As três linhas abaixo
+ficam porque `tests/test_docs.py` lê os **assuntos dos commits**: o `c76b240` continua dizendo
+"S-365 a S-370" no histórico, e histórico não se reescreve depois de empurrado.
+
+## S-365 · Renumerado para [S-386](#s-386--o-pandas-sai-das-dependências-obrigatórias)
+
+## S-366 · Renumerado para [S-387](#s-387--95-mb-que-ninguém-declarou)
+
+## S-367 · Renumerado para [S-388](#s-388--o-exe-leva-os-três-modelos-ou-diz-o-que-falta)
+
+## S-386 · O `pandas` sai das dependências obrigatórias
 
 **Problema.** `pandas` era dependência obrigatória e **nenhum módulo de produção o importa**.
 Quem o importa são quatro arquivos de teste, que o usam como segunda régua do CSV de rótulos --
@@ -2109,7 +2129,7 @@ dentro do `.exe`, e o bundle é o lugar onde peso custa.
 
 **Testes.** `DependenciasDoBundleTests`, três casos.
 
-## S-366 · 95 MB que ninguém declarou
+## S-387 · 95 MB que ninguém declarou
 
 **Problema.** `scipy` e `scikit-image` entravam no bundle sem constar de dependência nenhuma:
 eles vêm no ambiente por causa do clone de `tsoj/Chess_diagram_to_FEN`, que é a segunda opinião
@@ -2125,7 +2145,7 @@ isso** em pt-BR quando alguém tenta a opção no `.exe`, em vez de deixar apare
 
 **Testes.** `test_o_que_nao_e_dependencia_nao_entra_no_bundle`.
 
-## S-367 · O `.exe` leva os três modelos, ou diz o que falta
+## S-388 · O `.exe` leva os três modelos, ou diz o que falta
 
 **Problema.** O motor `glifo` precisa dos pesos **e** do metadado -- `carregar_classificador` acha
 o `.pt` ao lado do `char_meta.json` --, e `copiar_checkpoint` copiava só `piece_classifier.pt`.
@@ -2140,7 +2160,7 @@ embutido seria o único que um retreino não consegue trocar.
 
 **Testes.** `ModelosAoLadoDoExecutavelTests`.
 
-## S-368 · O log rotaciona, e sem console não há handler de console
+## S-389 · O log rotaciona, e sem console não há handler de console
 
 **Problema.** Dois defeitos no mesmo arquivo.
 
@@ -2160,7 +2180,7 @@ o disco tem teto --, e o handler de console só é criado quando há `sys.stderr
 
 **Testes.** `LogQueNaoCresceParaSempreTests`, quatro casos.
 
-## S-369 · `CVOFF_LOG_DIR` vale para os quarenta e um comandos
+## S-390 · `CVOFF_LOG_DIR` vale para os quarenta e um comandos
 
 **Problema.** `log_file` era um parâmetro que cada comando tinha de lembrar de passar, e **23 dos
 41 não passavam** -- entre eles uma janela Tk. Num checkout isso não muda nada, porque sem
@@ -2175,7 +2195,7 @@ arquivo naquela pasta.
 
 **Testes.** `test_sem_destino_o_padrao_e_o_de_default_log_file`.
 
-## S-370 · O `.spec` é lintado
+## S-391 · O `.spec` é lintado
 
 **Problema.** `packaging/cvoff.spec` **não era visto por nenhuma das duas guardas**: `ruff` e
 `mypy` olham `.py`, e o arquivo é `.spec`. E as duas coisas que sugeriam o contrário estavam
@@ -2190,3 +2210,215 @@ import nenhum, e que o verificador acusaria um por um.
 **Critério de aceite.** `ruff check .` cobre o `.spec` e passa.
 
 **Testes.** `test_o_spec_e_lintado`.
+
+---
+
+# Fase 63 — A cor, o foco e a tecla
+
+Doze itens (S-392 a S-403). Três superfícies fora do sistema de cor da S-144, onze diálogos que
+não fecham com `Esc`, um modo sem estado visível, quatro teclas que iam para a aba errada, nove
+caixas chamadas "Erro" e duas implementações de dica com tempos diferentes.
+
+**O que junta esta fase não é o assunto, é a distância entre o defeito e quem o sofre.** Nenhum
+destes doze aparece num teste que falha nem num log: o que eles produzem é um usuário que não sabe
+em que estado está, aperta a tecla e não vê nada acontecer, ou vê acontecer noutra aba.
+
+## S-392 · Mensagem de exceção também é interface
+
+**Problema.** A guarda de acentuação da S-146 varre `ui/`, e o texto que um `raise` de módulo de
+produto carrega **chega à tela pelos mesmos dois caminhos**: a caixa de erro da janela, que mostra
+`str(exc)`, e o `cli_errors` da S-126. "Selecao vazia: o retangulo escolhido nao cobre nenhum
+pixel" era o que a janela mostrava a quem arrastava um retângulo vazio -- e a guarda que existe
+justamente para isso passava em verde, porque olhava a pasta errada.
+
+**Solução.** A varredura passa a ler o `ast.Raise` de todo módulo de `src/chess_diagram_ocr/`
+fora de `ui/` e de `cli/`, e cobra as mesmas palavras. `cli/` fica de fora com a razão escrita: ali
+o texto é de terminal, e a convenção do projeto -- a mesma do README -- é escrevê-lo sem acento.
+Dez mensagens foram corrigidas em nove módulos.
+
+**Critério de aceite.** Nenhuma mensagem de `raise` fora de `ui/` e `cli/` usa forma sem acento.
+
+**Testes.** `test_nenhuma_excecao_de_produto_usa_forma_sem_acento`.
+
+## S-393 · A mensagem do rodapé é repintada com o tema
+
+**Problema.** O rodapé escolhe a cor da mensagem conforme a severidade -- erro em vermelho, aviso
+em âmbar -- e escrevia essa cor **uma vez**, na hora de mostrar. A troca de pele repinta o cromo
+inteiro (S-144) e não tocava nela: um erro escrito sob a pele clara continuava preto sobre o cromo
+escuro depois da troca, com razão de contraste medida em 1,30:1 -- abaixo dos 4,5:1 que a S-144
+exige de todo texto.
+
+**Solução.** O rodapé guarda a **severidade** da mensagem em vigor, e não a cor. `theme.ao_repintar`
+recebe uma função que reescreve a cor a partir do token -- é o mesmo par que o canvas da Galeria
+passou a usar na S-394, e o mesmo de `board_widget` desde a S-147.
+
+**Critério de aceite.** Trocar de tema com uma mensagem de erro na tela repinta a mensagem.
+
+**Testes.** `RodapeSegueOTemaTests`.
+
+## S-394 · O canvas da Galeria entra no sistema de cor
+
+**Problema.** Era o **único canvas do pacote `ui/` fora da S-144**: nascia com o fundo de fábrica
+do Tk e escrevia "sem recorte" num `#888` cravado -- o único hexadecimal literal do pacote. Sob a
+pele escura, um retângulo branco no meio da janela.
+
+**Solução.** `bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO)` mais `theme.ao_repintar`, e o aviso
+passa a `tokens.TEXTO_SECUNDARIO`. É o que o `ui/board_widget.py` -- o canvas irmão -- faz desde a
+S-147.
+
+**Critério de aceite.** Nenhum literal de cor sobra em `ui/gallery_panel.py`, e o fundo acompanha a
+troca de tema.
+
+**Testes.** `CanvasSegueOPapelTests`, `test_nenhum_modulo_de_ui_crava_cor`.
+
+## S-395 · Onze diálogos passam a fechar com `Esc`
+
+**Problema.** Catorze janelas de diálogo, e **onze não fechavam com `Esc`** -- inclusive a legenda
+de atalhos, que é a janela que mais se abre e a que menos tem o que consentir. `Esc` é a saída
+que todo diálogo tem em todo programa: sem ela, a única porta é achar o botão de fechar.
+
+**Solução.** `<Escape>` ligado a fechar em cada uma delas, e **em nenhuma ele aplica**: sair sem
+consentir é sempre a resposta segura. Nos dois diálogos que promovem uma candidata, `Esc` faz o
+que o botão *Cancelar* faz.
+
+**Critério de aceite.** Toda `Toplevel` de diálogo do pacote liga `<Escape>`.
+
+**Testes.** `test_todo_dialogo_fecha_com_esc`.
+
+## S-396 · "Selecionar área" mostra o modo nas três peles
+
+**Problema.** `selecionar_area` é um **modo**: o primeiro clique liga o arrasto sobre a folha e o
+segundo desliga. Só a pele clássica dizia isso -- o botão dela troca para "Cancelar seleção" desde
+a S-222. As outras duas criam os controles da barra do painel **e não os empacotam** (é o que a
+S-223 escolheu de propósito), então o texto trocado ia para uma barra que a pele não mostra:
+ligar e desligar tinham o mesmo aspecto, e o único jeito de saber em que estado se estava era
+arrastar o mouse sobre a página e ver o que acontecia.
+
+**Solução.** O catálogo ganha um canal de duas funções: `ao_alternar(acao, aplicar)` registra quem
+desenha aquele comando, e `alternou(acao, ligado=...)` avisa. Quem vira o modo avisa -- o painel de
+PDF em `toggle_area_selection`/`disable_area_selection`, a sala de estudo em `_pintar_alternavel` --
+e quem o desenha segue: a fita e a pílula da fila. Recebe **texto e não widget** porque `comandos`
+é o catálogo e não importa `tkinter`; esquece o que morreu, com a mesma disciplina de
+`theme.repintar`.
+
+**Critério de aceite.** `alternou("selecionar_area", ligado=True)` troca o texto do botão da fita;
+ligar e desligar pelo painel avisam; a fita remontada não carrega o seguidor da anterior.
+
+**Testes.** `tests/test_ui_modo_selecionar_area.py` (13).
+
+## S-397 · `_focus_result_tab` nunca funcionou
+
+**Problema.** `left_tabs.select(self.result_panel)` levanta sempre: **o painel de resultado não é
+aba do `Notebook`** -- quem é é o `rolagem.aba_rolavel` que o hospeda desde a S-150. O `TclError`
+caía num `logger.debug`, então clicar num diagrama da página selecionava o diagrama e não trazia a
+aba, sem nada dizer por quê.
+
+**Solução.** `rolagem.selecionar_aba(self.left_tabs, abas.RESULTADO)`, que é o mesmo caminho que a
+restauração de estado usa desde a S-156: ele acha a aba pelo **rótulo**, que é o que sobrevive à
+moldura de rolagem.
+
+**Critério de aceite.** Pedir o foco da aba Resultado a traz para a frente.
+
+**Testes.** `test_focar_a_aba_de_resultado_a_traz_para_a_frente`.
+
+## S-398 · A contagem das abas é refeita depois da varredura
+
+**Problema.** Os rótulos das abas trazem contagens (S-152), e a varredura do livro é **o gesto que
+as muda**: ela é quem confirma diagramas em bloco. Nada as refazia depois dela -- a aba dizia o
+número de antes até o próximo gesto que por acaso chamasse `_atualizar_abas`.
+
+**Solução.** `_reload_confirmed_diagrams` passa a atualizá-las, e é o lugar certo: ela é chamada
+por todo caminho que muda o conjunto de confirmados, e não só pela varredura.
+
+**Critério de aceite.** Depois de varrer, o rótulo da aba traz a contagem nova.
+
+**Testes.** `test_a_varredura_atualiza_a_contagem_das_abas`.
+
+## S-399 · A troca de pele não vaza barra nem esquece o regime
+
+**Problema.** Dois defeitos do mesmo gesto. `menu.montar` pendurava uma barra de menus nova a cada
+troca de pele e **nunca destruía a anterior**: cada troca deixava uma `Menu` inteira viva, com os
+`Menu` filhos de todos os grupos. E a linha do conjunto de campo é refeita na remontagem, o que
+recriava o `StringVar` do regime -- a escolha de quem estava anotando `scan` voltava ao primeiro
+da lista, em silêncio, no meio do trabalho.
+
+**Solução.** A barra anterior é destruída antes de a nova ser pendurada; o `StringVar` do regime
+nasce com a janela (`__init__`), e a linha só liga o widget novo a ele. É a mesma regra que o
+`pdf_panel` já cumpria: **o cromo é refeito, o estado não**.
+
+**Critério de aceite.** Trocar de pele três vezes não deixa barra órfã, e o regime escolhido
+sobrevive à troca.
+
+**Testes.** `test_a_barra_anterior_e_destruida`, `test_o_regime_sobrevive_a_troca_de_pele`.
+
+## S-400 · A Galeria ganha as teclas que os botões dela já tinham
+
+**Problema.** A Galeria tem os quatro botões de navegação desde a S-88 e **nenhuma tecla chegava a
+eles**. Pior: `←` e `→` são "diagrama anterior/próximo" da janela inteira, e com a Galeria aberta
+eles continuavam mexendo no diagrama do **painel de resultado** -- que não está na tela. É o mesmo
+defeito que a S-281 mediu na sala de estudo, sem nada visível para denunciá-lo: percorrer a galeria
+com a seta trocava, invisivelmente, o que o `Ctrl+S` seguinte gravaria.
+
+**Solução.** A aba declara as quatro ações como suas (`acoes_proprias`/`atender`, a fundação da
+S-244) e ganha o foco ao ser mapeada, como a sala desde a S-281. Não são teclas novas: é a mesma
+tecla com destino conforme o foco. Enquanto o cursor está num campo -- o lance, os oito headers, a
+legenda selecionável -- a declaração é vazia, e `←` volta a ser do campo.
+
+**Critério de aceite.** `atalhos.conferir_dono` passa para a Galeria; as quatro teclas andam nela e
+não no painel de resultado.
+
+**Testes.** `TecladoDaGaleriaTests` (5).
+
+## S-401 · Toda caixa de diálogo nomeia a operação
+
+**Problema.** **Nove das trinta e nove caixas se chamavam "Erro"**, contra trinta que já nomeavam
+o gesto. O título é a primeira linha que se lê e muitas vezes a única: *"Erro / Falha ao renderizar
+página"* diz duas vezes que houve falha e nenhuma vez qual gesto a produziu. Com três abas abertas
+e duas operações em curso, é o título que diz a qual delas responder -- o `messagebox` do Tk não
+põe o nome do painel em lugar nenhum.
+
+**Solução.** As nove passam a nomear a operação: "Abrir PDF", "Ler o diagrama", "Mostrar a página",
+"Aplicar a FEN", "Salvar PGN", "Exportar o estudo", "Abrir imagem". E uma guarda de varredura
+recusa o título genérico, na mesma classe da S-161 e da S-324: o que a janela mostra é declarado
+num lugar e conferido de fora.
+
+**Critério de aceite.** Nenhuma das sete chamadas de `messagebox` em `ui/` e no `app_tkinter` tem
+título genérico ou vazio.
+
+**Testes.** `TituloDeCaixaTests` (3).
+
+## S-402 · O `after` da dica morre com o widget
+
+**Problema.** `Tooltip` agenda a dica com `after(450)` e cancelava esse agendamento ao sair do
+widget e ao clicar -- **e não quando o widget morre**. Sair de uma barra que a troca de pele
+destrói no mesmo gesto deixava um relógio marcado para um widget que não existe mais: `_show`
+acordava, pedia `winfo_rootx` e o `TclError` subia pelo `report_callback_exception` do Tk, que é um
+traceback na saída padrão do programa. O mesmo valia para a dica do tabuleiro.
+
+**Solução.** `<Destroy>` ligado a esquecer o agendamento, nos dois. **Só o próprio widget conta**:
+`<Destroy>` sobe dos filhos, e a caixinha da dica é filha do widget -- tratar a morte dela como a
+dele apagaria a dica no instante em que aparecesse. E não se destrói a `Toplevel`: ela é filha de
+quem está morrendo, e o Tk já a leva junto.
+
+**Critério de aceite.** Destruir o widget com uma dica agendada cancela o agendamento, e nada chega
+ao `report_callback_exception`.
+
+**Testes.** `DicaAgendadaMorreComOWidgetTests` (3).
+
+## S-403 · Uma dica só, com um tempo só
+
+**Problema.** Duas implementações de dica na mesma janela: a de `ui/tooltip.py`, que explica um
+controle, e a do `ui/board_widget.py`, que diz o que o modelo leu numa casa. Mesma `Toplevel`
+retirada, mesmo token de superfície, mesma borda -- e **350 ms contra 450**. Duas dicas com tempos
+diferentes não são duas decisões, são uma decisão tomada duas vezes: quem passa o ponteiro da barra
+para o tabuleiro vê a segunda aparecer mais cedo sem que nada explique por quê.
+
+**Solução.** `tooltip.janela_de_dica` monta a caixinha -- superfície, letra sobre ela, borda -- e
+`TOOLTIP_DELAY_MS` passa a ser o tempo dos dois. O que fica no tabuleiro é o que só ele sabe: qual
+casa está sob o ponteiro, o que escrever sobre ela e onde pô-la (ao lado do ponteiro, e não abaixo
+de um botão).
+
+**Critério de aceite.** `wm_overrideredirect` aparece num único módulo de `ui/`, e o tabuleiro não
+tem tempo próprio.
+
+**Testes.** `UmaDicaSoTests` (4).

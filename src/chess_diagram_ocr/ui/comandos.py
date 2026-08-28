@@ -29,7 +29,7 @@ quem decide é afirmável sem abrir janela.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from . import estilos, strings
@@ -798,6 +798,43 @@ def rotulo_de_botao(acao: str) -> str:
 def rotulo_alternado(acao: str) -> str:
     """O rótulo de **ligado** daquele comando. Igual ao normal quando ele não alterna."""
     return comando(acao).alternado
+
+
+_SEGUIDORES: dict[str, list[Callable[[str], object]]] = {}
+"""Quem repinta o rótulo de um comando que alterna. Ver `ao_alternar` (S-396)."""
+
+
+def ao_alternar(acao: str, aplicar: Callable[[str], object]) -> None:
+    """Registra quem tem de mostrar o estado ligado/desligado daquele comando (S-396).
+
+    **"Selecionar área" é um modo, e só a pele clássica dizia isso.** O botão dela troca o texto
+    para "Cancelar seleção" desde a S-222; na "Foco" e na "Fita" o mesmo comando ligava o modo e
+    o botão continuava escrito "Selecionar área" -- ligar e desligar tinham o mesmo aspecto, e o
+    único jeito de saber em que estado se estava era arrastar o mouse sobre a folha e ver o que
+    acontecia.
+
+    Recebe uma função e não um widget de propósito: este módulo é o catálogo e não importa
+    `tkinter`. Quem registra decide o que fazer com o texto -- a fita o quebra em duas linhas, a
+    clássica o usa inteiro.
+    """
+    _SEGUIDORES.setdefault(acao, []).append(aplicar)
+
+
+def alternou(acao: str, *, ligado: bool) -> None:
+    """Avisa os seguidores daquele comando. Nunca levanta, e esquece o que já morreu.
+
+    Mesma disciplina de `theme.repintar`: um botão destruído entre o registro e a troca é a
+    janela de antes, e ele sai da lista em vez de derrubar os outros.
+    """
+    texto = rotulo_alternado(acao) if ligado else rotulo_de_botao(acao)
+    vivos: list[Callable[[str], object]] = []
+    for aplicar in _SEGUIDORES.get(acao, []):
+        try:
+            aplicar(texto)
+        except Exception:  # noqa: BLE001 - widget morto, ou pele remontada: sai da lista
+            continue
+        vivos.append(aplicar)
+    _SEGUIDORES[acao] = vivos
 
 
 def papel(acao: str) -> str:

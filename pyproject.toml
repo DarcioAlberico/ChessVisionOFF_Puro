@@ -26,7 +26,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     # `pandas` era dependencia **obrigatoria** e nao e importado por modulo de producao nenhum
-    # (S-365): quem o importa sao quatro arquivos de teste, que o usam como segunda regua para
+    # (S-386): quem o importa sao quatro arquivos de teste, que o usam como segunda regua para
     # o CSV de rotulos -- "o que sai daqui e byte a byte igual ao que o pandas escreveria".
     # Como obrigatorio ele viajava dentro do `.exe`, e o bundle e o lugar onde peso custa.
     "pandas>=2.2.0",
@@ -192,11 +192,11 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-# O `.spec` do PyInstaller e Python, e ate a S-370 nenhuma das duas guardas o via: `ruff` e
+# O `.spec` do PyInstaller e Python, e ate a S-391 nenhuma das duas guardas o via: `ruff` e
 # `mypy` olham `.py`, o arquivo tem `# noqa: F821` espalhado -- que so faz sentido se alguem
 # estiver lintando -- e o comentario do `[tool.mypy]` dizia que `packaging/` entrava. O `.spec`
 # decide o que o usuario recebe; ficar fora das guardas e o que deixou 95 MB entrarem sem
-# ninguem declarar (S-366).
+# ninguem declarar (S-387).
 extend-include = ["*.spec"]
 
 [tool.ruff.lint]
@@ -220,7 +220,7 @@ python_version = "3.10"
 # passa limpo; o que faltava era a guarda. `packaging/` entra pela mesma razao: o `--selftest`
 # decide o que o usuario recebe.
 #
-# **O `.spec` fica de fora do mypy, e a razao e do formato (S-370).** O mypy so le `.py`, e o
+# **O `.spec` fica de fora do mypy, e a razao e do formato (S-391).** O mypy so le `.py`, e o
 # arquivo nao pode virar um: o PyInstaller o executa injetando `SPECPATH`, `Analysis`, `EXE` e
 # `COLLECT` como globais -- nomes que nao existem em import nenhum, e que o verificador
 # acusaria um por um. Quem o cobre e o `ruff`, pelo `extend-include` acima, que e o que valida

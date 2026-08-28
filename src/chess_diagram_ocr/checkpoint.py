@@ -95,7 +95,7 @@ def load_checkpoint(path: Path, *, map_location: str = "cpu") -> Checkpoint:
         temperature = 1.0
 
     if not isinstance(state, dict):
-        raise ValueError(f"Checkpoint invalido em {path}: esperado dict de pesos, obtido {type(state).__name__}.")
+        raise ValueError(f"Checkpoint inválido em {path}: esperado dict de pesos, obtido {type(state).__name__}.")
 
     if temperature <= 0:
         raise ValueError(f"Temperatura inválida em {path}: {temperature}. Deve ser positiva.")

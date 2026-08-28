@@ -139,7 +139,7 @@ def gravar_metricas() -> float:
 
 MODELOS_QUE_ACOMPANHAM = (
     ("piece_classifier.pt", "sem ele o bundle abre e não lê diagrama nenhum"),
-    # **Os dois do texto, e eles vão juntos (S-367).** O motor `glifo` precisa dos pesos **e**
+    # **Os dois do texto, e eles vão juntos (S-388).** O motor `glifo` precisa dos pesos **e**
     # do metadado -- `carregar_classificador` acha o `.pt` ao lado do `char_meta.json` --, e o
     # build copiava só o de peças: no `.exe`, a aba Texto oferecia o motor `glifo` na caixa e
     # ele nunca subia, nem com os pesos postos à mão em `models/`.

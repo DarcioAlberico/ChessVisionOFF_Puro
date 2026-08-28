@@ -114,7 +114,7 @@ excludes = [
     "notebook",
     "matplotlib",
     "tensorboard",
-    # **95 MB que entraram sem ninguém declarar (S-366).** `scipy` e `scikit-image` não são
+    # **95 MB que entraram sem ninguém declarar (S-387).** `scipy` e `scikit-image` não são
     # dependência deste projeto: eles vêm no ambiente por causa do clone de
     # `tsoj/Chess_diagram_to_FEN`, que é a segunda opinião **local** da S-66 -- um caminho que
     # exige o usuário clonar um repositório de terceiro e baixar 232 MiB de pesos, e que

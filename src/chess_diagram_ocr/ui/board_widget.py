@@ -59,7 +59,7 @@ from .board_render import (
     PieceImages,
     heatmap_color,
 )
-from .tooltip import Tooltip
+from .tooltip import TOOLTIP_DELAY_MS, Tooltip, janela_de_dica
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +202,7 @@ class InteractiveBoard(ttk.Frame):
         self.canvas.bind("<Configure>", lambda _event: self.redraw())
         self.canvas.bind("<Motion>", self._on_motion)
         self.canvas.bind("<Leave>", lambda _event: self._hide_tooltip())
+        self.canvas.bind("<Destroy>", self._ao_morrer_o_canvas, add="+")
 
         self.palette: ttk.Frame | None = None
         if show_palette if show_palette is not None else mode == "edit":
@@ -634,7 +635,12 @@ class InteractiveBoard(ttk.Frame):
             self._hide_tooltip()
             self._tooltip_square = index
             if index is not None:
-                self._tooltip_after = self.canvas.after(350, lambda: self._show_tooltip(event.x_root, event.y_root))
+                # O tempo é o da janela, e não o desta aba (S-403): eram 350 aqui contra os 450
+                # de `ui/tooltip.py`, e a diferença aparecia ao atravessar da barra para o
+                # tabuleiro sem que nada a explicasse.
+                self._tooltip_after = self.canvas.after(
+                    TOOLTIP_DELAY_MS, lambda: self._show_tooltip(event.x_root, event.y_root)
+                )
 
     def _show_tooltip(self, x_root: int, y_root: int) -> None:
         self._tooltip_after = None
@@ -646,25 +652,16 @@ class InteractiveBoard(ttk.Frame):
         for class_name, probability in self.model.top_classes(index):
             lines.append(f"{CLASS_NAMES_PT.get(class_name, class_name)}: {probability * 100:.1f}%")
 
-        tip = tk.Toplevel(self.canvas)
-        tip.wm_overrideredirect(True)
-        tip.wm_geometry(f"+{x_root + 14}+{y_root + 14}")
-        fundo = theme.cor_atual(tokens.SUPERFICIE_DICA)
-        tk.Label(
-            tip,
-            text="\n".join(lines),
-            justify=tk.LEFT,
-            background=fundo,
-            # `tk.Label` não herda cor de letra do `Style`: sem isto o texto é preto em
-            # qualquer tema, e sobre a dica escura da S-147 ele desapareceria.
-            foreground=tokens.sobre_superficie(fundo),
-            relief=tk.SOLID,
-            borderwidth=1,
-            font=theme.fonte_atual(tipografia.CORPO),
-            padx=6,
-            pady=4,
-        ).pack()
-        self._tooltip = tip
+        # O cromo da dica é o de `ui/tooltip.py` desde a S-403: mesma superfície, mesma letra
+        # sobre ela, mesma borda. O que continua sendo desta aba é **o que** a dica diz e
+        # onde ela fica -- ao lado do ponteiro, e não abaixo de um botão.
+        self._tooltip = janela_de_dica(
+            self.canvas,
+            "\n".join(lines),
+            x=x_root + 14,
+            y=y_root + 14,
+            fonte=theme.fonte_atual(tipografia.CORPO),
+        )
 
     def _hide_tooltip(self) -> None:
         if self._tooltip_after is not None:
@@ -673,6 +670,19 @@ class InteractiveBoard(ttk.Frame):
         if self._tooltip is not None:
             self._tooltip.destroy()
             self._tooltip = None
+        self._tooltip_square = None
+
+    def _ao_morrer_o_canvas(self, event: tk.Event) -> None:
+        """O canvas morreu com uma dica agendada: esquece o `after` (S-402).
+
+        O mesmo de `tooltip.Tooltip._ao_morrer`, e pelo mesmo motivo: sem isto o `_show_tooltip`
+        acorda depois da morte, pede `Toplevel(self.canvas)` e o `TclError` vira traceback na
+        saída padrão do programa. Fechar a janela com o ponteiro parado sobre uma casa bastava.
+        """
+        if event.widget is not self.canvas:
+            return
+        self._tooltip_after = None
+        self._tooltip = None
         self._tooltip_square = None
 
     # ------------------------------------------------------------------ desenho

@@ -10,7 +10,7 @@ LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 DATE_FORMAT = "%H:%M:%S"
 
 TAMANHO_DO_LOG = 2 * 1024 * 1024
-"""Bytes por arquivo de log antes de ele rotacionar (S-368)."""
+"""Bytes por arquivo de log antes de ele rotacionar (S-389)."""
 
 LOGS_GUARDADOS = 5
 """Quantos arquivos anteriores ficam. Cinco de 2 MB: a sessão de ontem cabe, e o disco tem teto."""
@@ -42,7 +42,7 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
     Deve ser chamado apenas pelos entrypoints (CLIs e frontends), nunca por modulos
     de biblioteca -- estes so obtem seu logger com `logging.getLogger(__name__)`.
 
-    **Sem `log_file`, o destino é o de `default_log_file()` (S-369).** Ele era um parâmetro que
+    **Sem `log_file`, o destino é o de `default_log_file()` (S-390).** Ele era um parâmetro que
     cada comando tinha de lembrar de passar, e **23 dos 41 não passavam** -- entre eles uma
     janela Tk. Num checkout isso não muda nada, porque sem `CVOFF_LOG_DIR` aquela função devolve
     `None`; num `.exe`, é a diferença entre ter e não ter rastro, que é o mesmo modo de falha
@@ -59,7 +59,7 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
 
     level = logging.DEBUG if verbose else logging.INFO
     handlers: list[logging.Handler] = []
-    # **Sem console, não há handler de console (S-368).** No bundle da S-55 o `.exe` é montado
+    # **Sem console, não há handler de console (S-389).** No bundle da S-55 o `.exe` é montado
     # com `console=False`, e aí `sys.stderr` é `None`: o `StreamHandler` nasce sem fluxo e
     # **falha a cada registro** -- o logging imprime "--- Logging error ---" para o fluxo que
     # não existe, e o que se vê é nada. O arquivo continuava recebendo, então o defeito era
@@ -72,7 +72,7 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
     if log_file is not None:
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            # **Rotativo, e não crescente para sempre (S-368).** O arquivo grava em DEBUG por
+            # **Rotativo, e não crescente para sempre (S-389).** O arquivo grava em DEBUG por
             # decisão da S-126, e DEBUG num programa que lê 402 páginas são dezenas de MB por
             # sessão: `logs/chessvisionoff.log` era um arquivo que só crescia, na pasta do
             # usuário, sem nada que o aparasse. Cinco arquivos de 2 MB é rastro suficiente para

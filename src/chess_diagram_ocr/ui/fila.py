@@ -78,6 +78,9 @@ def _pilula(pai: tk.Misc, registro: comandos.Comando, funcao: Callable[[], None]
         botao.configure(image=foto, compound=tk.LEFT)
     tecla = atalhos.acelerador(registro.acao)
     Tooltip(botao, f"{registro.rotulo}\nTecla: {tecla}" if tecla else registro.rotulo)
+    if registro.rotulo_alternado:
+        # A fila também mostra o estado de um comando que é modo (S-396).
+        comandos.ao_alternar(registro.acao, lambda texto: botao.configure(text=texto))
     return botao
 
 

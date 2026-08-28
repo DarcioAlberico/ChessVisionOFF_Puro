@@ -11,6 +11,7 @@ por isso deixou de poder ser comparado inteiro.
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 import unittest
 from pathlib import Path
@@ -18,7 +19,11 @@ from tkinter import ttk
 
 from tk_root import raiz
 
-from chess_diagram_ocr.ui import abas, rolagem
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import app_tkinter  # noqa: E402 - depende do `sys.path` ajustado acima
+from chess_diagram_ocr.ui import abas, rolagem  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parents[1]
 
@@ -139,6 +144,130 @@ class AbaLembradaTests(unittest.TestCase):
         self.notebook.select(0)
         self.assertFalse(rolagem.selecionar_aba(self.notebook, "Leitura"))
         self.assertEqual(self.notebook.index(self.notebook.select()), 0)
+
+
+class _GaleriaFalsa:
+    """O bastante para `_atualizar_abas`: ela só pergunta quantos diagramas há."""
+
+    def __init__(self, quantos: int) -> None:
+        self.model = [None] * quantos
+
+
+def _janela_com_abas(notebook: ttk.Notebook, galeria: object = None, resultado: object = None):  # noqa: ANN202
+    """A janela reduzida aos dois métodos que estes testes exercem, com os **reais**.
+
+    Montar o `ChessOcrTkApp` inteiro pediria checkpoint e PDF; o que se afirma aqui é a costura
+    entre a barra de abas e quem escreve nela. É o mesmo recurso de `test_ui_troca_de_pele._janela`.
+    """
+    tipo = type(
+        "JanelaComAbas",
+        (),
+        {
+            "_atualizar_abas": app_tkinter.ChessOcrTkApp._atualizar_abas,
+            "_focus_result_tab": app_tkinter.ChessOcrTkApp._focus_result_tab,
+            "_reload_confirmed_diagrams": app_tkinter.ChessOcrTkApp._reload_confirmed_diagrams,
+        },
+    )
+    janela = tipo()
+    janela.left_tabs = notebook
+    janela.review_panel = None
+    janela.dataset_panel = None
+    janela.gallery_panel = galeria
+    janela.result_panel = resultado
+    janela.pdf_source = None
+    janela.confirmed_diagrams = {}
+    return janela
+
+
+class FocoDaAbaDeResultadoTests(unittest.TestCase):
+    """Trazer a aba Resultado para a frente -- o que nunca funcionou (S-397).
+
+    `left_tabs.select(self.result_panel)` levanta **sempre**: o painel não é aba do `Notebook`.
+    Quem é aba é o quadro rolável que o hospeda desde a S-150, e o `TclError` disso morria num
+    `logger.debug` -- clicar num diagrama da página selecionava o diagrama e não trazia a aba,
+    sem nada dizer por quê.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz()
+
+    def setUp(self) -> None:
+        self.janela_tk = tk.Toplevel(self.root)
+        self.addCleanup(self.janela_tk.destroy)
+        self.notebook = ttk.Notebook(self.janela_tk)
+        self.notebook.pack()
+        # A mesma montagem da janela: a aba é o quadro rolável, e o painel mora dentro dele.
+        for nome in (abas.REVISAO, abas.RESULTADO):
+            quadro = ttk.Frame(self.notebook)
+            self.notebook.add(quadro, text=nome)
+            if nome == abas.RESULTADO:
+                self.painel = ttk.Frame(quadro)
+                self.painel.pack()
+        self.notebook.select(0)
+
+    def test_focar_a_aba_de_resultado_a_traz_para_a_frente(self) -> None:
+        janela = _janela_com_abas(self.notebook, resultado=self.painel)
+        janela._focus_result_tab()
+        atual = abas.nome_base(str(self.notebook.tab(self.notebook.select(), "text")))
+        self.assertEqual(abas.RESULTADO, atual)
+
+    def test_selecionar_pelo_painel_e_o_que_levantava(self) -> None:
+        """O registro do defeito: sem ele, alguém "simplifica" de volta para o `select(painel)`."""
+        with self.assertRaises(tk.TclError):
+            self.notebook.select(self.painel)
+
+    def test_sem_a_aba_montada_nada_acontece(self) -> None:
+        """Roteiro headless e janela meio construída: não achar a aba não é erro."""
+        vazio = ttk.Notebook(self.janela_tk)
+        janela = _janela_com_abas(vazio, resultado=self.painel)
+        janela._focus_result_tab()
+
+
+class ContagemDepoisDaVarreduraTests(unittest.TestCase):
+    """A contagem das abas é refeita quando ela muda -- e a varredura é quando (S-398).
+
+    O rótulo traz a contagem desde a S-162, e a varredura do livro é **o gesto que a muda**: ela
+    confirma diagramas em bloco. Nada a refazia depois dela, então a aba dizia o número de antes
+    até o próximo gesto que por acaso chamasse `_atualizar_abas`.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz()
+
+    def setUp(self) -> None:
+        self.janela_tk = tk.Toplevel(self.root)
+        self.addCleanup(self.janela_tk.destroy)
+        self.notebook = ttk.Notebook(self.janela_tk)
+        self.notebook.pack()
+        for nome in (abas.RESULTADO, abas.GALERIA):
+            self.notebook.add(ttk.Frame(self.notebook), text=nome)
+
+    def _rotulo_da_galeria(self) -> str:
+        return str(self.notebook.tab(1, "text"))
+
+    def test_a_varredura_atualiza_a_contagem_das_abas(self) -> None:
+        janela = _janela_com_abas(self.notebook, galeria=_GaleriaFalsa(7))
+        self.assertEqual(abas.GALERIA, self._rotulo_da_galeria())
+
+        janela._reload_confirmed_diagrams()
+
+        self.assertEqual(abas.rotulo(abas.GALERIA, 7), self._rotulo_da_galeria())
+
+    def test_a_contagem_nova_substitui_a_de_antes(self) -> None:
+        """O rótulo já tem número dentro na segunda passada, e `nome_base` é o que o separa."""
+        janela = _janela_com_abas(self.notebook, galeria=_GaleriaFalsa(7))
+        janela._reload_confirmed_diagrams()
+        janela.gallery_panel = _GaleriaFalsa(112)
+
+        janela._reload_confirmed_diagrams()
+
+        self.assertEqual(abas.rotulo(abas.GALERIA, 112), self._rotulo_da_galeria())
 
 
 if __name__ == "__main__":

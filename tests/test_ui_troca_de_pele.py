@@ -15,6 +15,7 @@ exercida aqui, e quem a liga de verdade é a S-223, quando registrar a segunda.
 
 from __future__ import annotations
 
+import inspect
 import sys
 import tkinter as tk
 import unittest
@@ -241,6 +242,70 @@ def _janela():  # noqa: ANN202
     janela.menus = []
     janela.gravacoes = []
     return janela
+
+
+class RegimeDoConjuntoDeCampoTests(unittest.TestCase):
+    """A linha do conjunto de campo é refeita na troca, e a escolha dela não (S-399).
+
+    `_build_field_row` é chamada de novo a cada troca de pele -- é a linha que a remontagem
+    destrói junto com as barras. Ela criava ali o `StringVar` do regime, e o efeito era o que a
+    S-222 promete não acontecer: **o cromo é refeito, o estado não**. Quem estava anotando com o
+    regime `scan` voltava a `mixed` ao trocar de pele, em silêncio e no meio do trabalho -- e o
+    regime decide sob que rótulo a página entra no conjunto de campo, que é o que a S-41 mede.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz()
+
+    def setUp(self) -> None:
+        self.host = tk.Frame(self.root)
+        self.addCleanup(self.host.destroy)
+        # A janela reduzida ao que `_build_field_row` toca, com o método **real**: o resto do
+        # `ChessOcrTkApp` pediria checkpoint e PDF, e o que se afirma aqui é de onde vem a variável.
+        tipo = type(
+            "JanelaComLinhaDeCampo",
+            (),
+            {
+                "_build_field_row": app_tkinter.ChessOcrTkApp._build_field_row,
+                "annotate_field_page": lambda self, **_: None,
+                "field_drop_selected": lambda self: None,
+            },
+        )
+        self.janela = tipo()
+        self.janela.field_regime_var = tk.StringVar(value=app_tkinter.REGIMES[0])
+
+    def _linha(self) -> ttk.Frame:
+        linha = ttk.Frame(self.host)
+        self.janela._build_field_row(linha)
+        return linha
+
+    def test_a_variavel_nao_nasce_na_linha(self) -> None:
+        """O critério: criar a variável dentro da linha é o defeito, e ele volta em silêncio."""
+        fonte = inspect.getsource(app_tkinter.ChessOcrTkApp._build_field_row)
+        self.assertNotIn("field_regime_var = tk.StringVar", fonte)
+        self.assertIn("self.field_regime_var = tk.StringVar", inspect.getsource(app_tkinter.ChessOcrTkApp.__init__))
+
+    def test_o_regime_escolhido_sobrevive_a_remontagem(self) -> None:
+        primeira = self._linha()
+        self.janela.field_regime_var.set("scan")
+
+        primeira.destroy()
+        segunda = self._linha()
+
+        combo = next(f for f in segunda.winfo_children() if isinstance(f, ttk.Combobox))
+        self.assertEqual("scan", self.janela.field_regime_var.get())
+        self.assertEqual("scan", combo.get())
+
+    def test_a_linha_nova_escreve_na_mesma_variavel(self) -> None:
+        """Ler o valor certo não basta: o widget novo tem de **escrever** no mesmo lugar, ou a
+        próxima escolha iria para uma variável que ninguém lê."""
+        linha = self._linha()
+        combo = next(f for f in linha.winfo_children() if isinstance(f, ttk.Combobox))
+        combo.set("scan")
+        self.assertEqual("scan", self.janela.field_regime_var.get())
 
 
 class TrocaNaJanelaTests(unittest.TestCase):

@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import tkinter as tk
 import unittest
+from unittest import mock
 
 from tk_root import raiz
 
-from chess_diagram_ocr.ui import rodape, tokens
+from chess_diagram_ocr.ui import rodape, theme, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry
 
 
@@ -362,6 +363,62 @@ class WidgetTests(unittest.TestCase):
         self.janela.update()
         self.assertTrue(self.painel.winfo_ismapped())
         self.assertGreater(self.painel.winfo_height(), 1)
+
+
+class RodapeSegueOTemaTests(unittest.TestCase):
+    """A mensagem do rodapé é repintada quando o tema muda (S-393).
+
+    A cor da mensagem depende da **severidade** -- erro em vermelho, aviso em âmbar -- e era
+    resolvida uma vez, na hora de escrever. A troca de pele repinta o cromo inteiro desde a S-144
+    e não tocava nela: um erro escrito sob a pele clara ficava preto sobre o cromo escuro, com
+    1,30:1 de contraste medido, contra os 4,5:1 que a S-144 cobra de todo texto.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz()
+
+    def setUp(self) -> None:
+        self.janela = tk.Toplevel(self.root)
+        self.addCleanup(self.janela.destroy)
+        self.painel = rodape.RodapeDaJanela(self.janela, cancelar=lambda: None)
+        self.painel.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def _cor(self) -> str:
+        return str(self.painel._lbl_mensagem.cget("foreground"))
+
+    def test_o_erro_na_tela_e_repintado_na_troca(self) -> None:
+        self.painel.mostrar("Falha ao abrir o livro.", severidade=rodape.ERRO)
+        antes = self._cor()
+
+        with mock.patch.object(theme, "cor_atual", return_value="#123456"):
+            theme.repintar()
+
+        self.assertNotEqual(antes, self._cor())
+        self.assertEqual("#123456", self._cor())
+
+    def test_a_severidade_e_o_que_fica_guardado(self) -> None:
+        """Guardar a **cor** seria guardar a resposta do tema de antes, que é o defeito."""
+        self.painel.mostrar("Cuidado.", severidade=rodape.AVISO)
+        self.assertEqual(rodape.AVISO, self.painel._severidade)
+        self.assertEqual(theme.cor_atual(rodape.PAPEL_DE_TEXTO[rodape.AVISO]), self._cor())
+
+    def test_rodape_sem_mensagem_nao_pinta_nada(self) -> None:
+        """Ele nasce vazio, e vazio não tem severidade: pintar aqui escreveria cor de erro
+        sobre um rótulo em branco, que é pior do que não repintar."""
+        self.assertEqual("", self.painel._severidade)
+        with mock.patch.object(theme, "cor_atual", return_value="#123456"):
+            theme.repintar()
+        self.assertNotEqual("#123456", self._cor())
+
+    def test_o_rodape_destruido_nao_derruba_a_repintura(self) -> None:
+        """A janela de antes some inteira na troca de pele, e `theme.repintar` esquece o que
+        morreu -- é o contrato dele, e este é o registro que o exercita."""
+        self.painel.mostrar("Falha.", severidade=rodape.ERRO)
+        self.janela.destroy()
+        theme.repintar()
 
 
 if __name__ == "__main__":

@@ -48,7 +48,7 @@ from chess_diagram_ocr.games_db import (
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
 from chess_diagram_ocr.service import OcrService
 
-from . import database_choice, scan_scope, strings, texto, theme, tokens
+from . import database_choice, scan_scope, shortcuts, strings, texto, theme, tokens
 from .busy import BusyRegistry, BusyToken
 from .gallery_model import HEADER_FIELDS, GalleryModel, describe_origin
 from .games_dialog import GamesDialog
@@ -146,6 +146,21 @@ def _mesmo_arquivo(um: Path | None, outro: Path | None) -> bool:
         return os.path.normcase(Path(um).resolve()) == os.path.normcase(Path(outro).resolve())
     except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
         return os.path.normcase(str(um)) == os.path.normcase(str(outro))
+
+
+ACOES_PROPRIAS: frozenset[str] = frozenset(
+    {"diagrama_anterior", "proximo_diagrama", "primeira_pagina", "ultima_pagina"}
+)
+"""As ações globais que esta aba atende **enquanto tem o foco** (S-400).
+
+Os quatro botões de navegação existem desde a S-88 e **nenhuma tecla chegava a eles**: `←` e `→`
+continuavam sendo do painel de resultado, e o efeito era o mesmo que a S-281 mediu na sala de
+estudo, só que sem nada na tela para denunciá-lo -- percorrer a galeria com a seta trocava,
+invisivelmente, o diagrama selecionado da aba Resultado, e o `Ctrl+S` seguinte gravava outro.
+
+É a mesma resposta da sala: não são teclas novas, é a mesma tecla com destino conforme o foco.
+`Home` e `End` seguem os botões |◀ e ▶| desta aba, que é o primeiro e o último diagrama do livro.
+"""
 
 
 class GalleryPanel(ttk.Frame):
@@ -289,7 +304,18 @@ class GalleryPanel(ttk.Frame):
 
         centro = ttk.Frame(corpo)
         centro.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.canvas = tk.Canvas(centro, width=BOARD_VIEW_SIZE, height=BOARD_VIEW_SIZE, highlightthickness=1)
+        # **O único canvas do `ui/` fora do sistema de cor da S-144** (S-394): ele nascia com o
+        # fundo de fábrica do Tk e escrevia o aviso de "sem recorte" num `#888` cravado -- o
+        # único hexadecimal do pacote. Com a pele escura, era um retângulo branco no meio da
+        # janela; o `ui/board_widget.py`, que é o canvas irmão, faz o certo desde a S-147.
+        self.canvas = tk.Canvas(
+            centro,
+            width=BOARD_VIEW_SIZE,
+            height=BOARD_VIEW_SIZE,
+            highlightthickness=1,
+            bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO),
+        )
+        theme.ao_repintar(lambda: self.canvas.configure(bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO)))
         self.canvas.pack()
         ttk.Label(centro, textvariable=self.position_var).pack(pady=(6, 0))
 
@@ -302,6 +328,12 @@ class GalleryPanel(ttk.Frame):
 
         self._build_caption(centro)
         self._build_footer()
+
+        # **O teclado vem junto com a aba** (S-400), como na sala de estudo desde a S-281: sem
+        # isto o foco fica onde estava, `atalhos.destino` não encontra esta aba na cadeia e a
+        # seta continua indo para o painel de resultado. Dar o foco ao canvas não tira a seta de
+        # dentro dos campos: ali quem responde é `acoes_proprias`, que devolve vazio.
+        self.bind("<Map>", lambda _evento: self.canvas.focus_set())
 
     def _build_caption(self, parent: tk.Misc) -> None:
         """A legenda impressa, inteira e **selecionável**.
@@ -692,6 +724,11 @@ class GalleryPanel(ttk.Frame):
             # A fila fica como estava quando nada foi lido; o que nao pode ficar e a aba de
             # revisao com o botao cinza para sempre por causa do que aconteceu deste lado.
             coletor.deliver(cancelled=self._cancel.is_set())
+        # **A varredura é o momento em que os números das abas mudam** (S-398), e era o único
+        # que não avisava a janela: "Galeria" e "Revisão" continuavam com a contagem de antes
+        # até alguém salvar uma amostra ou fechar um item da fila. O aviso é o mesmo da
+        # anotação -- quem o recebe relê o que mudou e repõe os rótulos.
+        self._on_annotations_changed()
 
         if not resultados:
             self.scan_var.set("cancelada")
@@ -1196,6 +1233,36 @@ class GalleryPanel(ttk.Frame):
         if mudou:
             self.refresh()
 
+    # ------------------------------------------------------ o dono das ações (S-400)
+
+    def acoes_proprias(self) -> frozenset[str]:
+        """As ações globais que esta aba atende enquanto tem o foco. Ver `ACOES_PROPRIAS`.
+
+        **Vazio enquanto o cursor está num campo**, pela mesma razão da sala de estudo: esta aba
+        tem o campo do lance, os oito de header e a legenda selecionável, e ali `←` é do campo.
+        `ignores_widget` é a régua que o resto da janela usa desde a S-20.
+        """
+        try:
+            if shortcuts.ignores_widget(self.focus_get()):
+                return frozenset()
+        except (tk.TclError, KeyError):  # pragma: no cover - janela sem foco, ou destruída
+            pass
+        return ACOES_PROPRIAS
+
+    def atender(self, acao: str) -> Callable[[], None] | None:
+        """A função desta aba para aquela ação, ou `None` se ela não a atende.
+
+        São os mesmos quatro comandos dos botões de navegação, e de propósito: `atalhos.destino`
+        devolve **função**, e uma segunda escrita de "o que a seta faz aqui" seria a divergência
+        que o catálogo da S-324 veio tirar do programa.
+        """
+        return {
+            "diagrama_anterior": partial(self._go, -1),
+            "proximo_diagrama": partial(self._go, 1),
+            "primeira_pagina": partial(self._go, 0, absolute=True),
+            "ultima_pagina": partial(self._go, -1, absolute=True),
+        }.get(acao)
+
     # ------------------------------------------------------------------------ edição
 
     def _persist_if_changed(self, before: DiagramAnnotation) -> None:
@@ -1401,14 +1468,24 @@ class GalleryPanel(ttk.Frame):
         if not caminho or not Path(caminho).exists():
             self._photo = None
             texto = "varra o livro para ver os diagramas" if self.model.is_empty else "recorte não encontrado"
-            self.canvas.create_text(BOARD_VIEW_SIZE // 2, BOARD_VIEW_SIZE // 2, text=texto, fill="#888")
+            self.canvas.create_text(
+                BOARD_VIEW_SIZE // 2,
+                BOARD_VIEW_SIZE // 2,
+                text=texto,
+                fill=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
+            )
             return
         try:
             imagem = Image.open(caminho).convert("RGB").resize((BOARD_VIEW_SIZE, BOARD_VIEW_SIZE))
         except OSError as exc:
             logger.warning("Não foi possível abrir o recorte %s: %s", caminho, exc)
             self._photo = None
-            self.canvas.create_text(BOARD_VIEW_SIZE // 2, BOARD_VIEW_SIZE // 2, text="recorte ilegível", fill="#888")
+            self.canvas.create_text(
+                BOARD_VIEW_SIZE // 2,
+                BOARD_VIEW_SIZE // 2,
+                text="recorte ilegível",
+                fill=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
+            )
             return
         # A referencia tem de sobreviver a esta funcao: o Tk nao segura a imagem.
         self._photo = ImageTk.PhotoImage(imagem)

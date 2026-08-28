@@ -152,7 +152,7 @@ class FrozenLogFileTests(unittest.TestCase):
 
 
 class LogQueNaoCresceParaSempreTests(unittest.TestCase):
-    """O arquivo de log rotaciona, e sem console não há handler de console (S-368).
+    """O arquivo de log rotaciona, e sem console não há handler de console (S-389).
 
     O arquivo grava em DEBUG por decisão da S-126, e DEBUG num programa que lê 402 páginas são
     dezenas de MB por sessão. E no bundle da S-55 o `.exe` é montado com `console=False`: aí
@@ -254,7 +254,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2274
+    LIMITE = 2291
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
 
     **2.090 → 2.092 na Fase 39**, e as onze são as quatro linhas de exportação (`.md`, `.html`,
@@ -558,6 +558,16 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     aberto e a entrega ao painel quando o livro dela abre: quem lê o `AppState` é a janela, e o
     campo `estudo_aberto` existia desde a S-271 sendo gravado e nunca lido.
 
+    **2.274 → 2.291 na Fase 63**, e as dezessete são de cinco itens da janela: o `Esc` do
+    diálogo de correção remota (S-395); o docstring de `_focus_result_tab`, que passou a
+    explicar por que a seleção é pelo **rótulo** da aba e não pelo painel -- o painel nunca foi
+    aba, e o `TclError` disso morria num `logger.debug` (S-397); a contagem das abas refeita
+    depois de varrer o livro, que é o gesto que a muda (S-398); e o `StringVar` do conjunto de
+    campo, que subiu para o `__init__` porque a linha que o hospedava é refeita a cada troca
+    de pele e a escolha do usuário voltava ao primeiro regime da lista (S-399); e a Galeria
+    entrando na conferência de `atalhos.conferir_dono`, que é uma linha e é onde ela tinha de
+    entrar -- quem confere os donos de ação é quem liga os atalhos (S-400).
+
     Subir o número é o gesto que o teste existe para exigir: ele não impede crescer, impede
     crescer **sem decidir**."""
 
@@ -632,7 +642,7 @@ class SpecTests(unittest.TestCase):
 
     def test_o_que_nao_e_dependencia_nao_entra_no_bundle(self) -> None:
         """`scipy` e `scikit-image` vêm no ambiente pelo clone da segunda opinião local, e o
-        PyInstaller coleta o que **está instalado** -- 95 MB que ninguém declarou (S-366)."""
+        PyInstaller coleta o que **está instalado** -- 95 MB que ninguém declarou (S-387)."""
         excludes = self.texto.split("excludes = [", 1)[1].split("\n]", 1)[0]
         for pacote in ("scipy", "skimage", "pyarrow"):
             with self.subTest(pacote=pacote):
@@ -640,13 +650,13 @@ class SpecTests(unittest.TestCase):
 
     def test_o_spec_e_lintado(self) -> None:
         """O arquivo tem `# noqa` espalhado, que só faz sentido se alguém estiver lintando --
-        e até a S-370 nem `ruff` nem `mypy` o viam, porque os dois olham `.py`."""
+        e até a S-391 nem `ruff` nem `mypy` o viam, porque os dois olham `.py`."""
         pyproject = (PROJETO / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('extend-include = ["*.spec"]', pyproject)
 
 
 class DependenciasDoBundleTests(unittest.TestCase):
-    """O que é obrigatório viaja dentro do `.exe`; o que só o teste usa, não (S-365)."""
+    """O que é obrigatório viaja dentro do `.exe`; o que só o teste usa, não (S-386)."""
 
     def setUp(self) -> None:
         self.pyproject = (PROJETO / "pyproject.toml").read_text(encoding="utf-8")
@@ -672,7 +682,7 @@ class DependenciasDoBundleTests(unittest.TestCase):
 
 
 class ModelosAoLadoDoExecutavelTests(unittest.TestCase):
-    """O build leva os três modelos para `models/`, e diz o que falta sem cada um (S-367).
+    """O build leva os três modelos para `models/`, e diz o que falta sem cada um (S-388).
 
     O motor `glifo` precisa dos pesos **e** do `char_meta.json` -- `carregar_classificador` acha
     o `.pt` ao lado do metadado --, e o build copiava só o de peças: no `.exe`, a aba Texto

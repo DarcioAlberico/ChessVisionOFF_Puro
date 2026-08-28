@@ -1339,7 +1339,7 @@ def contexts_for_pdf_page(
 
     with open_document(pdf_source) as doc:
         if page_index < 0 or page_index >= doc.page_count:
-            raise ValueError(f"Pagina {page_index} fora do intervalo (0..{doc.page_count - 1})")
+            raise ValueError(f"Página {page_index} fora do intervalo (0..{doc.page_count - 1})")
         return contexts_for_page(
             doc[page_index],
             bboxes,

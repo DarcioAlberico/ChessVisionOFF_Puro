@@ -1085,7 +1085,7 @@ class ResultPanel(ttk.Frame):
         self.sync_fen_from_entry()
         alvo = self.model.save_target()
         if not is_valid_fen(alvo.fen):
-            messagebox.showerror("Erro", "FEN atual inválida.")
+            messagebox.showerror("Aplicar a FEN", "FEN atual inválida.")
             return
 
         # A pergunta vem antes de decidir entre amostra nova e regravação porque a resposta

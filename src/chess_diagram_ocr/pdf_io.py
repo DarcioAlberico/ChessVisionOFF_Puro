@@ -179,7 +179,7 @@ def render_pdf_page(pdf_source: PdfSource, page_index: int, dpi: int = 220) -> n
     """Renderiza uma pagina do PDF como array RGB (H, W, 3) proprio e gravavel."""
     with open_document(pdf_source) as doc:
         if page_index < 0 or page_index >= doc.page_count:
-            raise ValueError(f"Pagina {page_index} fora do intervalo (0..{doc.page_count - 1})")
+            raise ValueError(f"Página {page_index} fora do intervalo (0..{doc.page_count - 1})")
 
         page = doc[page_index]
         matrix = fitz.Matrix(dpi / 72.0, dpi / 72.0)

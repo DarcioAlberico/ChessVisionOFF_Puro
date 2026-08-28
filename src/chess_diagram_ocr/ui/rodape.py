@@ -500,6 +500,9 @@ class RodapeDaJanela(ttk.Frame):
         self._dica_dos_dispositivos = Tooltip(self._lbl_dispositivos, "")
         self._lbl_mensagem = ttk.Label(linha, text="", anchor="w", font=theme.fonte_atual(tipografia.CORPO))
         self._lbl_mensagem.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._severidade = ""
+        """A severidade da mensagem que está na tela. Ver `_repintar_mensagem` (S-393)."""
+        theme.ao_repintar(self._repintar_mensagem)
 
     # ------------------------------------------------------------------------- mensagem
 
@@ -510,10 +513,26 @@ class RodapeDaJanela(ttk.Frame):
         `app_tkinter._set_status` já fazia com a `StringVar` que existia aqui antes.
         """
         estado = compor(mensagem=texto, origem=origem, severidade=severidade)
+        self._severidade = estado.severidade
         self._lbl_mensagem.configure(
             text=estado.mensagem, foreground=theme.cor_atual(PAPEL_DE_TEXTO[estado.severidade])
         )
         self._reagendar_expiracao(expira_em_ms(estado.severidade))
+
+    def _repintar_mensagem(self) -> None:
+        """A mensagem que está na tela, na cor do tema de agora (S-393).
+
+        **A cor era resolvida na hora de escrever e nunca mais.** Trocar de pele com um erro no
+        rodapé deixava o texto na cor do tema anterior: preto de erro sobre o cromo escuro, com
+        1,30:1 de contraste -- abaixo dos 4,5:1 que a S-144 usa como régua. É o mesmo defeito que
+        `theme.pintar` documenta para o `foreground=` de construtor, e a resposta é a dele.
+        """
+        if not self._severidade:
+            return
+        try:
+            self._lbl_mensagem.configure(foreground=theme.cor_atual(PAPEL_DE_TEXTO[self._severidade]))
+        except tk.TclError:  # pragma: no cover - rodapé destruído entre a troca e a repintura
+            return
 
     def mensagem(self) -> str:
         """O que está escrito na zona de mensagem agora.

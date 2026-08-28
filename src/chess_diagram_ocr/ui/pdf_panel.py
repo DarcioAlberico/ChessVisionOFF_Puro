@@ -1052,7 +1052,7 @@ class PdfPanel(ttk.Frame):
             logger.exception("Falha ao abrir %s.", pdf_path)
             preservado = self.source is not None and self.source != pdf_path
             resto = f"\n\n{self.name} continua aberto." if preservado else ""
-            messagebox.showerror("Erro", f"Falha ao abrir {pdf_path.name}:\n{exc}{resto}")
+            messagebox.showerror("Abrir PDF", f"Falha ao abrir {pdf_path.name}:\n{exc}{resto}")
 
     def on_page_spin(self) -> None:
         """As setas do campo. Sem `textvariable`, elas mudam o texto e mais nada (S-328).
@@ -1244,7 +1244,7 @@ class PdfPanel(ttk.Frame):
         except Exception as exc:
             self.page_rgb = None
             self.page_loaded_for_index = None
-            messagebox.showerror("Erro", f"Falha ao renderizar página:\n{exc}")
+            messagebox.showerror("Mostrar a página", f"Falha ao renderizar página:\n{exc}")
             return False
 
         self._on_page_rendered(idx)
@@ -1491,6 +1491,10 @@ class PdfPanel(ttk.Frame):
         self._clear_overlay()
         self.canvas.configure(cursor="crosshair")
         self.btn_select.configure(text=comandos.rotulo_alternado("selecionar_area"))
+        # As outras peles desenham o mesmo comando, e também precisam mostrar que ele é um
+        # **modo** que está ligado (S-396). O botão desta barra continua sendo repintado aqui
+        # porque ele existe mesmo quando a pele não o empacota.
+        comandos.alternou("selecionar_area", ligado=True)
         self._on_status("Seleção ativa: arraste no PDF para reconhecer a área automaticamente.")
 
     def disable_area_selection(self, status_text: str = "") -> None:
@@ -1500,6 +1504,7 @@ class PdfPanel(ttk.Frame):
         self._clear_overlay()
         self.canvas.configure(cursor="")
         self.btn_select.configure(text=comandos.rotulo_de_botao("selecionar_area"))
+        comandos.alternou("selecionar_area", ligado=False)  # S-396
         if status_text:
             self._on_status(status_text)
 
