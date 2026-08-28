@@ -362,6 +362,45 @@ def measured_modules(
     return sorted(arquivos)
 
 
+def _sem_comentario_nem_docstring(fonte: bytes) -> bytes:
+    """O módulo reduzido à **árvore sintática**, sem comentário e sem docstring (S-425).
+
+    **O que isto conserta.** O digest era sobre o conteúdo do arquivo, então corrigir uma
+    docstring de `config.py` invalidava os quatro relatórios de campo e custava uma remedição de
+    quatro minutos -- por um texto que nenhuma medição lê. Aconteceu três vezes num dia só desta
+    revisão, sempre com acento em comentário.
+
+    **Por que a árvore responde a pergunta certa.** `ast.parse` já descarta comentário: ele não é
+    um nó. O que sobra de texto que não é código são as docstrings, e elas saem daqui -- o único
+    jeito de uma delas mudar uma medição seria alguém ler `__doc__` para decidir algo, o que não
+    existe neste pacote e seria um defeito por si. Toda mudança de **código** continua entrando:
+    um número trocado, uma condição invertida, um argumento a mais -- `ast.dump` traz tudo isso,
+    inclusive os nomes e as constantes.
+
+    **E o que não parseia continua contando byte a byte.** Um arquivo com erro de sintaxe não
+    roda, mas o digest não é o lugar de descobrir isso: ele volta para o conteúdo cru, que é o
+    comportamento anterior, em vez de explodir no meio de uma medição.
+    """
+    try:
+        arvore = ast.parse(fonte)
+    except SyntaxError:  # pragma: no cover - módulo que não compila não chega ao caminho de medição
+        return fonte.replace(b"\r\n", b"\n")
+    for no in ast.walk(arvore):
+        if not isinstance(no, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        corpo = no.body
+        if (
+            corpo
+            and isinstance(corpo[0], ast.Expr)
+            and isinstance(corpo[0].value, ast.Constant)
+            and isinstance(corpo[0].value.value, str)
+        ):
+            # `Pass` no lugar, e não corpo vazio: um `def` sem corpo não é árvore válida, e
+            # remover a linha mudaria o dump de todo módulo que tem função de uma linha só.
+            corpo[0] = ast.Pass()
+    return ast.dump(arvore).encode("utf-8")
+
+
 def _digest_of(caminhos: Iterable[Path], raiz: Path) -> str:
     """Digest de código: **o nome entra junto com o conteúdo, e a quebra de linha não** (S-325).
 
@@ -391,7 +430,7 @@ def _digest_of(caminhos: Iterable[Path], raiz: Path) -> str:
     acumulador = hashlib.sha256()
     for caminho in sorted(caminhos):
         acumulador.update(caminho.relative_to(raiz).as_posix().encode("utf-8"))
-        acumulador.update(caminho.read_bytes().replace(b"\r\n", b"\n"))
+        acumulador.update(_sem_comentario_nem_docstring(caminho.read_bytes()))
     return acumulador.hexdigest()[:16]
 
 

@@ -13,8 +13,10 @@ import tkinter as tk
 import unittest
 from tkinter import ttk
 
+from ambiente_de_teste import quadro
 from tk_root import raiz as raiz_do_processo
 
+from chess_diagram_ocr.ui import atalhos, shortcuts
 from chess_diagram_ocr.ui.shortcuts import (
     CEDIDAS_A_TODO_CAMPO,
     CEDIDAS_SO_AO_MULTILINHA,
@@ -230,3 +232,74 @@ class CedeATeclaTests(unittest.TestCase):
         self.assertIn("alinhar_direita", tabela.TECLAS_DO_EDITOR)
         self.assertEqual("<Control-r>", tabela.TECLAS_DO_EDITOR["alinhar_direita"])
         self.assertFalse(cede_a_tecla(self.editor(), "<Control-r>"), "o cobertor voltou")
+
+
+class CessaoPorClasseDeWidgetTests(unittest.TestCase):
+    """O que cada classe de campo recebe, e por que a régua é o significado (S-426).
+
+    **A alternativa que ficou no histórico.** A `main` derivava a lista de teclas cedidas das
+    **ligações de classe do próprio Tk**, perguntando ao `bind_class("Entry")`, ao `bind_class`
+    do `Text`, do `Combobox` e do `Spinbox`. É mais fina em aparência e responde à pergunta
+    errada: ela cede toda tecla que a classe *liga*, e o defeito que a S-294 mediu foi
+    exatamente esse -- ceder por atacado desligava nove atalhos que campo de texto nenhum usa,
+    e `Ctrl+S` com o cursor no campo de FEN não salvava nada.
+
+    A régua deste ramo é o **significado**: a lista diz quais ações um campo de fato executa, e
+    `ui/atalhos.py` -- o único lugar que escreve tecla -- traduz para sequência. O que a
+    granularidade por classe compraria já está comprado por outro caminho, e é isto que estes
+    testes fixam: `Up`/`Down` chegam a quem incrementa (o `Spinbox`) e a quem escolhe da lista
+    (o `Combobox`), `PgUp`/`PgDn` só a quem rola, e o que não é do campo não é cedido a nenhum.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = raiz_do_processo()
+
+    def setUp(self) -> None:
+        self.host = quadro(self, self.root)
+
+    def _campos(self) -> dict[str, tk.Misc]:
+        return {
+            "Entry": ttk.Entry(self.host),
+            "Text": tk.Text(self.host),
+            "Combobox": ttk.Combobox(self.host),
+            "Spinbox": ttk.Spinbox(self.host),
+        }
+
+    def test_as_setas_verticais_chegam_a_quem_as_usa(self) -> None:
+        """`Up`/`Down` incrementam no `Spinbox` e escolhem no `Combobox`: são do campo nas quatro."""
+        for nome, campo in self._campos().items():
+            for tecla in ("<Up>", "<Down>"):
+                with self.subTest(widget=nome, tecla=tecla):
+                    self.assertTrue(shortcuts.cede_a_tecla(campo, tecla))
+
+    def test_a_pagina_e_cedida_so_a_quem_rola(self) -> None:
+        """Num campo de uma linha `PgUp`/`PgDn` não fazem nada, e cedê-las desligaria a navegação."""
+        pagina = atalhos.por_acao["proxima_pagina"].sequencia
+        campos = self._campos()
+        self.assertTrue(shortcuts.cede_a_tecla(campos["Text"], pagina))
+        for nome in ("Entry", "Combobox", "Spinbox"):
+            with self.subTest(widget=nome):
+                self.assertFalse(shortcuts.cede_a_tecla(campos[nome], pagina))
+
+    def test_o_que_nao_e_do_campo_nao_e_cedido_a_campo_nenhum(self) -> None:
+        """`Ctrl+S` não pertence a campo de texto nenhum -- em nenhuma das quatro classes."""
+        salvar = atalhos.por_acao["salvar"].sequencia
+        for nome, campo in self._campos().items():
+            with self.subTest(widget=nome):
+                self.assertFalse(shortcuts.cede_a_tecla(campo, salvar))
+
+    def test_um_widget_que_nao_e_campo_nao_recebe_nada(self) -> None:
+        botao = ttk.Button(self.host)
+        self.assertFalse(shortcuts.cede_a_tecla(botao, atalhos.por_acao["diagrama_anterior"].sequencia))
+        self.assertFalse(shortcuts.ignores_widget(botao))
+
+    def test_a_lista_de_classes_cobre_os_quatro_campos_da_janela(self) -> None:
+        """Se um quinto tipo de campo entrar na janela, ele entra aqui -- ou perde as teclas dele."""
+        self.assertEqual(
+            {tk.Entry, ttk.Entry, tk.Text, ttk.Combobox, ttk.Spinbox},
+            set(shortcuts.TEXT_ENTRY_WIDGETS),
+        )
+        self.assertEqual((tk.Text,), shortcuts.MULTILINHA)

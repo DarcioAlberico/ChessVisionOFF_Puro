@@ -27,7 +27,7 @@ segunda passada de céticos, com a tarefa de **derrubar** cada achado antes de e
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-424 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-426 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -650,14 +650,15 @@ prefixo -- esses dois eram os únicos fora do padrão, desde a Fase 29.
 Ele estava lá havia semanas, invisível, e ninguém podia tê-lo visto: a CI não rodava neste ramo.
 É a demonstração do argumento que abre este documento, e ela chegou uma hora depois do conserto.
 
-**Dois itens que a execução deixou registrados, e ainda não têm número:**
+**Dois itens que a execução deixou registrados, entregues em 2026-08-28 como S-425 e S-426:**
 
-- **O digest da S-219 conta comentário.** Ele é sobre o conteúdo do arquivo, então corrigir uma
-  docstring de `config.py` invalidou os quatro relatórios de campo e custou uma remedição de
-  quatro minutos. Comentário não muda medição. Um digest sobre a árvore sintática responderia a
-  pergunta certa -- mas é mais código, e o conservador de hoje nunca *deixa passar* uma mudança
-  real. Fica registrado como escolha, e não como esquecimento.
-- **A granularidade por classe de widget da cessão de tecla.** A `main` derivava a lista das
-  ligações de classe do próprio Tk, separando `Entry` de `Text`, de `Combobox` e de `Spinbox`; a
-  integração ficou com a versão deste ramo, que deriva do catálogo de ações e não separa por
-  classe. A da `main` é mais fina e continua no histórico.
+- **O digest da S-219 contava comentário** (S-425). Ele era sobre o conteúdo do arquivo, então
+  corrigir uma docstring de `config.py` invalidava os quatro relatórios de campo e custava uma
+  remedição de quatro minutos -- três vezes só nesta revisão. Comentário não muda medição, e o
+  digest passou a ser sobre a **árvore sintática**: `ast.parse` descarta comentário, as docstrings
+  saem, e toda mudança de código continua entrando.
+- **A granularidade por classe de widget da cessão de tecla** (S-426). A `main` derivava a lista
+  das ligações de classe do próprio Tk, separando `Entry` de `Text`, de `Combobox` e de `Spinbox`.
+  **A versão deste ramo fica**, e a razão está medida: derivar do `bind_class` cede toda tecla que
+  a classe liga, que é o defeito da S-294 -- `Ctrl+S` no campo de FEN não salvava. O que a
+  separação por classe compraria já está comprado pelo significado, e agora está sob teste.

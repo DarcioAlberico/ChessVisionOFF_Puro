@@ -199,7 +199,7 @@ def celula_ilegivel(celula: str) -> list[str]:
 
     **É a metade que faltava, e é o item (S-404).** `faixas_declaradas` descartava em silêncio a
     parte que não casasse com "um número" ou "dois números": a linha
-    `| S-296 a S-323, S-325 a S-424 (menos S-324) | SPEC_REVISAO.md |` tem **três** números na
+    `| S-296 a S-323, S-325 a S-426 (menos S-324) | SPEC_REVISAO.md |` tem **três** números na
     segunda parte, então ela era ignorada inteira -- e as 107 seções daquele arquivo passaram a
     não estar declaradas em lugar nenhum. As duas guardas que leem o índice continuavam verdes
     porque as duas só perguntam *"o que está declarado está no lugar certo?"*; nenhuma perguntava
@@ -222,7 +222,7 @@ def faixas_declaradas(texto: str) -> dict[int, str]:
 
     Aceita `S-37 a S-77` e `S-78 a S-82, S-143` na mesma célula: a faixa da detecção não é
     contígua de propósito, e o formato precisa dizer isso sem virar prosa. E aceita
-    `S-325 a S-424 (menos S-324)`, que é a mesma necessidade pelo avesso -- ver `celula_ilegivel`
+    `S-325 a S-426 (menos S-324)`, que é a mesma necessidade pelo avesso -- ver `celula_ilegivel`
     para o que custou não aceitar.
     """
     declarado: dict[int, str] = {}
@@ -349,7 +349,7 @@ class IndiceNaoEVacuoTests(unittest.TestCase):
     """O índice tem de **ser lido**, e não só existir (S-404).
 
     **O defeito, e ele é desta casa outra vez.** A célula
-    `S-296 a S-323, S-325 a S-424 (menos S-324)` tem três números na segunda parte, e o leitor
+    `S-296 a S-323, S-325 a S-426 (menos S-324)` tem três números na segunda parte, e o leitor
     descartava em silêncio toda parte que não tivesse um ou dois. O efeito: as 107 seções do
     `SPEC_REVISAO.md` -- metade dos itens deste projeto -- não estavam declaradas em lugar nenhum,
     e as duas guardas que leem o índice continuavam verdes. Elas perguntam *"o que está declarado

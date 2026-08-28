@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-424 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-426 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2834,3 +2834,60 @@ e a da aba Texto caindo na camada, que é o par da S-423.
 `char_classifier.pt`.
 
 **Testes.** `TabelaDoPrimeiroDiaTests` (2).
+
+---
+
+# Os dois que a execução deixou registrados (S-425 e S-426)
+
+Não vieram de revisor nenhum: vieram de **fazer o trabalho**. O primeiro custou quatro minutos
+por comentário corrigido, três vezes num dia; o segundo é uma escolha entre duas implementações
+que existiram ao mesmo tempo, e ficou pendurada na integração de dois ramos.
+
+## S-425 · O digest de código conta código, e não comentário
+
+**Problema.** O digest da S-219 é sobre o **conteúdo do arquivo**. Corrigir um acento numa
+docstring de `config.py` invalidava os quatro relatórios de campo e pedia uma remedição de quatro
+minutos -- por um texto que nenhuma medição lê. Aconteceu **três vezes só nesta revisão**, sempre
+com prosa: um comentário reescrito, um docstring com acento, uma explicação acrescentada.
+
+O efeito de segunda ordem é o que dói: quem sabe que comentar custa quatro minutos comenta menos,
+e este repositório é escrito ao contrário disso.
+
+**Solução.** O digest passa a ser sobre a **árvore sintática**: `ast.parse` já descarta comentário
+-- ele não é nó --, e as docstrings de módulo, classe e função saem daqui. O que sobra é
+`ast.dump`, que traz nome, constante, condição, argumento e ordem: **toda** mudança de código
+continua entrando, e o que não é código deixou de entrar.
+
+Um arquivo que não compila continua contando byte a byte -- o digest não é o lugar de descobrir
+que um módulo está quebrado.
+
+**Critério de aceite.** Comentário, docstring, linha em branco e quebra de linha não mudam o
+digest; número, condição, argumento, constante e nome de arquivo mudam.
+
+**Testes.** `DigestSobreAArvoreTests` (10).
+
+**Medição.** Os quatro relatórios foram remedidos uma última vez com o digest novo -- daqui em
+diante uma correção de prosa não os invalida. Todos os números de acerto voltaram idênticos.
+
+## S-426 · Decidido: a cessão de tecla continua por significado, e não por classe de widget
+
+**Achado.** *"A `main` derivava a lista das ligações de classe do próprio Tk, separando `Entry` de
+`Text`, de `Combobox` e de `Spinbox`; a integração ficou com a versão deste ramo, que deriva do
+catálogo de ações e não separa por classe. A da `main` é mais fina."*
+
+**Por que a versão deste ramo fica.** Ela é mais fina onde importa, e a da `main` responde à
+pergunta errada. Derivar do `bind_class` cede **toda tecla que a classe liga** -- e ceder por
+atacado é exatamente o defeito que a S-294 mediu: com o cursor no campo de FEN, `Ctrl+S` não
+salvava, `Ctrl+N` não ia para o próximo da fila e `Ctrl+P` não abria a paleta, porque a guarda
+entregava os dezoito atalhos a qualquer campo de texto.
+
+A régua daqui é o **significado**: `ACOES_DO_CAMPO` diz o que um campo de fato executa, e
+`ui/atalhos.py` -- o único lugar do projeto que escreve tecla -- traduz para sequência. A
+separação por classe que a `main` comprava já está comprada por outro caminho, e agora está sob
+teste: `Up`/`Down` chegam a quem incrementa (o `Spinbox`) e a quem escolhe da lista (o
+`Combobox`), `PgUp`/`PgDn` só a quem rola, e o que não é do campo não é cedido a classe nenhuma.
+
+**Critério de aceite.** As quatro classes de campo recebem o que usam e nada além; um quinto tipo
+de campo entra em `TEXT_ENTRY_WIDGETS` ou perde as teclas dele, e o teste diz isso.
+
+**Testes.** `CessaoPorClasseDeWidgetTests` (5).
