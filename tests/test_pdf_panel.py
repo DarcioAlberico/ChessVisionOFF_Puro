@@ -12,13 +12,13 @@ são as mesmas da tela. Com 220 as contas teriam de ser refeitas a cada leitura.
 from __future__ import annotations
 
 import shutil
-import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
 
 import fitz
 import numpy as np
+from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui import pdf_panel
@@ -540,7 +540,7 @@ class LoadPdfEstadoTests(unittest.TestCase):
         cls.root = _raiz()
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-s123-"))
+        self.tmp = pasta_temporaria(self, prefixo="cvoff-s123-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
         self.bom = self.tmp / "bom.pdf"

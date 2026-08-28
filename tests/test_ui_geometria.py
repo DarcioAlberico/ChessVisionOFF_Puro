@@ -14,6 +14,8 @@ from __future__ import annotations
 import tkinter as tk
 import unittest
 
+from tk_root import raiz as raiz_do_processo
+
 from chess_diagram_ocr.ui import geometria
 from chess_diagram_ocr.ui.geometria import (
     ALTURA_MINIMA_DO_CONTEUDO,
@@ -69,15 +71,10 @@ class JanelaRespeitaOPisoTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        # A raiz é a do processo, e não uma deste módulo (S-416): duas raízes vivas fazem
+        # uma `PhotoImage` nascer no interpretador errado, e o Tk recusa a imagem com uma
+        # mensagem que parece coleta de lixo. O porquê inteiro está em `tests/tk_root.py`.
+        cls.root = raiz_do_processo()
 
     def test_o_tk_recusa_encolher_abaixo_do_piso(self) -> None:
         largura, altura = piso_da_janela(420, 520)

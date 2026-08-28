@@ -13,11 +13,13 @@ o rascunho ajuda ou atrapalha: grava por **inatividade**, só quando está **suj
 from __future__ import annotations
 
 import os
-import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
 from tkinter import messagebox
+
+from ambiente_de_teste import pasta_temporaria, quadro
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.text import arquivo, rascunho, rico
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
@@ -58,7 +60,7 @@ class ChaveTests(unittest.TestCase):
 
 class DiscoTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.pasta = Path(tempfile.mkdtemp())
+        self.pasta = pasta_temporaria(self)
 
     def test_grava_e_acha(self) -> None:
         doc = rico.de_pagina(_pagina())
@@ -111,28 +113,18 @@ _RAIZ: tk.Tk | None = None
 
 
 def setUpModule() -> None:
+    """A raiz é a do processo (`tests/tk_root.py`), e não uma deste módulo (S-416)."""
     global _RAIZ
-    try:
-        _RAIZ = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - maquina sem display
-        raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-    _RAIZ.withdraw()
-
-
-def tearDownModule() -> None:
-    global _RAIZ
-    if _RAIZ is not None:
-        _RAIZ.destroy()
-        _RAIZ = None
+    _RAIZ = raiz_do_processo()
 
 
 class NaAbaTests(unittest.TestCase):
     def setUp(self) -> None:
         assert _RAIZ is not None
-        self.pasta = Path(tempfile.mkdtemp())
+        self.pasta = pasta_temporaria(self)
         self.avisos: list[str] = []
         self.painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=self.avisos.append,

@@ -14,6 +14,8 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from ambiente_de_teste import pasta_temporaria, quadro
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.text import arquivo, correcao, documento, rico
 from chess_diagram_ocr.text import paleta as _paleta
@@ -60,19 +62,9 @@ tê-los. Uma raiz por módulo, criada uma vez e destruída no fim.
 
 
 def setUpModule() -> None:
+    """A raiz é a do processo (`tests/tk_root.py`), e não uma deste módulo (S-416)."""
     global _RAIZ
-    try:
-        _RAIZ = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - maquina sem display
-        raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-    _RAIZ.withdraw()
-
-
-def tearDownModule() -> None:
-    global _RAIZ
-    if _RAIZ is not None:
-        _RAIZ.destroy()
-        _RAIZ = None
+    _RAIZ = raiz_do_processo()
 
 
 class _ComJanela:
@@ -90,12 +82,12 @@ class _ComJanela:
         """
         assert _RAIZ is not None
         return TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=lambda _mensagem: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
 
 
@@ -795,12 +787,12 @@ class FerramentasNoWidgetTests(_ComJanela, unittest.TestCase):
         avisos: list[str] = []
         assert _RAIZ is not None
         painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         painel.desenhar(_pagina(_texto("uma palavra")))
         painel.editor.tag_add("sel", "1.0", "1.3")
@@ -976,12 +968,12 @@ class VistaESelecaoTests(_ComJanela, unittest.TestCase):
     def _painel_com_status(self, avisos: list[str]) -> TextoPanel:
         assert _RAIZ is not None
         return TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
 
 
@@ -1048,12 +1040,12 @@ class LexicoNaAbaTests(_ComJanela, unittest.TestCase):
         avisos: list[str] = []
         assert _RAIZ is not None
         painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         painel.desenhar(_pagina(_texto("the smdy of the position")))
         painel.marcar_fora_do_lexico()
@@ -1121,12 +1113,12 @@ class VistaGuardadaTests(_ComJanela, unittest.TestCase):
         avisos: list[str] = []
         assert _RAIZ is not None
         painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         painel.restaurar_vista(zoom=2, quebra=False)
         painel.update()
@@ -1183,12 +1175,12 @@ class ConferenciaQueSeRefazTests(_ComJanela, unittest.TestCase):
         avisos: list[str] = []
         assert _RAIZ is not None
         painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=avisos.append,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         painel.desenhar(_pagina(_texto("the smdy of the position")))
         painel.marcar_fora_do_lexico()
@@ -1356,7 +1348,7 @@ class SalvarEUmCaminhoSoTests(_ComJanela, unittest.TestCase):
 
     def test_a_primeira_gravacao_pergunta_e_a_segunda_nao(self) -> None:
         painel = self._painel_com_texto()
-        destino = Path(tempfile.mkdtemp()) / "folha.cvtxt"
+        destino = pasta_temporaria(self) / "folha.cvtxt"
         perguntas = self._responder(destino)
 
         painel.salvar_documento()
@@ -1367,7 +1359,7 @@ class SalvarEUmCaminhoSoTests(_ComJanela, unittest.TestCase):
 
     def test_salvar_como_pergunta_sempre(self) -> None:
         painel = self._painel_com_texto()
-        destino = Path(tempfile.mkdtemp()) / "folha.cvtxt"
+        destino = pasta_temporaria(self) / "folha.cvtxt"
         perguntas = self._responder(destino)
 
         painel.salvar_documento()
@@ -1378,7 +1370,7 @@ class SalvarEUmCaminhoSoTests(_ComJanela, unittest.TestCase):
     def test_documento_novo_volta_a_perguntar(self) -> None:
         """Outra folha é outro arquivo: gravar nela é a primeira vez dela."""
         painel = self._painel_com_texto()
-        destino = Path(tempfile.mkdtemp()) / "folha.cvtxt"
+        destino = pasta_temporaria(self) / "folha.cvtxt"
         perguntas = self._responder(destino)
         painel.salvar_documento()
 

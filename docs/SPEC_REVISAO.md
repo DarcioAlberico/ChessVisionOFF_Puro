@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-412 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-420 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2593,3 +2593,166 @@ noutra seção, e comparar contra o documento todo é como esta guarda passaria 
 **Critério de aceite.** Todo `.py` de primeiro nível e todo subpacote aparecem no bloco.
 
 **Testes.** `test_a_arvore_do_README_lista_todo_modulo_do_pacote`.
+
+---
+
+# Fase 65 — A suíte que não pegou nada disso
+
+Oito itens (S-413 a S-420). Quatro mil setecentos e setenta e seis testes verdes sobre setenta
+defeitos de correção. A fase não pede cobertura: pede que a suíte passe a alcançar as **três
+formas** em que este relatório encontrou defeito.
+
+- **O que vaza**: uma thread, uma pasta temporária, um painel. Nada disso reprova um teste.
+- **O que trava**: uma caixa modal de verdade, esperando um clique que ninguém vai dar.
+- **O que some**: um teste que pula para sempre, e é contado como verde.
+
+E há um padrão em todos os oito: **a regra já estava escrita**. Em `tests/tk_root.py`, no
+docstring de `_painel`, no comentário do `_analyse_worker`. Estar escrita é o que elas eram --
+por isso valiam enquanto alguém lembrava.
+
+## S-413 · A thread que vaza de um teste e morre no seguinte
+
+**Problema.** `test_estudo_aba` liga a análise contínua, que sobe uma thread **de verdade** -- o
+motor é de mentira, a thread não. O teste termina, o `tearDown` destrói o painel, e a thread
+acorda depois para chamar `self.after(0, ...)`: `RuntimeError: main thread is not in main loop`,
+levantado dentro de uma thread, que o `unittest` não vê. O pytest o atribui a **quem estiver
+rodando na hora** -- e o rastro aparecia no `ExportarEstudoTests`, dois arquivos adiante. O mesmo
+acontecia em `test_dataset_panel`, onde o worker fica bloqueado num `Event` que o `addCleanup`
+solta ao sair.
+
+**Solução.** Duas *fixtures* no `conftest`, autouse. `sem_thread_vazada` compara as threads antes
+e depois de cada teste, espera até dois segundos pelas de trabalho e falha **no teste que a
+deixou**. `erro_de_thread_e_do_teste_que_a_criou` instala um `threading.excepthook` e reprova o
+teste em que a exceção estourou -- as duas juntas dizem quem criou e onde morreu.
+
+Os dois casos achados foram consertados: a análise roda com a thread síncrona (o `after` sai da
+thread principal, que é onde ele é legal) e a detecção de duplicatas é solta **de dentro do laço
+do Tk**, esperando o fim da thread.
+
+**Critério de aceite.** Nenhum teste deixa thread viva; exceção em thread reprova um teste.
+
+**Testes.** `sem_thread_vazada` e `erro_de_thread_e_do_teste_que_a_criou`, em `tests/conftest.py`.
+
+## S-414 · A caixa modal que para a suíte
+
+**Problema.** Um `TextoPanel` construído sem `pasta_de_rascunhos` lê `data/rascunhos/` **da
+máquina de quem roda a suíte**. Havendo um rascunho ali -- e há, na máquina de quem usa o programa
+--, a aba oferece recuperá-lo com um `askyesno`, e a suíte fica parada esperando um clique. Sem
+tempo limite, sem mensagem: a CI mataria a corrida por silêncio uma hora depois, e o relatório
+não diria qual teste.
+
+**Solução.** As duas metades. A **interrupção**: uma *fixture* autouse troca as sete funções do
+`messagebox` por uma que falha na hora, nomeando a caixa e o título -- quem precisa exercitar uma
+continua podendo, porque um `mock.patch.object` no próprio teste a sobrescreve. A **prevenção**:
+uma varredura que exige `pasta_de_rascunhos=` em todo `TextoPanel` de teste.
+
+**Critério de aceite.** Uma caixa de verdade num teste vira falha imediata com o título dela.
+
+**Testes.** `NenhumaCaixaDeVerdadeTests` (2), e a *fixture* `nenhuma_caixa_modal_de_verdade`.
+
+## S-415 · Cem pastas em `%TEMP%` e 99 painéis vivos
+
+**Problema.** Cada rodada abandonava mais de cem diretórios em `%TEMP%` -- `tempfile.mkdtemp()`
+sem remoção em 28 lugares -- e pendurava 99 `TextoPanel` na **raiz compartilhada**, nenhum
+destruído. Um painel na raiz vive até o fim da suíte com os `after` agendados, as ligações de
+tecla e o `bind_all` dele: não é só memória, é um teste alcançando o evento de outro.
+
+**Solução.** `tests/ambiente_de_teste.py` com `pasta_temporaria(self)` -- que registra a remoção
+no `addCleanup` -- e `quadro(self, raiz)`, um `Frame` destruído no fim do teste. As 28 chamadas e
+os 10 painéis foram convertidos, e duas varreduras cobram a regra: `mkdtemp` só mora no ajudante,
+e nenhum painel tem a raiz como pai.
+
+**Critério de aceite.** Uma rodada completa não deixa pasta `cvoff-*` em `%TEMP%`. Medido: 63
+antes, **zero** depois.
+
+**Testes.** `NadaVazaDoTesteTests` (2).
+
+## S-416 · Nove módulos criavam a própria raiz Tk
+
+**Problema.** A regra está escrita em `tests/tk_root.py` desde 2026-07, com a medição junto: duas
+raízes vivas são dois interpretadores Tcl, `tkinter._default_root` continua sendo o primeiro, e
+uma `PhotoImage` criada sem `master` nasce no interpretador errado -- o Tk recusa a imagem com uma
+mensagem que parece coleta de lixo, e foi assim que 20 testes do `test_result_panel` falharam
+**só na CI**. Nove módulos criavam a sua assim mesmo, cada um com o mesmo `try/except` copiado.
+
+**Solução.** Os nove passam a chamar `tk_root.raiz()`, e uma varredura recusa `tk.Tk()` em
+qualquer módulo de teste. São 24 linhas a menos de `setUpModule`/`tearDownModule` repetido.
+
+**Critério de aceite.** `tk.Tk()` não aparece em teste nenhum fora do `tk_root.py`.
+
+**Testes.** `UmaRaizSoTests` (2).
+
+## S-417 · O pulo que ninguém conta
+
+**Problema.** Os testes de "números vivos" da S-135 -- os que comparam o que o documento diz com
+o que o disco tem -- olham `data/samples/`, `PDF/` e `pgn_database/`, que não são versionados.
+**Na CI eles pulam sempre.** Um teste que pula para sempre é um teste que não existe, com a
+diferença de que ele aparece na contagem de verdes; e um `s` no meio de quatro mil pontos é
+literalmente invisível, porque o pytest só lista os pulos quando alguém pede.
+
+**Solução.** As duas metades outra vez. `addopts = ["-ra"]` no `pyproject.toml` faz **todo** pulo
+aparecer com o motivo no fim de qualquer rodada. E uma lista declarada do que a suíte lê **e** o
+repositório versiona -- os rótulos, a partição, o conjunto de campo, o `char_meta.json`, as três
+listas do léxico, o relatório do CER e o `.spec` --, conferida contra o `git ls-files`: se um
+deles sair do índice, a guarda que o lê vira pulo permanente na CI, e é isso que passa a falhar.
+
+**Critério de aceite.** Nenhum artefato versionado que uma guarda lê está fora do git, e o motivo
+de cada pulo é impresso.
+
+**Testes.** `PuloQueNinguemContaTests` (3).
+
+## S-418 · A janela de achar e substituir não tinha teste nenhum
+
+**Problema.** É a única janela do programa que **edita texto em bloco**: uma troca dela reescreve
+dezenas de lugares de uma vez, sobre um documento que alguém passou a tarde corrigindo. A suíte
+não a tocava -- nem o `Enter` que **não** substitui (a regra 2 da revisão, S-342), nem o botão que
+recusa trocar antes de listar, nem o `casar_figurina`, que é o que separa `♘f3` de `Nf3`.
+
+**Solução.** `tests/test_ui_texto_busca.py`, com onze casos sobre o contrato da janela: achar e
+marcar tudo, levar o editor até a ocorrência, agulha vazia que pede o que procurar, `Enter` que
+não troca, o primeiro clique que só lista, o segundo que troca as marcadas, nada marcado que não
+troca nada, o crivo da lista, a figurina, o `Esc` e o clique na lista.
+
+**Critério de aceite.** O gesto destrutivo desta janela exige duas ações deliberadas, e há teste
+que reprova se uma delas sumir.
+
+**Testes.** `JanelaDeBuscaTests` (11).
+
+## S-419 · Quatro subprocessos, quatro jeitos de achar o pacote
+
+**Problema.** Quatro testes lançam Python de fora do pytest, e cada um resolvia o import de um
+jeito: **nenhum** (dependendo da instalação editável), `sys.path.insert(0, 'src')` mais diretório
+de trabalho, `PYTHONPATH`, e o caminho escrito dentro do roteiro gerado. Três funcionam neste
+checkout e nenhum deles funciona nas mesmas condições -- num `git worktree`, com o `.pth`
+apontando para o checkout principal, o primeiro importa o pacote **do outro lugar** e mede outro
+código. E o quarto, `test_environment`, vira pulo mudo quando a distribuição não está instalada,
+que é o caso normal de um worktree.
+
+**Solução.** `tests/subprocesso.py` com `rodar_python` e `rodar_roteiro`, que põem `src/` no
+`PYTHONPATH` -- a mesma coisa que o `pythonpath = ["src"]` faz dentro do pytest, então o filho vê
+o que o pai vê. Os três convertidos; o `test_environment` continua montando o ambiente à mão,
+porque medir a instalação **sem** `PYTHONPATH` é o que ele existe para fazer, e agora isso está
+declarado na lista de exceções com o motivo.
+
+**Critério de aceite.** Nenhum teste chama `subprocess` com `sys.executable` fora do ajudante,
+salvo os declarados.
+
+**Testes.** `UmSubprocessoSoTests` (2).
+
+## S-420 · Metade da catraca de modais estava folgada
+
+**Problema.** `MODAIS_DE_DECISAO` declara **quantas perguntas** a interface faz, e é a metade
+honesta da conta da S-164: *"a contagem cai"* não vale nada se o que caiu foram as decisões. O
+número declarado era **14** e o real é **19** -- cinco a mais, todas entradas entre a S-301 e a
+S-347. Uma catraca de piso cinco abaixo do chão não trava nada: dava para apagar quatro perguntas
+e a suíte continuaria verde.
+
+**Solução.** O piso passa a 19, com as cinco nomeadas no docstring: as três da aba Texto (o
+rascunho a recuperar e as duas de sair sem gravar), o "Estudo em andamento" e o `askyesnocancel`
+do PGN existente. Nenhuma é notificação disfarçada -- as cinco perguntam antes de apagar trabalho
+humano, que é a linha 4 da tabela do arquivo.
+
+**Critério de aceite.** O piso é o número real de perguntas, e baixá-lo exige dizer qual deixou
+de existir.
+
+**Testes.** `test_o_que_sobrou_de_pergunta_continua_de_pe`.

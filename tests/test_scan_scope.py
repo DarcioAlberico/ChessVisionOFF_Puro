@@ -12,6 +12,7 @@ import tkinter as tk
 import unittest
 from pathlib import Path
 
+from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui import scan_scope
@@ -89,7 +90,7 @@ class ScanScopeDialogTests(unittest.TestCase):
         self.assertEqual([livro.name for livro in dialogo.scope.books], ["dois.pdf", "um.pdf"])
 
     def test_pasta_vazia_deixa_a_opcao_cinza(self) -> None:
-        vazia = Path(tempfile.mkdtemp())
+        vazia = pasta_temporaria(self)
         dialogo = ScanScopeDialog(self.root, open_book=None, folder=vazia)
         self.addCleanup(dialogo.destroy)
         self.assertEqual(str(dialogo.radio_pasta.cget("state")), tk.DISABLED)

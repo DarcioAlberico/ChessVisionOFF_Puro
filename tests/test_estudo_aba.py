@@ -973,15 +973,47 @@ class MotorTests(_Sala):
         self.painel.variante_do_motor()
         self.assertIn("ainda não respondeu", self.painel.status_var.get())
 
+    def _analise_sincrona(self):  # noqa: ANN202
+        """A análise **sem thread**, para o teste poder afirmar o resultado dela (S-413).
+
+        `analyse` sobe uma thread de verdade -- o motor é de mentira, a thread não -- e ela volta
+        por `after(0, ...)`. Num teste isso não funciona e ainda vaza: o Tk recusa a chamada de
+        outra thread enquanto a principal não está **dentro** do laço (`RuntimeError: main thread
+        is not in main loop`), e a thread morre com esse erro depois que o `tearDown` já destruiu
+        o painel -- então o rastro aparece no teste seguinte. Era o defeito que o
+        `sem_thread_vazada` do `conftest` passou a acusar.
+
+        Rodar o alvo na hora troca a corrida por uma ordem: o `after(0, ...)` sai da thread
+        principal, que é onde ele é legal, e o `update` abaixo o executa.
+        """
+
+        class Imediata:
+            def __init__(self, *, target, args=(), daemon=False, **_):  # noqa: ANN001, ANN003, ARG002
+                self._alvo, self._args = target, args
+
+            def start(self) -> None:
+                self._alvo(*self._args)
+
+        return mock.patch.object(study_panel.threading, "Thread", Imediata)
+
     def test_a_analise_continua_alterna_e_o_botao_conta(self) -> None:
         self._no_diagrama(0)
-        self.painel.alternar_analise_continua()
-        self.assertTrue(self.painel.continua_var.get())
-        botao, _ = self.painel._alternaveis["analise_continua"]
-        self.assertEqual(str(botao.cget("text")), comandos.rotulo_alternado("analise_continua"))
-        self.painel.alternar_analise_continua()
-        self.assertFalse(self.painel.continua_var.get())
-        self.assertEqual(self.painel.engine_var.get(), "")
+        with self._analise_sincrona():
+            self.painel.alternar_analise_continua()
+            self.assertTrue(self.painel.continua_var.get())
+            botao, _ = self.painel._alternaveis["analise_continua"]
+            self.assertEqual(str(botao.cget("text")), comandos.rotulo_alternado("analise_continua"))
+
+            self.painel.alternar_analise_continua()
+            self.assertFalse(self.painel.continua_var.get())
+            self.assertEqual(self.painel.engine_var.get(), "")
+
+            # **O `update` fica aqui dentro, e depois de desligar.** Ele executa os `after(0, ...)`
+            # que o trabalho enfileirou -- e é o que impede que eles rodem num teste seguinte,
+            # sobre um painel destruído. Com a análise contínua **ligada** ele não poderia rodar:
+            # `_finish_analysis` pede a próxima, que com a thread síncrona seria a mesma chamada
+            # de novo, para sempre.
+            self.root.update()
 
 
 class SemMotorTests(_Sala):

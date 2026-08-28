@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 import time
 import unittest
 from pathlib import Path
 
 import chess
+from ambiente_de_teste import pasta_temporaria_da_classe
 
 from chess_diagram_ocr.engine import (
     ENV_ENGINE_PATH,
@@ -34,13 +34,13 @@ from chess_diagram_ocr.engine import (
 MOTOR_FALSO = Path(__file__).resolve().parent / "fake_uci_engine.py"
 
 
-def _launcher() -> Path:
+def _launcher(caso: type[unittest.TestCase]) -> Path:
     """Um script que o `popen_uci` consiga executar: o `.py` sozinho não é executável.
 
     No Windows sai um `.bat`, no resto um `.sh`. Não é frescura de portabilidade -- é o que
     permite ao mesmo teste rodar aqui e na CI.
     """
-    diretorio = Path(tempfile.mkdtemp(prefix="cvoff-engine-"))
+    diretorio = pasta_temporaria_da_classe(caso, prefixo="cvoff-engine-")
     if os.name == "nt":
         caminho = diretorio / "motor.bat"
         caminho.write_text(f'@echo off\n"{sys.executable}" "{MOTOR_FALSO}" %*\n', encoding="utf-8")
@@ -107,7 +107,7 @@ class AnalyzerTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.launcher = _launcher()
+        cls.launcher = _launcher(cls)
 
     def test_the_analysis_answers_well_under_the_two_second_criterion(self) -> None:
         with EngineAnalyzer(self.launcher, movetime_ms=100) as motor:

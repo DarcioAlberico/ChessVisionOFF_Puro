@@ -13,6 +13,8 @@ import tkinter as tk
 import unittest
 from tkinter import ttk
 
+from tk_root import raiz as raiz_do_processo
+
 from chess_diagram_ocr.ui.shortcuts import (
     CEDIDAS_A_TODO_CAMPO,
     CEDIDAS_SO_AO_MULTILINHA,
@@ -89,15 +91,10 @@ class WidgetQueJaDeclarouATeclaTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - maquina sem display
-            raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        # A raiz é a do processo, e não uma deste módulo (S-416): duas raízes vivas fazem uma
+        # `PhotoImage` nascer no interpretador errado, e o Tk recusa a imagem com a mensagem
+        # que parece coleta de lixo. O porquê inteiro está em `tests/tk_root.py`.
+        cls.root = raiz_do_processo()
 
     def setUp(self) -> None:
         self.disparos: list[str] = []

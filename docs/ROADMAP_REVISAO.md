@@ -27,7 +27,7 @@ segunda passada de céticos, com a tarefa de **derrubar** cada achado antes de e
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-412 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-420 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 ---
 
@@ -285,7 +285,7 @@ que teste faltava.
 | 62 | O que sai no `.exe` | S-386 a S-391 | **entregue** |  95 MB não declarados dentro do bundle, e o motor de glifo que não sobe |
 | 63 | A cor, o foco e a tecla | S-392 a S-403 | **entregue** |  três painéis fora do sistema de cor, onze diálogos sem Esc |
 | 64 | A documentação que envelheceu | S-404 a S-412 | **entregue** |  oito itens entregues fora do índice, e o CER que o próprio relatório desmente |
-| 65 | A suíte que não pegou nada disso | S-414 a S-421 | |  4.508 testes verdes sobre 70 defeitos de correção |
+| 65 | A suíte que não pegou nada disso | S-413 a S-420 | **entregue** |  4.508 testes verdes sobre 70 defeitos de correção |
 
 **A coluna "estado" é o que esta tabela serve para responder.** Ela é lida antes de qualquer
 outra coisa por quem retoma o trabalho: item sem marca é item por fazer, e a ordem de execução

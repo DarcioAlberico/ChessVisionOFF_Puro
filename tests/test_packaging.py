@@ -16,6 +16,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from ambiente_de_teste import pasta_temporaria
+from subprocesso import rodar_roteiro
+
 PROJETO = Path(__file__).resolve().parents[1]
 
 
@@ -166,7 +169,7 @@ class LogQueNaoCresceParaSempreTests(unittest.TestCase):
 
         # A pasta some **depois** de os handlers fecharem: no Windows um arquivo aberto não é
         # apagável, e o `addCleanup` roda na ordem inversa do registro.
-        self.pasta = Path(tempfile.mkdtemp())
+        self.pasta = pasta_temporaria(self)
         self.addCleanup(shutil.rmtree, self.pasta, True)
         self.setup = setup
         self.raiz = logging.getLogger()
@@ -742,7 +745,6 @@ class SelftestTests(unittest.TestCase):
         `cli._CHECKPOINT_PISTAS` teriam de adivinhar isso de uma mensagem do `torch` que não
         contém nem `.pt` nem `state_dict`.
         """
-        import tempfile
 
         app_tkinter = self._app_tkinter()
         with tempfile.TemporaryDirectory() as pasta:
@@ -772,7 +774,6 @@ class SelftestTests(unittest.TestCase):
         checkpoint não guarda a CI, que é justamente onde o `.exe` de outra pessoa é montado.
         O modelo é dispensado com um `model_session` neutro; o que se testa aqui é o PDF.
         """
-        import tempfile
         from contextlib import contextmanager
 
         app_tkinter = self._app_tkinter()
@@ -960,7 +961,6 @@ if __name__ == "__main__":
 '''
 
     def _roda(self, pasta: Path) -> tuple[int, str]:
-        import subprocess
 
         base = pasta / "base.pgn"
         base.write_text(
@@ -975,15 +975,15 @@ if __name__ == "__main__":
             ),
             encoding="utf-8",
         )
-        concluido = subprocess.run(
-            [sys.executable, str(roteiro)], capture_output=True, text=True, timeout=300
-        )
+        # O ambiente é o de `tests/subprocesso.py`, e não o `sys.path` escrito dentro do
+        # roteiro (S-419): quatro testes lançavam subprocesso de quatro jeitos, e num
+        # worktree três deles importavam o pacote do checkout errado.
+        concluido = rodar_roteiro(roteiro)
         self.assertEqual(concluido.returncode, 0, concluido.stderr)
         return len(rastro.read_text(encoding="utf-8").splitlines()), concluido.stdout
 
     def test_o_filho_nao_reexecuta_o_script_do_pai(self) -> None:
         """**O item.** Uma linha no rastro é o pai; três seriam o pai mais os dois filhos."""
-        import tempfile
 
         with tempfile.TemporaryDirectory() as pasta:
             execucoes, saida = self._roda(Path(pasta))

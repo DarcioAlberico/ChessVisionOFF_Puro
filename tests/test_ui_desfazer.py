@@ -12,10 +12,11 @@ classe faz. As duas seguintes montam os painéis de verdade.
 
 from __future__ import annotations
 
-import tempfile
 import tkinter as tk
 import unittest
-from pathlib import Path
+
+from ambiente_de_teste import pasta_temporaria, quadro
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 from chess_diagram_ocr.ui import desfazivel
@@ -98,19 +99,9 @@ _RAIZ: tk.Tk | None = None
 
 
 def setUpModule() -> None:
+    """A raiz é a do processo (`tests/tk_root.py`), e não uma deste módulo (S-416)."""
     global _RAIZ
-    try:
-        _RAIZ = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - maquina sem display
-        raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-    _RAIZ.withdraw()
-
-
-def tearDownModule() -> None:
-    global _RAIZ
-    if _RAIZ is not None:
-        _RAIZ.destroy()
-        _RAIZ = None
+    _RAIZ = raiz_do_processo()
 
 
 def _pagina(texto: str) -> PaginaLida:
@@ -129,12 +120,12 @@ class PilhaDoEditorTests(unittest.TestCase):
         """
         assert _RAIZ is not None
         return TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
 
     def test_desfazer_desfaz_a_digitacao(self) -> None:

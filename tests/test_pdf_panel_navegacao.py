@@ -19,12 +19,11 @@ funções que o leem levantavam `TclError` num projeto sem `report_callback_exce
 from __future__ import annotations
 
 import shutil
-import tempfile
 import tkinter as tk
 import unittest
-from pathlib import Path
 
 import fitz
+from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui.pdf_panel import PdfPanel
@@ -41,7 +40,7 @@ class _Navegacao(unittest.TestCase):
         cls.root = raiz_do_processo()
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="cvoff-nav-"))
+        self.tmp = pasta_temporaria(self, prefixo="cvoff-nav-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.livro = self.tmp / "livro.pdf"
         doc = fitz.open()

@@ -13,10 +13,11 @@ declara quais ações são dele, e a guarda pergunta antes de ceder.
 
 from __future__ import annotations
 
-import tempfile
 import tkinter as tk
 import unittest
-from pathlib import Path
+
+from ambiente_de_teste import pasta_temporaria
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui import atalhos, shortcuts, texto_panel
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -96,7 +97,7 @@ class DestinoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         atalhos.conferir_dono(painel, "TextoPanel")
         self.assertEqual(painel.acoes_proprias(), texto_panel.ACOES_PROPRIAS)
@@ -240,19 +241,9 @@ def _raiz() -> tk.Tk:
 
 
 def setUpModule() -> None:
+    """A raiz é a do processo (`tests/tk_root.py`), e não uma deste módulo (S-416)."""
     global _RAIZ
-    try:
-        _RAIZ = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - maquina sem display
-        raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-    _RAIZ.withdraw()
-
-
-def tearDownModule() -> None:
-    global _RAIZ
-    if _RAIZ is not None:
-        _RAIZ.destroy()
-        _RAIZ = None
+    _RAIZ = raiz_do_processo()
 
 
 class GuardaComFocoTests(unittest.TestCase):
@@ -273,7 +264,7 @@ class GuardaComFocoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         gravou: list[str] = []
         painel.salvar_documento = lambda: gravou.append("texto")  # type: ignore[method-assign]
@@ -304,7 +295,7 @@ class GuardaComFocoTests(unittest.TestCase):
             page_index=lambda: 0,
             on_status=lambda _m: None,
             busy=BusyRegistry(),
-            pasta_de_rascunhos=Path(tempfile.mkdtemp()),
+            pasta_de_rascunhos=pasta_temporaria(self),
         )
         tratador = shortcuts.guard(lambda: self.chamadas.append("diagrama"), "<Left>")
         resposta = tratador(self._evento(painel.editor))

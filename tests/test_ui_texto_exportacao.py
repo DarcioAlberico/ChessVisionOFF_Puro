@@ -12,15 +12,17 @@ o relatório de três seções.
 
 from __future__ import annotations
 
-import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
 from tkinter import filedialog
 
+from ambiente_de_teste import pasta_temporaria, quadro
+
 # A Pillow no topo, e não dentro da thread: o primeiro import dela no processo custa centenas
 # de milissegundos, e a exportação roda em thread enquanto o teste gira o laço da janela.
 from PIL import Image as _Image  # noqa: F401
+from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.text import exportacao, rico
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
@@ -31,19 +33,9 @@ _RAIZ: tk.Tk | None = None
 
 
 def setUpModule() -> None:
+    """A raiz é a do processo (`tests/tk_root.py`), e não uma deste módulo (S-416)."""
     global _RAIZ
-    try:
-        _RAIZ = tk.Tk()
-    except tk.TclError as exc:  # pragma: no cover - maquina sem display
-        raise unittest.SkipTest(f"sem Tk disponível: {exc}") from exc
-    _RAIZ.withdraw()
-
-
-def tearDownModule() -> None:
-    global _RAIZ
-    if _RAIZ is not None:
-        _RAIZ.destroy()
-        _RAIZ = None
+    _RAIZ = raiz_do_processo()
 
 
 
@@ -57,9 +49,9 @@ class ExportacaoDaAbaTests(unittest.TestCase):
         assert _RAIZ is not None
         self.avisos: list[str] = []
         self.busy = BusyRegistry()
-        self.pasta = Path(tempfile.mkdtemp())
+        self.pasta = pasta_temporaria(self)
         self.painel = TextoPanel(
-            _RAIZ,
+            quadro(self, _RAIZ),
             pdf_path=lambda: None,
             page_index=lambda: 0,
             on_status=self.avisos.append,

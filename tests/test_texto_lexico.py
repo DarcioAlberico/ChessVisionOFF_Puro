@@ -12,6 +12,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from ambiente_de_teste import pasta_temporaria
+
 from chess_diagram_ocr.cli import texto_lexico as lex
 from chess_diagram_ocr.text import dicionario as dic
 
@@ -104,7 +106,7 @@ class ConferenciaSemCorrecaoTests(unittest.TestCase):
 
 class ConstruirTests(unittest.TestCase):
     def _pasta(self, arquivos: dict[str, str]) -> Path:
-        pasta = Path(tempfile.mkdtemp())
+        pasta = pasta_temporaria(self)
         for nome, conteudo in arquivos.items():
             (pasta / nome).write_text(conteudo, encoding="utf-8")
         return pasta
@@ -132,7 +134,7 @@ class ConstruirTests(unittest.TestCase):
 
     def test_o_byte_invalido_nao_derruba_a_construcao(self) -> None:
         """As listas vêm de fora: um byte torto em 259 mil linhas não pode parar tudo."""
-        pasta = Path(tempfile.mkdtemp())
+        pasta = pasta_temporaria(self)
         (pasta / "a.txt").write_bytes(b"attack\n\xff\xfe\nposition\n")
         listas, _ = lex.construir(pasta)
         self.assertEqual({"attack", "position"}, listas["idioma"])

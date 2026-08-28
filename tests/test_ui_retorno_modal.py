@@ -103,12 +103,22 @@ dela seria a fricção que a S-164 removeu.
 Baixar este número é o item continuando; subi-lo exige vir aqui e escrever por que aquela caixa
 precisava ser modal."""
 
-MODAIS_DE_DECISAO = 14
+MODAIS_DE_DECISAO = 19
 """Quantas das que sobram fazem uma pergunta -- `askyesno`, `askokcancel`, `askyesnocancel`.
 
 Ela é a metade honesta da conta: "a contagem cai" não vale nada se o que caiu foram as perguntas.
-Nenhuma das 22 convertidas era uma; as 13 continuaram de pé, e a 14ª é a da S-301 -- este número é
-o que trava isso."""
+Nenhuma das 22 convertidas era uma; as 13 continuaram de pé, e a 14ª foi a da S-301.
+
+**14 -> 19 na S-420, e as cinco já estavam lá.** Este número é catraca de piso -- ele existe para
+que uma pergunta não vire aviso de rodapé sem que alguém decida --, e um piso cinco abaixo do
+chão não trava nada: dava para apagar quatro perguntas e a suíte continuaria verde. As cinco que
+faltavam entraram entre a S-301 e a S-347, com as fases da sala de estudo e da aba Texto: as três
+do `texto_panel` (o rascunho a recuperar e as duas de sair sem gravar), o "Estudo em andamento" e
+o `askyesnocancel` do PGN existente. Nenhuma delas é notificação disfarçada -- todas as cinco
+perguntam antes de **apagar trabalho humano**, que é a linha 4 da tabela acima.
+
+Contar por varredura, e não à mão, é o que impede o número de envelhecer de novo: quem baixar
+este piso tem de vir aqui e dizer qual pergunta deixou de existir."""
 
 
 def _chamadas_de_messagebox(caminho: Path) -> list[str]:

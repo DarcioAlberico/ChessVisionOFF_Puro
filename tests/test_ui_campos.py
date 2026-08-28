@@ -20,6 +20,7 @@ import unittest
 from pathlib import Path
 from tkinter import ttk
 
+from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz
 
 from chess_diagram_ocr.ui import campos
@@ -69,9 +70,8 @@ class TipoDoCaminhoTests(unittest.TestCase):
 
     def setUp(self) -> None:
         import shutil
-        import tempfile
 
-        self.pasta = Path(tempfile.mkdtemp())
+        self.pasta = pasta_temporaria(self)
         self.addCleanup(shutil.rmtree, self.pasta, True)
         self.arquivo = self.pasta / "labels.csv"
         self.arquivo.write_text("filename,fen\n", encoding="utf-8")

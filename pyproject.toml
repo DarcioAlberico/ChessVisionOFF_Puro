@@ -188,6 +188,11 @@ testpaths = ["tests"]
 # e quem confere isso. Aqui o que se garante e que um diretorio movido nao desligue 611
 # testes em silencio, que foi o estado encontrado na analise da Fase 7.
 pythonpath = ["src"]
+# S-417: `-ra` imprime o motivo de cada teste pulado no fim da rodada. Sem ele um `s` no
+# meio de quatro mil pontos e invisivel, e foi assim que as guardas de "numeros vivos" da
+# S-135 puderam pular em toda corrida de CI desde que foram escritas -- verdes, e sem ter
+# olhado nada. Ver `tests/test_disciplina_da_suite.py::PuloQueNinguemContaTests`.
+addopts = ["-ra"]
 
 [tool.ruff]
 line-length = 120
