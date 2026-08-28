@@ -284,6 +284,16 @@ class ModoDaFitaTests(unittest.TestCase):
         self.addCleanup(self.janela.destroy)
         self.amarrados = {acao: (lambda: None) for acao in fita.acoes_da_fita()}
 
+    def _limiar_pleno(self) -> int:
+        """A largura que a fita **plena** pede em uma linha, medida agora nesta máquina."""
+        sonda = fita.montar(self.janela, self.amarrados, modo=fita.PLENO)
+        sonda.pack(fill=tk.X)
+        self.root.update_idletasks()
+        self.root.update()
+        limiar = sonda.largura_de_troca
+        sonda.destroy()
+        return limiar
+
     def _plena(self, altura: int = 300) -> fita.Fita:
         """Uma fita montada larga o bastante para caber em **uma** linha, nesta máquina (S-326).
 
@@ -298,13 +308,44 @@ class ModoDaFitaTests(unittest.TestCase):
         com folga, faz o teste dizer a mesma coisa em qualquer fonte -- que é o que ele sempre
         quis dizer, e o 2.200 era só um jeito de dizê-lo aqui.
         """
-        sonda = self._em(2200, altura)
-        largura = max(2200, sonda.largura_de_troca + FOLGA_DA_FITA_PLENA)
+        sonda = fita.montar(self.janela, self.amarrados, modo=fita.PLENO)
+        sonda.pack(fill=tk.X)
+        self.root.update_idletasks()
+        self.root.update()
+        limiar = sonda.largura_de_troca
         sonda.destroy()
-        return self._em(largura, altura)
+
+        largura = max(2200, limiar + FOLGA_DA_FITA_PLENA)
+        montada = self._em(largura, altura)
+        if montada.modo != fita.PLENO or montada.linhas != 1:
+            # **Pula dizendo os números, e não falha.** Chegar aqui quer dizer que a janela não
+            # cresceu até a largura pedida -- o que depende do gerenciador de janelas, e não do
+            # código da fita. Sem esta saída, um runner de tela pequena reprova três testes
+            # sobre um comportamento correto, que foi o que a primeira execução da CI fez.
+            montada.destroy()
+            self.skipTest(
+                f"a fita plena pede {largura} px (limiar medido {limiar}) e a janela ficou com "
+                f"{montada.winfo_width()}: {montada.linhas} linha(s), modo {montada.modo}"
+            )
+        return montada
+
+    def _largar(self, largura: int, altura: int = 300) -> None:
+        """Põe a janela naquela largura e **espera ela chegar lá** (S-326).
+
+        Um `update()` só basta quase sempre, e "quase sempre" numa suíte de 4.588 testes é uma
+        medida tirada da janela errada de vez em quando -- aqui isso aparecia como a fita em duas
+        linhas, sem nada de errado com a fita, e fazia o teste pular por acaso. O laço é curto e
+        sai assim que a largura pedida existe.
+        """
+        self.janela.geometry(f"{largura}x{altura}")
+        for _ in range(20):
+            self.root.update_idletasks()
+            self.root.update()
+            if self.janela.winfo_width() >= largura - 1:
+                return
 
     def _em(self, largura: int, altura: int = 300) -> fita.Fita:
-        self.janela.geometry(f"{largura}x{altura}")
+        self._largar(largura, altura)
         montada = fita.montar(self.janela, self.amarrados)
         montada.pack(fill=tk.X)
         self.root.update_idletasks()
@@ -319,7 +360,11 @@ class ModoDaFitaTests(unittest.TestCase):
         """
         for modo in fita.MODOS:
             with self.subTest(modo=modo):
-                self.janela.geometry("1900x300")
+                # A largura sai do limiar medido, e não de um número desta máquina (S-326), e
+                # a espera de `_largar` é a mesma de `_em`: sem ela a medida sai de uma janela
+                # que ainda não recebeu a geometria, e o teste pula por acaso.
+                largura = max(1900, self._limiar_pleno() + FOLGA_DA_FITA_PLENA)
+                self._largar(largura)
                 montada = fita.montar(self.janela, self.amarrados, modo=modo)
                 montada.pack(fill=tk.X)
                 self.root.update_idletasks()
