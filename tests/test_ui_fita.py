@@ -317,17 +317,30 @@ class ModoDaFitaTests(unittest.TestCase):
 
         largura = max(2200, limiar + FOLGA_DA_FITA_PLENA)
         montada = self._em(largura, altura)
-        if montada.modo != fita.PLENO or montada.linhas != 1:
-            # **Pula dizendo os números, e não falha.** Chegar aqui quer dizer que a janela não
-            # cresceu até a largura pedida -- o que depende do gerenciador de janelas, e não do
-            # código da fita. Sem esta saída, um runner de tela pequena reprova três testes
-            # sobre um comportamento correto, que foi o que a primeira execução da CI fez.
-            montada.destroy()
-            self.skipTest(
-                f"a fita plena pede {largura} px (limiar medido {limiar}) e a janela ficou com "
-                f"{montada.winfo_width()}: {montada.linhas} linha(s), modo {montada.modo}"
-            )
+        self._coube_ou_pula(montada, largura=largura, limiar=limiar, modo=fita.PLENO)
         return montada
+
+    def _coube_ou_pula(self, montada: fita.Fita, *, largura: int, limiar: int, modo: str | None = None) -> None:
+        """A fita coube numa linha? Se não, **pula dizendo os números** (S-326).
+
+        Chegar aqui quer dizer que a janela não cresceu até a largura pedida, e isso depende
+        da tela do runner: uma `Toplevel` não fica mais larga que o monitor, e o da CI tem
+        1.024 px. Sem esta saída, quatro testes reprovam sobre um comportamento correto --
+        que foi o que a primeira execução da CI fez.
+
+        **Mede antes de destruir**, e essa ordem é o item: perguntar `winfo_width()` a um
+        widget já destruído levanta `TclError: bad window path name`, e foi assim que a
+        saída de emergência virou, na segunda execução da CI, a falha que ela existia para
+        evitar.
+        """
+        if montada.linhas == 1 and (modo is None or montada.modo == modo):
+            return
+        real, linhas, montado_como = montada.winfo_width(), montada.linhas, montada.modo
+        montada.destroy()
+        self.skipTest(
+            f"a fita pede {largura} px (limiar medido {limiar}) e a janela ficou com {real}: "
+            f"{linhas} linha(s), modo {montado_como}"
+        )
 
     def _largar(self, largura: int, altura: int = 300) -> None:
         """Põe a janela naquela largura e **espera ela chegar lá** (S-326).
@@ -371,7 +384,10 @@ class ModoDaFitaTests(unittest.TestCase):
                 # `update` e nao so `update_idletasks`: a geometria pedida so chega a barra como
                 # `<Configure>`, e sem ela a fita arranja contra a largura de 1 px com que nasceu.
                 self.root.update()
-                self.assertEqual(1, montada.linhas, "medida tirada de uma fita de duas linhas")
+                # A mesma saída de `_plena`: sem ela este subteste reprova numa tela que não
+                # comporta a largura pedida, e o que ele mede -- a conta contra o widget --
+                # não tem nada a ver com o tamanho do monitor do runner.
+                self._coube_ou_pula(montada, largura=largura, limiar=largura - FOLGA_DA_FITA_PLENA)
                 self.assertLessEqual(abs(montada.winfo_reqheight() - montada.altura_prevista()), 2)
                 montada.destroy()
 

@@ -1045,6 +1045,18 @@ nunca foi uma constante; o 2.200 era só um jeito de dizê-lo nesta máquina.
 deixa a fita no fio, e um pixel de arredondamento do gerenciador de geometria a joga para duas
 linhas. Oitenta é margem, não medida, e é por isso que ela tem nome.
 
+**E medir o limiar não bastou: a janela também tem de caber na tela.** O runner da CI tem 1.024 px
+de largura, e uma `Toplevel` não fica mais larga que o monitor -- a fita de 2.200 px que estes
+testes pedem simplesmente não existe lá, e quatro deles reprovavam sobre um comportamento correto.
+`_coube_ou_pula` é a saída: quando a janela não cresceu até a largura pedida, o teste **pula
+dizendo os números** -- largura pedida, limiar medido, largura real, linhas e modo --, e com o
+`-ra` da S-417 esse motivo aparece em toda rodada.
+
+**A primeira versão dessa saída falhava do jeito que ela existia para evitar**, e vale registrar:
+ela destruía a fita e só então perguntava `winfo_width()` para montar a mensagem, o que levanta
+`TclError: bad window path name`. Um `skipTest` que estoura antes de pular é uma falha com outro
+nome, e foi a **segunda** execução da CI que mostrou isso. Mede-se antes de destruir.
+
 ## S-327 · Sonda de artefato não-versionado pula, e não reprova
 
 **Problema.** As sondas do `cvoff-texto-status` são de dois tipos: `simbolo:` pergunta ao código,
