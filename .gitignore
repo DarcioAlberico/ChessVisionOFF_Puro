@@ -171,3 +171,13 @@ Lista de Palavras/
 Ideias para implementar na aba 'Texto'/
 Ideias para o board da aba de análise/
 fonts (2)/
+# A revisao tecnica que chegou de fora em 2026-08-29: o relatorio em PDF, o `.patch` com os
+# quatro commits dela e um `.zip` de 14,5 MB que traz o repositorio inteiro -- com o `.git`
+# junto. Versionar isso poria um segundo clone deste repositorio dentro do historico dele
+# proprio, e o material nem e nosso.
+#
+# E a mesma regra das tres pastas acima, e o que **fica** versionado e a leitura: as Fases 66 a
+# 68 estao em docs/ROADMAP_REVISAO_EXTERNA.md e docs/SPEC_REVISAO_EXTERNA.md, com o que foi
+# aceito, o que mudou de forma na conferencia e o que foi medido e recusado. Um documento que
+# cita o achado de fora vale mais que uma copia dele que ninguem vai reler.
+Perego/
