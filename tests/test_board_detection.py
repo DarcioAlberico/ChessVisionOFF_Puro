@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.board_detection import (
     SQUARE_KERNEL,
     NoBoardDetectedError,
@@ -47,7 +48,7 @@ class BoardDetectionTests(unittest.TestCase):
         em `tests/test_fixtures.py`, com o que elas cobrem e o que não cobrem.
         """
         fixture = ROOT / "tests" / "fixtures" / "um_diagrama.png"
-        image_bgr = cv2.imread(str(fixture))
+        image_bgr = read_image(fixture)
         self.assertIsNotNone(image_bgr, f"Falha ao abrir o fixture: {fixture}")
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 

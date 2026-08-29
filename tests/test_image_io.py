@@ -26,6 +26,8 @@ disco. Foi ela que transformou este defeito num diálogo de erro em vez de um PN
 
 from __future__ import annotations
 
+import ast
+import subprocess
 import tempfile
 import unittest
 import unittest.mock
@@ -143,6 +145,125 @@ class EscritaTests(unittest.TestCase):
             mensagem = str(ctx.exception)
             self.assertIn("p00006_d1.png", mensagem)
             self.assertIn("disco cheio", mensagem)
+
+
+class LeiDoProjetoTests(unittest.TestCase):
+    """`cv2.imread` e `cv2.imwrite` não podem aparecer em lugar nenhum do repositório (S-432).
+
+    A lei já estava escrita -- em `text/dataset.py`, em `cli/texto_inventario.py`, no docstring
+    deste arquivo -- e verificada por dois testes que leem o **texto de dois módulos**
+    (`test_texto_inventario.py` e `test_text_dataset.py`). Uma lei que só olha dois arquivos não
+    é uma lei: `text/coleta.py` chamava `cv2.imwrite` desde a S-201 e nenhum dos dois olhava para
+    lá, então a coleta de revisão de caractere gravava zero PNG e relatava cinco sempre que a
+    pasta do projeto -- ou a do bundle que o usuário descompacta -- morava sob um nome com acento.
+
+    Treze arquivos de teste chamavam `cv2.imread`/`cv2.imwrite` pelo mesmo motivo, e ali o preço
+    era outro: **31 testes falhavam** num checkout cujo caminho tem acento, com a mensagem
+    "Fixture ausente: refaça com gerar.py" apontando para um fixture que estava no lugar. A CI
+    roda sob um caminho ASCII, então ela nunca podia ver isso.
+
+    **Por que `ast` e não `grep`.** Metade das ocorrências no repositório são docstrings que
+    explicam a proibição -- inclusive as deste arquivo. Um `grep` teria de conviver com uma lista
+    de exceções que envelhece; a árvore sintática só vê chamada de verdade.
+
+    **Por que `git ls-files` e não `os.walk` com poda.** A primeira versão desta guarda caminhava
+    a partir da raiz podando uma lista fixa (`.venv`, `build`, `dist`, `__pycache__`, ...).
+    Medida nesta árvore, ela varria 2.207 arquivos em 21 s e acusava **168** violações -- 147
+    delas vindas de `.claude/worktrees/`, sete checkouts de sessões concorrentes cujo código não
+    é deste ramo --, e ainda morria com `TabError` dentro de uma pasta de projeto de terceiro que
+    o `.gitignore` já exclui: a guarda dava **erro**, e erro de guarda não se lê como achado, se
+    lê como suíte quebrada.
+
+    Lista fixa é lista que envelhece. O git já mantém a resposta para "o que é este repositório",
+    honra `.gitignore` e `.git/info/exclude` de graça, e o `--others --exclude-standard` ainda vê
+    o arquivo **novo e ainda não commitado** -- sem ele bastaria não dar `git add` para escapar da
+    lei. Medida da mesma árvore: 430 arquivos em 0,27 s.
+
+    `imencode` e `imdecode` continuam livres: eles são a primitiva que `atomic_io` usa, e a
+    conversão de caminho que causa tudo isto não passa por eles.
+    """
+
+    PROIBIDOS = frozenset({"imread", "imwrite"})
+
+    RAIZ = Path(__file__).resolve().parents[1]
+
+    ALCANCE_MINIMO = ("app_tkinter.py", "coleta.py", "atomic_io.py", "build_windows.py", "gerar.py")
+    """Cinco arquivos de cinco cantos: a janela na raiz, o módulo que tinha o defeito, a
+    biblioteca que o corrige, o empacotador e o gerador de fixtures. Se a varredura não alcança
+    os cinco, ela não está olhando o repositório -- e uma guarda que varre a pasta errada passa
+    verde sem ter olhado nada, que é o defeito da S-296."""
+
+    def _arquivos(self) -> list[Path]:
+        """Os `.py` que o git reconhece como deste repositório, rastreados ou ainda não."""
+        try:
+            saida = subprocess.run(
+                ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*.py"],
+                cwd=self.RAIZ,
+                capture_output=True,
+                check=True,
+                text=True,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError) as erro:  # pragma: no cover - fora de um checkout
+            self.skipTest(f"sem `git ls-files` para dizer o que é o repositório: {erro}")
+        caminhos = [self.RAIZ / nome for nome in saida.split("\x00") if nome]
+        if not caminhos:  # pragma: no cover - idem
+            self.skipTest("`git ls-files` não devolveu nenhum .py -- isto não é um checkout")
+        return caminhos
+
+    def test_ninguem_no_repositorio_chama_imread_nem_imwrite(self) -> None:
+        achados: list[str] = []
+        ilegiveis: list[str] = []
+        for caminho in self._arquivos():
+            relativo = caminho.relative_to(self.RAIZ).as_posix()
+            try:
+                arvore = ast.parse(caminho.read_text(encoding="utf-8"), filename=str(caminho))
+            except (OSError, SyntaxError, UnicodeDecodeError) as erro:
+                ilegiveis.append(f"{relativo}: {erro}")
+                continue
+            for no in ast.walk(arvore):
+                if (
+                    isinstance(no, ast.Attribute)
+                    and no.attr in self.PROIBIDOS
+                    and isinstance(no.value, ast.Name)
+                    and no.value.id == "cv2"
+                ):
+                    achados.append(f"{relativo}:{no.lineno}: cv2.{no.attr}")
+                elif isinstance(no, ast.ImportFrom) and no.module == "cv2":
+                    for nome in no.names:
+                        if nome.name in self.PROIBIDOS:
+                            achados.append(f"{relativo}:{no.lineno}: from cv2 import {nome.name}")
+
+        self.assertEqual(
+            [],
+            sorted(ilegiveis),
+            "Arquivo do repositório que a guarda não conseguiu ler. Ela não olhou tudo, e uma "
+            "guarda que não olhou tudo não pode dizer que não achou nada.",
+        )
+        self.assertEqual(
+            [],
+            sorted(achados),
+            "Use `atomic_io.write_image` / `atomic_io.read_image`. Ver o docstring desta classe.",
+        )
+
+    def test_a_varredura_alcanca_o_codigo_todo_e_nao_so_os_testes(self) -> None:
+        nomes = {caminho.name for caminho in self._arquivos()}
+        for esperado in self.ALCANCE_MINIMO:
+            self.assertIn(esperado, nomes, f"a varredura não alcançou {esperado}")
+
+    def test_a_varredura_para_na_fronteira_do_repositorio(self) -> None:
+        """O outro lado do alcance: o que a lista **não** pode conter.
+
+        É o que derrubou a primeira versão desta guarda. Um `os.walk` da raiz entra em
+        `.claude/worktrees/` -- checkout de outra sessão, com o mesmo código -- e passa a acusar
+        um arquivo que quem lê o relatório não pode consertar, porque ele não é deste ramo.
+
+        Numa árvore sem worktree nem `.venv` este teste é vácuo, e está certo que seja: ele
+        afirma uma propriedade da fronteira, e onde não há fronteira não há o que afirmar. Aqui
+        há, e foram 147 falsos achados.
+        """
+        partes = {parte for caminho in self._arquivos() for parte in caminho.relative_to(self.RAIZ).parts}
+        for fora in (".claude", ".venv", "build", "dist"):
+            self.assertNotIn(fora, partes, f"a varredura passou da fronteira do repositório: {fora}")
 
 
 if __name__ == "__main__":

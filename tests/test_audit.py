@@ -6,9 +6,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import cv2
 import numpy as np
 
+# `gravar_imagem` e nao `write_image`: a `Fixture.add` abaixo ja tem um parametro com esse
+# nome, e o import sombreado dava `TypeError: 'bool' object is not callable`.
+from chess_diagram_ocr.atomic_io import write_image as gravar_imagem
 from chess_diagram_ocr.audit import (
     DUPLICATE_HASH_SIZE,
     DUPLICATE_SHARE_CEILING,
@@ -55,7 +57,7 @@ class Fixture:
     def add(self, name: str, fen: str, *, image: np.ndarray | None = None, write_image: bool = True) -> None:
         if write_image:
             img = image if image is not None else _board_image(len(self.rows) + 1)
-            cv2.imwrite(str(self.samples / name), img)
+            gravar_imagem(self.samples / name, img)
         self.rows.append((name, fen))
 
     def write(self, *, illegal_ok: dict[str, str] | None = None) -> None:
@@ -125,7 +127,7 @@ class AuditReportTests(unittest.TestCase):
             fx = Fixture(tmp)
             fx.add("ok.png", LEGAL)
             fx.write()
-            cv2.imwrite(str(fx.samples / "orfa.png"), _board_image(99))
+            gravar_imagem(fx.samples / "orfa.png", _board_image(99))
 
             report = audit_dataset(fx.csv, fx.samples)
 
@@ -290,7 +292,7 @@ class HygieneTests(unittest.TestCase):
             fx = Fixture(tmp)
             fx.add("usada.png", LEGAL)
             fx.write()
-            cv2.imwrite(str(fx.samples / "orfa.png"), _board_image(77))
+            gravar_imagem(fx.samples / "orfa.png", _board_image(77))
             report = audit_dataset(fx.csv, fx.samples)
             self.assertEqual(report.orphan_images, ["orfa.png"])
 
@@ -312,7 +314,7 @@ class HygieneTests(unittest.TestCase):
             destino.mkdir(parents=True)
             (destino / "orfa.png").write_bytes(b"conteudo antigo")
 
-            cv2.imwrite(str(fx.samples / "orfa.png"), _board_image(78))
+            gravar_imagem(fx.samples / "orfa.png", _board_image(78))
             report = audit_dataset(fx.csv, fx.samples)
             movidos = prune_orphan_images(report, orphans_dir=destino.parent / "hoje")
 
@@ -400,7 +402,7 @@ class HygieneTests(unittest.TestCase):
             fx.add("ok.png", LEGAL)
             fx.add("sumiu.png", LEGAL_OTHER, write_image=False)
             fx.write()
-            cv2.imwrite(str(fx.samples / "orfa.png"), _board_image(79))
+            gravar_imagem(fx.samples / "orfa.png", _board_image(79))
 
             report = audit_dataset(fx.csv, fx.samples)
             drop_missing_labels(fx.csv, report, Path(tmp) / "quarantine.csv")

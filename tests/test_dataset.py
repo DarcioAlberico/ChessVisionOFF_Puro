@@ -6,10 +6,10 @@ import unittest.mock
 import warnings
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pandas as pd
 
+from chess_diagram_ocr.atomic_io import read_image, write_image
 from chess_diagram_ocr.config import BOARD_SIZE
 from chess_diagram_ocr.dataset import (
     BoardFenDataset,
@@ -30,7 +30,7 @@ def _write_csv(path: Path, rows: list[tuple[str, str]]) -> None:
 
 
 def _write_board(directory: Path, name: str, size: int = BOARD_SIZE) -> None:
-    cv2.imwrite(str(directory / name), np.full((size, size, 3), 200, dtype=np.uint8))
+    write_image(directory / name, np.full((size, size, 3), 200, dtype=np.uint8))
 
 
 class MalformedCsvTests(unittest.TestCase):
@@ -346,7 +346,7 @@ class AppendSampleTests(unittest.TestCase):
 
             path = append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
 
-            written = cv2.imread(str(path))
+            written = read_image(path)
             self.assertEqual(written.shape[:2], (BOARD_SIZE, BOARD_SIZE))
 
 

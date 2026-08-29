@@ -1082,6 +1082,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
 | S-296 a S-323, S-325 a S-430 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
+| S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1172,6 +1173,14 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   diante): o portao que nunca foi aberto, os doze caminhos que apagam trabalho humano sem
   perguntar, os tres botoes "Cancelar" que nao cancelam, e as cinco regras que valem para toda a
   revisao -- entre elas a de que nenhum `# type: ignore` entra sem o motivo escrito
+- [docs/ROADMAP_REVISAO_EXTERNA.md](docs/ROADMAP_REVISAO_EXTERNA.md) -- **Fases 66 a 68**, a
+  revisao tecnica independente recebida em 2026-08-29: dez achados de fora, cada um conferido
+  contra este ramo, e as tres divergencias que so esta bancada podia ver -- entre elas a de
+  que a code page desta maquina esconde o defeito principal
+- [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) -- especificacao das Fases 66
+  a 68 (S-431 a S-440): a coleta que gravava zero e relatava cinco, a lei do `imread`/`imwrite`
+  virando guarda que pergunta ao git quem e o repositorio, a faixa de Python ate 3.13 antes
+  de outubro, e uma recomendacao medida e recusada
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

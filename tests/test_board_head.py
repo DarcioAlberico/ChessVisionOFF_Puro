@@ -10,10 +10,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import cv2
 import numpy as np
 import torch
 
+from chess_diagram_ocr.atomic_io import write_image
 from chess_diagram_ocr.config import BOARD_SIZE, PIECE_CLASSES
 from chess_diagram_ocr.dataset import BoardFenDataset, BoardUnitDataset
 from chess_diagram_ocr.inference import load_model, predict_board
@@ -32,7 +32,7 @@ def _fixture(root: Path, boards: int = 4) -> tuple[Path, Path]:
     rng = np.random.default_rng(7)
     for i in range(boards):
         nome = f"b{i}.png"
-        cv2.imwrite(str(samples / nome), rng.integers(0, 256, (BOARD_SIZE, BOARD_SIZE, 3), dtype=np.uint8))
+        write_image(samples / nome, rng.integers(0, 256, (BOARD_SIZE, BOARD_SIZE, 3), dtype=np.uint8))
         linhas.append(f"{nome},{LEGAL if i % 2 == 0 else OUTRA}")
     csv = root / "labels.csv"
     csv.write_text("\n".join(linhas) + "\n", encoding="utf-8")
