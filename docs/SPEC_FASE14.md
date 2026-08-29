@@ -22,7 +22,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-431 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa
@@ -1053,6 +1053,13 @@ splits**, e **0** linhas removidas têm o representante mantido noutro split. N�
 S-07 funcionando: `splits.group_keys` (`splits.py:73-88`) mapeia cada membro para
 `sorted(group)[0]`, exatamente o nome que `find_duplicate_groups` mantém. **Toda linha de
 `val`/`test` que sairia é cópia de um representante que fica no mesmo `val`/`test`.**
+
+> **Esta explicação do zero estava errada, e a S-431 (em [SPEC_REVISAO.md](SPEC_REVISAO.md)) a
+> corrige.** O que sustenta os 0 grupos entre splits é `group_keys` dar a **todos** os membros
+> do grupo a mesma chave, e daí o mesmo split -- não o sobrevivente ser o `sorted(group)[0]`.
+> Qual membro fica nunca entrou nessa conta, e por isso a S-431 pôde mudá-lo: desde ela o
+> `--dedupe` mantém a linha que **declara procedência**, e `splits.group_representative` responde
+> pelos dois lados. O zero continua medido em `groups_across_splits`.
 
 Então o dedupe não contamina e não muda quais diagramas distintos cada split contém. O que ele
 muda é a **contagem**: o `test` passa de 354 para 332 linhas, e um número medido depois deixa

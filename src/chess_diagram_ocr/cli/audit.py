@@ -202,8 +202,10 @@ def _print_report(
         print("    São a mesma amostra salva duas vezes ou a mesma página reextraída com")
         print("    recorte diferente. Mesmo sem remover, membros de um grupo precisam ficar")
         print("    no mesmo split, senão a validação mede o que o treino já viu.")
-        for group in report.duplicate_groups[:limit]:
-            print(f"      {group[0]}  <-  {', '.join(group[1:])}")
+        print("    À esquerda a linha que o --dedupe mantém: a que declara livro e página, e")
+        print("    não a mais antiga -- as anteriores à S-19 não declaram nenhum dos dois (S-431).")
+        for fica, saem in report.dedupe_plan()[:limit]:
+            print(f"      {fica}  <-  {', '.join(saem)}")
 
     if missing:
         print()

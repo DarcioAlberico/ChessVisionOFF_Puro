@@ -21,8 +21,8 @@ import numpy as np
 from .atomic_io import atomic_write_json, read_image
 from .config import PIECE_CLASSES
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
-from .labels import LabelStore
-from .splits import load_splits
+from .labels import LabelStore, filenames_with_provenance, origins_of
+from .splits import group_representative, load_splits
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,12 @@ class AuditReport:
     visíveis no relatório sem entrarem em nenhum conserto."""
 
     duplicate_groups: list[list[str]] = field(default_factory=list)
+    with_provenance: set[str] = field(default_factory=set)
+    """Os arquivos cuja linha declara livro e página, para o `--dedupe` saber o que preservar.
+
+    Vazio num CSV sem as colunas da S-19, e aí a escolha do representante volta a ser pelo
+    nome -- que é como era antes da S-431."""
+
     orphan_images: list[str] = field(default_factory=list)
     class_counts: Counter[str] = field(default_factory=Counter)
 
@@ -100,6 +106,20 @@ class AuditReport:
     def duplicate_count(self) -> int:
         """Número de arquivos que são cópia de outro já presente."""
         return sum(len(group) - 1 for group in self.duplicate_groups)
+
+    def dedupe_plan(self) -> list[tuple[str, list[str]]]:
+        """Por grupo redundante, `(a linha que fica, as que saem)` -- e uma resposta só (S-431).
+
+        O `--dedupe`, o resumo que ele grava **antes** de remover e o relatório que ele imprime
+        têm de falar do mesmo conjunto. Enquanto cada um recalculava `group[0]` por conta
+        própria, trocar o critério num lugar deixava os outros dois descrevendo uma remoção que
+        não era a que acontecia.
+        """
+        planos: list[tuple[str, list[str]]] = []
+        for group in self.duplicate_groups:
+            fica = group_representative(group, self.with_provenance)
+            planos.append((fica, [nome for nome in group if nome != fica]))
+        return planos
 
     @property
     def duplicate_share(self) -> float:
@@ -224,6 +244,7 @@ def audit_dataset(csv_path: Path, samples_dir: Path, *, check_duplicates: bool =
     # quarentena do `--fix` tiraria do arquivo justamente os diagramas que alguem confirmou.
     entries = LabelStore(csv_path).read()
     report.total_rows = len(entries)
+    report.with_provenance = filenames_with_provenance(origins_of(entries))
     referenced: set[str] = set()
     usable_labels: list[tuple[str, str]] = []
 
@@ -464,8 +485,23 @@ def quarantine_fatal_labels(csv_path: Path, report: AuditReport, quarantine_path
 
 
 def remove_duplicate_labels(csv_path: Path, report: AuditReport) -> int:
-    """Remove as linhas duplicadas, mantendo o primeiro arquivo de cada grupo."""
-    to_remove = {name for group in report.duplicate_groups for name in group[1:]}
+    """Remove as cópias de cada grupo, mantendo a linha que **declara procedência** (S-431).
+
+    **Isto era uma ferramenta que destruía dado.** O critério anterior era `group[0]`, o nome
+    mais antigo do grupo -- e como os nomes são `board_<carimbo>.png`, o mais antigo é sempre a
+    amostra mais velha. As anteriores à S-19 (fevereiro de 2026) **não têm** `source_pdf` nem
+    `source_page`; as cópias de agosto, que têm, eram justamente as removidas. Medido em
+    2026-08-29 sobre as 4.852 linhas do acervo: das 361 linhas que sairiam, **323** declaravam
+    procedência, e em **276 dos 310 grupos** (89%) o sobrevivente não declarava enquanto um
+    removido declarava. Seis livros perdiam o verde de "já salvo" do visualizador (S-71) e o
+    agrupamento por livro do split (S-07), para sempre.
+
+    O conserto é só a escolha do representante, e a escolha mora em `group_representative` --
+    a mesma que dá a chave de split ao grupo, para que "quem representa este grupo" tenha uma
+    resposta e não duas. Nos 34 grupos restantes o representante não muda: ou ninguém declara
+    procedência, ou quem declara já era o primeiro nome.
+    """
+    to_remove = {nome for _fica, saem in report.dedupe_plan() for nome in saem}
     if not to_remove:
         return 0
 
@@ -478,10 +514,16 @@ def dedupe_summary(report: AuditReport, splits_path: Path) -> dict[str, Any]:
     **O alarme original deste item era falso, e o registro é o que sobra dele.** A primeira
     leitura foi que `remove_duplicate_labels` encolheria `val`/`test` "sem consultar o split" e
     quebraria a comparabilidade. A primeira metade é verdade; a segunda não. Medido: dos 373
-    grupos redundantes, **0** se espalham entre splits, porque `splits.group_keys` mapeia cada
-    membro para `sorted(group)[0]` -- exatamente o nome que `find_duplicate_groups` mantém.
-    Toda linha de `val`/`test` que sai é cópia de um representante que fica no mesmo `val`/
-    `test`, e o conjunto de diagramas **distintos** de cada split não muda.
+    grupos redundantes, **0** se espalham entre splits, porque `splits.group_keys` dá a **todos**
+    os membros do grupo a mesma chave, e daí o mesmo split. Toda linha de `val`/`test` que sai é
+    cópia de uma que fica no mesmo `val`/`test`, e o conjunto de diagramas **distintos** de cada
+    split não muda.
+
+    **Qual membro fica não entra nessa conta, e é por isso que a S-431 pôde mudá-lo.** O que
+    sustenta o zero é a chave ser comum ao grupo, não o sobrevivente ser o `sorted(group)[0]`
+    -- que era como esta seção explicava o número. Desde a S-431 os dois saem de
+    `group_representative`, e `groups_across_splits` continua sendo o que acusa se um dia a
+    chave comum deixar de bastar.
 
     O que muda é a **contagem**: o `test` passaria de 354 para 332 linhas. Um número medido
     depois deixa de ser comparável, por denominador, com um medido antes -- e nada avisava. É o
@@ -490,7 +532,7 @@ def dedupe_summary(report: AuditReport, splits_path: Path) -> dict[str, Any]:
     Por isso esta função existe e não muda comportamento nenhum: ela grava o denominador.
     """
     splits = load_splits(Path(splits_path))
-    removidos = [name for group in report.duplicate_groups for name in group[1:]]
+    removidos = [nome for _fica, saem in report.dedupe_plan() for nome in saem]
 
     antes: Counter[str] = Counter(splits.values())
     saindo: Counter[str] = Counter(splits.get(name, _SEM_SPLIT) for name in removidos)
