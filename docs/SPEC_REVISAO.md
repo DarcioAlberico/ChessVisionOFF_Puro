@@ -3007,6 +3007,65 @@ onde tinham a errada (716 ganham negrito, 561 o perdem, 700 ganham itálico, 112
 **Testes.** `tests/test_texto_estilo_fino.py` -- o casamento, a palavra que não sai partida, as
 três formas de degradar para o comportamento antigo, o remapeamento pela junção de hífen, o corte
 do documento e a ida e volta do `.json`.
+### E a contagem da linha de status desceu junto
+
+**O que a S-429 quebrou, e o mesmo item conserta.** `documento.estado_do_negrito` contava
+`linha.negrito`, e isso deixou de ser tudo o que a página sabe. Uma folha cujo negrito é sempre uma
+palavra no meio da prosa tem **todas** as linhas em `False` -- e a barra dizia *"nada em negrito"*
+sobre uma folha cheia dele, enquanto o editor logo acima o desenhava. É exatamente a população que
+este item resgata: 281 das 969 linhas com peso do acervo cobrem menos de 60% e saem `False`.
+
+Uma frase de status que contradiz o que está desenhado é pior que status nenhum -- que foi o
+argumento que criou esta frase na S-211, voltando contra ela.
+
+A contagem passa a ser de **trechos**: `len(linha.negrito_em)` quando há intervalo, e
+`bool(linha.negrito)` quando não há. Trecho e não palavra porque é a unidade que a página tem --
+`negrito_em` já vem com as palavras vizinhas unidas, e é ela que vira uma corrida na tela. Uma
+linha inteiramente em negrito continua contando **1**, que é o que mantém a frase legível nos
+livros de título e variante. A pergunta *"o livro informa?"* também passa a olhar os intervalos,
+pelo mesmo motivo: informar por trecho é informar.
+
+Travado por `EstadoContaTrechoTests` em `tests/test_negrito.py`.
+### E a via da imagem foi remedida antes de ficar de fora
+
+**A folha de scan não tem camada, e ali `negrito` é `None` para sempre.** A S-211 mediu a via da
+imagem e a recusou -- espessura 82,2% contra 82,7% de chutar "normal" --, mas deixou escrito um
+erro de método: normalizar pela **mediana da linha** apaga o sinal justamente quando a linha
+inteira é negrito. O que ela **não** tentou foi normalizar pela **página**, que é o análogo que não
+morre, porque a folha é majoritariamente em peso normal. A pergunta ficou aberta, e um item que
+desce a régua ao caractere é a hora de fechá-la.
+
+Remedido em 2026-08-29 com **20.156 palavras de 14 livros** (contra 940 de 3), rotuladas pelo nome
+da fonte na camada, sobre a folha renderizada a 220 dpi e binarizada pelo caminho de produção.
+População em **palavra**; corte aprendido **fora do livro** em que é testado.
+
+| medida | acerto | F1 | precisão | cobertura |
+|---|---|---|---|---|
+| chutar "normal" sempre | 0,9227 | — | — | — |
+| espessura (área / meio-perímetro) | **0,9594** | 0,654 | 0,661 | 0,647 |
+| espessura / mediana da página | 0,9379 | **0,671** | 0,629 | 0,720 |
+| 2 × p75 da transformada de distância | 0,9534 | 0,620 | **0,839** | 0,491 |
+| densidade / mediana da página | 0,9187 | 0,426 | 0,430 | 0,422 |
+
+**O sinal existe**, e passa do acaso. E foi conferido que não é o tamanho disfarçado -- título é
+grande e costuma ser negrito: chutar só pela altura da palavra acerta 0,8889, **abaixo** do acaso,
+e a altura mediana é 25 px em negrito contra 23 px em pé.
+
+**E mesmo assim continua fora.** A melhor precisão utilizável é 0,839 -- uma em cada seis palavras
+marcadas sairia errada, e negrito errado numa variante muda o que a página diz. E não há como
+comprar precisão apertando o corte: ela **cai** de 0,657 para 0,381 conforme o corte sobe, porque a
+cauda grossa é de palavra em pé (mancha de digitalização, glifo grande, tinta empastada). Não há
+canto seguro nem para uma parte do texto. A régua para aplicar em lote é 0,9929 (S-213), e a regra
+5 da [SPEC_EDITOR](SPEC_EDITOR.md) manda entregar o pincel em vez de pintar palpite.
+
+A medição foi feita no **render de PDF nascido digital** -- o único jeito de ter rótulo, porque o
+rótulo vem da camada. O scan, que é a população-alvo, é mais difícil; um "não" aqui vale com folga
+para ele, e o contrário não valeria.
+
+**Isto não é item novo, e sim a resposta da pergunta que a S-211 deixou aberta**, com a amostra e
+o método que faltavam. Fica em `docs/metrics/texto_negrito_imagem.json` e no cabeçalho de
+`text/negrito.py`. Nada muda no programa: para a folha sem camada o caminho continua sendo o
+pincel manual da S-241.
 
 ## S-430 · O pincel de fonte não pintava sobre estilo nem sobre corpo
 
@@ -3040,3 +3099,12 @@ sai em negrito sempre, por ser título.
 
 **Testes.** `PincelSobreEstiloTests` em `tests/test_ui_texto_editor.py` -- sete casos reprovam sem
 a correção.
+### A miniatura no meio do trecho, e as duas réguas de posição
+
+`_refazer_fontes` anda por duas réguas ao mesmo tempo: `deslocamento_de` conta pelo **documento**,
+onde a miniatura do diagrama vale zero caractere, e `indice_de` volta ao índice do **widget**, onde
+ela vale um. Se as duas saíssem de fase, a etiqueta de fonte de uma corrida cairia sobre a seguinte
+-- e o negrito apareceria uma palavra adiante do que foi pedido.
+
+Pintar uma seleção que **atravessa** o diagrama é o caso que separa as duas, e é o que
+`test_a_miniatura_no_meio_do_trecho_nao_desalinha_as_fontes` afirma.

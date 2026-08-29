@@ -158,15 +158,23 @@ def estado_do_negrito(pagina: PaginaLida) -> str:
     esta frase, quem abre um deles conclui que a função está quebrada -- e foi exatamente o que
     aconteceu com o `A Matter of Endgame Technique`, cuja camada escreve o livro inteiro numa fonte
     só. Ver `text/negrito.py`.
+
+    **A contagem é de trechos, e não de linhas** (S-429). Ela contava `linha.negrito`, e desde a
+    S-429 isso deixou de ser tudo o que a página sabe: uma folha cujo negrito é sempre uma palavra
+    no meio da prosa tem todas as linhas com `negrito=False` -- e dizia *"nada em negrito"* sobre
+    uma folha cheia dele. É a população que a S-429 existe para resgatar (281 das 969 linhas com
+    peso do acervo), e a frase estava dizendo o contrário do que a aba passou a desenhar.
+
+    Trecho e não palavra porque é a unidade que a página tem: `negrito_em` já vem com as palavras
+    vizinhas unidas, e é ela que vira uma corrida na tela. Uma linha inteiramente em negrito conta
+    **1**, como antes -- é o que mantém a frase legível nos livros de título e variante.
     """
-    pesos = [
-        linha.negrito
-        for bloco in pagina.blocos
-        for linha in getattr(bloco, "linhas", ())
-    ]
-    if not pesos or all(p is None for p in pesos):
+    linhas = [linha for bloco in pagina.blocos for linha in getattr(bloco, "linhas", ())]
+    if not linhas or all(
+        linha.negrito is None and not getattr(linha, "negrito_em", ()) for linha in linhas
+    ):
         return "negrito: o livro não informa"
-    quantas = sum(1 for p in pesos if p)
+    quantas = sum(len(getattr(linha, "negrito_em", ())) or bool(linha.negrito) for linha in linhas)
     return f"{quantas} em negrito" if quantas else "nada em negrito"
 
 

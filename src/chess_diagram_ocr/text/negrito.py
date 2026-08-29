@@ -29,6 +29,37 @@ corpo da fonte do que do peso. A régua deste projeto para aplicar em lote é 99
 > caso comum: título, lance principal. Normalizar pela linha só faria sentido se o negrito fosse
 > sempre parcial dentro dela.
 
+### E a normalização que faltava foi tentada, em 2026-08-29
+
+O erro acima diz o que **não** fazer e deixa a pergunta aberta: e normalizar pela **página**? Ela é
+majoritariamente em peso normal, então a mediana dela é o peso normal -- é o análogo que não morre
+quando a linha inteira é negrito. Remedido com 21x a amostra da primeira vez (**20.156 palavras de
+14 livros**, contra 940 de 3), com a população em **palavra** e o corte aprendido **fora do livro**
+em que é testado:
+
+    medida                              acerto      F1   precisão   cobertura
+    chutar "normal" sempre              0,9227       —          —           —
+    espessura (área / meio-perímetro)   0,9594   0,654      0,661       0,647
+    espessura / mediana da página       0,9379   0,671      0,629       0,720
+    2 x p75 da transf. de distância     0,9534   0,620    **0,839**     0,491
+    densidade / mediana da página       0,9187   0,426      0,430       0,422
+
+**O sinal existe** -- 0,9594 contra 0,9227 --, e não é o tamanho disfarçado: chutar só pela altura
+da palavra acerta 0,8889, **abaixo** do acaso, e a altura mediana é 25 px em negrito contra 23 px
+em pé. A espessura mede peso mesmo.
+
+**E mesmo assim não passa.** A melhor precisão utilizável é **0,839**: uma em cada seis palavras
+marcadas sairia errada, e negrito errado numa variante muda o que a página diz. Pior, **apertar o
+corte não compra precisão** -- ela cai de 0,657 para 0,381 conforme o corte sobe, porque a cauda
+grossa é de palavra em pé (mancha de digitalização, glifo grande, tinta empastada). Não há canto
+seguro nem para uma parte do texto. A régua para aplicar em lote é 0,9929 (S-213).
+
+E a medição foi feita no **render de PDF nascido digital**, que é o único jeito de ter rótulo -- o
+scan, que é a população-alvo, é mais difícil. Um "não" aqui vale com folga para ele.
+
+Fica em `docs/metrics/texto_negrito_imagem.json`. Para a folha sem camada o caminho continua sendo
+o pincel manual da S-241, e `negrito` continua `None` -- que é a resposta honesta.
+
 ## A cobertura é irregular, e o desconhecido é dito
 
 Dos 42 livros do acervo: **13 têm negrito na camada**, 16 têm camada sem nenhum negrito, e 10 não

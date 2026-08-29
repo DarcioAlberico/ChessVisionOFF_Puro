@@ -1341,6 +1341,43 @@ class PincelSobreEstiloTests(_ComJanela, unittest.TestCase):
         self.assertEqual(self._no_documento(painel), (True, False))
         self.assertEqual(painel.documento_atual().corridas[0].atributos.corpo, 1)
 
+    def test_a_miniatura_no_meio_do_trecho_nao_desalinha_as_fontes(self) -> None:
+        """**A miniatura vale um caractere para o Tk e nenhum para o documento**, e `_refazer_fontes`
+        anda pelas duas réguas ao mesmo tempo: `deslocamento_de` conta pelo documento e `indice_de`
+        volta ao índice do widget. Se as duas saíssem de fase, a etiqueta de fonte de uma corrida
+        cairia sobre a seguinte -- e o negrito apareceria uma palavra adiante do que foi pedido.
+
+        Pintar por cima de uma seleção que **atravessa** o diagrama é o caso que separa as duas.
+        """
+        painel = self._painel()
+        painel.pack()
+        painel._pagina_rgb = np.full((80, 80, 3), 200, dtype=np.uint8)
+        painel.desenhar(
+            _pagina(
+                _texto("antes do diagrama"),
+                BlocoDeDiagrama(indice=0, bbox=(0.0, 10.0, 40.0, 50.0), confianca=0.9),
+                _texto("depois do diagrama"),
+            )
+        )
+        painel.update()
+
+        painel.editor.tag_add("sel", "1.0", tk.END)
+        painel.aumentar_corpo()
+        painel.editor.tag_add("sel", "1.0", tk.END)
+        painel.negrito()
+
+        doc = painel.documento_atual()
+        # O texto continua o mesmo, e cada corrida de texto leva a fonte que os atributos dela pedem.
+        self.assertIn("antes do diagrama", doc.para_texto())
+        self.assertIn("depois do diagrama", doc.para_texto())
+        for corrida in doc.corridas:
+            if corrida.e_diagrama or not corrida.texto.strip():
+                continue
+            self.assertTrue(corrida.atributos.negrito, f"{corrida.texto!r} devia estar em negrito")
+
+        posicao = painel.texto_atual().index("depois")
+        self.assertEqual(self._desenhado(painel, painel.indice_de(posicao + 2)), (True, False))
+
 
 class CorDaAbaTests(_ComJanela, unittest.TestCase):
     """A aba segue a pele e o tema, como as outras superfícies da janela (S-337)."""
