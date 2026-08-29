@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-431 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -3108,3 +3108,88 @@ ela vale um. Se as duas saíssem de fase, a etiqueta de fonte de uma corrida cai
 
 Pintar uma seleção que **atravessa** o diagrama é o caso que separa as duas, e é o que
 `test_a_miniatura_no_meio_do_trecho_nao_desalinha_as_fontes` afirma.
+
+## S-431 · O `--dedupe` apagava justamente a procedência que devia preservar
+
+**Problema.** `remove_duplicate_labels` (`audit.py:466`, antes deste item) mantinha `group[0]` de
+cada grupo de `find_duplicate_groups`, e o representante era `sorted(group)[0]` -- o **nome de
+arquivo mais antigo**. Os nomes são `board_<carimbo>.png`, então o mais antigo é sempre a amostra
+mais velha; e as amostras anteriores à S-19 (fevereiro de 2026) **não têm** `source_pdf` nem
+`source_page`. As cópias de agosto, que têm, eram exatamente as removidas.
+
+`cvoff-audit --dedupe` era, com isso, uma ferramenta que destrói dado -- e o relatório do próprio
+comando a sugeria a quem rodasse a auditoria sem flag nenhuma.
+
+Medido em 2026-08-29 sobre o `data/labels.csv` de 4.852 linhas e as 5.299 imagens de
+`data/samples/`:
+
+| medida | valor |
+|---|---|
+| linhas que declaram livro **e** página | 1.760 |
+| grupos redundantes | 310 |
+| linhas que o `--dedupe` removeria | 361 |
+| dessas, as que declaram procedência | 323 |
+| grupos cujo sobrevivente **não** declara enquanto um removido declara | 276 (89%) |
+| livros atingidos | 6 |
+
+O que se perdia não é linha de CSV: é o vínculo com o PDF. Sem `source_pdf` e `source_page` o
+visualizador deixa de pintar de verde o diagrama já salvo (S-71), o agrupamento de split por livro
+(S-07/S-52) perde o livro, e a tripla da S-98 deixa de identificar o diagrama impresso. Nada disso
+se reconstrói a partir da imagem: a S-121 existe para tentar, e ainda não existe.
+
+**Solução.** Um representante só, escolhido por **informação** e não por idade.
+`splits.group_representative` (`splits.py:76`) devolve, dentro do grupo, o primeiro nome que
+declara procedência; sem nenhum, devolve `sorted(group)[0]`, que é o critério de antes. Quem
+consome:
+
+- `AuditReport.dedupe_plan` (`audit.py:110`) devolve `(quem fica, quem sai)` por grupo, e é a
+  **única** resposta: `remove_duplicate_labels`, o resumo da S-101 que ele grava antes de remover e
+  o relatório que ele imprime saem daí. Antes cada um recalculava `group[0]` por conta própria, e
+  trocar o critério num lugar deixaria os outros dois descrevendo uma remoção que não acontece;
+- `splits.group_keys` deriva a chave de split do mesmo representante -- ver abaixo;
+- `dataset_browser.load_rows` marca como redundante quem o comando remove, e não o contrário.
+
+`labels.filenames_with_provenance` é a condição, e é a mesma de `splits.groups_by_origin`: livro
+**e** página preenchidos. O `source_diagram` fica de fora de propósito -- livro e página já
+respondem às três perguntas que fazem a procedência valer, e exigir os três descartaria linha útil.
+
+### A herança de split não podia depender de qual membro representa o grupo
+
+Mudar o representante do dedupe **sem** mudar `group_keys` deixaria "quem representa este grupo"
+com duas respostas. Mas mudar as duas juntas, e só isso, quebraria a S-07 por outro caminho:
+`ensure_splits` herdava o split olhando apenas o representante, e isso bastava enquanto ele era o
+membro de nome mais antigo -- que é o que já está registrado. Escolhido por procedência, ele passa
+a poder ser o **novo**, que ainda não tem split: o membro antigo ficaria onde está e o novo
+sortearia o seu. Reproduzido em teste: `train` de um lado, `val` do outro.
+
+A herança passou a olhar o grupo inteiro -- o split de **qualquer** membro já registrado serve --,
+e assim ela não depende de qual membro representa. É o que mantém `groups_across_splits` em zero.
+
+**A explicação que o `dedupe_summary` dava do próprio zero estava errada**, e o item a corrige. Ela
+dizia que nenhum grupo atravessa split *"porque `splits.group_keys` mapeia cada membro para
+`sorted(group)[0]` -- exatamente o nome que `find_duplicate_groups` mantém"*. O que sustenta o zero
+é a chave ser **comum ao grupo**, e daí o split ser o mesmo; qual membro sobrevive não entra nessa
+conta, e é por isso que este item pôde mudá-lo. `groups_across_splits` continua sendo o número que
+acusa se um dia a chave comum deixar de bastar.
+
+**Critério de aceite.**
+
+1. Nos 310 grupos do acervo, o conserto muda o representante em **exatamente os 276** em que havia
+   procedência a perder, e em nenhum outro: nos 34 restantes, ou ninguém declara, ou quem declara
+   já era o primeiro nome.
+2. Depois do `--dedupe`, a linha que fica declara livro e página sempre que alguma linha do grupo
+   declarava.
+3. Uma amostra nova de um grupo cujo representante ainda não tem split herda o split do membro que
+   tem, em vez de sortear o seu.
+4. O resumo gravado **antes** de remover descreve a remoção que de fato acontece.
+
+**Testes.** `RepresentanteDoGrupoTests` em `tests/test_audit.py` (cinco casos) e em
+`tests/test_splits.py` (cinco casos), e `test_o_representante_e_quem_declara_procedencia` em
+`tests/test_dataset_browser.py`. O caso 3 reprova sem a mudança em `ensure_splits`, e a asserção
+imediatamente antes dele garante que ele não passa por acidente.
+
+**Reproduzir a medição.** `audit_dataset(CSV, SAMPLES, check_duplicates=True)` e comparar
+`duplicate_groups` contra a coluna `source_pdf`/`source_page` lida por `LabelStore` -- a leitura
+das ~5.300 imagens leva alguns minutos. O `labels.csv` cresce entre sessões, então os números se
+movem: a primeira medição deste item, sobre 4.858 linhas, deu 311 grupos, 367 linhas removidas e
+277 com o sobrevivente sem procedência.

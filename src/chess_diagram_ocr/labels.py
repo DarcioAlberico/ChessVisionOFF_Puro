@@ -585,11 +585,35 @@ def label_origins(csv_path: Path) -> dict[str, tuple[str, str, str]]:
     Linha sem `source_pdf` ou sem `source_page` entra com a tripla vazia e o chamador a
     descarta -- são 84,1% do acervo, e inventar procedência seria pior que não ter.
     """
+    return origins_of(LabelStore(csv_path).read())
+
+
+def origins_of(entries: Iterable[DatasetEntry]) -> dict[str, tuple[str, str, str]]:
+    """O mesmo que `label_origins`, para quem já tem as entradas na mão (S-431).
+
+    A auditoria e a aba Dataset leem o CSV inteiro para outra coisa e precisam da mesma
+    tripla; reler as 4.852 linhas para recalcular o que já está em memória é custo que nada
+    paga. `label_origins` continua sendo a porta para quem só tem o caminho.
+    """
     return {
         entry.filename: (entry.source_pdf.strip(), entry.source_page.strip(), entry.source_diagram.strip())
-        for entry in LabelStore(csv_path).read()
+        for entry in entries
         if entry.filename
     }
+
+
+def filenames_with_provenance(origins: Mapping[str, tuple[str, str, str]]) -> set[str]:
+    """Os arquivos que declaram **livro e página** -- os que uma limpeza tem de preservar (S-431).
+
+    Mesma condição de `splits.groups_by_origin`: sem os dois a tripla não identifica diagrama
+    impresso nenhum, e a linha não sabe de onde veio. São 1.760 das 4.852 linhas de hoje.
+
+    O `source_diagram` fica **de fora** da condição de propósito. Ele é o número do diagrama
+    dentro da página, e uma linha que diz livro e página já responde às três perguntas que
+    fazem a procedência valer: o visualizador acha a página (S-71), o split acha o livro
+    (S-07) e uma pessoa acha o diagrama impresso. Exigir os três descartaria linha útil.
+    """
+    return {nome for nome, (pdf, pagina, _diagrama) in origins.items() if pdf and pagina}
 
 
 def saved_diagrams_by_page(

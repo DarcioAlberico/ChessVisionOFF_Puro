@@ -26,8 +26,8 @@ from typing import Literal
 
 from .config import PIECE_CLASSES
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
-from .labels import ILLEGAL_OK, LabelStore
-from .splits import Split, load_splits
+from .labels import ILLEGAL_OK, LabelStore, filenames_with_provenance, origins_of
+from .splits import Split, group_representative, load_splits
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +104,15 @@ def load_rows(
 
     splits = load_splits(splits_path) if splits_path is not None and Path(splits_path).exists() else {}
 
+    # Quem representa o grupo é quem o `--dedupe` mantém, e a resposta vem de um lugar só
+    # (S-431): marcar aqui como redundante uma linha que o comando **preserva** poria a aba a
+    # apontar para a errada.
+    com_procedencia = filenames_with_provenance(origins_of(entries))
     group_of: dict[str, str] = {}
     for group in duplicate_groups:
-        members = sorted(group)
-        for member in members:
-            group_of[member] = members[0]
+        representante = group_representative(group, com_procedencia)
+        for member in group:
+            group_of[member] = representante
 
     rows: list[DatasetRow] = []
     for entry in entries:

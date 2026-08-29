@@ -29,7 +29,8 @@ from chess_diagram_ocr.audit import (
 )
 from chess_diagram_ocr.cli import audit as cli_audit
 from chess_diagram_ocr.cli import train as cli_train
-from chess_diagram_ocr.labels import ILLEGAL_OK
+from chess_diagram_ocr.labels import ILLEGAL_OK, label_origins
+from chess_diagram_ocr.splits import group_keys
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 LEGAL_OTHER = "4k3/8/8/8/8/8/4P3/4K3"
@@ -58,14 +59,26 @@ class Fixture:
             cv2.imwrite(str(self.samples / name), img)
         self.rows.append((name, fen))
 
-    def write(self, *, illegal_ok: dict[str, str] | None = None) -> None:
-        """Sem `illegal_ok`, escreve o esquema mínimo -- que é o que quase todo teste quer."""
+    def write(
+        self,
+        *,
+        illegal_ok: dict[str, str] | None = None,
+        procedencia: dict[str, tuple[str, str]] | None = None,
+    ) -> None:
+        """Sem `illegal_ok` nem `procedencia`, escreve o esquema mínimo -- o que quase todo
+        teste quer. `procedencia` é `{arquivo: (source_pdf, source_page)}`."""
         marcas = illegal_ok or {}
-        if not marcas:
+        origens = procedencia or {}
+        if not marcas and not origens:
             lines = ["filename,fen"] + [f"{name},{fen}" for name, fen in self.rows]
-        else:
+        elif not origens:
             lines = ["filename,fen,illegal_ok"] + [
                 f"{name},{fen},{marcas.get(name, '')}" for name, fen in self.rows
+            ]
+        else:
+            lines = ["filename,fen,source_pdf,source_page,illegal_ok"] + [
+                "{},{},{},{},{}".format(name, fen, *origens.get(name, ("", "")), marcas.get(name, ""))
+                for name, fen in self.rows
             ]
         self.csv.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -454,9 +467,10 @@ class DedupeSummaryTests(unittest.TestCase):
 
     **O alarme original deste item era falso, e o registro é o que sobra dele.** A primeira
     leitura foi que o dedupe encolheria `val`/`test` "sem consultar o split" e quebraria a
-    comparabilidade. A primeira metade é verdade; a segunda não -- `splits.group_keys` mapeia
-    cada membro para `sorted(group)[0]`, exatamente o nome que `find_duplicate_groups` mantém,
-    então toda linha que sai é cópia de um representante que fica **no mesmo split**.
+    comparabilidade. A primeira metade é verdade; a segunda não -- `splits.group_keys` dá a
+    **todos** os membros do grupo a mesma chave, e daí o mesmo split, então toda linha que sai é
+    cópia de uma que fica **no mesmo split**. Qual membro fica não entra nessa conta, e é por
+    isso que a S-431 pôde mudá-lo.
 
     O que muda é a contagem, e é ela que faz um número medido depois deixar de ser comparável,
     por denominador, com um medido antes.
@@ -689,3 +703,87 @@ class TreinoRecusaDatasetReprovadoTests(unittest.TestCase):
         limpo.add("b.png", LEGAL_OTHER)
         limpo.write()
         self.assertIsNone(cli_train._audit_gate(self._args(csv=limpo.csv, samples=limpo.samples)))
+
+
+class RepresentanteDoGrupoTests(unittest.TestCase):
+    """Quem o `--dedupe` mantém: a linha que declara procedência, não a mais velha (S-431).
+
+    Os nomes são `board_<carimbo>.png`, então `sorted(grupo)[0]` é sempre a amostra mais
+    antiga -- e as anteriores à S-19 (fevereiro de 2026) não têm `source_pdf` nem
+    `source_page`. Medido em 2026-08-29 sobre as 4.852 linhas do acervo: das 361 linhas que o
+    comando removeria, **323** declaravam procedência, e em **276 dos 310 grupos** o
+    sobrevivente não declarava enquanto um removido declarava.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fixture = Fixture(self.tmp.name)
+        imagem = _board_image(41)
+        # A ordem dos nomes e a ordem de nascimento, como no acervo: a de fevereiro nao
+        # declara procedencia, a de agosto declara.
+        self.fixture.add("board_20260226_000000.png", LEGAL, image=imagem)
+        self.fixture.add("board_20260823_000000.png", LEGAL, image=imagem)
+        self.fixture.add("outra.png", LEGAL_OTHER)
+        self.fixture.write(procedencia={"board_20260823_000000.png": ("Kemeri.pdf", "41")})
+        self.report = audit_dataset(self.fixture.csv, self.fixture.samples)
+
+    def test_fica_a_linha_que_declara_livro_e_pagina(self) -> None:
+        self.assertEqual(
+            self.report.dedupe_plan(),
+            [("board_20260823_000000.png", ["board_20260226_000000.png"])],
+        )
+
+    def test_depois_do_dedupe_a_procedencia_continua_no_csv(self) -> None:
+        """**O critério de aceite.** Antes da S-431 este era o caso que saía do arquivo, e com
+        ele o verde de "já salvo" do visualizador (S-71) e o livro do split (S-07)."""
+        remove_duplicate_labels(self.fixture.csv, self.report)
+
+        restantes = dict(read_label_rows(self.fixture.csv))
+        self.assertIn("board_20260823_000000.png", restantes)
+        self.assertNotIn("board_20260226_000000.png", restantes)
+        origens = label_origins(self.fixture.csv)
+        self.assertEqual(origens["board_20260823_000000.png"][:2], ("Kemeri.pdf", "41"))
+
+    def test_sem_procedencia_nenhuma_o_criterio_continua_sendo_o_nome(self) -> None:
+        """Os 34 grupos restantes do acervo: não há informação para preferir, e aí o desempate
+        pelo nome é o de sempre."""
+        pasta = Path(self.tmp.name) / "sem_procedencia"
+        pasta.mkdir()
+        outro = Fixture(str(pasta))
+        imagem = _board_image(42)
+        outro.add("b.png", LEGAL, image=imagem)
+        outro.add("a.png", LEGAL, image=imagem)
+        outro.write()
+
+        self.assertEqual(audit_dataset(outro.csv, outro.samples).dedupe_plan(), [("a.png", ["b.png"])])
+
+    def test_o_representante_e_a_mesma_chave_de_que_sai_o_split(self) -> None:
+        """A metade que o conserto não podia deixar para trás. Se o comando mantivesse um nome
+        e `splits.group_keys` derivasse o split de outro, "quem representa este grupo" voltaria
+        a ter duas respostas -- e é dessa divergência que a S-07 não sobrevive."""
+        fica, _saem = self.report.dedupe_plan()[0]
+        chaves = group_keys(
+            [nome for nome, _fen in read_label_rows(self.fixture.csv)],
+            self.report.duplicate_groups,
+            with_provenance=self.report.with_provenance,
+        )
+
+        self.assertEqual({chaves[nome] for nome in self.report.duplicate_groups[0]}, {fica})
+
+    def test_o_resumo_gravado_antes_descreve_a_remocao_que_acontece(self) -> None:
+        """O resumo da S-101 é escrito **antes** de remover; se ele contasse outro conjunto,
+        o denominador que ele existe para gravar seria de uma limpeza que não houve."""
+        splits = Path(self.tmp.name) / "splits.csv"
+        splits.write_text(
+            "filename,split\n"
+            "board_20260226_000000.png,test\n"
+            "board_20260823_000000.png,test\n"
+            "outra.png,train\n",
+            encoding="utf-8",
+        )
+        resumo = dedupe_summary(self.report, splits)
+        removidos = remove_duplicate_labels(self.fixture.csv, self.report)
+
+        self.assertEqual(resumo["removed"], removidos)
+        self.assertEqual(resumo["by_split"]["test"], {"antes": 2, "removidos": 1, "depois": 1})

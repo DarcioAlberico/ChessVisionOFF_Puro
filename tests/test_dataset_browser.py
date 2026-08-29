@@ -111,6 +111,25 @@ class LoadRowsTests(unittest.TestCase):
             self.assertFalse(por_nome["lado.png"].is_duplicate)
             self.assertTrue(por_nome["legal.png"].is_duplicate)
 
+
+    def test_o_representante_e_quem_declara_procedencia(self) -> None:
+        """A aba marca como redundante o que o `--dedupe` remove, e não o contrário (S-431)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raiz = Path(tmpdir)
+            csv_path = raiz / "labels.csv"
+            csv_path.write_text(
+                "filename,fen,source_pdf,source_page\n"
+                f"antiga.png,{KINGS_ONLY} w - - 0 1,,\n"
+                f"nova.png,{KINGS_ONLY} w - - 0 1,Kemeri.pdf,10\n",
+                encoding="utf-8",
+            )
+
+            rows = load_rows(csv_path, raiz / "samples", duplicate_groups=[["antiga.png", "nova.png"]])
+
+            por_nome = {row.filename: row for row in rows}
+            self.assertTrue(por_nome["antiga.png"].is_duplicate)
+            self.assertFalse(por_nome["nova.png"].is_duplicate)
+
     def test_missing_csv_yields_no_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             self.assertEqual(load_rows(Path(tmpdir) / "nada.csv", Path(tmpdir)), [])

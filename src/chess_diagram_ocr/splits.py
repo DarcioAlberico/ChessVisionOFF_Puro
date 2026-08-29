@@ -27,7 +27,7 @@ import hashlib
 import io
 import logging
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -73,19 +73,49 @@ def assign_split(
     return "train"
 
 
-def group_keys(filenames: Iterable[str], groups: Iterable[Iterable[str]]) -> dict[str, str]:
+def group_representative(group: Iterable[str], with_provenance: Collection[str] = ()) -> str:
+    """O membro do grupo que responde pelos outros. **Uma resposta só, e não duas (S-431).**
+
+    Este nome tem dois usos que precisam coincidir: é a chave de que `group_keys` deriva o
+    split do grupo inteiro, e é a linha que o `cvoff-audit --dedupe` **mantém** ao apagar as
+    cópias. Enquanto cada lado escolhia por conta própria -- os dois por `sorted(group)[0]`,
+    o nome mais antigo --, o dedupe apagava a procedência de 276 grupos em 6 livros: as
+    amostras anteriores à S-19 não têm `source_pdf` nem `source_page`, e eram justamente elas
+    que ficavam.
+
+    A ordem é: quem **declara procedência** primeiro; o nome desempata, como sempre foi. Sem
+    ninguém em `with_provenance` devolve `sorted(group)[0]`, que é o de antes.
+
+    Não é uma régua de qualidade da imagem -- o grupo já garante que são o mesmo diagrama com
+    o mesmo rótulo. É de informação: a linha que sabe de que livro e página veio pode ser
+    reencontrada no PDF, pintada de verde pelo visualizador (S-71) e agrupada por livro
+    (S-07); a que não sabe, não.
+    """
+    members = sorted(group)
+    for member in members:
+        if member in with_provenance:
+            return member
+    return members[0]
+
+
+def group_keys(
+    filenames: Iterable[str],
+    groups: Iterable[Iterable[str]],
+    *,
+    with_provenance: Collection[str] = (),
+) -> dict[str, str]:
     """Mapeia cada arquivo para a chave do seu grupo.
 
     Arquivos que não pertencem a nenhum grupo são sua própria chave. Para os que
-    pertencem, a chave é o nome do primeiro membro (ordenado), de forma que todos os
-    membros derivem o mesmo split.
+    pertencem, a chave é o representante do grupo (`group_representative`), de forma que
+    todos os membros derivem o mesmo split.
     """
     keys = {name: name for name in filenames}
     for group in groups:
         members = sorted(group)
         if len(members) < 2:
             continue
-        representative = members[0]
+        representative = group_representative(members, with_provenance)
         for member in members:
             keys[member] = representative
     return keys
@@ -182,13 +212,14 @@ def compute_splits(
     filenames: Iterable[str],
     *,
     groups: Iterable[Iterable[str]] = (),
+    with_provenance: Collection[str] = (),
     val_pct: int = DEFAULT_VAL_PCT,
     test_pct: int = DEFAULT_TEST_PCT,
     salt: str = SPLIT_SALT,
 ) -> dict[str, Split]:
     """Calcula o split de cada arquivo, respeitando os grupos redundantes."""
     names = list(filenames)
-    keys = group_keys(names, groups)
+    keys = group_keys(names, groups, with_provenance=with_provenance)
     return {name: assign_split(keys[name], val_pct=val_pct, test_pct=test_pct, salt=salt) for name in names}
 
 
@@ -236,6 +267,7 @@ def ensure_splits(
     splits_path: Path,
     *,
     groups: Iterable[Iterable[str]] = (),
+    with_provenance: Collection[str] = (),
     val_pct: int = DEFAULT_VAL_PCT,
     test_pct: int = DEFAULT_TEST_PCT,
     salt: str = SPLIT_SALT,
@@ -266,7 +298,18 @@ def ensure_splits(
             len(existing),
         )
         return dict(existing)
-    keys = group_keys(names, groups)
+    keys = group_keys(names, groups, with_provenance=with_provenance)
+
+    # O split que o grupo já tem, venha ele de qual membro vier (S-431). A herança abaixo
+    # olhava só o **representante**, e isso bastava enquanto o representante era o membro de
+    # nome mais antigo -- que é o que já está registrado. Escolhendo-o por procedência ele
+    # passa a poder ser o mais novo, e aí um grupo com um membro antigo em `test` e o
+    # representante ainda sem split se partiria em dois: o antigo fica onde está e o novo
+    # sorteia. A garantia da S-07 não pode depender de qual membro representa o grupo.
+    do_grupo: dict[str, Split] = {}
+    for name in sorted(names):
+        if name in existing:
+            do_grupo.setdefault(keys[name], existing[name])
 
     result: dict[str, Split] = {}
     added = 0
@@ -277,7 +320,7 @@ def ensure_splits(
 
         # Amostra nova: se o grupo dela já tem split definido, herda; senão, calcula.
         representative = keys[name]
-        inherited = existing.get(representative) or result.get(representative)
+        inherited = existing.get(representative) or do_grupo.get(representative) or result.get(representative)
         result[name] = inherited or assign_split(representative, val_pct=val_pct, test_pct=test_pct, salt=salt)
         added += 1
 
