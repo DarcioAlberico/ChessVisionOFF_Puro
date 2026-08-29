@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 import tkinter as tk
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -147,6 +147,7 @@ class ResultPanel(ttk.Frame):
         on_remote_consent: Callable[[RemoteFenSettings], bool],
         local_reader: Callable[[], LocalReaderSettings] = LocalReaderSettings,
         on_selection_changed: Callable[[int | None], None] = lambda _indice: None,
+        saved_diagrams: Callable[[str, int], Collection[int]] = lambda _livro, _pagina: (),
         move_number_of: Callable[[int, int], int | None] = lambda _pagina, _diagrama: None,
         on_move_number: Callable[[int, int, int | None], None] = lambda _p, _d, _v: None,
     ) -> None:
@@ -170,6 +171,15 @@ class ResultPanel(ttk.Frame):
         processo acabara de escrever -- 30,9 ms sobre 3.936 linhas, no laço mais interno do
         projeto. Uma sequência vazia é resposta: "o dataset mudou e nenhum diagrama novo ficou
         verde", que é exatamente o caso de regravar uma linha que já existia."""
+
+        self._saved_diagrams = saved_diagrams
+        """Quais diagramas de `(livro, página)` já têm amostra gravada, em base 0 (S-451).
+
+        Mora fora do painel porque o índice é da janela: ela o lê do `labels.csv` ao abrir o
+        PDF e o mantém a cada gravação (ver `labels.note_saved_diagram`). Relê-lo aqui traria
+        de volta a releitura de arquivo que a S-116 tirou deste caminho. O padrão devolve
+        vazio -- quem monta o painel sem passar nada não vê pergunta nenhuma, que é melhor que
+        ver uma pergunta errada."""
 
         self._remote_fen = remote_fen
         self._local_reader = local_reader
@@ -504,6 +514,7 @@ class ResultPanel(ttk.Frame):
                 fen_edits=self.model.fen_edits,
                 side_edits=self.model.side_edits,
                 selected_index=self.model.clamped_index(),
+                origin=self.model.origin,
             ),
         )
 
@@ -526,6 +537,7 @@ class ResultPanel(ttk.Frame):
             guardado.fen_edits,
             guardado.side_edits,
             page_key=(documento, guardado.page_index),
+            origin=guardado.origin,
             selected=guardado.clamped_index(),
         )
         self._sync_widgets_to_model(total=max(guardado.count, 1))
@@ -1174,6 +1186,28 @@ class ResultPanel(ttk.Frame):
         self._settle_review(alvo.settle_position, alvo.fen, alvo.side)
         self.model.settled()
 
+    def _ja_salvos(self, alvos: Sequence[SaveTarget]) -> set[int]:
+        """Quais destes alvos já têm amostra gravada. Devolve `alvo.index`, não o nº do diagrama.
+
+        O índice do alvo é a posição na lista do editor, que é por onde `save_all` filtra; o
+        número do diagrama (`items[i].index`) é o que a janela conta e o que o CSV grava. Os
+        dois coincidem quase sempre, e não é seguro contar com isso -- a conversão fica aqui.
+
+        Vazio quando não há procedência de página -- imagem solta, recorte, item da fila: sem
+        ela não há como saber o que já foi salvo, e perguntar sem saber é pior que não perguntar.
+        """
+        origem = self.model.origin
+        if origem is None or origem.page_index is None or not origem.document:
+            return set()
+        salvos = set(self._saved_diagrams(origem.document, int(origem.page_index)))
+        if not salvos:
+            return set()
+        return {
+            alvo.index
+            for alvo in alvos
+            if 0 <= alvo.index < len(self.model.items) and self.model.items[alvo.index].index in salvos
+        }
+
     def save_all(self) -> None:
         if not self.model.items:
             # Pré-condição, e não falha: vai para o rodapé com severidade de aviso (S-164).
@@ -1190,6 +1224,35 @@ class ResultPanel(ttk.Frame):
         alvos = [self.model.save_target(idx) for idx in range(self.model.count)]
         validos = [alvo for alvo in alvos if alvo.kind is not SaveKind.NOTHING and is_valid_fen(alvo.fen)]
         invalidos = len(alvos) - len(validos)
+
+        # **A pergunta que faltava** (S-451). "Salvar todos" é o gesto que se repete -- varrer,
+        # corrigir, salvar, virar --, e voltar a uma página já feita era indistinguível de
+        # fazê-la pela primeira vez: gravava em silêncio a segunda cópia de cada diagrama.
+        # `append_training_sample` nomeia por timestamp e sempre acrescenta, então o preço é uma
+        # linha e um PNG duplicados por diagrama, num arquivo que este projeto existe para fazer
+        # crescer limpo. Uma pergunta para a página, pelo mesmo motivo da de ilegalidade abaixo.
+        repetidos = self._ja_salvos(validos)
+        ja_salvos = 0
+        if repetidos:
+            numeros = ", ".join(str(self.model.items[indice].index + 1) for indice in sorted(repetidos))
+            todos = len(repetidos) == len(validos)
+            if not messagebox.askyesno(
+                "Diagramas já salvos",
+                f"{len(repetidos)} de {len(validos)} diagramas desta página já têm amostra "
+                f"no dataset: {numeros}.\n\n"
+                "Salvar de novo grava uma segunda linha e uma segunda imagem do mesmo "
+                "diagrama -- o que vale a pena se você acabou de corrigir a leitura, e é "
+                "duplicata se não.\n\n"
+                + ("Salvar novamente?" if todos else 'Salvar novamente? Responder "não" salva apenas os outros.'),
+                default=messagebox.NO,
+            ):
+                ja_salvos = len(repetidos)
+                validos = [alvo for alvo in validos if alvo.index not in repetidos]
+                if not validos:
+                    self._on_status(
+                        f"Salvar todos: nada a gravar, os {ja_salvos} diagrama(s) desta página já estavam salvos."
+                    )
+                    return
 
         # Uma pergunta para a pagina inteira, e nao uma por diagrama. Uma pagina de capitulo
         # sobre estrutura tem os oito diagramas sem rei: perguntar oito vezes a mesma coisa
@@ -1241,6 +1304,8 @@ class ResultPanel(ttk.Frame):
         # travar a pessoa item por item, e terminar num clique obrigatório desfazia metade disso.
         # As quatro parcelas que a caixa mostrava entram na frase; nenhuma se perdeu.
         resumo = f"Salvar todos: {salvos} salvos, {invalidos} inválidos"
+        if ja_salvos:
+            resumo += f", {ja_salvos} já estavam salvos"
         if salvos_ilegais:
             resumo += f", {salvos_ilegais} ilegais confirmados"
         if pulados:

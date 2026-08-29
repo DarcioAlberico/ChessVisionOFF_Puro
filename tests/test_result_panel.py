@@ -324,7 +324,11 @@ class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.root = _raiz()
 
-    def _painel(self, *, resposta: bool) -> tuple[object, _ServicoFalso, _CaixasFalsas]:
+    def _painel(
+        self, *, resposta: bool, ja_salvos: tuple[int, ...] = ()
+    ) -> tuple[object, _ServicoFalso, _CaixasFalsas]:
+        """`ja_salvos` é o índice de "já tem amostra" da janela, em base 0 -- vazio por padrão,
+        que é o estado de quem nunca salvou nada desta página (S-451)."""
         servico = _ServicoFalso()
         caixas = _CaixasFalsas(resposta)
         # Contador no lugar do `lambda: None`: é a única forma de ver o aviso que a S-114
@@ -350,6 +354,7 @@ class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
             on_sample_saved=self.avisos_de_dataset.append,
             remote_fen=RemoteFenSettings,
             on_remote_consent=lambda _cfg: False,
+            saved_diagrams=lambda livro, pagina: ja_salvos if (livro, pagina) == (DOCUMENTO, PAGINA) else (),
             move_number_of=lambda _pagina, _diagrama: None,
             on_move_number=lambda *_args: None,
         )
@@ -362,10 +367,13 @@ class ConfirmacaoDePosicaoIlegalTests(unittest.TestCase):
         return painel, servico, caixas
 
     def _abrir(self, painel, placements: list[str]) -> None:  # noqa: ANN001
-        painel.show_ocr_results(
-            [RecognizedDiagram.from_label(np.zeros((8, 8, 3), dtype=np.uint8), p) for p in placements],
-            RecognitionOrigin.for_page(DOCUMENTO, PAGINA),
-        )
+        itens = [RecognizedDiagram.from_label(np.zeros((8, 8, 3), dtype=np.uint8), p) for p in placements]
+        # Numerados, como o `recognize_page` numera. `from_label` deixa todos em 0 porque os
+        # chamadores dela abrem um diagrama só; aqui é uma página, e `items[i].index` é o
+        # número que o CSV grava em `source_diagram` e com que o verde compara (S-451).
+        for numero, item in enumerate(itens):
+            item.index = numero
+        painel.show_ocr_results(itens, RecognitionOrigin.for_page(DOCUMENTO, PAGINA))
 
     def test_uma_posicao_legal_nao_pergunta_nada(self) -> None:
         painel, servico, caixas = self._painel(resposta=False)
@@ -519,6 +527,143 @@ class SalvarTodosAvisaTests(unittest.TestCase):
         painel.save_current()
 
         self.assertEqual(len(self.avisos_de_dataset), 1)
+
+
+class ProcedenciaAoVoltarParaAPaginaTests(unittest.TestCase):
+    """A página volta do cache, a procedência ficava para trás (S-451).
+
+    `restore_results_for_page` chama `DiagramEditorModel.adopt`, que é o único caminho que não
+    passa por `load` -- e ele escrevia `page_key` sem escrever `origin`. O editor voltava a
+    mostrar os diagramas da página certa carregando a origem da última página lida (ou nenhuma,
+    depois de uma passagem pela fila de revisão ou pela aba Dataset, que carregam sem origem).
+
+    O que quebrava é o que o usuário relatou: as imagens iam para o disco -- ele conferiu --, e
+    o diagrama não ficava verde. Não ficava porque a linha do `labels.csv` saía com o
+    `source_page` de outra página, e o verde é `saved_diagrams_by_page` lendo esse campo de
+    volta. Reabrir o livro também não pintava: o defeito estava no arquivo, não na tela.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    _painel = ConfirmacaoDePosicaoIlegalTests._painel
+    _abrir = ConfirmacaoDePosicaoIlegalTests._abrir
+
+    def _ler_duas_paginas_e_voltar(self, painel) -> None:  # noqa: ANN001
+        """Ler a 16, ler a 17, voltar para a 16 -- que é como a página entra pelo cache."""
+        painel.show_ocr_results(
+            [RecognizedDiagram.from_label(np.zeros((8, 8, 3), dtype=np.uint8), PLACEMENT)],
+            RecognitionOrigin.for_page(DOCUMENTO, PAGINA),
+        )
+        painel.show_ocr_results(
+            [RecognizedDiagram.from_label(np.zeros((8, 8, 3), dtype=np.uint8), PLACEMENT)],
+            RecognitionOrigin.for_page(DOCUMENTO, PAGINA + 1),
+        )
+        painel.restore_results_for_page(PAGINA)
+        self.assertEqual(painel.model.page_key, (DOCUMENTO, PAGINA), "a página voltou do cache")
+
+    def test_salvar_todos_grava_a_pagina_que_esta_no_editor(self) -> None:
+        painel, servico, _caixas = self._painel(resposta=True)
+        self._ler_duas_paginas_e_voltar(painel)
+
+        painel.save_all()
+
+        self.assertEqual([chamada["origin"].page_index for chamada in servico.chamadas], [PAGINA])
+
+    def test_e_o_diagrama_salvo_e_anunciado_na_pagina_certa(self) -> None:
+        """O outro lado do mesmo defeito: é esta lista que pinta a caixa de verde (S-116)."""
+        painel, _servico, _caixas = self._painel(resposta=True)
+        self._ler_duas_paginas_e_voltar(painel)
+
+        painel.save_all()
+
+        self.assertEqual(len(self.avisos_de_dataset), 1)
+        gravadas = list(self.avisos_de_dataset[0])
+        self.assertEqual([(s.source_pdf, s.page_index) for s in gravadas], [(DOCUMENTO, PAGINA)])
+
+    def test_o_mesmo_vale_para_o_ctrl_s(self) -> None:
+        """`save_current` lê a mesma `origin`: o defeito nunca foi do botão."""
+        painel, servico, _caixas = self._painel(resposta=True)
+        self._ler_duas_paginas_e_voltar(painel)
+
+        painel.save_current()
+
+        self.assertEqual([chamada["origin"].page_index for chamada in servico.chamadas], [PAGINA])
+
+
+class PerguntaDeDiagramaJaSalvoTests(unittest.TestCase):
+    """Voltar a uma página já feita e clicar "Salvar todos" duplicava tudo em silêncio (S-451).
+
+    `append_training_sample` nomeia por timestamp e sempre acrescenta, então nada no caminho de
+    gravação recusa a segunda cópia -- e ela é legítima quando a pessoa acabou de corrigir a
+    leitura. Quem sabe de qual dos dois casos se trata é quem está com o livro aberto, e a única
+    coisa que faltava era perguntar. Mesma forma da pergunta de ilegalidade: uma para a página.
+    """
+
+    root: tk.Tk
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = _raiz()
+
+    _painel = ConfirmacaoDePosicaoIlegalTests._painel
+    _abrir = ConfirmacaoDePosicaoIlegalTests._abrir
+
+    def test_pagina_intocada_nao_pergunta_nada(self) -> None:
+        """A guarda: o gesto normal não pode ganhar uma caixa a mais."""
+        painel, servico, caixas = self._painel(resposta=False)
+        self._abrir(painel, [PLACEMENT, PLACEMENT])
+
+        painel.save_all()
+
+        self.assertEqual(caixas.perguntas, [])
+        self.assertEqual(len(servico.chamadas), 2)
+
+    def test_pergunta_uma_vez_so_e_diz_quais(self) -> None:
+        painel, servico, caixas = self._painel(resposta=True, ja_salvos=(0, 2))
+        self._abrir(painel, [PLACEMENT] * 3)
+
+        painel.save_all()
+
+        self.assertEqual(len(caixas.perguntas), 1)
+        self.assertIn("2 de 3", caixas.perguntas[0])
+        self.assertIn("1, 3", caixas.perguntas[0], "os números do seletor, em base 1")
+        self.assertEqual(len(servico.chamadas), 3, 'o "sim" regrava tudo')
+
+    def test_nao_salva_apenas_o_que_faltava(self) -> None:
+        painel, servico, caixas = self._painel(resposta=False, ja_salvos=(0, 2))
+        self._abrir(painel, [PLACEMENT] * 3)
+
+        painel.save_all()
+
+        self.assertEqual(len(caixas.perguntas), 1)
+        self.assertEqual(len(servico.chamadas), 1, "só o diagrama 2, que ainda não tinha amostra")
+        self.assertEqual(len(self.avisos_de_dataset), 1)
+
+    def test_pagina_inteira_ja_salva_e_um_nao_nao_grava_nada(self) -> None:
+        painel, servico, _caixas = self._painel(resposta=False, ja_salvos=(0, 1))
+        self._abrir(painel, [PLACEMENT, PLACEMENT])
+
+        painel.save_all()
+
+        self.assertEqual(servico.chamadas, [])
+        self.assertEqual(self.avisos_de_dataset, [], "avisar de nada manda a aba Dataset reler à toa")
+
+    def test_sem_procedencia_de_pagina_nao_ha_o_que_perguntar(self) -> None:
+        """Item da fila e recorte de área não têm página: a resposta honesta é não perguntar."""
+        painel, servico, caixas = self._painel(resposta=False, ja_salvos=(0,))
+        painel.model.load(
+            [_diagrama()], [PLACEMENT], ["w"], binding=EditorBinding.REVIEW, review_position=3
+        )
+        painel._after_load()
+
+        painel.save_all()
+
+        self.assertEqual(caixas.perguntas, [])
+        self.assertEqual(len(servico.chamadas), 1)
 
 
 if __name__ == "__main__":

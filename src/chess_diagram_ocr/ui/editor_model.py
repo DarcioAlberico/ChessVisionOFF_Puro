@@ -174,6 +174,7 @@ class DiagramEditorModel:
         sides: list[str],
         *,
         page_key: tuple[str, int],
+        origin: RecognitionOrigin | None = None,
         selected: int = 0,
     ) -> None:
         """Restaura um resultado de página vindo do cache, **por referência**.
@@ -181,12 +182,21 @@ class DiagramEditorModel:
         Correção feita durante a edição anterior já está nas listas guardadas; copiá-las
         aqui desfaria a edição. É o único caminho que não passa por `load`, e é por isso
         que ele tem nome próprio em vez de um parâmetro a mais.
+
+        **A procedência entra junto com as listas (S-451).** Ela não entrava, e o campo ficava
+        com o da *última página lida* -- ou `None`, depois de uma passagem pela fila de revisão
+        ou pela aba Dataset, que carregam sem origem. `page_key` dizia a página certa e `origin`
+        dizia outra, e quem grava amostra lê `origin`: voltar a uma página guardada e salvar
+        escrevia no `labels.csv` o `source_page` da página errada, ou nenhum. O diagrama nunca
+        ficava verde, porque o verde é esse mesmo `source_page` lido de volta -- e reabrir o
+        livro não consertava, porque o defeito estava na linha gravada e não na tela.
         """
         self.items = items
         self.fen_edits = fens
         self.side_edits = sides
         self.binding = EditorBinding.PAGE
         self.page_key = page_key
+        self.origin = origin
         self.review_position = None
         self.editing_sample = None
         self.net_corrected.clear()

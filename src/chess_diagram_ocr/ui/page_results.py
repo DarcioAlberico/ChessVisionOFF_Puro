@@ -31,7 +31,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - só para os tipos
-    from chess_diagram_ocr.service import RecognizedDiagram
+    from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,14 @@ class PageResults:
     fen_edits: list[str] = field(default_factory=list)
     side_edits: list[str] = field(default_factory=list)
     selected_index: int = 0
+
+    origin: RecognitionOrigin | None = None
+    """De onde vieram estes itens (S-451). Restaurar a página **é** restaurar a procedência
+    dela: sem este campo o editor voltava com os diagramas da página 40 e com a origem da
+    última página que tinha sido lida, e a amostra gravada depois declarava a página errada.
+
+    Não é redundante com `page_index`. A chave do cache guarda o **caminho** do documento, e o
+    que a amostra grava é o **nome** do arquivo -- ver `RecognitionOrigin.sample_fields`."""
 
     def __post_init__(self) -> None:
         if not (len(self.items) == len(self.fen_edits) == len(self.side_edits)):

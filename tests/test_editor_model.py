@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from chess_diagram_ocr.service import RecognizedDiagram
+from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind
 
 PLACEMENT = "4k3/8/8/8/8/8/8/4K3"
@@ -214,6 +214,35 @@ class AdoptTests(unittest.TestCase):
         self.assertIs(model.fen_edits, fens)
         self.assertIs(model.side_edits, sides)
         self.assertIs(model.binding, EditorBinding.PAGE)
+
+    def test_restaurar_do_cache_traz_a_procedencia_junto(self) -> None:
+        """S-451: `page_key` voltava para a página certa e `origin` ficava na anterior.
+
+        Quem grava amostra lê `origin`, e não `page_key`: voltar a uma página guardada e salvar
+        escrevia no `labels.csv` o `source_page` da última página que tinha sido lida. O diagrama
+        nunca ficava verde, porque o verde é esse mesmo campo lido de volta -- e reabrir o livro
+        não consertava, porque o defeito estava na linha gravada.
+        """
+        model = DiagramEditorModel()
+        for pagina in (80, 81):
+            model.load(
+                [_diagrama()],
+                binding=EditorBinding.PAGE,
+                page_key=("livro.pdf", pagina),
+                origin=RecognitionOrigin.for_page("livro.pdf", pagina),
+            )
+
+        model.adopt(
+            [_diagrama()],
+            [PLACEMENT],
+            ["w"],
+            page_key=("livro.pdf", 80),
+            origin=RecognitionOrigin.for_page("livro.pdf", 80),
+        )
+
+        self.assertEqual(model.page_key, ("livro.pdf", 80))
+        self.assertIsNotNone(model.origin)
+        self.assertEqual(model.origin.page_index, 80, "a origem tem de seguir a página restaurada")
 
     def test_trocar_de_pdf_solta_a_pagina_sem_apagar_o_editor(self) -> None:
         model = DiagramEditorModel()

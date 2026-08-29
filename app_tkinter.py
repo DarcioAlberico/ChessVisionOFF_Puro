@@ -132,6 +132,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     frase_de_caixas_devolvidas,
     mark_confirmed,
     mark_saved,
+    saved_on_page,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams
 from chess_diagram_ocr.ui.pdf_panel import PdfPanel, open_in_system_reader
@@ -390,6 +391,9 @@ class ChessOcrTkApp:
             local_reader=lambda: self.settings.local_reader,
             on_remote_consent=self._ask_remote_consent,
             on_selection_changed=self._on_result_selection,
+            saved_diagrams=lambda livro, pagina: saved_on_page(
+                self.saved_diagrams, livro, pagina, source_pdf=self._pdf_name()
+            ),
             move_number_of=self._move_number_of,
             on_move_number=self._set_move_number,
         )
