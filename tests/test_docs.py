@@ -1015,7 +1015,19 @@ class NumerosVivosTests(unittest.TestCase):
         self.assertEqual(len(comandos), citado)
 
     def test_o_bundle_citado_bate_com_o_que_o_build_gravou(self) -> None:
-        """O README publicava 5.247 arquivos de um build que tinha 4.723 (S-135)."""
+        """O README publicava 5.247 arquivos de um build que tinha 4.723 (S-135).
+
+        **A mensagem diz de que ambiente saiu o número, e isso não é enfeite (S-438).** Ela era
+        um `AssertionError: (570, 4039) != (684, 4275)` seco, e quem rodava o comando que o
+        próprio README manda rodar (`packaging/build_windows.py`) recebia esse par sem saber que
+        a diferença inteira eram os extras `onnx` e `ocr`: o PyInstaller coleta o que está
+        *instalado*, então o mesmo commit mede diferente em duas venvs. O campo `extras` do
+        `bundle.json` existe para essa pergunta ter resposta, e o build avisa na hora, com a
+        frase do conserto.
+
+        O `bundle.json` gravado antes da S-438 não tem o campo, e a mensagem diz isso em vez de
+        fingir que sabe -- a guarda não foi afrouxada, só a explicação da falha.
+        """
         import json
 
         metricas_json = DOCS / "metrics" / "bundle.json"
@@ -1025,7 +1037,15 @@ class NumerosVivosTests(unittest.TestCase):
 
         citado_mb = int(_citado(self.readme, r"\*\*([\d.]+) MB, [\d.]+ arquivos\*\*"))
         citado_arquivos = int(_citado(self.readme, r"\*\*[\d.]+ MB, ([\d.]+) arquivos\*\*"))
-        self.assertEqual((metricas["mb"], metricas["arquivos"]), (citado_mb, citado_arquivos))
+        extras = metricas.get("extras")
+        self.assertEqual(
+            (metricas["mb"], metricas["arquivos"]),
+            (citado_mb, citado_arquivos),
+            "O README cita um build e o `bundle.json` guarda outro. O gravado é de "
+            f"{metricas.get('data', 'data desconhecida')}, commit {metricas.get('commit', '?')}, "
+            f"extras {extras if extras is not None else 'não registrados (build anterior à S-438)'}. "
+            "Se o número mudou por causa dos extras, diga isso na frase do README junto do número.",
+        )
 
     def test_o_bundle_obsoleto_se_diz_obsoleto(self) -> None:
         """Um número certo sobre um build que já não existe engana igual a um número errado."""

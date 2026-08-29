@@ -2,6 +2,9 @@
 
 Projeto para extrair diagramas de xadrez em PDF, converter para FEN e melhorar a acuracia com treino incremental.
 
+> **Primeira vez aqui? [QUICKSTART.md](QUICKSTART.md)** -- instalar, abrir e ler uma pagina,
+> em cinco minutos. Este README responde *por que* cada decisao, e e por isso que ele e longo.
+
 ## Stack
 
 - OpenCV: deteccao de tabuleiro e recorte por perspectiva.

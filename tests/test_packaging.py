@@ -613,6 +613,98 @@ class TamanhoDaJanelaTests(unittest.TestCase):
         self.assertIn(f"abaixo de {self.ALVO_ORIGINAL} linhas", spec)
 
 
+class MetricasDoBundleTests(unittest.TestCase):
+    """O numero do bundle e funcao da venv, e o `bundle.json` passou a dizer de qual (S-438).
+
+    **O laco nao fechava.** `packaging/build_windows.py` sobrescreve `docs/metrics/bundle.json`,
+    e `tests/test_docs.py` compara esse arquivo com o numero que o README publica -- entao rodar
+    o comando que o README manda rodar deixava a arvore suja e a suite vermelha, com um
+    `AssertionError: (570, 4039) != (684, 4275)` que nao dizia o que fazer.
+
+    E o par nem era comparavel: o PyInstaller coleta o que esta **instalado**, e os 114 MB de
+    diferenca entre aqueles dois builds do mesmo commit eram os extras `onnx` e `ocr` presentes
+    numa venv e ausentes na outra.
+    """
+
+    @staticmethod
+    def _modulo():
+        if str(PROJETO / "packaging") not in sys.path:
+            sys.path.insert(0, str(PROJETO / "packaging"))
+        import build_windows
+
+        return build_windows
+
+    def test_os_extras_declarados_saem_com_os_pacotes_de_cada_um(self) -> None:
+        b = self._modulo()
+        extras = b._extras_declarados()
+        self.assertIn("onnx", extras, "o leitor de vinte linhas perdeu a secao de extras")
+        self.assertIn("onnxruntime", extras["onnx"])
+        self.assertIn("pyinstaller", extras["packaging"])
+        self.assertEqual([], [e for e, pedidos in extras.items() if not pedidos], "extra vazio")
+
+    def test_extras_instalados_e_subconjunto_dos_declarados(self) -> None:
+        b = self._modulo()
+        declarados = set(b._extras_declarados())
+        instalados = set(b.extras_instalados())
+        self.assertLessEqual(instalados, declarados)
+        self.assertIn("dev", instalados, "a suite roda com o extra `dev`, por definicao")
+
+    def test_o_build_avisa_quando_acabou_de_envelhecer_o_readme(self) -> None:
+        b = self._modulo()
+        with self.assertLogs(b.logger, level="WARNING") as registro:
+            b.conferir_o_readme(1, 1, ["dev", "packaging"])
+        mensagem = chr(10).join(registro.output)
+        self.assertIn("README.md", mensagem, "o aviso tem de nomear o arquivo a corrigir")
+        self.assertIn("dev, packaging", mensagem, "e dizer de que ambiente saiu o numero")
+
+    def test_quando_o_numero_bate_o_build_nao_avisa_nada(self) -> None:
+        """Aviso que aparece sempre e ruido, e ruido nao se le."""
+        import re as _re
+
+        b = self._modulo()
+        texto = (PROJETO / "README.md").read_text(encoding="utf-8")
+        achado = _re.search(r"\*\*([\d.]+) MB, ([\d.]+) arquivos\*\*", texto)
+        assert achado is not None, "o README perdeu a frase do tamanho do bundle"
+        mb = int(achado.group(1).replace(".", ""))
+        arquivos = int(achado.group(2).replace(".", ""))
+
+        with patch.object(b.logger, "warning") as aviso:
+            b.conferir_o_readme(mb, arquivos, ["dev"])
+        aviso.assert_not_called()
+
+    def test_o_campo_extras_entra_no_bundle_json_que_o_build_grava(self) -> None:
+        """O arquivo gravado, e nao o texto do modulo.
+
+        `commit` diz de que codigo o bundle saiu, `extras` diz de que ambiente, e sao os dois
+        juntos que tornam dois numeros comparaveis. O teste mede o JSON: uma guarda que so
+        procura a linha no fonte continua verde se a linha mudar de lugar e parar de rodar.
+
+        `PROJETO` e `SAIDA` vao para uma pasta temporaria -- com copia do `pyproject.toml`,
+        de que o leitor de extras depende --, porque o alvo real e `docs/metrics/bundle.json`,
+        que o repositorio versiona: um teste nao pode sobrescrever o numero publicado.
+        """
+        import json
+        import shutil
+
+        b = self._modulo()
+        with tempfile.TemporaryDirectory() as tmp:
+            falso = Path(tmp)
+            shutil.copy(PROJETO / "pyproject.toml", falso / "pyproject.toml")
+            saida = falso / "dist" / "ChessVisionOFF"
+            saida.mkdir(parents=True)
+            (saida / "a.bin").write_bytes(b"x" * 16)
+            (saida / "b.bin").write_bytes(b"y" * 16)
+
+            with patch.object(b, "PROJETO", falso), patch.object(b, "SAIDA", saida):
+                b.gravar_metricas()
+                gravado = json.loads((falso / "docs" / "metrics" / "bundle.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(2, gravado["arquivos"])
+        self.assertIn("extras", gravado, "o build parou de registrar de que ambiente saiu o numero")
+        self.assertIn("dev", gravado["extras"], "a suite roda com o extra `dev`, por definicao")
+        self.assertIn("commit", gravado)
+
+
 class SpecTests(unittest.TestCase):
     """A spec é código que ninguém importa; sem teste, ela apodrece em silêncio."""
 

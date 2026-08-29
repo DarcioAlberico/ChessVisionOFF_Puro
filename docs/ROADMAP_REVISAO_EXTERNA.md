@@ -227,3 +227,64 @@ O relatório e o patch ficam em `Perego/`, fora do git. O que este roadmap não 
 - `Perego/melhorias-revisao.patch` — os quatro commits com o texto original de cada docstring.
   Vale como referência de redação ao escrever os itens: a S-438, em especial, tem 104 linhas
   prontas em `packaging/build_windows.py` que só precisam de revisão, não de reescrita.
+
+---
+
+# O que a implementação mediu
+
+As três fases foram implementadas em 2026-08-29, sobre o HEAD `45fb5b7`. O que segue são os
+números da execução, e não a previsão dela.
+
+## A guarda nasceu vermelha, como a ordem exigia
+
+```
+$ uv run pytest tests/test_image_io.py -q
+FAILED LeiDoProjetoTests::test_ninguem_no_repositorio_chama_imread_nem_imwrite
+AssertionError: [] != ['src/chess_diagram_ocr/text/coleta.py:241: cv2.imwrite', ...]
+Second list contains 22 additional elements.
+1 failed, 13 passed
+```
+
+Vinte e duas, o número que a spec previa, e a primeira da lista é a da coleta. Depois das
+conversões:
+
+```
+14 passed, 4 subtests passed
+```
+
+Os outros dois testes da classe -- alcance e fronteira -- passaram desde o primeiro minuto, que é
+o esperado: eles guardam a varredura, não o código varrido.
+
+## O placar das três verificações
+
+```
+$ uv run ruff check .      All checks passed!
+$ uv run mypy              Success: no issues found in 216 source files
+$ uv run pytest -q         4.870 passaram, 2 pulados, 3.652 subtests    169 s
+```
+
+**4.859 → 4.870**, onze testes novos: três da S-431, três da guarda da S-432 e cinco da S-438.
+
+## O que mudou de forma no caminho
+
+- **O `uv lock` foi re-resolvido aqui**, e não aceito do patch: 122 pacotes antes e depois,
+  **nenhuma versão de terceiro se moveu**. As 871 linhas novas são entradas de wheel dos
+  interpretadores que a faixa passou a aceitar.
+- **O teste do `bundle.json` mede o arquivo gravado, e não o texto do módulo.** A primeira versão
+  procurava a linha `"extras": extras,` no fonte de `build_windows.py` -- guarda que continua
+  verde se a linha mudar de lugar e parar de rodar. A versão que ficou chama `gravar_metricas`
+  com `PROJETO` e `SAIDA` numa pasta temporária e lê o JSON. O `docs/metrics/bundle.json`
+  versionado não é tocado: nenhum build foi rodado, e o número publicado continua o de
+  2026-08-18.
+- **O `.bat` do motor foi reescrito à mão**, porque o hunk do patch não aplicava -- a única
+  colisão dos 27 arquivos, e a causa era nossa.
+
+## O que continua em aberto, e é de propósito
+
+- **O `.python-version` fica em 3.10.** A faixa aceita até 3.13 e a CI prova as duas pontas, mas
+  promover o 3.13 a padrão do bundle depende de abrir a janela numa máquina de verdade -- o Tk
+  do interpretador que o `uv` entrega para 3.13 já veio incompleto uma vez.
+- **A matriz da CI ainda não rodou.** Ela é YAML válido e a estrutura foi conferida, mas quem a
+  prova é o GitHub. A perna do 3.13 é a primeira coisa a olhar no próximo push.
+- **A S-440 não tem código, e nunca vai ter.** É o registro de uma recomendação medida e
+  recusada.
