@@ -56,6 +56,7 @@
   "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
   "desenho": "negrito e `bool | None` e nao `bool`: None e 'nao se sabe', e e diferente de False. Um livro cuja camada nao registra peso nao pode declarar que nada ali e negrito. Quem separa os dois e o DOCUMENTO, amostrado em 6 paginas, e nao a pagina.",
   "limitacao_declarada": "a unidade e a LINHA, porque a PaginaLida nao tem uma menor. Uma linha meio em negrito e decidida pela maioria da largura (60%). Onde o negrito e a linha inteira -- titulo, variante principal -- e exato; onde e um lance no meio da prosa, e grosso.",
+  "limitacao_superada_em": "docs/metrics/texto_estilo_fino.json (S-429, 2026-08-28). A limitacao acima vale para o CAMPO DE LINHA, que nao mudou; a unidade do desenho passou a ser o caractere, e o numero que a motivou esta la: 44,2% das linhas com negrito misturam peso dentro de si.",
   "verificado_de_ponta_a_ponta": {
     "Dvoretsky p118": "7 linhas em negrito, e sao os lances da variante principal",
     "Minhas 60 partidas p84": "1 linha, 'Empatada'",

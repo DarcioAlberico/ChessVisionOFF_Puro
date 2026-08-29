@@ -29,6 +29,37 @@ corpo da fonte do que do peso. A régua deste projeto para aplicar em lote é 99
 > caso comum: título, lance principal. Normalizar pela linha só faria sentido se o negrito fosse
 > sempre parcial dentro dela.
 
+### E a normalização que faltava foi tentada, em 2026-08-29
+
+O erro acima diz o que **não** fazer e deixa a pergunta aberta: e normalizar pela **página**? Ela é
+majoritariamente em peso normal, então a mediana dela é o peso normal -- é o análogo que não morre
+quando a linha inteira é negrito. Remedido com 21x a amostra da primeira vez (**20.156 palavras de
+14 livros**, contra 940 de 3), com a população em **palavra** e o corte aprendido **fora do livro**
+em que é testado:
+
+    medida                              acerto      F1   precisão   cobertura
+    chutar "normal" sempre              0,9227       —          —           —
+    espessura (área / meio-perímetro)   0,9594   0,654      0,661       0,647
+    espessura / mediana da página       0,9379   0,671      0,629       0,720
+    2 x p75 da transf. de distância     0,9534   0,620    **0,839**     0,491
+    densidade / mediana da página       0,9187   0,426      0,430       0,422
+
+**O sinal existe** -- 0,9594 contra 0,9227 --, e não é o tamanho disfarçado: chutar só pela altura
+da palavra acerta 0,8889, **abaixo** do acaso, e a altura mediana é 25 px em negrito contra 23 px
+em pé. A espessura mede peso mesmo.
+
+**E mesmo assim não passa.** A melhor precisão utilizável é **0,839**: uma em cada seis palavras
+marcadas sairia errada, e negrito errado numa variante muda o que a página diz. Pior, **apertar o
+corte não compra precisão** -- ela cai de 0,657 para 0,381 conforme o corte sobe, porque a cauda
+grossa é de palavra em pé (mancha de digitalização, glifo grande, tinta empastada). Não há canto
+seguro nem para uma parte do texto. A régua para aplicar em lote é 0,9929 (S-213).
+
+E a medição foi feita no **render de PDF nascido digital**, que é o único jeito de ter rótulo -- o
+scan, que é a população-alvo, é mais difícil. Um "não" aqui vale com folga para ele.
+
+Fica em `docs/metrics/texto_negrito_imagem.json`. Para a folha sem camada o caminho continua sendo
+o pincel manual da S-241, e `negrito` continua `None` -- que é a resposta honesta.
+
 ## A cobertura é irregular, e o desconhecido é dito
 
 Dos 42 livros do acervo: **13 têm negrito na camada**, 16 têm camada sem nenhum negrito, e 10 não
@@ -36,11 +67,21 @@ têm camada. Por isso `negrito` é `bool | None` e não `bool`: `None` é **"nã
 diferente de `False`. Um livro cuja camada não registra peso nenhum não pode declarar que nada ali
 é negrito -- ele não sabe.
 
-## A unidade é a linha, e isso é uma limitação declarada
+## A unidade era a linha, e deixou de ser (2026-08-28)
 
-A `PaginaLida` não tem unidade menor que a `LinhaLida`, então uma linha meio em negrito é decidida
-pela **maioria** da largura dela. Onde o negrito é um lance no meio da prosa, o resultado é
-grosso; onde ele é a linha inteira -- título, variante principal --, é exato.
+A `PaginaLida` não tinha unidade menor que a `LinhaLida`, então uma linha meio em negrito era
+decidida pela **maioria** da largura dela: onde o negrito é a linha inteira -- título, variante
+principal -- o resultado é exato, e onde ele é um lance no meio da prosa era grosso.
+
+**Medido, o "grosso" era quase metade.** Em 8 folhas de cada um dos 45 PDFs do acervo, das 969
+linhas com peso na camada **428 (44,2%) misturam peso dentro de si**: 281 somem (cobrem menos de
+60% e a linha sai normal) e 147 incham (a linha toda sai em negrito por causa da maioria). A S-429
+desceu a régua ao caractere -- `linhas_de_negrito` mais `camada.trechos` --, e a `LinhaLida` passou
+a carregar os intervalos em `negrito_em`.
+
+O campo de linha **continua o que era**, com a mesma maioria de 60%: quem o lê -- `BlocoDeTexto`,
+`paragrafos.cortar`, `documento.estado_do_negrito` -- não mudou uma linha, e onde não há intervalo
+é ele que desenha. Ver "A régua desceu ao caractere" em `text/camada.py`.
 
 ## O peso também corta parágrafo (2026-08-25)
 
@@ -111,6 +152,15 @@ def spans_de_negrito(page: object) -> list[Retangulo]:
     return camada.spans_com(page, _span_e_negrito)
 
 
+def linhas_de_negrito(page: object) -> list[camada.LinhaDeCamada]:
+    """As linhas da camada com o peso marcado **caractere a caractere** (S-429).
+
+    O irmão fino de `spans_de_negrito`: aquele serve à régua de maioria da linha, este serve aos
+    intervalos que a `LinhaLida` carrega em `negrito_em`. Ver "A régua desceu ao caractere" em
+    `text/camada.py`, com o número que a mediu."""
+    return camada.linhas_com(page, _span_e_negrito)
+
+
 def documento_registra_negrito(doc: object, *, amostra: int = PAGINAS_DE_AMOSTRA) -> bool:
     """Este documento registra peso de fonte em algum lugar? Ver `text/camada.py`."""
     return camada.documento_registra(doc, _span_e_negrito, amostra=amostra, marca="negrito")
@@ -130,6 +180,7 @@ __all__ = [
     "PAGINAS_DE_AMOSTRA",
     "cobertura",
     "documento_registra_negrito",
+    "linhas_de_negrito",
     "marcar",
     "spans_de_negrito",
 ]

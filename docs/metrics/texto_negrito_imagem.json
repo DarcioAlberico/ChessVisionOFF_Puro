@@ -1,0 +1,80 @@
+{
+  "item": "S-211 · a via da imagem para o negrito, remedida (a pergunta que ficou aberta)",
+  "medido_em": "2026-08-29",
+  "pergunta": "Da para tirar negrito da IMAGEM, para a folha de scan que nao tem camada de texto?",
+  "resposta": "Nao. O sinal existe e passa do acaso, mas a melhor precisao utilizavel e 0,839 -- e a regua deste projeto para aplicar em lote e 0,9929 (S-213).",
+  "por_que_remedir": "A S-211 mediu e recusou a via da imagem em 940 palavras de 3 livros, e deixou escrito um erro de metodo: normalizar a espessura pela MEDIANA DA LINHA apaga o sinal quando a linha inteira e negrito. O que ela nao tentou foi normalizar pela PAGINA, que e o analogo que nao morre -- a folha e majoritariamente em peso normal. Esta medicao fecha essa pergunta com 21x mais amostra.",
+  "protocolo": {
+    "populacao": "PALAVRA, e nao linha: as caixas de caractere do `get_text(\"rawdict\")` agrupadas por espaco em branco",
+    "rotulo": "o nome da fonte do span da camada (`negrito._span_e_negrito`) -- metadado, e nao julgamento humano",
+    "imagem": "a folha renderizada a 220 dpi e binarizada por `text/binarizacao.binarize`, que e o caminho de producao",
+    "amostra": "6 folhas de cada livro do acervo que declara peso na camada",
+    "validacao": "corte aprendido FORA do livro em que e testado (leave-one-book-out), porque um corte ajustado no mesmo livro mede a fonte daquele livro e nao o negrito",
+    "palavras": 20156,
+    "negrito": 1559,
+    "livros": 14,
+    "comparacao_com_a_S211": "940 palavras, 3 livros, sem validacao por livro"
+  },
+  "acaso": {
+    "chutar_normal_sempre": 0.9227,
+    "fracao_em_negrito": 0.0773
+  },
+  "o_confundidor_que_foi_conferido": {
+    "pergunta": "a espessura crua acerta porque mede peso, ou porque mede TAMANHO? Titulo e grande e costuma ser negrito.",
+    "altura_mediana_em_negrito_px": 25.0,
+    "altura_mediana_em_pe_px": 23.0,
+    "chutar_so_pela_altura": 0.8889,
+    "veredito": "nao e o tamanho. So a altura acerta 0,8889, ABAIXO do acaso (0,9227), e as duas medianas praticamente empatam. O que a espessura mede e peso."
+  },
+  "medidas": {
+    "leitura": "acerto com corte de melhor acerto; F1/precisao/cobertura com corte de melhor F1. Todos fora do livro.",
+    "espessura": {
+      "definicao": "area de tinta / (perimetro / 2) do recorte da palavra -- exato para uma fita, e nao precisa de esqueleto",
+      "acerto": 0.9594, "f1": 0.6535, "precisao": 0.6606, "cobertura": 0.6466
+    },
+    "espessura_pag": {
+      "definicao": "a espessura acima dividida pela MEDIANA DA PAGINA -- a normalizacao que a S-211 nao tentou",
+      "acerto": 0.9379, "f1": 0.6711, "precisao": 0.6286, "cobertura": 0.7197
+    },
+    "espessura_casada": {
+      "definicao": "dividida pela mediana das palavras de altura parecida (+-20%) na mesma folha",
+      "acerto": 0.9183, "f1": 0.622, "precisao": 0.5376, "cobertura": 0.7377
+    },
+    "espessura_dt": {
+      "definicao": "2x o percentil 75 da transformada de distancia sobre a tinta -- imune a serifa e contra-forma, que inflam o perimetro",
+      "acerto": 0.9534, "f1": 0.6197, "precisao": 0.839, "cobertura": 0.4913
+    },
+    "espessura_dt_pag": { "acerto": 0.9238, "f1": 0.4517, "precisao": 0.3586, "cobertura": 0.61 },
+    "espessura_dt_casada": { "acerto": 0.8982, "f1": 0.4748, "precisao": 0.3961, "cobertura": 0.5927 },
+    "relativa": {
+      "definicao": "espessura / altura de tinta da palavra",
+      "acerto": 0.8892, "f1": 0.3301, "precisao": 0.2498, "cobertura": 0.4869
+    },
+    "relativa_dt": { "acerto": 0.9028, "f1": 0.303, "precisao": 0.2177, "cobertura": 0.4984 },
+    "relativa_dt_pag": { "acerto": 0.9034, "f1": 0.1565, "precisao": 0.0997, "cobertura": 0.3631 },
+    "densidade_pag": {
+      "definicao": "fracao de tinta do recorte, dividida pela mediana da pagina",
+      "acerto": 0.9187, "f1": 0.426, "precisao": 0.4301, "cobertura": 0.4221
+    }
+  },
+  "o_que_decide": {
+    "melhor_precisao_utilizavel": 0.839,
+    "com_cobertura": 0.4913,
+    "medida": "espessura_dt",
+    "regua_do_projeto": 0.9929,
+    "leitura": "uma em cada seis palavras marcadas sairia errada, e o negrito errado numa variante de xadrez muda o que a pagina diz.",
+    "nao_ha_canto_de_alta_precisao": {
+      "curva": [
+        {"quantil": 0.90, "cobertura": 0.804, "precisao": 0.622},
+        {"quantil": 0.95, "cobertura": 0.425, "precisao": 0.657},
+        {"quantil": 0.975, "cobertura": 0.183, "precisao": 0.558},
+        {"quantil": 0.99, "cobertura": 0.069, "precisao": 0.535},
+        {"quantil": 0.999, "cobertura": 0.005, "precisao": 0.381}
+      ],
+      "leitura": "apertar o corte NAO compra precisao -- ela cai de 0,657 para 0,381. A cauda grossa e de palavra em pe: mancha de digitalizacao, glifo grande, tinta empastada. Nao ha regiao segura para aplicar automaticamente nem a uma parte do texto."
+    }
+  },
+  "limitacao_da_medicao": "a imagem aqui e o RENDER de um PDF nascido digital, e nao um scan -- e o unico jeito de ter rotulo, porque o rotulo vem da camada. O scan e MAIS dificil (ruido, empastamento, limiar), entao um 'nao' aqui vale com folga para ele. O contrario nao valeria.",
+  "o_que_fica": "o negrito continua vindo so da camada de texto (`text/negrito.py`), e a folha sem camada continua com `negrito=None` -- 'nao se sabe', que e a resposta honesta. Para essas folhas o caminho e o pincel manual da S-241, e nao um palpite pintado na cara de quem le.",
+  "reproduzir": "o script de coleta e de avaliacao nao ficou versionado: ele so le PDF/ e docs/metrics/, e roda em dois passos (coleta ~4 min, avaliacao ~20 s). O protocolo acima e o que precisa ser reproduzido, e nao o script."
+}

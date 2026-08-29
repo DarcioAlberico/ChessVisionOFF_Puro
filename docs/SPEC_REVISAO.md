@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-428 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2960,3 +2960,151 @@ essa distinção.
 lugar, ela mede.
 
 **Testes.** `test_os_tamanhos_de_artefato_citados_batem_com_o_disco`.
+## S-429 · A régua de estilo desce da linha ao caractere
+
+**Problema.** `text/camada.py` responde negrito e itálico **por linha**, pela maioria da largura
+que os spans do estilo cobrem (60%). A limitação está declarada desde a S-211 -- *"onde ele é uma
+palavra no meio da prosa, é grosso"* --, e o que faltava era o tamanho dela. Medido em 2026-08-28
+sobre 8 folhas de cada um dos 45 PDFs de `PDF/` (18.207 linhas de camada):
+
+| estilo | linhas com ele | misturam dentro de si | somem (< 60%) | incham (>= 60%) |
+|---|---|---|---|---|
+| negrito | 969 | **428 (44,2%)** | 281 (29,0%) | 147 (15,2%) |
+| itálico | 407 | **279 (68,6%)** | 241 (59,2%) | 38 (9,3%) |
+
+Não é o caso raro que a limitação sugeria: é o caso comum. A régua erra nos **dois** sentidos --
+o lance em negrito no meio da prosa some, e a linha que é quase toda negrito engole as palavras em
+pé do fim. E a informação para acertar sempre esteve na mão: o span da camada traz o texto **e** o
+bbox, e a linha é a costura deles.
+
+**Solução.** `camada.linhas_com` devolve a linha da camada com um bool **por caractere**, e
+`camada.trechos` a casa com o que o leitor leu -- geometria para escolher a linha, `difflib` para
+alinhar o texto. `LinhaLida` ganha `negrito_em` e `italico_em`, e `rico._agrupar` passa a cortar o
+parágrafo onde a tipografia muda dentro da linha, e não só entre linhas.
+
+Três decisões que a implementação fixou:
+
+- **a palavra é a unidade final, e não o caractere.** O motor de glifo lê `smdy` onde a camada
+  escreve `study` (S-186), e marcar caractere a caractere devolveria a palavra rachada. Maioria dos
+  caracteres decide a palavra inteira;
+- **o campo de linha não muda.** `marcar` continua respondendo o que respondia, e quem o lê --
+  `BlocoDeTexto.de_linhas`, `paragrafos.cortar`, `documento.estado_do_negrito` -- não muda uma
+  linha. Os intervalos são o detalhe ao lado, e onde não há intervalo é o campo de linha que
+  desenha;
+- **vazio é "não sei", e devolve o comportamento de antes.** Folha sem camada, página girada
+  (`spans_com` também não gira) e camada que discorda demais do que foi lido -- o
+  `_OCR_Aprimorar_Aprimorar` do acervo é o palpite de outro OCR -- caem todos em vazio.
+
+A guarda `len(linhas) < 2` de `rico._corridas_do_segmento` caiu junto: ela foi escrita quando a
+menor unidade era a linha, e com ela o bloco de uma linha só -- todo título, toda legenda, toda
+linha de lances solta -- voltava inteiro e perdia justamente o corte que este item entrega.
+
+**Critério de aceite.** O texto da página não muda um caractere: `de_pagina(pagina).para_texto()`
+continua idêntico a `pagina.texto(com_marcas=True)`. Verificado em 8.489 linhas de 48 livros, com
+**zero** páginas divergentes. Sobre 178.556 caracteres lidos, 2.089 passam a ter a resposta certa
+onde tinham a errada (716 ganham negrito, 561 o perdem, 700 ganham itálico, 112 o perdem).
+
+**Testes.** `tests/test_texto_estilo_fino.py` -- o casamento, a palavra que não sai partida, as
+três formas de degradar para o comportamento antigo, o remapeamento pela junção de hífen, o corte
+do documento e a ida e volta do `.json`.
+### E a contagem da linha de status desceu junto
+
+**O que a S-429 quebrou, e o mesmo item conserta.** `documento.estado_do_negrito` contava
+`linha.negrito`, e isso deixou de ser tudo o que a página sabe. Uma folha cujo negrito é sempre uma
+palavra no meio da prosa tem **todas** as linhas em `False` -- e a barra dizia *"nada em negrito"*
+sobre uma folha cheia dele, enquanto o editor logo acima o desenhava. É exatamente a população que
+este item resgata: 281 das 969 linhas com peso do acervo cobrem menos de 60% e saem `False`.
+
+Uma frase de status que contradiz o que está desenhado é pior que status nenhum -- que foi o
+argumento que criou esta frase na S-211, voltando contra ela.
+
+A contagem passa a ser de **trechos**: `len(linha.negrito_em)` quando há intervalo, e
+`bool(linha.negrito)` quando não há. Trecho e não palavra porque é a unidade que a página tem --
+`negrito_em` já vem com as palavras vizinhas unidas, e é ela que vira uma corrida na tela. Uma
+linha inteiramente em negrito continua contando **1**, que é o que mantém a frase legível nos
+livros de título e variante. A pergunta *"o livro informa?"* também passa a olhar os intervalos,
+pelo mesmo motivo: informar por trecho é informar.
+
+Travado por `EstadoContaTrechoTests` em `tests/test_negrito.py`.
+### E a via da imagem foi remedida antes de ficar de fora
+
+**A folha de scan não tem camada, e ali `negrito` é `None` para sempre.** A S-211 mediu a via da
+imagem e a recusou -- espessura 82,2% contra 82,7% de chutar "normal" --, mas deixou escrito um
+erro de método: normalizar pela **mediana da linha** apaga o sinal justamente quando a linha
+inteira é negrito. O que ela **não** tentou foi normalizar pela **página**, que é o análogo que não
+morre, porque a folha é majoritariamente em peso normal. A pergunta ficou aberta, e um item que
+desce a régua ao caractere é a hora de fechá-la.
+
+Remedido em 2026-08-29 com **20.156 palavras de 14 livros** (contra 940 de 3), rotuladas pelo nome
+da fonte na camada, sobre a folha renderizada a 220 dpi e binarizada pelo caminho de produção.
+População em **palavra**; corte aprendido **fora do livro** em que é testado.
+
+| medida | acerto | F1 | precisão | cobertura |
+|---|---|---|---|---|
+| chutar "normal" sempre | 0,9227 | — | — | — |
+| espessura (área / meio-perímetro) | **0,9594** | 0,654 | 0,661 | 0,647 |
+| espessura / mediana da página | 0,9379 | **0,671** | 0,629 | 0,720 |
+| 2 × p75 da transformada de distância | 0,9534 | 0,620 | **0,839** | 0,491 |
+| densidade / mediana da página | 0,9187 | 0,426 | 0,430 | 0,422 |
+
+**O sinal existe**, e passa do acaso. E foi conferido que não é o tamanho disfarçado -- título é
+grande e costuma ser negrito: chutar só pela altura da palavra acerta 0,8889, **abaixo** do acaso,
+e a altura mediana é 25 px em negrito contra 23 px em pé.
+
+**E mesmo assim continua fora.** A melhor precisão utilizável é 0,839 -- uma em cada seis palavras
+marcadas sairia errada, e negrito errado numa variante muda o que a página diz. E não há como
+comprar precisão apertando o corte: ela **cai** de 0,657 para 0,381 conforme o corte sobe, porque a
+cauda grossa é de palavra em pé (mancha de digitalização, glifo grande, tinta empastada). Não há
+canto seguro nem para uma parte do texto. A régua para aplicar em lote é 0,9929 (S-213), e a regra
+5 da [SPEC_EDITOR](SPEC_EDITOR.md) manda entregar o pincel em vez de pintar palpite.
+
+A medição foi feita no **render de PDF nascido digital** -- o único jeito de ter rótulo, porque o
+rótulo vem da camada. O scan, que é a população-alvo, é mais difícil; um "não" aqui vale com folga
+para ele, e o contrário não valeria.
+
+**Isto não é item novo, e sim a resposta da pergunta que a S-211 deixou aberta**, com a amostra e
+o método que faltavam. Fica em `docs/metrics/texto_negrito_imagem.json` e no cabeçalho de
+`text/negrito.py`. Nada muda no programa: para a folha sem camada o caminho continua sendo o
+pincel manual da S-241.
+
+## S-430 · O pincel de fonte não pintava sobre estilo nem sobre corpo
+
+**Problema.** No Tk uma etiqueta só pode dar **uma** fonte ao trecho, e vence a criada por último.
+`alternar` põe a etiqueta `negrito`, criada em `_pintar_faixas`; um trecho que já tenha estilo de
+parágrafo ou corpo mudado carrega também uma `fonte:...` criada **depois**, sob demanda, em
+`_etiqueta_de_fonte` -- e montada quando o trecho ainda não era negrito. Medido em 2026-08-28 num
+`tk.Text` de verdade:
+
+| trecho | o documento gravava | o que a tela desenhava |
+|---|---|---|
+| sem estilo e sem corpo | negrito | negrito ✔ |
+| com corpo +1 | negrito | peso normal ✘ |
+| com estilo de legenda | negrito | peso normal ✘ |
+
+Nos dois últimos o botão **não fazia nada visível**, e o arquivo salvo contradizia o que a pessoa
+viu -- o pior formato de defeito, e o mesmo achado 1 do `ROADMAP_EDITOR`: "na tela está tudo
+certo" é a única forma de erro que nenhum teste sobre o documento acusa. Valia para os quatro
+pincéis de fonte e também para `limpar_formato`, que tirava a ênfase do documento e deixava a
+fonte gorda na tela.
+
+**Solução.** `_combinar_negrito_italico` -- que refazia só `NEGRITO_ITALICO`, o caso particular de
+trecho sem estilo e sem corpo -- vira `_refazer_fontes`, que refaz a etiqueta que
+`_etiqueta_de_fonte` decide. É a mesma função que `desenhar_documento` chama, e assim o pincel e o
+redesenho não podem divergir.
+
+**Critério de aceite.** Em doze caminhos do pincel -- negrito, itálico, os dois, cada um sobre
+corpo mudado e sobre estilo de parágrafo, desligar e limpar formato --, o que o Tk desenha é o que
+o documento grava. `estilo_titulo` fica de fora de propósito: o papel `TITULO` de `ui/tipografia.py`
+sai em negrito sempre, por ser título.
+
+**Testes.** `PincelSobreEstiloTests` em `tests/test_ui_texto_editor.py` -- sete casos reprovam sem
+a correção.
+### A miniatura no meio do trecho, e as duas réguas de posição
+
+`_refazer_fontes` anda por duas réguas ao mesmo tempo: `deslocamento_de` conta pelo **documento**,
+onde a miniatura do diagrama vale zero caractere, e `indice_de` volta ao índice do **widget**, onde
+ela vale um. Se as duas saíssem de fase, a etiqueta de fonte de uma corrida cairia sobre a seguinte
+-- e o negrito apareceria uma palavra adiante do que foi pedido.
+
+Pintar uma seleção que **atravessa** o diagrama é o caso que separa as duas, e é o que
+`test_a_miniatura_no_meio_do_trecho_nao_desalinha_as_fontes` afirma.

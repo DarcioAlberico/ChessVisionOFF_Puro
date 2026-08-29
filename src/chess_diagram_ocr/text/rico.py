@@ -491,6 +491,12 @@ def _corridas_do_segmento(segmento: documento.Segmento, *, bloco: int, procedenc
     A `LinhaLida` sabe o que o bloco não sabe, e este é o lugar de usar: linhas vizinhas de mesma
     tipografia viram uma corrida.
 
+    **E desde a S-429 o corte também é dentro da linha.** `negrito_em`/`italico_em` dizem onde,
+    dentro do texto dela, o estilo está -- e é por isso que **uma linha só já tem o que cortar**. A
+    guarda daqui era `len(linhas) < 2`, escrita quando a menor unidade era a linha; com ela, o
+    bloco de uma linha só -- que é todo título, toda legenda, toda linha de lances solta -- voltava
+    inteiro e perdia justamente o corte que este item entrega.
+
     **E o texto não muda um caractere.** O corte é feito exatamente nos pontos em que `bloco.texto`
     junta as linhas, e o espaço da junção fica no fim da corrida anterior. Se a soma não bater com o
     que o bloco diz -- outro tipo de bloco, outra regra de junção --, sai uma corrida só: o texto
@@ -505,25 +511,20 @@ def _corridas_do_segmento(segmento: documento.Segmento, *, bloco: int, procedenc
         **comum,
     )
     linhas = getattr(segmento.bloco, "linhas", ())
-    if tipo != TEXTO or len(linhas) < 2:
+    if tipo != TEXTO or not linhas:
         return [inteiro]
     if " ".join(linha.texto for linha in linhas) != segmento.texto:
         return [inteiro]
 
     grupos = _agrupar(linhas)
-    saida: list[Corrida] = []
-    for k, ((negrito, italico), textos) in enumerate(grupos):
-        junta = " ".join(textos)
-        # O espaço da junção fica no fim da corrida anterior, e não no começo da seguinte: assim a
-        # corrida itálica começa na primeira letra da citação, e não num espaço em pé antes dela.
-        saida.append(
-            Corrida(
-                texto=junta if k == len(grupos) - 1 else junta + " ",
-                atributos=Atributos(negrito=negrito, italico=italico, estilo=estilo),
-                **comum,
-            )
+    return [
+        Corrida(
+            texto=texto,
+            atributos=Atributos(negrito=negrito, italico=italico, estilo=estilo),
+            **comum,
         )
-    return saida
+        for (negrito, italico), texto in grupos
+    ]
 
 
 def estilo_do_segmento(segmento: documento.Segmento) -> str:
@@ -572,16 +573,72 @@ def estilo_do_segmento(segmento: documento.Segmento) -> str:
     return ""
 
 
-def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool], list[str]]]:
-    """Linhas vizinhas de mesma tipografia, na ordem. `None` conta como "não", como na tela."""
+def _marcas(texto: str, intervalos: Sequence[tuple[int, int]], resumo: bool) -> list[bool]:
+    """Um bool por caractere: os intervalos quando eles existem, o resumo da linha quando não.
+
+    **É aqui que o detalhe ganha do resumo, e é a única regra que os ata** (S-429). Intervalo vazio
+    quer dizer "a camada não tem o que dizer sobre esta linha" -- folha sem camada, página girada,
+    texto que não casou --, e aí a resposta continua sendo a régua de maioria de `text/camada.py`,
+    que é o que esta função fazia inteira antes da S-429.
+
+    `None` no resumo conta como "não", como na tela: o editor desenha ou não desenha, e "não se
+    sabe" se desenha em pé -- que é o lado seguro. Ver `documento.Segmento.negrito`.
+    """
+    if not intervalos:
+        return [resumo] * len(texto)
+    marcas = [False] * len(texto)
+    for inicio, fim in intervalos:
+        for i in range(max(0, inicio), min(len(texto), fim)):
+            marcas[i] = True
+    return marcas
+
+
+def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool], str]]:
+    """Uma linha partida onde a tipografia dela muda. Uma peça só quando ela não muda.
+
+    A soma dos pedaços é `linha.texto` caractere a caractere, e isso é o contrato: quem os junta de
+    volta tem de reencontrar o texto do bloco, que é o que a S-235 travou.
+    """
+    texto = linha.texto
+    negrito = _marcas(texto, getattr(linha, "negrito_em", ()), getattr(linha, "negrito", None) is True)
+    italico = _marcas(texto, getattr(linha, "italico_em", ()), getattr(linha, "italico", None) is True)
+    pedacos: list[tuple[tuple[bool, bool], str]] = []
+    comeco = 0
+    for i in range(1, len(texto) + 1):
+        muda = i == len(texto) or (negrito[i], italico[i]) != (negrito[comeco], italico[comeco])
+        if muda:
+            pedacos.append(((negrito[comeco], italico[comeco]), texto[comeco:i]))
+            comeco = i
+    return pedacos or [((False, False), texto)]
+
+
+def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool], str]]:
+    """O parágrafo partido nos trechos de mesma tipografia, na ordem, com o texto de cada um.
+
+    **O corte deixou de ser na linha e passou a ser no caractere** (S-429). A `LinhaLida` traz
+    `negrito_em`/`italico_em` quando a camada soube dizer *onde* dentro dela está o estilo, e aí um
+    lance em negrito no meio da prosa vira uma corrida própria em vez de sumir na maioria da linha
+    -- que é o caso de 44,2% do negrito e de 68,6% do itálico do acervo. Onde não há intervalo, a
+    linha inteira é uma peça só e o resultado é idêntico ao de antes.
+
+    **O espaço da junção entre duas linhas fica no fim do último pedaço da linha anterior**, e não
+    no começo do primeiro da seguinte: assim a corrida itálica começa na primeira letra da citação,
+    e não num espaço em pé antes dela. É a mesma regra de antes, agora aplicada a pedaço em vez de
+    a linha.
+    """
     grupos: list[tuple[tuple[bool, bool], list[str]]] = []
-    for linha in linhas:
-        chave = (getattr(linha, "negrito", None) is True, getattr(linha, "italico", None) is True)
-        if grupos and grupos[-1][0] == chave:
-            grupos[-1][1].append(linha.texto)
-            continue
-        grupos.append((chave, [linha.texto]))
-    return grupos
+    ultima = len(linhas) - 1
+    for n, linha in enumerate(linhas):
+        pedacos = _pedacos(linha)
+        if n != ultima:
+            chave, texto = pedacos[-1]
+            pedacos[-1] = (chave, texto + " ")
+        for chave, texto in pedacos:
+            if grupos and grupos[-1][0] == chave:
+                grupos[-1][1].append(texto)
+                continue
+            grupos.append((chave, [texto]))
+    return [(chave, "".join(partes)) for chave, partes in grupos]
 
 
 def _tipo_do_segmento(segmento: documento.Segmento) -> str:

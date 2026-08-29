@@ -159,6 +159,7 @@ import numpy as np
 
 from . import boxes as _boxes
 from . import caixa_alta as _caixa_alta
+from . import camada as _camada
 from . import colados as _colados
 from . import colunas as _colunas
 from . import dicionario as _dicionario
@@ -259,6 +260,12 @@ class _Cru:
     """`None` é "não se sabe" -- ver `text/italico.py`. Ao contrário do negrito, quem preenche é
     `linhas_do_glifo`, que é quem tem a **binária** na mão: o pendor sai da imagem, e a camada de
     texto não passa por ela. Ver S-236."""
+
+    negrito_em: tuple[tuple[int, int], ...] = ()
+    """Onde o peso está dentro de `texto`. Ver `pagina.LinhaLida.negrito_em` (S-429)."""
+
+    italico_em: tuple[tuple[int, int], ...] = ()
+    """Onde o pendor está dentro de `texto`. Ver `pagina.LinhaLida.italico_em` (S-429)."""
 
 
 def _envolver(caixas: Sequence[Retangulo]) -> Retangulo:
@@ -974,6 +981,8 @@ def _blocos_de_texto(
                     procedencia=cru.procedencia,
                     negrito=cru.negrito,
                     italico=cru.italico,
+                    negrito_em=cru.negrito_em,
+                    italico_em=cru.italico_em,
                 )
             )
         if not lidas:
@@ -1001,6 +1010,11 @@ def _sem_hifen_de_quebra(linhas: list[LinhaLida], lexico: frozenset[str]) -> lis
 
     A bbox de cada linha **não** muda: ela é a geometria do que foi impresso, e a junção é sobre o
     texto. Quem desenha a linha continua desenhando onde ela está.
+
+    **Os intervalos de estilo mudam, e por isso são remapeados** (S-429). Eles apontam para
+    posições dentro de `texto`, e esta função é a única que reescreve `texto` depois de eles serem
+    achados: sem `camada.remapear`, o negrito do fim de uma linha juntada desenharia no lugar
+    errado.
     """
     if not lexico or len(linhas) < 2:
         return linhas
@@ -1012,7 +1026,14 @@ def _sem_hifen_de_quebra(linhas: list[LinhaLida], lexico: frozenset[str]) -> lis
     if not juncoes:
         return linhas
     return [
-        linha if novo == linha.texto else replace(linha, texto=novo)
+        linha
+        if novo == linha.texto
+        else replace(
+            linha,
+            texto=novo,
+            negrito_em=_camada.remapear(linha.negrito_em, linha.texto, novo),
+            italico_em=_camada.remapear(linha.italico_em, linha.texto, novo),
+        )
         for linha, novo in zip(linhas, novos, strict=True)
     ]
 
@@ -1156,6 +1177,10 @@ def _ler_pagina_do_livro(
             if marcar_negrito
             else False
         )
+        # **A leitura fina, do mesmo `get_text("dict")`** (S-429). Ela só é pedida quando há span
+        # do estilo na folha: sem nenhum, não há intervalo a achar, e varrer a página de novo
+        # custaria o dobro da leitura de spans para devolver vazio.
+        linhas_negrito = _negrito.linhas_de_negrito(page) if spans_negrito else []
         # **O itálico da camada tem a mesma máquina do peso** (S-237), e a mesma pergunta de
         # documento: uma folha sem itálico num livro que o registra é `False`; num livro que não o
         # registra é `None`.
@@ -1165,6 +1190,7 @@ def _ler_pagina_do_livro(
             if marcar_italico
             else False
         )
+        linhas_italico = _italico.linhas_de_italico(page) if spans_italico else []
 
     if max_boards:
         candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem, max_boards=max_boards)  # type: ignore[arg-type]
@@ -1192,8 +1218,22 @@ def _ler_pagina_do_livro(
 
     if marcar_negrito and cruas:
         cruas = _com_negrito(cruas, spans_negrito, registra_negrito, escala_px)
+        # **O peso não tem segunda fonte**, então o detalhe vale nos dois motores: a camada é a
+        # única coisa que sabe dizer negrito, e já é ela quem responde o campo de linha logo acima.
+        cruas = _com_trechos(cruas, linhas_negrito, escala_px, campo="negrito_em")
     if marcar_italico and cruas:
         cruas = _com_italico_da_camada(cruas, spans_italico, registra_italico, escala_px)
+        # **O pendor tem duas fontes, e o detalhe só entra onde a camada é a autoridade** (S-429).
+        # No motor de camada ela é a tipografia que o editor do livro escreveu, e não erra. No de
+        # glifo a página é scan, e a camada dali é o palpite de *outro* OCR sobre a mesma imagem --
+        # o `_OCR_Aprimorar_Aprimorar` do acervo é exatamente isso. Ali quem responde é o pendor
+        # medido na binária, que a S-236 separou com +0,116 contra +0,000 e sem sobreposição, e
+        # deixá-lo ser sobrescrito por um palpite seria trocar o medido pelo não medido.
+        #
+        # É a mesma precedência de `_com_italico_da_camada`, um degrau abaixo: lá a camada só
+        # preenche o que a imagem não respondeu; aqui ela só detalha o que ela mesma respondeu.
+        if qual == "camada":
+            cruas = _com_trechos(cruas, linhas_italico, escala_px, campo="italico_em")
 
     cabecalho, rodape = _margens(margem, altura)
     return PaginaLida(
@@ -1235,6 +1275,44 @@ def _com_negrito(
     bboxes = [_para_pontos(c.caixa, escala_px) for c in cruas]
     pesos = _negrito.marcar(bboxes, spans, registra=registra)
     return [replace(c, negrito=p) for c, p in zip(cruas, pesos, strict=True)]
+
+
+def _com_trechos(
+    cruas: Sequence[_Cru],
+    linhas: Sequence[_camada.LinhaDeCamada],
+    escala_px: float,
+    *,
+    campo: Literal["negrito_em", "italico_em"],
+) -> list[_Cru]:
+    """As mesmas linhas, com os intervalos de estilo anotados. Ver `text/camada.trechos` (S-429).
+
+    **Vale para os dois motores, e por caminhos diferentes.** No de camada os dois textos são o
+    mesmo e os intervalos saem exatos; no de glifo o texto é o que o classificador leu, e o
+    casamento por `difflib` alcança o que coincide -- que é a maior parte, e o resto sai de fora
+    em vez de sair errado.
+
+    **Não sobrescreve o campo de linha, e é o ponto do desenho.** `negrito`/`italico` continuam
+    vindo de `_com_negrito` e `_com_italico_da_camada`, com a régua de maioria que foi medida;
+    isto acrescenta o detalhe ao lado. Quando a camada não tem o que dizer, o campo fica vazio e
+    quem desenha volta à linha inteira.
+    """
+    from dataclasses import replace
+
+    if not linhas:
+        return list(cruas)
+    saida: list[_Cru] = []
+    for c in cruas:
+        achados = _camada.trechos(_para_pontos(c.caixa, escala_px), c.texto, linhas)
+        if not achados:
+            saida.append(c)
+        # Os dois ramos escritos, e não `replace(c, **{campo: achados})`: o nome de campo dinâmico
+        # apaga o tipo do valor para o verificador, e este projeto não gasta um `# type: ignore`
+        # onde duas linhas resolvem.
+        elif campo == "negrito_em":
+            saida.append(replace(c, negrito_em=achados))
+        else:
+            saida.append(replace(c, italico_em=achados))
+    return saida
 
 
 def _com_italico_da_camada(

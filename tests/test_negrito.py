@@ -185,5 +185,54 @@ class EstadoNaTelaTests(unittest.TestCase):
         self.assertIn("1 em negrito", documento.resumo(self._pagina(True)))
 
 
+class EstadoContaTrechoTests(unittest.TestCase):
+    """A contagem da linha de status desceu ao trecho, junto com a régua (S-429).
+
+    **A frase dizia o contrário do que a aba desenhava.** Ela contava `linha.negrito`, e desde a
+    S-429 uma folha cujo negrito é sempre uma palavra no meio da prosa tem todas as linhas em
+    `False` -- e a aba dizia *"nada em negrito"* sobre uma folha cheia dele. É exatamente a
+    população que a S-429 resgatou: 281 das 969 linhas com peso do acervo.
+    """
+
+    def _pagina(self, *linhas: object):
+        from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, PaginaLida
+
+        return PaginaLida(colunas=(Coluna(blocos=(BlocoDeTexto.de_linhas(list(linhas)),)),))
+
+    def _linha(self, texto: str, **campos: object):
+        from chess_diagram_ocr.text.pagina import LinhaLida
+
+        return LinhaLida(texto, (0.0, 0.0, 10.0, 10.0), 1.0, "camada", **campos)  # type: ignore[arg-type]
+
+    def test_a_palavra_em_negrito_conta_numa_linha_que_nao_e_negrito(self) -> None:
+        from chess_diagram_ocr.text import documento
+
+        pagina = self._pagina(self._linha("Em 24 axb4 mantem", negrito=False, negrito_em=((3, 10),)))
+        self.assertEqual(documento.estado_do_negrito(pagina), "1 em negrito")
+
+    def test_dois_lances_na_mesma_linha_contam_dois(self) -> None:
+        from chess_diagram_ocr.text import documento
+
+        pagina = self._pagina(
+            self._linha("1.e4 e a resposta 1...c5", negrito=False, negrito_em=((0, 4), (18, 24)))
+        )
+        self.assertEqual(documento.estado_do_negrito(pagina), "2 em negrito")
+
+    def test_a_linha_inteira_em_negrito_continua_contando_um(self) -> None:
+        """O que mantém a frase legível nos livros de título e variante."""
+        from chess_diagram_ocr.text import documento
+
+        pagina = self._pagina(self._linha("um titulo", negrito=True, negrito_em=((0, 9),)))
+        self.assertEqual(documento.estado_do_negrito(pagina), "1 em negrito")
+
+    def test_sem_intervalo_e_sem_peso_continua_nada(self) -> None:
+        from chess_diagram_ocr.text import documento
+
+        self.assertEqual(
+            documento.estado_do_negrito(self._pagina(self._linha("prosa", negrito=False))),
+            "nada em negrito",
+        )
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
