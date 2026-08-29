@@ -33,7 +33,15 @@ pip install -e ".[dev]"
 Em qualquer um dos casos o pacote `chess_diagram_ocr` fica instalado em modo editavel,
 e os comandos `cvoff-*` passam a existir no PATH do ambiente.
 
-Requer Python 3.10. Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
+**A faixa de versao mudou (S-436)**: era `==3.10.*` e passou a `>=3.10,<3.14`. O motivo e prazo,
+nao gosto -- o Python 3.10 sai de suporte em outubro de 2026, e o bundle do PyInstaller **embarca
+o interpretador**, de modo que o pino passaria a distribuir um Python sem correcao de seguranca
+para quem baixa o .zip. A CI prova as duas pontas da faixa (3.10 e 3.13); o `.python-version` do
+repositorio continua em 3.10, que e o padrao de quem so roda `uv sync`. Promover o 3.13 a padrao
+do bundle depende de um interpretador com Tk completo -- o que o `uv` entrega para 3.13 ja veio
+sem parte do `ttk`, e ali os testes de janela **pulam** em vez de rodar.
+
+Requer Python 3.10, 3.11, 3.12 ou 3.13. Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
 (`models/piece_classifier.pt`) nao vem no repositorio -- veja
 [Dados e artefatos](#dados-e-artefatos).
 
