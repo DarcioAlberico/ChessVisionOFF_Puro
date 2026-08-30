@@ -9,6 +9,7 @@ from chess_diagram_ocr.splits import (
     compute_splits,
     ensure_splits,
     group_keys,
+    group_representative,
     groups_by_origin,
     load_splits,
     save_splits,
@@ -248,6 +249,50 @@ class ListaVaziaNaoPodaTests(unittest.TestCase):
             ensure_splits(["a.png", "b.png"], path)
 
             self.assertEqual(load_splits(path), {"a.png": "test", "b.png": "train"})
+
+
+class RepresentanteDoGrupoTests(unittest.TestCase):
+    """Um grupo, **um** representante -- e ele é quem declara procedência (S-452).
+
+    O nome tem dois usos que precisam coincidir: é a chave de que o split do grupo sai, e é a
+    linha que o `cvoff-audit --dedupe` mantém ao apagar as cópias. Enquanto os dois eram
+    `sorted(grupo)[0]` -- o mais antigo, e as amostras anteriores à S-19 não declaram
+    procedência --, o dedupe apagava a procedência de 276 grupos em 6 livros.
+    """
+
+    def test_sem_procedencia_o_representante_e_o_primeiro_nome(self) -> None:
+        self.assertEqual(group_representative(["c.png", "a.png", "b.png"]), "a.png")
+
+    def test_quem_declara_procedencia_vem_antes_do_nome(self) -> None:
+        self.assertEqual(group_representative(["c.png", "a.png", "b.png"], {"c.png"}), "c.png")
+
+    def test_o_empate_entre_dois_que_declaram_e_pelo_nome(self) -> None:
+        self.assertEqual(group_representative(["c.png", "a.png", "b.png"], {"c.png", "b.png"}), "b.png")
+
+    def test_group_keys_deriva_a_chave_do_mesmo_representante(self) -> None:
+        chaves = group_keys(["a.png", "b.png"], [["a.png", "b.png"]], with_provenance={"b.png"})
+
+        self.assertEqual(chaves, {"a.png": "b.png", "b.png": "b.png"})
+
+    def test_membro_novo_herda_o_split_de_qualquer_membro_registrado(self) -> None:
+        """**O que o conserto não podia quebrar.** A herança olhava só o representante, e o
+        representante passou a poder ser o membro **novo** -- que ainda não tem split. Sem
+        olhar o grupo inteiro, o antigo ficaria onde está e o novo sortearia: o grupo se
+        partiria em dois splits, que é exatamente o que a S-07 existe para impedir.
+        """
+        antigo = "board_00000.png"
+        # Um nome que, sozinho, cairia noutro split -- senao o teste passaria por acidente.
+        novo = next(nome for nome in _names(200) if assign_split(nome) != assign_split(antigo))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "splits.csv"
+            ensure_splits([antigo], path)
+            registrado = load_splits(path)[antigo]
+
+            crescido = ensure_splits([antigo, novo], path, groups=[[antigo, novo]], with_provenance={novo})
+
+            self.assertNotEqual(assign_split(novo), registrado, "sem herança o par cruzaria split")
+            self.assertEqual(crescido[novo], registrado)
+            self.assertEqual(crescido[antigo], registrado, "e o que já estava registrado não se move")
 
 
 if __name__ == "__main__":

@@ -40,7 +40,7 @@ from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoin
 from .config import DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
 from .dataset import BoardFenDataset, BoardGroupedSampler, BoardUnitDataset, board_groups
 from .fen_utils import labels_from_fen
-from .labels import DatasetEntry, label_origins
+from .labels import DatasetEntry, filenames_with_provenance, label_origins
 from .model import DEFAULT_ARCH, ArchConfig, build_model, count_parameters
 from .splits import Split, ensure_splits, groups_by_origin, load_splits, splits_hash
 
@@ -304,9 +304,15 @@ def resolve_splits(
     # S-98: dois agrupamentos, e a união deles é o grupo. O de imagem não vê a mesma página
     # reextraída com recorte deslocado -- é como o `Niemeijer p10 d1` foi parar nas três
     # partições. O de origem vê, e é exato, mas só alcança as amostras com procedência.
+    origens = label_origins(Path(csv_path))
     grupos = list(duplicate_groups_touching(Path(samples_dir), linhas, novos)) if novos else []
-    grupos += groups_by_origin(label_origins(Path(csv_path)))
-    mapa = ensure_splits(nomes, splits_path, groups=grupos)
+    grupos += groups_by_origin(origens)
+    # A procedência que escolhe quem o `--dedupe` mantém é a mesma que dá a chave de split ao
+    # grupo (S-452). Sem passá-la aqui, os dois lados voltariam a escolher representantes
+    # diferentes -- e "quem representa este grupo" tem de ter uma resposta só.
+    mapa = ensure_splits(
+        nomes, splits_path, groups=grupos, with_provenance=filenames_with_provenance(origens)
+    )
 
     if novos:
         distribuicao = Counter(mapa[nome] for nome in novos if nome in mapa)
