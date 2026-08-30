@@ -83,7 +83,7 @@ class AuditReport:
     """Os arquivos cuja linha declara livro e página, para o `--dedupe` saber o que preservar.
 
     Vazio num CSV sem as colunas da S-19, e aí a escolha do representante volta a ser pelo
-    nome -- que é como era antes da S-431."""
+    nome -- que é como era antes da S-452."""
 
     orphan_images: list[str] = field(default_factory=list)
     class_counts: Counter[str] = field(default_factory=Counter)
@@ -108,7 +108,7 @@ class AuditReport:
         return sum(len(group) - 1 for group in self.duplicate_groups)
 
     def dedupe_plan(self) -> list[tuple[str, list[str]]]:
-        """Por grupo redundante, `(a linha que fica, as que saem)` -- e uma resposta só (S-431).
+        """Por grupo redundante, `(a linha que fica, as que saem)` -- e uma resposta só (S-452).
 
         O `--dedupe`, o resumo que ele grava **antes** de remover e o relatório que ele imprime
         têm de falar do mesmo conjunto. Enquanto cada um recalculava `group[0]` por conta
@@ -485,7 +485,7 @@ def quarantine_fatal_labels(csv_path: Path, report: AuditReport, quarantine_path
 
 
 def remove_duplicate_labels(csv_path: Path, report: AuditReport) -> int:
-    """Remove as cópias de cada grupo, mantendo a linha que **declara procedência** (S-431).
+    """Remove as cópias de cada grupo, mantendo a linha que **declara procedência** (S-452).
 
     **Isto era uma ferramenta que destruía dado.** O critério anterior era `group[0]`, o nome
     mais antigo do grupo -- e como os nomes são `board_<carimbo>.png`, o mais antigo é sempre a
@@ -519,9 +519,9 @@ def dedupe_summary(report: AuditReport, splits_path: Path) -> dict[str, Any]:
     cópia de uma que fica no mesmo `val`/`test`, e o conjunto de diagramas **distintos** de cada
     split não muda.
 
-    **Qual membro fica não entra nessa conta, e é por isso que a S-431 pôde mudá-lo.** O que
+    **Qual membro fica não entra nessa conta, e é por isso que a S-452 pôde mudá-lo.** O que
     sustenta o zero é a chave ser comum ao grupo, não o sobrevivente ser o `sorted(group)[0]`
-    -- que era como esta seção explicava o número. Desde a S-431 os dois saem de
+    -- que era como esta seção explicava o número. Desde a S-452 os dois saem de
     `group_representative`, e `groups_across_splits` continua sendo o que acusa se um dia a
     chave comum deixar de bastar.
 

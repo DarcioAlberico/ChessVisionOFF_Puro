@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-431 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -3109,7 +3109,7 @@ ela vale um. Se as duas saíssem de fase, a etiqueta de fonte de uma corrida cai
 Pintar uma seleção que **atravessa** o diagrama é o caso que separa as duas, e é o que
 `test_a_miniatura_no_meio_do_trecho_nao_desalinha_as_fontes` afirma.
 
-## S-431 · O `--dedupe` apagava justamente a procedência que devia preservar
+## S-452 · O `--dedupe` apagava justamente a procedência que devia preservar
 
 **Problema.** `remove_duplicate_labels` (`audit.py:466`, antes deste item) mantinha `group[0]` de
 cada grupo de `find_duplicate_groups`, e o representante era `sorted(group)[0]` -- o **nome de
@@ -3193,3 +3193,11 @@ imediatamente antes dele garante que ele não passa por acidente.
 das ~5.300 imagens leva alguns minutos. O `labels.csv` cresce entre sessões, então os números se
 movem: a primeira medição deste item, sobre 4.858 linhas, deu 311 grupos, 367 linhas removidas e
 277 com o sobrevivente sem procedência.
+
+**Este item foi entregue como S-431, e o commit ainda diz isso.** O worktree em que ele nasceu foi
+cortado de `90357a1`, antes das Fases 66 a 68, e naquele recorte S-431 estava livre. Enquanto ele
+vivia, a revisão externa reservou S-431 a S-440 no ramo que ainda não estava na `main` -- e a
+colisão não aparecia de nenhum dos dois lados, só no merge, onde eram duas seções `## S-431`
+nomeando coisas diferentes. Renumerar um item saiu mais barato que dez. O assunto do commit é
+imutável; quem faz a ponte é `RENUMERADOS`, em `tests/test_docs.py`, e ela é conferida por
+`test_a_renumeracao_declarada_vale`.

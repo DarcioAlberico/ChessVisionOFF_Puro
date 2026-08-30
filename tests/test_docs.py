@@ -62,6 +62,25 @@ contam para "o item tem seção em algum lugar"? Não: uma medição sem critér
 justamente o que a S-133 veio consertar.
 """
 
+RENUMERADOS: dict[int, int] = {431: 452}
+"""Item cujo número mudou **depois** de o commit ter sido escrito: `antigo -> novo`.
+
+**Por que isto existe.** O assunto do commit é imutável, e é dele que `itens_entregues` lê quem
+foi entregue. A S-431 foi entregue com esse número num worktree cortado de `90357a1` -- antes das
+Fases 66 a 68 --, e naquele recorte o número estava livre. Enquanto o worktree vivia, a revisão
+externa reservou S-431 a S-440 no ramo que ainda não estava na `main`. As duas suítes ficaram
+verdes, porque nenhum dos dois lados tinha o outro: a colisão só existia no merge, e ali eram
+duas seções `## S-431` nomeando coisas diferentes.
+
+Renumerar o item de um lado saiu mais barato que os dez do outro. O que sobra é este mapa: sem
+ele a guarda cobraria para sempre uma seção `## S-431` que não pode voltar a existir sem recriar
+a colisão. Reescrever o assunto do commit não é opção -- ele está empurrado e merged.
+
+**É um mapa, e não uma lista de perdão.** `test_a_renumeracao_declarada_vale` exige que o número
+novo **tenha** seção e que o antigo **não** tenha, então uma entrada aqui nunca esconde um item
+sem spec -- ela só reaponta a cobrança.
+"""
+
 
 def _numero(identificador: str) -> int:
     return int(identificador.split("-")[1])
@@ -310,13 +329,36 @@ class ItemEntregueTemSpecTests(unittest.TestCase):
             if arquivo not in ARQUIVOS_DE_MEDICAO:
                 com_secao |= numeros
 
-        faltando = sorted(set(self.entregues) - com_secao)
+        # `- RENUMERADOS`: o assunto do commit e imutavel, e o item mudou de numero
+        # depois dele. Ver a constante -- ela e conferida, e nao acreditada.
+        faltando = sorted(set(self.entregues) - com_secao - set(RENUMERADOS))
         self.assertEqual(
             [],
             [f"{_rotulo(n)} — entregue em: {self.entregues[n]}" for n in faltando],
             "Item entregue sem seção em docs/*.md. Escreva a seção no arquivo que a tabela "
             '"Onde mora a spec de cada item" do README indica para essa faixa.',
         )
+
+
+    def test_a_renumeracao_declarada_vale(self) -> None:
+        """O outro lado do `RENUMERADOS`: sem isto, uma entrada ali seria perdão em vez de mapa.
+
+        Exige as duas metades. O número novo tem de ter seção -- senão a renumeração perdeu a
+        spec pelo caminho --, e o antigo não pode ter, porque uma seção com o número antigo é
+        exatamente a colisão que a renumeração desfez.
+        """
+        com_secao: set[int] = set()
+        for arquivo, numeros in self.secoes.items():
+            if arquivo not in ARQUIVOS_DE_MEDICAO:
+                com_secao |= numeros
+
+        problemas: list[str] = []
+        for antigo, novo in sorted(RENUMERADOS.items()):
+            if novo not in com_secao:
+                problemas.append(f"{_rotulo(antigo)} declara virar {_rotulo(novo)}, que não tem seção")
+            if antigo in com_secao:
+                problemas.append(f"{_rotulo(antigo)} ainda tem seção -- a renumeração não aconteceu")
+        self.assertEqual([], problemas)
 
     def test_a_secao_esta_no_arquivo_que_o_indice_declara(self) -> None:
         """Ter seção não basta: escrevê-la no arquivo errado recria a fenda de outro jeito."""

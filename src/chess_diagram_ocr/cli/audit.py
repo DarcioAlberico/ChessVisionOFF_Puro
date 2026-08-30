@@ -203,7 +203,7 @@ def _print_report(
         print("    recorte diferente. Mesmo sem remover, membros de um grupo precisam ficar")
         print("    no mesmo split, senão a validação mede o que o treino já viu.")
         print("    À esquerda a linha que o --dedupe mantém: a que declara livro e página, e")
-        print("    não a mais antiga -- as anteriores à S-19 não declaram nenhum dos dois (S-431).")
+        print("    não a mais antiga -- as anteriores à S-19 não declaram nenhum dos dois (S-452).")
         for fica, saem in report.dedupe_plan()[:limit]:
             print(f"      {fica}  <-  {', '.join(saem)}")
 

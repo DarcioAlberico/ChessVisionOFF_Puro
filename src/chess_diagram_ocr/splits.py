@@ -74,7 +74,7 @@ def assign_split(
 
 
 def group_representative(group: Iterable[str], with_provenance: Collection[str] = ()) -> str:
-    """O membro do grupo que responde pelos outros. **Uma resposta só, e não duas (S-431).**
+    """O membro do grupo que responde pelos outros. **Uma resposta só, e não duas (S-452).**
 
     Este nome tem dois usos que precisam coincidir: é a chave de que `group_keys` deriva o
     split do grupo inteiro, e é a linha que o `cvoff-audit --dedupe` **mantém** ao apagar as
@@ -300,7 +300,7 @@ def ensure_splits(
         return dict(existing)
     keys = group_keys(names, groups, with_provenance=with_provenance)
 
-    # O split que o grupo já tem, venha ele de qual membro vier (S-431). A herança abaixo
+    # O split que o grupo já tem, venha ele de qual membro vier (S-452). A herança abaixo
     # olhava só o **representante**, e isso bastava enquanto o representante era o membro de
     # nome mais antigo -- que é o que já está registrado. Escolhendo-o por procedência ele
     # passa a poder ser o mais novo, e aí um grupo com um membro antigo em `test` e o

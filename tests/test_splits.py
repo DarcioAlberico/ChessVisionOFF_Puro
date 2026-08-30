@@ -252,7 +252,7 @@ class ListaVaziaNaoPodaTests(unittest.TestCase):
 
 
 class RepresentanteDoGrupoTests(unittest.TestCase):
-    """Um grupo, **um** representante -- e ele é quem declara procedência (S-431).
+    """Um grupo, **um** representante -- e ele é quem declara procedência (S-452).
 
     O nome tem dois usos que precisam coincidir: é a chave de que o split do grupo sai, e é a
     linha que o `cvoff-audit --dedupe` mantém ao apagar as cópias. Enquanto os dois eram

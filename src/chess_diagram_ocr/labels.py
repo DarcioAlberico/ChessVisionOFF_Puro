@@ -589,7 +589,7 @@ def label_origins(csv_path: Path) -> dict[str, tuple[str, str, str]]:
 
 
 def origins_of(entries: Iterable[DatasetEntry]) -> dict[str, tuple[str, str, str]]:
-    """O mesmo que `label_origins`, para quem já tem as entradas na mão (S-431).
+    """O mesmo que `label_origins`, para quem já tem as entradas na mão (S-452).
 
     A auditoria e a aba Dataset leem o CSV inteiro para outra coisa e precisam da mesma
     tripla; reler as 4.852 linhas para recalcular o que já está em memória é custo que nada
@@ -603,7 +603,7 @@ def origins_of(entries: Iterable[DatasetEntry]) -> dict[str, tuple[str, str, str
 
 
 def filenames_with_provenance(origins: Mapping[str, tuple[str, str, str]]) -> set[str]:
-    """Os arquivos que declaram **livro e página** -- os que uma limpeza tem de preservar (S-431).
+    """Os arquivos que declaram **livro e página** -- os que uma limpeza tem de preservar (S-452).
 
     Mesma condição de `splits.groups_by_origin`: sem os dois a tripla não identifica diagrama
     impresso nenhum, e a linha não sabe de onde veio. São 1.760 das 4.852 linhas de hoje.
