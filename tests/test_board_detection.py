@@ -463,7 +463,7 @@ def _board_with_glued_caption(*, cell: int = 24, margin: int = 40, gap: int = 1)
 
 
 class SquareForcedCropTests(unittest.TestCase):
-    """S-452: a legenda colada no tabuleiro entrava no recorte, e o warp achatava as 8 fileiras.
+    """S-454: a legenda colada no tabuleiro entrava no recorte, e o warp achatava as 8 fileiras.
 
     Medido no `Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf`, página de índice
     38 a 220 DPI: o candidato saía 116×126 pt em vez de 116×116, com contraste de casa 0,0000 e
@@ -578,7 +578,7 @@ class SquareForcedCropTests(unittest.TestCase):
         self.assertEqual(quadrados, [], "nenhum passe pode entregar o quad limpo, senão o teste acima não prova nada")
 
     def test_a_variante_herda_o_score_e_nao_ultrapassa_o_diagrama(self) -> None:
-        """S-452: forçar o quadrado conserta o recorte, e **não** muda quem ganha a página.
+        """S-454: forçar o quadrado conserta o recorte, e **não** muda quem ganha a página.
 
         Medido no `Vishy_Anand_Great_Chess_Combinations.pdf`, página de índice 29: recalcular o
         score sobre a caixa nova subia um quad sem contraste nenhum de 0,5800 para 0,6876, ele

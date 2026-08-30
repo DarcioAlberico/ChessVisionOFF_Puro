@@ -522,14 +522,14 @@ def _threshold_passes(thresh_base: np.ndarray) -> list[np.ndarray]:
 
 
 SQUARE_FORCE_TOLERANCE = 0.02
-"""Quanto o quad pode fugir do quadrado antes de valer a pena tentar recortá-lo quadrado (S-452).
+"""Quanto o quad pode fugir do quadrado antes de valer a pena tentar recortá-lo quadrado (S-454).
 
 2% e não mais: abaixo disso a diferença é o arredondamento do contorno, e forçar o quadrado
 não muda recorte nenhum. Medido no acervo, o alvo mede 1,016 a 1,090 de razão.
 """
 
 SQUARE_FORCE_LIMIT = 1.15
-"""Acima desta razão o quad não é tabuleiro com legenda colada, e encolhê-lo destrói (S-452).
+"""Acima desta razão o quad não é tabuleiro com legenda colada, e encolhê-lo destrói (S-454).
 
 **O piso e o teto medem coisas diferentes.** O piso de `SQUARE_FORCE_TOLERANCE` separa
 arredondamento de defeito; o teto separa **defeito de outra coisa**. A legenda que entra no
@@ -550,7 +550,7 @@ sobra mede 9/8 = 1,125, que é a escala do defeito e fica abaixo do teto.
 
 
 def _square_forced_quads(quad: np.ndarray) -> list[np.ndarray]:
-    """O mesmo quad reduzido a quadrado, ancorado em cada ponta do eixo comprido (S-452).
+    """O mesmo quad reduzido a quadrado, ancorado em cada ponta do eixo comprido (S-454).
 
     **O defeito.** O reparo de quina da S-175 liga tinta separada por até 1 px, e com isso um
     diagrama cujo número de legenda esteja impresso a menos de ~1 px da borda de baixo entra no
@@ -561,7 +561,7 @@ def _square_forced_quads(quad: np.ndarray) -> list[np.ndarray]:
     de casa **0,0656** -- passa pela guarda da S-143 e **é exportado** --, e lê **0,0019** de
     confiança mínima. Forçado a 116,18×116,18 pela âncora de cima ele vai a 0,3469 de contraste
     e **1,0000** de leitura. São **9 folhas** assim naquele livro, e nas 320 o quadrado forçado
-    não piora nenhuma leitura -- ver a S-452 no `docs/ANALISE_DETECCAO.md`.
+    não piora nenhuma leitura -- ver a S-454 no `docs/ANALISE_DETECCAO.md`.
 
     **Quem chama só entrega quad que já tem contraste de casa**, e isso é a metade da regra --
     ver `_extract_candidate_quads`, e as 812 ressurreições que custaram 5 diagramas.
@@ -671,7 +671,7 @@ def _extract_candidate_quads(
                 continue
 
             pattern_score = _texture_from_parts(checker, _grid_score(small))
-            # **A segunda chance (S-452).** Um tabuleiro é quadrado, então um quad que não
+            # **A segunda chance (S-454).** Um tabuleiro é quadrado, então um quad que não
             # é quadrado está errado por construção -- e as duas variantes são hipóteses
             # estritamente melhores do que ele. Quem decide é o contraste de casa, que é a
             # medida de estar em registro com a grade; a variante só entra se **melhorar**.

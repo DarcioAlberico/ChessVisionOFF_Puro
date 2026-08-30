@@ -13,7 +13,7 @@
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176, S-452 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -820,7 +820,7 @@ certo sem trocar de identidade. É o efeito esperado de remendar quinas, e é o 
 dilatação ter sido recusada — com ela os 1023 candidatos de contorno se moveriam, e não 61.
 
 **Linha de base nova:** `docs/metrics/deteccao_20260820_s175.csv` e `.json` (39 livros, 1555
-candidatos). Ela **deixou** de ser `deteccao_base` na S-452, que a regravou sobre um acervo de
+candidatos). Ela **deixou** de ser `deteccao_base` na S-454, que a regravou sobre um acervo de
 46 livros -- as afirmações desta seção continuam apontando para o arquivo datado, que é o que
 elas mediram.
 
@@ -855,7 +855,7 @@ registrado com nome e número porque a regra da S-82 é essa: candidato do taman
 impresso que muda para pior precisa de justificativa, e a justificativa aqui é o saldo, não a
 ausência de custo.
 
-> **Fechado pela [S-452](#s-452--a-legenda-que-entra-no-recorte-e-o-quadrado-que-o-contorno-não-fecha--implementada-2026-08-30):** o reparo de quina liga tinta separada por até 1 px, e
+> **Fechado pela [S-454](#s-454--a-legenda-que-entra-no-recorte-e-o-quadrado-que-o-contorno-não-fecha--implementada-2026-08-30):** o reparo de quina liga tinta separada por até 1 px, e
 > a legenda impressa a essa distância entra no mesmo contorno. São 9 folhas neste livro.
 
 **Testes.** `tests/test_board_detection.py::DiagonalContactRepairTests`, 6 casos. Três deles são
@@ -1134,7 +1134,7 @@ justamente a inferência que a S-12 recusa fazer contra a declaração do PDF.
 
 ---
 
-### S-452 · A legenda que entra no recorte, e o quadrado que o contorno não fecha ✅ implementada (2026-08-30)
+### S-454 · A legenda que entra no recorte, e o quadrado que o contorno não fecha ✅ implementada (2026-08-30)
 
 > Item deixado em aberto pela [S-175](#s-175--a-quina-que-a-rasterização-não-liga-e-o-tabuleiro-que-sai-pela-metade--implementada-2026-08-20):
 > o reparo de quina liga tinta separada por até 1 px, e a legenda impressa a essa distância
@@ -1457,7 +1457,7 @@ pt de `REFINE_PADDING_PT` que o refino usa, então um diagrama pequeno num bbox 
 ~0,93 e não a 1,00 — e o corte precisa ser lido nessa escala. Medi-lo sobre o bbox cru daria
 outra distribuição e outro número.
 
-### Os números da S-452
+### Os números da S-454
 
 | número | como |
 |---|---|

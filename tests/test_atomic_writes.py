@@ -79,7 +79,7 @@ S-218 passou a reprovar relatório correto num clone limpo. A cura lá foi norma
 hashear (S-325); a cura aqui é **não semear CRLF na árvore**, que é a metade que evita o
 próximo caso.
 
-**E ela foi cobrada em campo, não em teoria.** Na S-452 o `cvoff-census` gravou
+**E ela foi cobrada em campo, não em teoria.** Na S-454 o `cvoff-census` gravou
 `docs/metrics/deteccao_base.csv` e `.json` com CRLF, e foi preciso normalizá-los à mão antes do
 commit. `write_census_json` era uma das cinco chamadas desta lista.
 """

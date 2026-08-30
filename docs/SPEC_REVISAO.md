@@ -15,7 +15,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176, S-452 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -3210,7 +3210,7 @@ que o `.gitattributes` declara `*.json text eol=lf`:
 | `side_survey.py:205` · `write_survey` | o levantamento de procedência do lado a jogar |
 
 **Não é achado de leitura de código: aconteceu.** Ao remedir o censo para a
-[S-452](ANALISE_DETECCAO.md), `cvoff-census` gravou `deteccao_base.csv` e `.json` com CRLF, e os
+[S-454](ANALISE_DETECCAO.md), `cvoff-census` gravou `deteccao_base.csv` e `.json` com CRLF, e os
 dois tiveram de ser normalizados à mão antes do commit — com o `git` avisando
 `CRLF will be replaced by LF the next time Git touches it`.
 
@@ -3237,7 +3237,7 @@ e o `.review.pgn` de `pdf_to_pgn.py`. **O padrão PGN especifica CR/LF como term
 - ✅ `PERMITIDAS` encolhe de cinco para dois, e a docstring dela diz por quê.
 
 **A guarda foi conferida contra o código que a motivou**, e não só contra o consertado: rodada
-sobre o commit da S-452, ela acusa `detection_census.py:583`, `experiments.py:191` e
+sobre o commit da S-454, ela acusa `detection_census.py:583`, `experiments.py:191` e
 `side_survey.py:205`. Uma guarda que só é vista passar não foi vista funcionar.
 
 **Testes.** `tests/test_atomic_writes.py::EscritaAtomicaTests` — `test_todo_write_text_grava_lf`,

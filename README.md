@@ -1084,7 +1084,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 |---|---|
 | S-01 a S-36 | [docs/SPEC.md](docs/SPEC.md) |
 | S-37 a S-77 | [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) |
-| S-78 a S-82, S-143, S-175, S-176, S-452 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
+| S-78 a S-82, S-143, S-175, S-176, S-454 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
 | S-95 a S-142, S-171 a S-174, S-218, S-219 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
 | S-144 a S-170, S-177 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
@@ -1121,7 +1121,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   como diagrama, os quatro danos medidos e o censo de candidatos (S-78 a S-82). Guarda tambem
   os itens de recorte que vieram depois: a foto quadrada (S-143), a quina que a rasterizacao
   nao liga (S-175), a faixa que passa por diagrama (S-176) e a legenda que entra no recorte
-  (S-452)
+  (S-454)
 - [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) -- a base de partidas como fonte
   de verdade: o indice por nome, a busca por posicao e a escolha que vira procedencia
   (S-83 a S-94)
