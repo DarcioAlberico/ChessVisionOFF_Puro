@@ -2,6 +2,9 @@
 
 Projeto para extrair diagramas de xadrez em PDF, converter para FEN e melhorar a acuracia com treino incremental.
 
+> **Primeira vez aqui? [QUICKSTART.md](QUICKSTART.md)** -- instalar, abrir e ler uma pagina,
+> em cinco minutos. Este README responde *por que* cada decisao, e e por isso que ele e longo.
+
 ## Stack
 
 - OpenCV: deteccao de tabuleiro e recorte por perspectiva.
@@ -33,7 +36,15 @@ pip install -e ".[dev]"
 Em qualquer um dos casos o pacote `chess_diagram_ocr` fica instalado em modo editavel,
 e os comandos `cvoff-*` passam a existir no PATH do ambiente.
 
-Requer Python 3.10. Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
+**A faixa de versao mudou (S-436)**: era `==3.10.*` e passou a `>=3.10,<3.14`. O motivo e prazo,
+nao gosto -- o Python 3.10 sai de suporte em outubro de 2026, e o bundle do PyInstaller **embarca
+o interpretador**, de modo que o pino passaria a distribuir um Python sem correcao de seguranca
+para quem baixa o .zip. A CI prova as duas pontas da faixa (3.10 e 3.13); o `.python-version` do
+repositorio continua em 3.10, que e o padrao de quem so roda `uv sync`. Promover o 3.13 a padrao
+do bundle depende de um interpretador com Tk completo -- o que o `uv` entrega para 3.13 ja veio
+sem parte do `ttk`, e ali os testes de janela **pulam** em vez de rodar.
+
+Requer Python 3.10, 3.11, 3.12 ou 3.13. Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
 (`models/piece_classifier.pt`) nao vem no repositorio -- veja
 [Dados e artefatos](#dados-e-artefatos).
 
@@ -1081,7 +1092,9 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-220 a S-234, S-294, S-295, S-324 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
 | S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
-| S-296 a S-323, S-325 a S-430, S-452 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
+| S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
+| S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
+| S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1172,6 +1185,22 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   diante): o portao que nunca foi aberto, os doze caminhos que apagam trabalho humano sem
   perguntar, os tres botoes "Cancelar" que nao cancelam, e as cinco regras que valem para toda a
   revisao -- entre elas a de que nenhum `# type: ignore` entra sem o motivo escrito
+- [docs/ROADMAP_REVISAO_EXTERNA.md](docs/ROADMAP_REVISAO_EXTERNA.md) -- **Fases 66 a 68**, a
+  revisao tecnica independente recebida em 2026-08-29: dez achados de fora, cada um conferido
+  contra este ramo, e as tres divergencias que so esta bancada podia ver -- entre elas a de
+  que a code page desta maquina esconde o defeito principal
+- [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) -- especificacao das Fases 66
+  a 68 (S-431 a S-440): a coleta que gravava zero e relatava cinco, a lei do `imread`/`imwrite`
+  virando guarda que pergunta ao git quem e o repositorio, a faixa de Python ate 3.13 antes
+  de outubro, e uma recomendacao medida e recusada
+- [docs/ROADMAP_ACABAMENTO.md](docs/ROADMAP_ACABAMENTO.md) -- **Fases 69 a 72**, a medicao do
+  acabamento da janela feita em 2026-08-29 sobre fotografias das tres peles: o sistema de design
+  existe e nao chega aos paineis -- cinco `style.configure` no projeto inteiro, onze widgets sem
+  folha de base, e o papel de botao destrutivo pintando cinza no tema claro
+- [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) -- especificacao das Fases 69 a 72
+  (S-441 a S-450): a folha de base do `ttk`, o indicador que encosta no rotulo, a regra 1 da
+  aparencia relida -- a pele classica nao muda de *arranjo*, e acabamento e da janela e nao da
+  pele --, os 154 literais de espaco e o tabuleiro que flutua num slab quase-preto
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

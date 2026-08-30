@@ -29,6 +29,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     hit_test,
     mark_confirmed,
     mark_saved,
+    saved_on_page,
 )
 
 PARAMS = OverlayParams(dpi=144, max_boards=12)
@@ -156,6 +157,41 @@ class MarkSavedTests(unittest.TestCase):
         """Trocar `Max diagramas` muda quantas caixas a página tem."""
         marcadas = mark_saved(self.boxes, {7})
         self.assertEqual([box.saved for box in marcadas], [False, False, False])
+
+
+class SavedOnPageTests(unittest.TestCase):
+    """A mesma pergunta do `mark_saved`, para a página inteira (S-451).
+
+    Quem usa a resposta é o "Salvar todos", para perguntar antes de gravar a segunda cópia de uma
+    página que já foi salva. O índice é o mesmo que pinta o verde, e é o ponto: a pergunta tem de
+    concordar com a cor que o usuário está vendo.
+    """
+
+    INDICE = {16: {0, 2}}
+
+    def test_responde_o_que_o_indice_tem_daquela_pagina(self) -> None:
+        self.assertEqual(saved_on_page(self.INDICE, "livro.pdf", 16, source_pdf="livro.pdf"), {0, 2})
+
+    def test_pagina_sem_nada_salvo_responde_vazio_e_nao_erro(self) -> None:
+        self.assertEqual(saved_on_page(self.INDICE, "livro.pdf", 17, source_pdf="livro.pdf"), set())
+
+    def test_perguntar_por_outro_livro_nao_responde_pelo_que_esta_aberto(self) -> None:
+        """O editor pode estar mostrando o resultado de um PDF que a janela já fechou, e
+        responder por ele faria a pergunta citar diagramas de outro livro."""
+        self.assertEqual(saved_on_page(self.INDICE, "outro.pdf", 16, source_pdf="livro.pdf"), set())
+        self.assertEqual(saved_on_page(self.INDICE, "", 16, source_pdf=""), set())
+
+    def test_a_resposta_e_copia_e_nao_o_conjunto_do_indice(self) -> None:
+        """Quem pergunta filtra a resposta; mexer nela não pode apagar o verde da página."""
+        indice = {16: {0, 2}}
+        saved_on_page(indice, "livro.pdf", 16, source_pdf="livro.pdf").clear()
+        self.assertEqual(indice, {16: {0, 2}})
+
+    def test_o_indice_concorda_com_o_que_o_mark_saved_pinta(self) -> None:
+        """As duas leem o mesmo dicionário, e é isso que impede a pergunta e a cor divergirem."""
+        boxes = (caixa(0, 0, 0, 10, 10), caixa(1, 20, 0, 30, 10), caixa(2, 40, 0, 50, 10))
+        salvos = saved_on_page(self.INDICE, "livro.pdf", 16, source_pdf="livro.pdf")
+        self.assertEqual([box.saved for box in mark_saved(boxes, salvos)], [True, False, True])
 
 
 class PageDoneTests(unittest.TestCase):

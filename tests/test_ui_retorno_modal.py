@@ -45,8 +45,15 @@ RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 53
+LIMITE = 54
 """Quantas chamadas de `messagebox` a interface ainda faz.
+
+**53 -> 54 na S-451**, e a nova é decisão pela régua da linha 4 da tabela: "Salvar todos" sobre uma
+página cujos diagramas já têm amostra pergunta antes de gravar a segunda cópia. Nada no caminho de
+gravação recusa a duplicata -- `append_training_sample` nomeia por timestamp e sempre acrescenta --,
+e ela é legítima quando a pessoa acabou de corrigir a leitura. Quem sabe de qual dos dois casos se
+trata é quem está com o livro aberto, e a única coisa que faltava era perguntar. Uma para a página
+e não uma por diagrama, pelo mesmo motivo da pergunta de ilegalidade que ela acompanha.
 
 **51 -> 52 na S-289**, e a nova é um `showerror` de falha ao **gravar** o estudo exportado --
 linha 6 da tabela: erro interrompe um gesto que a pessoa acabou de fazer, e ela acabou de escolher o

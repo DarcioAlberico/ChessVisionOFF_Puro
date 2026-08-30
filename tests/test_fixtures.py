@@ -31,6 +31,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.board_detection import detect_boards
 from chess_diagram_ocr.config import BOARD_SIZE
 
@@ -46,7 +47,7 @@ doze é o que separa "o desenho mudou de lugar" de "o detector mudou de resposta
 
 
 def _pagina(nome: str) -> np.ndarray:
-    imagem = cv2.imread(str(FIXTURES / f"{nome}.png"))
+    imagem = read_image(FIXTURES / f"{nome}.png")
     if imagem is None:  # pragma: no cover - só se o fixture sumir do repositório
         raise AssertionError(f"Fixture ausente: {nome}.png. Refaça com tests/fixtures/gerar.py")
     return cv2.cvtColor(imagem, cv2.COLOR_BGR2RGB)

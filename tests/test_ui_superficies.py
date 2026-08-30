@@ -188,24 +188,66 @@ class CanvasSegueOPapelTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             InteractiveBoard(self.host, background="#ffffff")  # type: ignore[call-arg]
 
-    def test_os_dois_tabuleiros_da_janela_tem_a_mesma_esteira(self) -> None:
+    def test_os_dois_tabuleiros_da_janela_tem_o_mesmo_fundo(self) -> None:
         """`mode` decide o que o tabuleiro faz, e nunca decidiu como ele se parece.
 
         O Resultado monta em `edit` e a Análise em `play`; era daí que saíam as duas telas.
+
+        **O fundo é `VAZIO_DE_CANVAS` desde a S-449, e não mais a esteira.** A propriedade que
+        importa não mudou -- os dois têm o mesmo --; o que mudou é que a esteira deixou de ser o
+        fundo do canvas e virou um retângulo com tamanho, porque como fundo ela não tinha fim:
+        62% do canvas era quase-preto dentro de um painel claro.
         """
         edicao = InteractiveBoard(self.host, mode="edit", show_palette=False)
         jogo = InteractiveBoard(self.host, mode="play")
         self.assertEqual(str(edicao.canvas.cget("bg")), str(jogo.canvas.cget("bg")))
-        self.assertEqual(str(edicao.canvas.cget("bg")), theme.cor_atual(tokens.SUPERFICIE_TABULEIRO))
+        self.assertEqual(str(edicao.canvas.cget("bg")), theme.cor_atual(tokens.VAZIO_DE_CANVAS))
 
-    def test_a_coordenada_desenhada_e_legivel_sobre_a_esteira_de_verdade(self) -> None:
-        """Não a esteira que o token diz — a que o widget de fato tem."""
+    def test_o_vazio_nao_compete_com_o_documento_e_o_tabuleiro_nao_se_dissolve(self) -> None:
+        """Os dois lados da S-449, e o segundo **troca de dono com a paleta**.
+
+        O vazio é vizinho do fundo do painel de propósito: aqui não se quer contraste, se quer que
+        ele pare de competir. E o que separa o tabuleiro dele muda: na paleta clara são a esteira e
+        a moldura (11,50 e 14,32), porque a casa clara sozinha daria 1,17; nas escuras esteira e
+        moldura se fundem no vazio e quem separa é o tabuleiro (12,17 a 13,55). O que se cobra é
+        que **pelo menos um dos três** passe o piso gráfico, em toda paleta.
+        """
+        for rotulo, tabela in (("claro", RESERVA), ("escuro", tokens._NO_ESCURO)):
+            vazio = tabela[tokens.VAZIO_DE_CANVAS]
+            with self.subTest(paleta=rotulo):
+                painel = RESERVA[tokens.SUPERFICIE_PADRAO] if rotulo == "claro" else "#212529"
+                self.assertLessEqual(
+                    razao_de_contraste(vazio, painel), 1.25, "o vazio virou moldura em vez de fundo"
+                )
+                separadores = (
+                    tabela[tokens.SUPERFICIE_TABULEIRO],
+                    tabela[tokens.MOLDURA],
+                    RESERVA[tokens.CASA_CLARA],
+                )
+                melhor = max(razao_de_contraste(cor, vazio) for cor in separadores)
+                self.assertGreaterEqual(melhor, tokens.AA_GRAFICO, "o tabuleiro se dissolve no vazio")
+
+    def test_o_vazio_nao_e_superficie_de_documento(self) -> None:
+        """A regra da S-224 -- documento mantém contraste medido, cromo segue a pele -- precisa
+        continuar valendo para página e tabuleiro sem passar a valer para o nada em volta deles."""
+        self.assertIn(tokens.VAZIO_DE_CANVAS, tokens.SUPERFICIES)
+        self.assertNotIn(tokens.VAZIO_DE_CANVAS, tokens.SUPERFICIES_DE_DOCUMENTO)
+
+    def test_a_coordenada_e_legivel_sobre_a_esteira_em_que_ela_e_desenhada(self) -> None:
+        """**Sobre a esteira, e não sobre o fundo do canvas** (S-449).
+
+        Enquanto os dois eram a mesma coisa, resolver contra o fundo estava certo. Desde que a
+        esteira virou retângulo, o fundo é `VAZIO_DE_CANVAS` -- claro na pele clássica --, e
+        resolver contra ele daria letra escura desenhada em cima da esteira escura. O princípio
+        não mudou: resolve-se contra o que está debaixo do que se desenha.
+        """
         tabuleiro = InteractiveBoard(self.host, mode="play")
-        fundo = str(tabuleiro.canvas.cget("bg"))
         from chess_diagram_ocr.ui.board_render import BoardRenderer
 
+        esteira = theme.cor_atual(tokens.SUPERFICIE_TABULEIRO)
         escolhida = BoardRenderer._cor_de_coordenada(tabuleiro.canvas)
-        self.assertGreaterEqual(razao_de_contraste(escolhida, fundo), AA_TEXTO)
+        self.assertGreaterEqual(razao_de_contraste(escolhida, esteira), AA_TEXTO)
+        self.assertNotEqual(str(tabuleiro.canvas.cget("bg")), esteira, "o fundo voltou a ser a esteira")
 
     def test_o_canvas_da_galeria_nasce_com_o_papel_e_segue_a_troca(self) -> None:
         """Era o **único canvas do `ui/` fora do sistema de cor** (S-394): fundo de fábrica do Tk

@@ -39,11 +39,41 @@ def _launcher(caso: type[unittest.TestCase]) -> Path:
 
     No Windows sai um `.bat`, no resto um `.sh`. Não é frescura de portabilidade -- é o que
     permite ao mesmo teste rodar aqui e na CI.
+
+    **O `.bat` vai na code page OEM, e não em UTF-8 (S-434).** O `cmd.exe` lê arquivo de lote
+    pela code page do console -- `cp850` numa máquina brasileira de fábrica --, e não por UTF-8.
+    Com `encoding="utf-8"` o acento de `sys.executable` (num Python gerenciado pelo `uv` o
+    interpretador mora dentro do perfil do usuário) virava mojibake dentro do `.bat`, e os oito
+    testes desta classe morriam com `EngineTerminatedError: engine process died unexpectedly`,
+    precedido de um "O sistema não pode encontrar o caminho especificado" que o `python-chess`
+    nem consegue decodificar para o log. A CI roda sob caminho ASCII e nunca pôde ver isso.
+
+    Fica um limite, e ele é do `cmd.exe` e não daqui: caminho com caractere fora da code page
+    OEM -- cirílico, que é o caso do acervo e o que quebrou na S-111 -- não cabe num `.bat` de
+    jeito nenhum, e ali o `encode` **levanta** em vez de gravar lixo, que é a falha certa. Se
+    isso aparecer, o caminho é fugir do `cmd`: `popen_uci` aceita **lista** de argumentos, e
+    `[sys.executable, str(MOTOR_FALSO)]` dispensa o arquivo de lote inteiro.
     """
     diretorio = pasta_temporaria_da_classe(caso, prefixo="cvoff-engine-")
     if os.name == "nt":
         caminho = diretorio / "motor.bat"
-        caminho.write_text(f'@echo off\n"{sys.executable}" "{MOTOR_FALSO}" %*\n', encoding="utf-8")
+        # Os caminhos vao pelo AMBIENTE, e nao dentro do .bat (S-434, e o que faltava).
+        #
+        # A S-434 gravava o .bat na code page OEM porque o cmd.exe le arquivo de lote pela
+        # code page do console. Isso acerta quando as duas coincidem e erra quando nao -- e o
+        # runner da CI e o outro lado: sete testes desta classe morriam com
+        # EngineTerminatedError sob `acentuado-aeiouc`. Gravar numa code page e apostar em qual
+        # sera usada na leitura, e as duas pontas do erro dao o mesmo sintoma.
+        #
+        # Nome curto 8.3 tambem nao serve: o volume da CI tem a criacao de nome curto
+        # desligada, e ali o GetShortPathName devolve o caminho longo de volta.
+        #
+        # Variavel de ambiente no Windows e UTF-16 e nao passa por code page nenhuma. O .bat
+        # fica ASCII puro -- `%CVOFF_PY%` sao oito caracteres ASCII --, o cmd.exe expande na
+        # hora, e a pergunta 'em que code page isto sera lido?' deixa de existir.
+        os.environ["CVOFF_PY"] = str(sys.executable)
+        os.environ["CVOFF_MOTOR"] = str(MOTOR_FALSO)
+        caminho.write_text('@echo off\n"%CVOFF_PY%" "%CVOFF_MOTOR%" %*\n', encoding="ascii")
     else:
         caminho = diretorio / "motor.sh"
         caminho.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{MOTOR_FALSO}" "$@"\n', encoding="utf-8")
@@ -77,7 +107,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(Evaluation(score_cp=-40, mate_in=None, best_move=None).display(), "-0,40")
 
     def test_a_mate_is_not_shown_as_a_huge_number_of_pawns(self) -> None:
-        """"+327,00" não diz nada; "M3" diz exatamente o que está acontecendo."""
+        """ "+327,00" não diz nada; "M3" diz exatamente o que está acontecendo."""
         self.assertEqual(Evaluation(score_cp=None, mate_in=3, best_move=None).display(), "M3")
         self.assertEqual(Evaluation(score_cp=None, mate_in=-2, best_move=None).display(), "-M2")
 

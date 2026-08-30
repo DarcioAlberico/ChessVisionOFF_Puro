@@ -15,6 +15,7 @@ que permite afirmar "não existe" sem tocar o disco e "fora da faixa" sem abrir 
 
 from __future__ import annotations
 
+import ast
 import tkinter as tk
 import unittest
 from pathlib import Path
@@ -23,8 +24,10 @@ from tkinter import ttk
 from ambiente_de_teste import pasta_temporaria
 from tk_root import raiz
 
-from chess_diagram_ocr.ui import campos
+from chess_diagram_ocr.ui import campos, strings
 from chess_diagram_ocr.ui.campos import ARQUIVO, PASTA, diagnosticar_caminho, numero_na_faixa
+
+RAIZ = Path(__file__).resolve().parents[1]
 
 
 class DiagnosticoDeCaminhoTests(unittest.TestCase):
@@ -239,10 +242,22 @@ class JanelaTests(unittest.TestCase):
         return (Path(__file__).resolve().parents[1] / "app_tkinter.py").read_text(encoding="utf-8")
 
     def test_os_tres_caminhos_usam_a_linha_de_caminho(self) -> None:
+        """**A chamada deixou de caber numa linha** quando a S-448 lhe deu `largura_do_rotulo`, e
+        procurar o texto exato passou a medir a formatação em vez do fato. O que importa é qual
+        função monta cada um dos três, e isso o `ast` responde."""
         fonte = self._fonte()
+        montados = {
+            no.args[1].value
+            for no in ast.walk(ast.parse(fonte))
+            if isinstance(no, ast.Call)
+            and isinstance(no.func, ast.Attribute)
+            and no.func.attr == "linha_de_caminho"
+            and len(no.args) >= 2
+            and isinstance(no.args[1], ast.Constant)
+        }
         for rotulo in ("Modelo (.pt)", "CSV labels", "Pasta samples"):
             with self.subTest(rotulo=rotulo):
-                self.assertIn(f'campos.linha_de_caminho(cfg_tab, "{rotulo}"', fonte)
+                self.assertIn(rotulo, montados)
 
     def test_a_pasta_de_amostras_e_declarada_como_pasta(self) -> None:
         self.assertIn("tipo=campos.PASTA", self._fonte())
@@ -253,6 +268,60 @@ class JanelaTests(unittest.TestCase):
         self.assertNotIn("self.lr_var = tk.DoubleVar", fonte)
         self.assertIn("self.lr_var = tk.StringVar", fonte)
         self.assertIn("lr=self._train_lr()", fonte)
+
+
+class GradeDeFormularioTests(unittest.TestCase):
+    """A coluna de rótulo e a largura de campo (S-448).
+
+    **O defeito cortava letra na tela.** `largura_do_rotulo` era `16` cravado e
+    "Taxa de aprendizado" tem 19 caracteres: o Tk desenhava `Taxa de aprendizad`. E havia três
+    medidas do mesmo formulário -- o `16` de `campos._linha`, o `24` do rótulo de orientação e o
+    que o `ttk.Spinbox` do `_spin_row` resolvesse sozinho.
+    """
+
+    def test_a_coluna_cabe_o_rotulo_mais_longo(self) -> None:
+        coluna = campos.largura_de_rotulo(*strings.ROTULOS_DA_CONFIGURACAO)
+        for rotulo in strings.ROTULOS_DA_CONFIGURACAO:
+            with self.subTest(rotulo=rotulo):
+                self.assertGreaterEqual(coluna, len(rotulo), "este rótulo seria cortado")
+
+    def test_o_rotulo_que_era_cortado_cabe_agora(self) -> None:
+        """O caso que abriu o item, nomeado: 19 caracteres contra os 16 de antes."""
+        coluna = campos.largura_de_rotulo(*strings.ROTULOS_DA_CONFIGURACAO)
+        self.assertGreater(len(strings.TAXA_DE_APRENDIZADO), 16)
+        self.assertGreaterEqual(coluna, len(strings.TAXA_DE_APRENDIZADO))
+
+    def test_a_coluna_e_pura_e_nao_desce_abaixo_de_um(self) -> None:
+        self.assertEqual(19, campos.largura_de_rotulo("Taxa de aprendizado", "DPI"))
+        self.assertEqual(1, campos.largura_de_rotulo())
+        self.assertEqual(1, campos.largura_de_rotulo(""))
+
+    def test_a_largura_cresce_com_a_classe_do_dado(self) -> None:
+        """Número < texto < caminho, que é a ordem em que o dado cresce. O caminho é o único que
+        expande, porque é o único cujo conteúdo não tem tamanho previsível."""
+        larguras = campos.LARGURA_DE_CAMPO
+        self.assertLess(larguras[campos.NUMERO], larguras[campos.TEXTO])
+        self.assertEqual(0, larguras[campos.CAMINHO], "0 quer dizer 'ocupa a sobra'")
+
+    def test_todo_rotulo_do_formulario_passa_pela_lista(self) -> None:
+        """Um rótulo que entrasse no formulário sem passar por `ROTULOS_DA_CONFIGURACAO` voltaria
+        a ser cortado sem ninguém notar -- e é por isso que a lista mora em `ui/strings.py`."""
+        fonte = (RAIZ / "app_tkinter.py").read_text(encoding="utf-8")
+        montados = [
+            no.args[1]
+            for no in ast.walk(ast.parse(fonte))
+            if isinstance(no, ast.Call)
+            and isinstance(no.func, ast.Attribute)
+            and no.func.attr in ("linha_de_caminho", "linha_de_numero", "linha_de_giro")
+            and len(no.args) >= 2
+        ]
+        for alvo in montados:
+            rotulo = alvo.value if isinstance(alvo, ast.Constant) else None
+            with self.subTest(rotulo=rotulo or ast.dump(alvo)[:40]):
+                if rotulo is None:  # veio de `strings.X`, que já é a lista
+                    self.assertIsInstance(alvo, ast.Attribute)
+                    continue
+                self.assertIn(rotulo, strings.ROTULOS_DA_CONFIGURACAO)
 
 
 if __name__ == "__main__":

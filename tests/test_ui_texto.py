@@ -120,9 +120,12 @@ class SemLiteralTests(unittest.TestCase):
             "app_tkinter.py": 2,
             "dataset_panel.py": 1,
             "gallery_panel.py": 1,
-            # Dois: o painel de legalidade e a frase do estado vazio, que a S-170 acrescentou --
-            # ela é a mais longa da aba e nasceu acompanhando a largura, e não com um número.
-            "result_panel.py": 2,
+            # **Um desde a S-450**, e eram dois. O que saiu foi a frase do estado vazio: ela
+            # ficava num `Label` sob o tabuleiro que a contradizia, e passou a ser desenhada no
+            # canvas, no lugar do tabuleiro que não existe. A quebra por largura não se perdeu --
+            # `create_text` a faz com `width=`, que é o mesmo que `acompanhar` dava ao rótulo.
+            # Sobrou o painel de legalidade.
+            "result_panel.py": 1,
             # Três: os dois que já existiam mais a linha de detalhe do motivo, que a S-153
             # acrescentou -- e que nasceu acompanhando a largura em vez de com um número.
             "review_panel.py": 3,

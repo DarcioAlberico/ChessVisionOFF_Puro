@@ -26,7 +26,7 @@ from chess_diagram_ocr.fen_utils import is_valid_fen
 from chess_diagram_ocr.net_correction import RemoteFenProvider, build_provider
 from chess_diagram_ocr.settings import RemoteFenSettings
 
-from . import strings
+from . import estilos, strings
 from .tooltip import Tooltip
 
 __all__ = ["NetCorrectionButton"]
@@ -63,7 +63,12 @@ class NetCorrectionButton:
 
         self._running = False
 
-        self.button = ttk.Button(parent, text=strings.CORRIGIR_PELA_REDE, command=self.correct)
+        self.button = ttk.Button(
+            parent,
+            text=strings.CORRIGIR_PELA_REDE,
+            command=self.correct,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
         # Desabilitado até haver configuração, e com o motivo a um pouso de ponteiro: um
         # botao cinza sem explicacao e pior que um botao ausente (S-32).
         self.tooltip = Tooltip(self.button)

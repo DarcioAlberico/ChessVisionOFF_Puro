@@ -134,13 +134,18 @@ que é outra."""
 # menos isso".
 
 MOLDURA_DO_BOTAO = 14
-"""Borda mais preenchimento vertical de um `ttk.Button`, somando os dois lados."""
+"""Borda mais preenchimento vertical de um `ttk.Button`, somando os dois lados.
+
+**A folha de base da S-441 não mexe nisto, e a medição é a razão.** O `padding` de `TButton` sob
+`bootstrap-light` já vem `10 4` de fábrica -- a folha cobre quem o tema deixou vazio, e o botão não
+é um deles. Enquanto for assim, este 14 continua sendo medida do widget e não de uma escala."""
 
 FOLGA_ACIMA_DO_ROTULO = 4
 """O vão que o `compound=TOP` abre entre o ícone e a primeira linha do rótulo."""
 
 MOLDURA_DO_CABECALHO = 4
 """Borda mais preenchimento vertical do `ttk.Label` que desenha o nome do grupo."""
+
 
 def espaco_ate_o_cabecalho(densidade: str, *, base: int = tipografia.BASE_DE_REFERENCIA) -> int:
     """O vão entre a fila de botões e o cabeçalho do grupo. **Altura: entra no orçamento.**

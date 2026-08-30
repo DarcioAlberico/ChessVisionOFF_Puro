@@ -28,7 +28,7 @@ from ..dataset_browser import (
     source_distribution,
     split_distribution,
 )
-from . import estilos, formato, strings, tabela, texto, theme, tipografia
+from . import espaco, estilos, formato, strings, tabela, texto, theme, tipografia
 from .busy import BusyRegistry, BusyToken
 from .tooltip import Tooltip
 
@@ -84,7 +84,7 @@ class DatasetPanel(ttk.Frame):
         on_status: Callable[[str], None] | None = None,
         busy: BusyRegistry | None = None,
     ) -> None:
-        super().__init__(parent, padding=6)
+        super().__init__(parent, padding=espaco.linha())
         self._paths = paths
         self._on_edit = on_edit
         self._on_recheck = on_recheck
@@ -123,46 +123,59 @@ class DatasetPanel(ttk.Frame):
     def _build_ui(self) -> None:
         toolbar = ttk.Frame(self)
         toolbar.pack(fill=tk.X)
-        ttk.Button(toolbar, text="Recarregar", command=self.reload).pack(side=tk.LEFT)
+        ttk.Button(toolbar, text="Recarregar", command=self.reload, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.LEFT)
         # Guardado em atributo porque ele precisa **ficar cinza** enquanto a detecção roda
         # (S-314): era criado inline e não havia como desabilitá-lo.
         self.btn_duplicatas = ttk.Button(
-            toolbar, text="Detectar duplicatas", command=self.detect_duplicates
+            toolbar,
+            text="Detectar duplicatas",
+            command=self.detect_duplicates,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
         )
-        self.btn_duplicatas.pack(side=tk.LEFT, padx=6)
+        self.btn_duplicatas.pack(side=tk.LEFT, padx=espaco.linha())
         Tooltip(self.btn_duplicatas).set_text(
             "Compara todas as imagens do dataset por hash perceptual. Fica cinza enquanto uma "
             "detecção está em andamento -- são 3.195 imagens de 800×800, e duas passadas ao "
             "mesmo tempo leem o disco duas vezes para dar a mesma resposta."
         )
-        ttk.Button(toolbar, text="Estatísticas", command=self.show_statistics).pack(side=tk.LEFT)
+        ttk.Button(
+            toolbar,
+            text="Estatísticas",
+            command=self.show_statistics,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
 
         filters = ttk.LabelFrame(self, text="Filtros")
-        filters.pack(fill=tk.X, pady=(6, 6))
+        filters.pack(fill=tk.X, pady=(espaco.linha(), espaco.linha()))
         line = ttk.Frame(filters)
-        line.pack(fill=tk.X, padx=6, pady=4)
+        line.pack(fill=tk.X, padx=espaco.linha(), pady=espaco.linha())
         ttk.Label(line, text="Busca").pack(side=tk.LEFT)
         entry = ttk.Entry(line, textvariable=self.query_var, width=26)
-        entry.pack(side=tk.LEFT, padx=(4, 10))
+        entry.pack(side=tk.LEFT, padx=(espaco.linha(), espaco.folga()))
         entry.bind("<Return>", lambda _event: self.apply_filters())
         ttk.Label(line, text="Legalidade").pack(side=tk.LEFT)
         ttk.Combobox(line, textvariable=self.legality_var, values=LEGALITY_CHOICES, state="readonly", width=13).pack(
-            side=tk.LEFT, padx=(4, 10)
+            side=tk.LEFT, padx=(espaco.linha(), espaco.folga())
         )
         ttk.Label(line, text=strings.CONJUNTO).pack(side=tk.LEFT)
         ttk.Combobox(line, textvariable=self.split_var, values=SPLIT_CHOICES, state="readonly", width=8).pack(
-            side=tk.LEFT, padx=(4, 10)
+            side=tk.LEFT, padx=(espaco.linha(), espaco.folga())
         )
 
         line2 = ttk.Frame(filters)
-        line2.pack(fill=tk.X, padx=6, pady=(0, 6))
+        line2.pack(fill=tk.X, padx=espaco.linha(), pady=(0, espaco.linha()))
         ttk.Label(line2, text="Livro").pack(side=tk.LEFT)
         self.source_combo = ttk.Combobox(line2, textvariable=self.source_var, values=("(todos)",), state="readonly", width=32)
-        self.source_combo.pack(side=tk.LEFT, padx=(4, 10))
+        self.source_combo.pack(side=tk.LEFT, padx=(espaco.linha(), espaco.folga()))
         ttk.Checkbutton(line2, text="Só duplicatas", variable=self.duplicates_var).pack(side=tk.LEFT)
-        ttk.Checkbutton(line2, text="Imagem ausente", variable=self.missing_var).pack(side=tk.LEFT, padx=8)
-        ttk.Button(line2, text="Aplicar", command=self.apply_filters).pack(side=tk.LEFT, padx=8)
-        ttk.Button(line2, text="Limpar", command=self.clear_filters).pack(side=tk.LEFT)
+        ttk.Checkbutton(line2, text="Imagem ausente", variable=self.missing_var).pack(side=tk.LEFT, padx=espaco.folga())
+        ttk.Button(
+            line2,
+            text="Aplicar",
+            command=self.apply_filters,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.folga())
+        ttk.Button(line2, text="Limpar", command=self.clear_filters, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.LEFT)
 
         # Corpo em monoespaçada (S-149): a coluna de FEN é a razão, e `ttk` não tem fonte por
         # coluna -- mas esta tabela é dado de ponta a ponta (arquivo, FEN, livro, data), e é
@@ -177,19 +190,50 @@ class DatasetPanel(ttk.Frame):
         self.tree.bind("<Double-1>", lambda _event: self.edit_selected())
 
         pager = ttk.Frame(self)
-        pager.pack(fill=tk.X, pady=(4, 0))
-        ttk.Button(pager, text="<", width=3, command=lambda: self.change_page(-1)).pack(side=tk.LEFT)
-        ttk.Label(pager, textvariable=self.page_var).pack(side=tk.LEFT, padx=6)
-        ttk.Button(pager, text=">", width=3, command=lambda: self.change_page(1)).pack(side=tk.LEFT)
+        pager.pack(fill=tk.X, pady=(espaco.linha(), 0))
+        ttk.Button(
+            pager,
+            text="<",
+            width=3,
+            command=lambda: self.change_page(-1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
+        ttk.Label(pager, textvariable=self.page_var).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Button(
+            pager,
+            text=">",
+            width=3,
+            command=lambda: self.change_page(1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
 
         actions = ttk.Frame(self)
-        actions.pack(fill=tk.X, pady=(6, 0))
-        ttk.Button(actions, text="Abrir no editor", command=self.edit_selected).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Conferir com o modelo", command=self.recheck_selected).pack(side=tk.LEFT, padx=6)
+        actions.pack(fill=tk.X, pady=(espaco.linha(), 0))
+        ttk.Button(
+            actions,
+            text="Abrir no editor",
+            command=self.edit_selected,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            actions,
+            text="Conferir com o modelo",
+            command=self.recheck_selected,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
         ttk.Button(actions, text="Quarentena", command=self.quarantine_selected, style=estilos.estilo_de_botao(estilos.DESTRUTIVO)).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Remover", command=self.remove_selected, style=estilos.estilo_de_botao(estilos.DESTRUTIVO)).pack(side=tk.LEFT, padx=6)
+        ttk.Button(
+            actions,
+            text="Remover",
+            command=self.remove_selected,
+            style=estilos.estilo_de_botao(estilos.DESTRUTIVO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
 
-        texto.acompanhar(ttk.Label(self, textvariable=self.stats_var, justify=tk.LEFT)).pack(anchor="w", pady=(6, 0))
+        texto.acompanhar(ttk.Label(
+            self,
+            textvariable=self.stats_var,
+            justify=tk.LEFT,
+        )).pack(anchor="w", pady=(espaco.linha(), 0))
 
     # -------------------------------------------------------------------- dados
 
@@ -527,6 +571,6 @@ class DatasetPanel(ttk.Frame):
         # `wrap="none"` mais monoespaçada: as estatísticas são colunas alinhadas por espaço, e
         # em proporcional elas deixam de ser colunas (S-149).
         text = tk.Text(window, wrap="none", font=theme.fonte_atual(tipografia.DADO))
-        text.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        text.pack(fill=tk.BOTH, expand=True, padx=espaco.folga(), pady=espaco.folga())
         text.insert("1.0", "\n".join(linhas))
         text.configure(state=tk.DISABLED)

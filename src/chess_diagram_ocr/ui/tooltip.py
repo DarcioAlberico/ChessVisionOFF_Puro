@@ -17,7 +17,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from . import theme, tokens
+from . import espaco, theme, tokens
 
 TOOLTIP_DELAY_MS = 450
 """Tempo parado sobre o widget antes de a dica aparecer. Curto o bastante para quem
@@ -60,7 +60,7 @@ def janela_de_dica(
         foreground=tokens.sobre_superficie(fundo),
         relief=tk.SOLID,
         borderwidth=1,
-        padding=6,
+        padding=espaco.linha(),
     )
     if fonte is not None:
         rotulo.configure(font=fonte)

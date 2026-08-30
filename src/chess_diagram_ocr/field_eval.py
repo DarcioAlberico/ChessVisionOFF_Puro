@@ -398,7 +398,54 @@ def _sem_comentario_nem_docstring(fonte: bytes) -> bytes:
             # `Pass` no lugar, e não corpo vazio: um `def` sem corpo não é árvore válida, e
             # remover a linha mudaria o dump de todo módulo que tem função de uma linha só.
             corpo[0] = ast.Pass()
-    return ast.dump(arvore).encode("utf-8")
+    return _dump_estavel(arvore).encode("utf-8")
+
+
+# Campos que o `ast` ganhou DEPOIS do 3.10 e que o dump precisa ignorar.
+#
+# `type_params` chegou no 3.12 com a PEP 695. Ele entra no dump como `type_params=[]` em toda
+# `FunctionDef` e toda `ClassDef` -- mesmo num arquivo que nao usa a sintaxe nova, porque a lista
+# vazia nao e `None` e por isso o `ast.dump` nao a omite. O efeito e que o digest de TODO modulo
+# muda ao trocar de interpretador, e nao porque uma linha de codigo mudou.
+_CAMPOS_DEPOIS_DO_3_10 = frozenset({"type_params"})
+
+
+def _dump_estavel(no: ast.AST) -> str:
+    """`ast.dump` do 3.10, em qualquer interpretador.
+
+    **O defeito que isto fecha.** A CI passou a provar as duas pontas da faixa de Python na S-437,
+    e a ponta de cima reprovou na hora: `check (3.10)` verde e `check (3.13)` vermelho no MESMO
+    commit, com os trinta modulos do caminho de medicao acusados de terem mudado. Nenhum mudou --
+    o que mudou foi o `ast.dump`, que no 3.12 passou a escrever `type_params=[]` em cada `def` e
+    cada `class`. Um digest que responde diferente por interpretador nao mede codigo, mede o
+    interpretador, e os quatro relatorios de campo ficariam impossiveis de validar fora do 3.10.
+
+    **Por que reproduzir o 3.10 e nao inventar um formato novo.** Um formato novo seria mais
+    limpo e invalidaria os quatro relatorios publicados, pedindo remedicao de tudo por um defeito
+    que nao e de medicao nenhuma. Reproduzindo o formato que ja esta gravado, os digests de hoje
+    continuam validos e o 3.13 passa a concordar com eles.
+
+    A regra de omissao e a do proprio `ast.dump`: campo que levanta `AttributeError` sai, e campo
+    que vale `None` sai quando `None` e o padrao da classe. O que muda aqui e a lista de campos
+    consultada, que ignora o que nasceu depois do 3.10.
+    """
+    if isinstance(no, ast.AST):
+        classe = type(no)
+        partes = []
+        for nome in no._fields:
+            if nome in _CAMPOS_DEPOIS_DO_3_10:
+                continue
+            try:
+                valor = getattr(no, nome)
+            except AttributeError:
+                continue
+            if valor is None and getattr(classe, nome, ...) is None:
+                continue
+            partes.append(f"{nome}={_dump_estavel(valor)}")
+        return f"{classe.__name__}({', '.join(partes)})"
+    if isinstance(no, list):
+        return f"[{', '.join(_dump_estavel(item) for item in no)}]"
+    return repr(no)
 
 
 def _digest_of(caminhos: Iterable[Path], raiz: Path) -> str:

@@ -48,7 +48,7 @@ from PIL import Image, ImageTk
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 
-from . import atalhos, comandos, formato, pele, rodape, strings, theme, tipografia, tokens
+from . import atalhos, comandos, espaco, formato, pele, rodape, strings, theme, tipografia, tokens
 from .barra import BarraFluida
 from .page_overlay import DiagramBox, PageBoxes, traco_da_caixa
 from .tooltip import Tooltip
@@ -189,7 +189,7 @@ class PdfPanel(ttk.Frame):
         on_prefs_changed: Callable[[], None] = lambda: None,
         on_document_state: Callable[[str, bool], None] = lambda _texto, _concluida: None,
     ) -> None:
-        super().__init__(parent, padding=10)
+        super().__init__(parent, padding=espaco.folga())
         self._dpi = dpi
         self._initial_page_for = initial_page_for
         self._on_status = on_status
@@ -340,13 +340,13 @@ class PdfPanel(ttk.Frame):
         movê-la para uma das duas barras a misturaria com controle de visualização, que é
         exatamente o agrupamento por acaso de que este item veio tirar o painel. Ela nasce
         vazia: sem os controles de campo montados pela janela, não ocupa altura nenhuma."""
-        self.field_row.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self.field_row.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
 
         # Sem `Notebook`: a página ocupa o painel inteiro desde a S-69. Enquanto havia duas
         # abas, esta metade da janela custava uma linha de abas para oferecer uma escolha que
         # não era uma -- a outra não fazia nada que esta não faça, e não fazia o que esta faz.
         view = ttk.Frame(box)
-        view.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        view.pack(fill=tk.BOTH, expand=True, padx=espaco.folga(), pady=espaco.folga())
         wrap = ttk.Frame(view)
         wrap.pack(fill=tk.BOTH, expand=True)
         self.canvas = tk.Canvas(wrap, bg=theme.cor_atual(tokens.SUPERFICIE_PAGINA), highlightthickness=0)
@@ -355,7 +355,7 @@ class PdfPanel(ttk.Frame):
         vscroll = ttk.Scrollbar(wrap, orient=tk.VERTICAL, command=self.canvas.yview)
         vscroll.pack(side=tk.RIGHT, fill=tk.Y)
         hscroll = ttk.Scrollbar(view, orient=tk.HORIZONTAL, command=self.canvas.xview)
-        hscroll.pack(fill=tk.X, pady=(0, 8))
+        hscroll.pack(fill=tk.X, pady=(0, espaco.folga()))
         self.canvas.configure(yscrollcommand=vscroll.set, xscrollcommand=hscroll.set)
         self.canvas.bind("<Configure>", self._ao_redimensionar)
         self.canvas.bind("<ButtonPress-1>", self._on_press)
@@ -396,8 +396,8 @@ class PdfPanel(ttk.Frame):
         self.barra_livro = BarraFluida(box)
         self.barra_vista = BarraFluida(box)
         if na_tela:
-            self.barra_livro.pack(fill=tk.X, padx=8, pady=6, **embalagem)
-            self.barra_vista.pack(fill=tk.X, padx=8, pady=(0, 4), **embalagem)
+            self.barra_livro.pack(fill=tk.X, padx=espaco.folga(), pady=espaco.linha(), **embalagem)
+            self.barra_vista.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()), **embalagem)
 
         livro, vista = self.barra_livro, self.barra_vista
         livro.adicionar(ttk.Button(livro, text=comandos.rotulo_de_botao("abrir_pdf"), style=comandos.estilo("abrir_pdf"), command=self.open_pdf))
@@ -586,7 +586,7 @@ class PdfPanel(ttk.Frame):
         deslizador: quem sincroniza é `update_zoom_label`, que já era chamada por todos eles.
         """
         rodape_do_painel = ttk.Frame(self._box)
-        rodape_do_painel.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 6))
+        rodape_do_painel.pack(side=tk.BOTTOM, fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
         self._rodape_de_zoom = rodape_do_painel
 
         ttk.Label(rodape_do_painel, text=strings.ZOOM_DA_PAGINA).pack(side=tk.LEFT)
@@ -599,7 +599,7 @@ class PdfPanel(ttk.Frame):
             orient=tk.HORIZONTAL,
             command=self._ao_arrastar_zoom,
         )
-        self._deslizador.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
+        self._deslizador.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=espaco.folga())
         self.update_zoom_label()
 
     def _ao_arrastar_zoom(self, valor: str) -> None:

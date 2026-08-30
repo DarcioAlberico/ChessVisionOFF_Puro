@@ -8,6 +8,7 @@ de todo widget da janela por `ttkbootstrap.Button` o quebraria.
 
 from __future__ import annotations
 
+import ast
 import re
 import tkinter as tk
 import unittest
@@ -56,6 +57,53 @@ class SemNomeCravadoTests(unittest.TestCase):
                 if re.search(r'style\s*=\s*"[^"]*TButton"', linha):
                     infratores.append(f"{arquivo.name}:{numero}: {linha.strip()[:70]}")
         self.assertEqual([], infratores, "nome de estilo cravado fora de ui/estilos.py")
+
+
+class TodoBotaoDeclaraPapelTests(unittest.TestCase):
+    """Zero sítios de `ttk.Button` sem papel (S-445).
+
+    **Por `ast` e não por regex, e a diferença foi medida.** A varredura por expressão regular que
+    dimensionou este item olhava nove linhas à frente procurando `style=`, e casava com o `style=`
+    do botão **seguinte** — ela relatava 30 de 103 com papel quando o número real era 30 de 99.
+    Os quatro sítios a mais eram exemplos dentro do docstring de `ui/estilos.py`, que o `ast` não
+    vê porque docstring não é código.
+    """
+
+    @staticmethod
+    def _botoes(src: str) -> list[ast.Call]:
+        return [
+            no
+            for no in ast.walk(ast.parse(src))
+            if isinstance(no, ast.Call)
+            and isinstance(no.func, ast.Attribute)
+            and no.func.attr == "Button"
+            and isinstance(no.func.value, ast.Name)
+            and no.func.value.id in ("ttk", "tb")
+        ]
+
+    def test_todo_botao_da_janela_declara_o_papel(self) -> None:
+        """**A maioria é `NEUTRO`, e escrever `NEUTRO` é o item.** O valor não é o `style=""` que
+        já saía de lá -- é a declaração ter sido feita, e passar a ser cobrada aqui."""
+        sem_papel = []
+        for arquivo in ARQUIVOS:
+            src = arquivo.read_text(encoding="utf-8")
+            for no in self._botoes(src):
+                estilo = next(
+                    (ast.get_source_segment(src, kw.value) for kw in no.keywords if kw.arg == "style"), ""
+                )
+                if "comandos.estilo" not in (estilo or "") and "estilos.estilo_de_botao" not in (estilo or ""):
+                    sem_papel.append(f"{arquivo.name}:{no.lineno}")
+        self.assertEqual(
+            [],
+            sem_papel,
+            "botão sem papel declarado: passe `style=comandos.estilo(...)` ou "
+            "`style=estilos.estilo_de_botao(estilos.NEUTRO)`.",
+        )
+
+    def test_a_varredura_enxerga_os_botoes_que_existem(self) -> None:
+        """Uma varredura que não achasse nada passaria em verde para sempre."""
+        total = sum(len(self._botoes(a.read_text(encoding="utf-8"))) for a in ARQUIVOS)
+        self.assertGreater(total, 90, "a varredura deixou de encontrar os botões da janela")
 
 
 class UmaEnfasePorBarraTests(unittest.TestCase):
@@ -107,20 +155,48 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
             {"apagar_variante", "apagar_continuacao"},
         )
 
+    DECLARAM_DESTRUTIVO = {
+        "dataset_panel.py": "'Remover' e 'Quarentena' tiram linha do labels.csv (S-144)",
+        "gallery_panel.py": "'Limpar os headers', que `ui/estilos.py` cita pelo nome (S-445)",
+        "comandos.py": "o catálogo declara o papel como **dado**; a propriedade é afirmada por nome acima",
+        "theme.py": "registra a face de `danger.TButton`; é o estilo, e não um botão (S-444)",
+    }
+    """Onde `estilos.DESTRUTIVO` pode aparecer, e por quê. Cada entrada é uma decisão assinada."""
+
     def test_nenhum_outro_botao_da_janela_e_destrutivo(self) -> None:
         """Vermelho que aparece onde não se apaga nada deixa de significar "cuidado".
 
-        `comandos.py` sai da varredura de literais pela mesma razão que já o tirava de
-        `test_nenhum_painel_tem_duas_acoes_primarias`: lá o papel é **dado**, e contar ocorrências
-        de texto num catálogo é contar declarações, não botões. A propriedade dele é afirmada
-        acima, por nome.
+        **Esta lista era `("dataset_panel.py", "estilos.py", "comandos.py")` e o teste passava
+        congelando o defeito** (S-445). `ui/estilos.py:47` cita **"Limpar os headers"** pelo nome
+        como exemplo canônico de `DESTRUTIVO`, e o painel que o desenha nunca o consultou -- então
+        "nenhum destrutivo fora do Dataset" era verdade sobre o código e falso sobre a intenção,
+        e o teste protegia a distância entre as duas. O botão apaga os quatro campos de um
+        diagrama sem perguntar e sem desfazer, e a S-76 é o registro do que custa confundi-lo com
+        o vizinho: 1.405 diagramas.
+
+        **"Copiar headers para todos" ficou de fora, e o critério é que decide.** Ele sobrescreve
+        header de todos os diagramas do livro -- mas tem "Desfazer a cópia" no botão de baixo, e o
+        critério da S-445 pede os três: apaga trabalho humano, não pergunta, não desfaz.
         """
         fora = {
             arquivo.name: len(re.findall(r"estilos\.DESTRUTIVO", arquivo.read_text(encoding="utf-8")))
             for arquivo in ARQUIVOS
-            if arquivo.name not in ("dataset_panel.py", "estilos.py", "comandos.py")
+            if arquivo.name not in self.DECLARAM_DESTRUTIVO
         }
-        self.assertEqual({}, {nome: n for nome, n in fora.items() if n}, "danger fora do Dataset")
+        self.assertEqual({}, {nome: n for nome, n in fora.items() if n}, "danger onde não se apaga nada")
+
+    def test_toda_declaracao_de_destrutivo_esta_na_lista_e_a_lista_nao_tem_orfao(self) -> None:
+        """A lista acima é uma isenção, e isenção que sobra é isenção que esconde.
+
+        Se alguém tirar o destrutivo de um painel, a entrada correspondente tem de sair junto --
+        senão o próximo botão vermelho daquele arquivo entra sem ninguém assinar.
+        """
+        declaram = {
+            arquivo.name
+            for arquivo in ARQUIVOS
+            if re.search(r"estilos\.DESTRUTIVO", arquivo.read_text(encoding="utf-8"))
+        }
+        self.assertEqual(set(self.DECLARAM_DESTRUTIVO), declaram)
 
 
 class DegradacaoTests(unittest.TestCase):

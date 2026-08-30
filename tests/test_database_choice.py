@@ -11,6 +11,7 @@ import sqlite3
 import tempfile
 import tkinter as tk
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from tk_root import raiz as raiz_do_processo
@@ -95,7 +96,12 @@ class FraseDoCacheTests(unittest.TestCase):
         self._grava_cache([self.base])
         self.base.write_bytes(b"1" * 9999)
         cache_note([self.base], store_path=self.cache)
-        with sqlite3.connect(str(self.cache)) as conexao:
+        # `closing` porque o `__exit__` do `sqlite3` **nao** fecha a conexao: ele comita ou
+        # desfaz a transacao, e e tudo (S-435). O handle ficava aberto sobre o arquivo, e o
+        # `cleanup` do `TemporaryDirectory` deste mesmo teste estourava com `WinError 32`.
+        # Hoje passa porque a contagem de referencias do CPython fecha a tempo -- sincronia,
+        # nao garantia, e no 3.13 ela deixou de valer.
+        with closing(sqlite3.connect(str(self.cache))) as conexao:
             (linhas,) = conexao.execute("SELECT count(*) FROM positions").fetchone()
         self.assertEqual(linhas, 1, "a linha guardada tem de sobreviver à pergunta")
 

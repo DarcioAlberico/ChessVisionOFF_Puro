@@ -27,6 +27,30 @@ jobs:
     # Nao ha mais dependencia de plataforma no codigo: WebView2/pythonnet sairam na S-69.
     runs-on: windows-latest
 
+    # **As duas pontas da faixa de `requires-python`, e nao uma so (S-437).** O projeto era
+    # pinado em `==3.10.*` e a CI provava exatamente uma versao; quando o pino virou
+    # `>=3.10,<3.14` (S-436, pelo fim do suporte ao 3.10 em outubro de 2026) uma faixa nao
+    # provada seria promessa sem lastro. Sao as duas PONTAS porque e onde a incompatibilidade
+    # aparece: foi no 3.13 que `with sqlite3.connect(...)` -- que **nao** fecha a conexao --
+    # deixou de ser um `ResourceWarning` no fim da suite e virou `WinError 32` (S-435).
+    #
+    # Ressalva honesta: o Tk do interpretador que o `uv` entrega para 3.13 pode vir incompleto,
+    # e ai os ~14 testes de janela **pulam** em vez de rodar. A perna do 3.13 e mais fraca que a
+    # do 3.10 por isso, e nao por desenho. Quem for promover o 3.13 a padrao do bundle tem de
+    # abrir a janela numa maquina de verdade antes.
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+
+    # **`UV_PYTHON`, e nao `--python` no `uv sync`.** Com a flag so no sync, o `uv run` seguinte
+    # volta a ler o `.python-version` do repositorio -- que continua em 3.10 -- e a perna do 3.13
+    # rodaria 3.10 em silencio: guarda que nao olha o que devia, que e o defeito da S-296 outra
+    # vez. A variavel de ambiente vale para todo comando `uv` do job, e o passo abaixo reprova
+    # se ainda assim a versao nao for a pedida.
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,10 +79,25 @@ jobs:
         # E o mesmo comando que o CONTRIBUTING.md manda rodar na maquina de quem contribui.
         run: uv sync --extra dev --extra onnx --extra ocr --frozen
 
+      - name: Conferir que esta perna roda a versao que ela diz rodar
+        # Sem isto, uma perna que caisse para outro interpretador passaria em verde e a matriz
+        # seria decoracao. A frase de erro nomeia as duas versoes.
+        run: >
+          uv run python -c "import sys, os;
+          pedida = os.environ['UV_PYTHON'];
+          real = '.'.join(map(str, sys.version_info[:2]));
+          sys.exit(0) if real == pedida else sys.exit(f'perna pedida {pedida}, interpretador {real}')"
+
+      # So na ponta velha: os dois estao configurados para `py310` / `python_version = "3.10"`,
+      # entao a analise e identica nas duas pernas -- rodar de novo pagaria o dobro pelo mesmo
+      # resultado. E a ponta VELHA, e nao a nova, porque quem lima e ela: sintaxe de 3.11+ que
+      # entrasse sem aviso quebraria na maquina de quem nao atualizou.
       - name: Lint (ruff)
+        if: matrix.python == '3.10'
         run: uv run ruff check .
 
       - name: Tipos (mypy)
+        if: matrix.python == '3.10'
         run: uv run mypy
 
       - name: Testes (pytest)
@@ -69,3 +108,48 @@ jobs:
         run: |
           cd ..
           uv run --project ChessVisionOFF_Puro python -c "import chess_diagram_ocr; print(chess_diagram_ocr.__file__)"
+
+  # ---------------------------------------------------------------------------------------------
+  caminho-com-acento:
+    # **A CI sempre rodou sob um caminho ASCII, e por isso nunca podia ver esta familia de
+    # defeito (S-437).** Num checkout sob um caminho com acento a suite dava 31 falhas: treze
+    # arquivos de teste chamavam `cv2.imread`/`cv2.imwrite`, que convertem o caminho pela code
+    # page ANSI do processo e devolvem `None`/`False` -- com a mensagem "Fixture ausente: refaca
+    # com gerar.py" apontando para um fixture que estava no lugar --, e o `.bat` do motor falso
+    # ia gravado em UTF-8 quando o `cmd.exe` le arquivo de lote pela code page do console.
+    #
+    # **O que este job pega, e o que ele NAO pega.** Ele pega a familia do `cmd`/OEM (S-434):
+    # `a` acentuado em UTF-8 sao dois bytes, lidos como cp437 dao dois caracteres de lixo, e o
+    # motor nao sobe. Ele NAO pega, num runner de locale ocidental, a familia do `cv2`/ANSI --
+    # os acentos latinos cabem em cp1252 e ali o `fopen` estreito funciona. Essa outra familia
+    # esta coberta por uma guarda estrutural, que e mais forte que sondar um caminho:
+    # `test_image_io.LeiDoProjetoTests` varre a arvore sintatica do repositorio inteiro (pela
+    # lista do `git ls-files`) e recusa `cv2.imread`/`cv2.imwrite` em qualquer arquivo (S-432).
+    # Este job existe para o que ninguem previu.
+    #
+    # O nome fica dentro da cp1252/cp437 de proposito. Cirilico -- que e o caso do acervo, e o
+    # que quebrou na S-111 -- reproduziria mais, mas nao cabe num `.bat` de jeito nenhum, e o
+    # `test_engine` passaria a falhar por um limite do `cmd.exe` em vez de por defeito nosso.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # O checkout ja nasce no caminho acentuado -- copiar depois deixaria de fora o `.git`,
+          # de que `tests/test_docs.py` depende.
+          path: "acentuado-áéíóúç"
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: acentuado-áéíóúç/uv.lock
+
+      - name: Sincronizar dependencias
+        working-directory: "acentuado-áéíóúç"
+        run: uv sync --extra dev --extra onnx --extra ocr --frozen
+
+      - name: Testes (pytest)
+        working-directory: "acentuado-áéíóúç"
+        run: uv run pytest -q

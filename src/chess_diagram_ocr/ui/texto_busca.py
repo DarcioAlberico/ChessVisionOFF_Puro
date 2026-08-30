@@ -31,7 +31,7 @@ from tkinter import ttk
 
 from ..text import busca as _busca
 from ..text.rico import DocumentoRico
-from . import comandos
+from . import comandos, espaco
 from . import texto as texto_ui
 
 __all__ = ["JanelaDeBusca", "TITULO"]
@@ -72,30 +72,48 @@ class JanelaDeBusca(tk.Toplevel):
         self.figurina_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="")
 
-        moldura = ttk.Frame(self, padding=12)
+        moldura = ttk.Frame(self, padding=espaco.moldura())
         moldura.pack(fill=tk.BOTH, expand=True)
         moldura.columnconfigure(1, weight=1)
 
-        ttk.Label(moldura, text="Achar").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(
+            moldura,
+            text="Achar",
+        ).grid(row=0, column=0, sticky="w", padx=(0, espaco.folga()), pady=espaco.minima())
         self.campo = ttk.Entry(moldura, textvariable=self.agulha_var, width=32)
-        self.campo.grid(row=0, column=1, sticky="ew", pady=2)
+        self.campo.grid(row=0, column=1, sticky="ew", pady=espaco.minima())
 
-        ttk.Label(moldura, text="Substituir por").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
-        ttk.Entry(moldura, textvariable=self.novo_var, width=32).grid(row=1, column=1, sticky="ew", pady=2)
+        ttk.Label(
+            moldura,
+            text="Substituir por",
+        ).grid(row=1, column=0, sticky="w", padx=(0, espaco.folga()), pady=espaco.minima())
+        ttk.Entry(
+            moldura,
+            textvariable=self.novo_var,
+            width=32,
+        ).grid(row=1, column=1, sticky="ew", pady=espaco.minima())
 
         ttk.Checkbutton(moldura, text=ROTULO_DE_FIGURINA, variable=self.figurina_var).grid(
-            row=2, column=0, columnspan=2, sticky="w", pady=(6, 2)
+            row=2, column=0, columnspan=2, sticky="w", pady=(espaco.linha(), espaco.minima())
         )
 
         botoes = ttk.Frame(moldura)
-        botoes.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 4))
-        ttk.Button(botoes, text=comandos.rotulo_de_botao("achar"), command=self.listar).pack(side=tk.LEFT)
+        botoes.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(espaco.folga(), espaco.linha()))
         ttk.Button(
-            botoes, text=comandos.rotulo_de_botao("substituir_todos"), command=self.trocar_marcadas
-        ).pack(side=tk.LEFT, padx=(8, 0))
+            botoes,
+            text=comandos.rotulo_de_botao("achar"),
+            command=self.listar,
+            style=comandos.estilo("achar"),
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            botoes,
+            text=comandos.rotulo_de_botao("substituir_todos"),
+            command=self.trocar_marcadas,
+            style=comandos.estilo("substituir_todos"),
+        ).pack(side=tk.LEFT, padx=(espaco.folga(), 0))
 
         self.lista = tk.Listbox(moldura, selectmode=tk.MULTIPLE, height=8, exportselection=False)
-        self.lista.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(4, 4))
+        self.lista.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(espaco.linha(), espaco.linha()))
         self.lista.bind("<Double-Button-1>", self._mostrar_escolhida)
 
         # **Enter acha e Esc fecha (S-342).** A janela tinha os dois botões e nenhuma tecla: quem

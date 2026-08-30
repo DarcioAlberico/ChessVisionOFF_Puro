@@ -3,7 +3,24 @@ name = "chessvisionoff-puro"
 version = "0.1.0"
 description = "Extrai diagramas de xadrez de PDFs, converte para FEN e treina o modelo de forma incremental"
 readme = "README.md"
-requires-python = "==3.10.*"
+# **A faixa, e nao o pino em 3.10 (S-436).** Era `==3.10.*`, e o ROADMAP registrava a
+# decisao de relaxar "quando houver motivo; exigiria re-resolver o lock". O motivo chegou e
+# tem data: o Python 3.10 sai de suporte em **outubro de 2026**, e o bundle do PyInstaller
+# **embarca o interpretador** -- manter o pino passaria a distribuir um Python sem correcao
+# de seguranca para quem baixa o .zip.
+#
+# O teto em 3.14 e deliberado: faixa aberta (`>=3.10`) deixaria o `uv` resolver para uma
+# versao que ninguem rodou, e a CI so prova as duas pontas que ela roda -- 3.10 e 3.13.
+# Subir o teto e trabalho de quem medir a de cima.
+#
+# `ruff` e `mypy` continuam mirando `py310`: quem lima e a ponta mais VELHA da faixa, senao
+# sintaxe de 3.11+ entra sem que nada avise e quebra na maquina de quem nao atualizou.
+#
+# O `.python-version` fica em 3.10, que e o padrao de quem so roda `uv sync`. Promover o 3.13
+# a padrao do bundle depende de um interpretador com Tk completo: o que o `uv` entrega para
+# 3.13 ja veio sem parte do `ttk`, e ali os ~14 testes de janela **pulam** em vez de rodar. A
+# janela e o produto, e isso merece ser aberto a mao antes.
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "numpy>=1.26.0",
     "opencv-python>=4.9.0",

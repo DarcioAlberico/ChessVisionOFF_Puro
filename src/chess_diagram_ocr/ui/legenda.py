@@ -18,7 +18,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from . import atalhos, theme, tipografia, tokens
+from . import atalhos, espaco, estilos, theme, tipografia, tokens
 
 __all__ = ["JanelaDeAtalhos", "abrir"]
 
@@ -43,17 +43,19 @@ class JanelaDeAtalhos(tk.Toplevel):
         # para consultar e fechar, e era preciso ir ao X do título para sair dela.
         self.bind("<Escape>", lambda _evento: self.destroy())
 
-        moldura = ttk.Frame(self, padding=14)
+        moldura = ttk.Frame(self, padding=espaco.moldura())
         moldura.pack(fill=tk.BOTH, expand=True)
         ttk.Label(moldura, text=TITULO, font=theme.fonte_atual(tipografia.TITULO)).grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, espaco.folga())
         )
 
         for linha, atalho in enumerate(atalhos.ATALHOS, start=1):
             ttk.Label(moldura, text=atalho.rotulo, font=theme.fonte_atual(tipografia.DADO)).grid(
-                row=linha, column=0, sticky="w", padx=(0, 18), pady=2
+                # 18 e nao `espaco.folga()`: e a calha entre a tecla e a descricao, ou seja
+                # separacao de coluna de tabela, e nao vao entre vizinhos (S-447).
+                row=linha, column=0, sticky="w", padx=(0, 18), pady=espaco.minima()
             )
-            ttk.Label(moldura, text=_descricao(atalho)).grid(row=linha, column=1, sticky="w", pady=2)
+            ttk.Label(moldura, text=_descricao(atalho)).grid(row=linha, column=1, sticky="w", pady=espaco.minima())
 
         ttk.Label(
             moldura,
@@ -62,12 +64,12 @@ class JanelaDeAtalhos(tk.Toplevel):
             "conforme o foco.",
             foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
             font=theme.fonte_atual(tipografia.AUXILIAR),
-        ).grid(row=len(atalhos.ATALHOS) + 1, column=0, columnspan=2, sticky="w", pady=(12, 0))
+        ).grid(row=len(atalhos.ATALHOS) + 1, column=0, columnspan=2, sticky="w", pady=(espaco.moldura(), 0))
         """A guarda de foco da S-20, dita onde ela é procurada: a legenda é o único lugar em que
         alguém pergunta "por que a seta não trocou de diagrama agora?"."""
 
-        ttk.Button(moldura, text="Fechar", command=self.destroy).grid(
-            row=len(atalhos.ATALHOS) + 2, column=1, sticky="e", pady=(14, 0)
+        ttk.Button(moldura, text="Fechar", command=self.destroy, style=estilos.estilo_de_botao(estilos.NEUTRO)).grid(
+            row=len(atalhos.ATALHOS) + 2, column=1, sticky="e", pady=(espaco.moldura(), 0)
         )
 
     def linhas(self) -> list[tuple[str, str]]:

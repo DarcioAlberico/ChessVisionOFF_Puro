@@ -19,9 +19,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import write_image
 from chess_diagram_ocr.cli import experiment as cli_experiment
 from chess_diagram_ocr.experiments import Variant, run_variant
 from chess_diagram_ocr.model import ArchConfig
@@ -39,7 +39,7 @@ def _dataset(root: Path, *, boards: int = 6, sem_split: int = 0) -> tuple[Path, 
     rng = np.random.default_rng(0)
     for index in range(boards):
         nome = f"b{index}.png"
-        cv2.imwrite(str(samples / nome), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+        write_image(samples / nome, rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
         linhas.append(f"{nome},{LEGAL}")
         if index < boards - sem_split:
             splits[nome] = "train" if index < boards - sem_split - 2 else "val"

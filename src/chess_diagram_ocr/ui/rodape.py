@@ -40,7 +40,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from tkinter import ttk
 
-from . import theme, tipografia, tokens
+from . import estilos, theme, tipografia, tokens
 from .busy import BusyOperation
 from .tooltip import Tooltip
 
@@ -460,12 +460,23 @@ class RodapeDaJanela(ttk.Frame):
         self._modo_da_barra = PARADO
 
         ttk.Separator(self, orient="horizontal").pack(fill=tk.X, side=tk.TOP)
+        # O 3 nao esta na escala de propósito: o rodape e deliberadamente fino, e ele fica
+        # entre `FOLGA_MINIMA` (2) e `FOLGA_DE_LINHA` (6) -- nenhum dos dois e o que ele quer.
+        # Inventar um quinto papel para servir a um sitio so seria a escala deixando de
+        # descrever a janela (S-447).
         linha = ttk.Frame(self, padding=(8, 3))
         linha.pack(fill=tk.X)
 
         # As duas zonas da direita primeiro: ver o docstring do módulo. A mensagem entra depois,
         # com `expand=True`, e por isso ela cede espaço em vez de tomá-lo.
-        self._btn_cancelar = ttk.Button(linha, text="Cancelar", width=10, state=tk.DISABLED, command=self._ao_cancelar)
+        self._btn_cancelar = ttk.Button(
+            linha,
+            text="Cancelar",
+            width=10,
+            state=tk.DISABLED,
+            command=self._ao_cancelar,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
         self._btn_cancelar.pack(side=tk.RIGHT)
         Tooltip(
             self._btn_cancelar,

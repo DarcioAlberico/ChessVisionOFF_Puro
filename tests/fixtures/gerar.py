@@ -32,6 +32,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import write_image
+
 AQUI = Path(__file__).resolve().parent
 
 PAGINA = (1400, 1000)
@@ -152,7 +154,7 @@ def main() -> int:
     for nome, tabuleiros in PAGINAS.items():
         pagina = montar_pagina(tabuleiros, MOLDURAS.get(nome, []))
         destino = AQUI / f"{nome}.png"
-        cv2.imwrite(str(destino), cv2.cvtColor(pagina, cv2.COLOR_RGB2BGR))
+        write_image(destino, cv2.cvtColor(pagina, cv2.COLOR_RGB2BGR))
         esperado[nome] = [
             {"placement": placement, "x": x, "y": y, "lado": lado}
             for placement, (x, y, lado) in tabuleiros

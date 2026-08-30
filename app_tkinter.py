@@ -93,6 +93,8 @@ from chess_diagram_ocr.ui import (
     conjuntos,
     degradacao,
     desfazivel,
+    espaco,
+    estilos,
     fila,
     fita,
     geometria,
@@ -132,6 +134,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     frase_de_caixas_devolvidas,
     mark_confirmed,
     mark_saved,
+    saved_on_page,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams
 from chess_diagram_ocr.ui.pdf_panel import PdfPanel, open_in_system_reader
@@ -351,8 +354,8 @@ class ChessOcrTkApp:
         )
         self.main_pane.pack(fill=tk.BOTH, expand=True)
 
-        self.left_frame = ttk.Frame(self.main_pane, padding=10)
-        self.right_frame = ttk.Frame(self.main_pane, padding=10)
+        self.left_frame = ttk.Frame(self.main_pane, padding=espaco.folga())
+        self.right_frame = ttk.Frame(self.main_pane, padding=espaco.folga())
         self.main_pane.add(self.left_frame, minsize=LARGURA_MINIMA_ESQUERDA)
         self.main_pane.add(self.right_frame, minsize=LARGURA_MINIMA_DIREITA)
 
@@ -390,6 +393,9 @@ class ChessOcrTkApp:
             local_reader=lambda: self.settings.local_reader,
             on_remote_consent=self._ask_remote_consent,
             on_selection_changed=self._on_result_selection,
+            saved_diagrams=lambda livro, pagina: saved_on_page(
+                self.saved_diagrams, livro, pagina, source_pdf=self._pdf_name()
+            ),
             move_number_of=self._move_number_of,
             on_move_number=self._set_move_number,
         )
@@ -464,9 +470,9 @@ class ChessOcrTkApp:
         )
         self.gallery_panel.pack(fill=tk.BOTH, expand=True)
 
-        self._build_config_tab(rolagem.aba_rolavel(tabs, abas.CONFIGURACAO, padding=6))
+        self._build_config_tab(rolagem.aba_rolavel(tabs, abas.CONFIGURACAO, padding=espaco.linha()))
 
-    def _build_piece_set_row(self, cfg_tab: ttk.Frame) -> None:
+    def _build_piece_set_row(self, cfg_tab: ttk.Frame, coluna: int) -> None:
         """O conjunto de peças, e a pasta dele quando for a do usuário (S-230).
 
         Na Configuração e não em `Ver ▸ Aparência` porque **conjunto não é pele**: são eixos
@@ -474,7 +480,7 @@ class ChessOcrTkApp:
         os dois no lugar em que a S-221 os separou de propósito.
         """
         linha = ttk.Frame(cfg_tab)
-        linha.pack(anchor="w", fill="x", padx=8, pady=4)
+        linha.pack(anchor="w", fill="x", padx=espaco.folga(), pady=espaco.linha())
         ttk.Label(linha, text=strings.CONJUNTO_DE_PECAS, width=24).pack(side="left")
         for registro in conjuntos.CONJUNTOS:
             ttk.Radiobutton(
@@ -483,12 +489,13 @@ class ChessOcrTkApp:
                 value=registro.nome,
                 variable=self.piece_set_var,
                 command=self._escolher_conjunto,
-            ).pack(side="left", padx=4)
+            ).pack(side="left", padx=espaco.linha())
         campos.linha_de_caminho(
             cfg_tab,
             strings.PASTA_DE_PECAS,
             self.piece_dir_var,
             tipo=campos.PASTA,
+            largura_do_rotulo=coluna,
         )
 
     def _escolher_conjunto(self) -> None:
@@ -502,46 +509,70 @@ class ChessOcrTkApp:
         self._save_app_state()
 
     def _build_config_tab(self, cfg_tab: ttk.Frame) -> None:
-        campos.linha_de_caminho(cfg_tab, "Modelo (.pt)", self.model_path_var)
-        campos.linha_de_caminho(cfg_tab, "CSV labels", self.dataset_csv_var)
-        campos.linha_de_caminho(cfg_tab, "Pasta samples", self.samples_dir_var, tipo=campos.PASTA)
-        self._build_piece_set_row(cfg_tab)
+        coluna = campos.largura_de_rotulo(*strings.ROTULOS_DA_CONFIGURACAO)
+        campos.linha_de_caminho(cfg_tab, "Modelo (.pt)", self.model_path_var, largura_do_rotulo=coluna)
+        campos.linha_de_caminho(cfg_tab, "CSV labels", self.dataset_csv_var, largura_do_rotulo=coluna)
+        campos.linha_de_caminho(
+            cfg_tab, "Pasta samples", self.samples_dir_var, tipo=campos.PASTA, largura_do_rotulo=coluna
+        )
+        self._build_piece_set_row(cfg_tab, coluna)
 
         # Tri-estado no lugar do checkbox: "auto" decide por diagrama, o que resolve livro
         # com orientações misturadas -- o booleano valia para todos de uma vez (S-13).
         orient_row = ttk.Frame(cfg_tab)
-        orient_row.pack(anchor="w", fill="x", padx=8, pady=4)
-        ttk.Label(orient_row, text="Orientação do diagrama", width=24).pack(side="left")
+        orient_row.pack(anchor="w", fill="x", padx=espaco.folga(), pady=espaco.linha())
+        # Mesma coluna das linhas de campo (S-448): um rótulo com largura própria era a
+        # terceira medida diferente do mesmo formulário -- 16, 24 e o que o Spinbox usasse.
+        ttk.Label(orient_row, text=strings.ORIENTACAO_DO_DIAGRAMA, width=coluna).pack(side="left")
         for valor, rotulo in strings.ORIENTATION_LABELS.items():
             ttk.Radiobutton(orient_row, text=rotulo, value=valor, variable=self.orientation_var).pack(
-                side="left", padx=4
+                side="left", padx=espaco.linha()
             )
-        self._spin_row(cfg_tab, "DPI", self.dpi_var, 120, 320, 20)
+        campos.linha_de_giro(cfg_tab, "DPI", self.dpi_var, minimo=120, maximo=320, passo=20, largura_do_rotulo=coluna)
         # Até 30: uma página de exercicios com grade 3x3 tem 9, e o teto antigo de 8 cortava
         # o nono em silencio. Quem filtra e o piso de score do detector, não este número.
-        self._spin_row(cfg_tab, "Max diagramas", self.max_boards_var, 1, 30, 1)
+        campos.linha_de_giro(
+            cfg_tab, "Max diagramas", self.max_boards_var, minimo=1, maximo=30, passo=1, largura_do_rotulo=coluna
+        )
 
         btns = ttk.Frame(cfg_tab)
-        btns.pack(fill=tk.X, padx=8, pady=(4, 8))
-        ttk.Button(btns, text="Recarregar modelo", command=self.reload_model).pack(side=tk.LEFT)
+        btns.pack(fill=tk.X, padx=espaco.folga(), pady=(espaco.linha(), espaco.folga()))
+        ttk.Button(
+            btns,
+            text="Recarregar modelo",
+            command=self.reload_model,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
 
         train_box = ttk.LabelFrame(cfg_tab, text="Treino (salva em piece_classifier.pt)")
-        train_box.pack(fill=tk.X, padx=8, pady=(4, 8))
-        self._spin_row(train_box, "Épocas", self.epochs_var, 1, 200, 1)
-        self._spin_row(train_box, strings.TAMANHO_DO_LOTE, self.batch_var, 16, 512, 16)
-        campos.linha_de_numero(train_box, strings.TAXA_DE_APRENDIZADO, self.lr_var, minimo=1e-6, maximo=1.0)
+        train_box.pack(fill=tk.X, padx=espaco.folga(), pady=(espaco.linha(), espaco.folga()))
+        campos.linha_de_giro(
+            train_box, "Épocas", self.epochs_var, minimo=1, maximo=200, passo=1, largura_do_rotulo=coluna
+        )
+        campos.linha_de_giro(
+            train_box, strings.TAMANHO_DO_LOTE, self.batch_var, minimo=16, maximo=512, passo=16,
+            largura_do_rotulo=coluna
+        )
+        campos.linha_de_numero(
+            train_box, strings.TAXA_DE_APRENDIZADO, self.lr_var, minimo=1e-6, maximo=1.0, largura_do_rotulo=coluna
+        )
         ttk.Checkbutton(
             train_box, text="Treinar do zero (ignora o checkpoint atual)", variable=self.fresh_var
-        ).pack(anchor="w", padx=8)
+        ).pack(anchor="w", padx=espaco.folga())
         texto.acompanhar(
             ttk.Label(
                 train_box,
                 text="Sem isso, o treino continua do checkpoint e só grava por cima se melhorar.",
                 foreground=tokens.RESERVA[tokens.TEXTO_SECUNDARIO],
             )
-        ).pack(anchor="w", padx=8, pady=(0, 4))
-        self.btn_train_model = ttk.Button(train_box, text="Treinar modelo", command=self.training.start)
-        self.btn_train_model.pack(anchor="w", padx=8, pady=8)
+        ).pack(anchor="w", padx=espaco.folga(), pady=(0, espaco.linha()))
+        self.btn_train_model = ttk.Button(
+            train_box,
+            text="Treinar modelo",
+            command=self.training.start,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        self.btn_train_model.pack(anchor="w", padx=espaco.folga(), pady=espaco.folga())
         Tooltip(
             self.btn_train_model,
             "Fica cinza durante o treino, que roda um por vez. O progresso e o cancelamento\n"
@@ -589,7 +620,7 @@ class ChessOcrTkApp:
         # variável nasce com a janela (`__init__`), e aqui só se liga o widget novo a ela.
         ttk.Combobox(
             parent, textvariable=self.field_regime_var, values=list(REGIMES), width=15, state="readonly"
-        ).pack(side=tk.LEFT, padx=6)
+        ).pack(side=tk.LEFT, padx=espaco.linha())
 
         botao = ttk.Button(
             parent,
@@ -607,7 +638,7 @@ class ChessOcrTkApp:
             text=comandos.rotulo_de_botao("anotar_sem_diagrama"),
             style=comandos.estilo("anotar_sem_diagrama"),
             command=lambda: self.annotate_field_page(empty=True),
-        ).pack(side=tk.LEFT, padx=6)
+        ).pack(side=tk.LEFT, padx=espaco.linha())
         ttk.Button(
             parent,
             text=comandos.rotulo_de_botao("tirar_do_campo"),
@@ -615,18 +646,12 @@ class ChessOcrTkApp:
             command=self.field_drop_selected,
         ).pack(side=tk.LEFT)
         self.field_status_var = tk.StringVar(value="")
-        ttk.Label(parent, textvariable=self.field_status_var).pack(side=tk.LEFT, padx=10)
+        ttk.Label(parent, textvariable=self.field_status_var).pack(side=tk.LEFT, padx=espaco.folga())
 
     def _train_lr(self) -> float:
         """O `Learning rate` como número. Texto inválido cai no padrão, e o campo já avisou."""
         bruto = str(self.lr_var.get()).strip().replace(",", ".")
         return float(bruto) if campos.numero_na_faixa(bruto, minimo=1e-6, maximo=1.0) else 0.001
-
-    def _spin_row(self, parent: ttk.Widget, label: str, var: tk.Variable, frm: int, to: int, inc: int) -> None:
-        row = ttk.Frame(parent)
-        row.pack(fill=tk.X, padx=8, pady=4)
-        ttk.Label(row, text=label, width=16).pack(side=tk.LEFT)
-        ttk.Spinbox(row, from_=frm, to=to, increment=inc, textvariable=var, width=12).pack(side=tk.LEFT)
 
     def _set_initial_sashes(self) -> None:
         """Põe o divisor onde ele estava, ou nos 42% da primeira execução (S-156).
@@ -1732,22 +1757,32 @@ class ChessOcrTkApp:
         resposta = {"enviar": False}
         nao_perguntar = tk.BooleanVar(value=False)
 
-        wrap = ttk.Frame(dlg, padding=14)
+        wrap = ttk.Frame(dlg, padding=espaco.moldura())
         wrap.pack(fill=tk.BOTH, expand=True)
         texto.acompanhar(ttk.Label(wrap, text=configuracao.consent_message(), justify=tk.LEFT)).pack(anchor="w")
         ttk.Checkbutton(wrap, text="Não perguntar novamente para este endereco", variable=nao_perguntar).pack(
-            anchor="w", pady=(10, 0)
+            anchor="w", pady=(espaco.folga(), 0)
         )
 
         linha = ttk.Frame(wrap)
-        linha.pack(fill=tk.X, pady=(12, 0))
+        linha.pack(fill=tk.X, pady=(espaco.moldura(), 0))
 
         def _responder(enviar: bool) -> None:
             resposta["enviar"] = enviar
             dlg.destroy()
 
-        ttk.Button(linha, text="Enviar", command=partial(_responder, True)).pack(side=tk.LEFT)
-        ttk.Button(linha, text="Cancelar", command=partial(_responder, False)).pack(side=tk.LEFT, padx=8)
+        ttk.Button(
+            linha,
+            text="Enviar",
+            command=partial(_responder, True),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            linha,
+            text="Cancelar",
+            command=partial(_responder, False),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.folga())
         self.root.wait_window(dlg)
 
         if resposta["enviar"] and nao_perguntar.get():

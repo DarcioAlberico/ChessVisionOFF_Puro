@@ -43,7 +43,7 @@ from chess_diagram_ocr.games_cache import (
 )
 from chess_diagram_ocr.games_db import DEFAULT_DATABASE_DIR, database_paths
 
-from . import texto, tokens
+from . import espaco, estilos, texto, tokens
 from .tooltip import Tooltip
 
 __all__ = [
@@ -164,40 +164,60 @@ class DatabaseDialog(tk.Toplevel):
     # ------------------------------------------------------------------------ construção
 
     def _build(self) -> None:
-        corpo = ttk.Frame(self, padding=12)
+        corpo = ttk.Frame(self, padding=espaco.moldura())
         corpo.pack(fill=tk.BOTH, expand=True)
         ttk.Label(corpo, text="Procurar em quais bases?").pack(anchor=tk.W)
 
         self.lista = ttk.Frame(corpo)
-        self.lista.pack(anchor=tk.W, pady=(8, 0))
+        self.lista.pack(anchor=tk.W, pady=(espaco.folga(), 0))
         self._desenhar_lista()
 
         secundario = tokens.cor(tokens.TEXTO_SECUNDARIO)
-        ttk.Label(corpo, text=str(self._folder), foreground=secundario).pack(anchor=tk.W, pady=(6, 0))
+        ttk.Label(corpo, text=str(self._folder), foreground=secundario).pack(anchor=tk.W, pady=(espaco.linha(), 0))
 
         botoes = ttk.Frame(corpo)
-        botoes.pack(anchor=tk.W, pady=(8, 0))
-        ttk.Button(botoes, text="Marcar todas", command=lambda: self._marcar(True)).pack(side=tk.LEFT)
-        ttk.Button(botoes, text="Desmarcar todas", command=lambda: self._marcar(False)).pack(side=tk.LEFT, padx=6)
-        ttk.Button(botoes, text="Adicionar .pgn de outra pasta…", command=self.add_from_disk).pack(side=tk.LEFT)
+        botoes.pack(anchor=tk.W, pady=(espaco.folga(), 0))
+        ttk.Button(
+            botoes,
+            text="Marcar todas",
+            command=lambda: self._marcar(True),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            botoes,
+            text="Desmarcar todas",
+            command=lambda: self._marcar(False),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Button(
+            botoes,
+            text="Adicionar .pgn de outra pasta…",
+            command=self.add_from_disk,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
 
-        ttk.Label(corpo, textvariable=self.total_var, foreground=secundario).pack(anchor=tk.W, pady=(10, 0))
+        ttk.Label(corpo, textvariable=self.total_var, foreground=secundario).pack(anchor=tk.W, pady=(espaco.folga(), 0))
         # A frase do cache é o que decide entre "clico agora" e "hoje não": ela diz se a busca
         # custa minutos ou se descarta ~56 min de respostas já pagas.
         texto.acompanhar(
             ttk.Label(corpo, textvariable=self.note_var, foreground=secundario, justify=tk.LEFT)
-        ).pack(anchor=tk.W, pady=(4, 0))
+        ).pack(anchor=tk.W, pady=(espaco.linha(), 0))
 
         rodape = ttk.Frame(corpo)
-        rodape.pack(fill=tk.X, pady=(14, 0))
-        self.btn_ok = ttk.Button(rodape, text="Procurar", command=self.confirm)
+        rodape.pack(fill=tk.X, pady=(espaco.moldura(), 0))
+        self.btn_ok = ttk.Button(rodape, text="Procurar", command=self.confirm, style=estilos.estilo_de_botao(estilos.NEUTRO))
         self.btn_ok.pack(side=tk.RIGHT)
         Tooltip(
             self.btn_ok,
             "Fica cinza enquanto nenhuma base estiver marcada:\n"
             "a busca precisa de pelo menos um .pgn para ter onde procurar.",
         )
-        ttk.Button(rodape, text="Cancelar", command=self.cancel).pack(side=tk.RIGHT, padx=6)
+        ttk.Button(
+            rodape,
+            text="Cancelar",
+            command=self.cancel,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.RIGHT, padx=espaco.linha())
 
         self.bind("<Return>", lambda _evento: self.confirm())
         self.bind("<Escape>", lambda _evento: self.cancel())

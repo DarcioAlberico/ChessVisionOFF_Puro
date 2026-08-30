@@ -21,6 +21,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import write_image
 from chess_diagram_ocr.labels import DatasetEntry, LabelStore
 from chess_diagram_ocr.provenance import (
     AMBIGUITY_MARGIN,
@@ -107,7 +108,7 @@ class HashTests(unittest.TestCase):
         imagem = board_image(3)
         with tempfile.TemporaryDirectory() as pasta:
             caminho = Path(pasta) / "board.png"
-            cv2.imwrite(str(caminho), cv2.cvtColor(imagem, cv2.COLOR_RGB2BGR))
+            write_image(caminho, cv2.cvtColor(imagem, cv2.COLOR_RGB2BGR))
             self.assertEqual(hash_image_file(caminho), hash_board_rgb(imagem))
 
     def test_arquivo_que_nao_abre_devolve_none(self) -> None:
@@ -167,7 +168,7 @@ class MatchTests(unittest.TestCase):
         self.samples.mkdir()
 
     def save_sample(self, name: str, image_rgb: np.ndarray) -> str:
-        cv2.imwrite(str(self.samples / name), cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
+        write_image(self.samples / name, cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
         return name
 
     def test_a_mesma_imagem_casa_com_distancia_zero(self) -> None:

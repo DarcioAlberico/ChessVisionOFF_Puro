@@ -146,6 +146,36 @@ do painel e passou a ser o que assenta o tabuleiro na esteira. Daí ela ser **ma
 `SUPERFICIE_TABULEIRO`, e não a mesma cor: duas cores iguais em papéis diferentes é o defeito
 que a S-145 mediu."""
 
+VAZIO_DE_CANVAS = "VAZIO_DE_CANVAS"
+"""O que sobra do canvas do tabuleiro além da esteira — e antes da S-449 não tinha dono.
+
+**O defeito, medido na fotografia da pele clássica**, na linha `y=340` do canvas: 691 px de
+largura, **429 deles em `#312e2b`** — 62%. O tabuleiro media 261 px e flutuava num quase-preto que
+ocupava dois terços da largura, dentro de um painel `#f0f0f0`. Era a aresta de maior contraste da
+janela inteira, e ela estava em volta de espaço que não carrega informação nenhuma.
+
+**A causa não era falta de token, e é o que a spec deste item errou ao supor.** O valor saía de
+`cor()` e tinha papel: era `SUPERFICIE_TABULEIRO`, a esteira, escolhida escura pela S-147 com uma
+razão boa — ela dá 11,03:1 às coordenadas. O erro estava em a esteira **não ter fim**: o canvas
+enche o painel, e tudo o que não é tabuleiro virava esteira.
+
+Então a esteira passa a ser um retângulo com tamanho — tabuleiro mais a margem que as coordenadas
+já reservavam (`board_render.margem_de_coordenada`) — e o que sobra é este papel.
+
+**Ele é vizinho do fundo do painel de propósito**, e é o critério invertido do costume: aqui não
+se quer contraste, se quer que o vazio deixe de competir com o documento. Na paleta clara dá
+**1,03:1** contra `SUPERFICIE_PADRAO` — continuação da janela, e não moldura.
+
+**O que separa o tabuleiro do vazio troca de dono com a paleta, e isso foi medido.** Na clara são a
+esteira e a moldura (11,50 e 14,32); a casa clara sozinha daria 1,17. Nas escuras esteira e moldura
+se fundem no vazio (1,03 a 1,19) e quem separa é o **tabuleiro** (12,17 a 13,55) — e está certo
+assim, porque ali o cromo inteiro é escuro e não há slab a desfazer. O que o teste cobra é que
+**pelo menos um dos três** passe `AA_GRAFICO` contra o vazio, em toda paleta.
+
+Entra em `SUPERFICIES` e **não** em `SUPERFICIES_DE_DOCUMENTO`: vazio não é documento, e a regra da
+S-224 — documento mantém contraste medido, cromo segue a pele — precisa continuar valendo para
+página e tabuleiro sem passar a valer para o nada em volta deles."""
+
 COORDENADA = "COORDENADA"
 """As letras a–h e os números 8–1. **Resolvida contra a superfície** — ver `sobre_superficie`."""
 
@@ -231,6 +261,40 @@ Realce e não cor de letra é a decisão do item: o fundo é um canal livre naqu
 cair ali -- `PROBLEMA`, `ATENCAO` e o texto normal -- acima de 4,7:1. É por isso que eles são
 superfícies (`SUPERFICIES`) e escurecem com o tema, como a dica."""
 
+BOTAO_PRIMARIO = "BOTAO_PRIMARIO"
+BOTAO_DESTRUTIVO = "BOTAO_DESTRUTIVO"
+"""A **face** dos dois botões que têm ênfase: o primário e o destrutivo (S-444).
+
+Elas existem porque nenhum papel deste módulo significava "ênfase de controle", e porque o
+`ttkbootstrap` não dava a ênfase de graça: sob `bootstrap-light` -- o tema da pele clássica, que é
+a padrão -- `primary.TButton` e `danger.TButton` pintavam o **mesmo** `#f0f0f0` do botão neutro.
+Medido no pixel do widget montado, que é a única testemunha aqui: `style.lookup` devolve o valor do
+`TButton` base para os três papéis nos dois temas, e portanto não distingue nada.
+
+A consequência não era estética. "Remover" e "Limpar os headers" apagam trabalho humano do
+`labels.csv`, e a S-76 é o registro do que custa um botão destrutivo que não parece um: **1.405
+diagramas sobrescritos por um clique**. A S-144 criou o papel; este item é o que faz ele pintar.
+
+**O destrutivo reaproveita a matiz de `PROBLEMA` e não o valor dele.** `PROBLEMA` é contorno de
+casa, medido contra as casas do tabuleiro; esta é face de botão, medida contra o cromo. É a mesma
+armadilha que a S-224 encontrou ao separar `PROBLEMA` de `PROBLEMA_TEXTO`, e o desvio de matiz
+medido é de **1,2°** na paleta clara e 2,0° na escura.
+
+Entre si os dois estão a **148°** de matiz -- muito acima de `SEPARACAO_MINIMA_DE_MATIZ`."""
+
+TEXTO_SOBRE_ENFASE = "TEXTO_SOBRE_ENFASE"
+"""A letra que cai sobre `BOTAO_PRIMARIO` e sobre `BOTAO_DESTRUTIVO`.
+
+**Um papel e não dois, e a regra da paleta é quem decide isso.** A spec da S-444 pedia quatro
+papéis -- face e letra de cada um --, e duas letras brancas seriam dois papéis com o mesmo
+hexadecimal, que é o que `test_dois_papeis_de_significado_diferente_nao_compartilham_hex` proíbe
+com `COINCIDEM_DE_PROPOSITO` vazio. Inventar uma diferença só para separar os nomes é literalmente
+o que o docstring daquela tupla desaconselha.
+
+A saída é a que este módulo já usa em `TEXTO_SOBRE_MARCACAO`: **um** papel para "a letra que vai
+por cima", porque é um significado só. As duas faces são escolhidas para que a mesma letra passe
+`AA_TEXTO` sobre as duas -- 6,44 e 8,79 na paleta clara, 7,81 e 7,46 na escura."""
+
 TEXTO_PADRAO = "TEXTO_PADRAO"
 SUPERFICIE_PADRAO = "SUPERFICIE_PADRAO"
 """A reserva de quando o próprio `Style` não responde.
@@ -258,6 +322,7 @@ PAPEIS: tuple[str, ...] = (
     SUPERFICIE_TABULEIRO,
     SUPERFICIE_DICA,
     MOLDURA,
+    VAZIO_DE_CANVAS,
     COORDENADA,
     CASA_CLARA,
     CASA_ESCURA,
@@ -278,6 +343,9 @@ PAPEIS: tuple[str, ...] = (
     REALCE_CITACAO,
     REALCE_NOTA,
     REALCE_VARIANTE,
+    BOTAO_PRIMARIO,
+    BOTAO_DESTRUTIVO,
+    TEXTO_SOBRE_ENFASE,
     TEXTO_PADRAO,
     SUPERFICIE_PADRAO,
 )
@@ -302,6 +370,7 @@ RESERVA: dict[str, str] = {
     SUPERFICIE_TABULEIRO: "#312e2b",
     SUPERFICIE_DICA: "#ffffe0",
     MOLDURA: "#1f1d1b",
+    VAZIO_DE_CANVAS: "#eceded",
     COORDENADA: "#5c5c5c",
     CASA_CLARA: "#f0d9b5",
     CASA_ESCURA: "#b58863",
@@ -322,6 +391,9 @@ RESERVA: dict[str, str] = {
     REALCE_CITACAO: "#bdf9ff",
     REALCE_NOTA: "#b9ffc5",
     REALCE_VARIANTE: "#eaeeff",
+    BOTAO_PRIMARIO: "#0a58ca",
+    BOTAO_DESTRUTIVO: "#8f2018",
+    TEXTO_SOBRE_ENFASE: "#ffffff",
     TEXTO_PADRAO: "#000000",
     SUPERFICIE_PADRAO: "#f0f0f0",
 }
@@ -346,6 +418,7 @@ SUPERFICIES: tuple[str, ...] = (
     SUPERFICIE_TABULEIRO,
     SUPERFICIE_DICA,
     MOLDURA,
+    VAZIO_DE_CANVAS,
     REALCE_DESTAQUE,
     REALCE_CITACAO,
     REALCE_NOTA,
@@ -371,6 +444,7 @@ _NO_ESCURO: dict[str, str] = {
     SUPERFICIE_TABULEIRO: "#171614",
     SUPERFICIE_DICA: "#33312a",
     MOLDURA: "#0a0908",
+    VAZIO_DE_CANVAS: "#121314",
     REALCE_DESTAQUE: "#290022",
     REALCE_CITACAO: "#002529",
     REALCE_NOTA: "#002907",
@@ -399,7 +473,19 @@ medidas."""
 NO_CROMO_ESCURO: dict[str, str] = {
     SUPERFICIE_DICA: "#33312a",
     SUPERFICIE_PADRAO: "#1f2124",
+    VAZIO_DE_CANVAS: "#1c1e21",
     TEXTO_PADRAO: "#e9eaec",
+    # A ênfase da S-444, e ela **inverte** em vez de escurecer. Uma face saturada sobre
+    # cromo escuro foi medida e reprova o critério que importa: `#b02a37` dá 1,99:1 contra
+    # o botão neutro `#2e3236` -- vermelho escuro sobre cinza escuro é um botão que não se
+    # distingue do vizinho, que é o defeito inteiro deste item. As faces clareiam, a letra
+    # escurece, e a matiz é preservada: **0,2° no primário e 0,03° no destrutivo**. O valor do
+    # destrutivo é o claro clareado em HSL com matiz **e saturação** intactas (0,713), que é a
+    # mesma receita que os cinco da S-224 usaram -- e a regra de 2° de
+    # `test_a_matiz_do_papel_sobrevive_a_troca_de_pele` é quem a cobra.
+    BOTAO_PRIMARIO: "#6ea8fe",
+    BOTAO_DESTRUTIVO: "#e4665d",
+    TEXTO_SOBRE_ENFASE: "#141013",
     TEXTO_SECUNDARIO: "#a7adb6",
     # Os cinco abaixo são a conta que registrar uma pele escura obriga a assinar. Sobre
     # `#1f2124` os valores da paleta clara dão 2,50, 2,97, 2,72, 2,75 e 2,81 -- todos abaixo do
