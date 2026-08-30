@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 
@@ -3110,3 +3110,83 @@ ela vale um. Se as duas saíssem de fase, a etiqueta de fonte de uma corrida cai
 
 Pintar uma seleção que **atravessa** o diagrama é o caso que separa as duas, e é o que
 `test_a_miniatura_no_meio_do_trecho_nao_desalinha_as_fontes` afirma.
+
+## S-451 · O verde não aparecia, e a página gravada era outra
+
+**Problema.** Relatado do uso, e as duas metades da frase são verdadeiras ao mesmo tempo: *"tem
+umas páginas que clico em 'Salvar todos' mas o diagrama não fica verde -- conferi se as imagens
+foram salvas mesmo assim, e foram"*. É essa conjunção que localiza o defeito: a gravação acontece,
+e o que sai errado é o campo que diz **de onde** a amostra veio.
+
+`DiagramEditorModel.adopt` (`ui/editor_model.py:170`) é o único caminho de carregamento que não
+passa por `load` -- é ele que restaura uma página do `PageResultsCache` quando o usuário volta a
+ela. Ele escrevia `page_key` e **não** escrevia `origin`; `PageResults` nem guardava a procedência.
+O editor voltava sabendo corretamente qual página está mostrando e carregando a origem da **última
+página lida** -- ou nenhuma, depois de uma passagem pela fila de revisão ou pela aba Dataset, que
+carregam sem origem.
+
+Quem grava amostra lê `origin`, e não `page_key`: `result_panel._save_one` → `service.save_sample`
+→ `RecognitionOrigin.sample_fields`. Então salvar depois de voltar a uma página guardada escrevia
+no `labels.csv` o `source_page` da página errada, ou o par `source_pdf`/`source_page` vazio. E o
+verde da S-71 é esse mesmo campo lido de volta por `saved_diagrams_by_page`: a caixa não pintava
+**e reabrir o livro não consertava**, porque o defeito estava na linha gravada. Vale igual para o
+`Ctrl+S` -- nunca foi do botão.
+
+Medido em 2026-08-29 sobre as 126 amostras que a árvore tinha por gravar, todas de
+`A Matter of Endgame Technique – Jacob Aagaard.pdf`:
+
+| o que a linha declara | quantas |
+|---|---|
+| procedência correta | 118 |
+| `source_pdf` e `source_page` vazios | **8** |
+
+As oito são as posições da página 20 (diagramas 1 a 6) e da 30 (1 e 2), byte a byte as mesmas FENs
+das linhas que declaram aquelas páginas -- a segunda tentativa de quem clicou, não viu verde nenhum
+e clicou de novo.
+
+**O segundo problema é o mesmo laço.** Nada no caminho de gravação recusa a duplicata:
+`append_training_sample` nomeia por timestamp e **sempre acrescenta**. Voltar a uma página já feita
+era indistinguível de fazê-la pela primeira vez, e as mesmas 126 linhas trazem **10 excedentes** --
+a página 20 gravada duas vezes e a 30, três.
+
+**Solução.** Duas, e a segunda só faz sentido depois da primeira:
+
+1. `PageResults` guarda `origin`, `remember_page_results` a escreve e `adopt` a devolve. Restaurar
+   a página passa a ser restaurar a procedência dela.
+2. `save_all` pergunta antes de regravar. `ui/page_overlay.saved_on_page` responde quais diagramas
+   daquela página já têm amostra, do **mesmo** índice que pinta as caixas de verde: a pergunta tem
+   de concordar com a cor que o usuário está vendo, e duas contas separadas para a mesma verdade só
+   teriam como divergir. "Sim" regrava tudo, "não" salva apenas os que faltavam, e uma página
+   inteiramente salva com "não" não grava nada.
+
+Uma pergunta para a página, e não uma por diagrama -- a régua da pergunta de ilegalidade ao lado,
+pela mesma razão: nove caixas iguais treinam a pessoa a clicar "sim" sem ler.
+
+**Onde `saved_on_page` mora, e por quê.** Em `ui/page_overlay.py`, ao lado de `mark_saved`, e não
+em `labels.py` com as outras duas funções do mesmo índice. `field_eval.measured_modules` alcança
+`labels.py`, e pôr a função lá venceu os quatro relatórios de campo com *"mudou labels"* sem que a
+medição chegue a chamá-la -- o digest da S-219 é por **módulo**, e não por função. O fecho da
+medição não entra em `ui/`, e é essa fronteira que decide.
+
+**Critério de aceite.** Ler a página 16, ler a 17, voltar para a 16 e salvar grava `source_page`
+16, e o aviso de "salvo" nomeia a página 16 -- pelo botão e pelo `Ctrl+S`, que sempre leram a mesma
+`origin`. Numa página com dois diagramas já salvos de três, a caixa aparece **uma** vez, nomeia os
+dois pelo número do seletor, e "não" grava só o terceiro.
+
+**As duas catracas subiram, com o motivo registrado onde elas moram.** `test_ui_retorno_modal` de
+53 para 54 caixas modais -- linha 4 da tabela daquele arquivo, decisão precisa de resposta -- e
+`test_packaging` de 2.292 para 2.296 linhas em `app_tkinter.py`: uma no `import` e três na `lambda`
+que liga o índice ao painel.
+
+**Testes.** `AdoptTests.test_restaurar_do_cache_traz_a_procedencia_junto` em
+`tests/test_editor_model.py`; `ProcedenciaAoVoltarParaAPaginaTests` e `PerguntaDeDiagramaJaSalvoTests`
+em `tests/test_result_panel.py`; `SavedOnPageTests` em `tests/test_page_overlay.py`. Onze ao todo, e
+nenhum passa sem a correção.
+
+**O que este item não faz.** Não mexe nas linhas já gravadas. As oito sem procedência saíram por
+remoção nominal, cada uma conferida contra a gêmea que declara a página, e **não** por
+`cvoff-audit --dedupe`. Aquele comando mantém `sorted(grupo)[0]`, o nome de arquivo mais antigo, e
+os mais antigos são o lote anterior à S-19 -- justamente os que não têm procedência. Medido sobre
+4.858 linhas: ele removeria 367 e, em **277 dos 311 grupos**, deixaria vivo o representante *sem*
+procedência matando o que declara a página. É defeito próprio daquele comando, e fica como item à
+parte.
