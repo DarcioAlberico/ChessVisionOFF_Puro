@@ -13,7 +13,7 @@
     },
     "accept_threshold": 0.8,
     "dpi": 220,
-    "code_commit": "33eb3e0",
+    "code_commit": "5b84447",
     "code_dirty": true
   },
   "pages": 68,
@@ -46,8 +46,8 @@
   "repaired_exported": 0,
   "repaired_blocked": 13,
   "repairs_per_diagram": 0.375,
-  "seconds": 62.106,
-  "seconds_per_diagram": 0.5545,
+  "seconds": 97.934,
+  "seconds_per_diagram": 0.8744,
   "per_regime": {
     "fonte": {
       "pages": 6,
@@ -80,8 +80,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 8.85,
-      "seconds_per_diagram": 0.4917,
+      "seconds": 14.695,
+      "seconds_per_diagram": 0.8164,
       "per_regime": {},
       "per_book": {}
     },
@@ -116,8 +116,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 9,
       "repairs_per_diagram": 1.3333,
-      "seconds": 11.655,
-      "seconds_per_diagram": 0.6475,
+      "seconds": 16.941,
+      "seconds_per_diagram": 0.9411,
       "per_regime": {},
       "per_book": {}
     },
@@ -152,8 +152,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 4,
       "repairs_per_diagram": 0.1667,
-      "seconds": 21.106,
-      "seconds_per_diagram": 0.5025,
+      "seconds": 33.716,
+      "seconds_per_diagram": 0.8028,
       "per_regime": {},
       "per_book": {}
     },
@@ -188,8 +188,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 3.6667,
-      "seconds": 4.408,
-      "seconds_per_diagram": 1.4694,
+      "seconds": 6.168,
+      "seconds_per_diagram": 2.0561,
       "per_regime": {},
       "per_book": {}
     },
@@ -224,8 +224,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 16.088,
-      "seconds_per_diagram": 0.519,
+      "seconds": 26.414,
+      "seconds_per_diagram": 0.8521,
       "per_regime": {},
       "per_book": {}
     }
@@ -262,8 +262,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.931,
-      "seconds_per_diagram": 0.2327,
+      "seconds": 2.102,
+      "seconds_per_diagram": 0.5256,
       "per_regime": {},
       "per_book": {}
     },
@@ -298,8 +298,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 1.5,
-      "seconds": 2.974,
-      "seconds_per_diagram": 0.7435,
+      "seconds": 4.475,
+      "seconds_per_diagram": 1.1188,
       "per_regime": {},
       "per_book": {}
     },
@@ -334,8 +334,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 2.253,
-      "seconds_per_diagram": 1.1266,
+      "seconds": 3.241,
+      "seconds_per_diagram": 1.6205,
       "per_regime": {},
       "per_book": {}
     },
@@ -370,8 +370,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 3.379,
-      "seconds_per_diagram": 0.2816,
+      "seconds": 6.639,
+      "seconds_per_diagram": 0.5532,
       "per_regime": {},
       "per_book": {}
     },
@@ -406,8 +406,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 1.285,
-      "seconds_per_diagram": 0.6425,
+      "seconds": 2.013,
+      "seconds_per_diagram": 1.0063,
       "per_regime": {},
       "per_book": {}
     },
@@ -442,8 +442,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 2,
       "repairs_per_diagram": 4.0,
-      "seconds": 2.164,
-      "seconds_per_diagram": 1.082,
+      "seconds": 2.934,
+      "seconds_per_diagram": 1.4669,
       "per_regime": {},
       "per_book": {}
     },
@@ -478,8 +478,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 3,
       "repairs_per_diagram": 1.8,
-      "seconds": 3.253,
-      "seconds_per_diagram": 0.6506,
+      "seconds": 4.513,
+      "seconds_per_diagram": 0.9025,
       "per_regime": {},
       "per_book": {}
     },
@@ -514,8 +514,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 3.431,
-      "seconds_per_diagram": 0.6862,
+      "seconds": 5.124,
+      "seconds_per_diagram": 1.0248,
       "per_regime": {},
       "per_book": {}
     },
@@ -550,8 +550,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.442,
-      "seconds_per_diagram": 0.4423,
+      "seconds": 0.731,
+      "seconds_per_diagram": 0.7308,
       "per_regime": {},
       "per_book": {}
     },
@@ -586,8 +586,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 4.885,
-      "seconds_per_diagram": 0.4071,
+      "seconds": 8.697,
+      "seconds_per_diagram": 0.7248,
       "per_regime": {},
       "per_book": {}
     },
@@ -622,7 +622,7 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.414,
+      "seconds": 0.5,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -658,7 +658,7 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.167,
+      "seconds": 0.198,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -694,8 +694,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 4,
       "repairs_per_diagram": 1.75,
-      "seconds": 1.039,
-      "seconds_per_diagram": 0.2597,
+      "seconds": 1.906,
+      "seconds_per_diagram": 0.4765,
       "per_regime": {},
       "per_book": {}
     },
@@ -730,8 +730,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.457,
-      "seconds_per_diagram": 0.4569,
+      "seconds": 0.718,
+      "seconds_per_diagram": 0.7182,
       "per_regime": {},
       "per_book": {}
     },
@@ -766,8 +766,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 2,
       "repairs_per_diagram": 1.5,
-      "seconds": 1.145,
-      "seconds_per_diagram": 0.5727,
+      "seconds": 1.628,
+      "seconds_per_diagram": 0.8139,
       "per_regime": {},
       "per_book": {}
     },
@@ -802,8 +802,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 6.219,
-      "seconds_per_diagram": 1.2438,
+      "seconds": 8.713,
+      "seconds_per_diagram": 1.7426,
       "per_regime": {},
       "per_book": {}
     },
@@ -838,7 +838,7 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.153,
+      "seconds": 0.201,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -874,7 +874,7 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.102,
+      "seconds": 0.13,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -910,7 +910,7 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.09,
+      "seconds": 0.11,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -946,8 +946,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 7.165,
-      "seconds_per_diagram": 0.8956,
+      "seconds": 10.724,
+      "seconds_per_diagram": 1.3405,
       "per_regime": {},
       "per_book": {}
     },
@@ -982,8 +982,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 1,
       "repairs_per_diagram": 1.0,
-      "seconds": 0.629,
-      "seconds_per_diagram": 0.6291,
+      "seconds": 0.888,
+      "seconds_per_diagram": 0.8879,
       "per_regime": {},
       "per_book": {}
     },
@@ -1018,8 +1018,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 1.09,
-      "seconds_per_diagram": 0.1817,
+      "seconds": 2.783,
+      "seconds_per_diagram": 0.4639,
       "per_regime": {},
       "per_book": {}
     },
@@ -1054,8 +1054,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 3.653,
-      "seconds_per_diagram": 0.3653,
+      "seconds": 6.113,
+      "seconds_per_diagram": 0.6113,
       "per_regime": {},
       "per_book": {}
     },
@@ -1090,8 +1090,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 2.66,
-      "seconds_per_diagram": 0.4433,
+      "seconds": 4.074,
+      "seconds_per_diagram": 0.679,
       "per_regime": {},
       "per_book": {}
     },
@@ -1126,8 +1126,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 1,
       "repairs_per_diagram": 3.0,
-      "seconds": 0.794,
-      "seconds_per_diagram": 0.7943,
+      "seconds": 1.121,
+      "seconds_per_diagram": 1.1206,
       "per_regime": {},
       "per_book": {}
     },
@@ -1162,8 +1162,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.337,
-      "seconds_per_diagram": 0.3369,
+      "seconds": 0.573,
+      "seconds_per_diagram": 0.5729,
       "per_regime": {},
       "per_book": {}
     },
@@ -1198,8 +1198,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 6.088,
-      "seconds_per_diagram": 0.7611,
+      "seconds": 9.036,
+      "seconds_per_diagram": 1.1295,
       "per_regime": {},
       "per_book": {}
     },
@@ -1234,8 +1234,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 1.671,
-      "seconds_per_diagram": 0.4178,
+      "seconds": 2.876,
+      "seconds_per_diagram": 0.7189,
       "per_regime": {},
       "per_book": {}
     },
@@ -1270,7 +1270,7 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.0,
-      "seconds": 0.165,
+      "seconds": 0.215,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1306,8 +1306,8 @@
       "repaired_exported": 0,
       "repaired_blocked": 0,
       "repairs_per_diagram": 0.8333,
-      "seconds": 3.071,
-      "seconds_per_diagram": 0.5118,
+      "seconds": 4.96,
+      "seconds_per_diagram": 0.8266,
       "per_regime": {},
       "per_book": {}
     }
@@ -1317,12 +1317,12 @@
       "path": "models/piece_classifier.pt",
       "digest": "0e952e5aa3ea76f4"
     },
-    "commit": "33eb3e0b1074e54fb3a191ab29969cc5bc88232c",
+    "commit": "5b8444771e524dbf7d6d903ec6b160378cef0329",
     "dirty": true,
     "ocr": "off",
     "note": "",
     "code": {
-      "digest": "b569921074e8ffe0",
+      "digest": "9d0a7d8080481451",
       "entry": "chess_diagram_ocr.cli.field",
       "modules": {
         "chess_diagram_ocr": "0e8f11cfdf9354d6",
@@ -1339,9 +1339,9 @@
         "detection.embedded": "96247a8b199d3e93",
         "detection.hybrid": "8be3ca554fcc12f4",
         "fen_utils": "34572ecacbd4d437",
-        "field_eval": "2cb85f9429ebe2c5",
+        "field_eval": "8a99a873b3cbeb82",
         "inference": "7da766914db5f7e0",
-        "labels": "b22bf230362d1e7d",
+        "labels": "79224287633f03f7",
         "logging_setup": "8d7dc31828f33914",
         "model": "59d96492ab071241",
         "ocr": "0a7d53d8a18b27f6",
@@ -1354,7 +1354,7 @@
         "semantics": "006fc75c12d0e685",
         "service": "1964b538a81f7859",
         "settings": "4f571dfdbb951670",
-        "splits": "6e9c0d39d58566bf"
+        "splits": "58ebc469016defb5"
       }
     }
   }
