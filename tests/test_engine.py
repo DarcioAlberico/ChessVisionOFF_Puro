@@ -34,6 +34,38 @@ from chess_diagram_ocr.engine import (
 MOTOR_FALSO = Path(__file__).resolve().parent / "fake_uci_engine.py"
 
 
+def _curto(caminho: Path | str) -> str:
+    """O caminho 8.3 do Windows, que e **ASCII por construcao**.
+
+    **Por que a S-434 nao bastou.** Ela grava o `.bat` na code page OEM porque o `cmd.exe` le
+    arquivo de lote pela code page do console. Isso acerta quando as duas coincidem, e a CI
+    mostrou o outro lado: no job `caminho-com-acento` o checkout mora em `acentuado-aeiouc` com
+    acentos, e os sete testes desta classe morreram com `EngineTerminatedError`. Gravar numa code
+    page e apostar em qual o console vai usar para ler -- a aposta muda de maquina, e as duas
+    pontas do erro dao o mesmo sintoma.
+
+    **A saida e nao ter o que decodificar.** O nome curto de um diretorio acentuado e algo como
+    `ACENTU~1`: sem acento, igual em qualquer code page. O `.bat` passa a ser ASCII e a pergunta
+    "em que code page isto sera lido?" deixa de existir.
+
+    Onde o 8.3 esta desligado (`NtfsDisable8dot3NameCreation`) a API devolve o caminho longo, o
+    `write_text` em `ascii` levanta e o chamador volta para a OEM da S-434 -- pior, mas nunca
+    pior do que era.
+    """
+    texto = str(caminho)
+    if os.name != "nt":
+        return texto
+    import ctypes
+    from ctypes import wintypes
+
+    obter = ctypes.windll.kernel32.GetShortPathNameW  # type: ignore[attr-defined]
+    obter.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+    obter.restype = wintypes.DWORD
+    buffer = ctypes.create_unicode_buffer(1024)
+    quantos = obter(texto, buffer, 1024)
+    return buffer.value if 0 < quantos < 1024 else texto
+
+
 def _launcher(caso: type[unittest.TestCase]) -> Path:
     """Um script que o `popen_uci` consiga executar: o `.py` sozinho não é executável.
 
@@ -57,7 +89,13 @@ def _launcher(caso: type[unittest.TestCase]) -> Path:
     diretorio = pasta_temporaria_da_classe(caso, prefixo="cvoff-engine-")
     if os.name == "nt":
         caminho = diretorio / "motor.bat"
-        caminho.write_text(f'@echo off\n"{sys.executable}" "{MOTOR_FALSO}" %*\n', encoding="oem")
+        conteudo = f'@echo off\n"{_curto(sys.executable)}" "{_curto(MOTOR_FALSO)}" %*\n'
+        try:
+            caminho.write_text(conteudo, encoding="ascii")
+        except UnicodeEncodeError:
+            # Sem nome 8.3 no volume: volta ao comportamento da S-434, que acerta quando a
+            # code page do console e a OEM e levanta -- em vez de gravar lixo -- quando nao cabe.
+            caminho.write_text(conteudo, encoding="oem")
     else:
         caminho = diretorio / "motor.sh"
         caminho.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{MOTOR_FALSO}" "$@"\n', encoding="utf-8")
