@@ -231,6 +231,40 @@ Realce e não cor de letra é a decisão do item: o fundo é um canal livre naqu
 cair ali -- `PROBLEMA`, `ATENCAO` e o texto normal -- acima de 4,7:1. É por isso que eles são
 superfícies (`SUPERFICIES`) e escurecem com o tema, como a dica."""
 
+BOTAO_PRIMARIO = "BOTAO_PRIMARIO"
+BOTAO_DESTRUTIVO = "BOTAO_DESTRUTIVO"
+"""A **face** dos dois botões que têm ênfase: o primário e o destrutivo (S-444).
+
+Elas existem porque nenhum papel deste módulo significava "ênfase de controle", e porque o
+`ttkbootstrap` não dava a ênfase de graça: sob `bootstrap-light` -- o tema da pele clássica, que é
+a padrão -- `primary.TButton` e `danger.TButton` pintavam o **mesmo** `#f0f0f0` do botão neutro.
+Medido no pixel do widget montado, que é a única testemunha aqui: `style.lookup` devolve o valor do
+`TButton` base para os três papéis nos dois temas, e portanto não distingue nada.
+
+A consequência não era estética. "Remover" e "Limpar os headers" apagam trabalho humano do
+`labels.csv`, e a S-76 é o registro do que custa um botão destrutivo que não parece um: **1.405
+diagramas sobrescritos por um clique**. A S-144 criou o papel; este item é o que faz ele pintar.
+
+**O destrutivo reaproveita a matiz de `PROBLEMA` e não o valor dele.** `PROBLEMA` é contorno de
+casa, medido contra as casas do tabuleiro; esta é face de botão, medida contra o cromo. É a mesma
+armadilha que a S-224 encontrou ao separar `PROBLEMA` de `PROBLEMA_TEXTO`, e o desvio de matiz
+medido é de **1,2°** na paleta clara e 2,0° na escura.
+
+Entre si os dois estão a **148°** de matiz -- muito acima de `SEPARACAO_MINIMA_DE_MATIZ`."""
+
+TEXTO_SOBRE_ENFASE = "TEXTO_SOBRE_ENFASE"
+"""A letra que cai sobre `BOTAO_PRIMARIO` e sobre `BOTAO_DESTRUTIVO`.
+
+**Um papel e não dois, e a regra da paleta é quem decide isso.** A spec da S-444 pedia quatro
+papéis -- face e letra de cada um --, e duas letras brancas seriam dois papéis com o mesmo
+hexadecimal, que é o que `test_dois_papeis_de_significado_diferente_nao_compartilham_hex` proíbe
+com `COINCIDEM_DE_PROPOSITO` vazio. Inventar uma diferença só para separar os nomes é literalmente
+o que o docstring daquela tupla desaconselha.
+
+A saída é a que este módulo já usa em `TEXTO_SOBRE_MARCACAO`: **um** papel para "a letra que vai
+por cima", porque é um significado só. As duas faces são escolhidas para que a mesma letra passe
+`AA_TEXTO` sobre as duas -- 6,44 e 8,79 na paleta clara, 7,81 e 7,46 na escura."""
+
 TEXTO_PADRAO = "TEXTO_PADRAO"
 SUPERFICIE_PADRAO = "SUPERFICIE_PADRAO"
 """A reserva de quando o próprio `Style` não responde.
@@ -278,6 +312,9 @@ PAPEIS: tuple[str, ...] = (
     REALCE_CITACAO,
     REALCE_NOTA,
     REALCE_VARIANTE,
+    BOTAO_PRIMARIO,
+    BOTAO_DESTRUTIVO,
+    TEXTO_SOBRE_ENFASE,
     TEXTO_PADRAO,
     SUPERFICIE_PADRAO,
 )
@@ -322,6 +359,9 @@ RESERVA: dict[str, str] = {
     REALCE_CITACAO: "#bdf9ff",
     REALCE_NOTA: "#b9ffc5",
     REALCE_VARIANTE: "#eaeeff",
+    BOTAO_PRIMARIO: "#0a58ca",
+    BOTAO_DESTRUTIVO: "#8f2018",
+    TEXTO_SOBRE_ENFASE: "#ffffff",
     TEXTO_PADRAO: "#000000",
     SUPERFICIE_PADRAO: "#f0f0f0",
 }
@@ -400,6 +440,17 @@ NO_CROMO_ESCURO: dict[str, str] = {
     SUPERFICIE_DICA: "#33312a",
     SUPERFICIE_PADRAO: "#1f2124",
     TEXTO_PADRAO: "#e9eaec",
+    # A ênfase da S-444, e ela **inverte** em vez de escurecer. Uma face saturada sobre
+    # cromo escuro foi medida e reprova o critério que importa: `#b02a37` dá 1,99:1 contra
+    # o botão neutro `#2e3236` -- vermelho escuro sobre cinza escuro é um botão que não se
+    # distingue do vizinho, que é o defeito inteiro deste item. As faces clareiam, a letra
+    # escurece, e a matiz é preservada: **0,2° no primário e 0,03° no destrutivo**. O valor do
+    # destrutivo é o claro clareado em HSL com matiz **e saturação** intactas (0,713), que é a
+    # mesma receita que os cinco da S-224 usaram -- e a regra de 2° de
+    # `test_a_matiz_do_papel_sobrevive_a_troca_de_pele` é quem a cobra.
+    BOTAO_PRIMARIO: "#6ea8fe",
+    BOTAO_DESTRUTIVO: "#e4665d",
+    TEXTO_SOBRE_ENFASE: "#141013",
     TEXTO_SECUNDARIO: "#a7adb6",
     # Os cinco abaixo são a conta que registrar uma pele escura obriga a assinar. Sobre
     # `#1f2124` os valores da paleta clara dão 2,50, 2,97, 2,72, 2,75 e 2,81 -- todos abaixo do

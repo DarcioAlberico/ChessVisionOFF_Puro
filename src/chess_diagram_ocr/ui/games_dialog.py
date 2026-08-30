@@ -21,7 +21,7 @@ from tkinter import messagebox, ttk
 from chess_diagram_ocr.games_db import PositionHit, agrees_with_caption
 from chess_diagram_ocr.pdf_text import fold
 
-from . import theme, tipografia, tokens
+from . import espaco, estilos, theme, tipografia, tokens
 from .gallery_model import GalleryModel
 from .tooltip import Tooltip
 
@@ -77,7 +77,7 @@ class GamesDialog(tk.Toplevel):
         topo.pack(fill=tk.X)
         ttk.Label(topo, text="filtro").pack(side=tk.LEFT)
         campo = ttk.Entry(topo, textvariable=self.filter_var, width=30)
-        campo.pack(side=tk.LEFT, padx=6)
+        campo.pack(side=tk.LEFT, padx=espaco.linha())
         campo.focus_set()
         # A cada tecla, e nao no Return: com 32 candidatas o filtro e para *reduzir enquanto se
         # olha*, e exigir confirmacao a cada tentativa faria a pessoa digitar o nome inteiro.
@@ -86,7 +86,7 @@ class GamesDialog(tk.Toplevel):
             ttk.Label(topo, textvariable=self.count_var), "foreground", tokens.TEXTO_SECUNDARIO
         ).pack(side=tk.RIGHT)
 
-        corpo = ttk.Frame(self, padding=(8, 0))
+        corpo = ttk.Frame(self, padding=(espaco.folga(), 0))
         corpo.pack(fill=tk.BOTH, expand=True)
         self.tree = ttk.Treeview(corpo, columns=[c[0] for c in COLUNAS], show="headings", selectmode="browse")
         for chave, titulo, largura in COLUNAS:
@@ -115,21 +115,30 @@ class GamesDialog(tk.Toplevel):
         _pintar_etiquetas()
         theme.ao_repintar(_pintar_etiquetas)
 
-        rodape = ttk.Frame(self, padding=8)
+        rodape = ttk.Frame(self, padding=espaco.folga())
         rodape.pack(fill=tk.X)
-        ttk.Button(rodape, text="Aplicar", command=self.apply_selected).pack(side=tk.LEFT)
-        self.btn_by_name = ttk.Button(rodape, text="Procurar por nome", command=self.search_by_name)
-        self.btn_by_name.pack(side=tk.LEFT, padx=6)
-        self.btn_neighbours = ttk.Button(
-            rodape, text="Aplicar aos vizinhos...", command=self.apply_to_neighbours, state=tk.DISABLED
+        ttk.Button(rodape, text="Aplicar", command=self.apply_selected, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.LEFT)
+        self.btn_by_name = ttk.Button(
+            rodape,
+            text="Procurar por nome",
+            command=self.search_by_name,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
         )
-        self.btn_neighbours.pack(side=tk.LEFT, padx=6)
+        self.btn_by_name.pack(side=tk.LEFT, padx=espaco.linha())
+        self.btn_neighbours = ttk.Button(
+            rodape,
+            text="Aplicar aos vizinhos...",
+            command=self.apply_to_neighbours,
+            state=tk.DISABLED,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        self.btn_neighbours.pack(side=tk.LEFT, padx=espaco.linha())
         Tooltip(
             self.btn_neighbours,
             "Fica cinza quando os diagramas vizinhos desta página não têm partida escolhida:\n"
             "é deles que sai o palpite, e sem eles não há o que copiar.",
         )
-        ttk.Button(rodape, text="Fechar", command=self.destroy).pack(side=tk.RIGHT)
+        ttk.Button(rodape, text="Fechar", command=self.destroy, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.RIGHT)
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self._update_neighbour_button())
 
     # ------------------------------------------------------------------------ conteúdo

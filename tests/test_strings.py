@@ -371,22 +371,43 @@ class DestrutivoTests(unittest.TestCase):
 
     QUE_APAGAM = ("Remover", "Quarentena")
 
-    def test_os_botoes_que_apagam_pedem_o_papel_destrutivo(self) -> None:
+    @staticmethod
+    def _papel_por_rotulo() -> dict[str, str]:
+        """`rótulo do botão -> o papel que ele declara`, lido do `ast` do painel.
+
+        **Era por linha de texto, e a linha deixou de ser uma** (S-445): quando o `style=` não
+        cabe em 120 colunas com o resto, a chamada quebra, e `text="Remover"` e
+        `estilos.DESTRUTIVO` passam a morar em linhas diferentes. A propriedade que interessa
+        nunca foi "estão na mesma linha" -- é "este botão declara aquele papel".
+        """
         fonte = (RAIZ / "src" / "chess_diagram_ocr" / "ui" / "dataset_panel.py").read_text(encoding="utf-8")
+        achados: dict[str, str] = {}
+        for no in ast.walk(ast.parse(fonte)):
+            if not (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute) and no.func.attr == "Button"):
+                continue
+            rotulo = next(
+                (k.value.value for k in no.keywords if k.arg == "text" and isinstance(k.value, ast.Constant)), None
+            )
+            estilo = next((ast.get_source_segment(fonte, k.value) for k in no.keywords if k.arg == "style"), "")
+            if isinstance(rotulo, str):
+                achados[rotulo] = estilo or ""
+        return achados
+
+    def test_os_botoes_que_apagam_pedem_o_papel_destrutivo(self) -> None:
+        papeis = self._papel_por_rotulo()
         for rotulo in self.QUE_APAGAM:
             with self.subTest(rotulo=rotulo):
-                linha = next(texto for texto in fonte.splitlines() if f'text="{rotulo}"' in texto)
-                self.assertIn("estilos.DESTRUTIVO", linha)
+                self.assertIn(rotulo, papeis, "o botão sumiu do painel")
+                self.assertIn("estilos.DESTRUTIVO", papeis[rotulo])
 
     def test_quem_nao_apaga_nao_usa_o_papel_destrutivo(self) -> None:
         """Se tudo é vermelho, nada é: o papel só significa alguma coisa enquanto for raro."""
-        fonte = (RAIZ / "src" / "chess_diagram_ocr" / "ui" / "dataset_panel.py").read_text(encoding="utf-8")
-        for linha in fonte.splitlines():
-            if "estilos.DESTRUTIVO" not in linha or "text=" not in linha:
+        for rotulo, estilo in self._papel_por_rotulo().items():
+            if "estilos.DESTRUTIVO" not in estilo:
                 continue
-            with self.subTest(linha=linha.strip()[:60]):
+            with self.subTest(rotulo=rotulo):
                 self.assertTrue(
-                    any(f'text="{rotulo}"' in linha for rotulo in self.QUE_APAGAM),
+                    rotulo in self.QUE_APAGAM,
                     "botão em `danger` que não apaga nada",
                 )
 

@@ -27,14 +27,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, ttk
 
-from . import theme, tipografia, tokens
+from . import espaco, estilos, theme, tipografia, tokens
 
 __all__ = [
     "ARQUIVO",
+    "CAMINHO",
+    "LARGURA_DE_CAMPO",
+    "NUMERO",
     "PASTA",
+    "TEXTO",
     "Diagnostico",
     "diagnosticar_caminho",
+    "largura_de_rotulo",
     "linha_de_caminho",
+    "linha_de_giro",
     "linha_de_numero",
     "numero_na_faixa",
 ]
@@ -42,6 +48,25 @@ __all__ = [
 ARQUIVO = "arquivo"
 PASTA = "pasta"
 """O que se espera encontrar no caminho. Decide o diálogo e a mensagem, e nada mais."""
+
+NUMERO = "numero"
+TEXTO = "texto"
+CAMINHO = "caminho"
+"""A **classe de dado** do campo, e é ela que decide a largura (S-448).
+
+O defeito que isto fecha estava na aba Configuração e é mensurável: o campo mais largo do painel
+(≈590 px) era o que guardava o valor mais curto (`0.001`), porque `linha_de_numero` pedia
+`expand=True` e comia toda a sobra; ao lado dele, "Épocas" (`8`) e "Tamanho do lote" (`128`) tinham
+≈100 px porque eram `ttk.Spinbox(width=12)`. A largura não dizia nada sobre o dado que o campo
+espera -- e largura é a primeira dica que um formulário dá.
+"""
+
+LARGURA_DE_CAMPO: dict[str, int] = {NUMERO: 12, TEXTO: 28, CAMINHO: 0}
+"""Largura em **caracteres** por classe. `0` quer dizer "ocupa a sobra da linha".
+
+Cresce com a classe -- número < texto < caminho --, que é a ordem em que o dado cresce. O caminho
+é o único que expande, e ele é o único cujo conteúdo não tem tamanho previsível: `C:\\Users\\...`
+não cabe em número nenhum que se escolha aqui."""
 
 
 @dataclass(frozen=True)
@@ -108,16 +133,34 @@ def numero_na_faixa(texto: str, *, minimo: float, maximo: float) -> Diagnostico:
 # ------------------------------------------------------------------------------ os widgets
 
 
+def largura_de_rotulo(*rotulos: str) -> int:
+    """Quantos caracteres a coluna de rótulo precisa para não cortar nenhum deles. Pura.
+
+    **O defeito que isto fecha corta letra na tela.** `largura_do_rotulo` era `16` cravado, e
+    "Taxa de aprendizado" tem **19** caracteres: o Tk desenhava `Taxa de aprendizad` e o resto
+    sumia dentro do campo ao lado. Não era caso de borda -- era o rótulo mais longo do único
+    formulário do programa.
+
+    Quem chama passa **todos** os rótulos do formulário de uma vez, e é isso que faz a segunda
+    metade do critério valer por construção: se todos recebem a mesma coluna, todos os campos
+    começam na mesma coluna.
+
+    O piso de 1 existe porque `ttk.Label(width=0)` não reserva coluna nenhuma, e um formulário sem
+    rótulo nenhum é chamada errada, não formulário estreito.
+    """
+    return max((len(rotulo) for rotulo in rotulos), default=1) or 1
+
+
 def _linha(pai: tk.Misc, rotulo: str, largura_do_rotulo: int) -> ttk.Frame:
     linha = ttk.Frame(pai)
-    linha.pack(fill=tk.X, padx=8, pady=4)
+    linha.pack(fill=tk.X, padx=espaco.folga(), pady=espaco.linha())
     ttk.Label(linha, text=rotulo, width=largura_do_rotulo).pack(side=tk.LEFT)
     return linha
 
 
 def _aviso(linha: ttk.Frame) -> ttk.Label:
     aviso = theme.pintar(ttk.Label(linha, text=""), "foreground", tokens.PROBLEMA_TEXTO)
-    aviso.pack(side=tk.RIGHT, padx=(8, 0))
+    aviso.pack(side=tk.RIGHT, padx=(espaco.folga(), 0))
     return aviso
 
 
@@ -165,7 +208,7 @@ def linha_de_caminho(
         if escolhido:
             var.set(escolhido)
 
-    ttk.Button(linha, text="Procurar…", command=procurar).pack(side=tk.RIGHT)
+    ttk.Button(linha, text="Procurar…", command=procurar, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.RIGHT)
     ttk.Entry(linha, textvariable=var, font=theme.fonte_atual(tipografia.DADO)).pack(
         side=tk.LEFT, fill=tk.X, expand=True
     )
@@ -185,8 +228,40 @@ def linha_de_numero(
     """Rótulo, campo e o aviso de "não é um número" **enquanto se digita** (S-168)."""
     linha = _linha(pai, rotulo, largura_do_rotulo)
     aviso = _aviso(linha)
-    ttk.Entry(linha, textvariable=var, font=theme.fonte_atual(tipografia.DADO)).pack(
-        side=tk.LEFT, fill=tk.X, expand=True
-    )
+    # **Sem `expand=True`, e é o item** (S-448). Expandindo, este campo ficava com ≈590 px para
+    # guardar `0.001` -- o mais largo do painel para o valor mais curto dele. E a fonte é a de
+    # corpo e não a `DADO`: os vizinhos de número são `ttk.Spinbox`, que desenham na fonte de
+    # corpo, e dois números do mesmo formulário em fontes diferentes é o que a fotografia mostrou.
+    ttk.Entry(linha, textvariable=var, width=LARGURA_DE_CAMPO[NUMERO]).pack(side=tk.LEFT)
     _vigiar(var, aviso, lambda texto: numero_na_faixa(texto, minimo=minimo, maximo=maximo))
+    return linha
+
+
+def linha_de_giro(
+    pai: tk.Misc,
+    rotulo: str,
+    var: tk.Variable,
+    *,
+    minimo: float,
+    maximo: float,
+    passo: float,
+    largura_do_rotulo: int = 16,
+) -> ttk.Frame:
+    """Rótulo e `ttk.Spinbox`, na mesma coluna e na mesma largura de `linha_de_numero` (S-448).
+
+    **Era o `_spin_row` do `app_tkinter`**, e ser uma segunda implementação da mesma linha era o
+    defeito: ela cravava `width=16` no rótulo e `width=12` no campo por conta própria, então
+    mudar a coluna de rótulo num lugar não mudava no outro. É o mesmo argumento de
+    `theme.altura_de_linha_atual` sobre as duas tabelas (S-153) -- duas cópias erram a mesma
+    coisa em momentos diferentes.
+    """
+    linha = _linha(pai, rotulo, largura_do_rotulo)
+    ttk.Spinbox(
+        linha,
+        from_=minimo,
+        to=maximo,
+        increment=passo,
+        textvariable=var,
+        width=LARGURA_DE_CAMPO[NUMERO],
+    ).pack(side=tk.LEFT)
     return linha
