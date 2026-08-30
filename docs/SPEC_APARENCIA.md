@@ -21,6 +21,7 @@ Base: [ROADMAP_APARENCIA.md](ROADMAP_APARENCIA.md), que traz a leitura das duas 
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 > | S-296 a S-323, S-325 a S-430 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
+> | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -29,6 +30,15 @@ aceite** e **Testes**. Nome de módulo é sugestão; o que importa é a fronteir
 
 1. **A pele clássica é o padrão e não muda.** Quem nunca abrir `Ver ▸ Aparência` tem, pixel a
    pixel, a janela de hoje. Um item que só possa ser feito mexendo na clássica está mal escrito.
+
+   > **Relida pela S-443** ([SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md)), em 2026-08-29. "Não muda"
+   > fundia dois eixos, e o preço apareceu na S-441: o `padding=(14, 6)` da faixa de abas existia
+   > desde a S-226 e era entregue **a uma pele só**, porque melhorá-lo na clássica era proibido —
+   > a faixa da pele padrão desenhava o rótulo encostado na borda, e não havia caminho para
+   > consertar. A regra passa a ser **a clássica não muda de *arranjo*** (controle nenhum nasce,
+   > morre ou muda de lugar nela); **acabamento** — folga, peso, alinhamento, indicador — é da
+   > janela e chega às três peles ao mesmo tempo. Quem cobra o arranjo continua sendo a S-233, por
+   > inventário; quem cobra o acabamento é `tests/test_ui_acabamento.py`.
 2. **Pele é apresentação, nunca conjunto menor de comandos.** Um comando pode mudar de lugar,
    ganhar ícone ou virar item de menu; não pode ficar inalcançável. A S-233 mede isso por
    inventário, e é ela que autoriza a pele "Foco" a esconder 60 controles.

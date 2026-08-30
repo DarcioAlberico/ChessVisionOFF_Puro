@@ -27,6 +27,7 @@ seguem em [ROADMAP_FASE14.md](ROADMAP_FASE14.md) e [ROADMAP_TEXTO.md](ROADMAP_TE
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 > | S-296 a S-323, S-325 a S-430 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
+> | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 
 ---
 
@@ -343,6 +344,13 @@ está amarrada a um item, e nenhuma é enfeite.
   separados, e `CVOFF_TTK_THEME` já dá 30 temas. Amarrar os dois faria "quero a fita clara com o
   tabuleiro escuro" ser impossível sem motivo.
 - **Redesenhar as seis abas por dentro.** Fora de escopo. As peles mudam o cromo em volta delas.
+
+  > **Reaberto em 2026-08-29 pelas Fases 69 a 72** ([ROADMAP_ACABAMENTO.md](ROADMAP_ACABAMENTO.md)).
+  > A recusa estava certa para estas quatro fases — três peles em três semanas não cabem com o
+  > interior junto. Mas somada à regra 1 ela fechava a única porta pela qual a janela padrão podia
+  > melhorar: a pele que todo mundo vê era a proibida de mudar, e o interior que todo mundo olha
+  > era o fora de escopo. O que a S-443 separou foi *arranjo* de *acabamento*; o arranjo dos
+  > painéis continua fora de escopo, e o acabamento deles não.
 
 ---
 

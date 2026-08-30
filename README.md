@@ -1094,6 +1094,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
 | S-296 a S-323, S-325 a S-430 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
+| S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1192,6 +1193,14 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   a 68 (S-431 a S-440): a coleta que gravava zero e relatava cinco, a lei do `imread`/`imwrite`
   virando guarda que pergunta ao git quem e o repositorio, a faixa de Python ate 3.13 antes
   de outubro, e uma recomendacao medida e recusada
+- [docs/ROADMAP_ACABAMENTO.md](docs/ROADMAP_ACABAMENTO.md) -- **Fases 69 a 72**, a medicao do
+  acabamento da janela feita em 2026-08-29 sobre fotografias das tres peles: o sistema de design
+  existe e nao chega aos paineis -- cinco `style.configure` no projeto inteiro, onze widgets sem
+  folha de base, e o papel de botao destrutivo pintando cinza no tema claro
+- [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) -- especificacao das Fases 69 a 72
+  (S-441 a S-450): a folha de base do `ttk`, o indicador que encosta no rotulo, a regra 1 da
+  aparencia relida -- a pele classica nao muda de *arranjo*, e acabamento e da janela e nao da
+  pele --, os 154 literais de espaco e o tabuleiro que flutua num slab quase-preto
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
