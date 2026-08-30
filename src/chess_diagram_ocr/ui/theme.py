@@ -24,7 +24,7 @@ from collections.abc import Callable
 from tkinter import ttk
 from typing import TypeVar
 
-from . import pele, tipografia, tokens
+from . import espaco, estilos, folha, pele, tipografia, tokens
 
 logger = logging.getLogger(__name__)
 
@@ -357,6 +357,17 @@ def registrar_estilos(*, densidade: str = pele.CONFORTAVEL) -> None:
     style = estilo_atual()
     if style is None:  # pragma: no cover - sem root não há estilo a registrar
         return
+
+    # **Primeiro, e é de propósito** (S-441). A folha redefine as classes; os estilos nomeados
+    # abaixo são mais específicos e continuam ganhando. Aplicá-la aqui dentro é o que faz o
+    # acabamento ser da janela e não da pele -- `registrar_estilos` roda para toda pele e todo
+    # tema, e é a mesma chamada que a troca de pele já refaz.
+    base = fonte_base()[0]
+    folha.aplicar(style, base=base, densidade=densidade)
+    # E o espaço do interior dos painéis, pelo mesmo motivo (S-447): esta é a única função que
+    # conhece fonte **e** densidade sem que ninguém as passe adiante.
+    espaco.ajustar(base=base, densidade=densidade)
+
     try:
         style.configure(ESTILO_DE_TABELA_DE_DADOS, font=fonte_atual(tipografia.DADO))
         style.configure(ESTILO_DE_TITULO, font=fonte_atual(tipografia.TITULO))
@@ -374,7 +385,11 @@ def registrar_estilos(*, densidade: str = pele.CONFORTAVEL) -> None:
     # é de outro item. Aparência não derruba ferramenta, e uma metade não derruba a outra.
     try:
         style.configure(ESTILO_DE_ABAS_DISCRETO, borderwidth=0, tabmargins=(2, 6, 2, 0))
-        style.configure(f"{ESTILO_DE_ABAS_DISCRETO}.Tab", borderwidth=0, padding=(14, 6))
+        # **Sem `padding` desde a S-441**, e a ausência é o item. O `(14, 6)` que estava aqui era a
+        # única folga de aba da janela, e ela chegava a uma pele só -- daí a faixa da clássica
+        # desenhar o rótulo encostado na borda. Ele virou o `TNotebook.Tab` da folha de base, de
+        # onde este estilo o herda pelo prefixo. O que sobra de próprio aqui é o **peso**.
+        style.configure(f"{ESTILO_DE_ABAS_DISCRETO}.Tab", borderwidth=0)
         style.map(
             f"{ESTILO_DE_ABAS_DISCRETO}.Tab",
             foreground=[
@@ -385,3 +400,86 @@ def registrar_estilos(*, densidade: str = pele.CONFORTAVEL) -> None:
         )
     except tk.TclError as exc:  # pragma: no cover - tema que não aceita estilo de Notebook
         logger.info("Estilo de abas discreto não registrado (%s).", exc)
+
+    # Bloco próprio, pela razão de sempre: a ênfase é da S-444 e o resto é de outros itens.
+    _registrar_enfase(style)
+
+
+def _mistura(a: str, b: str, peso: float) -> str:
+    """`a` puxado `peso` na direção de `b`, canal a canal. Pura, e sem hexadecimal cravado.
+
+    Existe para o estado `active` do botão de ênfase. Puxar a face na direção da **letra** dela dá
+    o realce certo nas duas paletas por construção: no cromo claro a letra é branca e a face
+    clareia; no escuro a letra é quase preta e a face escurece. Um par de valores fixos precisaria
+    de dois hexadecimais novos e erraria numa das duas peles.
+    """
+    peso = min(1.0, max(0.0, peso))
+    canais = (
+        round(int(a[i : i + 2], 16) * (1 - peso) + int(b[i : i + 2], 16) * peso)
+        for i in (1, 3, 5)
+    )
+    return "#" + "".join(f"{canal:02x}" for canal in canais)
+
+
+REALCE_DE_ENFASE = 0.18
+"""Quanto o `active` puxa a face na direção da letra. Ver `_mistura`.
+
+0,18 é o menor valor em que o realce é visível nas duas paletas sem que a face deixe de ser a
+mesma cor -- acima de ~0,3 o azul primário clareia a ponto de disputar com o `A_FAZER` da página."""
+
+
+def _do_tema(style: ttk.Style, opcao: str, reserva: str) -> str:
+    """O que o tema dá ao `TButton` **desabilitado**, ou a reserva quando ele não responde.
+
+    Mesma disciplina de `tokens._hex_do_tema`: só vale `#rrggbb`. Um tema que devolva vazio ou um
+    nome de sistema (`SystemButtonFace`) cai na reserva em vez de virar um `configure` inválido.
+    """
+    try:
+        valor = str(style.lookup("TButton", opcao, ["disabled"]) or "")
+    except tk.TclError:  # pragma: no cover - tema que recusa a consulta por estado
+        return reserva
+    return valor if valor.startswith("#") and len(valor) == 7 else reserva
+
+
+def _registrar_enfase(style: ttk.Style) -> None:
+    """Faz `primary.TButton` e `danger.TButton` pintarem, nas duas paletas (S-444).
+
+    **O `ttkbootstrap` não dá isto de graça, e a medição é o item.** Sob `bootstrap-light` -- o
+    tema da pele clássica, que é a padrão -- os três papéis de `ui/estilos.py` pintavam o mesmo
+    `#f0f0f0`: "Remover", que apaga linha do `labels.csv`, era o cinza de "Copiar legenda". A
+    S-144 criou o papel e o resultado ficou de pé por baixo.
+
+    **E o tema escuro também precisava, ao contrário do que a spec previa.** Ela dizia "sob
+    `bootstrap-dark` a folha não sobrescreve: lá os dois já pintam, e pintam bem". Medido no
+    pixel: `#3d8bfd` com letra branca dá **3,33:1** e `#e35d6a` dá **3,48:1** -- os dois abaixo do
+    piso `AA_TEXTO` que o critério de aceite do mesmo item exige nas três peles. As duas metades
+    da spec se contradiziam, e o pixel desempatou.
+
+    O `disabled` é mapeado de propósito e não por completude: "Limpar os headers" **nasce
+    desabilitado** (`ui/gallery_panel.py`), e uma face vermelha sólida num botão que não responde
+    é um pedido de cuidado sobre uma ação que não existe.
+    """
+    papeis = ((estilos.PRIMARIO, tokens.BOTAO_PRIMARIO), (estilos.DESTRUTIVO, tokens.BOTAO_DESTRUTIVO))
+    letra = cor_atual(tokens.TEXTO_SOBRE_ENFASE)
+    # **O desabilitado é o do tema, e não um par nosso.** Desabilitado é desabilitado: um botão que
+    # não responde tem de ficar igual a todo botão que não responde, e a primeira versão deste
+    # bloco usava `TEXTO_SECUNDARIO` (#555555) -- mais escuro que o `#c8cccf` do tema, o que fazia
+    # "Limpar os headers" desabilitado parecer **mais aceso** que o "Partidas da base" ao lado.
+    apagado = _do_tema(style, "background", cor_atual(tokens.SUPERFICIE_PADRAO))
+    letra_apagada = _do_tema(style, "foreground", cor_atual(tokens.TEXTO_SECUNDARIO))
+    for papel, token in papeis:
+        nome = estilos.estilo_de_botao(papel)
+        face = cor_atual(token)
+        try:
+            style.configure(nome, background=face, foreground=letra)
+            style.map(
+                nome,
+                background=[
+                    ("disabled", apagado),
+                    ("pressed", _mistura(face, letra, REALCE_DE_ENFASE * 2)),
+                    ("active", _mistura(face, letra, REALCE_DE_ENFASE)),
+                ],
+                foreground=[("disabled", letra_apagada), ("!disabled", letra)],
+            )
+        except tk.TclError as exc:  # pragma: no cover - tema que não aceita face de botão
+            logger.info("Ênfase de %s não registrada (%s).", papel, exc)
