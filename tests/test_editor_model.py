@@ -355,6 +355,7 @@ SEM_TKINTER = {
     "desfazivel.py": "quem desfaz quando o foco decide, com objetos de mentira (S-243)",
     "dispositivos.py": "em que dispositivo cada um dos dois modelos torch está (S-182)",
     "estilos.py": "papel de botão -> nome de estilo ttk (S-144)",
+    "espaco.py": "os quatro papéis de espaço resolvidos contra a fonte e a densidade (S-447)",
     "estudo_lista.py": "a lista de lances como trechos, conferida contra o StringExporter (S-273)",
     "formato.py": "número e código do CSV como a tela os escreve (S-169)",
     "field_draft.py": "o rascunho do conjunto de campo (S-41)",

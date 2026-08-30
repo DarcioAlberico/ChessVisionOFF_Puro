@@ -257,8 +257,23 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2296
+    LIMITE = 2327
     """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+
+    **2.317 → 2.327 na S-448**, e as dez são a grade do formulário de Configuração. O saldo é
+    melhor do que parece: `_spin_row` **saiu** desta janela -- ele era a segunda implementação de
+    uma linha de formulário e virou `campos.linha_de_giro` --, e os dez rótulos que decidem a
+    largura da coluna foram para `ui/strings.py`, que é onde mora texto que a pessoa lê. O que
+    sobrou aqui são as chamadas, agora com `largura_do_rotulo=coluna` e quebradas em 120 colunas.
+
+    **2.296 → 2.317 na S-445**, e as vinte e uma não decidem nada: são **quatro** botões desta
+    janela declarando o papel que já tinham de fato. "Recarregar modelo", "Treinar modelo",
+    "Enviar" e "Cancelar" são `NEUTRO`, e passar a escrevê-lo é o que torna a regra cobrável --
+    `test_ui_estilos.TodoBotaoDeclaraPapelTests` reprova o próximo botão que nascer sem papel.
+
+    O custo por botão é de cinco linhas porque a chamada não cabe em 120 colunas com o `style=`
+    junto, e quebrar é preferível a uma linha de 150. **Extrair não era opção aqui**: os quatro
+    são montagem de widget, que é exatamente o que a S-31 deixou nesta janela de propósito.
 
     **2.090 → 2.092 na Fase 39**, e as onze são as quatro linhas de exportação (`.md`, `.html`,
     `.rtf` e o PDF pesquisável) mais as sete da Fase 38 -- todas entradas em `_comandos`, uma por

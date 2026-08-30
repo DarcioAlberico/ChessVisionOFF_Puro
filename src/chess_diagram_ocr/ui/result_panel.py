@@ -42,7 +42,7 @@ from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import LocalReaderSettings, RemoteFenSettings
 
-from . import atalhos, board_edit, comandos, estilos, strings, texto, theme, tipografia, tokens
+from . import atalhos, board_edit, comandos, espaco, estilos, strings, texto, theme, tipografia, tokens
 from .board_widget import InteractiveBoard, PieceImages
 from .editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from .historico import Historico
@@ -151,7 +151,7 @@ class ResultPanel(ttk.Frame):
         move_number_of: Callable[[int, int], int | None] = lambda _pagina, _diagrama: None,
         on_move_number: Callable[[int, int, int | None], None] = lambda _p, _d, _v: None,
     ) -> None:
-        super().__init__(parent, padding=6)
+        super().__init__(parent, padding=espaco.linha())
         self._service = service
         self._paths = paths
         self._ocr_params = ocr_params
@@ -293,25 +293,46 @@ class ResultPanel(ttk.Frame):
 
     def _build(self, piece_images: PieceImages) -> None:
         botoes = ttk.Frame(self)
-        botoes.pack(fill=tk.X, padx=8, pady=8)
+        botoes.pack(fill=tk.X, padx=espaco.folga(), pady=espaco.folga())
         self.btn_ocr_local_best = ttk.Button(
-            botoes, text="OCR local (melhor)", command=lambda: self._on_ocr_local(1)
+            botoes,
+            text="OCR local (melhor)",
+            command=lambda: self._on_ocr_local(1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
         )
         self.btn_ocr_local_best.pack(side=tk.LEFT)
         self.btn_ocr_local_all = ttk.Button(
-            botoes, text="OCR local (todos)", command=lambda: self._on_ocr_local(self._max_boards())
+            botoes,
+            text="OCR local (todos)",
+            command=lambda: self._on_ocr_local(self._max_boards()),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
         )
-        self.btn_ocr_local_all.pack(side=tk.LEFT, padx=6)
-        ttk.Label(self, text="Use imagem local para OCR fora do PDF.").pack(anchor="w", padx=8, pady=(2, 8))
+        self.btn_ocr_local_all.pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Label(
+            self,
+            text="Use imagem local para OCR fora do PDF.",
+        ).pack(anchor="w", padx=espaco.folga(), pady=(espaco.minima(), espaco.folga()))
 
         caixa = ttk.LabelFrame(self, text="Reconhecido (clique e arraste para corrigir)")
-        caixa.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        caixa.pack(fill=tk.BOTH, expand=True, padx=espaco.folga(), pady=(0, espaco.folga()))
 
         zoom_row = ttk.Frame(caixa)
-        zoom_row.pack(fill=tk.X, padx=8, pady=(6, 0))
+        zoom_row.pack(fill=tk.X, padx=espaco.folga(), pady=(espaco.linha(), 0))
         ttk.Label(zoom_row, text=strings.ZOOM_DO_TABULEIRO).pack(side=tk.LEFT)
-        ttk.Button(zoom_row, text="-", width=3, command=lambda: self.zoom(-0.1)).pack(side=tk.LEFT, padx=(6, 2))
-        ttk.Button(zoom_row, text="+", width=3, command=lambda: self.zoom(0.1)).pack(side=tk.LEFT, padx=(2, 6))
+        ttk.Button(
+            zoom_row,
+            text="-",
+            width=3,
+            command=lambda: self.zoom(-0.1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=(espaco.linha(), espaco.minima()))
+        ttk.Button(
+            zoom_row,
+            text="+",
+            width=3,
+            command=lambda: self.zoom(0.1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=(espaco.minima(), espaco.linha()))
         self.lbl_zoom = ttk.Label(zoom_row, text="85%")
         self.lbl_zoom.pack(side=tk.LEFT)
         ttk.Checkbutton(
@@ -323,13 +344,16 @@ class ResultPanel(ttk.Frame):
         # que faz a pessoa procurar no menu. Os rótulos saem do catálogo (S-324) -- os três botões
         # antigos desta janela ainda os escrevem à mão, e essa dívida está registrada lá.
         edicao_row = ttk.Frame(caixa)
-        edicao_row.pack(fill=tk.X, padx=8, pady=(4, 0))
+        edicao_row.pack(fill=tk.X, padx=espaco.folga(), pady=(espaco.linha(), 0))
         self.btn_desfazer = self._botao_de_historico(edicao_row, "desfazer", self.desfazer)
         self.btn_refazer = self._botao_de_historico(edicao_row, "refazer", self.refazer)
         self.btn_limpar = ttk.Button(
-            edicao_row, text=comandos.rotulo_de_botao("limpar_tabuleiro"), command=self.limpar_tabuleiro
+            edicao_row,
+            text=comandos.rotulo_de_botao("limpar_tabuleiro"),
+            command=self.limpar_tabuleiro,
+            style=comandos.estilo("limpar_tabuleiro"),
         )
-        self.btn_limpar.pack(side=tk.LEFT, padx=6)
+        self.btn_limpar.pack(side=tk.LEFT, padx=espaco.linha())
         Tooltip(
             self.btn_limpar,
             "Esvazia as 64 casas para montar a posição do zero.\n"
@@ -348,7 +372,7 @@ class ResultPanel(ttk.Frame):
             min_size=260,
             max_size=520,
         )
-        self.board.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self.board.pack(fill=tk.BOTH, expand=True, padx=espaco.folga(), pady=espaco.folga())
         self.board.set_heatmap_enabled(True)
 
         # A frase do estado vazio (S-170). Um `Label` que existe sempre e fica em branco quando há
@@ -360,21 +384,31 @@ class ResultPanel(ttk.Frame):
             justify=tk.LEFT,
             foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
         )
-        texto.acompanhar(lbl_vazio).pack(anchor="w", padx=8, pady=(0, 6))
+        texto.acompanhar(lbl_vazio).pack(anchor="w", padx=espaco.folga(), pady=(0, espaco.linha()))
         theme.ao_repintar(lambda: lbl_vazio.configure(foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO)))
 
         legal = ttk.Frame(caixa)
-        legal.pack(fill=tk.X, padx=8, pady=(0, 6))
+        legal.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
         texto.acompanhar(ttk.Label(legal, textvariable=self.legality_var, justify=tk.LEFT)).pack(anchor="w")
         theme.pintar(
             ttk.Label(legal, textvariable=self.material_var), "foreground", tokens.TEXTO_SECUNDARIO
         ).pack(anchor="w")
 
         nav = ttk.Frame(caixa)
-        nav.pack(fill=tk.X, padx=8, pady=(0, 6))
-        ttk.Button(nav, text="Diagrama anterior", command=self.prev_diagram).pack(side=tk.LEFT)
-        ttk.Button(nav, text="Próximo diagrama", command=self.next_diagram).pack(side=tk.LEFT, padx=6)
-        ttk.Label(nav, text="Selecionado").pack(side=tk.LEFT, padx=(12, 4))
+        nav.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
+        ttk.Button(
+            nav,
+            text="Diagrama anterior",
+            command=self.prev_diagram,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            nav,
+            text="Próximo diagrama",
+            command=self.next_diagram,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Label(nav, text="Selecionado").pack(side=tk.LEFT, padx=(espaco.moldura(), espaco.linha()))
         self.spin_diag = ttk.Spinbox(
             nav, from_=1, to=1, textvariable=self.selected_diag_var, width=6, command=self.on_diagram_spin
         )
@@ -383,13 +417,13 @@ class ResultPanel(ttk.Frame):
         self.spin_diag.bind("<FocusOut>", lambda _event: self.on_diagram_spin())
 
         fen_box = ttk.LabelFrame(self, text="FEN e ações")
-        fen_box.pack(fill=tk.X, padx=8, pady=(0, 8))
-        ttk.Label(fen_box, text="FEN").pack(anchor="w", padx=8, pady=(6, 0))
+        fen_box.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.folga()))
+        ttk.Label(fen_box, text="FEN").pack(anchor="w", padx=espaco.folga(), pady=(espaco.linha(), 0))
         # Monoespaçada (S-149): é o dado central do produto, e em proporcional `1`, `l` e `I`
         # têm larguras diferentes -- duas leituras da mesma posição deixam de alinhar, que é
         # exatamente a comparação que a aba Revisão e a 2ª opinião pedem.
         entry = ttk.Entry(fen_box, textvariable=self.fen_var, font=theme.fonte_atual(tipografia.DADO))
-        entry.pack(fill=tk.X, padx=8, pady=(0, 4))
+        entry.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
         entry.bind("<Return>", lambda _event: self.apply_fen_edit())
         # E a tecla da tabela, ligada aqui de propósito (S-223). A guarda de foco de
         # `ui/shortcuts.py` cede **qualquer** atalho a um campo de texto, e é dentro deste campo
@@ -400,7 +434,7 @@ class ResultPanel(ttk.Frame):
         # Lado a jogar visivel e editavel (S-16/S-19). Até a Fase 3 o app não tinha onde
         # mostrar isso, e a informação -- quando o PDF a dava -- morria na exportação.
         side_row = ttk.Frame(fen_box)
-        side_row.pack(fill=tk.X, padx=8, pady=(0, 4))
+        side_row.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
         ttk.Label(side_row, text=strings.LADO_A_JOGAR).pack(side=tk.LEFT)
         for valor, rotulo in strings.SIDE_LABELS.items():
             ttk.Radiobutton(
@@ -409,8 +443,8 @@ class ResultPanel(ttk.Frame):
                 value=valor,
                 variable=self.side_to_move_var,
                 command=self.on_side_to_move_change,
-            ).pack(side=tk.LEFT, padx=(6, 0))
-        ttk.Label(side_row, textvariable=self.side_source_var).pack(side=tk.LEFT, padx=(10, 0))
+            ).pack(side=tk.LEFT, padx=(espaco.linha(), 0))
+        ttk.Label(side_row, textvariable=self.side_source_var).pack(side=tk.LEFT, padx=(espaco.folga(), 0))
 
         # Número do lance (S-71), ao lado do lado a jogar porque é a mesma leitura: os dois
         # saem da legenda impressa, e quem está com o livro aberto declara os dois de uma vez.
@@ -421,7 +455,7 @@ class ResultPanel(ttk.Frame):
         # faz o rótulo aparecer à esquerda dele sem mudar o lado da linha em que os dois ficam.
         self.move_number_entry = ttk.Entry(side_row, textvariable=self.move_number_var, width=6)
         self.move_number_entry.pack(side=tk.RIGHT)
-        ttk.Label(side_row, text="Lance").pack(side=tk.RIGHT, padx=(10, 4))
+        ttk.Label(side_row, text="Lance").pack(side=tk.RIGHT, padx=(espaco.folga(), espaco.linha()))
         self.move_number_entry.bind("<Return>", lambda _event: self._commit_move_number())
         self.move_number_entry.bind("<FocusOut>", lambda _event: self._commit_move_number())
         Tooltip(
@@ -431,8 +465,13 @@ class ResultPanel(ttk.Frame):
         )
 
         acoes = ttk.Frame(fen_box)
-        acoes.pack(fill=tk.X, padx=8, pady=(0, 6))
-        self.btn_apply_fen = ttk.Button(acoes, text="Aplicar FEN", command=self.apply_fen_edit)
+        acoes.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
+        self.btn_apply_fen = ttk.Button(
+            acoes,
+            text="Aplicar FEN",
+            command=self.apply_fen_edit,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
         self.btn_apply_fen.pack(side=tk.LEFT)
         self.btn_save = ttk.Button(
             acoes,
@@ -440,9 +479,9 @@ class ResultPanel(ttk.Frame):
             style=estilos.estilo_de_botao(estilos.PRIMARIO),
             command=self.save_current,
         )
-        self.btn_save.pack(side=tk.LEFT, padx=6)
-        self.btn_save_all = ttk.Button(acoes, text="Salvar todos", command=self.save_all)
-        self.btn_save_all.pack(side=tk.LEFT, padx=6)
+        self.btn_save.pack(side=tk.LEFT, padx=espaco.linha())
+        self.btn_save_all = ttk.Button(acoes, text="Salvar todos", command=self.save_all, style=estilos.estilo_de_botao(estilos.NEUTRO))
+        self.btn_save_all.pack(side=tk.LEFT, padx=espaco.linha())
         for botao in (self.btn_apply_fen, self.btn_save, self.btn_save_all):
             Tooltip(
                 botao,
@@ -458,7 +497,7 @@ class ResultPanel(ttk.Frame):
             on_corrected=self._apply_corrected_fen,
             schedule=self.after,
         )
-        self.net_button.pack(side=tk.LEFT, padx=6)
+        self.net_button.pack(side=tk.LEFT, padx=espaco.linha())
         self.second_opinion_button = SecondOpinionButton(
             acoes,
             settings=self._local_reader,
@@ -467,7 +506,7 @@ class ResultPanel(ttk.Frame):
             on_read=self._apply_second_opinion,
             schedule=self.after,
         )
-        self.second_opinion_button.pack(side=tk.LEFT, padx=6)
+        self.second_opinion_button.pack(side=tk.LEFT, padx=espaco.linha())
         # Editor vazio não tem diagrama a que atribuir lance: o campo nasce cinza, e não
         # aceitando um número que seria descartado em silêncio.
         self.sync_move_number()
@@ -952,8 +991,8 @@ class ResultPanel(ttk.Frame):
         o `Tooltip` a cada mudança de estado perderia os `bind` -- é o que o docstring de
         `ui/tooltip.py` diz, e `set_text` existe por causa disso.
         """
-        botao = ttk.Button(pai, text=comandos.rotulo_de_botao(acao), command=funcao)
-        botao.pack(side=tk.LEFT, padx=(0, 6))
+        botao = ttk.Button(pai, text=comandos.rotulo_de_botao(acao), command=funcao, style=comandos.estilo(acao))
+        botao.pack(side=tk.LEFT, padx=(0, espaco.linha()))
         self._dicas_de_historico[acao] = Tooltip(botao, "")
         return botao
 

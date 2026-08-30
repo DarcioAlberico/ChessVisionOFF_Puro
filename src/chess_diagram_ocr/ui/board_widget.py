@@ -48,7 +48,7 @@ import numpy as np
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
 from ..fen_utils import square_name
-from . import board_edit, board_render, theme, tipografia, tokens
+from . import board_edit, board_render, espaco, theme, tipografia, tokens
 from .board_model import BoardChange, BoardMode, BoardModel, ChangeKind
 from .board_render import (
     LIGHT_SQUARE,
@@ -330,7 +330,7 @@ class InteractiveBoard(ttk.Frame):
         antes. O `Radiobutton` dá o estado ligado de graça e a exclusividade também.
         """
         frame = ttk.Frame(self)
-        frame.pack(fill=tk.X, pady=(4, 0))
+        frame.pack(fill=tk.X, pady=(espaco.linha(), 0))
         self._palette_buttons.clear()
 
         for row_index, symbols in enumerate((board_edit.PIECE_SYMBOLS[:6], board_edit.PIECE_SYMBOLS[6:])):
@@ -378,7 +378,13 @@ class InteractiveBoard(ttk.Frame):
             # A margem existe para a seleção ter onde aparecer: o ícone é opaco (ver
             # `PieceImages.icon`), então sem ela o `selectcolor` ficaria escondido atrás da
             # peça e o botão aceso seria igual aos outros onze.
-            botao = tk.Radiobutton(parent, image=imagem, padx=4, pady=4, **opcoes)  # type: ignore[arg-type]
+            botao = tk.Radiobutton(
+                parent,
+                image=imagem,
+                padx=espaco.linha(),
+                pady=espaco.linha(),
+                **opcoes,  # type: ignore[arg-type]
+            )
             # A referência tem de sobreviver: o Tk não segura a imagem, e uma `PhotoImage`
             # coletada vira um botão vazio. `PieceImages` já a mantém em cache, e o atributo
             # aqui é a segunda amarra, para o caso de o cache ser trocado.
@@ -387,7 +393,12 @@ class InteractiveBoard(ttk.Frame):
             texto = rotulo or UNICODE_PIECES.get(value, value)
             cor_texto = str(ttk.Style().lookup("TLabel", "foreground") or tokens.RESERVA[tokens.TEXTO_PADRAO])
             botao = tk.Radiobutton(
-                parent, text=texto, padx=8, pady=2, foreground=cor_texto, **opcoes  # type: ignore[arg-type]
+                parent,
+                text=texto,
+                padx=espaco.folga(),
+                pady=espaco.minima(),
+                foreground=cor_texto,
+                **opcoes,  # type: ignore[arg-type]
             )
 
         if value in board_edit.PIECE_NAMES_PT:
@@ -397,7 +408,7 @@ class InteractiveBoard(ttk.Frame):
         else:
             Tooltip(botao).set_text("Sem pincel: o clique volta a arrastar peças.")
 
-        botao.pack(side=tk.LEFT, padx=1, pady=1)
+        botao.pack(side=tk.LEFT, padx=espaco.minima(), pady=espaco.minima())
         return botao
 
     def _palette_colors(self) -> tuple[str, str, str]:

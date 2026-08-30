@@ -32,7 +32,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from tkinter import ttk
 
-from . import atalhos, comandos, menu, tabela, theme, tipografia, tokens
+from . import atalhos, comandos, espaco, menu, tabela, theme, tipografia, tokens
 
 __all__ = [
     "ALTURA_EM_LINHAS",
@@ -334,12 +334,12 @@ class JanelaDaPaleta(tk.Toplevel):
         self._entradas = inventario(amarrados, motivos=motivos)
         self._visiveis: tuple[Entrada, ...] = ()
 
-        moldura = ttk.Frame(self, padding=12)
+        moldura = ttk.Frame(self, padding=espaco.moldura())
         moldura.pack(fill=tk.BOTH, expand=True)
 
         self.consulta = tk.StringVar()
         self.campo = ttk.Entry(moldura, textvariable=self.consulta)
-        self.campo.pack(fill=tk.X, pady=(0, 8))
+        self.campo.pack(fill=tk.X, pady=(0, espaco.folga()))
 
         # `tabela.montar` e não um `Treeview` à mão: as duas barras e a largura mínima de coluna
         # são as regras da S-153, e escrevê-las de novo aqui é como o projeto chegou a duas
@@ -352,7 +352,7 @@ class JanelaDaPaleta(tk.Toplevel):
             text="Enter executa · ↑ ↓ navegam · Esc fecha",
             foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
             font=theme.fonte_atual(tipografia.AUXILIAR),
-        ).pack(fill=tk.X, pady=(8, 0))
+        ).pack(fill=tk.X, pady=(espaco.folga(), 0))
 
         self.consulta.trace_add("write", self._refiltrar)
         for widget in (self.campo, self.lista):

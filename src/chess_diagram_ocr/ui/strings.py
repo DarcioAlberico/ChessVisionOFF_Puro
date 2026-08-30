@@ -137,6 +137,39 @@ Ao lado dos outros rótulos de campo e não no menu de aparência: conjunto é e
 pergunta que ele responde -- com que desenho as peças aparecem -- não é a pergunta da pele."""
 
 PASTA_DE_PECAS = "Pasta de peças"
+
+ORIENTACAO_DO_DIAGRAMA = "Orientação do diagrama"
+"""O rótulo da linha de orientação, na aba Configuração.
+
+Ele vira constante na S-448 porque passou a ser lido **duas** vezes: uma para desenhar a linha e
+outra em `ROTULOS_DA_CONFIGURACAO`, de onde sai a largura da coluna. Dois literais iguais em dois
+lugares é o defeito que a S-166 fechou no resto da janela."""
+
+ROTULOS_DA_CONFIGURACAO: tuple[str, ...] = (
+    "Modelo (.pt)",
+    "CSV labels",
+    "Pasta samples",
+    PASTA_DE_PECAS,
+    ORIENTACAO_DO_DIAGRAMA,
+    "DPI",
+    "Max diagramas",
+    "Épocas",
+    TAMANHO_DO_LOTE,
+    TAXA_DE_APRENDIZADO,
+)
+"""Os dez rótulos do formulário de Configuração, num lugar só (S-448).
+
+A coluna de rótulo sai do mais longo deles -- hoje `ORIENTACAO_DO_DIAGRAMA`, com 22 caracteres --,
+e é isso que faz "nenhum rótulo é cortado" e "todos os campos começam na mesma coluna" valerem por
+construção, e não por conferência.
+
+**Antes eram três medidas diferentes do mesmo formulário**: `16` cravado em `campos._linha`, `24`
+no rótulo da orientação, e o que o `ttk.Spinbox` do `_spin_row` resolvesse por conta própria. Com
+`16`, "Taxa de aprendizado" -- 19 caracteres -- era desenhado como `Taxa de aprendizad`.
+
+Moram aqui e não no `app_tkinter` porque são texto que a pessoa lê, que é o que este módulo guarda
+desde a S-166 -- e porque um rótulo novo que entrasse no formulário sem passar por aqui voltaria a
+ser cortado sem ninguém notar."""
 """O caminho dos 12 PNGs do usuário. Só vale com o conjunto "Pasta do usuário" escolhido."""
 
 ALINHAR = "Alinhar"
