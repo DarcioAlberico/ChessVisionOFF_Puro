@@ -173,6 +173,8 @@ class InteractiveBoard(ttk.Frame):
         self._tooltip: tk.Toplevel | None = None
         self._tooltip_after: str | None = None
         self._tooltip_square: int | None = None
+        self._vazio: str | None = None
+        """A frase do estado "nenhum diagrama aberto", ou `None` quando há o que desenhar."""
 
         self._brush_var = tk.StringVar(value=BRUSH_NONE)
         self._palette_buttons: dict[str, tk.Radiobutton] = {}
@@ -181,13 +183,17 @@ class InteractiveBoard(ttk.Frame):
         # (S-147). Era `background=` no construtor, e o Resultado passava claro enquanto a
         # Análise ficava com o padrão escuro -- o mesmo widget com duas identidades em duas
         # abas vizinhas, e nada além do argumento a justificar.
+        #
+        # **O fundo é o vazio, e não mais a esteira** (S-449). Enquanto os dois eram a mesma coisa,
+        # a esteira não tinha fim: 62% do canvas era quase-preto dentro de um painel branco. Agora
+        # a esteira é um retângulo com tamanho, desenhado por `BoardRenderer`, e o que sobra é isto.
         self.canvas = tk.Canvas(
             self,
-            bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO),
+            bg=theme.cor_atual(tokens.VAZIO_DE_CANVAS),
             highlightthickness=0,
             cursor="hand2",
         )
-        theme.ao_repintar(lambda: self.canvas.configure(bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO)))
+        theme.ao_repintar(lambda: self.canvas.configure(bg=theme.cor_atual(tokens.VAZIO_DE_CANVAS)))
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
@@ -698,8 +704,25 @@ class InteractiveBoard(ttk.Frame):
 
     # ------------------------------------------------------------------ desenho
 
+    def mostrar_vazio(self, mensagem: str | None) -> None:
+        """Liga o estado "nenhum diagrama aberto": a frase no lugar do tabuleiro (S-450).
+
+        `None` desliga e volta a desenhar a posição. **Não** mexe no modelo: a posição continua lá,
+        e é isso que faz "aberto e vazio" continuar sendo outro estado -- aquele desenha tabuleiro.
+        """
+        if self._vazio == mensagem:
+            return
+        self._vazio = mensagem
+        self.redraw()
+
     def redraw(self) -> None:
         """Redesenho total. Necessário quando a geometria muda ou a posição inteira muda."""
+        if self._vazio is not None:
+            try:
+                self.renderer.draw_vazio(self.canvas, self._vazio)
+            except tk.TclError:  # pragma: no cover - canvas morto entre o evento e o desenho
+                pass
+            return
         try:
             canvas_w = max(self._min_size, self.canvas.winfo_width())
             canvas_h = max(self._min_size, self.canvas.winfo_height())

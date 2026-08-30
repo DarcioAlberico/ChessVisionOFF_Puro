@@ -271,16 +271,30 @@ class EstadoVazioTests(unittest.TestCase):
                 self.assertEqual(str(botao.cget("state")), tk.DISABLED)
 
     def test_a_frase_diz_o_que_fazer_e_nao_que_esta_vazio(self) -> None:
-        """"Sem dados" descreve a tela; o estado vazio útil descreve o gesto seguinte."""
-        frase = self.painel.vazio_var.get()
+        """"Sem dados" descreve a tela; o estado vazio útil descreve o gesto seguinte.
+
+        **A frase mora no canvas desde a S-450**, e não num `Label` abaixo dele -- ali ela ficava
+        sob o tabuleiro que a contradizia.
+        """
+        frase = self.painel.board._vazio or ""
         self.assertIn("Clique num diagrama marcado", frase)
         self.assertIn("OCR", frase)
+
+    def test_sem_diagrama_o_canvas_nao_desenha_tabuleiro(self) -> None:
+        """**O desenho contradizia a frase** (S-450): 8x8 inteiro, com coordenadas e casas
+        pintadas, enquanto o texto dizia "nenhum diagrama aberto". Um tabuleiro vazio é uma
+        posição, e não a ausência de uma."""
+        self.janela.update()
+        itens = self.painel.board.canvas.find_all()
+        self.assertTrue(itens, "o canvas ficou sem desenho nenhum")
+        tipos = {self.painel.board.canvas.type(item) for item in itens}
+        self.assertEqual({"text"}, tipos, "sem diagrama aberto o canvas só tem a frase")
 
     def test_com_diagrama_a_frase_some_e_as_acoes_voltam(self) -> None:
         self.painel.show_ocr_results([_diagrama()], RecognitionOrigin.for_page("livro.pdf", 3))
         self.janela.update()
 
-        self.assertEqual(self.painel.vazio_var.get(), "")
+        self.assertIsNone(self.painel.board._vazio, "a frase ficou por cima do diagrama")
         self.assertEqual(str(self.painel.btn_save.cget("state")), tk.NORMAL)
         self.assertNotEqual(self.painel.board.placement, board_edit.EMPTY_PLACEMENT)
 
@@ -292,7 +306,7 @@ class EstadoVazioTests(unittest.TestCase):
 
         self.assertEqual(self.painel.board.placement, board_edit.EMPTY_PLACEMENT)
         self.assertEqual(str(self.painel.btn_save.cget("state")), tk.DISABLED)
-        self.assertTrue(self.painel.vazio_var.get())
+        self.assertTrue(self.painel.board._vazio)
 
     def test_o_rotulo_lance_vem_antes_do_campo(self) -> None:
         """Os dois estavam com `side=RIGHT`, e o `pack` põe o primeiro mais à direita: lia-se

@@ -393,14 +393,53 @@ novo na tela.
 > era ele que ficava com ≈590 px para guardar `0.001`, o campo mais largo do painel para o valor
 > mais curto dele.
 
-## Fase 72 — as superfícies do documento
+## Fase 72 — as superfícies do documento — ✅ **completa em 2026-08-30**
 
-- **S-449** · O tabuleiro que não flutua num slab quase-preto
-- **S-450** · O estado vazio que não desenha o que não existe
+- **S-449** · O tabuleiro que não flutua num slab quase-preto — ✅ **implementada em 2026-08-30**
+- **S-450** · O estado vazio que não desenha o que não existe — ✅ **implementada em 2026-08-30**
 
-Vem por último porque é a que mais depende de julgamento e a que menos trava as outras. A S-449
-precisa de um papel de cor novo em `tokens.py` — o **vazio de canvas** —, e papel novo é o tipo de
-coisa que a S-158 e a S-224 já mostraram que se paga com cuidado.
+Vem por último porque é a que mais depende de julgamento e a que menos trava as outras.
+
+> **Onde a fase está, e o diagnóstico que estava errado.**
+>
+> **O slab não era falta de token — era esteira sem fim.** Este roadmap supôs que o `(49,46,43)`
+> tinha sido "escolhido no canvas e nunca passou por `cor()`". Não: ele saía de `cor()` e tinha
+> papel havia tempo — era `SUPERFICIE_TABULEIRO`, a **esteira**, escolhida escura pela S-147 com
+> uma razão boa, porque é ela que dá 11,03:1 às coordenadas, que são desenhadas em cima dela.
+>
+> O erro estava noutro lugar: a esteira **era o fundo do canvas**, e o canvas enche o painel
+> (`pack(fill=BOTH, expand=True)`). Então tudo o que não fosse tabuleiro virava esteira — 62% da
+> largura, num painel `#f0f0f0`.
+>
+> A esteira passou a ser um retângulo com tamanho: tabuleiro mais a margem que a coordenada já
+> reservava (`board_render.margem_de_coordenada`, a mesma função, para as duas não divergirem). O
+> que sobra é `VAZIO_DE_CANVAS`. **Medido na mesma linha `y=340` da mesma fotografia: 62% → 4%.**
+>
+> **Uma consequência que o item não previa:** `_cor_de_coordenada` resolvia contra
+> `canvas.cget("background")`, e estava certo enquanto o fundo *era* a esteira. Com o fundo claro,
+> ela passaria a escolher letra escura para desenhar sobre a esteira escura. Ela resolve contra a
+> esteira agora — o princípio não mudou, mudou o que está debaixo do que se desenha.
+>
+> **E o critério de aceite precisou ser reescrito, porque como estava ele reprovava nas peles
+> escuras.** Ele pedia que a borda do tabuleiro passasse `AA_GRAFICO` contra o vazio. Medido:
+>
+> | paleta | vazio vs painel | esteira vs vazio | moldura vs vazio | casa clara vs vazio |
+> |---|---|---|---|---|
+> | clara | **1,03** | 11,50 | 14,32 | 1,17 |
+> | tema escuro | 1,21 | 1,03 | 1,07 | **13,55** |
+> | pele escura | 1,04 | 1,08 | 1,19 | **12,17** |
+>
+> **O que separa o tabuleiro do vazio troca de dono com a paleta.** Na clara são a esteira e a
+> moldura — a casa clara sozinha daria 1,17. Nas escuras as duas se fundem no vazio, e quem separa
+> é o próprio tabuleiro; e está certo assim, porque ali o cromo inteiro é escuro e não há slab a
+> desfazer. O critério passou a ser: **pelo menos um dos três** passa o piso, em toda paleta.
+>
+> **A S-450 tirou a frase do rótulo e a pôs no canvas.** Ela ficava alinhada à esquerda, **sob** o
+> tabuleiro 8×8 que a contradizia. O `Label` saiu junto: ele existia para reservar altura e não
+> fazer o painel pular entre os dois estados, e mantê-lo em branco passaria a reservar altura para
+> nada. A distinção que o item pedia está de pé — "nenhum diagrama aberto" e "diagrama aberto e
+> vazio" continuam sendo estados diferentes, e o segundo desenha tabuleiro, porque é uma posição
+> legítima e a pilha da S-229 pode voltar a ela.
 
 ---
 

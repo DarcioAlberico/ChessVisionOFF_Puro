@@ -375,17 +375,10 @@ class ResultPanel(ttk.Frame):
         self.board.pack(fill=tk.BOTH, expand=True, padx=espaco.folga(), pady=espaco.folga())
         self.board.set_heatmap_enabled(True)
 
-        # A frase do estado vazio (S-170). Um `Label` que existe sempre e fica em branco quando há
-        # diagrama: aparecer e sumir mudaria a altura do painel a cada leitura.
-        self.vazio_var = tk.StringVar(value=MENSAGEM_VAZIA)
-        lbl_vazio = ttk.Label(
-            caixa,
-            textvariable=self.vazio_var,
-            justify=tk.LEFT,
-            foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
-        )
-        texto.acompanhar(lbl_vazio).pack(anchor="w", padx=espaco.folga(), pady=(0, espaco.linha()))
-        theme.ao_repintar(lambda: lbl_vazio.configure(foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO)))
+        # A frase do estado vazio mora **no canvas** desde a S-450, e não mais num `Label` aqui.
+        # Ela ficava sob o tabuleiro que a contradizia -- 8x8 desenhado por inteiro enquanto o texto
+        # dizia "nenhum diagrama aberto" --, alinhada à esquerda. Agora ela ocupa o lugar do que não
+        # existe. O `Label` some junto: mantê-lo em branco seria reservar altura para nada.
 
         legal = ttk.Frame(caixa)
         legal.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
@@ -892,7 +885,7 @@ class ResultPanel(ttk.Frame):
 
         O motivo de cada botão cinza está no tooltip, pela regra da S-165.
         """
-        self.vazio_var.set(MENSAGEM_VAZIA if vazio else "")
+        self.board.mostrar_vazio(MENSAGEM_VAZIA if vazio else None)
         estado = tk.DISABLED if vazio else tk.NORMAL
         for botao in (self.btn_apply_fen, self.btn_save, self.btn_save_all, self.btn_limpar):
             botao.configure(state=estado)

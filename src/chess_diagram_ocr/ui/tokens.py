@@ -146,6 +146,36 @@ do painel e passou a ser o que assenta o tabuleiro na esteira. Daí ela ser **ma
 `SUPERFICIE_TABULEIRO`, e não a mesma cor: duas cores iguais em papéis diferentes é o defeito
 que a S-145 mediu."""
 
+VAZIO_DE_CANVAS = "VAZIO_DE_CANVAS"
+"""O que sobra do canvas do tabuleiro além da esteira — e antes da S-449 não tinha dono.
+
+**O defeito, medido na fotografia da pele clássica**, na linha `y=340` do canvas: 691 px de
+largura, **429 deles em `#312e2b`** — 62%. O tabuleiro media 261 px e flutuava num quase-preto que
+ocupava dois terços da largura, dentro de um painel `#f0f0f0`. Era a aresta de maior contraste da
+janela inteira, e ela estava em volta de espaço que não carrega informação nenhuma.
+
+**A causa não era falta de token, e é o que a spec deste item errou ao supor.** O valor saía de
+`cor()` e tinha papel: era `SUPERFICIE_TABULEIRO`, a esteira, escolhida escura pela S-147 com uma
+razão boa — ela dá 11,03:1 às coordenadas. O erro estava em a esteira **não ter fim**: o canvas
+enche o painel, e tudo o que não é tabuleiro virava esteira.
+
+Então a esteira passa a ser um retângulo com tamanho — tabuleiro mais a margem que as coordenadas
+já reservavam (`board_render.margem_de_coordenada`) — e o que sobra é este papel.
+
+**Ele é vizinho do fundo do painel de propósito**, e é o critério invertido do costume: aqui não
+se quer contraste, se quer que o vazio deixe de competir com o documento. Na paleta clara dá
+**1,03:1** contra `SUPERFICIE_PADRAO` — continuação da janela, e não moldura.
+
+**O que separa o tabuleiro do vazio troca de dono com a paleta, e isso foi medido.** Na clara são a
+esteira e a moldura (11,50 e 14,32); a casa clara sozinha daria 1,17. Nas escuras esteira e moldura
+se fundem no vazio (1,03 a 1,19) e quem separa é o **tabuleiro** (12,17 a 13,55) — e está certo
+assim, porque ali o cromo inteiro é escuro e não há slab a desfazer. O que o teste cobra é que
+**pelo menos um dos três** passe `AA_GRAFICO` contra o vazio, em toda paleta.
+
+Entra em `SUPERFICIES` e **não** em `SUPERFICIES_DE_DOCUMENTO`: vazio não é documento, e a regra da
+S-224 — documento mantém contraste medido, cromo segue a pele — precisa continuar valendo para
+página e tabuleiro sem passar a valer para o nada em volta deles."""
+
 COORDENADA = "COORDENADA"
 """As letras a–h e os números 8–1. **Resolvida contra a superfície** — ver `sobre_superficie`."""
 
@@ -292,6 +322,7 @@ PAPEIS: tuple[str, ...] = (
     SUPERFICIE_TABULEIRO,
     SUPERFICIE_DICA,
     MOLDURA,
+    VAZIO_DE_CANVAS,
     COORDENADA,
     CASA_CLARA,
     CASA_ESCURA,
@@ -339,6 +370,7 @@ RESERVA: dict[str, str] = {
     SUPERFICIE_TABULEIRO: "#312e2b",
     SUPERFICIE_DICA: "#ffffe0",
     MOLDURA: "#1f1d1b",
+    VAZIO_DE_CANVAS: "#eceded",
     COORDENADA: "#5c5c5c",
     CASA_CLARA: "#f0d9b5",
     CASA_ESCURA: "#b58863",
@@ -386,6 +418,7 @@ SUPERFICIES: tuple[str, ...] = (
     SUPERFICIE_TABULEIRO,
     SUPERFICIE_DICA,
     MOLDURA,
+    VAZIO_DE_CANVAS,
     REALCE_DESTAQUE,
     REALCE_CITACAO,
     REALCE_NOTA,
@@ -411,6 +444,7 @@ _NO_ESCURO: dict[str, str] = {
     SUPERFICIE_TABULEIRO: "#171614",
     SUPERFICIE_DICA: "#33312a",
     MOLDURA: "#0a0908",
+    VAZIO_DE_CANVAS: "#121314",
     REALCE_DESTAQUE: "#290022",
     REALCE_CITACAO: "#002529",
     REALCE_NOTA: "#002907",
@@ -439,6 +473,7 @@ medidas."""
 NO_CROMO_ESCURO: dict[str, str] = {
     SUPERFICIE_DICA: "#33312a",
     SUPERFICIE_PADRAO: "#1f2124",
+    VAZIO_DE_CANVAS: "#1c1e21",
     TEXTO_PADRAO: "#e9eaec",
     # A ênfase da S-444, e ela **inverte** em vez de escurecer. Uma face saturada sobre
     # cromo escuro foi medida e reprova o critério que importa: `#b02a37` dá 1,99:1 contra

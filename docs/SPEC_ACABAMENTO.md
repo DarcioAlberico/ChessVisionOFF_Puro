@@ -579,10 +579,11 @@ O tabuleiro mede 261 px e está centrado num vazio quase-preto que ocupa quase d
 largura, dentro de um painel de fundo `(255,255,255)`. **É a aresta de maior contraste da janela, e
 ela está em volta de espaço que não carrega informação nenhuma.**
 
-O contraste que a S-146 e a S-224 mediram sobre marcação e texto nunca foi medido aqui, e a razão é
-estrutural: `ui/tokens.py` tem papel para superfície de página, de tabuleiro, de dica e de moldura —
-e **nenhum para o vazio em volta do documento**. Sem papel, o valor foi escolhido no canvas e nunca
-passou por `cor()`.
+> **Este parágrafo estava errado, e a implementação o corrigiu.** Ele dizia que o valor "foi
+> escolhido no canvas e nunca passou por `cor()`". Passou: era `SUPERFICIE_TABULEIRO`, a esteira,
+> escolhida escura pela S-147 porque é ela que dá 11,03:1 às coordenadas — que são desenhadas
+> **em cima dela**. O defeito não era falta de papel; era a esteira **não ter fim**. Ela era o
+> fundo do canvas, e o canvas enche o painel: tudo o que não fosse tabuleiro virava esteira.
 
 ### Solução
 
@@ -597,12 +598,24 @@ valendo para página e tabuleiro sem passar a valer para o vazio em volta deles.
 
 ### Critério de aceite
 
-- O vazio do canvas resolve por `cor()` nas três peles; zero hexadecimal cru no sítio.
-- Na pele clara, o contraste entre o vazio e o fundo do painel é **baixo** — é o critério invertido
-  do costume, e de propósito: aqui o objetivo é não competir com o documento.
-- A borda do tabuleiro continua distinguível do vazio pelo piso `tokens.AA_GRAFICO` (3,0): o
-  tabuleiro não pode se dissolver no fundo, que é o defeito oposto e igualmente ruim.
-- `SUPERFICIES_DE_DOCUMENTO` não muda.
+- O vazio do canvas resolve por `cor()` nas três peles; zero hexadecimal cru no sítio. ✅
+- O contraste entre o vazio e o fundo do painel é **baixo** em toda paleta — critério invertido, e
+  de propósito. ✅ **Medido: 1,03 na clara**, 1,21 e 1,04 nas escuras.
+- `SUPERFICIES_DE_DOCUMENTO` não muda. ✅
+- **Medido: a linha `y=340` do canvas foi de 62% de quase-preto para 4%.**
+- ~~A borda do tabuleiro continua distinguível do vazio pelo piso `AA_GRAFICO`.~~ **Reescrito: como
+  estava, reprovava nas peles escuras.**
+
+> **O que separa o tabuleiro do vazio troca de dono com a paleta**, e o critério tem de dizer isso.
+> Na clara são a esteira (11,50) e a moldura (14,32) — a casa clara sozinha daria **1,17**. Nas
+> escuras esteira e moldura se fundem no vazio (1,03 a 1,19) e quem separa é o **tabuleiro** (12,17
+> a 13,55); e está certo, porque ali o cromo inteiro é escuro e não há slab a desfazer. O critério
+> é: **pelo menos um dos três** — esteira, moldura ou casa clara — passa `AA_GRAFICO` contra o
+> vazio, em toda paleta.
+>
+> **E uma consequência que o item não previa:** `_cor_de_coordenada` resolvia contra
+> `canvas.cget("background")`, correto enquanto o fundo *era* a esteira. Com o fundo claro, ela
+> escolheria letra escura para desenhar sobre a esteira escura. Ela resolve contra a esteira agora.
 
 ### Testes
 
@@ -645,10 +658,18 @@ segundo continua desenhando o tabuleiro — é uma posição legítima, e a S-22
 
 ### Critério de aceite
 
-- Sem diagrama aberto: nenhum tabuleiro desenhado, frase centrada, peso auxiliar.
-- Com diagrama aberto e posição vazia: tabuleiro desenhado, como hoje.
-- A troca entre os dois estados não pisca nem redimensiona o canvas.
-- Nenhum controle da aba muda de lugar (regra 2).
+- Sem diagrama aberto: nenhum tabuleiro desenhado, frase centrada, peso auxiliar. ✅ — o teste
+  afirma que os itens do canvas são **só** `text`.
+- Com diagrama aberto e posição vazia: tabuleiro desenhado, como hoje. ✅ — `mostrar_vazio` não
+  toca o modelo, e é isso que mantém os dois estados separados.
+- A troca entre os dois estados não pisca nem redimensiona o canvas. ✅
+- Nenhum controle da aba muda de lugar (regra 2). ✅
+
+> **O `Label` da frase saiu, e isso é deliberado.** Ele existia para reservar altura e não fazer o
+> painel pular entre os dois estados (S-170). Com a frase no canvas ele ficaria em branco nos dois
+> estados — reservando altura para nada. Não é controle, e o item que o criou é o mesmo que agora o
+> aposenta. O que se perde com ele é o `texto.acompanhar`, que dava quebra de linha pela largura do
+> painel; o `create_text` do canvas faz o mesmo com `width=`.
 
 ### Testes
 
