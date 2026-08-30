@@ -51,7 +51,7 @@ from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Caminho, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
 
-from . import comandos, estudo_lista, geometria, shortcuts, texto, theme, tipografia, tokens
+from . import comandos, espaco, estilos, estudo_lista, geometria, shortcuts, texto, theme, tipografia, tokens
 from .board_widget import InteractiveBoard, PieceImages
 from .historico import Historico
 from .tooltip import Tooltip
@@ -183,7 +183,7 @@ class StudyPanel(ttk.Frame):
         bases_de_partidas: Callable[[], Sequence[Path]] = tuple,
         para_o_texto: Callable[[str], bool] = lambda _linha: False,
     ) -> None:
-        super().__init__(parent, padding=6)
+        super().__init__(parent, padding=espaco.linha())
         self._posicao = posicao
         """De onde vem a posição do diagrama selecionado -- **inteira**, com vez, número de lance e
         âncora no livro. Era `current_fen: Callable[[], str]`, e o que ela devolvia era só o campo
@@ -258,7 +258,7 @@ class StudyPanel(ttk.Frame):
         # É a repartição que todo programa de xadrez usa, e pela mesma razão: lê-se a linha com o
         # olho ao lado do tabuleiro, e não abaixo dele.
         self.divisor = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        self.divisor.pack(fill=tk.BOTH, expand=True, padx=4, pady=(0, 4))
+        self.divisor.pack(fill=tk.BOTH, expand=True, padx=espaco.linha(), pady=(0, espaco.linha()))
 
         esquerda = ttk.Frame(self.divisor)
         direita = ttk.Frame(self.divisor)
@@ -274,7 +274,7 @@ class StudyPanel(ttk.Frame):
             promotion_chooser=self.choose_promotion,
             piece_images=piece_images,
         )
-        self.board_widget.pack(fill=tk.BOTH, expand=True, padx=(0, 4), pady=(0, 4))
+        self.board_widget.pack(fill=tk.BOTH, expand=True, padx=(0, espaco.linha()), pady=(0, espaco.linha()))
 
         # A miniatura do diagrama (S-282). Ela nasce fora do `pack`: estudo sem âncora não mostra
         # espaço reservado para o que não existe -- ver `_desenhar_recorte`.
@@ -282,7 +282,7 @@ class StudyPanel(ttk.Frame):
         self.recorte_label.bind("<Button-1>", lambda _evento: self.ampliar_recorte())
 
         ttk.Label(esquerda, textvariable=self.origin_var).pack(anchor="w")
-        texto.acompanhar(ttk.Label(esquerda, textvariable=self.status_var)).pack(anchor="w", pady=(0, 4))
+        texto.acompanhar(ttk.Label(esquerda, textvariable=self.status_var)).pack(anchor="w", pady=(0, espaco.linha()))
         campo = ttk.Entry(esquerda, textvariable=self.fen_var, font=theme.fonte_atual(tipografia.DADO))
         campo.pack(fill=tk.X)
         campo.bind("<Return>", lambda _event: self.apply_fen())
@@ -340,12 +340,12 @@ class StudyPanel(ttk.Frame):
     def _build_barra(self) -> None:
         """Três linhas, e o corte entre elas é o assunto: a posição, a linha, e o que vem de fora."""
         posicao = ttk.Frame(self)
-        posicao.pack(fill=tk.X, padx=4, pady=(0, 4))
+        posicao.pack(fill=tk.X, padx=espaco.linha(), pady=(0, espaco.linha()))
         self._botao(posicao, "estudo_do_diagrama", side=tk.LEFT)
         for acao in ("estudo_da_posicao_inicial", "virar_tabuleiro", "trocar_vez", "estudo_aplicar_fen"):
-            self._botao(posicao, acao, side=tk.LEFT, padx=(6, 0))
+            self._botao(posicao, acao, side=tk.LEFT, padx=(espaco.linha(), 0))
         for acao in ("copiar_fen", "salvar_estudo"):
-            self._botao(posicao, acao, side=tk.LEFT, padx=(6, 0))
+            self._botao(posicao, acao, side=tk.LEFT, padx=(espaco.linha(), 0))
         ttk.Checkbutton(
             posicao,
             text="Seguir OCR selecionado",
@@ -354,18 +354,19 @@ class StudyPanel(ttk.Frame):
         ).pack(side=tk.RIGHT)
 
         linha = ttk.Frame(self)
-        linha.pack(fill=tk.X, padx=4, pady=(0, 4))
+        linha.pack(fill=tk.X, padx=espaco.linha(), pady=(0, espaco.linha()))
         self._botao(linha, "inicio_da_linha", side=tk.LEFT)
         for acao in ("lance_anterior", "proximo_lance", "fim_da_linha"):
-            self._botao(linha, acao, side=tk.LEFT, padx=(6, 0))
+            self._botao(linha, acao, side=tk.LEFT, padx=(espaco.linha(), 0))
         # As cinco da S-275, no lugar do combobox "Continuações" e do botão "Entrar". Elas são as do
         # ChessBase e do Scid, e a ordem é a do gesto: sobe-se a variante até ela ser a linha, ou
         # apaga-se o que não valia.
         for acao in ("promover_variante", "promover_a_principal", "rebaixar_variante"):
-            self._botao(linha, acao, side=tk.LEFT, padx=(12, 0) if acao == "promover_variante" else (6, 0))
+            primeira = acao == "promover_variante"
+            self._botao(linha, acao, side=tk.LEFT, padx=((espaco.moldura() if primeira else espaco.linha()), 0))
         for acao in ("apagar_variante", "apagar_continuacao"):
-            self._botao(linha, acao, side=tk.LEFT, padx=(6, 0))
-        simbolo = self._botao(linha, "simbolo_do_lance", side=tk.LEFT, padx=(12, 0))
+            self._botao(linha, acao, side=tk.LEFT, padx=(espaco.linha(), 0))
+        simbolo = self._botao(linha, "simbolo_do_lance", side=tk.LEFT, padx=(espaco.moldura(), 0))
         Tooltip(
             simbolo,
             "O símbolo do lance. Escolher o mesmo de novo tira; escolher outro do mesmo grupo\n"
@@ -374,10 +375,10 @@ class StudyPanel(ttk.Frame):
         self.simbolo_var = tk.StringVar(value="")
         texto.acompanhar(
             theme.pintar(ttk.Label(linha, textvariable=self.simbolo_var), "foreground", tokens.TEXTO_SECUNDARIO)
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        ).pack(side=tk.LEFT, padx=(espaco.folga(), 0))
 
         de_fora = ttk.Frame(self)
-        de_fora.pack(fill=tk.X, padx=4, pady=(0, 6))
+        de_fora.pack(fill=tk.X, padx=espaco.linha(), pady=(0, espaco.linha()))
         # Guardado num atributo com nome (S-347): é ele que fica cinza sem âncora, e a varredura
         # de `tests/test_ui_motivos.py` amarra o motivo ao **nome** do widget que se desabilita.
         self.btn_recorte = self._alternavel(de_fora, "mostrar_diagrama", self.recorte_var, side=tk.LEFT)
@@ -386,32 +387,33 @@ class StudyPanel(ttk.Frame):
             "O recorte que o modelo leu, ao lado do tabuleiro. Fica cinza quando o estudo não\n"
             "veio de um diagrama do livro -- uma FEN digitada à mão não tem recorte.",
         )
-        self._botao(de_fora, "linha_do_livro", side=tk.LEFT, padx=(6, 0))
+        self._botao(de_fora, "linha_do_livro", side=tk.LEFT, padx=(espaco.linha(), 0))
         Tooltip(
             de_fora.winfo_children()[-1],
             "Joga na árvore a linha impressa ao lado deste diagrama, e para no primeiro lance\n"
             "que a posição não sustenta -- dizendo qual foi. Exige a folha lida na aba Texto.",
         )
-        self._botao(de_fora, "ir_para_a_pagina", side=tk.LEFT, padx=(6, 0))
+        self._botao(de_fora, "ir_para_a_pagina", side=tk.LEFT, padx=(espaco.linha(), 0))
         if self._analyzer is not None:
-            self._botao(de_fora, "analisar_posicao", side=tk.LEFT, padx=(12, 0))
-            self._alternavel(de_fora, "analise_continua", self.continua_var, side=tk.LEFT, padx=(6, 0))
+            self._botao(de_fora, "analisar_posicao", side=tk.LEFT, padx=(espaco.moldura(), 0))
+            self._alternavel(de_fora, "analise_continua", self.continua_var, side=tk.LEFT, padx=(espaco.linha(), 0))
             Tooltip(
                 self._alternaveis["analise_continua"][0],
                 "O motor acompanha o lance corrente e grava a avaliação nele, em [%eval].\n"
                 "Navegar cancela a análise em curso: a resposta atrasada é descartada.",
             )
-            self._botao(de_fora, "variante_do_motor", side=tk.LEFT, padx=(6, 0))
-        self._botao(de_fora, "partidas_da_posicao", side=tk.LEFT, padx=(12, 0))
+            self._botao(de_fora, "variante_do_motor", side=tk.LEFT, padx=(espaco.linha(), 0))
+        self._botao(de_fora, "partidas_da_posicao", side=tk.LEFT, padx=(espaco.moldura(), 0))
 
         entra_e_sai = ttk.Frame(self)
-        entra_e_sai.pack(fill=tk.X, padx=4, pady=(0, 6))
+        entra_e_sai.pack(fill=tk.X, padx=espaco.linha(), pady=(0, espaco.linha()))
         self._botao(entra_e_sai, "colar_estudo", side=tk.LEFT)
-        self._botao(entra_e_sai, "abrir_pgn", side=tk.LEFT, padx=(6, 0))
+        self._botao(entra_e_sai, "abrir_pgn", side=tk.LEFT, padx=(espaco.linha(), 0))
         for acao in ("exportar_estudo_md", "exportar_estudo_html", "exportar_estudo_rtf"):
-            self._botao(entra_e_sai, acao, side=tk.LEFT, padx=(6, 0) if acao != "exportar_estudo_md" else (12, 0))
-        self._botao(entra_e_sai, "estudo_para_o_texto", side=tk.LEFT, padx=(6, 0))
-        self._alternavel(entra_e_sai, "modo_treino", self.treino_var, side=tk.LEFT, padx=(12, 0))
+            primeira = acao == "exportar_estudo_md"
+            self._botao(entra_e_sai, acao, side=tk.LEFT, padx=((espaco.moldura() if primeira else espaco.linha()), 0))
+        self._botao(entra_e_sai, "estudo_para_o_texto", side=tk.LEFT, padx=(espaco.linha(), 0))
+        self._alternavel(entra_e_sai, "modo_treino", self.treino_var, side=tk.LEFT, padx=(espaco.moldura(), 0))
         Tooltip(
             self._alternaveis["modo_treino"][0],
             "A linha some e o tabuleiro cobra o lance. A árvore não muda: errar não cria\n"
@@ -419,7 +421,7 @@ class StudyPanel(ttk.Frame):
         )
         texto.acompanhar(
             theme.pintar(ttk.Label(entra_e_sai, textvariable=self.placar_var), "foreground", tokens.TEXTO_SECUNDARIO)
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        ).pack(side=tk.LEFT, padx=(espaco.folga(), 0))
 
     @staticmethod
     def _nags_oferecidos() -> tuple[int, ...]:
@@ -427,7 +429,7 @@ class StudyPanel(ttk.Frame):
 
     def _build_lista(self, parent: tk.Misc) -> None:
         caixa = ttk.LabelFrame(parent, text="Lances")
-        caixa.pack(fill=tk.BOTH, expand=True, pady=(0, 4))
+        caixa.pack(fill=tk.BOTH, expand=True, pady=(0, espaco.linha()))
 
         self.moves_text = tk.Text(
             caixa,
@@ -436,8 +438,8 @@ class StudyPanel(ttk.Frame):
             state=tk.DISABLED,
             cursor="arrow",
             font=theme.fonte_atual(tipografia.CORPO),
-            padx=6,
-            pady=4,
+            padx=espaco.linha(),
+            pady=espaco.linha(),
         )
         barra = ttk.Scrollbar(caixa, orient=tk.VERTICAL, command=self.moves_text.yview)
         self.moves_text.configure(yscrollcommand=barra.set)
@@ -448,9 +450,9 @@ class StudyPanel(ttk.Frame):
 
     def _build_anotacao(self, parent: tk.Misc) -> None:
         caixa = ttk.LabelFrame(parent, text="Comentário do lance")
-        caixa.pack(fill=tk.X, pady=(0, 4))
+        caixa.pack(fill=tk.X, pady=(0, espaco.linha()))
         self.comentario_text = tk.Text(caixa, height=4, wrap="word", font=theme.fonte_atual(tipografia.CORPO))
-        self.comentario_text.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        self.comentario_text.pack(fill=tk.BOTH, expand=True, padx=espaco.linha(), pady=espaco.linha())
         # Grava ao **sair** do campo e ao navegar, e não a cada tecla: um `<KeyRelease>` que
         # reescrevesse o nó a cada letra faria a lista de lances ser redesenhada trinta vezes por
         # frase, e o cursor pularia junto.
@@ -462,26 +464,26 @@ class StudyPanel(ttk.Frame):
             return
 
         caixa = ttk.LabelFrame(parent, text=f"Motor ({self._analyzer.path.name})")
-        caixa.pack(fill=tk.X, pady=(0, 2))
+        caixa.pack(fill=tk.X, pady=(0, espaco.minima()))
 
         linha = ttk.Frame(caixa)
-        linha.pack(fill=tk.X, padx=6, pady=(6, 0))
-        self.btn_analyse = ttk.Button(linha, text="Analisar posição", command=self.analyse)
+        linha.pack(fill=tk.X, padx=espaco.linha(), pady=(espaco.linha(), 0))
+        self.btn_analyse = ttk.Button(linha, text="Analisar posição", command=self.analyse, style=estilos.estilo_de_botao(estilos.NEUTRO))
         self.btn_analyse.pack(side=tk.LEFT)
         Tooltip(
             self.btn_analyse,
             "Fica cinza enquanto o motor está pensando nesta posição, e volta quando\n"
             "ele responde. Sem motor UCI instalado, esta seção inteira não aparece.",
         )
-        ttk.Label(linha, textvariable=self.engine_var).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Label(linha, textvariable=self.engine_var).pack(side=tk.LEFT, padx=(espaco.folga(), 0))
 
         self.advantage = ttk.Progressbar(caixa, maximum=100.0, value=50.0)
-        self.advantage.pack(fill=tk.X, padx=6, pady=(6, 0))
+        self.advantage.pack(fill=tk.X, padx=espaco.linha(), pady=(espaco.linha(), 0))
         texto.acompanhar(
             theme.pintar(
                 ttk.Label(caixa, textvariable=self.engine_line_var), "foreground", tokens.TEXTO_SECUNDARIO
             )
-        ).pack(anchor="w", padx=6, pady=(4, 6))
+        ).pack(anchor="w", padx=espaco.linha(), pady=(espaco.linha(), espaco.linha()))
 
     # ------------------------------------------------------------------------- a lista
 
@@ -1123,9 +1125,9 @@ class StudyPanel(ttk.Frame):
         dlg.transient(janela)
         dlg.grab_set()
 
-        wrap = ttk.Frame(dlg, padding=12)
+        wrap = ttk.Frame(dlg, padding=espaco.moldura())
         wrap.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(wrap, text="Escolha a peça para promoção").pack(anchor="w", pady=(0, 8))
+        ttk.Label(wrap, text="Escolha a peça para promoção").pack(anchor="w", pady=(0, espaco.folga()))
 
         def _select(piece_type: int) -> None:
             escolha["piece_type"] = piece_type
@@ -1134,9 +1136,19 @@ class StudyPanel(ttk.Frame):
         for rotulo, tipo in (("Dama", chess.QUEEN), ("Torre", chess.ROOK), ("Bispo", chess.BISHOP), ("Cavalo", chess.KNIGHT)):
             # `partial` e não `lambda ...=tipo`: aqui ha laco, então a captura por valor e
             # obrigatoria -- e o `partial` a expressa sem enganar o verificador de tipos.
-            ttk.Button(wrap, text=rotulo, command=partial(_select, tipo)).pack(fill=tk.X, pady=2)
+            ttk.Button(
+                wrap,
+                text=rotulo,
+                command=partial(_select, tipo),
+                style=estilos.estilo_de_botao(estilos.NEUTRO),
+            ).pack(fill=tk.X, pady=espaco.minima())
 
-        ttk.Button(wrap, text="Cancelar", command=dlg.destroy).pack(fill=tk.X, pady=(8, 0))
+        ttk.Button(
+            wrap,
+            text="Cancelar",
+            command=dlg.destroy,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(fill=tk.X, pady=(espaco.folga(), 0))
         # `Esc` faz o que o botão Cancelar faz: sair sem promover (S-395). A escolha fica
         # `None`, que é o que `wait_window` devolve a quem chamou.
         dlg.bind("<Escape>", lambda _evento: dlg.destroy())
@@ -1399,7 +1411,7 @@ class StudyPanel(ttk.Frame):
         self.recorte_label.configure(image=self._recorte_foto)
         self.recorte_label.image = self._recorte_foto  # type: ignore[attr-defined]
         if not self.recorte_label.winfo_ismapped():
-            self.recorte_label.pack(side=tk.TOP, pady=(0, 4))
+            self.recorte_label.pack(side=tk.TOP, pady=(0, espaco.linha()))
 
     def ampliar_recorte(self) -> None:
         """O recorte no tamanho em que o modelo o leu, numa janela própria (S-282).
@@ -1419,8 +1431,13 @@ class StudyPanel(ttk.Frame):
         janela.transient(self.winfo_toplevel())
         rotulo = ttk.Label(janela, image=foto)
         rotulo.image = foto  # type: ignore[attr-defined]
-        rotulo.pack(padx=8, pady=8)
-        ttk.Button(janela, text="Fechar", command=janela.destroy).pack(pady=(0, 8))
+        rotulo.pack(padx=espaco.folga(), pady=espaco.folga())
+        ttk.Button(
+            janela,
+            text="Fechar",
+            command=janela.destroy,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(pady=(0, espaco.folga()))
         janela.bind("<Escape>", lambda _evento: janela.destroy())  # S-395
 
     # ------------------------------------------------------- a linha impressa (S-283/S-208)
@@ -1976,23 +1993,28 @@ class _JanelaDeColar(tk.Toplevel):
         self.bind("<Escape>", lambda _evento: self.destroy())  # S-395
         self._ao_colar = ao_colar
 
-        moldura = ttk.Frame(self, padding=12)
+        moldura = ttk.Frame(self, padding=espaco.moldura())
         moldura.pack(fill=tk.BOTH, expand=True)
         texto.acompanhar(
             ttk.Label(moldura, text="Cole uma FEN ou um PGN. O programa decide qual é pelo conteúdo.")
-        ).pack(anchor="w", pady=(0, 8))
+        ).pack(anchor="w", pady=(0, espaco.folga()))
 
         self.caixa = tk.Text(moldura, width=64, height=12, wrap="word", font=theme.fonte_atual(tipografia.DADO))
         self.caixa.pack(fill=tk.BOTH, expand=True)
         self.caixa.focus_set()
 
         linha = ttk.Frame(moldura)
-        linha.pack(fill=tk.X, pady=(10, 0))
-        ttk.Button(linha, text="Cancelar", command=self.destroy).pack(side=tk.RIGHT)
+        linha.pack(fill=tk.X, pady=(espaco.folga(), 0))
+        ttk.Button(linha, text="Cancelar", command=self.destroy, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.RIGHT)
         # Sem ênfase, e é a regra 1 de `ui/estilos.py` levada a sério: **uma por painel**, e a da
         # sala já é `estudo_do_diagrama`. Uma caixa de duas respostas em que uma delas é a óbvia não
         # precisa de cor para dizer qual -- a posição já diz.
-        ttk.Button(linha, text="Abrir", command=self.abrir).pack(side=tk.RIGHT, padx=(0, 6))
+        ttk.Button(
+            linha,
+            text="Abrir",
+            command=self.abrir,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.RIGHT, padx=(0, espaco.linha()))
 
     def abrir(self) -> None:
         colado = self.caixa.get("1.0", "end-1c")
@@ -2018,9 +2040,9 @@ class _JanelaDeColecao(tk.Toplevel):
         self._estudos = list(estudos)
         self._ao_escolher = ao_escolher
 
-        moldura = ttk.Frame(self, padding=12)
+        moldura = ttk.Frame(self, padding=espaco.moldura())
         moldura.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(moldura, text=f"{len(self._estudos)} partidas em {nome}").pack(anchor="w", pady=(0, 8))
+        ttk.Label(moldura, text=f"{len(self._estudos)} partidas em {nome}").pack(anchor="w", pady=(0, espaco.folga()))
 
         self.tabela = ttk.Treeview(moldura, columns=("lances",), show="tree headings", height=14)
         self.tabela.heading("#0", text="Partida")
@@ -2032,9 +2054,14 @@ class _JanelaDeColecao(tk.Toplevel):
         self.tabela.bind("<Double-1>", lambda _evento: self.escolher())
 
         linha = ttk.Frame(moldura)
-        linha.pack(fill=tk.X, pady=(10, 0))
-        ttk.Button(linha, text="Fechar", command=self.destroy).pack(side=tk.RIGHT)
-        ttk.Button(linha, text="Abrir", command=self.escolher).pack(side=tk.RIGHT, padx=(0, 6))
+        linha.pack(fill=tk.X, pady=(espaco.folga(), 0))
+        ttk.Button(linha, text="Fechar", command=self.destroy, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.RIGHT)
+        ttk.Button(
+            linha,
+            text="Abrir",
+            command=self.escolher,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.RIGHT, padx=(0, espaco.linha()))
 
     def escolher(self) -> None:
         selecao = self.tabela.selection() or ("0",)
@@ -2078,10 +2105,10 @@ class _JanelaDePartidas(tk.Toplevel):
         self.bind("<Escape>", lambda _evento: self.destroy())  # S-395
         self.transient(pai.winfo_toplevel())
 
-        moldura = ttk.Frame(self, padding=12)
+        moldura = ttk.Frame(self, padding=espaco.moldura())
         moldura.pack(fill=tk.BOTH, expand=True)
         ttk.Label(moldura, text=resposta.frase, font=theme.fonte_atual(tipografia.CORPO)).pack(
-            anchor="w", pady=(0, 8)
+            anchor="w", pady=(0, espaco.folga())
         )
 
         tabela = ttk.Treeview(moldura, columns=("lance", "vez"), show="tree headings", height=12)
@@ -2099,7 +2126,12 @@ class _JanelaDePartidas(tk.Toplevel):
             )
         tabela.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Button(moldura, text="Fechar", command=self.destroy).pack(anchor="e", pady=(10, 0))
+        ttk.Button(
+            moldura,
+            text="Fechar",
+            command=self.destroy,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(anchor="e", pady=(espaco.folga(), 0))
 
     def linhas(self) -> list[str]:
         """O que a tabela mostra. É o que o teste percorre, como em `legenda.linhas`."""

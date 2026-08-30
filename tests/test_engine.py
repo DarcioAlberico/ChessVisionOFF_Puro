@@ -39,11 +39,25 @@ def _launcher(caso: type[unittest.TestCase]) -> Path:
 
     No Windows sai um `.bat`, no resto um `.sh`. Não é frescura de portabilidade -- é o que
     permite ao mesmo teste rodar aqui e na CI.
+
+    **O `.bat` vai na code page OEM, e não em UTF-8 (S-434).** O `cmd.exe` lê arquivo de lote
+    pela code page do console -- `cp850` numa máquina brasileira de fábrica --, e não por UTF-8.
+    Com `encoding="utf-8"` o acento de `sys.executable` (num Python gerenciado pelo `uv` o
+    interpretador mora dentro do perfil do usuário) virava mojibake dentro do `.bat`, e os oito
+    testes desta classe morriam com `EngineTerminatedError: engine process died unexpectedly`,
+    precedido de um "O sistema não pode encontrar o caminho especificado" que o `python-chess`
+    nem consegue decodificar para o log. A CI roda sob caminho ASCII e nunca pôde ver isso.
+
+    Fica um limite, e ele é do `cmd.exe` e não daqui: caminho com caractere fora da code page
+    OEM -- cirílico, que é o caso do acervo e o que quebrou na S-111 -- não cabe num `.bat` de
+    jeito nenhum, e ali o `encode` **levanta** em vez de gravar lixo, que é a falha certa. Se
+    isso aparecer, o caminho é fugir do `cmd`: `popen_uci` aceita **lista** de argumentos, e
+    `[sys.executable, str(MOTOR_FALSO)]` dispensa o arquivo de lote inteiro.
     """
     diretorio = pasta_temporaria_da_classe(caso, prefixo="cvoff-engine-")
     if os.name == "nt":
         caminho = diretorio / "motor.bat"
-        caminho.write_text(f'@echo off\n"{sys.executable}" "{MOTOR_FALSO}" %*\n', encoding="utf-8")
+        caminho.write_text(f'@echo off\n"{sys.executable}" "{MOTOR_FALSO}" %*\n', encoding="oem")
     else:
         caminho = diretorio / "motor.sh"
         caminho.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{MOTOR_FALSO}" "$@"\n', encoding="utf-8")

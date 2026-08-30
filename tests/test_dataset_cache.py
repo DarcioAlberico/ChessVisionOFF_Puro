@@ -10,9 +10,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import write_image
 from chess_diagram_ocr.config import BOARD_SIZE
 from chess_diagram_ocr.dataset import BoardFenDataset, BoardGroupedSampler, board_groups
 
@@ -27,7 +27,7 @@ def _fixture(root: Path, boards: int) -> tuple[Path, Path]:
         name = f"b{index:03d}.png"
         # Tabuleiro pequeno: o dataset redimensiona, e gravar 800x800 aqui custaria
         # 1,83 MiB por arquivo so para provar uma propriedade de contagem.
-        cv2.imwrite(str(samples / name), np.full((64, 64, 3), 200, dtype=np.uint8))
+        write_image(samples / name, np.full((64, 64, 3), 200, dtype=np.uint8))
         linhas.append(f"{name},{LEGAL}")
     csv_path = root / "labels.csv"
     csv_path.write_text("\n".join(linhas) + "\n", encoding="utf-8")

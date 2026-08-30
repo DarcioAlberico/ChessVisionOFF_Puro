@@ -77,8 +77,12 @@ ele a guarda cobraria para sempre uma seção `## S-431` que não pode voltar a 
 a colisão. Reescrever o assunto do commit não é opção -- ele está empurrado e merged.
 
 **É um mapa, e não uma lista de perdão.** `test_a_renumeracao_declarada_vale` exige que o número
-novo **tenha** seção e que o antigo **não** tenha, então uma entrada aqui nunca esconde um item
-sem spec -- ela só reaponta a cobrança.
+novo **tenha** seção e que o antigo não tenha seção no arquivo do novo, então uma entrada aqui
+nunca esconde um item sem spec -- ela só reaponta a cobrança.
+
+**O merge aconteceu.** Desde que a revisão externa entrou na `main`, `## S-431` existe de novo em
+`SPEC_REVISAO_EXTERNA.md`, nomeando a coleta pelo `write_image` -- que era o ponto de liberar o
+número. Por isso a guarda pergunta pelo arquivo, e não pela existência.
 """
 
 
@@ -344,8 +348,15 @@ class ItemEntregueTemSpecTests(unittest.TestCase):
         """O outro lado do `RENUMERADOS`: sem isto, uma entrada ali seria perdão em vez de mapa.
 
         Exige as duas metades. O número novo tem de ter seção -- senão a renumeração perdeu a
-        spec pelo caminho --, e o antigo não pode ter, porque uma seção com o número antigo é
-        exatamente a colisão que a renumeração desfez.
+        spec pelo caminho --, e o antigo não pode ter seção **no arquivo do novo**, porque ali
+        ela seria o próprio item renumerado, parado onde a renumeração o tirou.
+
+        **Por que não "o antigo não pode ter seção em lugar nenhum".** Foi assim que esta guarda
+        nasceu, e a premissa durou até o merge que o próprio `RENUMERADOS` previa: liberar o
+        número antigo *era* o objetivo da renumeração. Hoje `## S-431` existe de novo, em
+        `SPEC_REVISAO_EXTERNA.md`, nomeando a coleta pelo `write_image` -- e recusá-lo seria a
+        guarda cobrando o contrário do que a renumeração foi fazer. Que o número antigo nomeie
+        **uma** coisa só quem garante é `test_nenhum_numero_de_item_nomeia_duas_coisas`.
         """
         com_secao: set[int] = set()
         for arquivo, numeros in self.secoes.items():
@@ -356,8 +367,17 @@ class ItemEntregueTemSpecTests(unittest.TestCase):
         for antigo, novo in sorted(RENUMERADOS.items()):
             if novo not in com_secao:
                 problemas.append(f"{_rotulo(antigo)} declara virar {_rotulo(novo)}, que não tem seção")
-            if antigo in com_secao:
-                problemas.append(f"{_rotulo(antigo)} ainda tem seção -- a renumeração não aconteceu")
+                continue
+            parado = sorted(
+                arquivo
+                for arquivo, numeros in self.secoes.items()
+                if arquivo not in ARQUIVOS_DE_MEDICAO and {antigo, novo} <= numeros
+            )
+            if parado:
+                problemas.append(
+                    f"{_rotulo(antigo)} ainda tem seção em {', '.join(parado)}, ao lado de "
+                    f"{_rotulo(novo)} -- a renumeração não aconteceu"
+                )
         self.assertEqual([], problemas)
 
     def test_a_secao_esta_no_arquivo_que_o_indice_declara(self) -> None:
@@ -1057,7 +1077,19 @@ class NumerosVivosTests(unittest.TestCase):
         self.assertEqual(len(comandos), citado)
 
     def test_o_bundle_citado_bate_com_o_que_o_build_gravou(self) -> None:
-        """O README publicava 5.247 arquivos de um build que tinha 4.723 (S-135)."""
+        """O README publicava 5.247 arquivos de um build que tinha 4.723 (S-135).
+
+        **A mensagem diz de que ambiente saiu o número, e isso não é enfeite (S-438).** Ela era
+        um `AssertionError: (570, 4039) != (684, 4275)` seco, e quem rodava o comando que o
+        próprio README manda rodar (`packaging/build_windows.py`) recebia esse par sem saber que
+        a diferença inteira eram os extras `onnx` e `ocr`: o PyInstaller coleta o que está
+        *instalado*, então o mesmo commit mede diferente em duas venvs. O campo `extras` do
+        `bundle.json` existe para essa pergunta ter resposta, e o build avisa na hora, com a
+        frase do conserto.
+
+        O `bundle.json` gravado antes da S-438 não tem o campo, e a mensagem diz isso em vez de
+        fingir que sabe -- a guarda não foi afrouxada, só a explicação da falha.
+        """
         import json
 
         metricas_json = DOCS / "metrics" / "bundle.json"
@@ -1067,7 +1099,15 @@ class NumerosVivosTests(unittest.TestCase):
 
         citado_mb = int(_citado(self.readme, r"\*\*([\d.]+) MB, [\d.]+ arquivos\*\*"))
         citado_arquivos = int(_citado(self.readme, r"\*\*[\d.]+ MB, ([\d.]+) arquivos\*\*"))
-        self.assertEqual((metricas["mb"], metricas["arquivos"]), (citado_mb, citado_arquivos))
+        extras = metricas.get("extras")
+        self.assertEqual(
+            (metricas["mb"], metricas["arquivos"]),
+            (citado_mb, citado_arquivos),
+            "O README cita um build e o `bundle.json` guarda outro. O gravado é de "
+            f"{metricas.get('data', 'data desconhecida')}, commit {metricas.get('commit', '?')}, "
+            f"extras {extras if extras is not None else 'não registrados (build anterior à S-438)'}. "
+            "Se o número mudou por causa dos extras, diga isso na frase do README junto do número.",
+        )
 
     def test_o_bundle_obsoleto_se_diz_obsoleto(self) -> None:
         """Um número certo sobre um build que já não existe engana igual a um número errado."""

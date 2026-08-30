@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 import tkinter as tk
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -42,7 +42,7 @@ from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.settings import LocalReaderSettings, RemoteFenSettings
 
-from . import atalhos, board_edit, comandos, estilos, strings, texto, theme, tipografia, tokens
+from . import atalhos, board_edit, comandos, espaco, estilos, strings, texto, theme, tipografia, tokens
 from .board_widget import InteractiveBoard, PieceImages
 from .editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from .historico import Historico
@@ -147,10 +147,11 @@ class ResultPanel(ttk.Frame):
         on_remote_consent: Callable[[RemoteFenSettings], bool],
         local_reader: Callable[[], LocalReaderSettings] = LocalReaderSettings,
         on_selection_changed: Callable[[int | None], None] = lambda _indice: None,
+        saved_diagrams: Callable[[str, int], Collection[int]] = lambda _livro, _pagina: (),
         move_number_of: Callable[[int, int], int | None] = lambda _pagina, _diagrama: None,
         on_move_number: Callable[[int, int, int | None], None] = lambda _p, _d, _v: None,
     ) -> None:
-        super().__init__(parent, padding=6)
+        super().__init__(parent, padding=espaco.linha())
         self._service = service
         self._paths = paths
         self._ocr_params = ocr_params
@@ -170,6 +171,15 @@ class ResultPanel(ttk.Frame):
         processo acabara de escrever -- 30,9 ms sobre 3.936 linhas, no laço mais interno do
         projeto. Uma sequência vazia é resposta: "o dataset mudou e nenhum diagrama novo ficou
         verde", que é exatamente o caso de regravar uma linha que já existia."""
+
+        self._saved_diagrams = saved_diagrams
+        """Quais diagramas de `(livro, página)` já têm amostra gravada, em base 0 (S-451).
+
+        Mora fora do painel porque o índice é da janela: ela o lê do `labels.csv` ao abrir o
+        PDF e o mantém a cada gravação (ver `labels.note_saved_diagram`). Relê-lo aqui traria
+        de volta a releitura de arquivo que a S-116 tirou deste caminho. O padrão devolve
+        vazio -- quem monta o painel sem passar nada não vê pergunta nenhuma, que é melhor que
+        ver uma pergunta errada."""
 
         self._remote_fen = remote_fen
         self._local_reader = local_reader
@@ -283,25 +293,46 @@ class ResultPanel(ttk.Frame):
 
     def _build(self, piece_images: PieceImages) -> None:
         botoes = ttk.Frame(self)
-        botoes.pack(fill=tk.X, padx=8, pady=8)
+        botoes.pack(fill=tk.X, padx=espaco.folga(), pady=espaco.folga())
         self.btn_ocr_local_best = ttk.Button(
-            botoes, text="OCR local (melhor)", command=lambda: self._on_ocr_local(1)
+            botoes,
+            text="OCR local (melhor)",
+            command=lambda: self._on_ocr_local(1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
         )
         self.btn_ocr_local_best.pack(side=tk.LEFT)
         self.btn_ocr_local_all = ttk.Button(
-            botoes, text="OCR local (todos)", command=lambda: self._on_ocr_local(self._max_boards())
+            botoes,
+            text="OCR local (todos)",
+            command=lambda: self._on_ocr_local(self._max_boards()),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
         )
-        self.btn_ocr_local_all.pack(side=tk.LEFT, padx=6)
-        ttk.Label(self, text="Use imagem local para OCR fora do PDF.").pack(anchor="w", padx=8, pady=(2, 8))
+        self.btn_ocr_local_all.pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Label(
+            self,
+            text="Use imagem local para OCR fora do PDF.",
+        ).pack(anchor="w", padx=espaco.folga(), pady=(espaco.minima(), espaco.folga()))
 
         caixa = ttk.LabelFrame(self, text="Reconhecido (clique e arraste para corrigir)")
-        caixa.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        caixa.pack(fill=tk.BOTH, expand=True, padx=espaco.folga(), pady=(0, espaco.folga()))
 
         zoom_row = ttk.Frame(caixa)
-        zoom_row.pack(fill=tk.X, padx=8, pady=(6, 0))
+        zoom_row.pack(fill=tk.X, padx=espaco.folga(), pady=(espaco.linha(), 0))
         ttk.Label(zoom_row, text=strings.ZOOM_DO_TABULEIRO).pack(side=tk.LEFT)
-        ttk.Button(zoom_row, text="-", width=3, command=lambda: self.zoom(-0.1)).pack(side=tk.LEFT, padx=(6, 2))
-        ttk.Button(zoom_row, text="+", width=3, command=lambda: self.zoom(0.1)).pack(side=tk.LEFT, padx=(2, 6))
+        ttk.Button(
+            zoom_row,
+            text="-",
+            width=3,
+            command=lambda: self.zoom(-0.1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=(espaco.linha(), espaco.minima()))
+        ttk.Button(
+            zoom_row,
+            text="+",
+            width=3,
+            command=lambda: self.zoom(0.1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=(espaco.minima(), espaco.linha()))
         self.lbl_zoom = ttk.Label(zoom_row, text="85%")
         self.lbl_zoom.pack(side=tk.LEFT)
         ttk.Checkbutton(
@@ -313,13 +344,16 @@ class ResultPanel(ttk.Frame):
         # que faz a pessoa procurar no menu. Os rótulos saem do catálogo (S-324) -- os três botões
         # antigos desta janela ainda os escrevem à mão, e essa dívida está registrada lá.
         edicao_row = ttk.Frame(caixa)
-        edicao_row.pack(fill=tk.X, padx=8, pady=(4, 0))
+        edicao_row.pack(fill=tk.X, padx=espaco.folga(), pady=(espaco.linha(), 0))
         self.btn_desfazer = self._botao_de_historico(edicao_row, "desfazer", self.desfazer)
         self.btn_refazer = self._botao_de_historico(edicao_row, "refazer", self.refazer)
         self.btn_limpar = ttk.Button(
-            edicao_row, text=comandos.rotulo_de_botao("limpar_tabuleiro"), command=self.limpar_tabuleiro
+            edicao_row,
+            text=comandos.rotulo_de_botao("limpar_tabuleiro"),
+            command=self.limpar_tabuleiro,
+            style=comandos.estilo("limpar_tabuleiro"),
         )
-        self.btn_limpar.pack(side=tk.LEFT, padx=6)
+        self.btn_limpar.pack(side=tk.LEFT, padx=espaco.linha())
         Tooltip(
             self.btn_limpar,
             "Esvazia as 64 casas para montar a posição do zero.\n"
@@ -338,33 +372,36 @@ class ResultPanel(ttk.Frame):
             min_size=260,
             max_size=520,
         )
-        self.board.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self.board.pack(fill=tk.BOTH, expand=True, padx=espaco.folga(), pady=espaco.folga())
         self.board.set_heatmap_enabled(True)
 
-        # A frase do estado vazio (S-170). Um `Label` que existe sempre e fica em branco quando há
-        # diagrama: aparecer e sumir mudaria a altura do painel a cada leitura.
-        self.vazio_var = tk.StringVar(value=MENSAGEM_VAZIA)
-        lbl_vazio = ttk.Label(
-            caixa,
-            textvariable=self.vazio_var,
-            justify=tk.LEFT,
-            foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO),
-        )
-        texto.acompanhar(lbl_vazio).pack(anchor="w", padx=8, pady=(0, 6))
-        theme.ao_repintar(lambda: lbl_vazio.configure(foreground=theme.cor_atual(tokens.TEXTO_SECUNDARIO)))
+        # A frase do estado vazio mora **no canvas** desde a S-450, e não mais num `Label` aqui.
+        # Ela ficava sob o tabuleiro que a contradizia -- 8x8 desenhado por inteiro enquanto o texto
+        # dizia "nenhum diagrama aberto" --, alinhada à esquerda. Agora ela ocupa o lugar do que não
+        # existe. O `Label` some junto: mantê-lo em branco seria reservar altura para nada.
 
         legal = ttk.Frame(caixa)
-        legal.pack(fill=tk.X, padx=8, pady=(0, 6))
+        legal.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
         texto.acompanhar(ttk.Label(legal, textvariable=self.legality_var, justify=tk.LEFT)).pack(anchor="w")
         theme.pintar(
             ttk.Label(legal, textvariable=self.material_var), "foreground", tokens.TEXTO_SECUNDARIO
         ).pack(anchor="w")
 
         nav = ttk.Frame(caixa)
-        nav.pack(fill=tk.X, padx=8, pady=(0, 6))
-        ttk.Button(nav, text="Diagrama anterior", command=self.prev_diagram).pack(side=tk.LEFT)
-        ttk.Button(nav, text="Próximo diagrama", command=self.next_diagram).pack(side=tk.LEFT, padx=6)
-        ttk.Label(nav, text="Selecionado").pack(side=tk.LEFT, padx=(12, 4))
+        nav.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
+        ttk.Button(
+            nav,
+            text="Diagrama anterior",
+            command=self.prev_diagram,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            nav,
+            text="Próximo diagrama",
+            command=self.next_diagram,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Label(nav, text="Selecionado").pack(side=tk.LEFT, padx=(espaco.moldura(), espaco.linha()))
         self.spin_diag = ttk.Spinbox(
             nav, from_=1, to=1, textvariable=self.selected_diag_var, width=6, command=self.on_diagram_spin
         )
@@ -373,13 +410,13 @@ class ResultPanel(ttk.Frame):
         self.spin_diag.bind("<FocusOut>", lambda _event: self.on_diagram_spin())
 
         fen_box = ttk.LabelFrame(self, text="FEN e ações")
-        fen_box.pack(fill=tk.X, padx=8, pady=(0, 8))
-        ttk.Label(fen_box, text="FEN").pack(anchor="w", padx=8, pady=(6, 0))
+        fen_box.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.folga()))
+        ttk.Label(fen_box, text="FEN").pack(anchor="w", padx=espaco.folga(), pady=(espaco.linha(), 0))
         # Monoespaçada (S-149): é o dado central do produto, e em proporcional `1`, `l` e `I`
         # têm larguras diferentes -- duas leituras da mesma posição deixam de alinhar, que é
         # exatamente a comparação que a aba Revisão e a 2ª opinião pedem.
         entry = ttk.Entry(fen_box, textvariable=self.fen_var, font=theme.fonte_atual(tipografia.DADO))
-        entry.pack(fill=tk.X, padx=8, pady=(0, 4))
+        entry.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
         entry.bind("<Return>", lambda _event: self.apply_fen_edit())
         # E a tecla da tabela, ligada aqui de propósito (S-223). A guarda de foco de
         # `ui/shortcuts.py` cede **qualquer** atalho a um campo de texto, e é dentro deste campo
@@ -390,7 +427,7 @@ class ResultPanel(ttk.Frame):
         # Lado a jogar visivel e editavel (S-16/S-19). Até a Fase 3 o app não tinha onde
         # mostrar isso, e a informação -- quando o PDF a dava -- morria na exportação.
         side_row = ttk.Frame(fen_box)
-        side_row.pack(fill=tk.X, padx=8, pady=(0, 4))
+        side_row.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
         ttk.Label(side_row, text=strings.LADO_A_JOGAR).pack(side=tk.LEFT)
         for valor, rotulo in strings.SIDE_LABELS.items():
             ttk.Radiobutton(
@@ -399,8 +436,8 @@ class ResultPanel(ttk.Frame):
                 value=valor,
                 variable=self.side_to_move_var,
                 command=self.on_side_to_move_change,
-            ).pack(side=tk.LEFT, padx=(6, 0))
-        ttk.Label(side_row, textvariable=self.side_source_var).pack(side=tk.LEFT, padx=(10, 0))
+            ).pack(side=tk.LEFT, padx=(espaco.linha(), 0))
+        ttk.Label(side_row, textvariable=self.side_source_var).pack(side=tk.LEFT, padx=(espaco.folga(), 0))
 
         # Número do lance (S-71), ao lado do lado a jogar porque é a mesma leitura: os dois
         # saem da legenda impressa, e quem está com o livro aberto declara os dois de uma vez.
@@ -411,7 +448,7 @@ class ResultPanel(ttk.Frame):
         # faz o rótulo aparecer à esquerda dele sem mudar o lado da linha em que os dois ficam.
         self.move_number_entry = ttk.Entry(side_row, textvariable=self.move_number_var, width=6)
         self.move_number_entry.pack(side=tk.RIGHT)
-        ttk.Label(side_row, text="Lance").pack(side=tk.RIGHT, padx=(10, 4))
+        ttk.Label(side_row, text="Lance").pack(side=tk.RIGHT, padx=(espaco.folga(), espaco.linha()))
         self.move_number_entry.bind("<Return>", lambda _event: self._commit_move_number())
         self.move_number_entry.bind("<FocusOut>", lambda _event: self._commit_move_number())
         Tooltip(
@@ -421,8 +458,13 @@ class ResultPanel(ttk.Frame):
         )
 
         acoes = ttk.Frame(fen_box)
-        acoes.pack(fill=tk.X, padx=8, pady=(0, 6))
-        self.btn_apply_fen = ttk.Button(acoes, text="Aplicar FEN", command=self.apply_fen_edit)
+        acoes.pack(fill=tk.X, padx=espaco.folga(), pady=(0, espaco.linha()))
+        self.btn_apply_fen = ttk.Button(
+            acoes,
+            text="Aplicar FEN",
+            command=self.apply_fen_edit,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
         self.btn_apply_fen.pack(side=tk.LEFT)
         self.btn_save = ttk.Button(
             acoes,
@@ -430,9 +472,9 @@ class ResultPanel(ttk.Frame):
             style=estilos.estilo_de_botao(estilos.PRIMARIO),
             command=self.save_current,
         )
-        self.btn_save.pack(side=tk.LEFT, padx=6)
-        self.btn_save_all = ttk.Button(acoes, text="Salvar todos", command=self.save_all)
-        self.btn_save_all.pack(side=tk.LEFT, padx=6)
+        self.btn_save.pack(side=tk.LEFT, padx=espaco.linha())
+        self.btn_save_all = ttk.Button(acoes, text="Salvar todos", command=self.save_all, style=estilos.estilo_de_botao(estilos.NEUTRO))
+        self.btn_save_all.pack(side=tk.LEFT, padx=espaco.linha())
         for botao in (self.btn_apply_fen, self.btn_save, self.btn_save_all):
             Tooltip(
                 botao,
@@ -448,7 +490,7 @@ class ResultPanel(ttk.Frame):
             on_corrected=self._apply_corrected_fen,
             schedule=self.after,
         )
-        self.net_button.pack(side=tk.LEFT, padx=6)
+        self.net_button.pack(side=tk.LEFT, padx=espaco.linha())
         self.second_opinion_button = SecondOpinionButton(
             acoes,
             settings=self._local_reader,
@@ -457,7 +499,7 @@ class ResultPanel(ttk.Frame):
             on_read=self._apply_second_opinion,
             schedule=self.after,
         )
-        self.second_opinion_button.pack(side=tk.LEFT, padx=6)
+        self.second_opinion_button.pack(side=tk.LEFT, padx=espaco.linha())
         # Editor vazio não tem diagrama a que atribuir lance: o campo nasce cinza, e não
         # aceitando um número que seria descartado em silêncio.
         self.sync_move_number()
@@ -504,6 +546,7 @@ class ResultPanel(ttk.Frame):
                 fen_edits=self.model.fen_edits,
                 side_edits=self.model.side_edits,
                 selected_index=self.model.clamped_index(),
+                origin=self.model.origin,
             ),
         )
 
@@ -526,6 +569,7 @@ class ResultPanel(ttk.Frame):
             guardado.fen_edits,
             guardado.side_edits,
             page_key=(documento, guardado.page_index),
+            origin=guardado.origin,
             selected=guardado.clamped_index(),
         )
         self._sync_widgets_to_model(total=max(guardado.count, 1))
@@ -841,7 +885,7 @@ class ResultPanel(ttk.Frame):
 
         O motivo de cada botão cinza está no tooltip, pela regra da S-165.
         """
-        self.vazio_var.set(MENSAGEM_VAZIA if vazio else "")
+        self.board.mostrar_vazio(MENSAGEM_VAZIA if vazio else None)
         estado = tk.DISABLED if vazio else tk.NORMAL
         for botao in (self.btn_apply_fen, self.btn_save, self.btn_save_all, self.btn_limpar):
             botao.configure(state=estado)
@@ -940,8 +984,8 @@ class ResultPanel(ttk.Frame):
         o `Tooltip` a cada mudança de estado perderia os `bind` -- é o que o docstring de
         `ui/tooltip.py` diz, e `set_text` existe por causa disso.
         """
-        botao = ttk.Button(pai, text=comandos.rotulo_de_botao(acao), command=funcao)
-        botao.pack(side=tk.LEFT, padx=(0, 6))
+        botao = ttk.Button(pai, text=comandos.rotulo_de_botao(acao), command=funcao, style=comandos.estilo(acao))
+        botao.pack(side=tk.LEFT, padx=(0, espaco.linha()))
         self._dicas_de_historico[acao] = Tooltip(botao, "")
         return botao
 
@@ -1174,6 +1218,28 @@ class ResultPanel(ttk.Frame):
         self._settle_review(alvo.settle_position, alvo.fen, alvo.side)
         self.model.settled()
 
+    def _ja_salvos(self, alvos: Sequence[SaveTarget]) -> set[int]:
+        """Quais destes alvos já têm amostra gravada. Devolve `alvo.index`, não o nº do diagrama.
+
+        O índice do alvo é a posição na lista do editor, que é por onde `save_all` filtra; o
+        número do diagrama (`items[i].index`) é o que a janela conta e o que o CSV grava. Os
+        dois coincidem quase sempre, e não é seguro contar com isso -- a conversão fica aqui.
+
+        Vazio quando não há procedência de página -- imagem solta, recorte, item da fila: sem
+        ela não há como saber o que já foi salvo, e perguntar sem saber é pior que não perguntar.
+        """
+        origem = self.model.origin
+        if origem is None or origem.page_index is None or not origem.document:
+            return set()
+        salvos = set(self._saved_diagrams(origem.document, int(origem.page_index)))
+        if not salvos:
+            return set()
+        return {
+            alvo.index
+            for alvo in alvos
+            if 0 <= alvo.index < len(self.model.items) and self.model.items[alvo.index].index in salvos
+        }
+
     def save_all(self) -> None:
         if not self.model.items:
             # Pré-condição, e não falha: vai para o rodapé com severidade de aviso (S-164).
@@ -1190,6 +1256,35 @@ class ResultPanel(ttk.Frame):
         alvos = [self.model.save_target(idx) for idx in range(self.model.count)]
         validos = [alvo for alvo in alvos if alvo.kind is not SaveKind.NOTHING and is_valid_fen(alvo.fen)]
         invalidos = len(alvos) - len(validos)
+
+        # **A pergunta que faltava** (S-451). "Salvar todos" é o gesto que se repete -- varrer,
+        # corrigir, salvar, virar --, e voltar a uma página já feita era indistinguível de
+        # fazê-la pela primeira vez: gravava em silêncio a segunda cópia de cada diagrama.
+        # `append_training_sample` nomeia por timestamp e sempre acrescenta, então o preço é uma
+        # linha e um PNG duplicados por diagrama, num arquivo que este projeto existe para fazer
+        # crescer limpo. Uma pergunta para a página, pelo mesmo motivo da de ilegalidade abaixo.
+        repetidos = self._ja_salvos(validos)
+        ja_salvos = 0
+        if repetidos:
+            numeros = ", ".join(str(self.model.items[indice].index + 1) for indice in sorted(repetidos))
+            todos = len(repetidos) == len(validos)
+            if not messagebox.askyesno(
+                "Diagramas já salvos",
+                f"{len(repetidos)} de {len(validos)} diagramas desta página já têm amostra "
+                f"no dataset: {numeros}.\n\n"
+                "Salvar de novo grava uma segunda linha e uma segunda imagem do mesmo "
+                "diagrama -- o que vale a pena se você acabou de corrigir a leitura, e é "
+                "duplicata se não.\n\n"
+                + ("Salvar novamente?" if todos else 'Salvar novamente? Responder "não" salva apenas os outros.'),
+                default=messagebox.NO,
+            ):
+                ja_salvos = len(repetidos)
+                validos = [alvo for alvo in validos if alvo.index not in repetidos]
+                if not validos:
+                    self._on_status(
+                        f"Salvar todos: nada a gravar, os {ja_salvos} diagrama(s) desta página já estavam salvos."
+                    )
+                    return
 
         # Uma pergunta para a pagina inteira, e nao uma por diagrama. Uma pagina de capitulo
         # sobre estrutura tem os oito diagramas sem rei: perguntar oito vezes a mesma coisa
@@ -1241,6 +1336,8 @@ class ResultPanel(ttk.Frame):
         # travar a pessoa item por item, e terminar num clique obrigatório desfazia metade disso.
         # As quatro parcelas que a caixa mostrava entram na frase; nenhuma se perdeu.
         resumo = f"Salvar todos: {salvos} salvos, {invalidos} inválidos"
+        if ja_salvos:
+            resumo += f", {ja_salvos} já estavam salvos"
         if salvos_ilegais:
             resumo += f", {salvos_ilegais} ilegais confirmados"
         if pulados:

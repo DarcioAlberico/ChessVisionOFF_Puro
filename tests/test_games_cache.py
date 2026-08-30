@@ -13,6 +13,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 import chess
@@ -319,7 +320,12 @@ class ArquivoTests(unittest.TestCase):
         """Um `CREATE INDEX placement` desfaria a economia sem quebrar comportamento nenhum --
         é o mesmo guarda que o item 1 pôs no índice por nome."""
         self._grava()
-        with sqlite3.connect(self.arquivo) as conexao:
+        # `closing` porque o `__exit__` do `sqlite3` **nao** fecha a conexao: ele comita ou
+        # desfaz a transacao, e e tudo (S-435). O handle ficava aberto sobre o arquivo, e o
+        # `cleanup` do `TemporaryDirectory` deste mesmo teste estourava com `WinError 32`.
+        # Hoje passa porque a contagem de referencias do CPython fecha a tempo -- sincronia,
+        # nao garantia, e no 3.13 ela deixou de valer.
+        with closing(sqlite3.connect(self.arquivo)) as conexao:
             (esquema,) = conexao.execute(
                 "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'positions'"
             ).fetchone()

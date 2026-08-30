@@ -34,7 +34,7 @@ from ..review_queue import (
     rare_classes_from_labels,
 )
 from ..service import OcrService
-from . import estilos, formato, strings, tabela, texto
+from . import espaco, estilos, formato, strings, tabela, texto
 from .busy import BusyRegistry, BusyToken
 from .tooltip import Tooltip
 
@@ -164,7 +164,7 @@ class ReviewPanel(ttk.Frame):
         o painel abre e funciona -- é o que um roteiro de teste monta --, só não tem como pedir
         varredura nenhuma.
         """
-        super().__init__(parent, padding=6)
+        super().__init__(parent, padding=espaco.linha())
         self._service = service
         self._scan_request = scan_request
         self._on_open = on_open
@@ -198,8 +198,13 @@ class ReviewPanel(ttk.Frame):
 
     def _build_ui(self) -> None:
         toolbar = ttk.Frame(self)
-        toolbar.pack(fill=tk.X, pady=(0, 6))
-        self.btn_scan = ttk.Button(toolbar, text=strings.VARRER_LIVRO, command=self.start_scan)
+        toolbar.pack(fill=tk.X, pady=(0, espaco.linha()))
+        self.btn_scan = ttk.Button(
+            toolbar,
+            text=strings.VARRER_LIVRO,
+            command=self.start_scan,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
         self.btn_scan.pack(side=tk.LEFT)
         Tooltip(
             self.btn_scan,
@@ -207,15 +212,26 @@ class ReviewPanel(ttk.Frame):
             "livro com o mesmo modelo. Pergunta antes quais livros varrer; a fila desta aba\n"
             "só sai do PDF aberto -- é dele que ela declara a procedência.",
         )
-        self.btn_cancel = ttk.Button(toolbar, text="Cancelar", command=self.cancel_scan, state=tk.DISABLED)
-        self.btn_cancel.pack(side=tk.LEFT, padx=6)
+        self.btn_cancel = ttk.Button(
+            toolbar,
+            text="Cancelar",
+            command=self.cancel_scan,
+            state=tk.DISABLED,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        self.btn_cancel.pack(side=tk.LEFT, padx=espaco.linha())
         Tooltip(
             self.btn_cancel,
             "Só fica ativo durante a varredura. O cancelamento termina a página em curso\n"
             "antes de parar, e os recortes já gravados continuam valendo.",
         )
-        ttk.Button(toolbar, text="Abrir fila", command=self.open_queue_file).pack(side=tk.LEFT, padx=6)
-        ttk.Button(toolbar, text="Salvar fila", command=self.save_queue).pack(side=tk.LEFT)
+        ttk.Button(
+            toolbar,
+            text="Abrir fila",
+            command=self.open_queue_file,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Button(toolbar, text="Salvar fila", command=self.save_queue, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.LEFT)
         ttk.Checkbutton(
             toolbar,
             text="Só pendentes",
@@ -224,7 +240,7 @@ class ReviewPanel(ttk.Frame):
         ).pack(side=tk.RIGHT)
 
         texto.acompanhar(ttk.Label(self, textvariable=self.summary_var)).pack(anchor="w")
-        texto.acompanhar(ttk.Label(self, textvariable=self.progress_var)).pack(anchor="w", pady=(0, 4))
+        texto.acompanhar(ttk.Label(self, textvariable=self.progress_var)).pack(anchor="w", pady=(0, espaco.linha()))
 
         self.tree = tabela.montar(self, self.COLUNAS, selectmode="browse", height=14)
         self.tree.bind("<Double-1>", lambda _event: self.open_selected())
@@ -236,15 +252,35 @@ class ReviewPanel(ttk.Frame):
         # dá o texto, e nenhuma das duas precisa escolher entre as duas coisas.
         texto.acompanhar(
             ttk.Label(self, textvariable=self.detail_var, justify=tk.LEFT)
-        ).pack(anchor="w", fill=tk.X, pady=(4, 0))
+        ).pack(anchor="w", fill=tk.X, pady=(espaco.linha(), 0))
 
         actions = ttk.Frame(self)
-        actions.pack(fill=tk.X, pady=(6, 0))
+        actions.pack(fill=tk.X, pady=(espaco.linha(), 0))
         ttk.Button(actions, text="Corrigir agora", style=estilos.estilo_de_botao(estilos.PRIMARIO), command=self.open_selected).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Marcar revisado", command=lambda: self.mark_selected("done")).pack(side=tk.LEFT, padx=6)
-        ttk.Button(actions, text="Pular", command=lambda: self.mark_selected("skipped")).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Reabrir", command=lambda: self.mark_selected("pending")).pack(side=tk.LEFT, padx=6)
-        ttk.Button(actions, text="Próximo pendente", command=self.open_next_pending).pack(side=tk.RIGHT)
+        ttk.Button(
+            actions,
+            text="Marcar revisado",
+            command=lambda: self.mark_selected("done"),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Button(
+            actions,
+            text="Pular",
+            command=lambda: self.mark_selected("skipped"),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            actions,
+            text="Reabrir",
+            command=lambda: self.mark_selected("pending"),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Button(
+            actions,
+            text="Próximo pendente",
+            command=self.open_next_pending,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.RIGHT)
 
     # ------------------------------------------------------------------ tabela
 

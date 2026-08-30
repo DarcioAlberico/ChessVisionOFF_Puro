@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -59,6 +59,7 @@ __all__ = [
     "hit_test",
     "mark_confirmed",
     "mark_saved",
+    "saved_on_page",
     "traco_da_caixa",
 ]
 
@@ -294,6 +295,30 @@ def mark_saved(boxes: Sequence[DiagramBox], saved: Collection[int]) -> tuple[Dia
     if not saved:
         return tuple(boxes)
     return tuple(replace(box, saved=box.index in saved) for box in boxes)
+
+
+def saved_on_page(
+    por_pagina: Mapping[int, Collection[int]], livro: str, page_index: int, *, source_pdf: str
+) -> set[int]:
+    """Os diagramas já salvos de uma página, ou vazio se a pergunta for de outro livro (S-451).
+
+    A mesma pergunta que `mark_saved` responde caixa a caixa, respondida para a página inteira --
+    e é de propósito o **mesmo** índice, aquele que `labels.saved_diagrams_by_page` monta e
+    `labels.note_saved_diagram` mantém. Quem usa a resposta é o "Salvar todos", para perguntar
+    antes de gravar a segunda cópia da página: ela tem de concordar com a cor que o usuário está
+    vendo, e duas contas separadas para a mesma verdade só teriam como divergir.
+
+    **Mora aqui, e não em `labels.py` com as outras duas.** A regra é de interface, e
+    `field_eval.measured_modules` alcança `labels.py`: uma função que a medição nunca chama
+    invalidaria ali os quatro relatórios de campo (S-219) e cobraria uma remedição por nada. O
+    fecho da medição não entra em `ui/`, e é essa fronteira que decide.
+
+    Livro diferente devolve vazio em vez de responder pelo que está aberto -- o editor pode estar
+    mostrando o resultado de um PDF que a janela já fechou.
+    """
+    if not str(livro).strip() or str(livro).strip() != str(source_pdf).strip():
+        return set()
+    return set(por_pagina.get(int(page_index), ()))
 
 
 def mark_confirmed(boxes: Sequence[DiagramBox], confirmed: Collection[int]) -> tuple[DiagramBox, ...]:

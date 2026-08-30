@@ -25,7 +25,7 @@ from typing import Any
 
 from chess_diagram_ocr.training import TrainingRun, train_model
 
-from . import texto
+from . import espaco, texto
 from .busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
@@ -188,14 +188,14 @@ class TrainingController:
         # inteira no `open_dialog` seguinte.
         dlg.bind("<Escape>", lambda _evento: dlg.withdraw())
 
-        wrap = ttk.Frame(dlg, padding=12)
+        wrap = ttk.Frame(dlg, padding=espaco.moldura())
         wrap.pack(fill=tk.BOTH, expand=True)
         ttk.Label(wrap, text="Status do treino").pack(anchor="w")
-        texto.acompanhar(ttk.Label(wrap, textvariable=self.status_var)).pack(anchor="w", pady=(6, 0))
-        texto.acompanhar(ttk.Label(wrap, textvariable=self.metrics_var)).pack(anchor="w", pady=(4, 0))
+        texto.acompanhar(ttk.Label(wrap, textvariable=self.status_var)).pack(anchor="w", pady=(espaco.linha(), 0))
+        texto.acompanhar(ttk.Label(wrap, textvariable=self.metrics_var)).pack(anchor="w", pady=(espaco.linha(), 0))
 
         self._progress = ttk.Progressbar(wrap, mode="indeterminate")
-        self._progress.pack(fill=tk.X, pady=(10, 0))
+        self._progress.pack(fill=tk.X, pady=(espaco.folga(), 0))
         self._progress.start(10)
         self._dialog = dlg
 

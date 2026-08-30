@@ -27,6 +27,7 @@ import numpy as np
 from chess_diagram_ocr.settings import LocalReaderSettings
 from chess_diagram_ocr.tsoj_reader import TsojUnavailableError, build_local_provider
 
+from . import estilos
 from .tooltip import Tooltip
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ class SecondOpinionButton:
 
         self._running = False
 
-        self.button = ttk.Button(parent, text="2ª opinião", command=self.read)
+        self.button = ttk.Button(parent, text="2ª opinião", command=self.read, style=estilos.estilo_de_botao(estilos.NEUTRO))
         self.tooltip = Tooltip(self.button)
         self.refresh()
 

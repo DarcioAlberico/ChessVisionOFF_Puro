@@ -11,9 +11,12 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import read_image
+from chess_diagram_ocr.text import coleta
 from chess_diagram_ocr.text import procedencia as _procedencia
 from chess_diagram_ocr.text.coleta import (
     LADO,
@@ -167,6 +170,70 @@ class ColetaTests(unittest.TestCase):
             destino = Path(raiz) / "q"
             self.assertEqual(0, coletar([], destino).gravados)
             self.assertFalse(destino.exists())
+
+
+class DestinoForaDaCodePageTests(unittest.TestCase):
+    """A gravação da coleta, e a promessa de que o relatório não pode mentir (S-431).
+
+    Era `cv2.imwrite`, que devolve `False` sem levantar. A linha seguinte somava
+    `len(guardados)` sem olhar o retorno: o `Relatorio` dizia "5 gravado(s)" e o disco tinha zero
+    PNG. O destino padrão é `PROJECT_ROOT / "revisao_ocr"`, então bastava a pasta do projeto --
+    ou a do bundle que o usuário descompacta -- morar sob um nome com acento.
+
+    **Os dois primeiros testes não dependem da máquina, e é de propósito.** Esta bancada roda com
+    a code page ANSI em UTF-8 (`GetACP() == 65001`), e ali o `cv2.imwrite` grava cirílico sem
+    reclamar: um teste que só afirmasse "gravados == PNGs no disco" passaria verde **antes e
+    depois** da correção, que é a guarda vácua da S-296 outra vez. Então a afirmação é sobre o
+    mecanismo -- quem grava, e o que acontece quando a gravação falha.
+
+    O terceiro é o de ponta a ponta, e é o único que depende da code page: numa instalação de
+    fábrica (ANSI em `cp1252`) ele é o teste de verdade, e aqui ele é de graça. Ninguém deve ler
+    o verde dele como prova.
+    """
+
+    CIRILICO = "_Болеславский"
+    """O livro russo do acervo, o mesmo que descobriu esta família de defeito na S-111. O acento
+    mora na folha, então o teste não depende de onde o checkout está."""
+
+    def test_a_gravacao_passa_pelo_atomic_io(self) -> None:
+        """Uma vez por recorte guardado, e nenhuma por `cv2`."""
+        with TemporaryDirectory() as raiz:
+            destino = Path(raiz) / "revisao_ocr"
+            with mock.patch.object(coleta, "write_image", wraps=coleta.write_image) as gravou:
+                relatorio = coletar([recorte(n) for n in range(5)], destino)
+        self.assertEqual(5, relatorio.gravados)
+        self.assertEqual(5, gravou.call_count, "a coleta gravou por fora do atomic_io")
+
+    def test_uma_gravacao_que_falha_nao_vira_relatorio(self) -> None:
+        """O `write_image` levanta, e `coletar` propaga em vez de contar o que não foi ao disco.
+
+        É a afirmação inteira do item: com `cv2.imwrite` a falha era um `False` descartado, e a
+        função seguia somando. Aqui ela para -- e uma coleta que para vale mais que um relatório
+        que mente.
+        """
+        with TemporaryDirectory() as raiz:
+            destino = Path(raiz) / "revisao_ocr"
+            with mock.patch.object(coleta, "write_image", side_effect=OSError("disco cheio")):
+                with self.assertRaises(OSError):
+                    coletar([recorte(n) for n in range(5)], destino)
+
+    def test_o_recorte_volta_do_disco_com_o_conteudo_que_entrou(self) -> None:
+        """Gravar o arquivo é menos que gravar a imagem: o round-trip é quem prova as duas.
+
+        Este é o único dos três que depende da code page da máquina -- ver o docstring da classe.
+        """
+        entrou = recorte(7)
+        with TemporaryDirectory() as raiz:
+            destino = Path(raiz) / self.CIRILICO / "revisao_ocr"
+            relatorio = coletar([entrou], destino)
+            no_disco = sorted(destino.rglob("*.png"))
+            self.assertEqual(relatorio.gravados, len(no_disco), "o relatório contou o que não foi ao disco")
+            (gravado,) = no_disco
+            voltou = read_image(gravado)
+        self.assertIsNotNone(voltou, "o PNG não voltou do disco")
+        assert voltou is not None
+        esperado = np.asarray(entrou.imagem, np.uint8).reshape(LADO, LADO)
+        np.testing.assert_array_equal(esperado, voltou[:, :, 0])
 
 
 class PromocaoTests(unittest.TestCase):

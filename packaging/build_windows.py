@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -109,6 +110,102 @@ def _commit_atual() -> str:
     return resultado.stdout.strip() or "desconhecido"
 
 
+def _extras_declarados() -> dict[str, list[str]]:
+    """Cada extra de `[project.optional-dependencies]` e os nomes de distribuicao que ele pede.
+
+    Leitor de vinte linhas em vez de `tomllib`, pelo mesmo motivo de `tests/test_docs.py` e de
+    `text_status._extras_do_pyproject`: `tomllib` e 3.11+ e a faixa de `requires-python` comeca
+    no 3.10 (S-436). E o terceiro parser de TOML escrito a mao neste repositorio -- quando o
+    piso da faixa subir, os tres viram um `tomllib` so.
+    """
+    texto = (PROJETO / "pyproject.toml").read_text(encoding="utf-8")
+    extras: dict[str, list[str]] = {}
+    dentro = False
+    atual: str | None = None
+    for linha in texto.splitlines():
+        despida = linha.strip()
+        if despida.startswith("[") and despida.endswith("]") and "=" not in despida:
+            dentro = despida == "[project.optional-dependencies]"
+            atual = None
+            continue
+        if not dentro or despida.startswith("#"):
+            continue
+        abertura = re.match(r"([A-Za-z0-9_-]+)\s*=\s*\[", despida)
+        if abertura:
+            atual = abertura.group(1)
+            extras[atual] = []
+            continue
+        if atual is None:
+            continue
+        if despida.startswith("]"):
+            atual = None
+            continue
+        pedido = re.match(r'"([A-Za-z0-9._-]+)', despida)
+        if pedido:
+            extras[atual].append(pedido.group(1))
+    return extras
+
+
+def extras_instalados() -> list[str]:
+    """Quais extras estao de fato no ambiente que esta gerando este bundle.
+
+    **O numero do bundle e funcao da venv, e nao so do commit** -- e era isso que faltava
+    registrar (S-438). O PyInstaller coleta o que esta *instalado*, nao o que o `pyproject.toml`
+    declara, e o proprio README conta essa historia: `pythonnet` e `clr_loader` continuaram
+    dentro do bundle muito depois de a S-69 remover o codigo que os usava. Consequencia direta:
+    o mesmo commit gera 684 MB numa venv com `onnx`+`ocr` e 570 MB numa com so `dev`+
+    `packaging`. Sem este campo, os dois numeros parecem uma regressao de 114 MB em vez de duas
+    configuracoes.
+    """
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    presentes: list[str] = []
+    for extra, pedidos in sorted(_extras_declarados().items()):
+        if not pedidos:
+            continue
+        for nome in pedidos:
+            try:
+                distribution(nome)
+            except PackageNotFoundError:
+                break
+        else:
+            presentes.append(extra)
+    return presentes
+
+
+def conferir_o_readme(mb: int, arquivos: int, extras: list[str]) -> None:
+    """Avisa, com o conserto na mao, quando o build acabou de envelhecer o README.
+
+    **O laco nao fechava.** O build sobrescreve `docs/metrics/bundle.json`, e
+    `tests/test_docs.py` compara esse arquivo com o numero que o README publica -- entao rodar o
+    comando que o proprio README manda rodar deixava a arvore suja e a suite vermelha, com um
+    `AssertionError: (570, 4039) != (684, 4275)` que nao diz o que fazer. Quem mede e quem sabe
+    o numero novo; dizer a frase aqui custa dez linhas.
+    """
+    readme = PROJETO / "README.md"
+    try:
+        texto = readme.read_text(encoding="utf-8")
+    except OSError:  # pragma: no cover - README ilegivel nao e problema do build
+        return
+    achado = re.search(r"\*\*([\d.]+) MB, ([\d.]+) arquivos\*\*", texto)
+    if achado is None:  # pragma: no cover - o teste de docs cobre a ausencia
+        return
+    citado_mb = int(achado.group(1).replace(".", ""))
+    citado_arquivos = int(achado.group(2).replace(".", ""))
+    if (citado_mb, citado_arquivos) == (mb, arquivos):
+        return
+    logger.warning(
+        "O README publica %d MB, %d arquivos e este build deu %d MB, %d arquivos. "
+        "Atualize a frase de README.md e diga os extras (este bundle saiu com: %s). "
+        "Sem isso, `tests/test_docs.py` reprova -- e com razao.",
+        citado_mb,
+        citado_arquivos,
+        mb,
+        arquivos,
+        ", ".join(extras) or "nenhum",
+    )
+
+
 def gravar_metricas() -> float:
     """Mede a `dist/` e grava `docs/metrics/bundle.json`. Devolve o tamanho em MB.
 
@@ -121,12 +218,20 @@ def gravar_metricas() -> float:
     arquivos do Windows mostra, e a mesma de que saiu o "696 MB" que o README publica desde a
     S-55. Trocá-la por `10**6` faria o mesmo bundle passar a medir 730 e pareceria que ele
     engordou. O campo se chama `mb` porque é assim que o README o chama; a unidade está aqui.
+
+    **`extras` vai junto desde a S-438, e é o que faltava para o número ser comparável.** O
+    commit dizia de que *código* o bundle saiu, e não de que *ambiente* -- e o ambiente é metade
+    da resposta, porque o PyInstaller coleta o que está instalado. Dois builds do mesmo commit
+    mediram 684 MB e 570 MB, e a diferença inteira eram os extras `onnx` e `ocr` presentes numa
+    venv e ausentes na outra. Sem o campo, isso se lê como 114 MB de regressão.
     """
     arquivos = [f for f in SAIDA.rglob("*") if f.is_file()]
     mb = round(tamanho_em_mb(SAIDA))
+    extras = extras_instalados()
     metricas: dict[str, object] = {
         "mb": mb,
         "arquivos": len(arquivos),
+        "extras": extras,
         "data": date.today().isoformat(),
         "commit": _commit_atual(),
     }
@@ -134,6 +239,7 @@ def gravar_metricas() -> float:
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(json.dumps(metricas, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     logger.info("Métricas do bundle em %s: %s", destino.relative_to(PROJETO), metricas)
+    conferir_o_readme(mb, len(arquivos), extras)
     return float(mb)
 
 

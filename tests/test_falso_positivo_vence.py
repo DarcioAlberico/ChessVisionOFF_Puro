@@ -35,6 +35,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.board_detection import (
     ASPECT_MAX,
     MIN_CHECKER_CONTRAST,
@@ -146,7 +147,7 @@ class MolduraNaoLevaODiagramaJuntoTests(unittest.TestCase):
     """O mesmo de `test_fixtures.py`, e pelo mesmo motivo."""
 
     def _pagina(self) -> np.ndarray:
-        imagem = cv2.imread(str(FIXTURES / f"{self.PAGINA}.png"))
+        imagem = read_image(FIXTURES / f"{self.PAGINA}.png")
         if imagem is None:  # pragma: no cover - só se o fixture sumir do repositório
             raise AssertionError(f"Fixture ausente: {self.PAGINA}.png. Refaça com tests/fixtures/gerar.py")
         return cv2.cvtColor(imagem, cv2.COLOR_BGR2RGB)
@@ -207,7 +208,7 @@ class NenhumRecorteSaiSemXadrezTests(unittest.TestCase):
     def test_todo_recorte_devolvido_tem_contraste_de_casa(self) -> None:
         for caminho in sorted(FIXTURES.glob("*.png")):
             with self.subTest(pagina=caminho.stem):
-                imagem = cv2.imread(str(caminho))
+                imagem = read_image(caminho)
                 self.assertIsNotNone(imagem)
                 pagina = cv2.cvtColor(imagem, cv2.COLOR_BGR2RGB)
                 for recorte, _quad in detect_boards(pagina, max_boards=12):

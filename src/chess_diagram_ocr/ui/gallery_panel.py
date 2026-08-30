@@ -49,7 +49,7 @@ from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
 from chess_diagram_ocr.logging_setup import onde_esta_o_rastro
 from chess_diagram_ocr.service import OcrService
 
-from . import database_choice, scan_scope, shortcuts, strings, texto, theme, tokens
+from . import database_choice, espaco, estilos, scan_scope, shortcuts, strings, texto, theme, tokens
 from .busy import BusyRegistry, BusyToken
 from .gallery_model import HEADER_FIELDS, GalleryModel, describe_origin
 from .games_dialog import GamesDialog
@@ -183,7 +183,7 @@ class GalleryPanel(ttk.Frame):
         ask_scan_scope: Callable[[Path | None], scan_scope.ScanScope | None] | None = None,
         ask_databases: Callable[[Sequence[Path]], Sequence[Path] | None] | None = None,
     ) -> None:
-        super().__init__(parent, padding=6)
+        super().__init__(parent, padding=espaco.linha())
         self._service = service
         self._pdf_path = pdf_path
         self._model_path = model_path
@@ -262,15 +262,21 @@ class GalleryPanel(ttk.Frame):
     def _build(self) -> None:
         topo = ttk.Frame(self)
         topo.pack(fill=tk.X)
-        self.btn_scan = ttk.Button(topo, text=strings.VARRER_LIVRO, command=self.scan)
+        self.btn_scan = ttk.Button(topo, text=strings.VARRER_LIVRO, command=self.scan, style=estilos.estilo_de_botao(estilos.NEUTRO))
         self.btn_scan.pack(side=tk.LEFT)
         Tooltip(self.btn_scan).set_text(
             "Pergunta antes quais livros varrer: o que está aberto, outros escolhidos em disco, "
             f"ou todos os .pdf de {DEFAULT_PDF_DIR.name}. Com mais de um livro, os que já têm "
             "índice completo são pulados."
         )
-        self.btn_cancel = ttk.Button(topo, text="Cancelar", command=self.cancel_scan, state=tk.DISABLED)
-        self.btn_cancel.pack(side=tk.LEFT, padx=6)
+        self.btn_cancel = ttk.Button(
+            topo,
+            text="Cancelar",
+            command=self.cancel_scan,
+            state=tk.DISABLED,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        self.btn_cancel.pack(side=tk.LEFT, padx=espaco.linha())
         Tooltip(
             self.btn_cancel,
             "Só fica ativo enquanto uma varredura ou busca está rodando.\n"
@@ -279,15 +285,25 @@ class GalleryPanel(ttk.Frame):
         )
         # Os dois caminhos, lado a lado e com o criterio no proprio rotulo: "na base" nao
         # distinguia mais nada depois que a busca por posicao virou botao tambem (S-92).
-        self.btn_games = ttk.Button(topo, text="Buscar por nome", command=self.search_database)
-        self.btn_games.pack(side=tk.LEFT, padx=6)
+        self.btn_games = ttk.Button(
+            topo,
+            text="Buscar por nome",
+            command=self.search_database,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        self.btn_games.pack(side=tk.LEFT, padx=espaco.linha())
         Tooltip(self.btn_games).set_text(
             "Procura na base de partidas os diagramas cuja legenda traz os jogadores, e "
             "preenche lance, vez e headers -- só onde estiver vazio. Uma passada pela base, "
             "e nada sai da máquina. Pergunta antes em quais .pgn procurar."
         )
-        self.btn_positions = ttk.Button(topo, text="Buscar pela posição", command=self.search_by_position)
-        self.btn_positions.pack(side=tk.LEFT, padx=6)
+        self.btn_positions = ttk.Button(
+            topo,
+            text="Buscar pela posição",
+            command=self.search_by_position,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        self.btn_positions.pack(side=tk.LEFT, padx=espaco.linha())
         Tooltip(self.btn_positions).set_text(
             "Procura pelas 64 casas de cada diagrama, e não pela legenda: alcança todo diagrama, "
             "inclusive os sem nome nenhum impresso. Reproduz os lances da base inteira -- cerca "
@@ -295,10 +311,10 @@ class GalleryPanel(ttk.Frame):
             "guardada. Dá para cancelar. Pergunta antes em quais .pgn procurar -- e cada "
             "conjunto de bases guarda as respostas dele em separado."
         )
-        ttk.Label(topo, textvariable=self.scan_var).pack(side=tk.LEFT, padx=10)
+        ttk.Label(topo, textvariable=self.scan_var).pack(side=tk.LEFT, padx=espaco.folga())
 
         corpo = ttk.Frame(self)
-        corpo.pack(fill=tk.BOTH, expand=True, pady=6)
+        corpo.pack(fill=tk.BOTH, expand=True, pady=espaco.linha())
 
         # A lateral primeiro: ela reserva a largura que pede, e o centro fica com o resto (S-154).
         self._build_side_frame(corpo)
@@ -318,14 +334,36 @@ class GalleryPanel(ttk.Frame):
         )
         theme.ao_repintar(lambda: self.canvas.configure(bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO)))
         self.canvas.pack()
-        ttk.Label(centro, textvariable=self.position_var).pack(pady=(6, 0))
+        ttk.Label(centro, textvariable=self.position_var).pack(pady=(espaco.linha(), 0))
 
         navegacao = ttk.Frame(centro)
-        navegacao.pack(pady=4)
-        ttk.Button(navegacao, text=strings.PRIMEIRO, width=4, command=lambda: self._go(0, absolute=True)).pack(side=tk.LEFT)
-        ttk.Button(navegacao, text=f"{strings.ANTERIOR} anterior", command=lambda: self._go(-1)).pack(side=tk.LEFT, padx=4)
-        ttk.Button(navegacao, text=f"próximo {strings.PROXIMO}", command=lambda: self._go(1)).pack(side=tk.LEFT, padx=4)
-        ttk.Button(navegacao, text=strings.ULTIMO, width=4, command=lambda: self._go(-1, absolute=True)).pack(side=tk.LEFT)
+        navegacao.pack(pady=espaco.linha())
+        ttk.Button(
+            navegacao,
+            text=strings.PRIMEIRO,
+            width=4,
+            command=lambda: self._go(0, absolute=True),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            navegacao,
+            text=f"{strings.ANTERIOR} anterior",
+            command=lambda: self._go(-1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Button(
+            navegacao,
+            text=f"próximo {strings.PROXIMO}",
+            command=lambda: self._go(1),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT, padx=espaco.linha())
+        ttk.Button(
+            navegacao,
+            text=strings.ULTIMO,
+            width=4,
+            command=lambda: self._go(-1, absolute=True),
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(side=tk.LEFT)
 
         self._build_caption(centro)
         self._build_footer()
@@ -346,7 +384,7 @@ class GalleryPanel(ttk.Frame):
         quem quer a legenda toda de uma vez.
         """
         moldura = ttk.Frame(parent)
-        moldura.pack(fill=tk.BOTH, expand=True, pady=4)
+        moldura.pack(fill=tk.BOTH, expand=True, pady=espaco.linha())
 
         self.caption_text = tk.Text(
             moldura,
@@ -367,7 +405,12 @@ class GalleryPanel(ttk.Frame):
         self.caption_text.configure(yscrollcommand=barra.set)
         self.caption_text.bind("<Key>", self._reject_caption_edit)
 
-        ttk.Button(parent, text="Copiar legenda", command=self.copy_caption).pack(pady=(0, 4))
+        ttk.Button(
+            parent,
+            text="Copiar legenda",
+            command=self.copy_caption,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).pack(pady=(0, espaco.linha()))
 
     def _caption_colors(self) -> tuple[str, str]:
         """Fundo e frente vindos do tema, e não hexadecimal fixo -- a mesma razão da S-65.
@@ -398,35 +441,56 @@ class GalleryPanel(ttk.Frame):
         return "break"
 
     def _build_side_frame(self, parent: tk.Misc) -> None:
-        lateral = ttk.LabelFrame(parent, text=strings.CABECALHOS_DO_PGN, padding=8)
+        lateral = ttk.LabelFrame(parent, text=strings.CABECALHOS_DO_PGN, padding=espaco.folga())
         # `side=RIGHT`, e empacotada **antes** do centro (S-154). O `pack` reparte na ordem em
         # que recebe, e o `expand=True` do centro tomava tudo: a lateral -- que são os controles
         # que gravam a procedência de uma partida, o produto da S-83 à S-94 inteira -- ficava
         # com o que sobrasse, e não sobrava. Reservar a largura dela primeiro é o item.
-        lateral.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
+        lateral.pack(side=tk.RIGHT, fill=tk.Y, padx=(espaco.folga(), 0))
         self.lateral = lateral
 
         for linha, nome in enumerate(HEADER_FIELDS):
-            ttk.Label(lateral, text=nome).grid(row=linha, column=0, sticky="w", pady=1)
+            ttk.Label(lateral, text=nome).grid(row=linha, column=0, sticky="w", pady=espaco.minima())
             campo = ttk.Entry(lateral, textvariable=self.header_vars[nome], width=26)
-            campo.grid(row=linha, column=1, sticky="we", pady=1)
+            campo.grid(row=linha, column=1, sticky="we", pady=espaco.minima())
             # `partial` e nao `lambda` com argumento-padrao: o corpo do laco reusa `nome`, e
             # um `lambda` que o capturasse por fechamento gravaria todos os campos no ultimo.
             campo.bind("<FocusOut>", partial(self._on_header_event, nome))
             campo.bind("<Return>", partial(self._on_header_event, nome))
 
         livre = len(HEADER_FIELDS)
-        ttk.Separator(lateral, orient=tk.HORIZONTAL).grid(row=livre, column=0, columnspan=2, sticky="we", pady=6)
+        ttk.Separator(
+            lateral,
+            orient=tk.HORIZONTAL,
+        ).grid(row=livre, column=0, columnspan=2, sticky="we", pady=espaco.linha())
         ttk.Label(lateral, text="outro").grid(row=livre + 1, column=0, sticky="w")
         ttk.Entry(lateral, textvariable=self.free_name_var, width=26).grid(row=livre + 1, column=1, sticky="we")
-        ttk.Entry(lateral, textvariable=self.free_value_var, width=26).grid(row=livre + 2, column=1, sticky="we", pady=1)
-        ttk.Button(lateral, text="Gravar", command=self._commit_free_header).grid(row=livre + 3, column=1, sticky="e")
+        ttk.Entry(
+            lateral,
+            textvariable=self.free_value_var,
+            width=26,
+        ).grid(row=livre + 2, column=1, sticky="we", pady=espaco.minima())
+        ttk.Button(
+            lateral,
+            text="Gravar",
+            command=self._commit_free_header,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        ).grid(row=livre + 3, column=1, sticky="e")
 
         # Junto dos campos que ele limpa, e nao com os dois de baixo: aqueles agem sobre o
         # livro inteiro, e este so sobre este diagrama. A distancia na tela e a diferenca de
         # alcance -- foi confundir as duas que espalhou quatro campos por 1.405 diagramas (S-76).
-        self.btn_clear = ttk.Button(lateral, text="Limpar os headers", command=self.clear_headers)
-        self.btn_clear.grid(row=livre + 4, column=0, columnspan=2, sticky="we", pady=(8, 0))
+        # **O destrutivo que `ui/estilos.py:38` cita pelo nome** e que este painel nunca
+        # consultou (S-445). Apaga os quatro campos deste diagrama de uma vez, sem perguntar
+        # e sem desfazer -- e o comentario tres linhas acima e o registro do que custa
+        # confundi-lo com o vizinho: 1.405 diagramas (S-76).
+        self.btn_clear = ttk.Button(
+            lateral,
+            text="Limpar os headers",
+            command=self.clear_headers,
+            style=estilos.estilo_de_botao(estilos.DESTRUTIVO),
+        )
+        self.btn_clear.grid(row=livre + 4, column=0, columnspan=2, sticky="we", pady=(espaco.folga(), 0))
         self.btn_clear.configure(state=tk.DISABLED)
         Tooltip(self.btn_clear).set_text(
             "Apaga os headers DESTE diagrama, todos de uma vez -- para quando a base preencheu "
@@ -440,13 +504,18 @@ class GalleryPanel(ttk.Frame):
         # ao chegar num diagrama, que pode ser dias depois da busca.
         texto.acompanhar(
             theme.pintar(ttk.Label(lateral, textvariable=self.origin_var), "foreground", tokens.PRONTO_TEXTO)
-        ).grid(row=livre + 5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ).grid(row=livre + 5, column=0, columnspan=2, sticky="w", pady=(espaco.folga(), 0))
 
         # A lista de partidas fica **junto da procedencia**: as duas respondem "de onde veio
         # isto?", e a lista e o unico caminho para os 350 diagramas do acervo em que a base
         # sabe a resposta e nenhuma regra sabe qual das candidatas e (S-86).
-        self.btn_candidates = ttk.Button(lateral, text="Partidas da base", command=self.open_games_dialog)
-        self.btn_candidates.grid(row=livre + 6, column=0, columnspan=2, sticky="we", pady=(8, 0))
+        self.btn_candidates = ttk.Button(
+            lateral,
+            text="Partidas da base",
+            command=self.open_games_dialog,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        self.btn_candidates.grid(row=livre + 6, column=0, columnspan=2, sticky="we", pady=(espaco.folga(), 0))
         self.btn_candidates.configure(state=tk.DISABLED)
         Tooltip(self.btn_candidates).set_text(
             "As partidas da base que contêm esta posição. Escolher uma preenche lance, vez e "
@@ -456,16 +525,26 @@ class GalleryPanel(ttk.Frame):
 
         # O rotulo diz a **direcao** da copia. "Aplicar a todos" foi lido como "salvar os
         # headers deste diagrama" -- e o clique espalhou quatro campos por 1.405 diagramas.
-        aplicar = ttk.Button(lateral, text="Copiar headers para todos", command=self.apply_to_all)
-        aplicar.grid(row=livre + 7, column=0, columnspan=2, sticky="we", pady=(10, 0))
+        aplicar = ttk.Button(
+            lateral,
+            text="Copiar headers para todos",
+            command=self.apply_to_all,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        aplicar.grid(row=livre + 7, column=0, columnspan=2, sticky="we", pady=(espaco.folga(), 0))
         Tooltip(aplicar).set_text(
             "Copia os headers deste diagrama para TODOS os outros do livro, sobrescrevendo o "
             "que eles tiverem nesses campos. Os campos já se salvam sozinhos ao sair deles -- "
             "este botão não é para salvar, é para propagar."
         )
 
-        self.btn_undo = ttk.Button(lateral, text="Desfazer a cópia", command=self.undo_apply_to_all)
-        self.btn_undo.grid(row=livre + 8, column=0, columnspan=2, sticky="we", pady=(4, 0))
+        self.btn_undo = ttk.Button(
+            lateral,
+            text="Desfazer a cópia",
+            command=self.undo_apply_to_all,
+            style=estilos.estilo_de_botao(estilos.NEUTRO),
+        )
+        self.btn_undo.grid(row=livre + 8, column=0, columnspan=2, sticky="we", pady=(espaco.linha(), 0))
         self.btn_undo.configure(state=tk.DISABLED)
         Tooltip(self.btn_undo).set_text(
             "Remove dos outros diagramas os valores que a última cópia espalhou. "
@@ -474,12 +553,12 @@ class GalleryPanel(ttk.Frame):
         )
 
     def _build_footer(self) -> None:
-        rodape = ttk.LabelFrame(self, text="Este diagrama", padding=8)
+        rodape = ttk.LabelFrame(self, text="Este diagrama", padding=espaco.folga())
         rodape.pack(fill=tk.X)
 
         ttk.Label(rodape, text="Lance").pack(side=tk.LEFT)
         lance = ttk.Entry(rodape, textvariable=self.move_var, width=6)
-        lance.pack(side=tk.LEFT, padx=(4, 12))
+        lance.pack(side=tk.LEFT, padx=(espaco.linha(), espaco.moldura()))
         lance.bind("<FocusOut>", lambda _evento: self._commit_move())
         lance.bind("<Return>", lambda _evento: self._commit_move())
 
@@ -487,15 +566,15 @@ class GalleryPanel(ttk.Frame):
         for rotulo, valor in (("brancas", "w"), ("pretas", "b")):
             ttk.Radiobutton(
                 rodape, text=rotulo, value=valor, variable=self.side_var, command=self._commit_side
-            ).pack(side=tk.LEFT, padx=2)
+            ).pack(side=tk.LEFT, padx=espaco.minima())
 
-        ttk.Label(rodape, text="Lichess").pack(side=tk.LEFT, padx=(12, 0))
+        ttk.Label(rodape, text="Lichess").pack(side=tk.LEFT, padx=(espaco.moldura(), 0))
         for rotulo, valor in LINK_CHOICES:
             ttk.Radiobutton(
                 rodape, text=rotulo, value=valor, variable=self.link_var, command=self._commit_link
-            ).pack(side=tk.LEFT, padx=2)
+            ).pack(side=tk.LEFT, padx=espaco.minima())
 
-        ttk.Button(rodape, text="Copiar link", command=self.copy_link).pack(side=tk.RIGHT)
+        ttk.Button(rodape, text="Copiar link", command=self.copy_link, style=estilos.estilo_de_botao(estilos.NEUTRO)).pack(side=tk.RIGHT)
 
     # ------------------------------------------------------------------------ varredura
 

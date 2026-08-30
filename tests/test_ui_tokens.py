@@ -321,17 +321,20 @@ class CoordenadaNoCanvasTests(unittest.TestCase):
         finally:
             canvas.destroy()
 
-    def test_um_canvas_claro_recebe_coordenada_escura(self) -> None:
-        clara = RESERVA[tokens.SUPERFICIE_DICA]
-        escolhida = self._cor_no_fundo(clara)
-        self.assertGreaterEqual(razao_de_contraste(escolhida, clara), AA_TEXTO)
-
     def test_a_esteira_do_tabuleiro_recebe_coordenada_clara(self) -> None:
+        """A esteira é a superfície em que a coordenada é de fato desenhada (S-449)."""
         escuro = RESERVA[tokens.SUPERFICIE_TABULEIRO]
         escolhida = self._cor_no_fundo(escuro)
         self.assertGreaterEqual(razao_de_contraste(escolhida, escuro), AA_TEXTO)
 
-    def test_um_fundo_nomeado_pelo_sistema_tambem_resolve(self) -> None:
-        """`SystemButtonFace` não é hexadecimal: sem a conversão, a função levantaria."""
-        escolhida = self._cor_no_fundo("white")
-        self.assertGreaterEqual(razao_de_contraste(escolhida, "#ffffff"), AA_TEXTO)
+    def test_a_escolha_da_letra_serve_a_qualquer_superficie(self) -> None:
+        """**Deixou de passar pelo canvas na S-449**, e passou a perguntar direto a quem decide.
+
+        `_cor_de_coordenada` resolvia contra `canvas.cget("background")` enquanto o fundo do canvas
+        era a esteira. Hoje o fundo é `VAZIO_DE_CANVAS` e a esteira é um retângulo, então a função
+        resolve contra o token -- e o que sobrou de geral é isto, que é o contrato de
+        `sobre_superficie` e vale para superfície nenhuma em particular.
+        """
+        for fundo in (RESERVA[tokens.SUPERFICIE_DICA], RESERVA[tokens.SUPERFICIE_TABULEIRO], "#ffffff"):
+            with self.subTest(fundo=fundo):
+                self.assertGreaterEqual(razao_de_contraste(sobre_superficie(fundo), fundo), AA_TEXTO)

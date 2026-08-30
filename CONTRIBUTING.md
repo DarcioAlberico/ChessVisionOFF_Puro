@@ -6,7 +6,7 @@
 uv sync --extra dev --extra onnx --extra ocr
 ```
 
-Isso instala o pacote em modo editável e traz `pytest`, `ruff` e `mypy`. Requer Python 3.10.
+Isso instala o pacote em modo editável e traz `pytest`, `ruff` e `mypy`. Requer Python 3.10 a 3.13 (a CI prova as duas pontas).
 Os dois últimos extras são opcionais: sem `onnx` os testes da S-30 pulam, sem `ocr` pulam os
 de contrato de motor da S-42 (`InstalledEngineContractTests`). Atenção: `uv sync` com um
 subconjunto de extras **desinstala** o que os outros trouxeram, então repita os três.

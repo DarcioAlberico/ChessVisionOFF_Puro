@@ -5,10 +5,10 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pandas as pd
 
+from chess_diagram_ocr.atomic_io import write_image
 from chess_diagram_ocr.dataset_browser import (
     class_distribution,
     delete_rows,
@@ -64,7 +64,7 @@ class DatasetFixture:
 
         for filename, *_ in rows:
             if filename != "sem_imagem.png":
-                cv2.imwrite(str(self.samples_dir / filename), np.zeros((16, 16, 3), dtype=np.uint8))
+                write_image(self.samples_dir / filename, np.zeros((16, 16, 3), dtype=np.uint8))
 
         pd.DataFrame(
             {"filename": ["legal.png", "lado.png", "ilegal.png"], "split": ["train", "val", "test"]}

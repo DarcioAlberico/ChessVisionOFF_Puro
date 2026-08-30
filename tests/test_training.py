@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from chess_diagram_ocr.atomic_io import write_image
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.dataset import BoardGroupedSampler, DatasetEntry, board_groups
 from chess_diagram_ocr.labels import DatasetEntry as LabelEntry
@@ -254,7 +255,6 @@ class SplitAssignmentTests(unittest.TestCase):
     """
 
     def _dataset(self, root: Path, nomes: list[str], *, registrados: dict[str, str] | None = None) -> tuple[Path, Path, Path]:
-        import cv2
         import numpy as np
 
         from chess_diagram_ocr.splits import save_splits
@@ -264,7 +264,7 @@ class SplitAssignmentTests(unittest.TestCase):
         rng = np.random.default_rng(0)
         linhas = ["filename,fen"]
         for nome in nomes:
-            cv2.imwrite(str(samples / nome), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+            write_image(samples / nome, rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
             linhas.append(f"{nome},{LEGAL}")
 
         csv_path = root / "labels.csv"
@@ -363,7 +363,6 @@ class SplitAssignmentTests(unittest.TestCase):
         """`duplicate_groups_touching` existe pelo custo: o completo lê ~6 GB a cada treino."""
         import tempfile
 
-        import cv2
         import numpy as np
 
         from chess_diagram_ocr.atomic_io import read_image
@@ -374,7 +373,7 @@ class SplitAssignmentTests(unittest.TestCase):
             samples = Path(tmp)
             rng = np.random.default_rng(1)
             for nome in ("a.png", "b.png", "nova.png"):
-                cv2.imwrite(str(samples / nome), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+                write_image(samples / nome, rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
 
             lidas: list[str] = []
 
@@ -420,7 +419,6 @@ def _tiny_dataset(root: Path, boards: int = 6) -> tuple[Path, Path, Path]:
     Módulo, e não método, porque a S-47 trouxe um segundo grupo de testes que precisa dele
     -- o que exercita `Trainer` etapa a etapa.
     """
-    import cv2
     import numpy as np
 
     from chess_diagram_ocr.splits import save_splits
@@ -432,7 +430,7 @@ def _tiny_dataset(root: Path, boards: int = 6) -> tuple[Path, Path, Path]:
     rng = np.random.default_rng(0)
     for index in range(boards):
         name = f"b{index}.png"
-        cv2.imwrite(str(samples / name), rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+        write_image(samples / name, rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
         linhas.append(f"{name},{LEGAL}")
         splits[name] = "train" if index < boards - 2 else "val"
 

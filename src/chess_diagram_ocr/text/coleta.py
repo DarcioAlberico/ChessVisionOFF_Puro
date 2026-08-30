@@ -61,6 +61,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..atomic_io import write_image
 from ..config import PROJECT_ROOT
 from . import procedencia as _procedencia
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
@@ -208,9 +209,19 @@ def coletar(
     Quem filtra pelo piso de confiança é quem chama. Este módulo grava o que lhe derem: o piso é
     política da varredura (e a `documento.corte_de_revisar` já a declara num lugar só), e
     duplicá-la aqui daria dois cortes para a mesma decisão.
-    """
-    import cv2
 
+    **A gravação é `atomic_io.write_image`, e não `cv2.imwrite` (S-431).** Era `cv2.imwrite` até
+    aqui, e o defeito é exatamente o do item 3 de `text/classes.py`: em caminho que a code page
+    ANSI não representa o `imwrite` devolve `False` **sem levantar**, e a linha seguinte soma
+    `len(guardados)` sem olhar o retorno -- então o `Relatorio` saía dizendo "5 gravado(s)" com
+    zero PNG no disco. O destino padrão é `PROJECT_ROOT / "revisao_ocr"`, de modo que bastava a
+    pasta do projeto -- ou a do bundle que o usuário descompacta -- morar sob um nome com acento
+    para a coleta inteira se perder em silêncio.
+
+    O `write_image` levanta `OSError`, e é essa a troca: **uma coleta que para vale mais que um
+    relatório que mente**. Quem chamar daqui em diante tem de tratar `OSError` -- hoje não há
+    chamador de produção, e é por isso que a hora de mudar é esta.
+    """
     pasta = Path(destino)
     relatorio = Relatorio()
     reservatorios: dict[str, _Reservatorio] = {}
@@ -238,7 +249,7 @@ def coletar(
         guardados = reservatorio.itens
         relatorio.descartados_pelo_teto += reservatorio.recusados
         for recorte in guardados:
-            cv2.imwrite(str(alvo / recorte.nome()), np.asarray(recorte.imagem, np.uint8).reshape(LADO, LADO))
+            write_image(alvo / recorte.nome(), np.asarray(recorte.imagem, np.uint8).reshape(LADO, LADO))
         relatorio.por_pasta[chave] = len(guardados)
         relatorio.gravados += len(guardados)
 

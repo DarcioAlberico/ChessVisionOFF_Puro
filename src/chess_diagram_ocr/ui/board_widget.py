@@ -48,7 +48,7 @@ import numpy as np
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
 from ..fen_utils import square_name
-from . import board_edit, board_render, theme, tipografia, tokens
+from . import board_edit, board_render, espaco, theme, tipografia, tokens
 from .board_model import BoardChange, BoardMode, BoardModel, ChangeKind
 from .board_render import (
     LIGHT_SQUARE,
@@ -173,6 +173,8 @@ class InteractiveBoard(ttk.Frame):
         self._tooltip: tk.Toplevel | None = None
         self._tooltip_after: str | None = None
         self._tooltip_square: int | None = None
+        self._vazio: str | None = None
+        """A frase do estado "nenhum diagrama aberto", ou `None` quando há o que desenhar."""
 
         self._brush_var = tk.StringVar(value=BRUSH_NONE)
         self._palette_buttons: dict[str, tk.Radiobutton] = {}
@@ -181,13 +183,17 @@ class InteractiveBoard(ttk.Frame):
         # (S-147). Era `background=` no construtor, e o Resultado passava claro enquanto a
         # Análise ficava com o padrão escuro -- o mesmo widget com duas identidades em duas
         # abas vizinhas, e nada além do argumento a justificar.
+        #
+        # **O fundo é o vazio, e não mais a esteira** (S-449). Enquanto os dois eram a mesma coisa,
+        # a esteira não tinha fim: 62% do canvas era quase-preto dentro de um painel branco. Agora
+        # a esteira é um retângulo com tamanho, desenhado por `BoardRenderer`, e o que sobra é isto.
         self.canvas = tk.Canvas(
             self,
-            bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO),
+            bg=theme.cor_atual(tokens.VAZIO_DE_CANVAS),
             highlightthickness=0,
             cursor="hand2",
         )
-        theme.ao_repintar(lambda: self.canvas.configure(bg=theme.cor_atual(tokens.SUPERFICIE_TABULEIRO)))
+        theme.ao_repintar(lambda: self.canvas.configure(bg=theme.cor_atual(tokens.VAZIO_DE_CANVAS)))
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
@@ -330,7 +336,7 @@ class InteractiveBoard(ttk.Frame):
         antes. O `Radiobutton` dá o estado ligado de graça e a exclusividade também.
         """
         frame = ttk.Frame(self)
-        frame.pack(fill=tk.X, pady=(4, 0))
+        frame.pack(fill=tk.X, pady=(espaco.linha(), 0))
         self._palette_buttons.clear()
 
         for row_index, symbols in enumerate((board_edit.PIECE_SYMBOLS[:6], board_edit.PIECE_SYMBOLS[6:])):
@@ -378,7 +384,13 @@ class InteractiveBoard(ttk.Frame):
             # A margem existe para a seleção ter onde aparecer: o ícone é opaco (ver
             # `PieceImages.icon`), então sem ela o `selectcolor` ficaria escondido atrás da
             # peça e o botão aceso seria igual aos outros onze.
-            botao = tk.Radiobutton(parent, image=imagem, padx=4, pady=4, **opcoes)  # type: ignore[arg-type]
+            botao = tk.Radiobutton(
+                parent,
+                image=imagem,
+                padx=espaco.linha(),
+                pady=espaco.linha(),
+                **opcoes,  # type: ignore[arg-type]
+            )
             # A referência tem de sobreviver: o Tk não segura a imagem, e uma `PhotoImage`
             # coletada vira um botão vazio. `PieceImages` já a mantém em cache, e o atributo
             # aqui é a segunda amarra, para o caso de o cache ser trocado.
@@ -387,7 +399,12 @@ class InteractiveBoard(ttk.Frame):
             texto = rotulo or UNICODE_PIECES.get(value, value)
             cor_texto = str(ttk.Style().lookup("TLabel", "foreground") or tokens.RESERVA[tokens.TEXTO_PADRAO])
             botao = tk.Radiobutton(
-                parent, text=texto, padx=8, pady=2, foreground=cor_texto, **opcoes  # type: ignore[arg-type]
+                parent,
+                text=texto,
+                padx=espaco.folga(),
+                pady=espaco.minima(),
+                foreground=cor_texto,
+                **opcoes,  # type: ignore[arg-type]
             )
 
         if value in board_edit.PIECE_NAMES_PT:
@@ -397,7 +414,7 @@ class InteractiveBoard(ttk.Frame):
         else:
             Tooltip(botao).set_text("Sem pincel: o clique volta a arrastar peças.")
 
-        botao.pack(side=tk.LEFT, padx=1, pady=1)
+        botao.pack(side=tk.LEFT, padx=espaco.minima(), pady=espaco.minima())
         return botao
 
     def _palette_colors(self) -> tuple[str, str, str]:
@@ -687,8 +704,25 @@ class InteractiveBoard(ttk.Frame):
 
     # ------------------------------------------------------------------ desenho
 
+    def mostrar_vazio(self, mensagem: str | None) -> None:
+        """Liga o estado "nenhum diagrama aberto": a frase no lugar do tabuleiro (S-450).
+
+        `None` desliga e volta a desenhar a posição. **Não** mexe no modelo: a posição continua lá,
+        e é isso que faz "aberto e vazio" continuar sendo outro estado -- aquele desenha tabuleiro.
+        """
+        if self._vazio == mensagem:
+            return
+        self._vazio = mensagem
+        self.redraw()
+
     def redraw(self) -> None:
         """Redesenho total. Necessário quando a geometria muda ou a posição inteira muda."""
+        if self._vazio is not None:
+            try:
+                self.renderer.draw_vazio(self.canvas, self._vazio)
+            except tk.TclError:  # pragma: no cover - canvas morto entre o evento e o desenho
+                pass
+            return
         try:
             canvas_w = max(self._min_size, self.canvas.winfo_width())
             canvas_h = max(self._min_size, self.canvas.winfo_height())

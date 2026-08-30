@@ -24,7 +24,16 @@ sem trocar a classe de nenhum widget da janela.
 
 from __future__ import annotations
 
-__all__ = ["DESTRUTIVO", "NEUTRO", "PAPEIS_DE_BOTAO", "PRIMARIO", "estilo_de_botao"]
+from collections.abc import Iterable
+
+__all__ = [
+    "DESTRUTIVO",
+    "NEUTRO",
+    "PAPEIS_DE_BOTAO",
+    "PRIMARIO",
+    "conferir_barra",
+    "estilo_de_botao",
+]
 
 PRIMARIO = "PRIMARIO"
 """A ação que o atalho de teclado também faz, e **uma por barra**.
@@ -63,3 +72,32 @@ def estilo_de_botao(papel: str) -> str:
     if papel not in _ESTILOS:
         raise KeyError(f"papel de botão desconhecido: {papel!r}. Os válidos estão em PAPEIS_DE_BOTAO.")
     return _ESTILOS[papel]
+
+
+def conferir_barra(papeis: Iterable[str], *, onde: str = "esta barra") -> None:
+    """Recusa uma barra de ações com mais de um `PRIMARIO` (S-446). Pura: não toca widget.
+
+    **A regra já estava escrita em `PRIMARIO` e só era cobrada num lugar.**
+    `comandos.primarios_por_grupo` a afirma por **grupo do catálogo**, e é o que trava a fila e a
+    fita. Nenhuma das duas alcança uma barra montada à mão dentro de um painel -- que é
+    exatamente onde a S-445 encosta -- e duas ênfases numa barra é o mesmo que nenhuma: o olho
+    não tem como saber qual das duas era para ser a ação.
+
+    **Zero primário passa, e isso é critério e não folga.** Nem toda fileira tem uma ação que o
+    teclado também faz, e inventar uma para cumprir cota devolveria a barra ao estado que a
+    S-144 mediu -- cinco botões de peso igual, agora com um azul arbitrário no meio.
+
+    Levanta `ValueError` para o excesso e `KeyError` para papel desconhecido, pela mesma razão de
+    `estilo_de_botao`: um papel escrito errado que fosse ignorado aqui passaria a contar como
+    neutro, e a barra com duas ênfases passaria no teste.
+    """
+    vistos = list(papeis)
+    for papel in vistos:
+        if papel not in _ESTILOS:
+            raise KeyError(f"papel de botão desconhecido: {papel!r}. Os válidos estão em PAPEIS_DE_BOTAO.")
+    quantos = vistos.count(PRIMARIO)
+    if quantos > 1:
+        raise ValueError(
+            f"{onde} declara {quantos} ações primárias, e o máximo é uma. "
+            "Duas ênfases numa barra é o mesmo que nenhuma -- ver `estilos.PRIMARIO`."
+        )

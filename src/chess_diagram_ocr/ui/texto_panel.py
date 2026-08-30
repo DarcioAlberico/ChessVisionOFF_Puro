@@ -104,6 +104,8 @@ from ..text.pagina import BlocoDeDiagrama, PaginaLida
 from . import (
     atalhos,
     comandos,
+    espaco,
+    estilos,
     strings,
     texto_busca,
     texto_cores,
@@ -424,7 +426,7 @@ class TextoPanel(ttk.Frame):
         dpi: int = 220,
         pasta_de_rascunhos: Path | None = None,
     ) -> None:
-        super().__init__(master, padding=8)
+        super().__init__(master, padding=espaco.folga())
         self._pdf_path = pdf_path
         self._page_index = page_index
         self._on_status = on_status
@@ -516,7 +518,7 @@ class TextoPanel(ttk.Frame):
         # ferramentas da Fase 37, e `pack(side=LEFT)` numa linha só **não desenha** o que passa da
         # borda -- sem aviso e sem reticências, que é o defeito medido pela S-151.
         barra = BarraFluida(self)
-        barra.pack(fill=tk.X, pady=(0, 6))
+        barra.pack(fill=tk.X, pady=(0, espaco.linha()))
 
         barra.adicionar(ttk.Label(barra, text="Folha"))
         barra.adicionar(
@@ -598,8 +600,8 @@ class TextoPanel(ttk.Frame):
             corpo,
             wrap=tk.WORD,
             undo=True,
-            padx=10,
-            pady=8,
+            padx=espaco.folga(),
+            pady=espaco.folga(),
             spacing2=2,
             spacing3=8,
             yscrollcommand=barra_de_rolagem.set,
@@ -651,7 +653,7 @@ class TextoPanel(ttk.Frame):
         self._ligar_teclas()
 
         rodape = ttk.Frame(self)
-        rodape.pack(fill=tk.X, pady=(6, 0))
+        rodape.pack(fill=tk.X, pady=(espaco.linha(), 0))
         texto_ui.acompanhar(ttk.Label(rodape, textvariable=self.status_var)).pack(side=tk.LEFT)
 
     def _interruptor_de_formato(self, pai: tk.Misc, acao: str) -> ttk.Checkbutton:
@@ -1050,7 +1052,7 @@ class TextoPanel(ttk.Frame):
         # `"end-1c"` e não `tk.END`: `END` é depois da quebra final que o Tk mantém sozinho, e um
         # intervalo que começasse ali não cobriria a imagem que vai ser inserida antes dela.
         inicio = self.editor.index("end-1c")
-        self.editor.image_create(tk.END, image=miniatura, padx=6, pady=4)
+        self.editor.image_create(tk.END, image=miniatura, padx=espaco.linha(), pady=espaco.linha())
         prefixo = texto_etiquetas.ATRIBUTO_COM_VALOR["alinhamento"]
         for etiqueta in etiquetas:
             if etiqueta.startswith(prefixo):
@@ -1539,7 +1541,7 @@ class TextoPanel(ttk.Frame):
             self.editor.focus_set()
             return
         self._painel_da_paleta = self._montar_paleta(self._corpo)
-        self._painel_da_paleta.pack(side=tk.RIGHT, fill=tk.Y, padx=(6, 0))
+        self._painel_da_paleta.pack(side=tk.RIGHT, fill=tk.Y, padx=(espaco.linha(), 0))
         self.editor.focus_set()
 
     def _montar_paleta(self, pai: tk.Misc) -> ttk.Frame:
@@ -1552,7 +1554,7 @@ class TextoPanel(ttk.Frame):
         moldura = ttk.Frame(pai)
         for prateleira in self._paleta.prateleiras:
             grupo = ttk.LabelFrame(moldura, text=prateleira.nome)
-            grupo.pack(fill=tk.X, pady=(0, 4))
+            grupo.pack(fill=tk.X, pady=(0, espaco.linha()))
             for k, simbolo in enumerate(prateleira.simbolos):
                 # `takefocus=False` é o item: inserir com o painel aberto não pode tirar o cursor
                 # do texto -- a próxima tecla tem de digitar no lugar em que se estava.
@@ -1562,7 +1564,8 @@ class TextoPanel(ttk.Frame):
                     width=3,
                     takefocus=False,
                     command=partial(self.inserir_simbolo, simbolo),
-                ).grid(row=k // 8, column=k % 8, padx=1, pady=1)
+                    style=estilos.estilo_de_botao(estilos.NEUTRO),
+                ).grid(row=k // 8, column=k % 8, padx=espaco.minima(), pady=espaco.minima())
         return moldura
 
     def inserir_simbolo(self, simbolo: str) -> None:

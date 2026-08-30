@@ -26,7 +26,7 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageFilter, ImageTk
 
 from ..config import UNCERTAIN_SQUARE_THRESHOLD
-from . import conjuntos, theme, tokens
+from . import conjuntos, theme, tipografia, tokens
 from .board_model import BoardModel
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,8 @@ UNICODE_PIECES = {
 }
 
 DRAG_TAG = "cvoff-drag"
+ESTEIRA_TAG = "cvoff-esteira"
+VAZIO_TAG = "cvoff-vazio"
 FRAME_TAG = "cvoff-frame"
 COORDS_TAG = "cvoff-coords"
 ARROWS_TAG = "cvoff-arrows"
@@ -385,6 +387,7 @@ class BoardRenderer:
     ) -> None:
         """Redesenha tudo. Só é preciso quando a geometria ou a posição inteira mudam."""
         canvas.delete("all")
+        self._draw_esteira(canvas, geometry)
         canvas.create_rectangle(
             geometry.origin_x - 2,
             geometry.origin_y - 2,
@@ -538,11 +541,108 @@ class BoardRenderer:
         except tk.TclError:  # pragma: no cover - sem root o desenho nem acontece
             return BOARD_FRAME
 
+    def draw_vazio(self, canvas: tk.Canvas, mensagem: str) -> None:
+        """O canvas quando **não há diagrama aberto**: o vazio e a frase, e tabuleiro nenhum (S-450).
+
+        **O desenho contradizia a frase.** A aba mostrava um tabuleiro 8x8 inteiro, com coordenadas
+        e casas pintadas, e logo abaixo dizia "Nenhum diagrama aberto". Um tabuleiro vazio é uma
+        **posição** -- é o que a S-229 empilha e o que "Limpar" produz --, e não a ausência de
+        posição. Quem abre o programa pela primeira vez vê um tabuleiro e conclui que há algo ali.
+
+        A distinção que este método existe para manter: **"nenhum diagrama aberto" e "diagrama
+        aberto e vazio" são estados diferentes.** O segundo continua desenhando o tabuleiro, porque
+        é uma posição legítima e a pilha de desfazer pode voltar a ela.
+
+        A frase é desenhada **no canvas** e não num rótulo abaixo dele, que é onde ela estava: ali
+        ela ficava sob o desenho que a contradizia, alinhada à esquerda. Aqui ela ocupa o lugar do
+        que não existe, que é o lugar para onde o olho já está indo.
+        """
+        canvas.delete("all")
+        largura = max(int(canvas.winfo_width()), self._min_largura_de_texto)
+        altura = max(int(canvas.winfo_height()), 1)
+        canvas.create_text(
+            largura / 2,
+            altura / 2,
+            text=mensagem,
+            fill=self._cor_de_texto_vazio(),
+            font=self._fonte_de_texto_vazio(),
+            width=largura - 2 * margem_de_coordenada(),
+            justify=tk.CENTER,
+            tags=(VAZIO_TAG,),
+        )
+
+    _min_largura_de_texto = 120
+    """Piso da largura usada para quebrar a frase. Um canvas ainda sem geometria reporta 1."""
+
+    @staticmethod
+    def _cor_de_texto_vazio() -> str:
+        """A letra da frase: secundária, porque ela orienta e não compete."""
+        try:
+            return theme.cor_atual(tokens.TEXTO_SECUNDARIO)
+        except tk.TclError:  # pragma: no cover - sem root o desenho nem acontece
+            return tokens.RESERVA[tokens.TEXTO_SECUNDARIO]
+
+    @staticmethod
+    def _fonte_de_texto_vazio() -> tuple[str, int] | tuple[str, int, str]:
+        """`tipografia.AUXILIAR`: o peso de quem diz o que fazer sem disputar com o documento."""
+        try:
+            return theme.fonte_atual(tipografia.AUXILIAR)
+        except tk.TclError:  # pragma: no cover - sem root o desenho nem acontece
+            return COORD_FONT
+
+    def _draw_esteira(self, canvas: tk.Canvas, geometry: BoardGeometry) -> None:
+        """A esteira: um retângulo do tamanho do tabuleiro mais a margem da coordenada (S-449).
+
+        **Antes ela não tinha fim.** O canvas enche o painel (`pack(fill=BOTH, expand=True)`) e o
+        fundo dele era `SUPERFICIE_TABULEIRO` -- então tudo o que não fosse tabuleiro virava
+        esteira. Medido na pele clássica: 691 px de canvas, **429 em `#312e2b`**, 62%, dentro de um
+        painel `#f0f0f0`. Um quase-preto de dois terços da largura em volta de espaço que não
+        carrega informação nenhuma.
+
+        A esteira continua existindo e continua escura, pela razão da S-147 -- é ela que dá 11,03:1
+        às coordenadas, que são desenhadas **em cima dela**. O que muda é que ela passa a ter
+        tamanho, e o que sobra é `VAZIO_DE_CANVAS`, vizinho do fundo do painel.
+
+        A margem é a mesma que `BoardGeometry.fit` já reserva para a coordenada caber inteira
+        (`margem_de_coordenada`, dividida entre os dois lados) -- e não um número novo: se ela
+        mudar, a esteira acompanha, porque as duas leem a mesma função.
+        """
+        folga = margem_de_coordenada() / 2
+        canvas.create_rectangle(
+            geometry.origin_x - folga,
+            geometry.origin_y - folga,
+            geometry.origin_x + geometry.size + folga,
+            geometry.origin_y + geometry.size + folga,
+            fill=self._cor_de_esteira(),
+            outline="",
+            tags=(ESTEIRA_TAG,),
+        )
+
+    @staticmethod
+    def _cor_de_esteira() -> str:
+        """A esteira em que o tabuleiro se assenta. Cai na reserva se não houver root."""
+        try:
+            return theme.cor_atual(tokens.SUPERFICIE_TABULEIRO)
+        except tk.TclError:  # pragma: no cover - sem root o desenho nem acontece
+            return tokens.RESERVA[tokens.SUPERFICIE_TABULEIRO]
+
     @staticmethod
     def _cor_de_coordenada(canvas: tk.Canvas) -> str:
-        """A cor legível sobre o fundo real deste canvas. Cai na reserva se o Tk não responder."""
+        """A cor legível sobre **a esteira**, que é onde a coordenada é desenhada (S-449).
+
+        Era contra `canvas.cget("background")`, e estava certo enquanto o fundo do canvas **era** a
+        esteira. Desde que a esteira virou um retângulo com tamanho, o fundo do canvas é
+        `VAZIO_DE_CANVAS` -- claro na pele clássica --, e resolver contra ele daria letra escura
+        desenhada sobre a esteira escura. O princípio não mudou: quem desenha resolve contra o que
+        está debaixo do que ele desenha; o que mudou é o que está debaixo.
+
+        A leitura do canvas fica como reserva: um `Style` que não responda ainda devolve alguma
+        coisa, e a coordenada continua legível contra o que o canvas de fato tem.
+        """
         try:
-            fundo = str(canvas.cget("background") or "")
+            fundo = BoardRenderer._cor_de_esteira()
+            if not fundo.startswith("#"):  # pragma: no cover - reserva de reserva
+                fundo = str(canvas.cget("background") or "")
             if not fundo.startswith("#"):
                 # `SystemButtonFace` e afins: pede ao Tk o RGB de 16 bits e reduz a 8.
                 r, g, b = canvas.winfo_rgb(fundo)
