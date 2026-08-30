@@ -18,7 +18,7 @@ estilos, catálogo de comandos, ícones — está em [SPEC_UI.md](SPEC_UI.md) e
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-452 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -252,7 +252,7 @@ uma régua que o editor já usa.
 | item | estado | o que ela disse |
 |---|---|---|
 | **S-257** · a margem da coluna: mediana ou quantil baixo | ✅ medida e **recusada** | dois acertos em 323 separam os dois candidatos — a mediana fica. No caminho, achou a régua vizinha que **tem** vão |
-| **S-258** · o limiar de recuo é 0,8, e a medição diz 0,4 | ⬜ planejada | 25 cortes certos a mais por um falso a mais. Mexe no texto que o leitor entrega, e por isso é item com remedição junto |
+| **S-258** · o limiar de recuo é 0,8, e a medição diz 0,4 | ✅ **trocado para 0,4** (2026-08-26) | quatro cortes certos a mais, e sem um falso a mais, na referência ampliada. No caminho achou o item maior: onde o glifo lê, a população de "linha" não é a que estas regras descrevem |
 
 A referência de parágrafo que as duas usam está versionada em
 `docs/metrics/texto_paragrafo_referencia.jsonl`, e a de notação, que fechou a dívida da S-249, em
