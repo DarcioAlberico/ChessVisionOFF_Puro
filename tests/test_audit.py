@@ -470,7 +470,7 @@ class DedupeSummaryTests(unittest.TestCase):
     comparabilidade. A primeira metade é verdade; a segunda não -- `splits.group_keys` dá a
     **todos** os membros do grupo a mesma chave, e daí o mesmo split, então toda linha que sai é
     cópia de uma que fica **no mesmo split**. Qual membro fica não entra nessa conta, e é por
-    isso que a S-431 pôde mudá-lo.
+    isso que a S-452 pôde mudá-lo.
 
     O que muda é a contagem, e é ela que faz um número medido depois deixar de ser comparável,
     por denominador, com um medido antes.
@@ -706,7 +706,7 @@ class TreinoRecusaDatasetReprovadoTests(unittest.TestCase):
 
 
 class RepresentanteDoGrupoTests(unittest.TestCase):
-    """Quem o `--dedupe` mantém: a linha que declara procedência, não a mais velha (S-431).
+    """Quem o `--dedupe` mantém: a linha que declara procedência, não a mais velha (S-452).
 
     Os nomes são `board_<carimbo>.png`, então `sorted(grupo)[0]` é sempre a amostra mais
     antiga -- e as anteriores à S-19 (fevereiro de 2026) não têm `source_pdf` nem
@@ -735,7 +735,7 @@ class RepresentanteDoGrupoTests(unittest.TestCase):
         )
 
     def test_depois_do_dedupe_a_procedencia_continua_no_csv(self) -> None:
-        """**O critério de aceite.** Antes da S-431 este era o caso que saía do arquivo, e com
+        """**O critério de aceite.** Antes da S-452 este era o caso que saía do arquivo, e com
         ele o verde de "já salvo" do visualizador (S-71) e o livro do split (S-07)."""
         remove_duplicate_labels(self.fixture.csv, self.report)
 

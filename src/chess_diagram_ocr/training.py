@@ -308,7 +308,7 @@ def resolve_splits(
     grupos = list(duplicate_groups_touching(Path(samples_dir), linhas, novos)) if novos else []
     grupos += groups_by_origin(origens)
     # A procedência que escolhe quem o `--dedupe` mantém é a mesma que dá a chave de split ao
-    # grupo (S-431). Sem passá-la aqui, os dois lados voltariam a escolher representantes
+    # grupo (S-452). Sem passá-la aqui, os dois lados voltariam a escolher representantes
     # diferentes -- e "quem representa este grupo" tem de ter uma resposta só.
     mapa = ensure_splits(
         nomes, splits_path, groups=grupos, with_provenance=filenames_with_provenance(origens)

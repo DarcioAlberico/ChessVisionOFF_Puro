@@ -113,7 +113,7 @@ class LoadRowsTests(unittest.TestCase):
 
 
     def test_o_representante_e_quem_declara_procedencia(self) -> None:
-        """A aba marca como redundante o que o `--dedupe` remove, e não o contrário (S-431)."""
+        """A aba marca como redundante o que o `--dedupe` remove, e não o contrário (S-452)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             raiz = Path(tmpdir)
             csv_path = raiz / "labels.csv"

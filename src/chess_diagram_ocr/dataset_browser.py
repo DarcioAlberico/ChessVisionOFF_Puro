@@ -105,7 +105,7 @@ def load_rows(
     splits = load_splits(splits_path) if splits_path is not None and Path(splits_path).exists() else {}
 
     # Quem representa o grupo é quem o `--dedupe` mantém, e a resposta vem de um lugar só
-    # (S-431): marcar aqui como redundante uma linha que o comando **preserva** poria a aba a
+    # (S-452): marcar aqui como redundante uma linha que o comando **preserva** poria a aba a
     # apontar para a errada.
     com_procedencia = filenames_with_provenance(origins_of(entries))
     group_of: dict[str, str] = {}
