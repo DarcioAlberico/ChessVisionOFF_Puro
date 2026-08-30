@@ -13,7 +13,7 @@
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176, S-454 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -1331,7 +1331,8 @@ de defeito, que merece item próprio em vez de carona no acidente de dedupe dest
 exatamente 0,0000 é morto pela guarda da S-143 antes de chegar aqui, e ressuscitá-lo foi medido
 e recusado — ver §3.
 
-**O tabuleiro cortado de lado**, achado por acidente na folha 125 e descrito acima.
+**O tabuleiro cortado de lado**, achado por acidente na folha 125 e descrito acima --
+medido e recusado na [S-455](#s-455--o-tabuleiro-cortado-de-lado-e-a-coluna-que-o-alargamento-repõe--não-implementada--a-medição-reprovou).
 
 **Testes.** `tests/test_board_detection.py::SquareForcedCropTests`, 7 casos. Dois deles são o
 registro da lição: `test_sem_o_quadrado_forcado_o_recorte_vinha_alto` prende o defeito no lugar
@@ -1339,6 +1340,85 @@ registro da lição: `test_sem_o_quadrado_forcado_o_recorte_vinha_alto` prende o
 entregasse o quadrado o faria passar de graça — e
 `test_quad_muito_fora_do_quadrado_nao_gera_variante` prende o teto na razão exata da foto do
 `Estrin`.
+
+---
+
+### S-455 · O tabuleiro cortado de lado, e a coluna que o alargamento repõe ❌ **não implementada — a medição reprovou**
+
+> Item deixado em aberto pela [S-454](#s-454--a-legenda-que-entra-no-recorte-e-o-quadrado-que-o-contorno-não-fecha--implementada-2026-08-30),
+> §6: na folha 125 do `Reinfeld` a caixa mede 97,53 × 116,18 pt, e sem o teto a leitura ia de
+> 0,0450 a 1,0000 — por acidente de dedupe, e não pelo mecanismo daquele item. Ficou escrito
+> que era outra classe de defeito e merecia item próprio. É este, e ele **não passa**.
+
+**A proposta era o inverso exato da S-454.** Lá o quad sobra e encolhe; aqui falta e cresce. Um
+tabuleiro cujo contorno perdeu uma coluna sai ~101 × 116 pt onde mede 116 × 116, e alargá-lo até
+o quadrado — ancorado em cada ponta do eixo curto — reporia o que o contorno cortou.
+
+**E a hipótese que a sustentava está certa.** Esses candidatos leem contraste de casa
+**exatamente 0,0000**, e a guarda da S-143 os mata. Isso parece dizer "não é tabuleiro", e não é
+o que diz: `_checker_score` amostra uma grade 8×8 sobre o recorte já esticado, então **sete
+colunas espremidas em oito fazem toda amostra cair na fronteira entre casas**. Contraste zero
+ali é a grade fora de fase. Alargar repõe a fase, e o modelo lê.
+
+A medição confirma o mecanismo com folga. No `Reinfeld`, 320 folhas:
+
+| | |
+|---|---|
+| candidatos mortos pela guarda, lado ≥ 90 pt | **232** |
+| dos quais **estreitos** (cortados de lado) | **209** — razão 1,0030 a 1,3854 |
+| que, alargados, leem acima do gate de 0,80 | **174** (83%), quase todos em 0,9999–1,0000 |
+
+**O que reprova o item não é o mecanismo: é o que ele acrescenta.** Dos 174 resgates, **168 caem
+em cima de diagrama que a página já entrega**. O pipeline já recuperava aquelas posições por
+outro caminho, e o dedupe por IoU descartaria a segunda cópia. Sobram **6** em posição vazia — e
+mesmo esses seis não chegam todos ao fim.
+
+**O A/B do produto, e não do candidato.** `detect_diagrams` completo nas duas pontas da mesma
+renderização, 320 folhas, casado por IoU:
+
+| | |
+|---|---|
+| diagramas que continuam iguais | **995** |
+| ganhos | **3**, todos lendo 1,0000 |
+| perdas | **0** |
+
+Seis viram três: a diferença entre o candidato que lê bem e o que sobrevive à seleção, ao teto
+por página e ao dedupe. **A segunda é a que vale**, e é a lição que a S-175 §7 já tinha deixado.
+
+**No acervo inteiro, a conta desaba.** Censo de 46 livros contra `docs/metrics/deteccao_base.csv`:
+
+| | |
+|---|---|
+| ganhos | **1** |
+| perdas | 0 |
+| reajustados | 0 |
+| livros que ganharam alguma coisa | **1** — o `Reinfeld` |
+
+**Custo**, medido em `_extract_candidate_quads` sobre 8 folhas já renderizadas, mediana de 24
+corridas: **104,6 → 146,4 ms por folha, +40%**.
+
+**Quarenta por cento em toda folha de todo livro, para um candidato em 1.830.** Quarenta e cinco
+dos 46 livros não ganham nada — o defeito é da tipografia de um. O A/B do livro inteiro e o censo
+não se contradizem: 3 em 320 folhas e 1 nas 32 que o censo amostra são a mesma taxa, cerca de um
+diagrama a cada cem folhas, num livro do acervo.
+
+> **O risco que eu previ não apareceu, e registrar isso importa.** A expectativa era que as 168
+> duplicatas entrassem na disputa por IoU e derrubassem diagrama bom — é o que a
+> [S-454 §3](#s-454--a-legenda-que-entra-no-recorte-e-o-quadrado-que-o-contorno-não-fecha--implementada-2026-08-30)
+> mediu na ressurreição, onde 812 candidatos custaram 5 diagramas. Aqui foram **0 perdas**: a
+> duplicata chega com o mesmo enquadramento do vencedor, e não com um enviesado que o suprime.
+> A recusa é por preço, não por dano — e sem medir eu a teria escrito pelo motivo errado.
+
+**O que fica registrado, para quem tiver a mesma ideia.** A classe existe, é grande (209 num
+livro), o diagnóstico de "contraste 0,0000 = grade fora de fase" está certo, e o alargamento
+funciona. O que não existe é margem: o detector já entrega aquelas posições. Se um dia entrar um
+livro cuja tipografia corte a coluna com frequência, esta seção tem o mecanismo pronto — e o
+número que ele precisa bater.
+
+**Como reproduzir.** As três medições estão em `_extract_candidate_quads(pagina, checker_floor=None)`
+para a população, `detect_diagrams` nas duas pontas para o A/B, e `cvoff-census --baseline` para o
+acervo. O alargamento foi escrito, medido e removido no mesmo trabalho; ele é duas âncoras no eixo
+curto, com razão entre `SQUARE_FORCE_TOLERANCE` e 1,40, aplicadas onde a guarda da S-143 recusaria.
 
 ---
 
