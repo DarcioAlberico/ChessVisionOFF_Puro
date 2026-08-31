@@ -59,11 +59,15 @@ class UmaRaizSoTests(unittest.TestCase):
 
 
 class NadaVazaDoTesteTests(unittest.TestCase):
-    """Pasta temporária e widget morrem com o teste que os criou (S-415).
+    """Pasta temporária, widget e arquivo morrem com o teste que os criou (S-415).
 
     Cada rodada abandonava **mais de cem** diretórios em `%TEMP%` e pendurava 99 `TextoPanel` na
     mesma raiz, nenhum destruído. Nada disso reprova um teste: apodrece a máquina de quem roda a
     suíte, e some do relatório porque tudo está verde.
+
+    Os dois primeiros a rodada ao menos leva embora quando acaba. O terceiro não: um arquivo
+    gravado em `data/` fica na árvore de trabalho depois que o pytest sai, e a última guarda
+    daqui é sobre ele.
     """
 
     PAIS_QUE_SAO_A_RAIZ = frozenset({"_RAIZ", "self.root", "cls.root", "raiz()", "raiz_do_processo()"})
@@ -103,6 +107,26 @@ class NadaVazaDoTesteTests(unittest.TestCase):
             "Painel pendurado na raiz compartilhada. Use `quadro(self, raiz)` de "
             "`tests/ambiente_de_teste.py`: destruir quadro é seguro, destruir raiz é que não é.",
         )
+
+    def test_o_conftest_continua_vigiando_o_data_de_verdade(self) -> None:
+        """A terceira coisa que vaza de um teste é um arquivo, e essa não morre com a rodada.
+
+        **O caso, de 2026-08-31:** um teste novo chamou `save_index(livro)` e `GalleryModel.save()`
+        sem dizer onde gravar, e os dois resolvem `data/gallery/` na definição do argumento -- a
+        rodada gravou dois arquivos na árvore do usuário e terminou verde. Uma varredura daqui
+        pegaria a primeira chamada e não a segunda: no `GalleryModel` quem grava é um campo posto
+        na construção, a suíte constrói vinte modelos sem ele que nunca gravam, e o teste que
+        grava direito põe o campo por atribuição depois. Não há forma sintática que separe os
+        três, e por isso a guarda é do `conftest` e olha o efeito.
+
+        Esta linha é o que impede que ela seja removida sem que ninguém note. `PROJECT_ROOT` está
+        cobrado junto de propósito: a guarda tem de vigiar a pasta que o **código** resolve, e não
+        a que fica sob `RAIZ`. Num worktree as duas coincidem, e é aí que trocar uma pela outra
+        passa despercebido -- a S-218 já foi vácua exatamente assim.
+        """
+        conftest = (TESTES / "conftest.py").read_text(encoding="utf-8")
+        self.assertIn("nada_novo_no_data_de_verdade", conftest)
+        self.assertIn("PROJECT_ROOT", conftest, "a guarda tem de vigiar a pasta que o código resolve")
 
 
 class NenhumaCaixaDeVerdadeTests(unittest.TestCase):
