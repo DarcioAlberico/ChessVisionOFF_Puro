@@ -159,7 +159,12 @@ def _funcao(arvore: ast.AST, nome: str) -> ast.FunctionDef:
 
 
 class CoberturaDoCatalogoTests(unittest.TestCase):
-    """Os quatro lugares que declaravam comando estão todos cobertos pelo registro."""
+    """Os quatro lugares que declaravam comando estão todos cobertos pelo registro.
+
+    **Os dois sentidos.** Daqui para o catálogo -- item de menu ou tecla que ninguém registrou --
+    e do catálogo para cá: comando registrado que ninguém alcança. O segundo sentido ficou sem
+    guarda no corte do Tk, e é o que `test_todo_comando_do_catalogo_alcanca_alguem` repõe.
+    """
 
     def test_todo_item_de_menu_esta_no_catalogo(self) -> None:
         """O sentido que faltava na trava do menu: item declarado que ninguém registrou."""
@@ -169,6 +174,71 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
         """Uma tecla cujo comando o catálogo não conhece é uma pele sem onde desenhá-lo."""
         fora = comandos.acoes_fora_do_catalogo(atalho.acao for atalho in atalhos.ATALHOS)
         self.assertEqual([], fora)
+
+    def test_todo_comando_do_catalogo_alcanca_alguem(self) -> None:
+        """**O sentido que o corte do Tk levou junto** (S-506).
+
+        `ui/alcance.perdidos()` respondia "que ação do catálogo ninguém alcança", e saiu no mesmo
+        commit que os três cromos do Tk sobre os quais ela perguntava. A outra guarda -- comparar
+        as duas janelas ação a ação -- também saiu, e o buraco entre as duas tinha exatamente o
+        tamanho de `anotar_pagina`, `anotar_sem_diagrama` e `tirar_do_campo`: elas eram **botões**
+        e não itens de menu, então a comparação passava em verde sem elas. Entre as duas estava o
+        único caminho que faz o `data/field_set.jsonl` crescer.
+
+        A conta é fechada aqui: todo comando do catálogo alcança o menu, **ou** está numa das duas
+        listas que declaram por que ele não alcança. Uma terceira exceção não entra em silêncio --
+        ela chega como um nome nesta lista.
+        """
+        alcancam = set(menu.acoes_declaradas())
+        declarados = set(comandos.NA_JANELA_DE_BUSCA) | set(comandos.NA_LINHA_DE_CAMPO)
+        perdidos = sorted(
+            registro.acao
+            for registro in comandos.CATALOGO
+            if registro.acao not in alcancam and registro.acao not in declarados
+        )
+        self.assertEqual(
+            [], perdidos, "ação do catálogo que nem o menu alcança nem lista nenhuma declara"
+        )
+
+    def test_a_conta_do_catalogo_acusa_uma_acao_sem_dono(self) -> None:
+        """O **controle** da guarda de cima, e ele prova o padrão e não um infrator.
+
+        Uma guarda que varre por ausência fica verde quando o que ela varria some: foi o que
+        aconteceu com as ~20 varreduras de sintaxe do toolkit no corte -- a lista de infratores
+        virou `[]` e o teste passou. Este caso **constrói** a ação perdida em vez de esperar que
+        alguma exista, então ele continua provando alguma coisa no dia em que o catálogo estiver
+        inteiramente coberto (que é hoje).
+        """
+        alcancam = set(menu.acoes_declaradas())
+        declarados = set(comandos.NA_JANELA_DE_BUSCA) | set(comandos.NA_LINHA_DE_CAMPO)
+        orfa = "acao_que_nenhuma_pele_alcanca"
+        self.assertNotIn(orfa, alcancam | declarados, "o nome do controle virou comando de verdade")
+
+        candidatas = [registro.acao for registro in comandos.CATALOGO] + [orfa]
+        perdidos = sorted(
+            acao for acao in candidatas if acao not in alcancam and acao not in declarados
+        )
+        self.assertEqual([orfa], perdidos)
+
+    def test_as_duas_excecoes_sao_do_catalogo_e_estao_fora_do_menu(self) -> None:
+        """As listas de exceção envelhecem em dois sentidos, e os dois são silenciosos.
+
+        Uma ação declarada como exceção que **ganhou** item de menu é uma exceção vencida: ela
+        continua dizendo "este comando não alcança o menu" sobre um comando que alcança. E um nome
+        que saiu do catálogo deixa a lista apontando para comando nenhum. Nos dois casos a guarda
+        de cima segue verde, porque ela só pergunta pelo que falta.
+        """
+        alcancam = set(menu.acoes_declaradas())
+        do_catalogo = {registro.acao for registro in comandos.CATALOGO}
+        for nome, lista in (
+            ("NA_JANELA_DE_BUSCA", comandos.NA_JANELA_DE_BUSCA),
+            ("NA_LINHA_DE_CAMPO", comandos.NA_LINHA_DE_CAMPO),
+        ):
+            self.assertTrue(lista, f"{nome} vazia: a exceção deixou de existir")
+            for acao in lista:
+                with self.subTest(lista=nome, acao=acao):
+                    self.assertIn(acao, do_catalogo, "exceção que não é comando do catálogo")
+                    self.assertNotIn(acao, alcancam, "exceção vencida: o comando alcança o menu")
 
     def test_o_menu_mostra_o_rotulo_do_catalogo(self) -> None:
         """`MENUS` deixou de repetir o texto: ele agora **sai** daqui, e o menu só o exibe."""

@@ -150,6 +150,55 @@ class MontagemTests(unittest.TestCase):
             with self.subTest(acao=acao):
                 self.assertTrue(callable(tabela[acao]))
 
+    def test_todo_comando_do_catalogo_tem_dono_nesta_janela(self) -> None:
+        """**A outra metade da conta do catálogo**, e a que só esta janela pode fechar.
+
+        A guarda pura (`test_ui_comandos.CoberturaDoCatalogoTests`) cobra que toda ação do
+        catálogo esteja **declarada**: no menu, ou numa das duas listas de exceção. Ela roda sem
+        abrir janela, e por isso não sabe se a declaração tem dono. Esta cobra a outra metade --
+        que o dono exista e seja chamável --, e as duas juntas são a conta inteira:
+
+            123 no catálogo = 119 na tabela da janela + 3 na linha de campo + 1 na janela de busca
+
+        Cada exceção é cobrada **pelo dono que ela declara**, e não por um `getattr` solto: um
+        `substituir_todos` que passasse a ser atendido por qualquer painel com um método de mesmo
+        nome é justamente o acidente que a lista existe para impedir.
+
+        O dono da janela de busca é a **classe** e não um atributo da janela: `JanelaDeBusca` é um
+        `QDialog` criado na hora de achar, e a lista de ocorrências que o `substituir_todos` troca
+        só existe enquanto ele está aberto. É por isso que o comando não está na tabela.
+        """
+        from chess_diagram_ocr.qt import campo as painel_de_campo
+        from chess_diagram_ocr.qt.painel_de_texto import JanelaDeBusca
+        from chess_diagram_ocr.ui import comandos
+
+        janela = self.janela()
+        tabela = janela._comandos()
+        sem_dono: list[str] = []
+        for registro in comandos.CATALOGO:
+            acao = registro.acao
+            dono = tabela.get(acao)
+            if dono is None and acao in painel_de_campo.ACOES_PROPRIAS:
+                dono = janela.campo.atender(acao)
+            if dono is None and acao in comandos.NA_JANELA_DE_BUSCA:
+                dono = getattr(JanelaDeBusca, acao, None)
+            if not callable(dono):
+                sem_dono.append(acao)
+        self.assertEqual([], sem_dono, "ação do catálogo que nenhum painel desta janela atende")
+
+    def test_as_tres_acoes_da_linha_de_campo_sao_as_do_catalogo(self) -> None:
+        """Uma lista declarada e uma cópia dela divergem no primeiro nome que entra numa só.
+
+        `qt/campo.py` atende as ações por um `dict` escrito à mão em `atender`. Se
+        `comandos.NA_LINHA_DE_CAMPO` ganhar uma quarta, `ACOES_PROPRIAS` a acompanha de graça e o
+        `dict` **não** -- e é o teste de cima que acusa, porque o dono some. Este aqui cobra o
+        elo mais barato dos dois: que a lista do painel seja a do catálogo, e não uma segunda.
+        """
+        from chess_diagram_ocr.qt import campo as painel_de_campo
+        from chess_diagram_ocr.ui import comandos
+
+        self.assertEqual(painel_de_campo.ACOES_PROPRIAS, frozenset(comandos.NA_LINHA_DE_CAMPO))
+
     def test_a_frase_de_todo_painel_chega_ao_rodape(self) -> None:
         """Nenhum painel sabe que o rodapé existe, e é a janela que os liga."""
         janela = self.janela()

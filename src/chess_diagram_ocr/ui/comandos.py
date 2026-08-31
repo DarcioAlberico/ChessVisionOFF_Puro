@@ -731,16 +731,21 @@ NAS_BARRAS_DO_PDF: tuple[str, ...] = (
     "roda_vira_pagina",
     "marcar_diagramas",
 )
-"""Os comandos que as duas barras de `ui/pdf_panel.py` desenham -- a tela da pele clássica (S-233).
+"""Os comandos que as duas barras do painel do PDF desenhavam -- a tela da pele clássica (S-233).
 
-**Declarado aqui e montado lá, e a distância entre os dois tem guarda.** `_montar_barras` constrói
-os dezesseis botões à mão, com `state`, dica e `command` diferentes em cada um; transformá-la numa
-tabela é a decomposição que o `ROADMAP_UI` persegue, e não cabia neste item. O que cabia foi
-declarar a lista onde o inventário da S-233 possa lê-la sem abrir janela --
-`tests/test_ui_alcance.py` varre aquela função por `ast` e cobra que as duas concordem.
+**Esta lista está sem leitor e sem guarda desde o corte do Tk (S-506), e é decisão pendente.**
+Ela foi declarada para o inventário da S-233 poder lê-la sem abrir janela, e quem a cobrava era
+`tests/test_ui_alcance.py`, que varria o `_montar_barras` de `ui/pdf_panel.py` por `ast` e exigia
+que as duas concordassem. A função, o módulo e o teste saíram juntos no corte; a lista ficou.
+
+Ela também **não descreve mais o que existe**: dos dezesseis nomes daqui, `qt/painel_do_pdf.py`
+desenha onze. `ler_melhor`, `ler_pagina`, `tirar_caixa`, `exportar_pgn` e `cancelar_exportacao`
+moram noutros painéis do Qt. Traduzir a guarda exige antes decidir o que a lista passa a
+significar -- a tela da pele clássica, que já não existe, ou os botões do painel de hoje --, e
+por isso ela não foi traduzida junto com as outras varreduras.
 
 **Na pele "Foco" e na "Fita" estes controles existem e não são empacotados** (S-223), e por isso a
-lista é a tela da **clássica** e não do painel: o que a pele decide é o que aparece."""
+lista era a tela da **clássica** e não do painel: o que a pele decide é o que aparece."""
 
 
 NA_JANELA_DE_BUSCA: tuple[str, ...] = ("substituir_todos",)

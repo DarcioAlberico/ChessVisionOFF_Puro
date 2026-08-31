@@ -182,9 +182,11 @@ faz alguma coisa é o item da lista, e cada um deles é um comando do catálogo,
 próprio.
 
 A diferença tem consequência medida: um comando no catálogo precisa de casa numa das três peles ou
-de item de menu (`ui/alcance.py`), e um agrupador que fosse comando obrigaria o menu a ter uma linha
-"Alinhamento…" ao lado dos quatro itens que ela abriria -- a redundância que o menu existe para não
-ter. É a mesma decisão que `LADO_A_JOGAR` e `CONJUNTO` já são: rótulo de grupo, e não de ação."""
+de item de menu -- é o que `test_ui_comandos.test_todo_comando_do_catalogo_alcanca_alguem` cobra
+desde o corte do Tk, no lugar do `ui/alcance.py` --, e um agrupador que fosse comando obrigaria o
+menu a ter uma linha "Alinhamento…" ao lado dos quatro itens que ela abriria -- a redundância que
+o menu existe para não ter. É a mesma decisão que `LADO_A_JOGAR` e `CONJUNTO` já são: rótulo de
+grupo, e não de ação."""
 
 SETA = "→"
 """Os glifos de navegação, no lugar de `|<`, `<<`, `>>`, `>|` e `->` (S-166).
