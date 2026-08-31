@@ -23,9 +23,12 @@ RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVOS_DE_UI = [
     # `strings.py` fica de fora: ele **contém** a lista das formas erradas, de propósito.
     caminho
-    for caminho in sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py"))
+    for caminho in [
+        *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
+        *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+    ]
     if caminho.name != "strings.py"
-] + [RAIZ / "app_tkinter.py", RAIZ / "examples" / "streamlit_demo.py"]
+] + [RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py", RAIZ / "examples" / "streamlit_demo.py"]
 
 PERMITIDOS = {
     # Chaves, nomes de campo e identificadores que por acaso batem com uma palavra da lista.
@@ -166,8 +169,12 @@ class TituloDeCaixaTests(unittest.TestCase):
     conferido de fora, em vez de depender de quem escreveu a linha se lembrar.
     """
 
-    CHAMADAS = ("showerror", "showwarning", "showinfo", "askyesno", "askokcancel", "askyesnocancel", "askquestion")
-    """As sete do `tkinter.messagebox` que a janela usa. A primeira posicional delas é o título."""
+    CHAMADAS = ("information", "warning", "critical", "question", "about", "setWindowTitle")
+    """Os cinco atalhos do `QMessageBox` mais o título posto à mão.
+
+    **Eram as sete do `tkinter.messagebox` até o corte (S-506).** No Qt o título é o **segundo**
+    posicional dos atalhos (o primeiro é o widget pai), e por isso a varredura abaixo olha as duas
+    posições: `setWindowTitle` de um `QDialog` põe o título na primeira."""
 
     def _titulos(self) -> list[tuple[str, int, str]]:
         achados: list[tuple[str, int, str]] = []
@@ -178,11 +185,12 @@ class TituloDeCaixaTests(unittest.TestCase):
                     continue
                 if no.func.attr not in self.CHAMADAS or not no.args:
                     continue
-                primeiro = no.args[0]
                 # Título vindo de variável ou de f-string sai da varredura: ele é montado com o
                 # nome do arquivo ou do livro, que é mais específico do que qualquer literal.
-                if isinstance(primeiro, ast.Constant) and isinstance(primeiro.value, str):
-                    achados.append((caminho.name, no.lineno, primeiro.value))
+                for candidato in no.args[:2]:
+                    if isinstance(candidato, ast.Constant) and isinstance(candidato.value, str):
+                        achados.append((caminho.name, no.lineno, candidato.value))
+                        break
         return achados
 
     def test_a_varredura_acha_as_caixas(self) -> None:
@@ -375,22 +383,28 @@ class DestrutivoTests(unittest.TestCase):
     def _papel_por_rotulo() -> dict[str, str]:
         """`rótulo do botão -> o papel que ele declara`, lido do `ast` do painel.
 
-        **Era por linha de texto, e a linha deixou de ser uma** (S-445): quando o `style=` não
-        cabe em 120 colunas com o resto, a chamada quebra, e `text="Remover"` e
-        `estilos.DESTRUTIVO` passam a morar em linhas diferentes. A propriedade que interessa
-        nunca foi "estão na mesma linha" -- é "este botão declara aquele papel".
+        **Era por linha de texto, e a linha deixou de ser uma** (S-445): quando o papel não cabe
+        em 120 colunas com o resto, a chamada quebra, e o rótulo e `estilos.DESTRUTIVO` passam a
+        morar em linhas diferentes. A propriedade que interessa nunca foi "estão na mesma linha"
+        -- é "este botão declara aquele papel".
+
+        **A forma da chamada mudou no corte do Tk (S-506), e a propriedade não.** Era
+        `ttk.Button(text=..., style=...)`; é `self._botao(barra, rótulo, função, papel)`, o
+        ajudante do painel, com o rótulo no segundo posicional e o papel no quarto.
         """
-        fonte = (RAIZ / "src" / "chess_diagram_ocr" / "ui" / "dataset_panel.py").read_text(encoding="utf-8")
+        fonte = (RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_do_dataset.py").read_text(encoding="utf-8")
         achados: dict[str, str] = {}
         for no in ast.walk(ast.parse(fonte)):
-            if not (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute) and no.func.attr == "Button"):
+            if not (
+                isinstance(no, ast.Call)
+                and isinstance(no.func, ast.Attribute)
+                and no.func.attr == "_botao"
+                and len(no.args) >= 4
+            ):
                 continue
-            rotulo = next(
-                (k.value.value for k in no.keywords if k.arg == "text" and isinstance(k.value, ast.Constant)), None
-            )
-            estilo = next((ast.get_source_segment(fonte, k.value) for k in no.keywords if k.arg == "style"), "")
-            if isinstance(rotulo, str):
-                achados[rotulo] = estilo or ""
+            rotulo = no.args[1]
+            if isinstance(rotulo, ast.Constant) and isinstance(rotulo.value, str):
+                achados[rotulo.value] = ast.unparse(no.args[3])
         return achados
 
     def test_os_botoes_que_apagam_pedem_o_papel_destrutivo(self) -> None:
@@ -418,7 +432,7 @@ class NoDuplicateVocabularyTests(unittest.TestCase):
     def test_neither_frontend_keeps_its_own_copy_of_the_side_source_labels(self) -> None:
         for caminho in (
             RAIZ / "examples" / "streamlit_demo.py",
-            RAIZ / "src" / "chess_diagram_ocr" / "ui" / "result_panel.py",
+            RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_resultado.py",
         ):
             with self.subTest(arquivo=caminho.name):
                 fonte = caminho.read_text(encoding="utf-8")

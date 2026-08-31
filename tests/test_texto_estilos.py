@@ -23,7 +23,7 @@ from chess_diagram_ocr.text.pagina import (
     PaginaLida,
 )
 
-PAINEL = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "ui" / "texto_panel.py"
+PAINEL = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
 
 
 def _linha(texto: str, topo: float = 0.0) -> LinhaLida:
@@ -177,7 +177,8 @@ class SemTamanhoCravadoTests(unittest.TestCase):
         self.assertEqual(cravados, [])
 
     def test_todo_estilo_tem_papel_de_tipografia(self) -> None:
-        from chess_diagram_ocr.ui import texto_panel, tipografia
+        from chess_diagram_ocr.qt import texto_formato as texto_panel
+        from chess_diagram_ocr.ui import tipografia
 
         self.assertEqual(set(texto_panel.PAPEL_DO_ESTILO), set(rico.ESTILOS))
         for papel in texto_panel.PAPEL_DO_ESTILO.values():

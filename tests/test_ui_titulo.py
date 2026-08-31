@@ -109,7 +109,9 @@ class LigacaoComAJanelaTests(unittest.TestCase):
     def test_a_janela_usa_a_funcao_e_nao_um_literal(self) -> None:
         from pathlib import Path
 
-        fonte = (Path(__file__).resolve().parents[1] / "app_tkinter.py").read_text(encoding="utf-8")
+        fonte = (
+            Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
+        ).read_text(encoding="utf-8")
         self.assertIn("strings.titulo_da_janela(", fonte)
         self.assertNotIn("Chess Diagram OCR - Tkinter", fonte)
 
@@ -117,9 +119,11 @@ class LigacaoComAJanelaTests(unittest.TestCase):
         """Sem isto ele diria a primeira página do livro para sempre."""
         from pathlib import Path
 
-        fonte = (Path(__file__).resolve().parents[1] / "app_tkinter.py").read_text(encoding="utf-8")
-        depois_do_render = fonte.index("def _on_page_rendered")
-        self.assertIn("_atualizar_titulo", fonte[depois_do_render : depois_do_render + 800])
+        fonte = (
+            Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
+        ).read_text(encoding="utf-8")
+        depois_do_render = fonte.index("def _pagina_apareceu")
+        self.assertIn("_atualizar_titulo", fonte[depois_do_render : depois_do_render + 1200])
 
 
 if __name__ == "__main__":

@@ -34,16 +34,23 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 __all__ = [
+    "ACOES_DO_CAMPO",
+    "ACOES_SO_DO_MULTILINHA",
     "ATALHOS",
+    "CEDIDAS_A_TODO_CAMPO",
+    "CEDIDAS_SO_AO_MULTILINHA",
     "CEDIDA_PELA_GUARDA",
     "GANHA_DO_TK",
     "SOBREPOSICOES_NO_EDITOR",
+    "TECLAS_DE_EDICAO",
     "TECLAS_DO_EDITOR",
     "Atalho",
     "DonoDeAcoes",
     "acao_de",
     "acelerador",
+    "cede_a_sequencia",
     "conferir_dono",
+    "descricao_completa",
     "destino",
     "ligacoes",
     "por_acao",
@@ -334,6 +341,116 @@ por_sequencia: dict[str, Atalho] = {atalho.sequencia: atalho for atalho in ATALH
 de ser a única declaração da ligação tecla-ação."""
 
 
+# ------------------------------------------------------ o que a guarda de foco cede, e a quem
+#
+# **Por que estas cinco listas moram aqui e não em `ui/shortcuts.py`, que é quem as usa** (S-501).
+# Elas eram de lá e são **puras**: dizem que *ações* um campo de texto de fato usa, e derivam as
+# teclas desta tabela. O que `ui/shortcuts.py` acrescenta é a única parte que conhece toolkit --
+# quais classes de widget são campo de texto --, e essa parte é diferente em cada frontend.
+#
+# Deixá-las lá obrigava o segundo frontend a importar um módulo que importa `tkinter` só para ler
+# um `frozenset`, ou a copiá-lo. A cópia é o defeito: `ACOES_DO_CAMPO` é a lista que decide se
+# `Ctrl+S` salva com o cursor dentro do campo de FEN, e duas cópias dela divergem no primeiro item
+# que alguém acrescentar a uma só -- que é a medição da S-294 esperando para acontecer de novo.
+
+ACOES_DO_CAMPO: frozenset[str] = frozenset(
+    {
+        "diagrama_anterior",   # <-
+        "proximo_diagrama",    # ->
+        "primeira_pagina",     # Home
+        "ultima_pagina",       # End
+        "apagar_casa",         # Del
+        "desfazer",            # Ctrl+Z
+        "refazer",             # Ctrl+Y
+    }
+)
+"""As ações da janela cujas teclas **qualquer** campo de texto de fato usa (S-294).
+
+Navegação, edição e o desfazer do próprio widget: cada uma tem comportamento de fábrica dentro do
+campo, e deixar o atalho da janela passar por cima o quebraria -- digitar uma FEN trocaria de
+diagrama a cada seta, que é o defeito que a guarda existe para impedir desde a S-20.
+
+**Declaradas por ação, e não por sequência.** A regra deste projeto é que só esta tabela escreve
+tecla (`test_ui_legenda.test_so_a_tabela_escreve_sequencia_de_tecla`), e ela é a regra certa:
+remapear `desfazer` acima e esquecer aqui deixaria a guarda cedendo uma tecla que não é mais a do
+desfazer. Aqui se diz o **significado**; a tecla sai da tabela."""
+
+ACOES_SO_DO_MULTILINHA: frozenset[str] = frozenset({"pagina_anterior", "proxima_pagina"})
+"""`PgUp`/`PgDn` são cedidas só a quem rola.
+
+Num campo de uma linha -- o campo de FEN -- elas não fazem coisa nenhuma, e cedê-las ali era
+desligar "página anterior/seguinte" em troca de nada."""
+
+TECLAS_DE_EDICAO: frozenset[str] = frozenset({"<Up>", "<Down>", "<BackSpace>"})
+"""As teclas de edição que **não são atalho de janela nenhum**, e por isso não têm ação a citar.
+
+Elas nunca chegam à guarda hoje -- nada as liga na janela inteira --, e estão aqui para o dia em
+que alguma delas virar atalho: o campo de texto continua sendo o dono, e a lista já diz isso."""
+
+
+def _sequencias(acoes: frozenset[str]) -> frozenset[str]:
+    """As sequências daquelas ações, pela tabela. Ação sem tecla é ignorada, e não levanta.
+
+    Ignorar em vez de levantar porque isto roda na **importação** do módulo: uma ação que perdesse
+    a tecla derrubaria a janela inteira por causa de uma linha desta lista, e o que ela merece é
+    deixar de ser cedida."""
+    return frozenset(
+        atalho.sequencia for acao in acoes if (atalho := por_acao.get(acao)) is not None
+    )
+
+
+CEDIDAS_A_TODO_CAMPO: frozenset[str] = _sequencias(ACOES_DO_CAMPO) | TECLAS_DE_EDICAO
+CEDIDAS_SO_AO_MULTILINHA: frozenset[str] = _sequencias(ACOES_SO_DO_MULTILINHA)
+
+
+def cede_a_sequencia(sequencia: str, *, e_campo: bool, e_multilinha: bool) -> bool:
+    """A guarda deve ceder **esta tecla** a um campo com estas duas propriedades? (S-294) Pura.
+
+    Não toca widget: quem responde "isto é campo de texto?" e "isto rola?" é o frontend, porque a
+    resposta é uma lista de classes de toolkit. O que se decide aqui é o que vale nos dois.
+
+    `←` dentro de um campo pertence ao campo; `Ctrl+S` não pertence a campo nenhum -- a régua é a
+    lista do que o widget **de fato usa**, e não "é campo de texto?". O defeito que isso conserta
+    está escrito em `ui/shortcuts.cede_a_tecla`: até a S-294 a guarda cedia os dezoito atalhos da
+    janela, e com o cursor no campo de FEN `Ctrl+S` não salvava, `Ctrl+N` não ia para o próximo e
+    `PgDn` não virava a página. Nenhuma delas faz coisa alguma dentro de um campo -- a tecla
+    simplesmente morria.
+
+    `sequencia=""` cede, como antes: quem chama sem dizer que tecla ligou não dá como responder, e
+    o lado seguro é o comportamento anterior.
+    """
+    if not e_campo:
+        return False
+    if not sequencia:
+        return True
+    if sequencia in CEDIDAS_A_TODO_CAMPO:
+        return True
+    return e_multilinha and sequencia in CEDIDAS_SO_AO_MULTILINHA
+
+
+def descricao_completa(atalho: Atalho) -> str:
+    """O que a tecla faz -- **e o que ela faz nos lugares que a tomam para si** (S-244/S-281).
+
+    Numa etiqueta só, e não em três colunas: a legenda lê os rótulos aos pares, e uma coluna a
+    mais faria a janela mentir sobre a própria estrutura. Linhas dentro do mesmo rótulo é o que a
+    S-244 pede -- *"uma tecla que faz duas coisas e uma legenda que só conta uma é pior que não
+    ter legenda"*.
+
+    **Três destinos e não dois, desde a S-281**: `←` é "diagrama anterior" na janela e "lance
+    anterior" dentro da sala de estudo. O laço abaixo é o que faz o quarto destino, quando houver,
+    entrar sem ninguém editar esta função.
+
+    **Mora aqui, e não na janela que a mostra** (S-501). Era `legenda._descricao`, num arquivo
+    cuja classe herda de `tk.Toplevel` -- então nem o import tardio o abria. A frase é sobre a
+    *tabela*, não sobre a janela: quem sabe que uma tecla tem três destinos é quem os declara.
+    """
+    linhas = [atalho.descricao]
+    for onde, texto in (("No editor de texto", atalho.no_editor), ("Na sala de estudo", atalho.na_sala)):
+        if texto:
+            linhas.append(f"{onde}: {texto}")
+    return chr(10).join(linhas)
+
+
 def acelerador(acao: str) -> str:
     """O rótulo da tecla daquele comando, ou `""` quando ele não tem uma.
 
@@ -379,7 +496,7 @@ class DonoDeAcoes(Protocol):
     def acoes_proprias(self) -> frozenset[str]:
         """Os nomes de comando que este painel atende enquanto tem o foco."""
 
-    def atender(self, acao: str) -> Callable[[], None] | None:
+    def atender(self, acao: str) -> Callable[[], object] | None:
         """A função deste painel para aquela ação, ou `None` se ele não a atende."""
 
 
@@ -402,16 +519,42 @@ def _cadeia(foco: object) -> list[object]:
     Sobe pelo `master` porque quem declara ações é o **painel**, e quem tem o foco é o `tk.Text`
     dentro dele. Duck typing de propósito: este módulo não importa `tkinter`, e o teste passa
     objetos de mentira com um `master`.
+
+    **E pelo `parent()` quando não há `master`** (S-501). É o mesmo passo com o nome do outro
+    toolkit: no Qt o pai de um widget é um método, não um atributo. Sem isto a cadeia pararia no
+    widget em foco, e a declaração de ações da S-244 -- que é do **painel** -- nunca seria
+    consultada no segundo frontend, sem erro nenhum a que se agarrar.
     """
     cadeia: list[object] = []
     atual = foco
     while atual is not None and len(cadeia) < 40:
         cadeia.append(atual)
-        atual = getattr(atual, "master", None)
+        atual = _pai(atual)
     return cadeia
 
 
-def destino(acao: str, foco: object, globais: Mapping[str, Callable[[], None]]) -> Callable[[], None] | None:
+def _pai(widget: object) -> object:
+    """O pai daquele widget, pelo nome que o toolkit dele usa. `None` quando não há.
+
+    O `master` vem primeiro porque é atributo e não custa chamada; um `parent` que não seja
+    chamável -- ou que levante, como o de um widget já destruído -- vale como ausência de pai, que
+    é o que interrompe a subida em vez de derrubar a tecla.
+    """
+    pai = getattr(widget, "master", None)
+    if pai is not None:
+        return pai
+    metodo = getattr(widget, "parent", None)
+    if not callable(metodo):
+        return None
+    try:
+        return metodo()
+    except Exception:  # noqa: BLE001 - widget destruído no meio da subida: a cadeia acaba aqui
+        return None
+
+
+def destino(
+    acao: str, foco: object, globais: Mapping[str, Callable[[], object]]
+) -> Callable[[], object] | None:
     """A função que atende esta ação agora: a do widget em foco, se ele a declarar; senão a global.
 
     Devolve `None` quando ninguém a atende -- e quem chama decide o que fazer com isso. Devolver uma

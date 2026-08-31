@@ -70,11 +70,15 @@ jobs:
       - name: Sincronizar dependencias
         # --frozen falha se uv.lock estiver desatualizado em relacao ao pyproject.toml.
         #
-        # Os tres extras, e nao so `dev` (S-128): sem `onnx`, `tests/test_onnx_export.py`
+        # Os quatro extras, e nao so `dev` (S-128): sem `onnx`, `tests/test_onnx_export.py`
         # desliga a classe `ExportTests` inteira -- que e TODA a cobertura executavel de
         # `onnx_export.py` --, e sem `ocr` o contrato de motor da S-42 nao roda. A S-30
         # (paridade numerica do ONNX) e a S-42 eram codigo entregue cuja unica verificacao
         # nunca rodava aqui: uma regressao nelas entrava verde.
+        #
+        # O extra `qt` **saiu da linha, e nao da corrida** (S-500 -> S-506): o PyQt6 passou a
+        # ser dependencia de base no corte do Tk, porque o programa nao abre sem ele. Pedi-lo
+        # como extra agora seria um erro de resolucao, e nao um extra a mais.
         #
         # E o mesmo comando que o CONTRIBUTING.md manda rodar na maquina de quem contribui.
         run: uv sync --extra dev --extra onnx --extra ocr --frozen

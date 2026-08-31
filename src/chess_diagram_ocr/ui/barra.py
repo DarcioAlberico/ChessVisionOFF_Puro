@@ -26,18 +26,11 @@ regimes — cabe em uma linha, cabe em duas, não cabe em nenhuma.
 from __future__ import annotations
 
 import logging
-import tkinter as tk
 from collections.abc import Sequence
-from tkinter import ttk
-from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ESPACO_ENTRE_ITENS", "BarraFluida", "arranjo", "linhas_necessarias"]
-
-W = TypeVar("W", bound=tk.Widget)
-"""O tipo do widget registrado. Devolver o **mesmo** tipo é o que preserva `lbl.config(text=...)`
-nos pontos de chamada -- sem ele, tudo que passa pela barra vira `tk.Widget` para o verificador."""
+__all__ = ["ESPACO_ENTRE_ITENS", "arranjo", "linhas_necessarias"]
 
 ESPACO_ENTRE_ITENS = 6
 """O `padx` entre dois controles da mesma linha. Entra na conta porque ele é largura também."""
@@ -95,113 +88,3 @@ def arranjo(
 def linhas_necessarias(larguras: Sequence[int], disponivel: int, *, espaco: int = ESPACO_ENTRE_ITENS) -> int:
     """Quantas linhas a barra vai ocupar. É o que o critério de aceite mede."""
     return len(arranjo(larguras, disponivel, espaco=espaco))
-
-
-class BarraFluida(ttk.Frame):
-    """Uma barra cujos controles quebram para a linha de baixo quando não cabem.
-
-    Monte os controles com `self` como pai e registre-os com `adicionar` — sem `pack` nem
-    `grid` próprios, que é quem esta classe substitui.
-    """
-
-    def __init__(self, parent: tk.Misc, *, espaco: int = ESPACO_ENTRE_ITENS) -> None:
-        super().__init__(parent)
-        self._itens: list[tk.Widget] = []
-        self._molduras: list[ttk.Frame] = []
-        self._espaco = espaco
-        self._arranjo_aplicado: list[list[int]] = []
-        self._largura = 0
-        """A última largura conhecida da barra.
-
-        Vem do **evento** e não de `winfo_width()`: durante um redimensionamento o widget ainda
-        reporta a largura anterior quando o `<Configure>` chega, e arranjar contra ela deixava
-        dois controles fora da área do `grid` -- que o Tk **desmapeia** em vez de recortar. O
-        sintoma era o defeito original de volta, com outra causa."""
-
-        self.bind("<Configure>", lambda evento: self._rearranjar(int(evento.width)))
-
-    def esvaziar(self) -> None:
-        """Tira e **destrói** todos os itens, deixando a barra pronta para ser remontada.
-
-        Existe para a fita da S-228, que troca de modo em execução: o ícone muda de tamanho, o
-        rótulo muda de lado e o cabeçalho vira dica -- e nada disso é uma opção que se reconfigure
-        num `ttk.Button` já criado (`compound` sim, `wraplength` não, e o cabeçalho é outro
-        widget). Remontar é o caminho, e remontar sem esvaziar duplicaria a barra.
-
-        As molduras de linha ficam: elas não têm conteúdo próprio, e recriá-las a cada troca de
-        modo é o mesmo desperdício que `_rearranjar` já evita ao só desempacotá-las.
-        """
-        for item in self._itens:
-            item.destroy()
-        self._itens.clear()
-        # Zerado para que o próximo `adicionar` reaplique o arranjo: `_rearranjar` é idempotente
-        # por comparação, e comparar contra o arranjo de itens que já morreram não repõe nada.
-        self._arranjo_aplicado = []
-
-    def adicionar(self, widget: W) -> W:
-        """Registra um controle na barra, na ordem em que ele deve aparecer. Devolve-o.
-
-        Devolver o widget é o que faz o ponto de chamada caber numa linha --
-        `barra.adicionar(ttk.Button(barra, ...))` -- em vez de precisar de uma variável só para
-        registrar em seguida.
-        """
-        self._itens.append(widget)
-        self._rearranjar(self._largura or self.winfo_width())
-        return widget
-
-    # ------------------------------------------------------------------------ geometria
-
-    def _larguras(self) -> list[int]:
-        return [max(1, item.winfo_reqwidth()) for item in self._itens]
-
-    def _rearranjar(self, largura: int) -> None:
-        """Recalcula e reaplica o arranjo. Idempotente: repor o mesmo arranjo não pisca."""
-        if not self._itens:
-            return
-        self._largura = max(self._largura, 1) if largura <= 1 else largura
-        try:
-            novo = arranjo(self._larguras(), self._largura, espaco=self._espaco)
-        except tk.TclError:  # pragma: no cover - widget destruído durante o evento
-            return
-        if novo == self._arranjo_aplicado:
-            return
-        self._arranjo_aplicado = novo
-        while len(self._molduras) < len(novo):
-            self._molduras.append(ttk.Frame(self))
-        for numero, moldura in enumerate(self._molduras):
-            if numero < len(novo):
-                moldura.pack(fill=tk.X, pady=(0 if numero == 0 else 2, 0))
-            else:
-                # Desempacotada e não destruída: uma janela que oscila de largura recriaria a
-                # moldura a cada pixel, e o `pack_forget` custa nada.
-                moldura.pack_forget()
-        for numero, linha in enumerate(novo):
-            for coluna, indice in enumerate(linha):
-                item = self._itens[indice]
-                item.pack(
-                    in_=self._molduras[numero],
-                    side=tk.LEFT,
-                    padx=(0 if coluna == 0 else self._espaco, 0),
-                )
-                # **`lift` e não decoração** (S-227). `pack(in_=)` muda quem arruma o widget e
-                # não quem é o pai dele, então a moldura de linha continua **irmã** dos itens --
-                # e irmão criado depois desenha por cima. A primeira moldura nasce no primeiro
-                # `adicionar`, ou seja, **depois** do primeiro item e antes de todos os outros:
-                # o resultado era o item de índice 0 coberto pela moldura, invisível, em toda
-                # `BarraFluida` do programa. Sem esta linha, "Abrir PDF" e "Página anterior" não
-                # aparecem na janela clássica -- e não apareciam desde a S-151.
-                item.lift()
-
-    @property
-    def linhas(self) -> int:
-        """Quantas linhas a barra está ocupando agora. É o que o teste de aceite lê."""
-        return len(self._arranjo_aplicado)
-
-    def linhas_em(self, largura: int) -> int:
-        """Quantas linhas ela ocuparia naquela largura, **sem** mudar o que está na tela.
-
-        Pergunta pura sobre um widget montado, e existe porque os critérios de aceite falam de
-        larguras que o teste não quer ter de simular -- a S-151 mede em 1100, que é onde o
-        defeito original apareceu, e a S-223 exige que a fila caiba em uma linha ali.
-        """
-        return linhas_necessarias(self._larguras(), largura, espaco=self._espaco)

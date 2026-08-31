@@ -30,6 +30,7 @@ from typing import Protocol
 __all__ = [
     "NO_CROMO_ESCURO",
     "PAPEIS",
+    "REALCE_DE_ENFASE",
     "RESERVA",
     "SUPERFICIES",
     "SUPERFICIES_DE_DOCUMENTO",
@@ -37,6 +38,7 @@ __all__ = [
     "paleta",
     "distancia_de_matiz",
     "matiz",
+    "mistura",
     "razao_de_contraste",
     "saturacao",
     "sobre_superficie",
@@ -181,6 +183,13 @@ COORDENADA = "COORDENADA"
 
 CASA_CLARA = "CASA_CLARA"
 CASA_ESCURA = "CASA_ESCURA"
+GLIFO_CLARO = "GLIFO_CLARO"
+GLIFO_ESCURO = "GLIFO_ESCURO"
+"""A tinta das peças **desenhadas como glifo**, quando os PNGs de `assets/piece_images/` faltam.
+
+Elas seguem a identidade do tabuleiro e não o tema, pela mesma razão das casas: uma peça branca
+que escurecesse junto com a janela deixaria de ser uma peça branca. Estavam cravadas em
+`qt/tabuleiro.py` até a S-506, e foi a varredura de hexadecimal que as achou."""
 CASA_ULTIMO_LANCE = "CASA_ULTIMO_LANCE"
 ALVO = "ALVO"
 """A identidade do tabuleiro. Não segue tema: xadrez impresso é claro-e-escuro em qualquer
@@ -305,6 +314,8 @@ elas o `or "#000000"` ficava cravado no painel, que é o que este módulo veio t
 
 
 PAPEIS: tuple[str, ...] = (
+    GLIFO_CLARO,
+    GLIFO_ESCURO,
     TEXTO_SECUNDARIO,
     PRONTO,
     PRONTO_TEXTO,
@@ -374,6 +385,8 @@ RESERVA: dict[str, str] = {
     COORDENADA: "#5c5c5c",
     CASA_CLARA: "#f0d9b5",
     CASA_ESCURA: "#b58863",
+    GLIFO_CLARO: "#f8f8f8",
+    GLIFO_ESCURO: "#111111",
     CASA_ULTIMO_LANCE: "#cdd26a",
     CONTORNO_DE_SELECAO: "#141414",
     ALVO: "#24482b",
@@ -808,3 +821,32 @@ def sobre_superficie(superficie: str, *, claro: str = "#e8e8e8", escuro: str = "
     do tema. Sob tema escuro, letra clara sobre `#ffffe0`.
     """
     return claro if razao_de_contraste(claro, superficie) >= razao_de_contraste(escuro, superficie) else escuro
+
+
+def mistura(a: str, b: str, peso: float) -> str:
+    """`a` puxado `peso` na direção de `b`, canal a canal. Pura, e sem hexadecimal cravado.
+
+    Existe para o estado sob o ponteiro do botão de ênfase. Puxar a face na direção da **letra**
+    dela dá o realce certo nas duas paletas por construção: no cromo claro a letra é branca e a
+    face clareia; no escuro a letra é quase preta e a face escurece. Um par de valores fixos
+    precisaria de dois hexadecimais novos e erraria numa das duas peles.
+
+    **Mora aqui, e não no módulo de tema, porque os dois temas precisam dela** (S-501). Era
+    `theme._mistura`, num arquivo que importa `tkinter`; o segundo frontend precisava do mesmo
+    realce e da mesma constante, e copiá-los daria dois `0.18` para manter -- que é a divergência
+    que a S-153 mediu quando as duas tabelas erravam a altura de linha por serem duas cópias.
+    """
+    peso = min(1.0, max(0.0, peso))
+    canais = (
+        round(int(a[i : i + 2], 16) * (1 - peso) + int(b[i : i + 2], 16) * peso)
+        for i in (1, 3, 5)
+    )
+    return "#" + "".join(f"{canal:02x}" for canal in canais)
+
+
+REALCE_DE_ENFASE = 0.18
+"""Quanto o estado sob o ponteiro puxa a face na direção da letra. Ver `mistura`.
+
+0,18 é o menor valor em que o realce é visível nas duas paletas sem que a face deixe de ser a
+mesma cor -- acima de ~0,3 o azul primário clareia a ponto de disputar com o `A_FAZER` da página.
+"""

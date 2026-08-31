@@ -138,22 +138,6 @@ class FrozenLogFileTests(unittest.TestCase):
 
         self.assertIn("logs", build_windows.PASTAS_DO_USUARIO)
 
-    def test_a_janela_que_nao_abre_deixa_o_traceback_no_log(self) -> None:
-        """É o `logger.exception` de `main` que enche o arquivo: `stderr` num bundle
-        `console=False` não vai a lugar nenhum, e é a única falha que ninguém diagnostica."""
-        app_tkinter = SelftestTests._app_tkinter()
-
-        with patch.object(app_tkinter, "ChessOcrTkApp", side_effect=RuntimeError("Tcl morreu")):
-            with patch.object(app_tkinter.tk, "Tk", lambda: None):
-                with patch.object(sys, "argv", ["app_tkinter.py"]):
-                    with self.assertLogs(app_tkinter.logger, level="ERROR") as registro:
-                        with self.assertRaises(RuntimeError):
-                            app_tkinter.main()
-
-        self.assertIn("Traceback", registro.output[0])
-        self.assertIn("Tcl morreu", registro.output[0])
-
-
 class LogQueNaoCresceParaSempreTests(unittest.TestCase):
     """O arquivo de log rotaciona, e sem console não há handler de console (S-389).
 
@@ -236,7 +220,16 @@ class LogQueNaoCresceParaSempreTests(unittest.TestCase):
 
 
 class TamanhoDaJanelaTests(unittest.TestCase):
-    """`app_tkinter.py` não volta a crescer sem alguém decidir (S-136).
+    """`qt/janela.py` não volta a crescer sem alguém decidir (S-136/S-506).
+
+    **A catraca mudou de arquivo no corte do Tk, e o número caiu junto.** Ela vigiava o
+    `app_tkinter.py`, que fechou em 2.327 linhas; a janela do Qt faz o mesmo em 1.196, e a
+    diferença não é código omitido -- é a camada pura de `ui/` sendo chamada em vez de reescrita.
+    Herdar o corte antigo seria dar 1.100 linhas de folga a um arquivo que ninguém decidiu que
+    podia dobrar, que é exatamente o acidente que este teste existe para impedir.
+
+    O texto abaixo é o histórico do arquivo que saiu, e fica porque o critério é o mesmo.
+
 
     **O número original era 600**, e é o critério de aceite da S-31 (`SPEC.md`). Ele não é
     arbitrário: a S-31 quebrou uma janela de 2.388 linhas porque "o que dá para testar não fica
@@ -257,8 +250,8 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2327
-    """Linhas de `app_tkinter.py`. Ver o docstring da classe antes de mudar.
+    LIMITE = 1196
+    """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
 
     **2.317 → 2.327 na S-448**, e as dez são a grade do formulário de Configuração. O saldo é
     melhor do que parece: `_spin_row` **saiu** desta janela -- ele era a segunda implementação de
@@ -602,14 +595,18 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     """O critério de aceite da S-31, em `docs/SPEC.md`. Fica aqui para não se perder."""
 
     def _linhas(self) -> int:
-        return len((PROJETO / "app_tkinter.py").read_text(encoding="utf-8").splitlines())
+        return len(
+            (PROJETO / "src" / "chess_diagram_ocr" / "qt" / "janela.py")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
 
     def test_a_janela_nao_volta_a_crescer(self) -> None:
         atual = self._linhas()
         self.assertLessEqual(
             atual,
             self.LIMITE,
-            f"`app_tkinter.py` passou de {self.LIMITE} para {atual} linhas. O alvo da S-31 é "
+            f"`qt/janela.py` passou de {self.LIMITE} para {atual} linhas. O alvo da S-31 é "
             f"{self.ALVO_ORIGINAL}; se o crescimento for deliberado, baixe o que for possível "
             "para `ui/` ou registre o novo placar aqui e no ROADMAP, com o motivo.",
         )
@@ -624,7 +621,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
         self.assertGreater(
             atual + 40,
             self.LIMITE,
-            f"`app_tkinter.py` caiu para {atual} linhas e o corte ainda é {self.LIMITE}. "
+            f"`qt/janela.py` caiu para {atual} linhas e o corte ainda é {self.LIMITE}. "
             "Baixe `LIMITE` para o novo valor.",
         )
 
@@ -736,7 +733,18 @@ class SpecTests(unittest.TestCase):
         self.texto = self.spec.read_text(encoding="utf-8")
 
     def test_o_ponto_de_entrada_e_a_janela(self) -> None:
-        self.assertIn("app_tkinter.py", self.texto)
+        """**A linha do `Analysis`, e não o arquivo inteiro.** A prosa deste `.spec` registra o
+        que saiu e por quê, e uma busca pelo texto todo acusaria a própria nota do corte."""
+        entrada = self.texto.split("Analysis(", 1)[1].split("]", 1)[0]
+        self.assertIn("app_pyqt.py", entrada)
+        self.assertNotIn("app_tkinter.py", entrada, "o ponto de entrada antigo ficou no `Analysis`")
+
+    def test_o_tema_do_tk_nao_e_mais_coletado(self) -> None:
+        """`collect_data_files("ttkbootstrap")` viajava os temas de `ttk`, e não há mais `ttk`.
+
+        Ele saiu do `pyproject.toml` no mesmo corte: um `datas` que colete pacote não declarado
+        quebra o build na máquina limpa, e passa na de quem ainda o tem instalado."""
+        self.assertNotIn("collect_data_files", self.texto.split("ICONE =", 1)[0])
 
     def test_o_streamlit_nao_entra_no_bundle(self) -> None:
         """Desde a S-54 ele é exemplo. Empacotar um servidor web num app de desktop, não."""
@@ -761,11 +769,27 @@ class SpecTests(unittest.TestCase):
 
     def test_o_que_nao_e_dependencia_nao_entra_no_bundle(self) -> None:
         """`scipy` e `scikit-image` vêm no ambiente pelo clone da segunda opinião local, e o
-        PyInstaller coleta o que **está instalado** -- 95 MB que ninguém declarou (S-387)."""
+        PyInstaller coleta o que **está instalado** -- 95 MB que ninguém declarou (S-387).
+
+        `PyQt6` entrou na lista pela mesma regra (S-500): ele é o extra `qt`, a versão de teste
+        da janela, e na máquina de quem o instalou seriam ~150 MB de Qt no `.zip` de quem não
+        pediu segunda janela nenhuma."""
         excludes = self.texto.split("excludes = [", 1)[1].split("\n]", 1)[0]
         for pacote in ("scipy", "skimage", "pyarrow"):
             with self.subTest(pacote=pacote):
                 self.assertIn(f'"{pacote}"', excludes)
+
+    def test_o_pacote_da_janela_entra_no_varrimento(self) -> None:
+        """O inverso do que este teste cobrava até o corte (S-500 → S-506).
+
+        Enquanto a janela era o `app_tkinter.py`, o `collect_submodules` **filtrava**
+        `chess_diagram_ocr.qt` para não puxar ~150 MB de Qt para dentro do bundle. Agora `qt/` é
+        a janela: um filtro aqui empacotaria um executável sem o pacote que ele importa na
+        primeira linha, e a falha só apareceria na máquina do usuário.
+        """
+        varrimento = self.texto.split("collect_submodules(", 1)[1].split(")", 1)[0]
+        self.assertNotIn("chess_diagram_ocr.qt", varrimento)
+        self.assertNotIn("filter=", varrimento)
 
     def test_o_spec_e_lintado(self) -> None:
         """O arquivo tem `# noqa` espalhado, que só faz sentido se alguém estiver lintando --
@@ -822,224 +846,6 @@ class ModelosAoLadoDoExecutavelTests(unittest.TestCase):
         self.assertEqual(nomes, ["piece_classifier.pt", "char_classifier.pt", "char_meta.json"])
         for _nome, motivo in modulo.MODELOS_QUE_ACOMPANHAM:
             self.assertGreater(len(motivo), 20, "cada ausência diz a consequência dela")
-
-
-
-class SelftestTests(unittest.TestCase):
-    """O `--selftest` é o que responde "esta instalação funciona?" numa máquina limpa."""
-
-    @staticmethod
-    def _app_tkinter():
-        """`app_tkinter.py` mora na raiz e não é pacote; o pytest só põe `src/` no path."""
-        if str(PROJETO) not in sys.path:
-            sys.path.insert(0, str(PROJETO))
-        import app_tkinter
-
-        return app_tkinter
-
-    def test_sem_checkpoint_o_codigo_de_saida_diz_o_que_falta(self) -> None:
-        app_tkinter = self._app_tkinter()
-        with patch.object(app_tkinter, "DEFAULT_MODEL_PATH", Path("nao/existe.pt")):
-            self.assertEqual(app_tkinter.selftest(pdf=Path("qualquer.pdf")), 3)
-
-    def test_sem_pdf_o_codigo_de_saida_e_outro(self) -> None:
-        """Códigos distintos porque as duas faltas pedem ações distintas do usuário."""
-        app_tkinter = self._app_tkinter()
-        with patch.object(app_tkinter, "find_default_pdf_path", lambda: None):
-            self.assertEqual(app_tkinter.selftest(), 2)
-
-    def test_checkpoint_ilegivel_e_3_e_nao_1(self) -> None:
-        """**Uma das três falhas que o critério da Fase 18 nomeia**, e ela não estava tratada.
-
-        Exercitada no `.exe` recém-construído em 2026-08-18: um `.pt` truncado -- ou de outra
-        `arch_version` -- caía no `except` genérico do reconhecimento e saía com **1 e um
-        traceback do `torch` em inglês**, onde o README promete 3 e a fase promete pt-BR. A
-        *ausência* do checkpoint era classificada; a **ilegibilidade** não.
-
-        Ler o checkpoint virou passo próprio para que a classificação seja por **onde** falhou:
-        aqui se sabe que o que está sendo lido é um checkpoint, e as pistas de texto de
-        `cli._CHECKPOINT_PISTAS` teriam de adivinhar isso de uma mensagem do `torch` que não
-        contém nem `.pt` nem `state_dict`.
-        """
-
-        app_tkinter = self._app_tkinter()
-        with tempfile.TemporaryDirectory() as pasta:
-            ruim = Path(pasta) / "piece_classifier.pt"
-            ruim.write_text("isto não é um checkpoint", encoding="utf-8")
-            with patch.object(app_tkinter, "DEFAULT_MODEL_PATH", ruim):
-                with self.assertLogs(app_tkinter.logger, level="ERROR") as registro:
-                    # O PDF nem precisa existir: a instalacao e conferida antes da entrada.
-                    codigo = app_tkinter.selftest(pdf=Path("qualquer.pdf"))
-
-        self.assertEqual(codigo, 3, "o código é o de checkpoint, e não o de falha inesperada")
-        texto = chr(10).join(registro.output)
-        self.assertIn("não pôde ser lido", texto, "e a frase é pt-BR")
-        self.assertIn("arch_version", texto, "com o nome do campo que o usuário vai conferir")
-
-    def test_pdf_corrompido_e_2_e_nao_1(self) -> None:
-        """**A primeira das três falhas da Fase 18**, e ela era classificada ao contrário.
-
-        No `.exe` um PDF corrompido saía com **1** -- que quer dizer "o programa falhou" --
-        mais um traceback do `pymupdf` em inglês. Quem falhou foi o arquivo que o usuário
-        escolheu, e 2 é o código de entrada inválida em todos os `cvoff-*` (S-126). Não havia
-        razão para o auto-teste ser a exceção.
-
-        **Ele não pede checkpoint de verdade, e isso é o item dentro do item.** A primeira
-        versão pedia -- a carga do modelo vem antes da abertura do PDF --, e o resultado
-        apareceu no log da CI: `SKIPPED`. Um guarda que só roda na máquina que já tem o
-        checkpoint não guarda a CI, que é justamente onde o `.exe` de outra pessoa é montado.
-        O modelo é dispensado com um `model_session` neutro; o que se testa aqui é o PDF.
-        """
-        from contextlib import contextmanager
-
-        app_tkinter = self._app_tkinter()
-
-        @contextmanager
-        def _sem_modelo(*_args: object, **_kwargs: object):  # noqa: ANN202
-            yield (None, "cpu")
-
-        with tempfile.TemporaryDirectory() as pasta:
-            ruim = Path(pasta) / "corrompido.pdf"
-            ruim.write_bytes(b"%PDF-1.4" + bytes([10]) + b"isto nao e um pdf" + bytes([10]))
-            # So precisa **existir**: a guarda de ausencia e outra, e tem teste proprio.
-            fingido = Path(pasta) / "piece_classifier.pt"
-            fingido.write_text("o carregamento esta remendado abaixo", encoding="utf-8")
-            servico = patch.object(
-                app_tkinter.OcrService, "model_session", _sem_modelo, create=False
-            )
-            with patch.object(app_tkinter, "DEFAULT_MODEL_PATH", fingido), servico:
-                with self.assertLogs(app_tkinter.logger, level="ERROR") as registro:
-                    codigo = app_tkinter.selftest(pdf=ruim)
-
-        self.assertEqual(codigo, 2, "entrada inválida, e não falha do programa")
-        self.assertIn("não foi possível abrir", chr(10).join(registro.output))
-
-    def test_o_checkpoint_bom_nao_cai_na_guarda_nova(self) -> None:
-        """A guarda não pode transformar instalação boa em erro: o passo novo é só a carga."""
-        app_tkinter = self._app_tkinter()
-        modelo = PROJETO / "models" / "piece_classifier.pt"
-        if not modelo.exists():
-            self.skipTest("sem checkpoint neste checkout")
-        with patch.object(app_tkinter, "DEFAULT_MODEL_PATH", modelo):
-            # Um PDF que nao existe: o que se testa e que a carga do modelo **passou** -- o
-            # codigo que sai e o do PDF (2), e nao o do checkpoint (3).
-            self.assertEqual(app_tkinter.selftest(pdf=Path("nao_existe.pdf")), 2)
-
-
-class _RootFalsa:
-    """`after(0, fn)` executa na hora. Num teste não há laço de eventos para agendar nada."""
-
-    def __init__(self) -> None:
-        self.agendados: list[str] = []
-
-    def after(self, _atraso: int, funcao):  # noqa: ANN001, ANN202 - assinatura do Tk
-        self.agendados.append(getattr(getattr(funcao, "func", funcao), "__name__", "?"))
-        funcao()
-
-
-def _janela_minima(app_tkinter, *, result_panel=None):  # noqa: ANN001, ANN202
-    """A janela reduzida ao que `_ocr_worker` toca, com os métodos **reais** amarrados nela.
-
-    Montar o `ChessOcrTkApp` inteiro exigiria Tk, checkpoint e PDF; o que se testa aqui é o
-    `except`, e ele não depende de nenhum dos três. É o mesmo recurso da S-142.
-    """
-    janela_class = type(
-        "JanelaMinima",
-        (),
-        {
-            "_ocr_worker": app_tkinter.ChessOcrTkApp._ocr_worker,
-            "_on_ocr_empty": app_tkinter.ChessOcrTkApp._on_ocr_empty,
-            "_on_ocr_error": app_tkinter.ChessOcrTkApp._on_ocr_error,
-            "_set_status": lambda self, texto: self.status.append(texto),
-            "_show_results": lambda self, *_args: self.lidos.append(_args),
-            "_finish_ocr_ui": lambda self: self.status.append("<fim>"),
-        },
-    )
-    janela = janela_class()
-    janela.root = _RootFalsa()
-    janela.result_panel = result_panel
-    janela.status = []
-    janela.lidos = []
-    return janela
-
-
-class OcrWorkerLogTests(unittest.TestCase):
-    """O worker de OCR registra a exceção como os outros cinco (S-125).
-
-    Era o único dos seis que a engolia: o usuário do `.exe` recebia uma linha de texto e o
-    arquivo de log não recebia nada. Junto com a S-127 -- que faz o arquivo existir num
-    bundle -- é o par que fecha "reconhecer a página quebrou e ninguém sabe por quê".
-    """
-
-    def setUp(self) -> None:
-        self.app_tkinter = SelftestTests._app_tkinter()
-        self.origem = self.app_tkinter.RecognitionOrigin.for_page("livro.pdf", 16)
-        self.caixas: list[tuple[str, str, str]] = []
-        for nome in ("showerror", "showinfo"):
-            original = getattr(self.app_tkinter.messagebox, nome)
-            self.addCleanup(setattr, self.app_tkinter.messagebox, nome, original)
-            setattr(
-                self.app_tkinter.messagebox,
-                nome,
-                lambda titulo, texto, _n=nome: self.caixas.append((_n, titulo, texto)),
-            )
-
-    def _roda(self, erro: Exception, *, nivel: str):
-        janela = _janela_minima(self.app_tkinter)
-
-        def _levanta():
-            raise erro
-
-        with self.assertLogs(self.app_tkinter.logger, level=nivel) as registro:
-            janela._ocr_worker(run=_levanta, origin=self.origem)
-        return janela, registro
-
-    def test_a_falha_de_verdade_vai_para_o_log_com_traceback(self) -> None:
-        _janela, registro = self._roda(RuntimeError("o checkpoint é de outra arch_version"), nivel="ERROR")
-
-        self.assertEqual(len(registro.records), 1)
-        self.assertEqual(registro.records[0].levelname, "ERROR")
-        self.assertIn("Traceback", registro.output[0])
-        self.assertIn("pdf:livro.pdf:page:16", registro.output[0])
-
-    def test_a_falha_de_verdade_continua_sendo_caixa_de_erro(self) -> None:
-        self._roda(RuntimeError("o checkpoint é de outra arch_version"), nivel="ERROR")
-
-        self.assertEqual([nome for nome, _t, _x in self.caixas], ["showerror"])
-        self.assertIn("arch_version", self.caixas[0][2])
-
-    def test_pagina_sem_diagrama_nao_e_erro(self) -> None:
-        """Prosa, índice e página de soluções são a maioria de um livro. Não são falha."""
-        janela, registro = self._roda(
-            self.app_tkinter.NoBoardDetectedError("Nenhum tabuleiro foi detectado."), nivel="INFO"
-        )
-
-        self.assertEqual(registro.records[0].levelname, "INFO")
-        self.assertNotIn("Traceback", registro.output[0])
-        # **Nem caixa informativa, desde a S-164.** A S-125 tirou a caixa vermelha daqui; o que
-        # sobrou era um clique obrigatório no caso mais comum do programa -- virar página em livro
-        # de exercícios cai em prosa a cada duas ou três. A frase foi para o rodapé, que tem
-        # severidade própria desde a S-163 e não precisa interromper para ser lida.
-        self.assertEqual([nome for nome, _t, _x in self.caixas], [])
-        self.assertTrue(
-            any("Selecionar área" in texto for texto in janela.status),
-            "a saída ficou sem a única dica que a caixa dava: use Selecionar área (OCR)",
-        )
-
-    def test_o_caminho_e_o_tipo_da_excecao_e_nao_o_texto_dela(self) -> None:
-        """A separação era `"Nenhum tabuleiro foi detectado" in str(exc)`: traduzir a
-        mensagem, ou mudar uma palavra dela, silenciosamente devolvia a caixa vermelha."""
-        janela = self._roda(self.app_tkinter.NoBoardDetectedError("outra frase qualquer"), nivel="INFO")[0]
-
-        self.assertEqual([nome for nome, _t, _x in self.caixas], [])
-        self.assertTrue(any("outra frase qualquer" in texto for texto in janela.status))
-
-    def test_a_ui_e_liberada_nos_dois_caminhos(self) -> None:
-        """O `finally` é o que devolve os botões. Perdê-lo travaria o OCR para sempre."""
-        for erro in (RuntimeError("qualquer"), self.app_tkinter.NoBoardDetectedError("nada aqui")):
-            with self.subTest(erro=type(erro).__name__):
-                janela, _registro = self._roda(erro, nivel="INFO")
-                self.assertEqual(janela.status[-1], "<fim>")
 
 
 class FilhoLeveTests(unittest.TestCase):

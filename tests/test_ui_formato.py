@@ -14,6 +14,7 @@ formatar é da apresentação, ordenar é do dado.
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from chess_diagram_ocr.ui import strings
 from chess_diagram_ocr.ui.formato import (
@@ -146,7 +147,7 @@ class OrdenarNaoEFormatarTests(unittest.TestCase):
         """A fila é ordenada por `ReviewQueue.sort`, sobre o número -- e só depois é escrita."""
         from pathlib import Path
 
-        fonte = (Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "ui" / "review_panel.py")
+        fonte = (Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "painel_de_revisao.py")
         texto_do_painel = fonte.read_text(encoding="utf-8")
         self.assertIn("self.queue.sort()", texto_do_painel)
         self.assertIn("formato.prioridade(item.priority)", texto_do_painel)
@@ -158,18 +159,28 @@ class SemDadoCruNaTelaTests(unittest.TestCase):
     def _fonte(self, nome: str) -> str:
         from pathlib import Path
 
-        raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "ui"
+        raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt"
         return (raiz / nome).read_text(encoding="utf-8")
 
     def test_a_fila_nao_escreve_mais_a_casa_decimal(self) -> None:
-        painel = self._fonte("review_panel.py")
+        painel = self._fonte("painel_de_revisao.py")
         self.assertNotIn('f"{item.priority:.1f}"', painel)
         self.assertNotIn('f"{item.min_confidence:.3f}"', painel)
 
     def test_o_dataset_nao_publica_mais_a_letra_do_csv(self) -> None:
-        painel = self._fonte("dataset_panel.py")
-        self.assertIn("formato.lado_a_jogar(row.side_to_move)", painel)
-        self.assertNotIn('row.side_to_move or "—"', painel)
+        """O arquivo mudou na S-503: quem monta a linha é `ui/resumo_do_dataset.celulas`, que
+        os dois frontends chamam. A guarda seguiu o código -- deixá-la apontando para o painel
+        do Tk a tornaria vácua, porque lá não há mais nenhuma célula sendo montada."""
+        montagem = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "chess_diagram_ocr"
+            / "ui"
+            / "resumo_do_dataset.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("formato.lado_a_jogar(row.side_to_move)", montagem)
+        self.assertNotIn('row.side_to_move or "—"', montagem)
+        self.assertNotIn('row.side_to_move or "—"', self._fonte("painel_do_dataset.py"))
 
 
 if __name__ == "__main__":

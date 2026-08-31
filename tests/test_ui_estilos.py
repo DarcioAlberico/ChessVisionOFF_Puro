@@ -10,18 +10,17 @@ from __future__ import annotations
 
 import ast
 import re
-import tkinter as tk
 import unittest
 from pathlib import Path
-from tkinter import ttk
-
-from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui import comandos, estilos
-from chess_diagram_ocr.ui.estilos import DESTRUTIVO, NEUTRO, PAPEIS_DE_BOTAO, PRIMARIO, estilo_de_botao
+from chess_diagram_ocr.ui.estilos import NEUTRO, PAPEIS_DE_BOTAO, estilo_de_botao
 
 RAIZ = Path(__file__).resolve().parents[1]
-ARQUIVOS = [*sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")), RAIZ / "app_tkinter.py"]
+ARQUIVOS = [
+    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
+    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+]
 
 
 class TabelaTests(unittest.TestCase):
@@ -45,13 +44,46 @@ class TabelaTests(unittest.TestCase):
             estilo_de_botao("IMPORTANTE")
 
 
+def _enfases(caminho: Path, papel: str) -> int:
+    """Quantos botões daquele arquivo recebem `estilos.<papel>` -- **por `ast`, e não por texto**.
+
+    A conferência em tempo de execução (`estilos.conferir_barra([...])`) repete os papéis da
+    barra como dado, e uma contagem por expressão regular a lê como um segundo botão primário:
+    a guarda que afirma a regra passaria a ser acusada de quebrá-la.
+    """
+    fora = []
+    arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+    conferencias = {
+        id(no)
+        for chamada in ast.walk(arvore)
+        if isinstance(chamada, ast.Call)
+        and ast.unparse(chamada.func).endswith("conferir_barra")
+        for no in ast.walk(chamada)
+    }
+    for no in ast.walk(arvore):
+        if (
+            isinstance(no, ast.Attribute)
+            and no.attr == papel
+            and isinstance(no.value, ast.Name)
+            and no.value.id == "estilos"
+            and id(no) not in conferencias
+        ):
+            fora.append(no.lineno)
+    return len(fora)
+
+
 class SemNomeCravadoTests(unittest.TestCase):
     """O nome do estilo mora no módulo, e em nenhum painel."""
+
+    TRADUTORES = ("estilos.py", "tema.py")
+    """Quem **pode** escrever nome de estilo: `ui/estilos.py`, que os declara, e `qt/tema.py`, que
+    os traduz em folha de estilo do Qt. Os dois citam `primary.TButton` na prosa que explica a
+    tradução, e uma varredura por linha não distingue prosa de código."""
 
     def test_nenhum_painel_escreve_o_nome_do_estilo(self) -> None:
         infratores = []
         for arquivo in ARQUIVOS:
-            if arquivo.name == "estilos.py":
+            if arquivo.name in self.TRADUTORES:
                 continue
             for numero, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), 1):
                 if re.search(r'style\s*=\s*"[^"]*TButton"', linha):
@@ -60,50 +92,69 @@ class SemNomeCravadoTests(unittest.TestCase):
 
 
 class TodoBotaoDeclaraPapelTests(unittest.TestCase):
-    """Zero sítios de `ttk.Button` sem papel (S-445).
+    """Zero sítios de `QPushButton` sem papel (S-445/S-506).
 
     **Por `ast` e não por regex, e a diferença foi medida.** A varredura por expressão regular que
-    dimensionou este item olhava nove linhas à frente procurando `style=`, e casava com o `style=`
-    do botão **seguinte** — ela relatava 30 de 103 com papel quando o número real era 30 de 99.
-    Os quatro sítios a mais eram exemplos dentro do docstring de `ui/estilos.py`, que o `ast` não
-    vê porque docstring não é código.
+    dimensionou este item olhava nove linhas à frente procurando `style=`, e casava com o do botão
+    **seguinte** — ela relatava 30 de 103 com papel quando o número real era 30 de 99. Os quatro
+    sítios a mais eram exemplos dentro do docstring de `ui/estilos.py`, que o `ast` não vê porque
+    docstring não é código.
+
+    **A régua mudou de forma no corte do Tk, e não de conteúdo.** Em `ttk` o papel viajava num
+    `style=` do próprio construtor; em Qt ele é uma chamada à parte, `tema.aplicar_papel(botao,
+    papel)`, porque o Qt não tem nome de estilo -- tem folha de estilo aplicada ao widget. Então a
+    pergunta passa a ser sobre a **função** que cria o botão: ela declara o papel de cada um que
+    cria? Cinco botões estavam sem, e foram achados por esta linha no dia do corte.
     """
 
     @staticmethod
-    def _botoes(src: str) -> list[ast.Call]:
+    def _botoes(src: str, arvore: ast.AST | None = None) -> list[ast.Call]:
         return [
             no
-            for no in ast.walk(ast.parse(src))
-            if isinstance(no, ast.Call)
-            and isinstance(no.func, ast.Attribute)
-            and no.func.attr == "Button"
-            and isinstance(no.func.value, ast.Name)
-            and no.func.value.id in ("ttk", "tb")
+            for no in ast.walk(arvore if arvore is not None else ast.parse(src))
+            if isinstance(no, ast.Call) and isinstance(no.func, ast.Name) and no.func.id == "QPushButton"
         ]
 
+    @staticmethod
+    def _sem_papel(arvore: ast.AST) -> list[int]:
+        """As linhas de `QPushButton(...)` cuja função não declara papel nenhum.
+
+        **Uma árvore só.** Achar o botão numa `ast.parse` e procurar a função noutra compara
+        objetos de árvores diferentes: `is` nunca casa, toda função vira `None` e os 23 botões do
+        pacote aparecem como 23 infratores. O sintoma é uma lista longa demais para ser verdade.
+        """
+        fora: list[int] = []
+        for f in ast.walk(arvore):
+            if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            corpo = ast.unparse(f)
+            if "aplicar_papel" in corpo:
+                continue
+            fora += [
+                no.lineno
+                for no in ast.walk(f)
+                if isinstance(no, ast.Call) and isinstance(no.func, ast.Name) and no.func.id == "QPushButton"
+            ]
+        return fora
+
     def test_todo_botao_da_janela_declara_o_papel(self) -> None:
-        """**A maioria é `NEUTRO`, e escrever `NEUTRO` é o item.** O valor não é o `style=""` que
-        já saía de lá -- é a declaração ter sido feita, e passar a ser cobrada aqui."""
+        """**A maioria é `NEUTRO`, e escrever `NEUTRO` é o item.** O valor não é o padrão que já
+        saía de lá -- é a declaração ter sido feita, e passar a ser cobrada aqui."""
         sem_papel = []
         for arquivo in ARQUIVOS:
-            src = arquivo.read_text(encoding="utf-8")
-            for no in self._botoes(src):
-                estilo = next(
-                    (ast.get_source_segment(src, kw.value) for kw in no.keywords if kw.arg == "style"), ""
-                )
-                if "comandos.estilo" not in (estilo or "") and "estilos.estilo_de_botao" not in (estilo or ""):
-                    sem_papel.append(f"{arquivo.name}:{no.lineno}")
+            arvore = ast.parse(arquivo.read_text(encoding="utf-8"))
+            sem_papel += [f"{arquivo.name}:{linha}" for linha in self._sem_papel(arvore)]
         self.assertEqual(
             [],
             sem_papel,
-            "botão sem papel declarado: passe `style=comandos.estilo(...)` ou "
-            "`style=estilos.estilo_de_botao(estilos.NEUTRO)`.",
+            "botão sem papel declarado: chame `tema.aplicar_papel(botao, comandos.papel(...))` "
+            "ou `tema.aplicar_papel(botao, estilos.NEUTRO)`.",
         )
 
     def test_a_varredura_enxerga_os_botoes_que_existem(self) -> None:
         """Uma varredura que não achasse nada passaria em verde para sempre."""
         total = sum(len(self._botoes(a.read_text(encoding="utf-8"))) for a in ARQUIVOS)
-        self.assertGreater(total, 90, "a varredura deixou de encontrar os botões da janela")
+        self.assertGreater(total, 15, "a varredura deixou de encontrar os botões da janela")
 
 
 class UmaEnfasePorBarraTests(unittest.TestCase):
@@ -129,16 +180,15 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
         for arquivo in ARQUIVOS:
             if arquivo.name in self.SEM_PROXY:
                 continue
-            texto = arquivo.read_text(encoding="utf-8")
-            quantos = len(re.findall(r"estilos\.PRIMARIO", texto))
+            quantos = _enfases(arquivo, "PRIMARIO")
             if quantos > self.LIMITE_POR_ARQUIVO:
                 excessos[arquivo.name] = quantos
         self.assertEqual({}, excessos, "mais de uma ação primária no mesmo painel")
 
     def test_o_destrutivo_alcanca_os_dois_botoes_que_apagam_trabalho(self) -> None:
         """"Remover" e "Quarentena" tiram linha do `labels.csv`, que é rótulo corrigido à mão."""
-        dataset = (RAIZ / "src" / "chess_diagram_ocr" / "ui" / "dataset_panel.py").read_text(encoding="utf-8")
-        self.assertEqual(len(re.findall(r"estilos\.DESTRUTIVO", dataset)), 2)
+        dataset = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_do_dataset.py"
+        self.assertEqual(_enfases(dataset, "DESTRUTIVO"), 2)
 
     def test_o_destrutivo_alcanca_os_dois_da_sala_de_estudo(self) -> None:
         """Apagar variante e apagar continuação tiram **análise humana** da árvore (S-280).
@@ -156,10 +206,14 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
         )
 
     DECLARAM_DESTRUTIVO = {
-        "dataset_panel.py": "'Remover' e 'Quarentena' tiram linha do labels.csv (S-144)",
-        "gallery_panel.py": "'Limpar os headers', que `ui/estilos.py` cita pelo nome (S-445)",
+        "painel_do_dataset.py": "'Remover' e 'Quarentena' tiram linha do labels.csv (S-144)",
+        "painel_da_galeria.py": "'Limpar os headers', que `ui/estilos.py` cita pelo nome (S-445)",
+        "campo.py": (
+            "'Tirar do campo' apaga um diagrama de `data/field_set.jsonl`, que é a referência "
+            "que os relatórios medem -- e ele não pergunta nem desfaz (S-506)"
+        ),
         "comandos.py": "o catálogo declara o papel como **dado**; a propriedade é afirmada por nome acima",
-        "theme.py": "registra a face de `danger.TButton`; é o estilo, e não um botão (S-444)",
+        "tema.py": "registra a face do papel destrutivo; é o estilo, e não um botão (S-444)",
     }
     """Onde `estilos.DESTRUTIVO` pode aparecer, e por quê. Cada entrada é uma decisão assinada."""
 
@@ -179,7 +233,7 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
         critério da S-445 pede os três: apaga trabalho humano, não pergunta, não desfaz.
         """
         fora = {
-            arquivo.name: len(re.findall(r"estilos\.DESTRUTIVO", arquivo.read_text(encoding="utf-8")))
+            arquivo.name: _enfases(arquivo, "DESTRUTIVO")
             for arquivo in ARQUIVOS
             if arquivo.name not in self.DECLARAM_DESTRUTIVO
         }
@@ -194,56 +248,9 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
         declaram = {
             arquivo.name
             for arquivo in ARQUIVOS
-            if re.search(r"estilos\.DESTRUTIVO", arquivo.read_text(encoding="utf-8"))
+            if _enfases(arquivo, "DESTRUTIVO")
         }
         self.assertEqual(set(self.DECLARAM_DESTRUTIVO), declaram)
-
-
-class DegradacaoTests(unittest.TestCase):
-    """Um `Tk` sem `ttkbootstrap`, com tema `vista`: nenhum estilo pode levantar.
-
-    É o contrato de `ui/theme.py` desde a S-53, e é a razão de a S-144 passar `style=` em vez
-    de trocar `ttk.Button` por `ttkbootstrap.Button` em 30 módulos.
-    """
-
-    root: tk.Tk
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        # A raiz é a do processo, e não uma deste módulo (S-416): duas raízes vivas fazem uma
-        # `PhotoImage` nascer no interpretador errado, e o Tk recusa a imagem com a mensagem
-        # que parece coleta de lixo. O porquê inteiro está em `tests/tk_root.py`.
-        cls.root = raiz_do_processo()
-
-    def test_cada_estilo_constroi_um_botao_sem_levantar(self) -> None:
-        estilo = ttk.Style()
-        try:
-            estilo.theme_use("vista")
-        except tk.TclError:  # pragma: no cover - fora do Windows
-            estilo.theme_use(estilo.theme_names()[0])
-
-        quadro = ttk.Frame(self.root)
-        try:
-            for papel in PAPEIS_DE_BOTAO:
-                with self.subTest(papel=papel):
-                    botao = ttk.Button(quadro, text="x", style=estilo_de_botao(papel))
-                    self.assertIsNotNone(botao)
-                    botao.destroy()
-        finally:
-            quadro.destroy()
-
-    def test_o_estilo_desconhecido_pelo_tema_nao_derruba_a_janela(self) -> None:
-        """A prova direta: um nome que **nenhum** tema define continua desenhando um botão."""
-        quadro = ttk.Frame(self.root)
-        try:
-            botao = ttk.Button(quadro, text="x", style="inexistente.TButton")
-            self.assertIsNotNone(botao)
-        finally:
-            quadro.destroy()
-
-    def test_os_papeis_do_modulo_sao_os_tres_declarados(self) -> None:
-        self.assertEqual(set(PAPEIS_DE_BOTAO), {PRIMARIO, DESTRUTIVO, NEUTRO})
-        self.assertEqual(estilos.PRIMARIO, "PRIMARIO")
 
 
 if __name__ == "__main__":

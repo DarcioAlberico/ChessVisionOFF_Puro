@@ -22,9 +22,10 @@ if str(RAIZ) not in sys.path:
 
 from chess_diagram_ocr.ui import atalhos, comandos, estilos, menu  # noqa: E402
 
-PDF_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "pdf_panel.py"
-TEXTO_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "texto_panel.py"
-JANELA = RAIZ / "app_tkinter.py"
+PDF_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_do_pdf.py"
+TEXTO_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
+JANELA = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
+CAMPO = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "campo.py"
 
 COMANDOS_DO_EDITOR: tuple[str, ...] = (
     "abrir_texto",
@@ -87,27 +88,37 @@ com qualquer coisa que ele contivesse, inclusive com um comando que sumisse.
 comandos:** eles abrem uma lista, quem age é o item dela, e o rótulo dos dois mora em
 `ui/strings.py`. Ver o comentário do bloco da Fase 41 em `ui/comandos.py`."""
 
-WIDGETS_DE_COMANDO = ("Button", "Checkbutton")
-"""Os dois que carregam comando. `Label`, `Spinbox` e `Combobox` mostram ou colhem estado."""
+WIDGETS_DE_COMANDO = ("QPushButton", "QCheckBox", "QToolButton")
+"""Os três que carregam comando. `QLabel`, `QSpinBox` e `QComboBox` mostram ou colhem estado.
+
+Eram `Button` e `Checkbutton` do `ttk` até o corte do Tk (S-506); o `QToolButton` entrou junto
+porque é o botão de barra do Qt, e um comando posto nele escapava da varredura."""
 
 
 def _rotulos_literais(no: ast.AST) -> list[str]:
-    """Os `text=` escritos à mão em `ttk.Button`/`ttk.Checkbutton` dentro daquele nó.
+    """Os rótulos escritos à mão num botão dentro daquele nó.
 
     Aceita `ast.Constant` e `ast.JoinedStr`: o botão de exportar era um f-string
     (`f"Exportar PDF {strings.SETA} PGN"`), e uma varredura que só olhasse constante o daria
     por limpo -- que é o modo como uma guarda passa em verde sobre o caso que ela existe para
     pegar.
+
+    **A forma mudou no corte do Tk (S-506), e a guarda quase ficou vácua.** Ela procurava o
+    `text=` de um `ttk.Button`; no Qt o rótulo é o **primeiro posicional** de um `QPushButton` ou
+    `QCheckBox`. Deixá-la como estava faria ela passar em verde sobre um pacote inteiro sem achar
+    um único botão -- que é exatamente o defeito que ela nomeia no docstring acima.
     """
     achados: list[str] = []
     for filho in ast.walk(no):
-        if not isinstance(filho, ast.Call) or not isinstance(filho.func, ast.Attribute):
+        if not isinstance(filho, ast.Call):
             continue
-        if filho.func.attr not in WIDGETS_DE_COMANDO:
+        nome = filho.func.id if isinstance(filho.func, ast.Name) else getattr(filho.func, "attr", "")
+        if nome not in WIDGETS_DE_COMANDO:
             continue
-        for chave in filho.keywords:
-            if chave.arg == "text" and isinstance(chave.value, (ast.Constant, ast.JoinedStr)):
-                escrito = chave.value.value if isinstance(chave.value, ast.Constant) else "<f-string>"
+        primeiro = filho.args[0] if filho.args else None
+        if isinstance(primeiro, (ast.Constant, ast.JoinedStr)):
+            escrito = primeiro.value if isinstance(primeiro, ast.Constant) else "<f-string>"
+            if isinstance(escrito, str) or escrito == "<f-string>":
                 achados.append(f"linha {filho.lineno}: {escrito!r}")
     return achados
 
@@ -144,7 +155,7 @@ def _funcao(arvore: ast.AST, nome: str) -> ast.FunctionDef:
     for no in ast.walk(arvore):
         if isinstance(no, ast.FunctionDef) and no.name == nome:
             return no
-    raise AssertionError(f"função {nome} não existe mais em app_tkinter.py")
+    raise AssertionError(f"função {nome} não existe mais em qt/janela.py")
 
 
 class CoberturaDoCatalogoTests(unittest.TestCase):
@@ -172,20 +183,22 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
     def test_nenhum_rotulo_de_botao_escrito_a_mao(self) -> None:
         """O critério de aceite do item, nos dois lugares que a S-324 nomeia.
 
-        `ui/pdf_panel.py` inteiro -- as duas barras são os únicos botões dele -- e a linha do
-        conjunto de campo, que mora em `_build_field_row` porque é a janela que a monta.
+        `qt/painel_do_pdf.py` inteiro -- as duas barras são os únicos botões dele -- e a linha do
+        conjunto de campo, que no corte do Tk (S-506) saiu da janela e virou `qt/campo.py`: ela
+        afirma coisas sobre a página exibida, e por isso mora ao lado dela.
         """
         arvore_do_painel = ast.parse(PDF_PANEL.read_text(encoding="utf-8"))
         painel = _rotulos_literais(arvore_do_painel)
-        self.assertEqual([], painel, "rótulo de botão escrito à mão em ui/pdf_panel.py")
+        self.assertEqual([], painel, "rótulo de botão escrito à mão em qt/painel_do_pdf.py")
 
         # E o texto trocado depois, que é por onde o `selecionar_area` escapava (S-222).
         alternados = _rotulos_reconfigurados(arvore_do_painel)
         self.assertEqual([], alternados, "botão que troca o próprio rótulo fora do catálogo")
 
-        janela = ast.parse(JANELA.read_text(encoding="utf-8"))
-        linha_de_campo = _rotulos_literais(_funcao(janela, "_build_field_row"))
-        self.assertEqual([], linha_de_campo, "rótulo de botão escrito à mão na linha de campo")
+        campo = ast.parse(CAMPO.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [], _rotulos_literais(campo), "rótulo de botão escrito à mão na linha de campo"
+        )
 
     def test_os_rotulos_que_divergem_do_menu_estao_registrados(self) -> None:
         """**O defeito que este item fecha, virado teste.**
@@ -365,14 +378,40 @@ class ComandosDoEditorTests(unittest.TestCase):
     def test_os_comandos_do_editor_estao_no_catalogo(self) -> None:
         self.assertEqual([], comandos.acoes_fora_do_catalogo(COMANDOS_DO_EDITOR))
 
+    DENTRO_DA_BUSCA = {
+        "Substituir todos": "botão do diálogo de busca, e não comando do catálogo",
+        "Diferenciar maiúsculas": "opção da busca: estado, e não ação",
+        "A letra casa a figurina": "idem -- «Nf3» achar «♘f3» é uma opção da mesma busca",
+    }
+    """Os rótulos da `JanelaDeBusca` que **não** vêm do catálogo, e por quê.
+
+    O catálogo declara `achar` e `substituir` -- os comandos que **abrem** o diálogo, e que o
+    menu, a paleta e a fita mostram. O que está dentro dele é o formulário: o botão que executa a
+    troca e duas opções. Pô-los no catálogo daria três entradas de menu que ninguém pode acionar
+    sem o diálogo aberto, que é o oposto do que a S-324 pede.
+    """
+
     def test_a_aba_texto_nao_escreve_rotulo_a_mao(self) -> None:
-        """A varredura da S-324 passa a cobrir `ui/texto_panel.py`, que ela não cobria.
+        """A varredura da S-324 cobre `qt/painel_de_texto.py`, que ela não cobria.
 
         Com os vinte e poucos comandos desta spec, o rótulo escrito à mão é a S-161 outra vez --
         *"o que não era botão não existia"* --, agora com três peles para divergir.
         """
         arvore = ast.parse(TEXTO_PANEL.read_text(encoding="utf-8"))
-        self.assertEqual([], _rotulos_literais(arvore), "rótulo escrito à mão em ui/texto_panel.py")
+        sobraram = [
+            achado
+            for achado in _rotulos_literais(arvore)
+            if not any(f"{rotulo!r}" in achado for rotulo in self.DENTRO_DA_BUSCA)
+        ]
+        self.assertEqual([], sobraram, "rótulo escrito à mão em qt/painel_de_texto.py")
+
+    def test_a_lista_da_busca_nao_guarda_rotulo_que_sumiu(self) -> None:
+        """Isenção que sobra é isenção que esconde: o próximo literal daquele arquivo entraria
+        sem ninguém assinar."""
+        arvore = ast.parse(TEXTO_PANEL.read_text(encoding="utf-8"))
+        escritos = " ".join(_rotulos_literais(arvore))
+        orfas = [rotulo for rotulo in self.DENTRO_DA_BUSCA if f"{rotulo!r}" not in escritos]
+        self.assertEqual([], orfas, "rótulo declarado na isenção que já não existe no painel")
         self.assertEqual([], _rotulos_reconfigurados(arvore))
 
     def test_edicao_continua_com_um_primario(self) -> None:

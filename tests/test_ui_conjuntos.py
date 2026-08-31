@@ -17,16 +17,11 @@ conjuntos.
 from __future__ import annotations
 
 import logging
-import shutil
 import unittest
 from pathlib import Path
 
-from ambiente_de_teste import pasta_temporaria
-from tk_root import raiz as raiz_do_processo
-
 from chess_diagram_ocr.config import BUNDLE_ROOT
 from chess_diagram_ocr.ui import conjuntos, pele
-from chess_diagram_ocr.ui.board_render import PieceImages, engrossar_traco
 from chess_diagram_ocr.ui.state import AppState, state_from_dict
 
 PECAS = BUNDLE_ROOT / "assets" / "piece_images"
@@ -147,74 +142,6 @@ class EscolhaGuardadaTests(unittest.TestCase):
         estado = state_from_dict(antigo)
         self.assertEqual("", estado.piece_set)
         self.assertEqual(conjuntos.PADRAO, conjuntos.escolhido(estado.piece_set, ambiente={}))
-
-
-class CacheEDesenhoTests(unittest.TestCase):
-    """As imagens: o cache por conjunto, o traço engrossado e a pasta incompleta."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.root = raiz_do_processo()
-
-    def test_o_conjunto_padrao_e_o_de_hoje(self) -> None:
-        """O que este item promete não mudar: a mesma pasta, os mesmos doze arquivos, o mesmo
-        desenho. Um conjunto novo que mexesse no padrão seria uma mudança que ninguém pediu."""
-        imagens = PieceImages(PECAS)
-        self.assertEqual(conjuntos.PADRAO, imagens.conjunto)
-        self.assertIsNotNone(imagens.icon("Q", 24))
-
-    def test_o_cache_separa_conjuntos(self) -> None:
-        """A mesma peça, no mesmo tamanho, em dois conjuntos, são **duas** imagens.
-
-        E voltar ao primeiro devolve a que já estava desenhada: o cache é por conjunto, então
-        quem alterna para comparar paga uma vez e não sempre.
-        """
-        imagens = PieceImages(PECAS)
-        padrao = imagens.icon("Q", 24)
-        imagens.usar_conjunto(conjuntos.TRACO)
-        grosso = imagens.icon("Q", 24)
-        self.assertIsNotNone(grosso)
-        self.assertIsNot(padrao, grosso)
-        imagens.usar_conjunto(conjuntos.PADRAO)
-        self.assertIs(padrao, imagens.icon("Q", 24))
-
-    def test_o_traco_grosso_e_mesmo_mais_grosso(self) -> None:
-        """Medido, e não afirmado: o conjunto derivado tem **mais** pixel escuro que o original,
-        que é a definição operacional de "o traço engrossou"."""
-        from PIL import Image
-
-        original = Image.open(PECAS / "wq.png").convert("RGBA").resize((24, 24), Image.Resampling.LANCZOS)
-        grosso = engrossar_traco(original)
-        self.assertEqual(original.size, grosso.size)
-        escuros = _pixels_escuros(original)
-        escuros_grossos = _pixels_escuros(grosso)
-        self.assertGreater(escuros_grossos, escuros)
-
-    def test_pasta_incompleta_avisa_e_desenha_o_resto(self) -> None:
-        """**Avisar e usar o que houver**, e não recusar: `PieceImages` já degrada para símbolo
-        Unicode peça a peça, e trocar isso por um erro seria piorar um comportamento que existe."""
-        pasta = pasta_temporaria(self, prefixo="cvoff-pecas-")
-        self.addCleanup(shutil.rmtree, pasta, True)
-        shutil.copy(PECAS / "wq.png", pasta / "wq.png")
-
-        imagens = PieceImages(PECAS, conjunto=conjuntos.PASTA, pasta_do_usuario=pasta)
-        with self.assertLogs("chess_diagram_ocr.ui.board_render", level=logging.WARNING) as registro:
-            self.assertIsNotNone(imagens.icon("Q", 24), "a peça que existe tinha de desenhar")
-        aviso = "\n".join(registro.output)
-        self.assertIn("bk.png", aviso, "o aviso precisa nomear o que falta")
-        self.assertNotIn("wq.png", aviso, "a peça presente não pode entrar na lista de ausentes")
-        self.assertIsNone(imagens.icon("k", 24), "a ausente cai no Unicode, e não numa imagem")
-
-    def test_conjunto_do_usuario_sem_pasta_nao_levanta(self) -> None:
-        """Configuração incompleta não é erro: é o Unicode que já existe. Levantar aqui seria uma
-        exceção no meio de um redesenho, que é o que a regra 4 da SPEC_APARENCIA proíbe."""
-        imagens = PieceImages(PECAS, conjunto=conjuntos.PASTA)
-        self.assertIsNone(imagens.icon("Q", 24))
-
-    def test_conjunto_invalido_na_construcao_cai_no_padrao(self) -> None:
-        imagens = PieceImages(PECAS, conjunto="madeira")
-        self.assertEqual(conjuntos.PADRAO, imagens.conjunto)
-        self.assertIsNotNone(imagens.icon("Q", 24))
 
 
 if __name__ == "__main__":  # pragma: no cover

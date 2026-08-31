@@ -7,13 +7,14 @@ uv sync --extra dev --extra onnx --extra ocr
 ```
 
 Isso instala o pacote em modo editável e traz `pytest`, `ruff` e `mypy`. Requer Python 3.10 a 3.13 (a CI prova as duas pontas).
-Os dois últimos extras são opcionais: sem `onnx` os testes da S-30 pulam, sem `ocr` pulam os
-de contrato de motor da S-42 (`InstalledEngineContractTests`). Atenção: `uv sync` com um
-subconjunto de extras **desinstala** o que os outros trouxeram, então repita os três.
+Os dois últimos extras são opcionais: sem `onnx` os testes da S-30 pulam e sem `ocr` pulam os
+de contrato de motor da S-42 (`InstalledEngineContractTests`). O `qt` **deixou de ser extra** no
+corte do Tk (S-506): o PyQt6 é dependência de base, porque a janela é ele. Atenção: `uv sync` com
+um subconjunto de extras **desinstala** o que os outros trouxeram, então repita os três.
 
 **Se você mover o diretório do projeto, rode `uv sync` de novo.** O ponteiro da instalação
 editável guarda o caminho absoluto, e um caminho morto quebra os `cvoff-*` e o
-`app_tkinter.py`. A suíte sobrevive — `pythonpath = ["src"]` no `pyproject.toml` —, e é
+`app_pyqt.py`. A suíte sobrevive — `pythonpath = ["src"]` no `pyproject.toml` —, e é
 `tests/test_environment.py` que avisa que a instalação ficou para trás; sem ele o sintoma
 seriam 33 erros de coleta que não dizem o que fazer (S-37).
 
@@ -62,33 +63,27 @@ reconhece uma página e navega entre diagramas pega o que a suíte não pega —
 um `AttributeError` de navegação apareceu depois de 509 testes verdes:
 
 ```python
-import tkinter as tk
+import os
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # sem tela: o roteiro roda no terminal
+
 from pathlib import Path
-import app_tkinter as app
+from PyQt6.QtWidgets import QApplication
+from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
-root = tk.Tk(); root.withdraw()
-janela = app.ChessOcrTkApp(root)
-janela.load_pdf(Path("PDF/seu_livro.pdf"))
-janela.pdf_panel.page_index_var.set(20)
+app = QApplication([])
+janela = JanelaPrincipal()
+janela.abrir_pdf(Path("PDF/seu_livro.pdf"))
+janela.pdf.ir_para_pagina(20)
+app.processEvents()
 
-def começar():
-    janela.pdf_panel.on_page_spin()
-    janela.ocr_all()
-    root.after(200, esperar)
-
-def esperar(tentativas=[0]):
-    tentativas[0] += 1
-    if janela._is_running_ocr and tentativas[0] < 900:
-        root.after(200, esperar)
-        return
-    print(len(janela.result_panel.items), "diagramas")
-    janela.result_panel.next_diagram()      # é aqui que os defeitos costumam aparecer
-    print(janela.rodape.mensagem())         # a zona de mensagem do rodapé (S-163)
-    root.quit()
-
-root.after(100, começar)
-root.mainloop()
+janela.marcar_diagramas()
+app.processEvents()
+print(janela.rodape.mensagem())
 ```
+
+Sob `offscreen` o Qt monta a janela inteira sem abrir nada, e `processEvents()` é o que faz a
+fila de sinais girar -- o `root.after` do outro lado. Uma tarefa em thread (`ler_pagina`,
+varredura, treino) precisa de um giro a mais depois de ela terminar.
 
 Use `mainloop()` e não um laço de `update()`: `root.after` de outra thread falha com
 "main thread is not in main loop" fora do loop de eventos de verdade, e o erro parece um
@@ -168,8 +163,8 @@ então ele não aprova nada sozinho. Ele diz onde olhar.
 
 - **pt-BR na interface, com acento.** Há teste para isso (`tests/test_strings.py`); a lista
   de palavras está em `ui/strings.py`. Identificadores e nomes de teste ficam em inglês.
-- **Nada de OCR fora de `src/`.** Se você está escrevendo lógica dentro de
-  `app_tkinter.py`, ela provavelmente pertence a `service.py` ou a um painel de `ui/`.
+- **Nada de OCR fora de `src/`.** Se você está escrevendo lógica dentro de `qt/janela.py`,
+  ela provavelmente pertence a `service.py`, a um painel de `qt/` ou à camada pura de `ui/`.
 - **`logging`, nunca `print`,** exceto na saída de um comando `cvoff-*`, que é a interface
   daquele programa.
 - **Escrita de arquivo de trabalho passa por `atomic_io`.** O `labels.csv` é trabalho

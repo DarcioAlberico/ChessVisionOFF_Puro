@@ -9,7 +9,7 @@ from chess_diagram_ocr.fen_utils import (
     square_name,
 )
 from chess_diagram_ocr.ui import board_edit
-from chess_diagram_ocr.ui.board_widget import heatmap_color
+from chess_diagram_ocr.ui.desenho_do_tabuleiro import heatmap_color
 
 KINGS_ONLY = "4k3/8/8/8/8/8/8/4K3"
 START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"

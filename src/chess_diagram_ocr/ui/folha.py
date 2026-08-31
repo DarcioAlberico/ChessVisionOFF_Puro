@@ -65,8 +65,6 @@ pele clássica.
 from __future__ import annotations
 
 import logging
-import tkinter as tk
-from tkinter import ttk
 
 from . import pele, tipografia
 
@@ -76,7 +74,6 @@ __all__ = [
     "CLASSES",
     "COM_INDICADOR",
     "RECHEIO",
-    "aplicar",
     "recheio",
     "vao_do_indicador",
 ]
@@ -147,33 +144,3 @@ def vao_do_indicador(
     olho, e a densidade compacta existe para caber, não para fundir.
     """
     return tipografia.folga(tipografia.FOLGA_DE_LINHA, base=base, densidade=densidade)
-
-
-def aplicar(
-    style: ttk.Style,
-    *,
-    base: int = tipografia.BASE_DE_REFERENCIA,
-    densidade: str = pele.CONFORTAVEL,
-) -> None:
-    """Escreve a folha no `Style`. Nunca levanta -- acabamento não derruba ferramenta.
-
-    **Um `try` por classe, e não um em volta de tudo.** É a mesma razão pela qual
-    `registrar_estilos` separa a tipografia da altura de linha: um tema que recuse `padding` num
-    `TSpinbox` não pode levar junto a folga da faixa de abas. Cada classe que falhar sai no log com
-    o nome, e as outras ficam de pé.
-    """
-    for classe in CLASSES:
-        try:
-            style.configure(classe, padding=recheio(classe, base=base, densidade=densidade))
-        except tk.TclError as exc:  # pragma: no cover - tema que recusa `padding` naquela classe
-            logger.info("Folha de base não aplicada em %s (%s).", classe, exc)
-
-    # Bloco próprio porque o item é outro (S-442) e porque `indicatormargin` é a única opção desta
-    # folha que não existe em todo tema `ttk` -- no `classic` ela não é lida. Um tema sem ela não
-    # pode custar o `padding` das classes acima.
-    vao = vao_do_indicador(base=base, densidade=densidade)
-    for classe in COM_INDICADOR:
-        try:
-            style.configure(classe, indicatormargin=(0, 0, vao, 0))
-        except tk.TclError as exc:  # pragma: no cover - tema sem `indicatormargin`
-            logger.info("Vão do indicador não aplicado em %s (%s).", classe, exc)

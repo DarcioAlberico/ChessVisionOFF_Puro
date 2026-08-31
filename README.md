@@ -10,7 +10,7 @@ Projeto para extrair diagramas de xadrez em PDF, converter para FEN e melhorar a
 - OpenCV: deteccao de tabuleiro e recorte por perspectiva.
 - PyTorch: classificador de pecas por casa (13 classes: vazio + 12 pecas).
 - python-chess: validacao e representacao de FEN/board.
-- Tkinter + ttkbootstrap: **a** interface do produto (`app_tkinter.py`).
+- PyQt6: **a** interface do produto (`app_pyqt.py`).
 - Streamlit: demonstracao do servico no navegador (`examples/streamlit_demo.py`), nao e
   uma interface alternativa -- veja abaixo.
 - PyMuPDF (`fitz`): render de paginas PDF para imagem.
@@ -41,22 +41,47 @@ nao gosto -- o Python 3.10 sai de suporte em outubro de 2026, e o bundle do PyIn
 o interpretador**, de modo que o pino passaria a distribuir um Python sem correcao de seguranca
 para quem baixa o .zip. A CI prova as duas pontas da faixa (3.10 e 3.13); o `.python-version` do
 repositorio continua em 3.10, que e o padrao de quem so roda `uv sync`. Promover o 3.13 a padrao
-do bundle depende de um interpretador com Tk completo -- o que o `uv` entrega para 3.13 ja veio
-sem parte do `ttk`, e ali os testes de janela **pulam** em vez de rodar.
-
 Requer Python 3.10, 3.11, 3.12 ou 3.13. Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
 (`models/piece_classifier.pt`) nao vem no repositorio -- veja
 [Dados e artefatos](#dados-e-artefatos).
 
-## Rodar interface desktop (Tkinter)
+## Rodar interface desktop (PyQt6)
 
 ```bash
-uv run python app_tkinter.py
+uv run python app_pyqt.py
 ```
 
 Nao ha dependencia de plataforma: a aba "Leitura" (WebView2, so-Windows) saiu na S-69, e com
 ela o `pythonnet` e o `pywebview`. Para ler o livro com rolagem continua e busca de texto, o
 botao **Abrir no leitor do sistema** entrega o PDF ao leitor padrao da maquina.
+
+## Como a interface chegou aqui (Tkinter -> PyQt6)
+
+O produto foi em Tkinter + `ttkbootstrap` ate 2026-08-31, num arquivo `app_tkinter.py` de 2.327
+linhas. O PyQt6 nasceu como **versao de teste**: uma segunda janela sobre o mesmo `service.py`,
+feita para responder com codigo que roda se a fronteira da S-31 aguentava outro frontend. Ela
+aguentou, e o dono decidiu a migracao -- paridade painel a painel, testes portados junto, e so
+entao o corte. O corte foi feito no mesmo dia em que a paridade fechou.
+
+**O que a resposta mostrou, e o que ela permitiu.** Nenhum modulo que ja existia precisou mudar
+para a janela nova nascer: `service.py` (o pipeline), `detection/` (as caixas),
+`ui/page_overlay.py` (onde elas estao, o que um clique nelas significa, como cada estado se
+desenha sem depender de cor), `ui/viewport.py` (roda, zoom ancorado, "caber na pagina"),
+`ui/editor_model.py` (o que "salvar" significa), `ui/board_model.py`, `ui/atalhos.py` e
+`ui/comandos.py` sao reusados como estao. O que o Qt escreve do zero e o desenho -- `QPainter`
+no lugar de `create_rectangle`.
+
+E o numero que mede: `app_tkinter.py` tinha 2.327 linhas; `qt/janela.py` tem 1.193 e faz mais.
+A diferenca nao e codigo omitido -- e a camada pura de `ui/` sendo chamada em vez de reescrita.
+O que o Tk carregava sozinho virou 13 modulos puros novos, e `ui/` foi de 81 para 53 modulos,
+nenhum deles importando toolkit.
+
+**O que sobrou de Tk no repositorio**: `cvoff-texto-transcrever`, a janela que transcreve as 123
+faixas de referencia da S-183. E ferramenta de desenvolvimento com entrada propria, nao abre pelo
+`.exe`, e nao foi tocada no corte.
+
+`python app_pyqt.py --selftest` monta a janela sem mostrar, abre um PDF e marca uma pagina,
+com a plataforma `offscreen` -- e responde, numa maquina limpa, se o programa sobe ali.
 
 ## Gerar o programa para Windows (sem Python)
 
@@ -96,7 +121,7 @@ ChessVisionOFF.exe --selftest --page 80
 Ele abre o primeiro PDF de `PDF/`, reconhece a pagina, escreve as FENs no log e confere que
 o caminho de treino tambem montou. Codigos de saida: `0` ok, `2` sem PDF, `3` sem
 checkpoint, `4` le mas nao treina, `1` falha ao reconhecer. Funciona igual num checkout
-(`uv run python app_tkinter.py --selftest`).
+(`uv run python app_pyqt.py --selftest`).
 
 Uma ressalva honesta:
 
@@ -831,7 +856,7 @@ padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e 
 | A exportacao parou no meio | cancelada ou interrompida | exportar de novo para o mesmo arquivo: ele oferece retomar da pagina seguinte a ultima concluida |
 | A exportacao recusa retomar e diz que "o arquivo do modelo mudou" | houve treino entre a interrupcao e a retomada | e o esperado: retomar juntaria metade de um PGN lido por um modelo com metade lida por outro. Exportar do zero |
 | `cvoff-*` nao existe | ambiente nao instalado em modo editavel | `uv sync --extra dev`, e usar `uv run cvoff-...` |
-| `pytest` falha em 33 arquivos com `No module named 'chess_diagram_ocr'` | o projeto foi movido depois de instalado, e o `.pth` do `.venv` aponta para o caminho antigo | `uv sync --extra dev`. A suite em si roda sem instalacao (`pythonpath` no `pyproject.toml`); quem depende dela sao os `cvoff-*` e o `app_tkinter.py` |
+| `pytest` falha em 33 arquivos com `No module named 'chess_diagram_ocr'` | o projeto foi movido depois de instalado, e o `.pth` do `.venv` aponta para o caminho antigo | `uv sync --extra dev`. A suite em si roda sem instalacao (`pythonpath` no `pyproject.toml`); quem depende dela sao os `cvoff-*` e o `app_pyqt.py` |
 | O treino nao aparece no dataset o que voce acabou de salvar | a amostra nao tinha split registrado | resolvido desde a S-56: o proprio `cvoff-train` atribui. `cvoff-audit` mostra quantas estao nesse estado |
 | Testes de ONNX pulados | o extra nao esta instalado | `uv sync --extra onnx`, se voce precisa deles |
 | Correcoes somem ao navegar entre paginas | o cache guarda 8 paginas | salvar a amostra (`Ctrl+S`) e o que persiste; o cache e conveniencia de navegacao. O log avisa quando descarta pagina com correcao sua |
@@ -1007,9 +1032,10 @@ src/chess_diagram_ocr/
   tsoj_reader.py        o leitor do formato TSOJ, de onde veio o classificador de caractere
   cli/                  entrypoints cvoff-*
   detection/            detector hibrido: imagem embutida + contorno
+  qt/                   a janela, em PyQt6: os sete paineis, os dialogos e a fiacao
   text/                 leitura de texto da pagina: linha, glifo, lexico e camada pesquisavel
-  ui/                   paineis da interface: PDF, resultado, estudo, revisao, dataset
-app_tkinter.py          interface desktop (--selftest confere uma instalacao sem abrir janela)
+  ui/                   a camada pura da interface: decisao, medida e tabela, sem toolkit
+app_pyqt.py             interface desktop (--selftest confere uma instalacao sem abrir janela)
 examples/               demonstracoes: streamlit_demo.py roda o servico no navegador
 packaging/              cvoff.spec e build_windows.py: o .zip para Windows (S-55)
 tests/                  suite de testes

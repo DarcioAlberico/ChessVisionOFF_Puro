@@ -50,16 +50,16 @@ O QUE **NÃO** VAI DENTRO, DE PROPÓSITO
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_submodules
 
 PROJETO = Path(SPECPATH).resolve().parent  # noqa: F821 - SPECPATH vem do PyInstaller
 
-# `ttkbootstrap` carrega temas de arquivos de dados, e `chess.svg`/`pymupdf` trazem tabelas
-# que o analisador estático não enxerga. Sem isto o bundle abre e falha no primeiro tema.
+# `assets/` traz o ícone e os doze PNGs de peça, que o analisador estático não enxerga porque
+# são lidos por caminho. A coleta de temas do `ttkbootstrap` saiu no corte do Tk (S-506): não
+# há mais tema de `ttk` para carregar, e a dependência saiu do `pyproject.toml` junto.
 datas = [
     (str(PROJETO / "assets"), "assets"),
 ]
-datas += collect_data_files("ttkbootstrap")
 
 ICONE = PROJETO / "assets" / "cvoff.ico"
 """O ícone do `.exe`, e o **mesmo** que `ui/plataforma.py` põe na janela (S-148).
@@ -77,10 +77,13 @@ disco e o gerador não divergiram."""
 # arquitetura vem do checkpoint (S-27) e os `cvoff-*` são entrypoints declarados no
 # pyproject, que o PyInstaller não lê.
 hiddenimports = [
-    "PIL._tkinter_finder",
     "torchvision.models",
     "torchvision.transforms.v2",
 ]
+# **`qt/` passou a entrar, e a linha que o excluía saiu com o Tk (S-500 → S-506).** Enquanto o
+# `app_tkinter.py` era o produto, `collect_submodules` filtrava `chess_diagram_ocr.qt` para não
+# arrastar ~150 MB de PyQt6 para dentro do bundle na máquina de quem tivesse o extra instalado.
+# Agora `qt/` **é** a janela: filtrá-lo empacotaria um executável que não abre.
 hiddenimports += collect_submodules("chess_diagram_ocr")
 
 # O que só serve para desenvolver, medir ou demonstrar. Cada linha aqui é MB que o usuário
@@ -126,10 +129,19 @@ excludes = [
     # aparecer um `No module named 'skimage'`.
     "scipy",
     "skimage",
+    # **`PyQt6` esteve aqui, e sair desta lista e o corte do Tk (S-506).** Enquanto a janela
+    # era o `app_tkinter.py`, empacotar o Qt era 150 MB de uma segunda janela que ninguem abria.
+    # Agora ele e a janela, e excluí-lo daria um `.exe` que falha no `import PyQt6` antes de
+    # qualquer coisa aparecer.
+    #
+    # O `tkinter` **nao** entra em `excludes`, e a razao e uma so: `cli/texto_transcrever.py`,
+    # a janela que transcreve as 123 faixas de referencia da S-183, continua em Tk. Ela e
+    # ferramenta de desenvolvimento e nao abre pelo `.exe`, mas o `collect_submodules` a
+    # enxerga, e excluir o `tkinter` faria a coleta acusar um import que ela nao encontra.
 ]
 
 a = Analysis(  # noqa: F821
-    [str(PROJETO / "app_tkinter.py")],
+    [str(PROJETO / "app_pyqt.py")],
     pathex=[str(PROJETO / "src")],
     binaries=[],
     datas=datas,

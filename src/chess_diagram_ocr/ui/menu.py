@@ -26,11 +26,13 @@ levantava o item que ninguém amarrou a uma função.
 from __future__ import annotations
 
 import logging
-import tkinter as tk
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from . import atalhos, pele
+if TYPE_CHECKING:  # só para as anotações; ver a nota de `montar` sobre o import tardio
+    pass
+
 
 # Apelidado: neste módulo `comandos` já é o nome do mapa `acao -> função` que `montar` recebe, e
 # duas coisas com o mesmo nome no mesmo arquivo é como se lê o errado. `strings` saiu junto: o
@@ -48,7 +50,6 @@ __all__ = [
     "acoes_declaradas",
     "acoes_fora_do_catalogo",
     "comandos_faltando",
-    "montar",
 ]
 
 COMANDO = "COMANDO"
@@ -366,136 +367,3 @@ def acoes_fora_do_catalogo() -> list[str]:
     uma pele desenhar uma linha sem rótulo, ou nenhuma linha.
     """
     return catalogo.acoes_fora_do_catalogo(acoes_declaradas())
-
-
-def montar(
-    root: tk.Misc,
-    comandos: Mapping[str, Callable[[], None]],
-    *,
-    interruptores: Mapping[str, tk.BooleanVar] | None = None,
-    recentes: Callable[[], Sequence[tuple[str, Callable[[], None]]]] = list,
-    escolhas: Mapping[str, tk.StringVar] | None = None,
-) -> tk.Menu:
-    """Constrói a barra e a pendura na janela. Devolve a barra montada.
-
-    Levanta `KeyError` quando um item declarado não tem comando: um menu que desenha uma linha
-    inerte é pior que um menu sem ela -- a pessoa conclui que a função existe e está quebrada.
-    É a mesma disciplina de `tokens.cor` e de `estilos.estilo_de_botao`.
-
-    `recentes` é chamado **na hora de abrir** o menu Arquivo, e não aqui: a lista de livros muda a
-    cada PDF aberto, e um submenu montado uma vez mostraria o acervo de quando a janela subiu.
-
-    `escolhas` traz o `StringVar` de cada item de `APARENCIA`, e a falta dele **levanta** pela
-    mesma razão que a falta de comando: um submenu de `radiobutton` sem variável desenha três
-    opções em que nenhuma aparece marcada, e a pessoa conclui que a escolha não pegou.
-    """
-    if fora := acoes_fora_do_catalogo():
-        raise KeyError(f"item de menu fora do catálogo de comandos: {', '.join(fora)}")
-    if faltando := comandos_faltando(comandos):
-        raise KeyError(f"item de menu sem comando: {', '.join(faltando)}")
-    variaveis = escolhas or {}
-    if sem_variavel := sorted(
-        item.acao
-        for declarado in MENUS
-        for item in declarado.itens
-        if item.tipo in (APARENCIA, DENSIDADE) and item.acao not in variaveis
-    ):
-        raise KeyError(f"item de aparência sem variável de escolha: {', '.join(sem_variavel)}")
-
-    marcas = interruptores or {}
-    anterior = str(root.cget("menu") or "")
-    barra = tk.Menu(root)
-    for declarado in MENUS:
-        menu = tk.Menu(barra, tearoff=False)
-        for item in declarado.itens:
-            _acrescentar(menu, item, comandos, marcas, recentes, variaveis)
-        barra.add_cascade(label=declarado.titulo, menu=menu)
-    root.configure(menu=barra)  # type: ignore[call-arg]
-    # **A barra anterior é destruída, e não abandonada** (S-399). `montar` é chamada de novo a
-    # cada troca de pele, e `configure(menu=...)` só troca a que está pendurada: a antiga, com os
-    # seis submenus dela, continuava viva no interpretador Tcl. Trocar de pele cinco vezes numa
-    # sessão deixava cinco barras de menu inteiras na memória, cada uma com os comandos Tcl das
-    # linhas dela.
-    #
-    # Depois do `configure`, e não antes: destruir a barra que ainda está pendurada deixaria a
-    # janela um instante sem menu nenhum, e no Windows isso pisca.
-    if anterior and anterior != str(barra):
-        try:
-            root.nametowidget(anterior).destroy()
-        except (KeyError, tk.TclError):  # pragma: no cover - barra já removida por outro caminho
-            logger.debug("A barra de menus anterior (%s) já não existia.", anterior)
-    return barra
-
-
-def _acrescentar(
-    menu: tk.Menu,
-    item: Item,
-    comandos: Mapping[str, Callable[[], None]],
-    marcas: Mapping[str, tk.BooleanVar],
-    recentes: Callable[[], Sequence[tuple[str, Callable[[], None]]]],
-    variaveis: Mapping[str, tk.StringVar],
-) -> None:
-    if item.tipo == SEPARADOR:
-        menu.add_separator()
-        return
-    if item.tipo == RECENTES:
-        menu.add_cascade(label=item.rotulo, menu=_submenu_recentes(menu, recentes))
-        return
-    if item.tipo in (APARENCIA, DENSIDADE):
-        valores = pele.PELES if item.tipo == APARENCIA else pele.DENSIDADES
-        submenu = _submenu_de_escolha(menu, valores, variaveis[item.acao], comandos[item.acao])
-        menu.add_cascade(label=item.rotulo, menu=submenu)
-        return
-    if item.tipo == INTERRUPTOR and item.acao in marcas:
-        menu.add_checkbutton(label=item.rotulo, variable=marcas[item.acao], command=comandos[item.acao])
-        return
-    # `accelerator` só **mostra** a tecla; quem a liga é `bind_shortcuts`, e é de propósito: o
-    # `bind` da S-20 tem a guarda de foco (`←` dentro do campo de FEN é do campo), e o
-    # acelerador do Tk não tem guarda nenhuma. Duas ligações da mesma tecla disparariam duas vezes.
-    menu.add_command(label=item.rotulo, command=comandos[item.acao], accelerator=atalhos.acelerador(item.acao))
-
-
-def _submenu_de_escolha(
-    pai: tk.Menu,
-    valores: Sequence[object],
-    escolha: tk.StringVar,
-    ao_escolher: Callable[[], None],
-) -> tk.Menu:
-    """Um `radiobutton` por opção, na ordem em que o registro as declara (S-221/S-232).
-
-    O `value` é o nome que vai para o disco e o `label` é o que a pessoa lê -- separados porque
-    o primeiro é chave e o segundo é texto de interface, e a S-166 já fixou que os dois não são
-    a mesma coisa.
-
-    **Um montador para os dois eixos**, e não um por eixo: peles e densidades são a mesma linha de
-    menu com outra lista atrás. Duas cópias divergiriam na primeira vez que uma ganhasse um
-    separador -- que é o argumento de `ui/barra.py` sobre não haver duas implementações de quebra.
-    """
-    submenu = tk.Menu(pai, tearoff=False)
-    for valor in valores:
-        nome = valor.nome if isinstance(valor, pele.Pele) else str(valor)
-        rotulo = valor.rotulo if isinstance(valor, pele.Pele) else pele.rotulo_de_densidade(nome)
-        submenu.add_radiobutton(label=rotulo, value=nome, variable=escolha, command=ao_escolher)
-    return submenu
-
-
-def _submenu_recentes(pai: tk.Menu, recentes: Callable[[], Sequence[tuple[str, Callable[[], None]]]]) -> tk.Menu:
-    submenu = tk.Menu(pai, tearoff=False, postcommand=lambda: _preencher_recentes(submenu, recentes))
-    return submenu
-
-
-def _preencher_recentes(
-    submenu: tk.Menu, recentes: Callable[[], Sequence[tuple[str, Callable[[], None]]]]
-) -> None:
-    """Refaz o submenu a cada abertura. Sem livro nenhum, uma linha desabilitada que diz isso."""
-    submenu.delete(0, tk.END)
-    try:
-        itens = list(recentes())
-    except Exception:  # pragma: no cover - ler o estado não pode derrubar o menu
-        logger.exception("Não foi possível montar a lista de livros recentes.")
-        itens = []
-    if not itens:
-        submenu.add_command(label="(nenhum livro aberto ainda)", state=tk.DISABLED)
-        return
-    for rotulo, abrir in itens:
-        submenu.add_command(label=rotulo, command=abrir)

@@ -981,11 +981,18 @@ class NumerosVivosTests(unittest.TestCase):
     def test_as_threads_citadas_batem_com_as_do_codigo(self) -> None:
         """A ARCHITECTURE contava doze e havia treze: as duas da aba Texto ficaram de fora (S-410).
 
-        A varredura é a mesma de `tests/test_busy.py` -- `threading.Thread(` em `ui/*.py` e no
-        `app_tkinter.py` --, porque duas contagens da mesma coisa é o defeito que este teste pega.
+        A varredura é a mesma de `tests/test_busy.py` -- `threading.Thread(` **e** `Tarefa(` em
+        `qt/*.py` --, porque duas contagens da mesma coisa é o defeito que este teste pega.
+
+        Mudou de pasta e ganhou a segunda forma no corte do Tk (S-506): `ui/` não abre thread
+        nenhuma, e o `Tarefa` é o `QThread` por onde a leitura da página passa.
         """
-        arquivos = [*sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")), RAIZ / "app_tkinter.py"]
-        real = sum(arquivo.read_text(encoding="utf-8").count("threading.Thread(") for arquivo in arquivos)
+        arquivos = sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py"))
+        real = sum(
+            arquivo.read_text(encoding="utf-8").count("threading.Thread(")
+            + arquivo.read_text(encoding="utf-8").count("Tarefa(")
+            for arquivo in arquivos
+        )
         citado = _cardinal(self.arquitetura, r"\*\*(\w+)\*\* threads rodam fora")
         self.assertEqual(real, citado, "A ARCHITECTURE conta threads que o código não tem, ou vice-versa.")
 
@@ -1149,9 +1156,9 @@ class NumerosVivosTests(unittest.TestCase):
         """O 651 do placar original era honesto quando foi escrito, e virou falso sem que nada
         avisasse -- o arquivo dobrou (S-136). O número citado passa a sair do mesmo lugar que a
         catraca de `test_packaging.py` cobra."""
-        janela = RAIZ / "app_tkinter.py"
+        janela = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
         if not janela.exists():
-            self.skipTest("app_tkinter.py não existe neste checkout")
+            self.skipTest("qt/janela.py não existe neste checkout")
         real = len(janela.read_text(encoding="utf-8").splitlines())
         roadmap = (DOCS / "ROADMAP.md").read_text(encoding="utf-8")
         criterio = roadmap.split("## Fase 6", 1)[1].split("## Fase 7", 1)[0]
@@ -1165,9 +1172,9 @@ class NumerosVivosTests(unittest.TestCase):
         primeiro a envelhecer -- foi exatamente o que aconteceu com o critério de saída da Fase
         6, que passou três semanas dizendo "não iniciado" sobre um `.exe` que rodava.
         """
-        janela = RAIZ / "app_tkinter.py"
+        janela = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
         if not janela.exists():
-            self.skipTest("app_tkinter.py não existe neste checkout")
+            self.skipTest("qt/janela.py não existe neste checkout")
         real = len(janela.read_text(encoding="utf-8").splitlines())
         roadmap = (DOCS / "ROADMAP_FASE14.md").read_text(encoding="utf-8")
         # `chr(10) + "---" + chr(10)` e nao `"---"`: a propria tabela tem `|---|` nas

@@ -8,7 +8,7 @@ escolha, [ROADMAP.md](ROADMAP.md); para os números, [BASELINE.md](BASELINE.md) 
 
 ## A regra que organiza tudo
 
-**Nenhuma lógica de reconhecimento vive numa interface.** `app_tkinter.py` é apresentação: lê
+**Nenhuma lógica de reconhecimento vive numa interface.** `app_pyqt.py` é apresentação: lê
 widgets, chama o serviço, desenha o resultado. Isso não é gosto arquitetural — é consequência
 de um defeito medido. Até a Fase 6 havia **duas** telas, e cada uma implementava o pipeline de
 forma independente: cinco entregas das Fases 2 e 3 nunca chegaram ao Streamlit sem que nada
@@ -156,12 +156,12 @@ Os outros doze são operações de imagem e utilidades da mesma cadeia: `binariz
 | `state.py` · `strings.py` · `shortcuts.py` · `tooltip.py` | Estado, vocabulário, atalhos, dicas. |
 | `busy.py` | O que está rodando e o que se perde ao fechar a janela (S-60). Sem Tk. |
 
-`app_tkinter.py` monta esses painéis e liga um ao outro. Nada mais.
+`qt/janela.py` monta esses painéis e liga um ao outro. Nada mais.
 
 **Os seis módulos sem Tk não são organização.** `editor_model`, `board_model`, `busy`,
 `board_edit`, `page_overlay` e `viewport` são onde mora a regra que, dentro de um widget, só se testava dirigindo a
 janela — e um teste que precisa de janela é um teste que quase não se escreve. `tests/` tem
-uma varredura de importação em cada um: se `tkinter` voltar a entrar ali, a suíte reprova.
+uma varredura de importação em cada um: se um toolkit voltar a entrar ali, a suíte reprova.
 
 ---
 
@@ -253,25 +253,27 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Treze** threads rodam fora da thread da interface, e todas voltam por `root.after`. Oito são
-operações longas e estão no `BusyRegistry`; as outras cinco são de segundos e estão
-**declaradas** em `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
+**Onze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+`root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
+exceção. Nove são operações longas e estão no `BusyRegistry`; as outras duas são declaradas em
+`tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
 
-A contagem é conferida por `tests/test_docs.py` contra o `threading.Thread(` de `ui/` e do
-`app_tkinter.py` (S-410): ela dizia **doze** e ignorava as duas da aba Texto, que são justamente
-as que a Fase 25 acrescentou depois de este parágrafo ter sido escrito.
+A contagem é conferida por `tests/test_docs.py` contra `qt/*.py` (S-410/S-506). **Ela conta duas
+formas**: `threading.Thread(`, que veio do Tk, e `Tarefa(`, o `QThread` de `qt/trabalho.py`.
+Contar só a primeira deixaria de fora a leitura da página, que é o laço interno do programa.
 
 | operação | onde | cancelável | perde trabalho ao fechar | empresta o modelo do serviço |
 |---|---|---|---|---|
-| OCR de uma página | `app_tkinter._ocr_worker` | não (é rápido) | — declarada | sim (S-31) |
-| exportação de um livro | `ui/export_controller.py` | sim, entre páginas (S-24) | não, tem parcial | sim (S-57) |
-| treino | `ui/training_dialog.py` | sim, entre épocas (S-60) | sim, desde a melhor época | escreve o `.pt` |
-| varredura do livro — Galeria **e** fila de revisão (S-119) | `ui/gallery_panel.py`, com o `ReviewSink` de `ui/review_panel.py` | sim, entre páginas | não, retoma de onde parou (S-120) | sim (S-57) |
-| busca por nome na base | `ui/gallery_panel.py` | sim, entre partidas | não, é curta | não |
-| busca por posição na base | `ui/gallery_panel.py` | sim, entre pedaços | **sim**, a passada inteira | não |
-| detecção de duplicatas | `ui/dataset_panel.py` | não | não, é derivada | não |
-| leitura do texto da página | `ui/texto_panel.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
-| gravação do texto lido | `ui/texto_panel.py` | não (é curta) | não, escreve por `atomic_io` | não |
+| marcar e reconhecer a página | `qt/janela.py::_rodar` | não (é rápido) | — declarada | sim (S-31) |
+| exportação de um livro | `qt/exportador.py` | sim, entre páginas (S-24) | não, tem parcial | sim (S-57) |
+| treino | `qt/dialogos.py::ControladorDeTreino` | sim, entre épocas (S-60) | sim, desde a melhor época | escreve o `.pt` |
+| varredura do livro — Galeria **e** fila de revisão (S-119) | `qt/painel_da_galeria.py`, com o `SumidouroDeRevisao` de `qt/painel_de_revisao.py` | sim, entre páginas | não, retoma de onde parou (S-120) | sim (S-57) |
+| busca por nome na base | `qt/painel_da_galeria.py` | sim, entre partidas | não, é curta | não |
+| busca por posição na base | `qt/painel_da_galeria.py` | sim, entre pedaços | **sim**, a passada inteira | não |
+| detecção de duplicatas | `qt/painel_do_dataset.py` | não | não, é derivada | não |
+| leitura do texto da página | `qt/painel_de_texto.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
+| exportação do texto lido | `qt/painel_de_texto.py` | não | **sim**, o destino fica pela metade | não |
+| avaliação do motor sobre a posição | `qt/painel_de_estudo.py` | não | — declarada | não (é o Stockfish) |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).
@@ -287,8 +289,9 @@ rodando e **o que se perde**, que não é a mesma coisa em todas — a exportaç
 parcial e sobrevive, o treino perde o progresso desde a última época melhor (S-60).
 
 A lista de quem se registra é travada por teste, e não por convenção: `test_busy.py` varre
-`ui/*.py` e `app_tkinter.py` por `threading.Thread(` e exige que cada uma ou registre, ou
-esteja na lista de exceções **com o motivo escrito**. Sem isso, a S-60 cobriu duas operações
+`qt/*.py` por `threading.Thread(` e `Tarefa(` e exige que cada uma ou registre, ou esteja na
+lista de exceções **com o motivo escrito**. No corte do Tk (S-506) a varredura quase ficou
+apontada para `ui/`, que já não abre thread nenhuma -- uma guarda verde sobre zero threads. Sem isso, a S-60 cobriu duas operações
 e as dez seguintes entraram em silêncio — inclusive a mais cara do programa (S-112).
 
 ---

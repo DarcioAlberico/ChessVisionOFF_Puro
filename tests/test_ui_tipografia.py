@@ -15,13 +15,10 @@ escala perfeita e não usada é exatamente o estado em que a S-144 encontrou o `
 from __future__ import annotations
 
 import re
-import tkinter as tk
 import unittest
 from pathlib import Path
 
-from tk_root import raiz
-
-from chess_diagram_ocr.ui import theme, tipografia
+from chess_diagram_ocr.ui import tipografia
 from chess_diagram_ocr.ui.tipografia import (
     AUXILIAR,
     CORPO,
@@ -35,8 +32,12 @@ from chess_diagram_ocr.ui.tipografia import (
 )
 
 RAIZ = Path(__file__).resolve().parents[1]
-FONTE_CRAVADA = re.compile(r'font=\(\s*"')
-"""`font=("Consolas", 10)` e `font=("Segoe UI", 9)` — a família e o número no painel."""
+FONTE_CRAVADA = re.compile(r'QFont\(\s*"|setFamily\(\s*"|setPointSize[F]?\(\s*\d')
+"""`QFont("Consolas", 10)`, `setFamily("Segoe UI")` e `setPointSize(9)` -- a familia e o
+numero escritos no painel.
+
+**Era `font=("Consolas", 10)` ate o corte do Tk (S-506)**: a tupla do `tk` virou tres formas
+no Qt, e procurar so a antiga faria a varredura passar em verde sobre um pacote inteiro."""
 
 
 class EscalaTests(unittest.TestCase):
@@ -141,7 +142,10 @@ class SemFonteCravadaTests(unittest.TestCase):
 
     def test_nenhum_painel_crava_familia_e_tamanho(self) -> None:
         infratores = []
-        arquivos = [*sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")), RAIZ / "app_tkinter.py"]
+        arquivos = [
+            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
+            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+        ]
         for arquivo in arquivos:
             if arquivo.name in self.LIVRES:
                 continue
@@ -151,78 +155,32 @@ class SemFonteCravadaTests(unittest.TestCase):
         self.assertEqual([], infratores, "fonte cravada fora da escala. Peça um papel de `ui/tipografia.py`.")
 
     def test_a_varredura_enxerga_o_que_deveria(self) -> None:
-        """O controle: se o padrão deixasse de casar, o teste acima passaria vazio."""
-        texto = (RAIZ / "src" / "chess_diagram_ocr" / "ui" / "board_render.py").read_text(encoding="utf-8")
-        self.assertTrue(FONTE_CRAVADA.search(texto))
+        """O controle: se o padrão deixasse de casar, o teste acima passaria vazio.
 
-
-class EscalaNaJanelaTests(unittest.TestCase):
-    """A ligação. Uma escala perfeita e não usada é o estado em que a S-144 achou o tema."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.root = raiz()
-        theme.registrar_estilos()
-
-    def test_a_fonte_base_vem_do_sistema(self) -> None:
-        tamanho, proporcional, monoespacada = theme.fonte_base()
-        self.assertGreaterEqual(tamanho, MINIMO_LEGIVEL)
-        self.assertTrue(proporcional and monoespacada)
-        self.assertNotEqual(proporcional, monoespacada, "a proporcional e a monoespaçada empataram")
-
-    def test_o_dado_resolvido_e_de_largura_fixa_de_verdade(self) -> None:
-        """A propriedade que importa não é o nome da família: é `1` e `l` medirem o mesmo.
-
-        Medido com o Tk, e é a única forma de saber. Uma lista de nomes preferidos pode
-        envelhecer; a medição não.
+        **Ele prova o padrão e não um arquivo, e a razão é que o pacote está limpo.** Enquanto
+        havia Tk, `ui/board_render.py` cravava `font=("Segoe UI", 9)` e servia de caso positivo.
+        Depois do corte não há uma única fonte cravada em `qt/` -- o que é o estado desejado, e
+        deixaria o controle sem nada para achar. Um controle ancorado num infrator é um controle
+        que se apaga quando o infrator é consertado.
         """
-        from tkinter import font as tkfont
+        for exemplo in (
+            'QFont("Consolas", 10)',
+            'fonte.setFamily("Segoe UI")',
+            "fonte.setPointSize(9)",
+            "fonte.setPointSizeF(11)",
+        ):
+            with self.subTest(exemplo=exemplo):
+                self.assertTrue(FONTE_CRAVADA.search(exemplo), "o padrão deixou de casar")
 
-        familia, tamanho = theme.fonte_atual(DADO)[:2]
-        medidor = tkfont.Font(root=self.root, family=familia, size=tamanho)
-        larguras = {medidor.measure(caractere) for caractere in "1lI8/wW"}
-        self.assertEqual(len(larguras), 1, f"{familia} não é de largura fixa: {larguras}")
-
-    def test_o_corpo_resolvido_nao_e_de_largura_fixa(self) -> None:
-        """O controle do teste acima: se a medição empatasse em qualquer fonte, ela não mede."""
-        from tkinter import font as tkfont
-
-        familia, tamanho = theme.fonte_atual(CORPO)[:2]
-        medidor = tkfont.Font(root=self.root, family=familia, size=tamanho)
-        self.assertNotEqual(medidor.measure("1"), medidor.measure("w"))
-
-    def test_o_titulo_de_grupo_se_distingue_do_corpo(self) -> None:
-        """Sem depender de borda: é o critério de aceite, e ele vale para todo `LabelFrame`.
-
-        O estilo é o **padrão** e não um nomeado, de propósito: um nomeado exigiria `style=` nos
-        vinte e poucos grupos da janela, e o primeiro esquecido voltaria ao corpo em silêncio.
-        """
-        from tkinter import ttk
-
-        registrado = str(ttk.Style().lookup(theme.ESTILO_DE_TITULO, "font"))
-        self.assertIn("bold", registrado)
-        self.assertEqual(theme.ESTILO_DE_TITULO, "TLabelframe.Label")
-
-    def test_a_tabela_de_dados_tem_corpo_monoespacado_e_a_padrao_nao(self) -> None:
-        """`ttk` não tem fonte por coluna: quem pede monoespaçada pede para a tabela.
-
-        A fila de Revisão fica **fora** disso de propósito -- a coluna larga dela é prosa.
-        """
-        from tkinter import ttk
-
-        style = ttk.Style()
-        familia_dado = theme.fonte_atual(DADO)[0]
-        self.assertIn(str(familia_dado), str(style.lookup(theme.ESTILO_DE_TABELA_DE_DADOS, "font")))
-        self.assertNotIn(str(familia_dado), str(style.lookup("Treeview", "font")))
-
-    def test_o_campo_de_fen_do_resultado_nasce_monoespacado(self) -> None:
-        """O widget de verdade, e não o papel: é a FEN que o produto existe para mostrar."""
-        quadro = tk.Frame(self.root)
-        self.addCleanup(quadro.destroy)
-        from tkinter import ttk
-
-        campo = ttk.Entry(quadro, font=theme.fonte_atual(DADO))
-        self.assertEqual(str(campo.cget("font")).split()[0].strip("{}"), str(theme.fonte_atual(DADO)[0]).split()[0])
+    def test_a_varredura_nao_acusa_o_que_e_legitimo(self) -> None:
+        """A outra metade: derivar a fonte de outra é o caminho certo, e não pode ser acusado."""
+        for exemplo in (
+            "fonte = QFont(pintor.font())",
+            "fonte.setPointSizeF(max(6.0, casa.height() * 0.72))",
+            "QFont(especificacao[0], especificacao[1])",
+        ):
+            with self.subTest(exemplo=exemplo):
+                self.assertIsNone(FONTE_CRAVADA.search(exemplo), "o padrão acusou o caminho certo")
 
 
 if __name__ == "__main__":

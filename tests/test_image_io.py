@@ -106,7 +106,7 @@ class LeituraTests(unittest.TestCase):
             self.assertIsNone(read_image(Path(tmp)))
 
     def test_aceita_caminho_em_texto(self) -> None:
-        """`app_tkinter._ocr_local` passa o `str` que o diálogo de arquivo devolveu."""
+        """A janela passa o `str` que o diálogo de arquivo devolveu."""
         with tempfile.TemporaryDirectory() as tmp:
             destino = Path(tmp) / CIRILICO / "escolhido.png"
             write_image(destino, _tabuleiro())
@@ -187,7 +187,7 @@ class LeiDoProjetoTests(unittest.TestCase):
 
     RAIZ = Path(__file__).resolve().parents[1]
 
-    ALCANCE_MINIMO = ("app_tkinter.py", "coleta.py", "atomic_io.py", "build_windows.py", "gerar.py")
+    ALCANCE_MINIMO = ("janela.py", "coleta.py", "atomic_io.py", "build_windows.py", "gerar.py")
     """Cinco arquivos de cinco cantos: a janela na raiz, o módulo que tinha o defeito, a
     biblioteca que o corrige, o empacotador e o gerador de fixtures. Se a varredura não alcança
     os cinco, ela não está olhando o repositório -- e uma guarda que varre a pasta errada passa

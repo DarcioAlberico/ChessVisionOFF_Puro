@@ -20,22 +20,22 @@ from chess_diagram_ocr.ui.busy import BusyRegistry
 
 RAIZ = Path(__file__).resolve().parents[1]
 
-ARQUIVOS_COM_THREAD = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
-"""Onde a interface abre threads. Mesmo recorte do `ARQUIVOS_DE_UI` do `test_strings`."""
+ARQUIVOS_COM_THREAD = sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py"))
+"""Onde a interface abre threads.
+
+**Era `ui/` mais o `app_tkinter.py` até o corte (S-506).** Depois dele `ui/` não abre thread
+nenhuma -- é a camada pura --, e quem as abre é `qt/`. Apontar a varredura para a pasta antiga
+deixaria a guarda passando em verde sobre zero threads, que é o modo de falha que ela existe
+para evitar: a S-60 cobriu as duas operações longas que existiam então e as dez seguintes
+entraram em silêncio."""
 
 SEM_REGISTRO = {
-    ("app_tkinter.py", "_request_overlay"): (
-        "Marcar os diagramas da página aberta. Sub-segundo, e o resultado é um desenho por "
-        "cima da página -- nada em disco, nada a perder."
+    ("janela.py", "_rodar"): (
+        "Marcar os diagramas e reconhecer a página -- as duas passam por aqui. É o laço interno "
+        "do programa, limitado por `max_boards`, e o que ele produz aparece na tela: quem fecha "
+        "a janela durante ele está desistindo do resultado, não perdendo trabalho gravado."
     ),
-    ("app_tkinter.py", "_start_ocr"): (
-        "O reconhecimento da página. É o laço interno do programa, limitado por `max_boards`, "
-        "e o que ele produz aparece na tela: quem fecha a janela durante ele está desistindo "
-        "do resultado, não perdendo trabalho gravado."
-    ),
-    ("net_button.py", "correct"): "Uma leitura de um tabuleiro por um provedor de rede. Segundos.",
-    ("second_opinion_button.py", "read"): "Uma leitura de um tabuleiro pelo leitor local (S-66). Segundos.",
-    ("study_panel.py", "analyse"): (
+    ("painel_de_estudo.py", "analyse"): (
         "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
         "posição continua lá para pedir de novo."
     ),
@@ -46,13 +46,18 @@ Perguntar "fechar mesmo assim?" por causa de uma análise de dois segundos trein
 responder "sim" sem ler, e aí ele responde "sim" também para a busca por posição, que custa
 56 minutos. O registro só vale enquanto quem for avisado tiver motivo para parar.
 
-**Uma thread nova em `ui/` ou no `app_tkinter.py` falha a suíte até estar registrada ou
-declarada aqui.** É o que a S-60 não teve: ela cobriu as duas operações longas que existiam
+**Uma thread nova em `qt/` falha a suíte até estar registrada ou declarada aqui.** É o que a S-60 não teve: ela cobriu as duas operações longas que existiam
 então, e as dez que vieram depois entraram em silêncio."""
 
 
 def _threads_por_funcao(caminho: Path) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef | None]]:
-    """Cada `threading.Thread(...)` do arquivo, com a função que o dispara."""
+    """Cada thread aberta no arquivo, com a função que a dispara.
+
+    **Duas formas, e as duas contam.** `threading.Thread(...)` é a que veio do Tk; `Tarefa(...)`
+    é o `QThread` de `qt/trabalho.py`, e ele existe porque uma thread do Qt tem de voltar por
+    sinal e não por chamada direta. Contar só a primeira deixaria de fora justamente as
+    operações que o porte passou a rodar pelo caminho novo -- inclusive a leitura da página, que
+    é o laço interno do programa."""
     arvore = ast.parse(caminho.read_text(encoding="utf-8"))
     pais: dict[ast.AST, ast.AST] = {}
     for no in ast.walk(arvore):
@@ -61,7 +66,7 @@ def _threads_por_funcao(caminho: Path) -> list[tuple[str, ast.FunctionDef | ast.
 
     achados = []
     for no in ast.walk(arvore):
-        if not (isinstance(no, ast.Call) and ast.unparse(no.func) == "threading.Thread"):
+        if not (isinstance(no, ast.Call) and ast.unparse(no.func) in ("threading.Thread", "Tarefa")):
             continue
         atual: ast.AST | None = pais.get(no)
         while atual is not None and not isinstance(atual, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -71,15 +76,20 @@ def _threads_por_funcao(caminho: Path) -> list[tuple[str, ast.FunctionDef | ast.
 
 
 def _registra(funcao: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """A função chama algo cujo nome fala em registrar -- `busy.register` ou `_register_busy`.
+    """A função chama algo cujo nome fala em registrar -- `busy.register` ou `_registrar_ocupado`.
 
-    O nome e não o objeto: a Galeria registra por um ajudante, porque as três operações dela
-    dividem o mesmo ponto de saída, e exigir a chamada literal empurraria para copiar o
-    registro três vezes.
+    O nome e não o objeto: a Galeria e a aba de Texto registram por um ajudante, porque as
+    operações de cada uma dividem o mesmo ponto de saída, e exigir a chamada literal empurraria
+    para copiar o registro três vezes.
+
+    **`register` e `registrar`**: o ajudante do lado do Qt tem nome em português, e procurar só
+    pelo inglês fazia a Galeria -- que registra -- ser acusada de não registrar.
     """
     for no in ast.walk(funcao):
-        if isinstance(no, ast.Call) and "register" in ast.unparse(no.func).rsplit(".", 1)[-1]:
-            return True
+        if isinstance(no, ast.Call):
+            nome = ast.unparse(no.func).rsplit(".", 1)[-1]
+            if "register" in nome or "registrar" in nome:
+                return True
     return False
 
 

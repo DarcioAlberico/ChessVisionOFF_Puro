@@ -170,6 +170,29 @@ def read_image(path: Path | str) -> Any | None:
     return cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
 
 
+def read_board_image(path_text: str | Path) -> Any | None:
+    """Lê a imagem de um tabuleiro do disco **em RGB**. `None` se ela não existe mais.
+
+    Mora aqui e não no painel porque não é decisão de tela nenhuma: é `read_image` mais a troca de
+    BGR para RGB, que é a ordem em que o resto do programa carrega tabuleiro. Os dois frontends
+    abrem a mesma miniatura da fila de revisão e a mesma amostra do dataset, e um segundo leitor
+    seria o lugar onde um deles inverteria os canais sem que nada avisasse -- peça branca virando
+    preta é um defeito que a suíte não vê e o olho vê na hora.
+
+    `exists()` antes de ler porque a chamada é a resposta a "esta linha do dataset ainda tem
+    imagem?", e o `None` de arquivo ausente é o caso esperado, não o excepcional.
+    """
+    import cv2
+
+    caminho = Path(path_text)
+    if not caminho.exists():
+        return None
+    imagem_bgr = read_image(caminho)
+    if imagem_bgr is None:
+        return None
+    return cv2.cvtColor(imagem_bgr, cv2.COLOR_BGR2RGB)
+
+
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     """Versão binária, para o `labels.csv` que o pandas escreve via buffer."""
     path = Path(path)

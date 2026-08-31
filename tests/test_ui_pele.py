@@ -8,14 +8,11 @@ visível, e é isso que a maior parte destes testes afirma.
 
 from __future__ import annotations
 
-import tkinter as tk
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from tk_root import raiz
-
-from chess_diagram_ocr.ui import comandos, menu, pele
+from chess_diagram_ocr.ui import pele
 from chess_diagram_ocr.ui.state import STATE_VERSION, AppState, load_state, save_state, state_from_dict
 
 
@@ -131,62 +128,6 @@ class PersistenciaTests(unittest.TestCase):
     def test_pele_de_tipo_errado_cai_no_padrao(self) -> None:
         """Como todo campo deste arquivo: tipo errado não derruba a leitura inteira."""
         self.assertEqual("", state_from_dict({"version": STATE_VERSION, "skin": 3}).skin)
-
-
-class SubmenuTests(unittest.TestCase):
-    """`Ver ▸ Aparência`, montado do registro e não listado à mão."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.root = raiz()
-
-    def setUp(self) -> None:
-        self.janela = tk.Toplevel(self.root)
-        self.addCleanup(self.janela.destroy)
-        self.escolhido: list[str] = []
-        self.variavel = tk.StringVar(value=pele.CLASSICA)
-        self.comandos = {acao: (lambda: None) for acao in menu.comandos_faltando({})}
-        self.comandos["aparencia"] = lambda: self.escolhido.append(self.variavel.get())
-
-    def _aparencia(self) -> tk.Menu:
-        """O submenu de **peles**, que desde a S-232 não é mais o último item do menu Ver.
-
-        O de densidade entrou ao lado dele, e procurar "o último" traria a densidade -- que é o
-        tipo de teste que continua verde medindo outra coisa. Aqui a linha é achada pelo rótulo,
-        que é o que o item declara.
-        """
-        escolhas = {"aparencia": self.variavel, "densidade": tk.StringVar(value=pele.CONFORTAVEL)}
-        barra = menu.montar(self.janela, self.comandos, escolhas=escolhas)
-        ver = self.janela.nametowidget(barra.entrycget(3, "menu"))
-        alvo = comandos.rotulo("aparencia")
-        indice = next(i for i in range(ver.index(tk.END) + 1) if ver.type(i) == "cascade" and ver.entrycget(i, "label") == alvo)
-        return self.janela.nametowidget(ver.entrycget(indice, "menu"))
-
-    def test_o_menu_lista_as_peles_registradas(self) -> None:
-        submenu = self._aparencia()
-        rotulos = [str(submenu.entrycget(i, "label")) for i in range(submenu.index(tk.END) + 1)]
-        self.assertEqual([registro.rotulo for registro in pele.PELES], rotulos)
-        tipos = {str(submenu.type(i)) for i in range(submenu.index(tk.END) + 1)}
-        self.assertEqual({"radiobutton"}, tipos)
-
-    def test_a_pele_atual_vem_marcada(self) -> None:
-        """O `value` do `radiobutton` é o nome que vai para o disco, e não o rótulo lido."""
-        submenu = self._aparencia()
-        valores = [str(submenu.entrycget(i, "value")) for i in range(submenu.index(tk.END) + 1)]
-        self.assertEqual([registro.nome for registro in pele.PELES], valores)
-        self.assertEqual(pele.CLASSICA, self.variavel.get())
-
-    def test_escolher_dispara_o_comando_amarrado(self) -> None:
-        submenu = self._aparencia()
-        submenu.invoke(0)
-        self.assertEqual([pele.CLASSICA], self.escolhido)
-
-    def test_montar_recusa_item_de_aparencia_sem_variavel(self) -> None:
-        """Um `radiobutton` sem variável desenha as opções sem nenhuma marcada, e a pessoa
-        conclui que a escolha não pegou -- a mesma família de defeito do item de menu inerte."""
-        with self.assertRaises(KeyError) as erro:
-            menu.montar(self.janela, self.comandos)
-        self.assertIn("aparencia", str(erro.exception))
 
 
 if __name__ == "__main__":  # pragma: no cover
