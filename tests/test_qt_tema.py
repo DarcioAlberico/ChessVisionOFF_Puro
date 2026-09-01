@@ -289,5 +289,69 @@ class AplicacaoTests(unittest.TestCase):
             tema.fonte_atual("GIGANTE")
 
 
+def _seletores_desabilitados(folha: str) -> set[str]:
+    """Os seletores de `:disabled` de uma folha QSS, um por regra.
+
+    Leitura de texto e não de CSS de verdade: a folha é gerada por `folha_de_estilo`, uma regra
+    por linha, e o que importa é o seletor antes da chave.
+    """
+    achados = set()
+    for linha in folha.split("\n"):
+        cabeca, _, resto = linha.partition("{")
+        if resto and cabeca.strip().endswith(":disabled"):
+            achados.add(cabeca.strip())
+    return achados
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DesabilitadoSeVeTests(unittest.TestCase):
+    """Um controle desabilitado tem de **parecer** desabilitado (S-506).
+
+    **O defeito era invisível para a suíte inteira e visível para quem usa.** Um teste que afirma
+    `isEnabled()` mede a decisão, não o desenho: durante a exportação o painel do PDF acendia só o
+    "Cancelar exportação" e apagava os outros seis, os testes concordavam, e a barra saía **pixel a
+    pixel idêntica** à de antes -- porque `QWidget { color: ... }` vale em todos os estados e
+    anula o acinzentamento que o Qt faria pela paleta.
+
+    **E o teste de pixel não serve de guarda aqui, o que só a medição mostrou.** Sem a regra, o
+    botão ligado e o desligado saem idênticos na plataforma **nativa** e *diferentes* sob
+    `offscreen` -- que é como esta suíte inteira roda. Um `assertNotEqual` sobre dois `grab()`
+    passa em verde na CI justamente no estado defeituoso: ele mediria o estilo da plataforma de
+    teste, e não a folha que o produto usa. Por isso a afirmação é sobre a folha, com o controle
+    abaixo provando que a leitura dela acha e deixa de achar.
+    """
+
+    def test_a_folha_apaga_o_botao_comum_desabilitado(self) -> None:
+        """**É o caso que estava quebrado**, e é o que o par exportar/cancelar usa para dizer qual
+        dos dois está vivo."""
+        seletores = _seletores_desabilitados(tema.folha_de_estilo())
+        self.assertIn(
+            "QPushButton:disabled",
+            seletores,
+            "o botão comum não tem regra de desabilitado, e sem ela ele desenha igual ao ligado",
+        )
+
+    def test_os_outros_dois_papeis_continuam_declarando_o_seu(self) -> None:
+        """Estes dois já tinham o deles (S-444), e a regra nova não podia apagá-los."""
+        seletores = _seletores_desabilitados(tema.folha_de_estilo())
+        for papel in (estilos.PRIMARIO, estilos.DESTRUTIVO):
+            with self.subTest(papel=papel):
+                self.assertIn(f'QPushButton[papel="{papel}"]:disabled', seletores)
+
+    def test_a_leitura_de_seletores_acha_e_deixa_de_achar(self) -> None:
+        """O **controle**, contra exemplos literais e não contra a folha de hoje.
+
+        Ancorá-lo na folha de verdade o faria se apagar junto com o defeito: uma leitura que
+        deixasse de reconhecer o formato devolveria conjunto vazio, e o caso de cima falharia por
+        motivo certo com diagnóstico errado. Estes dois trechos são as duas formas que importam.
+        """
+        so_com_papel = 'QPushButton[papel="PRIMARIO"]:disabled { color: #888; }'
+        self.assertEqual({'QPushButton[papel="PRIMARIO"]:disabled'}, _seletores_desabilitados(so_com_papel))
+        self.assertNotIn("QPushButton:disabled", _seletores_desabilitados(so_com_papel))
+
+        com_o_comum = f"QPushButton {{ padding: 4px; }}\n{so_com_papel}\nQPushButton:disabled {{ color: #888; }}"
+        self.assertIn("QPushButton:disabled", _seletores_desabilitados(com_o_comum))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
