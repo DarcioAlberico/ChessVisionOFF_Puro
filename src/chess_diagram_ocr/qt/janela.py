@@ -360,6 +360,7 @@ class JanelaPrincipal(QMainWindow):
         for controlador in (self.treino, self.exportador):
             controlador.estado.connect(self._dizer)
             controlador.controles.connect(self._trancar)
+        self.exportador.controles.connect(self._exportacao_mudou)
         self.treino.terminou.connect(self._treino_terminou)
 
         # --- o visualizador
@@ -369,6 +370,9 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.caixa_clicada.connect(self._clicou_na_caixa)
         self.pdf.caixa_dispensada.connect(self._tirar_caixa)
         self.pdf.regiao_pedida.connect(self._ler_regiao)
+        self.pdf.leitura_pedida.connect(self._leitura_pedida)
+        self.pdf.exportacao_pedida.connect(lambda: self.exportador.comecar(self._pdf))
+        self.pdf.exportacao_cancelada.connect(self.exportador.cancelar)
 
         # --- o Resultado
         # A S-451: "Salvar todos" pergunta antes de gravar a segunda cópia, e quem sabe o que já
@@ -401,9 +405,22 @@ class JanelaPrincipal(QMainWindow):
         self.rodape.mostrar(frase, severidade=estado_do_rodape.severidade_de(frase))
 
     def _trancar(self, liberado: bool) -> None:
-        """Liga e desliga o que não pode rodar durante uma operação longa."""
+        """Liga e desliga o que não pode rodar durante uma operação longa.
+
+        **O visualizador tranca por dentro** (S-506): ele tem o botão de cancelar a exportação, e
+        um `setEnabled(False)` no painel inteiro o apagaria junto -- no Qt, filho de widget
+        desabilitado não reabilita. Quem decide o que fica cinza lá é `_reavaliar_controles`.
+        """
         self.abas.setEnabled(liberado)
-        self.pdf.setEnabled(liberado)
+        self.pdf.trancar(liberado)
+
+    def _exportacao_mudou(self, liberado: bool) -> None:
+        """O `controles` do exportador vem invertido: `False` é "começou". Ver `trancar`."""
+        self.pdf.exportacao_em_curso(not liberado)
+
+    def _leitura_pedida(self, so_o_melhor: bool) -> None:
+        """Os dois botões de OCR do visualizador, que diferem só no número de diagramas."""
+        self.ler_melhor() if so_o_melhor else self.ler_pagina()
 
     # -------------------------------------------------------------------------------- livro
 
@@ -509,11 +526,12 @@ class JanelaPrincipal(QMainWindow):
             dpi=DEFAULT_DPI,
         )
 
-    def _opcoes(self) -> RecognitionOptions:
+    def _opcoes(self, max_diagramas: int | None = None) -> RecognitionOptions:
+        """As opções de reconhecimento. `max_diagramas` é o que separa "melhor" de "todos"."""
         return RecognitionOptions(
             model_path=DEFAULT_MODEL_PATH,
             orientation=DEFAULT_ORIENTATION_MODE,
-            max_boards=DEFAULT_MAX_BOARDS,
+            max_boards=DEFAULT_MAX_BOARDS if max_diagramas is None else max_diagramas,
             dpi=DEFAULT_DPI,
         )
 
@@ -552,18 +570,31 @@ class JanelaPrincipal(QMainWindow):
             quando_pronto=lambda candidatos: self._chegaram_candidatos(pagina, candidatos),
         )
 
-    def ler_pagina(self, *, selecionar_depois: int | None = None) -> None:
+    def ler_melhor(self) -> None:
+        """Lê **um** diagrama da página, e não todos (`max_boards=1`).
+
+        **A diferença tinha sumido no porte** (S-506). No Tk eram dois caminhos, `ocr_best` e
+        `ocr_all`, e o que os separava era o teto de diagramas; aqui os dois nomes do catálogo
+        apontavam para `ler_pagina`, então "OCR melhor diagrama" lia a página inteira. Ninguém
+        acusava: os dois comandos tinham dono, e o dono era chamável -- é o limite da conta do
+        catálogo, que pergunta se há dono e não se o dono é o certo.
+        """
+        self.ler_pagina(max_diagramas=1)
+
+    def ler_pagina(self, *, selecionar_depois: int | None = None, max_diagramas: int | None = None) -> None:
         """O caminho completo: detecta, prevê, decide a vez e confere a legalidade.
 
         A página inteira, e não o diagrama clicado, pelo motivo que `decide_box_click` registra: o
         recorte isolado perde a imagem embutida do PDF e o contexto de texto que decide o lado a
         jogar, e sairia lido pior sem que nada na tela dissesse por quê.
+
+        `max_diagramas` é o teto: `None` usa a preferência inteira e `1` é o "melhor diagrama".
         """
         pagina_rgb = self.pdf.page_rgb
         if self._pdf is None or pagina_rgb is None:
             self._dizer("Abra um PDF antes de ler a página.")
             return
-        pdf, pagina, opcoes = self._pdf, self.pdf.page_index, self._opcoes()
+        pdf, pagina, opcoes = self._pdf, self.pdf.page_index, self._opcoes(max_diagramas)
         candidatos = self._candidatos_desta_pagina()
         # **A leitura diz no log de onde vieram os diagramas.** Sem esta linha, o rastro de uma
         # sessão não distingue "marcar e depois ler" de "ler sozinho": os dois deixam uma varredura
@@ -1014,7 +1045,7 @@ class JanelaPrincipal(QMainWindow):
             "devolver_caixas": self.devolver_caixas,
             # --- ler e gravar
             "ler_pagina": self.ler_pagina,
-            "ler_melhor": self.ler_pagina,
+            "ler_melhor": self.ler_melhor,
             "salvar": self.painel.salvar_atual,
             "salvar_todos": self.painel.salvar_todos,
             "aplicar_fen": self.painel.aplicar_fen,

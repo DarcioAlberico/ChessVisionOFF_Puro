@@ -13,7 +13,8 @@ Diferente dos outros módulos abertos na S-503, este não estava atrás de uma c
 `ui/training_dialog.py` importa `tkinter` no topo porque o `TrainingController` monta um
 `tk.Toplevel` -- o import é do módulo, não da herança. O efeito para quem lê é o mesmo.
 
-`ui/training_dialog.py` reexporta tudo o que está aqui.
+`ui/training_dialog.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem
+consome agora é `qt/dialogos.py` e `qt/janela.py`.
 """
 
 from __future__ import annotations

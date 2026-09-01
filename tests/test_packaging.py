@@ -250,8 +250,18 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1196
+    LIMITE = 1227
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.196 → 1.227 na S-506**, e as trinta e uma são a fiação dos cinco botões que voltaram ao
+    visualizador: três `connect`, os dois métodos que os atendem (`_leitura_pedida` e
+    `_exportacao_mudou`), o `ler_melhor` e o parâmetro de teto em `_opcoes`.
+
+    **Nenhuma delas é widget** -- os cinco botões foram para `qt/painel_do_pdf.py`, que é o painel
+    que os desenha. O que ficou aqui é o que só a janela pode fazer: ligar um painel ao serviço e
+    ao exportador. `ler_melhor` são duas linhas e não podiam sair: elas são a diferença entre "um
+    diagrama" e "todos", que o porte tinha perdido ao apontar os dois comandos para o mesmo
+    método.
 
     **2.317 → 2.327 na S-448**, e as dez são a grade do formulário de Configuração. O saldo é
     melhor do que parece: `_spin_row` **saiu** desta janela -- ele era a segunda implementação de

@@ -13,7 +13,8 @@ de widget nenhum. Uma segunda `store_path_for` com outro esquema de nome faria a
 guardarem o mesmo trabalho em arquivos diferentes -- e cada uma refazendo a meia hora que a outra
 já fez.
 
-`ui/database_choice.py` reexporta tudo o que está aqui.
+`ui/database_choice.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem
+consome agora é `qt/dialogos.py` e `qt/painel_da_galeria.py`.
 """
 
 from __future__ import annotations

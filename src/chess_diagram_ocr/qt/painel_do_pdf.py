@@ -91,6 +91,19 @@ class PainelDoPdf(QWidget):
     preferencias_mudaram = pyqtSignal()
     """Um interruptor de visualização mudou. O estado da aplicação lembra dele entre execuções."""
 
+    leitura_pedida = pyqtSignal(bool)
+    """Pediram para ler a página exibida. O `bool` é **"só o melhor"**.
+
+    Este painel não conhece o serviço nem o modelo: quem lê é a janela. Ele diz que pediram, e o
+    `bool` carrega a única diferença entre os dois botões -- `ler_melhor` é um diagrama só
+    (`max_boards=1`), `ler_pagina` é a preferência inteira. Era assim que o `ocr_best` e o
+    `ocr_all` do Tk se distinguiam, e no porte os dois tinham ficado no mesmo método (S-506).
+    """
+
+    exportacao_pedida = pyqtSignal()
+    exportacao_cancelada = pyqtSignal()
+    """Os dois lados da exportação para PGN. Quem exporta é `qt/exportador.py`, pela janela."""
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -116,6 +129,10 @@ class PainelDoPdf(QWidget):
         """Guarda contra o laço: mover o deslizador aplica o zoom, e aplicar o zoom repõe o
         deslizador -- que dispararia de novo. É o mesmo `_movendo_o_deslizador` do outro lado."""
         self._montando = False
+        self._trancado = False
+        """Se uma operação longa da janela está em curso. Ver `trancar`."""
+        self._exportando = False
+        """Se há exportação para PGN rodando. Ver `exportacao_em_curso`."""
 
         self._relogio_do_dpi = QTimer(self)
         self._relogio_do_dpi.setSingleShot(True)
@@ -131,7 +148,11 @@ class PainelDoPdf(QWidget):
         fora.setSpacing(espaco.folga())
 
         barra = BarraFluida(self)
-        self.btn_abrir = self._botao(barra, "abrir_pdf", self.abrir_pdf, estilos.PRIMARIO)
+        # **A ênfase da barra é do `ler_melhor`, e é o catálogo que decide** (S-324/S-506). Este
+        # botão vinha com `PRIMARIO` cravado aqui, divergindo do `NEUTRO` que o catálogo declara --
+        # e enquanto os botões de OCR estavam fora da barra ninguém via a divergência. A regra é
+        # uma ênfase por barra: abrir o livro é o passo de antes, ler a página é o que a tela faz.
+        self.btn_abrir = self._botao(barra, "abrir_pdf", self.abrir_pdf)
         self.lbl_pdf = QLabel("nenhum PDF aberto", barra)
         barra.adicionar(self.lbl_pdf)
         self.btn_leitor = QPushButton(comandos.rotulo_de_botao("abrir_no_leitor"), barra)
@@ -144,6 +165,18 @@ class PainelDoPdf(QWidget):
             "de texto.\nFica cinza enquanto não há livro aberto.",
         )
         barra.adicionar(self.btn_leitor)
+        # **Os cinco que o porte tinha deixado só no menu** (S-506). Eles agem sobre a página
+        # exibida, e é ao lado dela que a S-77 os pôs -- a mesma razão da linha de campo.
+        self.btn_ler_melhor = self._botao(
+            barra, "ler_melhor", lambda: self.leitura_pedida.emit(True), estilos.PRIMARIO
+        )
+        self.btn_ler_pagina = self._botao(barra, "ler_pagina", lambda: self.leitura_pedida.emit(False))
+        self.btn_tirar_caixa = self._botao(barra, "tirar_caixa", self.dispensar_a_selecionada)
+        self.btn_exportar = self._botao(barra, "exportar_pgn", self.exportacao_pedida.emit)
+        self.btn_cancelar_exportacao = self._botao(
+            barra, "cancelar_exportacao", self.exportacao_cancelada.emit
+        )
+        self._barra_do_livro = barra
         fora.addWidget(barra)
 
         navegacao = BarraFluida(self)
@@ -172,6 +205,7 @@ class PainelDoPdf(QWidget):
         self.roda_vira_pagina.setChecked(True)
         self.roda_vira_pagina.toggled.connect(self._alternou_virada)
         navegacao.adicionar(self.roda_vira_pagina)
+        self._barra_de_navegacao = navegacao
         fora.addWidget(navegacao)
 
         self.visor = VisorDePagina(self)
@@ -185,6 +219,48 @@ class PainelDoPdf(QWidget):
         )
         fora.addWidget(self.visor, 1)
         fora.addLayout(self._rodape_de_zoom())
+        self._reavaliar_controles()
+
+    # ------------------------------------------------------------- quem fica cinza, e por quê
+
+    def _reavaliar_controles(self) -> None:
+        """O estado de cada controle, resolvido **num lugar só**, a partir de três fatos.
+
+        Os fatos são: há livro aberto, há operação longa em curso, há exportação rodando. Espalhar
+        isto por quem causa cada mudança é como o Tk tinha três métodos (`set_ocr_controls_enabled`,
+        `set_export_controls_enabled`, `disable_cancel_button`) que se sobrescreviam pela ordem de
+        chamada -- e o botão de cancelar ficava cinza porque a última a falar não sabia da
+        exportação.
+        """
+        livro = self.source is not None
+        util = livro and not self._trancado
+        self.btn_abrir.setEnabled(not self._trancado)
+        self.btn_leitor.setEnabled(util)
+        for botao in (self.btn_ler_melhor, self.btn_ler_pagina, self.btn_tirar_caixa):
+            botao.setEnabled(util)
+        self.btn_exportar.setEnabled(util and not self._exportando)
+        # **O cancelar não olha `_trancado`, e é o item.** Ele só existe durante a exportação, que
+        # é justamente quando tudo o mais está trancado: obedecê-lo faria o botão ficar cinza
+        # exatamente na única situação em que ele serve.
+        self.btn_cancelar_exportacao.setEnabled(self._exportando)
+        self._barra_de_navegacao.setEnabled(not self._trancado)
+        self.visor.setEnabled(not self._trancado)
+        self.deslizador.setEnabled(not self._trancado)
+
+    def trancar(self, liberado: bool) -> None:
+        """Liga e desliga o painel durante uma operação longa da janela.
+
+        **Não é `setEnabled` no painel inteiro**, que era o que a janela fazia antes de o botão de
+        cancelar existir aqui: no Qt um filho de widget desabilitado não pode ser reabilitado, e o
+        cancelar morreria junto com o resto.
+        """
+        self._trancado = not liberado
+        self._reavaliar_controles()
+
+    def exportacao_em_curso(self, em_curso: bool) -> None:
+        """A exportação começou ou acabou. Troca o par exportar/cancelar."""
+        self._exportando = em_curso
+        self._reavaliar_controles()
 
     def _botao(self, barra: BarraFluida, acao: str, funcao: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:
         """Um botão do catálogo: rótulo, papel e **tecla** vêm da tabela, e não escritos aqui.
@@ -303,7 +379,7 @@ class PainelDoPdf(QWidget):
             self.page_count = page_count
             self.lbl_pdf.setText(f"{self.name} ({self.page_count} págs)")
             self.lbl_total.setText(f"de {self.page_count}")
-            self.btn_leitor.setEnabled(True)
+            self._reavaliar_controles()
             self.abriu_pdf.emit(pdf_path)
 
             alvo = max(0, min(self.page_count - 1, self._pagina_inicial_de(pdf_path)))

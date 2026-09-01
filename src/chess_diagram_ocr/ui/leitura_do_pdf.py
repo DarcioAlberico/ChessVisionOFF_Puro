@@ -20,7 +20,8 @@ dependência de plataforma pela porta dos fundos -- por um botão.
 `page_overlay.estado_da_caixa`, que é pura e é a mesma dos dois lados; `box_color` só resolve o
 papel de cor daquele estado. `qt/visor.py` resolve o mesmo papel pela mesma tabela de `tokens`.
 
-`ui/pdf_panel.py` reexporta tudo o que está aqui.
+`ui/pdf_panel.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem consome
+agora é `qt/painel_do_pdf.py` e `qt/visor.py`.
 """
 
 from __future__ import annotations

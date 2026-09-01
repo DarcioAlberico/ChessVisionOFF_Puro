@@ -20,7 +20,9 @@ qual cor é do Lichess e do Chess.com, e vale nos dois frontends; *como se lê o
 -- no Tk são bits de `event.state`, com o Alt declarado em dois valores porque ele não é o mesmo em
 Windows e em X11, e no Qt é um `enum`. A função pura recebe os três booleanos já extraídos.
 
-`ui/study_panel.py` reexporta tudo o que está aqui.
+`ui/study_panel.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem consome
+agora é `qt/painel_de_estudo.py`, `qt/painel_de_resultado.py`, `qt/tabuleiro_de_jogo.py` e
+`qt/janela.py`.
 """
 
 from __future__ import annotations

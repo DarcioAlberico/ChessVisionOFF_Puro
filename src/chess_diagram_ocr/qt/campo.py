@@ -8,6 +8,13 @@ que respondia "que ação do catálogo ninguém alcança" -- e ela mesma saiu no
 perguntava sobre os três cromos do Tk. As duas guardas caíram no mesmo dia, e o buraco entre elas
 era exatamente do tamanho deste arquivo.
 
+**O buraco foi fechado depois, e por duas guardas.**
+`test_ui_comandos.test_todo_comando_do_catalogo_alcanca_alguem` cobra que toda ação do catálogo
+alcance o menu ou esteja declarada como exceção, e
+`test_qt_janela.test_todo_comando_do_catalogo_tem_dono_nesta_janela` cobra que a declaração tenha
+dono chamável. Apagar este painel hoje deixa as duas vermelhas, que é o que não aconteceu da
+primeira vez.
+
 **O que se perderia.** `data/field_set.jsonl` é o conjunto que `cvoff-field` mede, e ele só cresce
 por este clique -- página a página, conferida por gente. Sem a anotação na janela, o conjunto
 congela onde está e os quatro relatórios de campo param de poder ser refeitos.
@@ -38,8 +45,14 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["ACOES_PROPRIAS", "PainelDeCampo"]
 
-ACOES_PROPRIAS = frozenset({"anotar_pagina", "anotar_sem_diagrama", "tirar_do_campo"})
-"""As três ações do catálogo que este painel atende. Ver o docstring do módulo."""
+ACOES_PROPRIAS = frozenset(comandos.NA_LINHA_DE_CAMPO)
+"""As três ações do catálogo que este painel atende. Ver o docstring do módulo.
+
+**Tirada de `comandos.NA_LINHA_DE_CAMPO` e não escrita de novo.** Aquela lista já existe para a
+paleta poder dizer *por que* não executa estes três, e repeti-los aqui seria a segunda cópia de
+uma decisão declarada -- que diverge no primeiro nome que alguém acrescenta a uma só das duas.
+O docstring dela promete que "existir como lista declarada é o que permite o teste cobrar que não
+haja uma segunda"; esta linha é o que cumpre a promessa."""
 
 SEM_LIVRO = "Abra um PDF antes de anotar a página."
 SEM_CAIXA = (
