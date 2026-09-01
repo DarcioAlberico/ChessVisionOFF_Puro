@@ -169,6 +169,32 @@ class OriginTests(unittest.TestCase):
         campos = RecognitionOrigin.for_image("foto.png").sample_fields()
         self.assertEqual(campos["source_page"], "")
 
+    def test_o_livro_vai_pelo_nome_e_nao_pelo_caminho_da_maquina(self) -> None:
+        """**72 linhas do `labels.csv` traziam o caminho inteiro** (S-19/S-506).
+
+        `document` e a chave de cache da janela e precisa ser o caminho -- dois livros de mesmo
+        nome em pastas diferentes sao dois livros. O CSV quer o nome, e o diz por escrito em
+        `saved_diagrams_by_page` e em `SavedSample.source_pdf`. Quem os concilia e este metodo,
+        que e o unico ponto onde a origem vira coluna.
+
+        O efeito de gravar o caminho e silencioso duas vezes: o diagrama nao volta marcado de
+        verde ao reabrir a pagina, e a contagem por livro ve o mesmo livro duas vezes.
+        """
+        caminho = "C:" + chr(92) + "Chess" + chr(92) + "PDF" + chr(92) + "livro.pdf"
+        self.assertEqual(
+            RecognitionOrigin.for_page(caminho, 16).sample_fields(),
+            {"source_pdf": "livro.pdf", "source_page": 17},
+        )
+        self.assertEqual(
+            RecognitionOrigin.for_page("/home/alguem/PDF/livro.pdf", 0).sample_fields()["source_pdf"],
+            "livro.pdf",
+        )
+
+    def test_uma_origem_sem_documento_nao_inventa_nome(self) -> None:
+        """`Path("").name` e `""`, e o vazio tem de atravessar: linha sem procedencia e ignorada
+        por `saved_diagrams_by_page`, e um nome inventado entraria no indice."""
+        self.assertEqual(RecognitionOrigin(kind="pdf", document="").sample_fields()["source_pdf"], "")
+
 
 class RecognizeTests(unittest.TestCase):
     def test_a_detected_board_becomes_a_diagram_with_the_prediction_kept(self) -> None:
