@@ -56,6 +56,7 @@ __all__ = [
     "ao_repintar",
     "aplicar_papel",
     "aplicar_tema",
+    "cromo_escuro_em_vigor",
     "cor_atual",
     "folha_de_estilo",
     "fonte_atual",
@@ -417,6 +418,15 @@ def folha_de_estilo(
         f"QGroupBox::title {{ subcontrol-origin: margin; left: {linha}px; padding: 0 {minima}px; }}",
     ]
     return "\n".join(regras)
+
+
+def cromo_escuro_em_vigor() -> bool:
+    """Se o cromo desta sessão está escuro. É o que `aplicar_tema` deixou valendo.
+
+    Existe para o teste poder afirmar o **efeito** da troca de pele sem ler um privado -- e para
+    quem desenha à mão (o tabuleiro, o visor) poder perguntar sem repetir a decisão.
+    """
+    return _cromo_escuro
 
 
 def aplicar_tema(

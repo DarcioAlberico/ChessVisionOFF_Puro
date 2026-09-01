@@ -223,7 +223,7 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     """`qt/janela.py` não volta a crescer sem alguém decidir (S-136/S-506).
 
     **A catraca mudou de arquivo no corte do Tk, e o número caiu junto.** Ela vigiava o
-    `app_tkinter.py`, que fechou em 2.327 linhas; a janela do Qt faz o mesmo em 1.196, e a
+    `app_tkinter.py`, que fechou em 2.327 linhas; a janela do Qt faz o mesmo em 1.258, e a
     diferença não é código omitido -- é a camada pura de `ui/` sendo chamada em vez de reescrita.
     Herdar o corte antigo seria dar 1.100 linhas de folga a um arquivo que ninguém decidiu que
     podia dobrar, que é exatamente o acidente que este teste existe para impedir.
@@ -250,8 +250,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1227
+    LIMITE = 1289
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.227 e 1.258 -> 1.289 ao juntar os dois ramos**, e as duas subidas abaixo são de itens
+    diferentes que aconteceram em paralelo: os cinco botões do visualizador e a troca de pele.
+    Nenhuma das duas some na junção, então o corte é a soma delas.
 
     **1.196 → 1.227 na S-506**, e as trinta e uma são a fiação dos cinco botões que voltaram ao
     visualizador: três `connect`, os dois métodos que os atendem (`_leitura_pedida` e
@@ -262,6 +266,21 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     ao exportador. `ler_melhor` são duas linhas e não podiam sair: elas são a diferença entre "um
     diagrama" e "todos", que o porte tinha perdido ao apontar os dois comandos para o mesmo
     método.
+
+
+    **1.196 → 1.258 no fecho da S-506**, e as sessenta e duas são a troca de pele e de densidade
+    passando a existir. `Ver ▸ Aparência` e `Ver ▸ Densidade` estavam montados no menu e amarrados
+    a `lambda: None` desde a montagem da janela: as três peles apareciam, escolher qualquer uma
+    não fazia nada, e as duas guardas do menu passavam em verde porque um comando inerte **tem**
+    entrada na tabela. O corte do Tk tornou isso visível, porque a janela que implementava a troca
+    deixou de existir.
+
+    O que entrou aqui é a fiação, e não a decisão: qual densidade vale quando a pele sugere uma e
+    a pessoa escolheu outra é `pele.densidade_em_vigor`, pura desde a S-232; a folha e a repintura
+    são de `qt/tema.py`. As linhas são as três funções que ligam os dois eixos, mais a marca
+    inicial dos submenus -- sem ela os dois abriam sem marca nenhuma, sem dizer o que vigora.
+
+    **1.193 → 1.196** foram a nota do arquivo que o corte apagou, e não código.
 
     **2.317 → 2.327 na S-448**, e as dez são a grade do formulário de Configuração. O saldo é
     melhor do que parece: `_spin_row` **saiu** desta janela -- ele era a segunda implementação de
