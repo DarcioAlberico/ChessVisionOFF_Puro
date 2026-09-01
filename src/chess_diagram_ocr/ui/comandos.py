@@ -714,36 +714,44 @@ estão aqui, mas o painel ainda escreve os rótulos dele à mão -- por isso os 
 
 
 NAS_BARRAS_DO_PDF: tuple[str, ...] = (
+    # a barra do livro: o que se faz **com** a página exibida
     "abrir_pdf",
     "abrir_no_leitor",
-    "selecionar_area",
+    "ler_melhor",
+    "ler_pagina",
+    "tirar_caixa",
+    "exportar_pgn",
+    "cancelar_exportacao",
+    # a barra de navegação: o que se faz **na** página
     "pagina_anterior",
     "proxima_pagina",
     "zoom_menos",
     "zoom_mais",
     "ajustar_largura",
     "ajustar_pagina",
+    "selecionar_area",
     "roda_vira_pagina",
     "marcar_diagramas",
 )
 """Os comandos que as duas barras de `qt/painel_do_pdf.py` desenham (S-233).
 
-**Declarado aqui e montado lá, e a distância entre os dois tem guarda.** O painel constrói os onze
-controles à mão -- `QPushButton` pelo `_botao`, `QCheckBox` pelos dois interruptores --, com estado,
-dica e função diferentes em cada um. O que a lista compra é o inventário poder lê-la sem abrir
-janela; quem cobra que as duas concordem é
+**Declarado aqui e montado lá, e a distância entre os dois tem guarda.** O painel constrói os
+dezesseis controles à mão -- `QPushButton` pelo `_botao`, `QCheckBox` pelos dois interruptores --,
+com estado, dica e função diferentes em cada um. O que a lista compra é o inventário poder lê-la sem
+abrir janela; quem cobra que as duas concordem é
 `test_ui_comandos.test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha`, que varre aquele
 arquivo por `ast`.
 
-**A lista mudou de significado no corte do Tk (S-506), e encolheu de dezesseis para onze.** Antes
-ela era a tela da pele *clássica*, desenhada por `_montar_barras` de `ui/pdf_panel.py`, e quem a
-cobrava era `tests/test_ui_alcance.py` -- função, módulo e teste saíram juntos. Agora ela é o que o
-painel do Qt desenha, que é a única tela que existe.
+**A lista mudou de significado no corte do Tk (S-506).** Antes ela era a tela da pele *clássica*,
+desenhada por `_montar_barras` de `ui/pdf_panel.py`, e quem a cobrava era
+`tests/test_ui_alcance.py` -- função, módulo e teste saíram juntos. Agora ela é o que
+`qt/painel_do_pdf.py` desenha, que é a única tela que existe.
 
-**Cinco comandos perderam o botão no porte** e não estão mais aqui: `ler_pagina`, `ler_melhor`,
-`tirar_caixa`, `exportar_pgn` e `cancelar_exportacao`. Eles continuam **alcançáveis** -- têm item
-de menu, entrada na paleta e tecla, e a conta do catálogo os encontra --, mas nenhum painel do Qt
-desenha um controle para eles. Repô-los na tela é decisão de aparência, e não de alcance.
+**Cinco tinham perdido o botão no porte e voltaram**: `ler_melhor`, `ler_pagina`, `tirar_caixa`,
+`exportar_pgn` e `cancelar_exportacao`. No intervalo em que a lista ficou sem leitor eles sumiram
+dela sem ninguém notar -- continuavam alcançáveis pelo menu, pela paleta e pela tecla, e é por isso
+que a conta do catálogo passava em verde sobre a ausência. **Alcance não é presença**, e esta lista
+é a que responde pela segunda.
 
 **Na pele "Foco" e na "Fita" estes controles existem e não são empacotados** (S-223): o que a pele
 decide é o que aparece, e esta lista é o que o painel desenha."""

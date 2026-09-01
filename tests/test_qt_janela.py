@@ -473,6 +473,56 @@ class FiacaoTests(unittest.TestCase):
         janela.devolver_caixas()
         self.assertEqual(len(janela.pdf.boxes or ()), 1)
 
+    # ------------------------------------------- os cinco botões que voltaram ao visualizador
+
+    def test_os_dois_botoes_de_ocr_do_visualizador_chegam_a_janela(self) -> None:
+        """A ligação é afirmada **pelo efeito**, e não trocando o método por um espião.
+
+        Depois do `connect`, trocar `janela.ler_pagina` não troca quem o sinal chama -- o `connect`
+        guardou o objeto ligado. Um teste que patchasse o método passaria em verde com o fio
+        cortado. Aqui a janela está sem página rasterizada, e a pré-condição no rodapé é a prova de
+        que o pedido chegou.
+        """
+        janela = self.janela(com_livro=False)
+        janela.pdf.leitura_pedida.emit(False)
+        self.assertEqual("Abra um PDF antes de ler a página.", janela.rodape.mensagem())
+
+    def test_exportar_pelo_visualizador_chega_ao_exportador(self) -> None:
+        """Mesma régua: sem livro, a pré-condição do exportador é o que prova o fio."""
+        janela = self.janela(com_livro=False)
+        janela.pdf.exportacao_pedida.emit()
+        self.assertEqual("Abra um PDF antes de exportar o PGN.", janela.rodape.mensagem())
+
+    def test_a_exportacao_acende_o_cancelar_do_visualizador(self) -> None:
+        """O `controles` do exportador chega ao painel, e não só ao trancamento da janela."""
+        janela = self.janela()
+        self.assertFalse(janela.pdf.btn_cancelar_exportacao.isEnabled())
+
+        janela.exportador.controles.emit(False)
+
+        self.assertTrue(janela.pdf.btn_cancelar_exportacao.isEnabled())
+        self.assertFalse(janela.pdf.btn_exportar.isEnabled(), "dá para começar duas exportações")
+        self.assertFalse(janela.abas.isEnabled(), "o resto da janela não trancou")
+
+    def test_ler_melhor_e_ler_pagina_deixaram_de_ser_o_mesmo_comando(self) -> None:
+        """**A regressão que o porte tinha deixado passar** (S-506).
+
+        Os dois nomes do catálogo apontavam para `ler_pagina`, então "OCR melhor diagrama" lia a
+        página inteira. Nenhuma guarda acusava: os dois comandos tinham dono e o dono era chamável
+        -- a conta do catálogo pergunta se **há** dono, não se ele é o certo.
+        """
+        janela = self.janela(com_livro=False)
+        tabela = janela._comandos()
+        self.assertIsNot(tabela["ler_melhor"], tabela["ler_pagina"])
+
+    def test_o_teto_de_diagramas_e_o_que_separa_os_dois(self) -> None:
+        """`ocr_best` era `max_boards=1` e `ocr_all` era a preferência inteira, no Tk."""
+        from chess_diagram_ocr.qt.janela import DEFAULT_MAX_BOARDS
+
+        janela = self.janela(com_livro=False)
+        self.assertEqual(1, janela._opcoes(1).max_boards)
+        self.assertEqual(DEFAULT_MAX_BOARDS, janela._opcoes().max_boards)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
