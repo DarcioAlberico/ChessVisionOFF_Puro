@@ -406,7 +406,13 @@ class JanelaTests(unittest.TestCase):
     def _janela(self, servico: object = None):
         from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
-        janela = JanelaPrincipal(servico=servico, csv_de_rotulos=self.csv)  # type: ignore[arg-type]
+        janela = JanelaPrincipal(
+            servico=servico,  # type: ignore[arg-type]
+            csv_de_rotulos=self.csv,
+            # **Sem isto o teste grava o estado da máquina de quem roda a suíte**: o
+            # `addCleanup(janela.close)` abaixo dispara o `closeEvent`, que grava.
+            caminho_do_estado=self.pasta / "janela.json",
+        )
         self.addCleanup(janela.deleteLater)
         self.addCleanup(janela.close)
         janela.resize(1000, 700)
@@ -734,7 +740,10 @@ class SelftestTests(unittest.TestCase):
         app_pyqt = self._app_pyqt()
         with mock.patch.object(app_pyqt, "tem_pyqt", lambda: False):
             self.assertEqual(app_pyqt.CODIGO_SEM_QT, app_pyqt.selftest())
-        self.assertIn("uv sync --extra qt", app_pyqt.FALTA_O_PYQT)
+        # `uv sync` e nao `uv sync --extra qt`: o extra saiu no corte do Tk, quando o PyQt6
+        # virou dependencia de base -- e este assert fixava a instrucao quebrada (S-506).
+        self.assertIn("uv sync", app_pyqt.FALTA_O_PYQT)
+        self.assertNotIn("--extra qt", app_pyqt.FALTA_O_PYQT)
 
 
 if __name__ == "__main__":  # pragma: no cover - conveniência de quem roda o arquivo direto

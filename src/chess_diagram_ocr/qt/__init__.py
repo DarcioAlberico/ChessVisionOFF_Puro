@@ -25,8 +25,27 @@ seu `tests/test_qt_*.py`.
 
 **E a janela os reúne (S-505).** `JanelaPrincipal` monta as seis abas de trabalho ao lado do
 visualizador, liga sinal a sinal e soma as três tabelas de comandos numa só, de onde saem o menu,
-a paleta e os atalhos. O que falta agora é o **corte do Tk**, e ele é decisão do dono: enquanto
-não vier, os dois frontends abrem o mesmo `service.py` e nada do lado do Tk é apagado.
+a paleta e os atalhos.
+
+**O corte do Tk foi feito em 2026-08-31 (S-506), e este pacote passou a ser a janela.** Saíram o
+`app_tkinter.py`, 28 módulos de `ui/` acoplados ao toolkit e 46 arquivos de teste; o PyQt6 deixou
+de ser o extra `qt` e virou dependência de base. O que ainda é Tk, de propósito, é
+`cli/texto_transcrever.py` -- ferramenta de desenvolvimento com entrada própria, que não abre pelo
+`.exe`.
+
+**O que o corte deixou sem dono voltou depois, e vale a lista porque o padrão se repete.** Cada um
+destes era uma decisão que sobreviveu em `ui/` sem ninguém para chamá-la, e nenhum quebrava teste:
+
+- o **estado da janela** (`ui/state.py`): último livro, página, zoom, geometria, divisor e aba;
+- o submenu **Abrir recente**, que sai do mesmo histórico;
+- **Aparência** e **Densidade**, que o menu desenhava marcadas sobre um `lambda: None`;
+- a **fila** e a **fita** -- os dois cromos que aquelas peles pedem (`qt/fila.py`, `qt/fita.py`);
+- o **conjunto de peças** (`ui/conjuntos.py`), incluindo o traço engrossado de `ui/pecas.py`;
+- o **árbitro do `Ctrl+Z`** (`ui/desfazivel.py`), que decide entre tabuleiro, texto e sala;
+- os **códigos 1, 3, 4 e 5** do `--selftest`, que o `app_tkinter.py` devolvia.
+
+A lição, e ela é a mesma da conta do catálogo: ao apagar uma camada, o que some em silêncio não é o
+código -- é o **chamador** da decisão que ficou.
 
 ---
 
@@ -52,9 +71,8 @@ um **segundo caminho de escrita**; o que existe é um segundo widget sobre o mes
 reusados inteiros -- é por isso que a migração é um porte de desenho, e não uma reescrita.
 
 **Por que PyQt6 e não PyQt5.** É o que tem suporte na faixa `>=3.10,<3.14` do projeto inteira;
-o PyQt5 já não publica roda para 3.13. A dependência ainda é o extra `qt` do `pyproject.toml`, e
-**isso muda quando o corte acontecer**: no dia em que o `app_tkinter.py` sair, o PyQt6 deixa de
-ser extra e passa a ser dependência de base, porque o programa não abre sem ele.
+o PyQt5 já não publica roda para 3.13. **Ele deixou de ser o extra `qt` no dia do corte** (S-506):
+o programa não abre sem ele, e uma dependência sem a qual o programa não abre não é opcional.
 """
 
 from __future__ import annotations
@@ -66,6 +84,7 @@ __all__ = [
     "DialogoDeEscopo",
     "DialogoDePartidas",
     "Exportador",
+    "Fila",
     "Fita",
     "GuardaDeAtalhos",
     "JanelaDaPaleta",
@@ -96,6 +115,7 @@ __all__ = [
 
 _POR_MODULO: dict[str, str] = {
     "BarraFluida": "barra",
+    "Fila": "fila",
     "Fita": "fita",
     "ControladorDeTreino": "dialogos",
     "DialogoDeBases": "dialogos",

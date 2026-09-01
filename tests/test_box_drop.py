@@ -66,6 +66,7 @@ class TirarACaixaTests(unittest.TestCase):
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
             pasta_da_galeria=self.pasta,
         )
         self.addCleanup(descartar, self.janela)

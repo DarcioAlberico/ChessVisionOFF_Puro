@@ -42,6 +42,7 @@ from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -57,6 +58,7 @@ from PyQt6.QtWidgets import (
 
 from chess_diagram_ocr.config import DEFAULT_DPI, DEFAULT_MAX_BOARDS
 from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
+from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
 from chess_diagram_ocr.qt.barra import BarraFluida
@@ -137,6 +139,8 @@ class PainelDeResultado(QWidget):
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self.modelo = DiagramEditorModel()
         self.historico = Historico()
+        self._edicao = 0
+        """Quantas edições este painel recebeu. É o desempate do `Ctrl+Z` sem foco (S-243)."""
         """A pilha de desfazer, **por diagrama** (S-229): ela é zerada ao trocar de diagrama, e
         é isso que faz `Ctrl+Z` devolver a posição anterior *deste* diagrama em vez de andar para
         trás na correção do vizinho."""
@@ -307,6 +311,16 @@ class PainelDeResultado(QWidget):
             [estilos.PRIMARIO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO],
             onde="a barra do painel de resultado",
         )
+        # **O mapa de incerteza volta a ser desligavel (S-21/S-506).** Ele existia no painel do Tk
+        # e o porte nao o trouxe: a tinta ficava ligada para sempre, e quem confere uma pagina ja
+        # revista trabalhava com todas as casas duvidosas pintadas por baixo das pecas. Nao entra
+        # em `conferir_barra` porque a regra dela e sobre enfase de **botao**, e uma caixa de
+        # marcacao nao tem enfase.
+        self.heatmap = QCheckBox(strings.MAPA_DE_INCERTEZA, barra)
+        self.heatmap.setChecked(True)
+        self.heatmap.toggled.connect(self.tabuleiro.definir_heatmap)
+        dica_em(self.heatmap, "Tinge as casas de leitura duvidosa. Desligado, a peça lida aparece limpa.")
+        barra.adicionar(self.heatmap)
         return barra
 
     def _botao(self, barra: BarraFluida, acao: str, alvo: Callable[[], object], papel: str) -> QPushButton:
@@ -655,6 +669,8 @@ class PainelDeResultado(QWidget):
             return
         self.modelo.apply_placement(placement, linha)
         self.historico.registrar(placement)
+        # O contador que decide o `Ctrl+Z` quando o foco não está em desfazível nenhum (S-243).
+        self._edicao += 1
         self._atualizar_tudo()
 
     def _casa_selecionada(self, indice: object) -> None:
@@ -690,6 +706,15 @@ class PainelDeResultado(QWidget):
         # mexer em nenhuma peça (S-17).
         self._atualizar_tudo()
         self.estado.emit(f"Diagrama {self.modelo.clamped_index() + 1}: lado a jogar definido.")
+
+    def contem(self, widget: object) -> bool:
+        """Este widget está dentro deste painel? É o que decide de quem é o `Ctrl+Z` (S-243)."""
+        return qt_atalhos.contem(self, widget)
+
+    @property
+    def edicao(self) -> int:
+        """Contador que só cresce, como manda `ui/desfazivel.Desfazivel`. Zero = nunca editado."""
+        return self._edicao
 
     def desfazer(self) -> None:
         """`Ctrl+Z`: devolve a posição anterior deste diagrama."""

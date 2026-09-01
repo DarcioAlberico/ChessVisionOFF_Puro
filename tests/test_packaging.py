@@ -250,8 +250,29 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1227
+    LIMITE = 1776
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.227 → 1.776 na S-506**, e as 549 são o que o corte do Tk tinha deixado sem chamador. Elas
+    são a maior subida da história desta catraca, e a razão de ela não ser um acidente é que cada
+    bloco tem um dono do outro lado -- nenhum deles é decisão reescrita aqui:
+
+    - **~180 linhas de estado** (`_ler_estado`, `_aplicar_estado`, `_restaurar_arranjo`,
+      `_anotar_arranjo`, `_gravar_estado`, `showEvent`): a decisão inteira é de `ui/state.py` e de
+      `ui/geometria.py`, que já existiam e não tinham quem os chamasse. O que está aqui é ler
+      widget e escrever widget, que é o que não dá para testar fora da janela;
+    - **~150 de aparência** (`_pele_atual`, `_densidade_atual`, `_montar_o_cromo`,
+      `_remontar_cromo`, `provar_as_peles` e os dois `_escolher_*`): `Ver ▸ Aparência` e
+      `Ver ▸ Densidade` eram `lambda: None`, e o cromo que elas montam mora em `qt/fila.py` e
+      `qt/fita.py`;
+    - **~55 do conjunto de peças**, cuja metade pura é `ui/conjuntos.py` mais `ui/pecas.py`;
+    - **~35 do árbitro do `Ctrl+Z`**, cuja regra é `ui/desfazivel.alvo_de_desfazer`;
+    - **~35 dos livros recentes**, que saem de `AppState.recentes`.
+
+    O resto é docstring. **Extrair não era opção para nenhum deles**: os cinco blocos leem e
+    escrevem widget desta janela -- `self.pdf`, `self.texto`, `self.estudo`, `self.divisor`,
+    `self.abas` --, e um módulo que recebesse a janela por parâmetro seria a mesma classe com um
+    salto de indireção no meio. É a fronteira que a S-31 fixou, e ela continua onde estava.
 
     **1.196 → 1.227 na S-506**, e as trinta e uma são a fiação dos cinco botões que voltaram ao
     visualizador: três `connect`, os dois métodos que os atendem (`_leitura_pedida` e

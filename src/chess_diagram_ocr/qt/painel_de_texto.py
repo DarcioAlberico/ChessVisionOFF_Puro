@@ -18,8 +18,9 @@ existe só para contornar o `tk.Text`:
 - **`edit_reset()` depois de todo redesenho.** A pilha de desfazer do Tk guarda **índice**, não
   conteúdo: trocar o texto inteiro e não zerá-la faria o desfazer apagar um pedaço qualquer do
   texto novo. Aqui a pilha é o próprio histórico de documentos, e redesenhar não a corrompe.
-- **`texto_etiquetas.de_despejo`.** Ler o documento de volta do widget, etiqueta por etiqueta,
-  para gravar. Aqui o documento **é** o estado; o widget é só o desenho dele.
+- **a leitura do documento de volta do widget**, etiqueta por etiqueta, para gravar -- era
+  `ui/texto_etiquetas.de_despejo`, e ela saiu junto com o toolkit (S-506). Aqui o documento
+  **é** o estado; o widget é só o desenho dele.
 
 O que **não** muda é a fronteira: toda ferramenta chama uma função pura de `rico`, recebe um
 documento novo e o redesenha. É o que faz o negrito sobreviver ao arquivo em vez de existir só
@@ -28,7 +29,8 @@ enquanto o widget existir.
 **O deslocamento é a fronteira estreita.** As funções puras falam em deslocamento de caractere do
 *documento*; o `QTextEdit` fala em posição do *cursor*. Os dois divergem porque a miniatura do
 diagrama vale um caractere para o Qt e nenhum para o documento -- exatamente o que
-`texto_etiquetas.deslocamento` resolve do outro lado. Ver `_Mapa`.
+`ui/texto_etiquetas.deslocamento` resolvia do outro lado, percorrendo o `dump` do widget a cada
+pergunta. Ver `_Mapa`.
 """
 
 from __future__ import annotations
@@ -60,6 +62,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
@@ -108,8 +111,8 @@ class _Mapa:
     -- numa folha de nove, o negrito aplicado no fim cairia nove caracteres adiante.
 
     A tabela é construída no desenho, que é o único momento em que se sabe as duas coordenadas ao
-    mesmo tempo. É o papel de `texto_etiquetas.deslocamento` do outro lado, com a diferença de que
-    lá ele é recalculado a cada pergunta, percorrendo o `dump` inteiro do widget.
+    mesmo tempo. Era o papel de `ui/texto_etiquetas.deslocamento`, com a diferença de que lá ele
+    era recalculado a cada pergunta, percorrendo o `dump` inteiro do widget.
     """
 
     def __init__(self) -> None:
@@ -188,6 +191,8 @@ class PainelDeTexto(QWidget):
         """**O estado é o documento, e não o widget.** É a diferença de fundo com o lado do Tk,
         onde gravar exigia reler o `dump` do editor etiqueta por etiqueta (`de_despejo`)."""
         self._historico: list[rico.DocumentoRico] = []
+        self._edicao = 0
+        """Quantas edições esta aba recebeu. É o desempate do `Ctrl+Z` sem foco (S-243)."""
         self._refeitos: list[rico.DocumentoRico] = []
         self._mapa = _Mapa()
         self._redesenhando = False
@@ -464,6 +469,8 @@ class PainelDeTexto(QWidget):
         if novo is self.documento:
             return
         self._historico.append(self.documento)
+        # O contador que decide o `Ctrl+Z` quando o foco não está em desfazível nenhum (S-243).
+        self._edicao += 1
         self._refeitos.clear()
         self.desenhar_documento(novo)
 
@@ -536,6 +543,15 @@ class PainelDeTexto(QWidget):
         return 0
 
     # ---------------------------------------------------------------------------- histórico
+
+    def contem(self, widget: object) -> bool:
+        """Este widget está dentro desta aba? É o que decide de quem é o `Ctrl+Z` (S-243)."""
+        return qt_atalhos.contem(self, widget)
+
+    @property
+    def edicao(self) -> int:
+        """Contador que só cresce, como manda `ui/desfazivel.Desfazivel`. Zero = nunca editado."""
+        return self._edicao
 
     def desfazer(self) -> None:
         """`Ctrl+Z`: devolve o documento anterior."""
@@ -678,16 +694,32 @@ class PainelDeTexto(QWidget):
         """
         self.editor.paste()
 
+    @property
+    def quebra(self) -> bool:
+        """As linhas estão quebrando na largura da janela? É o que o estado guarda (S-291)."""
+        return self.editor.lineWrapMode() != QTextEdit.LineWrapMode.NoWrap
+
+    def definir_quebra(self, quebrando: bool, *, avisar: bool = False) -> None:
+        """Põe a quebra naquele estado. Silencioso por padrão.
+
+        **Separada de `quebrar_linha` porque restaurar não é alternar.** A restauração da abertura
+        põe o que a sessão anterior tinha, e uma frase no rodapé anunciando isso seria um recado
+        sobre algo que a pessoa não acabou de fazer -- é a mesma razão do `avisar=False` de
+        `aplicar_zoom`.
+        """
+        self.editor.setLineWrapMode(
+            QTextEdit.LineWrapMode.WidgetWidth if quebrando else QTextEdit.LineWrapMode.NoWrap
+        )
+        if not avisar:
+            return
+        if quebrando:
+            self.estado.emit("As linhas voltam a quebrar na largura da janela.")
+        else:
+            self.estado.emit("Linha inteira: use a rolagem de baixo para ver o fim das linhas longas.")
+
     def quebrar_linha(self) -> None:
         """Liga ou desliga a quebra na largura da janela (S-265)."""
-        quebrando = self.editor.lineWrapMode() != QTextEdit.LineWrapMode.NoWrap
-        self.editor.setLineWrapMode(
-            QTextEdit.LineWrapMode.NoWrap if quebrando else QTextEdit.LineWrapMode.WidgetWidth
-        )
-        if quebrando:
-            self.estado.emit("Linha inteira: use a rolagem de baixo para ver o fim das linhas longas.")
-        else:
-            self.estado.emit("As linhas voltam a quebrar na largura da janela.")
+        self.definir_quebra(not self.quebra, avisar=True)
 
     # ------------------------------------------------------------- o zoom da vista (S-264)
 

@@ -47,10 +47,33 @@ __all__ = [
     "WIDGETS_DE_TEXTO",
     "GuardaDeAtalhos",
     "cede_a_tecla",
+    "contem",
     "e_campo_de_texto",
     "ligar",
     "sequencia_qt",
 ]
+
+
+def contem(painel: object, widget: object) -> bool:
+    """Aquele widget está dentro deste painel? É o `contem` de `ui/desfazivel.Desfazivel` (S-243).
+
+    **Um lugar só, e não um por painel.** Três painéis disputam o `Ctrl+Z` e os três precisam
+    responder isto; três laços iguais é onde um deles deixa de subir por `parentWidget` e a tecla
+    passa a fazer coisa diferente naquele painel, sem sintoma nenhum.
+
+    Sobe pelo `parentWidget` em vez de usar `isAncestorOf` porque este módulo é chamado com objetos
+    de mentira nos testes -- a mesma razão do duck typing de `ui/atalhos._cadeia`, e a razão de o
+    parâmetro ser `object`.
+    """
+    atual = widget
+    for _ in range(40):
+        if atual is None:
+            return False
+        if atual is painel:
+            return True
+        pai = getattr(atual, "parentWidget", None)
+        atual = pai() if callable(pai) else None
+    return False
 
 WIDGETS_DE_TEXTO: tuple[type, ...] = (
     QLineEdit,

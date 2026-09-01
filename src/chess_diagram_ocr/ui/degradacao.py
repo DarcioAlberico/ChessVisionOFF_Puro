@@ -66,7 +66,9 @@ QUEDAS: tuple[Queda, ...] = (
     Queda("densidade", "densidade desconhecida", "a densidade confortável", "pele.densidade_em_vigor"),
     Queda("icone", "ícone sem traço declarado", "o botão só com texto", "icones.imagem"),
     Queda("desenho", "Pillow indisponível ou desenho falho", "o botão só com texto", "icones.imagem"),
-    Queda("pasta_de_pecas", "pasta de peças ausente ou incompleta", "o símbolo Unicode, peça a peça", "board_render.PieceImages"),
+    # `board_render.PieceImages` era o dono, e ele saiu no corte do Tk (S-506): a tabela ficou
+    # apontando para um módulo que não existe mais, que é o defeito que ela própria descreve.
+    Queda("pasta_de_pecas", "pasta de peças ausente ou incompleta", "o símbolo Unicode, peça a peça", "qt/tabuleiro.carregar_pecas"),
     Queda("conjunto", "conjunto de peças desconhecido", "o conjunto padrão", "conjuntos.valida"),
 )
 """As seis falhas de aparência previstas, e o degrau de cada uma.

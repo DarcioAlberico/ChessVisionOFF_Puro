@@ -19,7 +19,7 @@ from unittest import mock
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.ui import abas
+from chess_diagram_ocr.ui import abas, pele
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 
@@ -60,6 +60,12 @@ def _livro(pasta: Path, nome: str = "livro.pdf", paginas: int = 3) -> Path:
     return caminho
 
 
+def _fracao(janela: JanelaPrincipal) -> float:
+    """Onde a alca do divisor esta, como fracao da largura. Lida da tela, e nao do estado."""
+    tamanhos = janela.divisor.sizes()
+    return tamanhos[0] / sum(tamanhos)
+
+
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class MontagemTests(unittest.TestCase):
     """A janela montada, sem livro."""
@@ -74,6 +80,7 @@ class MontagemTests(unittest.TestCase):
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
         )
         self.addCleanup(descartar, montada)
         montada.resize(1400, 900)
@@ -240,6 +247,7 @@ class FiacaoTests(unittest.TestCase):
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
             # **Sem isto o teste lê e grava em `data/gallery/` de verdade** -- o mesmo defeito que
             # o painel da galeria já tinha, agora fechado na ponta da janela.
             pasta_da_galeria=self.pasta,
@@ -522,6 +530,546 @@ class FiacaoTests(unittest.TestCase):
         janela = self.janela(com_livro=False)
         self.assertEqual(1, janela._opcoes(1).max_boards)
         self.assertEqual(DEFAULT_MAX_BOARDS, janela._opcoes().max_boards)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class EstadoEntreSessoesTests(unittest.TestCase):
+    """O que a janela lembra de uma abertura para a seguinte (S-25/S-156/S-322).
+
+    **Duas janelas por teste, e é o desenho.** Afirmar que a primeira gravou o arquivo mede o
+    formato, não a promessa: o que a pessoa sente é a *segunda* abrir onde a primeira parou. Cada
+    teste aqui fecha uma janela e monta outra sobre o mesmo arquivo.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.livro = _livro(self.pasta, paginas=6)
+        self.estado = self.pasta / "janela.json"
+        self.addCleanup(self.app.processEvents)
+
+    def janela(self, *, tamanho: tuple[int, int] | None = (1400, 900)) -> JanelaPrincipal:
+        """`tamanho=None` deixa a janela com a geometria que ela mesma restaurou do estado."""
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            pasta_da_galeria=self.pasta,
+            caminho_do_estado=self.estado,
+        )
+        self.addCleanup(descartar, montada)
+        if tamanho is not None:
+            montada.resize(*tamanho)
+        return montada
+
+    def test_o_livro_e_a_pagina_voltam_na_sessao_seguinte(self) -> None:
+        """A promessa inteira num teste: fechar na página 4 do livro e reabrir ali."""
+        primeira = self.janela()
+        primeira.abrir_pdf(self.livro)
+        self.app.processEvents()
+        primeira.pdf.ir_para_pagina(3)
+        self.app.processEvents()
+        primeira.close()
+
+        self.assertTrue(self.estado.exists(), "fechar a janela não gravou o estado")
+        segunda = self.janela()
+        self.assertTrue(segunda.abrir_livro_da_sessao())
+        self.app.processEvents()
+        self.assertEqual(self.livro, segunda.pdf.source)
+        self.assertEqual(3, segunda.pdf.page_index)
+
+    def test_a_pagina_e_de_cada_livro_e_nao_so_a_do_ultimo(self) -> None:
+        """O histórico guarda 50 livros, e a pergunta que ele responde é "onde eu parei **neste**?"
+
+        A anotação é na virada da página e não no fechamento: sem isso, trocar de livro no meio da
+        sessão perderia a página do primeiro, que é o gesto mais comum de quem compara dois livros.
+        """
+        outro = _livro(self.pasta, nome="outro.pdf", paginas=6)
+        primeira = self.janela()
+        primeira.abrir_pdf(self.livro)
+        self.app.processEvents()
+        primeira.pdf.ir_para_pagina(2)
+        self.app.processEvents()
+        primeira.abrir_pdf(outro)
+        self.app.processEvents()
+        primeira.pdf.ir_para_pagina(4)
+        self.app.processEvents()
+        primeira.close()
+
+        segunda = self.janela()
+        segunda.abrir_pdf(self.livro)
+        self.app.processEvents()
+        self.assertEqual(2, segunda.pdf.page_index, "o livro anterior perdeu a página")
+        segunda.abrir_pdf(outro)
+        self.app.processEvents()
+        self.assertEqual(4, segunda.pdf.page_index)
+
+    def test_os_interruptores_do_visualizador_sobrevivem_ao_fechamento(self) -> None:
+        """Escolha de visualização que se perde a cada abertura vira tarefa a refazer toda vez."""
+        primeira = self.janela()
+        primeira.pdf.marcar_diagramas.setChecked(False)
+        primeira.pdf.roda_vira_pagina.setChecked(False)
+        primeira.close()
+
+        segunda = self.janela()
+        self.assertFalse(segunda.pdf.marcar_diagramas.isChecked())
+        self.assertFalse(segunda.pdf.roda_vira_pagina.isChecked())
+
+    def test_o_mapa_de_incerteza_desligado_continua_desligado(self) -> None:
+        """Ele existia no painel do Tk e o porte nao o trouxe: a tinta ficava ligada para sempre.
+
+        Quem confere uma pagina ja revista trabalhava com todas as casas duvidosas pintadas por
+        baixo das pecas -- e nao havia como desligar.
+        """
+        primeira = self.janela()
+        self.assertTrue(primeira.painel.heatmap.isChecked(), "nasce ligado, que e como se descobre")
+        primeira.painel.heatmap.setChecked(False)
+        self.assertFalse(primeira.painel.tabuleiro._heatmap, "a caixa nao alcancou o tabuleiro")
+        primeira.close()
+
+        segunda = self.janela()
+        self.assertFalse(segunda.painel.heatmap.isChecked())
+        self.assertFalse(segunda.painel.tabuleiro._heatmap)
+
+    def test_o_zoom_e_a_quebra_da_aba_de_texto_voltam(self) -> None:
+        """O terceiro zoom do programa (S-291), e a quebra que quem lê notação desliga."""
+        primeira = self.janela()
+        primeira.texto.aplicar_zoom(2, avisar=False)
+        primeira.texto.definir_quebra(False)
+        primeira.close()
+
+        segunda = self.janela()
+        self.assertEqual(2, segunda.texto.zoom_da_vista)
+        self.assertFalse(segunda.texto.quebra)
+
+    def test_a_aba_aberta_volta_pelo_nome_e_nao_pelo_indice(self) -> None:
+        """Índice não sobrevive a reordenar as abas, e a S-162 é reordená-las."""
+        primeira = self.janela()
+        primeira.abas.setCurrentIndex(primeira._indice_da_aba(abas.DATASET) or 0)
+        primeira.close()
+
+        self.assertEqual(abas.DATASET, primeira._estado.active_tab)
+        segunda = self.janela()
+        self.assertEqual(abas.DATASET, abas.nome_base(segunda.abas.tabText(segunda.abas.currentIndex())))
+
+    def test_a_primeira_abertura_cai_na_aba_de_trabalho(self) -> None:
+        """Sem nada guardado, a Resultado -- e não a primeira que o `QTabWidget` mostrar."""
+        janela = self.janela()
+        self.assertEqual(
+            abas.ABA_DE_TRABALHO, abas.nome_base(janela.abas.tabText(janela.abas.currentIndex()))
+        )
+
+    def test_nada_e_gravado_antes_de_o_estado_chegar_aos_widgets(self) -> None:
+        """A guarda da S-322, e o defeito que ela impede é o pior de todos aqui.
+
+        Gravar antes de aplicar lê os widgets **nos padrões de fábrica** e os escreve por cima do
+        que estava no disco -- e aí nada do que este arquivo promete lembrar sobrevive a fechar a
+        janela, sem que nenhum teste de valor individual acuse.
+        """
+        janela = self.janela()
+        janela._estado_aplicado = False
+        janela._gravar_estado()
+        self.assertFalse(self.estado.exists(), "gravou com o estado ainda não aplicado")
+
+    def test_o_divisor_nao_e_medido_antes_de_a_janela_aparecer(self) -> None:
+        """**Divisor não mapeado não é divisor medido** (S-311).
+
+        Antes do `show()` o `QSplitter` devolve os tamanhos declarados na montagem, que são do
+        leiaute e não de ninguém: anotá-los apagaria a alça da sessão anterior antes de a pessoa
+        tocar em nada.
+        """
+        janela = self.janela()
+        janela._estado.sash_fraction = 0.66
+        janela._anotar_arranjo()
+        self.assertEqual(0.66, janela._estado.sash_fraction)
+
+    def test_o_divisor_arrastado_volta_no_lugar(self) -> None:
+        """`_set_initial_sashes` do outro frontend repunha o divisor a **cada** abertura: quem
+        trabalha com o PDF grande o arrastava e o perdia toda sessao (S-156).
+
+        A fracao e lida da tela e nao cravada no teste: os dois lados tem largura minima, e o
+        `QSplitter` grampeia o que se pede a elas -- cravar um numero mediria o grampo.
+        """
+        primeira = self.janela()
+        # **2200 e nao os 1400 das outras**, e o numero e medido: com 1534 px a janela esta no
+        # piso dos dois lados -- `[720, 810]` -- e o divisor nao tem folga nenhuma para arrastar.
+        primeira.resize(2200, 1000)
+        primeira.show()
+        self.app.processEvents()
+        padrao = _fracao(primeira)
+        largura = sum(primeira.divisor.sizes())
+        primeira.divisor.setSizes([int(largura * 0.6), largura - int(largura * 0.6)])
+        self.app.processEvents()
+        arrastado = _fracao(primeira)
+        self.assertNotAlmostEqual(padrao, arrastado, places=2, msg="o arrasto nao moveu nada")
+        primeira.close()
+
+        self.assertAlmostEqual(arrastado, primeira._estado.sash_fraction, places=2)
+        # Sem `tamanho`: a segunda janela abre com a geometria que ela restaurou, e e dentro dela
+        # que a fracao do divisor tem de caber. Encolhe-la aqui mediria de novo o grampo.
+        segunda = self.janela(tamanho=None)
+        segunda.show()
+        self.app.processEvents()
+        self.assertAlmostEqual(arrastado, _fracao(segunda), places=2)
+        self.assertGreater(segunda.width(), 2000, "a geometria da sessao anterior nao voltou")
+
+    def test_a_geometria_guardada_e_a_de_fora_do_maximizado(self) -> None:
+        """`normalGeometry` é o que substitui a recusa do `1x1+-32000+-32000` do Tk (S-156)."""
+        from chess_diagram_ocr.ui import geometria
+
+        janela = self.janela()
+        janela.show()
+        self.app.processEvents()
+        janela._anotar_arranjo()
+        lida = geometria.geometria_de_texto(janela._estado.window_geometry)
+        self.assertIsNotNone(lida, f"não é geometria: {janela._estado.window_geometry!r}")
+        assert lida is not None
+        self.assertGreater(lida.largura, 1)
+        self.assertGreater(lida.altura, 1)
+
+    def test_a_geometria_de_um_monitor_que_sumiu_e_corrigida(self) -> None:
+        """Trocar de monitor entre duas sessões abria a janela fora da tela, sem erro nenhum.
+
+        A decisão é a pura de `ui/geometria.py`, a mesma dos dois frontends; o que se afirma aqui
+        é que esta janela **passa por ela** em vez de aplicar o texto guardado como veio.
+        """
+        from chess_diagram_ocr.qt.janela import plataforma
+
+        self.estado.write_text(
+            '{"version": 6, "window_geometry": "1400x900+9000+9000"}', encoding="utf-8"
+        )
+        with mock.patch.object(plataforma, "monitores", lambda: ((0, 0, 1920, 1040),)):
+            janela = self.janela()
+        self.assertLess(janela.x(), 1920, "a janela abriu no monitor que não existe mais")
+
+    def test_o_ultimo_livro_que_sumiu_do_disco_e_dito_e_nao_engolido(self) -> None:
+        """Antes isto era um `return` silencioso, e a pessoa só via outro livro abrir."""
+        self.estado.write_text(
+            '{"version": 6, "last_pdf": "' + str(self.pasta / "sumiu.pdf").replace("\\", "/") + '"}',
+            encoding="utf-8",
+        )
+        janela = self.janela()
+        recados: list[str] = []
+        janela.rodape.mostrar = lambda texto, **_: recados.append(texto)  # type: ignore[assignment]
+        janela.abrir_livro_da_sessao()
+        self.app.processEvents()
+        self.assertTrue(any("não encontrado" in recado for recado in recados), recados)
+
+    def test_o_estado_do_tk_e_herdado_uma_vez_e_nao_reescrito(self) -> None:
+        """O arquivo mudou de nome com o corte, e o histórico de 50 livros não pode ir junto."""
+        from chess_diagram_ocr.qt import janela as modulo
+
+        herdado = self.pasta / "app_tkinter_state.json"
+        herdado.write_text('{"version": 6, "texto_zoom": 3}', encoding="utf-8")
+        novo = self.pasta / "novo.json"
+        with (
+            mock.patch.object(modulo, "CAMINHO_DO_ESTADO", novo),
+            mock.patch.object(modulo, "CAMINHO_HERDADO_DO_ESTADO", herdado),
+        ):
+            montada = JanelaPrincipal(
+                servico=_ServicoFalso(),  # type: ignore[arg-type]
+                csv_de_rotulos=self.pasta / "labels.csv",
+                pasta_de_estudos=self.pasta,
+                pasta_da_galeria=self.pasta,
+            )
+            self.addCleanup(descartar, montada)
+            self.assertEqual(3, montada.texto.zoom_da_vista, "o estado antigo não foi lido")
+            montada.close()
+
+        self.assertTrue(novo.exists(), "gravou de volta no nome antigo")
+        self.assertIn('"texto_zoom": 3', herdado.read_text(encoding="utf-8"))
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class AparenciaTests(unittest.TestCase):
+    """`Ver ▸ Aparência` e `Ver ▸ Densidade`, que ate o corte marcavam e nao faziam nada (S-506).
+
+    **O defeito que estes testes fecham passava na conta do catalogo.** Os dois comandos tinham
+    dono e o dono era chamavel -- um `lambda: None` --, e a guarda pergunta se **ha** dono, nao se
+    ele faz alguma coisa. O menu desenhava as tres peles e as duas densidades, marcava a escolhida,
+    e a janela continuava exatamente a mesma.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.estado = self.pasta / "janela.json"
+        self.addCleanup(self.app.processEvents)
+        # A folha de estilo e da **aplicacao**, e um teste que a deixa escura contamina o vizinho.
+        from chess_diagram_ocr.qt import tema
+
+        self.addCleanup(tema.aplicar_tema)
+
+    def janela(self) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            pasta_da_galeria=self.pasta,
+            caminho_do_estado=self.estado,
+        )
+        self.addCleanup(descartar, montada)
+        montada.resize(1400, 900)
+        return montada
+
+    @staticmethod
+    def _cromo(janela: JanelaPrincipal) -> list[str]:
+        """O que esta desenhado no conteiner do cromo, por nome de classe."""
+        pilha = janela._pilha_do_cromo
+        nomes = []
+        for indice in range(pilha.count()):
+            item = pilha.itemAt(indice)
+            widget = item.widget() if item is not None else None
+            if widget is not None:
+                nomes.append(type(widget).__name__)
+        return nomes
+
+    @staticmethod
+    def _trocar(janela: JanelaPrincipal, pele_nova: str) -> None:
+        """O que o clique no item de menu faz: marca o valor e dispara o comando."""
+        janela.menu.escolher("aparencia", pele_nova)
+        janela._comandos()["aparencia"]()
+
+    def test_a_classica_nao_desenha_cromo_nenhum(self) -> None:
+        """A fundacao se prova quando ela nao muda nada: a classica e a janela de sempre (S-221)."""
+        janela = self.janela()
+        self.assertEqual([], self._cromo(janela))
+        self.assertTrue(janela.cromo.isHidden())
+
+    def test_a_fita_e_a_fila_entram_no_lugar_do_cromo(self) -> None:
+        """As duas peles das imagens, e o modulo que cada uma monta."""
+        janela = self.janela()
+        self._trocar(janela, pele.FITA)
+        self.assertEqual(["Fita"], self._cromo(janela))
+        self.assertFalse(janela.cromo.isHidden())
+        self._trocar(janela, pele.FOCO)
+        self.assertEqual(["Fila"], self._cromo(janela))
+        self._trocar(janela, pele.CLASSICA)
+        self.assertEqual([], self._cromo(janela))
+
+    def test_o_menu_abre_com_a_pele_e_a_densidade_em_vigor_marcadas(self) -> None:
+        """Submenu sem marca e o mesmo que dizer "nenhuma delas esta em uso"."""
+        janela = self.janela()
+        self.assertEqual(pele.CLASSICA, janela.menu.escolhido("aparencia"))
+        self.assertEqual(pele.CONFORTAVEL, janela.menu.escolhido("densidade"))
+
+    def test_a_pele_escolhida_sobrevive_ao_fechamento(self) -> None:
+        primeira = self.janela()
+        self._trocar(primeira, pele.FITA)
+        primeira.close()
+
+        segunda = self.janela()
+        self.assertEqual(pele.FITA, segunda._pele_atual().nome)
+        self.assertEqual(["Fita"], self._cromo(segunda))
+        self.assertEqual(pele.FITA, segunda.menu.escolhido("aparencia"))
+
+    def test_a_pele_sugere_a_densidade_e_a_escolha_explicita_ganha(self) -> None:
+        """O criterio de aceite da S-232: a escolha sobrepoe a sugestao **e** sobrevive a troca.
+
+        A fita sugere compacta porque e a pele que gasta altura com cromo. Quem nunca abriu o menu
+        recebe a sugestao; quem escolheu confortavel continua confortavel tambem na fita.
+        """
+        janela = self.janela()
+        self._trocar(janela, pele.FITA)
+        self.assertEqual(pele.COMPACTA, janela._densidade_atual(), "a fita nao sugeriu compacta")
+
+        janela.menu.escolher("densidade", pele.CONFORTAVEL)
+        janela._comandos()["densidade"]()
+        self.assertEqual(pele.CONFORTAVEL, janela._densidade_atual())
+
+        self._trocar(janela, pele.CLASSICA)
+        self._trocar(janela, pele.FITA)
+        self.assertEqual(
+            pele.CONFORTAVEL, janela._densidade_atual(), "a sugestao da pele desfez a escolha"
+        )
+
+    def test_o_cromo_escuro_da_pele_chega_a_folha_de_estilo(self) -> None:
+        """A pele "Foco" e escura (S-224), e ate aqui esse `bool` nao saia de `ui/pele.py`."""
+        from chess_diagram_ocr.qt.janela import tema
+
+        janela = self.janela()
+        with mock.patch.object(tema, "aplicar_tema") as aplicada:
+            self._trocar(janela, pele.FOCO)
+        self.assertTrue(aplicada.call_args.kwargs["cromo_escuro"])
+
+    def test_a_variavel_de_ambiente_ganha_da_guardada(self) -> None:
+        """`CVOFF_SKIN` existe para abrir o programa numa aparencia a partir de um roteiro."""
+        self.estado.write_text('{"version": 6, "skin": "classica"}', encoding="utf-8")
+        with mock.patch.dict("os.environ", {pele.PELE_ENV: pele.FITA}):
+            janela = self.janela()
+            self.assertEqual(pele.FITA, janela._pele_atual().nome)
+        # E o efeito sobrevive a variavel: o cromo montado na abertura e o da fita.
+        self.assertEqual(["Fita"], self._cromo(janela))
+
+    def test_uma_pele_escrita_errada_no_disco_nao_impede_a_janela_de_abrir(self) -> None:
+        """O contrato de degradacao: `pele.valida` nomeia a invalida no log e cai na classica."""
+        self.estado.write_text('{"version": 6, "skin": "roxa"}', encoding="utf-8")
+        self.assertEqual(pele.CLASSICA, self.janela()._pele_atual().nome)
+
+    def test_o_conjunto_de_pecas_e_o_terceiro_eixo_e_e_trocavel(self) -> None:
+        """Ate o corte ele era um controle da aba Configuracao, que esta janela nao tem (S-230)."""
+        from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+        from chess_diagram_ocr.ui import conjuntos
+
+        self.addCleanup(qt_tabuleiro.definir_conjunto, conjuntos.PADRAO)
+        janela = self.janela()
+        self.assertEqual(conjuntos.PADRAO, janela.menu.escolhido("conjunto_de_pecas"))
+
+        janela.menu.escolher("conjunto_de_pecas", conjuntos.TRACO)
+        janela._comandos()["conjunto_de_pecas"]()
+        self.assertEqual(conjuntos.TRACO, qt_tabuleiro.conjunto_em_vigor())
+        self.assertEqual(conjuntos.TRACO, janela._estado.piece_set)
+
+    def test_o_conjunto_escolhido_sobrevive_ao_fechamento(self) -> None:
+        from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+        from chess_diagram_ocr.ui import conjuntos
+
+        self.addCleanup(qt_tabuleiro.definir_conjunto, conjuntos.PADRAO)
+        primeira = self.janela()
+        primeira.menu.escolher("conjunto_de_pecas", conjuntos.TRACO)
+        primeira._comandos()["conjunto_de_pecas"]()
+        primeira.close()
+
+        qt_tabuleiro.definir_conjunto(conjuntos.PADRAO)
+        segunda = self.janela()
+        self.assertEqual(conjuntos.TRACO, qt_tabuleiro.conjunto_em_vigor())
+        self.assertEqual(conjuntos.TRACO, segunda.menu.escolhido("conjunto_de_pecas"))
+
+    def test_desistir_da_pasta_do_usuario_repoe_a_marca(self) -> None:
+        """Um submenu marcado num conjunto que nao entrou em vigor e a mesma mentira de antes."""
+        from chess_diagram_ocr.qt import janela as modulo
+        from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+        from chess_diagram_ocr.ui import conjuntos
+
+        self.addCleanup(qt_tabuleiro.definir_conjunto, conjuntos.PADRAO)
+        janela = self.janela()
+        janela.menu.escolher("conjunto_de_pecas", conjuntos.PASTA)
+        with mock.patch.object(modulo.QFileDialog, "getExistingDirectory", lambda *a, **k: ""):
+            janela._comandos()["conjunto_de_pecas"]()
+        self.assertEqual(conjuntos.PADRAO, janela.menu.escolhido("conjunto_de_pecas"))
+        self.assertEqual(conjuntos.PADRAO, qt_tabuleiro.conjunto_em_vigor())
+
+    def test_a_pasta_escolhida_entra_em_vigor_e_e_guardada(self) -> None:
+        from chess_diagram_ocr.qt import janela as modulo
+        from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+        from chess_diagram_ocr.ui import conjuntos
+
+        self.addCleanup(qt_tabuleiro.definir_conjunto, conjuntos.PADRAO)
+        minhas = self.pasta / "minhas-pecas"
+        minhas.mkdir()
+        janela = self.janela()
+        janela.menu.escolher("conjunto_de_pecas", conjuntos.PASTA)
+        with mock.patch.object(modulo.QFileDialog, "getExistingDirectory", lambda *a, **k: str(minhas)):
+            janela._comandos()["conjunto_de_pecas"]()
+        self.assertEqual(conjuntos.PASTA, qt_tabuleiro.conjunto_em_vigor())
+        self.assertEqual(str(minhas), janela._estado.piece_dir)
+        self.assertEqual(minhas, qt_tabuleiro.pasta_do_conjunto())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DesfazerTests(unittest.TestCase):
+    """Quem desfaz quando se aperta `Ctrl+Z`: o foco decide, e a regra e pura (S-243/S-506).
+
+    **A declaracao de acoes da S-244 ja cobria o caso 1**, e e por isso que o defeito sobreviveu ao
+    porte: com o cursor dentro do texto a tecla ia para o texto. O que faltava era o caso 2 -- foco
+    em lugar nenhum dos dois, que e onde ele fica depois de qualquer clique num botao --, e ali a
+    tecla ia direto para o tabuleiro.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def janela(self) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            pasta_da_galeria=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+        )
+        self.addCleanup(descartar, montada)
+        montada.resize(1400, 900)
+        return montada
+
+    def test_os_tres_paineis_disputam_a_tecla(self) -> None:
+        """Resultado, Texto e Sala, nessa ordem -- que e a de construcao e a que desempata."""
+        from chess_diagram_ocr.ui import desfazivel
+
+        janela = self.janela()
+        disputam = janela._desfaziveis()
+        self.assertEqual([janela.painel, janela.texto, janela.estudo], disputam)
+        for painel in disputam:
+            with self.subTest(painel=type(painel).__name__):
+                self.assertIsInstance(painel, desfazivel.Desfazivel)
+
+    def test_sem_edicao_nenhuma_a_tecla_diz_que_nao_ha_o_que_desfazer(self) -> None:
+        janela = self.janela()
+        recados: list[str] = []
+        janela.rodape.mostrar = lambda texto, **_: recados.append(texto)  # type: ignore[assignment]
+        with mock.patch.object(janela, "_foco", lambda: None):
+            janela._comandos()["desfazer"]()
+        self.assertEqual(["Não há nada para desfazer."], recados)
+
+    def test_o_ultimo_editado_ganha_quando_o_foco_nao_esta_em_nenhum(self) -> None:
+        """**O caso 2, e o defeito que este item conserta.**
+
+        Digitar no texto e depois clicar num botao da barra deixa o foco fora dos dois
+        desfaziveis. Antes daqui a tecla desfazia a ultima peca arrastada no tabuleiro.
+        """
+        janela = self.janela()
+        janela.texto._edicao = 7
+        janela.painel._edicao = 3
+        with (
+            mock.patch.object(janela, "_foco", lambda: None),
+            mock.patch.object(janela.texto, "desfazer") as do_texto,
+            mock.patch.object(janela.painel, "desfazer") as do_tabuleiro,
+        ):
+            janela._comandos()["desfazer"]()
+        do_texto.assert_called_once_with()
+        do_tabuleiro.assert_not_called()
+
+    def test_o_foco_dentro_de_um_painel_ganha_do_ultimo_editado(self) -> None:
+        """O caso 1: quem contem o widget em foco desfaz, mesmo tendo editado antes do outro."""
+        janela = self.janela()
+        janela.texto._edicao = 99
+        janela.painel._edicao = 1
+        with (
+            mock.patch.object(janela, "_foco", lambda: janela.painel.tabuleiro),
+            mock.patch.object(janela.texto, "desfazer") as do_texto,
+            mock.patch.object(janela.painel, "desfazer") as do_tabuleiro,
+        ):
+            janela._comandos()["desfazer"]()
+        do_tabuleiro.assert_called_once_with()
+        do_texto.assert_not_called()
+
+    def test_o_refazer_segue_o_mesmo_arbitro(self) -> None:
+        janela = self.janela()
+        janela.texto._edicao = 2
+        with (
+            mock.patch.object(janela, "_foco", lambda: None),
+            mock.patch.object(janela.texto, "refazer") as do_texto,
+        ):
+            janela._comandos()["refazer"]()
+        do_texto.assert_called_once_with()
+
+    def test_o_foco_de_verdade_e_lido_da_aplicacao(self) -> None:
+        """O controle dos testes acima: `_foco` responde o widget que o Qt diz estar em foco.
+
+        **Sob `offscreen` so ha foco depois de `show` + `activateWindow` + `processEvents`**, e por
+        isso os outros testes injetam o foco em vez de encena-lo: o que eles medem e o arbitro.
+        """
+        janela = self.janela()
+        # A aba tem de estar a frente: `setFocus` num widget de aba escondida nao toma o foco, e o
+        # Qt o entrega ao primeiro focavel da aba visivel.
+        janela.abas.setCurrentWidget(janela.texto)
+        janela.show()
+        janela.activateWindow()
+        janela.texto.editor.setFocus()
+        self.app.processEvents()
+        self.assertIs(janela.texto.editor, janela._foco())
+        self.assertTrue(janela.texto.contem(janela._foco()))
 
 
 if __name__ == "__main__":  # pragma: no cover

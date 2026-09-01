@@ -94,8 +94,12 @@ lugares sozinha."""
 
 PREFIXO_DE_COR = "cor:"
 PREFIXO_DE_REALCE = "realce:"
-"""Como os dois viram etiqueta do `tk.Text`. Ver `ui/texto_etiquetas.py`: nome de etiqueta é string,
-e atributo com valor precisa carregar o valor no nome."""
+"""Como os dois viravam etiqueta do `tk.Text`: nome de etiqueta é string, e atributo com valor
+precisa carregar o valor no nome.
+
+**Os prefixos sobreviveram ao toolkit que os pedia** (S-506). Quem traduzia era
+`ui/texto_etiquetas.py`, que saiu com o Tk; eles continuam aqui porque o formato `.cvtxt` os usa,
+e `text/arquivo.py` é quem os lê e escreve hoje."""
 
 
 def papel_de_cor(nome: str) -> str:

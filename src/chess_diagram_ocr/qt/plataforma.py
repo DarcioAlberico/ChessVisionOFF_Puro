@@ -49,6 +49,7 @@ __all__ = [
     "Preparo",
     "aplicar_icone",
     "identificar_na_barra_de_tarefas",
+    "monitores",
     "politica_de_escala",
     "preparar_janela",
 ]
@@ -194,3 +195,35 @@ def preparar_janela(janela: QWidget | None = None) -> Preparo:
         "sim" if preparo.identificado else "não",
     )
     return preparo
+
+
+def monitores() -> tuple[tuple[int, int, int, int], ...]:
+    """Os retângulos das telas, no formato que `ui/geometria.py` cobra: `(x0, y0, x1, y1)`.
+
+    **É a metade que faltava da restauração de geometria (S-156).** `geometria_corrigida` decide
+    se a janela guardada ainda cabe nas telas de hoje, e a lista de telas é a única parte daquela
+    decisão que conhece toolkit -- do lado do Tk ela era `ui/plataforma.monitores`.
+
+    **Área útil e não a física** (`availableGeometry`): a barra de tarefas ocupa parte da tela, e
+    uma janela restaurada por baixo dela abre com a barra de título fora do alcance do mouse.
+
+    **A principal vem primeiro**, porque é ela que `geometria_corrigida` usa para centralizar a
+    janela que não cabe em lugar nenhum -- e `screens()` não promete ordem.
+
+    Vazio quando não há `QApplication`, ou quando o Qt recusa a pergunta. `geometria_corrigida`
+    já trata o vazio como "não sei onde estão as telas", que é a resposta certa: não saber não é
+    razão para mover a janela de lugar.
+    """
+    aplicacao = QApplication.instance()
+    if not isinstance(aplicacao, QApplication):
+        return ()
+    try:
+        principal = aplicacao.primaryScreen()
+        telas = [principal, *(t for t in aplicacao.screens() if t is not principal)] if principal else list(aplicacao.screens())
+        return tuple(
+            (area.x(), area.y(), area.x() + area.width(), area.y() + area.height())
+            for area in (tela.availableGeometry() for tela in telas if tela is not None)
+        )
+    except Exception as exc:  # noqa: BLE001 - Qt sem tela, duplo de teste, offscreen exótico
+        logger.info("Telas não enumeradas (%s): a geometria guardada é aplicada como veio.", exc)
+        return ()

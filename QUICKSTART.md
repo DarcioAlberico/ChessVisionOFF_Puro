@@ -25,17 +25,18 @@ Nada disso vem no repositorio -- sao livros protegidos e trabalho humano acumula
 ## 3. Abrir
 
 ```bash
-uv run python app_tkinter.py
+uv run python app_pyqt.py
 ```
 
 Conferir a instalacao sem abrir janela -- ele le uma pagina e diz o que achou:
 
 ```bash
-uv run python app_tkinter.py --selftest
+uv run python app_pyqt.py --selftest
 ```
 
-Codigos de saida: `0` ok, `2` sem PDF, `3` sem checkpoint, `4` le mas nao treina, `1` falha ao
-reconhecer.
+Codigos de saida: `0` ok, `2` sem PDF (ou PDF que nao abre), `3` sem checkpoint (ou checkpoint que
+nao carrega), `1` falha ao reconhecer, `4` le mas nao treina, `5` alguma aparencia nao monta, `6`
+sem PyQt6. O que ele achou vai para `logs/chessvisionoff.log`.
 
 ## 4. O ciclo que da valor ao projeto
 

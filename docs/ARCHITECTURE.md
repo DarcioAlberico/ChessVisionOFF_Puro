@@ -311,7 +311,8 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 | `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
 | `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | não — `.gitignore:28` |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
-| `data/app_tkinter_state.json` | último PDF, página, zoom | não |
+| `data/janela.json` | o que a janela lembra entre execuções: último livro, página, zoom, geometria, divisor, aba, pele, densidade e conjunto de peças (S-25/S-156) | não — **sob demanda**: nasce no primeiro fechamento da janela |
+| `data/app_tkinter_state.json` | o mesmo arquivo com o nome de antes do corte (S-506). É **lido uma vez**, quando o `janela.json` ainda não existe, e nunca reescrito: ele guarda o histórico de 50 livros com a página de cada um, e renomear sem lê-lo apagaria meses de "onde eu parei neste livro?" | não |
 | `data/review_queue.json` | a fila de revisão | não |
 | `data/review_cache/` | os recortes das páginas já varridas, para a fila não reabrir o PDF | não (10,4 GB — o maior artefato do projeto) |
 | `data/orphans/` | os PNGs cujo rótulo sumiu do `labels.csv`, guardados em vez de apagados (S-63) | não |

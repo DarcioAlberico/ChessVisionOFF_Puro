@@ -23,11 +23,15 @@ import unittest
 from typing import Any
 
 TEM_PYQT = importlib.util.find_spec("PyQt6") is not None
-"""Se o extra `qt` está instalado. Sem ele os testes da versão de teste **pulam**, e o `-ra`
-do `pyproject.toml` faz o motivo aparecer no fim da rodada -- que é o que a S-417 exige de
-todo pulo: ser visível em vez de virar um `s` no meio de quatro mil pontos."""
+"""Se o PyQt6 está instalado. Sem ele os testes de janela **pulam**, e o `-ra` do `pyproject.toml`
+faz o motivo aparecer no fim da rodada -- que é o que a S-417 exige de todo pulo: ser visível em
+vez de virar um `s` no meio de quatro mil pontos.
 
-MOTIVO = "o extra `qt` não está instalado (uv sync --extra qt)"
+**Ele deixou de ser um extra no corte do Tk (S-506)**, e a checagem continua valendo por outro
+motivo: um `.venv` antigo, de antes de o PyQt6 entrar nas dependências de base, ainda não o tem --
+e ali pular com o motivo escrito é melhor que um `ImportError` na coleta."""
+
+MOTIVO = "o PyQt6 não está instalado (uv sync)"
 
 _APLICACAO: Any = None
 
