@@ -12,13 +12,18 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import fitz
 import numpy as np
 import torch
 import torch.nn as nn
+from ambiente_de_teste import pasta_temporaria
 
+from chess_diagram_ocr import service as modulo_do_servico
 from chess_diagram_ocr.board_detection import NoBoardDetectedError
 from chess_diagram_ocr.config import BOARD_SIZE, PIECE_CLASSES, PIECE_TO_IDX
+from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.model import ArchConfig
 from chess_diagram_ocr.service import (
     OcrService,
@@ -440,3 +445,90 @@ class RecheckTests(unittest.TestCase):
         self.assertIn("board_123.png", texto)
         self.assertIn(f"Rotulo:  {PRETAS_A_JOGAR}", texto)
         self.assertIn(f"Modelo:  {PRETAS_A_JOGAR}", texto)
+
+
+class PaginaComCandidatosProntosTests(unittest.TestCase):
+    """`recognize_page` aceita a lista que quem chamou já detectou (S-501).
+
+    **O defeito medido**: o visualizador roda o detector para desenhar os retângulos sobre a
+    página, e mandar ler a mesma página rodava tudo de novo. O log de uma sessão de verdade
+    mostra as mesmas linhas de "Aparado pela moldura" duas vezes por página -- uma por marcar,
+    outra por ler.
+
+    **E o que o parâmetro corrige é maior que o tempo.** Que o retângulo "3" da tela e o
+    diagrama 3 da lista sejam o mesmo objeto valia por o detector ser determinístico e receber
+    a mesma entrada; passando a lista adiante, passa a valer por construção.
+    """
+
+    CAIXA = (60.0, 60.0, 260.0, 260.0)
+
+    def _pdf(self) -> Path:
+        """Uma página com o tabuleiro como imagem embutida -- o caminho da S-12."""
+        imagem = _board_image()
+        pixmap = fitz.Pixmap(fitz.csRGB, BOARD_SIZE, BOARD_SIZE, imagem.tobytes(), False)
+        documento = fitz.open()
+        pagina = documento.new_page(width=400, height=500)
+        pagina.insert_image(fitz.Rect(*self.CAIXA), pixmap=pixmap)
+        alvo = pasta_temporaria(self) / "livro.pdf"
+        documento.save(str(alvo))
+        documento.close()
+        return alvo
+
+    def _candidato(self) -> DiagramCandidate:
+        return DiagramCandidate(
+            board_rgb=_board_image(),
+            bbox_pdf=self.CAIXA,
+            source="embedded",
+            detector_score=1.0,
+            native_size=(BOARD_SIZE, BOARD_SIZE),
+        )
+
+    def test_com_a_lista_pronta_o_detector_nao_roda_de_novo(self) -> None:
+        service, _ = _service()
+
+        def _nao_devia_rodar(*_args: object, **_kwargs: object) -> list[DiagramCandidate]:
+            raise AssertionError("o detector rodou de novo com a lista pronta na mão")
+
+        with mock.patch.object(modulo_do_servico, "detect_diagrams_in_pdf_page", _nao_devia_rodar):
+            lidos = service.recognize_page(
+                self._pdf(), 0, options=_upright(), candidates=[self._candidato()]
+            )
+
+        self.assertEqual(1, len(lidos))
+        self.assertEqual(PRETAS_A_JOGAR, lidos[0].placement)
+
+    def test_a_procedencia_e_o_lugar_vem_da_lista_recebida(self) -> None:
+        """Não basta não redetectar: o que a lista carrega tem de chegar ao diagrama lido.
+
+        `bbox_pdf` é o que casa a leitura com a anotação de campo (S-41) e `detection_source` é
+        o que permite auditar o dataset por fonte (S-12) -- se o parâmetro os perdesse, o ganho
+        de tempo sairia caro.
+        """
+        service, _ = _service()
+
+        lidos = service.recognize_page(
+            self._pdf(), 0, options=_upright(), candidates=[self._candidato()]
+        )
+
+        self.assertEqual(self.CAIXA, lidos[0].bbox_pdf)
+        self.assertEqual("embedded", lidos[0].detection_source)
+
+    def test_sem_a_lista_o_caminho_e_o_de_sempre(self) -> None:
+        """O padrão continua sendo detectar aqui dentro -- é o que a exportação usa."""
+        service, _ = _service()
+
+        lidos = service.recognize_page(self._pdf(), 0, options=_upright())
+
+        self.assertEqual(1, len(lidos))
+        self.assertEqual("embedded", lidos[0].detection_source)
+
+    def test_uma_lista_vazia_e_pagina_sem_diagrama_e_nao_pedido_para_detectar(self) -> None:
+        """`[]` e `None` são respostas diferentes: uma diz "não há", a outra "não sei".
+
+        Colapsá-las faria a página de prosa que o visualizador já examinou ser reexaminada a
+        cada leitura -- e é a página mais comum de um livro.
+        """
+        service, _ = _service()
+
+        with self.assertRaises(NoBoardDetectedError):
+            service.recognize_page(self._pdf(), 0, options=_upright(), candidates=[])

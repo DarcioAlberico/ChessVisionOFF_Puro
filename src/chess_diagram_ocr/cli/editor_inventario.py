@@ -28,19 +28,19 @@ from typing import Any
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import exportacao, paleta, rico
-from ..ui import alcance, atalhos, menu, texto_panel
+from ..ui import atalhos, menu, texto_declarado
 from . import EXIT_FAILURE, EXIT_OK, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
 DESTINO_PADRAO = PROJECT_ROOT / "docs" / "metrics" / f"editor_inventario_{date.today():%Y%m%d}.json"
 
-_APELIDOS: dict[str, str] = texto_panel.COMANDOS_DA_ABA
-"""Comando -> método do painel, **lido de quem tem os métodos** (`ui/texto_panel.py`).
+_APELIDOS: dict[str, str] = texto_declarado.COMANDOS_DA_ABA
+"""Comando -> método do painel, **lido de quem tem os métodos** (`ui/texto_declarado.py`).
 
 O apelido continua aqui para o inventário e para os testes que o nomeiam; a declaração mudou de casa
 quando a janela passou a gerar as ligações dela em vez de repeti-las em `lambda`. Ver o docstring de
-`texto_panel.COMANDOS_DA_ABA`."""
+`texto_declarado.COMANDOS_DA_ABA`."""
 
 
 def _commit() -> str:
@@ -78,9 +78,8 @@ def inventario() -> dict[str, Any]:
         ),
         "comandos_do_editor": do_editor,
         "comandos_do_editor_fora_do_menu": sorted(acao for acao in do_editor if acao not in no_menu),
-        "peles_que_perdem_comando": alcance.perdidos(),
         "teclas_proprias_do_editor": dict(atalhos.TECLAS_DO_EDITOR),
-        "acoes_que_a_aba_toma_para_si": sorted(texto_panel.ACOES_PROPRIAS),
+        "acoes_que_a_aba_toma_para_si": sorted(texto_declarado.ACOES_PROPRIAS),
         "paleta": {
             "prateleiras": {p.nome: len(p.simbolos) for p in paleta_atual.prateleiras},
             "simbolos": len(paleta_atual.simbolos),

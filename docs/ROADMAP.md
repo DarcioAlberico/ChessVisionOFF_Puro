@@ -911,7 +911,7 @@ vira afirmação falsa, e este dizia *"não iniciado"* sobre um `.exe` que roda.
 | parte | estado em 2026-07-27 | hoje |
 |---|---|---|
 | Streamlit e Tkinter com paridade | **parcial** — o pipeline é o mesmo; a edição não | **decidido, não parcial**: a S-54 desfez a promessa de paridade e o README a chama de demonstração |
-| `app_tkinter.py` abaixo de 600 linhas | **651** (477 de código) | **2.327**, e o arquivo dobrou depois da decomposição — ver S-136 |
+| a janela abaixo de 600 linhas | **651** (477 de código) | **1.196**, e o arquivo dobrou depois da decomposição — ver S-136. O corte do Tk (S-506) trocou o arquivo vigiado: era o `app_tkinter.py` com 2.327 linhas, é `qt/janela.py` com 1.193, e a diferença é a camada pura de `ui/` sendo chamada em vez de reescrita |
 | executável rodando em máquina sem Python | **não iniciado** (6.8 / S-36) | **feito** (S-55): `dist/ChessVisionOFF/`, 684 MB, medido em 2026-08-18 e travado por teste |
 
 **A linha que piorou é a do meio, e ela tem dono.** O 651 era honesto quando foi escrito; hoje

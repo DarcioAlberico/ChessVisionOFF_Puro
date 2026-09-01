@@ -714,33 +714,47 @@ estão aqui, mas o painel ainda escreve os rótulos dele à mão -- por isso os 
 
 
 NAS_BARRAS_DO_PDF: tuple[str, ...] = (
+    # a barra do livro: o que se faz **com** a página exibida
     "abrir_pdf",
     "abrir_no_leitor",
     "ler_melhor",
     "ler_pagina",
-    "selecionar_area",
     "tirar_caixa",
     "exportar_pgn",
     "cancelar_exportacao",
+    # a barra de navegação: o que se faz **na** página
     "pagina_anterior",
     "proxima_pagina",
     "zoom_menos",
     "zoom_mais",
     "ajustar_largura",
     "ajustar_pagina",
+    "selecionar_area",
     "roda_vira_pagina",
     "marcar_diagramas",
 )
-"""Os comandos que as duas barras de `ui/pdf_panel.py` desenham -- a tela da pele clássica (S-233).
+"""Os comandos que as duas barras de `qt/painel_do_pdf.py` desenham (S-233).
 
-**Declarado aqui e montado lá, e a distância entre os dois tem guarda.** `_montar_barras` constrói
-os dezesseis botões à mão, com `state`, dica e `command` diferentes em cada um; transformá-la numa
-tabela é a decomposição que o `ROADMAP_UI` persegue, e não cabia neste item. O que cabia foi
-declarar a lista onde o inventário da S-233 possa lê-la sem abrir janela --
-`tests/test_ui_alcance.py` varre aquela função por `ast` e cobra que as duas concordem.
+**Declarado aqui e montado lá, e a distância entre os dois tem guarda.** O painel constrói os
+dezesseis controles à mão -- `QPushButton` pelo `_botao`, `QCheckBox` pelos dois interruptores --,
+com estado, dica e função diferentes em cada um. O que a lista compra é o inventário poder lê-la sem
+abrir janela; quem cobra que as duas concordem é
+`test_ui_comandos.test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha`, que varre aquele
+arquivo por `ast`.
 
-**Na pele "Foco" e na "Fita" estes controles existem e não são empacotados** (S-223), e por isso a
-lista é a tela da **clássica** e não do painel: o que a pele decide é o que aparece."""
+**A lista mudou de significado no corte do Tk (S-506).** Antes ela era a tela da pele *clássica*,
+desenhada por `_montar_barras` de `ui/pdf_panel.py`, e quem a cobrava era
+`tests/test_ui_alcance.py` -- função, módulo e teste saíram juntos. Agora ela é o que
+`qt/painel_do_pdf.py` desenha, que é a única tela que existe.
+
+**Cinco tinham perdido o botão no porte e voltaram**: `ler_melhor`, `ler_pagina`, `tirar_caixa`,
+`exportar_pgn` e `cancelar_exportacao`. No intervalo em que a lista ficou sem leitor eles sumiram
+dela sem ninguém notar -- continuavam alcançáveis pelo menu, pela paleta e pela tecla, e é por isso
+que a conta do catálogo passava em verde sobre a ausência. **Alcance não é presença**, e esta lista
+é a que responde pela segunda.
+
+**Na pele "Foco" e na "Fita" estes controles existem e não são empacotados** (S-223): o que a pele
+decide é o que aparece, e esta lista é o que o painel desenha."""
 
 
 NA_JANELA_DE_BUSCA: tuple[str, ...] = ("substituir_todos",)

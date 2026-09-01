@@ -13,100 +13,17 @@ em silêncio se ninguém olhar.
 
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-from chess_diagram_ocr.ui import plataforma, tokens
+from chess_diagram_ocr.ui import tokens
 from chess_diagram_ocr.ui.plataforma import (
     CAMINHO_DO_ICONE,
-    DPI_DE_REFERENCIA,
     TAMANHOS_DO_ICONE,
     compor_icone,
-    consciencia_de_dpi,
-    escala_de_tk,
-    preparar_janela,
 )
 
 PROJETO = Path(__file__).resolve().parents[1]
-
-
-class EscalaTests(unittest.TestCase):
-    """A conversão de DPI para `tk scaling`. Pura, e por isso afirmável nas três densidades."""
-
-    def test_as_tres_densidades_de_fabrica(self) -> None:
-        """96 é 100%, 120 é 125%, 144 é 150% — os três padrões que um notebook novo traz."""
-        self.assertAlmostEqual(escala_de_tk(96), 96 / 72, places=6)
-        self.assertAlmostEqual(escala_de_tk(120), 120 / 72, places=6)
-        self.assertAlmostEqual(escala_de_tk(144), 2.0, places=6)
-
-    def test_a_escala_nao_e_dpi_sobre_96(self) -> None:
-        """O erro clássico do item: `tk scaling` é pixels por **ponto**, e ponto é 1/72.
-
-        Dividir por 96 daria 1,0 a 100% e a fonte sairia 25% menor do que o pedido em toda a
-        janela — um defeito que parece "o tema mudou" e não "a conta está errada".
-        """
-        self.assertNotAlmostEqual(escala_de_tk(96), 1.0, places=3)
-        self.assertAlmostEqual(escala_de_tk(96), 1.3333, places=4)
-
-    def test_a_escala_e_monotonica(self) -> None:
-        valores = [escala_de_tk(dpi) for dpi in (96, 120, 144, 192)]
-        self.assertEqual(valores, sorted(valores))
-        self.assertEqual(len(set(valores)), len(valores))
-
-    def test_um_dpi_impossivel_cai_na_referencia(self) -> None:
-        """`winfo_fpixels` numa janela não mapeada devolve 0, e escala 0 é fonte de altura 0."""
-        for ruim in (0.0, -1.0):
-            with self.subTest(dpi=ruim):
-                self.assertAlmostEqual(escala_de_tk(ruim), escala_de_tk(DPI_DE_REFERENCIA), places=9)
-
-
-class RaizQueLevanta:
-    """Um duplo de `root` em que **toda** chamada levanta. O pior caso, e o teste central."""
-
-    def __init__(self) -> None:
-        self.tk = self
-
-    def __getattr__(self, nome: str):
-        def qualquer(*_args: object, **_kwargs: object) -> None:
-            raise RuntimeError(f"este root recusa {nome}")
-
-        return qualquer
-
-    def call(self, *_args: object) -> None:
-        raise RuntimeError("este root recusa tk.call")
-
-
-class ToleranciaTests(unittest.TestCase):
-    """Aparência não derruba ferramenta — o contrato do `ui/theme.py` desde a S-53."""
-
-    def test_um_root_que_recusa_tudo_nao_propaga_nada(self) -> None:
-        preparo = preparar_janela(RaizQueLevanta())  # type: ignore[arg-type]
-        self.assertAlmostEqual(preparo.dpi, DPI_DE_REFERENCIA, places=6)
-        self.assertAlmostEqual(preparo.escala, escala_de_tk(DPI_DE_REFERENCIA), places=6)
-        self.assertIsNone(preparo.icone)
-
-    def test_a_consciencia_de_dpi_nao_levanta_sem_windll(self) -> None:
-        """Num Linux, num macOS ou num Python sem `ctypes.windll`, devolve `False` e segue."""
-        with patch.object(sys, "platform", "linux"):
-            self.assertFalse(consciencia_de_dpi())
-
-    def test_a_consciencia_de_dpi_tolera_a_chamada_recusada(self) -> None:
-        """O Windows recusa quando o processo já criou janela, e recusar não é falhar."""
-        import ctypes
-
-        class WindllQuebrado:
-            def __getattr__(self, nome: str):
-                raise OSError(f"sem {nome} neste sistema")
-
-        with patch.object(sys, "platform", "win32"), patch.object(ctypes, "windll", WindllQuebrado(), create=True):
-            self.assertFalse(consciencia_de_dpi())
-
-    def test_o_icone_ausente_nao_impede_a_janela(self) -> None:
-        with patch.object(plataforma, "CAMINHO_DO_ICONE", PROJETO / "assets" / "nao-existe.ico"):
-            preparo = preparar_janela(RaizQueLevanta())  # type: ignore[arg-type]
-        self.assertIsNone(preparo.icone)
 
 
 class IconeTests(unittest.TestCase):
@@ -170,23 +87,6 @@ class IconeTests(unittest.TestCase):
         self.assertNotIn("icon=None", texto)
         self.assertIn('ICONE = PROJETO / "assets" / "cvoff.ico"', texto)
         self.assertEqual(CAMINHO_DO_ICONE.name, "cvoff.ico")
-
-
-class ChamadaNaAberturaTests(unittest.TestCase):
-    """A ordem: consciência de DPI **antes** de `tk.Tk()`, e o preparo logo depois.
-
-    Depois da primeira janela o Windows já classificou o processo, e a chamada passa a existir
-    sem fazer nada. É o modo de falha mais caro deste item, porque não deixa rastro: o código
-    está lá, o log diz "sim", e a tela continua borrada.
-    """
-
-    def test_o_app_pede_dpi_antes_de_criar_a_janela(self) -> None:
-        texto = (PROJETO / "app_tkinter.py").read_text(encoding="utf-8")
-        pedido = texto.index("plataforma.consciencia_de_dpi()")
-        criacao = texto.index("root = tk.Tk()")
-        preparo = texto.index("plataforma.preparar_janela(root)")
-        self.assertLess(pedido, criacao, "a consciência de DPI é pedida depois da janela: não tem efeito")
-        self.assertLess(criacao, preparo, "`preparar_janela` precisa da janela já criada")
 
 
 if __name__ == "__main__":

@@ -29,10 +29,14 @@ dependencies = [
     "torch>=2.6",
     "torchvision>=0.21",
     "chess>=1.11",
-    # Tema da janela (S-53). Mesma API de widget do `ttk`, `Treeview` intacto -- e o
-    # `ui/theme.py` degrada para o `ttk` puro se ela faltar, porque aparencia nao pode ser
-    # motivo de a ferramenta nao abrir.
-    "ttkbootstrap>=2.0",
+    # A janela (S-505). Era o extra `qt` enquanto o `app_tkinter.py` existia e o Qt era a
+    # segunda janela; no dia do corte ele passou a ser a UNICA, e uma dependencia sem a qual o
+    # programa nao abre nao e opcional. O `ttkbootstrap>=2.0` saiu daqui no mesmo movimento:
+    # ele vestia o `ttk`, e nao ha mais `ttk` para vestir.
+    #
+    # PyQt6, e nao PyQt5: e o que tem roda publicada na faixa `>=3.10,<3.14` inteira, e o teto
+    # de 3.13 do projeto e justamente onde o PyQt5 parou.
+    "PyQt6>=6.6",
     # `pythonnet` e `pywebview` moravam aqui, so-Windows, pelo modo "Leitura" via WebView2.
     # Sairam com ele na S-69, e com elas a unica dependencia de plataforma do projeto.
 ]
@@ -247,7 +251,7 @@ python_version = "3.10"
 # `COLLECT` como globais -- nomes que nao existem em import nenhum, e que o verificador
 # acusaria um por um. Quem o cobre e o `ruff`, pelo `extend-include` acima, que e o que valida
 # o que da para validar sem executar o PyInstaller.
-files = ["src", "app_tkinter.py", "packaging"]
+files = ["src", "app_pyqt.py", "packaging"]
 ignore_missing_imports = true
 warn_redundant_casts = true
 no_implicit_optional = true

@@ -180,7 +180,7 @@ class ContagemDaSubarvoreTests(unittest.TestCase):
         return e4
 
     def test_conta_os_lances_de_todas_as_linhas(self) -> None:
-        from chess_diagram_ocr.ui.study_panel import _tamanho_da_subarvore
+        from chess_diagram_ocr.qt.painel_de_estudo import _tamanho_da_subarvore
 
         lances, anotado = _tamanho_da_subarvore([self._arvore()])
 
@@ -189,7 +189,7 @@ class ContagemDaSubarvoreTests(unittest.TestCase):
 
     def test_lance_solto_continua_sendo_um(self) -> None:
         """A caixa só aparece quando há o que perder: um lance sem nada embaixo não pergunta."""
-        from chess_diagram_ocr.ui.study_panel import _tamanho_da_subarvore
+        from chess_diagram_ocr.qt.painel_de_estudo import _tamanho_da_subarvore
 
         estudo = Estudo.de_posicao(PosicaoDeEstudo())
         solto = estudo.raiz.add_variation(chess.Move.from_uci("e2e4"))

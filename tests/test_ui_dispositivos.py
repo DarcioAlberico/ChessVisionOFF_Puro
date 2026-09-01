@@ -13,7 +13,8 @@ import unittest
 from dataclasses import dataclass
 
 from chess_diagram_ocr.text import modelo
-from chess_diagram_ocr.ui import dispositivos, rodape
+from chess_diagram_ocr.ui import dispositivos
+from chess_diagram_ocr.ui import estado_do_rodape as rodape
 
 
 @dataclass

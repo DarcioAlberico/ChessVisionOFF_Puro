@@ -41,7 +41,7 @@ que sobrevive ao fechamento --, e "Análise" passou a nomear a menor parte do qu
 
 **"Estudo" e não "Sala de estudo" nem "Tabuleiro de estudo".** As outras seis são substantivos de
 uma palavra, e a faixa de abas é onde a S-150 mediu o aperto de largura. A *sala* é o conceito, e
-ela está por extenso no `ui/study_panel.py` e no ROADMAP_ESTUDO."""
+ela está por extenso em `ui/sala_declarada.py` e no ROADMAP_ESTUDO."""
 
 REVISAO = "Revisão"
 TEXTO = "Texto"

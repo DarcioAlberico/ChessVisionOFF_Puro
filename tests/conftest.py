@@ -16,7 +16,7 @@ o código estava inteiro, e com `PYTHONPATH=src` os 611 testes passavam.
    importação que não dizem o que fazer.
 
 A primeira guarda sozinha esconderia metade do problema: a suíte passaria e os comandos
-`cvoff-*` e o `app_tkinter.py` continuariam quebrados, porque eles dependem da instalação e
+`cvoff-*` e o `app_pyqt.py` continuariam quebrados, porque eles dependem da instalação e
 não do `sys.path` do pytest. É por isso que existe também o `tests/test_environment.py`.
 """
 
@@ -29,7 +29,6 @@ import time
 from collections.abc import Callable, Iterator
 from fnmatch import fnmatch
 from pathlib import Path
-from tkinter import messagebox
 
 import pytest
 
@@ -158,22 +157,28 @@ def erro_de_thread_e_do_teste_que_a_criou(request: pytest.FixtureRequest) -> Ite
 
 # ------------------------------------------------------- a caixa modal que trava a suíte (S-414)
 
-CAIXAS = ("showerror", "showwarning", "showinfo", "askyesno", "askokcancel", "askyesnocancel", "askquestion")
-"""As sete do `tkinter.messagebox` que a interface usa. Ver `tests/test_ui_retorno_modal.py`."""
+CAIXAS = ("information", "warning", "critical", "question", "about")
+"""Os cinco atalhos estáticos do `QMessageBox` que a interface usa.
+
+**Eram as sete do `tkinter.messagebox` até o corte (S-506), e a guarda seguiu o toolkit porque o
+modo de falha seguiu.** Com um `QMessageBox` é pior, não melhor: sob `QT_QPA_PLATFORM=offscreen`
+a caixa **abre**, e o `exec()` dela espera para sempre por um clique que ninguém vai dar -- sem
+tempo limite, sem mensagem e sem sequer nomear o teste que travou, porque o `-v` já imprimiu o
+nome do anterior. Custou duas horas nesta suíte antes de existir esta linha."""
 
 
 @pytest.fixture(autouse=True)
 def nenhuma_caixa_modal_de_verdade() -> Iterator[None]:
     """Uma caixa aberta de verdade **para** a suíte, e nada a interrompia (S-414).
 
-    **O caso medido:** um `TextoPanel` construído sem `pasta_de_rascunhos` lê `data/rascunhos/` da
-    máquina de quem roda a suíte. Se houver um rascunho ali -- e há, na máquina de quem usa o
-    programa --, a aba oferece recuperá-lo com um `askyesno`, e a suíte fica parada esperando um
+    **O caso medido:** um painel de texto construído sem `pasta_de_rascunhos` lê `data/rascunhos/`
+    da máquina de quem roda a suíte. Se houver um rascunho ali -- e há, na máquina de quem usa o
+    programa --, a aba oferece recuperá-lo com uma pergunta, e a suíte fica parada esperando um
     clique que ninguém vai dar. Sem tempo limite, sem mensagem, e o CI mataria a corrida por
     silêncio uma hora depois.
 
     Agora ela falha na hora, dizendo qual caixa e com que título. Quem **precisa** exercitar uma
-    caixa continua podendo: `mock.patch.object(messagebox, "askyesno", ...)` no próprio teste
+    caixa continua podendo: `mock.patch.object(QMessageBox, "question", ...)` no próprio teste
     sobrescreve isto, que é o que a suíte já faz em vinte lugares.
     """
     def recusar(nome: str) -> Callable[..., object]:
@@ -187,14 +192,20 @@ def nenhuma_caixa_modal_de_verdade() -> Iterator[None]:
 
         return _recusa
 
-    originais = {nome: getattr(messagebox, nome) for nome in CAIXAS}
+    try:
+        from PyQt6.QtWidgets import QMessageBox
+    except ImportError:  # pragma: no cover - ambiente sem o extra instalado
+        yield
+        return
+
+    originais = {nome: getattr(QMessageBox, nome) for nome in CAIXAS}
     for nome in CAIXAS:
-        setattr(messagebox, nome, recusar(nome))
+        setattr(QMessageBox, nome, staticmethod(recusar(nome)))
     try:
         yield
     finally:
         for nome, funcao in originais.items():
-            setattr(messagebox, nome, funcao)
+            setattr(QMessageBox, nome, funcao)
 
 
 # ------------------------------------------- o que a rodada grava no `data/` de verdade (S-415)

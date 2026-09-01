@@ -16,7 +16,7 @@ from unittest import mock
 from subprocesso import rodar_python
 
 from chess_diagram_ocr import logging_setup
-from chess_diagram_ocr.ui import texto_panel
+from chess_diagram_ocr.ui import texto_declarado
 
 RAIZ = Path(__file__).resolve().parents[1]
 
@@ -46,7 +46,7 @@ class OndeEstaORastroTests(unittest.TestCase):
     def test_ninguem_mais_promete_um_log_generico(self) -> None:
         """A varredura é o item: a frase estava escrita à mão em quatro lugares."""
         alvos = [
-            RAIZ / "app_tkinter.py",
+            RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py",
             *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
             *sorted((RAIZ / "src" / "chess_diagram_ocr" / "cli").glob("*.py")),
         ]
@@ -107,12 +107,12 @@ class MotorPadraoDaAbaTextoTests(unittest.TestCase):
     """
 
     def test_o_padrao_e_auto(self) -> None:
-        self.assertEqual("auto", texto_panel.MOTORES[0])
+        self.assertEqual("auto", texto_declarado.MOTORES[0])
 
     def test_os_tres_continuam_oferecidos(self) -> None:
         from chess_diagram_ocr.text import leitor
 
-        self.assertEqual(set(leitor.MOTORES), set(texto_panel.MOTORES))
+        self.assertEqual(set(leitor.MOTORES), set(texto_declarado.MOTORES))
 
 
 class TabelaDoPrimeiroDiaTests(unittest.TestCase):

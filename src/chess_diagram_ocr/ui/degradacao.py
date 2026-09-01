@@ -32,16 +32,12 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from . import pele
-
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "QUEDAS",
     "Queda",
-    "abrir_cromo_de_prova",
     "avisar_uma_vez",
-    "provar_as_peles",
     "avisos_dados",
     "esquecer_avisos",
     "por_chave",
@@ -125,63 +121,3 @@ def esquecer_avisos() -> None:
 def avisos_dados() -> int:
     """Quantas chaves distintas já avisaram. Para teste e para depurar log ruidoso."""
     return len(_avisados)
-
-
-def abrir_cromo_de_prova(root: Any, nome_da_pele: str) -> list[str]:
-    """Sobe o cromo daquela pele num quadro descartável. Devolve os problemas; vazia é sucesso.
-
-    **O que ela monta é exatamente o que as peles diferem em montar**: o tema (que escolhe o
-    `ttkbootstrap` da pele e a altura de linha da densidade), a faixa de cromo -- a fila da "Foco",
-    a fita da "Fita", nada na clássica -- e a barra de menus. Não monta os painéis: eles são
-    **conteúdo**, e a regra 2 diz que eles são os mesmos nas três.
-
-    **Nunca levanta**, como tudo neste módulo: o que der errado volta como linha de texto. Quem
-    chama é o auto-teste, e um auto-teste que estoura ao dizer que algo estourou não serve.
-
-    Os imports moram aqui dentro por causa do ciclo que o docstring do módulo descreve, e o preço
-    é nenhum: esta função roda uma vez por pele, num auto-teste.
-    """
-    import tkinter as tk
-
-    from . import comandos, fila, fita, menu, theme
-
-    problemas: list[str] = []
-    janela = None
-    try:
-        registro = pele.registrada(nome_da_pele)
-        densidade = pele.densidade_em_vigor(registro)
-        theme.apply_theme(root, cromo_escuro=registro.cromo_escuro, densidade=densidade)
-
-        # Uma `Toplevel` retirada, e não um `Frame`: `menu.montar` pendura a barra com
-        # `root.configure(menu=...)`, que é opção de janela e não de quadro -- e uma barra
-        # montada na raiz de verdade sobreviveria ao teste que a criou.
-        janela = tk.Toplevel(root)
-        janela.withdraw()
-        amarrados = {comando.acao: (lambda: None) for comando in comandos.CATALOGO}
-        if registro.montar_cromo == pele.CROMO_FOCO:
-            fila.montar(janela, amarrados).pack(fill=tk.X)
-        elif registro.montar_cromo == pele.CROMO_FITA:
-            fita.montar(janela, amarrados, densidade=densidade).pack(fill=tk.X)
-        menu.montar(
-            janela,
-            amarrados,
-            escolhas={"aparencia": tk.StringVar(value=registro.nome), "densidade": tk.StringVar(value=densidade)},
-        )
-    except Exception as exc:  # noqa: BLE001 - é exatamente isto que o contrato proíbe acontecer
-        logger.exception("Cromo da pele %r não montou.", nome_da_pele)
-        problemas.append(f"{nome_da_pele}: {type(exc).__name__}: {exc}")
-    finally:
-        if janela is not None:
-            janela.destroy()
-    return problemas
-
-
-def provar_as_peles(root: Any) -> list[str]:
-    """Sobe o cromo de **todas** as peles registradas. Devolve os problemas; vazia é sucesso.
-
-    É o que o auto-teste chama, e a razão de o laço morar aqui e não lá: `app_tkinter.selftest`
-    só precisa saber criar uma raiz e ler uma lista, e o teste da suíte pode chamar isto com a
-    raiz compartilhada do processo -- que é a regra de `tests/tk_root.py`, e a única forma de
-    afirmar "as três peles abrem" sem criar uma segunda raiz Tk.
-    """
-    return [problema for registro in pele.PELES for problema in abrir_cromo_de_prova(root, registro.nome)]

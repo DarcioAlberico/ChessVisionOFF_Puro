@@ -16,10 +16,10 @@ import unittest
 from pathlib import Path
 
 from chess_diagram_ocr.text import rico
-from chess_diagram_ocr.ui import texto_cores, texto_panel, tokens
+from chess_diagram_ocr.ui import texto_cores, tokens
 
 RAIZ = Path(__file__).resolve().parents[1]
-PAINEL = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "texto_panel.py"
+PAINEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
 CORES = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "texto_cores.py"
 
 SUPERFICIES_DE_TEXTO = (
@@ -45,7 +45,7 @@ class PaletaSeparadaTests(unittest.TestCase):
         declarada duas vezes de propósito e **comparada aqui**: uma faixa nova lá quebra este teste
         em vez de aparecer calada na paleta do autor.
         """
-        do_painel = {papel for papel in texto_panel.PAPEL_DA_FAIXA.values() if papel}
+        do_painel = {papel for papel in texto_cores.PAPEIS_DA_FAIXA if papel}
         self.assertEqual(do_painel, set(texto_cores.PAPEIS_DA_FAIXA))
 
     def test_todo_nome_do_documento_tem_papel_nos_dois_canais(self) -> None:

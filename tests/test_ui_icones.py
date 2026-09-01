@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import unittest
 
-from tk_root import raiz
-
-from chess_diagram_ocr.ui import comandos, degradacao, icones
+from chess_diagram_ocr.ui import comandos, icones
 
 PRETO = "#101010"
 BRANCO = "#f0f0f0"
@@ -137,65 +135,6 @@ class CorDoChamadorTests(unittest.TestCase):
         escuro = icones.imagem("salvar", 24, PRETO)
         assert claro is not None and escuro is not None
         self.assertNotEqual(claro.tobytes(), escuro.tobytes())
-
-
-class DesenhoNoTkTests(unittest.TestCase):
-    """O que precisa de interpretador Tcl vivo: `ImageTk.PhotoImage` e o cache dele."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.root = raiz()
-
-    def setUp(self) -> None:
-        icones.limpar_cache()
-        self.addCleanup(icones.limpar_cache)
-
-    def test_o_tamanho_pedido_e_o_entregue(self) -> None:
-        """Exato, e não "aproximadamente": a fita da S-228 tem orçamento de altura em pixel."""
-        for tamanho in (16, 20, 24, 32, 48):
-            with self.subTest(tamanho=tamanho):
-                foto = icones.icone("abrir_pdf", tamanho, PRETO)
-                assert foto is not None
-                self.assertEqual((tamanho, tamanho), (foto.width(), foto.height()))
-
-    def test_o_cache_devolve_o_mesmo_objeto(self) -> None:
-        """Não é só economia: a fita redesenha treze ícones a cada mudança de densidade.
-
-        E há a razão do Tk: uma `PhotoImage` sem referência viva é recolhida, e o widget fica
-        com um nome de imagem que o interpretador não conhece mais.
-        """
-        primeiro = icones.icone("salvar", 24, PRETO)
-        segundo = icones.icone("salvar", 24, PRETO)
-        self.assertIs(primeiro, segundo)
-        self.assertEqual(1, icones.cache_de_icones())
-
-    def test_trocar_a_cor_ou_o_tamanho_devolve_outro(self) -> None:
-        base = icones.icone("salvar", 24, PRETO)
-        self.assertIsNot(base, icones.icone("salvar", 24, BRANCO))
-        self.assertIsNot(base, icones.icone("salvar", 32, PRETO))
-        self.assertEqual(3, icones.cache_de_icones())
-
-    def test_limpar_cache_esquece_tudo(self) -> None:
-        """A troca de pele (S-222) chama isto, porque a cor do cromo mudou."""
-        icones.icone("salvar", 24, PRETO)
-        icones.limpar_cache()
-        self.assertEqual(0, icones.cache_de_icones())
-
-    def test_icone_desconhecido_nao_levanta(self) -> None:
-        """Regra 4: nem ícone que não desenhou pode impedir a janela de abrir.
-
-        Devolve `None` e registra -- ao contrário de `tokens.cor` e `estilos.estilo_de_botao`,
-        que levantam. A diferença é o que acontece depois: papel de botão errado desenha um botão
-        que mente sobre a própria importância; ícone que falta desenha um botão só com texto,
-        que é legível.
-        """
-        # O aviso é **uma vez por nome** desde a S-234, e este processo pode já ter avisado
-        # este: sem zerar, o `assertLogs` mediria o silêncio correto e reprovaria.
-        degradacao.esquecer_avisos()
-        with self.assertLogs(icones.logger, level="WARNING") as registro:
-            self.assertIsNone(icones.icone("nao_existe", 24, PRETO))
-        self.assertIn("nao_existe", "\n".join(registro.output))
-        self.assertEqual(0, icones.cache_de_icones(), "o que não desenhou não entra no cache")
 
 
 if __name__ == "__main__":  # pragma: no cover

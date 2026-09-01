@@ -29,33 +29,38 @@ def _arvore(caminho: Path) -> ast.Module:
 
 
 class UmaRaizSoTests(unittest.TestCase):
-    """Nenhum teste cria a própria raiz Tk (S-416).
+    """Nenhum teste cria a própria aplicação Qt (S-416/S-506).
 
-    **A regra é de 2026-07 e está escrita em `tests/tk_root.py`**: com duas raízes vivas ao mesmo
-    tempo há dois interpretadores Tcl, `tkinter._default_root` continua sendo o primeiro, e uma
-    `PhotoImage` criada sem `master` nasce no interpretador errado -- o Tk recusa a imagem com uma
-    mensagem que parece coleta de lixo, e foi assim que 20 testes do `test_result_panel` falharam
-    só na CI. **Nove módulos criavam a sua assim mesmo**, cada um com o mesmo `try/except` copiado.
+    **A regra é de 2026-07 e vinha do Tk**: com duas raízes vivas ao mesmo tempo havia dois
+    interpretadores Tcl, e uma `PhotoImage` criada sem `master` nascia no errado -- o Tk recusava
+    a imagem com uma mensagem que parecia coleta de lixo, e foi assim que 20 testes falharam só na
+    CI. **Nove módulos criavam a sua assim mesmo**, cada um com o mesmo `try/except` copiado.
+
+    **No Qt a regra é mais dura, não menos.** Uma segunda `QApplication` no mesmo processo não dá
+    mensagem nenhuma: o Qt **aborta**, e o pytest imprime os pontos que já tinha e morre sem
+    resumo e sem nomear o teste. `tests/qt_app.aplicacao()` devolve a única, e é ela que todo
+    teste de widget usa.
     """
 
-    def test_nenhum_modulo_de_teste_cria_tk_tk(self) -> None:
+    def test_nenhum_modulo_de_teste_cria_a_aplicacao(self) -> None:
         proprios = [
             f"{caminho.name}:{no.lineno}"
             for caminho in MODULOS
-            if caminho.name != "tk_root.py"
+            if caminho.name != "qt_app.py"
             for no in ast.walk(_arvore(caminho))
-            if isinstance(no, ast.Call) and ast.unparse(no.func) in ("tk.Tk", "tkinter.Tk")
+            if isinstance(no, ast.Call)
+            and ast.unparse(no.func) in ("QApplication", "QtWidgets.QApplication", "tk.Tk", "tkinter.Tk")
         ]
         self.assertEqual(
             [],
             proprios,
-            "Raiz Tk própria num teste. Chame `tk_root.raiz()` e pendure os widgets num quadro "
-            "próprio -- o porquê está no docstring de `tests/tk_root.py`.",
+            "Aplicação Qt própria num teste. Chame `qt_app.aplicacao()` -- uma segunda "
+            "`QApplication` aborta o processo sem exceção.",
         )
 
     def test_a_raiz_compartilhada_continua_existindo(self) -> None:
-        """A guarda acima ficaria vácua se `tk_root` deixasse de oferecer a raiz."""
-        self.assertIn("def raiz()", (TESTES / "tk_root.py").read_text(encoding="utf-8"))
+        """A guarda acima ficaria vácua se `qt_app` deixasse de oferecer a aplicação."""
+        self.assertIn("def aplicacao(", (TESTES / "qt_app.py").read_text(encoding="utf-8"))
 
 
 class NadaVazaDoTesteTests(unittest.TestCase):
@@ -164,7 +169,8 @@ class NenhumaCaixaDeVerdadeTests(unittest.TestCase):
         """A guarda acima é a prevenção; sem a interrupção, o próximo caminho novo trava de novo."""
         conftest = (TESTES / "conftest.py").read_text(encoding="utf-8")
         self.assertIn("nenhuma_caixa_modal_de_verdade", conftest)
-        self.assertIn("askyesno", conftest)
+        self.assertIn("QMessageBox", conftest)
+        self.assertIn("question", conftest)
 
 
 class UmSubprocessoSoTests(unittest.TestCase):

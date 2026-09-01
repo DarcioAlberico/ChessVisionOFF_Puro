@@ -268,7 +268,10 @@ class SemHexCravadoTests(unittest.TestCase):
     """
 
     def _arquivos(self) -> list[Path]:
-        return [*sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")), RAIZ / "app_tkinter.py"]
+        return [
+            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
+            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+        ]
 
     def test_so_o_modulo_de_tokens_escreve_hexadecimal(self) -> None:
         infratores = []
@@ -292,49 +295,3 @@ class SemHexCravadoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class CoordenadaNoCanvasTests(unittest.TestCase):
-    """A coordenada resolvida contra o canvas de verdade, com Tk (S-146).
-
-    O teste puro acima prova a função; este prova a **ligação** -- que o desenho pergunta ao
-    canvas em que está, em vez de usar a constante. Sem ele, `_cor_de_coordenada` podia existir
-    e não ser chamada, que é como a constante sobreviveu até aqui.
-    """
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        # A raiz do processo (`tests/tk_root.py`), e não uma própria: este módulo criava a sua
-        # e a destruía no fim, que é exatamente o que deixa as raízes seguintes sem `init.tcl`.
-        from tk_root import raiz
-
-        cls.root = raiz()
-
-    def _cor_no_fundo(self, fundo: str) -> str:
-        import tkinter as tk
-
-        from chess_diagram_ocr.ui.board_render import BoardRenderer
-
-        canvas = tk.Canvas(self.root, background=fundo)
-        try:
-            return BoardRenderer._cor_de_coordenada(canvas)
-        finally:
-            canvas.destroy()
-
-    def test_a_esteira_do_tabuleiro_recebe_coordenada_clara(self) -> None:
-        """A esteira é a superfície em que a coordenada é de fato desenhada (S-449)."""
-        escuro = RESERVA[tokens.SUPERFICIE_TABULEIRO]
-        escolhida = self._cor_no_fundo(escuro)
-        self.assertGreaterEqual(razao_de_contraste(escolhida, escuro), AA_TEXTO)
-
-    def test_a_escolha_da_letra_serve_a_qualquer_superficie(self) -> None:
-        """**Deixou de passar pelo canvas na S-449**, e passou a perguntar direto a quem decide.
-
-        `_cor_de_coordenada` resolvia contra `canvas.cget("background")` enquanto o fundo do canvas
-        era a esteira. Hoje o fundo é `VAZIO_DE_CANVAS` e a esteira é um retângulo, então a função
-        resolve contra o token -- e o que sobrou de geral é isto, que é o contrato de
-        `sobre_superficie` e vale para superfície nenhuma em particular.
-        """
-        for fundo in (RESERVA[tokens.SUPERFICIE_DICA], RESERVA[tokens.SUPERFICIE_TABULEIRO], "#ffffff"):
-            with self.subTest(fundo=fundo):
-                self.assertGreaterEqual(razao_de_contraste(sobre_superficie(fundo), fundo), AA_TEXTO)

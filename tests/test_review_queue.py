@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import chess
 import numpy as np
+from qt_app import MOTIVO, TEM_PYQT, aplicacao
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.detection import DiagramCandidate
@@ -502,40 +503,45 @@ def _lido(pagina: int) -> ScannedDiagram:
     )
 
 
-class _PainelFalso:
-    """O bastante de um `ReviewPanel` para o `ReviewSink`. Sem Tk: aqui nada desenha."""
+if TEM_PYQT:
+    from PyQt6.QtCore import QObject
+else:  # pragma: no cover - sem o Qt a classe nem é montada
+    QObject = object  # type: ignore[assignment, misc]
+
+
+class _PainelFalso(QObject):
+    """O bastante de um `PainelDeRevisao` para o coletor. Nada desenha aqui.
+
+    **Um `QObject` e não um objeto simples**, e é o corte do Tk que obriga: o coletor do Qt é ele
+    mesmo um `QObject` (o `progrediu` atravessa a thread da varredura por sinal), e um `QObject`
+    só aceita `QObject` como pai. No Tk bastava um objeto com `after` e um `StringVar`.
+    """
 
     def __init__(self) -> None:
+        super().__init__()
         self.aplicadas: list[tuple[ReviewQueue, bool, frozenset[int] | None]] = []
         self.terminou = 0
         self.progresso: list[str] = []
 
-    class _Var:
-        def __init__(self, painel: _PainelFalso) -> None:
-            self._painel = painel
+    def mostrar_progresso(self, texto: str) -> None:
+        self.progresso.append(texto)
 
-        def set(self, texto: str) -> None:
-            self._painel.progresso.append(texto)
-
-    @property
-    def progress_var(self) -> _PainelFalso._Var:
-        return self._Var(self)
-
-    def after(self, _ms: int, funcao) -> None:  # noqa: ANN001, ANN202
-        funcao()
-
-    def _apply_scan(self, fresh, cancelled, *, pages=None) -> None:  # noqa: ANN001
+    def aplicar_varredura(self, fresh, cancelled, *, pages=None) -> None:  # noqa: ANN001
         self.aplicadas.append((fresh, cancelled, pages))
 
-    def _finish_scan(self) -> None:
+    def terminar_varredura(self) -> None:
         self.terminou += 1
 
 
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
 class ReviewSinkTests(unittest.TestCase):
     """O coletor que leva a fila da varredura da Galeria até a aba de Revisão (S-119)."""
 
+    def setUp(self) -> None:
+        self.app = aplicacao()
+
     def _pedido(self, pasta: Path):  # noqa: ANN202
-        from chess_diagram_ocr.ui.review_panel import ScanRequest
+        from chess_diagram_ocr.ui.varredura_de_revisao import ScanRequest
 
         return ScanRequest(
             pdf_path=Path("livro.pdf"),
@@ -544,23 +550,27 @@ class ReviewSinkTests(unittest.TestCase):
         )
 
     def _coletor(self, pasta: Path):  # noqa: ANN202
-        from chess_diagram_ocr.ui.review_panel import ReviewSink
+        from chess_diagram_ocr.qt.painel_de_revisao import SumidouroDeRevisao as ReviewSink
 
         painel = _PainelFalso()
         return painel, ReviewSink(painel, self._pedido(pasta), cache_dir=pasta)
 
     def test_construir_o_coletor_nao_toca_disco(self) -> None:
         """**Ele nasce na thread do Tk**, junto com o clique. Ler 3.936 linhas de `labels.csv`
-        ali era o defeito da S-116, e ele não volta por esta porta."""
+        ali era o defeito da S-116, e ele não volta por esta porta.
+
+        O alvo do `patch` é `ui/varredura_de_revisao.py` desde a S-503: o adiamento passou a ser
+        do `AcumuladorDaFila`, que é compartilhado pelos dois frontends. A regra não mudou de
+        forma -- mudou de endereço, e agora vale para as duas janelas de uma vez."""
         with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "chess_diagram_ocr.ui.review_panel.rare_classes_from_labels"
+            "chess_diagram_ocr.ui.varredura_de_revisao.rare_classes_from_labels"
         ) as raras:
             self._coletor(Path(tmpdir))
         raras.assert_not_called()
 
     def test_o_disco_e_lido_no_primeiro_diagrama_e_uma_vez_so(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "chess_diagram_ocr.ui.review_panel.rare_classes_from_labels", return_value=()
+            "chess_diagram_ocr.ui.varredura_de_revisao.rare_classes_from_labels", return_value=()
         ) as raras, patch("chess_diagram_ocr.review_queue.load_annotations") as anotacoes:
             anotacoes.return_value.entries = {}
             _painel, coletor = self._coletor(Path(tmpdir))
@@ -571,7 +581,7 @@ class ReviewSinkTests(unittest.TestCase):
     def test_a_fila_entregue_diz_que_paginas_a_passada_visitou(self) -> None:
         """Sem isso a fusão encurtaria a fila numa varredura retomada -- ver `merge_queues`."""
         with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "chess_diagram_ocr.ui.review_panel.rare_classes_from_labels", return_value=()
+            "chess_diagram_ocr.ui.varredura_de_revisao.rare_classes_from_labels", return_value=()
         ), patch("chess_diagram_ocr.review_queue.load_annotations") as anotacoes:
             anotacoes.return_value.entries = {}
             painel, coletor = self._coletor(Path(tmpdir))

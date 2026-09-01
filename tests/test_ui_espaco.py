@@ -22,7 +22,10 @@ import unittest
 from chess_diagram_ocr.ui import espaco, pele, tipografia
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
-ALVOS = [*sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")), RAIZ / "app_tkinter.py"]
+ALVOS = [
+    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
+    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+]
 
 PADROES = (
     re.compile(r"\bpad([xy])=\((\d+),\s*(\d+)\)"),
@@ -92,19 +95,17 @@ class EscalaTests(unittest.TestCase):
 class SemLiteralTests(unittest.TestCase):
     """O critério de aceite da S-447, e a lista que o mantém honesto."""
 
-    EXCECOES = {
-        ("legenda.py", "padx=(0, 18)"): "a calha entre a tecla e a descrição na grade da legenda: "
-        "é separação de coluna de tabela, e não vão entre vizinhos",
-        ("rodape.py", "padding=(8, 3)"): "o rodapé é deliberadamente fino, e 3 fica entre "
-        "FOLGA_MINIMA (2) e FOLGA_DE_LINHA (6) -- nenhum dos dois é o que ele quer",
-        ("scan_scope.py", "padx=(22, 0)"): "recuo que alinha o rótulo sob o texto de um "
-        "`Checkbutton`, e não vão: ele depende da largura do indicador, não da escala",
-    }
-    """Os três literais que **não** couberam em papel nenhum, e por quê.
+    EXCECOES: dict[tuple[str, str], str] = {}
+    """Os literais que **nao** couberam em papel nenhum, e por que.
 
-    A spec da S-447 previu o caso e proibiu a saída fácil: *"onde um literal não couber em nenhum
-    papel, o item não inventa papel"*. Inventar um quinto papel para servir a três sítios seria
-    trocar três números soltos por uma escala que não descreve mais a janela.
+    **Vazia desde o corte do Tk (S-506).** Ela guardava tres: a calha da legenda, a altura
+    fina do rodape e o recuo sob o indicador de um `Checkbutton`. Os tres eram do toolkit --
+    dependiam da largura de um indicador que o Qt desenha sozinho, ou de uma unidade de
+    `padding` que o `ttk` interpretava --, e nenhum sobreviveu ao porte: os paineis do Qt
+    pedem `espaco.linha()` e `tema.altura_de_linha_atual()`.
+
+    A spec da S-447 previu o caso e proibiu a saida facil: *"onde um literal nao couber em
+    nenhum papel, o item nao inventa papel"*. Uma linha nova aqui precisa vir com a razao.
     """
 
     def test_nenhum_literal_de_espaco_fora_das_excecoes(self) -> None:

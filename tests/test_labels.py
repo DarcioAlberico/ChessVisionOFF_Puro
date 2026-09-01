@@ -380,7 +380,7 @@ class SinglePortTests(unittest.TestCase):
         podia ser gravado com `to_csv` direto no destino.
         """
         raiz = SRC.parents[1]
-        return [*sorted(SRC.rglob("*.py")), raiz / "app_tkinter.py", raiz / "examples" / "streamlit_demo.py"]
+        return [*sorted(SRC.rglob("*.py")), raiz / "app_pyqt.py", raiz / "examples" / "streamlit_demo.py"]
 
     def test_nenhum_modulo_fora_daqui_le_ou_escreve_o_csv_de_rotulos(self) -> None:
         culpados: list[str] = []

@@ -86,7 +86,7 @@ MANIFESTO: tuple[Item, ...] = (
     # verdade, com ou sem `.pt` no disco.
     Item("S-182", 25, "Onde moram os pesos, e o que o programa faz quando eles faltam",
          ("simbolo:chess_diagram_ocr.settings:ENV_OCR_GLYPH_MODEL", "arquivo:models/char_classifier.pt",
-          "simbolo:chess_diagram_ocr.ui.rodape:dispositivo_do_classificador_de_caracteres")),
+          "simbolo:chess_diagram_ocr.ui.estado_do_rodape:dispositivo_do_classificador_de_caracteres")),
     Item("S-183", 25, "O placar da faixa de legenda: camada de texto, RapidOCR e glifo",
          ("simbolo:chess_diagram_ocr.cli.texto_placar:main", "metrica:texto_faixa")),
     # ---------------------------------------------------------------- Fase 26

@@ -1032,6 +1032,11 @@ corromper.
 quatro relatórios foram remedidos e voltaram idênticos pela sexta vez: 0,7913, 0,7652, 0,7304 e
 0,7478.
 
+Na sétima, no fecho do corte do Tk (S-506), **três dos quatro** voltaram idênticos -- 0,7913,
+0,7304 e 0,7478 --, e é essa reprodução que prova que o caminho de medição não se moveu. O
+quarto, a produção, não pôde ser reproduzido: o checkpoint dele foi sobrescrito por um retreino
+e não existe mais. Ele foi remedido com o `piece_classifier.pt` de hoje, e deu 0,8696.
+
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
 **Problema.** Três testes de `ModoDaFitaTests` montavam a fita em `self._em(2200)` -- 2.200 px é

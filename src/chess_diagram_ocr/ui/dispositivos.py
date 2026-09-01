@@ -8,7 +8,7 @@ mediu uma vez -- uma máquina com placa mas com o torch `+cpu` instalado roda na
 silêncio**, e a diferença entre 7,5 min e ~45 s por época era invisível. Com dois modelos o
 silêncio fica pior, porque eles podem discordar entre si na mesma sessão.
 
-**Este módulo é a cola, e ela mora aqui e não na janela.** `ui/rodape.py` recebe descrições
+**Este módulo é a cola, e ela mora aqui e não na janela.** O rodapé recebe descrições
 prontas de propósito -- é o que faz `compor` ser afirmável sem abrir janela -- e `app_tkinter.py`
 tem catraca de tamanho desde a S-31. O que sobra é um lugar próprio para a única pergunta que
 precisa do serviço, da configuração e do rodapé ao mesmo tempo.
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import rodape
+from . import estado_do_rodape as rodape
 
 __all__ = ["descricao_do_classificador_de_caracteres", "dispositivos_da_janela"]
 

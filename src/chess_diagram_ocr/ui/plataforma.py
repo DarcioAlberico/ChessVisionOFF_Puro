@@ -26,9 +26,6 @@ antes de `tk.Tk()`, e `preparar_janela(root)` cuidar do que precisa de janela pr
 from __future__ import annotations
 
 import logging
-import sys
-import tkinter as tk
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -42,13 +39,8 @@ __all__ = [
     "DPI_DE_REFERENCIA",
     "PONTOS_POR_POLEGADA",
     "TAMANHOS_DO_ICONE",
-    "Preparo",
     "compor_icone",
-    "consciencia_de_dpi",
-    "escala_de_tk",
     "gravar_icone",
-    "monitores",
-    "preparar_janela",
 ]
 
 PONTOS_POR_POLEGADA = 72.0
@@ -78,97 +70,6 @@ dado do usuário. A distinção é a mesma da S-55 e é ela que faz reinstalar n
 _PECA_DO_ICONE = "wn"
 """O cavalo branco. É a peça que se reconhece a 16 px de silhueta, sem cor e sem detalhe —
 torre e bispo viram retângulo, e rei e dama viram a mesma cruz borrada."""
-
-
-def escala_de_tk(dpi: float) -> float:
-    """O valor de `tk scaling` para um DPI: pixels por ponto (S-148).
-
-    Função pura, e é o ponto: a conversão é afirmável em 96, 120 e 144 sem abrir janela nem
-    ter um monitor de cada densidade à mão.
-
-    96 DPI (100%) dá 1,333; 120 (125%) dá 1,667; 144 (150%) dá 2,0. Um DPI não positivo — que é
-    o que um `winfo_fpixels` sem janela mapeada devolve — cai na referência, porque escala zero
-    faria o Tk desenhar fonte de altura zero.
-    """
-    if dpi <= 0:
-        dpi = DPI_DE_REFERENCIA
-    return dpi / PONTOS_POR_POLEGADA
-
-
-@dataclass(frozen=True)
-class Preparo:
-    """O que de fato deu certo. Existe para o teste poder afirmar cada parte separadamente.
-
-    Uma função que só faz efeito colateral e devolve `None` é indistinguível de uma que não fez
-    nada — e "não fez nada" é justamente o estado anterior a este item.
-    """
-
-    consciencia_de_dpi: bool
-    dpi: float
-    escala: float
-    icone: Path | None
-
-    @property
-    def percentual(self) -> int:
-        """O DPI dito como o Windows o mostra: 100, 125, 150."""
-        return round(100 * self.dpi / DPI_DE_REFERENCIA)
-
-
-def consciencia_de_dpi() -> bool:
-    """Declara ao Windows que este processo desenha na densidade real do monitor.
-
-    Devolve se conseguiu. Fora do Windows, sem `ctypes.windll` ou com a chamada recusada,
-    devolve `False` e segue — a janela abre borrada, que é como ela abria antes deste item.
-
-    **Chame antes de `tk.Tk()`.** Depois da primeira janela o Windows já classificou o processo
-    e devolve `E_ACCESSDENIED`; a chamada continua sem levantar, e continua sem efeito.
-
-    Dois caminhos, do mais específico para o mais antigo: `shcore.SetProcessDpiAwareness(2)` é
-    por monitor e existe desde o 8.1; `user32.SetProcessDPIAware()` é do sistema inteiro e
-    existe desde o Vista. Num monitor só, os dois dão o mesmo resultado; em dois monitores de
-    densidades diferentes, só o primeiro reescala ao arrastar a janela de um para o outro.
-    """
-    if sys.platform != "win32":
-        return False
-    try:
-        import ctypes
-
-        try:
-            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
-            return True
-        except (AttributeError, OSError):
-            ctypes.windll.user32.SetProcessDPIAware()
-            return True
-    except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
-        logger.info("Sem consciência de DPI (%s): a janela abre na escala do sistema.", exc)
-        return False
-
-
-def monitores(root: tk.Misc | None = None) -> list[tuple[int, int, int, int]]:
-    """Os retângulos `(x0, y0, x1, y1)` dos monitores, o principal primeiro (S-156).
-
-    **Por que isto existe.** A geometria guardada da janela é em coordenada de área de trabalho,
-    e a área de trabalho muda entre sessões: desconectar a tela do escritório move a janela para
-    `+2560+0`, onde não há mais tela nenhuma. Restaurá-la ali abre uma janela invisível, sem
-    erro nenhum a que se agarrar — o programa parece não ter aberto.
-
-    No Windows, `EnumDisplayMonitors` dá a lista de verdade. Fora dele, e em qualquer falha, a
-    reserva é **um** retângulo com a tela que o Tk conhece: pior que a lista completa e melhor
-    que nada, porque ainda pega o caso comum de a janela estar fora da única tela que existe.
-
-    Devolve lista vazia quando nem o Tk responde, e `geometria_corrigida` trata isso como "não
-    sei onde estão as telas" — que não é razão para mover a janela de ninguém.
-    """
-    if sys.platform == "win32":
-        achados = _monitores_do_windows()
-        if achados:
-            return achados
-    if root is None:
-        return []
-    try:
-        return [(0, 0, int(root.winfo_screenwidth()), int(root.winfo_screenheight()))]
-    except Exception:  # noqa: BLE001 - duplo de teste ou Tk sem tela
-        return []
 
 
 def _monitores_do_windows() -> list[tuple[int, int, int, int]]:
@@ -240,67 +141,3 @@ def gravar_icone(destino: Path = CAMINHO_DO_ICONE, tamanhos: tuple[int, ...] = T
     destino.parent.mkdir(parents=True, exist_ok=True)
     maior.save(destino, format="ICO", sizes=[(lado, lado) for lado in sorted(tamanhos)])
     return destino
-
-
-def _aplicar_icone(root: tk.Misc) -> Path | None:
-    """Põe o ícone na janela. `None` quando não deu — e a janela abre com a pena do Tk.
-
-    `iconbitmap` é o caminho do Windows e o único que alcança a barra de tarefas e o Alt-Tab;
-    `iconphoto` é o portátil e vale para o resto. Tentar os dois, nesta ordem, é o que faz o
-    item valer nos dois lugares sem um `if` de plataforma decidindo aparência.
-    """
-    if not CAMINHO_DO_ICONE.is_file():
-        logger.info("Ícone não encontrado em %s: a janela abre com o padrão do Tk.", CAMINHO_DO_ICONE)
-        return None
-    try:
-        root.iconbitmap(default=str(CAMINHO_DO_ICONE))  # type: ignore[attr-defined]
-        return CAMINHO_DO_ICONE
-    except Exception:  # noqa: BLE001 - `iconbitmap` com `default` é só do Windows
-        pass
-    try:
-        from PIL import Image, ImageTk
-
-        with Image.open(CAMINHO_DO_ICONE) as imagem:
-            foto = ImageTk.PhotoImage(imagem.convert("RGBA"), master=root)
-        root.iconphoto(True, foto)  # type: ignore[attr-defined]
-        # Sem esta referência o Tk descarta a imagem no próximo ciclo e o ícone some.
-        root._cvoff_icone = foto  # type: ignore[attr-defined]
-        return CAMINHO_DO_ICONE
-    except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
-        logger.info("Ícone não aplicado (%s).", exc)
-        return None
-
-
-def _dpi_da_janela(root: tk.Misc) -> float:
-    """Quantos pixels o Tk conta numa polegada desta janela. Referência quando não sabe."""
-    try:
-        return float(root.winfo_fpixels("1i"))
-    except Exception:  # noqa: BLE001 - duplo de teste, janela não mapeada, Tk exótico
-        return DPI_DE_REFERENCIA
-
-
-def preparar_janela(root: tk.Misc) -> Preparo:
-    """DPI e ícone, antes de qualquer widget (S-148). Nunca levanta.
-
-    Chamável com um duplo de `root` que levante em toda chamada: o teste faz exatamente isso,
-    porque a garantia que importa aqui não é o efeito e sim a **ausência de propagação** — este
-    é o primeiro código a rodar na abertura da janela, e uma exceção aqui é uma janela que não
-    abre em vez de uma janela sem ícone.
-    """
-    consciente = consciencia_de_dpi()
-    dpi = _dpi_da_janela(root)
-    escala = escala_de_tk(dpi)
-    try:
-        root.tk.call("tk", "scaling", escala)
-    except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
-        logger.info("Escala do Tk não aplicada (%s).", exc)
-    preparo = Preparo(consciencia_de_dpi=consciente, dpi=dpi, escala=escala, icone=_aplicar_icone(root))
-    logger.info(
-        "Janela preparada: DPI %.0f (%d%%), escala %.3f, consciência de DPI %s, ícone %s.",
-        preparo.dpi,
-        preparo.percentual,
-        preparo.escala,
-        "sim" if preparo.consciencia_de_dpi else "não",
-        preparo.icone.name if preparo.icone else "padrão do Tk",
-    )
-    return preparo

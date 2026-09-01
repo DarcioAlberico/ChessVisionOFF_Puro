@@ -44,7 +44,7 @@ from .config import (
     DEFAULT_ORIENTATION_MODE,
 )
 from .dataset import append_training_sample
-from .detection import detect_diagrams_in_pdf_page
+from .detection import DiagramCandidate, detect_diagrams_in_pdf_page
 from .fen_utils import PositionCheck, check_position, square_name
 from .inference import (
     BoardPrediction,
@@ -566,19 +566,39 @@ class OcrService:
         page_rgb: np.ndarray | None = None,
         *,
         options: RecognitionOptions,
+        candidates: Sequence[DiagramCandidate] | None = None,
     ) -> list[RecognizedDiagram]:
         """Reconhece uma página de PDF pelo detector híbrido da S-12.
 
         É o caminho que a exportação usa. Ter a interface num detector e o PGN noutro
         recriaria, no recorte, o mesmo desencontro que a S-14 corrigiu na numeração: a tela
         mostrando um diagrama e o `[Diagram "2"]` apontando para outro.
+
+        **`candidates` é para quem já detectou esta página** (S-501). O visualizador roda o
+        detector para desenhar os retângulos sobre a folha; sem este parâmetro, mandar ler a
+        mesma página roda tudo de novo -- render de imagem embutida, contorno, aparo de moldura
+        --, e o log de uma sessão de verdade mostra as mesmas linhas de detecção duas vezes por
+        página, uma por marcar e outra por ler.
+
+        **E o que ele corrige é maior que o tempo.** Que o retângulo "3" da tela e o diagrama 3
+        da lista sejam o mesmo objeto valia porque o detector é determinístico e recebia a mesma
+        entrada -- uma coincidência de que ninguém tinha como se lembrar ao mexer no detector.
+        Passando a lista adiante, a identidade passa a ser por construção.
+
+        **Quem passa é quem promete**: os candidatos têm de ser desta página e do mesmo
+        `max_boards`, porque é essa lista que numera os diagramas e é dela que sai o recorte
+        lido. Conferir aqui não é possível -- um `DiagramCandidate` não carrega de que página
+        veio --, e conferir pelo que ele carrega (contar caixas, comparar bbox) daria uma
+        resposta que parece garantia e não é. Quem chama guarda a lista com a página ao lado; a
+        janela em Qt faz isso em `_candidatos_desta_pagina`.
         """
         if page_rgb is None:
             page_rgb = self.render_page(pdf_source, page_index, dpi=options.dpi)
 
-        candidates = detect_diagrams_in_pdf_page(
-            pdf_source, page_index, page_rgb, max_boards=options.max_boards
-        )
+        if candidates is None:
+            candidates = detect_diagrams_in_pdf_page(
+                pdf_source, page_index, page_rgb, max_boards=options.max_boards
+            )
         boards = [(candidate.board_rgb, None) for candidate in candidates]
         # Mesmo contexto textual que a exportação lê (S-16): a interface mostrando um lado a
         # jogar e o PGN gravando outro seria pior que não mostrar nada.

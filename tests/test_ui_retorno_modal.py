@@ -42,11 +42,19 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
 
-ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
+ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + sorted(
+    (RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")
+)
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 54
-"""Quantas chamadas de `messagebox` a interface ainda faz.
+LIMITE = 46
+"""Quantas caixas modais a interface ainda abre.
+
+**54 -> 46 no corte do Tk (S-506)**, e a queda não é uma conversão a mais: é o mesmo produto com
+uma janela só. As perguntas que a régua chama de decisão foram conferidas uma a uma contra as 20
+do lado que saiu, e **uma faltava** -- a da S-451, "Salvar todos" sobre página já salva --, que
+foi portada no mesmo dia. As outras eram notificações repetidas entre painéis que o Qt
+resolve com uma frase no rodapé, que é o que a linha 1 da tabela abaixo manda fazer.
 
 **53 -> 54 na S-451**, e a nova é decisão pela régua da linha 4 da tabela: "Salvar todos" sobre uma
 página cujos diagramas já têm amostra pergunta antes de gravar a segunda cópia. Nada no caminho de
@@ -110,8 +118,19 @@ dela seria a fricção que a S-164 removeu.
 Baixar este número é o item continuando; subi-lo exige vir aqui e escrever por que aquela caixa
 precisava ser modal."""
 
-MODAIS_DE_DECISAO = 19
-"""Quantas das que sobram fazem uma pergunta -- `askyesno`, `askokcancel`, `askyesnocancel`.
+MODAIS_DE_DECISAO = 14
+"""Quantas das que sobram fazem uma pergunta -- `QMessageBox.question` ou uma caixa montada.
+
+**19 -> 14 no corte do Tk (S-506), e a queda foi conferida uma a uma.** As 20 perguntas do lado
+que saiu foram listadas por `ast` sobre o `HEAD` e comparadas com as do Qt: dezenove tinham
+correspondente (o `askyesnocancel` do PGN, os três do texto, os dois da base de partidas, os dois
+do dataset, o "Estudo em andamento", o "Apagar", os dois de ilegalidade, o de fechar com operação
+em andamento, o "sem diagrama", os dois de headers da Galeria e o de exportação interrompida), e
+**uma faltava**: a da S-451, "Salvar todos" sobre página cujos diagramas já têm amostra. Ela foi
+portada no mesmo dia -- `_confirmar_repetidos` em `qt/painel_de_resultado.py`. A diferença que
+sobra é de contagem e não de gesto: perguntas que o Tk repetia em dois painéis o Qt faz uma vez.
+
+O texto abaixo é o histórico do número no lado que saiu, e fica porque a régua é a mesma.
 
 Ela é a metade honesta da conta: "a contagem cai" não vale nada se o que caiu foram as perguntas.
 Nenhuma das 22 convertidas era uma; as 13 continuaram de pé, e a 14ª foi a da S-301.
@@ -128,16 +147,29 @@ Contar por varredura, e não à mão, é o que impede o número de envelhecer de
 este piso tem de vir aqui e dizer qual pergunta deixou de existir."""
 
 
+CAIXAS_DO_QT = ("information", "warning", "critical", "question", "about")
+"""Os cinco atalhos estáticos do `QMessageBox`. **Substituíram as sete do `tkinter.messagebox` no
+corte (S-506)**, e a régua é a mesma: uma caixa é uma interrupção, e a conta existe para que ela
+seja uma decisão."""
+
+
 def _chamadas_de_messagebox(caminho: Path) -> list[str]:
-    """Cada `messagebox.X(...)` do arquivo, como `arquivo:linha X`."""
+    """Cada caixa modal do arquivo, como `arquivo:linha X`.
+
+    Conta as duas formas do Qt: o atalho estático (`QMessageBox.question(...)`) e a caixa montada
+    à mão (`QMessageBox(...)` com `addButton`), que é o caminho de quem precisa de mais de dois
+    botões. Contar só a primeira deixaria de fora cinco interrupções -- inclusive a de promoção
+    de peão, que tem quatro."""
     arvore = ast.parse(caminho.read_text(encoding="utf-8"))
     achadas = []
     for no in ast.walk(arvore):
         if not isinstance(no, ast.Call):
             continue
         alvo = ast.unparse(no.func)
-        if alvo.startswith("messagebox."):
+        if alvo.startswith("QMessageBox.") and alvo.split(".")[-1] in CAIXAS_DO_QT:
             achadas.append(f"{caminho.name}:{no.lineno} {alvo.split('.', 1)[1]}")
+        elif isinstance(no.func, ast.Name) and no.func.id == "QMessageBox":
+            achadas.append(f"{caminho.name}:{no.lineno} montada")
     return achadas
 
 
@@ -164,7 +196,7 @@ class ContagemDeModaisTests(unittest.TestCase):
 
     def test_o_que_sobrou_de_pergunta_continua_de_pe(self) -> None:
         """O que caiu foram notificações, e não decisões -- é isto que separa as duas coisas."""
-        perguntas = [c for c in _todas() if c.split()[-1].startswith("ask")]
+        perguntas = [c for c in _todas() if c.split()[-1] in ("question", "montada")]
         self.assertGreaterEqual(
             len(perguntas),
             MODAIS_DE_DECISAO,
@@ -173,35 +205,33 @@ class ContagemDeModaisTests(unittest.TestCase):
         )
 
 
-SEM_ESC = {
-    "tooltip.py:janela_de_dica": "a dica não é diálogo: não tem foco, não pede resposta e some sozinha",
-    "degradacao.py:abrir_cromo_de_prova": "janela `withdraw`n e descartável do auto-teste, que ninguém vê",
-}
-"""As duas `Toplevel` que **não** são diálogo, com o motivo escrito.
+SEM_ESC: dict[str, str] = {}
+"""Os diálogos que **não** fecham com `Esc`, com o motivo escrito.
 
-A lista existe para que a exceção seja uma decisão e não um esquecimento -- é a mesma disciplina
-das exceções de `test_strings`. Uma terceira linha aqui precisa vir com a razão junto.
+**Vazia desde o corte do Tk (S-506), e a razão é do toolkit.** Em Tk o `Esc` era um `bind` que
+alguém tinha de lembrar de escrever, e a lista guardava as duas `Toplevel` que não eram diálogo.
+Um `QDialog` fecha com `Esc` de fábrica -- `reject()` está ligado à tecla pelo próprio Qt --, e a
+única forma de perdê-lo é **sobrescrever** `keyPressEvent` sem chamar o `super()`. É isso que a
+varredura abaixo procura agora, e é uma pergunta melhor: ela mede quem tirou, e não quem esqueceu
+de pôr.
+
+A lista continua existindo para que a exceção seja uma decisão e não um esquecimento. Uma linha
+aqui precisa vir com a razão junto.
 """
 
 
-def _liga_escape(no: ast.AST) -> bool:
-    """Se algum `X.bind("<Escape>", ...)` aparece dentro daquele nó."""
-    return any(
-        isinstance(filho, ast.Call)
-        and ast.unparse(filho.func).endswith(".bind")
-        and filho.args
-        and isinstance(filho.args[0], ast.Constant)
-        and filho.args[0].value == "<Escape>"
-        for filho in ast.walk(no)
-    )
+def _mantem_escape(classe: ast.ClassDef) -> bool:
+    """Se aquele `QDialog` **não** roubou o `Esc` que o Qt lhe dá.
 
-
-def _cria_toplevel(no: ast.AST) -> bool:
-    """Se aquele nó instancia `tk.Toplevel(...)` -- ignorando o que está em funções aninhadas."""
-    return any(
-        isinstance(filho, ast.Call) and ast.unparse(filho.func).endswith("Toplevel")
-        for filho in ast.walk(no)
-    )
+    Ou ela não sobrescreve `keyPressEvent`, ou sobrescreve e ainda chama o `super()`. Qualquer
+    outra coisa engole a tecla, e o único jeito de sair passa a ser achar o botão -- que é o
+    estado que a S-395 mediu no outro toolkit, em onze de catorze janelas.
+    """
+    for f in classe.body:
+        if isinstance(f, ast.FunctionDef) and f.name == "keyPressEvent":
+            corpo = ast.unparse(f)
+            return "super()" in corpo or "keyPressEvent" in corpo.split("def", 1)[1]
+    return True
 
 
 class EscFechaODialogoTests(unittest.TestCase):
@@ -222,14 +252,12 @@ class EscFechaODialogoTests(unittest.TestCase):
         for caminho in ARQUIVOS_DE_UI:
             arvore = ast.parse(caminho.read_text(encoding="utf-8"))
             for no in ast.walk(arvore):
-                if isinstance(no, ast.ClassDef) and any(ast.unparse(b).endswith("Toplevel") for b in no.bases):
-                    achados.append((f"{caminho.name}:{no.name}", _liga_escape(no)))
-                elif isinstance(no, ast.FunctionDef) and _cria_toplevel(no):
-                    achados.append((f"{caminho.name}:{no.name}", _liga_escape(no)))
+                if isinstance(no, ast.ClassDef) and any(ast.unparse(b).endswith("QDialog") for b in no.bases):
+                    achados.append((f"{caminho.name}:{no.name}", _mantem_escape(no)))
         return [(nome, tem) for nome, tem in achados if nome not in SEM_ESC]
 
     def test_a_varredura_acha_os_dialogos(self) -> None:
-        """Sem isto, renomear `Toplevel` faria o teste abaixo passar sobre lista vazia."""
+        """Sem isto, renomear a base faria o teste abaixo passar sobre lista vazia."""
         self.assertGreaterEqual(len(self._dialogos()), 12)
 
     def test_todo_dialogo_fecha_com_esc(self) -> None:
@@ -237,7 +265,7 @@ class EscFechaODialogoTests(unittest.TestCase):
         self.assertEqual(
             sem,
             [],
-            "Janela de diálogo sem `<Escape>`. Ligue-o ao mesmo que o botão Cancelar faz -- e "
+            "Diálogo que engole o `Esc`. Chame o `super().keyPressEvent(evento)` -- e "
             "se ela não for diálogo, ponha o motivo em SEM_ESC:\n" + "\n".join(sem),
         )
 
@@ -256,9 +284,9 @@ class OperacoesLongasTests(unittest.TestCase):
     """As três que passam de um minuto informam progresso pelo registro, e não só por texto."""
 
     ONDE = {
-        "export_controller.py": "exportar o livro para PGN",
-        "gallery_panel.py": "varrer o livro (Galeria **e** fila), e a busca por posição na base",
-        "training_dialog.py": "treinar o modelo",
+        "exportador.py": "exportar o livro para PGN",
+        "painel_da_galeria.py": "varrer o livro (Galeria **e** fila), e a busca por posição na base",
+        "dialogos.py": "treinar o modelo (`ControladorDeTreino`)",
     }
     """Três, e não quatro: o `review_panel.py` saiu na S-119, e não por ter perdido o número.
 
@@ -275,7 +303,7 @@ class OperacoesLongasTests(unittest.TestCase):
         """
         faltando = []
         for nome, operacao in self.ONDE.items():
-            fonte = (RAIZ / "src" / "chess_diagram_ocr" / "ui" / nome).read_text(encoding="utf-8")
+            fonte = (RAIZ / "src" / "chess_diagram_ocr" / "qt" / nome).read_text(encoding="utf-8")
             if "feito=" not in fonte or "total=" not in fonte:
                 faltando.append(f"{nome} ({operacao})")
         self.assertEqual(faltando, [], "Operação longa sem progresso numérico no registro.")

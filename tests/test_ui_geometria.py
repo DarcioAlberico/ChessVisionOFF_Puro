@@ -11,10 +11,7 @@ estar" -- e as duas são desmentidas pela mesma coisa, uma tela que mudou desde 
 
 from __future__ import annotations
 
-import tkinter as tk
 import unittest
-
-from tk_root import raiz as raiz_do_processo
 
 from chess_diagram_ocr.ui import geometria
 from chess_diagram_ocr.ui.geometria import (
@@ -62,42 +59,6 @@ class PisoTests(unittest.TestCase):
         largura, altura = piso_da_janela(420, 520)
         self.assertLessEqual(largura, 1366)
         self.assertGreater(altura, 768, "se isto passar a caber, a rolagem da S-150 chegou")
-
-
-class JanelaRespeitaOPisoTests(unittest.TestCase):
-    """A ligação: `root.minsize()` de fato recebe o piso, e o Tk de fato o impõe."""
-
-    root: tk.Tk
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        # A raiz é a do processo, e não uma deste módulo (S-416): duas raízes vivas fazem
-        # uma `PhotoImage` nascer no interpretador errado, e o Tk recusa a imagem com uma
-        # mensagem que parece coleta de lixo. O porquê inteiro está em `tests/tk_root.py`.
-        cls.root = raiz_do_processo()
-
-    def test_o_tk_recusa_encolher_abaixo_do_piso(self) -> None:
-        largura, altura = piso_da_janela(420, 520)
-        self.root.minsize(largura, altura)
-        self.assertEqual(tuple(self.root.minsize()), (largura, altura))
-
-    def test_a_janela_do_produto_chama_minsize(self) -> None:
-        """Sem isto, `geometria.py` podia existir inteiro e a janela continuar sem piso."""
-        from pathlib import Path
-
-        fonte = (Path(__file__).resolve().parents[1] / "app_tkinter.py").read_text(encoding="utf-8")
-        self.assertIn("self.root.minsize(", fonte)
-        self.assertIn("geometria.piso_da_janela(", fonte)
-
-    def test_o_piso_e_os_paineis_usam_o_mesmo_numero(self) -> None:
-        """Dois números para a mesma largura mínima divergem no primeiro que alguém mexer."""
-        from pathlib import Path
-
-        fonte = (Path(__file__).resolve().parents[1] / "app_tkinter.py").read_text(encoding="utf-8")
-        self.assertIn("minsize=LARGURA_MINIMA_ESQUERDA", fonte)
-        self.assertIn("minsize=LARGURA_MINIMA_DIREITA", fonte)
-        self.assertNotIn("minsize=420", fonte)
-        self.assertNotIn("minsize=520", fonte)
 
 
 class GeometriaLembradaTests(unittest.TestCase):

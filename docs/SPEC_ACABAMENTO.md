@@ -222,6 +222,10 @@ a recusa do interior valia para aquelas fases e foi reaberta por esta.
   onde quem o decide é o tema.
 - O inventário de arranjo da clássica **já existe** e não foi duplicado: é o de
   `tests/test_ui_alcance.py` (S-233), que cobra que toda pele alcança o catálogo inteiro.
+  **Desde o corte do Tk (S-506) esse arquivo não existe** — ele perguntava sobre as três peles do
+  toolkit. Quem cobra a conta hoje é `test_ui_comandos.test_todo_comando_do_catalogo_alcanca_alguem`
+  (catálogo → menu ou exceção declarada) mais
+  `test_qt_janela.test_todo_comando_do_catalogo_tem_dono_nesta_janela` (a declaração tem dono).
 - `tests/test_disciplina_da_suite.py`: a tabela "onde mora a spec de cada item" cobre S-441 a S-450
   nos dois documentos novos.
 

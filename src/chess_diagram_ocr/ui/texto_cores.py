@@ -32,7 +32,7 @@ Nada de `tkinter` aqui, como em `ui/tokens.py` e `ui/comandos.py`.
 
 from __future__ import annotations
 
-from ..text import rico
+from ..text import documento, rico
 from . import tokens
 
 __all__ = [
@@ -64,12 +64,33 @@ PAPEL_DO_REALCE: dict[str, str] = {
 }
 """O mesmo nome -> papel do **fundo**. É este o canal do autor; o de cima é a concessão."""
 
-PAPEIS_DA_FAIXA: frozenset[str] = frozenset({tokens.PROBLEMA_TEXTO, tokens.ATENCAO})
-"""Os papéis que a **faixa de confiança** usa na aba, declarados aqui para o teste os comparar.
+PAPEL_DA_FAIXA: dict[str, str] = {
+    documento.REVISAR: tokens.PROBLEMA_TEXTO,
+    documento.CONFERIR: tokens.ATENCAO,
+    documento.TRANQUILO: "",
+}
+"""O papel de cor de cada faixa de `documento`, resolvido em `ui/tokens.py`.
 
-Derivados não dá: `ui/texto_panel.PAPEL_DA_FAIXA` importa `tkinter` por tabela, e este módulo não
-pode. O que se faz é declarar os dois e **afirmar num teste** que esta lista é a daquele mapa --
-assim uma faixa nova lá quebra aqui, em vez de aparecer calada na paleta do autor."""
+**É `PROBLEMA_TEXTO` e não `PROBLEMA`, e a troca é o item** (S-295). `PROBLEMA` está declarado em
+`tokens.SIGNIFICADO` como marcação de **tabuleiro** -- contorno de casa --, e usá-lo aqui pintava
+letra com o papel do contorno: um papel, dois significados, que é o defeito que a S-158 nomeou e a
+S-224 separou para o cromo escuro.
+
+Papel e não hexadecimal, pela regra que `tokens` inteiro existe para manter: uma cor cravada aqui
+não acompanharia a troca de pele.
+
+**Mora aqui desde a S-504, e a mudança fechou uma nota deste arquivo.** Ela era de
+`ui/texto_panel.py`, e `PAPEIS_DA_FAIXA` logo abaixo dizia, por escrito, que não dava para derivá-la
+*"porque `ui/texto_panel.PAPEL_DA_FAIXA` importa `tkinter` por tabela, e este módulo não pode"* -- e
+por isso as duas eram declaradas separadas e comparadas por teste. O segundo frontend precisava da
+mesma tabela e não podia importar aquele arquivo tampouco; descê-la resolveu os dois de uma vez."""
+
+PAPEIS_DA_FAIXA: frozenset[str] = frozenset(papel for papel in PAPEL_DA_FAIXA.values() if papel)
+"""Os papéis que a **faixa de confiança** usa na aba. **Derivados**, desde a S-504.
+
+Eram declarados à mão e comparados com `PAPEL_DA_FAIXA` por um teste, porque a tabela morava num
+arquivo que este módulo não podia importar. Agora ela mora aqui, e uma faixa nova entra nos dois
+lugares sozinha."""
 
 PREFIXO_DE_COR = "cor:"
 PREFIXO_DE_REALCE = "realce:"

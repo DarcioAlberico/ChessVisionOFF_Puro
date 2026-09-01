@@ -541,15 +541,25 @@ spec pedia por nome.
 **O número da produção sobre o conjunto novo** (`docs/metrics/field_20260822_s99.json`):
 
 ```
-    Páginas ...................... 66  (17 sem diagrama)
+    Páginas ...................... 68  (19 sem diagrama)
     Anotados ..................... 115
-    Recall de detecção ........... 0.9478     precisão 0.9909  (1 falso positivo)
-    **Taxa de exportação** ....... 0.7652  (88/115)
+    Recall de detecção ........... 0.9478     precisão 0.9732  (3 falsos positivos)
+    **Taxa de exportação** ....... 0.8696  (100/115)
     Conferíveis .................. 96 de 115  (83%)
-    **Exatidão de campo** ........ 0.9882  (84/85 exportados)
-    Exatidão condicional ......... 0.9583  (92/96)
-    **Exportados e errados** ..... 1
+    **Exatidão de campo** ........ 0.9787  (92/94 exportados)
+    Exatidão condicional ......... 0.9688  (93/96)
+    **Exportados e errados** ..... 2
 ```
+
+> **Estes números são de outro modelo, e a data acima não é a da medição.** Eles foram remedidos
+> no fecho do corte do Tk (S-506), e **não** são uma reprodução: o checkpoint que gerou o
+> relatório de 2026-08-22 (digest `0e952e5a`) não existe mais no disco -- foi sobrescrito por um
+> retreino, e nenhum dos 22 `.pt` do repositório bate com ele. O que está medido aqui é o
+> `models/piece_classifier.pt` de hoje.
+>
+> Que a diferença é de **modelo** e não de código está provado ao lado: os outros três
+> relatórios, cujos checkpoints sobreviveram, reproduziram os trinta campos exatos com este
+> mesmo código. A série de comparação quebra aqui, e é por isso que está escrito.
 
 > **O arquivo citado foi remedido em 2026-08-25**, e o bloco acima é o que ele dizia sobre as 66
 > páginas. O conjunto passou a 68 — duas folhas sem diagrama do `Kemeri` —, e o que se moveu foi

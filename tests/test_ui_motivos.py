@@ -18,23 +18,22 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
 
-ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + [RAIZ / "app_tkinter.py"]
+ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + sorted(
+    (RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")
+)
 
-SEM_MOTIVO = {
-    ("dataset_panel.py", "text"): (
-        "Um `tk.Text` de leitura: `state=DISABLED` ali é como se faz um texto não editável no Tk, "
-        "e não um controle desligado. Ninguém clica nele esperando ação."
-    ),
-    ("study_panel.py", "self.moves_text"): (
-        "O mesmo caso: a lista de lances do PGN é exibição, e o `DISABLED` é o que impede digitar "
-        "por cima dela. O que age são os botões ao lado, e esses têm motivo."
-    ),
-}
-"""Os `state=DISABLED` que **não** são controle desligado, e por que -- uma linha cada.
+SEM_MOTIVO: dict[tuple[str, str], str] = {}
+"""Os controles desligados que **não** precisam de motivo, e por quê -- uma linha cada.
 
-A distinção não é formal: o item fala de "botão cinza sem explicação", e um texto de leitura não é
-um botão. Deixar os dois na varredura obrigaria a escrever tooltip explicando por que um parágrafo
-não é editável, que é ruído com aparência de rigor."""
+**Vazia desde o corte do Tk (S-506), e a razão é do toolkit.** Ela guardava dois `tk.Text` de
+leitura: no Tk, `state=DISABLED` era ao mesmo tempo "controle desligado" e "texto não editável",
+e a varredura não distinguia os dois. O Qt separa: texto de leitura é `setReadOnly(True)` e
+continua com foco e seleção; controle desligado é `setEnabled(False)`. A ambiguidade que a lista
+existia para desfazer deixou de existir, e obrigar tooltip num parágrafo era ruído com aparência
+de rigor.
+
+A lista continua aqui porque a distinção pode voltar a fazer falta. Uma linha nova precisa vir com
+a razão junto."""
 
 
 def _desabilitaveis(caminho: Path) -> set[str]:

@@ -308,7 +308,7 @@ usar, então ela liga o motor junto — a mesma leitura que `CVOFF_REMOTE_FEN_UR
 
 **Sonda.** `simbolo:chess_diagram_ocr.settings:ENV_OCR_GLYPH_MODEL`,
 `arquivo:models/char_classifier.pt`,
-`simbolo:chess_diagram_ocr.ui.rodape:dispositivo_do_classificador_de_caracteres`.
+`simbolo:chess_diagram_ocr.ui.estado_do_rodape:dispositivo_do_classificador_de_caracteres`.
 
 ---
 
