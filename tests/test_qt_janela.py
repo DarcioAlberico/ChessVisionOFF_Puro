@@ -11,6 +11,7 @@ por construção.
 
 from __future__ import annotations
 
+import ast
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -58,6 +59,37 @@ def _livro(pasta: Path, nome: str = "livro.pdf", paginas: int = 3) -> Path:
     doc.save(caminho)
     doc.close()
     return caminho
+
+
+_FONTE_DA_JANELA = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
+
+
+def _comandos_inertes(fonte: str) -> list[str]:
+    """As acoes que `_comandos` amarra a um `lambda: None`, lidas do texto do modulo (PR #25).
+
+    **Sobre a fonte e nao sobre o objeto, e a diferenca custou uma guarda vacua.** A primeira
+    versao disto pedia `inspect.getsource` da funcao amarrada, que para um `lambda` dentro de um
+    dicionario devolve a **linha inteira** (`"abrir_recente": lambda: None,`) -- texto que nao
+    parseia como expressao, cai num `except SyntaxError` e faz a guarda passar em verde sobre o
+    caso que ela existe para pegar.
+
+    Devolve os nomes na ordem em que aparecem, para a mensagem de falha ser estavel.
+    """
+    metodo = next(
+        no
+        for no in ast.walk(ast.parse(fonte))
+        if isinstance(no, ast.FunctionDef) and no.name == "_comandos"
+    )
+    return [
+        chave.value
+        for dicionario in ast.walk(metodo)
+        if isinstance(dicionario, ast.Dict)
+        for chave, valor in zip(dicionario.keys, dicionario.values, strict=True)
+        if isinstance(chave, ast.Constant)
+        and isinstance(valor, ast.Lambda)
+        and isinstance(valor.body, ast.Constant)
+        and valor.body.value is None
+    ]
 
 
 def _fracao(janela: JanelaPrincipal) -> float:
@@ -129,6 +161,70 @@ class MontagemTests(unittest.TestCase):
         for acao in COMANDOS_DO_TEXTO:
             with self.subTest(acao=acao):
                 self.assertIn(acao, tabela)
+
+    INERTES_DECLARADOS: dict[str, str] = {}
+    """Os comandos que **podem** nao fazer nada, e por que -- uma linha cada.
+
+    **Vazia, e e o estado certo.** O PR #25, que atacou a troca de pele em paralelo a este
+    trabalho, declarava `abrir_recente` aqui: *"e o pai de um submenu, e nao uma linha clicavel; e
+    hoje ele esta vazio porque a janela do Qt nao persiste `AppState.pdf_history`"*. As duas metades
+    da isencao caducaram no mesmo commit -- o estado passou a ser persistido, e o comando ganhou
+    dono em `_abrir_o_mais_recente`, que abre o livro anterior a este.
+
+    A lista fica: sem ela, `lambda: None` volta a ser a saida facil para um comando que o catalogo
+    declara e ninguem implementou. E `test_a_lista_de_inertes_nao_guarda_quem_ja_faz_algo` cobra o
+    outro sentido, que e como uma lista de excecao envelhece."""
+
+    def test_nenhum_comando_do_menu_e_inerte(self) -> None:
+        """**A guarda de cobertura e satisfeita por um `lambda: None`, e foi** (PR #25).
+
+        `test_todo_item_de_menu_tem_comando` pergunta se a acao tem entrada na tabela; um comando
+        que nao faz nada **tem**. Foi assim que `aparencia`, `densidade` e `abrir_recente` ficaram
+        parados desde a montagem da janela com todas as guardas do menu verdes -- e e a mesma
+        fenda que a conta do catalogo deixa aberta, porque ela pergunta se o dono e chamavel.
+
+        A varredura e sobre a **fonte** do arquivo, e nao sobre o objeto: ver `_comandos_inertes`.
+        """
+        inertes = _comandos_inertes(_FONTE_DA_JANELA.read_text(encoding="utf-8"))
+        self.assertEqual(
+            sorted(set(inertes) - set(self.INERTES_DECLARADOS)),
+            [],
+            "comando de menu que nao faz nada. Implemente-o, ou declare o motivo em "
+            "INERTES_DECLARADOS.",
+        )
+
+    def test_a_lista_de_inertes_nao_guarda_quem_ja_faz_algo(self) -> None:
+        """Isencao que sobra e isencao que esconde: o proximo `lambda: None` daquela acao entraria
+        sem ninguem assinar.
+
+        **Nao mede nada enquanto a lista esta vazia, e isso esta dito de proposito.** O trabalho
+        dela comeca no dia em que alguem acrescentar uma entrada; ate la quem cobra e a de cima,
+        que e absoluta justamente por nao haver isencao nenhuma.
+        """
+        inertes = set(_comandos_inertes(_FONTE_DA_JANELA.read_text(encoding="utf-8")))
+        self.assertEqual(sorted(set(self.INERTES_DECLARADOS) - inertes), [])
+
+    def test_a_varredura_de_inertes_acha_um_comando_inerte(self) -> None:
+        """**A anti-vacuidade, e ela existe porque a primeira versao da guarda era vacua** (#25).
+
+        Aquela versao pedia `inspect.getsource` do `lambda`, que devolve a **linha do dicionario**
+        (`"abrir_recente": lambda: None,`). Isso nao parseia como expressao, caia num
+        `except SyntaxError`, e o teste passava em verde com um comando inerte ainda no arquivo --
+        engolindo em silencio exatamente o caso que existe para pegar.
+
+        Uma guarda que so olha um arquivo limpo nao prova que **sabe olhar**. Esta afirma o
+        detector contra uma fonte de mentira, e e a diferenca entre "nao achou" e "nao procura".
+        """
+        fonte = (
+            "class J:\n"
+            "    def _comandos(self):\n"
+            "        return {\n"
+            '            "faz_algo": self.metodo,\n'
+            '            "nao_faz": lambda: None,\n'
+            '            "chama": lambda: outra(self),\n'
+            "        }\n"
+        )
+        self.assertEqual(_comandos_inertes(fonte), ["nao_faz"])
 
     def test_todo_item_de_menu_tem_comando(self) -> None:
         """**É a trava que torna o menu confiável** (S-161): um menu que desenha uma linha inerte
@@ -884,13 +980,23 @@ class AparenciaTests(unittest.TestCase):
         )
 
     def test_o_cromo_escuro_da_pele_chega_a_folha_de_estilo(self) -> None:
-        """A pele "Foco" e escura (S-224), e ate aqui esse `bool` nao saia de `ui/pele.py`."""
-        from chess_diagram_ocr.qt.janela import tema
+        """A pele "Foco" e escura (S-224), e ate aqui esse `bool` nao saia de `ui/pele.py`.
+
+        **Afirma o efeito e nao a chamada** (PR #25). A primeira versao deste teste punha um
+        `mock` em `aplicar_tema` e conferia o `cromo_escuro` que ela recebeu -- o que continua
+        verde no dia em que ela receber o argumento e nao fizer nada com ele.
+        `tema.cromo_escuro_em_vigor()` existe para essa pergunta.
+        """
+        from chess_diagram_ocr.qt import tema
 
         janela = self.janela()
-        with mock.patch.object(tema, "aplicar_tema") as aplicada:
-            self._trocar(janela, pele.FOCO)
-        self.assertTrue(aplicada.call_args.kwargs["cromo_escuro"])
+        self.assertFalse(tema.cromo_escuro_em_vigor(), "a classica nao e escura")
+
+        self._trocar(janela, pele.FOCO)
+        self.assertTrue(tema.cromo_escuro_em_vigor(), "a pele escura nao chegou ao tema")
+
+        self._trocar(janela, pele.FITA)
+        self.assertFalse(tema.cromo_escuro_em_vigor(), "a fita e clara: o escuro nao saiu")
 
     def test_a_variavel_de_ambiente_ganha_da_guardada(self) -> None:
         """`CVOFF_SKIN` existe para abrir o programa numa aparencia a partir de um roteiro."""
