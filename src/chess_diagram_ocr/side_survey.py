@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .atomic_io import atomic_write_text
 from .pdf_io import get_pdf_page_count, sample_pages
 from .semantics import SideSource
 from .service import OcrService, RecognitionOptions
@@ -201,8 +202,7 @@ def survey_collection(
 
 
 def write_survey(path: Path, survey: SideSurvey) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(survey.as_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(survey.as_dict(), indent=2, ensure_ascii=False) + "\n")
 
 
 def source_label(source: str) -> str:

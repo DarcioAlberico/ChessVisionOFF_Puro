@@ -521,6 +521,82 @@ def _threshold_passes(thresh_base: np.ndarray) -> list[np.ndarray]:
     ]
 
 
+SQUARE_FORCE_TOLERANCE = 0.02
+"""Quanto o quad pode fugir do quadrado antes de valer a pena tentar recortá-lo quadrado (S-454).
+
+2% e não mais: abaixo disso a diferença é o arredondamento do contorno, e forçar o quadrado
+não muda recorte nenhum. Medido no acervo, o alvo mede 1,016 a 1,090 de razão.
+"""
+
+SQUARE_FORCE_LIMIT = 1.15
+"""Acima desta razão o quad não é tabuleiro com legenda colada, e encolhê-lo destrói (S-454).
+
+**O piso e o teto medem coisas diferentes.** O piso de `SQUARE_FORCE_TOLERANCE` separa
+arredondamento de defeito; o teto separa **defeito de outra coisa**. A legenda que entra no
+contorno acrescenta uma tira ao tabuleiro, e uma tira é limitada: as 13 caixas que o quadrado
+forçado conserta no acervo medem **1,0162 a 1,0845** de razão, e as 10 do `Reinfeld` medidas
+folha a folha, 1,0280 a 1,0901.
+
+**A única caixa que ele piorou está em 1,3153**, e é a foto de um tabuleiro real em
+perspectiva, na capa do `Estrin - Bauernopfer in der Eroeffnung (1980)`: 293,38×223,06 pt.
+Forçada ao quadrado pela âncora da esquerda ela perde as colunas **g e h** -- um terço do
+tabuleiro --, e a textura cai de 0,3599 para 0,3137. É o mesmo mecanismo que o docstring de
+`_square_forced_quads` descreve para o contorno enviesado, visto no acervo.
+
+Entre 1,0901 e 1,3153 não há nada medido, então o corte exato não é afiado; **o que a medição
+sustenta é que existe separação**, e 1,15 fica no vão. Um tabuleiro com uma fileira inteira de
+sobra mede 9/8 = 1,125, que é a escala do defeito e fica abaixo do teto.
+"""
+
+
+def _square_forced_quads(quad: np.ndarray) -> list[np.ndarray]:
+    """O mesmo quad reduzido a quadrado, ancorado em cada ponta do eixo comprido (S-454).
+
+    **O defeito.** O reparo de quina da S-175 liga tinta separada por até 1 px, e com isso um
+    diagrama cujo número de legenda esteja impresso a menos de ~1 px da borda de baixo entra no
+    mesmo contorno. Sai um recorte mais alto que largo -- 116×126 pt onde o tabuleiro mede
+    116×116 --, e o warp para `BOARD_SIZE` achata as 8 fileiras.
+
+    Medido no `Reinfeld`, folha de índice 39 a 220 DPI: o borrão de 116,18×126,00 tem contraste
+    de casa **0,0656** -- passa pela guarda da S-143 e **é exportado** --, e lê **0,0019** de
+    confiança mínima. Forçado a 116,18×116,18 pela âncora de cima ele vai a 0,3469 de contraste
+    e **1,0000** de leitura. São **9 folhas** assim naquele livro, e nas 320 o quadrado forçado
+    não piora nenhuma leitura -- ver a S-454 no `docs/ANALISE_DETECCAO.md`.
+
+    **Quem chama só entrega quad que já tem contraste de casa**, e isso é a metade da regra --
+    ver `_extract_candidate_quads`, e as 812 ressurreições que custaram 5 diagramas.
+
+    **Por que duas variantes e não cinco.** A legenda mora de **um** lado, então o tabuleiro
+    encosta numa das duas pontas do eixo comprido -- ancorar no meio não corresponde a defeito
+    nenhum, e é só chance extra de acertar ruído. As quatro âncoras de canto se reduzem a estas
+    duas, porque no eixo curto o quad já está no tamanho.
+
+    Trabalha nos vetores das arestas, e não no bbox, para que um quad girado encolha no **seu**
+    eixo e não no da folha -- o bbox de um quad girado não é o quad. O reverso disso é que um
+    contorno **enviesado** encolhe muito mesmo com bbox quadrado (no `Karpov 2`, 197,90×197,57
+    virava 141×141), e é por isso que a guarda de contraste de quem chama importa tanto.
+    """
+    tl, tr, br, bl = order_quad_points(quad)
+    largura = (float(np.linalg.norm(tr - tl)) + float(np.linalg.norm(br - bl))) / 2.0
+    altura = (float(np.linalg.norm(bl - tl)) + float(np.linalg.norm(br - tr))) / 2.0
+    if largura <= 0.0 or altura <= 0.0:
+        return []
+    razao = max(largura, altura) / min(largura, altura)
+    if razao < 1.0 + SQUARE_FORCE_TOLERANCE or razao > SQUARE_FORCE_LIMIT:
+        return []
+
+    f = min(largura, altura) / max(largura, altura)
+    if altura > largura:
+        return [
+            np.array([tl, tr, tr + (br - tr) * f, tl + (bl - tl) * f], dtype=np.float32),
+            np.array([tl + (bl - tl) * (1 - f), tr + (br - tr) * (1 - f), br, bl], dtype=np.float32),
+        ]
+    return [
+        np.array([tl, tl + (tr - tl) * f, bl + (br - bl) * f, bl], dtype=np.float32),
+        np.array([tl + (tr - tl) * (1 - f), tr, br, bl + (br - bl) * (1 - f)], dtype=np.float32),
+    ]
+
+
 def _extract_candidate_quads(
     image_rgb: np.ndarray,
     rejected: list[RejectedQuad] | None = None,
@@ -595,6 +671,44 @@ def _extract_candidate_quads(
                 continue
 
             pattern_score = _texture_from_parts(checker, _grid_score(small))
+            # **A segunda chance (S-454).** Um tabuleiro é quadrado, então um quad que não
+            # é quadrado está errado por construção -- e as duas variantes são hipóteses
+            # estritamente melhores do que ele. Quem decide é o contraste de casa, que é a
+            # medida de estar em registro com a grade; a variante só entra se **melhorar**.
+            #
+            # **Não é filtrado por contraste zerado, e a diferença importa.** A primeira
+            # versão só tentava quando o candidato lia 0,0000 -- o que é verdade nas 6
+            # páginas do `Reinfeld` e é sorte daquele acervo. Um tabuleiro achatado por uma
+            # fileira pode guardar contraste de sobra e mesmo assim ler errado: no tabuleiro
+            # sintético de `_board_with_glued_caption` o borrão lê 0,2254 e a guarda o
+            # deixaria passar achatado. O gatilho é a forma, que é o que de fato está errado.
+            #
+            # Duas condições, e as duas foram cobradas pelo censo do acervo, não por
+            # raciocínio:
+            #
+            # 1. **Só mexe em quem já tem contraste de casa.** Ressuscitar candidato que a
+            #    guarda da S-143 condenou parece o ganho principal -- é dali que sai o sexto
+            #    diagrama da página 39 do `Reinfeld` -- e medido no acervo é o contrário: 812
+            #    ressurreições produzem **1** recorte legível. As outras 811 voltam como
+            #    caixa quadrada com um fiapo de contraste, e algumas suprimem diagrama de
+            #    verdade por IoU. Medido no `Karpov 2`, 4 diagramas perdidos; no
+            #    `Vishy_Anand`, 1.
+            #
+            #    E não há piso de contraste que separe: no `GALLAGHER` a ressurreição chega
+            #    a **0,4254** e lê 0,3050, contra **0,2053** e 0,9997 do resgate bom do
+            #    `Reinfeld`. O sinal que separa não é o contraste da variante -- é a guarda
+            #    já ter dito que ali havia tabuleiro.
+            #
+            # 2. **A variante herda o score.** Recalcular a nota sobre a caixa nova sobe a
+            #    parcela de geometria, e com ela o candidato muda de posição na página. O
+            #    quadrado forçado conserta o **recorte**, e não decide quem ganha; por isso
+            #    só `quad`, `bbox` e o contraste viajam daqui.
+            if checker > 0.0:
+                for variante in _square_forced_quads(quad):
+                    c_var = _checker_score(_small_gray(warp_from_quad(image_rgb, variante, target_size=320)))
+                    if c_var > checker:
+                        quad, checker = variante, c_var
+                        bbox = _bbox_from_quad(quad)
             score = geom_score * (0.55 + 0.45 * pattern_score)
             quad_area = float(cv2.contourArea(quad.astype(np.float32)))
             raw_candidates.append((quad, float(score), bbox, quad_area))

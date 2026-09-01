@@ -9,14 +9,23 @@ import numpy as np
 
 from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.board_detection import (
+    SQUARE_FORCE_LIMIT,
     SQUARE_KERNEL,
     NoBoardDetectedError,
+    _checker_score,
+    _contour_geometry_score,
+    _extract_candidate_quads,
+    _grid_score,
     _repaired_pass,
+    _small_gray,
     _sort_selected_candidates,
+    _square_forced_quads,
+    _texture_from_parts,
     _threshold_passes,
     detect_board,
     detect_boards,
     order_quad_points,
+    warp_from_quad,
 )
 from chess_diagram_ocr.config import DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER
 from chess_diagram_ocr.pdf_to_pgn import save_pdf_positions_to_pgn, scan_pdf_positions
@@ -424,3 +433,190 @@ class QuadA45GrausTests(unittest.TestCase):
         cantos = self._ordenado([[12, 25], [108, 18], [115, 121], [16, 128]])
         self.assertEqual(len(set(cantos)), 4)
         self.assertEqual(cantos[0], (12.0, 25.0), "começa pelo canto de menor soma")
+
+
+def _board_with_glued_caption(*, cell: int = 24, margin: int = 40, gap: int = 1) -> np.ndarray:
+    """Tabuleiro de quinas partidas com o número da legenda a `gap` px da borda de baixo.
+
+    É a classe que a S-175 deixou registrada em aberto: o reparo de quina liga tinta separada
+    por até 1 px, então a legenda entra no mesmo contorno e o recorte sai mais alto que largo.
+
+    As quinas saem partidas de propósito, como em `_board_with_severed_corner_contacts`: é o
+    que torna a página fiel ao `Reinfeld`, onde **nenhum** passe entrega um quad limpo. Com as
+    quinas inteiras o passe base sozinho já daria o quadrado, e o teste passaria sem que o
+    quadrado forçado tivesse feito nada.
+    """
+    lado = cell * 8
+    page = np.full((margin * 2 + lado + 40, margin * 2 + lado, 3), 255, np.uint8)
+    for row in range(8):
+        for column in range(8):
+            if (row + column) % 2 == 0:
+                continue
+            y0 = margin + row * cell + gap
+            x0 = margin + column * cell + gap
+            page[y0 : margin + (row + 1) * cell - gap, x0 : margin + (column + 1) * cell - gap] = 90
+
+    # A legenda: um bloco de tinta logo abaixo da borda, encostado pela direita como no livro.
+    topo = margin + lado + gap
+    page[topo : topo + 18, margin + lado - 46 : margin + lado] = 60
+    return page
+
+
+class SquareForcedCropTests(unittest.TestCase):
+    """S-454: a legenda colada no tabuleiro entrava no recorte, e o warp achatava as 8 fileiras.
+
+    Medido no `Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf`, página de índice
+    38 a 220 DPI: o candidato saía 116×126 pt em vez de 116×116, com contraste de casa 0,0000 e
+    leitura 0,0000 de confiança mínima. Forçado o quadrado pela âncora de cima ele lê 0,9997.
+    """
+
+    def test_quad_ja_quadrado_nao_gera_variante(self) -> None:
+        """Sem isto a guarda pagaria dois warps a mais em cada candidato bom da página."""
+        quad = np.array([[10, 10], [110, 10], [110, 110], [10, 110]], dtype=np.float32)
+
+        self.assertEqual(_square_forced_quads(quad), [])
+
+    def test_quad_alto_gera_as_duas_ancoras_do_eixo_comprido(self) -> None:
+        quad = np.array([[10, 10], [110, 10], [110, 120], [10, 120]], dtype=np.float32)
+
+        variantes = _square_forced_quads(quad)
+
+        self.assertEqual(len(variantes), 2)
+        for variante in variantes:
+            largura = float(variante[:, 0].max() - variante[:, 0].min())
+            altura = float(variante[:, 1].max() - variante[:, 1].min())
+            self.assertAlmostEqual(largura, altura, places=3, msg="a variante tem de sair quadrada")
+        topo = min(variantes, key=lambda v: float(v[:, 1].min()))
+        base = max(variantes, key=lambda v: float(v[:, 1].min()))
+        self.assertAlmostEqual(float(topo[:, 1].min()), 10.0, places=3)
+        self.assertAlmostEqual(float(base[:, 1].max()), 120.0, places=3)
+
+    def test_quad_girado_encolhe_no_proprio_eixo_e_nao_no_da_folha(self) -> None:
+        """Trabalhar no bbox daria um recorte fora do tabuleiro -- o bbox de um quad girado
+        não é o quad.
+
+        12 graus, e não 45: a inclinação de um diagrama escaneado é dessa ordem, e
+        `order_quad_points` -- que este módulo usa desde o commit inicial, também no
+        `warp_from_quad` -- decide os cantos por soma e diferença das coordenadas, critério que
+        deixa de separar canto de canto perto de 45 graus. Não é limite desta função.
+        """
+        angulo = np.deg2rad(12.0)
+        centro = np.array([200.0, 200.0])
+        u = np.array([np.cos(angulo), np.sin(angulo)])  # eixo "largura"
+        v = np.array([-np.sin(angulo), np.cos(angulo)])  # eixo "altura"
+        quad = np.array(
+            [
+                centro - u * 50 - v * 55,
+                centro + u * 50 - v * 55,
+                centro + u * 50 + v * 55,
+                centro - u * 50 + v * 55,
+            ],
+            dtype=np.float32,
+        )
+
+        variantes = _square_forced_quads(quad)
+
+        self.assertEqual(len(variantes), 2)
+        for variante in variantes:
+            tl, tr, br = variante[0], variante[1], variante[2]
+            self.assertAlmostEqual(
+                float(np.linalg.norm(tr - tl)),
+                float(np.linalg.norm(br - tr)),
+                places=2,
+                msg="as duas arestas têm de ficar iguais no eixo do quad, não no da folha",
+            )
+            self.assertAlmostEqual(float(np.linalg.norm(tr - tl)), 100.0, places=2)
+
+    def test_quad_muito_fora_do_quadrado_nao_gera_variante(self) -> None:
+        """Acima do teto o quad não é tabuleiro com legenda colada, e encolhê-lo destrói.
+
+        A razão é a da foto de capa do `Estrin - Bauernopfer in der Eroeffnung (1980)`,
+        293,38×223,06 pt: um tabuleiro de verdade, fotografado em perspectiva. Forçá-la ao
+        quadrado pela âncora da esquerda tira as colunas **g e h** — um terço do tabuleiro —
+        e derruba a textura de 0,3599 para 0,3137. Era a única piora do acervo, e o teto a
+        remove sem custar nenhum dos 13 ganhos, que medem 1,0162 a 1,0845.
+        """
+        quad = np.array([[10, 10], [303, 10], [303, 233], [10, 233]], dtype=np.float32)
+
+        self.assertGreater(293 / 223, SQUARE_FORCE_LIMIT, "a figura de teste tem de estar acima do teto")
+        self.assertEqual(_square_forced_quads(quad), [])
+
+    def test_a_legenda_colada_sai_do_recorte(self) -> None:
+        page = _board_with_glued_caption()
+
+        boards = detect_boards(page, max_boards=1, checker_floor=0.0)
+
+        self.assertEqual(len(boards), 1)
+        _board_rgb, quad = boards[0]
+        self.assertIsNotNone(quad)
+        assert quad is not None
+        largura = float(quad[:, 0].max() - quad[:, 0].min())
+        altura = float(quad[:, 1].max() - quad[:, 1].min())
+        self.assertAlmostEqual(altura / largura, 1.0, delta=0.03)
+
+    def test_sem_o_quadrado_forcado_o_recorte_vinha_alto(self) -> None:
+        """Prende no lugar o defeito -- sem ele o teste acima não provaria nada.
+
+        O contorno que o passe de reparo entrega **inclui** a legenda: é por isso que o
+        candidato precisa de segunda chance, e não de um limiar diferente.
+        """
+        page = _board_with_glued_caption()
+        gray = cv2.cvtColor(page, cv2.COLOR_RGB2GRAY)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        base = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 41, 8)
+
+        quadrados = []
+        for thresh in _threshold_passes(base):
+            contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            for contour in contours:
+                _x, _y, largura, altura = cv2.boundingRect(contour)
+                if min(largura, altura) < 24 * 7:  # menor que o tabuleiro: não está na disputa
+                    continue
+                if abs(altura / largura - 1.0) <= 0.02:
+                    quadrados.append((largura, altura))
+
+        self.assertEqual(quadrados, [], "nenhum passe pode entregar o quad limpo, senão o teste acima não prova nada")
+
+    def test_a_variante_herda_o_score_e_nao_ultrapassa_o_diagrama(self) -> None:
+        """S-454: forçar o quadrado conserta o recorte, e **não** muda quem ganha a página.
+
+        Medido no `Vishy_Anand_Great_Chess_Combinations.pdf`, página de índice 29: recalcular o
+        score sobre a caixa nova subia um quad sem contraste nenhum de 0,5800 para 0,6876, ele
+        ultrapassava o diagrama de verdade (0,6460) e o suprimia por IoU. É o defeito da S-175
+        §6 entrando por outra porta, e o censo do acervo o cobrou como perda acima do limiar.
+        """
+        page = _board_with_glued_caption()
+        gray = cv2.cvtColor(page, cv2.COLOR_RGB2GRAY)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        base = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 41, 8)
+        area = float(page.shape[0] * page.shape[1])
+
+        # O quad que o passe de reparo entrega: o tabuleiro com a legenda colada.
+        contours, _ = cv2.findContours(_threshold_passes(base)[2], cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        fundido = max(contours, key=cv2.contourArea)
+        quad = cv2.boxPoints(cv2.minAreaRect(fundido)).astype(np.float32)
+        variantes = _square_forced_quads(quad)
+        self.assertTrue(variantes, "a página de teste tem de produzir um quad fora do quadrado")
+
+        # A nota de geometria da variante é **maior** -- é justamente por isso que ela não pode
+        # virar score: herdar o do original é o que mantém a ordem da página.
+        self.assertGreater(
+            max(_contour_geometry_score(v, area) for v in variantes),
+            _contour_geometry_score(quad, area),
+        )
+
+        entregue = [
+            (bbox, score) for _quad, score, bbox in _extract_candidate_quads(page) if min(bbox[2], bbox[3]) > 24 * 7
+        ]
+        self.assertEqual(len(entregue), 1)
+        bbox, score = entregue[0]
+        self.assertAlmostEqual(bbox[3] / bbox[2], 1.0, delta=0.03, msg="o recorte tem de sair quadrado")
+
+        small = _small_gray(warp_from_quad(page, quad, target_size=320))
+        pattern_original = _texture_from_parts(_checker_score(small), _grid_score(small))
+        self.assertAlmostEqual(
+            score,
+            _contour_geometry_score(quad, area) * (0.55 + 0.45 * pattern_original),
+            places=4,
+            msg="o score entregue tem de ser o do quad original, e não o da variante",
+        )

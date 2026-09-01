@@ -44,6 +44,7 @@ from typing import Any
 
 import numpy as np
 
+from .atomic_io import atomic_write_text
 from .board_detection import RejectedQuad
 from .config import DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
 from .detection.hybrid import board_texture_score, detect_diagrams
@@ -579,8 +580,7 @@ def read_census_csv(path: Path) -> list[CandidateRow]:
 
 
 def write_census_json(path: Path, census: DetectionCensus) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(census.as_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(census.as_dict(), indent=2, ensure_ascii=False) + "\n")
 
 
 MOVED_IOU = 0.5
