@@ -160,6 +160,7 @@ class JanelaPrincipal(QMainWindow):
         csv_de_rotulos: Path = DEFAULT_DATASET_CSV,
         pasta_de_estudos: Path | None = None,
         pasta_da_galeria: Path | None = None,
+        caminho_do_cache: Path | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -167,6 +168,11 @@ class JanelaPrincipal(QMainWindow):
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self._pasta_de_estudos = pasta_de_estudos
         self._pasta_da_galeria = pasta_da_galeria
+        self._caminho_do_cache = caminho_do_cache
+        """Onde o cache de posições da base mora. `None` é o padrão do produto.
+
+        Terceiro parâmetro da mesma família (`pasta_da_galeria`, este): sem ele o teste da janela
+        cria `data/games_positions.sqlite` no checkout de quem roda a suíte."""
         """Onde o índice varrido e as anotações moram. `None` é o padrão do produto, `data/gallery/`.
 
         Existe pelo mesmo motivo do parâmetro homônimo do painel: **sem ele o teste da janela grava
@@ -270,6 +276,7 @@ class JanelaPrincipal(QMainWindow):
             linha_impressa=self._linha_impressa,
             abrir_pagina=self._abrir_pagina_do_estudo,
             para_o_texto=self._linha_para_o_texto,
+            caminho_do_cache=self._caminho_do_cache,
         )
         self.abas.addTab(self.estudo, abas.ESTUDO)
 
@@ -292,6 +299,7 @@ class JanelaPrincipal(QMainWindow):
             # passada. Quem liga as duas abas é esta janela -- nenhuma conhece a outra.
             sumidouro_de_revisao=self.revisao.sumidouro,
             pasta_da_galeria=self._pasta_da_galeria,
+            caminho_do_cache=self._caminho_do_cache,
             busy=self.busy,
         )
         self.abas.addTab(self.galeria, abas.GALERIA)

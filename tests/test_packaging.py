@@ -250,8 +250,15 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1227
+    LIMITE = 1235
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.227 → 1.235 na S-415**. e as oito são o `caminho_do_cache` atravessando a janela até a
+    Galeria e a sala de estudo. Não é recurso: é a válvula que mantém a suíte fora do `data/` de
+    quem a roda. na mesma família do `pasta_da_galeria` e do `caminho_do_estado`. Abrir um livro
+    abre o cache de posições. então **qualquer** teste que abrisse um PDF criava o
+    `games_positions.sqlite` no checkout — e foi a CI que cobrou. porque aqui o arquivo já existe
+    de uso normal e a guarda não tinha o que reportar.
 
     **1.196 → 1.227 na S-506**, e as trinta e uma são a fiação dos cinco botões que voltaram ao
     visualizador: três `connect`, os dois métodos que os atendem (`_leitura_pedida` e

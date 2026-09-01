@@ -90,6 +90,7 @@ class PainelTests(unittest.TestCase):
             pdf_path=lambda: None,
             model_path=lambda: self.pasta / "modelo.pt",
             max_boards=lambda: 4,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
             **kwargs,  # type: ignore[arg-type]
         )
         self.addCleanup(descartar, montado)
@@ -240,6 +241,7 @@ class AnotacaoTests(unittest.TestCase):
             # o diretório justamente para não repeti-lo: `save_index`, `load_index` e
             # `GalleryModel.save` resolvem o padrão na definição, e são três caminhos de escrita.
             pasta_da_galeria=self.pasta,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
         )
         self.addCleanup(descartar, montado)
         montado.show()

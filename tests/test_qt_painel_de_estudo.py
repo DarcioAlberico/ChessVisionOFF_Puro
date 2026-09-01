@@ -72,7 +72,14 @@ class SalaTests(unittest.TestCase):
 
     def sala(self, **kwargs: object) -> qt_estudo.PainelDeEstudo:
         montada = qt_estudo.PainelDeEstudo(
-            pasta_inicial=self.pasta, pasta_de_estudos=self.pasta, **kwargs  # type: ignore[arg-type]
+            pasta_inicial=self.pasta,
+            pasta_de_estudos=self.pasta,
+            # **Sem isto a sala cria `data/games_positions.sqlite` no checkout de quem roda a
+            # suíte** (S-415): `_loja_de_posicoes` abre o cache de posições no padrão do produto,
+            # e a guarda de sessão do `conftest` acusa a rodada inteira num teste que não é o
+            # culpado. Foi a CI que pegou -- aqui o arquivo já existe de uso normal.
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
+            **kwargs,  # type: ignore[arg-type]
         )
         self.addCleanup(descartar, montada)
         montada.resize(1000, 700)

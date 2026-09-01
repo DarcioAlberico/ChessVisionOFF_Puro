@@ -406,7 +406,11 @@ class JanelaTests(unittest.TestCase):
     def _janela(self, servico: object = None):
         from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
-        janela = JanelaPrincipal(servico=servico, csv_de_rotulos=self.csv)  # type: ignore[arg-type]
+        janela = JanelaPrincipal(
+            servico=servico,  # type: ignore[arg-type]
+            csv_de_rotulos=self.csv,
+            caminho_do_cache=self.csv.parent / "posicoes.sqlite",
+        )
         self.addCleanup(janela.deleteLater)
         self.addCleanup(janela.close)
         janela.resize(1000, 700)
@@ -717,7 +721,13 @@ class SelftestTests(unittest.TestCase):
         `app_tkinter.py`. O que falta responder aqui é se o Qt sobe, se a janela monta e se ela
         renderiza e marca uma página -- que é a parte que um `.zip` quebra sem dizer nada."""
         app_pyqt = self._app_pyqt()
-        self.assertEqual(0, app_pyqt.selftest(pdf_de_teste(self.pasta / "livro.pdf")))
+        self.assertEqual(
+            0,
+            app_pyqt.selftest(
+                pdf_de_teste(self.pasta / "livro.pdf"),
+                caminho_do_cache=self.pasta / "posicoes.sqlite",
+            ),
+        )
 
     def test_sem_pdf_o_codigo_de_saida_diz_o_que_falta(self) -> None:
         from unittest import mock

@@ -118,8 +118,18 @@ class PainelDeEstudo(QWidget):
         abrir_pagina: Callable[[Ancora], bool] = lambda _ancora: False,
         bases_de_partidas: Callable[[], Sequence[Path]] = tuple,
         para_o_texto: Callable[[str], bool] = lambda _linha: False,
+        caminho_do_cache: Path | None = None,
     ) -> None:
         super().__init__(parent)
+        self._caminho_do_cache = caminho_do_cache
+        """Onde o cache de posições da base mora. `None` é o padrão do produto,
+        `data/games_positions.sqlite`.
+
+        **Existe pela mesma razão do `pasta_da_galeria` e do `caminho_do_estado`** (S-415): sem
+        ele, um teste que chegue a `_loja_de_posicoes` cria o arquivo no `data/` de quem roda a
+        suíte -- e a guarda de sessão do `conftest` acusa a rodada inteira, num teste que não é o
+        culpado. Foi a CI que pegou este, e não a máquina de ninguém: aqui o arquivo já existia
+        de uso normal, e a guarda não tinha o que reportar."""
         self._posicao = posicao
         """De onde vem a posição do diagrama selecionado -- **inteira**, com vez, número de lance e
         âncora no livro. Era `current_fen` no Tk, e o que ela devolvia era só o campo de peças
@@ -1438,7 +1448,10 @@ class PainelDeEstudo(QWidget):
             return None
         from chess_diagram_ocr import games_cache
 
-        self._loja = games_cache.open_store(database=list(bases))
+        if self._caminho_do_cache is None:
+            self._loja = games_cache.open_store(database=list(bases))
+        else:
+            self._loja = games_cache.open_store(self._caminho_do_cache, database=list(bases))
         return self._loja
 
     # ------------------------------------------------------------------- entrada (S-288)

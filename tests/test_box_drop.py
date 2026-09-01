@@ -67,6 +67,7 @@ class TirarACaixaTests(unittest.TestCase):
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
             pasta_da_galeria=self.pasta,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
         )
         self.addCleanup(descartar, self.janela)
         self.janela.abrir_pdf(self.livro)

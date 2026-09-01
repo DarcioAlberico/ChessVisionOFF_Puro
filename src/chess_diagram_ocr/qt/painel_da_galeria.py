@@ -135,6 +135,7 @@ class PainelDaGaleria(QWidget):
         perguntar_escopo_de_varredura: Callable[[Path | None], ScanScope | None] | None = None,
         perguntar_bases_de_partidas: Callable[[Sequence[Path]], Sequence[Path] | None] | None = None,
         pasta_da_galeria: Path | None = None,
+        caminho_do_cache: Path | None = None,
     ) -> None:
         """`pasta_da_galeria` é onde o índice e as anotações deste livro moram. `None` é
         `data/gallery/`, que é o do produto.
@@ -155,6 +156,14 @@ class PainelDaGaleria(QWidget):
         Injetável porque uma janela modal não se dirige de um roteiro de teste."""
         self._perguntar_bases = perguntar_bases_de_partidas
         self._pasta = pasta_da_galeria
+        self._cache_pedido = caminho_do_cache
+        """Onde o cache de posições desta sessão mora. `None` é o padrão do produto, que é por
+        conjunto de bases (`escolha_de_bases.store_path_for`).
+
+        **Existe pela S-415**, e foi a CI que o cobrou: `load_pdf` abre o cache, então qualquer
+        teste que abra um livro criava `data/games_positions.sqlite` no checkout de quem roda a
+        suíte. Na máquina de quem usa o programa o arquivo já existe, e a guarda não tinha o que
+        reportar -- por isso o defeito atravessou nove rodadas locais limpas."""
         """Quem pergunta **em quais bases** procurar. `None` abre o diálogo de verdade."""
 
         self._bases: tuple[Path, ...] | None = None
@@ -666,7 +675,12 @@ class PainelDaGaleria(QWidget):
         return database_paths() if self._bases is None else list(self._bases)
 
     def _caminho_do_cache(self, bases: Sequence[Path]) -> Path:
-        """O arquivo de cache **deste** conjunto de bases. Ver `escolha_de_bases.store_path_for`."""
+        """O arquivo de cache **deste** conjunto de bases. Ver `escolha_de_bases.store_path_for`.
+
+        O pedido explícito ganha: é ele que mantém a suíte fora do `data/` de quem a roda.
+        """
+        if self._cache_pedido is not None:
+            return self._cache_pedido
         return store_path_for(bases, default_bases=database_paths())
 
     def _escolher_bases(self) -> list[Path] | None:

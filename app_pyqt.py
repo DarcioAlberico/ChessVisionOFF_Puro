@@ -53,8 +53,15 @@ def tem_pyqt() -> bool:
     return importlib.util.find_spec("PyQt6") is not None
 
 
-def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
+def selftest(
+    pdf: Path | None = None, page_index: int = 0, *, caminho_do_cache: Path | None = None
+) -> int:
     """Monta a janela sem mostrar, abre um livro e marca uma página. `0` se funciona.
+
+    `caminho_do_cache` é para a **suíte**, e `None` é o produto: abrir um livro abre o cache de
+    posições, e sem esta porta o teste que exercita o auto-teste cria o
+    `data/games_positions.sqlite` no checkout de quem o roda. É a guarda da S-415 que cobra, e a
+    lista de escrita legítima dela existe para o que não tem porta -- este tem.
 
     **Mede o que só esta metade tem.** O pipeline (torch, detecção, decodificação) já é medido
     por `app_tkinter.py --selftest`, e repeti-lo aqui responderia de novo uma pergunta que já
@@ -82,7 +89,7 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
 
     aplicacao = QApplication.instance() or QApplication([])
     try:
-        janela = JanelaPrincipal()
+        janela = JanelaPrincipal(caminho_do_cache=caminho_do_cache)
         janela.abrir_pdf(Path(caminho))
         # O visualizador é do painel de PDF desde a S-505, quando a janela virou coordenadora
         # das sete abas em vez de ser ela própria o visualizador.

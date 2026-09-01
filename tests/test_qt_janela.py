@@ -74,6 +74,8 @@ class MontagemTests(unittest.TestCase):
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
+            pasta_da_galeria=self.pasta,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
         )
         self.addCleanup(descartar, montada)
         montada.resize(1400, 900)
@@ -243,6 +245,7 @@ class FiacaoTests(unittest.TestCase):
             # **Sem isto o teste lê e grava em `data/gallery/` de verdade** -- o mesmo defeito que
             # o painel da galeria já tinha, agora fechado na ponta da janela.
             pasta_da_galeria=self.pasta,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
         )
         self.addCleanup(descartar, montada)
         montada.resize(1400, 900)
