@@ -19,7 +19,7 @@ decisão, as duas do dono do acervo. Está assim, por medição e não por impre
 |---|---|---|
 | 0, 1, 3, 4, 5 | ✅ | — |
 | 2 | ✅ | critério de saída **fechado em 22/08**: 41 livros, 20.089 páginas, 3 h 25 min, e **0 posições ilegais** em 29.322 exportadas |
-| 6 | ⚠ | `app_tkinter.py` em 1.196 contra o alvo de 600 (S-31 aberta, com catraca; +65 nas S-324 a S-226, +81 na Fase 37, +21 na S-445 e +10 na S-448, cada subida com o motivo no `test_packaging`; o corte do Tk da S-506 trocou o arquivo vigiado pelo `qt/janela.py` e o placar caiu de 2.327) |
+| 6 | ⚠ | `app_tkinter.py` em 1.258 contra o alvo de 600 (S-31 aberta, com catraca; +65 nas S-324 a S-226, +81 na Fase 37, +21 na S-445 e +10 na S-448, cada subida com o motivo no `test_packaging`; o corte do Tk da S-506 trocou o arquivo vigiado pelo `qt/janela.py` e o placar caiu de 2.327) |
 | 7 a 13 | ✅ código completo | a 7 registra critério não atingido, com a razão medida |
 | **14 — a régua** | ✅ | S-99 fechada em 22/08: 66 páginas, `comparable` 96, faixa 0,60–0,80 com **6 de 5**. A régua achou o primeiro **exportado e errado** do projeto |
 | **15 — dataset e treino** | ✅ | S-108 fechada em 21/08: 80 rótulos, dedupe registrado, controle e tratamento medidos. Promover segue sendo decisão sua |

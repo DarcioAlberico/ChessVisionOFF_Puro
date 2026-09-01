@@ -123,6 +123,106 @@ class MontagemTests(unittest.TestCase):
             with self.subTest(acao=acao):
                 self.assertIn(acao, tabela)
 
+    INERTES_DECLARADOS = {
+        "abrir_recente": (
+            "É o **pai** de um submenu, e não uma linha clicável: quem age são os filhos, que "
+            "`menu.montar(recentes=...)` monta. Hoje ele está vazio porque a janela do Qt não "
+            "persiste `AppState.pdf_history` -- nenhuma preferência, aliás. Enquanto isso não "
+            "existir, um comando aqui abriria o quê?"
+        ),
+    }
+    """Os comandos que **podem** não fazer nada, e por quê -- uma linha cada.
+
+    A lista é o item: sem ela, `lambda: None` volta a ser a saída fácil para um comando que o
+    catálogo declara e ninguém implementou."""
+
+    def test_nenhum_comando_do_menu_e_inerte(self) -> None:
+        """**A guarda de cobertura é satisfeita por um `lambda: None`, e foi.**
+
+        `test_todo_item_de_menu_tem_comando` pergunta se a ação tem entrada na tabela; um comando
+        que não faz nada tem. Foi assim que `aparencia` e `densidade` ficaram inertes desde a
+        montagem: o menu listava as três peles, escolher qualquer uma não fazia nada, e as duas
+        guardas do menu passavam em verde. O corte do Tk tornou isso visível, porque a janela que
+        implementava a troca deixou de existir.
+
+        **A varredura é sobre a fonte do arquivo, e não sobre o objeto.** A primeira versão deste
+        teste pedia `inspect.getsource` do `lambda` -- que devolve a **linha do dicionário**
+        (`"abrir_recente": lambda: None,`), não parseia como expressão, e caía no `except
+        SyntaxError`. Ela engolia em silêncio exatamente o caso que existe para pegar, que é a
+        mesma armadilha das varreduras que o corte do Tk deixou verdes e vazias.
+        """
+        import ast
+
+        fonte = (
+            Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
+        ).read_text(encoding="utf-8")
+        metodo = next(
+            no
+            for no in ast.walk(ast.parse(fonte))
+            if isinstance(no, ast.FunctionDef) and no.name == "_comandos"
+        )
+        inertes = [
+            chave.value
+            for dicionario in ast.walk(metodo)
+            if isinstance(dicionario, ast.Dict)
+            for chave, valor in zip(dicionario.keys, dicionario.values, strict=True)
+            if isinstance(chave, ast.Constant)
+            and isinstance(valor, ast.Lambda)
+            and isinstance(valor.body, ast.Constant)
+            and valor.body.value is None
+        ]
+        self.assertEqual(
+            sorted(set(inertes) - set(self.INERTES_DECLARADOS)),
+            [],
+            "comando de menu que não faz nada. Implemente-o, ou declare o motivo em "
+            "INERTES_DECLARADOS.",
+        )
+
+    def test_a_lista_de_inertes_nao_guarda_quem_ja_faz_algo(self) -> None:
+        """Isenção que sobra é isenção que esconde: o próximo `lambda: None` daquela ação
+        entraria sem ninguém assinar."""
+        import ast
+
+        fonte = (
+            Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
+        ).read_text(encoding="utf-8")
+        metodo = next(
+            no
+            for no in ast.walk(ast.parse(fonte))
+            if isinstance(no, ast.FunctionDef) and no.name == "_comandos"
+        )
+        inertes = {
+            chave.value
+            for dicionario in ast.walk(metodo)
+            if isinstance(dicionario, ast.Dict)
+            for chave, valor in zip(dicionario.keys, dicionario.values, strict=True)
+            if isinstance(chave, ast.Constant)
+            and isinstance(valor, ast.Lambda)
+            and isinstance(valor.body, ast.Constant)
+            and valor.body.value is None
+        }
+        self.assertEqual(sorted(set(self.INERTES_DECLARADOS) - inertes), [])
+
+    def test_a_pele_escolhida_no_menu_chega_ao_tema(self) -> None:
+        """O outro lado da mesma moeda: o comando existe **e** o efeito acontece.
+
+        Trocar para a "Foco" tem de escurecer o cromo -- é o eixo que a S-224 separou da
+        superfície de documento --, e a marca tem de acompanhar, senão o submenu passa a mentir
+        sobre o que está em vigor.
+        """
+        from chess_diagram_ocr.qt import tema
+        from chess_diagram_ocr.ui import pele
+
+        janela = self.janela()
+        janela.menu.escolher("aparencia", pele.FOCO)
+
+        janela.trocar_de_pele()
+
+        self.assertTrue(tema.cromo_escuro_em_vigor(), "a pele escura não chegou ao tema")
+        self.assertEqual(janela._escolha_do_menu("aparencia"), pele.FOCO)
+        self.addCleanup(janela.menu.escolher, "aparencia", pele.CLASSICA)
+        self.addCleanup(janela.trocar_de_pele)
+
     def test_todo_item_de_menu_tem_comando(self) -> None:
         """**É a trava que torna o menu confiável** (S-161): um menu que desenha uma linha inerte
         é pior que um menu sem ela -- a pessoa conclui que a função existe e está quebrada.

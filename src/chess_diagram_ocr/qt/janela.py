@@ -59,6 +59,7 @@ from typing import Any, cast
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -239,6 +240,12 @@ class JanelaPrincipal(QMainWindow):
         self.setCentralWidget(corpo)
 
         self.menu = menu.montar(self, self._comandos())
+        # **A marca inicial, senão os dois submenus abrem sem nenhuma.** Um submenu de escolha
+        # exclusiva sem marca não diz o que está em vigor -- e a pele em vigor é a que
+        # `pele.escolhida()` resolve (ambiente, senão guardada, senão clássica).
+        _em_vigor = pele.registrada(pele.escolhida())
+        self.menu.escolher("aparencia", _em_vigor.nome)
+        self.menu.escolher("densidade", pele.densidade_em_vigor(_em_vigor))
         self._teclas = qt_atalhos.ligar(self, self._comandos())
         """A guarda de foco. **Guardada num atributo de propósito**: um `QObject` sem referência
         viva é coletado, e um filtro coletado deixa de ser chamado sem que nada avise -- a janela
@@ -1032,8 +1039,8 @@ class JanelaPrincipal(QMainWindow):
             "treinar": self.treino.iniciar,
             "recarregar_modelo": self._recarregar_modelo,
             # --- a janela
-            "aparencia": lambda: None,
-            "densidade": lambda: None,
+            "aparencia": self.trocar_de_pele,
+            "densidade": self.trocar_de_densidade,
             "paleta_de_comandos": self.abrir_paleta,
             "legenda_de_atalhos": lambda: legenda.abrir(self),
             "abrir_log": self._abrir_log,
@@ -1044,6 +1051,61 @@ class JanelaPrincipal(QMainWindow):
         tabela.update({acao: getattr(self.estudo, metodo) for acao, metodo in COMANDOS_DA_SALA.items()})
         tabela.update({acao: getattr(self.texto, metodo) for acao, metodo in COMANDOS_DO_TEXTO.items()})
         return tabela
+
+    # ------------------------------------------------------------------ os dois eixos da pele
+
+    def _escolha_do_menu(self, acao: str) -> str:
+        """O valor marcado naquele submenu, ou `""`.
+
+        O submenu guarda o valor no `data()` da ação e chama o comando **sem argumento** -- é a
+        S-166: `pele.Pele` separa `nome` de `rotulo`, e o que vai para o disco é o primeiro.
+        """
+        grupo = self.menu.grupos.get(acao)
+        marcada = grupo.checkedAction() if grupo is not None else None
+        return "" if marcada is None else str(marcada.data())
+
+    def trocar_de_pele(self) -> None:
+        """Aplica a pele escolhida em `Ver ▸ Aparência` (S-221/S-506).
+
+        **Os dois eixos são separados, e a escolha explícita ganha da sugestão.** A pele sugere
+        uma densidade -- a fita sugere compacta porque gasta altura com cromo --, e quem escolheu
+        densidade no outro submenu não a perde ao trocar de pele: `pele.densidade_em_vigor`
+        responde por isso, e é pura desde a S-232.
+
+        **Este comando esteve inerte** (`lambda: None`) desde a montagem da janela, e o corte do
+        Tk o tornou visível: o menu listava as três peles e escolher qualquer uma não fazia nada,
+        que é pior que não oferecer a escolha.
+        """
+        escolhida = self._escolha_do_menu("aparencia")
+        if not escolhida:
+            return
+        self._aplicar_aparencia(escolhida, self._escolha_do_menu("densidade"))
+
+    def trocar_de_densidade(self) -> None:
+        """Aplica a densidade escolhida em `Ver ▸ Densidade`. Ver `trocar_de_pele`."""
+        self._aplicar_aparencia(self._escolha_do_menu("aparencia"), self._escolha_do_menu("densidade"))
+
+    def _aplicar_aparencia(self, nome_da_pele: str, densidade_guardada: str) -> None:
+        """Refaz a folha de estilo e repinta o que já está na tela.
+
+        `repintar` é o que faz a troca valer para os widgets **existentes**: a folha nova pega os
+        que nascerem depois dela, e sem esta chamada a janela ficaria metade numa pele e metade
+        noutra até o próximo redesenho.
+        """
+        registro = pele.registrada(pele.escolhida(nome_da_pele))
+        densidade = pele.densidade_em_vigor(registro, densidade_guardada)
+        # `instance()` é declarada `QCoreApplication`; num programa de janela ela é a
+        # `QApplication`, e `aplicar_tema` já trata o `None` sem levantar.
+        aplicacao = QApplication.instance()
+        tema.aplicar_tema(
+            aplicacao if isinstance(aplicacao, QApplication) else None,
+            cromo_escuro=registro.cromo_escuro,
+            densidade=densidade,
+        )
+        tema.repintar()
+        self.menu.escolher("aparencia", registro.nome)
+        self.menu.escolher("densidade", densidade)
+        self._dizer(f"Aparência: {registro.rotulo}, densidade {pele.rotulo_de_densidade(densidade)}.")
 
     def abrir_paleta(self) -> Any:
         """A paleta de comandos (S-231): um campo, uma lista filtrada, Enter executa."""
