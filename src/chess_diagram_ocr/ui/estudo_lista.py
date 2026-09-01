@@ -33,8 +33,8 @@ PGN grava `$1` e `{ [%cal Gf3g5] a frase }`. Daí o campo `token`: `texto` é o 
 que se compara. Sem essa separação, ou a lista mostraria `$1` e os comandos de seta, ou a trava
 acima deixaria de valer.
 
-Nada de `tkinter` aqui: quem desenha é `ui/study_panel.py`, e o que ele desenha é afirmável sem
-abrir janela.
+Nada de toolkit aqui: quem desenha é `qt/painel_de_estudo.py`, e o que ele desenha é afirmável
+sem abrir janela.
 """
 
 from __future__ import annotations

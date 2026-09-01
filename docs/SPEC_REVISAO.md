@@ -15,7 +15,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -23,7 +23,7 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 
@@ -1031,6 +1031,11 @@ corromper.
 **Critério de aceite.** O digest de um módulo é o mesmo no disco CRLF e no checkout LF. Os
 quatro relatórios foram remedidos e voltaram idênticos pela sexta vez: 0,7913, 0,7652, 0,7304 e
 0,7478.
+
+Na sétima, no fecho do corte do Tk (S-506), **três dos quatro** voltaram idênticos -- 0,7913,
+0,7304 e 0,7478 --, e é essa reprodução que prova que o caminho de medição não se moveu. O
+quarto, a produção, não pôde ser reproduzido: o checkpoint dele foi sobrescrito por um retreino
+e não existe mais. Ele foi remedido com o `piece_classifier.pt` de hoje, e deu 0,8696.
 
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
@@ -3282,3 +3287,56 @@ colisão não aparecia de nenhum dos dois lados, só no merge, onde eram duas se
 nomeando coisas diferentes. Renumerar um item saiu mais barato que dez. O assunto do commit é
 imutável; quem faz a ponte é `RENUMERADOS`, em `tests/test_docs.py`, e ela é conferida por
 `test_a_renumeracao_declarada_vale`.
+---
+
+## S-453 · O relatório que semeava CRLF, e a guarda que faltava do outro lado ✅ implementada (2026-08-30)
+
+**Problema.** A [S-325](#s-325--o-digest-de-código-normaliza-a-quebra-de-linha) consertou o lado
+da **leitura**: `_digest_of` normaliza a quebra antes de hashear, então um checkout com CRLF
+deixou de dar digest diferente do mesmo commit. O outro lado ficou aberto — **quem grava**.
+
+`Path.write_text` sem `newline` traduz `\n` para `os.linesep`, e no Windows isso é `CR LF`.
+Cinco chamadas de `src/` gravavam assim, e três delas escrevem relatório em `docs/metrics/`,
+que o `.gitattributes` declara `*.json text eol=lf`:
+
+| chamada | o que grava |
+|---|---|
+| `detection_census.py:583` · `write_census_json` | `docs/metrics/deteccao_*.json` |
+| `experiments.py:191` · `save_results` | a grade de variantes do treino |
+| `side_survey.py:205` · `write_survey` | o levantamento de procedência do lado a jogar |
+
+**Não é achado de leitura de código: aconteceu.** Ao remedir o censo para a
+[S-454](ANALISE_DETECCAO.md), `cvoff-census` gravou `deteccao_base.csv` e `.json` com CRLF, e os
+dois tiveram de ser normalizados à mão antes do commit — com o `git` avisando
+`CRLF will be replaced by LF the next time Git touches it`.
+
+**O estrago não aparece no `git status`, e é por isso que dura.** O git normaliza na leitura: um
+arquivo com CRLF no disco casa com um blob em LF e a árvore parece limpa. Foi assim que os `.py`
+do checkout principal ficaram com CRLF sem ninguém notar, até que a guarda da S-218 passou a
+reprovar relatório correto num clone limpo — que é o defeito que a S-325 foi escrita para
+consertar. **Semear é a causa; normalizar ao hashear é o curativo.**
+
+**Solução.** As três vão para `atomic_write_text`, que abre o temporário com `newline="\n"`.
+O conserto e a escrita atômica são o mesmo movimento, então as três **saem de `PERMITIDAS`** no
+mesmo commit: elas não gravam mais direto, e uma exceção que sobrevive ao motivo vira permissão
+em branco.
+
+Os dois sítios restantes ficam, declarados em `SEM_LF_DECLARADO` com o motivo: o `.pgn` exportado
+e o `.review.pgn` de `pdf_to_pgn.py`. **O padrão PGN especifica CR/LF como terminador**, e nenhum
+`.pgn` é versionado neste repositório — a regra do `.gitattributes` não os alcança.
+
+**Critério de aceite.**
+
+- ✅ nenhum `write_text` em `src/` grava a quebra da plataforma, fora do que está declarado;
+- ✅ a lista de exceções recusa entrada sem motivo escrito, como a irmã dela já fazia;
+- ✅ a lista não guarda arquivo que não existe mais;
+- ✅ `PERMITIDAS` encolhe de cinco para dois, e a docstring dela diz por quê.
+
+**A guarda foi conferida contra o código que a motivou**, e não só contra o consertado: rodada
+sobre o commit da S-454, ela acusa `detection_census.py:583`, `experiments.py:191` e
+`side_survey.py:205`. Uma guarda que só é vista passar não foi vista funcionar.
+
+**Testes.** `tests/test_atomic_writes.py::EscritaAtomicaTests` — `test_todo_write_text_grava_lf`,
+`test_a_lista_de_lf_nao_guarda_arquivo_que_nao_existe_mais` e `test_cada_excecao_de_lf_diz_por_que`,
+ao lado dos quatro da guarda de escrita atômica, que é a mesma forma pelo mesmo motivo: a decisão
+estava sendo tomada por omissão.

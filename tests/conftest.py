@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
+from fnmatch import fnmatch
 from pathlib import Path
 
 import pytest
@@ -205,3 +206,93 @@ def nenhuma_caixa_modal_de_verdade() -> Iterator[None]:
     finally:
         for nome, funcao in originais.items():
             setattr(QMessageBox, nome, funcao)
+
+
+# ------------------------------------------- o que a rodada grava no `data/` de verdade (S-415)
+
+ESCRITA_LEGITIMA_EM_DATA: tuple[str, ...] = ()
+"""Padrões `fnmatch`, relativos a `data/`, que a suíte pode criar sem que isso seja defeito.
+
+Vazia é o estado medido, e não um começo por preguiça: a rodada inteira não cria caminho nenhum
+ali. Uma entrada aqui é licença para escrever na árvore de quem roda a suíte, então ela vem com
+o motivo escrito ao lado -- e nunca por profilaxia, que é como uma lista destas deixa de valer.
+"""
+
+RELATADOS_NO_MAXIMO = 20
+"""Quantos nomes a falha imprime. Um caminho novo já é o defeito; trezentos são o mesmo defeito
+com a mensagem ilegível."""
+
+
+def _listagem_de(pasta: Path) -> frozenset[str]:
+    """Tudo o que existe sob a pasta, em caminho relativo a ela.
+
+    Custa 0,25 s nos ~20 mil arquivos que `data/samples/` traz numa máquina em uso: barato para
+    a rodada inteira e caro demais para cada teste. É o que decide o escopo `session` da guarda
+    abaixo, e o preço do escopo é não saber **qual** teste gravou -- os nomes dos arquivos
+    criados costumam dizer isso melhor que o nome do teste diria.
+    """
+    if not pasta.is_dir():
+        return frozenset()
+    return frozenset(item.relative_to(pasta).as_posix() for item in pasta.rglob("*"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def nada_novo_no_data_de_verdade() -> Iterator[None]:
+    """A suíte não cria arquivo no `data/` de quem a roda (S-415).
+
+    **O caso medido, em 2026-08-31.** Um teste novo chamou `gallery_scan.save_index(livro)` e
+    `GalleryModel.save()` sem dizer onde gravar. Os dois resolvem `DEFAULT_GALLERY_DIR` -- que é
+    `PROJECT_ROOT / "data" / "gallery"` -- **na definição do argumento**, e um padrão resolvido na
+    definição não tem como ser remendado por quem chama. A rodada gravou `data/gallery/livro.json`
+    e `data/gallery/livro.index.json` na árvore de trabalho do usuário, e terminou verde.
+
+    **Por que nada acusou, e por que nada acusaria.** `data/gallery/` está no `.gitignore` (a
+    S-115 deixa de fora tudo menos o extrato humano), então nem `git status` nem a leitura do diff
+    veriam os dois arquivos. Não foi caso de ninguém ter olhado: não havia onde olhar. É a mesma
+    forma das outras três desta fase -- o que vaza, o que trava e o que some --, e esta é a que
+    **sobrevive à rodada**: pasta temporária e widget morrem no fim, um arquivo em `data/` fica.
+
+    **Por que a guarda olha o efeito, e não a chamada.** Uma varredura estática -- no molde das de
+    `tests/test_disciplina_da_suite.py`, que seria o lugar natural -- teria de conhecer cada forma
+    de escrever, e já são quatro nomes para a mesma coisa: `directory=` em `save_index` e em
+    `save_annotations`, `gallery_dir=` no `GalleryModel`, `pasta_da_galeria=` no painel da galeria.
+    Só a primeira vira regra sintática limpa. No `GalleryModel` quem grava é um **campo**, e não a
+    chamada: a suíte constrói vinte modelos sem ele que nunca gravam, e o único teste que grava
+    direito põe o campo por atribuição **depois** de construir (`test_grava_e_le_de_volta`) --
+    cobrar o argumento na construção reprovaria os vinte e o certo junto. O painel é o caso pior:
+    quem o constrói não chama `save_index`, ele chama. Todos terminam no mesmo lugar, e é o lugar
+    que esta guarda vigia.
+
+    **A pasta é a que o código resolve, e não `RAIZ`.** As duas coincidem sob o pytest, que põe
+    `src/` na frente pelo `pythonpath` do `pyproject`. Num processo que importe o pacote da
+    instalação editável elas divergem -- e é exatamente aí que a escrita cai no checkout de
+    **outra** pessoa, que é o pior caso e o que menos aparece. Uma guarda ancorada em `RAIZ`
+    passaria verde justamente sobre ele; a S-218 já pagou por essa lição uma vez.
+
+    **Relata e não apaga.** O que está em `data/` é trabalho humano acumulado (é o que o
+    `_project_root` diz sobre o `labels.csv`), e uma guarda que removesse o que julga sobra
+    precisaria estar certa todas as vezes. Errar uma vez custaria mais do que o defeito que ela
+    persegue, então ela nomeia os arquivos e a remoção fica com quem sabe o que são.
+    """
+    from chess_diagram_ocr.config import PROJECT_ROOT
+
+    pasta = PROJECT_ROOT / "data"
+    antes = _listagem_de(pasta)
+    yield
+    novos = sorted(
+        caminho
+        for caminho in _listagem_de(pasta) - antes
+        if not any(fnmatch(caminho, padrao) for padrao in ESCRITA_LEGITIMA_EM_DATA)
+    )
+    if not novos:
+        return
+    mostrados = ", ".join(novos[:RELATADOS_NO_MAXIMO])
+    resto = f" (e mais {len(novos) - RELATADOS_NO_MAXIMO})" if len(novos) > RELATADOS_NO_MAXIMO else ""
+    pytest.fail(
+        f"A rodada criou {len(novos)} caminho(s) em {pasta}: {mostrados}{resto}. Algum teste "
+        "gravou no `data/` de quem roda a suíte, que é uma árvore de trabalho e não um destino "
+        "de teste -- e `data/gallery/` está no `.gitignore`, então o `git status` não vai "
+        "mostrar isto. Diga onde gravar em vez de aceitar o padrão: `directory=` em `save_index` "
+        "e `save_annotations`, `gallery_dir=` no `GalleryModel`, `pasta_da_galeria=` no painel "
+        "da galeria. A pasta sai de `pasta_temporaria(self)`, em `tests/ambiente_de_teste.py`."
+    )

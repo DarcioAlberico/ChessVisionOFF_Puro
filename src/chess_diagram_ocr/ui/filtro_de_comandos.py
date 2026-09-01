@@ -22,8 +22,8 @@ conferida contra a outra.
 `ui/paleta_de_comandos.py`: é o nome de uma tag do `ttk.Treeview`, e uma paleta de Qt não tem tag
 nenhuma -- estaria aqui descrevendo um toolkit, num módulo que existe para não conhecer nenhum.
 
-`ui/paleta_de_comandos.py` reexporta tudo o que está aqui, então nada mudou de nome para quem já
-usava.
+`ui/paleta_de_comandos.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem
+consome agora é `qt/paleta.py`.
 """
 
 from __future__ import annotations

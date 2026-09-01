@@ -250,8 +250,23 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1258
+    LIMITE = 1289
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.227 e 1.258 -> 1.289 ao juntar os dois ramos**, e as duas subidas abaixo são de itens
+    diferentes que aconteceram em paralelo: os cinco botões do visualizador e a troca de pele.
+    Nenhuma das duas some na junção, então o corte é a soma delas.
+
+    **1.196 → 1.227 na S-506**, e as trinta e uma são a fiação dos cinco botões que voltaram ao
+    visualizador: três `connect`, os dois métodos que os atendem (`_leitura_pedida` e
+    `_exportacao_mudou`), o `ler_melhor` e o parâmetro de teto em `_opcoes`.
+
+    **Nenhuma delas é widget** -- os cinco botões foram para `qt/painel_do_pdf.py`, que é o painel
+    que os desenha. O que ficou aqui é o que só a janela pode fazer: ligar um painel ao serviço e
+    ao exportador. `ler_melhor` são duas linhas e não podiam sair: elas são a diferença entre "um
+    diagrama" e "todos", que o porte tinha perdido ao apontar os dois comandos para o mesmo
+    método.
+
 
     **1.196 → 1.258 no fecho da S-506**, e as sessenta e duas são a troca de pele e de densidade
     passando a existir. `Ver ▸ Aparência` e `Ver ▸ Densidade` estavam montados no menu e amarrados

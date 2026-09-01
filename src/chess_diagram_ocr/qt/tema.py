@@ -359,6 +359,16 @@ def folha_de_estilo(
         f"QToolTip {{ background-color: {dica}; color: {tokens.sobre_superficie(dica)};"
         f" border: 1px solid {moldura}; padding: {linha}px; }}",
         f"QPushButton {{ padding: {do_tema('QPushButton')}; }}",
+        # **O botão comum desabilitado desenhava igual ao habilitado, e a medição é esta** (S-506):
+        # fotografei a barra do visualizador antes e durante a exportação e diferenciei as duas
+        # imagens -- a fileira com "OCR todos diagramas", "Exportar PDF → PGN" e "Cancelar
+        # exportação" saiu **pixel a pixel idêntica**, com três daqueles botões trocando de estado.
+        #
+        # A causa é a linha do `QWidget` acima: uma cor vinda de folha de estilo vale em todos os
+        # estados e anula o acinzentamento que o Qt faria pela paleta. `PRIMARIO` e `DESTRUTIVO`
+        # escapavam por terem `:disabled` próprio, logo abaixo; o comum não tinha nenhum -- e é o
+        # comum que o par exportar/cancelar usa para dizer qual dos dois está vivo.
+        f"QPushButton:disabled {{ color: {secundario}; }}",
         f"QToolButton {{ padding: {do_tema('QToolButton')}; }}",
         f"QLineEdit {{ padding: {do_tema('QLineEdit')}; }}",
         f"QComboBox {{ padding: {do_tema('QComboBox')}; }}",

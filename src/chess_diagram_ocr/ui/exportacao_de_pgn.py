@@ -13,7 +13,8 @@ do corpo -- ele usa `filedialog`, `messagebox` e `root.after` --, e o segundo fr
 duas e de widget nenhum. Duas cópias de `describe_report` dariam dois relatórios do mesmo PGN, e a
 divergência apareceria justamente no ramo que quase nunca roda: o do cancelamento com parcial.
 
-`ui/export_controller.py` reexporta tudo o que está aqui.
+`ui/export_controller.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem
+consome agora é `qt/exportador.py` e `qt/janela.py`.
 """
 
 from __future__ import annotations

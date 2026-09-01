@@ -22,7 +22,8 @@ cinco irmãs) continuam em `ui/board_render.py`: elas nomeiam o que apagar antes
 um renderizador de Qt não tem tag nenhuma -- estariam aqui descrevendo um toolkit, num módulo que
 existe para não conhecer nenhum. `engrossar_traco` também fica lá, porque é PIL.
 
-`ui/board_render.py` reexporta tudo o que está aqui, então nada mudou de nome para quem já usava.
+`ui/board_render.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem desenha
+agora é `qt/tabuleiro.py`, `qt/tabuleiro_editavel.py` e `qt/tabuleiro_de_jogo.py`.
 """
 
 from __future__ import annotations

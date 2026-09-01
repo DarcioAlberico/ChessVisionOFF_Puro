@@ -11,7 +11,7 @@ Base: [ROADMAP_APARENCIA.md](ROADMAP_APARENCIA.md), que traz a leitura das duas 
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -19,7 +19,7 @@ Base: [ROADMAP_APARENCIA.md](ROADMAP_APARENCIA.md), que traz a leitura das duas 
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 
@@ -1513,6 +1513,13 @@ uma máquina que a cobre.
 a afirmação de que ele é igual ao catálogo inteiro. `perdidos()` devolve `pele → o que ela perdeu`
 e `relato()` transforma isso na mensagem de falha.
 
+> **Superado pelo corte do Tk (S-506).** O módulo e o teste saíram: as "três peles registradas"
+> eram as do toolkit. A pergunta que este item existe para fazer — *que comando do catálogo
+> ninguém alcança?* — continua sendo feita, por duas guardas em vez de um módulo:
+> `test_ui_comandos.test_todo_comando_do_catalogo_alcanca_alguem` e
+> `test_qt_janela.test_todo_comando_do_catalogo_tem_dono_nesta_janela`. O parágrafo abaixo sobre a
+> paleta não contar continua valendo, e é por isso que a guarda nova conta **menu**, e não catálogo.
+
 ### A terceira forma não conta, e é a decisão que faz o módulo medir alguma coisa
 
 "Alcançável" tem três formas: um controle na tela daquela pele, um item de `menu.MENUS`, ou uma
@@ -1587,6 +1594,25 @@ A declaração das barras: `test_a_declaracao_das_barras_bate_com_o_que_o_painel
 
 E `alcance.py` entra em `SEM_TKINTER` (S-137), que é a lista dos módulos de `ui/` que decidiram não
 importar `tkinter` — sem ela, um módulo novo sem Tk não é vigiado.
+
+> **Os onze casos acima não existem desde a S-506**, junto com o módulo. O que foi reposto, e
+> onde:
+>
+> - o inventário de alcance virou
+>   `test_ui_comandos.test_todo_comando_do_catalogo_alcanca_alguem` mais
+>   `test_qt_janela.test_todo_comando_do_catalogo_tem_dono_nesta_janela`;
+> - `test_a_linha_de_campo_e_a_unica_casa_dos_tres_de_anotacao` virou
+>   `test_ui_comandos.test_as_duas_excecoes_sao_do_catalogo_e_estao_fora_do_menu`;
+> - `test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha` foi reposta com o mesmo nome,
+>   varrendo `qt/painel_do_pdf.py` por `ast` em vez do `_montar_barras` do Tk.
+>
+> **`comandos.NAS_BARRAS_DO_PDF` encolheu de dezesseis para onze** ao ser religada: ela passou a
+> significar *o que o painel do Qt desenha*, e não mais *a tela da pele clássica*, que deixou de
+> existir. Os cinco que saíram — `ler_pagina`, `ler_melhor`, `tirar_caixa`, `exportar_pgn` e
+> `cancelar_exportacao` — **não foram para outro painel: perderam o botão.** Continuam alcançáveis
+> por menu, paleta e tecla, e a conta do catálogo os encontra; nenhuma tela do produto desenha um
+> controle para eles. Repô-los é decisão de aparência, e a regra 2 não a força, porque alcance
+> eles têm.
 
 ---
 

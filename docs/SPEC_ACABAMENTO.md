@@ -11,7 +11,7 @@ comandos e peles — é a das Fases 20 a 24 ([SPEC_UI.md](SPEC_UI.md)) e 32 a 35
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -19,7 +19,7 @@ comandos e peles — é a das Fases 20 a 24 ([SPEC_UI.md](SPEC_UI.md)) e 32 a 35
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 
@@ -222,6 +222,10 @@ a recusa do interior valia para aquelas fases e foi reaberta por esta.
   onde quem o decide é o tema.
 - O inventário de arranjo da clássica **já existe** e não foi duplicado: é o de
   `tests/test_ui_alcance.py` (S-233), que cobra que toda pele alcança o catálogo inteiro.
+  **Desde o corte do Tk (S-506) esse arquivo não existe** — ele perguntava sobre as três peles do
+  toolkit. Quem cobra a conta hoje é `test_ui_comandos.test_todo_comando_do_catalogo_alcanca_alguem`
+  (catálogo → menu ou exceção declarada) mais
+  `test_qt_janela.test_todo_comando_do_catalogo_tem_dono_nesta_janela` (a declaração tem dono).
 - `tests/test_disciplina_da_suite.py`: a tabela "onde mora a spec de cada item" cobre S-441 a S-450
   nos dois documentos novos.
 

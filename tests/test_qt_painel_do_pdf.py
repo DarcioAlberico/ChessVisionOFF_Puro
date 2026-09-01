@@ -311,5 +311,137 @@ class PainelTests(unittest.TestCase):
         self.assertEqual(mudou, [1, 1])
 
 
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ControlesDoLivroTests(unittest.TestCase):
+    """Os cinco botões que agem sobre a página exibida, e quem fica cinza (S-77/S-506).
+
+    **Eles tinham sumido no porte para o Qt** e ficado só no menu. A ausência não quebrou guarda
+    nenhuma: os cinco continuavam com item de menu, entrada na paleta e tecla, e a conta do
+    catálogo pergunta se a ação tem dono -- não se alguma tela a mostra.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.addCleanup(self.app.processEvents)
+
+    def painel(self, *, com_livro: bool = False) -> qt_pdf.PainelDoPdf:
+        montado = qt_pdf.PainelDoPdf(dpi=lambda: 220)
+        self.addCleanup(descartar, montado)
+        if com_livro:
+            montado.source = Path("livro.pdf")
+            montado._reavaliar_controles()
+        return montado
+
+    def os_cinco(self, painel: qt_pdf.PainelDoPdf) -> dict[str, object]:
+        return {
+            "ler_melhor": painel.btn_ler_melhor,
+            "ler_pagina": painel.btn_ler_pagina,
+            "tirar_caixa": painel.btn_tirar_caixa,
+            "exportar_pgn": painel.btn_exportar,
+            "cancelar_exportacao": painel.btn_cancelar_exportacao,
+        }
+
+    def test_os_cinco_tiram_o_rotulo_do_catalogo(self) -> None:
+        """Nenhum texto escrito aqui: é a regra da S-324, e `test_ui_comandos` a varre por `ast`."""
+        from chess_diagram_ocr.ui import comandos
+
+        painel = self.painel()
+        for acao, botao in self.os_cinco(painel).items():
+            with self.subTest(acao=acao):
+                self.assertEqual(comandos.rotulo_de_botao(acao), botao.text())  # type: ignore[attr-defined]
+
+    def test_sem_livro_os_cinco_ficam_cinza(self) -> None:
+        """A pré-condição é a mesma do "Abrir no leitor": não há página sobre a qual agir."""
+        painel = self.painel()
+        for acao, botao in self.os_cinco(painel).items():
+            with self.subTest(acao=acao):
+                self.assertFalse(botao.isEnabled())  # type: ignore[attr-defined]
+
+    def test_com_livro_acendem_quatro_e_o_cancelar_continua_cinza(self) -> None:
+        """O cancelar não depende de haver livro, e sim de haver exportação."""
+        painel = self.painel(com_livro=True)
+        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "exportar_pgn"):
+            with self.subTest(acao=acao):
+                self.assertTrue(self.os_cinco(painel)[acao].isEnabled())  # type: ignore[attr-defined]
+        self.assertFalse(painel.btn_cancelar_exportacao.isEnabled())
+
+    def test_a_exportacao_troca_o_par_exportar_cancelar(self) -> None:
+        """Uma por vez: enquanto uma roda, começar outra não é oferta."""
+        painel = self.painel(com_livro=True)
+        painel.exportacao_em_curso(True)
+        self.assertFalse(painel.btn_exportar.isEnabled())
+        self.assertTrue(painel.btn_cancelar_exportacao.isEnabled())
+
+        painel.exportacao_em_curso(False)
+        self.assertTrue(painel.btn_exportar.isEnabled())
+        self.assertFalse(painel.btn_cancelar_exportacao.isEnabled())
+
+    def test_o_cancelar_sobrevive_ao_trancamento(self) -> None:
+        """**É o caso que faz o botão valer alguma coisa.**
+
+        A exportação tranca o resto da janela enquanto roda, e é exatamente nesse intervalo que o
+        cancelar precisa estar vivo. Obedecer ao trancamento o apagaria na única situação em que
+        ele serve -- e um `setEnabled(False)` no painel inteiro faria isso sem apelação, porque no
+        Qt filho de widget desabilitado não reabilita.
+        """
+        painel = self.painel(com_livro=True)
+        painel.exportacao_em_curso(True)
+        painel.trancar(False)
+
+        self.assertTrue(painel.btn_cancelar_exportacao.isEnabled(), "o cancelar morreu no trancamento")
+        self.assertTrue(painel.isEnabled(), "o painel foi desabilitado em bloco")
+        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "exportar_pgn"):
+            with self.subTest(acao=acao):
+                self.assertFalse(self.os_cinco(painel)[acao].isEnabled())  # type: ignore[attr-defined]
+
+    def test_o_trancamento_apaga_a_navegacao_e_o_visor(self) -> None:
+        """O que o `setEnabled` em bloco fazia antes, agora nomeado item a item."""
+        painel = self.painel(com_livro=True)
+        painel.trancar(False)
+        self.assertFalse(painel._barra_de_navegacao.isEnabled())
+        self.assertFalse(painel.visor.isEnabled())
+        self.assertFalse(painel.deslizador.isEnabled())
+
+        painel.trancar(True)
+        self.assertTrue(painel._barra_de_navegacao.isEnabled())
+        self.assertTrue(painel.visor.isEnabled())
+
+    def test_os_dois_botoes_de_ocr_pedem_tetos_diferentes(self) -> None:
+        """**A diferença que o porte tinha perdido.** "OCR melhor diagrama" e "OCR todos" eram o
+        mesmo método, e dois botões vizinhos com rótulos diferentes fariam a mesma coisa."""
+        painel = self.painel(com_livro=True)
+        pedidos: list[bool] = []
+        painel.leitura_pedida.connect(pedidos.append)
+
+        painel.btn_ler_melhor.click()
+        painel.btn_ler_pagina.click()
+
+        self.assertEqual([True, False], pedidos)
+
+    def test_exportar_e_cancelar_avisam_a_janela(self) -> None:
+        """Quem exporta é o controlador da janela: este painel não conhece o serviço."""
+        painel = self.painel(com_livro=True)
+        painel.exportacao_em_curso(True)
+        pedidos: list[str] = []
+        painel.exportacao_pedida.connect(lambda: pedidos.append("comecar"))
+        painel.exportacao_cancelada.connect(lambda: pedidos.append("cancelar"))
+
+        painel.btn_cancelar_exportacao.click()
+        painel.exportacao_em_curso(False)
+        painel.btn_exportar.click()
+
+        self.assertEqual(["cancelar", "comecar"], pedidos)
+
+    def test_tirar_caixa_e_do_proprio_painel(self) -> None:
+        """Ao contrário dos outros quatro, este não precisa da janela: a caixa é do visor."""
+        painel = self.painel(com_livro=True)
+        avisos: list[str] = []
+        painel.estado.connect(avisos.append)
+
+        painel.btn_tirar_caixa.click()
+
+        self.assertTrue(avisos, "o botão não chegou a `dispensar_a_selecionada`")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

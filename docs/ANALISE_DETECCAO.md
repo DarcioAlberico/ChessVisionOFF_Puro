@@ -13,7 +13,7 @@
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -21,7 +21,7 @@
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 
@@ -819,8 +819,10 @@ Os outros nove livros do diff aparecem **só com reajuste**: caixa que cresceu p
 certo sem trocar de identidade. É o efeito esperado de remendar quinas, e é o motivo de a
 dilatação ter sido recusada — com ela os 1023 candidatos de contorno se moveriam, e não 61.
 
-**Linha de base nova:** `docs/metrics/deteccao_base.csv` e `.json` (39 livros, 1555
-candidatos).
+**Linha de base nova:** `docs/metrics/deteccao_20260820_s175.csv` e `.json` (39 livros, 1555
+candidatos). Ela **deixou** de ser `deteccao_base` na S-454, que a regravou sobre um acervo de
+46 livros -- as afirmações desta seção continuam apontando para o arquivo datado, que é o que
+elas mediram.
 
 #### 7. Medido: a leitura, que é o que o censo não responde
 
@@ -852,6 +854,9 @@ entrega — um diagrama em 993, contra 12 que subiram e 13 que apareceram acima 
 registrado com nome e número porque a regra da S-82 é essa: candidato do tamanho de um diagrama
 impresso que muda para pior precisa de justificativa, e a justificativa aqui é o saldo, não a
 ausência de custo.
+
+> **Fechado pela [S-454](#s-454--a-legenda-que-entra-no-recorte-e-o-quadrado-que-o-contorno-não-fecha--implementada-2026-08-30):** o reparo de quina liga tinta separada por até 1 px, e
+> a legenda impressa a essa distância entra no mesmo contorno. São 9 folhas neste livro.
 
 **Testes.** `tests/test_board_detection.py::DiagonalContactRepairTests`, 6 casos. Três deles são
 o registro da lição: `test_fechamento_reto_nao_liga_a_quina_e_o_reparo_liga` prende a razão de o
@@ -1129,6 +1134,294 @@ justamente a inferência que a S-12 recusa fazer contra a declaração do PDF.
 
 ---
 
+### S-454 · A legenda que entra no recorte, e o quadrado que o contorno não fecha ✅ implementada (2026-08-30)
+
+> Item deixado em aberto pela [S-175](#s-175--a-quina-que-a-rasterização-não-liga-e-o-tabuleiro-que-sai-pela-metade--implementada-2026-08-20):
+> o reparo de quina liga tinta separada por até 1 px, e a legenda impressa a essa distância
+> entra no mesmo contorno.
+
+**A classe tem duas metades, e só uma delas dá para fechar por aqui.** A S-175 registrou o
+reparo de quina como o que devolve o tabuleiro inteiro ao contorno. O efeito colateral dela
+custa de duas maneiras diferentes:
+
+Medido no livro inteiro — 320 folhas, 220 DPI —, **153 candidatos de contorno em 94 folhas**
+caem na faixa de razão que o quadrado forçado trata. Eles se partem em duas metades:
+
+| metade | o que acontece | quantos no `Reinfeld` |
+|---|---|---|
+| **perdida inteira** | o borrão lê contraste de casa exatamente 0,0000, e a guarda da S-143 o mata antes de qualquer disputa | **126** |
+| **entregue achatada** | o borrão guarda um fiapo de contraste, passa pela guarda e **é exportado** — 116,18×126,00 pt, as 8 fileiras fora de registro | 27, dos quais **9** saíam achatados |
+
+A segunda metade é a pior das duas, e era a que ninguém tinha visto: um recorte errado sai da
+detecção **parecendo bom**, entra no PGN e só um olho humano na posição percebe. Esta entrega
+fecha essa metade — as 9. A primeira continua aberta, e a §3 explica por que tentar fechá-la
+aqui custava mais do que rendia.
+
+> **Os outros 18 da segunda metade não são defeito.** Eles passam da guarda, entram na faixa por
+> razão, e o quadrado forçado **não os muda**: a variante não bate o contraste do original, que é
+> a regra do item. Estar na faixa é condição de ser examinado, não de ser corrigido.
+
+#### 1. A causa: o contorno fecha em volta do tabuleiro **e** do número
+
+O reparo de quina da S-175 liga tinta separada por até 1 px — é o que faz o tabuleiro voltar a
+ser uma componente só. Quando o número da legenda está impresso a essa distância da borda de
+baixo, ele entra na mesma componente, e `findContours` devolve **um** contorno em volta dos
+dois. Sai 116×126 pt onde o tabuleiro mede 116×116, e o warp para `BOARD_SIZE` estica as 8
+fileiras para caber em 8/9 da altura.
+
+Não é um passe de limiar que falta. Rodando os três separadamente na região, e cada elemento
+diagonal sozinho, **nenhum** entrega o quadrado:
+
+| passe | caixa |
+|---|---|
+| 1 — cru | nada do tamanho de um diagrama |
+| 2 — fechamento reto | 101,07 × 116,12 pt (cortado, 7 colunas de 8) |
+| 3 — reparo de quina | **116,12 × 126,26 pt** (o tabuleiro **mais** o número) |
+| só `DIAGONAL_KERNELS[0]` | 101,07 × 116,12 |
+| só `DIAGONAL_KERNELS[1]` | 116,12 × 126,26 |
+
+As duas diagonais fazem coisas diferentes — uma devolve o corte que a S-175 existe para
+consertar, a outra funde a legenda — e nenhuma combinação delas separa o número do tabuleiro.
+**A separação não é um problema de binarização: naquela fase sub-pixel as duas tintas são
+mesmo uma coisa só.** Por isso a correção é de recorte, e não de limiar.
+
+#### 2. A solução: a segunda chance, decidida pelo contraste de casa
+
+Um tabuleiro é quadrado. Um quad que não é quadrado está errado **por construção**, e as duas
+variantes que o reduzem ao quadrado — uma ancorada em cada ponta do eixo comprido — são
+hipóteses estritamente melhores do que ele. Quem arbitra é o contraste de casa, que é a medida
+de estar em registro com a grade: a variante só entra se **melhorar**.
+
+Duas âncoras, e não cinco: a legenda mora de **um** lado, então o tabuleiro encosta numa das
+duas pontas do eixo comprido. Ancorar no meio não corresponde a defeito nenhum, e é só chance
+extra de acertar ruído. No eixo curto o quad já está no tamanho.
+
+O corte trabalha nos vetores das arestas, e não no bbox, para que um quad girado encolha no
+**seu** eixo e não no da folha — o bbox de um quad girado não é o quad.
+
+#### 3. Três condições, e as três foram cobradas pela medição
+
+**1 · Só mexe em quem já tem contraste de casa.** Ressuscitar candidato que a guarda da S-143
+condenou parece o ganho principal — é dali que sairia o sexto diagrama da página 39 do
+`Reinfeld`, e são os 126 da primeira metade da tabela lá de cima. Medido no acervo em 2026-08-17, sobre o
+código daquele dia, é o contrário: **812 ressurreições produzem 1 recorte legível**. As outras
+811 voltam como caixa quadrada com um fiapo de contraste, e algumas suprimem diagrama de
+verdade por IoU — 4 perdidos no `Karpov 2`, 1 no `Vishy_Anand`.
+
+E não há piso de contraste que separe as duas populações: no `GALLAGHER` a ressurreição chega a
+**0,4254** e lê 0,3050, contra **0,2053** e 0,9997 do resgate bom do `Reinfeld`. O sinal que
+separa não é o contraste da variante — **é a guarda já ter dito que ali havia tabuleiro**.
+
+> Estes dois números são de uma medição de um desenho **recusado**, e por isso não foram
+> refeitos na remedição de 2026-08-30: reproduzi-los exigiria reimplementar a ressurreição para
+> voltar a rejeitá-la. O que a remedição cobre é o que foi entregue, e está na §4.
+
+**2 · A variante herda o score.** Recalcular a nota sobre a caixa nova sobe a parcela de
+geometria, e com ela o candidato muda de posição na página. Medido no
+`Vishy_Anand_Great_Chess_Combinations.pdf`, página de índice 29: um quad sem contraste nenhum
+subia de 0,5800 para 0,6876, ultrapassava o diagrama de verdade (0,6460) e o suprimia por IoU.
+O quadrado forçado conserta o **recorte**, e não decide quem ganha — por isso só `quad`, `bbox`
+e o contraste viajam de volta.
+
+**3 · O gatilho é a forma, e não o contraste zerado.** A primeira versão só tentava quando o
+candidato lia 0,0000, o que é verdade nos 126 do `Reinfeld` e é sorte daquele acervo -- ali o
+fiapo de contraste e a ausência dele caem quase sempre do mesmo lado. Um
+tabuleiro achatado por uma fileira pode guardar contraste de sobra e mesmo assim ler errado: no
+tabuleiro sintético de `_board_with_glued_caption` o borrão lê 0,2254, e a guarda o deixaria
+passar achatado.
+
+#### 4. Medido: o censo do acervo
+
+46 livros, 24 páginas amostradas por livro mais 8 de frente, contra
+`docs/metrics/deteccao_20260820_s175.csv` — que era o `deteccao_base` desta árvore até esta
+entrega:
+
+| | |
+|---|---|
+| candidatos | 1830 (1255 de contorno, 575 de imagem embutida) |
+| **caixas corrigidas** | **13** |
+| das quais pioraram a textura | **0** |
+| **perdas** | **0** — nenhuma suspeita, nenhuma acima do limiar |
+| `detector_score` preservado | **13 de 13** |
+
+Os 275 "ganhos" do diff **não são desta entrega**: são os 7 livros que entraram no acervo desde
+2026-08-20 (`Dvoretsky`, `Yusupov 4`, `Fischer`, `Seirawan`, `Журавлев`, e os dois `Nunn`). O
+diff do censo compara arquivos, não programas, e essa parte dele mede o acervo.
+
+As 13 corrigidas, por razão da caixa antiga:
+
+| razão | livros | Δ textura |
+|---|---|---|
+| 1,0162 a 1,0244 | `GALLAGHER` (4), `Koblenz` (7), `Niemeijer` (1) | +0,0067 a +0,0755 |
+| **1,0845** | `Reinfeld`, folha 65 | **+0,2640** |
+
+**Linha de base nova:** `docs/metrics/deteccao_base.csv` e `.json` (46 livros, 1830 candidatos).
+A de 2026-08-20 fica em `docs/metrics/deteccao_20260820_s175.csv`, que é o que a S-175 mediu.
+
+**E o conjunto de campo não se move.** A guarda da S-218 obriga a remedir os quatro relatórios
+quando o caminho de medição muda, e os quatro foram remedidos com os seus modelos. As 68 folhas
+tocam livros que esta entrega corrige -- `GALLAGHER` e `Koblenz` estão lá --, e mesmo assim
+**recall, precisão, taxa de exportação, exatas e `field_exact` saem idênticos nos quatro**.
+
+O único campo que mexe é o `repaired_squares` da decodificação com restrições, e ele mexe **nos
+dois sentidos**: 39 → 36 no `controle`, 20 → 23 no `s108`, e sem mudança nos outros dois. Isso é
+ruído da decodificação, não sinal desta entrega -- se fosse sinal, andaria para o mesmo lado nos
+quatro. Registrar que **não** mudou é a parte que a S-100 cobra: um item que remede e não conta o
+que ficou igual esconde metade do resultado.
+
+#### 5. Medido: a leitura, que é o que o censo não responde
+
+O censo conta caixa. Uma caixa **reajustada** continua lá com outro tamanho, e o censo não tem
+como dizer que ela deixou de ser ilegível — é a lição da S-175 §7, e a régua é a mesma:
+`piece_classifier.pt` lendo os dois recortes, na mesma renderização de cada folha.
+
+O livro inteiro, 320 folhas, com `_square_forced_quads` neutralizado de um lado:
+
+| | antes | depois |
+|---|---|---|
+| caixas corrigidas | — | **9**, nas folhas 39, 45, 64, 72, 75, 86, 106, 117 e 126 |
+| razão | 1,0280 a 1,0901 | 0,9972 a 1,0000 |
+| contraste de casa | 0,0124 a 0,1225 | 0,0281 a 0,4608 |
+| `min_confidence` | **0,0001 a 0,0511** | **0,1685 a 1,0000** |
+| **acima do gate de 0,80** | **0** | **8** |
+| pioraram | — | **0** |
+| candidatos perdidos | — | **0** |
+| `detector_score` mudou | — | **0** |
+
+Oito das nove passam de ilegíveis a **0,9999–1,0000**. A nona é a folha 72, a menor caixa do
+conjunto (105 pt), que sobe de 0,0511 para 0,1685 e continua abaixo do gate — o quadrado forçado
+consertou o enquadramento, e o que sobrou não é enquadramento.
+
+O `detector_score` idêntico nas nove é a segunda condição do item cobrada em campo, e não por
+raciocínio.
+
+#### 6. O teto, e a foto que ele salvou
+
+A primeira versão deste item não tinha teto, e a remedição achou o preço dele: **a foto de um
+tabuleiro de verdade, em perspectiva, na capa do `Estrin - Bauernopfer in der Eroeffnung
+(1980)`**. 293,38 × 223,06 pt, razão 1,3153. Forçada ao quadrado pela âncora da esquerda ela
+perde as colunas **g e h** — um terço do tabuleiro —, e a textura cai de 0,3599 para 0,3137.
+
+Era a única piora do acervo, e as duas populações se separam sozinhas:
+
+| | razão | Δ textura |
+|---|---|---|
+| as 13 corrigidas | 1,0162 a 1,0845 | **todas positivas** |
+| a foto do `Estrin` | **1,3153** | **−0,0462** |
+
+Entre 1,0901 e 1,3153 não há nada medido. `SQUARE_FORCE_LIMIT = 1,15` fica nesse vão: mantém os
+13 ganhos e remove a única perda. **O piso e o teto medem coisas diferentes** — o piso separa
+arredondamento de defeito, o teto separa **defeito de outra coisa**. Uma legenda colada
+acrescenta uma tira ao tabuleiro, e tira é limitada; uma fotografia em perspectiva não é esse
+defeito, e nem o contorno enviesado que o docstring de `_square_forced_quads` descreve.
+
+**O teto custou um resgate, e ele tem nome.** Na folha 125 do `Reinfeld` a caixa mede
+97,53 × 116,18 — razão 1,1913 —, e sem teto a leitura ia de 0,0450 a 1,0000. Mas aquele ganho
+não vinha do mecanismo deste item: forçar **outro** quad da mesma folha mudava o dedupe por IoU,
+e um candidato melhor sobrevivia no lugar. Era a única folha das 320 em que o `detector_score`
+mudava — ou seja, a única em que a segunda condição do item era violada. Com o teto ela vale
+exata nas 320.
+
+E a caixa de lá é tabuleiro cortado **de lado**, não tabuleiro com legenda embaixo: outra classe
+de defeito, que merece item próprio em vez de carona no acidente de dedupe deste.
+
+#### 7. O que continua aberto
+
+**A primeira metade da tabela do topo — 126 candidatos neste livro.** O borrão que lê contraste
+exatamente 0,0000 é morto pela guarda da S-143 antes de chegar aqui, e ressuscitá-lo foi medido
+e recusado — ver §3.
+
+**O tabuleiro cortado de lado**, achado por acidente na folha 125 e descrito acima --
+medido e recusado na [S-455](#s-455--o-tabuleiro-cortado-de-lado-e-a-coluna-que-o-alargamento-repõe--não-implementada--a-medição-reprovou).
+
+**Testes.** `tests/test_board_detection.py::SquareForcedCropTests`, 7 casos. Dois deles são o
+registro da lição: `test_sem_o_quadrado_forcado_o_recorte_vinha_alto` prende o defeito no lugar
+— sem ele, o teste do recorte limpo não provaria nada, porque um passe de limiar que já
+entregasse o quadrado o faria passar de graça — e
+`test_quad_muito_fora_do_quadrado_nao_gera_variante` prende o teto na razão exata da foto do
+`Estrin`.
+
+---
+
+### S-455 · O tabuleiro cortado de lado, e a coluna que o alargamento repõe ❌ **não implementada — a medição reprovou**
+
+> Item deixado em aberto pela [S-454](#s-454--a-legenda-que-entra-no-recorte-e-o-quadrado-que-o-contorno-não-fecha--implementada-2026-08-30),
+> §6: na folha 125 do `Reinfeld` a caixa mede 97,53 × 116,18 pt, e sem o teto a leitura ia de
+> 0,0450 a 1,0000 — por acidente de dedupe, e não pelo mecanismo daquele item. Ficou escrito
+> que era outra classe de defeito e merecia item próprio. É este, e ele **não passa**.
+
+**A proposta era o inverso exato da S-454.** Lá o quad sobra e encolhe; aqui falta e cresce. Um
+tabuleiro cujo contorno perdeu uma coluna sai ~101 × 116 pt onde mede 116 × 116, e alargá-lo até
+o quadrado — ancorado em cada ponta do eixo curto — reporia o que o contorno cortou.
+
+**E a hipótese que a sustentava está certa.** Esses candidatos leem contraste de casa
+**exatamente 0,0000**, e a guarda da S-143 os mata. Isso parece dizer "não é tabuleiro", e não é
+o que diz: `_checker_score` amostra uma grade 8×8 sobre o recorte já esticado, então **sete
+colunas espremidas em oito fazem toda amostra cair na fronteira entre casas**. Contraste zero
+ali é a grade fora de fase. Alargar repõe a fase, e o modelo lê.
+
+A medição confirma o mecanismo com folga. No `Reinfeld`, 320 folhas:
+
+| | |
+|---|---|
+| candidatos mortos pela guarda, lado ≥ 90 pt | **232** |
+| dos quais **estreitos** (cortados de lado) | **209** — razão 1,0030 a 1,3854 |
+| que, alargados, leem acima do gate de 0,80 | **174** (83%), quase todos em 0,9999–1,0000 |
+
+**O que reprova o item não é o mecanismo: é o que ele acrescenta.** Dos 174 resgates, **168 caem
+em cima de diagrama que a página já entrega**. O pipeline já recuperava aquelas posições por
+outro caminho, e o dedupe por IoU descartaria a segunda cópia. Sobram **6** em posição vazia — e
+mesmo esses seis não chegam todos ao fim.
+
+**O A/B do produto, e não do candidato.** `detect_diagrams` completo nas duas pontas da mesma
+renderização, 320 folhas, casado por IoU:
+
+| | |
+|---|---|
+| diagramas que continuam iguais | **995** |
+| ganhos | **3**, todos lendo 1,0000 |
+| perdas | **0** |
+
+Seis viram três: a diferença entre o candidato que lê bem e o que sobrevive à seleção, ao teto
+por página e ao dedupe. **A segunda é a que vale**, e é a lição que a S-175 §7 já tinha deixado.
+
+**No acervo inteiro, a conta desaba.** Censo de 46 livros contra `docs/metrics/deteccao_base.csv`:
+
+| | |
+|---|---|
+| ganhos | **1** |
+| perdas | 0 |
+| reajustados | 0 |
+| livros que ganharam alguma coisa | **1** — o `Reinfeld` |
+
+**Custo**, medido em `_extract_candidate_quads` sobre 8 folhas já renderizadas, mediana de 24
+corridas: **104,6 → 146,4 ms por folha, +40%**.
+
+**Quarenta por cento em toda folha de todo livro, para um candidato em 1.830.** Quarenta e cinco
+dos 46 livros não ganham nada — o defeito é da tipografia de um. O A/B do livro inteiro e o censo
+não se contradizem: 3 em 320 folhas e 1 nas 32 que o censo amostra são a mesma taxa, cerca de um
+diagrama a cada cem folhas, num livro do acervo.
+
+> **O risco que eu previ não apareceu, e registrar isso importa.** A expectativa era que as 168
+> duplicatas entrassem na disputa por IoU e derrubassem diagrama bom — é o que a
+> [S-454 §3](#s-454--a-legenda-que-entra-no-recorte-e-o-quadrado-que-o-contorno-não-fecha--implementada-2026-08-30)
+> mediu na ressurreição, onde 812 candidatos custaram 5 diagramas. Aqui foram **0 perdas**: a
+> duplicata chega com o mesmo enquadramento do vencedor, e não com um enviesado que o suprime.
+> A recusa é por preço, não por dano — e sem medir eu a teria escrito pelo motivo errado.
+
+**O que fica registrado, para quem tiver a mesma ideia.** A classe existe, é grande (209 num
+livro), o diagnóstico de "contraste 0,0000 = grade fora de fase" está certo, e o alargamento
+funciona. O que não existe é margem: o detector já entrega aquelas posições. Se um dia entrar um
+livro cuja tipografia corte a coluna com frequência, esta seção tem o mecanismo pronto — e o
+número que ele precisa bater.
+
+**Como reproduzir.** As três medições estão em `_extract_candidate_quads(pagina, checker_floor=None)`
+para a população, `detect_diagrams` nas duas pontas para o A/B, e `cvoff-census --baseline` para o
+acervo. O alargamento foi escrito, medido e removido no mesmo trabalho; ele é duas âncoras no eixo
+curto, com razão entre `SQUARE_FORCE_TOLERANCE` e 1,40, aplicadas onde a guarda da S-143 recusaria.
+
+---
+
 ## 7. Sequenciamento sugerido
 
 | ordem | entrega | fecha | estado |
@@ -1243,3 +1536,26 @@ que garante que ele seja o **antes de verdade**.
 pt de `REFINE_PADDING_PT` que o refino usa, então um diagrama pequeno num bbox justo chega a
 ~0,93 e não a 1,00 — e o corte precisa ser lido nessa escala. Medi-lo sobre o bbox cru daria
 outra distribuição e outro número.
+
+### Os números da S-454
+
+| número | como |
+|---|---|
+| as 13 caixas corrigidas no acervo | `cvoff-census --csv nova.csv --baseline docs/metrics/deteccao_20260820_s175.csv`, casando as linhas por `(pdf, page, index)` e comparando `x0,y0,x1,y1` |
+| a razão de cada caixa antiga, e as duas populações | `max(w, h) / min(w, h)` sobre a caixa do CSV **antigo** — é a razão que o teto julga |
+| as 9 folhas do `Reinfeld`, e a leitura | **uma árvore só**, com `_square_forced_quads` trocado em memória por `lambda quad: []` de um lado; os dois lados casados por IoU ≥ 0,5, e não por posição na lista, que é reordenada por score |
+| `min_confidence` antes e depois | `predict_board(warp_from_quad(pagina, quad, target_size=BOARD_SIZE), *load_model("models/piece_classifier.pt"))` nos dois quads da mesma renderização |
+| a tabela de passes de §1 | `_threshold_passes` na região, e cada `DIAGONAL_KERNELS[i]` sozinho, medindo o `boundingRect` de cada contorno |
+| a foto da capa do `Estrin`, antes e depois | `page.get_pixmap(clip=Rect(*caixa), dpi=220)` com a caixa de cada CSV, conferida a olho |
+| os 153 na faixa e os 126 que a guarda mata | `_extract_candidate_quads(pagina, checker_floor=None)` nas 320 folhas, filtrando lado ≥ 90 pt e razão entre `SQUARE_FORCE_TOLERANCE` e `SQUARE_FORCE_LIMIT` |
+
+**Uma árvore, e não duas — e a diferença é de propósito.** A S-175 mediu com dois `worktree`
+porque mexia em `_threshold_passes`, que muda **quais** contornos existem: ali o "antes" tinha
+de ser o programa inteiro. Aqui a mudança é uma função pura chamada num ponto só, então
+neutralizá-la em memória entrega exatamente o programa de antes — e medir os dois lados na mesma
+renderização elimina a variação de rasterização, que naquela medição custou 85 caixas
+reajustadas de ruído.
+
+**A coluna `page` do censo é 1-based** (`page_index + 1` em `detection_census.py`), e o índice de
+folha do A/B é 0-based. A folha 65 do CSV é a de índice 64 — conferir isso é o que separa "o
+defeito sumiu" de "olhei a página errada".

@@ -23,7 +23,8 @@ parte dele que é de toolkit e é a parte que não pode errar: no Tk é `panel.a
 derruba o programa**. Um sumidouro compartilhado teria de esconder essa diferença atrás de uma
 função, e a função esconderia justamente o que quem lê precisa ver.
 
-`ui/review_panel.py` reexporta `ScanRequest`, então nada mudou de nome para quem já usava.
+`ui/review_panel.py` reexportava o `ScanRequest`, e saiu no corte do Tk (S-506). Quem consome
+agora é `qt/painel_de_revisao.py` e `qt/janela.py`.
 """
 
 from __future__ import annotations

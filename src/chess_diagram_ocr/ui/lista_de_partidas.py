@@ -10,7 +10,8 @@ contém a posição**, e um número ali seria lido como resposta. Uma segunda c�
 linha é uma cópia dessa decisão, e o dia em que uma das duas escrever `0` é o dia em que uma das
 janelas passa a afirmar uma coisa que ninguém mediu.
 
-`ui/games_dialog.py` reexporta tudo o que está aqui, com os nomes privados de antes.
+`ui/games_dialog.py` reexportava tudo o que está aqui, com os nomes privados de antes, e saiu no
+corte do Tk (S-506). Quem consome agora é `qt/dialogos.py`.
 """
 
 from __future__ import annotations

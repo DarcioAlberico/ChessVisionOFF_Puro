@@ -250,6 +250,55 @@ class MontagemTests(unittest.TestCase):
             with self.subTest(acao=acao):
                 self.assertTrue(callable(tabela[acao]))
 
+    def test_todo_comando_do_catalogo_tem_dono_nesta_janela(self) -> None:
+        """**A outra metade da conta do catálogo**, e a que só esta janela pode fechar.
+
+        A guarda pura (`test_ui_comandos.CoberturaDoCatalogoTests`) cobra que toda ação do
+        catálogo esteja **declarada**: no menu, ou numa das duas listas de exceção. Ela roda sem
+        abrir janela, e por isso não sabe se a declaração tem dono. Esta cobra a outra metade --
+        que o dono exista e seja chamável --, e as duas juntas são a conta inteira:
+
+            123 no catálogo = 119 na tabela da janela + 3 na linha de campo + 1 na janela de busca
+
+        Cada exceção é cobrada **pelo dono que ela declara**, e não por um `getattr` solto: um
+        `substituir_todos` que passasse a ser atendido por qualquer painel com um método de mesmo
+        nome é justamente o acidente que a lista existe para impedir.
+
+        O dono da janela de busca é a **classe** e não um atributo da janela: `JanelaDeBusca` é um
+        `QDialog` criado na hora de achar, e a lista de ocorrências que o `substituir_todos` troca
+        só existe enquanto ele está aberto. É por isso que o comando não está na tabela.
+        """
+        from chess_diagram_ocr.qt import campo as painel_de_campo
+        from chess_diagram_ocr.qt.painel_de_texto import JanelaDeBusca
+        from chess_diagram_ocr.ui import comandos
+
+        janela = self.janela()
+        tabela = janela._comandos()
+        sem_dono: list[str] = []
+        for registro in comandos.CATALOGO:
+            acao = registro.acao
+            dono = tabela.get(acao)
+            if dono is None and acao in painel_de_campo.ACOES_PROPRIAS:
+                dono = janela.campo.atender(acao)
+            if dono is None and acao in comandos.NA_JANELA_DE_BUSCA:
+                dono = getattr(JanelaDeBusca, acao, None)
+            if not callable(dono):
+                sem_dono.append(acao)
+        self.assertEqual([], sem_dono, "ação do catálogo que nenhum painel desta janela atende")
+
+    def test_as_tres_acoes_da_linha_de_campo_sao_as_do_catalogo(self) -> None:
+        """Uma lista declarada e uma cópia dela divergem no primeiro nome que entra numa só.
+
+        `qt/campo.py` atende as ações por um `dict` escrito à mão em `atender`. Se
+        `comandos.NA_LINHA_DE_CAMPO` ganhar uma quarta, `ACOES_PROPRIAS` a acompanha de graça e o
+        `dict` **não** -- e é o teste de cima que acusa, porque o dono some. Este aqui cobra o
+        elo mais barato dos dois: que a lista do painel seja a do catálogo, e não uma segunda.
+        """
+        from chess_diagram_ocr.qt import campo as painel_de_campo
+        from chess_diagram_ocr.ui import comandos
+
+        self.assertEqual(painel_de_campo.ACOES_PROPRIAS, frozenset(comandos.NA_LINHA_DE_CAMPO))
+
     def test_a_frase_de_todo_painel_chega_ao_rodape(self) -> None:
         """Nenhum painel sabe que o rodapé existe, e é a janela que os liga."""
         janela = self.janela()
@@ -523,6 +572,56 @@ class FiacaoTests(unittest.TestCase):
         self.assertEqual(len(janela.pdf.boxes or ()), 0)
         janela.devolver_caixas()
         self.assertEqual(len(janela.pdf.boxes or ()), 1)
+
+    # ------------------------------------------- os cinco botões que voltaram ao visualizador
+
+    def test_os_dois_botoes_de_ocr_do_visualizador_chegam_a_janela(self) -> None:
+        """A ligação é afirmada **pelo efeito**, e não trocando o método por um espião.
+
+        Depois do `connect`, trocar `janela.ler_pagina` não troca quem o sinal chama -- o `connect`
+        guardou o objeto ligado. Um teste que patchasse o método passaria em verde com o fio
+        cortado. Aqui a janela está sem página rasterizada, e a pré-condição no rodapé é a prova de
+        que o pedido chegou.
+        """
+        janela = self.janela(com_livro=False)
+        janela.pdf.leitura_pedida.emit(False)
+        self.assertEqual("Abra um PDF antes de ler a página.", janela.rodape.mensagem())
+
+    def test_exportar_pelo_visualizador_chega_ao_exportador(self) -> None:
+        """Mesma régua: sem livro, a pré-condição do exportador é o que prova o fio."""
+        janela = self.janela(com_livro=False)
+        janela.pdf.exportacao_pedida.emit()
+        self.assertEqual("Abra um PDF antes de exportar o PGN.", janela.rodape.mensagem())
+
+    def test_a_exportacao_acende_o_cancelar_do_visualizador(self) -> None:
+        """O `controles` do exportador chega ao painel, e não só ao trancamento da janela."""
+        janela = self.janela()
+        self.assertFalse(janela.pdf.btn_cancelar_exportacao.isEnabled())
+
+        janela.exportador.controles.emit(False)
+
+        self.assertTrue(janela.pdf.btn_cancelar_exportacao.isEnabled())
+        self.assertFalse(janela.pdf.btn_exportar.isEnabled(), "dá para começar duas exportações")
+        self.assertFalse(janela.abas.isEnabled(), "o resto da janela não trancou")
+
+    def test_ler_melhor_e_ler_pagina_deixaram_de_ser_o_mesmo_comando(self) -> None:
+        """**A regressão que o porte tinha deixado passar** (S-506).
+
+        Os dois nomes do catálogo apontavam para `ler_pagina`, então "OCR melhor diagrama" lia a
+        página inteira. Nenhuma guarda acusava: os dois comandos tinham dono e o dono era chamável
+        -- a conta do catálogo pergunta se **há** dono, não se ele é o certo.
+        """
+        janela = self.janela(com_livro=False)
+        tabela = janela._comandos()
+        self.assertIsNot(tabela["ler_melhor"], tabela["ler_pagina"])
+
+    def test_o_teto_de_diagramas_e_o_que_separa_os_dois(self) -> None:
+        """`ocr_best` era `max_boards=1` e `ocr_all` era a preferência inteira, no Tk."""
+        from chess_diagram_ocr.qt.janela import DEFAULT_MAX_BOARDS
+
+        janela = self.janela(com_livro=False)
+        self.assertEqual(1, janela._opcoes(1).max_boards)
+        self.assertEqual(DEFAULT_MAX_BOARDS, janela._opcoes().max_boards)
 
 
 if __name__ == "__main__":  # pragma: no cover

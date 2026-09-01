@@ -14,7 +14,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
@@ -22,7 +22,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
 > | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 
@@ -541,15 +541,25 @@ spec pedia por nome.
 **O número da produção sobre o conjunto novo** (`docs/metrics/field_20260822_s99.json`):
 
 ```
-    Páginas ...................... 66  (17 sem diagrama)
+    Páginas ...................... 68  (19 sem diagrama)
     Anotados ..................... 115
-    Recall de detecção ........... 0.9478     precisão 0.9909  (1 falso positivo)
-    **Taxa de exportação** ....... 0.7652  (88/115)
+    Recall de detecção ........... 0.9478     precisão 0.9732  (3 falsos positivos)
+    **Taxa de exportação** ....... 0.8696  (100/115)
     Conferíveis .................. 96 de 115  (83%)
-    **Exatidão de campo** ........ 0.9882  (84/85 exportados)
-    Exatidão condicional ......... 0.9583  (92/96)
-    **Exportados e errados** ..... 1
+    **Exatidão de campo** ........ 0.9787  (92/94 exportados)
+    Exatidão condicional ......... 0.9688  (93/96)
+    **Exportados e errados** ..... 2
 ```
+
+> **Estes números são de outro modelo, e a data acima não é a da medição.** Eles foram remedidos
+> no fecho do corte do Tk (S-506), e **não** são uma reprodução: o checkpoint que gerou o
+> relatório de 2026-08-22 (digest `0e952e5a`) não existe mais no disco -- foi sobrescrito por um
+> retreino, e nenhum dos 22 `.pt` do repositório bate com ele. O que está medido aqui é o
+> `models/piece_classifier.pt` de hoje.
+>
+> Que a diferença é de **modelo** e não de código está provado ao lado: os outros três
+> relatórios, cujos checkpoints sobreviveram, reproduziram os trinta campos exatos com este
+> mesmo código. A série de comparação quebra aqui, e é por isso que está escrito.
 
 > **O arquivo citado foi remedido em 2026-08-25**, e o bloco acima é o que ele dizia sobre as 66
 > páginas. O conjunto passou a 68 — duas folhas sem diagrama do `Kemeri` —, e o que se moveu foi

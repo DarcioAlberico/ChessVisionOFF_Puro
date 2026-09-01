@@ -5,15 +5,15 @@
   "pages_per_book": 24,
   "front_matter": 8,
   "suspect_below_pt": 72.0,
-  "books": 46,
-  "candidates": 1830,
+  "books": 39,
+  "candidates": 1555,
   "suspects": 0,
   "books_with_suspects": 0,
   "pages_numbering_shifted": 0,
   "pages_size_prior_mixed": 0,
   "by_source": {
-    "contour": 1255,
-    "embedded": 575
+    "contour": 1023,
+    "embedded": 532
   },
   "per_book": [
     {
@@ -94,7 +94,7 @@
       "by_source": {
         "embedded": 23
       },
-      "trimmed": 16,
+      "trimmed": 10,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
@@ -103,8 +103,8 @@
       },
       "texture": {
         "min": 0.2027,
-        "p05": 0.2072,
-        "median": 0.3989,
+        "p05": 0.2059,
+        "median": 0.401,
         "max": 0.6634
       }
     },
@@ -232,30 +232,6 @@
       }
     },
     {
-      "pdf": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 23,
-      "pages_failed": 0,
-      "candidates": 35,
-      "by_source": {
-        "contour": 35
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "190": 2,
-        "200": 33
-      },
-      "texture": {
-        "min": 0.3768,
-        "p05": 0.4155,
-        "median": 0.5281,
-        "max": 0.5943
-      }
-    },
-    {
       "pdf": "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
       "pages_sampled": 30,
       "pages_with_candidate": 22,
@@ -349,7 +325,7 @@
       "texture": {
         "min": 0.2323,
         "p05": 0.5051,
-        "median": 0.7098,
+        "median": 0.7071,
         "max": 0.9211
       }
     },
@@ -490,39 +466,15 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "150": 25,
-        "160": 23,
+        "150": 21,
+        "160": 27,
         "170": 1
       },
       "texture": {
         "min": 0.4521,
-        "p05": 0.4747,
-        "median": 0.5935,
+        "p05": 0.4716,
+        "median": 0.5858,
         "max": 0.7151
-      }
-    },
-    {
-      "pdf": "La_casa_del_Ajedrez_El_metodo_Yusupov_4_Yusupov_Artur_Fundamentos.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 9,
-      "pages_failed": 0,
-      "candidates": 54,
-      "by_source": {
-        "contour": 54
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "140": 2,
-        "150": 52
-      },
-      "texture": {
-        "min": 0.2595,
-        "p05": 0.2781,
-        "median": 0.3918,
-        "max": 0.6318
       }
     },
     {
@@ -639,50 +591,26 @@
     {
       "pdf": "Mieses - Blind Schaken (1938).pdf",
       "pages_sampled": 30,
-      "pages_with_candidate": 12,
+      "pages_with_candidate": 11,
       "pages_failed": 0,
-      "candidates": 14,
+      "candidates": 13,
       "by_source": {
-        "contour": 14
+        "contour": 13
       },
       "trimmed": 0,
       "suspects": 0,
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "80": 1,
         "90": 3,
         "140": 5,
         "150": 5
       },
       "texture": {
         "min": 0.4554,
-        "p05": 0.4687,
-        "median": 0.4945,
-        "max": 0.9465
-      }
-    },
-    {
-      "pdf": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 14,
-      "pages_failed": 0,
-      "candidates": 14,
-      "by_source": {
-        "contour": 14
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "140": 14
-      },
-      "texture": {
-        "min": 0.4454,
-        "p05": 0.448,
-        "median": 0.5597,
-        "max": 0.5912
+        "p05": 0.4677,
+        "median": 0.4927,
+        "max": 0.5558
       }
     },
     {
@@ -771,12 +699,13 @@
       "pages_numbering_shifted": 0,
       "pages_size_prior_mixed": 0,
       "side_histogram": {
-        "120": 95
+        "120": 94,
+        "130": 1
       },
       "texture": {
-        "min": 0.5445,
-        "p05": 0.5813,
-        "median": 0.6377,
+        "min": 0.3847,
+        "p05": 0.5797,
+        "median": 0.6348,
         "max": 0.7073
       }
     },
@@ -902,57 +831,6 @@
       }
     },
     {
-      "pdf": "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 18,
-      "pages_failed": 0,
-      "candidates": 20,
-      "by_source": {
-        "contour": 20
-      },
-      "trimmed": 0,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "160": 10,
-        "170": 10
-      },
-      "texture": {
-        "min": 0.5424,
-        "p05": 0.5533,
-        "median": 0.5988,
-        "max": 0.6651
-      }
-    },
-    {
-      "pdf": "Журавлев_Н_The_Manual_of_Chess_Combinations_5_2021.pdf",
-      "pages_sampled": 31,
-      "pages_with_candidate": 17,
-      "pages_failed": 0,
-      "candidates": 92,
-      "by_source": {
-        "contour": 74,
-        "embedded": 18
-      },
-      "trimmed": 18,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "150": 7,
-        "160": 75,
-        "170": 8,
-        "180": 2
-      },
-      "texture": {
-        "min": 0.3786,
-        "p05": 0.418,
-        "median": 0.57,
-        "max": 0.7816
-      }
-    },
-    {
       "pdf": "📚Aagaard J. Excelling at chess calculation.pdf",
       "pages_sampled": 32,
       "pages_with_candidate": 24,
@@ -998,56 +876,6 @@
         "p05": 0.3873,
         "median": 0.5808,
         "max": 0.785
-      }
-    },
-    {
-      "pdf": "📚Nunn J. Secrets of Minor Piece Endings.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 20,
-      "pages_failed": 0,
-      "candidates": 31,
-      "by_source": {
-        "contour": 21,
-        "embedded": 10
-      },
-      "trimmed": 10,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "130": 30,
-        "160": 1
-      },
-      "texture": {
-        "min": 0.1704,
-        "p05": 0.2469,
-        "median": 0.4827,
-        "max": 0.7311
-      }
-    },
-    {
-      "pdf": "📚Nunn J. Secrets of Pawnless Endings.pdf",
-      "pages_sampled": 32,
-      "pages_with_candidate": 19,
-      "pages_failed": 0,
-      "candidates": 28,
-      "by_source": {
-        "contour": 13,
-        "embedded": 15
-      },
-      "trimmed": 10,
-      "suspects": 0,
-      "pages_numbering_shifted": 0,
-      "pages_size_prior_mixed": 0,
-      "side_histogram": {
-        "130": 25,
-        "140": 3
-      },
-      "texture": {
-        "min": 0.3331,
-        "p05": 0.4816,
-        "median": 0.8268,
-        "max": 0.9267
       }
     },
     {
