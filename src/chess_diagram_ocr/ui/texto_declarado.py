@@ -18,7 +18,8 @@ que precisa de `models/char_classifier.pt`, e esse arquivo **não vem no reposit
 novo a aba abria com o motor que não pode funcionar, tendo `auto` na mesma caixa: a primeira
 leitura de texto da vida de quem instala falhava por falta de um arquivo.
 
-`ui/texto_panel.py` reexporta tudo o que está aqui.
+`ui/texto_panel.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem consome
+agora é `qt/painel_de_texto.py`, `qt/janela.py` e `cli/editor_inventario.py`.
 """
 
 from __future__ import annotations

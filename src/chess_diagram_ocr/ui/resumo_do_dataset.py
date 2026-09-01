@@ -22,7 +22,8 @@ quando a aba aparece -- continua em cada frontend, porque o sinal de "a aba apar
 toolkit: no Tk é o `<Map>` que o `ttk.Notebook` dispara, no Qt é o `showEvent`. O *estado* que ela
 usa (`_stale`) é uma bandeira, e uma bandeira não precisa de módulo.
 
-`ui/dataset_panel.py` reexporta tudo o que está aqui, então nada mudou de nome para quem já usava.
+`ui/dataset_panel.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem
+consome agora é `qt/painel_do_dataset.py`.
 """
 
 from __future__ import annotations

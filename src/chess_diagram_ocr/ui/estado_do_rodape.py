@@ -6,8 +6,8 @@ existem apartadas do widget: é o que permite afirmar "erro não expira" e "a p�
 em verde" sem abrir janela, no mesmo espírito de `ui/busy.py`.
 
 **Por que elas mudaram de arquivo na S-501.** Faltava a consequência de estarem apartadas. O
-`ui/rodape.py` importa `tkinter` na primeira linha do corpo, e tem de importar: `RodapeDaJanela`
-herda de `ttk.Frame`, e classe-base é avaliada na importação. Então a decisão pura era pura e,
+`ui/rodape.py` importava `tkinter` na primeira linha do corpo, e tinha de importar:
+`RodapeDaJanela` herdava de `ttk.Frame`, e classe-base é avaliada na importação. Então a decisão pura era pura e,
 ainda assim, ninguém conseguia lê-la sem carregar o Tk junto.
 
 O segundo frontend precisa exatamente destas funções e de widget nenhum. Copiá-las daria duas
@@ -15,7 +15,8 @@ tabelas de severidade para manter, e a primeira mensagem de erro que uma reconhe
 não seria uma janela dizendo "isto falhou" em vermelho e a outra dizendo o mesmo em cinza -- que
 é o defeito 3 do cabeçalho de `ui/rodape.py`, agora entre janelas.
 
-`ui/rodape.py` reexporta tudo o que está aqui, então nada mudou de nome para quem já usava.
+`ui/rodape.py` reexportava tudo o que está aqui, e saiu inteiro no corte do Tk (S-506). Quem
+consome agora é `qt/rodape.py`, `qt/janela.py` e `ui/dispositivos.py`.
 """
 
 from __future__ import annotations

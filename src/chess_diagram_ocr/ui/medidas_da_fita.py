@@ -30,7 +30,8 @@ uma altura diferente para a **mesma** decisão -- e o orçamento deixaria de ser
 programa para virar dois números de dois desenhos. O que o segundo frontend confere é o que o
 primeiro confere: que a fita montada não passa do previsto. Ver `qt/fita.py`.
 
-`ui/fita.py` reexporta tudo o que está aqui, então nada mudou de nome para quem já usava.
+`ui/fita.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem consome agora
+é `qt/fita.py`.
 """
 
 from __future__ import annotations

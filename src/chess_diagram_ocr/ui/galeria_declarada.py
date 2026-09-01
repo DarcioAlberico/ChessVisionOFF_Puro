@@ -21,7 +21,8 @@ simplifica sem perceber.
 **Por que isso pede endereço próprio.** `ui/gallery_panel.py` importa `tkinter` **e** `PIL.ImageTk`
 na primeira linha do corpo, e o segundo frontend precisa das quatro coisas e de widget nenhum.
 
-`ui/gallery_panel.py` reexporta tudo o que está aqui.
+`ui/gallery_panel.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem
+consome agora é `qt/painel_da_galeria.py`.
 """
 
 from __future__ import annotations

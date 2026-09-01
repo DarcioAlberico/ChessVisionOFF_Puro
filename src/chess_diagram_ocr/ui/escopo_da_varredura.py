@@ -10,7 +10,8 @@ a fila de revisão recebe, e o segundo frontend precisa dos dois. Uma segunda cl
 nome faria `isinstance` responder diferente conforme a janela, que é o tipo de defeito que não
 aparece no teste de nenhuma das duas.
 
-`ui/scan_scope.py` reexporta tudo o que está aqui.
+`ui/scan_scope.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem consome
+agora é `qt/dialogos.py` e `qt/painel_da_galeria.py`.
 """
 
 from __future__ import annotations
