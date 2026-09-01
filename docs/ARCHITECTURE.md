@@ -194,7 +194,7 @@ disparar, e não antes:
 | a Fase 8 exigir sobreposição **editável** sobre a página renderizada | é onde o canvas do Tk deixa de ser desconforto e vira trabalho desproporcional |
 | o `labels.csv` passar de **10 mil linhas** | a paginação da S-23 deixa de ser mitigação e vira obstáculo ao fluxo |
 
-Hoje o `labels.csv` tem **4.717** linhas — 47% do gatilho (medido em 2026-08-28; o número é
+Hoje o `labels.csv` tem **5.321** linhas — 53% do gatilho (medido em 2026-09-01; o número é
 conferido por `tests/test_docs.py`, S-135). Quando a hora chegar, `Qt` dá
 `QTableView` com modelo virtual (30 mil linhas sem paginar), `QGraphicsScene` para tabuleiro
 e sobreposições, `QThread` + sinais no lugar de `root.after`, `QPdfView` nativo, DPI correto
@@ -307,7 +307,7 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 |---|---|---|
 | `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split, e a confirmação de ilegalidade deliberada (`illegal_ok`) | sim |
 | `data/splits.csv` | partição treino/validação/teste, estável sob crescimento, atribuída às amostras novas pelo próprio treino (S-56) | sim |
-| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (4,5 GB) |
+| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (5,0 GB) |
 | `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
 | `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | não — `.gitignore:28` |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
@@ -350,7 +350,7 @@ cvoff-gallery --import-human    # o caminho de volta; o que é da pessoa vence o
 ```
 
 Toda escrita de arquivo de trabalho passa por `atomic_io`: grava num temporário e troca. O
-`labels.csv` é 4.717 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
+`labels.csv` é 5.321 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
 cada correção. Desde a S-57 o `.pt` também passa por ali — era o maior dos arquivos, o mais
 demorado de escrever, e o único cuja escrita acontece numa thread de fundo enquanto outra
 pode estar lendo o mesmo caminho.
