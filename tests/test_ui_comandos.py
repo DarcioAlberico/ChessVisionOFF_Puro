@@ -151,6 +151,31 @@ def _rotulos_reconfigurados(no: ast.AST) -> list[str]:
     return achados
 
 
+def _acoes_desenhadas(no: ast.AST) -> set[str]:
+    """As ações do catálogo que viram controle naquele nó, por `ast`.
+
+    Duas formas, e são as duas que o painel do PDF usa: o `acao` do ajudante `_botao` -- segundo
+    posicional, depois da barra -- e o argumento de `comandos.rotulo_de_botao(...)`, que é como os
+    dois `QCheckBox` e o botão do leitor pegam o rótulo sem passar pelo ajudante.
+
+    **Só constante conta.** Dentro do próprio `_botao` o argumento é o parâmetro `acao`, um `Name`;
+    contá-lo faria a varredura declarar que existe uma ação chamada "acao".
+    """
+    achadas: set[str] = set()
+    for filho in ast.walk(no):
+        if not isinstance(filho, ast.Call):
+            continue
+        nome = getattr(filho.func, "attr", "") or getattr(filho.func, "id", "")
+        alvo: ast.expr | None = None
+        if nome == "_botao" and len(filho.args) >= 2:
+            alvo = filho.args[1]
+        elif nome == "rotulo_de_botao" and filho.args:
+            alvo = filho.args[0]
+        if isinstance(alvo, ast.Constant) and isinstance(alvo.value, str):
+            achadas.add(alvo.value)
+    return achadas
+
+
 def _funcao(arvore: ast.AST, nome: str) -> ast.FunctionDef:
     for no in ast.walk(arvore):
         if isinstance(no, ast.FunctionDef) and no.name == nome:
@@ -269,6 +294,46 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
         self.assertEqual(
             [], _rotulos_literais(campo), "rótulo de botão escrito à mão na linha de campo"
         )
+
+    def test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha(self) -> None:
+        """**Reposta no lugar da que saiu no corte do Tk** (S-233/S-506).
+
+        `comandos.NAS_BARRAS_DO_PDF` é declarada em `ui/` para o inventário poder lê-la sem abrir
+        janela, e o painel monta os controles à mão do outro lado. A distância entre os dois é
+        onde a lista apodrece: ela ficou **sem leitor nenhum** do corte até aqui, e nesse intervalo
+        divergiu em cinco nomes sem que nada acusasse.
+
+        Quem a cobrava era `test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha` de
+        `tests/test_ui_alcance.py`, que varria o `_montar_barras` de `ui/pdf_panel.py`. O padrão
+        mudou com o toolkit -- lá era `ttk.Button(text=...)`, aqui é o ajudante `_botao` e o
+        `rotulo_de_botao` dos dois `QCheckBox` --, e é o padrão traduzido que esta guarda usa.
+        """
+        desenhadas = _acoes_desenhadas(ast.parse(PDF_PANEL.read_text(encoding="utf-8")))
+        self.assertEqual(sorted(comandos.NAS_BARRAS_DO_PDF), sorted(desenhadas))
+
+    def test_a_varredura_das_barras_acha_os_dois_jeitos_de_desenhar(self) -> None:
+        """O **controle** da guarda de cima, e ele casa contra exemplos literais.
+
+        Ancorá-lo no painel de verdade o faria se apagar junto com o defeito: uma varredura que
+        deixasse de reconhecer o `_botao` acharia zero ação, a lista declarada teria de encolher
+        para zero para o teste passar, e as duas ficariam de acordo sobre nada. Os dois trechos
+        abaixo são as duas formas que o painel usa, escritas à mão aqui.
+        """
+        arvore = ast.parse(
+            "class Painel:\n"
+            "    def _montar(self):\n"
+            '        self._botao(barra, "abrir_pdf", self.abrir_pdf, estilos.PRIMARIO)\n'
+            '        self.marcar = QCheckBox(comandos.rotulo_de_botao("marcar_diagramas"), barra)\n'
+            "    def _botao(self, barra, acao, funcao):\n"
+            "        return QPushButton(comandos.rotulo_de_botao(acao), barra)\n"
+        )
+        self.assertEqual({"abrir_pdf", "marcar_diagramas"}, _acoes_desenhadas(arvore))
+
+    def test_toda_acao_declarada_nas_barras_esta_no_catalogo(self) -> None:
+        """Um nome escrito errado na lista faria o painel desenhar botão sem rótulo (`comando`
+        levanta), e a guarda de cima o compararia contra o painel sem nunca perguntar se ele
+        existe."""
+        self.assertEqual([], comandos.acoes_fora_do_catalogo(comandos.NAS_BARRAS_DO_PDF))
 
     def test_os_rotulos_que_divergem_do_menu_estao_registrados(self) -> None:
         """**O defeito que este item fecha, virado teste.**

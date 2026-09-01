@@ -716,12 +716,7 @@ estão aqui, mas o painel ainda escreve os rótulos dele à mão -- por isso os 
 NAS_BARRAS_DO_PDF: tuple[str, ...] = (
     "abrir_pdf",
     "abrir_no_leitor",
-    "ler_melhor",
-    "ler_pagina",
     "selecionar_area",
-    "tirar_caixa",
-    "exportar_pgn",
-    "cancelar_exportacao",
     "pagina_anterior",
     "proxima_pagina",
     "zoom_menos",
@@ -731,21 +726,27 @@ NAS_BARRAS_DO_PDF: tuple[str, ...] = (
     "roda_vira_pagina",
     "marcar_diagramas",
 )
-"""Os comandos que as duas barras do painel do PDF desenhavam -- a tela da pele clássica (S-233).
+"""Os comandos que as duas barras de `qt/painel_do_pdf.py` desenham (S-233).
 
-**Esta lista está sem leitor e sem guarda desde o corte do Tk (S-506), e é decisão pendente.**
-Ela foi declarada para o inventário da S-233 poder lê-la sem abrir janela, e quem a cobrava era
-`tests/test_ui_alcance.py`, que varria o `_montar_barras` de `ui/pdf_panel.py` por `ast` e exigia
-que as duas concordassem. A função, o módulo e o teste saíram juntos no corte; a lista ficou.
+**Declarado aqui e montado lá, e a distância entre os dois tem guarda.** O painel constrói os onze
+controles à mão -- `QPushButton` pelo `_botao`, `QCheckBox` pelos dois interruptores --, com estado,
+dica e função diferentes em cada um. O que a lista compra é o inventário poder lê-la sem abrir
+janela; quem cobra que as duas concordem é
+`test_ui_comandos.test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha`, que varre aquele
+arquivo por `ast`.
 
-Ela também **não descreve mais o que existe**: dos dezesseis nomes daqui, `qt/painel_do_pdf.py`
-desenha onze. `ler_melhor`, `ler_pagina`, `tirar_caixa`, `exportar_pgn` e `cancelar_exportacao`
-moram noutros painéis do Qt. Traduzir a guarda exige antes decidir o que a lista passa a
-significar -- a tela da pele clássica, que já não existe, ou os botões do painel de hoje --, e
-por isso ela não foi traduzida junto com as outras varreduras.
+**A lista mudou de significado no corte do Tk (S-506), e encolheu de dezesseis para onze.** Antes
+ela era a tela da pele *clássica*, desenhada por `_montar_barras` de `ui/pdf_panel.py`, e quem a
+cobrava era `tests/test_ui_alcance.py` -- função, módulo e teste saíram juntos. Agora ela é o que o
+painel do Qt desenha, que é a única tela que existe.
 
-**Na pele "Foco" e na "Fita" estes controles existem e não são empacotados** (S-223), e por isso a
-lista era a tela da **clássica** e não do painel: o que a pele decide é o que aparece."""
+**Cinco comandos perderam o botão no porte** e não estão mais aqui: `ler_pagina`, `ler_melhor`,
+`tirar_caixa`, `exportar_pgn` e `cancelar_exportacao`. Eles continuam **alcançáveis** -- têm item
+de menu, entrada na paleta e tecla, e a conta do catálogo os encontra --, mas nenhum painel do Qt
+desenha um controle para eles. Repô-los na tela é decisão de aparência, e não de alcance.
+
+**Na pele "Foco" e na "Fita" estes controles existem e não são empacotados** (S-223): o que a pele
+decide é o que aparece, e esta lista é o que o painel desenha."""
 
 
 NA_JANELA_DE_BUSCA: tuple[str, ...] = ("substituir_todos",)
