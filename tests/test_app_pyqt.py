@@ -719,11 +719,36 @@ class SelftestTests(unittest.TestCase):
         self.pasta = pasta_temporaria(self)
 
     def test_com_um_pdf_de_verdade_o_auto_teste_passa(self) -> None:
-        """**Não exige o checkpoint**, e é deliberado: quem mede o pipeline é o auto-teste do
-        `app_tkinter.py`. O que falta responder aqui é se o Qt sobe, se a janela monta e se ela
-        renderiza e marca uma página -- que é a parte que um `.zip` quebra sem dizer nada."""
+        """O caminho inteiro: checkpoint, PDF, janela, render, reconhecimento, treino e as peles.
+
+        **Pula sem o checkpoint, e o pulo e a resposta honesta** (S-417). O `.pt` nao e
+        versionado -- ele nasce do treino de quem usa o programa --, e numa maquina sem ele a
+        pergunta que este auto-teste faz ("esta instalacao le um diagrama?") nao tem resposta.
+
+        **Era isto que fazia o teste passar aqui e reprovar na CI**, e o defeito e meu: ate a
+        S-506 o auto-teste nao abria o checkpoint, porque delegava o pipeline ao `--selftest` do
+        arquivo de entrada que o corte apagou. Quando ele voltou a medir o caminho inteiro, o
+        codigo 3 passou a ser a resposta certa numa maquina sem `.pt` -- e a maquina de quem
+        desenvolve tem um.
+        """
         app_pyqt = self._app_pyqt()
+        if not Path(app_pyqt.DEFAULT_MODEL_PATH).exists():
+            self.skipTest(f"sem checkpoint em {app_pyqt.DEFAULT_MODEL_PATH}: o pipeline nao roda")
         self.assertEqual(0, app_pyqt.selftest(pdf_de_teste(self.pasta / "livro.pdf")))
+
+    def test_sem_checkpoint_o_codigo_de_saida_e_o_do_arquivo_que_falta(self) -> None:
+        """O outro lado, e **este roda em toda maquina**: sem o `.pt` o programa abre e nao le.
+
+        Codigo proprio e nao o 1 generico: quem chega aqui conserta com um arquivo, e a
+        diferenca entre "o programa falhou" e "falta o modelo" e a diferenca entre abrir uma
+        issue e copiar um `.pt` para `models/`.
+        """
+        from unittest import mock
+
+        app_pyqt = self._app_pyqt()
+        ausente = self.pasta / "modelos" / "nao_existe.pt"
+        with mock.patch.object(app_pyqt, "DEFAULT_MODEL_PATH", ausente):
+            self.assertEqual(3, app_pyqt.selftest(pdf_de_teste(self.pasta / "livro.pdf")))
 
     def test_sem_pdf_o_codigo_de_saida_diz_o_que_falta(self) -> None:
         from unittest import mock
