@@ -1110,7 +1110,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 |---|---|
 | S-01 a S-36 | [docs/SPEC.md](docs/SPEC.md) |
 | S-37 a S-77 | [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) |
-| S-78 a S-82, S-143, S-175, S-176 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
+| S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
 | S-95 a S-142, S-171 a S-174, S-218, S-219 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
 | S-144 a S-170, S-177 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
@@ -1118,7 +1118,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-220 a S-234, S-294, S-295, S-324 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
 | S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
-| S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
+| S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
 
@@ -1144,7 +1144,10 @@ criterio de aceite dele. A tabela acima e sobre a spec.
 - [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 13 (S-37 a S-75),
   incluindo os defeitos da Fase 7.0 e a Fase 12, que saiu de uso e nao de varredura
 - [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) -- o glifo do cabecalho reconhecido
-  como diagrama, os quatro danos medidos e o censo de candidatos (S-78 a S-82)
+  como diagrama, os quatro danos medidos e o censo de candidatos (S-78 a S-82). Guarda tambem
+  os itens de recorte que vieram depois: a foto quadrada (S-143), a quina que a rasterizacao
+  nao liga (S-175), a faixa que passa por diagrama (S-176) e a legenda que entra no recorte
+  (S-454)
 - [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) -- a base de partidas como fonte
   de verdade: o indice por nome, a busca por posicao e a escolha que vira procedencia
   (S-83 a S-94)
