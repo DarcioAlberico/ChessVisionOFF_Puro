@@ -1121,7 +1121,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-144 a S-170, S-177 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 | S-178 a S-217 | [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) |
 | S-220 a S-234, S-294, S-295, S-324 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
-| S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
+| S-235 a S-267, S-291 a S-293, S-521 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
 | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
@@ -1194,7 +1194,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   plano para transforma-la num editor: a aba tem 6 controles, 3 tags de cor e **1** formato de
   saida, e devolve uma `str` -- dai a regra de que todo atributo (negrito, italico, cor, estilo)
   mora no documento e nao no widget, porque tag do Tk nao sobrevive ao botao Salvar
-- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 42 e 51 (S-235 a S-267, S-291 a S-293):
+- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 42, 51 e 78 (S-235 a S-267, S-291 a S-293, S-521):
   o documento rico como dado, o italico que o leitor ja mede e joga fora, o negrito medido pela
   espessura do traco (a camada declara estilo em 14 dos 41 livros), o arquivo que reabre com
   diagrama e faixa, a paleta gerada das 314 classes do modelo, `Ctrl+S` no editor -- que hoje nao

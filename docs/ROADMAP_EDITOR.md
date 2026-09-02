@@ -24,7 +24,7 @@ estilos, catálogo de comandos, ícones — está em [SPEC_UI.md](SPEC_UI.md) e
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 > | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
@@ -359,6 +359,16 @@ e o que mudou é que existe um documento para as ferramentas editarem.
 
 - **S-255** · O rascunho automático, e a recuperação depois do fechamento
 - **S-256** · O inventário do editor: nada de recurso sem comando, atalho e teste
+
+## Fase 78 — A digitação que chega ao documento
+
+Não estava neste plano, e é o maior defeito que a aba tem hoje. A triagem da S-511 (2026-09-02),
+ao ligar as teclas do editor que o porte para o Qt tinha deixado sem `bind`, mediu que **o que se
+digita no editor do Qt não chega ao documento**: o `QTextEdit` recebe o texto, `documento` fica
+como estava, e salvar grava a folha sem a correção — o ciclo que a S-238 fechou no Tk e o porte não
+refez. A spec está em [SPEC_EDITOR.md](SPEC_EDITOR.md), com a tabela dos quatro gestos medidos.
+
+- **S-521** · A digitação que chega ao documento, e o desfazer que a vê
 
 ---
 

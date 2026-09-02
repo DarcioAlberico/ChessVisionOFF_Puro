@@ -115,8 +115,8 @@ SEM_CHAMADOR: dict[str, str] = {
     "texto_declarado.ESCAPE_DA_PALETA": (
         "a sequência digitada da S-248 depende de a digitação chegar ao documento, e no editor do "
         "Qt ela ainda não chega -- medido em 2026-09-02: o widget recebe o texto e `documento` não. "
-        "Fica declarada para quando chegar; portá-la antes seria trocar um caractere que o "
-        "documento não tem."
+        "Fica declarada para quando chegar (S-521); portá-la antes seria trocar um caractere que "
+        "o documento não tem."
     ),
     "texto_declarado.COMANDO_DA_ESCOLHA": (
         "as listas de escolha exclusiva da S-259/S-262 não foram portadas: no Qt alinhamento e "

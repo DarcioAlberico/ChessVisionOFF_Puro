@@ -40,7 +40,7 @@ próprio Qt num processo à parte. O comando que produziu cada um vai no item co
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 > | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
@@ -268,7 +268,7 @@ maior razão entre pixel mudado e linha escrita: quatro itens dentro de `qt/tabu
 > 16 foram apagados e 8 ganharam chamador — e três guardas mortas no corte voltaram. **Onze
 > achados eram decisão desligada no porte**, da cor da caixa que não seguia a pele às teclas do editor de texto, que o Qt nunca
 > ligou (`Ctrl+B` não fazia nada). A conta está na S-511 da spec. E a triagem achou o que não é
-> órfão: a digitação no editor de texto do Qt não chega ao documento — item para a próxima fase.
+> órfão: a digitação no editor de texto do Qt não chega ao documento — é a S-521, Fase 78.
 
 **As duas decisões que a fase precisa tomar.** A primeira é *onde a esteira acaba*: a resposta é a
 mesma da S-449 — tabuleiro mais `margem_de_coordenada()`, lida da **mesma** função, para as duas não

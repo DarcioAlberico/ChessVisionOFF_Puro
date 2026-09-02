@@ -18,7 +18,7 @@ reabre aquelas decisões. A fundação de aparência é a das Fases 20 a 24 ([SP
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 > | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
@@ -412,8 +412,9 @@ teclas do editor: (a) **a digitação no editor de texto do Qt não chega ao doc
 `QTextEdit` recebe o texto e `documento` fica como estava, então salvar grava a folha sem o que foi
 digitado; e (b) o mostrador de corpo (S-292) e as listas de escolha exclusiva (S-259/S-262) não
 foram portados. Os cinco nomes que os declaram ficaram em `SEM_CHAMADOR` com o motivo escrito,
-como `LARGURA_DO_CIRCULO`: o que falta não é chamador, é o recurso. O (a) é item para a próxima
-fase — é o defeito de maior custo que este plano encontrou, e ele não estava na lista dos oito.
+como `LARGURA_DO_CIRCULO`: o que falta não é chamador, é o recurso. O (a) virou a **S-521**
+(Fase 78, [SPEC_EDITOR.md](SPEC_EDITOR.md)) — é o defeito de maior custo que este plano encontrou,
+e ele não estava na lista dos oito.
 
 **A guarda ganhou o controle que faltava.** `test_uso_em_docstring_nao_conta_e_uso_em_codigo_conta`
 afirma o detector contra fonte de mentira, e não contra o arquivo real — a mesma trava da guarda
