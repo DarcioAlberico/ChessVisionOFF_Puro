@@ -29,7 +29,6 @@ from collections.abc import Iterable
 __all__ = [
     "DESTRUTIVO",
     "NEUTRO",
-    "PAPEIS_DE_BOTAO",
     "PRIMARIO",
     "conferir_barra",
     "estilo_de_botao",

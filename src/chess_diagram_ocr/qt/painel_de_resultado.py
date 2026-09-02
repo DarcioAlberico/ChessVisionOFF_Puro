@@ -188,6 +188,7 @@ class PainelDeResultado(QWidget):
 
         self._montar()
         self._atualizar_tudo()
+        atalhos.conferir_dono(self, "PainelDeResultado")
 
     # ------------------------------------------------------------------------------ montagem
 

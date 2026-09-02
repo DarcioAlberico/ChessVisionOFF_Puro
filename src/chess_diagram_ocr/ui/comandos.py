@@ -35,23 +35,16 @@ from dataclasses import dataclass
 from . import estilos, strings
 
 __all__ = [
-    "ACERVO",
-    "AJUDA",
-    "ARQUIVO",
     "CATALOGO",
     "Comando",
-    "EDICAO",
     "ESTUDO",
     "GRUPOS",
     "NAS_BARRAS_DO_PDF",
     "NA_JANELA_DE_BUSCA",
     "NA_LINHA_DE_CAMPO",
-    "OCR",
-    "VISUALIZACAO",
     "acoes_fora_do_catalogo",
     "comando",
     "do_grupo",
-    "em_destaque",
     "estilo",
     "fila_de_destaque",
     "papel",
@@ -130,7 +123,7 @@ class Comando:
     a promessa que a S-161 registra como o defeito de item de menu sem comando."""
 
     destaque: bool = False
-    """Entra na fila curta da pele "Foco" (S-223). Ver `em_destaque` antes de ligar um novo."""
+    """Entra na fila curta da pele "Foco" (S-223). Ver `fila_de_destaque` antes de ligar um novo."""
 
     rotulo_alternado: str = ""
     """O texto do botão **enquanto o comando está ligado**, para os que alternam. Vazio = não alterna.
@@ -920,22 +913,16 @@ def do_grupo(grupo: str) -> tuple[Comando, ...]:
     return tuple(registro for registro in CATALOGO if registro.grupo == grupo)
 
 
-def em_destaque() -> tuple[Comando, ...]:
-    """Os comandos da fila curta da pele "Foco" (S-223), na ordem de declaração.
+def fila_de_destaque() -> tuple[tuple[Comando, ...], ...]:
+    """A fila da pele "Foco", já agrupada: uma tupla por grupo, na ordem de `GRUPOS` (S-223).
 
     **Quatro, e todos têm atalho de teclado** -- que é o critério da S-223, e não o gosto: a
     mesma lógica com que `estilos.PRIMARIO` é definido como *"a ação que o atalho também faz"*.
-
     Não são exatamente os quatro da Imagem 1. Ela desenhou "exportar" e omitiu "salvar", e a
     medida do fluxo inverte os dois: exporta-se uma vez por livro e salva-se uma vez por
     diagrama. O quarto lugar foi para `salvar`; `aplicar_fen` ganhou `Ctrl+Enter`, que lhe
-    faltava, e a razão está em `ui/atalhos.py`.
-    """
-    return tuple(registro for registro in CATALOGO if registro.destaque)
-
-
-def fila_de_destaque() -> tuple[tuple[Comando, ...], ...]:
-    """A fila da pele "Foco", já agrupada: uma tupla por grupo, na ordem de `GRUPOS`.
+    faltava, e a razão está em `ui/atalhos.py`. (Havia uma `em_destaque()` plana ao lado desta,
+    que ninguém chamava; saiu na triagem da S-511 e o argumento dela veio para cá.)
 
     **O separador não está aqui, e é de propósito.** Devolver grupos em vez de uma lista plana
     com marcas faz "separador só entre grupos, nunca na ponta" deixar de ser regra a cobrar e

@@ -340,5 +340,41 @@ class LigarTests(unittest.TestCase):
         self.assertEqual(guarda._teclas, {})
 
 
+class TeclasDoEditorTests(unittest.TestCase):
+    """As teclas do editor passaram a ser ligadas pelo tradutor deste módulo (S-511)."""
+
+    def test_toda_tecla_do_editor_traduz(self) -> None:
+        """`Ctrl+]` e `Ctrl+[` entram por nome de tecla (`bracketright`/`bracketleft`), e o tradutor
+        não os conhecia -- uma tecla que não traduz vira um `QKeySequence` que não dispara nem
+        reclama."""
+        for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
+            with self.subTest(acao=acao, sequencia=sequencia):
+                self.assertTrue(qt_atalhos.sequencia_qt(sequencia))
+        self.assertEqual(qt_atalhos.sequencia_qt("<Control-bracketright>"), "Ctrl+]")
+        self.assertEqual(qt_atalhos.sequencia_qt("<Control-bracketleft>"), "Ctrl+[")
+
+    def test_o_widget_que_declara_a_tecla_fica_com_ela(self) -> None:
+        """A regra da S-117 no lugar do `owns_key`: `teclas_proprias` no widget, ou num pai dele."""
+
+        class _Filho:
+            def __init__(self, pai: object) -> None:
+                self._pai = pai
+
+            def parentWidget(self) -> object:  # noqa: N802 - nome do Qt
+                return self._pai
+
+        class _Pai:
+            teclas_proprias = frozenset({"<Control-r>"})
+
+            def parentWidget(self) -> None:  # noqa: N802 - nome do Qt
+                return None
+
+        filho = _Filho(_Pai())
+        self.assertEqual(qt_atalhos.teclas_proprias(filho), frozenset({"<Control-r>"}))
+        self.assertEqual(qt_atalhos.teclas_proprias(object()), frozenset())
+        self.assertTrue(qt_atalhos.cede_a_tecla(filho, "<Control-r>"))
+        self.assertFalse(qt_atalhos.cede_a_tecla(filho, "<Control-s>"))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

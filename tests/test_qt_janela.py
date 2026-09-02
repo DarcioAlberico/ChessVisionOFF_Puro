@@ -20,7 +20,7 @@ from unittest import mock
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.ui import abas, pele
+from chess_diagram_ocr.ui import abas, geometria, pele
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 
@@ -121,12 +121,36 @@ class MontagemTests(unittest.TestCase):
     def test_as_seis_abas_estao_na_ordem_da_spec(self) -> None:
         """**A ordem é o item** (S-162): Resultado, Estudo e Revisão são do diagrama aberto agora;
         Texto, Dataset e Galeria são do acervo. O corte entre os dois grupos é onde a barra muda
-        de assunto."""
+        de assunto.
+
+        **Contra a tupla declarada, e não contra uma cópia dela** (S-511): comparando com a cópia,
+        `abas.ABAS` seguiu declarando a Configuração por um mês depois de ela sair no porte, e
+        nada acusou. A janela agora lê a tupla; o que se afirma aqui é que ela a lê inteira."""
         janela = self.janela()
         nomes = [abas.nome_base(janela.abas.tabText(i)) for i in range(janela.abas.count())]
-        self.assertEqual(
-            nomes, [abas.RESULTADO, abas.ESTUDO, abas.REVISAO, abas.TEXTO, abas.DATASET, abas.GALERIA]
-        )
+        self.assertEqual(nomes, list(abas.ABAS))
+
+    def test_o_divisor_abre_na_fracao_declarada_quando_nada_foi_guardado(self) -> None:
+        """`geometria.FRACAO_PADRAO_DO_DIVISOR` é o padrão da primeira execução (S-156), e a
+        janela do Qt não a lia: o padrão era um par de pixels da montagem (S-511). A largura fica
+        acima do piso das abas de propósito -- abaixo dele o `QSplitter` grampeia, e o teste
+        mediria o piso em vez da fração."""
+        janela = self.janela()
+        janela.resize(2200, 900)
+        janela.show()
+        self.app.processEvents()
+        tamanhos = janela.divisor.sizes()
+        self.assertAlmostEqual(tamanhos[0] / sum(tamanhos), geometria.FRACAO_PADRAO_DO_DIVISOR, delta=0.02)
+
+    def test_o_rodape_diz_por_que_nao_ha_classificador_de_caracteres(self) -> None:
+        """A regra de `dispositivos_da_janela` (S-182): motivo não vazio é "os pesos não estão no
+        disco", vazio é "o motor é outro", e a palavra do rodapé acompanha. A janela do Qt cravava
+        `motivo=""` e dizia os dois estados com a mesma palavra (S-511)."""
+        from chess_diagram_ocr.ui.estado_do_rodape import DESLIGADO, SEM_PESOS
+
+        janela = self.janela()
+        lidos = janela._dispositivos()
+        self.assertEqual(lidos.ausencia, SEM_PESOS if lidos.motivo else DESLIGADO)
 
     def test_o_visualizador_fica_ao_lado_das_abas_e_nao_dentro_delas(self) -> None:
         """É a repartição do produto: a página do livro à direita, o trabalho à esquerda.
@@ -354,6 +378,15 @@ class FiacaoTests(unittest.TestCase):
             montada.abrir_pdf(self.livro)
             self.app.processEvents()
         return montada
+
+    def test_devolver_sem_nada_tirado_diz_a_frase_declarada(self) -> None:
+        """As frases de tirar e devolver caixa são de `page_overlay` desde a S-177, e puras; a
+        janela do Qt as reescrevia inline, com outro texto (S-511)."""
+        from chess_diagram_ocr.ui.page_overlay import frase_de_caixas_devolvidas
+
+        janela = self.janela()
+        janela.devolver_caixas()
+        self.assertEqual(janela.rodape._lbl_mensagem.text(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
 
     def _varrido(self, *paginas: int) -> None:
         """Deixa o livro com um índice de galeria já varrido, um diagrama por página."""

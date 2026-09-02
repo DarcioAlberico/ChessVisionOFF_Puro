@@ -37,7 +37,6 @@ if TYPE_CHECKING:  # só para as anotações; ver a nota de `montar` sobre o imp
 
 __all__ = [
     "ANCORA_NUMERO",
-    "ANCORA_TEXTO",
     "Coluna",
     "ancora",
     "largura_minima",

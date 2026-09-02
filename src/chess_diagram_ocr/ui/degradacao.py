@@ -9,7 +9,7 @@ recusado cai no `ttk` puro, e nada levanta.
 ícone, conjunto de peças. Todos acontecem exatamente na abertura, que é o pior momento: uma
 exceção ali não degrada nada, ela apaga o programa antes de ele existir.
 
-Este módulo é duas coisas pequenas e uma útil:
+Este módulo é duas coisas pequenas:
 
 - **`QUEDAS`**, o contrato como dado. Enquanto ele foi prosa em quatro docstrings, "as seis quedas
   funcionam" era uma frase; declarado, ele vira o que `test_ui_degradacao` percorre. É o mesmo
@@ -17,13 +17,15 @@ Este módulo é duas coisas pequenas e uma útil:
 - **`avisar_uma_vez`**, que é o "registra uma vez" do contrato. Sem ele, o aviso de um ícone que
   não desenhou sai **uma vez por botão** -- dezessete linhas iguais numa fita, e a décima oitava
   quando a densidade mudar.
-- **`abrir_cromo_de_prova`**, que sobe o cromo de uma pele numa janela retirada e devolve o que
-  deu errado. É o que faz "as três peles abrem" ser afirmação verificada e não esperança.
+**`abrir_cromo_de_prova` morava aqui e saiu no corte do Tk (S-506)**: ela subia o cromo de uma
+pele numa janela retirada. Quem afirma que as peles abrem agora é `test_qt_janela`, e o que
+`QUEDAS` promete -- cair no degrau certo, avisar, e avisar uma vez -- é `test_ui_degradacao` que
+percorre, linha a linha. Esse teste morreu no corte junto com a janela que ele abria, e a tabela
+ficou um mês sem leitor: foi assim que `pasta_de_pecas` passou a apontar para um dono que não
+existia e a queda do Qt a acontecer em silêncio (S-511).
 
-**Nada de `tkinter` no topo, e é obrigatório e não estético:** `ui/icones.py` usa `avisar_uma_vez`,
-e `ui/fila.py` importa `icones` -- um `import tkinter` aqui em cima fecharia o ciclo
-`icones → degradacao → fila → icones`. Quem precisa de widget é `abrir_cromo_de_prova`, e ela
-importa por dentro.
+**Nada de toolkit aqui, e é obrigatório e não estético:** `ui/icones.py` usa `avisar_uma_vez`, e
+`qt/icones.py` e `qt/tabuleiro.py` importam este módulo antes de qualquer janela existir.
 """
 
 from __future__ import annotations
@@ -40,7 +42,6 @@ __all__ = [
     "avisar_uma_vez",
     "avisos_dados",
     "esquecer_avisos",
-    "por_chave",
 ]
 
 

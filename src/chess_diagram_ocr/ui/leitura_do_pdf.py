@@ -1,6 +1,6 @@
 """O que o visualizador de PDF decide fora do widget (S-31/S-69/S-330/S-503).
 
-Três números medidos, a cor da caixa e o leitor do sistema. Nenhum deles toca toolkit, e os três
+Três números medidos e o leitor do sistema. Nenhum deles toca toolkit, e os três
 números são o tipo de constante que uma segunda implementação copia com o valor certo e o
 significado errado:
 
@@ -16,9 +16,12 @@ significado errado:
 nada de específico de Windows no projeto, e deixar um `os.startfile` sozinho reintroduziria a
 dependência de plataforma pela porta dos fundos -- por um botão.
 
-**A cor da caixa não é uma segunda decisão.** Quem diz em que ponto do trabalho um diagrama está é
-`page_overlay.estado_da_caixa`, que é pura e é a mesma dos dois lados; `box_color` só resolve o
-papel de cor daquele estado. `qt/visor.py` resolve o mesmo papel pela mesma tabela de `tokens`.
+**A cor da caixa não mora mais aqui.** Quem diz em que ponto do trabalho um diagrama está é
+`page_overlay.estado_da_caixa`, que é pura e é a mesma dos dois lados; a cor daquele estado é um
+papel de `tokens`, e `qt/visor.py` a resolve contra a pele em uso por `tema.cor_atual`. Os quatro
+apelidos `BOX_OUTLINE*` e o `box_color` que os escolhia davam **cor literal** ao `tk.Canvas`, que
+não conhecia papel -- e saíram na triagem da S-511, pelo mesmo argumento que apagou os doze
+apelidos de cor de `desenho_do_tabuleiro.py`.
 
 `ui/pdf_panel.py` reexportava tudo o que está aqui, e saiu no corte do Tk (S-506). Quem consome
 agora é `qt/painel_do_pdf.py` e `qt/visor.py`.
@@ -31,19 +34,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import tokens
-from .page_overlay import DiagramBox
-
 __all__ = [
-    "BOX_OUTLINE",
-    "BOX_OUTLINE_CONFIRMED",
-    "BOX_OUTLINE_RECOGNIZED",
-    "BOX_OUTLINE_SAVED",
     "CLICK_SLOP_PX",
     "MIN_SELECTION_PX",
     "PASSO_DE_ZOOM",
     "SELECTION_HALO_PX",
-    "box_color",
     "open_in_system_reader",
 ]
 
@@ -69,42 +64,6 @@ SELECTION_HALO_PX = 4
 
 Para **fora** porque a caixa encosta no diagrama: uma borda por dentro cairia sobre as casas da
 primeira fila, e a caixa existe justamente para conferir a posição."""
-
-# --- as três cores são **um** eixo: em que ponto do trabalho aquele diagrama está. A seleção
-# --- deixou de ser cor na S-71 justamente para não disputar este eixo.
-BOX_OUTLINE = tokens.RESERVA[tokens.A_FAZER]
-"""Localizado pelo detector, ainda não lido."""
-
-BOX_OUTLINE_RECOGNIZED = tokens.RESERVA[tokens.LIDO]
-"""Lido pelo OCR e **ainda não salvo**: o que falta fazer nesta página."""
-
-BOX_OUTLINE_SAVED = tokens.RESERVA[tokens.PRONTO]
-"""Já tem amostra no `labels.csv`. Verde é a cor de "pronto", e é para isso que ela serve.
-
-Vale mesmo antes de a página ser lida: quem responde é a procedência gravada no CSV, não o que
-está em memória. Abrir um livro pela quinta vez e ver de verde o que já foi feito é a única forma
-barata de responder "onde eu parei?"."""
-
-BOX_OUTLINE_CONFIRMED = tokens.RESERVA[tokens.DISPENSADO]
-"""A base de partidas reconheceu a posição (S-75). Violeta porque não é nem "feito" nem "a fazer":
-é **"não precisa"**, que é um estado que a tela não tinha."""
-
-
-def box_color(box: DiagramBox) -> str:
-    """A cor do retângulo, pelo ponto em que aquele diagrama está.
-
-    A precedência é: salvo > confirmado > lido > localizado -- da informação mais adiantada para a
-    menos. Salvo vem antes de confirmado porque ele é trabalho **seu** já feito: um diagrama salvo
-    e confirmado não precisa de nada, e o que interessa saber ao olhar a página é que aquele já
-    rendeu amostra. Salvo e confirmado valem inclusive antes de a página ser lida, e é isso que faz
-    a marcação servir a um livro trabalhado ontem.
-    """
-    if box.saved:
-        return BOX_OUTLINE_SAVED
-    if box.confirmed:
-        return BOX_OUTLINE_CONFIRMED
-    return BOX_OUTLINE_RECOGNIZED if box.recognized else BOX_OUTLINE
-
 
 def open_in_system_reader(pdf_path: Path) -> None:
     """Abre o PDF no leitor padrão do sistema, na janela dele.

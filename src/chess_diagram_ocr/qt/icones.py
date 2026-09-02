@@ -2,22 +2,22 @@
 
 **Nenhum traço é redesenhado aqui.** Os catorze ícones são polígonos e arcos declarados numa caixa
 de 100×100 em `ui/icones.py`, e `icones.imagem(nome, tamanho, cor)` os desenha em PIL -- sem passar
-por toolkit nenhum. Ela já existia separada de `icones.icone` exatamente para isto: *"para que o
-desenho seja afirmável sem janela"*. Este módulo faz a última perna, PIL → Qt, e nada mais.
+por toolkit nenhum. Ela nasceu separada do `PhotoImage` do Tk exatamente para isto: *"para que o
+desenho seja afirmável sem janela"* -- e a metade do Tk saiu na triagem da S-511. Este módulo faz
+a última perna, PIL → Qt, e nada mais.
 
 **A cor continua sendo do chamador**, como do outro lado: quem monta a fita pergunta ao token e
 passa o hexadecimal, e é o que faz o mesmo traço servir ao cromo claro e ao escuro sem uma segunda
 arte. Um ícone com cor própria seria a decisão que a S-220 tirou do desenho.
 
-**`None` para nome desconhecido, e não exceção** -- a mesma escolha de `icones.icone`, pela mesma
+**`None` para nome desconhecido, e não exceção** -- a mesma escolha de `icones.imagem`, pela mesma
 razão: ícone que falta desenha um botão só com texto, que é legível, e nenhum ícone pode impedir a
 janela de abrir (regra 4 da SPEC_APARENCIA).
 
-**O cache é daqui, e é separado do outro.** O de `ui/icones.py` guarda `ImageTk.PhotoImage`, que
-precisa de referência viva para o Tk não recolher a imagem; um `QIcon` não tem esse problema, mas
-tem o outro -- redesenhar catorze polígonos em supersample a cada remontagem de fita é trabalho
-repetido por gesto de janela. As duas caches guardam objetos de toolkits diferentes com a mesma
-chave `(nome, tamanho, cor)`, e por isso não podem ser uma só.
+**O cache é daqui.** `ui/icones.py` guardava `ImageTk.PhotoImage`, que precisava de referência
+viva para o Tk não recolher a imagem, e aquele cache saiu com o Tk. Um `QIcon` não tem esse
+problema, mas tem o outro -- redesenhar catorze polígonos em supersample a cada remontagem de fita
+é trabalho repetido por gesto de janela --, e a chave continua sendo `(nome, tamanho, cor)`.
 """
 
 from __future__ import annotations

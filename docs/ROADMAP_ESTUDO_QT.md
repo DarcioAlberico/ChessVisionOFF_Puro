@@ -262,6 +262,13 @@ maior razão entre pixel mudado e linha escrita: quatro itens dentro de `qt/tabu
 > com motivo*. Faltava a quarta, que é a que `HEATMAP_LOW` e `HEATMAP_HIGH` pediam: **tirar do
 > `__all__`**. Elas são usadas por `heatmap_color`, dentro do próprio módulo — não são API, e
 > exportá-las era a declaração errada, não a falta de um cliente.
+>
+> **A catraca chegou a zero em 2026-09-02.** As 134 perguntas foram respondidas em dois lotes
+> (branch `triagem-dos-orfaos`): 74 nomes saíram do `__all__`, 36 ficaram isentos com motivo,
+> 16 foram apagados e 8 ganharam chamador — e três guardas mortas no corte voltaram. **Onze
+> achados eram decisão desligada no porte**, da cor da caixa que não seguia a pele às teclas do editor de texto, que o Qt nunca
+> ligou (`Ctrl+B` não fazia nada). A conta está na S-511 da spec. E a triagem achou o que não é
+> órfão: a digitação no editor de texto do Qt não chega ao documento — item para a próxima fase.
 
 **As duas decisões que a fase precisa tomar.** A primeira é *onde a esteira acaba*: a resposta é a
 mesma da S-449 — tabuleiro mais `margem_de_coordenada()`, lida da **mesma** função, para as duas não

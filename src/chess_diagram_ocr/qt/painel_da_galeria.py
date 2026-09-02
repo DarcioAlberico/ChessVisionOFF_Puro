@@ -198,6 +198,7 @@ class PainelDaGaleria(QWidget):
         self._posicoes_prontas.connect(self._posicoes_terminaram)
         self._posicoes_paradas.connect(self._posicoes_pararam)
         self.refresh()
+        atalhos.conferir_dono(self, "PainelDaGaleria")
 
     # ------------------------------------------------------------------------------ montagem
 

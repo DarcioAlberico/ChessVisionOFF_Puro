@@ -7,7 +7,7 @@ o resultado ia direto para o reconhecimento e nunca chegava à tela.
 
 **O que este módulo é.** A parte disso que dá para verificar sem abrir janela: converter a
 caixa de um diagrama em retângulo de canvas, decidir qual caixa um clique acertou, e decidir o
-que aquele clique significa. O desenho e os eventos ficam no `ui/pdf_panel.py`.
+que aquele clique significa. O desenho e os eventos ficam em `qt/visor.py`.
 
 **Por que a caixa viaja em pontos do PDF, e não em pixels.** É a decisão da S-41, pela mesma
 razão: o pixel só existe em relação a um DPI, e o DPI é um campo da tela que o usuário mexe. As
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ESTADOS",
-    "TRACO_POR_ESTADO",
     "BoxClick",
     "DiagramBox",
     "DroppedBoxes",
@@ -50,16 +49,12 @@ __all__ = [
     "Traco",
     "boxes_from_candidates",
     "boxes_from_diagrams",
-    "canvas_rect",
     "choose_boxes",
     "decide_box_click",
     "estado_da_caixa",
     "frase_de_caixa_tirada",
     "frase_de_caixas_devolvidas",
-    "hit_test",
-    "mark_confirmed",
     "mark_saved",
-    "saved_on_page",
     "traco_da_caixa",
 ]
 
@@ -143,8 +138,8 @@ DISPENSADO = "dispensado"
 ESTADOS: tuple[str, ...] = (A_FAZER, LIDO, PRONTO, DISPENSADO)
 """Os quatro pontos em que um diagrama da página pode estar, na ordem do trabalho.
 
-A mesma ordem de precedência de `box_color`, e é dela que sai `estado_da_caixa`: salvo antes de
-confirmado porque salvo é trabalho **seu** já feito."""
+É a ordem de precedência de `estado_da_caixa`: salvo antes de confirmado porque salvo é
+trabalho **seu** já feito."""
 
 
 @dataclass(frozen=True)
@@ -188,7 +183,7 @@ etiqueta do número já é preenchida, então o glifo entra sem disputar espaço
 
 
 def estado_da_caixa(box: DiagramBox) -> str:
-    """Em que ponto do trabalho este diagrama está. Mesma precedência de `pdf_panel.box_color`.
+    """Em que ponto do trabalho este diagrama está: salvo > confirmado > lido > localizado.
 
     Existe separada da cor de propósito: é ela que garante que os dois canais -- matiz e traço
     -- digam **a mesma coisa**. Duas funções decidindo o estado por conta própria é como um
@@ -295,43 +290,6 @@ def mark_saved(boxes: Sequence[DiagramBox], saved: Collection[int]) -> tuple[Dia
     if not saved:
         return tuple(boxes)
     return tuple(replace(box, saved=box.index in saved) for box in boxes)
-
-
-def saved_on_page(
-    por_pagina: Mapping[int, Collection[int]], livro: str, page_index: int, *, source_pdf: str
-) -> set[int]:
-    """Os diagramas já salvos de uma página, ou vazio se a pergunta for de outro livro (S-451).
-
-    A mesma pergunta que `mark_saved` responde caixa a caixa, respondida para a página inteira --
-    e é de propósito o **mesmo** índice, aquele que `labels.saved_diagrams_by_page` monta e
-    `labels.note_saved_diagram` mantém. Quem usa a resposta é o "Salvar todos", para perguntar
-    antes de gravar a segunda cópia da página: ela tem de concordar com a cor que o usuário está
-    vendo, e duas contas separadas para a mesma verdade só teriam como divergir.
-
-    **Mora aqui, e não em `labels.py` com as outras duas.** A regra é de interface, e
-    `field_eval.measured_modules` alcança `labels.py`: uma função que a medição nunca chama
-    invalidaria ali os quatro relatórios de campo (S-219) e cobraria uma remedição por nada. O
-    fecho da medição não entra em `ui/`, e é essa fronteira que decide.
-
-    Livro diferente devolve vazio em vez de responder pelo que está aberto -- o editor pode estar
-    mostrando o resultado de um PDF que a janela já fechou.
-    """
-    if not str(livro).strip() or str(livro).strip() != str(source_pdf).strip():
-        return set()
-    return set(por_pagina.get(int(page_index), ()))
-
-
-def mark_confirmed(boxes: Sequence[DiagramBox], confirmed: Collection[int]) -> tuple[DiagramBox, ...]:
-    """Carimba quais posições a base de partidas reconheceu (S-75).
-
-    Função separada da `mark_saved`, e não um parâmetro a mais nela, porque as duas respondem
-    perguntas independentes: uma diz que **você** trabalhou aquele diagrama, a outra que ele
-    **não precisa** ser trabalhado. Um diagrama pode ter as duas marcas, uma só, ou nenhuma --
-    e juntá-las numa chamada faria parecer que uma implica a outra.
-    """
-    if not confirmed:
-        return tuple(boxes)
-    return tuple(replace(box, confirmed=box.index in confirmed) for box in boxes)
 
 
 def boxes_from_candidates(candidates: Sequence[DiagramCandidate]) -> tuple[DiagramBox, ...]:

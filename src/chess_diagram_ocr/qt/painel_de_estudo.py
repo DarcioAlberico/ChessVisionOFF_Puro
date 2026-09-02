@@ -77,6 +77,7 @@ from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
 from chess_diagram_ocr.ui import (
+    atalhos,
     comandos,
     espaco,
     estilos,
@@ -194,6 +195,7 @@ class PainelDeEstudo(QWidget):
         self._motor_terminou.connect(self._terminar_analise)
         self.refresh()
         self.set_status("Clique em uma peça para estudar.")
+        atalhos.conferir_dono(self, "PainelDeEstudo")
 
     # ------------------------------------------------------------------------------ montagem
 

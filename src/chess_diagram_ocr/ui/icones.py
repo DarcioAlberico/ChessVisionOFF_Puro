@@ -11,7 +11,7 @@ espelhado. É a S-146 outra vez -- cor cravada contra fundo variável --, agora 
 nova.
 
 **A saída é a mesma dos tokens: declarar a forma e derivar o desenho.** Cada ícone é uma tupla de
-traços numa caixa `0..100`, sem cor e sem tamanho. `icone(nome, tamanho, cor)` desenha na hora, e
+traços numa caixa `0..100`, sem cor e sem tamanho. `imagem(nome, tamanho, cor)` desenha na hora, e
 **a cor é do chamador**: quem monta a fita pede `tokens.cor(tokens.TEXTO_PADRAO, style)` e passa. É
 isso que faz o mesmo `abrir_pdf` funcionar nas três peles sem uma segunda arte.
 
@@ -40,15 +40,15 @@ import logging
 # desenha não é uma janela degradada, é uma janela sem produto. O contrato de degradação é da
 # aparência, e esta linha é a parte dele que cabe aqui.
 try:
-    from PIL import Image, ImageDraw, ImageTk
+    from PIL import Image, ImageDraw
 except ImportError:  # pragma: no cover - checkout ou bundle sem a Pillow
-    Image = ImageDraw = ImageTk = None  # type: ignore[assignment]
+    Image = ImageDraw = None  # type: ignore[assignment]
 
 from . import degradacao
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ICONES", "Arco", "Poli", "TRACO_RELATIVO", "cache_de_icones", "icone", "imagem", "limpar_cache"]
+__all__ = ["ICONES", "Arco", "Poli", "imagem"]
 
 Ponto = tuple[float, float]
 
@@ -250,9 +250,6 @@ SUPERAMOSTRA = 4
 Sem isto o traço diagonal do "aplicar_fen" a 20 px vira escada, e o círculo da lupa vira um
 octógono -- num tamanho em que o ícone é a única coisa que a pessoa lê no botão."""
 
-_cache: dict[tuple[str, int, str], ImageTk.PhotoImage] = {}
-
-
 def _largura_do_traco(lado: int) -> int:
     return max(1, round(lado * TRACO_RELATIVO))
 
@@ -333,51 +330,3 @@ def _desenhar(tracos: tuple[Traco, ...], tamanho: int, cor: str) -> Image.Image:
     tela = Image.new("RGBA", (tamanho, tamanho), cor)
     tela.putalpha(mascara.resize((tamanho, tamanho), resample=Image.Resampling.LANCZOS))
     return tela
-
-
-def icone(nome: str, tamanho: int, cor: str) -> ImageTk.PhotoImage | None:
-    """O ícone pronto para um widget, no tamanho e na cor pedidos. `None` se o nome não existe.
-
-    **A cor é do chamador, e é o item inteiro.** Quem monta a fita pergunta ao token --
-    `tokens.cor(tokens.TEXTO_PADRAO, style)` -- e passa o hexadecimal; a pele escura pergunta o
-    mesmo papel e recebe outro. Nenhum ícone tem cor própria, e por isso os catorze servem às três
-    peles sem uma segunda arte.
-
-    **Devolve `None` em vez de levantar** para nome desconhecido -- ao contrário de `tokens.cor` e
-    de `estilos.estilo_de_botao`. A diferença é o que acontece depois: papel de botão errado
-    desenha um botão que mente sobre a sua importância, e ícone que falta desenha um botão só com
-    texto, que é legível. Um ícone não pode impedir a janela de abrir (regra 4 da SPEC_APARENCIA).
-
-    O cache guarda `ImageTk.PhotoImage`, que precisa de referência viva para o Tk não a recolher.
-    Ele é do módulo, e não de uma instância, porque este processo tem **uma** raiz Tk -- a regra
-    que `tests/tk_root.py` documenta e que a suíte inteira segue.
-    """
-    tamanho = max(1, int(tamanho))
-    chave = (nome, tamanho, cor)
-    guardado = _cache.get(chave)
-    if guardado is not None:
-        return guardado
-
-    desenho = imagem(nome, tamanho, cor)
-    if desenho is None or ImageTk is None:
-        return None
-
-    try:
-        foto = ImageTk.PhotoImage(desenho)
-    except Exception as exc:  # noqa: BLE001 - sem raiz Tk, ou Tk que recusa a imagem
-        degradacao.avisar_uma_vez(
-            logger, ("foto", nome), "Ícone %r não virou imagem do Tk (%s).", nome, exc
-        )
-        return None
-    _cache[chave] = foto
-    return foto
-
-
-def cache_de_icones() -> int:
-    """Quantos ícones estão desenhados agora. Para teste e para depurar consumo."""
-    return len(_cache)
-
-
-def limpar_cache() -> None:
-    """Esquece o que foi desenhado. A troca de pele (S-222) chama isto: a cor mudou."""
-    _cache.clear()

@@ -34,15 +34,10 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 __all__ = [
-    "ACOES_DO_CAMPO",
-    "ACOES_SO_DO_MULTILINHA",
     "ATALHOS",
-    "CEDIDAS_A_TODO_CAMPO",
-    "CEDIDAS_SO_AO_MULTILINHA",
     "CEDIDA_PELA_GUARDA",
     "GANHA_DO_TK",
     "SOBREPOSICOES_NO_EDITOR",
-    "TECLAS_DE_EDICAO",
     "TECLAS_DO_EDITOR",
     "Atalho",
     "DonoDeAcoes",
@@ -52,9 +47,9 @@ __all__ = [
     "conferir_dono",
     "descricao_completa",
     "destino",
-    "ligacoes",
     "por_acao",
-    "por_sequencia",
+    "sobreposicao",
+    "teclas_cedidas_ao_editor",
 ]
 
 
@@ -290,11 +285,19 @@ CEDIDA_PELA_GUARDA = "cedida-pela-guarda"
 widget, e a regra da S-117 -- quem declarou a tecla fica com ela -- é o que a segura.
 
 A troca é para melhor, e a diferença aparece se alguém tirar a tecla do editor: antes ela
-continuaria morta ali (o cobertor cedia de qualquer jeito), e agora ela volta a ser da janela."""
+continuaria morta ali (o cobertor cedia de qualquer jeito), e agora ela volta a ser da janela.
+
+**No Qt quem cede é `qt/atalhos.cede_a_tecla`**, lendo no widget em foco as teclas que o editor
+declarou para si -- e o editor declara exatamente `teclas_cedidas_ao_editor()`. O `bind` no widget
+virou um `QShortcut` com alcance no editor; a regra é a mesma (S-511)."""
 
 GANHA_DO_TK = "ganha-do-tk"
 """A tecla é da janela e a aba a toma para si; o `bind` no widget existe para vencer a **classe**
-`Text`, que roda antes de todo `bind_all` e faria outra coisa com ela."""
+`Text`, que roda antes de todo `bind_all` e faria outra coisa com ela.
+
+**No Qt não há classe `Text`, e o valor continua certo pelo outro lado**: a tecla é da janela, a
+guarda a entrega à aba por `acoes_proprias` (S-244), e o editor **não** a reclama para si -- é a
+que `teclas_cedidas_ao_editor` deixa de fora, para a mesma tecla não ter dois donos."""
 
 SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
     "<Control-r>": CEDIDA_PELA_GUARDA,
@@ -461,19 +464,6 @@ def acelerador(acao: str) -> str:
     return atalho.rotulo if atalho is not None else ""
 
 
-def ligacoes(comandos: Mapping[str, Callable[[], None]]) -> dict[str, Callable[[], None]]:
-    """O mapa `sequência → função` que `bind_shortcuts` consome, montado da tabela.
-
-    Levanta `KeyError` nomeando os comandos que faltam. Um atalho declarado e não ligado é uma
-    tecla que não faz nada e que a legenda promete -- pior que não tê-lo, porque a pessoa conclui
-    que apertou errado.
-    """
-    faltando = sorted(atalho.acao for atalho in ATALHOS if atalho.acao not in comandos)
-    if faltando:
-        raise KeyError(f"atalho declarado sem comando: {', '.join(faltando)}")
-    return {atalho.sequencia: comandos[atalho.acao] for atalho in ATALHOS}
-
-
 # ------------------------------------------------- o destino conforme o foco (S-244)
 
 
@@ -578,3 +568,32 @@ def acao_de(sequencia: str) -> str:
     """Que ação aquela tecla pede, ou `""` para uma sequência que a tabela não declara."""
     atalho = por_sequencia.get(sequencia)
     return atalho.acao if atalho is not None else ""
+
+
+# ------------------------------------------------ as teclas que o editor divide com a janela
+
+
+def sobreposicao(sequencia: str) -> str | None:
+    """Como a janela e o editor dividem esta tecla do editor, ou `None` quando só o editor a declara.
+
+    `CEDIDA_PELA_GUARDA` ou `GANHA_DO_TK`, lidos de `SOBREPOSICOES_NO_EDITOR`. Levanta `KeyError`
+    para uma tecla que está nas **duas** tabelas sem linha ali: é "a sobreposição seguinte", que a
+    tabela existe para impedir de entrar em silêncio -- e ela reprova na montagem do painel de
+    texto, e não só no teste (S-511).
+    """
+    if sequencia not in por_sequencia:
+        return None
+    tipo = SOBREPOSICOES_NO_EDITOR.get(sequencia)
+    if tipo is None:
+        raise KeyError(f"{sequencia} está em ATALHOS e em TECLAS_DO_EDITOR sem sobreposição declarada")
+    return tipo
+
+
+def teclas_cedidas_ao_editor() -> frozenset[str]:
+    """As sequências que o editor toma para si enquanto tem o foco: as só dele, e as cedidas.
+
+    Fica de fora a que a janela ganha (`GANHA_DO_TK`): ali a guarda entrega a ação à aba por
+    `acoes_proprias`, e o editor reclamá-la seria a mesma tecla com dois donos. É o que
+    `qt/painel_de_texto.py` declara no próprio widget, e o que `qt/atalhos.cede_a_tecla` lê.
+    """
+    return frozenset(sequencia for sequencia in TECLAS_DO_EDITOR.values() if sobreposicao(sequencia) != GANHA_DO_TK)
