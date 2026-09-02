@@ -50,14 +50,16 @@ _Pintavel = TypeVar("_Pintavel", bound=QWidget)
 mesma razão de `theme.pintar` ser genérica."""
 
 __all__ = [
+    "CONTROLES_COM_MOLDURA",
+    "ID_DO_SEPARADOR",
     "PROPRIEDADE_DE_PAPEL",
     "RECHEIO_DO_TEMA",
     "altura_de_linha_atual",
     "ao_repintar",
     "aplicar_papel",
     "aplicar_tema",
-    "cromo_escuro_em_vigor",
     "cor_atual",
+    "cromo_escuro_em_vigor",
     "folha_de_estilo",
     "fonte_atual",
     "fonte_base",
@@ -287,6 +289,29 @@ o quádruplo é o pressionado e o marcado. Escalar a partir de um número só é
 estados serem **um** desenho em vez de quatro escolhas -- e é o mesmo mecanismo de
 `REALCE_DE_ENFASE`, que a S-444 já usa para o primário e o destrutivo."""
 
+CONTROLES_COM_MOLDURA: tuple[str, ...] = (
+    "QComboBox",
+    "QLineEdit",
+    "QSpinBox",
+    "QAbstractItemView",
+    "QTextEdit",
+    "QPlainTextEdit",
+)
+"""As classes a que a folha declara moldura porque o estilo da plataforma deixou de desenhá-la (S-522).
+
+Uma propriedade de folha num widget -- e a linha do `QWidget` da folha é uma -- faz o `windows11`
+parar de pintar o cromo nativo dele: o preenchimento entra e a moldura não vem de lugar nenhum.
+Medido na janela de verdade, borda contra superfície, para combo, campo de texto, spin, lista e
+editor: **1,14:1** na pele clássica e **1,02:1** na "Foco". E a CI não tinha como ver, porque sob
+`offscreen` o `fusion` desenha o cromo mesmo com folha aplicada -- 2,02:1 e 1,10:1 nas mesmas
+fotografias. Declarar a borda é o que faz os dois estilos desenharem o mesmo controle.
+
+`QAbstractItemView` alcança lista, árvore e tabela; `QTextEdit`, o `QTextBrowser`. O botão comum e o
+`QGroupBox` já a declaravam (S-520, S-501) -- com o token de documento, que a S-522 trocou."""
+
+ID_DO_SEPARADOR = "separador-da-fila"
+"""`objectName` do traço entre grupos da fila, que a folha pinta com a moldura do cromo (S-522)."""
+
 RECHEIO_DA_FOLHA: dict[str, str] = {
     "QTabBar::tab": "TNotebook.Tab",
     "QCheckBox": "TCheckbutton",
@@ -348,7 +373,11 @@ def folha_de_estilo(
     superficie = cor(tokens.SUPERFICIE_PADRAO)
     texto = cor(tokens.TEXTO_PADRAO)
     secundario = cor(tokens.TEXTO_SECUNDARIO)
-    moldura = cor(tokens.MOLDURA)
+    # **A moldura do cromo é derivada da superfície, e não o token de documento** (S-522). Até
+    # aqui era `cor(tokens.MOLDURA)` -- o anel do tabuleiro, preso na paleta medida pela S-224 --,
+    # e sobre o cromo escuro da pele "Foco" isso dava `#1f1d1b` sobre `#1f2124`: **1,04:1**, borda
+    # invisível no botão comum e no `QGroupBox`. Ver `tokens.moldura_sobre`.
+    moldura = tokens.moldura_sobre(superficie)
     dica = cor(tokens.SUPERFICIE_DICA)
     linha = tipografia.folga(tipografia.FOLGA_DE_LINHA, base=base, densidade=densidade)
     minima = tipografia.folga(tipografia.FOLGA_MINIMA, base=base, densidade=densidade)
@@ -365,7 +394,7 @@ def folha_de_estilo(
         # garante isso. Aqui elas só não são sobrescritas -- quem as pinta é o `QPainter` de
         # `qt/visor.py` e de `qt/tabuleiro.py`, com `cor_atual`.
         f"QToolTip {{ background-color: {dica}; color: {tokens.sobre_superficie(dica)};"
-        f" border: 1px solid {moldura}; padding: {linha}px; }}",
+        f" border: 1px solid {tokens.moldura_sobre(dica)}; padding: {linha}px; }}",
         # **O botão comum desabilitado desenhava igual ao habilitado, e a medição é esta** (S-506):
         # fotografei a barra do visualizador antes e durante a exportação e diferenciei as duas
         # imagens -- a fileira com "OCR todos diagramas", "Exportar PDF → PGN" e "Cancelar
@@ -397,6 +426,18 @@ def folha_de_estilo(
         f"QToolButton {{ padding: {do_tema('QToolButton')}; }}",
         f"QLineEdit {{ padding: {do_tema('QLineEdit')}; }}",
         f"QComboBox {{ padding: {do_tema('QComboBox')}; }}",
+    ]
+
+    # A moldura que o estilo da plataforma não dá (S-522): ver `CONTROLES_COM_MOLDURA`. O raio
+    # vai só nos três controles de uma linha, que é onde ele já está no botão comum; lista e
+    # editor são retângulos de conteúdo, e um canto arredondado ali cortaria a primeira letra.
+    regras += [f"{seletor} {{ border: 1px solid {moldura}; }}" for seletor in CONTROLES_COM_MOLDURA]
+    regras += [
+        f"QComboBox, QLineEdit, QSpinBox {{ border-radius: {minima}px; }}",
+        # O separador da fila é um `QWidget` de 1 px pintado aqui, e não um `QFrame.VLine`: o
+        # `VLine` desenha com a cor de **texto** da paleta, e não com a da folha -- medido, 2 px
+        # em `#848688` na "Foco", mais claro que a borda das pílulas ao lado (S-522).
+        f"QWidget#{ID_DO_SEPARADOR} {{ background-color: {moldura}; }}",
     ]
 
     # O recheio que sai de `ui/folha.py`, um seletor por classe. Um `try` por classe seria

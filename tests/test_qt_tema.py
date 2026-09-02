@@ -15,6 +15,7 @@ propósito, e um teste de aparência que exigisse servidor gráfico seria um tes
 
 from __future__ import annotations
 
+import re
 import unittest
 from unittest import mock
 
@@ -351,6 +352,94 @@ class DesabilitadoSeVeTests(unittest.TestCase):
 
         com_o_comum = f"QPushButton {{ padding: 4px; }}\n{so_com_papel}\nQPushButton:disabled {{ color: #888; }}"
         self.assertIn("QPushButton:disabled", _seletores_desabilitados(com_o_comum))
+
+
+def _bordas_declaradas(qss: str) -> dict[str, str]:
+    """`seletor → cor` de cada regra `border: 1px solid #rrggbb` da folha, no estado de repouso.
+
+    Uma regra por linha, como `_seletores_desabilitados` lê. Seletor com pseudo-estado
+    (`:hover`) ou com propriedade (`[papel=...]`) fica de fora: o que se afirma é a moldura que o
+    controle tem parado, que é a que a S-522 mediu.
+    """
+    achadas: dict[str, str] = {}
+    for linha in qss.splitlines():
+        cabeca, _, resto = linha.partition("{")
+        cor = re.search(r"border: 1px solid (#[0-9a-f]{6})", resto)
+        if not cor:
+            continue
+        for seletor in cabeca.split(","):
+            seletor = seletor.strip()
+            if seletor and ":" not in seletor and "[" not in seletor:
+                achadas[seletor] = cor.group(1)
+    return achadas
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class MolduraDoCromoTests(unittest.TestCase):
+    """A moldura que o estilo da plataforma não dá, declarada e visível (S-522).
+
+    **Medido no `windows11`, e não na CI**: uma propriedade de folha faz o estilo do Windows parar
+    de desenhar o cromo nativo, e combo, campo, spin, lista e editor saíam com 1,14:1 na pele
+    clássica e 1,02:1 na "Foco" -- sem moldura. Sob `offscreen` o `fusion` desenha o cromo mesmo
+    com folha, e a fotografia da CI dava 2,02:1 e 1,10:1 pelo mesmo código. É a forma da S-325 e
+    da S-506: a afirmação é sobre a **folha**, com o controle abaixo provando que a leitura dela
+    acha e deixa de achar.
+    """
+
+    def test_todo_controle_da_lista_tem_moldura_visivel_nas_duas_peles(self) -> None:
+        for cromo_escuro in (False, True):
+            superficie = tokens.cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=cromo_escuro)
+            bordas = _bordas_declaradas(tema.folha_de_estilo(cromo_escuro=cromo_escuro))
+            for seletor in (*tema.CONTROLES_COM_MOLDURA, "QPushButton", "QGroupBox"):
+                with self.subTest(seletor=seletor, cromo_escuro=cromo_escuro):
+                    self.assertIn(seletor, bordas, "controle sem moldura declarada na folha")
+                    razao = tokens.razao_de_contraste(bordas[seletor], superficie)
+                    self.assertGreaterEqual(razao, tokens.AA_GRAFICO)
+
+    def test_a_folha_nao_pinta_cromo_com_o_token_de_documento(self) -> None:
+        """A fronteira da S-224 no sentido contrário: `MOLDURA` é o anel do tabuleiro, e a folha
+        do cromo não pode citá-lo. Na "Foco" ele dava 1,04:1 contra a superfície."""
+        for cromo_escuro in (False, True):
+            with self.subTest(cromo_escuro=cromo_escuro):
+                documento = tokens.cor(tokens.MOLDURA, cromo_escuro=cromo_escuro)
+                self.assertNotIn(documento, tema.folha_de_estilo(cromo_escuro=cromo_escuro))
+
+    def test_a_moldura_e_a_derivada_da_superficie(self) -> None:
+        """O valor sai de `tokens.moldura_sobre`, e não de um hexadecimal escrito aqui."""
+        for cromo_escuro in (False, True):
+            superficie = tokens.cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=cromo_escuro)
+            bordas = _bordas_declaradas(tema.folha_de_estilo(cromo_escuro=cromo_escuro))
+            with self.subTest(cromo_escuro=cromo_escuro):
+                self.assertEqual(tokens.moldura_sobre(superficie), bordas["QPushButton"])
+
+    def test_a_dica_tem_a_moldura_da_superficie_dela(self) -> None:
+        """O balão é amarelo-pálido nas duas peles, e a moldura dele se deriva desse fundo."""
+        dica = tokens.cor(tokens.SUPERFICIE_DICA)
+        self.assertEqual(tokens.moldura_sobre(dica), _bordas_declaradas(tema.folha_de_estilo())["QToolTip"])
+
+    def test_o_separador_da_fila_e_pintado_pela_folha(self) -> None:
+        for cromo_escuro in (False, True):
+            superficie = tokens.cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=cromo_escuro)
+            with self.subTest(cromo_escuro=cromo_escuro):
+                self.assertIn(
+                    f"QWidget#{tema.ID_DO_SEPARADOR} {{ background-color: {tokens.moldura_sobre(superficie)}; }}",
+                    tema.folha_de_estilo(cromo_escuro=cromo_escuro),
+                )
+
+    def test_a_leitura_de_bordas_acha_e_deixa_de_achar(self) -> None:
+        """O controle, contra exemplos literais: uma leitura que não reconhecesse o formato
+        devolveria vazio e o caso de cima falharia por motivo certo com diagnóstico errado."""
+        qss = (
+            "QComboBox { border: 1px solid #8a8a8a; }\n"
+            "QPushButton:hover { border: 1px solid #000000; }\n"
+            'QPushButton[papel="PRIMARIO"] { border: 1px solid #111111; }\n'
+            "QLineEdit, QSpinBox { padding: 2px; border: 1px solid #696b6d; }\n"
+            "QLabel { padding: 2px; }"
+        )
+        self.assertEqual(
+            {"QComboBox": "#8a8a8a", "QLineEdit": "#696b6d", "QSpinBox": "#696b6d"},
+            _bordas_declaradas(qss),
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

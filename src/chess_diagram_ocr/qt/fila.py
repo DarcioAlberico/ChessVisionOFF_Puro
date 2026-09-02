@@ -26,7 +26,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 
-from PyQt6.QtWidgets import QFrame, QPushButton, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QPushButton, QSizePolicy, QWidget
 
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
@@ -96,15 +97,22 @@ class Fila(BarraFluida):
             comandos.ao_alternar(registro.acao, botao.setText)
         return botao
 
-    def _separador(self) -> QFrame:
+    def _separador(self) -> QWidget:
         """A barra vertical entre grupos -- o que a Imagem 1 desenha entre a 2ª e a 3ª pílula.
 
-        `QFrame` com `VLine` e não um retângulo de um pixel pintado à mão: aqui o toolkit tem o
-        desenho, e a cor dele acompanha a folha de estilo sem que este módulo a repinte.
+        **Um `QWidget` de 1 px pintado pela folha, e não um `QFrame.VLine`** (S-522). O `VLine` era
+        a forma óbvia, e o retrato a desmentiu: ele desenha com a cor de **texto** da paleta, e não
+        com a da folha -- medido no `windows11`, 2 px em `#848688` na pele "Foco", mais claro que a
+        borda das pílulas ao lado. A folha pinta `#separador-da-fila` com a mesma moldura que dá
+        aos controles, e a troca de pele o repinta sozinha, como a qualquer regra de classe.
         """
-        risco = QFrame(self)
-        risco.setFrameShape(QFrame.Shape.VLine)
-        risco.setObjectName("separador-da-fila")
+        risco = QWidget(self)
+        risco.setObjectName(tema.ID_DO_SEPARADOR)
+        # Sem o atributo um `QWidget` puro ignora o `background-color` da folha: só quem o tem
+        # pinta o próprio fundo.
+        risco.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        risco.setFixedWidth(1)
+        risco.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         return risco
 
 
