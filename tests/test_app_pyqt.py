@@ -407,6 +407,7 @@ class JanelaTests(unittest.TestCase):
         from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
         janela = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=servico,  # type: ignore[arg-type]
             csv_de_rotulos=self.csv,
             # **Sem isto o teste grava o estado da máquina de quem roda a suíte**: o

@@ -224,6 +224,7 @@ class VinculoTests(unittest.TestCase):
         self.app = aplicacao()
         pasta = pasta_temporaria(self)
         self.janela = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=mock.MagicMock(),
             csv_de_rotulos=pasta / "l.csv",
             caminho_do_estado=pasta / "janela.json",

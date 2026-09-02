@@ -56,7 +56,7 @@ import logging
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -82,6 +82,7 @@ from chess_diagram_ocr.config import (
     find_default_pdf_path,
 )
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page
+from chess_diagram_ocr.engine import EngineAnalyzer
 from chess_diagram_ocr.labels import LabelStore, pages_with_training_samples, saved_diagrams_by_page
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import dica, fila, fita, legenda, menu, paleta, plataforma, tema
@@ -97,6 +98,7 @@ from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
+from chess_diagram_ocr.qt.preferencias import motor_das_preferencias, servico_das_preferencias
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
 from chess_diagram_ocr.qt.trabalho import Tarefa
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
@@ -198,12 +200,23 @@ class JanelaPrincipal(QMainWindow):
         pasta_de_estudos: Path | None = None,
         pasta_da_galeria: Path | None = None,
         caminho_do_estado: Path | None = None,
+        motor: EngineAnalyzer | None | Literal["preferencias"] = "preferencias",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._servico = servico if servico is not None else OcrService(model_path=DEFAULT_MODEL_PATH)
-        self._ocr = load_settings().ocr
+        self._preferencias = load_settings()
+        """Preferências do usuário (S-32). Por padrão nada sai da máquina."""
+        # O serviço nasce das preferências porque o OCR de legenda entra por ele (S-43/S-523):
+        # quem lê a configuração é a interface, e o pipeline recebe pronto o que ela autorizou.
+        self._servico = servico if servico is not None else servico_das_preferencias(self._preferencias)
+        self._ocr = self._preferencias.ocr
         """Quem sabe **por que** não há classificador de caracteres (`dispositivos_da_janela`, S-182)."""
+        self._motor: EngineAnalyzer | None = motor_das_preferencias(self._preferencias) if isinstance(motor, str) else motor
+        """Motor de análise (S-33), ou `None`. Sem binário, a seção some da sala de estudo (S-523).
+
+        Injetável pelo mesmo motivo de `caminho_do_estado`: o padrão procura um binário na máquina
+        de quem roda, e uma suíte que fizesse isso a cada janela dependeria do `PATH` de quem a roda.
+        `None` é "sem motor", e não "procure" -- a procura é o que só o produto pede."""
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self._pasta_de_estudos = pasta_de_estudos
         self._pasta_da_galeria = pasta_da_galeria
@@ -356,6 +369,7 @@ class JanelaPrincipal(QMainWindow):
             posicao=self._posicao_de_estudo,
             pasta_inicial=DEFAULT_PDF_DIR,
             pasta_de_estudos=self._pasta_de_estudos,
+            analyzer=self._motor,  # sem binário a seção "Motor" não existe (S-33/S-523)
             # As quatro portas por onde o **livro** entra na sala. Cada uma é uma pergunta que
             # outro painel já sabe responder, e nenhuma deixa a sala escrever naquele painel.
             recorte=self._recorte_do_diagrama,
@@ -1754,6 +1768,9 @@ class JanelaPrincipal(QMainWindow):
         # E o arranjo depois dela, **antes da espera pela tarefa**: uma thread presa não pode
         # custar o último livro, a página e o divisor de quem já mandou fechar (S-156).
         self._gravar_estado()
+        if self._motor is not None:
+            # O motor é um processo, não um widget: fechar a janela não o encerra (S-523).
+            self._motor.close()
         if self._tarefa is not None and not self._tarefa.wait(ESPERA_AO_FECHAR_MS):
             logger.warning("A janela fechou com uma tarefa ainda em andamento.")
         if a0 is not None:

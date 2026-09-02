@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from chess_diagram_ocr.service import RecognizedDiagram
 
 if TEM_PYQT:
+    from chess_diagram_ocr.qt import janela as janela_mod
     from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
 
@@ -109,6 +110,7 @@ class MontagemTests(unittest.TestCase):
 
     def janela(self) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -364,6 +366,7 @@ class FiacaoTests(unittest.TestCase):
 
     def janela(self, *, com_livro: bool = True) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -680,6 +683,7 @@ class EstadoEntreSessoesTests(unittest.TestCase):
     def janela(self, *, tamanho: tuple[int, int] | None = (1400, 900)) -> JanelaPrincipal:
         """`tamanho=None` deixa a janela com a geometria que ela mesma restaurou do estado."""
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -896,6 +900,7 @@ class EstadoEntreSessoesTests(unittest.TestCase):
             mock.patch.object(modulo, "CAMINHO_HERDADO_DO_ESTADO", herdado),
         ):
             montada = JanelaPrincipal(
+                motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
                 servico=_ServicoFalso(),  # type: ignore[arg-type]
                 csv_de_rotulos=self.pasta / "labels.csv",
                 pasta_de_estudos=self.pasta,
@@ -931,6 +936,7 @@ class AparenciaTests(unittest.TestCase):
 
     def janela(self) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -1122,6 +1128,7 @@ class DesfazerTests(unittest.TestCase):
 
     def janela(self) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -1232,6 +1239,7 @@ class SincroniaDaSalaTests(unittest.TestCase):
 
     def janela(self) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -1306,3 +1314,77 @@ class SincroniaDaSalaTests(unittest.TestCase):
         janela._clicou_na_caixa(0)
         self.app.processEvents()
         self.assertIs(janela.painel, janela.abas.currentWidget())
+
+
+class _MotorFalso:
+    """Um `EngineAnalyzer` sem processo: só o que a sala e o fechamento tocam."""
+
+    def __init__(self) -> None:
+        self.path = Path("stockfish-falso.exe")
+        self.fechado = False
+
+    def close(self) -> None:
+        self.fechado = True
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class MotorDasPreferenciasTests(unittest.TestCase):
+    """O motor chega à sala pelas preferências, e é fechado com a janela (S-523).
+
+    **O que estava desligado.** `PainelDeEstudo` aceita `analyzer` desde o porte e a janela nunca
+    passava um; `None` esconde a seção inteira (S-33), então uma máquina com Stockfish mostrava o que
+    uma máquina sem ele mostraria. Nenhum teste de painel podia pegar: cada um sabia a sua parte.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def _janela(self, **extras: object) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+            **extras,  # type: ignore[arg-type]
+        )
+        self.addCleanup(descartar, montada)
+        return montada
+
+    def test_o_motor_injetado_chega_a_sala(self) -> None:
+        self.assertTrue(self._janela(motor=_MotorFalso()).estudo.has_engine)
+
+    def test_sem_motor_a_secao_nao_existe(self) -> None:
+        self.assertFalse(self._janela(motor=None).estudo.has_engine)
+
+    def test_o_padrao_e_o_motor_das_preferencias(self) -> None:
+        """`motor` omitido é o produto: a janela pergunta às preferências, e não a `None`."""
+        motor = _MotorFalso()
+        with mock.patch.object(janela_mod, "motor_das_preferencias", return_value=motor) as procura:
+            janela = self._janela()
+        procura.assert_called_once()
+        self.assertTrue(janela.estudo.has_engine)
+
+    def test_fechar_a_janela_encerra_o_motor(self) -> None:
+        """Um motor é um processo, não um widget: sem isto cada abertura deixaria um `stockfish.exe` vivo."""
+        motor = _MotorFalso()
+        janela = self._janela(motor=motor)
+        janela.close()
+        self.app.processEvents()
+        self.assertTrue(motor.fechado)
+
+    def test_o_servico_padrao_vem_das_preferencias(self) -> None:
+        """Sem `servico`, o produto: o `OcrService` nasce com o OCR de legenda que as preferências
+        autorizam (S-43), e não sem `caption_reader` como desde o porte."""
+        servico = _ServicoFalso()
+        with mock.patch.object(janela_mod, "servico_das_preferencias", return_value=servico) as monta:
+            montada = JanelaPrincipal(
+                motor=None,
+                csv_de_rotulos=self.pasta / "labels.csv",
+                pasta_de_estudos=self.pasta,
+                caminho_do_estado=self.pasta / "janela.json",
+            )
+        self.addCleanup(descartar, montada)
+        monta.assert_called_once()
+        self.assertIs(servico, montada._servico)

@@ -250,8 +250,15 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1788
+    LIMITE = 1805
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.788 → 1.805 na S-523**, e o que subiu é fiação: o motor das preferências chega à sala
+    (`analyzer=`), é fechado no `closeEvent` -- um processo, não um widget --, e o serviço nasce com o
+    OCR de legenda que as preferências autorizam. A leitura das preferências e a montagem dos dois
+    objetos **não** ficaram aqui: moram em `qt/preferencias.py`, sem widget, afirmáveis sem
+    `QApplication`. O que sobrou na janela é passar o que ela recebeu a quem o usa, que é o que só
+    ela pode fazer.
 
     **1.776 → 1.780 na S-512**, e as quatro são **uma** linha de fiação mais três de comentário: o
     `connect` entre `painel.posicao_mudou` e `estudo.sync_with_ocr`, que é o fio que o porte do Tk
