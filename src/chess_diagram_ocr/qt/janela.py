@@ -514,6 +514,10 @@ class JanelaPrincipal(QMainWindow):
         self.texto.aplicar_zoom(estado.texto_zoom, avisar=False)
         self.texto.definir_quebra(estado.texto_quebra)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
+        self.estudo.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
+        # O leitor que `board_zoom` nunca teve (S-518): o campo era gravado, era lido do disco, e
+        # não chegava a widget nenhum.
+        self.estudo.definir_fracao_do_tabuleiro(estado.board_zoom)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
         self._estado_aplicado = True
 
@@ -636,6 +640,10 @@ class JanelaPrincipal(QMainWindow):
         # `or` o guardado: o divisor devolve `0.0` enquanto não há geometria medida, e zero
         # significa "nunca guardado" -- gravá-lo apagaria a alça da sessão anterior.
         estado.estudo_divisor = self.estudo.fracao_do_divisor or estado.estudo_divisor
+        estado.estudo_divisor_vertical = (
+            self.estudo.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
+        )
+        estado.board_zoom = self.estudo.fracao_do_tabuleiro
         self._anotar_arranjo()
         save_state(self._caminho_do_estado, estado)
 
@@ -860,6 +868,10 @@ class JanelaPrincipal(QMainWindow):
         # foi salvo é a janela -- o painel não tem o carimbo por página.
         self.painel.diagramas_salvos = lambda _documento, pagina: self._salvos.get(pagina, set())
         self.painel.selecionou.connect(self.pdf.selecionar_caixa)
+        # **O fio que o porte cortou** (S-512), e por onde o clique numa caixa da página chega ao
+        # tabuleiro de estudo (S-513). Quem decide se há o que fazer é `decidir_sincronia`: este
+        # sinal dispara a cada casa corrigida, e reabrir ali zeraria a pilha de desfazer da sala.
+        self.painel.posicao_mudou.connect(self.estudo.sync_with_ocr)
         self.painel.salvou.connect(self._gravou_amostra)
         self.painel.revisou.connect(self._fechar_item_da_fila)
         self.painel.regravou.connect(self._dataset_mudou)

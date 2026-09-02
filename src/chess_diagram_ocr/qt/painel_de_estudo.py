@@ -71,27 +71,48 @@ from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
+from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
-from chess_diagram_ocr.ui import comandos, espaco, estilos, estudo_lista, geometria, tipografia, tokens
+from chess_diagram_ocr.ui import (
+    comandos,
+    espaco,
+    estilos,
+    estudo_dobra,
+    estudo_lista,
+    geometria,
+    tipografia,
+    tokens,
+)
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.sala_declarada import (
     ACOES_PROPRIAS,
     CANDIDATOS_DO_MOTOR,
     COMANDOS_DA_ABA,
+    FRACAO_PADRAO_DO_TABULEIRO,
     LADO_AMPLIADO,
     LADO_DO_RECORTE,
+    PAPEIS_COLADOS,
     PARTIDAS_MAXIMAS_DE_PGN,
     RECUO_POR_NIVEL,
     TAMANHO_MAXIMO_DE_PGN,
+    Sincronia,
+    decidir_sincronia,
     nags_oferecidos,
 )
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["PainelDeEstudo"]
+LADO_DO_ICONE_DA_SALA = 16
+"""Lado do ícone nos botões desta aba, em pixel (S-520).
+
+Menor que o da fita (20 a 32): ali o ícone **é** o botão, com o rótulo embaixo; aqui ele acompanha
+um rótulo ao lado, numa barra que já tem 28 botões. Dezesseis é a altura da letra da interface na
+base 9, que é o que faz o par ícone-texto parecer uma coisa só em vez de duas."""
+
+__all__ = ["LADO_DO_ICONE_DA_SALA", "PainelDeEstudo"]
 
 
 class PainelDeEstudo(QWidget):
@@ -147,8 +168,15 @@ class PainelDeEstudo(QWidget):
         self._recorte_de = ""
         self._sujo = False
         self._trechos: tuple[estudo_lista.Trecho, ...] = ()
+        self._variantes: tuple[estudo_dobra.Variante, ...] = ()
+        self._dobradas: set[tuple[int, ...]] = set()
+        """As variantes dobradas, por caminho do primeiro lance delas (S-516).
+
+        Estado de **vista**: não entra na pilha de desfazer, não vai para o PGN e não sobrevive
+        à sessão. Caminho que deixou de existir simplesmente não casa com variante nenhuma."""
         self._comentario_do_no: chess.pgn.GameNode | None = None
         self._montando = False
+        self._fracao_do_tabuleiro = FRACAO_PADRAO_DO_TABULEIRO
 
         self.sala = Sala()
         self.estudo = Estudo.de_posicao(PosicaoDeEstudo())
@@ -160,6 +188,7 @@ class PainelDeEstudo(QWidget):
         self._relogio_de_gravacao.timeout.connect(self.salvar_agora)
 
         self._montar()
+        self.tabuleiro.definir_fracao(self._fracao_do_tabuleiro)
         self._motor_respondeu.connect(self._mostrar_avaliacao)
         self._motor_falhou.connect(self._mostrar_erro_do_motor)
         self._motor_terminou.connect(self._terminar_analise)
@@ -195,8 +224,24 @@ class PainelDeEstudo(QWidget):
         from chess_diagram_ocr.ui import atalhos
 
         botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
+        # Qual ação este botão serve, legível de fora. O rótulo não responde: os quatro de
+        # navegação passaram a desenhar só o ícone (S-520), e um teste que perguntasse pelo texto
+        # deixaria de achá-los -- que é a guarda medindo o desenho em vez do arranjo.
+        botao.setProperty("acao", acao)
         botao.clicked.connect(lambda _marcado=False, nome=acao: self.executar(nome))
         tema.aplicar_papel(botao, comandos.papel(acao))
+        # **O ícone quando o catálogo declara um** (S-520), do mesmo jeito que a fita faz. Aqui
+        # ele alcança só os quatro de navegação, e não é decoração: `⏮ ◀ ▶ ⏭` não existem na fonte
+        # da interface -- `inFont` responde `False` para os quatro em Segoe UI --, então o rótulo
+        # deles vinha de uma fonte de queda, com desenho que não é o da janela. O texto **fica**:
+        # ícone que não desenhou devolve `None` e o botão continua legível.
+        nome_do_icone = comandos.comando(acao).icone
+        if nome_do_icone:
+            lado = LADO_DO_ICONE_DA_SALA
+            desenho = qt_icones.icone(nome_do_icone, 2 * lado, tema.cor_atual(tokens.TEXTO_PADRAO))
+            if desenho is not None:
+                botao.setIcon(desenho)
+                botao.setIconSize(qt_icones.tamanho(lado))
         motivo = comandos.rotulo(acao)
         tecla = atalhos.acelerador(acao)
         dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
@@ -208,8 +253,22 @@ class PainelDeEstudo(QWidget):
         getattr(self, COMANDOS_DA_ABA[acao])()
 
     def _barras(self) -> list[BarraFluida]:
-        """Quatro linhas, e o corte entre elas é o assunto: a posição, a linha, o que vem de fora,
-        e o que entra e sai."""
+        """**Três linhas, e o corte entre elas é o assunto** (S-517): a posição, a árvore, e o
+        livro somado ao que entra e sai.
+
+        Eram quatro, e a navegação estava na segunda -- encostada na cirurgia de árvore. Medido em
+        2026-09-01: 28 botões (31 com motor) ocupando 130 px de 800 a 900 de largura e 155 px de
+        620 a 760, antes de qualquer conteúdo.
+
+        **Os quatro de navegação saíram daqui e foram para baixo do tabuleiro**, que é onde a
+        frequência os põe: são o único grupo cujo uso justifica estar ao lado do olho que já está no
+        tabuleiro. E a fileira que sobrou é só de árvore -- `Apagar variante` deixou de estar
+        encostado no `▶`, que era o vizinho mais perigoso que ele podia ter.
+
+        As duas últimas viraram uma: o livro e a entrada/saída são as de menor frequência da aba, e
+        juntas ainda cabem numa fileira na largura de trabalho -- e a `BarraFluida` quebra sozinha
+        quando não cabem.
+        """
         posicao = BarraFluida(self)
         for acao in (
             "estudo_do_diagrama",
@@ -228,10 +287,6 @@ class PainelDeEstudo(QWidget):
 
         linha = BarraFluida(self)
         for acao in (
-            "inicio_da_linha",
-            "lance_anterior",
-            "proximo_lance",
-            "fim_da_linha",
             "promover_variante",
             "promover_a_principal",
             "rebaixar_variante",
@@ -244,10 +299,43 @@ class PainelDeEstudo(QWidget):
             "O símbolo do lance. Escolher o mesmo de novo tira; escolher outro do mesmo grupo\n"
             "troca. Julgar o lance (!, ?) e julgar a posição (⩲, ±) são duas frases, e somam.",
         )
+        self.btn_dobra = self._botao(linha, "dobrar_variantes")
+        self.btn_dobra.setCheckable(True)
+        dica_em(
+            self.btn_dobra,
+            "Esconde o miolo das variantes e deixa `(…)` no lugar. O `(` de cada uma também\n"
+            "responde ao clique. A variante que contém o lance corrente não se dobra.",
+        )
         self.lbl_simbolo = QLabel("", linha)
         tema.pintar(self.lbl_simbolo, "color", tokens.TEXTO_SECUNDARIO)
         linha.adicionar(self.lbl_simbolo)
-        return [posicao, linha, self._barra_de_fora(), self._barra_de_entrada()]
+        return [posicao, linha, self._barra_de_fora()]
+
+    def _barra_de_navegacao(self) -> BarraFluida:
+        """Os quatro de navegação, **sob o tabuleiro**, com o lance corrente e a vez (S-517).
+
+        As duas informações ao lado não são decoração: o lance corrente só existia como fundo
+        amarelo no meio da lista, e a vez a jogar só como sufixo da frase do rodapé -- que é a
+        última linha da janela, longe do olho de quem está olhando o tabuleiro.
+        """
+        barra = BarraFluida(self)
+        for acao in ("inicio_da_linha", "lance_anterior", "proximo_lance", "fim_da_linha"):
+            botao = self._botao(barra, acao)
+            if not botao.icon().isNull():
+                # **Só aqui o ícone substitui o rótulo** (S-520), e é o único grupo em que isso é
+                # honesto: o `rotulo_curto` destes quatro **é** um símbolo (`⏮ ◀ ▶ ⏭`), então
+                # mantê-lo ao lado do ícone desenharia a mesma seta duas vezes -- uma da fonte de
+                # queda e outra do traço vetorial. O rótulo longo e a tecla continuam na dica, que
+                # é onde eles sempre estiveram.
+                botao.setText("")
+                botao.setIconSize(qt_icones.tamanho(2 * LADO_DO_ICONE_DA_SALA))
+        self.lbl_lance = QLabel("", barra)
+        self.lbl_lance.setFont(tema.fonte_atual(tipografia.TITULO))
+        barra.adicionar(self.lbl_lance)
+        self.lbl_vez = QLabel("", barra)
+        tema.pintar(self.lbl_vez, "color", tokens.TEXTO_SECUNDARIO)
+        barra.adicionar(self.lbl_vez)
+        return barra
 
     def _barra_de_fora(self) -> BarraFluida:
         de_fora = BarraFluida(self)
@@ -276,10 +364,17 @@ class PainelDeEstudo(QWidget):
             )
             self._botao(de_fora, "variante_do_motor")
         self._botao(de_fora, "partidas_da_posicao")
+        self._entrada_e_saida(de_fora)
         return de_fora
 
-    def _barra_de_entrada(self) -> BarraFluida:
-        entra_e_sai = BarraFluida(self)
+    def _entrada_e_saida(self, entra_e_sai: BarraFluida) -> None:
+        """O que entra e o que sai, na mesma fileira do livro (S-517).
+
+        Eram duas fileiras, e as duas são as de menor frequência da aba: colar, abrir, exportar e
+        levar para o texto acontecem uma vez por sessão, não uma vez por lance. Juntas cabem numa
+        linha na largura de trabalho -- e quando não couberem, a `BarraFluida` quebra sozinha, que é
+        o item inteiro da S-151.
+        """
         for acao in (
             "colar_estudo",
             "abrir_pgn",
@@ -299,7 +394,6 @@ class PainelDeEstudo(QWidget):
         self.lbl_placar = QLabel("", entra_e_sai)
         tema.pintar(self.lbl_placar, "color", tokens.TEXTO_SECUNDARIO)
         entra_e_sai.adicionar(self.lbl_placar)
-        return entra_e_sai
 
     def _esquerda(self) -> QWidget:
         coluna = QWidget(self.divisor)
@@ -310,7 +404,14 @@ class PainelDeEstudo(QWidget):
         self.tabuleiro.lance.connect(self.push_move)
         self.tabuleiro.seta.connect(self.on_arrow)
         self.tabuleiro.recado.connect(self.set_status)
-        pilha.addWidget(self.tabuleiro, 1)
+        # **A altura segue a largura** (S-517), e só aqui: sem isto o widget fica com toda a altura
+        # sobrando da coluna, o tabuleiro flutua no meio dela, e a faixa de navegação -- que existe
+        # para estar colada nele -- aparece ~100 px abaixo do tabuleiro.
+        politica = self.tabuleiro.sizePolicy()
+        politica.setHeightForWidth(True)
+        self.tabuleiro.setSizePolicy(politica)
+        pilha.addWidget(self.tabuleiro)
+        pilha.addWidget(self._barra_de_navegacao())
 
         # A miniatura do diagrama (S-282). Ela nasce escondida: estudo sem âncora não mostra
         # espaço reservado para o que não existe.
@@ -334,10 +435,18 @@ class PainelDeEstudo(QWidget):
         return coluna
 
     def _direita(self) -> QWidget:
-        coluna = QWidget(self.divisor)
-        pilha = QVBoxLayout(coluna)
-        pilha.setContentsMargins(0, 0, 0, 0)
-        pilha.setSpacing(espaco.linha())
+        """A coluna de leitura, repartida por um divisor vertical (S-519).
+
+        **Medido em 2026-09-01**: a caixa "Lances" levava todo o esticamento e usava um terço dele
+        -- ~370 px vazios a 900x800 e ~590 a 1250x1000, 81% da caixa --, enquanto o comentário, que
+        é onde se escreve a frase do livro, tinha quatro linhas fixas.
+
+        A repartição passa a ser de quem lê, e sobrevive à sessão pelo caminho que `estudo_divisor`
+        já abriu. **Sem motor a seção não existe** (S-33), e o divisor tem duas partes em vez de
+        três: reservar altura para o que não está lá é o defeito que a S-450 tirou do tabuleiro.
+        """
+        coluna = QSplitter(Qt.Orientation.Vertical, self.divisor)
+        coluna.setChildrenCollapsible(False)
 
         lances = QGroupBox("Lances", coluna)
         dentro = QVBoxLayout(lances)
@@ -349,21 +458,27 @@ class PainelDeEstudo(QWidget):
         self.lista.anchorClicked.connect(self._clique_na_lista)
         self.lista.setFont(tema.fonte_atual(tipografia.CORPO))
         dentro.addWidget(self.lista)
-        pilha.addWidget(lances, 1)
 
         anotacao = QGroupBox("Comentário do lance", coluna)
         dentro = QVBoxLayout(anotacao)
         dentro.setContentsMargins(*(espaco.linha(),) * 4)
         self.comentario = QTextEdit(anotacao)
-        self.comentario.setFixedHeight(4 * tema.altura_de_linha_atual())
+        # **Piso e não altura fixa** (S-519): com o divisor, quem decide a altura é quem lê. As
+        # quatro linhas de antes eram o teto e o piso ao mesmo tempo, e a caixa onde se escreve a
+        # frase do livro era a menor da coluna.
+        self.comentario.setMinimumHeight(3 * tema.altura_de_linha_atual())
         # Grava ao **sair** do campo, e não a cada tecla: um sinal por letra faria a lista de
         # lances ser redesenhada trinta vezes por frase, e o cursor pularia junto.
         self.comentario.focusOutEvent = self._saiu_do_comentario  # type: ignore[method-assign,assignment]
         dentro.addWidget(self.comentario)
-        pilha.addWidget(anotacao)
 
         if self._analyzer is not None:
-            pilha.addWidget(self._secao_do_motor(coluna))
+            self._secao_do_motor(coluna)
+        # A altura de fábrica reparte por uso, e não em partes iguais: a lista é a maior, o
+        # comentário cabe um parágrafo, e o motor fica no que a seção dele pede.
+        for indice, peso in enumerate((3, 2, 1)[: coluna.count()]):
+            coluna.setStretchFactor(indice, peso)
+        self.divisor_vertical = coluna
         return coluna
 
     def _secao_do_motor(self, pai: QWidget) -> QGroupBox:
@@ -428,17 +543,44 @@ class PainelDeEstudo(QWidget):
 
         secundario = tema.cor_atual(tokens.TEXTO_SECUNDARIO)
         fundo = tema.cor_atual(tokens.SUPERFICIE_DICA)
+        # As variantes dobradas (S-516). O miolo some, os dois parênteses ficam, e o `(` é o
+        # controle: clicar nele desdobra. Quem decide o que some é `ui/estudo_dobra`, e o lance
+        # corrente nunca some -- ver o cabeçalho de lá.
+        self._variantes = estudo_dobra.variantes(self._trechos)
+        ocultos = estudo_dobra.escondidos(self._trechos, self._dobradas, corrente)
+        # **Dobrada de verdade**, e não só declarada: a que contém o lance corrente continua na
+        # lista de dobradas e é desenhada aberta, então ela não pode mostrar o `(…)`.
+        dobrados = {
+            variante.abre
+            for variante in self._variantes
+            if variante.fecha > variante.abre + 1 and variante.abre + 1 in ocultos
+        }
         partes: list[str] = []
+        aberto: int | None = None
         for indice, trecho in enumerate(self._trechos):
-            if not trecho.texto:
+            if not trecho.texto or indice in ocultos:
                 continue
-            # A variante começa e termina em linha própria: é o que dá o bloco recuado que se lê
-            # como bloco. O `texto_de` não leva estas quebras -- elas são desenho, não PGN.
-            if trecho.papel == estudo_lista.ABRE:
-                partes.append("<br>")
+            # **Cada corrida de mesmo recuo é um bloco, e o bloco é o que recua** (S-514). Era um
+            # `margin-left` no `<span>`, e o `QTextDocument` descarta margem em elemento inline: o
+            # número era lido, estava certo, e não pintava um pixel.
+            #
+            # A variante abre bloco mesmo no mesmo recuo, senão duas irmãs -- `( 2. Bc4 ) ( 2. d4 )`
+            # -- correriam na mesma linha. É o que os dois `<br>` de antes faziam, ditos pela
+            # estrutura em vez de por quebra solta.
+            comeca = trecho.papel == estudo_lista.ABRE
+            if aberto != trecho.recuo or comeca:
+                if aberto is not None:
+                    partes.append("</div>")
+                partes.append(f'<div style="margin-left:{trecho.recuo * RECUO_POR_NIVEL}px">')
+                aberto = trecho.recuo
             partes.append(self._trecho_em_html(indice, trecho, secundario, fundo, corrente))
-            if trecho.papel == estudo_lista.FECHA:
-                partes.append("<br>")
+            if indice in dobrados:
+                partes.append(
+                    f'<a href="dobra:{indice}" style="text-decoration:none">'
+                    f'<span style="color:{secundario}">…&nbsp;</span></a>'
+                )
+        if aberto is not None:
+            partes.append("</div>")
         self.lista.setHtml("".join(partes))
         self.lista.scrollToAnchor("corrente")
 
@@ -450,14 +592,16 @@ class PainelDeEstudo(QWidget):
         fundo: str,
         corrente: object,
     ) -> str:
-        """Um trecho como HTML: recuo por nível, cor por papel, e âncora quando ele é navegável.
+        """Um trecho como HTML: cor por papel, e âncora quando ele é navegável.
 
         **Cor e peso saem de `ui/tokens.py` e de `ui/tipografia.py`**, como as tags do outro lado:
         nada de hexadecimal escrito aqui. A linha principal em negrito e as variantes em peso
         normal é a hierarquia sem gastar matiz -- o recurso escasso do programa depois da S-158.
+
+        **O recuo não está mais aqui** (S-514): quem recua é o bloco que `_redesenhar_lista` abre,
+        porque margem em `<span>` o `QTextDocument` ignora.
         """
-        recuo = min(trecho.recuo, estudo_lista.NIVEL_MAXIMO_DE_RECUO) * RECUO_POR_NIVEL
-        estilo = [f"margin-left:{recuo}px"]
+        estilo: list[str] = []
         apagados = (
             estudo_lista.NUMERO,
             estudo_lista.ABRE,
@@ -480,16 +624,58 @@ class PainelDeEstudo(QWidget):
             estilo.append(f"background-color:{fundo}")
             estilo.append(f"color:{tokens.sobre_superficie(fundo)}")
 
-        texto = html.escape(trecho.texto).replace(" ", "&nbsp;")
+        # **Só o que gruda no vizinho leva `&nbsp;`** (S-515). Era *todo* espaço, e sem nenhuma
+        # fronteira de palavra o `QTextEdit` -- `WrapAtWordBoundaryOrAnywhere` de fábrica -- quebrava
+        # em qualquer caractere: `O-O` saía `O-`/`O`, e a frase do comentário, `guard`/`am`. Quais
+        # papéis grudam é decisão de `ui/sala_declarada.PAPEIS_COLADOS`.
+        texto = html.escape(trecho.texto)
+        if trecho.papel in PAPEIS_COLADOS:
+            texto = texto.replace(" ", "&nbsp;")
         marca = ' name="corrente"' if e_corrente else ""
-        corpo = f'<span style="{";".join(estilo)}">{texto}</span>'
+        corpo = f'<span style="{";".join(estilo)}">{texto}</span>' if estilo else f"<span>{texto}</span>"
+        if trecho.papel == estudo_lista.ABRE:
+            # **O `(` é o controle da dobra** (S-516), e não um glifo novo ao lado dele. Um `▸`
+            # sairia de fonte de queda -- é o que a S-508 mediu nos quatro botões de navegação --,
+            # e um triângulo desenhado ao lado de cada variante seria ruído numa lista de notação.
+            # O parêntese já delimita a variante; o que faltava era ele responder ao clique.
+            return f'<a href="dobra:{indice}" style="text-decoration:none">{corpo}</a>'
         if trecho.caminho is None:
             return f"<a{marca}>{corpo}</a>" if marca else corpo
         return f'<a href="trecho:{indice}"{marca} style="text-decoration:none">{corpo}</a>'
 
+    def _mostrar_lance_corrente(self) -> None:
+        """O lance corrente e a vez, na faixa sob o tabuleiro (S-517).
+
+        **O texto sai dos mesmos trechos que a lista desenha**, e não de uma segunda formatação:
+        `estudo_lista.trecho_do_caminho` acha o trecho do nó corrente, e o `NUMERO` colado nele --
+        quando há um -- é o mesmo `12.` que a lista mostra. Uma segunda montagem daria `12. Ba4`
+        aqui e `12...Ba4` ali no dia em que a numeração de variante mudasse.
+
+        Na raiz o trecho é o `RAIZ`, e o texto dele já é "posição do diagrama" ou "posição inicial"
+        conforme o estudo tenha vindo do livro -- que é exatamente o que se quer ler ali.
+        """
+        indice = estudo_lista.trecho_do_caminho(self._trechos, self.estudo.caminho())
+        if indice < 0:
+            self.lbl_lance.setText("")
+        else:
+            trecho = self._trechos[indice]
+            anterior = self._trechos[indice - 1] if indice else None
+            numero = (
+                anterior.texto
+                if anterior is not None
+                and anterior.papel == estudo_lista.NUMERO
+                and anterior.caminho == trecho.caminho
+                else ""
+            )
+            self.lbl_lance.setText(f"{numero}{trecho.texto}".strip())
+        self.lbl_vez.setText("brancas jogam" if self.estudo.tabuleiro.turn else "pretas jogam")
+
     def _clique_na_lista(self, url: QUrl) -> None:
         """Vai ao nó daquele trecho. O caminho é resolvido **agora**, e não guardado na âncora."""
         endereco = url.toString()
+        if endereco.startswith("dobra:"):
+            self._alternar_uma_dobra(int(endereco.removeprefix("dobra:")))
+            return
         if not endereco.startswith("trecho:"):
             return
         indice = int(endereco.removeprefix("trecho:"))
@@ -502,6 +688,53 @@ class PainelDeEstudo(QWidget):
         if not self.estudo.ir_para(caminho):
             self.set_status("Aquele lance não existe mais.")
         self.refresh()
+
+    # ------------------------------------------------------------------ dobrar variantes (S-516)
+
+    def _alternar_uma_dobra(self, indice: int) -> None:
+        """Dobra ou desdobra a variante cujo `(` foi clicado. **A identidade é o caminho.**"""
+        alvo = next((v for v in self._variantes if v.abre == indice), None)
+        if alvo is None:  # pragma: no cover - a lista foi refeita entre o desenho e o clique
+            return
+        if alvo.chave in self._dobradas:
+            self._dobradas.discard(alvo.chave)
+        else:
+            self._dobradas.add(alvo.chave)
+        self._redesenhar_lista()
+        self._atualizar_botao_da_dobra()
+
+    def alternar_dobra(self) -> None:
+        """Dobra **todas** as variantes, ou desdobra todas se já houver alguma dobrada.
+
+        **É o caminho descobrível**, e o clique no `(` é o atalho de quem já viu que ele responde.
+        Sem um comando, dobrar seria um gesto que só se acha por acidente -- e o estudo em que ele
+        vale é justamente o grande, aberto de um PGN, onde a pessoa quer esconder antes de ler.
+
+        Dobrar não muda a árvore nem o PGN: é vista. `edicao` não sobe, e o `Ctrl+Z` não a enxerga.
+        """
+        if self._dobradas:
+            self._dobradas.clear()
+            frase = "Variantes desdobradas."
+        elif self._variantes:
+            self._dobradas = {variante.chave for variante in self._variantes}
+            frase = f"{len(self._dobradas)} variante(s) dobrada(s)."
+        else:
+            frase = "Este estudo não tem variante para dobrar."
+        self._redesenhar_lista()
+        self._atualizar_botao_da_dobra()
+        self.set_status(frase)
+
+    def _atualizar_botao_da_dobra(self) -> None:
+        """Cinza sem variante, e com o rótulo do que de fato está na tela -- como a S-347 fez
+        com o botão do recorte, e pela mesma razão: um botão que alterna sobre o que não existe
+        troca de texto sem que nada mude."""
+        self.btn_dobra.setEnabled(bool(self._variantes))
+        self.btn_dobra.setChecked(bool(self._dobradas))
+        self.btn_dobra.setText(
+            comandos.rotulo_alternado("dobrar_variantes")
+            if self._dobradas
+            else comandos.rotulo_de_botao("dobrar_variantes")
+        )
 
     # -------------------------------------------------------------------------------- motor
 
@@ -618,13 +851,20 @@ class PainelDeEstudo(QWidget):
         self._montando = True
         try:
             self.campo_fen.setText(self.estudo.tabuleiro.fen())
-            self.tabuleiro.mostrar_tabuleiro(self.estudo.tabuleiro, virado=self.estudo.invertido)
+            # `no.move` é a aresta que chegou ao nó corrente, e é `None` na raiz (S-509).
+            self.tabuleiro.mostrar_tabuleiro(
+                self.estudo.tabuleiro,
+                virado=self.estudo.invertido,
+                ultimo_lance=self.estudo.no.move,
+            )
             self._mostrar_setas()
             self._redesenhar_lista()
             self._mostrar_comentario()
             self._mostrar_nag()
             self._desenhar_recorte()
             self._atualizar_botao_do_recorte()
+            self._atualizar_botao_da_dobra()
+            self._mostrar_lance_corrente()
             self._mostrar_placar()
         finally:
             self._montando = False
@@ -707,6 +947,34 @@ class PainelDeEstudo(QWidget):
     # ------------------------------------------------------------------ o divisor (S-276)
 
     @property
+    def fracao_do_divisor_vertical(self) -> float:
+        """Onde está a alça entre lances e comentário, como fração da altura (S-519)."""
+        tamanhos = self.divisor_vertical.sizes()
+        altura = sum(tamanhos)
+        if len(tamanhos) < 2 or altura <= 0:
+            return 0.0
+        return geometria.fracao_de_divisor(tamanhos[0], altura)
+
+    def posicionar_divisor_vertical(self, fracao: float) -> None:
+        """Põe a alça vertical naquela fração. `0.0` deixa os pesos decidirem."""
+        if fracao <= 0.0:
+            return
+        tamanhos = self.divisor_vertical.sizes()
+        altura = max(1, sum(tamanhos) or self.divisor_vertical.height())
+        primeiro = int(altura * fracao)
+        resto = max(1, altura - primeiro)
+        if len(tamanhos) <= 2:
+            self.divisor_vertical.setSizes([primeiro, resto])
+            return
+        # Com o motor são três partes, e a fração guardada é só a da primeira: as outras duas
+        # repartem o que sobra na proporção que já tinham, senão mover a alça de cima esmagaria a
+        # seção do motor sem ninguém ter pedido.
+        antes = sum(tamanhos[1:]) or 1
+        self.divisor_vertical.setSizes(
+            [primeiro, *(max(1, int(resto * lado / antes)) for lado in tamanhos[1:])]
+        )
+
+    @property
     def fracao_do_divisor(self) -> float:
         """Onde a alça está, como fração da largura. `0.0` quando ainda não há geometria medida."""
         tamanhos = self.divisor.sizes()
@@ -723,6 +991,22 @@ class PainelDeEstudo(QWidget):
         esquerda = int(largura * fracao)
         self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
+    @property
+    def fracao_do_tabuleiro(self) -> float:
+        """Que fração da coluna o tabuleiro ocupa. É o leitor que `AppState.board_zoom` não tinha.
+
+        **O campo existia, era gravado, era lido do disco e não tinha ninguém do outro lado**
+        (S-518). O commit que religou o estado da janela registrou "`board_zoom` fica sem uso de
+        propósito: o tabuleiro do Qt se ajusta ao painel" -- o que era verdade sobre o piso e não
+        sobre o teto, porque `MAX_DO_TABULEIRO` o parava em 560 px.
+        """
+        return self._fracao_do_tabuleiro
+
+    def definir_fracao_do_tabuleiro(self, fracao: float) -> None:
+        """Aplica a fração ao tabuleiro da sala. `0.0` é "nunca escolhi", e aí vale o padrão."""
+        self._fracao_do_tabuleiro = FRACAO_PADRAO_DO_TABULEIRO if fracao <= 0.0 else float(fracao)
+        self.tabuleiro.definir_fracao(self._fracao_do_tabuleiro)
+
     # --------------------------------------------------------------- vínculo com o OCR
 
     def sync_with_ocr(self, force: bool = False) -> None:
@@ -731,13 +1015,28 @@ class PainelDeEstudo(QWidget):
         Silenciosa quando não há posição válida: é chamada a cada edição de casa no painel de
         resultado, e uma caixa de "FEN inválida" no meio de uma correção seria pior que não
         sincronizar.
+
+        **Quem decide se há o que fazer é `decidir_sincronia`, e ela é pura (S-512).** A ligação
+        cobre três casos que não são o mesmo -- outra mesa, a mesma mesa ainda vazia, e a mesma
+        mesa já analisada --, e o terceiro é o que impede uma casa corrigida de zerar a pilha de
+        desfazer de quem estava estudando aquele diagrama.
         """
         if not force and not self.seguir_ocr.isChecked():
             return
         posicao = self._posicao()
-        if posicao is None or not posicao.valida():
+        if posicao is None:
             return
-        self._abrir(posicao, origem="Base: OCR selecionado", status="Estudo do diagrama selecionado.")
+        decisao = decidir_sincronia(self.estudo.ancora, posicao, vazio=self.estudo.vazio())
+        if decisao is Sincronia.NADA:
+            return
+        self._abrir(
+            posicao,
+            origem="Base: OCR selecionado",
+            # A troca de mesa é um acontecimento e se anuncia; a atualização da posição de um
+            # estudo ainda vazio, não -- ela chega a cada casa corrigida, e o rodapé é de quem
+            # está corrigindo.
+            status="Estudo do diagrama selecionado." if decisao is Sincronia.TROCA else "",
+        )
 
     def on_follow_ocr_toggle(self) -> None:
         if self.seguir_ocr.isChecked():
@@ -768,6 +1067,10 @@ class PainelDeEstudo(QWidget):
         self._historico.zerar(self.estudo.para_pgn())
         self.lbl_origem.setText(origem)
         self.refresh()
+        # `status` vazio é "não anuncie": a atualização silenciosa da S-512 passa por aqui a cada
+        # casa corrigida, e uma frase por tecla no rodapé enterraria a de quem está corrigindo.
+        if not status:
+            return
         if anterior is not None:
             self.set_status(f"{status} {anterior.contagem_de_lances()} lance(s) já analisados aqui.")
         else:

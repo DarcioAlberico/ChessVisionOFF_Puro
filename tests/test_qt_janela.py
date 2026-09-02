@@ -1180,3 +1180,96 @@ class DesfazerTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SincroniaDaSalaTests(unittest.TestCase):
+    """O fio que o porte cortou, e o clique que passou a chegar por ele (S-512/S-513).
+
+    **Nenhum teste de painel pega isto**, e é a razão de este arquivo existir: o painel de estudo
+    tem `sync_with_ocr`, o de resultado tem o que emitir, e durante um mês ninguém ligou os dois.
+    A caixa "Seguir OCR selecionado" nasce marcada, então a aba prometia de fábrica o que não fazia.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.livro = _livro(self.pasta)
+        self.addCleanup(self.app.processEvents)
+
+    def janela(self) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+            pasta_da_galeria=self.pasta,
+        )
+        self.addCleanup(descartar, montada)
+        montada.resize(1400, 900)
+        montada.abrir_pdf(self.livro)
+        self.app.processEvents()
+        return montada
+
+    def _diagrama(self, indice: int, placement: str) -> object:
+        import numpy as np
+
+        from chess_diagram_ocr.service import RecognizedDiagram
+
+        return RecognizedDiagram(
+            index=indice,
+            board_rgb=np.full((64, 64, 3), 200, np.uint8),
+            placement=placement,
+            min_confidence=0.93,
+            square_confidences=[0.99] * 64,
+            side_to_move="w",
+        )
+
+    def test_selecionar_um_diagrama_leva_a_posicao_ao_tabuleiro_de_estudo(self) -> None:
+        janela = self.janela()
+        janela._chegaram_itens(
+            janela.pdf.page_index,
+            [self._diagrama(0, "8/8/8/8/8/8/8/K6k"), self._diagrama(1, "8/8/8/8/8/8/8/K5nk")],
+            None,
+        )
+
+        janela.painel.lista.setCurrentRow(0)
+        self.app.processEvents()
+        self.assertEqual(0, janela.estudo.estudo.ancora.diagrama, "a sala não seguiu o primeiro")
+
+        janela.painel.lista.setCurrentRow(1)
+        self.app.processEvents()
+        self.assertEqual(1, janela.estudo.estudo.ancora.diagrama, "a sala não trocou de mesa")
+        self.assertEqual("8/8/8/8/8/8/8/K5nk", janela.estudo.estudo.tabuleiro.board_fen())
+
+    def test_o_clique_na_caixa_da_pagina_chega_a_sala(self) -> None:
+        """**S-513, e ela não precisou de gesto novo.**
+
+        `decide_box_click` continua devolvendo `SELECT`, o `SELECT` continua selecionando o
+        diagrama na aba Resultado, e é a seleção que chega à sala pelo fio da S-512. Uma terceira
+        resposta ao clique -- duplo-clique, `Ctrl`+clique -- teria cobrado aprendizado por um fio
+        que estava cortado.
+        """
+        janela = self.janela()
+        janela._chegaram_itens(
+            janela.pdf.page_index,
+            [self._diagrama(0, "8/8/8/8/8/8/8/K6k"), self._diagrama(1, "8/8/8/8/8/8/8/K5nk")],
+            None,
+        )
+
+        janela._clicou_na_caixa(1)
+        self.app.processEvents()
+        self.assertEqual(1, janela.estudo.estudo.ancora.diagrama)
+        self.assertEqual("8/8/8/8/8/8/8/K5nk", janela.estudo.estudo.tabuleiro.board_fen())
+
+    def test_a_aba_que_vem_para_a_frente_continua_sendo_a_do_resultado(self) -> None:
+        """O clique numa caixa é o gesto de **conferir o que o modelo leu**, e isso não mudou.
+
+        Quem está na aba Estudo vê o tabuleiro trocar, que é o pedido; quem está corrigindo
+        continua sendo levado ao editor.
+        """
+        janela = self.janela()
+        janela._chegaram_itens(janela.pdf.page_index, [self._diagrama(0, "8/8/8/8/8/8/8/K6k")], None)
+        janela._clicou_na_caixa(0)
+        self.app.processEvents()
+        self.assertIs(janela.painel, janela.abas.currentWidget())

@@ -250,8 +250,26 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1776
+    LIMITE = 1788
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.776 → 1.780 na S-512**, e as quatro são **uma** linha de fiação mais três de comentário: o
+    `connect` entre `painel.posicao_mudou` e `estudo.sync_with_ocr`, que é o fio que o porte do Tk
+    cortou. Não há o que baixar para `ui/` aqui -- a decisão de *se* a sala deve seguir é pura e
+    mora em `sala_declarada.decidir_sincronia`; o que ficou nesta janela é ligar um painel ao
+    outro, que é precisamente o que só ela pode fazer.
+
+    A subida foi cortada pela metade ao escrevê-la: o comentário tinha sete linhas explicando a
+    armadilha da pilha de desfazer, e o argumento inteiro mora na `SPEC_ESTUDO_QT.md`. Três linhas
+    dizem o que quem lê este arquivo precisa saber e apontam para onde está o resto.
+
+    **1.780 -> 1.788 nas S-518 e S-519**, e as oito são estado indo e voltando do disco: três
+    linhas em `_aplicar_estado` (o divisor vertical da sala, e o `board_zoom` que nunca teve
+    leitor) e cinco em `_gravar_estado`. **Extrair não era opção** pela mesma razão dos cinco
+    blocos acima: as duas metades leem e escrevem `self.estudo`, e a decisão de *quanto* vale cada
+    fração já é pura -- `ui/geometria.fracao_de_divisor` e
+    `ui/sala_declarada.FRACAO_PADRAO_DO_TABULEIRO`. O que sobra aqui é a ponte entre o `AppState` e
+    o widget, que é o que só a janela pode fazer.
 
     **1.227 → 1.776 na S-506**, e as 549 são o que o corte do Tk tinha deixado sem chamador. Elas
     são a maior subida da história desta catraca, e a razão de ela não ser um acidente é que cada

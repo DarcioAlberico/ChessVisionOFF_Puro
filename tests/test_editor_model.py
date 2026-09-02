@@ -365,6 +365,7 @@ SEM_TKINTER = {
     "estilos.py": "papel de botão -> nome de estilo ttk (S-144)",
     "espaco.py": "os quatro papéis de espaço resolvidos contra a fonte e a densidade (S-447)",
     "estudo_lista.py": "a lista de lances como trechos, conferida contra o StringExporter (S-273)",
+    "estudo_dobra.py": "o que uma variante dobrada esconde na lista de lances (S-516)",
     "formato.py": "número e código do CSV como a tela os escreve (S-169)",
     "filtro_de_comandos.py": "o inventário e a ordem da paleta de comandos (S-231/S-503)",
     "exportacao_de_pgn.py": "o que a exportação do livro decide fora da janela (S-24/S-505)",

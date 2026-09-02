@@ -229,6 +229,7 @@ MENUS: tuple[Menu, ...] = (
             Item("apagar_continuacao"),
             _sep(),
             Item("simbolo_do_lance"),
+            Item("dobrar_variantes"),
             _sep(),
             Item("virar_tabuleiro"),
             Item("trocar_vez"),
