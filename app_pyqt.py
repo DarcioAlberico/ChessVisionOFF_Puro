@@ -21,8 +21,11 @@ import importlib.util
 import logging
 import multiprocessing as mp
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
+from typing import Any
 
 from chess_diagram_ocr.config import (
     DEFAULT_MODEL_PATH,
@@ -65,6 +68,25 @@ e por um mês o `QUICKSTART.md` documentou códigos que nada mais podia devolver
 
 def tem_pyqt() -> bool:
     return importlib.util.find_spec("PyQt6") is not None
+
+
+def _janela_do_auto_teste(servico: Any, descartavel: Path) -> Any:
+    """A janela que o auto-teste monta: o serviço medido, sem motor, e com estado descartável (S-524).
+
+    **Conferir a instalação não pode mexer na sessão de quem a confere.** A janela lê e grava
+    `data/janela.json` -- o último livro, a página, o arranjo --, e o auto-teste abre o primeiro
+    livro de `PDF/` e vai a uma página: com o arquivo do produto, qualquer gravação apagaria o
+    livro e a página em que a pessoa estava. Hoje ela só grava no `closeEvent`, que o auto-teste
+    não dispara; o caminho descartável é o que faz isso deixar de depender de *quando* a janela
+    grava -- a segunda revisão externa viu exatamente essa gravação apagar a sessão numa árvore
+    em que a janela gravava a cada gesto.
+
+    E `motor=None`: a pergunta do auto-teste é "esta instalação lê um diagrama?", e procurar um
+    binário de motor no disco não faz parte dela.
+    """
+    from chess_diagram_ocr.qt.janela import JanelaPrincipal
+
+    return JanelaPrincipal(servico=servico, motor=None, caminho_do_estado=descartavel / "janela.json")
 
 
 def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
@@ -153,11 +175,10 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
 
-    from chess_diagram_ocr.qt.janela import JanelaPrincipal
-
     aplicacao = QApplication.instance() or QApplication([])
+    descartavel = Path(tempfile.mkdtemp(prefix="cvoff-selftest-"))
     try:
-        janela = JanelaPrincipal(servico=servico)
+        janela = _janela_do_auto_teste(servico, descartavel)
         janela.abrir_pdf(Path(caminho))
         # **Ir à página pedida, e não à que o estado lembra** (S-506): desde que a janela restaura
         # o livro e a página da sessão anterior, abrir o livro não deixa mais o auto-teste na
@@ -175,6 +196,7 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
         return CODIGO_SEM_QT
     finally:
         del aplicacao
+        shutil.rmtree(descartavel, ignore_errors=True)
 
     try:
         itens = servico.recognize_page(
