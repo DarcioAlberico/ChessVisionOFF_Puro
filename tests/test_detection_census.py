@@ -23,6 +23,7 @@ from ambiente_de_teste import pasta_temporaria
 from subprocesso import rodar_python
 from test_detection import PAGE_HEIGHT, PAGE_WIDTH, board_image, pdf_with_images
 
+from chess_diagram_ocr.alinhamento import LIMITE_DE_DESALINHAMENTO_PX, SEM_DAMERO
 from chess_diagram_ocr.board_detection import MOTIVOS_DE_RECUSA, RejectedQuad
 from chess_diagram_ocr.detection_census import (
     REJECTION_CSV_FIELDS,
@@ -53,6 +54,7 @@ def row(
     texture: float = 0.78,
     x0: float = 100.0,
     y0: float = 100.0,
+    desalinhamento_px: int = SEM_DAMERO,
 ) -> CandidateRow:
     return CandidateRow(
         pdf=pdf,
@@ -69,6 +71,7 @@ def row(
         y0=y0,
         x1=x0 + side_pt,
         y1=y0 + side_pt,
+        desalinhamento_px=desalinhamento_px,
     )
 
 
@@ -502,6 +505,45 @@ class CliTests(unittest.TestCase):
             )
 
         self.assertEqual(codigo, 1)
+
+
+class AlinhamentoNoCensoTests(unittest.TestCase):
+    """A régua da S-526 no censo: a coluna nova, o CSV de antes dela, e a conta por livro."""
+
+    def test_o_csv_de_antes_da_coluna_ainda_e_lido(self) -> None:
+        """As corridas em `docs/metrics/` não têm a coluna, e o diff da S-82 lê exatamente elas."""
+        censo = DetectionCensus(books=[BookCensus(pdf="livro.pdf", rows=[row()])])
+        with tempfile.TemporaryDirectory() as tmp:
+            destino = Path(tmp) / "antigo.csv"
+            write_census_csv(destino, censo)
+            sem_a_coluna = [linha.rsplit(",", 1)[0] for linha in destino.read_text(encoding="utf-8").splitlines()]
+            destino.write_text("\n".join(sem_a_coluna) + "\n", encoding="utf-8")
+            de_volta = read_census_csv(destino)
+        self.assertEqual([row()], de_volta)
+        self.assertEqual(SEM_DAMERO, de_volta[0].desalinhamento_px)
+
+    def test_a_coluna_vai_e_volta(self) -> None:
+        censo = DetectionCensus(books=[BookCensus(pdf="livro.pdf", rows=[row(desalinhamento_px=17), glyph()])])
+        with tempfile.TemporaryDirectory() as tmp:
+            destino = Path(tmp) / "censo.csv"
+            write_census_csv(destino, censo)
+            de_volta = read_census_csv(destino)
+        self.assertEqual(censo.rows, de_volta)
+        self.assertEqual(17, de_volta[0].desalinhamento_px)
+
+    def test_desalinhado_e_acima_do_limite_e_sem_damero_fica_de_fora(self) -> None:
+        livro = BookCensus(
+            pdf="livro.pdf",
+            rows=[
+                row(index=0, desalinhamento_px=0),
+                row(index=1, desalinhamento_px=LIMITE_DE_DESALINHAMENTO_PX),
+                row(index=2, desalinhamento_px=LIMITE_DE_DESALINHAMENTO_PX + 1),
+                glyph(index=3),
+            ],
+        )
+        self.assertEqual([2], [linha.index for linha in livro.misaligned])
+        self.assertEqual(1, livro.as_dict()["misaligned"])
+        self.assertEqual(1, DetectionCensus(books=[livro]).misaligned)
 
 
 if __name__ == "__main__":
