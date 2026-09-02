@@ -28,7 +28,7 @@ peça -- é cumprida com meia opacidade de verdade, e não com uma trama de pixe
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -42,11 +42,13 @@ from chess_diagram_ocr.fen_utils import labels_from_fen
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.ui import conjuntos, tokens
 from chess_diagram_ocr.ui.desenho_do_tabuleiro import (
-    GLIFO_CLARO,
-    GLIFO_ESCURO,
+    COORD_FONT,
+    COORD_OFFSET_PX,
     UNICODE_PIECES,
     BoardGeometry,
     heatmap_color,
+    margem_de_coordenada,
+    reguas,
 )
 from chess_diagram_ocr.ui.pecas import engrossar_traco
 
@@ -65,9 +67,16 @@ diferentes a mesma posição na mesma área desenharia um tabuleiro de tamanho d
 janela -- o que faz "comparar as duas telas lado a lado" deixar de responder, que é justamente
 para o que a versão de teste existe."""
 
-MARGEM = 8
-"""Folga em volta. É o mesmo `margin` que `board_widget` passa quando não desenha coordenadas --
-e este tabuleiro não desenha."""
+MARGEM = margem_de_coordenada()
+"""A folga em volta: o que as coordenadas precisam para caberem inteiras (S-508).
+
+**Era `8`**, com o comentário *"é o mesmo `margin` que `board_widget` passa quando não desenha
+coordenadas -- e este tabuleiro não desenha"*. Ele passou a desenhar, e o número deixou de ser
+escolhido aqui: sai de `margem_de_coordenada()`, que é a mesma função dos dois lados e que carrega
+a medição de por que `28` cortava a base de "a b c d e f g h" (S-155).
+
+A conta é `2 x (deslocamento + meia altura da fonte)`, e `BoardGeometry.fit` a divide entre os dois
+lados -- então o que sobra de cada lado é metade disto."""
 
 GLIFOS = UNICODE_PIECES
 """O desenho de reserva, quando o PNG da peça não está no disco.
@@ -272,6 +281,15 @@ class TabuleiroQt(QWidget):
         self._confiancas: dict[int, float] = {}
         self._limiar = UNCERTAIN_SQUARE_THRESHOLD
         self._virado = False
+        self._fracao = 0.0
+        """Fração do widget que o tabuleiro pode ocupar; `0.0` usa `MAX_DO_TABULEIRO` (S-518)."""
+        self._ultimo_lance: frozenset[int] = frozenset()
+        """As casas do lance que chegou a esta posição, em índice de leitura (S-509).
+
+        **Índice, e não `chess.Move`**: quem sabe traduzir um lance em duas casas é
+        `BoardModel.last_move_squares`, que é puro; esta classe não conhece `chess` e não vai
+        passar a conhecer por causa de uma marcação. Vazio na raiz, que é a posição que não veio
+        de lance nenhum."""
         self.setMinimumSize(LADO_MINIMO, LADO_MINIMO)
 
     def _recarregar_pecas(self) -> None:
@@ -376,6 +394,67 @@ class TabuleiroQt(QWidget):
         """
         return self._classes[indice]
 
+    def definir_ultimo_lance(self, casas: Iterable[int] = ()) -> None:
+        """As casas do último lance, em índice de leitura. Sem argumento, apaga a marca (S-509)."""
+        novas = frozenset(int(casa) for casa in casas)
+        if novas == self._ultimo_lance:
+            return
+        self._ultimo_lance = novas
+        self.update()
+
+    def esteira(self) -> QRectF:
+        """O retângulo em que a esteira é pintada: o tabuleiro mais a margem da coordenada (S-507).
+
+        **A esteira tem fim, e é este item.** Antes ela era o fundo do widget, e tudo o que não
+        fosse tabuleiro virava quase-preto -- medido em 41,5% da área num painel de 685x782. É o
+        mesmo defeito que a S-449 mediu e consertou no outro frontend em 2026-08-30, um dia antes
+        de este arquivo entrar na árvore sem a correção.
+
+        A folga sai de `MARGEM`, que sai de `margem_de_coordenada()`: a esteira é exatamente o que
+        a coordenada precisa, porque é **sobre ela** que a coordenada é desenhada -- é o que dá
+        11,03:1 à letra, e a razão de a S-147 tê-la escolhido escura.
+        """
+        geo = self.geometria()
+        folga = MARGEM / 2
+        return QRectF(
+            geo.origin_x - folga,
+            geo.origin_y - folga,
+            geo.size + MARGEM,
+            geo.size + MARGEM,
+        ).intersected(QRectF(self.rect()))
+
+    def heightForWidth(self, a0: int) -> int:  # noqa: N802 - assinatura do Qt
+        """A altura que o widget quer para aquela largura: a mesma, porque o tabuleiro é quadrado.
+
+        **Só vale para quem pedir** (S-517): o leiaute só consulta este método quando a política de
+        tamanho do widget declara `setHeightForWidth(True)`, e quem declara é a sala de estudo. Sem
+        isso, o widget fica com toda a altura sobrando da coluna e o tabuleiro flutua no meio dela
+        -- o que punha ~100 px de vazio entre o tabuleiro e a faixa de navegação que deveria estar
+        colada nele.
+
+        A aba Resultado **não** declara, e continua com o arranjo de sempre: ali o tabuleiro divide
+        a coluna com a lista de casas e a legenda, e amarrar a altura à largura mexeria nas três.
+        """
+        return int(a0)
+
+    def definir_fracao(self, fracao: float) -> None:
+        """Que fração do lado menor do widget o tabuleiro pode ocupar. `0.0` volta ao teto fixo.
+
+        **É o teto virando argumento** (S-518). `MAX_DO_TABULEIRO` é herança do canvas de tamanho
+        fixo do Tk, e ele vale para os dois tabuleiros: na aba Resultado está certo -- ali o
+        tabuleiro divide a coluna com a lista de casas e a legenda, e crescer tira espaço de quem
+        corrige. Na sala de estudo, não: o tabuleiro **é** a coluna, e parar em 560 px numa janela
+        grande deixava o resto virar vazio.
+
+        Fração e não pixel, pela mesma razão de `AppState.pdf_zoom` ser fração: o número que se
+        guarda tem de valer no monitor de quem o guardou e no do dia seguinte.
+        """
+        novo = max(0.0, float(fracao))
+        if novo == self._fracao:
+            return
+        self._fracao = novo
+        self.update()
+
     def geometria(self) -> BoardGeometry:
         """Onde o tabuleiro está dentro do widget. **A mesma conta do produto** (S-155/S-501).
 
@@ -383,32 +462,80 @@ class TabuleiroQt(QWidget):
         casa precisa saber onde a casa está, e recalculá-la do lado de fora é como se escreve um
         teste que continua passando depois de o enquadramento mudar.
         """
+        teto = MAX_DO_TABULEIRO
+        if self._fracao > 0:
+            teto = max(LADO_MINIMO, int(min(self.width(), self.height()) * self._fracao))
         return BoardGeometry.fit(
             self.width(),
             self.height(),
             min_size=LADO_MINIMO,
-            max_size=MAX_DO_TABULEIRO,
+            max_size=teto,
             margin=MARGEM,
         )
 
     def paintEvent(self, a0: QPaintEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        """**Duas superfícies, e não uma** (S-507): o vazio enche o widget, a esteira tem tamanho.
+
+        A ordem das camadas é a leitura: casa, marca do último lance, peça, incerteza. O último
+        lance vai **debaixo** da peça porque é fato sobre a posição e não anotação humana -- é a
+        mesma regra que põe as setas por cima de tudo em `tabuleiro_de_jogo.paintEvent`.
+        """
         pintor = QPainter(self)
         pintor.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        pintor.fillRect(self.rect(), QColor(tema.cor_atual(tokens.SUPERFICIE_TABULEIRO)))
+        pintor.fillRect(self.rect(), QColor(tema.cor_atual(tokens.VAZIO_DE_CANVAS)))
+        pintor.fillRect(self.esteira(), QColor(tema.cor_atual(tokens.SUPERFICIE_TABULEIRO)))
 
         geo = self.geometria()
         clara = QColor(tema.cor_atual(tokens.CASA_CLARA))
         escura = QColor(tema.cor_atual(tokens.CASA_ESCURA))
+        ultimo = QColor(tema.cor_atual(tokens.CASA_ULTIMO_LANCE))
         for linha in range(8):
             for coluna in range(8):
                 x0, y0, x1, y1 = geo.rect(linha, coluna)
                 retangulo = QRectF(x0, y0, x1 - x0, y1 - y0)
                 indice = self._indice_de_leitura(linha, coluna)
                 pintor.fillRect(retangulo, clara if (linha + coluna) % 2 == 0 else escura)
+                if indice in self._ultimo_lance:
+                    pintor.fillRect(retangulo, ultimo)
                 self._desenhar_peca(pintor, retangulo, self._classe_da_casa(indice))
                 self._desenhar_incerteza(pintor, retangulo, indice)
 
+        self._desenhar_coordenadas(pintor, geo)
         pintor.end()
+
+    def _desenhar_coordenadas(self, pintor: QPainter, geo: BoardGeometry) -> None:
+        """As letras a–h e os números 8–1, na margem que `MARGEM` reservou (S-508).
+
+        **A cor é resolvida contra a esteira**, e não contra o fundo do widget. É a S-146 com a
+        correção que a S-449 precisou fazer: quem desenha resolve contra o que está *debaixo* do
+        que ele desenha, e desde que a esteira virou um retângulo o fundo do widget é o vazio --
+        claro na pele clássica. Resolver contra ele daria letra escura sobre esteira escura.
+
+        A ordem acompanha a virada: com as pretas embaixo, `a` fica à direita e `1` no topo.
+        """
+        fonte = QFont(COORD_FONT[0], COORD_FONT[1])
+        fonte.setBold(COORD_FONT[2] == "bold")
+        pintor.setFont(fonte)
+        pintor.setPen(QPen(QColor(tokens.sobre_superficie(tema.cor_atual(tokens.SUPERFICIE_TABULEIRO)))))
+
+        colunas, linhas = reguas(self._virado)
+        lado = 2 * COORD_OFFSET_PX
+        for indice, letra in enumerate(colunas):
+            centro = QRectF(
+                geo.origin_x + indice * geo.cell + geo.cell / 2 - lado / 2,
+                geo.origin_y + geo.size + COORD_OFFSET_PX - lado / 2,
+                lado,
+                lado,
+            )
+            pintor.drawText(centro, int(Qt.AlignmentFlag.AlignCenter), letra)
+        for indice, numero in enumerate(linhas):
+            centro = QRectF(
+                geo.origin_x - COORD_OFFSET_PX - lado / 2,
+                geo.origin_y + indice * geo.cell + geo.cell / 2 - lado / 2,
+                lado,
+                lado,
+            )
+            pintor.drawText(centro, int(Qt.AlignmentFlag.AlignCenter), numero)
 
     def _desenhar_peca(self, pintor: QPainter, casa: QRectF, classe: str) -> None:
         if classe == "empty":
@@ -420,7 +547,12 @@ class TabuleiroQt(QWidget):
         fonte = QFont(pintor.font())
         fonte.setPointSizeF(max(6.0, casa.height() * 0.72))
         pintor.setFont(fonte)
-        pintor.setPen(QPen(QColor(GLIFO_ESCURO if classe.islower() else GLIFO_CLARO)))
+        # **A tinta do glifo vem do tema, e não da reserva** (S-511). Eram os apelidos
+        # `GLIFO_ESCURO`/`GLIFO_CLARO` de `desenho_do_tabuleiro`, que são o valor de `RESERVA` --
+        # o hexadecimal de fábrica, que não acompanha a troca de pele. O papel é o mesmo; o que
+        # muda é perguntar ao tema em vez de ler a reserva.
+        papel = tokens.GLIFO_ESCURO if classe.islower() else tokens.GLIFO_CLARO
+        pintor.setPen(QPen(QColor(tema.cor_atual(papel))))
         pintor.drawText(casa, int(Qt.AlignmentFlag.AlignCenter), GLIFOS[classe])
 
     def _desenhar_incerteza(self, pintor: QPainter, casa: QRectF, indice: int) -> None:

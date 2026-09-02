@@ -34,16 +34,29 @@ class PonteComOCatalogoTests(unittest.TestCase):
         usados = {registro.icone for registro in comandos.CATALOGO if registro.icone}
         self.assertEqual([], sorted(set(icones.ICONES) - usados))
 
-    def test_sao_dezessete_e_a_conta_e_das_duas_imagens(self) -> None:
+    def test_sao_dezenove_e_a_conta_e_das_duas_imagens_mais_a_sala(self) -> None:
         """Quatro da Imagem 1 e treze da Imagem 2; a união, restrita ao que existia, dava treze.
 
         O décimo quarto é `diagrama_anterior`, que a Imagem 1 não desenha -- uma seta que só
         existe num sentido deixa metade do grupo de fita sem ícone (S-228).
 
-        Os três últimos são os que a Imagem 2 pedia e o programa não tinha: a S-229 criou
+        Os três seguintes são os que a Imagem 2 pedia e o programa não tinha: a S-229 criou
         Desfazer, Refazer e Limpar, e só então o ícone deles deixou de ser arte órfã.
+
+        **Os dois últimos são as pontas da linha da sala** (S-520), e a razão deles não é estética:
+        `⏮` e `⏭` não existem na fonte da interface -- `QFontMetrics.inFont` responde `False` para
+        os quatro glifos de navegação em Segoe UI --, então o botão desenhava com uma fonte de
+        queda, que não é a da janela. `lance_anterior` e `proximo_lance` **não** ganharam desenho
+        próprio: apontam para as setas que já existiam, e são o primeiro caso do que o cabeçalho de
+        `ICONES` previa -- dois comandos na mesma chave.
         """
-        self.assertEqual(17, len(icones.ICONES))
+        self.assertEqual(19, len(icones.ICONES))
+        for nome in ("inicio_da_linha", "fim_da_linha"):
+            with self.subTest(icone=nome):
+                self.assertIn(nome, icones.ICONES)
+                self.assertEqual(nome, comandos.comando(nome).icone)
+        self.assertEqual("diagrama_anterior", comandos.comando("lance_anterior").icone)
+        self.assertEqual("proximo_diagrama", comandos.comando("proximo_lance").icone)
         for nome in ("desfazer", "refazer", "limpar_tabuleiro"):
             with self.subTest(icone=nome):
                 self.assertIn(nome, icones.ICONES)

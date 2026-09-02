@@ -1126,6 +1126,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
+| S-507 a S-520 | [docs/SPEC_ESTUDO_QT.md](docs/SPEC_ESTUDO_QT.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1232,6 +1233,16 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   (S-441 a S-450): a folha de base do `ttk`, o indicador que encosta no rotulo, a regra 1 da
   aparencia relida -- a pele classica nao muda de *arranjo*, e acabamento e da janela e nao da
   pele --, os 154 literais de espaco e o tabuleiro que flutua num slab quase-preto
+- [docs/ROADMAP_ESTUDO_QT.md](docs/ROADMAP_ESTUDO_QT.md) -- **Fases 73 a 77**, a sala de estudo
+  medida no PyQt6 em 2026-09-01: cinco decisoes que existiam e perderam o chamador no porte e no
+  corte -- a esteira do tabuleiro que voltou a nao ter fim um dia depois de ter sido consertada, as
+  coordenadas, a marca do ultimo lance e a caixa "Seguir OCR selecionado" que nao segue --, mais o
+  arranjo das quatro fileiras de botao que o acabamento adiou de proposito
+- [docs/SPEC_ESTUDO_QT.md](docs/SPEC_ESTUDO_QT.md) -- especificacao das Fases 73 a 77
+  (S-507 a S-520): a esteira do tabuleiro com fim, as coordenadas e a marca do ultimo lance que o
+  modelo ja sabia calcular, a caixa "Seguir OCR" religada com guarda de ancora, o recuo de variante
+  que o `QTextDocument` descarta em elemento inline, e a conta que pergunta de cada decisao pura
+  de `ui/` quem a chama -- 77 nomes exportados que nada toca, medidos em 2026-09-01
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

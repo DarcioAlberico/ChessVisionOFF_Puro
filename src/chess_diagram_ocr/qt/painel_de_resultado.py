@@ -117,6 +117,19 @@ class PainelDeResultado(QWidget):
     selecionou = pyqtSignal(int)
     """O diagrama que passou a estar em edição, para o visor destacar a caixa dele."""
 
+    posicao_mudou = pyqtSignal()
+    """A posição mostrada aqui mudou -- por troca de diagrama, por casa corrigida ou por desfazer.
+
+    **É o `on_sync_study` do outro frontend, com um sinal no lugar de três chamadas** (S-512). Lá o
+    `result_panel` o chamava em três pontos e `app_tkinter.py:1537` o repassava à sala; o porte para
+    o Qt não trouxe nenhum dos três, e a caixa "Seguir OCR selecionado" -- marcada de fábrica --
+    deixou de seguir qualquer coisa.
+
+    Sai de `_atualizar_tudo` porque é ali que os três pontos do Tk se encontram: um lugar só, que é
+    a mesma razão de aquele método existir. Quem escuta é a sala, e **quem decide se há o que
+    fazer** é `ui/sala_declarada.decidir_sincronia` -- este sinal dispara a cada casa corrigida, e
+    reabrir o estudo a cada uma apagaria a pilha de desfazer de quem o estava analisando."""
+
     revisou = pyqtSignal(int, str, str)
     """`(posição na fila, FEN, lado)` -- o item da fila que acabou de ser corrigido e gravado.
 
@@ -919,6 +932,7 @@ class PainelDeResultado(QWidget):
         finally:
             self._montando = False
         self._atualizar_botoes(vazio)
+        self.posicao_mudou.emit()
 
     def _pintar_diagrama(self) -> None:
         indice = self.modelo.clamped_index()

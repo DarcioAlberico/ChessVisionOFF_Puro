@@ -356,6 +356,9 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 # aba sem pedido, que é o achado 1 do ROADMAP_APARENCIA.
                 "abrir_texto",
                 "afastar_texto",
+                # A S-516: o menu diz "Dobrar todas as variantes" porque é onde cabe dizê-lo, e o
+                # botão diz "Dobrar" porque ele fica numa fileira que a Fase 76 já vai apertar.
+                "dobrar_variantes",
                 "alinhar_centro",
                 "alinhar_direita",
                 "alinhar_esquerda",
@@ -593,7 +596,7 @@ class RotuloAlternadoTests(unittest.TestCase):
     """O texto de "ligado", para os comandos que alternam (S-222)."""
 
     def test_so_alterna_quem_precisa(self) -> None:
-        """Quatro, e os três da sala são interruptores que **não** viraram `Checkbutton`
+        """Cinco, e os quatro da sala são interruptores que **não** viraram `Checkbutton`
         (S-222/S-280/S-290).
 
         Os dois da sala de estudo entraram por uma razão de alcance, e não de estética: um
@@ -604,7 +607,17 @@ class RotuloAlternadoTests(unittest.TestCase):
         """
         alternam = {registro.acao for registro in comandos.CATALOGO if registro.rotulo_alternado}
         self.assertEqual(
-            {"selecionar_area", "mostrar_diagrama", "analise_continua", "modo_treino"}, alternam
+            {
+                "selecionar_area",
+                "mostrar_diagrama",
+                "analise_continua",
+                "modo_treino",
+                # A quinta é a S-516, e ela entra pela mesma razão de alcance das três da sala: a
+                # dobra é estado de vista, mas quem a liga tem de poder ligá-la pelo menu e pela
+                # paleta também -- e ali não há botão de onde ler o estado de antes.
+                "dobrar_variantes",
+            },
+            alternam,
         )
 
     def test_quem_nao_alterna_responde_o_proprio_rotulo(self) -> None:

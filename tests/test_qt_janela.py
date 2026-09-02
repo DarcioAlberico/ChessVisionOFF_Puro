@@ -20,7 +20,7 @@ from unittest import mock
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.ui import abas, pele
+from chess_diagram_ocr.ui import abas, geometria, pele
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 
@@ -121,12 +121,36 @@ class MontagemTests(unittest.TestCase):
     def test_as_seis_abas_estao_na_ordem_da_spec(self) -> None:
         """**A ordem é o item** (S-162): Resultado, Estudo e Revisão são do diagrama aberto agora;
         Texto, Dataset e Galeria são do acervo. O corte entre os dois grupos é onde a barra muda
-        de assunto."""
+        de assunto.
+
+        **Contra a tupla declarada, e não contra uma cópia dela** (S-511): comparando com a cópia,
+        `abas.ABAS` seguiu declarando a Configuração por um mês depois de ela sair no porte, e
+        nada acusou. A janela agora lê a tupla; o que se afirma aqui é que ela a lê inteira."""
         janela = self.janela()
         nomes = [abas.nome_base(janela.abas.tabText(i)) for i in range(janela.abas.count())]
-        self.assertEqual(
-            nomes, [abas.RESULTADO, abas.ESTUDO, abas.REVISAO, abas.TEXTO, abas.DATASET, abas.GALERIA]
-        )
+        self.assertEqual(nomes, list(abas.ABAS))
+
+    def test_o_divisor_abre_na_fracao_declarada_quando_nada_foi_guardado(self) -> None:
+        """`geometria.FRACAO_PADRAO_DO_DIVISOR` é o padrão da primeira execução (S-156), e a
+        janela do Qt não a lia: o padrão era um par de pixels da montagem (S-511). A largura fica
+        acima do piso das abas de propósito -- abaixo dele o `QSplitter` grampeia, e o teste
+        mediria o piso em vez da fração."""
+        janela = self.janela()
+        janela.resize(2200, 900)
+        janela.show()
+        self.app.processEvents()
+        tamanhos = janela.divisor.sizes()
+        self.assertAlmostEqual(tamanhos[0] / sum(tamanhos), geometria.FRACAO_PADRAO_DO_DIVISOR, delta=0.02)
+
+    def test_o_rodape_diz_por_que_nao_ha_classificador_de_caracteres(self) -> None:
+        """A regra de `dispositivos_da_janela` (S-182): motivo não vazio é "os pesos não estão no
+        disco", vazio é "o motor é outro", e a palavra do rodapé acompanha. A janela do Qt cravava
+        `motivo=""` e dizia os dois estados com a mesma palavra (S-511)."""
+        from chess_diagram_ocr.ui.estado_do_rodape import DESLIGADO, SEM_PESOS
+
+        janela = self.janela()
+        lidos = janela._dispositivos()
+        self.assertEqual(lidos.ausencia, SEM_PESOS if lidos.motivo else DESLIGADO)
 
     def test_o_visualizador_fica_ao_lado_das_abas_e_nao_dentro_delas(self) -> None:
         """É a repartição do produto: a página do livro à direita, o trabalho à esquerda.
@@ -354,6 +378,15 @@ class FiacaoTests(unittest.TestCase):
             montada.abrir_pdf(self.livro)
             self.app.processEvents()
         return montada
+
+    def test_devolver_sem_nada_tirado_diz_a_frase_declarada(self) -> None:
+        """As frases de tirar e devolver caixa são de `page_overlay` desde a S-177, e puras; a
+        janela do Qt as reescrevia inline, com outro texto (S-511)."""
+        from chess_diagram_ocr.ui.page_overlay import frase_de_caixas_devolvidas
+
+        janela = self.janela()
+        janela.devolver_caixas()
+        self.assertEqual(janela.rodape._lbl_mensagem.text(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
 
     def _varrido(self, *paginas: int) -> None:
         """Deixa o livro com um índice de galeria já varrido, um diagrama por página."""
@@ -1180,3 +1213,96 @@ class DesfazerTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SincroniaDaSalaTests(unittest.TestCase):
+    """O fio que o porte cortou, e o clique que passou a chegar por ele (S-512/S-513).
+
+    **Nenhum teste de painel pega isto**, e é a razão de este arquivo existir: o painel de estudo
+    tem `sync_with_ocr`, o de resultado tem o que emitir, e durante um mês ninguém ligou os dois.
+    A caixa "Seguir OCR selecionado" nasce marcada, então a aba prometia de fábrica o que não fazia.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.livro = _livro(self.pasta)
+        self.addCleanup(self.app.processEvents)
+
+    def janela(self) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+            pasta_da_galeria=self.pasta,
+        )
+        self.addCleanup(descartar, montada)
+        montada.resize(1400, 900)
+        montada.abrir_pdf(self.livro)
+        self.app.processEvents()
+        return montada
+
+    def _diagrama(self, indice: int, placement: str) -> object:
+        import numpy as np
+
+        from chess_diagram_ocr.service import RecognizedDiagram
+
+        return RecognizedDiagram(
+            index=indice,
+            board_rgb=np.full((64, 64, 3), 200, np.uint8),
+            placement=placement,
+            min_confidence=0.93,
+            square_confidences=[0.99] * 64,
+            side_to_move="w",
+        )
+
+    def test_selecionar_um_diagrama_leva_a_posicao_ao_tabuleiro_de_estudo(self) -> None:
+        janela = self.janela()
+        janela._chegaram_itens(
+            janela.pdf.page_index,
+            [self._diagrama(0, "8/8/8/8/8/8/8/K6k"), self._diagrama(1, "8/8/8/8/8/8/8/K5nk")],
+            None,
+        )
+
+        janela.painel.lista.setCurrentRow(0)
+        self.app.processEvents()
+        self.assertEqual(0, janela.estudo.estudo.ancora.diagrama, "a sala não seguiu o primeiro")
+
+        janela.painel.lista.setCurrentRow(1)
+        self.app.processEvents()
+        self.assertEqual(1, janela.estudo.estudo.ancora.diagrama, "a sala não trocou de mesa")
+        self.assertEqual("8/8/8/8/8/8/8/K5nk", janela.estudo.estudo.tabuleiro.board_fen())
+
+    def test_o_clique_na_caixa_da_pagina_chega_a_sala(self) -> None:
+        """**S-513, e ela não precisou de gesto novo.**
+
+        `decide_box_click` continua devolvendo `SELECT`, o `SELECT` continua selecionando o
+        diagrama na aba Resultado, e é a seleção que chega à sala pelo fio da S-512. Uma terceira
+        resposta ao clique -- duplo-clique, `Ctrl`+clique -- teria cobrado aprendizado por um fio
+        que estava cortado.
+        """
+        janela = self.janela()
+        janela._chegaram_itens(
+            janela.pdf.page_index,
+            [self._diagrama(0, "8/8/8/8/8/8/8/K6k"), self._diagrama(1, "8/8/8/8/8/8/8/K5nk")],
+            None,
+        )
+
+        janela._clicou_na_caixa(1)
+        self.app.processEvents()
+        self.assertEqual(1, janela.estudo.estudo.ancora.diagrama)
+        self.assertEqual("8/8/8/8/8/8/8/K5nk", janela.estudo.estudo.tabuleiro.board_fen())
+
+    def test_a_aba_que_vem_para_a_frente_continua_sendo_a_do_resultado(self) -> None:
+        """O clique numa caixa é o gesto de **conferir o que o modelo leu**, e isso não mudou.
+
+        Quem está na aba Estudo vê o tabuleiro trocar, que é o pedido; quem está corrigindo
+        continua sendo levado ao editor.
+        """
+        janela = self.janela()
+        janela._chegaram_itens(janela.pdf.page_index, [self._diagrama(0, "8/8/8/8/8/8/8/K6k")], None)
+        janela._clicou_na_caixa(0)
+        self.app.processEvents()
+        self.assertIs(janela.painel, janela.abas.currentWidget())

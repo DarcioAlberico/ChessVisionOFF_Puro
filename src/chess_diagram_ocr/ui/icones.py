@@ -166,6 +166,21 @@ ICONES: dict[str, tuple[Traco, ...]] = {
     ),
     "diagrama_anterior": (Poli((62, 18), (30, 50), (62, 82)),),
     "proximo_diagrama": (Poli((38, 18), (70, 50), (38, 82)),),
+    # ------------------------------------------------------------------------------- ESTUDO
+    # As pontas da linha (S-520). São as mesmas duas setas de cima com uma barra encostada, que é
+    # o desenho que todo tocador usa para "vai até o fim" -- e `lance_anterior`/`proximo_lance`
+    # **reusam** as setas acima em vez de declarar as suas: é o mesmo gesto noutra aba, e duas
+    # cópias do mesmo triângulo seriam a família de defeito que a S-501 fechou na tabela de
+    # glifos. É também o primeiro caso do que o comentário do topo já previa: dois comandos
+    # apontando para a mesma chave.
+    "inicio_da_linha": (
+        Poli((26, 18), (26, 82)),
+        Poli((70, 18), (38, 50), (70, 82)),
+    ),
+    "fim_da_linha": (
+        Poli((30, 18), (62, 50), (30, 82)),
+        Poli((74, 18), (74, 82)),
+    ),
     # A seta que dá a volta por cima e desce na ponta -- os dois são a mesma forma espelhada, e
     # desenhá-los diferentes seria dizer que não são o mesmo gesto em sentidos opostos. O arco vai
     # de 180 a 360 porque na Pillow o ângulo cresce no sentido horário com o eixo `y` para baixo:

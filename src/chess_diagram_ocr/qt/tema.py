@@ -279,6 +279,14 @@ ganhou ao derivar tudo de `tipografia.FOLGAS` -- um pixel cravado aqui ignoraria
 fonte do Windows, que é o defeito de DPI da S-148 num lugar menor.
 """
 
+RELEVO_DO_BOTAO = 0.06
+"""Quanto do texto entra na face do botão neutro, de 0 a 1 (S-520).
+
+Um degrau, e não uma cor: seis por cento do texto sobre o painel dá a face; o dobro é o `:hover` e
+o quádruplo é o pressionado e o marcado. Escalar a partir de um número só é o que faz os quatro
+estados serem **um** desenho em vez de quatro escolhas -- e é o mesmo mecanismo de
+`REALCE_DE_ENFASE`, que a S-444 já usa para o primário e o destrutivo."""
+
 RECHEIO_DA_FOLHA: dict[str, str] = {
     "QTabBar::tab": "TNotebook.Tab",
     "QCheckBox": "TCheckbutton",
@@ -358,7 +366,6 @@ def folha_de_estilo(
         # `qt/visor.py` e de `qt/tabuleiro.py`, com `cor_atual`.
         f"QToolTip {{ background-color: {dica}; color: {tokens.sobre_superficie(dica)};"
         f" border: 1px solid {moldura}; padding: {linha}px; }}",
-        f"QPushButton {{ padding: {do_tema('QPushButton')}; }}",
         # **O botão comum desabilitado desenhava igual ao habilitado, e a medição é esta** (S-506):
         # fotografei a barra do visualizador antes e durante a exportação e diferenciei as duas
         # imagens -- a fileira com "OCR todos diagramas", "Exportar PDF → PGN" e "Cancelar
@@ -368,7 +375,25 @@ def folha_de_estilo(
         # estados e anula o acinzentamento que o Qt faria pela paleta. `PRIMARIO` e `DESTRUTIVO`
         # escapavam por terem `:disabled` próprio, logo abaixo; o comum não tinha nenhum -- e é o
         # comum que o par exportar/cancelar usa para dizer qual dos dois está vivo.
-        f"QPushButton:disabled {{ color: {secundario}; }}",
+        #
+        # **A S-520 alargou o item, e o `:disabled` de uma linha virou os quatro estados.** O
+        # desabilitado era o único que a S-506 precisava para o par exportar/cancelar; o resto do
+        # botão comum continuava sendo o estilo da plataforma -- `windowsvista` na máquina de quem
+        # usa e `fusion` na CI --, dois desenhos para o mesmo botão e nenhum dos dois escolhido. É
+        # também o que fazia a fotografia da CI não poder ser comparada com a da máquina.
+        #
+        # A face é a mistura do painel com o texto, e não um papel novo: um botão que se separa do
+        # fundo por um degrau é o desenho que as três peles já sugerem, e um papel a mais seria a
+        # décima superfície de `tokens.py` para dizer "quase o fundo".
+        f"QPushButton {{ padding: {do_tema('QPushButton')};"
+        f" background-color: {tokens.mistura(superficie, texto, RELEVO_DO_BOTAO)};"
+        f" border: 1px solid {moldura}; border-radius: {minima}px; }}",
+        f"QPushButton:hover {{ background-color: {tokens.mistura(superficie, texto, 2 * RELEVO_DO_BOTAO)}; }}",
+        f"QPushButton:pressed, QPushButton:checked {{"
+        f" background-color: {tokens.mistura(superficie, texto, 4 * RELEVO_DO_BOTAO)};"
+        f" border: 1px solid {cor(tokens.TEXTO_SECUNDARIO)}; }}",
+        f"QPushButton:disabled {{ background-color: {superficie}; color: {secundario};"
+        f" border: 1px solid {moldura}; }}",
         f"QToolButton {{ padding: {do_tema('QToolButton')}; }}",
         f"QLineEdit {{ padding: {do_tema('QLineEdit')}; }}",
         f"QComboBox {{ padding: {do_tema('QComboBox')}; }}",

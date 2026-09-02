@@ -34,12 +34,13 @@ from ..atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
-STATE_VERSION = 6
+STATE_VERSION = 7
 """Versão 1 é o formato sem o campo `version`, que existe em disco hoje.
 
 A **3** é a S-221, e ela só acrescenta `skin`. A **4** é a S-230, e acrescenta `piece_set` e
 `piece_dir`. A **5** é a S-232, e acrescenta `densidade`. A **6** é a S-271, e acrescenta
-`estudo_aberto` e `estudo_divisor`. Um arquivo de qualquer versão anterior abre sem perder nada: o campo que falta cai
+`estudo_aberto` e `estudo_divisor`. A **7** é a S-519, e acrescenta `estudo_divisor_vertical`. Um
+arquivo de qualquer versão anterior abre sem perder nada: o campo que falta cai
 no padrão, que é "nada escolhido" -- e nada escolhido é a pele clássica, com o conjunto de peças de
 sempre, a densidade que a pele sugerir e nenhum estudo aberto."""
 
@@ -66,7 +67,14 @@ class AppState:
     last_pdf: str = ""
     last_page: int = 0
     pdf_zoom: float = 0.7
-    board_zoom: float = 0.85
+    board_zoom: float = 1.0
+    """Que fração da coluna o tabuleiro da sala ocupa (S-518).
+
+    **Era 0,85 e não tinha leitor.** O número vinha do deslizador do Tk, onde o canvas do estudo era
+    de tamanho fixo e a fração era do canvas; aqui o tabuleiro **é** a coluna, e o padrão certo é
+    ocupá-la -- `BoardGeometry.fit` já desconta a margem das coordenadas antes de enquadrar. Quem
+    quiser menor troca aqui, e o valor sobrevive à sessão."""
+
     pdf_history: dict[str, int] = field(default_factory=dict)
     """Última página vista por PDF, indexado pelo caminho absoluto."""
 
@@ -172,6 +180,15 @@ class AppState:
     existe é pergunta de quem for abrir o livro, e uma chave que não casa com nada tem a mesma
     resposta de não ter nada guardado."""
 
+    estudo_divisor_vertical: float = 0.0
+    """Onde está o divisor entre a lista de lances e o comentário, como fração (S-519). `0.0` = nunca
+    guardado.
+
+    **Um campo novo e não uma reforma do de baixo**, porque são dois divisores com assuntos
+    diferentes: o horizontal reparte tabuleiro e coluna de leitura, o vertical reparte a coluna de
+    leitura entre lances, comentário e motor. Guardá-los juntos faria mexer num mover o outro no
+    arquivo, e o zero de "nunca guardado" deixaria de distinguir qual dos dois nunca foi mexido."""
+
     estudo_divisor: float = 0.0
     """Onde está o divisor entre o tabuleiro e a lista de lances, como fração (S-276). `0.0` = nunca
     guardado, e aí o peso do `PanedWindow` decide.
@@ -244,6 +261,7 @@ class AppState:
             "texto_quebra": bool(self.texto_quebra),
             "estudo_aberto": self.estudo_aberto,
             "estudo_divisor": float(self.estudo_divisor),
+            "estudo_divisor_vertical": float(self.estudo_divisor_vertical),
         }
 
 
@@ -370,6 +388,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     estudo_divisor = raw.get("estudo_divisor")
     if isinstance(estudo_divisor, (int, float)) and not isinstance(estudo_divisor, bool):
         state.estudo_divisor = _clamp(float(estudo_divisor), 0.0, 1.0)
+
+    vertical = raw.get("estudo_divisor_vertical")
+    if isinstance(vertical, (int, float)) and not isinstance(vertical, bool):
+        state.estudo_divisor_vertical = _clamp(float(vertical), 0.0, 1.0)
 
     return state
 

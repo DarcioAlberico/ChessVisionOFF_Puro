@@ -1,8 +1,13 @@
 """Onde o tabuleiro fica e de que cor a casa fala -- sem toolkit e sem imagem (S-155/S-501).
 
-As cores dos papéis do tabuleiro, a margem que as coordenadas exigem, a rampa de calor da
-confiança por casa e a geometria de `BoardGeometry`. Tudo cálculo -- e `BoardGeometry` já dizia,
-no próprio docstring, que era "puro cálculo, testável sem Tk".
+A margem que as coordenadas exigem, a fonte e o deslocamento delas, a proporção da seta, a rampa
+de calor da confiança por casa e a geometria de `BoardGeometry`. Tudo cálculo -- e `BoardGeometry`
+já dizia, no próprio docstring, que era "puro cálculo, testável sem Tk".
+
+**As cores saíram na S-511, e não é perda:** elas nunca foram daqui. Este módulo tinha doze
+apelidos `X = tokens.RESERVA[Y]`, que davam **cor literal** ao `tk.Canvas` porque ele não conhece
+papel. O Qt pergunta ao tema, e os doze ficaram sem um único uso -- ver o comentário abaixo do
+`__all__`.
 
 **Por que isso não bastava, e é o item.** O cálculo era puro e morava num arquivo que importa
 `tkinter` **e** `PIL.ImageTk` na primeira linha, porque o mesmo arquivo tem o `BoardRenderer`,
@@ -34,67 +39,47 @@ from ..config import UNCERTAIN_SQUARE_THRESHOLD
 from . import tokens
 
 __all__ = [
-    "BOARD_FRAME",
     "BoardGeometry",
-    "CHANGED_OUTLINE",
-    "COORDINATE_TEXT",
     "COORD_FONT",
     "COORD_OFFSET_PX",
-    "DARK_SQUARE",
-    "GLIFO_CLARO",
-    "GLIFO_ESCURO",
-    "DISPUTED_OUTLINE",
-    "HEATMAP_HIGH",
-    "HEATMAP_LOW",
     "LARGURA_DA_SETA",
     "LARGURA_DO_CIRCULO",
-    "LAST_MOVE_SQUARE",
-    "LIGHT_SQUARE",
     "PAPEL_DE_SETA",
-    "PROBLEM_OUTLINE",
-    "SELECTION_OUTLINE",
-    "TARGET_MARK",
+    "PONTA_DA_SETA",
     "UNICODE_PIECES",
     "heatmap_color",
     "margem_de_coordenada",
+    "reguas",
 ]
 
-GLIFO_CLARO = tokens.RESERVA[tokens.GLIFO_CLARO]
-
-GLIFO_ESCURO = tokens.RESERVA[tokens.GLIFO_ESCURO]
-
-LIGHT_SQUARE = tokens.RESERVA[tokens.CASA_CLARA]
-
-DARK_SQUARE = tokens.RESERVA[tokens.CASA_ESCURA]
-
-SELECTION_OUTLINE = tokens.RESERVA[tokens.CONTORNO_DE_SELECAO]
-"""A casa selecionada: um anel, e não uma cor de fundo (S-160)."""
-
-LAST_MOVE_SQUARE = tokens.RESERVA[tokens.CASA_ULTIMO_LANCE]
-
-TARGET_MARK = tokens.RESERVA[tokens.ALVO]
-
-CHANGED_OUTLINE = tokens.RESERVA[tokens.CORRIGIDO]
-
-PROBLEM_OUTLINE = tokens.RESERVA[tokens.PROBLEMA]
-
-DISPUTED_OUTLINE = tokens.RESERVA[tokens.DIVERGENTE]
-"""Roxo: as duas leituras discordam desta casa (S-66).
-
-Cor própria, e não o vermelho da ilegalidade nem o azul da decodificação: as três dizem
-coisas diferentes e podem acender juntas. "Ilegal" é um fato sobre a posição, "reescrita" é
-algo que já aconteceu, e "em disputa" é um pedido -- olhe esta casa."""
-
-BOARD_FRAME = tokens.RESERVA[tokens.MOLDURA]
-"""A reserva da moldura. O desenho resolve contra o tema em uso -- ver `_cor_de_moldura`."""
-
-COORDINATE_TEXT = tokens.RESERVA[tokens.COORDENADA]
+# **Doze apelidos `X = tokens.RESERVA[Y]` saíram daqui na S-511**, e o motivo é o mesmo para os
+# doze: eles existiam para dar **cor literal** ao `tk.Canvas`, que não conhece papel. No Qt a cor
+# vem sempre de `tema.cor_atual(papel)`, então o apelido perdeu a função junto com o toolkit --
+# medido em 2026-09-01, os doze tinham zero uso em `src/` e zero em `tests/`. Os papéis continuam
+# em `ui/tokens.py`, que é onde eles sempre moraram; o que saiu foi a segunda forma de nomeá-los.
+#
+# Eram: `GLIFO_CLARO`, `GLIFO_ESCURO`, `LIGHT_SQUARE`, `DARK_SQUARE`, `SELECTION_OUTLINE`,
+# `LAST_MOVE_SQUARE`, `TARGET_MARK`, `CHANGED_OUTLINE`, `PROBLEM_OUTLINE`, `DISPUTED_OUTLINE`,
+# `BOARD_FRAME` e `COORDINATE_TEXT`.
 
 COORD_FONT = ("Segoe UI", 9, "bold")
 """A fonte das letras a–h e dos números 8–1. Um lugar só, porque a margem sai dela (S-155)."""
 
 COORD_OFFSET_PX = 11
 """Quanto o texto da coordenada fica **fora** do tabuleiro, do centro do texto até a borda."""
+
+def reguas(virado: bool) -> tuple[str, str]:
+    """As duas réguas na ordem em que se desenham: `(colunas, linhas)` (S-508).
+
+    Com as brancas embaixo, `a` fica à esquerda e `8` no topo; virado, os dois invertem. É uma
+    linha de decisão, e ela mora aqui pelo motivo de sempre -- **para ser afirmável sem janela**.
+
+    E aqui há um motivo a mais, que é de bancada: a plataforma `offscreen` da suíte não tem fonte
+    nenhuma, então `a` e `h` desenham o mesmo retângulo. Um teste que comparasse o pixel das duas
+    réguas passaria em verde com a ordem trocada -- que é exatamente o tipo de guarda vácua que o
+    corte do Tk deixou para trás.
+    """
+    return ("hgfedcba", "12345678") if virado else ("abcdefgh", "87654321")
 
 def margem_de_coordenada(offset: int = COORD_OFFSET_PX, altura_da_fonte: int = COORD_FONT[1]) -> int:
     """A margem que o canvas precisa reservar para as coordenadas caberem inteiras (S-155).
@@ -144,7 +129,17 @@ O modelo guarda `"green"` porque é o que o PGN sabe escrever; o desenho pergunt
 desconhecida cai no verde, que é exatamente o que `chess.svg.Arrow.pgn` faz ao gravar."""
 
 LARGURA_DA_SETA = 0.16
-"""Espessura da haste, em fração da casa. A ponta é 2,6 vezes isso."""
+"""Espessura da haste, em fração da casa. A ponta é `FATOR_DA_PONTA` vezes isso."""
+
+FATOR_DA_PONTA = 2.6
+"""Quantas vezes a ponta é mais larga que a haste.
+
+Estava só na prosa de `LARGURA_DA_SETA`, e o desenho do Qt tinha um segundo literal (`0.34`) que
+não saía dela -- duas fontes para a mesma proporção, que é a família de defeito da S-145. Agora a
+ponta é derivada, e mudar a haste move as duas juntas."""
+
+PONTA_DA_SETA = LARGURA_DA_SETA * FATOR_DA_PONTA
+"""Largura da ponta, em fração da casa. Derivada, e não um segundo número."""
 
 LARGURA_DO_CIRCULO = 0.055
 """Espessura do anel da casa marcada, em fração da casa."""
