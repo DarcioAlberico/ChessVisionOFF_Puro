@@ -23,19 +23,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 __all__ = [
-    "ALTURA_MINIMA_DO_CONTEUDO",
-    "CHROME_HORIZONTAL",
-    "CHROME_VERTICAL",
     "FRACAO_PADRAO_DO_DIVISOR",
-    "PISO_MEDIDO",
-    "VISIVEL_MINIMO",
     "Geometria",
     "fracao_de_divisor",
     "fracao_do_documento",
-    "geometria_corrigida",
     "geometria_de_texto",
     "piso_da_janela",
-    "visivel_em",
 ]
 
 CHROME_HORIZONTAL = 60

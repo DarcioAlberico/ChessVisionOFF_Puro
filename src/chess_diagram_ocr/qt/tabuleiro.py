@@ -40,7 +40,7 @@ from PyQt6.QtWidgets import QWidget
 from chess_diagram_ocr.config import BUNDLE_ROOT, IDX_TO_CLASS, UNCERTAIN_SQUARE_THRESHOLD
 from chess_diagram_ocr.fen_utils import labels_from_fen
 from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.ui import conjuntos, tokens
+from chess_diagram_ocr.ui import conjuntos, degradacao, tokens
 from chess_diagram_ocr.ui.desenho_do_tabuleiro import (
     COORD_FONT,
     COORD_OFFSET_PX,
@@ -106,6 +106,10 @@ def carregar_pecas(pasta: Path = PASTA_DE_PECAS) -> dict[str, QPixmap]:
 
     Um `QPixmap` nulo desenha nada e não levanta: se ele entrasse aqui, o tabuleiro ficaria
     vazio sem que ninguém pudesse dizer por quê. Fora do dicionário, o desenho cai no glifo.
+
+    **E a queda avisa, uma vez** -- é a linha `pasta_de_pecas` de `degradacao.QUEDAS`, que apontava
+    para o `PieceImages` do Tk e ficou sem dono no corte; aqui a pasta ausente caía no glifo em
+    silêncio, que é a metade do contrato que a tabela proíbe (S-511).
     """
     imagens: dict[str, QPixmap] = {}
     for classe in GLIFOS:
@@ -115,6 +119,17 @@ def carregar_pecas(pasta: Path = PASTA_DE_PECAS) -> dict[str, QPixmap]:
         mapa = QPixmap(str(caminho))
         if not mapa.isNull():
             imagens[classe] = mapa
+    faltando = [classe for classe in GLIFOS if classe not in imagens]
+    if faltando:
+        degradacao.avisar_uma_vez(
+            logger,
+            ("pasta_de_pecas", str(pasta)),
+            "Pasta de peças %s sem %d das %d imagens (%s): as ausentes saem como glifo.",
+            pasta,
+            len(faltando),
+            len(GLIFOS),
+            " ".join(faltando),
+        )
     return imagens
 
 

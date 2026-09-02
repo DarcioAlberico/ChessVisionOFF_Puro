@@ -26,7 +26,7 @@ desenha nada, e é o que permite afirmar as sete origens de mudança sem abrir j
 
 from __future__ import annotations
 
-__all__ = ["TETO", "Historico"]
+__all__ = ["Historico"]
 
 TETO = 100
 """Quantas posições anteriores a pilha guarda, por diagrama.

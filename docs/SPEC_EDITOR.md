@@ -1,4 +1,4 @@
-# Especificação do editor de texto — Fases 36 a 42 e 51 (S-235 a S-267, S-291 a S-293)
+# Especificação do editor de texto — Fases 36 a 42, 51 e 78 (S-235 a S-267, S-291 a S-293, S-521)
 
 Base: [ROADMAP_EDITOR.md](ROADMAP_EDITOR.md), que traz a medição da aba de hoje, os oito achados e
 o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
@@ -17,7 +17,7 @@ o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 > | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
@@ -2887,6 +2887,160 @@ não só uma limpeza.
 - o documento continua idêntico com a conferência ligada.
 
 **Testes.** `tests/test_ui_texto_editor.py::ConferenciaQueSeRefazTests`.
+
+---
+
+# Fase 78 — A digitação que chega ao documento
+
+A fase nasce de uma medição feita de passagem, em 2026-09-02, ao ligar as teclas do editor que o
+porte para o Qt tinha deixado sem `bind` (triagem da S-511): **o que se digita no editor de texto
+do Qt não chega ao documento.** A S-235 decidiu que o documento rico é o dado e o widget é o
+desenho; a S-238 fechou o ciclo do lado do Tk fazendo do `tk.Text` o estado vivo e relendo-o ao
+gravar. O porte trouxe a primeira decisão e não trouxe a segunda nem o seu equivalente — e ficou
+com um editor em que toda ferramenta passa pelo documento e a tecla mais comum de todas, a letra,
+passa por fora dele. É um item só, e ele é o maior defeito que a triagem encontrou.
+
+## S-521 · A digitação que chega ao documento, e o desfazer que a vê
+
+### Problema
+
+**O widget recebe o texto e o documento não.** `qt/painel_de_texto.py` declara, no `__init__`:
+*"O estado é o documento, e não o widget"*. Toda ferramenta cumpre isso: negrito, cor, estilo,
+paleta, achar-e-substituir chamam uma função pura de `text/rico.py` e redesenham o que voltou
+(`_aplicar`). Digitar não: o `QTextEdit` é editável, nada escuta o que ele muda, e `documento`
+fica como estava. Medido em 2026-09-02, sob `offscreen`, com `QTest.keyClicks` sobre a folha
+`"O bispo vai para c4."`:
+
+| gesto | o widget mostra | o documento diz | o que acontece |
+|---|---|---|---|
+| digitar `grande ` na posição 2 | `O grande bispo vai para c4.` | `O bispo vai para c4.` | **salvar grava a folha sem o que foi digitado** — conferido relendo o `.cvtxt` |
+| depois disso, selecionar `bispo` na tela e pedir negrito | `O bispo vai para c4.` (redesenhado) | negrito em `ai pa` | o mapa da S-235 é o do último desenho: a seleção da tela cai sete caracteres antes no documento, e o redesenho **apaga o que foi digitado** |
+| digitar `xyz` e apertar `Ctrl+Z` | `O bispo vai para c4.` | idem | o desfazer devolve o documento anterior à digitação, que é o mesmo de antes — o `xyz` some sem ter existido para a pilha |
+| `Ver ▸ Colar` com `COLADO ` na área de transferência | `COLADO Linha um…` | `Linha um…` | `colar` é `self.editor.paste()`: o docstring promete que *"o texto colado herda os atributos dos dois lados, como o digitado"*, e nenhum dos dois chega ao documento |
+
+Quatro gestos, um mecanismo. `recortar`, `Backspace`, `Delete`, `Enter` e a composição de teclado
+(acentos por tecla morta, IME) são o mesmo caso: tudo que o Qt escreve no `QTextDocument` por
+conta própria fica só ali.
+
+**Por que ninguém acusou.** `tests/test_qt_texto.py` tem 60 casos e nenhum digita: as ferramentas
+são testadas chamando o método (`self.painel.negrito()`) sobre um documento posto por
+`desenhar_documento`, que é exatamente o caminho que funciona. E a S-238, que fechou este ciclo no
+Tk, foi afirmada em `tests/test_ui_texto_editor.py` com um `tk.Text` de verdade — arquivo que saiu
+no corte (S-506) junto com o widget que ele abria. O que sobrou de guarda mede o documento; o
+defeito está entre o teclado e ele.
+
+**O que o desenho do Qt já tem, e é a metade boa.** `_Mapa` traduz posição do cursor em
+deslocamento do documento nos dois sentidos, descontando a miniatura do diagrama (um caractere
+para o widget, nenhum para o documento) e a quebra que o desenho põe embaixo dela. `_intervalo`
+lê a seleção por ele. `rico.inserir` (S-248) e `rico.substituir_intervalo` (S-245) já sabem
+receber texto novo herdando atributo, faixa e bloco de quem estava ali e carimbando
+`procedencia="humano"` (S-239). E redesenhar a folha inteira custa **1,7 ms** numa página de 3.360
+caracteres (média de 20 redesenhos, `perf_counter`) — o custo do redesenho não é o que decide o
+desenho; o que decide é o cursor, que o redesenho manda para o zero.
+
+### Solução
+
+**O documento continua sendo o estado, e passa a escutar o widget.** É a mesma escolha da S-235,
+levada até a tecla: em vez de fazer do widget o estado vivo (a saída do Tk, que precisaria de um
+`texto_etiquetas.py` para o Qt e perderia `bloco` e `procedencia`, que o `QTextCharFormat` não
+carrega), cada mudança que o Qt faz no `QTextDocument` vira uma chamada pura sobre o documento.
+
+1. **Um ouvinte, para todos os gestos.** `QTextDocument.contentsChange(posicao, removidos,
+   acrescentados)` é o único ponto por onde passam tecla, tecla morta, IME, `Backspace`, `Delete`,
+   `Enter`, colar e recortar. O painel o liga no `_montar` e o **ignora enquanto `_redesenhando`**
+   — o redesenho troca o documento inteiro e o sinal dispararia para o próprio desenho.
+2. **A tradução é a do `_Mapa`, e o mapa passa a acompanhar a edição.** `inicio =
+   mapa.deslocamento(posicao)`, `fim = mapa.deslocamento(posicao + removidos)`, e `novo` é o texto
+   que o widget tem em `[posicao, posicao + acrescentados)`, com o separador de bloco do Qt
+   (`U+2029`) traduzido para a quebra de linha que o documento usa. Depois de aplicar,
+   `mapa.editar(posicao, removidos, acrescentados)`: os trechos depois da edição deslocam-se pelo
+   saldo, e o trecho que a contém cresce ou encolhe. É uma função pura sobre uma lista de três
+   inteiros, e é a parte que mais merece teste.
+3. **A aplicação é `rico.substituir_intervalo(documento, inicio, fim, novo)`**, que já é a regra
+   da S-245 e da S-248: o texto novo herda de quem estava ali, ganha `procedencia="humano"`, e a
+   marca de diagrama e o separador atravessam a troca inteiros. Inserção pura (`inicio == fim`)
+   cai em `rico.inserir`, herdando **da esquerda** — é a regra que a paleta já usa, e este item
+   a estende à digitação e ao colar. *Divergência declarada com a S-238:* lá, digitar na emenda
+   entre dois blocos não herdava bloco nenhum, porque era o que as etiquetas do Tk faziam; aqui
+   o texto digitado na emenda pertence ao bloco da esquerda, como o símbolo inserido. Três
+   caminhos de entrada, uma regra só.
+4. **Sem redesenho, salvo quando o widget e o documento divergem.** Depois de aplicar, o
+   invariante é `documento.para_texto() == texto_do_widget()` (com o separador traduzido). Quando
+   ele vale — que é sempre, na digitação comum —, nada é redesenhado, e o cursor fica onde a
+   pessoa o deixou. Quando não vale, é porque a edição tocou o que o documento não deixa tocar:
+   apagar o caractere da miniatura, ou a quebra que o desenho pôs embaixo dela. Aí o painel
+   redesenha a partir do documento — o widget volta ao que era —, repõe o cursor por
+   `mapa.posicao(inicio)` e diz no rodapé que a marca do diagrama não se edita. É o mesmo
+   contrato de `substituir_intervalo`: a estrutura do texto não é do teclado.
+5. **O desfazer vê a digitação por lotes, e não por tecla.** A pilha do painel é de documentos
+   (S-243), e ela continua sendo: uma entrada por tecla daria cem entradas em cem caracteres e
+   estouraria o teto em uma frase. A regra do lote é pura e mora ao lado das outras declarações
+   da aba (`ui/texto_declarado.py`, sugestão): um lote **fecha** quando a edição muda de tipo
+   (inserir ↔ apagar), quando ela não é contígua à anterior (o cursor andou), quando o caractere
+   digitado é separador (espaço, quebra, pontuação — a granularidade de palavra, que é a do
+   `edit_separator` do Tk e a do Word), ou quando qualquer ferramenta passa por `_aplicar`. Ao
+   **abrir** um lote o painel empurra o documento anterior para `_historico`, esvazia
+   `_refeitos` e incrementa `edicao` — que é o contador da S-243, e é ele que faz o `Ctrl+Z`
+   sem foco escolher esta aba depois de a pessoa digitar nela. `Ctrl+Z` no meio de um lote desfaz
+   o lote inteiro, como no Tk.
+6. **`documento_mudou` dispara no fechamento do lote**, e não a cada tecla: é o sinal que a
+   conferência do léxico (S-293) e o rascunho automático (S-255, quando for portado) escutam, e
+   nenhum dos dois quer rodar entre duas letras da mesma palavra.
+
+**O que `colar` e `recortar` viram.** Nada: continuam sendo `paste()` e `cut()` do widget, porque
+o caminho novo os alcança pelo mesmo sinal. O docstring de `colar` passa a ser verdade sem mudar
+uma palavra.
+
+### Critério de aceite
+
+- Digitar, apagar, colar e recortar no editor deixam `documento.para_texto()` igual ao texto do
+  widget, e **salvar e reabrir devolve o que foi digitado** — o ciclo da S-238, fechado no Qt.
+- Formatar depois de digitar marca o trecho que está na tela: inserir `grande ` e pedir negrito em
+  `bispo` põe negrito em `bispo`, e não sete caracteres antes.
+- O texto digitado dentro de um bloco fica com o `bloco` dele e com `procedencia="humano"` — a
+  correção continua atada ao bloco que corrige, que é o que a fila da S-212 lê.
+- `Ctrl+Z` depois de digitar uma palavra tira a palavra inteira e deixa o resto; uma frase de três
+  palavras é três entradas na pilha, não quinze; `edicao` cresce uma vez por lote.
+- Apagar o caractere da miniatura não apaga a marca do diagrama: o widget volta, o cursor fica, e
+  o rodapé diz por quê.
+- Enquanto se digita, o cursor e a rolagem não se movem: **nenhum redesenho** na digitação comum,
+  afirmado contando chamadas de `_desenhar`.
+- A tradução de posição continua certa depois da edição: `_intervalo` de uma seleção feita
+  **depois** de digitar cai no lugar certo do documento, com miniatura antes e depois dela.
+- Custo por tecla abaixo de 1 ms na página de 3.360 caracteres (`perf_counter` sobre o ouvinte),
+  sem contar o redesenho, que não acontece.
+
+### Testes
+
+- `tests/test_qt_texto.py`: uma classe `DigitacaoTests` com `QTest.keyClicks` e `keyClick` para
+  cada linha da tabela do problema — inserir, `Backspace`, `Delete`, `Enter`, colar pelo comando,
+  recortar pelo comando —, afirmando o documento, o arquivo salvo e relido, a formatação depois de
+  digitar, os lotes do desfazer e o `edicao`, a miniatura que não se apaga, e a contagem de
+  `_desenhar` em zero durante a digitação comum.
+- `tests/test_qt_texto.py::MapaTests`: `editar` com inserção no meio de um trecho, no fim, na
+  emenda de dois, remoção que atravessa dois trechos, e edição depois de uma miniatura — cinco
+  casos que não abrem janela.
+- Um arquivo puro para a regra do lote (`tests/test_ui_texto_lotes.py`, sugestão): os quatro
+  fechos, e que `a b` são dois lotes e `abc` é um.
+- `tests/test_texto_rico.py`: o que a S-238 travava com um `tk.Text` e morreu no corte, refeito
+  sem widget — inserir dentro de um bloco mantém a origem, inserir na emenda pertence ao da
+  esquerda (a divergência declarada acima, afirmada e não escondida).
+
+### Considerado e recusado
+
+- **Religar o desfazer nativo do `QTextEdit` para o texto e manter a pilha de documentos para o
+  formato.** É a saída de duas pilhas que a S-243 recusou, e a razão de lá vale aqui: um `Ctrl+Z`
+  que às vezes desfaz o negrito e às vezes a palavra.
+- **Fazer do widget o estado vivo, como no Tk, e reler o `QTextDocument` ao gravar.** Exigiria
+  reconstruir corridas a partir de `QTextCharFormat`, que não carrega `bloco` nem `procedencia`
+  — as duas coisas que a S-239 existe para preservar. Seria reescrever `texto_etiquetas.py` para
+  o Qt e perder no caminho o que o outro já perdia.
+- **Redesenhar a cada tecla.** Custa 1,7 ms e seria a implementação mais curta; o que ela custa
+  de verdade é o cursor de volta ao início da folha a cada letra e a composição de acento
+  interrompida no meio. O redesenho fica só para o caso em que o widget e o documento divergem.
+- **Tornar o editor somente-leitura no Qt até este item entrar.** Seria honesto e é o oposto do
+  que a aba existe para fazer; e a S-511 já deixou o defeito escrito em três lugares, que é o que
+  um item planejado precisa para não ser esquecido.
 
 ---
 

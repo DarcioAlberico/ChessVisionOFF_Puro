@@ -42,7 +42,6 @@ __all__ = [
     "razao_de_contraste",
     "saturacao",
     "sobre_superficie",
-    "tema_e_escuro",
 ]
 
 

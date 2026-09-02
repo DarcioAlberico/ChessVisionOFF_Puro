@@ -5,9 +5,8 @@ propostas de interface são dirigidas a ícone. O que este item recusa é a saí
 de PNG resolveria a Imagem 2 e quebraria a Imagem 1, porque traço escuro sobre cromo escuro some.
 É o defeito que a S-146 mediu no tabuleiro, e `PieceImages.icon` já o documenta nas peças.
 
-A forma é declarada numa caixa `0..100` e a cor vem de quem desenha. Quase tudo aqui se afirma
-sem abrir janela: só o cache e o tamanho entregue precisam de um `Tk`, porque `ImageTk.PhotoImage`
-precisa.
+A forma é declarada numa caixa `0..100` e a cor vem de quem desenha. Tudo aqui se afirma sem
+abrir janela: o módulo desenha em PIL, e a última perna para o toolkit é de `qt/icones.py`.
 """
 
 from __future__ import annotations

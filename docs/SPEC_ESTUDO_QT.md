@@ -18,7 +18,7 @@ reabre aquelas decisões. A fundação de aparência é a das Fases 20 a 24 ([SP
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
 > | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
@@ -360,6 +360,65 @@ exportar um nome novo sem chamador passa a falhar, nomeando o módulo e o nome.
 - A guarda tem de achar **alguma coisa** para provar que não é vácua — a mesma trava que
   `test_a_varredura_acha_os_links` usa: com a lista de exceções vazia, a contagem é maior que zero.
   É a lição da S-506, em que ~20 varreduras passaram em verde sobre lista vazia.
+
+### O que a triagem dos 134 achou — 2026-09-02, catraca em **zero**
+
+O item deixou 134 perguntas em aberto e a catraca para elas não subir. A triagem respondeu todas
+no dia seguinte, em dois lotes, na branch `triagem-dos-orfaos`. A conta das quatro saídas:
+
+| saída | quantos | o que era |
+|---|---|---|
+| tirar do `__all__` | 74 | nome usado dentro do próprio módulo, pelas funções que são a API — o caso de `HEATMAP_LOW`, repetido em vinte módulos |
+| isentar com motivo | 36 | três motivos se repetem, e nenhum é "falta cliente": o **tipo** que o cliente usa sem nomear (`Atalho`, `Geometria`, `Queda`…), o **instrumento** com que uma guarda mede (`razao_de_contraste`, `texto_de`…) e a **tabela** que uma guarda percorre inteira (`CATALOGO`, `SUPERFICIES`, `QUEDAS`, `ICONES`, `SOBREPOSICOES_NO_EDITOR`) |
+| apagar | 16 | as quatro cores literais e o `box_color` de `leitura_do_pdf`; `desvio_de_centralizacao` e `regiao_de_rolagem`, que o canvas do Tk pedia e o `QScrollArea` faz por `setAlignment`; `saved_on_page` e `mark_confirmed`, órfãs desde antes do corte; `ligacoes` do `bind_all`; `PONTOS_POR_POLEGADA` do `tk scaling`; `em_destaque`; as duas etiquetas do Tk de `texto_cores`; `ETIQUETA_DO_LEXICO`; e a metade Tk de `ui/icones.py` — `icone`, o cache de `PhotoImage` e `limpar_cache` |
+| dar chamador | 8 | todos decisão que perdeu o chamador no porte — e, no caminho deles, três guardas que tinham morrido no corte voltaram. Os onze estão abaixo |
+
+**As onze decisões desligadas que a triagem religou — a instância muda, o mecanismo não.**
+
+1. `leitura_do_pdf.SELECTION_HALO_PX`: `qt/visor.py` a reescrevia como `HALO_DA_SELECAO = 4`. No
+   caminho, a cor da caixa saía de `tokens.RESERVA[...]` — o mesmo achado da S-510 sobre o glifo
+   de reserva, numa terceira tela — e passou a sair de `tema.cor_atual`, no momento de pintar.
+2. `abas.ABAS`: a janela copiava a ordem em seis `addTab`, e a tupla seguiu declarando a aba
+   Configuração, que saiu no porte (S-506), por um mês. É o mesmo formato do `NAS_BARRAS_DO_PDF`:
+   sem leitor, uma declaração não só perde o chamador, ela **deriva**. A tupla deixou de declarar
+   a Configuração, a janela passou a lê-la, e uma aba declarada sem painel reprova na montagem.
+3. `page_overlay.frase_de_caixa_tirada` e `frase_de_caixas_devolvidas`: reescritas inline em
+   `qt/janela.py`, com outro texto — a versão do Qt não nomeava o caminho de volta.
+4. `geometria.FRACAO_PADRAO_DO_DIVISOR`: o padrão da primeira execução (S-156) era, no Qt, um par
+   de pixels da montagem.
+5. `dispositivos.dispositivos_da_janela`: reescrita em `qt/janela._dispositivos` com `motivo=""`
+   cravado — "os pesos não estão no disco" e "o motor é outro" saíam com a mesma palavra no rodapé.
+6. `atalhos.conferir_dono`: o critério de aceite da S-244, chamado na montagem de cada painel do
+   Tk, só existia como teste no Qt. Voltou aos quatro painéis que declaram ações.
+7. `atalhos.TECLAS_DO_EDITOR` e `SOBREPOSICOES_NO_EDITOR`: a tabela veio no porte, o `Text.bind`
+   não. **`Ctrl+B` não fazia nada no editor de texto do Qt**, medido em 2026-09-02, e a guarda de
+   foco tomava `Ctrl+R` do editor para reler a página. As teclas passaram a ser ligadas por
+   `QShortcut` com alcance no editor; `teclas_cedidas_ao_editor` diz à guarda o que ceder, e uma
+   tecla que entre nas duas tabelas sem sobreposição declarada reprova na montagem.
+8. `degradacao.QUEDAS`: a tabela do contrato de degradação (S-234) ficou sem quem a percorresse —
+   `test_ui_degradacao` morreu no corte com a raiz Tk que abria — e a linha `pasta_de_pecas`
+   apontava para o `PieceImages`, que não existia mais. No Qt a pasta ausente caía no glifo **em
+   silêncio**. O teste voltou, na versão pura; `carregar_pecas` ganhou o aviso; e a troca de pele
+   voltou a chamar `esquecer_avisos`.
+9. `geometria.fracao_do_documento`: o orçamento da S-232 — o documento fica com pelo menos 60% da
+   altura — nunca teve teste nem chamador. Ganhou a guarda em `test_qt_fita`.
+10. `viewport` (S-157): a página centrada na vista deixou de ter guarda quando a conta do Tk saiu.
+    `test_qt_painel_do_pdf` afirma o `setAlignment` no lugar dela.
+11. `abas.contagem_no_rotulo` e os testes puros de `ui/abas.py`: o arquivo de teste inteiro morreu
+    no corte porque lia o `app_tkinter.py`. A parte pura voltou.
+
+**Dois achados que não são órfão, e por isso não foram consertados aqui.** Medidos ao ligar as
+teclas do editor: (a) **a digitação no editor de texto do Qt não chega ao documento** — o
+`QTextEdit` recebe o texto e `documento` fica como estava, então salvar grava a folha sem o que foi
+digitado; e (b) o mostrador de corpo (S-292) e as listas de escolha exclusiva (S-259/S-262) não
+foram portados. Os cinco nomes que os declaram ficaram em `SEM_CHAMADOR` com o motivo escrito,
+como `LARGURA_DO_CIRCULO`: o que falta não é chamador, é o recurso. O (a) virou a **S-521**
+(Fase 78, [SPEC_EDITOR.md](SPEC_EDITOR.md)) — é o defeito de maior custo que este plano encontrou,
+e ele não estava na lista dos oito.
+
+**A guarda ganhou o controle que faltava.** `test_uso_em_docstring_nao_conta_e_uso_em_codigo_conta`
+afirma o detector contra fonte de mentira, e não contra o arquivo real — a mesma trava da guarda
+dos inertes (S-505): ancorado no arquivo, um detector se apaga junto com o defeito.
 
 ---
 

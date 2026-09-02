@@ -420,6 +420,35 @@ class TecladoTests(PainelTests):
         self.assertEqual(len(barras), 1)
         self.assertGreater(barras[0].linhas_em(160), 1)
 
+    def test_ctrl_b_no_editor_poe_o_trecho_em_negrito(self) -> None:
+        """`TECLAS_DO_EDITOR` era a única declaração das teclas do editor, e no Qt ninguém a lia:
+        `Ctrl+B` não fazia nada (medido em 2026-09-02, S-511). A tecla chega por um `QShortcut`
+        com alcance no editor, e o método é o de `COMANDOS_DA_ABA` -- o mesmo do botão."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+
+        self.painel.desenhar_documento(rico.de_texto("O bispo vai para c4."))
+        self.painel.activateWindow()
+        self.painel.editor.setFocus()
+        self.app.processEvents()
+        self.selecionar(2, 7)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+        marcadas = [c.texto for c in self.painel.documento.corridas if c.atributos.negrito]
+        self.assertEqual(marcadas, ["bispo"])
+
+    def test_as_teclas_divididas_com_a_janela_sao_cedidas_ao_editor(self) -> None:
+        """`Ctrl+R` é "ler esta página" na janela e "alinhar à direita" no editor
+        (`CEDIDA_PELA_GUARDA`): a guarda cede. `Ctrl+H` é "substituir" nas duas e a janela ganha
+        (`GANHA_DO_TK`): a guarda a entrega ao painel por `acoes_proprias`. `Ctrl+S` não é do
+        editor: é da janela, atendida por este painel (S-244)."""
+        from chess_diagram_ocr.qt import atalhos as qt_atalhos
+
+        self.assertTrue(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-r>"))
+        self.assertTrue(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-b>"))
+        self.assertFalse(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-h>"))
+        self.assertFalse(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-s>"))
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

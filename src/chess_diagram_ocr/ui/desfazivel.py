@@ -35,7 +35,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-__all__ = ["Desfazivel", "alvo_de_desfazer", "ultimo_editado"]
+__all__ = ["Desfazivel", "alvo_de_desfazer"]
 
 
 @runtime_checkable

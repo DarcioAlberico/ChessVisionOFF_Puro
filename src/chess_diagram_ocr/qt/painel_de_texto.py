@@ -38,11 +38,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QTextCursor, QTextDocument
+from PyQt6.QtGui import QKeySequence, QShortcut, QTextCursor, QTextDocument
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -213,6 +214,7 @@ class PainelDeTexto(QWidget):
 
         self._montar()
         self._desenhar()
+        atalhos.conferir_dono(self, "PainelDeTexto")
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -233,6 +235,7 @@ class PainelDeTexto(QWidget):
         *documentos* (`rico.DocumentoRico`), e não de edições de texto: uma ferramenta de formato
         não muda um caractere, e o desfazer nativo não a veria. Duas pilhas dariam um `Ctrl+Z` que
         às vezes desfaz o negrito e às vezes a palavra."""
+        self._ligar_teclas_do_editor()
         corpo = QHBoxLayout()
         corpo.addWidget(self.editor, 1)
         corpo.addWidget(self._montar_paleta())
@@ -240,6 +243,27 @@ class PainelDeTexto(QWidget):
 
         self.status = QLabel("", self)
         caixa.addWidget(self.status)
+
+    def _ligar_teclas_do_editor(self) -> None:
+        """As teclas próprias do editor (S-241/S-259/S-263), ligadas **no widget** (S-511).
+
+        `atalhos.TECLAS_DO_EDITOR` é a única declaração delas, e do lado do Tk quem as ligava era
+        o `Text.bind`. O porte trouxe a tabela e não o `bind`: `Ctrl+B` não fazia nada no Qt, sem
+        erro nenhum, porque a tabela continuava lá e nenhuma guarda perguntava se alguém a lia.
+
+        Duas coisas, e as duas vêm de `ui/atalhos.py`. Um `QShortcut` por linha da tabela, com
+        alcance no editor, disparando o método de `COMANDOS_DA_ABA` -- o mesmo do botão. E
+        `teclas_proprias` no próprio widget, que é o que `qt/atalhos.cede_a_tecla` lê para
+        entregar ao editor as teclas que ele **divide** com a janela (`Ctrl+R`, `Ctrl++`,
+        `Ctrl+-`) e não a que a janela ganha (`Ctrl+H`, que chega por `acoes_proprias`).
+        `teclas_cedidas_ao_editor` levanta na montagem se uma tecla nova entrar nas duas tabelas
+        sem `SOBREPOSICOES_NO_EDITOR` dizer de quem ela é.
+        """
+        self.editor.teclas_proprias = atalhos.teclas_cedidas_ao_editor()  # type: ignore[attr-defined]
+        for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
+            atalho = QShortcut(QKeySequence(qt_atalhos.sequencia_qt(sequencia)), self.editor)
+            atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
+            atalho.activated.connect(partial(self.executar, acao))
 
     def _montar_paleta(self) -> QListWidget:
         """O painel lateral de glifos (S-248). Nasce escondido: ele é um caminho a mais.

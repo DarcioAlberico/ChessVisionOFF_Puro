@@ -34,6 +34,19 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr"
 UI = RAIZ / "ui"
 
+E_O_TIPO = (
+    "é o tipo dos valores que o módulo devolve ou recebe: o cliente lê os atributos e nunca nomeia o "
+    "tipo, e um `import` só para anotar seria o chamador escrito para a guarda ficar verde"
+)
+INSTRUMENTO = (
+    "instrumento das guardas: existe para o teste afirmar o que o produto faz, e um chamador no "
+    "produto seria o produto medindo a si mesmo"
+)
+TABELA_PERCORRIDA = (
+    "a tabela declarada que a guarda percorre inteira; o produto a lê pelas funções ao lado, e é o "
+    "teste que a compara com o que foi montado"
+)
+
 SEM_CHAMADOR: dict[str, str] = {
     "estudo_lista.NIVEL_MAXIMO_DE_RECUO": (
         "quem o aplica é o próprio `Trecho.recuo`, no mesmo módulo, e o painel usa o resultado. "
@@ -47,6 +60,75 @@ SEM_CHAMADOR: dict[str, str] = {
         "recusa a seta de comprimento zero, que é o gesto que a marcaria. A espessura do anel "
         "fica declarada para quando o gesto existir, e não como número solto no widget."
     ),
+    # --- os tipos: `ATALHOS` é uma tupla de `Atalho`, `geometria_de_texto` devolve `Geometria`...
+    "atalhos.Atalho": E_O_TIPO,
+    "atalhos.DonoDeAcoes": E_O_TIPO + " -- e é um `Protocol`: quem o implementa não o nomeia, por definição",
+    "board_model.BoardMode": E_O_TIPO,
+    "degradacao.Queda": E_O_TIPO,
+    "gallery_model.ApplyReport": E_O_TIPO,
+    "geometria.Geometria": E_O_TIPO,
+    "icones.Arco": E_O_TIPO,
+    "icones.Poli": E_O_TIPO,
+    "menu.Menu": E_O_TIPO,
+    "varredura_de_revisao.ScanRequest": E_O_TIPO,
+    # --- os instrumentos: o que a guarda usa para medir, e o produto não
+    "tokens.razao_de_contraste": INSTRUMENTO + " (o piso de contraste das S-145/S-159, em `test_board_model` e `test_qt_tema`)",
+    "tokens.matiz": INSTRUMENTO + " (a distância de matiz da S-159)",
+    "tokens.saturacao": INSTRUMENTO + " (a saturação da S-159)",
+    "tokens.distancia_de_matiz": INSTRUMENTO + " (a distância de matiz da S-159)",
+    "espaco.vigente": INSTRUMENTO + " -- existe para o teste afirmar o que `ajustar` fixou",
+    "abas.contagem_no_rotulo": INSTRUMENTO + " -- existe para o teste ler o que a tela diz, como o docstring dela declara",
+    "estudo_lista.texto_de": (
+        INSTRUMENTO + " -- é a trava da S-273: `texto_de(trechos(e))` igual ao `StringExporter`, "
+        "token a token, cobrada por `test_estudo_lista`"
+    ),
+    "comandos.primarios_por_grupo": INSTRUMENTO + " -- \"uma ênfase por barra, nunca duas\", cobrada por `test_ui_comandos`",
+    # --- as tabelas que a guarda percorre inteiras
+    "tokens.NO_CROMO_ESCURO": TABELA_PERCORRIDA,
+    "tokens.PAPEIS": TABELA_PERCORRIDA,
+    "tokens.SUPERFICIES": TABELA_PERCORRIDA + " (`test_ui_superficies`, a guarda da S-449)",
+    "tokens.SUPERFICIES_DE_DOCUMENTO": TABELA_PERCORRIDA,
+    "comandos.CATALOGO": TABELA_PERCORRIDA + " -- é a conta do catálogo, em `test_ui_comandos` e `test_qt_janela`",
+    "comandos.NAS_BARRAS_DO_PDF": (
+        TABELA_PERCORRIDA + " -- religada em `ee1b878`, quando se viu que declarava 16 e o painel "
+        "desenhava 11: sem leitor, uma declaração não só perde o chamador, ela deriva"
+    ),
+    # --- os dois que têm cliente fora de `src/`
+    "plataforma.gravar_icone": (
+        "ferramenta de build chamada à mão: gera o `.ico` versionado que `packaging/cvoff.spec` "
+        "declara (\"Gerado por ui/plataforma.py::gravar_icone()\"). O produto nunca o chama "
+        "porque o arquivo já vai pronto."
+    ),
+    "geometria.fracao_do_documento": (
+        "o orçamento da S-232 -- o documento fica com pelo menos 60% da altura --, cobrado por "
+        "`test_qt_fita.test_o_documento_fica_com_pelo_menos_sessenta_por_cento_da_altura`. No "
+        "produto o orçamento não é lido, é cumprido."
+    ),
+    # --- o segundo lote (2026-09-02): mais duas tabelas, um instrumento, e o que o porte não trouxe
+    "degradacao.QUEDAS": TABELA_PERCORRIDA + " (`test_ui_degradacao`, revivido: morreu no corte com a raiz Tk que abria)",
+    "degradacao.avisos_dados": INSTRUMENTO + " -- conta os avisos dados, para o teste afirmar o `uma vez`",
+    "icones.ICONES": TABELA_PERCORRIDA + " (`test_ui_icones`, nos dois sentidos com o catálogo de comandos)",
+    "texto_declarado.ROTULO_DO_CORPO_MISTO": (
+        "o mostrador de corpo da S-292 não foi portado para o Qt (o painel não tem o rótulo); fica "
+        "declarado para quando for, como `LARGURA_DO_CIRCULO`"
+    ),
+    "texto_declarado.ESCAPE_DA_PALETA": (
+        "a sequência digitada da S-248 depende de a digitação chegar ao documento, e no editor do "
+        "Qt ela ainda não chega -- medido em 2026-09-02: o widget recebe o texto e `documento` não. "
+        "Fica declarada para quando chegar (S-521); portá-la antes seria trocar um caractere que "
+        "o documento não tem."
+    ),
+    "texto_declarado.COMANDO_DA_ESCOLHA": (
+        "as listas de escolha exclusiva da S-259/S-262 não foram portadas: no Qt alinhamento e "
+        "caixa são botões, um por comando, e a tabela nome-do-domínio -> comando fica para as listas"
+    ),
+    "texto_declarado.ALINHAMENTO": "a chave de `COMANDO_DA_ESCOLHA`, pelo mesmo motivo",
+    "atalhos.SOBREPOSICOES_NO_EDITOR": (
+        TABELA_PERCORRIDA + " -- o produto a lê por `sobreposicao` e `teclas_cedidas_ao_editor`, e "
+        "`test_ui_atalhos` a confere contra `ACOES_PROPRIAS` nos dois sentidos"
+    ),
+    "atalhos.CEDIDA_PELA_GUARDA": "um dos dois valores que `sobreposicao` devolve; quem os distingue é o teste",
+    "atalhos.GANHA_DO_TK": "o outro valor que `sobreposicao` devolve; quem os distingue é o teste",
 }
 """`modulo.NOME -> motivo`, e o motivo não pode ser vazio.
 
@@ -54,9 +136,15 @@ SEM_CHAMADOR: dict[str, str] = {
 está aqui continue **sem** chamador: um nome que ganhou um e ficou na lista reprova, senão a lista
 vira o lugar onde a pergunta deixa de ser feita. É a mesma forma do `RENUMERADOS` de
 `tests/test_docs.py`.
+
+**Três motivos se repetem, e são os três que a triagem da S-511 encontrou** ao descer a catraca
+de 134 para o número abaixo (2026-09-02): o **tipo** que os clientes usam sem nomear, o
+**instrumento** com que uma guarda mede, e a **tabela** que uma guarda percorre inteira. Nenhum
+dos três é "falta cliente"; cada um é uma declaração certa que a varredura por identificador não
+tem como ver. O que sobra fora deste mapa é pergunta em aberto de verdade.
 """
 
-TETO_DE_ORFAOS = 134
+TETO_DE_ORFAOS = 0
 """Quantos nomes exportados por `ui/` ainda não têm chamador em `src/` **nem resposta escrita**.
 
 **Catraca, e ela só desce.** Medido em 2026-09-01, depois das Fases 73 a 77: **136** nomes sem
@@ -65,6 +153,37 @@ pergunta. `ui/desenho_do_tabuleiro.py` contribui com um, e ele é um dos dois de
 fases eram **153**, e aquele módulo sozinho respondia por **18**.
 
 O número aqui é o dos **abertos**, e não o total: ver a regra logo abaixo.
+
+**Medido de novo em 2026-09-02, no primeiro lote da triagem: 134 → 34.** Dos cem que saíram,
+**62** deixaram o `__all__` (eram usados dentro do próprio módulo, pelas funções que são a API --
+o caso de `HEATMAP_LOW`, repetido em vinte módulos), **26** entraram em `SEM_CHAMADOR` com um dos
+três motivos acima, **11** foram apagados (as quatro cores literais e o `box_color` de
+`leitura_do_pdf`, o `desvio_de_centralizacao` e a `regiao_de_rolagem` que o canvas do Tk pedia,
+`saved_on_page` e `mark_confirmed`, órfãs desde antes do corte, `ligacoes` do `bind_all` e o
+`PONTOS_POR_POLEGADA` do `tk scaling`) e **1** ganhou chamador (`SELECTION_HALO_PX`, que
+`qt/visor.py` reescrevia como `HALO_DA_SELECAO = 4`). No caminho, duas guardas que o corte tinha
+levado voltaram: a do orçamento da S-232 (`fracao_do_documento`, isenta com ela) e a da página
+centrada (S-157). E `abas.ABAS` mostrou o que uma declaração sem leitor faz: ainda dizia sete
+abas, com a Configuração, que o Qt não tem.
+Os 34 que sobravam eram de dois tipos: chamador que mora em `qt/janela.py` ou num painel, e a
+mesa do editor de texto, cujas teclas próprias o Qt nunca ligou.
+
+**O segundo lote, no mesmo dia: 34 → 0.** Quatro decisões voltaram a ter chamador em
+`qt/janela.py` -- as frases de tirar e devolver caixa (`frase_de_caixa_tirada`,
+`frase_de_caixas_devolvidas`, reescritas inline com outro texto), `FRACAO_PADRAO_DO_DIVISOR` (o
+padrão era um par de pixels da montagem), `dispositivos_da_janela` (reescrita com `motivo=""`
+cravado: "os pesos não estão no disco" saía igual a "o motor é outro") e `abas.ABAS` (a janela
+copiava a ordem, e a tupla seguiu declarando a Configuração, que saiu no porte). `conferir_dono`
+voltou à montagem dos quatro painéis que declaram ações (S-244). `TECLAS_DO_EDITOR` ganhou quem a
+ligue: `Ctrl+B` não fazia nada no editor do Qt, medido, e `SOBREPOSICOES_NO_EDITOR` passou a
+decidir, por `teclas_cedidas_ao_editor`, o que a guarda cede ao editor. `degradacao.QUEDAS` voltou
+a ter o teste que a percorre, e a linha `pasta_de_pecas` ganhou o dono e a voz que perdeu no
+corte. Saíram: `em_destaque` (a `fila_de_destaque` é a API), as duas etiquetas do Tk de
+`texto_cores`, `ETIQUETA_DO_LEXICO`, e a metade Tk de `ui/icones.py` (`icone`, o cache de
+`PhotoImage`). Cinco ficaram declarados com motivo porque o porte não os trouxe, e o motivo diz o
+que falta: o mostrador de corpo (S-292), as listas de escolha exclusiva (S-259/S-262) e a
+sequência digitada da paleta (S-248) -- esta última porque **a digitação no editor do Qt ainda
+não chega ao documento**, que é o achado maior deste lote e não é órfão: é item.
 
 > **Este número é maior que o do roadmap, e a diferença é o instrumento.** O `ROADMAP_ESTUDO_QT`
 > e a `SPEC_ESTUDO_QT` citam **125**, medidos por busca de texto sobre `src/` -- e ali um nome
@@ -130,6 +249,28 @@ def orfaos() -> dict[str, list[str]]:
 
 def _rotulos(achados: dict[str, list[str]]) -> set[str]:
     return {f"{modulo.removesuffix('.py')}.{nome}" for modulo, nomes in achados.items() for nome in nomes}
+
+
+class DetectorTests(unittest.TestCase):
+    """O detector, afirmado contra fonte de mentira -- a trava da guarda dos inertes (S-505).
+
+    A primeira versão daquela guarda era vácua e passava em verde sobre um comando inerte; a
+    lição é que um detector ancorado no arquivo real se apaga junto com o defeito. Estes dois
+    casos são literais, e é por isso que continuam valendo quando os órfãos acabarem.
+    """
+
+    def test_uso_em_docstring_nao_conta_e_uso_em_codigo_conta(self) -> None:
+        modulo = ast.parse('__all__ = ["A", "B", "C"]\nA = 1\nB = 2\nC = 3\n')
+        cliente = ast.parse('"""Fala de `A`, de `B` e de `C` na prosa."""\nfrom x import B\nvalor = objeto.C\n')
+        usados = _identificadores(cliente)
+        self.assertEqual(_exportados(modulo), ["A", "B", "C"])
+        self.assertNotIn("A", usados, "citado só no docstring: o `grep` contaria, a guarda não")
+        self.assertIn("B", usados, "importado é uso")
+        self.assertIn("C", usados, "atributo é uso")
+
+    def test_all_montado_nao_e_declaracao(self) -> None:
+        self.assertEqual(_exportados(ast.parse("__all__ = list(nomes)\n")), [])
+        self.assertEqual(_exportados(ast.parse("x = 1\n")), [])
 
 
 class DecisaoOrfaTests(unittest.TestCase):

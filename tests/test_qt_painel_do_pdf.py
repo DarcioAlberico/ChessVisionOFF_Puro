@@ -15,6 +15,8 @@ O que só existe deste lado são as coisas em que o Qt difere do Tk e que quebra
    página, e a 200%, 6 px.
 4. **Clique e arrasto usam o mesmo botão**, e a folga é o que os separa (S-68).
 5. **O deslizador de zoom não pode se realimentar** (S-225).
+6. **A folha fica no meio da área visível** (S-157): no Tk era uma conta de `ui/viewport.py`,
+   aqui é uma propriedade do `QScrollArea` -- e a conta saiu na triagem da S-511.
 """
 
 from __future__ import annotations
@@ -309,6 +311,19 @@ class PainelTests(unittest.TestCase):
         painel.roda_vira_pagina.setChecked(False)
         self.assertFalse(painel.visor.virar_paginas)
         self.assertEqual(mudou, [1, 1])
+
+    def test_a_pagina_fica_no_meio_da_area_visivel(self) -> None:
+        """A decisão da S-157, que no Tk era uma conta e aqui é uma propriedade do `QScrollArea`.
+
+        `desvio_de_centralizacao` e `regiao_de_rolagem` saíram de `ui/viewport.py` na triagem da
+        S-511 porque o Qt centraliza sozinho -- e esta é a guarda que ficou no lugar delas: sem o
+        `setAlignment`, a folha volta ao canto superior esquerdo e, a 40% de zoom numa janela de
+        1700, ~45% da vista vira vazio.
+        """
+        from PyQt6.QtCore import Qt
+
+        painel = self.com_pagina()
+        self.assertEqual(painel.visor.alignment(), Qt.AlignmentFlag.AlignCenter)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
