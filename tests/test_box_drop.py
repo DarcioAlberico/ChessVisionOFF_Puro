@@ -63,6 +63,7 @@ class TirarACaixaTests(unittest.TestCase):
         self.pasta = pasta_temporaria(self)
         self.livro = _livro(self.pasta)
         self.janela = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,

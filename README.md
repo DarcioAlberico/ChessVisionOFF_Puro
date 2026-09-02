@@ -71,7 +71,9 @@ desenha sem depender de cor), `ui/viewport.py` (roda, zoom ancorado, "caber na p
 `ui/comandos.py` sao reusados como estao. O que o Qt escreve do zero e o desenho -- `QPainter`
 no lugar de `create_rectangle`.
 
-E o numero que mede: `app_tkinter.py` tinha 2.327 linhas; `qt/janela.py` tem 1.193 e faz mais.
+E o numero que mede: no dia do corte, `app_tkinter.py` tinha 2.327 linhas e `qt/janela.py` 1.193, fazendo
+mais. Hoje a janela passa de 1.800, e cada degrau tem o motivo escrito na catraca de
+`tests/test_packaging.py` -- ela sobe por decisao, nao por acidente.
 A diferenca nao e codigo omitido -- e a camada pura de `ui/` sendo chamada em vez de reescrita.
 O que o Tk carregava sozinho virou 13 modulos puros novos, e `ui/` foi de 81 para 53 modulos,
 nenhum deles importando toolkit.
@@ -984,6 +986,7 @@ Atalhos do ciclo de correcao (desligados quando o foco esta num campo de texto):
 src/chess_diagram_ocr/
   service.py            camada de servico: o pipeline de OCR, sem dependencia de UI
   settings.py           preferencias do usuario (endpoint remoto, motor de analise)
+  alinhamento.py       regua de alinhamento do recorte: onde o damero ideal encaixa, em pixel (S-526)
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   augment.py            aumento de dados do treino: jitter, afim e ruido, com probabilidade
@@ -1127,6 +1130,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
 | S-507 a S-520 | [docs/SPEC_ESTUDO_QT.md](docs/SPEC_ESTUDO_QT.md) |
+| S-522 a S-526 | [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1243,6 +1247,14 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   modelo ja sabia calcular, a caixa "Seguir OCR" religada com guarda de ancora, o recuo de variante
   que o `QTextDocument` descarta em elemento inline, e a conta que pergunta de cada decisao pura
   de `ui/` quem a chama -- 77 nomes exportados que nada toca, medidos em 2026-09-01
+- [docs/ROADMAP_REVISAO_EXTERNA_2.md](docs/ROADMAP_REVISAO_EXTERNA_2.md) -- **Fase 79**, a segunda
+  revisao externa, recebida em 2026-09-02: seis itens sobre a janela do Qt e um teste no acervo, cada
+  um conferido contra este ramo -- tres ja estavam feitos, um venceu, e os dois que valiam foram
+  remedidos aqui no estilo `windows11` antes de virar item
+- [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) -- especificacao da Fase 79
+  (S-522 a S-526): a moldura derivada da superficie (1,04:1 na pele Foco, 3,02:1 depois), o motor e
+  o OCR de legenda chegando a janela pelas preferencias, o auto-teste com estado descartavel, a
+  ARCHITECTURE descrevendo o Qt, e a regua de alinhamento do recorte no censo
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

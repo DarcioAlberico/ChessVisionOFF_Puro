@@ -44,6 +44,7 @@ from typing import Any
 
 import numpy as np
 
+from .alinhamento import LIMITE_DE_DESALINHAMENTO_PX, SEM_DAMERO, encaixe_do_damero
 from .board_detection import RejectedQuad
 from .config import DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
 from .detection.hybrid import board_texture_score, detect_diagrams
@@ -126,6 +127,15 @@ class CandidateRow:
     x1: float
     y1: float
 
+    desalinhamento_px: int = SEM_DAMERO
+    """Onde o damero ideal encaixa no recorte entregue, em pixel (S-526).
+
+    `0` é alinhado; `SEM_DAMERO` (−1) é "não há damero para encaixar". Acima de
+    `LIMITE_DE_DESALINHAMENTO_PX` a peça cai na casa vizinha -- o defeito que nenhuma outra
+    coluna vê, porque o detector aceitou e a textura é de tabuleiro. Com padrão porque a corrida
+    anterior pode não ter a coluna: `read_census_csv` tolera o CSV de antes dela, e o diff da
+    S-82 continua casando pelo canto."""
+
     @property
     def key(self) -> tuple[str, int, int, int]:
         """Identidade entre corridas: livro, página e canto, arredondado ao ponto."""
@@ -193,6 +203,7 @@ CSV_FIELDS = (
     "y0",
     "x1",
     "y1",
+    "desalinhamento_px",
 )
 
 
@@ -222,6 +233,16 @@ class BookCensus:
     @property
     def trimmed(self) -> int:
         return sum(1 for row in self.rows if row.trimmed)
+
+    @property
+    def misaligned(self) -> list[CandidateRow]:
+        """Recortes em que o damero encaixa a mais de `LIMITE_DE_DESALINHAMENTO_PX` do canto (S-526).
+
+        É o defeito que nenhuma outra coluna vê: o recorte tem textura de tabuleiro, o detector
+        o aceitou, e a peça vai cair na casa vizinha. Quem não tem damero (`SEM_DAMERO`) fica de
+        fora -- glifo e foto não estão desalinhados, estão fora do assunto.
+        """
+        return [row for row in self.rows if row.desalinhamento_px > LIMITE_DE_DESALINHAMENTO_PX]
 
     @property
     def pages_numbering_shifted(self) -> int:
@@ -287,6 +308,7 @@ class BookCensus:
             "candidates": self.candidates,
             "by_source": dict(sorted(self.by_source.items())),
             "trimmed": self.trimmed,
+            "misaligned": len(self.misaligned),
             "suspects": len(self.suspects),
             "pages_numbering_shifted": self.pages_numbering_shifted,
             "pages_size_prior_mixed": self.pages_size_prior_mixed,
@@ -322,6 +344,10 @@ class DetectionCensus:
     @property
     def suspects(self) -> int:
         return sum(len(book.suspects) for book in self.books)
+
+    @property
+    def misaligned(self) -> int:
+        return sum(len(book.misaligned) for book in self.books)
 
     @property
     def books_with_suspects(self) -> list[BookCensus]:
@@ -412,6 +438,7 @@ def census_page(
                 trimmed=candidato.trimmed,
                 detector_score=round(candidato.detector_score, 4),
                 texture=round(board_texture_score(candidato.board_rgb), 4),
+                desalinhamento_px=encaixe_do_damero(candidato.board_rgb).desalinhamento_px,
                 x0=round(x0, 2),
                 y0=round(y0, 2),
                 x1=round(x1, 2),
@@ -573,6 +600,7 @@ def read_census_csv(path: Path) -> list[CandidateRow]:
                     y0=float(registro["y0"]),
                     x1=float(registro["x1"]),
                     y1=float(registro["y1"]),
+                    desalinhamento_px=int(registro.get("desalinhamento_px") or SEM_DAMERO),
                 )
             )
     return linhas

@@ -134,78 +134,68 @@ Os outros doze são operações de imagem e utilidades da mesma cadeia: `binariz
 `trama.py`, `negativo.py`, `marca_fina.py`, `aumento.py`, `duas_linhas.py`, `correcao.py`,
 `lado.py`, `pagina.py`, `rascunho.py`, `fila.py` e `arquivo.py`.
 
-### A interface (`src/chess_diagram_ocr/ui/`)
+### A interface (`src/chess_diagram_ocr/qt/` e `src/chess_diagram_ocr/ui/`)
 
-| módulo | responsabilidade |
+A janela é PyQt6 desde 2026-08-31 (S-506). `app_pyqt.py` é a entrada; `qt/janela.py` monta as abas
+ao lado do visualizador, liga sinal a sinal e traduz widget em parâmetro do serviço -- e **nada
+mais**. O que um painel decide sozinho mora em `ui/`, que não importa toolkit nenhum, e é essa
+divisão, não o toolkit, que este documento descreve.
+
+| módulo (`qt/`) | responsabilidade |
 |---|---|
-| `pdf_panel.py` | Exibir o PDF, navegar, zoom, seleção de área, modo leitura, e os diagramas marcados sobre a página (S-68). |
-| `page_overlay.py` | Onde estão os diagramas da página, o que um clique neles acerta e o que ele significa (S-68), e quais o usuário tirou da tela (S-177). **Sem Tk.** |
-| `viewport.py` | O que a roda faz, para onde o zoom puxa e quanto cabe na largura (S-70). **Sem Tk.** |
-| `result_panel.py` | O editor **desenhado**: widgets, diálogos e gravação. O estado é do `editor_model`. |
-| `editor_model.py` | As três listas paralelas, o índice e o vínculo — e o que `Ctrl+S` significa (S-49). **Sem Tk.** |
-| `study_panel.py` | Tabuleiro de estudo, árvore de variantes, PGN, motor. |
-| `review_panel.py` · `dataset_panel.py` | As abas de revisão e de dataset. |
-| `board_model.py` | O que está no tabuleiro e o que um clique significa (S-50). **Sem Tk.** |
-| `board_render.py` | Pinta um `BoardModel` no canvas. `draw_dirty` redesenha só as casas que mudaram. |
-| `board_widget.py` · `board_edit.py` | A casca Tk (canvas, eventos, arraste, tooltip) e a edição sem regra de lance. |
-| `net_button.py` | O botão "Corrigir Net": consentimento, thread e ciclo de vida do envio (S-32). |
-| `theme.py` | O tema `ttkbootstrap`, com degradação para o `ttk` puro (S-53). |
-| `legality.py` | Legalidade em pt-BR, com as casas culpadas. |
-| `page_results.py` | Cache do reconhecimento por página. |
-| `export_controller.py` · `training_dialog.py` | As duas operações longas e seus diálogos. |
-| `state.py` · `strings.py` · `shortcuts.py` · `tooltip.py` | Estado, vocabulário, atalhos, dicas. |
-| `busy.py` | O que está rodando e o que se perde ao fechar a janela (S-60). Sem Tk. |
+| `janela.py` | Monta as abas, liga uma à outra, soma as três tabelas de comandos e lembra a sessão por `ui/state.py`. Está na catraca de linhas de `tests/test_packaging.py`. |
+| `preferencias.py` | O que a janela monta de `data/settings.json` antes de existir: o serviço com o OCR de legenda, e o motor de análise (S-523). Sem widget. |
+| `painel_do_pdf.py` · `visor.py` | O lado direito: o PDF, a navegação, a seleção, e a página com os diagramas marcados por cima. A roda e o zoom são de `ui/viewport.py`; onde as caixas estão e o que um clique nelas significa, de `ui/page_overlay.py`. |
+| `painel_de_resultado.py` · `tabuleiro_editavel.py` · `tabuleiro.py` | O editor de diagramas reconhecidos: o tabuleiro que se corrige por clique, arrasto e pincel, a FEN, a legalidade e a gravação. O estado é de `ui/editor_model.py` e `ui/board_model.py`; o desenho puro, de `ui/desenho_do_tabuleiro.py`. |
+| `painel_de_estudo.py` · `tabuleiro_de_jogo.py` | A sala de estudo: um estudo por diagrama, árvore de variantes, anotação, motor, e o tabuleiro em que se joga (Fases 43 a 50 e 73 a 77). |
+| `painel_de_revisao.py` · `painel_do_dataset.py` · `painel_da_galeria.py` · `painel_de_texto.py` | As abas de Revisão, Dataset, Galeria e Texto. |
+| `menu.py` · `fita.py` · `fila.py` · `barra.py` · `paleta.py` · `atalhos.py` | O menu, as duas peles de cromo (fita e fila), a barra que quebra em vez de cortar, a paleta de comandos e os atalhos -- gerados de `ui/comandos.py` e `ui/atalhos.py`, nunca reescritos. |
+| `tema.py` · `icones.py` · `dica.py` · `legenda.py` | A folha de estilo (os papéis de `ui/tokens.py` virando QSS), os ícones vetoriais, a dica do controle desabilitado e a legenda de atalhos. |
+| `exportador.py` · `dialogos.py` · `trabalho.py` · `campo.py` | A exportação do livro para PGN, os quatro diálogos, o trabalho pesado fora da linha de eventos, e a anotação do conjunto de campo. |
+| `rodape.py` · `tabela.py` · `imagens.py` · `texto_formato.py` · `plataforma.py` | O rodapé, a tabela das mesmas `Coluna`, a ponte `numpy` → `QImage`, os atributos do texto rico virando formato do Qt, e o DPI antes de a janela existir. |
 
-`qt/janela.py` monta esses painéis e liga um ao outro. Nada mais.
-
-**Os seis módulos sem Tk não são organização.** `editor_model`, `board_model`, `busy`,
-`board_edit`, `page_overlay` e `viewport` são onde mora a regra que, dentro de um widget, só se testava dirigindo a
-janela — e um teste que precisa de janela é um teste que quase não se escreve. `tests/` tem
-uma varredura de importação em cada um: se um toolkit voltar a entrar ali, a suíte reprova.
+**`ui/` é a camada pura, e é onde mora a regra.** Meia centena de módulos sem toolkit --
+`page_overlay`, `viewport`, `editor_model`, `board_model`, `state`, `comandos`, `atalhos`, `tokens`,
+`tipografia`, `folha`, `pele`, `geometria`, `busy`, `degradacao`, `desfazivel`, `sala_declarada`,
+`texto_declarado` e os outros --, e cada decisão ali tem teste sem janela. `tests/` tem uma
+varredura de importação em cada um: se um toolkit voltar a entrar ali, a suíte reprova. E
+`tests/test_ui_orfaos.py` cobra a segunda pergunta, a que o corte do Tk deixou sem resposta por um
+mês: **de cada decisão pura, quem a chama?** (S-511). Um módulo órfão não quebra teste nenhum,
+porque o teste dele continua verde medindo a decisão sozinha.
 
 ---
 
-## A escolha de framework, e o gatilho que a muda
+## A escolha de framework, e como ela mudou
 
-A interface é Tkinter + `ttk` + `ttkbootstrap`, ~2.900 linhas em 18 módulos, com roteiro
-headless. Depois da Fase 6 ela não tem lógica de negócio dentro, e depois da S-49/S-50 nem
-estado. **A recomendação é ficar no Tk**, e a decisão de sair está amarrada a evento
-observável e não a gosto (S-53).
+Até 2026-08-31 a interface foi Tkinter + `ttk` + `ttkbootstrap`, e a recomendação escrita aqui era
+ficar no Tk, com a saída amarrada a dois gatilhos mensuráveis e não a gosto (S-53): a Fase 8 exigir
+sobreposição editável sobre a página renderizada, ou o `labels.csv` passar de 10 mil linhas. Hoje
+o `labels.csv` tem **5.321** linhas -- nenhum dos dois disparou (medido em 2026-09-01; o número
+é conferido por `tests/test_docs.py`, S-135).
 
-Três lugares onde a escolha já cobra, e os três são mensuráveis:
+**O que disparou foi outra coisa: a fronteira da S-31 pôde ser testada.** O pacote `qt/` nasceu
+como versão de teste (S-500), uma segunda janela sobre o mesmo `service.py`, para responder com
+código que roda se a interface era mesmo só apresentação. Era: nenhum módulo que já existia
+precisou mudar para a janela nova nascer, e `page_overlay`, `viewport`, `editor_model`,
+`board_model`, `atalhos` e `comandos` foram reusados inteiros. Com a paridade painel a painel
+fechada (S-503 a S-505), o dono decidiu a migração, e o corte (S-506) saiu no mesmo dia: 2.327
+linhas de janela Tk, 28 módulos de `ui/` acoplados ao toolkit e 46 arquivos de teste. O
+`ttkbootstrap` saiu do `pyproject.toml`; o PyQt6 deixou de ser extra e virou dependência de base,
+porque o programa não abre sem ele.
 
-- `DatasetPanel` **pagina** por uma premissa que a S-118 mediu e derrubou: *"3.195 linhas de
-  uma vez travam o `Treeview` do Tk"*. Medido com `Treeview` real e as mesmas 8 colunas,
-  **inserir 3.936 linhas custa 53 ms**; o que custava eram os 689 ms do `load_rows` que vinha
-  antes (S-116). A paginação cobra o que não mitiga: filtro e ordenação valem por página, e
-  até a S-118 ela também perdia o lugar de quem corrigia rótulo a rótulo. Ela fica — remover
-  é uma segunda decisão, e ela precisa da medição refeita quando o `labels.csv` dobrar.
-- O tabuleiro redesenhava-se inteiro a cada mudança. A S-50 aliviou (`draw_dirty` toca 2
-  casas ao arrastar), não eliminou: mudança de geometria ainda refaz as 64.
-- As sobreposições que a Fase 8 vai querer — bbox de texto reconhecido sobre a página, com
-  confiança em cor e edição no lugar — são o caso de uso natural de uma cena gráfica, e
-  trabalho manual de coordenadas no canvas do Tk.
+**O que o corte custou, e é a lição que este documento guarda.** Apagar uma camada não apaga
+código: apaga o **chamador** de decisões que ficaram. Sete delas voltaram um mês depois (o estado da
+sessão, os recentes, as peles, o conjunto de peças, o árbitro do `Ctrl+Z`, os códigos do
+`--selftest`), mais onze na triagem da S-511, mais o motor e o OCR de legenda na S-523 -- e nenhuma
+quebrava teste, porque o teste de cada uma seguia verde medindo a decisão sozinha. A guarda que
+faltava é `tests/test_ui_orfaos.py`.
 
-**Portar para PySide6/Qt custa ~3–4 semanas mais licença LGPL.** Vale quando um destes
-disparar, e não antes:
+**O que continua Tk, de propósito:** `cvoff-texto-transcrever`, a janela que transcreve as 123
+faixas de referência da S-183. É ferramenta de desenvolvimento com entrada própria, não abre pelo
+`.exe`, e por isso o `tkinter` não entra no `excludes` do `cvoff.spec`.
 
-| gatilho | por que este |
-|---|---|
-| a Fase 8 exigir sobreposição **editável** sobre a página renderizada | é onde o canvas do Tk deixa de ser desconforto e vira trabalho desproporcional |
-| o `labels.csv` passar de **10 mil linhas** | a paginação da S-23 deixa de ser mitigação e vira obstáculo ao fluxo |
-
-Hoje o `labels.csv` tem **5.321** linhas — 53% do gatilho (medido em 2026-09-01; o número é
-conferido por `tests/test_docs.py`, S-135). Quando a hora chegar, `Qt` dá
-`QTableView` com modelo virtual (30 mil linhas sem paginar), `QGraphicsScene` para tabuleiro
-e sobreposições, `QThread` + sinais no lugar de `root.after`, `QPdfView` nativo, DPI correto
-por monitor e `QAction` para atalhos.
-
-E o porte é **menor do que parece**, por construção: o pipeline saiu das telas na Fase 6, o
-estado saiu dos widgets na S-49 e na S-50, e `board_render.py` é o único arquivo de desenho.
-Portar a UI passou a ser portar UI.
-
-`CustomTkinter` foi considerado e recusado: não tem equivalente decente de `Treeview`, então
-a aba Dataset continuaria em `ttk` e a tela ficaria com dois visuais.
+`CustomTkinter` foi considerado e recusado na época, e a razão vale para qualquer casca sobre o Tk:
+sem um equivalente decente de `Treeview`, a aba Dataset ficaria em `ttk` e a tela com dois visuais.
 
 ---
 

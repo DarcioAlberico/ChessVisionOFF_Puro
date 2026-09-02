@@ -19,6 +19,7 @@ import logging
 import sys
 from pathlib import Path
 
+from ..alinhamento import LIMITE_DE_DESALINHAMENTO_PX
 from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
 from ..detection_census import (
     DEFAULT_FRONT_MATTER,
@@ -164,6 +165,7 @@ def _print_census(census: DetectionCensus) -> None:
     print(f"      em quantos livros .................... {len(census.books_with_suspects)}")
     print(f"    Páginas com numeração deslocada ........ {sum(b.pages_numbering_shifted for b in census.books)}")
     print(f"    Páginas com gabarito misturado ......... {sum(b.pages_size_prior_mixed for b in census.books)}")
+    print(f"    Recortes desalinhados (> {LIMITE_DE_DESALINHAMENTO_PX} px) ....... {census.misaligned}")
     if census.suspects:
         print()
         print('    Um suspeito antes de um diagrama consome o número que o [Diagram "N"] do PGN usa;')

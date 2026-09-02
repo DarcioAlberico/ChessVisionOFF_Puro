@@ -39,6 +39,7 @@ __all__ = [
     "distancia_de_matiz",
     "matiz",
     "mistura",
+    "moldura_sobre",
     "razao_de_contraste",
     "saturacao",
     "sobre_superficie",
@@ -841,6 +842,31 @@ def mistura(a: str, b: str, peso: float) -> str:
         for i in (1, 3, 5)
     )
     return "#" + "".join(f"{canal:02x}" for canal in canais)
+
+
+def moldura_sobre(superficie: str, *, piso: float = AA_GRAFICO) -> str:
+    """A moldura de um controle desenhado sobre `superficie` -- **derivada dela, e não escolhida** (S-522).
+
+    O defeito que isto conserta: a folha do Qt pintava a borda do cromo com `MOLDURA`, que é o
+    anel do tabuleiro -- uma superfície de **documento**, presa na paleta medida de propósito
+    (S-224). Sobre o cromo claro isso dava uma linha quase preta (14,7:1); sobre o cromo escuro da
+    pele "Foco", `#1f1d1b` sobre `#1f2124` -- razão **1,04:1**, borda invisível. Usar token de
+    documento para pintar cromo é a S-224 atravessada no sentido contrário.
+
+    A cor é a superfície puxada na direção da letra que se lê sobre ela (`sobre_superficie`), no
+    **menor** peso que cruza o piso gráfico -- a borda mais discreta que ainda se vê. Derivar em
+    vez de declarar é o que faz uma pele nova não poder nascer com borda invisível: não há valor a
+    esquecer, e o teste percorre todas as superfícies nas duas peles.
+
+    Pura, e sem hexadecimal cravado, como `mistura`: os dois frontends que sobraram -- a folha do
+    Qt e quem pinta por `QPainter` -- pedem a mesma resposta.
+    """
+    letra = sobre_superficie(superficie)
+    for centesimos in range(1, 100):
+        candidata = mistura(superficie, letra, centesimos / 100)
+        if razao_de_contraste(candidata, superficie) >= piso:
+            return candidata
+    return letra
 
 
 REALCE_DE_ENFASE = 0.18

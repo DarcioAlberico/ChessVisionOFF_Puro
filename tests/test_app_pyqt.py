@@ -407,6 +407,7 @@ class JanelaTests(unittest.TestCase):
         from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
         janela = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=servico,  # type: ignore[arg-type]
             csv_de_rotulos=self.csv,
             # **Sem isto o teste grava o estado da máquina de quem roda a suíte**: o
@@ -769,6 +770,31 @@ class SelftestTests(unittest.TestCase):
         # virou dependencia de base -- e este assert fixava a instrucao quebrada (S-506).
         self.assertIn("uv sync", app_pyqt.FALTA_O_PYQT)
         self.assertNotIn("--extra qt", app_pyqt.FALTA_O_PYQT)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class JanelaDoAutoTesteTests(unittest.TestCase):
+    """O auto-teste monta a janela sem tocar na sessão de quem o roda (S-524).
+
+    A segunda revisão externa viu o `--selftest` apagar o livro e a página da pessoa numa árvore
+    em que a janela gravava a cada gesto. Aqui ela grava no `closeEvent`, que o auto-teste não
+    dispara -- e a afirmação abaixo é o que faz isso deixar de depender de quando ela grava.
+    """
+
+    def setUp(self) -> None:
+        aplicacao()
+        self.pasta = pasta_temporaria(self)
+
+    def test_o_estado_e_descartavel_e_nao_ha_motor(self) -> None:
+        from chess_diagram_ocr.qt.janela import CAMINHO_DO_ESTADO
+
+        app_pyqt = SelftestTests._app_pyqt()
+        janela = app_pyqt._janela_do_auto_teste(ServicoComLeituraFixa([]), self.pasta)
+        self.addCleanup(janela.deleteLater)
+        self.addCleanup(janela.close)
+        self.assertNotEqual(CAMINHO_DO_ESTADO, janela._caminho_do_estado)
+        self.assertEqual(self.pasta, janela._caminho_do_estado.parent)
+        self.assertFalse(janela.estudo.has_engine)
 
 
 if __name__ == "__main__":  # pragma: no cover - conveniência de quem roda o arquivo direto
