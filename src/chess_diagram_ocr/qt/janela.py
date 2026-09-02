@@ -101,10 +101,12 @@ from chess_diagram_ocr.qt.rodape import RodapeDaJanela
 from chess_diagram_ocr.qt.trabalho import Tarefa
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import OcrService, RecognitionOptions, RecognizedDiagram
+from chess_diagram_ocr.settings import load_settings
 from chess_diagram_ocr.splits import load_splits
 from chess_diagram_ocr.ui import (
     abas,
     conjuntos,
+    degradacao,
     desfazivel,
     espaco,
     estado_do_rodape,
@@ -126,6 +128,8 @@ from chess_diagram_ocr.ui.page_overlay import (
     boxes_from_diagrams,
     choose_boxes,
     decide_box_click,
+    frase_de_caixa_tirada,
+    frase_de_caixas_devolvidas,
     mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams
@@ -198,6 +202,8 @@ class JanelaPrincipal(QMainWindow):
     ) -> None:
         super().__init__(parent)
         self._servico = servico if servico is not None else OcrService(model_path=DEFAULT_MODEL_PATH)
+        self._ocr = load_settings().ocr
+        """Quem sabe **por que** não há classificador de caracteres (`dispositivos_da_janela`, S-182)."""
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self._pasta_de_estudos = pasta_de_estudos
         self._pasta_da_galeria = pasta_da_galeria
@@ -231,8 +237,9 @@ class JanelaPrincipal(QMainWindow):
         self._estudo_a_reabrir = self._estado.estudo_aberto
         """A mesa em que a sessão anterior parou, guardada até o livro dela abrir (S-347)."""
 
-        self._divisor_por_posicionar = bool(self._estado.sash_fraction)
-        """A alça do divisor ainda espera a primeira aparição da janela. Ver `showEvent`."""
+        self._divisor_por_posicionar = True
+        """A alça do divisor ainda espera a primeira aparição da janela. Ver `showEvent` -- é lá
+        que `geometria.FRACAO_PADRAO_DO_DIVISOR` entra quando o disco não diz nada (S-156)."""
 
         self._pdf: Path | None = None
         self._itens: list[RecognizedDiagram] = []
@@ -341,7 +348,6 @@ class JanelaPrincipal(QMainWindow):
             self._servico, csv_de_rotulos=self._csv_de_rotulos, parent=self.abas
         )
         self.painel.declarar_contexto(documento=self._chave_do_documento, parametros=self._parametros_de_ocr)
-        self.abas.addTab(self.painel, abas.RESULTADO)
 
         self.estudo = PainelDeEstudo(
             self.abas,
@@ -357,7 +363,6 @@ class JanelaPrincipal(QMainWindow):
             abrir_pagina=self._abrir_pagina_do_estudo,
             para_o_texto=self._linha_para_o_texto,
         )
-        self.abas.addTab(self.estudo, abas.ESTUDO)
 
         self.revisao = PainelDeRevisao(
             self.abas,
@@ -366,13 +371,10 @@ class JanelaPrincipal(QMainWindow):
             # estado é "nunca escolhi outra", e aí a do produto é a certa.
             queue_path=Path(self._estado.review_queue_path or DEFAULT_QUEUE_PATH),
         )
-        self.abas.addTab(self.revisao, abas.REVISAO)
 
         self.texto = PainelDeTexto(busy=self.busy, parent=self.abas)
-        self.abas.addTab(self.texto, abas.TEXTO)
 
         self.dataset = PainelDoDataset(self.abas, caminhos=self._caminhos_do_dataset, busy=self.busy)
-        self.abas.addTab(self.dataset, abas.DATASET)
 
         self.galeria = PainelDaGaleria(
             self.abas,
@@ -386,7 +388,17 @@ class JanelaPrincipal(QMainWindow):
             pasta_da_galeria=self._pasta_da_galeria,
             busy=self.busy,
         )
-        self.abas.addTab(self.galeria, abas.GALERIA)
+        # A ordem é a de `abas.ABAS`, lida e não copiada (S-162/S-511); aba sem painel reprova aqui.
+        paineis = {
+            abas.RESULTADO: self.painel,
+            abas.ESTUDO: self.estudo,
+            abas.REVISAO: self.revisao,
+            abas.TEXTO: self.texto,
+            abas.DATASET: self.dataset,
+            abas.GALERIA: self.galeria,
+        }
+        for nome in abas.ABAS:
+            self.abas.addTab(paineis[nome], nome)
 
         self.lado_do_livro = QWidget(self.divisor)
         self.pdf = PainelDoPdf(
@@ -566,7 +578,8 @@ class JanelaPrincipal(QMainWindow):
         largura = sum(self.divisor.sizes()) or self.divisor.width()
         if largura <= 0:
             return
-        esquerda = max(1, int(largura * self._estado.sash_fraction))
+        fracao = self._estado.sash_fraction or geometria.FRACAO_PADRAO_DO_DIVISOR
+        esquerda = max(1, int(largura * fracao))
         self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
     def _indice_da_aba(self, nome: str) -> int | None:
@@ -830,6 +843,7 @@ class JanelaPrincipal(QMainWindow):
         escolhida = self._pele_atual()
         tema.aplicar_tema(cromo_escuro=escolhida.cromo_escuro, densidade=self._densidade_atual())
         qt_icones.limpar_cache()
+        degradacao.esquecer_avisos()
         self._marcar_a_aparencia()
         self._montar_o_cromo(escolhida)
 
@@ -1321,28 +1335,19 @@ class JanelaPrincipal(QMainWindow):
         if alvo is None or not self.pdf.boxes or all(
             caixa.index != int(indice) for caixa in self.pdf.boxes.boxes
         ):
-            self._dizer(f"A caixa {indice + 1} não está mais na página.")
+            self._dizer(frase_de_caixa_tirada(None, 0))
             return
         self._tiradas.drop(documento, pagina, alvo.bbox_pdf)
         self._publicar_caixas(guardadas)
-        quantas = self._tiradas.count(documento, pagina)
-        recado = (
-            f"Caixa {indice + 1} tirada desta página. Devolver as caixas traz de volta."
-            if quantas == 1
-            else f"Caixa {indice + 1} tirada: {quantas} caixas tiradas desta página."
-        )
-        self._dizer(recado)
+        self._dizer(frase_de_caixa_tirada(alvo, self._tiradas.count(documento, pagina)))
 
     def devolver_caixas(self) -> None:
         """Desfaz as remoções **desta página**, e diz quantas voltaram."""
         documento, pagina = self._chave_do_documento(), self.pdf.page_index
         quantas = self._tiradas.restore(documento, pagina)
-        if not quantas:
-            self._dizer("Nenhuma caixa foi tirada desta página.")
-            return
-        self._publicar_caixas(self._caixas_por_pagina.get(documento, pagina, self._parametros()))
-        plural = "" if quantas == 1 else "s"
-        self._dizer(f"{quantas} caixa{plural} devolvida{plural} a esta página.")
+        self._dizer(frase_de_caixas_devolvidas(quantas, pagina + 1))
+        if quantas:
+            self._publicar_caixas(self._caixas_por_pagina.get(documento, pagina, self._parametros()))
 
     # --------------------------------------------------- o que um painel entrega a outro
 
@@ -1775,14 +1780,9 @@ class JanelaPrincipal(QMainWindow):
 
         **Relido a cada tique porque nenhum dos dois avisa quando muda**: o de peças carrega na
         primeira leitura da sessão, e o de caracteres é trocado quando um retreino reescreve o
-        `.pt`.
+        `.pt`. A decisão é `dispositivos_da_janela`, pura; esta janela a reescrevia com
+        `motivo=""` cravado, e "os pesos não estão no disco" saía igual a "o motor é outro" (S-511).
         """
         from chess_diagram_ocr.ui import dispositivos as dispositivos_mod
-        from chess_diagram_ocr.ui.estado_do_rodape import DESLIGADO, Dispositivos
 
-        return Dispositivos(
-            pecas=self._servico.device_label if self._servico.device else None,
-            caracteres=dispositivos_mod.descricao_do_classificador_de_caracteres(),
-            motivo="",
-            ausencia=DESLIGADO,
-        )
+        return dispositivos_mod.dispositivos_da_janela(self._servico, self._ocr)
