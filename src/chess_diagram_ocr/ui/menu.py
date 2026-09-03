@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "APARENCIA",
     "DENSIDADE",
+    "CONJUNTO",
+    "TIPOS_DE_ESCOLHA",
     "MENUS",
     "Item",
     "Menu",
@@ -67,6 +69,20 @@ Irmão de `APARENCIA` e não filho: os dois são eixos de aparência, e o que os
 **sugere** a densidade e a pessoa **decide**. Ver o comentário no catálogo sobre por que o caminho
 ficou `Ver > Densidade` e não `Ver > Aparência > Densidade`."""
 
+CONJUNTO = "CONJUNTO"
+"""Submenu de `radiobutton`, um por conjunto de peças registrado em `ui/conjuntos.py` (S-230/S-506).
+
+**O valor é `"CONJUNTO"` e não o nome da constante**, ao contrário dos dois irmãos, e a razão é o
+teste de acentuação: ele varre os literais visíveis dos módulos de interface, e a forma sem cedilha
+de "peças" está na lista que a S-06 proíbe na tela. Pôr essa forma na lista de exceções do teste
+abriria a porta para o texto que a pessoa **lê** -- e a etiqueta de tipo não precisa da palavra
+para ser clara.
+
+Terceiro irmão de `APARENCIA` e `DENSIDADE`, e pela mesma razão: pele decide arranjo, tema
+decide cor, densidade decide aperto e conjunto decide o desenho das peças. Qualquer um vale
+com qualquer outro, e aninhá-los faria "a fita clara com as peças de traço grosso" ser
+impossível sem que ninguém tivesse decidido isso."""
+
 APARENCIA = "APARENCIA"
 """Submenu de `radiobutton`, um por pele registrada em `ui/pele.py` (S-221).
 
@@ -74,6 +90,15 @@ APARENCIA = "APARENCIA"
 diferença: o acervo muda enquanto o programa roda e por isso o submenu de livros se refaz a cada
 abertura; o registro de peles é fixo na importação. O que varia aqui é a **marca**, e disso quem
 cuida é o `StringVar`."""
+
+
+TIPOS_DE_ESCOLHA: tuple[str, ...] = (APARENCIA, DENSIDADE, CONJUNTO)
+"""Os tipos de item que são um submenu de escolha exclusiva, num lugar só.
+
+**Declarados juntos porque três lugares perguntam a mesma coisa**: quem exige comando amarrado
+(`comandos_faltando`), quem desenha (`qt/menu.montar`) e o teste que confere um contra o outro. Um
+quarto eixo de aparência acrescentado a dois desses três é um submenu que o menu desenha e que
+ninguém cobra -- ou o contrário."""
 
 
 @dataclass(frozen=True)
@@ -162,6 +187,7 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("aparencia", APARENCIA),
             Item("densidade", DENSIDADE),
+            Item("conjunto_de_pecas", CONJUNTO),
         ),
     ),
     Menu(
@@ -354,7 +380,7 @@ def comandos_faltando(comandos: Mapping[str, object]) -> list[str]:
         item.acao
         for menu in MENUS
         for item in menu.itens
-        if item.tipo in (COMANDO, INTERRUPTOR, APARENCIA, DENSIDADE)
+        if item.tipo in (COMANDO, INTERRUPTOR, *TIPOS_DE_ESCOLHA)
     }
     return sorted(exigidos - set(comandos))
 

@@ -80,8 +80,10 @@ nenhum deles importando toolkit.
 faixas de referencia da S-183. E ferramenta de desenvolvimento com entrada propria, nao abre pelo
 `.exe`, e nao foi tocada no corte.
 
-`python app_pyqt.py --selftest` monta a janela sem mostrar, abre um PDF e marca uma pagina,
-com a plataforma `offscreen` -- e responde, numa maquina limpa, se o programa sobe ali.
+`python app_pyqt.py --selftest` monta a janela sem mostrar, com a plataforma `offscreen`, e
+percorre o caminho inteiro: carrega o checkpoint, abre um PDF, desenha a pagina, reconhece,
+monta o cromo das tres peles e confere que o treino tambem monta. E o que responde, numa
+maquina limpa, se o programa funciona ali -- e nao so se ele sobe.
 
 ## Gerar o programa para Windows (sem Python)
 
@@ -119,8 +121,11 @@ ChessVisionOFF.exe --selftest --page 80
 ```
 
 Ele abre o primeiro PDF de `PDF/`, reconhece a pagina, escreve as FENs no log e confere que
-o caminho de treino tambem montou. Codigos de saida: `0` ok, `2` sem PDF, `3` sem
-checkpoint, `4` le mas nao treina, `1` falha ao reconhecer. Funciona igual num checkout
+o caminho de treino tambem montou. Codigos de saida: `0` ok, `2` sem PDF (ou PDF que nao
+abre), `3` sem checkpoint (ou checkpoint que nao carrega), `1` falha ao reconhecer, `4` le
+mas nao treina, `5` alguma aparencia nao monta o cromo, `6` sem PyQt6 (ou a janela nao
+montou). Pagina sem diagrama nao e falha: ele diz "nenhum diagrama" e sai com `0`, porque o
+caminho rodou inteiro. Funciona igual num checkout
 (`uv run python app_pyqt.py --selftest`).
 
 Uma ressalva honesta:
@@ -931,8 +936,9 @@ pagina caber na janela.
 **Os diagramas marcados na pagina.** Ao trocar de pagina, o detector roda em segundo plano e
 desenha um retangulo numerado sobre cada diagrama; o numero e o mesmo do seletor
 "Selecionado" da aba **Resultado**. Clicar num retangulo abre aquele diagrama no editor --
-lendo a pagina primeiro, se ela ainda nao tiver sido lida. O retangulo do diagrama que esta
-aberto fica destacado, e ele acompanha as setas `←`/`→`: e ele que responde "qual desses eu
+lendo a pagina primeiro, se ela ainda nao tiver sido lida. **Duplo clique** leva o mesmo
+diagrama para a aba **Estudo**, que abre a sala dele (e le a pagina antes, se preciso). O
+retangulo do diagrama que esta aberto fica destacado, e ele acompanha as setas `←`/`→`: e ele que responde "qual desses eu
 estou vendo?". A caixa **Marcar diagramas** desliga tudo isso para quem esta lendo o texto do
 livro, e a escolha sobrevive ao fechamento da janela.
 
@@ -1089,7 +1095,7 @@ por tamanho ou por direito autoral:
 | Caminho | Conteudo | Por que fora |
 |---|---|---|
 | `PDF/` | livros de origem | material protegido por direito autoral |
-| `data/samples/` | 5.156 PNGs de tabuleiros, 4,3 GB | tamanho |
+| `data/samples/` | 5.768 PNGs de tabuleiros, 5,0 GB | tamanho |
 | `models/*.pt` | checkpoint treinado, ~8,7 MB | binario que muda a cada treino |
 | `PGN/` | saida gerada | reproduzivel a partir dos PDFs |
 | `pgn_database/` | sua base de partidas em PGN (as duas gigabases medidas aqui tem 18,9 GB) | material de terceiro, e o GitHub recusa acima de 100 MB |

@@ -116,14 +116,21 @@ class LigacaoComAJanelaTests(unittest.TestCase):
         self.assertNotIn("Chess Diagram OCR - Tkinter", fonte)
 
     def test_o_titulo_acompanha_a_navegacao(self) -> None:
-        """Sem isto ele diria a primeira página do livro para sempre."""
+        """Sem isto ele diria a primeira página do livro para sempre.
+
+        **O corte é o fim do método, e não 1.200 caracteres** (S-506). A janela de tamanho fixo
+        media a distância até a chamada em vez da presença dela: quatro linhas de comentário
+        acrescentadas no meio do método reprovavam um código que continua certo, e o mesmo número
+        deixaria de alcançar a chamada se o método encolhesse. `test_qt_janela` mede o efeito.
+        """
         from pathlib import Path
 
         fonte = (
             Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
         ).read_text(encoding="utf-8")
-        depois_do_render = fonte.index("def _pagina_apareceu")
-        self.assertIn("_atualizar_titulo", fonte[depois_do_render : depois_do_render + 1200])
+        comeco = fonte.index("def _pagina_apareceu")
+        fim = fonte.index(chr(10) + "    def ", comeco + 1)
+        self.assertIn("_atualizar_titulo", fonte[comeco:fim])
 
 
 if __name__ == "__main__":

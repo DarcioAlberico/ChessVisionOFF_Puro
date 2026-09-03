@@ -251,8 +251,9 @@ class Atributos:
         # **Levanta, e não grampeia.** Quem grampeia é `corpo_no_limite`, no gesto -- ali um degrau
         # a mais é o pedido de quem apertou o botão pela sétima vez. Aqui o valor veio de um arquivo
         # ou de uma etiqueta, e um `corpo=40` que virasse 6 em silêncio seria um documento que se
-        # abre diferente do que foi gravado sem nada dizer. Quem perdoa é `texto_etiquetas`, no
-        # caminho de salvar, onde recusar custaria o trabalho da tarde.
+        # abre diferente do que foi gravado sem nada dizer. Quem perdoa é o caminho de **salvar**,
+        # onde recusar custaria o trabalho da tarde -- era `ui/texto_etiquetas`, que saiu com o Tk
+        # (S-506), e hoje é `text/arquivo.py`, que lê o `.cvtxt` de volta.
         if not CORPO_MINIMO <= self.corpo <= CORPO_MAXIMO:
             raise KeyError(
                 f"degrau de corpo fora da faixa: {self.corpo!r}. "
@@ -296,7 +297,8 @@ BOOLEANOS: tuple[str, ...] = tuple(
 """Os atributos que se **alternam** -- derivados de `Atributos`, e não recopiados.
 
 É o que faz um booleano novo entrar em `alternar` sozinho, e é a mesma disciplina de
-`texto_etiquetas._booleanos_de_atributo`, que cobra decisão de desenho para cada um deles."""
+`qt/texto_formato.BOOLEANOS_DESENHADOS`, que cobra decisão de desenho para cada um deles --
+era `ui/texto_etiquetas`, e o dever passou para lá quando o Tk saiu (S-506)."""
 
 
 @dataclass(frozen=True)
@@ -764,9 +766,9 @@ def _fatiado(doc: DocumentoRico, inicio: int, fim: int) -> list[tuple[Corrida, b
 def _editavel(corrida: Corrida) -> bool:
     """Só corrida de texto recebe atributo.
 
-    A marca do diagrama e o separador não são texto do livro: o widget os devolve com `PADRAO` por
-    construção (`texto_etiquetas.corrida_de`), e pintar de negrito um `[Diagrama 3]` seria um
-    atributo que morre na primeira gravação -- o defeito que a S-235 existe para impedir.
+    A marca do diagrama e o separador não são texto do livro: eles nascem com `PADRAO` por
+    construção, e pintar de negrito um `[Diagrama 3]` seria um atributo que morre na primeira
+    gravação -- o defeito que a S-235 existe para impedir.
     """
     return corrida.tipo == TEXTO
 
@@ -781,8 +783,9 @@ precisa responder. Sem ele, "centralizar a figura" teria de virar um segundo mec
 alinhamento do texto -- dois caminhos para a mesma escolha, que é a divergência que `ui/comandos.py`
 existe para impedir noutro lugar.
 
-O outro lado desta exceção mora em `ui/texto_etiquetas.py`: a marca **emite e devolve** a etiqueta
-de alinhamento, e nada mais. Os dois têm de concordar, e o teste de ida e volta é quem os compara.
+O outro lado desta exceção morava em `ui/texto_etiquetas.py`, que traduzia a marca para etiqueta do
+`tk.Text` e a lia de volta; ele saiu com o toolkit (S-506). No Qt não há leitura de volta -- o
+documento é o estado --, então a exceção se cumpre aqui e em `text/arquivo.py`, que grava.
 """
 
 

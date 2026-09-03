@@ -14,11 +14,14 @@ de repetir uma decisão em vez de chamá-la"*.
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.config import UNCERTAIN_SQUARE_THRESHOLD
+from chess_diagram_ocr.ui import conjuntos
 from chess_diagram_ocr.ui import desenho_do_tabuleiro as desenho
 
 if TEM_PYQT:
@@ -175,6 +178,80 @@ class CalorTests(unittest.TestCase):
         quente = self.cor_da_casa(0, 0)
         self.tabuleiro.limpar()
         self.assertNotEqual(quente.rgb(), self.cor_da_casa(0, 0).rgb())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ConjuntoDePecasTests(unittest.TestCase):
+    """Os tres conjuntos da S-230, que o corte do Tk deixou sem quem os desenhasse (S-506).
+
+    `ui/conjuntos.py` sobreviveu ao corte declarando tres conjuntos; `ui/board_render.py`, que era
+    quem sabia o que `traco` significa, nao. O registro ficou descrevendo uma aparencia que nada
+    alcancava -- um nivel abaixo do menu, que e onde a trava de `montar` nao chega.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        # Estado de modulo: um teste que deixa o traco ligado contamina o vizinho.
+        self.addCleanup(qt_tabuleiro.definir_conjunto, conjuntos.PADRAO)
+
+    def test_a_pasta_e_a_mesma_para_o_padrao_e_para_o_traco(self) -> None:
+        """A diferenca entre os dois nao esta nos arquivos: esta no que se faz com eles."""
+        self.assertEqual(
+            qt_tabuleiro.pasta_do_conjunto(conjuntos.PADRAO),
+            qt_tabuleiro.pasta_do_conjunto(conjuntos.TRACO),
+        )
+
+    def test_a_pasta_do_usuario_so_vale_para_o_conjunto_que_a_declara(self) -> None:
+        minha = Path(tempfile.gettempdir()) / "pecas-de-mentira"
+        self.assertEqual(minha, qt_tabuleiro.pasta_do_conjunto(conjuntos.PASTA, str(minha)))
+        self.assertEqual(
+            qt_tabuleiro.PASTA_DE_PECAS, qt_tabuleiro.pasta_do_conjunto(conjuntos.PADRAO, str(minha))
+        )
+
+    def test_um_nome_escrito_errado_cai_no_padrao_e_nao_derruba(self) -> None:
+        """O contrato de degradacao: o que vem do disco ou do ambiente nao impede a janela de abrir."""
+        self.assertEqual(conjuntos.PADRAO, qt_tabuleiro.definir_conjunto("roxo"))
+
+    def test_o_traco_grosso_muda_o_desenho_da_peca(self) -> None:
+        """**E o teste que faltava**: `engrossar_traco` existia e nada a chamava."""
+        tabuleiro = qt_tabuleiro.TabuleiroQt()
+        self.addCleanup(descartar, tabuleiro)
+        original = tabuleiro._pecas.get("P")
+        if original is None:
+            self.skipTest("checkout sem assets/piece_images/")
+        grossa = qt_tabuleiro.engrossada(original, 24)
+        self.assertEqual((24, 24), (grossa.width(), grossa.height()))
+        self.assertNotEqual(
+            original.scaled(24, 24).toImage().constBits().asstring(24 * 24 * 4),
+            grossa.toImage().convertToFormat(QImage.Format.Format_ARGB32).constBits().asstring(24 * 24 * 4),
+        )
+
+    def test_o_conjunto_padrao_nao_passa_pelo_caminho_do_traco(self) -> None:
+        """A S-230 promete nao mudar um pixel de quem nunca escolheu conjunto nenhum."""
+        tabuleiro = qt_tabuleiro.TabuleiroQt()
+        self.addCleanup(descartar, tabuleiro)
+        mapa = tabuleiro._pecas.get("P")
+        if mapa is None:
+            self.skipTest("checkout sem assets/piece_images/")
+        self.assertIs(mapa, tabuleiro._preparada("P", mapa, 24))
+        qt_tabuleiro.definir_conjunto(conjuntos.TRACO)
+        self.assertIsNot(mapa, tabuleiro._preparada("P", mapa, 24))
+
+    def test_a_troca_alcanca_os_tabuleiros_ja_montados(self) -> None:
+        """Dois tabuleiros na tela, e trocar de conjunto e **uma** chamada e nao uma por widget."""
+        tabuleiro = qt_tabuleiro.TabuleiroQt()
+        self.addCleanup(descartar, tabuleiro)
+        qt_tabuleiro.definir_conjunto(conjuntos.PASTA, str(Path(tempfile.gettempdir()) / "vazia"))
+        self.assertEqual({}, tabuleiro._pecas, "o tabuleiro montado nao recarregou")
+        qt_tabuleiro.definir_conjunto(conjuntos.PADRAO)
+        self.assertTrue(tabuleiro._pecas, "o tabuleiro nao voltou ao conjunto padrao")
+
+    def test_uma_pasta_cravada_ignora_o_conjunto_em_vigor(self) -> None:
+        """E o que permite ao teste montar um tabuleiro sobre uma pasta que ele controla."""
+        tabuleiro = qt_tabuleiro.TabuleiroQt(pasta_de_pecas=Path("pasta/que/nao/existe"))
+        self.addCleanup(descartar, tabuleiro)
+        qt_tabuleiro.definir_conjunto(conjuntos.PADRAO)
+        self.assertEqual({}, tabuleiro._pecas)
 
 
 if __name__ == "__main__":  # pragma: no cover

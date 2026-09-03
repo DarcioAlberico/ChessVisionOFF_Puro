@@ -70,6 +70,7 @@ from chess_diagram_ocr import estudo_arquivo
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
+from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
@@ -655,13 +656,12 @@ class PainelDeEstudo(QWidget):
     # ------------------------------------------------------------------ desfazer (S-275)
 
     def contem(self, widget: object) -> bool:
-        """Este widget está dentro da sala? É o que decide de quem é o `Ctrl+Z` (S-243)."""
-        atual = widget
-        while atual is not None:
-            if atual is self:
-                return True
-            atual = getattr(atual, "parentWidget", lambda: None)()
-        return False
+        """Este widget está dentro da sala? É o que decide de quem é o `Ctrl+Z` (S-243).
+
+        A subida mora em `qt/atalhos.contem` desde a S-506, quando o painel de resultado e o de
+        texto entraram na mesma disputa: três laços iguais é onde um deles deixa de subir.
+        """
+        return qt_atalhos.contem(self, widget)
 
     @property
     def edicao(self) -> int:
@@ -745,13 +745,16 @@ class PainelDeEstudo(QWidget):
         else:
             self.set_status("Sincronismo com OCR desativado.")
 
-    def load_from_recognized(self) -> None:
+    def load_from_recognized(self) -> bool:
+        """Abre o estudo do diagrama selecionado. Devolve se abriu: quem traz a aba para a frente
+        depois de um duplo clique no visualizador precisa saber se há sala para mostrar."""
         posicao = self._posicao()
         if posicao is None or not posicao.valida():
             # Pré-condição no rodapé, e não em caixa de diálogo (S-164).
             self.set_status("Não há diagrama reconhecido para estudar.")
-            return
+            return False
         self._abrir(posicao, origem="Base: OCR selecionado", status="Estudo do diagrama selecionado.")
+        return True
 
     # --------------------------------------------------------------------------------- sala
 

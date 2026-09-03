@@ -35,6 +35,11 @@ SEM_REGISTRO = {
         "do programa, limitado por `max_boards`, e o que ele produz aparece na tela: quem fecha "
         "a janela durante ele está desistindo do resultado, não perdendo trabalho gravado."
     ),
+    ("trabalho.py", "_comecar"): (
+        "A detecção dos diagramas da página que acabou de aparecer (S-68), ao fundo e sem "
+        "trancar nada. Ninguém a pediu, ela custa décimos de segundo, e o que produz é um "
+        "conjunto de retângulos que a próxima visita à página refaz."
+    ),
     ("painel_de_estudo.py", "analyse"): (
         "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
         "posição continua lá para pedir de novo."

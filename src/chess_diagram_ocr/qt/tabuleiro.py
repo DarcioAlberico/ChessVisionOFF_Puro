@@ -27,17 +27,20 @@ peça -- é cumprida com meia opacidade de verdade, e não com uma trama de pixe
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import logging
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any, cast
 
+from PIL import Image
 from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen, QPixmap
+from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPaintEvent, QPen, QPixmap
 from PyQt6.QtWidgets import QWidget
 
 from chess_diagram_ocr.config import BUNDLE_ROOT, IDX_TO_CLASS, UNCERTAIN_SQUARE_THRESHOLD
 from chess_diagram_ocr.fen_utils import labels_from_fen
 from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.ui import tokens
+from chess_diagram_ocr.ui import conjuntos, tokens
 from chess_diagram_ocr.ui.desenho_do_tabuleiro import (
     GLIFO_CLARO,
     GLIFO_ESCURO,
@@ -45,6 +48,9 @@ from chess_diagram_ocr.ui.desenho_do_tabuleiro import (
     BoardGeometry,
     heatmap_color,
 )
+from chess_diagram_ocr.ui.pecas import engrossar_traco
+
+logger = logging.getLogger(__name__)
 
 PASTA_DE_PECAS = BUNDLE_ROOT / "assets" / "piece_images"
 """Os mesmos PNGs do produto. `BUNDLE_ROOT` e não `PROJECT_ROOT` porque peça é recurso
@@ -103,6 +109,132 @@ def carregar_pecas(pasta: Path = PASTA_DE_PECAS) -> dict[str, QPixmap]:
     return imagens
 
 
+def engrossada(mapa: QPixmap, lado: int) -> QPixmap:
+    """A peça reduzida ao tamanho de exibição e com o traço engrossado (S-230).
+
+    **Nesta ordem, e a ordem é o item.** Engrossar na fonte e reduzir depois perde a linha na
+    mesma redução que ela existe para compensar -- está escrito em `ui/pecas.engrossar_traco`, e é
+    por isso que esta função recebe o lado da casa em vez de devolver um desenho e deixar o
+    `QPainter` reduzir.
+
+    Devolve o mapa **como veio** quando a conversão falha: um conjunto de peças não pode custar o
+    tabuleiro, e o desenho sem o traço grosso continua sendo o desenho certo.
+    """
+    reduzida = mapa.scaled(
+        lado, lado, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+    )
+    try:
+        imagem = reduzida.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        bytes_por_linha = imagem.bytesPerLine()
+        bruto = imagem.constBits()
+        if bruto is None:
+            return mapa
+        bruto.setsize(imagem.height() * bytes_por_linha)
+        # `cast` porque o `sip.voidptr` do PyQt não se declara como buffer, embora seja um: sem
+        # ele o `mypy` recusa o `bytes(...)` que o Qt documenta como a forma de ler os pixels.
+        origem = Image.frombytes(
+            "RGBA",
+            (imagem.width(), imagem.height()),
+            bytes(cast(Any, bruto)),
+            "raw",
+            "RGBA",
+            bytes_por_linha,
+        )
+        grossa = engrossar_traco(origem)
+        saida = QImage(
+            grossa.tobytes("raw", "RGBA"),
+            grossa.width,
+            grossa.height,
+            QImage.Format.Format_RGBA8888,
+        ).copy()
+        return QPixmap.fromImage(saida)
+    except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
+        logger.info("Traço não engrossado (%s): a peça é desenhada como veio.", exc)
+        return mapa
+
+
+# ------------------------------------------------------------- o conjunto de peças (S-230/S-506)
+#
+# **Estado de módulo, e é o mesmo desenho de `qt/tema.py`.** O conjunto é um eixo de aparência da
+# janela inteira, não uma propriedade de um tabuleiro: há dois na tela (o da aba Resultado e o da
+# sala de estudo), e passar o nome pela construção de cada um faria "trocar de conjunto" ser uma
+# chamada por tabuleiro -- que é como se esquece o segundo.
+
+_CONJUNTO = conjuntos.PADRAO
+_PASTA_DO_USUARIO = ""
+_TABULEIROS: list[Callable[[], object]] = []
+"""Quem recarrega quando o conjunto muda. Ver `_recarregar_todos`."""
+
+
+def conjunto_em_vigor() -> str:
+    """O nome do conjunto que os tabuleiros estão desenhando agora."""
+    return _CONJUNTO
+
+
+def pasta_do_conjunto(nome: str = "", pasta_do_usuario: str = "") -> Path:
+    """De que pasta saem os PNGs daquele conjunto.
+
+    Só o conjunto `pasta` sai de outro lugar; `padrao` e `traco` leem os mesmos doze arquivos de
+    `assets/`, e a diferença entre os dois é o que se faz com eles depois de reduzir.
+
+    Pasta do usuário vazia cai no padrão em vez de recusar: `conjuntos.PASTA` declara que pasta
+    incompleta **avisa e usa o que houver**, e uma pasta que nem foi escolhida é o caso extremo
+    disso -- o desenho cai no glifo Unicode, peça a peça, que é o que já acontece num checkout sem
+    `assets/`.
+    """
+    registro = conjuntos.registrado(conjuntos.valida(nome or _CONJUNTO))
+    escolhida = str(pasta_do_usuario or _PASTA_DO_USUARIO).strip()
+    if registro.do_usuario and escolhida:
+        return Path(escolhida)
+    return PASTA_DE_PECAS
+
+
+def definir_conjunto(nome: str, pasta_do_usuario: str = "") -> str:
+    """Troca o conjunto de peças de **todos** os tabuleiros vivos. Devolve o que ficou valendo.
+
+    `conjuntos.valida` e não `registrado`: o nome vem do disco ou do ambiente, e nem estado antigo
+    nem variável escrita errada podem impedir a janela de abrir -- ela nomeia o inválido no log e
+    cai no padrão.
+
+    **Avisa a pasta incompleta uma vez, com os nomes.** "Faltam wq e bk" diz o que copiar para lá;
+    "a pasta está incompleta" manda a pessoa conferir doze arquivos.
+    """
+    global _CONJUNTO, _PASTA_DO_USUARIO
+    _CONJUNTO = conjuntos.valida(nome)
+    _PASTA_DO_USUARIO = str(pasta_do_usuario or "").strip()
+    if conjuntos.registrado(_CONJUNTO).do_usuario and _PASTA_DO_USUARIO:
+        if faltam := conjuntos.ausentes(_PASTA_DO_USUARIO):
+            logger.warning(
+                "Pasta de peças incompleta (%s): faltam %s. O glifo Unicode desenha as ausentes.",
+                _PASTA_DO_USUARIO,
+                ", ".join(faltam),
+            )
+    _recarregar_todos()
+    return _CONJUNTO
+
+
+def ao_trocar_de_conjunto(recarregar: Callable[[], object]) -> None:
+    """Registra um tabuleiro para ser recarregado na troca. Ver `qt/tema.ao_repintar`."""
+    _TABULEIROS.append(recarregar)
+
+
+def _recarregar_todos() -> None:
+    """Recarrega quem está vivo e **esquece quem morreu**, como a repintura do tema.
+
+    Um tabuleiro destruído entre o registro e a troca não é erro: é a janela de antes. No Qt o
+    sintoma de tocá-lo é `RuntimeError: wrapped C/C++ object ... has been deleted`, e ele sai da
+    lista em vez de derrubar a recarga dos outros.
+    """
+    vivos: list[Callable[[], object]] = []
+    for recarregar in _TABULEIROS:
+        try:
+            recarregar()
+        except RuntimeError:
+            continue
+        vivos.append(recarregar)
+    _TABULEIROS[:] = vivos
+
+
 class TabuleiroQt(QWidget):
     """Um tabuleiro somente-leitura: mostra o que o modelo leu, e não deixa editar.
 
@@ -112,15 +244,62 @@ class TabuleiroQt(QWidget):
     teste: seria um segundo caminho de escrita sobre o dado que o projeto mais protege.
     """
 
-    def __init__(self, parent: QWidget | None = None, *, pasta_de_pecas: Path = PASTA_DE_PECAS) -> None:
+    def __init__(self, parent: QWidget | None = None, *, pasta_de_pecas: Path | None = None) -> None:
         super().__init__(parent)
-        self._pecas = carregar_pecas(pasta_de_pecas)
+        self._pasta_pinada = Path(pasta_de_pecas) if pasta_de_pecas is not None else None
+        """Uma pasta cravada por quem construiu. `None` segue o conjunto em vigor (S-230).
+
+        Existe para o teste poder montar um tabuleiro sobre uma pasta que ele controla -- inclusive
+        uma que não existe, que é como se afirma a queda para o glifo Unicode."""
+        self._no_tamanho: dict[str, QPixmap] = {}
+        self._lado_em_cache = 0
+        """As peças já preparadas para o lado de casa de agora, e qual é esse lado.
+
+        **Uma geração por tamanho, e não um cache que cresce.** Todas as 64 casas de um desenho têm
+        o mesmo lado, então redimensionar a janela troca a geração inteira de uma vez -- guardar as
+        anteriores seria guardar tamanhos que ninguém vai desenhar de novo."""
+        self._pecas: dict[str, QPixmap] = {}
+        self._recarregar_pecas()
+        ao_trocar_de_conjunto(self._recarregar_pecas)
         self._classes: list[str] = ["empty"] * 64
         self._incertas: set[int] = set()
+        self._heatmap = True
+        """O mapa de incerteza esta ligado? (S-21)
+
+        Ligado por padrao porque e como se descobre que ele existe. Quem trabalha com uma
+        pagina de diagramas ja conferidos o desliga, e essa escolha sobrevive ao fechamento --
+        `AppState.show_heatmap`."""
         self._confiancas: dict[int, float] = {}
         self._limiar = UNCERTAIN_SQUARE_THRESHOLD
         self._virado = False
         self.setMinimumSize(LADO_MINIMO, LADO_MINIMO)
+
+    def _recarregar_pecas(self) -> None:
+        """Relê os doze PNGs do conjunto em vigor e joga fora o que estava preparado."""
+        self._pecas = carregar_pecas(
+            self._pasta_pinada if self._pasta_pinada is not None else pasta_do_conjunto()
+        )
+        self._no_tamanho.clear()
+        self._lado_em_cache = 0
+        self.update()
+
+    def _preparada(self, classe: str, mapa: QPixmap, lado: int) -> QPixmap:
+        """A peça pronta para desenhar naquela casa, engrossada se o conjunto pedir.
+
+        **O conjunto padrão sai por aqui sem passar por nada**, e é de propósito: ele é o desenho
+        de sempre, e mandá-lo pelo caminho do redimensionamento trocaria o pixel de quem nunca
+        escolheu conjunto nenhum -- que é justamente o que a S-230 promete não fazer.
+        """
+        if not conjuntos.registrado(conjunto_em_vigor()).engrossa:
+            return mapa
+        if self._lado_em_cache != lado:
+            self._no_tamanho.clear()
+            self._lado_em_cache = lado
+        pronta = self._no_tamanho.get(classe)
+        if pronta is None:
+            pronta = engrossada(mapa, lado)
+            self._no_tamanho[classe] = pronta
+        return pronta
 
     # ------------------------------------------------------------------------------ estado
 
@@ -165,6 +344,17 @@ class TabuleiroQt(QWidget):
     @property
     def virado(self) -> bool:
         return self._virado
+
+    def definir_heatmap(self, ligado: bool) -> None:
+        """Liga ou desliga a tinta de incerteza. O que ela cobre continua sabido (S-21).
+
+        **Desliga o desenho e não a medição**: `casas_incertas` continua respondendo, e é o que
+        permite religá-lo sem reler a página. É o `set_heatmap_enabled` do outro frontend.
+        """
+        if self._heatmap == bool(ligado):
+            return
+        self._heatmap = bool(ligado)
+        self.update()
 
     def casas_incertas(self) -> tuple[int, ...]:
         """As casas marcadas, em ordem de leitura. Existe para o teste afirmar o que a tela diz."""
@@ -225,7 +415,7 @@ class TabuleiroQt(QWidget):
             return
         mapa = self._pecas.get(classe)
         if mapa is not None:
-            pintor.drawPixmap(casa.toRect(), mapa)
+            pintor.drawPixmap(casa.toRect(), self._preparada(classe, mapa, max(1, int(casa.width()))))
             return
         fonte = QFont(pintor.font())
         fonte.setPointSizeF(max(6.0, casa.height() * 0.72))
@@ -247,7 +437,7 @@ class TabuleiroQt(QWidget):
         Meio pixel de folga no contorno porque a caneta do Qt pinta centrada na linha: sem ela,
         metade do traço cai na casa vizinha, e duas casas quentes lado a lado dividem um contorno.
         """
-        if indice not in self._incertas:
+        if not self._heatmap or indice not in self._incertas:
             return
         # Sem confiança medida, a cor é a do **limiar** -- o topo da rampa. Ver `mostrar`.
         confianca = self._confiancas.get(indice, self._limiar)

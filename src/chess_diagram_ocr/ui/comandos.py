@@ -446,6 +446,11 @@ CATALOGO: tuple[Comando, ...] = (
     # `acoes_declaradas` -- que é de onde a S-233 vai tirar o inventário de alcance. Um comando
     # montado por dentro de outro submenu não aparece em lista nenhuma.
     Comando("densidade", "Densidade", VISUALIZACAO, estilos.NEUTRO),
+    # O terceiro eixo de aparência (S-230/S-506), e ele fica ao lado dos outros dois pela mesma
+    # razão da densidade: comando montado por dentro de outro submenu não aparece em lista
+    # nenhuma. Era um controle da aba Configuração, que a janela do Qt não tem -- e com ela o
+    # registro de `ui/conjuntos.py` ficou declarando três conjuntos que nada alcançava.
+    Comando("conjunto_de_pecas", "Peças", VISUALIZACAO, estilos.NEUTRO),
     Comando(
         "roda_vira_pagina",
         "A roda do mouse vira a página",

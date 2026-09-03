@@ -17,6 +17,7 @@ htmlcov/
 # Amostras de treino: 3.244 PNGs, ~2,7 GB. Ver docs/ROADMAP.md (Fase 5) sobre reducao de resolucao.
 data/samples/*
 !data/samples/.gitkeep
+data/janela.json
 data/app_tkinter_state.json
 # Preferencias do usuario (S-32): contem o endpoint que ELE declarou. Versiona-lo
 # reintroduziria o endereco fixo que a S-32 existe para eliminar.

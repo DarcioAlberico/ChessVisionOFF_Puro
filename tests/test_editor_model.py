@@ -387,7 +387,6 @@ SEM_TKINTER = {
     "strings.py": "o vocabulário da interface (S-04)",
     "texto_declarado.py": "a tabela comando->método da aba de texto e o zoom da vista (S-240/S-504)",
     "texto_cores.py": "a paleta do autor e o canal que a confiança não usa (S-242)",
-    "texto_etiquetas.py": "a tradução entre documento e etiquetas do Tk, nos dois sentidos (S-238)",
     "tipografia.py": "a escala de fontes, derivada do sistema e sem widget (S-149)",
     "tokens.py": "a paleta e o contraste, sem widget (S-145/S-146)",
     "varredura_de_revisao.py": "o pedido de varredura e o acumulador da fila (S-116/S-119/S-503)",

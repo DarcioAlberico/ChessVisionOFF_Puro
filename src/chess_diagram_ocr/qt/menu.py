@@ -41,7 +41,7 @@ from PyQt6.QtGui import QAction, QActionGroup, QKeySequence
 from PyQt6.QtWidgets import QMenu, QMenuBar, QWidget
 
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
-from chess_diagram_ocr.ui import atalhos, pele
+from chess_diagram_ocr.ui import atalhos, conjuntos, pele
 from chess_diagram_ocr.ui import comandos as catalogo
 from chess_diagram_ocr.ui import menu as declaracao
 
@@ -78,7 +78,7 @@ class BarraDeMenus:
             item.setChecked(ligado)
 
     def escolher(self, acao: str, valor: str) -> None:
-        """Marca o valor em vigor num submenu de escolha (pele, densidade).
+        """Marca o valor em vigor num submenu de escolha (pele, densidade, conjunto de peças).
 
         Silencioso para valor desconhecido, pela razão de `marcar`: uma pele removida do registro
         deixaria o submenu sem marca, que é melhor que uma janela que não abre.
@@ -88,6 +88,19 @@ class BarraDeMenus:
             return
         for item in grupo.actions():
             item.setChecked(item.data() == valor)
+
+    def escolhido(self, acao: str) -> str:
+        """O valor marcado naquele submenu, ou `""`.
+
+        **É o que substitui o `StringVar` do Tk, e é a razão de o comando continuar sem
+        argumento.** Lá o radiobutton escrevia numa variável e o comando a lia; aqui a marca é
+        estado da `QAction`, e quem a lê é este método. Passar o valor pelo comando obrigaria a
+        tabela de comandos a ter duas assinaturas -- e ela é a mesma que o menu, a paleta e os
+        atalhos consomem, os três chamando sem argumento nenhum.
+        """
+        grupo = self.grupos.get(acao)
+        marcada = grupo.checkedAction() if grupo is not None else None
+        return str(marcada.data()) if marcada is not None and marcada.data() is not None else ""
 
 
 def _acao(
@@ -120,16 +133,30 @@ def _acao(
     return acao
 
 
+def _valores_de(tipo: str) -> Sequence[object]:
+    """O registro que aquele submenu de escolha lista. Um por eixo de aparência.
+
+    **Os três saem de um registro e não de uma lista escrita aqui**, e é a razão de `ui/pele.py` e
+    `ui/conjuntos.py` existirem: acrescentar uma pele é acrescentar uma linha lá, e o menu a
+    desenha sem que ninguém venha aqui.
+    """
+    if tipo == declaracao.APARENCIA:
+        return pele.PELES
+    if tipo == declaracao.CONJUNTO:
+        return conjuntos.CONJUNTOS
+    return pele.DENSIDADES
+
+
 def _submenu_de_escolha(
     pai: QMenu,
     item: declaracao.Item,
     valores: Sequence[object],
     ao_escolher: Callable[[], object],
 ) -> tuple[QMenu, QActionGroup]:
-    """O submenu de pele ou de densidade: um item marcável por valor, exclusivos entre si.
+    """O submenu de pele, de densidade ou de peças: um item marcável por valor, exclusivos.
 
-    **Um montador para os dois eixos**, e não um por eixo -- é a razão de `ui/menu.py`, e ela não
-    muda de toolkit: peles e densidades são a mesma linha de menu com outra lista atrás.
+    **Um montador para os três eixos**, e não um por eixo -- é a razão de `ui/menu.py`, e ela não
+    muda de toolkit: peles, densidades e conjuntos são a mesma linha de menu com outra lista atrás.
 
     O valor fica no `data()` da ação e não no rótulo, porque `pele.Pele` separa `nome` de
     `rotulo` desde a S-166: o primeiro é chave e o segundo é texto de interface.
@@ -138,8 +165,11 @@ def _submenu_de_escolha(
     grupo = QActionGroup(submenu)
     grupo.setExclusive(True)
     for valor in valores:
-        nome = valor.nome if isinstance(valor, pele.Pele) else str(valor)
-        rotulo = valor.rotulo if isinstance(valor, pele.Pele) else pele.rotulo_de_densidade(nome)
+        if isinstance(valor, (pele.Pele, conjuntos.Conjunto)):
+            nome, rotulo = valor.nome, valor.rotulo
+        else:
+            nome = str(valor)
+            rotulo = pele.rotulo_de_densidade(nome)
         escolha = QAction(rotulo, submenu)
         escolha.setCheckable(True)
         escolha.setData(nome)
@@ -222,9 +252,10 @@ def montar(
                 menu.addSeparator()
             elif item.tipo == declaracao.RECENTES:
                 menu.addMenu(_submenu_recentes(menu, item, recentes))
-            elif item.tipo in (declaracao.APARENCIA, declaracao.DENSIDADE):
-                valores = pele.PELES if item.tipo == declaracao.APARENCIA else pele.DENSIDADES
-                submenu, grupo = _submenu_de_escolha(menu, item, valores, comandos[item.acao])
+            elif item.tipo in declaracao.TIPOS_DE_ESCOLHA:
+                submenu, grupo = _submenu_de_escolha(
+                    menu, item, _valores_de(item.tipo), comandos[item.acao]
+                )
                 menu.addMenu(submenu)
                 montada.grupos[item.acao] = grupo
             else:

@@ -210,7 +210,6 @@ class NaoRotulaTests(unittest.TestCase):
         "text/correcao.py",
         "text/arquivo.py",
         "text/rico.py",
-        "ui/texto_etiquetas.py",
         "cli/texto_correcoes.py",
     )
 

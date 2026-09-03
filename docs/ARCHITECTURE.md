@@ -194,7 +194,7 @@ disparar, e não antes:
 | a Fase 8 exigir sobreposição **editável** sobre a página renderizada | é onde o canvas do Tk deixa de ser desconforto e vira trabalho desproporcional |
 | o `labels.csv` passar de **10 mil linhas** | a paginação da S-23 deixa de ser mitigação e vira obstáculo ao fluxo |
 
-Hoje o `labels.csv` tem **4.717** linhas — 47% do gatilho (medido em 2026-08-28; o número é
+Hoje o `labels.csv` tem **5.321** linhas — 53% do gatilho (medido em 2026-09-01; o número é
 conferido por `tests/test_docs.py`, S-135). Quando a hora chegar, `Qt` dá
 `QTableView` com modelo virtual (30 mil linhas sem paginar), `QGraphicsScene` para tabuleiro
 e sobreposições, `QThread` + sinais no lugar de `root.after`, `QPdfView` nativo, DPI correto
@@ -253,7 +253,7 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Onze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Doze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
 exceção. Nove são operações longas e estão no `BusyRegistry`; as outras duas são declaradas em
 `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
@@ -265,6 +265,7 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | operação | onde | cancelável | perde trabalho ao fechar | empresta o modelo do serviço |
 |---|---|---|---|---|
 | marcar e reconhecer a página | `qt/janela.py::_rodar` | não (é rápido) | — declarada | sim (S-31) |
+| marcar a página que acabou de aparecer (S-68) | `qt/trabalho.py::DeteccaoDeFundo`, sem trancar nada; só o último pedido espera | não (é rápido) | — declarada | não (o detector não usa o modelo) |
 | exportação de um livro | `qt/exportador.py` | sim, entre páginas (S-24) | não, tem parcial | sim (S-57) |
 | treino | `qt/dialogos.py::ControladorDeTreino` | sim, entre épocas (S-60) | sim, desde a melhor época | escreve o `.pt` |
 | varredura do livro — Galeria **e** fila de revisão (S-119) | `qt/painel_da_galeria.py`, com o `SumidouroDeRevisao` de `qt/painel_de_revisao.py` | sim, entre páginas | não, retoma de onde parou (S-120) | sim (S-57) |
@@ -307,11 +308,12 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 |---|---|---|
 | `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split, e a confirmação de ilegalidade deliberada (`illegal_ok`) | sim |
 | `data/splits.csv` | partição treino/validação/teste, estável sob crescimento, atribuída às amostras novas pelo próprio treino (S-56) | sim |
-| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (4,5 GB) |
+| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (5,0 GB) |
 | `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
 | `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | não — `.gitignore:28` |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |
-| `data/app_tkinter_state.json` | último PDF, página, zoom | não |
+| `data/janela.json` | o que a janela lembra entre execuções: último livro, página, zoom, geometria, divisor, aba, pele, densidade e conjunto de peças (S-25/S-156) | não — **sob demanda**: nasce no primeiro fechamento da janela |
+| `data/app_tkinter_state.json` | o mesmo arquivo com o nome de antes do corte (S-506). É **lido uma vez**, quando o `janela.json` ainda não existe, e nunca reescrito: ele guarda o histórico de 50 livros com a página de cada um, e renomear sem lê-lo apagaria meses de "onde eu parei neste livro?" | não |
 | `data/review_queue.json` | a fila de revisão | não |
 | `data/review_cache/` | os recortes das páginas já varridas, para a fila não reabrir o PDF | não (10,4 GB — o maior artefato do projeto) |
 | `data/orphans/` | os PNGs cujo rótulo sumiu do `labels.csv`, guardados em vez de apagados (S-63) | não |
@@ -349,7 +351,7 @@ cvoff-gallery --import-human    # o caminho de volta; o que é da pessoa vence o
 ```
 
 Toda escrita de arquivo de trabalho passa por `atomic_io`: grava num temporário e troca. O
-`labels.csv` é 4.717 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
+`labels.csv` é 5.321 rótulos de trabalho humano acumulado, e a interface o regrava inteiro a
 cada correção. Desde a S-57 o `.pt` também passa por ali — era o maior dos arquivos, o mais
 demorado de escrever, e o único cuja escrita acontece numa thread de fundo enquanto outra
 pode estar lendo o mesmo caminho.

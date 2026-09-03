@@ -222,7 +222,12 @@ class VinculoTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.app = aplicacao()
-        self.janela = JanelaPrincipal(servico=mock.MagicMock(), csv_de_rotulos=pasta_temporaria(self) / "l.csv")
+        pasta = pasta_temporaria(self)
+        self.janela = JanelaPrincipal(
+            servico=mock.MagicMock(),
+            csv_de_rotulos=pasta / "l.csv",
+            caminho_do_estado=pasta / "janela.json",
+        )
         self.addCleanup(self.janela.deleteLater)
 
     def test_a_pagina_lida_vincula_por_pagina(self) -> None:
