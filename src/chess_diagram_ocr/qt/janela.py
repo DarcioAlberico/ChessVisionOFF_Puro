@@ -27,6 +27,8 @@ outros existem. Três coisas, e só três:
     PDF  --pagina_desenhada--> Resultado restaura a página, Galeria acompanha, as caixas voltam
     PDF  --caixa_clicada-->    esta janela decide entre selecionar e ler (`decide_box_click`)
     PDF  --caixa_dispensada--> a caixa sai da página (S-177)
+    PDF  --caixa_para_estudo--> o duplo clique leva o diagrama à sala de estudo -- lendo a
+                               página antes, se ela ainda não foi lida
     PDF  --regiao_pedida-->    o serviço reconhece o recorte
 
     Resultado --salvou-->      a caixa fica verde, a Galeria conta de novo, o Dataset relê
@@ -260,6 +262,10 @@ class JanelaPrincipal(QMainWindow):
         """A tarefa em curso. Guardada num atributo porque um `QThread` sem referência viva é
         coletado no meio da execução, e o sintoma é a janela travada esperando um sinal que nunca
         vem."""
+        self._estudar_ao_ler: tuple[int, int] | None = None
+        """`(página, diagrama)` que um duplo clique pediu para estudar **antes de a página ser
+        lida**. O primeiro clique do par já pôs a leitura em curso; `_chegaram_itens` atende o
+        pedido quando ela terminar, e ele morre com a tarefa ou com a virada de página."""
 
         self.busy = BusyRegistry()
         """Onde as operações longas se declaram (S-112). Uma por janela, e é ela que o rodapé
@@ -850,6 +856,7 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.pagina_desenhada.connect(self._pagina_apareceu)
         self.pdf.caixa_clicada.connect(self._clicou_na_caixa)
         self.pdf.caixa_dispensada.connect(self._tirar_caixa)
+        self.pdf.caixa_para_estudo.connect(self._estudar_a_caixa)
         self.pdf.regiao_pedida.connect(self._ler_regiao)
         self.pdf.leitura_pedida.connect(self._leitura_pedida)
         self.pdf.exportacao_pedida.connect(lambda: self.exportador.comecar(self._pdf))
@@ -1002,6 +1009,7 @@ class JanelaPrincipal(QMainWindow):
         """
         self._candidatos = None
         self._itens = []
+        self._estudar_ao_ler = None
         # **A página entra no histórico assim que aparece, e não só no fechamento** (S-25). É o
         # que faz a pergunta "onde eu parei neste livro?" continuar respondida depois de trocar de
         # livro no meio da sessão -- e é a mesma anotação que ordena o menu de recentes.
@@ -1185,6 +1193,7 @@ class JanelaPrincipal(QMainWindow):
 
     def _terminou(self) -> None:
         self._tarefa = None
+        self._estudar_ao_ler = None
         self._atualizar_controles()
 
     def _falhou(self, mensagem: str, excecao: object) -> None:
@@ -1256,6 +1265,10 @@ class JanelaPrincipal(QMainWindow):
 
         if self._itens and selecionar is not None and selecionar < len(self._itens):
             self.painel.lista.setCurrentRow(selecionar)
+        pendente, self._estudar_ao_ler = self._estudar_ao_ler, None
+        if pendente is not None and pendente[0] == pagina and pendente[1] < len(self._itens):
+            self.painel.lista.setCurrentRow(pendente[1])
+            self._levar_ao_estudo()
         self._atualizar_abas()
         self._dizer_o_que_ha_na_pagina()
 
@@ -1293,6 +1306,27 @@ class JanelaPrincipal(QMainWindow):
             self._focar_aba(self.painel)
             return
         self.ler_pagina(selecionar_depois=indice)
+
+    def _estudar_a_caixa(self, indice: int) -> None:
+        """Duplo clique numa caixa: o diagrama vai para a sala de estudo.
+
+        **A mesma decisão do clique simples, com outro destino.** Já lido, o diagrama é
+        selecionado e a sala o abre; ainda não, a página é lida e a sala o recebe quando a leitura
+        chegar. O primeiro clique do par normalmente já pôs essa leitura em curso, e aí não se
+        pede uma segunda -- o pedido fica anotado para `_chegaram_itens`.
+        """
+        if decide_box_click(recognized_count=len(self._itens), index=indice) is BoxClick.SELECT:
+            self.painel.lista.setCurrentRow(indice)
+            self._levar_ao_estudo()
+            return
+        self._estudar_ao_ler = (self.pdf.page_index, indice)
+        if self._tarefa is None:
+            self.ler_pagina(selecionar_depois=indice)
+
+    def _levar_ao_estudo(self) -> None:
+        """Abre na sala o diagrama selecionado no Resultado e traz a aba -- se houver posição."""
+        if self.estudo.load_from_recognized():
+            self._focar_aba(self.estudo)
 
     def _tirar_caixa(self, indice: int) -> None:
         """Tira aquele retângulo da página (S-177). A remoção é por (livro, página).

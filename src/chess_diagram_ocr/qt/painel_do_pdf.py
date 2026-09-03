@@ -85,6 +85,8 @@ class PainelDoPdf(QWidget):
     zoom_mudou = pyqtSignal(float)
     caixa_clicada = pyqtSignal(int)
     caixa_dispensada = pyqtSignal(int)
+    caixa_para_estudo = pyqtSignal(int)
+    """Duplo clique num retângulo: o diagrama vai para a sala de estudo. Retransmitido do visor."""
     regiao_pedida = pyqtSignal(object, object)
     """`(página RGB, (x0, y0, x1, y1))` -- o recorte que a seleção de área devolveu."""
 
@@ -211,6 +213,7 @@ class PainelDoPdf(QWidget):
         self.visor = VisorDePagina(self)
         self.visor.caixa_clicada.connect(self.caixa_clicada)
         self.visor.caixa_dispensada.connect(self.caixa_dispensada)
+        self.visor.caixa_para_estudo.connect(self.caixa_para_estudo)
         self.visor.pagina_pedida.connect(self._roda_pediu_pagina)
         self.visor.zoom_mudou.connect(self._zoom_do_visor)
         self.visor.area_selecionada.connect(self._area_selecionada)

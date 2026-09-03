@@ -936,8 +936,9 @@ pagina caber na janela.
 **Os diagramas marcados na pagina.** Ao trocar de pagina, o detector roda em segundo plano e
 desenha um retangulo numerado sobre cada diagrama; o numero e o mesmo do seletor
 "Selecionado" da aba **Resultado**. Clicar num retangulo abre aquele diagrama no editor --
-lendo a pagina primeiro, se ela ainda nao tiver sido lida. O retangulo do diagrama que esta
-aberto fica destacado, e ele acompanha as setas `←`/`→`: e ele que responde "qual desses eu
+lendo a pagina primeiro, se ela ainda nao tiver sido lida. **Duplo clique** leva o mesmo
+diagrama para a aba **Estudo**, que abre a sala dele (e le a pagina antes, se preciso). O
+retangulo do diagrama que esta aberto fica destacado, e ele acompanha as setas `←`/`→`: e ele que responde "qual desses eu
 estou vendo?". A caixa **Marcar diagramas** desliga tudo isso para quem esta lendo o texto do
 livro, e a escolha sobrevive ao fechamento da janela.
 

@@ -256,6 +256,39 @@ class PainelTests(unittest.TestCase):
         painel.visor.soltou_em(200, 200)
         self.assertEqual(clicadas, [0], "arrastar a página não abre diagrama nenhum")
 
+    def test_o_duplo_clique_manda_o_diagrama_para_a_sala_de_estudo(self) -> None:
+        """O segundo aperto do par chega como duplo clique, e não como clique: o primeiro já
+        selecionou o diagrama (ou mandou ler a página), e o que este acrescenta é o destino."""
+        painel = self.com_pagina()
+        painel.definir_caixas(_caixas())
+        para_estudo: list[int] = []
+        painel.caixa_para_estudo.connect(para_estudo.append)
+
+        painel.visor.estudar_em(35 + 60, 35)
+        self.assertEqual(para_estudo, [1])
+        painel.visor.estudar_em(200, 300)
+        self.assertEqual(para_estudo, [1], "fora de qualquer caixa não há o que estudar")
+        painel.marcar_diagramas.setChecked(False)
+        painel.visor.estudar_em(35, 35)
+        self.assertEqual(para_estudo, [1], "caixa escondida não é alvo, como no clique simples")
+
+    def test_o_duplo_clique_do_qt_chega_ao_visor_sem_contar_um_terceiro_clique(self) -> None:
+        """O Qt entrega o segundo aperto como `MouseButtonDblClick`, e a soltura que o segue não
+        acha ponto marcado -- então o duplo clique não sai também como um clique a mais."""
+        from PyQt6.QtCore import QPoint, Qt
+        from PyQt6.QtTest import QTest
+
+        painel = self.com_pagina()
+        painel.definir_caixas(_caixas())
+        clicadas: list[int] = []
+        para_estudo: list[int] = []
+        painel.caixa_clicada.connect(clicadas.append)
+        painel.caixa_para_estudo.connect(para_estudo.append)
+
+        QTest.mouseDClick(painel.visor._folha, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(35, 35))
+        self.assertEqual(para_estudo, [0])
+        self.assertEqual(clicadas, [], "a soltura depois do duplo clique não é um clique")
+
     def test_a_selecao_devolve_pixel_de_pagina_e_nao_de_tela(self) -> None:
         """A conversão é a única parte que depende do zoom; recortar é do serviço (S-31)."""
         painel = self.com_pagina()

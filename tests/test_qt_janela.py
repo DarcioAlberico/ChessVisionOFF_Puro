@@ -554,6 +554,49 @@ class FiacaoTests(unittest.TestCase):
         self.assertEqual(janela.pdf.page_index, 2)
         self.assertFalse(janela._abrir_pagina_do_estudo(mock.Mock(documento="outro.pdf", pagina=1)))
 
+    def test_o_duplo_clique_na_caixa_lida_abre_o_diagrama_na_sala_de_estudo(self) -> None:
+        """O clique simples abre o diagrama no editor (S-68); o duplo o leva à sala, e a aba vem
+        para a frente. A posição é a do Resultado, ancorada no livro, na página e no diagrama."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+
+        janela.pdf.caixa_para_estudo.emit(1)
+
+        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertEqual(janela.painel.lista.currentRow(), 1)
+        ancora = janela.estudo.estudo.ancora
+        self.assertEqual((ancora.documento, ancora.pagina, ancora.diagrama), (str(self.livro), 0, 1))
+
+    def test_o_duplo_clique_na_caixa_ainda_nao_lida_le_a_pagina_e_so_entao_abre_a_sala(self) -> None:
+        """Antes da leitura não há posição para estudar: a página é lida, e a sala recebe o
+        diagrama quando os itens chegarem -- não antes."""
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_para_estudo.emit(0)
+        leu.assert_called_once_with(selecionar_depois=0)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+
+        janela._chegaram_itens(0, [self._diagrama(0)], 0)
+        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertEqual(janela.estudo.estudo.ancora.diagrama, 0)
+
+    def test_o_duplo_clique_nao_pede_uma_segunda_leitura_enquanto_a_do_primeiro_clique_corre(self) -> None:
+        """O primeiro clique do par já pôs a leitura em curso. O duplo só anota o pedido, e uma
+        leitura que termina sem itens desta página o descarta -- ele não sobrevive à tarefa."""
+        janela = self.janela()
+        janela._tarefa = mock.Mock()  # a leitura do primeiro clique ainda corre
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_para_estudo.emit(0)
+        leu.assert_not_called()
+        self.assertEqual(janela._estudar_ao_ler, (0, 0))
+
+        janela._terminou()
+        self.assertIsNone(janela._tarefa)
+        self.assertIsNone(janela._estudar_ao_ler, "o pedido morre com a tarefa")
+        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+
     def test_a_caixa_tirada_some_da_pagina_e_volta_com_o_comando(self) -> None:
         """A remoção é da pessoa e por (livro, página): ela não apaga nada no disco, e é isso que
         a torna reversível (S-177)."""
