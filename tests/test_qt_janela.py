@@ -581,11 +581,55 @@ class FiacaoTests(unittest.TestCase):
         self.assertIs(janela.abas.currentWidget(), janela.estudo)
         self.assertEqual(janela.estudo.estudo.ancora.diagrama, 0)
 
-    def test_o_duplo_clique_nao_pede_uma_segunda_leitura_enquanto_a_do_primeiro_clique_corre(self) -> None:
-        """O primeiro clique do par já pôs a leitura em curso. O duplo só anota o pedido, e uma
-        leitura que termina sem itens desta página o descarta -- ele não sobrevive à tarefa."""
+    def test_o_clique_simples_na_caixa_nao_lida_espera_o_intervalo_do_duplo_clique(self) -> None:
+        """A leitura tranca o visor, e um segundo aperto num widget desabilitado não chega a
+        ninguém: sem a espera, o duplo clique numa página não lida era engolido pelo próprio
+        primeiro clique. Medido na janela de verdade em 2026-09-03."""
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QApplication
+
         janela = self.janela()
-        janela._tarefa = mock.Mock()  # a leitura do primeiro clique ainda corre
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_clicada.emit(0)
+            leu.assert_not_called()
+            self.assertTrue(janela._leitura_adiada.isActive())
+            QTest.qWait(QApplication.doubleClickInterval() + 100)
+        leu.assert_called_once_with(selecionar_depois=0)
+
+    def test_o_clique_na_caixa_ja_lida_nao_espera_nada(self) -> None:
+        """Selecionar não tranca o visor, então não há por que adiar -- e a espera seria lentidão."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela.pdf.caixa_clicada.emit(1)
+        self.assertFalse(janela._leitura_adiada.isActive())
+        self.assertEqual(janela.painel.lista.currentRow(), 1)
+        self.assertIs(janela.abas.currentWidget(), janela.painel)
+
+    def test_o_duplo_clique_cancela_a_leitura_que_o_primeiro_clique_adiou_e_le_ele_mesmo(self) -> None:
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_clicada.emit(0)
+            janela.pdf.caixa_para_estudo.emit(0)
+        self.assertFalse(janela._leitura_adiada.isActive(), "a leitura adiada do clique foi cancelada")
+        leu.assert_called_once_with(selecionar_depois=0)
+        self.assertEqual(janela._estudar_ao_ler, (0, 0))
+
+    def test_virar_a_pagina_cancela_a_leitura_adiada(self) -> None:
+        """Senão a leitura leria a página nova, com o índice da caixa da antiga."""
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina"):
+            janela.pdf.caixa_clicada.emit(0)
+            self.assertTrue(janela._leitura_adiada.isActive())
+            janela.pdf.ir_para_pagina(1)
+            self.app.processEvents()
+        self.assertFalse(janela._leitura_adiada.isActive())
+
+    def test_o_duplo_clique_nao_pede_uma_segunda_leitura_enquanto_outra_corre(self) -> None:
+        """Uma leitura já em curso (a página, por botão) é aproveitada: o duplo só anota o
+        pedido, e uma leitura que termina sem itens desta página o descarta -- ele não sobrevive
+        à tarefa."""
+        janela = self.janela()
+        janela._tarefa = mock.Mock()  # uma leitura ainda corre
         with mock.patch.object(janela, "ler_pagina") as leu:
             janela.pdf.caixa_para_estudo.emit(0)
         leu.assert_not_called()

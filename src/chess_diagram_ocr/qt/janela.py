@@ -60,7 +60,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -266,6 +266,16 @@ class JanelaPrincipal(QMainWindow):
         """`(página, diagrama)` que um duplo clique pediu para estudar **antes de a página ser
         lida**. O primeiro clique do par já pôs a leitura em curso; `_chegaram_itens` atende o
         pedido quando ela terminar, e ele morre com a tarefa ou com a virada de página."""
+        self._caixa_a_ler: int | None = None
+        self._leitura_adiada = QTimer(self)
+        self._leitura_adiada.setSingleShot(True)
+        self._leitura_adiada.timeout.connect(self._ler_a_caixa_clicada)
+        """O clique numa caixa ainda não lida **espera o intervalo do duplo clique** antes de ler.
+
+        A leitura tranca o visor, e um segundo aperto num widget desabilitado não chega a ninguém:
+        sem a espera, o duplo clique numa página não lida era engolido pelo próprio primeiro clique.
+        A espera custa ~400 ms antes de uma leitura de segundos; o clique numa caixa já lida não
+        espera nada, porque selecionar não tranca."""
 
         self.busy = BusyRegistry()
         """Onde as operações longas se declaram (S-112). Uma por janela, e é ela que o rodapé
@@ -1010,6 +1020,7 @@ class JanelaPrincipal(QMainWindow):
         self._candidatos = None
         self._itens = []
         self._estudar_ao_ler = None
+        self._leitura_adiada.stop()
         # **A página entra no histórico assim que aparece, e não só no fechamento** (S-25). É o
         # que faz a pergunta "onde eu parei neste livro?" continuar respondida depois de trocar de
         # livro no meio da sessão -- e é a mesma anotação que ordena o menu de recentes.
@@ -1305,16 +1316,27 @@ class JanelaPrincipal(QMainWindow):
             self.painel.lista.setCurrentRow(indice)
             self._focar_aba(self.painel)
             return
-        self.ler_pagina(selecionar_depois=indice)
+        # Adiada, e não imediata: ver `_leitura_adiada`. Um duplo clique a cancela.
+        self._caixa_a_ler = indice
+        self._leitura_adiada.start(QApplication.doubleClickInterval())
+
+    def _ler_a_caixa_clicada(self) -> None:
+        """O intervalo do duplo clique passou sem segundo aperto: era um clique, e ele lê."""
+        indice, self._caixa_a_ler = self._caixa_a_ler, None
+        if indice is not None:
+            self.ler_pagina(selecionar_depois=indice)
 
     def _estudar_a_caixa(self, indice: int) -> None:
         """Duplo clique numa caixa: o diagrama vai para a sala de estudo.
 
         **A mesma decisão do clique simples, com outro destino.** Já lido, o diagrama é
         selecionado e a sala o abre; ainda não, a página é lida e a sala o recebe quando a leitura
-        chegar. O primeiro clique do par normalmente já pôs essa leitura em curso, e aí não se
-        pede uma segunda -- o pedido fica anotado para `_chegaram_itens`.
+        chegar. O primeiro clique do par tinha adiado essa leitura (`_leitura_adiada`); o duplo a
+        cancela e lê ele mesmo, com o pedido anotado para `_chegaram_itens`. Se uma leitura já
+        corre por outro motivo, não se pede uma segunda: o pedido espera por ela.
         """
+        self._leitura_adiada.stop()
+        self._caixa_a_ler = None
         if decide_box_click(recognized_count=len(self._itens), index=indice) is BoxClick.SELECT:
             self.painel.lista.setCurrentRow(indice)
             self._levar_ao_estudo()

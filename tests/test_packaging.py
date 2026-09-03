@@ -250,16 +250,18 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1810
+    LIMITE = 1832
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
 
-    **1.776 → 1.810 com o duplo clique no diagrama**, que o leva à sala de estudo. As trinta e
-    quatro são um `connect`, o método que decide (`_estudar_a_caixa`, pela mesma
-    `decide_box_click` do clique simples), o que traz a aba (`_levar_ao_estudo`) e o pedido
+    **1.776 → 1.832 com o duplo clique no diagrama**, que o leva à sala de estudo. As cinquenta
+    e seis são um `connect`, o método que decide (`_estudar_a_caixa`, pela mesma
+    `decide_box_click` do clique simples), o que traz a aba (`_levar_ao_estudo`), o pedido
     anotado para quando a página ainda não foi lida (`_estudar_ao_ler`, atendido em
-    `_chegaram_itens`). O gesto em si está em `qt/visor.py`, e a decisão de qual caixa ele acerta
-    continua sendo `page_overlay.index_at`; o que ficou aqui é o que só a janela sabe -- se a
-    página já foi lida, e que a leitura em curso é a do primeiro clique do par.
+    `_chegaram_itens`) e a espera do clique simples pelo intervalo do duplo (`_leitura_adiada`):
+    a leitura tranca o visor, e um segundo aperto num widget desabilitado não chega a ninguém.
+    O gesto em si está em `qt/visor.py`, e a decisão de qual caixa ele acerta continua sendo
+    `page_overlay.index_at`; o que ficou aqui é o que só a janela sabe -- se a página já foi
+    lida, e se há leitura em curso.
 
     **1.227 → 1.776 na S-506**, e as 549 são o que o corte do Tk tinha deixado sem chamador. Elas
     são a maior subida da história desta catraca, e a razão de ela não ser um acidente é que cada
