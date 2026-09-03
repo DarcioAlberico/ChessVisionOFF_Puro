@@ -25,6 +25,7 @@ outros existem. Três coisas, e só três:
                                o que era do livro anterior), esta janela (relê as marcas de salvo)
     PDF  --antes_de_trocar-->  Resultado guarda no cache o que está no editor (S-31)
     PDF  --pagina_desenhada--> Resultado restaura a página, Galeria acompanha, as caixas voltam
+                               (e, se o cache não sabe da página, o detector roda ao fundo, S-68)
     PDF  --caixa_clicada-->    esta janela decide entre selecionar e ler (`decide_box_click`)
     PDF  --caixa_dispensada--> a caixa sai da página (S-177)
     PDF  --caixa_para_estudo--> o duplo clique leva o diagrama à sala de estudo -- lendo a
@@ -100,7 +101,7 @@ from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import OcrService, RecognitionOptions, RecognizedDiagram
 from chess_diagram_ocr.splits import load_splits
@@ -258,6 +259,9 @@ class JanelaPrincipal(QMainWindow):
 
         O par com a página é o contrato que `recognize_page` cobra de quem passa a lista: ela não
         tem como conferir de que página vieram os candidatos."""
+        self._detector = DeteccaoDeFundo(self)
+        self._detector.achou.connect(self._chegou_a_deteccao_de_fundo)
+        """Marca a página que acabou de aparecer sem trancar nada (S-68). Ver `_detectar_ao_fundo`."""
         self._tarefa: Tarefa | None = None
         """A tarefa em curso. Guardada num atributo porque um `QThread` sem referência viva é
         coletado no meio da execução, e o sintoma é a janela travada esperando um sinal que nunca
@@ -1027,9 +1031,8 @@ class JanelaPrincipal(QMainWindow):
         if self._pdf is not None:
             self._estado.remember_page(self._pdf, pagina)
         self.painel.restaurar_pagina(pagina)
-        self._publicar_caixas(
-            self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
-        )
+        guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
+        self._publicar_caixas(guardadas)
         # A galeria acompanha a página, e ela mesma ignora o aviso quando foi ela quem pediu a
         # virada -- senão as duas se chamariam em círculo (S-67).
         self.galeria.sync_to_page(pagina)
@@ -1038,6 +1041,31 @@ class JanelaPrincipal(QMainWindow):
         self.campo.atualizar()
         self._atualizar_titulo()
         self._dizer_o_que_ha_na_pagina()
+        if guardadas is None:
+            self._detectar_ao_fundo(pagina)
+
+    def _detectar_ao_fundo(self, pagina: int) -> None:
+        """Manda o detector procurar os diagramas desta página, sem trancar nada (S-68).
+
+        **O critério de aceite da S-68 é que os retângulos apareçam antes de qualquer OCR**, e o
+        porte para o Qt só os pedia pelo botão "Marcar diagramas": sem ele, o clique na página
+        não achava caixa nenhuma. Só quando o cache não sabe da página -- uma página de prosa já
+        visitada guarda a resposta vazia, e o detector não a percorre de novo.
+        """
+        pdf, pagina_rgb, teto = self._pdf, self.pdf.page_rgb, DEFAULT_MAX_BOARDS
+        if pdf is None or pagina_rgb is None:
+            return
+        self._detector.pedir(
+            self._chave_do_documento(),
+            pagina,
+            lambda: detect_diagrams_in_pdf_page(pdf, pagina, pagina_rgb, max_boards=teto),
+        )
+
+    def _chegou_a_deteccao_de_fundo(self, documento: str, pagina: int, candidatos: Any) -> None:
+        """De outro livro, o resultado é descartado: o cache é por documento, e o livro que saiu
+        levou o dele. Da página certa ou de uma que já virou, é o mesmo caminho do botão."""
+        if documento == self._chave_do_documento():
+            self._chegaram_candidatos(pagina, candidatos)
 
     # ------------------------------------------------------------------------------ leitura
 
@@ -1233,13 +1261,14 @@ class JanelaPrincipal(QMainWindow):
         return self._candidatos[1]
 
     def _chegaram_candidatos(self, pagina: int, candidatos: Any) -> None:
-        self._candidatos = (pagina, tuple(candidatos))
         caixas = self._caixas_sem_desaprender(pagina, boxes_from_candidates(candidatos))
         self._guardar(caixas)
         if pagina != self.pdf.page_index:
             # A página virou enquanto a detecção corria. As caixas ainda valem -- para **aquela**
-            # página --, então ficam no cache e não vão para a tela.
+            # página --, então ficam no cache e não vão para a tela. Os candidatos também não
+            # ficam: `_candidatos` é da página exibida, e a leitura os passaria como dela.
             return
+        self._candidatos = (pagina, tuple(candidatos))
         self._publicar_caixas(caixas)
         self._dizer_o_que_ha_na_pagina()
 
@@ -1793,6 +1822,7 @@ class JanelaPrincipal(QMainWindow):
         # E o arranjo depois dela, **antes da espera pela tarefa**: uma thread presa não pode
         # custar o último livro, a página e o divisor de quem já mandou fechar (S-156).
         self._gravar_estado()
+        self._detector.parar(ESPERA_AO_FECHAR_MS)
         if self._tarefa is not None and not self._tarefa.wait(ESPERA_AO_FECHAR_MS):
             logger.warning("A janela fechou com uma tarefa ainda em andamento.")
         if a0 is not None:

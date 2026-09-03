@@ -250,8 +250,14 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1832
+    LIMITE = 1862
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.832 → 1.862 com a detecção ao virar a página (S-68)**, que o porte tinha deixado no
+    botão "Marcar diagramas": sem caixa, o duplo clique não acha nada. As trinta são o pedido ao
+    `DeteccaoDeFundo` de `qt/trabalho.py` (`_detectar_ao_fundo`) e a chegada do resultado
+    (`_chegou_a_deteccao_de_fundo`), que cai no mesmo `_chegaram_candidatos` do botão. A fila de
+    um pedido, a thread e a falha silenciosa ficaram lá, e não aqui.
 
     **1.776 → 1.832 com o duplo clique no diagrama**, que o leva à sala de estudo. As cinquenta
     e seis são um `connect`, o método que decide (`_estudar_a_caixa`, pela mesma

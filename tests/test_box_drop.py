@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
@@ -70,7 +71,15 @@ class TirarACaixaTests(unittest.TestCase):
             pasta_da_galeria=self.pasta,
         )
         self.addCleanup(descartar, self.janela)
+        # A página que aparece manda o detector de fundo (S-68), e ele entregaria a resposta
+        # dele -- vazia, numa folha em branco -- **por cima** das caixas que este fixture põe no
+        # cache. O detector é trocado por um que não acha nada e esperado antes de o cache ser
+        # escrito; o que se mede aqui é a remoção, e não a detecção.
+        mock.patch("chess_diagram_ocr.qt.janela.detect_diagrams_in_pdf_page", return_value=[]).start()
+        self.addCleanup(mock.patch.stopall)
         self.janela.abrir_pdf(self.livro)
+        self.app.processEvents()
+        self.janela._detector.parar(5000)
         self.app.processEvents()
 
         # As caixas entram pelo cache, que é por onde a detecção as entrega -- e **com os
