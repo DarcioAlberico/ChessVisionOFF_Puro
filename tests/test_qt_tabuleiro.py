@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 
 import chess
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, renderizar
 
 from chess_diagram_ocr.config import UNCERTAIN_SQUARE_THRESHOLD
 from chess_diagram_ocr.fen_utils import reading_index_from_square
@@ -35,11 +35,6 @@ if TEM_PYQT:
     from chess_diagram_ocr.qt import tema
 
 VAZIO = "8/8/8/8/8/8/8/8"
-
-
-def renderizar(widget: object) -> QImage:
-    """O widget desenhado num `QImage`, para amostrar a cor de um pixel."""
-    return widget.grab().toImage()  # type: ignore[attr-defined]
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

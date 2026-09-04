@@ -13,6 +13,11 @@
 
 Widget de teste não pendura na janela principal do processo pela mesma razão do `quadro()` do
 `ambiente_de_teste`: o pai sobrevive ao módulo, e com ele os sinais ligados.
+
+**E como esta suíte lê o que o Qt desenhou.** `renderizar`, `pixels_diferentes`, `cor_em` e `tinta`
+estão aqui pelo mesmo motivo de `aplicacao()`: são a régua, e uma régua copiada em quatro arquivos
+é quatro réguas. A cor de um estado -- marcado, focado, desabilitado -- só se afirma comparando
+dois desenhos, e sob `offscreen` **não há fonte**: mede-se fundo e traço, nunca glifo.
 """
 
 from __future__ import annotations
@@ -80,6 +85,58 @@ def esperar(janela: Any, *, limite_ms: int = 60_000) -> None:
     QTimer.singleShot(limite_ms, laco.quit)
     laco.exec()
     relogio.stop()
+
+
+def renderizar(widget: Any) -> Any:
+    """O widget desenhado num `QImage`, para amostrar a cor de um pixel."""
+    return widget.grab().toImage()
+
+
+def pixels_diferentes(antes: Any, depois: Any) -> int:
+    """Quantos pixels os dois desenhos têm diferentes. Tamanhos diferentes levantam.
+
+    Levanta em vez de devolver "muitos": dois desenhos de tamanhos diferentes querem dizer que o
+    estado **moveu o layout**, e é o defeito que se está medindo -- não a medição dele.
+    """
+    if antes.size() != depois.size():
+        raise AssertionError(f"o estado mudou o tamanho do widget: {antes.size()} != {depois.size()}")
+    return sum(
+        1
+        for x in range(antes.width())
+        for y in range(antes.height())
+        if antes.pixel(x, y) != depois.pixel(x, y)
+    )
+
+
+def cor_em(imagem: Any, x: int, y: int) -> str:
+    """O pixel `(x, y)` como `#rrggbb`, que é a forma que `ui/tokens.py` fala."""
+    valor = imagem.pixel(x, y)
+    return f"#{(valor >> 16) & 255:02x}{(valor >> 8) & 255:02x}{valor & 255:02x}"
+
+
+def tinta(imagem: Any, fundo: str) -> tuple[str, int]:
+    """A tinta **mais forte** do desenho contra `fundo`, e quantos pixels não são o fundo.
+
+    Mais forte, e não a média: o traço de um ícone de 16 px tem meia dúzia de pixels cheios e o
+    resto é antialiasing, e uma média mede quanta tinta há em vez de qual é a tinta. O que o
+    critério de um ícone apagado precisa saber é se **o traço** apagou.
+
+    A régua é `tokens.razao_de_contraste`, que é a do produto (S-146): uma segunda conta de WCAG
+    escrita aqui poderia discordar da que a paleta usa para se aprovar.
+    """
+    from chess_diagram_ocr.ui import tokens
+
+    forte, razao, quantos = fundo, 0.0, 0
+    for x in range(imagem.width()):
+        for y in range(imagem.height()):
+            cor = cor_em(imagem, x, y)
+            if cor == fundo:
+                continue
+            quantos += 1
+            candidata = tokens.razao_de_contraste(cor, fundo)
+            if candidata > razao:
+                forte, razao = cor, candidata
+    return forte, quantos
 
 
 def descartar(widget: Any) -> None:

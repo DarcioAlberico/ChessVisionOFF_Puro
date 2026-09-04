@@ -50,11 +50,13 @@ _Pintavel = TypeVar("_Pintavel", bound=QWidget)
 mesma razão de `theme.pintar` ser genérica."""
 
 __all__ = [
+    "CONTROLES_COM_ANEL_DE_FOCO",
     "CONTROLES_COM_MOLDURA",
     "ID_DO_SEPARADOR",
     "PROPRIEDADE_DE_PAPEL",
     "RECHEIO_DO_TEMA",
     "altura_de_linha_atual",
+    "anel_de_foco",
     "ao_repintar",
     "aplicar_papel",
     "aplicar_tema",
@@ -325,6 +327,59 @@ fotografias. Declarar a borda é o que faz os dois estilos desenharem o mesmo co
 `QAbstractItemView` alcança lista, árvore e tabela; `QTextEdit`, o `QTextBrowser`. O botão comum e o
 `QGroupBox` já a declaravam (S-520, S-501) -- com o token de documento, que a S-522 trocou."""
 
+CONTROLES_COM_ANEL_DE_FOCO: tuple[str, ...] = ("QPushButton", "QToolButton", *CONTROLES_COM_MOLDURA)
+"""As classes a que a folha declara **anel de foco de teclado** (S-553).
+
+**O defeito medido, e ele é o mesmo nas três peles.** Com o botão focado (`hasFocus()` verdadeiro)
+a barra da sala desenhava **zero pixels** diferentes do não focado -- no primário, no comum e no
+só-ícone. São doze paradas de `Tab` naquela fila, e nenhuma delas se vê. É a WCAG 2.4.7 AA, e é o
+que o ChessBase e o Lichess desenham.
+
+**A causa tem duas metades, e as duas foram medidas.** A folha declara `border: 1px solid
+transparent` no `QToolButton` (para que ligar a cor de um estado não mova o conteúdo, S-527), e uma
+borda de folha de estilo **substitui** o retângulo de foco que o estilo da plataforma desenharia.
+E o `offscreen` da CI não desenharia esse retângulo nem sem folha nenhuma: medido, `QToolButton`,
+`QPushButton`, `QComboBox`, `QCheckBox` e `QListWidget` saem com 0 px de diferença com a folha
+vazia. Ou seja, **não há de quem herdar o anel**: ou a folha o declara, ou ele não existe.
+
+**Todas as oito já têm moldura de 1 px, e é isso que faz o anel não custar layout.** O anel é a
+moldura que já existe trocando de cor -- não `padding` novo, não `border-width` maior: os dois
+moveriam o conteúdo em um pixel, que é o defeito que a moldura transparente do `QToolButton`
+existe para não ter. (`outline` foi medido e **não serve**: com `outline: 1px solid` o
+`QToolButton` continua desenhando 0 px de diferença; o `QPushButton` muda 64. O Qt não o aplica a
+todo controle, e um anel que existe em metade da fila é pior que nenhum.)
+
+**A `QCheckBox` e a `QRadioButton` ficam de fora, e é decisão e não esquecimento.** Elas não têm
+moldura na folha, então o anel exigiria declarar uma -- e a S-522 mediu o que uma propriedade de
+caixa nova faz no `windows11`: o estilo para de pintar o cromo nativo daquele widget. No botão
+isso custou a borda, que a folha repôs; na caixa de seleção o cromo nativo é o **indicador**, que é
+justamente o que se precisa ver. Trocar um anel de foco por uma caixa sem quadradinho seria pagar
+caro demais, e a máquina que rodaria a suíte não tem como ver o estrago (sob `offscreen` o `fusion`
+desenha o indicador com folha e sem folha). Fica com a plataforma, e fica escrito aqui.
+"""
+
+
+def anel_de_foco(*, cromo_escuro: bool = False, sobre_enfase: bool = False) -> str:
+    """A cor do anel de foco daquele controle. **Pura, e não é um papel novo** (S-553).
+
+    É a tinta que o próprio controle já usa: sobre o cromo -- botão comum, botão de ferramenta
+    chato, campo, lista -- `TEXTO_PADRAO`; sobre a face de ênfase, `TEXTO_SOBRE_ENFASE`. As duas
+    são obrigadas a se ler ali de qualquer forma: a primeira é a letra da janela, e a segunda passa
+    `AA_TEXTO` sobre as duas faces por medição da S-444. Um décimo papel em `ui/tokens.py` para
+    dizer "a cor do anel" seria a mesma cor com dois donos, que é o defeito que a S-145 fechou.
+
+    **E é o que separa o anel do marcado, que é o critério do item.** O `QToolButton:checked` se
+    diz por **duas** coisas -- a face funda e uma moldura na cor de ênfase (S-527) --, e o anel usa
+    a letra, que nunca é a cor de ênfase. Os quatro estados ficam distintos aos pares: parado
+    (moldura transparente), marcado (face funda e moldura de ênfase), focado (moldura de letra),
+    marcado e focado (face funda e moldura de letra). O marcado não perde o que o diz, porque o que
+    o diz de verdade é a face; o que o foco toma emprestado é a moldura, que é onde o foco mora em
+    toda interface que o desenha.
+    """
+    papel = tokens.TEXTO_SOBRE_ENFASE if sobre_enfase else tokens.TEXTO_PADRAO
+    return tokens.cor(papel, None, cromo_escuro=cromo_escuro)
+
+
 ID_DO_SEPARADOR = "separador-da-fila"
 """`objectName` do traço entre grupos da fila, que a folha pinta com a moldura do cromo (S-522)."""
 
@@ -550,6 +605,30 @@ def folha_de_estilo(
         f" border-radius: {minima}px; }}",
         f"QGroupBox::title {{ subcontrol-origin: margin; left: {linha}px; padding: 0 {minima}px; }}",
     ]
+
+    # **O anel de foco de teclado, e ele vem por último de propósito** (S-553). Ver
+    # `CONTROLES_COM_ANEL_DE_FOCO` para o defeito medido e para por que `outline` não serve.
+    #
+    # Último porque `QToolButton:focus` e `QToolButton:checked` têm a mesma especificidade -- um
+    # tipo e um pseudo-estado --, e em QSS o empate é desfeito pela ordem. Um botão marcado **e**
+    # focado tem de mostrar o foco: quem está com o teclado precisa saber onde ele está, e o
+    # marcado continua dito pela face funda, que esta regra não toca.
+    #
+    # A moldura é a que já existe trocando de cor -- 1 px, o mesmo de sempre --, e por isso o anel
+    # não desloca um pixel de conteúdo. O seletor com propriedade (`[papel="PRIMARIO"]`) ganha do
+    # seletor de classe por especificidade, então a ordem entre os dois blocos abaixo não importa.
+    regras += [
+        f"{seletor}:focus {{ border: 1px solid {anel_de_foco(cromo_escuro=cromo_escuro)}; }}"
+        for seletor in CONTROLES_COM_ANEL_DE_FOCO
+    ]
+    na_enfase = anel_de_foco(cromo_escuro=cromo_escuro, sobre_enfase=True)
+    regras += [
+        f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:focus {{ border: 1px solid {na_enfase}; }}'
+        for papel, _token in faces
+    ]
+    # O botão de ferramenta só tem face no primário -- o destrutivo ali é cor de letra, e não face
+    # --, então o anel do destrutivo é o do cromo e cai na regra de classe acima.
+    regras.append(f"{ferramenta_primaria}:focus {{ border: 1px solid {na_enfase}; }}")
     return "\n".join(regras)
 
 

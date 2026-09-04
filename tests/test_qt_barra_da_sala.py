@@ -14,10 +14,10 @@ from unittest import mock
 
 import chess
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, pixels_diferentes, renderizar, tinta
 
 from chess_diagram_ocr.games_index import Indexacao
-from chess_diagram_ocr.ui import atalhos, barra_da_sala, comandos
+from chess_diagram_ocr.ui import atalhos, barra_da_sala, comandos, estilos, pele, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry
 
 if TEM_PYQT:
@@ -27,6 +27,7 @@ if TEM_PYQT:
 
     from chess_diagram_ocr.qt import barra_da_sala as qt_barra
     from chess_diagram_ocr.qt import busca_de_partidas as qt_busca
+    from chess_diagram_ocr.qt import icones as qt_icones
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
     from chess_diagram_ocr.qt import tema
 
@@ -467,6 +468,132 @@ class NoPainelTests(unittest.TestCase):
         base.write_text("nada aqui\n", encoding="utf-8")
         self.assertFalse(painel.abrir_partida_da_base(base, 0))
         self.assertIn("Refaça o índice", painel.lbl_status.text())
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class BarraQueSeLeTests(unittest.TestCase):
+    """Os dois bloqueios da segunda rodada do crítico, medidos **nesta** fila (S-553, S-554).
+
+    Eles têm guarda de folha e de ícone em `tests/test_qt_tema.py` e `tests/test_qt_icones.py`; o
+    que só existe aqui é o botão de verdade, com o papel de verdade, nas três peles -- que é onde
+    o crítico fotografou. Onze dos catorze botões desta fila são só-ícone, e é isso que fazia o
+    critério da S-527 ("Variante e Exportar ficam cinza sem estudo") ser vácuo na pele escura.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        anterior = self.app.styleSheet()
+        self.addCleanup(self.app.setStyleSheet, anterior)
+        self.addCleanup(qt_icones.limpar_cache)
+        # A pele fica no módulo (`tema._cromo_escuro`): sem devolvê-la, o próximo teste da
+        # suíte desenha na pele em que este parou. A limpeza roda ao contrário da ordem de
+        # registro, então `aplicar_tema` vem antes de a folha de antes voltar.
+        self.addCleanup(tema.aplicar_tema, self.app)
+        self.barra = qt_barra.BarraDaSala(None, com_motor=True, executar=lambda _nome: None)
+        self.addCleanup(descartar, self.barra)
+        self.barra.resize(self.barra.largura_para_todas(), 40)
+        self.barra.show()
+        self.barra.activateWindow()
+        self.app.processEvents()
+
+    def _so_icone(self) -> str:
+        """Uma ação principal sem texto, com ícone e sem papel de ênfase -- a maioria da fila.
+
+        Escolhida da tabela e não escrita à mão: um nome literal aqui viraria um teste que passa a
+        medir outra coisa no dia em que aquela ação ganhar rótulo.
+        """
+        for registro in barra_da_sala.principais(com_motor=True):
+            if not registro.com_texto and registro.icone and registro.papel == estilos.NEUTRO:
+                return registro.acao
+        raise AssertionError("a fila não tem botão só-ícone: o item mediria outra coisa")
+
+    def _sem_foco(self, botao: object) -> object:
+        """Mostrar a fila dá o foco ao primeiro filho focável -- ver `Foco do Qt vaza entre
+        testes`. Sem este `clearFocus` a fotografia de repouso já vem focada."""
+        botao.clearFocus()  # type: ignore[attr-defined]
+        self.app.processEvents()
+        return renderizar(botao)
+
+    def _com_foco(self, botao: object) -> object:
+        botao.setFocus(Qt.FocusReason.TabFocusReason)  # type: ignore[attr-defined]
+        self.app.processEvents()
+        self.assertTrue(botao.hasFocus(), "o botão da fila não recebeu o foco")  # type: ignore[attr-defined]
+        desenho = renderizar(botao)
+        botao.clearFocus()  # type: ignore[attr-defined]
+        self.app.processEvents()
+        return desenho
+
+    def test_o_foco_se_ve_no_primario_e_no_so_icone_nas_tres_peles(self) -> None:
+        """**O bloqueio 1 do crítico**: `hasFocus()` verdadeiro e **0 px** diferentes, no primário
+        e no só-ícone, nas duas peles que ele fotografou. São doze paradas de `Tab` nesta fila."""
+        so_icone = self._so_icone()
+        for uma in pele.PELES:
+            tema.aplicar_tema(self.app, cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            self.app.processEvents()
+            for nome in ("estudo_do_diagrama", so_icone):
+                botao = self.barra.botao_de(nome)
+                assert botao is not None
+                with self.subTest(pele=uma.nome, acao=nome):
+                    self.assertGreater(
+                        pixels_diferentes(self._sem_foco(botao), self._com_foco(botao)),
+                        0,
+                        "focado e não focado desenham igual",
+                    )
+
+    def test_o_botao_desabilitado_apaga_o_icone_nas_tres_peles(self) -> None:
+        """**O bloqueio 2 do crítico**: na pele "Foco" o só-ícone desabilitado saía idêntico ao
+        habilitado -- 9,47:1 dos dois lados --, porque o `QIcon` gerado pelo Qt **clareia**, e numa
+        paleta escura clarear é destacar.
+
+        **Os três papéis apagam para a mesma tinta**, e essa é a afirmação que vale para os catorze
+        botões: ligado o ícone carrega o papel (letra da ênfase no primário, vermelho no
+        destrutivo), desligado não há papel a carregar.
+
+        **A queda de contraste é cobrada no neutro, e é decisão registrada.** No destrutivo a
+        tinta ligada é `BOTAO_DESTRUTIVO`, que na pele "Foco" já vale 4,89:1 -- menos que os 7,14
+        do cinza --, e ali o que apaga não é o **valor**, é a **matiz**: o vermelho de "isto apaga
+        trabalho" some, e o botão vira um cinza igual aos vizinhos, exatamente como o rótulo dele.
+        Cobrar queda de razão no destrutivo obrigaria a inventar um cinza mais fraco só para ele --
+        uma segunda tinta de desabilitado, que é a divergência que o item veio fechar.
+        """
+        papeis = {}
+        for registro in barra_da_sala.principais(com_motor=True):
+            if registro.icone and registro.papel not in papeis:
+                papeis[registro.papel] = registro.acao
+        self.assertEqual({estilos.PRIMARIO, estilos.NEUTRO, estilos.DESTRUTIVO}, set(papeis))
+        for uma in pele.PELES:
+            tema.aplicar_tema(self.app, cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            qt_icones.limpar_cache()
+            self.barra._pintar_icones()
+            self.app.processEvents()
+            face = tema.cor_atual(tokens.SUPERFICIE_PADRAO)
+            for papel, nome in papeis.items():
+                acao = self.barra.acoes[nome]
+                botao = self.barra.botao_de(nome)
+                assert botao is not None
+                acao.setEnabled(True)
+                self.app.processEvents()
+                ligado = renderizar(botao)
+                acao.setEnabled(False)
+                self.app.processEvents()
+                desligado = renderizar(botao)
+                traco_ligado, quantos = tinta(ligado, face)
+                traco_desligado, _quantos = tinta(desligado, face)
+                com_tinta = tokens.razao_de_contraste(traco_ligado, face)
+                sem_tinta = tokens.razao_de_contraste(traco_desligado, face)
+                with self.subTest(pele=uma.nome, papel=papel, acao=nome):
+                    self.assertGreater(quantos, 0, "o botão saiu sem traço nenhum: nada foi medido")
+                    self.assertGreater(
+                        pixels_diferentes(ligado, desligado), 0, "ligado e desligado desenham igual"
+                    )
+                    self.assertEqual(qt_icones.tinta_apagada(), traco_desligado)
+                    if papel == estilos.NEUTRO:
+                        self.assertLess(
+                            sem_tinta,
+                            com_tinta,
+                            f"a tinta não apagou: {com_tinta:.2f}:1 -> {sem_tinta:.2f}:1",
+                        )
+                acao.setEnabled(True)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

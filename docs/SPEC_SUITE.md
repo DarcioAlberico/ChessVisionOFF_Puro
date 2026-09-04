@@ -1877,13 +1877,260 @@ _Seção a escrever pelo executor do item._
 
 _Seção a escrever pelo executor do item._
 
-## S-553 · O foco de teclado se vê — ◻ em andamento
+## S-553 · O foco de teclado se vê — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-554 · O ícone desabilitado apaga também na pele escura — ◻ em andamento
+**O crítico pôs o foco num botão da barra da sala e fotografou: `hasFocus() == True`, e o desenho
+saiu com `0 px` diferentes do não focado.** No primário, no comum e no só-ícone, nas duas peles que
+ele mediu (`fotos/crit_r2/foco/foco.txt`; as fotos são
+`classica_estudo_do_diagrama_foco.png` × `_semfoco.png` e as duas irmãs). São **12 paradas de
+`Tab`** naquela fila -- os cinco `QToolButton`, o tabuleiro, os quatro botões de navegação, o campo
+e o texto --, e nenhuma delas dizia onde o teclado estava. É a WCAG 2.4.7 AA; o ChessBase e o
+Lichess desenham anel de foco.
 
-_Seção a escrever pelo executor do item._
+**A causa tem duas metades, e as duas foram medidas.** A primeira está em
+`qt/tema.py:450` (antes deste item): `QToolButton { … border: 1px solid transparent; … }` -- a
+moldura transparente que a S-527 pôs ali para que ligar a cor de um estado não movesse o conteúdo.
+Uma borda vinda de folha de estilo **substitui** o retângulo de foco que o estilo da plataforma
+desenharia, e nenhuma regra `:focus` existia no arquivo inteiro (a busca por `:focus` em
+`qt/tema.py` devolvia zero linhas).
+
+A segunda metade é que **não havia de quem herdar o anel**. Medido aqui sob `offscreen`, com a
+folha vazia: `QToolButton`, `QPushButton`, `QComboBox`, `QCheckBox` e `QListWidget` saem com `0 px`
+de diferença entre focado e não focado; só o `QLineEdit` (436 px) e o `QSpinBox` (550 px) desenham
+alguma coisa, e é o quadro de destaque do `fusion`. Com a folha do produto até esses dois caem para
+12 px (o cursor de texto piscando) e 136 px. Ou seja: a folha apaga o pouco que havia, e onde não
+havia nada ela não tinha o que apagar.
+
+### Solução
+
+**Uma regra `:focus` por classe, e o anel é a moldura que já existe trocando de cor.**
+`tema.CONTROLES_COM_ANEL_DE_FOCO` são as oito classes que a folha já desenha com 1 px de borda --
+`QPushButton`, `QToolButton` e as seis de `CONTROLES_COM_MOLDURA` (S-522) --, e é justamente por
+já terem a moldura que o anel **não custa um pixel de layout**: nem `padding` novo, nem
+`border-width` maior, que moveriam o conteúdo a cada `Tab`.
+
+**`outline` foi medido e não serve.** Com `outline: 1px solid` (com e sem `outline-offset`) o
+`QToolButton` continua desenhando **0 px** de diferença; o `QPushButton` muda 64. O Qt não o aplica
+a todo controle, e um anel que existe em metade da fila é pior que nenhum -- quem usa o teclado
+aprende a não procurá-lo.
+
+**A cor do anel é a letra que já se lê sobre aquela face** (`tema.anel_de_foco`, pura). Sobre o
+cromo -- botão comum, botão de ferramenta chato, campo, lista -- é `TEXTO_PADRAO`; sobre a face de
+ênfase -- primário e destrutivo -- é `TEXTO_SOBRE_ENFASE`. Nenhum papel novo em `ui/tokens.py`: as
+duas tintas já são obrigadas a se ler ali (a segunda passa `AA_TEXTO` sobre as duas faces por
+medição da S-444), e um décimo papel para dizer "a cor do anel" seria a mesma cor com dois donos --
+o defeito que a S-145 fechou.
+
+**Como o anel se distingue do marcado, que é a decisão que o item tinha de tomar.** O
+`QToolButton:checked` se diz por **duas** coisas (S-527): a face funda e uma moldura na cor de
+ênfase. O anel usa a letra, que **nunca** é a cor de ênfase -- e a regra `:focus` vem por último na
+folha de propósito, porque `QToolButton:focus` e `QToolButton:checked` têm a mesma especificidade e
+em QSS o empate é desfeito pela ordem. Resultado: o marcado e focado mostra o foco na moldura e
+continua dito pela face, que a regra do foco não toca. Os quatro estados do interruptor ficam
+distintos aos pares, e é isso que o teste mede.
+
+**A `QCheckBox` e a `QRadioButton` ficam de fora, e é decisão registrada.** Elas não têm moldura na
+folha, então o anel exigiria declarar uma -- e a S-522 mediu o que uma propriedade de caixa nova
+faz no `windows11`: o estilo para de pintar o cromo nativo daquele widget. No botão isso custou a
+borda, que a folha repôs; na caixa de seleção o cromo nativo é o **indicador**, que é o que se
+precisa ver. Trocar um anel por uma caixa sem quadradinho seria caro demais, e esta máquina não tem
+como fotografar o estrago (sob `offscreen` o `fusion` desenha o indicador com folha e sem folha). O
+motivo está escrito em `CONTROLES_COM_ANEL_DE_FOCO`.
+
+### Critério de aceite
+
+**Antes → depois, pixels diferentes entre focado e não focado**, no mesmo botão, sob `offscreen`
+(botão de 48×28, folha do produto aplicada):
+
+| pele | só-ícone | primário | comum (`QPushButton`) |
+|---|---|---|---|
+| Clássica | **0 → 132** | **0 → 132** | **0 → 132** |
+| Foco | **0 → 132** | **0 → 132** | **0 → 132** |
+| Fita (compacta) | **0 → 128** | **0 → 128** | **0 → 128** |
+
+**E o resto do elenco, no mesmo desenho:** `QComboBox` 0 → 218, `QLineEdit` 12 → 232, `QSpinBox`
+136 → 356, `QListWidget` 0 → 216, `QTextEdit` e `QPlainTextEdit` 12 → 228. `QCheckBox`,
+`QRadioButton` e `QTabWidget` continuam em 0, pelo motivo acima.
+
+**Refeito na janela de verdade**, no `windows11`, a 1400×950, nos botões que o crítico fotografou
+(`scratchpad/fotos/exec_s553_s554/`): `estudo_do_diagrama` (primário, com texto) **0 → 362 px**,
+`promover_variante` (só-ícone) **0 → 116 px**, `modo_treino` (interruptor só-ícone) **0 → 232 px**
+na clássica e na "Foco"; 342, 104 e 212 na fita, que é compacta.
+
+**O anel se vê contra toda face em que é desenhado** (razão WCAG, piso `AA_GRAFICO` = 3,0):
+
+| pele | anel | superfície | botão parado | marcado | primário | destrutivo |
+|---|---|---|---|---|---|---|
+| Clássica e Fita | `#000000` / `#ffffff` na ênfase | 18,43 | 16,21 | 10,36 | 6,44 | 8,79 |
+| Foco | `#e9eaec` / `#141013` na ênfase | 13,41 | 11,47 | 6,61 | 7,81 | 5,71 |
+
+**E não é a cor que diz "marcado"**: o anel é a letra e a moldura do marcado é `BOTAO_PRIMARIO` --
+`#000000` contra `#0a58ca` na clássica, `#e9eaec` contra `#6ea8fe` na "Foco". Duas cores diferentes
+sobre duas faces diferentes; os quatro estados do interruptor (parado, marcado, focado, marcado e
+focado) desenham diferente dois a dois, medido.
+
+**O layout não se move**: `pixels_diferentes` levanta quando os dois desenhos têm tamanhos
+diferentes, e toda regra `:focus` da folha é conferida por expressão regular contra
+`^border: 1px solid #rrggbb; \}$` -- nada de `padding`, nada de largura nova.
+
+### Testes
+
+- `tests/test_qt_tema.py::AnelDeFocoTests` -- as oito classes declaram o anel nas três peles; a
+  regra é só a moldura de 1 px (o teste recusa `padding` e largura nova); o anel passa
+  `AA_GRAFICO` contra as quatro faces; ele nunca é a cor de ênfase; **focado desenha diferente de
+  não focado** no só-ícone, no primário e no comum, nas três peles; e os quatro estados do
+  interruptor são distintos aos pares.
+- `tests/test_qt_barra_da_sala.py::BarraQueSeLeTests::test_o_foco_se_ve_no_primario_e_no_so_icone_nas_tres_peles`
+  -- o mesmo, na fila de verdade, com o papel de verdade, no botão que o crítico fotografou. O
+  botão só-ícone é escolhido da tabela (`principais` sem `com_texto`, com ícone, papel neutro) e
+  não escrito à mão: um nome literal viraria um teste que mede outra coisa no dia em que aquela
+  ação ganhar rótulo.
+- `tests/qt_app.py` ganhou `renderizar`, `pixels_diferentes`, `cor_em` e `tinta` -- a régua num
+  lugar só, pela razão de `aplicacao()`. `tests/test_qt_tabuleiro.py` passou a importar
+  `renderizar` de lá em vez de declarar o seu.
+
+**A armadilha que custou a primeira versão do teste**: mostrar o quadro dá o foco ao primeiro filho
+focável, e a fotografia "de repouso" saía já focada -- `0 px` de diferença, verde no defeito e
+verde na correção. `_sem_foco` chama `clearFocus` e **afirma** que o botão o largou. É a memória
+`Foco do Qt vaza entre testes` cobrada por asserção.
+
+### O que ficou de fora
+
+- **`QCheckBox`, `QRadioButton` e `QTabBar::tab`**, pelo motivo escrito acima: o anel delas
+  exigiria uma propriedade de caixa nova, e a S-522 mediu o que isso custa no `windows11`.
+- **A espessura.** O anel é de 1 px porque é a moldura que já existe; 2 px exigiriam devolver um
+  pixel de `padding` em cada um dos três seletores que declaram recheio de botão, e o recheio é
+  derivado da fonte e da densidade (`_escalado`) -- seria uma segunda conta para manter.
+- **Nada foi medido no `windows11`.** A correção é uma regra de folha, que os dois estilos leem
+  igual; o que só a máquina de quem usa pode dizer é se o anel de 1 px é bastante para o olho.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-554 · O ícone desabilitado apaga também na pele escura — ✅ **implementada em 2026-09-04**
+
+### Problema
+
+**Na pele "Foco" o botão só com ícone desabilitado saía idêntico ao habilitado.** O crítico mediu a
+tinta contra a face nos dois estados de `promover_variante` (`fotos/crit_r2/desab/desab.txt`, fotos
+`foco_promover_on|off.png`): luminância média do traço **0,5659 nos dois**, **39 pixels de traço
+nos dois**, razão WCAG **9,47 ligado e 9,47 desligado**. Na clássica funcionava -- 5,65 contra
+3,23, com 39 e 38 pixels --, e é por isso que ninguém tinha visto.
+
+**A consequência é um critério de aceite vácuo.** **Onze dos catorze** botões da fila da sala são
+só-ícone, e o critério da S-527 -- *"Variante e Exportar ficam cinza sem estudo"* -- é sobre
+exatamente esses. Numa das três peles ele não media nada.
+
+**A causa: quem apagava o ícone era o Qt, e o Qt apaga clareando.**
+`qt/tema.py:538` declara `QToolButton:disabled { color: … }` (e `:440` o do botão comum), e `color`
+vale para o **texto**. O desenho vem do `QIcon`, e `qt/icones.py:91` registrava um pixmap só --
+`addPixmap(desenho, QIcon.Mode.Normal, QIcon.State.Off)`. Um `QIcon` sem pixmap para
+`QIcon.Mode.Disabled` manda o estilo gerar um: `QCommonStyle` remapeia os tons contra a `QPalette`
+e desloca para o claro. Numa paleta clara, clarear é apagar; **numa escura, clarear é destacar**.
+Reproduzido aqui sob `offscreen`, tinta mais forte contra a face: na "Foco" ela **subia** de 13,41
+para 14,03 ao desabilitar.
+
+E não é defeito da barra da sala: `qt/barra_da_sala.py:225` (`_pintar_icones`) já pinta o ícone na
+cor do papel e o repinta na troca de pele -- ele faz o certo para o estado **ligado**. O que
+faltava era o estado desligado existir como desenho.
+
+### Solução
+
+**O ícone desabilitado passa a ser desenhado, e não gerado.** `qt_icones.icone()` registra um
+segundo pixmap para `QIcon.Mode.Disabled`, do mesmo traço, na cor que `PAPEL_APAGADO`
+(`tokens.TEXTO_SECUNDARIO`) resolve contra a pele em uso -- que é **exatamente** a cor com que
+`QToolButton:disabled` e `QPushButton:disabled` já pintam a letra ao lado. Ícone e rótulo apagam
+juntos porque apagam pela **mesma** decisão, e não por duas que hoje concordam.
+
+**A decisão é perguntada ao tema e não recebida do chamador** (`qt_icones.tinta_apagada`). Ligado,
+o ícone carrega o papel do botão -- o primário desenha na letra da ênfase, o destrutivo no vermelho
+--, e é o chamador quem sabe disso; desligado não há papel a carregar, a folha pinta os três com a
+mesma tinta, e quatro chamadores repetindo a escolha seria o primeiro deles a esquecê-la.
+
+**Vale para a janela inteira, e é por isso que mora em `qt/icones.py`.** Os quatro lugares que
+põem ícone em botão passam por esta função: a barra da sala (`qt/barra_da_sala.py:223`), a fila
+(`qt/fila.py:88`), a fita (`qt/fita.py:316`) e a navegação da sala de estudo
+(`qt/painel_de_estudo.py:277`). Nenhum deles precisou mudar.
+
+**A tinta apagada entra na chave do cache.** Ela vem da pele, e dois desenhos do mesmo traço na
+mesma cor de traço podem apagar para cinzas diferentes; devolver o guardado daria um ícone que
+apaga na cor da pele anterior. E um traço que não se consiga desenhar continua servindo: o `QIcon`
+sai só com o pixmap ligado, e o Qt gera o dele -- que é o estado de antes deste item, e não uma
+exceção (regra 4 da `SPEC_APARENCIA`).
+
+### Critério de aceite
+
+**Razão WCAG da tinta mais forte do traço contra a face do botão**, no botão só-ícone da fila, sob
+`offscreen`. "Antes" é o `QIcon` gerado pelo Qt; "depois" é o pixmap próprio:
+
+| pele | ligado | desligado **antes** | desligado **depois** |
+|---|---|---|---|
+| Clássica | 18,43 | 5,60 | **6,54** |
+| Foco | 13,41 | **14,03** *(sobe)* | **7,14** |
+| Fita | 18,43 | 5,60 | **6,54** |
+
+A coluna que importa é a do meio: na "Foco" o desligado tinha **mais** contraste que o ligado, e é
+o defeito inteiro. Depois, a tinta cai nas três peles -- e cai para o valor exato de
+`TEXTO_SECUNDARIO` resolvido naquela pele (`#555555` a 6,54:1 na clara, `#a7adb6` a 7,14:1 na
+escura), que é a letra que a folha desenha ao lado.
+
+**Refeito na janela de verdade** (`windows11`, 1400×950, `scratchpad/fotos/exec_s553_s554/`), no
+`promover_variante` que o crítico fotografou: a tinta mais forte sai de `#000000` a 18,43:1 para
+`#555555` a **6,54:1** na clássica e na fita, e de `#e9eaec` a 13,41:1 para `#a7adb6` a **7,14:1**
+na "Foco" -- 69 pixels diferentes entre ligado e desligado, onde antes a razão não se movia.
+
+**Os três papéis apagam para a mesma tinta**, medido nos três botões da fila que os carregam
+(`estudo_do_diagrama`, `seguir_ocr`, `apagar_variante`), nas três peles: a tinta desligada é
+**sempre** `tinta_apagada()`. O primário é o que mais muda -- a face de ênfase vira a superfície, e
+os pixels de tinta caem de 8.265 para 1.291.
+
+**E há uma exceção de leitura, que fica registrada.** No **destrutivo** o que apaga não é o valor,
+é a **matiz**: `BOTAO_DESTRUTIVO` na pele "Foco" já vale 4,89:1 contra a superfície, menos que os
+7,14 do cinza, então a razão *sobe* ao desabilitar (na clássica ela cai, 7,72 → 6,54). O que o olho
+lê ali é o vermelho de "isto apaga trabalho" sumindo e o botão virando um cinza igual aos vizinhos
+-- exatamente o que o rótulo dele faz, pela mesma regra da folha. Cobrar queda de razão no
+destrutivo obrigaria a inventar um cinza mais fraco só para ele: uma segunda tinta de desabilitado,
+que é a divergência que este item veio fechar. A queda de razão é cobrada no **neutro**, que é o
+papel de onze dos catorze botões, e a igualdade de tinta é cobrada nos três.
+
+**E o desenho muda**: ligado e desligado deixam de ser o mesmo pixmap (`pixmap(…, Mode.Disabled)`
+difere de `pixmap(…, Mode.Normal)`), e o botão renderizado difere em pixels nas três peles e nos
+três papéis.
+
+### Testes
+
+- `tests/test_qt_icones.py::IconeDesabilitadoTests` (arquivo novo -- `qt/icones.py` não tinha
+  teste próprio): o `QIcon` leva o desenho desligado junto; **a tinta apagada é a mesma que a folha
+  dá à letra** de `QToolButton:disabled` e `QPushButton:disabled`, nas três peles; o botão só-ícone
+  renderizado apaga nas três peles (pixels mudam **e** a razão da tinta cai, e a tinta desligada é
+  exatamente a de `PAPEL_APAGADO`); a pele faz parte da chave do cache; e nome desconhecido
+  continua devolvendo `None`.
+- `tests/test_qt_barra_da_sala.py::BarraQueSeLeTests::test_o_botao_desabilitado_apaga_o_icone_nas_tres_peles`
+  -- o mesmo na fila de verdade, com a ação desabilitada pelo caminho normal
+  (`QAction.setEnabled`), nos **três** papéis: a tinta desligada é a mesma nos três, e a queda de
+  razão é cobrada no neutro (ver a exceção do destrutivo, acima). O teste também afirma que a fila
+  ainda tem um botão de cada papel -- sem isso ele passaria a medir dois papéis em silêncio.
+- A régua da tinta é `qt_app.tinta`, e ela usa `tokens.razao_de_contraste` -- a do produto (S-146).
+  Uma segunda conta de WCAG escrita no teste poderia discordar da que a paleta usa para se aprovar.
+  Ela mede a tinta **mais forte** e não a média: o traço de um ícone de 16 px tem meia dúzia de
+  pixels cheios e o resto é antialiasing, e uma média mede quanta tinta há em vez de qual é a tinta.
+
+### O que ficou de fora
+
+- **`QIcon.Mode.Active` e `QIcon.Mode.Selected`** continuam com o desenho que o Qt gera. O item é o
+  desabilitado, que é o que carrega significado ("esta ação não existe agora"); o ícone sob o
+  ponteiro já muda pela face que `QToolButton:hover` pinta.
+- **O `QIcon` só declara `State.Off`**, como antes. O botão marcado usa o mesmo traço, e o `Qt`
+  resolve a falta de `State.On` caindo no que existe -- comportamento de sempre, não tocado aqui.
+- **A letra desabilitada não mudou de cor.** Ela já era `TEXTO_SECUNDARIO` desde a S-506/S-520; o
+  que faltava era o ícone concordar com ela.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-580 · O fim da faixa reservada — não é item
 

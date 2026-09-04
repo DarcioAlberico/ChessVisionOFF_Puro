@@ -18,6 +18,8 @@ janela de abrir (regra 4 da SPEC_APARENCIA).
 viva para o Tk não recolher a imagem, e aquele cache saiu com o Tk. Um `QIcon` não tem esse
 problema, mas tem o outro -- redesenhar catorze polígonos em supersample a cada remontagem de fita
 é trabalho repetido por gesto de janela --, e a chave continua sendo `(nome, tamanho, cor)`.
+
+**O ícone desabilitado é desenhado aqui, e não gerado pelo Qt** (S-554). Ver `PAPEL_APAGADO`.
 """
 
 from __future__ import annotations
@@ -27,13 +29,43 @@ import logging
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QIcon, QImage, QPixmap
 
-from chess_diagram_ocr.ui import degradacao, icones
+from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.ui import degradacao, icones, tokens
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["cache_de_icones", "icone", "limpar_cache", "pixmap"]
+__all__ = ["PAPEL_APAGADO", "cache_de_icones", "icone", "limpar_cache", "pixmap", "tinta_apagada"]
 
-_cache: dict[tuple[str, int, str, float], QIcon] = {}
+PAPEL_APAGADO = tokens.TEXTO_SECUNDARIO
+"""O papel da tinta de um ícone **desabilitado** -- e é o mesmo com que a folha pinta a letra dele
+(S-554).
+
+**O defeito, medido pelo crítico na janela de verdade em 2026-09-04.** Na pele "Foco" o botão só
+com ícone desabilitado saía **idêntico** ao habilitado: razão de contraste da tinta contra a face
+**9,47 ligado e 9,47 desligado**, com a mesma contagem de pixels de traço (39 e 39). Onze dos
+catorze botões da barra da sala são só-ícone, então o critério de aceite da S-527 -- *"Variante e
+Exportar ficam cinza sem estudo"* -- era **vácuo** naquela pele. Na clássica funcionava (5,65
+contra 3,23), e é isso que fazia o defeito passar despercebido.
+
+**A causa: quem apagava o ícone era o Qt, e ele apaga clareando.** `QToolButton:disabled` da folha
+só declara `color:`, que vale para o **texto**; o desenho vem do `QIcon`, e um `QIcon` que não
+tenha pixmap para `QIcon.Mode.Disabled` manda o estilo gerar um -- `QCommonStyle` remapeia os tons
+contra a `QPalette` e desloca para o claro. Numa paleta clara, clarear é apagar; numa escura,
+**clarear é destacar**. Medido aqui sob `offscreen`, na pele "Foco": a razão máxima da tinta
+**subia** de 13,41 para 14,03 ao desabilitar.
+
+**A saída é desenhar o estado, e não deixar o toolkit adivinhá-lo.** `icone()` registra um segundo
+pixmap para `QIcon.Mode.Disabled`, na cor que este papel resolve contra a pele em uso -- que é
+**exatamente** a que `QToolButton:disabled` e `QPushButton:disabled` já dão à letra ao lado
+(`TEXTO_SECUNDARIO`). Ícone e rótulo apagam juntos porque apagam pela mesma decisão, e não por duas
+que por enquanto concordam.
+
+**Vale para toda a janela**, e é por isso que mora aqui e não na barra da sala: os quatro lugares
+que desenham ícone em botão -- a barra da sala, a fila, a fita e a navegação da sala de estudo --
+passam por esta função, e um segundo caminho seria a divergência que este módulo existe para não
+ter."""
+
+_cache: dict[tuple[str, int, str, str, float], QIcon] = {}
 
 
 def pixmap(nome: str, tamanho: int, cor: str) -> QPixmap | None:
@@ -63,8 +95,20 @@ def pixmap(nome: str, tamanho: int, cor: str) -> QPixmap | None:
     return QPixmap.fromImage(imagem)
 
 
+def tinta_apagada() -> str:
+    """A cor de um ícone desabilitado na pele **em uso**. Ver `PAPEL_APAGADO`.
+
+    Pergunta ao tema em vez de receber por parâmetro porque a resposta não depende do chamador:
+    ligado, o ícone carrega o papel do botão (o primário desenha na letra da ênfase, o destrutivo
+    no vermelho); desligado, não há papel a carregar -- a folha pinta os três com a mesma tinta, e
+    quatro chamadores repetindo essa decisão seria o primeiro deles a esquecê-la.
+    """
+    return tema.cor_atual(PAPEL_APAGADO)
+
+
 def icone(nome: str, tamanho: int, cor: str, *, escala: float = 1.0) -> QIcon | None:
-    """O ícone pronto para um `QAbstractButton`. `None` se o nome não existe.
+    """O ícone pronto para um `QAbstractButton`, nos estados ligado e desligado. `None` se o nome
+    não existe.
 
     **O `QIcon` guarda o pixmap no tamanho pedido e não deixa o Qt reescalar.** Um `QIcon` vazio
     a que se pede um tamanho que ele não tem devolve o mais próximo esticado, e o traço de
@@ -76,19 +120,31 @@ def icone(nome: str, tamanho: int, cor: str, *, escala: float = 1.0) -> QIcon | 
     sem nenhum pixel forte. O desenho é feito **no tamanho em que vai ser mostrado**; `escala` é o
     `devicePixelRatio` da tela, e só numa tela de alta densidade (`> 1`) o pixmap nasce maior, já
     marcado com a razão para o Qt o desenhar no tamanho lógico pedido.
+
+    **O desabilitado é um segundo desenho, e não uma conversão do primeiro** (S-554): ver
+    `PAPEL_APAGADO`. A tinta dele entra na chave do cache porque ela vem da pele -- dois desenhos
+    do mesmo traço na mesma cor de traço podem apagar para cinzas diferentes.
+
+    Um ícone sem o pixmap apagado continua servindo: o Qt gera o dele, que é o estado de antes
+    deste item. É a regra 4 outra vez -- desenho que falta não pode impedir o botão de existir.
     """
     escala = max(1.0, float(escala))
-    chave = (nome, max(1, int(tamanho)), cor, round(escala, 2))
+    apagada = tinta_apagada()
+    chave = (nome, max(1, int(tamanho)), cor, apagada, round(escala, 2))
     guardado = _cache.get(chave)
     if guardado is not None:
         return guardado
-    desenho = pixmap(nome, round(chave[1] * escala), cor)
+    lado = round(chave[1] * escala)
+    desenho = pixmap(nome, lado, cor)
     if desenho is None:
         return None
-    if escala != 1.0:
-        desenho.setDevicePixelRatio(escala)
     pronto = QIcon()
-    pronto.addPixmap(desenho, QIcon.Mode.Normal, QIcon.State.Off)
+    for modo, traco in ((QIcon.Mode.Normal, desenho), (QIcon.Mode.Disabled, pixmap(nome, lado, apagada))):
+        if traco is None:
+            continue
+        if escala != 1.0:
+            traco.setDevicePixelRatio(escala)
+        pronto.addPixmap(traco, modo, QIcon.State.Off)
     _cache[chave] = pronto
     return pronto
 
