@@ -1192,6 +1192,14 @@ _Seção a escrever pelo executor do item._
 
 _Seção a escrever pelo executor do item._
 
+## S-553 · O foco de teclado se vê — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-554 · O ícone desabilitado apaga também na pele escura — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
 ## S-580 · O fim da faixa reservada — não é item
 
 A mensagem do commit `eb3ba71` cita a faixa "S-527 a S-580", e a guarda `test_todo_item_entregue_tem_secao_em_algum_doc` lê

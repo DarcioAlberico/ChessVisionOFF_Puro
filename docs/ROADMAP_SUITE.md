@@ -58,6 +58,8 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 - **S-530** · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável
 - **S-551** · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move (achado do crítico do S-527: ~230 px vazios sob o tabuleiro a 1400×950)
 - **S-552** · A janela cabe em 1024 px de largura (achado do crítico do S-527: pedida a 1000×800, a janela fica em 1245×902)
+- **S-553** · O foco de teclado se vê (achado do crítico do S-527, rodada 2: `hasFocus()` desenha 0 px diferentes nos 12 pontos de parada da barra)
+- **S-554** · O ícone desabilitado apaga também na pele escura (achado do crítico do S-527, rodada 2: razão 9,47 habilitado contra 9,82 desabilitado -- o desligado é mais claro)
 
 ## Fase 81 — a base de partidas de vários gigabytes
 
