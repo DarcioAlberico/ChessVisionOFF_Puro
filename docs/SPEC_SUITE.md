@@ -50,11 +50,12 @@ contínua"; "Dobrar" escapava porque deriva o estado da lista de dobradas.
 
 ### Solução
 
-**Uma decisão pura, `ui/barra_da_sala.py`.** A tabela `ACOES`: trinta ações (os 28 comandos de
-`COMANDOS_DA_ABA` menos os quatro de navegação da S-517, mais o interruptor `SEGUIR_OCR` e o
-agrupador `EXPORTAR_ESTUDO`), cada uma com **grupo por tarefa** (Posição, Variante, Livro, Base,
-Motor, Exportar, Treino), nome do ícone, se é **principal** ou vai para o "Mais", **prioridade**
-entre as principais, se é interruptor, e a explicação da dica. Rótulo curto, rótulo longo, papel e
+**Uma decisão pura, `ui/barra_da_sala.py`.** A tabela `ACOES`: trinta e uma ações desde a segunda
+rodada (os 29 comandos de `COMANDOS_DA_ABA` menos os quatro de navegação da S-517 -- o vigésimo
+nono é `indexar_base` --, mais o interruptor `SEGUIR_OCR` e o agrupador `EXPORTAR_ESTUDO`), cada
+uma com **grupo por tarefa** (Posição, Variante, Livro, Base, Motor, Exportar, Treino), nome do
+ícone, se é **principal** ou vai para o "Mais", **prioridade** entre as principais, se escreve o
+texto ao lado do ícone (`com_texto`), se é interruptor, e a explicação da dica. Rótulo curto, rótulo longo, papel e
 tecla **não são reescritos**: vêm de `comandos` e `atalhos`; só o que o catálogo não tem ("Seguir
 OCR", "Exportar", "Mais") declara texto ali, uma vez. Três funções puras: `modo(vazio, treinando)` →
 `grupos_desligados(modo)` (sem estudo: Variante e Exportar cinza; treinando: Variante cinza);
@@ -97,17 +98,63 @@ papel chega ao `QToolButton` por regras novas em `qt/tema.py`: primário com fac
 cor (letra e traço em `BOTAO_DESTRUTIVO`; dois blocos vermelhos sólidos numa fila chata pediriam
 cuidado o tempo todo), e `:disabled` cinza, pela mesma razão do botão comum.
 
+**Segunda rodada (2026-09-04, depois do crítico -- ver a tabela abaixo).** Cinco decisões, todas
+na tabela pura ou na folha, nenhuma no painel:
+
+1. **Dois níveis de botão** (`Acao.com_texto`): ícone e texto para o primário, o interruptor do
+   treino e o salvar; **só ícone** para os outros onze, com o rótulo e a tecla na primeira linha da
+   dica (`Promover a variante um nível · Ctrl+↑`, `SEPARADOR_DA_TECLA`). O nível chega à folha por
+   `tema.PROPRIEDADE_DE_NIVEL`, e o de ícone tem recheio horizontal de 4 px em vez de 10 -- medido:
+   com 10 cabiam oito a 702 px, com 5 dez, com 4 onze. "Salvar PGN" virou "Salvar" (o disquete e a
+   dica dizem o formato): eram os 26 px que faltavam para as catorze caberem na aba de 804 px.
+2. **Prioridades refeitas pela frequência**: 1 carregar, 2 seguir, **3 treinar** (marcado enquanto
+   treina, com `QToolButton:checked` na folha -- face funda e moldura na cor de ênfase), **4 o par
+   Promover/Rebaixar** (mesma prioridade = bloco em `cabem`: entram e saem juntos), 5 apagar, 6
+   símbolo, 7 salvar, 8 exportar, 9 posição inicial, 10 dobrar, 11 recorte, 12 partidas, 13 linha do
+   livro, 14 análise contínua. O "Mais" vem **logo depois do último botão**, com o vão à direita.
+   E o texto que cresce ("Parar o treino") agenda um rearranjo pelo `changed` da ação: sem isso o
+   layout espremia o primário (fotografado elidido).
+3. **O cabeçalho do "Mais"** é um item desabilitado em negrito por grupo (`PROPRIEDADE_DE_CABECALHO`),
+   e não `addSection`, que no `windows11` desenha só a linha. Os itens que transbordaram saem por
+   extenso, como os que nunca tiveram botão -- a `QAction` de um botão só com ícone não escreve o
+   rótulo curto em lugar nenhum.
+4. **O ícone é desenhado a 16 px**, com traço mínimo de 2 px (`icones.TRACO_MINIMO`) e "simbolo" e
+   "mais" redesenhados como quadradinhos cheios; `qt_icones.icone(..., escala=devicePixelRatioF())`
+   só nasce maior em tela de alta densidade. A barra se registra em `tema.ao_repintar` e repinta na
+   troca de pele. O chevron do "Mais" vai para a linha do texto (`::menu-indicator` em `qt/tema.py`).
+5. **As teclas da sala** (`atalhos.TECLAS_DA_SALA`, terceira tabela): `Ctrl+↑` promove, `Ctrl+↓`
+   rebaixa, `Ctrl+Del` apaga a variante, `Ctrl+M` abre o símbolo. Setas com o modificador para
+   subir/descer a variante (o par que o ChessBase mostra no menu da notação); `Ctrl+Del` como o `Del`
+   da casa, com o alvo maior; `Ctrl+M` é decisão nossa -- o ChessBase não tem tecla para o menu de
+   símbolos, o símbolo se digita. Ligadas na `QAction` com alcance no painel da sala: desabilitada
+   não dispara, então treinando `Ctrl+↑` não faz nada. `acelerador`/`atalho_de` mostram a tecla na
+   dica, no menu Estudo (só mostrada) e na legenda; `acao_de` -- o que a guarda de foco lê -- não
+   responde por elas.
+
+E a **fiação pendente da S-532**: `indexar_base` entrou no catálogo (menu Estudo), em
+`COMANDOS_DA_ABA` e na barra (grupo Base, no "Mais", traço "indexar"); `PainelDeEstudo.indexar_base`
+chama `indice_da_base.indexar_com_dialogo(self.window(), bases, busy=...)` com as bases da sala ou
+`database_paths()`, e liga `terminou` a `set_status(frase_final(...))` -- que é o rodapé da aba e o
+da janela. O `busy` é o da janela (`PainelDeEstudo(busy=...)`, com `window().busy` como reserva para
+não crescer `qt/janela.py`). A caixa "Partidas da base" (`qt/dialogos.py`) deixou de mandar rodar
+`cvoff-games --build-index`: oferece "Indexar agora" e chama o mesmo indexador.
+
 ### Critério de aceite
 
 - A barra do topo é **uma fila** em qualquer largura. ✅ **Medido a 1400×950: 154 px → 38 px**
   acima do divisor (−116 px, 75%); a fila tem 32 px. O tabuleiro foi de 442 para 450 px de lado --
   nesta janela ele é limitado pela **largura** da coluna (484 px), não pela altura, e o que a barra
   devolveu vira coluna livre sob o tabuleiro; ao arrastar o divisor para a direita, a altura deixa de
-  ser o teto. Na fila cabem, a 714 px: Carregar OCR atual · Seguir OCR | Promover · Apagar variante
-  · Símbolo | Mais ▾. Os outros nove principais estão no "Mais"; a 900 px de aba são oito na fila,
-  a 1200 onze, e os catorze (quinze com motor) só a partir de 1.647 px -- a soma das larguras
-  medidas, que é o que `largura_para_todas()` devolve. Remedido em 2026-09-04 depois da correção
-  do mínimo (abaixo): os mesmos 38 px, 32 px e 450 px.
+  ser o teto. **Quem cabe, remedido na segunda rodada (2026-09-04, pele clássica, roteiro do
+  crítico):** a 1400×950 a aba Estudo tem 720 px e a barra 702; cabem **onze** das catorze
+  principais -- Carregar OCR atual · Seguir OCR · Posição inicial | Promover · Rebaixar · Apagar
+  variante · Símbolo · Dobrar | Salvar · Exportar ▾ | Treinar | Mais ▾ -- e Recorte, Linha do livro
+  e Partidas estão no "Mais". Treinando, o botão vira "Parar o treino" (+35 px) e Dobrar cede a vez:
+  dez. A 1600×1080 (barra 733) são doze; a 1920×1080 a aba abre com 804 px (barra 786) e cabem
+  **as catorze**, com o "Mais" logo depois de "Treinar" e o vão à direita dele. A soma das larguras
+  medidas (`largura_para_todas()`) é **777 px** na clássica, 725 na "Fita" (fonte menor: treze na
+  fila a 702) e 812 treinando. Os números da rodada 1 ("oito a 900, onze a 1200") estavam errados
+  -- medidos, eram seis e nove -- e valiam para catorze botões com texto; ver a tabela do crítico.
 - Separador entre grupos; ícone vetorial em toda ação que pode virar botão; rótulo curto do
   catálogo ao lado do ícone; dica com rótulo longo, explicação e tecla. ✅
 - `.md/.html/.rtf` viram "Exportar ▾"; a caixa "Seguir OCR selecionado" vira ação marcável no
@@ -141,10 +188,41 @@ cuidado o tempo todo), e `:disabled` cinza, pela mesma razão do botão comum.
   widget, `NAVEGACAO` no painel, e `EXPORTAR` e `tracos_de` saíram do `__all__` (uso interno).
 - `tests/test_qt_painel_de_estudo.py::ArranjoTests`: "três fileiras" virou "uma fila e nenhuma
   `BarraFluida` no topo"; a navegação continua sob o tabuleiro (agora procurando `QPushButton`).
+- **Segunda rodada.** Puros: `test_a_unica_prioridade_repetida_e_o_par_promover_rebaixar`,
+  `test_tres_com_texto_e_o_resto_so_com_icone`, `test_o_treino_esta_entre_as_tres_primeiras_prioridades`,
+  `test_indexar_base_mora_no_mais_sob_o_grupo_base`, `test_a_dica_comeca_pelo_rotulo_longo_com_a_tecla_na_mesma_linha`,
+  `test_as_quatro_teclas_da_sala_chegam_a_dica`, `test_a_16_px_todo_traco_tem_pixel_forte_e_glifo_de_12_px`
+  (≥ 8 pixels com alfa ≥ 200 e glifo ≥ 12 px; medido: o mais fraco tem 11 e o mais estreito 13),
+  `CabemTests::test_itens_de_mesma_prioridade_entram_juntos_ou_nao_entram`; em `test_ui_atalhos`,
+  `TabelaDaSalaTests` (as quatro, sem colisão com as outras duas tabelas; `acelerador` responde e
+  `acao_de` não). Qt: `test_o_marcado_desenha_diferente_do_desmarcado` (diff de pixels do `grab()`
+  com a folha aplicada, sob `offscreen`), `test_o_mais_tem_cabecalho_de_grupo_visivel`,
+  `test_o_mais_fica_logo_depois_do_ultimo_botao` (≤ 40 px), `test_o_par_promover_rebaixar_entra_e_sai_junto`
+  (varrendo larguras), `test_o_texto_que_cresce_repergunta_a_cabem_sem_resize`,
+  `test_a_tecla_da_sala_esta_na_qaction_com_alcance_de_widget`, `test_o_texto_ao_lado_do_icone_so_em_quem_a_tabela_manda`;
+  no painel, `test_treinar_fica_na_fila_e_marcado_enquanto_treina`, `test_a_tecla_da_sala_chega_ao_metodo_e_respeita_o_modo`
+  (`QTest.keyClick` de `Ctrl+↑` e `Ctrl+Del` com o foco no tabuleiro) e
+  `test_indexar_base_chama_o_indexador_com_a_janela_e_o_busy`. Em `test_qt_tema`,
+  `test_o_botao_de_ferramenta_marcado_tem_face_e_moldura_de_enfase` nas duas peles; em
+  `test_qt_atalhos`, as quatro traduzem; `test_qt_legenda` espera as da sala depois das da janela;
+  `test_ui_comandos` registra `indexar_base` entre os rótulos divergentes.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+**Rodada 1 (2026-09-04), reprovada para AAA.** Os sete achados e o que mudou em resposta:
+
+| # | Achado do crítico (medido) | Resposta (segunda rodada) |
+|---|---|---|
+| 1 | **Estado marcado invisível**: "Seguir OCR" marcado e "Treinar" ligado desenhavam **0** pixels diferentes do desmarcado -- só havia `:checked` para `QPushButton`. | `QToolButton:checked` na folha: face na mistura mais funda do cromo e moldura de 1 px na cor de ênfase, nas duas peles; `:hover`/`:pressed` e moldura transparente permanente para o conteúdo não se mover. Provado por diff de pixels do `grab()` (`test_o_marcado_desenha_diferente_do_desmarcado`). |
+| 2 | **"Mais" sem cabeçalhos**: `addSection` no `windows11` desenha só a linha; "Posição / Variante / …" não apareciam. | Título de cada grupo como **item desabilitado em negrito** (`PROPRIEDADE_DE_CABECALHO`), separador entre grupos; `cabecalhos_do_mais()` e teste que afirma os seis títulos, e os sete quando tudo transborda. Submenu por grupo foi descartado: esconderia a um clique a mais o que o "Mais" existe para deixar a um. |
+| 3 | **Densidade e hierarquia**: a 1400×950 só 5 de 14 na fila, a 1920×1080 seis com ~110 px vazios antes do "Mais"; "Treinar", "Exportar", "Salvar", "Posição inicial" no "Mais"; treinando, nada sinalizava o modo; "Promover" sem "Rebaixar". | Dois níveis (`com_texto`: três com texto, onze só ícone, recheio de 4 px no nível de ícone), prioridades pela frequência com Treinar em 3 e marcado enquanto treina, par Promover/Rebaixar em bloco, "Salvar PGN" → "Salvar", "Mais" logo após o último botão, rearranjo quando o texto cresce. **Medido: 1400×950 → 11 na fila (10 treinando); 1920×1080 → as 14, vão de 0 px antes do "Mais".** |
+| 4 | Chevron do "Mais" ~8 px abaixo da base do texto. | `QToolButton::menu-indicator` centrado à direita, com recheio reservado no `popupMode` instantâneo; conferido nas fotos (`fotos/executor_s527_r2/zoom_*`). |
+| 5 | Ícones esmaecidos: desenhados a 32 e reduzidos a 16; "mais" com 0 pixels fortes. | Desenho no tamanho nativo (`escala` = `devicePixelRatio`), `TRACO_MINIMO` = 2 px, "simbolo" e "mais" como quadradinhos cheios, traço "indexar" novo; repintura na troca de pele. Régua no teste: ≥ 8 pixels fortes e glifo ≥ 12 px em todo traço da barra. |
+| 6 | Dica repetia o rótulo e nenhuma ação tinha acelerador. | Primeira linha "rótulo · tecla"; `TECLAS_DA_SALA` (Ctrl+↑, Ctrl+↓, Ctrl+Del, Ctrl+M) ligadas na `QAction`, mostradas na dica, no menu e na legenda; guardas de atalho (`test_ui_atalhos`, `test_qt_atalhos`) estendidas à terceira tabela. |
+| 7 | Fiação pendente da S-532 ("Indexar base") e `qt/dialogos.py` mandando rodar `cvoff-games --build-index`. | `indexar_base` no catálogo, no menu, em `COMANDOS_DA_ABA` e no grupo Base do "Mais"; `PainelDeEstudo.indexar_base` → `indexar_com_dialogo(window(), bases, busy=...)` com `terminou` no status; a caixa de "Partidas da base" oferece "Indexar agora". |
+
+Fora do item, registrados como S-551 (vazio sob o tabuleiro) e S-552 (janela que não estreita); a
+barra do PDF é da S-528.
 
 ## S-528 · A barra do painel do PDF na mesma gramática, e a página com mais área — ◻ em andamento
 

@@ -69,12 +69,42 @@ class CoberturaTests(unittest.TestCase):
         for nome in agrupador.itens_do_submenu:
             self.assertEqual(barra_da_sala.EXPORTAR_ESTUDO, barra_da_sala.acao(nome).dentro_de)
 
-    def test_as_prioridades_das_principais_sao_unicas(self) -> None:
-        """Duas ações com a mesma prioridade deixariam `cabem` decidir pela posição na tabela, que
-        é uma segunda declaração de ordem -- e é dela que a S-324 tirou o programa."""
-        prioridades = [r.prioridade for r in barra_da_sala.principais()]
-        self.assertTrue(all(p > 0 for p in prioridades), "principal sem prioridade")
-        self.assertEqual(len(prioridades), len(set(prioridades)))
+    def test_a_unica_prioridade_repetida_e_o_par_promover_rebaixar(self) -> None:
+        """Duas ações com a mesma prioridade são um **par** que entra e sai da fila junto (`cabem`);
+        fora do par, prioridade repetida deixaria a posição na tabela desempatar, que é uma segunda
+        declaração de ordem -- e é dela que a S-324 tirou o programa. O único par é o que o crítico
+        da rodada 1 viu separado: "Promover" na fila e "Rebaixar" no "Mais"."""
+        principais = barra_da_sala.principais()
+        self.assertTrue(all(r.prioridade > 0 for r in principais), "principal sem prioridade")
+        repetidas = {p for p, vezes in Counter(r.prioridade for r in principais).items() if vezes > 1}
+        self.assertEqual(1, len(repetidas), f"prioridades repetidas: {sorted(repetidas)}")
+        par = {r.acao for r in principais if r.prioridade in repetidas}
+        self.assertEqual({"promover_variante", "rebaixar_variante"}, par)
+
+    def test_tres_com_texto_e_o_resto_so_com_icone(self) -> None:
+        """A hierarquia do ChessBase: texto no que se lê de longe -- o primário, o interruptor do
+        treino e o salvar --, só ícone no resto. Com catorze rótulos só cinco cabiam a 714 px
+        (medição do crítico, 1400×950); `com_texto` é o que faz a fila caber."""
+        com_texto = {r.acao for r in barra_da_sala.ACOES if r.com_texto}
+        self.assertEqual({"estudo_do_diagrama", "modo_treino", "salvar_estudo"}, com_texto)
+        for registro in barra_da_sala.ACOES:
+            if registro.com_texto:
+                self.assertTrue(registro.principal, f"{registro.acao}: texto em quem não tem botão")
+
+    def test_o_treino_esta_entre_as_tres_primeiras_prioridades(self) -> None:
+        """Treinando, o botão marcado é o único sinal do modo na barra; no "Mais" ele não sinaliza
+        nada -- foi o que o crítico mediu na rodada 1, com "Treinar" em prioridade 7."""
+        self.assertLessEqual(barra_da_sala.acao("modo_treino").prioridade, 3)
+        self.assertTrue(barra_da_sala.acao("modo_treino").marcavel)
+
+    def test_indexar_base_mora_no_mais_sob_o_grupo_base(self) -> None:
+        """A fiação pendente da S-532: o índice por nome vira ação da sala, no grupo Base, e vai
+        direto para o "Mais" -- indexa-se uma vez por torneio acrescentado, não a cada lance."""
+        registro = barra_da_sala.acao("indexar_base")
+        self.assertEqual(barra_da_sala.BASE, registro.grupo)
+        self.assertFalse(registro.principal)
+        self.assertEqual("indexar_base", registro.metodo)
+        self.assertIsNotNone(icones.tracos_de(registro.icone))
 
     def test_o_motor_so_existe_com_motor(self) -> None:
         sem = {r.grupo for r in barra_da_sala.acoes_para(com_motor=False)}
@@ -108,18 +138,29 @@ class RotuloEDicaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             barra_da_sala.Acao("coisa_nova", barra_da_sala.POSICAO, "copiar")
 
-    def test_a_dica_comeca_pelo_rotulo_longo_e_termina_na_tecla(self) -> None:
-        """Uma frase por linha: o que é, como funciona, como se chama pelo teclado."""
+    def test_a_dica_comeca_pelo_rotulo_longo_com_a_tecla_na_mesma_linha(self) -> None:
+        """A primeira linha é o título: rótulo e tecla juntos (`Promover a variante · Ctrl+↑`), como
+        o crítico da rodada 1 pediu -- num botão só com ícone a dica é o único lugar do rótulo, e a
+        tecla é parte da mesma resposta. A explicação vem depois, uma frase por linha."""
         com_tecla = [r for r in barra_da_sala.ACOES if r.no_catalogo and atalhos.acelerador(r.acao)]
+        self.assertTrue(com_tecla, "nenhuma ação da barra tem tecla")
         for registro in barra_da_sala.ACOES:
             with self.subTest(acao=registro.acao):
-                linhas = barra_da_sala.dica_de(registro).split(chr(10))
-                self.assertEqual(registro.rotulo_longo, linhas[0])
+                dica = barra_da_sala.dica_de(registro)
+                linhas = dica.split(chr(10))
+                tecla = atalhos.acelerador(registro.acao) if registro.no_catalogo else ""
+                esperado = f"{registro.rotulo_longo}{barra_da_sala.SEPARADOR_DA_TECLA}{tecla}" if tecla else registro.rotulo_longo
+                self.assertEqual(esperado, linhas[0])
+                self.assertNotIn("Tecla:", dica)
                 if registro.dica:
-                    self.assertIn(registro.dica, barra_da_sala.dica_de(registro))
-        for registro in com_tecla:
-            with self.subTest(acao=registro.acao):
-                self.assertTrue(barra_da_sala.dica_de(registro).endswith(f"Tecla: {atalhos.acelerador(registro.acao)}"))
+                    self.assertIn(registro.dica, dica)
+
+    def test_as_quatro_teclas_da_sala_chegam_a_dica(self) -> None:
+        """`TECLAS_DA_SALA` existe para a barra: uma tecla que a dica não escreve é a S-161."""
+        for atalho in atalhos.TECLAS_DA_SALA:
+            with self.subTest(acao=atalho.acao):
+                registro = barra_da_sala.acao(atalho.acao)
+                self.assertIn(atalho.rotulo, barra_da_sala.dica_de(registro).split(chr(10))[0])
 
     def test_quem_alterna_no_metodo_sao_os_marcaveis_do_catalogo(self) -> None:
         """Os quatro com `rotulo_alternado` invertem `isChecked()` no método (S-222); o botão que
@@ -173,6 +214,26 @@ class IconesTests(unittest.TestCase):
                 desenho = icones.imagem(nome, 16, "#101010")
                 assert desenho is not None
                 self.assertTrue(any(desenho.getpixel((x, y))[3] > 0 for x in range(16) for y in range(16)))
+
+    PIXELS_FORTES = 8
+    GLIFO_MINIMO = 12
+
+    def test_a_16_px_todo_traco_tem_pixel_forte_e_glifo_de_12_px(self) -> None:
+        """**O achado 5 do crítico, virado régua.** Desenhados a 32 e reduzidos a 16, os traços
+        saíam esmaecidos -- "mais" com **zero** pixels fortes. Aqui cada traço da barra, no tamanho
+        em que o botão o mostra, tem ao menos oito pixels com alfa ≥ 200 (traço de 2 px cobre uma
+        coluna inteira) e ocupa ao menos doze dos dezesseis pixels numa das direções. Medido em
+        2026-09-04: o mais fraco tem 11 fortes ("simbolo") e o mais estreito 13 px ("dobrar")."""
+        usados = {r.icone for r in barra_da_sala.ACOES if r.icone} | {barra_da_sala.ICONE_DO_MAIS}
+        for nome in sorted(usados):
+            with self.subTest(icone=nome):
+                desenho = icones.imagem(nome, 16, "#101010")
+                assert desenho is not None
+                alfa = desenho.getchannel("A")
+                fortes = sum(1 for x in range(16) for y in range(16) if alfa.getpixel((x, y)) >= 200)
+                self.assertGreaterEqual(fortes, self.PIXELS_FORTES, "traço esmaecido")
+                x0, y0, x1, y1 = alfa.getbbox()
+                self.assertGreaterEqual(max(x1 - x0, y1 - y0), self.GLIFO_MINIMO, "glifo pequeno demais na caixa")
 
     def test_o_catalogo_continua_sem_icone_para_a_sala(self) -> None:
         """É a decisão do item: `medidas_da_fita.grupos()` põe na fita da janela todo comando com
@@ -252,6 +313,15 @@ class CabemTests(unittest.TestCase):
         self.assertEqual({0, 1}, set(barra_da_sala.cabem(mesmo, 254, reserva=50, espaco=2, separador=1)))
         self.assertEqual({0}, set(barra_da_sala.cabem(outro, 254, reserva=50, espaco=2, separador=1)))
         self.assertEqual({0, 1}, set(barra_da_sala.cabem(outro, 257, reserva=50, espaco=2, separador=1)))
+
+    def test_itens_de_mesma_prioridade_entram_juntos_ou_nao_entram(self) -> None:
+        """O par "Promover"/"Rebaixar": um botão que sobe sem o que desce é o que o crítico viu a
+        1400 px. Mesma prioridade quer dizer **bloco**, e não desempate pela posição na tabela."""
+        item = barra_da_sala.Item
+        itens = [item(100, 1, "a"), item(100, 2, "b"), item(100, 2, "b"), item(100, 3, "b")]
+        # 1 item: 100 + 2 + 50 = 152. O bloco de dois pede 152 + 200 + 4 + (1 + 2) = 359.
+        self.assertEqual({0}, set(barra_da_sala.cabem(itens, 358, reserva=50, espaco=2, separador=1)))
+        self.assertEqual({0, 1, 2}, set(barra_da_sala.cabem(itens, 359, reserva=50, espaco=2, separador=1)))
 
     def test_e_um_prefixo_e_nao_um_encaixe(self) -> None:
         """Um item menos prioritário e mais estreito **não** pula na frente de um que não coube:

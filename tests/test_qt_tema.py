@@ -332,6 +332,22 @@ class DesabilitadoSeVeTests(unittest.TestCase):
             "o botão comum não tem regra de desabilitado, e sem ela ele desenha igual ao ligado",
         )
 
+    def test_o_botao_de_ferramenta_marcado_tem_face_e_moldura_de_enfase(self) -> None:
+        """**O achado 1 do crítico da S-527**: "Seguir OCR" marcado desenhava zero pixels diferentes
+        do desmarcado -- só `QPushButton` tinha `:checked`. A regra do `QToolButton` é afirmada na
+        folha (o diff de pixels está em `test_qt_barra_da_sala`), nas duas peles: a moldura é a
+        cor de ênfase, e a face é a mistura mais funda do cromo."""
+        for cromo_escuro in (False, True):
+            with self.subTest(cromo_escuro=cromo_escuro):
+                qss = tema.folha_de_estilo(cromo_escuro=cromo_escuro)
+                regra = next((r for r in qss.splitlines() if r.startswith("QToolButton:checked")), "")
+                self.assertTrue(regra, "sem regra para QToolButton:checked")
+                self.assertIn("border: 1px solid", regra)
+                self.assertIn("background-color", regra)
+                self.assertIn(tokens.cor(tokens.BOTAO_PRIMARIO, None, cromo_escuro=cromo_escuro), regra)
+                self.assertIn("QToolButton:hover", qss)
+                self.assertIn("QMenu::item:disabled", qss, "o cabeçalho de grupo do Mais é um item desabilitado")
+
     def test_os_outros_dois_papeis_continuam_declarando_o_seu(self) -> None:
         """Estes dois já tinham o deles (S-444), e a regra nova não podia apagá-los."""
         seletores = _seletores_desabilitados(tema.folha_de_estilo())

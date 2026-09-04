@@ -304,8 +304,11 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
     ),
     # A linha que segue até um X: daqui em diante, nada.
     "apagar_daqui": (Poli((10, 50), (50, 50)), Poli((60, 36), (88, 64)), Poli((88, 36), (60, 64))),
-    # O ponto de exclamação -- o símbolo de lance que todo mundo reconhece primeiro.
-    "simbolo": (Poli((50, 14), (50, 60)), Arco((50, 82), 5)),
+    # O ponto de exclamação -- o símbolo de lance que todo mundo reconhece primeiro. A haste vai
+    # de 10 a 62 e o ponto é um **quadradinho fechado** de 8 unidades: a 16 px ele sai como um
+    # bloco cheio de 3 px. Um `Arco` de raio menor que o traço não fica cheio na Pillow -- sai um
+    # anel quebrado a meio-tom, e foi assim que o crítico da S-527 viu o "!" na pele "Foco".
+    "simbolo": (Poli((50, 10), (50, 62)), Poli((46, 80), (54, 80), (54, 88), (46, 88), fechado=True)),
     # Dois ângulos que se fecham um contra o outro: dobrar.
     "dobrar": (Poli((30, 26), (50, 42), (70, 26)), Poli((30, 74), (50, 58), (70, 74))),
     # ------------------------------------------------------------------------------ LIVRO
@@ -332,6 +335,16 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
         Poli((16, 20), (84, 20), (84, 80), (16, 80), fechado=True),
         Poli((16, 40), (84, 40)),
         Poli((16, 60), (84, 60)),
+    ),
+    # O índice da base (S-532/S-527): a tabela de partidas com a lupa por cima -- é o que o índice
+    # faz, tornar a tabela procurável por nome.
+    "indexar": (
+        Poli((10, 18), (70, 18), (70, 50)),
+        Poli((10, 18), (10, 82), (46, 82)),
+        Poli((10, 38), (70, 38)),
+        Poli((10, 58), (44, 58)),
+        Arco((64, 66), 14),
+        Poli((74, 76), (90, 92)),
     ),
     # A prancheta: colar o que está na área de transferência.
     "colar": (
@@ -363,13 +376,17 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
     # O alvo: três anéis.
     "treinar": (Arco((50, 50), 34), Arco((50, 50), 18), Arco((50, 50), 4)),
     # ------------------------------------------------------------------------------- MAIS
-    # Três pontos: o que não coube.
-    "mais": (Arco((22, 50), 5), Arco((50, 50), 5), Arco((78, 50), 5)),
+    # Três pontos: o que não coube. Quadradinhos fechados (ver "simbolo") e nos cantos da caixa: a
+    # primeira versão eram anéis de raio 5 a 22/50/78, e saía com 6 px de altura e nenhum pixel
+    # forte a 16 px -- "meio-tom", nas palavras do crítico da S-527.
+    "mais": tuple(
+        Poli((x - 4, 46), (x + 4, 46), (x + 4, 54), (x - 4, 54), fechado=True) for x in (14, 50, 86)
+    ),
 }
-"""Os vinte e quatro traços da barra da sala (S-527), com a chave que `ui/barra_da_sala.ACOES` pede.
+"""Os vinte e cinco traços da barra da sala (S-527), com a chave que `ui/barra_da_sala.ACOES` pede.
 
-Com os quatro reusados de `ICONES` são vinte e oito nomes para trinta ações: os três formatos de
-exportação moram dentro do agrupador e não têm botão, logo não têm traço."""
+Com os quatro reusados de `ICONES` são vinte e nove nomes para trinta e uma ações: os três formatos
+de exportação moram dentro do agrupador e não têm botão, logo não têm traço."""
 
 
 def tracos_de(nome: str) -> tuple[Traco, ...] | None:
@@ -383,8 +400,20 @@ SUPERAMOSTRA = 4
 Sem isto o traço diagonal do "aplicar_fen" a 20 px vira escada, e o círculo da lupa vira um
 octógono -- num tamanho em que o ícone é a única coisa que a pessoa lê no botão."""
 
+TRACO_MINIMO = 2
+"""O traço nunca sai com menos de dois pixels, qualquer que seja o lado (S-527).
+
+A 16 px os 9% dão 1,44 px, e um traço de um pixel e meio raramente cai inteiro num pixel: ele se
+reparte entre dois vizinhos e os dois saem cinza -- medido no ícone "mais" da barra da sala, que a
+16 px não tinha **nenhum** pixel forte. Dois pixels cobrem ao menos uma coluna (ou linha) inteira em
+qualquer posição, e é isso que devolve o preto ao traço. Acima de ~22 px os 9% já passam de dois e
+o piso não muda nada."""
+
+
 def _largura_do_traco(lado: int) -> int:
-    return max(1, round(lado * TRACO_RELATIVO))
+    """A espessura em pixels **supersamostrados**: os 9% do lado, nunca abaixo do piso de dois pixels
+    reais (`TRACO_MINIMO * SUPERAMOSTRA`)."""
+    return max(TRACO_MINIMO * SUPERAMOSTRA, round(lado * TRACO_RELATIVO))
 
 
 def imagem(nome: str, tamanho: int, cor: str) -> Image.Image | None:

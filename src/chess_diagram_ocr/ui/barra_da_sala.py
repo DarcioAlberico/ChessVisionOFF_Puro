@@ -19,7 +19,10 @@ fica escondido).
    fica na barra; o que se faz uma vez por sessão vai para "Mais", e continua a um clique. Nenhum
    comando sai da aba: `comandos.acoes_fora_do_catalogo(COMANDOS_DA_ABA)` continua vazio, e esta
    tabela cobre `COMANDOS_DA_ABA` inteira menos os quatro de navegação, que a S-517 já pôs sob o
-   tabuleiro.
+   tabuleiro. **E dentro da fila há dois níveis** (segunda rodada, 2026-09-04): três botões com
+   ícone e texto -- o primário, o interruptor do treino e o salvar -- e onze só com ícone, com o
+   rótulo e a tecla na dica. É a hierarquia do ChessBase, e é o que faz a fila caber: com catorze
+   rótulos só cinco ficavam a 714 px.
 3. **Uma fila, sempre -- e é `cabem` quem decide quem fica nela.** A 715 px não cabem quinze
    botões com rótulo, e a S-151 mediu o que acontece quando uma barra esconde sem avisar: *"sem
    aviso, sem reticências"*. A saída não é quebrar (é o que as quatro fileiras faziam) nem cortar:
@@ -149,7 +152,20 @@ class Acao:
     """Ganha botão na barra. `False` vai direto para o menu "Mais"."""
 
     prioridade: int = 0
-    """Entre as principais, quem **fica** quando falta largura: 1 sai por último. Ver `cabem`."""
+    """Entre as principais, quem **fica** quando falta largura: 1 sai por último. Ver `cabem`.
+
+    **Duas principais com a mesma prioridade são um par**, e o par entra e sai da fila junto:
+    "Promover" sem "Rebaixar" ao lado é um botão que sobe e nenhum que desce, e o crítico da S-527
+    o viu assim a 1400 px. É a única igualdade permitida, e o teste cobra que seja só essa."""
+
+    com_texto: bool = False
+    """O botão escreve o rótulo curto ao lado do ícone. `False` desenha **só o ícone**, e o rótulo
+    fica na dica -- que é a primeira linha dela, com a tecla.
+
+    É a hierarquia do ChessBase, e foi o que a primeira rodada não tinha: catorze botões com texto
+    não cabem em 714 px, e a 1400×950 só cinco ficavam na fila. O texto é para o que se lê de longe
+    -- o primário, o interruptor do modo e o salvar --; o resto é um traço de 16 px que a pessoa
+    aprende em dois cliques, como em toda barra de ferramentas."""
 
     marcavel: bool = False
     """Interruptor: o botão fica pressionado e o item de menu ganha a marca."""
@@ -231,7 +247,7 @@ ACOES: tuple[Acao, ...] = (
     # O que se faz a cada diagrama: carregar o que o OCR leu, e deixar a sala seguir o painel de
     # resultado. Virar, trocar a vez, aplicar e copiar FEN são de uma vez por estudo -- e a FEN
     # digitada já se aplica com Enter no próprio campo.
-    Acao("estudo_do_diagrama", POSICAO, "carregar_ocr", prioridade=1),
+    Acao("estudo_do_diagrama", POSICAO, "carregar_ocr", prioridade=1, com_texto=True),
     Acao(
         SEGUIR_OCR,
         POSICAO,
@@ -242,23 +258,24 @@ ACOES: tuple[Acao, ...] = (
         dica="Quando o painel de resultado troca de diagrama, a sala abre o estudo dele.\n"
         "Corrigir uma casa do mesmo diagrama chega ao tabuleiro só enquanto o estudo está vazio.",
     ),
-    Acao("estudo_da_posicao_inicial", POSICAO, "posicao_inicial", prioridade=10),
+    Acao("estudo_da_posicao_inicial", POSICAO, "posicao_inicial", prioridade=9),
     Acao("virar_tabuleiro", POSICAO, "virar", principal=False),
     Acao("trocar_vez", POSICAO, "trocar_vez", principal=False),
     Acao("estudo_aplicar_fen", POSICAO, "aplicar_fen", principal=False, dica="Enter no campo de FEN faz o mesmo."),
     Acao("copiar_fen", POSICAO, "copiar", principal=False),
     # -------------------------------------------------------------------------- VARIANTE
-    # A cirurgia de árvore. Promover um nível, apagar a variante e anotar o lance são o gesto de
-    # quem lê um livro com o tabuleiro ao lado; promover a principal e cortar daqui em diante são
-    # raros -- e o segundo é o que mais apaga, então fica a um clique a mais de propósito.
-    Acao("promover_variante", VARIANTE, "promover", prioridade=3),
-    Acao("rebaixar_variante", VARIANTE, "rebaixar", prioridade=11),
-    Acao("apagar_variante", VARIANTE, "apagar_variante", prioridade=4),
+    # A cirurgia de árvore. Promover e rebaixar são **um par** (mesma prioridade: entram e saem
+    # juntos), apagar a variante e anotar o lance são o gesto de quem lê um livro com o tabuleiro
+    # ao lado; promover a principal e cortar daqui em diante são raros -- e o segundo é o que mais
+    # apaga, então fica a um clique a mais de propósito.
+    Acao("promover_variante", VARIANTE, "promover", prioridade=4),
+    Acao("rebaixar_variante", VARIANTE, "rebaixar", prioridade=4),
+    Acao("apagar_variante", VARIANTE, "apagar_variante", prioridade=5),
     Acao(
         "simbolo_do_lance",
         VARIANTE,
         "simbolo",
-        prioridade=5,
+        prioridade=6,
         dica="O símbolo do lance. Escolher o mesmo de novo tira; escolher outro do mesmo grupo\n"
         "troca. Julgar o lance (!, ?) e julgar a posição (⩲, ±) são duas frases, e somam.",
     ),
@@ -266,7 +283,7 @@ ACOES: tuple[Acao, ...] = (
         "dobrar_variantes",
         VARIANTE,
         "dobrar",
-        prioridade=8,
+        prioridade=10,
         marcavel=True,
         dica="Esconde o miolo das variantes e deixa `(…)` no lugar. O `(` de cada uma também\n"
         "responde ao clique. A variante que contém o lance corrente não se dobra.",
@@ -278,7 +295,7 @@ ACOES: tuple[Acao, ...] = (
         "mostrar_diagrama",
         LIVRO,
         "recorte",
-        prioridade=9,
+        prioridade=11,
         marcavel=True,
         dica="O recorte que o modelo leu, ao lado do tabuleiro. Fica cinza quando o estudo não\n"
         "veio de um diagrama do livro -- uma FEN digitada à mão não tem recorte.",
@@ -293,9 +310,18 @@ ACOES: tuple[Acao, ...] = (
     ),
     Acao("ir_para_a_pagina", LIVRO, "ver_a_pagina", principal=False),
     # ------------------------------------------------------------------------------ BASE
-    Acao("partidas_da_posicao", BASE, "partidas", prioridade=14),
+    # Indexar é de uma vez por torneio acrescentado à pasta (S-532), e por isso mora no "Mais".
+    Acao("partidas_da_posicao", BASE, "partidas", prioridade=12),
     Acao("abrir_pgn", BASE, "abrir_pdf", principal=False),
     Acao("colar_estudo", BASE, "colar", principal=False),
+    Acao(
+        "indexar_base",
+        BASE,
+        "indexar",
+        principal=False,
+        dica="Lê só os arquivos que mudaram desde a última vez, com barra e Cancelar.\n"
+        "Até o índice ficar em dia, a busca por nome em \"Partidas\" não o usa.",
+    ),
     # ----------------------------------------------------------------------------- MOTOR
     # A seção do motor abaixo da lista já tem o botão "Analisar posição" e a avaliação; na barra
     # fica o interruptor, que é o que se liga uma vez e se esquece.
@@ -303,7 +329,7 @@ ACOES: tuple[Acao, ...] = (
         "analise_continua",
         MOTOR,
         "motor",
-        prioridade=15,
+        prioridade=14,
         marcavel=True,
         so_com_motor=True,
         dica="O motor acompanha o lance corrente e grava a avaliação nele, em [%eval].\n"
@@ -314,28 +340,38 @@ ACOES: tuple[Acao, ...] = (
     # -------------------------------------------------------------------------- EXPORTAR
     # O PGN é a saída que não perde nada, e é a que se usa; os três formatos de texto viram um
     # botão só, porque são a mesma pergunta ("em que formato?") e não três gestos.
-    Acao("salvar_estudo", EXPORTAR, "salvar", prioridade=6),
-    Acao(EXPORTAR_ESTUDO, EXPORTAR, "exportar_pgn", prioridade=12, rotulo_proprio="Exportar"),
+    Acao("salvar_estudo", EXPORTAR, "salvar", prioridade=7, com_texto=True),
+    Acao(EXPORTAR_ESTUDO, EXPORTAR, "exportar_pgn", prioridade=8, rotulo_proprio="Exportar"),
     Acao("exportar_estudo_md", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
     Acao("exportar_estudo_html", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
     Acao("exportar_estudo_rtf", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
     Acao("estudo_para_o_texto", EXPORTAR, "para_o_texto", principal=False),
     # ---------------------------------------------------------------------------- TREINO
+    # Prioridade 3, com texto, e **marcado enquanto treina**: é o interruptor do modo, e o crítico
+    # mediu que treinando nada na barra dizia isso -- o botão estava no "Mais" e o marcado não se
+    # desenhava. O texto vira "Parar o treino" (`rotulo_alternado`) e a face marcada do tema o pinta.
     Acao(
         "modo_treino",
         TREINO,
         "treinar",
-        prioridade=7,
+        prioridade=3,
         marcavel=True,
+        com_texto=True,
         dica="A linha some e o tabuleiro cobra o lance. A árvore não muda: errar não cria\n"
         "variante -- para guardar o lance que você jogou, desligue o treino.",
     ),
 )
-"""As trinta ações da barra: vinte e oito comandos da aba, o interruptor e o agrupador.
+"""As trinta e uma ações da barra: vinte e nove comandos da aba, o interruptor e o agrupador.
 
 É `COMANDOS_DA_ABA` inteira menos `NAVEGACAO`, mais `SEGUIR_OCR` e `EXPORTAR_ESTUDO`. A conta é
 cobrada nos dois sentidos em `tests/test_ui_barra_da_sala.py`: comando da aba que a barra não
-desenha, e ação da barra que a aba não tem."""
+desenha, e ação da barra que a aba não tem.
+
+**A ordem das prioridades é a da frequência, medida contra a largura de 714 px** (a aba Estudo a
+1400×950): 1 carregar o OCR, 2 seguir o OCR, 3 treinar, 4 o par promover/rebaixar, 5 apagar a
+variante, 6 o símbolo, 7 salvar, 8 exportar, 9 posição inicial, 10 dobrar, 11 recorte, 12 partidas,
+13 linha do livro, 14 análise contínua. Três com texto e onze só com ícone: é o que faz onze
+caberem onde antes cabiam cinco."""
 
 por_acao: dict[str, Acao] = {registro.acao: registro for registro in ACOES}
 
@@ -378,19 +414,27 @@ def secundarias(*, com_motor: bool = True) -> tuple[Acao, ...]:
     )
 
 
-def dica_de(registro: Acao) -> str:
-    """A dica inteira: o rótulo longo, a explicação se houver, e a tecla se houver.
+SEPARADOR_DA_TECLA = " · "
+"""Entre o rótulo e a tecla na primeira linha da dica: `Promover a variante · Ctrl+↑`."""
 
-    Uma frase por linha, na ordem em que se lê: o que é, como funciona, como se chama pelo teclado.
-    É o formato que `qt/painel_de_estudo._botao` já usava (`motivo\\nTecla: X`), com a explicação
-    da S-347/S-516 entre as duas em vez de substituir a primeira.
+
+def dica_de(registro: Acao) -> str:
+    """A dica inteira: o rótulo longo **com a tecla na mesma linha**, e a explicação se houver.
+
+    A primeira linha é o título -- o que é e como se chama pelo teclado, de uma vez: `Promover a
+    variante · Ctrl+↑`. A primeira rodada escrevia a tecla numa terceira linha (`Tecla: X`, o formato
+    de `qt/fita._dica`), e o crítico da S-527 pediu a tecla junto do rótulo: para um botão **só com
+    ícone** a dica é o único lugar em que o rótulo aparece, e rótulo e tecla são a mesma resposta
+    ("o que é isto?"). A explicação da S-347/S-516 vem depois, uma frase por linha.
+
+    A tecla vem de `atalhos.acelerador`, que responde pela tabela da janela e pela da sala
+    (`TECLAS_DA_SALA`); ação fora do catálogo não tem tecla.
     """
-    linhas = [registro.rotulo_longo]
+    tecla = atalhos.acelerador(registro.acao) if registro.no_catalogo else ""
+    titulo = f"{registro.rotulo_longo}{SEPARADOR_DA_TECLA}{tecla}" if tecla else registro.rotulo_longo
+    linhas = [titulo]
     if registro.dica:
         linhas.append(registro.dica)
-    tecla = atalhos.acelerador(registro.acao) if registro.no_catalogo else ""
-    if tecla:
-        linhas.append(f"Tecla: {tecla}")
     return chr(10).join(linhas)
 
 
@@ -460,12 +504,18 @@ def cabem(
     pode ser o primeiro a sair. `separador` é a barra vertical entre dois grupos vizinhos, e ela
     entra na conta porque é largura também -- um grupo que perde todos os botões perde o separador.
 
+    **Itens de mesma prioridade são um bloco**: entram juntos ou não entram. É o par "Promover" /
+    "Rebaixar" -- um sem o outro é um botão que sobe e nenhum que desce --, e é o que faz "mesma
+    prioridade" querer dizer alguma coisa em vez de ser desempatada pela posição na tabela.
+
     Um `disponivel` menor que a reserva devolve vazio: tudo no "Mais", e a fila continua sendo uma.
     """
-    ordem = sorted(range(len(itens)), key=lambda indice: (itens[indice].prioridade, indice))
+    blocos: dict[int, list[int]] = {}
+    for indice, item in enumerate(itens):
+        blocos.setdefault(item.prioridade, []).append(indice)
     dentro: list[int] = []
-    for indice in ordem:
-        tentativa = [*dentro, indice]
+    for prioridade in sorted(blocos):
+        tentativa = [*dentro, *blocos[prioridade]]
         grupos = {itens[i].grupo for i in tentativa}
         largura = sum(itens[i].largura for i in tentativa)
         largura += espaco * len(tentativa)  # o vão antes de cada item; o do "Mais" conta abaixo

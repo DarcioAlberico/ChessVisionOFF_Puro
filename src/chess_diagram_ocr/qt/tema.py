@@ -256,9 +256,25 @@ def aplicar_papel(botao: QWidget, papel: str) -> QWidget:
 
 # ------------------------------------------------------------------------ a folha de estilo
 
+PROPRIEDADE_DE_NIVEL = "nivel"
+"""A propriedade do `QToolButton` que diz se ele desenha só o ícone (`NIVEL_ICONE`) ou ícone e texto
+(`NIVEL_TEXTO`) -- é `barra_da_sala.Acao.com_texto` chegando à folha (S-527, segunda rodada).
+
+Existe porque o recheio horizontal de dez pixels, certo para um botão com texto, é o que impedia a
+fila de caber: um botão só com ícone saía com 41 px para um traço de 16, e a 702 px de aba cabiam
+oito. Com o recheio de `RECHEIO_DO_TEMA` para o nível de ícone cabem dez, que era a meta do crítico."""
+
+NIVEL_ICONE = "icone"
+NIVEL_TEXTO = "texto"
+SELETOR_DO_NIVEL_ICONE = f'QToolButton[{PROPRIEDADE_DE_NIVEL}="{NIVEL_ICONE}"]'
+
 RECHEIO_DO_TEMA: dict[str, tuple[int, int]] = {
     "QPushButton": (10, 4),
     "QToolButton": (10, 4),
+    # O botão só com ícone: quatro pixels de recheio horizontal (o mesmo vertical -- a fila tem uma
+    # altura). Medido em 2026-09-04: com 10 cabiam 8 botões a 702 px; com 5, 10; com 4, as catorze
+    # principais cabem na aba de 804 px que a janela de 1920×1080 abre.
+    SELETOR_DO_NIVEL_ICONE: (4, 4),
     "QLineEdit": (5, 5),
     "QComboBox": (5, 4),
 }
@@ -423,7 +439,28 @@ def folha_de_estilo(
         f" border: 1px solid {cor(tokens.TEXTO_SECUNDARIO)}; }}",
         f"QPushButton:disabled {{ background-color: {superficie}; color: {secundario};"
         f" border: 1px solid {moldura}; }}",
-        f"QToolButton {{ padding: {do_tema('QToolButton')}; }}",
+        # **O botão de ferramenta é desenhado inteiro pela folha, e pela mesma razão do comum**
+        # (S-527): com só o recheio declarado, a face sob o ponteiro, a pressionada e a marcada
+        # eram do estilo da plataforma -- e no `windows11` o marcado desenhava **zero** pixels
+        # diferentes do desmarcado (medido pelo crítico: "Seguir OCR" ligado e desligado saíam
+        # idênticos). A moldura transparente está sempre lá para que ligar a cor de um estado não
+        # mova o conteúdo em um pixel; a face marcada é a do botão comum marcado, e a moldura dela
+        # é a cor de ênfase -- um interruptor ligado tem de ser lido de longe, e cinza sobre cinza
+        # não é lido.
+        f"QToolButton {{ padding: {do_tema('QToolButton')}; border: 1px solid transparent;"
+        f" border-radius: {minima}px; }}",
+        f"{SELETOR_DO_NIVEL_ICONE} {{ padding: {do_tema(SELETOR_DO_NIVEL_ICONE)}; }}",
+        f"QToolButton:hover {{ background-color: {tokens.mistura(superficie, texto, 2 * RELEVO_DO_BOTAO)}; }}",
+        f"QToolButton:pressed {{ background-color: {tokens.mistura(superficie, texto, 4 * RELEVO_DO_BOTAO)}; }}",
+        # O indicador de menu **na linha do texto**, e não no canto de baixo: é o chevron do
+        # "Mais ▾", que o crítico da S-527 mediu solto ~8 px abaixo da base da letra. O botão com
+        # menu instantâneo (`popupMode` 2) reserva o recheio à direita para ele.
+        "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: center right; }",
+        f'QToolButton[popupMode="2"] {{ padding-right: {_escalado(16, base=base, densidade=densidade)}px; }}',
+        # O item desabilitado do menu cinza, pela razão de sempre: a cor de `QWidget` acima vale
+        # em todo estado e anulava o acinzentamento da paleta. É também o que pinta o **cabeçalho
+        # de grupo** do menu "Mais" (um item desabilitado em negrito, `qt/barra_da_sala.py`).
+        f"QMenu::item:disabled {{ color: {secundario}; }}",
         f"QLineEdit {{ padding: {do_tema('QLineEdit')}; }}",
         f"QComboBox {{ padding: {do_tema('QComboBox')}; }}",
     ]
@@ -496,6 +533,8 @@ def folha_de_estilo(
         f"{ferramenta_primaria}:hover"
         f" {{ background-color: {tokens.mistura(primario, letra, tokens.REALCE_DE_ENFASE)}; }}",
         f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_destrutivo}"] {{ color: {cor(token_destrutivo)}; }}',
+        f"QToolButton:checked {{ background-color: {tokens.mistura(superficie, texto, 4 * RELEVO_DO_BOTAO)};"
+        f" border: 1px solid {primario}; }}",
         f"QToolButton:disabled {{ color: {secundario}; }}",
         f"{ferramenta_primaria}:disabled"
         f" {{ background-color: {superficie}; color: {secundario}; border: 1px solid {moldura}; }}",

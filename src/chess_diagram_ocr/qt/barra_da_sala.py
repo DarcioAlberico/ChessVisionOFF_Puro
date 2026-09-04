@@ -19,6 +19,13 @@ o treino no mesmo gesto, e só o menu e a paleta (que chamam o método sem botã
 `triggered` do interruptor do catálogo **devolve** o estado antes de chamar o método, e o método
 alterna uma vez, como faz para o menu. `SEGUIR_OCR` é o caso contrário -- o método lê o estado -- e
 usa `toggled`, como o `QCheckBox` que ele substitui.
+
+**O que a segunda rodada mudou aqui** (2026-09-04, depois do crítico): dois níveis de botão
+(`Acao.com_texto`: ícone e texto, ou só ícone); o "Mais" logo depois do último botão, com o vão à
+direita; o cabeçalho de grupo do "Mais" como item desabilitado em negrito (`PROPRIEDADE_DE_CABECALHO`);
+o ícone desenhado a 16 px e repintado na troca de pele; e a tecla da sala (`atalhos.TECLAS_DA_SALA`)
+ligada na própria `QAction`, com alcance no painel. O estado marcado é da folha (`QToolButton:checked`
+em `qt/tema.py`).
 """
 
 from __future__ import annotations
@@ -26,23 +33,37 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QAction, QResizeEvent
+from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtGui import QAction, QIcon, QKeySequence, QResizeEvent
 from PyQt6.QtWidgets import QHBoxLayout, QLayout, QMenu, QSizePolicy, QToolButton, QWidget
 
+from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.ui import atalhos, espaco, estilos, tokens
 from chess_diagram_ocr.ui import barra_da_sala as declarada
-from chess_diagram_ocr.ui import espaco, estilos, tokens
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["LADO_DO_ICONE", "BarraDaSala"]
+__all__ = ["LADO_DO_ICONE", "PROPRIEDADE_DE_CABECALHO", "BarraDaSala"]
 
 LADO_DO_ICONE = 16
 """Lado do ícone, em pixel: o mesmo `LADO_DO_ICONE_DA_SALA` da faixa de navegação (S-520), porque é
 a mesma aba -- dezesseis é a altura da letra da interface na base 9, e o par ícone-texto parece uma
-coisa só."""
+coisa só.
+
+**Desenhado a 16, e não a 32 reduzido** (segunda rodada da S-527). A primeira montagem pedia o
+traço a `2 * LADO` e deixava o botão encolher: o traço de 2 px virava meio-tom de 1, e "mais" saía
+sem um pixel forte. `qt_icones.icone(..., escala=devicePixelRatioF())` desenha no tamanho em que
+vai ser mostrado, e só numa tela de alta densidade nasce maior."""
+
+PROPRIEDADE_DE_CABECALHO = "cabecalho"
+"""A propriedade da `QAction` que é título de grupo no menu "Mais", com o nome do grupo como valor.
+
+O `addSection` do `QMenu` desenha só a linha no estilo `windows11` -- o título fica invisível, e o
+crítico da S-527 abriu o menu e não achou "Posição" nem "Variante". O cabeçalho passa a ser um
+**item desabilitado em negrito**, que todo estilo desenha; `no_mais()` o distingue por esta
+propriedade, e o teste o acha por ela."""
 
 
 class BarraDaSala(QWidget):
@@ -88,7 +109,10 @@ class BarraDaSala(QWidget):
             self._botoes.append((botao, registro))
             fila.addWidget(botao)
 
-        fila.addStretch(1)
+        # **O "Mais" vem logo depois do último botão, e o vão fica à direita dele.** A primeira
+        # montagem o encostava na borda direita com o vão no meio -- a 1920 px eram ~110 px de
+        # fila vazia entre "Símbolo" e "Mais", e o crítico mediu o vazio como se fosse botão que
+        # faltava. Numa barra de ferramentas o transbordo mora onde a fila acaba.
         self.menu_mais = QMenu(self)
         self.btn_mais = QToolButton(self)
         self.btn_mais.setText(declarada.ROTULO_DO_MAIS)
@@ -97,25 +121,56 @@ class BarraDaSala(QWidget):
         self.btn_mais.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.btn_mais.setAutoRaise(True)
         self.btn_mais.setMenu(self.menu_mais)
-        self._pintar_icone(self.btn_mais, declarada.ICONE_DO_MAIS, tokens.TEXTO_PADRAO)
         fila.addWidget(self.btn_mais)
+        fila.addStretch(1)
+        self._pintar_icones()
+        tema.ao_repintar(self._pintar_icones)
+        # **O texto de uma ação muda de largura, e a fila tem de reperguntar a `cabem`.** "Treinar"
+        # vira "Parar o treino" (+35 px) sem nenhum `resizeEvent`, e a primeira montagem deixava o
+        # layout espremer o primário -- fotografado: "Carregar…CR atual" elidido a 1400 px. Um
+        # `changed` por ação, coalescidos num único rearranjo no próximo giro do laço.
+        self._rearranjo_pendente = False
+        for acao in self.acoes.values():
+            acao.changed.connect(self._agendar_rearranjo)
         self._rearranjar()
+
+    def _agendar_rearranjo(self) -> None:
+        if self._rearranjo_pendente:
+            return
+        self._rearranjo_pendente = True
+        QTimer.singleShot(0, self._rearranjo_agendado)
+
+    def _rearranjo_agendado(self) -> None:
+        self._rearranjo_pendente = False
+        try:
+            self._rearranjar()
+        except RuntimeError:  # a barra morreu entre o agendamento e o giro do laço
+            return
 
     # ---------------------------------------------------------------------------- montagem
 
     def _acao(self, registro: declarada.Acao) -> QAction:
-        """A `QAction` de uma linha da tabela, com submenu quando ela é agrupador."""
-        acao = QAction(registro.rotulo_curto if registro.principal else registro.rotulo_longo, self)
+        """A `QAction` de uma linha da tabela, com submenu quando ela é agrupador, e com a tecla
+        da sala quando `atalhos.TECLAS_DA_SALA` declara uma."""
+        # O texto da `QAction` é o do **menu**: o rótulo curto só quando ele vai ser escrito num
+        # botão (`com_texto`); o botão só com ícone não o mostra, e no "Mais" o item sai por extenso,
+        # como os que nunca tiveram botão.
+        acao = QAction(registro.rotulo_curto if registro.com_texto else registro.rotulo_longo, self)
         acao.setToolTip(declarada.dica_de(registro))
         acao.setProperty("acao", registro.acao)
         acao.setProperty("grupo", registro.grupo)
         acao.setCheckable(registro.marcavel)
-        cor = tokens.TEXTO_SOBRE_ENFASE if registro.papel == estilos.PRIMARIO else tokens.TEXTO_PADRAO
-        if registro.papel == estilos.DESTRUTIVO:
-            cor = tokens.BOTAO_DESTRUTIVO
-        desenho = qt_icones.icone(registro.icone, 2 * LADO_DO_ICONE, tema.cor_atual(cor)) if registro.icone else None
-        if desenho is not None:
-            acao.setIcon(desenho)
+        sequencia = atalhos.sequencia_da_sala(registro.acao) if registro.no_catalogo else ""
+        if sequencia:
+            # **Com alcance no painel da sala e nos filhos dele**, e não na janela: a tecla é da
+            # sala (ver `TECLAS_DA_SALA`). A `QAction` é adicionada ao pai da barra -- o painel --
+            # para que o foco em qualquer canto da sala a alcance, e uma ação desabilitada não
+            # dispara, então a regra do modo vale para o teclado de graça.
+            acao.setShortcut(QKeySequence(qt_atalhos.sequencia_qt(sequencia)))
+            acao.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            pai = self.parentWidget()
+            if pai is not None:
+                pai.addAction(acao)
         if registro.agrupador:
             # Os itens já viraram `QAction` na passagem pela tabela (eles vêm depois do agrupador,
             # ou antes: a ordem não importa, o dicionário responde pelos dois).
@@ -141,7 +196,12 @@ class BarraDaSala(QWidget):
         botao = QToolButton(self)
         botao.setDefaultAction(acao)
         botao.setProperty("acao", registro.acao)
-        botao.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        # Dois níveis (ver `Acao.com_texto`): ícone e texto para o que se lê de longe, só o ícone
+        # para o resto -- o rótulo e a tecla estão na primeira linha da dica.
+        botao.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon if registro.com_texto else Qt.ToolButtonStyle.ToolButtonIconOnly
+        )
+        botao.setProperty(tema.PROPRIEDADE_DE_NIVEL, tema.NIVEL_TEXTO if registro.com_texto else tema.NIVEL_ICONE)
         botao.setIconSize(qt_icones.tamanho(LADO_DO_ICONE))
         botao.setAutoRaise(True)
         if registro.agrupador:
@@ -158,11 +218,31 @@ class BarraDaSala(QWidget):
         separador.setFixedHeight(2 * LADO_DO_ICONE)
         return separador
 
-    def _pintar_icone(self, botao: QToolButton, nome: str, papel: str) -> None:
-        desenho = qt_icones.icone(nome, 2 * LADO_DO_ICONE, tema.cor_atual(papel))
+    def _icone(self, nome: str, papel: str) -> QIcon | None:
+        """O traço no tamanho em que vai ser mostrado, na cor que a pele em uso resolve para o papel."""
+        return qt_icones.icone(nome, LADO_DO_ICONE, tema.cor_atual(papel), escala=self.devicePixelRatioF())
+
+    def _pintar_icones(self) -> None:
+        """Desenha (ou redesenha) o ícone de toda ação e do "Mais" na cor da pele **em uso**.
+
+        Registrado em `tema.ao_repintar`: a troca de pele muda a cor do texto, e um ícone pintado
+        para o cromo claro some no escuro -- é a medição da S-220 (*"as seis peças pretas somem no
+        fundo"*), e o crítico da S-527 fotografou as três peles. `qt_icones` guarda por cor, então a
+        cor nova é um desenho novo e a antiga só espera o `limpar_cache` da janela.
+        """
+        for registro in self._registros:
+            if not registro.icone:
+                continue
+            cor = tokens.TEXTO_SOBRE_ENFASE if registro.papel == estilos.PRIMARIO else tokens.TEXTO_PADRAO
+            if registro.papel == estilos.DESTRUTIVO:
+                cor = tokens.BOTAO_DESTRUTIVO
+            desenho = self._icone(registro.icone, cor)
+            if desenho is not None:
+                self.acoes[registro.acao].setIcon(desenho)
+        desenho = self._icone(declarada.ICONE_DO_MAIS, tokens.TEXTO_PADRAO)
         if desenho is not None:
-            botao.setIcon(desenho)
-            botao.setIconSize(qt_icones.tamanho(LADO_DO_ICONE))
+            self.btn_mais.setIcon(desenho)
+            self.btn_mais.setIconSize(qt_icones.tamanho(LADO_DO_ICONE))
 
     # ------------------------------------------------------------------------ quem cabe
 
@@ -247,12 +327,24 @@ class BarraDaSala(QWidget):
         """
         self.menu_mais.clear()
         transbordo = [registro for indice, (_botao, registro) in enumerate(self._botoes) if indice not in dentro]
+        primeiro = True
         for grupo in declarada.GRUPOS:
             do_grupo = [r for r in transbordo if r.grupo == grupo]
             do_grupo += [r for r in declarada.secundarias(com_motor=self._com_motor) if r.grupo == grupo]
             if not do_grupo:
                 continue
-            self.menu_mais.addSection(declarada.rotulo_do_grupo(grupo))
+            if not primeiro:
+                self.menu_mais.addSeparator()
+            primeiro = False
+            # O título como item desabilitado em negrito, e não `addSection`: ver
+            # `PROPRIEDADE_DE_CABECALHO`. A cor do desabilitado é a de `QMenu::item:disabled` na folha.
+            titulo = QAction(declarada.rotulo_do_grupo(grupo), self.menu_mais)
+            self.menu_mais.addAction(titulo)
+            titulo.setEnabled(False)
+            titulo.setProperty(PROPRIEDADE_DE_CABECALHO, grupo)
+            fonte = titulo.font()
+            fonte.setBold(True)
+            titulo.setFont(fonte)
             for registro in do_grupo:
                 self.menu_mais.addAction(self.acoes[registro.acao])
         self.btn_mais.setEnabled(not self.menu_mais.isEmpty())
@@ -269,11 +361,19 @@ class BarraDaSala(QWidget):
         return tuple(registro.acao for botao, registro in self._botoes if not botao.isHidden())
 
     def no_mais(self) -> tuple[str, ...]:
-        """As ações que o menu "Mais" oferece agora, na ordem em que aparecem."""
+        """As ações que o menu "Mais" oferece agora, na ordem em que aparecem. Sem os cabeçalhos."""
         return tuple(
             str(acao.property("acao"))
             for acao in self.menu_mais.actions()
             if not acao.isSeparator() and acao.property("acao") is not None
+        )
+
+    def cabecalhos_do_mais(self) -> tuple[str, ...]:
+        """Os títulos de grupo que o menu "Mais" desenha agora, na ordem da barra."""
+        return tuple(
+            acao.text()
+            for acao in self.menu_mais.actions()
+            if acao.property(PROPRIEDADE_DE_CABECALHO) is not None
         )
 
     def botao_de(self, nome: str) -> QToolButton | None:

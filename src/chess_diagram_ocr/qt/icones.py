@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["cache_de_icones", "icone", "limpar_cache", "pixmap"]
 
-_cache: dict[tuple[str, int, str], QIcon] = {}
+_cache: dict[tuple[str, int, str, float], QIcon] = {}
 
 
 def pixmap(nome: str, tamanho: int, cor: str) -> QPixmap | None:
@@ -63,21 +63,30 @@ def pixmap(nome: str, tamanho: int, cor: str) -> QPixmap | None:
     return QPixmap.fromImage(imagem)
 
 
-def icone(nome: str, tamanho: int, cor: str) -> QIcon | None:
+def icone(nome: str, tamanho: int, cor: str, *, escala: float = 1.0) -> QIcon | None:
     """O ícone pronto para um `QAbstractButton`. `None` se o nome não existe.
 
     **O `QIcon` guarda o pixmap no tamanho pedido e não deixa o Qt reescalar.** Um `QIcon` vazio
     a que se pede um tamanho que ele não tem devolve o mais próximo esticado, e o traço de
     `ui/icones.py` -- 9% do lado -- vira uma mancha quando 20 px são esticados para 32. Cada
     tamanho é um desenho, e é por isso que a chave do cache o inclui.
+
+    **E o contrário também é mancha** (S-527): a barra da sala desenhava a 32 px e pedia 16 no
+    botão, e a redução pela metade transformava o traço de 2 px num meio-tom de 1 -- "mais" saía
+    sem nenhum pixel forte. O desenho é feito **no tamanho em que vai ser mostrado**; `escala` é o
+    `devicePixelRatio` da tela, e só numa tela de alta densidade (`> 1`) o pixmap nasce maior, já
+    marcado com a razão para o Qt o desenhar no tamanho lógico pedido.
     """
-    chave = (nome, max(1, int(tamanho)), cor)
+    escala = max(1.0, float(escala))
+    chave = (nome, max(1, int(tamanho)), cor, round(escala, 2))
     guardado = _cache.get(chave)
     if guardado is not None:
         return guardado
-    desenho = pixmap(*chave)
+    desenho = pixmap(nome, round(chave[1] * escala), cor)
     if desenho is None:
         return None
+    if escala != 1.0:
+        desenho.setDevicePixelRatio(escala)
     pronto = QIcon()
     pronto.addPixmap(desenho, QIcon.Mode.Normal, QIcon.State.Off)
     _cache[chave] = pronto

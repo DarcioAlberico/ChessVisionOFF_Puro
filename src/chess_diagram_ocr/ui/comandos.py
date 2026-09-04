@@ -570,7 +570,10 @@ CATALOGO: tuple[Comando, ...] = (
         rotulo_curto="Aplicar FEN",
     ),
     Comando("copiar_fen", "Copiar a FEN do estudo", ESTUDO, estilos.NEUTRO, rotulo_curto="Copiar FEN"),
-    Comando("salvar_estudo", "Salvar o estudo em PGN…", ESTUDO, estilos.NEUTRO, rotulo_curto="Salvar PGN"),
+    # "Salvar" e não "Salvar PGN" desde a segunda rodada da S-527: o botão mora no grupo Exportar da
+    # barra da sala, com o disquete ao lado e a dica dizendo o formato, e os 26 px de "PGN" eram o que
+    # faltava para as catorze principais caberem a 1920 px. O menu continua dizendo o formato.
+    Comando("salvar_estudo", "Salvar o estudo em PGN…", ESTUDO, estilos.NEUTRO, rotulo_curto="Salvar"),
     Comando(
         "lance_anterior",
         "Lance anterior",
@@ -697,6 +700,16 @@ CATALOGO: tuple[Comando, ...] = (
         ESTUDO,
         estilos.NEUTRO,
         rotulo_curto="Partidas",
+    ),
+    # O índice por nome construído de dentro da janela (S-532), que até a S-527 só existia como
+    # `cvoff-games --build-index` num terminal: a busca por nome de "Partidas" o recusa quando ele
+    # está atrasado, e a saída tem de ser um comando da sala e não uma frase de aviso.
+    Comando(
+        "indexar_base",
+        "Indexar a base de partidas por nome…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Indexar base",
     ),
     # ----------------------------------------------------- o que entra e o que sai (Fase 49)
     Comando("colar_estudo", "Colar posição ou partida…", ESTUDO, estilos.NEUTRO, rotulo_curto="Colar"),

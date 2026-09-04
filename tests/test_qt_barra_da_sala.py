@@ -10,18 +10,20 @@ clique de mouse, que é o defeito que a medição de 2026-09-04 achou no `QPushB
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import chess
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
+from chess_diagram_ocr.games_index import Indexacao
 from chess_diagram_ocr.ui import atalhos, barra_da_sala, comandos
+from chess_diagram_ocr.ui.busy import BusyRegistry
 
 if TEM_PYQT:
     from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QAction
     from PyQt6.QtTest import QTest
-    from PyQt6.QtWidgets import QToolButton
 
     from chess_diagram_ocr.qt import barra_da_sala as qt_barra
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
@@ -55,7 +57,8 @@ class BarraSoltaTests(unittest.TestCase):
                 if not registro.dentro_de:
                     self.assertFalse(acao.icon().isNull(), "ação sem ícone")
                 if registro.no_catalogo and atalhos.acelerador(registro.acao):
-                    self.assertIn(f"Tecla: {atalhos.acelerador(registro.acao)}", acao.toolTip())
+                    primeira = acao.toolTip().split(chr(10))[0]
+                    self.assertTrue(primeira.endswith(barra_da_sala.SEPARADOR_DA_TECLA + atalhos.acelerador(registro.acao)))
 
     def test_a_fila_e_uma_e_larga_mostra_todas_as_principais(self) -> None:
         self.assertEqual(1, self.barra.linhas)
@@ -81,10 +84,124 @@ class BarraSoltaTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(todas, set(self.barra.na_fila()), "alargar devolve o que saiu")
 
-    def test_o_botao_e_texto_ao_lado_do_icone(self) -> None:
-        for botao in self.barra.findChildren(QToolButton):
-            with self.subTest(acao=botao.property("acao")):
-                self.assertEqual(Qt.ToolButtonStyle.ToolButtonTextBesideIcon, botao.toolButtonStyle())
+    def test_o_texto_ao_lado_do_icone_so_em_quem_a_tabela_manda(self) -> None:
+        """Dois níveis (`Acao.com_texto`): três com texto, o resto só ícone. O "Mais" tem texto: é o
+        único botão cujo rótulo é a própria função."""
+        for botao, registro in self.barra._botoes:
+            with self.subTest(acao=registro.acao):
+                esperado = (
+                    Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+                    if registro.com_texto
+                    else Qt.ToolButtonStyle.ToolButtonIconOnly
+                )
+                self.assertEqual(esperado, botao.toolButtonStyle())
+                self.assertEqual(qt_barra.LADO_DO_ICONE, botao.iconSize().width())
+                nivel = tema.NIVEL_TEXTO if registro.com_texto else tema.NIVEL_ICONE
+                self.assertEqual(nivel, botao.property(tema.PROPRIEDADE_DE_NIVEL))
+                # O texto do item de menu: curto só em quem o escreve no botão; o resto por extenso.
+                acao = self.barra.acoes[registro.acao]
+                self.assertEqual(registro.rotulo_curto if registro.com_texto else registro.rotulo_longo, acao.text())
+        self.assertEqual(Qt.ToolButtonStyle.ToolButtonTextBesideIcon, self.barra.btn_mais.toolButtonStyle())
+        # O nível de ícone tem recheio próprio na folha: é o que faz dez caberem em 702 px.
+        self.assertIn(f"{tema.SELETOR_DO_NIVEL_ICONE} {{ padding:", tema.folha_de_estilo())
+
+    def test_o_marcado_desenha_diferente_do_desmarcado(self) -> None:
+        """**O achado 1 do crítico**: "Seguir OCR" marcado e desmarcado saíam pixel a pixel iguais --
+        só havia `:checked` para `QPushButton`. Sob `offscreen` não há fonte, mas há cor de fundo e
+        moldura: a face e a borda de ênfase de `QToolButton:checked` têm de mudar pixels."""
+        tema.aplicar_tema(self.app)
+        self.addCleanup(tema.aplicar_tema, self.app)
+        for nome in (barra_da_sala.SEGUIR_OCR, "modo_treino"):
+            with self.subTest(acao=nome):
+                botao = self.barra.botao_de(nome)
+                assert botao is not None
+                acao = self.barra.acoes[nome]
+                acao.setChecked(False)
+                self.app.processEvents()
+                antes = botao.grab().toImage()
+                acao.setChecked(True)
+                self.app.processEvents()
+                depois = botao.grab().toImage()
+                self.assertEqual(antes.size(), depois.size())
+                diferentes = sum(
+                    1
+                    for x in range(antes.width())
+                    for y in range(antes.height())
+                    if antes.pixel(x, y) != depois.pixel(x, y)
+                )
+                self.assertGreater(diferentes, 0, "marcado e desmarcado desenham igual")
+                acao.setChecked(False)
+
+    def test_o_mais_tem_cabecalho_de_grupo_visivel(self) -> None:
+        """**O achado 2**: `addSection` desenha só a linha no `windows11`. O título é um item
+        desabilitado em negrito, um por grupo com item, na ordem da barra."""
+        esperados = [
+            barra_da_sala.rotulo_do_grupo(g)
+            for g in barra_da_sala.GRUPOS
+            if any(r.grupo == g for r in barra_da_sala.secundarias(com_motor=True))
+        ]
+        self.assertEqual(tuple(esperados), self.barra.cabecalhos_do_mais())
+        self.assertIn("Posição", esperados)
+        for acao in self.barra.menu_mais.actions():
+            if acao.property(qt_barra.PROPRIEDADE_DE_CABECALHO) is None:
+                continue
+            with self.subTest(cabecalho=acao.text()):
+                self.assertFalse(acao.isEnabled())
+                self.assertTrue(acao.font().bold())
+        self.assertNotIn("", self.barra.no_mais())
+        # Estreitando, o grupo que transbordou ganha cabeçalho também.
+        self.barra.resize(self.barra.btn_mais.sizeHint().width() + 10, 40)
+        self.app.processEvents()
+        self.assertEqual(
+            tuple(barra_da_sala.rotulo_do_grupo(g) for g in barra_da_sala.GRUPOS), self.barra.cabecalhos_do_mais()
+        )
+
+    def test_o_mais_fica_logo_depois_do_ultimo_botao(self) -> None:
+        """**O achado 3, o espaço morto**: a 1920 px havia ~110 px vazios entre "Símbolo" e "Mais".
+        O transbordo mora onde a fila acaba; o vão vai para a direita dele."""
+        self.barra.resize(self.larga + 600, 40)
+        self.app.processEvents()
+        ultimo = max(botao.geometry().right() for botao, _r in self.barra._botoes if not botao.isHidden())
+        self.assertLessEqual(self.barra.btn_mais.geometry().left() - ultimo, 40)
+
+    def test_o_texto_que_cresce_repergunta_a_cabem_sem_resize(self) -> None:
+        """"Treinar" vira "Parar o treino" sem `resizeEvent`; sem reperguntar, o layout espremia o
+        primário -- fotografado elidido ("Carregar…CR atual") a 1400 px. O rearranjo é agendado
+        pelo `changed` da ação e roda no giro seguinte do laço."""
+        acao = self.barra.acoes["modo_treino"]
+        antes = len(self.barra.na_fila())
+        acao.setText(comandos.rotulo_alternado("modo_treino"))
+        self.app.processEvents()
+        self.app.processEvents()
+        self.assertLess(len(self.barra.na_fila()), antes, "ninguém saiu para o texto maior caber")
+        for botao, _registro in self.barra._botoes:
+            if not botao.isHidden():
+                self.assertLessEqual(botao.geometry().right(), self.barra.width())
+        self.assertLessEqual(self.barra.btn_mais.geometry().right(), self.barra.width())
+        acao.setText(comandos.rotulo_de_botao("modo_treino"))
+        self.app.processEvents()
+        self.app.processEvents()
+        self.assertEqual(antes, len(self.barra.na_fila()), "o texto curto devolve quem saiu")
+
+    def test_o_par_promover_rebaixar_entra_e_sai_junto(self) -> None:
+        for largura in range(self.barra.btn_mais.sizeHint().width(), self.larga, 7):
+            self.barra.resize(largura, 40)
+            self.app.processEvents()
+            na_fila = set(self.barra.na_fila())
+            with self.subTest(largura=largura):
+                self.assertEqual("promover_variante" in na_fila, "rebaixar_variante" in na_fila)
+
+    def test_a_tecla_da_sala_esta_na_qaction_com_alcance_de_widget(self) -> None:
+        """A tecla é da `QAction` (dispara pelo mesmo caminho do clique, e não dispara desabilitada),
+        com alcance no painel e nos filhos -- nunca na janela, que é da guarda de `qt/atalhos.py`."""
+        for atalho in atalhos.TECLAS_DA_SALA:
+            with self.subTest(acao=atalho.acao):
+                acao = self.barra.acoes[atalho.acao]
+                self.assertFalse(acao.shortcut().isEmpty())
+                self.assertEqual(Qt.ShortcutContext.WidgetWithChildrenShortcut, acao.shortcutContext())
+        for registro in barra_da_sala.acoes_para(com_motor=True):
+            if registro.acao not in {a.acao for a in atalhos.TECLAS_DA_SALA}:
+                self.assertTrue(self.barra.acoes[registro.acao].shortcut().isEmpty(), registro.acao)
 
     def test_o_exportar_abre_os_tres_formatos_e_nao_esta_no_mais(self) -> None:
         agrupador = self.barra.acoes[barra_da_sala.EXPORTAR_ESTUDO]
@@ -233,6 +350,56 @@ class NoPainelTests(unittest.TestCase):
         self.assertIs(barra.acoes[barra_da_sala.SEGUIR_OCR], self.painel.seguir_ocr)
         self.assertTrue(self.painel.seguir_ocr.isChecked(), "nasce marcado, como o QCheckBox nascia")
         self.assertIsNone(self.painel.btn_continua, "sem motor não há interruptor de análise")
+
+    def test_treinar_fica_na_fila_e_marcado_enquanto_treina(self) -> None:
+        """**O achado 3, o modo**: treinando, o botão da fila é o que sinaliza o modo -- marcado e
+        com o texto alternado. Na rodada 1 ele estava no "Mais" e o marcado não se desenhava."""
+        self.painel.push_move(chess.Move.from_uci("e2e4"))
+        self.painel.alternar_treino()
+        botao = self.painel.barra.botao_de("modo_treino")
+        assert botao is not None
+        self.assertFalse(botao.isHidden())
+        self.assertTrue(botao.isChecked())
+        self.assertEqual(comandos.rotulo_alternado("modo_treino"), botao.text())
+        self.painel.alternar_treino()
+
+    def test_a_tecla_da_sala_chega_ao_metodo_e_respeita_o_modo(self) -> None:
+        """`Ctrl+↑` com o foco na sala chama `promover_variante`; sem estudo o grupo Variante está
+        cinza e a mesma tecla não faz nada -- a regra do modo vale para o teclado (achado 6)."""
+        vistos: list[str] = []
+        self.painel.barra._executar = vistos.append
+        self.painel.activateWindow()
+        self.painel.tabuleiro.setFocus()
+        self.app.processEvents()
+        self.painel.barra.aplicar_modo(barra_da_sala.SEM_ESTUDO)
+        QTest.keyClick(self.painel.tabuleiro, Qt.Key.Key_Up, Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+        self.assertEqual([], vistos, "a tecla passou por cima do modo")
+        self.painel.barra.aplicar_modo(barra_da_sala.COM_ESTUDO)
+        QTest.keyClick(self.painel.tabuleiro, Qt.Key.Key_Up, Qt.KeyboardModifier.ControlModifier)
+        QTest.keyClick(self.painel.tabuleiro, Qt.Key.Key_Delete, Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+        self.assertEqual(["promover_variante", "apagar_variante"], vistos)
+
+    def test_indexar_base_chama_o_indexador_com_a_janela_e_o_busy(self) -> None:
+        """**O achado 7**: a fiação pendente da S-532. A ação da barra chega ao indexador com a
+        janela como pai, as bases da sala e o registro de ocupação; a frase final vai ao status."""
+        base = self.pasta / "base.pgn"
+        base.write_text('[White "A"]\n[Black "B"]\n\n1. e4 *\n', encoding="utf-8")
+        registro = BusyRegistry()
+        painel = qt_estudo.PainelDeEstudo(
+            pasta_inicial=self.pasta, pasta_de_estudos=self.pasta, bases_de_partidas=lambda: (base,), busy=registro
+        )
+        self.addCleanup(descartar, painel)
+        self.assertIn("indexar_base", painel.barra.no_mais())
+        indexador = mock.MagicMock()
+        with mock.patch("chess_diagram_ocr.qt.indice_da_base.indexar_com_dialogo", return_value=indexador) as chamado:
+            painel.barra.acoes["indexar_base"].trigger()
+        chamado.assert_called_once_with(painel.window(), (base,), busy=registro)
+        indexador.terminou.connect.assert_called_once()
+        frase = indexador.terminou.connect.call_args[0][0]
+        frase(Indexacao(partidas=2, relidas=2, arquivos_relidos=1, arquivos_pulados=0, arquivos_removidos=0, cancelado=False))
+        self.assertIn("2 partidas no índice", painel.lbl_status.text())
 
 
 if __name__ == "__main__":  # pragma: no cover

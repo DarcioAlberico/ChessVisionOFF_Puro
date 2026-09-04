@@ -94,6 +94,7 @@ from chess_diagram_ocr.ui import (
     tipografia,
     tokens,
 )
+from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.sala_declarada import (
     ACOES_PROPRIAS,
@@ -148,6 +149,7 @@ class PainelDeEstudo(QWidget):
         abrir_pagina: Callable[[Ancora], bool] = lambda _ancora: False,
         bases_de_partidas: Callable[[], Sequence[Path]] = tuple,
         para_o_texto: Callable[[str], bool] = lambda _linha: False,
+        busy: BusyRegistry | None = None,
     ) -> None:
         super().__init__(parent)
         self._posicao = posicao
@@ -163,6 +165,12 @@ class PainelDeEstudo(QWidget):
         self._abrir_pagina = abrir_pagina
         self._bases = bases_de_partidas
         self._para_o_texto = para_o_texto
+        self._busy = busy
+        """O registro de operações longas da janela, para o índice da base (S-532) aparecer no rodapé
+        como as outras. Sem ele, a janela que nos contém pode tê-lo: ver `indexar_base`."""
+        self._indexador: Any = None
+        """A rodada do índice em curso -- guardada porque um `QObject` sem referência é recolhido
+        com a thread dentro (`qt/indice_da_base.py`)."""
         self._pasta_de_estudos = pasta_de_estudos
 
         self._acertos = 0
@@ -1670,6 +1678,34 @@ class PainelDeEstudo(QWidget):
         if not resposta.achou:
             return None
         return _JanelaDePartidas(self, resposta)
+
+    def indexar_base(self) -> None:
+        """Constrói o índice por nome da base, com barra e Cancelar, sem sair da janela (S-532).
+
+        **A fiação que a S-532 deixou pendente**: o indexador existia e ninguém o chamava -- a janela
+        continuava mandando abrir um terminal. A ação mora no grupo Base da barra da sala (dentro do
+        "Mais": indexa-se uma vez por torneio acrescentado) e no menu Estudo, pelo catálogo.
+
+        As bases são as que a sala já consulta (`bases_de_partidas`) ou, sem elas, a pasta padrão
+        (`database_paths`). O `busy` é o da janela quando ela o passou; senão, o que a janela que
+        nos contém tiver -- é o mesmo registro, e uma segunda rodada em curso é recusada pelo
+        indexador. A frase final vai para `set_status`, que é o rodapé da aba **e** o da janela.
+        """
+        from chess_diagram_ocr.games_db import database_paths
+        from chess_diagram_ocr.qt import indice_da_base
+
+        if self._indexador is not None and self._indexador.ocupado:
+            self.set_status("O índice da base já está sendo construído.")
+            return
+        bases = tuple(self._bases()) or tuple(database_paths())
+        if not bases:
+            self.set_status("Não há base de partidas (.pgn) para indexar.")
+            return
+        busy = self._busy if self._busy is not None else getattr(self.window(), "busy", None)
+        indexador = indice_da_base.indexar_com_dialogo(self.window(), bases, busy=busy)
+        indexador.terminou.connect(lambda resultado: self.set_status(indice_da_base.frase_final(resultado)))
+        indexador.falhou.connect(lambda mensagem, _excecao: self.set_status(f"O índice da base falhou: {mensagem}"))
+        self._indexador = indexador
 
     def _loja_de_posicoes(self) -> Any:
         """O cache de posições, aberto uma vez e mantido. `None` quando não há base.

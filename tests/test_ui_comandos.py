@@ -441,6 +441,9 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "exportar_estudo_md",
                 "exportar_estudo_rtf",
                 "modo_treino",
+                # A S-527/S-532: o menu diz "Indexar a base de partidas por nome…" e o botão do
+                # "Mais" da sala diz "Indexar base", pela mesma razão dos vinte e três acima.
+                "indexar_base",
             },
             divergem,
         )
