@@ -70,8 +70,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr import eco, estudo_arquivo
 from chess_diagram_ocr import estudo as estudo_mod
-from chess_diagram_ocr import estudo_arquivo
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
@@ -171,6 +171,9 @@ class PainelDeEstudo(QWidget):
         self._indexador: Any = None
         """A rodada do índice em curso -- guardada porque um `QObject` sem referência é recolhido
         com a thread dentro (`qt/indice_da_base.py`)."""
+        self._busca: Any = None
+        """O diálogo de busca (S-533), guardado e **reusado**: ele não é modal, tem uma thread
+        dentro, e abrir o segundo enquanto o primeiro procura destruiria um `QThread` em curso."""
         self._pasta_de_estudos = pasta_de_estudos
 
         self._acertos = 0
@@ -320,6 +323,17 @@ class PainelDeEstudo(QWidget):
         self.lbl_vez = QLabel("", barra)
         tema.pintar(self.lbl_vez, "color", tokens.TEXTO_SECUNDARIO)
         barra.adicionar(self.lbl_vez)
+        # **O ECO da posição corrente** (S-534), na mesma faixa e pela mesma razão que a vez: é o
+        # que um enxadrista lê para saber *em que abertura ele está*, e ele mudava a cada lance
+        # sem aparecer em lugar nenhum da janela. Ao lado do tabuleiro, que é onde o olho está.
+        self.lbl_eco = QLabel("", barra)
+        tema.pintar(self.lbl_eco, "color", tokens.TEXTO_SECUNDARIO)
+        dica_em(
+            self.lbl_eco,
+            "O código ECO da posição. O header [ECO] da partida vence; sem ele, a tabela embutida\n"
+            "classifica pela posição -- então uma transposição chega ao mesmo código.",
+        )
+        barra.adicionar(self.lbl_eco)
         # E o placar do treino, pela mesma razão: ele acompanhava o botão "Treinar" na quarta
         # fileira, e o que ele conta acontece no tabuleiro.
         self.lbl_placar = QLabel("", barra)
@@ -585,6 +599,11 @@ class PainelDeEstudo(QWidget):
 
         Na raiz o trecho é o `RAIZ`, e o texto dele já é "posição do diagrama" ou "posição inicial"
         conforme o estudo tenha vindo do livro -- que é exatamente o que se quer ler ali.
+
+        **E o ECO** (S-534), que muda com o lance e por isso é atualizado aqui. O header `[ECO]` da
+        partida vence -- é a classificação de quem a publicou --, e sem ele a tabela embutida
+        classifica pela posição, o que faz a transposição chegar ao mesmo código. Custa ~0,5 ms por
+        lance, medido; a tabela por posição é montada uma vez (84 ms) e fica em cache.
         """
         indice = estudo_lista.trecho_do_caminho(self._trechos, self.estudo.caminho())
         if indice < 0:
@@ -601,6 +620,9 @@ class PainelDeEstudo(QWidget):
             )
             self.lbl_lance.setText(f"{numero}{trecho.texto}".strip())
         self.lbl_vez.setText("brancas jogam" if self.estudo.tabuleiro.turn else "pretas jogam")
+        self.lbl_eco.setText(
+            eco.frase_do_tabuleiro(self.estudo.tabuleiro, self.estudo.jogo.headers.get("ECO", ""))
+        )
 
     def _clique_na_lista(self, url: QUrl) -> None:
         """Vai ao nó daquele trecho. O caminho é resolvido **agora**, e não guardado na âncora."""
@@ -1678,6 +1700,68 @@ class PainelDeEstudo(QWidget):
         if not resposta.achou:
             return None
         return _JanelaDePartidas(self, resposta)
+
+    def buscar_partidas(self) -> QDialog | None:
+        """Abre o formulário de busca sobre o índice por nome (S-533).
+
+        **A outra pergunta.** `partidas_da_posicao` responde pela posição que está no tabuleiro, e
+        só por ela -- e lê o cache, que só conhece o que já foi perguntado. Esta pergunta não nasce
+        do tabuleiro: *as partidas de Carlsen em 2019 com Elo acima de 2700 na Najdorf*. Quem
+        responde é `games_index.buscar`, e a posição corrente entra como filtro **opcional**.
+
+        O diálogo é guardado e reusado: ele não é modal e tem uma `Tarefa` dentro, e destruir o
+        primeiro para abrir o segundo destruiria um `QThread` em curso -- que derruba o processo
+        sem exceção. Reabrir só atualiza a posição, que é a única coisa dele que envelhece.
+        """
+        from chess_diagram_ocr.games_db import database_paths
+        from chess_diagram_ocr.qt import busca_de_partidas as qt_busca
+
+        if self._busca is None:
+            bases = tuple(self._bases()) or tuple(database_paths())
+            if not bases:
+                self.set_status("Não há base de partidas (.pgn) para procurar.")
+                return None
+            dialogo = qt_busca.DialogoDeBusca(self.window(), bases=bases)
+            dialogo.partida_escolhida.connect(self.abrir_partida_da_base)
+            dialogo.indice_pedido.connect(self.indexar_base)
+            self._busca = dialogo
+        self._busca.definir_posicao(self.estudo.tabuleiro.board_fen())
+        self._busca.show()
+        self._busca.raise_()
+        return self._busca
+
+    def abrir_partida_da_base(self, caminho: Any, offset: int) -> bool:
+        """Põe na mesa a partida que a busca escolheu, lida direto do byte dela (S-533).
+
+        **É o que o índice existe para permitir**: `Achado` guarda em que arquivo e em que byte a
+        partida começa, e ler dali custa um `seek` -- não a passada de minutos que a busca por
+        posição paga. Se a leitura não devolver partida, o índice está adiantado em relação ao
+        arquivo (alguém reescreveu o `.pgn`), e a frase diz isso em vez de abrir meia partida.
+
+        O estudo aberto é guardado na sala antes da troca, como em `_aceitar_colado`: escolher uma
+        partida na lista não pode custar a análise que estava na mesa.
+        """
+        from chess_diagram_ocr import estudo_partidas, games_index
+
+        partida = games_index.partida_em(Path(caminho), int(offset))
+        if partida is None or not partida.movetext:
+            self.set_status(
+                "A partida escolhida não foi encontrada onde o índice diz que ela está. "
+                "Refaça o índice: a base mudou depois da última rodada."
+            )
+            return False
+        novo, motivo = estudo_mod.colar(estudo_partidas.como_pgn(partida))
+        if novo is None:
+            self.set_status(f"A partida escolhida não pôde ser lida: {motivo}")
+            return False
+        if not self._confirmar_abandono("abrir a partida escolhida na busca"):
+            return False
+        self.seguir_ocr.setChecked(False)
+        self.sala.guardar(self.estudo)
+        nomes = f"{partida.headers.get('White', '?')} - {partida.headers.get('Black', '?')}"
+        self._trocar_de_estudo(novo, f"Base: {nomes}")
+        self.set_status(f"{nomes}: {novo.contagem_de_lances()} lance(s) da base.")
+        return True
 
     def indexar_base(self) -> None:
         """Constrói o índice por nome da base, com barra e Cancelar, sem sair da janela (S-532).

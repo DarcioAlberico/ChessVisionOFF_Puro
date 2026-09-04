@@ -15,9 +15,18 @@ ficado de fora. Perguntar por nome não tem lista para truncar. E ele alcança o
 diagramas (53,9%) que a posição não casou**: a base pode ter a partida sem ter aquela posição
 exata, quando a leitura do diagrama saiu com uma casa errada.
 
-**O custo, medido e não estimado:** ~8,4 min e 431 MB para 10,5 M partidas. Proporcional ao que
-a pasta tem: com duas gigabases, o dobro. Fora do git, ao lado da base, como todo material
-derivado dela.
+**O custo, medido e não estimado.** Sobre a `LumbrasGigaBase_OTB_Complete` (8,6 GB, 10.355.488
+partidas), as duas versões na mesma sessão de 2026-09-04:
+
+| | tempo | disco |
+|---|---|---|
+| v4 -- `(pair, file, offset)` | 8,9 min | 235 MB |
+| **v5** -- treze colunas, dois dicionários, seis árvores | **10,2 min** | **1.764 MB** |
+
+**+14% de tempo e 7,5× de disco**, e é o que faz *"as partidas de Carlsen em 2019 com Elo acima
+de 2700 na Najdorf"* custar **52 ms** em vez da passada de dez minutos. Proporcional ao que a
+pasta tem: com duas gigabases, o dobro. Fora do git, ao lado da base, como todo material derivado
+dela.
 
 **Os offsets são do arquivo, então o arquivo é parte da chave.** Trocada a base, cada offset
 aponta para o meio de outra partida -- e a leitura devolveria movetext cortado com cara de
@@ -36,6 +45,16 @@ arquivo cuja marca não mudou não é relido; um que saiu da pasta sai do índic
 cresceu -- o PGN em que alguém anexa as partidas da semana -- é lido a partir do byte em que
 parou, se a cauda antiga ainda estiver lá. Uma pasta de 18 GB com um torneio novo custa o
 torneio, e não os 18 GB.
+
+**E o índice passou a responder a perguntas que não são "quem contra quem" (S-533/S-534).**
+Até a versão 4 a linha era `(par, arquivo, offset)`: bastava para achar a partida de uma legenda,
+e não dizia nada sobre ela. A sala de estudo quer *as partidas de Carlsen em 2019 com Elo acima
+de 2700 na Najdorf*, e a legenda sob o tabuleiro quer o código ECO. A linha ganhou **quem, onde,
+quando, com que Elo, com que resultado e em que abertura** -- e o nome do jogador e o do evento
+não vão na linha: vão em dois dicionários (`players`, `events`) e a linha guarda o número. Dez
+milhões de linhas com `Carlsen, Magnus` escrito em cada uma seriam 200 MB de repetição; com o
+número são 30 MB, e a busca por sobrenome vira uma consulta ao dicionário (uma tabela de
+centenas de milhares de linhas, não de dez milhões) seguida de uma sonda no índice.
 """
 
 from __future__ import annotations
@@ -51,6 +70,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import PROJECT_ROOT
+from .eco import classificar_lances, codigo_do_header, lances_do_movetext
 from .games_db import (
     _ABRE_CABECALHO,
     _BOM,
@@ -69,6 +89,8 @@ from .games_db import (
     surname,
     tamanho_da_base,
 )
+from .pdf_text import fold
+from .ui.busca_de_partidas import Filtro
 
 logger = logging.getLogger(__name__)
 
@@ -76,19 +98,27 @@ __all__ = [
     "DEFAULT_INDEX_PATH",
     "INDEX_VERSION",
     "INTERVALO_DE_PROGRESSO",
+    "PAGINA",
+    "TETO_DE_CONTAGEM",
+    "TETO_DE_REPLAY",
+    "Achado",
+    "Busca",
     "Indexacao",
+    "IndiceIndisponivel",
     "Progresso",
     "build_index",
+    "buscar",
     "index_fingerprint",
     "lookup_pair",
     "pair_hash",
+    "partida_em",
     "positions_of",
 ]
 
 DEFAULT_INDEX_PATH = PROJECT_ROOT / "data" / "games_index.sqlite"
 
-INDEX_VERSION = 4
-"""O formato do arquivo. **4** desde a S-532, quando a tabela `files` virou manifesto.
+INDEX_VERSION = 5
+"""O formato do arquivo. **5** desde a S-533/S-534, quando a linha ganhou as colunas de busca.
 
 A **2** é da S-93, quando a partida passou a guardar em que base mora. A versão declarada
 existe porque o fingerprint não bastava para notar a diferença: com uma base só, a marca da
@@ -121,6 +151,20 @@ transação, em vez de nascer inteiro num `.parcial` e ser renomeado no fim. Um 
 recusado com a instrução de refazer, como sempre; refazer custa a mesma passada de antes, uma
 vez, e a partir daí só o que mudar.
 
+**O que muda na 5, e por que ela desfaz a 3.** A linha ganhou `white`, `black`, `event` (números
+dos dicionários `players` e `events`), `date`, `year`, `welo`, `belo`, `elo` (o menor dos dois),
+`result` e `eco`. Com **seis** caminhos de busca -- par, brancas, pretas, evento, ECO e
+ano+Elo -- a chave composta da v3 seria copiada inteira dentro de cada índice secundário (14
+bytes por linha em cada um), e o rowid de 4 bytes sai mais barato: a tabela voltou a ter
+`id INTEGER PRIMARY KEY`, com `UNIQUE (file, offset)` fazendo o papel de chave única que a v3
+tinha de graça. O argumento da v3 valia para uma árvore só; com seis, inverte.
+
+**A migração é refazer.** Um índice v4 não tem nomes, datas nem códigos gravados -- só o par em
+hash --, e uma "segunda passada" que os buscasse pelos offsets leria os mesmos bytes que a
+passada inteira, na mesma ordem, com um `seek` por partida a mais. Não há o que aproveitar: um
+v4 é apagado e refeito, como sempre foi com formato anterior, e `lookup_pair`/`buscar` avisam
+com a instrução até isso acontecer.
+
 `INSERT OR IGNORE` porque a chave é única: a mesma partida indexada duas vezes era uma linha
 duplicada e silenciosa antes, e agora seria um erro em cima de uma varredura de horas."""
 
@@ -143,16 +187,69 @@ INTERVALO_DE_PROGRESSO = 0.1
 """No máximo ~10 avisos de progresso por segundo. Mais que isso é fila de eventos na janela, e
 não informação: ninguém lê onze barras por segundo."""
 
+PAGINA = 100
+"""Quantas linhas uma página da busca traz por padrão. Cem cabem numa tela com rolagem curta, e
+a página seguinte custa a mesma consulta com outro `OFFSET`."""
+
+TETO_DE_CONTAGEM = 100_000
+"""Até onde a busca conta. Contar *todas* as partidas de `1.e4` numa base de dez milhões custaria
+segundos para dizer um número que ninguém vai ler até o fim; acima do teto a frase diz "mais de
+100.000", que é a informação inteira."""
+
+TETO_DE_REPLAY = 2_000
+"""Quantas candidatas a busca reproduz quando o filtro pede a posição corrente.
+
+A posição não está no índice -- guardá-la seria a varredura de uma hora da S-92 --, então ela é
+conferida **lendo** cada candidata que os outros filtros deixaram passar. Dois mil replays com o
+porteiro da S-85 custam ~1 s; quem quer mais estreita o filtro, e a resposta diz quantas foram
+examinadas em vez de fingir que foram todas."""
+
 _LINHAS_POR_CONFERENCIA = 16_384
 """De quantas em quantas linhas o relógio e a bandeira de cancelamento são conferidos.
 
 Dezesseis mil linhas são ~1 MB de PGN, uns 10 ms a 100 MB/s; o cancelamento é honrado bem
 dentro do segundo que a S-532 exige, e o custo de olhar o relógio some no ruído."""
 
+_LINHAS_DE_MOVETEXT_LIDAS = 2
+"""Quantas linhas do movetext a classificação ECO sem header lê. Uma linha de 80 colunas traz
+uns 16 meios-lances; duas passam dos 24 que `eco.LANCES_EXAMINADOS` percorre."""
+
+_CAMPOS_DO_INDICE = frozenset({"Event", "Date", "White", "Black", "Result", "WhiteElo", "BlackElo", "ECO", "FEN"})
+"""Os headers que a passada de índice guarda de cada partida. `FEN` só para saber que a partida
+**não** começa na posição inicial -- e aí não há abertura a classificar."""
+
+_INDICES_DE_BUSCA: tuple[tuple[str, str], ...] = (
+    ("games_pair", "games (pair)"),
+    ("games_white", "games (white)"),
+    ("games_black", "games (black)"),
+    ("games_event", "games (event)"),
+    ("games_eco", "games (eco)"),
+    ("games_year", "games (year, elo)"),
+)
+"""Os seis caminhos de busca. São **derrubados antes de uma rodada grande e refeitos no fim**:
+inserir dez milhões de linhas com seis árvores abertas é dez milhões de sondas aleatórias em cada
+uma, e criá-las de uma vez sobre a tabela pronta é uma ordenação por árvore -- segundos, não
+minutos. Numa rodada pequena (o torneio anexado) eles ficam, porque refazê-los custaria mais que
+as linhas novas. Ver `_refaz_os_indices`."""
+
+_TAMANHO_DO_LOTE = 100_000
+"""Linhas acumuladas antes de cada `executemany`. Eram 200 mil com três colunas; com treze, o
+mesmo pico de memória cabe na metade."""
+
 Progresso = Callable[[Path, int, int, int], None]
 """`(base, bytes_lidos, bytes_totais, partidas)`. Os bytes são os do disco -- comprimidos, se a
 base for --, porque são os únicos comparáveis ao tamanho do arquivo; as partidas são as lidas
 **nesta rodada**, somadas sobre os arquivos."""
+
+
+class IndiceIndisponivel(RuntimeError):
+    """A busca não pode responder: não há índice, ele é de outro formato, ou está em obras.
+
+    É exceção e não lista vazia porque quem chama é uma janela com uma tabela: "nenhuma partida"
+    e "o índice ainda não foi feito" são frases diferentes, e devolver `[]` nos dois casos foi o
+    que a S-93 mediu como silêncio. `lookup_pair` continua devolvendo vazio, porque quem o chama
+    tem um caminho alternativo (a lista do cache) e um erro ali tiraria os dois.
+    """
 
 
 @dataclass(frozen=True)
@@ -176,6 +273,50 @@ class Indexacao:
     cancelado: bool = False
     """A rodada parou a pedido. O que já estava gravado ficou; a marca da base **não** foi
     escrita, e a consulta recusa o índice até uma rodada terminar."""
+
+
+@dataclass(frozen=True)
+class Achado:
+    """Uma linha da busca (S-533): o que a tabela mostra, e onde a partida mora para abri-la."""
+
+    brancas: str
+    elo_brancas: int
+    pretas: str
+    elo_pretas: int
+    resultado: str
+    evento: str
+    data: str
+    eco: str
+    caminho: Path
+    """A base em que a partida está -- o `Path` de `as_databases`, que pode ser um membro de
+    `.zip`."""
+    offset: int
+
+
+@dataclass(frozen=True)
+class Busca:
+    """O que `buscar` devolveu: a página, quantas há ao todo, e -- com posição -- quantas leu."""
+
+    achados: tuple[Achado, ...] = ()
+    total: int = 0
+    """Quantas partidas os filtros do índice casam, até `TETO_DE_CONTAGEM`."""
+
+    total_e_teto: bool = False
+    """`total` parou no teto: há mais do que ele diz."""
+
+    offset: int = 0
+    examinadas: int = 0
+    """Com posição no filtro, quantas candidatas foram lidas e reproduzidas nesta página. Sem
+    posição, zero: ninguém foi lido."""
+
+    @property
+    def proximo_offset(self) -> int:
+        """Onde a página seguinte começa: depois do que foi examinado, ou do que foi devolvido."""
+        return self.offset + (self.examinadas if self.examinadas else len(self.achados))
+
+    @property
+    def ha_mais(self) -> bool:
+        return self.proximo_offset < self.total or self.total_e_teto
 
 
 def pair_hash(pair: PlayerPair) -> int:
@@ -243,13 +384,28 @@ def _abrir_para_escrita(path: Path) -> sqlite3.Connection:
     # porque uma queda de energia custa refazer a rodada, e o disco e o gargalo da rodada.
     conexao.execute("PRAGMA journal_mode=DELETE")
     conexao.execute("PRAGMA synchronous=OFF")
-    # `WITHOUT ROWID` com a chave composta (S-140): a coluna de busca **e** a arvore, e
-    # `offset`/`file` viajam na mesma folha. Ver `INDEX_VERSION` para o numero medido.
+    # 256 MB de cache: e o que deixa as seis arvores de busca em memoria numa rodada pequena que
+    # insere com elas abertas (o torneio anexado a gigabase). Numa rodada grande elas sao
+    # derrubadas antes e refeitas no fim, e o cache so ajuda a tabela.
+    conexao.execute("PRAGMA cache_size=-262144")
+    # `id INTEGER PRIMARY KEY` e nao mais `WITHOUT ROWID` (v5): ver `INDEX_VERSION`.
     conexao.execute(
         "CREATE TABLE IF NOT EXISTS games ("
-        "pair INTEGER NOT NULL, offset INTEGER NOT NULL, file INTEGER NOT NULL, "
-        "PRIMARY KEY (pair, file, offset)) WITHOUT ROWID"
+        "id INTEGER PRIMARY KEY, "
+        "pair INTEGER NOT NULL, file INTEGER NOT NULL, offset INTEGER NOT NULL, "
+        "white INTEGER NOT NULL, black INTEGER NOT NULL, event INTEGER NOT NULL, "
+        "date TEXT NOT NULL, year INTEGER NOT NULL, "
+        "welo INTEGER NOT NULL, belo INTEGER NOT NULL, elo INTEGER NOT NULL, "
+        "result TEXT NOT NULL, eco TEXT NOT NULL, "
+        "UNIQUE (file, offset))"
     )
+    conexao.execute("CREATE TABLE IF NOT EXISTS players (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, surname TEXT NOT NULL)")
+    conexao.execute("CREATE INDEX IF NOT EXISTS players_surname ON players (surname)")
+    conexao.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, folded TEXT NOT NULL)")
+    # O zero e "sem nome"/"sem evento": a linha da partida sempre aponta para alguem, e a
+    # consulta junta as tres tabelas sem `LEFT JOIN`.
+    conexao.execute("INSERT OR IGNORE INTO players VALUES (0, '', '')")
+    conexao.execute("INSERT OR IGNORE INTO events VALUES (0, '', '')")
     conexao.execute(
         "CREATE TABLE IF NOT EXISTS files ("
         "id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, size INTEGER NOT NULL, mtime REAL NOT NULL, "
@@ -299,6 +455,99 @@ def _manifesto(conexao: sqlite3.Connection) -> dict[str, _Registro]:
     }
 
 
+@dataclass(frozen=True)
+class _Plano:
+    """O que a rodada vai fazer com uma base, decidido pelo manifesto antes de ler um byte."""
+
+    base: Path
+    nome: str
+    mtime: float
+    tamanho: int
+    cabeca: str
+    cauda: str
+    antigo: _Registro | None
+    inicio: int
+    """De que byte ler: zero para inteiro; o tamanho antigo para a cauda anexada."""
+
+    pular: bool
+    """Nada mudou: não é relido."""
+
+
+def _planejar(base: Path, antigo: _Registro | None) -> _Plano | None:
+    """Pulado, cauda ou inteiro -- a tabela do docstring de `build_index`. `None` se não dá para ler."""
+    nome = nome_da_base(base)
+    fisico = arquivo_fisico(base)
+    try:
+        mtime = fisico.stat().st_mtime
+        tamanho_fisico = fisico.stat().st_size
+    except OSError:
+        return None
+    tamanho = tamanho_da_base(base)
+    cabeca, cauda = _marcas(fisico, tamanho_fisico)
+    if antigo is not None and (antigo.size, antigo.head, antigo.tail) == (tamanho, cabeca, cauda):
+        return _Plano(base, nome, mtime, tamanho, cabeca, cauda, antigo, tamanho, True)
+    inicio = 0
+    if (
+        antigo is not None
+        and not eh_comprimida(base)
+        and tamanho > antigo.size
+        and _marca(fisico, 0, min(antigo.size, BYTES_DA_MARCA)) == antigo.head
+        and _marca(fisico, max(0, antigo.size - BYTES_DA_MARCA), antigo.size) == antigo.tail
+    ):
+        # So a cauda: o que estava la continua la, byte a byte, e os offsets antigos continuam
+        # valendo. As duas marcas sao refeitas sobre os MESMOS trechos que o manifesto mediu --
+        # num arquivo menor que 64 KB a cabeca era o arquivo inteiro, e compara-la com a cabeca
+        # de agora, mais comprida, diria "mudou" sobre um arquivo que so cresceu.
+        inicio = antigo.size
+    return _Plano(base, nome, mtime, tamanho, cabeca, cauda, antigo, inicio, False)
+
+
+def _refaz_os_indices(planos: Sequence[_Plano]) -> bool:
+    """Se esta rodada derruba as árvores de busca antes e as refaz depois.
+
+    A régua é bytes: o que vai ser lido contra o que fica como está. Uma rodada que lê mais do
+    que mantém (o índice do zero; a segunda gigabase) refaz as árvores no fim, que é uma
+    ordenação por árvore; uma que lê menos (o torneio anexado) insere com elas abertas, porque
+    refazer seis árvores de dez milhões de linhas por causa de trezentas partidas custaria mais
+    que as trezentas partidas.
+    """
+    a_ler = sum(plano.tamanho - plano.inicio for plano in planos if not plano.pular)
+    ficam = sum(plano.inicio for plano in planos)
+    return a_ler > ficam
+
+
+class _Dicionario:
+    """`nome -> número` de uma das duas tabelas de nomes, com o que já está gravado carregado.
+
+    Carregar o dicionário inteiro na memória é o que faz a passada custar um `dict.get` por
+    nome e não uma consulta por partida: dez milhões de `SELECT id FROM players WHERE name = ?`
+    seriam minutos. Numa gigabase são ~600 mil nomes, uns 60 MB -- o preço, medido, de gravar o
+    nome uma vez em vez de dez milhões.
+    """
+
+    def __init__(self, conexao: sqlite3.Connection, tabela: str, derivada: Callable[[str], str]) -> None:
+        self._tabela = tabela
+        self._derivada = derivada
+        self._ids: dict[str, int] = {str(nome): int(numero) for nome, numero in conexao.execute(f"SELECT name, id FROM {tabela}")}
+        self._proximo = max(self._ids.values(), default=0) + 1
+        self._novos: list[tuple[int, str, str]] = []
+
+    def numero(self, nome: str) -> int:
+        numero = self._ids.get(nome)
+        if numero is None:
+            numero = self._proximo
+            self._proximo += 1
+            self._ids[nome] = numero
+            self._novos.append((numero, nome, self._derivada(nome)))
+        return numero
+
+    def gravar(self, conexao: sqlite3.Connection) -> None:
+        """Insere os nomes novos desde a última gravação. Nada aqui faz `commit`."""
+        if self._novos:
+            conexao.executemany(f"INSERT OR IGNORE INTO {self._tabela} VALUES (?, ?, ?)", self._novos)
+            self._novos.clear()
+
+
 def build_index(
     databases: Path | Sequence[Path],
     path: Path = DEFAULT_INDEX_PATH,
@@ -310,7 +559,10 @@ def build_index(
 
     **Uma passada de cabeçalhos, sem reproduzir lance nenhum** -- é por isso que ela custa
     minutos e não a meia hora da varredura por posição. O movetext é pulado como texto: aqui ele
-    não interessa, e quem for consultar lê a partida inteira na hora.
+    não interessa, e quem for consultar lê a partida inteira na hora. A única exceção (S-534) são
+    as duas primeiras linhas dele numa partida **sem** header `[ECO]` e sem `[FEN]`: elas viram
+    lances por expressão regular e entram em `eco.classificar_lances`, que é uma árvore de
+    prefixos sem tabuleiro -- microssegundos, e não o milissegundo do replay.
 
     **O arquivo faz parte da chave desde a S-93**, e o número dele vem do manifesto (S-532):
     um arquivo que já estava no índice mantém o `id`, um novo recebe o próximo livre. A ordem da
@@ -359,55 +611,50 @@ def build_index(
             removidos += 1
             logger.info("Índice por nome: %s saiu da pasta e as partidas dele saíram do índice.", nome)
 
-        proximo_id = max((registro.id for registro in manifesto.values()), default=-1) + 1
+        planos: list[_Plano] = []
         for base in bases:
+            plano = _planejar(base, manifesto.get(nome_da_base(base)))
+            if plano is None:
+                logger.warning("Índice por nome: %s não pôde ser lido e ficou de fora.", nome_da_base(base))
+                continue
+            planos.append(plano)
+
+        if _refaz_os_indices(planos):
+            for indice, _colunas in _INDICES_DE_BUSCA:
+                conexao.execute(f"DROP INDEX IF EXISTS {indice}")
+            conexao.commit()
+
+        jogadores = _Dicionario(conexao, "players", surname)
+        eventos = _Dicionario(conexao, "events", fold)
+        proximo_id = max((registro.id for registro in manifesto.values()), default=-1) + 1
+        for plano in planos:
             if cancel is not None and cancel.is_set():
                 cancelado = True
                 break
-            nome = nome_da_base(base)
-            fisico = arquivo_fisico(base)
-            try:
-                mtime = fisico.stat().st_mtime
-            except OSError:
-                logger.warning("Índice por nome: %s não pôde ser lido e ficou de fora.", nome)
-                continue
-            tamanho = tamanho_da_base(base)
-            cabeca, cauda = _marcas(fisico, fisico.stat().st_size)
-            antigo = manifesto.get(nome)
+            base, nome, antigo, tamanho = plano.base, plano.nome, plano.antigo, plano.tamanho
 
-            if antigo is not None and (antigo.size, antigo.head, antigo.tail) == (tamanho, cabeca, cauda):
-                if antigo.mtime != mtime:
-                    conexao.execute("UPDATE files SET mtime = ? WHERE id = ?", (mtime, antigo.id))
+            if plano.pular and antigo is not None:
+                if antigo.mtime != plano.mtime:
+                    conexao.execute("UPDATE files SET mtime = ? WHERE id = ?", (plano.mtime, antigo.id))
                     conexao.commit()
                 pulados += 1
                 if progress is not None:
                     progress(base, tamanho, tamanho, lidas_na_rodada)
                 continue
 
-            inicio = 0
             partidas_antes = 0
             if antigo is None:
                 identificador, proximo_id = proximo_id, proximo_id + 1
             else:
                 identificador = antigo.id
-                if (
-                    not eh_comprimida(base)
-                    and tamanho > antigo.size
-                    and _marca(fisico, 0, min(antigo.size, BYTES_DA_MARCA)) == antigo.head
-                    and _marca(fisico, max(0, antigo.size - BYTES_DA_MARCA), antigo.size) == antigo.tail
-                ):
-                    # So a cauda: o que estava la continua la, byte a byte, e os offsets antigos
-                    # continuam valendo. As duas marcas sao refeitas sobre os MESMOS trechos que o
-                    # manifesto mediu -- num arquivo menor que 64 KB a cabeca era o arquivo
-                    # inteiro, e compara-la com a cabeca de agora, mais comprida, diria "mudou"
-                    # sobre um arquivo que so cresceu.
-                    inicio, partidas_antes = antigo.size, antigo.games
-                    logger.info("Índice por nome: %s cresceu; lendo a partir do byte %d.", nome, inicio)
+                if plano.inicio:
+                    partidas_antes = antigo.games
+                    logger.info("Índice por nome: %s cresceu; lendo a partir do byte %d.", nome, plano.inicio)
                 else:
                     conexao.execute("DELETE FROM games WHERE file = ?", (identificador,))
 
             lidas, terminou = _indexar_arquivo(
-                conexao, base, identificador, inicio, tamanho, lidas_na_rodada, progress, cancel
+                conexao, base, identificador, plano.inicio, tamanho, lidas_na_rodada, progress, cancel, jogadores, eventos
             )
             if not terminou:
                 conexao.rollback()
@@ -416,14 +663,18 @@ def build_index(
                 break
             conexao.execute(
                 "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (identificador, nome, tamanho, mtime, cabeca, cauda, partidas_antes + lidas),
+                (identificador, nome, tamanho, plano.mtime, plano.cabeca, plano.cauda, partidas_antes + lidas),
             )
             conexao.commit()
-            manifesto[nome] = _Registro(identificador, nome, tamanho, mtime, cabeca, cauda, partidas_antes + lidas)
+            manifesto[nome] = _Registro(identificador, nome, tamanho, plano.mtime, plano.cabeca, plano.cauda, partidas_antes + lidas)
             lidas_na_rodada += lidas
             arquivos_relidos += 1
 
         if not cancelado:
+            # `IF NOT EXISTS` sempre: numa rodada pequena eles ja estao la e isto nao custa nada;
+            # numa grande foram derrubados; e depois de uma cancelada podem ter ficado de fora.
+            for indice, colunas in _INDICES_DE_BUSCA:
+                conexao.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {colunas}")
             conexao.execute("INSERT OR REPLACE INTO meta VALUES ('database', ?)", (index_fingerprint(bases),))
             conexao.commit()
         total = sum(registro.games for registro in manifesto.values())
@@ -451,6 +702,63 @@ def build_index(
     return resultado
 
 
+def _inteiro(texto: str) -> int:
+    """`2839` -> 2839; `-`, `?`, vazio -> 0. Elo sem número é Elo que não existe."""
+    limpo = texto.strip()
+    return int(limpo) if limpo.isdigit() else 0
+
+
+def _ano(data: str) -> int:
+    """`2019.01.12` -> 2019; `????.??.??` -> 0. Só os quatro primeiros caracteres contam."""
+    return _inteiro(data[:4])
+
+
+def _linha_da_partida(
+    cabecalho: dict[str, str],
+    movetext: Sequence[str],
+    offset: int,
+    identificador: int,
+    jogadores: _Dicionario,
+    eventos: _Dicionario,
+) -> tuple[Any, ...]:
+    """A linha de `games` para uma partida lida, na ordem das colunas de `_INSERIR`."""
+    branco = cabecalho.get("White", "")
+    preto = cabecalho.get("Black", "")
+    data = cabecalho.get("Date", "").strip()
+    welo = _inteiro(cabecalho.get("WhiteElo", ""))
+    belo = _inteiro(cabecalho.get("BlackElo", ""))
+    # O header vence (S-534): e a classificacao que quem publicou a partida escolheu. Sem ele, e
+    # so numa partida que comeca na posicao inicial, os primeiros lances classificam.
+    eco = codigo_do_header(cabecalho.get("ECO", ""))
+    if not eco and movetext and "FEN" not in cabecalho:
+        abertura = classificar_lances(lances_do_movetext(" ".join(movetext)))
+        eco = "" if abertura is None else abertura.codigo
+    return (
+        pair_hash((surname(branco), surname(preto))),
+        identificador,
+        offset,
+        jogadores.numero(branco),
+        jogadores.numero(preto),
+        eventos.numero(cabecalho.get("Event", "")),
+        data,
+        _ano(data),
+        welo,
+        belo,
+        # O menor dos dois, e zero se um falta: "Elo minimo 2700" pergunta pelo nivel da partida,
+        # e uma partida em que um dos lados nao tem Elo nao pode afirmar esse nivel.
+        min(welo, belo) if welo and belo else 0,
+        cabecalho.get("Result", "").strip(),
+        eco,
+    )
+
+
+_INSERIR = (
+    "INSERT OR IGNORE INTO games "
+    "(pair, file, offset, white, black, event, date, year, welo, belo, elo, result, eco) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+
 def _indexar_arquivo(
     conexao: sqlite3.Connection,
     base: Path,
@@ -460,18 +768,33 @@ def _indexar_arquivo(
     partidas_anteriores: int,
     progress: Progresso | None,
     cancel: threading.Event | None,
+    jogadores: _Dicionario,
+    eventos: _Dicionario,
 ) -> tuple[int, bool]:
-    """Grava `(par, offset, arquivo)` de cada partida de `base` a partir de `inicio`.
+    """Grava uma linha de `games` por partida de `base` a partir de `inicio`.
 
     Devolve `(partidas lidas, terminou)`. `terminou` falso é cancelamento: quem chama desfaz a
     transação. Nada aqui faz `commit`.
+
+    A partida é fechada quando a **próxima** começa (ou no fim do arquivo), e não no header
+    `[Black]` como até a v4: `Result`, `WhiteElo` e `ECO` vêm depois dele, e o movetext que
+    classifica a partida sem `[ECO]` vem depois de todos.
     """
     partidas = 0
-    lote: list[tuple[int, int, int]] = []
+    lote: list[tuple[Any, ...]] = []
     comeco = inicio
-    branco = ""
+    cabecalho: dict[str, str] = {}
+    movetext: list[str] = []
+    aberta = False
     linhas = 0
     ultimo_aviso = time.monotonic()
+
+    def gravar() -> None:
+        jogadores.gravar(conexao)
+        eventos.gravar(conexao)
+        conexao.executemany(_INSERIR, lote)
+        lote.clear()
+
     with abrir_pgn_bytes(base) as fh:
         if inicio:
             fh.seek(inicio)
@@ -488,23 +811,25 @@ def _indexar_arquivo(
                 if progress is not None and agora - ultimo_aviso >= INTERVALO_DE_PROGRESSO:
                     progress(base, min(fh.bytes_lidos, tamanho), tamanho, partidas_anteriores + partidas)
                     ultimo_aviso = agora
-            if not linha.startswith(_ABRE_CABECALHO):
-                continue
-            if linha.lstrip(_BOM).startswith(b"[Event "):
-                comeco, branco = posicao, ""
-                partidas += 1
-                continue
-            casado = _RE_HEADER.match(decodificar_linha(linha).rstrip())
-            if casado is None:
-                continue
-            if casado.group(1) == "White":
-                branco = surname(casado.group(2))
-            elif casado.group(1) == "Black" and branco:
-                lote.append((pair_hash((branco, surname(casado.group(2)))), comeco, identificador))
-                if len(lote) >= 200_000:
-                    conexao.executemany("INSERT OR IGNORE INTO games VALUES (?, ?, ?)", lote)
-                    lote.clear()
-    conexao.executemany("INSERT OR IGNORE INTO games VALUES (?, ?, ?)", lote)
+            if linha.startswith(_ABRE_CABECALHO):
+                if linha.lstrip(_BOM).startswith(b"[Event "):
+                    if aberta:
+                        lote.append(_linha_da_partida(cabecalho, movetext, comeco, identificador, jogadores, eventos))
+                        if len(lote) >= _TAMANHO_DO_LOTE:
+                            gravar()
+                    comeco, cabecalho, movetext, aberta = posicao, {}, [], True
+                    partidas += 1
+                casado = _RE_HEADER.match(decodificar_linha(linha).rstrip())
+                if casado is not None and casado.group(1) in _CAMPOS_DO_INDICE:
+                    cabecalho[casado.group(1)] = casado.group(2)
+            elif aberta and len(movetext) < _LINHAS_DE_MOVETEXT_LIDAS and "ECO" not in cabecalho and "FEN" not in cabecalho:
+                # So o que a classificacao sem header precisa; o resto do movetext e pulado.
+                texto = linha.strip()
+                if texto:
+                    movetext.append(decodificar_linha(texto))
+    if aberta:
+        lote.append(_linha_da_partida(cabecalho, movetext, comeco, identificador, jogadores, eventos))
+    gravar()
     if progress is not None:
         progress(base, tamanho, tamanho, partidas_anteriores + partidas)
     return partidas, True
@@ -541,6 +866,71 @@ def _read_game_at(fh: Any, offset: int) -> GameRecord | None:
     return GameRecord(headers=cabecalho, movetext=" ".join(movetext))
 
 
+def partida_em(caminho: Path, offset: int) -> GameRecord | None:
+    """A partida que começa naquele byte daquela base -- o par de `Achado.caminho`/`Achado.offset`.
+
+    **É o que o índice existe para permitir**: um `seek` e uma leitura, em vez da passada de
+    minutos. `None` quando ali não começa partida nenhuma, que é o sintoma de um índice adiantado
+    em relação ao arquivo -- e é resposta e não exceção porque quem chama é uma janela que precisa
+    dizer isso à pessoa (ver a guarda do `[Event ` em `_read_game_at`).
+    """
+    if not existe_base(caminho):
+        return None
+    with abrir_pgn_bytes(caminho) as fh:
+        return _read_game_at(fh, offset)
+
+
+def _abrir_para_consulta(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Connection | None, str]:
+    """A conexão só de leitura, conferidos versão e fingerprint; ou `(None, motivo)`.
+
+    O motivo já vem em pt-BR e com a instrução, porque as duas consultas -- `lookup_pair`, que o
+    põe no log, e `buscar`, que o levanta -- dizem a mesma coisa.
+    """
+    refazer = "Refaça o índice: menu da sala de estudo, ou cvoff-games --build-index"
+    if not path.exists():
+        return None, f"O índice da base de partidas ainda não foi construído. {refazer}"
+    try:
+        conexao = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        return None, f"Índice por nome ilegível ({exc}). {refazer}"
+    try:
+        gravada = conexao.execute("SELECT value FROM meta WHERE key = 'version'").fetchone()
+    except sqlite3.Error:
+        gravada = None
+    if gravada is None or gravada[0] != str(INDEX_VERSION):
+        conexao.close()
+        return None, (
+            f"O índice por nome está no formato {None if gravada is None else gravada[0]!r} e este programa "
+            f"lê o {INDEX_VERSION}. {refazer}"
+        )
+    gravado = conexao.execute("SELECT value FROM meta WHERE key = 'database'").fetchone()
+    atual = index_fingerprint(bases)
+    if gravado is None:
+        conexao.close()
+        return None, f"O índice da base está em obras: uma rodada não chegou ao fim. {refazer}"
+    if gravado[0] != atual:
+        conexao.close()
+        return None, (
+            f"O índice por nome foi feito para {gravado[0]!r} e a base agora é {atual!r}: os offsets não valem, "
+            f"e a consulta seria lixo. {refazer}"
+        )
+    return conexao, ""
+
+
+def _arquivos_do_indice(conexao: sqlite3.Connection, bases: Sequence[Path]) -> dict[int, Path]:
+    """`número do arquivo -> base`, casado por nome e não pela ordem.
+
+    Se um arquivo for renomeado o fingerprint já recusou a consulta, e casar por nome deixa o
+    erro aparecer aqui em vez de virar leitura do arquivo errado.
+    """
+    por_nome = {nome_da_base(caminho): caminho for caminho in bases}
+    return {
+        int(identificador): por_nome[nome]
+        for identificador, nome in conexao.execute("SELECT id, name FROM files")
+        if nome in por_nome
+    }
+
+
 def lookup_pair(
     pair: PlayerPair,
     databases: Path | Sequence[Path],
@@ -567,43 +957,13 @@ def lookup_pair(
     bases = [caminho for caminho in as_databases(databases) if existe_base(caminho)]
     if not path.exists() or not bases:
         return []
-    try:
-        conexao = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    except sqlite3.Error as exc:
-        logger.warning("Índice por nome ilegível (%s).", exc)
+    conexao, motivo = _abrir_para_consulta(bases, path)
+    if conexao is None:
+        logger.warning("%s", motivo)
         return []
 
     try:
-        gravada = conexao.execute("SELECT value FROM meta WHERE key = 'version'").fetchone()
-        if gravada is None or gravada[0] != str(INDEX_VERSION):
-            logger.warning(
-                "O índice por nome está no formato %r e este programa lê o %d. Refaça com: "
-                "cvoff-games --build-index",
-                None if gravada is None else gravada[0],
-                INDEX_VERSION,
-            )
-            return []
-
-        gravado = conexao.execute("SELECT value FROM meta WHERE key = 'database'").fetchone()
-        atual = index_fingerprint(bases)
-        if gravado is None or gravado[0] != atual:
-            logger.warning(
-                "O índice por nome foi feito para %r e a base agora é %r: os offsets não valem, "
-                "e a consulta seria lixo. Refaça com: cvoff-games --build-index",
-                None if gravado is None else gravado[0],
-                atual,
-            )
-            return []
-
-        # Nome, e nao a ordem: se um arquivo for renomeado o fingerprint ja recusou a consulta,
-        # e casar por nome deixa o erro aparecer aqui em vez de virar leitura do arquivo errado.
-        por_nome = {nome_da_base(caminho): caminho for caminho in bases}
-        arquivos = {
-            int(identificador): por_nome[nome]
-            for identificador, nome in conexao.execute("SELECT id, name FROM files")
-            if nome in por_nome
-        }
-
+        arquivos = _arquivos_do_indice(conexao, bases)
         procurados = [tuple(pair)] + ([(pair[1], pair[0])] if both_colors else [])
         # **Uma consulta por cor, com cota propria** (S-139). Um `IN (?,?) LIMIT ?` da uma cota
         # unica para os dois hashes, e ela se esgota na primeira cor: medido no indice real
@@ -626,29 +986,34 @@ def lookup_pair(
 
     esperados = {frozenset(p) for p in procurados}
     partidas = []
-    # Agrupado por arquivo e em ordem de offset: sao ate 40 leituras, e abrir o mesmo .pgn a
-    # cada uma seria pagar o `open` por offset em vez de por base -- e, numa base comprimida,
-    # voltar atras seria descompactar do zero de novo.
-    for identificador in sorted({arquivo for arquivo, _ in achados}):
+    for partida in _ler_partidas(arquivos, achados):
+        # Confere os nomes: uma colisao de hash custa esta leitura, e nao uma resposta
+        # errada. E um indice desatualizado por edicao da base cai aqui tambem.
+        lidos = frozenset({surname(partida.headers.get("White", "")), surname(partida.headers.get("Black", ""))})
+        if lidos in esperados:
+            partidas.append(partida)
+    return partidas
+
+
+def _ler_partidas(arquivos: dict[int, Path], achados: Iterable[tuple[int, int]]) -> Iterable[GameRecord]:
+    """As partidas de `(arquivo, offset)`, agrupadas por arquivo e em ordem de offset.
+
+    Abrir o mesmo `.pgn` a cada offset seria pagar o `open` por partida em vez de por base -- e,
+    numa base comprimida, voltar atrás seria descompactar do zero de novo.
+    """
+    pedidos = list(achados)
+    for identificador in sorted({arquivo for arquivo, _ in pedidos}):
         caminho = arquivos.get(identificador)
         if caminho is None:
             logger.warning("O índice aponta para um arquivo que não está mais na pasta da base.")
             continue
         with abrir_pgn_bytes(caminho) as fh:
-            for arquivo, offset in sorted(achados, key=lambda item: item[1]):
+            for arquivo, offset in sorted(pedidos, key=lambda item: item[1]):
                 if arquivo != identificador:
                     continue
                 partida = _read_game_at(fh, offset)
-                if partida is None or not partida.movetext:
-                    continue
-                # Confere os nomes: uma colisao de hash custa esta leitura, e nao uma resposta
-                # errada. E um indice desatualizado por edicao da base cai aqui tambem.
-                lidos = frozenset(
-                    {surname(partida.headers.get("White", "")), surname(partida.headers.get("Black", ""))}
-                )
-                if lidos in esperados:
-                    partidas.append(partida)
-    return partidas
+                if partida is not None and partida.movetext:
+                    yield partida
 
 
 def _fair_share(por_grupo: list[list[tuple[int, int]]], limit: int) -> list[tuple[int, int]]:
@@ -678,6 +1043,194 @@ def _fair_share(por_grupo: list[list[tuple[int, int]]], limit: int) -> list[tupl
             break
         escolhidos.extend(grupo[fatia : fatia + limit - len(escolhidos)])
     return escolhidos[:limit]
+
+
+# ------------------------------------------------------------------------------- busca (S-533)
+
+_JOGADOR = "(SELECT id FROM players WHERE surname = ?)"
+"""Os números de todo nome cujo sobrenome é o pedido: `Carlsen, Magnus`, `Carlsen, M` e
+`Carlsen,Magnus` são três linhas de `players` e o mesmo jogador. É uma subconsulta e não uma
+lista de `?` porque um sobrenome comum (`Ivanov`) tem centenas de grafias, e o limite de
+parâmetros do SQLite não é o lugar de descobrir isso."""
+
+
+def _clausulas(filtro: Filtro) -> tuple[list[str], list[Any]]:
+    """O `WHERE` da busca, uma cláusula por filtro preenchido, com os parâmetros ao lado.
+
+    Cada cláusula usa um dos seis índices de `_INDICES_DE_BUSCA`; o SQLite escolhe o mais
+    seletivo e filtra o resto na linha. O evento é `LIKE` sobre a forma dobrada (`fold`) do
+    dicionário `events` -- uma varredura, mas de cem mil linhas e não de dez milhões.
+    """
+    onde: list[str] = []
+    parametros: list[Any] = []
+    brancas = surname(filtro.brancas)
+    pretas = surname(filtro.pretas)
+    if brancas and pretas:
+        if filtro.qualquer_cor:
+            onde.append(f"((white IN {_JOGADOR} AND black IN {_JOGADOR}) OR (white IN {_JOGADOR} AND black IN {_JOGADOR}))")
+            parametros += [brancas, pretas, pretas, brancas]
+        else:
+            onde.append(f"white IN {_JOGADOR} AND black IN {_JOGADOR}")
+            parametros += [brancas, pretas]
+    elif brancas or pretas:
+        um = brancas or pretas
+        if filtro.qualquer_cor:
+            onde.append(f"(white IN {_JOGADOR} OR black IN {_JOGADOR})")
+            parametros += [um, um]
+        else:
+            onde.append(f"{'white' if brancas else 'black'} IN {_JOGADOR}")
+            parametros.append(um)
+    if filtro.evento.strip():
+        padrao = fold(filtro.evento).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        onde.append("event IN (SELECT id FROM events WHERE folded LIKE ? ESCAPE '\\')")
+        parametros.append(f"%{padrao}%")
+    if filtro.ano_de:
+        onde.append("year >= ?")
+        parametros.append(int(filtro.ano_de))
+    if filtro.ano_ate:
+        onde.append("year <= ?")
+        parametros.append(int(filtro.ano_ate))
+    if filtro.elo_minimo:
+        onde.append("elo >= ?")
+        parametros.append(int(filtro.elo_minimo))
+    if filtro.resultado:
+        onde.append("result = ?")
+        parametros.append(filtro.resultado)
+    eco_de = codigo_do_header(filtro.eco_de)
+    eco_ate = codigo_do_header(filtro.eco_ate)
+    if eco_de or eco_ate:
+        onde.append("eco >= ? AND eco <= ?")
+        parametros += [eco_de or eco_ate, eco_ate or eco_de]
+    return onde, parametros
+
+
+_SELECIONAR_LINHA = (
+    "SELECT g.id, g.file, g.offset, pw.name, g.welo, pb.name, g.belo, g.result, ev.name, g.date, g.eco "
+    "FROM games g JOIN players pw ON pw.id = g.white JOIN players pb ON pb.id = g.black "
+    "JOIN events ev ON ev.id = g.event"
+)
+
+
+def buscar(
+    filtro: Filtro,
+    databases: Path | Sequence[Path],
+    path: Path = DEFAULT_INDEX_PATH,
+    *,
+    limite: int = PAGINA,
+    offset: int = 0,
+) -> Busca:
+    """As partidas que casam o filtro, da mais recente para a mais antiga, uma página (S-533).
+
+    **A ordem é por data, e a página é por `OFFSET`.** `ORDER BY year DESC, date DESC, id DESC` --
+    o `id` desempata para a paginação ser estável entre duas chamadas.
+
+    **O ano vem antes da data, e não é redundância.** A data é o texto do header, e a base escreve
+    o que não sabe com interrogação: `2019.??.??`. Ordenado como texto, `?` (0x3F) é **maior** que
+    qualquer dígito -- então `????.??.??` viria antes de `2024.12.31`, e a primeira página de toda
+    busca seria feita das partidas sem data. Com `year` na frente (zero quando o header não diz
+    ano), a partida sem data cai no fim, que é onde o docstring sempre disse que ela ficava; dentro
+    do mesmo ano o texto ainda ordena, e `2019.??.??` fica antes de `2019.12.31` -- um mês
+    desconhecido não tem lugar certo, e o que importa ali é ser do mesmo ano.
+
+    **Com posição no filtro, a resposta é medida e não completa.** Os outros filtros escolhem as
+    candidatas, na mesma ordem; até `TETO_DE_REPLAY` delas são lidas e reproduzidas com o
+    porteiro da S-85, e o que passa pela posição é a página. `Busca.examinadas` diz quantas foram
+    lidas, e `proximo_offset` continua de lá.
+
+    Levanta `IndiceIndisponivel` quando não há índice, ele é de outro formato ou está em obras --
+    a frase já diz o que fazer.
+    """
+    bases = [caminho for caminho in as_databases(databases) if existe_base(caminho)]
+    if not bases:
+        raise IndiceIndisponivel("Não há base de partidas em pgn_database/.")
+    conexao, motivo = _abrir_para_consulta(bases, path)
+    if conexao is None:
+        raise IndiceIndisponivel(motivo)
+    try:
+        onde, parametros = _clausulas(filtro)
+        clausula = (" WHERE " + " AND ".join(onde)) if onde else ""
+        total = int(
+            conexao.execute(
+                f"SELECT COUNT(*) FROM (SELECT 1 FROM games{clausula} LIMIT ?)", [*parametros, TETO_DE_CONTAGEM + 1]
+            ).fetchone()[0]
+        )
+        total_e_teto = total > TETO_DE_CONTAGEM
+        total = min(total, TETO_DE_CONTAGEM)
+        quantas = TETO_DE_REPLAY if filtro.posicao else limite
+        ids = [
+            int(linha[0])
+            for linha in conexao.execute(
+                f"SELECT id FROM games{clausula} ORDER BY year DESC, date DESC, id DESC LIMIT ? OFFSET ?",
+                [*parametros, quantas, offset],
+            )
+        ]
+        arquivos = _arquivos_do_indice(conexao, bases)
+        linhas: dict[int, tuple[Any, ...]] = {}
+        for comeco in range(0, len(ids), 500):
+            pedaco = ids[comeco : comeco + 500]
+            marcas = ",".join("?" * len(pedaco))
+            for linha in conexao.execute(f"{_SELECIONAR_LINHA} WHERE g.id IN ({marcas})", pedaco):
+                linhas[int(linha[0])] = tuple(linha)
+    finally:
+        conexao.close()
+
+    achados: list[Achado] = []
+    for identificador in ids:
+        linha = linhas.get(identificador)
+        if linha is None:
+            continue
+        caminho = arquivos.get(int(linha[1]))
+        if caminho is None:
+            continue
+        achados.append(
+            Achado(
+                brancas=str(linha[3]),
+                elo_brancas=int(linha[4]),
+                pretas=str(linha[5]),
+                elo_pretas=int(linha[6]),
+                resultado=str(linha[7]),
+                evento=str(linha[8]),
+                data=str(linha[9]),
+                eco=str(linha[10]),
+                caminho=caminho,
+                offset=int(linha[2]),
+            )
+        )
+    if not filtro.posicao:
+        return Busca(tuple(achados), total, total_e_teto, offset, 0)
+
+    examinadas = len(achados)
+    por_chave = {(arquivo, offset_): indice for indice, (arquivo, offset_) in enumerate((a.caminho, a.offset) for a in achados)}
+    pedidos = [(numero, achado.offset) for numero, achado in ((_numero_de(arquivos, a.caminho), a) for a in achados)]
+    passam: set[int] = set()
+    for numero_e_offset, partida in _ler_com_chave(arquivos, pedidos):
+        caminho = arquivos[numero_e_offset[0]]
+        if positions_of([partida], filtro.posicao):
+            passam.add(por_chave[(caminho, numero_e_offset[1])])
+    escolhidos = [achado for indice, achado in enumerate(achados) if indice in passam][:limite]
+    return Busca(tuple(escolhidos), total, total_e_teto, offset, examinadas)
+
+
+def _numero_de(arquivos: dict[int, Path], caminho: Path) -> int:
+    for numero, base in arquivos.items():
+        if base == caminho:
+            return numero
+    raise KeyError(caminho)
+
+
+def _ler_com_chave(arquivos: dict[int, Path], pedidos: list[tuple[int, int]]) -> Iterable[tuple[tuple[int, int], GameRecord]]:
+    """`_ler_partidas` devolvendo também `(arquivo, offset)`, para quem precisa saber qual leu."""
+    for identificador in sorted({arquivo for arquivo, _ in pedidos}):
+        caminho = arquivos.get(identificador)
+        if caminho is None:
+            continue
+        with abrir_pgn_bytes(caminho) as fh:
+            for arquivo, offset in sorted(pedidos, key=lambda item: item[1]):
+                if arquivo != identificador:
+                    continue
+                partida = _read_game_at(fh, offset)
+                if partida is not None and partida.movetext:
+                    yield (arquivo, offset), partida
 
 
 def positions_of(games: Iterable[GameRecord], placement: str) -> list[tuple[GameRecord, int, bool]]:

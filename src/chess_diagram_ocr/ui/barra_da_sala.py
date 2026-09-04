@@ -314,6 +314,17 @@ ACOES: tuple[Acao, ...] = (
     Acao("partidas_da_posicao", BASE, "partidas", prioridade=12),
     Acao("abrir_pgn", BASE, "abrir_pdf", principal=False),
     Acao("colar_estudo", BASE, "colar", principal=False),
+    # Buscar é do mesmo grupo e do mesmo gesto que "Partidas", e mesmo assim mora no "Mais": a
+    # pergunta por posição sai do tabuleiro que já está na tela, e esta sai de um formulário de
+    # seis campos -- é uma sessão de busca, e não um clique no meio da análise (S-533).
+    Acao(
+        "buscar_partidas",
+        BASE,
+        "filtrar",
+        principal=False,
+        dica="Jogador, evento, ano, Elo, resultado e ECO, combinados. Responde pelo índice por\n"
+        "nome: sem ele em dia, a busca diz isso e oferece construí-lo.",
+    ),
     Acao(
         "indexar_base",
         BASE,
@@ -361,7 +372,7 @@ ACOES: tuple[Acao, ...] = (
         "variante -- para guardar o lance que você jogou, desligue o treino.",
     ),
 )
-"""As trinta e uma ações da barra: vinte e nove comandos da aba, o interruptor e o agrupador.
+"""As trinta e duas ações da barra: trinta comandos da aba, o interruptor e o agrupador.
 
 É `COMANDOS_DA_ABA` inteira menos `NAVEGACAO`, mais `SEGUIR_OCR` e `EXPORTAR_ESTUDO`. A conta é
 cobrada nos dois sentidos em `tests/test_ui_barra_da_sala.py`: comando da aba que a barra não

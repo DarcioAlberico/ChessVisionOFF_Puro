@@ -346,6 +346,12 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
         Arco((64, 66), 14),
         Poli((74, 76), (90, 92)),
     ),
+    # O funil: a busca por filtros combinados (S-533). Não é outra lupa de propósito -- "indexar"
+    # já tem uma, e dois traços com a mesma lupa no mesmo grupo Base seriam dois botões que o olho
+    # não separa. Funil é o que a barra de qualquer base de dados usa para "filtre isto".
+    "filtrar": (
+        Poli((8, 14), (92, 14), (58, 54), (58, 92), (42, 80), (42, 54), fechado=True),
+    ),
     # A prancheta: colar o que está na área de transferência.
     "colar": (
         Poli((22, 22), (78, 22), (78, 88), (22, 88), fechado=True),

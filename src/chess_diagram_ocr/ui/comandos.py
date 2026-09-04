@@ -701,6 +701,16 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Partidas",
     ),
+    # A pergunta que não nasce de um diagrama (S-533): "as partidas de Carlsen em 2019 com Elo
+    # acima de 2700 na Najdorf". `partidas_da_posicao` responde pela posição do tabuleiro e só por
+    # ela; esta abre o formulário de seis campos sobre o índice por nome.
+    Comando(
+        "buscar_partidas",
+        "Buscar partidas na base por jogador, evento, ano, Elo e ECO…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Buscar partidas",
+    ),
     # O índice por nome construído de dentro da janela (S-532), que até a S-527 só existia como
     # `cvoff-games --build-index` num terminal: a busca por nome de "Partidas" o recusa quando ele
     # está atrasado, e a saída tem de ser um comando da sala e não uma frase de aviso.

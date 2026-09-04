@@ -149,6 +149,7 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "analise_continua": "alternar_analise_continua",
     "variante_do_motor": "variante_do_motor",
     "partidas_da_posicao": "partidas_da_posicao",
+    "buscar_partidas": "buscar_partidas",
     "indexar_base": "indexar_base",
     "colar_estudo": "colar_estudo",
     "abrir_pgn": "abrir_pgn",

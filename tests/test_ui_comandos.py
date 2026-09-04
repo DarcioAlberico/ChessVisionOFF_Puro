@@ -444,6 +444,9 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 # A S-527/S-532: o menu diz "Indexar a base de partidas por nome…" e o botão do
                 # "Mais" da sala diz "Indexar base", pela mesma razão dos vinte e três acima.
                 "indexar_base",
+                # E a S-533: o menu diz por que campos se busca ("por jogador, evento, ano, Elo e
+                # ECO…") porque é ali que a lista de campos cabe; o botão diz "Buscar partidas".
+                "buscar_partidas",
             },
             divergem,
         )

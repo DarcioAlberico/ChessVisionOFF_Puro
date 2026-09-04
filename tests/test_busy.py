@@ -44,6 +44,13 @@ SEM_REGISTRO = {
         "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
         "posição continua lá para pedir de novo."
     ),
+    ("busca_de_partidas.py", "buscar"): (
+        "Uma consulta ao índice por nome (S-533): dezenas de milissegundos na gigabase, e até "
+        "~1 s quando o filtro pede a posição corrente e ela relê dois mil candidatas. Ela sai da "
+        "linha de eventos porque a janela não pode parar, e **não** entra no registro porque não "
+        "há o que perder ao fechar: nada é gravado, e a mesma pergunta se refaz com um clique. É "
+        "o oposto do índice (`indice_da_base.py`), que grava e por isso se registra."
+    ),
 }
 """As threads que **não** entram no registro, e por quê -- uma linha cada, e a lista é o item.
 

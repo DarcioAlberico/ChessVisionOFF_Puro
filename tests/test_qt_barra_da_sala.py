@@ -26,6 +26,7 @@ if TEM_PYQT:
     from PyQt6.QtTest import QTest
 
     from chess_diagram_ocr.qt import barra_da_sala as qt_barra
+    from chess_diagram_ocr.qt import busca_de_partidas as qt_busca
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
     from chess_diagram_ocr.qt import tema
 
@@ -401,6 +402,71 @@ class NoPainelTests(unittest.TestCase):
         frase(Indexacao(partidas=2, relidas=2, arquivos_relidos=1, arquivos_pulados=0, arquivos_removidos=0, cancelado=False))
         self.assertIn("2 partidas no índice", painel.lbl_status.text())
 
+    def test_buscar_partidas_abre_o_dialogo_com_a_janela_e_a_posicao_do_tabuleiro(self) -> None:
+        """**A fiação da S-533**, no molde da do índice (S-532): a ação da barra chega ao diálogo
+        com a janela como pai e as bases da sala, o filtro por posição já apontando para o
+        tabuleiro que está na tela, e a partida escolhida chegando ao método que a abre."""
+        base = self.pasta / "base.pgn"
+        base.write_text(
+            '[Event "Tata Steel"]\n[Date "2019.01.26"]\n[White "Carlsen, Magnus"]\n'
+            '[Black "Anand, Viswanathan"]\n[Result "1-0"]\n[ECO "B90"]\n\n'
+            "1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 1-0\n",
+            encoding="utf-8",
+        )
+        painel = qt_estudo.PainelDeEstudo(
+            pasta_inicial=self.pasta, pasta_de_estudos=self.pasta, bases_de_partidas=lambda: (base,)
+        )
+        self.addCleanup(descartar, painel)
+        self.assertIn("buscar_partidas", painel.barra.no_mais())
+        dialogo = qt_busca.DialogoDeBusca(None, bases=[base], indice=self.pasta / "indice.sqlite")
+        self.addCleanup(descartar, dialogo)
+        with mock.patch(
+            "chess_diagram_ocr.qt.busca_de_partidas.DialogoDeBusca", return_value=dialogo
+        ) as construtor:
+            painel.barra.acoes["buscar_partidas"].trigger()
+        construtor.assert_called_once_with(painel.window(), bases=(base,))
+        self.assertEqual(painel.estudo.tabuleiro.board_fen(), dialogo._posicao, "a posição da sala não chegou")
+        self.assertTrue(dialogo.isVisible())
+        # E o sinal está ligado ao método que abre a partida -- afirmado pelo **efeito**, porque um
+        # `patch` depois do `connect` não intercepta (o sinal guarda a referência antiga).
+        dialogo.partida_escolhida.emit(base, 0)
+        self.app.processEvents()
+        self.assertIn("Carlsen", painel.lbl_origem.text())
+        self.assertEqual("ECO B90 · Sicilian, Najdorf", painel.lbl_eco.text(), "o ECO da partida aberta")
+
+    def test_o_dialogo_de_busca_e_reusado_e_a_posicao_e_atualizada(self) -> None:
+        """Um `QThread` destruído enquanto roda derruba o processo: abrir a busca duas vezes não
+        pode construir dois diálogos. O que envelhece é a posição, e ela é atualizada."""
+        painel = qt_estudo.PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
+        self.addCleanup(descartar, painel)
+        base = self.pasta / "base.pgn"
+        base.write_text('[White "A"]\n[Black "B"]\n\n1. e4 *\n', encoding="utf-8")
+        with mock.patch("chess_diagram_ocr.games_db.database_paths", return_value=[base]):
+            primeiro = painel.buscar_partidas()
+            assert primeiro is not None
+            self.addCleanup(descartar, primeiro)
+            antes = primeiro._posicao
+            painel.push_move(chess.Move.from_uci("e2e4"))
+            segundo = painel.buscar_partidas()
+        self.assertIs(primeiro, segundo)
+        self.assertNotEqual(antes, segundo._posicao, "a segunda abertura filtraria pela posição da primeira")
+
+    def test_sem_base_a_busca_diz_isso_em_vez_de_abrir_janela_vazia(self) -> None:
+        painel = qt_estudo.PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
+        self.addCleanup(descartar, painel)
+        with mock.patch("chess_diagram_ocr.games_db.database_paths", return_value=[]):
+            self.assertIsNone(painel.buscar_partidas())
+        self.assertIn("base de partidas", painel.lbl_status.text())
+
+    def test_a_partida_que_o_indice_nao_acha_mais_nao_vira_meia_partida(self) -> None:
+        """O índice adiantado em relação ao arquivo: alguém reescreveu o `.pgn`. A frase diz isso,
+        e o estudo que estava na mesa fica."""
+        painel = qt_estudo.PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
+        self.addCleanup(descartar, painel)
+        base = self.pasta / "vazia.pgn"
+        base.write_text("nada aqui\n", encoding="utf-8")
+        self.assertFalse(painel.abrir_partida_da_base(base, 0))
+        self.assertIn("Refaça o índice", painel.lbl_status.text())
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -244,6 +244,7 @@ MENUS: tuple[Menu, ...] = (
             Item("analise_continua"),
             Item("variante_do_motor"),
             Item("partidas_da_posicao"),
+            Item("buscar_partidas"),
             Item("indexar_base"),
             _sep(),
             Item("modo_treino"),

@@ -425,13 +425,272 @@ S-527 na mesma árvore.
 ### O que o crítico recusou
 
 _a preencher pelo crítico_
-## S-533 · Busca por jogador, torneio, ano, Elo, resultado e ECO, com filtros combinados e lista — ◻ em andamento
+## S-533 · Busca por jogador, torneio, ano, Elo, resultado e ECO, com filtros combinados e lista — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-534 · Classificação ECO embutida, gravada no índice e mostrada na sala — ◻ em andamento
+A base de 18,9 GB respondia a **uma** pergunta, e ela nascia sempre de um diagrama de livro:
+`games_index.py:544` (`lookup_pair`, na v4) recebia um `PlayerPair` -- dois sobrenomes -- e nada
+mais, porque a linha do índice era `(pair, file, offset)` e só (`games_index.py:249`). A outra
+porta, `estudo_partidas.py:102` (`consultar`), respondia pela **posição** do tabuleiro e lia o
+cache, que só conhece as posições já perguntadas. Na janela isso era um botão só,
+`qt/painel_de_estudo.py:1661` (`partidas_da_posicao`).
 
-_Seção a escrever pelo executor do item._
+Nenhuma das duas responde *as partidas de Carlsen em 2019 com Elo acima de 2700 na Najdorf*, que é
+a pergunta que um enxadrista faz à base dez vezes por sessão. Não faltava dado -- `Date`,
+`WhiteElo`, `BlackElo`, `Result` e `ECO` estão em todo `.pgn` e `games_db.py:141`
+(`_KEPT_HEADERS`) já os lê ao **abrir** uma partida --, faltava eles estarem no índice: sem isso,
+"as de 2019" custa a passada de dez minutos sobre 8,6 GB, por pergunta.
+
+### Solução
+
+**A linha do índice ganhou onze colunas, e a versão foi para 5.** `games` é
+`(id, pair, file, offset, white, black, event, date, year, welo, belo, elo, result, eco)` com
+`UNIQUE (file, offset)`. `white`, `black` e `event` são **números**: os nomes moram em dois
+dicionários (`players(id, name, surname)`, `events(id, name, folded)`) e a linha guarda o número.
+Dez milhões de linhas com `Carlsen, Magnus` escrito em cada uma seriam 200 MB de repetição; com o
+número são 30 MB, e a busca por sobrenome vira uma consulta ao dicionário -- centenas de milhares
+de linhas, não dez milhões -- seguida de uma sonda no índice. `elo` é o **menor** dos dois, e zero
+se um falta: "Elo mínimo 2700" pergunta pelo nível da partida, e 2835 contra 2180 não é uma
+partida de 2700.
+
+**A v5 desfaz a v3, e o motivo é aritmético.** A v3 era `WITHOUT ROWID` com
+`PRIMARY KEY (pair, file, offset)` -- uma árvore só, -44% de disco, medido na S-140. Com **seis**
+caminhos de busca (`games_pair`, `games_white`, `games_black`, `games_event`, `games_eco`,
+`games_year (year, elo)`) a chave composta de 14 bytes seria copiada dentro de cada índice
+secundário, e o rowid de 4 bytes sai mais barato: a tabela voltou a ter `id INTEGER PRIMARY KEY`.
+As seis árvores são **derrubadas antes de uma rodada grande e refeitas no fim** (`_refaz_os_indices`
+decide por bytes: o que vai ser lido contra o que fica); numa rodada pequena -- o torneio anexado
+da S-532 -- elas ficam abertas, porque refazer seis árvores de dez milhões de linhas por causa de
+trezentas partidas custaria mais que as trezentas partidas.
+
+**A migração é refazer, e não converter.** Um índice v4 não tem nomes, datas nem códigos gravados,
+e uma "segunda passada" que os buscasse pelos offsets leria os mesmos bytes que a passada inteira,
+na mesma ordem, com um `seek` por partida a mais. `_abrir_para_escrita` apaga o de outra versão e
+refaz; até isso acontecer, `buscar` levanta `IndiceIndisponivel` com a instrução, e `lookup_pair`
+continua devolvendo vazio (quem o chama tem a lista do cache como caminho alternativo).
+
+**A pergunta é `ui/busca_de_partidas.py`, e ela é pura.** `Filtro` (brancas, pretas, qualquer cor,
+evento, ano de–até, Elo mínimo, resultado, ECO de–até, posição), `de_campos` (texto do formulário →
+`Filtro`, com `NAO_E_NUMERO` para o campo preenchido que não é número -- vazio e malfeito não são a
+mesma coisa), `problemas` (todas as frases de uma vez, não a primeira), `COLUNAS`/`linha` (as oito
+colunas, com travessão e não zero na célula sem valor) e `resumo` (`1.234 partidas · Carlsen ·
+2015–2020 · B90`). O filtro guarda **o que a pessoa digitou**: quem dobra `Carlsen` em `carlsen` é
+`games_db.surname`, do outro lado.
+
+**Uma busca sem filtro que estreite é recusada, e é medida.** `ORDER BY … LIMIT 100` sem cláusula
+nenhuma é uma varredura da tabela inteira mais uma ordenação de dez milhões de linhas, para
+responder "as cem partidas mais recentes da base" -- que ninguém foi ali procurar. Jogador, evento,
+ECO, ano e Elo têm árvore; resultado e posição **não**, e por isso refinam mas não escolhem.
+
+**A ordem é `year DESC, date DESC, id DESC`, e o `year` na frente não é redundância.** A base
+escreve o que não sabe com interrogação (`2019.??.??`), e `?` (0x3F) é **maior** que qualquer
+dígito: ordenado só pelo texto, `????.??.??` viria antes de `2024.12.31` e a primeira página de
+toda busca seria feita das partidas sem data. O `id` desempata para a paginação ser estável.
+
+**A resposta é `Busca(achados, total, total_e_teto, offset, examinadas)`.** O total para em
+`TETO_DE_CONTAGEM` = 100.000 e a frase diz *mais de*, porque contar todas as partidas de `1.e4`
+custa segundos para dizer um número que ninguém lê até o fim. Com a posição no filtro, ela **não
+está no índice** (guardá-la é a varredura de uma hora da S-92): até `TETO_DE_REPLAY` = 2.000
+candidatas são lidas pelos offsets e reproduzidas com o porteiro da S-85, e `examinadas` diz
+quantas foram -- em vez de fingir que foram todas. `partida_em(caminho, offset)` abre a partida
+escolhida com um `seek`, que é o que o índice existe para permitir.
+
+**A janela é `qt/busca_de_partidas.py::DialogoDeBusca`**, não modal: quem procura uma partida quer
+o tabuleiro ao lado, e escolher uma na lista abre-a na sala **sem fechar a busca**. A consulta vai
+para uma `Tarefa` (o `QThread` de `qt/trabalho.py`) e "Buscar" fica cinza enquanto ela roda; a
+tabela é a `TabelaQt` das mesmas `Coluna` da camada pura. Três estados sem tabela, e eles não dizem
+a mesma coisa: `Procurando na base…`, `Nenhuma partida · Carlsen · 2019` (com a pergunta ao lado,
+porque quase sempre é um ano digitado errado) e a frase de `IndiceIndisponivel`, que já vem com a
+instrução e tem ao lado o botão **Indexar base…** -- que emite `indice_pedido` para a sala, dona do
+diálogo de progresso da S-532. Duplo clique **e** Enter emitem `partida_escolhida(caminho, offset)`;
+o Enter é atalho de widget e não botão padrão do `QDialog`, senão ele refaria a busca em vez de
+abrir a linha marcada.
+
+**A fiação:** `buscar_partidas` é comando do catálogo (`ui/comandos.py`), mora no grupo Base da
+barra da sala dentro do "Mais" (`ui/barra_da_sala.py`, ícone `filtrar` -- um funil, e não a segunda
+lupa do mesmo grupo), tem item no menu Estudo e chama `PainelDeEstudo.buscar_partidas`, que **reusa**
+o diálogo entre aberturas (um `QThread` destruído enquanto roda derruba o processo) e só atualiza a
+posição. `abrir_partida_da_base` lê a partida pelo offset, a monta em PGN
+(`estudo_partidas.como_pgn`) e a põe na mesa por `estudo.colar`, guardando antes o estudo aberto.
+
+### Critério de aceite
+
+Todas as medições de busca sobre o índice v5 da **`LumbrasGigaBase_OTB_Complete.pgn` inteira**
+(8,6 GB, 10.355.488 partidas), melhor de três, em 2026-09-04:
+
+| busca | tempo | o que voltou |
+|---|---|---|
+| Carlsen | **30 ms** | 5.141 partidas |
+| Carlsen × Anand | **56 ms** | 140 partidas |
+| evento "Tata Steel" | **77 ms** | 5.133 partidas |
+| Elo ≥ 2700 em 2019 | **44 ms** | 1.989 partidas |
+| ECO B90 | **37 ms** | mais de 100.000 partidas |
+| Carlsen · 2019 · Elo ≥ 2700 · B90 | **52 ms** | 5 partidas |
+
+- Cada uma **< 1 s** com o índice em dia. ✅ (a mais lenta é 77 ms, 13× dentro do orçamento)
+- O índice da gigabase inteira: **611 s (10,2 min) e 1.764 MB**, contra 431 MB na v4 -- o preço de
+  treze colunas e seis árvores no lugar de três colunas e uma.
+- A janela não trava com dez milhões de partidas: a consulta roda numa `Tarefa`, e o teste afirma
+  que ela **começou sem ter terminado** -- o que uma thread faz e uma chamada direta não. ✅
+- Um índice de outra versão, ausente ou em obras vira frase **com instrução**, e não tabela vazia. ✅
+- Paginação estável: a página seguinte não repete a anterior, e a anterior volta igual. ✅
+- Formulário malfeito não vira consulta, e a frase diz **quais** campos. ✅
+- `qt/janela.py` não foi tocado. ✅
+
+### Testes
+
+- `tests/test_ui_busca_de_partidas.py`: `de_campos` (vazio ≠ malfeito, nada consertado calado, todo
+  campo do `Filtro` alcançável pelo formulário); `problemas` (sem filtro que estreite; cada campo
+  com árvore basta sozinho; ano fora da faixa e invertido; ECO que não é código e faixa invertida;
+  resultado que o PGN não escreve; todos de uma vez); `COLUNAS`/`linha` (as oito na ordem, Elo
+  numérico, evento elástico, travessão e não zero); `resumo` (a frase do item, singular e zero,
+  teto, página, os dois jogadores e a cor exigida, cada filtro na frase).
+- `tests/test_games_index.py::BuscaTests`: cada filtro sobre uma base de doze partidas, sete
+  jogadores, três torneios e cinco anos -- sobrenome achando as duas grafias, qualquer cor, o par
+  nas duas montagens, evento por pedaço e **não** como padrão de `LIKE`, faixa de ano inclusiva, a
+  partida sem data fora de toda faixa, o Elo mínimo como o menor dos dois, resultado, faixa de ECO,
+  a combinação dos cinco, a ordem por data, **a partida sem data no fim e não no começo**,
+  paginação, total que não é o da página, contagem no teto, a linha com o que a tabela mostra e o
+  offset que abre a partida, o filtro por posição dizendo quantas examinou.
+  `MigracaoDeVersaoTests`: v4 recusado com a instrução, apagado e refeito com a coluna nova; a
+  versão gravada; índice em obras; índice ausente.
+- `tests/test_qt_busca_de_partidas.py`: as oito colunas montadas; os quatro valores de resultado; a
+  caixa da posição só com posição; a busca fora da linha de eventos; uma de cada vez; formulário
+  malfeito e sem filtro que estreite não viram consulta; "nenhuma partida" com a pergunta ao lado;
+  `IndiceIndisponivel` com instrução; o botão que pede o índice; paginação; duplo clique e Enter
+  emitindo `(caminho, offset)`; a escolha não fecha o diálogo; falha inesperada no log **e** na
+  frase, e `IndiceIndisponivel` só na frase.
+- `tests/test_qt_barra_da_sala.py`: a ação da barra abre o diálogo com a janela como pai, as bases
+  da sala e a posição do tabuleiro; o diálogo é reusado e a posição atualizada; sem base a frase
+  diz isso; a partida que o índice não acha mais não vira meia partida. `tests/test_ui_comandos.py`
+  e `tests/test_ui_barra_da_sala.py` cobram o comando novo nos dois sentidos.
+- Guardas: `tests/test_editor_model.py::SEM_TKINTER` ganhou `busca_de_partidas.py`;
+  `tests/test_busy.py::SEM_REGISTRO` ganhou a thread da busca com o motivo (nada é gravado, e a
+  mesma pergunta se refaz com um clique); `docs/ARCHITECTURE.md` passou a contar quinze threads e a
+  tabela ganhou a linha da busca.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-534 · Classificação ECO embutida, gravada no índice e mostrada na sala — ✅ **implementada em 2026-09-04**
+
+### Problema
+
+O código ECO da partida **era lido e jogado fora**. `games_db.py:141` (`_KEPT_HEADERS`) inclui
+`"ECO"` desde sempre, então toda partida aberta da base trazia o header dentro de
+`GameRecord.headers` -- e a busca de `HEAD` por `ECO` em `src/` não achava mais nada: nenhuma
+coluna do índice (`games_index.py:249`, na v4, tinha `pair`, `file` e `offset`), nenhum rótulo na
+sala de estudo, nenhum filtro. Um enxadrista profissional identifica uma posição pela abertura
+antes de identificá-la pelos nomes, e o programa não sabia dizer em que abertura o tabuleiro
+estava.
+
+E não bastaria ler o header: a base exportada de um servidor não traz `[ECO]` em partida nenhuma,
+e a `Endgame_Study_Database_VI` não traz em nenhuma das 93.839 (são composições montadas de um
+`[FEN]`). Sem tabela embutida, o filtro por ECO da S-533 responderia zero numa base inteira, em
+silêncio.
+
+### Solução
+
+**A tabela mora no pacote, em `eco.py`.** O `python-chess` não a traz. São **500 códigos** (A00 a
+E99) em 519 linhas -- código, nome e a linha canônica em SAN --, ~30 KB de texto. Código sempre,
+**nome em inglês**: *Sicilian, Najdorf*, *Queen's Gambit Declined*, *Ruy Lopez* são consagrados
+como estão nos livros e no ChessBase, e traduzir "Nimzo-Indian" inventaria vocabulário que nenhum
+enxadrista usa. O código é o que se filtra e o que se compara; o nome é a legenda dele.
+
+**Duas classificações, e a diferença é o custo.**
+
+- `classificar(tabuleiro_ou_lances)` casa **por posição**: cada linha da tabela é reproduzida uma
+  vez e guardada pela FEN sem contadores, e a partida é percorrida procurando a posição mais
+  profunda que a tabela conhece. **A transposição vale**: `1.Nf3 Nf6 2.c4 e6 3.d4` recebe o mesmo
+  E10 de `1.d4 Nf6 2.c4 e6 3.Nf3`. Medido: **~0,5 ms por partida**, com a tabela por posição
+  montada uma vez (84 ms) e mantida em cache.
+- `classificar_lances(sans)` casa **pela ordem dos lances**, numa árvore de prefixos sem tabuleiro
+  nenhum: **~1 µs por consulta**. É o caminho do índice, e ele perde a transposição de propósito --
+  a sala reclassifica por posição ao abrir a partida, então o que aparece sob o tabuleiro é sempre
+  a leitura completa.
+
+**O código mais profundo vence**, e `None` quando a tabela não alcança nada -- e não "A00", que
+seria o número enganoso da S-135. Uma partida que comece na posição inicial **sempre** recebe
+algum código (as vinte primeiras jogadas legais têm linha; as catorze menos jogadas ficam em A00,
+como na classificação padrão): quem devolve `None` é a posição de onde não se chegou por lance
+nenhum -- o estudo montado de um `[FEN]`, que é a `Endgame_Study_Database` inteira, e a raiz de um
+estudo aberto de um diagrama de livro.
+
+**No índice o header vence.** `_linha_da_partida` grava `codigo_do_header(cabecalho["ECO"])` --
+`C47d` vira `C47`, porque a unidade da classificação são os três caracteres e é neles que a busca
+filtra. Só quando não há header **e** a partida não tem `[FEN]` é que as duas primeiras linhas do
+movetext viram lances por expressão regular (`lances_do_movetext`, com os comentários fora: um
+`{Better was Bf4}` tem um `Bf4` que não foi jogado) e entram em `classificar_lances`. A partida
+foi fechada mais tarde na passada por causa disto: até a v4 ela era fechada no header `[Black]`, e
+`Result`, `WhiteElo` e `ECO` vêm depois dele -- o movetext, depois de todos.
+
+**Na sala, o header vence igual.** `frase_do_tabuleiro(tabuleiro, header)` põe
+`ECO B33 · Sicilian, Sveshnikov` na faixa sob o tabuleiro (`qt/painel_de_estudo._barra_de_navegacao`),
+ao lado do lance corrente e da vez, e ela é refeita a cada lance em `_mostrar_lance_corrente`. Sem
+header, `classificar` lê a pilha de lances do próprio tabuleiro -- e é aí que a transposição paga.
+
+### Critério de aceite
+
+- **A tabela é a classificação padrão inteira**: 500 códigos, todo código com nome, e **toda linha
+  legal desde a posição inicial** (um `push_san` que levantasse ali derrubaria a sala num
+  `refresh`). ✅
+- **O custo de indexar com ECO, contra a mesma v5 sem a coluna preenchida** -- medido em
+  2026-09-04, com as rodadas **intercaladas** e por mínimo, porque esta máquina deriva (oito
+  rodadas seguidas da mesma medição saem de 2,70 s a 3,54 s, sempre crescendo; uma primeira
+  passada sequencial atribuiu a deriva à diferença e mediu +35% onde a intercalada mede +14%):
+
+  | base | v5 sem ECO | v5 com ECO | o ECO custa |
+  |---|---|---|---|
+  | `Endgame_Study_Database_VI` (62 MB, 93.839 estudos, **todos com `[FEN]`**) | 7,66 s | 6,97 s | dentro do ruído (−9%) |
+  | recorte de 300 MB da gigabase (366.031 partidas, **99,99% com `[ECO]`**) | 29,75 s | 25,35 s | dentro do ruído (−15%) |
+  | o mesmo recorte com os `[ECO]` **removidos** (pior caso) | 27,83 s | 33,89 s | **+21,8%** (16,6 µs/partida) |
+  | recorte de 30 MB do anterior, oito voltas intercaladas | 2,70 s | 3,59 s | **+32,9%** (21,9 µs/partida) |
+
+  **O orçamento de +30% vale nos dois primeiros casos com folga, e o pior caso fica entre +22% e
+  +33% conforme a rodada.** Os dois primeiros são as bases reais: numa delas a classificação
+  **não roda** (toda partida tem `[FEN]`, e uma composição não tem abertura), na outra ela roda em
+  0,01% das partidas. O pior caso é uma base sintética em que nenhuma partida tem `[ECO]` -- e é
+  exatamente a base em que a coluna só existe porque a classificação a preenche: sem ela o filtro
+  por ECO responderia zero ali, em silêncio. Medida em separado, a classificação de uma partida
+  real custa **11,4 µs** (tokenizar mais consultar a árvore, sobre 40.553 partidas do recorte); o
+  resto do custo de ponta a ponta são as duas linhas de movetext lidas e a árvore `games_eco` mais
+  gorda.
+- **A classificação por lance é duas ordens de grandeza mais barata que a por posição**, que é a
+  razão de haver duas: ~1 µs contra ~0,5 ms por partida. Um replay na passada do índice seria
+  +1 ms × 10 milhões ≈ três horas sobre os dez minutos da gigabase. ✅ (afirmado por teste, com
+  teto de 0,05 ms por partida -- dez vezes o medido, para a guarda não virar medidor de máquina
+  ocupada)
+- **O header vence a tabela** no índice e na sala; a sublinha (`B90a`) é cortada para `B90`; a
+  partida montada de um `[FEN]` não ganha abertura. ✅
+- **A frase é `ECO B33 · Sicilian, Sveshnikov`**, com o código antes do nome, e um código que a
+  tabela não conhece não ganha legenda inventada. ✅
+- O filtro por ECO da S-533 acha as partidas classificadas **sem** header. ✅
+- A frase da sala custa ~0,5 ms por lance, e a tabela por posição é montada uma vez (84 ms). ✅
+
+### Testes
+
+- `tests/test_eco.py`: `TabelaTests` (os 500 códigos das cinco letras, toda linha legal, todo
+  código com nome, o nome é o da primeira linha); `ClassificarTests` (o mais profundo vence, a
+  transposição chega ao mesmo código, a ordem dos lances **não** a vê, toda primeira jogada legal
+  tem código, sem lance nenhum não há abertura, lance ilegal encerra a leitura, tabuleiro e
+  sequência dão o mesmo, o tabuleiro montado de uma FEN não inventa abertura); `HeaderEFraseTests`
+  (a sublinha cortada, o header vencendo, o código antes do nome); `MovetextTests` (números,
+  resultado e NAGs fora, o lance do comentário não conta, `4... Nf6`, o roque, o teto);
+  `CustoTests` (o orçamento por partida, e a comparação entre os dois caminhos -- sem ela, "há
+  duas classificações" parece redundância em vez de decisão).
+- `tests/test_games_index.py::ColunaEcoTests`: o header vence; sem header os primeiros lances
+  classificam (e dão códigos **diferentes** para aberturas diferentes, para o valor não ser fixo);
+  a sublinha cortada; a partida montada de um `[FEN]` sem abertura; e a busca por ECO achando a
+  que foi classificada sem header.
+- `tests/test_qt_barra_da_sala.py`: a partida aberta pela busca leva o ECO dela à faixa sob o
+  tabuleiro (`ECO B90 · Sicilian, Najdorf`).
+- `README.md` ganhou `eco.py` na árvore de módulos.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-535 · Árvore de aberturas: da posição corrente, cada lance com N, %, Elo médio e ano — ◻ em andamento
 
@@ -643,17 +902,443 @@ _Seção a escrever pelo executor do item._
 
 _Seção a escrever pelo executor do item._
 
-## S-546 · Fila de PDFs com progresso por livro, cancelável, e o resultado ao lado do nome — ◻ em andamento
+## S-546 · Fila de PDFs com progresso por livro, cancelável, e o resultado ao lado do nome — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-547 · Caminho para scans puros: binarização e reamostragem antes da detecção — ◻ em andamento
+A varredura da biblioteca inteira existe desde a S-34 -- `batch.py:222` (`run_batch`) --, e a única
+porta dela é `cvoff-batch` (`pyproject.toml:102` → `cli/batch.py:122`), um comando de terminal. Na
+janela dá para exportar **um** livro: `qt/exportador.py:120` (`Exportador.comecar`) pergunta o
+destino num diálogo e chama `save_pdf_positions_to_pgn` uma vez. Quem tem centenas de PDFs abre o
+terminal, ou não faz. A varredura em lote existia; o que não existia era como pedi-la de dentro do
+programa.
 
-_Seção a escrever pelo executor do item._
+**E ela avisava por livro, e só.** `batch.py:229` declara `on_book_start` e `on_book_done`. O aviso
+por **página** que `save_pdf_positions_to_pgn` já emitia -- `pdf_to_pgn.py:610`, o
+`progress_callback` que o `qt/exportador.py:170` consome para exportar um livro -- chegava a
+`_run_one` (`batch.py:265`) e morria ali, sem chamador. Entre um `on_book_start` e o `on_book_done`
+seguinte cabem **2.612 páginas** (`📚Yusupov Artur. Build Up Your Chess`, medido). Uma janela que
+fica dezenas de minutos sem mudar um pixel é uma janela travada aos olhos de quem espera.
 
-## S-548 · Relatório de qualidade por livro: páginas lidas, diagramas, legalidade, tempo — ◻ em andamento
+**E faltava o empréstimo do modelo.** `_run_one` não passa `model_session` (`pdf_to_pgn.py:907`),
+então cada livro carrega o próprio `.pt`. Está certo no terminal, onde não há treino concorrente;
+na janela há, e o treino reescreve exatamente o arquivo que a fila estaria lendo por horas
+(S-31/S-57).
 
-_Seção a escrever pelo executor do item._
+### Solução
+
+**`run_batch` ganhou dois parâmetros, e o terminal não mudou.** `on_page: PageProgress` é
+`(livro, páginas feitas, páginas do livro, diagramas lidos até agora)`; `session_factory:
+SessionFactory` empresta o modelo do `OcrService` **por livro**, sob o lock da S-31. Por livro e
+não pela fila inteira: segurar o lock por uma varredura de cinquenta livros deixaria a própria
+janela sem reconhecer a página aberta durante horas -- é a S-57 com a granularidade que a fila
+permite. `None` nos dois é o caminho do `cvoff-batch`, e o teste afirma que sem `on_page` a
+exportação recebe `progress_callback=None`, e não um callback ligado de graça em toda varredura de
+terminal.
+
+**A decisão mora em `ui/fila_de_livros.py`, e é pura.** Seis estados -- `pendente`, `lendo`,
+`pronto`, `falhou`, `cancelado`, `pulado` -- e uma tabela `TRANSICOES` dizendo de cada um para
+onde se vai. Voltar de `pronto` a `lendo` é o defeito que duplica trabalho e reescreve o PGN; sair
+de `pendente` direto para `pronto` é o relatório mentindo; os quatro fins são finais.
+`LivroNaFila` é imutável e trocado por `replace`, porque a fila é lida da thread da interface
+enquanto a de trabalho escreve, e um registro que mudasse no lugar seria lido pela metade -- sem
+exceção nenhuma para acusar. Ao lado: `frase_de_estado`, `linha_da_tabela` (as seis `Coluna` da
+S-153, com o nome do livro como única elástica), `frase_de_resumo`, `fracao`, `contagem` e
+`totais`.
+
+**`pulado` é alcançável de `pendente` e de `lendo`, e isso não é folga.** O `skip_existing` da S-34
+só é descoberto dentro de `_run_one`, **depois** de `on_book_start` já ter avisado que a varredura
+chegou naquele livro -- então na fila da janela ele passa por `lendo` por um instante. Recusar
+`lendo → pulado` faria a transição levantar dentro de um slot do Qt, que derruba o processo; e
+adiar o `comecar` até a primeira página chegar deixaria sem sinal justamente o livro que não tem
+página nenhuma.
+
+**O resultado fica ao lado do nome, e não num relatório à parte.** A coluna Situação de um livro
+terminado diz `120 diagrama(s), 0 exportado(s), 33 s`. Uma fila que dissesse só "pronto"
+obrigaria a abrir o PGN para descobrir que ele saiu vazio -- que é o estado dos cinco livros do
+acervo listados em `ROADMAP.md:151`. As contagens ficam **em branco** enquanto o livro não
+terminou: um `0` numa coluna de resultado é indistinguível de "leu e não achou nada", e a fila tem
+justamente livros em que zero é o resultado de verdade.
+
+**A fração do conjunto conta livro, e não página.** O `page_count` de um PDF grande custa segundos
+(S-61), e abrir os cinquenta antes de começar seria pagar isso cinquenta vezes só para desenhar
+uma barra. Livro é a unidade que já se conhece no instante em que a fila é montada; o livro em
+curso entra pela fração de páginas **dele**, que é o que a torna contínua.
+
+**`qt/fila_de_livros.py` é a fiação, e nada mais.** Uma `Tarefa` -- o `QThread` de
+`qt/trabalho.py` -- roda a `run_batch` inteira: **uma** thread, e não uma por livro, que é a
+decisão medida da S-34 (a inferência do `torch` já ocupa os núcleos). Os três avisos são chamados
+**na thread de trabalho** e só emitem sinal; quem toca a `FilaDeLivros` e a tabela é o slot do
+outro lado. O único estado que as duas threads compartilham é um `int` (`_ordem_atual`), atribuído
+de uma vez em CPython -- ler a própria `FilaDeLivros` da thread de trabalho, que era a forma
+óbvia, seria ler uma lista que a interface reescreve.
+
+**Duas barras, e não uma.** A do conjunto responde *quanto falta para acabar*; a do livro responde
+*isto ainda está andando?* -- e num livro de 2.612 páginas só a segunda se mexe por dezenas de
+minutos. Uma barra só teria de escolher qual das duas perguntas responder, e a escolhida seria a
+errada metade do tempo.
+
+**Cancelar para no fim da página em curso.** O `threading.Event` é conferido antes de cada livro
+por `run_batch` e entre páginas por `save_pdf_positions_to_pgn` (S-24): o que já saiu fica
+gravado, e o livro interrompido deixa o parcial que a próxima rodada retoma. Os livros que nunca
+começaram viram `cancelado` **na hora**, e não quando a thread voltar: deixá-los como "na fila"
+prometeria um trabalho que não vai acontecer. No `BusyRegistry` a fila entra com
+`loses_work=False` e `cancellable=True` -- cada livro pronto tem o PGN no disco e o em curso tem o
+parcial, então fechar custa tempo, não trabalho. A falha da fila inteira vai para o rodapé e não
+para uma caixa modal em cima de operação deixada rodando, que é o critério da S-164.
+
+### Critério de aceite
+
+- O aviso por página chega com `(livro, feitas, total, diagramas)` e conta **a partir de um**, que
+  é como quem espera lê "página 12 de 70"; sem `on_page`, a exportação recebe `progress_callback=None`. ✅
+- O modelo do serviço é pedido **uma vez por livro**, e cada livro recebe a sua sessão. ✅
+- Medido em 2026-09-04, varredura de verdade por `run_batch` com o `.pt` de produção, saída numa
+  pasta do scratchpad: `Estrin - Bauernopfer` (88 páginas) e `Niemeijer - Zwarte Magie` (32
+  páginas) numa fila só → **120 avisos de página em 81,1 s**, um por página, estritamente
+  crescentes e sem repetição (88 e 32, `1..88` e `1..32`). Sem o item, a mesma fila emitiria
+  **4** avisos ao todo -- dois `on_book_start` e dois `on_book_done` --, e a barra ficaria parada
+  62,7 s no primeiro livro e 18,5 s no segundo. A barra do conjunto passa por 0,5 exatamente
+  quando o primeiro livro acaba (afirmado no teste).
+- E a fila mostra o que o item existe para mostrar: nessa mesma rodada o `Estrin` termina com
+  `118 diagrama(s), 116 exportado(s), 2 ilegal(is), 63 s` ao lado do nome, e o `Niemeijer` com
+  `51 diagrama(s), 0 exportado(s), 18 s` -- o livro que "processou" e não entregou nada, visível
+  sem abrir o PGN.
+- Cancelar responde em **menos de 1,5 s** com a fila em curso, o livro em leitura volta
+  `cancelado` com o que leu, e os que nunca começaram também. ✅ Afirmado com medição de relógio
+  no teste (`time.perf_counter`).
+- Nenhuma thread sobrevive ao teste: cada caso espera a `Tarefa` antes de destruir o objeto, em
+  LIFO -- um `QThread` destruído rodando derruba o processo. ✅
+- Duas rodadas ao mesmo tempo são recusadas (`iniciar` devolve falso), e uma fila sem pendente
+  também. ✅
+- O `pulado` não vira `pronto` na tela, e o livro que falhou aparece **por nome** no resumo. ✅
+
+### Testes
+
+- `tests/test_batch.py::AvisoPorPaginaTests`: o aviso por página chega com o livro e o total, e
+  1-based; sem ele a exportação não recebe `progress_callback`; o modelo do serviço é pedido uma
+  vez por livro e cada um recebe a sua sessão.
+- `tests/test_ui_fila_de_livros.py` (5 classes, 34 casos, sem Qt): o caminho normal; `pronto` não
+  volta a `lendo`; `pendente` não pula para `pronto`; `pulado` alcançável dos dois lados; os
+  quatro fins são finais; `concluir` recusa não-fim; `avancar` num livro terminado é ignorado; o
+  mesmo livro não entra duas vezes; cancelar marca os pendentes e não o que está lendo; a tradução
+  dos quatro `status` do `batch` e o status novo virando `falhou` em vez de exceção; as frases de
+  cada estado (na fila, abrindo o livro, lendo a página N de M, o resultado, a falha com motivo, o
+  cancelado que nunca começou); a unidade do tempo (s/min/h); a linha com uma célula por coluna, a
+  elástica única, as quatro numéricas e as contagens em branco antes do fim; a fração por livro e
+  a do livro em curso por página; a fila vazia sem divisão por zero; a contagem com estado zerado;
+  um só livro em curso; o resumo somando livros, páginas, diagramas, exportados e ilegais, com a
+  falha por nome, o "por fazer", o "já exportado antes" e o "cancelado".
+- `tests/test_qt_fila_de_livros.py` (2 classes, 21 casos): a `_VarreduraFalsa` cumpre o contrato
+  inteiro de `run_batch` -- os três avisos, a ordem deles e o `cancel_event` conferido antes de
+  cada livro e entre páginas --, porque é esse contrato que a fiação consome; uma de verdade
+  exigiria PDF, `.pt` e minutos. Afirmam: o resultado ao lado do nome; o progresso por página
+  chegando por sinal e a fração terminando em 1; o pulado; a recusa de duas rodadas; o
+  cancelamento em < 1,5 s com relógio; a falha da varredura inteira virando sinal e log, não
+  exceção; o registro no `BusyRegistry` com `loses_work=False`; o empréstimo do modelo um livro de
+  cada vez; e, no diálogo, a fila vazia dizendo o que fazer, o botão que liga, as duas barras
+  andando e terminando cheias, a tabela publicando as contagens, o botão Cancelar, a falha no
+  rodapé e não numa caixa, o livro falhado por nome, e as colunas declaradas.
+- `tests/test_busy.py`: a fila **está** no registro, e por isso não entra em `SEM_REGISTRO`.
+- `docs/ARCHITECTURE.md`: a linha da fila na tabela de threads, conferida contra `qt/*.py` por
+  `tests/test_docs.py` (S-410/S-506).
+
+### O que ficou de fora
+
+**A ação de menu não foi escrita.** `ui/comandos.py` e `ui/menu.py` estavam sendo editados por
+outro item na mesma árvore, e acrescentar um `Comando` sem o dono correspondente em
+`qt/janela.py` quebraria o catálogo. `abrir_fila_de_livros` é a entrada pronta e sem chamador; as
+três linhas que faltam estão no relatório do item.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-547 · Caminho para scans puros: binarização e reamostragem antes da detecção — ⚠ **medida em 2026-09-04, sem ganho**
+
+### Problema
+
+**Cinco livros do acervo exportam zero** -- `Koblenz`, `Levenfis`, `Melhores Finais de Capablanca`,
+`Niemeijer` e `Stefaniu`, 1.077 páginas somadas (`ROADMAP.md:151`). Não é o gate sendo severo: a
+confiança mínima média deles fica entre 0,034 e 0,246, contra 0,99 dos que exportam quase tudo
+(`ROADMAP.md:1214`). São livros digitalizados, e `ANALISE_DETECCAO.md:539` já dizia de onde vem:
+"o scan velho é cinza" -- meio-tom onde o diagrama impresso é tinta e papel.
+
+**E o pipeline não tinha onde tratar isso.** A normalização que existe é a do **tabuleiro
+recortado** -- `preprocess.py:263` (`BoardNormalizer`: deskew, flat-field, supressão de hachura,
+CLAHE) --, e ela entra depois da detecção. A página renderizada vai crua de `pdf_to_pgn.py:551`
+(`_render_pdf_page`) para `detect_diagrams_in_pdf_page` (`pdf_to_pgn.py:399`): entre o render e a
+detecção não há etapa nenhuma. Se o problema for a página, e não o tabuleiro, não havia por onde.
+
+**E não havia como nem perguntar "esta página é um scan?".** A cobertura da maior imagem embutida
+era calculada dentro de `candidates_from_embedded_images` (`detection/embedded.py:535`), onde serve
+para descartar o scan de fundo contra `MAX_PAGE_COVERAGE` (`embedded.py:96`), e morria no laço.
+
+### Solução
+
+**A porta:** `preprocess.pagina_e_scan(tem_camada_de_texto, cobertura_de_imagem)`, alimentada por
+`detection.largest_image_coverage(page)` -- que só publica o número que já era calculado, e devolve
+`0.0` (e não exceção) para a página sem imagem, para a vetorial e para aquela que o PyMuPDF recusa
+a descrever, porque um XObject malformado não pode derrubar a varredura de um livro inteiro.
+
+**`ou`, e não `e`, e a diferença foi medida:** os 46 PDFs de `PDF/`, 24 páginas amostradas de cada
+um. O `ou` seleciona **26 livros**; o `e` selecionaria **11**. Os dois sinais discordam em livro
+demais para um `e` valer: o `Koblenz` e o `Gunderam` têm camada de texto nas 24 páginas **e** são
+scan de página inteira nas 24 (o OCR de quem digitalizou deixou o texto lá); o `Simple Chess` não
+tem camada em página nenhuma e também não tem imagem de página inteira em 23 das 24. Um `e`
+deixaria os três de fora.
+
+**O caminho:** `ScanConfig(binarizacao, dpi_alvo)` e `preparar_pagina_de_scan(page_rgb, config,
+dpi=…)`. `binarizar_pagina` faz Otsu (global) ou Sauvola (local, `T = m·(1 + k·(s/R − 1))` por
+janela deslizante, com média e desvio saindo de dois `boxFilter` -- a forma por imagem integral,
+porque uma janela de 55 px numa página de 2.200 seria proibitiva calculada pixel a pixel), e
+devolve **três canais**, porque é o que `detect_diagrams`, o recorte do tabuleiro e o
+`board_texture_score` esperam; um canal só faria a troca aparecer como erro de forma três camadas
+adiante. `reamostrar_pagina` usa `INTER_AREA` para reduzir e `INTER_CUBIC` para ampliar. A
+reamostragem vem **antes** da binarização, porque a binarização mede estatísticas em janela de
+pixels: fazê-la antes seria decidir o limiar numa escala e usá-lo noutra -- é a mesma ordem, e o
+mesmo argumento, do `BoardNormalizer.normalize`.
+
+**E o caminho vem desligado, por medição.** `ScanConfig()` é identidade e `preparar_pagina_de_scan`
+devolve **a mesma imagem**. Fica na forma do `NormalizerConfig` ao lado, pelo mesmo motivo dele:
+medido, desligado, documentado, e disponível para quem tiver outro acervo.
+
+### Critério de aceite
+
+**O item era medir, e a medição diz que não ligue.** Livro inteiro, sem amostragem, com o `.pt` de
+produção de 2026-09-04, `max_boards=12`, ordem de coluna, gate em `ACCEPT_MIN_CONFIDENCE`. As três
+colunas são proxies deliberados e comparáveis entre si, porque a mesma regra vale para todas as
+variantes: **diagramas** é o que `detect_diagrams` devolve; **FEN legal** é `check_position` com o
+lado a jogar assumido branco (e não o resolvido pela S-17); **acima do gate** é a confiança mínima
+do tabuleiro contra o limiar -- que é o **teto** do que a exportação aceitaria, já que ela ainda
+exige legalidade, orientação certa e o lado a jogar concordando com o texto.
+
+**Os dois livros do acervo que exportam zero:**
+
+| livro | variante | diagramas | FEN legais | acima do gate | conf. mín. média |
+|---|---|---|---|---|---|
+| `Koblenz` (70 p) | sem o caminho novo | 120 | 64 | **0** | 0,079 |
+| | Otsu | 120 | 64 | **0** | 0,148 |
+| | Sauvola | 120 | 56 | **0** | 0,113 |
+| | 300 DPI | 112 | 74 | **0** | 0,084 |
+| `Niemeijer` (32 p) | sem o caminho novo | 51 | 42 | **0** | 0,260 |
+| | Otsu | **79** | 57 | **0** | 0,179 |
+| | Sauvola | 72 | 55 | **0** | 0,257 |
+| | 300 DPI | **18** | 13 | **0** | 0,253 |
+
+**E três que a mesma porta de scan seleciona e que já vão bem, para ver o que se perde:**
+
+| livro | variante | diagramas | FEN legais | acima do gate | conf. mín. média |
+|---|---|---|---|---|---|
+| `Reinfeld_1001` (320 p) | sem o caminho novo | 995 | 992 | **985** | 0,981 |
+| | Otsu | 935 | 930 | **918** | 0,981 |
+| | Sauvola | 1.000 | 994 | **984** | 0,983 |
+| `Estrin` (88 p) | sem o caminho novo | 118 | 112 | **116** | 0,985 |
+| | Otsu | 117 | 112 | **115** | 0,981 |
+| | Sauvola | 118 | 112 | **115** | 0,970 |
+| | 300 DPI | 118 | 112 | **116** | 0,983 |
+| `Euwe Band 7` (56 p) | sem o caminho novo | 80 | 79 | **55** | 0,799 |
+| | Otsu | 80 | 78 | **46** | 0,732 |
+| | Sauvola | 80 | 79 | **48** | 0,778 |
+| | 300 DPI | 80 | 80 | **58** | 0,789 |
+
+**Quatro leituras, e nenhuma delas é "ligue isto":**
+
+1. **A binarização move a detecção e não move a exportação.** No `Niemeijer` o Otsu acha **55% mais
+   diagramas** -- 79 contra 51 --, e o livro continua com **zero** acima do gate: nenhum dos novos
+   se consegue ler. Achar mais do que não se lê não é ganho. No `Koblenz` a contagem nem se move.
+2. **O Otsu custa caro no livro que já vai bem, e o Sauvola custa pouco -- e nenhum dos dois
+   compra nada.** O `Reinfeld_1001` perde **67 dos 985** acima do gate com Otsu (985 → 918) e
+   apenas 1 com Sauvola; o `Euwe Band 7` perde 9 dos 55 com Otsu e 7 com Sauvola; o `Estrin` perde
+   1 dos 116 com qualquer um. Ou seja: o Sauvola é quase inócuo nos bons e o Otsu é caro, e a
+   escolha entre os dois **só importaria se algum deles ganhasse alguma coisa nos ruins** -- e
+   nenhum ganha. Um caminho que no melhor caso não muda nada e no pior perde 67 posições de um
+   livro só não se liga por padrão.
+3. **A reamostragem para 300 DPI perde diagrama, e muito:** −8 no `Koblenz` (120 → 112) e −33 no
+   `Niemeijer` (51 → 18). O detector de contorno tem limiares em pixel, e uma página maior muda o
+   que eles alcançam. A medição **renderizou** a 300 DPI, que é o melhor caso possível: reamostrar
+   a partir dos 220 não tem como sair melhor que renderizar direto na resolução alvo.
+4. **A porta funciona e não separa o que interessa.** Ela seleciona 26 dos 46 livros, e entre eles
+   estão, lado a lado, o `Reinfeld_1001` (985 dos 995 acima do gate) e o `Koblenz` (0 dos 120) --
+   os dois medidos no mesmo dia, com o mesmo modelo. "É um scan" e "é um scan que o modelo não lê"
+   são perguntas diferentes, e só a primeira tem resposta barata.
+
+**O que fica.** O caminho existe, é testado e vem desligado; `ScanConfig` carrega a tabela acima no
+docstring, para que quem for ligá-lo saiba o que já foi tentado. `pagina_e_scan` e
+`largest_image_coverage` ficam porque a pergunta "esta página é um scan?" deixou de custar uma
+varredura -- e é dela que o próximo item vai precisar, quando a resposta for treinar em vez de
+filtrar.
+
+### Testes
+
+- `tests/test_preprocess.py::PortaDoScanTests`: a porta é `ou` e não `e`, nos três casos que a
+  medição separou; e o piso de cobertura é **o mesmo número** de `MAX_PAGE_COVERAGE`, porque lá ele
+  decide "esta imagem é fundo" e aqui "esta página é scan" -- dois números para a mesma observação
+  divergiriam.
+- `tests/test_preprocess.py::CaminhoDeScanTests`: o padrão é identidade e devolve **a mesma
+  imagem** (`assertIs`); binarização desconhecida e `dpi_alvo` negativo levantam em vez de cair no
+  padrão, porque um método escrito errado que virasse "não binariza" seria uma medição
+  silenciosamente feita sobre outra coisa; a binária sai com três canais e só dois valores; **Otsu
+  é global e Sauvola é local**, provado numa página com sombra de lombada, onde o Otsu entrega o
+  lado escuro inteiro como tinta (>90% de preto) e o Sauvola atravessa (<50%); reamostrar para o
+  mesmo DPI é identidade; a escala muda e o conteúdo não; a reamostragem vem antes da binarização;
+  e o DPI alvo declarado é o que a medição usou, sem ser o padrão.
+- `tests/test_detection.py::CoberturaDaMaiorImagemTests`: a página sem imagem não diz que é scan; o
+  scan de página inteira cobre >95%; um diagrama no meio da página cobre <20% -- que é a distinção
+  inteira; a maior manda quando há várias; e a página que o PyMuPDF recusa a descrever devolve
+  `0.0` com aviso no log, em vez de derrubar o livro.
+
+### O que ficou de fora
+
+- **Nada foi ligado no caminho de produção.** `pdf_to_pgn.py` continua entregando a página crua à
+  detecção; ligar o caminho exigiria uma opção em `BatchOptions` e na CLI, e a medição não dá
+  motivo para oferecê-la.
+- **A supressão de hachura sobre a página inteira** apareceu na varredura de variantes e não foi
+  perseguida: com `hatch_kernel_ratio` em 0,020 o `Koblenz` sobe de 64 para **95** FENs legais nos
+  mesmos 120 diagramas -- e continua com zero acima do gate --, enquanto o `Euwe Band 7` desaba de
+  79 FENs legais para **0**. É uma pista para quem for atrás da leitura, e não deste item, que é
+  sobre a página.
+- **Os quatro relatórios de campo ficaram com o digest vencido, e não foram republicados daqui.**
+  `preprocess.py`, `detection/embedded.py` e `detection/__init__.py` estão no fecho de importação
+  que o `cvoff-field` exercita, então a guarda da S-218
+  (`test_field_eval.py::test_todo_relatorio_corrente_mediu_o_codigo_de_hoje`) acusa os quatro de
+  `docs/metrics/`. **A adição é inerte, e isso foi medido dos dois lados:** nenhum dos 30 módulos
+  do fecho chama os nomes novos -- só o próprio `preprocess.py`, entre eles --, e remedir os quatro
+  com os modelos arquivados (que ainda estão no disco, conferidos por digest) reproduz cada
+  arquivo **campo a campo**, tirando apenas `seconds` e `seconds_per_diagram`. Republicá-los a
+  partir do worktree gravaria `C:/Python-Chess2/…` no `path` do modelo -- que é o dano 1 descrito
+  em `field_eval._model_path_relativo`, porque os `.pt` moram fora desta árvore -- e
+  `code_dirty: true`, porque o item ainda não está commitado. A remedição é do checkout principal,
+  depois do commit, e é só trocar o digest: os números não se movem.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-548 · Relatório de qualidade por livro: páginas lidas, diagramas, legalidade, tempo — ✅ **implementada em 2026-09-04**
+
+### Problema
+
+O que uma varredura deixa em disco é **um** JSON para a rodada inteira: `cli/batch.py:33`
+(`DEFAULT_REPORT = PGN/batch_report.json`), gravado a cada livro por `batch.py:260` com a forma de
+`BatchReport.to_dict` (`batch.py:183`) -- `started_at`, a lista dos livros e os totais. A entrada
+de cada livro (`BookResult.to_dict`, `batch.py:96`) traz páginas, aceitos, para revisão, ilegais,
+repetidos, confiança mínima média, taxa de aceitação e tempo. É bastante, e faltam três coisas --
+que são o item:
+
+1. **O relatório não viaja com o livro.** É um arquivo por rodada, no caminho que a rodada
+   escolheu, sobrescrito pela rodada seguinte. Comparar o `Koblenz` de hoje com o de um mês atrás
+   é ter guardado o `batch_report.json` inteiro à mão, e saber qual dos cinquenta livros dele era
+   o `Koblenz`.
+2. **Não há procedência.** O `.pt` é reescrito por todo treino (S-31/S-57), então o caminho não o
+   identifica; e o mesmo livro lido a 220 e a 300 DPI dá contagens diferentes -- medido na S-547,
+   o `Niemeijer` dá 51 diagramas contra 18. Sem o DPI e sem a identidade do checkpoint, dois
+   números da mesma pasta não se comparam (S-219).
+3. **Faltam as taxas que tornam dois livros comparáveis.** `acceptance_rate` existe
+   (`batch.py:92`); `legal_rate`, `seconds_per_page` e `seconds_per_diagram` não. Um livro de 70
+   páginas e outro de 2.612 não se comparam por `elapsed_s`, e `120 diagramas` sozinho não diz se
+   o livro foi bem -- `120 diagramas, 0 exportados` diz, e é o estado de cinco livros do acervo
+   (`ROADMAP.md:151`).
+
+### Solução
+
+**Três funções em `batch.py`, nenhuma delas no caminho da varredura.**
+`relatorio_de_qualidade(resultado, options, medido_em=…)` monta o dicionário de um livro;
+`caminho_do_relatorio_de_qualidade(pdf, output_dir)` dá `<pasta>/<livro>.qualidade.json`;
+`gravar_relatorios_de_qualidade(relatorio, options, output_dir)` grava um por livro e devolve os
+caminhos, em ordem.
+
+**Quatro perguntas, e as quatro só respondem juntas:** quantas páginas foram lidas
+(`pages`), quantos diagramas saíram de lá (`diagrams`), quantos deles viraram posição exportável
+(`exported`, `needs_review`, `illegal`, `duplicates`, com `export_rate` e `legal_rate`), e quanto
+custou (`elapsed_s`, `seconds_per_page`, `seconds_per_diagram`). O tempo por página é o que torna
+dois livros comparáveis quando um tem 70 páginas e outro 2.612.
+
+**Ao lado do PGN, e não em `docs/metrics/`.** `docs/metrics/` é o arquivo de medição do
+**repositório** -- versionado, comparado por guarda, com procedência de código (S-218). O
+relatório de um livro varrido na máquina de quem usa o programa é saída do usuário, e mora onde a
+saída dele mora.
+
+**O nome sai do PDF e não do PGN.** O livro pulado nem chega a ter PGN próprio nesta rodada, e o
+relatório dele -- que diz justamente "já estava exportado" -- ainda tem de saber onde nascer.
+
+**`schema: 1`**, a versão do **formato**, na forma de `text/arquivo.py` e `text/fila.py`: quem
+abrir um relatório antigo daqui a seis meses precisa saber se os campos que espera existiam. Sem
+isso, um campo acrescentado depois é indistinguível de um campo que a medição daquele dia deixou
+em branco.
+
+**A procedência é o que faz o número se reproduzir.** `model.identity` é
+`checkpoint.checkpoint_identity` (`checkpoint.py:138`) -- `<tamanho>-<mtime_ns>`, um `stat` --, e
+vai junto com `dpi`, `max_boards_per_page`, `orientation`, `reading_order`, `accept_threshold` e
+`dedupe`, que são os parâmetros de leitura que mudam a contagem. `program` sai do metadado da
+distribuição instalada pela **mesma** leitura que `ui/strings._versao_instalada` faz -- ler o
+mesmo metadado de dois lugares não tem como divergir; o que a S-161 proibiu foi *cravar* o número,
+que é outra coisa. `measured_at` é o `started_at` da rodada, e não a hora de gravar: o que
+identifica a medição é quando ela começou.
+
+**Os caminhos saem relativos à raiz** (`config.caminho_para_relatorio`, `config.py:196`) quando
+cabem nela, pela mesma razão dos relatórios de campo: um relatório com o layout do disco de quem
+mediu não compara com o de outra máquina.
+
+**Escrita por `atomic_write_json`**, como todo arquivo de trabalho deste projeto: um relatório pela
+metade é pior que nenhum, porque ele **abre** e responde números truncados. E um livro cujo
+relatório não consegue ser gravado não derruba os outros -- é a regra do livro que falha na
+varredura (S-34), e aqui ela pesa mais: perder cinquenta relatórios porque um nome de arquivo é
+inválido seria perder a medição inteira por causa da última linha dela.
+
+**Na fila da janela, no fim e não a cada livro.** O `BatchReport` é o mesmo objeto o tempo todo, e
+gravar cinquenta arquivos cinquenta vezes escreveria 1.275 arquivos para entregar cinquenta. O que
+protege contra a interrupção é o `--report` da própria varredura, que já é gravado a cada livro. O
+diálogo aceita `relatorios=False`, porque quem varre para conferir uma coisa só não quer cinquenta
+JSON ao lado dos PGN.
+
+### Critério de aceite
+
+- Um JSON por livro, com o nome do PDF, inclusive para o livro **pulado**. ✅
+- As quatro perguntas no arquivo, com as taxas derivadas, e sem divisão por zero num livro sem
+  página nem diagrama. ✅
+- Procedência com a identidade do checkpoint e os parâmetros de leitura; caminhos relativos à
+  raiz. ✅
+- Medido em 2026-09-04, varredura de verdade com o `.pt` de produção, saída numa pasta do
+  scratchpad:
+
+  | | `Estrin - Bauernopfer` | `Niemeijer - Zwarte Magie` |
+  |---|---|---|
+  | páginas | 88 | 32 |
+  | diagramas | 118 | 51 |
+  | exportados | **116** | **0** |
+  | para revisão / ilegais | 0 / 2 | 51 / 0 |
+  | `export_rate` | 0,9831 | **0,0** |
+  | `legal_rate` | 0,9831 | 1,0 |
+  | `mean_min_confidence` | 0,9845 | 0,2598 |
+  | `elapsed_s` | 62,66 | 18,49 |
+  | `seconds_per_page` | 0,712 | 0,578 |
+  | `seconds_per_diagram` | 0,531 | 0,363 |
+
+  Os dois JSON saíram com a mesma procedência -- `identity` `8786520-1788179963836706300`, DPI
+  220, `accept_threshold` 0,80, ordem de coluna, `program` `0.1.0`, `measured_at` o `started_at`
+  da rodada -- e são o item inteiro numa linha: o `Niemeijer` **processou** 32 páginas, achou 51
+  diagramas e entregou zero, com a confiança mínima média em 0,26. Sem `export_rate` ao lado de
+  `diagrams`, "51 diagramas" leria como sucesso.
+
+  Os caminhos saíram **absolutos** nessa rodada, e é o comportamento declarado: a pasta de saída
+  estava fora da raiz do projeto, e `caminho_para_relatorio` só relativiza o que cabe nela.
+
+- O relatório de um livro é legível sozinho: nada nele remete ao relatório consolidado nem à
+  posição do livro na fila. ✅
+
+### Testes
+
+- `tests/test_batch.py::RelatorioDeQualidadeTests`: as quatro perguntas e as três taxas derivadas;
+  o livro sem diagrama e sem página não divide por zero; a procedência diz com que modelo e com
+  que DPI; o caminho publicado é relativo à raiz; um arquivo por livro com o nome do PDF e o
+  `schema` gravado; o livro pulado também ganha relatório.
+- `tests/test_qt_fila_de_livros.py::DialogoTests`: o relatório sai um por livro ao fim da fila,
+  com `book`, `diagrams`, `exported` e `provenance`, e o caminho da pasta aparece no rodapé; e a
+  fila pode varrer sem deixar relatório nenhum.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-549 · Guarda genérica: nenhum módulo de `ui/` importa toolkit — ✅ **implementada em 2026-09-04**
 

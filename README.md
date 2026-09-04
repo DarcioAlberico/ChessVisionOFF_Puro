@@ -997,7 +997,7 @@ src/chess_diagram_ocr/
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   augment.py            aumento de dados do treino: jitter, afim e ruido, com probabilidade
-  batch.py              varredura da biblioteca inteira, com relatorio consolidado
+  batch.py              varredura da biblioteca inteira, com relatorio consolidado e o de qualidade por livro (S-548)
   board_detection.py    deteccao do tabuleiro na pagina (OpenCV)
   calibration.py        temperature scaling e curva de confiabilidade
   checkpoint.py         leitura e escrita de checkpoints, com metadados de treino
@@ -1009,6 +1009,7 @@ src/chess_diagram_ocr/
   diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
   diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)
   docx_saida.py         o estudo e o texto em DOCX, OOXML minimo com zipfile (S-543)
+  eco.py                a tabela ECO embutida: classifica a abertura por posicao ou por lance (S-534)
   engine.py             motor UCI opcional (Stockfish)
   epub.py               o estudo e o texto em EPUB 3, um SVG por diagrama (S-542)
   estudo.py             a arvore de variantes da sala de estudo, e as regras de lance
@@ -1039,7 +1040,7 @@ src/chess_diagram_ocr/
   pdf_io.py             render de paginas de PDF (PyMuPDF)
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
-  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le
+  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le, e o caminho de pagina de scan (S-547)
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   review_queue.py       fila de revisao ordenada por valor de informacao
