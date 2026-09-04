@@ -103,10 +103,10 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 
 | fase | estado | medido |
 |---|---|---|
-| 80 | ◻ | — |
+| 80 | ◐ | S-527 em duas rodadas (barra de 154 para 32 px, 11 de 14 acoes na fila a 1400 px); S-553 e S-554 fecham os dois bloqueios de tema. Faltam S-528, S-529, S-530, S-551, S-552 |
 | 81 | ◻ | — |
 | 82 | ◻ | — |
 | 83 | ◻ | — |
-| 84 | ◻ | — |
-| 85 | ◻ | — |
+| 84 | ◐ | S-542 e S-543 entregues: 2.618 estudos em EPUB de 7,6 MB em 3,1 s, DOCX em 44,5 s. Faltam S-544 e S-545 |
+| 85 | ◐ | S-546 e S-548 entregues (120 avisos de pagina em 81 s onde havia 4); S-547 medida e recusada, sem ganho. A fila espera a acao de menu da rodada 2 |
 | 86 | ✅ 2026-09-04 | S-549: 52 módulos de `ui/` sem toolkit, guarda acha 31/33 em `qt/`; S-550: sete seções, faixa em 27 cópias |
