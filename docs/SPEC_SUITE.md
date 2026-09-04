@@ -940,6 +940,14 @@ teste de cada uma seguia verde medindo a decisão sozinha. A guarda que faltava 
 
 _não houve rodada: seção escrita a posteriori (S-550)_
 
+## S-551 · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-552 · A janela cabe em 1024 px de largura — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
 ## S-580 · O fim da faixa reservada — não é item
 
 A mensagem do commit `eb3ba71` cita a faixa "S-527 a S-580", e a guarda `test_todo_item_entregue_tem_secao_em_algum_doc` lê

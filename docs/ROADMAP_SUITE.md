@@ -56,6 +56,8 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 - **S-528** · A barra do painel do PDF na mesma gramática, e a página com mais área
 - **S-529** · O painel do motor: barra de avaliação vertical, linhas MultiPV clicáveis, profundidade
 - **S-530** · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável
+- **S-551** · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move (achado do crítico do S-527: ~230 px vazios sob o tabuleiro a 1400×950)
+- **S-552** · A janela cabe em 1024 px de largura (achado do crítico do S-527: pedida a 1000×800, a janela fica em 1245×902)
 
 ## Fase 81 — a base de partidas de vários gigabytes
 
