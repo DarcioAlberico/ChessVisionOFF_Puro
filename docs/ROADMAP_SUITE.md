@@ -105,4 +105,4 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 | 83 | ◻ | — |
 | 84 | ◻ | — |
 | 85 | ◻ | — |
-| 86 | ◻ | — |
+| 86 | ✅ 2026-09-04 | S-549: 52 módulos de `ui/` sem toolkit, guarda acha 31/33 em `qt/`; S-550: sete seções, faixa em 27 cópias |
