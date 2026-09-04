@@ -24,7 +24,7 @@ Fases 66 a 68), escrita em 2026-09-01 sobre o `corte-do-tk` (653f88b) integrado 
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
-> | S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
+> | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 
 Este documento não propõe recurso novo. Ele é o que sobrou de seis itens e um teste de acervo
 **depois de cada um ser conferido contra este ramo** -- que está três PRs à frente do que a revisão

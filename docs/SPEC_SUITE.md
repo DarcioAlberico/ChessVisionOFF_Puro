@@ -22,7 +22,7 @@ este documento; um número sem seção aqui é item ainda não entregue, e não 
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
-> | S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
+> | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 
 Cada item tem **Problema** (com `arquivo:linha` do estado em `0cf5492`), **Solução**, **Critério de
 aceite**, **Testes** e **O que o crítico recusou** -- o registro das rodadas em que a fotografia da
@@ -118,13 +118,534 @@ _Seção a escrever pelo executor do item._
 
 _Seção a escrever pelo executor do item._
 
-## S-549 · Guarda genérica: nenhum módulo de `ui/` importa `PyQt6` — ◻ em andamento
+## S-549 · Guarda genérica: nenhum módulo de `ui/` importa toolkit — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-550 · As S-500 a S-506 do corte do Tk ganham seção de spec (dívida de documentação) — ◻ em andamento
+A regra existe desde o corte do Tk (S-506): `src/chess_diagram_ocr/ui/` é a camada pura e `qt/` é o
+toolkit. O que a cobrava eram três guardas, nenhuma genérica:
 
-_Seção a escrever pelo executor do item._
+- `tests/test_ui_comandos.py:495` (`test_o_catalogo_nao_importa_tkinter`) e
+  `tests/test_ui_texto_cor.py:138` (`test_o_modulo_de_cor_nao_importa_tkinter`) olham **um módulo
+  cada**, e perguntam só por `tkinter`;
+- `tests/test_editor_model.py:405` (`SemTkinterTests`, S-137) percorre `ui/` inteira, mas pergunta por
+  `tkinter` e `PIL` -- o toolkit que **saiu**. A lista `SEM_TKINTER` é a de 2026-08-12, quando importar
+  Tk em `ui/` era o normal e a lista fixava quem tinha decidido não fazê-lo.
+
+Um `from PyQt6.QtCore import Qt` num módulo de `ui/` passava pelas três em verde, e é o import mais
+provável de todos hoje, porque o Qt é o único toolkit que resta. Nada perguntava por `PySide6`, por
+`ttkbootstrap` (que saiu do `pyproject.toml` no corte) nem pelo caminho indireto -- `from
+chess_diagram_ocr.qt import tema`, que não escreve `PyQt6` em linha nenhuma e só abre com o Qt
+instalado. E nada perguntava pelo resto do pacote: `service.py`, `detection/`, `text/` e `cli/` são a
+promessa da S-31 (*a interface é apresentação*), e a única cobrança dela era a de a S-500 ter conseguido
+nascer.
+
+### Solução
+
+`tests/test_ui_fronteira.py`, uma varredura por `ast` com uma função só -- `violacoes(pasta, raiz,
+isencoes)` -- apontada três vezes:
+
+1. para `ui/`: nenhum módulo importa `PyQt6`, `PySide6`, `tkinter`, `ttkbootstrap` nem
+   `chess_diagram_ocr.qt`;
+2. para o pacote inteiro: nada fora de `qt/` importa toolkit, salvo o que `PODEM_IMPORTAR_TOOLKIT`
+   isenta **com motivo** -- hoje só `cli/texto_transcrever.py`, a janela Tk de desenvolvimento que
+   transcreve as 123 faixas da S-183 e que o corte deixou de propósito;
+3. para `qt/`: o **controle** sobre a árvore real -- a mesma função tem de achar o toolkit em todo
+   módulo de desenho (31 de 33; `__init__.py` e `preferencias.py` não têm widget de propósito).
+
+A leitura conta `import x`, `from x import y`, o import tardio dentro de função, o de
+`TYPE_CHECKING`, o relativo (`from ..qt import tema`, resolvido contra o pacote do arquivo) e o por
+nome (`importlib.import_module("PyQt6.QtGui")`). Não conta prosa: os módulos deste projeto citam
+`import tkinter` e `PyQt6` em docstring para dizer que aquilo **não** existe ali, e uma varredura de
+texto reprovaria a explicação -- é a mesma razão do `ast` em `test_ui_orfaos.py` (S-511).
+
+A isenção é um mapa e não uma lista de perdão, na forma do `SEM_CHAMADOR`:
+`test_toda_isencao_ainda_importa_toolkit` exige que quem está isento **continue** importando toolkit,
+senão a isenção envelhece apontando para um arquivo que já não precisa dela.
+
+### Critério de aceite
+
+- `violacoes(ui/)` devolve `{}`, e a mensagem de falha nomeia módulo, linha e o que ele importou. ✅
+- `violacoes(pacote inteiro, isenções)` devolve `{}`. ✅ Medido em 2026-09-04: **nenhuma violação
+  real**. Fora de `qt/`, o único arquivo do pacote que importa toolkit é `cli/texto_transcrever.py`
+  (cinco imports tardios de `tkinter`, linhas 50, 51, 280, 351 e 435), isento por decisão do corte.
+- A guarda **acha**: oito módulos sintéticos numa pasta temporária cobrem as seis formas de import, a
+  prosa que não conta, o nome parecido que não conta (`tkinter_util`, `PyQt6Compat`,
+  `chess_diagram_ocr.qtx`) e a isenção que cobre arquivo e pasta e nada mais. E, sobre a árvore
+  real, a mesma função apontada para `qt/` acha o toolkit em 31 módulos. ✅
+- A varredura não é vácua sobre `ui/`: mais de 45 módulos lidos, com mais imports que módulos. ✅
+
+### Testes
+
+- `tests/test_ui_fronteira.py::DetectorTests` (novo) -- `test_o_import_de_topo_e_acusado_com_a_linha`,
+  `test_os_cinco_toolkits_sao_acusados_em_qualquer_forma`, `test_o_import_tardio_e_o_de_tipo_contam`,
+  `test_o_import_relativo_do_pacote_de_desenho_e_resolvido`,
+  `test_o_relativo_de_um_nivel_dentro_de_ui_nao_e_toolkit`, `test_citar_o_toolkit_na_prosa_nao_e_importa_lo`,
+  `test_a_isencao_cobre_o_arquivo_e_a_pasta_e_nada_mais`, `test_um_nome_parecido_nao_e_toolkit`.
+- `tests/test_ui_fronteira.py::FronteiraTests` (novo) -- `test_a_varredura_le_a_camada_pura_inteira`,
+  `test_a_mesma_varredura_acha_o_toolkit_onde_ele_mora`, `test_nenhum_modulo_de_ui_importa_toolkit`
+  (**o critério**), `test_nada_fora_do_pacote_de_desenho_importa_toolkit`,
+  `test_toda_isencao_ainda_importa_toolkit`.
+- As três guardas de antes ficam: elas afirmam módulos nomeados, e a lista `SEM_TKINTER` continua
+  sendo a descrição de cada módulo puro, que esta guarda não tem.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-550 · As S-500 a S-506 do corte do Tk ganham seção de spec (dívida de documentação) — ✅ **implementada em 2026-09-04**
+
+### Problema
+
+Os identificadores S-500 a S-506 são citados em docstring de todo `qt/*.py` (`qt/__init__.py:1`, e a
+partir dele cada painel), em `app_pyqt.py:1`, em 18 arquivos de `tests/`, em `pyproject.toml`,
+`packaging/cvoff.spec`, `.github/workflows/ci.yml`, `CONTRIBUTING.md` e em oito `docs/*.md` -- e
+**nenhum tem seção `## S-5NN`** em `docs/SPEC_*.md`. A tabela "Onde mora a spec de cada item"
+(`docs/SPEC_SUITE.md:25` e as outras 26 cópias) pulava de `S-452` para `S-507`: quem lia
+`(S-503)` num cabeçalho e ia à tabela não encontrava faixa nenhuma. As guardas de `tests/test_docs.py`
+não acusavam porque cobram seção só de item **entregue em mensagem de commit**, e o porte inteiro
+entrou no git num commit só, `653f88b`, cujo assunto não cita número.
+
+### Solução
+
+As sete seções abaixo, escritas a posteriori a partir do que o código, os testes e o log dizem: os
+docstrings de `qt/`, o `git show 653f88b` (o corte, 2026-08-31, único commit em que `qt/` e
+`app_pyqt.py` entram na história), o `810072a` do mesmo dia (a conta do catálogo, S-505) e as
+narrativas de `docs/ARCHITECTURE.md` ("A escolha de framework, e como ela mudou") e
+`docs/SPEC_ESTUDO_QT.md`. A data de todas é **2026-08-31**, porque é a única que o log tem: a
+paridade painel a painel (S-500 a S-505) foi feita fora da história e commitada com o corte.
+
+Elas moram **neste** arquivo, e não num `SPEC_QT.md` novo, porque documento novo em `docs/` custa três
+guardas (índice do README, tabela de faixas idêntica, isenção dos `ROADMAP*`) e a S-550 é uma dívida de
+documentação, não um documento. A linha da tabela passa a dizer `S-500 a S-506, S-527 a S-580`, nas 27
+cópias, byte a byte.
+
+### Critério de aceite
+
+- Cada uma das sete tem Problema, Solução, Critério de aceite e Testes, citando testes que **existem**
+  no disco de 2026-09-04. ✅
+- `tests/test_docs.py` inteiro verde: a tabela de faixas é a mesma nos 27 arquivos, nenhuma célula é
+  ilegível, toda seção está no arquivo que o índice declara, e nenhum número nomeia duas coisas. ✅
+- Nenhuma outra seção deste arquivo foi tocada. ✅
+
+### Testes
+
+- `tests/test_docs.py::IndiceNaoEVacuoTests::test_todo_item_com_secao_esta_declarado_no_indice` -- é a
+  guarda que passaria a reprovar as sete seções sem a faixa nova na tabela.
+- `tests/test_docs.py::test_a_tabela_de_faixas_e_a_mesma_em_todos_os_documentos_que_a_trazem` -- as 27
+  cópias.
+- `tests/test_docs.py::test_a_secao_esta_no_arquivo_que_o_indice_declara` e
+  `NumeroDeItemUnicoTests::test_nenhum_numero_de_item_nomeia_duas_coisas`.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+---
+
+# O porte para o Qt e o corte do Tk (S-500 a S-506) — escrito a posteriori pela S-550
+
+As sete seções abaixo não têm rodada de crítica: foram reconstruídas em 2026-09-04 a partir do
+código, dos testes e do log. Onde um número é citado, ele é o do commit `653f88b` ou de um teste que
+existe no disco.
+
+## S-500 · A janela em PyQt6 nasce como versão de teste sobre o mesmo `service.py` — ✅ **implementada em 2026-08-31**
+
+### Problema
+
+A fronteira da S-31 -- *a interface é apresentação; o que dá para testar mora no pacote* -- era uma
+promessa com um cliente só. `653f88b^:app_tkinter.py` tinha 2.327 linhas e era a única janela; nada
+media se `service.py`, `detection/`, `ui/page_overlay.py` e `ui/viewport.py` eram de fato
+independentes do toolkit, porque nunca houve um segundo chamador. A `docs/ARCHITECTURE.md` recomendava
+ficar no Tk, com a saída amarrada a dois gatilhos mensuráveis (S-53) -- e nenhum dos dois disparou.
+
+### Solução
+
+O pacote `src/chess_diagram_ocr/qt/` e a entrada `app_pyqt.py`, uma segunda janela sobre exatamente o
+mesmo `OcrService`, **somente-leitura por decisão**: abre o livro, navega, marca os diagramas sobre a
+página, lê a página e mostra o que leu -- tabuleiro, FEN, confiança, lado a jogar e legalidade -- e
+para antes de gravar, porque um teste que escrevesse no `labels.csv` deixaria de ser um teste. Ela
+existe para responder com código que roda três perguntas:
+
+1. *A fronteira da S-31 aguenta outro frontend?* Sim: nada em `service.py`, `detection/`,
+   `page_overlay.py` ou `viewport.py` precisou mudar para a janela nascer.
+2. *Quanto da lógica de tela já estava fora do Tk?* `ui/page_overlay.py` (onde as caixas estão e o
+   que um clique nelas significa) e `ui/viewport.py` (roda, zoom, "caber na página") são reusados
+   inteiros; o que o pacote escreve do zero é o desenho, `QPainter` no lugar de `create_rectangle`.
+3. *O que o Tk carregava sozinho?* O que não deu para reusar aparece como código novo, e é o inventário
+   do que uma migração custaria.
+
+O PyQt6 entra como **extra `qt`** do `pyproject.toml`, e `packaging/cvoff.spec` exclui `PyQt6` e filtra
+`chess_diagram_ocr.qt` do `collect_submodules`, para não levar ~150 MB de Qt no `.zip` de quem não
+pediu segunda janela. PyQt6 e não PyQt5 porque é o que tem roda publicada na faixa `>=3.10,<3.14`
+inteira. O título da janela traz uma marca (`TITULO_DA_JANELA`), porque duas janelas do mesmo produto
+lado a lado é a situação em que alguém corrige vinte diagramas na errada.
+
+### Critério de aceite
+
+- Nenhum módulo já existente muda para a janela nascer; `qt/` não importa `tkinter`. ✅
+- A janela abre o livro, marca, lê e mostra, recebendo o serviço pronto (`servico=`) -- o que permite
+  exercitar o caminho de leitura inteiro sem o `models/piece_classifier.pt`. ✅
+- O `.exe` não cresce: `PyQt6` no `excludes` do `.spec` e `qt/` fora do varrimento. ✅ (invertido na
+  S-506, quando a janela passou a ser esta.)
+
+### Testes
+
+- `tests/test_app_pyqt.py` -- `FracoesDaVistaTests` (a fração do `yview` do Tk a partir de um
+  `QScrollBar`), `TabuleiroTests`, `VisorTests`, `JanelaTests` (abrir, navegar, marcar, ler, clicar na
+  caixa, a roda no fim da página) e `SelftestTests`.
+- `tests/test_packaging.py::SpecTests::test_o_que_nao_e_dependencia_nao_entra_no_bundle` -- a regra
+  pela qual o `PyQt6` entrou no `excludes` enquanto era extra.
+- `tests/test_page_overlay.py` e `tests/test_viewport.py` continuam sendo os testes das decisões
+  reusadas: repeti-las em `qt/` mediria o mesmo código duas vezes.
+
+### O que o crítico recusou
+
+_não houve rodada: seção escrita a posteriori (S-550)_
+
+## S-501 · O que a versão de teste repetia passa a ser chamado: tema, atalhos, rodapé, tabela, barra, menu, plataforma e tabuleiro — ✅ **implementada em 2026-08-31**
+
+### Problema
+
+A segunda janela repetia decisões em vez de chamá-las, e o cabeçalho de `qt/tabuleiro.py` registrava o
+caso mais claro: `BoardGeometry.fit` e `heatmap_color` eram cálculo puro em
+`653f88b^:src/chess_diagram_ocr/ui/board_render.py`, e mesmo assim não podiam ser importados, porque
+o módulo em que moravam importava `tkinter` e `PIL` na primeira linha -- a incerteza aparecia como
+**contorno** na casa em vez de calor, e `UNICODE_PIECES` existia em duas cópias byte a byte. A tabela
+de atalhos de `ui/atalhos.py` escrevia tecla na linguagem do Tk (`"<Control-s>"`) e a guarda de foco
+da S-20 devolvia `"break"`/`None`. E `recognize_page` rodava o detector de novo sobre a página que o
+visualizador acabara de detectar para desenhar os retângulos: o log de uma sessão real mostrava
+"Aparado pela moldura" duas vezes por página.
+
+### Solução
+
+Abrir a metade pura de cada módulo do Tk e chamá-la dos dois lados:
+
+- `ui/desenho_do_tabuleiro.py` recebe `BoardGeometry.fit`, `heatmap_color` e `UNICODE_PIECES`, sem
+  toolkit; `qt/tabuleiro.py` passa a chamá-los. A incerteza volta a ser calor, com alfa de verdade no
+  lugar do `stipple="gray50"` que o canvas do Tk exigia.
+- `qt/atalhos.py` **traduz** a tabela de `ui/atalhos.py` numa função pura de 20 linhas em vez de
+  redeclará-la em `QKeySequence`, e a guarda vira um `eventFilter` na aplicação -- `True`/`False` é o
+  mesmo par de respostas que `"break"`/`None`.
+- `qt/tema.py`: a folha de estilo construída por função pura (`folha_de_estilo()`) a partir dos mesmos
+  papéis de `ui/tokens.py`; aqui não há `ttkbootstrap`, então *o tema somos nós*, e o eixo de tema
+  colapsa -- fica a pele, com o seu `cromo_escuro`.
+- `ui/estado_do_rodape.py` (severidade, expiração, descrições) e `qt/rodape.py`; `qt/tabela.py` das
+  mesmas `Coluna`; `qt/barra.py` (a barra que quebra em vez de cortar, S-151); `qt/menu.py` da mesma
+  declaração (S-161); `qt/legenda.py` (`descricao_completa` passa a ser pública); `qt/plataforma.py`
+  (DPI e ícone antes de a janela existir, S-148); `qt/dica.py`.
+- `OcrService.recognize_page` aceita a lista de candidatos que quem chamou já detectou: marcar e
+  depois ler deixa de varrer a página duas vezes, e o retângulo "3" da tela e o diagrama 3 da lista
+  passam a ser o mesmo objeto por construção.
+
+### Critério de aceite
+
+- Nenhuma decisão em duas cópias: `UNICODE_PIECES` é um `assertIs`, e o tabuleiro das duas janelas,
+  na mesma área, tem o mesmo tamanho e a mesma origem. ✅
+- Nenhuma tecla escrita fora de `ui/atalhos.py`, **também deste lado**. ✅
+- F4 (marcar) e depois F5 (ler) não detectam duas vezes. ✅
+- A paleta, as peles e as densidades são afirmáveis sem servidor gráfico, porque a folha é texto. ✅
+
+### Testes
+
+- `tests/test_qt_tabuleiro.py` (`test_a_tabela_de_glifos_e_a_do_produto`, `test_a_rampa_de_calor_e_a_do_produto`,
+  `test_a_geometria_e_a_do_produto` -- os três `assertIs` que fecharam o achado),
+  `tests/test_qt_atalhos.py` (a tradução e "nenhuma tecla escrita fora de `ui/atalhos.py`"),
+  `tests/test_qt_tema.py::FolhaDeEstiloTests`, `::PapelDoBotaoTests`, `tests/test_qt_barra.py`,
+  `tests/test_qt_menu.py`, `tests/test_qt_legenda.py`, `tests/test_qt_plataforma.py`,
+  `tests/test_qt_rodape.py`, `tests/test_qt_tabela.py`, `tests/test_qt_dica.py`.
+- `tests/test_service.py::PaginaComCandidatosProntosTests` e
+  `tests/test_app_pyqt.py::JanelaTests::test_marcar_duas_vezes_nao_varre_a_pagina_duas_vezes`.
+- `tests/test_editor_model.py::SemTkinterTests` -- `desenho_do_tabuleiro.py` e `estado_do_rodape.py`
+  entram em `SEM_TKINTER` com a marca `(S-501)`.
+
+### O que o crítico recusou
+
+_não houve rodada: seção escrita a posteriori (S-550)_
+
+## S-502 · A janela em Qt passa a corrigir e gravar: tabuleiro editável e `Ctrl+S` — ✅ **implementada em 2026-08-31**
+
+### Problema
+
+A S-500 parava, de propósito, antes do que a janela do produto tinha além de ler: editar casa a casa,
+salvar amostra, treinar, exportar. Aquilo era certo enquanto o pacote existia para **provar** uma
+fronteira. O dono decidiu que o Qt substitui o Tk, e a decisão muda o argumento: uma janela que vai ser a
+única não pode recusar o gesto mais repetido do programa -- corrigir, `Ctrl+S`, seta. O risco que a
+S-500 evitava era um **segundo caminho de escrita** no `labels.csv`.
+
+### Solução
+
+`qt/tabuleiro_editavel.py`: clique, arrasto e pincel sobre um `BoardModel` -- o que cada gesto
+*significa* (`press`, `drop`, `paint`, `erase`, e o `BoardChange` que devolve) continua sendo de
+`ui/board_model.py` e `ui/board_edit.py`, e o que o widget escreve é só o roteamento do evento do Qt
+para a chamada do modelo. A gravação obedece `ui/editor_model.DiagramEditorModel.save_target()` --
+*amostra nova ou regravar a linha existente?*, a regra mais delicada da interface (S-49), pura e com
+teste sem janela --, e é isso que atende a cautela: o que existe é um segundo widget sobre o mesmo
+caminho, não um segundo caminho. O título deixa de dizer "versão de teste", porque é falso desde aqui;
+o que ele precisa dizer é **qual** janela é esta, enquanto houver duas escrevendo no mesmo arquivo.
+
+### Critério de aceite
+
+- A correção vai para o `fen_edits` do editor, e não para o item -- ela sobrevive à ida e volta entre
+  diagramas, que é o laço mais repetido do programa. ✅
+- A posição gravada é a **corrigida**, e não a que o modelo leu. ✅
+- A posição ilegal pergunta; o "não" cancela; a confirmada grava. Um erro no repintar depois da
+  gravação não vira "falha ao salvar" sobre uma amostra que está no disco (S-318). ✅
+- `mouseReleaseEvent` respeita `allow_deselect`: selecionar não exige dois cliques. ✅
+- O `labels.csv` dos testes é temporário (`csv_de_rotulos=`). ✅
+
+### Testes
+
+- `tests/test_qt_tabuleiro_editavel.py` -- o roteamento, com `LIMIAR_DE_ARRASTO`.
+- `tests/test_qt_gravacao.py::GravacaoTests` e `::VinculoTests` -- os catorze casos da gravação, do
+  vínculo e da origem gravada.
+- `tests/test_app_pyqt.py::JanelaTests::test_o_titulo_diz_qual_das_duas_janelas_e_esta`.
+- `tests/test_editor_model.py` e `tests/test_board_model.py` continuam sendo os testes da decisão.
+
+### O que o crítico recusou
+
+_não houve rodada: seção escrita a posteriori (S-550)_
+
+## S-503 · Os painéis portados um a um, e as decisões abertas em módulos puros de `ui/` — ✅ **implementada em 2026-08-31**
+
+### Problema
+
+Depois da S-502 a janela do Qt tinha a lista, o tabuleiro, a FEN e o salvar **embutidos** -- o mesmo
+arranjo que a S-31 tirou do `ChessOcrTkApp`: com o estado do PDF, o do editor e o do estudo no mesmo
+objeto, um método de navegação de página mexe no que está sendo editado sem que nada diga. E do lado
+do Tk cada painel carregava decisão dentro do widget: `653f88b^:src/chess_diagram_ocr/ui/result_panel.py`
+tinha 1.402 linhas; os diálogos devolviam pelo atributo `chosen`; a Galeria, o Dataset, a Revisão, a
+sala de estudo e a fita decidiam medidas, colunas, tri-estados e contabilidade em código que só rodava
+com uma raiz Tk aberta.
+
+### Solução
+
+Um widget por painel, e para cada um a metade pura aberta num módulo de `ui/` que os dois frontends
+podiam chamar:
+
+| painel (`qt/`) | decisão aberta em `ui/` |
+|---|---|
+| `painel_de_resultado.py` | `editor_model`, `historico`, `legality`, `board_edit` (já puros); `_atualizar_tudo` no lugar dos três `update_*` separados |
+| `painel_do_pdf.py` · `visor.py` | `leitura_do_pdf.py` (os três números medidos do visualizador e o leitor do sistema, S-330) |
+| `painel_da_galeria.py` | `galeria_declarada.py` (medidas, tri-estado do link, contabilidade do lote, S-67) |
+| `painel_de_estudo.py` · `tabuleiro_de_jogo.py` | `sala_declarada.py` (tabela comando→método e as seis medidas, S-280) |
+| `painel_do_dataset.py` | `resumo_do_dataset.py` (colunas, paginação, textos, S-23) |
+| `painel_de_revisao.py` | `varredura_de_revisao.py` (o pedido e o acumulador da fila, S-116/S-119) |
+| `dialogos.py` | `escolha_de_bases.py`, `escopo_da_varredura.py`, `lista_de_partidas.py` (o travessão), `pedido_de_treino.py` |
+| `fita.py` · `paleta.py` · `icones.py` | `medidas_da_fita.py` (modos, orçamento, grupos), `filtro_de_comandos.py` (inventário e ordem da paleta), `ui/icones.py` |
+
+O modal do Qt é `exec()`, e é onde os dois frontends mais divergem: a função `perguntar_*` de cada
+diálogo cabe em três linhas, o atributo continua existindo para o teste, e o `Escape` fecha de graça.
+
+### Critério de aceite
+
+- Cada painel tem o seu `tests/test_qt_*.py` e se testa **sem abrir a janela inteira**. ✅
+- `qt/painel_de_resultado.py` tem menos de um terço das 1.402 linhas de `ui/result_panel.py`, e a
+  diferença é código chamado, não omitido. ✅
+- Toda decisão aberta está em `SEM_TKINTER` com a marca `(S-503)` e tem teste sem janela. ✅
+- A janela conversa com o painel por sinal, e não lendo o estado dele. ✅
+
+### Testes
+
+- `tests/test_qt_painel_de_resultado.py`, `tests/test_qt_painel_do_pdf.py`,
+  `tests/test_qt_painel_da_galeria.py`, `tests/test_qt_painel_de_estudo.py`,
+  `tests/test_qt_painel_do_dataset.py`, `tests/test_qt_painel_de_revisao.py`,
+  `tests/test_qt_dialogos.py`, `tests/test_qt_fita.py`, `tests/test_qt_paleta.py`.
+- `tests/test_editor_model.py::SemTkinterTests::test_os_doze_continuam_sem_tkinter` -- os onze módulos
+  marcados `(S-503)` na lista.
+- `tests/test_review_queue.py` -- o alvo do `patch` passa a ser `ui/varredura_de_revisao.py`.
+
+### O que o crítico recusou
+
+_não houve rodada: seção escrita a posteriori (S-550)_
+
+## S-504 · A aba de texto no Qt: o documento é o estado, e o widget é o desenho — ✅ **implementada em 2026-08-31**
+
+### Problema
+
+`653f88b^:src/chess_diagram_ocr/ui/texto_panel.py` tinha 2.600 linhas, e uma parte delas existia só
+para contornar o `tk.Text`: uma etiqueta do Tk dá **uma** fonte ao trecho e a última criada vence --
+daí `NEGRITO_ITALICO`, daí `fonte:titulo:bi:2` gerada sob demanda, daí o cache `_fontes_desenhadas`
+refeito a cada zoom, e negrito dentro de um título sumia; a pilha de desfazer do Tk guarda índice e
+não conteúdo, então todo redesenho exigia `edit_reset()`; e o documento era lido **de volta do
+widget**, etiqueta por etiqueta, para gravar (`ui/texto_etiquetas.de_despejo`).
+
+### Solução
+
+`qt/painel_de_texto.py` e `qt/texto_formato.py`. O `QTextCharFormat` guarda peso, pendor e corpo
+separados, e os três contornos somem. O documento **é** o estado e o widget é só o desenho dele: toda
+ferramenta chama uma função pura de `text/rico.py`, recebe um documento novo e o redesenha -- é o que
+faz o negrito sobreviver ao arquivo em vez de existir só enquanto o widget existir. A fronteira
+estreita é o deslocamento: as funções puras falam em caractere do *documento*, o `QTextEdit` em
+posição do *cursor*, e os dois divergem porque a miniatura do diagrama vale um caractere para o Qt e
+nenhum para o documento -- `_Mapa` resolve o que `ui/texto_etiquetas.deslocamento` resolvia
+percorrendo o `dump` do widget a cada pergunta. `ui/texto_declarado.py` recebe a tabela
+comando→método e o zoom da vista (S-240).
+
+### Critério de aceite
+
+- Negrito, itálico e título convivem no mesmo trecho. ✅
+- O negrito aplicado depois do terceiro diagrama cai onde a pessoa clicou, e não três caracteres
+  adiante. ✅
+- O desfazer vê uma mudança de formato, que não altera caractere nenhum. ✅
+- A aba registra as duas operações longas no `BusyRegistry`, como o painel do Tk fazia (fechado na
+  S-506, que o achou). ✅
+
+### Testes
+
+- `tests/test_qt_texto.py` -- o formato, o mapa de deslocamento e as ferramentas.
+- `tests/test_qt_texto_cauda.py` -- a cauda da aba (S-240 a S-266, S-343): o que o porte da S-502
+  tinha parado antes de fazer.
+- `tests/test_editor_model.py::SemTkinterTests` -- `texto_declarado.py` com a marca `(S-504)`.
+
+**O que ficou de fora, e virou item.** A digitação no editor do Qt não chegava ao documento -- o
+widget recebe o texto e `documento` fica como estava --, medido em 2026-09-02 pela triagem da S-511.
+É a **S-521** ([SPEC_EDITOR.md](SPEC_EDITOR.md)), e não um defeito desta seção: o porte trouxe as
+ferramentas e o desenho, e o caminho do teclado ao documento ficou para depois.
+
+### O que o crítico recusou
+
+_não houve rodada: seção escrita a posteriori (S-550)_
+
+## S-505 · A janela reúne os painéis: sete abas, uma tabela de comandos, e toda ação com dono — ✅ **implementada em 2026-08-31**
+
+### Problema
+
+Com os painéis como widgets (S-503), o que falta é quem os ligue: a fiação entre eles, a tabela de
+comandos que o menu, a paleta e os atalhos leem, e a entrada do processo. E a guarda que perguntava se
+uma ação do catálogo tinha dono era satisfeita por um `lambda: None`: ela perguntava se a ação tinha
+entrada na tabela, e um comando que não faz nada **tem**. Três ações do catálogo -- `anotar_pagina`,
+`anotar_sem_diagrama`, `tirar_do_campo` -- eram servidas por **botões** da janela do Tk e não pela
+tabela `_comandos`, então comparar as duas janelas ação a ação passava em verde sem elas; entre elas
+estava o único caminho que faz `data/field_set.jsonl` crescer.
+
+### Solução
+
+`qt/janela.py`, `JanelaPrincipal`: monta as seis abas de trabalho ao lado do visualizador, liga sinal a
+sinal e **soma as três tabelas de comandos** (a da janela, a da sala e a da aba de texto) numa só, de
+onde saem o menu, a paleta e os atalhos -- a janela traduz widget em parâmetro do serviço, e nada
+mais. `qt/exportador.py` (com `ui/exportacao_de_pgn.py`: `ExportSettings` e `describe_report`),
+`qt/campo.py` (as três ações do conjunto de campo, com `ui/field_draft.py`) e as quatro origens do
+painel de Resultado (`carregar_pagina`, `carregar_item_de_revisao`, `carregar_amostra`,
+`carregar_avulsos`), cada uma declarando o vínculo que impede `Ctrl+S` de gravar pelo caminho errado.
+`app_pyqt.py` é a entrada: argumentos, log, `QApplication` e o `--selftest`.
+
+A conta do catálogo fecha em duas guardas, e a segunda é o **controle** da primeira: todo comando do
+catálogo alcança o menu ou está numa das duas listas que declaram por que não; e a varredura de
+inertes lê a **fonte** de `qt/janela.py` por `ast`, provada contra uma fonte de mentira -- a primeira
+versão pedia `inspect.getsource` do `lambda`, caía num `except SyntaxError` e passava em verde com um
+comando inerte no arquivo. É a lição que `test_ui_orfaos.py` (S-511) cita como "a trava da guarda dos
+inertes".
+
+### Critério de aceite
+
+- As seis abas na ordem da spec; o visualizador ao lado delas e não dentro. ✅
+- A tabela de comandos é a soma de três; todo item de menu tem comando; nenhum é inerte; todo comando
+  do catálogo tem dono chamável nesta janela. ✅
+- O detector de inertes acha um comando inerte numa fonte sintética. ✅
+- A frase de todo painel chega ao rodapé; as abas dizem quanto trabalho carregam. ✅
+- `qt/janela.py` entra na catraca de linhas de `tests/test_packaging.py` no lugar do
+  `app_tkinter.py`. ✅
+
+### Testes
+
+- `tests/test_qt_janela.py::MontagemTests` -- `test_as_seis_abas_estao_na_ordem_da_spec`,
+  `test_a_tabela_de_comandos_e_a_soma_de_tres`, `test_nenhum_comando_do_menu_e_inerte`,
+  `test_a_varredura_de_inertes_acha_um_comando_inerte`, `test_todo_item_de_menu_tem_comando`,
+  `test_todo_comando_do_catalogo_tem_dono_nesta_janela`,
+  `test_as_tres_acoes_da_linha_de_campo_sao_as_do_catalogo`, `test_a_frase_de_todo_painel_chega_ao_rodape`.
+- `tests/test_qt_janela.py::FiacaoTests` -- abrir o livro chega à Galeria, ao Estudo e ao Texto; a
+  Revisão manda varrer e quem varre é a Galeria; gravar pinta a caixa e reconta as abas; e o resto.
+- `tests/test_ui_comandos.py::CoberturaDoCatalogoTests::test_todo_comando_do_catalogo_alcanca_alguem` e
+  `::test_a_conta_do_catalogo_acusa_uma_acao_sem_dono` (commit `810072a`, 2026-08-31).
+- `tests/test_app_pyqt.py::SelftestTests` e `tests/test_packaging.py::TamanhoDaJanelaTests`.
+
+### O que o crítico recusou
+
+_não houve rodada: seção escrita a posteriori (S-550)_
+
+## S-506 · O corte do Tk: a janela do produto passa a ser a do PyQt6 — ✅ **implementada em 2026-08-31**
+
+### Problema
+
+Com a paridade painel a painel fechada (S-503 a S-505), havia duas janelas escrevendo no mesmo
+`labels.csv`: `653f88b^:app_tkinter.py` com 2.327 linhas, 28 módulos de `ui/` acoplados ao toolkit,
+46 arquivos de teste que só rodavam com uma raiz Tk, o `ttkbootstrap` como dependência, o PyQt6 como
+extra e `packaging/cvoff.spec` excluindo justamente o pacote da janela nova. O dono decidiu a migração
+em 2026-08-31, e o corte saiu no mesmo dia (`653f88b`).
+
+### Solução
+
+- Sai `app_tkinter.py`; `ui/` vai de 81 para 52 módulos, e nenhum dos que sobram importa toolkit --
+  ela é a camada pura que os dois frontends compartilhavam, e agora só tem um. Seis módulos são
+  **podados** em vez de apagados, porque o Qt pede a metade pura deles: `barra`, `degradacao`,
+  `folha`, `menu`, `plataforma`, `tabela`. `rodape` sai inteiro (`DESLIGADO` e `Dispositivos` sempre
+  moraram em `estado_do_rodape`).
+- O PyQt6 deixa de ser o extra `qt` e vira dependência de base; o `ttkbootstrap` sai do
+  `pyproject.toml` e do `uv.lock`; o `cvoff.spec` aponta para `app_pyqt.py` e passa a **coletar**
+  `qt/` em vez de excluí-lo. O CI para de instalar o extra.
+- `data/janela.json` no lugar de `app_tkinter_state.json` -- o estado nunca foi do Tk, é da janela --,
+  com o arquivo antigo lido **uma vez** quando o novo ainda não existe, porque ele guarda o histórico
+  de 50 livros com a página de cada um.
+- A remoção de caixa passa a usar o `DroppedBoxes` puro em vez de um conjunto de índices: ele casa por
+  bbox, e índice não é identidade -- uma redetecção com outro DPI renumera tudo.
+- Fica de fora, de propósito: `cli/texto_transcrever.py`, a janela Tk que transcreve as 123 faixas de
+  referência da S-183 -- ferramenta de desenvolvimento com entrada própria, que não abre pelo `.exe`;
+  por isso o `tkinter` não entra no `excludes` do `.spec`.
+
+**O que o corte encontrou, e que teria sumido calado:**
+
+1. Três ações do catálogo sem dono (`anotar_pagina`, `anotar_sem_diagrama`, `tirar_do_campo`): quem
+   as acusaria era `ui/alcance.perdidos()`, que saiu no mesmo corte por perguntar sobre os três cromos
+   do Tk. Portadas em `qt/campo.py`.
+2. Uma confirmação perdida: as 20 perguntas modais do Tk foram listadas por `ast` e comparadas com as
+   do Qt; faltava a da S-451, "Salvar todos" sobre página cujos diagramas já têm amostra. Portada.
+3. **~20 guardas de varredura verdes e vazias.** Elas varriam sintaxe do toolkit (`ttk.Button`,
+   `padx=`, `font=(...)`, `messagebox.ask*`, `bind("<Escape>")`, `threading.Thread(`) e nenhuma ficou
+   vermelha no corte: todas passaram sobre lista vazia. Traduzidas para o Qt, acharam na hora 5
+   `QPushButton` sem papel declarado, 2 hexadecimais cravados em `qt/tabuleiro.py`, um rótulo escrito à
+   mão que o catálogo já tinha, o `QThread` que a varredura de threads não via, e a aba de Texto sem
+   registrar as duas operações longas no `BusyRegistry`. Daí a regra que as seções seguintes repetem:
+   **uma guarda de varredura tem um controle que acha e deixa de achar**.
+
+**O que o corte custou, e é a lição.** Apagar uma camada não apaga código: apaga o **chamador** de
+decisões que ficaram. Sete voltaram um mês depois (`adda88f`: estado da janela, recentes, Aparência e
+Densidade, fila e fita, conjunto de peças, árbitro do `Ctrl+Z`, os códigos 1, 3, 4 e 5 do `--selftest`),
+onze na triagem da S-511, o motor e o OCR de legenda na S-523 -- e nenhuma quebrava teste, porque o
+teste de cada uma seguia verde medindo a decisão sozinha. A guarda que faltava é
+`tests/test_ui_orfaos.py`; a que fecha a fronteira pelo outro lado é `tests/test_ui_fronteira.py` (S-549).
+
+### Critério de aceite
+
+- Nenhum módulo de `ui/` importa toolkit. ✅ (guarda genérica só na S-549)
+- `ttkbootstrap` fora do `pyproject.toml`; `PyQt6` nas dependências de base; `collect_submodules` sem
+  filtro e `chess_diagram_ocr.qt` fora do `excludes`. ✅
+- `qt/janela.py` na catraca: **1.196** linhas no corte, contra as 2.327 do `app_tkinter.py` -- a
+  diferença é a camada pura sendo chamada em vez de reescrita. ✅
+- Cada varredura traduzida acha alguma coisa numa fonte de mentira. ✅
+- Suíte no corte: 4.282 passam, 3 falham -- as mesmas três de antes (duas contagens de amostra que o
+  `docs/` ainda não alcançara, e a guarda S-218, vermelha por decisão desde 2026-08-30). ✅
+
+### Testes
+
+- `tests/test_packaging.py::SpecTests::test_o_pacote_da_janela_entra_no_varrimento` e
+  `::TamanhoDaJanelaTests` (a catraca `LIMITE`, com cada subida registrada).
+- `tests/test_editor_model.py::SemTkinterTests::test_a_lista_cobre_todo_modulo_de_ui_que_hoje_dispensa_tkinter`
+  -- depois do corte, **todo** módulo de `ui/` está na lista.
+- As varreduras traduzidas: `tests/test_busy.py` (`ARQUIVOS_COM_THREAD` aponta para `qt/`, com
+  `Tarefa(`), `tests/test_ui_estilos.py::TodoBotaoDeclaraPapelTests`,
+  `tests/test_ui_texto_cor.py::SemHexadecimalTests`, `tests/test_strings.py` (`CHAMADAS` do
+  `QMessageBox`), `tests/conftest.py` (`CAIXAS`), `tests/test_disciplina_da_suite.py::UmaRaizSoTests`,
+  `tests/test_docs.py::test_as_threads_citadas_batem_com_as_do_codigo`.
+- O que o corte achou e portou: `tests/test_qt_tema.py::DesabilitadoSeVeTests`,
+  `tests/test_qt_painel_do_pdf.py::ControlesDoLivroTests`, `tests/test_qt_tabuleiro.py::ConjuntoDePecasTests`,
+  `tests/test_qt_janela.py::EstadoEntreSessoesTests::test_o_estado_do_tk_e_herdado_uma_vez_e_nao_reescrito`,
+  `::AparenciaTests`, `::DesfazerTests`, `::FiacaoTests::test_ler_melhor_e_ler_pagina_deixaram_de_ser_o_mesmo_comando`,
+  `tests/test_app_pyqt.py::SelftestTests` (os códigos que voltaram a ter dono).
+
+### O que o crítico recusou
+
+_não houve rodada: seção escrita a posteriori (S-550)_
 
 ## S-580 · O fim da faixa reservada — não é item
 
