@@ -129,6 +129,22 @@ SEM_CHAMADOR: dict[str, str] = {
     ),
     "atalhos.CEDIDA_PELA_GUARDA": "um dos dois valores que `sobreposicao` devolve; quem os distingue é o teste",
     "atalhos.GANHA_DO_TK": "o outro valor que `sobreposicao` devolve; quem os distingue é o teste",
+    # --- a barra da sala (S-527, 2026-09-04): nasceu com a catraca em zero, e respondeu na hora
+    "barra_da_sala.ACOES": (
+        TABELA_PERCORRIDA + " -- o produto a lê por `acoes_para`, `principais` e `secundarias`; "
+        "`test_ui_barra_da_sala` a confere contra `COMANDOS_DA_ABA` e `ICONES_DA_SALA` nos dois sentidos"
+    ),
+    "barra_da_sala.SEM_ESTUDO": "um dos três valores que `modo` devolve e `grupos_desligados` consome; quem os distingue é o teste",
+    "barra_da_sala.COM_ESTUDO": "o segundo valor de `modo`, pelo mesmo motivo",
+    "barra_da_sala.TREINANDO": "o terceiro valor de `modo`, pelo mesmo motivo",
+    "barra_da_sala.EXPORTAR_ESTUDO": (
+        "o agrupador \"Exportar\": o widget o acha por `Acao.agrupador`, lendo a tabela, e só o teste o "
+        "chama pelo nome -- ao contrário de `SEGUIR_OCR`, o outro nome fora do catálogo, que o painel chama"
+    ),
+    "icones.ICONES_DA_SALA": (
+        TABELA_PERCORRIDA + " (`test_ui_barra_da_sala`, nos dois sentidos com `barra_da_sala.ACOES`; "
+        "`imagem` a lê por `tracos_de`, no mesmo módulo)"
+    ),
 }
 """`modulo.NOME -> motivo`, e o motivo não pode ser vazio.
 

@@ -470,9 +470,11 @@ integracoes abaixo sao desligadas por padrao e nao afetam o reconhecimento.
 
 ### Base de partidas (S-72/S-73)
 
-Um ou mais `.pgn` que voce poe em `pgn_database/`. Com eles, a Galeria preenche **numero do
-lance, vez a jogar e headers** dos diagramas cuja posicao aparece numa partida registrada -- e
-a vez a jogar deixa de ser o palpite que a Fase 3 registrou como palpite.
+Um ou mais `.pgn` que voce poe em `pgn_database/` -- soltos, em `.pgn.gz`, `.pgn.bz2` ou dentro
+de um `.zip`, lidos em fluxo sem descompactar para o disco (S-531; `.pgn.zst` se o pacote
+`zstandard` estiver instalado). Com eles, a Galeria preenche **numero do lance, vez a jogar e
+headers** dos diagramas cuja posicao aparece numa partida registrada -- e a vez a jogar deixa de
+ser o palpite que a Fase 3 registrou como palpite.
 
 **Todos os arquivos da pasta entram nas buscas (S-93).** Ate aqui era so o maior, e o custo
 disso foi medido: numa pasta com duas gigabases, as 10,3 M partidas da segunda nunca eram
@@ -482,6 +484,10 @@ nome e o cache de posicoes, que avisam como refazer:
 ```bash
 cvoff-games --build-index     # o indice por nome, sobre todas as bases da pasta
 ```
+
+O indice e **incremental** (S-532): a segunda rodada sobre a mesma pasta rele zero partidas, um
+arquivo que saiu da pasta sai do indice, e um `.pgn` que so cresceu e lido a partir do byte em
+que a rodada anterior parou. Cancelar no meio guarda os arquivos ja terminados.
 
 E **local**: o arquivo e lido do disco, nada e consultado na rede. Sem ele, os botoes "Buscar
 por nome" e "Buscar pela posicao" dizem onde por um e o resto do produto segue igual.

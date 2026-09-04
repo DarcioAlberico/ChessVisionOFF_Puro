@@ -48,7 +48,7 @@ from . import degradacao
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ICONES", "Arco", "Poli", "imagem"]
+__all__ = ["ICONES", "ICONES_DA_SALA", "Arco", "Poli", "imagem"]
 
 Ponto = tuple[float, float]
 
@@ -244,6 +244,139 @@ não existiam, um ícone para eles seria arte órfã, e a ponte com `ui/comandos
 sentidos justamente para que isso falhe."""
 
 
+ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
+    # **Um segundo dicionário, e não mais chaves no primeiro** (S-527). A chave de `ICONES` é o
+    # nome de um comando do catálogo, e `medidas_da_fita.grupos()` põe na fita da janela todo
+    # comando que declare `icone` -- então um traço para "promover variante" entrando por lá poria
+    # o botão no cromo da janela, ao lado de "Abrir PDF". Aqui a chave é o nome que
+    # `ui/barra_da_sala.ACOES` declara, e a ponte nos dois sentidos é com aquela tabela.
+    # Quatro ações da sala **reusam** traços de cima (`salvar`, `abrir_pdf`, `exportar_pgn`,
+    # `aplicar_fen`): é o mesmo gesto noutra aba, e `imagem` procura nos dois dicionários.
+    # ---------------------------------------------------------------------------- POSICAO
+    # O tabuleiro de quatro casas do `ler_melhor` com a seta entrando: o que o OCR leu vem para cá.
+    "carregar_ocr": (
+        Poli((40, 18), (86, 18), (86, 82), (40, 82), fechado=True),
+        Poli((40, 50), (86, 50)),
+        Poli((63, 18), (63, 82)),
+        Poli((6, 50), (30, 50)),
+        Poli((20, 40), (30, 50), (20, 60)),
+    ),
+    # O tabuleiro com as duas fileiras de baixo marcadas: as peças no lugar de partida.
+    "posicao_inicial": (
+        Poli((18, 18), (82, 18), (82, 82), (18, 82), fechado=True),
+        Poli((18, 50), (82, 50)),
+        Poli((18, 66), (82, 66)),
+    ),
+    # Um olho: a sala **observa** o painel de resultado. As pálpebras são dois arcos da mesma
+    # curva, espelhados, que se encontram nos cantos (12, 50) e (88, 50); a íris é um anel e não
+    # um ponto, porque a 16 px o ponto era a única coisa que sobrava do desenho -- medido na
+    # primeira versão, com pálpebras de meia largura.
+    "seguir": (
+        Arco((50, 60), 39.3, 194.7, 345.3),
+        Arco((50, 40), 39.3, 14.7, 165.3),
+        Arco((50, 50), 12),
+    ),
+    # Duas setas que dão a volta, uma em cada sentido: o tabuleiro gira.
+    "virar": (
+        Arco((50, 50), 30, 200, 340),
+        Poli((66, 36), (78, 40), (80, 27)),
+        Arco((50, 50), 30, 20, 160),
+        Poli((34, 64), (22, 60), (20, 73)),
+    ),
+    # O disco dividido ao meio: brancas e pretas, e a vez passa de um lado ao outro.
+    "trocar_vez": (Arco((50, 50), 30), Poli((50, 20), (50, 80))),
+    # Duas folhas sobrepostas: copiar.
+    "copiar": (
+        Poli((14, 30), (58, 30), (58, 86), (14, 86), fechado=True),
+        Poli((32, 30), (32, 14), (86, 14), (86, 68), (58, 68)),
+    ),
+    # --------------------------------------------------------------------------- VARIANTE
+    # Seta para cima, seta para baixo, e a de cima com a barra: sobe um nível, desce um nível,
+    # vai ao topo. Três desenhos da mesma família, porque são o mesmo gesto em três medidas.
+    "promover": (Poli((50, 84), (50, 20)), Poli((30, 40), (50, 20), (70, 40))),
+    "rebaixar": (Poli((50, 16), (50, 80)), Poli((30, 60), (50, 80), (70, 60))),
+    "principal": (Poli((26, 12), (74, 12)), Poli((50, 86), (50, 28)), Poli((30, 48), (50, 28), (70, 48))),
+    # A lixeira: a variante inteira vai embora.
+    "apagar_variante": (
+        Poli((22, 28), (78, 28)),
+        Poli((40, 28), (40, 18), (60, 18), (60, 28)),
+        Poli((28, 28), (32, 84), (68, 84), (72, 28)),
+    ),
+    # A linha que segue até um X: daqui em diante, nada.
+    "apagar_daqui": (Poli((10, 50), (50, 50)), Poli((60, 36), (88, 64)), Poli((88, 36), (60, 64))),
+    # O ponto de exclamação -- o símbolo de lance que todo mundo reconhece primeiro.
+    "simbolo": (Poli((50, 14), (50, 60)), Arco((50, 82), 5)),
+    # Dois ângulos que se fecham um contra o outro: dobrar.
+    "dobrar": (Poli((30, 26), (50, 42), (70, 26)), Poli((30, 74), (50, 58), (70, 74))),
+    # ------------------------------------------------------------------------------ LIVRO
+    # A moldura com a paisagem dentro: uma imagem, que é o que o recorte é.
+    "recorte": (
+        Poli((14, 20), (86, 20), (86, 80), (14, 80), fechado=True),
+        Poli((22, 72), (42, 46), (56, 62), (66, 52), (78, 72)),
+    ),
+    # O livro aberto, com a lombada no meio.
+    "livro": (
+        Poli((50, 26), (50, 84)),
+        Poli((50, 26), (30, 18), (12, 24), (12, 80), (30, 74), (50, 84)),
+        Poli((50, 26), (70, 18), (88, 24), (88, 80), (70, 74), (50, 84)),
+    ),
+    # A folha do `ler_pagina` com a seta dentro: ir até ela.
+    "ver_a_pagina": (
+        Poli((26, 10), (74, 10), (74, 90), (26, 90), fechado=True),
+        Poli((36, 50), (62, 50)),
+        Poli((52, 40), (62, 50), (52, 60)),
+    ),
+    # ------------------------------------------------------------------------------- BASE
+    # A tabela de três linhas: a lista de partidas.
+    "partidas": (
+        Poli((16, 20), (84, 20), (84, 80), (16, 80), fechado=True),
+        Poli((16, 40), (84, 40)),
+        Poli((16, 60), (84, 60)),
+    ),
+    # A prancheta: colar o que está na área de transferência.
+    "colar": (
+        Poli((22, 22), (78, 22), (78, 88), (22, 88), fechado=True),
+        Poli((38, 22), (38, 12), (62, 12), (62, 22)),
+        Poli((34, 50), (66, 50)),
+        Poli((34, 66), (66, 66)),
+    ),
+    # ------------------------------------------------------------------------------ MOTOR
+    # O raio: o motor. A lupa sem sinal é analisar uma vez; o raio com a seta é a linha dele
+    # entrando na árvore.
+    "motor": (Poli((58, 10), (30, 54), (50, 54), (42, 90), (70, 46), (50, 46), (58, 10)),),
+    "lupa": (Arco((44, 44), 28), Poli((64, 64), (88, 88))),
+    "linha_do_motor": (
+        Poli((46, 10), (22, 50), (40, 50), (34, 84)),
+        Poli((56, 62), (90, 62)),
+        Poli((80, 52), (90, 62), (80, 72)),
+    ),
+    # --------------------------------------------------------------------------- EXPORTAR
+    # Linhas de texto e a seta saindo para a direita: a linha do estudo vai para a aba Texto.
+    "para_o_texto": (
+        Poli((12, 26), (60, 26)),
+        Poli((12, 42), (60, 42)),
+        Poli((12, 58), (44, 58)),
+        Poli((58, 74), (88, 74)),
+        Poli((78, 64), (88, 74), (78, 84)),
+    ),
+    # ----------------------------------------------------------------------------- TREINO
+    # O alvo: três anéis.
+    "treinar": (Arco((50, 50), 34), Arco((50, 50), 18), Arco((50, 50), 4)),
+    # ------------------------------------------------------------------------------- MAIS
+    # Três pontos: o que não coube.
+    "mais": (Arco((22, 50), 5), Arco((50, 50), 5), Arco((78, 50), 5)),
+}
+"""Os vinte e quatro traços da barra da sala (S-527), com a chave que `ui/barra_da_sala.ACOES` pede.
+
+Com os quatro reusados de `ICONES` são vinte e oito nomes para trinta ações: os três formatos de
+exportação moram dentro do agrupador e não têm botão, logo não têm traço."""
+
+
+def tracos_de(nome: str) -> tuple[Traco, ...] | None:
+    """Os traços daquele nome, procurando nos dois dicionários. `None` para nome que não existe."""
+    return ICONES.get(nome) or ICONES_DA_SALA.get(nome)
+
+
 SUPERAMOSTRA = 4
 """Fator de desenho antes de reduzir. A Pillow não suaviza traço, e a redução é que suaviza.
 
@@ -260,7 +393,7 @@ def imagem(nome: str, tamanho: int, cor: str) -> Image.Image | None:
     Existe separado de `icone` para que o desenho seja afirmável sem janela: é aqui que os testes
     de geometria olham, e é o que permite conferir o ícone num tamanho sem abrir um `Tk`.
     """
-    tracos = ICONES.get(nome)
+    tracos = tracos_de(nome)
     if tracos is None:
         # **Uma vez por nome, e não uma por botão** (S-234). A fita pede o mesmo ícone a cada
         # remontagem de cromo e a cada mudança de densidade; sem isto, um nome errado escreve

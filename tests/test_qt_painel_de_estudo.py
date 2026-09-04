@@ -757,27 +757,32 @@ class ArranjoTests(unittest.TestCase):
             and isinstance(item.widget(), BarraFluida)
         ]
 
-    def test_o_topo_tem_tres_fileiras_e_nao_quatro(self) -> None:
-        self.assertEqual(3, len(self._barras_do_topo(self.sala())))
+    def test_o_topo_tem_uma_fila_e_nenhuma_barra_fluida(self) -> None:
+        """Eram três `BarraFluida` (S-517) que a 715 px quebravam em cinco fileiras e 154 px; desde a
+        S-527 o topo é a `BarraDaSala`, que é uma fila por construção."""
+        painel = self.sala()
+        self.assertEqual([], self._barras_do_topo(painel))
+        self.assertEqual(1, painel.barra.linhas)
+        fora = painel.layout()
+        assert fora is not None
+        self.assertIs(painel.barra, fora.itemAt(0).widget())  # type: ignore[union-attr]
 
     def test_a_navegacao_saiu_do_topo_e_esta_sob_o_tabuleiro(self) -> None:
         """Os quatro de navegação eram os **menores alvos do painel**, encostados na cirurgia de
         árvore. São o único grupo cuja frequência justifica estar ao lado do tabuleiro."""
+        from PyQt6.QtWidgets import QPushButton
+
         painel = self.sala()
-        botao = type(painel.btn_dobra)
         navegacao = {"inicio_da_linha", "lance_anterior", "proximo_lance", "fim_da_linha"}
 
         def acoes(dentro: object) -> set[str]:
             return {
                 str(b.property("acao"))
-                for b in dentro.findChildren(botao)  # type: ignore[union-attr]
+                for b in dentro.findChildren(QPushButton)  # type: ignore[union-attr]
                 if b.property("acao")
             }
 
-        no_topo: set[str] = set()
-        for barra in self._barras_do_topo(painel):
-            no_topo |= acoes(barra)
-        self.assertEqual(set(), no_topo & navegacao, "a navegação continua no topo")
+        self.assertEqual(set(), set(painel.barra.acoes) & navegacao, "a navegação continua no topo")
         self.assertTrue(
             navegacao <= acoes(painel.tabuleiro.parent()),
             "a navegação não foi para junto do tabuleiro",

@@ -454,10 +454,13 @@ def folha_de_estilo(
     # não existe papel nenhum até esta linha. O `[papel="..."]` é o seletor de propriedade
     # dinâmica, que é o mecanismo do Qt para o que `style="primary.TButton"` faz lá.
     letra = cor(tokens.TEXTO_SOBRE_ENFASE)
-    for papel, token in (
+    # Os dois papéis com face, **nomeados uma vez**: a guarda de `test_ui_estilos` conta por `ast`
+    # quantas vezes um arquivo cita o papel primário, e o `QToolButton` abaixo lê daqui.
+    faces = (
         (estilos.PRIMARIO, tokens.BOTAO_PRIMARIO),
         (estilos.DESTRUTIVO, tokens.BOTAO_DESTRUTIVO),
-    ):
+    )
+    for papel, token in faces:
         face = cor(token)
         regras += [
             f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]'
@@ -472,6 +475,31 @@ def folha_de_estilo(
             f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:disabled'
             f" {{ background-color: {superficie}; color: {secundario}; border: 1px solid {moldura}; }}",
         ]
+
+    # **O papel chega ao `QToolButton` por outro desenho** (S-527). A barra da sala é de botões
+    # chatos (`autoRaise`), como toda barra de ferramentas: a face só aparece sob o ponteiro. Ali o
+    # primário ganha a face inteira, que é o que "Carregar OCR atual" já tinha como `QPushButton`;
+    # o destrutivo ganha a **cor** -- letra e traço em `BOTAO_DESTRUTIVO` --, e não a face: dois
+    # blocos vermelhos sólidos numa fila de botões chatos pediriam cuidado o tempo todo, e o
+    # ChessBase não pinta "apagar variante" de vermelho por isso. O ícone acompanha porque quem o
+    # desenha pede a cor ao mesmo token (`qt/barra_da_sala.py`).
+    #
+    # E o `:disabled` é obrigatório pela mesma razão do botão comum: a cor de `QWidget` vinda da
+    # folha vale em todos os estados e anula o acinzentamento da paleta.
+    (papel_primario, token_primario), (papel_destrutivo, token_destrutivo) = faces
+    primario = cor(token_primario)
+    ferramenta_primaria = f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_primario}"]'
+    regras += [
+        f"{ferramenta_primaria}"
+        f" {{ background-color: {primario}; color: {letra}; border: 1px solid {primario};"
+        f" border-radius: {minima}px; }}",
+        f"{ferramenta_primaria}:hover"
+        f" {{ background-color: {tokens.mistura(primario, letra, tokens.REALCE_DE_ENFASE)}; }}",
+        f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_destrutivo}"] {{ color: {cor(token_destrutivo)}; }}',
+        f"QToolButton:disabled {{ color: {secundario}; }}",
+        f"{ferramenta_primaria}:disabled"
+        f" {{ background-color: {superficie}; color: {secundario}; border: 1px solid {moldura}; }}",
+    ]
 
     # A faixa de abas discreta da pele "Foco" (S-226): a diferença é o **peso**, e a aba ativa se
     # separa por cor e por negrito. Em Qt isto é seletor de estado e não `style.map`, e por isso

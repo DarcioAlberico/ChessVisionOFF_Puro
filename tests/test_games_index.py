@@ -7,16 +7,21 @@ hash devolvendo a partida de outro par.
 
 from __future__ import annotations
 
+import gzip
+import os
 import sqlite3
 import tempfile
+import threading
+import time
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
 import chess
 from subprocesso import rodar_python
 
-from chess_diagram_ocr.games_db import GameRecord
+from chess_diagram_ocr.games_db import GameRecord, database_paths
 from chess_diagram_ocr.games_index import (
     _read_game_at,
     build_index,
@@ -410,3 +415,235 @@ class PorteiroNaBuscaPorNomeTests(unittest.TestCase):
 
         self.assertTrue(vistos, "positions foi chamado")
         self.assertTrue(all(o is not None for o in vistos), "e com o porteiro, não sem ele")
+
+
+def _pgn_grande(partidas: int) -> str:
+    """Um PGN sintético de `partidas` partidas curtas, para o cancelamento ter em que agir."""
+    bloco = (
+        '[Event "Sintético {n}"]\n[White "Branco{n}, A"]\n[Black "Preto{n}, B"]\n[Result "*"]\n\n'
+        "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 *\n\n"
+    )
+    return "".join(bloco.replace("{n}", str(n)) for n in range(partidas))
+
+
+class IndiceIncrementalTests(unittest.TestCase):
+    """Só o que mudou é relido (S-532), e o manifesto é quem decide.
+
+    Cada teste afirma um número que era invisível antes -- `relidas`, `arquivos_pulados`,
+    `arquivos_removidos` --, porque a resposta da consulta é a mesma com e sem incremento: o que
+    muda é o custo, e custo não aparece numa asserção de igualdade.
+    """
+
+    OUTRO = DuasBasesTests.OUTRO
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.raiz = Path(self.pasta.name)
+        self.a = self.raiz / "a.pgn"
+        self.a.write_text(PGN, encoding="utf-8")
+        self.b = self.raiz / "b.pgn"
+        self.b.write_text(self.OUTRO, encoding="utf-8")
+        self.indice = self.raiz / "indice.sqlite"
+        self.avisos: list[tuple[str, int, int, int]] = []
+        self.primeira = build_index([self.a, self.b], self.indice, progress=self._anotar)
+
+    def _anotar(self, base: Path, lidos: int, total: int, partidas: int) -> None:
+        self.avisos.append((base.name, lidos, total, partidas))
+
+    def _linhas_do_arquivo(self, nome: str) -> int:
+        conexao = sqlite3.connect(f"file:{self.indice}?mode=ro", uri=True)
+        try:
+            (identificador,) = conexao.execute("SELECT id FROM files WHERE name = ?", (nome,)).fetchone()
+            return int(conexao.execute("SELECT COUNT(*) FROM games WHERE file = ?", (identificador,)).fetchone()[0])
+        finally:
+            conexao.close()
+
+    def test_a_primeira_rodada_le_tudo(self) -> None:
+        self.assertEqual((self.primeira.partidas, self.primeira.relidas, self.primeira.arquivos_relidos), (4, 4, 2))
+
+    def test_a_segunda_rodada_nao_rele_nada(self) -> None:
+        """**O critério de aceite.** Mesma pasta, nenhum byte mudou: zero partidas lidas, e o
+        progresso chega uma vez por arquivo com os bytes cheios -- a barra do conjunto anda pelo
+        que foi pulado."""
+        self.avisos.clear()
+        segunda = build_index([self.a, self.b], self.indice, progress=self._anotar)
+
+        self.assertEqual(segunda.relidas, 0)
+        self.assertEqual(segunda.arquivos_pulados, 2)
+        self.assertEqual(segunda.partidas, 4, "o total continua sendo o do índice inteiro")
+        self.assertEqual(
+            [(nome, lidos == total) for nome, lidos, total, _ in self.avisos], [("a.pgn", True), ("b.pgn", True)]
+        )
+        self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), [self.a, self.b], self.indice)), 2)
+
+    def test_o_mtime_sozinho_nao_forca_a_releitura(self) -> None:
+        """A lição da S-113: um sync de nuvem ou um antivírus reescrevem o carimbo sem tocar num
+        byte, e isso jogava fora 56 minutos de varredura. Aqui decidem tamanho e marcas."""
+        carimbo = self.a.stat().st_mtime + 3600
+        os.utime(self.a, (carimbo, carimbo))
+        self.assertEqual(build_index([self.a, self.b], self.indice).relidas, 0)
+
+    def test_arquivo_anexado_rele_so_a_cauda(self) -> None:
+        """O PGN em que se anexam as partidas da semana: só elas são lidas, e os offsets antigos
+        continuam valendo -- a consulta acha as partidas velhas e a nova."""
+        with self.a.open("a", encoding="utf-8") as fh:
+            fh.write("\n" + self.OUTRO)
+        rodada = build_index([self.a, self.b], self.indice)
+
+        self.assertEqual((rodada.relidas, rodada.arquivos_relidos, rodada.arquivos_pulados), (1, 1, 1))
+        self.assertEqual(rodada.partidas, 5)
+        self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), [self.a, self.b], self.indice)), 2, "as velhas")
+        capablanca = lookup_pair(("capablanca", "lasker"), [self.a, self.b], self.indice)
+        self.assertEqual(len(capablanca), 2, "a anexada em a.pgn e a que sempre esteve em b.pgn")
+
+    def test_arquivo_reescrito_e_relido_inteiro_sem_deixar_linha_velha(self) -> None:
+        """Mesmo nome, outro conteúdo: as linhas antigas dele saem antes de as novas entrarem, senão
+        um offset velho apontaria para o meio de outra partida."""
+        self.a.write_text(self.OUTRO + "\n" + PGN, encoding="utf-8")
+        rodada = build_index([self.a, self.b], self.indice)
+
+        self.assertEqual(rodada.relidas, 4)
+        self.assertEqual(self._linhas_do_arquivo("a.pgn"), 4)
+        self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), [self.a, self.b], self.indice)), 2)
+
+    def test_arquivo_removido_sai_do_indice_sem_aviso_na_consulta(self) -> None:
+        self.b.unlink()
+        rodada = build_index([self.a], self.indice)
+
+        self.assertEqual(rodada.arquivos_removidos, 1)
+        self.assertEqual(rodada.partidas, 3)
+        conexao = sqlite3.connect(f"file:{self.indice}?mode=ro", uri=True)
+        try:
+            self.assertEqual(conexao.execute("SELECT COUNT(*) FROM files WHERE name = 'b.pgn'").fetchone()[0], 0)
+            self.assertEqual(conexao.execute("SELECT COUNT(*) FROM games").fetchone()[0], 3)
+        finally:
+            conexao.close()
+        with self.assertNoLogs("chess_diagram_ocr.games_index", level="WARNING"):
+            self.assertEqual(lookup_pair(("capablanca", "lasker"), [self.a], self.indice), [])
+
+    def test_o_arquivo_novo_ganha_o_proximo_numero_e_os_antigos_ficam_com_o_deles(self) -> None:
+        """O número do arquivo deixou de ser a posição na lista: vem do manifesto e sobrevive."""
+        c = self.raiz / "0_antes_de_todos.pgn"
+        c.write_text(self.OUTRO, encoding="utf-8")
+        build_index([c, self.a, self.b], self.indice)
+        conexao = sqlite3.connect(f"file:{self.indice}?mode=ro", uri=True)
+        try:
+            por_nome = dict(conexao.execute("SELECT name, id FROM files"))
+        finally:
+            conexao.close()
+        self.assertEqual((por_nome["a.pgn"], por_nome["b.pgn"], por_nome["0_antes_de_todos.pgn"]), (0, 1, 2))
+        self.assertEqual(len(lookup_pair(("capablanca", "lasker"), [c, self.a, self.b], self.indice)), 2)
+
+    def test_o_indice_de_formato_anterior_e_refeito_do_zero(self) -> None:
+        antigo = self.raiz / "v3.sqlite"
+        conexao = sqlite3.connect(antigo)
+        conexao.execute(
+            "CREATE TABLE games (pair INTEGER, offset INTEGER, file INTEGER, "
+            "PRIMARY KEY (pair, file, offset)) WITHOUT ROWID"
+        )
+        conexao.execute("CREATE TABLE files (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+        conexao.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conexao.execute("INSERT INTO meta VALUES ('version', '3')")
+        conexao.commit()
+        conexao.close()
+
+        rodada = build_index([self.a], antigo)
+
+        self.assertEqual(rodada.relidas, 3)
+        self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), self.a, antigo)), 2)
+
+    def test_o_indice_parcial_nao_existe_mais_e_nem_o_jornal(self) -> None:
+        """A atomicidade passou do `.parcial` para a transação por arquivo, e o jornal do SQLite
+        não pode sobrar ao lado: `data/` tem guarda contra artefato que ninguém declarou."""
+        self.assertEqual(sorted(caminho.name for caminho in self.raiz.glob("indice.sqlite*")), ["indice.sqlite"])
+
+
+class CancelamentoDoIndiceTests(unittest.TestCase):
+    """Cancelar para em menos de um segundo, desfaz só o arquivo em curso, e a rodada seguinte retoma."""
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.raiz = Path(self.pasta.name)
+        self.pequena = self.raiz / "a_pequena.pgn"
+        self.pequena.write_text(PGN, encoding="utf-8")
+        self.grande = self.raiz / "b_grande.pgn"
+        self.grande.write_text(_pgn_grande(400_000), encoding="utf-8")
+        self.indice = self.raiz / "indice.sqlite"
+
+    def test_cancelar_para_em_menos_de_um_segundo_e_a_consulta_recusa_o_indice(self) -> None:
+        cancelar = threading.Event()
+        relogio = threading.Timer(0.3, cancelar.set)
+        relogio.start()
+        self.addCleanup(relogio.cancel)
+        inicio = time.perf_counter()
+        rodada = build_index([self.pequena, self.grande], self.indice, cancel=cancelar)
+        decorrido = time.perf_counter() - inicio
+
+        self.assertTrue(rodada.cancelado)
+        self.assertLess(decorrido, 1.3, "0,3 s até o pedido, e menos de 1 s para honrá-lo")
+        self.assertEqual(rodada.partidas, 3, "a pequena terminou e ficou; a grande foi desfeita")
+        with self.assertLogs("chess_diagram_ocr.games_index", level="WARNING") as registro:
+            self.assertEqual(lookup_pair(("anderssen", "kieseritzky"), [self.pequena, self.grande], self.indice), [])
+        self.assertIn("cvoff-games --build-index", registro.output[0])
+
+    def test_a_rodada_seguinte_retoma_do_que_ficou_e_o_progresso_nao_passa_de_dez_por_segundo(self) -> None:
+        cancelar = threading.Event()
+        cancelar.set()
+        # Bandeira ja ligada: nada e lido, e nada quebra.
+        self.assertTrue(build_index([self.pequena, self.grande], self.indice, cancel=cancelar).cancelado)
+
+        avisos: list[float] = []
+        inicio = time.perf_counter()
+        rodada = build_index(
+            [self.pequena, self.grande], self.indice, progress=lambda *_: avisos.append(time.perf_counter())
+        )
+        decorrido = time.perf_counter() - inicio
+
+        self.assertFalse(rodada.cancelado)
+        self.assertEqual(rodada.partidas, 400_003)
+        # Ate dez por segundo dentro de um arquivo, mais um aviso final por arquivo.
+        self.assertLessEqual(len(avisos), 10 * decorrido + 2 + 1)
+        self.assertEqual(len(lookup_pair(("branco7", "preto7"), [self.pequena, self.grande], self.indice)), 1)
+
+
+class IndiceSobreBaseComprimidaTests(unittest.TestCase):
+    """O índice sobre `.gz` e membro de `.zip` (S-531): offsets do fluxo descompactado."""
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.raiz = Path(self.pasta.name)
+        with gzip.open(self.raiz / "base.pgn.gz", "wb") as fh:
+            fh.write(PGN.encode("utf-8"))
+        with zipfile.ZipFile(self.raiz / "pacote.zip", "w", zipfile.ZIP_DEFLATED) as zipado:
+            zipado.writestr("torneio.pgn", DuasBasesTests.OUTRO)
+        self.bases = database_paths(self.raiz)
+        self.indice = self.raiz / "indice.sqlite"
+        build_index(self.bases, self.indice)
+
+    def test_a_consulta_le_a_partida_do_gz_pelo_offset(self) -> None:
+        partidas = lookup_pair(("anderssen", "kieseritzky"), self.bases, self.indice)
+        self.assertEqual({p.headers["Event"] for p in partidas}, {"London", "Revanche"})
+        self.assertIn("Bxb5", next(p for p in partidas if p.headers["Event"] == "London").movetext)
+
+    def test_a_consulta_le_o_membro_do_zip(self) -> None:
+        (partida,) = lookup_pair(("capablanca", "lasker"), self.bases, self.indice, both_colors=False)
+        self.assertEqual(partida.headers["Event"], "Havana")
+
+    def test_a_base_comprimida_que_mudou_e_relida_inteira(self) -> None:
+        """Não há "só a cauda" num `.gz`: recomprimir muda o arquivo inteiro."""
+        with gzip.open(self.raiz / "base.pgn.gz", "wb") as fh:
+            fh.write((PGN + "\n" + DuasBasesTests.OUTRO).encode("utf-8"))
+        rodada = build_index(self.bases, self.indice)
+        self.assertEqual(rodada.relidas, 4)
+        self.assertEqual(len(lookup_pair(("capablanca", "lasker"), self.bases, self.indice)), 2)
+
+    def test_o_nome_no_manifesto_e_o_do_membro_com_o_zip(self) -> None:
+        conexao = sqlite3.connect(f"file:{self.indice}?mode=ro", uri=True)
+        try:
+            nomes = sorted(nome for (nome,) in conexao.execute("SELECT name FROM files"))
+        finally:
+            conexao.close()
+        self.assertEqual(nomes, ["base.pgn.gz", "pacote.zip/torneio.pgn"])

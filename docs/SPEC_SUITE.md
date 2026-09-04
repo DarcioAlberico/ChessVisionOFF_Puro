@@ -30,9 +30,121 @@ janela foi comparada lado a lado com o ChessBase e o Lichess, e o que faltava em
 
 ---
 
-## S-527 · A barra da sala de estudo agrupada por tarefa, com ícones vetoriais e rótulo curto — ◻ em andamento
+## S-527 · A barra da sala de estudo agrupada por tarefa, com ícones vetoriais e rótulo curto — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
+
+`qt/painel_de_estudo.py:257` (`_barras`), `:342` (`_barra_de_fora`) e `:372` (`_entrada_e_saida`)
+montavam três `BarraFluida` com 28 botões de texto (31 com motor) e um `QCheckBox` (`:285`), sem
+ícone, sem separador e sem hierarquia. **Medido em 2026-09-04, a 1400×950** (a aba Estudo tem 714 px
+de largura): as três barras quebravam em **cinco fileiras** (2 + 1 + 2) e ocupavam **154 px** acima
+do divisor; o tabuleiro desenhava com 442 px de lado. Na fotografia `fotos/base/01_Estudo.png` são
+quatro fileiras visíveis mais a linha da caixa. "Apagar variante" ficava a um botão de "Símbolo", e
+"Carregar OCR atual" -- o único primário -- no meio de vinte e sete iguais.
+
+Um segundo defeito apareceu na medição, e não estava no roadmap: **o clique de mouse em "Treinar"
+não ligava o treino**. Um `QPushButton` marcável alterna `checked` antes de emitir `clicked`, e
+`alternar_treino` inverte `isChecked()` de novo -- o clique ligava e desligava no mesmo gesto, e só o
+menu e a paleta (que chamam o método sem botão) treinavam. Vale igual para "Recorte" e "Análise
+contínua"; "Dobrar" escapava porque deriva o estado da lista de dobradas.
+
+### Solução
+
+**Uma decisão pura, `ui/barra_da_sala.py`.** A tabela `ACOES`: trinta ações (os 28 comandos de
+`COMANDOS_DA_ABA` menos os quatro de navegação da S-517, mais o interruptor `SEGUIR_OCR` e o
+agrupador `EXPORTAR_ESTUDO`), cada uma com **grupo por tarefa** (Posição, Variante, Livro, Base,
+Motor, Exportar, Treino), nome do ícone, se é **principal** ou vai para o "Mais", **prioridade**
+entre as principais, se é interruptor, e a explicação da dica. Rótulo curto, rótulo longo, papel e
+tecla **não são reescritos**: vêm de `comandos` e `atalhos`; só o que o catálogo não tem ("Seguir
+OCR", "Exportar", "Mais") declara texto ali, uma vez. Três funções puras: `modo(vazio, treinando)` →
+`grupos_desligados(modo)` (sem estudo: Variante e Exportar cinza; treinando: Variante cinza);
+`dica_de(acao)` (rótulo longo, explicação, `Tecla: X`); e `cabem(itens, disponivel, reserva, ...)`.
+
+**O ícone não entra pelo catálogo, e isto foi decidido contra a letra do pedido.** O item pedia
+"ícones desenhados por `QPainter` em `qt/icones.py`"; o projeto já tem o mecanismo -- traço declarado
+em `ui/icones.py`, desenhado em PIL, entregue como `QIcon` por `qt/icones.py` (S-220/S-503) -- e um
+segundo desenhador para a mesma família seria a divergência que a S-501 fechou. Os 24 traços novos
+moram em `icones.ICONES_DA_SALA`, um **segundo dicionário** e não mais chaves em `ICONES`, porque
+`medidas_da_fita.grupos()` põe na fita da janela todo comando do catálogo com `icone`: dar ícone aos
+trinta pelo catálogo despejaria os trinta no cromo da janela ao lado de "Abrir PDF". Quatro reusam
+traços existentes (`salvar`, `abrir_pdf`, `exportar_pgn`, `aplicar_fen`); os três formatos de
+exportação não têm traço porque não têm botão.
+
+**O widget, `qt/barra_da_sala.py`.** Uma fila de `QToolButton` chatos (`ToolButtonTextBesideIcon`,
+ícone de 16 px), separador `QWidget#separador-da-fila` entre grupos, "Exportar ▾" com `QMenu` dos
+três formatos, "Mais ▾" com `QMenu` seccionado por grupo. Cada ação da tabela é **uma `QAction`**,
+que é ao mesmo tempo o botão da fila e o item do menu: texto, ícone, marcado e habilitado são um
+estado só. É isso que deixa o resto do painel intacto -- `btn_dobra`, `btn_recorte`, `btn_treino`,
+`btn_continua` e `seguir_ocr` passam a ser essas `QAction`s, e `setChecked`/`setText`/`setEnabled`/
+`isChecked` são os mesmos nomes. Nenhum slot muda; `executar` ganha uma linha para
+`METODOS_PROPRIOS`. `lbl_simbolo` e `lbl_placar`, que acompanhavam os botões "Símbolo" e "Treinar",
+vão para a faixa sob o tabuleiro, ao lado do lance corrente e da vez.
+
+**Quem cabe é decidido, não sofrido.** A 714 px não cabem quinze botões com rótulo, e a S-151 mediu o
+que acontece quando uma barra esconde sem avisar. `cabem` recebe as larguras medidas e devolve, por
+prioridade e em prefixo, quem fica; o que não coube **vai para o "Mais"** (antes das secundárias,
+sob o cabeçalho do grupo) e volta quando a janela alarga. O `resizeEvent` só mede e pergunta.
+**E a barra declara o próprio mínimo**: `minimumSizeHint` responde a largura do "Mais", não a soma
+dos botões visíveis, que é o padrão do `QWidget`. Sem isso o pai nunca a estreitava -- medido na
+primeira montagem: pedida a 500 px, a fila ficava com 1.387, e `cabem` decidia sobre uma largura
+que não mudava. A fronteira com a S-517 também ficou declarada uma vez: `NAVEGACAO` é a tupla
+ordenada que `_barra_de_navegacao` percorre, e não mais quatro literais no painel.
+
+**O interruptor alterna uma vez.** Para os quatro marcáveis do catálogo, o `triggered` da `QAction`
+devolve o estado que o clique alternou e chama o método, que alterna -- como faz para o menu.
+`SEGUIR_OCR` é o contrário (o método lê o estado) e usa `toggled`, como o `QCheckBox` fazia. O
+papel chega ao `QToolButton` por regras novas em `qt/tema.py`: primário com face, destrutivo pela
+cor (letra e traço em `BOTAO_DESTRUTIVO`; dois blocos vermelhos sólidos numa fila chata pediriam
+cuidado o tempo todo), e `:disabled` cinza, pela mesma razão do botão comum.
+
+### Critério de aceite
+
+- A barra do topo é **uma fila** em qualquer largura. ✅ **Medido a 1400×950: 154 px → 38 px**
+  acima do divisor (−116 px, 75%); a fila tem 32 px. O tabuleiro foi de 442 para 450 px de lado --
+  nesta janela ele é limitado pela **largura** da coluna (484 px), não pela altura, e o que a barra
+  devolveu vira coluna livre sob o tabuleiro; ao arrastar o divisor para a direita, a altura deixa de
+  ser o teto. Na fila cabem, a 714 px: Carregar OCR atual · Seguir OCR | Promover · Apagar variante
+  · Símbolo | Mais ▾. Os outros nove principais estão no "Mais"; a 900 px de aba são oito na fila,
+  a 1200 onze, e os catorze (quinze com motor) só a partir de 1.647 px -- a soma das larguras
+  medidas, que é o que `largura_para_todas()` devolve. Remedido em 2026-09-04 depois da correção
+  do mínimo (abaixo): os mesmos 38 px, 32 px e 450 px.
+- Separador entre grupos; ícone vetorial em toda ação que pode virar botão; rótulo curto do
+  catálogo ao lado do ícone; dica com rótulo longo, explicação e tecla. ✅
+- `.md/.html/.rtf` viram "Exportar ▾"; a caixa "Seguir OCR selecionado" vira ação marcável no
+  grupo Posição, nascendo marcada como antes. ✅
+- Sem estudo, Variante e Exportar ficam cinza; treinando, Variante fica cinza; Posição e Treino
+  nunca desligam. A condição própria da dobra (S-516) e do recorte (S-347) soma-se à do grupo. ✅
+- Nenhum slot muda: `comandos.acoes_fora_do_catalogo(COMANDOS_DA_ABA)` continua vazio, a tabela
+  cobre a aba inteira menos a navegação, e disparar cada `QAction` chama `executar` com o nome. ✅
+- O catálogo continua sem `icone` para os comandos da sala além dos quatro de navegação: a fita da
+  janela não muda. ✅ `tests/test_ui_icones.py` inalterado (dezenove em `ICONES`).
+- O clique de mouse em "Treinar" liga o treino. ✅ (Defeito pré-existente, fechado de graça.)
+- `qt/janela.py` não é tocado; `qt/painel_do_pdf.py` é da S-528. ✅
+
+### Testes
+
+- `tests/test_ui_barra_da_sala.py` (puro): cobertura nos dois sentidos contra `COMANDOS_DA_ABA`;
+  método para toda ação e nenhum para o agrupador; ids únicos, nenhum grupo vazio, prioridades
+  únicas; principal/Mais/submenu como partição; rótulo e papel lidos do catálogo; dica com tecla;
+  quem alterna no método; ponte com `ICONES_DA_SALA` nos dois sentidos, caixa `0..100`, e o catálogo
+  sem ícone novo; os três modos; `cabem` por prioridade, em prefixo, com o separador na conta e o
+  "Mais" nunca fora; o módulo não importa toolkit.
+- `tests/test_qt_barra_da_sala.py`: `QAction` com ícone e dica para toda ação; fila única, estreitar
+  manda para o "Mais" e alargar devolve; texto ao lado do ícone; "Exportar ▾" com os três; disparo
+  chega ao `executar` com o nome (afirmado pelo efeito, e não por `patch` depois do `connect`); o
+  interruptor do catálogo devolve o estado antes de chamar; papel no botão e regras na folha; modo e
+  condição se somam; sem motor não há grupo. No painel: o **clique de mouse** em "Treinar" liga uma
+  vez; toda ação chega ao método; cinza sem estudo e treinando; os nomes antigos são as ações.
+- As guardas gerais: `barra_da_sala.py` entrou em `SEM_TKINTER` (`test_editor_model`); em
+  `test_ui_orfaos.SEM_CHAMADOR` entraram, com motivo, a tabela `ACOES`, os três valores de `modo`,
+  o agrupador `EXPORTAR_ESTUDO` e `ICONES_DA_SALA`; `principais`/`secundarias` ganharam chamador no
+  widget, `NAVEGACAO` no painel, e `EXPORTAR` e `tracos_de` saíram do `__all__` (uso interno).
+- `tests/test_qt_painel_de_estudo.py::ArranjoTests`: "três fileiras" virou "uma fila e nenhuma
+  `BarraFluida` no topo"; a navegação continua sob o tabuleiro (agora procurando `QPushButton`).
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-528 · A barra do painel do PDF na mesma gramática, e a página com mais área — ◻ em andamento
 
@@ -46,14 +158,195 @@ _Seção a escrever pelo executor do item._
 
 _Seção a escrever pelo executor do item._
 
-## S-531 · Ler `.pgn.gz`, `.pgn.bz2` e `.zip` de PGN sem descompactar para o disco — ◻ em andamento
+## S-531 · Ler `.pgn.gz`, `.pgn.bz2` e `.zip` de PGN sem descompactar para o disco — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-532 · Índice incremental: só o que mudou é relido, com progresso e cancelamento na janela — ◻ em andamento
+`games_db.py:189` listava a pasta com `pasta.glob("*.pgn")`: um `.pgn.gz`, um `.pgn.bz2` ou um
+`.zip` com PGN dentro eram invisíveis, e a única saída era descompactar -- uma gigabase de 8,6 GB
+ocupa ~1,5 GB em `.gz`, e pedir 7 GB de disco por um arquivo que a pessoa já tem é o que este item
+existe para não pedir. Os `open()` de PGN estavam espalhados em quatro lugares e com três
+decodificações diferentes: `games_db.py:543` (`open("r", encoding="utf-8-sig", errors="replace")`,
+a busca por nome), `:726` e `:769` (`open("rb")` com `linha.decode("utf-8", "replace")` nos pedaços
+da busca por posição), `games_index.py:183` e `:335` (o índice e a consulta por offset). Nenhum
+deles registrava a decisão de codificação, e `Kieseritzky` em Latin-1 -- o comum em PGN antigo e em
+boa parte do que circula em `.zip` -- saía `Kieseritzk�` na tela: a conferência de sobrenomes
+ainda casava, mas o nome mostrado vinha com o losango.
 
-_Seção a escrever pelo executor do item._
+### Solução
 
+**Um leitor, `games_db.FluxoDePGN`/`abrir_pgn_bytes`/`abrir_pgn`.** O arquivo físico é aberto em
+bytes e envolvido num `_ArquivoContado`, que conta o que saiu do disco; por cima dele vai
+`gzip.GzipFile`, `bz2.BZ2File`, `zipfile.ZipFile(...).open(membro)` ou, se o pacote opcional
+`zstandard` estiver instalado, um `BufferedReader` sobre `ZstdDecompressor().stream_reader`. O
+resto do módulo não sabe de onde as linhas vieram: `tell()`/`seek()` são do **fluxo
+descompactado**, então um offset gravado no índice vale igual para o mesmo arquivo comprimido, e
+`bytes_lidos` é a posição **comprimida** -- a única comparável ao tamanho do arquivo, e por isso a
+régua do progresso da S-532. `LinhasDePGN` é o mesmo fluxo em texto, linha a linha.
+
+**Um membro de `.zip` é uma base por si**, com um `Path` da forma `pasta/base.zip/dentro/x.pgn`
+que não existe no disco -- e é isso que o distingue de um arquivo (`_membro_de_zip`). `nome_da_base`
+devolve `base.zip/dentro/x.pgn`, que é a identidade no índice: dois `.zip` podem ter um `games.pgn`
+cada, e um `games.pgn` solto ao lado. `existe_base`, `tamanho_da_base` (bytes **no disco**,
+`compress_size` para o membro) e `arquivo_fisico` são o `is_file()`/`stat()` que também valem para
+o membro; os `is_file()` de `scan_by_positions`, `lookup_pair` e `cli/games._bases` passaram a
+usá-los. `database_paths` enxerga `EXTENSOES_DE_BASE` sem ligar para caixa, expande cada `.zip` nos
+seus membros `.pgn`, e deixa `.pgn.zst` de fora com aviso quando não há `zstandard` -- listar o que
+não se sabe abrir seria uma base que falha na primeira busca.
+
+**A decisão de codificação, em `decodificar_linha` e registrada no docstring dela.** UTF-8 estrito
+primeiro (é o caminho rápido em C, e custa o mesmo que `replace` numa linha válida); só a linha que
+falha paga a segunda decodificação, em **cp1252** e não latin-1, porque é o que o Windows gravou: as
+aspas tipográficas e o travessão dos comentários são controle em latin-1. Por linha e não por
+arquivo, porque a gigabase desta máquina mistura as duas coisas no mesmo `.pgn`. A marca de bytes
+(`_BOM`) cai antes. Todo `open()` de PGN do projeto passa por aqui: `_collect_players`,
+`_scan_positions_chunk`, `build_index`, `_read_game_at`.
+
+**O preço, dito em `EXTENSOES_DE_BASE`.** Um fluxo comprimido não tem `seek` barato: voltar é
+recomeçar do zero. `chunk_bounds` trata a base comprimida como **um pedaço só**, `(0, SEM_FIM)` --
+ela ocupa um processo enquanto os outros repartem as soltas --, e `lookup_pair` lê os offsets em
+**ordem crescente** para pagar uma descompactação por consulta. Quem consulta muito, descompacta;
+quem guarda, comprime. O programa aceita os dois.
+
+### Critério de aceite
+
+- `database_paths` lista `.pgn`, `.pgn.gz`, `.pgn.bz2` e cada membro `.pgn` de um `.zip`, em ordem
+  por nome; o `.txt` de dentro do `.zip` fica de fora; `.pgn.zst` só com `zstandard`. ✅
+- As linhas saem **idênticas** venham de onde vierem, e a pasta fica como estava depois de ler:
+  nada é gravado no disco. ✅
+- A busca por nome e a busca por posição leem a base comprimida; a comprimida é um pedaço só. ✅
+- Um offset do fluxo descompactado leva à mesma partida no `.bz2` que no arquivo solto. ✅
+- `bytes_lidos` é menor que o descompactado e não passa do tamanho do arquivo. ✅
+- Linha em cp1252 sai sem losango; UTF-8 continua UTF-8; a BOM cai. ✅
+- `.zip` ilegível avisa e fica de fora, sem derrubar a listagem. ✅
+- **Medido em 2026-09-04**, `Endgame_Study_Database_VI_...pgn` (62 MB, 93.839 partidas)
+  comprimido em `.gz` (17,9 MB): índice do zero em 3,4 s contra 7,6 s solto (este último com o `tracemalloc` ligado, que é o que o deixa mais lento; o `.gz` não custa mais do que o solto); a consulta
+  por nome numa base `.gz` paga a descompactação até o offset (192 ms) contra
+  2 ms na solta. É o preço registrado acima, e é por isso que a régua de progresso é a
+  comprimida.
+
+### Testes
+
+- `tests/test_games_db.py::LeitorDePGNTests`: as quatro formas e o membro do `.zip` na listagem;
+  linhas iguais; nada gravado no disco; busca por nome no `.gz`; busca por posição no membro do
+  `.zip` num pedaço só; bytes lidos são os do disco; `existe_base`/`tamanho_da_base` para o
+  membro; cp1252 sem losango e BOM; offset do fluxo descompactado; `.zst` fora sem o pacote; `.zip`
+  quebrado avisa.
+- `tests/test_games_index.py::IndiceSobreBaseComprimidaTests`: a consulta lê a partida do `.gz` e
+  do membro do `.zip` pelo offset; a base comprimida que mudou é relida inteira; o nome no
+  manifesto é `pacote.zip/torneio.pgn`.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+## S-532 · Índice incremental: só o que mudou é relido, com progresso e cancelamento na janela — ✅ **implementada em 2026-09-04**
+
+### Problema
+
+`games_index.py:135` (`build_index`) nascia inteiro num `.parcial` (`:155`) e era renomeado no fim
+(`:212`): qualquer arquivo novo na pasta -- ou um torneio anexado ao `.pgn` de sempre -- custava a
+pasta inteira de novo, 18 GB e mais de vinte minutos nesta máquina, porque `files` (`:181`) só
+guardava o nome e o número do arquivo era a posição na lista. O `progress` (`:139`) era
+`Callable[[int], None]`, chamado a cada 500 mil partidas, sem dizer de que arquivo nem quanto
+falta; não havia `cancel`; e a janela só sabia dizer *"se o índice ainda não foi construído:
+cvoff-games --build-index"* (`qt/dialogos.py:610`) -- quem acrescentava um torneio e voltava à sala
+de estudo descobria que a busca por nome recusou o índice, e a saída era abrir um terminal.
+
+### Solução
+
+**A tabela `files` virou manifesto (`INDEX_VERSION = 4`).** Por base: `name` (o de `nome_da_base`),
+`size`, `mtime`, `head` e `tail` -- o `blake2b` dos primeiros e dos últimos `BYTES_DA_MARCA` = 64 KB
+--, e `games`. Tamanho igual não diz que o conteúdo é o mesmo, e `mtime` igual não diz nada num
+sync de nuvem (a S-113 registra o antivírus que reescreve o carimbo sem tocar num byte): quem
+decide são tamanho e as duas marcas, que custam menos de um milissegundo por arquivo. O que
+decide reler, arquivo a arquivo: mesmo tamanho e mesmas marcas → **pulado** (só o `mtime` é
+atualizado); cresceu, mesma cabeça sobre os bytes que o manifesto mediu e a cauda antiga ainda no
+mesmo lugar → lido **a partir do tamanho antigo**, com os offsets velhos intactos; qualquer outra
+diferença, ou base comprimida que mudou → as partidas dele saem e ele é relido inteiro; não está
+mais na lista → as partidas dele saem. O número do arquivo vem do manifesto e sobrevive à ordem;
+um arquivo novo recebe o próximo livre. Um índice v3 é apagado e refeito, como `--build-index`
+sempre significou; o `.parcial` de uma versão anterior interrompida vai junto.
+
+**Uma transação por arquivo, e a marca da base só no fim.** O índice é editado **no lugar**, com
+`journal_mode=DELETE` (o `TRUNCATE` deixaria um `-journal` vazio ao lado para sempre, e `data/`
+tem guarda contra artefato que ninguém declarou). A `meta.database` é apagada **antes** de qualquer
+mudança e regravada só quando a rodada termina: é ela que `lookup_pair` confere, então um índice
+em obras recusa a consulta em vez de responder menos do que a base tem -- a S-25 sem `.parcial`.
+Cancelar (`cancel: threading.Event`, conferido a cada `_LINHAS_POR_CONFERENCIA` = 16 mil linhas,
+~1 MB) desfaz só o arquivo em curso e mantém os anteriores; a rodada seguinte continua deles.
+`build_index` devolve `Indexacao(partidas, relidas, arquivos_relidos, arquivos_pulados,
+arquivos_removidos, cancelado)` -- o item em forma de número, e é isso que o teste afirma.
+
+**`Progresso = (base, bytes_lidos, bytes_totais, partidas)`**, no máximo a cada
+`INTERVALO_DE_PROGRESSO` = 0,1 s dentro de um arquivo, mais um aviso final por arquivo com os bytes
+cheios -- **também para o pulado**, para a barra do conjunto andar pelo que não precisou ser lido.
+Os bytes são os do disco (comprimidos, se a base for), porque são os únicos comparáveis ao
+tamanho. `cli/games.py::_index_progress` reduz isso a uma linha a cada 5 s e uma por arquivo: dez
+por segundo é o ritmo de uma barra, não o de um terminal.
+
+**A decisão pura, `ui/indice_da_base.py`.** `Andamento` soma o último aviso de cada arquivo (posição
+absoluta, não incremento) sobre o total e devolve `POR_MIL`; `frase_de_progresso` (`Lendo
+base.pgn: 1,2 GB de 8,6 GB · 1.234.567 partidas`, ou `base.pgn: sem mudança, não foi relido`);
+`frase_de_fim`, que diz **o que não foi relido**; e `perde_trabalho_ao_fechar() == False`, porque
+cada arquivo é uma transação -- dizer o contrário treinaria a pessoa a ignorar o aviso quando ele
+for verdade (a busca por posição).
+
+**A fiação, `qt/indice_da_base.py`.** `IndexadorDaBase(QObject)` roda `build_index` numa `Tarefa`
+(o `QThread` de `qt/trabalho.py`); o `progress` é chamado na thread de trabalho e **só emite**
+`progresso(str, int, int, int)`; o slot `_somar`, do lado da interface, soma e emite
+`avancou(por_mil)`; `terminou(Indexacao)` e `falhou(str, exc)` são os dois fins, e exatamente um
+chega. Registra-se no `BusyRegistry` com `loses_work=False`, `cancellable=True` e o `cancel` do
+`Event`. `indexar_com_dialogo(parent, bases, caminho)` monta um `QProgressDialog` modal à janela
+com Cancelar em cima dele, que fecha sozinho no fim; `frase_final(resultado)` é o que vai ao
+rodapé. O módulo não conhece painel nenhum: **quem o chama é um `connect` na sala ou no menu**, e
+essa linha não foi escrita neste item porque `qt/painel_de_estudo.py` está sendo editado pela
+S-527 na mesma árvore.
+
+### Critério de aceite
+
+- Segunda rodada sobre a mesma pasta: `relidas == 0`, `arquivos_pulados == n`, e a consulta segue
+  respondendo. ✅ **Medido em 2026-09-04** sobre `LumbrasGigaBase_OTB_Complete.pgn` (8,6 GB,
+  10.355.488 partidas): do zero 539 s na rodada limpa (6,4 avisos/s) e 1.212 s numa segunda rodada com o `tracemalloc` ligado e a suíte rodando ao lado (índice de 235 MB, 7.266 avisos,
+  6,0/s); segunda rodada sem mudança **0,006 s** (< 2 s).
+- Arquivo anexado: só a cauda é lida. ✅ Medido numa cópia em pasta temporária do
+  `Endgame_Study_Database_VI_...pgn` (62 MB, 93.839 partidas): do zero 7,6 s; depois
+  de anexar 1 partida, **0,014 s** e `relidas == 1`; a partida anexada é achada em
+  2 ms.
+- Arquivo removido sai do índice, sem aviso na consulta; arquivo reescrito é relido inteiro sem
+  deixar linha velha; o novo ganha o próximo número e os antigos ficam com o deles. ✅
+- Cancelamento honrado em < 1 s: com o pedido aos 0,3 s, a rodada volta antes de 1,3 s, a base
+  pequena terminada fica, a grande é desfeita, e `lookup_pair` recusa o índice com a instrução de
+  refazer até a rodada seguinte terminar -- que retoma do que ficou. ✅
+- Progresso ≤ ~10×/s dentro de um arquivo. ✅ (Medido na gigabase: 6,0/s.)
+- Pico de memória do índice do zero: 12,8 MB no `tracemalloc` sobre os 62 MB de referência, e 28 MB sobre os 8,6 GB da gigabase --
+  o lote de 200 mil linhas, e nada proporcional ao arquivo.
+- O Qt: fim e progresso chegam por sinal; o último valor do conjunto é mil; duas rodadas ao
+  mesmo tempo são recusadas; cancelar pela API e pelo botão do diálogo para em < 1,5 s e o
+  resultado diz; a falha vira sinal e não exceção; o `BusyRegistry` vê a operação enquanto roda,
+  com `loses_work` falso, e a solta no fim. ✅
+- Nenhum teste toca `data/`; o índice de medição ficou em pasta temporária. ✅
+- `qt/janela.py` não é tocado. ✅
+
+### Testes
+
+- `tests/test_games_index.py::IndiceIncrementalTests`: primeira rodada lê tudo; segunda não relê
+  nada e o progresso chega uma vez por arquivo com os bytes cheios; `mtime` sozinho não força;
+  anexado relê só a cauda e a consulta acha velhas e nova; reescrito relido inteiro sem linha
+  velha; removido sai; o novo ganha o próximo número; v3 é refeito; nem `.parcial` nem `-journal`
+  sobram. `CancelamentoDoIndiceTests`: < 1 s, a consulta recusa o índice em obras, a rodada
+  seguinte retoma, e ≤ 10 avisos/s. `IndiceSobreBaseComprimidaTests` (S-531).
+- `tests/test_ui_indice_da_base.py`: a barra do conjunto anda pelo pulado; posição absoluta e não
+  incremento; não passa de mil; arquivo não previsto entra no total; as três frases; fechar não
+  perde trabalho.
+- `tests/test_qt_indice_da_base.py`: fim por sinal com o resultado; progresso por sinal e somado
+  por mil; não começa duas; cancelar para em < 1,5 s; falha vira sinal; registra no `BusyRegistry`
+  e solta; o diálogo anda com o índice e fecha no fim; o botão Cancelar do diálogo para o índice.
+- `tests/test_editor_model.py::SEM_TKINTER` ganhou `indice_da_base.py`; `docs/ARCHITECTURE.md`
+  conta treze threads e a tabela ganhou a linha do índice.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 ## S-533 · Busca por jogador, torneio, ano, Elo, resultado e ECO, com filtros combinados e lista — ◻ em andamento
 
 _Seção a escrever pelo executor do item._

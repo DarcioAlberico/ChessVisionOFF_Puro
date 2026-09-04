@@ -27,6 +27,12 @@ ninguém notar: ele continua no catálogo, continua no menu, e não faz nada.
    "não reinicie o relógio": com a análise contínua ligada, o motor escreve a cada ~800 ms, e cada
    escrita reagendando fazia o prazo nunca vencer -- a sala **nunca** era gravada.
 4. **O `QSplitter` guarda a fração por `sizes()`**, e não por `sashpos`.
+
+**E a barra de cima é uma fila desde a S-527.** Eram três `BarraFluida` com 28 botões de texto, que
+a 715 px quebravam em quatro fileiras. Quem decide grupo, o que é principal, ícone, dica e quem cabe
+na largura é `ui/barra_da_sala.py`; `qt/barra_da_sala.py` mede e executa. Os botões que o resto deste
+arquivo chama pelo nome -- `btn_dobra`, `btn_recorte`, `btn_treino`, `btn_continua`, `seguir_ocr` --
+são `QAction`s daquela barra, e respondem aos mesmos `setChecked`, `setText` e `setEnabled`.
 """
 
 from __future__ import annotations
@@ -46,7 +52,6 @@ from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QAction, QShowEvent
 from PyQt6.QtWidgets import (
     QAbstractButton,
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -74,10 +79,12 @@ from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
+from chess_diagram_ocr.qt.barra_da_sala import BarraDaSala
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
 from chess_diagram_ocr.ui import (
     atalhos,
+    barra_da_sala,
     comandos,
     espaco,
     estilos,
@@ -203,8 +210,24 @@ class PainelDeEstudo(QWidget):
         fora = QVBoxLayout(self)
         fora.setContentsMargins(*(espaco.linha(),) * 4)
         fora.setSpacing(espaco.linha())
-        for barra in self._barras():
-            fora.addWidget(barra)
+
+        # **Uma fila, agrupada por tarefa** (S-527). Eram três `BarraFluida` que quebravam em quatro
+        # fileiras a 715 px -- 130 px antes do tabuleiro. Quem decide grupo, principal, ícone, dica e
+        # quem cabe é `ui/barra_da_sala.py`; o widget mede e executa.
+        self.barra = BarraDaSala(self, com_motor=self._analyzer is not None, executar=self.executar)
+        fora.addWidget(self.barra)
+        # Os nomes que o resto do painel sempre usou apontam para as `QAction`s: `setChecked`,
+        # `setText`, `setEnabled` e `isChecked` são os mesmos, e é isso que deixa cada método como
+        # estava. `seguir_ocr` nasce marcado **sem avisar**: o `toggled` já está ligado ao método,
+        # e o método sincroniza com um tabuleiro que ainda não existe.
+        self.seguir_ocr = self.barra.acoes[barra_da_sala.SEGUIR_OCR]
+        self.seguir_ocr.blockSignals(True)
+        self.seguir_ocr.setChecked(True)
+        self.seguir_ocr.blockSignals(False)
+        self.btn_dobra = self.barra.acoes["dobrar_variantes"]
+        self.btn_recorte = self.barra.acoes["mostrar_diagrama"]
+        self.btn_treino = self.barra.acoes["modo_treino"]
+        self.btn_continua: QAction | None = self.barra.acoes.get("analise_continua")
 
         # **Duas colunas** (S-276): tabuleiro à esquerda, lances à direita. É a repartição que todo
         # programa de xadrez usa, e pela mesma razão: lê-se a linha com o olho ao lado do
@@ -251,67 +274,13 @@ class PainelDeEstudo(QWidget):
         return botao
 
     def executar(self, acao: str) -> None:
-        """Roda o método que o catálogo liga àquela ação. Levanta para ação que a aba não tem."""
-        getattr(self, COMANDOS_DA_ABA[acao])()
+        """Roda o método que o catálogo liga àquela ação. Levanta para ação que a aba não tem.
 
-    def _barras(self) -> list[BarraFluida]:
-        """**Três linhas, e o corte entre elas é o assunto** (S-517): a posição, a árvore, e o
-        livro somado ao que entra e sai.
-
-        Eram quatro, e a navegação estava na segunda -- encostada na cirurgia de árvore. Medido em
-        2026-09-01: 28 botões (31 com motor) ocupando 130 px de 800 a 900 de largura e 155 px de
-        620 a 760, antes de qualquer conteúdo.
-
-        **Os quatro de navegação saíram daqui e foram para baixo do tabuleiro**, que é onde a
-        frequência os põe: são o único grupo cujo uso justifica estar ao lado do olho que já está no
-        tabuleiro. E a fileira que sobrou é só de árvore -- `Apagar variante` deixou de estar
-        encostado no `▶`, que era o vizinho mais perigoso que ele podia ter.
-
-        As duas últimas viraram uma: o livro e a entrada/saída são as de menor frequência da aba, e
-        juntas ainda cabem numa fileira na largura de trabalho -- e a `BarraFluida` quebra sozinha
-        quando não cabem.
+        O interruptor "Seguir OCR" não é comando do catálogo, e o método dele vem de
+        `barra_da_sala.METODOS_PROPRIOS` -- a mesma forma de tabela, para o mesmo motivo (S-280).
         """
-        posicao = BarraFluida(self)
-        for acao in (
-            "estudo_do_diagrama",
-            "estudo_da_posicao_inicial",
-            "virar_tabuleiro",
-            "trocar_vez",
-            "estudo_aplicar_fen",
-            "copiar_fen",
-            "salvar_estudo",
-        ):
-            self._botao(posicao, acao)
-        self.seguir_ocr = QCheckBox("Seguir OCR selecionado", posicao)
-        self.seguir_ocr.setChecked(True)
-        self.seguir_ocr.toggled.connect(lambda _ligado: self.on_follow_ocr_toggle())
-        posicao.adicionar(self.seguir_ocr)
-
-        linha = BarraFluida(self)
-        for acao in (
-            "promover_variante",
-            "promover_a_principal",
-            "rebaixar_variante",
-            "apagar_variante",
-            "apagar_continuacao",
-        ):
-            self._botao(linha, acao)
-        dica_em(
-            self._botao(linha, "simbolo_do_lance"),
-            "O símbolo do lance. Escolher o mesmo de novo tira; escolher outro do mesmo grupo\n"
-            "troca. Julgar o lance (!, ?) e julgar a posição (⩲, ±) são duas frases, e somam.",
-        )
-        self.btn_dobra = self._botao(linha, "dobrar_variantes")
-        self.btn_dobra.setCheckable(True)
-        dica_em(
-            self.btn_dobra,
-            "Esconde o miolo das variantes e deixa `(…)` no lugar. O `(` de cada uma também\n"
-            "responde ao clique. A variante que contém o lance corrente não se dobra.",
-        )
-        self.lbl_simbolo = QLabel("", linha)
-        tema.pintar(self.lbl_simbolo, "color", tokens.TEXTO_SECUNDARIO)
-        linha.adicionar(self.lbl_simbolo)
-        return [posicao, linha, self._barra_de_fora()]
+        metodo = COMANDOS_DA_ABA.get(acao) or barra_da_sala.METODOS_PROPRIOS[acao]
+        getattr(self, metodo)()
 
     def _barra_de_navegacao(self) -> BarraFluida:
         """Os quatro de navegação, **sob o tabuleiro**, com o lance corrente e a vez (S-517).
@@ -321,7 +290,7 @@ class PainelDeEstudo(QWidget):
         última linha da janela, longe do olho de quem está olhando o tabuleiro.
         """
         barra = BarraFluida(self)
-        for acao in ("inicio_da_linha", "lance_anterior", "proximo_lance", "fim_da_linha"):
+        for acao in barra_da_sala.NAVEGACAO:
             botao = self._botao(barra, acao)
             if not botao.icon().isNull():
                 # **Só aqui o ícone substitui o rótulo** (S-520), e é o único grupo em que isso é
@@ -334,68 +303,21 @@ class PainelDeEstudo(QWidget):
         self.lbl_lance = QLabel("", barra)
         self.lbl_lance.setFont(tema.fonte_atual(tipografia.TITULO))
         barra.adicionar(self.lbl_lance)
+        # O símbolo do lance corrente **ao lado do lance** (S-527): ele ficava ao lado do botão
+        # "Símbolo", na segunda fileira, e o botão foi para a fila de cima. `12. Ba4 !` é como o
+        # livro escreve, e é aqui que o olho já está.
+        self.lbl_simbolo = QLabel("", barra)
+        tema.pintar(self.lbl_simbolo, "color", tokens.TEXTO_SECUNDARIO)
+        barra.adicionar(self.lbl_simbolo)
         self.lbl_vez = QLabel("", barra)
         tema.pintar(self.lbl_vez, "color", tokens.TEXTO_SECUNDARIO)
         barra.adicionar(self.lbl_vez)
-        return barra
-
-    def _barra_de_fora(self) -> BarraFluida:
-        de_fora = BarraFluida(self)
-        self.btn_recorte = self._botao(de_fora, "mostrar_diagrama")
-        self.btn_recorte.setCheckable(True)
-        dica_em(
-            self.btn_recorte,
-            "O recorte que o modelo leu, ao lado do tabuleiro. Fica cinza quando o estudo não\n"
-            "veio de um diagrama do livro -- uma FEN digitada à mão não tem recorte.",
-        )
-        dica_em(
-            self._botao(de_fora, "linha_do_livro"),
-            "Joga na árvore a linha impressa ao lado deste diagrama, e para no primeiro lance\n"
-            "que a posição não sustenta -- dizendo qual foi. Exige a folha lida na aba Texto.",
-        )
-        self._botao(de_fora, "ir_para_a_pagina")
-        self.btn_continua: QPushButton | None = None
-        if self._analyzer is not None:
-            self._botao(de_fora, "analisar_posicao")
-            self.btn_continua = self._botao(de_fora, "analise_continua")
-            self.btn_continua.setCheckable(True)
-            dica_em(
-                self.btn_continua,
-                "O motor acompanha o lance corrente e grava a avaliação nele, em [%eval].\n"
-                "Navegar cancela a análise em curso: a resposta atrasada é descartada.",
-            )
-            self._botao(de_fora, "variante_do_motor")
-        self._botao(de_fora, "partidas_da_posicao")
-        self._entrada_e_saida(de_fora)
-        return de_fora
-
-    def _entrada_e_saida(self, entra_e_sai: BarraFluida) -> None:
-        """O que entra e o que sai, na mesma fileira do livro (S-517).
-
-        Eram duas fileiras, e as duas são as de menor frequência da aba: colar, abrir, exportar e
-        levar para o texto acontecem uma vez por sessão, não uma vez por lance. Juntas cabem numa
-        linha na largura de trabalho -- e quando não couberem, a `BarraFluida` quebra sozinha, que é
-        o item inteiro da S-151.
-        """
-        for acao in (
-            "colar_estudo",
-            "abrir_pgn",
-            "exportar_estudo_md",
-            "exportar_estudo_html",
-            "exportar_estudo_rtf",
-            "estudo_para_o_texto",
-        ):
-            self._botao(entra_e_sai, acao)
-        self.btn_treino = self._botao(entra_e_sai, "modo_treino")
-        self.btn_treino.setCheckable(True)
-        dica_em(
-            self.btn_treino,
-            "A linha some e o tabuleiro cobra o lance. A árvore não muda: errar não cria\n"
-            "variante -- para guardar o lance que você jogou, desligue o treino.",
-        )
-        self.lbl_placar = QLabel("", entra_e_sai)
+        # E o placar do treino, pela mesma razão: ele acompanhava o botão "Treinar" na quarta
+        # fileira, e o que ele conta acontece no tabuleiro.
+        self.lbl_placar = QLabel("", barra)
         tema.pintar(self.lbl_placar, "color", tokens.TEXTO_SECUNDARIO)
-        entra_e_sai.adicionar(self.lbl_placar)
+        barra.adicionar(self.lbl_placar)
+        return barra
 
     def _esquerda(self) -> QWidget:
         coluna = QWidget(self.divisor)
@@ -868,6 +790,7 @@ class PainelDeEstudo(QWidget):
             self._atualizar_botao_da_dobra()
             self._mostrar_lance_corrente()
             self._mostrar_placar()
+            self._aplicar_modo_da_barra()
         finally:
             self._montando = False
         # A geração muda **aqui**, e não em cada método de navegação: `refresh` é o único ponto por
@@ -876,6 +799,21 @@ class PainelDeEstudo(QWidget):
         self._geracao += 1
         self._candidatos = []
         self._analisar_se_continuo()
+
+    def _aplicar_modo_da_barra(self) -> None:
+        """Sem estudo, variante e exportar ficam cinza; treinando, a árvore fica cinza (S-527).
+
+        A regra é de `ui/barra_da_sala.grupos_desligados`; o que o painel acrescenta são as duas
+        condições que só ele sabe -- a da dobra (S-516) e a do recorte (S-347) --, e as duas se
+        somam à do grupo em vez de substituí-la.
+        """
+        self.barra.aplicar_modo(
+            barra_da_sala.modo(vazio=self.estudo.vazio(), treinando=self.btn_treino.isChecked()),
+            {
+                "dobrar_variantes": bool(self._variantes),
+                "mostrar_diagrama": self.estudo.ancora.valida,
+            },
+        )
 
     def _marcar_sujo(self, *, historico: bool = True, da_maquina: bool = False) -> None:
         """A árvore mudou: a pilha registra, a sala guarda, e o disco recebe depois (S-271/S-275).

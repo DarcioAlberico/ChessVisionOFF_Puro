@@ -214,6 +214,10 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
         ),
         "comandos.py": "o catálogo declara o papel como **dado**; a propriedade é afirmada por nome acima",
         "tema.py": "registra a face do papel destrutivo; é o estilo, e não um botão (S-444)",
+        "barra_da_sala.py": (
+            "desenha, na cor do papel, o que o catálogo declara destrutivo -- 'Apagar variante' e "
+            "'Apagar daqui' --; ele compara `registro.papel`, não declara papel a botão nenhum (S-527)"
+        ),
     }
     """Onde `estilos.DESTRUTIVO` pode aparecer, e por quê. Cada entrada é uma decisão assinada."""
 

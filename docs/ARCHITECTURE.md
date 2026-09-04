@@ -243,9 +243,9 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Doze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Treze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Nove são operações longas e estão no `BusyRegistry`; as outras duas são declaradas em
+exceção. Dez são operações longas e estão no `BusyRegistry`; as outras três são declaradas em
 `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
 
 A contagem é conferida por `tests/test_docs.py` contra `qt/*.py` (S-410/S-506). **Ela conta duas
@@ -265,6 +265,7 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | leitura do texto da página | `qt/painel_de_texto.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
 | exportação do texto lido | `qt/painel_de_texto.py` | não | **sim**, o destino fica pela metade | não |
 | avaliação do motor sobre a posição | `qt/painel_de_estudo.py` | não | — declarada | não (é o Stockfish) |
+| índice por nome da base de partidas (S-532) | `qt/indice_da_base.py::IndexadorDaBase` | sim, a cada 16 mil linhas | não: cada arquivo é uma transação, e a rodada seguinte retoma | não |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).
