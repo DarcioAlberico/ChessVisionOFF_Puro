@@ -256,14 +256,18 @@ class FronteiraTests(unittest.TestCase):
     def test_a_mesma_varredura_acha_o_toolkit_onde_ele_mora(self) -> None:
         """O controle sobre a árvore real: apontada para `qt/`, a função tem de achar o Qt.
 
-        `qt/__init__.py` e `qt/preferencias.py` ficam de fora da conta porque não têm widget de
-        propósito -- o primeiro só declara o `__all__`, o segundo monta serviço e motor a partir
-        das preferências (S-523). O resto é desenho, e desenho importa `PyQt6`.
+        Só `qt/__init__.py` fica de fora da conta: ele declara o `__all__` e mais nada. O resto
+        é desenho, e desenho importa `PyQt6`.
+
+        **`qt/preferencias.py` saiu da isenção na S-536.** Ele era o único módulo de `qt/` sem
+        toolkit -- montava serviço e motor a partir do arquivo de preferências (S-523) --, e ganhou
+        o formulário que edita as opções do motor e o `MotorVivo` que as aplica numa `Tarefa`. As
+        duas coisas são widget e thread de Qt; a decisão delas continua em `ui/motor_declarado.py`.
         """
         achados = violacoes(QT, RAIZ)
         com_toolkit = {relativo for relativo in achados if relativo.startswith("qt/")}
         modulos_do_qt = {c.relative_to(RAIZ).as_posix() for c in QT.glob("*.py")}
-        sem_widget = {"qt/__init__.py", "qt/preferencias.py"}
+        sem_widget = {"qt/__init__.py"}
         self.assertEqual(modulos_do_qt - sem_widget, com_toolkit)
         self.assertGreater(len(com_toolkit), 25)
 

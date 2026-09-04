@@ -47,11 +47,17 @@ CANDIDATE_DIRS = (
     Path("engines"),
     Path("Stockfish"),
     Path("C:/Program Files/Stockfish"),
+    Path("C:/Program Files/scid_windows_x64/engines"),
     Path("/usr/games"),
     Path("/usr/local/bin"),
 )
 """Onde procurar além do `PATH`. A pasta `engines/` do projeto vem primeiro para que baixar
-o binário ali seja a instalação mais simples possível."""
+o binário ali seja a instalação mais simples possível.
+
+A pasta do SCID entrou na S-536, e não é generosidade com um programa de terceiro: quem estuda
+xadrez num PC quase sempre já instalou SCID ou ChessBase, e os dois trazem um Stockfish dentro.
+Foi assim que esta máquina passou a ter motor -- `C:/Program Files/scid_windows_x64/engines/
+stockfish.exe`, Stockfish dev-20230303 --, e antes disso a seção do motor nunca aparecia aqui."""
 
 
 def find_engine(explicit: str | Path | None = None, *, env: dict[str, str] | None = None) -> Path | None:
@@ -105,6 +111,15 @@ class Evaluation:
     depth: int = 0
     elapsed_s: float = 0.0
 
+    nodes: int = 0
+    nps: int = 0
+    """Nós visitados e nós por segundo, como o UCI os relata (S-529).
+
+    **Profundidade sozinha não diz se o motor está usando a máquina.** É o único número da tela
+    que muda quando `Threads` muda -- a profundidade também muda, mas devagar e por posição --, e
+    sem ele não há como ver que a opção pegou. Zero é "o motor não relatou", que alguns relatam
+    só no fim da busca."""
+
     @property
     def is_mate(self) -> bool:
         return self.mate_in is not None
@@ -120,17 +135,12 @@ class Evaluation:
     def advantage_fraction(self) -> float:
         """Posição da barra, de 0 (pretas ganhando) a 1 (brancas ganhando).
 
-        A conversão é logística e não linear: a diferença entre +0,2 e +1,0 muda a partida,
-        a diferença entre +8 e +12 não muda nada. Uma barra linear gastaria quase toda a
-        sua extensão com vantagens já decididas.
+        A conta mora em `fracao_de_vantagem` desde a S-537: a barra lateral, o gráfico da partida
+        inteira e este método precisam da **mesma** curva, e três cópias dela divergiriam na
+        primeira vez que alguém a ajustasse -- com o número escrito ao lado discordando da barra
+        que o desenha.
         """
-        if self.mate_in is not None:
-            return 1.0 if self.mate_in > 0 else 0.0
-        if self.score_cp is None:
-            return 0.5
-        # 1/(1+10^(-cp/400)) e a curva de expectativa de pontuacao do Elo, que e exatamente
-        # a relacao entre vantagem e resultado que se quer mostrar.
-        return 1.0 / (1.0 + 10 ** (-self.score_cp / 400.0))
+        return fracao_de_vantagem(self.score_cp, self.mate_in)
 
     def summary(self) -> str:
         """Uma linha para a interface: avaliação, melhor lance e profundidade."""
@@ -142,12 +152,44 @@ class Evaluation:
         return "  |  ".join(partes)
 
 
+def fracao_de_vantagem(score_cp: int | None, mate_in: int | None) -> float:
+    """A avaliação como fração de barra, de 0 (pretas ganhando) a 1 (brancas ganhando).
+
+    **A conversão é logística e não linear**: a diferença entre +0,2 e +1,0 muda a partida, a
+    diferença entre +8 e +12 não muda nada. Uma barra linear gastaria quase toda a sua extensão
+    com vantagens já decididas.
+
+    `1/(1+10^(-cp/400))` é a curva de expectativa de pontuação do Elo, que é exatamente a relação
+    entre vantagem e resultado que se quer mostrar -- ver a grade de comparação com a curva do
+    Lichess no cabeçalho de `ui/motor_declarado.py`.
+
+    É função de módulo, e não método, porque três desenhos a usam: a barra vertical da sala
+    (S-529), o gráfico da partida inteira (S-537) e o `display` de cada linha do MultiPV.
+    """
+    if mate_in is not None:
+        return 1.0 if mate_in > 0 else 0.0
+    if score_cp is None:
+        return 0.5
+    return 1.0 / (1.0 + 10 ** (-score_cp / 400.0))
+
+
 def _to_white_pov(score: chess.engine.PovScore) -> tuple[int | None, int | None]:
-    """Extrai `(centipeões, mate_em)` do ponto de vista das brancas."""
+    """Extrai `(centipeões, mate_em)` do ponto de vista das brancas.
+
+    **`mate 0` não carrega sinal, e é o mate que já aconteceu** (S-537). O UCI o responde na
+    posição em que quem está no lance está mateado, e `Mate(0)` e `MateGiven` -- os dois lados
+    disso -- respondem `0` a `.mate()`. Um zero sem sinal fazia a posição final de toda partida
+    valer `-M0`: a barra ia para o lado do vencedor errado, e a análise da partida inteira marcava
+    o lance de mate como **erro grave** de quem o deu (medido na Imortal e na defesa de Legall).
+
+    Normalizado para `±1`, que é o que ele quer dizer -- "acabou, e foi deste lado". A diferença
+    entre um mate dado e um mate em um lance não muda decisão nenhuma no programa: as duas enchem
+    a barra, e as duas valem o teto na conta de perda.
+    """
     brancas = score.white()
     mate = brancas.mate()
     if mate is not None:
-        return None, int(mate)
+        return None, int(mate) or (1 if brancas > chess.engine.Cp(0) else -1)
     centipeoes = brancas.score()
     return (None, None) if centipeoes is None else (int(centipeoes), None)
 
@@ -166,12 +208,26 @@ class EngineAnalyzer:
         *,
         movetime_ms: int = DEFAULT_MOVETIME_MS,
         threads: int = 1,
+        hash_mb: int = 0,
+        multipv: int = 0,
+        syzygy_path: str = "",
     ) -> None:
         self.path = Path(path)
         self.movetime_ms = int(movetime_ms)
+        self.multipv = max(0, int(multipv))
+        """Quantas linhas `analyse_multi` devolve quando ninguém pede um número (S-536).
+
+        Zero é "não declarado", e aí quem manda é o argumento de quem chama. Não é opção UCI:
+        `python-chess` a envia a cada `analyse` e a repõe depois, então mudá-la nunca derruba o
+        processo -- é a metade fácil do "sem reiniciar" da S-536."""
+
         self._lock = threading.RLock()
         self._engine: chess.engine.SimpleEngine | None = None
-        self._threads = max(1, int(threads))
+        self._opcoes: dict[str, int | str] = {"Threads": max(1, int(threads))}
+        if hash_mb:
+            self._opcoes["Hash"] = max(1, int(hash_mb))
+        if str(syzygy_path or "").strip():
+            self._opcoes["SyzygyPath"] = str(syzygy_path).strip()
 
     @property
     def name(self) -> str:
@@ -180,17 +236,61 @@ class EngineAnalyzer:
             return self.path.name
         return str(motor.id.get("name", self.path.name))
 
+    @property
+    def opcoes(self) -> dict[str, int | str]:
+        """As opções UCI que este motor carrega, como uma cópia. É por ela que o teste pergunta."""
+        with self._lock:
+            return dict(self._opcoes)
+
     def start(self) -> None:
         with self._lock:
             if self._engine is not None:
                 return
             logger.info("Abrindo motor de analise: %s", self.path)
             self._engine = chess.engine.SimpleEngine.popen_uci(str(self.path))
+            self._configurar(self._opcoes)
+
+    def _configurar(self, opcoes: dict[str, int | str]) -> list[str]:
+        """Manda `setoption` uma a uma e devolve as que pegaram. Nunca levanta.
+
+        **Uma a uma, e não num `configure` só** (S-536). `SimpleEngine.configure` manda o
+        dicionário inteiro e levanta no primeiro nome que o motor não conhece -- e nesse caminho as
+        opções que vinham depois **não** são enviadas. Um motor sem `Hash` perderia o `Threads`
+        junto, que é o oposto da degradação que a S-33 declara: aparência não derruba ferramenta.
+        """
+        motor = self._engine
+        if motor is None:  # pragma: no cover - só se chamado fora de `start`
+            return []
+        aceitas: list[str] = []
+        for nome, valor in opcoes.items():
             try:
-                self._engine.configure({"Threads": self._threads})
-            except chess.engine.EngineError as exc:
-                # Nem todo motor UCI aceita `Threads`; nao e motivo para desistir dele.
-                logger.debug("Motor nao aceitou a opcao Threads: %s", exc)
+                motor.configure({nome: valor})
+            except (chess.engine.EngineError, chess.engine.EngineTerminatedError) as exc:
+                logger.debug("Motor nao aceitou a opcao %s: %s", nome, exc)
+                continue
+            aceitas.append(nome)
+        return aceitas
+
+    def reconfigurar(self, opcoes: dict[str, int | str]) -> list[str]:
+        """Aplica opções UCI ao processo **aberto**, sem derrubá-lo. Devolve as que pegaram (S-536).
+
+        **É o que faz "sem reiniciar" ser verdade.** `setoption name Hash value 512` é uma linha no
+        `stdin` do processo, e o Stockfish realoca a tabela de transposição sozinho; fechar e
+        reabrir custaria os 100 a 300 ms de inicialização que o cabeçalho deste módulo registra, e
+        perderia a análise em curso.
+
+        O motor **fechado** só guarda: elas entram no próximo `start`. Não abrir aqui é decisão --
+        mexer nas preferências de quem não pediu análise nenhuma não pode subir um processo.
+
+        Serializado pelo mesmo `lock` da análise: um `setoption` no meio de um `go` embaralharia a
+        conversa, e é a mesma razão que fez o lock existir.
+        """
+        limpas = {str(nome): valor for nome, valor in opcoes.items()}
+        with self._lock:
+            self._opcoes.update(limpas)
+            if self._engine is None:
+                return []
+            return self._configurar(limpas)
 
     def close(self) -> None:
         with self._lock:
@@ -203,6 +303,22 @@ class EngineAnalyzer:
             finally:
                 self._engine = None
 
+    def trocar_binario(self, caminho: str | Path) -> None:
+        """Derruba o processo e passa a apontar para outro binário (S-536).
+
+        **O objeto é o mesmo, e é isso que o método existe para garantir.** A janela guarda uma
+        referência ao analisador e é ela quem o fecha ao sair; um `EngineAnalyzer` novo a cada
+        troca deixaria o processo da última troca vivo depois de a janela fechar -- e o
+        `closeEvent` fecharia um motor que já morreu.
+
+        O processo novo **não** sobe aqui: quem o quer aberto chama `start()`, e quem trocou o
+        caminho e não vai analisar nada não precisa pagar os 100 a 300 ms. As opções guardadas
+        acompanham a troca, porque elas são das preferências e não do binário.
+        """
+        with self._lock:
+            self.close()
+            self.path = Path(caminho)
+
     def __enter__(self) -> EngineAnalyzer:
         self.start()
         return self
@@ -210,15 +326,27 @@ class EngineAnalyzer:
     def __exit__(self, *_args: object) -> None:
         self.close()
 
-    def analyse(self, board: chess.Board, *, movetime_ms: int | None = None) -> Evaluation:
+    def analyse(
+        self, board: chess.Board, *, movetime_ms: int | None = None, depth: int | None = None
+    ) -> Evaluation:
         """Avalia a posição. Levanta `RuntimeError` se o motor não responder.
 
         Posição sem lance legal (mate ou afogamento) devolve avaliação sem melhor lance em
         vez de erro: é uma resposta legítima, e o motor não tem o que sugerir.
+
+        **`depth` é o limite da análise da partida inteira** (S-537), e ele vence o tempo. O
+        cabeçalho deste módulo diz por que o tempo é o limite normal -- profundidade não tem
+        relação estável com tempo --, e a análise de partida quer justamente o outro lado disso:
+        para comparar o lance 12 com o lance 40 os dois têm de ter sido pensados igual, e "igual"
+        aí é profundidade e não relógio.
         """
         import time
 
-        limite = chess.engine.Limit(time=(movetime_ms or self.movetime_ms) / 1000.0)
+        limite = (
+            chess.engine.Limit(depth=int(depth), time=(movetime_ms / 1000.0) if movetime_ms else None)
+            if depth
+            else chess.engine.Limit(time=(movetime_ms or self.movetime_ms) / 1000.0)
+        )
         inicio = time.monotonic()
         with self._lock:
             self.start()
@@ -232,7 +360,7 @@ class EngineAnalyzer:
 
 
     def analyse_multi(
-        self, board: chess.Board, *, count: int = 3, movetime_ms: int | None = None
+        self, board: chess.Board, *, count: int = 0, movetime_ms: int | None = None
     ) -> list[Evaluation]:
         """As `count` melhores linhas, da melhor para a pior (S-286).
 
@@ -246,8 +374,13 @@ class EngineAnalyzer:
 
         A opção é reposta em 1 no fim. Deixá-la ligada faria a `analyse` seguinte -- que lê
         `info["pv"]` de um `dict` e não de uma lista -- receber outra forma de resposta.
+
+        `count=0` -- o padrão desde a S-536 -- pega o número das preferências (`self.multipv`), e
+        três continua sendo o valor de fábrica delas. Quem passa um número manda nele: a análise
+        da partida inteira pede **uma** linha por lance, porque ali a pergunta é o placar e não os
+        candidatos.
         """
-        quantas = max(1, int(count))
+        quantas = max(1, int(count) or self.multipv or 3)
         limite = chess.engine.Limit(time=(movetime_ms or self.movetime_ms) / 1000.0)
         with self._lock:
             self.start()
@@ -280,6 +413,8 @@ def _avaliacao_de(board: chess.Board, info: Any, *, elapsed_s: float = 0.0) -> E
         pv_san=tuple(_variation_san(board, pv)),
         depth=int(str(info.get("depth") or 0)),
         elapsed_s=elapsed_s,
+        nodes=int(str(info.get("nodes") or 0)),
+        nps=int(str(info.get("nps") or 0)),
     )
 
 

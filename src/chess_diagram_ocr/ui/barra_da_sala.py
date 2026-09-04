@@ -258,6 +258,26 @@ ACOES: tuple[Acao, ...] = (
     ),
     Acao("analisar_posicao", MOTOR, "lupa", principal=False, so_com_motor=True),
     Acao("variante_do_motor", MOTOR, "linha_do_motor", principal=False, so_com_motor=True),
+    Acao(
+        "analisar_partida",
+        MOTOR,
+        "grafico",
+        principal=False,
+        so_com_motor=True,
+        dica="Passa a linha principal inteira pelo motor, com barra e Cancelar. Grava a avaliação\n"
+        "em cada lance e marca as imprecisões, os erros e os erros graves com o símbolo do PGN.",
+    ),
+    # **O único do grupo Motor que existe sem motor** (S-536), e tem de ser: numa máquina em que a
+    # procura automática não achou binário nenhum, é por aqui que se diz onde ele está. Os outros
+    # três desapareceriam junto com a seção, e com eles o caminho para fazê-la aparecer.
+    Acao(
+        "opcoes_do_motor",
+        MOTOR,
+        "ajustes",
+        principal=False,
+        dica="Caminho do binário, tabela de transposição, núcleos, linhas candidatas e a pasta de\n"
+        "tablebases. O que muda é aplicado ao motor aberto: só trocar o binário sobe outro processo.",
+    ),
     # -------------------------------------------------------------------------- EXPORTAR
     # O PGN é a saída que não perde nada, e é a que se usa; os três formatos de texto viram um
     # botão só, porque são a mesma pergunta ("em que formato?") e não três gestos.

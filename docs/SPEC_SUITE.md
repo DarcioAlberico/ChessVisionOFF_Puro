@@ -374,9 +374,131 @@ agora para as `QAction`s da fila, e `QAction` responde aos mesmos nomes.
 
 _a preencher pelo crítico_
 
-## S-529 · O painel do motor: barra de avaliação vertical, linhas MultiPV clicáveis, profundidade — ◻ em andamento
+## S-529 · O painel do motor: barra de avaliação vertical, linhas MultiPV clicáveis, profundidade — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
+
+A sala tinha motor e não tinha painel de motor. `qt/painel_de_estudo.py:630` (`_secao_do_motor`)
+punha a avaliação num `QProgressBar` **horizontal** de 0 a 100, dentro da seção "Motor" -- que fica
+na coluna de leitura, **sob** a caixa de comentário, a ~400 px do tabuleiro. `:636` punha as linhas
+do MultiPV num `QLabel` de texto cinza, montado em `:915` (`_mostrar_avaliacao`) como
+`f"{indice}. {display}  {' '.join(pv_san)}"`.
+
+Quatro consequências, e nenhuma é de gosto:
+
+1. **A barra não era lida junto com o tabuleiro.** Ela existe para dizer *de quem é a posição* com
+   o rabo do olho, e para isso precisa estar ao lado do tabuleiro e ter a altura dele -- é o que o
+   Lichess faz e o que a ChessBase faz. Horizontal e a meia tela de distância, ela é um enfeite.
+2. **`QLabel` não responde ao clique.** `variante_do_motor` (`:1833`) lê `self._candidatos[0]`
+   (`:1843`) e **só** ele: as linhas 2 e 3 apareciam na tela e não havia caminho nenhum para
+   pô-las na árvore. Isso anula metade da razão de o MultiPV existir -- a S-286 registra que a
+   pergunta de quem estuda um livro é *se o lance que o livro dá está entre os candidatos*, e
+   comparar exige poder guardar a comparação.
+3. **A profundidade estava escondida e os nós não existiam.** `Evaluation.depth` só aparecia dentro
+   de `summary()`, na mesma frase da avaliação e do melhor lance; `nodes` e `nps` não eram lidos do
+   UCI. Sem eles não há como ver da tela que a opção `Threads` pegou (S-536).
+4. **A variante não era numerada.** `' '.join(pv_san)` dá `Ba4 Nf6 O-O` ao lado de uma lista de
+   lances que diz `12. Ba4`: comparar as duas obriga a contar nos dedos onde a linha começa.
+
+### Solução
+
+**A decisão pura, `ui/motor_declarado.py`.** Altura da faixa em pixel (`altura_de_brancas`), a cor
+de cada lado (`papel_do_lado`), a numeração da variante (`variante_numerada`, `linhas_do_motor`) e
+a frase de desempenho (`frase_de_desempenho`, `numero_curto`). Quatro decisões, e as quatro têm
+motivo escrito:
+
+1. **A curva não é escrita ali, e isso é o item.** Ela já existia como
+   `Evaluation.advantage_fraction`; virou `engine.fracao_de_vantagem`, função de módulo, porque
+   **três** desenhos a usam agora -- a barra, o gráfico da partida inteira (S-537) e o `display` de
+   cada linha. Três cópias divergiriam na primeira vez que alguém ajustasse uma, e o sintoma seria
+   a barra discordando do número escrito ao lado dela. A curva é `1/(1+10^(-cp/400))`, a expectativa
+   de pontuação do Elo; a do Lichess é `2/(1+e^(-0,00368208·cp))-1`. A grade de comparação está no
+   cabeçalho de `ui/motor_declarado.py`: a daqui é mais íngreme no miolo (+1,00 dá 0,640 contra
+   0,591) e satura antes (+5,00 dá 0,947 contra 0,863). **A diferença é a decisão**: numa sala de
+   estudo o que se lê a metro de distância é de quem é a posição, e a curva do Elo é literalmente
+   a probabilidade de ganhar aquele final; a do Lichess reserva mais barra para a faixa acima de
+   +5, em que a partida já acabou.
+2. **Mate em cor própria, e não barra cheia.** A barra cheia já quer dizer +8. O que separa "está
+   ganho" de "acaba em três lances" é a cor, e só a faixa de **quem dá** o mate muda -- dois âmbares
+   empilhados não diriam quem mateia. A cor é `tokens.ATENCAO`; as duas faixas normais são
+   `tokens.GLIFO_CLARO` e `GLIFO_ESCURO`, a tinta das **peças**, que não segue pele: uma faixa "das
+   brancas" que escurecesse junto com a janela deixaria de dizer isso.
+3. **O clique numa linha insere a variante**, com a procedência no PGN, a partir do lance corrente.
+   É o gesto da ChessBase ("arrastar a linha do motor para a notação"), com o clique no lugar do
+   arrasto -- e é o caminho que a sala já tinha, generalizado de `[0]` para `[n]`. **A alternativa
+   medida e recusada** foi o clique mover o tabuleiro: com a análise contínua ligada o motor
+   responde a cada ~800 ms, e um tabuleiro que seguisse a linha sairia da posição, faria o motor
+   recomeçar noutra e a lista mudaria debaixo do cursor de quem ia clicar na segunda. **E o lance
+   corrente não se move**, que é o outro lado da mesma decisão: quem clica na primeira quase sempre
+   quer clicar na segunda em seguida, e as duas ficam na árvore sob a mesma posição.
+4. **A numeração começa no lance corrente.** `12. Ba4 Nf6 13. O-O`, com a reticência quando as
+   pretas jogam (`12... Nf6 13. Nc3`). A mesma função serve à variante que entra na árvore e à que
+   só se lê, e é por isso que ela é uma só.
+
+**O desenho, `qt/motor.py` (novo).** `BarraDeAvaliacao` é um widget de 18 px de largura, à
+**esquerda** do tabuleiro, dentro da mesma fileira. Ele ocupa a fileira inteira e pinta a barra
+exatamente sobre o quadrado do tabuleiro, perguntando `tabuleiro.geometria()` **no `paintEvent`**:
+a primeira redação usava `setFixedHeight` no `resizeEvent` e a barra saiu com 240 px (o piso do
+tabuleiro) ao lado de um tabuleiro de 425 -- a geometria de antes. `LinhasDoMotor` é um
+`QTextBrowser` com uma âncora por linha, no mesmo mecanismo da lista de lances, e a quebra é
+`WordWrap` com o número colado ao lance por `&nbsp;` (a regra da S-515 aplicada aqui: no modo de
+fábrica ele partia `Qxg4` ao meio numa coluna de 203 px).
+
+**Dois ajustes que a fotografia pediu.** A seção do motor passou a pesar `2` no divisor vertical
+(era `1`): com três linhas e o rodapé de desempenho ela ficava com duas linhas e barra de rolagem
+enquanto a lista de lances tinha metade da altura vazia. E `Evaluation` ganhou `nodes` e `nps`,
+lidos do `info` do UCI.
+
+**Sem motor, nada disso existe** -- nem a barra, nem a seção, nem o grupo Motor da fila. É o
+contrato da S-33, e a barra entrou nele: 18 px tomados do tabuleiro para mostrar o que nunca terá
+número seriam 18 px de promessa.
+
+### Critério de aceite
+
+Medido em 2026-09-04 com o Stockfish desta máquina (`scid_windows_x64/engines/stockfish.exe`,
+dev-20230303), roteiro `scratchpad/roteiro_motor.py`, na defesa de Legall após `5. Nxe5`.
+
+- **A barra fica ao lado do tabuleiro e com a altura dele.** ✅ A 1400×950: barra de 18×475 px em
+  `x=8`, tabuleiro em `x=36`, os dois quadrados coincidindo; a 1920×1080, 18×475 ao lado de um
+  tabuleiro de 509. O custo em largura é **28 px** (18 da barra, 6 de vão, 4 de arredondamento):
+  o tabuleiro vai de 488 px sem motor para 460 com barra, na mesma janela.
+- **+2,00 e −2,00 desenham diferente**, e o meio da barra troca de cor. ✅ Medido em pixel:
+  ≥ 1.000 pixels diferentes numa barra de 18×200, e `cor_em(3, 100)` responde `GLIFO_CLARO` num
+  caso e `GLIFO_ESCURO` no outro.
+- **Mate pinta em cor própria**, e só a faixa de quem mateia. ✅ `+20,00` e `M3` enchem a barra
+  igual e diferem na cor (`GLIFO_CLARO` contra `ATENCAO`).
+- **N linhas clicáveis, e o clique põe a variante na árvore.** ✅ Com `MultiPV 3`, as três linhas
+  saem numeradas (`+1,63  5... dxe5 6. Qxg4 Nc6 7. d3 Nf6 8. Qf3`), e emitir o sinal da segunda põe
+  `Be6` na árvore com `stockfish.exe: +1,78` no comentário de entrada. O lance corrente não muda.
+- **Profundidade e nós por segundo visíveis.** ✅ `profundidade 19 · 2,5 MN/s · 3,0 M nós` no rodapé
+  da seção. Com `Threads` de 1 para 2 no processo aberto, os nós por segundo vão de **1,34 MN/s**
+  para **2,33 MN/s** -- é o número que prova que a opção pegou.
+- **Sem motor, tudo some.** ✅ `vantagem is None`, o divisor vertical tem duas partes em vez de
+  três, e a fila não tem `analise_continua`. O tabuleiro volta aos 488 px.
+- **O que ficou de fora, e é a linha para o relatório**: a barra **não** aparece quando a sala
+  ganha um motor pelas preferências no meio da sessão (S-536). A seção e a fila aparecem; a barra
+  mora dentro do arranjo da coluna do tabuleiro, e recriá-lo mexeria na repartição que a S-551
+  calcula. Ela chega na abertura seguinte.
+
+### Testes
+
+- `tests/test_ui_motor_declarado.py` (novo, puro): a curva é a de `engine` e não uma segunda; a
+  barra reparte ao meio no equilíbrio e é simétrica; a escala não é linear, medida; o mate enche e
+  pinta só a faixa de quem mateia; as cores são a tinta das peças; a variante sai numerada com e
+  sem reticência; a linha sem lance nenhum não vira linha; a frase de desempenho traz os três
+  números e omite o que o motor não relatou; `numero_curto` em vírgula decimal.
+- `tests/test_qt_motor.py::BarraDeAvaliacaoTests` (novo): os cinco casos em pixel, com
+  `renderizar`/`pixels_diferentes`/`cor_em` de `tests/qt_app.py`.
+- `tests/test_qt_motor.py::PainelComMotorTests` (novo): a barra fica à esquerda e na altura do
+  tabuleiro; a análise enche barra, linhas e desempenho; **o sinal da linha clicada chega à
+  árvore**; a procedência entra no PGN; o lance corrente não se move; pedir uma linha que o motor
+  não deu vira frase de rodapé.
+- `tests/test_engine.py::test_o_mate_ja_dado_aponta_para_quem_o_deu` (novo): ver a S-537 -- o
+  defeito era da barra também.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-530 · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável — ✅ **implementada em 2026-09-04**
 
@@ -1128,17 +1250,365 @@ na prática: a família da abertura está certa em 19 de cada 20 partidas.
 
 _Seção a escrever pelo executor do item._
 
-## S-536 · Opções do motor (Hash, Threads, MultiPV, caminho) nas preferências, sem reiniciar — ◻ em andamento
+## S-536 · Opções do motor (Hash, Threads, MultiPV, caminho) nas preferências, sem reiniciar — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-537 · Análise de partida: cada lance avaliado, gráfico de avaliação e erros marcados — ◻ em andamento
+As opções existiam no arquivo e não existiam na janela. `settings.py:175` (`EngineSettings`) tinha
+`path`, `movetime_ms:182` e `threads:183` -- e mais nada: nem `Hash`, nem `MultiPV`, nem pasta de
+tablebases. `qt/preferencias.py:47` (`motor_das_preferencias`) as lia e montava o `EngineAnalyzer`
+(`:68`), e `engine.py:190` mandava ao processo **uma** opção: `configure({"Threads": ...})`.
 
-_Seção a escrever pelo executor do item._
+E não havia diálogo nenhum. Uma varredura por `preferenc|settings` em `src/chess_diagram_ocr/qt/`
+devolvia oito ocorrências, todas de leitura: o único caminho para mudar qualquer preferência do
+programa era editar `data/settings.json` à mão e **reabrir a janela**. Numa máquina em que a procura
+automática não acha o binário -- que era o caso desta, com o Stockfish dentro da instalação do SCID
+--, isso quer dizer que a seção do motor nunca aparece e não há como fazê-la aparecer de dentro do
+programa.
 
-## S-538 · Tablebases Syzygy quando a pasta existir: resultado exato nos finais — ◻ em andamento
+Um segundo defeito estava no mesmo lugar: `configure` manda o dicionário inteiro e **levanta no
+primeiro nome que o motor não conhece**, sem enviar os seguintes. Com duas opções, um motor sem
+`Hash` perderia o `Threads` junto.
 
-_Seção a escrever pelo executor do item._
+### Solução
+
+**A decisão pura, `ui/motor_declarado.py`.** A tabela `OPCOES` -- quatro campos, com o nome UCI, o
+rótulo em pt-BR, o piso e a dica --, os tetos desta máquina (`teto_de`), a validação em pt-BR
+(`validar`, `validar_caminho`, `validar_pasta_de_tablebase`) e **o plano de aplicação**
+(`plano_de_aplicacao`). As chaves da tabela *são* os nomes dos campos de `EngineSettings`, e é o que
+permite ler e escrever por `getattr`/`replace` em vez de manter uma segunda tabela campo→widget.
+
+**Os tetos não são de gosto, e entram por argumento.** `Hash` é **metade da memória da máquina,
+arredondada para baixo à potência de dois** -- metade porque o resto da máquina existe, e potência
+de dois porque é como o Stockfish reparte a tabela (pedir 3000 MB gasta 2048 e joga fora 952);
+`Threads` é o **número de núcleos**, e não `núcleos-1`, porque quem analisa uma partida inteira quer
+a máquina toda e a janela continua respondendo. `MultiPV` para em 10 e o tempo por posição em 60 s,
+que são limites de leitura e não de recurso. Quem lê os números da máquina é `qt/preferencias.py`
+(`nucleos_da_maquina`, `memoria_da_maquina_mb`), e memória desconhecida devolve zero -- o teto cai
+no piso em vez de o diálogo não abrir.
+
+**O plano é a parte que faz "sem reiniciar" ser verdade.** Duas das quatro opções são do processo
+(`Hash`, `Threads`, e a `SyzygyPath` da S-538) e vão por `setoption` ao motor **aberto**; as outras
+duas (`MultiPV`, tempo) entram em cada chamada de análise, e mudá-las vale na resposta seguinte sem
+tocar em processo nenhum. **Só o caminho do binário derruba e sobe outro**: o processo aberto *é* o
+motor antigo, e a única forma de falar com outro é abrir outro. E dois jeitos de escrever o mesmo
+caminho não são uma troca -- aspas em volta, espaço nas pontas e barra invertida são o que volta de
+todo "Copiar como caminho" do Windows, e sem normalizá-los abrir o diálogo e confirmar sem mexer em
+nada derrubaria o motor.
+
+**O formulário e a aplicação, `qt/preferencias.py`.** `DialogoDoMotor` desenha os seis campos com a
+faixa desta máquina escrita no próprio `QSpinBox` (`256   (até 8192)`) e recusa **na própria
+janela**, com a frase ao lado dos campos -- uma segunda caixa custaria dois cliques para corrigir um
+caractere. `MotorVivo` aplica: o que não fala com o processo é atribuído na hora (dois inteiros
+Python), e o que fala vai para uma `Tarefa` de `qt/trabalho.py`, porque o `close()` de um motor que
+está pensando espera ele responder e o `lock` do analisador pode estar tomado por uma análise em
+curso.
+
+**O motor é o mesmo objeto antes e depois de trocar de binário** (`EngineAnalyzer.trocar_binario`),
+e isso não é economia: a janela guarda uma referência a ele e é ela quem o fecha no `closeEvent`.
+Um `EngineAnalyzer` novo a cada troca deixaria o processo da última troca vivo depois de a janela
+fechar. O único caso em que nasce objeto novo é o da máquina que abriu **sem** motor, e ali a sala
+passa a ser a dona dele -- `qt/janela.py` fecha `self.estudo.analisador`, que é o mesmo objeto
+enquanto ninguém troca nada (três linhas trocadas por três; a catraca de 1.905 não subiu).
+
+**O comando existe com e sem motor**, e é o único do grupo Motor que existe sem: `opcoes_do_motor`
+entra no catálogo, no menu Estudo e na fila da sala (dentro do "Mais"), com `so_com_motor=False`.
+Esconder justamente ele numa máquina sem motor seria escondê-lo de quem precisa dele.
+
+**E o padrão de `Hash` ficou onde a medição o deixou.** A tentação era subir para 128 MB, que não
+custam nada. Medido (Stockfish dev-20230303, 1 thread, `scratchpad/medir_hash2.py`): a Imortal a
+profundidade 20 custou **37,3 s** com 16 MB, **41,7 s** com 128 e **42,6 s** com 512; uma posição a
+profundidade 26 custou **9,4 s** com 16 MB e **13,0 s** com 512. Não há ganho, e a diferença que
+aparece é ruído com o sinal trocado -- uma busca de segundos numa thread não enche 16 MB. O padrão
+continua sendo o do Stockfish, e a opção existe para quem analisa por minutos com oito threads.
+
+### Critério de aceite
+
+Medido em 2026-09-04, Stockfish dev-20230303, máquina de 12 núcleos e 32.377 MB.
+
+- **Os quatro campos, com a faixa desta máquina.** ✅ `Tabela de transposição 256 (até 8192)`,
+  `Núcleos 2 (até 12)`, `Linhas do motor 3 (até 10)`, `Tempo por posição 800 (até 60000)`. O
+  diálogo mede 560×318 px e diz `Esta máquina: 12 núcleo(s), 32377 MB de memória`.
+- **Trocar `Hash` não derruba o processo.** ✅ `setoption` aceito sobre o motor aberto, com o mesmo
+  objeto `SimpleEngine` antes e depois -- afirmado contra o motor falso e medido contra o
+  Stockfish (`Hash 512` e `Threads 2` aceitos; os nós por segundo foram de 1,34 M para 2,33 M na
+  análise seguinte, no mesmo processo).
+- **Trocar o caminho derruba e sobe outro.** ✅ Objeto `SimpleEngine` diferente depois, `path` novo,
+  e o motor novo respondendo. Medido: **140 ms** para derrubar e subir (a faixa de 100 a 300 ms que
+  a S-33 registra).
+- **A janela não congela.** ✅ `aplicar` devolve com o `MotorVivo` ainda **ocupado**: a troca roda
+  numa `Tarefa`, e é isso que o teste afirma -- não um cronômetro, que mediria a máquina.
+- **`MultiPV` vale na análise seguinte sem tocar o processo.** ✅ De 3 para 1: mesmo objeto, e a
+  análise seguinte devolve uma linha.
+- **Caminho que não aponta para motor nenhum apaga a seção**, em vez de deixá-la cinza. ✅ É a S-33
+  aplicada à troca.
+- **Uma sala que abriu sem motor ganha a seção e a fila sem reiniciar.** ✅ A fila é remontada (uma
+  `QAction` não muda de barra depois de criada) e o divisor vertical passa de duas para três
+  partes. O que **não** aparece nesse caminho é a barra lateral da S-529 -- ver a linha do relatório
+  lá.
+- **O que muda fica gravado** para a próxima sessão, atomicamente. ✅
+- **Validação em pt-BR, na própria janela.** ✅ `Não há arquivo em Z:/nao/existe/stockfish.exe`;
+  `Tabela de transposição: o mínimo é 16 MB`; `Núcleos: o máximo nesta máquina é 8`; pasta no lugar
+  do binário e binário no lugar da pasta têm frases próprias; caminho entre aspas passa.
+- **Uma opção que o motor não conhece não derruba as outras.** ✅ `setoption` é mandado um a um, e
+  `reconfigurar` devolve quais pegaram.
+- **⚠ Consequência que este item não pode fechar sozinho, e é a linha para o coordenador.** Os três
+  campos novos mudam `settings.py`, e `settings.py` está no **fecho de importação da medição de
+  campo** (`field_eval.measured_modules`, que parte de `cli.field` e segue os imports). Com isso
+  `tests/test_field_eval.py::ImpressaoDaMedicaoTests::test_todo_relatorio_corrente_mediu_o_codigo_de_hoje`
+  fica vermelho nos quatro relatórios, com a divergência em **um** módulo: `settings`. Nenhum
+  arquivo do caminho de detecção foi tocado -- `preprocess`, `detection` e `detection.embedded`
+  batem exato --, e nenhuma preferência de motor entra numa medição de campo (o `--ocr` dela nasce
+  `off`). O conserto é remedir os quatro (`~1 min por modelo`), o que escreve em `docs/metrics/`;
+  este executor foi instruído a não tocar ali, então a guarda fica vermelha com o motivo escrito
+  em vez de com um número reescrito à mão.
+
+### Testes
+
+- `tests/test_ui_motor_declarado.py` (novo, puro): os tetos das quatro opções e o que acontece sem
+  memória conhecida; opção desconhecida levanta; as cinco frases de recusa; o caminho vazio e o
+  caminho entre aspas; e as seis linhas de `plano_de_aplicacao` -- nada mudou, `Hash`/`Threads` por
+  `setoption`, `MultiPV`/tempo por análise, `SyzygyPath` no processo, o binário derrubando, e o
+  mesmo caminho escrito diferente **não** derrubando.
+- `tests/test_qt_motor.py::OpcoesDoMotorTests` (novo): as sete afirmações do critério, contra o
+  motor falso -- que passou a **declarar** opções (`tests/fake_uci_engine.py`), porque `configure`
+  recusa o que o motor não anunciou e sem isso o teste mediria o caminho de degradação.
+- `tests/test_qt_motor.py::DialogoDoMotorTests` (novo): a faixa de cada campo, o que está gravado
+  aparecendo, a recusa na própria janela, e os números da máquina lidos de verdade.
+- `tests/test_settings.py` continua valendo sobre os três campos novos (a coerção por campo da
+  S-124 não mudou).
+- `tests/test_ui_barra_da_sala.py::test_do_grupo_motor_so_as_opcoes_existem_sem_motor` (reescrito):
+  era `test_o_motor_so_existe_com_motor`, e a regra ficou mais precisa em vez de mais frouxa --
+  sem motor o grupo tem **uma** ação, e o teste diz qual.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-537 · Análise de partida: cada lance avaliado, gráfico de avaliação e erros marcados — ✅ **implementada em 2026-09-04**
+
+### Problema
+
+A sala sabia avaliar **uma** posição desde a S-33 e gravar o número no lance desde a S-285
+(`qt/painel_de_estudo.py:923`, `_gravar_avaliacao`, que escreve `[%eval 0.35,18]` no nó corrente).
+O que não existia era a passada pela partida inteira: nem em `qt/`, nem em `ui/`, nem na linha de
+comando. `analyse` (`:878`) avalia o nó em que se está, e a análise contínua o segue enquanto se
+navega -- lance a lance, à mão, e sem nada que junte o resultado.
+
+A pergunta que faltava é a do dia seguinte ao torneio: **em que lance eu perdi?** Respondê-la com o
+que havia é apertar `→` quarenta vezes lendo um número no canto da tela. Não havia gráfico, não
+havia classificação de erro e não havia marca nenhuma na lista de lances -- os NAGs existiam
+(`estudo.NAGS_DE_LANCE`) e só quem os punha era a pessoa, pelo menu de símbolos da S-278.
+
+### Solução
+
+**A decisão pura, `ui/analise_da_partida.py`.** Quanto um lance custou, onde estão os cortes, e onde
+o gráfico põe cada ply.
+
+1. **Os cortes são 50, 100 e 300 centipeões de perda**, que é a tabela clássica do Lichess (`lila`,
+   `Advice.scala`) e a mesma que o Scid usa: `?!`, `?` e `??`. A perda é medida do ponto de vista de
+   **quem jogou** e nunca é negativa -- um lance que melhora a avaliação não é um lance "ganho", é o
+   motor tendo mudado de ideia com mais um ply, e registrar isso encheria a partida de `!` que
+   ninguém jogou.
+2. **Duas regras protegem a partida já decidida, e a segunda foi encontrada medindo.** A primeira é
+   o **teto** de ±10 peões antes de qualquer diferença, que é o que o próprio Lichess faz: de +18
+   para +12 as duas viram +10 e a perda é zero. A primeira redação parava aí, e a medição mostrou o
+   buraco: de +18 para +9 o teto clampa em 1000→900 e sai um "erro" numa posição em que qualquer
+   lance ganha. Daí `POSICAO_DECIDIDA` (cinco peões): um lance que **começa e termina** ganho por
+   cinco peões não recebe juízo. O Lichess resolve o mesmo caso pela escala de expectativa de
+   vitória; adotá-la aqui significaria uma segunda curva no programa, discordando da que a barra
+   lateral desenha, e a regra explícita diz a mesma coisa em voz alta. Cair de +6 para +2 continua
+   sendo erro grave, que é o outro lado dela.
+3. **O símbolo é NAG, e é isso que o torna útil.** `?!` = `$6`, `?` = `$2`, `??` = `$4` -- os
+   códigos do padrão PGN, os mesmos que o menu de símbolos já oferece. A lista de lances os desenha
+   pelo caminho que já existe, o `Ctrl+Z` os desfaz, e qualquer programa de xadrez lê `12. Bd3?? $4`.
+   Uma marca só de tela morreria ao fechar a sala.
+4. **O gráfico é a curva da barra girada 90°**, e o eixo do tempo é o **ply** e não o lance: um erro
+   das pretas no 24 e um das brancas no 25 são dois pontos vizinhos, e agrupá-los esconderia um dos
+   dois. Brancas para cima, e o clique leva ao lance (`indice_no_x`) -- o gráfico existe para achar
+   onde a partida virou, e um gráfico que não leva até lá deixa a busca para o dedo.
+
+**A fiação, `qt/analise_da_partida.py` (novo).** Uma `Tarefa` de `qt/trabalho.py` com progresso por
+sinal e `threading.Event` de cancelamento, na forma que `qt/indice_da_base.py` já usa -- as duas são
+a mesma operação longa com barra e Cancelar, e duas formas para isso seriam duas caixas que se
+comportam diferente na mesma janela. **A árvore não atravessa a fronteira de thread**: o worker
+recebe as FENs de `percurso` e devolve números; quem escreve nos nós é a sala, depois, na linha de
+eventos. Passar `GameNode` para a thread seria lê-los enquanto alguém promove uma variante.
+
+**`percurso` devolve `n+1` posições para `n` lances**, e a conta é o que define o trabalho: a
+avaliação "depois" de um lance é a "antes" do seguinte, então analisar par a par pediria `2n` buscas
+para responder o mesmo. Só a linha principal: as variantes são o que quem estuda escreveu **sobre**
+a partida.
+
+**O gráfico é `QPainter` e nada mais.** Sem biblioteca -- e não por peso: um gráfico com eixos,
+legenda e escala automática seria pior aqui, porque o eixo vertical não tem unidade que se escreva
+(é fração de vantagem) e o horizontal é o ply, que a lista ao lado nomeia. Duas faixas -- o que está
+**abaixo** da curva é das brancas, o que está acima é das pretas, nas mesmas cores da barra --, a
+linha do equilíbrio tracejada por cima, e um ponto sobre cada lance julgado. A primeira redação
+preenchia só a área entre a curva e o meio, com uma cor: na fotografia o gráfico saiu inteiro claro
+e não dava para ver de quem era a partida em ponto nenhum.
+
+**Um defeito de `engine.py` apareceu na fotografia e foi consertado aqui.** `score mate 0` -- o que
+o UCI responde na posição em que quem joga está mateado -- **não carrega sinal**: `Mate(0)` e
+`MateGiven` respondem `0` a `.mate()`. Sem normalizar, a posição final de toda partida ganha valia
+`-M0`, a barra ia para o lado do perdedor e a análise marcava o lance de mate como **erro grave de
+quem deu o mate** (`7. Nd5#?? — erro grave (perdeu 20,00)`, na fotografia). `_to_white_pov`
+normaliza para `±1`.
+
+### Critério de aceite
+
+Medido em 2026-09-04, Stockfish dev-20230303, 1 thread, `Hash` 128 MB.
+
+- **A partida inteira, com profundidade escolhida.** ✅ A Imortal (45 plies, 46 posições,
+  `scratchpad/medir_motor.py`): profundidade 12 em **1,6 s**, 16 em **8,5 s**, 20 em **42,1 s**. As
+  três acharam catorze lances com símbolo; profundidade 12 discorda da 16 em **4** juízos e a 20 em
+  **3**. Dezesseis é o padrão: cinco vezes o tempo de 12 para trocar quatro juízos, e mais cinco
+  vezes para trocar outros três.
+- **Progresso e cancelamento.** ✅ Um sinal por posição (`n+1`), com o SAN do lance na frase. O
+  Cancelar para em **menos de 1,5 s** (medido: `esperar(1500)` devolve verdadeiro e a `QThread`
+  termina), e **não deixa thread viva**. O que já foi avaliado fica: cancelar no meio de 40 lances
+  devolve os avaliados até ali. A granularidade é uma posição, limitada por `TETO_POR_LANCE_MS`
+  (3 s) além da profundidade.
+- **Gráfico com `QPainter`, sem biblioteca.** ✅ 732×140 px no relatório, um ponto por ply, e o
+  clique devolve o índice do ply sob o pixel. Nenhuma dependência nova.
+- **Os cortes do Lichess, registrados.** ✅ 50 / 100 / 300 centipeões, com o teto de ±10 peões e a
+  regra da posição decidida (5 peões dos dois lados).
+- **`[%eval]` em cada lance e o símbolo nos erros.** ✅ Na defesa de Legall (13 plies): `13 lance(s)
+  avaliados, 4 com símbolo`, e a lista de lances mostra `d6 ?!  Bg4 ?!  g6 ?  Bxd1 ??`. O resumo diz
+  `Brancas: sem erro | Pretas: 2 imprecisões, 1 erro, 1 erro grave`.
+- **O relatório leva ao lance.** ✅ Clicar no gráfico ou na lista de erros move o tabuleiro para
+  aquele ply.
+- **A escrita da máquina não entra na pilha de desfazer** e não adia a gravação por inatividade --
+  é a regra da S-285/S-345, e a análise da partida passa por ela uma vez, no fim, e não por lance.
+- **O plural concorda.** ✅ `2 imprecisões`, e não `2 imprecisão`, que foi o que saiu na primeira
+  fotografia.
+- **O que ficou de fora, e é a linha para o relatório**: a análise não guarda o resultado entre
+  sessões (o `[%eval]` vai para o PGN, o juízo vira NAG, mas o gráfico é recalculado a cada rodada);
+  e o Cancelar tem a granularidade de uma posição, porque interromper um `go` no meio exigiria o
+  protocolo assíncrono do UCI -- uma segunda forma de falar com o motor por causa de um botão.
+
+### Testes
+
+- `tests/test_ui_analise_da_partida.py` (novo, puro): os três cortes nos seis limites; a maioria dos
+  lances sem símbolo; os NAGs do padrão; a perda das brancas e a das pretas; o lance que melhora não
+  vira ganho; o teto apagando a diferença quando os dois lados estouram; **a posição decidida sem
+  juízo, e o cair de ganho para melhor com juízo**; mate em 3 e mate em 30 valendo o mesmo; o
+  percurso `n+1` só da linha principal; as bordas e o sentido do gráfico; a escala não linear medida
+  em pixel; o clique fora da faixa caindo na ponta; o resumo por cor, o plural e as duas frases
+  finais.
+- `tests/test_qt_motor.py::AnaliseDaPartidaTests` (novo): **o cancelamento em menos de 1,5 s sem
+  thread viva** e o que já foi avaliado ficando (com um analisador lento injetado, para o teste
+  medir o cancelamento e não a máquina); um sinal de progresso por posição; partida sem lance não
+  começa rodada; o gráfico desenha e o clique devolve o ply.
+- `tests/test_qt_motor.py::PartidaAnalisadaNaSalaTests` (novo): a gravação de `[%eval]` e do símbolo
+  na árvore, com o `??` aparecendo na lista de lances; o relatório levando ao ply; e as duas
+  recusas (sem lance, sem motor).
+- `tests/test_engine.py::test_o_mate_ja_dado_aponta_para_quem_o_deu` (novo): o `mate 0` sem sinal.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-538 · Tablebases Syzygy quando a pasta existir: resultado exato nos finais — ⚠ **implementada em 2026-09-04, sem tabela real para medir**
+
+### Problema
+
+Um motor num final de cinco peças ainda está chutando. `engine.py` -- o módulo inteiro, antes deste
+item -- só sabia perguntar ao processo UCI, e `Evaluation.display` (`engine.py:112`) devolvia
+`+3,45` numa posição que ou é ganha ou é tábua: não existe `+3,45` ali. Num final de torre contra
+bispo o motor chega a dizer `+0,90` sobre uma tábua teórica, e quem estuda finais aprende o número
+errado.
+
+Nada no projeto mencionava tablebases: nem `settings.py` (`EngineSettings:175` tinha três campos),
+nem `engine.py`, nem a sala. E o `python-chess`, que é dependência obrigatória desde sempre, traz
+`chess.syzygy` embutido -- a peça que faltava era a **decisão** de quando perguntar e o que dizer.
+
+### Solução
+
+**A pasta é opcional e sem padrão, e é a mesma regra da S-32.** Os arquivos de cinco peças somam
+~1 GB e os de seis, ~150 GB: nada disso vem no repositório, nada disso tem caminho presumido, e
+sem pasta configurada **nada muda** -- o painel continua mostrando o que o motor disse.
+`EngineSettings.syzygy_path` entra pelo mesmo diálogo da S-536.
+
+**A decisão pura, `ui/finais.py`.** Quando vale perguntar (`deve_consultar`: só com pasta, e só até
+sete peças -- acima disso não existe arquivo que possa estar lá, e perguntar seria pagar a ida ao
+disco em toda posição de meio-jogo), quando a tabela vence o motor (`vence_o_motor`: quando ela
+**responde**; `None` é o caso comum de quem tem só os cinco peças), como a resposta se lê
+(`frase_do_resultado`) e o que ela faz com a barra (`centipeoes_de`).
+
+**O que Syzygy sabe e o que ele não sabe, e é a decisão que mais custou.** WDL dá o resultado com
+jogo perfeito; DTZ dá a distância até a próxima captura ou lance de peão. **Nenhum dos dois é
+distância até o mate.** "Mate em N" é o que o *motor* diz quando ele mesmo carrega as tabelas -- e é
+por isso que `SyzygyPath` também vai para o processo, por `setoption`, pelo caminho da S-536: as
+duas metades da resposta chegam, cada uma de quem a tem. O que este módulo escreve é o resultado
+exato e a distância que o arquivo **contém**: `Tábuas (tabela de finais).` ou `Tabela de finais:
+vitória das brancas, zeragem em 14.` Chamar a zeragem de "mate em N" poria na tela um número que a
+tabela não guarda.
+
+**O sujeito da frase é quem está no lance**, porque é assim que o WDL de Syzygy é definido: `-2` com
+as pretas na vez é *derrota das pretas*, e não *vitória das brancas*. Inverter o sinal antes de
+escrever seria uma conta a mais no caminho entre o arquivo e a tela, num lugar em que errá-la dá uma
+frase que afirma o contrário do arquivo. **E o `±1` tem nome próprio**: é a vitória que a regra dos
+50 lances anula -- chamá-la de vitória mentiria sobre o resultado da partida, e chamá-la de tábuas
+esconderia que o final é ganho. Ela sai como "vitória teórica", e vale **zero** na barra, porque no
+placar da partida ela é tábua.
+
+**O leitor, `src/chess_diagram_ocr/tablebase.py` (novo).** Irmão de `engine.py`, com a mesma forma:
+`abrir(pasta)` devolve `None` sem pasta, o diretório é varrido **na primeira consulta** (do mesmo
+modo que o processo do motor só sobe na primeira análise) e fica aberto, e **toda falha vira "não
+sei"**. Direito de roque é `None` e não erro -- Syzygy não representa roque, e `probe_wdl` levanta
+`ValueError` ali.
+
+**Na sala**, a consulta acontece na mesma thread do motor, **antes** dele: ela responde em
+microssegundos, e perguntar depois faria a tela mostrar a estimativa e trocá-la um instante depois.
+A frase substitui a avaliação e a barra vai para onde o resultado manda (`1-0`, `0-1`, `=` -- os
+tokens do PGN, que não têm idioma); **as linhas candidatas continuam sendo as do motor**, porque a
+tabela diz o resultado e não a variante.
+
+### Critério de aceite
+
+- **Sem pasta configurada, nada muda.** ✅ `abrir("")` devolve `None`, `deve_consultar` responde
+  falso, e a sala mostra o que o motor disse -- afirmado com o Stockfish de verdade num final de
+  três peças.
+- **Pasta configurada e vazia responde "não sei".** ✅ Contra o `chess.syzygy` **de verdade**
+  apontado para um diretório sem arquivo: `get_wdl` devolve `None` em vez de levantar, e o painel
+  volta à estimativa. É a máquina de quem configurou a pasta e não baixou as tabelas.
+- **Com resposta, o resultado exato chega à tela.** ✅ `Tabela de finais: derrota das pretas,
+  zeragem em 12.` no lugar de `+0,35`, e `Tábuas (tabela de finais).` pondo a barra no meio
+  (`fracao == 0.5`).
+- **Até sete peças pergunta; acima não.** ✅ E a contagem inclui os dois reis, como Syzygy nomeia os
+  arquivos.
+- **`SyzygyPath` chega ao motor por `setoption`**, sem derrubar o processo. ✅ É a S-536: o plano de
+  aplicação o trata como opção de processo, e o Stockfish desta máquina a declara
+  (`option name SyzygyPath type string`).
+- **⚠ O que não foi medido, e é a razão do estado.** **Nenhuma consulta a uma tabela Syzygy real.**
+  Não há um `.rtbw` nesta máquina (procurado em `C:/Program Files`, `C:/Program Files (x86)` e
+  `C:/Python-Chess2`), o `python-chess` não embarca tabela nenhuma no wheel (conferido no pacote
+  instalado) e o menor conjunto útil passa de 1 GB -- baixá-lo não é decisão de um executor. O que
+  está afirmado é a decisão inteira, a degradação contra o `chess.syzygy` real e o caminho da
+  resposta até a tela com uma tabela **injetada** (`Finais(pasta, tabela=...)`, e a injeção existe
+  exatamente para que esta seja a única dívida). Quem tiver os arquivos fecha o item apontando a
+  pasta no diálogo da S-536 e conferindo um final conhecido.
+
+### Testes
+
+- `tests/test_tablebase.py` (novo): a decisão pura -- sem pasta nunca se pergunta, o teto de sete
+  peças, a contagem com os reis, a tabela vencendo o motor só quando responde; as frases -- tábuas,
+  o sujeito sendo quem joga nos três casos, a zeragem **não** sendo mate, a vitória teórica, e a
+  barra indo para o resultado (com o `±1` valendo zero); e o leitor -- pasta vazia de caminho, pasta
+  que não existe, **pasta vazia contra o `chess.syzygy` real**, a resposta inteira com tabela
+  injetada, quem só baixou as WDL, o roque virando "não sei" sem nem perguntar, a falha da tabela
+  virando "não sei", e o `close`.
+- `tests/test_qt_motor.py::TablebaseNaSalaTests` (novo): a tabela vencendo a estimativa do motor na
+  sala, as tábuas pondo a barra no meio, sem pasta nada mudando, e as linhas do motor continuando
+  a ser as do motor.
+- `tests/test_ui_motor_declarado.py::test_a_pasta_de_tablebases_e_opcao_do_processo` e
+  `test_pasta_no_lugar_do_binario_e_binario_no_lugar_da_pasta`: a pasta entrando por `setoption` e
+  a validação dela.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-539 · Táticas do próprio acervo: FEN reconhecida + solução impressa vira exercício — ◻ em andamento
 

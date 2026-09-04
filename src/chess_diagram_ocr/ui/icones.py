@@ -369,6 +369,24 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
         Poli((56, 62), (90, 62)),
         Poli((80, 52), (90, 62), (80, 72)),
     ),
+    # Os dois eixos e a curva que sobe e cai: o gráfico de avaliação da partida inteira (S-537).
+    # A curva **cruza** o meio da caixa de propósito -- é o que a análise de uma partida mostra, e
+    # uma curva só ascendente seria o ícone de "crescimento" de qualquer painel de negócio.
+    "grafico": (
+        Poli((12, 10), (12, 88), (92, 88)),
+        Poli((22, 62), (40, 34), (58, 68), (86, 24)),
+    ),
+    # Três cursores de régua: as opções do motor (S-536). Não é a engrenagem porque a engrenagem a
+    # 16 px vira um borrão redondo -- é o que a S-527 mediu no "mais" com anéis de raio 5 --, e
+    # porque o que este comando abre **são** quatro números com faixa mínima e máxima.
+    "ajustes": (
+        Poli((10, 24), (90, 24)),
+        Poli((10, 50), (90, 50)),
+        Poli((10, 76), (90, 76)),
+        Poli((28, 16), (36, 16), (36, 32), (28, 32), fechado=True),
+        Poli((62, 42), (70, 42), (70, 58), (62, 58), fechado=True),
+        Poli((40, 68), (48, 68), (48, 84), (40, 84), fechado=True),
+    ),
     # --------------------------------------------------------------------------- EXPORTAR
     # Linhas de texto e a seta saindo para a direita: a linha do estudo vai para a aba Texto.
     "para_o_texto": (

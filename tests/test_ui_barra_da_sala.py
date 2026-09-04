@@ -106,12 +106,28 @@ class CoberturaTests(unittest.TestCase):
         self.assertEqual("indexar_base", registro.metodo)
         self.assertIsNotNone(icones.tracos_de(registro.icone))
 
-    def test_o_motor_so_existe_com_motor(self) -> None:
-        sem = {r.grupo for r in barra_da_sala.acoes_para(com_motor=False)}
-        com = {r.grupo for r in barra_da_sala.acoes_para(com_motor=True)}
-        self.assertNotIn(barra_da_sala.MOTOR, sem)
-        self.assertIn(barra_da_sala.MOTOR, com)
-        self.assertEqual(set(barra_da_sala.GRUPOS), com)
+    def test_do_grupo_motor_so_as_opcoes_existem_sem_motor(self) -> None:
+        """**Uma ação do grupo Motor existe sem motor, e é a que diz onde o motor está** (S-536).
+
+        Até a S-536 o grupo inteiro sumia junto com a seção (S-33), e a regra era boa enquanto não
+        havia como configurar nada: quatro botões para um motor que não existe são quatro
+        promessas. `opcoes_do_motor` inverte o argumento -- ela é o **único** caminho para informar
+        o caminho do binário numa máquina em que a procura automática não achou nada, e escondê-la
+        justamente ali deixaria a preferência inalcançável para quem mais precisa dela.
+
+        O resto do grupo continua valendo a regra antiga, e é o que esta guarda mede nos dois
+        sentidos: sem motor, uma ação; com motor, as quatro.
+        """
+        sem = [r.acao for r in barra_da_sala.acoes_para(com_motor=False) if r.grupo == barra_da_sala.MOTOR]
+        com = [r.acao for r in barra_da_sala.acoes_para(com_motor=True) if r.grupo == barra_da_sala.MOTOR]
+        self.assertEqual(["opcoes_do_motor"], sem)
+        self.assertEqual(
+            ["analise_continua", "analisar_posicao", "variante_do_motor", "analisar_partida", "opcoes_do_motor"],
+            com,
+        )
+        self.assertEqual(
+            set(barra_da_sala.GRUPOS), {r.grupo for r in barra_da_sala.acoes_para(com_motor=True)}
+        )
 
     def test_acao_desconhecida_levanta(self) -> None:
         with self.assertRaises(KeyError):

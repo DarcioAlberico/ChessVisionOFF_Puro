@@ -698,6 +698,26 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Linha do motor",
     ),
+    # A partida inteira pelo motor (S-537): cada lance avaliado, o gráfico e os erros marcados.
+    # Mora no grupo Motor da barra da sala, dentro do "Mais" -- analisa-se uma partida por sessão,
+    # e a operação leva minutos.
+    Comando(
+        "analisar_partida",
+        "Analisar a partida inteira com o motor…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Analisar partida",
+    ),
+    # As opções do motor (S-536). **É o único comando do grupo Motor que existe sem motor**, e
+    # tem de ser: é por ele que se informa onde o binário está numa máquina em que a procura
+    # automática não achou nada.
+    Comando(
+        "opcoes_do_motor",
+        "Opções do motor de análise…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Opções do motor",
+    ),
     Comando(
         "partidas_da_posicao",
         "Partidas que chegaram a esta posição",

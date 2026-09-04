@@ -417,6 +417,11 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 # mesmas que a aba já mostrava antes de haver catálogo.
                 "analisar_posicao",
                 "analise_continua",
+                # Os dois da Fase 82: o menu diz "Analisar a partida inteira com o motor…" e
+                # "Opções do motor de análise…" porque é onde cabe dizê-lo, e a barra da sala tem
+                # de caber num botão de 16 px com o rótulo na dica (S-536/S-537).
+                "analisar_partida",
+                "opcoes_do_motor",
                 "apagar_continuacao",
                 "apagar_variante",
                 "copiar_fen",

@@ -1867,9 +1867,9 @@ class JanelaPrincipal(QMainWindow):
         # E o arranjo depois dela, **antes da espera pela tarefa**: uma thread presa não pode
         # custar o último livro, a página e o divisor de quem já mandou fechar (S-156).
         self._gravar_estado()
-        if self._motor is not None:
-            # O motor é um processo, não um widget: fechar a janela não o encerra (S-523).
-            self._motor.close()
+        # O motor é um processo (S-523) e a sala pode tê-lo trocado nas preferências (S-536).
+        if self.estudo.analisador is not None:
+            self.estudo.analisador.close()
         self._detector.parar(ESPERA_AO_FECHAR_MS)
         if self._tarefa is not None and not self._tarefa.wait(ESPERA_AO_FECHAR_MS):
             logger.warning("A janela fechou com uma tarefa ainda em andamento.")

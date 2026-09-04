@@ -182,6 +182,28 @@ class AnalyzerTests(unittest.TestCase):
 
         self.assertEqual(avaliacao.best_move_san, "")
 
+    def test_o_mate_ja_dado_aponta_para_quem_o_deu(self) -> None:
+        """**`mate 0` não carrega sinal, e isso valia o vencedor errado** (S-537).
+
+        O UCI responde `score mate 0` na posição em que quem está no lance está mateado, e tanto
+        `Mate(0)` quanto `MateGiven` respondem `0` a `.mate()`. Sem normalizar, a posição final de
+        toda partida ganha valia `-M0`: a barra ia para o lado do perdedor, e a análise da partida
+        inteira marcava o lance de mate como **erro grave** de quem deu o mate -- foi assim que
+        `7. Nd5#` apareceu com `??` na fotografia da defesa de Legall.
+        """
+        brancas_mateiam = chess.Board("7k/5KQ1/8/8/8/8/8/8 b - - 0 1")
+        pretas_mateiam = chess.Board("8/8/8/8/8/5k2/6q1/7K w - - 0 1")
+        self.assertTrue(brancas_mateiam.is_checkmate() and pretas_mateiam.is_checkmate())
+
+        with EngineAnalyzer(self.launcher, movetime_ms=100) as motor:
+            de_brancas = motor.analyse(brancas_mateiam)
+            de_pretas = motor.analyse(pretas_mateiam)
+
+        self.assertGreater(de_brancas.mate_in or 0, 0, "o mate das brancas não pode valer negativo")
+        self.assertLess(de_pretas.mate_in or 0, 0)
+        self.assertEqual(1.0, de_brancas.advantage_fraction())
+        self.assertEqual(0.0, de_pretas.advantage_fraction())
+
     def test_the_process_is_reused_between_analyses(self) -> None:
         """Reabrir o motor a cada posição custaria ~100–300 ms só de inicialização."""
         with EngineAnalyzer(self.launcher, movetime_ms=100) as motor:

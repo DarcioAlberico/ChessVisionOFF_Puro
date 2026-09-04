@@ -1048,6 +1048,7 @@ src/chess_diagram_ocr/
   semantics.py          lado a jogar e direitos de roque
   side_survey.py        o levantamento do lado a jogar declarado nas legendas do acervo
   splits.py             divisao treino/validacao/teste estavel
+  tablebase.py          tablebases Syzygy opcionais: resultado exato nos finais (S-538)
   text_status.py        o que do plano de texto ja existe no disco, medido por sonda
   training.py           loop de treino (Trainer, TrainingPlan, BestEpochPolicy)
   tsoj_reader.py        o leitor do formato TSOJ, de onde veio o classificador de caractere

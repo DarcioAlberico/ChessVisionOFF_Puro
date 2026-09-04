@@ -41,6 +41,7 @@ import html
 import logging
 import threading
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -63,7 +64,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMenu,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QSplitter,
     QTextBrowser,
@@ -73,7 +73,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from chess_diagram_ocr import eco, estudo_arquivo
+from chess_diagram_ocr import eco, estudo_arquivo, tablebase
 from chess_diagram_ocr import estudo as estudo_mod
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
@@ -85,7 +85,10 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.barra_da_sala import BarraDaSala
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.motor import BarraDeAvaliacao, LinhasDoMotor
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
+from chess_diagram_ocr.settings import DEFAULT_SETTINGS_PATH, EngineSettings, load_settings, save_settings
+from chess_diagram_ocr.ui import analise_da_partida as analise_declarada
 from chess_diagram_ocr.ui import (
     atalhos,
     barra_da_sala,
@@ -96,9 +99,11 @@ from chess_diagram_ocr.ui import (
     estudo_dobra,
     estudo_lista,
     geometria,
+    motor_declarado,
     tipografia,
     tokens,
 )
+from chess_diagram_ocr.ui import finais as finais_declarados
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.sala_declarada import (
@@ -156,6 +161,7 @@ class PainelDeEstudo(QWidget):
         bases_de_partidas: Callable[[], Sequence[Path]] = tuple,
         para_o_texto: Callable[[str], bool] = lambda _linha: False,
         busy: BusyRegistry | None = None,
+        caminho_das_preferencias: Path = DEFAULT_SETTINGS_PATH,
     ) -> None:
         super().__init__(parent)
         self._posicao = posicao
@@ -189,6 +195,20 @@ class PainelDeEstudo(QWidget):
         """Cresce a cada mudança de nó. A resposta do motor que chegar com geração velha é
         descartada -- ver `analyse` (S-285)."""
         self._candidatos: list[Evaluation] = []
+        self._caminho_das_preferencias = Path(caminho_das_preferencias)
+        """De onde saem e para onde voltam as opções do motor (S-536). Argumento porque o teste
+        não pode escrever no `data/settings.json` do repositório."""
+        self._motor_vivo: Any = None
+        """O `MotorVivo` que aplica a troca fora da linha de eventos. Nasce no primeiro uso: sem
+        ele, toda sala de teste carregaria uma `QThread` que nunca roda."""
+        self._analise_da_partida: Any = None
+        """A rodada de análise da partida inteira (S-537), guardada porque um `QObject` sem
+        referência é recolhido com a thread dentro -- a mesma razão de `_indexador`."""
+        self._finais: Any = None
+        """O leitor de tablebases (S-538), aberto na primeira consulta. `None` é "sem pasta"."""
+        self._resultado_de_tabela: Any = None
+        """O que a tabela disse da posição analisada, ou `None`. Escrito na thread do motor e lido
+        na da interface, na mesma volta em que a avaliação chega -- os dois viajam juntos."""
         self._loja: Any = None
         self._recorte_de = ""
         self._sujo = False
@@ -233,20 +253,9 @@ class PainelDeEstudo(QWidget):
         # **Uma fila, agrupada por tarefa** (S-527). Eram três `BarraFluida` que quebravam em quatro
         # fileiras a 715 px -- 130 px antes do tabuleiro. Quem decide grupo, principal, ícone, dica e
         # quem cabe é `ui/barra_da_sala.py`; o widget mede e executa.
-        self.barra = BarraDaSala(self, com_motor=self._analyzer is not None, executar=self.executar)
+        self._fora = fora
+        self.barra = self._montar_barra()
         fora.addWidget(self.barra)
-        # Os nomes que o resto do painel sempre usou apontam para as `QAction`s: `setChecked`,
-        # `setText`, `setEnabled` e `isChecked` são os mesmos, e é isso que deixa cada método como
-        # estava. `seguir_ocr` nasce marcado **sem avisar**: o `toggled` já está ligado ao método,
-        # e o método sincroniza com um tabuleiro que ainda não existe.
-        self.seguir_ocr = self.barra.acoes[barra_da_sala.SEGUIR_OCR]
-        self.seguir_ocr.blockSignals(True)
-        self.seguir_ocr.setChecked(True)
-        self.seguir_ocr.blockSignals(False)
-        self.btn_dobra = self.barra.acoes["dobrar_variantes"]
-        self.btn_recorte = self.barra.acoes["mostrar_diagrama"]
-        self.btn_treino = self.barra.acoes["modo_treino"]
-        self.btn_continua: QAction | None = self.barra.acoes.get("analise_continua")
 
         # **Duas colunas** (S-276): tabuleiro à esquerda, lances à direita. É a repartição que todo
         # programa de xadrez usa, e pela mesma razão: lê-se a linha com o olho ao lado do
@@ -260,6 +269,32 @@ class PainelDeEstudo(QWidget):
         # repartição é quem arrastou, e a janela guarda a fração ao fechar.
         self.divisor.splitterMoved.connect(self._divisor_movido_a_mao)
         fora.addWidget(self.divisor, 1)
+
+    def _montar_barra(self) -> BarraDaSala:
+        """A fila da sala, com ou sem o grupo do motor, e os nomes que o painel usa apontados nela.
+
+        **É método porque a S-536 a remonta.** Uma máquina que abriu sem motor e ganha um pelas
+        preferências precisa dos três botões do grupo Motor -- e uma `QAction` não muda de barra
+        depois de criada, do mesmo modo que um widget do Tk não muda de pai. Remontar é a única
+        saída, e ela custa dez linhas porque toda a decisão de quem entra na fila é de
+        `ui/barra_da_sala.py`.
+
+        `seguir_ocr` nasce marcado **sem avisar**: o `toggled` já está ligado ao método, e o método
+        sincroniza com um tabuleiro que pode ainda não existir.
+        """
+        barra = BarraDaSala(self, com_motor=self._analyzer is not None, executar=self.executar)
+        # Os nomes que o resto do painel sempre usou apontam para as `QAction`s: `setChecked`,
+        # `setText`, `setEnabled` e `isChecked` são os mesmos, e é isso que deixa cada método como
+        # estava.
+        self.seguir_ocr = barra.acoes[barra_da_sala.SEGUIR_OCR]
+        self.seguir_ocr.blockSignals(True)
+        self.seguir_ocr.setChecked(True)
+        self.seguir_ocr.blockSignals(False)
+        self.btn_dobra = barra.acoes["dobrar_variantes"]
+        self.btn_recorte = barra.acoes["mostrar_diagrama"]
+        self.btn_treino = barra.acoes["modo_treino"]
+        self.btn_continua: QAction | None = barra.acoes.get("analise_continua")
+        return barra
 
     def _botao(self, barra: BarraFluida, acao: str) -> QPushButton:
         """Um botão do catálogo, ligado ao método que `COMANDOS_DA_ABA` nomeia.
@@ -373,7 +408,26 @@ class PainelDeEstudo(QWidget):
         politica = self.tabuleiro.sizePolicy()
         politica.setHeightForWidth(True)
         self.tabuleiro.setSizePolicy(politica)
-        pilha.addWidget(self.tabuleiro)
+
+        # **A barra de avaliação ao lado do tabuleiro** (S-529), à esquerda dele, como no Lichess.
+        # Ela só existe com motor, pela mesma regra da seção: 18 px tomados do tabuleiro para
+        # mostrar o que nunca terá número seriam 18 px de promessa. Quando ela existe, o tabuleiro
+        # divide a faixa com ela e continua crescendo pela altura (S-551) -- a conta de
+        # `LARGURA_MINIMA_DA_LEITURA` não muda, porque a barra sai da coluna esquerda.
+        self.vantagem = (
+            BarraDeAvaliacao(coluna, caixa=self._caixa_do_tabuleiro)
+            if self._analyzer is not None
+            else None
+        )
+        if self.vantagem is None:
+            pilha.addWidget(self.tabuleiro)
+        else:
+            faixa = QHBoxLayout()
+            faixa.setContentsMargins(0, 0, 0, 0)
+            faixa.setSpacing(espaco.folga())
+            faixa.addWidget(self.vantagem)
+            faixa.addWidget(self.tabuleiro, 1)
+            pilha.addLayout(faixa)
         pilha.addWidget(self._barra_de_navegacao())
 
         # A miniatura do diagrama (S-282). Ela nasce escondida: estudo sem âncora não mostra
@@ -503,6 +557,19 @@ class PainelDeEstudo(QWidget):
     def resizeEvent(self, a0: QResizeEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         super().resizeEvent(a0)
         self._acomodar_o_tabuleiro()
+        if self.vantagem is not None:
+            self.vantagem.update()
+
+    def _caixa_do_tabuleiro(self) -> tuple[int, int]:
+        """Onde o **tabuleiro desenhado** começa e quanto ele mede, para a barra o acompanhar.
+
+        Perguntado pela barra no `paintEvent` dela, e não guardado num `resizeEvent`: `geometria()`
+        é a mesma conta que o tabuleiro usa para se desenhar, e ler o resultado dela na hora é o
+        que garante que os dois quadrados coincidam sempre -- inclusive na primeira exibição, em
+        que a coluna ainda não tem largura (S-529).
+        """
+        geo = self.tabuleiro.geometria()
+        return int(geo.origin_y), int(geo.size)
 
     def _divisor_movido_a_mao(self, _posicao: int, _indice: int) -> None:
         self._divisor_escolhido = True
@@ -601,15 +668,26 @@ class PainelDeEstudo(QWidget):
             self._secao_do_motor(coluna)
         # A altura de fábrica reparte por uso, e não em partes iguais: a lista é a maior, o
         # comentário cabe um parágrafo, e o motor fica no que a seção dele pede.
-        for indice, peso in enumerate((3, 2, 1)[: coluna.count()]):
+        # **O motor pesa como o comentario desde a S-529**: com tres linhas de MultiPV e o rodape
+        # de desempenho, o `1` de antes dava uma caixa de duas linhas com barra de rolagem enquanto
+        # a lista de lances ficava com metade da altura vazia -- medido a 1400x950.
+        for indice, peso in enumerate((3, 2, 2)[: coluna.count()]):
             coluna.setStretchFactor(indice, peso)
         self.divisor_vertical = coluna
         return coluna
 
     def _secao_do_motor(self, pai: QWidget) -> QGroupBox:
-        """A seção do motor. Sem binário, ela simplesmente não existe (S-33)."""
+        """A seção do motor. Sem binário, ela simplesmente não existe (S-33).
+
+        **A S-529 trocou os dois widgets de dentro.** A avaliação era um `QProgressBar` horizontal
+        de 0 a 100 aqui embaixo -- ela subiu para a barra vertical ao lado do tabuleiro, que é onde
+        se lê --, e as linhas do MultiPV eram um `QLabel` de texto cinza, do qual não havia caminho
+        nenhum para pôr a segunda ou a terceira na árvore. Agora são `LinhasDoMotor`, e o clique
+        insere. O que ficou aqui é o botão, a frase de estado e o rodapé de desempenho.
+        """
         assert self._analyzer is not None
         caixa = QGroupBox(f"Motor ({self._analyzer.path.name})", pai)
+        self.caixa_do_motor = caixa
         pilha = QVBoxLayout(caixa)
         pilha.setContentsMargins(*(espaco.linha(),) * 4)
 
@@ -627,16 +705,21 @@ class PainelDeEstudo(QWidget):
         linha.addWidget(self.lbl_motor, 1)
         pilha.addLayout(linha)
 
-        self.vantagem = QProgressBar(caixa)
-        self.vantagem.setRange(0, 100)
-        self.vantagem.setValue(50)
-        self.vantagem.setTextVisible(False)
-        pilha.addWidget(self.vantagem)
+        self.lbl_linha_do_motor = LinhasDoMotor(caixa)
+        self.lbl_linha_do_motor.escolhida.connect(self.inserir_linha_do_motor)
+        pilha.addWidget(self.lbl_linha_do_motor, 1)
 
-        self.lbl_linha_do_motor = QLabel("", caixa)
-        self.lbl_linha_do_motor.setWordWrap(True)
-        tema.pintar(self.lbl_linha_do_motor, "color", tokens.TEXTO_SECUNDARIO)
-        pilha.addWidget(self.lbl_linha_do_motor)
+        # **Profundidade e nós por segundo**, na linha de baixo (S-529). Eles estavam no `summary`
+        # da frase de cima, misturados com a avaliação e o melhor lance; separados, o número que
+        # diz *o quanto confiar* deixa de disputar espaço com o número que diz *quanto vale*.
+        self.lbl_desempenho = QLabel("", caixa)
+        tema.pintar(self.lbl_desempenho, "color", tokens.TEXTO_SECUNDARIO)
+        dica_em(
+            self.lbl_desempenho,
+            "Profundidade em plies e nós por segundo. Os nós por segundo são o único número da\n"
+            "tela que muda quando a opção «Núcleos» muda -- é por ele que se vê que ela pegou.",
+        )
+        pilha.addWidget(self.lbl_desempenho)
         return caixa
 
     def showEvent(self, a0: QShowEvent | None) -> None:  # noqa: N802 - assinatura do Qt
@@ -894,7 +977,16 @@ class PainelDeEstudo(QWidget):
     def _trabalho_do_motor(self, geracao: int, board: chess.Board, no: chess.pgn.GameNode) -> None:
         assert self._analyzer is not None
         try:
-            avaliacoes = self._analyzer.analyse_multi(board, count=CANDIDATOS_DO_MOTOR)
+            # A tabela de finais **antes** do motor, e na mesma thread (S-538): ela responde em
+            # microssegundos e a resposta dela vence a do motor onde existe. Perguntar depois faria
+            # a tela mostrar a estimativa e trocá-la um instante depois.
+            self._resultado_de_tabela = self._perguntar_a_tabela(board)  # type: ignore[assignment]
+            # **Quantas linhas é preferência desde a S-536**, e `CANDIDATOS_DO_MOTOR` é o que
+            # a sala pede quando ela não diz nada -- a medida da S-286, no lugar em que ela
+            # sempre esteve.
+            avaliacoes = self._analyzer.analyse_multi(
+                board, count=self._analyzer.multipv or CANDIDATOS_DO_MOTOR
+            )
             self._motor_respondeu.emit(geracao, no, avaliacoes)
         except Exception as exc:  # noqa: BLE001 - o motor é binário de terceiro
             logger.warning("Falha na análise: %s", exc)
@@ -902,23 +994,85 @@ class PainelDeEstudo(QWidget):
         finally:
             self._motor_terminou.emit(geracao)
 
+    def _perguntar_a_tabela(self, board: chess.Board) -> Any:
+        """O `Resultado` exato deste final, ou `None`. Sem pasta configurada, sempre `None` (S-538).
+
+        `deve_consultar` é o que impede a ida ao disco em toda posição de meio-jogo: a sala passa
+        o tempo em posições de 20 peças, e nenhuma tabela cobre essas.
+
+        Devolve o **resultado** e não a frase: a frase depende da cor a jogar, e montá-la aqui --
+        na thread do motor -- obrigaria a passar mais um dado pela fronteira. Quem a escreve é
+        `_mostrar_avaliacao`, que já tem o tabuleiro corrente na mão.
+        """
+        leitor = self._leitor_de_finais()
+        if not finais_declarados.deve_consultar(
+            chess.popcount(board.occupied), tem_pasta=leitor is not None
+        ):
+            return None
+        assert leitor is not None
+        achado = leitor.consultar(board)
+        return achado if achado is not None and finais_declarados.vence_o_motor(achado.wdl) else None
+
+    def _leitor_de_finais(self) -> Any:
+        """O leitor de tablebases, aberto na primeira consulta. `None` quando não há pasta."""
+        if self._finais is None:
+            self._finais = tablebase.abrir(self._opcoes_do_motor().syzygy_path)
+        return self._finais
+
     def _mostrar_avaliacao(
         self, geracao: int, no: chess.pgn.GameNode, avaliacoes: list[Evaluation]
     ) -> None:
-        """Só escreve se ainda estamos no mesmo lance -- ver `analyse`."""
+        """Só escreve se ainda estamos no mesmo lance -- ver `analyse`.
+
+        **A tabela de finais vence o motor onde ela responde** (S-538): a frase de cima passa a ser
+        o resultado exato, e a barra vai para onde o resultado manda em vez de ficar na estimativa.
+        As linhas candidatas continuam sendo as do motor -- a tabela diz o resultado, não a
+        variante --, e é por isso que ela substitui uma parte da tela e não a seção inteira.
+        """
         if geracao != self._geracao or not avaliacoes:
             return
         self._candidatos = list(avaliacoes)
         melhor = avaliacoes[0]
-        self.lbl_motor.setText(melhor.summary())
-        self.vantagem.setValue(int(melhor.advantage_fraction() * 100))
-        linhas = [
-            f"{indice}. {avaliacao.display()}  {' '.join(avaliacao.pv_san)}"
-            for indice, avaliacao in enumerate(avaliacoes, start=1)
-            if avaliacao.pv_san
-        ]
-        self.lbl_linha_do_motor.setText("\n".join(linhas) or "Sem lance legal nesta posição.")
+        brancas = bool(self.estudo.tabuleiro.turn)
+        achado = self._resultado_de_tabela
+        frase = (
+            finais_declarados.frase_do_resultado(achado.wdl, achado.dtz, brancas_jogam=brancas)
+            if achado is not None
+            else ""
+        )
+        self.lbl_motor.setText(frase or melhor.display())
+        self._pintar_a_barra(melhor, achado, brancas=brancas)
+        self.lbl_linha_do_motor.mostrar(
+            motor_declarado.linhas_do_motor(
+                avaliacoes,
+                numero_do_lance=self.estudo.tabuleiro.fullmove_number,
+                brancas_jogam=bool(self.estudo.tabuleiro.turn),
+            ),
+            vazio="Sem lance legal nesta posição.",
+        )
+        self.lbl_desempenho.setText(
+            motor_declarado.frase_de_desempenho(
+                profundidade=melhor.depth, nos=melhor.nodes, nos_por_segundo=melhor.nps
+            )
+        )
         self._gravar_avaliacao(no, melhor)
+
+    def _pintar_a_barra(self, melhor: Evaluation, achado: Any, *, brancas: bool) -> None:
+        """Põe a barra lateral onde a avaliação -- ou o resultado da tabela -- manda.
+
+        Com tabela, o número dentro da barra vira o **resultado** (`1-0`, `0-1`, `=`) e não uma
+        avaliação: são os tokens do PGN, que não têm idioma e que qualquer enxadrista lê. Escrever
+        `+12,80` ali seria pôr uma estimativa em cima de uma certeza.
+        """
+        if self.vantagem is None:  # pragma: no cover - sem motor não há barra
+            return
+        if achado is None:
+            self.vantagem.definir(melhor.score_cp, melhor.mate_in, melhor.display())
+            return
+        exatos = finais_declarados.centipeoes_de(
+            achado.wdl, brancas_jogam=brancas, teto=analise_declarada.TETO_DE_AVALIACAO
+        )
+        self.vantagem.definir(exatos, None, "=" if not exatos else ("1-0" if exatos > 0 else "0-1"))
 
     def _gravar_avaliacao(self, no: chess.pgn.GameNode, avaliacao: Evaluation) -> None:
         """`[%eval 0.35,18]` no lance, que é onde o Lichess e o ChessBase o leem (S-285).
@@ -941,7 +1095,7 @@ class PainelDeEstudo(QWidget):
         if geracao != self._geracao:
             return
         self.lbl_motor.setText("O motor não respondeu.")
-        self.lbl_linha_do_motor.setText(mensagem)
+        self.lbl_linha_do_motor.mostrar((), vazio=mensagem)
 
     def _terminar_analise(self, _geracao: int) -> None:
         self._analysing = False
@@ -969,7 +1123,10 @@ class PainelDeEstudo(QWidget):
             self.analyse()
         else:
             self.lbl_motor.setText("")
-            self.lbl_linha_do_motor.setText("")
+            self.lbl_desempenho.setText("")
+            self.lbl_linha_do_motor.mostrar(())
+            if self.vantagem is not None:
+                self.vantagem.limpar()
 
     # ------------------------------------------------------------------------------- estado
 
@@ -1831,16 +1988,26 @@ class PainelDeEstudo(QWidget):
         self.set_status(f"Página {self.estudo.ancora.pagina + 1} do livro.")
 
     def variante_do_motor(self) -> None:
-        """Põe a linha principal do motor na árvore, a partir do lance corrente (S-286).
+        """Põe a **primeira** linha do motor na árvore, a partir do lance corrente (S-286)."""
+        self.inserir_linha_do_motor(1)
+
+    def inserir_linha_do_motor(self, indice: int = 1) -> None:
+        """Põe a `indice`-ésima linha do motor na árvore, a partir do lance corrente (S-286/S-529).
 
         **A procedência vai junto, no PGN.** O que a máquina sugeriu e o que a pessoa jogou não
         podem ficar indistinguíveis no arquivo -- é a regra 2 da SPEC_EDITOR aplicada a lance --, e
         a forma padrão de dizê-lo é o comentário de entrada da variante.
+
+        **O índice existe desde a S-529**, e é o clique numa linha do MultiPV. Até aqui só a
+        primeira era alcançável: as outras duas apareciam num `QLabel` e não havia caminho nenhum
+        para pô-las na árvore -- o que anulava metade da razão de o MultiPV existir, que é comparar
+        o lance do livro com os **candidatos** e não com o preferido.
         """
         if self._analyzer is None:
             self.set_status("Sem motor UCI instalado: ponha o Stockfish em engines/ e reabra.")
             return
-        melhor = self._candidatos[0] if self._candidatos else None
+        posicao = max(1, int(indice)) - 1
+        melhor = self._candidatos[posicao] if posicao < len(self._candidatos) else None
         if melhor is None or not melhor.pv_san:
             self.set_status("O motor ainda não respondeu sobre esta posição.")
             return
@@ -1865,6 +2032,218 @@ class PainelDeEstudo(QWidget):
         self.refresh()
         self._marcar_sujo()
         self.set_status(f"Linha do motor na árvore: {' '.join(melhor.pv_san)}")
+
+    # ------------------------------------------- a partida inteira pelo motor (S-537)
+
+    def analisar_partida(self) -> Any:
+        """Passa a linha principal pelo motor, grava a avaliação e marca os erros (S-537).
+
+        **É a pergunta do dia seguinte ao torneio**: *em que lance eu perdi?* A sala sabia avaliar
+        uma posição desde a S-33 e gravar o número no lance desde a S-285; o que faltava era a
+        passada inteira e a leitura dela em uma tela.
+
+        Devolve a rodada, para o teste esperá-la. Quem decide profundidade é o diálogo; quem
+        classifica e desenha é `ui/analise_da_partida.py` e `qt/analise_da_partida.py`.
+        """
+        from chess_diagram_ocr.qt import analise_da_partida as qt_analise
+
+        if self._analyzer is None:
+            self.set_status("Sem motor UCI instalado: ponha o Stockfish em engines/ e reabra.")
+            return None
+        if self._analise_da_partida is not None and self._analise_da_partida.ocupado:
+            self.set_status("A partida já está sendo analisada.")
+            return None
+        _fens, passos = analise_declarada.percurso(self.estudo.jogo)
+        if not passos:
+            self.set_status("Não há lance na linha principal para analisar.")
+            return None
+        pedido = qt_analise.DialogoDaProfundidade(self, lances=len(passos))
+        if pedido.exec() != QDialog.DialogCode.Accepted:
+            return None
+        rodada = qt_analise.analisar_com_dialogo(
+            self,
+            analisador=self._analyzer,
+            jogo=self.estudo.jogo,
+            profundidade=pedido.profundidade(),
+            busy=self._busy,
+        )
+        rodada.terminou.connect(self._chegou_a_analise_da_partida)
+        rodada.falhou.connect(lambda mensagem, _erro: self.set_status(f"A análise da partida falhou: {mensagem}"))
+        self._analise_da_partida = rodada
+        return rodada
+
+    def _chegou_a_analise_da_partida(self, avaliados: Any) -> Any:
+        """Grava `[%eval]` e o símbolo em cada lance, e abre o relatório (S-537).
+
+        **O símbolo é NAG e não cor de tela**, e é o que faz a análise sobreviver ao arquivo: um
+        `??` gravado como `$4` aparece na lista de lances pelo caminho que já existe, vai para o
+        PGN e é lido por qualquer programa de xadrez. Uma marca só de tela morreria ao fechar.
+
+        `_marcar_sujo` uma vez no fim, e não por lance: quarenta chamadas empilhariam quarenta
+        passos de desfazer para uma operação que a pessoa mandou fazer uma vez.
+        """
+        from chess_diagram_ocr.qt import analise_da_partida as qt_analise
+
+        cancelada = bool(self._analise_da_partida is not None and self._analise_da_partida.cancelada)
+        marcados = self._marcar_os_lances(avaliados)
+        self.refresh()
+        if avaliados:
+            self._marcar_sujo(historico=False, da_maquina=True)
+        self.set_status(analise_declarada.frase_final(len(avaliados or []), marcados, cancelado=cancelada))
+        if not avaliados:
+            return None
+        return qt_analise.JanelaDaAnalise(self, avaliados, ir_para=self.ir_para_o_ply)
+
+    def _marcar_os_lances(self, avaliados: Any) -> int:
+        """Escreve a avaliação e o símbolo nos nós da linha principal. Devolve quantos ganharam
+        símbolo.
+
+        O casamento é **por posição na linha principal**, e não por nó guardado: a árvore pode ter
+        mudado enquanto o motor pensava, e um nó guardado apontaria para um lance que saiu dela.
+        """
+        no: Any = self.estudo.raiz
+        marcados = 0
+        for lance in avaliados or []:
+            if not no.variations:
+                break
+            no = no.variations[0]
+            pontuacao = (
+                chess.engine.Mate(lance.mate_em)
+                if lance.mate_em is not None
+                else chess.engine.Cp(int(lance.centipeoes))
+            )
+            no.set_eval(chess.engine.PovScore(pontuacao, chess.WHITE))
+            codigo = analise_declarada.NAG_DE_JUIZO.get(lance.juizo)
+            if codigo is not None:
+                no.nags = estudo_mod.alternar_nag(set(no.nags) - {codigo}, codigo)
+                marcados += 1
+        return marcados
+
+    def ir_para_o_ply(self, ply: int) -> None:
+        """Leva o tabuleiro ao `ply`-ésimo lance da linha principal (S-537).
+
+        É o que faz o gráfico e a lista de erros serem clicáveis: o relatório existe para achar
+        onde a partida virou, e um relatório que não leva até lá deixa a busca para o dedo.
+        """
+        self.gravar_comentario()
+        no: Any = self.estudo.raiz
+        for _passo in range(max(0, int(ply))):
+            if not no.variations:
+                break
+            no = no.variations[0]
+        self.estudo.no = no
+        self.refresh()
+
+    # ----------------------------------------- as opções do motor, sem reiniciar (S-536)
+
+    def _opcoes_do_motor(self) -> EngineSettings:
+        """As preferências do motor como estão no disco. Arquivo ausente dá os padrões (S-32)."""
+        return load_settings(self._caminho_das_preferencias).engine
+
+    def opcoes_do_motor(self) -> QDialog | None:
+        """Abre o formulário das opções do motor e aplica o que ele devolver (S-536).
+
+        **Existe com e sem motor**, e é a única ação do grupo Motor que existe sem: numa máquina em
+        que a procura automática não achou binário nenhum, este é o caminho para dizer onde ele
+        está -- e escondê-lo justamente ali seria escondê-lo de quem precisa dele.
+
+        A gravação é atômica e vale para a próxima sessão; a aplicação é imediata e não reinicia
+        nada. Quem sabe o que cada mudança faz com o processo é `plano_de_aplicacao`.
+        """
+        from chess_diagram_ocr.qt.preferencias import DialogoDoMotor
+
+        antes = self._opcoes_do_motor()
+        dialogo = DialogoDoMotor(self, opcoes=antes)
+        if dialogo.exec() != QDialog.DialogCode.Accepted:
+            return dialogo
+        self.aplicar_opcoes_do_motor(antes, dialogo.valores())
+        return dialogo
+
+    def aplicar_opcoes_do_motor(self, antes: EngineSettings, depois: EngineSettings) -> Any:
+        """Grava as preferências e põe o motor de acordo, fora da linha de eventos (S-536).
+
+        Separada de `opcoes_do_motor` porque é a parte afirmável sem abrir diálogo -- e porque é
+        ela que a fotografia e o teste exercitam.
+        """
+        from chess_diagram_ocr.qt.preferencias import MotorVivo
+
+        preferencias = load_settings(self._caminho_das_preferencias)
+        try:
+            save_settings(self._caminho_das_preferencias, replace(preferencias, engine=depois))
+        except OSError as erro:  # pragma: no cover - disco cheio ou pasta somente leitura
+            logger.warning("As preferências do motor não puderam ser gravadas: %s", erro)
+        # O leitor de finais é reaberto na próxima consulta: a pasta pode ter mudado.
+        if self._finais is not None:
+            self._finais.close()
+            self._finais = None
+        if self._motor_vivo is None:
+            self._motor_vivo = MotorVivo(self, analisador=self._analyzer)
+            self._motor_vivo.aplicado.connect(self._motor_aplicado)
+            self._motor_vivo.falhou.connect(lambda mensagem, _erro: self._motor_aplicado(None, mensagem))
+        self._motor_vivo.aplicar(antes, depois)
+        return self._motor_vivo
+
+    def _motor_aplicado(self, motor: Any, frase: str) -> None:
+        self.trocar_de_motor(motor)
+        self.set_status(frase)
+
+    @property
+    def analisador(self) -> EngineAnalyzer | None:
+        """O motor que a sala está usando **agora**. É por ele que a janela o fecha ao sair.
+
+        A janela guarda o motor que ela construiu, e a sala pode tê-lo trocado (S-536): perguntar
+        aqui é o que faz o `closeEvent` fechar o processo que está vivo, e não o que morreu.
+        """
+        return self._analyzer
+
+    def trocar_de_motor(self, novo: EngineAnalyzer | None) -> None:
+        """Troca o motor da sala e acomoda a tela ao que passou a existir (S-536).
+
+        **Três casos, e só o terceiro custa alguma coisa.** Trocar um motor por outro é atualizar
+        o título da seção -- o objeto muitas vezes é o mesmo, com outro binário dentro. Perder o
+        motor esconde a seção e a barra lateral, como se ele nunca tivesse existido (S-33). Ganhar
+        um motor numa sala que abriu sem nenhum é o caso que obriga a montar a seção agora e a
+        **remontar a fila**: uma `QAction` não muda de barra depois de criada, e sem a remontagem o
+        grupo Motor continuaria ausente até a próxima abertura -- que é o "reiniciar" que este item
+        veio tirar.
+
+        A barra lateral **não** nasce depois: ela mora dentro do arranjo da coluna do tabuleiro, e
+        recriá-lo mexeria na repartição que a S-551 calcula. A promessa da S-536 é o motor sem
+        reiniciar; a barra chega junto com ele na abertura seguinte, e a seção já mostra tudo.
+        """
+        tinha = self._analyzer is not None
+        self._analyzer = novo
+        if novo is None and tinha:
+            self.btn_continua = None
+            self.caixa_do_motor.hide()
+        elif novo is not None and tinha:
+            self.caixa_do_motor.setTitle(f"Motor ({novo.path.name})")
+            self.caixa_do_motor.show()
+        elif novo is not None and not tinha:
+            self._secao_do_motor(self.divisor_vertical)
+        if (novo is not None) != tinha:
+            self._remontar_a_barra()
+        self.refresh()
+
+    def _remontar_a_barra(self) -> None:
+        """Refaz a fila com (ou sem) o grupo do motor, guardando os interruptores que estavam ligados."""
+        antiga = self.barra
+        marcados = {
+            nome: antiga.acoes[nome].isChecked()
+            for nome in (barra_da_sala.SEGUIR_OCR, "modo_treino", "mostrar_diagrama", "dobrar_variantes")
+            if nome in antiga.acoes
+        }
+        nova = self._montar_barra()
+        self._fora.replaceWidget(antiga, nova)
+        antiga.setParent(None)
+        antiga.deleteLater()
+        self.barra = nova
+        for nome, ligado in marcados.items():
+            acao = nova.acoes.get(nome)
+            if acao is not None:
+                acao.blockSignals(True)
+                acao.setChecked(ligado)
+                acao.blockSignals(False)
 
     # ------------------------------------------------- as partidas da base (S-287)
 

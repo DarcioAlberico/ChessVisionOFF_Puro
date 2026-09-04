@@ -44,6 +44,14 @@ SEM_REGISTRO = {
         "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
         "posição continua lá para pedir de novo."
     ),
+    ("preferencias.py", "aplicar"): (
+        "A troca das opções do motor (S-536): `setoption` sobre o processo aberto, ou derrubá-lo "
+        "e subir outro -- 140 ms medidos. Ela sai da linha de eventos porque o `close()` de um "
+        "motor que está pensando espera ele responder, e **não** entra no registro porque não há "
+        "o que perder ao fechar: as preferências já foram gravadas antes de a thread começar, e o "
+        "que a thread faz é com um processo que o fechamento da janela encerraria de qualquer "
+        "forma."
+    ),
     ("busca_de_partidas.py", "buscar"): (
         "Uma consulta ao índice por nome (S-533): dezenas de milissegundos na gigabase, e até "
         "~1 s quando o filtro pede a posição corrente e ela relê dois mil candidatas. Ela sai da "

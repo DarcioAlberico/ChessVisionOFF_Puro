@@ -243,7 +243,7 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Quinze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Dezessete** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
 exceção. Onze são operações longas e estão no `BusyRegistry`; as outras quatro são declaradas em
 `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
