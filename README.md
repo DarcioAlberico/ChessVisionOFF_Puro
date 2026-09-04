@@ -1006,9 +1006,14 @@ src/chess_diagram_ocr/
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
+  diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
+  diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)
+  docx_saida.py         o estudo e o texto em DOCX, OOXML minimo com zipfile (S-543)
   engine.py             motor UCI opcional (Stockfish)
+  epub.py               o estudo e o texto em EPUB 3, um SVG por diagrama (S-542)
   estudo.py             a arvore de variantes da sala de estudo, e as regras de lance
   estudo_arquivo.py     leitura e escrita dos estudos em disco, um arquivo por posicao
+  estudo_paragrafos.py  o estudo em paragrafos de livro: lance, variante recuada, comentario, [%D]
   estudo_partidas.py    a partida da base carregada como linha principal do estudo
   estudo_saida.py       o estudo exportado: PGN com variantes, comentarios e simbolos
   evaluation.py         metricas de qualidade do reconhecimento (sobre recortes rotulados)

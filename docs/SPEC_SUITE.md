@@ -383,13 +383,179 @@ _Seção a escrever pelo executor do item._
 
 _Seção a escrever pelo executor do item._
 
-## S-542 · Exportar estudo e texto para EPUB, com diagramas como SVG — ◻ em andamento
+## S-542 · Exportar estudo e texto para EPUB, com diagramas como SVG — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-543 · Exportar para DOCX — ◻ em andamento
+O editor de materiais converte livro digitalizado em texto corrigido, e a saída parava em quatro
+formatos de página solta: `text/exportacao.py:552` (`formato_de`) conhece `.txt`, `.md`, `.html` e
+`.rtf`, e nenhum deles é um **livro** -- não tem capítulo, índice nem reflui em tela de 6 polegadas.
+O estudo saía pior: `estudo_saida.py:93` (`para_documento`) o devolve como um título, um diagrama e
+**uma linha só** com a análise inteira dentro, porque é o que a aba de texto recebe; a variante
+recuada, o comentário que corta a linha e o diagrama pedido pelo autor (`[%D]` do ChessBase) não
+existiam em saída nenhuma. E o diagrama, quando saía, era o recorte PNG da página
+(`exportacao.py:384`): serrilhado no leitor grande, pesado no pequeno, e ausente quando o estudo
+veio de um PGN colado, que não tem recorte.
 
-_Seção a escrever pelo executor do item._
+### Solução
+
+**Três módulos puros, e nada de biblioteca nova.** `estudo_paragrafos.py` é **a decisão de
+paginação**: o estudo vira uma lista de `Paragrafo` (título, diagrama, comentário, lance, variante
+com nível), a partir de `ui/estudo_lista.trechos` -- a travessia já conferida contra o `chess.pgn`.
+Regras: a variante de primeiro nível vira parágrafo recuado **sem parênteses**; as mais fundas ficam
+dentro dela entre parênteses; o comentário da linha principal corta a linha e vira prosa, o da
+variante fica dentro; `[%D]` no comentário pede um diagrama **depois** dele com a posição daquele
+lance, e o da raiz sai sempre como número 1; `*` não sai. EPUB e DOCX leem **a mesma lista**, e é
+isso que os impede de discordar sobre onde a variante começa.
+
+`diagrama_svg.py` desenha a posição como SVG a partir da FEN ou do `placement`. **As peças são os
+caminhos de `chess.svg.PIECES`** (conjunto Cburnett), que o `python-chess` -- dependência obrigatória
+desde a primeira versão -- embute; `assets/piece_images/` são PNG de 70 px, não servem a vetor, e uma
+fonte de xadrez por `@font-face` mostra letras no leitor que não a carregar. Um `<g id>` por tipo de
+peça **presente** em `<defs>`, um `<use>` por peça; casa de 45 unidades (o quadro dos caminhos), 64
+`rect` com `data-casa`; réguas opcionais **na ordem de `ui/desenho_do_tabuleiro.reguas`**; lado a
+jogar como ponto na margem direita (embaixo brancas, em cima pretas), só quando a FEN traz o campo;
+tamanho em `em` (`18em` padrão) para refluir com o texto; cores de `ui/tokens.py`, nenhum
+hexadecimal no arquivo. Posição vazia é `ValueError`, não tabuleiro em branco.
+
+`epub.py` empacota com `zipfile`: `mimetype` **primeiro e armazenado**, `META-INF/container.xml`,
+`OEBPS/content.opf` (EPUB 3.0, `dc:identifier` `urn:uuid` gerado, `dc:title`, `dc:creator`,
+`dc:language`, `dcterms:modified`), `nav.xhtml`, um XHTML por capítulo, `estilo.css`, `imagens/`.
+`exportar_estudo_epub(estudo, caminho, metadados)` e `exportar_estudos_epub` (um capítulo por
+estudo); `exportar_texto_epub(documento, caminho, metadados, imagens=, cores=, corpos=)` e
+`exportar_textos_epub` (uma folha por capítulo). No texto, a formatação inline **é a de
+`exportacao.Html.corrida`** -- não uma cópia -- e a folha de estilo traz as mesmas regras por
+`Html.regras_de_css()` (método público novo sobre o `_regras` que já existia); o que o EPUB acrescenta
+é `<p>` no lugar de `<br>`, um `<h2>` para o estilo título, e a figura em arquivo separado no
+manifesto. O diagrama do texto sai em SVG quando o bloco tem `placement`, no PNG injetado quando não
+tem, e como `<p class="marca">[Diagrama N]</p>` quando não há nem um nem outro -- **a marca nunca
+desaparece** (S-250) e o `Relatorio` conta os três casos. `verificar` faz a conferência que o
+`epubcheck` faria: mimetype, container, XML bem formado, manifesto, espinha, `dc:` obrigatórios.
+
+**Fiação pendente (fora deste item):** as ações "Exportar EPUB…" e "Exportar DOCX…" no
+`EXPORTAR ▾` de `ui/barra_da_sala.py` e no menu do editor de texto, com o diálogo de arquivo. Os
+arquivos são de outro executor nesta rodada; o chamador é uma linha por formato.
+
+### Critério de aceite
+
+- Todo arquivo do zip é XML bem formado, o `mimetype` é o primeiro membro e vai sem compressão,
+  toda referência do OPF existe no zip, todo `idref` da espinha está no manifesto. ✅ Afirmado nos
+  testes com `zipfile`/`ElementTree` diretamente **e** por `verificar`, que é provado contra três
+  defeitos fabricados (mimetype comprimido, imagem prometida e ausente, XHTML mal formado).
+- SVG: 64 casas nomeadas, peça na casa certa, virado espelha peça e casa juntas, réguas na ordem de
+  `reguas`, ponto do lado a jogar, `em` no tamanho. ✅ 21.050 bytes a posição inicial (≈2,9 KB
+  comprimido no zip).
+- Medido em 2026-09-04: `PGN/A Matter of Endgame Technique – Jacob Aagaard.pgn` (901 KB, **2.618
+  estudos**, todos posição sem lance -- é o PGN que o OCR gravou) → EPUB de **7.627 KB**, 2.618
+  capítulos, 2.618 SVG, **3,1 s**, `verificar` vazio. Um estudo: 5 KB, 4 ms. Com análise de verdade,
+  `pgn_database/10k_studies.pgn` (300 primeiros estudos): 2.997 parágrafos (1.245 lances, 1.147
+  variantes de nível 1, 5 comentários) → 737 KB, 0,6 s; o maior estudo (27 parágrafos) → 4 KB, 5 ms.
+  Texto: `DocumentoRico` sintético com título, negrito, itálico, cor, um diagrama lido e um só com a
+  marca → 3 KB, 2 diagramas (1 SVG, 1 marca) e o aviso correspondente.
+- Conferência externa: `ebook-convert` do Calibre (`C:\Program Files\Calibre2`) converteu o EPUB
+  de 2.618 capítulos para TXT sem erro nem aviso (19 s), e o de 300 estudos idem; o texto tem título,
+  FEN e linha na ordem do livro. Não virou teste: depende de programa fora do `.venv`.
+- Sem dependência nova: `pyproject.toml` inalterado, nenhum extra. ✅
+
+### Testes
+
+- `tests/test_diagrama_svg.py`: bem formado e `viewBox`; tamanho em `em`; FEN no atributo e no
+  título; posição vazia é erro; 64 casas por nome; a1 escura e h1 clara de qualquer lado; a1 no
+  canto certo normal e virado; 32 peças na casa certa, `translate` do rei; virado espelha peça e
+  casa juntas; `use` aponta `g` definido; só presentes em `defs`; `placement` desenha igual à FEN;
+  réguas nas duas ordens e ausentes sem margem; ponto em cima/embaixo/ausente/imposto; nenhum
+  hexadecimal no módulo; cores iguais à reserva de `tokens`.
+- `tests/test_estudo_paragrafos.py`: ordem título → diagrama; título igual ao de `estudo_saida`;
+  diagrama 1 com a FEN da raiz e `virado` do estudo; comentário da raiz como parágrafo; comentário
+  da principal corta a linha; a linha que continua traz o número; variante recuada sem parênteses;
+  comentário da variante fica dentro; subvariante entre parênteses; sem espaço duplo; `[%D]` pede o
+  diagrama 2 com a FEN do lance e não vaza como texto; `*` não sai e `1-0` sai; estudo sem lance.
+- `tests/test_epub.py`: mimetype primeiro e armazenado (também pelos bytes 30–38); todo XML bem
+  formado; toda referência do manifesto no zip; container → OPF → `dc:` obrigatórios; espinha e nav
+  com dois capítulos; `verificar` aprova o que sai e pega três defeitos fabricados; capítulo do
+  estudo com `h1`, figura, `p.lance`, `p.comentario`, `p.variante.nivel-1` e escape; `[%D]` vira
+  segunda figura com SVG bem formado; legenda com a FEN; relatório e `dc:title` do estudo; texto
+  em `<p>` sem `<br>`; `<strong>` e `cor-nota` com a regra na folha (`regras_de_css`); título abre
+  o capítulo ou o nome da folha entra como `h1`; SVG/PNG injetado/marca e a contagem dos três;
+  `Metadados` gera `urn:uuid` e data e respeita o que veio de fora; os três estilos de livro na folha.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-543 · Exportar para DOCX — ✅ **implementada em 2026-09-04**
+
+### Problema
+
+O mesmo de S-542 pelo lado de quem edita em Word: `text/exportacao.py:552` não tem `.docx`, e o
+`.rtf` (`exportacao.py:411`) é o que se oferecia para abrir num processador de texto -- sem estilo
+nomeado, sem imagem vetorial, e com o diagrama como recorte da página ou nada. `python -c "import
+docx"` falha no `.venv`: não há `python-docx`, e instalá-lo seria o extra que a máquina do editor
+não tem.
+
+### Solução
+
+**`docx_saida.py` escreve OOXML mínimo com `zipfile`**, sem dependência nova: `[Content_Types].xml`,
+`_rels/.rels`, `docProps/core.xml` (título, autor, idioma, datas -- os mesmos `Metadados` de
+`epub.py`), `word/document.xml`, `word/styles.xml`, `word/_rels/document.xml.rels`, `word/media/`.
+Mesmas entradas do EPUB: `exportar_estudo_docx`/`exportar_estudos_docx` (quebra de página entre
+estudos) e `exportar_texto_docx`/`exportar_textos_docx` (`imagens=`, `cores=`, `corpos=`).
+
+**Estilos nomeados**, `ESTILOS`: `Título` (negrito, `outlineLvl 0` -- aparece no painel de
+navegação), `Lance` (negrito), `Variante` (itálico, recuo 720 twips) e `Variante 2` (1.440),
+`Comentário`, `Legenda` (Consolas 8 pt, centrada, para a FEN), `Diagrama` (centrado, `keepNext`) e
+`Marca de diagrama`. São os mesmos papéis do CSS do EPUB, lidos da mesma lista de
+`estudo_paragrafos`. No texto, negrito/itálico/sublinhado/tachado/cor/realce/corpo vêm de
+`Atributos`; cor e realce só saem se `cores` trouxer o hexadecimal (`cor-nota`, `realce-destaque`),
+corpo só se `corpos` trouxer `"13pt"` (→ `w:sz 26`); notação em Consolas, legenda em itálico, fora
+do modelo e faixa incerta com sublinhado pontilhado. Nenhum hexadecimal no módulo.
+
+**O diagrama vai em par: PNG no `a:blip` e SVG na extensão `asvg:svgBlip`.** Foi a decisão pedida.
+O PNG é o que todo leitor de `.docx` desenha (LibreOffice, Google Docs, Word antigo, celular); o SVG
+é o que o Word 2016+ prefere e imprime como vetor. É o par que o próprio Word grava ao colar um SVG;
+só SVG abre em branco fora do Word novo, só PNG serrilha no papel. O PNG vem de **`diagrama_png.py`**,
+módulo novo e puro: PIL (dependência obrigatória) compõe as casas e cola os doze PNGs de
+`assets/piece_images/` a 70 px por casa (o tamanho em que foram desenhados; `BUNDLE_ROOT`, como
+`qt/tabuleiro.py:57`), réguas e ponto do lado a jogar com a mesma geometria e as mesmas cores do
+SVG; peça ausente vira letra e um aviso no log, como o tabuleiro da janela degrada. Sai em paleta de
+64 cores: 55 KB em RGB → 20 KB, sem diferença visível. O teste roda **sem Qt**. Para o diagrama do
+texto sem `placement`, o PNG é o recorte injetado (`imagens=`), sem SVG; sem nada, sai a marca.
+`verificar`: zip, XML bem formado em toda parte, todo membro com tipo de conteúdo, toda relação
+apontando membro existente, todo `r:embed` do documento com relação.
+
+### Critério de aceite
+
+- As seis partes obrigatórias no zip; todo XML bem formado; toda parte com tipo de conteúdo; todo
+  `r:embed` com relação e toda relação com parte. ✅ Afirmado direto e por `verificar`, provado contra
+  três defeitos fabricados (embed sem relação, PNG sem tipo, `document.xml` mal formado).
+- Estilos `Título`, `Normal`, `Lance` (negrito), `Variante` (itálico recuado), `Comentário`,
+  `Legenda` existem e cada parágrafo do estudo sai com o seu; diagrama com PNG no blip e SVG na
+  extensão, ambos no `media/`; largura pedida em EMU (`7,6 cm` padrão = os `18em` do EPUB a 12 pt). ✅
+- Medido em 2026-09-04: um estudo do Aagaard → **19 KB, 48 ms** (23 ms a partir do segundo, com
+  as peças em cache do processo); 200 estudos → 2.213 KB, 3,4 s; os **2.618** → **32.414 KB, 44,5 s**,
+  `verificar` vazio (≈17 ms por diagrama, dos quais ~13 são o PNG). 300 estudos anotados do
+  `10k_studies.pgn` → 3.297 parágrafos, 2.433 KB, 4,9 s. Texto sintético (negrito, itálico,
+  sublinhado, cor, realce, corpo +2, um diagrama lido e um só com a marca) → 14 KB, 5 parágrafos,
+  1 PNG+SVG, 1 marca, 1 aviso.
+- Sem `python-docx` e sem extra novo: `pyproject.toml` inalterado. ✅
+
+### Testes
+
+- `tests/test_diagrama_png.py`: assinatura PNG e tamanho 616×616; abaixo de 30 KB; sem réguas nem
+  lado não há margem; casa vazia com a cor da paleta; casa com peça sem ela; a1 no canto superior
+  direito quando virado e h1 clara; a peça virada acompanha a casa; pasta sem peças desenha letra e
+  avisa; a pasta padrão é a do bundle.
+- `tests/test_docx_saida.py`: partes obrigatórias; todo XML bem formado; raiz → documento e tipos de
+  conteúdo; `r:embed` ↔ relação ↔ parte (quatro num estudo com `[%D]`); `verificar` aprova e pega
+  três defeitos; estilos com o traço prometido e nomes com acento; cada parágrafo do estudo com o
+  estilo do tipo; PNG no blip e SVG bem formado na extensão; `extent` em EMU; relatório e
+  `core.xml`; quebra de página entre estudos; texto cortado na quebra de linha com `Título`;
+  formatação inline com cor/realce/corpo resolvidos de fora e nada quando não vêm; par PNG+SVG /
+  marca e contagem; PNG injetado sem SVG; `run` escapa; `_meios_pontos`; `_hex`; nenhum hexadecimal.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-544 · Diagramas em lote como PNG/SVG, no tamanho e na pele escolhidos — ◻ em andamento
 
