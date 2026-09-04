@@ -29,3 +29,99 @@ aceite**, **Testes** e **O que o crítico recusou** -- o registro das rodadas em
 janela foi comparada lado a lado com o ChessBase e o Lichess, e o que faltava em cada uma.
 
 ---
+
+## S-527 · A barra da sala de estudo agrupada por tarefa, com ícones vetoriais e rótulo curto — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-528 · A barra do painel do PDF na mesma gramática, e a página com mais área — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-529 · O painel do motor: barra de avaliação vertical, linhas MultiPV clicáveis, profundidade — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-530 · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-531 · Ler `.pgn.gz`, `.pgn.bz2` e `.zip` de PGN sem descompactar para o disco — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-532 · Índice incremental: só o que mudou é relido, com progresso e cancelamento na janela — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-533 · Busca por jogador, torneio, ano, Elo, resultado e ECO, com filtros combinados e lista — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-534 · Classificação ECO embutida, gravada no índice e mostrada na sala — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-535 · Árvore de aberturas: da posição corrente, cada lance com N, %, Elo médio e ano — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-536 · Opções do motor (Hash, Threads, MultiPV, caminho) nas preferências, sem reiniciar — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-537 · Análise de partida: cada lance avaliado, gráfico de avaliação e erros marcados — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-538 · Tablebases Syzygy quando a pasta existir: resultado exato nos finais — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-539 · Táticas do próprio acervo: FEN reconhecida + solução impressa vira exercício — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-540 · Repetição espaçada dos estudos e das táticas, com agenda do dia — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-541 · "Adivinhe o lance" com placar persistente e comparação com o motor — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-542 · Exportar estudo e texto para EPUB, com diagramas como SVG — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-543 · Exportar para DOCX — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-544 · Diagramas em lote como PNG/SVG, no tamanho e na pele escolhidos — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-545 · Imprimir e gerar PDF do estudo com a paginação de livro — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-546 · Fila de PDFs com progresso por livro, cancelável, e o resultado ao lado do nome — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-547 · Caminho para scans puros: binarização e reamostragem antes da detecção — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-548 · Relatório de qualidade por livro: páginas lidas, diagramas, legalidade, tempo — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-549 · Guarda genérica: nenhum módulo de `ui/` importa `PyQt6` — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
+
+## S-550 · As S-500 a S-506 do corte do Tk ganham seção de spec (dívida de documentação) — ◻ em andamento
+
+_Seção a escrever pelo executor do item._
