@@ -572,13 +572,17 @@ class JanelaTests(unittest.TestCase):
 
     def test_marcar_duas_vezes_nao_varre_a_pagina_duas_vezes(self) -> None:
         """O detector é determinístico e receberia a mesma entrada: a segunda varredura
-        devolveria caixa por caixa o que já está na tela, por ~1 s de espera."""
+        devolveria caixa por caixa o que já está na tela, por ~1 s de espera.
+
+        Desde a detecção ao virar a página (S-68) a página **já chega marcada**: o botão não
+        varre nem uma vez, e o que ele acha é o que o detector de fundo achou."""
         from unittest import mock
 
         import chess_diagram_ocr.qt.janela as modulo
 
         janela = self._janela()
         janela.abrir_pdf(self.pdf)
+        esperar(janela)  # a detecção de fundo da página que apareceu
         varreduras: list[int] = []
         real = modulo.detect_diagrams_in_pdf_page
 
@@ -592,7 +596,7 @@ class JanelaTests(unittest.TestCase):
             janela.marcar_diagramas()
             esperar(janela)
 
-        self.assertEqual(1, len(varreduras))
+        self.assertEqual(0, len(varreduras), "a página que apareceu já estava marcada")
         caixas = janela.pdf.visor.caixas
         assert caixas is not None
         self.assertEqual(1, len(caixas))

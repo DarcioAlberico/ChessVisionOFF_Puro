@@ -243,7 +243,7 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Onze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Doze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
 exceção. Nove são operações longas e estão no `BusyRegistry`; as outras duas são declaradas em
 `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
@@ -255,6 +255,7 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | operação | onde | cancelável | perde trabalho ao fechar | empresta o modelo do serviço |
 |---|---|---|---|---|
 | marcar e reconhecer a página | `qt/janela.py::_rodar` | não (é rápido) | — declarada | sim (S-31) |
+| marcar a página que acabou de aparecer (S-68) | `qt/trabalho.py::DeteccaoDeFundo`, sem trancar nada; só o último pedido espera | não (é rápido) | — declarada | não (o detector não usa o modelo) |
 | exportação de um livro | `qt/exportador.py` | sim, entre páginas (S-24) | não, tem parcial | sim (S-57) |
 | treino | `qt/dialogos.py::ControladorDeTreino` | sim, entre épocas (S-60) | sim, desde a melhor época | escreve o `.pt` |
 | varredura do livro — Galeria **e** fila de revisão (S-119) | `qt/painel_da_galeria.py`, com o `SumidouroDeRevisao` de `qt/painel_de_revisao.py` | sim, entre páginas | não, retoma de onde parou (S-120) | sim (S-57) |

@@ -363,6 +363,22 @@ class FiacaoTests(unittest.TestCase):
         self.pasta = pasta_temporaria(self)
         self.livro = _livro(self.pasta)
         self.addCleanup(self.app.processEvents)
+        # **O detector de fundo é trocado por um que não acha nada** (S-68): a página que aparece o
+        # dispara sozinha, e o de verdade percorreria uma folha em branco a cada teste. Quem quer
+        # caixas põe candidatos em `self.detector.return_value` antes de montar a janela.
+        self.detector = mock.patch("chess_diagram_ocr.qt.janela.detect_diagrams_in_pdf_page", return_value=[]).start()
+        self.addCleanup(mock.patch.stopall)
+
+    def _esperar_o_detector(self, janela: JanelaPrincipal, ate_ms: int = 3000) -> None:
+        from PyQt6.QtTest import QTest
+
+        for _ in range(ate_ms // 10):
+            QTest.qWait(10)
+            if not janela._detector.ocupado:
+                return
+
+    def _candidato(self, indice: int = 0) -> mock.Mock:
+        return mock.Mock(bbox_pdf=(10.0 + 60 * indice, 10.0, 60.0 + 60 * indice, 60.0), source="contour")
 
     def janela(self, *, com_livro: bool = True) -> JanelaPrincipal:
         montada = JanelaPrincipal(
@@ -380,6 +396,7 @@ class FiacaoTests(unittest.TestCase):
         if com_livro:
             montada.abrir_pdf(self.livro)
             self.app.processEvents()
+            self._esperar_o_detector(montada)
         return montada
 
     def test_devolver_sem_nada_tirado_diz_a_frase_declarada(self) -> None:
@@ -589,6 +606,140 @@ class FiacaoTests(unittest.TestCase):
         self.assertTrue(janela._abrir_pagina_do_estudo(mock.Mock(documento=str(self.livro), pagina=2)))
         self.assertEqual(janela.pdf.page_index, 2)
         self.assertFalse(janela._abrir_pagina_do_estudo(mock.Mock(documento="outro.pdf", pagina=1)))
+
+    # ------------------------------------------ a página que aparece se marca sozinha (S-68)
+
+    def test_a_pagina_que_aparece_manda_detectar_ao_fundo_sem_trancar_a_janela(self) -> None:
+        """O critério de aceite da S-68: os retângulos aparecem **antes de qualquer OCR**. O porte
+        só os pedia pelo botão "Marcar diagramas", e sem ele o duplo clique na página não achava
+        caixa nenhuma -- medido na janela de verdade em 2026-09-03."""
+        self.detector.return_value = [self._candidato()]
+        janela = self.janela()
+        self.assertEqual(len(janela.pdf.boxes.boxes if janela.pdf.boxes else ()), 1)
+        self.assertTrue(janela.abas.isEnabled(), "a detecção de fundo não tranca nada")
+        self.assertIsNone(janela._tarefa)
+        self.assertEqual((janela._candidatos or (None,))[0], 0, "a leitura reaproveita os candidatos")
+        self.detector.assert_called_once()
+
+    def test_a_pagina_ja_visitada_nao_e_detectada_de_novo(self) -> None:
+        """Uma página de prosa guarda a resposta vazia: voltar a ela não manda o detector de novo."""
+        janela = self.janela()
+        for pagina in (1, 0):
+            janela.pdf.ir_para_pagina(pagina)
+            self.app.processEvents()
+            self._esperar_o_detector(janela)
+        self.assertEqual([chamada.args[1] for chamada in self.detector.call_args_list], [0, 1])
+
+    def test_a_deteccao_de_outro_livro_ou_de_outra_pagina_nao_vai_para_a_tela(self) -> None:
+        janela = self.janela()
+        candidatos_da_pagina_0 = janela._candidatos
+        janela._chegou_a_deteccao_de_fundo("outro.pdf", 0, [self._candidato()])
+        self.assertEqual(len(janela.pdf.boxes.boxes if janela.pdf.boxes else ()), 0)
+
+        janela._chegou_a_deteccao_de_fundo(str(self.livro), 2, [self._candidato()])
+        self.assertEqual(len(janela.pdf.boxes.boxes if janela.pdf.boxes else ()), 0, "página 2 não está na tela")
+        self.assertEqual(janela._candidatos, candidatos_da_pagina_0, "candidatos de outra página não são os desta")
+        guardadas = janela._caixas_por_pagina.get(str(self.livro), 2, janela._parametros())
+        self.assertEqual(len(guardadas.boxes if guardadas else ()), 1, "mas ficam no cache para quando ela aparecer")
+
+    def test_o_duplo_clique_sem_ocr_previo_acha_a_caixa_que_o_detector_marcou(self) -> None:
+        """O relato: "preciso clicar em OCR todos os diagramas primeiro". Não precisa mais."""
+        self.detector.return_value = [self._candidato()]
+        janela = self.janela()
+        caixas = janela.pdf.boxes
+        assert caixas is not None
+        x0, y0, x1, y1 = caixas.rect_of(caixas.boxes[0], janela.pdf.visor.zoom)
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.visor.estudar_em((x0 + x1) / 2, (y0 + y1) / 2)
+        leu.assert_called_once_with(selecionar_depois=0)
+        self.assertEqual(janela._estudar_ao_ler, (0, 0))
+
+    def test_o_duplo_clique_na_caixa_lida_abre_o_diagrama_na_sala_de_estudo(self) -> None:
+        """O clique simples abre o diagrama no editor (S-68); o duplo o leva à sala, e a aba vem
+        para a frente. A posição é a do Resultado, ancorada no livro, na página e no diagrama."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+
+        janela.pdf.caixa_para_estudo.emit(1)
+
+        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertEqual(janela.painel.lista.currentRow(), 1)
+        ancora = janela.estudo.estudo.ancora
+        self.assertEqual((ancora.documento, ancora.pagina, ancora.diagrama), (str(self.livro), 0, 1))
+
+    def test_o_duplo_clique_na_caixa_ainda_nao_lida_le_a_pagina_e_so_entao_abre_a_sala(self) -> None:
+        """Antes da leitura não há posição para estudar: a página é lida, e a sala recebe o
+        diagrama quando os itens chegarem -- não antes."""
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_para_estudo.emit(0)
+        leu.assert_called_once_with(selecionar_depois=0)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+
+        janela._chegaram_itens(0, [self._diagrama(0)], 0)
+        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertEqual(janela.estudo.estudo.ancora.diagrama, 0)
+
+    def test_o_clique_simples_na_caixa_nao_lida_espera_o_intervalo_do_duplo_clique(self) -> None:
+        """A leitura tranca o visor, e um segundo aperto num widget desabilitado não chega a
+        ninguém: sem a espera, o duplo clique numa página não lida era engolido pelo próprio
+        primeiro clique. Medido na janela de verdade em 2026-09-03."""
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QApplication
+
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_clicada.emit(0)
+            leu.assert_not_called()
+            self.assertTrue(janela._leitura_adiada.isActive())
+            QTest.qWait(QApplication.doubleClickInterval() + 100)
+        leu.assert_called_once_with(selecionar_depois=0)
+
+    def test_o_clique_na_caixa_ja_lida_nao_espera_nada(self) -> None:
+        """Selecionar não tranca o visor, então não há por que adiar -- e a espera seria lentidão."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela.pdf.caixa_clicada.emit(1)
+        self.assertFalse(janela._leitura_adiada.isActive())
+        self.assertEqual(janela.painel.lista.currentRow(), 1)
+        self.assertIs(janela.abas.currentWidget(), janela.painel)
+
+    def test_o_duplo_clique_cancela_a_leitura_que_o_primeiro_clique_adiou_e_le_ele_mesmo(self) -> None:
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_clicada.emit(0)
+            janela.pdf.caixa_para_estudo.emit(0)
+        self.assertFalse(janela._leitura_adiada.isActive(), "a leitura adiada do clique foi cancelada")
+        leu.assert_called_once_with(selecionar_depois=0)
+        self.assertEqual(janela._estudar_ao_ler, (0, 0))
+
+    def test_virar_a_pagina_cancela_a_leitura_adiada(self) -> None:
+        """Senão a leitura leria a página nova, com o índice da caixa da antiga."""
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina"):
+            janela.pdf.caixa_clicada.emit(0)
+            self.assertTrue(janela._leitura_adiada.isActive())
+            janela.pdf.ir_para_pagina(1)
+            self.app.processEvents()
+        self.assertFalse(janela._leitura_adiada.isActive())
+
+    def test_o_duplo_clique_nao_pede_uma_segunda_leitura_enquanto_outra_corre(self) -> None:
+        """Uma leitura já em curso (a página, por botão) é aproveitada: o duplo só anota o
+        pedido, e uma leitura que termina sem itens desta página o descarta -- ele não sobrevive
+        à tarefa."""
+        janela = self.janela()
+        janela._tarefa = mock.Mock()  # uma leitura ainda corre
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_para_estudo.emit(0)
+        leu.assert_not_called()
+        self.assertEqual(janela._estudar_ao_ler, (0, 0))
+
+        janela._terminou()
+        self.assertIsNone(janela._tarefa)
+        self.assertIsNone(janela._estudar_ao_ler, "o pedido morre com a tarefa")
+        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
 
     def test_a_caixa_tirada_some_da_pagina_e_volta_com_o_comando(self) -> None:
         """A remoção é da pessoa e por (livro, página): ela não apaga nada no disco, e é isso que

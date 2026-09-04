@@ -250,8 +250,30 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1805
+    LIMITE = 1891
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.862 → 1.891 ao juntar as duas pilhas de PRs (#31 sobre o #27)**: os dois lados cresceram
+    sozinhos -- a S-523 (motor das preferências) de um lado, o duplo clique e a detecção ao virar a
+    página (S-68) do outro -- e a soma é a soma; nenhuma linha foi escrita para a junção além do
+    `closeEvent` que agora fecha o motor **e** para o detector.
+
+    **1.832 → 1.862 com a detecção ao virar a página (S-68)**, que o porte tinha deixado no
+    botão "Marcar diagramas": sem caixa, o duplo clique não acha nada. As trinta são o pedido ao
+    `DeteccaoDeFundo` de `qt/trabalho.py` (`_detectar_ao_fundo`) e a chegada do resultado
+    (`_chegou_a_deteccao_de_fundo`), que cai no mesmo `_chegaram_candidatos` do botão. A fila de
+    um pedido, a thread e a falha silenciosa ficaram lá, e não aqui.
+
+    **1.776 → 1.832 com o duplo clique no diagrama**, que o leva à sala de estudo. As cinquenta
+    e seis são um `connect`, o método que decide (`_estudar_a_caixa`, pela mesma
+    `decide_box_click` do clique simples), o que traz a aba (`_levar_ao_estudo`), o pedido
+    anotado para quando a página ainda não foi lida (`_estudar_ao_ler`, atendido em
+    `_chegaram_itens`) e a espera do clique simples pelo intervalo do duplo (`_leitura_adiada`):
+    a leitura tranca o visor, e um segundo aperto num widget desabilitado não chega a ninguém.
+    O gesto em si está em `qt/visor.py`, e a decisão de qual caixa ele acerta continua sendo
+    `page_overlay.index_at`; o que ficou aqui é o que só a janela sabe -- se a página já foi
+    lida, e se há leitura em curso.
+
 
     **1.788 → 1.805 na S-523**, e o que subiu é fiação: o motor das preferências chega à sala
     (`analyzer=`), é fechado no `closeEvent` -- um processo, não um widget --, e o serviço nasce com o

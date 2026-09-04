@@ -1046,13 +1046,16 @@ class PainelDeEstudo(QWidget):
         else:
             self.set_status("Sincronismo com OCR desativado.")
 
-    def load_from_recognized(self) -> None:
+    def load_from_recognized(self) -> bool:
+        """Abre o estudo do diagrama selecionado. Devolve se abriu: quem traz a aba para a frente
+        depois de um duplo clique no visualizador precisa saber se há sala para mostrar."""
         posicao = self._posicao()
         if posicao is None or not posicao.valida():
             # Pré-condição no rodapé, e não em caixa de diálogo (S-164).
             self.set_status("Não há diagrama reconhecido para estudar.")
-            return
+            return False
         self._abrir(posicao, origem="Base: OCR selecionado", status="Estudo do diagrama selecionado.")
+        return True
 
     # --------------------------------------------------------------------------------- sala
 
