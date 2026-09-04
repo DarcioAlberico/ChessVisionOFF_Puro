@@ -125,3 +125,9 @@ _Seção a escrever pelo executor do item._
 ## S-550 · As S-500 a S-506 do corte do Tk ganham seção de spec (dívida de documentação) — ◻ em andamento
 
 _Seção a escrever pelo executor do item._
+
+## S-580 · O fim da faixa reservada — não é item
+
+A mensagem do commit `eb3ba71` cita a faixa "S-527 a S-580", e a guarda `test_todo_item_entregue_tem_secao_em_algum_doc` lê
+números em mensagem de commit como entrega. Esta seção existe para dizer que **S-580 é o limite superior da
+reserva**, e não um item: quando a faixa for ocupada até aqui, o número recebe a seção de verdade e este parágrafo sai.
