@@ -91,5 +91,47 @@ class PecasAusentesTests(unittest.TestCase):
         self.assertTrue((diagrama_png.PASTA_DE_PECAS / "wk.png").exists())
 
 
+class PlaquetaTests(unittest.TestCase):
+    """A marca do lado a jogar, no PNG que o DOCX carrega.
+
+    Aqui se lê pixel porque é o que existe: o ponto das pretas era `MOLDURA` sobre `MOLDURA`, e no
+    bitmap isso é literalmente a mesma cor -- o teste antigo não teria como notar, porque não olhava.
+    """
+
+    def _pixel_do_ponto(self, fen: str, *, virado: bool = False) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+        imagem = diagrama_png.imagem_da_posicao(fen, virado=virado)
+        x = MARGEM + 8 * CASA + MARGEM // 2
+        embaixo = (fen.split()[1] == "w") != virado
+        y = MARGEM + 8 * CASA - diagrama_png.RAIO_DO_LADO_PX - 2 if embaixo else MARGEM + diagrama_png.RAIO_DO_LADO_PX + 2
+        return imagem.getpixel((x, y)), imagem.getpixel((x, y - diagrama_png.RAIO_DO_LADO_PX - 2))
+
+    def test_o_ponto_das_pretas_nao_e_da_cor_da_moldura(self) -> None:
+        cores = diagrama_svg.cores_padrao()
+        ponto, placa = self._pixel_do_ponto("rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 4")
+        self.assertEqual(ponto, ImageColor.getrgb(cores.peca_escura))
+        self.assertEqual(placa, ImageColor.getrgb(cores.clara))
+        self.assertNotEqual(ponto, ImageColor.getrgb(cores.moldura))
+
+    def test_o_ponto_das_brancas_e_claro_sobre_a_mesma_placa(self) -> None:
+        cores = diagrama_svg.cores_padrao()
+        ponto, placa = self._pixel_do_ponto(INICIAL)
+        self.assertEqual(ponto, ImageColor.getrgb(cores.peca_clara))
+        self.assertEqual(placa, ImageColor.getrgb(cores.clara))
+
+    def test_a_marca_desce_com_o_tabuleiro_virado(self) -> None:
+        """O PNG e o SVG são a mesma figura duas vezes; se discordassem, o Word e o LibreOffice
+        mostrariam diagramas diferentes do mesmo arquivo."""
+        cores = diagrama_svg.cores_padrao()
+        imagem = diagrama_png.imagem_da_posicao(INICIAL, virado=True)
+        x = MARGEM + 8 * CASA + MARGEM // 2
+        alto = MARGEM + diagrama_png.RAIO_DO_LADO_PX + 2
+        baixo = MARGEM + 8 * CASA - diagrama_png.RAIO_DO_LADO_PX - 2
+        self.assertEqual(imagem.getpixel((x, alto)), ImageColor.getrgb(cores.peca_clara))
+        self.assertEqual(imagem.getpixel((x, baixo)), ImageColor.getrgb(cores.moldura))
+
+    def test_a_regua_do_png_usa_a_mesma_tinta_medida_do_svg(self) -> None:
+        self.assertEqual(diagrama_svg.cores_padrao().coordenada, diagrama_png.cores_padrao().coordenada)
+
+
 if __name__ == "__main__":
     unittest.main()

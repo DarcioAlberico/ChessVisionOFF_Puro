@@ -13,8 +13,8 @@ exportador funciona no `--selftest`. A casa mede **70 px**, o tamanho em que os 
 desenhados: reduzi-los para caber num quadrado menor apagaria o traço fino das peças brancas, que
 é o defeito que `ui/conjuntos.TRACO` já registrou.
 
-O que se decide aqui é só o desenho de bitmap. A orientação (`virado`), a ordem das réguas e as
-cores são **as mesmas de `diagrama_svg.py`**, tomadas de `ui/desenho_do_tabuleiro.reguas` e de
+O que se decide aqui é só o desenho de bitmap. A orientação (`virado`), a ordem das réguas, o canto
+em que a plaqueta do lado a jogar cai e as cores são **as mesmas de `diagrama_svg.py`**, tomadas de `ui/desenho_do_tabuleiro.reguas` e de
 `ui/tokens.py`: os dois formatos de um mesmo diagrama mostram a mesma coisa, ou o par PNG+SVG do
 DOCX discordaria de si mesmo. Sem Qt aqui, e sem arquivo: quem grava é `docx_saida.py`.
 """
@@ -98,7 +98,7 @@ def imagem_da_posicao(
     """A `Image` RGB do diagrama, para quem quer compor antes de gravar."""
     tabuleiro = tabuleiro_de(fen_ou_placement)
     lado = lado_da_fen(fen_ou_placement) if lado_a_jogar is None else lado_a_jogar.lower()
-    paleta = cores or cores_padrao()
+    paleta = (cores or cores_padrao()).resolvidas()
     margem = MARGEM_PX if (com_reguas or lado) else 0
     lado_total = 8 * CASA_PX + 2 * margem
 
@@ -116,7 +116,7 @@ def imagem_da_posicao(
     if com_reguas:
         _reguas(desenho, margem, virado, paleta)
     if lado:
-        _ponto_do_lado(desenho, margem, lado, paleta)
+        _ponto_do_lado(desenho, margem, lado, paleta, virado=virado)
     return imagem
 
 
@@ -190,10 +190,17 @@ def _reguas(desenho: ImageDraw.ImageDraw, margem: int, virado: bool, paleta: Cor
         desenho.text((margem / 2, y), numero, fill=paleta.coordenada, font=fonte, anchor="mm")
 
 
-def _ponto_do_lado(desenho: ImageDraw.ImageDraw, margem: int, lado: str, paleta: Cores) -> None:
-    """O ponto da margem direita: embaixo para as brancas, em cima para as pretas, como no SVG."""
+def _ponto_do_lado(desenho: ImageDraw.ImageDraw, margem: int, lado: str, paleta: Cores, *, virado: bool = False) -> None:
+    """A plaqueta da margem direita, **com a mesma geometria e as mesmas tintas do SVG**.
+
+    O par PNG+SVG do DOCX é a mesma figura duas vezes: se um deles pusesse a marca do lado a jogar
+    em outro canto, o Word e o LibreOffice mostrariam diagramas diferentes do mesmo arquivo.
+    """
     brancas = lado == "w"
+    embaixo = brancas != virado
     x = margem + 8 * CASA_PX + margem / 2
-    y = margem + 8 * CASA_PX - RAIO_DO_LADO_PX - 2 if brancas else margem + RAIO_DO_LADO_PX + 2
+    y = margem + 8 * CASA_PX - RAIO_DO_LADO_PX - 2 if embaixo else margem + RAIO_DO_LADO_PX + 2
+    meia = RAIO_DO_LADO_PX + 3
+    desenho.rectangle((x - meia, y - meia, x + meia, y + meia), fill=paleta.clara)
     caixa = (x - RAIO_DO_LADO_PX, y - RAIO_DO_LADO_PX, x + RAIO_DO_LADO_PX, y + RAIO_DO_LADO_PX)
-    desenho.ellipse(caixa, fill=paleta.clara if brancas else paleta.moldura, outline=paleta.coordenada, width=1)
+    desenho.ellipse(caixa, fill=paleta.peca_clara if brancas else paleta.peca_escura, outline=paleta.peca_escura, width=1)

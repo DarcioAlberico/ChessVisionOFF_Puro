@@ -128,7 +128,8 @@ class VerificadorTests(unittest.TestCase):
     def _quebrado(self, *, sem_relacao: bool = False, sem_tipo: bool = False, xml_ruim: bool = False) -> bytes:
         membros = _membros(_estudo_em_bytes())
         if sem_relacao:
-            membros["word/_rels/document.xml.rels"] = membros["word/_rels/document.xml.rels"].replace(b'Id="rId2"', b'Id="rId99"')
+            alvo = f'Id="{docx_saida.RID_ESTILOS[:-1]}5"'.encode()  # a primeira relação de imagem
+            membros["word/_rels/document.xml.rels"] = membros["word/_rels/document.xml.rels"].replace(alvo, b'Id="rId99"')
         if sem_tipo:
             membros["[Content_Types].xml"] = membros["[Content_Types].xml"].replace(b'<Default Extension="png" ContentType="image/png"/>', b"")
         if xml_ruim:
@@ -163,8 +164,9 @@ class EstilosTests(unittest.TestCase):
 
     def test_os_nomes_visiveis_tem_acento(self) -> None:
         nomes = {s.find(f"{W}name").get(f"{W}val") for s in ET.fromstring(_membros(_estudo_em_bytes())["word/styles.xml"]).iter(f"{W}style")}  # type: ignore[union-attr]
-        self.assertIn("Título", nomes)
         self.assertIn("Comentário", nomes)
+        self.assertIn("Variante 2", nomes)
+        self.assertIn(docx_saida.NOME_DO_TITULO, nomes)
 
 
 class EstudoTests(unittest.TestCase):
@@ -173,10 +175,10 @@ class EstudoTests(unittest.TestCase):
         estilos = [e for e, _ in paragrafos]
         self.assertEqual(estilos[0], docx_saida.TITULO)
         self.assertIn(docx_saida.DIAGRAMA, estilos)
-        self.assertIn(docx_saida.LEGENDA, estilos)
-        self.assertTrue(any(e == docx_saida.LANCE and "4... Bc5" in t for e, t in paragrafos), paragrafos)
+        self.assertNotIn(docx_saida.LEGENDA, estilos)  # a FEN só sai com `com_fen`
+        self.assertTrue(any(e == docx_saida.LANCE and "4...Bc5" in t for e, t in paragrafos), paragrafos)
         self.assertTrue(any(e == docx_saida.COMENTARIO and t == "a italiana & <isto>" for e, t in paragrafos), paragrafos)
-        self.assertTrue(any(e == docx_saida.VARIANTE and t.startswith("5. c3") for e, t in paragrafos), paragrafos)
+        self.assertTrue(any(e == docx_saida.VARIANTE and t.startswith("5.c3") for e, t in paragrafos), paragrafos)
 
     def test_o_diagrama_leva_png_no_blip_e_svg_na_extensao(self) -> None:
         """O par que o próprio Word grava: o PNG é o que todo leitor mostra, o SVG é o que o Word
@@ -214,8 +216,8 @@ class EstudoTests(unittest.TestCase):
         pasta = pasta_temporaria(self)
         dados = docx_saida.exportar_estudos_docx([_estudo(), _estudo(), _estudo()], pasta / "tres.docx").caminho.read_bytes()
         quebras = [b for b in ET.fromstring(_membros(dados)["word/document.xml"]).iter(f"{W}br") if b.get(f"{W}type") == "page"]
-        self.assertEqual(len(quebras), 2)
-        self.assertEqual(sum(1 for e, _ in _paragrafos(dados) if e == docx_saida.TITULO), 3)
+        self.assertEqual(len(quebras), 3)  # uma depois do sumário, duas entre os três estudos
+        self.assertEqual(sum(1 for e, _ in _paragrafos(dados) if e == docx_saida.TITULO), 4)  # e o do sumário
 
 
 class TextoTests(unittest.TestCase):
@@ -287,6 +289,93 @@ class MiudezasTests(unittest.TestCase):
     def test_nenhuma_cor_e_escrita_no_modulo(self) -> None:
         fonte = Path(docx_saida.__file__).read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"#[0-9a-fA-F]{6}\b", fonte), [])
+
+
+class EstruturaDoWordTests(unittest.TestCase):
+    """O que faz um `.docx` ser um documento e não uma tira de parágrafos."""
+
+    def setUp(self) -> None:
+        pasta = pasta_temporaria(self)
+        self.dados = docx_saida.exportar_estudos_docx([_estudo(), _estudo()], pasta / "dois.docx").caminho.read_bytes()
+        self.membros = _membros(self.dados)
+
+    def test_o_titulo_e_o_estilo_interno_de_titulo_do_Word(self) -> None:
+        """**O nome do estilo, e não o `styleId`, é o que faz um parágrafo virar título.** O Calibre
+        casa `heading\\s+(\\d+)$` sobre o `w:name`; com `Título` ele relatava *"Auto generated TOC
+        with 0 entries"* sobre um documento com 2.618 títulos."""
+        estilos = {s.get(f"{W}styleId"): s for s in ET.fromstring(self.membros["word/styles.xml"]).iter(f"{W}style")}
+        for identificador, esperado in ((docx_saida.TITULO, "heading 1"), (docx_saida.SUBTITULO, "heading 2")):
+            self.assertIn(identificador, estilos)
+            nome = estilos[identificador].find(f"{W}name")
+            assert nome is not None
+            self.assertEqual(nome.get(f"{W}val"), esperado)
+            self.assertRegex(esperado, r"^heading\s+\d+$")
+            self.assertIsNotNone(estilos[identificador].find(f"{W}pPr/{W}outlineLvl"))
+
+    def test_o_documento_abre_com_o_campo_de_sumario(self) -> None:
+        documento = self.membros["word/document.xml"].decode("utf-8")
+        self.assertIn('TOC \\o "1-3"', documento)
+        self.assertIn('w:fldCharType="begin"', documento)
+        self.assertIn('w:fldCharType="end"', documento)
+        configuracao = self.membros["word/settings.xml"].decode("utf-8")
+        self.assertIn('<w:updateFields w:val="true"/>', configuracao)
+
+    def test_ha_cabecalho_rodape_e_numero_de_pagina(self) -> None:
+        """Um livro de novecentas páginas sem número de página não se consulta."""
+        for parte in ("word/header1.xml", "word/footer1.xml"):
+            self.assertIn(parte, self.membros)
+        self.assertIn(" PAGE ", self.membros["word/footer1.xml"].decode("utf-8"))
+        secao = ET.fromstring(self.membros["word/document.xml"]).find(f".//{W}sectPr")
+        assert secao is not None
+        # A ordem é imposta pelo esquema: as referências abrem o `sectPr`, ou o Word recusa.
+        self.assertEqual([e.tag for e in secao][:2], [f"{W}headerReference", f"{W}footerReference"])
+        relacoes = {
+            r.get("Id"): r.get("Target")
+            for r in ET.fromstring(self.membros["word/_rels/document.xml.rels"]).iter(f"{{{docx_saida.NS_REL}}}Relationship")
+        }
+        self.assertEqual(relacoes[docx_saida.RID_CABECALHO], "header1.xml")
+        self.assertEqual(relacoes[docx_saida.RID_RODAPE], "footer1.xml")
+
+    def test_as_partes_novas_tem_tipo_de_conteudo_declarado(self) -> None:
+        self.assertEqual(docx_saida.verificar(self.dados), [])
+        tipos = ET.fromstring(self.membros["[Content_Types].xml"])
+        sobrescritos = {o.get("PartName") for o in tipos.iter(f"{{{docx_saida.NS_CT}}}Override")}
+        for parte in ("/word/settings.xml", "/word/header1.xml", "/word/footer1.xml", "/docProps/app.xml"):
+            self.assertIn(parte, sobrescritos)
+
+    def test_o_programa_nao_assina_o_documento_como_autor(self) -> None:
+        nucleo = self.membros["docProps/core.xml"].decode("utf-8")
+        self.assertNotIn("<dc:creator>", nucleo)
+        self.assertIn(f"<cp:lastModifiedBy>{docx_saida.PRODUTOR}</cp:lastModifiedBy>", nucleo)
+
+
+class SvgEmbutidoTests(unittest.TestCase):
+    def test_o_svg_do_pacote_e_um_arquivo_e_mede_em_centimetros(self) -> None:
+        """Dentro do `.docx` o SVG é uma parte solta: leva declaração `<?xml?>`, e `18em` não tem
+        corpo de texto a que se referir."""
+        membros = _membros(_estudo_em_bytes())
+        (nome,) = [n for n in membros if n.endswith(".svg")]
+        texto = membros[nome].decode("utf-8")
+        self.assertTrue(texto.startswith("<?xml "), texto[:40])
+        raiz = ET.fromstring(texto)
+        self.assertEqual(raiz.get("width"), f"{docx_saida.LARGURA_PADRAO_CM:g}cm")
+
+    def test_o_desenho_descreve_a_posicao_no_descr(self) -> None:
+        documento = ET.fromstring(_membros(_estudo_em_bytes())["word/document.xml"])
+        propriedades = documento.find(f".//{{{docx_saida.NS_WP}}}docPr")
+        assert propriedades is not None
+        self.assertIn("FEN: ", propriedades.get("descr") or "")
+
+
+class LegendaOpcionalTests(unittest.TestCase):
+    def test_a_fen_nao_sai_sob_o_diagrama_por_padrao(self) -> None:
+        pasta = pasta_temporaria(self)
+        sem = docx_saida.exportar_estudo_docx(_estudo(), pasta / "sem.docx")
+        com = docx_saida.exportar_estudo_docx(_estudo(), pasta / "com.docx", com_fen=True)
+        estilos_sem = [e for e, _ in _paragrafos(sem.caminho.read_bytes())]
+        paragrafos_com = _paragrafos(com.caminho.read_bytes())
+        self.assertNotIn(docx_saida.LEGENDA, estilos_sem)
+        self.assertTrue(any(e == docx_saida.LEGENDA and t.startswith("FEN: ") for e, t in paragrafos_com), paragrafos_com)
 
 
 if __name__ == "__main__":

@@ -25,10 +25,27 @@ variante, que é a parte que todo visualizador erra, sai de lá e é conferida c
 - A linha que continua depois de um comentário ou de uma variante é parágrafo novo e traz o
   número do lance de novo (`12...`), que é o que `trechos` já faz com `forcar`.
 - O resultado `*` não sai; `1-0`, `0-1` e `1/2-1/2` saem no fim da linha principal.
+
+## A tipografia é do livro, e não a do widget
+
+`estudo_lista.trechos` é tokenizador de **lista clicável**: cada trecho termina em espaço para que
+dois itens vizinhos não se encostem na tela, e é por isso que uma linha crua sai `1. Kf2 !` e
+`( 1... Kf5 ?! )`. Nenhum livro imprime assim -- imprime `1.Kf2!` e `(1...Kf5?!)`. **A cola é
+decidida aqui**, pelo papel do trecho, e não no exportador: se cada formato colasse por conta
+própria, o EPUB e o DOCX imprimiriam a mesma partida de dois jeitos.
+
+| papel | regra |
+|---|---|
+| `NUMERO` (`1.`, `1...`) | o próximo cola nele -- `1.Kf2`, `1...Kf5` |
+| `NAG` (`!`, `?!`, `⩲`) | cola no anterior -- `Kf2!`, `Kd4⩲` |
+| `ABRE` (`(`) | o próximo cola nele -- `(1...Kf5` |
+| `FECHA` (`)`) | cola no anterior -- `2.Kd4⩲)` |
+| lance, comentário, resultado | espaço simples, como qualquer palavra |
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from chess_diagram_ocr.estudo import Estudo, no_em, texto_do_comentario
@@ -36,6 +53,8 @@ from chess_diagram_ocr.ui.estudo_lista import (
     ABRE,
     COMENTARIO,
     FECHA,
+    NAG,
+    NUMERO,
     RAIZ,
     RESULTADO,
     Trecho,
@@ -60,9 +79,23 @@ COMENTARIO_DO_ESTUDO = "comentario"
 LANCE = "lance"
 VARIANTE = "variante"
 
-MARCA_DE_DIAGRAMA = "[%D"
-"""O começo do comando que pede um diagrama. É o `[%D]` do ChessBase; `trechos` guarda o comentário
-inteiro em `Trecho.token`, então basta procurar ali."""
+MARCA_DE_DIAGRAMA = "[%D]"
+"""O comando que pede um diagrama, **inteiro**. É o `[%D]` do ChessBase; `trechos` guarda o
+comentário inteiro em `Trecho.token`, então basta procurar ali.
+
+**Inteiro e não por prefixo**: `"[%D"` casava também `{[%Depth 20]}`, que é o campo de profundidade
+que o Fritz e o ChessBase gravam ao anotar com motor -- e um livro anotado por máquina ganhava um
+diagrama em cada lance analisado. Quem escreve `[%D]` está pedindo um diagrama; quem escreve
+`[%Depth 20]` está dizendo a que profundidade o motor viu a posição."""
+
+_COLA_NO_ANTERIOR = frozenset({NAG, FECHA})
+"""Papéis que se encostam no que veio antes: `Kf2!`, `2.Kd4⩲)`. Ver o cabeçalho."""
+
+_COLA_O_PROXIMO = frozenset({NUMERO, ABRE})
+"""Papéis em que o próximo se encosta: `1.Kf2`, `(1...Kf5`. Ver o cabeçalho."""
+
+_SEM_VALOR = frozenset({"", "?", "??", "-", "*", "????.??.??"})
+"""O que o PGN escreve para "não sei": não vira título."""
 
 
 @dataclass(frozen=True)
@@ -81,8 +114,54 @@ class Paragrafo:
 
 
 def titulo_do_estudo(estudo: Estudo) -> str:
-    """O mesmo título de `estudo_saida.para_documento`: o endereço no livro, ou "Estudo avulso"."""
-    return estudo.ancora.rotulo() if estudo.ancora.valida else "Estudo avulso"
+    """O nome do capítulo: o endereço no livro, o cabeçalho da partida, ou "Estudo avulso".
+
+    **A âncora não é o único endereço que um estudo tem.** Ela vale para o que veio do OCR -- é o
+    `Secrets.pdf · p. 143 · diagrama 2` que diz onde a posição está impressa. Um PGN colado, um
+    arquivo de estudos, o que veio de uma base: nada disso tem âncora, e o sumário saía com
+    trezentas entradas escritas `Estudo avulso` -- um índice que não indexa nada. O que essas
+    partidas têm é cabeçalho, e é o que o catálogo de qualquer base mostra:
+    `Carlsen, M. × Nepomniachtchi, I., Tata Steel, 2021.01.16`.
+
+    `estudo_saida.para_documento` chama esta mesma função, porque dois títulos para o mesmo estudo
+    seria o EPUB discordando do `.md`.
+    """
+    if estudo.ancora.valida:
+        return estudo.ancora.rotulo()
+    return _endereco_da_partida(estudo) or "Estudo avulso"
+
+
+def _endereco_da_partida(estudo: Estudo) -> str:
+    """`Brancas × Pretas, Evento, Data` com o que o cabeçalho tiver -- e `""` quando não tem nada.
+
+    **Sem jogador não há partida**, e sem partida o título é "Estudo avulso". A regra não é
+    formalidade: `Estudo.de_posicao` grava `Event = "ChessVisionOFF Estudo"` em toda posição criada
+    aqui dentro, e um livro intitulado com o nome do próprio programa é o mesmo erro que o
+    `dc:creator` da primeira rodada. Num estudo de composição só há o compositor (`White`), e é ele
+    quem nomeia o capítulo -- "Sifers, Samouc. sahm. igri".
+    """
+    cabecalho = estudo.jogo.headers
+    brancas, pretas = _campo(cabecalho, "White"), _campo(cabecalho, "Black")
+    if not brancas and not pretas:
+        return ""
+    partes = [" × ".join(nome for nome in (brancas, pretas) if nome)]
+    partes.extend(campo for campo in (_campo(cabecalho, "Event"), _data(cabecalho)) if campo)
+    return ", ".join(parte for parte in partes if parte)
+
+
+def _campo(cabecalho: Mapping[str, str], nome: str) -> str:
+    valor = " ".join(str(cabecalho.get(nome, "") or "").split())
+    return "" if valor in _SEM_VALOR else valor
+
+
+def _data(cabecalho: Mapping[str, str]) -> str:
+    """`2021.01.16` inteira; `2021.??.??` vira `2021`; `????.??.??` não vira nada."""
+    partes: list[str] = []
+    for pedaco in _campo(cabecalho, "Date").split("."):
+        if not pedaco.isdigit():
+            break
+        partes.append(pedaco)
+    return ".".join(partes)
 
 
 def paragrafos(estudo: Estudo) -> tuple[Paragrafo, ...]:
@@ -117,6 +196,8 @@ class _Montador:
         self.tipo = LANCE
         self.nivel = 0
         self.diagramas = 0
+        self.colar_o_proximo = False
+        """O trecho anterior era um número de lance ou um `(`: o que vier encosta nele."""
 
     # ------------------------------------------------------------------ parágrafos prontos
 
@@ -134,16 +215,25 @@ class _Montador:
 
     # ------------------------------------------------------------------ texto corrido
 
-    def lance(self, texto: str, nivel: int) -> None:
+    def lance(self, texto: str, nivel: int, *, papel: str = "") -> None:
+        """Mais um pedaço da linha corrente. `papel` é o do trecho, e é ele que decide a cola."""
+        texto = " ".join(str(texto).split())
+        if not texto:
+            return
+        cola = self.colar_o_proximo or papel in _COLA_NO_ANTERIOR
+        self.colar_o_proximo = papel in _COLA_O_PROXIMO
         tipo = LANCE if nivel == 0 else VARIANTE
         if self.pedacos and (tipo != self.tipo or (tipo == VARIANTE and nivel != self.nivel)):
             self.fechar()
         self.tipo, self.nivel = tipo, nivel
+        if self.pedacos and not cola:
+            self.pedacos.append(" ")
         self.pedacos.append(texto)
 
     def fechar(self) -> None:
-        texto = " ".join("".join(self.pedacos).split())
+        texto = "".join(self.pedacos).strip()
         self.pedacos = []
+        self.colar_o_proximo = False
         if texto:
             self.saida.append(Paragrafo(self.tipo, texto, nivel=self.nivel))
         self.tipo, self.nivel = LANCE, 0
@@ -151,23 +241,19 @@ class _Montador:
     # ------------------------------------------------------------------ a travessia
 
     def trecho(self, trecho: Trecho) -> None:
-        if trecho.papel == ABRE:
+        if trecho.papel in (ABRE, FECHA):
             if trecho.nivel == 1:
+                # O parêntese do primeiro nível não é impresso: o recuo já diz que é variante.
                 self.fechar()
-                self.tipo, self.nivel = VARIANTE, 1
+                if trecho.papel == ABRE:
+                    self.tipo, self.nivel = VARIANTE, 1
             else:
-                self.lance(trecho.texto, 1)
-            return
-        if trecho.papel == FECHA:
-            if trecho.nivel == 1:
-                self.fechar()
-            else:
-                self.lance(trecho.texto, 1)
+                self.lance(trecho.texto, 1, papel=trecho.papel)
             return
         if trecho.papel == COMENTARIO:
             self._comentario(trecho)
             return
-        self.lance(trecho.texto, min(trecho.nivel, 1))
+        self.lance(trecho.texto, min(trecho.nivel, 1), papel=trecho.papel)
 
     def _comentario(self, trecho: Trecho) -> None:
         pede_diagrama = MARCA_DE_DIAGRAMA in trecho.token

@@ -190,5 +190,108 @@ class SemHexadecimalTests(unittest.TestCase):
         self.assertEqual(cores.escura, tokens.cor(tokens.CASA_ESCURA))
 
 
+class ContrasteTests(unittest.TestCase):
+    """A tinta da margem é lida, ou não está lá.
+
+    O piso é o `AA_GRAFICO` da S-146 -- 4,5:1 --, e a régua saía a **2,51:1** sobre a moldura
+    escura. O ponto das pretas era pior: pintado com a própria cor da moldura, **1,0:1**, um ponto
+    invisível dizendo de quem era a vez.
+    """
+
+    PISO = 4.5
+
+    def setUp(self) -> None:
+        from chess_diagram_ocr.ui import tokens
+
+        self.tokens = tokens
+        self.cores = diagrama_svg.cores_padrao()
+
+    def test_a_regua_e_lida_sobre_a_moldura(self) -> None:
+        razao = self.tokens.razao_de_contraste(self.cores.coordenada, self.cores.moldura)
+        self.assertGreaterEqual(razao, self.PISO, f"{razao:.2f}:1")
+
+    def test_a_plaqueta_do_lado_a_jogar_e_lida_nos_dois_estados(self) -> None:
+        """O quadrado claro é o que separa a marca da moldura; o círculo cheio é lido contra ele, e
+        o vazado pelo contorno. Sem o quadrado, "pretas jogam" é tinta escura sobre fundo escuro."""
+        plaqueta = self.tokens.razao_de_contraste(self.cores.clara, self.cores.moldura)
+        self.assertGreaterEqual(plaqueta, self.PISO, f"{plaqueta:.2f}:1")
+        for tinta in (self.cores.peca_escura,):
+            razao = self.tokens.razao_de_contraste(tinta, self.cores.clara)
+            self.assertGreaterEqual(razao, self.PISO, f"{razao:.2f}:1")
+
+    def test_o_desenho_usa_as_tintas_medidas_e_nao_a_moldura(self) -> None:
+        raiz = _raiz(diagrama_svg.svg_da_posicao(ITALIANA))
+        ponto = next(c for c in raiz.iter(f"{SVG}circle") if "lado-a-jogar" in c.get("class", ""))
+        placa = next(r for r in raiz.iter(f"{SVG}rect") if r.get("class") == "plaqueta-do-lado")
+        self.assertEqual(placa.get("fill"), self.cores.clara)
+        self.assertEqual(ponto.get("fill"), self.cores.peca_escura)
+        self.assertNotEqual(ponto.get("fill"), self.cores.moldura)
+        regua = next(t for t in raiz.iter(f"{SVG}text") if "regua" in t.get("class", ""))
+        self.assertEqual(regua.get("fill"), self.cores.coordenada)
+
+
+class PlaquetaViradaTests(unittest.TestCase):
+    def _cy(self, svg: str) -> float:
+        raiz = _raiz(svg)
+        ponto = next(c for c in raiz.iter(f"{SVG}circle") if "lado-a-jogar" in c.get("class", ""))
+        return float(ponto.get("cy", "0"))
+
+    def test_a_marca_fica_do_lado_de_quem_joga(self) -> None:
+        """Virado, as pretas estão embaixo -- e "as pretas jogam" apontava para o alto, que é onde
+        as brancas estavam."""
+        meio = diagrama_svg.MARGEM + 4 * diagrama_svg.CASA
+        self.assertGreater(self._cy(diagrama_svg.svg_da_posicao(INICIAL)), meio)
+        self.assertLess(self._cy(diagrama_svg.svg_da_posicao(INICIAL, virado=True)), meio)
+        self.assertLess(self._cy(diagrama_svg.svg_da_posicao(ITALIANA)), meio)
+        self.assertGreater(self._cy(diagrama_svg.svg_da_posicao(ITALIANA, virado=True)), meio)
+
+
+class ArquivoSvgTests(unittest.TestCase):
+    def test_para_o_docx_sai_com_declaracao_e_medido_em_centimetros(self) -> None:
+        """`width="18em"` num arquivo solto não tem corpo de texto a que se referir."""
+        texto = diagrama_svg.svg_da_posicao(INICIAL, largura_em=7.6, unidade="cm", declaracao=True)
+        self.assertTrue(texto.startswith("<?xml "), texto[:40])
+        raiz = _raiz(texto)
+        self.assertEqual(raiz.get("width"), "7.6cm")
+        self.assertEqual(raiz.get("height"), "7.6cm")
+
+    def test_no_epub_continua_sem_declaracao_e_em_em(self) -> None:
+        """Dentro do XHTML o SVG é um elemento, e uma declaração no meio do documento é XML inválido."""
+        texto = diagrama_svg.svg_da_posicao(INICIAL)
+        self.assertFalse(texto.startswith("<?xml"))
+        self.assertEqual(_raiz(texto).get("width"), "18em")
+
+
+class ErroEmPortuguesTests(unittest.TestCase):
+    def test_a_fen_ilegivel_falha_em_portugues_com_o_original_ao_lado(self) -> None:
+        """O `python-chess` diz "expected 8 rows in position part of fen", que não é o vocabulário
+        de quem digitou um diagrama errado. A regra do `cli.message_for`: a frase em português, e o
+        original entre parênteses, porque é o que se pesquisa."""
+        with self.assertRaises(diagrama_svg.PosicaoInvalida) as capturado:
+            diagrama_svg.svg_da_posicao("8/8/8")
+        mensagem = str(capturado.exception)
+        self.assertIn("posição inválida", mensagem)
+        self.assertIn("expected 8 rows", mensagem)
+        self.assertIsInstance(capturado.exception, ValueError)
+
+    def test_posicao_vazia_tambem(self) -> None:
+        with self.assertRaises(diagrama_svg.PosicaoInvalida):
+            diagrama_svg.svg_da_posicao("")
+
+
+class DescricaoTests(unittest.TestCase):
+    def test_o_alt_diz_a_posicao_e_nao_so_o_numero(self) -> None:
+        """`alt="Diagrama 1"` é, para quem lê com leitor de tela, o mesmo que imagem sem alternativa."""
+        descricao = diagrama_svg.descricao_da_posicao(ITALIANA, marca="Diagrama 3")
+        self.assertEqual(descricao, f"Diagrama 3. As pretas jogam. FEN: {ITALIANA}")
+        self.assertIn("As brancas jogam", diagrama_svg.descricao_da_posicao(INICIAL))
+        self.assertEqual(diagrama_svg.descricao_da_posicao(INICIAL.split()[0]), f"FEN: {INICIAL.split()[0]}")
+
+    def test_a_descricao_e_o_titulo_do_svg(self) -> None:
+        titulo = _raiz(diagrama_svg.svg_da_posicao(ITALIANA, titulo=diagrama_svg.descricao_da_posicao(ITALIANA))).find(f"{SVG}title")
+        assert titulo is not None
+        self.assertIn("As pretas jogam", titulo.text or "")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -16,12 +16,20 @@ recorte injetado por quem chama (`imagens=`), sem SVG; sem nem isso, sai a marca
 que **nunca desaparece** (regra da S-250).
 
 **Os parágrafos são os de `estudo_paragrafos.py`**, a mesma lista que o EPUB lê: título, diagrama,
-comentário, lance e variante. Os estilos nomeados no Word são esses -- `Título`, `Lance` (negrito),
-`Variante` (itálico, recuado), `Comentário`, `Legenda` -- e quem abrir o arquivo pode retocá-los na
-galeria de estilos em vez de caçar parágrafo por parágrafo. Para o texto do livro, a formatação
+comentário, lance e variante. Os estilos nomeados no Word são esses -- `heading 1`/`heading 2`,
+`Lance` (negrito), `Variante` (itálico, recuado), `Comentário`, `Legenda` -- e quem abrir o arquivo
+pode retocá-los na galeria de estilos em vez de caçar parágrafo por parágrafo. Para o texto do livro,
+a formatação
 inline (negrito, itálico, sublinhado, tachado, cor, realce, corpo) vem de `Atributos`, e a cor e o
 corpo chegam **resolvidos de fora** (`cores=`, `corpos=`), pelos mesmos mapas de `exportacao.Html`:
 nenhum hexadecimal é escrito aqui (regra 3 da SPEC_EDITOR).
+
+**O que faz um `.docx` ser um documento e não uma tira de parágrafos**: o campo `TOC` na primeira
+página, que o Word e o LibreOffice preenchem com os títulos; o cabeçalho com o título do livro; e o
+rodapé com o campo `PAGE`, porque um livro de novecentas páginas sem número de página não se
+consulta. Cada um é uma parte a mais no zip (`word/header1.xml`, `word/footer1.xml`) e uma
+referência no `sectPr` -- e `word/settings.xml` com `updateFields`, que é o que faz o Word
+oferecer-se para montar o índice ao abrir.
 
 `verificar` é a conferência que se faz sem Word: zip, XML bem formado em toda parte, todo tipo de
 conteúdo declarado, toda relação apontando um membro do zip, todo `r:embed` do documento com a sua
@@ -43,7 +51,7 @@ from pathlib import Path
 
 from chess_diagram_ocr import diagrama_png, diagrama_svg, estudo_paragrafos
 from chess_diagram_ocr.atomic_io import atomic_write_bytes
-from chess_diagram_ocr.epub import Metadados
+from chess_diagram_ocr.epub import PRODUTOR, Metadados
 from chess_diagram_ocr.estudo import Estudo
 from chess_diagram_ocr.text import documento as _documento
 from chess_diagram_ocr.text import exportacao, rico
@@ -51,6 +59,8 @@ from chess_diagram_ocr.text import exportacao, rico
 __all__ = [
     "ESTILOS",
     "LARGURA_PADRAO_CM",
+    "SUBTITULO",
+    "TITULO",
     "Documento",
     "Metadados",
     "Relatorio",
@@ -80,9 +90,19 @@ NS_XSI = "http://www.w3.org/2001/XMLSchema-instance"
 
 REL_OFFICE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
 REL_CORE = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+REL_APP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"
 REL_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+REL_SETTINGS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings"
+REL_HEADER = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
+REL_FOOTER = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"
 REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 URI_SVG = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
+
+RID_ESTILOS = "rId1"
+RID_CONFIGURACAO = "rId2"
+RID_CABECALHO = "rId3"
+RID_RODAPE = "rId4"
+"""As quatro relações fixas do documento. As imagens entram depois delas, em `_media`."""
 
 TIPOS_DE_CONTEUDO: Mapping[str, str] = {
     "rels": "application/vnd.openxmlformats-package.relationships+xml",
@@ -92,9 +112,20 @@ TIPOS_DE_CONTEUDO: Mapping[str, str] = {
 }
 TIPO_DO_DOCUMENTO = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
 TIPO_DOS_ESTILOS = "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"
+TIPO_DA_CONFIGURACAO = "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"
+TIPO_DO_CABECALHO = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
+TIPO_DO_RODAPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
 TIPO_DO_NUCLEO = "application/vnd.openxmlformats-package.core-properties+xml"
+TIPO_DO_APLICATIVO = "application/vnd.openxmlformats-officedocument.extended-properties+xml"
 
-TITULO = "Titulo"
+CAMPO_DE_SUMARIO = ' TOC \\o "1-3" \\h \\z \\u '
+"""O campo que vira o índice do Word. `\\o "1-3"` recolhe os três primeiros níveis de título, `\\h`
+faz cada linha um vínculo, `\\z` esconde o número de página na visão web e `\\u` usa o nível de
+estrutura do estilo. O texto que vai no lugar do resultado é a instrução de atualizar (F9) -- o
+Word só numera as páginas quando pagina, e ninguém aqui pagina."""
+
+TITULO = "Heading1"
+SUBTITULO = "Heading2"
 LANCE = "Lance"
 VARIANTE = "Variante"
 VARIANTE_2 = "Variante2"
@@ -103,12 +134,29 @@ LEGENDA = "Legenda"
 DIAGRAMA = "Diagrama"
 MARCA = "Marca"
 
+NOME_DO_TITULO = "heading 1"
+NOME_DO_SUBTITULO = "heading 2"
+"""**O nome do estilo, e não o `styleId`, é o que faz um parágrafo virar título.**
+
+O `w:name` de um estilo interno do Word é sempre o nome inglês da especificação -- `heading 1` --, e
+é o Word que o mostra localizado ("Título 1") na galeria de estilos. Quem lê o arquivo casa esse
+nome: o Calibre casa `heading\\s+(\\d+)$` sobre ele e só então escreve `<h1>`; o painel de navegação
+do Word e o `TOC` fazem o mesmo. Na primeira rodada o estilo se chamava `Título`, com acento e sem o
+número -- não casava nada, e o Calibre relatava *"Auto generated TOC with 0 entries"* sobre um
+documento com 2.618 títulos. `outlineLvl` sozinho não resolve: ele é o nível na estrutura, não o
+papel do estilo."""
+
 ESTILOS: Mapping[str, tuple[str, str, str]] = {
     "Normal": ("Normal", "", '<w:sz w:val="22"/>'),
     TITULO: (
-        "Título",
+        NOME_DO_TITULO,
         '<w:keepNext/><w:spacing w:before="360" w:after="160"/><w:outlineLvl w:val="0"/>',
         '<w:b/><w:sz w:val="32"/>',
+    ),
+    SUBTITULO: (
+        NOME_DO_SUBTITULO,
+        '<w:keepNext/><w:spacing w:before="280" w:after="120"/><w:outlineLvl w:val="1"/>',
+        '<w:b/><w:sz w:val="26"/>',
     ),
     LANCE: ("Lance", '<w:spacing w:after="120"/>', "<w:b/>"),
     VARIANTE: ("Variante", '<w:ind w:left="720"/><w:spacing w:after="120"/>', "<w:i/>"),
@@ -167,11 +215,36 @@ class Documento:
         self.metadados = (metadados or Metadados()).resolvidos()
         self.corpo: list[str] = []
         self.media: dict[str, bytes] = {}
-        self.relacoes: list[tuple[str, str, str]] = [("rId1", REL_STYLES, "styles.xml")]
+        self.relacoes: list[tuple[str, str, str]] = [
+            (RID_ESTILOS, REL_STYLES, "styles.xml"),
+            (RID_CONFIGURACAO, REL_SETTINGS, "settings.xml"),
+            (RID_CABECALHO, REL_HEADER, "header1.xml"),
+            (RID_RODAPE, REL_FOOTER, "footer1.xml"),
+        ]
         self.paragrafos = 0
         self.figuras = 0
 
     # ------------------------------------------------------------------ parágrafos
+
+    def sumario(self) -> None:
+        """O campo `TOC` como primeira página do documento, com quebra depois.
+
+        **É um campo, e não uma lista escrita à mão**: uma lista de títulos com números de página
+        que ninguém recalcula mente na segunda edição. O Word (e o LibreOffice) preenche o campo com
+        `F9`, e quem converte o arquivo lê os títulos direto do estilo.
+        """
+        self.corpo.append(f'<w:p><w:pPr><w:pStyle w:val="{TITULO}"/></w:pPr>{run("Sumário")}</w:p>')
+        self.corpo.append(
+            "<w:p>"
+            '<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>'
+            f'<w:r><w:instrText xml:space="preserve">{_html.escape(CAMPO_DE_SUMARIO, quote=False)}</w:instrText></w:r>'
+            '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+            f"{run('Índice vazio: clique nele e tecle F9 para o Word montá-lo.')}"
+            '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+            "</w:p>"
+        )
+        self.paragrafos += 2
+        self.quebra_de_pagina()
 
     def paragrafo(self, estilo: str, runs: Sequence[str], *, alinhamento: str = "") -> None:
         """Um `<w:p>` com estilo e os `<w:r>` já escritos. Vazio não sai."""
@@ -253,8 +326,12 @@ class Documento:
             zip_.writestr("[Content_Types].xml", _tipos_de_conteudo(self.media))
             zip_.writestr("_rels/.rels", _rels_da_raiz())
             zip_.writestr("docProps/core.xml", _nucleo(self.metadados))
+            zip_.writestr("docProps/app.xml", _aplicativo())
             zip_.writestr("word/document.xml", _documento_xml(self.corpo))
             zip_.writestr("word/styles.xml", _estilos_xml())
+            zip_.writestr("word/settings.xml", _configuracao())
+            zip_.writestr("word/header1.xml", _cabecalho(self.metadados))
+            zip_.writestr("word/footer1.xml", _rodape())
             zip_.writestr("word/_rels/document.xml.rels", _rels(self.relacoes))
             for nome, dados in self.media.items():
                 zip_.writestr(f"word/media/{nome}", dados)
@@ -319,10 +396,11 @@ def exportar_estudo_docx(
     metadados: Metadados | None = None,
     *,
     largura_cm: float = LARGURA_PADRAO_CM,
+    com_fen: bool = False,
 ) -> Relatorio:
     """Um estudo, um documento. O título do arquivo é o do estudo quando ninguém deu outro."""
     dados = metadados or Metadados(titulo=estudo_paragrafos.titulo_do_estudo(estudo))
-    return exportar_estudos_docx([estudo], caminho, dados, largura_cm=largura_cm)
+    return exportar_estudos_docx([estudo], caminho, dados, largura_cm=largura_cm, com_fen=com_fen)
 
 
 def exportar_estudos_docx(
@@ -331,27 +409,40 @@ def exportar_estudos_docx(
     metadados: Metadados | None = None,
     *,
     largura_cm: float = LARGURA_PADRAO_CM,
+    com_fen: bool = False,
 ) -> Relatorio:
-    """Vários estudos num documento, um título de nível 1 cada e quebra de página entre eles."""
+    """Vários estudos num documento, um título de nível 1 cada e quebra de página entre eles.
+
+    **O índice só entra quando há mais de um estudo**: um sumário de uma linha é uma página a mais
+    para dizer o que a primeira já diz.
+    """
     doc = Documento(metadados)
+    if len(estudos) > 1:
+        doc.sumario()
     for indice, estudo in enumerate(estudos, start=1):
         if indice > 1:
             doc.quebra_de_pagina()
-        _estudo(doc, estudo, indice, largura_cm)
+        _estudo(doc, estudo, indice, largura_cm, com_fen=com_fen)
     return doc.escrever(caminho)
 
 
-def _estudo(doc: Documento, estudo: Estudo, indice: int, largura_cm: float) -> None:
+def _estudo(doc: Documento, estudo: Estudo, indice: int, largura_cm: float, *, com_fen: bool = False) -> None:
     for paragrafo in estudo_paragrafos.paragrafos(estudo):
         tipo = paragrafo.tipo
         if tipo == estudo_paragrafos.TITULO:
             doc.texto(TITULO, paragrafo.texto)
         elif tipo == estudo_paragrafos.DIAGRAMA:
             nome = f"estudo_{indice:03d}_diagrama_{paragrafo.numero:02d}"
+            alt = diagrama_svg.descricao_da_posicao(paragrafo.fen, marca=f"Diagrama {paragrafo.numero}")
             png = diagrama_png.png_da_posicao(paragrafo.fen, virado=paragrafo.virado)
-            svg = diagrama_svg.svg_da_posicao(paragrafo.fen, virado=paragrafo.virado).encode("utf-8")
+            svg = _svg_de_arquivo(paragrafo.fen, virado=paragrafo.virado, largura_cm=largura_cm, titulo=alt)
             doc.figura(
-                nome, png, svg=svg, alt=f"Diagrama {paragrafo.numero}", largura_cm=largura_cm, legenda=f"FEN: {paragrafo.fen}"
+                nome,
+                png,
+                svg=svg,
+                alt=alt,
+                largura_cm=largura_cm,
+                legenda=f"FEN: {paragrafo.fen}" if com_fen else "",
             )
         elif tipo == estudo_paragrafos.COMENTARIO_DO_ESTUDO:
             doc.texto(COMENTARIO, paragrafo.texto)
@@ -397,6 +488,8 @@ def exportar_textos_docx(
     vêm de `ui/tokens` e de `ui/tipografia`, porque este módulo não conhece um hexadecimal.
     """
     doc = Documento(metadados)
+    if len(documentos) > 1:
+        doc.sumario()
     formatador = _Runs(dict(cores or {}), dict(corpos or {}))
     so_marca = 0
     for indice, documento in enumerate(documentos, start=1):
@@ -477,7 +570,12 @@ def _paragrafo_de_titulo(texto: str) -> str:
 
 
 class _Paragrafo:
-    """Acumula os runs e fecha o `<w:p>` quando a quebra chega. Título vira `Título`."""
+    """Acumula os runs e fecha o `<w:p>` quando a quebra chega.
+
+    **O primeiro título da folha é `Heading1` e os seguintes são `Heading2`**, como no EPUB: um
+    documento que começa no segundo nível não tem primeiro, e é o painel de navegação do Word e o
+    campo `TOC` que leem essa hierarquia.
+    """
 
     def __init__(self, doc: Documento) -> None:
         self.doc = doc
@@ -496,8 +594,11 @@ class _Paragrafo:
 
     def fechar(self) -> None:
         if "".join(self.texto).strip():
-            self.doc.paragrafo(TITULO if self.titulo else "Normal", self.runs, alinhamento=self.alinhamento)
-            self.teve_titulo = self.teve_titulo or self.titulo
+            estilo = "Normal"
+            if self.titulo:
+                estilo = SUBTITULO if self.teve_titulo else TITULO
+                self.teve_titulo = True
+            self.doc.paragrafo(estilo, self.runs, alinhamento=self.alinhamento)
         self.runs, self.texto, self.titulo, self.alinhamento = [], [], False, ""
 
 
@@ -514,9 +615,10 @@ def _diagrama_do_texto(
     marca = corrida.texto
     nome = f"folha_{indice:03d}_bloco_{max(corrida.bloco, 0):03d}"
     if placement:
+        alt = diagrama_svg.descricao_da_posicao(placement, marca=marca)
         png = diagrama_png.png_da_posicao(placement)
-        svg = diagrama_svg.svg_da_posicao(placement, titulo=marca).encode("utf-8")
-        doc.figura(nome, png, svg=svg, alt=marca, largura_cm=largura_cm)
+        svg = _svg_de_arquivo(placement, largura_cm=largura_cm, titulo=alt)
+        doc.figura(nome, png, svg=svg, alt=alt, largura_cm=largura_cm)
         return 0
     png_injetado = injetadas.get(corrida.bloco)
     if png_injetado:
@@ -524,6 +626,20 @@ def _diagrama_do_texto(
         return 0
     doc.texto(MARCA, marca)
     return 1
+
+
+def _svg_de_arquivo(fen: str, *, virado: bool = False, largura_cm: float, titulo: str = "") -> bytes:
+    """O SVG **como parte do pacote**, e não como elemento de um XHTML.
+
+    Duas diferenças, as duas do lado de fora do desenho: a declaração `<?xml?>` na frente, que é o
+    que um `.svg` autônomo leva e o que o Word espera achar; e o tamanho em `cm` em vez de `em` --
+    `width="18em"` num arquivo solto não tem corpo de texto a que se referir, e o Word resolve `em`
+    como um palpite ou como zero. O tamanho que vale continua sendo o `wp:extent` em EMU; o do
+    arquivo é o que os outros programas leem.
+    """
+    return diagrama_svg.svg_da_posicao(
+        fen, virado=virado, largura_em=largura_cm, unidade="cm", declaracao=True, titulo=titulo
+    ).encode("utf-8")
 
 
 def _titulo_do_texto(documento: rico.DocumentoRico) -> str:
@@ -548,13 +664,71 @@ def _tipos_de_conteudo(media: Mapping[str, bytes]) -> str:
         f'<Types xmlns="{NS_CT}">{padroes}'
         f'<Override PartName="/word/document.xml" ContentType="{TIPO_DO_DOCUMENTO}"/>'
         f'<Override PartName="/word/styles.xml" ContentType="{TIPO_DOS_ESTILOS}"/>'
+        f'<Override PartName="/word/settings.xml" ContentType="{TIPO_DA_CONFIGURACAO}"/>'
+        f'<Override PartName="/word/header1.xml" ContentType="{TIPO_DO_CABECALHO}"/>'
+        f'<Override PartName="/word/footer1.xml" ContentType="{TIPO_DO_RODAPE}"/>'
         f'<Override PartName="/docProps/core.xml" ContentType="{TIPO_DO_NUCLEO}"/>'
+        f'<Override PartName="/docProps/app.xml" ContentType="{TIPO_DO_APLICATIVO}"/>'
         "</Types>"
     )
 
 
+def _configuracao() -> str:
+    """`word/settings.xml`. **`updateFields` é o que faz o Word oferecer-se para montar o índice**
+    ao abrir o arquivo -- sem ele o campo `TOC` fica com o texto de reserva até alguém teclar F9."""
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<w:settings xmlns:w="{NS_W}"><w:updateFields w:val="true"/>'
+        '<w:defaultTabStop w:val="708"/><w:compat/></w:settings>'
+    )
+
+
+def _cabecalho(dados: Metadados) -> str:
+    """`word/header1.xml`: o título do livro, à direita, como todo livro impresso traz."""
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<w:hdr xmlns:w="{NS_W}" xmlns:r="{NS_R}">'
+        f'<w:p><w:pPr><w:jc w:val="right"/></w:pPr>{run(dados.titulo, meios_pontos=18)}</w:p>'
+        "</w:hdr>"
+    )
+
+
+def _rodape() -> str:
+    """`word/footer1.xml`: o número da página, centrado, como campo `PAGE`.
+
+    Campo e não texto: um número escrito à mão fica errado no primeiro parágrafo que alguém
+    acrescentar. Sem ele, um `.docx` de 2.618 estudos imprime 900 páginas sem numeração nenhuma.
+    """
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<w:ftr xmlns:w="{NS_W}" xmlns:r="{NS_R}">'
+        '<w:p><w:pPr><w:jc w:val="center"/></w:pPr>'
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        f"{run('1')}"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+        "</w:p></w:ftr>"
+    )
+
+
+def _aplicativo() -> str:
+    """`docProps/app.xml`: quem **fabricou** o arquivo. O autor é de quem publica, e está no núcleo."""
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
+        f"<Application>{_html.escape(PRODUTOR)}</Application></Properties>"
+    )
+
+
 def _rels_da_raiz() -> str:
-    return _rels([("rId1", REL_OFFICE, "word/document.xml"), ("rId2", REL_CORE, "docProps/core.xml")])
+    return _rels(
+        [
+            ("rId1", REL_OFFICE, "word/document.xml"),
+            ("rId2", REL_CORE, "docProps/core.xml"),
+            ("rId3", REL_APP, "docProps/app.xml"),
+        ]
+    )
 
 
 def _rels(relacoes: Sequence[tuple[str, str, str]]) -> str:
@@ -565,22 +739,36 @@ def _rels(relacoes: Sequence[tuple[str, str, str]]) -> str:
 
 
 def _nucleo(dados: Metadados) -> str:
+    """`docProps/core.xml`. **`dc:creator` só sai quando há autor**, e o programa vai em
+    `cp:lastModifiedBy`: um arquivo cujo autor é o nome do exportador atribui a obra a quem não a
+    escreveu, e é o Word que mostra esse campo em "Propriedades" e nas colunas do Explorador."""
     agora = dados.modificado or _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    autoria = f"<dc:creator>{_html.escape(dados.autor)}</dc:creator>" if dados.autor else ""
+    editora = f"<cp:category>{_html.escape(dados.editora)}</cp:category>" if dados.editora else ""
+    direitos = f"<dc:description>{_html.escape(dados.direitos)}</dc:description>" if dados.direitos else ""
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         f'<cp:coreProperties xmlns:cp="{NS_CP}" xmlns:dc="{NS_DC}" xmlns:dcterms="{NS_DCTERMS}" xmlns:xsi="{NS_XSI}">'
         f"<dc:title>{_html.escape(dados.titulo)}</dc:title>"
-        f"<dc:creator>{_html.escape(dados.autor)}</dc:creator>"
+        f"{autoria}{direitos}"
         f"<dc:language>{_html.escape(dados.idioma)}</dc:language>"
+        f"<cp:lastModifiedBy>{_html.escape(PRODUTOR)}</cp:lastModifiedBy>"
         f'<dcterms:created xsi:type="dcterms:W3CDTF">{_html.escape(agora)}</dcterms:created>'
         f'<dcterms:modified xsi:type="dcterms:W3CDTF">{_html.escape(agora)}</dcterms:modified>'
+        f"{editora}"
         "</cp:coreProperties>"
     )
 
 
 def _documento_xml(corpo: Sequence[str]) -> str:
+    """O corpo e a seção. **As referências de cabeçalho e rodapé abrem o `sectPr`**: a ordem dos
+    filhos é imposta pelo esquema, e um `headerReference` depois do `pgSz` faz o Word recusar o
+    arquivo como ilegível."""
     secao = (
-        '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
+        "<w:sectPr>"
+        f'<w:headerReference w:type="default" r:id="{RID_CABECALHO}"/>'
+        f'<w:footerReference w:type="default" r:id="{RID_RODAPE}"/>'
+        '<w:pgSz w:w="11906" w:h="16838"/>'
         '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>'
         "</w:sectPr>"
     )
@@ -596,9 +784,12 @@ def _estilos_xml() -> str:
     for identificador, (nome, ppr, rpr) in ESTILOS.items():
         padrao = ' w:default="1"' if identificador == "Normal" else ""
         base = "" if identificador == "Normal" else '<w:basedOn w:val="Normal"/>'
+        # Depois de um título vem texto, e não outro título -- e a prioridade é a que o Word usa
+        # nos seus próprios cabeçalhos, para o estilo aparecer no começo da galeria.
+        cabecalho = '<w:next w:val="Normal"/><w:uiPriority w:val="9"/>' if identificador in (TITULO, SUBTITULO) else ""
         estilos.append(
             f'<w:style w:type="paragraph" w:styleId="{identificador}"{padrao}>'
-            f'<w:name w:val="{_atributo(nome)}"/>{base}<w:qFormat/>'
+            f'<w:name w:val="{_atributo(nome)}"/>{base}{cabecalho}<w:qFormat/>'
             f"{f'<w:pPr>{ppr}</w:pPr>' if ppr else ''}{f'<w:rPr>{rpr}</w:rPr>' if rpr else ''}"
             "</w:style>"
         )

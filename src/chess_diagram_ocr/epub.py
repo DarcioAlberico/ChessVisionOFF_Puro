@@ -20,18 +20,23 @@ folha, e a imagem em arquivo separado no `manifest`, que é como um leitor de EP
 
 | o que a corrida de diagrama tem | o que sai |
 |---|---|
-| `BlocoDeDiagrama.placement` lido | um `.svg` em `imagens/`, e `<img alt="[Diagrama N]">` |
-| placement vazio e um PNG injetado (`imagens=`) | o `.png` em `imagens/`, mesmo `<img>` |
+| `BlocoDeDiagrama.placement` lido | um `.svg` em `imagens/`, e `<img alt="[Diagrama N]. FEN: ...">` |
+| placement vazio e um PNG injetado (`imagens=`) | o `.png` em `imagens/`, e `<img alt="[Diagrama N]">` |
 | nem um nem outro | a marca `[Diagrama N]` num parágrafo, como no `.txt` |
 
-**A marca nunca desaparece** (regra da S-250): ela é o `alt` da imagem, e é o parágrafo quando não
-há imagem. O relatório conta os três casos, porque "não havia diagrama" e "havia e saiu só a marca"
-são coisas diferentes para quem vai imprimir.
+**A marca nunca desaparece** (regra da S-250): ela abre o `alt` da imagem, e é o parágrafo quando
+não há imagem. O relatório conta os três casos, porque "não havia diagrama" e "havia e saiu só a
+marca" são coisas diferentes para quem vai imprimir. O que vem **depois** da marca no `alt` é a
+posição (`diagrama_svg.descricao_da_posicao`): `alt="Diagrama 1"` é, para quem lê com leitor de
+tela, o mesmo que imagem sem alternativa -- e é sobre esse `alt` que o
+`schema:accessModeSufficient: textual` do pacote se sustenta. **A FEN não é impressa** sob o
+diagrama: a legenda é opcional (`com_fen=`) e vem desligada, porque nenhum livro comercial a imprime.
 
 `verificar` é a conferência que o `epubcheck` faria se estivesse na máquina: mimetype primeiro e
 armazenado, container que aponta um OPF existente, todo XML bem formado, toda referência do
-manifesto presente no zip, todo `idref` da espinha no manifesto. O teste a roda sobre o que este
-módulo escreve; quem chamar pode rodá-la sobre o que quiser.
+manifesto presente no zip **e todo membro do zip declarado no manifesto**, todo `idref` da espinha no
+manifesto. O teste a roda sobre o que este módulo escreve; quem chamar pode rodá-la sobre o que
+quiser. Quem tiver o `epubcheck` na máquina deve rodá-lo: esta é a conferência de quem não tem.
 """
 
 from __future__ import annotations
@@ -57,6 +62,8 @@ __all__ = [
     "MIMETYPE",
     "PASTA",
     "PASTA_DE_IMAGENS",
+    "PRODUTOR",
+    "RESUMO_DE_ACESSIBILIDADE",
     "Capitulo",
     "Livro",
     "Metadados",
@@ -96,15 +103,47 @@ TIPOS_DE_MIDIA: Mapping[str, str] = {
 }
 
 
+PRODUTOR = "ChessVisionOFF"
+"""Quem **fabricou** o arquivo. Não é o autor: ver `Metadados.autor`."""
+
+RESUMO_DE_ACESSIBILIDADE = (
+    "Livro de xadrez. Todo diagrama é uma imagem com descrição textual que traz o número do "
+    "diagrama, de quem é a vez e a posição em notação FEN; o texto é refluível e o sumário navega "
+    "capítulo a capítulo. Não há áudio, vídeo nem conteúdo que pisque."
+)
+"""O `schema:accessibilitySummary`, em pt-BR -- a frase que a loja mostra a quem precisa saber se o
+livro serve. Ver `_acessibilidade`."""
+
+
 @dataclass(frozen=True)
 class Metadados:
     """O que vai em `dc:` no pacote. Vazio em `identificador` e `modificado` quer dizer "gere"."""
 
     titulo: str = "Estudos do ChessVisionOFF"
-    autor: str = "ChessVisionOFF"
+    autor: str = ""
+    """Quem **escreveu** o livro, e por isso vazio por padrão.
+
+    Até a primeira rodada este campo saía como `ChessVisionOFF` em `dc:creator`, o que é uma
+    atribuição falsa: um livro exportado daqui é do editor que o compilou, e uma loja que leia o
+    OPF listaria todos eles sob o nome do programa. O programa entra onde lhe cabe -- em
+    `dc:contributor` com o papel `bkp` (*book producer*) do vocabulário MARC."""
+
     idioma: str = "pt-BR"
     identificador: str = ""
     modificado: str = ""
+
+    data: str = ""
+    """`dc:date`: a data de publicação, `AAAA-MM-DD`. Não é `dcterms:modified`, que é do arquivo."""
+
+    editora: str = ""
+    direitos: str = ""
+    isbn: str = ""
+    """Sai como um segundo `dc:identifier` (`urn:isbn:...`); o primeiro continua sendo o `unique-identifier`."""
+
+    capa: str = ""
+    """O nome do arquivo em `imagens/` que é a capa, quando quem chama pôs uma lá."""
+
+    resumo_de_acessibilidade: str = RESUMO_DE_ACESSIBILIDADE
 
     def resolvidos(self) -> Metadados:
         """Com o `urn:uuid` e a data que o EPUB 3 exige, quando ninguém os deu."""
@@ -174,10 +213,11 @@ def exportar_estudo_epub(
     metadados: Metadados | None = None,
     *,
     largura_em: float = diagrama_svg.LARGURA_PADRAO_EM,
+    com_fen: bool = False,
 ) -> Relatorio:
     """Um estudo, um capítulo. O título do livro é o do estudo quando ninguém deu outro."""
     dados = metadados or Metadados(titulo=estudo_paragrafos.titulo_do_estudo(estudo))
-    return exportar_estudos_epub([estudo], caminho, dados, largura_em=largura_em)
+    return exportar_estudos_epub([estudo], caminho, dados, largura_em=largura_em, com_fen=com_fen)
 
 
 def exportar_estudos_epub(
@@ -186,12 +226,13 @@ def exportar_estudos_epub(
     metadados: Metadados | None = None,
     *,
     largura_em: float = diagrama_svg.LARGURA_PADRAO_EM,
+    com_fen: bool = False,
 ) -> Relatorio:
     """Vários estudos -- a sala inteira, ou um PGN -- como um livro de um capítulo por estudo."""
     livro = Livro(metadados=(metadados or Metadados()).resolvidos(), css=folha_de_estilo())
     diagramas = 0
     for indice, estudo in enumerate(estudos, start=1):
-        capitulo, quantos = capitulo_do_estudo(estudo, indice, livro.imagens, largura_em=largura_em)
+        capitulo, quantos = capitulo_do_estudo(estudo, indice, livro.imagens, largura_em=largura_em, com_fen=com_fen)
         livro.capitulos.append(capitulo)
         diagramas += quantos
     dados = empacotar(livro)
@@ -211,6 +252,7 @@ def capitulo_do_estudo(
     imagens: dict[str, bytes],
     *,
     largura_em: float = diagrama_svg.LARGURA_PADRAO_EM,
+    com_fen: bool = False,
 ) -> tuple[Capitulo, int]:
     """O capítulo daquele estudo. **Os SVGs entram em `imagens`**, com nome único por capítulo."""
     partes: list[str] = []
@@ -223,10 +265,11 @@ def capitulo_do_estudo(
         elif tipo == estudo_paragrafos.DIAGRAMA:
             diagramas += 1
             nome = f"estudo_{indice:03d}_diagrama_{paragrafo.numero:02d}.svg"
+            alt = diagrama_svg.descricao_da_posicao(paragrafo.fen, marca=f"Diagrama {paragrafo.numero}")
             imagens[nome] = diagrama_svg.svg_da_posicao(
-                paragrafo.fen, virado=paragrafo.virado, largura_em=largura_em
+                paragrafo.fen, virado=paragrafo.virado, largura_em=largura_em, titulo=alt
             ).encode("utf-8")
-            partes.append(_figura(nome, f"Diagrama {paragrafo.numero}", legenda=f"FEN: {paragrafo.fen}"))
+            partes.append(_figura(nome, alt, legenda=f"FEN: {paragrafo.fen}" if com_fen else ""))
         elif tipo == estudo_paragrafos.COMENTARIO_DO_ESTUDO:
             partes.append(f'<p class="comentario">{_html.escape(paragrafo.texto)}</p>')
         elif tipo == estudo_paragrafos.VARIANTE:
@@ -237,6 +280,10 @@ def capitulo_do_estudo(
 
 
 def _figura(nome: str, alt: str, *, legenda: str = "") -> str:
+    """A figura. **A legenda é opcional e vem desligada**: nenhum livro comercial imprime a FEN
+    debaixo do diagrama -- ela é encanamento, e quem a quer é quem vai reconferir a leitura do OCR.
+    A posição não se perde: ela está no `alt` da imagem, no `<title>` do SVG e em `data-fen`, que é
+    onde um leitor de tela e um programa a procuram."""
     figcaption = f"<figcaption>{_html.escape(legenda)}</figcaption>" if legenda else ""
     return (
         f'<figure class="diagrama"><img src="{PASTA_DE_IMAGENS}/{nome}" alt="{_html.escape(alt, quote=True)}"/>'
@@ -356,19 +403,27 @@ def capitulo_do_texto(
     montador.fechar()
 
     titulo = _titulo_do_texto(documento)
-    if not partes or not partes[0].startswith("<h"):
+    if not montador.teve_h1:
         partes.insert(0, f"<h1>{_html.escape(titulo)}</h1>")
     return Capitulo(id=f"folha_{indice:03d}", titulo=titulo, corpo="\n".join(partes)), contagem
 
 
 class _Paragrafos:
-    """Acumula os pedaços inline e fecha o `<p>` (ou o `<h2>`) quando a quebra chega."""
+    """Acumula os pedaços inline e fecha o `<p>` (ou o título) quando a quebra chega.
+
+    **O primeiro título da folha é `<h1>`, e os seguintes são `<h2>`.** Na primeira rodada todo
+    título saía `<h2>` e o `<h1>` só entrava quando não havia título nenhum -- o capítulo começava
+    no segundo nível, sem primeiro, que é a hierarquia quebrada que todo verificador de
+    acessibilidade acusa e que a EPUB Accessibility 1.1 cobra em `structuralNavigation`. Uma folha
+    tem um título; o que vem depois dele, dentro da mesma folha, é subtítulo.
+    """
 
     def __init__(self, saida: list[str]) -> None:
         self.saida = saida
         self.inline: list[str] = []
         self.texto: list[str] = []
         self.titulo = False
+        self.teve_h1 = False
 
     def pedaco(self, marcado: str, puro: str, titulo: bool) -> None:
         self.inline.append(marcado)
@@ -378,7 +433,12 @@ class _Paragrafos:
     def fechar(self) -> None:
         if "".join(self.texto).strip():
             conteudo = "".join(self.inline)
-            self.saida.append(f"<h2>{conteudo}</h2>" if self.titulo else f"<p>{conteudo}</p>")
+            if not self.titulo:
+                self.saida.append(f"<p>{conteudo}</p>")
+            else:
+                nivel = "h2" if self.teve_h1 else "h1"
+                self.teve_h1 = True
+                self.saida.append(f"<{nivel}>{conteudo}</{nivel}>")
         self.inline, self.texto, self.titulo = [], [], False
 
 
@@ -397,9 +457,10 @@ def _diagrama_do_texto(
     base = f"folha_{indice:03d}_bloco_{max(corrida.bloco, 0):03d}"
     if placement:
         nome = f"{base}.svg"
-        imagens[nome] = diagrama_svg.svg_da_posicao(placement, largura_em=largura_em, titulo=marca).encode("utf-8")
+        alt = diagrama_svg.descricao_da_posicao(placement, marca=marca)
+        imagens[nome] = diagrama_svg.svg_da_posicao(placement, largura_em=largura_em, titulo=alt).encode("utf-8")
         contagem.svg += 1
-        return _figura(nome, marca)
+        return _figura(nome, alt)
     png = injetadas.get(corrida.bloco)
     if png:
         nome = f"{base}.png"
@@ -437,7 +498,10 @@ def folha_de_estilo(formato: exportacao.Html | None = None, *, largura_em: float
         "p.lance { font-weight: bold; }",
         "p.variante { font-style: italic; margin-left: 1.5em; }",
         "p.variante.nivel-2 { margin-left: 3em; }",
-        "p.comentario { }",
+        # Prosa entre linhas de lance: ela respira mais que um parágrafo comum, e é o que separa o
+        # comentário do autor da notação em volta. Regra vazia (`p.comentario { }`) não é estilo
+        # nenhum -- é uma linha morta na folha, e foi o que a primeira rodada deixou.
+        "p.comentario { margin: 0.9em 0; }",
         "p.marca { text-align: center; color: inherit; }",
         "figure.diagrama { margin: 1em auto; text-align: center; page-break-inside: avoid; }",
         f"figure.diagrama img {{ width: {largura_em:g}em; max-width: 100%; height: auto; }}",
@@ -496,7 +560,10 @@ def _opf(livro: Livro, dados: Metadados) -> str:
     )
     for numero, nome in enumerate(livro.imagens, start=1):
         tipo = TIPOS_DE_MIDIA.get(Path(nome).suffix.lower(), "application/octet-stream")
-        itens.append(f'    <item id="img{numero:04d}" href="{PASTA_DE_IMAGENS}/{_atributo(nome)}" media-type="{tipo}"/>')
+        capa = ' properties="cover-image"' if nome == dados.capa else ""
+        itens.append(
+            f'    <item id="img{numero:04d}" href="{PASTA_DE_IMAGENS}/{_atributo(nome)}" media-type="{tipo}"{capa}/>'
+        )
     espinha = "\n".join(f'    <itemref idref="{capitulo.id}"/>' for capitulo in livro.capitulos)
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -504,9 +571,10 @@ def _opf(livro: Livro, dados: Metadados) -> str:
         f'  <metadata xmlns:dc="{DC_NS}">\n'
         f'    <dc:identifier id="pub-id">{_html.escape(dados.identificador)}</dc:identifier>\n'
         f"    <dc:title>{_html.escape(dados.titulo)}</dc:title>\n"
-        f"    <dc:creator>{_html.escape(dados.autor)}</dc:creator>\n"
         f"    <dc:language>{_html.escape(dados.idioma)}</dc:language>\n"
-        f'    <meta property="dcterms:modified">{_html.escape(dados.modificado)}</meta>\n'
+        + _catalogo(dados)
+        + _acessibilidade(dados)
+        + f'    <meta property="dcterms:modified">{_html.escape(dados.modificado)}</meta>\n'
         "  </metadata>\n"
         "  <manifest>\n" + "\n".join(itens) + "\n  </manifest>\n"
         "  <spine>\n" + espinha + "\n  </spine>\n"
@@ -514,13 +582,79 @@ def _opf(livro: Livro, dados: Metadados) -> str:
     )
 
 
+def _catalogo(dados: Metadados) -> str:
+    """Autor, produtor, data, editora, direitos e ISBN -- o que uma loja lê antes de vender.
+
+    **`dc:creator` só sai quando alguém disse quem é o autor.** O programa é `dc:contributor` com
+    `role` `bkp` (*book producer*) do vocabulário MARC: é o que ele fez, e é o que o ONIX e as lojas
+    esperam ler no lugar de um autor inventado.
+    """
+    linhas: list[str] = []
+    if dados.autor:
+        linhas.append(f'    <dc:creator id="autor">{_html.escape(dados.autor)}</dc:creator>')
+        linhas.append('    <meta refines="#autor" property="role" scheme="marc:relators">aut</meta>')
+    linhas.append(f'    <dc:contributor id="produtor">{_html.escape(PRODUTOR)}</dc:contributor>')
+    linhas.append('    <meta refines="#produtor" property="role" scheme="marc:relators">bkp</meta>')
+    if dados.data:
+        linhas.append(f"    <dc:date>{_html.escape(dados.data)}</dc:date>")
+    if dados.editora:
+        linhas.append(f"    <dc:publisher>{_html.escape(dados.editora)}</dc:publisher>")
+    if dados.direitos:
+        linhas.append(f"    <dc:rights>{_html.escape(dados.direitos)}</dc:rights>")
+    if dados.isbn:
+        linhas.append(f'    <dc:identifier id="isbn">urn:isbn:{_html.escape(dados.isbn)}</dc:identifier>')
+    if dados.capa:
+        linhas.append('    <meta name="cover" content="capa"/>')
+    return "".join(f"{linha}\n" for linha in linhas)
+
+
+def _acessibilidade(dados: Metadados) -> str:
+    """Os cinco campos que a EPUB Accessibility 1.1 pede -- e que o EAA cobra desde 06/2025.
+
+    Sem eles um EPUB não pode ser vendido na União Europeia, e as lojas rejeitam o arquivo na
+    ingestão. Os valores não são um chute: o livro é texto mais imagem (`accessMode`), **e só o
+    texto basta** (`accessModeSufficient`) porque todo diagrama leva a posição em FEN no `alt` --
+    é a mesma decisão que fez a marca `[Diagrama N]` nunca desaparecer (S-250). `alternativeText`
+    diz isso em vocabulário de loja; `structuralNavigation` e `tableOfContents` são o `nav.xhtml`;
+    `displayTransformability` é o texto refluível, que é a razão de o diagrama ser vetor e medir em
+    `em`. Perigo: nenhum -- não há som, vídeo nem nada que pisque.
+    """
+    valores = [
+        ("schema:accessMode", "textual"),
+        ("schema:accessMode", "visual"),
+        ("schema:accessModeSufficient", "textual"),
+        ("schema:accessModeSufficient", "textual,visual"),
+        ("schema:accessibilityFeature", "alternativeText"),
+        ("schema:accessibilityFeature", "structuralNavigation"),
+        ("schema:accessibilityFeature", "tableOfContents"),
+        ("schema:accessibilityFeature", "readingOrder"),
+        ("schema:accessibilityFeature", "displayTransformability"),
+        ("schema:accessibilityHazard", "none"),
+        ("schema:accessibilitySummary", dados.resumo_de_acessibilidade),
+    ]
+    return "".join(
+        f'    <meta property="{propriedade}">{_html.escape(valor)}</meta>\n'
+        for propriedade, valor in valores
+        if valor
+    )
+
+
 def _nav(livro: Livro, dados: Metadados) -> str:
+    """O sumário e os marcos. **Os dois `nav`**: o leitor usa o `toc`, a loja e o EAA leem o
+    `landmarks` para saber onde o livro começa."""
     entradas = "\n".join(
         f'      <li><a href="{capitulo.arquivo}">{_html.escape(capitulo.titulo)}</a></li>' for capitulo in livro.capitulos
     )
     corpo = (
         f'<nav epub:type="toc" id="toc">\n    <h1>{_html.escape(dados.titulo)}</h1>\n    <ol>\n{entradas}\n    </ol>\n  </nav>'
     )
+    if livro.capitulos:
+        corpo += (
+            '\n  <nav epub:type="landmarks" id="marcos" hidden="hidden">\n'
+            "    <h2>Marcos</h2>\n    <ol>\n"
+            f'      <li><a epub:type="bodymatter" href="{livro.capitulos[0].arquivo}">Começo do livro</a></li>\n'
+            "    </ol>\n  </nav>"
+        )
     return _documento_xhtml(dados.titulo, corpo, dados.idioma)
 
 
@@ -551,6 +685,10 @@ def _atributo(texto: str) -> str:
 
 
 # ------------------------------------------------------------------------------ a conferência
+
+
+_FORA_DO_MANIFESTO = frozenset({"mimetype", "META-INF/container.xml", "META-INF/encryption.xml", "META-INF/signatures.xml"})
+"""Os membros que o OCF define e o manifesto **não** lista. O resto tem de estar lá."""
 
 
 def verificar(dados: bytes | Path) -> list[str]:
@@ -607,13 +745,24 @@ def _conferir_opf(zip_: zipfile.ZipFile, nomes: set[str], opf: str) -> list[str]
         return problemas
     pasta = posixpath.dirname(opf)
     ids: set[str] = set()
+    declarados: set[str] = set()
     com_nav = False
     for item in raiz.iter(f"{{{OPF_NS}}}item"):
         ids.add(item.get("id", ""))
         com_nav = com_nav or "nav" in item.get("properties", "").split()
         alvo = posixpath.normpath(posixpath.join(pasta, item.get("href", ""))) if pasta else item.get("href", "")
+        declarados.add(alvo)
         if alvo not in nomes:
             problemas.append(f"o manifesto aponta {alvo!r}, que não está no zip")
+    # **E o laço ao contrário**, que faltava: um arquivo no zip que o manifesto não lista é um
+    # arquivo que o leitor não abre -- a imagem que o `<img>` aponta e nenhum leitor mostra, o CSS
+    # que não é aplicado. `verificar` conferia só um dos dois sentidos, e o sentido que ela conferia
+    # é o que nunca quebra sozinho: quem escreve o manifesto é quem escreve o zip.
+    problemas.extend(
+        f"{sobrando!r} está no zip e não no manifesto"
+        for sobrando in sorted(nomes - declarados - _FORA_DO_MANIFESTO - {opf})
+        if not sobrando.endswith("/")
+    )
     if not com_nav:
         problemas.append("nenhum item do manifesto tem properties=\"nav\"")
     for ref in raiz.iter(f"{{{OPF_NS}}}itemref"):

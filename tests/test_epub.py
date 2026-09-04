@@ -126,7 +126,9 @@ class PacoteTests(unittest.TestCase):
         opf = ET.fromstring(membros[f"{epub.PASTA}/{epub.OPF}"])
         self.assertEqual([r.get("idref") for r in opf.iter(f"{OPF}itemref")], ["estudo_001", "estudo_002"])
         nav = ET.fromstring(membros[f"{epub.PASTA}/{epub.NAV}"])
-        self.assertEqual(len(list(nav.iter(f"{XHTML}li"))), 2)
+        sumario = nav.find(f'.//{XHTML}nav[@{{{epub.EPUB_NS}}}type="toc"]')
+        assert sumario is not None
+        self.assertEqual(len(list(sumario.iter(f"{XHTML}li"))), 2)
         self.assertEqual(relatorio.capitulos, 2)
 
     def test_verificar_aprova_o_que_o_modulo_escreve(self) -> None:
@@ -181,14 +183,21 @@ class CapituloDoEstudoTests(unittest.TestCase):
         dados = _livro_do_estudo(pede_diagrama=True)
         (capitulo,) = _capitulos(dados)
         figuras = list(capitulo.iter(f"{XHTML}img"))
-        self.assertEqual([f.get("alt") for f in figuras], ["Diagrama 1", "Diagrama 2"])
+        self.assertEqual([(f.get("alt") or "").split(".")[0] for f in figuras], ["Diagrama 1", "Diagrama 2"])
         membros = _membros(dados)
         for figura in figuras:
             svg = membros[posixpath.join(epub.PASTA, figura.get("src", ""))]
             self.assertEqual(ET.fromstring(svg).tag, "{http://www.w3.org/2000/svg}svg")
 
-    def test_a_figura_leva_a_fen_na_legenda(self) -> None:
+    def test_a_fen_nao_e_impressa_sob_o_diagrama_e_a_legenda_e_opcional(self) -> None:
+        """Nenhum livro comercial imprime a FEN debaixo do diagrama: ela é encanamento, e quem
+        a quer é quem vai reconferir a leitura do OCR. A posição continua no `alt` e em
+        `data-fen`, que é onde um leitor de tela e um programa a procuram."""
         (capitulo,) = _capitulos(_livro_do_estudo())
+        self.assertIsNone(capitulo.find(f".//{XHTML}figcaption"))
+        pasta = pasta_temporaria(self)
+        com_fen = epub.exportar_estudo_epub(_estudo(), pasta / "fen.epub", com_fen=True)
+        (capitulo,) = _capitulos(com_fen.caminho.read_bytes())
         legenda = capitulo.find(f".//{XHTML}figcaption")
         assert legenda is not None
         self.assertTrue((legenda.text or "").startswith("FEN: " + ITALIANA))
@@ -235,9 +244,9 @@ class CapituloDoTextoTests(unittest.TestCase):
         capitulo = ET.fromstring(membros[f"{epub.PASTA}/folha_001.xhtml"])
         secao = capitulo.find(f".//{XHTML}section")
         assert secao is not None
-        self.assertEqual(secao[0].tag, f"{XHTML}h2")
+        self.assertEqual(secao[0].tag, f"{XHTML}h1")
         self.assertEqual("".join(secao[0].itertext()), "Um título")
-        self.assertIsNone(capitulo.find(f".//{XHTML}h1"))
+        self.assertIsNone(capitulo.find(f".//{XHTML}h2"))
         _, sem_titulo = self._exportar(rico.de_pagina(_pagina(_texto("Só prosa."))))
         capitulo = ET.fromstring(sem_titulo[f"{epub.PASTA}/folha_001.xhtml"])
         self.assertIn("livro.pdf — folha 58", capitulo.find(f".//{XHTML}h1").text or "")  # type: ignore[union-attr]
@@ -248,7 +257,7 @@ class CapituloDoTextoTests(unittest.TestCase):
         coisas diferentes para quem vai imprimir."""
         relatorio, membros = self._exportar(_documento())
         xhtml = membros[f"{epub.PASTA}/folha_001.xhtml"].decode("utf-8")
-        self.assertIn('alt="[Diagrama 2]"', xhtml)
+        self.assertIn('alt="[Diagrama 2]. FEN: 8/8/8/8/8/8/8/K6k"', xhtml)
         self.assertIn('<p class="marca">[Diagrama 3]</p>', xhtml)
         self.assertEqual((relatorio.diagramas, relatorio.svg, relatorio.png, relatorio.so_marca), (2, 1, 0, 1))
         self.assertEqual(len(relatorio.avisos), 1)
@@ -287,7 +296,7 @@ class MetadadosTests(unittest.TestCase):
         relatorio = epub.exportar_estudo_epub(_estudo(), pasta / "m.epub", dados)
         opf = _membros(relatorio.caminho.read_bytes())[f"{epub.PASTA}/{epub.OPF}"].decode("utf-8")
         self.assertIn("<dc:title>Livro</dc:title>", opf)
-        self.assertIn("<dc:creator>Eu</dc:creator>", opf)
+        self.assertIn('<dc:creator id="autor">Eu</dc:creator>', opf)
 
 
 class FolhaDeEstiloTests(unittest.TestCase):
@@ -297,6 +306,156 @@ class FolhaDeEstiloTests(unittest.TestCase):
         self.assertIn("p.lance { font-weight: bold; }", css)
         self.assertIn("p.variante { font-style: italic; margin-left: 1.5em; }", css)
         self.assertIn("figure.diagrama img { width: 18em;", css)
+
+
+PGN_DE_PARTIDA = """[Event "Tata Steel"]
+[Date "2021.01.16"]
+[White "Carlsen, M."]
+[Black "Nepomniachtchi, I."]
+
+1. e4 e5 2. Nf3 *
+"""
+
+
+class AcessibilidadeTests(unittest.TestCase):
+    """O European Accessibility Act cobra estes campos desde 06/2025.
+
+    Sem eles o arquivo é recusado na ingestão das lojas europeias -- e não é burocracia: são as cinco
+    perguntas que alguém faz antes de comprar um livro que talvez não consiga ler.
+    """
+
+    def _metas(self) -> dict[str, list[str]]:
+        opf = ET.fromstring(_membros(_livro_do_estudo())[f"{epub.PASTA}/{epub.OPF}"])
+        saida: dict[str, list[str]] = {}
+        for meta in opf.iter(f"{OPF}meta"):
+            saida.setdefault(meta.get("property", ""), []).append((meta.text or "").strip())
+        return saida
+
+    def test_os_cinco_campos_da_epub_accessibility_estao_no_pacote(self) -> None:
+        metas = self._metas()
+        for propriedade in (
+            "schema:accessMode",
+            "schema:accessModeSufficient",
+            "schema:accessibilityFeature",
+            "schema:accessibilityHazard",
+            "schema:accessibilitySummary",
+        ):
+            self.assertIn(propriedade, metas, propriedade)
+        self.assertEqual(sorted(metas["schema:accessMode"]), ["textual", "visual"])
+        self.assertIn("textual", metas["schema:accessModeSufficient"])
+        self.assertIn("alternativeText", metas["schema:accessibilityFeature"])
+        self.assertEqual(metas["schema:accessibilityHazard"], ["none"])
+
+    def test_o_resumo_de_acessibilidade_e_uma_frase_em_portugues(self) -> None:
+        (resumo,) = self._metas()["schema:accessibilitySummary"]
+        self.assertIn("diagrama", resumo)
+        self.assertGreater(len(resumo), 60)
+
+    def test_toda_imagem_tem_alternativa_e_ela_descreve_a_posicao(self) -> None:
+        """`accessModeSufficient=textual` é uma promessa: ela vale porque a FEN está no `alt`."""
+        (capitulo,) = _capitulos(_livro_do_estudo(pede_diagrama=True))
+        imagens = list(capitulo.iter(f"{XHTML}img"))
+        self.assertEqual(len(imagens), 2)
+        for imagem in imagens:
+            alt = imagem.get("alt") or ""
+            self.assertIn("FEN: ", alt)
+            self.assertRegex(alt, r"^Diagrama \d+\. As (brancas|pretas) jogam\. FEN: ")
+
+    def test_o_capitulo_comeca_no_primeiro_nivel(self) -> None:
+        """Hierarquia que começa em `<h2>` não tem primeiro nível, e é o que todo verificador acusa."""
+        (capitulo,) = _capitulos(_livro_do_estudo())
+        secao = capitulo.find(f".//{XHTML}section")
+        assert secao is not None
+        self.assertEqual(secao[0].tag, f"{XHTML}h1")
+
+    def test_o_nav_tem_os_marcos_alem_do_sumario(self) -> None:
+        nav = ET.fromstring(_membros(_livro_do_estudo())[f"{epub.PASTA}/{epub.NAV}"])
+        marcos = nav.find(f'.//{XHTML}nav[@{{{epub.EPUB_NS}}}type="landmarks"]')
+        assert marcos is not None
+        (ancora,) = list(marcos.iter(f"{XHTML}a"))
+        self.assertEqual(ancora.get(f"{{{epub.EPUB_NS}}}type"), "bodymatter")
+
+
+class CatalogoTests(unittest.TestCase):
+    def _opf(self, dados: epub.Metadados) -> ET.Element:
+        pasta = pasta_temporaria(self)
+        relatorio = epub.exportar_estudo_epub(_estudo(), pasta / "catalogo.epub", dados)
+        return ET.fromstring(_membros(relatorio.caminho.read_bytes())[f"{epub.PASTA}/{epub.OPF}"])
+
+    def test_o_programa_nao_se_declara_autor_do_livro(self) -> None:
+        """`dc:creator = ChessVisionOFF` atribui a obra a quem não a escreveu: uma loja listaria
+        todo livro exportado daqui sob o nome do programa. O papel dele é `bkp` -- quem fabricou."""
+        opf = self._opf(epub.Metadados())
+        self.assertIsNone(opf.find(f".//{DC}creator"))
+        contribuinte = opf.find(f".//{DC}contributor")
+        assert contribuinte is not None
+        self.assertEqual(contribuinte.text, epub.PRODUTOR)
+        papel = opf.find(f'.//{OPF}meta[@refines="#produtor"]')
+        assert papel is not None
+        self.assertEqual((papel.get("property"), papel.text), ("role", "bkp"))
+
+    def test_o_que_a_loja_pede_sai_quando_vem_preenchido(self) -> None:
+        opf = self._opf(
+            epub.Metadados(
+                titulo="Finais",
+                autor="Jacob Aagaard",
+                data="2026-09-04",
+                editora="Quality Chess",
+                direitos="© 2026 Quality Chess",
+                isbn="978-1-907982-00-0",
+            )
+        )
+        self.assertEqual((opf.find(f".//{DC}creator").text), "Jacob Aagaard")  # type: ignore[union-attr]
+        self.assertEqual((opf.find(f".//{DC}date").text), "2026-09-04")  # type: ignore[union-attr]
+        self.assertEqual((opf.find(f".//{DC}publisher").text), "Quality Chess")  # type: ignore[union-attr]
+        self.assertIn("Quality Chess", (opf.find(f".//{DC}rights").text or ""))  # type: ignore[union-attr]
+        identificadores = [e.text for e in opf.iter(f"{DC}identifier")]
+        self.assertIn("urn:isbn:978-1-907982-00-0", identificadores)
+        self.assertEqual(opf.get("unique-identifier"), "pub-id")
+
+    def test_a_capa_e_opcional_e_entra_como_cover_image(self) -> None:
+        livro = epub.Livro(metadados=epub.Metadados(capa="capa.png").resolvidos(), css=epub.folha_de_estilo())
+        livro.imagens["capa.png"] = b"\x89PNG\r\n\x1a\nfalso"
+        capitulo, _ = epub.capitulo_do_estudo(_estudo(), 1, livro.imagens)
+        livro.capitulos.append(capitulo)
+        opf = ET.fromstring(_membros(epub.empacotar(livro))[f"{epub.PASTA}/{epub.OPF}"])
+        capa = [i for i in opf.iter(f"{OPF}item") if i.get("properties") == "cover-image"]
+        self.assertEqual(len(capa), 1)
+        self.assertTrue((capa[0].get("href") or "").endswith("capa.png"))
+
+
+class SumarioDoLivroTests(unittest.TestCase):
+    def test_cada_capitulo_e_nomeado_pela_partida_quando_nao_ha_ancora(self) -> None:
+        """Trezentas entradas escritas `Estudo avulso` não são um sumário -- é o que sai de todo PGN
+        que não veio do OCR, que é a maioria do que se exporta."""
+        pasta = pasta_temporaria(self)
+        estudos = [Estudo.de_pgn(PGN_DE_PARTIDA), Estudo.de_pgn(PGN_DE_PARTIDA.replace("Tata Steel", "Wijk aan Zee"))]
+        relatorio = epub.exportar_estudos_epub(estudos, pasta / "sumario.epub", epub.Metadados(titulo="Duas"))
+        nav = ET.fromstring(_membros(relatorio.caminho.read_bytes())[f"{epub.PASTA}/{epub.NAV}"])
+        sumario = nav.find(f'.//{XHTML}nav[@{{{epub.EPUB_NS}}}type="toc"]')
+        assert sumario is not None
+        nomes = ["".join(a.itertext()) for a in sumario.iter(f"{XHTML}a")]
+        self.assertEqual(
+            nomes,
+            [
+                "Carlsen, M. × Nepomniachtchi, I., Tata Steel, 2021.01.16",
+                "Carlsen, M. × Nepomniachtchi, I., Wijk aan Zee, 2021.01.16",
+            ],
+        )
+        self.assertEqual(len(set(nomes)), 2)
+
+
+class VerificadorNosDoisSentidosTests(unittest.TestCase):
+    def test_pega_o_arquivo_que_esta_no_zip_e_nao_no_manifesto(self) -> None:
+        """Uma imagem fora do manifesto é uma imagem que o leitor não mostra. `verificar` conferia
+        só o sentido que nunca quebra sozinho -- quem escreve o manifesto é quem escreve o zip."""
+        membros = _membros(_livro_do_estudo())
+        membros[f"{epub.PASTA}/{epub.PASTA_DE_IMAGENS}/orfa.svg"] = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
+        problemas = epub.verificar(_membros_para_bytes(membros))
+        self.assertTrue(any("orfa.svg" in p and "não" in p for p in problemas), problemas)
+
+    def test_o_que_o_ocf_define_nao_conta_como_orfao(self) -> None:
+        self.assertEqual(epub.verificar(_livro_do_estudo()), [])
 
 
 if __name__ == "__main__":

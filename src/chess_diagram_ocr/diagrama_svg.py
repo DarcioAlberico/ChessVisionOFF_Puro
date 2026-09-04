@@ -19,11 +19,24 @@ caminho, e caminho todo leitor de EPUB desenha.
   invertem. Não se redecide aqui.
 - **As cores das casas saem de `ui/tokens.py`**, como a cor de autor sai dele no `.html` da
   Fase 39: nenhum hexadecimal é escrito neste arquivo.
-- **O tamanho é em `em`**, e não em pixel: `width="18em"` deixa o leitor reflui-lo com o corpo do
-  texto, que é a diferença entre um livro e uma página fixa.
-- **O lado a jogar é um ponto na margem direita**, como os livros imprimem: embaixo para as
-  brancas, em cima para as pretas. Sai da FEN quando ela traz o campo; um `placement` sozinho não
-  diz de quem é a vez, e o ponto não aparece.
+- **O tamanho é em `em`** para o EPUB, e não em pixel: `width="18em"` deixa o leitor reflui-lo com o
+  corpo do texto, que é a diferença entre um livro e uma página fixa. Quem embute o arquivo num
+  formato que não tem corpo de texto -- o `.docx`, onde o SVG é uma parte solta do pacote -- pede
+  outra `unidade` (`cm`) e a `declaracao` de XML que o Word espera no começo do arquivo.
+- **O lado a jogar é uma plaqueta na margem direita**, como os livros imprimem: círculo vazado para
+  as brancas, cheio para as pretas, do lado do tabuleiro em que aquele jogador está sentado --
+  embaixo com as brancas embaixo, em cima quando `virado`. Sai da FEN quando ela traz o campo; um
+  `placement` sozinho não diz de quem é a vez, e a plaqueta não aparece.
+
+## Contraste: a régua e a plaqueta são lidas, ou não estão lá
+
+A moldura é escura (`MOLDURA`), e sobre ela a tinta tem de ser clara. Na primeira rodada as duas
+coisas desenhadas na margem saíram na cor errada: as coordenadas em `COORDENADA` (**2,51:1**, abaixo
+do piso 4,5:1 da S-146) e o ponto das pretas pintado com a **própria cor da moldura** -- razão
+**1,0:1**, um ponto invisível dizendo de quem era a vez. A régua passa a resolver-se por
+`tokens.sobre_superficie(moldura)`, que é o instrumento que a S-146 escreveu exatamente para isto,
+e a plaqueta a desenhar-se sobre `CASA_CLARA`, com a tinta das peças (`GLIFO_CLARO`/`GLIFO_ESCURO`)
+e o contorno escuro que toda peça branca já tem. Todos os três passam de 12:1.
 
 Nada de Qt aqui, e nada de arquivo: quem grava é `epub.py`, ou quem chamar.
 """
@@ -32,7 +45,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import chess
 import chess.svg
@@ -42,14 +55,29 @@ from chess_diagram_ocr.ui.desenho_do_tabuleiro import reguas
 
 __all__ = [
     "CASA",
+    "DECLARACAO_XML",
     "LARGURA_PADRAO_EM",
     "MARGEM",
     "Cores",
+    "PosicaoInvalida",
     "cores_padrao",
+    "descricao_da_posicao",
     "lado_da_fen",
     "svg_da_posicao",
     "tabuleiro_de",
 ]
+
+
+class PosicaoInvalida(ValueError):
+    """A posição não desenha, e o texto diz por quê **em pt-BR**.
+
+    O `python-chess` levanta `ValueError: expected 8 rows in position part of fen: '8/8/8'` -- em
+    inglês, e falando de "position part of fen", que não é o vocabulário de quem digitou um
+    diagrama errado. O projeto já resolve isto por tradução (`cli/__init__.message_for`), e a regra
+    de lá vale aqui: a frase em português, **e o original entre parênteses**, porque a tradução
+    ajuda quem lê e o original é o que se pesquisa.
+    """
+
 
 CASA = chess.svg.SQUARE_SIZE
 """O lado da casa, em unidades do `viewBox`. **É o quadro dos caminhos de `chess.svg.PIECES`.**"""
@@ -69,6 +97,10 @@ TAMANHO_DA_REGUA = 10
 
 RAIO_DO_LADO = 4.5
 
+DECLARACAO_XML = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+"""O cabeçalho que um `.svg` **como arquivo** leva. Dentro do XHTML do EPUB o SVG é um elemento e a
+declaração não entra; dentro do `.docx` ele é uma parte do pacote, e o Word espera arquivo."""
+
 
 @dataclass(frozen=True)
 class Cores:
@@ -78,29 +110,65 @@ class Cores:
     escura: str
     moldura: str
     coordenada: str
+    peca_clara: str = ""
+    """A tinta do círculo de "brancas jogam". Vazio usa `clara`."""
+
+    peca_escura: str = ""
+    """A tinta do círculo de "pretas jogam" e do contorno dos dois. Vazio usa `moldura`."""
+
+    def resolvidas(self) -> Cores:
+        """Com as duas tintas da plaqueta preenchidas, para quem construiu `Cores` com quatro."""
+        return replace(self, peca_clara=self.peca_clara or self.clara, peca_escura=self.peca_escura or self.moldura)
 
 
 def cores_padrao() -> Cores:
-    """As cores da paleta de reserva do projeto -- as mesmas casas da janela sob tema claro."""
+    """As cores da paleta de reserva do projeto -- as mesmas casas da janela sob tema claro.
+
+    **A coordenada não é o papel `COORDENADA`**, e é de propósito: aquele papel é resolvido contra a
+    superfície em que o texto vai cair (`sobre_superficie`, S-146), e aqui a superfície é a moldura
+    escura do diagrama, não o fundo do painel. Resolvê-lo é o que tira as letras de 2,51:1.
+    """
+    moldura = tokens.cor(tokens.MOLDURA)
     return Cores(
         clara=tokens.cor(tokens.CASA_CLARA),
         escura=tokens.cor(tokens.CASA_ESCURA),
-        moldura=tokens.cor(tokens.MOLDURA),
-        coordenada=tokens.cor(tokens.COORDENADA),
+        moldura=moldura,
+        coordenada=tokens.sobre_superficie(moldura),
+        peca_clara=tokens.cor(tokens.GLIFO_CLARO),
+        peca_escura=tokens.cor(tokens.GLIFO_ESCURO),
     )
 
 
 def tabuleiro_de(fen_ou_placement: str) -> chess.BaseBoard:
     """A posição daquele texto -- FEN completa ou só o campo de peças.
 
-    Levanta `ValueError` para o que não é nem uma coisa nem outra, em vez de desenhar um tabuleiro
-    vazio: um diagrama em branco no meio do livro é o defeito que ninguém acha.
+    Levanta `PosicaoInvalida` para o que não é nem uma coisa nem outra, em vez de desenhar um
+    tabuleiro vazio: um diagrama em branco no meio do livro é o defeito que ninguém acha.
     """
     texto = " ".join(str(fen_ou_placement or "").split())
     if not texto:
-        raise ValueError("posição vazia: não há o que desenhar.")
+        raise PosicaoInvalida("posição vazia: não há o que desenhar.")
     placement = texto.split(" ", 1)[0]
-    return chess.BaseBoard(placement)
+    try:
+        return chess.BaseBoard(placement)
+    except ValueError as erro:
+        raise PosicaoInvalida(f"posição inválida: {placement!r} não é uma FEN nem um campo de peças ({erro})") from erro
+
+
+def descricao_da_posicao(fen_ou_placement: str, *, marca: str = "") -> str:
+    """A frase que descreve o diagrama: a marca, de quem é a vez, e a posição em FEN.
+
+    É o `alt` da imagem no EPUB e o `descr` do desenho no DOCX. **`alt="Diagrama 1"` não descreve
+    nada** -- para quem lê com leitor de tela, é o mesmo que uma imagem sem alternativa, e é o que a
+    EPUB Accessibility 1.1 chama de alternativa não descritiva. A FEN, essa, é a posição inteira em
+    trinta caracteres, e quem lê xadrez a lê; é também o que permite copiar o diagrama para um
+    tabuleiro. A marca (`Diagrama 3`, `[Diagrama 3]`) continua na frente, porque ela **nunca
+    desaparece** (S-250).
+    """
+    fen = " ".join(str(fen_ou_placement or "").split())
+    vez = {"w": "As brancas jogam", "b": "As pretas jogam"}.get(lado_da_fen(fen), "")
+    partes = [parte for parte in (str(marca).strip(), vez) if parte]
+    return ". ".join([*partes, f"FEN: {fen}"])
 
 
 def lado_da_fen(fen_ou_placement: str) -> str:
@@ -119,17 +187,23 @@ def svg_da_posicao(
     com_reguas: bool = True,
     lado_a_jogar: str | None = None,
     largura_em: float = LARGURA_PADRAO_EM,
+    unidade: str = "em",
+    declaracao: bool = False,
     cores: Cores | None = None,
     titulo: str = "",
 ) -> str:
     """O diagrama daquela posição, como texto SVG bem formado.
 
-    `lado_a_jogar` é `"w"`, `"b"`, `""` (sem ponto) ou `None` -- e `None` quer dizer "o que a FEN
-    disser". `virado` põe as pretas embaixo, como `Estudo.invertido`.
+    `lado_a_jogar` é `"w"`, `"b"`, `""` (sem plaqueta) ou `None` -- e `None` quer dizer "o que a FEN
+    disser". `virado` põe as pretas embaixo, como `Estudo.invertido`, e a plaqueta desce com elas.
+
+    `unidade` é a do `width`/`height` do elemento raiz: `em` no EPUB, onde o diagrama reflui com o
+    corpo do texto; `cm` no DOCX, onde ele é uma parte do pacote e o Word mede a página em
+    centímetros. `declaracao` põe o `<?xml?>` na frente, que é o que um `.svg` **como arquivo** leva.
     """
     tabuleiro = tabuleiro_de(fen_ou_placement)
     lado = lado_da_fen(fen_ou_placement) if lado_a_jogar is None else lado_a_jogar.lower()
-    paleta = cores or cores_padrao()
+    paleta = (cores or cores_padrao()).resolvidas()
 
     margem = MARGEM if (com_reguas or lado) else 0
     lado_total = 8 * CASA + 2 * margem
@@ -139,8 +213,8 @@ def svg_da_posicao(
             "xmlns": SVG_NS,
             "xmlns:xlink": XLINK_NS,
             "viewBox": f"0 0 {lado_total} {lado_total}",
-            "width": f"{largura_em:g}em",
-            "height": f"{largura_em:g}em",
+            "width": f"{largura_em:g}{unidade}",
+            "height": f"{largura_em:g}{unidade}",
             "class": "diagrama",
             "role": "img",
             "data-fen": " ".join(str(fen_ou_placement).split()),
@@ -160,8 +234,8 @@ def svg_da_posicao(
     if com_reguas:
         _reguas(raiz, margem, virado, paleta)
     if lado:
-        _ponto_do_lado(raiz, margem, lado, paleta)
-    return ET.tostring(raiz, encoding="unicode")
+        _ponto_do_lado(raiz, margem, lado, paleta, virado=virado)
+    return (DECLARACAO_XML if declaracao else "") + ET.tostring(raiz, encoding="unicode")
 
 
 def _casas(raiz: ET.Element, margem: int, virado: bool, paleta: Cores) -> None:
@@ -255,11 +329,35 @@ def _reguas(raiz: ET.Element, margem: int, virado: bool, paleta: Cores) -> None:
         texto.text = numero
 
 
-def _ponto_do_lado(raiz: ET.Element, margem: int, lado: str, paleta: Cores) -> None:
-    """O ponto da margem direita: embaixo para as brancas, em cima para as pretas."""
+def _ponto_do_lado(raiz: ET.Element, margem: int, lado: str, paleta: Cores, *, virado: bool = False) -> None:
+    """A plaqueta da margem direita: círculo vazado para as brancas, cheio para as pretas.
+
+    **Ela fica do lado em que aquele jogador está sentado**, e não sempre embaixo: com as pretas
+    embaixo (`virado`), "pretas jogam" é uma marca no pé do diagrama, junto de quem joga. Era o que
+    faltava -- o diagrama virado dizia "as pretas jogam" apontando para o alto, que é onde as
+    brancas estavam.
+
+    O quadrado claro por baixo é o que a torna visível: a moldura é escura, e um círculo escuro sobre
+    ela tem razão de contraste 1,0:1. Sobre `CASA_CLARA` os dois estados passam de 12:1 -- o cheio
+    pela tinta, o vazado pelo contorno --, e é o mesmo par de tintas com que uma peça é desenhada.
+    """
     brancas = lado == "w"
+    embaixo = brancas != virado
     x = margem + 8 * CASA + margem / 2
-    y = margem + 8 * CASA - RAIO_DO_LADO - 1 if brancas else margem + RAIO_DO_LADO + 1
+    y = margem + 8 * CASA - RAIO_DO_LADO - 1 if embaixo else margem + RAIO_DO_LADO + 1
+    meia = RAIO_DO_LADO + 1.5
+    ET.SubElement(
+        raiz,
+        "rect",
+        {
+            "class": "plaqueta-do-lado",
+            "x": f"{x - meia:g}",
+            "y": f"{y - meia:g}",
+            "width": f"{2 * meia:g}",
+            "height": f"{2 * meia:g}",
+            "fill": paleta.clara,
+        },
+    )
     ET.SubElement(
         raiz,
         "circle",
@@ -268,8 +366,8 @@ def _ponto_do_lado(raiz: ET.Element, margem: int, lado: str, paleta: Cores) -> N
             "cx": f"{x:g}",
             "cy": f"{y:g}",
             "r": str(RAIO_DO_LADO),
-            "fill": paleta.clara if brancas else paleta.moldura,
-            "stroke": paleta.coordenada,
+            "fill": paleta.peca_clara if brancas else paleta.peca_escura,
+            "stroke": paleta.peca_escura,
             "stroke-width": "1",
         },
     )
