@@ -27,6 +27,7 @@ sequenciamento. Continuação de [SPEC_FASE7.md](SPEC_FASE7.md) (S-37 a S-75),
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de
 aceite** e **Testes**. A convenção é a de sempre: nomes de módulo são sugestão, o que importa

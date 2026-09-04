@@ -23,6 +23,7 @@ de virarem proposta**. O placar, o que ficou de fora e a ordem de execução est
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 
 ## A regra desta spec
 

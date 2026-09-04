@@ -1132,6 +1132,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
 | S-507 a S-520 | [docs/SPEC_ESTUDO_QT.md](docs/SPEC_ESTUDO_QT.md) |
 | S-522 a S-526 | [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) |
+| S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1256,6 +1257,11 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   (S-522 a S-526): a moldura derivada da superficie (1,04:1 na pele Foco, 3,02:1 depois), o motor e
   o OCR de legenda chegando a janela pelas preferencias, o auto-teste com estado descartavel, a
   ARCHITECTURE descrevendo o Qt, e a regua de alinhamento do recorte no censo
+- [docs/ROADMAP_SUITE.md](docs/ROADMAP_SUITE.md) -- **Fases 80 a 86**, a suite de treino: a sala e a
+  janela com barra agrupada, a base de partidas de varios gigabytes (indice incremental, busca por
+  jogador e ECO, arvore de aberturas), analise de partida, treino de taticas do proprio acervo,
+  exportacao EPUB/DOCX para quem edita material, e OCR em lote na janela.
+- [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) -- especificacao das Fases 80 a 86 (S-527 a S-580), item a item.
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

@@ -23,6 +23,7 @@ spec.
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 
 Cada item tem **Problema**, **Solução**, **Critério de aceite**, **Testes** e **Sonda**. A
 convenção é a de sempre: nome de módulo é sugestão, o que importa é a fronteira de
