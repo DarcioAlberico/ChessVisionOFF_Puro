@@ -48,7 +48,7 @@ from . import degradacao
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ICONES", "ICONES_DA_SALA", "Arco", "Poli", "imagem"]
+__all__ = ["ICONES", "ICONES_DA_SALA", "ICONES_DO_PDF", "Arco", "Poli", "imagem"]
 
 Ponto = tuple[float, float]
 
@@ -381,6 +381,15 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
     # ----------------------------------------------------------------------------- TREINO
     # O alvo: três anéis.
     "treinar": (Arco((50, 50), 34), Arco((50, 50), 18), Arco((50, 50), 4)),
+    # ------------------------------------------------------------------- CABECALHO (S-530)
+    # O lápis: a haste na diagonal, a ponta triangular embaixo e a virola perto do topo. Ele abre
+    # o cabeçalho da partida, que **não é comando do catálogo** -- por isso a chave é o nome que
+    # `cabecalho_da_partida.ICONE` declara, e não o de um comando que não existe.
+    "editar_cabecalho": (
+        Poli((30, 70), (70, 30)),
+        Poli((12, 88), (26, 58), (42, 74), fechado=True),
+        Poli((60, 20), (80, 40)),
+    ),
     # ------------------------------------------------------------------------------- MAIS
     # Três pontos: o que não coube. Quadradinhos fechados (ver "simbolo") e nos cantos da caixa: a
     # primeira versão eram anéis de raio 5 a 22/50/78, e saía com 6 px de altura e nenhum pixel
@@ -395,9 +404,59 @@ Com os quatro reusados de `ICONES` são vinte e nove nomes para trinta e uma aç
 de exportação moram dentro do agrupador e não têm botão, logo não têm traço."""
 
 
+ICONES_DO_PDF: dict[str, tuple[Traco, ...]] = {
+    # **O terceiro dicionário, e pela razão do segundo** (S-528). A chave de `ICONES` é o nome de
+    # um comando do catálogo, e `medidas_da_fita.grupos()` põe na fita da janela todo comando que
+    # declare `icone` -- então dar traço a "Tirar a caixa" por lá o poria no cromo da janela. Aqui
+    # a chave é o nome que `ui/barra_do_pdf.ACOES` declara.
+    #
+    # **Nove das dezesseis ações do painel reusam traço de `ICONES`** -- `abrir_pdf`, `ler_melhor`,
+    # `ler_pagina`, `exportar_pgn`, `zoom_mais`, `zoom_menos`, `ajustar_largura`, `ajustar_pagina`
+    # e `selecionar_area` --, e é o esperado: aqueles ícones foram desenhados na S-220 para estes
+    # mesmos comandos. Os sete abaixo são os que faltavam.
+    # ----------------------------------------------------------------------------- LIVRO
+    # Janela do sistema com a seta saindo por cima: o livro sai daqui e abre lá fora.
+    "leitor": (
+        Poli((12, 26), (56, 26), (56, 84), (12, 84), fechado=True),
+        Poli((46, 54), (86, 14)),
+        Poli((62, 14), (88, 14), (88, 40)),
+    ),
+    # O círculo cortado: o "não" universal, e é o que cancela a exportação em curso.
+    "cancelar": (Arco((50, 50), 36), Poli((25, 25), (75, 75))),
+    # ---------------------------------------------------------------------------- PAGINA
+    # A folha que fica e a seta para ela: a barra é a borda da folha, o "V" é o sentido.
+    "folha_anterior": (Poli((18, 14), (18, 86)), Poli((74, 14), (38, 50), (74, 86))),
+    "folha_seguinte": (Poli((82, 14), (82, 86)), Poli((26, 14), (62, 50), (26, 86))),
+    # ----------------------------------------------------------------------------- VISTA
+    # A caixa **com a etiqueta do número**: é o que a marcação desenha na página (S-68), e é o que
+    # a distingue dos vizinhos. Os quatro cantos já são `selecionar_area` e a moldura dentro de
+    # moldura já é `ajustar_pagina` -- os três ficam na mesma fila, e dois ícones iguais lado a
+    # lado é o mesmo defeito que dois rótulos iguais.
+    "marcar": (
+        Poli((24, 28), (90, 28), (90, 84), (24, 84), fechado=True),
+        Poli((8, 12), (36, 12), (36, 36), (8, 36), fechado=True),
+    ),
+    # O corpo do mouse com a rodinha: o gesto é da roda, e não da página.
+    "roda": (
+        Poli((28, 16), (72, 16), (72, 84), (28, 84), fechado=True),
+        Poli((50, 26), (50, 46)),
+    ),
+    # ---------------------------------------------------------------------------- LEITURA
+    # A caixa do diagrama e o X que a tira. O X fica **fora** da caixa, no canto: por cima dela
+    # ele vira um risco no meio de um retângulo, que a 16 px é uma mancha.
+    "tirar_a_caixa": (
+        Poli((10, 22), (64, 22), (64, 76), (10, 76), fechado=True),
+        Poli((58, 58), (92, 92)),
+        Poli((92, 58), (58, 92)),
+    ),
+}
+"""Os sete traços que o painel do PDF pedia e não existiam (S-528), com a chave que
+`ui/barra_do_pdf.ACOES` declara. A ponte nos dois sentidos é com aquela tabela."""
+
+
 def tracos_de(nome: str) -> tuple[Traco, ...] | None:
-    """Os traços daquele nome, procurando nos dois dicionários. `None` para nome que não existe."""
-    return ICONES.get(nome) or ICONES_DA_SALA.get(nome)
+    """Os traços daquele nome, procurando nos três dicionários. `None` para nome que não existe."""
+    return ICONES.get(nome) or ICONES_DA_SALA.get(nome) or ICONES_DO_PDF.get(nome)
 
 
 SUPERAMOSTRA = 4

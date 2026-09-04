@@ -346,6 +346,8 @@ SEM_TKINTER = {
     "abas.py": "o rótulo de uma aba e a contagem dentro dele (S-162)",
     "barra.py": "o arranjo da barra fluida: quantas linhas os itens ocupam (S-151/S-506)",
     "barra_da_sala.py": "os grupos da sala de estudo, o que é principal, o modo e quem cabe na fila (S-527)",
+    "barra_do_pdf.py": "os grupos do painel do PDF, o que é principal e o modo de cada controle (S-528)",
+    "cabecalho_da_partida.py": "os nove campos do cabeçalho, a frase de duas linhas e o que a edição grava (S-530)",
     "degradacao.py": "o inventário de quedas de aparência e o aviso uma-vez-só (S-506)",
     "folha.py": "o recheio de cada superfície e o vão do indicador (S-506)",
     "menu.py": "a declaração dos menus e as conferências sobre o catálogo (S-506)",

@@ -49,12 +49,14 @@ import chess
 import chess.engine
 import chess.pgn
 from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QAction, QShowEvent
+from PyQt6.QtGui import QAction, QFontMetrics, QResizeEvent, QShowEvent
 from PyQt6.QtWidgets import (
     QAbstractButton,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -66,6 +68,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QTextBrowser,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -77,6 +80,7 @@ from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
+from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.barra_da_sala import BarraDaSala
@@ -85,6 +89,7 @@ from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
 from chess_diagram_ocr.ui import (
     atalhos,
     barra_da_sala,
+    cabecalho_da_partida,
     comandos,
     espaco,
     estilos,
@@ -109,6 +114,7 @@ from chess_diagram_ocr.ui.sala_declarada import (
     TAMANHO_MAXIMO_DE_PGN,
     Sincronia,
     decidir_sincronia,
+    fracao_para_o_tabuleiro,
     nags_oferecidos,
 )
 
@@ -196,6 +202,8 @@ class PainelDeEstudo(QWidget):
         self._comentario_do_no: chess.pgn.GameNode | None = None
         self._montando = False
         self._fracao_do_tabuleiro = FRACAO_PADRAO_DO_TABULEIRO
+        self._divisor_escolhido = False
+        """A pessoa (ou a sessão anterior) decidiu onde fica a alça? Ver `_acomodar_o_tabuleiro`."""
 
         self.sala = Sala()
         self.estudo = Estudo.de_posicao(PosicaoDeEstudo())
@@ -248,6 +256,9 @@ class PainelDeEstudo(QWidget):
         self.divisor.addWidget(self._direita())
         self.divisor.setStretchFactor(0, 3)
         self.divisor.setStretchFactor(1, 2)
+        # Arrastar a alça desliga a regra da S-551 até o fim da sessão: a partir daí quem decide a
+        # repartição é quem arrastou, e a janela guarda a fração ao fechar.
+        self.divisor.splitterMoved.connect(self._divisor_movido_a_mao)
         fora.addWidget(self.divisor, 1)
 
     def _botao(self, barra: BarraFluida, acao: str) -> QPushButton:
@@ -346,6 +357,12 @@ class PainelDeEstudo(QWidget):
         pilha = QVBoxLayout(coluna)
         pilha.setContentsMargins(0, 0, espaco.linha(), 0)
 
+        # **O cabeçalho da partida acima do tabuleiro** (S-530), como no ChessBase. Os nove
+        # headers existiam -- `Estudo.de_posicao` escreve cinco, um `.pgn` traz os nove -- e nenhum
+        # aparecia na tela: quem abrisse Capablanca-Alekhine via um tabuleiro sem nome, sem torneio
+        # e sem resultado. Quem decide o que a frase diz é `ui/cabecalho_da_partida.py`.
+        pilha.addWidget(self._cabecalho())
+
         self.tabuleiro = TabuleiroDeJogo(coluna, escolher_promocao=self.choose_promotion)
         self.tabuleiro.lance.connect(self.push_move)
         self.tabuleiro.seta.connect(self.on_arrow)
@@ -374,11 +391,173 @@ class PainelDeEstudo(QWidget):
         pilha.addWidget(self.lbl_origem)
         pilha.addWidget(self.lbl_status)
 
+        # **O que sobra de altura vai para um esticador, e não para os rótulos** (S-551).
+        # Sem ele o `QVBoxLayout` reparte a sobra entre os itens que aceitam crescer, e os dois
+        # rótulos de status ficam com 79 px cada -- é o que o crítico fotografou como "duas frases
+        # de status flutuando" em 230 px de coluna vazia. Com o esticador, o bloco fica colado no
+        # tabuleiro e a FEN vira o rodapé da coluna, alinhada com o fim da caixa de comentário ao
+        # lado. O vazio deixa de ser texto solto e passa a ser margem, que é o que ele é.
+        pilha.addStretch(1)
+
         self.campo_fen = QLineEdit(self.estudo.tabuleiro.fen(), coluna)
         self.campo_fen.setFont(tema.fonte_atual(tipografia.DADO))
         self.campo_fen.returnPressed.connect(self.apply_fen)
         pilha.addWidget(self.campo_fen)
         return coluna
+
+    # ----------------------------------------------------- o cabeçalho da partida (S-530)
+
+    def _cabecalho(self) -> QWidget:
+        """Duas linhas e um lápis: quem jogou, e onde. Clicar em qualquer uma abre a edição.
+
+        **Duas linhas, e a segunda é secundária.** Jogadores e resultado numa; torneio, local, data
+        e rodada na outra, na cor de texto secundário. É a hierarquia do ChessBase, e é o que faz a
+        faixa caber em 494 px -- a largura da coluna a 1400x950 -- sem elidir o nome de ninguém.
+
+        **O botão existe porque não há comando.** Editar o cabeçalho ainda não está em
+        `ui/comandos.py`, então não há item de menu, tecla nem entrada na paleta para ele -- e uma
+        faixa que só responde a duplo clique é uma função que ninguém acha. O lápis ao lado é a
+        afirmação de que aquilo é editável; o duplo clique na frase faz o mesmo, que é o gesto que
+        quem vem do ChessBase já tem no dedo.
+        """
+        faixa = QWidget(self)
+        linha = QHBoxLayout(faixa)
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(espaco.folga())
+
+        textos = QVBoxLayout()
+        textos.setContentsMargins(0, 0, 0, 0)
+        textos.setSpacing(0)
+        self.lbl_partida = _RotuloElidido(faixa)
+        self.lbl_partida.setFont(tema.fonte_atual(tipografia.TITULO))
+        textos.addWidget(self.lbl_partida)
+        self.lbl_torneio = _RotuloElidido(faixa)
+        self.lbl_torneio.setFont(tema.fonte_atual(tipografia.AUXILIAR))
+        tema.pintar(self.lbl_torneio, "color", tokens.TEXTO_SECUNDARIO)
+        textos.addWidget(self.lbl_torneio)
+        linha.addLayout(textos, 1)
+
+        self.btn_cabecalho = QToolButton(faixa)
+        self.btn_cabecalho.setProperty("acao", "editar_cabecalho")
+        self.btn_cabecalho.setAutoRaise(True)
+        self.btn_cabecalho.setIconSize(qt_icones.tamanho(LADO_DO_ICONE_DA_SALA))
+        self.btn_cabecalho.clicked.connect(self.editar_cabecalho)
+        linha.addWidget(self.btn_cabecalho)
+
+        for alvo in (self.lbl_partida, self.lbl_torneio):
+            alvo.setCursor(Qt.CursorShape.PointingHandCursor)
+            alvo.mouseDoubleClickEvent = lambda _evento: self.editar_cabecalho()  # type: ignore[assignment]
+        self._pintar_o_lapis()
+        tema.ao_repintar(self._pintar_o_lapis)
+        return faixa
+
+    def _pintar_o_lapis(self) -> None:
+        """O traço do botão do cabeçalho na cor da pele em uso -- a medição da S-220."""
+        desenho = qt_icones.icone(
+            cabecalho_da_partida.ICONE,
+            LADO_DO_ICONE_DA_SALA,
+            tema.cor_atual(tokens.TEXTO_PADRAO),
+            escala=self.devicePixelRatioF(),
+        )
+        if desenho is not None:
+            self.btn_cabecalho.setIcon(desenho)
+
+    def _mostrar_cabecalho(self) -> None:
+        """Põe na faixa o que os headers dizem. Quem elide é o próprio rótulo, a cada largura."""
+        primeira, segunda = cabecalho_da_partida.linhas(self.estudo.jogo.headers)
+        self.lbl_partida.definir_texto(primeira)
+        self.lbl_torneio.definir_texto(segunda)
+        dica_em(
+            self.btn_cabecalho,
+            f"{cabecalho_da_partida.TITULO}\nDuplo clique na frase ao lado faz o mesmo.",
+        )
+
+    def editar_cabecalho(self) -> QDialog:
+        """Abre o formulário dos nove campos. O que ele gravar entra no `Ctrl+Z` da sala."""
+        return _JanelaDoCabecalho(self, self.estudo.jogo.headers, self._gravar_cabecalho)
+
+    def _gravar_cabecalho(self, valores: dict[str, str]) -> None:
+        """Escreve nos headers **só o que mudou**, e trata a mudança como edição da sala.
+
+        `_marcar_sujo` empilha o PGN inteiro no histórico e agenda a gravação: com ele, `Ctrl+Z`
+        devolve o cabeçalho anterior pelo mesmo caminho que devolve um lance, e o `salvar_agora`
+        por inatividade leva os headers junto -- eles já estão em `Estudo.para_pgn`. Sem o filtro
+        de `mudancas`, abrir o diálogo e fechá-lo em "Gravar" criaria um passo de desfazer que não
+        desfaz coisa alguma.
+        """
+        mudou = cabecalho_da_partida.mudancas(self.estudo.jogo.headers, valores)
+        if not mudou:
+            self.set_status("O cabeçalho não mudou.")
+            return
+        for chave, valor in mudou.items():
+            if valor:
+                self.estudo.jogo.headers[chave] = valor
+            elif chave in self.estudo.jogo.headers:
+                del self.estudo.jogo.headers[chave]
+        self._marcar_sujo()
+        self._mostrar_cabecalho()
+        self.set_status(f"Cabeçalho da partida: {len(mudou)} campo(s) atualizado(s).")
+
+    # -------------------------------------------- o tabuleiro cresce pela altura (S-551)
+
+    def resizeEvent(self, a0: QResizeEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        super().resizeEvent(a0)
+        self._acomodar_o_tabuleiro()
+
+    def _divisor_movido_a_mao(self, _posicao: int, _indice: int) -> None:
+        self._divisor_escolhido = True
+
+    def _altura_livre_para_o_tabuleiro(self) -> int:
+        """Quanta altura da coluna esquerda sobraria para o tabuleiro se ele não a disputasse.
+
+        É a altura da coluna menos o que os vizinhos pedem -- cabeçalho, faixa de navegação,
+        recorte **visível**, os dois rótulos, a FEN -- e menos os vãos entre eles. O recorte
+        escondido não conta, e é a diferença que explica a foto do crítico: com um diagrama do
+        livro aberto, os 220 px de `LADO_DO_RECORTE` ocupam justamente o vazio que ele mediu.
+        """
+        coluna = self.divisor.widget(0)
+        leiaute = coluna.layout() if coluna is not None else None
+        if coluna is None or leiaute is None:
+            return 0
+        margens = leiaute.contentsMargins()
+        ocupado = margens.top() + margens.bottom()
+        vizinhos = 0
+        for indice in range(leiaute.count()):
+            item = leiaute.itemAt(indice)
+            widget = item.widget() if item is not None else None
+            if widget is None or widget is self.tabuleiro:
+                continue
+            if widget.isHidden():
+                continue
+            ocupado += widget.sizeHint().height()
+            vizinhos += 1
+        ocupado += leiaute.spacing() * vizinhos
+        return max(0, coluna.height() - ocupado)
+
+    def _acomodar_o_tabuleiro(self) -> None:
+        """Move a alça para o tabuleiro usar a altura que sobra, se ninguém escolheu a alça.
+
+        **A regra é pura** (`sala_declarada.fracao_para_o_tabuleiro`) e só empurra para a direita:
+        a fração de agora é o piso. Ela não roda depois de a pessoa arrastar a alça nem depois de
+        `posicionar_divisor` restaurar a da sessão anterior -- ali a repartição já foi escolhida, e
+        a fração guardada acompanha a largura sozinha, porque é fração e não pixel.
+        """
+        if self._divisor_escolhido or not self.divisor.isVisible():
+            return
+        largura = sum(self.divisor.sizes())
+        if largura <= 0:
+            return
+        alvo = fracao_para_o_tabuleiro(
+            largura,
+            self._altura_livre_para_o_tabuleiro(),
+            minimo=qt_tabuleiro.LADO_MINIMO,
+            fracao_atual=self.fracao_do_divisor,
+            alca=max(1, self.divisor.handleWidth()),
+        )
+        if abs(alvo - self.fracao_do_divisor) < 0.005:
+            return
+        esquerda = int(largura * alvo)
+        self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
     def _direita(self) -> QWidget:
         """A coluna de leitura, repartida por um divisor vertical (S-519).
@@ -820,6 +999,7 @@ class PainelDeEstudo(QWidget):
             self._atualizar_botao_da_dobra()
             self._mostrar_lance_corrente()
             self._mostrar_placar()
+            self._mostrar_cabecalho()
             self._aplicar_modo_da_barra()
         finally:
             self._montando = False
@@ -954,9 +1134,17 @@ class PainelDeEstudo(QWidget):
         return geometria.fracao_de_divisor(tamanhos[0], largura)
 
     def posicionar_divisor(self, fracao: float) -> None:
-        """Põe a alça naquela fração. `0.0` deixa o peso do `QSplitter` decidir."""
+        """Põe a alça naquela fração. `0.0` deixa o peso do `QSplitter` decidir.
+
+        **Uma fração guardada desliga a regra da S-551**, e é o que impede as duas de brigarem: a
+        sessão anterior fechou com uma repartição, e ela é uma escolha -- ou da pessoa, que
+        arrastou, ou da própria regra, que rodou na primeira abertura e teve o resultado gravado.
+        Recalculá-la a cada `resize` sobrescreveria a primeira; nunca calculá-la deixaria a
+        primeira abertura com o vazio que este item foi consertar.
+        """
         if fracao <= 0.0:
             return
+        self._divisor_escolhido = True
         largura = max(1, sum(self.divisor.sizes()) or self.divisor.width())
         esquerda = int(largura * fracao)
         self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
@@ -2169,6 +2357,134 @@ def _miniatura(imagem: Any, lado: int) -> Any:
     except Exception as erro:  # noqa: BLE001 - recorte de origem desconhecida
         logger.debug("Recorte do diagrama não pôde ser desenhado: %s", erro)
         return None
+
+
+class _RotuloElidido(QLabel):
+    """Um `QLabel` de uma linha que corta o próprio texto com `...` quando ele não cabe (S-530).
+
+    **Elidir no momento de escrever não funciona**, e foi medido: `_mostrar_cabecalho` roda dentro
+    de `refresh`, que é chamado na montagem -- ali o rótulo ainda tem a largura de fábrica, e a
+    frase saía como `Jogadores nã...` numa faixa de 494 px. Quem sabe a largura é o rótulo, e ele
+    só a sabe no `resizeEvent` dele.
+
+    A dica carrega a frase inteira: o nome que não coube continua alcançável sem abrir o diálogo,
+    que é o que um `...` sozinho não dá.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("", parent)
+        self._inteiro = ""
+
+    def definir_texto(self, texto: str) -> None:
+        self._inteiro = str(texto)
+        self.setToolTip(self._inteiro)
+        self.setVisible(bool(self._inteiro))
+        self._reescrever()
+
+    def texto_inteiro(self) -> str:
+        """O que a frase diz antes de ser cortada. É por ele que o teste pergunta."""
+        return self._inteiro
+
+    def resizeEvent(self, a0: QResizeEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        super().resizeEvent(a0)
+        self._reescrever()
+
+    def _reescrever(self) -> None:
+        largura = self.width()
+        if largura <= 0:
+            self.setText(self._inteiro)
+            return
+        metrica = QFontMetrics(self.font())
+        self.setText(metrica.elidedText(self._inteiro, Qt.TextElideMode.ElideRight, largura))
+
+
+class _JanelaDoCabecalho(QDialog):
+    """O formulário dos nove headers da partida (S-530).
+
+    **Um `QComboBox` para o resultado, e campo livre para o resto.** `1:0`, `1-0 ` e `1–0` com
+    travessão são o que se digita sem querer, e qualquer um faz o PGN ser recusado por quem o ler;
+    os outros oito não têm forma fechada -- nome de jogador e de torneio são o que o livro imprimiu.
+
+    Quem diz quais são os campos, em que ordem e o que um campo vazio grava é
+    `ui/cabecalho_da_partida.py`. Este arquivo só desenha.
+    """
+
+    def __init__(
+        self,
+        pai: QWidget,
+        headers: Any,
+        gravar: Callable[[dict[str, str]], None],
+    ) -> None:
+        super().__init__(pai)
+        self.setWindowTitle(cabecalho_da_partida.TITULO)
+        self._gravar = gravar
+        self.campos: dict[str, QWidget] = {}
+        pilha = QVBoxLayout(self)
+        pilha.setContentsMargins(*(espaco.moldura(),) * 4)
+        pilha.setSpacing(espaco.folga())
+
+        grade = QGridLayout()
+        grade.setHorizontalSpacing(espaco.folga())
+        grade.setVerticalSpacing(espaco.linha())
+        valores = cabecalho_da_partida.valores_para_o_formulario(headers)
+        # **O campo estreito fica na linha do anterior**, e não na seguinte: `Brancas [nome] Elo
+        # [2720]` é uma pergunta só, e separá-los em duas linhas dobraria a altura do formulário
+        # para dizer a mesma coisa. `linha` só avança em campo largo.
+        linha, coluna = -1, 0
+        for campo in cabecalho_da_partida.CAMPOS:
+            if campo.estreito and linha >= 0:
+                coluna = 2
+            else:
+                linha += 1
+                coluna = 0
+            grade.addWidget(QLabel(campo.rotulo, self), linha, coluna)
+            editor: QWidget
+            if campo.escolhas:
+                caixa = QComboBox(self)
+                caixa.addItems(campo.escolhas)
+                atual = valores.get(campo.chave) or campo.escolhas[0]
+                caixa.setCurrentIndex(max(0, caixa.findText(atual)))
+                editor = caixa
+            else:
+                texto = QLineEdit(valores.get(campo.chave, ""), self)
+                if campo.estreito:
+                    texto.setMaximumWidth(8 * tema.altura_de_linha_atual())
+                editor = texto
+            if campo.dica:
+                dica_em(editor, campo.dica)
+            grade.addWidget(editor, linha, coluna + 1)
+            self.campos[campo.chave] = editor
+        grade.setColumnStretch(1, 1)
+        pilha.addLayout(grade)
+
+        # **Os dois botões com texto próprio**, e não `StandardButton.Save`: o texto padrão do Qt
+        # é "Save"/"Cancel" em inglês, e a janela inteira fala português. É a forma que
+        # `qt/dialogos.py` já usa nos dois diálogos de base.
+        botoes = QDialogButtonBox(parent=self)
+        botoes.addButton("Gravar", QDialogButtonBox.ButtonRole.AcceptRole)
+        botoes.addButton("Cancelar", QDialogButtonBox.ButtonRole.RejectRole)
+        botoes.accepted.connect(self._confirmar)
+        botoes.rejected.connect(self.reject)
+        pilha.addWidget(botoes)
+        # O nome de um jogador não cabe no que a grade pede: `Capablanca, José Raúl` saía cortado
+        # num diálogo de 328 px. A altura continua sendo a que os nove campos pedem.
+        self.resize(max(520, self.sizeHint().width()), self.sizeHint().height())
+        self.show()
+
+    def valores(self) -> dict[str, str]:
+        """O que está nos campos agora, por chave de PGN."""
+        lidos: dict[str, str] = {}
+        for chave, editor in self.campos.items():
+            if isinstance(editor, QComboBox):
+                lidos[chave] = editor.currentText()
+            elif isinstance(editor, QLineEdit):
+                lidos[chave] = editor.text()
+        return lidos
+
+    def _confirmar(self) -> None:
+        valores = self.valores()
+        self.accept()
+        self._gravar(valores)
 
 
 class _JanelaDeColar(QDialog):

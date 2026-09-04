@@ -523,6 +523,10 @@ CATALOGO: tuple[Comando, ...] = (
     ),
     # ----------------------------------------------------------------------------- ACERVO
     Comando("varrer_livro", strings.VARRER_LIVRO, ACERVO, estilos.NEUTRO),
+    # A fila da S-546 é ACERVO pela mesma pergunta do vizinho de cima -- ela age sobre livros
+    # inteiros --, e as reticências dizem que ela abre uma janela em vez de começar a varrer:
+    # é o mesmo contrato de "Indexar base…" e "Treinar o modelo".
+    Comando("varrer_fila", "Varrer uma fila de livros…", ACERVO, estilos.NEUTRO),
     Comando("recarregar_modelo", "Recarregar o modelo", ACERVO, estilos.NEUTRO),
     Comando("treinar", "Treinar o modelo", ACERVO, estilos.NEUTRO),
     # Os três da linha de conjunto de campo (S-77). Nenhum tem item de menu, e a S-223 decidiu

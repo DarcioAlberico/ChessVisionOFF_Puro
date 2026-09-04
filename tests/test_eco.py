@@ -244,3 +244,111 @@ class CustoTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TransposicaoTests(unittest.TestCase):
+    """A promessa que a primeira rodada não cumpriu: a mesma posição, o mesmo código (S-534, r2).
+
+    O crítico mediu `1.Nf3 d5 2.d4 Nf6 3.c4` dando **D02** e `1.d4 d5 2.c4 Nf6 3.Nf3` dando
+    **D06** -- mesmas peças, mesma vez, mesmos roques. A causa não era a posição final: era a
+    regra. `classificar` guardava a linha **mais longa da tabela** entre todas as que a partida
+    tocou, e cada caminho tinha passado por uma intermediária diferente. Pela posição final os
+    dois caem no mesmo lugar, que é o que a classificação padrão faz.
+    """
+
+    PARES = {
+        "gambito da dama pela Reti": ("Nf3 d5 d4 Nf6 c4", "d4 d5 c4 Nf6 Nf3"),
+        "índia da dama": ("Nf3 Nf6 c4 e6 d4 b6", "d4 Nf6 c4 e6 Nf3 b6"),
+        "índia do rei pela inglesa": ("c4 Nf6 Nc3 g6 d4 Bg7 e4 d6", "d4 Nf6 c4 g6 Nc3 Bg7 e4 d6"),
+        "siciliana pela Reti": ("Nf3 c5 e4", "e4 c5 Nf3"),
+        "inglesa que vira gambito da dama": ("c4 e6 d4 d5", "d4 d5 c4 e6"),
+        "Nimzo pela Reti": ("Nf3 Nf6 c4 e6 Nc3 Bb4 d4", "d4 Nf6 c4 e6 Nc3 Bb4 Nf3"),
+    }
+
+    def test_a_mesma_posicao_por_dois_caminhos_recebe_o_mesmo_codigo(self) -> None:
+        for rotulo, (um, outro) in self.PARES.items():
+            with self.subTest(par=rotulo):
+                a, b = chess.Board(), chess.Board()
+                for lance in um.split():
+                    a.push_san(lance)
+                for lance in outro.split():
+                    b.push_san(lance)
+                self.assertEqual(
+                    (a.board_fen(), a.turn, a.castling_rights),
+                    (b.board_fen(), b.turn, b.castling_rights),
+                    "o par do teste não chega à mesma posição, e não prova nada",
+                )
+                primeiro, segundo = eco.classificar(um.split()), eco.classificar(outro.split())
+                self.assertIsNotNone(primeiro)
+                self.assertIsNotNone(segundo)
+                assert primeiro is not None and segundo is not None
+                self.assertEqual(primeiro.codigo, segundo.codigo)
+
+    def test_a_classificacao_e_da_posicao_mais_tardia_e_nao_da_linha_mais_longa(self) -> None:
+        """A regra em uma frase, sobre um caso em que as duas discordam.
+
+        `1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 a6 6.Bg5 e6 7.f4` passa pela Najdorf (B90,
+        dez meios-lances na tabela) e chega à B96 (catorze). A regra da linha mais longa daria
+        B96 aqui e daria a errada no dia em que a partida voltasse para uma linha curta -- a
+        regra da posição mais tardia dá B96 **porque é onde a partida está**.
+        """
+        lances = "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5 e6 f4".split()
+        achada = eco.classificar(lances)
+        assert achada is not None
+        self.assertEqual("B96", achada.codigo)
+
+    def test_a_linha_mais_longa_da_tabela_e_alcancavel(self) -> None:
+        """`LANCES_EXAMINADOS` era 24 e a linha mais longa tem 28: C99 nunca casava.
+
+        As 52 partidas C99 da amostra de 2026-09-04 erraram **todas**, e não por falta de linha:
+        por um teto que cortava a leitura antes dela. Um teto abaixo da tabela é uma tabela menor
+        do que ela diz ser.
+        """
+        mais_longa = max(eco.tabela(), key=lambda abertura: abertura.profundidade)
+        self.assertLessEqual(mais_longa.profundidade, eco.LANCES_EXAMINADOS)
+        for codigo in ("C98", "C99", "D68", "D69", "D89"):
+            with self.subTest(codigo=codigo):
+                linha = next(a for a in eco.tabela() if a.codigo == codigo)
+                achada = eco.classificar(linha.lances)
+                assert achada is not None
+                self.assertEqual(codigo, achada.codigo)
+
+
+class NomeDaLinhaTests(unittest.TestCase):
+    """O nome mostrado é o da linha, e não o da família (S-534, r2).
+
+    `nome(codigo)` é a legenda da família e ela **repete**: *Ruy Lopez* nomeia nove códigos,
+    *English* treze, *Sicilian* doze. Sob um tabuleiro que está na Berlim aberta, dizer
+    `ECO C67 · Ruy Lopez` é dizer o que já se via.
+    """
+
+    def _tabuleiro(self, *sans: str) -> chess.Board:
+        tabuleiro = chess.Board()
+        for san in sans:
+            tabuleiro.push_san(san)
+        return tabuleiro
+
+    def test_a_frase_da_sala_traz_o_nome_da_linha_casada(self) -> None:
+        berlim = self._tabuleiro("e4", "e5", "Nf3", "Nc6", "Bb5", "Nf6", "O-O", "Nxe4", "d4")
+        frase = eco.frase_do_tabuleiro(berlim)
+        self.assertTrue(frase.startswith("ECO C67"), frase)
+        self.assertIn("Berlin", frase)
+        self.assertNotEqual(frase, eco.frase("C67"), "a legenda da família não distingue o C67")
+
+    def test_com_header_que_concorda_a_legenda_e_a_da_linha(self) -> None:
+        berlim = self._tabuleiro("e4", "e5", "Nf3", "Nc6", "Bb5", "Nf6", "O-O", "Nxe4", "d4")
+        self.assertEqual(eco.frase_do_tabuleiro(berlim), eco.frase_do_tabuleiro(berlim, "C67"))
+
+    def test_com_header_que_discorda_o_codigo_e_do_header_e_a_legenda_e_da_familia(self) -> None:
+        """Afirmar o nome de uma linha que a partida não percorreu é pior que a legenda genérica."""
+        berlim = self._tabuleiro("e4", "e5", "Nf3", "Nc6", "Bb5", "Nf6", "O-O", "Nxe4", "d4")
+        self.assertEqual("ECO C65" + eco.SEPARADOR + eco.nome("C65"), eco.frase_do_tabuleiro(berlim, "C65"))
+
+    def test_sem_posicao_conhecida_o_header_ainda_responde(self) -> None:
+        montado = chess.Board("8/8/8/8/8/5k2/6p1/6K1 w - - 0 1")
+        self.assertEqual(eco.frase("B90"), eco.frase_do_tabuleiro(montado, "B90"))
+        self.assertEqual("", eco.frase_do_tabuleiro(montado))
+
+    def test_a_frase_da_abertura_poe_o_codigo_antes_do_nome(self) -> None:
+        abertura = eco.Abertura("Z99", "Nome Inventado", ("e4",))
+        self.assertEqual("ECO Z99 · Nome Inventado", eco.frase_da_abertura(abertura))

@@ -341,6 +341,22 @@ def _run_one(
             error=f"{type(exc).__name__}: {message_for(exc)}",
         )
 
+    if not report.cancelled and report.pages_scanned <= 0:
+        # **Zero página é falha, e não "ok" com zero.** Um PDF truncado -- o download que parou no
+        # meio, o arquivo de 0 byte -- abre, não entrega página nenhuma e saía daqui com
+        # `status: "ok"`, `pages: 0`, `error: ""` e um `.pgn` de 0 byte ao lado. Na fila da janela
+        # isso aparece como um livro pronto que não achou nada, que é o resultado de verdade de
+        # cinco livros do acervo (`ROADMAP.md:151`) -- e os dois ficam indistinguíveis. Um livro
+        # que não teve página não foi lido.
+        return BookResult(
+            pdf=pdf,
+            status=STATUS_FAILED,
+            output=report.output_path,
+            review_path=report.review_path,
+            elapsed_s=time.monotonic() - inicio,
+            error="o livro não entregou página nenhuma; o PDF pode estar truncado ou vazio",
+        )
+
     return BookResult(
         pdf=pdf,
         status=STATUS_CANCELLED if report.cancelled else STATUS_OK,
@@ -401,6 +417,17 @@ def _por(valor: float, quantos: int) -> float:
     return round(valor / quantos, 4) if quantos else 0.0
 
 
+def _taxa(parte: int, todo: int) -> float | None:
+    """A fração, ou `None` quando não há de que tirar fração.
+
+    **`None` e não `0.0`, e não `1.0`.** `legal_rate` saía `1.0` num livro sem diagrama nenhum --
+    "100% das posições são legais" sobre zero posição --, e um relatório que responde a pergunta
+    que ninguém pôde medir é pior que um que se cala: quem compara dois livros num gráfico vê o
+    livro que falhou no topo. `null` no JSON diz *não medido*, que é a verdade.
+    """
+    return round(parte / todo, 4) if todo else None
+
+
 def relatorio_de_qualidade(
     resultado: BookResult, options: BatchOptions, *, medido_em: str = ""
 ) -> dict[str, Any]:
@@ -434,8 +461,8 @@ def relatorio_de_qualidade(
         "needs_review": resultado.needs_review,
         "illegal": resultado.rejected,
         "duplicates": resultado.duplicates,
-        "export_rate": round(resultado.acceptance_rate, 4),
-        "legal_rate": round(1.0 - _por(resultado.rejected, resultado.total_diagrams), 4),
+        "export_rate": _taxa(resultado.accepted, resultado.total_diagrams),
+        "legal_rate": _taxa(resultado.total_diagrams - resultado.rejected, resultado.total_diagrams),
         "mean_min_confidence": round(resultado.mean_min_confidence, 4),
         "elapsed_s": round(resultado.elapsed_s, 2),
         "seconds_per_page": _por(resultado.elapsed_s, resultado.pages),

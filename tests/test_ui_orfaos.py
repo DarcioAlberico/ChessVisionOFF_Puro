@@ -130,10 +130,13 @@ SEM_CHAMADOR: dict[str, str] = {
     "atalhos.CEDIDA_PELA_GUARDA": "um dos dois valores que `sobreposicao` devolve; quem os distingue é o teste",
     "atalhos.GANHA_DO_TK": "o outro valor que `sobreposicao` devolve; quem os distingue é o teste",
     # --- a barra da sala (S-527, 2026-09-04): nasceu com a catraca em zero, e respondeu na hora
-    "barra_da_sala.ACOES": (
-        TABELA_PERCORRIDA + " -- o produto a lê por `acoes_para`, `principais` e `secundarias`; "
-        "`test_ui_barra_da_sala` a confere contra `COMANDOS_DA_ABA` e `ICONES_DA_SALA` nos dois sentidos"
-    ),
+    #
+    # `barra_da_sala.ACOES` **saiu** desta lista na S-528, e não por ter ganhado chamador: a
+    # varredura é por **identificador**, e `qt/painel_do_pdf.py` passa `barra_do_pdf.ACOES` para a
+    # fila -- o nome `ACOES` passou a existir fora de `ui/barra_da_sala.py`, e a pergunta deixou de
+    # ser feita para os dois. É limitação conhecida do detector (ver o cabeçalho: ele conta
+    # identificador, não par módulo-nome), e o que continua cobrando a tabela da sala é
+    # `tests/test_ui_barra_da_sala.py`, nos dois sentidos com `COMANDOS_DA_ABA` e `ICONES_DA_SALA`.
     "barra_da_sala.SEM_ESTUDO": "um dos três valores que `modo` devolve e `grupos_desligados` consome; quem os distingue é o teste",
     "barra_da_sala.COM_ESTUDO": "o segundo valor de `modo`, pelo mesmo motivo",
     "barra_da_sala.TREINANDO": "o terceiro valor de `modo`, pelo mesmo motivo",
@@ -144,6 +147,28 @@ SEM_CHAMADOR: dict[str, str] = {
     "icones.ICONES_DA_SALA": (
         TABELA_PERCORRIDA + " (`test_ui_barra_da_sala`, nos dois sentidos com `barra_da_sala.ACOES`; "
         "`imagem` a lê por `tracos_de`, no mesmo módulo)"
+    ),
+    # --- a barra do painel do PDF (S-528, 2026-09-04): a mesma forma, a segunda tabela
+    "icones.ICONES_DO_PDF": (
+        TABELA_PERCORRIDA + " (`test_ui_barra_do_pdf`, nos dois sentidos com `barra_do_pdf.ACOES`; "
+        "`imagem` a lê por `tracos_de`, no mesmo módulo)"
+    ),
+    "barra_do_pdf.COM_LIVRO": "um dos três valores que `modo` devolve e `grupos_desligados` consome; quem os distingue é o teste",
+    "barra_do_pdf.TRANCADO": "o segundo valor de `modo`, pelo mesmo motivo -- o painel chama `modo(...)`, e não os nomes",
+    "sala_declarada.LARGURA_MINIMA_DA_LEITURA": (
+        "o piso da coluna de leitura é o **padrão** de `lado_do_tabuleiro` e de "
+        "`fracao_para_o_tabuleiro`, e quem as chama não o repete -- passá-lo de fora seria a "
+        "segunda declaração do mesmo número. Quem o compara com as partes é o teste"
+    ),
+    "sala_declarada.ALCA_DO_DIVISOR": (
+        "o mesmo caso, e mais estreito: a alça de verdade vem do widget (`handleWidth()`), e este "
+        "é o valor que a função responde quando ninguém diz. Um chamador no produto seria o "
+        "painel usando o padrão em vez de medir a alça que ele tem"
+    ),
+    "cabecalho_da_partida.Campo": E_O_TIPO,
+    "barra_do_pdf.LEITURA": (
+        "o grupo do OCR: o produto o lê pelo campo `grupo` de cada linha da tabela, e só o teste o "
+        "nomeia. `VISTA` é a exceção, e por isso não está aqui -- `interruptores_de_vista` filtra por ele"
     ),
 }
 """`modulo.NOME -> motivo`, e o motivo não pode ser vazio.

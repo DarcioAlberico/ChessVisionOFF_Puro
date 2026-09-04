@@ -35,13 +35,12 @@ from pathlib import Path
 
 import numpy as np
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
-    QPushButton,
     QSlider,
     QSpinBox,
     QVBoxLayout,
@@ -49,11 +48,10 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
-from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.qt.barra import BarraFluida
+from chess_diagram_ocr.qt.barra import BarraEmFila
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.visor import VisorDePagina
-from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, formato
+from chess_diagram_ocr.ui import barra_do_pdf, comandos, espaco, formato
 from chess_diagram_ocr.ui.leitura_do_pdf import PASSO_DE_ZOOM, open_in_system_reader
 from chess_diagram_ocr.ui.page_overlay import PageBoxes
 from chess_diagram_ocr.ui.viewport import LADO_DO_DESLIZADOR, clamp_zoom, posicao_do_zoom, zoom_da_posicao
@@ -64,6 +62,16 @@ __all__ = ["ESPERA_DO_DPI_MS", "PainelDoPdf"]
 
 ESPERA_DO_DPI_MS = 400
 """Quanto esperar o campo de DPI parar de mudar antes de re-rasterizar (S-329)."""
+
+
+def sufixo_de_paginas(total: int) -> str:
+    """O ` de 289` que o campo de página escreve depois do número (S-528).
+
+    Era um `QLabel` ao lado do campo, e o par vivia numa fila que quebrava: o rótulo ia para a
+    fileira de baixo e o número ficava sem o total. Dentro do campo eles não se separam, e o
+    controle inteiro pesa um widget em vez de dois.
+    """
+    return f" de {max(0, int(total))}"
 
 
 class PainelDoPdf(QWidget):
@@ -149,66 +157,57 @@ class PainelDoPdf(QWidget):
         fora.setContentsMargins(*(espaco.folga(),) * 4)
         fora.setSpacing(espaco.folga())
 
-        barra = BarraFluida(self)
-        # **A ênfase da barra é do `ler_melhor`, e é o catálogo que decide** (S-324/S-506). Este
-        # botão vinha com `PRIMARIO` cravado aqui, divergindo do `NEUTRO` que o catálogo declara --
-        # e enquanto os botões de OCR estavam fora da barra ninguém via a divergência. A regra é
-        # uma ênfase por barra: abrir o livro é o passo de antes, ler a página é o que a tela faz.
-        self.btn_abrir = self._botao(barra, "abrir_pdf", self.abrir_pdf)
-        self.lbl_pdf = QLabel("nenhum PDF aberto", barra)
-        barra.adicionar(self.lbl_pdf)
-        self.btn_leitor = QPushButton(comandos.rotulo_de_botao("abrir_no_leitor"), barra)
-        self.btn_leitor.clicked.connect(self.abrir_no_leitor_do_sistema)
-        self.btn_leitor.setEnabled(False)
-        tema.aplicar_papel(self.btn_leitor, estilos.NEUTRO)
-        dica_em(
-            self.btn_leitor,
-            "Abre o livro no leitor de PDF do sistema, na janela dele: rolagem contínua e busca "
-            "de texto.\nFica cinza enquanto não há livro aberto.",
+        # **Uma fila, agrupada por tarefa** (S-528). Eram duas `BarraFluida` com dezesseis
+        # controles de texto -- `QPushButton` e `QCheckBox` -- que quebravam em duas fileiras a
+        # 675 px e em três a 520, o piso do painel: 176 px de cromo antes da folha, ao lado de uma
+        # sala de estudo cuja barra tem 32. Quem decide grupo, principal, ícone, dica e quem cabe
+        # é `ui/barra_do_pdf.py`; o widget é o mesmo `BarraEmFila` da sala.
+        self.barra = BarraEmFila(
+            self, tabela=barra_do_pdf, registros=barra_do_pdf.ACOES, executar=self.executar
         )
-        barra.adicionar(self.btn_leitor)
-        # **Os cinco que o porte tinha deixado só no menu** (S-506). Eles agem sobre a página
-        # exibida, e é ao lado dela que a S-77 os pôs -- a mesma razão da linha de campo.
-        self.btn_ler_melhor = self._botao(
-            barra, "ler_melhor", lambda: self.leitura_pedida.emit(True), estilos.PRIMARIO
-        )
-        self.btn_ler_pagina = self._botao(barra, "ler_pagina", lambda: self.leitura_pedida.emit(False))
-        self.btn_tirar_caixa = self._botao(barra, "tirar_caixa", self.dispensar_a_selecionada)
-        self.btn_exportar = self._botao(barra, "exportar_pgn", self.exportacao_pedida.emit)
-        self.btn_cancelar_exportacao = self._botao(
-            barra, "cancelar_exportacao", self.exportacao_cancelada.emit
-        )
-        self._barra_do_livro = barra
-        fora.addWidget(barra)
+        # Os nomes pelos quais o resto do painel, a janela e os testes chamam estes controles
+        # apontam agora para as `QAction`s da fila: `setEnabled`, `isEnabled`, `setChecked`,
+        # `isChecked`, `setText` e `toggle` são os mesmos, e é isso que deixa `qt/janela.py`
+        # inalterado -- ele faz `pdf.marcar_diagramas.toggle()` e continua funcionando.
+        self.btn_abrir = self.barra.acoes["abrir_pdf"]
+        self.btn_leitor = self.barra.acoes["abrir_no_leitor"]
+        self.btn_ler_melhor = self.barra.acoes["ler_melhor"]
+        self.btn_ler_pagina = self.barra.acoes["ler_pagina"]
+        self.btn_tirar_caixa = self.barra.acoes["tirar_caixa"]
+        self.btn_exportar = self.barra.acoes["exportar_pgn"]
+        self.btn_cancelar_exportacao = self.barra.acoes["cancelar_exportacao"]
+        self.btn_selecionar = self.barra.acoes["selecionar_area"]
+        self.marcar_diagramas = self.barra.acoes["marcar_diagramas"]
+        self.roda_vira_pagina = self.barra.acoes["roda_vira_pagina"]
+        # As duas preferências nascem marcadas **sem avisar**: o `toggled` já está ligado ao
+        # método, e o método fala com o visor -- que tem os mesmos padrões e ainda não precisa
+        # ouvir nada. Era o que a montagem antiga conseguia de graça, marcando antes de ligar.
+        for interruptor in (self.marcar_diagramas, self.roda_vira_pagina):
+            interruptor.blockSignals(True)
+            interruptor.setChecked(True)
+            interruptor.blockSignals(False)
 
-        navegacao = BarraFluida(self)
-        self._botao(navegacao, "pagina_anterior", self.pagina_anterior)
-        # **Base 1, e a faixa nunca é `0..0`** (S-328): "página 0" não existe na contagem que o
-        # campo usa, e um campo vazio com teto zero é o que fazia a seta escrever o número que o
-        # resto da tela nega.
-        self.campo_pagina = QSpinBox(navegacao)
+        # **O campo de página fica na mesma fila** (S-528), pendurado depois de "Página anterior":
+        # a seta, o número e a outra seta são um controle só, e separá-los em duas linhas era
+        # metade do defeito. **Base 1, e a faixa nunca é `0..0`** (S-328): "página 0" não existe na
+        # contagem que o campo usa, e um campo vazio com teto zero é o que fazia a seta escrever o
+        # número que o resto da tela nega. O total é o **sufixo** do campo, e não um `QLabel` ao
+        # lado: eram dois widgets para um número, e o de fora não sabia sumir junto com as setas.
+        self.campo_pagina = QSpinBox(self.barra)
         self.campo_pagina.setRange(1, 1)
+        self.campo_pagina.setSuffix(sufixo_de_paginas(0))
+        # **Sem as setinhas próprias do `QSpinBox`**: os dois botões do grupo `PAGINA` estão
+        # colados nele e fazem exatamente isso, com 16 px de traço em vez de duas meias-setas de
+        # 6 px. Tirá-las devolve ~18 px à fila, que é largura que "Abrir PDF" usa para caber.
+        self.campo_pagina.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.campo_pagina.valueChanged.connect(self._pagina_digitada)
-        navegacao.adicionar(self.campo_pagina)
-        self.lbl_total = QLabel("de 0", navegacao)
-        navegacao.adicionar(self.lbl_total)
-        self._botao(navegacao, "proxima_pagina", self.proxima_pagina)
-        self._botao(navegacao, "zoom_menos", self.diminuir_zoom)
-        self._botao(navegacao, "zoom_mais", self.aumentar_zoom)
-        self._botao(navegacao, "ajustar_largura", self.ajustar_a_largura)
-        self._botao(navegacao, "ajustar_pagina", self.ajustar_a_pagina)
-        self.btn_selecionar = self._botao(navegacao, "selecionar_area", self.alternar_selecao)
-
-        self.marcar_diagramas = QCheckBox(comandos.rotulo_de_botao("marcar_diagramas"), navegacao)
-        self.marcar_diagramas.setChecked(True)
-        self.marcar_diagramas.toggled.connect(self._alternou_caixas)
-        navegacao.adicionar(self.marcar_diagramas)
-        self.roda_vira_pagina = QCheckBox(comandos.rotulo_de_botao("roda_vira_pagina"), navegacao)
-        self.roda_vira_pagina.setChecked(True)
-        self.roda_vira_pagina.toggled.connect(self._alternou_virada)
-        navegacao.adicionar(self.roda_vira_pagina)
-        self._barra_de_navegacao = navegacao
-        fora.addWidget(navegacao)
+        dica_em(
+            self.campo_pagina,
+            "A folha que está na tela, em base 1. Digitar o número vai para ela; os dois\n"
+            "botões ao lado, Page Up e Page Down viram uma de cada vez.",
+        )
+        self.barra.encaixar(self.campo_pagina, depois_de="pagina_anterior")
+        fora.addWidget(self.barra)
 
         self.visor = VisorDePagina(self)
         self.visor.caixa_clicada.connect(self.caixa_clicada)
@@ -224,6 +223,44 @@ class PainelDoPdf(QWidget):
         fora.addLayout(self._rodape_de_zoom())
         self._reavaliar_controles()
 
+    def executar(self, acao: str) -> None:
+        """Roda o método que `barra_do_pdf.METODOS_DO_PAINEL` liga àquela ação.
+
+        É o único caminho de volta da barra ao painel, e é a mesma forma de
+        `PainelDeEstudo.executar` (S-280): o par comando-método é declarado **uma** vez, na tabela,
+        e não num `lambda` escrito no meio da montagem. Levanta para ação que a tabela não tem.
+        """
+        getattr(self, barra_do_pdf.METODOS_DO_PAINEL[acao])()
+
+    # -------------------------------------------------- o que cada ação da barra faz (S-528)
+
+    def ler_o_melhor(self) -> None:
+        """Pede o reconhecimento de **um** diagrama (`max_boards=1`). Quem lê é a janela."""
+        self.leitura_pedida.emit(True)
+
+    def ler_a_pagina(self) -> None:
+        """Pede o reconhecimento da página inteira, na preferência configurada."""
+        self.leitura_pedida.emit(False)
+
+    def pedir_exportacao(self) -> None:
+        self.exportacao_pedida.emit()
+
+    def pedir_cancelamento(self) -> None:
+        self.exportacao_cancelada.emit()
+
+    def alternou_marcacao(self) -> None:
+        """O interruptor "Marcar diagramas" mudou.
+
+        O método **lê** o estado, e não o inverte -- ver `ui/barra.Acao.alterna_no_metodo`: quem
+        alterna é o próprio item, como no `QCheckBox` que ele substitui.
+        """
+        self.visor.alternar_caixas(self.marcar_diagramas.isChecked())
+        self.preferencias_mudaram.emit()
+
+    def alternou_virada(self) -> None:
+        self.visor.virar_paginas = self.roda_vira_pagina.isChecked()
+        self.preferencias_mudaram.emit()
+
     # ------------------------------------------------------------- quem fica cinza, e por quê
 
     def _reavaliar_controles(self) -> None:
@@ -234,19 +271,24 @@ class PainelDoPdf(QWidget):
         `set_export_controls_enabled`, `disable_cancel_button`) que se sobrescreviam pela ordem de
         chamada -- e o botão de cancelar ficava cinza porque a última a falar não sabia da
         exportação.
+
+        **A regra grossa é do modo e a fina é da condição** (S-528), como na sala: `SEM_LIVRO`
+        desliga os grupos que falam da folha, `TRANCADO` desliga tudo menos `EXPORTAR`, e as três
+        condições dizem o que só o painel sabe. O cancelar não olha `_trancado`, e é o item: ele
+        só existe durante a exportação, que é justamente quando tudo o mais está trancado --
+        obedecê-la faria o botão ficar cinza exatamente na única situação em que ele serve.
         """
         livro = self.source is not None
         util = livro and not self._trancado
-        self.btn_abrir.setEnabled(not self._trancado)
-        self.btn_leitor.setEnabled(util)
-        for botao in (self.btn_ler_melhor, self.btn_ler_pagina, self.btn_tirar_caixa):
-            botao.setEnabled(util)
-        self.btn_exportar.setEnabled(util and not self._exportando)
-        # **O cancelar não olha `_trancado`, e é o item.** Ele só existe durante a exportação, que
-        # é justamente quando tudo o mais está trancado: obedecê-lo faria o botão ficar cinza
-        # exatamente na única situação em que ele serve.
-        self.btn_cancelar_exportacao.setEnabled(self._exportando)
-        self._barra_de_navegacao.setEnabled(not self._trancado)
+        self.barra.aplicar_modo(
+            barra_do_pdf.modo(livro=livro, trancado=self._trancado),
+            {
+                "abrir_no_leitor": util,
+                "exportar_pgn": util and not self._exportando,
+                "cancelar_exportacao": self._exportando,
+            },
+        )
+        self.campo_pagina.setEnabled(util)
         self.visor.setEnabled(not self._trancado)
         self.deslizador.setEnabled(not self._trancado)
 
@@ -264,22 +306,6 @@ class PainelDoPdf(QWidget):
         """A exportação começou ou acabou. Troca o par exportar/cancelar."""
         self._exportando = em_curso
         self._reavaliar_controles()
-
-    def _botao(self, barra: BarraFluida, acao: str, funcao: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:
-        """Um botão do catálogo: rótulo, papel e **tecla** vêm da tabela, e não escritos aqui.
-
-        É a regra da S-165 e da S-324 -- a mesma que `qt/janela.py` registra: antes dela, seis dos
-        oito botões repetiam `ui/atalhos.py` literalmente, dois eram inventados, e **dois estavam
-        trocados**.
-        """
-        botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
-        botao.clicked.connect(funcao)
-        tema.aplicar_papel(botao, papel)
-        tecla = atalhos.acelerador(acao)
-        motivo = comandos.rotulo(acao)
-        dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
-        barra.adicionar(botao)
-        return botao
 
     def _rodape_de_zoom(self) -> QHBoxLayout:
         """O deslizador de zoom, em escala **logarítmica** (S-225).
@@ -380,8 +406,10 @@ class PainelDoPdf(QWidget):
             self.source = pdf_path
             self.name = pdf_path.name
             self.page_count = page_count
-            self.lbl_pdf.setText(f"{self.name} ({self.page_count} págs)")
-            self.lbl_total.setText(f"de {self.page_count}")
+            # **O nome do livro não volta para a barra** (S-528): o rodapé da janela já escreve
+            # `1937 Kemeri.pdf · p. 21 de 289` em toda tela, e o rótulo daqui repetia isso em
+            # ~210 px permanentes de uma fila que não tinha para onde crescer.
+            self.campo_pagina.setSuffix(sufixo_de_paginas(self.page_count))
             self._reavaliar_controles()
             self.abriu_pdf.emit(pdf_path)
 
@@ -595,25 +623,19 @@ class PainelDoPdf(QWidget):
             return
         self.caixa_dispensada.emit(self.visor.selecionada)
 
-    def _alternou_caixas(self, ligado: bool) -> None:
-        self.visor.alternar_caixas(ligado)
-        self.preferencias_mudaram.emit()
-
-    def _alternou_virada(self, ligado: bool) -> None:
-        self.visor.virar_paginas = ligado
-        self.preferencias_mudaram.emit()
-
     @property
-    def interruptores_de_vista(self) -> dict[str, QCheckBox]:
-        """Os dois interruptores de visualização, por nome de comando do menu (S-161).
+    def interruptores_de_vista(self) -> dict[str, QAction]:
+        """Os interruptores de visualização, por nome de comando do menu (S-161).
 
-        Mora aqui e não na janela porque as duas caixas são deste painel: quem acrescentar uma
-        terceira preferência a declara ao lado das outras duas, e ela aparece no menu sem ninguém
-        lembrar de ir mexer no arquivo da janela.
+        Mora aqui e não na janela porque eles são deste painel: quem acrescentar uma terceira
+        preferência a declara em `ui/barra_do_pdf.ACOES` com `marcavel=True`, e ela aparece aqui
+        sem ninguém lembrar de ir mexer no arquivo da janela. Desde a S-528 a lista sai da tabela
+        em vez de ser escrita de novo -- eram duas linhas com o mesmo nome que a tabela já diz.
         """
         return {
-            "marcar_diagramas": self.marcar_diagramas,
-            "roda_vira_pagina": self.roda_vira_pagina,
+            registro.acao: self.barra.acoes[registro.acao]
+            for registro in barra_do_pdf.ACOES
+            if registro.marcavel and registro.grupo == barra_do_pdf.VISTA
         }
 
     # ------------------------------------------------------------------- seleção de área
@@ -630,20 +652,35 @@ class PainelDoPdf(QWidget):
             self.desligar_selecao("Seleção de área cancelada.")
             return
         if self.source is None or self.page_rgb is None:
-            # Pré-condição no rodapé (S-164).
+            # Pré-condição no rodapé (S-164). O botão volta ao estado de antes: o clique já o
+            # tinha marcado, e um botão pressionado sobre um modo que não ligou é a mentira que
+            # a S-396 existe para não contar.
+            self.btn_selecionar.setChecked(False)
             self.estado.emit("Abra um PDF antes de selecionar uma área.")
             return
         self.visor.ativar_selecao(True)
-        self.btn_selecionar.setText(comandos.rotulo_alternado("selecionar_area"))
-        comandos.alternou("selecionar_area", ligado=True)
+        self._marcar_selecao(ligado=True)
         self.estado.emit("Seleção ativa: arraste no PDF para reconhecer a área automaticamente.")
 
     def desligar_selecao(self, frase: str = "") -> None:
         self.visor.ativar_selecao(False)
-        self.btn_selecionar.setText(comandos.rotulo_de_botao("selecionar_area"))
-        comandos.alternou("selecionar_area", ligado=False)  # S-396
+        self._marcar_selecao(ligado=False)
         if frase:
             self.estado.emit(frase)
+
+    def _marcar_selecao(self, *, ligado: bool) -> None:
+        """Põe o modo na tela nos três lugares em que ele aparece (S-396/S-528).
+
+        **O botão pressionado é o sinal principal desde a S-528**: na fila ele desenha só o ícone,
+        e um rótulo que troca não é visto por ninguém. O texto continua trocando porque a ação é
+        também um item de menu -- e ali "Cancelar seleção" é o que se lê. `comandos.alternou`
+        avisa as outras peles que desenham o mesmo comando.
+        """
+        self.btn_selecionar.setChecked(ligado)
+        self.btn_selecionar.setText(
+            comandos.rotulo_alternado("selecionar_area") if ligado else comandos.rotulo("selecionar_area")
+        )
+        comandos.alternou("selecionar_area", ligado=ligado)
 
     def _area_selecionada(self, regiao: tuple[int, int, int, int]) -> None:
         """A área saiu do visor em pixel de página; o painel só a entrega com a folha junto."""

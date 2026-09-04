@@ -356,7 +356,23 @@ class RelatorioDeQualidadeTests(unittest.TestCase):
         )
         self.assertEqual(relatorio["seconds_per_diagram"], 0.0)
         self.assertEqual(relatorio["seconds_per_page"], 0.0)
-        self.assertEqual(relatorio["legal_rate"], 1.0)
+
+    def test_a_taxa_sem_diagrama_e_nula_e_nao_perfeita(self) -> None:
+        """`legal_rate: 1.0` num livro sem diagrama é "100% de zero posição são legais".
+
+        Saía assim na primeira rodada, e num gráfico que compara cinquenta livros pela legalidade
+        isso põe o livro que **falhou** no topo da lista. `null` diz *não medido*, que é a
+        verdade -- e é o mesmo critério de `ui/busca_de_partidas._TRACO`: a ausência de valor não
+        é um valor.
+        """
+        vazio = relatorio_de_qualidade(
+            self._resultado(accepted=0, needs_review=0, rejected=0, pages=0), BatchOptions()
+        )
+        self.assertIsNone(vazio["legal_rate"])
+        self.assertIsNone(vazio["export_rate"])
+        cheio = relatorio_de_qualidade(self._resultado(), BatchOptions())
+        self.assertEqual(cheio["legal_rate"], 0.8)
+        self.assertEqual(cheio["export_rate"], 0.3)
 
     def test_a_procedencia_diz_com_que_modelo_e_com_que_dpi(self) -> None:
         """Sem ela o número não se reproduz: o mesmo livro a 220 e a 300 DPI dá outra contagem
@@ -396,3 +412,64 @@ class RelatorioDeQualidadeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LivroSemPaginaTests(unittest.TestCase):
+    """Zero página é falha, e não "ok" com zero (S-548, r2).
+
+    O crítico varreu um PDF truncado e o relatório saiu com `status: "ok"`, `pages: 0`,
+    `error: ""`, `legal_rate: 1.0` -- e um `.pgn` de 0 byte ao lado. Na fila da janela isso lê
+    como um livro que foi lido e não achou nada, que é o resultado **de verdade** de cinco livros
+    do acervo (`ROADMAP.md:151`). Os dois têm de se distinguir.
+    """
+
+    def _vazio(self, saida: Path, *, cancelado: bool = False) -> ExportReport:
+        return ExportReport(
+            accepted=[],
+            needs_review=[],
+            rejected=[],
+            pages_scanned=0,
+            output_path=saida,
+            review_path=None,
+            cancelled=cancelado,
+        )
+
+    def test_o_livro_sem_pagina_nenhuma_vira_falha_com_motivo(self) -> None:
+        biblioteca = _Biblioteca(self, ["truncado.pdf"])
+        with mock.patch(
+            "chess_diagram_ocr.batch.save_pdf_positions_to_pgn",
+            side_effect=lambda **kw: self._vazio(kw["output_path"]),
+        ):
+            relatorio = run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida)
+
+        (livro,) = relatorio.books
+        self.assertEqual(STATUS_FAILED, livro.status)
+        self.assertIn("página", livro.error, "a falha tem de dizer o que houve")
+        self.assertEqual(0, livro.pages)
+
+    def test_o_livro_que_leu_e_nao_achou_nada_continua_ok(self) -> None:
+        """O outro lado: zero diagrama em 10 páginas é resultado, e não falha."""
+        biblioteca = _Biblioteca(self, ["seco.pdf"])
+        with mock.patch(
+            "chess_diagram_ocr.batch.save_pdf_positions_to_pgn",
+            side_effect=lambda **kw: _report(kw["output_path"], aceitos=0, revisao=0, ilegais=0),
+        ):
+            relatorio = run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida)
+
+        (livro,) = relatorio.books
+        self.assertEqual(STATUS_OK, livro.status)
+        self.assertEqual(10, livro.pages)
+        self.assertEqual("", livro.error)
+
+    def test_o_cancelado_sem_pagina_continua_cancelado(self) -> None:
+        """Cancelar antes da primeira página não é o PDF estar quebrado."""
+        biblioteca = _Biblioteca(self, ["parado.pdf"])
+
+        def _exportar(**kw: object) -> ExportReport:
+            saida = kw["output_path"]
+            assert isinstance(saida, Path)
+            return self._vazio(saida, cancelado=True)
+
+        with mock.patch("chess_diagram_ocr.batch.save_pdf_positions_to_pgn", side_effect=_exportar):
+            relatorio = run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida)
+        self.assertEqual(STATUS_CANCELLED, relatorio.books[0].status)

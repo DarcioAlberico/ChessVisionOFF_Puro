@@ -89,6 +89,7 @@ from chess_diagram_ocr.engine import EngineAnalyzer
 from chess_diagram_ocr.labels import LabelStore, pages_with_training_samples, saved_diagrams_by_page
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import dica, fila, fita, legenda, menu, paleta, plataforma, tema
+from chess_diagram_ocr.qt import fila_de_livros as qt_fila_de_livros
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
 from chess_diagram_ocr.qt.campo import PainelDeCampo
@@ -1688,6 +1689,7 @@ class JanelaPrincipal(QMainWindow):
             # --- as outras abas
             "proximo_da_fila": self.revisao.abrir_proximo_pendente,
             "varrer_livro": self.galeria.varrer,
+            "varrer_fila": self.abrir_fila_de_livros,
             "exportar_pgn": lambda: self.exportador.comecar(self._pdf),
             "cancelar_exportacao": self.exportador.cancelar,
             "treinar": self.treino.iniciar,
@@ -1710,6 +1712,18 @@ class JanelaPrincipal(QMainWindow):
     def abrir_paleta(self) -> Any:
         """A paleta de comandos (S-231): um campo, uma lista filtrada, Enter executa."""
         return paleta.abrir(self, self._comandos())
+
+    def abrir_fila_de_livros(self) -> Any:
+        """A fila de PDFs da S-546, com o modelo emprestado pelo serviço e o registro de ocupação.
+
+        O diálogo não é guardado em atributo: ele não é modal, não é reusado e a rodada dele vive
+        na `VarreduraDeLivros` que nasce dentro -- guardá-lo aqui só criaria um segundo dono para
+        uma janela que já sabe se fechar. `pasta_inicial` é a pasta do livro aberto, que é de onde
+        vêm os outros livros que se quer varrer.
+        """
+        return qt_fila_de_livros.abrir_fila_de_livros(
+            self, servico=self._servico, busy=self.busy, pasta_inicial=DEFAULT_PDF_DIR
+        )
 
     def _desfaziveis(self) -> list[desfazivel.Desfazivel]:
         """Os painéis que disputam o `Ctrl+Z`, na ordem de registro -- que é a de construção.

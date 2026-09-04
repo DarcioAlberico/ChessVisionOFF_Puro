@@ -63,6 +63,7 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import DicaEmDesabilitado, dica_em
+from chess_diagram_ocr.qt.rolagem import em_rolagem
 from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
@@ -193,7 +194,14 @@ class PainelDeResultado(QWidget):
     # ------------------------------------------------------------------------------ montagem
 
     def _montar(self) -> None:
-        caixa = QVBoxLayout(self)
+        # **A aba rola, e não exige a altura dela da janela** (S-552, a metade perdida da S-150).
+        # `detalhes` quebra linha, e um `QLabel` com `wordWrap` responde a altura mínima calculada
+        # para a largura mais estreita possível: medido em 2026-09-04, ler uma página levava o
+        # mínimo desta aba de 551 para **1095 px** e o da janela para 1218 -- mais alto que a tela
+        # de um notebook de 1366x768, e sem volta na sessão. Ver `qt/rolagem.py`.
+        corpo = QWidget(self)
+        self.rolagem = em_rolagem(self, corpo)
+        caixa = QVBoxLayout(corpo)
         caixa.setContentsMargins(*(espaco.folga(),) * 4)
         caixa.setSpacing(espaco.linha())
 

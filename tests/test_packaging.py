@@ -250,8 +250,18 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1891
+    LIMITE = 1905
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.891 → 1.905 na S-546**, e as catorze são a única coisa que só a janela podia fazer: a fila
+    de livros passou a ter chamador. Duas são o `import` e a entrada `"varrer_fila"` na tabela de
+    comandos; as outras doze são o método `abrir_fila_de_livros`, que empresta ao diálogo o
+    serviço (o modelo sob o lock da S-31), o `BusyRegistry` e a pasta de livros -- os três objetos
+    que a janela tem e o módulo da fila não conhece. Baixar isso para `ui/` não era opção: não há
+    decisão aqui, há três atributos da janela sendo passados adiante. A alternativa era a `lambda`
+    de uma linha na tabela, e ela custaria o teste: um `lambda` não tem nome para o critério de
+    aceite citar, e o docstring que diz **por que** o diálogo não é guardado em atributo não teria
+    onde morar.
 
     **1.862 → 1.891 ao juntar as duas pilhas de PRs (#31 sobre o #27)**: os dois lados cresceram
     sozinhos -- a S-523 (motor das preferências) de um lado, o duplo clique e a detecção ao virar a

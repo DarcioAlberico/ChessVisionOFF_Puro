@@ -117,8 +117,8 @@ __all__ = [
 
 DEFAULT_INDEX_PATH = PROJECT_ROOT / "data" / "games_index.sqlite"
 
-INDEX_VERSION = 5
-"""O formato do arquivo. **5** desde a S-533/S-534, quando a linha ganhou as colunas de busca.
+INDEX_VERSION = 6
+"""O formato do arquivo. **6** desde a segunda rodada da S-533, que acrescentou duas árvores.
 
 A **2** é da S-93, quando a partida passou a guardar em que base mora. A versão declarada
 existe porque o fingerprint não bastava para notar a diferença: com uma base só, a marca da
@@ -166,7 +166,15 @@ v4 é apagado e refeito, como sempre foi com formato anterior, e `lookup_pair`/`
 com a instrução até isso acontecer.
 
 `INSERT OR IGNORE` porque a chave é única: a mesma partida indexada duas vezes era uma linha
-duplicada e silenciosa antes, e agora seria um erro em cima de uma varredura de horas."""
+duplicada e silenciosa antes, e agora seria um erro em cima de uma varredura de horas.
+
+**O que muda na 6, e por que ela é a primeira que não manda refazer.** Nenhuma coluna: duas
+árvores. `games_elo (elo)` -- porque "Elo mínimo 3500" sem mais nada era uma varredura de dez
+milhões de linhas para responder *nenhuma*, 1,08 s medido -- e `games_ordem (year, date)`, que é
+a **ordem** da resposta e não um filtro: sem ela, todo filtro que casa milhões (um ano, uma faixa
+de ECO larga, um pedaço curto de nome de evento) pagava a ordenação de milhões de linhas para
+devolver cem, de 1,9 s a 5,4 s medidos. As tabelas são idênticas às da 5, e por isso uma v5 é
+**completada** em vez de refeita: ver `_VERSOES_QUE_SO_GANHAM_ARVORE`."""
 
 MAX_GAMES_PER_LOOKUP = 40
 """Teto de partidas lidas por consulta -- o mesmo do `MAX_GAMES_PER_PAIR`, e pela mesma razão:
@@ -214,6 +222,24 @@ _LINHAS_DE_MOVETEXT_LIDAS = 2
 """Quantas linhas do movetext a classificação ECO sem header lê. Uma linha de 80 colunas traz
 uns 16 meios-lances; duas passam dos 24 que `eco.LANCES_EXAMINADOS` percorre."""
 
+INDICE_DA_ORDEM = "games_ordem"
+"""A árvore `(year, date, id, result)`, que é a **ordem em que a busca responde** (S-533, r2).
+
+Ela existe porque `ORDER BY … LIMIT 100` sobre um filtro que não estreita era a conta inteira: o
+crítico mediu `ano 2019` sozinho em 2,8 s, a faixa `A00–E99` em 5,4 s e o evento `ch-` em 5,1 s
+nesta gigabase, e nos três casos a contagem já parava no teto em dezenas de milissegundos --
+quem custava eram os milhões de linhas ordenadas para devolver cem. Com a árvore da ordem o
+sqlite anda por ela de trás para a frente, confere o filtro linha a linha e para na centésima que
+passa: o custo deixa de ser *quantas casam* e passa a ser *quantas se olha até achar cem*. Ver
+`buscar`, que escolhe entre os dois planos pela contagem.
+
+**As duas colunas do fim não são ordem, e cada uma resolve uma coisa.** O `id` é o rowid escrito
+de novo, e é o que faz o prefixo da árvore ser `(year, date, id)` -- exatamente o `ORDER BY`, sem
+o `USE TEMP B-TREE FOR RIGHT PART OF ORDER BY` que aparece sem ele. O `result` é o único filtro
+que **não** tem árvore própria (a posição também não, mas ela é lida do `.pgn`), e sem ele na
+folha a contagem de *"1990–2020, vitória das brancas"* era uma sonda na tabela por linha: 1,25 s
+para contar cem mil, contra **12 ms** com a folha cobrindo. Medido em 2026-09-04."""
+
 _CAMPOS_DO_INDICE = frozenset({"Event", "Date", "White", "Black", "Result", "WhiteElo", "BlackElo", "ECO", "FEN"})
 """Os headers que a passada de índice guarda de cada partida. `FEN` só para saber que a partida
 **não** começa na posição inicial -- e aí não há abertura a classificar."""
@@ -225,8 +251,10 @@ _INDICES_DE_BUSCA: tuple[tuple[str, str], ...] = (
     ("games_event", "games (event)"),
     ("games_eco", "games (eco)"),
     ("games_year", "games (year, elo)"),
+    ("games_elo", "games (elo)"),
+    (INDICE_DA_ORDEM, "games (year, date, id, result)"),
 )
-"""Os seis caminhos de busca. São **derrubados antes de uma rodada grande e refeitos no fim**:
+"""Os oito caminhos de busca. São **derrubados antes de uma rodada grande e refeitos no fim**:
 inserir dez milhões de linhas com seis árvores abertas é dez milhões de sondas aleatórias em cada
 uma, e criá-las de uma vez sobre a tabela pronta é uma ordenação por árvore -- segundos, não
 minutos. Numa rodada pequena (o torneio anexado) eles ficam, porque refazê-los custaria mais que
@@ -365,16 +393,32 @@ def _versao_gravada(path: Path) -> str | None:
     return None if linha is None else str(linha[0])
 
 
+_VERSOES_QUE_SO_GANHAM_ARVORE = frozenset({"5"})
+"""As versões cujas **tabelas** são iguais às de hoje: só faltam árvores de busca.
+
+Refazer um índice destes seria reler 8,6 GB de PGN para gravar exatamente as mesmas linhas. O que
+a v6 acrescentou à v5 foram duas árvores (`games_elo` e `games_ordem`), e o fim de toda rodada já
+as cria com `CREATE INDEX IF NOT EXISTS`: a rodada sobre uma pasta que não mudou pula todos os
+arquivos, cria o que falta e grava a versão nova. A regra "migração é refazer" das versões 3, 4 e
+5 valia porque **faltava dado gravado**; aqui não falta nenhum, e cobrar a passada inteira seria
+zelo cobrado do usuário."""
+
+
 def _abrir_para_escrita(path: Path) -> sqlite3.Connection:
     """O índice pronto para receber esta rodada: o existente, se for desta versão; senão, um novo.
 
     Um índice de outra versão é apagado e refeito -- é o que `--build-index` sempre significou
-    para ele --, e o `.parcial` de uma versão anterior interrompida vai junto.
+    para ele --, e o `.parcial` de uma versão anterior interrompida vai junto. A exceção é a
+    versão que só perdeu árvores: ver `_VERSOES_QUE_SO_GANHAM_ARVORE`.
     """
     path.with_suffix(path.suffix + ".parcial").unlink(missing_ok=True)
-    if path.exists() and _versao_gravada(path) != str(INDEX_VERSION):
-        logger.info("O índice em %s é de outro formato e será refeito do zero.", path)
-        path.unlink()
+    gravada = _versao_gravada(path) if path.exists() else None
+    if path.exists() and gravada != str(INDEX_VERSION):
+        if gravada in _VERSOES_QUE_SO_GANHAM_ARVORE:
+            logger.info("O índice em %s é da versão %s: as árvores que faltam são criadas no fim da rodada.", path, gravada)
+        else:
+            logger.info("O índice em %s é de outro formato e será refeito do zero.", path)
+            path.unlink()
     conexao = _connect(path)
     # Com jornal, porque o arquivo agora e editado no lugar: sem ele, um processo morto no meio
     # de um arquivo deixaria o SQLite corrompido, e nao so incompleto. `DELETE` e nao
@@ -577,11 +621,16 @@ def build_index(
     | qualquer outra diferença, ou base comprimida que mudou | as partidas dele saem e ele é relido inteiro |
     | não está mais na lista | as partidas dele saem do índice |
 
-    **Uma transação por arquivo, e a marca da base só no fim.** Cancelar (`cancel`) ou morrer
-    no meio de um arquivo desfaz esse arquivo e mantém os anteriores -- a rodada seguinte
-    continua de onde parou. E enquanto a rodada não termina a `meta.database` fica **apagada**:
-    é ela que `lookup_pair` confere, então um índice pela metade recusa a consulta em vez de
-    responder menos do que a base tem (S-25, agora sem `.parcial`).
+    **Uma transação por lote, e não mais por arquivo** (S-533, r2). Era por arquivo, e a gigabase
+    **é** um arquivo: cancelar no nono minuto desfazia os nove, e a rodada seguinte relia 8,6 GB
+    do começo. A cada `_TAMANHO_DO_LOTE` partidas gravadas o manifesto anota até que byte o
+    arquivo está lido -- na mesma forma que ele usa para o torneio anexado da S-532 --, e a
+    rodada seguinte continua **de lá**. O que se perde ao cancelar passa a ser o lote em curso, e
+    não o arquivo. Base comprimida fica de fora: ali o byte lido não é o byte do disco.
+
+    E enquanto a rodada não termina a `meta.database` fica **apagada**: é ela que `lookup_pair`
+    confere, então um índice pela metade recusa a consulta em vez de responder menos do que a
+    base tem (S-25, agora sem `.parcial`).
 
     `progress` recebe `(base, bytes_lidos, bytes_totais, partidas)` no máximo ~10 vezes por
     segundo, e uma vez por arquivo pulado, com os bytes cheios -- para a barra do conjunto andar
@@ -653,8 +702,44 @@ def build_index(
                 else:
                     conexao.execute("DELETE FROM games WHERE file = ?", (identificador,))
 
+            def _anotar(ate: int, lidas_ate_aqui: int, *, plano: _Plano = plano, identificador: int = identificador, antes: int = partidas_antes) -> None:
+                """Fecha uma transação no meio do arquivo e anota até onde ele está lido.
+
+                O manifesto guarda o **prefixo** -- tamanho, cabeça e cauda medidos até `ate` --,
+                que é exatamente a forma que `_planejar` reconhece como "o arquivo cresceu": a
+                rodada seguinte lê a partir daí, sem reler o que já entrou. É o mesmo mecanismo
+                do torneio anexado da S-532, aplicado ao arquivo interrompido.
+                """
+                fisico = arquivo_fisico(plano.base)
+                conexao.execute(
+                    "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        identificador,
+                        plano.nome,
+                        ate,
+                        plano.mtime,
+                        _marca(fisico, 0, min(ate, BYTES_DA_MARCA)),
+                        _marca(fisico, max(0, ate - BYTES_DA_MARCA), ate),
+                        antes + lidas_ate_aqui,
+                    ),
+                )
+                conexao.commit()
+
             lidas, terminou = _indexar_arquivo(
-                conexao, base, identificador, plano.inicio, tamanho, lidas_na_rodada, progress, cancel, jogadores, eventos
+                conexao,
+                base,
+                identificador,
+                plano.inicio,
+                tamanho,
+                lidas_na_rodada,
+                progress,
+                cancel,
+                jogadores,
+                eventos,
+                # Base comprimida não retoma: o byte que se lê é o descomprimido, e `_planejar`
+                # já recusa o caminho da cauda para ela. Um marco ali anotaria um ponto que a
+                # rodada seguinte leria como outro lugar do arquivo.
+                None if eh_comprimida(base) else _anotar,
             )
             if not terminou:
                 conexao.rollback()
@@ -759,6 +844,13 @@ _INSERIR = (
 )
 
 
+Marco = Callable[[int, int], None]
+"""`(byte até onde está gravado, partidas lidas até aqui)` -- o ponto de retomada (S-533, r2).
+
+Chamado depois de cada lote gravado, e o byte é sempre **começo de partida**: é o que a rodada
+seguinte usa para continuar de onde esta parou. Ver `_indexar_arquivo` e `build_index`."""
+
+
 def _indexar_arquivo(
     conexao: sqlite3.Connection,
     base: Path,
@@ -770,15 +862,22 @@ def _indexar_arquivo(
     cancel: threading.Event | None,
     jogadores: _Dicionario,
     eventos: _Dicionario,
+    marco: Marco | None = None,
 ) -> tuple[int, bool]:
     """Grava uma linha de `games` por partida de `base` a partir de `inicio`.
 
     Devolve `(partidas lidas, terminou)`. `terminou` falso é cancelamento: quem chama desfaz a
-    transação. Nada aqui faz `commit`.
+    transação.
 
     A partida é fechada quando a **próxima** começa (ou no fim do arquivo), e não no header
     `[Black]` como até a v4: `Result`, `WhiteElo` e `ECO` vêm depois dele, e o movetext que
     classifica a partida sem `[ECO]` vem depois de todos.
+
+    **`marco` é o que faz o cancelamento não custar a rodada inteira.** A transação era por
+    arquivo, e a gigabase **é** um arquivo: cancelar no nono minuto desfazia os nove. A cada lote
+    gravado -- `_TAMANHO_DO_LOTE` partidas -- este aviso diz até que byte o índice está completo,
+    e quem chama fecha ali uma transação e anota o ponto no manifesto. `None` é o caminho da base
+    comprimida, onde o byte lido não é o byte do disco e retomar não é possível (ver `_planejar`).
     """
     partidas = 0
     lote: list[tuple[Any, ...]] = []
@@ -817,6 +916,11 @@ def _indexar_arquivo(
                         lote.append(_linha_da_partida(cabecalho, movetext, comeco, identificador, jogadores, eventos))
                         if len(lote) >= _TAMANHO_DO_LOTE:
                             gravar()
+                            # `posicao` e nao `comeco`: a partida que fechou entrou no lote, e a
+                            # que comeca AQUI ainda nao foi lida. Retomar deste byte le a
+                            # proxima, sem repetir a anterior nem pular nenhuma.
+                            if marco is not None:
+                                marco(posicao, partidas)
                     comeco, cabecalho, movetext, aberta = posicao, {}, [], True
                     partidas += 1
                 casado = _RE_HEADER.match(decodificar_linha(linha).rstrip())
@@ -1047,11 +1151,53 @@ def _fair_share(por_grupo: list[list[tuple[int, int]]], limit: int) -> list[tupl
 
 # ------------------------------------------------------------------------------- busca (S-533)
 
-_JOGADOR = "(SELECT id FROM players WHERE surname = ?)"
-"""Os números de todo nome cujo sobrenome é o pedido: `Carlsen, Magnus`, `Carlsen, M` e
-`Carlsen,Magnus` são três linhas de `players` e o mesmo jogador. É uma subconsulta e não uma
-lista de `?` porque um sobrenome comum (`Ivanov`) tem centenas de grafias, e o limite de
-parâmetros do SQLite não é o lugar de descobrir isso."""
+_SUFIXOS_DE_GERACAO = ("jr", "jr.", "sr", "sr.", "ii", "iii", "iv")
+"""O que a base cola no sobrenome e o dicionário guarda junto (S-533, r2).
+
+`Vehre Jr, John L` entra em `players` com o sobrenome `vehre jr`, porque `games_db.surname`
+corta na vírgula e o `Jr` está **antes** dela -- e são 264 grafias assim na gigabase. Quem digita
+`Vehre` procura `vehre` e não acha nenhuma delas, em silêncio.
+
+Consertar no `surname` seria o caminho curto e ele custa a passada inteira: o `pair` de cada uma
+das 10,3 milhões de linhas é `pair_hash` sobre o sobrenome, e mudá-lo invalidaria a coluna. Aqui
+o conserto é do lado de quem pergunta -- as formas com sufixo entram no `IN` como valores
+exatos, que a árvore `players_surname` resolve com uma sonda cada."""
+
+
+def _sobrenomes(digitado: str) -> tuple[str, ...]:
+    """As formas de `players.surname` que este texto pode querer dizer, sem repetição.
+
+    Três leituras do mesmo campo, e cada uma nasceu de uma busca que respondia zero:
+
+    - **`Carlsen, Magnus`** -> `carlsen`. É a da base, e `games_db.surname` já a dá.
+    - **`Magnus Carlsen`** -> `carlsen` **também**. A ordem natural é como se escreve um nome
+      fora de um arquivo `.pgn`, e `surname` a lê como `magnus carlsen` -- que não é o
+      sobrenome de ninguém. Sem vírgula e com mais de uma palavra, a última palavra entra como
+      segunda forma. Ela **acrescenta** e não substitui: `Van der Wiel` continua inteiro na
+      primeira forma, e a segunda (`wiel`) não casa com nada, o que não custa nada.
+    - **`Vehre`** -> também `vehre jr`. Ver `_SUFIXOS_DE_GERACAO`.
+    """
+    principal = surname(digitado)
+    if not principal:
+        return ()
+    formas = [principal]
+    if "," not in digitado:
+        palavras = principal.split()
+        if len(palavras) > 1:
+            formas.append(palavras[-1])
+    formas.extend(f"{forma} {sufixo}" for forma in list(formas) for sufixo in _SUFIXOS_DE_GERACAO)
+    return tuple(dict.fromkeys(formas))
+
+
+def _jogador(formas: Sequence[str]) -> str:
+    """`(SELECT id FROM players WHERE surname IN (?, ?, …))` com um `?` por forma.
+
+    Os números de todo nome cujo sobrenome é o pedido: `Carlsen, Magnus`, `Carlsen, M` e
+    `Carlsen,Magnus` são três linhas de `players` e o mesmo jogador. É uma subconsulta e não uma
+    lista de `?` sobre `games` porque um sobrenome comum (`Ivanov`) tem centenas de grafias, e o
+    limite de parâmetros do SQLite não é o lugar de descobrir isso.
+    """
+    return f"(SELECT id FROM players WHERE surname IN ({','.join('?' * len(formas))}))"
 
 
 def _clausulas(filtro: Filtro) -> tuple[list[str], list[Any]]:
@@ -1063,23 +1209,25 @@ def _clausulas(filtro: Filtro) -> tuple[list[str], list[Any]]:
     """
     onde: list[str] = []
     parametros: list[Any] = []
-    brancas = surname(filtro.brancas)
-    pretas = surname(filtro.pretas)
+    brancas = _sobrenomes(filtro.brancas)
+    pretas = _sobrenomes(filtro.pretas)
     if brancas and pretas:
+        b, p = _jogador(brancas), _jogador(pretas)
         if filtro.qualquer_cor:
-            onde.append(f"((white IN {_JOGADOR} AND black IN {_JOGADOR}) OR (white IN {_JOGADOR} AND black IN {_JOGADOR}))")
-            parametros += [brancas, pretas, pretas, brancas]
+            onde.append(f"((white IN {b} AND black IN {p}) OR (white IN {p} AND black IN {b}))")
+            parametros += [*brancas, *pretas, *pretas, *brancas]
         else:
-            onde.append(f"white IN {_JOGADOR} AND black IN {_JOGADOR}")
-            parametros += [brancas, pretas]
+            onde.append(f"white IN {b} AND black IN {p}")
+            parametros += [*brancas, *pretas]
     elif brancas or pretas:
         um = brancas or pretas
+        alvo = _jogador(um)
         if filtro.qualquer_cor:
-            onde.append(f"(white IN {_JOGADOR} OR black IN {_JOGADOR})")
-            parametros += [um, um]
+            onde.append(f"(white IN {alvo} OR black IN {alvo})")
+            parametros += [*um, *um]
         else:
-            onde.append(f"{'white' if brancas else 'black'} IN {_JOGADOR}")
-            parametros.append(um)
+            onde.append(f"{'white' if brancas else 'black'} IN {alvo}")
+            parametros += [*um]
     if filtro.evento.strip():
         padrao = fold(filtro.evento).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         onde.append("event IN (SELECT id FROM events WHERE folded LIKE ? ESCAPE '\\')")
@@ -1104,6 +1252,30 @@ def _clausulas(filtro: Filtro) -> tuple[list[str], list[Any]]:
     return onde, parametros
 
 
+_ORDEM = "ORDER BY year DESC, date DESC, id DESC"
+
+_POR_ORDEM = (
+    f"SELECT id FROM games INDEXED BY {INDICE_DA_ORDEM}{{clausula}} {_ORDEM} LIMIT ? OFFSET ?"
+)
+"""O plano do filtro **largo**: andar pela árvore da ordem e parar na centésima que passa.
+
+`INDEXED BY` e não confiança no planejador: sem `ANALYZE` o sqlite não sabe quantas linhas um
+`eco BETWEEN 'A00' AND 'E99'` casa, e este Python traz um sqlite sem `STAT4` -- toda faixa vale a
+mesma estimativa de fábrica para ele. O plano certo aqui não depende de estatística nenhuma: a
+contagem já disse que casam mais de cem mil, e com essa densidade cem linhas aparecem nas
+primeiras milhares que se olha."""
+
+_POR_FILTRO = (
+    f"SELECT id FROM (SELECT id, year, date FROM games{{clausula}} LIMIT {TETO_DE_CONTAGEM + 1}) {_ORDEM} LIMIT ? OFFSET ?"
+)
+"""O plano do filtro **estreito**: escolher pela árvore do filtro e ordenar o que sobrou.
+
+O `LIMIT` de dentro é o que dá o teto ao trabalho -- e ele nunca corta nada, porque este plano só
+é usado quando a contagem ficou **abaixo** do teto. Ele está ali para tirar a decisão do
+planejador de duas maneiras: a subconsulta sem `ORDER BY` faz o sqlite escolher a árvore mais
+seletiva do filtro (e não a da ordem, que aqui seria uma varredura inteira à procura das poucas
+que casam), e o teto garante que a ordenação de fora nunca veja mais de cem mil linhas."""
+
 _SELECIONAR_LINHA = (
     "SELECT g.id, g.file, g.offset, pw.name, g.welo, pb.name, g.belo, g.result, ev.name, g.date, g.eco "
     "FROM games g JOIN players pw ON pw.id = g.white JOIN players pb ON pb.id = g.black "
@@ -1123,6 +1295,20 @@ def buscar(
 
     **A ordem é por data, e a página é por `OFFSET`.** `ORDER BY year DESC, date DESC, id DESC` --
     o `id` desempata para a paginação ser estável entre duas chamadas.
+
+    **A contagem vem primeiro, e é ela que escolhe o plano.** Contar para em `TETO_DE_CONTAGEM`,
+    então custa dezenas de milissegundos em qualquer filtro; e o número que ela devolve é a única
+    coisa que separa os dois planos possíveis, que têm custos opostos:
+
+    | a contagem diz | o plano | o custo |
+    |---|---|---|
+    | passou do teto (o filtro casa milhões) | `_POR_ORDEM`: andar pela árvore `(year, date)` de trás para a frente e conferir o filtro linha a linha | quantas se olha até achar cem -- com 10% de densidade, mil |
+    | ficou abaixo (o filtro escolhe) | `_POR_FILTRO`: a árvore mais seletiva do filtro, com teto, e ordenar o que sobrou | no máximo cem mil linhas ordenadas |
+
+    Antes desta rodada havia um plano só -- o segundo, sem teto --, e ele pagava a ordenação de
+    **todas** as linhas que casassem: `ano 2019` sozinho custava 2,8 s, a faixa `A00–E99` 5,4 s e
+    o evento `ch-` 5,1 s na gigabase de 10,3 milhões de partidas, enquanto a contagem das mesmas
+    três já parava no teto em 40 ms. A conta nunca foi *achar*, foi *ordenar o que se achou*.
 
     **O ano vem antes da data, e não é redundância.** A data é o texto do header, e a base escreve
     o que não sabe com interrogação: `2019.??.??`. Ordenado como texto, `?` (0x3F) é **maior** que
@@ -1157,12 +1343,10 @@ def buscar(
         total_e_teto = total > TETO_DE_CONTAGEM
         total = min(total, TETO_DE_CONTAGEM)
         quantas = TETO_DE_REPLAY if filtro.posicao else limite
+        molde = _POR_ORDEM if total_e_teto else _POR_FILTRO
         ids = [
             int(linha[0])
-            for linha in conexao.execute(
-                f"SELECT id FROM games{clausula} ORDER BY year DESC, date DESC, id DESC LIMIT ? OFFSET ?",
-                [*parametros, quantas, offset],
-            )
+            for linha in conexao.execute(molde.format(clausula=clausula), [*parametros, quantas, offset])
         ]
         arquivos = _arquivos_do_indice(conexao, bases)
         linhas: dict[int, tuple[Any, ...]] = {}

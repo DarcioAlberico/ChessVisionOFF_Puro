@@ -201,6 +201,9 @@ MENUS: tuple[Menu, ...] = (
             # revisão na mesma passada (S-119). Enquanto eram duas passadas, "Varrer a fila de
             # revisão" era um segundo item aqui, com o mesmo custo do primeiro.
             Item("varrer_livro"),
+            # A fila fica colada no livro só: são a mesma varredura, com um livro e com muitos, e
+            # quem procura "varrer" aqui tem de achar as duas de uma vez (S-546).
+            Item("varrer_fila"),
             _sep(),
             Item("recarregar_modelo"),
             Item("treinar"),

@@ -18,6 +18,9 @@ O que só existe deste lado são as cinco coisas em que o Qt difere do Tk e que 
    `refresh` -- o único ponto por onde toda mudança de nó passa.
 5. **O relógio de gravação não pode ser reiniciado pela escrita da máquina** (S-345): com a
    análise contínua ligada, a sala nunca era gravada.
+6. **O cabeçalho da partida grava pelo mesmo caminho de um lance** (S-530): o `Ctrl+Z` da sala e a
+   gravação por inatividade têm de levá-lo junto, e é aqui que isso se afirma.
+7. **A alça do divisor se move sozinha até a pessoa mexer nela** (S-551), e nunca para a esquerda.
 """
 
 from __future__ import annotations
@@ -29,10 +32,12 @@ import chess
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.estudo import Ancora, PosicaoDeEstudo
-from chess_diagram_ocr.ui import comandos, estudo_lista, sala_declarada
+from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo
+from chess_diagram_ocr.ui import cabecalho_da_partida, comandos, estudo_lista, sala_declarada
 
 if TEM_PYQT:
+    from PyQt6.QtCore import QPoint
+
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
 
 
@@ -342,6 +347,182 @@ class SalaTests(unittest.TestCase):
         self.assertEqual(painel.atender("diagrama_anterior"), painel.undo_move)
         self.assertEqual(painel.atender("ultima_pagina"), painel.go_to_end_of_line)
         self.assertIsNone(painel.atender("salvar"))
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class CabecalhoDaPartidaTests(unittest.TestCase):
+    """A faixa acima do tabuleiro e o formulário que a edita (S-530).
+
+    **O que só existe deste lado**: que a faixa mostra o que o PGN tem, que o diálogo grava nos
+    headers, e que a gravação entra na pilha de desfazer da sala -- o `Ctrl+Z` que já existia para
+    a árvore tem de devolver o cabeçalho pelo mesmo caminho, porque a pilha guarda o PGN inteiro.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.painel = qt_estudo.PainelDeEstudo()
+        self.addCleanup(descartar, self.painel)
+        self.painel.resize(900, 800)
+        self.painel.show()
+        self.app.processEvents()
+
+    def abrir(self, pgn: str) -> None:
+        estudo = Estudo.de_pgn(pgn)
+        assert estudo is not None
+        self.painel.estudo = estudo
+        self.painel.refresh()
+        self.app.processEvents()
+
+    def test_a_faixa_mostra_o_que_o_pgn_tem(self) -> None:
+        self.abrir(
+            '[Event "Kemeri"]\n[Site "Kemeri LAT"]\n[Date "1937.06.24"]\n[Round "12"]\n'
+            '[White "Capablanca, J"]\n[Black "Alekhine, A"]\n[WhiteElo "2720"]\n'
+            '[BlackElo "2690"]\n[Result "1-0"]\n\n1. e4 e5 1-0\n'
+        )
+        primeira, segunda = cabecalho_da_partida.linhas(self.painel.estudo.jogo.headers)
+        self.assertEqual(primeira, self.painel.lbl_partida.texto_inteiro())
+        self.assertEqual(segunda, self.painel.lbl_torneio.texto_inteiro())
+        self.assertIn("Capablanca", primeira)
+        self.assertIn("Kemeri", segunda)
+
+    def test_sem_jogadores_a_faixa_continua_visivel_e_diz_o_que_falta(self) -> None:
+        """Uma faixa em branco acima do tabuleiro é espaço que ninguém sabe que é editável."""
+        self.assertEqual(cabecalho_da_partida.SEM_JOGADORES, self.painel.lbl_partida.texto_inteiro())
+        self.assertTrue(self.painel.lbl_partida.isVisible())
+        self.assertFalse(self.painel.lbl_torneio.isVisible(), "a segunda linha vazia não ocupa altura")
+
+    def test_o_nome_longo_e_elidido_e_a_dica_traz_a_frase_inteira(self) -> None:
+        """A elisão é do próprio rótulo, a cada largura: feita na hora de escrever, ela usava a
+        largura de fábrica do widget e cortava `Jogadores nã...` numa faixa de 494 px."""
+        longo = "Nome Muito Comprido De Um Jogador " * 4
+        self.painel.resize(500, 800)
+        self.app.processEvents()
+        self.painel.lbl_partida.definir_texto(longo)
+        estreito = self.painel.lbl_partida.text()
+        self.assertEqual(longo, self.painel.lbl_partida.toolTip(), "a frase inteira sai da tela")
+        self.assertNotEqual(longo, estreito)
+
+        self.painel.resize(1800, 800)
+        self.app.processEvents()
+        self.assertGreater(len(self.painel.lbl_partida.text()), len(estreito), "alargar devolve texto")
+
+        curto = "Capablanca — Alekhine"
+        self.painel.lbl_partida.definir_texto(curto)
+        self.assertEqual(curto, self.painel.lbl_partida.text(), "o que cabe não é cortado")
+
+    def test_o_botao_do_lapis_tem_traco_e_dica(self) -> None:
+        self.assertFalse(self.painel.btn_cabecalho.icon().isNull())
+        self.assertIn(cabecalho_da_partida.TITULO, self.painel.btn_cabecalho.toolTip())
+
+    def test_o_dialogo_abre_com_o_que_esta_gravado(self) -> None:
+        self.abrir('[White "Capablanca, J"]\n[Result "1-0"]\n\n*\n')
+        dialogo = self.painel.editar_cabecalho()
+        self.addCleanup(descartar, dialogo)
+        self.assertEqual("Capablanca, J", dialogo.valores()["White"])
+        self.assertEqual("1-0", dialogo.valores()["Result"])
+        self.assertEqual("", dialogo.valores()["Black"], "o `?` do padrão não vai para o campo")
+
+    def test_gravar_escreve_nos_headers_e_entra_no_desfazer(self) -> None:
+        """A pilha guarda o PGN inteiro (S-275), e os headers estão nele: o `Ctrl+Z` da árvore
+        devolve o cabeçalho sem uma segunda pilha."""
+        antes = self.painel.edicao
+        dialogo = self.painel.editar_cabecalho()
+        self.addCleanup(descartar, dialogo)
+        valores = dialogo.valores()
+        valores["White"] = "Capablanca, J"
+        valores["Result"] = "1-0"
+        self.painel._gravar_cabecalho(valores)
+        self.app.processEvents()
+
+        self.assertEqual("Capablanca, J", self.painel.estudo.jogo.headers["White"])
+        self.assertIn("Capablanca", self.painel.estudo.para_pgn())
+        self.assertIn("Capablanca", self.painel.lbl_partida.texto_inteiro())
+        self.assertGreater(self.painel.edicao, antes, "a edição não chegou à pilha de desfazer")
+
+        self.painel.desfazer()
+        self.app.processEvents()
+        self.assertEqual(cabecalho_da_partida.SEM_JOGADORES, self.painel.lbl_partida.texto_inteiro())
+
+    def test_gravar_sem_mudar_nada_nao_cria_passo_de_desfazer(self) -> None:
+        """Um passo que não desfaz coisa alguma é o defeito que a S-275 evitou na árvore."""
+        antes = self.painel.edicao
+        dialogo = self.painel.editar_cabecalho()
+        self.addCleanup(descartar, dialogo)
+        self.painel._gravar_cabecalho(dialogo.valores())
+        self.assertEqual(antes, self.painel.edicao)
+
+    def test_o_formulario_tem_um_editor_por_campo(self) -> None:
+        dialogo = self.painel.editar_cabecalho()
+        self.addCleanup(descartar, dialogo)
+        self.assertEqual(
+            {campo.chave for campo in cabecalho_da_partida.CAMPOS}, set(dialogo.campos)
+        )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class TabuleiroNaColunaTests(unittest.TestCase):
+    """O tabuleiro cresce pela altura, e a alça se move (S-551).
+
+    **O número que este item corrige**: a 1400x950 o tabuleiro tinha 488 px limitados pela largura
+    da coluna, e sobravam ~230 px de coluna vazia debaixo dele -- com dois rótulos de status
+    esticados a 79 px cada, porque o `QVBoxLayout` reparte a sobra entre quem aceita crescer.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.painel = qt_estudo.PainelDeEstudo()
+        self.addCleanup(descartar, self.painel)
+        self.painel.show()
+        self.app.processEvents()
+
+    def em(self, largura: int, altura: int) -> None:
+        self.painel.resize(largura, altura)
+        self.app.processEvents()
+
+    def test_a_sobra_de_altura_nao_vai_para_os_rotulos(self) -> None:
+        """Era o que a foto do crítico mostrava: duas frases flutuando no vazio. Com o esticador,
+        cada rótulo fica na altura de uma linha."""
+        self.em(900, 1100)
+        for rotulo in (self.painel.lbl_origem, self.painel.lbl_status):
+            with self.subTest(rotulo=rotulo.text()):
+                self.assertLessEqual(rotulo.height(), 3 * rotulo.sizeHint().height())
+
+    def test_a_faixa_de_navegacao_continua_colada_no_tabuleiro(self) -> None:
+        """É o que a S-517 garantiu, e o esticador não pode desfazer: ele fica **depois** dos dois."""
+        self.em(900, 1100)
+        fundo = self.painel.tabuleiro.mapTo(self.painel, QPoint(0, 0)).y() + self.painel.tabuleiro.height()
+        nav = self.painel.lbl_lance.mapTo(self.painel, QPoint(0, 0)).y()
+        self.assertLess(nav - fundo, 60, "a faixa descolou do tabuleiro")
+
+    def test_com_altura_de_sobra_a_alca_se_move_e_o_tabuleiro_cresce(self) -> None:
+        """A régua é `sala_declarada.fracao_para_o_tabuleiro`, e o widget só a executa."""
+        self.em(1400, 700)
+        estreito = self.painel.tabuleiro.width()
+        self.em(1400, 1400)
+        self.assertGreater(self.painel.tabuleiro.width(), estreito, "a altura não virou tabuleiro")
+
+    def test_a_leitura_nunca_fica_abaixo_do_piso(self) -> None:
+        """Com altura sobrando sempre, "cresça até a altura" sozinho daria uma coluna de lances de
+        46 px. O piso é `LARGURA_MINIMA_DA_LEITURA`."""
+        self.em(1400, 1600)
+        leitura = self.painel.divisor.sizes()[1]
+        self.assertGreaterEqual(leitura + 4, sala_declarada.LARGURA_MINIMA_DA_LEITURA)
+
+    def test_arrastar_a_alca_desliga_a_regra(self) -> None:
+        """A partir daí quem decide a repartição é quem arrastou."""
+        self.em(1400, 700)
+        self.painel.divisor.setSizes([400, 900])
+        self.painel._divisor_movido_a_mao(400, 1)
+        self.em(1400, 1400)
+        self.assertLess(self.painel.divisor.sizes()[0], 500, "a regra passou por cima da escolha")
+
+    def test_a_fracao_guardada_tambem_desliga_a_regra(self) -> None:
+        """A sessão anterior fechou com uma repartição, e ela é uma escolha -- da pessoa ou da
+        própria regra, que rodou na primeira abertura e teve o resultado gravado."""
+        self.em(1400, 700)
+        self.painel.posicionar_divisor(0.4)
+        self.em(1400, 1400)
+        self.assertAlmostEqual(0.4, self.painel.fracao_do_divisor, places=1)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -75,6 +75,7 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dialogos import DialogoDePartidas, perguntar_bases, perguntar_escopo
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.rolagem import em_rolagem
 from chess_diagram_ocr.service import OcrService
 from chess_diagram_ocr.ui import atalhos, espaco, estilos, strings, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
@@ -203,11 +204,17 @@ class PainelDaGaleria(QWidget):
     # ------------------------------------------------------------------------------ montagem
 
     def _montar(self) -> None:
-        fora = QVBoxLayout(self)
+        # **A aba rola, e não exige a altura dela da janela** (S-552, a metade perdida da S-150).
+        # Os 420 px do recorte e os 260 da lateral são medidos (S-154) e continuam inteiros; o que
+        # muda é que a soma deles -- `711 x 800`, o maior mínimo das seis abas -- deixa de ser o
+        # piso da janela. Era ela quem punha a altura mínima em 902 px. Ver `qt/rolagem.py`.
+        corpo = QWidget(self)
+        self.rolagem = em_rolagem(self, corpo)
+        fora = QVBoxLayout(corpo)
         fora.setContentsMargins(*(espaco.linha(),) * 4)
         fora.setSpacing(espaco.linha())
 
-        topo = BarraFluida(self)
+        topo = BarraFluida(corpo)
         self.btn_varrer = self._botao(topo, strings.VARRER_LIVRO, self.varrer)
         dica_em(
             self.btn_varrer,
@@ -243,14 +250,14 @@ class PainelDaGaleria(QWidget):
         topo.adicionar(self.lbl_varredura)
         fora.addWidget(topo)
 
-        corpo = QHBoxLayout()
-        corpo.setSpacing(espaco.folga())
-        corpo.addLayout(self._centro(), 1)
+        meio = QHBoxLayout()
+        meio.setSpacing(espaco.folga())
+        meio.addLayout(self._centro(), 1)
         # A lateral com largura fixa: ela reserva o que pede, e o centro fica com o resto (S-154).
         lateral = self._lateral()
         lateral.setFixedWidth(LARGURA_DA_LATERAL)
-        corpo.addWidget(lateral)
-        fora.addLayout(corpo, 1)
+        meio.addWidget(lateral)
+        fora.addLayout(meio, 1)
         fora.addWidget(self._rodape())
 
     def _botao(self, pai: QWidget, rotulo: str, funcao: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:

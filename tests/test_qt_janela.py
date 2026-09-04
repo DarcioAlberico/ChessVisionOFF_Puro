@@ -1539,3 +1539,68 @@ class MotorDasPreferenciasTests(unittest.TestCase):
         self.addCleanup(descartar, montada)
         monta.assert_called_once()
         self.assertIs(servico, montada._servico)
+
+
+class FilaDeLivrosNaJanelaTests(unittest.TestCase):
+    """A fila da S-546 passou a ser alcançável de dentro da janela (S-546, r2).
+
+    **O crítico não achou chamador nenhum.** `abrir_fila_de_livros` estava pronta e nem
+    `ui/comandos.py`, nem `ui/menu.py`, nem `qt/janela.py` a citavam -- o item chama-se "na
+    janela" e não havia como chegar nela sem escrever código.
+
+    **O teste dispara a ação e olha o efeito**, e não a fiação: depois de um `connect`, trocar o
+    método não troca quem o sinal chama, então um `mock.patch.object` sobre
+    `abrir_fila_de_livros` mediria uma ligação que não existe mais. O que se afirma é que o
+    diálogo **apareceu** filho da janela, com o serviço e o registro de ocupação dela.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def _janela(self) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            motor=None,
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+            pasta_da_galeria=self.pasta,
+        )
+        self.addCleanup(descartar, montada)
+        return montada
+
+    def _filas(self, janela: JanelaPrincipal) -> list[object]:
+        from chess_diagram_ocr.qt.fila_de_livros import DialogoDaFila
+
+        return list(janela.findChildren(DialogoDaFila))
+
+    def test_a_acao_do_menu_abre_o_dialogo_da_fila(self) -> None:
+        janela = self._janela()
+        acao = janela.menu.acoes["varrer_fila"]
+        self.assertEqual([], self._filas(janela))
+
+        acao.trigger()
+        self.app.processEvents()
+
+        (dialogo,) = self._filas(janela)
+        self.addCleanup(descartar, dialogo)
+        self.assertIs(janela, dialogo.parent())
+        self.assertIs(janela._servico, dialogo.varredura._servico)
+        self.assertIs(janela.busy, dialogo.varredura._busy)
+
+    def test_o_comando_esta_no_catalogo_e_tem_dono_na_janela(self) -> None:
+        """Um `Comando` sem dono na tabela é um item de menu que não faz nada."""
+        janela = self._janela()
+        self.assertIn("varrer_fila", janela._comandos())
+
+    def test_o_dialogo_nao_e_guardado_na_janela(self) -> None:
+        """Ele não é modal, não é reusado e sabe se fechar: um segundo dono só criaria
+        divergência sobre quem o destrói."""
+        janela = self._janela()
+        janela.menu.acoes["varrer_fila"].trigger()
+        self.app.processEvents()
+        (dialogo,) = self._filas(janela)
+        self.addCleanup(descartar, dialogo)
+        self.assertNotIn(dialogo, vars(janela).values())

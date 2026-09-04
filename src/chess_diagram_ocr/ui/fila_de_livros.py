@@ -147,6 +147,18 @@ class LivroNaFila:
         return self.estado in _FINAIS
 
     @property
+    def leu(self) -> bool:
+        """Este livro chegou a ler página, e por isso as contagens dele dizem alguma coisa.
+
+        **É o que separa um resultado de um zero sem leitura.** Um livro que falhou ao abrir, um
+        que foi pulado por já ter PGN e um que foi cancelado antes de começar têm todos `0`
+        diagrama, `0` exportado e `0 s` -- e esse zero não é a resposta *"leu e não achou nada"*,
+        que é o resultado de verdade de cinco livros do acervo (`ROADMAP.md:151`). São
+        indistinguíveis na coluna, e a coluna tem de ficar em branco num deles.
+        """
+        return self.estado == PRONTO or (self.estado == CANCELADO and self.paginas_feitas > 0)
+
+    @property
     def fracao(self) -> float:
         """Quanto deste livro já foi lido, de 0 a 1. Um livro terminado é 1, mesmo sem páginas.
 
@@ -196,8 +208,12 @@ def linha_da_tabela(livro: LivroNaFila) -> tuple[str, str, str, str, str, str]:
     As contagens saem em branco enquanto o livro não terminou: um `0` numa coluna de resultado é
     indistinguível de "leu e não achou nada", e a fila tem justamente livros em que zero é o
     resultado de verdade.
+
+    **E saem em branco também no livro que não leu** -- o que falhou, o pulado, o cancelado antes
+    de começar. A primeira rodada só cobria "ainda não terminou", e o livro que falhava aparecia
+    com `0 / 0 / 0 / 0 s`: quatro zeros que se leem como medição e não são. Ver `LivroNaFila.leu`.
     """
-    vazio = livro.estado in (PENDENTE, LENDO)
+    vazio = not livro.leu
     return (
         livro.nome,
         frase_de_estado(livro),
@@ -272,6 +288,27 @@ class FilaDeLivros:
             self._livros.append(LivroNaFila(pdf=caminho))
             entraram.append(caminho)
         return entraram
+
+    def remover(self, indices: Iterable[int]) -> list[Path]:
+        """Tira estes livros da fila e devolve os que saíram. O que está **sendo lido** fica.
+
+        Existe porque acrescentar era irreversível: a pasta escolhida entra com todos os PDFs
+        dela (S-34), e a única saída para o livro errado era fechar o diálogo e montar a fila de
+        novo. Remover não é uma transição de estado -- é a linha deixando de existir --, e por
+        isso não passa por `TRANSICOES`.
+
+        **O que é lido não sai**, e não é zelo: a thread de trabalho guarda a posição do livro em
+        curso como um número (`qt/fila_de_livros._ordem_atual`), e tirar uma linha de cima dele
+        faria o resultado chegar na linha errada -- em silêncio, que é o pior jeito. Quem
+        chama já recusa a remoção com a varredura em curso; isto é a segunda tranca.
+        """
+        pedidos = {indice for indice in indices if 0 <= indice < len(self._livros)}
+        saem = {indice for indice in pedidos if self._livros[indice].estado != LENDO}
+        if not saem:
+            return []
+        removidos = [self._livros[indice].pdf for indice in sorted(saem)]
+        self._livros = [livro for indice, livro in enumerate(self._livros) if indice not in saem]
+        return removidos
 
     # ----------------------------------------------------------------------- as transições
 

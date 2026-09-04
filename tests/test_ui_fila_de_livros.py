@@ -275,3 +275,85 @@ class ResumoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LivroQueNaoLeuTests(unittest.TestCase):
+    """As contagens só aparecem em quem leu (S-546, r2).
+
+    O crítico achou o livro que **falhou** aparecendo com `0 / 0 / 0 / 0 s` nas quatro colunas de
+    resultado. Zero ali não é medição: é a ausência dela, e a fila tem justamente livros em que
+    zero é o resultado de verdade (`ROADMAP.md:151`). A primeira rodada só esvaziava as colunas
+    de quem ainda não tinha terminado.
+    """
+
+    def _falhado(self) -> FilaDeLivros:
+        fila = FilaDeLivros([A])
+        fila.comecar(0)
+        fila.concluir(0, FALHOU, erro="PdfError: arquivo truncado")
+        return fila
+
+    def test_o_livro_que_falhou_sai_com_as_quatro_colunas_em_branco(self) -> None:
+        celulas = linha_da_tabela(self._falhado()[0])
+        self.assertEqual(("", "", "", ""), celulas[2:])
+        self.assertIn("falhou", celulas[1])
+
+    def test_o_livro_pulado_tambem(self) -> None:
+        """Ele não foi lido nesta rodada: as contagens dele são de outra pessoa."""
+        fila = FilaDeLivros([A])
+        fila.comecar(0)
+        fila.concluir(0, PULADO)
+        self.assertEqual(("", "", "", ""), linha_da_tabela(fila[0])[2:])
+
+    def test_o_cancelado_antes_de_comecar_tambem(self) -> None:
+        fila = FilaDeLivros([A, B])
+        fila.cancelar_restantes()
+        self.assertEqual(("", "", "", ""), linha_da_tabela(fila[0])[2:])
+
+    def test_o_cancelado_que_leu_paginas_mostra_o_que_leu(self) -> None:
+        """O parcial da S-24 está no disco: o que ele achou até parar é resultado."""
+        fila = FilaDeLivros([A])
+        fila.comecar(0)
+        fila.avancar(0, 12, 70)
+        fila.concluir(0, CANCELADO, paginas=12, diagramas=9, exportados=8, segundos=30.0)
+        self.assertEqual(("9", "8", "0", "30 s"), linha_da_tabela(fila[0])[2:])
+
+    def test_o_livro_lido_que_nao_achou_nada_mostra_os_zeros(self) -> None:
+        """O caso que a coluna em branco **não** pode engolir: zero é a resposta."""
+        fila = FilaDeLivros([A])
+        fila.comecar(0)
+        fila.concluir(0, PRONTO, paginas=32, diagramas=51, exportados=0, segundos=18.0)
+        self.assertEqual(("51", "0", "0", "18 s"), linha_da_tabela(fila[0])[2:])
+
+
+class RemoverDaFilaTests(unittest.TestCase):
+    """Acrescentar era irreversível (S-546, r2): uma pasta entra com todos os PDFs dela."""
+
+    def test_o_livro_sai_e_a_fila_encolhe(self) -> None:
+        fila = FilaDeLivros([A, B, C])
+        self.assertEqual([B], fila.remover([1]))
+        self.assertEqual([A, C], [livro.pdf for livro in fila])
+
+    def test_saem_varios_de_uma_vez_e_na_ordem_da_fila(self) -> None:
+        fila = FilaDeLivros([A, B, C])
+        self.assertEqual([A, C], fila.remover([2, 0]))
+        self.assertEqual([B], [livro.pdf for livro in fila])
+
+    def test_o_livro_em_leitura_nao_sai(self) -> None:
+        """A thread guarda a posição do livro em curso como número: tirar uma linha de cima dele
+        faria o resultado chegar na linha errada, e em silêncio."""
+        fila = FilaDeLivros([A, B])
+        fila.comecar(0)
+        self.assertEqual([], fila.remover([0]))
+        self.assertEqual(2, len(fila))
+
+    def test_indice_fora_da_fila_nao_levanta(self) -> None:
+        fila = FilaDeLivros([A])
+        self.assertEqual([], fila.remover([7, -1]))
+        self.assertEqual(1, len(fila))
+
+    def test_o_livro_removido_pode_voltar(self) -> None:
+        """`acrescentar` recusa repetido; o que saiu deixou de ser repetido."""
+        fila = FilaDeLivros([A, B])
+        fila.remover([0])
+        self.assertEqual([A], fila.acrescentar([A]))
+        self.assertEqual([B, A], [livro.pdf for livro in fila])

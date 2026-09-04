@@ -390,3 +390,57 @@ class DialogoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class TirarDaFilaTests(unittest.TestCase):
+    """Acrescentar era irreversível (S-546, r2): uma pasta entra com todos os PDFs dela (S-34)."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.saida = pasta_temporaria(self, prefixo="cvoff-fila-") / "PGN"
+
+    def _montar(self, **kwargs: Any) -> Any:
+        varredura = VarreduraDeLivros(executor=kwargs.pop("executor", _VarreduraFalsa()))
+        dialogo = DialogoDaFila(None, varredura=varredura, destino=self.saida, **kwargs)
+        varredura.setParent(dialogo)
+        self.addCleanup(descartar, dialogo)
+        self.addCleanup(varredura.esperar, 10_000)
+        return dialogo
+
+    def test_o_botao_tira_a_linha_marcada_e_a_tabela_encolhe(self) -> None:
+        dialogo = self._montar()
+        dialogo.varredura.acrescentar([A, B, C])
+        dialogo.tabela.setCurrentItem(dialogo.tabela.topLevelItem(1))
+
+        self.assertEqual([B], dialogo.tirar_selecionado())
+
+        self.assertEqual(2, dialogo.tabela.topLevelItemCount())
+        self.assertEqual([A, C], [livro.pdf for livro in dialogo.varredura.fila])
+
+    def test_sem_nada_marcado_nada_sai(self) -> None:
+        dialogo = self._montar()
+        dialogo.varredura.acrescentar([A, B])
+        dialogo.tabela.setCurrentItem(None)
+        self.assertEqual([], dialogo.tirar_selecionado())
+        self.assertEqual(2, len(dialogo.varredura.fila))
+
+    def test_o_botao_nasce_desligado_e_liga_com_a_fila(self) -> None:
+        dialogo = self._montar()
+        self.assertFalse(dialogo.botao_tirar.isEnabled())
+        dialogo.varredura.acrescentar([A])
+        self.assertTrue(dialogo.botao_tirar.isEnabled())
+
+    def test_com_a_varredura_em_curso_a_remocao_e_recusada(self) -> None:
+        """A thread guarda a posição de cada livro como número: tirar uma linha faria o resultado
+        do seguinte chegar na linha de outro, e em silêncio."""
+        dialogo = self._montar(executor=_VarreduraFalsa(paginas=4, passo=0.05))
+        dialogo.varredura.acrescentar([A, B, C])
+        self.assertTrue(dialogo.comecar())
+        try:
+            self.assertFalse(dialogo.botao_tirar.isEnabled())
+            self.assertEqual([], dialogo.varredura.remover([2]))
+        finally:
+            dialogo.varredura.cancelar()
+            self.assertTrue(dialogo.varredura.esperar(10_000))
+        self.assertEqual(3, len(dialogo.varredura.fila))

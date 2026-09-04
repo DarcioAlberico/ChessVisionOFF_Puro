@@ -21,10 +21,12 @@ from unittest import mock
 import chess
 from subprocesso import rodar_python
 
+from chess_diagram_ocr import games_index
 from chess_diagram_ocr.games_db import GameRecord, database_paths
 from chess_diagram_ocr.games_index import (
     _INDICES_DE_BUSCA,
     INDEX_VERSION,
+    INDICE_DA_ORDEM,
     IndiceIndisponivel,
     _read_game_at,
     build_index,
@@ -606,7 +608,11 @@ class CancelamentoDoIndiceTests(unittest.TestCase):
 
         self.assertTrue(rodada.cancelado)
         self.assertLess(decorrido, 1.3, "0,3 s até o pedido, e menos de 1 s para honrá-lo")
-        self.assertEqual(rodada.partidas, 3, "a pequena terminou e ficou; a grande foi desfeita")
+        self.assertGreaterEqual(
+            rodada.partidas,
+            3,
+            "a pequena terminou e ficou; da grande fica o que os lotes já tinham fechado (S-533, r2)",
+        )
         with self.assertLogs("chess_diagram_ocr.games_index", level="WARNING") as registro:
             self.assertEqual(lookup_pair(("anderssen", "kieseritzky"), [self.pequena, self.grande], self.indice), [])
         self.assertIn("cvoff-games --build-index", registro.output[0])
@@ -629,6 +635,40 @@ class CancelamentoDoIndiceTests(unittest.TestCase):
         # Ate dez por segundo dentro de um arquivo, mais um aviso final por arquivo.
         self.assertLessEqual(len(avisos), 10 * decorrido + 2 + 1)
         self.assertEqual(len(lookup_pair(("branco7", "preto7"), [self.pequena, self.grande], self.indice)), 1)
+
+    def test_o_cancelamento_no_meio_do_arquivo_nao_faz_a_proxima_rodada_reler_tudo(self) -> None:
+        """A transação era por arquivo, e a gigabase **é** um arquivo (S-533, r2).
+
+        Cancelar no nono minuto desfazia os nove e a rodada seguinte relia 8,6 GB do começo. Com
+        a transação por lote, o manifesto anota até que byte o arquivo está lido, e a rodada
+        seguinte continua de lá -- o que se perde é o lote em curso.
+
+        O que o teste afirma é o **custo**: a segunda rodada lê menos partidas do que o arquivo
+        tem. A resposta final é a mesma nos dois mundos, então uma asserção de igualdade sobre o
+        conteúdo não pegaria a regressão.
+        """
+        cancelar = threading.Event()
+        vistos: list[object] = []
+
+        def progresso(*args: object) -> None:
+            vistos.append(args)
+            if len(vistos) >= 8:
+                cancelar.set()
+
+        with (
+            mock.patch.object(games_index, "_TAMANHO_DO_LOTE", 1_000),
+            mock.patch.object(games_index, "_LINHAS_POR_CONFERENCIA", 4_096),
+            mock.patch.object(games_index, "INTERVALO_DE_PROGRESSO", 0.0),
+        ):
+            primeira = build_index([self.grande], self.indice, progress=progresso, cancel=cancelar)
+        self.assertTrue(primeira.cancelado)
+
+        segunda = build_index([self.grande], self.indice)
+        self.assertFalse(segunda.cancelado)
+        self.assertEqual(segunda.partidas, 400_000, "o índice fica completo, venha de onde vier")
+        self.assertLess(segunda.relidas, 400_000, "a segunda rodada releu o arquivo inteiro: o marco não pegou")
+        self.assertEqual(len(lookup_pair(("branco7", "preto7"), [self.grande], self.indice)), 1)
+        self.assertEqual(len(lookup_pair(("branco399999", "preto399999"), [self.grande], self.indice)), 1)
 
 
 class IndiceSobreBaseComprimidaTests(unittest.TestCase):
@@ -827,6 +867,48 @@ class MigracaoDeVersaoTests(unittest.TestCase):
         finally:
             conexao.close()
         self.assertEqual(str(INDEX_VERSION), gravada)
+
+    def _rebaixar_para_v5(self) -> None:
+        """O índice de hoje sem as duas árvores da v6 e com a versão 5 gravada -- que **é** um v5."""
+        conexao = sqlite3.connect(self.indice)
+        conexao.execute("DROP INDEX IF EXISTS games_elo")
+        conexao.execute(f"DROP INDEX IF EXISTS {INDICE_DA_ORDEM}")
+        conexao.execute("INSERT OR REPLACE INTO meta VALUES ('version', '5')")
+        conexao.commit()
+        conexao.close()
+
+    def test_o_indice_v5_e_completado_e_nao_refeito(self) -> None:
+        """A primeira versão que **não** manda refazer, e o motivo é que não falta dado (S-533, r2).
+
+        A v6 acrescentou duas árvores de busca à v5 e nenhuma coluna. Mandar refazer custaria a
+        passada inteira -- dez minutos e 8,6 GB relidos na gigabase -- para gravar exatamente as
+        mesmas linhas. A regra "migração é refazer" das versões 3, 4 e 5 valia porque faltava dado
+        **gravado**; aqui o que falta é uma árvore, e uma árvore se cria sobre a tabela pronta.
+        """
+        build_index(self.base, self.indice)
+        self._rebaixar_para_v5()
+
+        rodada = build_index(self.base, self.indice)
+
+        self.assertEqual(0, rodada.relidas, "não se relê byte nenhum para criar uma árvore")
+        self.assertEqual(2, rodada.partidas, "as linhas da v5 continuam lá")
+        conexao = sqlite3.connect(f"file:{self.indice}?mode=ro", uri=True)
+        try:
+            arvores = {nome for (nome,) in conexao.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+            (gravada,) = conexao.execute("SELECT value FROM meta WHERE key = 'version'").fetchone()
+        finally:
+            conexao.close()
+        self.assertEqual(str(INDEX_VERSION), gravada)
+        self.assertLessEqual({nome for nome, _colunas in _INDICES_DE_BUSCA}, arvores)
+
+    def test_o_v5_ainda_e_recusado_pela_busca_ate_a_rodada_acontecer(self) -> None:
+        """Completar é barato, mas não é automático: quem consulta só lê, e a frase diz o que fazer."""
+        build_index(self.base, self.indice)
+        self._rebaixar_para_v5()
+        with self.assertRaises(IndiceIndisponivel) as erro:
+            buscar(Filtro(brancas="Carlsen"), self.base, self.indice)
+        self.assertIn("'5'", str(erro.exception))
+        self.assertIn("--build-index", str(erro.exception))
 
     def test_o_indice_em_obras_e_recusado_com_frase_propria(self) -> None:
         """A marca da base sai antes de a rodada começar: um índice pela metade recusa a consulta
@@ -1073,3 +1155,112 @@ class BuscaTests(unittest.TestCase):
         with self.assertRaises(IndiceIndisponivel) as erro:
             buscar(Filtro(brancas="Carlsen"), self.raiz / "vazia", self.indice)
         self.assertIn("pgn_database", str(erro.exception))
+
+
+class DoisPlanosDeBuscaTests(unittest.TestCase):
+    """Os dois planos da segunda rodada da S-533 respondem **a mesma coisa** por caminhos opostos.
+
+    A contagem para em `TETO_DE_CONTAGEM` e é ela que escolhe: acima do teto, a página sai andando
+    pela árvore da ordem (`games_ordem`) de trás para a frente; abaixo, sai da árvore mais seletiva
+    do filtro com a ordenação por cima. O que o crítico mediu na gigabase foi o segundo plano
+    aplicado ao primeiro caso -- `ano 2019` sozinho em 2,8 s, a faixa `A00–E99` em 5,4 s --, e o
+    conserto só vale se os dois caminhos derem a mesma página.
+
+    Aqui o teto é rebaixado para 2, que é o que faz uma base de doze partidas exercitar os dois.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.pasta = tempfile.TemporaryDirectory()
+        cls.raiz = Path(cls.pasta.name)
+        cls.base = cls.raiz / "base.pgn"
+        cls.base.write_text(
+            "".join(
+                _partida(
+                    branco="Carlsen, Magnus" if n % 2 else f"Jogador{n}, A",
+                    preto=f"Jogador{n}, B" if n % 2 else "Carlsen, Magnus",
+                    data=f"20{18 + n % 4:02d}.0{1 + n % 9}.1{n % 10}",
+                    eco=f"{chr(65 + n % 5)}{n % 10}{n % 10}",
+                    evento="ch-RUS" if n % 3 else "Tata Steel Masters",
+                    welo=str(2000 + 10 * n),
+                    belo=str(2100 + 5 * n),
+                )
+                for n in range(12)
+            ),
+            encoding="utf-8",
+        )
+        cls.indice = cls.raiz / "indice.sqlite"
+        build_index(cls.base, cls.indice)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.pasta.cleanup()
+
+    def _pagina(self, filtro: Filtro, *, teto: int, limite: int = 100, offset: int = 0) -> list[tuple[str, int]]:
+        with mock.patch.object(games_index, "TETO_DE_CONTAGEM", teto):
+            resposta = buscar(filtro, self.base, self.indice, limite=limite, offset=offset)
+        return [(achado.brancas, achado.offset) for achado in resposta.achados]
+
+    def test_os_dois_planos_dao_a_mesma_pagina_para_cada_filtro(self) -> None:
+        filtros = {
+            "um jogador": Filtro(brancas="Carlsen"),
+            "faixa de ECO larga": Filtro(eco_de="A00", eco_ate="E99"),
+            "um ano": Filtro(ano_de=2019, ano_ate=2019),
+            "evento por pedaço": Filtro(evento="ch-"),
+            "Elo mínimo": Filtro(elo_minimo=2000),
+            "combinado": Filtro(brancas="Carlsen", ano_de=2018, ano_ate=2021),
+        }
+        for rotulo, filtro in filtros.items():
+            with self.subTest(filtro=rotulo):
+                largo = self._pagina(filtro, teto=2)
+                estreito = self._pagina(filtro, teto=1_000)
+                self.assertEqual(estreito, largo, "os dois planos discordaram")
+                self.assertTrue(largo, "o filtro do teste não casa nada e não prova coisa alguma")
+
+    def test_os_dois_planos_paginam_igual(self) -> None:
+        """A página seguinte é o mesmo `OFFSET` nos dois, e é onde um plano errado se denuncia."""
+        filtro = Filtro(brancas="Carlsen", qualquer_cor=True)
+        for offset in (0, 2, 4):
+            with self.subTest(offset=offset):
+                self.assertEqual(
+                    self._pagina(filtro, teto=1_000, limite=2, offset=offset),
+                    self._pagina(filtro, teto=2, limite=2, offset=offset),
+                )
+
+    def test_a_contagem_para_no_teto_e_a_resposta_diz_que_parou(self) -> None:
+        with mock.patch.object(games_index, "TETO_DE_CONTAGEM", 2):
+            resposta = buscar(Filtro(brancas="Carlsen"), self.base, self.indice)
+        self.assertEqual(2, resposta.total)
+        self.assertTrue(resposta.total_e_teto)
+        self.assertEqual(12, len(resposta.achados), "o teto é da contagem, e não da página")
+
+
+class SobrenomeDaBuscaTests(unittest.TestCase):
+    """As três leituras do campo de nome (S-533, r2). Ver `games_index._sobrenomes`."""
+
+    def test_a_ordem_natural_acha_o_mesmo_que_a_da_base(self) -> None:
+        """`Magnus Carlsen` devolvia zero em silêncio: `surname` lê `magnus carlsen`, que não é o
+        sobrenome de ninguém. Fora de um `.pgn` é assim que se escreve um nome."""
+        self.assertIn("carlsen", games_index._sobrenomes("Magnus Carlsen"))
+        self.assertIn("carlsen", games_index._sobrenomes("Carlsen, Magnus"))
+        self.assertIn("carlsen", games_index._sobrenomes("Carlsen"))
+
+    def test_a_forma_inteira_continua_valendo(self) -> None:
+        """`Van der Wiel` sem vírgula não vira `wiel` **em vez de**: a forma inteira é a primeira,
+        e a última palavra só acrescenta uma sonda que não casa com nada."""
+        formas = games_index._sobrenomes("Van der Wiel")
+        self.assertEqual("van der wiel", formas[0])
+        self.assertIn("wiel", formas)
+
+    def test_o_sufixo_de_geracao_entra_como_forma_propria(self) -> None:
+        """`Vehre Jr, John L` entra no dicionário como `vehre jr` -- o `Jr` está antes da vírgula --
+        e são 264 grafias assim na gigabase. Quem digita `Vehre` tem de achá-las."""
+        formas = games_index._sobrenomes("Vehre")
+        self.assertIn("vehre", formas)
+        self.assertIn("vehre jr", formas)
+        self.assertIn("vehre iii", formas)
+
+    def test_campo_vazio_nao_vira_forma_nenhuma(self) -> None:
+        """Uma forma vazia casaria com o jogador zero, que é "sem nome" -- ou seja, com tudo."""
+        self.assertEqual((), games_index._sobrenomes(""))
+        self.assertEqual((), games_index._sobrenomes("   "))

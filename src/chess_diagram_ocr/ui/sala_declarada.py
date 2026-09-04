@@ -35,8 +35,11 @@ from . import estudo_lista as _lista
 
 __all__ = [
     "ACOES_PROPRIAS",
+    "ALCA_DO_DIVISOR",
     "CANDIDATOS_DO_MOTOR",
     "COMANDOS_DA_ABA",
+    "LARGURA_MINIMA_DA_LEITURA",
+    "fracao_para_o_tabuleiro",
     "LADO_AMPLIADO",
     "LADO_DO_RECORTE",
     "FRACAO_PADRAO_DO_TABULEIRO",
@@ -85,6 +88,84 @@ antes de enquadrar, então "a coluna inteira" quer dizer a coluna menos a esteir
 ocupam. Um valor menor foi tentado e medido pior: a 900x800 dava 415 px de tabuleiro contra 455, e
 a diferença virava vazio na aba cujo assunto é justamente o tabuleiro. Quem quiser menor tem o
 `board_zoom` no `data/janela.json`."""
+
+LARGURA_MINIMA_DA_LEITURA = 210
+"""O piso da coluna de leitura -- "Lances" e "Comentário do lance" --, em pixel, somado das partes.
+
+**Somado e não escolhido a olho**, pela mesma razão de `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`:
+um número redondo envelhece junto com o painel. As partes são as três que decidem se uma linha de
+notação cabe:
+
+- **~105 px** para um lance duplo por extenso (`12. Bxf7+ Kxf7`) na fonte `CORPO` da interface,
+  que é a unidade que não pode quebrar -- `PAPEIS_COLADOS` cola o número ao lance de propósito;
+- **72 px** de recuo máximo de variante (`RECUO_POR_NIVEL` x `estudo_lista.NIVEL_MAXIMO_DE_RECUO`),
+  porque a linha mais funda é a que primeiro deixa de caber;
+- **~33 px** de moldura do `QGroupBox`, recheio e barra de rolagem vertical.
+
+Medido contra o que já existe: a 1400x950 a coluna de leitura tem **203 px** e a lista quebra
+`posição inicial 1. e4 e5 2. Nf3 / Nc6 3. Bb5 a6 *` -- legível. Duzentos e dez é esse arranjo com a
+folga do arredondamento, e é o piso **que o tabuleiro não pode invadir** quando cresce (S-551)."""
+
+ALCA_DO_DIVISOR = 6
+"""Largura de fábrica da alça do `QSplitter`, em pixel. Entra na conta porque é largura também.
+
+Valor padrão, e não o de agora: `fracao_para_o_tabuleiro` recebe a alça de verdade por argumento --
+quem sabe quanto ela mede é o widget. Isto é o que a função responde quando ninguém diz."""
+
+
+def lado_do_tabuleiro(
+    largura: int,
+    altura_util: int,
+    *,
+    minimo: int,
+    alca: int = ALCA_DO_DIVISOR,
+    minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
+) -> int:
+    """O lado que o tabuleiro da sala deveria ter naquela caixa. Puro (S-551).
+
+    **O tabuleiro é quadrado, e por isso ele é limitado pelo menor dos dois recursos.** Medido em
+    2026-09-04 a 1400x950: o widget do tabuleiro tinha 488x488 px e a coluna esquerda 494x777 --
+    ele estava limitado pela **largura**, e sobravam ~230 px de coluna vazia debaixo dele. O
+    Lichess não deixa esse vazio: lá o tabuleiro cresce até a altura acabar.
+
+    A conta é `min(altura que sobra, largura que dá para tomar)`, e o teto de largura é o que
+    resta depois de a coluna de leitura ficar com o piso dela (`LARGURA_MINIMA_DA_LEITURA`) e a
+    alça com a sua. **O piso da leitura é o que impede a resposta óbvia e errada**: com altura
+    sobrando sempre -- e ela sobra sempre, porque a aba é mais alta que larga --, "cresça até a
+    altura" sozinho daria o tabuleiro inteiro e uma coluna de lances de 46 px.
+
+    `minimo` é o piso do próprio tabuleiro (`qt/tabuleiro.LADO_MINIMO`), e vem por argumento porque
+    quem o declara é o widget que desenha.
+    """
+    teto = int(largura) - int(minimo_da_leitura) - int(alca)
+    return max(int(minimo), min(int(altura_util), teto))
+
+
+def fracao_para_o_tabuleiro(
+    largura: int,
+    altura_util: int,
+    *,
+    minimo: int,
+    fracao_atual: float = 0.0,
+    alca: int = ALCA_DO_DIVISOR,
+    minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
+) -> float:
+    """Onde pôr a alça do divisor para o tabuleiro ter aquele lado. Pura (S-551).
+
+    **Ela só empurra a alça para a direita**, e é a parte da decisão que não é aritmética: a régua
+    devolve `max(fracao_atual, a calculada)`. O arranjo que já está na tela é o piso -- o de
+    fábrica do `QSplitter` (3:2) ou o que a pessoa guardou --, e a altura que sobra é o que pode
+    aumentá-lo. Sem isso a mesma conta *encolheria* o tabuleiro em toda janela estreita: a 1400x950
+    o teto de largura dá 481 px contra os 494 que os pesos do `QSplitter` já davam, e o item que
+    pediu um tabuleiro maior o teria deixado 13 px menor.
+    """
+    if largura <= 0:
+        return max(0.0, fracao_atual)
+    lado = lado_do_tabuleiro(
+        largura, altura_util, minimo=minimo, alca=alca, minimo_da_leitura=minimo_da_leitura
+    )
+    return max(fracao_atual, min(1.0, (lado + alca) / largura))
+
 
 LADO_DO_RECORTE = 220
 """Lado máximo da miniatura do diagrama, em pixels (S-282).

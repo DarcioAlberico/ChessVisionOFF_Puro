@@ -224,17 +224,272 @@ não crescer `qt/janela.py`). A caixa "Partidas da base" (`qt/dialogos.py`) deix
 Fora do item, registrados como S-551 (vazio sob o tabuleiro) e S-552 (janela que não estreita); a
 barra do PDF é da S-528.
 
-## S-528 · A barra do painel do PDF na mesma gramática, e a página com mais área — ◻ em andamento
+## S-528 · A barra do painel do PDF na mesma gramática, e a página com mais área — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
+
+`qt/painel_do_pdf.py:152` e `:184` montavam **duas** `BarraFluida` com dezesseis controles de
+texto -- catorze `QPushButton`, dois `QCheckBox` --, mais um `QLabel` com o nome do livro (`:158`)
+e o par `QSpinBox` + `QLabel` da página (`:189`, `:193`). Nenhum ícone, nenhum separador, nenhuma
+hierarquia, e o ajudante `_botao` (`:268`) ligava seis deles por `lambda` escrito no meio da
+montagem.
+
+**Medido em 2026-09-04, com a janela a 1400×950** (o painel do PDF tem 675 px): as duas barras
+quebravam em **duas fileiras cada** e somavam **118 px** antes da folha; a 520 px -- que é o piso
+do painel, `LARGURA_MINIMA_DO_VISOR` -- eram **três fileiras cada** e **176 px**. A folha ficava
+com 621 px de altura a 1400×950 e 536 a 520 px de largura.
+
+Ao lado disso, a sala de estudo recém-refeita (S-527) tem **uma** fila de 32 px com ícones de
+16 px agrupados por tarefa. O crítico pôs as duas na mesma foto (`fotos/crit_r2/E_1400x950.png`):
+*"a diferença de gramática entre as duas barras incomoda muito ao lado"* -- de um lado traços
+agrupados, do outro "OCR todos diagramas" e "Roda vira a página" em caixas de texto que refluem.
+
+### Solução
+
+**A forma foi extraída, e não copiada.** `Acao`, `Item`, `cabem` e `dica_de` -- a linha de tabela,
+a conta de quem cabe e a dica -- saíram de `ui/barra_da_sala.py` para `ui/barra.py`, que passa a
+ter as **duas** formas de barra deste projeto: a que quebra (S-151) e a que enfileira (S-527). O
+que decide qual tabela é qual são três `ClassVar` da subclasse -- `GRUPOS`, `IRMAS` e `METODOS` --,
+e é isso que faz a mesma classe servir a duas barras sem que uma enxergue a outra. Do lado do
+widget, `qt/barra_da_sala.BarraDaSala` virou `qt/barra.BarraEmFila`, que recebe a tabela e os
+registros por argumento; `BarraDaSala` continua existindo como a subclasse de quatro linhas que a
+sala e os testes da S-527 chamam pelo nome, e **a suíte da sala não mudou uma linha**.
+
+**A tabela nova, `ui/barra_do_pdf.py`.** As dezesseis ações de `comandos.NAS_BARRAS_DO_PDF`,
+inteira e nada além dela, em cinco grupos que são as cinco perguntas de quem lê um livro
+digitalizado: **Livro** (abrir, abrir no leitor), **Página** (anterior, próxima), **Vista** (ajustar
+à largura, à página, zoom, marcar diagramas, roda vira a página), **Leitura** (OCR do melhor
+diagrama, da página, selecionar área, tirar a caixa) e **Exportar** (exportar, cancelar). Não são
+os grupos do catálogo -- lá `pagina_anterior` é `VISUALIZACAO` e `ler_melhor` é `OCR`, porque a
+pergunta de lá é *em que menu*. Rótulo, papel e tecla continuam vindo de `comandos` e `atalhos`;
+nenhum texto é reescrito.
+
+**Cinco decisões próprias desta tabela:**
+
+1. **Duas com texto, e são as pontas do trabalho**: "Abrir PDF" é o que se faz antes de tudo, e
+   "OCR melhor diagrama" é o que a tela existe para fazer -- o único `PRIMARIO` do painel, e a
+   ênfase vem do catálogo (S-324). As outras oito principais são traço de 16 px com o rótulo e a
+   tecla na dica.
+2. **O par de página é um par** (mesma prioridade, entra e sai junto), e o campo `[21 de 289]`
+   **não é ação**: é um `QSpinBox` pendurado na fila por `BarraEmFila.encaixar`, que o faz aparecer
+   e sumir junto com as duas setas e o conta na reserva de `cabem`. O total virou **sufixo** do
+   campo em vez de um `QLabel` ao lado -- eram dois widgets para um número, e o de fora não sabia
+   sumir junto. As setinhas próprias do `QSpinBox` saíram: os dois botões colados nele fazem
+   exatamente isso, com 16 px de traço em vez de duas meias-setas de 6 px.
+3. **Os dois botões de zoom vão para o "Mais", e é decisão e não corte.** O deslizador logarítmico
+   da S-225 fica logo abaixo da folha, com a porcentagem ao lado: `−` e `+` na fila seriam o
+   terceiro controle do mesmo número na mesma tela. Continuam a um clique e em `Ctrl+-`/`Ctrl++`.
+4. **Marcar diagramas e roda vira a página são preferências, não gestos**: dois itens marcáveis do
+   "Mais" em vez de dois `QCheckBox` de ~230 px permanentes.
+5. **O nome do livro sai da barra.** O rodapé da janela já escreve `1937 Kemeri.pdf · p. 21 de 289`
+   em toda tela, e o rótulo daqui repetia isso em ~210 px de uma fila que não tinha para onde
+   crescer. Quem responde "não há livro" agora é o campo de página com o total zerado e o grupo
+   inteiro cinza.
+
+**A regra de quem fica cinza passou a ser modo + condição**, como na sala: `SEM_LIVRO` desliga
+Página, Vista, Leitura e Exportar e deixa Livro de pé (abrir é a saída deste modo); `TRANCADO`
+desliga tudo **menos Exportar**, que é o que mantém o cancelar vivo -- ele só existe durante a
+exportação, que é justamente quando tudo o mais está trancado. As três condições que só o painel
+sabe (há livro, está trancado, está exportando) entram por `aplicar_modo`.
+
+**Sete traços novos** em `icones.ICONES_DO_PDF` -- um terceiro dicionário, pela razão do segundo:
+a chave de `ICONES` é nome de comando, e `medidas_da_fita.grupos()` põe na fita da janela todo
+comando com `icone`. Nove das dezesseis **reusam** os traços que a S-220 desenhou para estes mesmos
+comandos.
+
+**`qt/janela.py` não foi tocado.** Os nomes pelos quais ele chama estes controles --
+`pdf.marcar_diagramas.setChecked/.isChecked/.toggle`, `pdf.btn_exportar.isEnabled()` -- apontam
+agora para as `QAction`s da fila, e `QAction` responde aos mesmos nomes.
+
+### Critério de aceite
+
+- A barra do painel é **uma fila** em qualquer largura, e nada some sem ir para o "Mais".
+  ✅ `linhas == 1` a 300, 400, 520, 675, 900 e 1400 px; em toda largura `na_fila | no_mais` é a
+  tabela inteira, e o botão "Mais" nunca fica escondido.
+- **Altura devolvida à folha, medida em 2026-09-04** (roteiro `probe_fase80.py`, pele clássica):
+
+  | janela | painel do PDF | cromo antes | cromo depois | folha antes | folha depois |
+  |---|---|---|---|---|---|
+  | 1400×950 | 675 px | 118 px (2+2 fileiras) | **32 px** | 621 px | **717 px** (+96) |
+  | 1024 de largura | 520 px | 176 px (3+3) | **32 px** | 536 px | **690 px** (+154) |
+  | 1920×1080 | 1014 px | 112 px (2+2) | **32 px** | 757 px | **847 px** (+90) |
+
+  O piso do próprio painel caiu junto: `minimumSizeHint()` foi de `(175, 178)` para `(198, 146)`.
+- **Quem cabe:** a 675 px ficam oito das dez principais mais o campo de página -- Abrir PDF |
+  ◀ [21 de 289] ▶ | Ajustar à largura · Ajustar à página | OCR melhor diagrama · OCR todos ·
+  Selecionar área | Mais ▾ --, com Exportar e Cancelar no "Mais"; a 520 px ficam cinco (o par de
+  página, os dois de OCR e Selecionar área); a 1014 px cabem as dez. ✅
+- Ícone vetorial em toda ação, dica com rótulo longo e tecla na primeira linha, separador entre
+  grupos, "Mais ▾" com cabeçalho de grupo. ✅
+- **A barra não registra tecla nenhuma**: as dezesseis são comandos da janela e já têm dono no
+  menu; registrá-las de novo aqui daria duas donas para a mesma tecla. ✅ `sequencia_de` devolve
+  `""` para todas, e o gancho existe porque na sala é o contrário (`TECLAS_DA_SALA`).
+- "Selecionar área" é um **modo marcado**, e não um rótulo que troca: na fila ele desenha só o
+  ícone, e um texto que troca onde não há texto não é sinal nenhum. O clique liga uma vez só. ✅
+- `comandos.NAS_BARRAS_DO_PDF` continua batendo com o que o painel desenha, e a guarda que o cobra
+  foi **traduzida** em vez de apagada: ela varria `_botao(barra, "…")` em `qt/painel_do_pdf.py` e
+  agora varre `Acao("…")` em `ui/barra_do_pdf.py`, com um `assertTrue(desenhadas)` na frente para
+  que ela não passe em verde sobre lista vazia. ✅
+- A suíte da sala continua verde sem uma linha alterada. ✅ `qt/janela.py` não é tocado. ✅
+- **Fica de fora**: a linha de anotação de campo (`qt/campo.py`, 50 px), que o crítico contou como
+  a quarta fileira. Ela não é cromo do painel do PDF -- é a anotação de conjunto da S-95, que
+  afirma coisas sobre a página exibida -- e já é **uma** fila com um seletor e três botões.
+  Trazê-la para a gramática é item próprio.
+
+### Testes
+
+- `tests/test_ui_barra_do_pdf.py` (novo, puro): cobertura nos dois sentidos contra
+  `NAS_BARRAS_DO_PDF`; método do painel para toda ação; principal/"Mais" como partição; a única
+  prioridade repetida é o par de página; duas com texto e uma ênfase só; o zoom e as preferências
+  no "Mais"; rótulo e papel do catálogo; dica com a tecla na primeira linha; **`sequencia_de` vazia
+  para todas, com um controle que falha se a sala parar de declarar tecla própria**; ponte com
+  `ICONES_DO_PDF` nos dois sentidos, caixa `0..100`, nove traços reusados e a régua de 8 pixels
+  fortes / glifo de 12 px a 16 px; os três modos e o `EXPORTAR` poupado no `TRANCADO`; e
+  `FormaCompartilhadaTests`, que afirma que as duas tabelas não se enxergam -- grupo da sala numa
+  ação do PDF levanta, `METODOS` é por tabela, e o agrupador "Exportar ▾" da sala não faz de
+  `exportar_pgn` do PDF um menu vazio.
+- `tests/test_qt_painel_do_pdf.py::FilaDoPdfTests` (novo): fila única em cinco larguras; nada some
+  sem ir para o "Mais"; o campo de página aparece e some com o par de setas; o total como sufixo;
+  `QAction` com ícone, dica e `checkable` conforme a tabela; nenhuma tecla registrada; o disparo
+  chega ao método **pelo efeito** (e não por `patch` depois do `connect`, que não intercepta); e o
+  cromo em 32 px a 520 de largura. Mais `test_o_primario_e_o_ultimo_a_sair_da_fila`, cuja largura
+  de corte sai da própria barra -- sob `offscreen` não há a fonte da interface e cada botão mede
+  mais.
+- Nos testes que já existiam do painel: o estado vazio deixou de perguntar pelo rótulo do livro e
+  pergunta pelo sufixo do campo e pelo grupo cinza; o modo de seleção é afirmado pelo **botão
+  pressionado** (`test_o_modo_de_selecao_se_ve_no_botao_pressionado`), com
+  `test_o_clique_no_botao_de_selecao_liga_o_modo_uma_vez_so` e
+  `test_selecionar_sem_livro_nao_deixa_o_botao_pressionado`; o trancamento é medido item a item e
+  ganhou `test_o_cancelar_continua_vivo_com_o_painel_trancado`.
+- `tests/test_ui_comandos.py`: `_acoes_desenhadas` e o controle dela traduzidos para a forma da
+  tabela; `PDF_PANEL` passou a apontar para `ui/barra_do_pdf.py`.
+- `tests/test_ui_orfaos.py`: entraram `icones.ICONES_DO_PDF`, `barra_do_pdf.COM_LIVRO`,
+  `barra_do_pdf.TRANCADO` e `barra_do_pdf.LEITURA`, com motivo. **`barra_da_sala.ACOES` saiu**, e
+  não por ter ganhado chamador: a varredura é por identificador, e `qt/painel_do_pdf.py` passa
+  `barra_do_pdf.ACOES` para a fila -- o nome passou a existir fora daquele módulo. É limitação
+  conhecida do detector, está escrita lá, e quem continua cobrando a tabela da sala é
+  `tests/test_ui_barra_da_sala.py`.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-529 · O painel do motor: barra de avaliação vertical, linhas MultiPV clicáveis, profundidade — ◻ em andamento
 
 _Seção a escrever pelo executor do item._
 
-## S-530 · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável — ◻ em andamento
+## S-530 · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
+
+A sala tinha os headers e não os mostrava. `estudo.py:463-478` (`Estudo.de_posicao`) escreve
+`Event`, `Site`, `Result`, `Annotator`, `Round`, `SourcePDF`, `Page`, `Diagram` e `Caption`; um
+estudo aberto de um `.pgn` traz `White`, `Black`, `WhiteElo`, `BlackElo`, `Date` e `ECO` junto
+(`estudo.py:497` `de_jogo`); a busca na base (S-533) devolve partidas com os oito de
+`games_db.py:141` (`_KEPT_HEADERS`); e `Estudo.para_pgn` (`estudo.py:511`) exporta todos eles.
+
+Nada disso chegava à tela. `qt/painel_de_estudo.py:344` (`_esquerda`) desenhava tabuleiro, faixa
+de navegação, recorte, `lbl_origem`, `lbl_status` e o campo de FEN, e **nenhum dos nove campos**.
+Quem abrisse Capablanca–Alekhine na sala via um tabuleiro sem nome, sem torneio e sem resultado --
+e, exportando, gravava de volta um PGN cujos headers ele nunca pôde conferir nem corrigir. O
+ChessBase põe a linha acima do tabuleiro e abre "Game data" com duplo clique.
+
+### Solução
+
+**A decisão pura, `ui/cabecalho_da_partida.py`.** Nove campos na ordem do "Game data" -- que é a
+ordem em que se copia a legenda de um livro, e não a alfabética: Brancas/Elo, Pretas/Elo, Evento,
+Local, Data, Rodada, Resultado. Três decisões, e as três são de dado:
+
+1. **Os nove não são os oito de `_KEPT_HEADERS`.** Faltam lá os dois `Elo` -- aquela lista é a do
+   que o *índice* guarda por partida, e Elo não é chave de busca ali; na sala eles são metade da
+   pergunta "que partida é esta?". `ECO` vai no sentido contrário e fica **fora** do formulário:
+   ele é deduzido da posição (S-534) e já aparece na faixa sob o tabuleiro -- um campo editável ao
+   lado de uma dedução automática é o par de valores que diverge.
+2. **Vazio é o valor de fábrica do formato, e não a ausência da chave.** `del jogo.headers["White"]`
+   tira a etiqueta do jogo, e o PGN exportado sai sem ela -- inválido para qualquer leitor. Um
+   campo esvaziado grava o vazio **daquele** campo (`?`, `????.??.??`, `*`), e só os dois `Elo`,
+   que não são obrigatórios, somem de verdade. `OBRIGATORIOS` é conferido contra o próprio
+   `chess.pgn.Game().headers`, e não escrito de novo.
+3. **A frase tem duas linhas, e a segunda é a secundária**: `Capablanca, J (2720) — Alekhine, A
+   (2690) · 1-0` numa, `Kemeri · Kemeri LAT · 24/06/1937 · rodada 12` na outra. É a hierarquia do
+   ChessBase, e é o que faz a faixa caber em 494 px -- a largura da coluna a 1400×950.
+
+Mais duas que a medição pediu: **a data parcial vira o que dá para ler** (`1937.??.??` → `1937`,
+`1937.06.??` → `06/1937`), porque a maior parte do acervo só tem o ano e mostrar a sintaxe do
+formato não responde nada; e **o que o próprio programa escreveu não conta como dado**.
+`Estudo.de_posicao` põe `Event = "ChessVisionOFF Estudo"`, `Site = "Local"` e
+`Round = "{página}.{diagrama}"`: acima do tabuleiro isso é ruído com cara de dado -- `rodada 21.1`
+num livro de torneio parece a vigésima primeira rodada, e o livro tem catorze. Os três somem da
+**frase** e continuam no **formulário**, porque ali a pergunta é outra: o que está gravado no PGN.
+Sem essa distinção, "Gravar" sem tocar em nada apagaria o header que o resto do projeto escreve.
+O literal `"Local"` ganhou nome (`estudo.LOCAL`) por ter passado a ter dois leitores.
+
+**O desenho, `qt/painel_de_estudo.py`.** Uma faixa acima do tabuleiro com os dois rótulos e um
+botão de lápis à direita. Os rótulos são `_RotuloElidido`, um `QLabel` de uma linha que corta o
+próprio texto com `…` **no `resizeEvent` dele** -- elidir na hora de escrever não funciona, e foi
+medido: `_mostrar_cabecalho` roda dentro de `refresh`, que é chamado na montagem, e ali o rótulo
+ainda tem a largura de fábrica; a frase saía como `Jogadores nã...` numa faixa de 494 px. A dica
+carrega a frase inteira. Duplo clique em qualquer das duas linhas abre o mesmo diálogo.
+
+**O botão existe porque não há comando.** Editar o cabeçalho ainda não está em `ui/comandos.py`,
+então não há item de menu, tecla nem entrada na paleta -- e uma faixa que só responde a duplo
+clique é uma função que ninguém acha. O lápis é a afirmação de que aquilo é editável; o traço dele
+mora em `ICONES_DA_SALA` com a chave que `cabecalho_da_partida.ICONE` declara, e não com a de um
+comando que não existe.
+
+**O diálogo, `_JanelaDoCabecalho`.** Um `QComboBox` para o resultado -- `1:0`, `1-0 ` e `1–0` com
+travessão são o que se digita sem querer, e qualquer um faz o PGN ser recusado -- e campo livre
+para os outros oito, com os dois `Elo` estreitos na mesma linha do jogador. "Gravar" chama
+`_gravar_cabecalho`, que escreve **só o que mudou** (`mudancas`) e trata a mudança como edição da
+sala: `_marcar_sujo` empilha o PGN inteiro no histórico e agenda a gravação por inatividade. Com
+isso o `Ctrl+Z` que já existia para a árvore devolve o cabeçalho pelo mesmo caminho, sem uma
+segunda pilha, e o `salvar_agora` leva os headers junto -- eles já estão em `Estudo.para_pgn`.
+
+### Critério de aceite
+
+- A faixa aparece acima do tabuleiro e mostra o que o PGN tem. ✅ Medido a 1400×950: 38 px de
+  altura, duas linhas, e a coluna do tabuleiro continua com 494 px.
+- Sem jogadores ela **diz o que falta** em vez de ficar em branco (`Jogadores não informados`), e a
+  segunda linha vazia não ocupa altura. ✅ Uma faixa em branco acima do tabuleiro é espaço que
+  ninguém sabe que é editável.
+- Um estudo aberto de um diagrama do livro não anuncia o programa: `ChessVisionOFF Estudo · Local ·
+  rodada 21.1` não aparece. ✅
+- Nome longo é elidido à largura de agora e volta ao alargar; a dica traz a frase inteira. ✅
+- O diálogo abre com o que está gravado, sem o `?` do padrão nos campos, e grava nos headers. ✅
+  Medido no roteiro: `Capablanca, José Raúl (2720) — Alekhine, Alexander (2690) · 1-0` /
+  `Kemeri · Kemeri LAT · 24/06/1937 · rodada 12`, e o PGN exportado traz `White`.
+- **`Ctrl+Z` desfaz a edição do cabeçalho** e `salvar_agora` a leva ao disco. ✅ `edicao` sobe de
+  0 para 1 na gravação, e desfazer devolve `Jogadores não informados`.
+- "Gravar" sem tocar em nada **não** cria passo de desfazer. ✅ Afirmado com o jogo recém-criado,
+  com o estudo de um diagrama e com uma partida inteira.
+- Esvaziar uma das sete etiquetas obrigatórias não tira a chave do jogo; esvaziar um `Elo` tira. ✅
+- **Fica de fora, e é a linha para o relatório**: item de menu, tecla e entrada na paleta para
+  "Editar o cabeçalho". Isso exige uma linha em `ui/comandos.py`, que outro executor está
+  reescrevendo nesta sessão; o gancho está pronto -- basta o comando e uma linha em
+  `sala_declarada.COMANDOS_DA_ABA` apontando para `editar_cabecalho`, e a ação entra na barra da
+  sala, no menu e na paleta sozinha (S-280).
+
+### Testes
+
+- `tests/test_ui_cabecalho_da_partida.py` (novo, puro): os nove campos e a ordem deles; o que o
+  formulário acrescenta a `_KEPT_HEADERS` e o que deixa de fora; só o resultado tem lista fechada;
+  `OBRIGATORIOS` conferido contra `chess.pgn.Game().headers`; o vazio de cada campo; **esvaziar uma
+  obrigatória não tira a chave**; o `?` não vai para o campo; "Gravar" sem mexer não muda nada, nos
+  três estados; o que o programa escreve aparece no formulário e não na frase; as duas linhas com a
+  partida inteira; o Elo sozinho e o nome sozinho; a rodada que é coordenada do livro; a data
+  parcial nos quatro formatos e a escrita à mão que volta como veio; o que é gravado sobrevive à
+  ida e volta pelo PGN; e o módulo sem toolkit.
+- `tests/test_qt_painel_de_estudo.py::CabecalhoDaPartidaTests` (novo): a faixa mostra o que o PGN
+  tem; sem jogadores ela continua visível e a segunda linha some; o nome longo é elidido e a dica
+  traz a frase inteira; o lápis tem traço e dica; o diálogo abre com o gravado; **gravar escreve
+  nos headers, aparece na faixa, entra no PGN e entra no desfazer** -- e o `Ctrl+Z` devolve;
+  gravar sem mudar nada não cria passo; um editor por campo.
+- `tests/test_ui_barra_da_sala.py::test_nenhum_traco_da_sala_e_orfao` passou a contar o traço do
+  cabeçalho entre os usados: ele é da sala e quem o pede não é a tabela da barra.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-531 · Ler `.pgn.gz`, `.pgn.bz2` e `.zip` de PGN sem descompactar para o disco — ✅ **implementada em 2026-09-04**
 
@@ -514,65 +769,161 @@ o diálogo entre aberturas (um `QThread` destruído enquanto roda derruba o proc
 posição. `abrir_partida_da_base` lê a partida pelo offset, a monta em PGN
 (`estudo_partidas.como_pgn`) e a põe na mesa por `estudo.colar`, guardando antes o estudo aberto.
 
+### A segunda rodada: o plano da consulta, e não a consulta
+
+O crítico mediu doze consultas em vez das seis da spec, e **seis delas passavam de um segundo** na
+gigabase. A causa era uma só, e não estava em nenhum filtro: `ORDER BY year DESC, date DESC,
+id DESC LIMIT 100` sobre um filtro que casa milhões é a ordenação de milhões de linhas para
+devolver cem. A contagem já parava no teto em dezenas de milissegundos nas mesmas consultas -- o
+que custava era ordenar o que se achou, e não achar.
+
+**Duas árvores novas, e a versão foi para 6.**
+
+- **`games_ordem (year, date, id, result)`** é a **ordem em que a busca responde**, e não um
+  filtro. Com ela o sqlite anda pela árvore de trás para a frente, confere o filtro linha a linha
+  e para na centésima que passa: o custo deixa de ser *quantas casam* e passa a ser *quantas se
+  olha até achar cem*. As duas colunas do fim não são ordem: o `id` é o rowid escrito de novo, e é
+  o que faz o prefixo `(year, date, id)` ser exatamente o `ORDER BY` (sem ele aparece o
+  `USE TEMP B-TREE FOR RIGHT PART OF ORDER BY`); o `result` é o único filtro sem árvore própria, e
+  sem ele na folha a contagem de *"1990–2020, vitória das brancas"* era uma sonda na tabela por
+  linha -- 1,25 s contra **12 ms** com a folha cobrindo.
+- **`games_elo (elo)`**, porque "Elo mínimo 3500" sem mais nada era a varredura de dez milhões de
+  linhas para responder *nenhuma*: 1,08 s medidos, e **para zero resultado**.
+
+**A contagem escolhe o plano, e ela já existia.** `buscar` conta primeiro, com `LIMIT
+TETO_DE_CONTAGEM + 1` -- e é o número que ela devolve que separa dois planos de custos opostos:
+
+| a contagem diz | o plano | o custo |
+|---|---|---|
+| passou do teto (o filtro casa milhões) | `_POR_ORDEM`: `INDEXED BY games_ordem`, andando de trás para a frente | quantas se olha até achar cem |
+| ficou abaixo (o filtro escolhe) | `_POR_FILTRO`: a árvore mais seletiva, com teto de cem mil, e ordenar o que sobrou | no máximo cem mil linhas ordenadas |
+
+**`INDEXED BY` e não confiança no planejador**, e o motivo é medido: este Python traz um sqlite
+**sem `STAT4`** (`PRAGMA compile_options` não o lista), então toda faixa vale a mesma estimativa
+de fábrica para ele -- `eco BETWEEN 'A00' AND 'E99'` e `eco = 'B90'` são indistinguíveis para o
+custo que ele calcula. O plano certo aqui não depende de estatística nenhuma: a contagem já disse
+qual é o caso.
+
+**A v6 é a primeira versão que não manda refazer.** As tabelas são idênticas às da v5 -- o que
+falta é árvore, e árvore se cria sobre a tabela pronta. `_VERSOES_QUE_SO_GANHAM_ARVORE` guarda
+essa distinção: a regra "migração é refazer" das versões 3, 4 e 5 valia porque faltava **dado
+gravado**, e cobrar aqui a passada de dez minutos seria zelo cobrado do usuário. Medido: a v5 da
+gigabase virou v6 em **16 s**, com **zero partida relida**.
+
+**Três leituras do campo de nome**, e as duas novas nasceram de buscas que respondiam zero
+(`_sobrenomes`): `Magnus Carlsen` na ordem natural passou a achar as mesmas 5.141 partidas que
+`Carlsen, Magnus` (respondia **0, em silêncio**), e o sufixo de geração colado no sobrenome --
+`Vehre Jr, John L` entra no dicionário como `vehre jr`, e são **338 grafias assim** na gigabase --
+entra como forma exata no `IN`: `Vehre` passou de **32** para **419** partidas.
+
+**A tabela ordena pelo cabeçalho** (`TabelaQt(ordenavel=True)`), que é o gesto de toda sessão de
+quem usa uma base. A ordenação é **da página**, e não da base. Ligá-la abriu um defeito pior que a
+ausência: a escolha da linha era `indexOfTopLevelItem`, que é a altura na tela -- com a lista
+ordenada, o duplo clique abriria outra partida, plausível e sem erro nenhum. A posição de chegada
+passou a viajar com a linha (`TabelaQt.posicao_de`).
+
+**Cancelar a indexação deixou de custar a rodada inteira.** A transação era por arquivo, e a
+gigabase **é** um arquivo: parar no nono minuto desfazia os nove. A cada `_TAMANHO_DO_LOTE`
+partidas gravadas, o manifesto anota até que byte o arquivo está lido -- na mesma forma que ele já
+usava para o torneio anexado da S-532 --, e a rodada seguinte continua de lá. Base comprimida fica
+de fora: ali o byte lido não é o byte do disco.
+
 ### Critério de aceite
 
-Todas as medições de busca sobre o índice v5 da **`LumbrasGigaBase_OTB_Complete.pgn` inteira**
-(8,6 GB, 10.355.488 partidas), melhor de três, em 2026-09-04:
+Todas as medições sobre o índice da **`LumbrasGigaBase_OTB_Complete.pgn` inteira** (8,6 GB,
+10.355.488 partidas), melhor de três, na mesma sessão de 2026-09-04. A coluna "v5" é o código da
+primeira rodada sobre o índice do crítico; a coluna "v6" é este código sobre o mesmo índice
+completado.
 
-| busca | tempo | o que voltou |
-|---|---|---|
-| Carlsen | **30 ms** | 5.141 partidas |
-| Carlsen × Anand | **56 ms** | 140 partidas |
-| evento "Tata Steel" | **77 ms** | 5.133 partidas |
-| Elo ≥ 2700 em 2019 | **44 ms** | 1.989 partidas |
-| ECO B90 | **37 ms** | mais de 100.000 partidas |
-| Carlsen · 2019 · Elo ≥ 2700 · B90 | **52 ms** | 5 partidas |
+| busca | v5 | v6 | o que voltou |
+|---|---|---|---|
+| Carlsen | 34,2 ms | **29,5 ms** | 5.141 partidas |
+| Carlsen × Anand | 57,0 ms | **50,4 ms** | 140 partidas |
+| evento "Tata Steel" | 82,7 ms | **79,6 ms** | 5.133 partidas |
+| Elo ≥ 2700 em 2019 | 46,1 ms | **44,2 ms** | 1.989 partidas |
+| ECO B90 | 36,9 ms | **8,0 ms** | mais de 100.000 |
+| Carlsen · 2019 · Elo ≥ 2700 · B90 | 56,6 ms | **50,4 ms** | 5 partidas |
+| **ano 2019 sozinho** | **2.823 ms** | **7,0 ms** | mais de 100.000 |
+| **faixa ECO A00–E99** | **5.449 ms** | **6,0 ms** | mais de 100.000 |
+| **evento `ch-`** | **5.084 ms** | **54,4 ms** | mais de 100.000 |
+| **faixa ECO B00–B99** | **1.952 ms** | **6,0 ms** | mais de 100.000 |
+| **anos 1990–2020** | **2.318 ms** | **6,9 ms** | mais de 100.000 |
+| **Elo ≥ 3500** | **1.084 ms** | **0,8 ms** | nenhuma partida |
+| Elo ≥ 2700 sem ano | 451 ms | **149 ms** | 25.555 partidas |
+| Ivanov (sobrenome comum) | 281 ms | **137 ms** | 22.045 partidas |
+| página 40 de A00–E99 | 5.801 ms | **6,8 ms** | mais de 100.000 |
+| 1990–2020 · vitória das brancas | 2.911 ms | **19,6 ms** | mais de 100.000 |
 
-- Cada uma **< 1 s** com o índice em dia. ✅ (a mais lenta é 77 ms, 13× dentro do orçamento)
-- O índice da gigabase inteira: **611 s (10,2 min) e 1.764 MB**, contra 431 MB na v4 -- o preço de
-  treze colunas e seis árvores no lugar de três colunas e uma.
+- **As doze da rodada do crítico ficam abaixo de 1 s, e a mais lenta é 54 ms** -- 18× dentro do
+  orçamento. Nenhuma consulta medida ficou de fora do critério: as quatro últimas linhas são casos
+  que esta rodada procurou de propósito, e passam também. ✅
+- O `EXPLAIN QUERY PLAN` das que eram lentas, agora:
+
+  | consulta | plano |
+  |---|---|
+  | `ano 2019` · página | `SEARCH games USING COVERING INDEX games_ordem (year>? AND year<?)` |
+  | `A00–E99` · página | `SCAN games USING INDEX games_ordem` |
+  | `Elo ≥ 3500` · contagem | `SEARCH games USING COVERING INDEX games_elo (elo>?)` |
+  | `1990–2020 + 1-0` · contagem | `SEARCH games USING COVERING INDEX games_ordem (year>? AND year<?)` |
+
+- **O preço em disco: 1.763 MB → 2.180 MB (+23,7%)**, e o preço em tempo de uma v5 já pronta é
+  **16 s de `CREATE INDEX`, sem reler byte nenhum do `.pgn`**. ✅
+- `Magnus Carlsen` responde o mesmo que `Carlsen, Magnus` (5.141), e `Vehre` acha as grafias com
+  `Jr` coladas (32 → 419). ✅
+- A tabela ordena pelo cabeçalho, com a coluna numérica ordenando por magnitude e a célula sem
+  valor no fim **nos dois sentidos**; a linha escolhida continua sendo a que está marcada. ✅
+- Toda célula de toda `TabelaQt` leva o próprio texto como dica. ✅
+- Cancelar a indexação não faz a rodada seguinte reler o arquivo inteiro. ✅
 - A janela não trava com dez milhões de partidas: a consulta roda numa `Tarefa`, e o teste afirma
-  que ela **começou sem ter terminado** -- o que uma thread faz e uma chamada direta não. ✅
-- Um índice de outra versão, ausente ou em obras vira frase **com instrução**, e não tabela vazia. ✅
-- Paginação estável: a página seguinte não repete a anterior, e a anterior volta igual. ✅
-- Formulário malfeito não vira consulta, e a frase diz **quais** campos. ✅
-- `qt/janela.py` não foi tocado. ✅
+  que ela **começou sem ter terminado**. ✅
+- Um índice de outra versão, ausente ou em obras vira frase **com instrução**. ✅
+- Paginação estável, formulário malfeito recusado com o nome dos campos. ✅
+
+### O que ficou de fora, e por quê
+
+- **Elo máximo, número de lances e rodada.** O Elo máximo dá para fazer com a coluna que já
+  existe, mas ela é o **menor** dos dois Elos -- "Elo máximo 2200" perguntaria pelo jogador mais
+  fraco da partida, que é a pergunta errada, e responder a certa é `welo <= ? AND belo <= ?` com o
+  zero de "sem Elo" passando por dentro. Número de lances e rodada não estão no índice: são duas
+  colunas novas, uma v7 e a passada de dez minutos sobre a gigabase. Nenhum dos três é o defeito
+  que esta rodada foi consertar, e os três juntos são um item próprio.
+- **O sufixo colado no dicionário.** `Vehre Jr` está corrigido do lado de quem pergunta; o
+  dicionário continua gravando `vehre jr`. Consertar `games_db.surname` seria o caminho curto e
+  custa a passada inteira: o `pair` de cada uma das 10,3 milhões de linhas é `pair_hash` sobre o
+  sobrenome, e mudá-lo invalidaria a coluna.
 
 ### Testes
 
-- `tests/test_ui_busca_de_partidas.py`: `de_campos` (vazio ≠ malfeito, nada consertado calado, todo
-  campo do `Filtro` alcançável pelo formulário); `problemas` (sem filtro que estreite; cada campo
-  com árvore basta sozinho; ano fora da faixa e invertido; ECO que não é código e faixa invertida;
-  resultado que o PGN não escreve; todos de uma vez); `COLUNAS`/`linha` (as oito na ordem, Elo
-  numérico, evento elástico, travessão e não zero); `resumo` (a frase do item, singular e zero,
-  teto, página, os dois jogadores e a cor exigida, cada filtro na frase).
-- `tests/test_games_index.py::BuscaTests`: cada filtro sobre uma base de doze partidas, sete
-  jogadores, três torneios e cinco anos -- sobrenome achando as duas grafias, qualquer cor, o par
-  nas duas montagens, evento por pedaço e **não** como padrão de `LIKE`, faixa de ano inclusiva, a
-  partida sem data fora de toda faixa, o Elo mínimo como o menor dos dois, resultado, faixa de ECO,
-  a combinação dos cinco, a ordem por data, **a partida sem data no fim e não no começo**,
-  paginação, total que não é o da página, contagem no teto, a linha com o que a tabela mostra e o
-  offset que abre a partida, o filtro por posição dizendo quantas examinou.
-  `MigracaoDeVersaoTests`: v4 recusado com a instrução, apagado e refeito com a coluna nova; a
-  versão gravada; índice em obras; índice ausente.
-- `tests/test_qt_busca_de_partidas.py`: as oito colunas montadas; os quatro valores de resultado; a
-  caixa da posição só com posição; a busca fora da linha de eventos; uma de cada vez; formulário
-  malfeito e sem filtro que estreite não viram consulta; "nenhuma partida" com a pergunta ao lado;
-  `IndiceIndisponivel` com instrução; o botão que pede o índice; paginação; duplo clique e Enter
-  emitindo `(caminho, offset)`; a escolha não fecha o diálogo; falha inesperada no log **e** na
-  frase, e `IndiceIndisponivel` só na frase.
-- `tests/test_qt_barra_da_sala.py`: a ação da barra abre o diálogo com a janela como pai, as bases
-  da sala e a posição do tabuleiro; o diálogo é reusado e a posição atualizada; sem base a frase
-  diz isso; a partida que o índice não acha mais não vira meia partida. `tests/test_ui_comandos.py`
-  e `tests/test_ui_barra_da_sala.py` cobram o comando novo nos dois sentidos.
-- Guardas: `tests/test_editor_model.py::SEM_TKINTER` ganhou `busca_de_partidas.py`;
-  `tests/test_busy.py::SEM_REGISTRO` ganhou a thread da busca com o motivo (nada é gravado, e a
-  mesma pergunta se refaz com um clique); `docs/ARCHITECTURE.md` passou a contar quinze threads e a
-  tabela ganhou a linha da busca.
+- `tests/test_games_index.py::DoisPlanosDeBuscaTests`: os dois planos dão **a mesma página** para
+  seis filtros diferentes e paginam igual (o teto é rebaixado para 2, que é o que faz uma base de
+  doze partidas exercitar os dois); a contagem para no teto e a página não.
+  `SobrenomeDaBuscaTests`: a ordem natural, a forma inteira que continua valendo, o sufixo de
+  geração, e o campo vazio que não vira forma nenhuma.
+  `MigracaoDeVersaoTests`: o v5 é **completado e não refeito** (`relidas == 0`, as linhas ficam, as
+  árvores aparecem, a versão sobe) e continua recusado pela busca até a rodada acontecer.
+  `CancelamentoDoIndiceTests`: o cancelamento no meio do arquivo não faz a rodada seguinte relê-lo
+  inteiro -- o que se afirma é o **custo**, porque a resposta final é a mesma nos dois mundos.
+- `tests/test_qt_tabela.py::OrdenacaoEDicaTests`: de fábrica a tabela não ordena; a coluna numérica
+  ordena por magnitude; a célula sem número vai para o fim nos dois sentidos; a posição de chegada
+  sobrevive à ordenação; toda célula leva a própria dica; preencher de novo não multiplica linhas.
+- `tests/test_qt_busca_de_partidas.py`: a partida escolhida é a da linha marcada **depois** de
+  ordenar, e ordenar não muda o que a busca achou.
+- Os testes da primeira rodada continuam valendo e não foram tocados.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+| o que ele achou | o que mudou |
+|---|---|
+| `ano 2019` sozinho em **2,55 s**; `A00–E99` em **7,73 s**; evento `ch-` em **5,94 s**; `B00–B99` em **1,40 s**; `1990–2020` em **1,54 s** -- seis consultas acima do "< 1 s" da spec | `games_ordem (year, date, id, result)` e a escolha de plano pela contagem: as cinco caem para **7,0 / 6,0 / 54,4 / 6,0 / 6,9 ms** |
+| `Elo ≥ 3500` custando **0,83 s para devolver zero linha** | `games_elo (elo)`: **0,8 ms**, e a contagem passa a ser uma sonda em vez de uma varredura |
+| A spec media seis consultas escolhidas e chamava o critério de cumprido | O critério passou a ser medido sobre **dezesseis**, com a coluna "antes" ao lado, e a mais lenta delas está na tabela |
+| Tabela sem ordenação por coluna (`setSortingEnabled`) -- gesto de toda sessão no ChessBase | `TabelaQt(ordenavel=True)` na busca, com ordem numérica pela declaração de `Coluna` e a posição de chegada viajando com a linha |
+| Nenhuma `TabelaQt` tinha dica de célula | Toda célula leva o próprio texto como dica |
+| `Magnus Carlsen` (ordem natural) devolvia **0 em silêncio** | A última palavra entra como segunda forma: 5.141 partidas |
+| 264 grafias com sufixo colado (`Vehre Jr, John L` → `vehre jr`) inalcançáveis | As formas com sufixo entram no `IN`: `Vehre` passou de 32 para 419 partidas (338 grafias com sufixo na base) |
+| Cancelar a indexação da gigabase perdia tudo (transação por arquivo, e a gigabase é um arquivo) | Transação por lote dentro do arquivo, com o ponto de retomada no manifesto |
+| Sem Elo máximo, sem número de lances, sem rodada | Registrado em "O que ficou de fora" com o custo de cada um; nenhum foi feito |
+
 
 ## S-534 · Classificação ECO embutida, gravada no índice e mostrada na sala — ✅ **implementada em 2026-09-04**
 
@@ -631,66 +982,147 @@ foi fechada mais tarde na passada por causa disto: até a v4 ela era fechada no 
 ao lado do lance corrente e da vez, e ela é refeita a cada lance em `_mostrar_lance_corrente`. Sem
 header, `classificar` lê a pilha de lances do próprio tabuleiro -- e é aí que a transposição paga.
 
+### A segunda rodada: a regra, o teto e a tabela
+
+O crítico comparou a classificação com o header `[ECO]` da própria base e achou **59,7%** de
+acerto em `classificar_lances` e **73,2%** em `classificar`, com 27,6% errando até a letra. E achou
+a transposição prometida não acontecendo: `1.Nf3 d5 2.d4 Nf6 3.c4` dava **D02** e
+`1.d4 d5 2.c4 Nf6 3.Nf3` dava **D06**, sendo a mesma posição.
+
+**Onde o header existe, e o que isso decide.** Medido em 20.000 partidas colhidas em 200 pontos
+aleatórios da gigabase (`scratchpad/eco_medir.py`): **100,000% delas têm `[ECO]`** -- 20.000 de
+20.000, e nenhuma com `[FEN]`. Do outro lado, a `Endgame_Study_Database_VI` não traz o header em
+**nenhuma** das 93.839, porque são composições montadas de um `[FEN]` e não têm abertura. Então a
+tabela embutida **não decide o código de nenhuma partida de base publicada**: ela decide o de
+material OCRado, o de partida digitada na sala, o de base exportada de servidor -- e é a legenda
+que a sala mostra sob o tabuleiro. É por isso que a comparação com o header é a régua certa mesmo
+não sendo o caminho de produção: ela é a única verdade de referência que existe em escala.
+
+**A transposição não era a posição final: era a regra.** `classificar` guardava a linha **mais
+longa da tabela** entre todas as que a partida tocou, e cada caminho havia passado por uma
+intermediária diferente. Passou a valer a **posição mais tardia que a tabela conhece**, andando
+para trás a partir da última -- que é a regra da classificação padrão. Sozinha, ela levou o acerto
+de 77,41% para... nada: 77,41% é o número **já com ela**. Contra a medição do crítico (73,2% na
+amostra dele), a mudança de regra é a diferença entre as duas.
+
+**O teto de lances era menor que a tabela.** `LANCES_EXAMINADOS` era 24 e a linha mais longa tem
+**28** (D69), com outras três em 24 ou mais. **C99 era inalcançável**: as 52 partidas C99 da
+amostra erraram **todas as 52**. Trinta cobrem a linha mais longa com folga.
+
+**A tabela cresceu 266 linhas, e cada uma nasceu de um erro contado.** São 785 linhas para os
+mesmos 500 códigos -- 519 na tabela padrão, escrita por código, mais `_TABELA_EXTRA`, escrita a
+partir da lista de confusões. As três formas de falha que ela conserta:
+
+1. **A porta de transposição que faltava**: `1.Nf3 d5 2.c4 e6` chega à mesma posição de
+   `1.c4 e6 2.Nf3 d5`, e a tabela só tinha `A13 = 1.c4 e6` -- cedo demais para a partida ainda
+   estar nela. Eram 149 erros de A13 em 178 partidas.
+2. **O ponto de bifurcação sem linha**: `C54` era só a linha principal de 11 meios-lances, e quem
+   jogasse `4...Nf6 5.d3` caía em `C53`. 102 erros em 103 partidas.
+3. **A abertura alcançável por um caminho só**: `B33` existia como a Sveshnikov de 16 meios-lances,
+   e a mesma abertura por `5...e6 6.Ndb5` não tinha linha. 95 erros em 398.
+
+Duas linhas foram escritas, medidas e **retiradas** por piorarem o total: `C55` para
+`3.Bc4 Nf6 4.d3` (a base chama o mesmo lugar de C50 mais vezes do que de C55) e `D36` para
+`5.Bg5 Be7 6.e3`. Estão registradas aqui porque o próximo a mexer na tabela vai querer escrevê-las
+de novo.
+
+**O nome mostrado passou a ser o da linha.** `nome(codigo)` é a legenda da **família** e ela
+repete: dos 500 códigos, **240 têm um nome que outro código também usa** -- *Ruy Lopez* nomeia
+nove, *English* treze, *Sicilian* doze. Sob um tabuleiro que está na Berlim aberta, `ECO C67 ·
+Ruy Lopez` diz o que já se via. `frase_da_abertura` usa `Abertura.nome`, que é o nome da **linha
+casada**, e são 600 nomes distintos. `frase_do_tabuleiro` classifica a posição mesmo com header:
+concordando, a legenda é a da linha; discordando, o código continua sendo o do header e a legenda
+volta a ser a da família -- afirmar o nome de uma linha que a partida não percorreu é pior que a
+legenda genérica.
+
 ### Critério de aceite
 
-- **A tabela é a classificação padrão inteira**: 500 códigos, todo código com nome, e **toda linha
-  legal desde a posição inicial** (um `push_san` que levantasse ali derrubaria a sala num
-  `refresh`). ✅
-- **O custo de indexar com ECO, contra a mesma v5 sem a coluna preenchida** -- medido em
-  2026-09-04, com as rodadas **intercaladas** e por mínimo, porque esta máquina deriva (oito
-  rodadas seguidas da mesma medição saem de 2,70 s a 3,54 s, sempre crescendo; uma primeira
-  passada sequencial atribuiu a deriva à diferença e mediu +35% onde a intercalada mede +14%):
+Medido em 2026-09-04 sobre **20.000 partidas** colhidas em 200 pontos aleatórios da
+`LumbrasGigaBase_OTB_Complete.pgn` (semente 20260904), contra o header `[ECO]` de cada uma. A
+amostra é por sorteio de offset porque a base é ordenada por evento e ano, e ler o começo mediria
+um recorte.
 
-  | base | v5 sem ECO | v5 com ECO | o ECO custa |
-  |---|---|---|---|
-  | `Endgame_Study_Database_VI` (62 MB, 93.839 estudos, **todos com `[FEN]`**) | 7,66 s | 6,97 s | dentro do ruído (−9%) |
-  | recorte de 300 MB da gigabase (366.031 partidas, **99,99% com `[ECO]`**) | 29,75 s | 25,35 s | dentro do ruído (−15%) |
-  | o mesmo recorte com os `[ECO]` **removidos** (pior caso) | 27,83 s | 33,89 s | **+21,8%** (16,6 µs/partida) |
-  | recorte de 30 MB do anterior, oito voltas intercaladas | 2,70 s | 3,59 s | **+32,9%** (21,9 µs/partida) |
+| | antes desta rodada | agora |
+|---|---|---|
+| `classificar` (por posição), código exato | 77,41% | **86,39%** |
+| `classificar`, mesma letra | 94,48% | **96,63%** |
+| `classificar_lances` (por ordem), código exato | 66,17% | **68,88%** |
+| `classificar_lances`, mesma letra | 88,39% | **88,48%** |
+| erros ao todo | 4.518 | **2.723** (−39,7%) |
+| linhas da tabela | 519 | **785** |
 
-  **O orçamento de +30% vale nos dois primeiros casos com folga, e o pior caso fica entre +22% e
-  +33% conforme a rodada.** Os dois primeiros são as bases reais: numa delas a classificação
-  **não roda** (toda partida tem `[FEN]`, e uma composição não tem abertura), na outra ela roda em
-  0,01% das partidas. O pior caso é uma base sintética em que nenhuma partida tem `[ECO]` -- e é
-  exatamente a base em que a coluna só existe porque a classificação a preenche: sem ela o filtro
-  por ECO responderia zero ali, em silêncio. Medida em separado, a classificação de uma partida
-  real custa **11,4 µs** (tokenizar mais consultar a árvore, sobre 40.553 partidas do recorte); o
-  resto do custo de ponta a ponta são as duas linhas de movetext lidas e a árvore `games_eco` mais
-  gorda.
-- **A classificação por lance é duas ordens de grandeza mais barata que a por posição**, que é a
-  razão de haver duas: ~1 µs contra ~0,5 ms por partida. Um replay na passada do índice seria
-  +1 ms × 10 milhões ≈ três horas sobre os dez minutos da gigabase. ✅ (afirmado por teste, com
-  teto de 0,05 ms por partida -- dez vezes o medido, para a guarda não virar medidor de máquina
-  ocupada)
-- **O header vence a tabela** no índice e na sala; a sublinha (`B90a`) é cortada para `B90`; a
-  partida montada de um `[FEN]` não ganha abertura. ✅
-- **A frase é `ECO B33 · Sicilian, Sveshnikov`**, com o código antes do nome, e um código que a
-  tabela não conhece não ganha legenda inventada. ✅
-- O filtro por ECO da S-533 acha as partidas classificadas **sem** header. ✅
-- A frase da sala custa ~0,5 ms por lance, e a tabela por posição é montada uma vez (84 ms). ✅
+**A meta honesta é 86,39%, e não 99%.** Os 13,6% que sobram não são uma tabela pequena: são casos
+em que a própria base responde as duas coisas. `1.e4 c5 2.Nf3 e6 3.g3` aparece 179 vezes como A08
+(ataque índio do rei) e 283 como B40 (siciliana), da mesma posição; `3.Bc4 Nf6 4.d3` aparece como
+C50 e como C55; `4.cxd5 exd5 5.Bg5 Be7 6.e3` como D35 e como D36. Escrever a linha melhora um dos
+dois lados e piora o outro na mesma proporção -- foi medido nos três casos, e as duas linhas que
+saíram são a prova. A mesma-letra em **96,63%** é o número que diz o que a classificação entrega
+na prática: a família da abertura está certa em 19 de cada 20 partidas.
+
+- A transposição do crítico: `1.Nf3 d5 2.d4 Nf6 3.c4` e `1.d4 d5 2.c4 Nf6 3.Nf3` dão **o mesmo
+  código**, e mais cinco pares de posições comprovadamente iguais também. ✅
+- **O alcance da transposição é o da tabela.** Dois caminhos que chegam a uma posição que a tabela
+  não conhece andam para trás cada um pelo seu e podem parar em pontos diferentes. Foi exatamente
+  o caso do par do crítico -- a resposta ali não é uma regra melhor, é a linha que faltava. ✅
+- A linha mais longa da tabela é alcançável: C98, C99, D68, D69 e D89 classificam nos próprios
+  códigos. ✅
+- **O custo, medido em 2026-09-04 nesta máquina:**
+
+  | | custo |
+  |---|---|
+  | `classificar` sobre a pilha de um tabuleiro de 24 meios-lances (o caminho da sala) | **960 µs** |
+  | `classificar` sobre uma lista de SAN (o caminho da medição) | **1.108 µs** |
+  | `frase_do_tabuleiro` por lance na sala, do 1º ao 24º | **média 521 µs, pior 898 µs** |
+  | `classificar_lances` (o caminho do índice) | **1,06 µs** |
+  | montar a tabela por posição, uma vez | **100 ms** |
+
+  A primeira rodada dizia "~0,5 ms por partida" para `classificar` e o crítico mediu 1.144 µs.
+  **Os dois números estavam certos sobre coisas diferentes**, e a spec citava um no lugar do
+  outro: 0,5 ms é o custo **médio por lance** da frase da sala -- os primeiros lances são baratos
+  --, e ~1,0 ms é o custo de classificar **uma partida inteira**. A tabela acima diz os dois.
+- A classificação por lance continua **três ordens de grandeza** mais barata que a por posição
+  (1,06 µs contra 960 µs), que é a razão de haver duas: um replay na passada do índice seria
+  +1 ms × 10 milhões ≈ três horas sobre os dez minutos da gigabase. ✅
+- O header vence o **código** no índice e na sala; a posição dá o **nome**; a sublinha (`B90a`) é
+  cortada; a partida montada de um `[FEN]` não ganha abertura. ✅
+- Os 500 códigos continuam cobertos, toda linha continua legal desde a posição inicial, e nenhuma
+  posição da tabela é alcançada por dois códigos diferentes na mesma profundidade. ✅
+
+### O que ficou de fora, e por quê
+
+- **`classificar_lances` subiu pouco (66,17% → 68,88%)**, e vai continuar subindo pouco: ela casa
+  pela **ordem dos lances**, e as 266 linhas novas são majoritariamente portas de transposição --
+  posições alcançadas por outra ordem, que é justamente o que uma árvore de prefixos não vê. Ela é
+  o caminho do índice, e na gigabase o índice usa o header em 100% das partidas: o número dela
+  pesa numa base exportada de servidor, e ali é a mesma tabela vista pelo lado que não transpõe.
+- **A tabela não virou a classificação completa.** A do Informador tem milhares de linhas por
+  código; esta tem 785 no total, escritas para os erros que a medição apontou. O caminho para 90%+
+  é mais medição e mais linhas, não outra regra.
 
 ### Testes
 
-- `tests/test_eco.py`: `TabelaTests` (os 500 códigos das cinco letras, toda linha legal, todo
-  código com nome, o nome é o da primeira linha); `ClassificarTests` (o mais profundo vence, a
-  transposição chega ao mesmo código, a ordem dos lances **não** a vê, toda primeira jogada legal
-  tem código, sem lance nenhum não há abertura, lance ilegal encerra a leitura, tabuleiro e
-  sequência dão o mesmo, o tabuleiro montado de uma FEN não inventa abertura); `HeaderEFraseTests`
-  (a sublinha cortada, o header vencendo, o código antes do nome); `MovetextTests` (números,
-  resultado e NAGs fora, o lance do comentário não conta, `4... Nf6`, o roque, o teto);
-  `CustoTests` (o orçamento por partida, e a comparação entre os dois caminhos -- sem ela, "há
-  duas classificações" parece redundância em vez de decisão).
-- `tests/test_games_index.py::ColunaEcoTests`: o header vence; sem header os primeiros lances
-  classificam (e dão códigos **diferentes** para aberturas diferentes, para o valor não ser fixo);
-  a sublinha cortada; a partida montada de um `[FEN]` sem abertura; e a busca por ECO achando a
-  que foi classificada sem header.
-- `tests/test_qt_barra_da_sala.py`: a partida aberta pela busca leva o ECO dela à faixa sob o
-  tabuleiro (`ECO B90 · Sicilian, Najdorf`).
-- `README.md` ganhou `eco.py` na árvore de módulos.
+- `tests/test_eco.py::TransposicaoTests`: os seis pares de posições comprovadamente iguais (o teste
+  **confere** que são a mesma posição antes de comparar os códigos, senão não prova nada); a regra
+  da posição mais tardia contra a da linha mais longa, num caso em que discordam; a linha mais
+  longa da tabela alcançável.
+- `tests/test_eco.py::NomeDaLinhaTests`: a frase da sala traz o nome da linha e **não** o da
+  família; com header que concorda a legenda é a da linha; com header que discorda o código é do
+  header e a legenda volta à família; sem posição conhecida o header ainda responde.
+- Os testes da primeira rodada (`TabelaTests`, `ClassificarTests`, `HeaderEFraseTests`,
+  `MovetextTests`, `CustoTests`) continuam valendo sem mudança.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+| o que ele achou | o que mudou |
+|---|---|
+| `classificar_lances` acerta **59,7%** e `classificar` **73,2%** contra o header; 27,6% erram até a letra | 86,39% e 68,88% exatos, 96,63% e 88,48% na letra, medidos em 20.000 partidas com o método escrito |
+| A transposição prometida não acontece: `1.Nf3 d5 2.d4 Nf6 3.c4` dá D02 e `1.d4 d5 2.c4 Nf6 3.Nf3` dá D06 | A regra passou a ser a **posição mais tardia** e não a linha mais longa; e a posição final daquele par ganhou linha. Os dois dão D06 |
+| A tabela tem 519 linhas para 500 códigos | 785 linhas, e as 266 novas saíram da lista de confusões medida |
+| **240 dos 500 nomes repetem** o de outro código (13 dizem `English`, 12 `Sicilian`, 9 `Ruy Lopez`); a sala diz `ECO C67 · Ruy Lopez` onde o ChessBase diz *Berlim, variante aberta* | O nome mostrado passou a ser o da **linha** (`frase_da_abertura`): 600 nomes distintos, e o C67 da Berlim aberta diz *Berlin Defense, Open Variation* |
+| Não estava medido em que fração das partidas o header existe | 100,000% em 20.000 partidas da gigabase; 0% nas 93.839 da `Endgame_Study_Database`. A spec passou a dizer que o classificador decide para material OCRado |
+| `classificar` custa 1.144 µs e a spec diz "~0,5 ms" | Os dois números são de coisas diferentes e a spec citava um pelo outro. A tabela de custo agora traz os cinco: 960 µs por partida no caminho da sala, 521 µs por lance na frase, 1,06 µs no caminho do índice |
+| (não achado por ele) `LANCES_EXAMINADOS` era 24 e a linha mais longa tem 28: **C99 nunca casava** | Teto em 30, e um teste afirma que a linha mais longa é alcançável |
+
 
 ## S-535 · Árvore de aberturas: da posição corrente, cada lance com N, %, Elo médio e ano — ◻ em andamento
 
@@ -1042,16 +1474,91 @@ para uma caixa modal em cima de operação deixada rodando, que é o critério d
 - `docs/ARCHITECTURE.md`: a linha da fila na tabela de threads, conferida contra `qt/*.py` por
   `tests/test_docs.py` (S-410/S-506).
 
-### O que ficou de fora
+### A segunda rodada: a fila passou a ter porta
 
-**A ação de menu não foi escrita.** `ui/comandos.py` e `ui/menu.py` estavam sendo editados por
-outro item na mesma árvore, e acrescentar um `Comando` sem o dono correspondente em
-`qt/janela.py` quebraria o catálogo. `abrir_fila_de_livros` é a entrada pronta e sem chamador; as
-três linhas que faltam estão no relatório do item.
+**O item chamava-se "na janela" e não era alcançável de dentro dela.** `abrir_fila_de_livros` e
+`DialogoDaFila` estavam prontos e nenhum dos quatro lugares que abrem coisa na janela os citava --
+`ui/comandos.py`, `ui/menu.py`, `qt/janela.py`, `app_pyqt.py`. As três linhas que faltavam foram
+escritas:
+
+- `ui/comandos.py`: `Comando("varrer_fila", "Varrer uma fila de livros…", ACERVO, estilos.NEUTRO)`,
+  colado no `varrer_livro`. É ACERVO pela mesma pergunta do vizinho -- age sobre livros inteiros --
+  e as reticências dizem que ele abre uma janela em vez de começar a varrer.
+- `ui/menu.py`: `Item("varrer_fila")` logo depois de `Item("varrer_livro")`. Colado, porque são a
+  mesma varredura com um livro e com muitos, e quem procura "varrer" tem de achar as duas juntas.
+- `qt/janela.py`: `JanelaPrincipal.abrir_fila_de_livros`, que empresta ao diálogo o serviço (o
+  modelo sob o lock da S-31), o `BusyRegistry` e a pasta de livros -- os três objetos que a janela
+  tem e o módulo da fila não conhece. O diálogo **não** é guardado em atributo: ele não é modal,
+  não é reusado e sabe se fechar, e um segundo dono só criaria divergência sobre quem o destrói.
+
+A catraca de `qt/janela.py` subiu de **1.891 para 1.905** com o motivo escrito no docstring de
+`tests/test_packaging.py`: doze das catorze linhas são o método, e ele existe em vez de uma
+`lambda` porque uma `lambda` não tem nome para o critério de aceite citar nem lugar onde o
+"por que o diálogo não é guardado" possa morar.
+
+**O teste dispara a ação e olha o efeito.** `janela.menu.acoes["varrer_fila"].trigger()`, e depois
+procura um `DialogoDaFila` entre os filhos da janela: depois de um `connect`, trocar o método não
+troca quem o sinal chama, então um `mock.patch.object` sobre `abrir_fila_de_livros` mediria uma
+ligação que já não existe.
+
+**O livro que não leu deixou de mostrar quatro zeros.** A primeira rodada esvaziava as colunas de
+quem ainda não tinha terminado; o livro que **falhou** aparecia com `0 / 0 / 0 / 0 s`, e zero ali
+não é medição -- é a ausência dela. `LivroNaFila.leu` é a régua: mostra número quem chegou a ler
+página (pronto, ou cancelado depois de ter lido), e o resto fica em branco. O caso que a coluna em
+branco **não** pode engolir continua aparecendo: o livro lido que achou 51 diagramas e exportou
+zero mostra `51 / 0 / 0 / 18 s`, que é o item inteiro numa linha.
+
+**Dá para tirar um livro da fila.** Acrescentar era irreversível, e uma pasta escolhida entra com
+todos os PDFs dela (S-34): quem apontasse a pasta errada tinha de fechar o diálogo e montar a fila
+de novo. `FilaDeLivros.remover` tira as linhas marcadas -- várias de uma vez, e a tabela passou a
+aceitar seleção múltipla --, e o botão fica cinza **enquanto a varredura roda**: a thread de
+trabalho guarda a posição de cada livro como um número (`_ordem_atual`), e tirar uma linha de cima
+dele faria o resultado do seguinte chegar na linha de outro, em silêncio. A recusa é dupla, no
+botão e em `FilaDeLivros.remover`, que nunca tira o livro em `lendo`.
+
+**A tabela da fila ganhou dica de célula e continua sem ordenação por cabeçalho.** A dica é o
+conserto do que o crítico viu: dois livros de nome longo ficam visualmente idênticos sob as
+reticências do Qt, e a fila põe os dois lado a lado dizendo que um deles falhou. A ordenação é
+opt-in (`TabelaQt(ordenavel=…)`) e a fila **não** a liga: a ordem dela é a de execução, e reordenar
+faria o livro em leitura saltar de lugar enquanto a barra anda.
+
+### O que mudou no critério de aceite
+
+- O comando existe no catálogo, tem item de menu e tem dono na janela; disparar a ação do menu
+  **abre o diálogo**, filho da janela, com o serviço e o registro de ocupação dela. ✅
+- O livro que falhou, o pulado e o cancelado antes de começar saem com as quatro colunas de
+  resultado **em branco**; o livro que leu e não achou nada continua mostrando os zeros. ✅
+- Um livro sai da fila pelo botão; vários saem de uma vez; o que está sendo lido não sai; com a
+  varredura em curso a remoção é recusada. ✅
+- Toda célula da tabela leva o próprio texto como dica. ✅
+- Tudo o que a primeira rodada afirmou continua valendo, e as medições de campo (120 avisos de
+  página em 81,1 s, cancelamento em < 1,5 s) não foram refeitas: nada no caminho da varredura
+  mudou.
+
+### Testes acrescentados
+
+- `tests/test_qt_janela.py::FilaDeLivrosNaJanelaTests`: a ação do menu abre o diálogo (o **efeito**,
+  não a fiação); o comando está no catálogo e tem dono; o diálogo não é guardado na janela.
+- `tests/test_ui_fila_de_livros.py::LivroQueNaoLeuTests`: as quatro colunas em branco no falhado, no
+  pulado e no cancelado antes de começar; o cancelado que leu mostra o que leu; o lido que não
+  achou nada mostra os zeros.
+- `tests/test_ui_fila_de_livros.py::RemoverDaFilaTests`: sai um, saem vários na ordem da fila, o
+  que está em leitura não sai, índice fora da fila não levanta, e o removido pode voltar.
+- `tests/test_qt_fila_de_livros.py::TirarDaFilaTests`: o botão tira a linha marcada, sem marca nada
+  sai, o botão nasce desligado, e com a varredura em curso a remoção é recusada.
+- `tests/test_qt_tabela.py::OrdenacaoEDicaTests`: a dica em toda célula, e a tabela sem ordenação
+  de fábrica.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+| o que ele achou | o que mudou |
+|---|---|
+| `abrir_fila_de_livros`/`DialogoDaFila` **sem chamador nenhum**: o item chama-se "na janela" e não é alcançável de dentro dela | As três linhas escritas (`ui/comandos.py`, `ui/menu.py`, `qt/janela.py`), com a catraca da janela subida de 1.891 para 1.905 e o motivo no docstring |
+| Livro que falhou mostra `0 / 0 / 0 / 0 s` nas colunas | `LivroNaFila.leu`: mostra número quem leu página; falhado, pulado e cancelado-antes-de-começar ficam em branco |
+| Não dá para remover um livro da fila depois de acrescentado | Botão "Tirar da fila", seleção múltipla, e a recusa dupla enquanto a varredura roda |
+| Sem tooltip em nenhuma `TabelaQt`: dois livros de nome longo ficam visualmente idênticos | Toda célula leva o próprio texto como dica |
+| Tabela da busca sem ordenação por coluna | Ligada na busca (S-533) e deixada **desligada** na fila, com o motivo escrito: a ordem da fila é a de execução |
+
 
 ## S-547 · Caminho para scans puros: binarização e reamostragem antes da detecção — ⚠ **medida em 2026-09-04, sem ganho**
 
@@ -1336,9 +1843,66 @@ JSON ao lado dos PGN.
   com `book`, `diagrams`, `exported` e `provenance`, e o caminho da pasta aparece no rodapé; e a
   fila pode varrer sem deixar relatório nenhum.
 
+### A segunda rodada: o que o relatório dizia sem ter medido
+
+O crítico varreu um PDF truncado e o relatório saiu com `"status": "ok"`, `pages: 0`,
+`error: ""`, `legal_rate: 1.0` -- e um `.pgn` de 0 byte ao lado. Duas coisas erradas, e as duas do
+mesmo tipo: **o arquivo respondia perguntas que ninguém pôde medir**.
+
+**Livro com zero página é falha.** `_run_one` só chamava de falha o que levantasse exceção; o PDF
+que abre e não entrega página nenhuma -- o download que parou no meio, o arquivo de 0 byte -- saía
+como `ok`. Na fila da janela isso lê como *"foi lido e não achou nada"*, que é o resultado **de
+verdade** de cinco livros do acervo (`ROADMAP.md:151`): os dois ficavam indistinguíveis, que é
+exatamente o que este item existe para impedir. Agora ele volta `STATUS_FAILED` com o motivo
+escrito -- *"o livro não entregou página nenhuma; o PDF pode estar truncado ou vazio"* --, aparece
+por nome no resumo da fila e sai do relatório consolidado como falha.
+
+O outro lado ficou explícito num teste: **zero diagrama em dez páginas continua sendo `ok`**.
+Cancelar antes da primeira página continua sendo `cancelado`. A falha é a ausência de página, e
+não a ausência de resultado.
+
+**`legal_rate` sem diagrama é `null`, e não `1.0`.** O arquivo dizia *"100% das posições são
+legais"* sobre zero posição. Num gráfico que compara cinquenta livros pela legalidade, isso põe o
+livro que **falhou** no topo da lista. `null` diz *não medido*, que é a verdade -- é o mesmo
+critério do travessão de `ui/busca_de_partidas` e do `Elo` vazio: a ausência de valor não é um
+valor. `export_rate` foi junto, pela mesma razão e no mesmo lugar (`_taxa`).
+
+`seconds_per_page` e `seconds_per_diagram` continuam saindo `0.0` num livro sem página nem
+diagrama, porque ali o zero **é** a leitura: nenhum segundo foi gasto por página que não houve, e
+a diferença entre `0.0` e `null` num campo de custo não muda decisão nenhuma. As taxas são
+diferentes: uma taxa é uma fração de alguma coisa, e sem a coisa ela não existe.
+
+### O que mudou no critério de aceite
+
+- O livro truncado sai como **falha com motivo**, e não como `ok` com zero. ✅
+- `legal_rate` e `export_rate` saem `null` num livro sem diagrama; com diagramas continuam as
+  frações de sempre (0,9831 e 1,0 no `Estrin`; 0,0 e 1,0 no `Niemeijer`). ✅
+- A medição de campo de 2026-09-04 -- os dois livros, as dez linhas da tabela, a procedência com
+  `identity` `8786520-1788179963836706300` -- **não foi refeita e continua valendo**: os dois
+  livros entregaram páginas, e nenhum dos dois campos mudou de valor para eles. O que mudou vale
+  para o livro que não entrega nada, e esse não estava na medição.
+- O restante do critério da primeira rodada segue igual: um JSON por livro (inclusive o pulado), as
+  quatro perguntas com as taxas derivadas, procedência com a identidade do checkpoint, caminhos
+  relativos à raiz quando cabem nela, escrita por `atomic_write_json`, e um relatório que não
+  grava não derruba os outros.
+
+### Testes acrescentados
+
+- `tests/test_batch.py::LivroSemPaginaTests`: o livro sem página nenhuma vira falha **com motivo**;
+  o que leu dez páginas e não achou nada continua `ok`; o cancelado sem página continua
+  `cancelado`.
+- `tests/test_batch.py::RelatorioDeQualidadeTests::test_a_taxa_sem_diagrama_e_nula_e_nao_perfeita`:
+  `legal_rate` e `export_rate` nulos sem diagrama, e as frações de sempre com diagrama. O teste que
+  afirmava `legal_rate == 1.0` nesse caso foi **reescrito**: ele afirmava o defeito.
+
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+| o que ele achou | o que mudou |
+|---|---|
+| PDF truncado sai como `"status": "ok"`, `pages: 0`, `error: ""` e grava `.pgn` de 0 byte | Zero página é `STATUS_FAILED` com o motivo escrito; o livro aparece por nome no resumo da fila |
+| `legal_rate: 1.0` num livro sem diagrama | `null` (`_taxa`), e `export_rate` junto. `seconds_per_*` continuam `0.0`, com o motivo escrito |
+| (aprovada com ressalva) o resto do item | Nada mais mudou; a medição de campo dos dois livros não foi refeita, e a seção diz por quê |
+
 
 ## S-549 · Guarda genérica: nenhum módulo de `ui/` importa toolkit — ✅ **implementada em 2026-09-04**
 
@@ -1869,13 +2433,199 @@ teste de cada uma seguia verde medindo a decisão sozinha. A guarda que faltava 
 
 _não houve rodada: seção escrita a posteriori (S-550)_
 
-## S-551 · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move — ◻ em andamento
+## S-551 · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-552 · A janela cabe em 1024 px de largura — ◻ em andamento
+Medido em 2026-09-04 a 1400×950 (`fotos/crit_r2/E_1400x950.png`): o widget do tabuleiro da sala
+tinha **488×488 px** (lado desenhado 454) e a coluna esquerda **494×777**. O tabuleiro estava
+limitado pela **largura**, e sobravam ~230 px de coluna vazia debaixo dele -- de y≈640 a y≈880 --
+com duas frases de status flutuando no meio. A 1920×1080 o mesmo arranjo dava 616 px de tabuleiro
+e **357 px** de coluna vazia.
 
-_Seção a escrever pelo executor do item._
+Duas causas, e só uma é a do título:
+
+1. **A sobra ia para os rótulos.** `qt/painel_de_estudo.py:344` (`_esquerda`) empilhava tabuleiro,
+   faixa de navegação, recorte, `lbl_origem`, `lbl_status` e FEN **sem esticador**: o
+   `QVBoxLayout` reparte a sobra entre os itens que aceitam crescer, e os dois rótulos ficavam com
+   **79 px cada** -- daí o "flutuando". `lbl_status` ainda repete, palavra por palavra, o que a
+   barra de status da janela escreve na última linha da tela.
+2. **O divisor não se movia.** `self.divisor.setStretchFactor(0, 3)`/`(1, 2)` (`:249`) reparte a
+   largura numa proporção fixa, e nada nunca perguntou se a altura disponível permitiria um
+   tabuleiro maior.
+
+### Solução
+
+**A régua é pura, em `ui/sala_declarada.py`.** `lado_do_tabuleiro(largura, altura_util, minimo,
+alca, minimo_da_leitura)` responde `min(altura que sobra, largura que dá para tomar)`, com o teto
+de largura sendo o que resta depois de a coluna de leitura ficar com o piso dela. O tabuleiro é
+quadrado, então ele é limitado pelo menor dos dois recursos -- e a aba Estudo é **mais alta que
+larga em toda janela medida**, o que faz o teto de largura ser quase sempre quem manda.
+
+**O piso da leitura é o que impede a resposta óbvia e errada.** `LARGURA_MINIMA_DA_LEITURA = 210`
+é somado das partes, como `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`: ~105 px de um lance duplo
+por extenso (`12. Bxf7+ Kxf7`, a unidade que `PAPEIS_COLADOS` não deixa quebrar), 72 px de recuo
+máximo de variante (`RECUO_POR_NIVEL` × `NIVEL_MAXIMO_DE_RECUO`) e ~33 px de moldura, recheio e
+barra de rolagem. Sem ele, "cresça até a altura" daria o tabuleiro inteiro e uma coluna de lances
+de 46 px -- foi o que a primeira conta deste item produziu a 1400×950.
+
+**`fracao_para_o_tabuleiro` só empurra a alça para a direita**, e essa é a parte que não é
+aritmética: ela devolve `max(fracao_atual, a calculada)`. O arranjo que já está na tela é o piso.
+Sem isso a mesma conta *encolheria* o tabuleiro em toda janela estreita -- a 1400×950 o teto de
+largura dá 481 px contra os 494 que os pesos do `QSplitter` já davam, e o item que pediu um
+tabuleiro maior o teria deixado 13 px menor.
+
+**Quem executa é `PainelDeEstudo._acomodar_o_tabuleiro`**, chamado do `resizeEvent`. Ele mede a
+altura livre somando o que os vizinhos do tabuleiro pedem -- e o **recorte escondido não conta**,
+que é a diferença que explica metade da foto do crítico: com um diagrama do livro aberto e o
+recorte ligado, os 220 px de `LADO_DO_RECORTE` ocupam justamente aquele vazio. A regra **não roda**
+depois de a pessoa arrastar a alça (`splitterMoved`) nem depois de `posicionar_divisor` restaurar a
+da sessão anterior: ali a repartição já foi escolhida -- pela pessoa, ou pela própria regra na
+primeira abertura, cujo resultado a janela gravou --, e uma fração acompanha a largura sozinha
+porque é fração e não pixel.
+
+**E a sobra deixou de ir para os rótulos**: um esticador antes do campo de FEN. O bloco fica colado
+no tabuleiro e a FEN vira o rodapé da coluna, alinhada com o fim da caixa de comentário ao lado; o
+vazio deixa de ser texto solto e passa a ser margem, que é o que ele é.
+
+### Critério de aceite
+
+- **Os rótulos param de flutuar.** ✅ Medido a 1400×950: `lbl_origem` e `lbl_status` foram de
+  **79 px cada para 16**, e a faixa de navegação continua colada no tabuleiro (S-517).
+- **O divisor se move quando há largura para tomar.** ✅ Medido a 1920×1080: `[622, 256]` →
+  `[668, 210]`, o widget do tabuleiro de **616 para 662 px** (lado desenhado 582 → 628, **+46**) e
+  a coluna vazia sob ele de **357 para 90 px**.
+- **A 1400×950 o tabuleiro não cresce, e o número diz por quê.** ✅ A coluna de leitura já tem
+  **203 px**, abaixo do piso declarado de 210: não há largura para tomar, e a régua recusa em vez
+  de espremer a lista de lances. O que muda ali é o vazio, de ~230 px de rótulos esticados para
+  **134 px** de margem entre o status e a FEN -- e 38 px do que sobrava viraram o cabeçalho da
+  S-530. A largura da aba Estudo a 1400 é 702 px porque `LARGURA_MINIMA_DAS_ABAS` (720) é o piso do
+  lado esquerdo da janela; o que destrava mais tabuleiro nessa janela é a S-552.
+- **A leitura nunca fica abaixo do piso.** ✅ Afirmado varrendo a altura até 1600 px.
+- **Arrastar a alça desliga a regra**, e a fração guardada também. ✅
+- Numa janela baixa o tabuleiro encolhe pela altura em vez de ser cortado: a 1024×768 o widget é
+  488×434 e o lado desenhado 400. ✅
+- Nada disso mexe em `ui/board_render.py` nem na esteira da S-449/S-507: `BoardGeometry.fit`
+  continua a mesma conta, e o que mudou foi a caixa que ela recebe. ✅
+
+### Testes
+
+- `tests/test_ui_sala_declarada.py` (novo, puro): com altura de sobra quem manda é a largura; com
+  altura curta quem manda é a altura; nunca abaixo do piso do próprio tabuleiro; o piso da leitura
+  é respeitado e é somado das partes; a fração devolve o lado calculado; **ela só empurra para a
+  direita** (o caso de 1400×950, com o número); a 1920×1080 ela de fato move (e o teste carrega os
+  662 px); nunca passa de 1,0 nem fica negativa; sem largura devolve a de agora -- antes do
+  primeiro `show` o `QSplitter` não tem largura, e dividir por zero ali poria a alça num lugar que
+  a janela nunca pediu.
+- `tests/test_qt_painel_de_estudo.py::TabuleiroNaColunaTests` (novo): a sobra de altura não vai
+  para os rótulos; a faixa de navegação continua colada no tabuleiro; com altura de sobra a alça se
+  move e o tabuleiro cresce; a leitura nunca fica abaixo do piso; arrastar a alça desliga a regra;
+  a fração guardada também.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-552 · A janela cabe em 1024 px de largura — ✅ **implementada em 2026-09-04** (o que resta é uma linha de `qt/janela.py`)
+
+### Problema
+
+Pedida a `1000×800`, a janela ficava em **1245×902**. Medido em 2026-09-04, e o pior não estava no
+pedido: **depois de ler uma página o piso subia para 1245×1218** -- mais alto que a tela inteira de
+um notebook de 1366×768, e sem volta na sessão. O ChessBase e o Lichess funcionam a 1024 px.
+
+A cadeia, medida elo a elo com `probe_minimos.py`:
+
+| elo | pedia | quem declara |
+|---|---|---|
+| `LARGURA_MINIMA_DAS_ABAS` | 720 px | `qt/janela.py:152` |
+| `LARGURA_MINIMA_DO_VISOR` | 520 px | `qt/janela.py:159` |
+| a aba Galeria | **711 × 800** | `qt/painel_da_galeria.py` (S-154) |
+| a aba Resultado, com a tela vazia | 301 × 551 | `qt/painel_de_resultado.py` |
+| a aba Resultado, **depois de ler uma página** | 301 × **1095** | idem |
+| o painel do PDF | 175 × 178 | `qt/painel_do_pdf.py` (a S-528 o levou a 198 × 146) |
+
+Os dois primeiros somam `720 + 520 + 5` de alça = **1245**, e explicam a largura inteira. A altura
+vinha da aba mais alta: 800 px da Galeria davam 902 na janela; os 1095 do Resultado davam 1218.
+
+O 1095 é um defeito por si: `detalhes` é um `QLabel` com `wordWrap`, e um rótulo que quebra linha
+responde a **altura mínima calculada para a largura mais estreita possível**. Quanto mais o
+reconhecimento tem a dizer, mais alta a janela é obrigada a ser.
+
+### Solução
+
+**A metade perdida da S-150.** O docstring de `ui/geometria.PISO_MEDIDO` ainda descrevia as duas
+metades daquele item: *"a altura de 800 não cabe num notebook de 1366×768, e por isso o piso
+sozinho nunca foi o item. Ela é o que o conteúdo precisa **sem rolagem**; quem fecha a lacuna é a
+segunda metade da S-150, `ui/rolagem.py` -- Resultado, Configuração e Galeria rolam
+verticalmente"*. `ui/rolagem.py` era do Tk, saiu no corte (S-506), e **nada ocupou o lugar dele**:
+não havia um `QScrollArea` em painel nenhum do Qt.
+
+`qt/rolagem.py` (novo, uma função) põe o corpo de um painel dentro de um `QScrollArea` com
+`setWidgetResizable(True)`, e `qt/painel_de_resultado.py` e `qt/painel_da_galeria.py` passam a
+montar dentro dele. **O painel continua sendo o widget que a janela conhece** -- `qt/janela.py`
+adiciona `self.painel` e `self.galeria` às abas pelo nome, e nada lá muda; quem pergunta ao painel
+por `campos_de_header`, `tabuleiro` ou `detalhes` continua recebendo os mesmos objetos.
+
+**Encolher o conteúdo foi recusado.** Os 420 px do recorte da galeria e os 260 da lateral são
+medidos (S-154) e os detalhes do reconhecimento são o que a pessoa lê para decidir se aceita a
+leitura: cortar qualquer um dos dois seria trocar um defeito de janela por um de produto. O que
+muda é que o painel deixa de **exigir** a altura dele da janela -- ele a pede ao viewport, e o que
+passar vira rolagem.
+
+**A S-528 ajudou de graça:** o cromo do painel do PDF caiu de 176 para 32 px na coluna estreita, e
+com ele o piso de altura daquele lado.
+
+### Critério de aceite
+
+- **A altura cabe numa tela de 768.** ✅ Medido: `janela.minimumSize()` foi de **902 → 553** px
+  (574 com um livro aberto), e **ler uma página não muda mais o piso** -- era 1218.
+- Nenhuma aba pede mais altura do que a tela mínima tem. ✅ Galeria `711×800 → 54×54`; Resultado
+  `301×551` (1095 depois de ler) `→ 54×54`. As demais são Estudo 399×451, Revisão 131×436,
+  Dataset 516×288 e Texto 149×132.
+- O conteúdo não encolheu: o recorte da galeria continua com `BOARD_VIEW_SIZE` px, e a lateral com
+  `LARGURA_DA_LATERAL`. ✅ Nas larguras em que não cabem, a área rolável mostra as barras.
+- **A largura de 1024 depende de uma linha que este item não toca, e a distância está medida.**
+  ✅/⚠ O piso de largura continua sendo `LARGURA_MINIMA_DAS_ABAS + LARGURA_MINIMA_DO_VISOR + alça`
+  = **1245 px**, e os dois são literais de `qt/janela.py`, que outro executor está reescrevendo
+  nesta sessão. **Debaixo deles não sobrou mais nada segurando a janela**: o que os painéis de
+  fato pedem, medido com as fontes de verdade, é `522` (a aba mais exigente, Dataset) `+ 198` (o
+  painel do PDF) `+ 5` = **725 px**.
+
+  Provado sem alterar arquivo nenhum (`probe_1024.py`, que troca as duas constantes em memória
+  antes de a janela ser montada): com `LARGURA_MINIMA_DAS_ABAS = 500` e `LARGURA_MINIMA_DO_VISOR =
+  440`, a janela pedida a 1024×768 **abre exatamente em 1024×768**, com piso de `955×553`, divisor
+  em `[500, 519]`, e as seis abas desenhando -- Galeria e Resultado com rolagem, as outras sem.
+  Foto: `fotos/exec_fase80/mil24/cedido_*.png`; o estado de hoje, `mil24/como_esta_*.png`
+  (1245×768).
+
+  **A linha para quem mexer em `qt/janela.py`:** baixar os dois literais para 500 e 440 fecha o
+  item. Os 720 vinham de `galeria_declarada.LARGURA_MINIMA_DA_GALERIA` (420 + 260 + 40), que agora
+  é o tamanho **preferido** da galeria e não mais o exigido; os 520 do visor eram "abaixo disso a
+  página não cabe nem no ajuste à largura", e o próprio painel responde 198.
+- `ui/geometria.piso_da_janela` continua somando das partes e continua **acima** de 1024 --
+  justamente por causa dos dois literais --, e há um teste que falha quando isso deixar de ser
+  verdade, pedindo a atualização desta seção. ✅
+
+### Testes
+
+- `tests/test_qt_tamanho_da_janela.py` (novo): a Galeria rola em vez de exigir 800 px de altura, e
+  o recorte medido da S-154 continua inteiro; **o Resultado não cresce de piso quando o texto
+  cresce** (o `detalhes` recebe 60 frases e o `minimumSizeHint` não se mexe); a altura mínima da
+  janela cabe em 768; nenhuma aba exige mais altura do que a tela tem; as duas abas que seguravam
+  o piso não o seguram mais; o piso de largura é o dos dois literais, **e o teste falha quando
+  alguém os baixar** ("os dois literais couberam em 1024: atualize a spec da S-552"); pedida
+  pequena, a janela encolhe até o piso e não mais.
+- A largura das abas **não** é medida em número absoluto: sob `offscreen` não há a fonte da
+  interface e todo widget de texto mede mais -- a aba Dataset responde 842 px no teste e 516 na
+  janela de verdade. A régua é a constante declarada (`LARGURA_MINIMA_DA_GALERIA`), e não um
+  pixel de tela.
+- `tests/test_qt_painel_de_resultado.py` e `tests/test_qt_painel_da_galeria.py` passam sem
+  alteração: a área rolável não mudou o que qualquer um deles pergunta.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-553 · O foco de teclado se vê — ✅ **implementada em 2026-09-04**
 

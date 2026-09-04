@@ -127,7 +127,12 @@ class DialogoDeBusca(QDialog):
         fora.setSpacing(espaco.folga())
         fora.addLayout(self._formulario())
 
-        self.tabela = TabelaQt(COLUNAS, self)
+        # **A tabela ordena pelo cabeçalho** (S-533, r2): clicar em "Elo" para achar a partida
+        # mais forte da página é o gesto de toda sessão de quem usa uma base, e é o que o
+        # ChessBase faz. A ordenação é **da página**, não da base -- as cem linhas que estão na
+        # tela --, e é por isso que ela não substitui o `ORDER BY` da consulta: pedir "as mais
+        # fortes da base" é o campo de Elo mínimo, e ele vai na pergunta.
+        self.tabela = TabelaQt(COLUNAS, self, ordenavel=True)
         self.tabela.setSelectionMode(TabelaQt.SelectionMode.SingleSelection)
         self.tabela.itemDoubleClicked.connect(lambda *_ignorado: self.escolher_selecionada())
         # **Enter também abre**, e por atalho de widget e não pelo botão padrão do diálogo: num
@@ -372,8 +377,13 @@ class DialogoDeBusca(QDialog):
     # -------------------------------------------------------------------------- escolha
 
     def selecionada(self) -> Any:
-        """O achado da linha marcada, ou `None`."""
-        indice = self.tabela.indexOfTopLevelItem(self.tabela.currentItem())
+        """O achado da linha marcada, ou `None`.
+
+        `posicao_selecionada` e não `indexOfTopLevelItem`: com a ordenação pelo cabeçalho ligada,
+        a altura da linha na tela deixa de ser a posição dela em `_achados`, e a segunda abriria
+        a partida errada -- sem erro nenhum, com uma partida plausível na mesa.
+        """
+        indice = self.tabela.posicao_selecionada()
         return self._achados[indice] if 0 <= indice < len(self._achados) else None
 
     def escolher_selecionada(self) -> None:

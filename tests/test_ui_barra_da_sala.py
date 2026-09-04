@@ -13,7 +13,7 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
-from chess_diagram_ocr.ui import atalhos, barra_da_sala, comandos, icones, sala_declarada
+from chess_diagram_ocr.ui import atalhos, barra_da_sala, cabecalho_da_partida, comandos, icones, sala_declarada
 
 
 class CoberturaTests(unittest.TestCase):
@@ -191,8 +191,15 @@ class IconesTests(unittest.TestCase):
         self.assertIsNotNone(icones.tracos_de(barra_da_sala.ICONE_DO_MAIS))
 
     def test_nenhum_traco_da_sala_e_orfao(self) -> None:
-        usados = {r.icone for r in barra_da_sala.ACOES} | {barra_da_sala.ICONE_DO_MAIS}
+        """Todo traço de `ICONES_DA_SALA` tem quem o peça: a tabela da barra, o "Mais", ou o botão
+        do cabeçalho da partida (S-530) -- que não é comando do catálogo e por isso declara a
+        chave dele em `cabecalho_da_partida.ICONE`, e não em `ui/comandos.py`."""
+        usados = {r.icone for r in barra_da_sala.ACOES} | {
+            barra_da_sala.ICONE_DO_MAIS,
+            cabecalho_da_partida.ICONE,
+        }
         self.assertEqual([], sorted(set(icones.ICONES_DA_SALA) - usados))
+        self.assertIsNotNone(icones.tracos_de(cabecalho_da_partida.ICONE))
 
     def test_os_tracos_da_sala_nao_repetem_chave_do_catalogo(self) -> None:
         """Uma chave nos dois dicionários faria `tracos_de` responder pelo primeiro em silêncio."""

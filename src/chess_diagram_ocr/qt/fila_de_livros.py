@@ -150,6 +150,21 @@ class VarreduraDeLivros(QObject):
             self.mudou.emit()
         return entraram
 
+    def remover(self, indices: Sequence[int]) -> list[Path]:
+        """Tira livros da fila. Devolve os que saíram; vazio com a varredura em curso.
+
+        **Recusada enquanto a varredura roda**, e não é excesso de zelo: a thread de trabalho
+        guarda em `_linhas` a posição de cada livro que entregou ao `run_batch`, e tirar uma
+        linha do meio faria o resultado do livro seguinte chegar na linha de outro. O gesto é de
+        antes de começar -- que é quando a pessoa vê que acrescentou a pasta errada.
+        """
+        if self._tarefa is not None:
+            return []
+        sairam = self.fila.remover(indices)
+        if sairam:
+            self.mudou.emit()
+        return sairam
+
     def iniciar(self, destino: Path, opcoes: BatchOptions | None = None) -> bool:
         """Começa a varredura dos pendentes. Falso se já há uma em curso, ou se não há pendente.
 
@@ -349,6 +364,10 @@ class DialogoDaFila(QDialog):
 
         fora = QVBoxLayout(self)
         self.tabela = tabela_qt.montar(self, COLUNAS)
+        # Marcar mais de uma linha: quem apontou a pasta errada tira os dez livros de uma vez, e
+        # não um a um. A tabela **não** é ordenável pelo cabeçalho: a ordem dela é a de execução,
+        # e reordenar faria o livro em leitura saltar de lugar enquanto a barra anda.
+        self.tabela.setSelectionMode(tabela_qt.TabelaQt.SelectionMode.ExtendedSelection)
         fora.addWidget(self.tabela, 1)
 
         self.barra_do_livro = QProgressBar(self)
@@ -368,18 +387,23 @@ class DialogoDaFila(QDialog):
 
         linha = QHBoxLayout()
         self.botao_acrescentar = QPushButton("Acrescentar livros…", self)
+        self.botao_tirar = QPushButton("Tirar da fila", self)
         self.botao_comecar = QPushButton("Começar", self)
         self.botao_cancelar = QPushButton("Cancelar", self)
         tema.aplicar_papel(self.botao_acrescentar, estilos.NEUTRO)
+        tema.aplicar_papel(self.botao_tirar, estilos.NEUTRO)
         tema.aplicar_papel(self.botao_comecar, estilos.PRIMARIO)
         tema.aplicar_papel(self.botao_cancelar, estilos.NEUTRO)
-        estilos.conferir_barra([estilos.NEUTRO, estilos.PRIMARIO, estilos.NEUTRO], onde="a fila de livros")
-        for botao in (self.botao_acrescentar, self.botao_comecar, self.botao_cancelar):
+        estilos.conferir_barra(
+            [estilos.NEUTRO, estilos.NEUTRO, estilos.PRIMARIO, estilos.NEUTRO], onde="a fila de livros"
+        )
+        for botao in (self.botao_acrescentar, self.botao_tirar, self.botao_comecar, self.botao_cancelar):
             linha.addWidget(botao)
         linha.addStretch(1)
         fora.addLayout(linha)
 
         self.botao_acrescentar.clicked.connect(self.escolher_livros)
+        self.botao_tirar.clicked.connect(self.tirar_selecionado)
         self.botao_comecar.clicked.connect(self.comecar)
         self.botao_cancelar.clicked.connect(self.varredura.cancelar)
         self.varredura.mudou.connect(self.redesenhar)
@@ -401,6 +425,17 @@ class DialogoDaFila(QDialog):
         )
         if nomes:
             self.varredura.acrescentar([Path(nome) for nome in nomes])
+
+    def tirar_selecionado(self) -> list[Path]:
+        """Tira da fila os livros marcados na tabela. Devolve os que saíram.
+
+        Acrescentar era irreversível até aqui: uma pasta escolhida entra com todos os PDFs dela
+        (S-34), e quem apontasse a pasta errada tinha de fechar o diálogo e montar a fila de novo.
+        A decisão de *quem pode sair* é de `ui/fila_de_livros.FilaDeLivros.remover`; aqui só se
+        pergunta à tabela quais linhas estão marcadas.
+        """
+        marcados = [self.tabela.posicao_de(item) for item in self.tabela.selectedItems()]
+        return self.varredura.remover([posicao for posicao in marcados if posicao >= 0])
 
     def acrescentar_pasta(self, pasta: Path) -> list[Path]:
         """Todos os PDFs de uma pasta, em ordem de nome. É o `find_pdfs` da S-34."""
@@ -448,6 +483,9 @@ class DialogoDaFila(QDialog):
         self.botao_comecar.setEnabled(not rodando and bool(self.varredura.fila.pendentes))
         self.botao_cancelar.setEnabled(rodando)
         self.botao_acrescentar.setEnabled(True)
+        # Tirar só antes de começar: com a varredura em curso, a posição de cada livro é o que
+        # liga o resultado que chega da thread à linha da tabela. Ver `VarreduraDeLivros.remover`.
+        self.botao_tirar.setEnabled(not rodando and bool(len(self.varredura.fila)))
 
     def _fracao_do_livro(self) -> float:
         atual = self.varredura.fila.em_curso

@@ -97,6 +97,42 @@ class DialogoDeBuscaTests(unittest.TestCase):
         titulos = [cabecalho.text(coluna) for coluna in range(self.dialogo.tabela.columnCount())]
         self.assertEqual(["Brancas", "Elo", "Pretas", "Elo", "Resultado", "Evento", "Data", "ECO"], titulos)
 
+    # ------------------------------------------------ ordenação pelo cabeçalho (S-533, r2)
+    #
+    # Clicar em "Elo" para achar a partida mais forte da página é o gesto de toda sessão de
+    # quem usa uma base, e a tabela não o tinha. Ligá-lo abriu um defeito de um tipo pior que
+    # a ausência: a escolha era `indexOfTopLevelItem`, que é a altura na tela, e com a lista
+    # ordenada isso deixa de ser a posição em `_achados` -- o duplo clique abriria **outra
+    # partida**, plausível e sem erro nenhum.
+
+    def test_a_tabela_da_busca_ordena_e_a_da_fila_nao(self) -> None:
+        self.assertTrue(self.dialogo.tabela.isSortingEnabled())
+
+    def test_a_partida_escolhida_e_a_da_linha_marcada_depois_de_ordenar(self) -> None:
+        self._buscar(brancas="Carlsen")
+        tabela = self.dialogo.tabela
+        tabela.sortItems(2, Qt.SortOrder.AscendingOrder)
+        primeiro = tabela.topLevelItem(0)
+        assert primeiro is not None
+        tabela.setCurrentItem(primeiro)
+
+        escolhidas: list[tuple[object, int]] = []
+        self.dialogo.partida_escolhida.connect(lambda caminho, offset: escolhidas.append((caminho, offset)))
+        self.dialogo.escolher_selecionada()
+
+        (_caminho, offset) = escolhidas[0]
+        achado = self.dialogo.selecionada()
+        self.assertEqual(primeiro.text(2), achado.pretas, "a linha marcada não é a que foi emitida")
+        self.assertEqual(achado.offset, offset)
+
+    def test_ordenar_nao_muda_o_que_a_busca_achou(self) -> None:
+        self._buscar(brancas="Carlsen")
+        antes = {self.dialogo.tabela.topLevelItem(n).text(0) for n in range(self.dialogo.tabela.topLevelItemCount())}
+        self.dialogo.tabela.sortItems(6, Qt.SortOrder.AscendingOrder)
+        depois = {self.dialogo.tabela.topLevelItem(n).text(0) for n in range(self.dialogo.tabela.topLevelItemCount())}
+        self.assertEqual(antes, depois)
+        self.assertEqual(self.PARTIDAS, len(depois | antes) and self.dialogo.tabela.topLevelItemCount())
+
     def test_a_lista_de_resultado_oferece_os_quatro_valores_do_pgn(self) -> None:
         """O valor gravado, e não o rótulo: é ele que a coluna `result` do índice guarda."""
         valores = [self.dialogo.lista_resultado.itemData(i) for i in range(self.dialogo.lista_resultado.count())]

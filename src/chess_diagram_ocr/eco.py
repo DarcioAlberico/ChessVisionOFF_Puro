@@ -61,18 +61,24 @@ __all__ = [
     "classificar_lances",
     "codigo_do_header",
     "frase",
+    "frase_da_abertura",
     "frase_do_tabuleiro",
     "lances_do_movetext",
     "nome",
     "tabela",
 ]
 
-LANCES_EXAMINADOS = 24
+LANCES_EXAMINADOS = 30
 """Quantos meios-lances da partida a classificação percorre.
 
-A linha mais longa da tabela tem 26 meios-lances (E59, D69), e a classificação de uma partida se
-decide nos primeiros doze lances: depois deles a posição já saiu do que a tabela conhece, e cada
-`push_san` a mais é custo sem resposta."""
+**Eram 24, e 24 era menos que a tabela.** A linha mais longa tem **28** meios-lances (D69) e há
+outras três com 24 ou mais (D89 com 26, C99 com 25, C98 e D68 com 24) -- o teto cortava a leitura
+antes de elas poderem casar, e **C99 era inalcançável**: as 52 partidas C99 da amostra de 2026-09-04
+erraram todas, todas as 52. Trinta cobrem a linha mais longa com folga de duas, e o custo é só o de
+uma partida que fica em livro até o décimo quinto lance -- que são poucas.
+
+Depois do fim da linha mais longa não há resposta a comprar: cada `push_san` a mais seria custo
+puro. O teto é da tabela, e não da partida."""
 
 _RE_NUMERO = re.compile(r"^\d+\.(\.\.)?")
 _RE_CODIGO = re.compile(r"^([A-E])(\d\d)")
@@ -629,6 +635,300 @@ E99|King's Indian, Orthodox, Aronin-Taimanov, Main line|1.d4 Nf6 2.c4 g6 3.Nc3 B
 """
 
 
+_TABELA_EXTRA = """
+A04|Reti, Dutch Invitation|1.Nf3 f5
+A05|Reti, King's Indian Attack|1.Nf3 Nf6 2.g3
+A06|Reti, Nimzo-Larsen Attack|1.Nf3 d5 2.b3
+A06|Reti, Nimzo-Larsen Attack with ...Nf6|1.Nf3 d5 2.b3 Nf6 3.Bb2
+A06|Reti, Tennison Gambit|1.Nf3 d5 2.e4
+A07|King's Indian Attack, Yugoslav Variation|1.Nf3 d5 2.g3 Nf6 3.Bg2
+A07|King's Indian Attack with ...c6|1.Nf3 d5 2.g3 c6
+A07|King's Indian Attack, Keres Variation|1.Nf3 d5 2.g3 Bg4
+A08|King's Indian Attack against the Sicilian|1.e4 c5 2.Nf3 e6 3.g3
+A08|King's Indian Attack, Sicilian with ...Nc6|1.e4 c5 2.Nf3 Nc6 3.g3
+A08|King's Indian Attack, Sicilian with ...d6|1.e4 c5 2.Nf3 d6 3.g3
+A08|King's Indian Attack against the French|1.e4 e6 2.d3 d5 3.Nd2 c5 4.Ngf3 Nc6 5.g3
+A08|King's Indian Attack, French with ...Nf6|1.e4 e6 2.d3 d5 3.Nd2 Nf6 4.Ngf3 c5 5.g3
+A10|English, Anglo-Dutch Defense|1.c4 f5 2.Nf3
+A11|English, Caro-Kann Defensive System|1.c4 c6 2.Nf3 d5
+A11|English, Caro-Kann Defensive System with 3.e3|1.c4 c6 2.Nf3 d5 3.e3
+A11|English, Caro-Kann Defensive System with 3.g3|1.c4 c6 2.Nf3 d5 3.g3
+A12|English with b3, Bogoljubow Variation|1.c4 c6 2.Nf3 d5 3.b3 Nf6 4.Bb2
+A13|English, Agincourt Defense|1.c4 e6 2.Nf3 d5
+A13|English, Agincourt Defense with 3.b3|1.c4 e6 2.Nf3 d5 3.b3
+A13|English, Agincourt Defense with 3.e3|1.c4 e6 2.Nf3 d5 3.e3
+A13|English, Neo-Catalan|1.c4 e6 2.Nf3 d5 3.g3
+A13|English, Neo-Catalan with Bg2|1.c4 e6 2.Nf3 d5 3.g3 Nf6 4.Bg2
+A14|English, Neo-Catalan Declined, Nimzo-Larsen|1.c4 e6 2.Nf3 Nf6 3.b3 d5 4.Bb2
+A16|English, Anglo-Indian Defense|1.c4 Nf6 2.Nf3
+A20|English Opening, King's English with e3|1.c4 e5 2.e3
+A22|English, King's English, Two Knights with e3|1.c4 e5 2.Nc3 Nf6 3.e3
+A25|English, Closed System with e3|1.c4 e5 2.Nc3 Nc6 3.e3
+A25|English, Closed System with Nf3 and e3|1.c4 e5 2.Nc3 Nc6 3.Nf3 e4 4.Ng5
+A26|English, Botvinnik System|1.c4 e5 2.Nc3 Nc6 3.g3 g6 4.Bg2 Bg7 5.e3
+A28|English, Four Knights, Nimzowitsch|1.c4 e5 2.Nc3 Nc6 3.Nf3 Nf6 4.e3
+A29|English, Four Knights, Kingside Fianchetto with ...Bb4|1.c4 e5 2.Nc3 Nc6 3.Nf3 Nf6 4.g3 Bb4
+A30|English, Symmetrical, Hedgehog|1.c4 c5 2.Nf3 Nf6 3.g3 b6
+A33|English, Symmetrical, Geller Variation|1.c4 c5 2.Nf3 Nf6 3.d4 cxd4 4.Nxd4 e6 5.Nc3 Nc6 6.g3
+A34|English, Symmetrical, Rubinstein System|1.c4 c5 2.Nc3 Nf6 3.g3 d5 4.cxd5 Nxd5
+A34|English, Symmetrical, Three Knights with ...d5|1.c4 c5 2.Nc3 Nf6 3.Nf3 d5 4.cxd5 Nxd5
+A35|English, Symmetrical, Four Knights|1.c4 c5 2.Nc3 Nc6 3.Nf3 Nf6
+A40|Queen's Pawn, Modern Defense|1.d4 g6
+A41|Wade Defense|1.d4 d6 2.Nf3 Bg4
+A45|Trompowsky Attack, 2...e6|1.d4 Nf6 2.Bg5 e6
+A45|Queen's Pawn, Torre Attack|1.d4 Nf6 2.Nf3 e6 3.Bg5
+A46|Queen's Pawn, Torre Attack with 3.Bg5|1.d4 Nf6 2.Nf3 e6 3.Bf4
+A46|Queen's Pawn, London System|1.d4 Nf6 2.Nf3 e6 3.e3
+A48|King's Indian, London System|1.d4 Nf6 2.Nf3 g6 3.Bf4
+A48|King's Indian, Torre Attack|1.d4 Nf6 2.Nf3 g6 3.Bg5
+A48|King's Indian, Barry Attack|1.d4 Nf6 2.Nf3 g6 3.Nc3 d5 4.Bf4
+A53|Old Indian Defense, 3.Nf3|1.d4 Nf6 2.c4 d6 3.Nf3
+A56|Benoni Defense, Czech Benoni|1.d4 Nf6 2.c4 c5 3.d5 e5
+A57|Benko Gambit, Declined|1.d4 Nf6 2.c4 c5 3.d5 b5 4.Nf3
+A60|Benoni Defense, Modern with 4.Nc3|1.d4 Nf6 2.c4 c5 3.d5 e6 4.Nc3 exd5 5.cxd5
+A70|Benoni, Classical with 7.Nf3 and ...Bg7|1.d4 Nf6 2.c4 c5 3.d5 e6 4.Nc3 exd5 5.cxd5 d6 6.e4 g6 7.Nf3 Bg7
+A80|Dutch Defense, 2.Nf3|1.d4 f5 2.Nf3
+A80|Dutch Defense, Hopton Attack|1.d4 f5 2.Bg5
+A81|Dutch Defense, Leningrad without c4|1.d4 f5 2.g3 Nf6 3.Bg2 g6
+A84|Dutch Defense, 3.Nc3|1.d4 f5 2.c4 e6 3.Nc3
+A85|Dutch, with c4 and Nc3, ...Bb4|1.d4 f5 2.c4 Nf6 3.Nc3 e6 4.Nf3
+A87|Dutch, Leningrad, Main Variation with Nc3|1.d4 f5 2.c4 Nf6 3.g3 g6 4.Bg2 Bg7 5.Nc3
+A90|Dutch Defense, Stonewall with Nf3|1.d4 f5 2.c4 Nf6 3.g3 e6 4.Bg2 d5 5.Nf3
+A06|Reti, Nimzo-Larsen Attack with ...e6|1.Nf3 d5 2.b3 Nf6 3.Bb2 e6
+A87|Dutch, Leningrad, Main Variation with 5.Nc3|1.d4 f5 2.c4 Nf6 3.g3 g6 4.Bg2 Bg7 5.Nc3 d6 6.Nf3
+B01|Scandinavian, Modern Variation|1.e4 d5 2.exd5 Nf6
+B01|Scandinavian, Mieses-Kotroc|1.e4 d5 2.exd5 Qxd5 3.Nc3
+B06|Modern Defense with 2.d4 Bg7|1.e4 g6 2.d4 Bg7
+B06|Modern Defense, Three Pawns Attack|1.e4 g6 2.d4 Bg7 3.f4
+B06|Modern Defense, Standard Line|1.e4 g6 2.d4 Bg7 3.Nc3 d6
+B06|Modern Defense, 3.Nf3|1.e4 g6 2.d4 Bg7 3.Nf3 d6
+B06|Modern Defense, Three Pawns Attack with Nf3|1.e4 g6 2.d4 Bg7 3.f4 d6 4.Nf3
+B07|Pirc Defense, 150 Attack|1.e4 d6 2.d4 Nf6 3.Nc3 g6 4.Be3
+B07|Pirc Defense, 150 Attack with Qd2|1.e4 d6 2.d4 Nf6 3.Nc3 g6 4.Be3 Bg7 5.Qd2
+B07|Pirc Defense, Byrne Variation|1.e4 d6 2.d4 Nf6 3.Nc3 g6 4.Bg5
+B08|Pirc, Classical with ...Bg7|1.e4 d6 2.d4 Nf6 3.Nc3 g6 4.Nf3 Bg7
+B08|Pirc, Classical, 5.Be2|1.e4 d6 2.d4 Nf6 3.Nc3 g6 4.Nf3 Bg7 5.Be2
+B08|Pirc, Classical, 5.Be3|1.e4 d6 2.d4 Nf6 3.Nc3 g6 4.Nf3 Bg7 5.Be3
+B08|Pirc, Classical, 5.h3|1.e4 d6 2.d4 Nf6 3.Nc3 g6 4.Nf3 Bg7 5.h3
+B12|Caro-Kann, Advance Variation|1.e4 c6 2.d4 d5 3.e5
+B12|Caro-Kann, Advance, Short Variation|1.e4 c6 2.d4 d5 3.e5 Bf5 4.Nf3
+B14|Caro-Kann, Panov Attack with 5.Nf3|1.e4 c6 2.d4 d5 3.exd5 cxd5 4.c4 Nf6 5.Nf3
+B14|Caro-Kann, Panov Attack, Gruenfeld Defense|1.e4 c6 2.d4 d5 3.exd5 cxd5 4.c4 Nf6 5.Nc3 g6
+B21|Sicilian, Grand Prix Attack with 2.f4|1.e4 c5 2.f4 Nc6 3.Nf3
+B21|Sicilian, McDonnell Attack with ...d5|1.e4 c5 2.f4 d5
+B21|Sicilian, McDonnell Attack with ...g6|1.e4 c5 2.f4 g6
+B21|Sicilian, Smith-Morra Gambit Accepted|1.e4 c5 2.d4 cxd4 3.c3 dxc3 4.Nxc3
+B22|Sicilian, Alapin with 2...e6|1.e4 c5 2.Nf3 e6 3.c3
+B22|Sicilian, Alapin with 2...Nc6|1.e4 c5 2.Nf3 Nc6 3.c3
+B22|Sicilian, Alapin, 2...e6 3.c3 d5|1.e4 c5 2.Nf3 e6 3.c3 d5 4.exd5 Qxd5 5.d4
+B22|Sicilian, Alapin, 2...d5|1.e4 c5 2.c3 d5 3.exd5 Qxd5 4.d4
+B22|Sicilian, Alapin, 2...Nf6|1.e4 c5 2.c3 Nf6 3.e5 Nd5 4.d4
+B23|Sicilian, Closed, Grand Prix Attack|1.e4 c5 2.Nc3 Nc6 3.f4
+B23|Sicilian, Grand Prix Attack, Nf3 and Nc3|1.e4 c5 2.f4 Nc6 3.Nf3 g6 4.Nc3
+B23|Sicilian, Closed, 2...e6|1.e4 c5 2.Nc3 e6
+B23|Sicilian, Closed, 2...d6|1.e4 c5 2.Nc3 d6
+B24|Sicilian, Closed, Fianchetto with Nf3|1.e4 c5 2.Nc3 Nc6 3.g3 g6 4.Bg2 Bg7 5.Nf3
+B27|Sicilian, Hyperaccelerated Dragon|1.e4 c5 2.Nf3 g6
+B29|Sicilian, Nimzowitsch-Rubinstein|1.e4 c5 2.Nf3 Nf6 3.e5 Nd5 4.Nc3
+B30|Sicilian, Old Sicilian with 3.Nc3|1.e4 c5 2.Nf3 Nc6 3.Nc3
+B30|Sicilian, Rossolimo Variation|1.e4 c5 2.Nf3 Nc6 3.Bb5
+B30|Sicilian, Rossolimo, 3...e6|1.e4 c5 2.Nf3 Nc6 3.Bb5 e6
+B30|Sicilian, Closed with Nf3 and ...g6|1.e4 c5 2.Nf3 Nc6 3.Nc3 g6
+B30|Sicilian, Closed with Nf3 and ...e6|1.e4 c5 2.Nf3 Nc6 3.Nc3 e6
+B31|Sicilian, Rossolimo, Fianchetto with 4.O-O|1.e4 c5 2.Nf3 Nc6 3.Bb5 g6 4.O-O
+B32|Sicilian, Loewenthal Variation|1.e4 c5 2.Nf3 Nc6 3.d4 cxd4 4.Nxd4 e5 5.Nb5
+B32|Sicilian, Kalashnikov Variation|1.e4 c5 2.Nf3 Nc6 3.d4 cxd4 4.Nxd4 e5 5.Nb5 d6
+B33|Sicilian, Sveshnikov with 5...e6|1.e4 c5 2.Nf3 Nc6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 e6 6.Ndb5
+B33|Sicilian, Sveshnikov, Chelyabinsk|1.e4 c5 2.Nf3 Nc6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 e5 6.Ndb5 d6
+B34|Sicilian, Accelerated Dragon, 5.Nc3|1.e4 c5 2.Nf3 Nc6 3.d4 cxd4 4.Nxd4 g6 5.Nc3
+B34|Sicilian, Accelerated Dragon, 5.Nc3 Bg7|1.e4 c5 2.Nf3 Nc6 3.d4 cxd4 4.Nxd4 g6 5.Nc3 Bg7
+B40|Sicilian, French Variation with 3.d4|1.e4 c5 2.Nf3 e6 3.d4
+B40|Sicilian, Pin Variation|1.e4 c5 2.Nf3 e6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 Bb4
+B44|Sicilian, Taimanov with 5.Nb5|1.e4 c5 2.Nf3 e6 3.d4 cxd4 4.Nxd4 Nc6 5.Nb5
+B45|Sicilian, Taimanov, Four Knights|1.e4 c5 2.Nf3 e6 3.d4 cxd4 4.Nxd4 Nc6 5.Nc3 Nf6
+B47|Sicilian, Taimanov with 5...a6|1.e4 c5 2.Nf3 e6 3.d4 cxd4 4.Nxd4 Nc6 5.Nc3 a6 6.Be2 Qc7
+B50|Sicilian, 2...d6 with 3.c3|1.e4 c5 2.Nf3 d6 3.c3 Nf6 4.h3
+B51|Sicilian, Moscow Variation with 3...Nc6|1.e4 c5 2.Nf3 d6 3.Bb5+ Nc6
+B52|Sicilian, Moscow, 4.Bxd7+|1.e4 c5 2.Nf3 d6 3.Bb5+ Bd7 4.Bxd7+
+B54|Sicilian, Prins Variation|1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.f3
+B56|Sicilian, Classical with 5...Nc6|1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 Nc6
+B70|Sicilian, Dragon with 6.g3|1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 g6 6.g3
+B90|Sicilian, Najdorf, English Attack|1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 a6 6.Be3
+B90|Sicilian, Najdorf, 6.h3|1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 a6 6.h3
+B90|Sicilian, Najdorf, 6.Bc4|1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 a6 6.Bc4
+C00|French Defense, King's Indian Attack|1.e4 e6 2.d3
+C00|French Defense, Two Knights|1.e4 e6 2.Nf3 d5 3.Nc3
+C00|French Defense, Advance without d4|1.e4 e6 2.d3 d5 3.Nd2
+C01|French Defense, Exchange Variation|1.e4 e6 2.d4 d5 3.exd5 exd5
+C01|French, Exchange with 3.Nc3 Nf6|1.e4 e6 2.d4 d5 3.Nc3 Nf6 4.exd5 exd5
+C01|French, Exchange with 3.Nc3 Bb4|1.e4 e6 2.d4 d5 3.Nc3 Bb4 4.exd5 exd5
+C02|French, Advance, Milner-Barry|1.e4 e6 2.d4 d5 3.e5 c5 4.c3 Nc6 5.Nf3
+C02|French, Advance, Euwe Variation|1.e4 e6 2.d4 d5 3.e5 c5 4.c3 Nc6 5.Nf3 Bd7
+C10|French, Rubinstein Variation|1.e4 e6 2.d4 d5 3.Nc3 dxe4 4.Nxe4
+C11|French, Classical with 4.e5|1.e4 e6 2.d4 d5 3.Nc3 Nf6 4.e5
+C11|French, Steinitz Variation|1.e4 e6 2.d4 d5 3.Nc3 Nf6 4.e5 Nfd7 5.f4
+C25|Vienna Game, 2...Nc6|1.e4 e5 2.Nc3 Nc6
+C26|Vienna Game, Falkbeer with 3.g3|1.e4 e5 2.Nc3 Nf6 3.g3
+C41|Philidor Defense, 3.d4|1.e4 e5 2.Nf3 d6 3.d4
+C41|Philidor Defense, Exchange|1.e4 e5 2.Nf3 d6 3.d4 exd4 4.Nxd4
+C41|Philidor Defense, Nimzowitsch|1.e4 e5 2.Nf3 d6 3.d4 Nf6 4.Nc3
+C41|Philidor Defense, Hanham Variation|1.e4 e5 2.Nf3 d6 3.d4 Nf6 4.Nc3 Nbd7
+C42|Petrov, Classical Attack|1.e4 e5 2.Nf3 Nf6 3.Nxe5 d6 4.Nf3 Nxe4 5.d4
+C44|Scotch Game, Ponziani Opening|1.e4 e5 2.Nf3 Nc6 3.c3
+C44|Scotch Gambit|1.e4 e5 2.Nf3 Nc6 3.d4 exd4 4.Bc4
+C44|Scotch Game, Goering Gambit|1.e4 e5 2.Nf3 Nc6 3.d4 exd4 4.c3
+C45|Scotch, Mieses Variation|1.e4 e5 2.Nf3 Nc6 3.d4 exd4 4.Nxd4 Nf6 5.Nxc6
+C46|Four Knights, Italian Variation|1.e4 e5 2.Nf3 Nc6 3.Nc3 Bc5
+C47|Four Knights, Scotch Variation|1.e4 e5 2.Nf3 Nc6 3.Nc3 Nf6 4.d4
+C50|Italian Game, Giuoco Piano|1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5
+C50|Italian Game, Giuoco Pianissimo|1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.d3
+C50|Italian Game, Four Knights|1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.Nc3
+C50|Italian Game, Hungarian Defense|1.e4 e5 2.Nf3 Nc6 3.Bc4 Be7
+C50|Italian Game, Blackburne Shilling Gambit|1.e4 e5 2.Nf3 Nc6 3.Bc4 Nd4
+C50|Italian Game, Rousseau Gambit|1.e4 e5 2.Nf3 Nc6 3.Bc4 f5
+C50|Italian Game, Giuoco Pianissimo with 4.O-O|1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.O-O
+C53|Giuoco Piano, Close Variation|1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.c3 Qe7
+C54|Giuoco Piano, Main Line|1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.c3 Nf6
+C54|Giuoco Pianissimo, Modern Main Line|1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.c3 Nf6 5.d3
+C54|Giuoco Piano, Evans Gambit Declined transposition|1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.c3 Nf6 5.b4
+C55|Two Knights Defense, Modern Bishop's Opening|1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.d3
+C55|Two Knights Defense, Giuoco Piano transposition|1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.O-O
+C55|Two Knights Defense, Max Lange Attack|1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.d4 exd4 5.O-O Bc5
+C60|Ruy Lopez, Cozio Defense|1.e4 e5 2.Nf3 Nc6 3.Bb5 Nge7
+C60|Ruy Lopez, Bird Defense transposition|1.e4 e5 2.Nf3 Nc6 3.Bb5 g6
+C65|Ruy Lopez, Berlin Defense, 4.d3|1.e4 e5 2.Nf3 Nc6 3.Bb5 Nf6 4.d3
+C65|Ruy Lopez, Berlin Defense, 4.O-O Bc5|1.e4 e5 2.Nf3 Nc6 3.Bb5 Nf6 4.O-O Bc5
+C67|Ruy Lopez, Berlin Defense, Open Variation|1.e4 e5 2.Nf3 Nc6 3.Bb5 Nf6 4.O-O Nxe4 5.d4
+C67|Ruy Lopez, Berlin Defense, Rio de Janeiro|1.e4 e5 2.Nf3 Nc6 3.Bb5 Nf6 4.O-O Nxe4 5.d4 Nd6 6.Bxc6 dxc6 7.dxe5 Nf5 8.Qxd8+ Kxd8
+C68|Ruy Lopez, Exchange Variation, 5.O-O|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Bxc6 dxc6 5.O-O
+C68|Ruy Lopez, Exchange Variation, 5.Nc3|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Bxc6 dxc6 5.Nc3
+C77|Ruy Lopez, Anderssen Variation|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.d3
+C77|Ruy Lopez, Morphy Defense, Wormald Attack|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.Qe2
+C78|Ruy Lopez, Moeller Defense|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Bc5
+C78|Ruy Lopez, Archangel Defense|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O b5 6.Bb3 Bb7
+C84|Ruy Lopez, Closed Defense with 6.d3|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Be7 6.d3
+C88|Ruy Lopez, Closed, Anti-Marshall|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Be7 6.Re1 b5 7.Bb3 O-O 8.a4
+C99|Ruy Lopez, Chigorin, 12...c5 13.d4 Qc7 14.Nbd2 cxd4|1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Be7 6.Re1 b5 7.Bb3 d6 8.c3 O-O 9.h3 Na5 10.Bc2 c5 11.d4 Qc7 12.Nbd2 cxd4 13.cxd4
+D00|Queen's Pawn Game, Levitsky Attack|1.d4 d5 2.Bg5
+D00|Queen's Pawn Game, Blackmar-Diemer|1.d4 d5 2.e4
+D00|Queen's Pawn Game, Colle transposition|1.d4 d5 2.e3
+D02|Queen's Pawn Game, London System|1.d4 d5 2.Nf3 Nf6 3.Bf4
+D02|Queen's Pawn Game, Symmetrical with ...g6|1.d4 Nf6 2.Nf3 g6 3.g3 Bg7 4.Bg2 d5
+D04|Colle System|1.d4 d5 2.Nf3 Nf6 3.e3 e6 4.Bd3
+D06|Queen's Gambit, Marshall Defense|1.d4 d5 2.c4 Nf6
+D06|Queen's Gambit, Marshall Defense with 3.Nf3|1.d4 d5 2.c4 Nf6 3.Nf3
+D06|Queen's Gambit, Marshall Defense with 3.cxd5|1.d4 d5 2.c4 Nf6 3.cxd5 Nxd5
+D10|Slav Defense, Exchange with 3.cxd5|1.d4 d5 2.c4 c6 3.cxd5 cxd5
+D11|Slav Defense, 3.Nf3 Nf6|1.d4 d5 2.c4 c6 3.Nf3 Nf6
+D11|Slav Defense, Breyer Variation|1.d4 d5 2.c4 c6 3.Nf3 Nf6 4.e3
+D11|Slav Defense, Modern with 4.g3|1.d4 d5 2.c4 c6 3.Nf3 Nf6 4.g3
+D11|Slav Defense, 4.Qc2|1.d4 d5 2.c4 c6 3.Nf3 Nf6 4.Qc2
+D15|Slav Defense, Chameleon with 4...a6|1.d4 d5 2.c4 c6 3.Nf3 Nf6 4.Nc3 a6
+D15|Slav Defense, Schlechter with 4...g6|1.d4 d5 2.c4 c6 3.Nf3 Nf6 4.Nc3 g6
+D20|Queen's Gambit Accepted, 3.e4|1.d4 d5 2.c4 dxc4 3.e4
+D20|Queen's Gambit Accepted, 3.e3|1.d4 d5 2.c4 dxc4 3.e3
+D30|Queen's Gambit Declined, 3.Nf3|1.d4 d5 2.c4 e6 3.Nf3
+D30|Queen's Gambit Declined, 3.Nf3 Nf6|1.d4 d5 2.c4 e6 3.Nf3 Nf6
+D30|Queen's Gambit Declined, 4.Bg5|1.d4 d5 2.c4 e6 3.Nf3 Nf6 4.Bg5
+D30|Queen's Gambit Declined, 4.e3|1.d4 d5 2.c4 e6 3.Nf3 Nf6 4.e3
+D30|Queen's Gambit Declined, 4.Bf4|1.d4 d5 2.c4 e6 3.Nf3 Nf6 4.Bf4
+D30|Semi-Slav, 3.Nf3 c6|1.d4 d5 2.c4 e6 3.Nf3 c6
+D31|Queen's Gambit Declined, Semi-Slav with 3.Nc3|1.d4 d5 2.c4 e6 3.Nc3 c6
+D31|Queen's Gambit Declined, Alatortsev Variation|1.d4 d5 2.c4 e6 3.Nc3 Be7
+D31|Queen's Gambit Declined, Ragozin transposition|1.d4 d5 2.c4 e6 3.Nc3 Bb4
+D31|Semi-Slav, Noteboom Variation|1.d4 d5 2.c4 e6 3.Nc3 c6 4.Nf3 dxc4
+D35|Queen's Gambit Declined, Exchange Variation|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.cxd5 exd5
+D35|Queen's Gambit Declined, Exchange with 5.Bg5|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.cxd5 exd5 5.Bg5
+D36|Queen's Gambit Declined, Exchange, positional line|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.cxd5 exd5 5.Bg5 c6 6.e3
+D36|Queen's Gambit Declined, Exchange with 6.Qc2|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.cxd5 exd5 5.Bg5 Be7 6.Qc2
+D37|Queen's Gambit Declined, 5.Bf4|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Nf3 Be7 5.Bf4
+D37|Queen's Gambit Declined, 5.e3|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Nf3 Be7 5.e3
+D43|Semi-Slav Defense, Anti-Moscow|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Nf3 c6 5.Bg5 h6 6.Bh4
+D45|Semi-Slav Defense, Stoltz Variation|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Nf3 c6 5.e3 Nbd7 6.Qc2
+D46|Semi-Slav Defense, Main Line with ...Bd6|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Nf3 c6 5.e3 Bd6 6.Bd3
+D50|Queen's Gambit Declined, 4.Bg5 c6|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 c6
+D53|Queen's Gambit Declined, 4.Bg5 Be7 5.Nf3|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Be7 5.Nf3
+D53|Queen's Gambit Declined, 4.Bg5 Be7 5.e3|1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Be7 5.e3
+D70|Neo-Gruenfeld Defense with 3.Nf3|1.d4 Nf6 2.c4 g6 3.Nf3 d5 4.g3
+D85|Gruenfeld, Exchange Variation with Nf3|1.d4 Nf6 2.c4 g6 3.Nc3 d5 4.cxd5 Nxd5 5.e4 Nxc3 6.bxc3 Bg7 7.Nf3
+D94|Gruenfeld, Smyslov Defense|1.d4 Nf6 2.c4 g6 3.Nc3 d5 4.Nf3 Bg7 5.e3 O-O
+E00|Catalan Opening, Closed|1.d4 Nf6 2.c4 e6 3.g3
+E01|Catalan Opening, Closed with ...Be7|1.d4 Nf6 2.c4 e6 3.g3 d5 4.Bg2 Be7
+E05|Catalan, Open, Classical Line|1.d4 Nf6 2.c4 e6 3.g3 d5 4.Bg2 Be7 5.Nf3 O-O 6.O-O dxc4
+E05|Catalan, Open, Classical with 7.Qc2|1.d4 Nf6 2.c4 e6 3.g3 d5 4.Bg2 Be7 5.Nf3 O-O 6.O-O dxc4 7.Qc2
+E05|Catalan, Open, Classical with 7.Ne5|1.d4 Nf6 2.c4 e6 3.g3 d5 4.Bg2 Be7 5.Nf3 O-O 6.O-O dxc4 7.Ne5
+E06|Catalan, Closed, 5.Nf3 O-O 6.O-O|1.d4 Nf6 2.c4 e6 3.g3 d5 4.Bg2 Be7 5.Nf3 O-O 6.O-O
+E10|Queen's Pawn Game, Blumenfeld Gambit|1.d4 Nf6 2.c4 e6 3.Nf3 c5 4.d5 b5
+E11|Bogo-Indian Defense, 4.Bd2|1.d4 Nf6 2.c4 e6 3.Nf3 Bb4+ 4.Bd2
+E11|Bogo-Indian Defense, 4.Nbd2|1.d4 Nf6 2.c4 e6 3.Nf3 Bb4+ 4.Nbd2
+E12|Queen's Indian, 4.a3|1.d4 Nf6 2.c4 e6 3.Nf3 b6 4.a3
+E12|Queen's Indian, 4.Nc3 Bb7|1.d4 Nf6 2.c4 e6 3.Nf3 b6 4.Nc3 Bb7
+E15|Queen's Indian, Nimzowitsch Variation|1.d4 Nf6 2.c4 e6 3.Nf3 b6 4.g3 Ba6
+E20|Nimzo-Indian Defense, Kmoch Variation|1.d4 Nf6 2.c4 e6 3.Nc3 Bb4 4.f3
+E32|Nimzo-Indian, Classical, 4...O-O|1.d4 Nf6 2.c4 e6 3.Nc3 Bb4 4.Qc2 O-O
+E32|Nimzo-Indian, Classical, 4...b6|1.d4 Nf6 2.c4 e6 3.Nc3 Bb4 4.Qc2 b6
+E60|King's Indian Defense, 3.Nf3|1.d4 Nf6 2.c4 g6 3.Nf3
+E60|King's Indian Defense, 3.Nf3 Bg7|1.d4 Nf6 2.c4 g6 3.Nf3 Bg7
+E60|King's Indian Defense, Fianchetto without Nc3|1.d4 Nf6 2.c4 g6 3.g3
+E61|King's Indian Defense, 3.Nc3 Bg7|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7
+E61|King's Indian Defense, Three Knights|1.d4 Nf6 2.c4 g6 3.Nf3 Bg7 4.Nc3
+E61|King's Indian Defense, 4...d6|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.Nf3 d6
+E61|King's Indian Defense, Smyslov System|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.Nf3 d6 5.Bg5
+E61|King's Indian Defense, 5.e3|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.Nf3 d6 5.e3
+E61|King's Indian Defense, 5.Bf4|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.Nf3 d6 5.Bf4
+E61|King's Indian Defense, Fianchetto with Nc3|1.d4 Nf6 2.c4 g6 3.g3 Bg7 4.Nc3
+E62|King's Indian, Fianchetto Variation, 5.Bg2|1.d4 Nf6 2.c4 g6 3.Nf3 Bg7 4.g3 d6 5.Bg2
+E62|King's Indian, Fianchetto, 6.O-O|1.d4 Nf6 2.c4 g6 3.Nf3 Bg7 4.g3 O-O 5.Bg2 d6 6.O-O
+E62|King's Indian, Fianchetto with ...c6|1.d4 Nf6 2.c4 g6 3.Nf3 Bg7 4.g3 O-O 5.Bg2 d6 6.O-O c6 7.Nc3
+E62|King's Indian, Fianchetto with ...Nc6|1.d4 Nf6 2.c4 g6 3.Nf3 Bg7 4.g3 O-O 5.Bg2 d6 6.O-O Nc6 7.Nc3
+E70|King's Indian Defense, 4.e4 d6|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6
+E73|King's Indian, Averbakh System|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Be2 O-O 6.Bg5
+E76|King's Indian, Four Pawns Attack, Benoni transposition|1.d4 Nf6 2.c4 c5 3.d5 g6 4.Nc3 Bg7 5.e4 d6 6.f4
+E90|King's Indian, Makogonov Variation|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.h3
+E90|King's Indian, Benoni transposition with h3|1.d4 Nf6 2.c4 c5 3.d5 g6 4.Nc3 Bg7 5.e4 d6 6.h3
+E91|King's Indian, Benoni transposition with Be2|1.d4 Nf6 2.c4 c5 3.d5 g6 4.Nc3 Bg7 5.e4 d6 6.Nf3 O-O 7.Be2
+E92|King's Indian, Petrosian System|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.Be2 e5 7.d5
+E94|King's Indian, Orthodox, 7...Nbd7|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.Be2 e5 7.O-O Nbd7
+E94|King's Indian, Orthodox, 7...exd4|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.Be2 e5 7.O-O exd4
+E94|King's Indian, Orthodox, 7...c6|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.Be2 e5 7.O-O c6
+E94|King's Indian, Orthodox, 7...Na6|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.Be2 e5 7.O-O Na6
+E97|King's Indian, Mar del Plata|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.Be2 e5 7.O-O Nc6 8.d5 Ne7
+E99|King's Indian, Orthodox, Classical, 10.Nd3|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.Be2 e5 7.O-O Nc6 8.d5 Ne7 9.Ne1 Nd7 10.Nd3 f5
+B30|Sicilian, Four Knights Variation|1.e4 c5 2.Nf3 Nc6 3.Nc3 Nf6
+A34|English, Symmetrical, Rubinstein with 2.g3|1.c4 c5 2.g3 Nf6 3.Bg2 d5 4.cxd5 Nxd5
+C18|French, Winawer, Advance, Poisoned Pawn|1.e4 e6 2.d4 d5 3.Nc3 Bb4 4.e5 c5 5.a3 Bxc3+ 6.bxc3 Ne7 7.Qg4
+C18|French, Winawer, Advance, 7.Nf3|1.e4 e6 2.d4 d5 3.Nc3 Bb4 4.e5 c5 5.a3 Bxc3+ 6.bxc3 Ne7 7.Nf3
+C18|French, Winawer, Advance, 7.h4|1.e4 e6 2.d4 d5 3.Nc3 Bb4 4.e5 c5 5.a3 Bxc3+ 6.bxc3 Ne7 7.h4
+C18|French, Winawer, Advance, 7.a4|1.e4 e6 2.d4 d5 3.Nc3 Bb4 4.e5 c5 5.a3 Bxc3+ 6.bxc3 Ne7 7.a4
+A68|Benoni, Four Pawns Attack, King's Indian move order|1.d4 Nf6 2.c4 c5 3.d5 g6 4.Nc3 Bg7 5.e4 d6 6.f4 O-O 7.Nf3 e6
+E99|King's Indian, Orthodox, Classical, 10.Be3|1.d4 Nf6 2.c4 g6 3.Nc3 Bg7 4.e4 d6 5.Nf3 O-O 6.Be2 e5 7.O-O Nc6 8.d5 Ne7 9.Ne1 Nd7 10.Be3 f5
+"""
+"""As linhas que a segunda rodada da S-534 acrescentou, e cada uma nasceu de uma medição.
+
+**Por que uma segunda tabela e não linhas costuradas na primeira.** A de cima é a classificação
+padrão escrita por código -- uma linha canônica por código, na ordem A00…E99 --, e ela continua
+sendo isso. Esta é outra coisa: o **erro medido**. Cada linha aqui responde a uma confusão contada
+contra o header `[ECO]` de 20.000 partidas da gigabase (`scratchpad/eco_medir.py`), e a diferença
+entre as duas listas é a diferença entre *o que a classificação é* e *onde ela falhava*.
+
+**As três formas de falha que estas linhas consertam**, e nenhuma delas era "a tabela está errada":
+
+1. **A porta de transposição que faltava.** `1.Nf3 d5 2.c4 e6` chega à mesma posição de
+   `1.c4 e6 2.Nf3 d5`, e a tabela só tinha `A13 = 1.c4 e6` -- dois meios-lances, cedo demais para
+   a partida ainda estar nela. Eram 149 erros de A13 em 178 partidas.
+2. **O ponto de bifurcação sem linha.** `C54` era só a linha principal com 11 meios-lances; a
+   partida que jogasse `4...Nf6 5.d3` caía para `C53` porque não havia nada entre os dois. 102
+   erros em 103 partidas.
+3. **A abertura que a tabela alcançava por um caminho só.** `B33` existia como a Sveshnikov de
+   16 meios-lances; a mesma abertura por `5...e6 6.Ndb5` não tinha linha, e 95 partidas de 398
+   caíam em `B30`.
+
+**Os nomes daqui são o da linha, e não o da família** -- é o dado que `frase_da_abertura` mostra
+sob o tabuleiro. `Ruy Lopez` é o nome de nove códigos e não distingue nenhum; *Berlin Defense,
+Open Variation* distingue o C67 de todos eles.
+"""
+
+
 def _lances_de(texto: str) -> tuple[str, ...]:
     """`1.e4 c5 2.Nf3` -> `("e4", "c5", "Nf3")`. Os números vão embora; os lances ficam."""
     lances = []
@@ -641,11 +941,18 @@ def _lances_de(texto: str) -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def tabela() -> tuple[Abertura, ...]:
-    """As linhas da tabela, na ordem em que estão escritas. Lida uma vez."""
+    """As linhas da tabela, na ordem em que estão escritas. Lida uma vez.
+
+    As de `_TABELA_EXTRA` vêm depois, e a ordem importa em dois lugares: `_nomes` fica com o nome
+    da **primeira** linha de cada código (a legenda da família, que é a da tabela padrão), e
+    `_por_posicao`/`_arvore` desempatam pela primeira escrita quando duas linhas chegam à mesma
+    posição pelo mesmo número de lances.
+    """
     aberturas = []
-    for linha in _TABELA.strip().splitlines():
-        codigo, nome_, lances = linha.split("|")
-        aberturas.append(Abertura(codigo, nome_, _lances_de(lances)))
+    for texto in (_TABELA, _TABELA_EXTRA):
+        for linha in texto.strip().splitlines():
+            codigo, nome_, lances = linha.split("|")
+            aberturas.append(Abertura(codigo, nome_, _lances_de(lances)))
     return tuple(aberturas)
 
 
@@ -695,21 +1002,36 @@ def _arvore() -> dict[str, Any]:
     return raiz
 
 
-def _mais_profunda(candidatas: Iterable[Abertura]) -> Abertura | None:
+def _a_ultima(candidatas: Iterable[Abertura]) -> Abertura | None:
+    """A **última** casada, e não a de linha mais longa: ver `classificar`."""
     melhor: Abertura | None = None
     for abertura in candidatas:
-        if melhor is None or abertura.profundidade >= melhor.profundidade:
-            melhor = abertura
+        melhor = abertura
     return melhor
 
 
 def classificar(tabuleiro_ou_lances: chess.Board | Iterable[str]) -> Abertura | None:
-    """O código ECO mais profundo que a partida alcança, **por posição**. `None` se nenhum.
+    """O código ECO da **posição final** que a tabela ainda conhece. `None` se nenhuma conhece.
 
     Aceita um `chess.Board` -- é a pilha de lances dele que é percorrida, então um tabuleiro
     montado de uma FEN e sem lances é conferido só na posição em que está -- ou uma sequência de
     SAN a partir da posição inicial. Um lance ilegal encerra a leitura no que já se viu, em vez
     de derrubar quem perguntou: a base tem partidas que o `python-chess` recusa (S-85).
+
+    **A partida é classificada pela posição mais tardia que a tabela conhece, andando para trás
+    a partir da última** -- e não pela linha mais longa da tabela entre as que ela tocou. A
+    diferença é a transposição, e a primeira rodada da S-534 a prometeu sem entregá-la:
+    `1.Nf3 d5 2.d4 Nf6 3.c4` e `1.d4 d5 2.c4 Nf6 3.Nf3` chegam à **mesma posição** -- mesmas
+    peças, mesma vez, mesmos roques -- e davam D02 e D06. Não porque a posição final não casasse:
+    porque cada caminho tinha passado por uma linha intermediária diferente, e era a linha mais
+    longa entre as **intermediárias** que vencia. Pela posição final os dois dão o mesmo código,
+    que é o que "a transposição vale" quer dizer -- e é também a regra da classificação padrão:
+    o código de uma partida é o da última posição dela que está no livro de aberturas.
+
+    **O alcance disto é o da tabela, e não mais que ele.** Dois caminhos que chegam a uma posição
+    que a tabela **não** conhece continuam andando para trás cada um pelo seu, e podem parar em
+    pontos diferentes: foi o que aconteceu com `1.Nf3 d5 2.d4 Nf6 3.c4`, cuja posição final não
+    tinha linha nenhuma. A resposta ali não é uma regra melhor -- é a linha que faltava.
     """
     posicoes = _por_posicao()
     achadas: list[Abertura] = []
@@ -724,7 +1046,7 @@ def classificar(tabuleiro_ou_lances: chess.Board | Iterable[str]) -> Abertura | 
             abertura = posicoes.get(_chave(atual))
             if abertura is not None:
                 achadas.append(abertura)
-        return _mais_profunda(achadas)
+        return _a_ultima(achadas)
 
     atual = chess.Board()
     for indice, san in enumerate(tabuleiro_ou_lances):
@@ -737,7 +1059,7 @@ def classificar(tabuleiro_ou_lances: chess.Board | Iterable[str]) -> Abertura | 
         abertura = posicoes.get(_chave(atual))
         if abertura is not None:
             achadas.append(abertura)
-    return _mais_profunda(achadas)
+    return _a_ultima(achadas)
 
 
 def classificar_lances(sans: Sequence[str]) -> Abertura | None:
@@ -787,19 +1109,37 @@ def frase(codigo: str) -> str:
     return f"ECO {limpo}{SEPARADOR}{legenda}" if legenda else f"ECO {limpo}"
 
 
-def frase_do_tabuleiro(tabuleiro: chess.Board, codigo_do_header_da_partida: str = "") -> str:
-    """A frase para a partida na sala: o header `[ECO]` vence, e sem ele a posição classifica.
+def frase_da_abertura(abertura: Abertura) -> str:
+    """`ECO C67 · Ruy Lopez, Berlin Defense, Open Variation` -- o nome da **linha**.
 
-    O header vence pela mesma razão que no índice: é a classificação que quem publicou a partida
-    escolheu, e a tabela embutida pode discordar dela numa transposição rara. Sem header -- a
-    partida veio de um servidor, ou foi digitada na sala -- é `classificar`, que lê a pilha de
-    lances do tabuleiro por posição. Vazio quando nem um nem outro dizem nada.
+    O par de `frase`, e a diferença entre os dois é a diferença entre ter a partida e ter só o
+    código. `nome(codigo)` é a legenda da **família**, e ela repete: *Ruy Lopez* é o nome de nove
+    códigos, *English* de treze, *Sicilian* de doze -- dizer `ECO C67 · Ruy Lopez` sob um
+    tabuleiro que está na Berlim aberta é dizer o que já se via. Quando a posição foi
+    classificada, sabe-se **qual linha** casou, e é o nome dela que distingue.
+    """
+    return f"ECO {abertura.codigo}{SEPARADOR}{abertura.nome}"
+
+
+def frase_do_tabuleiro(tabuleiro: chess.Board, codigo_do_header_da_partida: str = "") -> str:
+    """A frase para a partida na sala: o header `[ECO]` decide o código, a posição dá o nome.
+
+    **O header continua vencendo o código**, pela mesma razão que no índice: é a classificação que
+    quem publicou a partida escolheu, e a tabela embutida pode discordar dela numa transposição
+    rara. O que mudou na segunda rodada da S-534 é o **nome**: a posição é classificada de todo
+    jeito, e quando ela concorda com o header a legenda passa a ser a da linha casada
+    (`frase_da_abertura`) em vez da legenda genérica da família. Discordando, o código é o do
+    header e a legenda volta a ser a da família -- afirmar o nome de uma linha que a partida não
+    percorreu seria pior que a legenda genérica. Ver `frase_da_abertura`.
+
+    Sem header -- a partida veio de um servidor, ou foi digitada na sala -- vale a posição, e é aí
+    que a transposição paga. Vazio quando nem um nem outro dizem nada.
     """
     do_header = codigo_do_header(codigo_do_header_da_partida)
-    if do_header:
-        return frase(do_header)
     abertura = classificar(tabuleiro)
-    return "" if abertura is None else frase(abertura.codigo)
+    if abertura is not None and (not do_header or abertura.codigo == do_header):
+        return frase_da_abertura(abertura)
+    return frase(do_header)
 
 
 def lances_do_movetext(texto: str, maximo: int = LANCES_EXAMINADOS) -> list[str]:
