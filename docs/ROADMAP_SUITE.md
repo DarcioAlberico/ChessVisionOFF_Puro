@@ -103,10 +103,10 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 
 | fase | estado | medido |
 |---|---|---|
-| 80 | ◐ | S-527 em duas rodadas (barra de 154 para 32 px, 11 de 14 acoes na fila a 1400 px); S-553 e S-554 fecham os dois bloqueios de tema. Faltam S-528, S-529, S-530, S-551, S-552 |
-| 81 | ◻ | — |
-| 82 | ◻ | — |
-| 83 | ◻ | — |
-| 84 | ◐ | S-542 e S-543 entregues: 2.618 estudos em EPUB de 7,6 MB em 3,1 s, DOCX em 44,5 s. Faltam S-544 e S-545 |
-| 85 | ◐ | S-546 e S-548 entregues (120 avisos de pagina em 81 s onde havia 4); S-547 medida e recusada, sem ganho. A fila espera a acao de menu da rodada 2 |
+| 80 | ✅ 2026-09-05 | A barra da sala de 154 para 32 px e a do PDF de 118 para 32; o cabecalho da partida acima do tabuleiro; o tabuleiro cresce pela altura (616 para 662 px a 1920x1080); a janela deixou de crescer ao ler (piso de 902 para 553 px); foco de teclado e icone desabilitado visiveis nas tres peles |
+| 81 | ✅ 2026-09-05 | PGN comprimido em streaming; indice incremental (8,63 GB do zero em ~20 min, segunda rodada em 0,005 s); busca por doze filtros abaixo de 1 s sobre 10,3 milhoes de partidas; ECO a 86,39% contra o header; arvore de aberturas em 0,6 ms de mediana |
+| 82 | ✅ 2026-09-05 | Opcoes do motor sem reiniciar (setoption no processo aberto, 1,34 para 2,33 MN/s); barra de avaliacao que diz quem mateia; analise da partida por expectativa de vitoria, com as divergencias contra o Lichess caindo de 14 para 4 em 256 lances; Syzygy real a 123 us de mediana |
+| 83 | ◐ 2026-09-05 | S-539 de 24 exercicios com zero corretos para 913, com 891 conferidos contra a tabela impressa; S-540 e FSRS-4.5 conferido caso a caso; S-541 com placar no disco. Falta a rodada do critico sobre a rodada 2 |
+| 84 | ✅ 2026-09-05 | EPUB 3 com zero erro no epubcheck e DOCX que o Word le, com a tipografia de notacao que um editor reconhece; mil diagramas em lote em 3,01 s de SVG; o estudo impresso em vetor, com texto selecionavel |
+| 85 | ✅ 2026-09-05 | A fila de livros na janela, com progresso por pagina (120 avisos em 81 s onde havia 4) e um relatorio de qualidade por livro; S-547 medida e recusada, com o numero: o Otsu acha 55% mais diagramas no livro que exporta zero e nenhum passa do gate |
 | 86 | ✅ 2026-09-04 | S-549: 52 módulos de `ui/` sem toolkit, guarda acha 31/33 em `qt/`; S-550: sete seções, faixa em 27 cópias |
