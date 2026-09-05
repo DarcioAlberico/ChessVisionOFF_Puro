@@ -136,6 +136,38 @@ class GeometriaLembradaTests(unittest.TestCase):
                     self.assertLessEqual(lida.altura, tela[3] - tela[1])
                     self.assertTrue(geometria.visivel_em(lida, (tela,)))
 
+    def test_a_janela_que_cabe_em_parte_e_grampeada_sem_sair_do_lugar(self) -> None:
+        """**A variante que o teste acima não alcançava** (S-552, quarta rodada).
+
+        Ele só exercita geometrias com a **posição** fora da tela, e a correção da terceira rodada
+        entrou depois do curto-circuito de `visivel_em`: uma janela guardada que *aparece* na tela
+        nova era devolvida como veio, por maior que fosse.
+        `geometria_a_aplicar('1920x1080+0+0', [(0, 0, 1024, 768)])` respondia **1920x1080** -- 896
+        px mais larga que o monitor --, que é exatamente o "cabe em parte" nomeado no docstring da
+        função: baixar a resolução, ou desdocar o notebook sem mudar a janela de lugar.
+
+        O grampo é só para baixo e a posição é preservada: a janela não é movida por caber.
+        """
+        for tela, guardada, esperada in (
+            ((0, 0, 1024, 768), "1920x1080+0+0", "1024x768+0+0"),
+            ((0, 0, 1366, 768), "1920x1080+0+0", "1366x768+0+0"),
+            ((0, 0, 1280, 1024), "1400x950+40+30", "1280x950+40+30"),
+            ((0, 0, 1024, 768), "800x600+100+50", "800x600+100+50"),
+        ):
+            with self.subTest(tela=tela, guardada=guardada):
+                self.assertEqual(esperada, geometria.geometria_a_aplicar(guardada, (tela,)))
+
+    def test_a_janela_deitada_sobre_dois_monitores_nao_e_encolhida(self) -> None:
+        """O grampo é contra a **área de trabalho inteira**, e não contra um monitor: encolher ao
+        maior deles desfaria um arranjo que alguém escolheu com a janela nas duas telas."""
+        dois = ((0, 0, 1920, 1080), (1920, 0, 3840, 1080))
+        self.assertEqual("2400x1000+700+40", geometria.geometria_a_aplicar("2400x1000+700+40", dois))
+        self.assertEqual(
+            "1920x1000+700+40",
+            geometria.geometria_a_aplicar("2400x1000+700+40", dois[:1]),
+            "desligado o segundo monitor, a janela passa a ter de caber no que sobrou",
+        )
+
     def test_sem_a_medicao_o_piso_e_so_a_soma_das_partes(self) -> None:
         """As duas metades de `piso_da_janela`, separadas porque a janela do Qt rola (S-552).
 

@@ -158,6 +158,7 @@ def piso_da_leitura(
     esteira: int = 0,
     alca: int = ALCA_DO_DIVISOR,
     minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
+    pedido: int | None = None,
 ) -> int:
     """Quanto a coluna de leitura pode **exigir** sem cortar o tabuleiro. Pura (S-551).
 
@@ -172,9 +173,20 @@ def piso_da_leitura(
     pisos somam 240 + 42 de esteira + 210 = **492**. Enquanto a coluna de leitura exigia os 266 px
     que os `QGroupBox` dela declaravam -- 386 com o motor ligado --, o `QSplitter` não conseguia
     atender nenhum dos dois lados e repartia 240/240, cortando 36 px do tabuleiro.
+
+    **`pedido` é o que a coluna pede por conta própria, e ele é teto -- a correção da quarta
+    rodada.** Sem ele a régua respondia um número que o painel aplicava em `setMinimumWidth`, e
+    piso é piso nos dois sentidos: onde a coluna pedia **menos** que a régua, a régua *subia* a
+    exigência dela e o tabuleiro pagava a diferença. Medido na janela de verdade, sem motor: a
+    coluna pede 136 px, a régua respondia 192, e o tabuleiro caía de 298 para 245 px a 1024 e de
+    454 para 447 a 1400. A régua existe para **descer** exigência de quem pede demais; quem pede
+    pouco não tem o que descer, e o mínimo dele é o dele. `None` é "não perguntei", e nesse caso
+    só o teto declarado vale -- é o que `fracao_para_o_tabuleiro` passa, porque ali o número é
+    posição de alça e não mínimo de widget.
     """
     sobra = int(largura) - int(alca) - int(esteira) - int(minimo)
-    return max(1, min(int(minimo_da_leitura), sobra))
+    teto = int(minimo_da_leitura) if pedido is None else min(int(minimo_da_leitura), int(pedido))
+    return max(1, min(teto, sobra))
 
 
 def fracao_para_o_tabuleiro(

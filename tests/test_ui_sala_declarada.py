@@ -142,6 +142,45 @@ class EsteiraDaColunaTests(unittest.TestCase):
             sala_declarada.piso_da_leitura(1384, minimo=MINIMO, alca=4, esteira=self.ESTEIRA),
         )
 
+    def test_a_regua_desce_exigencia_e_nunca_sobe_a_de_quem_pede_pouco(self) -> None:
+        """**A regressão da quarta rodada, e ela custou 53 px de tabuleiro.**
+
+        O painel aplica esta resposta em `setMinimumWidth`, que é piso nos dois sentidos: sem o
+        `pedido`, a régua *subia* a exigência da coluna que pedia menos do que ela. Medido na
+        janela de verdade a 1024, sem motor: a coluna pede 136 px, a régua respondia 192, e o
+        tabuleiro caía de 298 para **245** px -- uma troca que ninguém pediu, no item cujo assunto
+        é justamente o tabuleiro não encolher.
+        """
+        largura, alca = 480, 4
+        sem_pedido = sala_declarada.piso_da_leitura(largura, minimo=MINIMO, alca=alca, esteira=self.ESTEIRA)
+        self.assertEqual(194, sem_pedido, "o caso de 1024 mudou de número")
+        self.assertEqual(
+            136,
+            sala_declarada.piso_da_leitura(
+                largura, minimo=MINIMO, alca=alca, esteira=self.ESTEIRA, pedido=136
+            ),
+            "a régua subiu o mínimo de quem pedia pouco",
+        )
+        self.assertEqual(
+            sem_pedido,
+            sala_declarada.piso_da_leitura(
+                largura, minimo=MINIMO, alca=alca, esteira=self.ESTEIRA, pedido=386
+            ),
+            "quem pede demais continua descendo ao que cabe",
+        )
+
+    def test_o_pedido_e_teto_e_nao_troca_de_lugar_com_o_declarado(self) -> None:
+        """Numa janela larga os dois tetos valem, e quem manda é o menor: a coluna que pede 300 px
+        continua parando nos 210 declarados, e a que pede 90 para nos 90 dela."""
+        for pedido, esperado in ((90, 90), (300, sala_declarada.LARGURA_MINIMA_DA_LEITURA)):
+            with self.subTest(pedido=pedido):
+                self.assertEqual(
+                    esperado,
+                    sala_declarada.piso_da_leitura(
+                        1384, minimo=MINIMO, alca=4, esteira=self.ESTEIRA, pedido=pedido
+                    ),
+                )
+
     def test_o_piso_da_leitura_nunca_e_zero_nem_negativo(self) -> None:
         """Uma coluna de zero pixel é um `QSplitter` de que não há gesto de mouse que volte."""
         for largura in (0, 100, 240, 300):

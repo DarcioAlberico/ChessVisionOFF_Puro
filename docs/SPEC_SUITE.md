@@ -437,7 +437,7 @@ foram levantados na mesma varredura, e não porque este item seja o dono de todo
 | O tabuleiro reconhecido é **cortado** a 1245 px -- some a régua a–h -- em vez de encolher | S-552 | É `qt/tabuleiro_editavel.py` e não o layout da janela: o widget desenha a régua fora da área quando a caixa é mais baixa que larga. A 1024 o mesmo corte aparece, e está nas fotos (`fotos/classica_1024x768_00_Resultado.png`) |
 | A lista de partidas volta ordenada alfabeticamente por brancas em vez de por data | S-533 | Ordem padrão da consulta. Trocá-la é uma linha e um teste, mas o item é da S-533 e a medição de lá é sobre o filtro |
 
-## S-529 · O painel do motor: barra de avaliação vertical, linhas MultiPV clicáveis, profundidade — ✅ **implementada em 2026-09-04**
+## S-529 · O painel do motor: barra de avaliação vertical, linhas MultiPV clicáveis, profundidade — ✅ **implementada em 2026-09-04** (quarta rodada, 2026-09-05: os números da barra remedidos com os 26 px dela)
 
 ### Problema
 
@@ -683,6 +683,25 @@ A fila do próprio botão da seção também mudou de widget nessa rodada: `Anal
 frase de estado eram um `QHBoxLayout`, e numa coluna de leitura estreita o rótulo do botão saía
 cortado dos dois lados (`nalisar posiçã`). Agora são uma `BarraFluida`, que quebra em fileiras — o
 mesmo widget da barra de cima da sala, pela mesma razão da S-151.
+
+### Remedido na rodada 4 (2026-09-05): os números da barra são de antes de ela ter 26 px
+
+O critério de aceite acima foi escrito na primeira rodada, com a barra de **18 px**, e a segunda a
+levou a 26 sem remedir a linha. Remedido agora na janela de verdade, com o Stockfish desta máquina e
+o código de hoje (`scratchpad/exec4/sonda_barra.py`):
+
+| o que a spec dizia | o que reproduz hoje |
+|---|---|
+| a 1400×950, barra de **18×475** em `x=8`, tabuleiro em `x=36` | barra de **26×480** em `x=0`, tabuleiro em `x=36` |
+| a 1920×1080, **18×475** ao lado de um tabuleiro de **509** | **26×529** ao lado de um widget de **529** (lado desenhado 495) |
+| o custo em largura é **28 px**; o tabuleiro vai de 488 sem motor para **460** com barra | o custo é **36 px** (26 da barra mais 10 de vão): de **488** para **452** a 1400×950 |
+| "o tabuleiro volta aos 488 px" sem motor | ✅ reproduz: 488×488, lado desenhado 454 |
+
+Os 36 px são os mesmos "42 px de esteira" da rodada 3 vistos de outro ângulo: a esteira soma também
+as margens da coluna (6 px), que existem com ou sem barra.
+
+**A 1024×768 com motor** — a janela em que isso decide se o tabuleiro sai inteiro — a barra é
+**26×432** em `x=0`, o tabuleiro 293×432 em `x=36`, lado desenhado **259**, corte **0**.
 
 ## S-530 · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável — ✅ **implementada em 2026-09-04**
 
@@ -4422,7 +4441,7 @@ teste de cada uma seguia verde medindo a decisão sozinha. A guarda que faltava 
 
 _não houve rodada: seção escrita a posteriori (S-550)_
 
-## S-551 · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move — ✅ **implementada em 2026-09-04**
+## S-551 · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move — ✅ **implementada em 2026-09-04** (quarta rodada, 2026-09-05: o piso da leitura deixou de subir o mínimo de quem pede pouco)
 
 ### Problema
 
@@ -4558,8 +4577,8 @@ E não voltava: nem redimensionando a janela, nem desligando o motor. A 1245 e a
 
 | achado | medido antes | o que mudou | medido depois |
 |---|---|---|---|
-| **A régua entregava ao tabuleiro a largura que a barra ocupa** | divisor `[240, 240]` de 480; tabuleiro 240 px com 203 visíveis | `esteira` entra em `lado_do_tabuleiro` e em `fracao_para_o_tabuleiro`: a alça vai para o tabuleiro **mais** a esteira | divisor `[321, 156]`; tabuleiro 279 px, **corte 0** |
-| **A coluna de leitura exigia mais do que havia** | `minimumSizeHint` dos `QGroupBox`: 266 px, e **386** com a seção do motor cheia de texto | `piso_da_leitura` (nova, pura) declara o que a leitura pode exigir sem cortar o tabuleiro, e o painel o aplica em `divisor_vertical.setMinimumWidth` | 156 px a 1024, 210 px de 1400 para cima |
+| **A régua entregava ao tabuleiro a largura que a barra ocupa** | divisor `[240, 240]` de 480; tabuleiro 240 px com 203 visíveis | `esteira` entra em `lado_do_tabuleiro` e em `fracao_para_o_tabuleiro`: a alça vai para o tabuleiro **mais** a esteira | divisor `[335, 142]`; tabuleiro **293 px** (lado 259), **corte 0** — remedido na 4ª rodada; a 3ª registrou `[321, 156]` e 279 px, que era o piso da leitura subindo o mínimo da coluna |
+| **A coluna de leitura exigia mais do que havia** | `minimumSizeHint` dos `QGroupBox`: 266 px, e **386** com a seção do motor cheia de texto | `piso_da_leitura` (nova, pura) declara o que a leitura **pode** exigir sem cortar o tabuleiro, e o painel a passa como teto do mínimo — nunca como mínimo, o que a 4ª rodada corrigiu | mínimo de **142 px** a 1024 com motor e 136 sem; a coluna fica com 203 px a 1400 e 210 de 1920 para cima |
 | **A régua de linhas não tinha onde ser desenhada** | o piso passado era `LADO_MINIMO` cru: `BoardGeometry.fit` desenha 240 num widget de 245, sobram 2,5 px de cada lado, e `origin_x - 11` cai fora | `_caixa_minima_do_tabuleiro` = `LADO_MINIMO + MARGEM` — a régua trabalha na **caixa**, não no quadriculado | `origin_x` de **2,0** para **17,0**; `1`..`8` aparecem |
 | **"Analisar posição" saía cortado dos dois lados** (`nalisar posiçã`) | a fila do motor era um `QHBoxLayout`, que não reflui | virou `BarraFluida`, o mesmo widget da barra de cima | o botão inteiro, e "pensando…" na fileira de baixo |
 
@@ -4580,9 +4599,13 @@ continua sendo o piso **que o tabuleiro não invade quando cresce**, e deixa de 
 janela em que os dois pisos não cabem juntos.
 
 **Nada disso muda a janela larga.** A 1400×950 a fração calculada é a mesma de antes (0,629): ali o
-tabuleiro está limitado pela largura, e a esteira sai dos dois lados da conta. Onde a altura manda,
-o tabuleiro **cresce** com a correção: a 1400 o widget foi de 262 para 314 px, porque os 42 px da
-barra deixaram de ser descontados do quadriculado.
+tabuleiro está limitado pela largura, e a esteira sai dos dois lados da conta.
+
+⚠ **O "a 1400 o widget foi de 262 para 314 px" que estava escrito aqui não reproduz**, e saiu na
+quarta rodada. Nenhuma medição na janela de verdade encontrou esses números: a 1400×950 o widget do
+tabuleiro é **488 px sem motor** (lado 454) e **452 com motor** (lado 418), antes e depois da
+esteira. Os 262/314 vinham de uma sonda com o painel solto, que é a mesma armadilha registrada duas
+seções abaixo — painel fora da janela não recebe a largura que a janela dá.
 
 ### Testes da rodada 3
 
@@ -4610,7 +4633,49 @@ o piso cru e sem a esteira, `test_o_tabuleiro_nao_e_cortado…` falha com `240 !
 voltas, `test_a_coluna_h_aparece…` falha com `h1` e `h8` da mesma cor, e `test_as_duas_reguas…`
 falha com `0.0 not greater than or equal to 17.0`.
 
-## S-552 · A janela cabe em 1024 px de largura — ✅ **implementada em 2026-09-04; fechada em 2026-09-05** (segunda rodada: os dois literais cederam)
+### Rodada 4 (2026-09-05): o piso da leitura era piso nos dois sentidos
+
+**O crítico aprovou o bloqueio da rodada 3** — corte 0 nas três peles, com e sem motor, nas quatro
+voltas de ligar e desligar, e depois de redimensionar — e achou o preço que ninguém tinha declarado:
+**o tabuleiro encolheu onde ninguém pediu.**
+
+| medido pelo crítico | antes da rodada 3 | depois dela | depois desta rodada |
+|---|---|---|---|
+| 1024×768, **sem** motor, clássica/foco | 298 px | **245** | **298** |
+| 1024×768, **sem** motor, fita | 301 px | **245** (−18%) | **301** |
+| 1024×768, **com** motor, clássica | — | 245 | **259** |
+| 1400×950, sem motor | 454 px | **447** | **454** |
+| 1400×950, com motor | 418 px | **411** | **418** |
+
+**A causa, e ela é de uma palavra.** `piso_da_leitura` foi escrita para *baixar* os 386 px que o
+`QGroupBox` da seção do motor exige; o painel a aplicava em `divisor_vertical.setMinimumWidth`, e
+`setMinimumWidth` é piso **nos dois sentidos**. Onde a coluna pedia menos que a régua — 136 px na
+sala sem motor, medido na janela de verdade —, a régua *subia* a exigência dela para 192, e os 53 px
+saíam do tabuleiro. Uma régua feita para desfazer uma exigência criava outra.
+
+A correção é `pedido` em `piso_da_leitura`: o que a coluna pede por conta própria entra como **teto**
+ao lado do declarado, e a resposta é o menor dos três (o teto declarado, o pedido, e o que sobra da
+largura). Ela mora na função pura pela razão de sempre — quem mede o pedido é o widget, e quem
+decide o que fazer com ele é `ui/` — e é o que torna a guarda afirmável sem janela.
+
+**Corte 0 continua em todas as 24 células** da matriz do crítico (3 peles × com/sem motor × 1024,
+1400, 1920, 2560), e nas 12 com a análise contínua rodando.
+
+**Testes da rodada 4.**
+
+- `tests/test_ui_sala_declarada.py`: `test_a_regua_desce_exigencia_e_nunca_sobe_a_de_quem_pede_pouco`
+  (uma coluna que pede 136 recebe 136, e não os 194 do teto; a que pede 386 continua descendo) e
+  `test_o_pedido_e_teto_e_nao_troca_de_lugar_com_o_declarado`.
+- `tests/test_qt_tamanho_da_janela.py::SalaA1024SemMotorTests` (novo): o mínimo aplicado à coluna é
+  o menor entre o teto e o pedido; e o tabuleiro sem motor não sai cortado.
+  **O regime é reproduzido e não afirmado por número**: sob `offscreen` não há a fonte da interface
+  e a coluna pede 262 px — acima do teto —, então ali o defeito não aparece sozinho. O teste encolhe
+  o que a coluna pede (é o que a fonte de verdade faz) e então cobra o mínimo aplicado. Revertida a
+  correção, os dois acusam: o puro com `136 != 194 : a régua subiu o mínimo de quem pedia pouco`, o
+  de janela com `35 != 196` na mesma frase. Tirar só o `pedido=` da chamada do painel — deixando a
+  função pura correta — acusa igual, e é a metade que uma guarda só sobre `ui/` deixaria passar.
+
+## S-552 · A janela cabe em 1024 px de largura — ✅ **implementada em 2026-09-04; fechada em 2026-09-05** (quarta rodada: o limiar do empilhamento passou a ser medido, e o tamanho recuperado é grampeado)
 
 ### Problema
 
@@ -4825,6 +4890,140 @@ plataforma de verdade, com e sem motor: **955×553** (clássica), **955×587** (
   caso do crítico, três telas × três pisos) e `test_sem_a_medicao_o_piso_e_so_a_soma_das_partes`
   (novo). `test_cabe_em_parte_e_encolhido_ate_o_monitor` trocou de resposta: era `PISO_MEDIDO[1]`
   "o piso da S-150 vence a tela", e agora é a altura da tela.
+
+### Rodada 4 (2026-09-05): a correção da Galeria empilhava em toda tela de notebook
+
+O crítico conferiu a rodada 3 e a aprovou: **corte 0** nas três peles, com e sem motor, nas quatro
+voltas de ligar e desligar o motor e depois de redimensionar; as guardas acusam quando se reverte
+cada correção (6 de 6); e a régua nova `qt_app.assentado` não ficou vácua. E achou uma regressão da
+própria rodada, mais a variante do bloqueio 3 que o teste dela não alcançava.
+
+#### O achado: a Galeria empilhava de 1280 a 1700 px de janela
+
+`galeria_empilhada` compara o limiar ao **viewport**, e a aba nunca passa de 714 px nessa faixa
+inteira: de 1280 a 1700 o divisor entrega ao lado das abas exatamente `LARGURA_PREFERIDA_DAS_ABAS`
+(720), a moldura do `QTabWidget` come 6, e a barra de rolagem vertical come 12. Sobram **702** de
+viewport contra um limiar de **720** — e a aba perdia as duas colunas em toda tela de notebook,
+inclusive na janela de referência do projeto.
+
+| medido a 1400×950 | rodada 2 (`96ec6bb`) | rodada 3 (`03b1e3e`) | rodada 4 |
+|---|---|---|---|
+| aba / viewport | 714 / 714 | 714 / **702** | 714 / 714 |
+| conteúdo | 714×848 | **702×1358** | 714×848 |
+| rolagem vertical | 0 px | **692 px** | 0 px |
+| arranjo | duas colunas | **empilhado** | duas colunas |
+
+**E era uma trava, não um limiar mal posto.** Empilhar dobra a altura do conteúdo; a barra vertical
+que isso cria mantém o viewport 12 px abaixo do que ele teria; e o viewport abaixo do limiar manda
+empilhar de novo. Das três peles só a clássica saía dela, e só em **1800 px** de janela.
+
+**A causa é um número do Tk.** `FOLGA_DO_CORPO` valia 40 — `padx=(10, 0)` mais o `padding` do
+`LabelFrame` —, e em Qt o corpo montado em duas colunas responde **702** px de mínimo: 420 do
+recorte, 260 da lateral, 12 de moldura (`2 x espaco.linha()`) e 10 de vão (`espaco.folga()`) — 695
+na densidade compacta da pele "Fita". Enquanto os 720 só somavam a largura *preferida* da aba,
+superestimar em 18 px não custava nada; a rodada 3 os transformou em **limiar**, e uma folga que não
+existe na tela virou uma aba no arranjo estreito com espaço de sobra.
+
+`FOLGA_DO_CORPO` passa a ser 22, medido, e `LARGURA_MINIMA_DA_GALERIA` a **702**. Nada mais muda:
+`LARGURA_PREFERIDA_DAS_ABAS` continua 720, e agora a conta fecha por construção — 702 + 6 de moldura
+da aba + 12 de barra = **720**, que é a invariante que faltava e que nenhuma linha do projeto dizia.
+
+**Sobre o limiar certo não há trava**, e é o que o torna certo: acima dele as duas colunas cabem e
+ficam; abaixo, elas não caberiam, e empilhar é a resposta. Era a estimativa por cima que criava uma
+faixa em que a resposta estava errada nos dois sentidos.
+
+Medido depois, na janela de verdade, nas três peles: **duas colunas e rolagem horizontal 0** a 1280,
+1366, 1400, 1500, 1600, 1700, 1800 e 1920; **empilhado e rolagem horizontal 0** a 1024.
+
+**A troca acontece em 1245 px de janela, e é onde ela tem de acontecer**: varrida a faixa de
+1024 a 1280, a aba fica com 494, 569, 669 e 709 px enquanto o divisor ainda reparte por fração, e
+empilha; em **1245** ela alcança os 720 preferidos, o viewport chega a 702 e as duas colunas voltam
+para não sair mais. Rolagem horizontal 0 dos dois lados da troca, e nenhuma largura oscila.
+
+#### A variante aberta do bloqueio 3: "cabe em parte" com a posição dentro da tela
+
+`geometria_corrigida` grampeava o tamanho só depois de `visivel_em` dizer que **não**, e
+`geometria_a_aplicar('1920x1080+0+0', [(0, 0, 1024, 768)])` devolvia **`1920x1080+0+0`** — 896 px
+mais larga que a tela. É exatamente o caso "cabe em parte" que o docstring da própria função nomeia:
+baixar a resolução, desdocar o notebook. `test_a_janela_recuperada_nunca_nasce_maior_que_a_tela` só
+exercitava geometrias com a **posição** fora da tela.
+
+O grampo passou para antes do curto-circuito, e é só para baixo — uma janela nunca cresce por causa
+dele. **Contra a área de trabalho inteira, e não contra um monitor**: uma janela deitada sobre dois
+monitores é arranjo legítimo, e encolhê-la ao maior deles desfaria a escolha de alguém. Grampeada,
+ela pode ter deixado de aparecer — o caso da que só cruzava a tela pela borda —, e aí cai no
+reposicionamento que já existia.
+
+| guardada | monitores | antes | depois |
+|---|---|---|---|
+| `1920x1080+0+0` | 1024×768 | `1920x1080+0+0` | **`1024x768+0+0`** |
+| `1920x1080+0+0` | 1366×768 | `1920x1080+0+0` | **`1366x768+0+0`** |
+| `1400x950+40+30` | 1280×1024 | `1400x950+40+30` | **`1280x950+40+30`** (a altura cabia) |
+| `2400x1000+700+40` | dois de 1920 | igual | **igual** — a área de trabalho comporta |
+| `2400x1000+700+40` | um de 1920 | igual | **`1920x1000+700+40`** |
+| `800x600+100+50` | 1024×768 | igual | **igual** — o grampo não faz janela crescer |
+
+#### O que ficou registrado e não foi corrigido
+
+**A 1024 a coluna de leitura não passa de 195 px arrastando a alça da sala**, porque o mínimo do
+tabuleiro a trava. A saída existe e é a alça da **janela**: arrastá-la leva a aba a 563 px e a
+leitura aos 210 declarados. O crítico julgou a coluna de 156 px aceitável, com a ressalva de que as
+linhas do MultiPV quebram em duas ou três e o título do grupo do motor sai elidido (`Motor
+(Stockfish dev-202…`) — as duas coisas se veem na foto `exec4/fotos4/estudo_classica_1024_motor.png`.
+Numa janela de 1024 a coluna de leitura é estreita porque a janela é estreita; trocar isso por um
+tabuleiro menor é a troca que a rodada 4 acabou de desfazer.
+
+#### Testes da rodada 4
+
+- `tests/test_qt_painel_da_galeria.py::ArranjoDaAbaTests`:
+  `test_o_limiar_e_a_ocupacao_medida_das_duas_colunas_nas_tres_peles` (o declarado é o maior dos três
+  mínimos medidos, e a pele é aplicada **antes** de montar o painel — com a fonte de queda a fila de
+  botões do topo pede 716 px e o número medido deixa de ser o do leiaute) e
+  `test_na_largura_do_limiar_as_duas_colunas_cabem_sem_rolar_de_lado` (com o **viewport** no limiar,
+  e não a aba: entre os dois estão a moldura da rolagem e a barra).
+- `tests/test_qt_tamanho_da_janela.py::GaleriaNaLarguraPreferidaTests` (novo, contra a janela):
+  na largura preferida a Galeria fica em duas colunas nas três peles, com a barra vertical na tela;
+  e `LARGURA_PREFERIDA_DAS_ABAS` menos os dois cromos cobre `LARGURA_MINIMA_DA_GALERIA`.
+
+  **A faixa de janela não se reproduz sob `offscreen`, e o que importa dela se reproduz.** Sem as
+  fontes do sistema o lado do livro pede 810 px de mínimo, e a 1400 o divisor dá 586 à aba em vez de
+  720 — a aba empilha, e corretamente. Quem decide o arranjo não é a largura da janela: é **a
+  largura que a janela dá à aba**. Numa janela de 1700×700 o divisor entrega os mesmos 720 que a
+  janela de verdade entrega a 1280, e a altura de 700 põe a barra vertical na tela, que é a metade
+  do defeito que o número sozinho não mostra. Com os 720 antigos, a classe inteira empilha nas três
+  peles: `724 != 62 : a Galeria empilhou numa aba que comporta duas colunas`, e a invariante acusa
+  com `702 not greater than or equal to 720`.
+- `tests/test_ui_geometria.py`: `test_a_janela_que_cabe_em_parte_e_grampeada_sem_sair_do_lugar` e
+  `test_a_janela_deitada_sobre_dois_monitores_nao_e_encolhida` (novos). Revertido o grampo, o
+  primeiro acusa com `'1024x768+0+0' != '1920x1080+0+0'`.
+- `tests/test_qt_janela.py::test_o_divisor_arrastado_volta_no_lugar` passou a **declarar a área de
+  trabalho**, e a linha registra o alcance da correção: sob `offscreen` a tela virtual tem 800×800,
+  e aquele teste restaura uma janela de 2200 px de propósito -- em 1534 ela está no piso dos dois
+  lados e não há folga para arrastar o divisor. Sem declarar um desktop que comporte os 2200, o que
+  ele mediria seria o grampo. É o único teste da suíte que o grampo alcançou, e ele acusou na
+  primeira rodada completa depois da correção.
+- `EmpilhamentoDeclaradoTests` continua como estava — 482 e 794 seguem dos lados certos do limiar
+  novo —, e é justamente o que ele **não** alcança que motivou os dois acima: ele nunca tocou a
+  faixa de 1280 a 1700, que é onde toda tela de notebook cai.
+
+### O piso de largura sobe depois de ler, e nao desce mais (achado do critico, rodada 4)
+
+Medido nas tres peles, com o mesmo roteiro (abrir PDF, pagina 21, marcar, ler) e igual em
+`03b1e3e` e em `96ec6bb` -- nao e regressao de rodada nenhuma:
+
+| pele | piso ao abrir | piso depois de ler uma pagina |
+|---|---|---|
+| classica | 955x553 | **1024**x553 |
+| Foco | 955x587 | **1024**x587 |
+| Fita | 945x582 | **1012**x582 |
+
+E a metade sobrevivente do defeito que esta secao nomeia -- *"depois de ler uma pagina o piso
+subia para 1245x1218"*. A altura foi consertada e os 553 ficam; a largura ainda sobe. O criterio
+de aceite continua verdadeiro (pedida a 1024x768 ela abre **e permanece** em 1024x768), mas com
+**margem zero**: numa tela de 1024 a janela fica presa a largura inteira depois do primeiro livro
+lido, e qualquer pixel a mais -- um rotulo de aba maior, outra fonte de sistema, outro DPI --
+passa dela. O piso de `955x553` declarado acima e o piso **antes do uso**, e este paragrafo existe
+para que ele nao seja lido como o piso da sessao. Reprodutor: `scratchpad/crit_v3/p9.py`.
 
 ## S-553 · O foco de teclado se vê — ✅ **implementada em 2026-09-04**
 

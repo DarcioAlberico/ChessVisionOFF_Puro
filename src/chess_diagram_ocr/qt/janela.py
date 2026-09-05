@@ -181,12 +181,12 @@ rolagem horizontal, e é por isso que este número continua acima do que o paine
 LARGURA_PREFERIDA_DAS_ABAS = 720
 """O que o lado das abas **pede** quando há espaço, em pixel (S-552, segunda rodada).
 
-São os 720 que eram o piso até esta rodada -- a soma das partes da Galeria (S-154) --, demovidos
-de exigência a preferência. **A distinção é o item inteiro:** piso é onde a janela para de
-encolher, e por isso ele tinha de cair para a janela caber em 1024; preferida é o que o lado pede
-quando há espaço, e isso não mudou. Sem separar os dois, baixar o piso levava junto o arranjo de
-fábrica: medido a 1400×950, a aba de trabalho ia de 720 para 585 px e o tabuleiro da sala de 488
-para 392."""
+São os 720 que eram o piso até esta rodada, demovidos de exigência a preferência. **A distinção é
+o item inteiro:** piso é onde a janela para de encolher, e por isso ele tinha de cair para a janela
+caber em 1024; preferida é o que o lado pede quando há espaço. Sem separar os dois, baixar o piso
+levava junto o arranjo de fábrica: a 1400×950 a aba ia de 720 para 585 px e o tabuleiro da sala de
+488 para 392. **E os 720 são o que a Galeria ocupa mais o cromo** -- 702 + 6 de moldura da aba + 12
+de barra --, invariante que `GaleriaNaLarguraPreferidaTests` cobra desde a quarta rodada."""
 
 LARGURA_PREFERIDA_DO_VISOR = 520
 """O mesmo para o lado do livro: os 520 que eram o piso do visor.

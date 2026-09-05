@@ -34,16 +34,17 @@ from qt_app import MOTIVO, TEM_PYQT, aplicacao, cor_em, descartar, renderizar
 from test_engine import _launcher
 
 from chess_diagram_ocr.engine import EngineAnalyzer
-from chess_diagram_ocr.ui import galeria_declarada, geometria, sala_declarada
+from chess_diagram_ocr.ui import galeria_declarada, geometria, pele, sala_declarada
 
 if TEM_PYQT:
     from PyQt6.QtCore import QPoint, Qt
-    from PyQt6.QtWidgets import QPushButton
+    from PyQt6.QtWidgets import QGroupBox, QPushButton
 
     from chess_diagram_ocr.qt import janela as qt_janela
     from chess_diagram_ocr.qt import painel_da_galeria as qt_galeria
     from chess_diagram_ocr.qt import painel_de_resultado as qt_resultado
     from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+    from chess_diagram_ocr.qt import tema
 
 
 class _ServicoFalso:
@@ -264,6 +265,214 @@ class PisoDaJanelaTests(unittest.TestCase):
         self.assertEqual(self.janela.minimumSizeHint().width(), self.janela.width())
         self.assertEqual(qt_janela.LARGURA_MINIMA_DAS_ABAS, self.janela.abas.minimumWidth())
         self.assertEqual(qt_janela.LARGURA_MINIMA_DO_VISOR, self.janela.pdf.minimumWidth())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class GaleriaNaLarguraPreferidaTests(unittest.TestCase):
+    """A Galeria em duas colunas na faixa em que cai toda tela de notebook (S-552, 4ª rodada).
+
+    **A regressão, medida na janela de verdade em 2026-09-05.** De 1280 a 1700 px de janela o
+    divisor dá ao lado das abas exatamente `LARGURA_PREFERIDA_DAS_ABAS`, e a aba fica com 714 px --
+    o mesmo número em toda a faixa, porque a preferida é um teto. A barra de rolagem vertical come
+    12, sobram **702** de viewport, e o limiar de 720 herdado do Tk disparava o empilhamento:
+    conteúdo de 702x1358 com 692 px de rolagem vertical onde antes havia 714x848 sem rolagem
+    nenhuma. E era uma trava -- empilhar dobra a altura, a barra que isso cria segura o viewport
+    abaixo do limiar --, com as duas colunas só voltando em 1800 px de janela.
+
+    **A faixa de janela não se reproduz sob `offscreen`, e o que importa dela se reproduz.** Sem as
+    fontes do sistema o lado do livro pede 810 px de mínimo, e a 1400 o divisor dá 586 à aba em vez
+    de 720; o que decide o arranjo, porém, não é a largura da janela e sim **a largura que a janela
+    dá à aba**. Numa janela de 1700x700 o divisor entrega os mesmos `LARGURA_PREFERIDA_DAS_ABAS`
+    que a janela de verdade entrega a 1280, e a altura de 700 põe a barra vertical na tela -- que é
+    a metade do defeito que o número sozinho não mostra. Com os 720 antigos, esta classe empilha
+    nas três peles.
+    """
+
+    JANELA = (1700, 700)
+    """Offscreen, é a janela em que o divisor entrega à aba a largura preferida **e** a barra
+    vertical aparece. A largura de janela é diferente da do notebook; a da aba é a mesma."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.raiz = pasta_temporaria(self)
+        padrao = pele.PELES[0]
+        self.addCleanup(
+            lambda: tema.aplicar_tema(
+                self.app, cromo_escuro=padrao.cromo_escuro, densidade=padrao.densidade
+            )
+        )
+
+    def janela_na(self, uma: object) -> object:
+        """A janela montada naquela pele, com a Galeria à frente."""
+        tema.aplicar_tema(
+            self.app,
+            cromo_escuro=uma.cromo_escuro,  # type: ignore[attr-defined]
+            densidade=uma.densidade,  # type: ignore[attr-defined]
+        )
+        self.app.processEvents()
+        casa = self.raiz / str(uma.nome)  # type: ignore[attr-defined]
+        janela = qt_janela.JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=casa / "rotulos.csv",
+            pasta_de_estudos=casa / "estudos",
+            pasta_da_galeria=casa / "galeria",
+            caminho_do_estado=casa / "estado.json",
+            motor=None,
+        )
+        janela.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.addCleanup(descartar, janela)
+        janela.resize(*self.JANELA)
+        janela.show()
+        self.app.processEvents()
+        for indice in range(janela.abas.count()):
+            if janela.abas.tabText(indice).replace("&", "").startswith("Galeria"):
+                janela.abas.setCurrentIndex(indice)
+                break
+        self.app.processEvents()
+        self.app.processEvents()
+        return janela
+
+    def test_na_largura_preferida_a_galeria_fica_em_duas_colunas_nas_tres_peles(self) -> None:
+        """**É a faixa de 1280 a 1700 px de janela**, reproduzida pela largura que ela dá à aba."""
+        for uma in pele.PELES:
+            with self.subTest(pele=uma.nome):
+                janela = self.janela_na(uma)
+                galeria = janela.galeria  # type: ignore[attr-defined]
+                self.assertEqual(
+                    qt_janela.LARGURA_PREFERIDA_DAS_ABAS,
+                    janela.divisor.sizes()[0],  # type: ignore[attr-defined]
+                    "a janela deixou de entregar a largura preferida à aba",
+                )
+                self.assertTrue(
+                    galeria.rolagem.verticalScrollBar().isVisible(),
+                    "sem a barra vertical na tela este teste não mede a trava",
+                )
+                lateral = galeria.lateral.mapTo(galeria, galeria.lateral.rect().topLeft())
+                recorte = galeria.recorte.mapTo(galeria, galeria.recorte.rect().topLeft())
+                self.assertEqual(lateral.y(), recorte.y(), "a Galeria empilhou numa aba que comporta duas colunas")
+                self.assertEqual(
+                    0, galeria.rolagem.horizontalScrollBar().maximum(), "as duas colunas não couberam"
+                )
+
+    def test_a_largura_preferida_das_abas_cobre_o_que_a_galeria_ocupa(self) -> None:
+        """**A invariante que faltava, e ela liga os dois números que se desencontraram.**
+
+        A aba não recebe `LARGURA_PREFERIDA_DAS_ABAS`: recebe isso menos a moldura do `QTabWidget`,
+        e o corpo da Galeria recebe menos ainda -- a moldura da área de rolagem e a barra vertical.
+        Enquanto a preferida (720) e o limiar (720) fossem o mesmo número, a conta **nunca** fechava,
+        e nada no projeto dizia isso. Os dois lados são medidos aqui: quem subir o limiar ou baixar
+        a preferida vê a diferença nesta linha, e não numa foto seis rodadas depois.
+        """
+        janela = self.janela_na(pele.PELES[0])
+        galeria = janela.galeria  # type: ignore[attr-defined]
+        cromo_da_aba = janela.divisor.sizes()[0] - galeria.width()  # type: ignore[attr-defined]
+        rolagem = galeria.rolagem
+        cromo_da_rolagem = 2 * rolagem.frameWidth() + rolagem.verticalScrollBar().sizeHint().width()
+        self.assertGreaterEqual(
+            qt_janela.LARGURA_PREFERIDA_DAS_ABAS - cromo_da_aba - cromo_da_rolagem,
+            galeria_declarada.LARGURA_MINIMA_DA_GALERIA,
+            "a largura preferida das abas deixou de caber as duas colunas da Galeria",
+        )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SalaA1024SemMotorTests(unittest.TestCase):
+    """A régua da leitura só **desce** exigência, e nunca sobe a de quem pede pouco (S-552, 4ª).
+
+    **A regressão da terceira rodada, e ela custou 53 px de tabuleiro.** `piso_da_leitura` foi
+    escrita para baixar os 386 px que o `QGroupBox` da seção do motor exige; aplicada em
+    `setMinimumWidth`, ela é piso nos dois sentidos, e onde a coluna pedia **menos** ela subia a
+    exigência. Medido na janela de verdade sem motor: a coluna pede 136 px, a régua os punha em
+    192, e o tabuleiro caía de 298 para **245** px a 1024x768 -- de 301 para 245 na pele fita,
+    menos 18% -- e de 454 para 447 a 1400x950. Nenhuma dessas trocas estava declarada.
+
+    **A sala sem motor é o caso do achado**, e é por isso que ela ganhou classe própria: é ali que
+    a coluna pede pouco. Com o motor a seção dele empurra o pedido para cima, e a régua volta a
+    ser o que baixa -- que é o caso da classe seguinte.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        raiz = pasta_temporaria(self)
+        self.janela = qt_janela.JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=raiz / "rotulos.csv",
+            pasta_de_estudos=raiz / "estudos",
+            pasta_da_galeria=raiz / "galeria",
+            caminho_do_estado=raiz / "estado.json",
+            motor=None,
+        )
+        self.janela.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.addCleanup(descartar, self.janela)
+        self.janela.resize(*TELA_MINIMA)
+        self.janela.show()
+        self.app.processEvents()
+        # Os mesmos 500 px de `SalaA1024ComMotorTests`, e pela mesma razão: é o que a janela de
+        # verdade dá ao lado das abas a 1024, e o que a fonte de queda faria variar entre rodar o
+        # arquivo sozinho e rodar a suíte.
+        largura = sum(self.janela.divisor.sizes())
+        self.janela.divisor.setSizes(
+            [qt_janela.LARGURA_MINIMA_DAS_ABAS, max(1, largura - qt_janela.LARGURA_MINIMA_DAS_ABAS)]
+        )
+        self.app.processEvents()
+        self.sala = self.janela.estudo
+        for indice in range(self.janela.abas.count()):
+            if self.janela.abas.tabText(indice).replace("&", "").startswith("Estudo"):
+                self.janela.abas.setCurrentIndex(indice)
+                break
+        self.app.processEvents()
+
+    def test_a_regua_da_leitura_nao_sobe_o_minimo_de_quem_pede_pouco(self) -> None:
+        """**O regime é reproduzido, e não afirmado por número.** Sob `offscreen` não há a fonte da
+        interface e a coluna pede 262 px -- acima do teto --, então ali o defeito não aparece
+        sozinho: o que a fonte de verdade faz é a coluna pedir menos. O teste encolhe o pedido
+        (títulos e caixas de texto) e cobra que o mínimo aplicado seja **o pedido**, e não o teto.
+        """
+        coluna = self.sala.divisor_vertical
+        teto = sala_declarada.piso_da_leitura(
+            sum(self.sala.divisor.sizes()),
+            minimo=self.sala._caixa_minima_do_tabuleiro(),
+            esteira=self.sala._esteira_da_coluna(),
+            alca=max(1, self.sala.divisor.handleWidth()),
+        )
+        self.assertEqual(
+            min(teto, coluna.minimumSizeHint().width()),
+            coluna.minimumWidth(),
+            "o mínimo da coluna deixou de ser o menor entre o teto da régua e o que ela pede",
+        )
+        for grupo in coluna.findChildren(QGroupBox):
+            if grupo.parentWidget() is coluna:
+                grupo.setTitle("")
+        self.sala.lista.setMinimumWidth(1)
+        self.sala.comentario.setMinimumWidth(1)
+        self.app.processEvents()
+        self.sala._acomodar_o_tabuleiro()
+        self.app.processEvents()
+        pedido = coluna.minimumSizeHint().width()
+        self.assertLess(pedido, teto, "o regime da janela de verdade não foi reproduzido")
+        self.assertEqual(pedido, coluna.minimumWidth(), "a régua subiu o mínimo de quem pedia pouco")
+
+    def test_o_tabuleiro_sem_motor_nao_encolhe_e_nao_sai_cortado(self) -> None:
+        """A outra ponta do mesmo achado: o que a régua tomava da coluna saía do tabuleiro.
+
+        O número de tela não se afirma sob `offscreen` -- a fonte é outra e o tabuleiro mede 244 px
+        aqui contra 298 na janela de verdade. O que se afirma é a **relação**: o tabuleiro fica com
+        o que `lado_do_tabuleiro` prevê para a coluna que ele recebeu, e nada além do pedido da
+        leitura sai dele.
+        """
+        tabuleiro = self.sala.tabuleiro
+        self.assertEqual(
+            tabuleiro.width(),
+            tabuleiro.visibleRegion().boundingRect().width(),
+            "o tabuleiro saiu cortado sem motor nenhum ligado",
+        )
+        self.assertGreaterEqual(tabuleiro.geometria().size, qt_tabuleiro.LADO_MINIMO)
+        coluna = self.sala.divisor_vertical
+        self.assertLessEqual(
+            coluna.minimumWidth(),
+            coluna.minimumSizeHint().width(),
+            "a coluna de leitura exige mais do que ela própria pede",
+        )
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

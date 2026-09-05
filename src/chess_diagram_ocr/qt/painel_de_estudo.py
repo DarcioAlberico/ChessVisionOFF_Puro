@@ -688,6 +688,14 @@ class PainelDeEstudo(QWidget):
         duas réguas, com a faixa de navegação em duas fileiras -- e sem volta, porque o mínimo do
         `QGroupBox` não desce quando o motor é desligado. Quem declara o piso da leitura é
         `sala_declarada`, e é ele que passa a valer aqui.
+
+        **E o que a coluna pede vai junto na pergunta -- é a correção da quarta rodada.**
+        `piso_da_leitura` responde "o quanto a leitura *pode* exigir"; `setMinimumWidth` é piso, e
+        um piso aplicado cru também **sobe** o que a coluna pedia sozinha. Onde os `QGroupBox`
+        declaravam 136 px -- a sala sem motor --, a régua os punha em 192, e o tabuleiro pagava a
+        diferença sem ninguém ter pedido: medido a 1024x768, ele caiu de 298 para 245 px (301 para
+        245 na pele fita, menos 18%), e a 1400x950 de 454 para 447. Quem mede o pedido é o widget,
+        e por isso ele vai por argumento, como a esteira e a alça.
         """
         largura = sum(self.divisor.sizes())
         if largura <= 0:
@@ -695,7 +703,13 @@ class PainelDeEstudo(QWidget):
         esteira = self._esteira_da_coluna()
         alca = max(1, self.divisor.handleWidth())
         self.divisor_vertical.setMinimumWidth(
-            piso_da_leitura(largura, minimo=self._caixa_minima_do_tabuleiro(), esteira=esteira, alca=alca)
+            piso_da_leitura(
+                largura,
+                minimo=self._caixa_minima_do_tabuleiro(),
+                esteira=esteira,
+                alca=alca,
+                pedido=self.divisor_vertical.minimumSizeHint().width(),
+            )
         )
         if self._divisor_escolhido:
             return

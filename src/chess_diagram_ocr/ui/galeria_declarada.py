@@ -63,11 +63,22 @@ O `winfo_reqwidth` da lateral montada é **240 px** em `ttk` puro e **246** sob 
 folga é o item: reservar o número exato de um tema deixa a coluna 6 px curta no outro, que é a
 mesma família de defeito, menor.
 
-`tests/test_ui_galeria_layout.py` compara este número com a medição de verdade -- acrescentar um
-campo ao PGN sem mexer aqui falha o teste, em vez de voltar a cortar a coluna."""
+`tests/test_qt_painel_da_galeria.py::ArranjoDaAbaTests` compara a soma deste número com a medição
+de verdade -- acrescentar um campo ao PGN sem mexer aqui falha o teste, em vez de voltar a cortar a
+coluna. (O endereço era `tests/test_ui_galeria_layout.py`, que nunca existiu deste lado.)"""
 
-FOLGA_DO_CORPO = 40
-"""O que fica entre a lateral e o recorte, e nas bordas: `padx=(10, 0)` mais o `padding` do painel."""
+FOLGA_DO_CORPO = 22
+"""O que fica entre a lateral e o recorte, e nas bordas -- **medido no corpo montado em Qt**.
+
+São `2 x espaco.linha()` de moldura do corpo (6 de cada lado) mais `espaco.folga()` de vão entre
+as duas colunas (10), na base de referência: 22. O `minimumSizeHint` do corpo em duas colunas
+responde **702** nas peles clássica e foco e 695 na fita -- 420 + 260 + 22, e 22 é o maior dos
+três, pela razão de `LARGURA_DA_LATERAL`.
+
+**Eram 40, e os 40 eram do Tk**: `padx=(10, 0)` mais o `padding` do `LabelFrame`. Enquanto este
+número só somava a largura *preferida* da aba, superestimá-lo em 18 px não custava nada. Passou a
+custar quando a S-552 fez dele o **limiar do empilhamento**: uma folga que não existe na tela vira
+uma aba que empilha com espaço de sobra -- ver `galeria_empilhada`."""
 
 LARGURA_MINIMA_DA_GALERIA = BOARD_VIEW_SIZE + LARGURA_DA_LATERAL + FOLGA_DO_CORPO
 """O que esta aba de fato precisa de largura, somado das partes (S-154).
@@ -76,13 +87,31 @@ LARGURA_MINIMA_DA_GALERIA = BOARD_VIEW_SIZE + LARGURA_DA_LATERAL + FOLGA_DO_CORP
 eram da S-31, de quando a Galeria não existia -- e a consequência estava fotografada: na posição
 padrão do divisor sobravam ~680 px para 700 pedidos, e quem perdia era a lateral, porque o centro
 já tinha tomado o espaço com `expand=True`. Campos cortados, "Copiar headers para to…" cortado, o
-texto verde de procedência cortado."""
+texto verde de procedência cortado.
+
+**Eram 720 e passaram a 702 na quarta rodada da S-552, e a diferença é só a folga do Tk** (ver
+`FOLGA_DO_CORPO`). O número não é mais o piso de painel nenhum -- a S-552 baixou o do lado das abas
+para `janela.LARGURA_MINIMA_DAS_ABAS` --, e desde a terceira rodada ele é o **limiar** de
+`galeria_empilhada`, que é medida e não preferência."""
 
 def galeria_empilhada(largura: int, *, minimo: int = LARGURA_MINIMA_DA_GALERIA) -> bool:
     """Se a Galeria tem de empilhar o cabeçalho **sob** o recorte naquela largura. Pura (S-552).
 
     **O limiar é `LARGURA_MINIMA_DA_GALERIA`, e não um número novo**: duas colunas cabem exatamente
-    quando as duas colunas cabem -- recorte, lateral e folga, os mesmos 720 px somados na S-154.
+    quando as duas colunas cabem -- recorte, lateral e folga, os 702 px somados na S-154.
+
+    **E ele tem de ser a ocupação medida, nunca uma estimativa por cima -- foi a regressão da
+    quarta rodada.** Com os 720 herdados do Tk, a aba empilhava em *toda tela de notebook*: a
+    janela dá 714 px à aba (`LARGURA_PREFERIDA_DAS_ABAS` menos a moldura do `QTabWidget`), a barra
+    de rolagem vertical come 12, sobram **702** de viewport -- e 702 < 720 disparava o arranjo
+    estreito de 1280 a 1700 px de janela, inclusive na de referência do projeto. Pior, era uma
+    trava: empilhar dobra a altura do conteúdo, a barra vertical que ela cria mantém o viewport
+    abaixo do limiar, e as duas colunas só voltavam em 1800 px. Medido em 2026-09-05: a 1400 o
+    conteúdo ia de 714x848 sem rolagem para 702x1358 com 692 px de rolagem vertical.
+
+    Sobre o limiar certo não há trava, porque os dois lados dele estão certos: acima, as duas
+    colunas cabem e ficam; abaixo, elas não caberiam, e empilhar é a resposta -- é a estimativa por
+    cima que criava uma faixa em que a resposta era errada nos dois sentidos.
 
     **Abaixo disso a aba rolava na horizontal, que é o modo de não caber.** Medido na janela de
     verdade a 1024x768: viewport de **482x654** contra conteúdo de **706x800**, com barra de

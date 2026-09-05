@@ -973,7 +973,16 @@ class EstadoEntreSessoesTests(unittest.TestCase):
 
         A fracao e lida da tela e nao cravada no teste: os dois lados tem largura minima, e o
         `QSplitter` grampeia o que se pede a elas -- cravar um numero mediria o grampo.
+
+        **A area de trabalho e declarada** (S-552, quarta rodada): desde ela a geometria restaurada
+        e grampeada no que os monitores comportam, e sob `offscreen` a tela virtual tem 800x800. Sem
+        declarar um desktop que comporte os 2200 px, o que este teste mediria seria o grampo -- que
+        e assunto de `tests/test_ui_geometria.py` -- em vez do divisor arrastado.
         """
+        mock.patch(
+            "chess_diagram_ocr.qt.janela.plataforma.monitores", return_value=((0, 0, 3840, 1600),)
+        ).start()
+        self.addCleanup(mock.patch.stopall)
         primeira = self.janela()
         # **2200 e nao os 1400 das outras**, e o numero e medido: com 1534 px a janela esta no
         # piso dos dois lados -- `[720, 810]` -- e o divisor nao tem folga nenhuma para arrastar.

@@ -27,12 +27,13 @@ from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.gallery_scan import GalleryIndex
-from chess_diagram_ocr.ui import galeria_declarada
+from chess_diagram_ocr.ui import galeria_declarada, pele
 
 if TEM_PYQT:
     from PyQt6.QtWidgets import QMessageBox
 
     from chess_diagram_ocr.qt import painel_da_galeria as qt_galeria
+    from chess_diagram_ocr.qt import tema
 
 
 class _ServicoFalso:
@@ -468,6 +469,26 @@ class ArranjoDaAbaTests(unittest.TestCase):
         self.app.processEvents()
         return painel
 
+    def com_a_pele(self, uma: object) -> None:
+        """A pele aplicada **antes** de montar o painel, e desfeita no fim.
+
+        Sem isto o painel é montado com a fonte de queda do Qt, e a fila de botões do topo pede
+        716 px de mínimo em vez dos 702 das duas colunas -- o número passa a ser da fonte errada,
+        e o que se mede deixa de ser o leiaute.
+        """
+        padrao = pele.PELES[0]
+        self.addCleanup(
+            lambda: tema.aplicar_tema(
+                self.app, cromo_escuro=padrao.cromo_escuro, densidade=padrao.densidade
+            )
+        )
+        tema.aplicar_tema(
+            self.app,
+            cromo_escuro=uma.cromo_escuro,  # type: ignore[attr-defined]
+            densidade=uma.densidade,  # type: ignore[attr-defined]
+        )
+        self.app.processEvents()
+
     def test_a_1024_a_aba_nao_rola_na_horizontal(self) -> None:
         """Rolar na vertical faz perder de vista o que está acima, o que é normal num formulário;
         rolar na horizontal faz perder de vista a outra metade da tarefa."""
@@ -522,6 +543,49 @@ class ArranjoDaAbaTests(unittest.TestCase):
             recorte = painel.recorte.mapTo(painel, painel.recorte.rect().topLeft())
             with self.subTest(largura=largura):
                 self.assertEqual(empilhado, lateral.y() > recorte.y())
+
+    def test_o_limiar_e_a_ocupacao_medida_das_duas_colunas_nas_tres_peles(self) -> None:
+        """**A régua do empilhamento tem de ser medida, e foi por não ser que a aba empilhou em
+        toda tela de notebook** (S-552, quarta rodada).
+
+        Os 40 px de folga eram do Tk -- `padx=(10, 0)` mais o `padding` do `LabelFrame` --, e em Qt
+        o corpo montado em duas colunas responde **702** (420 + 260 + 12 de moldura + 10 de vão) na
+        densidade confortável e 695 na compacta. Enquanto os 720 só somavam a largura *preferida*
+        da aba, superestimar não custava; virados limiar, os 18 px de folga inexistente empilhavam
+        a aba com espaço de sobra -- e a barra de rolagem que o empilhamento cria segurava a aba
+        naquele arranjo até 1800 px de janela.
+
+        **O declarado é o maior dos três**, pela razão de `LARGURA_DA_LATERAL`: o número de uma
+        densidade deixa a outra 7 px curta. Maior que o maior é que ele não pode ser.
+        """
+        medidas: dict[str, int] = {}
+        for uma in pele.PELES:
+            self.com_a_pele(uma)
+            painel = self.em(galeria_declarada.LARGURA_MINIMA_DA_GALERIA + 200, 700)
+            corpo = painel.rolagem.widget()
+            assert corpo is not None
+            medidas[uma.nome] = corpo.minimumSizeHint().width()
+        self.assertEqual(galeria_declarada.LARGURA_MINIMA_DA_GALERIA, max(medidas.values()), medidas)
+
+    def test_na_largura_do_limiar_as_duas_colunas_cabem_sem_rolar_de_lado(self) -> None:
+        """A outra metade da mesma régua: com o viewport no limiar exato a aba **não** empilha, e
+        não passa a rolar de lado por não empilhar. Um limiar abaixo da ocupação falharia aqui.
+
+        **A largura pedida à aba não é a que o corpo recebe**, e é a distinção que a quarta rodada
+        custou: entre as duas está a moldura da área de rolagem e a barra vertical. Quem decide é
+        o viewport, e é ele que este teste põe no limiar.
+        """
+        limiar = galeria_declarada.LARGURA_MINIMA_DA_GALERIA
+        self.com_a_pele(pele.PELES[0])
+        painel = self.em(limiar + 200, 700)
+        rolagem = painel.rolagem
+        painel.resize(limiar + 2 * rolagem.frameWidth() + rolagem.verticalScrollBar().sizeHint().width(), 700)
+        self.app.processEvents()
+        self.assertGreaterEqual(rolagem.viewport().width(), limiar, "o viewport não chegou ao limiar")
+        self.assertEqual(0, rolagem.horizontalScrollBar().maximum())
+        lateral = painel.lateral.mapTo(painel, painel.lateral.rect().topLeft())
+        recorte = painel.recorte.mapTo(painel, painel.recorte.rect().topLeft())
+        self.assertEqual(lateral.y(), recorte.y(), "empilhou na largura que as duas colunas ocupam")
 
     def test_o_rodape_quebra_em_fileiras_em_vez_de_esticar_a_aba(self) -> None:
         """**Os 706 px de conteúdo não eram só das duas colunas**: onze controles em `QHBoxLayout`

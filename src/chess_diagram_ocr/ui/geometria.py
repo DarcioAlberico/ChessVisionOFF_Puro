@@ -248,11 +248,30 @@ def geometria_corrigida(
     centrada. Um piso maior que a tela não é piso: é uma janela que não cabe. Quem garante que o
     conteúdo continua alcançável abaixo do piso é a outra metade da S-150 (`qt/rolagem.py`), e é
     ela que torna esta ordem segura.
+
+    **E o tamanho é grampeado antes do curto-circuito, que é a quarta rodada da S-552.** "Cabe em
+    parte" é o caso que o parágrafo acima nomeia, e ele era justamente o que escapava: a janela
+    guardada *aparece* na tela nova, `visivel_em` diz que sim, e a função a devolvia como veio.
+    `geometria_a_aplicar('1920x1080+0+0', [(0, 0, 1024, 768)])` respondia **1920x1080** -- 896 px
+    mais larga que o monitor --, e é o que se ganha ao baixar a resolução ou desdocar o notebook
+    sem mudar a janela de lugar. O grampo é só para baixo (uma janela nunca *cresce* por causa
+    dele) e é contra a **área de trabalho inteira**, não contra um monitor: uma janela deitada
+    sobre dois monitores é arranjo legítimo, e encolhê-la ao maior deles desfaria a escolha de
+    alguém. Grampeada, ela pode ter deixado de aparecer -- é o caso da janela que só cruzava a
+    tela pela borda direita --, e aí ela cai no reposicionamento de baixo como qualquer outra.
     """
     if not monitores:
         return geometria
-    if visivel_em(geometria, monitores, minimo=minimo):
-        return geometria
+    largura_util = max(monitor[2] for monitor in monitores) - min(monitor[0] for monitor in monitores)
+    altura_util = max(monitor[3] for monitor in monitores) - min(monitor[1] for monitor in monitores)
+    cabivel = Geometria(
+        min(geometria.largura, max(1, largura_util)),
+        min(geometria.altura, max(1, altura_util)),
+        geometria.x,
+        geometria.y,
+    )
+    if visivel_em(cabivel, monitores, minimo=minimo):
+        return cabivel
 
     mx0, my0, mx1, my1 = monitores[0]
     tela = (max(1, mx1 - mx0), max(1, my1 - my0))
