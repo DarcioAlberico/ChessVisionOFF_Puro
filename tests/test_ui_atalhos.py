@@ -90,6 +90,41 @@ class TabelaDoEditorTests(unittest.TestCase):
         self.assertEqual(len(teclas), len(set(teclas)))
 
 
+class TabelaDaSalaTests(unittest.TestCase):
+    """A terceira tabela (S-527): as teclas que só existem dentro da sala de estudo."""
+
+    def test_sao_as_quatro_da_arvore_e_nenhuma_esta_nas_outras_tabelas(self) -> None:
+        """Uma tecla em duas tabelas sem sobreposição declarada é o que `SOBREPOSICOES_NO_EDITOR`
+        existe para impedir; a tabela da sala nasce sem nenhuma."""
+        from chess_diagram_ocr.ui import sala_declarada
+
+        self.assertEqual(
+            ["apagar_variante", "promover_variante", "rebaixar_variante", "simbolo_do_lance"],
+            sorted(a.acao for a in atalhos.TECLAS_DA_SALA),
+        )
+        sequencias = {a.sequencia for a in atalhos.TECLAS_DA_SALA}
+        self.assertEqual(len(sequencias), len(atalhos.TECLAS_DA_SALA), "tecla da sala repetida")
+        self.assertEqual(set(), sequencias & set(atalhos.por_sequencia))
+        self.assertEqual(set(), sequencias & set(atalhos.TECLAS_DO_EDITOR.values()))
+        for atalho in atalhos.TECLAS_DA_SALA:
+            with self.subTest(acao=atalho.acao):
+                self.assertIn(atalho.acao, sala_declarada.COMANDOS_DA_ABA)
+                self.assertTrue(atalho.rotulo and atalho.descricao)
+
+    def test_o_acelerador_responde_pela_sala_e_a_guarda_nao(self) -> None:
+        """Mostrar é seguro nas duas tabelas; ligar, só na certa. `acao_de` é o que a guarda de
+        foco lê, e uma tecla da sala não pode virar ação da janela por ali."""
+        self.assertEqual("Ctrl+↑", atalhos.acelerador("promover_variante"))
+        self.assertEqual("Ctrl+S", atalhos.acelerador("salvar"), "a tabela da janela continua na frente")
+        self.assertEqual("", atalhos.acelerador("virar_tabuleiro"))
+        self.assertEqual("<Control-Up>", atalhos.sequencia_da_sala("promover_variante"))
+        self.assertEqual("", atalhos.sequencia_da_sala("salvar"), "tecla da janela não sai pela sala")
+        self.assertEqual("", atalhos.acao_de("<Control-Up>"))
+        assert atalhos.atalho_de("apagar_variante") is not None
+        self.assertEqual("Ctrl+Del", atalhos.atalho_de("apagar_variante").rotulo)
+        self.assertIsNone(atalhos.atalho_de("virar_tabuleiro"))
+
+
 class CessaoTests(unittest.TestCase):
     """A régua da S-294: a guarda cede o que o campo **usa**, e não tudo."""
 

@@ -219,6 +219,19 @@ class _Folha(QWidget):
         ponto = a0.position()
         self._visor.soltou_em(ponto.x(), ponto.y())
 
+    def mouseDoubleClickEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        """Duplo clique numa caixa: aquele diagrama vai para a sala de estudo.
+
+        **O primeiro clique do par já aconteceu, e fez o que sempre faz** -- selecionou o
+        diagrama, ou mandou ler a página. O Qt entrega o segundo aperto como este evento, e não
+        como `mousePressEvent`, então a soltura que vem depois não acha ponto marcado e não conta
+        um terceiro clique. O que este evento acrescenta é só o destino.
+        """
+        if a0 is None or a0.button() != Qt.MouseButton.LeftButton:
+            return
+        ponto = a0.position()
+        self._visor.estudar_em(ponto.x(), ponto.y())
+
     def wheelEvent(self, a0: QWheelEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         """A roda é do visor, e não da folha.
 
@@ -247,6 +260,13 @@ class VisorDePagina(QScrollArea):
     Sinal separado de `caixa_clicada` porque as duas respostas ao mesmo retângulo são opostas:
     uma diz "leia isto", a outra diz "isto não é diagrama". Quem guarda a remoção é a janela; o
     visor desenha o que lhe entregam."""
+
+    caixa_para_estudo = pyqtSignal(int)
+    """Duplo clique num retângulo: **estude este**. O índice é o mesmo de `caixa_clicada`.
+
+    Sinal separado porque o primeiro clique do par já saiu como `caixa_clicada`: quem o recebeu
+    já selecionou o diagrama, ou já mandou ler a página. O que este acrescenta é o destino -- a
+    sala de estudo, e não o editor -- e a janela é quem sabe se a página já foi lida."""
 
     area_selecionada = pyqtSignal(object)
     """`(x0, y0, x1, y1)` em **pixel da página**, já ordenado e sem o zoom.
@@ -529,6 +549,18 @@ class VisorDePagina(QScrollArea):
         indice = self._caixas.index_at(x, y, self._zoom)
         if indice is not None:
             self.caixa_dispensada.emit(indice)
+
+    def estudar_em(self, x: float, y: float) -> None:
+        """Duplo clique sobre um retângulo: o diagrama de baixo vai para a sala de estudo.
+
+        A caixa é a mesma que `clicar_em` acertaria -- a menor sob o ponteiro --, e as caixas
+        escondidas não são alvo, como lá. No modo de seleção o botão significa outra coisa.
+        """
+        if self._caixas is None or not self._mostrar_caixas or self._selecionando:
+            return
+        indice = self._caixas.index_at(x, y, self._zoom)
+        if indice is not None:
+            self.caixa_para_estudo.emit(indice)
 
     def apertou_em(self, x: float, y: float) -> None:
         """Marca o ponto. **Não decide nada**: quem decide é o que o ponteiro fizer depois."""

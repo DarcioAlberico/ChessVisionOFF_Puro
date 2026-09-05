@@ -27,12 +27,13 @@ from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.gallery_scan import GalleryIndex
-from chess_diagram_ocr.ui import galeria_declarada
+from chess_diagram_ocr.ui import galeria_declarada, pele
 
 if TEM_PYQT:
     from PyQt6.QtWidgets import QMessageBox
 
     from chess_diagram_ocr.qt import painel_da_galeria as qt_galeria
+    from chess_diagram_ocr.qt import tema
 
 
 class _ServicoFalso:
@@ -75,6 +76,23 @@ class DeclaracaoTests(unittest.TestCase):
         self.assertIn("cancelada com 2 livro(s) sem varrer", frase)
 
 
+def montar_painel(caso: unittest.TestCase, pasta: Path, **kwargs: object) -> qt_galeria.PainelDaGaleria:
+    """A aba montada e descartada com o teste. **Função, e não método de uma classe-base**: herdar
+    de uma `TestCase` para reaproveitar a montagem faria a suíte rodar os testes dela outra vez."""
+    app = aplicacao()
+    montado = qt_galeria.PainelDaGaleria(
+        service=_ServicoFalso(),
+        pdf_path=lambda: None,
+        model_path=lambda: pasta / "modelo.pt",
+        max_boards=lambda: 4,
+        **kwargs,  # type: ignore[arg-type]
+    )
+    caso.addCleanup(descartar, montado)
+    montado.show()
+    app.processEvents()
+    return montado
+
+
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class PainelTests(unittest.TestCase):
     """A aba montada, sem livro varrido e com um índice de mentira."""
@@ -85,17 +103,7 @@ class PainelTests(unittest.TestCase):
         self.addCleanup(self.app.processEvents)
 
     def painel(self, **kwargs: object) -> qt_galeria.PainelDaGaleria:
-        montado = qt_galeria.PainelDaGaleria(
-            service=_ServicoFalso(),
-            pdf_path=lambda: None,
-            model_path=lambda: self.pasta / "modelo.pt",
-            max_boards=lambda: 4,
-            **kwargs,  # type: ignore[arg-type]
-        )
-        self.addCleanup(descartar, montado)
-        montado.show()
-        self.app.processEvents()
-        return montado
+        return montar_painel(self, self.pasta, **kwargs)
 
     def test_o_estado_vazio_diz_o_que_falta_fazer(self) -> None:
         painel = self.painel()
@@ -104,10 +112,17 @@ class PainelTests(unittest.TestCase):
         self.assertFalse(painel.btn_candidatas.isEnabled())
         self.assertFalse(painel.btn_desfazer.isEnabled())
 
-    def test_a_lateral_reserva_a_largura_medida(self) -> None:
+    def test_a_lateral_reserva_a_largura_medida_quando_ha_duas_colunas(self) -> None:
         """Reservar a largura da lateral primeiro é o item da S-154: com o centro tomando tudo,
-        os controles que gravam a procedência ficavam com o que sobrasse -- e não sobrava."""
+        os controles que gravam a procedência ficavam com o que sobrasse -- e não sobrava.
+
+        **"Quando há duas colunas" entrou na frase na S-552, terceira rodada**: os 260 px são o que
+        a lateral precisa *ao lado* do recorte. Empilhada sob ele, ela tem a coluna inteira, e
+        cravá-los ali seria reservar uma largura contra nada.
+        """
         painel = self.painel()
+        painel.resize(galeria_declarada.LARGURA_MINIMA_DA_GALERIA + 80, 700)
+        self.app.processEvents()
         lateral = painel.campos_de_header["White"].parentWidget()
         assert lateral is not None
         self.assertEqual(lateral.width(), galeria_declarada.LARGURA_DA_LATERAL)
@@ -343,6 +358,242 @@ class AnotacaoTests(unittest.TestCase):
         self.assertEqual(
             painel.model.current_annotation.headers.get("White"), "Coull", "cancelar não apagou nada"
         )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class LoteDeDiagramasTests(unittest.TestCase):
+    """O botão que manda o livro varrido para o lote de diagramas (S-544).
+
+    **A origem é o índice da varredura**, e é a metade desta aba do item: aqui saem os quinhentos
+    diagramas de um livro digitalizado; do lado da sala de estudo saem os que alguém analisou. O
+    que vira arquivo é decidido por `ui/lote_de_diagramas.da_galeria`, e é afirmado sem janela em
+    `tests/test_lote_de_diagramas.py` -- o que só existe aqui é o botão e o que ele abre.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def painel(self) -> qt_galeria.PainelDaGaleria:
+        return montar_painel(self, self.pasta)
+
+    def _indexado(self) -> qt_galeria.PainelDaGaleria:
+        from chess_diagram_ocr.gallery_scan import GalleryEntry
+
+        painel = self.painel()
+        painel.model.index = GalleryIndex(
+            entries=[
+                GalleryEntry(page_index=6, diagram_index=0, placement="8/8/8/8/8/8/8/K6k", side_to_move="b"),
+                GalleryEntry(page_index=6, diagram_index=1, placement="8/8/8/8/8/8/8/K6k"),
+            ]
+        )
+        painel.model.pdf_path = Path("C:/PDF/Secrets.pdf")
+        painel.refresh(request_page=False)
+        return painel
+
+    def test_sem_varredura_o_botao_esta_cinza_e_o_clique_avisa(self) -> None:
+        """Exportar zero diagramas abriria um diálogo para dizer que não há nada: a resposta a
+        "varra o livro antes" é o botão não convidar ao clique."""
+        painel = self.painel()
+        self.assertFalse(painel.btn_diagramas.isEnabled())
+        recados: list[str] = []
+        painel.estado.connect(recados.append)
+        self.assertIsNone(painel.exportar_diagramas())
+        self.assertTrue(any("Varra o livro" in recado for recado in recados), recados)
+
+    def test_o_indice_varrido_abre_o_lote_com_a_pagina_impressa_no_nome(self) -> None:
+        painel = self._indexado()
+        self.assertTrue(painel.btn_diagramas.isEnabled())
+        dialogo = painel.exportar_diagramas()
+        assert dialogo is not None
+        self.addCleanup(descartar, dialogo)
+        self.assertEqual(2, len(dialogo.itens))
+        self.assertEqual({"Secrets"}, {item.livro for item in dialogo.itens})
+        self.assertEqual((7, 7), tuple(item.pagina for item in dialogo.itens))
+        self.assertEqual("8/8/8/8/8/8/8/K6k b - - 0 1", dialogo.itens[0].fen, "o lado que a S-17 deduziu")
+
+
+class EmpilhamentoDeclaradoTests(unittest.TestCase):
+    """A partir de que largura a Galeria empilha, e o que fica em cima (S-552, terceira rodada)."""
+
+    def test_empilha_exatamente_abaixo_do_que_as_duas_colunas_pedem(self) -> None:
+        """O limiar não é um número novo: duas colunas cabem quando as duas colunas cabem -- é a
+        soma da S-154, recorte mais lateral mais folga."""
+        limiar = galeria_declarada.LARGURA_MINIMA_DA_GALERIA
+        self.assertEqual(
+            limiar,
+            galeria_declarada.BOARD_VIEW_SIZE
+            + galeria_declarada.LARGURA_DA_LATERAL
+            + galeria_declarada.FOLGA_DO_CORPO,
+        )
+        self.assertTrue(galeria_declarada.galeria_empilhada(limiar - 1))
+        self.assertFalse(galeria_declarada.galeria_empilhada(limiar))
+        self.assertFalse(galeria_declarada.galeria_empilhada(limiar + 400))
+
+    def test_o_viewport_de_1024_empilha_e_o_de_1920_nao(self) -> None:
+        """**Os dois números do crítico.** Numa janela de 1024 a aba fica com 482 px de viewport --
+        contra 706 de conteúdo em duas colunas, o que punha barra de rolagem horizontal *e*
+        vertical; numa de 1920 ela fica com ~794, e as duas colunas cabem."""
+        self.assertTrue(galeria_declarada.galeria_empilhada(482))
+        self.assertFalse(galeria_declarada.galeria_empilhada(794))
+
+    def test_sem_largura_ainda_nao_ha_decisao(self) -> None:
+        """Antes do primeiro desenho não há viewport, e empilhar por causa de um zero poria a aba
+        no arranjo estreito na janela grande."""
+        self.assertFalse(galeria_declarada.galeria_empilhada(0))
+        self.assertFalse(galeria_declarada.galeria_empilhada(-10))
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ArranjoDaAbaTests(unittest.TestCase):
+    """A aba a 1024 não rola na horizontal, e o cabeçalho da partida se alcança (S-552, 3ª rodada).
+
+    **O que o crítico mediu na janela de verdade**: viewport de 482x654 contra conteúdo de 706x800,
+    com as duas barras de rolagem. A coluna inteira do cabeçalho ficava fora da tela -- liam-se
+    `Whi`, `Blac`, `Even`, `Site`, `Date`, `Rou`, `Resu`, `Ann` e nenhum campo --, e alcançá-la
+    exigia rolar 224 px para a direita, o que tirava da tela os 420 px do recorte.
+    """
+
+    ABA_A_1024 = (494, 666)
+    """A aba Galeria numa janela de 1024x768, medida na janela de verdade."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def em(self, largura: int, altura: int) -> qt_galeria.PainelDaGaleria:
+        painel = montar_painel(self, self.pasta, pasta_da_galeria=self.pasta)
+        painel.resize(largura, altura)
+        self.app.processEvents()
+        return painel
+
+    def com_a_pele(self, uma: object) -> None:
+        """A pele aplicada **antes** de montar o painel, e desfeita no fim.
+
+        Sem isto o painel é montado com a fonte de queda do Qt, e a fila de botões do topo pede
+        716 px de mínimo em vez dos 702 das duas colunas -- o número passa a ser da fonte errada,
+        e o que se mede deixa de ser o leiaute.
+        """
+        padrao = pele.PELES[0]
+        self.addCleanup(
+            lambda: tema.aplicar_tema(
+                self.app, cromo_escuro=padrao.cromo_escuro, densidade=padrao.densidade
+            )
+        )
+        tema.aplicar_tema(
+            self.app,
+            cromo_escuro=uma.cromo_escuro,  # type: ignore[attr-defined]
+            densidade=uma.densidade,  # type: ignore[attr-defined]
+        )
+        self.app.processEvents()
+
+    def test_a_1024_a_aba_nao_rola_na_horizontal(self) -> None:
+        """Rolar na vertical faz perder de vista o que está acima, o que é normal num formulário;
+        rolar na horizontal faz perder de vista a outra metade da tarefa."""
+        painel = self.em(*self.ABA_A_1024)
+        barra = painel.rolagem.horizontalScrollBar()
+        self.assertEqual(0, barra.maximum(), "a aba ficou mais larga que o viewport")
+        corpo = painel.rolagem.widget()
+        assert corpo is not None
+        self.assertLessEqual(corpo.width(), painel.rolagem.viewport().width())
+
+    def test_a_1024_os_campos_do_cabecalho_cabem_na_largura(self) -> None:
+        """Era a coluna inteira que ficava fora: oito rótulos cortados e **nenhum** campo."""
+        painel = self.em(*self.ABA_A_1024)
+        for nome, campo in painel.campos_de_header.items():
+            with self.subTest(campo=nome):
+                canto = campo.mapTo(painel, campo.rect().topLeft())
+                self.assertGreaterEqual(canto.x(), 0)
+                self.assertLessEqual(canto.x() + campo.width(), painel.width())
+
+    def test_a_1024_o_recorte_inteiro_cabe_na_largura(self) -> None:
+        """A outra ponta do mesmo defeito: rolar 224 px para alcançar os campos tirava da tela os
+        420 px do recorte, e a aba mostrava o diagrama **ou** os campos, nunca os dois."""
+        painel = self.em(*self.ABA_A_1024)
+        canto = painel.recorte.mapTo(painel, painel.recorte.rect().topLeft())
+        self.assertGreaterEqual(canto.x(), 0)
+        self.assertLessEqual(canto.x() + painel.recorte.width(), painel.width())
+        self.assertEqual(galeria_declarada.BOARD_VIEW_SIZE, painel.recorte.width())
+
+    def test_o_recorte_fica_acima_do_cabecalho_quando_empilha(self) -> None:
+        """Quem responde "que diagrama é este?" vem antes de quem pede o que digitar sobre ele."""
+        painel = self.em(*self.ABA_A_1024)
+        recorte = painel.recorte.mapTo(painel, painel.recorte.rect().bottomLeft()).y()
+        lateral = painel.lateral.mapTo(painel, painel.lateral.rect().topLeft()).y()
+        self.assertLess(recorte, lateral, "o cabeçalho subiu acima do recorte")
+
+    def test_numa_aba_larga_as_duas_colunas_voltam(self) -> None:
+        """O arranjo estreito é para a janela estreita: alargando, a lateral volta para o lado."""
+        painel = self.em(galeria_declarada.LARGURA_MINIMA_DA_GALERIA + 120, 700)
+        recorte = painel.recorte.mapTo(painel, painel.recorte.rect().topLeft())
+        lateral = painel.lateral.mapTo(painel, painel.lateral.rect().topLeft())
+        self.assertGreater(lateral.x(), recorte.x() + painel.recorte.width() - 1)
+        self.assertEqual(galeria_declarada.LARGURA_DA_LATERAL, painel.lateral.width())
+
+    def test_o_arranjo_volta_atras_quando_a_janela_cresce_e_encolhe(self) -> None:
+        """Ele é uma resposta à largura de agora, e não um estado que se ganha uma vez."""
+        painel = self.em(*self.ABA_A_1024)
+        larga = galeria_declarada.LARGURA_MINIMA_DA_GALERIA + 120
+        for largura, empilhado in ((larga, False), (self.ABA_A_1024[0], True), (larga, False)):
+            painel.resize(largura, 700)
+            self.app.processEvents()
+            lateral = painel.lateral.mapTo(painel, painel.lateral.rect().topLeft())
+            recorte = painel.recorte.mapTo(painel, painel.recorte.rect().topLeft())
+            with self.subTest(largura=largura):
+                self.assertEqual(empilhado, lateral.y() > recorte.y())
+
+    def test_o_limiar_e_a_ocupacao_medida_das_duas_colunas_nas_tres_peles(self) -> None:
+        """**A régua do empilhamento tem de ser medida, e foi por não ser que a aba empilhou em
+        toda tela de notebook** (S-552, quarta rodada).
+
+        Os 40 px de folga eram do Tk -- `padx=(10, 0)` mais o `padding` do `LabelFrame` --, e em Qt
+        o corpo montado em duas colunas responde **702** (420 + 260 + 12 de moldura + 10 de vão) na
+        densidade confortável e 695 na compacta. Enquanto os 720 só somavam a largura *preferida*
+        da aba, superestimar não custava; virados limiar, os 18 px de folga inexistente empilhavam
+        a aba com espaço de sobra -- e a barra de rolagem que o empilhamento cria segurava a aba
+        naquele arranjo até 1800 px de janela.
+
+        **O declarado é o maior dos três**, pela razão de `LARGURA_DA_LATERAL`: o número de uma
+        densidade deixa a outra 7 px curta. Maior que o maior é que ele não pode ser.
+        """
+        medidas: dict[str, int] = {}
+        for uma in pele.PELES:
+            self.com_a_pele(uma)
+            painel = self.em(galeria_declarada.LARGURA_MINIMA_DA_GALERIA + 200, 700)
+            corpo = painel.rolagem.widget()
+            assert corpo is not None
+            medidas[uma.nome] = corpo.minimumSizeHint().width()
+        self.assertEqual(galeria_declarada.LARGURA_MINIMA_DA_GALERIA, max(medidas.values()), medidas)
+
+    def test_na_largura_do_limiar_as_duas_colunas_cabem_sem_rolar_de_lado(self) -> None:
+        """A outra metade da mesma régua: com o viewport no limiar exato a aba **não** empilha, e
+        não passa a rolar de lado por não empilhar. Um limiar abaixo da ocupação falharia aqui.
+
+        **A largura pedida à aba não é a que o corpo recebe**, e é a distinção que a quarta rodada
+        custou: entre as duas está a moldura da área de rolagem e a barra vertical. Quem decide é
+        o viewport, e é ele que este teste põe no limiar.
+        """
+        limiar = galeria_declarada.LARGURA_MINIMA_DA_GALERIA
+        self.com_a_pele(pele.PELES[0])
+        painel = self.em(limiar + 200, 700)
+        rolagem = painel.rolagem
+        painel.resize(limiar + 2 * rolagem.frameWidth() + rolagem.verticalScrollBar().sizeHint().width(), 700)
+        self.app.processEvents()
+        self.assertGreaterEqual(rolagem.viewport().width(), limiar, "o viewport não chegou ao limiar")
+        self.assertEqual(0, rolagem.horizontalScrollBar().maximum())
+        lateral = painel.lateral.mapTo(painel, painel.lateral.rect().topLeft())
+        recorte = painel.recorte.mapTo(painel, painel.recorte.rect().topLeft())
+        self.assertEqual(lateral.y(), recorte.y(), "empilhou na largura que as duas colunas ocupam")
+
+    def test_o_rodape_quebra_em_fileiras_em_vez_de_esticar_a_aba(self) -> None:
+        """**Os 706 px de conteúdo não eram só das duas colunas**: onze controles em `QHBoxLayout`
+        davam 694 px de mínimo ao "Este diagrama", e o `QHBoxLayout` não reflui (`qt/barra.py`)."""
+        painel = self.em(*self.ABA_A_1024)
+        rodape = painel.campo_lance.parentWidget()
+        assert rodape is not None
+        self.assertLessEqual(rodape.minimumSizeHint().width(), self.ABA_A_1024[0])
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -201,6 +201,9 @@ MENUS: tuple[Menu, ...] = (
             # revisão na mesma passada (S-119). Enquanto eram duas passadas, "Varrer a fila de
             # revisão" era um segundo item aqui, com o mesmo custo do primeiro.
             Item("varrer_livro"),
+            # A fila fica colada no livro só: são a mesma varredura, com um livro e com muitos, e
+            # quem procura "varrer" aqui tem de achar as duas de uma vez (S-546).
+            Item("varrer_fila"),
             _sep(),
             Item("recarregar_modelo"),
             Item("treinar"),
@@ -243,9 +246,16 @@ MENUS: tuple[Menu, ...] = (
             Item("analisar_posicao"),
             Item("analise_continua"),
             Item("variante_do_motor"),
+            Item("analisar_partida"),
+            Item("opcoes_do_motor"),
             Item("partidas_da_posicao"),
+            Item("arvore_de_aberturas"),
+            Item("buscar_partidas"),
+            Item("indexar_base"),
             _sep(),
             Item("modo_treino"),
+            Item("taticas_do_livro"),
+            Item("treinar_agenda"),
             _sep(),
             Item("colar_estudo"),
             Item("abrir_pgn"),
@@ -255,7 +265,17 @@ MENUS: tuple[Menu, ...] = (
             Item("exportar_estudo_md"),
             Item("exportar_estudo_html"),
             Item("exportar_estudo_rtf"),
+            Item("exportar_estudo_pdf"),
+            Item("exportar_estudo_epub"),
+            Item("exportar_estudo_docx"),
             Item("estudo_para_o_texto"),
+            _sep(),
+            # Os dois que saem da folha e não do arquivo de texto (S-544/S-545): o lote de
+            # diagramas soltos e o estudo paginado como livro. Ficam depois do separador porque
+            # o de cima é "o estudo noutro formato" e estes dois são outra pergunta -- o que sai
+            # daqui não volta para dentro do programa.
+            Item("exportar_diagramas_lote"),
+            Item("imprimir_estudo"),
         ),
     ),
     Menu(

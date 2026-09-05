@@ -48,6 +48,12 @@ TABELA_PERCORRIDA = (
 )
 
 SEM_CHAMADOR: dict[str, str] = {
+    "treino_declarado.rotulo_do_desfecho": (
+        "quem o compõe é `frase_do_gabarito`, no mesmo módulo, e a tela lê a frase pronta. Um "
+        "chamador de fora seria a segunda montagem da mesma linha -- e a primeira já decide onde "
+        "o desfecho aparece: **depois** de o exercício fechar, porque \"dá mate\" ao lado do "
+        "tabuleiro antes de a pessoa jogar é meia resposta (S-539)."
+    ),
     "estudo_lista.NIVEL_MAXIMO_DE_RECUO": (
         "quem o aplica é o próprio `Trecho.recuo`, no mesmo módulo, e o painel usa o resultado. "
         "Ele tinha chamador até a S-514, quando o recuo saiu do `<span>` e foi para o bloco: o "
@@ -129,6 +135,106 @@ SEM_CHAMADOR: dict[str, str] = {
     ),
     "atalhos.CEDIDA_PELA_GUARDA": "um dos dois valores que `sobreposicao` devolve; quem os distingue é o teste",
     "atalhos.GANHA_DO_TK": "o outro valor que `sobreposicao` devolve; quem os distingue é o teste",
+    # --- a barra da sala (S-527, 2026-09-04): nasceu com a catraca em zero, e respondeu na hora
+    #
+    # `barra_da_sala.ACOES` **saiu** desta lista na S-528, e não por ter ganhado chamador: a
+    # varredura é por **identificador**, e `qt/painel_do_pdf.py` passa `barra_do_pdf.ACOES` para a
+    # fila -- o nome `ACOES` passou a existir fora de `ui/barra_da_sala.py`, e a pergunta deixou de
+    # ser feita para os dois. É limitação conhecida do detector (ver o cabeçalho: ele conta
+    # identificador, não par módulo-nome), e o que continua cobrando a tabela da sala é
+    # `tests/test_ui_barra_da_sala.py`, nos dois sentidos com `COMANDOS_DA_ABA` e `ICONES_DA_SALA`.
+    "barra_da_sala.SEM_ESTUDO": "um dos três valores que `modo` devolve e `grupos_desligados` consome; quem os distingue é o teste",
+    "barra_da_sala.COM_ESTUDO": "o segundo valor de `modo`, pelo mesmo motivo",
+    "barra_da_sala.TREINANDO": "o terceiro valor de `modo`, pelo mesmo motivo",
+    "barra_da_sala.EXPORTAR_ESTUDO": (
+        "o agrupador \"Exportar\": o widget o acha por `Acao.agrupador`, lendo a tabela, e só o teste o "
+        "chama pelo nome -- ao contrário de `SEGUIR_OCR`, o outro nome fora do catálogo, que o painel chama"
+    ),
+    "icones.ICONES_DA_SALA": (
+        TABELA_PERCORRIDA + " (`test_ui_barra_da_sala`, nos dois sentidos com `barra_da_sala.ACOES`; "
+        "`imagem` a lê por `tracos_de`, no mesmo módulo)"
+    ),
+    # --- a barra do painel do PDF (S-528, 2026-09-04): a mesma forma, a segunda tabela
+    "icones.ICONES_DO_PDF": (
+        TABELA_PERCORRIDA + " (`test_ui_barra_do_pdf`, nos dois sentidos com `barra_do_pdf.ACOES`; "
+        "`imagem` a lê por `tracos_de`, no mesmo módulo)"
+    ),
+    "barra_do_pdf.COM_LIVRO": "um dos três valores que `modo` devolve e `grupos_desligados` consome; quem os distingue é o teste",
+    # --- a barra do painel de Resultado (S-528, terceira barra, 2026-09-05)
+    "barra_do_resultado.FEN": "um dos cinco grupos: a tabela os cita e o widget os lê dela; quem os confere é o teste",
+    "barra_do_resultado.CORRECAO": "o segundo grupo, pelo mesmo motivo",
+    "barra_do_resultado.GRAVAR": "o terceiro grupo, pelo mesmo motivo",
+    "barra_do_resultado.MODO_UNICO": (
+        "o único valor de `MODOS`, e a barra não tem modo: aqui quem acende e apaga é uma pergunta "
+        "por ação, e não um estado por grupo -- ver o cabeçalho daquele módulo. Quem o cita é o teste"
+    ),
+    "leitura_do_pdf.SEM_CONTEUDO": (
+        "a frase do arquivo de zero byte: `frase_de_abertura` a escolhe pela tabela `_CAUSAS`, no "
+        "mesmo módulo, e o teste a cita para não afirmar o literal duas vezes"
+    ),
+    "geometria.FRACAO_PADRAO_DO_DIVISOR": (
+        "o padrão de `divisor_da_primeira_abertura` e a resposta de `fracao_de_divisor` sem "
+        "largura -- passá-lo de fora seria a segunda declaração do mesmo número. Saiu de "
+        "`qt/janela.py` na S-552, quando a repartição da primeira abertura virou decisão pura"
+    ),
+    "barra_do_pdf.TRANCADO": "o segundo valor de `modo`, pelo mesmo motivo -- o painel chama `modo(...)`, e não os nomes",
+    "sala_declarada.LARGURA_MINIMA_DA_LEITURA": (
+        "o piso da coluna de leitura é o **padrão** de `lado_do_tabuleiro` e de "
+        "`fracao_para_o_tabuleiro`, e quem as chama não o repete -- passá-lo de fora seria a "
+        "segunda declaração do mesmo número. Quem o compara com as partes é o teste"
+    ),
+    "sala_declarada.ALCA_DO_DIVISOR": (
+        "o mesmo caso, e mais estreito: a alça de verdade vem do widget (`handleWidth()`), e este "
+        "é o valor que a função responde quando ninguém diz. Um chamador no produto seria o "
+        "painel usando o padrão em vez de medir a alça que ele tem"
+    ),
+    "cabecalho_da_partida.Campo": E_O_TIPO,
+    "barra_do_pdf.LEITURA": (
+        "o grupo do OCR: o produto o lê pelo campo `grupo` de cada linha da tabela, e só o teste o "
+        "nomeia. `VISTA` é a exceção, e por isso não está aqui -- `interruptores_de_vista` filtra por ele"
+    ),
+    # --- a segunda rodada do painel do motor (S-529/S-537, 2026-09-04)
+    #
+    # `analise_da_partida.perda_media` estava aqui e saiu em 2026-09-05, e a saída é **do
+    # detector e não da decisão**: `treino_declarado.frase_do_placar` passou a escrever
+    # `do_livro.perda_media`, que é a propriedade homônima de `placar.PlacarDoLivro`, e a
+    # varredura por identificador não distingue as duas. A função do ACPL continua sem chamador
+    # de fora pela razão que estava escrita aqui -- quem a compõe é `resumo`, no mesmo módulo --,
+    # e o docstring dela é onde isso mora agora. No dia em que o treino deixar de citar o nome, o
+    # detector volta a vê-la e a catraca cobra a linha de novo.
+    #
+    # --- a segunda rodada do treino (S-541, 2026-09-05)
+    "treino_declarado.mesmo_lance": (
+        "a régua de `classificar_o_lance`, no mesmo módulo, e é ela a decisão que a tela chama. "
+        "Um chamador de fora seria a segunda comparação de lance do programa, e a primeira já "
+        "errou uma vez: `Ra8+` contra `Ra8#` reprovava a resposta certa"
+    ),
+    "treino_declarado.DECORACAO": (
+        "o que `mesmo_lance` apara, e só ela. Está no `__all__` porque é a lista que decide o que "
+        "**não** se apara -- `x`, `=` e a letra de desambiguação --, e essa é a parte que um dia "
+        "alguém vai querer alargar sem ler a função"
+    ),
+    #
+    # --- o lote de diagramas (S-544, 2026-09-05): dois dos onze nomes novos
+    #
+    # Os outros nove ganharam chamador no mesmo dia -- `do_estudo`, `de_estudos` e `da_galeria`
+    # nas três origens (a sala, o PGN aberto e o livro varrido), `TAMANHO_PADRAO` e
+    # `TAMANHO_MAXIMO` na caixa de tamanho do diálogo, que aceita valor digitado porque
+    # `TAMANHOS` sempre declarou aceitar. `LIMITE_DO_NOME` e `pele_registrada` **saíram do
+    # `__all__`**: os dois são aplicados dentro do próprio módulo, pelas funções que são a API.
+    "lote_de_diagramas.PeleDoDiagrama": E_O_TIPO,
+    "lote_de_diagramas.UMA_TINTA": (
+        "um dos dois valores que `pele_registrada` distingue; a tela percorre `PELES_DO_DIAGRAMA` "
+        "e passa `registro.nome`, e quem separa as duas peles é `cores_da_pele` -- que está no "
+        "`__all__` porque é ela a decisão. Quem nomeia a chave é o teste, que a exige derivada "
+        "da primeira por luminância e não escolhida a olho"
+    ),
+    #
+    # `analise_da_partida.grava_avaliacao` e `motor_declarado.titulo_da_secao` estavam aqui, e
+    # saíram em 2026-09-04 **por terem ganhado chamador**: as três linhas que a S-529 e a S-537
+    # deixaram no relatório foram escritas em `qt/painel_de_estudo.py` assim que o arquivo ficou
+    # livre. É o caminho que este mapa existe para acontecer -- a isenção era do executor que não
+    # podia abrir o arquivo, e não da decisão.
 }
 """`modulo.NOME -> motivo`, e o motivo não pode ser vazio.
 

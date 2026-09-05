@@ -110,7 +110,10 @@ def _acao(
 ) -> QAction:
     """Uma linha de comando ou de interruptor. O rótulo vem do catálogo, a tecla vem da tabela."""
     acao = QAction(catalogo.rotulo(item.acao), pai)
-    atalho = atalhos.por_acao.get(item.acao)
+    # `atalho_de` responde pela tabela da janela **e** pela da sala (S-527): o acelerador é só
+    # mostrado (contexto de widget, abaixo), então uma tecla que só vale na sala não é ligada aqui
+    # uma segunda vez -- quem a liga é a `QAction` da barra da sala.
+    atalho = atalhos.atalho_de(item.acao)
     if atalho is not None:
         try:
             acao.setShortcut(QKeySequence(sequencia_qt(atalho.sequencia)))

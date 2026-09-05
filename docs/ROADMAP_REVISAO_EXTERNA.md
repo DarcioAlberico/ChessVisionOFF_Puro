@@ -23,6 +23,7 @@ Uma revisão técnica independente do repositório, feita por terceiro em 2026-0
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 
 Este documento não propõe recurso novo. Ele é o que sobrou de dez achados de fora **depois de
 cada um ser conferido contra este ramo** -- que está 17 commits à frente do que a revisão viu.

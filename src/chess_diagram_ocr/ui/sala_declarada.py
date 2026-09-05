@@ -35,14 +35,18 @@ from . import estudo_lista as _lista
 
 __all__ = [
     "ACOES_PROPRIAS",
+    "ALCA_DO_DIVISOR",
     "CANDIDATOS_DO_MOTOR",
     "COMANDOS_DA_ABA",
+    "LARGURA_MINIMA_DA_LEITURA",
+    "fracao_para_o_tabuleiro",
     "LADO_AMPLIADO",
     "LADO_DO_RECORTE",
     "FRACAO_PADRAO_DO_TABULEIRO",
     "PAPEIS_COLADOS",
     "PARTIDAS_MAXIMAS_DE_PGN",
     "RECUO_POR_NIVEL",
+    "piso_da_leitura",
     "TAMANHO_MAXIMO_DE_PGN",
     "Sincronia",
     "cor_de_seta_por_modificador",
@@ -85,6 +89,166 @@ antes de enquadrar, então "a coluna inteira" quer dizer a coluna menos a esteir
 ocupam. Um valor menor foi tentado e medido pior: a 900x800 dava 415 px de tabuleiro contra 455, e
 a diferença virava vazio na aba cujo assunto é justamente o tabuleiro. Quem quiser menor tem o
 `board_zoom` no `data/janela.json`."""
+
+LARGURA_MINIMA_DA_LEITURA = 210
+"""O piso da coluna de leitura -- "Lances" e "Comentário do lance" --, em pixel, somado das partes.
+
+**Somado e não escolhido a olho**, pela mesma razão de `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`:
+um número redondo envelhece junto com o painel. As partes são as três que decidem se uma linha de
+notação cabe:
+
+- **~105 px** para um lance duplo por extenso (`12. Bxf7+ Kxf7`) na fonte `CORPO` da interface,
+  que é a unidade que não pode quebrar -- `PAPEIS_COLADOS` cola o número ao lance de propósito;
+- **72 px** de recuo máximo de variante (`RECUO_POR_NIVEL` x `estudo_lista.NIVEL_MAXIMO_DE_RECUO`),
+  porque a linha mais funda é a que primeiro deixa de caber;
+- **~33 px** de moldura do `QGroupBox`, recheio e barra de rolagem vertical.
+
+Medido contra o que já existe: a 1400x950 a coluna de leitura tem **203 px** e a lista quebra
+`posição inicial 1. e4 e5 2. Nf3 / Nc6 3. Bb5 a6 *` -- legível. Duzentos e dez é esse arranjo com a
+folga do arredondamento, e é o piso **que o tabuleiro não pode invadir** quando cresce (S-551)."""
+
+ALCA_DO_DIVISOR = 6
+"""Largura de fábrica da alça do `QSplitter`, em pixel. Entra na conta porque é largura também.
+
+Valor padrão, e não o de agora: `fracao_para_o_tabuleiro` recebe a alça de verdade por argumento --
+quem sabe quanto ela mede é o widget. Isto é o que a função responde quando ninguém diz."""
+
+
+def lado_do_tabuleiro(
+    largura: int,
+    altura_util: int,
+    *,
+    minimo: int,
+    esteira: int = 0,
+    alca: int = ALCA_DO_DIVISOR,
+    minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
+) -> int:
+    """O lado que o tabuleiro da sala deveria ter naquela caixa. Puro (S-551).
+
+    **O tabuleiro é quadrado, e por isso ele é limitado pelo menor dos dois recursos.** Medido em
+    2026-09-04 a 1400x950: o widget do tabuleiro tinha 488x488 px e a coluna esquerda 494x777 --
+    ele estava limitado pela **largura**, e sobravam ~230 px de coluna vazia debaixo dele. O
+    Lichess não deixa esse vazio: lá o tabuleiro cresce até a altura acabar.
+
+    A conta é `min(altura que sobra, largura que dá para tomar)`, e o teto de largura é o que
+    resta depois de a coluna de leitura ficar com o piso dela (`LARGURA_MINIMA_DA_LEITURA`), a
+    alça com a sua e a **esteira** com a dela. **O piso da leitura é o que impede a resposta óbvia
+    e errada**: com altura sobrando sempre -- e ela sobra sempre, porque a aba é mais alta que
+    larga --, "cresça até a altura" sozinho daria o tabuleiro inteiro e uma coluna de lances de
+    46 px.
+
+    **A esteira é o que na coluna esquerda não é tabuleiro**, na horizontal: a barra de avaliação
+    da S-529 (26 px) mais o vão até o tabuleiro e as margens da coluna. Ela **não** estava na conta,
+    e é o defeito da terceira rodada: a régua entregava a coluna inteira ao tabuleiro, o tabuleiro
+    pedia o piso dele, e os 37 px da barra saíam pela borda -- medido na janela de verdade a
+    1024x768 com o motor ligado, o widget tinha 240 px e **203** apareciam. Some a coluna `h`,
+    somem as duas réguas de coordenadas, e a faixa de navegação quebra em duas fileiras.
+
+    `minimo` é o piso do próprio tabuleiro (`qt/tabuleiro.LADO_MINIMO`), e vem por argumento porque
+    quem o declara é o widget que desenha; a esteira vem pela mesma razão -- quem a mede é a coluna.
+    """
+    teto = int(largura) - int(minimo_da_leitura) - int(alca) - int(esteira)
+    return max(int(minimo), min(int(altura_util), teto))
+
+
+def piso_da_leitura(
+    largura: int,
+    *,
+    minimo: int,
+    esteira: int = 0,
+    alca: int = ALCA_DO_DIVISOR,
+    minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
+    pedido: int | None = None,
+) -> int:
+    """Quanto a coluna de leitura pode **exigir** sem cortar o tabuleiro. Pura (S-551).
+
+    **Piso não é o mesmo que exigência, e é essa a distinção que a terceira rodada trouxe.**
+    `LARGURA_MINIMA_DA_LEITURA` é o piso que o tabuleiro não invade *quando cresce*; numa janela em
+    que os dois pisos não cabem juntos ele deixa de ser exigível, e quem cede é a leitura. A ordem
+    não é de gosto: a coluna de leitura reflui e rola -- a lista de lances é um `QTextBrowser`, o
+    comentário um `QTextEdit` --, e o tabuleiro nem uma coisa nem outra. Coluna estreita é coluna
+    estreita; tabuleiro cortado é um tabuleiro sem a coluna `h`.
+
+    Medido na janela de verdade a 1024x768: a aba fica com 496 px, o divisor com 480, e os dois
+    pisos somam 240 + 42 de esteira + 210 = **492**. Enquanto a coluna de leitura exigia os 266 px
+    que os `QGroupBox` dela declaravam -- 386 com o motor ligado --, o `QSplitter` não conseguia
+    atender nenhum dos dois lados e repartia 240/240, cortando 36 px do tabuleiro.
+
+    **`pedido` é o que a coluna pede por conta própria, e ele é teto -- a correção da quarta
+    rodada.** Sem ele a régua respondia um número que o painel aplicava em `setMinimumWidth`, e
+    piso é piso nos dois sentidos: onde a coluna pedia **menos** que a régua, a régua *subia* a
+    exigência dela e o tabuleiro pagava a diferença. Medido na janela de verdade, sem motor: a
+    coluna pede 136 px, a régua respondia 192, e o tabuleiro caía de 298 para 245 px a 1024 e de
+    454 para 447 a 1400. A régua existe para **descer** exigência de quem pede demais; quem pede
+    pouco não tem o que descer, e o mínimo dele é o dele. `None` é "não perguntei", e nesse caso
+    só o teto declarado vale -- é o que `fracao_para_o_tabuleiro` passa, porque ali o número é
+    posição de alça e não mínimo de widget.
+    """
+    sobra = int(largura) - int(alca) - int(esteira) - int(minimo)
+    teto = int(minimo_da_leitura) if pedido is None else min(int(minimo_da_leitura), int(pedido))
+    return max(1, min(teto, sobra))
+
+
+def fracao_para_o_tabuleiro(
+    largura: int,
+    altura_util: int,
+    *,
+    minimo: int,
+    fracao_atual: float = 0.0,
+    esteira: int = 0,
+    alca: int = ALCA_DO_DIVISOR,
+    minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
+    largura_anterior: int = 0,
+) -> float:
+    """Onde pôr a alça do divisor para o tabuleiro ter aquele lado. Pura (S-551).
+
+    **Ela só empurra a alça para a direita**, e é a parte da decisão que não é aritmética: a régua
+    devolve `max(fracao_atual, a calculada)`. O arranjo que já está na tela é o piso -- o de
+    fábrica do `QSplitter` (3:2) ou o que a pessoa guardou --, e a altura que sobra é o que pode
+    aumentá-lo. Sem isso a mesma conta *encolheria* o tabuleiro em toda janela estreita: a 1400x950
+    o teto de largura dá 481 px contra os 494 que os pesos do `QSplitter` já davam, e o item que
+    pediu um tabuleiro maior o teria deixado 13 px menor.
+
+    **A alça vai para o lado do tabuleiro mais a esteira**, e não só para o lado: a barra de
+    avaliação mora na coluna esquerda, e a fração que a ignorasse poria a alça 37 px cedo demais.
+    O teto continua sendo `piso_da_leitura` -- a alça nunca passa dele --, e é o que impede a
+    correção de trocar o tabuleiro cortado por uma coluna de leitura de zero pixel.
+
+    **`largura_anterior` é o que desfaz o degrau da quinta rodada da S-552.** "Só empurra para a
+    direita" é uma promessa sobre **pixel de tabuleiro**, e ela era guardada em **fração** -- que é
+    a mesma coisa só enquanto a largura não muda. Encolhida a janela, o `QSplitter` reparte em
+    proporção antes de esta régua rodar, a fração de uma coluna larga chega intacta a uma estreita,
+    e ela compra ali mais tabuleiro do que a estreita tem para vender: medido na janela de verdade,
+    1400 -> 1600 -> 1400 deixava a coluna de leitura em **183 px** (190 a 1920, vindo de 2120), e ela
+    estacionava ali. Um degrau, não um acúmulo -- e igual em `96ec6bb`, então nunca foi regressão de
+    rodada nenhuma; era o preço, não declarado, de a promessa estar guardada na moeda errada.
+
+    Quando a coluna **encolhe**, o piso da leitura volta a ser teto: não há promessa de não
+    encolher o tabuleiro numa janela que está encolhendo tudo. Crescendo, ou parada, a régua é a de
+    sempre, e por isso nenhum dos números medidos da S-551 se mexe -- a 1400x950 recém-aberta a
+    leitura continua com os 203 px que os pesos do `QSplitter` já davam. `0` é "não sei qual era a
+    largura de antes", que é o primeiro desenho, e ali nada é encolhimento.
+    """
+    if largura <= 0:
+        return max(0.0, fracao_atual)
+    lado = lado_do_tabuleiro(
+        largura,
+        altura_util,
+        minimo=minimo,
+        esteira=esteira,
+        alca=alca,
+        minimo_da_leitura=minimo_da_leitura,
+    )
+    piso = piso_da_leitura(
+        largura, minimo=minimo, esteira=esteira, alca=alca, minimo_da_leitura=minimo_da_leitura
+    )
+    teto = int(largura) - piso
+    esquerda = min(teto, lado + int(esteira) + int(alca))
+    guardada = max(fracao_atual, min(1.0, esquerda / largura))
+    if 0 < int(largura) < int(largura_anterior):
+        return min(guardada, max(0.0, teto / largura))
+    return guardada
+
 
 LADO_DO_RECORTE = 220
 """Lado máximo da miniatura do diagrama, em pixels (S-282).
@@ -148,14 +312,26 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "analisar_posicao": "analyse",
     "analise_continua": "alternar_analise_continua",
     "variante_do_motor": "variante_do_motor",
+    "analisar_partida": "analisar_partida",
+    "opcoes_do_motor": "opcoes_do_motor",
     "partidas_da_posicao": "partidas_da_posicao",
+    "arvore_de_aberturas": "arvore_de_aberturas",
+    "buscar_partidas": "buscar_partidas",
+    "indexar_base": "indexar_base",
     "colar_estudo": "colar_estudo",
     "abrir_pgn": "abrir_pgn",
     "exportar_estudo_md": "exportar_estudo_md",
     "exportar_estudo_html": "exportar_estudo_html",
     "exportar_estudo_rtf": "exportar_estudo_rtf",
+    "exportar_estudo_pdf": "exportar_estudo_pdf",
+    "exportar_estudo_epub": "exportar_estudo_epub",
+    "exportar_estudo_docx": "exportar_estudo_docx",
+    "imprimir_estudo": "imprimir_estudo",
+    "exportar_diagramas_lote": "exportar_diagramas_em_lote",
     "estudo_para_o_texto": "levar_para_o_texto",
     "modo_treino": "alternar_treino",
+    "taticas_do_livro": "extrair_taticas",
+    "treinar_agenda": "treinar_a_agenda",
 }
 """Comando do catálogo -> método desta aba (S-280).
 

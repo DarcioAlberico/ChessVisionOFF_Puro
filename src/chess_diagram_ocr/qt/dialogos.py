@@ -603,12 +603,22 @@ class DialogoDePartidas(QDialog):
         novas = tuple(hit for hit in achadas if hit.key not in conhecidas)
         self._por_nome.update(hit.key for hit in achadas)
         if not achadas:
-            QMessageBox.information(
-                self,
-                "Partidas da base",
+            # **A saída é a ação, e não um comando de terminal** (S-527/S-532). Até aqui a caixa
+            # mandava rodar `cvoff-games --build-index`; o índice se constrói de dentro da janela,
+            # e o botão daqui é o mesmo `indexar_com_dialogo` da sala de estudo.
+            caixa = QMessageBox(self)
+            caixa.setIcon(QMessageBox.Icon.Information)
+            caixa.setWindowTitle("Partidas da base")
+            caixa.setText(
                 "A busca por nome não achou partida com esta posição.\n\n"
-                "Se o índice ainda não foi construído:  cvoff-games --build-index",
+                "Se o índice da base ainda não foi construído -- ou está atrasado --, construa-o "
+                "agora: ele lê só o que mudou e mostra o andamento."
             )
+            indexar = caixa.addButton("Indexar agora", QMessageBox.ButtonRole.AcceptRole)
+            caixa.addButton(QMessageBox.StandardButton.Close)
+            caixa.exec()
+            if caixa.clickedButton() is indexar:
+                self.indexar_base()
             return
         self._todas = (*self._todas, *novas)
         sem_posicao = sum(1 for hit in novas if not hit.verified)
@@ -617,6 +627,16 @@ class DialogoDePartidas(QDialog):
             f"{len(self._todas)} partida(s), {len(novas)} pela busca por nome{aviso}"
         )
         self._repovoar()
+
+    def indexar_base(self) -> None:
+        """O índice por nome de dentro desta janela, com barra e Cancelar (S-532); a frase final vai
+        para a contagem. Guardado em `_indexador` porque um `QObject` sem referência é recolhido."""
+        from chess_diagram_ocr.qt import indice_da_base
+
+        self._indexador = indice_da_base.indexar_com_dialogo(self, database_paths())
+        self._indexador.terminou.connect(
+            lambda resultado: self.lbl_contagem.setText(indice_da_base.frase_final(resultado))
+        )
 
     def aplicar_aos_vizinhos(self) -> None:
         escolhida = self.selecionada()

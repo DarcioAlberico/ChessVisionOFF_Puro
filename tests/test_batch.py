@@ -21,9 +21,14 @@ from chess_diagram_ocr.batch import (
     STATUS_FAILED,
     STATUS_OK,
     STATUS_SKIPPED,
+    VERSAO_DO_RELATORIO,
     BatchOptions,
+    BatchReport,
     BookResult,
+    caminho_do_relatorio_de_qualidade,
     find_pdfs,
+    gravar_relatorios_de_qualidade,
+    relatorio_de_qualidade,
     run_batch,
 )
 from chess_diagram_ocr.pdf_to_pgn import DiagramPosition, ExportReport
@@ -250,5 +255,221 @@ class LineTests(unittest.TestCase):
         self.assertIn("pulado", BookResult(pdf=Path("livro.pdf"), status=STATUS_SKIPPED).line())
 
 
+class AvisoPorPaginaTests(unittest.TestCase):
+    """O que a fila da janela precisava e o terminal não (S-546).
+
+    `on_book_start`/`on_book_done` bastam para uma linha de texto e não para uma barra: no
+    `Yusupov` são 2.612 páginas entre um aviso e o outro.
+    """
+
+    def test_o_aviso_por_pagina_chega_com_o_livro_e_o_total(self) -> None:
+        biblioteca = _Biblioteca(self, ["a.pdf"])
+        avisos: list[tuple[str, int, int, int]] = []
+
+        def _exportar(**kw: object) -> ExportReport:
+            progresso = kw["progress_callback"]
+            assert progresso is not None
+            for pagina in range(3):
+                progresso(pagina, 3, 1, pagina + 1)  # type: ignore[operator]
+            return _report(kw["output_path"])  # type: ignore[arg-type]
+
+        with mock.patch("chess_diagram_ocr.batch.save_pdf_positions_to_pgn", side_effect=_exportar):
+            run_batch(
+                find_pdfs(biblioteca.pdfs),
+                biblioteca.saida,
+                on_page=lambda pdf, feitas, total, diagramas: avisos.append(
+                    (pdf.name, feitas, total, diagramas)
+                ),
+            )
+
+        self.assertEqual(avisos, [("a.pdf", 1, 3, 1), ("a.pdf", 2, 3, 2), ("a.pdf", 3, 3, 3)])
+
+    def test_sem_o_aviso_a_varredura_nao_pede_progresso(self) -> None:
+        """O `cvoff-batch` não usa o aviso por página, e ligá-lo de graça faria a exportação
+        chamar um callback por página em toda varredura de terminal."""
+        biblioteca = _Biblioteca(self, ["a.pdf"])
+        vistos: list[object] = []
+
+        def _exportar(**kw: object) -> ExportReport:
+            vistos.append(kw["progress_callback"])
+            return _report(kw["output_path"])  # type: ignore[arg-type]
+
+        with mock.patch("chess_diagram_ocr.batch.save_pdf_positions_to_pgn", side_effect=_exportar):
+            run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida)
+        self.assertEqual(vistos, [None])
+
+    def test_o_modelo_do_servico_e_pedido_uma_vez_por_livro(self) -> None:
+        """Segurar o lock da S-31 pela varredura inteira deixaria a janela sem reconhecer a
+        página aberta durante horas -- é a S-57 com a granularidade que a fila permite."""
+        biblioteca = _Biblioteca(self, ["a.pdf", "b.pdf"])
+        pedidos: list[Path] = []
+        sessoes: list[object] = []
+
+        def _exportar(**kw: object) -> ExportReport:
+            sessoes.append(kw["model_session"])
+            return _report(kw["output_path"])  # type: ignore[arg-type]
+
+        def _sessao(caminho: Path) -> object:
+            pedidos.append(caminho)
+            return object()
+
+        with mock.patch("chess_diagram_ocr.batch.save_pdf_positions_to_pgn", side_effect=_exportar):
+            run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida, session_factory=_sessao)  # type: ignore[arg-type]
+
+        self.assertEqual(len(pedidos), 2, "um empréstimo por livro, e não um pela varredura")
+        self.assertEqual(len({id(sessao) for sessao in sessoes}), 2, "cada livro recebe a sua sessão")
+
+
+class RelatorioDeQualidadeTests(unittest.TestCase):
+    """Um JSON por livro: páginas, diagramas, legalidade, tempo e procedência (S-548)."""
+
+    def _resultado(self, **campos: object) -> BookResult:
+        base: dict[str, object] = {
+            "pdf": Path("PDF/livro.pdf"),
+            "status": STATUS_OK,
+            "output": Path("PGN/livro.pgn"),
+            "pages": 70,
+            "accepted": 3,
+            "needs_review": 5,
+            "rejected": 2,
+            "elapsed_s": 35.0,
+        }
+        base.update(campos)
+        return BookResult(**base)  # type: ignore[arg-type]
+
+    def test_as_quatro_perguntas_do_item_estao_no_json(self) -> None:
+        """Páginas lidas, diagramas, legalidade e tempo -- e as quatro só respondem juntas:
+        `120 diagramas` sozinho não diz se o livro foi bem; `120 diagramas, 0 exportados` diz."""
+        relatorio = relatorio_de_qualidade(self._resultado(), BatchOptions())
+        self.assertEqual(relatorio["pages"], 70)
+        self.assertEqual(relatorio["diagrams"], 10)
+        self.assertEqual(relatorio["exported"], 3)
+        self.assertEqual(relatorio["illegal"], 2)
+        self.assertEqual(relatorio["legal_rate"], 0.8)
+        self.assertEqual(relatorio["elapsed_s"], 35.0)
+        self.assertEqual(relatorio["seconds_per_page"], 0.5)
+        self.assertEqual(relatorio["seconds_per_diagram"], 3.5)
+
+    def test_um_livro_sem_diagrama_nao_divide_por_zero(self) -> None:
+        relatorio = relatorio_de_qualidade(
+            self._resultado(accepted=0, needs_review=0, rejected=0, pages=0), BatchOptions()
+        )
+        self.assertEqual(relatorio["seconds_per_diagram"], 0.0)
+        self.assertEqual(relatorio["seconds_per_page"], 0.0)
+
+    def test_a_taxa_sem_diagrama_e_nula_e_nao_perfeita(self) -> None:
+        """`legal_rate: 1.0` num livro sem diagrama é "100% de zero posição são legais".
+
+        Saía assim na primeira rodada, e num gráfico que compara cinquenta livros pela legalidade
+        isso põe o livro que **falhou** no topo da lista. `null` diz *não medido*, que é a
+        verdade -- e é o mesmo critério de `ui/busca_de_partidas._TRACO`: a ausência de valor não
+        é um valor.
+        """
+        vazio = relatorio_de_qualidade(
+            self._resultado(accepted=0, needs_review=0, rejected=0, pages=0), BatchOptions()
+        )
+        self.assertIsNone(vazio["legal_rate"])
+        self.assertIsNone(vazio["export_rate"])
+        cheio = relatorio_de_qualidade(self._resultado(), BatchOptions())
+        self.assertEqual(cheio["legal_rate"], 0.8)
+        self.assertEqual(cheio["export_rate"], 0.3)
+
+    def test_a_procedencia_diz_com_que_modelo_e_com_que_dpi(self) -> None:
+        """Sem ela o número não se reproduz: o mesmo livro a 220 e a 300 DPI dá outra contagem
+        (S-547), e o `.pt` é reescrito por todo treino (S-57)."""
+        procedencia = relatorio_de_qualidade(self._resultado(), BatchOptions(dpi=300))["provenance"]
+        self.assertEqual(procedencia["dpi"], 300)
+        self.assertIn("identity", procedencia["model"])
+        self.assertIn("path", procedencia["model"])
+        self.assertEqual(procedencia["reading_order"], BatchOptions().reading_order)
+
+    def test_o_caminho_publicado_e_relativo_a_raiz(self) -> None:
+        """Um relatório com o layout do disco de quem mediu não compara com o de outra máquina
+        (S-219)."""
+        relatorio = relatorio_de_qualidade(self._resultado(), BatchOptions())
+        self.assertEqual(relatorio["output"], "PGN/livro.pgn")
+
+    def test_um_arquivo_por_livro_com_o_nome_do_pdf(self) -> None:
+        biblioteca = _Biblioteca(self, ["a.pdf", "b.pdf"])
+        relatorio = BatchReport(started_at="2026-09-04 10:00:00")
+        relatorio.books = [
+            self._resultado(pdf=biblioteca.pdfs / "a.pdf"),
+            self._resultado(pdf=biblioteca.pdfs / "b.pdf", status=STATUS_SKIPPED),
+        ]
+        gravados = gravar_relatorios_de_qualidade(relatorio, BatchOptions(), biblioteca.saida)
+        self.assertEqual([caminho.name for caminho in gravados], ["a.qualidade.json", "b.qualidade.json"])
+        conteudo = json.loads(gravados[1].read_text(encoding="utf-8"))
+        self.assertEqual(conteudo["status"], STATUS_SKIPPED)
+        self.assertEqual(conteudo["book"], "b.pdf")
+        self.assertEqual(conteudo["schema"], VERSAO_DO_RELATORIO)
+
+    def test_o_livro_pulado_tambem_ganha_relatorio(self) -> None:
+        """Ele nem chega a ter PGN próprio nesta rodada, e o relatório dele -- que diz "já estava
+        exportado" -- ainda tem de saber onde nascer."""
+        caminho = caminho_do_relatorio_de_qualidade(Path("PDF/livro.pdf"), Path("PGN"))
+        self.assertEqual(caminho, Path("PGN/livro.qualidade.json"))
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class LivroSemPaginaTests(unittest.TestCase):
+    """Zero página é falha, e não "ok" com zero (S-548, r2).
+
+    O crítico varreu um PDF truncado e o relatório saiu com `status: "ok"`, `pages: 0`,
+    `error: ""`, `legal_rate: 1.0` -- e um `.pgn` de 0 byte ao lado. Na fila da janela isso lê
+    como um livro que foi lido e não achou nada, que é o resultado **de verdade** de cinco livros
+    do acervo (`ROADMAP.md:151`). Os dois têm de se distinguir.
+    """
+
+    def _vazio(self, saida: Path, *, cancelado: bool = False) -> ExportReport:
+        return ExportReport(
+            accepted=[],
+            needs_review=[],
+            rejected=[],
+            pages_scanned=0,
+            output_path=saida,
+            review_path=None,
+            cancelled=cancelado,
+        )
+
+    def test_o_livro_sem_pagina_nenhuma_vira_falha_com_motivo(self) -> None:
+        biblioteca = _Biblioteca(self, ["truncado.pdf"])
+        with mock.patch(
+            "chess_diagram_ocr.batch.save_pdf_positions_to_pgn",
+            side_effect=lambda **kw: self._vazio(kw["output_path"]),
+        ):
+            relatorio = run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida)
+
+        (livro,) = relatorio.books
+        self.assertEqual(STATUS_FAILED, livro.status)
+        self.assertIn("página", livro.error, "a falha tem de dizer o que houve")
+        self.assertEqual(0, livro.pages)
+
+    def test_o_livro_que_leu_e_nao_achou_nada_continua_ok(self) -> None:
+        """O outro lado: zero diagrama em 10 páginas é resultado, e não falha."""
+        biblioteca = _Biblioteca(self, ["seco.pdf"])
+        with mock.patch(
+            "chess_diagram_ocr.batch.save_pdf_positions_to_pgn",
+            side_effect=lambda **kw: _report(kw["output_path"], aceitos=0, revisao=0, ilegais=0),
+        ):
+            relatorio = run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida)
+
+        (livro,) = relatorio.books
+        self.assertEqual(STATUS_OK, livro.status)
+        self.assertEqual(10, livro.pages)
+        self.assertEqual("", livro.error)
+
+    def test_o_cancelado_sem_pagina_continua_cancelado(self) -> None:
+        """Cancelar antes da primeira página não é o PDF estar quebrado."""
+        biblioteca = _Biblioteca(self, ["parado.pdf"])
+
+        def _exportar(**kw: object) -> ExportReport:
+            saida = kw["output_path"]
+            assert isinstance(saida, Path)
+            return self._vazio(saida, cancelado=True)
+
+        with mock.patch("chess_diagram_ocr.batch.save_pdf_positions_to_pgn", side_effect=_exportar):
+            relatorio = run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida)
+        self.assertEqual(STATUS_CANCELLED, relatorio.books[0].status)

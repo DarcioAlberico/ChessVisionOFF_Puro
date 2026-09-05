@@ -532,6 +532,36 @@ def _merge_adjacent_tiles(
     return unidades
 
 
+def largest_image_coverage(page: fitz.Page) -> float:
+    """Fração da página coberta pela **maior** imagem embutida, de 0 a 1 (S-547).
+
+    É a metade fotométrica da pergunta "esta página é um scan?": um livro digitalizado põe a
+    página inteira como uma imagem só, e é justamente essa imagem que `MAX_PAGE_COVERAGE`
+    descarta aqui como fundo. O número já era calculado no laço abaixo e morria dentro dele.
+
+    Devolve `0.0` para página vetorial, para página sem imagem, e para a página cuja informação
+    de imagem o PyMuPDF recusa a dar -- os três casos em que a resposta certa é "não sei dizer
+    que é scan", e não uma exceção que derrubaria a varredura de um livro por causa de um XObject
+    malformado.
+    """
+    page_area = abs(page.rect.width * page.rect.height)
+    if page_area <= 0:
+        return 0.0
+    try:
+        infos = page.get_image_info()
+    except Exception as exc:  # noqa: BLE001 - mesma razao do laco abaixo
+        logger.warning("get_image_info falhou na pagina %s: %s", page.number, exc)
+        return 0.0
+
+    maior = 0.0
+    for info in infos:
+        bbox = fitz.Rect(info["bbox"]) * page.rotation_matrix
+        if bbox.is_empty or bbox.is_infinite:
+            continue
+        maior = max(maior, abs(bbox.get_area()) / page_area)
+    return min(1.0, maior)
+
+
 def candidates_from_embedded_images(
     page: fitz.Page,
     *,

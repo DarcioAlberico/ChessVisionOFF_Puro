@@ -34,6 +34,7 @@ __all__ = [
     "RESERVA",
     "SUPERFICIES",
     "SUPERFICIES_DE_DOCUMENTO",
+    "cinza_equivalente",
     "cor",
     "paleta",
     "distancia_de_matiz",
@@ -842,6 +843,30 @@ def mistura(a: str, b: str, peso: float) -> str:
         for i in (1, 3, 5)
     )
     return "#" + "".join(f"{canal:02x}" for canal in canais)
+
+
+def cinza_equivalente(hexadecimal: str) -> str:
+    """O cinza de **mesma luminância** daquela cor. Puro, e sem hexadecimal cravado (S-544).
+
+    **O que ele existe para resolver.** O produto tem **uma** paleta de tabuleiro, e é decisão:
+    `SUPERFICIES_DE_DOCUMENTO` prende `CASA_CLARA`, `CASA_ESCURA` e `MOLDURA` na paleta medida
+    porque o trabalho é comparar diagrama impresso com o que o modelo leu (S-224). Mas um livro
+    impresso **numa tinta só** não aceita o damero em dois marrons: o editor que diagrama em
+    preto e branco precisa da mesma figura em cinza.
+
+    Converter por luminância -- e não escolher dois cinzas a olho -- é o que **preserva a
+    medição**: a razão de contraste da WCAG é definida sobre a luminância relativa, então um par
+    de cores e o par de cinzas equivalentes têm, por construção, exatamente a mesma razão. Os
+    números que a S-146 mediu para a régua e para a plaqueta continuam valendo depois da
+    conversão, e o teste os afirma nos dois.
+
+    É a inversa de `_canal` aplicada ao alvo: um cinza tem os três canais iguais, então a
+    luminância dele é o próprio canal linearizado.
+    """
+    alvo = _luminancia(hexadecimal)
+    valor = 12.92 * alvo if alvo <= 0.0031308 else 1.055 * (alvo ** (1 / 2.4)) - 0.055
+    canal = min(255, max(0, round(valor * 255)))
+    return "#" + f"{canal:02x}" * 3
 
 
 def moldura_sobre(superficie: str, *, piso: float = AA_GRAFICO) -> str:

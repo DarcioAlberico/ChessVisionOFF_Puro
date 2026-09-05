@@ -107,6 +107,48 @@ class _LimiteDeSecao(QObject):
             self._ajustando = False
 
 
+class _Linha(QTreeWidgetItem):
+    """Uma linha que sabe comparar-se pela coluna em que a tabela está ordenada.
+
+    O `QTreeWidgetItem` compara **texto**, e numa coluna de Elo isso põe `900` depois de `2882`
+    e o travessão de "sem Elo" no meio dos números. `Coluna.numerica` já diz quais colunas são
+    número -- é a mesma declaração que decide o alinhamento --, e aqui ela decide a ordem.
+
+    A célula sem número (`—`, ou vazia) vai para o **fim** nos dois sentidos, e não para o
+    começo: ela não é um valor pequeno, é a ausência de valor, e uma ordenação por Elo que
+    começasse pelas partidas sem Elo responderia a pergunta errada.
+    """
+
+    def __init__(self, valores: Sequence[str], colunas: Sequence[Coluna]) -> None:
+        super().__init__(list(valores))
+        self._numericas = {indice for indice, coluna in enumerate(colunas) if coluna.numerica}
+
+    def __lt__(self, outro: object) -> bool:
+        arvore = self.treeWidget()
+        cabecalho = arvore.header() if arvore is not None else None
+        coluna = arvore.sortColumn() if arvore is not None else 0
+        if not isinstance(outro, QTreeWidgetItem) or coluna not in self._numericas:
+            return bool(super().__lt__(outro))  # type: ignore[operator]
+        meu, dele = _numero(self.text(coluna)), _numero(outro.text(coluna))
+        if meu is not None and dele is not None:
+            return meu < dele
+        if meu is None and dele is None:
+            return False
+        # Sem valor vai para o **fim** nos dois sentidos, e é por isso que o sentido é lido aqui:
+        # o Qt aplica o mesmo `<` nos dois e inverte o resultado ao ordenar decrescente, então
+        # uma resposta só poria as células vazias na frente em metade dos cliques.
+        com_valor_primeiro = meu is not None
+        crescente = cabecalho is None or cabecalho.sortIndicatorOrder() == Qt.SortOrder.AscendingOrder
+        return com_valor_primeiro if crescente else not com_valor_primeiro
+
+
+def _numero(texto: str) -> float | None:
+    try:
+        return float(texto.replace(",", ".").split()[0])
+    except (ValueError, IndexError):
+        return None
+
+
 class TabelaQt(QTreeWidget):
     """Um `QTreeWidget` configurado pelas `Coluna` que recebeu. Guarda a declaração.
 
@@ -115,9 +157,20 @@ class TabelaQt(QTreeWidget):
     metade dos lugares.
     """
 
-    def __init__(self, colunas: Iterable[Coluna], parent: QWidget | None = None) -> None:
+    def __init__(
+        self, colunas: Iterable[Coluna], parent: QWidget | None = None, *, ordenavel: bool = False
+    ) -> None:
+        """`ordenavel` liga o clique no cabeçalho, e ele **não** é o padrão.
+
+        É o gesto de toda sessão de quem usa uma base -- clicar em "Elo" para achar a partida mais
+        forte da lista --, e é por isso que a busca da S-533 o liga. Mas ele não serve a toda
+        tabela deste programa: a fila de livros (S-546) tem uma ordem própria, que é a de
+        execução, e reordená-la faria a linha que está sendo lida saltar de lugar enquanto a barra
+        anda. Uma tabela que se reordena sozinha durante a operação é pior que uma que não ordena.
+        """
         super().__init__(parent)
         self.colunas: tuple[Coluna, ...] = tuple(colunas)
+        self.ordenavel = ordenavel
         self.setColumnCount(len(self.colunas))
         self.setHeaderLabels([coluna.titulo for coluna in self.colunas])
         # `show="headings"` do Tk: sem a coluna-árvore de recuo, que esta tabela não usa.
@@ -140,6 +193,9 @@ class TabelaQt(QTreeWidget):
         # sempre é a última. Deixar o padrão faria a última coluna comer a folga que era da
         # elástica, e a barra horizontal deixaria de aparecer quando ela devia.
         cabecalho.setStretchLastSection(False)
+        if ordenavel:
+            cabecalho.setSectionsClickable(True)
+            self.setSortingEnabled(True)
         for indice, coluna in enumerate(self.colunas):
             modo = QHeaderView.ResizeMode.Stretch if coluna.elastica else QHeaderView.ResizeMode.Interactive
             cabecalho.setSectionResizeMode(indice, modo)
@@ -155,21 +211,57 @@ class TabelaQt(QTreeWidget):
         Linha com número de células diferente do de colunas **levanta**: uma linha curta que
         fosse aceita apareceria com as últimas colunas em branco, e quem olhasse concluiria que
         o dado está faltando quando o que houve foi a chamada errada.
+
+        **Cada célula sai com o próprio texto como dica**, e é o que resolve a coluna estreita:
+        dois livros de nome longo que só diferem no fim ficam visualmente idênticos com as
+        reticências do Qt, e a fila da S-546 os mostra lado a lado dizendo que um deles falhou.
+        O texto inteiro na dica é a leitura que a largura não cabe -- e custa uma atribuição por
+        célula, contra a alternativa de medir a largura de cada uma para decidir.
         """
+        # Com a ordenação ligada, o Qt reordena a cada `addTopLevelItem` -- inserir N linhas fica
+        # quadrático, e a ordem de chegada (que é o desempate) se perde. Desligar durante o
+        # preenchimento e religar é o que a própria documentação do Qt manda fazer.
+        ordenando = self.isSortingEnabled()
+        self.setSortingEnabled(False)
         self.clear()
-        itens = []
+        itens: list[QTreeWidgetItem] = []
         for linha in linhas:
-            valores = list(linha)
+            valores = [str(valor) for valor in linha]
             if len(valores) != len(self.colunas):
                 raise ValueError(
                     f"a linha tem {len(valores)} célula(s) e a tabela tem {len(self.colunas)} coluna(s): "
                     f"{valores!r}"
                 )
-            item = QTreeWidgetItem([str(valor) for valor in valores])
+            item = _Linha(valores, self.colunas)
+            # A posição de chegada viaja com a linha: com a ordenação ligada, a posição na tela
+            # deixa de ser a posição na lista de quem preencheu, e `indexOfTopLevelItem` passaria
+            # a devolver a linha errada -- abrindo outra partida, em silêncio. Ver `posicao_de`.
+            item.setData(0, Qt.ItemDataRole.UserRole, len(itens))
             for indice, coluna in enumerate(self.colunas):
                 item.setTextAlignment(indice, alinhamento(coluna))
+                item.setToolTip(indice, valores[indice])
             itens.append(item)
         self.addTopLevelItems(itens)
+        self.setSortingEnabled(ordenando)
+
+    def posicao_de(self, item: QTreeWidgetItem | None) -> int:
+        """Em que posição da lista que `preencher` recebeu esta linha estava, ou `-1`.
+
+        **Não é `indexOfTopLevelItem`**, e a diferença aparece com a ordenação ligada: ali a
+        posição na tela é a da ordenação escolhida, e quem tem uma lista de objetos ao lado da
+        tabela precisa da posição original -- senão o duplo clique abre a partida da linha que
+        calhou de estar naquela altura antes de a pessoa clicar no cabeçalho.
+        """
+        if item is None:
+            return -1
+        guardada = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(guardada, int):
+            return guardada
+        return self.indexOfTopLevelItem(item)
+
+    def posicao_selecionada(self) -> int:
+        """A posição original da linha marcada, ou `-1`. Ver `posicao_de`."""
+        return self.posicao_de(self.currentItem())
 
     def precisa_rolar(self) -> bool:
         """Se a tabela não cabe na largura que ela tem agora.
@@ -182,11 +274,11 @@ class TabelaQt(QTreeWidget):
         return precisa_de_barra_horizontal(self.colunas, vista.width() if vista else self.width())
 
 
-def montar(pai: QWidget, colunas: Iterable[Coluna]) -> TabelaQt:
+def montar(pai: QWidget, colunas: Iterable[Coluna], *, ordenavel: bool = False) -> TabelaQt:
     """Cria a tabela e a devolve. O par de `ui/tabela.montar`, com a mesma assinatura de ideia.
 
     Não empacota: em Qt quem posiciona é o leiaute de quem chama, e um `addWidget` escondido
     aqui dentro tiraria do painel a decisão de onde a tabela fica -- que é justamente o que o
     `pack(fill=BOTH, expand=True)` de lá faz e que o outro frontend não tem como evitar.
     """
-    return TabelaQt(colunas, pai)
+    return TabelaQt(colunas, pai, ordenavel=ordenavel)

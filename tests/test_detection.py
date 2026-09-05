@@ -24,6 +24,7 @@ from chess_diagram_ocr.detection import (
     contour_inside_candidate,
     detect_diagrams,
     is_page_band,
+    largest_image_coverage,
     trim_to_frame,
     trim_to_grid,
 )
@@ -1443,3 +1444,60 @@ class TetoDaPaginaTests(unittest.TestCase):
         sobreviventes = hybrid._order_candidates(por_score, scale=1.0, reading_order="column")
 
         self.assertEqual([round(c.detector_score, 2) for c in sobreviventes], [0.90, 0.80])
+
+
+class CoberturaDaMaiorImagemTests(unittest.TestCase):
+    """A metade fotométrica de "esta página é um scan?" (S-547).
+
+    O número já era calculado dentro de `candidates_from_embedded_images`, onde ele descarta o
+    scan de fundo, e morria lá. Publicá-lo é o que permite perguntar do lado de fora.
+    """
+
+    def test_a_pagina_sem_imagem_nao_diz_que_e_scan(self) -> None:
+        doc = fitz.open()
+        doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        try:
+            self.assertEqual(largest_image_coverage(doc[0]), 0.0)
+        finally:
+            doc.close()
+
+    def test_o_scan_de_pagina_inteira_cobre_quase_tudo(self) -> None:
+        doc = pdf_with_images([(board_image(400), fitz.Rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT))])
+        try:
+            self.assertGreater(largest_image_coverage(doc[0]), 0.95)
+        finally:
+            doc.close()
+
+    def test_um_diagrama_no_meio_da_pagina_nao_e_scan(self) -> None:
+        """É a distinção inteira: a mesma imagem embutida que **é** um diagrama não cobre a
+        página, e a que cobre a página não é diagrama nenhum."""
+        doc = pdf_with_images([(board_image(400), fitz.Rect(100, 200, 400, 500))])
+        try:
+            self.assertLess(largest_image_coverage(doc[0]), 0.2)
+        finally:
+            doc.close()
+
+    def test_a_maior_manda_quando_ha_varias(self) -> None:
+        doc = pdf_with_images(
+            [
+                (board_image(400), fitz.Rect(20, 20, 120, 120)),
+                (board_image(400), fitz.Rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT)),
+            ]
+        )
+        try:
+            self.assertGreater(largest_image_coverage(doc[0]), 0.95)
+        finally:
+            doc.close()
+
+    def test_a_pagina_que_o_pymupdf_recusa_a_descrever_nao_derruba_a_varredura(self) -> None:
+        """Um XObject malformado derrubaria o livro inteiro por causa de uma página, e a resposta
+        certa ali é "não sei dizer que é scan" -- que é o mesmo `0.0` da página sem imagem."""
+        doc = fitz.open()
+        doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        try:
+            with mock.patch.object(
+                fitz.Page, "get_image_info", side_effect=RuntimeError("XObject invalido")
+            ), self.assertLogs("chess_diagram_ocr.detection", level="WARNING"):
+                self.assertEqual(largest_image_coverage(doc[0]), 0.0)
+        finally:
+            doc.close()

@@ -19,7 +19,7 @@ import re
 import unittest
 from unittest import mock
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, assentado, descartar, pixels_diferentes, renderizar
 
 from chess_diagram_ocr.ui import estilos, folha, pele, tipografia, tokens
 
@@ -332,6 +332,22 @@ class DesabilitadoSeVeTests(unittest.TestCase):
             "o botão comum não tem regra de desabilitado, e sem ela ele desenha igual ao ligado",
         )
 
+    def test_o_botao_de_ferramenta_marcado_tem_face_e_moldura_de_enfase(self) -> None:
+        """**O achado 1 do crítico da S-527**: "Seguir OCR" marcado desenhava zero pixels diferentes
+        do desmarcado -- só `QPushButton` tinha `:checked`. A regra do `QToolButton` é afirmada na
+        folha (o diff de pixels está em `test_qt_barra_da_sala`), nas duas peles: a moldura é a
+        cor de ênfase, e a face é a mistura mais funda do cromo."""
+        for cromo_escuro in (False, True):
+            with self.subTest(cromo_escuro=cromo_escuro):
+                qss = tema.folha_de_estilo(cromo_escuro=cromo_escuro)
+                regra = next((r for r in qss.splitlines() if r.startswith("QToolButton:checked")), "")
+                self.assertTrue(regra, "sem regra para QToolButton:checked")
+                self.assertIn("border: 1px solid", regra)
+                self.assertIn("background-color", regra)
+                self.assertIn(tokens.cor(tokens.BOTAO_PRIMARIO, None, cromo_escuro=cromo_escuro), regra)
+                self.assertIn("QToolButton:hover", qss)
+                self.assertIn("QMenu::item:disabled", qss, "o cabeçalho de grupo do Mais é um item desabilitado")
+
     def test_os_outros_dois_papeis_continuam_declarando_o_seu(self) -> None:
         """Estes dois já tinham o deles (S-444), e a regra nova não podia apagá-los."""
         seletores = _seletores_desabilitados(tema.folha_de_estilo())
@@ -440,6 +456,440 @@ class MolduraDoCromoTests(unittest.TestCase):
             {"QComboBox": "#8a8a8a", "QLineEdit": "#696b6d", "QSpinBox": "#696b6d"},
             _bordas_declaradas(qss),
         )
+
+
+def _regras_de_foco(qss: str) -> dict[str, str]:
+    """`seletor → corpo` de cada regra `:focus` da folha. Uma regra por linha, como as leituras
+    vizinhas -- e é o formato que `folha_de_estilo` gera."""
+    achadas: dict[str, str] = {}
+    for linha in qss.splitlines():
+        cabeca, _, resto = linha.partition("{")
+        if cabeca.strip().endswith(":focus"):
+            achadas[cabeca.strip()] = resto
+    return achadas
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class AnelDeFocoTests(unittest.TestCase):
+    """O foco de teclado se vê, e não se confunde com o marcado (S-553).
+
+    **O que o crítico mediu em 2026-09-04, na janela de verdade:** com `hasFocus()` verdadeiro, o
+    botão desenhava **0 px** diferentes do não focado -- no primário, no comum e no só-ícone, nas
+    duas peles. São doze paradas de `Tab` na barra da sala, nenhuma visível; é a WCAG 2.4.7 AA.
+
+    **Aqui o desenho serve de prova, ao contrário da S-506.** Lá o `assertNotEqual` sobre dois
+    `grab()` passava em verde no estado defeituoso, porque o `offscreen` acinzentava o que o
+    `windows11` não acinzentava. Este caso é o oposto, e foi medido: **sem folha nenhuma**, sob
+    `offscreen`, `QToolButton`, `QPushButton`, `QComboBox` e `QListWidget` saem com 0 px de
+    diferença entre focado e não focado. A CI vê o defeito, então ela pode cobrar a correção.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        anterior = self.app.styleSheet()
+        self.addCleanup(self.app.setStyleSheet, anterior)
+        # A pele fica no módulo (`tema._cromo_escuro`): sem devolvê-la, o próximo teste da
+        # suíte desenha na pele em que este parou. A limpeza roda ao contrário da ordem de
+        # registro, então `aplicar_tema` vem antes de a folha de antes voltar.
+        self.addCleanup(tema.aplicar_tema, self.app)
+
+    def _elenco(self) -> tuple[object, dict[str, object]]:
+        """Um quadro com os três botões que o crítico fotografou. Mostrado e ativo: sob
+        `offscreen` só há foco depois de `show` + `activateWindow` + `processEvents`."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QToolButton, QWidget
+
+        quadro = QWidget()
+        fila = QHBoxLayout(quadro)
+        so_icone = QToolButton(quadro)
+        so_icone.setProperty(tema.PROPRIEDADE_DE_NIVEL, tema.NIVEL_ICONE)
+        so_icone.setAutoRaise(True)
+        tema.aplicar_papel(so_icone, estilos.NEUTRO)
+        primario = QToolButton(quadro)
+        primario.setAutoRaise(True)
+        tema.aplicar_papel(primario, estilos.PRIMARIO)
+        comum = QPushButton("Salvar", quadro)
+        tema.aplicar_papel(comum, estilos.NEUTRO)
+        botoes = {"so_icone": so_icone, "primario": primario, "comum": comum}
+        for botao in botoes.values():
+            botao.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            botao.setFixedSize(48, 28)
+            fila.addWidget(botao)
+        quadro.resize(220, 44)
+        quadro.show()
+        quadro.activateWindow()
+        self.app.processEvents()
+        self.addCleanup(descartar, quadro)
+        return quadro, botoes
+
+    def _sem_foco(self, botao: object) -> object:
+        """O desenho de repouso -- e o `clearFocus` **não** é zelo.
+
+        Mostrar o quadro dá o foco ao primeiro filho focável, e a primeira versão deste teste
+        fotografava o só-ícone já focado: `0 px` de diferença, verde no defeito e verde na
+        correção. É a armadilha registrada em `Foco do Qt vaza entre testes`.
+        """
+        botao.clearFocus()  # type: ignore[attr-defined]
+        self.app.processEvents()
+        self.assertFalse(botao.hasFocus(), "o widget não largou o foco")  # type: ignore[attr-defined]
+        return renderizar(botao)
+
+    def _focado(self, botao: object) -> object:
+        from PyQt6.QtCore import Qt
+
+        botao.setFocus(Qt.FocusReason.TabFocusReason)  # type: ignore[attr-defined]
+        self.app.processEvents()
+        self.assertTrue(botao.hasFocus(), "o widget não recebeu o foco")  # type: ignore[attr-defined]
+        desenho = renderizar(botao)
+        botao.clearFocus()  # type: ignore[attr-defined]
+        self.app.processEvents()
+        return desenho
+
+    def test_a_fila_do_anel_e_a_da_moldura_mais_os_dois_botoes(self) -> None:
+        """A relação que o módulo **declara** -- e que até esta rodada ninguém afirmava (S-553).
+
+        A guarda de baixo percorre `CONTROLES_COM_ANEL_DE_FOCO`, então ela pergunta ao próprio dado
+        que deveria travar: encolhida a tupla de oito para dois, ela confere dois e passa em verde,
+        e os seis controles que perdem o anel somem em silêncio -- `QComboBox` (o 0 → 218 px da
+        tabela de aceite), `QLineEdit`, `QSpinBox`, `QAbstractItemView`, `QTextEdit` e
+        `QPlainTextEdit`. Seriam 36 subtestes a menos e uma regressão de WCAG 2.4.7 AA em seis
+        classes, com a suíte inteira verde. Foi assim que um crítico a achou.
+        """
+        self.assertEqual(
+            ("QPushButton", "QToolButton", *tema.CONTROLES_COM_MOLDURA),
+            tema.CONTROLES_COM_ANEL_DE_FOCO,
+            "a fila do anel deixou de ser a da moldura mais os dois botões",
+        )
+
+    def test_toda_classe_com_moldura_declara_o_anel(self) -> None:
+        """Um anel que existisse em metade da fila seria pior que nenhum: quem usa o teclado
+        aprenderia a não procurá-lo. As oito são as que já têm moldura de 1 px.
+
+        **Esta guarda sozinha é vácua** -- ela itera a tupla que devia travar. Quem crava o
+        tamanho da fila é `test_a_fila_do_anel_e_a_da_moldura_mais_os_dois_botoes`, acima."""
+        for uma in pele.PELES:
+            regras = _regras_de_foco(tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade))
+            for seletor in tema.CONTROLES_COM_ANEL_DE_FOCO:
+                with self.subTest(pele=uma.nome, seletor=seletor):
+                    self.assertIn(f"{seletor}:focus", regras, "controle sem anel de foco na folha")
+
+    def test_o_anel_nao_desloca_o_conteudo(self) -> None:
+        """**A moldura que já existe trocando de cor**, e nada mais: nem `padding` novo, nem
+        `border-width` maior. Os dois moveriam o conteúdo em um pixel a cada `Tab`."""
+        for uma in pele.PELES:
+            for seletor, corpo in _regras_de_foco(
+                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            ).items():
+                with self.subTest(pele=uma.nome, seletor=seletor):
+                    self.assertRegex(corpo.strip(), r"^border: 1px solid #[0-9a-f]{6}; \}$")
+
+    def test_o_anel_se_ve_contra_toda_face_em_que_e_desenhado(self) -> None:
+        """A régua é a de elemento gráfico (`AA_GRAFICO`), e as faces são as quatro que a folha
+        pinta: a superfície, o botão comum parado, o marcado (a mais funda) e a de ênfase."""
+        for uma in pele.PELES:
+            escuro = uma.cromo_escuro
+            superficie = tokens.cor(tokens.SUPERFICIE_PADRAO, None, cromo_escuro=escuro)
+            texto = tokens.cor(tokens.TEXTO_PADRAO, None, cromo_escuro=escuro)
+            anel = tema.anel_de_foco(cromo_escuro=escuro)
+            faces = {
+                "superfície": superficie,
+                "botão parado": tokens.mistura(superficie, texto, tema.RELEVO_DO_BOTAO),
+                "marcado": tokens.mistura(superficie, texto, 4 * tema.RELEVO_DO_BOTAO),
+            }
+            for onde, face in faces.items():
+                with self.subTest(pele=uma.nome, face=onde):
+                    razao = tokens.razao_de_contraste(anel, face)
+                    self.assertGreaterEqual(razao, tokens.AA_GRAFICO, f"anel sobre {onde}: {razao:.2f}:1")
+            na_enfase = tema.anel_de_foco(cromo_escuro=escuro, sobre_enfase=True)
+            for token in (tokens.BOTAO_PRIMARIO, tokens.BOTAO_DESTRUTIVO):
+                face = tokens.cor(token, None, cromo_escuro=escuro)
+                with self.subTest(pele=uma.nome, face=token):
+                    razao = tokens.razao_de_contraste(na_enfase, face)
+                    self.assertGreaterEqual(razao, tokens.AA_GRAFICO, f"anel sobre {token}: {razao:.2f}:1")
+
+    def test_o_anel_nunca_e_a_cor_da_enfase_que_diz_marcado(self) -> None:
+        """O `QToolButton:checked` desenha a moldura na cor de ênfase (S-527). Se o anel usasse a
+        mesma cor, "focado" e "ligado" seriam o mesmo desenho num botão de interruptor -- e a fila
+        da sala tem três deles."""
+        for uma in pele.PELES:
+            escuro = uma.cromo_escuro
+            with self.subTest(pele=uma.nome):
+                self.assertNotEqual(
+                    tema.anel_de_foco(cromo_escuro=escuro),
+                    tokens.cor(tokens.BOTAO_PRIMARIO, None, cromo_escuro=escuro),
+                )
+
+    def test_o_foco_desenha_diferente_nos_tres_botoes_e_nas_tres_peles(self) -> None:
+        """**É o caso que estava quebrado**: 0 px diferentes, no primário, no comum e no só-ícone.
+
+        O tamanho igual é parte da afirmação, e `pixels_diferentes` levanta quando ele muda: um
+        anel que crescesse o botão empurraria a fila inteira a cada `Tab`.
+        """
+        for uma in pele.PELES:
+            tema.aplicar_tema(self.app, cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            _quadro, botoes = self._elenco()
+            for nome, botao in botoes.items():
+                sem = self._sem_foco(botao)
+                com = self._focado(botao)
+                with self.subTest(pele=uma.nome, botao=nome):
+                    self.assertGreater(
+                        pixels_diferentes(sem, com), 0, "focado e não focado desenham igual"
+                    )
+
+    def test_o_foco_se_distingue_do_marcado_e_sobrevive_a_ele(self) -> None:
+        """Os quatro estados do interruptor, distintos aos pares.
+
+        O marcado se diz pela **face** funda e o foco pela **moldura**, e é o que permite ao botão
+        marcado mostrar onde o teclado está sem deixar de parecer ligado.
+        """
+        for uma in pele.PELES:
+            tema.aplicar_tema(self.app, cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            _quadro, botoes = self._elenco()
+            botao = botoes["so_icone"]
+            botao.setCheckable(True)  # type: ignore[attr-defined]
+            desenhos = {}
+            for marcado in (False, True):
+                botao.setChecked(marcado)  # type: ignore[attr-defined]
+                self.app.processEvents()
+                desenhos[(marcado, False)] = self._sem_foco(botao)
+                desenhos[(marcado, True)] = self._focado(botao)
+            botao.setChecked(False)  # type: ignore[attr-defined]
+            estados = sorted(desenhos)
+            for i, um in enumerate(estados):
+                for outro in estados[i + 1 :]:
+                    with self.subTest(pele=uma.nome, um=um, outro=outro):
+                        self.assertGreater(
+                            pixels_diferentes(desenhos[um], desenhos[outro]),
+                            0,
+                            "dois estados do interruptor desenham igual",
+                        )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class IndicadorDaMarcaTests(unittest.TestCase):
+    """A caixa de seleção e o rádio dizem se estão marcados (S-553, segunda rodada).
+
+    **O defeito medido pelo crítico em 2026-09-05, na aba que abre primeiro.** "Lado a jogar:
+    Pretas" **selecionado** saía como texto pelado -- indicador nenhum --, e a caixa de seleção
+    marcada saía como um `✓` solto sem quadro contra um quadro vazio quando desmarcada: duas
+    gramáticas para o mesmo par de estados.
+
+    **E aqui o desenho serve de prova só até certo ponto, ao contrário da S-553.** Foi medido na
+    plataforma de verdade (`windows11`): sem estas regras o rádio marcado desenha **0 px**
+    diferentes do desmarcado. Sob `offscreen` o `fusion` desenha o indicador nativo mesmo com folha
+    aplicada -- ou seja, a CI **não vê** o defeito, e é a armadilha da S-506. Por isso o que estes
+    testes cobram é a **folha**, e o caso de pixel no fim confirma que ela não estragou o desenho
+    onde há estilo que a obedeça.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        anterior = self.app.styleSheet()
+        self.addCleanup(self.app.setStyleSheet, anterior)
+        self.addCleanup(tema.aplicar_tema, self.app)
+
+    def _indicadores(self, folha_de_estilo: str) -> dict[str, str]:
+        """`seletor -> declarações`, só das regras de `::indicator`. Leitura de texto, como as
+        outras deste arquivo: a folha sai uma regra por linha."""
+        achados = {}
+        for linha in folha_de_estilo.split("\n"):
+            cabeca, _, resto = linha.partition("{")
+            if "::indicator" in cabeca:
+                achados[cabeca.strip()] = resto.rstrip(" }")
+        return achados
+
+    def test_as_duas_classes_declaram_os_quatro_estados_nas_tres_peles(self) -> None:
+        """**É o caso que estava quebrado.** Um indicador que existisse só no desmarcado seria
+        pior que nenhum: quem marca deixa de ver que marcou."""
+        estados = ("", ":checked", ":disabled", ":checked:disabled", ":focus", ":checked:focus")
+        for uma in pele.PELES:
+            regras = self._indicadores(
+                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            )
+            for classe in tema.INDICADOR_DA_MARCA:
+                for estado in estados:
+                    with self.subTest(pele=uma.nome, classe=classe, estado=estado or "parado"):
+                        self.assertIn(f"{classe}::indicator{estado}", regras)
+
+    def test_marcado_e_desmarcado_nao_sao_a_mesma_tinta(self) -> None:
+        """Duas regras que existissem e pintassem igual passariam no teste acima e reprovariam na
+        tela -- que é exatamente o que a S-527 mediu no `QToolButton`."""
+        for uma in pele.PELES:
+            regras = self._indicadores(
+                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            )
+            for classe in tema.INDICADOR_DA_MARCA:
+                with self.subTest(pele=uma.nome, classe=classe):
+                    self.assertNotEqual(
+                        regras[f"{classe}::indicator"], regras[f"{classe}::indicator:checked"]
+                    )
+                    self.assertNotEqual(
+                        regras[f"{classe}::indicator:checked"],
+                        regras[f"{classe}::indicator:checked:disabled"],
+                        "o marcado desabilitado pinta igual ao vivo",
+                    )
+
+    def test_a_marca_e_a_cor_de_enfase_e_o_apagado_e_a_letra_secundaria(self) -> None:
+        """Nenhum papel novo: é a mesma tinta do botão primário e o mesmo apagamento do botão
+        comum desabilitado (S-506). Um décimo papel para dizer "a cor da marca" seria a mesma cor
+        com dois donos, que é o defeito que a S-145 fechou."""
+        for uma in pele.PELES:
+            escuro = uma.cromo_escuro
+            regras = self._indicadores(
+                tema.folha_de_estilo(cromo_escuro=escuro, densidade=uma.densidade)
+            )
+            enfase = tokens.cor(tokens.BOTAO_PRIMARIO, None, cromo_escuro=escuro)
+            apagada = tokens.cor(tokens.TEXTO_SECUNDARIO, None, cromo_escuro=escuro)
+            for classe in tema.INDICADOR_DA_MARCA:
+                with self.subTest(pele=uma.nome, classe=classe):
+                    self.assertIn(enfase, regras[f"{classe}::indicator:checked"])
+                    self.assertIn(apagada, regras[f"{classe}::indicator:checked:disabled"])
+
+    def test_o_anel_de_foco_vai_no_indicador_e_nao_no_widget(self) -> None:
+        """Um `QCheckBox:focus {{ border }}` cercaria o rótulo inteiro e moveria o texto de todo
+        diálogo em um pixel a cada `Tab` -- que é o que `test_o_anel_nao_desloca_o_conteudo` cobra
+        das outras oito classes."""
+        folha_de_estilo = tema.folha_de_estilo()
+        for classe in tema.INDICADOR_DA_MARCA:
+            with self.subTest(classe=classe):
+                self.assertNotIn(classe, tema.CONTROLES_COM_ANEL_DE_FOCO)
+                self.assertNotIn(f"{classe}:focus {{", folha_de_estilo)
+        anel = tema.anel_de_foco()
+        regras = self._indicadores(folha_de_estilo)
+        for classe in tema.INDICADOR_DA_MARCA:
+            with self.subTest(classe=classe):
+                self.assertIn(anel, regras[f"{classe}::indicator:focus"])
+                self.assertIn(anel, regras[f"{classe}::indicator:checked:focus"])
+
+    def test_o_alvo_do_ponteiro_nao_encolhe_na_densidade_compacta(self) -> None:
+        """**A diferença em relação a `_escalado`, e ela é o item.** Folga é espaço em volta e pode
+        encolher; isto é o que se acerta com o ponteiro. Encolher 30% na compacta trocaria "cabe
+        mais linha" por "erra-se mais o clique"."""
+        confortavel = self._indicadores(tema.folha_de_estilo(densidade=pele.CONFORTAVEL))
+        compacta = self._indicadores(tema.folha_de_estilo(densidade=pele.COMPACTA))
+        lado = tema.lado_do_indicador()
+        for classe in tema.INDICADOR_DA_MARCA:
+            for regras in (confortavel, compacta):
+                with self.subTest(classe=classe):
+                    # O canto **acompanha** a densidade, e é o mesmo do botão comum: o que não
+                    # acompanha é o alvo.
+                    self.assertIn(f"width: {lado}px; height: {lado}px", regras[f"{classe}::indicator"])
+
+    def test_o_lado_acompanha_a_fonte_do_sistema(self) -> None:
+        """O pixel cravado é o defeito de DPI da S-148 num lugar menor."""
+        self.assertLess(tema.lado_do_indicador(9), tema.lado_do_indicador(14))
+        self.assertGreaterEqual(tema.lado_do_indicador(4), 12, "o ponto do rádio some abaixo de 12")
+
+    def test_o_item_de_menu_marcavel_usa_a_mesma_gramatica_da_caixa(self) -> None:
+        """**Havia duas gramáticas de "marcado" na mesma janela** (S-553, terceira rodada): a caixa
+        marcada era face de ênfase dentro da moldura, e o item de menu marcado era um `✓` nativo --
+        tique sem quadro contra quadro sem tique, para o mesmo par de estados.
+
+        Ficou a face, e as razões estão em `tema.MARCA_DO_MENU`. O que se afirma aqui é que ela é a
+        **mesma**: o desenho do marcado do menu é, letra por letra, o da caixa.
+        """
+        for uma in pele.PELES:
+            regras = self._indicadores(
+                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            )
+            for estado in ("", ":checked", ":disabled", ":checked:disabled"):
+                with self.subTest(pele=uma.nome, estado=estado or "parado"):
+                    self.assertIn(f"{tema.MARCA_DO_MENU}::indicator{estado}", regras)
+            with self.subTest(pele=uma.nome):
+                self.assertEqual(
+                    regras["QCheckBox::indicator:checked"],
+                    regras[f"{tema.MARCA_DO_MENU}::indicator:checked"],
+                    "o menu marcado desenha diferente da caixa marcada",
+                )
+                self.assertNotEqual(
+                    regras[f"{tema.MARCA_DO_MENU}::indicator"],
+                    regras[f"{tema.MARCA_DO_MENU}::indicator:checked"],
+                    "marcado e desmarcado pintam igual no menu",
+                )
+
+    def test_o_menu_marcado_desenha_diferente_do_desmarcado(self) -> None:
+        """A prova de pixel, e ela é a que o `✓` nativo já dava: o que este item mudou não é *se*
+        se vê, é **com que desenho**. Fotografada depois do repintar (ver `qt_app.assentado`)."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QAction
+        from PyQt6.QtWidgets import QMenu, QWidget
+
+        tema.aplicar_tema(self.app)
+        pai = QWidget()
+        pai.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        pai.resize(300, 60)
+        pai.show()
+        self.addCleanup(descartar, pai)
+        menu = QMenu(pai)
+        acao = QAction("Mapa de incerteza", menu)
+        acao.setCheckable(True)
+        menu.addAction(acao)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        menu.popup(pai.mapToGlobal(pai.rect().topLeft()))
+        self.addCleanup(menu.close)
+        acao.setChecked(False)
+        desmarcado = assentado(menu)
+        acao.setChecked(True)
+        marcado = assentado(menu)
+        self.assertGreater(
+            pixels_diferentes(desmarcado, marcado), 0, "o item marcado desenha igual ao desmarcado"
+        )
+
+
+    def test_o_ponto_do_radio_e_um_pincel_com_o_campo_em_volta(self) -> None:
+        """O rádio marcado é ponto dentro de anel, e não disco cheio: é o desenho que todo toolkit
+        dá a um rádio, e o que separa a forma dele da da caixa."""
+        pincel = tema.ponto_do_radio("#0a58ca", "#f0f0f0")
+        self.assertTrue(pincel.startswith("qradialgradient("))
+        self.assertIn("stop:0.42 #0a58ca", pincel)
+        self.assertIn("stop:0.5 #f0f0f0", pincel)
+
+    def test_os_quatro_estados_desenham_diferente_na_plataforma_que_os_desenha(self) -> None:
+        """**A prova de pixel**, e ela é o que o teste de folha sozinho não dá.
+
+        Sob `offscreen` o `fusion` desenha o indicador nativo com folha e sem folha, então este
+        caso não reprovaria no estado defeituoso -- ele afirma o que se pode afirmar aqui: que os
+        quatro estados **continuam** distintos depois de a folha assumir o desenho. Na plataforma
+        de verdade (`windows11`) a mesma medição deu 225 px entre marcado e desmarcado na caixa e
+        121 no rádio, contra 0 no rádio antes desta rodada.
+        """
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QCheckBox, QRadioButton, QVBoxLayout, QWidget
+
+        tema.aplicar_tema(self.app)
+        quadro = QWidget()
+        coluna = QVBoxLayout(quadro)
+        caixa = QCheckBox("Qualquer cor", quadro)
+        radio = QRadioButton("Pretas", quadro)
+        radio.setAutoExclusive(False)
+        for controle in (caixa, radio):
+            controle.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            coluna.addWidget(controle)
+        quadro.resize(220, 70)
+        quadro.show()
+        self.app.processEvents()
+        self.addCleanup(descartar, quadro)
+        for nome, controle in (("caixa", caixa), ("radio", radio)):
+            desenhos = {}
+            for marcado in (False, True):
+                controle.setChecked(marcado)
+                controle.setEnabled(True)
+                controle.clearFocus()
+                desenhos[(marcado, "parado")] = assentado(controle)
+                controle.setEnabled(False)
+                desenhos[(marcado, "desabilitado")] = assentado(controle)
+                controle.setEnabled(True)
+            with self.subTest(controle=nome):
+                self.assertGreater(
+                    pixels_diferentes(desenhos[(False, "parado")], desenhos[(True, "parado")]),
+                    0,
+                    "marcado e desmarcado desenham igual",
+                )
+                self.assertGreater(
+                    pixels_diferentes(desenhos[(True, "parado")], desenhos[(True, "desabilitado")]),
+                    0,
+                    "o marcado desabilitado não apaga",
+                )
 
 
 if __name__ == "__main__":  # pragma: no cover

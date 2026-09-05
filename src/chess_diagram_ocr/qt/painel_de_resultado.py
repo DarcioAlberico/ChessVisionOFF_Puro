@@ -42,14 +42,12 @@ from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
-    QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QMessageBox,
-    QPushButton,
     QRadioButton,
     QSpinBox,
     QVBoxLayout,
@@ -61,12 +59,23 @@ from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
-from chess_diagram_ocr.qt.barra import BarraFluida
-from chess_diagram_ocr.qt.dica import DicaEmDesabilitado, dica_em
+from chess_diagram_ocr.qt.barra import BarraEmFila
+from chess_diagram_ocr.qt.dica import DicaEmDesabilitado
+from chess_diagram_ocr.qt.rolagem import em_rolagem
 from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
-from chess_diagram_ocr.ui import atalhos, board_edit, comandos, espaco, estilos, strings, tipografia, tokens
+from chess_diagram_ocr.ui import (
+    atalhos,
+    barra_do_resultado,
+    board_edit,
+    comandos,
+    espaco,
+    estilos,
+    strings,
+    tipografia,
+    tokens,
+)
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
@@ -193,7 +202,14 @@ class PainelDeResultado(QWidget):
     # ------------------------------------------------------------------------------ montagem
 
     def _montar(self) -> None:
-        caixa = QVBoxLayout(self)
+        # **A aba rola, e não exige a altura dela da janela** (S-552, a metade perdida da S-150).
+        # `detalhes` quebra linha, e um `QLabel` com `wordWrap` responde a altura mínima calculada
+        # para a largura mais estreita possível: medido em 2026-09-04, ler uma página levava o
+        # mínimo desta aba de 551 para **1095 px** e o da janela para 1218 -- mais alto que a tela
+        # de um notebook de 1366x768, e sem volta na sessão. Ver `qt/rolagem.py`.
+        corpo = QWidget(self)
+        self.rolagem = em_rolagem(self, corpo)
+        caixa = QVBoxLayout(corpo)
         caixa.setContentsMargins(*(espaco.folga(),) * 4)
         caixa.setSpacing(espaco.linha())
 
@@ -223,10 +239,17 @@ class PainelDeResultado(QWidget):
         tema.pintar(self.material, "color", tokens.TEXTO_SECUNDARIO)
         caixa.addWidget(self.material)
 
-        caixa.addLayout(self._linha_de_navegacao())
+        # **Uma fila, agrupada por tarefa** (S-528, terceira barra). Eram **nove botões de texto
+        # em quatro fileiras** -- navegação, FEN, lado a jogar e uma `BarraFluida` com cinco --,
+        # nenhum com ícone, na aba que abre primeiro. Ao lado, na mesma tela, o painel do PDF
+        # desenha catorze traços de 16 px numa fila de 32. Quem decide grupo, principal, ícone,
+        # dica e quem cabe é `ui/barra_do_resultado.py`; o widget é o mesmo `BarraEmFila`.
+        #
+        # As duas linhas que sobraram **não são botões**: o campo de FEN é o conteúdo, e o par de
+        # rádios é uma pergunta de duas respostas exclusivas. Ver o cabeçalho daquele módulo.
+        caixa.addWidget(self._barra_de_acoes())
         caixa.addLayout(self._linha_de_fen())
         caixa.addLayout(self._linha_de_lado())
-        caixa.addWidget(self._barra_de_acoes())
 
         self.detalhes = QLabel("", self)
         self.detalhes.setWordWrap(True)
@@ -237,25 +260,6 @@ class PainelDeResultado(QWidget):
         # Uma dica por painel, e não por botão: quem a mostra é o pai, porque um controle
         # desabilitado não recebe evento de ponteiro no Qt (S-32).
         self._dicas = DicaEmDesabilitado(self)
-
-    def _linha_de_navegacao(self) -> QHBoxLayout:
-        linha = QHBoxLayout()
-        self.anterior = QPushButton(strings.ANTERIOR, self)
-        self.anterior.clicked.connect(lambda: self.andar(-1))
-        tema.aplicar_papel(self.anterior, estilos.NEUTRO)
-        linha.addWidget(self.anterior)
-        self.proximo = QPushButton(strings.PROXIMO, self)
-        self.proximo.clicked.connect(lambda: self.andar(1))
-        tema.aplicar_papel(self.proximo, estilos.NEUTRO)
-        linha.addWidget(self.proximo)
-        linha.addWidget(QLabel("Selecionado", self))
-        self.seletor = QSpinBox(self)
-        self.seletor.setMinimum(1)
-        self.seletor.setMaximum(1)
-        self.seletor.valueChanged.connect(self._pediu_diagrama)
-        linha.addWidget(self.seletor)
-        linha.addStretch(1)
-        return linha
 
     def _linha_de_fen(self) -> QHBoxLayout:
         linha = QHBoxLayout()
@@ -272,16 +276,11 @@ class PainelDeResultado(QWidget):
             atalho = QKeySequence(sequencia_qt(aplicar.sequencia))
             self.campo_fen.addAction(self._acao_local("aplicar_fen", atalho, self.aplicar_fen))
         linha.addWidget(self.campo_fen, 1)
-        self.btn_aplicar = QPushButton(comandos.rotulo_de_botao("aplicar_fen"), self)
-        self.btn_aplicar.clicked.connect(self.aplicar_fen)
-        tema.aplicar_papel(self.btn_aplicar, comandos.papel("aplicar_fen"))
-        linha.addWidget(self.btn_aplicar)
-        # Copiar fica ao lado da FEN e **fora** da barra de ações: ele não muda nada, e uma ação
-        # inócua no meio de cinco que gravam ou apagam é a que se clica por engano.
-        self.copiar = QPushButton("Copiar FEN", self)
-        self.copiar.clicked.connect(self._copiar_fen)
-        tema.aplicar_papel(self.copiar, estilos.NEUTRO)
-        linha.addWidget(self.copiar)
+        # **Os dois botões desta linha subiram para a fila** (S-528, terceira barra), no grupo
+        # `FEN`, e o campo ficou sozinho na linha dele -- que é o que ele sempre foi: uma FEN de
+        # setenta caracteres num campo espremido entre dois botões era o motivo de a linha inteira
+        # existir. "Copiar" continua **longe** das que gravam ou apagam: ele é o segundo botão do
+        # grupo `FEN`, e as cinco que mudam alguma coisa estão em `CORRECAO` e `GRAVAR`.
         return linha
 
     def _acao_local(self, acao: str, tecla: QKeySequence, alvo: Callable[[], object]) -> QAction:
@@ -305,55 +304,106 @@ class PainelDeResultado(QWidget):
         linha.addStretch(1)
         return linha
 
-    def _barra_de_acoes(self) -> BarraFluida:
-        """As ações, numa `BarraFluida` -- que quebra em vez de cortar (S-151).
+    def _barra_de_acoes(self) -> BarraEmFila:
+        """As nove ações numa fila só, com o seletor de diagrama encaixado (S-528, terceira barra).
 
-        Seis botões numa coluna de 360 px não cabem numa linha, e o `QHBoxLayout` responderia
-        com uma largura mínima maior que o painel: o divisor da janela deixaria de poder ser
-        arrastado. A barra da S-151 existe exatamente para isso.
+        **O que havia**, medido em 2026-09-05 a 1024x768: quatro fileiras de botões de texto sem
+        ícone nenhum, ao lado de um painel do PDF que desenha catorze traços de 16 px numa fila de
+        32. A `BarraFluida` da S-151 resolvia o defeito de *esconder botão sem avisar* -- e o
+        resolvia empilhando fileiras, que é o que a barra em fila faz sem gastar altura.
+
+        Os nomes pelos quais o resto do painel, a janela e os testes chamam estes controles
+        apontam agora para as `QAction`s da fila: `setEnabled`, `isEnabled`, `setChecked`,
+        `isChecked` e `setToolTip` são os mesmos, e é isso que deixa `qt/janela.py` inalterado --
+        ele faz `painel.heatmap.setChecked(...)` e continua funcionando.
         """
-        barra = BarraFluida(self)
-        self.btn_salvar = self._botao(barra, "salvar", self.salvar_atual, estilos.PRIMARIO)
-        self.btn_salvar_todos = self._botao(barra, "salvar_todos", self.salvar_todos, estilos.NEUTRO)
-        self.btn_desfazer = self._botao(barra, "desfazer", self.desfazer, estilos.NEUTRO)
-        self.btn_refazer = self._botao(barra, "refazer", self.refazer, estilos.NEUTRO)
-        self.btn_limpar = self._botao(barra, "limpar_tabuleiro", self.limpar_tabuleiro, estilos.NEUTRO)
+        self.barra = BarraEmFila(
+            self,
+            tabela=barra_do_resultado,
+            registros=barra_do_resultado.ACOES,
+            executar=self.executar,
+        )
+        self.anterior = self.barra.acoes["diagrama_anterior"]
+        self.proximo = self.barra.acoes["proximo_diagrama"]
+        self.btn_aplicar = self.barra.acoes["aplicar_fen"]
+        self.copiar = self.barra.acoes[barra_do_resultado.COPIAR_FEN_LIDA]
+        self.btn_desfazer = self.barra.acoes["desfazer"]
+        self.btn_refazer = self.barra.acoes["refazer"]
+        self.btn_limpar = self.barra.acoes["limpar_tabuleiro"]
+        self.btn_salvar = self.barra.acoes["salvar"]
+        self.btn_salvar_todos = self.barra.acoes["salvar_todos"]
+        # **O mapa de incerteza volta a ser desligável (S-21/S-506)**, e desde a S-528 ele é um
+        # item marcável do "Mais" e não um `QCheckBox` de ~180 px na fila: liga-se uma vez e
+        # esquece-se, que é a régua de "marcar diagramas" no painel do livro.
+        #
+        # Nasce marcado **sem avisar**: o `toggled` já está ligado ao método, e o tabuleiro tem o
+        # mesmo padrão e ainda não precisa ouvir nada.
+        self.heatmap = self.barra.acoes[barra_do_resultado.MAPA_DE_INCERTEZA]
+        self.heatmap.blockSignals(True)
+        self.heatmap.setChecked(True)
+        self.heatmap.blockSignals(False)
+
+        # **O seletor fica na mesma fila**, pendurado depois de "Diagrama anterior": a seta, o
+        # número e a outra seta são um controle só. O total é o **sufixo** do campo e não um
+        # `QLabel` ao lado -- eram dois widgets para um número, e o de fora dizia "Selecionado"
+        # sem dizer de quantos.
+        self.seletor = QSpinBox(self.barra)
+        self.seletor.setMinimum(1)
+        self.seletor.setMaximum(1)
+        self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(0))
+        self.seletor.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.seletor.valueChanged.connect(self._pediu_diagrama)
+        self.barra.encaixar(self.seletor, depois_de="diagrama_anterior")
+
         # **Uma ênfase por barra, cobrada aqui** (S-446). `estilos.conferir_barra` é pura e
         # recusa a segunda: duas ênfases numa barra é o mesmo que nenhuma, e o teste não tem como
         # saber qual das duas era para ser a ação.
         estilos.conferir_barra(
-            [estilos.PRIMARIO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO],
+            [registro.papel for registro in barra_do_resultado.principais()],
             onde="a barra do painel de resultado",
         )
-        # **O mapa de incerteza volta a ser desligavel (S-21/S-506).** Ele existia no painel do Tk
-        # e o porte nao o trouxe: a tinta ficava ligada para sempre, e quem confere uma pagina ja
-        # revista trabalhava com todas as casas duvidosas pintadas por baixo das pecas. Nao entra
-        # em `conferir_barra` porque a regra dela e sobre enfase de **botao**, e uma caixa de
-        # marcacao nao tem enfase.
-        self.heatmap = QCheckBox(strings.MAPA_DE_INCERTEZA, barra)
-        self.heatmap.setChecked(True)
-        self.heatmap.toggled.connect(self.tabuleiro.definir_heatmap)
-        dica_em(self.heatmap, "Tinge as casas de leitura duvidosa. Desligado, a peça lida aparece limpa.")
-        barra.adicionar(self.heatmap)
-        return barra
+        # A dica de um botão **desabilitado** não aparece sozinha (S-32), e os botões agora moram
+        # num filho: o Qt entrega o evento ao ancestral habilitado mais próximo, que é a fila e
+        # não o painel. Um filtro por widget que tenha filhos que nascem cinzas.
+        self._dicas_da_barra = DicaEmDesabilitado(self.barra)
+        return self.barra
 
-    def _botao(self, barra: BarraFluida, acao: str, alvo: Callable[[], object], papel: str) -> QPushButton:
-        """Um botão de comando: rótulo, papel e dica saem do catálogo e da tabela de teclas.
+    def executar(self, acao: str) -> None:
+        """Roda o método que `barra_do_resultado.METODOS_DO_PAINEL` liga àquela ação.
 
-        O rótulo vem de `ui/comandos.py` e a tecla de `ui/atalhos.py`, pela razão da S-324 e da
-        S-165 -- este arquivo não escreve texto de interface nem sequência de tecla.
+        É o único caminho de volta da fila ao painel, e é a mesma forma de `PainelDoPdf.executar`
+        (S-528) e de `PainelDeEstudo.executar` (S-280): o par ação-método é declarado **uma** vez,
+        na tabela, e não num `lambda` escrito no meio da montagem. Levanta para ação que a tabela
+        não tem.
         """
-        botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
-        botao.clicked.connect(lambda _marcado=False: alvo())
-        tema.aplicar_papel(botao, papel)
-        self._explicar(botao, acao, comandos.rotulo(acao))
-        barra.adicionar(botao)
-        return botao
+        getattr(self, barra_do_resultado.METODOS_DO_PAINEL[acao])()
 
-    def _explicar(self, botao: QPushButton, acao: str, motivo: str) -> None:
-        """A dica do botão: o que ele faz (ou por que está cinza) e a tecla dele."""
+    # ------------------------------------------- o que cada ação da fila faz (S-528, 3ª barra)
+
+    def diagrama_anterior(self) -> None:
+        """O diagrama de cima da lista desta página."""
+        self.andar(-1)
+
+    def proximo_diagrama(self) -> None:
+        """O de baixo."""
+        self.andar(1)
+
+    def alternou_mapa_de_incerteza(self) -> None:
+        """O interruptor da tinta de dúvida mudou.
+
+        O método **lê** o estado e não o inverte -- ver `ui/barra.Acao.alterna_no_metodo`: quem
+        alterna é o próprio item, como no `QCheckBox` que ele substitui.
+        """
+        self.tabuleiro.definir_heatmap(self.heatmap.isChecked())
+
+    def _explicar(self, acao_da_fila: QAction, acao: str, motivo: str) -> None:
+        """A dica: o que o botão faz (ou **por que está cinza**) e a tecla dele -- a regra da S-165.
+
+        Na `QAction` e não no `QToolButton`, e a diferença importa: a ação leva a dica junto quando
+        vai para o menu "Mais", e o botão a recebe dela quando volta para a fila.
+        """
         tecla = atalhos.acelerador(acao)
-        dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
+        acao_da_fila.setToolTip(f"{motivo}\nTecla: {tecla}" if tecla else motivo)
 
     # ------------------------------------------------------------------------------ carga
 
@@ -952,6 +1002,9 @@ class PainelDeResultado(QWidget):
         self.legalidade.setText(explicacao.summary())
         self.material.setText(explicacao.material_line())
         self.campo_fen.setText(compose_fen(corrigida, lado != "b"))
+        # O começo da FEN é o que se confere; `setText` deixaria o cursor no fim e a caixa
+        # estreita rolaria até lá. Mesma razão da sala de estudo (S-552, quinta rodada).
+        self.campo_fen.setCursorPosition(0)
         self.detalhes.setText(self._detalhes_do_item(item))
         self.seletor.setValue(indice + 1)
         for botao in self._lados.buttons():
@@ -965,6 +1018,7 @@ class PainelDeResultado(QWidget):
         self.anterior.setEnabled(not vazio and self.modelo.clamped_index() > 0)
         self.proximo.setEnabled(not vazio and self.modelo.clamped_index() < len(self.modelo.items) - 1)
         self.seletor.setEnabled(not vazio)
+        self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(len(self.modelo.items)))
 
         for botao, acao, pode, sem in (
             (self.btn_desfazer, "desfazer", self.historico.pode_desfazer, MOTIVO_SEM_DESFAZER),
@@ -999,13 +1053,18 @@ class PainelDeResultado(QWidget):
         legenda e "pretas jogam" assumido pelo padrão têm o mesmo texto e valores completamente
         diferentes para quem vai conferir. O rótulo vem de `ui/strings.py`, que existe para que
         as duas telas do projeto não digam isso de dois jeitos.
+
+        **A legalidade e o material saíam daqui também, e o crítico fotografou o resultado**
+        (S-551, segunda rodada): "Posição legal." e a contagem de peças apareciam **duas vezes**
+        na mesma coluna, uma nos rótulos `legalidade` e `material` -- que ficam logo acima, e cuja
+        única razão de existir é essa -- e outra na primeira metade deste parágrafo. Uma frase
+        repetida a dois centímetros de distância não é redundância inofensiva: ela faz procurar a
+        diferença entre as duas. Este parágrafo ficou com o que **só** ele diz: procedência,
+        confiança, detecção e legenda.
         """
-        explicacao = explain_position(compose_fen(item.placement, item.side_is_white))
         linhas = [
             f"Lado a jogar: {'brancas' if item.side_is_white else 'pretas'}"
             f" — {strings.side_source_label(item.side_to_move_source, conflicting=item.side_conflicting)}",
-            explicacao.summary(),
-            explicacao.material_line(),
             f"Confiança: mínima {item.min_confidence:.3f} · média {item.mean_confidence:.3f}"
             f" · {len(item.uncertain_squares)} casa(s) incerta(s)",
         ]
@@ -1015,7 +1074,12 @@ class PainelDeResultado(QWidget):
             linhas.append(f"Legenda: {item.caption}")
         return "\n".join(linhas)
 
-    def _copiar_fen(self) -> None:
+    def copiar_fen_lida(self) -> None:
+        """A FEN que o modelo leu, já com as correções feitas aqui, na área de transferência.
+
+        **Não é `copiar_fen` do catálogo**, e a distinção é real: aquele copia a posição da sala de
+        estudo, com os lances jogados por cima. Ver `barra_do_resultado.COPIAR_FEN_LIDA`.
+        """
         texto = self.campo_fen.text().strip()
         if not texto:
             return
@@ -1044,6 +1108,6 @@ class PainelDeResultado(QWidget):
             "desfazer": self.desfazer,
             "refazer": self.refazer,
             "aplicar_fen": self.aplicar_fen,
-            "diagrama_anterior": lambda: self.andar(-1),
-            "proximo_diagrama": lambda: self.andar(1),
+            "diagrama_anterior": self.diagrama_anterior,
+            "proximo_diagrama": self.proximo_diagrama,
         }.get(acao)

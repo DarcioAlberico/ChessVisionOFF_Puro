@@ -68,6 +68,67 @@ class PonteComOCatalogoTests(unittest.TestCase):
         self.assertNotEqual(icones.ICONES["apagar_casa"], icones.ICONES["limpar_tabuleiro"])
 
 
+class LegibilidadeNoTamanhoDeUsoTests(unittest.TestCase):
+    """Os três traços que o crítico não distinguiu a 20 px (S-554, terceira rodada).
+
+    **Um ícone que só se lê a 96 px não é um ícone**: a fita e a barra da sala desenham a 16 e a
+    20, e é nesse tamanho que a diferença tem de existir.
+    """
+
+    TAMANHOS = (16, 20, 24)
+    """Os três em que a janela pede ícone hoje. `LADO_DO_ICONE_DA_SALA` é 16; a navegação da sala
+    pede o dobro; a fita pede 20."""
+
+    def alfa(self, nome: str, lado: int) -> list[int]:
+        desenho = icones.imagem(nome, lado, PRETO)
+        assert desenho is not None
+        return list(desenho.convert("RGBA").getchannel("A").get_flattened_data())
+
+    def test_desfazer_e_refazer_se_distinguem_no_tamanho_de_uso(self) -> None:
+        """**O que o crítico mediu**: a 20 px os dois eram "dois rabiscos quase iguais". O arco é
+        o mesmo nos dois de propósito -- é o mesmo gesto em sentidos opostos --, e a única coisa
+        que dizia o sentido era uma cotovelada de três segmentos que o antialias comia: **24 px de
+        50 de traço**, 48%. Com a ponta de seta fechada, passa de 80% em todos os três tamanhos.
+        """
+        for lado in self.TAMANHOS:
+            um, outro = self.alfa("desfazer", lado), self.alfa("refazer", lado)
+            traco = sum(1 for valor in um if valor > 32)
+            difere = sum(1 for a, b in zip(um, outro, strict=True) if abs(a - b) > 32)
+            with self.subTest(lado=lado):
+                self.assertGreater(traco, 0, "o ícone saiu sem traço nenhum: nada foi medido")
+                self.assertGreater(
+                    difere / traco, 0.8, f"a {lado} px os dois desenham quase o mesmo: {difere}/{traco}"
+                )
+
+    def test_limpar_tabuleiro_nao_e_um_retangulo_com_linhas_de_texto(self) -> None:
+        """**O crítico leu o ícone como "lista de texto"**, e com razão: três traços horizontais
+        paralelos ao lado de um retângulo é o que qualquer programa desenha para parágrafo. Eles
+        queriam dizer movimento. A régua é a forma declarada, e não o pixel: nenhum par de traços
+        deste ícone pode ser dois segmentos horizontais paralelos de mesmo comprimento.
+        """
+        horizontais = [
+            traco
+            for traco in icones.ICONES["limpar_tabuleiro"]
+            if isinstance(traco, icones.Poli)
+            and len(traco.pontos) == 2
+            and traco.pontos[0][1] == traco.pontos[1][1]
+        ]
+        self.assertLessEqual(
+            len(horizontais), 1, "voltaram os traços paralelos que se leem como linhas de texto"
+        )
+
+    def test_a_ponta_de_seta_e_fechada_nos_tres(self) -> None:
+        """A mesma ponta nos três: um vocabulário e não três desenhos parecidos (S-501)."""
+        for nome in ("desfazer", "refazer", "limpar_tabuleiro"):
+            pontas = [
+                traco
+                for traco in icones.ICONES[nome]
+                if isinstance(traco, icones.Poli) and traco.fechado and len(traco.pontos) == 3
+            ]
+            with self.subTest(icone=nome):
+                self.assertEqual(1, len(pontas), "o ícone não tem uma ponta de seta fechada")
+
+
 class GeometriaTests(unittest.TestCase):
     """A caixa `0..100` é o contrato entre quem declara a forma e quem a desenha."""
 

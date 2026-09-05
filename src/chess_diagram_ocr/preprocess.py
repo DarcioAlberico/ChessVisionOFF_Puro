@@ -298,3 +298,204 @@ class BoardNormalizer:
         if self.config.clahe:
             imagem = _apply_clahe(imagem, self.config.clahe_clip)
         return imagem
+
+
+# --------------------------------------------------------------- a página de scan puro (S-547)
+
+COBERTURA_DE_SCAN = 0.70
+"""A partir de que fração da página a maior imagem embutida **é** a página.
+
+É o mesmo número de `detection/embedded.MAX_PAGE_COVERAGE`, e de propósito: lá ele decide
+"esta imagem é o fundo e não um diagrama", aqui ele decide "esta página é um scan". São a mesma
+observação lida de dois lados, e dois números para ela divergiriam.
+"""
+
+DPI_ALVO_DE_SCAN = 300
+"""O DPI para o qual reamostrar, quando a reamostragem estiver ligada.
+
+Medido, e **não é o padrão** (ver `ScanConfig`): a 300 DPI o `Koblenz` perde 8 dos 120 diagramas
+e o `Niemeijer` perde 33 dos 51, porque o detector de contorno tem limiares em pixel e uma
+página maior muda o que eles alcançam. Fica declarado porque é o número que a medição usou.
+"""
+
+JANELA_DE_SAUVOLA = 0.025
+"""Lado da janela do Sauvola, como fração do lado da página. ~55 px numa página de 2.200."""
+
+K_DE_SAUVOLA = 0.2
+R_DE_SAUVOLA = 128.0
+"""Os dois parâmetros do limiar local `T = m · (1 + k · (s/R − 1))`, nos valores do artigo."""
+
+OTSU = "otsu"
+SAUVOLA = "sauvola"
+BINARIZACOES: tuple[str, ...] = (OTSU, SAUVOLA)
+
+
+@dataclass(frozen=True)
+class ScanConfig:
+    """O caminho da página de scan puro: binarizar e reamostrar antes da detecção.
+
+    **Desligado por padrão, e por medição.** A S-547 mediu **livro inteiro**, sem amostragem, com o
+    modelo de 2026-09-04: os dois livros do acervo que exportam zero, e três que a mesma porta de
+    scan seleciona e que já vão bem. "Acima do gate" é a confiança mínima do tabuleiro contra
+    `ACCEPT_MIN_CONFIDENCE` -- o **teto** do que a exportação aceitaria, que ainda exige legalidade
+    e orientação; "FEN legal" é `check_position` com o lado a jogar assumido branco. As três
+    colunas são proxies, e comparáveis entre si porque a regra é a mesma em toda variante.
+
+    | livro | variante | diagramas | FEN legais | acima do gate |
+    |---|---|---|---|---|
+    | `Koblenz` (70 p) | nenhuma | 120 | 64 | **0** |
+    | | Otsu | 120 | 64 | **0** |
+    | | Sauvola | 120 | 56 | **0** |
+    | | 300 DPI | 112 | 74 | **0** |
+    | `Niemeijer` (32 p) | nenhuma | 51 | 42 | **0** |
+    | | Otsu | **79** | 57 | **0** |
+    | | Sauvola | 72 | 55 | **0** |
+    | | 300 DPI | **18** | 13 | **0** |
+    | `Reinfeld_1001` (320 p) | nenhuma | 995 | 992 | **985** |
+    | | Otsu | 935 | 930 | **918** |
+    | | Sauvola | 1000 | 994 | **984** |
+    | `Estrin` (88 p) | nenhuma | 118 | 112 | **116** |
+    | | Otsu | 117 | 112 | **115** |
+    | | Sauvola | 118 | 112 | **115** |
+    | | 300 DPI | 118 | 112 | **116** |
+    | `Euwe Band 7` (56 p) | nenhuma | 80 | 79 | **55** |
+    | | Otsu | 80 | 78 | **46** |
+    | | Sauvola | 80 | 79 | **48** |
+    | | 300 DPI | 80 | 80 | **58** |
+
+    Três leituras, e nenhuma delas é "ligue isto":
+
+    1. **A binarização move a detecção e não move a exportação.** No `Niemeijer` o Otsu acha 55%
+       mais diagramas -- 79 contra 51 -- e nenhum deles passa do gate de confiança, então o livro
+       continua exportando zero. Achar mais do que não se consegue ler não é ganho.
+    2. **Ela custa nos livros que já vão bem, e os três medidos perderam.** O `Reinfeld_1001`
+       perde 67 dos 985 com Otsu e 1 dos 985 com Sauvola; o `Euwe Band 7` -- que a porta seleciona
+       porque a página inteira é uma imagem -- perde 9 dos 55 com Otsu e 7 com Sauvola; o `Estrin`
+       perde 1 dos 116 com qualquer um dos dois. É o risco real do item, e ele se realizou.
+    3. **A reamostragem para 300 DPI perde diagrama**, e muito: −8 no `Koblenz` e −33 no
+       `Niemeijer`. O detector de contorno tem limiares em pixel. A medição **renderizou** a 300
+       DPI, que é o melhor caso: reamostrar a partir dos 220 não sai melhor que isso.
+
+    Fica na forma do `NormalizerConfig` acima, pelo mesmo motivo dele: medido, desligado,
+    documentado, e disponível para quem tiver outro acervo.
+    """
+
+    binarizacao: str = ""
+    """`""`, `"otsu"` ou `"sauvola"`. Vazio é o caminho de sempre: a página como foi renderizada."""
+
+    dpi_alvo: int = 0
+    """Para que DPI reamostrar. `0` não reamostra, que é o padrão."""
+
+    def __post_init__(self) -> None:
+        if self.binarizacao and self.binarizacao not in BINARIZACOES:
+            raise ValueError(
+                f"binarização desconhecida: {self.binarizacao!r}. As válidas são {list(BINARIZACOES)}, "
+                "ou vazio para não binarizar."
+            )
+        if self.dpi_alvo < 0:
+            raise ValueError(f"dpi_alvo não pode ser negativo; veio {self.dpi_alvo}.")
+
+    @property
+    def is_identity(self) -> bool:
+        return not self.binarizacao and self.dpi_alvo <= 0
+
+
+SEM_CAMINHO_DE_SCAN = ScanConfig()
+
+
+def pagina_e_scan(tem_camada_de_texto: bool, cobertura_de_imagem: float) -> bool:
+    """Se esta página é um scan puro: sem texto extraível **ou** coberta por uma imagem só.
+
+    **`ou`, e não `e`, e a diferença foi medida** sobre os 46 PDFs de `PDF/`, 24 páginas amostradas
+    de cada um: o `ou` seleciona **26** livros e o `e` selecionaria **11**. Os dois sinais
+    discordam em livro demais para um `e` valer: o `Koblenz` e o `Gunderam` têm camada de texto nas
+    24 páginas **e** são scan de página inteira nas 24 (o OCR de quem digitalizou deixou o texto
+    lá); o `Simple Chess` não tem camada em página nenhuma e também não tem imagem de página
+    inteira em 23 das 24. Um `e` deixaria os três de fora.
+
+    **E o que a medição mostrou de mais importante é que esta porta não separa o que interessa.**
+    Entre os 26 selecionados estão, lado a lado, o `Reinfeld_1001` (985 dos 995 tabuleiros acima do
+    gate) e o `Koblenz` (0 dos 120) -- medidos no mesmo dia, com o mesmo modelo. "É um scan" e "é
+    um scan que o modelo não lê" são perguntas diferentes, e só a primeira tem resposta barata. Ver
+    `ScanConfig` para o que se decidiu por causa disso.
+    """
+    return not tem_camada_de_texto or cobertura_de_imagem >= COBERTURA_DE_SCAN
+
+
+def _sauvola(cinza: np.ndarray, janela: int, k: float) -> np.ndarray:
+    """Limiar local de Sauvola: `T = m · (1 + k · (s/R − 1))`, por janela deslizante.
+
+    Média e desvio saem de dois `boxFilter` -- `E[x²] − E[x]²` --, que é a forma por imagem
+    integral: o custo não depende do tamanho da janela, e uma janela de 55 px numa página de
+    2.200 seria proibitiva calculada pixel a pixel.
+    """
+    janela = _odd(janela, minimum=3)
+    valores = cinza.astype(np.float32)
+    media = cv2.boxFilter(valores, -1, (janela, janela), normalize=True, borderType=cv2.BORDER_REFLECT)
+    media_dos_quadrados = cv2.boxFilter(
+        valores * valores, -1, (janela, janela), normalize=True, borderType=cv2.BORDER_REFLECT
+    )
+    desvio = np.sqrt(np.maximum(media_dos_quadrados - media * media, 0.0))
+    limiar = media * (1.0 + k * (desvio / R_DE_SAUVOLA - 1.0))
+    return np.where(valores > limiar, 255, 0).astype(np.uint8)
+
+
+def binarizar_pagina(page_rgb: np.ndarray, metodo: str) -> np.ndarray:
+    """A página em preto e branco, ainda como RGB de três canais.
+
+    Três canais e não um: tudo o que consome a página renderizada -- `detect_diagrams`, o recorte
+    do tabuleiro, o `board_texture_score` -- espera `(H, W, 3)`, e devolver um canal só faria a
+    troca aparecer como erro de forma três camadas adiante.
+
+    **Otsu é global e Sauvola é local**, e é essa a escolha. Otsu procura um corte só para a
+    página inteira: numa página de scan com sombra de lombada, o lado escuro vira preto sólido.
+    Sauvola decide por janela e atravessa a sombra, ao custo de inventar textura no papel liso.
+    Medido (ver `ScanConfig`), nenhum dos dois paga -- e o que separa os dois números é menor que
+    o que separa qualquer um deles do caminho sem binarização.
+    """
+    if metodo not in BINARIZACOES:
+        raise ValueError(f"binarização desconhecida: {metodo!r}. As válidas são {list(BINARIZACOES)}.")
+    cinza = cv2.cvtColor(page_rgb, cv2.COLOR_RGB2GRAY)
+    if metodo == OTSU:
+        _limiar, binaria = cv2.threshold(cinza, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    else:
+        lado = max(cinza.shape[:2])
+        binaria = _sauvola(cinza, max(15, int(lado * JANELA_DE_SAUVOLA)), K_DE_SAUVOLA)
+    saida: np.ndarray = cv2.cvtColor(binaria.astype(np.uint8), cv2.COLOR_GRAY2RGB)
+    return saida
+
+
+def reamostrar_pagina(page_rgb: np.ndarray, *, dpi: float, dpi_alvo: int) -> np.ndarray:
+    """A página reescalada de `dpi` para `dpi_alvo`. Identidade quando os dois coincidem.
+
+    `INTER_AREA` para reduzir e `INTER_CUBIC` para ampliar, que é a regra do OpenCV: a média de
+    área não tem o que fazer ao ampliar, e a cúbica ao reduzir deixa serrilhado que o detector de
+    contorno lê como borda.
+    """
+    if dpi_alvo <= 0 or dpi <= 0:
+        return page_rgb
+    escala = dpi_alvo / float(dpi)
+    if abs(escala - 1.0) < 1e-6:
+        return page_rgb
+    altura, largura = page_rgb.shape[:2]
+    destino = (max(1, round(largura * escala)), max(1, round(altura * escala)))
+    interpolacao = cv2.INTER_AREA if escala < 1.0 else cv2.INTER_CUBIC
+    redimensionada: np.ndarray = cv2.resize(page_rgb, destino, interpolation=interpolacao)
+    return redimensionada
+
+
+def preparar_pagina_de_scan(
+    page_rgb: np.ndarray, config: ScanConfig = SEM_CAMINHO_DE_SCAN, *, dpi: float = 220.0
+) -> np.ndarray:
+    """A página pronta para a detecção. **A mesma imagem** quando nada está ligado.
+
+    A reamostragem vem primeiro porque a binarização mede estatísticas em janela de pixels: fazê-la
+    antes seria decidir o limiar numa escala e usá-lo noutra. É a mesma ordem, e o mesmo
+    argumento, do `BoardNormalizer.normalize` acima.
+    """
+    if config.is_identity:
+        return page_rgb
+    imagem = reamostrar_pagina(page_rgb, dpi=dpi, dpi_alvo=config.dpi_alvo)
+    if config.binarizacao:
+        imagem = binarizar_pagina(imagem, config.binarizacao)
+    return imagem

@@ -50,11 +50,16 @@ _Pintavel = TypeVar("_Pintavel", bound=QWidget)
 mesma razão de `theme.pintar` ser genérica."""
 
 __all__ = [
+    "CONTROLES_COM_ANEL_DE_FOCO",
     "CONTROLES_COM_MOLDURA",
     "ID_DO_SEPARADOR",
+    "INDICADOR_DA_MARCA",
+    "LADO_DO_INDICADOR",
+    "MARCA_DO_MENU",
     "PROPRIEDADE_DE_PAPEL",
     "RECHEIO_DO_TEMA",
     "altura_de_linha_atual",
+    "anel_de_foco",
     "ao_repintar",
     "aplicar_papel",
     "aplicar_tema",
@@ -63,7 +68,9 @@ __all__ = [
     "folha_de_estilo",
     "fonte_atual",
     "fonte_base",
+    "lado_do_indicador",
     "pintar",
+    "ponto_do_radio",
     "repintar",
 ]
 
@@ -256,9 +263,25 @@ def aplicar_papel(botao: QWidget, papel: str) -> QWidget:
 
 # ------------------------------------------------------------------------ a folha de estilo
 
+PROPRIEDADE_DE_NIVEL = "nivel"
+"""A propriedade do `QToolButton` que diz se ele desenha só o ícone (`NIVEL_ICONE`) ou ícone e texto
+(`NIVEL_TEXTO`) -- é `barra_da_sala.Acao.com_texto` chegando à folha (S-527, segunda rodada).
+
+Existe porque o recheio horizontal de dez pixels, certo para um botão com texto, é o que impedia a
+fila de caber: um botão só com ícone saía com 41 px para um traço de 16, e a 702 px de aba cabiam
+oito. Com o recheio de `RECHEIO_DO_TEMA` para o nível de ícone cabem dez, que era a meta do crítico."""
+
+NIVEL_ICONE = "icone"
+NIVEL_TEXTO = "texto"
+SELETOR_DO_NIVEL_ICONE = f'QToolButton[{PROPRIEDADE_DE_NIVEL}="{NIVEL_ICONE}"]'
+
 RECHEIO_DO_TEMA: dict[str, tuple[int, int]] = {
     "QPushButton": (10, 4),
     "QToolButton": (10, 4),
+    # O botão só com ícone: quatro pixels de recheio horizontal (o mesmo vertical -- a fila tem uma
+    # altura). Medido em 2026-09-04: com 10 cabiam 8 botões a 702 px; com 5, 10; com 4, as catorze
+    # principais cabem na aba de 804 px que a janela de 1920×1080 abre.
+    SELETOR_DO_NIVEL_ICONE: (4, 4),
     "QLineEdit": (5, 5),
     "QComboBox": (5, 4),
 }
@@ -308,6 +331,139 @@ fotografias. Declarar a borda é o que faz os dois estilos desenharem o mesmo co
 
 `QAbstractItemView` alcança lista, árvore e tabela; `QTextEdit`, o `QTextBrowser`. O botão comum e o
 `QGroupBox` já a declaravam (S-520, S-501) -- com o token de documento, que a S-522 trocou."""
+
+CONTROLES_COM_ANEL_DE_FOCO: tuple[str, ...] = ("QPushButton", "QToolButton", *CONTROLES_COM_MOLDURA)
+"""As classes a que a folha declara **anel de foco de teclado** (S-553).
+
+**O defeito medido, e ele é o mesmo nas três peles.** Com o botão focado (`hasFocus()` verdadeiro)
+a barra da sala desenhava **zero pixels** diferentes do não focado -- no primário, no comum e no
+só-ícone. São doze paradas de `Tab` naquela fila, e nenhuma delas se vê. É a WCAG 2.4.7 AA, e é o
+que o ChessBase e o Lichess desenham.
+
+**A causa tem duas metades, e as duas foram medidas.** A folha declara `border: 1px solid
+transparent` no `QToolButton` (para que ligar a cor de um estado não mova o conteúdo, S-527), e uma
+borda de folha de estilo **substitui** o retângulo de foco que o estilo da plataforma desenharia.
+E o `offscreen` da CI não desenharia esse retângulo nem sem folha nenhuma: medido, `QToolButton`,
+`QPushButton`, `QComboBox`, `QCheckBox` e `QListWidget` saem com 0 px de diferença com a folha
+vazia. Ou seja, **não há de quem herdar o anel**: ou a folha o declara, ou ele não existe.
+
+**Todas as oito já têm moldura de 1 px, e é isso que faz o anel não custar layout.** O anel é a
+moldura que já existe trocando de cor -- não `padding` novo, não `border-width` maior: os dois
+moveriam o conteúdo em um pixel, que é o defeito que a moldura transparente do `QToolButton`
+existe para não ter. (`outline` foi medido e **não serve**: com `outline: 1px solid` o
+`QToolButton` continua desenhando 0 px de diferença; o `QPushButton` muda 64. O Qt não o aplica a
+todo controle, e um anel que existe em metade da fila é pior que nenhum.)
+
+**A `QCheckBox` e a `QRadioButton` continuam fora desta lista, e agora por outro motivo.** Na
+primeira rodada elas ficaram de fora por medo: declarar propriedade nelas faria o `windows11` parar
+de pintar o cromo nativo, e ali o cromo nativo é o **indicador**. O medo estava certo na causa e
+errado na conclusão -- o estrago **já estava feito** desde a S-442, que declarou `spacing`, e desde
+a S-441, que declarou `padding`. O crítico fotografou o resultado em 2026-09-05: o rádio marcado
+saía como texto pelado, sem indicador nenhum, na aba que abre primeiro. Quem declara o indicador
+agora é `INDICADOR_DA_MARCA`, logo abaixo, e o anel de foco delas vai **no indicador** e não no
+widget: um `QCheckBox:focus { border: ... }` cercaria o rótulo inteiro e moveria o texto de todo
+diálogo em um pixel a cada `Tab`, que é justamente o que esta lista existe para não fazer.
+"""
+
+
+LADO_DO_INDICADOR = 13
+"""O lado do quadradinho da caixa de seleção e do círculo do rádio, em pixel na base 9 (S-553,
+segunda rodada).
+
+**Treze porque é o que o Windows desenha a 96 DPI**, e a folha o escala pela fonte do sistema como
+escala todo o resto -- um pixel cravado aqui ignoraria quem aumentou a fonte, que é o defeito de
+DPI da S-148 num lugar menor.
+
+**A densidade não entra, e é a diferença em relação a `_escalado`.** Folga é espaço em volta e pode
+encolher: é para isso que a pele compacta existe. Isto é o alvo do ponteiro, e encolhê-lo 30% na
+compacta seria trocar "cabe mais linha na tela" por "erra-se mais o clique" -- o piso de alvo é o
+que a WCAG 2.5.5 mede, e ele não é uma folga."""
+
+INDICADOR_DA_MARCA: tuple[str, ...] = ("QCheckBox", "QRadioButton")
+"""As duas classes cujo indicador a folha desenha inteiro (S-553, segunda rodada).
+
+**O defeito medido, e ele estava na aba que abre primeiro.** "Lado a jogar: Pretas" selecionado
+saía como texto pelado -- indicador nenhum --, e a caixa de seleção saía como um `✓` solto sem
+quadro quando marcada contra um quadro vazio quando desmarcada: duas gramáticas para o mesmo par de
+estados. A causa é a da S-522, e vale para todo widget: **uma propriedade de folha faz o
+`windows11` parar de pintar o cromo nativo daquele widget**. Aqui o cromo nativo é o indicador, e
+`spacing` (S-442) e `padding` (S-441) bastaram para apagá-lo.
+
+**A marca é tinta de ênfase dentro da mesma moldura, e é uma gramática só.** Desmarcado: campo da
+superfície com a moldura do cromo. Marcado: a moldura e o campo viram `BOTAO_PRIMARIO` -- na caixa,
+a face inteira; no rádio, o ponto no meio, que é o desenho que todo toolkit dá a um rádio.
+Desabilitado: a marca cai para `TEXTO_SECUNDARIO`, que é o mesmo apagamento do botão comum
+desabilitado (S-506). Focado: a moldura de 1 px troca de cor pela cor do anel, exatamente como nas
+outras oito classes -- sem `padding` novo e sem `border-width` maior, para o `Tab` não mover o
+rótulo.
+
+**Por que não há um glifo de `✓`.** Uma folha de estilo só põe imagem por `url(...)`, que quer
+dizer arquivo ou recurso compilado -- e um `✓` de arquivo teria cor fixa, o que quebraria as três
+peles. `folha_de_estilo` é pura de propósito (ver o cabeçalho) e não pode desenhar um `QPixmap`.
+Então a marca da caixa é a **face**, que é o que o desenho chato de qualquer interface moderna faz,
+e ela combina com o ponto do rádio: nos dois, marcado é tinta de ênfase dentro da moldura."""
+
+MARCA_DO_MENU = "QMenu"
+"""O item de menu marcável usa a **mesma** gramática das duas acima (S-553, terceira rodada).
+
+**Havia duas gramáticas de "marcado" na mesma janela**, e o crítico as fotografou lado a lado: a
+caixa marcada era face de ênfase dentro da moldura, e o item de menu marcado era um `✓` nativo --
+tique sem quadro, e quadro sem tique, para o mesmo par de estados. Duas gramáticas custam o mesmo
+que duas palavras para a mesma coisa: quem aprende uma não lê a outra.
+
+**Qual das duas ficou, e por quê.** A face, e por três razões, nesta ordem: ela é a que já vale nas
+duas classes onde "marcado" aparece mais -- as caixas de todo diálogo e os rádios do rodapé da
+Galeria --; ela **não depende de imagem**, e é o que a mantém dentro de uma folha pura que serve às
+três peles (ver o parágrafo acima); e ela é o desenho que o Windows 11 dá a uma caixa marcada, de
+modo que o menu passa a concordar com o sistema em vez de discordar da própria janela.
+
+**A alternativa medida e recusada:** pôr o tique **dentro** da face, como o Windows faz. O `✓` só
+entra numa folha de estilo por `url(...)`, que quer dizer arquivo ou recurso -- e um arquivo tem cor
+fixa, o que quebraria a pele escura. Fazê-lo direito exigiria um `QPixmap` desenhado fora da folha
+(como `qt/icones.py` faz), gravado em disco a cada troca de pele para o `url()` o alcançar, e a
+folha deixaria de ser afirmável por leitura de texto -- que é como todo este arquivo é testado. O
+tique é um detalhe; a gramática única é o item."""
+
+
+def ponto_do_radio(marca: str, campo: str) -> str:
+    """O pincel do rádio marcado: anel de campo com o ponto no meio, como texto de QSS.
+
+    Um `qradialgradient` e não uma imagem, pela razão escrita em `INDICADOR_DA_MARCA`: a folha é
+    pura, e a cor tem de seguir a pele. As paradas são duras de propósito -- o que se quer é um
+    ponto, não um borrão --, e a de 0,42 dá um ponto de ~5,5 px num indicador de 13.
+    """
+    return (
+        "qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,"
+        f" stop:0 {marca}, stop:0.42 {marca}, stop:0.5 {campo}, stop:1 {campo})"
+    )
+
+
+def lado_do_indicador(base: int = tipografia.BASE_DE_REFERENCIA) -> int:
+    """`LADO_DO_INDICADOR` reescrito para esta fonte. Piso de 12 px: abaixo disso o ponto do rádio
+    fica com menos de 5 px e some."""
+    return max(12, round(LADO_DO_INDICADOR * base / tipografia.BASE_DE_REFERENCIA))
+
+
+def anel_de_foco(*, cromo_escuro: bool = False, sobre_enfase: bool = False) -> str:
+    """A cor do anel de foco daquele controle. **Pura, e não é um papel novo** (S-553).
+
+    É a tinta que o próprio controle já usa: sobre o cromo -- botão comum, botão de ferramenta
+    chato, campo, lista -- `TEXTO_PADRAO`; sobre a face de ênfase, `TEXTO_SOBRE_ENFASE`. As duas
+    são obrigadas a se ler ali de qualquer forma: a primeira é a letra da janela, e a segunda passa
+    `AA_TEXTO` sobre as duas faces por medição da S-444. Um décimo papel em `ui/tokens.py` para
+    dizer "a cor do anel" seria a mesma cor com dois donos, que é o defeito que a S-145 fechou.
+
+    **E é o que separa o anel do marcado, que é o critério do item.** O `QToolButton:checked` se
+    diz por **duas** coisas -- a face funda e uma moldura na cor de ênfase (S-527) --, e o anel usa
+    a letra, que nunca é a cor de ênfase. Os quatro estados ficam distintos aos pares: parado
+    (moldura transparente), marcado (face funda e moldura de ênfase), focado (moldura de letra),
+    marcado e focado (face funda e moldura de letra). O marcado não perde o que o diz, porque o que
+    o diz de verdade é a face; o que o foco toma emprestado é a moldura, que é onde o foco mora em
+    toda interface que o desenha.
+    """
+    papel = tokens.TEXTO_SOBRE_ENFASE if sobre_enfase else tokens.TEXTO_PADRAO
+    return tokens.cor(papel, None, cromo_escuro=cromo_escuro)
+
 
 ID_DO_SEPARADOR = "separador-da-fila"
 """`objectName` do traço entre grupos da fila, que a folha pinta com a moldura do cromo (S-522)."""
@@ -423,7 +579,28 @@ def folha_de_estilo(
         f" border: 1px solid {cor(tokens.TEXTO_SECUNDARIO)}; }}",
         f"QPushButton:disabled {{ background-color: {superficie}; color: {secundario};"
         f" border: 1px solid {moldura}; }}",
-        f"QToolButton {{ padding: {do_tema('QToolButton')}; }}",
+        # **O botão de ferramenta é desenhado inteiro pela folha, e pela mesma razão do comum**
+        # (S-527): com só o recheio declarado, a face sob o ponteiro, a pressionada e a marcada
+        # eram do estilo da plataforma -- e no `windows11` o marcado desenhava **zero** pixels
+        # diferentes do desmarcado (medido pelo crítico: "Seguir OCR" ligado e desligado saíam
+        # idênticos). A moldura transparente está sempre lá para que ligar a cor de um estado não
+        # mova o conteúdo em um pixel; a face marcada é a do botão comum marcado, e a moldura dela
+        # é a cor de ênfase -- um interruptor ligado tem de ser lido de longe, e cinza sobre cinza
+        # não é lido.
+        f"QToolButton {{ padding: {do_tema('QToolButton')}; border: 1px solid transparent;"
+        f" border-radius: {minima}px; }}",
+        f"{SELETOR_DO_NIVEL_ICONE} {{ padding: {do_tema(SELETOR_DO_NIVEL_ICONE)}; }}",
+        f"QToolButton:hover {{ background-color: {tokens.mistura(superficie, texto, 2 * RELEVO_DO_BOTAO)}; }}",
+        f"QToolButton:pressed {{ background-color: {tokens.mistura(superficie, texto, 4 * RELEVO_DO_BOTAO)}; }}",
+        # O indicador de menu **na linha do texto**, e não no canto de baixo: é o chevron do
+        # "Mais ▾", que o crítico da S-527 mediu solto ~8 px abaixo da base da letra. O botão com
+        # menu instantâneo (`popupMode` 2) reserva o recheio à direita para ele.
+        "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: center right; }",
+        f'QToolButton[popupMode="2"] {{ padding-right: {_escalado(16, base=base, densidade=densidade)}px; }}',
+        # O item desabilitado do menu cinza, pela razão de sempre: a cor de `QWidget` acima vale
+        # em todo estado e anulava o acinzentamento da paleta. É também o que pinta o **cabeçalho
+        # de grupo** do menu "Mais" (um item desabilitado em negrito, `qt/barra_da_sala.py`).
+        f"QMenu::item:disabled {{ color: {secundario}; }}",
         f"QLineEdit {{ padding: {do_tema('QLineEdit')}; }}",
         f"QComboBox {{ padding: {do_tema('QComboBox')}; }}",
     ]
@@ -449,15 +626,68 @@ def folha_de_estilo(
     # `indicatormargin`, e é a propriedade que o `QCheckBox` de fato lê.
     regras += [f"QCheckBox {{ spacing: {vao}px; }}", f"QRadioButton {{ spacing: {vao}px; }}"]
 
+    # **E o indicador que essas duas linhas apagaram** (S-553, segunda rodada). Ver
+    # `INDICADOR_DA_MARCA` para o defeito fotografado e para por que a marca não é um glifo.
+    #
+    # A ordem dentro do bloco é a que desfaz os empates de QSS: repouso, ponteiro, desabilitado e
+    # foco têm um pseudo-estado cada, e o marcado também -- então o marcado vem depois deles, e os
+    # pares (`:checked:disabled`, `:checked:focus`) vêm por último, ganhando por especificidade.
+    # Um indicador marcado e focado tem de mostrar as duas coisas, e é a regra da S-553.
+    lado = lado_do_indicador(base)
+    enfase = cor(tokens.BOTAO_PRIMARIO)
+    anel = anel_de_foco(cromo_escuro=cromo_escuro)
+    for classe in INDICADOR_DA_MARCA:
+        # O rádio é redondo, e o raio conta a moldura de 1 px de cada lado; a caixa usa o mesmo
+        # canto do botão comum, que é o que faz as duas parecerem do mesmo desenho.
+        raio = (lado + 2) // 2 if classe == "QRadioButton" else minima
+        regras += [
+            f"{classe}::indicator {{ width: {lado}px; height: {lado}px;"
+            f" border: 1px solid {moldura}; border-radius: {raio}px;"
+            f" background-color: {superficie}; }}",
+            f"{classe}::indicator:hover {{ border: 1px solid {texto}; }}",
+            f"{classe}::indicator:disabled {{ border: 1px solid {moldura};"
+            f" background-color: {superficie}; }}",
+            f"{classe}::indicator:focus {{ border: 1px solid {anel}; }}",
+        ]
+    marcado = {
+        "QCheckBox": lambda tinta: f"background-color: {tinta}; border: 1px solid {tinta};",
+        "QRadioButton": lambda tinta: (
+            f"background-color: {ponto_do_radio(tinta, superficie)}; border: 1px solid {tinta};"
+        ),
+    }
+    for classe, desenho in marcado.items():
+        regras += [
+            f"{classe}::indicator:checked {{ {desenho(enfase)} }}",
+            f"{classe}::indicator:checked:hover"
+            f" {{ {desenho(tokens.mistura(enfase, cor(tokens.TEXTO_SOBRE_ENFASE), tokens.REALCE_DE_ENFASE))} }}",
+            f"{classe}::indicator:checked:disabled {{ {desenho(secundario)} }}",
+            f"{classe}::indicator:checked:focus {{ border: 1px solid {anel}; }}",
+        ]
+
+    # **E o item de menu marcável usa a mesma gramática** (S-553, terceira rodada). Ver
+    # `MARCA_DO_MENU`: o `✓` nativo era a segunda gramática de "marcado" na mesma janela.
+    regras += [
+        f"{MARCA_DO_MENU}::indicator {{ width: {lado}px; height: {lado}px;"
+        f" border: 1px solid {moldura}; border-radius: {minima}px;"
+        f" background-color: {superficie}; }}",
+        f"{MARCA_DO_MENU}::indicator:checked {{ {marcado['QCheckBox'](enfase)} }}",
+        f"{MARCA_DO_MENU}::indicator:disabled {{ border: 1px solid {moldura};"
+        f" background-color: {superficie}; }}",
+        f"{MARCA_DO_MENU}::indicator:checked:disabled {{ {marcado['QCheckBox'](secundario)} }}",
+    ]
+
     # A ênfase da S-444. **Também aqui o tema não dá de graça, e pela razão oposta à do Tk:**
     # lá o `ttkbootstrap` pintava os três papéis do mesmo `#f0f0f0` e a folha corrigia; aqui
     # não existe papel nenhum até esta linha. O `[papel="..."]` é o seletor de propriedade
     # dinâmica, que é o mecanismo do Qt para o que `style="primary.TButton"` faz lá.
     letra = cor(tokens.TEXTO_SOBRE_ENFASE)
-    for papel, token in (
+    # Os dois papéis com face, **nomeados uma vez**: a guarda de `test_ui_estilos` conta por `ast`
+    # quantas vezes um arquivo cita o papel primário, e o `QToolButton` abaixo lê daqui.
+    faces = (
         (estilos.PRIMARIO, tokens.BOTAO_PRIMARIO),
         (estilos.DESTRUTIVO, tokens.BOTAO_DESTRUTIVO),
-    ):
+    )
+    for papel, token in faces:
         face = cor(token)
         regras += [
             f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]'
@@ -473,6 +703,33 @@ def folha_de_estilo(
             f" {{ background-color: {superficie}; color: {secundario}; border: 1px solid {moldura}; }}",
         ]
 
+    # **O papel chega ao `QToolButton` por outro desenho** (S-527). A barra da sala é de botões
+    # chatos (`autoRaise`), como toda barra de ferramentas: a face só aparece sob o ponteiro. Ali o
+    # primário ganha a face inteira, que é o que "Carregar OCR atual" já tinha como `QPushButton`;
+    # o destrutivo ganha a **cor** -- letra e traço em `BOTAO_DESTRUTIVO` --, e não a face: dois
+    # blocos vermelhos sólidos numa fila de botões chatos pediriam cuidado o tempo todo, e o
+    # ChessBase não pinta "apagar variante" de vermelho por isso. O ícone acompanha porque quem o
+    # desenha pede a cor ao mesmo token (`qt/barra_da_sala.py`).
+    #
+    # E o `:disabled` é obrigatório pela mesma razão do botão comum: a cor de `QWidget` vinda da
+    # folha vale em todos os estados e anula o acinzentamento da paleta.
+    (papel_primario, token_primario), (papel_destrutivo, token_destrutivo) = faces
+    primario = cor(token_primario)
+    ferramenta_primaria = f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_primario}"]'
+    regras += [
+        f"{ferramenta_primaria}"
+        f" {{ background-color: {primario}; color: {letra}; border: 1px solid {primario};"
+        f" border-radius: {minima}px; }}",
+        f"{ferramenta_primaria}:hover"
+        f" {{ background-color: {tokens.mistura(primario, letra, tokens.REALCE_DE_ENFASE)}; }}",
+        f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_destrutivo}"] {{ color: {cor(token_destrutivo)}; }}',
+        f"QToolButton:checked {{ background-color: {tokens.mistura(superficie, texto, 4 * RELEVO_DO_BOTAO)};"
+        f" border: 1px solid {primario}; }}",
+        f"QToolButton:disabled {{ color: {secundario}; }}",
+        f"{ferramenta_primaria}:disabled"
+        f" {{ background-color: {superficie}; color: {secundario}; border: 1px solid {moldura}; }}",
+    ]
+
     # A faixa de abas discreta da pele "Foco" (S-226): a diferença é o **peso**, e a aba ativa se
     # separa por cor e por negrito. Em Qt isto é seletor de estado e não `style.map`, e por isso
     # cabe na folha em vez de precisar de um registro à parte.
@@ -483,6 +740,30 @@ def folha_de_estilo(
         f" border-radius: {minima}px; }}",
         f"QGroupBox::title {{ subcontrol-origin: margin; left: {linha}px; padding: 0 {minima}px; }}",
     ]
+
+    # **O anel de foco de teclado, e ele vem por último de propósito** (S-553). Ver
+    # `CONTROLES_COM_ANEL_DE_FOCO` para o defeito medido e para por que `outline` não serve.
+    #
+    # Último porque `QToolButton:focus` e `QToolButton:checked` têm a mesma especificidade -- um
+    # tipo e um pseudo-estado --, e em QSS o empate é desfeito pela ordem. Um botão marcado **e**
+    # focado tem de mostrar o foco: quem está com o teclado precisa saber onde ele está, e o
+    # marcado continua dito pela face funda, que esta regra não toca.
+    #
+    # A moldura é a que já existe trocando de cor -- 1 px, o mesmo de sempre --, e por isso o anel
+    # não desloca um pixel de conteúdo. O seletor com propriedade (`[papel="PRIMARIO"]`) ganha do
+    # seletor de classe por especificidade, então a ordem entre os dois blocos abaixo não importa.
+    regras += [
+        f"{seletor}:focus {{ border: 1px solid {anel_de_foco(cromo_escuro=cromo_escuro)}; }}"
+        for seletor in CONTROLES_COM_ANEL_DE_FOCO
+    ]
+    na_enfase = anel_de_foco(cromo_escuro=cromo_escuro, sobre_enfase=True)
+    regras += [
+        f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:focus {{ border: 1px solid {na_enfase}; }}'
+        for papel, _token in faces
+    ]
+    # O botão de ferramenta só tem face no primário -- o destrutivo ali é cor de letra, e não face
+    # --, então o anel do destrutivo é o do cromo e cai na regra de classe acima.
+    regras.append(f"{ferramenta_primaria}:focus {{ border: 1px solid {na_enfase}; }}")
     return "\n".join(regras)
 
 

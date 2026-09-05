@@ -470,9 +470,11 @@ integracoes abaixo sao desligadas por padrao e nao afetam o reconhecimento.
 
 ### Base de partidas (S-72/S-73)
 
-Um ou mais `.pgn` que voce poe em `pgn_database/`. Com eles, a Galeria preenche **numero do
-lance, vez a jogar e headers** dos diagramas cuja posicao aparece numa partida registrada -- e
-a vez a jogar deixa de ser o palpite que a Fase 3 registrou como palpite.
+Um ou mais `.pgn` que voce poe em `pgn_database/` -- soltos, em `.pgn.gz`, `.pgn.bz2` ou dentro
+de um `.zip`, lidos em fluxo sem descompactar para o disco (S-531; `.pgn.zst` se o pacote
+`zstandard` estiver instalado). Com eles, a Galeria preenche **numero do lance, vez a jogar e
+headers** dos diagramas cuja posicao aparece numa partida registrada -- e a vez a jogar deixa de
+ser o palpite que a Fase 3 registrou como palpite.
 
 **Todos os arquivos da pasta entram nas buscas (S-93).** Ate aqui era so o maior, e o custo
 disso foi medido: numa pasta com duas gigabases, as 10,3 M partidas da segunda nunca eram
@@ -482,6 +484,10 @@ nome e o cache de posicoes, que avisam como refazer:
 ```bash
 cvoff-games --build-index     # o indice por nome, sobre todas as bases da pasta
 ```
+
+O indice e **incremental** (S-532): a segunda rodada sobre a mesma pasta rele zero partidas, um
+arquivo que saiu da pasta sai do indice, e um `.pgn` que so cresceu e lido a partir do byte em
+que a rodada anterior parou. Cancelar no meio guarda os arquivos ja terminados.
 
 E **local**: o arquivo e lido do disco, nada e consultado na rede. Sem ele, os botoes "Buscar
 por nome" e "Buscar pela posicao" dizem onde por um e o resto do produto segue igual.
@@ -938,8 +944,9 @@ pagina caber na janela.
 **Os diagramas marcados na pagina.** Ao trocar de pagina, o detector roda em segundo plano e
 desenha um retangulo numerado sobre cada diagrama; o numero e o mesmo do seletor
 "Selecionado" da aba **Resultado**. Clicar num retangulo abre aquele diagrama no editor --
-lendo a pagina primeiro, se ela ainda nao tiver sido lida. O retangulo do diagrama que esta
-aberto fica destacado, e ele acompanha as setas `←`/`→`: e ele que responde "qual desses eu
+lendo a pagina primeiro, se ela ainda nao tiver sido lida. **Duplo clique** leva o mesmo
+diagrama para a aba **Estudo**, que abre a sala dele (e le a pagina antes, se preciso). O
+retangulo do diagrama que esta aberto fica destacado, e ele acompanha as setas `←`/`→`: e ele que responde "qual desses eu
 estou vendo?". A caixa **Marcar diagramas** desliga tudo isso para quem esta lendo o texto do
 livro, e a escolha sobrevive ao fechamento da janela.
 
@@ -990,7 +997,8 @@ src/chess_diagram_ocr/
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   augment.py            aumento de dados do treino: jitter, afim e ruido, com probabilidade
-  batch.py              varredura da biblioteca inteira, com relatorio consolidado
+  arvore_de_aberturas.py  a arvore de aberturas por posicao: que lances a base joga daqui (S-535)
+  batch.py              varredura da biblioteca inteira, com relatorio consolidado e o de qualidade por livro (S-548)
   board_detection.py    deteccao do tabuleiro na pagina (OpenCV)
   calibration.py        temperature scaling e curva de confiabilidade
   checkpoint.py         leitura e escrita de checkpoints, com metadados de treino
@@ -999,9 +1007,16 @@ src/chess_diagram_ocr/
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
+  diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
+  diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)
+  diagramas_em_lote.py  os diagramas de uma origem gravados soltos, um arquivo por posicao (S-544)
+  docx_saida.py         o estudo e o texto em DOCX, OOXML minimo com zipfile (S-543)
+  eco.py                a tabela ECO embutida: classifica a abertura por posicao ou por lance (S-534)
   engine.py             motor UCI opcional (Stockfish)
+  epub.py               o estudo e o texto em EPUB 3, um SVG por diagrama (S-542)
   estudo.py             a arvore de variantes da sala de estudo, e as regras de lance
   estudo_arquivo.py     leitura e escrita dos estudos em disco, um arquivo por posicao
+  estudo_paragrafos.py  o estudo em paragrafos de livro: lance, variante recuada, comentario, [%D]
   estudo_partidas.py    a partida da base carregada como linha principal do estudo
   estudo_saida.py       o estudo exportado: PGN com variantes, comentarios e simbolos
   evaluation.py         metricas de qualidade do reconhecimento (sobre recortes rotulados)
@@ -1027,14 +1042,20 @@ src/chess_diagram_ocr/
   pdf_io.py             render de paginas de PDF (PyMuPDF)
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
-  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le
+  placar.py             o placar do treino: por livro e por sessao, em tres baldes (S-541)
+  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le, e o caminho de pagina de scan (S-547)
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   review_queue.py       fila de revisao ordenada por valor de informacao
+  revisao_arquivo.py    o baralho da repeticao espacada no disco, um para o acervo (S-540)
+  revisao_espacada.py   a repeticao espacada dos estudos e das taticas: FSRS e a agenda (S-540)
   second_opinion.py     a segunda leitura local do tabuleiro, para conferir a primeira (S-66)
   semantics.py          lado a jogar e direitos de roque
   side_survey.py        o levantamento do lado a jogar declarado nas legendas do acervo
   splits.py             divisao treino/validacao/teste estavel
+  tablebase.py          tablebases Syzygy opcionais: resultado exato nos finais (S-538)
+  taticas.py            o exercicio montado do acervo: FEN lida + solucao impressa (S-539)
+  taticas_arquivo.py    os exercicios de tatica no disco, um arquivo por livro (S-539)
   text_status.py        o que do plano de texto ja existe no disco, medido por sonda
   training.py           loop de treino (Trainer, TrainingPlan, BestEpochPolicy)
   tsoj_reader.py        o leitor do formato TSOJ, de onde veio o classificador de caractere
@@ -1131,6 +1152,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
 | S-507 a S-520 | [docs/SPEC_ESTUDO_QT.md](docs/SPEC_ESTUDO_QT.md) |
 | S-522 a S-526 | [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) |
+| S-500 a S-506, S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1255,6 +1277,11 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   (S-522 a S-526): a moldura derivada da superficie (1,04:1 na pele Foco, 3,02:1 depois), o motor e
   o OCR de legenda chegando a janela pelas preferencias, o auto-teste com estado descartavel, a
   ARCHITECTURE descrevendo o Qt, e a regua de alinhamento do recorte no censo
+- [docs/ROADMAP_SUITE.md](docs/ROADMAP_SUITE.md) -- **Fases 80 a 86**, a suite de treino: a sala e a
+  janela com barra agrupada, a base de partidas de varios gigabytes (indice incremental, busca por
+  jogador e ECO, arvore de aberturas), analise de partida, treino de taticas do proprio acervo,
+  exportacao EPUB/DOCX para quem edita material, e OCR em lote na janela.
+- [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) -- especificacao das Fases 80 a 86 (S-527 a S-580), item a item.
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

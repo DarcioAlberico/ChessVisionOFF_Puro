@@ -27,6 +27,7 @@ Base: [ANALISE.md](ANALISE.md). Sequenciamento: [ROADMAP.md](ROADMAP.md).
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 
 Cada item tem **Problema** (com referência ao arquivo/linha atual), **Solução**, **Interface proposta**, **Critério de aceite** e **Testes**. Os itens são independentes o suficiente para serem implementados em ordem diferente, exceto onde há dependência declarada.
 

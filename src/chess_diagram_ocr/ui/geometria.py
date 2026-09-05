@@ -25,6 +25,7 @@ from dataclasses import dataclass
 __all__ = [
     "FRACAO_PADRAO_DO_DIVISOR",
     "Geometria",
+    "divisor_da_primeira_abertura",
     "fracao_de_divisor",
     "fracao_do_documento",
     "geometria_de_texto",
@@ -76,14 +77,27 @@ def piso_da_janela(
     chrome_horizontal: int = CHROME_HORIZONTAL,
     chrome_vertical: int = CHROME_VERTICAL,
     altura_do_conteudo: int = ALTURA_MINIMA_DO_CONTEUDO,
+    com_a_medicao: bool = True,
 ) -> tuple[int, int]:
     """`(largura, altura)` mínimas da janela, dados os `minsize` dos dois painéis.
 
     Função pura, e é o ponto: o piso é afirmável por teste contra a soma declarada, sem abrir
     janela. Se alguém aumentar o `minsize` de um painel, o piso acompanha -- e é isso que um
     número cravado não faz.
+
+    **`com_a_medicao=False` devolve só a soma** (S-552, terceira rodada), e é o que a janela do Qt
+    pede. `PISO_MEDIDO` é o piso de uma janela **sem rolagem** -- foi assim que a avaliação da S-150
+    o obteve, dirigindo o outro frontend --, e esta rola desde a S-552 (`qt/rolagem.py`). Com ele na
+    conta, recuperar um monitor perdido numa tela de 1024x768 devolvia **1180x800**: uma janela que
+    nasce maior que o monitor em que ela acabou de ser posta, e centrada, sem barra de título ao
+    alcance para arrastá-la de volta.
     """
-    somado = (largura_esquerda + largura_direita + chrome_horizontal, altura_do_conteudo + chrome_vertical)
+    somado = (
+        largura_esquerda + largura_direita + chrome_horizontal,
+        altura_do_conteudo + chrome_vertical,
+    )
+    if not com_a_medicao:
+        return somado
     return (max(somado[0], PISO_MEDIDO[0]), max(somado[1], PISO_MEDIDO[1]))
 
 
@@ -120,6 +134,35 @@ FRACAO_PADRAO_DO_DIVISOR = 0.42
 Era o número cravado em `_set_initial_sashes`, aplicado **toda** abertura: quem trabalha com o
 PDF grande arrastava o divisor toda sessão e o perdia toda sessão. Agora ele é o padrão da
 primeira execução, e não a decisão de todas elas."""
+
+def divisor_da_primeira_abertura(
+    largura: int,
+    *,
+    preferida_esquerda: int,
+    preferida_direita: int,
+    fracao: float = FRACAO_PADRAO_DO_DIVISOR,
+) -> int:
+    """Quantos pixels o lado esquerdo recebe quando **não há nada guardado**. Pura (S-552).
+
+    **Por que a fração sozinha deixou de bastar.** Até a S-552 o lado esquerdo tinha um piso de
+    720 px, e ele fazia dois trabalhos: impedia a janela de encolher (o defeito que aquele item
+    fechou) e, de graça, garantia que a primeira abertura de uma janela de 1400 px desse 720 à aba
+    em vez dos 586 que 42% dariam. Baixado o piso para 500, a segunda garantia caiu junto -- medido
+    a 1400x950, a aba de trabalho foi de 720 para 585 px e o tabuleiro da sala de 488 para 392.
+
+    **A largura preferida não é o piso, e é essa a distinção que o item trouxe.** Piso é onde a
+    janela **para** de encolher; preferida é o que o lado pede quando há espaço. Aqui o esquerdo
+    recebe o maior entre a fração e a largura que ele prefere -- e nunca tanto que o direito fique
+    abaixo do que **ele** prefere. Numa janela de 1024 os dois preferidos não cabem juntos, e o
+    empate se desfaz a favor do direito: é a página do livro, e é ela que não se lê espremida.
+
+    Largura não positiva devolve 0, que o chamador lê como "ainda não há geometria".
+    """
+    if largura <= 0:
+        return 0
+    teto = max(1, largura - preferida_direita)
+    return max(1, min(max(int(largura * fracao), min(preferida_esquerda, teto)), largura - 1))
+
 
 VISIVEL_MINIMO = 80
 """Quantos pixels da janela precisam cair dentro de algum monitor para a geometria valer.
@@ -197,15 +240,66 @@ def geometria_corrigida(
     A correção é conservadora: mantém o tamanho quando ele cabe, encolhe até o monitor quando
     não cabe (respeitando o piso da S-150) e centraliza. Sem lista de monitores, devolve a
     geometria como veio — não saber onde estão as telas não é razão para mover a janela.
+
+    **A tela vence o piso, e essa é a correção da terceira rodada da S-552.** O piso entrava por
+    fora do `min`, então um piso maior que o monitor produzia exatamente o que esta função existe
+    para não produzir: `geometria_a_aplicar('1400x950+2100+120', [(0, 0, 1024, 768)])` devolvia
+    **1180x800** — 32 px mais alta que a tela, e sem barra de título para agarrar se ela for
+    centrada. Um piso maior que a tela não é piso: é uma janela que não cabe. Quem garante que o
+    conteúdo continua alcançável abaixo do piso é a outra metade da S-150 (`qt/rolagem.py`), e é
+    ela que torna esta ordem segura.
+
+    **E o tamanho é grampeado antes do curto-circuito, que é a quarta rodada da S-552.** "Cabe em
+    parte" é o caso que o parágrafo acima nomeia, e ele era justamente o que escapava: a janela
+    guardada *aparece* na tela nova, `visivel_em` diz que sim, e a função a devolvia como veio.
+    `geometria_a_aplicar('1920x1080+0+0', [(0, 0, 1024, 768)])` respondia **1920x1080** -- 896 px
+    mais larga que o monitor --, e é o que se ganha ao baixar a resolução ou desdocar o notebook
+    sem mudar a janela de lugar. O grampo é só para baixo (uma janela nunca *cresce* por causa
+    dele) e é contra a **área de trabalho inteira**, não contra um monitor: uma janela deitada
+    sobre dois monitores é arranjo legítimo, e encolhê-la ao maior deles desfaria a escolha de
+    alguém. Grampeada, ela pode ter deixado de aparecer -- é o caso da janela que só cruzava a
+    tela pela borda direita --, e aí ela cai no reposicionamento de baixo como qualquer outra.
+
+    **E a encolhida é empurrada para dentro, que é a quinta rodada da S-552.** O grampo mexia no
+    tamanho e deixava a posição: `geometria_a_aplicar('1920x1080-500+0', [(0, 0, 1024, 768)])`
+    devolvia **`1024x768-500+0`** -- do tamanho exato da tela, e com 500 px dela fora dela. O
+    empurrão é o menor que põe a janela inteira na área de trabalho, e o eixo que já estava dentro
+    não se mexe. Ele vale **só para a que o grampo encolheu**: a janela que coube passa como veio,
+    borda de fora inclusive, porque ali a posição ainda é o arranjo de alguém.
     """
     if not monitores:
         return geometria
-    if visivel_em(geometria, monitores, minimo=minimo):
-        return geometria
+    x0 = min(monitor[0] for monitor in monitores)
+    y0 = min(monitor[1] for monitor in monitores)
+    x1 = max(monitor[2] for monitor in monitores)
+    y1 = max(monitor[3] for monitor in monitores)
+    largura = min(geometria.largura, max(1, x1 - x0))
+    altura = min(geometria.altura, max(1, y1 - y0))
+    if (largura, altura) == (geometria.largura, geometria.altura):
+        cabivel = geometria
+    else:
+        # **Encolhida, ela é empurrada para dentro** (S-552, quinta rodada). O grampo mexia no
+        # tamanho e não na posição, e `'1920x1080-500+0'` numa tela de 1024 virava
+        # `'1024x768-500+0'`: uma janela do tamanho exato da tela, com 500 px dela fora. `visivel_em`
+        # aprovava -- sobravam 524 px dentro --, e o que a pessoa via era metade da janela.
+        #
+        # **Só a encolhida**, e é o que separa isto de desfazer arranjo: uma janela que **coube** e
+        # que alguém deixou com uma borda para fora continua onde estava (ver `VISIVEL_MINIMO`). A
+        # que o grampo mudou de tamanho já não está mais no arranjo de ninguém, e o eixo que não
+        # cruza borda nenhuma nem se mexe -- o empurrão é o menor que põe a janela inteira dentro.
+        cabivel = Geometria(
+            largura,
+            altura,
+            min(max(geometria.x, x0), max(x0, x1 - largura)),
+            min(max(geometria.y, y0), max(y0, y1 - altura)),
+        )
+    if visivel_em(cabivel, monitores, minimo=minimo):
+        return cabivel
 
     mx0, my0, mx1, my1 = monitores[0]
-    largura = max(piso[0], min(geometria.largura, mx1 - mx0))
-    altura = max(piso[1], min(geometria.altura, my1 - my0))
+    tela = (max(1, mx1 - mx0), max(1, my1 - my0))
+    largura = min(tela[0], max(piso[0], min(geometria.largura, tela[0])))
+    altura = min(tela[1], max(piso[1], min(geometria.altura, tela[1])))
     return Geometria(largura, altura, mx0 + max(0, (mx1 - mx0 - largura) // 2), my0 + max(0, (my1 - my0 - altura) // 2))
 
 

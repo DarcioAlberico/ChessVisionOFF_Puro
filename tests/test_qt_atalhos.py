@@ -47,6 +47,15 @@ class TraducaoTests(unittest.TestCase):
                 tecla = QKeySequence(qt_atalhos.sequencia_qt(atalho.sequencia))
                 self.assertFalse(tecla.isEmpty(), f"{atalho.sequencia} não virou tecla nenhuma")
 
+    def test_as_quatro_teclas_da_sala_tambem_traduzem(self) -> None:
+        """A tabela da sala (S-527) passa pelo mesmo tradutor: `<Control-Up>` vira `Ctrl+Up`, e uma
+        que não traduzisse seria um botão cuja dica promete tecla que não dispara."""
+        aplicacao()
+        for atalho in atalhos.TECLAS_DA_SALA:
+            with self.subTest(sequencia=atalho.sequencia):
+                tecla = QKeySequence(qt_atalhos.sequencia_qt(atalho.sequencia))
+                self.assertFalse(tecla.isEmpty(), f"{atalho.sequencia} não virou tecla nenhuma")
+
     def test_a_maiuscula_do_tk_e_shift(self) -> None:
         """A regra que não se adivinha, e que a tabela usa nas duas direções.
 

@@ -363,6 +363,22 @@ class FiacaoTests(unittest.TestCase):
         self.pasta = pasta_temporaria(self)
         self.livro = _livro(self.pasta)
         self.addCleanup(self.app.processEvents)
+        # **O detector de fundo é trocado por um que não acha nada** (S-68): a página que aparece o
+        # dispara sozinha, e o de verdade percorreria uma folha em branco a cada teste. Quem quer
+        # caixas põe candidatos em `self.detector.return_value` antes de montar a janela.
+        self.detector = mock.patch("chess_diagram_ocr.qt.janela.detect_diagrams_in_pdf_page", return_value=[]).start()
+        self.addCleanup(mock.patch.stopall)
+
+    def _esperar_o_detector(self, janela: JanelaPrincipal, ate_ms: int = 3000) -> None:
+        from PyQt6.QtTest import QTest
+
+        for _ in range(ate_ms // 10):
+            QTest.qWait(10)
+            if not janela._detector.ocupado:
+                return
+
+    def _candidato(self, indice: int = 0) -> mock.Mock:
+        return mock.Mock(bbox_pdf=(10.0 + 60 * indice, 10.0, 60.0 + 60 * indice, 60.0), source="contour")
 
     def janela(self, *, com_livro: bool = True) -> JanelaPrincipal:
         montada = JanelaPrincipal(
@@ -380,6 +396,7 @@ class FiacaoTests(unittest.TestCase):
         if com_livro:
             montada.abrir_pdf(self.livro)
             self.app.processEvents()
+            self._esperar_o_detector(montada)
         return montada
 
     def test_devolver_sem_nada_tirado_diz_a_frase_declarada(self) -> None:
@@ -389,7 +406,9 @@ class FiacaoTests(unittest.TestCase):
 
         janela = self.janela()
         janela.devolver_caixas()
-        self.assertEqual(janela.rodape._lbl_mensagem.text(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
+        # `mensagem()` e nao `_lbl_mensagem.text()`: desde a quinta rodada da S-552 o que esta na
+        # tela pode estar elidido, e comparar com a tela mediria a largura do rodape.
+        self.assertEqual(janela.rodape.mensagem(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
 
     def _varrido(self, *paginas: int) -> None:
         """Deixa o livro com um índice de galeria já varrido, um diagrama por página."""
@@ -589,6 +608,140 @@ class FiacaoTests(unittest.TestCase):
         self.assertTrue(janela._abrir_pagina_do_estudo(mock.Mock(documento=str(self.livro), pagina=2)))
         self.assertEqual(janela.pdf.page_index, 2)
         self.assertFalse(janela._abrir_pagina_do_estudo(mock.Mock(documento="outro.pdf", pagina=1)))
+
+    # ------------------------------------------ a página que aparece se marca sozinha (S-68)
+
+    def test_a_pagina_que_aparece_manda_detectar_ao_fundo_sem_trancar_a_janela(self) -> None:
+        """O critério de aceite da S-68: os retângulos aparecem **antes de qualquer OCR**. O porte
+        só os pedia pelo botão "Marcar diagramas", e sem ele o duplo clique na página não achava
+        caixa nenhuma -- medido na janela de verdade em 2026-09-03."""
+        self.detector.return_value = [self._candidato()]
+        janela = self.janela()
+        self.assertEqual(len(janela.pdf.boxes.boxes if janela.pdf.boxes else ()), 1)
+        self.assertTrue(janela.abas.isEnabled(), "a detecção de fundo não tranca nada")
+        self.assertIsNone(janela._tarefa)
+        self.assertEqual((janela._candidatos or (None,))[0], 0, "a leitura reaproveita os candidatos")
+        self.detector.assert_called_once()
+
+    def test_a_pagina_ja_visitada_nao_e_detectada_de_novo(self) -> None:
+        """Uma página de prosa guarda a resposta vazia: voltar a ela não manda o detector de novo."""
+        janela = self.janela()
+        for pagina in (1, 0):
+            janela.pdf.ir_para_pagina(pagina)
+            self.app.processEvents()
+            self._esperar_o_detector(janela)
+        self.assertEqual([chamada.args[1] for chamada in self.detector.call_args_list], [0, 1])
+
+    def test_a_deteccao_de_outro_livro_ou_de_outra_pagina_nao_vai_para_a_tela(self) -> None:
+        janela = self.janela()
+        candidatos_da_pagina_0 = janela._candidatos
+        janela._chegou_a_deteccao_de_fundo("outro.pdf", 0, [self._candidato()])
+        self.assertEqual(len(janela.pdf.boxes.boxes if janela.pdf.boxes else ()), 0)
+
+        janela._chegou_a_deteccao_de_fundo(str(self.livro), 2, [self._candidato()])
+        self.assertEqual(len(janela.pdf.boxes.boxes if janela.pdf.boxes else ()), 0, "página 2 não está na tela")
+        self.assertEqual(janela._candidatos, candidatos_da_pagina_0, "candidatos de outra página não são os desta")
+        guardadas = janela._caixas_por_pagina.get(str(self.livro), 2, janela._parametros())
+        self.assertEqual(len(guardadas.boxes if guardadas else ()), 1, "mas ficam no cache para quando ela aparecer")
+
+    def test_o_duplo_clique_sem_ocr_previo_acha_a_caixa_que_o_detector_marcou(self) -> None:
+        """O relato: "preciso clicar em OCR todos os diagramas primeiro". Não precisa mais."""
+        self.detector.return_value = [self._candidato()]
+        janela = self.janela()
+        caixas = janela.pdf.boxes
+        assert caixas is not None
+        x0, y0, x1, y1 = caixas.rect_of(caixas.boxes[0], janela.pdf.visor.zoom)
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.visor.estudar_em((x0 + x1) / 2, (y0 + y1) / 2)
+        leu.assert_called_once_with(selecionar_depois=0)
+        self.assertEqual(janela._estudar_ao_ler, (0, 0))
+
+    def test_o_duplo_clique_na_caixa_lida_abre_o_diagrama_na_sala_de_estudo(self) -> None:
+        """O clique simples abre o diagrama no editor (S-68); o duplo o leva à sala, e a aba vem
+        para a frente. A posição é a do Resultado, ancorada no livro, na página e no diagrama."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+
+        janela.pdf.caixa_para_estudo.emit(1)
+
+        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertEqual(janela.painel.lista.currentRow(), 1)
+        ancora = janela.estudo.estudo.ancora
+        self.assertEqual((ancora.documento, ancora.pagina, ancora.diagrama), (str(self.livro), 0, 1))
+
+    def test_o_duplo_clique_na_caixa_ainda_nao_lida_le_a_pagina_e_so_entao_abre_a_sala(self) -> None:
+        """Antes da leitura não há posição para estudar: a página é lida, e a sala recebe o
+        diagrama quando os itens chegarem -- não antes."""
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_para_estudo.emit(0)
+        leu.assert_called_once_with(selecionar_depois=0)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+
+        janela._chegaram_itens(0, [self._diagrama(0)], 0)
+        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertEqual(janela.estudo.estudo.ancora.diagrama, 0)
+
+    def test_o_clique_simples_na_caixa_nao_lida_espera_o_intervalo_do_duplo_clique(self) -> None:
+        """A leitura tranca o visor, e um segundo aperto num widget desabilitado não chega a
+        ninguém: sem a espera, o duplo clique numa página não lida era engolido pelo próprio
+        primeiro clique. Medido na janela de verdade em 2026-09-03."""
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QApplication
+
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_clicada.emit(0)
+            leu.assert_not_called()
+            self.assertTrue(janela._leitura_adiada.isActive())
+            QTest.qWait(QApplication.doubleClickInterval() + 100)
+        leu.assert_called_once_with(selecionar_depois=0)
+
+    def test_o_clique_na_caixa_ja_lida_nao_espera_nada(self) -> None:
+        """Selecionar não tranca o visor, então não há por que adiar -- e a espera seria lentidão."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela.pdf.caixa_clicada.emit(1)
+        self.assertFalse(janela._leitura_adiada.isActive())
+        self.assertEqual(janela.painel.lista.currentRow(), 1)
+        self.assertIs(janela.abas.currentWidget(), janela.painel)
+
+    def test_o_duplo_clique_cancela_a_leitura_que_o_primeiro_clique_adiou_e_le_ele_mesmo(self) -> None:
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_clicada.emit(0)
+            janela.pdf.caixa_para_estudo.emit(0)
+        self.assertFalse(janela._leitura_adiada.isActive(), "a leitura adiada do clique foi cancelada")
+        leu.assert_called_once_with(selecionar_depois=0)
+        self.assertEqual(janela._estudar_ao_ler, (0, 0))
+
+    def test_virar_a_pagina_cancela_a_leitura_adiada(self) -> None:
+        """Senão a leitura leria a página nova, com o índice da caixa da antiga."""
+        janela = self.janela()
+        with mock.patch.object(janela, "ler_pagina"):
+            janela.pdf.caixa_clicada.emit(0)
+            self.assertTrue(janela._leitura_adiada.isActive())
+            janela.pdf.ir_para_pagina(1)
+            self.app.processEvents()
+        self.assertFalse(janela._leitura_adiada.isActive())
+
+    def test_o_duplo_clique_nao_pede_uma_segunda_leitura_enquanto_outra_corre(self) -> None:
+        """Uma leitura já em curso (a página, por botão) é aproveitada: o duplo só anota o
+        pedido, e uma leitura que termina sem itens desta página o descarta -- ele não sobrevive
+        à tarefa."""
+        janela = self.janela()
+        janela._tarefa = mock.Mock()  # uma leitura ainda corre
+        with mock.patch.object(janela, "ler_pagina") as leu:
+            janela.pdf.caixa_para_estudo.emit(0)
+        leu.assert_not_called()
+        self.assertEqual(janela._estudar_ao_ler, (0, 0))
+
+        janela._terminou()
+        self.assertIsNone(janela._tarefa)
+        self.assertIsNone(janela._estudar_ao_ler, "o pedido morre com a tarefa")
+        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
 
     def test_a_caixa_tirada_some_da_pagina_e_volta_com_o_comando(self) -> None:
         """A remoção é da pessoa e por (livro, página): ela não apaga nada no disco, e é isso que
@@ -822,7 +975,16 @@ class EstadoEntreSessoesTests(unittest.TestCase):
 
         A fracao e lida da tela e nao cravada no teste: os dois lados tem largura minima, e o
         `QSplitter` grampeia o que se pede a elas -- cravar um numero mediria o grampo.
+
+        **A area de trabalho e declarada** (S-552, quarta rodada): desde ela a geometria restaurada
+        e grampeada no que os monitores comportam, e sob `offscreen` a tela virtual tem 800x800. Sem
+        declarar um desktop que comporte os 2200 px, o que este teste mediria seria o grampo -- que
+        e assunto de `tests/test_ui_geometria.py` -- em vez do divisor arrastado.
         """
+        mock.patch(
+            "chess_diagram_ocr.qt.janela.plataforma.monitores", return_value=((0, 0, 3840, 1600),)
+        ).start()
+        self.addCleanup(mock.patch.stopall)
         primeira = self.janela()
         # **2200 e nao os 1400 das outras**, e o numero e medido: com 1534 px a janela esta no
         # piso dos dois lados -- `[720, 810]` -- e o divisor nao tem folga nenhuma para arrastar.
@@ -832,6 +994,12 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         padrao = _fracao(primeira)
         largura = sum(primeira.divisor.sizes())
         primeira.divisor.setSizes([int(largura * 0.6), largura - int(largura * 0.6)])
+        # **O sinal vai junto, e desde a quinta rodada ele e a metade que importa** (S-552):
+        # `setSizes` nao emite `splitterMoved` -- so o gesto do mouse emite --, e e por esse sinal
+        # que a janela distingue "alguem escolheu" de "o programa repartiu". Sem ele, o que este
+        # teste simula nao e um arrasto: e a janela repartindo sozinha, que e o caso em que a
+        # fracao **nao** e gravada.
+        primeira.divisor.splitterMoved.emit(int(largura * 0.6), 1)
         self.app.processEvents()
         arrastado = _fracao(primeira)
         self.assertNotAlmostEqual(padrao, arrastado, places=2, msg="o arrasto nao moveu nada")
@@ -845,6 +1013,20 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         self.app.processEvents()
         self.assertAlmostEqual(arrastado, _fracao(segunda), places=2)
         self.assertGreater(segunda.width(), 2000, "a geometria da sessao anterior nao voltou")
+        # **E ela continua ali depois do primeiro redimensionamento** (S-552, sexta rodada). Ate
+        # esta rodada o teste parava na linha de cima, e ali a fracao guardada ainda esta viva mesmo
+        # sem a fiacao: quem a poe e o `showEvent`, que roda de qualquer jeito. O que a fiacao
+        # (`_divisor_de_fabrica = not self._estado.sash_fraction`) decide e o **resize** seguinte --
+        # trocada por `True`, a escolha da sessao anterior era substituida pelos 720 px preferidos
+        # no primeiro arrasto de borda, e a suite inteira ficava verde.
+        segunda.resize(2600, 1000)
+        self.app.processEvents()
+        self.assertAlmostEqual(
+            arrastado,
+            _fracao(segunda),
+            places=2,
+            msg="a fracao arrastada morreu no primeiro redimensionamento da sessao seguinte",
+        )
 
     def test_a_geometria_guardada_e_a_de_fora_do_maximizado(self) -> None:
         """`normalGeometry` é o que substitui a recusa do `1x1+-32000+-32000` do Tk (S-156)."""
@@ -1323,6 +1505,15 @@ class _MotorFalso:
         self.path = Path("stockfish-falso.exe")
         self.fechado = False
 
+    @property
+    def name(self) -> str:
+        """O `id name` do UCI, que o título da seção mostra desde a S-529.
+
+        Responde o nome do arquivo porque é o que o `EngineAnalyzer` de verdade responde enquanto o
+        processo não subiu -- e este dublê não sobe nenhum.
+        """
+        return self.path.name
+
     def close(self) -> None:
         self.fechado = True
 
@@ -1388,3 +1579,68 @@ class MotorDasPreferenciasTests(unittest.TestCase):
         self.addCleanup(descartar, montada)
         monta.assert_called_once()
         self.assertIs(servico, montada._servico)
+
+
+class FilaDeLivrosNaJanelaTests(unittest.TestCase):
+    """A fila da S-546 passou a ser alcançável de dentro da janela (S-546, r2).
+
+    **O crítico não achou chamador nenhum.** `abrir_fila_de_livros` estava pronta e nem
+    `ui/comandos.py`, nem `ui/menu.py`, nem `qt/janela.py` a citavam -- o item chama-se "na
+    janela" e não havia como chegar nela sem escrever código.
+
+    **O teste dispara a ação e olha o efeito**, e não a fiação: depois de um `connect`, trocar o
+    método não troca quem o sinal chama, então um `mock.patch.object` sobre
+    `abrir_fila_de_livros` mediria uma ligação que não existe mais. O que se afirma é que o
+    diálogo **apareceu** filho da janela, com o serviço e o registro de ocupação dela.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def _janela(self) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            motor=None,
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+            pasta_da_galeria=self.pasta,
+        )
+        self.addCleanup(descartar, montada)
+        return montada
+
+    def _filas(self, janela: JanelaPrincipal) -> list[object]:
+        from chess_diagram_ocr.qt.fila_de_livros import DialogoDaFila
+
+        return list(janela.findChildren(DialogoDaFila))
+
+    def test_a_acao_do_menu_abre_o_dialogo_da_fila(self) -> None:
+        janela = self._janela()
+        acao = janela.menu.acoes["varrer_fila"]
+        self.assertEqual([], self._filas(janela))
+
+        acao.trigger()
+        self.app.processEvents()
+
+        (dialogo,) = self._filas(janela)
+        self.addCleanup(descartar, dialogo)
+        self.assertIs(janela, dialogo.parent())
+        self.assertIs(janela._servico, dialogo.varredura._servico)
+        self.assertIs(janela.busy, dialogo.varredura._busy)
+
+    def test_o_comando_esta_no_catalogo_e_tem_dono_na_janela(self) -> None:
+        """Um `Comando` sem dono na tabela é um item de menu que não faz nada."""
+        janela = self._janela()
+        self.assertIn("varrer_fila", janela._comandos())
+
+    def test_o_dialogo_nao_e_guardado_na_janela(self) -> None:
+        """Ele não é modal, não é reusado e sabe se fechar: um segundo dono só criaria
+        divergência sobre quem o destrói."""
+        janela = self._janela()
+        janela.menu.acoes["varrer_fila"].trigger()
+        self.app.processEvents()
+        (dialogo,) = self._filas(janela)
+        self.addCleanup(descartar, dialogo)
+        self.assertNotIn(dialogo, vars(janela).values())

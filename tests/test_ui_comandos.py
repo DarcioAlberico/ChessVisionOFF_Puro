@@ -22,7 +22,9 @@ if str(RAIZ) not in sys.path:
 
 from chess_diagram_ocr.ui import atalhos, comandos, estilos, menu  # noqa: E402
 
-PDF_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_do_pdf.py"
+PDF_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "barra_do_pdf.py"
+"""Onde os controles do painel do PDF são **declarados** desde a S-528. Era
+`qt/painel_do_pdf.py`, que os montava à mão."""
 TEXTO_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
 JANELA = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
 CAMPO = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "campo.py"
@@ -152,14 +154,17 @@ def _rotulos_reconfigurados(no: ast.AST) -> list[str]:
 
 
 def _acoes_desenhadas(no: ast.AST) -> set[str]:
-    """As ações do catálogo que viram controle naquele nó, por `ast`.
+    """As ações do catálogo que a tabela de uma barra em fila declara, por `ast`.
 
-    Duas formas, e são as duas que o painel do PDF usa: o `acao` do ajudante `_botao` -- segundo
-    posicional, depois da barra -- e o argumento de `comandos.rotulo_de_botao(...)`, que é como os
-    dois `QCheckBox` e o botão do leitor pegam o rótulo sem passar pelo ajudante.
+    **O padrão mudou com a S-528, e traduzi-lo é obrigação.** Enquanto o painel do PDF montava os
+    controles à mão, as ações apareciam em `_botao(barra, "abrir_pdf", ...)` e em
+    `comandos.rotulo_de_botao("marcar_diagramas")` dentro de `qt/painel_do_pdf.py`; agora elas são
+    linhas de `ui/barra_do_pdf.ACOES`, e o painel não escreve nome de comando nenhum. Uma guarda
+    ancorada no arquivo antigo passaria em **verde sobre lista vazia** -- que é exatamente o que a
+    S-506 mediu vinte vezes no corte do Tk, e o que esta função existe para não fazer.
 
-    **Só constante conta.** Dentro do próprio `_botao` o argumento é o parâmetro `acao`, um `Name`;
-    contá-lo faria a varredura declarar que existe uma ação chamada "acao".
+    A forma agora é `Acao("abrir_pdf", GRUPO, "icone", ...)`: o primeiro posicional de qualquer
+    chamada a `Acao`. **Só constante conta**, pela mesma razão de antes.
     """
     achadas: set[str] = set()
     for filho in ast.walk(no):
@@ -167,9 +172,7 @@ def _acoes_desenhadas(no: ast.AST) -> set[str]:
             continue
         nome = getattr(filho.func, "attr", "") or getattr(filho.func, "id", "")
         alvo: ast.expr | None = None
-        if nome == "_botao" and len(filho.args) >= 2:
-            alvo = filho.args[1]
-        elif nome == "rotulo_de_botao" and filho.args:
+        if nome == "Acao" and filho.args:
             alvo = filho.args[0]
         if isinstance(alvo, ast.Constant) and isinstance(alvo.value, str):
             achadas.add(alvo.value)
@@ -305,27 +308,30 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
 
         Quem a cobrava era `test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha` de
         `tests/test_ui_alcance.py`, que varria o `_montar_barras` de `ui/pdf_panel.py`. O padrão
-        mudou com o toolkit -- lá era `ttk.Button(text=...)`, aqui é o ajudante `_botao` e o
-        `rotulo_de_botao` dos dois `QCheckBox` --, e é o padrão traduzido que esta guarda usa.
+        mudou duas vezes -- lá era `ttk.Button(text=...)`, depois o ajudante `_botao` de
+        `qt/painel_do_pdf.py`, e desde a S-528 é a linha `Acao(...)` de `ui/barra_do_pdf.py` --, e
+        é o padrão traduzido que esta guarda usa. Ver `_acoes_desenhadas`.
         """
         desenhadas = _acoes_desenhadas(ast.parse(PDF_PANEL.read_text(encoding="utf-8")))
+        self.assertTrue(desenhadas, "a varredura não achou controle nenhum: o padrão mudou de novo")
         self.assertEqual(sorted(comandos.NAS_BARRAS_DO_PDF), sorted(desenhadas))
 
-    def test_a_varredura_das_barras_acha_os_dois_jeitos_de_desenhar(self) -> None:
+    def test_a_varredura_das_barras_acha_a_linha_da_tabela(self) -> None:
         """O **controle** da guarda de cima, e ele casa contra exemplos literais.
 
-        Ancorá-lo no painel de verdade o faria se apagar junto com o defeito: uma varredura que
-        deixasse de reconhecer o `_botao` acharia zero ação, a lista declarada teria de encolher
-        para zero para o teste passar, e as duas ficariam de acordo sobre nada. Os dois trechos
-        abaixo são as duas formas que o painel usa, escritas à mão aqui.
+        Ancorá-lo na tabela de verdade o faria se apagar junto com o defeito: uma varredura que
+        deixasse de reconhecer a linha acharia zero ação, a lista declarada teria de encolher para
+        zero para o teste passar, e as duas ficariam de acordo sobre nada. O trecho abaixo é a
+        forma que `ui/barra_do_pdf.py` usa, escrita à mão aqui -- com a chamada aninhada e o
+        parâmetro `acao` que **não** conta, que são os dois casos em que a varredura erraria.
         """
         arvore = ast.parse(
-            "class Painel:\n"
-            "    def _montar(self):\n"
-            '        self._botao(barra, "abrir_pdf", self.abrir_pdf, estilos.PRIMARIO)\n'
-            '        self.marcar = QCheckBox(comandos.rotulo_de_botao("marcar_diagramas"), barra)\n'
-            "    def _botao(self, barra, acao, funcao):\n"
-            "        return QPushButton(comandos.rotulo_de_botao(acao), barra)\n"
+            "ACOES = (\n"
+            '    Acao("abrir_pdf", LIVRO, "abrir_pdf", prioridade=6, com_texto=True),\n'
+            '    Acao("marcar_diagramas", VISTA, "marcar", principal=False, marcavel=True),\n'
+            ")\n"
+            "def acao(nome):\n"
+            "    return Acao(nome, LIVRO, \"x\")\n"
         )
         self.assertEqual({"abrir_pdf", "marcar_diagramas"}, _acoes_desenhadas(arvore))
 
@@ -411,6 +417,11 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 # mesmas que a aba já mostrava antes de haver catálogo.
                 "analisar_posicao",
                 "analise_continua",
+                # Os dois da Fase 82: o menu diz "Analisar a partida inteira com o motor…" e
+                # "Opções do motor de análise…" porque é onde cabe dizê-lo, e a barra da sala tem
+                # de caber num botão de 16 px com o rótulo na dica (S-536/S-537).
+                "analisar_partida",
+                "opcoes_do_motor",
                 "apagar_continuacao",
                 "apagar_variante",
                 "copiar_fen",
@@ -441,6 +452,42 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "exportar_estudo_md",
                 "exportar_estudo_rtf",
                 "modo_treino",
+                # A S-527/S-532: o menu diz "Indexar a base de partidas por nome…" e o botão do
+                # "Mais" da sala diz "Indexar base", pela mesma razão dos vinte e três acima.
+                "indexar_base",
+                # E a S-533: o menu diz por que campos se busca ("por jogador, evento, ano, Elo e
+                # ECO…") porque é ali que a lista de campos cabe; o botão diz "Buscar partidas".
+                "buscar_partidas",
+                # E os dois da Fase 83 (S-539/S-540): o menu diz o que o comando faz com o
+                # livro inteiro, e o botão do "Mais" diz o nome curto -- "Táticas do livro" e
+                # "Revisar hoje", que são como se fala deles.
+                "taticas_do_livro",
+                "treinar_agenda",
+                # E os três da Fase 84 (S-544/S-545), pela razão dos formatos acima: o menu diz
+                # "Exportar o estudo para PDF…" e o item do agrupador diz ".pdf", ao lado dos
+                # outros três; "Imprimir o estudo…" e "Exportar os diagramas em lote…" viram
+                # "Imprimir" e "Diagramas em lote" no "Mais", onde o rótulo longo não caberia.
+                "exportar_estudo_pdf",
+                "imprimir_estudo",
+                "exportar_diagramas_lote",
+                # E os dois da segunda rodada da S-542/S-543, pela razão idêntica: o menu diz
+                # "Exportar o estudo para EPUB…" e o item do agrupador diz ".epub". Eles chegaram
+                # ao catálogo três dias depois dos módulos que os escrevem -- até aqui não havia
+                # gesto nenhum que chamasse `epub.py` nem `docx_saida.py`.
+                "exportar_estudo_epub",
+                "exportar_estudo_docx",
+                # E os três que a S-233 registrou como dívida e a terceira barra em fila pagou: o
+                # menu diz "Salvar a posição" e o botão da fila diz "Salvar". Enquanto o painel de
+                # Resultado escrevia os rótulos à mão eles não declaravam `rotulo_curto`, "que
+                # seria uma promessa que ninguém cumpre".
+                "salvar",
+                "salvar_todos",
+                "aplicar_fen",
+                # E o da Fase 81 (S-535), pelo mesmo motivo: o menu diz "Árvore de aberturas desta
+                # posição" porque é onde cabe dizer de que posição se fala, e o botão do grupo Base
+                # diz "Árvore" -- ao lado de "Partidas", que responde a outra pergunta sobre a
+                # mesma posição.
+                "arvore_de_aberturas",
             },
             divergem,
         )
