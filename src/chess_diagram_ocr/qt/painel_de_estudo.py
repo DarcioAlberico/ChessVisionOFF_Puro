@@ -254,6 +254,12 @@ class PainelDeEstudo(QWidget):
         self._fracao_do_tabuleiro = FRACAO_PADRAO_DO_TABULEIRO
         self._divisor_escolhido = False
         """A pessoa (ou a sessão anterior) decidiu onde fica a alça? Ver `_acomodar_o_tabuleiro`."""
+        self._largura_acomodada = 0
+        """A largura em que a régua da S-551 rodou da última vez, em pixel.
+
+        Existe para a régua saber se a coluna está **encolhendo** -- o `QSplitter` já repartiu em
+        proporção quando ela roda, e sem esta lembrança "só empurra para a direita" vira "guarda a
+        fração de uma janela larga numa estreita". Ver `sala_declarada.fracao_para_o_tabuleiro`."""
         self._faixa_do_tabuleiro: QHBoxLayout | None = None
         """A fila "barra de avaliação + tabuleiro", quando há motor. Guardada porque é nela que se
         mede a esteira da coluna esquerda -- ver `_esteira_da_coluna` (S-551, terceira rodada)."""
@@ -494,6 +500,7 @@ class PainelDeEstudo(QWidget):
 
         self.campo_fen = QLineEdit(self.estudo.tabuleiro.fen(), coluna)
         self.campo_fen.setFont(tema.fonte_atual(tipografia.DADO))
+        self.campo_fen.setCursorPosition(0)
         self.campo_fen.returnPressed.connect(self.apply_fen)
         pilha.addWidget(self.campo_fen)
         return coluna
@@ -720,7 +727,9 @@ class PainelDeEstudo(QWidget):
             fracao_atual=self.fracao_do_divisor,
             esteira=esteira,
             alca=alca,
+            largura_anterior=self._largura_acomodada,
         )
+        self._largura_acomodada = largura
         if abs(alvo - self.fracao_do_divisor) < 0.005:
             return
         esquerda = int(largura * alvo)
@@ -1279,6 +1288,12 @@ class PainelDeEstudo(QWidget):
         self._montando = True
         try:
             self.campo_fen.setText(self.estudo.tabuleiro.fen())
+            # **O começo, e não o fim** (S-552, quinta rodada). `setText` deixa o cursor no fim, e
+            # um `QLineEdit` estreito rola até ele: a 1024 a caixa mostrava `2pP1N2/...` no lugar de
+            # `1q1r1nk1/...`. Ela é rolável, e é justamente o que torna o defeito silencioso --
+            # quem olha lê uma posição que não é a da tela. O primeiro campo da FEN é a fileira 8,
+            # que é a metade do tabuleiro que se confere primeiro.
+            self.campo_fen.setCursorPosition(0)
             # `no.move` é a aresta que chegou ao nó corrente, e é `None` na raiz (S-509).
             self.tabuleiro.mostrar_tabuleiro(
                 self.estudo.tabuleiro,

@@ -271,6 +271,30 @@ class SalaTests(unittest.TestCase):
         self.assertEqual(vistas, ["FEN inválida"])
         self.assertEqual(painel.estudo.contagem_de_lances(), 1, "a árvore ficou como estava")
 
+    def test_a_fen_estreita_mostra_o_comeco_e_nao_o_fim(self) -> None:
+        """**A FEN saía cortada pela esquerda a 1024** (S-552, quinta rodada).
+
+        `setText` deixa o cursor no fim, e um `QLineEdit` estreito rola até ele: o campo mostrava
+        `2pP1N2/...` no lugar de `1q1r1nk1/...`. Ele é rolável, e é justamente isso que torna o
+        defeito silencioso -- quem olha lê uma posição que não é a da tela. O primeiro campo da FEN
+        é a fileira 8, que é a metade do tabuleiro que se confere primeiro.
+
+        **A régua é o caractere que está no pixel 1**, e não `cursorPosition()`: é o deslocamento
+        do texto que se vê, e é ele que o cursor no fim provocava.
+        """
+        painel = self.sala()
+        painel.campo_fen.setFixedWidth(90)
+        painel.push_move(chess.Move.from_uci("e2e4"))
+        self.app.processEvents()
+        texto = painel.campo_fen.text()
+        self.assertTrue(texto.startswith("rnbqkbnr/"), texto)
+        meio = painel.campo_fen.height() // 2
+        self.assertEqual(
+            0,
+            painel.campo_fen.cursorPositionAt(QPoint(1, meio)),
+            "o campo rolou para a direita e o começo da FEN saiu da tela",
+        )
+
     def test_a_geracao_cresce_a_cada_mudanca_de_no(self) -> None:
         """É ela que descarta a resposta atrasada do motor, e ela cresce em `refresh` -- o único
         ponto por onde toda mudança de nó passa (S-285)."""

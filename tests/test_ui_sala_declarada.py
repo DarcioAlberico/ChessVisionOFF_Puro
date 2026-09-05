@@ -198,5 +198,74 @@ class PurezaTests(unittest.TestCase):
         self.assertEqual(set(), nomes & {"PyQt6", "tkinter"})
 
 
+class ColunaQueEncolheTests(unittest.TestCase):
+    """A leitura recupera o piso quando a coluna encolhe (S-552, quinta rodada).
+
+    **O achado do crítico, com os números dele.** "Só empurra para a direita" é uma promessa sobre
+    pixel de tabuleiro, e ela estava guardada em **fração** -- que é a mesma coisa só enquanto a
+    largura não muda. Encolhida a janela, o `QSplitter` reparte em proporção antes de a régua
+    rodar, a fração de uma coluna larga chega intacta a uma estreita, e ali ela compra mais
+    tabuleiro do que a estreita tem para vender: medido na janela de verdade, 1400 -> 1600 -> 1400
+    deixava a coluna de leitura em **183 px** (190 a 1920, vindo de 2120) e ela estacionava.
+
+    Um degrau, não um acúmulo, e igual em `96ec6bb`: nunca foi regressão de rodada nenhuma, era o
+    preço não declarado da promessa guardada na moeda errada.
+    """
+
+    MINIMO = 240
+    LARGA = 800
+    ESTREITA = 697
+    """Os dois lados do ciclo, em largura de **coluna** e não de janela: 697 px é o que a aba
+    Estudo tem numa janela de 1400, e 800 é o que ela tem numa de 1600."""
+
+    def fracao(self, largura: int, atual: float, anterior: int = 0) -> float:
+        return sala_declarada.fracao_para_o_tabuleiro(
+            largura, 671, minimo=self.MINIMO, alca=6, fracao_atual=atual, largura_anterior=anterior
+        )
+
+    def test_o_ciclo_de_crescer_e_encolher_devolve_o_piso_a_leitura(self) -> None:
+        """**A guarda do achado**, na moeda em que ele foi medido: pixel de coluna de leitura."""
+        larga = self.fracao(self.LARGA, 494 / self.ESTREITA, anterior=self.ESTREITA)
+        leitura_larga = self.LARGA - int(self.LARGA * larga)
+        self.assertGreaterEqual(leitura_larga, sala_declarada.LARGURA_MINIMA_DA_LEITURA)
+
+        volta = self.fracao(self.ESTREITA, larga, anterior=self.LARGA)
+        leitura = self.ESTREITA - int(self.ESTREITA * volta)
+        self.assertGreaterEqual(
+            leitura,
+            sala_declarada.LARGURA_MINIMA_DA_LEITURA,
+            "a fração da coluna larga comprou tabuleiro que a estreita não tem",
+        )
+
+    def test_encolhendo_o_teto_e_o_piso_da_leitura_e_nada_mais(self) -> None:
+        """O grampo é **só** o piso da leitura naquela largura: ele não move a alça para trás de
+        onde a régua a poria, e no aperto ele cede junto com `piso_da_leitura`."""
+        for largura in (400, 500, 697, 900, 1200):
+            with self.subTest(largura=largura):
+                piso = sala_declarada.piso_da_leitura(largura, minimo=self.MINIMO, alca=6)
+                fracao = self.fracao(largura, 0.99, anterior=largura + 200)
+                self.assertLessEqual(int(largura * fracao), largura - piso)
+
+    def test_crescendo_a_regua_continua_so_empurrando_para_a_direita(self) -> None:
+        """**Nenhum número da S-551 se mexe.** A 1400x950 recém-aberta a leitura continua com os
+        203 px que os pesos do `QSplitter` já davam: ali a coluna não está encolhendo, e não há
+        promessa de encolher o tabuleiro numa janela que não encolheu."""
+        atual = 494 / self.ESTREITA
+        for anterior in (0, self.ESTREITA, 500):
+            with self.subTest(largura_anterior=anterior):
+                self.assertEqual(atual, self.fracao(self.ESTREITA, atual, anterior=anterior))
+
+    def test_sem_largura_anterior_nada_e_encolhimento(self) -> None:
+        """`0` é "não sei qual era a largura de antes" -- o primeiro desenho --, e o padrão do
+        argumento é ele: quem não passa nada tem a régua de sempre."""
+        atual = 494 / self.ESTREITA
+        self.assertEqual(
+            sala_declarada.fracao_para_o_tabuleiro(
+                self.ESTREITA, 671, minimo=self.MINIMO, alca=6, fracao_atual=atual
+            ),
+            self.fracao(self.ESTREITA, atual, anterior=0),
+        )
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

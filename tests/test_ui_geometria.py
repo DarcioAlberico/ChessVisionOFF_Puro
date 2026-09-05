@@ -146,16 +146,54 @@ class GeometriaLembradaTests(unittest.TestCase):
         px mais larga que o monitor --, que é exatamente o "cabe em parte" nomeado no docstring da
         função: baixar a resolução, ou desdocar o notebook sem mudar a janela de lugar.
 
-        O grampo é só para baixo e a posição é preservada: a janela não é movida por caber.
+        O grampo é só para baixo, e desde a quinta rodada a janela que ele encolheu é **empurrada
+        para dentro**: os dois primeiros casos já estavam no canto e não se mexem, e o terceiro
+        perde os 40 px de `x` porque na largura grampeada eles ficariam fora -- ver
+        `test_a_janela_grampeada_nao_fica_com_meia_janela_fora_da_tela`.
         """
         for tela, guardada, esperada in (
             ((0, 0, 1024, 768), "1920x1080+0+0", "1024x768+0+0"),
             ((0, 0, 1366, 768), "1920x1080+0+0", "1366x768+0+0"),
-            ((0, 0, 1280, 1024), "1400x950+40+30", "1280x950+40+30"),
+            ((0, 0, 1280, 1024), "1400x950+40+30", "1280x950+0+30"),
             ((0, 0, 1024, 768), "800x600+100+50", "800x600+100+50"),
         ):
             with self.subTest(tela=tela, guardada=guardada):
                 self.assertEqual(esperada, geometria.geometria_a_aplicar(guardada, (tela,)))
+
+    def test_a_janela_grampeada_nao_fica_com_meia_janela_fora_da_tela(self) -> None:
+        """**O achado da quinta rodada**: o grampo encolhia e não reposicionava.
+
+        `geometria_a_aplicar('1920x1080-500+0', [(0, 0, 1024, 768)])` devolvia `1024x768-500+0` --
+        do tamanho exato da tela, com 500 px dela fora dela, e `visivel_em` aprovando porque os 524
+        px restantes bastam. O empurrão é o menor que põe a janela inteira dentro, e **o eixo que
+        não foi grampeado guarda a posição**: no segundo caso só a altura estoura e `x` fica nos 40;
+        no terceiro só a largura, e `y` fica nos 50. Grampeado, um eixo passa a ter a medida exata
+        da tela e não sobra onde pôr a janela senão no canto -- é o primeiro caso.
+        """
+        for tela, guardada, esperada in (
+            ((0, 0, 1024, 768), "1920x1080-500+0", "1024x768+0+0"),
+            ((0, 0, 1600, 1200), "1400x1400+40+30", "1400x1200+40+0"),
+            ((0, 0, 1024, 768), "1400x700+900+50", "1024x700+0+50"),
+        ):
+            with self.subTest(guardada=guardada):
+                alvo = geometria.geometria_a_aplicar(guardada, (tela,))
+                self.assertEqual(esperada, alvo)
+                lida = geometria.geometria_de_texto(alvo or "")
+                assert lida is not None
+                x0, y0, x1, y1 = lida.retangulo
+                self.assertTrue(
+                    tela[0] <= x0 and tela[1] <= y0 and x1 <= tela[2] and y1 <= tela[3],
+                    f"{alvo} ainda cruza a borda de {tela}",
+                )
+
+    def test_a_janela_que_coube_nao_e_empurrada(self) -> None:
+        """O empurrão é **só** da que o grampo encolheu, e é o que o separa de desfazer arranjo.
+
+        Uma janela que cabe e que alguém deixou com uma borda para fora continua onde estava --
+        é a decisão de `VISIVEL_MINIMO`, e ela não mudou nesta rodada.
+        """
+        self.assertEqual("900x700-200+40", geometria.geometria_a_aplicar("900x700-200+40", ((0, 0, 1920, 1080),)))
+        self.assertEqual("900x700+1800+40", geometria.geometria_a_aplicar("900x700+1800+40", ((0, 0, 1920, 1080),)))
 
     def test_a_janela_deitada_sobre_dois_monitores_nao_e_encolhida(self) -> None:
         """O grampo é contra a **área de trabalho inteira**, e não contra um monitor: encolher ao
@@ -163,7 +201,7 @@ class GeometriaLembradaTests(unittest.TestCase):
         dois = ((0, 0, 1920, 1080), (1920, 0, 3840, 1080))
         self.assertEqual("2400x1000+700+40", geometria.geometria_a_aplicar("2400x1000+700+40", dois))
         self.assertEqual(
-            "1920x1000+700+40",
+            "1920x1000+0+40",
             geometria.geometria_a_aplicar("2400x1000+700+40", dois[:1]),
             "desligado o segundo monitor, a janela passa a ter de caber no que sobrou",
         )

@@ -252,17 +252,40 @@ class PisoDaJanelaTests(unittest.TestCase):
 
         **O número de tela não pode ser afirmado aqui**, e é a mesma ressalva do resto do arquivo:
         sob `offscreen` não há a fonte da interface e todo widget de texto mede mais -- a janela
-        responde 1314 px de mínimo neste teste e **955** na janela de verdade, que é onde a
-        medição do item foi feita (`probe_1024.py`, com o `windows11` e as fontes do sistema:
-        pedida 1024x768 -> **1024x768**, piso 955x553, divisor [500, 519], as seis abas
-        desenhando). O que se afirma aqui é que **nada além do que o layout pede** segura a
-        janela, e que os dois pisos que chegam aos widgets são os declarados -- o teste acima é o
-        que cobra que eles caibam em 1024.
+        responde **955** na de verdade, que é onde a medição do item foi feita (`probe_1024.py`,
+        com o `windows11` e as fontes do sistema: pedida 1024x768 -> **1024x768**, piso 955x553,
+        divisor [500, 519], as seis abas desenhando). O que se afirma aqui é que **nada além do
+        que o layout pede** segura a janela, e que os dois pisos que chegam aos widgets são os
+        declarados -- o teste acima é o que cobra que eles caibam em 1024.
+
+        **A resposta é `max(pedida, piso)` e não o piso cravado, e a mudança é da quinta rodada.**
+        Este teste afirmava `piso == largura`, o que só é verdade quando o piso passa de 1024 --
+        e sob `offscreen` ele passa **ou não**, conforme a fila de botões do painel de PDF já ter
+        refluído: o `minimumSizeHint` dela responde 810 px antes do primeiro refluxo e 172 depois,
+        e isso muda com o que rodou antes neste processo. Rodando o arquivo sozinho o piso dava
+        1314; na suíte inteira, 1000.
+
+        **E ele passava, na suíte inteira, por causa do defeito que a quinta rodada tirou.** Com a
+        frase do rodapé exigindo a largura do texto, o piso da janela naquele instante era 1057 --
+        acima de 1024 --, a janela era grampeada nele, e a igualdade fechava. Removida a exigência,
+        o piso caiu para os 1000 do divisor, a janela passou a **receber os 1024 que pediu**, e a
+        igualdade quebrou com `1000 != 1024`: era uma guarda verde porque a mensagem estava
+        segurando a janela. A afirmação de agora vale nos dois regimes e continua dizendo o mesmo:
+        nada além do layout a segura.
         """
         self.janela.resize(*TELA_MINIMA)
         self.app.processEvents()
         self.assertEqual(TELA_MINIMA[1], self.janela.height(), "a altura pedida foi recusada")
-        self.assertEqual(self.janela.minimumSizeHint().width(), self.janela.width())
+        piso = self.janela.minimumSizeHint().width()
+        self.assertEqual(
+            max(TELA_MINIMA[0], piso),
+            self.janela.width(),
+            f"a janela ficou em {self.janela.width()} px com o layout pedindo {piso} e a tela mínima "
+            f"{TELA_MINIMA[0]} -- alguma coisa fora do layout a está segurando "
+            f"(rodapé {self.janela.rodape.minimumSizeHint().width()}, "
+            f"divisor {self.janela.divisor.minimumSizeHint().width()}, "
+            f"cromo {self.janela.cromo.minimumSizeHint().width()})",
+        )
         self.assertEqual(qt_janela.LARGURA_MINIMA_DAS_ABAS, self.janela.abas.minimumWidth())
         self.assertEqual(qt_janela.LARGURA_MINIMA_DO_VISOR, self.janela.pdf.minimumWidth())
 
@@ -695,6 +718,243 @@ class SalaA1024ComMotorTests(unittest.TestCase):
             + self.sala.vantagem.sizeHint().width()
             + faixa.spacing(),
         )
+
+
+class RodapeNaoEPisoDeJanelaTests(unittest.TestCase):
+    """A frase do rodapé deixou de segurar a janela (S-552, quinta rodada).
+
+    **O bloqueio, medido na janela de verdade a 1024x768.** `RodapeDaJanela._lbl_mensagem` era um
+    `QLabel` sem quebra de linha, e o mínimo de um rótulo assim é a largura do texto inteiro. Ele
+    subia pelo leiaute do rodapé e virava piso da janela: com frases de 120, 200, 300, 600 e 2000
+    caracteres o piso ia a **1057, 1457, 1957, 3457 e 10457 px**, e `resize(1024, 768)` era recusado
+    até chegar uma frase menor.
+
+    E o caminho é o do produto: o erro de modelo ausente tem cerca de 600 caracteres e é escrito
+    por `_falhou` -> `_dizer`. No percurso de ponta a ponta do crítico ele pôs a janela em **2906
+    px** -- a mensagem que ensina a consertar o modelo tornava a janela maior que a tela e a si
+    mesma ilegível.
+
+    **Nas três peles**, porque o que muda entre elas é a fonte, e era a fonte que multiplicava.
+    """
+
+    FRASES = (120, 600, 2000)
+    """Os três tamanhos do critério. 120 é a menor frase que já estourava 1024; 2000 é absurda de
+    propósito -- se o piso não se mexer com ela, ele não depende mais do texto."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.raiz = pasta_temporaria(self)
+        padrao = pele.PELES[0]
+        self.addCleanup(
+            lambda: tema.aplicar_tema(
+                self.app, cromo_escuro=padrao.cromo_escuro, densidade=padrao.densidade
+            )
+        )
+
+    def janela_na(self, uma: object) -> object:
+        tema.aplicar_tema(
+            self.app,
+            cromo_escuro=uma.cromo_escuro,  # type: ignore[attr-defined]
+            densidade=uma.densidade,  # type: ignore[attr-defined]
+        )
+        self.app.processEvents()
+        casa = self.raiz / str(uma.nome)  # type: ignore[attr-defined]
+        janela = qt_janela.JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=casa / "rotulos.csv",
+            pasta_de_estudos=casa / "estudos",
+            pasta_da_galeria=casa / "galeria",
+            caminho_do_estado=casa / "estado.json",
+            motor=None,
+        )
+        janela.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.addCleanup(descartar, janela)
+        janela.resize(*TELA_MINIMA)
+        janela.show()
+        self.app.processEvents()
+        return janela
+
+    @staticmethod
+    def frase_de(tamanho: int) -> str:
+        """Uma frase de erro do tamanho pedido, com o começo que o produto de fato escreve."""
+        comeco = "Não foi possível carregar o modelo de peças: "
+        return (comeco + "detalhe " * tamanho)[:tamanho]
+
+    def test_o_piso_da_janela_nao_muda_com_o_tamanho_da_frase(self) -> None:
+        """**O bloqueio.** O piso é lido antes e depois de cada frase, e tem de ser o mesmo número.
+
+        Comparado consigo mesmo e não com um valor cravado: sob `offscreen` não há a fonte da
+        interface e o piso é outro -- 1314 px, contra 955 na janela de verdade. O que o defeito
+        fazia era **variar**, e é a variação que se afirma aqui.
+        """
+        for uma in pele.PELES:
+            with self.subTest(pele=uma.nome):
+                janela = self.janela_na(uma)
+                piso = janela.minimumSizeHint().width()  # type: ignore[attr-defined]
+                for tamanho in self.FRASES:
+                    janela._dizer(self.frase_de(tamanho))  # type: ignore[attr-defined]
+                    self.app.processEvents()
+                    self.assertEqual(
+                        piso,
+                        janela.minimumSizeHint().width(),  # type: ignore[attr-defined]
+                        f"uma frase de {tamanho} caracteres mexeu no piso da janela",
+                    )
+
+    def test_a_janela_com_a_frase_de_erro_aceita_o_tamanho_pedido(self) -> None:
+        """O outro lado do mesmo defeito: o piso subia, e com ele a janela **crescia sozinha**.
+
+        A régua é a largura que a janela aceita sem a frase, e não 1024: offscreen o piso do layout
+        é maior que a tela mínima (ver o teste acima). O que se afirma é que a frase não acrescenta
+        um pixel a ele.
+        """
+        janela = self.janela_na(pele.PELES[0])
+        janela.resize(*TELA_MINIMA)  # type: ignore[attr-defined]
+        self.app.processEvents()
+        sem_frase = janela.width()  # type: ignore[attr-defined]
+        janela._dizer(self.frase_de(2000))  # type: ignore[attr-defined]
+        self.app.processEvents()
+        janela.resize(*TELA_MINIMA)  # type: ignore[attr-defined]
+        self.app.processEvents()
+        self.assertEqual(sem_frase, janela.width(), "a frase longa recusou o tamanho pedido")  # type: ignore[attr-defined]
+
+    def test_a_frase_elidida_guarda_o_comeco_e_a_dica_traz_o_texto_inteiro(self) -> None:
+        """**O começo é o que importa numa frase de erro**: é dele que sai a severidade, e é ele
+        que diz o que falhou. O resto não some -- vai para a dica."""
+        janela = self.janela_na(pele.PELES[0])
+        frase = self.frase_de(600)
+        janela._dizer(frase)  # type: ignore[attr-defined]
+        self.app.processEvents()
+        zona = janela.rodape._lbl_mensagem  # type: ignore[attr-defined]
+        self.assertEqual(frase, janela.rodape.mensagem(), "o rodapé esqueceu a frase inteira")  # type: ignore[attr-defined]
+        self.assertEqual(frase, zona.toolTip(), "a dica não traz o texto inteiro")
+        self.assertNotEqual(frase, zona.text(), "a frase de 600 caracteres coube sem elidir?")
+        self.assertTrue(
+            frase.startswith(zona.text().rstrip("\u2026")),
+            f"a elisão comeu o começo da frase: {zona.text()!r}",
+        )
+
+
+class ReparticaoAoRedimensionarTests(unittest.TestCase):
+    """A repartição preferida vale ao redimensionar, e não só ao abrir (S-552, quinta rodada).
+
+    **O achado.** O `QSplitter` reparte o crescimento em proporção. Uma janela levada de 1024 a
+    1366 saía de `[526, 493]` para `[702, 659]` -- a aba com 696 px, o viewport da Galeria com 684,
+    abaixo dos 702 de `LARGURA_MINIMA_DA_GALERIA` --, e a aba empilhava em toda tela de notebook.
+    Aberta direto em 1366 a mesma janela dá 720 à aba e 702 ao viewport. Subindo pela faixa, a
+    virada das duas colunas caía em **1504** em vez dos 1245 que a spec declara.
+
+    **A régua é a função pura**, e não um número de tela: `divisor_da_primeira_abertura` responde o
+    que os dois lados preferem naquela largura, e é exatamente o que a janela teria feito se
+    tivesse nascido ali. Offscreen as duas contas batem porque é a mesma função dos dois lados.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        raiz = pasta_temporaria(self)
+        self.janela = qt_janela.JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=raiz / "rotulos.csv",
+            pasta_de_estudos=raiz / "estudos",
+            pasta_da_galeria=raiz / "galeria",
+            caminho_do_estado=raiz / "estado.json",
+            motor=None,
+        )
+        self.janela.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.addCleanup(descartar, self.janela)
+        self.janela.resize(1400, 950)
+        self.janela.show()
+        self.app.processEvents()
+
+    def montar(self, largura: int) -> object:
+        """Uma janela **nascida** naquela largura -- a referência de que arranjo é o certo."""
+        raiz = pasta_temporaria(self)
+        outra = qt_janela.JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=raiz / "rotulos.csv",
+            pasta_de_estudos=raiz / "estudos",
+            pasta_da_galeria=raiz / "galeria",
+            caminho_do_estado=raiz / "estado.json",
+            motor=None,
+        )
+        outra.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.addCleanup(descartar, outra)
+        outra.resize(largura, 950)
+        outra.show()
+        self.app.processEvents()
+        return outra
+
+    def preferida(self) -> int:
+        return geometria.divisor_da_primeira_abertura(
+            sum(self.janela.divisor.sizes()),
+            preferida_esquerda=qt_janela.LARGURA_PREFERIDA_DAS_ABAS,
+            preferida_direita=qt_janela.LARGURA_PREFERIDA_DO_VISOR,
+        )
+
+    def test_a_janela_redimensionada_reparte_como_a_recem_aberta(self) -> None:
+        """**A afirmação é a igualdade entre as duas janelas**, e não um número.
+
+        A régua é uma segunda janela **nascida** naquela largura: era exatamente essa a diferença
+        que o crítico mediu, e é o que um número cravado não pega. Sob `offscreen` o lado do livro
+        pede 810 px de mínimo e o `QSplitter` grampeia o preferido em quase toda largura -- afirmar
+        `divisor_da_primeira_abertura` diretamente mediria a função pura, que já tem teste próprio,
+        em vez do arranjo que chega à tela.
+        """
+        for largura in (1024, 1366, 1280, 1920, 1400, 1024, 1366):
+            with self.subTest(largura=largura):
+                self.janela.resize(largura, 950)
+                self.app.processEvents()
+                self.assertEqual(
+                    self.montar(largura).divisor.sizes(),  # type: ignore[attr-defined]
+                    self.janela.divisor.sizes(),
+                    "o divisor manteve a proporção em vez de reaplicar o preferido",
+                )
+
+    def test_a_alca_arrastada_desliga_a_reaplicacao(self) -> None:
+        """**Reaplicar não pode sobrescrever escolha**, e é o que separa esta correção de um defeito.
+
+        `splitterMoved` só sai do gesto do mouse -- `setSizes` não o emite --, e é por ele que a
+        janela sabe que a repartição passou a ser de alguém.
+        """
+        largura = sum(self.janela.divisor.sizes())
+        escolhida = int(largura * 0.30)
+        self.janela.divisor.setSizes([escolhida, largura - escolhida])
+        self.janela.divisor.splitterMoved.emit(escolhida, 1)
+        self.app.processEvents()
+        antes = self.janela.divisor.sizes()[0]
+        self.janela.resize(1800, 950)
+        self.app.processEvents()
+        self.assertNotEqual(
+            self.preferida(), self.janela.divisor.sizes()[0], "a janela desfez o arrasto de alguém"
+        )
+        proporcao = self.janela.divisor.sizes()[0] / sum(self.janela.divisor.sizes())
+        self.assertAlmostEqual(antes / largura, proporcao, places=1)
+
+    def test_a_fracao_guardada_no_disco_tambem_desliga(self) -> None:
+        """Uma fração que a sessão anterior gravou é escolha, e passa como veio (S-156)."""
+        self.janela._estado.sash_fraction = 0.25
+        self.janela._divisor_de_fabrica = False
+        self.janela.resize(1600, 950)
+        self.app.processEvents()
+        self.assertNotEqual(self.preferida(), self.janela.divisor.sizes()[0])
+
+    def test_a_fracao_de_fabrica_nao_e_gravada(self) -> None:
+        """**Gravá-la transformava a repartição de fábrica na decisão de alguém.**
+
+        Fechada a 1400 e reaberta a 1366, a sessão seguinte aplicava 0,516 -- a fração da largura
+        em que a anterior por acaso fechou -- e a aba ficava com 702 px em vez dos 720 preferidos.
+        É a mesma família do defeito da S-322: escrever por cima do disco o que ninguém escolheu.
+        """
+        self.janela._anotar_arranjo()
+        self.assertEqual(0.0, self.janela._estado.sash_fraction)
+        largura = sum(self.janela.divisor.sizes())
+        self.janela.divisor.setSizes([int(largura * 0.3), largura - int(largura * 0.3)])
+        self.janela.divisor.splitterMoved.emit(int(largura * 0.3), 1)
+        self.app.processEvents()
+        # Lida da tela e não cravada: os dois lados têm piso e o `QSplitter` grampeia o que se pede
+        # a eles -- cravar 0,3 mediria o grampo. Ver `test_o_divisor_arrastado_volta_no_lugar`.
+        arrastada = geometria.fracao_de_divisor(self.janela.divisor.sizes()[0], largura)
+        self.janela._anotar_arranjo()
+        self.assertAlmostEqual(arrastada, self.janela._estado.sash_fraction, places=2)
 
 
 if __name__ == "__main__":  # pragma: no cover

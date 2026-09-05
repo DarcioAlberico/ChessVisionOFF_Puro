@@ -259,17 +259,40 @@ def geometria_corrigida(
     sobre dois monitores é arranjo legítimo, e encolhê-la ao maior deles desfaria a escolha de
     alguém. Grampeada, ela pode ter deixado de aparecer -- é o caso da janela que só cruzava a
     tela pela borda direita --, e aí ela cai no reposicionamento de baixo como qualquer outra.
+
+    **E a encolhida é empurrada para dentro, que é a quinta rodada da S-552.** O grampo mexia no
+    tamanho e deixava a posição: `geometria_a_aplicar('1920x1080-500+0', [(0, 0, 1024, 768)])`
+    devolvia **`1024x768-500+0`** -- do tamanho exato da tela, e com 500 px dela fora dela. O
+    empurrão é o menor que põe a janela inteira na área de trabalho, e o eixo que já estava dentro
+    não se mexe. Ele vale **só para a que o grampo encolheu**: a janela que coube passa como veio,
+    borda de fora inclusive, porque ali a posição ainda é o arranjo de alguém.
     """
     if not monitores:
         return geometria
-    largura_util = max(monitor[2] for monitor in monitores) - min(monitor[0] for monitor in monitores)
-    altura_util = max(monitor[3] for monitor in monitores) - min(monitor[1] for monitor in monitores)
-    cabivel = Geometria(
-        min(geometria.largura, max(1, largura_util)),
-        min(geometria.altura, max(1, altura_util)),
-        geometria.x,
-        geometria.y,
-    )
+    x0 = min(monitor[0] for monitor in monitores)
+    y0 = min(monitor[1] for monitor in monitores)
+    x1 = max(monitor[2] for monitor in monitores)
+    y1 = max(monitor[3] for monitor in monitores)
+    largura = min(geometria.largura, max(1, x1 - x0))
+    altura = min(geometria.altura, max(1, y1 - y0))
+    if (largura, altura) == (geometria.largura, geometria.altura):
+        cabivel = geometria
+    else:
+        # **Encolhida, ela é empurrada para dentro** (S-552, quinta rodada). O grampo mexia no
+        # tamanho e não na posição, e `'1920x1080-500+0'` numa tela de 1024 virava
+        # `'1024x768-500+0'`: uma janela do tamanho exato da tela, com 500 px dela fora. `visivel_em`
+        # aprovava -- sobravam 524 px dentro --, e o que a pessoa via era metade da janela.
+        #
+        # **Só a encolhida**, e é o que separa isto de desfazer arranjo: uma janela que **coube** e
+        # que alguém deixou com uma borda para fora continua onde estava (ver `VISIVEL_MINIMO`). A
+        # que o grampo mudou de tamanho já não está mais no arranjo de ninguém, e o eixo que não
+        # cruza borda nenhuma nem se mexe -- o empurrão é o menor que põe a janela inteira dentro.
+        cabivel = Geometria(
+            largura,
+            altura,
+            min(max(geometria.x, x0), max(x0, x1 - largura)),
+            min(max(geometria.y, y0), max(y0, y1 - altura)),
+        )
     if visivel_em(cabivel, monitores, minimo=minimo):
         return cabivel
 

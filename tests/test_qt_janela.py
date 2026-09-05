@@ -406,7 +406,9 @@ class FiacaoTests(unittest.TestCase):
 
         janela = self.janela()
         janela.devolver_caixas()
-        self.assertEqual(janela.rodape._lbl_mensagem.text(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
+        # `mensagem()` e nao `_lbl_mensagem.text()`: desde a quinta rodada da S-552 o que esta na
+        # tela pode estar elidido, e comparar com a tela mediria a largura do rodape.
+        self.assertEqual(janela.rodape.mensagem(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
 
     def _varrido(self, *paginas: int) -> None:
         """Deixa o livro com um índice de galeria já varrido, um diagrama por página."""
@@ -992,6 +994,12 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         padrao = _fracao(primeira)
         largura = sum(primeira.divisor.sizes())
         primeira.divisor.setSizes([int(largura * 0.6), largura - int(largura * 0.6)])
+        # **O sinal vai junto, e desde a quinta rodada ele e a metade que importa** (S-552):
+        # `setSizes` nao emite `splitterMoved` -- so o gesto do mouse emite --, e e por esse sinal
+        # que a janela distingue "alguem escolheu" de "o programa repartiu". Sem ele, o que este
+        # teste simula nao e um arrasto: e a janela repartindo sozinha, que e o caso em que a
+        # fracao **nao** e gravada.
+        primeira.divisor.splitterMoved.emit(int(largura * 0.6), 1)
         self.app.processEvents()
         arrastado = _fracao(primeira)
         self.assertNotAlmostEqual(padrao, arrastado, places=2, msg="o arrasto nao moveu nada")

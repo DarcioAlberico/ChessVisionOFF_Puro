@@ -198,6 +198,7 @@ def fracao_para_o_tabuleiro(
     esteira: int = 0,
     alca: int = ALCA_DO_DIVISOR,
     minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
+    largura_anterior: int = 0,
 ) -> float:
     """Onde pôr a alça do divisor para o tabuleiro ter aquele lado. Pura (S-551).
 
@@ -212,6 +213,21 @@ def fracao_para_o_tabuleiro(
     avaliação mora na coluna esquerda, e a fração que a ignorasse poria a alça 37 px cedo demais.
     O teto continua sendo `piso_da_leitura` -- a alça nunca passa dele --, e é o que impede a
     correção de trocar o tabuleiro cortado por uma coluna de leitura de zero pixel.
+
+    **`largura_anterior` é o que desfaz o degrau da quinta rodada da S-552.** "Só empurra para a
+    direita" é uma promessa sobre **pixel de tabuleiro**, e ela era guardada em **fração** -- que é
+    a mesma coisa só enquanto a largura não muda. Encolhida a janela, o `QSplitter` reparte em
+    proporção antes de esta régua rodar, a fração de uma coluna larga chega intacta a uma estreita,
+    e ela compra ali mais tabuleiro do que a estreita tem para vender: medido na janela de verdade,
+    1400 -> 1600 -> 1400 deixava a coluna de leitura em **183 px** (190 a 1920, vindo de 2120), e ela
+    estacionava ali. Um degrau, não um acúmulo -- e igual em `96ec6bb`, então nunca foi regressão de
+    rodada nenhuma; era o preço, não declarado, de a promessa estar guardada na moeda errada.
+
+    Quando a coluna **encolhe**, o piso da leitura volta a ser teto: não há promessa de não
+    encolher o tabuleiro numa janela que está encolhendo tudo. Crescendo, ou parada, a régua é a de
+    sempre, e por isso nenhum dos números medidos da S-551 se mexe -- a 1400x950 recém-aberta a
+    leitura continua com os 203 px que os pesos do `QSplitter` já davam. `0` é "não sei qual era a
+    largura de antes", que é o primeiro desenho, e ali nada é encolhimento.
     """
     if largura <= 0:
         return max(0.0, fracao_atual)
@@ -226,8 +242,12 @@ def fracao_para_o_tabuleiro(
     piso = piso_da_leitura(
         largura, minimo=minimo, esteira=esteira, alca=alca, minimo_da_leitura=minimo_da_leitura
     )
-    esquerda = min(int(largura) - piso, lado + int(esteira) + int(alca))
-    return max(fracao_atual, min(1.0, esquerda / largura))
+    teto = int(largura) - piso
+    esquerda = min(teto, lado + int(esteira) + int(alca))
+    guardada = max(fracao_atual, min(1.0, esquerda / largura))
+    if 0 < int(largura) < int(largura_anterior):
+        return min(guardada, max(0.0, teto / largura))
+    return guardada
 
 
 LADO_DO_RECORTE = 220

@@ -293,6 +293,12 @@ class JanelaPrincipal(QMainWindow):
         """A alça do divisor ainda espera a primeira aparição da janela. Ver `showEvent` -- é lá
         que `geometria.FRACAO_PADRAO_DO_DIVISOR` entra quando o disco não diz nada (S-156)."""
 
+        self._divisor_de_fabrica = not self._estado.sash_fraction
+        """A repartição na tela ainda é a preferida, e não a de alguém? Ver `resizeEvent` (S-552).
+
+        Nasce `False` quando o disco traz uma fração -- ela é escolha, e escolha acompanha a
+        largura sozinha, porque é fração e não pixel."""
+
         self._pdf: Path | None = None
         self._itens: list[RecognizedDiagram] = []
         self._salvos: dict[int, set[int]] = {}
@@ -512,6 +518,9 @@ class JanelaPrincipal(QMainWindow):
         # para 500, repeti-lo aqui encolheria a aba de trabalho -- o piso diz onde a janela
         # **para**, e não como ela abre. Quem arbitra os dois preferidos é `showEvent`.
         self.divisor.setSizes([LARGURA_PREFERIDA_DAS_ABAS, LARGURA_PREFERIDA_DO_VISOR])
+        # `splitterMoved` só sai do gesto do mouse: `setSizes` não o emite. É o que separa "a
+        # pessoa escolheu" de "o programa repartiu" -- ver `resizeEvent`.
+        self.divisor.splitterMoved.connect(self._alca_movida_a_mao)
 
         self.treino = ControladorDeTreino(self, pedido=self._pedido_de_treino, busy=self.busy)
         self.exportador = Exportador(
@@ -668,6 +677,44 @@ class JanelaPrincipal(QMainWindow):
             )
         self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
+    def _alca_movida_a_mao(self, _posicao: int, _indice: int) -> None:
+        """A partir daqui a repartição é de quem arrastou, e o `resizeEvent` não a toca mais."""
+        self._divisor_de_fabrica = False
+
+    def resizeEvent(self, a0: Any) -> None:  # noqa: N802 - assinatura do Qt
+        """Reaplica a repartição **preferida** enquanto ela ainda for a de fábrica (S-552, 5ª rodada).
+
+        **O que estava errado.** O `QSplitter` reparte o crescimento em proporção, e não pelo que
+        cada lado prefere: uma janela levada de 1024 a 1366 saía de `[526, 493]` para `[702, 659]`,
+        a aba ficava com 696 px e o viewport da Galeria com **684** -- abaixo dos 702 de
+        `galeria_declarada.LARGURA_MINIMA_DA_GALERIA` --, e a aba empilhava. Aberta direto em 1366
+        a mesma janela dá 720 à aba e 702 ao viewport, e as duas colunas ficam. O critério da S-552
+        dizia "duas colunas a 1280, 1366, 1400", e isso só era verdade para a janela **recém-aberta**:
+        arrastada pela faixa, a virada caía em 1504 em vez dos 1245 medidos.
+
+        **Reaplicar não é sobrescrever escolha nenhuma**, e é essa a distinção que o método
+        preserva. `divisor_da_primeira_abertura` responde o que os dois lados preferem *naquela*
+        largura, e é exatamente o que a janela teria feito se tivesse nascido ali. Assim que
+        alguém arrasta a alça (`splitterMoved`), ou o disco traz uma fração, `_divisor_de_fabrica`
+        cai para `False` e a proporção volta a ser de quem a escolheu -- que é a mesma regra que
+        `showEvent` já aplicava, agora valendo depois da primeira aparição também.
+
+        **Antes de a alça ser posicionada, não.** Entre a montagem e o `showEvent` o `QSplitter`
+        ainda tem a largura da montagem, e é a razão registrada lá: repartir ali é repartir uma
+        largura que não é a final.
+        """
+        super().resizeEvent(a0)
+        if self._divisor_por_posicionar or not self._divisor_de_fabrica:
+            return
+        largura = sum(self.divisor.sizes())
+        esquerda = geometria.divisor_da_primeira_abertura(
+            largura,
+            preferida_esquerda=LARGURA_PREFERIDA_DAS_ABAS,
+            preferida_direita=LARGURA_PREFERIDA_DO_VISOR,
+        )
+        if esquerda > 0:
+            self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
+
     def _indice_da_aba(self, nome: str) -> int | None:
         """Onde está a aba com aquele nome. `None` para a que não existe mais.
 
@@ -705,8 +752,14 @@ class JanelaPrincipal(QMainWindow):
         atual = normal if not normal.isEmpty() else self.geometry()
         texto = f"{atual.width()}x{atual.height()}{atual.x():+d}{atual.y():+d}"
         self._estado.window_geometry = geometria.geometria_gravavel(texto) or self._estado.window_geometry
+        # **E a fração só é gravada quando ela é escolha** (S-552, 5ª rodada). Gravá-la sempre
+        # transformava a repartição de fábrica numa decisão de alguém: a sessão seguinte lia a
+        # fração da largura em que a anterior por acaso fechou e a aplicava numa largura diferente
+        # -- fechada a 1400 e reaberta a 1366, a aba ficava com 702 px em vez dos 720 preferidos, o
+        # viewport com 684 e a Galeria empilhava. É a mesma família do defeito da S-322: escrever
+        # por cima do disco o que ninguém escolheu.
         tamanhos = self.divisor.sizes()
-        if len(tamanhos) >= 2 and sum(tamanhos) > 0:
+        if not self._divisor_de_fabrica and len(tamanhos) >= 2 and sum(tamanhos) > 0:
             self._estado.sash_fraction = geometria.fracao_de_divisor(tamanhos[0], sum(tamanhos))
 
     def _gravar_estado(self) -> None:

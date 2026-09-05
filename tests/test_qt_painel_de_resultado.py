@@ -174,6 +174,36 @@ class FenTests(PainelTests):
         self.painel._tabuleiro_mudou(corrigida)
         self.assertIn(corrigida, self.painel.campo_fen.text())
 
+    def test_a_fen_reescrita_pelo_tabuleiro_mostra_o_comeco(self) -> None:
+        """A mesma guarda da sala (S-552, quinta rodada): `setText` põe o cursor no fim e o campo
+        estreito rola até lá, mostrando o meio da FEN como se fosse a posição inteira.
+
+        **O painel é mostrado, e sem isso a guarda é vácua**: um `QLineEdit` que nunca foi criado
+        não rola, então `cursorPositionAt` responde 0 com o defeito de pé. É a mesma armadilha de
+        `tests/qt_app.py` -- medir o silêncio do Qt em vez do comportamento.
+        """
+        from PyQt6.QtCore import QPoint, Qt
+
+        self.painel.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.painel.resize(600, 500)
+        self.painel.show()
+        self.app.processEvents()
+        self.carregar(LEGAL)
+        self.painel.campo_fen.setFixedWidth(90)
+        self.app.processEvents()
+        self.painel._tabuleiro_mudou(board_edit.set_piece(LEGAL, 27, "Q"))
+        self.app.processEvents()
+        # **O desenho é onde o `QLineEdit` resolve o deslocamento horizontal.** Sem pintar, o
+        # `hscroll` dele fica em zero e a guarda passa com o defeito de pé -- de novo o silêncio
+        # do Qt no lugar do comportamento.
+        self.painel.campo_fen.grab()
+        meio = self.painel.campo_fen.height() // 2
+        self.assertEqual(
+            0,
+            self.painel.campo_fen.cursorPositionAt(QPoint(1, meio)),
+            "o campo rolou para a direita e o começo da FEN saiu da tela",
+        )
+
     def test_a_tecla_de_aplicar_e_a_da_tabela(self) -> None:
         """`Ctrl+Enter` é declarada no próprio campo, que é o mecanismo da S-117: quem declara
         a sequência fica com ela, e a guarda de foco cede."""

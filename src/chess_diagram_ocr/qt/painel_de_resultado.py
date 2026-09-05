@@ -1002,6 +1002,9 @@ class PainelDeResultado(QWidget):
         self.legalidade.setText(explicacao.summary())
         self.material.setText(explicacao.material_line())
         self.campo_fen.setText(compose_fen(corrigida, lado != "b"))
+        # O começo da FEN é o que se confere; `setText` deixaria o cursor no fim e a caixa
+        # estreita rolaria até lá. Mesma razão da sala de estudo (S-552, quinta rodada).
+        self.campo_fen.setCursorPosition(0)
         self.detalhes.setText(self._detalhes_do_item(item))
         self.seletor.setValue(indice + 1)
         for botao in self._lados.buttons():

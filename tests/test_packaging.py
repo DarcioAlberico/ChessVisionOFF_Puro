@@ -250,8 +250,20 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1956
+    LIMITE = 2009
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.956 → 2.009 na quinta rodada da S-552**, e as 53 são a repartição preferida deixando de
+    valer só na abertura. Trinta e duas são docstring: `resizeEvent` precisa registrar por que
+    reaplicar o preferido **não** sobrescreve escolha nenhuma (a alça arrastada e a fração do disco
+    desligam a regra), e `_anotar_arranjo` por que gravar uma fração que ninguém escolheu era a
+    mesma família do defeito da S-322. As outras vinte e uma são o atributo `_divisor_de_fabrica`,
+    o `connect` de `splitterMoved`, o slot de duas linhas que ele chama, o corpo do `resizeEvent` e
+    a condição acrescentada à gravação.
+
+    A decisão continua não estando aqui: quem responde "quanto o lado esquerdo prefere nesta
+    largura" é `geometria.divisor_da_primeira_abertura`, a mesma função pura que o `showEvent` já
+    chamava. O que a janela ganhou foi um segundo chamador dela e a memória de quem escolheu.
 
     **1.905 → 1.956 na segunda rodada da S-552**, e as 51 são a janela cabendo em 1024 px. Vinte e
     sete são docstring: os dois literais de piso passaram a ter um **par** de larguras preferidas
