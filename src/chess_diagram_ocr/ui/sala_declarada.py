@@ -241,6 +241,8 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "exportar_estudo_html": "exportar_estudo_html",
     "exportar_estudo_rtf": "exportar_estudo_rtf",
     "exportar_estudo_pdf": "exportar_estudo_pdf",
+    "exportar_estudo_epub": "exportar_estudo_epub",
+    "exportar_estudo_docx": "exportar_estudo_docx",
     "imprimir_estudo": "imprimir_estudo",
     "exportar_diagramas_lote": "exportar_diagramas_em_lote",
     "estudo_para_o_texto": "levar_para_o_texto",

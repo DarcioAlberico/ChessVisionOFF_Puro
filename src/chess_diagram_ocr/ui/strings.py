@@ -87,6 +87,12 @@ LADO_A_JOGAR = "Lado a jogar"
 "Lado a jogar" ganha porque é o nome do conceito no PGN (`SideToMove`) e porque "Vez" sozinho, num
 rodapé, não diz vez de quê."""
 
+COPIAR_FEN = "Copiar FEN"
+"""O rótulo do botão que põe a FEN na área de transferência.
+
+Aqui porque duas telas o dizem: o painel de Resultado copia a FEN **lida** e a sala copia a
+do estudo, e as duas escrevem a mesma coisa no botão -- que é o critério deste módulo."""
+
 MAPA_DE_INCERTEZA = "Mapa de incerteza"
 """Era "Heatmap de incerteza" -- metade em inglês, e a metade que nomeia a coisa."""
 

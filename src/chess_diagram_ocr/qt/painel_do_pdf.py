@@ -51,7 +51,7 @@ from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.qt.barra import BarraEmFila
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.visor import VisorDePagina
-from chess_diagram_ocr.ui import barra_do_pdf, comandos, espaco, formato
+from chess_diagram_ocr.ui import barra_do_pdf, comandos, espaco, formato, leitura_do_pdf
 from chess_diagram_ocr.ui.leitura_do_pdf import PASSO_DE_ZOOM, open_in_system_reader
 from chess_diagram_ocr.ui.page_overlay import PageBoxes
 from chess_diagram_ocr.ui.viewport import LADO_DO_DESLIZADOR, clamp_zoom, posicao_do_zoom, zoom_da_posicao
@@ -422,7 +422,13 @@ class PainelDoPdf(QWidget):
             logger.exception("Falha ao abrir %s.", pdf_path)
             preservado = self.source is not None and self.source != pdf_path
             resto = f"\n\n{self.name} continua aberto." if preservado else ""
-            QMessageBox.critical(self, "Abrir PDF", f"Falha ao abrir {pdf_path.name}:\n{exc}{resto}")
+            # **A frase é em pt-BR, e nomeia o arquivo** (S-528, segunda rodada): até aqui a caixa
+            # mostrava o texto cru da biblioteca -- `Failed to open file 'C:\\Users\\...'`, em
+            # inglês, com o caminho escapado e repetindo o nome que a primeira linha já dá. Quem
+            # traduz é `leitura_do_pdf.frase_de_abertura`, que é pura e é de `ui/`.
+            QMessageBox.critical(
+                self, "Abrir PDF", f"{leitura_do_pdf.frase_de_abertura(pdf_path.name, exc)}{resto}"
+            )
 
     # ------------------------------------------------------------------------------ páginas
 

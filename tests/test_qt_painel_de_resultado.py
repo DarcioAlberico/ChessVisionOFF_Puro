@@ -23,7 +23,7 @@ from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
 from chess_diagram_ocr.service import RecognizedDiagram
-from chess_diagram_ocr.ui import atalhos, board_edit, comandos
+from chess_diagram_ocr.ui import atalhos, barra_do_resultado, board_edit, comandos
 
 if TEM_PYQT:
     from chess_diagram_ocr.qt.painel_de_resultado import MENSAGEM_VAZIA, PainelDeResultado
@@ -278,26 +278,63 @@ class TecladoEBotoesTests(PainelTests):
                 self.assertIn(acao, atalhos.por_acao)
 
     def test_o_rotulo_dos_botoes_vem_do_catalogo(self) -> None:
-        """A fronteira da S-324: este painel não escreve texto de interface."""
-        for botao, acao in (
-            (self.painel.btn_salvar, "salvar"),
-            (self.painel.btn_salvar_todos, "salvar_todos"),
-            (self.painel.btn_desfazer, "desfazer"),
-            (self.painel.btn_refazer, "refazer"),
-            (self.painel.btn_limpar, "limpar_tabuleiro"),
-            (self.painel.btn_aplicar, "aplicar_fen"),
-        ):
-            with self.subTest(acao=acao):
-                self.assertEqual(botao.text(), comandos.rotulo_de_botao(acao))
+        """A fronteira da S-324: este painel não escreve texto de interface.
 
-    def test_a_barra_de_acoes_quebra_em_vez_de_cortar(self) -> None:
-        """Cinco botões numa coluna de 360 px não cabem numa linha, e o `QHBoxLayout` responderia
-        com uma largura mínima maior que o painel -- o divisor deixaria de poder ser arrastado."""
-        from chess_diagram_ocr.qt.barra import BarraFluida
+        **Dois rótulos por ação desde a fila** (S-528, terceira barra): o botão com texto mostra o
+        curto (`Salvar`) e o item do "Mais" mostra o longo (`Salvar a posição`), que é o do menu.
+        Quem escolhe é `com_texto` na tabela, e é essa escolha que se afirma aqui -- os dois textos
+        continuam vindo do catálogo, e nenhum deles é escrito neste painel.
+        """
+        for nome in ("salvar", "salvar_todos", "desfazer", "refazer", "limpar_tabuleiro", "aplicar_fen"):
+            registro = barra_do_resultado.acao(nome)
+            esperado = comandos.rotulo_de_botao(nome) if registro.com_texto else comandos.rotulo(nome)
+            with self.subTest(acao=nome):
+                self.assertEqual(esperado, self.painel.barra.acoes[nome].text())
 
-        barras = self.painel.findChildren(BarraFluida)
-        self.assertEqual(len(barras), 1)
-        self.assertGreater(barras[0].linhas_em(200), 1)
+    def test_a_S_233_fecha_e_os_tres_rotulos_curtos_existem(self) -> None:
+        """`ui/comandos.py` registrava que "Aplicar FEN", "Salvar posição reconhecida" e "Salvar
+        todos" eram comandos da janela cujos rótulos o painel escrevia **à mão** -- e por isso os
+        três não declaravam `rotulo_curto`, "que seria uma promessa que ninguém cumpre". Com a fila
+        quem os escreve é o catálogo, e a promessa passou a ter quem a cumpra."""
+        for nome in ("salvar", "salvar_todos", "aplicar_fen"):
+            with self.subTest(acao=nome):
+                curto = comandos.rotulo_de_botao(nome)
+                self.assertTrue(curto)
+                self.assertNotEqual(comandos.rotulo(nome), curto, "o rótulo curto não encurtou nada")
+
+    def test_a_fila_enfileira_em_vez_de_quebrar(self) -> None:
+        """**É o que mudou.** A `BarraFluida` da S-151 resolvia "esconder botão sem avisar"
+        empilhando fileiras: cinco botões de texto numa coluna de 360 px viravam três linhas, e a
+        aba que abre primeiro gastava isso em cromo. A fila resolve o mesmo sem gastar altura --
+        continua sendo **uma** linha em qualquer largura, e o que não cabe está no "Mais".
+
+        A propriedade afirmada é a da S-151, e ela não mudou: **nenhuma ação é descartada**.
+        """
+        for largura in (1200, 700, 494, 300, 160):
+            self.painel.barra.resize(largura, self.painel.barra.height())
+            self.app.processEvents()
+            with self.subTest(largura=largura):
+                self.assertEqual(1, self.painel.barra.linhas)
+                declaradas = {registro.acao for registro in barra_do_resultado.ACOES}
+                mostradas = set(self.painel.barra.na_fila()) | set(self.painel.barra.no_mais())
+                self.assertEqual(declaradas, mostradas, "uma ação sumiu da fila e do menu")
+
+    def test_o_mapa_de_incerteza_e_um_item_marcavel_do_mais(self) -> None:
+        """Preferência e não gesto: liga-se uma vez e esquece-se, e eram ~180 px permanentes de
+        `QCheckBox` com texto numa coluna de 494. É a régua de "marcar diagramas" no livro."""
+        self.assertIn(barra_do_resultado.MAPA_DE_INCERTEZA, self.painel.barra.no_mais())
+        self.assertTrue(self.painel.heatmap.isCheckable())
+        self.assertTrue(self.painel.heatmap.isChecked(), "a tinta de dúvida nasce ligada")
+        self.painel.heatmap.setChecked(False)
+        self.app.processEvents()
+        self.assertFalse(self.painel.tabuleiro._heatmap, "a tinta continuou ligada no tabuleiro")
+
+    def test_o_seletor_diz_de_quantos_e_anda_com_as_setas(self) -> None:
+        """Era um `QLabel` "Selecionado" e um campo sem total: para saber quantos diagramas a
+        página tinha era preciso contar a lista acima."""
+        self.carregar(LEGAL, OUTRA)
+        self.assertEqual(barra_do_resultado.sufixo_de_diagramas(2), self.painel.seletor.suffix())
+        self.assertIn(self.painel.seletor, self.painel.barra.findChildren(type(self.painel.seletor)))
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

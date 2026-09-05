@@ -9,6 +9,15 @@ motivo: um livro varrido traz posições que o modelo leu errado, e uma FEN com 
 página no meio de quinhentas não pode custar as outras 499. A falha entra no relatório com o nome
 que o arquivo teria e o motivo, e a varredura segue.
 
+**E o disco também não derruba o lote** (segunda rodada, 2026-09-05). Até aqui só a *falha de
+desenho* virava relatório: uma pasta em disco cheio, num pendrive tirado no meio, ou dentro de um
+caminho que não existe levantava `OSError` de dentro de `gravar_lote` -- e o crítico mediu o
+sintoma, um `FileNotFoundError` cru subindo pela thread com quinhentos diagramas já desenhados e
+nenhuma linha de relatório dizendo o que aconteceu. As duas falhas são a mesma pergunta para quem
+espera -- "o que saiu e o que não saiu?" --, e agora têm a mesma resposta. A pasta que não abre é
+falha do lote inteiro e aparece uma vez, com o caminho; o arquivo que não grava é falha daquele
+arquivo, e os outros seguem.
+
 **O cancelamento é conferido entre arquivos, e não dentro de um.** Um diagrama leva milissegundos
 para desenhar; conferir mais fino custaria mais que o desenho. É a mesma resposta da S-24 entre
 páginas, na escala deste trabalho.
@@ -19,6 +28,7 @@ um teste ou de um comando de linha.
 
 from __future__ import annotations
 
+import errno
 import logging
 import threading
 import time
@@ -33,7 +43,13 @@ from .ui.lote_de_diagramas import PNG, ItemDoLote, Opcoes, cores_da_pele, format
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["RelatorioDoLote", "bytes_do_item", "frase_do_relatorio", "gravar_lote"]
+__all__ = [
+    "RelatorioDoLote",
+    "bytes_do_item",
+    "frase_de_disco",
+    "frase_do_relatorio",
+    "gravar_lote",
+]
 
 Progresso = Callable[[int, int, str], None]
 """`(feitos, total, nome do arquivo)`. Chamado **depois** de cada gravação, na thread que grava."""
@@ -103,6 +119,28 @@ def bytes_do_item(item: ItemDoLote, opcoes: Opcoes) -> bytes:
     return texto.encode("utf-8")
 
 
+def frase_de_disco(erro: OSError) -> str:
+    """Por que o disco recusou, em pt-BR. Pura, e por isso afirmável sem um pendrive.
+
+    A régua é `errno` e não o texto: a mensagem do sistema vem no idioma do Windows de quem usa --
+    e em português ela já vem traduzida, o que faria uma busca por palavra em inglês passar num
+    computador e falhar no outro. `strerror` vai junto entre parênteses, como em `cli.message_for`:
+    a tradução é para quem lê, e o original é o que se pesquisa.
+    """
+    causas = {
+        errno.EACCES: "sem permissão para escrever nesta pasta",
+        errno.EPERM: "sem permissão para escrever nesta pasta",
+        errno.ENOENT: "o caminho não existe",
+        errno.ENOSPC: "não há espaço em disco",
+        errno.EROFS: "o disco é somente-leitura",
+        errno.ENOTDIR: "um dos nomes do caminho não é uma pasta",
+        errno.EEXIST: "já existe um arquivo com o nome de uma das pastas do caminho",
+    }
+    causa = causas.get(erro.errno or 0, "o sistema recusou a escrita")
+    detalhe = erro.strerror or type(erro).__name__
+    return f"{causa} ({detalhe})"
+
+
 def gravar_lote(
     itens: Sequence[ItemDoLote],
     opcoes: Opcoes,
@@ -111,20 +149,33 @@ def gravar_lote(
     cancelar: threading.Event | None = None,
     progresso: Progresso | None = None,
 ) -> RelatorioDoLote:
-    """Grava um arquivo por item em `pasta` e devolve o que aconteceu.
+    """Grava um arquivo por item em `pasta` e devolve o que aconteceu. **Nunca levanta por disco.**
 
     A pasta é criada se não existir -- `atomic_write_bytes` já o faz por arquivo, e fazê-lo uma vez
     aqui é o que permite a pasta vazia existir quando o lote inteiro falha.
+
+    Ver o cabeçalho para por que a falha de disco é relatório e não exceção.
     """
     comeco = time.perf_counter()
     destino = Path(pasta)
-    destino.mkdir(parents=True, exist_ok=True)
     nomes = nomes_do_lote(itens, opcoes.formato)
 
     gravados: list[Path] = []
     falhas: list[tuple[str, str]] = []
     bytes_totais = 0
     cancelado = False
+    try:
+        destino.mkdir(parents=True, exist_ok=True)
+    except OSError as erro:
+        # A pasta é uma falha só, e não uma por item: quinhentas linhas iguais num relatório
+        # escondem justamente a linha que diz o que houve.
+        logger.warning("A pasta de destino %s não abriu: %s", destino, erro)
+        return RelatorioDoLote(
+            pasta=destino,
+            falhas=((str(destino), frase_de_disco(erro)),),
+            segundos=time.perf_counter() - comeco,
+            total=len(itens),
+        )
     for feitos, (item, nome) in enumerate(zip(itens, nomes, strict=True), start=1):
         if cancelar is not None and cancelar.is_set():
             cancelado = True
@@ -136,7 +187,12 @@ def gravar_lote(
             logger.warning("O diagrama %s não desenhou: %s", nome, erro)
             falhas.append((nome, str(erro)))
             continue
-        atomic_write_bytes(arquivo, dados)
+        try:
+            atomic_write_bytes(arquivo, dados)
+        except OSError as erro:
+            logger.warning("O diagrama %s não gravou: %s", nome, erro)
+            falhas.append((nome, frase_de_disco(erro)))
+            continue
         gravados.append(arquivo)
         bytes_totais += len(dados)
         if progresso is not None:

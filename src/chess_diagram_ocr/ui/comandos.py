@@ -202,15 +202,37 @@ CATALOGO: tuple[Comando, ...] = (
     ),
     Comando("sair", "Sair", ARQUIVO, estilos.NEUTRO),
     # ----------------------------------------------------------------------------- EDICAO
-    Comando("aplicar_fen", "Aplicar a FEN digitada", EDICAO, estilos.NEUTRO, icone="aplicar_fen", destaque=True),
+    Comando(
+        "aplicar_fen",
+        "Aplicar a FEN digitada",
+        EDICAO,
+        estilos.NEUTRO,
+        icone="aplicar_fen",
+        destaque=True,
+        rotulo_curto="Aplicar FEN",
+    ),
     Comando("apagar_casa", "Apagar a peça da casa selecionada", EDICAO, estilos.NEUTRO, icone="apagar_casa"),
     # O primário do grupo, e o critério de `estilos.PRIMARIO` o confirma: `Ctrl+S` salva.
     # **Em destaque no lugar do exportar** (S-223): a Imagem 1 desenhou "exportar" na fila e
     # omitiu "salvar", e a medida do fluxo diz o contrário -- exporta-se uma vez por livro e
     # salva-se uma vez por diagrama. Uma fila dimensionada por importância em vez de frequência
     # é a barra de 21 botões outra vez.
-    Comando("salvar", "Salvar a posição", EDICAO, estilos.PRIMARIO, icone="salvar", destaque=True),
-    Comando("salvar_todos", "Salvar todas as posições da página", EDICAO, estilos.NEUTRO),
+    Comando(
+        "salvar",
+        "Salvar a posição",
+        EDICAO,
+        estilos.PRIMARIO,
+        icone="salvar",
+        destaque=True,
+        rotulo_curto="Salvar",
+    ),
+    Comando(
+        "salvar_todos",
+        "Salvar todas as posições da página",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Salvar todos",
+    ),
     Comando("diagrama_anterior", "Diagrama anterior", EDICAO, estilos.NEUTRO, icone="diagrama_anterior"),
     Comando("proximo_diagrama", "Próximo diagrama", EDICAO, estilos.NEUTRO, icone="proximo_diagrama", destaque=True),
     Comando("proximo_da_fila", "Próximo item da fila de revisão", EDICAO, estilos.NEUTRO),
@@ -769,6 +791,17 @@ CATALOGO: tuple[Comando, ...] = (
     # texto marcado, e quem pagina é o programa que abrir o arquivo; o PDF sai **já paginado**,
     # com margem, cabeçalho e número de página, e é por isso que a decisão da paginação é nossa.
     Comando("exportar_estudo_pdf", "Exportar o estudo para PDF…", ESTUDO, estilos.NEUTRO, rotulo_curto=".pdf"),
+    # O quinto e o sexto (S-542/S-543), e eles chegaram ao catálogo **três dias depois do módulo
+    # que os escreve**: `epub.py` e `docx_saida.py` estavam prontos, validados pelo `epubcheck` e
+    # abertos pelo LibreOffice, e não havia gesto nenhum que os chamasse -- o agrupador "Exportar
+    # ▾" oferecia .md, .html, .rtf e .pdf. É o defeito da S-518 outra vez, do outro lado: lá um
+    # campo era gravado e ninguém o lia; aqui um exportador é escrito e ninguém o chama.
+    #
+    # Entram no mesmo agrupador porque são a mesma pergunta -- "em que formato?" --, e não dois
+    # gestos novos: o EPUB é o formato do leitor de livro, e o DOCX é o do Word de quem vai
+    # continuar escrevendo por cima.
+    Comando("exportar_estudo_epub", "Exportar o estudo para EPUB…", ESTUDO, estilos.NEUTRO, rotulo_curto=".epub"),
+    Comando("exportar_estudo_docx", "Exportar o estudo para DOCX…", ESTUDO, estilos.NEUTRO, rotulo_curto=".docx"),
     # Imprimir **não** é um quinto formato, e por isso não está no agrupador "Exportar": o gesto
     # termina no papel e passa pela pré-visualização, que é onde se confere a quebra antes de
     # gastar folha. O PDF e a impressão desenham a mesma paginação, e é a mesma decisão pura.
@@ -834,10 +867,12 @@ lugares que a S-324 nomeia, e o teste cobra os quatro.
 **O que não entrou, e por quê.** Os controles de dentro de uma aba -- Galeria, Dataset, Revisão,
 Configuração -- não são comandos da *janela*: eles pertencem ao painel que os desenha e não
 mudam de lugar quando a pele muda. É a mesma linha que `menu.MENUS` já traçava ao deixar de fora
-os botões de navegação da Galeria. `ui/result_panel.py` é o caso de fronteira: os três botões
-dele ("Aplicar FEN", "Salvar posição reconhecida", "Salvar todos") **são** comandos da janela e
-estão aqui, mas o painel ainda escreve os rótulos dele à mão -- por isso os três não declaram
-`rotulo_curto`, que seria uma promessa que ninguém cumpre. Registrado para a S-233."""
+os botões de navegação da Galeria. O painel de Resultado era o caso de fronteira: os três botões
+dele ("Aplicar FEN", "Salvar", "Salvar todos") **são** comandos da janela e estavam aqui, mas o
+painel escrevia os rótulos dele à mão -- por isso os três não declaravam `rotulo_curto`, "que seria
+uma promessa que ninguém cumpre". **Registrado para a S-233, e fechado na terceira barra em fila**
+(S-528): desde que aquele painel passou a montar `ui/barra_do_resultado.ACOES` num `BarraEmFila`,
+quem escreve os três rótulos é este catálogo, e a promessa tem quem a cumpra."""
 
 
 NAS_BARRAS_DO_PDF: tuple[str, ...] = (

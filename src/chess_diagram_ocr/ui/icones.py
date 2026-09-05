@@ -519,9 +519,42 @@ ICONES_DO_PDF: dict[str, tuple[Traco, ...]] = {
 `ui/barra_do_pdf.ACOES` declara. A ponte nos dois sentidos é com aquela tabela."""
 
 
+ICONES_DO_RESULTADO: dict[str, tuple[Traco, ...]] = {
+    # **O quarto dicionário, e pela razão do segundo e do terceiro** (S-528, terceira barra). A
+    # chave de `ICONES` é o nome de um comando do catálogo, e `medidas_da_fita.grupos()` põe na
+    # fita da janela todo comando que declare `icone` -- dar traço a "Salvar todos" por lá o poria
+    # no cromo da janela, ao lado de "Abrir PDF". Aqui a chave é o nome que
+    # `ui/barra_do_resultado.ACOES` declara.
+    #
+    # **Oito das dez ações do painel reusam traço de cima** -- `diagrama_anterior`,
+    # `proximo_diagrama`, `aplicar_fen`, `desfazer`, `refazer`, `limpar_tabuleiro`, `salvar` e
+    # `copiar` (este de `ICONES_DA_SALA`) --, e é o esperado: são os mesmos gestos. Os dois abaixo
+    # são os que faltavam.
+    # ----------------------------------------------------------------------------- GRAVAR
+    # Dois disquetes empilhados: o de trás aparece só pelo canto, que é o que diz "e os outros".
+    "salvar_todos": (
+        Poli((30, 12), (86, 12), (86, 68)),
+        Poli((12, 30), (58, 30), (72, 44), (72, 88), (12, 88), fechado=True),
+        Poli((28, 30), (28, 50), (56, 50), (56, 30)),
+    ),
+    # ------------------------------------------------------------------------------ VISTA
+    # O tabuleiro de quatro casas com uma delas hachurada: a tinta de dúvida por baixo da peça.
+    "mapa_de_incerteza": (
+        Poli((14, 14), (86, 14), (86, 86), (14, 86), fechado=True),
+        Poli((50, 14), (50, 86)),
+        Poli((14, 50), (86, 50)),
+        Poli((20, 44), (44, 20)),
+        Poli((20, 28), (28, 20)),
+        Poli((36, 44), (44, 36)),
+    ),
+}
+"""Os dois traços que o painel de Resultado pedia e não existiam (S-528, terceira barra), com a
+chave que `ui/barra_do_resultado.ACOES` declara. A ponte nos dois sentidos é com aquela tabela."""
+
+
 def tracos_de(nome: str) -> tuple[Traco, ...] | None:
-    """Os traços daquele nome, procurando nos três dicionários. `None` para nome que não existe."""
-    return ICONES.get(nome) or ICONES_DA_SALA.get(nome) or ICONES_DO_PDF.get(nome)
+    """Os traços daquele nome, procurando nos quatro dicionários. `None` para nome que não existe."""
+    return ICONES.get(nome) or ICONES_DA_SALA.get(nome) or ICONES_DO_PDF.get(nome) or ICONES_DO_RESULTADO.get(nome)
 
 
 SUPERAMOSTRA = 4

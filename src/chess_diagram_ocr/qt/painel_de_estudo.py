@@ -643,7 +643,7 @@ class PainelDeEstudo(QWidget):
         `posicionar_divisor` restaurar a da sessão anterior -- ali a repartição já foi escolhida, e
         a fração guardada acompanha a largura sozinha, porque é fração e não pixel.
         """
-        if self._divisor_escolhido or not self.divisor.isVisible():
+        if self._divisor_escolhido:
             return
         largura = sum(self.divisor.sizes())
         if largura <= 0:
@@ -788,6 +788,15 @@ class PainelDeEstudo(QWidget):
         super().showEvent(a0)
         self.tabuleiro.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.tabuleiro.setFocus()
+        # **E a régua da altura roda aqui, na primeira vez que a sala aparece** (S-551, segunda
+        # rodada). Ela morava só no `resizeEvent`, e o crítico mediu o buraco: numa janela que
+        # **nasce** grande a aba nunca é redimensionada depois de aparecer -- a montagem dá a
+        # geometria final de uma vez --, então a regra rodava uma única vez, com o divisor ainda
+        # invisível e de largura zero, e desistia ali. Medido a 1920×1080: o tabuleiro ficava em
+        # 547 px com a régua respondendo 565, e a 2560×1440 em 738 com ela respondendo 800.
+        # `_acomodar_o_tabuleiro` já não faz nada quando a alça foi escolhida, então chamá-la aqui
+        # não atropela nem a pessoa nem a sessão anterior.
+        self._acomodar_o_tabuleiro()
 
     # -------------------------------------------------------------------------------- lista
 
@@ -2663,6 +2672,57 @@ class PainelDeEstudo(QWidget):
     def exportar_estudo_rtf(self) -> None:
         """`.rtf` porque o Word abre -- e sem dependência nova nenhuma (S-252)."""
         self._exportar_estudo(".rtf")
+
+    def exportar_estudo_epub(self) -> None:
+        """`.epub` **porque o leitor de livro repagina** (S-542).
+
+        Os três de cima entregam um arquivo de texto marcado, e a página é do programa que o abrir;
+        o PDF sai com a página cravada. O EPUB é o meio-termo que um livro de xadrez pede: o
+        diagrama vai em SVG e acompanha o corpo de letra que a pessoa escolher no leitor.
+        """
+        from chess_diagram_ocr import epub
+
+        self._exportar_empacotado(".epub", "EPUB", epub.exportar_estudo_epub)
+
+    def exportar_estudo_docx(self) -> None:
+        """`.docx` **porque o texto continua sendo escrito** (S-543).
+
+        O RTF já abre no Word, e a diferença é o que se faz depois: o DOCX sai com estilos de
+        título nomeados, sumário e o diagrama como imagem numa moldura -- é o formato de quem vai
+        continuar escrevendo por cima da análise, e não só lê-la.
+        """
+        from chess_diagram_ocr import docx_saida
+
+        self._exportar_empacotado(".docx", "DOCX", docx_saida.exportar_estudo_docx)
+
+    def _exportar_empacotado(self, extensao: str, formato: str, exportador: Callable[..., Any]) -> None:
+        """O caminho comum do EPUB e do DOCX: escolher o destino, gravar, dizer o que saiu.
+
+        **Os dois não passam por `text/exportacao.py`, e é a mesma razão do PDF**: aquele módulo
+        entrega texto marcado, e estes três entregam um **pacote** -- um zip com manifesto,
+        imagens e metadados. Quem monta o pacote são `epub.py` e `docx_saida.py`, que já contam o
+        que escreveram; aqui só se escolhe o arquivo.
+
+        **A falha vai para a barra de status e não para uma caixa**, como no PDF: a pessoa acabou
+        de escolher o destino e clicou em gravar, então ela está olhando para esta tela, e a mesma
+        linha que diria "3 capítulo(s)" diz por que não deu (S-164).
+        """
+        destino, _filtro = QFileDialog.getSaveFileName(
+            self,
+            f"Exportar o estudo para {formato}",
+            str(self._pasta_inicial / f"{self._nome_sugerido()}{extensao}"),
+            f"{formato} (*{extensao});;Todos (*.*)",
+        )
+        if not destino:
+            return
+        self.gravar_comentario()
+        caminho = Path(destino)
+        try:
+            relatorio = exportador(self.estudo, caminho)
+        except OSError as erro:
+            self.set_status(f"Não foi possível gravar {caminho.name}: {erro}")
+            return
+        self.set_status(relatorio.resumo())
 
     # ------------------------------------------------------- a folha e o lote (S-544/S-545)
 

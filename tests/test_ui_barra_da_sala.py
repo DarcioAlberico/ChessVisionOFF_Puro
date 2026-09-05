@@ -71,7 +71,16 @@ class CoberturaTests(unittest.TestCase):
         agrupador = barra_da_sala.acao(barra_da_sala.EXPORTAR_ESTUDO)
         self.assertTrue(agrupador.agrupador)
         self.assertEqual(
-            ("exportar_estudo_md", "exportar_estudo_html", "exportar_estudo_rtf", "exportar_estudo_pdf"),
+            (
+                "exportar_estudo_md",
+                "exportar_estudo_html",
+                "exportar_estudo_rtf",
+                "exportar_estudo_pdf",
+                # O quinto e o sexto entram na segunda rodada da S-542/S-543, quando os dois
+                # exportadores finalmente ganham chamador.
+                "exportar_estudo_epub",
+                "exportar_estudo_docx",
+            ),
             agrupador.itens_do_submenu,
         )
         for nome in agrupador.itens_do_submenu:

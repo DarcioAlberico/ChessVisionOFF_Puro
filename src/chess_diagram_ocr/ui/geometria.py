@@ -25,6 +25,7 @@ from dataclasses import dataclass
 __all__ = [
     "FRACAO_PADRAO_DO_DIVISOR",
     "Geometria",
+    "divisor_da_primeira_abertura",
     "fracao_de_divisor",
     "fracao_do_documento",
     "geometria_de_texto",
@@ -120,6 +121,35 @@ FRACAO_PADRAO_DO_DIVISOR = 0.42
 Era o número cravado em `_set_initial_sashes`, aplicado **toda** abertura: quem trabalha com o
 PDF grande arrastava o divisor toda sessão e o perdia toda sessão. Agora ele é o padrão da
 primeira execução, e não a decisão de todas elas."""
+
+def divisor_da_primeira_abertura(
+    largura: int,
+    *,
+    preferida_esquerda: int,
+    preferida_direita: int,
+    fracao: float = FRACAO_PADRAO_DO_DIVISOR,
+) -> int:
+    """Quantos pixels o lado esquerdo recebe quando **não há nada guardado**. Pura (S-552).
+
+    **Por que a fração sozinha deixou de bastar.** Até a S-552 o lado esquerdo tinha um piso de
+    720 px, e ele fazia dois trabalhos: impedia a janela de encolher (o defeito que aquele item
+    fechou) e, de graça, garantia que a primeira abertura de uma janela de 1400 px desse 720 à aba
+    em vez dos 586 que 42% dariam. Baixado o piso para 500, a segunda garantia caiu junto -- medido
+    a 1400x950, a aba de trabalho foi de 720 para 585 px e o tabuleiro da sala de 488 para 392.
+
+    **A largura preferida não é o piso, e é essa a distinção que o item trouxe.** Piso é onde a
+    janela **para** de encolher; preferida é o que o lado pede quando há espaço. Aqui o esquerdo
+    recebe o maior entre a fração e a largura que ele prefere -- e nunca tanto que o direito fique
+    abaixo do que **ele** prefere. Numa janela de 1024 os dois preferidos não cabem juntos, e o
+    empate se desfaz a favor do direito: é a página do livro, e é ela que não se lê espremida.
+
+    Largura não positiva devolve 0, que o chamador lê como "ainda não há geometria".
+    """
+    if largura <= 0:
+        return 0
+    teto = max(1, largura - preferida_direita)
+    return max(1, min(max(int(largura * fracao), min(preferida_esquerda, teto)), largura - 1))
+
 
 VISIVEL_MINIMO = 80
 """Quantos pixels da janela precisam cair dentro de algum monitor para a geometria valer.

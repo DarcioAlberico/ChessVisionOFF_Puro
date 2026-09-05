@@ -301,6 +301,10 @@ ACOES: tuple[Acao, ...] = (
     # O quarto do agrupador (S-545). Ele é formato como os três, e a diferença -- sair já
     # paginado -- não é um segundo gesto: quem clica "Exportar ▾" está perguntando "em quê?".
     Acao("exportar_estudo_pdf", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
+    # O quinto e o sexto (S-542/S-543). Mesmo agrupador pela razão dos outros quatro: quem clica
+    # "Exportar ▾" está perguntando "em quê?", e a resposta agora tem seis linhas em vez de quatro.
+    Acao("exportar_estudo_epub", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
+    Acao("exportar_estudo_docx", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
     Acao("estudo_para_o_texto", EXPORTAR, "para_o_texto", principal=False),
     # Os dois que **não** entram no agrupador, e nem na fila. Imprimir termina no papel e abre a
     # pré-visualização; o lote de diagramas produz centenas de arquivos e pergunta sete coisas

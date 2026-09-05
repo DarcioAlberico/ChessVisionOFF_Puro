@@ -18,7 +18,9 @@ from chess_diagram_ocr.ui.geometria import (
     ALTURA_MINIMA_DO_CONTEUDO,
     CHROME_HORIZONTAL,
     CHROME_VERTICAL,
+    FRACAO_PADRAO_DO_DIVISOR,
     PISO_MEDIDO,
+    divisor_da_primeira_abertura,
     piso_da_janela,
 )
 
@@ -140,6 +142,56 @@ class GeometriaLembradaTests(unittest.TestCase):
     def test_sem_largura_a_fracao_cai_no_padrao(self) -> None:
         """É o que acontece antes do primeiro layout, e 42% é o arranjo da primeira execução."""
         self.assertEqual(geometria.fracao_de_divisor(0, 0), geometria.FRACAO_PADRAO_DO_DIVISOR)
+
+
+class DivisorDaPrimeiraAberturaTests(unittest.TestCase):
+    """Onde a alça nasce quando não há nada guardado (S-552, segunda rodada).
+
+    **Por que a fração sozinha deixou de bastar.** O piso de 720 px do lado esquerdo fazia dois
+    trabalhos: segurava a janela (o defeito que a S-552 fechou) e, de graça, dava 720 px à aba de
+    trabalho numa janela de 1400 em vez dos 586 que 42% dariam. Baixado o piso, a segunda garantia
+    caiu junto -- medido, o tabuleiro da sala foi de 488 para 392 px.
+    """
+
+    PREFERIDAS = {"preferida_esquerda": 720, "preferida_direita": 520}
+
+    def test_a_janela_larga_da_a_fracao_porque_ela_ja_passa_do_preferido(self) -> None:
+        """A 1920 px, 42% são 806 -- mais que os 720 que a aba pede. O preferido é piso, não teto:
+        quem tem tela grande continua vendo o livro grande."""
+        self.assertEqual(806, divisor_da_primeira_abertura(1920, **self.PREFERIDAS))
+
+    def test_a_janela_media_da_o_preferido_porque_a_fracao_fica_abaixo(self) -> None:
+        """**É o caso que quebrou.** A 1400 px, 42% são 588 e a aba pede 720."""
+        self.assertEqual(720, divisor_da_primeira_abertura(1400, **self.PREFERIDAS))
+
+    def test_na_tela_minima_quem_cede_e_a_esquerda(self) -> None:
+        """Os dois preferidos somam 1240 e não cabem em 1024: o direito leva o que pede, e o
+        esquerdo fica com o resto. É a página do livro, e é ela que não se lê espremida."""
+        self.assertEqual(504, divisor_da_primeira_abertura(1024, **self.PREFERIDAS))
+
+    def test_numa_largura_menor_que_os_dois_preferidos_ninguem_fica_com_zero(self) -> None:
+        """Um lado com zero pixel é o estado do qual não há gesto de mouse que devolva -- a mesma
+        razão dos limites de `fracao_de_divisor`."""
+        # A partir de 2: numa largura de 1 px não há como dar um pixel a cada lado.
+        for largura in (2, 100, 400, 519, 520, 521):
+            with self.subTest(largura=largura):
+                esquerda = divisor_da_primeira_abertura(largura, **self.PREFERIDAS)
+                self.assertGreaterEqual(esquerda, 1)
+                self.assertGreaterEqual(largura - esquerda, 1)
+
+    def test_sem_geometria_ainda_a_resposta_e_zero(self) -> None:
+        """Antes do primeiro `show` o `QSplitter` não tem largura, e repartir zero poria a alça
+        num lugar que a janela nunca pediu."""
+        self.assertEqual(0, divisor_da_primeira_abertura(0, **self.PREFERIDAS))
+        self.assertEqual(0, divisor_da_primeira_abertura(-40, **self.PREFERIDAS))
+
+    def test_a_fracao_padrao_e_a_da_S_156(self) -> None:
+        """Nenhum número novo: quem não passa fração recebe a que o item de lembrar a janela já
+        declarou."""
+        self.assertEqual(
+            divisor_da_primeira_abertura(1920, fracao=FRACAO_PADRAO_DO_DIVISOR, **self.PREFERIDAS),
+            divisor_da_primeira_abertura(1920, **self.PREFERIDAS),
+        )
 
 
 if __name__ == "__main__":

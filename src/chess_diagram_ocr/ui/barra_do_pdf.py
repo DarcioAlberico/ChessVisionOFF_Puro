@@ -144,7 +144,13 @@ ACOES: tuple[Acao, ...] = (
     # ------------------------------------------------------------------------------ LIVRO
     # Abrir é o passo de antes, e é o único da fila que se faz com a tela vazia -- por isso tem
     # texto e por isso o grupo `LIVRO` continua ligado quando não há livro (ver `_DESLIGADOS`).
-    Acao("abrir_pdf", LIVRO, "abrir_pdf", prioridade=6, com_texto=True),
+    #
+    # **Prioridade 3 e não 6** (segunda rodada, 2026-09-05): o crítico mediu a fila a 520 px -- o
+    # piso do painel até a S-552 -- e "Abrir PDF" era um dos primeiros a cair no "Mais". Um botão
+    # que se faz **antes de tudo**, e que é a única saída do estado sem livro, não pode sair da
+    # fila antes de "Ajustar à largura". `ler_pagina` e `ajustar_largura` desceram um degrau para
+    # abrir o lugar; a ordem dos outros não mudou.
+    Acao("abrir_pdf", LIVRO, "abrir_pdf", prioridade=3, com_texto=True),
     Acao(
         "abrir_no_leitor",
         LIVRO,
@@ -160,7 +166,7 @@ ACOES: tuple[Acao, ...] = (
     Acao("pagina_anterior", PAGINA, "folha_anterior", prioridade=2),
     Acao("proxima_pagina", PAGINA, "folha_seguinte", prioridade=2),
     # ------------------------------------------------------------------------------ VISTA
-    Acao("ajustar_largura", VISTA, "ajustar_largura", prioridade=5),
+    Acao("ajustar_largura", VISTA, "ajustar_largura", prioridade=6),
     Acao("ajustar_pagina", VISTA, "ajustar_pagina", prioridade=7),
     Acao(
         "zoom_menos",
@@ -198,12 +204,12 @@ ACOES: tuple[Acao, ...] = (
     # O único `PRIMARIO` do painel, e a ênfase é do catálogo (S-324/S-506): abrir o livro é o
     # passo de antes, ler o diagrama é o que esta tela faz.
     Acao("ler_melhor", LEITURA, "ler_melhor", prioridade=1, com_texto=True),
-    Acao("ler_pagina", LEITURA, "ler_pagina", prioridade=3),
+    Acao("ler_pagina", LEITURA, "ler_pagina", prioridade=4),
     Acao(
         "selecionar_area",
         LEITURA,
         "selecionar_area",
-        prioridade=4,
+        prioridade=5,
         marcavel=True,
         dica="Enquanto ligado, arrastar sobre a folha recorta em vez de mover a página --\n"
         "e o que o retângulo cercar é reconhecido na hora.",

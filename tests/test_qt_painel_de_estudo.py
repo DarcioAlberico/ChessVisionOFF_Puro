@@ -1039,3 +1039,155 @@ class ArranjoTests(unittest.TestCase):
         self.app.processEvents()
         painel.posicionar_divisor_vertical(0.4)
         self.assertAlmostEqual(0.4, painel.fracao_do_divisor_vertical, places=1)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class TabuleiroNaPrimeiraAberturaTests(unittest.TestCase):
+    """A régua da altura roda quando a sala **aparece**, e não só quando ela muda de tamanho.
+
+    **O buraco medido pelo crítico em 2026-09-05** (S-551, segunda rodada): numa janela que já
+    nasce grande, a aba nunca é redimensionada depois de aparecer -- a montagem lhe dá a geometria
+    final de uma vez. `_acomodar_o_tabuleiro` morava só no `resizeEvent`, então rodava uma única
+    vez, na construção, com o divisor ainda de largura zero, e desistia ali. Medido na janela de
+    verdade: a 1920x1080 o tabuleiro ficava em **547 px** com a régua respondendo 565, e a
+    2560x1440 em **738** com ela respondendo 834.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+
+    def _sala(self, largura: int, altura: int) -> object:
+        """Uma sala do tamanho pedido, mostrada **uma vez** -- que é o gesto do item: nenhum
+        `resize` depois do `show`, como numa janela que já nasce grande."""
+        painel = qt_estudo.PainelDeEstudo()
+        self.addCleanup(descartar, painel)
+        painel.resize(largura, altura)
+        painel.show()
+        self.app.processEvents()
+        return painel
+
+    def test_a_alca_ja_nasce_movida_quando_ha_altura_sobrando(self) -> None:
+        """**É o caso que estava quebrado**, e a régua é o estado de antes: a mesma sala do mesmo
+        tamanho, mostrada uma vez, com a regra desligada -- que é exatamente o que acontecia
+        quando ela só morava no `resizeEvent`."""
+        antes = qt_estudo.PainelDeEstudo()
+        self.addCleanup(descartar, antes)
+        antes._divisor_escolhido = True
+        antes.resize(900, 1400)
+        antes.show()
+        self.app.processEvents()
+
+        painel = self._sala(900, 1400)
+        self.assertGreater(
+            painel.tabuleiro.width(),
+            antes.tabuleiro.width(),
+            "a régua não rodou na abertura: a alça ficou onde o QSplitter a pôs",
+        )
+
+    def test_a_leitura_nao_desce_abaixo_do_piso_na_abertura(self) -> None:
+        """Crescer o tabuleiro na abertura não pode espremer a lista de lances: o piso da leitura
+        vale já no primeiro desenho, e não só a partir do primeiro `resize`."""
+        painel = self._sala(900, 1400)
+        self.assertGreaterEqual(
+            painel.divisor.sizes()[1] + 4, sala_declarada.LARGURA_MINIMA_DA_LEITURA
+        )
+
+    def test_a_fracao_guardada_continua_desligando_a_regra_na_abertura(self) -> None:
+        """Mostrar a sala de novo -- voltar à aba, desminimizar -- não é motivo para recalcular
+        uma repartição que já foi escolhida. É a decisão de `posicionar_divisor`, agora cobrada
+        também no `showEvent`."""
+        painel = self._sala(900, 1400)
+        painel.posicionar_divisor(0.4)
+        self.app.processEvents()
+        painel.hide()
+        painel.show()
+        self.app.processEvents()
+        self.assertAlmostEqual(0.4, painel.fracao_do_divisor, places=1)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SaidasQueNaoTinhamChamadorTests(unittest.TestCase):
+    """EPUB e DOCX, afirmados pelo **arquivo que nasce** (S-542/S-543, segunda rodada).
+
+    **O defeito não estava no exportador, e é o que o torna fácil de repetir.** `epub.py` e
+    `docx_saida.py` foram escritos, medidos e validados -- o primeiro pelo `epubcheck`, o segundo
+    aberto pelo LibreOffice --, e tinham suíte própria. O que não existia era **gesto**: o
+    agrupador "Exportar ▾" da sala oferecia `.md`, `.html`, `.rtf` e `.pdf`, e o menu Estudo
+    também. É a S-518 do outro lado -- lá um campo era gravado e ninguém o lia.
+
+    Por isso estes testes não medem o pacote (a suíte de cada módulo faz isso): eles medem que o
+    **comando chega ao arquivo**. `verificar` entra só para separar "nasceu um arquivo" de "nasceu
+    um pacote", que é a diferença que um teste de efeito precisa afirmar.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.painel = qt_estudo.PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
+        self.addCleanup(descartar, self.painel)
+
+    def _escolher(self, alvo: Path) -> None:
+        """O diálogo de destino respondendo `alvo`, e devolvido ao que era no fim do teste."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        original = QFileDialog.getSaveFileName
+        QFileDialog.getSaveFileName = staticmethod(lambda *_a, **_k: (str(alvo), ""))  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(QFileDialog, "getSaveFileName", original))
+
+    def test_exportar_para_epub_grava_um_epub_de_verdade(self) -> None:
+        """**É o caso que não tinha como acontecer**: não havia gesto que chamasse `epub.py`."""
+        from chess_diagram_ocr import epub
+
+        alvo = self.pasta / "da acao.epub"
+        self._escolher(alvo)
+        self.painel.exportar_estudo_epub()
+        self.assertTrue(alvo.is_file())
+        self.assertEqual([], epub.verificar(alvo), "o pacote saiu, mas não é um EPUB válido")
+        self.assertIn("capítulo(s)", self.painel.lbl_status.text())
+
+    def test_exportar_para_docx_grava_um_docx_de_verdade(self) -> None:
+        """O par do de cima, e o mesmo defeito: `docx_saida.py` estava pronto e sem chamador."""
+        from chess_diagram_ocr import docx_saida
+
+        alvo = self.pasta / "da acao.docx"
+        self._escolher(alvo)
+        self.painel.exportar_estudo_docx()
+        self.assertTrue(alvo.is_file())
+        self.assertEqual([], docx_saida.verificar(alvo), "o pacote saiu, mas não é um DOCX válido")
+        self.assertIn("parágrafo(s)", self.painel.lbl_status.text())
+
+    def test_desistir_do_dialogo_nao_grava_nada(self) -> None:
+        """A régua dos outros quatro formatos: fechar o diálogo é uma resposta, e ela é "não"."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        original = QFileDialog.getSaveFileName
+        QFileDialog.getSaveFileName = staticmethod(lambda *_a, **_k: ("", ""))  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(QFileDialog, "getSaveFileName", original))
+        self.painel.exportar_estudo_epub()
+        self.painel.exportar_estudo_docx()
+        self.assertEqual([], sorted(self.pasta.iterdir()))
+
+    def test_o_destino_que_o_disco_recusa_vira_frase_e_nao_excecao(self) -> None:
+        """A régua da S-164: a pessoa acabou de escolher o destino e está olhando para esta tela,
+        então a mesma linha que diria "3 capítulo(s)" diz por que não deu -- sem caixa, e sem o
+        `OSError` subindo pela sala.
+
+        **Uma pasta que não existe não serve de caso**, e a medição mostrou: `atomic_io` cria o
+        caminho, e é o que faz "Exportar para uma pasta nova" funcionar. O que o disco recusa de
+        verdade é um **arquivo** no lugar de uma pasta.
+        """
+        bloqueio = self.pasta / "nao_sou_pasta"
+        bloqueio.write_bytes(b"")
+        alvo = bloqueio / "x.epub"
+        self._escolher(alvo)
+        self.painel.exportar_estudo_epub()
+        self.assertFalse(alvo.exists())
+        self.assertIn("Não foi possível gravar", self.painel.lbl_status.text())
+
+    def test_os_dois_comandos_tem_dono_na_aba(self) -> None:
+        """A tabela de `sala_declarada` é o que faz o menu, a paleta e o agrupador chegarem ao
+        método -- um comando sem linha ali é um botão que não faz nada."""
+        for comando in ("exportar_estudo_epub", "exportar_estudo_docx"):
+            with self.subTest(comando=comando):
+                metodo = sala_declarada.COMANDOS_DA_ABA[comando]
+                self.assertTrue(callable(getattr(self.painel, metodo)))

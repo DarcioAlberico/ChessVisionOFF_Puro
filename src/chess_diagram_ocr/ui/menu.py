@@ -266,6 +266,8 @@ MENUS: tuple[Menu, ...] = (
             Item("exportar_estudo_html"),
             Item("exportar_estudo_rtf"),
             Item("exportar_estudo_pdf"),
+            Item("exportar_estudo_epub"),
+            Item("exportar_estudo_docx"),
             Item("estudo_para_o_texto"),
             _sep(),
             # Os dois que saem da folha e não do arquivo de texto (S-544/S-545): o lote de

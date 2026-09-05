@@ -224,7 +224,7 @@ não crescer `qt/janela.py`). A caixa "Partidas da base" (`qt/dialogos.py`) deix
 Fora do item, registrados como S-551 (vazio sob o tabuleiro) e S-552 (janela que não estreita); a
 barra do PDF é da S-528.
 
-## S-528 · A barra do painel do PDF na mesma gramática, e a página com mais área — ✅ **implementada em 2026-09-04**
+## S-528 · A barra do painel do PDF na mesma gramática, e a página com mais área — ✅ **implementada em 2026-09-04** (segunda rodada, 2026-09-05: o painel de Resultado entra na mesma fila)
 
 ### Problema
 
@@ -372,7 +372,70 @@ agora para as `QAction`s da fila, e `QAction` responde aos mesmos nomes.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Rodada 2 (2026-09-05), varredura do programa inteiro na janela real. Três achados, os três fechados
+aqui porque o dono deles é este item -- a gramática das barras e o painel do livro.
+
+| achado | medido | o que mudou |
+|---|---|---|
+| **O painel de Resultado ainda era da gramática velha** | nove botões de **texto** em quatro fileiras, nenhum com ícone, na aba que abre primeiro -- ao lado desta fila de 32 px, na mesma tela | `ui/barra_do_resultado.py` (novo): a **terceira** tabela na mesma forma. Uma fila com dez ações em cinco grupos, o seletor de diagrama encaixado, e o mapa de incerteza no "Mais" |
+| **"Abrir PDF" saía da fila a 520 px** | prioridade 6 de 9: ele caía antes de "Ajustar à largura" e de "Selecionar área" | prioridade **3**. É o passo de antes de tudo e a única saída do estado sem livro; `ler_pagina` e `ajustar_largura` desceram um degrau |
+| **O erro de PDF corrompido saía em inglês** | `Failed to open file 'C:\\Users\\AMD\\…'` na caixa "Falha ao abrir X.pdf" -- com o caminho escapado duas vezes e repetindo o nome que a primeira linha já dava; o arquivo vazio dizia `Cannot open empty file` | `leitura_do_pdf.frase_de_abertura`, pura: cinco causas em pt-BR, nomeando o **arquivo**. O original vai para o log |
+
+**A terceira barra em fila, e o que ela custou.** `ui/barra_do_resultado.py` declara cinco grupos --
+`DIAGRAMA`, `FEN`, `CORRECAO`, `GRAVAR`, `VISTA` --, dez ações e dois nomes fora do catálogo
+(`copiar_fen_lida`, porque `copiar_fen` do catálogo copia a FEN do **estudo**, e
+`mapa_de_incerteza`, que é preferência deste painel e não comando da janela). `icones.ICONES_DO_
+RESULTADO` é o **quarto** dicionário de traços, com dois desenhos novos (`salvar_todos` e
+`mapa_de_incerteza`); as outras oito ações reusam traço de `ICONES` e de `ICONES_DA_SALA`.
+
+**Duas linhas ficaram fora da fila, e não é esquecimento.** O campo de FEN é um `QLineEdit` de uma
+linha inteira -- ele **é** o conteúdo --, e o par de rádios "Lado a jogar" é uma pergunta de duas
+respostas exclusivas, que um botão de barra não sabe fazer. O que saiu das quatro fileiras foram os
+**nove botões**, que é o que o crítico contou.
+
+**E a S-233 fechou de carona.** `ui/comandos.py` registrava desde então que "Aplicar FEN", "Salvar"
+e "Salvar todos" eram comandos da janela cujos rótulos o painel escrevia à mão -- *"por isso os três
+não declaram `rotulo_curto`, que seria uma promessa que ninguém cumpre"*. Com a fila quem os escreve
+é o catálogo, e os três passaram a declará-lo.
+
+**O que ficou de fora, e está registrado.** A **fileira de campo** (`qt/campo.py`, 50 px de texto
+sob a fila de 32 no lado do livro) continua na gramática velha: ela é a segunda metade do achado 1 do
+crítico, e não coube nesta rodada. Ela não é barra de ferramentas -- é um formulário de anotação com
+um `QComboBox` de conjunto e três botões que gravam --, e trazê-la para a fila exige decidir antes o
+que fazer com o combo, que não é ação.
+
+### Testes da rodada 2
+
+- `tests/test_ui_barra_do_resultado.py` (novo, puro): cobertura nos dois sentidos com o catálogo e
+  com `ICONES_DO_RESULTADO`; toda ação tem método e todo método tem ação; **uma** ênfase e ela é
+  `salvar`; só o primário escreve texto; as prioridades repetidas são exatamente os dois pares
+  (`◄`/`►` e desfazer/refazer); a preferência é a única secundária; o interruptor alterna no botão e
+  não no método; ação, grupo e modo desconhecidos levantam; a tecla é da janela (`sequencia_de`
+  devolve `""`); o sufixo do seletor traz o total e não escreve número negativo.
+- `tests/test_qt_painel_de_resultado.py`: **a fila enfileira em vez de quebrar** -- uma linha em
+  1200, 700, 494, 300 e 160 px, e nenhuma ação descartada em nenhuma delas (a propriedade da S-151,
+  intacta); o rótulo dos botões vem do catálogo nos dois níveis; a S-233 fecha; o mapa de incerteza
+  é item marcável do "Mais" e desliga a tinta do tabuleiro; o seletor diz de quantos.
+- `tests/test_ui_barra_do_pdf.py` e `tests/test_qt_painel_do_pdf.py` passam sem alteração com a
+  prioridade nova: o teste de prioridade cobra unicidade e o par, não os números do meio.
+- `tests/test_pdf_io.py`: as cinco causas saem em pt-BR e nomeiam o arquivo; o caminho escapado não
+  volta para a tela; causa desconhecida diz o tipo; **a recusa que já é nossa passa intacta** (o PDF
+  protegido por senha da S-331); e um caso com arquivos de verdade, que é o que confere que as
+  pistas são as que o PyMuPDF de hoje escreve.
+
+### O que a rodada 2 registrou e não fez
+
+Seis achados de menor gravidade do crítico de 2026-09-05, com o dono de cada um. Ficam aqui porque
+foram levantados na mesma varredura, e não porque este item seja o dono de todos.
+
+| achado | dono | por que não foi feito |
+|---|---|---|
+| A **fileira de campo** (`qt/campo.py`, 50 px de texto sob a fila de 32) continua na gramática velha | S-528 | Não é barra de ferramentas: é um formulário de anotação com um `QComboBox` de conjunto e três botões que gravam. Trazê-la para a fila exige decidir antes o que fazer com o combo, que não é ação |
+| A árvore mostra `96824` numa célula e `361.913` no resumo | S-535 | **A divergência é decidida e está escrita** em `arvore_de_aberturas.COLUNAS`: a célula é `8609 · 31%` e `qt/tabela._numero` lê o primeiro token para ordenar, então `8.609` viraria o número 8,609. Uni-los exige ensinar o separador de milhar pt-BR ao parser de ordenação -- e ele também lê `conf. mín. 0.99`, onde o ponto é decimal. É uma `Coluna` nova dizendo "esta célula é pt-BR", e não uma linha |
+| "Ver as partidas…" numa posição sem ECO abre o formulário e ele recusa buscar | S-533/S-534 | O botão deveria ficar cinza com o motivo na dica (a regra da S-165). Não medido nesta rodada |
+| O resumo diz "32 lance(s) · árvore até o lance 10" | S-535 | Redação: os dois números contam coisas diferentes (lances da partida × profundidade da árvore) e a frase não diz isso |
+| O tabuleiro reconhecido é **cortado** a 1245 px -- some a régua a–h -- em vez de encolher | S-552 | É `qt/tabuleiro_editavel.py` e não o layout da janela: o widget desenha a régua fora da área quando a caixa é mais baixa que larga. A 1024 o mesmo corte aparece, e está nas fotos (`fotos/classica_1024x768_00_Resultado.png`) |
+| A lista de partidas volta ordenada alfabeticamente por brancas em vez de por data | S-533 | Ordem padrão da consulta. Trocá-la é uma linha e um teste, mas o item é da S-533 e a medição de lá é sobre o filtro |
 
 ## S-529 · O painel do motor: barra de avaliação vertical, linhas MultiPV clicáveis, profundidade — ✅ **implementada em 2026-09-04**
 
@@ -708,7 +771,14 @@ segunda pilha, e o `salvar_agora` leva os headers junto -- eles já estão em `E
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Rodada 2 (2026-09-05). Nada a corrigir neste item: o cabeçalho continua legível e editável nas três
+peles e nos três tamanhos fotografados (`exec_final/fotos/*_01_Estudo.png`), e a 1024x768 -- a
+largura que a S-552 destravou nesta rodada -- ele é a primeira linha da coluna do tabuleiro, com o
+lápis de editar à direita. A elisão da S-530 continua fazendo o que faz: a 494 px de coluna o nome
+que não cabe vira `…` e a dica carrega a frase inteira.
+
+O que **mudou** por tabela vizinha: o tabuleiro da sala cresceu na primeira abertura (S-551, segunda
+rodada), e o cabeçalho ficou 18 px mais estreito a 1920x1080. Ele continua acima do piso de elisão.
 
 ## S-531 · Ler `.pgn.gz`, `.pgn.bz2` e `.zip` de PGN sem descompactar para o disco — ✅ **implementada em 2026-09-04**
 
@@ -2812,6 +2882,27 @@ leitores mostram o sumário pela própria interface, e pô-la lá faria a confer
 (`conferir_pacotes.py`, "a ordem da espinha não é a dos capítulos do manifesto") apontar defeito onde
 não há. Os marcos (`landmarks`) entraram, que era a outra metade daquela observação.
 
+Rodada 2 (2026-09-05), varredura do programa inteiro. Um achado, e ele não estava no exportador:
+
+| achado | medido | o que mudou |
+|---|---|---|
+| **Não havia como pedir um EPUB** | `epub.py` estava escrito, medido e validado pelo `epubcheck`, com suíte própria -- e o agrupador "Exportar ▾" da sala oferecia `.md`, `.html`, `.rtf` e `.pdf`; o menu Estudo, os mesmos quatro. Nenhum gesto do programa chamava aquele módulo | `Comando("exportar_estudo_epub", …)` no catálogo, a linha em `sala_declarada.COMANDOS_DA_ABA`, a `Acao` dentro do agrupador em `ui/barra_da_sala.py`, o `Item` no menu, e `PainelDeEstudo.exportar_estudo_epub` |
+
+**É a S-518 do outro lado.** Lá um campo era gravado, era lido do disco e não chegava a widget
+nenhum; aqui um exportador foi escrito e ninguém o chamava. Os dois defeitos são invisíveis para
+quem lê o módulo e óbvios para quem usa o programa, e nenhuma suíte de módulo os vê.
+
+`_exportar_empacotado` é o caminho comum do EPUB e do DOCX: escolher o destino, gravar, dizer o que
+saiu. **Nenhum dos dois passa por `text/exportacao.py`**, e é a mesma razão do PDF da S-545 -- aquele
+módulo entrega texto marcado, e estes entregam um **pacote** (um zip com manifesto, imagens e
+metadados). A falha vai para a barra de status e não para uma caixa, que é a régua da S-164.
+
+Teste (`tests/test_qt_painel_de_estudo.py::SaidasQueNaoTinhamChamadorTests`): o comando grava o
+arquivo escolhido e `epub.verificar` responde `[]` -- "nasceu um arquivo" e "nasceu um pacote" são
+duas afirmações, e um teste de efeito precisa das duas; desistir do diálogo não grava nada; o
+destino que o disco recusa vira frase e não exceção; e os dois comandos têm dono na tabela da aba.
+
+
 ## S-543 · Exportar para DOCX — ✅ **implementada em 2026-09-04** (segunda rodada)
 
 ### Problema
@@ -2943,6 +3034,14 @@ mora. As partes que ele lista como "o Word costuma gravar e não estão" (`fontT
 `webSettings`, `numbering`, `footnotes`) continuam fora: o Word as cria ao salvar, e nenhuma é
 exigida para abrir.
 
+Rodada 2 (2026-09-05). O mesmo achado do EPUB, e pela mesma causa: **`docx_saida.py` não tinha
+chamador**. Ele estava escrito, validado e aberto pelo LibreOffice, e o agrupador "Exportar ▾" não o
+oferecia. Entraram o `Comando("exportar_estudo_docx", …)`, a linha da tabela da aba, a `Acao` no
+agrupador, o `Item` no menu e `PainelDeEstudo.exportar_estudo_docx`. Ver a seção da S-542 para o
+caminho comum (`_exportar_empacotado`) e para o teste, que é o par do de lá com
+`docx_saida.verificar`.
+
+
 ## S-544 · Diagramas em lote como PNG/SVG, no tamanho e na pele escolhidos — ✅ **implementada em 2026-09-05**
 
 ### Problema
@@ -3061,7 +3160,29 @@ peça nenhuma, e o custo do PNG é a reamostragem mais a quantização de 64 cor
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Rodada 2 (2026-09-05). Um achado:
+
+| achado | medido | o que mudou |
+|---|---|---|
+| **`gravar_lote` levantava em vez de relatar** | com a pasta de destino não gravável, ele levantava `FileNotFoundError` de dentro da thread -- quinhentos diagramas desenhados e nenhuma linha de relatório dizendo o que aconteceu | `OSError` vira `falhas` no relatório, nos dois pontos: a pasta que não abre e o arquivo que não grava |
+
+**As duas falhas são a mesma pergunta.** Desde a primeira rodada, um diagrama que não **desenha**
+entra no relatório com o nome que o arquivo teria e o motivo, e o lote segue -- é a regra do
+`batch.run_batch`. O disco ficava de fora, e não havia razão para isso: quem espera por um lote de
+quinhentos faz uma pergunta só, "o que saiu e o que não saiu?".
+
+**A pasta é uma falha só, e não uma por item**: quinhentas linhas iguais num relatório escondem
+justamente a linha que diz o que houve. O arquivo que não grava é falha **daquele** arquivo, e os
+outros seguem.
+
+`frase_de_disco` é pura e lê o **`errno`**, não o texto: a mensagem do sistema vem no idioma do
+Windows de quem usa -- em português ela já vem traduzida --, e uma busca por palavra em inglês
+passaria num computador e falharia no outro. O `strerror` vai junto entre parênteses, como em
+`cli.message_for`.
+
+Testes (`tests/test_lote_de_diagramas.py::DiscoNoRelatorioTests`): a pasta que não abre é uma falha
+só, com o caminho e o motivo, e `total` continua contando os itens que **havia**; o arquivo que não
+grava é falha daquele arquivo e o vizinho é gravado; a frase vem do `errno` e carrega o original.
 
 ## S-545 · Imprimir e gerar PDF do estudo com a paginação de livro — ✅ **implementada em 2026-09-05**
 
@@ -4368,9 +4489,43 @@ vazio deixa de ser texto solto e passa a ser margem, que é o que ele é.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Rodada 2 (2026-09-05), programa inteiro na janela real. Dois achados:
 
-## S-552 · A janela cabe em 1024 px de largura — ✅ **implementada em 2026-09-04** (o que resta é uma linha de `qt/janela.py`)
+| achado | medido | o que mudou |
+|---|---|---|
+| **A régua só entregava crescendo** | numa janela que já **nasce** grande, o tabuleiro ficava em **547 px** a 1920x1080 com a régua respondendo 565, e em **738** a 2560x1440 com ela respondendo 834. Depois de mexer no tamanho da janela, nada mudava: a aba nunca era redimensionada de novo | `PainelDeEstudo.showEvent` chama `_acomodar_o_tabuleiro`. Medido depois: **565** a 1920 e **834** a 2560 |
+| **O status saía duas vezes** | "Posição legal." e a contagem de peças apareciam nos rótulos `legalidade` e `material` **e** na primeira metade do parágrafo `detalhes`, a dois centímetros de distância, na mesma coluna | `_detalhes_do_item` ficou com o que **só** ele diz: procedência do lado a jogar, confiança, detecção e legenda |
+
+**Por que a régua não rodava, e é o oposto do que parecia.** `_acomodar_o_tabuleiro` morava só no
+`resizeEvent`, e a hipótese natural -- "`posicionar_divisor` desligou a regra" -- estava errada: com
+o estado limpo, `_divisor_escolhido` era `False` o tempo todo. Instrumentado, o método era chamado
+**uma vez**, na construção, com o divisor ainda de largura zero, e desistia no `largura <= 0`. A
+montagem dá ao painel a geometria final de uma vez, e depois disso não há `resizeEvent` nenhum --
+nem quando a janela muda 1 px, porque o `QSplitter` da janela absorve o delta de um lado só.
+
+`showEvent` é o instante certo pela mesma razão pela qual a janela põe o divisor dela ali (S-156): é
+quando a largura passa a ser a de verdade. A guarda de `_divisor_escolhido` continua na frente, então
+chamar de lá não atropela nem quem arrastou a alça nem a sessão anterior. E o `not
+self.divisor.isVisible()` saiu da guarda: `largura <= 0` já cobre o caso que ele protegia, e sob
+`show` o divisor ainda não se declara visível.
+
+**A duplicação, e por que os dois rótulos ficam e o parágrafo cede.** `legalidade` e `material` são
+dois `QLabel` cuja única razão de existir é essa -- um deles é pintado de vermelho quando a posição é
+ilegal, e o outro é `TEXTO_SECUNDARIO` em corpo auxiliar. O parágrafo é prosa. Uma frase repetida a
+dois centímetros não é redundância inofensiva: ela faz procurar a diferença entre as duas.
+
+**O `lbl_status` da sala continua repetindo a barra de status da janela**, e desta vez é decisão
+escrita e não dívida: aquele rótulo é o status **do painel**, e o painel roda sozinho -- em
+`tests/test_qt_painel_de_treino.py`, em `test_qt_impressao_do_estudo.py` e em `test_qt_barra_da_sala.
+py` ele é a única superfície que responde. Tirá-lo trocaria uma duplicação visível por um painel mudo
+fora da janela.
+
+**Testes.** `tests/test_qt_painel_de_estudo.py::TabuleiroNaPrimeiraAberturaTests` (novo): a mesma
+sala do mesmo tamanho, mostrada **uma vez**, com a regra desligada e com ela -- e o tabuleiro tem de
+ser maior com; a leitura não desce abaixo do piso já no primeiro desenho; a fração guardada continua
+desligando a regra quando a sala reaparece.
+
+## S-552 · A janela cabe em 1024 px de largura — ✅ **implementada em 2026-09-04; fechada em 2026-09-05** (segunda rodada: os dois literais cederam)
 
 ### Problema
 
@@ -4429,27 +4584,34 @@ com ele o piso de altura daquele lado.
   Dataset 516×288 e Texto 149×132.
 - O conteúdo não encolheu: o recorte da galeria continua com `BOARD_VIEW_SIZE` px, e a lateral com
   `LARGURA_DA_LATERAL`. ✅ Nas larguras em que não cabem, a área rolável mostra as barras.
-- **A largura de 1024 depende de uma linha que este item não toca, e a distância está medida.**
-  ✅/⚠ O piso de largura continua sendo `LARGURA_MINIMA_DAS_ABAS + LARGURA_MINIMA_DO_VISOR + alça`
-  = **1245 px**, e os dois são literais de `qt/janela.py`, que outro executor está reescrevendo
-  nesta sessão. **Debaixo deles não sobrou mais nada segurando a janela**: o que os painéis de
-  fato pedem, medido com as fontes de verdade, é `522` (a aba mais exigente, Dataset) `+ 198` (o
-  painel do PDF) `+ 5` = **725 px**.
+- **A largura de 1024, e ela fechou na segunda rodada (2026-09-05).** ✅ Os dois literais desceram
+  para **500** e **440**, que é o que a primeira rodada já tinha provado em `probe_1024.py`.
+  Medido com o código de hoje, o `windows11` e as fontes do sistema: pedida a 1024×768 a janela
+  **abre em 1024×768**, com piso de `955×553` (classe: `955×587` na pele "Foco", `945×582` na
+  "Fita"), divisor em `[500, 519]`, e as seis abas desenhando. Era `1245×768`.
 
-  Provado sem alterar arquivo nenhum (`probe_1024.py`, que troca as duas constantes em memória
-  antes de a janela ser montada): com `LARGURA_MINIMA_DAS_ABAS = 500` e `LARGURA_MINIMA_DO_VISOR =
-  440`, a janela pedida a 1024×768 **abre exatamente em 1024×768**, com piso de `955×553`, divisor
-  em `[500, 519]`, e as seis abas desenhando -- Galeria e Resultado com rolagem, as outras sem.
-  Foto: `fotos/exec_fase80/mil24/cedido_*.png`; o estado de hoje, `mil24/como_esta_*.png`
-  (1245×768).
+  Os 720 vinham de `galeria_declarada.LARGURA_MINIMA_DA_GALERIA` (420 + 260 + 40), que desde esta
+  seção é o tamanho **preferido** da galeria e não mais o exigido; os 520 do visor eram "abaixo
+  disso a página não cabe nem no ajuste à largura", e o próprio painel responde 198.
+- **Piso e largura preferida são coisas diferentes, e separá-las foi metade da segunda rodada.**
+  ✅ O piso de 720 fazia dois trabalhos: segurava a janela (o defeito) e, de graça, dava 720 px à
+  aba de trabalho numa janela de 1400 em vez dos 586 que 42% dariam. Baixá-lo sozinho levou junto a
+  segunda garantia -- medido a 1400×950, a aba foi de **720 para 585 px** e o tabuleiro da sala de
+  **488 para 392**. `geometria.divisor_da_primeira_abertura` (nova, pura) arbitra: o esquerdo
+  recebe o maior entre a fração e o que ele **prefere**, e nunca tanto que o direito fique abaixo
+  do que ele prefere. A 1400 a aba volta aos 720; a 1024, onde os dois preferidos não cabem, quem
+  cede é a aba -- é a página do livro que não se lê espremida.
 
-  **A linha para quem mexer em `qt/janela.py`:** baixar os dois literais para 500 e 440 fecha o
-  item. Os 720 vinham de `galeria_declarada.LARGURA_MINIMA_DA_GALERIA` (420 + 260 + 40), que agora
-  é o tamanho **preferido** da galeria e não mais o exigido; os 520 do visor eram "abaixo disso a
-  página não cabe nem no ajuste à largura", e o próprio painel responde 198.
-- `ui/geometria.piso_da_janela` continua somando das partes e continua **acima** de 1024 --
-  justamente por causa dos dois literais --, e há um teste que falha quando isso deixar de ser
-  verdade, pedindo a atualização desta seção. ✅
+  **Só vale quando não há nada guardado.** Uma fração que a sessão anterior gravou passa como veio,
+  mesmo estreita: alguém a arrastou para ali.
+- `ui/geometria.piso_da_janela` continua somando das partes, e o que ele responde hoje é
+  `PISO_MEDIDO` (**1180×800**) e não a soma -- que é `500 + 440 + 60` = 1000, abaixo da tela mínima.
+  ⚠ **Esse piso não entra na janela**: quem a segura é o `minimumSizeHint` do layout. Ele é usado
+  por `geometria.geometria_a_aplicar` e **só** quando a geometria guardada não cabe mais nos
+  monitores de hoje -- o caso de perder um monitor. Nessa recuperação a janela ainda nasce com
+  1180 px de largura, maior que uma tela de 1024, e isso fica registrado com o número em
+  `test_o_piso_declarado_ainda_e_o_da_S_150`. Baixar `PISO_MEDIDO` é mexer na medição da S-150, que
+  esta rodada não pede.
 
 ### Testes
 
@@ -4469,7 +4631,51 @@ com ele o piso de altura daquele lado.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Rodada 2 (2026-09-05). **Bloqueio**: *"a janela não cabe em 1024, e a S-552 está marcada ✅"* --
+pedida a 1024×768 ela ficava em **1245×768**, e a seção declarava o item implementado com a linha
+que faltava escrita como dívida. O crítico está certo nas duas metades: o número não fechava, e
+`✅` com uma ressalva no fim do título é promessa e não estado.
+
+O que mudou está no critério de aceite acima, e a conta é esta:
+
+| antes | depois |
+|---|---|
+| `LARGURA_MINIMA_DAS_ABAS` = 720 | **500** |
+| `LARGURA_MINIMA_DO_VISOR` = 520 | **440** |
+| pedida a 1024×768, abria em **1245×768** | abre em **1024×768** |
+| piso da janela: `1245×553` | **955×553** |
+| — | `LARGURA_PREFERIDA_DAS_ABAS` = 720, `LARGURA_PREFERIDA_DO_VISOR` = 520 (novos) |
+| a 1400×950: divisor `[720, 675]`, tabuleiro da sala 488 px | igual -- e é o que as preferidas preservam |
+
+As seis abas foram fotografadas a **1024×768**, 1400×950 e 1920×1080, nas três peles
+(`exec_final/fotos/`, 54 imagens): nenhuma exige rolagem horizontal da janela, e as duas que rolam
+verticalmente a 1024 (Resultado e Galeria) são as que a primeira rodada pôs em `QScrollArea`.
+A aba do Dataset é a mais apertada -- ela pede 514 px e recebe 494 --, e o que ela perde é o fim de
+um rótulo de filtro ("Imagem ause…"); a tabela dela rola horizontalmente, como já rolava.
+
+### Testes da rodada 2
+
+Os da primeira rodada continuam, com três trocas e três acréscimos:
+
+- `test_os_dois_literais_da_janela_cabem_na_tela_minima` substitui o que cobrava a distância: a
+  régua continua sendo a **soma declarada** e não um número cravado, e agora ela cobra `<= 1024`.
+- `test_a_largura_preferida_nao_e_o_piso` e `test_a_janela_larga_abre_na_largura_preferida_das_abas`
+  (novos): o preferido é maior que o piso nos dois lados, e a aba de trabalho recebe o que pede.
+  **O efeito é medido contra o que o outro lado exige**, e não contra 720 cravado: sob `offscreen`
+  não há a fonte da interface e a fileira de campo mede 810 px, então ali o esquerdo recebe os 586
+  que sobram; na janela de verdade o mesmo código dá 720.
+- `test_na_tela_minima_quem_cede_e_a_aba_e_nao_a_pagina` (novo): o empate a 1024 se desfaz a favor
+  do livro.
+- `test_o_piso_declarado_ainda_e_o_da_S_150` substitui o que cobrava "o piso continua acima de
+  1024": ele agora **nomeia** o que sobrou (`PISO_MEDIDO`) e o caminho em que isso vale.
+- `test_pedida_a_tela_minima_a_janela_encolhe_ate_o_que_o_layout_pede`: o número de tela não pode
+  ser afirmado sob `offscreen` (a janela responde 1314 px de mínimo ali e 955 na de verdade), então
+  o que se afirma é que **nada além do que o layout pede** a segura, e que os dois pisos que chegam
+  aos widgets são os declarados.
+- `tests/test_ui_geometria.py::DivisorDaPrimeiraAberturaTests` (novo, puro): a janela larga fica com
+  a fração porque ela já passa do preferido; a média fica com o preferido (**é o caso que
+  quebrou**); na tela mínima quem cede é a esquerda; nenhuma largura deixa um lado com zero pixel;
+  sem geometria a resposta é zero; e a fração padrão é a da S-156, sem número novo.
 
 ## S-553 · O foco de teclado se vê — ✅ **implementada em 2026-09-04**
 
@@ -4602,7 +4808,60 @@ verde na correção. `_sem_foco` chama `clearFocus` e **afirma** que o botão o 
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Rodada 2 (2026-09-05). **Bloqueio**, e ele é a conta do que esta seção escolheu não fazer:
+
+> Na aba Resultado, que é **a que abre primeiro**, "Lado a jogar: Pretas" selecionado fica texto
+> pelado: o indicador não é desenhado. O mesmo vale para as caixas de seleção, que aparecem como
+> `✓` solto sem quadro (marcada) e quadro vazio (desmarcada) -- duas gramáticas.
+
+**A primeira rodada previu a causa e errou a conclusão.** O parágrafo final de
+`CONTROLES_COM_ANEL_DE_FOCO` dizia que `QCheckBox` e `QRadioButton` ficavam fora do anel de foco
+porque declarar propriedade nelas faria o `windows11` parar de pintar o cromo nativo -- *"e na caixa
+de seleção o cromo nativo é o **indicador**, que é justamente o que se precisa ver"*. A causa estava
+certa. O que estava errado era supor que o estrago ainda não tinha acontecido: a S-442 já declarava
+`spacing` e a S-441 já declarava `padding` nas duas classes, então o indicador **já** estava apagado
+desde antes deste item. O medo custou o pior defeito visível do programa, na aba que abre primeiro.
+
+**A correção.** `INDICADOR_DA_MARCA` declara o indicador das duas classes, e a gramática é uma só:
+
+| estado | caixa de seleção | rádio |
+|---|---|---|
+| desmarcado | campo da superfície, moldura do cromo, 13×13 px | idem, redondo |
+| marcado | face inteira em `BOTAO_PRIMARIO`, moldura na mesma tinta | anel de campo com o **ponto** em `BOTAO_PRIMARIO` |
+| marcado e desabilitado | a mesma face em `TEXTO_SECUNDARIO` | o mesmo ponto em `TEXTO_SECUNDARIO` |
+| focado | a moldura de 1 px troca para a cor do anel | idem |
+
+**O anel de foco delas vai no indicador, e não no widget** -- e é por isso que as duas continuam
+fora de `CONTROLES_COM_ANEL_DE_FOCO`: um `QCheckBox:focus { border: … }` cercaria o rótulo inteiro e
+moveria o texto de todo diálogo em um pixel a cada `Tab`, que é justamente o que aquela lista existe
+para não fazer.
+
+**Por que a marca da caixa é a face e não um `✓`.** Uma folha de estilo só põe imagem por `url(…)`,
+que quer dizer arquivo ou recurso compilado -- e um `✓` de arquivo teria cor fixa, o que quebraria as
+três peles. `folha_de_estilo` é pura de propósito e não pode desenhar um `QPixmap`. O ponto do rádio
+é um `qradialgradient`, que é texto e segue a pele; a face da caixa é o desenho chato de qualquer
+interface moderna, e as duas coisas dizem o mesmo: **tinta de ênfase dentro da moldura**.
+
+**O alvo do ponteiro não segue a densidade**, e é a diferença em relação a `_escalado`: folga é
+espaço em volta e pode encolher -- é para isso que a pele compacta existe --, e isto é o que se
+acerta com o mouse. Encolhê-lo 30% trocaria "cabe mais linha" por "erra-se mais o clique".
+
+**Medido na plataforma de verdade** (`windows11`, `exec_final/prova_indicador.py`), diferença de
+pixels entre estados, nas três peles:
+
+| par | caixa | rádio |
+|---|---|---|
+| desmarcado × marcado | **225 px** (era 0 no rádio) | **121 px** |
+| marcado × marcado desabilitado | 225 px | 121 px |
+| parado × focado | 56–60 px | 84 px |
+
+**Testes** (`tests/test_qt_tema.py::IndicadorDaMarcaTests`): as duas classes declaram os seis
+estados nas três peles; marcado e desmarcado não são a mesma tinta, e o desabilitado não é a do
+vivo; a marca é `BOTAO_PRIMARIO` e o apagado é `TEXTO_SECUNDARIO`, sem papel novo; o anel vai no
+indicador e o widget não ganha borda; o alvo não encolhe na compacta e acompanha a fonte; o ponto do
+rádio é um pincel com o campo em volta; e um caso de pixel confirmando que os quatro estados
+continuam distintos. **A folha é o que se cobra, e não o desenho**, pela armadilha da S-506: sob
+`offscreen` o `fusion` desenha o indicador nativo com folha e sem folha, então a CI não vê o defeito.
 
 ## S-554 · O ícone desabilitado apaga também na pele escura — ✅ **implementada em 2026-09-04**
 
@@ -4724,7 +4983,14 @@ três papéis.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Rodada 2 (2026-09-05). Nada a corrigir neste item. O ícone desabilitado continua apagando nas três
+peles, e a rodada acrescentou dois lugares em que a mesma regra passou a valer sem nada de novo: os
+dez traços da fila do painel de Resultado (S-528, terceira barra) pedem a cor ao mesmo `papel`, e o
+`QToolButton:disabled` da folha os apaga junto -- fotografado a 1024×768, 1400×950 e 1920×1080 nas
+três peles (`exec_final/fotos/`).
+
+O que o crítico **recusou** perto daqui foi o indicador da caixa de seleção e do rádio, que não são
+ícone e não passam por `qt/icones.py`: está na seção da S-553.
 
 ## S-580 · O fim da faixa reservada — não é item
 

@@ -470,6 +470,19 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "exportar_estudo_pdf",
                 "imprimir_estudo",
                 "exportar_diagramas_lote",
+                # E os dois da segunda rodada da S-542/S-543, pela razão idêntica: o menu diz
+                # "Exportar o estudo para EPUB…" e o item do agrupador diz ".epub". Eles chegaram
+                # ao catálogo três dias depois dos módulos que os escrevem -- até aqui não havia
+                # gesto nenhum que chamasse `epub.py` nem `docx_saida.py`.
+                "exportar_estudo_epub",
+                "exportar_estudo_docx",
+                # E os três que a S-233 registrou como dívida e a terceira barra em fila pagou: o
+                # menu diz "Salvar a posição" e o botão da fila diz "Salvar". Enquanto o painel de
+                # Resultado escrevia os rótulos à mão eles não declaravam `rotulo_curto`, "que
+                # seria uma promessa que ninguém cumpre".
+                "salvar",
+                "salvar_todos",
+                "aplicar_fen",
                 # E o da Fase 81 (S-535), pelo mesmo motivo: o menu diz "Árvore de aberturas desta
                 # posição" porque é onde cabe dizer de que posição se fala, e o botão do grupo Base
                 # diz "Árvore" -- ao lado de "Partidas", que responde a outra pergunta sobre a

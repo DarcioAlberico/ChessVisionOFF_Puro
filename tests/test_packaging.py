@@ -250,8 +250,19 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1905
+    LIMITE = 1956
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.905 → 1.956 na segunda rodada da S-552**, e as 51 são a janela cabendo em 1024 px. Vinte e
+    sete são docstring: os dois literais de piso passaram a ter um **par** de larguras preferidas
+    ao lado, e a distinção entre "onde a janela para de encolher" e "o que o lado pede quando há
+    espaço" é justamente o que a primeira rodada não tinha -- baixar o piso sem ela encolhia a aba
+    de trabalho em 135 px a 1400x950, medido. As outras vinte e quatro são o `REPARTICAO_INICIAL`
+    que virou o par de preferidas, o `if` do `showEvent` que separa fração guardada de repartição
+    de fábrica, e o `__all__` de uma linha que virou cinco.
+
+    A decisão em si **não** ficou aqui: `geometria.divisor_da_primeira_abertura` é pura e é quem
+    arbitra os dois preferidos -- o que sobrou na janela são os dois números e a chamada.
 
     **1.891 → 1.905 na S-546**, e as catorze são a única coisa que só a janela podia fazer: a fila
     de livros passou a ter chamador. Duas são o `import` e a entrada `"varrer_fila"` na tabela de

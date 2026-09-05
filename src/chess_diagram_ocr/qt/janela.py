@@ -147,18 +147,53 @@ from chess_diagram_ocr.ui.varredura_de_revisao import PedidoDeVarredura
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["LARGURA_MINIMA_DAS_ABAS", "LARGURA_MINIMA_DO_VISOR", "JanelaPrincipal"]
+__all__ = [
+    "LARGURA_MINIMA_DAS_ABAS",
+    "LARGURA_MINIMA_DO_VISOR",
+    "LARGURA_PREFERIDA_DAS_ABAS",
+    "LARGURA_PREFERIDA_DO_VISOR",
+    "JanelaPrincipal",
+]
 
-LARGURA_MINIMA_DAS_ABAS = 720
-"""O piso do lado esquerdo, somado das partes em `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`.
+LARGURA_MINIMA_DAS_ABAS = 500
+"""O piso do lado esquerdo, e ele é o que as abas **de fato** pedem (S-552, segunda rodada).
 
-**É a aba mais exigente que decide o piso**, e não a média: a Galeria precisa de 420 px de recorte
-mais 260 de lateral mais a folga, e abaixo disso quem perde é a coluna de headers -- os controles
-que gravam a procedência de uma partida (S-154)."""
+**Eram 720, somados das partes em `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`** -- 420 px de
+recorte mais 260 de lateral mais a folga --, e essa soma era o piso da janela inteira desde a
+S-154. Com a S-552 a Galeria passou a morar dentro de um `QScrollArea`: os 680 px continuam sendo
+o tamanho **preferido** dela, e deixaram de ser o exigido. Medido com as fontes de verdade, a aba
+mais exigente hoje é a do Dataset, com **522 px**; 500 é o valor que o crítico provou em
+`probe_1024.py`, trocando as duas constantes em memória antes de a janela ser montada.
 
-LARGURA_MINIMA_DO_VISOR = 520
-"""O mesmo piso do visualizador do produto: abaixo disso a página não cabe nem no ajuste à
-largura, e o que sobra é rolagem horizontal."""
+**Por que isto é um item e não um ajuste de gosto:** 720 + 520 + 5 de alça = **1245**, e era o
+piso de largura da janela. Pedida a 1024×768 -- a tela de um notebook de 1366×768 com a janela
+numa metade, ou a de um projetor --, ela abria em 1245×768 e transbordava a tela. O ChessBase e o
+Lichess funcionam a 1024."""
+
+LARGURA_MINIMA_DO_VISOR = 440
+"""O piso do visualizador, e ele também é o que o painel pede (S-552, segunda rodada).
+
+Eram 520, escritos como "abaixo disso a página não cabe nem no ajuste à largura". Medido, o painel
+responde **198 px** de mínimo desde que a S-528 trocou as três fileiras de cromo por uma fila de
+32 px. Os 440 não são o mínimo dele: são a largura em que uma página A5 a 100% ainda se lê sem
+rolagem horizontal, e é por isso que este número continua acima do que o painel exige."""
+
+LARGURA_PREFERIDA_DAS_ABAS = 720
+"""O que o lado das abas **pede** quando há espaço, em pixel (S-552, segunda rodada).
+
+São os 720 que eram o piso até esta rodada -- a soma das partes da Galeria (S-154) --, demovidos
+de exigência a preferência. **A distinção é o item inteiro:** piso é onde a janela para de
+encolher, e por isso ele tinha de cair para a janela caber em 1024; preferida é o que o lado pede
+quando há espaço, e isso não mudou. Sem separar os dois, baixar o piso levava junto o arranjo de
+fábrica: medido a 1400×950, a aba de trabalho ia de 720 para 585 px e o tabuleiro da sala de 488
+para 392."""
+
+LARGURA_PREFERIDA_DO_VISOR = 520
+"""O mesmo para o lado do livro: os 520 que eram o piso do visor.
+
+**E é o preferido do visor que desfaz o empate numa janela de 1024**, onde os dois preferidos não
+cabem juntos: quem cede é a aba, porque a página do livro é o que não se lê espremido -- ver
+`geometria.divisor_da_primeira_abertura`."""
 
 TITULO_DA_JANELA = "PyQt"
 """Vai no título da janela, e não é decoração.
@@ -471,7 +506,12 @@ class JanelaPrincipal(QMainWindow):
         # **Os tamanhos iniciais são declarados, e não deduzidos.** O `QSplitter` reparte pela
         # `sizeHint` de cada lado, e a de um `QTabWidget` cheio de rótulos com quebra de linha
         # pede toda a largura que lhe derem.
-        self.divisor.setSizes([LARGURA_MINIMA_DAS_ABAS, 760])
+        #
+        # E são as larguras **preferidas**, e não o piso repetido: até a S-552 a esquerda nascia
+        # com `LARGURA_MINIMA_DAS_ABAS`, o que dava no mesmo porque o piso era 720. Baixado o piso
+        # para 500, repeti-lo aqui encolheria a aba de trabalho -- o piso diz onde a janela
+        # **para**, e não como ela abre. Quem arbitra os dois preferidos é `showEvent`.
+        self.divisor.setSizes([LARGURA_PREFERIDA_DAS_ABAS, LARGURA_PREFERIDA_DO_VISOR])
 
         self.treino = ControladorDeTreino(self, pedido=self._pedido_de_treino, busy=self.busy)
         self.exportador = Exportador(
@@ -613,8 +653,19 @@ class JanelaPrincipal(QMainWindow):
         largura = sum(self.divisor.sizes()) or self.divisor.width()
         if largura <= 0:
             return
-        fracao = self._estado.sash_fraction or geometria.FRACAO_PADRAO_DO_DIVISOR
-        esquerda = max(1, int(largura * fracao))
+        # **Guardada é escolha; ausente é a repartição preferida** (S-552, segunda rodada). Uma
+        # fração que a sessão anterior gravou vale como veio, mesmo estreita: alguém a arrastou
+        # para ali. Sem nada guardado quem decide é `divisor_da_primeira_abertura`, que arbitra as
+        # duas larguras preferidas -- e é o que repõe o arranjo de fábrica que o piso dava de
+        # graça enquanto ele era 720.
+        if self._estado.sash_fraction:
+            esquerda = max(1, int(largura * self._estado.sash_fraction))
+        else:
+            esquerda = geometria.divisor_da_primeira_abertura(
+                largura,
+                preferida_esquerda=LARGURA_PREFERIDA_DAS_ABAS,
+                preferida_direita=LARGURA_PREFERIDA_DO_VISOR,
+            )
         self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
     def _indice_da_aba(self, nome: str) -> int | None:

@@ -348,6 +348,7 @@ SEM_TKINTER = {
     "arvore_de_aberturas.py": "as colunas da árvore, a ordem por frequência e o que a amostra pequena não afirma (S-535)",
     "barra_da_sala.py": "os grupos da sala de estudo, o que é principal, o modo e quem cabe na fila (S-527)",
     "barra_do_pdf.py": "os grupos do painel do PDF, o que é principal e o modo de cada controle (S-528)",
+    "barra_do_resultado.py": "os grupos do painel de Resultado e o que vai para o \"Mais\" (S-528, 3ª barra)",
     "cabecalho_da_partida.py": "os nove campos do cabeçalho, a frase de duas linhas e o que a edição grava (S-530)",
     "analise_da_partida.py": "os cortes de imprecisão/erro/erro grave e onde o gráfico põe cada ply (S-537)",
     "finais.py": "quando perguntar à tabela de finais e o que a resposta dela diz (S-538)",

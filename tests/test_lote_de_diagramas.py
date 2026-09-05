@@ -15,7 +15,12 @@ import chess
 import chess.pgn
 from ambiente_de_teste import pasta_temporaria
 
-from chess_diagram_ocr.diagramas_em_lote import bytes_do_item, frase_do_relatorio, gravar_lote
+from chess_diagram_ocr.diagramas_em_lote import (
+    bytes_do_item,
+    frase_de_disco,
+    frase_do_relatorio,
+    gravar_lote,
+)
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo
 from chess_diagram_ocr.ui import conjuntos, tokens
 from chess_diagram_ocr.ui.lote_de_diagramas import (
@@ -329,6 +334,60 @@ class GravarLoteTests(unittest.TestCase):
         texto = bytes_do_item(_item(), Opcoes(formato=SVG, plaqueta=False)).decode("utf-8")
         self.assertNotIn("lado-a-jogar", texto)
         self.assertIn("lado-a-jogar", bytes_do_item(_item(), Opcoes(formato=SVG)).decode("utf-8"))
+
+
+class DiscoNoRelatorioTests(unittest.TestCase):
+    """A falha de disco vira relatório, e não exceção (S-544, segunda rodada).
+
+    **O defeito medido pelo crítico em 2026-09-05**: com a pasta de destino não gravável,
+    `gravar_lote` levantava `FileNotFoundError` de dentro da thread -- quinhentos diagramas
+    desenhados e nenhuma linha dizendo o que aconteceu. A falha de **desenho** já virava relatório
+    desde a primeira rodada; as duas são a mesma pergunta para quem espera ("o que saiu e o que
+    não saiu?") e agora têm a mesma resposta.
+    """
+
+    def test_a_pasta_que_nao_abre_e_uma_falha_so_e_nao_uma_por_item(self) -> None:
+        """Quinhentas linhas iguais num relatório escondem justamente a linha que diz o que houve."""
+        pasta = pasta_temporaria(self)
+        bloqueio = pasta / "nao_sou_pasta"
+        bloqueio.write_bytes(b"")
+        relatorio = gravar_lote([_item(), _item(fen=INICIAL + " b - - 0 1")], Opcoes(formato=PNG), bloqueio / "saida")
+        self.assertEqual((), relatorio.gravados)
+        self.assertEqual(1, len(relatorio.falhas))
+        self.assertEqual(2, relatorio.total)
+        nome, motivo = relatorio.falhas[0]
+        self.assertIn("saida", nome)
+        self.assertTrue(motivo, "a falha entrou sem motivo escrito")
+
+    def test_o_arquivo_que_nao_grava_e_falha_daquele_arquivo(self) -> None:
+        """A régua do "um diagrama ruim não derruba o lote", aplicada ao disco: o vizinho segue."""
+        pasta = pasta_temporaria(self) / "saida"
+        pasta.mkdir(parents=True)
+        nomes = nomes_do_lote([_item(), _item(fen=INICIAL + " b - - 0 1")], PNG)
+        # O primeiro nome ocupado por uma **pasta**: `atomic_write_bytes` não escreve por cima dela.
+        (pasta / nomes[0]).mkdir()
+        relatorio = gravar_lote([_item(), _item(fen=INICIAL + " b - - 0 1")], Opcoes(formato=PNG), pasta)
+        self.assertEqual(1, len(relatorio.gravados))
+        self.assertEqual(1, len(relatorio.falhas))
+        self.assertEqual(nomes[0], relatorio.falhas[0][0])
+        self.assertTrue(relatorio.gravados[0].is_file())
+
+    def test_a_frase_de_disco_vem_do_errno_e_nao_do_idioma_do_sistema(self) -> None:
+        """A mensagem do sistema vem no idioma do Windows de quem usa -- em português ela já vem
+        traduzida, e uma busca por palavra em inglês passaria num computador e falharia no outro."""
+        import errno
+
+        frases = {
+            errno.EACCES: "permissão",
+            errno.ENOSPC: "espaço",
+            errno.ENOENT: "não existe",
+        }
+        for codigo, pedaco in frases.items():
+            with self.subTest(errno=codigo):
+                erro = OSError(codigo, "Any message in any language")
+                self.assertIn(pedaco, frase_de_disco(erro))
+                self.assertIn("Any message", frase_de_disco(erro), "o original sumiu")
+        self.assertIn("recusou a escrita", frase_de_disco(OSError(0, "sei lá")))
 
 
 if __name__ == "__main__":  # pragma: no cover

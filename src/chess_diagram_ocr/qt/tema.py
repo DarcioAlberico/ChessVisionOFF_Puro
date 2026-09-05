@@ -53,6 +53,8 @@ __all__ = [
     "CONTROLES_COM_ANEL_DE_FOCO",
     "CONTROLES_COM_MOLDURA",
     "ID_DO_SEPARADOR",
+    "INDICADOR_DA_MARCA",
+    "LADO_DO_INDICADOR",
     "PROPRIEDADE_DE_PAPEL",
     "RECHEIO_DO_TEMA",
     "altura_de_linha_atual",
@@ -65,7 +67,9 @@ __all__ = [
     "folha_de_estilo",
     "fonte_atual",
     "fonte_base",
+    "lado_do_indicador",
     "pintar",
+    "ponto_do_radio",
     "repintar",
 ]
 
@@ -349,14 +353,73 @@ existe para não ter. (`outline` foi medido e **não serve**: com `outline: 1px 
 `QToolButton` continua desenhando 0 px de diferença; o `QPushButton` muda 64. O Qt não o aplica a
 todo controle, e um anel que existe em metade da fila é pior que nenhum.)
 
-**A `QCheckBox` e a `QRadioButton` ficam de fora, e é decisão e não esquecimento.** Elas não têm
-moldura na folha, então o anel exigiria declarar uma -- e a S-522 mediu o que uma propriedade de
-caixa nova faz no `windows11`: o estilo para de pintar o cromo nativo daquele widget. No botão
-isso custou a borda, que a folha repôs; na caixa de seleção o cromo nativo é o **indicador**, que é
-justamente o que se precisa ver. Trocar um anel de foco por uma caixa sem quadradinho seria pagar
-caro demais, e a máquina que rodaria a suíte não tem como ver o estrago (sob `offscreen` o `fusion`
-desenha o indicador com folha e sem folha). Fica com a plataforma, e fica escrito aqui.
+**A `QCheckBox` e a `QRadioButton` continuam fora desta lista, e agora por outro motivo.** Na
+primeira rodada elas ficaram de fora por medo: declarar propriedade nelas faria o `windows11` parar
+de pintar o cromo nativo, e ali o cromo nativo é o **indicador**. O medo estava certo na causa e
+errado na conclusão -- o estrago **já estava feito** desde a S-442, que declarou `spacing`, e desde
+a S-441, que declarou `padding`. O crítico fotografou o resultado em 2026-09-05: o rádio marcado
+saía como texto pelado, sem indicador nenhum, na aba que abre primeiro. Quem declara o indicador
+agora é `INDICADOR_DA_MARCA`, logo abaixo, e o anel de foco delas vai **no indicador** e não no
+widget: um `QCheckBox:focus { border: ... }` cercaria o rótulo inteiro e moveria o texto de todo
+diálogo em um pixel a cada `Tab`, que é justamente o que esta lista existe para não fazer.
 """
+
+
+LADO_DO_INDICADOR = 13
+"""O lado do quadradinho da caixa de seleção e do círculo do rádio, em pixel na base 9 (S-553,
+segunda rodada).
+
+**Treze porque é o que o Windows desenha a 96 DPI**, e a folha o escala pela fonte do sistema como
+escala todo o resto -- um pixel cravado aqui ignoraria quem aumentou a fonte, que é o defeito de
+DPI da S-148 num lugar menor.
+
+**A densidade não entra, e é a diferença em relação a `_escalado`.** Folga é espaço em volta e pode
+encolher: é para isso que a pele compacta existe. Isto é o alvo do ponteiro, e encolhê-lo 30% na
+compacta seria trocar "cabe mais linha na tela" por "erra-se mais o clique" -- o piso de alvo é o
+que a WCAG 2.5.5 mede, e ele não é uma folga."""
+
+INDICADOR_DA_MARCA: tuple[str, ...] = ("QCheckBox", "QRadioButton")
+"""As duas classes cujo indicador a folha desenha inteiro (S-553, segunda rodada).
+
+**O defeito medido, e ele estava na aba que abre primeiro.** "Lado a jogar: Pretas" selecionado
+saía como texto pelado -- indicador nenhum --, e a caixa de seleção saía como um `✓` solto sem
+quadro quando marcada contra um quadro vazio quando desmarcada: duas gramáticas para o mesmo par de
+estados. A causa é a da S-522, e vale para todo widget: **uma propriedade de folha faz o
+`windows11` parar de pintar o cromo nativo daquele widget**. Aqui o cromo nativo é o indicador, e
+`spacing` (S-442) e `padding` (S-441) bastaram para apagá-lo.
+
+**A marca é tinta de ênfase dentro da mesma moldura, e é uma gramática só.** Desmarcado: campo da
+superfície com a moldura do cromo. Marcado: a moldura e o campo viram `BOTAO_PRIMARIO` -- na caixa,
+a face inteira; no rádio, o ponto no meio, que é o desenho que todo toolkit dá a um rádio.
+Desabilitado: a marca cai para `TEXTO_SECUNDARIO`, que é o mesmo apagamento do botão comum
+desabilitado (S-506). Focado: a moldura de 1 px troca de cor pela cor do anel, exatamente como nas
+outras oito classes -- sem `padding` novo e sem `border-width` maior, para o `Tab` não mover o
+rótulo.
+
+**Por que não há um glifo de `✓`.** Uma folha de estilo só põe imagem por `url(...)`, que quer
+dizer arquivo ou recurso compilado -- e um `✓` de arquivo teria cor fixa, o que quebraria as três
+peles. `folha_de_estilo` é pura de propósito (ver o cabeçalho) e não pode desenhar um `QPixmap`.
+Então a marca da caixa é a **face**, que é o que o desenho chato de qualquer interface moderna faz,
+e ela combina com o ponto do rádio: nos dois, marcado é tinta de ênfase dentro da moldura."""
+
+
+def ponto_do_radio(marca: str, campo: str) -> str:
+    """O pincel do rádio marcado: anel de campo com o ponto no meio, como texto de QSS.
+
+    Um `qradialgradient` e não uma imagem, pela razão escrita em `INDICADOR_DA_MARCA`: a folha é
+    pura, e a cor tem de seguir a pele. As paradas são duras de propósito -- o que se quer é um
+    ponto, não um borrão --, e a de 0,42 dá um ponto de ~5,5 px num indicador de 13.
+    """
+    return (
+        "qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,"
+        f" stop:0 {marca}, stop:0.42 {marca}, stop:0.5 {campo}, stop:1 {campo})"
+    )
+
+
+def lado_do_indicador(base: int = tipografia.BASE_DE_REFERENCIA) -> int:
+    """`LADO_DO_INDICADOR` reescrito para esta fonte. Piso de 12 px: abaixo disso o ponto do rádio
+    fica com menos de 5 px e some."""
+    return max(12, round(LADO_DO_INDICADOR * base / tipografia.BASE_DE_REFERENCIA))
 
 
 def anel_de_foco(*, cromo_escuro: bool = False, sobre_enfase: bool = False) -> str:
@@ -540,6 +603,44 @@ def folha_de_estilo(
     # O vão entre o indicador e o rótulo (S-442). Em Qt ele é `spacing` e não
     # `indicatormargin`, e é a propriedade que o `QCheckBox` de fato lê.
     regras += [f"QCheckBox {{ spacing: {vao}px; }}", f"QRadioButton {{ spacing: {vao}px; }}"]
+
+    # **E o indicador que essas duas linhas apagaram** (S-553, segunda rodada). Ver
+    # `INDICADOR_DA_MARCA` para o defeito fotografado e para por que a marca não é um glifo.
+    #
+    # A ordem dentro do bloco é a que desfaz os empates de QSS: repouso, ponteiro, desabilitado e
+    # foco têm um pseudo-estado cada, e o marcado também -- então o marcado vem depois deles, e os
+    # pares (`:checked:disabled`, `:checked:focus`) vêm por último, ganhando por especificidade.
+    # Um indicador marcado e focado tem de mostrar as duas coisas, e é a regra da S-553.
+    lado = lado_do_indicador(base)
+    enfase = cor(tokens.BOTAO_PRIMARIO)
+    anel = anel_de_foco(cromo_escuro=cromo_escuro)
+    for classe in INDICADOR_DA_MARCA:
+        # O rádio é redondo, e o raio conta a moldura de 1 px de cada lado; a caixa usa o mesmo
+        # canto do botão comum, que é o que faz as duas parecerem do mesmo desenho.
+        raio = (lado + 2) // 2 if classe == "QRadioButton" else minima
+        regras += [
+            f"{classe}::indicator {{ width: {lado}px; height: {lado}px;"
+            f" border: 1px solid {moldura}; border-radius: {raio}px;"
+            f" background-color: {superficie}; }}",
+            f"{classe}::indicator:hover {{ border: 1px solid {texto}; }}",
+            f"{classe}::indicator:disabled {{ border: 1px solid {moldura};"
+            f" background-color: {superficie}; }}",
+            f"{classe}::indicator:focus {{ border: 1px solid {anel}; }}",
+        ]
+    marcado = {
+        "QCheckBox": lambda tinta: f"background-color: {tinta}; border: 1px solid {tinta};",
+        "QRadioButton": lambda tinta: (
+            f"background-color: {ponto_do_radio(tinta, superficie)}; border: 1px solid {tinta};"
+        ),
+    }
+    for classe, desenho in marcado.items():
+        regras += [
+            f"{classe}::indicator:checked {{ {desenho(enfase)} }}",
+            f"{classe}::indicator:checked:hover"
+            f" {{ {desenho(tokens.mistura(enfase, cor(tokens.TEXTO_SOBRE_ENFASE), tokens.REALCE_DE_ENFASE))} }}",
+            f"{classe}::indicator:checked:disabled {{ {desenho(secundario)} }}",
+            f"{classe}::indicator:checked:focus {{ border: 1px solid {anel}; }}",
+        ]
 
     # A ênfase da S-444. **Também aqui o tema não dá de graça, e pela razão oposta à do Tk:**
     # lá o `ttkbootstrap` pintava os três papéis do mesmo `#f0f0f0` e a folha corrigia; aqui

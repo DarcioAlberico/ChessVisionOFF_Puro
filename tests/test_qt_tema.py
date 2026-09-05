@@ -646,5 +646,178 @@ class AnelDeFocoTests(unittest.TestCase):
                         )
 
 
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class IndicadorDaMarcaTests(unittest.TestCase):
+    """A caixa de seleção e o rádio dizem se estão marcados (S-553, segunda rodada).
+
+    **O defeito medido pelo crítico em 2026-09-05, na aba que abre primeiro.** "Lado a jogar:
+    Pretas" **selecionado** saía como texto pelado -- indicador nenhum --, e a caixa de seleção
+    marcada saía como um `✓` solto sem quadro contra um quadro vazio quando desmarcada: duas
+    gramáticas para o mesmo par de estados.
+
+    **E aqui o desenho serve de prova só até certo ponto, ao contrário da S-553.** Foi medido na
+    plataforma de verdade (`windows11`): sem estas regras o rádio marcado desenha **0 px**
+    diferentes do desmarcado. Sob `offscreen` o `fusion` desenha o indicador nativo mesmo com folha
+    aplicada -- ou seja, a CI **não vê** o defeito, e é a armadilha da S-506. Por isso o que estes
+    testes cobram é a **folha**, e o caso de pixel no fim confirma que ela não estragou o desenho
+    onde há estilo que a obedeça.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        anterior = self.app.styleSheet()
+        self.addCleanup(self.app.setStyleSheet, anterior)
+        self.addCleanup(tema.aplicar_tema, self.app)
+
+    def _indicadores(self, folha_de_estilo: str) -> dict[str, str]:
+        """`seletor -> declarações`, só das regras de `::indicator`. Leitura de texto, como as
+        outras deste arquivo: a folha sai uma regra por linha."""
+        achados = {}
+        for linha in folha_de_estilo.split("\n"):
+            cabeca, _, resto = linha.partition("{")
+            if "::indicator" in cabeca:
+                achados[cabeca.strip()] = resto.rstrip(" }")
+        return achados
+
+    def test_as_duas_classes_declaram_os_quatro_estados_nas_tres_peles(self) -> None:
+        """**É o caso que estava quebrado.** Um indicador que existisse só no desmarcado seria
+        pior que nenhum: quem marca deixa de ver que marcou."""
+        estados = ("", ":checked", ":disabled", ":checked:disabled", ":focus", ":checked:focus")
+        for uma in pele.PELES:
+            regras = self._indicadores(
+                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            )
+            for classe in tema.INDICADOR_DA_MARCA:
+                for estado in estados:
+                    with self.subTest(pele=uma.nome, classe=classe, estado=estado or "parado"):
+                        self.assertIn(f"{classe}::indicator{estado}", regras)
+
+    def test_marcado_e_desmarcado_nao_sao_a_mesma_tinta(self) -> None:
+        """Duas regras que existissem e pintassem igual passariam no teste acima e reprovariam na
+        tela -- que é exatamente o que a S-527 mediu no `QToolButton`."""
+        for uma in pele.PELES:
+            regras = self._indicadores(
+                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            )
+            for classe in tema.INDICADOR_DA_MARCA:
+                with self.subTest(pele=uma.nome, classe=classe):
+                    self.assertNotEqual(
+                        regras[f"{classe}::indicator"], regras[f"{classe}::indicator:checked"]
+                    )
+                    self.assertNotEqual(
+                        regras[f"{classe}::indicator:checked"],
+                        regras[f"{classe}::indicator:checked:disabled"],
+                        "o marcado desabilitado pinta igual ao vivo",
+                    )
+
+    def test_a_marca_e_a_cor_de_enfase_e_o_apagado_e_a_letra_secundaria(self) -> None:
+        """Nenhum papel novo: é a mesma tinta do botão primário e o mesmo apagamento do botão
+        comum desabilitado (S-506). Um décimo papel para dizer "a cor da marca" seria a mesma cor
+        com dois donos, que é o defeito que a S-145 fechou."""
+        for uma in pele.PELES:
+            escuro = uma.cromo_escuro
+            regras = self._indicadores(
+                tema.folha_de_estilo(cromo_escuro=escuro, densidade=uma.densidade)
+            )
+            enfase = tokens.cor(tokens.BOTAO_PRIMARIO, None, cromo_escuro=escuro)
+            apagada = tokens.cor(tokens.TEXTO_SECUNDARIO, None, cromo_escuro=escuro)
+            for classe in tema.INDICADOR_DA_MARCA:
+                with self.subTest(pele=uma.nome, classe=classe):
+                    self.assertIn(enfase, regras[f"{classe}::indicator:checked"])
+                    self.assertIn(apagada, regras[f"{classe}::indicator:checked:disabled"])
+
+    def test_o_anel_de_foco_vai_no_indicador_e_nao_no_widget(self) -> None:
+        """Um `QCheckBox:focus {{ border }}` cercaria o rótulo inteiro e moveria o texto de todo
+        diálogo em um pixel a cada `Tab` -- que é o que `test_o_anel_nao_desloca_o_conteudo` cobra
+        das outras oito classes."""
+        folha_de_estilo = tema.folha_de_estilo()
+        for classe in tema.INDICADOR_DA_MARCA:
+            with self.subTest(classe=classe):
+                self.assertNotIn(classe, tema.CONTROLES_COM_ANEL_DE_FOCO)
+                self.assertNotIn(f"{classe}:focus {{", folha_de_estilo)
+        anel = tema.anel_de_foco()
+        regras = self._indicadores(folha_de_estilo)
+        for classe in tema.INDICADOR_DA_MARCA:
+            with self.subTest(classe=classe):
+                self.assertIn(anel, regras[f"{classe}::indicator:focus"])
+                self.assertIn(anel, regras[f"{classe}::indicator:checked:focus"])
+
+    def test_o_alvo_do_ponteiro_nao_encolhe_na_densidade_compacta(self) -> None:
+        """**A diferença em relação a `_escalado`, e ela é o item.** Folga é espaço em volta e pode
+        encolher; isto é o que se acerta com o ponteiro. Encolher 30% na compacta trocaria "cabe
+        mais linha" por "erra-se mais o clique"."""
+        confortavel = self._indicadores(tema.folha_de_estilo(densidade=pele.CONFORTAVEL))
+        compacta = self._indicadores(tema.folha_de_estilo(densidade=pele.COMPACTA))
+        lado = tema.lado_do_indicador()
+        for classe in tema.INDICADOR_DA_MARCA:
+            for regras in (confortavel, compacta):
+                with self.subTest(classe=classe):
+                    # O canto **acompanha** a densidade, e é o mesmo do botão comum: o que não
+                    # acompanha é o alvo.
+                    self.assertIn(f"width: {lado}px; height: {lado}px", regras[f"{classe}::indicator"])
+
+    def test_o_lado_acompanha_a_fonte_do_sistema(self) -> None:
+        """O pixel cravado é o defeito de DPI da S-148 num lugar menor."""
+        self.assertLess(tema.lado_do_indicador(9), tema.lado_do_indicador(14))
+        self.assertGreaterEqual(tema.lado_do_indicador(4), 12, "o ponto do rádio some abaixo de 12")
+
+    def test_o_ponto_do_radio_e_um_pincel_com_o_campo_em_volta(self) -> None:
+        """O rádio marcado é ponto dentro de anel, e não disco cheio: é o desenho que todo toolkit
+        dá a um rádio, e o que separa a forma dele da da caixa."""
+        pincel = tema.ponto_do_radio("#0a58ca", "#f0f0f0")
+        self.assertTrue(pincel.startswith("qradialgradient("))
+        self.assertIn("stop:0.42 #0a58ca", pincel)
+        self.assertIn("stop:0.5 #f0f0f0", pincel)
+
+    def test_os_quatro_estados_desenham_diferente_na_plataforma_que_os_desenha(self) -> None:
+        """**A prova de pixel**, e ela é o que o teste de folha sozinho não dá.
+
+        Sob `offscreen` o `fusion` desenha o indicador nativo com folha e sem folha, então este
+        caso não reprovaria no estado defeituoso -- ele afirma o que se pode afirmar aqui: que os
+        quatro estados **continuam** distintos depois de a folha assumir o desenho. Na plataforma
+        de verdade (`windows11`) a mesma medição deu 225 px entre marcado e desmarcado na caixa e
+        121 no rádio, contra 0 no rádio antes desta rodada.
+        """
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QCheckBox, QRadioButton, QVBoxLayout, QWidget
+
+        tema.aplicar_tema(self.app)
+        quadro = QWidget()
+        coluna = QVBoxLayout(quadro)
+        caixa = QCheckBox("Qualquer cor", quadro)
+        radio = QRadioButton("Pretas", quadro)
+        radio.setAutoExclusive(False)
+        for controle in (caixa, radio):
+            controle.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            coluna.addWidget(controle)
+        quadro.resize(220, 70)
+        quadro.show()
+        self.app.processEvents()
+        self.addCleanup(descartar, quadro)
+        for nome, controle in (("caixa", caixa), ("radio", radio)):
+            desenhos = {}
+            for marcado in (False, True):
+                controle.setChecked(marcado)
+                controle.setEnabled(True)
+                controle.clearFocus()
+                self.app.processEvents()
+                desenhos[(marcado, "parado")] = renderizar(controle)
+                controle.setEnabled(False)
+                self.app.processEvents()
+                desenhos[(marcado, "desabilitado")] = renderizar(controle)
+                controle.setEnabled(True)
+            with self.subTest(controle=nome):
+                self.assertGreater(
+                    pixels_diferentes(desenhos[(False, "parado")], desenhos[(True, "parado")]),
+                    0,
+                    "marcado e desmarcado desenham igual",
+                )
+                self.assertGreater(
+                    pixels_diferentes(desenhos[(True, "parado")], desenhos[(True, "desabilitado")]),
+                    0,
+                    "o marcado desabilitado não apaga",
+                )
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

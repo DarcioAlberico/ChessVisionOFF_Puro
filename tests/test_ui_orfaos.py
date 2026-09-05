@@ -160,6 +160,23 @@ SEM_CHAMADOR: dict[str, str] = {
         "`imagem` a lê por `tracos_de`, no mesmo módulo)"
     ),
     "barra_do_pdf.COM_LIVRO": "um dos três valores que `modo` devolve e `grupos_desligados` consome; quem os distingue é o teste",
+    # --- a barra do painel de Resultado (S-528, terceira barra, 2026-09-05)
+    "barra_do_resultado.FEN": "um dos cinco grupos: a tabela os cita e o widget os lê dela; quem os confere é o teste",
+    "barra_do_resultado.CORRECAO": "o segundo grupo, pelo mesmo motivo",
+    "barra_do_resultado.GRAVAR": "o terceiro grupo, pelo mesmo motivo",
+    "barra_do_resultado.MODO_UNICO": (
+        "o único valor de `MODOS`, e a barra não tem modo: aqui quem acende e apaga é uma pergunta "
+        "por ação, e não um estado por grupo -- ver o cabeçalho daquele módulo. Quem o cita é o teste"
+    ),
+    "leitura_do_pdf.SEM_CONTEUDO": (
+        "a frase do arquivo de zero byte: `frase_de_abertura` a escolhe pela tabela `_CAUSAS`, no "
+        "mesmo módulo, e o teste a cita para não afirmar o literal duas vezes"
+    ),
+    "geometria.FRACAO_PADRAO_DO_DIVISOR": (
+        "o padrão de `divisor_da_primeira_abertura` e a resposta de `fracao_de_divisor` sem "
+        "largura -- passá-lo de fora seria a segunda declaração do mesmo número. Saiu de "
+        "`qt/janela.py` na S-552, quando a repartição da primeira abertura virou decisão pura"
+    ),
     "barra_do_pdf.TRANCADO": "o segundo valor de `modo`, pelo mesmo motivo -- o painel chama `modo(...)`, e não os nomes",
     "sala_declarada.LARGURA_MINIMA_DA_LEITURA": (
         "o piso da coluna de leitura é o **padrão** de `lado_do_tabuleiro` e de "
