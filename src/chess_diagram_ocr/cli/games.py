@@ -4,6 +4,7 @@
     cvoff-games --all --apply                # grava lance, vez e headers nas anotações
     cvoff-games --all --census               # o estado do acervo; não abre a base
     cvoff-games --build-index                # o índice por nome; relê só o que mudou (S-532)
+    cvoff-games --build-tree                 # a árvore de aberturas por posição (S-535)
     cvoff-games --book "Karpov 1" --names    # só o caminho por nome, ~150 s
     cvoff-games --all --database uma.pgn     # uma base só; repetível
 
@@ -41,6 +42,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from ..arvore_de_aberturas import DEFAULT_TREE_PATH, PROFUNDIDADE
+from ..arvore_de_aberturas import construir as construir_arvore
 from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR
 from ..gallery import DEFAULT_GALLERY_DIR, load_annotations, save_annotations
@@ -145,6 +148,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "constrói ou põe em dia o índice por nome e sai: relê só os arquivos que mudaram (S-532). "
             "Do zero, ~9 min por gigabase. Torna a busca por nome interativa."
+        ),
+    )
+    parser.add_argument(
+        "--build-tree",
+        action="store_true",
+        help=(
+            "constrói a árvore de aberturas por posição e sai (S-535): que lances a base joga a "
+            "partir de cada posição dos primeiros lances. Refaz do zero -- ver --arvore."
+        ),
+    )
+    parser.add_argument("--arvore", type=Path, default=DEFAULT_TREE_PATH, help="onde fica a árvore de aberturas.")
+    parser.add_argument(
+        "--plies",
+        type=int,
+        default=PROFUNDIDADE,
+        help=(
+            f"até que meio-lance a árvore vai (padrão {PROFUNDIDADE}, dez lances de cada lado). "
+            "Mais fundo custa mais disco e mais tempo, e responde o que a busca já responde."
         ),
     )
     parser.add_argument("--index", type=Path, default=DEFAULT_INDEX_PATH, help="onde fica o índice por nome.")
@@ -345,6 +366,25 @@ def _index_progress(a_cada_s: float = 5.0) -> Callable[[Path, int, int, int], No
     return _avisar
 
 
+def _tree_progress(a_cada_s: float = 5.0) -> Callable[[int, int, int], None]:
+    """Um aviso a cada cinco segundos, e não os dois por segundo que `construir` emite.
+
+    O terminal não é uma barra: cinquenta linhas por minuto rolam a resposta anterior para fora
+    da tela. É a mesma régua de `_index_progress`, e o passo aqui é o pedaço -- ver
+    `qt/arvore_de_aberturas.construir_com_dialogo` sobre por que não é o byte.
+    """
+    ultimo = [0.0]
+
+    def _avisar(prontos: int, total: int, partidas: int) -> None:
+        agora = time.monotonic()
+        if agora - ultimo[0] < a_cada_s and prontos < total:
+            return
+        ultimo[0] = agora
+        print(f"  árvore: pedaço {prontos}/{total} · {partidas} partidas", flush=True)
+
+    return _avisar
+
+
 def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
     """Conta o que a base identificou e por qual regra (S-89). Não abre a base.
 
@@ -421,6 +461,26 @@ def main(argv: list[str] | None = None) -> int:
             f"índice: {indexacao.partidas} partidas em {args.index} ({args.index.stat().st_size / 1e6:.0f} MB); "
             f"nesta rodada {indexacao.relidas} lidas de {indexacao.arquivos_relidos} arquivo(s), "
             f"{indexacao.arquivos_pulados} arquivo(s) sem mudança, {indexacao.arquivos_removidos} removido(s)"
+        )
+        return 0
+
+    # A árvore por posição, como o índice acima: ela descreve a base e não depende de livro
+    # nenhum. **Refaz do zero** -- cada linha dela é uma soma, e somar de novo o que já entrou
+    # daria uma contagem plausível e errada (ver `arvore_de_aberturas.construir`).
+    if args.build_tree:
+        bases = _bases(args)
+        if not bases:
+            logger.error("Base de partidas não encontrada. Ponha um .pgn em %s.", DEFAULT_DATABASE_DIR)
+            return EXIT_BAD_INPUT
+        # `--workers` e o mesmo botao das duas passadas: quem pede `1` esta depurando, e uma
+        # arvore que ignorasse o pedido daria dez processos onde ele pediu um.
+        passada = construir_arvore(
+            bases, args.arvore, profundidade=args.plies, workers=args.workers, progress=_tree_progress()
+        )
+        print(
+            f"árvore: {passada.ramos} lance(s) de {passada.partidas} partida(s) até o meio-lance "
+            f"{passada.profundidade}, em {args.arvore} ({passada.bytes_no_disco / 1e6:.0f} MB, "
+            f"{passada.segundos / 60:.1f} min)"
         )
         return 0
 

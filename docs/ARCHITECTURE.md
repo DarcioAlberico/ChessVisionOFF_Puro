@@ -243,9 +243,9 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Vinte** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Vinte e duas** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Treze são operações longas e estão no `BusyRegistry`; as outras seis são declaradas em
+exceção. Catorze são operações longas e estão no `BusyRegistry`; as outras oito são declaradas em
 `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
 
 **As duas últimas são da Fase 83** (S-539/S-541): a extração de táticas de um livro inteiro, que se
@@ -258,6 +258,16 @@ livro varrido dá centenas de arquivos e a rodada leva dezenas de segundos. Ela 
 que já saiu. **O PDF do estudo (S-545) não abre thread nenhuma**, e é a decisão do par: um estudo
 de 300 lances vira PDF em menos de um segundo, e o `QPrintPreviewDialog` desenha na linha de
 eventos por construção -- pôr uma thread ali seria travessia sem trabalho para atravessar.
+
+**As duas da S-535 são um par, e o contraste entre elas é o item.** A consulta à árvore de
+aberturas não se registra -- é uma sonda de chave primária, nada é gravado, e a pergunta se refaz
+sozinha na posição seguinte --, e a **passada** que constrói a árvore se registra com
+`loses_work=True`: dezenas de minutos, e cancelar descarta tudo. É o oposto do índice por nome
+(S-532), que retoma de onde parou, e a diferença está escrita nas duas funções de mesmo nome:
+`ui/indice_da_base.perde_trabalho_ao_fechar` responde falso e
+`ui/arvore_de_aberturas.perde_trabalho_ao_fechar` responde verdadeiro. Cada linha da árvore é uma
+**soma**, e uma passada interrompida não tem como ser retomada sem contar duas vezes o que já
+entrou.
 
 A contagem é conferida por `tests/test_docs.py` contra `qt/*.py` (S-410/S-506). **Ela conta duas
 formas**: `threading.Thread(`, que veio do Tk, e `Tarefa(`, o `QThread` de `qt/trabalho.py`.
@@ -280,6 +290,8 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | busca por jogador, evento, ano, Elo e ECO (S-533) | `qt/busca_de_partidas.py::DialogoDeBusca` | não (dezenas de ms com índice) | — declarada: nada é gravado | não |
 | fila de livros (S-546) | `qt/fila_de_livros.py::VarreduraDeLivros`, uma thread para a fila inteira | sim, entre páginas e entre livros | não: cada livro pronto tem o PGN, e o em curso tem o parcial da S-24 | sim (S-57), um livro de cada vez |
 | lote de diagramas (S-544) | `qt/lote_de_diagramas.py::ExportacaoDoLote`, uma thread para o lote inteiro | sim, entre arquivos | não: cada diagrama pronto já está no disco | não (desenha da FEN) |
+| árvore de aberturas: a consulta (S-535) | `qt/arvore_de_aberturas.py::DialogoDaArvore` | não (é uma sonda de chave primária) | — declarada: nada é gravado | não |
+| árvore de aberturas: a passada (S-535) | `qt/arvore_de_aberturas.py::ConstrutorDaArvore`, dez processos sob uma thread | sim, entre pedaços | **sim**, a passada inteira: cada linha é uma soma, e não há parcial a retomar | não |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).

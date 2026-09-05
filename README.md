@@ -997,6 +997,7 @@ src/chess_diagram_ocr/
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   augment.py            aumento de dados do treino: jitter, afim e ruido, com probabilidade
+  arvore_de_aberturas.py  a arvore de aberturas por posicao: que lances a base joga daqui (S-535)
   batch.py              varredura da biblioteca inteira, com relatorio consolidado e o de qualidade por livro (S-548)
   board_detection.py    deteccao do tabuleiro na pagina (OpenCV)
   calibration.py        temperature scaling e curva de confiabilidade

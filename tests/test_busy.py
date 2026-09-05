@@ -58,6 +58,13 @@ SEM_REGISTRO = {
         "registro porque não há o que perder ao fechar -- o placar do lance foi contado com o "
         "que se sabia, e a mesma pergunta se refaz na tentativa seguinte."
     ),
+    ("arvore_de_aberturas.py", "_perguntar"): (
+        "Uma sonda de chave primária na árvore de aberturas (S-535): milissegundos com o arquivo "
+        "quente, e disco na primeira leitura de um SQLite de gigabytes. Ela sai da linha de "
+        "eventos porque a árvore acompanha a posição da sala a cada lance, e **não** entra no "
+        "registro porque não há o que perder ao fechar: nada é gravado, e a pergunta se refaz "
+        "sozinha na posição seguinte. Quem grava é a passada ao lado (`iniciar`), que se registra."
+    ),
     ("busca_de_partidas.py", "buscar"): (
         "Uma consulta ao índice por nome (S-533): dezenas de milissegundos na gigabase, e até "
         "~1 s quando o filtro pede a posição corrente e ela relê dois mil candidatas. Ela sai da "

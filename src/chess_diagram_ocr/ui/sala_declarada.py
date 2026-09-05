@@ -232,6 +232,7 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "analisar_partida": "analisar_partida",
     "opcoes_do_motor": "opcoes_do_motor",
     "partidas_da_posicao": "partidas_da_posicao",
+    "arvore_de_aberturas": "arvore_de_aberturas",
     "buscar_partidas": "buscar_partidas",
     "indexar_base": "indexar_base",
     "colar_estudo": "colar_estudo",

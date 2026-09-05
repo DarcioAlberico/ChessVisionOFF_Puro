@@ -292,6 +292,32 @@ class DialogoDeBusca(QDialog):
             posicao=self._posicao if self.caixa_posicao.isChecked() else "",
         )
 
+    def aplicar_filtro(self, filtro: Filtro) -> bool:
+        """Escreve o filtro nos campos do formulário e busca. Devolve se a busca começou (S-535).
+
+        **Escreve nos campos, e não busca por baixo deles.** A árvore de aberturas manda para cá o
+        ECO e a posição que estão na tela, e o formulário é o que diz **o que foi perguntado**:
+        uma busca que respondesse a um filtro invisível deixaria a pessoa sem como alargá-lo -- e
+        alargar é o gesto seguinte, porque a posição sozinha não estreita nada.
+
+        Um número zero vira campo vazio, e não `0`: zero é "não filtra por isto" em `Filtro`, e
+        `0` escrito no campo do ano é um filtro que o formulário recusaria.
+        """
+        self.campo_brancas.setText(filtro.brancas)
+        self.campo_pretas.setText(filtro.pretas)
+        self.caixa_qualquer_cor.setChecked(filtro.qualquer_cor)
+        self.campo_evento.setText(filtro.evento)
+        self.campo_ano_de.setText(str(filtro.ano_de) if filtro.ano_de > 0 else "")
+        self.campo_ano_ate.setText(str(filtro.ano_ate) if filtro.ano_ate > 0 else "")
+        self.campo_elo.setText(str(filtro.elo_minimo) if filtro.elo_minimo > 0 else "")
+        self.lista_resultado.setCurrentIndex(max(0, self.lista_resultado.findData(filtro.resultado)))
+        self.campo_eco_de.setText(filtro.eco_de)
+        self.campo_eco_ate.setText(filtro.eco_ate)
+        if filtro.posicao:
+            self.definir_posicao(filtro.posicao)
+        self.caixa_posicao.setChecked(bool(filtro.posicao))
+        return self.buscar()
+
     def buscar(self, *, offset: int = 0) -> bool:
         """Dispara a busca numa thread. Devolve se ela começou.
 

@@ -725,6 +725,16 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Partidas",
     ),
+    # A outra metade da janela de aberturas do ChessBase (S-535): `partidas_da_posicao` diz
+    # **quais** partidas passam por aqui, e esta diz **o que se joga daqui** -- cada lance com
+    # quantas partidas, como elas terminaram, com que Elo e em que ano.
+    Comando(
+        "arvore_de_aberturas",
+        "Árvore de aberturas desta posição",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Árvore",
+    ),
     # A pergunta que não nasce de um diagrama (S-533): "as partidas de Carlsen em 2019 com Elo
     # acima de 2700 na Najdorf". `partidas_da_posicao` responde pela posição do tabuleiro e só por
     # ela; esta abre o formulário de seis campos sobre o índice por nome.

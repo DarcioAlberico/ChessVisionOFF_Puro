@@ -19,6 +19,7 @@ from unittest import mock
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.games_index import IndiceIndisponivel, build_index
+from chess_diagram_ocr.ui.busca_de_partidas import Filtro
 
 if TEM_PYQT:
     from PyQt6.QtCore import Qt
@@ -88,6 +89,20 @@ class DialogoDeBuscaTests(unittest.TestCase):
         self.assertTrue(self.dialogo.esperar(20_000), "a busca não terminou")
         for _ in range(20):
             self.app.processEvents()
+
+    def test_o_filtro_de_fora_e_escrito_nos_campos_antes_de_buscar(self) -> None:
+        """A árvore de aberturas (S-535) manda para cá a posição e o ECO dela.
+
+        **Escrito nos campos, e não buscado por baixo deles**: o formulário é o que diz o que foi
+        perguntado, e alargar o filtro é o gesto seguinte -- a posição sozinha não estreita nada.
+        """
+        self.assertTrue(self.dialogo.aplicar_filtro(Filtro(eco_de="B90", eco_ate="B90", posicao="colocacao")))
+        self._esperar()
+        self.assertEqual("B90", self.dialogo.campo_eco_de.text())
+        self.assertEqual("B90", self.dialogo.campo_eco_ate.text())
+        self.assertTrue(self.dialogo.caixa_posicao.isChecked())
+        self.assertEqual("", self.dialogo.campo_ano_de.text(), "zero virou 0 no campo do ano")
+        self.assertEqual("colocacao", self.dialogo.filtro_dos_campos().posicao)
 
     # ------------------------------------------------------------------------- montagem
 

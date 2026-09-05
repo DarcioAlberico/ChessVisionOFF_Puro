@@ -194,6 +194,13 @@ class PainelDeEstudo(QWidget):
         self._busca: Any = None
         """O diálogo de busca (S-533), guardado e **reusado**: ele não é modal, tem uma thread
         dentro, e abrir o segundo enquanto o primeiro procura destruiria um `QThread` em curso."""
+        self._arvore: Any = None
+        """A janela da árvore de aberturas (S-535), guardada e reusada pela mesma razão -- e mais
+        uma: ela **acompanha** a posição da sala a cada `refresh`, então destruí-la e recriá-la a
+        cada abertura descartaria a consulta em curso a cada lance."""
+        self._construtor_da_arvore: Any = None
+        """A passada que constrói a árvore, guardada porque um `QObject` sem referência é recolhido
+        com a thread dentro -- a mesma razão de `_indexador`."""
         self._pasta_de_estudos = pasta_de_estudos
 
         self._pasta_de_treino = Path(pasta_de_treino) if pasta_de_treino is not None else DADOS
@@ -1218,6 +1225,12 @@ class PainelDeEstudo(QWidget):
         self._geracao += 1
         self._candidatos = []
         self._analisar_se_continuo()
+        # A árvore de aberturas acompanha a posição (S-535). Aqui, e não em cada método de
+        # navegação, pela razão que a geração acima já usa: `refresh` é o único ponto por onde
+        # toda mudança de nó passa. Fechada, ela não custa nada -- e a consulta em curso não é
+        # atropelada: `definir_posicao` guarda o pedido e o refaz quando a thread volta.
+        if self._arvore is not None and self._arvore.isVisible():
+            self._arvore.definir_posicao(self.estudo.tabuleiro)
 
     def _aplicar_modo_da_barra(self) -> None:
         """Sem estudo, variante e exportar ficam cinza; treinando, a árvore fica cinza (S-527).
@@ -2364,6 +2377,96 @@ class PainelDeEstudo(QWidget):
         self._busca.show()
         self._busca.raise_()
         return self._busca
+
+    def arvore_de_aberturas(self) -> QDialog | None:
+        """A árvore de aberturas da posição corrente: que lances a base joga daqui (S-535).
+
+        **A terceira pergunta à base, e ela é a de quem estuda uma abertura.**
+        `partidas_da_posicao` diz *quais* partidas passam por aqui (e só sabe o que já foi
+        perguntado, pelo cache); `buscar_partidas` responde a um formulário de seis campos. Esta
+        responde *o que se joga daqui*, com o número de partidas, o resultado, o Elo e o ano de
+        cada lance -- e ela lê um índice por **posição**, que é o que a S-535 construiu.
+
+        O diálogo é guardado e reusado pelas razões de `buscar_partidas`, e mais uma: ele segue a
+        posição da sala a cada `refresh`.
+        """
+        from chess_diagram_ocr.games_db import database_paths
+        from chess_diagram_ocr.qt import arvore_de_aberturas as qt_arvore
+
+        if self._arvore is None:
+            bases = tuple(self._bases()) or tuple(database_paths())
+            if not bases:
+                self.set_status("Não há base de partidas (.pgn) para a árvore de aberturas.")
+                return None
+            dialogo = qt_arvore.DialogoDaArvore(self.window(), bases=bases)
+            dialogo.lance_escolhido.connect(self.jogar_da_arvore)
+            dialogo.partidas_pedidas.connect(self.partidas_da_arvore)
+            dialogo.construcao_pedida.connect(self.construir_a_arvore)
+            self._arvore = dialogo
+        self._arvore.definir_posicao(self.estudo.tabuleiro)
+        self._arvore.show()
+        self._arvore.raise_()
+        return self._arvore
+
+    def jogar_da_arvore(self, san: str) -> bool:
+        """Joga na árvore de estudo o lance escolhido na árvore de aberturas. Devolve se jogou.
+
+        **Reinterpreta o SAN no tabuleiro da sala**, e não recebe um `chess.Move`: o lance veio de
+        uma consulta que rodou numa thread sobre uma cópia, e um `Move` daquela cópia é um par de
+        casas sem dono. Ilegal aqui quer dizer que a posição andou entre a consulta e o clique --
+        a frase diz isso em vez de jogar outra coisa.
+
+        Quem redesenha a árvore de aberturas é o `refresh` de `push_move`, e não esta função: a
+        posição mudaria pelas setas do teclado do mesmo jeito.
+        """
+        try:
+            lance = self.estudo.tabuleiro.parse_san(san)
+        except (ValueError, AssertionError):
+            self.set_status(f"{san} não é um lance legal na posição que está no tabuleiro agora.")
+            return False
+        self.push_move(lance)
+        return True
+
+    def partidas_da_arvore(self, filtro: Any) -> Any:
+        """Abre a busca da S-533 já preenchida com a posição da árvore e o ECO dela.
+
+        É o "mesmo gesto da busca" que o item pede: a lista de partidas que chegam a esta posição
+        é a tabela que já existe, com a paginação e a thread que já existem -- e não uma segunda
+        lista de partidas neste programa.
+        """
+        # `Any` e nao `DialogoDeBusca`: o tipo concreto so existe atras do `import` tardio de
+        # `buscar_partidas` -- nomea-lo aqui traria o PyQt do dialogo para o topo deste arquivo.
+        dialogo: Any = self.buscar_partidas()
+        if dialogo is not None:
+            dialogo.aplicar_filtro(filtro)
+        return dialogo
+
+    def construir_a_arvore(self) -> Any:
+        """Constrói a árvore de aberturas com barra e Cancelar, sem sair da janela (S-535).
+
+        A forma é a de `indexar_base` (S-532) e pela mesma razão: a saída de "o arquivo não existe"
+        tem de ser um comando da janela e não uma frase mandando abrir um terminal. A diferença é
+        o que o cancelamento custa -- aqui a passada inteira é descartada, porque meia árvore dá
+        percentagem sobre a metade que se leu, e ela pareceria certa.
+        """
+        from chess_diagram_ocr.games_db import database_paths
+        from chess_diagram_ocr.qt import arvore_de_aberturas as qt_arvore
+
+        if self._construtor_da_arvore is not None and self._construtor_da_arvore.ocupado:
+            self.set_status("A árvore de aberturas já está sendo construída.")
+            return None
+        bases = tuple(self._bases()) or tuple(database_paths())
+        if not bases:
+            self.set_status("Não há base de partidas (.pgn) para construir a árvore.")
+            return None
+        busy = self._busy if self._busy is not None else getattr(self.window(), "busy", None)
+        construtor = qt_arvore.construir_com_dialogo(self.window(), bases, busy=busy)
+        construtor.terminou.connect(lambda feito: self.set_status(qt_arvore.frase_final(feito)))
+        construtor.falhou.connect(
+            lambda mensagem, _excecao: self.set_status(f"A árvore de aberturas falhou: {mensagem}")
+        )
+        self._construtor_da_arvore = construtor
+        return construtor
 
     def abrir_partida_da_base(self, caminho: Any, offset: int) -> bool:
         """Põe na mesa a partida que a busca escolheu, lida direto do byte dela (S-533).

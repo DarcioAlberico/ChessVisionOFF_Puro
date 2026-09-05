@@ -336,6 +336,19 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
         Poli((16, 40), (84, 40)),
         Poli((16, 60), (84, 60)),
     ),
+    # A árvore de aberturas (S-535): o tronco que se abre em dois ramos, com um nó em cada ponta.
+    # De baixo para cima porque é assim que ela cresce na tela -- a posição corrente embaixo, os
+    # lances que saem dela acima. Não é a tabela de "partidas": ali a resposta é uma lista, aqui
+    # é uma bifurcação, e é a bifurcação que o traço tem de dizer.
+    "arvore": (
+        Poli((10, 26), (36, 26)),
+        Poli((64, 26), (90, 26)),
+        Poli((23, 26), (23, 56)),
+        Poli((77, 26), (77, 56)),
+        Poli((23, 56), (77, 56)),
+        Poli((50, 56), (50, 86)),
+        Poli((30, 86), (70, 86)),
+    ),
     # O índice da base (S-532/S-527): a tabela de partidas com a lupa por cima -- é o que o índice
     # faz, tornar a tabela procurável por nome.
     "indexar": (

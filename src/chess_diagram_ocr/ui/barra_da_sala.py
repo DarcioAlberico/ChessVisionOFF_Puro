@@ -222,6 +222,18 @@ ACOES: tuple[Acao, ...] = (
     # ------------------------------------------------------------------------------ BASE
     # Indexar é de uma vez por torneio acrescentado à pasta (S-532), e por isso mora no "Mais".
     Acao("partidas_da_posicao", BASE, "partidas", prioridade=12),
+    # **Prioridade 15, a última da fila**, e é medida e não modéstia: a 714 px cabem onze botões
+    # (S-527), e este é o décimo segundo. Ele é gesto de lance -- pergunta-se a árvore a cada
+    # posição da abertura --, então ele **é** principal e aparece assim que a janela alarga; numa
+    # janela estreita `cabem` o manda para o "Mais", que é onde ele custa um clique a mais.
+    Acao(
+        "arvore_de_aberturas",
+        BASE,
+        "arvore",
+        prioridade=15,
+        dica="Cada lance jogado desta posição, com quantas partidas, o resultado, o Elo e o ano.\n"
+        "Responde pela árvore construída: sem ela, a janela diz isso e oferece construí-la.",
+    ),
     Acao("abrir_pgn", BASE, "abrir_pdf", principal=False),
     Acao("colar_estudo", BASE, "colar", principal=False),
     # Buscar é do mesmo grupo e do mesmo gesto que "Partidas", e mesmo assim mora no "Mais": a

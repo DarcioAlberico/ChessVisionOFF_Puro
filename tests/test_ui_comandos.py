@@ -470,6 +470,11 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "exportar_estudo_pdf",
                 "imprimir_estudo",
                 "exportar_diagramas_lote",
+                # E o da Fase 81 (S-535), pelo mesmo motivo: o menu diz "Árvore de aberturas desta
+                # posição" porque é onde cabe dizer de que posição se fala, e o botão do grupo Base
+                # diz "Árvore" -- ao lado de "Partidas", que responde a outra pergunta sobre a
+                # mesma posição.
+                "arvore_de_aberturas",
             },
             divergem,
         )

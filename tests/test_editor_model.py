@@ -345,6 +345,7 @@ class SecondOpinionTests(unittest.TestCase):
 SEM_TKINTER = {
     "abas.py": "o rótulo de uma aba e a contagem dentro dele (S-162)",
     "barra.py": "o arranjo da barra fluida: quantas linhas os itens ocupam (S-151/S-506)",
+    "arvore_de_aberturas.py": "as colunas da árvore, a ordem por frequência e o que a amostra pequena não afirma (S-535)",
     "barra_da_sala.py": "os grupos da sala de estudo, o que é principal, o modo e quem cabe na fila (S-527)",
     "barra_do_pdf.py": "os grupos do painel do PDF, o que é principal e o modo de cada controle (S-528)",
     "cabecalho_da_partida.py": "os nove campos do cabeçalho, a frase de duas linhas e o que a edição grava (S-530)",

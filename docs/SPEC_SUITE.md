@@ -1343,9 +1343,246 @@ na prática: a família da abertura está certa em 19 de cada 20 partidas.
 | (não achado por ele) `LANCES_EXAMINADOS` era 24 e a linha mais longa tem 28: **C99 nunca casava** | Teto em 30, e um teste afirma que a linha mais longa é alcançável |
 
 
-## S-535 · Árvore de aberturas: da posição corrente, cada lance com N, %, Elo médio e ano — ◻ em andamento
+## S-535 · Árvore de aberturas: da posição corrente, cada lance com N, %, Elo médio e ano — ✅ **implementada em 2026-09-05**
 
-_Seção a escrever pelo executor do item._
+### Problema
+
+**O programa sabia dizer *quais* partidas passam por uma posição, e não sabia dizer *o que se joga
+dali*.** O docstring de `estudo_partidas.py:32` registrava a falta desde a S-287, com todas as
+letras: *"Não devolve os lances jogados a partir daqui e a frequência de cada um, que é a segunda
+metade da janela de aberturas do ChessBase"* -- e explicava por quê: `games_cache.py:160`
+(`CachedPosition.games`) guarda até 32 partidas por colocação e **não guarda a continuação**.
+
+As três portas para a base respondiam a outras perguntas:
+
+| porta | pergunta | por que não serve aqui |
+|---|---|---|
+| `qt/painel_de_estudo.py:2331` (`partidas_da_posicao`, S-287) | *que partidas chegam a esta posição?* | lê o cache, que só conhece as posições dos diagramas já varridos |
+| `qt/painel_de_estudo.py:2352` (`buscar_partidas`, S-533) | *as partidas de Carlsen em 2019 na Najdorf* | é um formulário de seis campos, e não nasce do tabuleiro |
+| `games_index.py:120` (o índice v6) | *onde mora cada partida* | é **por partida**: uma linha por jogo, e nenhuma posição |
+
+E a posição não estava no índice **por decisão medida**: `ui/busca_de_partidas.py:189`
+(`Filtro.posicao`) diz *"Sozinha não basta: ela não está no índice"*, e `games_index.py:207`
+(`TETO_DE_REPLAY = 2000`) é o teto de candidatas que a busca **relê** do `.pgn` para conferir a
+posição. Uma amostra de duas mil responde *"algumas destas passam por aqui"*; ela não responde
+*"1.e4 foi jogado 5.221.692 vezes e as brancas fizeram 38%"*, que é a pergunta do item.
+
+Do lado da tela não havia nada: nenhum comando do catálogo (`ui/comandos.py`), nenhuma ação na
+barra da sala (`ui/barra_da_sala.py:224` tinha `partidas_da_posicao` e mais nada do gênero), e
+nenhum módulo em `ui/` sobre o assunto.
+
+### Solução
+
+**Um artefato novo, porque nenhum dos dois existentes podia responder.** `arvore_de_aberturas.py`
+constrói e consulta um SQLite com **uma linha por par (posição, lance)**, agregado:
+
+```
+ramos(chave, lance, n, brancas, empates, pretas,
+      soma_elo, com_elo, soma_ano, com_ano, ano_min, ano_max)  PRIMARY KEY (chave, lance) WITHOUT ROWID
+```
+
+`WITHOUT ROWID` pela medição que a v3 do índice por nome já tinha feito (S-533): aqui só existe um
+caminho de busca -- pergunta-se sempre pela chave --, então a chave **é** a árvore e as doze
+colunas viajam na mesma folha.
+
+**A chave é a que o projeto já tem: `board_fen()` mais a vez** -- a mesma que
+`games_db.py:638` (`GameRecord.positions`) produz e que `games_cache` guarda, resumida em 64 bits
+por `blake2b` (`chave_da_posicao`). Não é `_transposition_key`, não é a FEN de quatro campos: uma
+segunda noção de "mesma posição" dentro do mesmo programa é a divergência que a S-113 já pagou
+uma vez. O preço da aproximação está medido abaixo.
+
+**A profundidade é 20 meios-lances, e o número saiu da medição.** Um milhão de partidas da
+gigabase, em dez pedaços espalhados pelo arquivo:
+
+| ply | linhas | pares distintos | com 2+ partidas | fator (novos/linhas) |
+|---|---|---|---|---|
+| 4 | 1.000.000 | 11.608 | 6.393 | 0,012 |
+| 9 | 1.000.000 | 119.879 | 43.109 | 0,120 |
+| 14 | 1.000.000 | 359.778 | 79.376 | 0,360 |
+| 15 | 1.000.000 | 419.734 | 83.546 | 0,420 |
+| **19** | 1.000.000 | **649.958** | 79.250 | **0,650** |
+| 24 | 988.631 | 845.760 | 48.404 | 0,855 |
+| 29 | 968.713 | 915.494 | 23.350 | 0,945 |
+| 39 | 907.914 | 896.172 | 7.817 | 0,987 |
+
+O `fator` é a fração de linhas que são um par **novo**: 0,012 no ply 4 quer dizer que 86 partidas
+passam pelo nó médio, e 0,987 no ply 39 quer dizer que **cada partida está sozinha no seu nó**.
+Uma "árvore" em que todo lance tem uma partida é a lista de partidas com outro nome -- e a lista de
+partidas já existe (S-533), sem custar índice. A coluna *com 2+ partidas* diz o mesmo pelo outro
+lado: ela cresce até o ply 15 (83.546) e **cai** a partir dali -- no ply 39 são 7.817, 0,9% dos
+896.172.
+
+**A escolha, e o que as outras duas custariam** -- pares distintos no mesmo milhão de partidas, e o
+custo de replay medido por partida:
+
+| profundidade | pares distintos | contra 20 plies | µs por partida | passada projetada |
+|---|---|---|---|---|
+| **20 plies** | **4.303.194** | 1× | 869 | **31,7 min medidos** |
+| 30 plies | 12.675.668 | 2,95× | 1.331 | ~52 min |
+| 40 plies | 21.823.278 | 5,07× | 1.681 | ~66 min |
+
+**A passada é um comando, e não um botão -- e é um botão também.** `cvoff-games --build-tree` faz
+a passada no terminal, como `estudo_partidas` sempre disse sobre `cvoff-games --all` (*"o custo é
+da PASSADA, não da posição"*); e `qt/arvore_de_aberturas.construir_com_dialogo` a faz de dentro da
+janela, com barra e Cancelar, pela razão da S-532 -- a saída de "o arquivo não existe" não pode ser
+uma frase mandando abrir um terminal. As duas chamam a mesma `construir`.
+
+**Cancelar descarta a passada inteira, e isso é o oposto do índice.** Cada linha da árvore é uma
+**soma**: uma passada interrompida não tem como ser retomada sem contar duas vezes o que já entrou,
+e meia árvore daria percentagem sobre a metade que se leu -- que pareceria certa. É por isso que
+`ui/arvore_de_aberturas.perde_trabalho_ao_fechar()` responde **verdadeiro** onde
+`ui/indice_da_base.perde_trabalho_ao_fechar()` responde falso, e as duas frases estão certas.
+
+**O que a tela mostra, e o que ela se recusa a afirmar** (`ui/arvore_de_aberturas.py`):
+
+- **A ordem é por número de partidas**, como no ChessBase -- e não por percentagem de vitória, que
+  poria no topo o lance jogado uma vez que ganhou uma vez. Empate desempata pelo SAN.
+- **Abaixo de cinco partidas decididas, as percentagens somem** (`MINIMO_PARA_PERCENTUAL`) e a
+  barra não é desenhada. O maior erro padrão de uma proporção com `n` observações é `0,5/√n`: com
+  uma decidida a barra diz `100%` e o intervalo é a régua inteira; com 5 o erro padrão é 22 pontos.
+  O número de partidas continua na linha -- o que se esconde é a afirmação.
+- **`*` não é empate.** `n` conta todas; `brancas + empates + pretas` é o denominador das
+  percentagens, e a diferença são as partidas sem resultado registrado.
+- **Sem Elo e sem data, travessão e não zero** -- a decisão de `ui/lista_de_partidas.linha`.
+  A média de Elo divide por `com_elo` e não por `n`: dividir pela contagem cheia diluiria o rating
+  com as partidas antigas sem Elo, e o número sairia baixo e plausível.
+- **Ano e Elo fora da faixa não entram.** A faixa é a que o formulário de busca já declara
+  (`ANO_MINIMO = 1475`, `ANO_MAXIMO`, `ELO_MAXIMO`), e reusá-la fecha um defeito medido na gigabase
+  inteira: sem ela a coluna Ano da raiz saía `2005 (2–2026)` -- a base tem partidas com
+  `[Date "0002.??.??"]`.
+- **O lance que não é legal na posição perguntada não vira linha.** É a guarda contra a colisão de
+  64 bits: ela vira lance faltando, e não estatística de outra posição em silêncio. `resumo` diz
+  "13 de 14 lance(s)" quando algum caiu.
+- **A coluna Abertura traz o nome da linha** (`eco.frase_da_abertura`, S-534), e não o do código:
+  *Sicilian, Najdorf, English Attack* onde `nome(codigo)` diria *Sicilian* em doze códigos.
+
+**Quatro estados, e não dois.** É a lição da S-135 que `estudo_partidas` já tinha escrito:
+`SEM_ARVORE` (não há arquivo, ou ele é de outra base, ou de outro formato -- e a frase traz o
+comando), `FUNDO_DEMAIS` (a posição está além do ply gravado; dizer "nenhuma partida" ali seria um
+número sobre uma pergunta que ninguém fez), `SEM_PARTIDA` (dentro da profundidade, e a base não
+joga daqui) e `ACHOU`. Quem pergunta passa o `ply` junto, e é ele que separa os dois do meio.
+
+**Na janela** (`qt/arvore_de_aberturas.py`): um diálogo não modal e reusado, como o da busca, com
+a tabela de seis colunas, a barra de resultado desenhada por um `QStyledItemDelegate` (branco /
+cinza / preto: `GLIFO_CLARO`, `DISPENSADO`, `GLIFO_ESCURO` -- as cores com que a janela já desenha
+peça branca e peça preta, luminâncias 0,939 / 0,354 / 0,006) e a consulta numa `Tarefa`.
+
+**O clique simples joga o lance**, e aqui ele diverge da busca de propósito: lá o clique escolhe
+uma linha e o duplo abre a partida, porque são dois gestos; aqui o clique **é** a navegação -- a
+árvore é uma pilha de posições, e clicar num lance é descer um degrau, como no explorador do
+Lichess. O caminho de volta é o "lance anterior" da sala, que já é uma tecla. `Enter` joga a linha
+marcada, e as setas andam pela lista sem jogar nada.
+
+**A árvore acompanha o tabuleiro.** `PainelDeEstudo.refresh` -- o único ponto por onde toda mudança
+de nó passa -- redefine a posição do diálogo enquanto ele está visível. Navegar três lances com a
+seta em meio segundo dispara três pedidos: o que chega com uma consulta em curso fica **pendente** e
+é refeito no fim, e só o último interessa.
+
+**A lista de partidas é a que já existe.** "Ver as partidas…" emite um `Filtro` com a posição **e o
+código ECO dela** e abre o diálogo da S-533 já preenchido (`DialogoDeBusca.aplicar_filtro`). O ECO
+é o que estreita -- a posição não tem árvore no índice --, e ele já está calculado para a coluna
+Abertura. Escrever nos campos, e não buscar por baixo deles: o formulário é o que diz o que foi
+perguntado, e alargar é o gesto seguinte.
+
+### Critério de aceite
+
+Medido em 2026-09-05 na `LumbrasGigaBase_OTB_Complete.pgn` (8,6 GB, **10.355.488 partidas**), com o
+código deste item, dez processos numa máquina de 12 núcleos:
+
+**A passada.** `construir(..., profundidade=20, workers=10)` leu as **10.355.488** partidas em
+**1.900,7 s (31,7 min)** e gravou **26.761.647 ramos** em **960,6 MB** --
+**35,9 bytes por linha**, e **44% do índice por nome da S-533**, que
+ocupa 2.180 MB para responder outra pergunta. Comparado ao que o projeto já aceita: o índice por
+nome custa ~12 min e `cvoff-games --all` custa ~104 min.
+
+**A consulta.** Mediana de 20 medições por posição, sobre o arquivo de 960,6 MB:
+
+| posição | ply | ramos | partidas que seguem | consulta | montar as linhas |
+|---|---|---|---|---|---|
+| inicial | 0 | 20 | 10.355.544 | 0,6 ms | 1,8 ms |
+| depois de 1.e4 | 1 | 20 | 5.221.697 | 0,6 ms | 2,5 ms |
+| Najdorf, dez meios-lances | 10 | 32 | 361.913 | 0,6 ms | 14,6 ms |
+| Ruy Lopez fechada, dez meios-lances | 10 | 15 | 154.000 | 0,6 ms | 6,9 ms |
+| Najdorf, ply 19 (o último da árvore) | 19 | 13 | 17.725 | 0,6 ms | 10,4 ms |
+| linha rara (`1.h4 g5 2.hxg5 h6…`) | 10 | 0 -- `SEM_PARTIDA` | 0 | 0,5 ms | — |
+| a mesma Najdorf no ply 20 | 20 | 0 -- `FUNDO_DEMAIS` | — | 0,5 ms | — |
+
+O pior tempo de consulta das 140 medições foi **1,2 ms**. A primeira consulta do
+processo -- a que paga a abertura do SQLite -- custou 0,6 a 1,2 ms.
+
+**A raiz soma 10.355.544 partidas para 10.355.488 lidas**, e a diferença de 56 é
+real: são partidas que voltam à posição inicial com um vaivém de cavalos (`1.Nc3 Nc6 2.Nb1 Nb8`), e
+as duas passagens são um lance jogado dali. Está no docstring de `Arvore.partidas`.
+
+**O preço da chave sem roque, medido.** Das **20.381.789** chaves `(colocação, vez)` dos
+**quarenta** primeiros plies daquele milhão de partidas, **193** -- nove em cada dez milhões,
+**0,0009%** -- aparecem com mais de um conjunto de direitos de roque, e portanto somam estatísticas
+que uma chave com roque separaria.
+
+**A colisão de 64 bits, calculada e guardada.** Com 26.761.647 linhas, a probabilidade de haver
+**alguma** colisão de chave é ~n²/2^65 ≈ 1,9×10⁻⁵. A guarda é a legalidade: `linhas` descarta o
+ramo cujo SAN a posição não sustenta, e nas seis posições da tabela acima **nenhum** dos 100 ramos
+foi descartado.
+
+**Dois defeitos que só a foto mostrou**, e os dois viraram teste:
+
+1. **A ordem por frequência não chegava à tela.** Com `setSortingEnabled(True)` o Qt reordena pelo
+   indicador corrente a cada preenchimento, e o de fábrica é a primeira coluna: a tabela da Najdorf
+   saía `Rg1, Rb1, Qf3, … a3`, ordem alfabética do SAN, com a ordem decidida em `ui/` intacta na
+   lista e invisível na tela. `COLUNA_DA_ORDEM` fixa de onde ela parte, e o teste de ordem passou a
+   usar uma base em que o mais jogado é o **primeiro** do alfabeto -- com `1.e4` no topo das duas
+   contagens, ele passava sem medir nada.
+2. **O segmento das brancas era branco sobre branco.** `GLIFO_CLARO` (#f8f8f8) na linha clara da
+   tabela não tem borda: a barra parecia começar onde o cinza começa, e a proporção lida era outra.
+   `CONTORNO_DA_BARRA` é `TEXTO_SECUNDARIO`, o único cinza que muda com a pele -- na escura, um
+   contorno quase preto sobre fundo quase preto seria o mesmo defeito ao contrário.
+
+**A tela.** Fotografada em 1400×950 e 1920×1080 nas três peles (`clássica`, `foco`, `fita`): a
+Najdorf no lance 6 (32 lances, de `Be3` com 96.824 partidas a `Ke2` com uma), a posição inicial (os
+vinte primeiros lances legais), a posição no lance 11 (`FUNDO_DEMAIS`) e a janela sem árvore
+construída. A sala aparece com o botão novo no grupo Base, ao lado de "Partidas".
+
+### Testes
+
+`tests/test_arvore_de_aberturas.py` (23) -- o arquivo: a chave que não é o `hash()` do Python (com
+o valor gravado, porque mudá-lo cega todo arquivo já construído), os três resultados contados e o
+`*` que não é nenhum, o Elo que é a média dos dois e só de quem tem os dois, a faixa de anos, a
+partida montada de `[FEN]` que não entra, o lance desconhecido (`--`) que encerra a partida, a
+variante do movetext que não vira linha principal, os quatro estados, a árvore de outra base e a de
+outro formato recusadas, o ano e o Elo fora da faixa do formulário que não entram, o pedaço sem
+data que não zera a faixa de anos, a passada cancelada que não grava nada, e a passada em dois
+processos que soma o mesmo que a sequencial.
+
+`tests/test_ui_arvore_de_aberturas.py` (38) -- a decisão: as seis colunas e quais são numéricas, a
+ordem por frequência com desempate pelo SAN, as três percentagens somando 100 em quatro casos de
+arredondamento ruim, o corte da amostra pequena, os travessões, o primeiro token de cada célula
+numérica sendo o número que a tabela ordena, o nome da linha na coluna Abertura, o tabuleiro que
+volta como estava, o ramo ilegal descartado e contado no resumo, as quatro frases distintas, as
+luminâncias da barra ordenadas nas duas peles e o contraste das tintas acima do piso, o
+`perde_trabalho_ao_fechar` que responde o oposto do índice, e o filtro que a busca aceita com ECO e
+recusa sem.
+
+`tests/test_qt_arvore_de_aberturas.py` (22) -- a fiação: a consulta fora da linha de eventos, o
+pedido que chega durante a consulta e não se perde, a ordem por frequência **na tela** e o
+indicador na coluna das partidas, o clique simples e o `Enter`, a escolha certa **depois** de a
+tabela ser reordenada pelo cabeçalho, as frações que acompanham a linha e não a altura, a barra
+desenhada onde há amostra e não onde não há, a falta de árvore virando frase com o comando, e a
+passada com diálogo que termina e recusa a segunda rodada. E a sala (`SalaTests`): o lance
+escolhido andando no tabuleiro **de verdade** -- e não um `mock` que registrou visita, que é a
+lição de "patch não intercepta slot ligado" --, o SAN ilegal que vira frase, a árvore acompanhando
+o `refresh`, e "Ver as partidas…" abrindo a busca preenchida.
+
+`tests/test_qt_busca_de_partidas.py` ganhou um: o filtro que vem de fora é **escrito nos campos**
+antes de a busca sair.
+
+Guardas tocadas: `tests/test_busy.py` (a consulta entra em `SEM_REGISTRO` com o motivo; a passada
+se registra com `loses_work=True`), `tests/test_docs.py` (a contagem de threads passa de vinte a
+vinte e duas, e `CARDINAIS` aprendeu os compostos), `tests/test_editor_model.py` (o módulo novo de
+`ui/` entra em `SEM_TKINTER`), `tests/test_ui_comandos.py` (o rótulo curto que diverge do menu).
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-536 · Opções do motor (Hash, Threads, MultiPV, caminho) nas preferências, sem reiniciar — ✅ **implementada em 2026-09-04**
 
