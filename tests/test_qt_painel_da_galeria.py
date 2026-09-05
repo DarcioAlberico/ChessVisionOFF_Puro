@@ -75,6 +75,23 @@ class DeclaracaoTests(unittest.TestCase):
         self.assertIn("cancelada com 2 livro(s) sem varrer", frase)
 
 
+def montar_painel(caso: unittest.TestCase, pasta: Path, **kwargs: object) -> qt_galeria.PainelDaGaleria:
+    """A aba montada e descartada com o teste. **Função, e não método de uma classe-base**: herdar
+    de uma `TestCase` para reaproveitar a montagem faria a suíte rodar os testes dela outra vez."""
+    app = aplicacao()
+    montado = qt_galeria.PainelDaGaleria(
+        service=_ServicoFalso(),
+        pdf_path=lambda: None,
+        model_path=lambda: pasta / "modelo.pt",
+        max_boards=lambda: 4,
+        **kwargs,  # type: ignore[arg-type]
+    )
+    caso.addCleanup(descartar, montado)
+    montado.show()
+    app.processEvents()
+    return montado
+
+
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class PainelTests(unittest.TestCase):
     """A aba montada, sem livro varrido e com um índice de mentira."""
@@ -85,17 +102,7 @@ class PainelTests(unittest.TestCase):
         self.addCleanup(self.app.processEvents)
 
     def painel(self, **kwargs: object) -> qt_galeria.PainelDaGaleria:
-        montado = qt_galeria.PainelDaGaleria(
-            service=_ServicoFalso(),
-            pdf_path=lambda: None,
-            model_path=lambda: self.pasta / "modelo.pt",
-            max_boards=lambda: 4,
-            **kwargs,  # type: ignore[arg-type]
-        )
-        self.addCleanup(descartar, montado)
-        montado.show()
-        self.app.processEvents()
-        return montado
+        return montar_painel(self, self.pasta, **kwargs)
 
     def test_o_estado_vazio_diz_o_que_falta_fazer(self) -> None:
         painel = self.painel()
@@ -343,6 +350,60 @@ class AnotacaoTests(unittest.TestCase):
         self.assertEqual(
             painel.model.current_annotation.headers.get("White"), "Coull", "cancelar não apagou nada"
         )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class LoteDeDiagramasTests(unittest.TestCase):
+    """O botão que manda o livro varrido para o lote de diagramas (S-544).
+
+    **A origem é o índice da varredura**, e é a metade desta aba do item: aqui saem os quinhentos
+    diagramas de um livro digitalizado; do lado da sala de estudo saem os que alguém analisou. O
+    que vira arquivo é decidido por `ui/lote_de_diagramas.da_galeria`, e é afirmado sem janela em
+    `tests/test_lote_de_diagramas.py` -- o que só existe aqui é o botão e o que ele abre.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def painel(self) -> qt_galeria.PainelDaGaleria:
+        return montar_painel(self, self.pasta)
+
+    def _indexado(self) -> qt_galeria.PainelDaGaleria:
+        from chess_diagram_ocr.gallery_scan import GalleryEntry
+
+        painel = self.painel()
+        painel.model.index = GalleryIndex(
+            entries=[
+                GalleryEntry(page_index=6, diagram_index=0, placement="8/8/8/8/8/8/8/K6k", side_to_move="b"),
+                GalleryEntry(page_index=6, diagram_index=1, placement="8/8/8/8/8/8/8/K6k"),
+            ]
+        )
+        painel.model.pdf_path = Path("C:/PDF/Secrets.pdf")
+        painel.refresh(request_page=False)
+        return painel
+
+    def test_sem_varredura_o_botao_esta_cinza_e_o_clique_avisa(self) -> None:
+        """Exportar zero diagramas abriria um diálogo para dizer que não há nada: a resposta a
+        "varra o livro antes" é o botão não convidar ao clique."""
+        painel = self.painel()
+        self.assertFalse(painel.btn_diagramas.isEnabled())
+        recados: list[str] = []
+        painel.estado.connect(recados.append)
+        self.assertIsNone(painel.exportar_diagramas())
+        self.assertTrue(any("Varra o livro" in recado for recado in recados), recados)
+
+    def test_o_indice_varrido_abre_o_lote_com_a_pagina_impressa_no_nome(self) -> None:
+        painel = self._indexado()
+        self.assertTrue(painel.btn_diagramas.isEnabled())
+        dialogo = painel.exportar_diagramas()
+        assert dialogo is not None
+        self.addCleanup(descartar, dialogo)
+        self.assertEqual(2, len(dialogo.itens))
+        self.assertEqual({"Secrets"}, {item.livro for item in dialogo.itens})
+        self.assertEqual((7, 7), tuple(item.pagina for item in dialogo.itens))
+        self.assertEqual("8/8/8/8/8/8/8/K6k b - - 0 1", dialogo.itens[0].fen, "o lado que a S-17 deduziu")
 
 
 if __name__ == "__main__":  # pragma: no cover

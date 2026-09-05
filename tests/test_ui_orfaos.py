@@ -198,6 +198,21 @@ SEM_CHAMADOR: dict[str, str] = {
         "alguém vai querer alargar sem ler a função"
     ),
     #
+    # --- o lote de diagramas (S-544, 2026-09-05): dois dos onze nomes novos
+    #
+    # Os outros nove ganharam chamador no mesmo dia -- `do_estudo`, `de_estudos` e `da_galeria`
+    # nas três origens (a sala, o PGN aberto e o livro varrido), `TAMANHO_PADRAO` e
+    # `TAMANHO_MAXIMO` na caixa de tamanho do diálogo, que aceita valor digitado porque
+    # `TAMANHOS` sempre declarou aceitar. `LIMITE_DO_NOME` e `pele_registrada` **saíram do
+    # `__all__`**: os dois são aplicados dentro do próprio módulo, pelas funções que são a API.
+    "lote_de_diagramas.PeleDoDiagrama": E_O_TIPO,
+    "lote_de_diagramas.UMA_TINTA": (
+        "um dos dois valores que `pele_registrada` distingue; a tela percorre `PELES_DO_DIAGRAMA` "
+        "e passa `registro.nome`, e quem separa as duas peles é `cores_da_pele` -- que está no "
+        "`__all__` porque é ela a decisão. Quem nomeia a chave é o teste, que a exige derivada "
+        "da primeira por luminância e não escolhida a olho"
+    ),
+    #
     # `analise_da_partida.grava_avaliacao` e `motor_declarado.titulo_da_secao` estavam aqui, e
     # saíram em 2026-09-04 **por terem ganhado chamador**: as três linhas que a S-529 e a S-537
     # deixaram no relatório foram escritas em `qt/painel_de_estudo.py` assim que o arquivo ficou

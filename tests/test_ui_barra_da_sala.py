@@ -58,16 +58,28 @@ class CoberturaTests(unittest.TestCase):
         self.assertEqual(set(), no_mais & em_submenu)
         self.assertEqual({r.acao for r in barra_da_sala.ACOES}, principais | no_mais | em_submenu)
 
-    def test_os_tres_formatos_moram_no_exportar(self) -> None:
+    def test_so_os_formatos_moram_no_exportar(self) -> None:
         """Eram três botões `.md`, `.html`, `.rtf`; viram um "Exportar ▾" porque são a mesma
-        pergunta, e não três gestos."""
+        pergunta, e não três gestos. O `.pdf` da S-545 entrou pela mesma razão.
+
+        **A régua é "é formato?", e não "é saída?"** -- por isso a afirmação não é a lista
+        literal, que envelheceria a cada item: é que todo item do submenu seja um
+        `exportar_estudo_*`, e que os dois que saem da sala sem serem formato fiquem fora dele.
+        Imprimir termina no papel e o lote produz um arquivo por diagrama; enfiá-los aqui faria o
+        agrupador responder duas perguntas, e a segunda escondida atrás do rótulo da primeira.
+        """
         agrupador = barra_da_sala.acao(barra_da_sala.EXPORTAR_ESTUDO)
         self.assertTrue(agrupador.agrupador)
         self.assertEqual(
-            ("exportar_estudo_md", "exportar_estudo_html", "exportar_estudo_rtf"), agrupador.itens_do_submenu
+            ("exportar_estudo_md", "exportar_estudo_html", "exportar_estudo_rtf", "exportar_estudo_pdf"),
+            agrupador.itens_do_submenu,
         )
         for nome in agrupador.itens_do_submenu:
             self.assertEqual(barra_da_sala.EXPORTAR_ESTUDO, barra_da_sala.acao(nome).dentro_de)
+            self.assertTrue(nome.startswith("exportar_estudo_"), "item do submenu que não é formato")
+        for fora in ("imprimir_estudo", "exportar_diagramas_lote"):
+            self.assertEqual("", barra_da_sala.acao(fora).dentro_de, f"{fora} não é formato do estudo")
+            self.assertFalse(barra_da_sala.acao(fora).principal, f"{fora} não é gesto de lance")
 
     def test_a_unica_prioridade_repetida_e_o_par_promover_rebaixar(self) -> None:
         """Duas ações com a mesma prioridade são um **par** que entra e sai da fila junto (`cabem`);

@@ -191,6 +191,7 @@ def svg_da_posicao(
     declaracao: bool = False,
     cores: Cores | None = None,
     titulo: str = "",
+    margem: int | None = None,
 ) -> str:
     """O diagrama daquela posição, como texto SVG bem formado.
 
@@ -200,12 +201,20 @@ def svg_da_posicao(
     `unidade` é a do `width`/`height` do elemento raiz: `em` no EPUB, onde o diagrama reflui com o
     corpo do texto; `cm` no DOCX, onde ele é uma parte do pacote e o Word mede a página em
     centímetros. `declaracao` põe o `<?xml?>` na frente, que é o que um `.svg` **como arquivo** leva.
+
+    `margem` é a faixa em volta, em unidades do `viewBox`; `None` é `MARGEM`, que é o EPUB de hoje.
+    Ela é **argumento desde a S-544** porque o lote de diagramas escolhe uma proporção só para os
+    dois formatos: a faixa daqui era um terço da casa e a de `diagrama_png.py` dois quintos, e o
+    PNG e o SVG do mesmo diagrama saíam com molduras de larguras diferentes. O que a acompanha
+    escala junto -- o corpo da régua e o raio da plaqueta --, para que passar a faixa de hoje
+    devolva o desenho de hoje, unidade por unidade.
     """
     tabuleiro = tabuleiro_de(fen_ou_placement)
     lado = lado_da_fen(fen_ou_placement) if lado_a_jogar is None else lado_a_jogar.lower()
     paleta = (cores or cores_padrao()).resolvidas()
 
-    margem = MARGEM if (com_reguas or lado) else 0
+    faixa = MARGEM if margem is None else max(0, int(margem))
+    margem = faixa if (com_reguas or lado) else 0
     lado_total = 8 * CASA + 2 * margem
     raiz = ET.Element(
         "svg",
@@ -310,11 +319,12 @@ def _pecas(raiz: ET.Element, tabuleiro: chess.BaseBoard, margem: int, virado: bo
 def _reguas(raiz: ET.Element, margem: int, virado: bool, paleta: Cores) -> None:
     """As letras embaixo e os números à esquerda, **na ordem de `desenho_do_tabuleiro.reguas`**."""
     colunas, linhas = reguas(virado)
+    corpo = TAMANHO_DA_REGUA * margem / MARGEM
     comum = {
         "class": "regua",
         "fill": paleta.coordenada,
         "font-family": "sans-serif",
-        "font-size": str(TAMANHO_DA_REGUA),
+        "font-size": f"{corpo:g}",
         "font-weight": "bold",
         "text-anchor": "middle",
     }
@@ -324,7 +334,7 @@ def _reguas(raiz: ET.Element, margem: int, virado: bool, paleta: Cores) -> None:
         texto = ET.SubElement(raiz, "text", {**comum, "x": f"{x:g}", "y": f"{base + margem * 0.75:g}"})
         texto.text = letra
     for indice, numero in enumerate(linhas):
-        y = margem + indice * CASA + CASA / 2 + TAMANHO_DA_REGUA / 3
+        y = margem + indice * CASA + CASA / 2 + corpo / 3
         texto = ET.SubElement(raiz, "text", {**comum, "x": f"{margem / 2:g}", "y": f"{y:g}"})
         texto.text = numero
 
@@ -343,9 +353,10 @@ def _ponto_do_lado(raiz: ET.Element, margem: int, lado: str, paleta: Cores, *, v
     """
     brancas = lado == "w"
     embaixo = brancas != virado
+    raio = RAIO_DO_LADO * margem / MARGEM
     x = margem + 8 * CASA + margem / 2
-    y = margem + 8 * CASA - RAIO_DO_LADO - 1 if embaixo else margem + RAIO_DO_LADO + 1
-    meia = RAIO_DO_LADO + 1.5
+    y = margem + 8 * CASA - raio - 1 if embaixo else margem + raio + 1
+    meia = raio + 1.5
     ET.SubElement(
         raiz,
         "rect",
@@ -365,7 +376,7 @@ def _ponto_do_lado(raiz: ET.Element, margem: int, lado: str, paleta: Cores, *, v
             "class": "lado-a-jogar brancas" if brancas else "lado-a-jogar pretas",
             "cx": f"{x:g}",
             "cy": f"{y:g}",
-            "r": str(RAIO_DO_LADO),
+            "r": f"{raio:g}",
             "fill": paleta.peca_clara if brancas else paleta.peca_escura,
             "stroke": paleta.peca_escura,
             "stroke-width": "1",

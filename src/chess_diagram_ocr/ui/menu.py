@@ -264,7 +264,15 @@ MENUS: tuple[Menu, ...] = (
             Item("exportar_estudo_md"),
             Item("exportar_estudo_html"),
             Item("exportar_estudo_rtf"),
+            Item("exportar_estudo_pdf"),
             Item("estudo_para_o_texto"),
+            _sep(),
+            # Os dois que saem da folha e não do arquivo de texto (S-544/S-545): o lote de
+            # diagramas soltos e o estudo paginado como livro. Ficam depois do separador porque
+            # o de cima é "o estudo noutro formato" e estes dois são outra pergunta -- o que sai
+            # daqui não volta para dentro do programa.
+            Item("exportar_diagramas_lote"),
+            Item("imprimir_estudo"),
         ),
     ),
     Menu(

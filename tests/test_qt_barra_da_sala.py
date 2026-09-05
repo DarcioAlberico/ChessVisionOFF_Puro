@@ -205,15 +205,18 @@ class BarraSoltaTests(unittest.TestCase):
             if registro.acao not in {a.acao for a in atalhos.TECLAS_DA_SALA}:
                 self.assertTrue(self.barra.acoes[registro.acao].shortcut().isEmpty(), registro.acao)
 
-    def test_o_exportar_abre_os_tres_formatos_e_nao_esta_no_mais(self) -> None:
+    def test_o_exportar_abre_os_formatos_e_nao_esta_no_mais(self) -> None:
+        """A lista vem da tabela, e não é reescrita aqui: o `.pdf` da S-545 entrou no agrupador e
+        um teste com quatro nomes literais quebraria de novo no quinto formato. O que se afirma é
+        o que o widget tem de fazer -- o submenu **é** `itens_do_submenu`, na ordem, e nenhum
+        deles aparece também no "Mais"."""
         agrupador = self.barra.acoes[barra_da_sala.EXPORTAR_ESTUDO]
         menu = agrupador.menu()
         assert menu is not None
-        self.assertEqual(
-            ["exportar_estudo_md", "exportar_estudo_html", "exportar_estudo_rtf"],
-            [str(a.property("acao")) for a in menu.actions()],
-        )
-        for nome in ("exportar_estudo_md", "exportar_estudo_html", "exportar_estudo_rtf"):
+        formatos = barra_da_sala.acao(barra_da_sala.EXPORTAR_ESTUDO).itens_do_submenu
+        self.assertEqual(list(formatos), [str(a.property("acao")) for a in menu.actions()])
+        self.assertIn("exportar_estudo_pdf", formatos)
+        for nome in formatos:
             self.assertNotIn(nome, self.barra.no_mais())
         self.barra.acoes["exportar_estudo_rtf"].trigger()
         self.assertEqual(["exportar_estudo_rtf"], self.chamadas)

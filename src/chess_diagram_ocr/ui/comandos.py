@@ -754,6 +754,25 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("exportar_estudo_md", "Exportar o estudo para Markdown…", ESTUDO, estilos.NEUTRO, rotulo_curto=".md"),
     Comando("exportar_estudo_html", "Exportar o estudo para HTML…", ESTUDO, estilos.NEUTRO, rotulo_curto=".html"),
     Comando("exportar_estudo_rtf", "Exportar o estudo para RTF…", ESTUDO, estilos.NEUTRO, rotulo_curto=".rtf"),
+    # O quarto formato é da S-545, e entra na mesma fileira porque é a mesma pergunta -- "em que
+    # formato?". A diferença dele é que a página existe: os três de cima entregam o estudo como
+    # texto marcado, e quem pagina é o programa que abrir o arquivo; o PDF sai **já paginado**,
+    # com margem, cabeçalho e número de página, e é por isso que a decisão da paginação é nossa.
+    Comando("exportar_estudo_pdf", "Exportar o estudo para PDF…", ESTUDO, estilos.NEUTRO, rotulo_curto=".pdf"),
+    # Imprimir **não** é um quinto formato, e por isso não está no agrupador "Exportar": o gesto
+    # termina no papel e passa pela pré-visualização, que é onde se confere a quebra antes de
+    # gastar folha. O PDF e a impressão desenham a mesma paginação, e é a mesma decisão pura.
+    Comando("imprimir_estudo", "Imprimir o estudo…", ESTUDO, estilos.NEUTRO, rotulo_curto="Imprimir"),
+    # O lote de diagramas (S-544) sai do grupo ESTUDO pela pergunta do grupo -- ele age sobre a
+    # análise que está aberta --, e é o único comando da sala cujo produto não é **um** arquivo:
+    # uma sala de quinhentos estudos vira quinhentos PNGs, um por diagrama.
+    Comando(
+        "exportar_diagramas_lote",
+        "Exportar os diagramas em lote…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Diagramas em lote",
+    ),
     Comando(
         "estudo_para_o_texto",
         "Levar a linha do estudo para a aba Texto",

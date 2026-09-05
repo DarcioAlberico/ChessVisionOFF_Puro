@@ -195,6 +195,17 @@ def conjunto_em_vigor() -> str:
     return _CONJUNTO
 
 
+def pasta_do_usuario() -> str:
+    """A pasta de peças que a pessoa escolheu, ou vazio. O par de `conjunto_em_vigor` (S-544).
+
+    Existe porque `pasta_do_conjunto` responde outra pergunta: ela já **resolve** o conjunto e cai
+    em `assets/` quando não há escolha, que é o que um tabuleiro quer. Quem exporta um lote precisa
+    do que foi escolhido, e não do resolvido -- `ui/lote_de_diagramas.Opcoes` decide sozinha se a
+    pasta vale, pelo conjunto que estiver marcado no diálogo, que pode não ser o desta janela.
+    """
+    return _PASTA_DO_USUARIO
+
+
 def pasta_do_conjunto(nome: str = "", pasta_do_usuario: str = "") -> Path:
     """De que pasta saem os PNGs daquele conjunto.
 

@@ -1008,6 +1008,7 @@ src/chess_diagram_ocr/
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
   diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
   diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)
+  diagramas_em_lote.py  os diagramas de uma origem gravados soltos, um arquivo por posicao (S-544)
   docx_saida.py         o estudo e o texto em DOCX, OOXML minimo com zipfile (S-543)
   eco.py                a tabela ECO embutida: classifica a abertura por posicao ou por lance (S-534)
   engine.py             motor UCI opcional (Stockfish)

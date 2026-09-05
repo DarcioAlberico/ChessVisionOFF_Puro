@@ -396,6 +396,23 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
         Poli((58, 74), (88, 74)),
         Poli((78, 64), (88, 74), (78, 84)),
     ),
+    # A impressora: o corpo no meio, a folha entrando por cima e a folha saindo por baixo (S-545).
+    # É o desenho que todo programa usa há trinta anos, e reconhecê-lo é o ponto -- um ícone de
+    # imprimir que precise de legenda já perdeu para o item de menu.
+    "imprimir": (
+        Poli((10, 40), (90, 40), (90, 72), (10, 72), fechado=True),
+        Poli((28, 40), (28, 10), (72, 10), (72, 40)),
+        Poli((28, 72), (28, 92), (72, 92), (72, 72)),
+    ),
+    # Dois tabuleiros empilhados, um atrás do outro (S-544): o lote é o **mesmo** diagrama muitas
+    # vezes, e a pilha é como se desenha "vários" sem contar quantos. A cruz só no da frente
+    # porque duas cruzes a 16 px viram uma trama, e a trama deixa de ler como tabuleiro.
+    "diagramas_em_lote": (
+        Poli((10, 10), (64, 10), (64, 64), (10, 64), fechado=True),
+        Poli((36, 36), (90, 36), (90, 90), (36, 90), fechado=True),
+        Poli((36, 63), (90, 63)),
+        Poli((63, 36), (63, 90)),
+    ),
     # ----------------------------------------------------------------------------- TREINO
     # O alvo: três anéis.
     "treinar": (Arco((50, 50), 34), Arco((50, 50), 18), Arco((50, 50), 4)),

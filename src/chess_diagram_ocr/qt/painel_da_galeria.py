@@ -246,6 +246,18 @@ class PainelDaGaleria(QWidget):
             "Dá para cancelar. Pergunta antes em quais .pgn procurar -- e cada conjunto de bases "
             "guarda as respostas dele em separado.",
         )
+        # O lote de diagramas mora aqui, e não no menu (S-544): a origem dele é **o livro
+        # varrido**, e é esta aba que tem o índice da varredura na mão. O comando de menu do lote
+        # exporta a sala de estudo, que é a outra origem -- as duas existem porque quem diagrama
+        # um livro inteiro quer os 500 diagramas dele, e quem prepara uma aula quer os oito que
+        # analisou.
+        self.btn_diagramas = self._botao(topo, "Exportar os diagramas", self.exportar_diagramas)
+        dica_em(
+            self.btn_diagramas,
+            "Grava um arquivo de imagem por diagrama deste livro -- PNG ou SVG, no tamanho e na "
+            "pele escolhidos --, com o nome dizendo livro, página e diagrama.\n"
+            "Fica cinza enquanto o livro não tiver sido varrido.",
+        )
         self.lbl_varredura = QLabel("", topo)
         topo.adicionar(self.lbl_varredura)
         fora.addWidget(topo)
@@ -1288,6 +1300,31 @@ class PainelDaGaleria(QWidget):
             area.setText(conteudo)
         self.estado.emit("Legenda copiada.")
 
+    def exportar_diagramas(self) -> object:
+        """Os diagramas varridos deste livro como arquivos soltos, um por posição (S-544).
+
+        **A origem é o índice da varredura, e não a sala de estudo.** São as duas metades do
+        mesmo item: aqui saem os quinhentos diagramas de um livro digitalizado, com a FEN que o
+        modelo leu e a página impressa no nome do arquivo; do lado da sala saem os que alguém
+        analisou. A decisão de o que vira `ItemDoLote` é de `ui/lote_de_diagramas.da_galeria`.
+        """
+        from chess_diagram_ocr.qt.lote_de_diagramas import abrir_lote_de_diagramas
+        from chess_diagram_ocr.ui.lote_de_diagramas import da_galeria
+
+        aberto = self.model.pdf_path
+        livro = Path(aberto).stem if aberto else ""
+        itens = da_galeria(self.model.index.entries, livro=livro)
+        if not itens:
+            self.estado.emit("Varra o livro antes: não há diagrama indexado para exportar.")
+            return None
+        return abrir_lote_de_diagramas(
+            self,
+            itens=itens,
+            origem=f"{len(itens)} diagrama(s) varrido(s) de {livro or 'este livro'}.",
+            pasta=Path(aberto).parent if aberto else DEFAULT_PDF_DIR,
+            busy=self._busy_registry,
+        )
+
     def copiar_link(self) -> None:
         from PyQt6.QtWidgets import QApplication
 
@@ -1331,6 +1368,9 @@ class PainelDaGaleria(QWidget):
             # Desligado onde não há header: um botão que responde "não há o que limpar" é um botão
             # que mente sobre estar disponível, e a pergunta que ele abriria seria vazia.
             self.btn_limpar.setEnabled(bool(anotacao.headers))
+            # Cinza sem índice: exportar zero diagramas abriria um diálogo para dizer que não há
+            # nada, e a resposta certa a "varra o livro antes" é o botão não convidar ao clique.
+            self.btn_diagramas.setEnabled(not self.model.is_empty)
             self._atualizar_botao_de_candidatas()
         finally:
             self._montando = False

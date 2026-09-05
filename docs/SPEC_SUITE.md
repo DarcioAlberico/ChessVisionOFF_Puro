@@ -2706,13 +2706,240 @@ mora. As partes que ele lista como "o Word costuma gravar e não estão" (`fontT
 `webSettings`, `numbering`, `footnotes`) continuam fora: o Word as cria ao salvar, e nenhuma é
 exigida para abrir.
 
-## S-544 · Diagramas em lote como PNG/SVG, no tamanho e na pele escolhidos — ◻ em andamento
+## S-544 · Diagramas em lote como PNG/SVG, no tamanho e na pele escolhidos — ✅ **implementada em 2026-09-05**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-545 · Imprimir e gerar PDF do estudo com a paginação de livro — ◻ em andamento
+O projeto sabia desenhar **um** diagrama a partir de uma FEN desde a Fase 83 -- `diagrama_svg.py`
+e `diagrama_png.py`, com a régua, a plaqueta de lado a jogar e o contraste já medidos. O que não
+existia era o **lote**: os dois só eram chamados de dentro de `epub.py:269` e de
+`docx_saida.py:437`, para embutir a figura num documento, e não havia caminho nenhum -- nem janela,
+nem comando de linha -- que gravasse os diagramas **soltos**. Quem converte um livro digitalizado e
+diagrama noutro programa precisa exatamente disso: quinhentos arquivos de imagem, no tamanho da
+coluna dele, com nome que diga de que página cada um veio.
 
-_Seção a escrever pelo executor do item._
+Três coisas faltavam junto, e cada uma teria virado defeito na primeira tentativa:
+
+- **Nenhum dos dois desenhistas aceitava tamanho.** `diagrama_png.py:45` cravava `CASA_PX = 70`, e
+  o lado do arquivo era sempre 616 px -- o tamanho dos PNGs de `assets/piece_images/`. Uma página
+  impressa a 300 pontos por polegada não cabe em 616.
+- **A faixa em volta discordava entre os formatos.** `diagrama_svg.py:85` tinha `MARGEM = 15` sobre
+  uma casa de 45 -- **um terço** --, e `diagrama_png.py:48` tinha `MARGEM_PX = 28` sobre uma casa de
+  70 -- **dois quintos** --, com o docstring dizendo "como `MARGEM` no SVG". Não era: o PNG e o SVG
+  do mesmo diagrama saíam com molduras de larguras diferentes, e ninguém comparava.
+- **Não havia nome de arquivo.** Nem para colisão, nem para caractere que o Windows recusa, nem
+  para a ordem em que um gerenciador de arquivos lista `ex1`, `ex10`, `ex100`, `ex11`.
+
+### Solução
+
+Três módulos, na fronteira de sempre.
+
+**`ui/lote_de_diagramas.py` (puro)** decide o que não é desenho nem disco: o que o lote contém
+(`do_estudo`, `de_estudos`, `da_galeria` -- o estudo aberto, um PGN ou a sala inteira, e o livro
+varrido), **como cada arquivo se chama** (`nomes_do_lote`), e as escolhas (`Opcoes`, validada na
+construção). Três decisões de nome, e as três vieram de defeito real: zero à esquerda na largura do
+maior número do lote, colisão resolvida por sufixo e comparada **sem maiúscula** (no Windows e no
+macOS `A.png` e `a.png` são o mesmo arquivo, e o segundo apaga o primeiro em silêncio), e nome de
+dispositivo do MS-DOS (`Aux.pdf` existe; `aux.png` não é criável). O acento sai por decomposição
+Unicode -- `Prokeš` vira `Prokes` --, e é por causa de quem consome o lote: caminho com acento
+ainda quebra em `\includegraphics` e em `.zip` aberto noutra máquina.
+
+**As duas peles do diagrama**, e só duas. A do produto é a paleta medida (S-224); a de **uma tinta**
+é derivada dela por `tokens.cinza_equivalente`, cor a cor, e não uma paleta nova escolhida a olho.
+A razão de contraste da WCAG é definida sobre a luminância, então converter por luminância preserva
+os números que a S-146 mediu -- o teste afirma a luminância de cada cor nas duas, com duas casas.
+
+**A faixa virou proporção**, declarada uma vez em porcentagem da casa e entregue pronta aos dois
+desenhistas: `svg_da_posicao(..., margem=)` e `png_da_posicao(..., casa_px=, margem=, engrossar=)`
+são novos, e o que acompanha a faixa escala junto -- o corpo da régua e o raio da plaqueta --, para
+que passar a faixa de hoje devolva o desenho de hoje, unidade por unidade.
+
+**`diagramas_em_lote.py`** é a travessia de disco: pede os bytes, grava com `atomic_write_bytes`,
+conta o andamento e para quando mandarem parar. Um diagrama ruim **não derruba o lote** -- é a
+regra do `batch.run_batch`, e vale aqui pelo mesmo motivo: uma FEN com nove colunas no meio de
+quinhentas não pode custar as outras 499. O cancelamento é conferido entre arquivos.
+
+**`qt/lote_de_diagramas.py`** é o diálogo: sete escolhas, **prévia do formato escolhido** (o SVG
+pelo `QSvgRenderer`, o mesmo caminho por que o PDF da S-545 põe o diagrama em vetor), pasta de
+destino, e a gravação numa `Tarefa` com barra, Cancelar e registro em `BusyRegistry`
+(`loses_work=False`: cada arquivo pronto já está no disco). A caixa de tamanho é **editável**,
+porque `TAMANHOS` sempre declarou aceitar qualquer valor da faixa e uma caixa fechada em oito
+valores fazia a declaração mentir; o digitado é aparado, e não recusado.
+
+**Duas portas, porque são duas origens.** `Estudo ▸ Exportar os diagramas em lote…` exporta a sala
+de estudo (ou o estudo aberto, quando não há sala); o botão **Exportar os diagramas** da aba
+Galeria exporta o índice da varredura do livro. São as duas metades do item: quem diagrama um livro
+inteiro quer os quinhentos diagramas dele, e quem prepara uma aula quer os oito que analisou.
+
+### Critério de aceite
+
+**Medido em 2026-09-05 num lote real**: o índice de varredura de
+`1000 Chess Problems - Yakov Vladimirov 2015` (`data/gallery/*.index.json` do checkout principal),
+**1.000 diagramas**, `da_galeria` → `gravar_lote`, **zero falhas** nos quatro formatos:
+
+| formato | tempo | diagramas/s | tamanho médio | total |
+|---|---|---|---|---|
+| PNG 240 px | 7,51 s | **133,2** | 3,5 KB | 3,4 MB |
+| PNG 640 px (padrão) | 19,68 s | **50,8** | 14,4 KB | 14,1 MB |
+| PNG 1200 px | 53,84 s | **18,6** | 41,6 KB | 40,7 MB |
+| SVG 640 px | 3,01 s | **332,3** | 14,3 KB | 14,0 MB |
+
+O SVG é 6,5× mais rápido que o PNG do mesmo tamanho e ocupa o mesmo espaço -- ele não reamostra
+peça nenhuma, e o custo do PNG é a reamostragem mais a quantização de 64 cores.
+
+- Os 1.000 nomes são distintos, ordenáveis pela página e sem caractere que o Windows recuse.
+- O lado real do arquivo é múltiplo de oito casas e difere do pedido em no máximo 8 px (640 → 642);
+  a tela diz o **lado real**, e não o pedido.
+- A faixa é a mesma proporção nos dois formatos: com `margem=50`, 0,5 casa no PNG e 0,5 casa no SVG.
+- A pele de uma tinta tem os três canais iguais em todas as cores, preserva a luminância de cada
+  uma (2 casas) e mantém `coordenada`/`moldura` acima de 4,5:1 e `peça clara`/`peça escura` acima
+  de 3:1 -- os pisos da S-146.
+- Cancelar responde entre arquivos: num lote de 40, a thread para em menos de 3 s e o que já saiu
+  fica gravado.
+- Fotografado a 1400×950 nas três peles (`scratchpad/medicao/fotos/lote_*.png`).
+
+### Testes
+
+- `tests/test_lote_de_diagramas.py` (puro, 36 casos): `NomeDoArquivoTests` -- zero à esquerda na
+  largura do maior, colisão por sufixo, colisão comparada sem maiúscula, acento decomposto,
+  caractere ilegal, nome de dispositivo do MS-DOS, título quando não há procedência, extensão pelo
+  formato registrado; `OpcoesTests` -- casa inteira e lado a menos de 8 px do pedido, faixa zero
+  sem régua nem plaqueta, faixa fora dos limites levanta, formato/pele/conjunto desconhecidos
+  levantam, engrossar só no PNG, pasta de peças só no conjunto do usuário, a frase diz o lado real;
+  `PeleDoDiagramaTests` -- cinza nos três canais, luminância preservada, pisos da S-146 nas duas
+  peles; `OrigemDoLoteTests` -- os diagramas do estudo, a âncora virando livro e página contada de
+  um, a ordem virando exercício, a âncora vencendo a origem colada, a galeria virando FEN com o
+  lado da S-17; `GravarLoteTests` -- um arquivo por item, SVG com declaração e medida em pixel, FEN
+  ilegal no relatório sem derrubar o lote, cancelamento, a frase com o caminho inteiro, a pasta
+  criada mesmo com tudo falhando, o tamanho pedido chegando ao pixel do arquivo.
+- `tests/test_qt_lote_de_diagramas.py` (Qt, 18 casos): a prévia nos dois formatos e no tamanho
+  dela; as escolhas da tela virando `Opcoes`; o tamanho digitado aparado; o conjunto em vigor
+  preselecionado; o conjunto cinza no SVG com a tela dizendo por quê; a prévia redesenhando quando
+  a pele muda; o botão cinza sem diagrama; a exportação gravando e a barra chegando ao fim; o botão
+  cinza enquanto grava e vivo depois; duas rodadas recusadas; o progresso por sinal; o registro de
+  ocupação dizendo "o progresso já está salvo"; o cancelamento; e as duas ações -- a da sala com o
+  estudo aberto e com a sala inteira.
+- `tests/test_qt_painel_da_galeria.py::LoteDeDiagramasTests`: o botão cinza sem varredura, o recado
+  ao clicar, e o índice varrido abrindo o lote com a página impressa no nome.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-545 · Imprimir e gerar PDF do estudo com a paginação de livro — ✅ **implementada em 2026-09-05**
+
+### Problema
+
+O estudo já saía em quatro formatos de texto desde a S-289 -- `qt/painel_de_estudo.py:2564`
+(`_exportar_estudo`), com os três comandos declarados em `ui/comandos.py:754-756` -- e em EPUB e
+DOCX desde a Fase 84. Em **todos** eles quem pagina é o programa que abre o arquivo: o leitor de
+EPUB reflui, o Word quebra onde couber, o `.md` não tem página nenhuma. Não havia caminho para
+**imprimir**, nem para o PDF, que é o formato em que a página é decidida por quem exporta.
+
+E é justamente onde a quebra importa. O `[%D]` do ChessBase põe o diagrama **depois** do comentário
+do lance que o pede (`estudo_paragrafos.py:265`), e os dois são uma frase: um diagrama no alto de
+uma página com o lance no pé da anterior obriga a virar a folha para trás a cada exercício. Nenhum
+dos exportadores existentes tem como respeitar isso, porque nenhum sabe onde a página acaba.
+
+### Solução
+
+Duas metades, na fronteira de sempre.
+
+**`ui/impressao_do_estudo.py` (puro)** decide **onde a página quebra**, e nada mais. A unidade é a
+**linha**, e é o que torna a decisão fazível: paginar por parágrafo parece mais simples e não
+funciona -- um estudo de 300 lances sem comentário nenhum é um parágrafo só, mais alto que a folha
+inteira, e uma regra de "parágrafo não se parte" o deixaria sem lugar onde caber. O desenho mede o
+parágrafo já quebrado em linhas e entrega as alturas; `paginar` decide quantas cabem e o que não
+pode ser separado do quê. Três regras, e as três vieram de folha impressa:
+
+1. **O diagrama não se separa do lance que o pede.** O bloco anterior a um diagrama é marcado
+   `com_o_proximo`, e o par anda junto -- desce inteiro para a página seguinte quando não cabe.
+2. **O título não fica sozinho no pé da página.** A viúva clássica, pelo mesmo mecanismo.
+3. **Nem uma nem duas linhas ficam soltas** (`ORFAS = 2`), com uma exceção: numa página **vazia**
+   sempre se põe o que couber, senão um parágrafo mais alto que a página não caberia em lugar
+   nenhum e a paginação não terminaria.
+
+O cabeçalho é vazio na primeira página -- o título está no corpo dela, dois centímetros abaixo -- e
+traz o nome do estudo da segunda em diante; o rodapé é `N de M`, com o total, porque uma folha
+solta de um lote impresso não diz de onde saiu nem quantas faltam.
+
+**`qt/impressao_do_estudo.py`** desenha. **Um desenhista, dois dispositivos**: `QPdfWriter` e
+`QPrinter` são os dois `QPagedPaintDevice`, e "Salvar como PDF" e "Imprimir" são o mesmo
+`FolhaDoEstudo.desenhar` recebendo um dispositivo diferente -- duas implementações dariam duas
+paginações, e a que ninguém confere é a que sai errada.
+
+- **O diagrama é vetor.** `QSvgRenderer.render(pintor, retângulo)` emite caminho no PDF, e não uma
+  imagem amostrada; o SVG é o de `diagrama_svg.py`, o mesmo do EPUB.
+- **O texto é texto.** Cada linha sai por `QTextLine.draw`, que escreve operador de texto: dá para
+  selecionar, copiar e procurar dentro do arquivo. É por isso que o parágrafo é medido com
+  `QTextLayout` -- a quebra que o desenho fez é a mesma que a paginação recebeu, linha por linha.
+- **A tinta é a do papel, e não a do cromo** (S-224). `_disposto` carimba
+  `tokens.cor(TEXTO_PADRAO)` em cada trecho, e o carimbo é necessário: a pré-visualização grava a
+  página num `QPicture` e a repinta com um pintor cuja caneta é a da paleta do widget.
+- **Sem thread**: um estudo de 300 lances vira PDF em menos de meio segundo, e o
+  `QPrintPreviewDialog` pinta na linha de eventos por construção.
+
+**Prévia antes de imprimir, e não impressão direta**: a quebra de página é a decisão que o programa
+toma por quem imprime, e ela tem de ser conferível **antes** de gastar folha. Dois comandos novos:
+`Estudo ▸ Exportar o estudo para PDF…` (no agrupador "Exportar ▾", ao lado de `.md`, `.html` e
+`.rtf`, porque é a mesma pergunta) e `Estudo ▸ Imprimir o estudo…` (fora dele, porque o gesto
+termina no papel).
+
+**A falha de gravação vai para a barra de status, e não para uma caixa** -- ao contrário dos três
+formatos vizinhos, que abrem `QMessageBox.critical`. É a régua da S-164 e a catraca de
+`tests/test_ui_retorno_modal.py` (46 caixas): a pessoa acabou de escolher o destino e clicou em
+gravar, então está olhando para esta tela, e a mesma linha que diria "6 página(s) em …" diz por que
+não deu.
+
+### Critério de aceite
+
+**Medido em 2026-09-05**, estudo de **300 lances** com sete comentários `[%D]` (oito diagramas), A4
+com margem de 18 mm, corpo de 10,5 pt:
+
+- **6 páginas**, em **0,47 s**, num arquivo de **61,9 KB**.
+- **3.429 caracteres de texto selecionável**, lidos com o PyMuPDF (`fitz`): `Carlsen` e
+  `Nepomniachtchi` aparecem na extração, e a notação inteira também.
+- **Zero imagens embutidas** no PDF e **306 caminhos vetoriais** só na primeira página: o diagrama
+  é vetor, e ampliar a folha não serrilha a borda da casa.
+- Cabeçalho com o nome do estudo da página 2 em diante, vazio na 1; rodapé `N de 6` em todas.
+- Nenhum desenho invade a margem de 18 mm.
+- A tinta é `#000000` nas três peles -- inclusive na Foco, cujo cromo é escuro.
+- A prévia desenha a mesma folha: `FolhaDoEstudo` recebe o `QPrinter` da prévia e conta as mesmas
+  páginas que contou no `QPdfWriter`.
+- Fotografada a 1400×950 nas três peles (`scratchpad/medicao/fotos/previa_*.png`).
+
+**Dois defeitos de ciclo de vida foram medidos e fechados no caminho**, e os dois derrubavam o
+processo sem exceção: o `QPrinter` da prévia era local da função e o diálogo **não** vira dono dele
+(violação de acesso no `show()` seguinte), e o `QPrintPreviewWidget.updatePreview()` sob
+`offscreen` não tem superfície onde desenhar -- por isso o teste emite `paintRequested` em vez de
+pedir ao widget.
+
+### Testes
+
+- `tests/test_impressao_do_estudo.py` (puro, 19 casos): `PaginacaoTests` -- o que cabe sai numa
+  página, a seguinte começa colada no alto, um parágrafo alto se parte em linhas sem buraco e sem
+  repetir, nenhuma linha se perde nem se repete com blocos de alturas diferentes, **o diagrama não
+  se separa do lance que o pede**, um par colado mais alto que a página não gira para sempre, nem
+  uma linha solta fica no pé, o vão entre blocos não é cobrado no alto da página, um estudo vazio
+  ainda sai numa folha, bloco sem linha não vira pedaço; `BlocosTests` -- a lista é a de
+  `estudo_paragrafos` mais a coesão, e a coesão é a regra escrita nos dois sentidos; `MargensTests`
+  -- cabeçalho vazio na primeira, rodapé com o total, a margem em milímetro e o diagrama em fração.
+- `tests/test_qt_impressao_do_estudo.py` (Qt, 14 casos): o arquivo com as páginas que a função
+  declara; **o texto é texto** (`Carlsen` na extração do PyMuPDF, mais de 200 caracteres); **o
+  diagrama é vetor** (zero imagens, mais caminhos que casas do damero); o cabeçalho da segunda
+  página em diante; o número e o total em todas; a margem declarada; o estudo sem lance virando uma
+  folha; **a tinta não segue a pele da janela** (nas duas metades de `cromo_escuro`); a prévia
+  pintando quando pedem tinta; a folha da prévia sendo a do PDF; o título sendo o do capítulo; e as
+  duas ações -- o PDF gravado no destino escolhido com a frase dizendo onde, desistir não gravando
+  nada, e Imprimir abrindo a prévia com a folha deste estudo.
+
+A fonte é instalada pelo teste: sob `offscreen` o Qt não acha família nenhuma e o PDF sai sem uma
+letra (medido: zero caracteres extraídos). `_familia_de_teste` registra uma `.ttf` do ambiente como
+fonte de aplicação e a remove no fim; sem candidata, o caso pula com o motivo escrito (S-417).
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-546 · Fila de PDFs com progresso por livro, cancelável, e o resultado ao lado do nome — ✅ **implementada em 2026-09-04**
 

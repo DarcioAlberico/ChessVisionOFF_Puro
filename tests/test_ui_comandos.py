@@ -463,6 +463,13 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 # "Revisar hoje", que são como se fala deles.
                 "taticas_do_livro",
                 "treinar_agenda",
+                # E os três da Fase 84 (S-544/S-545), pela razão dos formatos acima: o menu diz
+                # "Exportar o estudo para PDF…" e o item do agrupador diz ".pdf", ao lado dos
+                # outros três; "Imprimir o estudo…" e "Exportar os diagramas em lote…" viram
+                # "Imprimir" e "Diagramas em lote" no "Mais", onde o rótulo longo não caberia.
+                "exportar_estudo_pdf",
+                "imprimir_estudo",
+                "exportar_diagramas_lote",
             },
             divergem,
         )

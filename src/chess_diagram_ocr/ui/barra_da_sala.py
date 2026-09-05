@@ -286,7 +286,30 @@ ACOES: tuple[Acao, ...] = (
     Acao("exportar_estudo_md", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
     Acao("exportar_estudo_html", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
     Acao("exportar_estudo_rtf", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
+    # O quarto do agrupador (S-545). Ele é formato como os três, e a diferença -- sair já
+    # paginado -- não é um segundo gesto: quem clica "Exportar ▾" está perguntando "em quê?".
+    Acao("exportar_estudo_pdf", EXPORTAR, "", principal=False, dentro_de=EXPORTAR_ESTUDO),
     Acao("estudo_para_o_texto", EXPORTAR, "para_o_texto", principal=False),
+    # Os dois que **não** entram no agrupador, e nem na fila. Imprimir termina no papel e abre a
+    # pré-visualização; o lote de diagramas produz centenas de arquivos e pergunta sete coisas
+    # antes. Nenhum dos dois é gesto de lance -- é a régua de `comandos.fila_de_destaque` --, e
+    # por isso os dois moram no "Mais", a um clique, com ícone próprio.
+    Acao(
+        "imprimir_estudo",
+        EXPORTAR,
+        "imprimir",
+        principal=False,
+        dica="Pré-visualização paginada como livro: margem, cabeçalho com o nome do estudo e\n"
+        "número de página. O diagrama sai em vetor, e a quebra não o separa do lance que o pede.",
+    ),
+    Acao(
+        "exportar_diagramas_lote",
+        EXPORTAR,
+        "diagramas_em_lote",
+        principal=False,
+        dica="Um arquivo de imagem por diagrama, com o nome dizendo livro, página e diagrama.\n"
+        "PNG ou SVG, no tamanho e na pele escolhidos, com prévia antes de gravar.",
+    ),
     # ---------------------------------------------------------------------------- TREINO
     # Prioridade 3, com texto, e **marcado enquanto treina**: é o interruptor do modo, e o crítico
     # mediu que treinando nada na barra dizia isso -- o botão estava no "Mais" e o marcado não se

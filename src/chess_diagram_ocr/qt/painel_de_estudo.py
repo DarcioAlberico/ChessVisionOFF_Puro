@@ -2561,6 +2561,81 @@ class PainelDeEstudo(QWidget):
         """`.rtf` porque o Word abre -- e sem dependência nova nenhuma (S-252)."""
         self._exportar_estudo(".rtf")
 
+    # ------------------------------------------------------- a folha e o lote (S-544/S-545)
+
+    def exportar_estudo_pdf(self) -> None:
+        """`.pdf` **porque a página é decidida aqui** (S-545).
+
+        Os três de cima entregam o estudo como texto marcado, e quem pagina é o programa que
+        abrir o arquivo. O PDF sai já paginado como livro -- margem, cabeçalho, número de página,
+        e a quebra que não separa o diagrama do lance que o pede --, e o diagrama vai em vetor.
+        Por isso ele não passa por `text/exportacao.py`: aquele módulo não tem página.
+
+        **A falha vai para a barra de status, e não para uma caixa** -- ao contrário dos três
+        vizinhos. É a régua da S-164 e a catraca de `tests/test_ui_retorno_modal.py`: a pessoa
+        acabou de escolher o destino e clicou em gravar, então ela está olhando para esta tela, e
+        a mesma linha que diria "6 página(s) em …" diz por que não deu. Uma caixa a mais aqui
+        seria interrupção para informar o que o rodapé informa sem parar ninguém.
+        """
+        from chess_diagram_ocr.qt import impressao_do_estudo as qt_impressao
+        from chess_diagram_ocr.ui.impressao_do_estudo import frase_do_pdf
+
+        destino, _filtro = QFileDialog.getSaveFileName(
+            self,
+            "Exportar o estudo para PDF",
+            str(self._pasta_inicial / f"{self._nome_sugerido()}.pdf"),
+            "PDF (*.pdf);;Todos (*.*)",
+        )
+        if not destino:
+            return
+        self.gravar_comentario()
+        caminho = Path(destino)
+        try:
+            paginas = qt_impressao.pdf_do_estudo(self.estudo, caminho)
+            tamanho = caminho.stat().st_size
+        except OSError as erro:
+            self.set_status(f"Não foi possível gravar {caminho.name}: {erro}")
+            return
+        self.set_status(frase_do_pdf(str(caminho), paginas, tamanho))
+
+    def imprimir_estudo(self) -> Any:
+        """A pré-visualização paginada, e a impressora atrás dela (S-545).
+
+        **Prévia e não impressão direta.** A quebra de página é a decisão que o programa toma por
+        quem imprime, e ela tem de ser conferível antes de gastar folha -- é a mesma razão de a
+        prévia do lote de diagramas existir. A caixa de escolher impressora vem da própria prévia.
+        """
+        from chess_diagram_ocr.qt import impressao_do_estudo as qt_impressao
+
+        self.gravar_comentario()
+        return qt_impressao.abrir_previa_de_impressao(self, self.estudo)
+
+    def exportar_diagramas_em_lote(self) -> Any:
+        """Os diagramas desta sala como arquivos soltos, um por posição (S-544).
+
+        **A origem é a sala quando ela tem estudos, e o estudo aberto quando não.** A sala *é* o
+        conjunto de diagramas deste livro (S-270), e é ele que quem diagrama noutro programa quer
+        -- quinhentos arquivos de uma vez, nomeados pela página. Um estudo avulso, colado ou
+        digitado, não está em sala nenhuma, e aí o lote é ele.
+        """
+        from chess_diagram_ocr.qt.lote_de_diagramas import abrir_lote_de_diagramas
+        from chess_diagram_ocr.ui.lote_de_diagramas import de_estudos, do_estudo
+
+        self.gravar_comentario()
+        guardados = self.sala.estudos()
+        if guardados:
+            itens = de_estudos(guardados, origem=Path(self.sala.documento).stem)
+            origem = f"{len(guardados)} estudo(s) da sala deste livro."
+        else:
+            itens = do_estudo(self.estudo)
+            origem = "O estudo aberto."
+        if not itens:
+            self.set_status("Não há diagrama para exportar: o estudo não pede nenhum.")
+            return None
+        return abrir_lote_de_diagramas(
+            self, itens=itens, origem=origem, pasta=self._pasta_inicial, busy=self._busy
+        )
+
     def _exportar_estudo(self, extensao: str) -> None:
         """O estudo naquele formato, com o recorte do diagrama ao lado (S-289).
 
