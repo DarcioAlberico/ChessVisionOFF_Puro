@@ -142,6 +142,20 @@ class Placar:
     sessao: PlacarDoLivro = field(default_factory=PlacarDoLivro)
     """O da sessão em curso. **Não é gravado**: ver o cabeçalho."""
 
+    origem: Path | None = None
+    """De onde este placar foi lido -- e, por isso, para onde ele volta (S-541).
+
+    **Existe porque o placar atravessa uma janela que não sabe o caminho dele.** A sala carrega o
+    arquivo de `pasta_de_treino/placar.json` e passa o objeto para `qt/painel_de_treino`, que conta
+    os lances do exercício; a janela não tem como saber que pasta é essa, e um `CAMINHO_PADRAO`
+    cravado lá gravaria no lugar errado -- em `data/placar.json`, que ninguém relê. O resultado era
+    o defeito medido em 2026-09-04: trinta exercícios respondidos, `placar.json` nunca criado, e
+    zeros ao reabrir.
+
+    `None` é o placar que não veio do disco -- o de um teste, ou o de quem treina numa posição
+    colada à mão --, e `gravar` sem destino explícito então cai em `CAMINHO_PADRAO`, que é o
+    contrato de antes deste campo existir."""
+
     def registrar(self, livro: str, resultado: str, *, perda: int = 0) -> None:
         """Conta um lance, no livro e na sessão.
 
@@ -179,29 +193,39 @@ class Placar:
 
 
 def carregar(*, caminho: Path | None = None) -> Placar:
-    """O placar gravado. Vazio quando não há arquivo."""
+    """O placar gravado. Vazio quando não há arquivo -- **e sempre com a origem** (ver `origem`).
+
+    O caminho é guardado mesmo quando o arquivo não existe: um placar que ainda está vazio é
+    exatamente o que precisa saber onde nascer.
+    """
     origem = Path(caminho) if caminho is not None else CAMINHO_PADRAO
     if not origem.exists():
-        return Placar()
+        return Placar(origem=origem)
     try:
         dados = json.loads(origem.read_text(encoding="utf-8"))
     except (OSError, ValueError) as erro:
         logger.warning("O placar do treino não pôde ser lido (%s): %s", origem, erro)
-        return Placar()
+        return Placar(origem=origem)
     if not isinstance(dados, dict) or int(dados.get("esquema", ESQUEMA)) > ESQUEMA:
         logger.warning("%s: esquema desconhecido ou topo que não é objeto.", origem.name)
-        return Placar()
+        return Placar(origem=origem)
     achados: dict[str, PlacarDoLivro] = {}
     for bruto in dados.get("livros", []):
         placar = PlacarDoLivro.de_json(bruto)
         if placar.livro:
             achados[placar.livro] = placar
-    return Placar(livros=achados)
+    return Placar(livros=achados, origem=origem)
 
 
 def gravar(placar: Placar | Iterable[PlacarDoLivro], *, caminho: Path | None = None) -> Path:
-    """Grava o placar por livro. A sessão não vai junto -- ver o cabeçalho."""
-    destino = Path(caminho) if caminho is not None else CAMINHO_PADRAO
+    """Grava o placar por livro. A sessão não vai junto -- ver o cabeçalho.
+
+    **Sem `caminho`, o destino é a origem do próprio placar**, e só depois `CAMINHO_PADRAO`: quem
+    tem o objeto nem sempre tem a pasta de onde ele veio, e essa é a razão de `Placar.origem`
+    existir.
+    """
+    da_origem = getattr(placar, "origem", None) if isinstance(placar, Placar) else None
+    destino = Path(caminho) if caminho is not None else (da_origem or CAMINHO_PADRAO)
     lista = list(placar.livros.values()) if isinstance(placar, Placar) else list(placar)
     atomic_write_json(
         destino,

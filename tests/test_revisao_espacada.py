@@ -218,6 +218,54 @@ class AgendaTests(unittest.TestCase):
         self.assertEqual(fsrs.TETO_DE_NOVOS, agenda.quantos)
         self.assertEqual(0, agenda.adiados, "novo que não coube hoje não é atraso")
 
+    def test_o_dia_cheio_de_vencidos_ainda_admite_novos(self) -> None:
+        """**Os dois tetos são orçamentos separados** (S-540, r2). Descontar os novos da sobra do
+        teto de vencidos faz `TETO_DE_NOVOS` nunca valer: com sessenta vencidos -- que é o estado
+        normal de quem tem um acervo -- a sobra é zero e a coleção recém-extraída fica congelada
+        até a fila de revisão esvaziar. Anki e Chessable mantêm os dois limites sem subtração."""
+        estados = {
+            f"v{n}": self._vencido(f"v{n}", estabilidade=5.0, atraso=3)
+            for n in range(fsrs.TETO_DO_DIA + 20)
+        }
+        chaves = [*estados, *(f"n{n}" for n in range(30))]
+        agenda = fsrs.agenda(chaves, estados, hoje=HOJE)
+        self.assertEqual(fsrs.TETO_DO_DIA + fsrs.TETO_DE_NOVOS, agenda.quantos)
+        self.assertEqual(20, agenda.adiados)
+        self.assertEqual(
+            fsrs.TETO_DE_NOVOS,
+            sum(1 for chave in agenda.fila if chave.startswith("n")),
+            "com o dia cheio de vencidos, os novos ainda entram",
+        )
+
+    def test_o_proximo_vencimento_e_o_que_a_fila_vazia_diz(self) -> None:
+        """**"Nada para revisar hoje" é a mesma frase para dois estados opostos** (S-540, r2):
+        quem não extraiu exercício nenhum e quem já revisou tudo. Dizer a data transforma a tela de
+        erro numa confirmação."""
+        perto = fsrs.Estado(
+            chave="perto", estabilidade=3.0, dificuldade=5.0,
+            vencimento=HOJE + timedelta(days=3), ultima=HOJE, revisoes=1,
+        )
+        longe = fsrs.Estado(
+            chave="longe", estabilidade=30.0, dificuldade=5.0,
+            vencimento=HOJE + timedelta(days=30), ultima=HOJE, revisoes=1,
+        )
+        estados = {e.chave: e for e in (longe, perto)}
+        self.assertEqual(
+            HOJE + timedelta(days=3),
+            fsrs.proximo_vencimento(["perto", "longe"], estados, hoje=HOJE),
+        )
+
+    def test_o_proximo_vencimento_ignora_o_que_ja_venceu_e_o_que_saiu_da_colecao(self) -> None:
+        """Um item vencido já está na fila de hoje, e esta função só é chamada quando ela é vazia;
+        um item que saiu da pasta não é material que volta."""
+        vencido = self._vencido("vencido", estabilidade=3.0, atraso=2)
+        sumiu = fsrs.Estado(
+            chave="sumiu", estabilidade=3.0, dificuldade=5.0,
+            vencimento=HOJE + timedelta(days=1), ultima=HOJE, revisoes=1,
+        )
+        estados = {e.chave: e for e in (vencido, sumiu)}
+        self.assertIsNone(fsrs.proximo_vencimento(["vencido"], estados, hoje=HOJE))
+
     def test_o_que_nao_venceu_nao_entra(self) -> None:
         futuro = fsrs.Estado(
             chave="x", estabilidade=30.0, dificuldade=5.0,

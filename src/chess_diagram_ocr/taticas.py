@@ -59,11 +59,18 @@ __all__ = [
     "CONFIRMADA",
     "DISCORDOU",
     "DISTANCIA_DO_NUMERO",
+    "FILEIRAS_MINIMAS",
+    "FOLGA_DA_COLUNA",
+    "FOLGA_DA_FILEIRA",
     "GANHA_MATERIAL",
+    "LADOS",
+    "LADO_ABAIXO",
+    "LADO_ACIMA",
     "MATE",
     "NAO_PERGUNTADO",
     "NO_FIM",
     "NUMERO_MAXIMO",
+    "PARTE_DE_LANCES",
     "PLIES_MINIMOS",
     "SEM_GANHO",
     "VALOR_DA_PECA",
@@ -78,11 +85,13 @@ __all__ = [
     "de_pdf",
     "desfecho",
     "extrair",
+    "lance_da_celula",
     "linha_ao_lado",
     "nome_curto",
     "numero_junto_ao_diagrama",
     "numeros_da_folha",
     "solucoes_da_folha",
+    "tabela_de_solucoes",
     "validar_solucao",
 ]
 
@@ -248,6 +257,15 @@ class DiagramaLido:
     """
 
     indice: int
+    """A posição do diagrama na folha, **em base zero** -- a mesma de `PaginaLida.diagramas`.
+
+    **E não a de `DiagramPosition.diagram_index`, que começa em 1** (`pdf_to_pgn.py:566`,
+    `enumerate(candidates, start=1)`). As duas metades deste módulo se encontram por este número:
+    o campo de peças vem da varredura e a caixa na folha vem da leitura, e com bases diferentes
+    cada diagrama recebia a caixa -- e portanto o número impresso -- **do seguinte**. Medido no
+    `Big Book of Combinations`: os 963 números saíam deslocados de um, e o último de cada folha
+    ficava sem caixa nenhuma. Quem converte é `de_pdf`, que é o adaptador entre os dois mundos."""
+
     placement: str
     vez: str = ""
 
@@ -427,21 +445,47 @@ def _sobrepoe(a: Sequence[float], b: Sequence[float]) -> bool:
     return min(a[2], b[2]) > max(a[0], b[0])
 
 
-def numero_junto_ao_diagrama(pagina: PaginaLida | None, indice: int) -> int | None:
+LADO_ACIMA = "acima"
+LADO_ABAIXO = "abaixo"
+"""De que lado do tabuleiro o livro imprime o número (S-539, r2).
+
+**O acervo faz os dois, e a diferença não é de estilo: ela troca o gabarito de diagrama.** O `Big
+Book of Combinations` imprime **em cima**; o `Manual of Chess Combinations` imprime **embaixo**.
+Numa folha de seis tabuleiros empilhados os dois candidatos existem sempre -- o número de cima é o
+deste diagrama e o de baixo é o do seguinte --, e escolher pelo mais próximo escolhe errado toda
+vez que a folga de baixo for menor, que é o caso do `Big Book`: 14,6 pt contra 29,2 pt. Quem
+decide é a folha inteira (ver `numeros_da_folha`), e não cada tabuleiro sozinho."""
+
+LADOS: tuple[str, ...] = (LADO_ACIMA, LADO_ABAIXO)
+
+
+def numero_junto_ao_diagrama(
+    pagina: PaginaLida | None, indice: int, *, lado: str = ""
+) -> int | None:
     """O número que o livro imprimiu junto daquele diagrama, ou `None` (S-539).
 
     **A régua é geométrica porque a informação é geométrica**: o que faz `97` ser o número deste
-    tabuleiro e não do vizinho é estar embaixo dele e não embaixo do outro. Três condições, e as
-    três medidas contra a caixa do diagrama:
+    tabuleiro e não do vizinho é estar junto dele e não junto do outro. Três condições, e as três
+    medidas contra a caixa do diagrama:
 
     1. o bloco é **só** o número (ver `_SO_NUMERO`);
     2. ele cruza a faixa horizontal do diagrama -- é da mesma coluna;
     3. a distância vertical cabe em `DISTANCIA_DO_NUMERO` da altura do tabuleiro.
 
-    **Empate vai para cima**, e é a única parte arbitrária: o acervo faz os dois -- o `Manual of
-    Chess Combinations` imprime embaixo, o `Big Book of Combinations` imprime em cima --, e um
-    empate exato de distância só acontece quando os dois existem, que é o caso de uma folha com
-    dois diagramas empilhados. Ali o de cima é o desta caixa.
+    **`lado` é a correção da segunda rodada, e ela vale 82,2% contra 94,8%.** Sem ele a escolha é o
+    candidato mais próximo, e no `Big Book of Combinations` o mais próximo é o número **do diagrama
+    seguinte**: a folha imprime `95` a 29,2 pt acima do primeiro tabuleiro e `96` a 14,6 pt abaixo
+    dele, e os 963 números do livro saíam todos deslocados de um. `LADO_ACIMA` e `LADO_ABAIXO`
+    pedem um lado só; vazio mantém a régua do mais próximo, com **empate para cima**, que é o que
+    um diagrama sozinho -- sem folha para votar -- consegue afirmar.
+
+    **O número da própria folha não é número de exercício**, e a exclusão é de uma linha (S-539,
+    r2). Num livro de um diagrama por folha -- o `Great Chess Combinations` do Anand -- o tabuleiro
+    ocupa metade da página e o número de página impresso na margem cai dentro do teto de distância:
+    **78 dos 83 números** que aquele livro dava eram o número da folha, e três deles chegaram a
+    virar exercício com um gabarito de peão tirado de uma folha de prosa. No `Big Book`, onde a
+    numeração de exercício e a de página são duas colunas distantes, a exclusão custa **um** número
+    em 1.002; no `Manual of Chess Combinations` e no Koblenz, nenhum.
 
     **O candidato é a linha, e não o parágrafo, e isto foi medido** (2026-09-04). No `Big Book of
     Combinations` o número e a legenda da partida são **um** bloco -- `5 / Morphy-De Riviere /
@@ -460,14 +504,19 @@ def numero_junto_ao_diagrama(pagina: PaginaLida | None, indice: int) -> int | No
     melhor: tuple[float, int, int] | None = None
     for bbox, texto in _candidatos_a_numero(pagina):
         numero = _numero_do_bloco(texto)
-        if numero is None or not _sobrepoe(bbox, caixa):
+        if numero is None or numero == pagina.numero_impresso or not _sobrepoe(bbox, caixa):
             continue
         acima = caixa[1] - bbox[3]
         abaixo = bbox[1] - caixa[3]
-        distancia, lado = (acima, 0) if acima >= abaixo else (abaixo, 1)
+        if lado == LADO_ACIMA:
+            distancia, de_que_lado = acima, 0
+        elif lado == LADO_ABAIXO:
+            distancia, de_que_lado = abaixo, 1
+        else:
+            distancia, de_que_lado = (acima, 0) if acima >= abaixo else (abaixo, 1)
         if distancia < -altura * 0.1 or distancia > teto:
             continue
-        candidato = (max(0.0, distancia), lado, numero)
+        candidato = (max(0.0, distancia), de_que_lado, numero)
         if melhor is None or candidato[:2] < melhor[:2]:
             melhor = candidato
     return melhor[2] if melhor is not None else None
@@ -498,54 +547,325 @@ def _caixa_do_diagrama(pagina: PaginaLida, indice: int) -> tuple[float, float, f
     return None
 
 
-def numeros_da_folha(
-    pagina: PaginaLida | None, diagramas: Sequence[DiagramaLido]
-) -> dict[int, int]:
-    """Índice do diagrama -> número impresso, com os buracos preenchidos pela **corrida** (S-539).
-
-    **O preenchimento é a parte que rende, e ele é conservador.** Um livro de exercícios numera em
-    sequência, e uma folha com `97 98 ? 100` perdeu o `99` por leitura, não por o livro não o ter
-    impresso. Quando os números achados são consecutivos na ordem de leitura -- isto é, quando
-    `numero - posição` é o mesmo para todos eles --, a corrida é conhecida e os que faltam saem
-    dela.
-
-    Basta **um** número achado para a corrida existir, e é de propósito: numa folha de um diagrama
-    só não há o que confirmar, e ali a corrida não inventa nada -- ela devolve o próprio número.
-
-    **A corrida é a da maioria, e ela também corrige.** Uma legenda `Paris, 1858` cuja última linha
-    é só o ano põe um `1858` onde deveria estar um `5`; com outros cinco números concordando num
-    deslocamento, o intruso é substituído pelo que a corrida diz. Sem maioria -- dois deslocamentos
-    empatados, ou todos diferentes --, nada é preenchido nem corrigido: ali a leitura não sabe o
-    bastante, e inventar gabarito é o pior resultado possível deste módulo.
-    """
-    achados = {
-        diagrama.indice: numero
-        for diagrama in diagramas
-        if (numero := numero_junto_ao_diagrama(pagina, diagrama.indice)) is not None
-    }
-    if not achados:
-        return {}
-    ordem = {diagrama.indice: posicao for posicao, diagrama in enumerate(diagramas)}
+def _corrida(achados: Mapping[int, int], ordem: Mapping[int, int]) -> tuple[int | None, int]:
+    """O deslocamento `numero - posição` da maioria, e de quantos ele é. `None` = não há maioria."""
     contagem: dict[int, int] = {}
     for indice, numero in achados.items():
         if indice in ordem:
             deslocamento = numero - ordem[indice]
             contagem[deslocamento] = contagem.get(deslocamento, 0) + 1
     if not contagem:
-        return achados
+        return None, 0
     base, quantos = max(contagem.items(), key=lambda par: (par[1], -par[0]))
     if quantos * 2 <= sum(contagem.values()) and len(contagem) > 1:
         # Sem maioria, não há corrida: os números achados discordam entre si, e escolher um deles
-        # para preencher os outros seria inventar gabarito. Ficam os que foram lidos.
-        return achados
+        # para preencher os outros seria inventar gabarito.
+        return None, quantos
+    return base, quantos
+
+
+def _lidos_de_um_lado(
+    pagina: PaginaLida | None, diagramas: Sequence[DiagramaLido], lado: str
+) -> dict[int, int]:
     return {
-        diagrama.indice: base + posicao
-        for posicao, diagrama in enumerate(diagramas)
-        if 1 <= base + posicao <= NUMERO_MAXIMO
+        diagrama.indice: numero
+        for diagrama in diagramas
+        if (numero := numero_junto_ao_diagrama(pagina, diagrama.indice, lado=lado)) is not None
     }
 
 
+def numeros_da_folha(
+    pagina: PaginaLida | None, diagramas: Sequence[DiagramaLido]
+) -> dict[int, int]:
+    """Índice do diagrama -> número impresso, com os buracos preenchidos pela **corrida** (S-539).
+
+    **De que lado está o número é decidido pela folha, e é a correção da segunda rodada.** Um
+    tabuleiro sozinho não sabe: numa coluna de três, o número de cima é o dele e o de baixo é o do
+    vizinho, e os dois cabem no teto de distância. A folha sabe, porque um livro numera em
+    sequência: o lado certo é o que produz uma **corrida** -- `numero - posição` igual para todos --
+    e o errado produz números embaralhados. Medido no `Big Book of Combinations`, onde o número é
+    impresso em cima e o de baixo fica mais perto: escolhendo pelo mais próximo, 82,2% de acerto
+    contra a folha impressa; deixando a folha votar, **94,8%**. Empate fica com `LADO_ACIMA`.
+
+    **O preenchimento é a parte que rende, e ele é conservador.** Um livro de exercícios numera em
+    sequência, e uma folha com `97 98 ? 100` perdeu o `99` por leitura, não por o livro não o ter
+    impresso. Quando os números achados são consecutivos na ordem de leitura, a corrida é conhecida
+    e os que faltam saem dela.
+
+    **O que foi lido não é sobrescrito, e é o outro defeito da segunda rodada.** A versão anterior
+    devolvia a corrida inteira -- `base + posição` para **todos** os diagramas --, de modo que um
+    número mal lido em qualquer posição deslocava a folha toda e um diagrama a mais na varredura
+    inventava um número que outra folha já tinha: 57 números do `Big Book` eram dados a dois
+    diagramas diferentes, e um deles era `1002` num livro de 1001. Agora a corrida só entra onde
+    não houve leitura, e nunca repete um número que a própria folha já usou.
+
+    **Nem o intruso é corrigido, e isto foi medido nos dois sentidos.** A versão de ontem
+    substituía um `1858` -- o ano de `Paris, 1858` quebrado em duas linhas -- pelo que a corrida
+    dizia, e a tentação é manter a correção só para quem cai fora do intervalo da folha. Medido no
+    `Big Book`: corrigir custa **quatro números certos** (939 contra 943 em 944 conferíveis) e
+    poupa quatro repetições, porque a corrida também erra -- na folha 64 ela apagou um `251`
+    impresso e pôs `257`. Onde o papel afirma, o papel vence; o intruso vira um número que nenhuma
+    lista de soluções responde, e o diagrama sai como recusa em vez de sair com o gabarito de
+    outro exercício.
+
+    Basta **um** número achado para a corrida existir, e é de propósito: numa folha de um diagrama
+    só não há o que confirmar, e ali a corrida não inventa nada -- ela devolve o próprio número.
+    Sem maioria -- dois deslocamentos empatados, ou todos diferentes --, nada é preenchido: ali a
+    leitura não sabe o bastante, e inventar gabarito é o pior resultado possível deste módulo.
+    """
+    ordem = {diagrama.indice: posicao for posicao, diagrama in enumerate(diagramas)}
+    por_lado = {lado: _lidos_de_um_lado(pagina, diagramas, lado) for lado in LADOS}
+    corridas = {lado: _corrida(achados, ordem) for lado, achados in por_lado.items()}
+    # A folha vota: vence o lado cuja maioria é maior. Empate fica com o de cima, que é o lado do
+    # livro mais comum do acervo -- e é o mesmo desempate de `numero_junto_ao_diagrama`.
+    escolhido = max(LADOS, key=lambda lado: (corridas[lado][1], lado == LADO_ACIMA))
+    achados = dict(por_lado[escolhido])
+    if not achados:
+        return {}
+    base = corridas[escolhido][0]
+    if base is None:
+        return achados
+    usados = set(achados.values())
+    for indice, posicao in ordem.items():
+        candidato = base + posicao
+        if indice in achados or not 1 <= candidato <= NUMERO_MAXIMO or candidato in usados:
+            continue
+        achados[indice] = candidato
+        usados.add(candidato)
+    return achados
+
+
 # ------------------------------------------------------------------------ a lista de soluções
+
+
+FILEIRAS_MINIMAS = 6
+"""Quantas fileiras uma folha precisa ter para ser lida como **tabela** e não como fluxo (S-539).
+
+Seis, e o número é o que separa a folha de soluções do cabeçalho corrente: uma folha de miolo tem
+um número solto na margem -- o da própria página, que o `Big Book` imprime como `214 The Big Book
+of Combinations` -- e uma folha de soluções tem quarenta empilhados na mesma coluna. Abaixo de
+seis não há coluna a detectar: há um número."""
+
+FOLGA_DA_COLUNA = 1.2
+"""Quanto dois rótulos podem divergir na horizontal e ainda serem da mesma coluna, em **alturas de
+linha**. Medido na tabela do `Big Book`: a coluna do número varia de 34,1 a 38,7 pt com linha de
+~10 pt, e a coluna seguinte começa 27 pt adiante -- há folga de sobra entre as duas."""
+
+FOLGA_DA_FILEIRA = 0.6
+"""E quanto podem divergir na vertical e ainda serem da mesma fileira. Pouco mais de meia altura:
+as células de uma fileira compartilham a linha de base, e a fileira seguinte está a uma altura
+inteira. Um teto maior casaria o número de uma fileira com o lance da outra, que é exatamente o
+defeito que esta leitura existe para não ter."""
+
+PARTE_DE_LANCES = 0.35
+"""Que fração das células de uma coluna precisa ser um lance para ela **ser** a coluna do lance.
+
+Um terço, e não a maioria: a coluna da solução carrega o cabeçalho da tabela, os títulos de seção
+e o que o OCR estragou, e exigir maioria a perderia nas folhas ruins -- que são justamente as que
+esta leitura precisa aproveitar. O que impede o estrago não é o corte: é a exigência de que a
+célula case com `notacao.LANCE` inteira, e de que o lance depois seja legal na posição lida."""
+
+_TROCA_DE_OCR: dict[str, str] = {"S": "5", "s": "5", "l": "1", "I": "1", "O": "0"}
+"""As confusões que a camada de texto desta fonte faz **dentro** de um lance (S-539).
+
+`5` sai como `S` ou `s`, `1` como `l` ou `I`, `0` como `O`. São as medidas na tabela do `Big Book`
+-- `RxfS`, `QxdS`, `fS`, `es` --, e valem só depois do primeiro caractere (ver `_consertar_digitos`).
+
+**Nenhuma delas destrói um lance legítimo, e é o que as torna seguras aqui.** Em SAN o primeiro
+caractere é peça ou coluna, e do segundo em diante só existem `a`-`h`, `1`-`8`, `x`, `=`, `-`, `O`
+e os sufixos: `s`, `S`, `l`, `I` **não ocorrem** num lance bem lido depois da primeira posição, e o
+`O` só ocorre no roque, que `_consertar_digitos` recusa pela primeira letra."""
+
+
+def _consertar_digitos(token: str) -> str:
+    """`RxhS` -> `Rxh5`: as trocas de `_TROCA_DE_OCR`, e **só depois da primeira letra** (S-539).
+
+    A primeira fica intacta porque ela é a peça: trocar o `S` de `Sf3` por um dígito apagaria o
+    lance alemão que `notacao.FIGURINAS_DA_LETRA` reconhece. E o roque nem entra: `O-O` é o único
+    lance cujo `O` é letra, e trocá-lo por zero produziria `0-0`, que o `chess` aceita -- um lance
+    certo pelo motivo errado é pior que um ilegível.
+    """
+    if len(token) < 2 or token[0] in "O0":
+        return token
+    return token[0] + "".join(_TROCA_DE_OCR.get(letra, letra) for letra in token[1:])
+
+
+def lance_da_celula(texto: str) -> str:
+    """O lance que esta célula da tabela contém, ou vazio (S-539).
+
+    **A célula inteira tem de ser o lance.** `notacao.LANCE` já é a régua conservadora do projeto,
+    e ela é o que impede que `1951` -- o ano, que mora duas colunas à esquerda -- ou `56799` -- a
+    contagem de nós, que mora três à direita -- entrem como gabarito. O espaço interno é removido
+    porque a camada parte `Rxh 7+` em dois pedaços na mesma célula.
+
+    O conserto de OCR é a **segunda** tentativa e nunca a primeira: um token que já é lance não
+    passa por ele, e assim `Sf3` continua sendo o cavalo alemão em vez de virar `5f3`.
+    """
+    bruto = "".join(str(texto or "").split())
+    if not bruto:
+        return ""
+    for candidato in (bruto, _consertar_digitos(bruto)):
+        if notacao.LANCE.match(notacao.para_ingles(candidato)):
+            return candidato
+    return ""
+
+
+_SUJEIRA_DA_CELULA = " \t:;.,·•()[]{}"
+
+
+def numero_da_celula(texto: str) -> int | None:
+    """O número de exercício de uma célula da tabela, tolerando o espaço que a camada mete dentro.
+
+    **Mais frouxo que `_SO_NUMERO`, e só aqui.** Na folha 193 do `Big Book` a camada devolve
+    `':1 07'`, `'1 08'` e `'1 1 2'` onde estão 107, 108 e 112 -- o dígito sai partido e com um
+    dois-pontos grudado --, e a régua estrita perde a folha inteira: dezoito exercícios de uma vez.
+    A frouxidão é segura **nesta** posição porque a célula ainda tem de estar na coluna que conta
+    de um em um e ao lado de um lance legal; ela não vale para o número junto ao diagrama, onde o
+    contexto que a segura não existe.
+    """
+    limpo = str(texto or "").strip(_SUJEIRA_DA_CELULA).replace(" ", "")
+    if not limpo.isdecimal():
+        return None
+    valor = int(limpo)
+    return valor if 1 <= valor <= NUMERO_MAXIMO else None
+
+
+def _x0(celula: tuple[tuple[float, float, float, float], str]) -> float:
+    return celula[0][0]
+
+
+def _meio(celula: tuple[tuple[float, float, float, float], str]) -> float:
+    return (celula[0][1] + celula[0][3]) / 2.0
+
+
+def _colunas_por_x(
+    celulas: Sequence[tuple[tuple[float, float, float, float], str]], folga: float
+) -> list[list[tuple[tuple[float, float, float, float], str]]]:
+    """As células agrupadas em colunas pela borda esquerda, ancoradas na primeira de cada grupo.
+
+    Ancorado e não encadeado: numa folha densa, "cada um a menos de uma folga do anterior" junta a
+    página inteira numa coluna só -- é o defeito clássico do agrupamento por vizinhança, e o mesmo
+    que `text/colunas.py` evita projetando a calha em vez de encadear caixas.
+    """
+    grupos: list[list[tuple[tuple[float, float, float, float], str]]] = []
+    for celula in sorted(celulas, key=_x0):
+        if grupos and _x0(celula) - _x0(grupos[-1][0]) <= folga:
+            grupos[-1].append(celula)
+        else:
+            grupos.append([celula])
+    return grupos
+
+
+def tabela_de_solucoes(pagina: PaginaLida | None) -> dict[int, tuple[str, ...]]:
+    """A lista de soluções lida por **faixa de coluna**, quando a folha é uma tabela (S-539).
+
+    **É a correção da segunda rodada, e ela vale 693 pares contra 24.** A lista do `Big Book of
+    Combinations` é uma tabela de nove colunas -- número, jogadores, local, ano, solução, o lance
+    do Zarkov, a avaliação, a contagem de nós e o nível --, e lê-la como fluxo de tokens
+    (`pagina.texto().split()`) achata as nove numa fila só. A caminhada crescente por número então
+    ancora em avaliações e contagens de nós: `211`, `539` e `580` são o placar do motor de 1994 e
+    entravam como número de exercício. Dos 24 exercícios que a primeira rodada produziu, **nenhum**
+    dos 18 conferíveis batia com a tabela impressa -- o 213 saía `Qe4` onde o livro diz `Rxh7+`.
+
+    **Nada é cravado: as colunas são detectadas na própria folha.** Cravar `x < 66` para o número e
+    `x ≈ 182` para a solução funciona no livro em que se mediu e em nenhum outro -- e nem nele: a
+    tabela desliza de folha para folha, e 258 das 971 fileiras estavam fora da faixa medida numa
+    delas. Aqui a coluna do número é o agrupamento com mais células que são **só** um número, e as
+    colunas de lance são as que estão à direita dela e em que `PARTE_DE_LANCES` das células casam
+    com `notacao.LANCE`. Uma folha sem as duas devolve vazio, e o chamador lê pelo fluxo.
+
+    **A coluna do Zarkov é a segunda leitura, e ela é de graça.** O livro imprime o lance duas
+    vezes -- o do autor e o que o programa achou --, e onde a primeira sai ilegível a segunda
+    costuma sair inteira. Elas são percorridas da esquerda para a direita, então a do autor vence
+    quando as duas estão legíveis: é o gabarito do livro que se quer treinar.
+    """
+    if pagina is None:
+        return {}
+    celulas = [(bbox, texto) for bbox, texto in _candidatos_a_numero(pagina) if str(texto).strip()]
+    if len(celulas) < FILEIRAS_MINIMAS:
+        return {}
+    alturas = sorted(max(0.0, bbox[3] - bbox[1]) for bbox, _ in celulas)
+    altura = alturas[len(alturas) // 2]
+    if altura <= 0:
+        return {}
+
+    colunas = _colunas_por_x(celulas, altura * FOLGA_DA_COLUNA)
+    de_lance = sorted(
+        (
+            coluna
+            for coluna in colunas
+            if sum(1 for celula in coluna if lance_da_celula(celula[1]))
+            >= max(FILEIRAS_MINIMAS, PARTE_DE_LANCES * len(coluna))
+        ),
+        key=lambda coluna: _x0(coluna[0]),
+    )
+    if not de_lance:
+        return {}
+
+    teto = altura * FOLGA_DA_FILEIRA
+    limite = _x0(de_lance[0][0])
+    melhor: dict[int, tuple[str, ...]] = {}
+    marca: tuple[int, int, float] = (0, 0, 0.0)
+    for coluna in colunas:
+        fileiras = [
+            celula
+            for celula in coluna
+            if _x0(celula) < limite and numero_da_celula(celula[1]) is not None
+        ]
+        if len(fileiras) < FILEIRAS_MINIMAS:
+            continue
+        achados = _fileiras_com_lance(fileiras, de_lance, teto)
+        nota = (int(_conta_de_um_em_um(achados)), len(achados), -_x0(coluna[0]))
+        if achados and nota > marca:
+            melhor, marca = achados, nota
+    return melhor
+
+
+def _fileiras_com_lance(
+    fileiras: Sequence[tuple[tuple[float, float, float, float], str]],
+    de_lance: Sequence[Sequence[tuple[tuple[float, float, float, float], str]]],
+    teto: float,
+) -> dict[int, tuple[str, ...]]:
+    achados: dict[int, tuple[str, ...]] = {}
+    for celula in fileiras:
+        numero = numero_da_celula(celula[1])
+        if numero is None or numero in achados:
+            continue
+        lance = _lance_na_fileira(de_lance, _meio(celula), teto)
+        if lance:
+            achados[numero] = (lance,)
+    return achados
+
+
+def _conta_de_um_em_um(numeros: Iterable[int]) -> bool:
+    """Esta coluna **conta**? Um livro numera de um em um; o ano salta de oito em oito (S-539).
+
+    É o que separa a coluna do número da coluna do ano quando as duas são só dígitos e as duas
+    estão à esquerda do lance -- o caso das cinco folhas do `Big Book` em que os primeiros números
+    da lista são glifo e não texto, e a coluna do número fica quase vazia. A régua é a **mediana**
+    da diferença entre dois números seguidos: 1 numa coluna que conta, mesmo com buracos de
+    leitura, e 6 na coluna dos anos daquela folha (1840, 1848, 1850, 1852, 1858…).
+    """
+    ordenados = sorted(numeros)
+    if len(ordenados) < 2:
+        return False
+    saltos = sorted(b - a for a, b in zip(ordenados, ordenados[1:], strict=False))
+    return saltos[len(saltos) // 2] <= 1
+
+
+def _lance_na_fileira(
+    colunas: Sequence[Sequence[tuple[tuple[float, float, float, float], str]]],
+    meio: float,
+    teto: float,
+) -> str:
+    for coluna in colunas:
+        for celula in coluna:
+            if abs(_meio(celula) - meio) > teto:
+                continue
+            lance = lance_da_celula(celula[1])
+            if lance:
+                return lance
+    return ""
 
 
 def _tokens_da_folha(pagina: PaginaLida | None) -> list[str]:
@@ -590,8 +910,17 @@ def solucoes_da_folha(
     não ser lida como folha de soluções.
     """
     alvos = sorted({int(n) for n in esperados if 1 <= int(n) <= NUMERO_MAXIMO})
+    if not alvos:
+        return {}
+    # **A tabela vence o fluxo, e quem decide é a folha.** `tabela_de_solucoes` só devolve alguma
+    # coisa quando acha a coluna dos números e a do lance; onde ela devolve, a caminhada por token
+    # está lendo a mesma tabela achatada -- e lendo errado, que foi o que a segunda rodada mediu.
+    # Onde ela não devolve, a folha é prosa, e a caminhada é o que existe.
+    da_tabela = tabela_de_solucoes(pagina)
+    if da_tabela:
+        return {numero: lance for numero, lance in da_tabela.items() if numero in set(alvos)}
     tokens = _tokens_da_folha(pagina)
-    if not alvos or not tokens:
+    if not tokens:
         return {}
 
     cortes: list[tuple[int, int]] = []
@@ -952,7 +1281,11 @@ def de_pdf(
         lado = posicao.side_to_move
         por_folha.setdefault(posicao.page_index, []).append(
             DiagramaLido(
-                indice=posicao.diagram_index,
+                # **O `-1` é a conversão de base, e ela é o item da segunda rodada.**
+                # `DiagramPosition.diagram_index` conta de 1 (é o que vai para o header `Diagram`
+                # do PGN, onde `Round: 63.1` é o primeiro diagrama da folha 63); `PaginaLida`
+                # conta de 0, como toda lista deste projeto. Ver `DiagramaLido.indice`.
+                indice=posicao.diagram_index - 1,
                 placement=posicao.fen,
                 vez="" if lado is None else ("w" if lado.color == chess.WHITE else "b"),
             )

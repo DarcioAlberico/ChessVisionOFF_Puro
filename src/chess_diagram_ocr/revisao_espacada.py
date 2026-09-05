@@ -73,6 +73,7 @@ __all__ = [
     "intervalo",
     "nota_do_treino",
     "proximo",
+    "proximo_vencimento",
     "retencao",
     "rotulo_da_nota",
 ]
@@ -153,7 +154,10 @@ resto continua vencido e volta amanhã, na ordem de quem está mais perdido."""
 TETO_DE_NOVOS = 15
 """E quantos itens **nunca vistos** entram por dia. Menor que o teto de vencidos de propósito: item
 novo custa mais atenção que revisão, e cada novo de hoje é revisão de amanhã -- um baralho que
-admite cem novos por dia produz a parede acima em duas semanas."""
+admite cem novos por dia produz a parede acima em duas semanas.
+
+**Independente de `TETO_DO_DIA`, e não descontado dele** (correção de 2026-09-04): ver o comentário
+dentro de `agenda`. Um dia cheio oferece até 60 vencidos **mais** 15 novos, e não 60 no total."""
 
 
 # --------------------------------------------------------------------------------- o estado
@@ -486,11 +490,37 @@ def agenda(
     devidos = atrasados(vistos, hoje)
     cabem = max(0, int(teto))
     fila = [estado.chave for estado in devidos[:cabem]]
-    sobra = max(0, cabem - len(fila))
-    fila += novas[: min(sobra, max(0, int(novos)))]
+    # **Os dois tetos são independentes, e é a correção de 2026-09-04.** Descontar os novos da
+    # sobra do teto de vencidos faz `TETO_DE_NOVOS` nunca valer: com sessenta vencidos -- que é o
+    # estado normal de quem tem um acervo -- a sobra é zero e nenhum item novo entra, para sempre.
+    # A coleção recém-extraída ficaria congelada até a fila de revisão esvaziar. Anki e Chessable
+    # mantêm "novos por dia" e "revisões por dia" como dois limites que não se subtraem, e a razão
+    # é essa: aprender coisa nova e não esquecer o que se sabe são dois orçamentos diferentes.
+    fila += novas[: max(0, int(novos))]
     return Agenda(
         fila=tuple(fila),
         vencidos=len(devidos),
         novos=len(novas),
         adiados=max(0, len(devidos) - cabem),
     )
+
+
+def proximo_vencimento(
+    chaves: Sequence[str], estados: Mapping[str, Estado], *, hoje: date
+) -> date | None:
+    """Quando o próximo item volta, ou `None` quando não há item agendado (S-540).
+
+    **É o que a fila vazia precisa dizer.** "Nada para revisar hoje" é a mesma frase para quem não
+    extraiu exercício nenhum e para quem já revisou tudo -- e o segundo caso não é um problema, é o
+    programa funcionando. Dizer a data transforma a tela de erro numa confirmação.
+
+    Só olha o **futuro**: um item vencido não aparece aqui, porque um item vencido já está na fila
+    de hoje e esta função só é chamada quando ela está vazia.
+    """
+    conhecidas = {str(chave) for chave in chaves}
+    futuros = [
+        estado.vencimento
+        for chave, estado in estados.items()
+        if chave in conhecidas and estado.vencimento is not None and estado.vencimento > hoje
+    ]
+    return min(futuros) if futuros else None

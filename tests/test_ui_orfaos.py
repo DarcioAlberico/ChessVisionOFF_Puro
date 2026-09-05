@@ -177,10 +177,25 @@ SEM_CHAMADOR: dict[str, str] = {
         "nomeia. `VISTA` é a exceção, e por isso não está aqui -- `interruptores_de_vista` filtra por ele"
     ),
     # --- a segunda rodada do painel do motor (S-529/S-537, 2026-09-04)
-    "analise_da_partida.perda_media": (
-        "o ACPL de cada cor, e quem o compõe é `resumo`, no mesmo módulo -- a tela lê a frase "
-        "pronta. Um chamador de fora seria a segunda montagem da mesma linha, e ela já divergiu "
-        "uma vez: a primeira rodada não tinha número nenhum ali"
+    #
+    # `analise_da_partida.perda_media` estava aqui e saiu em 2026-09-05, e a saída é **do
+    # detector e não da decisão**: `treino_declarado.frase_do_placar` passou a escrever
+    # `do_livro.perda_media`, que é a propriedade homônima de `placar.PlacarDoLivro`, e a
+    # varredura por identificador não distingue as duas. A função do ACPL continua sem chamador
+    # de fora pela razão que estava escrita aqui -- quem a compõe é `resumo`, no mesmo módulo --,
+    # e o docstring dela é onde isso mora agora. No dia em que o treino deixar de citar o nome, o
+    # detector volta a vê-la e a catraca cobra a linha de novo.
+    #
+    # --- a segunda rodada do treino (S-541, 2026-09-05)
+    "treino_declarado.mesmo_lance": (
+        "a régua de `classificar_o_lance`, no mesmo módulo, e é ela a decisão que a tela chama. "
+        "Um chamador de fora seria a segunda comparação de lance do programa, e a primeira já "
+        "errou uma vez: `Ra8+` contra `Ra8#` reprovava a resposta certa"
+    ),
+    "treino_declarado.DECORACAO": (
+        "o que `mesmo_lance` apara, e só ela. Está no `__all__` porque é a lista que decide o que "
+        "**não** se apara -- `x`, `=` e a letra de desambiguação --, e essa é a parte que um dia "
+        "alguém vai querer alargar sem ler a função"
     ),
     #
     # `analise_da_partida.grava_avaliacao` e `motor_declarado.titulo_da_secao` estavam aqui, e

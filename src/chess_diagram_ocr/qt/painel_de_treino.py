@@ -28,6 +28,7 @@ from typing import Any
 
 import chess
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -41,6 +42,7 @@ from PyQt6.QtWidgets import (
 
 from chess_diagram_ocr import placar as placar_mod
 from chess_diagram_ocr import revisao_espacada, taticas
+from chess_diagram_ocr.fen_utils import reading_index_from_square
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
@@ -48,16 +50,43 @@ from chess_diagram_ocr.qt.trabalho import Tarefa
 from chess_diagram_ocr.ui import espaco, estilos, tipografia, tokens
 from chess_diagram_ocr.ui import treino_declarado as declarado
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
+from chess_diagram_ocr.ui.sala_declarada import FRACAO_PADRAO_DO_TABULEIRO
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "COR_DO_ERRO",
+    "TECLAS_DE_AVANCO",
     "TEMPO_DA_PERDA_MS",
     "ExtratorDeTaticas",
     "JanelaDeTreino",
     "PerdaDoLance",
     "extrair_com_dialogo",
 ]
+
+COR_DO_ERRO = "red"
+"""A cor da seta que marca o lance recusado (S-541, r2).
+
+**O erro precisava de sinal no tabuleiro, e o tabuleiro já tem um.** A frase do rodapé dizia que o
+lance não era o da linha e a peça voltava sozinha para a casa de origem, sem nada explicando por
+quê -- quem move rápido joga duas vezes o mesmo lance achando que soltou fora da casa. A seta
+vermelha do `TabuleiroDeJogo` (S-279) é o mecanismo que já existe para "este lance, aqui", e
+reusá-la é a diferença entre um sinal e um enfeite novo. Ela some no lance seguinte, que é quando a
+pergunta deixa de ser a mesma."""
+
+TECLAS_DE_AVANCO: tuple[Qt.Key, ...] = (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space)
+"""As teclas que passam ao exercício seguinte (S-540, r2).
+
+**Elas existem porque o `Enter` já fazia alguma coisa, e a coisa errada.** Num `QDialog` o `Return`
+vai para o primeiro botão com `autoDefault`, e o primeiro que este arquivo criava era *Ver a
+solução*: apertar `Enter` na abertura revelava o gabarito e reprovava o exercício -- estabilidade
+0,4872 e volta amanhã --, sem que ninguém tivesse jogado nada. Desarmar o botão padrão resolve a
+metade destrutiva; a outra metade é que uma sessão de sessenta itens **tem** de andar pelo teclado,
+que é como o Chessable e o Anki funcionam.
+
+**E o avanço é por tecla e não por relógio.** O Chessable avança sozinho depois do acerto; aqui o
+que fica na tela quando o exercício fecha é a solução com a procedência, que é justamente o que se
+lê -- um temporizador a apagaria antes de ela ser lida. Uma tecla é o mesmo gesto sem a corrida."""
 
 TEMPO_DA_PERDA_MS = 700
 """Quanto o motor pensa para dizer o que o lance custou, em milissegundos (S-541).
@@ -355,6 +384,11 @@ class JanelaDeTreino(QDialog):
         )
         self._fila = list(self.agenda.fila)
         self._posicao = 0
+        self._feitos = 0
+        """Quantos exercícios desta sessão chegaram à tela. É o número do resumo do fim (S-540).
+
+        Contado e não deduzido de `_posicao`: a fila pula a chave cujo exercício sumiu da coleção,
+        e um resumo que dissesse "3 exercícios" onde apareceram 2 mentiria sobre a própria sessão."""
         self.tentativa = declarado.Tentativa()
         self.exercicio: taticas.Exercicio | None = None
         self._antes_do_exercicio: revisao_espacada.Estado | None = None
@@ -385,6 +419,13 @@ class JanelaDeTreino(QDialog):
 
         A altura do tabuleiro segue a largura (`heightForWidth`), como na S-517: sem isso ele
         recebe toda a sobra da coluna e flutua no meio dela.
+
+        **E ele ocupa a coluna inteira, e não 560 px** (S-539, r2). `MAX_DO_TABULEIRO` é herança do
+        canvas de tamanho fixo do Tk, e sem `definir_fracao` ele valia aqui: medido em 2026-09-04,
+        o tabuleiro do treino ficava em 560×560 em **toda** janela e em toda pele -- 15% da área a
+        1400×950, com 861 px de vazio na coluna direita. A sala de estudo já chamava `definir_fracao`
+        pela mesma razão (S-518), e a janela cujo assunto é *olhar para uma posição* era a que não
+        chamava.
         """
         fora = QHBoxLayout(self)
         fora.setContentsMargins(*(espaco.moldura(),) * 4)
@@ -392,8 +433,31 @@ class JanelaDeTreino(QDialog):
 
         esquerda = QVBoxLayout()
         esquerda.setSpacing(espaco.folga())
+
+        self.lbl_vazio = QLabel("", self)
+        """A frase que ocupa o lugar do tabuleiro quando não há posição (S-540, r2).
+
+        **Ela nasce escondida, e um rótulo escondido não ocupa espaço** -- é o que permite pô-la
+        no meio da coluna do tabuleiro sem mexer no arranjo de quem tem exercício aberto. Sem ela,
+        a tela de "nada vence hoje" era a janela inteira vazia com uma linha no canto superior
+        direito, que é a mesma falta de assunto do tabuleiro sem peças que ela substituiu."""
+        self.lbl_vazio.setWordWrap(True)
+        self.lbl_vazio.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_vazio.setFont(tema.fonte_atual(tipografia.TITULO))
+        self.lbl_vazio.hide()
+        # **O peso vai no `addWidget` e não na `sizePolicy`**: num `QBoxLayout` quem reparte a
+        # sobra é o fator de esticamento, e um `Expanding` com fator zero perde toda a sobra para o
+        # `addStretch(1)` do fim -- a frase acabava colada no alto. Escondido, o rótulo não entra na
+        # conta, e o arranjo de quem tem exercício aberto não muda.
+        esquerda.addWidget(self.lbl_vazio, 4)
+
         self.tabuleiro = TabuleiroDeJogo(self)
         self.tabuleiro.lance.connect(self.jogar)
+        self.tabuleiro.definir_fracao(FRACAO_PADRAO_DO_TABULEIRO)
+        # **O tabuleiro é quem recebe o foco**, e é a outra metade da correção do `Enter` (S-541,
+        # r2): sem widget nenhum focado, a tecla ia para o botão padrão do diálogo. Com o tabuleiro
+        # focável, o anel de foco da S-553 nasce onde se joga.
+        self.tabuleiro.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         politica = self.tabuleiro.sizePolicy()
         politica.setHeightForWidth(True)
         self.tabuleiro.setSizePolicy(politica)
@@ -407,7 +471,7 @@ class JanelaDeTreino(QDialog):
 
         direita = QVBoxLayout()
         direita.setSpacing(espaco.folga())
-        self.lbl_agenda = QLabel(declarado.frase_da_agenda(self.agenda), self)
+        self.lbl_agenda = QLabel(self._frase_da_agenda(), self)
         self.lbl_agenda.setWordWrap(True)
         self.lbl_agenda.setFont(tema.fonte_atual(tipografia.TITULO))
         direita.addWidget(self.lbl_agenda)
@@ -434,10 +498,18 @@ class JanelaDeTreino(QDialog):
         for widget in self._botoes():
             direita.addWidget(widget)
         fora.addLayout(direita, 2)
+        self._ligar_o_teclado()
 
     def _botoes(self) -> list[QWidget]:
         """Os três da sessão, mais o Fechar. Um por linha: a coluna é estreita e eles são gestos
-        diferentes -- ver a solução desiste do exercício, e "foi fácil" é um julgamento."""
+        diferentes -- ver a solução desiste do exercício, e "foi fácil" é um julgamento.
+
+        **Nenhum deles é o botão padrão do diálogo, e isto é o defeito 4 da segunda rodada.** Num
+        `QDialog` o `Return` vai para o primeiro `QPushButton` com `autoDefault` -- que é o de
+        fábrica --, e aqui o primeiro criado era *Ver a solução*: `Enter` na abertura revelava o
+        gabarito e reprovava o exercício sem que ninguém tivesse jogado. Desarmá-los é uma linha por
+        botão, e o `Enter` passa a ser de quem o declarou (ver `TECLAS_DE_AVANCO`).
+        """
         self.btn_solucao = QPushButton("Ver a solução", self)
         self.btn_solucao.clicked.connect(self.revelar)
         dica_em(
@@ -458,14 +530,62 @@ class JanelaDeTreino(QDialog):
 
         self.btn_proximo = QPushButton("Próximo", self)
         self.btn_proximo.clicked.connect(self._proximo)
+        dica_em(
+            self.btn_proximo,
+            "Vai ao exercício seguinte da fila de hoje.\n"
+            "A barra de espaço e o Enter fazem o mesmo, depois que o exercício fecha.",
+        )
         tema.aplicar_papel(self.btn_proximo, estilos.PRIMARIO)
 
         botoes = QDialogButtonBox(parent=self)
         botoes.addButton("Fechar", QDialogButtonBox.ButtonRole.RejectRole)
         botoes.rejected.connect(self.reject)
+        for botao in (self.btn_proximo, self.btn_solucao, self.btn_facil, *botoes.buttons()):
+            if isinstance(botao, QPushButton):
+                botao.setAutoDefault(False)
+                botao.setDefault(False)
         return [self.btn_proximo, self.btn_solucao, self.btn_facil, botoes]
 
+    def _ligar_o_teclado(self) -> None:
+        """As teclas da sessão. Ver `TECLAS_DE_AVANCO` para por que elas existem (S-540, r2).
+
+        `QShortcut` na janela e não filtro de eventos: a guarda da S-20 existe para a janela
+        principal, onde uma tecla pode ter de ser **cedida** a um campo de texto em foco. Aqui não
+        há campo nenhum -- é um tabuleiro e três botões --, e a resposta é sempre a mesma.
+        """
+        for tecla in TECLAS_DE_AVANCO:
+            atalho = QShortcut(QKeySequence(tecla), self)
+            atalho.activated.connect(self.avancar)
+
     # -------------------------------------------------------------------------- a fila
+
+    def _frase_da_agenda(self) -> str:
+        """A frase do topo da coluna direita, e ela tem de saber por que a fila está vazia (S-540).
+
+        **"Nada para revisar hoje" servia a duas situações opostas**, e uma delas não é problema
+        nenhum: quem não extraiu exercício nenhum precisa extrair, e quem já revisou tudo precisa
+        saber **quando** o material volta. A data do próximo vencimento e o tamanho da coleção são
+        o que separa as duas -- ver `treino_declarado.frase_da_agenda`.
+        """
+        return declarado.frase_da_agenda(
+            self.agenda,
+            volta_em=revisao_espacada.proximo_vencimento(
+                list(self._exercicios), self._baralho, hoje=self._hoje
+            ),
+            colecao=len(self._exercicios),
+        )
+
+    def avancar(self) -> None:
+        """A tecla de avanço: passa adiante **só** com o exercício fechado (S-540, r2).
+
+        Com o exercício em aberto ela não faz nada, e é de propósito: um `Enter` distraído no meio
+        de uma combinação pularia o item sem resposta, e a agenda o contaria como visto. É a mesma
+        razão de o `Enter` não revelar a solução -- ver `TECLAS_DE_AVANCO`.
+        """
+        if self.exercicio is not None and not self.tentativa.terminou:
+            return
+        if self.btn_proximo.isEnabled():
+            self._proximo()
 
     def _proximo(self) -> None:
         """Vai para o exercício seguinte da fila, ou fecha a sessão quando ela acaba."""
@@ -474,17 +594,63 @@ class JanelaDeTreino(QDialog):
             exercicio = self._exercicios.get(self._fila[self._posicao])
             self._posicao += 1
             if exercicio is not None:
+                self._feitos += 1
                 self._abrir(exercicio)
                 return
+        self._encerrar()
+
+    def _encerrar(self) -> None:
+        """O fim da fila: o resumo da sessão, e nenhum tabuleiro (S-540, r2).
+
+        **Três defeitos numa tela só, e os três medidos em 2026-09-04.** A agenda continuava
+        anunciando *"Hoje você tem 3 para revisar"* ao lado de *"Fila concluída"* -- duas frases que
+        se contradizem na mesma coluna; o resumo não existia, e meia hora de sessão acabava sem
+        nenhum número; e o tabuleiro ficava na última posição jogada, que já não é pergunta nenhuma.
+
+        O resumo é `treino_declarado.frase_do_fim`, e ele vai para onde o tabuleiro estava
+        (`lbl_vazio`): a agenda **se apaga**, porque uma agenda que continua anunciando a fila de
+        meia hora atrás ao lado de "fila concluída" é a contradição que a fotografia mostrou.
+
+        **Fila vazia na abertura não é sessão encerrada**, e por isso o resumo só aparece quando
+        houve exercício: quem abre a janela num dia sem vencimento tem de ler *quando* o material
+        volta (ver `_frase_da_agenda`), e não "0 exercício(s), nenhum lance jogado".
+        """
         self.exercicio = None
         self.tentativa = declarado.Tentativa()
+        self.lbl_vazio.setText(
+            declarado.frase_do_fim(self._feitos, self._placar.sessao)
+            if self._feitos
+            else self._frase_da_agenda()
+        )
+        self.lbl_agenda.setText("")
         self.lbl_vez.setText("")
-        self.lbl_recado.setText("Fila de hoje concluída.")
+        self.lbl_recado.setText("")
         self.lbl_procedencia.setText("")
+        self._mostrar_o_tabuleiro(False)
         self._pintar_placar()
         self.btn_solucao.setEnabled(False)
         self.btn_facil.setEnabled(False)
         self.btn_proximo.setEnabled(False)
+
+    def _mostrar_o_tabuleiro(self, visivel: bool) -> None:
+        """Some com o tabuleiro quando não há posição a olhar, e a frase toma o lugar (S-540, r2).
+
+        **Um tabuleiro vazio em 60% da janela era a tela de "nada para revisar hoje"**: 64 casas
+        desenhadas, nenhuma peça, e a frase espremida ao lado. Escondê-lo é metade da correção; a
+        outra é a frase ir para onde o tabuleiro estava, porque uma janela inteiramente vazia com
+        uma linha no canto não é melhor que um tabuleiro sem peças.
+
+        **Os três botões da sessão somem junto.** *Próximo*, *Ver a solução* e *Foi fácil* são
+        gestos sobre um exercício, e sem exercício eles já estavam desabilitados -- três controles
+        cinza numa tela sem assunto só dizem que falta alguma coisa. O *Fechar* fica, porque é o
+        que se faz ali.
+        """
+        mostrar = bool(visivel)
+        self.tabuleiro.setVisible(mostrar)
+        self.lbl_vez.setVisible(mostrar)
+        self.lbl_vazio.setVisible(not mostrar)
+        for botao in (self.btn_proximo, self.btn_solucao, self.btn_facil):
+            botao.setVisible(mostrar)
 
     def _abrir(self, exercicio: taticas.Exercicio) -> None:
         self.exercicio = exercicio
@@ -495,6 +661,8 @@ class JanelaDeTreino(QDialog):
         # todo programa de táticas faz, e a razão é que resolver de cabeça para baixo é outro
         # exercício.
         self._virado = not self._tabuleiro_do_exercicio.turn
+        self._mostrar_o_tabuleiro(True)
+        self._marcar_o_erro(None)
         self._desenhar()
         self.lbl_vez.setText(
             "Brancas jogam e ganham." if self._tabuleiro_do_exercicio.turn else "Pretas jogam e ganham."
@@ -505,6 +673,24 @@ class JanelaDeTreino(QDialog):
         self.btn_facil.setEnabled(False)
         self.btn_proximo.setEnabled(True)
         self._pintar_placar()
+        # **O foco vai para o tabuleiro a cada exercício**, e não só na abertura: um clique no botão
+        # "Próximo" o leva embora, e a tecla de avanço do exercício seguinte cairia nele.
+        self.tabuleiro.setFocus()
+
+    def _marcar_o_erro(self, move: chess.Move | None) -> None:
+        """A seta vermelha sobre o lance recusado, ou nenhuma seta. Ver `COR_DO_ERRO`."""
+        if move is None:
+            self.tabuleiro.definir_setas(())
+            return
+        self.tabuleiro.definir_setas(
+            [
+                (
+                    reading_index_from_square(move.from_square),
+                    reading_index_from_square(move.to_square),
+                    COR_DO_ERRO,
+                )
+            ]
+        )
 
     def _desenhar(self) -> None:
         self.tabuleiro.mostrar_tabuleiro(self._tabuleiro_do_exercicio, virado=self._virado)
@@ -532,6 +718,9 @@ class JanelaDeTreino(QDialog):
         # modelo do widget jogou sobre a própria cópia, e sem redesenhar a pessoa fica olhando uma
         # posição que o exercício não tem.
         self._desenhar()
+        # E o erro fica marcado onde ele aconteceu: a peça voltando sozinha para a origem, sem
+        # nenhum sinal no tabuleiro, se lê como "soltei fora da casa" (S-541, r2).
+        self._marcar_o_erro(move)
         # O motor entra **depois** do veredicto, e só para dizer o preço: a nota já foi dada.
         ficha = (jogado, esperado, bool(self._tabuleiro_do_exercicio.turn))
         if not self._perda.pedir(self._tabuleiro_do_exercicio, move, ficha):
@@ -546,6 +735,7 @@ class JanelaDeTreino(QDialog):
             except ValueError:  # pragma: no cover - o gabarito já foi validado na extração
                 logger.debug("A resposta %s não é legal na posição do exercício.", resposta)
         self._desenhar()
+        self._marcar_o_erro(None)
         self._contar(declarado.classificar_o_lance(jogado, esperado))
         if self.tentativa.terminou:
             self._fechar_exercicio(certo=True)
@@ -556,6 +746,31 @@ class JanelaDeTreino(QDialog):
         livro = self.exercicio.procedencia.livro if self.exercicio is not None else ""
         self._placar.registrar(livro, julgamento.resultado, perda=julgamento.perda)
         self._pintar_placar()
+        self._gravar_o_placar()
+
+    def _gravar_o_placar(self) -> None:
+        """Manda o placar do livro para o disco, **a cada lance** (S-541, r2).
+
+        **É o defeito 3 da segunda rodada, e ele era total.** `done()` gravava só o baralho de
+        revisão; o placar vivia num objeto na memória, o `fechada → _mostrar_placar` da sala apenas
+        repintava um rótulo, e `placar.json` **nunca era criado**. A spec afirmava "sobrevive a
+        desligar ✅" sobre um arquivo que não existia.
+
+        Por lance e não ao fechar, que é a decisão que a S-541 já tinha tomado para a sala: o
+        arquivo tem uma linha por livro e alguns bytes, e o que se perde numa queda é justamente a
+        sessão que ninguém vai repetir. (O baralho é o contrário -- ele reescreve o acervo inteiro.)
+
+        **Sem origem, nada é gravado.** Um `Placar()` que não veio do disco -- o de um teste, o de
+        quem colou uma posição à mão -- não tem para onde voltar, e `placar.gravar` cairia em
+        `CAMINHO_PADRAO`, que é `data/placar.json` da árvore do programa: gravar ali seria escrever
+        na instalação por causa de um objeto que ninguém pediu para persistir.
+        """
+        if self._placar.origem is None:
+            return
+        try:
+            placar_mod.gravar(self._placar)
+        except OSError as erro:  # pragma: no cover - disco cheio ou arquivo em uso
+            logger.warning("O placar do treino não pôde ser gravado: %s", erro)
 
     def _chegou_a_perda(self, ficha: Any, antes: int, depois: int) -> None:
         jogado, esperado, brancas = ficha

@@ -1880,7 +1880,7 @@ máquina. Reprodutor: `scratchpad/crit_motor/crit_finais.py`.
 | **Com `SyzygyPath` no motor, o painel mostra `+200,00` e grava `[%eval 200.0]`** | o `cp` do UCI era lido como centipeões, e o Stockfish usa a faixa acima de 20.000 para a vitória por tabela | `Evaluation.tabela` e `CP_MINIMO_DE_TABELA`: o display vira `1-0`/`0-1`, a barra vai ao teto de dez peões, e é esse número que vai para o arquivo |
 | (dele, a conferir) a pasta tem "3 a 5 peças" | — | são **3 e 4**: 5 conjuntos de três peças e 30 de quatro. O maior conjunto ali é `KQRvK`, e nenhum de cinco |
 
-## S-539 · Táticas do próprio acervo: FEN reconhecida + solução impressa vira exercício — ⚠ **implementada e medida em 2026-09-04: 2 exercícios confiáveis em 2.788 diagramas**
+## S-539 · Táticas do próprio acervo: FEN reconhecida + solução impressa vira exercício — ✅ **implementada em 2026-09-05** (segunda rodada: 891 exercícios conferidos contra a tabela impressa, contra 0 na primeira)
 
 ### Problema
 
@@ -1896,156 +1896,180 @@ sustenta qual foi; `qt/painel_de_estudo.py:1930` (`jogar_a_linha_do_livro`) faz 
 de cada vez**, à mão, com a folha aberta na aba Texto. O que faltava era a passada pelo livro
 inteiro e a régua que diz *qual* linha é a deste diagrama.
 
+**E a primeira rodada errou as duas metades, calada.** Ela produziu 24 exercícios no `Big Book of
+Combinations` e afirmou "95,8% dos diagramas com número"; medido contra a folha impressa,
+**nenhum** dos 24 exercícios batia com a tabela e **nenhum** dos 963 números era o do papel. Três
+defeitos somados, e os três invisíveis para quem só olha a contagem:
+
+1. `taticas.py:1195` (`de_pdf`) montava `DiagramaLido(indice=posicao.diagram_index)`.
+   `DiagramPosition.diagram_index` conta **de 1** (`pdf_to_pgn.py:566`,
+   `enumerate(candidates, start=1)`) e `PaginaLida.diagramas` conta **de 0**: cada diagrama recebia
+   a caixa -- e o número -- do **seguinte**, e o último de cada folha ficava sem caixa nenhuma.
+2. `taticas.py:436` (`numero_junto_ao_diagrama`) escolhia o número **mais próximo**. O `Big Book`
+   imprime o número **em cima** do tabuleiro, e o número de baixo, que é o do diagrama seguinte,
+   fica mais perto: 14,6 pt contra 29,2 pt na folha 37.
+3. `taticas.py:547` (`numeros_da_folha`) devolvia a corrida inteira -- `base + posição` para
+   **todos** --, sobrescrevendo o que o papel dizia: 57 números eram dados a dois diagramas, e um
+   deles era `1002` num livro de 1001.
+
+E a lista de soluções do `Big Book` é uma **tabela de nove colunas** que `_tokens_da_folha` achatava
+com `pagina.texto().split()`; a caminhada crescente ancorava em avaliações e contagens de nós
+(`211`, `539`, `580`) achando que eram número de exercício.
+
 ### Solução
 
-**Um módulo puro, `taticas.py`**, com quatro decisões, e nenhuma delas abre PDF nem roda modelo
-(`de_pdf` é um adaptador de import tardio).
+**Um módulo puro, `taticas.py`**, e nenhuma decisão dele abre PDF nem roda modelo (`de_pdf` é um
+adaptador de import tardio).
 
-1. **O número impresso é achado pela geometria, e o candidato é a LINHA e não o parágrafo.** Três
-   condições contra a caixa do diagrama: o texto é *só* o número (`_SO_NUMERO`), ele cruza a faixa
-   horizontal do tabuleiro -- é da mesma coluna --, e a distância vertical cabe em
-   `DISTANCIA_DO_NUMERO` (0,45 da altura do tabuleiro). **Perguntar ao parágrafo dava zero**: no
-   `Big Book of Combinations` o número e a legenda são um bloco só (`5 / Morphy-De Riviere / Paris,
-   1858`), porque a leitura agrupa linhas vizinhas. Perguntando à linha, 95,8% dos 1.005 diagramas
-   daquele livro têm número. Uma **corrida** completa os buracos e corrige o intruso: `97 98 ? 100`
-   vira `97 98 99 100`, e um `1858` que se passou por número é substituído quando a maioria dos
-   outros concorda num deslocamento. Sem maioria, nada é preenchido nem corrigido.
-2. **A lista de soluções é lida contra os números que os diagramas reivindicam, e não em branco.**
-   Uma varredura cega de `^\d+\.` acha os números de **lance** de dentro de cada solução -- `214.
-   Ahues - NN, 1932. 1.Qxh7+!! Kxh7 2.Ng6+` tem quatro números e uma entrada só. `solucoes_da_folha`
-   caminha pelos esperados em ordem crescente e só para a frente. A cauda de cada entrada é fatiada
-   por `text/notacao.fatiar`, e o gabarito é a **primeira fatia de lance**: o que vem antes é o nome
-   dos jogadores e o ano, e o que vem depois é variante entre parênteses. Entrada sem lance nenhum
-   não entra -- e é essa condição que faz uma folha de **exercícios**, onde os mesmos números estão
-   impressos sozinhos embaixo dos diagramas, não ser lida como folha de soluções. **A folha do
-   próprio diagrama não responde por ele**: numa folha de capítulo o número e os lances estão os
-   dois ali, e ler aquilo como lista daria o gabarito certo com a etiqueta errada.
-3. **A solução decide o lado a jogar, e vence a dedução da S-17.** O diagrama não diz de quem é a
-   vez; `semantics.infer_side_to_move` deduz pela legalidade e chuta brancas quando as duas são
-   legais. A linha impressa é prova: `validar_solucao` joga a linha nos **dois** lados e fica com o
-   que sustenta mais lances, usando o palpite anterior só como desempate. Medido no `Big Book`: dos
-   24 exercícios extraídos, **10 saíram com as pretas na vez** -- dez posições em que o PGN de hoje
-   diria brancas.
+1. **O número impresso é achado pela geometria, o candidato é a LINHA, e o LADO é decidido pela
+   folha.** Três condições contra a caixa do diagrama: o texto é *só* o número (`_SO_NUMERO`), ele
+   cruza a faixa horizontal do tabuleiro, e a distância vertical cabe em `DISTANCIA_DO_NUMERO`
+   (0,45 da altura). **Perguntar ao parágrafo dava zero**: no `Big Book` o número e a legenda são um
+   bloco só (`5 / Morphy-De Riviere / Paris, 1858`). **E perguntar pelo mais próximo dava o número
+   errado**: quem sabe de que lado o livro imprime é a folha inteira, porque um livro numera em
+   sequência -- `numeros_da_folha` monta a leitura pelos dois lados (`LADO_ACIMA`, `LADO_ABAIXO`) e
+   fica com o que produz uma **corrida**. Uma corrida preenche os buracos (`97 98 ? 100`), **não
+   sobrescreve o que foi lido** e **não repete** número que a folha já usou. O número da própria
+   folha é excluído: num livro de um diagrama por página o número de página cai dentro do teto.
+2. **A lista de soluções é lida por faixa de coluna quando a folha é uma tabela**
+   (`tabela_de_solucoes`), e por caminhada de token quando é prosa. Nada é cravado: a coluna do
+   número é o agrupamento com mais células que são só um número, e as colunas de lance são as que
+   estão à direita dela e em que `PARTE_DE_LANCES` das células casam com `notacao.LANCE`. **A coluna
+   do Zarkov é a segunda leitura, e ela é de graça** -- o livro imprime o lance duas vezes, e onde a
+   primeira sai ilegível a segunda costuma sair inteira. `_TROCA_DE_OCR` conserta o que a camada faz
+   **dentro** de um lance nesta fonte (`RxfS` → `Rxf5`), e só depois do primeiro caractere.
+   Onde a folha é prosa, `solucoes_da_folha` caminha pelos números esperados em ordem crescente e só
+   para a frente -- é o que impede o `2.` de dentro da solução 2 de reabri-la. **A folha do próprio
+   diagrama não responde por ele**, e é o que separa as duas origens.
+3. **A solução decide o lado a jogar, e vence a dedução da S-17.** `validar_solucao` joga a linha
+   nos **dois** lados e fica com o que sustenta mais lances, usando o palpite do pipeline só como
+   desempate.
 4. **O motor confirma, e não decide.** `confirmar` mede quanto o primeiro lance impresso perde
-   contra o que o motor prefere, pela régua da S-537 (abaixo do corte de imprecisão, confirmado). A
-   discordância **não apaga o gabarito** -- um livro de 1934 propõe combinações que o Stockfish
-   refuta, e trocar a solução pela linha do motor seria treinar o motor e não o livro --, ela
-   **marca**. E foi ela que salvou a medição de mentir: ver o critério de aceite.
+   contra o que o motor prefere, pela régua da S-537. A discordância **não apaga o gabarito** -- um
+   livro de 1934 propõe combinações que o Stockfish refuta --, ela **marca**.
 
-**A recusa vale tanto quanto o exercício**, e é a metade que costuma sumir: `Extracao.recusas`
-carrega a procedência e o motivo de cada diagrama que ficou de fora, e `por_motivo()` é o que
-permite dizer **onde** o casamento falhou. Um extrator que devolve só o que deu certo não deixa
-medir a própria taxa.
+**A recusa vale tanto quanto o exercício**: `Extracao.recusas` carrega a procedência e o motivo de
+cada diagrama que ficou de fora, e `por_motivo()` é o que permite dizer **onde** o casamento falhou.
 
 **Persistência atômica, um arquivo por livro** (`taticas_arquivo.py`), com a chave importada de
-`estudo_arquivo.chave_de`: um livro tem uma sala e uma coleção, e as duas respondem ao mesmo nome.
-JSON e não PGN -- a procedência viraria header de invenção nossa, e o que se ganharia (abrir no
-ChessBase) não é o que se faz com um exercício.
-
-**A tela** é `qt/painel_de_treino.JanelaDeTreino` (compartilhada com a S-540): a posição, o lado a
-jogar, o lance cobrado, aceita ou recusa, e -- **depois** de o exercício fechar -- a solução por
-extenso com o desfecho e a procedência (`Reinfeld 1001, p. 63, exercício 214`). "Dá mate" impresso
-ao lado do tabuleiro antes de a pessoa jogar é meia resposta. A extração roda numa `Tarefa` com
-barra e Cancelar (comando `taticas_do_livro`, "Táticas do livro"), e passa o motor da sala quando
-há um.
+`estudo_arquivo.chave_de`. **A tela** é `qt/painel_de_treino.JanelaDeTreino` (compartilhada com a
+S-540), com o tabuleiro ocupando a coluna inteira (`definir_fracao`, S-518) em vez dos 560 px de
+herança do canvas do Tk.
 
 ### Critério de aceite
 
-**Medido em 2026-09-04 sobre sete livros do acervo, o livro inteiro, `motor="camada"`, 220 dpi,
-Stockfish dev-20230303 na confirmação.** O total é 1.729 folhas e 38 minutos de varredura.
+**Medido em 2026-09-05 sobre o acervo, o livro inteiro, `motor="camada"`, 220 dpi, Stockfish
+dev-20230303 na confirmação.** A varredura de cada livro é a mesma do dia anterior, guardada em
+cache para o casamento poder ser remedido em segundos.
 
-| livro | folhas | diagramas | com número | com solução | o motor confirma |
-|---|---|---|---|---|---|
-| Schiller, *The Big Book of Combinations* (1994) | 292 | 1.005 | **963 (95,8%)** | 24 (2,4%) | **2** de 24 |
-| Журавлев, *Manual of Chess Combinations 5* | 122 | 412 | 129 (31,3%) | 10 (2,4%) | **0** de 10 |
-| Gaprindashvili, *Imagination in Chess* | 289 | 769 | 0 | 0 | — |
-| Anand, *Great Chess Combinations* | 244 | 133 | 0 | 0 | — |
-| Koblenz, *El dominio del arte de la combinación* | 70 | 120 | 13 (10,8%) | 0 | — |
-| *1937 Kemeri* (torneio, para o caminho "ao lado") | 289 | 186 | 5 | 0 | — |
-| Chernev, *Melhores Finais de Capablanca* (finais) | 423 | 163 | 0 | 0 | — |
-| **total** | **1.729** | **2.788** | **1.110 (39,8%)** | **34 (1,2%)** | **2 (0,07%)** |
+| livro | folhas | com camada | diagramas | com número | com solução | motor confirma |
+|---|---|---|---|---|---|---|
+| Schiller, *The Big Book of Combinations* (1994) | 292 | 279 | 1.005 | **1.002 (99,7%)** | **913 (90,8%)** | **195 de 200 (97,5%)** |
+| Журавлев, *Manual of Chess Combinations 5* | 122 | 93 | 412 | 198 (48,1%) | 27 (6,6%) | — |
+| Gaprindashvili, *Imagination in Chess* | 289 | 136 | 769 | 0 | 0 | — |
+| Anand, *Great Chess Combinations* | 244 | 240 | 133 | 5 (3,8%) | 1 (0,8%) | — |
+| Koblenz, *El dominio del arte de la combinación* | 70 | 69 | 120 | 12 (10,0%) | 0 | — |
+| *1937 Kemeri* (torneio, para o caminho "ao lado") | 289 | 289 | 186 | 9 | 0 | — |
+| Chernev, *Melhores Finais de Capablanca* (finais) | 423 | 419 | 163 | 88 | 1 (0,6%) | — |
 
-- **⚠ O aproveitamento é 0,07%, e é o resultado do item.** Trinta e quatro diagramas de 2.788
-  ganharam gabarito, e o motor recusou trinta e dois deles -- com perda mediana de **7,3 peões** no
-  `Big Book` e **14,2 peões** no `Manual of Chess Combinations`. Sem a confirmação, o relatório
-  diria "2,4% de aproveitamento" onde há **2,4% de ruído**, e a coleção gravada ensinaria o lance
-  errado. É o número honesto deste item, e ele diz que **o mecanismo está pronto e o acervo não
-  está**.
-- **A primeira metade funciona, e o número é alto.** ✅ Onde a folha de exercício tem camada de
-  texto e o número é uma linha, o casamento geométrico acha **95,8%** (963 de 1.005). A régua da
-  linha contra a do parágrafo é a diferença entre 963 e **zero** -- foi a primeira medição, e ela
-  reescreveu a função.
-- **A segunda metade acha as entradas e perde o lance dentro delas.** ✅/⚠ Medido isolando a lista
-  de soluções (a caminhada contra os números 1 a 1.399, sem casar com diagrama): **581 entradas** em
-  136 folhas do Gaprindashvili, **102** em 68 do Schiller, **62** em 28 do Zhuravlev. A caminhada
-  crescente acha a entrada; o que não sobrevive é a **notação** dentro dela -- a camada de texto de
-  um scan escreve `l:.d8` onde está `♖d8` e `i.xb4` onde está `♗xb4` (`text/leitor.py` documenta
-  isso desde a S-178), e o que resta legível é quase só lance de peão.
-- **Onde o casamento falha, ele falha dizendo o nome.** ✅ No `Big Book`, dos 963 números, 149
-  acharam entrada na lista e **125 delas deram lance ilegal na posição** -- `Bxh7 não é legal nesta
-  posição`, `Rxe6 não é legal nesta posição`, um a um, porque a lista de soluções daquele livro é
-  uma **tabela de quatro colunas** e a ordem de leitura intercala o número de um exercício com o
-  lance de outro. `text/notacao.validar` recusou cada uma pelo nome, e nenhum gabarito errado foi
-  gravado. É o contrato da S-15 -- propõe, marca, não reescreve calado -- valendo aqui.
-- **A solução prova o lado a jogar.** ✅ Dos 24 exercícios do `Big Book`, 10 saíram com as pretas na
-  vez; dos 10 do `Manual`, 4. É informação que o PGN exportado hoje não tem.
-- **Três dos seis livros não têm camada de texto nenhuma nas folhas de exercício.** ⚠ Anand,
-  Gaprindashvili e (quase todo) Koblenz: o número não existe para ser achado. No Gaprindashvili
-  isso é exato -- das 289 folhas, **só as 136 do fim** (a seção de soluções) têm texto.
-- **O leitor de glifo foi tentado, e não resolve por outro motivo.** ⚠ Com `motor="glifo"`
-  (`text/leitor.py`, 35 s por folha medidos), a folha de soluções do Gaprindashvili sai legível
-  **com figurinas** (`1 d6! ♗xd6 1...♗f8 2 h6!`); mas a folha de **exercícios** dele devolve o
-  número das duas colunas numa linha só -- `'7 8'`, `'1 1 1 2'` -- e `numero_junto_ao_diagrama`
-  precisa da caixa do número, que a linha não separa. **O que falta é caixa por palavra em
-  `LinhaLida`**, e é o item que destravaria esta medição inteira. Registrado.
-- **O caminho "ao lado" não inventou um exercício sequer, e é a boa notícia da tabela.** ✅ Nos
-  dois livros que **não** são de exercícios -- 349 diagramas de *Kemeri* e do *Capablanca*, onde
-  cada tabuleiro tem lances impressos em volta --, `linha_ao_lado` não produziu nenhuma linha:
-  `text/notacao.e_linha_de_notacao` exige **maioria** de tokens de notação no parágrafo, e prosa
-  com dois lances dentro não passa. Um extrator frouxo teria devolvido trezentos "exercícios" cujo
-  gabarito é o comentário do autor. Os quatro do *Kemeri* que chegaram à validação foram recusados
-  pelo nome (`La4 não é um lance`, `Sf3 não é um lance`): é notação **alemã**, e `para_ingles` só
-  traduz figurina -- a decisão está documentada em `text/notacao.FIGURINAS_DA_LETRA`, e ela vale
-  aqui: `L` é *Läufer* em alemão e nada em inglês, e adivinhar a língua trocaria uma peça por outra
-  num lance que o tabuleiro aceita.
-- **A extração é cancelável e não bloqueia a janela.** ✅ `Tarefa` com `threading.Event` conferido
+- **✅ O número que decide o item: 891 dos 913 exercícios do `Big Book` conferem com a fileira
+  impressa da tabela de soluções.** A fileira é lida no PDF cru, fora do projeto, **na folha que o
+  extrator diz ter lido**, e a comparação é de **lance** e não de grafia (`Rf4+` e `Rxf4` são o
+  mesmo lance: em SAN o `x` e o `+` são opcionais). Dos 893 conferíveis, **891 conferem (99,8%)**,
+  1 diverge (ex. 955, `Nd4` contra `Qh6+`) e 1 é invenção (ex. 198, cuja fileira não imprime lance
+  nenhum). Vinte não dão para conferir porque o OCR do próprio número na coluna esquerda falhou.
+  Sobre o total produzido, **97,6%**. *Na primeira rodada eram 24 exercícios e **zero** conferiam --
+  as duas que o motor tinha "confirmado" inclusive: o 213 saía `Qe4` onde o livro diz `Rxh7+`.*
+- **✅ E o número impresso passou de 0% para 99,9%.** Contra a coluna que a folha de exercícios
+  imprime -- lida por geometria crua do PDF, conferida à mão nas folhas 21, 27 e 37 --, a primeira
+  rodada acertava **0 de 920** conferíveis; agora são **943 de 944**. Números dados a dois diagramas
+  caíram de 57 para 10, e o `1002` de um livro de 1001 desapareceu.
+- **✅ Os três defeitos são separáveis, e cada um foi medido sozinho.** Só a conversão de base
+  (`-1`) e a corrida antiga: continua errado. Só o lado decidido pela folha, sem corrida: 377 de 944
+  (39,9%), porque a corrida é o que preenche a leitura perdida. Os três juntos: 943 de 944.
+- **✅ Corrigir o intruso custa mais do que rende, e a medição decidiu.** A primeira rodada
+  substituía um `1858` -- o ano de `Paris, 1858` -- pelo que a corrida dizia. Mantida só para quem
+  cai fora do intervalo da folha, a correção custa **quatro números certos** (939 contra 943) porque
+  a corrida também erra: na folha 64 ela apagava um `251` impresso e punha `257`. Onde o papel
+  afirma, o papel vence; o intruso vira um número que nenhuma lista responde, e o diagrama sai como
+  recusa em vez de sair com o gabarito de outro exercício.
+- **✅ A tabela por faixa de coluna é o que destravou a segunda metade.** Lendo a lista do `Big
+  Book` como fluxo de tokens saíam 24 pares; lendo por coluna detectada na própria folha, **694**.
+  E nada é cravado: a tabela desliza de folha para folha, e faixas de `x` fixas perdiam 258 das 971
+  fileiras numa delas.
+- **✅ O motor confirma 195 de 200, com perda mediana de 0 centipeões.** Na primeira rodada eram 2
+  de 24 com perda mediana de 7,3 peões -- que era a assinatura de uma coleção de ruído. A projeção
+  sobre os 913 é de ~890 confirmados.
+- **✅ O número da própria folha não é número de exercício, e a exclusão é de uma linha.** No
+  `Great Chess Combinations` do Anand, um diagrama por página, o número impresso na margem caía
+  dentro do teto de distância: **78 dos 83** números eram o da folha, e três chegaram a virar
+  exercício com gabarito de peão tirado de uma folha de prosa. Com a exclusão, Anand cai para 5
+  números e 1 exercício; o `Big Book` perde **um** em 1.002, e Zhuravlev e Koblenz, nenhum.
+- **✅/⚠ O caminho "ao lado" quase não inventa exercício, e o "quase" é novo.** Nos dois livros
+  que **não** são de exercícios -- 349 diagramas do *Kemeri* e do *Capablanca*, onde cada tabuleiro
+  tem lances impressos em volta --, saiu **1** exercício, contra 0 na primeira rodada. Os 186 do
+  *Kemeri* continuam limpos: `text/notacao.e_linha_de_notacao` exige maioria de tokens de notação, e
+  prosa com dois lances dentro não passa; os três que chegaram à validação foram recusados pelo nome
+  (`e4 não é legal nesta posição`). O único do *Capablanca* passou porque a conversão de base fez o
+  diagrama receber, agora, a caixa **certa** -- e ali havia mesmo uma linha de notação embaixo. Um
+  em 349 é o preço, e ele é do lado seguro: o gabarito é uma linha impressa perto do tabuleiro, com
+  dois meios-lances que a posição sustenta (`PLIES_MINIMOS_AO_LADO`).
+- **⚠ "Três livros sem camada de texto" era falso, e o diagnóstico certo é outro para cada um.**
+  Medido folha a folha:
+  - **Anand** tem camada em 240 de 244 folhas, e as 133 folhas de diagrama têm todas texto. O que
+    ele **não** tem é número solto: o exercício é anunciado como `N267. Anand - Lobron` na mesma
+    linha do nome dos jogadores, e `_SO_NUMERO` recusa isso com razão -- um bloco com texto junto do
+    número é legenda. O que falta para este livro é uma régua de prefixo (`N\d+\.`), e ela é item.
+  - **Koblenz** tem camada em 69 de 70 folhas, e 56 delas têm diagrama. O livro simplesmente **não
+    numera** os exercícios: imprime `MORPHY` / `París, 1858` em volta do tabuleiro. Os 12 números que
+    aparecem são de outra coisa.
+  - **Gaprindashvili** é o único em que a frase original valia, e ainda assim pela metade: ele tem
+    camada em 136 folhas, mas só **2** delas têm diagrama. As 136 são a prosa e a seção de soluções;
+    as 140 folhas de exercício são imagem pura.
+- **✅ A extração é cancelável e não bloqueia a janela.** `Tarefa` com `threading.Event` conferido
   entre folhas, progresso por sinal, e o que já foi lido fica.
-- **Nada é gravado sem gabarito legal.** ✅ Diagrama sem FEN, sem número, sem entrada na lista ou
-  com linha ilegal vira `Recusa` com o motivo, e não um exercício com solução vazia.
+- **✅ Nada é gravado sem gabarito legal.** Diagrama sem FEN, sem número, sem entrada na lista ou
+  com linha ilegal vira `Recusa` com o motivo, e não um exercício com solução vazia. As 92 recusas
+  do `Big Book` são 66 "o número não aparece em nenhuma lista", 3 sem número e 23 lances que a
+  posição reconhecida não sustenta -- cada um recusado pelo nome, como a S-15 manda.
+- **⚠ O que não foi medido:** o `Manual of Chess Combinations` e o Koblenz continuam com
+  aproveitamento baixo por razões que **não** são deste item -- a camada de texto de um scan escreve
+  `l:.d8` onde está `♖d8` (`text/leitor.py` documenta desde a S-178), e o que falta é caixa por
+  palavra em `LinhaLida`. Registrado, e continua sendo o que destravaria os livros digitalizados.
 
 ### Testes
 
-- `tests/test_taticas.py` (novo, puro; 47 casos): o número como **linha** com as caixas medidas da
-  folha 21 do `Big Book`; o número embaixo do diagrama; o teto de distância; a outra coluna; o
-  bloco com texto junto; a corrida preenchendo o buraco e corrigindo o ano; a ausência de maioria
-  não inventando nada. A lista de soluções: as três entradas com a linha de lances, **o número de
-  lance de dentro da solução não abrindo entrada**, o número ausente, e a folha de exercícios não
-  sendo lida como folha de soluções. A linha ao lado: o parágrafo atado (S-249), o primeiro abaixo
-  na mesma coluna, e a legenda de partida que **não** é linha de lances. A validação: a solução
-  provando o lado a jogar, o palpite anterior desempatando, a linha parcial valendo com o motivo
-  gravado, a FEN inválida, e os três desfechos. A extração: as duas passadas, a conta fechando
-  entre exercícios e recusas, a lista vencendo a linha ao lado, os dois meios-lances mínimos da
-  vizinhança, e o resumo dizendo o que o motor recusou. O motor: aprovar, discordar **sem trocar o
-  gabarito**, falhar sem estragar o exercício. E o arquivo: ida e volta, a chave igual à da sala de
-  estudo, coleção vazia apagando, exercício corrompido não derrubando os outros, esquema do futuro,
-  `carregar_tudo`, e a gravação atômica cobrada no próprio fonte.
-- `tests/test_qt_painel_de_treino.py::JanelaDeTreinoTests` (novo): a posição, a procedência na tela,
-  o tabuleiro virado para quem resolve, o lance certo andando a linha com a resposta jogada
-  sozinha, o errado não andando e sendo desfeito no desenho, **o lance ilegal não derrubando o
-  processo**, e a solução aparecendo só depois de o exercício fechar.
-- `tests/test_qt_painel_de_treino.py::TaticasNaSalaTests` (novo): extrair sem livro aberto recusando
-  com frase, a agenda que não abre vazia, e os dois comandos novos no "Mais" do grupo Treino.
-- Guardas atualizadas: `tests/test_ui_comandos.py` (os dois rótulos que divergem do menu),
-  `tests/test_busy.py::SEM_REGISTRO` (a medição da perda), `tests/test_editor_model.py::SEM_TKINTER`
-  e `tests/test_ui_orfaos.py::SEM_CHAMADOR`.
-- Reprodução: `scratchpad/medir_taticas.py "<livro>.pdf" --motor 40`, com `PYTHONPATH=src` a partir
-  da raiz do worktree.
+- `tests/test_taticas.py` (53 casos): o número como **linha** e não parágrafo; o número embaixo; o
+  teto de distância; a outra coluna; o bloco com texto junto. **Da segunda rodada:** o lado decidido
+  pela folha (com a geometria do `Big Book`, em que o mais próximo é o do vizinho), a folha que
+  imprime embaixo continuando a ser lida, a corrida **não sobrescrevendo** o que foi lido, a corrida
+  não repetindo número que a folha já usou, o número da própria folha recusado, e
+  `AdaptadorDePdfTests` afirmando o efeito da conversão de base -- o primeiro diagrama sai com o
+  primeiro número. Mais a lista de soluções, a linha ao lado, a validação, a extração, o motor e o
+  arquivo, como na primeira rodada.
+- `tests/test_qt_painel_de_treino.py::JanelaDeTreinoTests`: o tabuleiro ocupando a coluna e não
+  parando em `MAX_DO_TABULEIRO`, além da posição, da procedência, do lance certo, do errado desfeito
+  e do ilegal que não derruba o processo.
+- Reprodução: `scratchpad/r2_treino/cache.py "<livro>.pdf" <slug>` guarda a varredura e a camada de
+  texto; `ponta.py <slug> "<livro>.pdf" [--motor N]` refaz o casamento em segundos; `veredito.py`
+  compara cada exercício com a fileira impressa; `corrida.py` compara as três leituras de número
+  contra a folha; `mao.py <folhas>` despeja a geometria para conferir à mão.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+| o que ele mediu | o número dele | o que era | o número agora |
+|---|---|---|---|
+| exercícios que conferem com a tabela impressa | 0 de 18 conferíveis | índice 1-based contra 0-based, lado errado, corrida sobrescrevendo, e a lista lida como fluxo | **891 de 893** |
+| números de exercício certos contra a folha | 0 de 920 | as três causas acima | **943 de 944** |
+| pares (número → lance) da lista de soluções | 114 pela leitura de fluxo | `_tokens_da_folha` achatava nove colunas numa fila | **694** por faixa de coluna |
+| exercícios produzidos no `Big Book` | 24, nenhum confiável | | **913**, 890 projetados como confirmados pelo motor |
+| número dado a dois diagramas | 57 (o `96` em duas folhas) | corrida sobrescrevendo o lido | **10** |
+| número acima de 1001 num livro de 1001 | 1 (`1002`) | corrida extrapolando sobre diagrama a mais | **0** |
+| taxa de confirmação do motor | 2 de 24 (8,3%), perda mediana 7,3 peões | os gabaritos eram de outros exercícios | **195 de 200 (97,5%)**, perda mediana 0 |
+| "três livros sem camada de texto" | falso: Anand 240/244, Koblenz 69/70, Gaprindashvili 136 | diagnóstico trocado por contagem | rediagnosticado um a um no critério de aceite |
+| tabuleiro do treino | 560×560 em toda janela (15% a 1400×950) | `definir_fracao` nunca chamada | **817×817 (50,2%)** a 1400×950; 1.129 px a 1920×1080 |
 
-## S-540 · Repetição espaçada dos estudos e das táticas, com agenda do dia — ✅ **implementada em 2026-09-04**
+## S-540 · Repetição espaçada dos estudos e das táticas, com agenda do dia — ✅ **implementada em 2026-09-05** (segunda rodada: os dois tetos, o fim de sessão e o teclado)
 
 ### Problema
 
@@ -2060,6 +2084,24 @@ pessoa revê o que abriu por último, e o que ela aprendeu em março não volta 
 inteiro é construído em cima dessa pergunta, e o Anki -- que é o programa que a resolveu -- não tem
 tabuleiro.
 
+**A primeira rodada agendou certo e conduziu a sessão errado**, e os três defeitos aparecem na
+primeira sessão de verdade:
+
+1. `revisao_espacada.py:489` descontava os novos da sobra do teto de vencidos
+   (`fila += novas[: min(sobra, novos)]`). Com sessenta vencidos -- o estado normal de quem tem
+   acervo -- a sobra é zero e **nenhum item novo entra, para sempre**: a coleção recém-extraída fica
+   congelada até a fila de revisão esvaziar.
+2. `qt/painel_de_treino.py:482` escrevia `"Fila de hoje concluída."` num rótulo enquanto
+   `lbl_agenda` continuava anunciando *"Hoje você tem 3 para revisar"* no outro -- duas frases que se
+   contradizem na mesma coluna --, sem resumo nenhum de meia hora de sessão, e com o tabuleiro parado
+   na última posição jogada.
+3. **Zero teclado.** Nem um `QShortcut`, nem `keyPressEvent`, nem `setFocus` no arquivo inteiro. Numa
+   sessão de sessenta itens isso é sessenta viagens ao mouse; no Chessable a sessão inteira é
+   teclado.
+
+E a tela de fila vazia desenhava um tabuleiro de 64 casas sem peça nenhuma em 60% da janela, com a
+mesma frase de "nenhum exercício extraído" -- que manda extrair o que já está extraído.
+
 ### Solução
 
 **A escolha do algoritmo é o item, e ela é o FSRS** (`revisao_espacada.py`). Os dois candidatos
@@ -2071,119 +2113,135 @@ razões, e a terceira decide **para táticas**:
    o intervalo seguinte é `intervalo × fator`. Não existe "qual é a chance de eu ainda lembrar
    disto hoje", então não existe **retenção alvo** -- e é justamente o botão que um profissional
    quer. O FSRS tem uma curva de esquecimento explícita (`retencao`), e por isso *"quero acertar
-   90% do que revejo"* é uma frase que ele responde: a `RETENCAO_ALVO` vira intervalo por inversão
-   da curva.
+   90% do que revejo"* é uma frase que ele responde.
 2. **A escala de tempo do SM-2 é a repetição, não o calendário.** Ele não usa quanto tempo passou
    de verdade: dois acertos, um com um dia e outro com um ano de intervalo, mexem o fator igual. O
    FSRS come a retrievabilidade do momento (`R`) nas duas fórmulas de estabilidade, e é por isso
    que **sumir por um mês** tem tratamento nativo aqui, e não uma regra especial.
 3. **O "inferno de facilidade" do SM-2 é o modo de falha das táticas.** Cada erro tira 0,2 do
    fator, o piso é 1,3, e um acerto devolve quase nada. Numa coleção de combinações -- onde errar
-   é o caso normal nas primeiras voltas -- metade dos itens desce ao piso e **nunca sobe**: o
-   intervalo trava em 1,3× e o baralho vira uma fila diária que não encolhe. O FSRS separa
-   *dificuldade* de *estabilidade*, e o item difícil continua ganhando intervalo quando é acertado.
+   é o caso normal nas primeiras voltas -- metade dos itens desce ao piso e **nunca sobe**. O FSRS
+   separa *dificuldade* de *estabilidade*, e o item difícil continua ganhando intervalo.
 
 **O preço está escrito em voz alta: dezessete pesos que este projeto não derivou.** `PESOS` são os
-padrões publicados do FSRS-4.5, copiados. A graça do FSRS é **otimizá-los** contra o histórico de
-quem usa, e não há histórico nesta máquina para otimizar. É por isso que `Estado` guarda o log
-inteiro de revisões (`Revisao`: dia, nota e **dias decorridos**) em vez de só a última: ele é a
-entrada do otimizador do dia em que houver o que otimizar, e jogá-lo fora agora fecharia a porta.
+padrões publicados do FSRS-4.5, copiados. É por isso que `Estado` guarda o log inteiro de revisões
+(`Revisao`: dia, nota e **dias decorridos**) em vez de só a última: ele é a entrada do otimizador do
+dia em que houver o que otimizar, e jogá-lo fora agora fecharia a porta.
 
 **O que não é do algoritmo, e mesmo assim decide o dia.** O FSRS diz *quando* cada item vence; ele
-não diz o que fazer quando 400 vencem juntos, que é exatamente o que acontece com quem some por um
-mês. A resposta são três decisões de `Agenda`:
+não diz o que fazer quando 400 vencem juntos. A resposta são três decisões de `Agenda`:
 
 - **`TETO_DO_DIA` = 60.** Trezentos itens numa tela não são uma sessão de treino: são o motivo pelo
   qual as pessoas abandonam repetição espaçada. Sessenta táticas a ~40 s são ~40 min.
-- **`TETO_DE_NOVOS` = 15, e menor que o outro de propósito.** Cada novo de hoje é revisão de
-  amanhã; um baralho que admite cem novos por dia produz a parede acima em duas semanas. E
-  **vencidos antes de novos, sempre**: aprender coisa nova enquanto o que já se aprendeu está
-  sendo esquecido é o jeito de ter um baralho grande e uma memória pequena.
+- **`TETO_DE_NOVOS` = 15, e ele é um orçamento SEPARADO** (correção da segunda rodada). Cada novo de
+  hoje é revisão de amanhã, e por isso ele é menor; mas descontá-lo da sobra do outro teto o fazia
+  **nunca valer**. Anki e Chessable mantêm "novos por dia" e "revisões por dia" como dois limites
+  que não se subtraem, e a razão é essa: aprender coisa nova e não esquecer o que se sabe são dois
+  orçamentos diferentes. Um dia cheio oferece 60 vencidos **mais** 15 novos. E **vencidos antes de
+  novos, sempre**.
 - **A ordem é por retenção estimada, e não por data de vencimento.** Dois itens vencidos há dez
-  dias: um tinha intervalo de três dias e o outro de duzentos. O primeiro já foi esquecido; o
-  segundo está praticamente intacto. Ordenar pela data trataria os dois igual e gastaria a sessão
+  dias: um tinha intervalo de três dias e o outro de duzentos. Ordenar pela data gastaria a sessão
   de hoje no que não corria risco.
 
-**A nota sai do tabuleiro, e não de quatro botões** (`nota_do_treino`). Os quatro botões do Anki
-pedem que a pessoa julgue a própria memória; num exercício de tática isso já está medido -- ou o
-lance saiu, ou não saiu. Errar ou pedir a solução é `DE_NOVO`; acertar de primeira é `BOM`;
-acertar depois de errar é `DIFICIL` (é acerto, com o multiplicador de penalidade `w15`). **`FACIL`
-o programa nunca dá sozinho**: ele multiplica a estabilidade por `w16` e produz intervalos muito
-longos, e concedê-lo a todo acerto de primeira esvaziaria a fila com base numa inferência que
-ninguém fez. É o único botão de julgamento na tela.
+**A nota sai do tabuleiro, e não de quatro botões** (`nota_do_treino`). Errar ou pedir a solução é
+`DE_NOVO`; acertar de primeira é `BOM`; acertar depois de errar é `DIFICIL`. **`FACIL` o programa
+nunca dá sozinho** -- é o único botão de julgamento na tela.
 
-**Persistência própria e atômica, num arquivo só para o acervo inteiro** (`revisao_arquivo.py`) --
-ao contrário das táticas, que têm um arquivo por livro. A pergunta deste arquivo é *"o que eu tenho
-para revisar hoje?"*, e ela é do dia e não do livro: uma sessão de segunda mistura três exercícios
-do Reinfeld com dois estudos do Dvoretsky. O vínculo com o livro não se perde porque ele está
-**dentro da chave** (`taticas.Procedencia.chave`). **Vazio não apaga o arquivo**, e é a diferença
-para `estudo_arquivo`: aqui o vazio pode querer dizer "apaguei o histórico", e deixar o arquivo
-antigo o ressuscitaria na abertura seguinte.
+**A sessão tem começo, meio e fim, e os três se veem** (segunda rodada):
 
-**A tela é `qt/painel_de_treino.JanelaDeTreino`**, aberta pelo comando `treinar_agenda` ("Revisar
-hoje", no "Mais" do grupo Treino). Duas colunas -- tabuleiro à esquerda, o que se lê à direita --,
-que é a repartição da sala de estudo e pela mesma razão. **A agenda é montada uma vez, na
-abertura**: refazê-la a cada resposta faria o item recém-acertado sumir da fila no meio da sessão,
-e a pessoa perderia a conta de quantos faltam. **O baralho vai para o disco quando a janela
-fecha**, e não a cada resposta: uma gravação por item reescreveria o arquivo sessenta vezes numa
-sessão, e o que se perde numa queda é uma sessão -- não o histórico.
+- **A fila vazia diz por que está vazia.** `proximo_vencimento` responde *quando* o material volta, e
+  `frase_da_agenda` recebe a data e o tamanho da coleção: `Nada vence hoje: o próximo volta em
+  14/09/2026. A coleção tem 3 exercício(s).` -- que é uma confirmação, e não a tela de erro que
+  mandava extrair o que já estava extraído. A outra frase, a de quem não extraiu nada, continua
+  existindo e continua diferente.
+- **O fim da fila é um resumo** (`frase_do_fim`): `Fila de hoje concluída: 4 exercício(s), 8 de 10
+  lance(s) certos (80%). Perdeu 0,30 por lance, em média.` Ele vai para onde o tabuleiro estava, e a
+  agenda **se apaga** -- uma agenda que continua anunciando a fila de meia hora atrás ao lado de
+  "fila concluída" é a contradição que a fotografia mostrou.
+- **Sem posição, não há tabuleiro nem botões de sessão.** `lbl_vazio` toma o lugar das 64 casas
+  vazias, e *Próximo*, *Ver a solução* e *Foi fácil* somem junto: sem exercício eles já estavam
+  cinza, e três controles desabilitados numa tela sem assunto só dizem que falta alguma coisa.
+- **A sessão anda pelo teclado.** `TECLAS_DE_AVANCO` (`Enter`, `Return`, barra de espaço) passa ao
+  exercício seguinte, e o tabuleiro recebe o foco a cada abertura -- o anel de foco da S-553 nasce
+  onde se joga. **Com o exercício em aberto a tecla não faz nada**: um `Enter` distraído no meio de
+  uma combinação pularia o item sem resposta, e a agenda o contaria como visto. E o avanço é por
+  tecla e não por relógio: o que fica na tela quando o exercício fecha é a solução com a
+  procedência, e um temporizador a apagaria antes de ela ser lida.
+
+**Persistência própria e atômica, num arquivo só para o acervo inteiro** (`revisao_arquivo.py`). A
+pergunta deste arquivo é *"o que eu tenho para revisar hoje?"*, e ela é do dia e não do livro. **O
+baralho vai para o disco quando a janela fecha**, e não a cada resposta: uma gravação por item
+reescreveria o arquivo sessenta vezes numa sessão.
 
 ### Critério de aceite
 
 - **A curva de esquecimento é a de potência do FSRS-4.5, e o intervalo é a inversa dela.** ✅ A
-  90% de retenção o intervalo **é** a estabilidade (`intervalo(20.0) == 20`), que é a definição
-  dela; pedir 95% encurta todos os intervalos de uma vez, sem mexer no que já foi aprendido.
+  90% de retenção o intervalo **é** a estabilidade (`intervalo(20.0) == 20`); pedir 95% encurta
+  todos os intervalos de uma vez, sem mexer no que já foi aprendido.
 - **O erro nunca aumenta a estabilidade.** ✅ A trava é explícita (`min(S_lapso, S)`), e vale nos
-  cinco valores de estabilidade medidos (0,2 a 30 dias) -- a fórmula de lapso do 4.5 devolve mais
-  que a anterior em item muito novo.
+  cinco valores de estabilidade medidos (0,2 a 30 dias).
 - **O item difícil continua ganhando intervalo.** ✅ Um item em `DIFICULDADE_MAXIMA` acertado três
   vezes seguidas cresce nas três. É a propriedade que o SM-2 não tem, e a razão da escolha.
 - **Sumir por um mês.** ✅ O mesmo item, acertado em dia e acertado trinta dias depois do
-  vencimento, sai com estabilidade **maior** no segundo caso -- é o `1 - R` das duas fórmulas, e
-  não uma regra à parte. E a volta não é uma parede: com 300 vencidos, a fila do dia tem 60 e a
-  frase diz `Outros 240 ficam para amanhã`.
-- **A fila é estável entre dois desenhos da tela.** ✅ Empate de retenção desfeito pela chave: uma
-  fila que se embaralha é uma fila em que se perde o lugar.
-- **O que já foi revisto hoje não volta hoje.** ✅ E o que vence amanhã não entra: medido pela
-  ponte inteira -- o baralho que a sessão anterior gravou é o que a agenda de hoje lê.
-- **Mil itens com vinte revisões cada dão 2,1 MB de JSON**, lidos em milissegundos. ✅ É o custo de
-  guardar o log inteiro, e ele é o que permite otimizar os pesos um dia.
+  vencimento, sai com estabilidade **maior** no segundo caso. E a volta não é uma parede: com 300
+  vencidos, a fila do dia tem 60 e a frase diz `Outros 240 ficam para amanhã`.
+- **✅ Os dois tetos são independentes, e o número é o do defeito.** Com 80 vencidos e 30 novos, a
+  fila de hoje tem **75** -- 60 vencidos e 15 novos --, e 20 vencidos ficam para amanhã. Antes eram
+  60 e **zero** novos, e a coleção recém-extraída não começava nunca.
+- **✅ A fila vazia sabe dizer quando o material volta.** `proximo_vencimento` devolve a data do
+  próximo vencimento **futuro**, ignorando o que já venceu (que já estaria na fila) e o que saiu da
+  coleção. As duas frases de fila vazia são diferentes, e a fotografia mostra as duas.
+- **✅ O fim da sessão tem número.** Quatro exercícios e dez lances viram
+  `4 exercício(s), 8 de 10 lance(s) certos (80%)`, e a agenda de meia hora atrás é apagada. Sem
+  lance nenhum a frase não inventa porcentagem.
+- **✅ O `Enter` deixou de destruir o exercício, e passou a servir para alguma coisa.** Medido no
+  reprodutor do crítico: antes, `Enter` na abertura revelava o gabarito e agendava `DE_NOVO`
+  (estabilidade 0,4872, volta amanhã); agora `revelou` continua falso, o baralho continua vazio e o
+  recado continua em branco. Com o exercício fechado, a mesma tecla passa ao seguinte.
+- **✅ A tela sem posição não desenha tabuleiro.** `lbl_vazio` no lugar das 64 casas, e só o
+  *Fechar* na coluna direita -- fotografado nas três peles e nos dois tamanhos.
+- **A fila é estável entre dois desenhos da tela.** ✅ Empate de retenção desfeito pela chave.
+- **O que já foi revisto hoje não volta hoje.** ✅ Medido pela ponte inteira: o baralho que a sessão
+  anterior gravou é o que a agenda de hoje lê.
+- **Mil itens com vinte revisões cada dão 2,1 MB de JSON**, lidos em milissegundos. ✅
 - **⚠ O que não foi medido, e é a dívida honesta deste item:** **os dezessete pesos não foram
   derivados aqui**, e não há como derivá-los sem um histórico de revisão que ainda não existe. O
-  que está afirmado é que o agendamento é o do FSRS-4.5 publicado, com as propriedades acima; o que
-  não está é que os pesos sejam os melhores para *este* usuário. Quem quiser calibrá-los tem o log
-  gravado desde o primeiro dia.
-- **Os estudos da sala ainda não entram na fila**, e é a segunda dívida: a agenda alimenta-se de
-  `taticas_arquivo.carregar_tudo`, e um estudo do livro não tem `chave` de exercício. O
-  agendamento é agnóstico -- ele agenda **chaves** --, então o que falta é a ponte, não o
-  mecanismo. Registrado para quem retomar.
+  que está afirmado é que o agendamento é o do FSRS-4.5 publicado, com as propriedades acima.
+- **⚠ Os estudos da sala ainda não entram na fila**, e é a segunda dívida: a agenda alimenta-se de
+  `taticas_arquivo.carregar_tudo`, e um estudo do livro não tem `chave` de exercício. O agendamento
+  é agnóstico -- ele agenda **chaves** --, então o que falta é a ponte, não o mecanismo.
 
 ### Testes
 
-- `tests/test_revisao_espacada.py` (novo, puro): a curva de potência e a cauda que a exponencial
-  não tem; o intervalo valendo a estabilidade a 90% e encurtando a 95%; o piso de um dia e o teto
-  de dez anos; a estabilidade inicial sendo o peso da nota; o erro nunca aumentando a estabilidade,
-  nos cinco valores; o item difícil crescendo; a dificuldade revertendo à média sem grudar no
-  mínimo; **o acerto depois de um mês valendo mais que o acerto em dia**; a parede de 300 virando
-  fila de 60 com 240 adiados; a ordem por retenção contra a ordem por data; vencidos antes de
-  novos; o teto de novos; nota fora da escala levantando; a tradução do treino em nota e o `FACIL`
-  que o programa nunca dá; e o arquivo -- ida e volta, item corrompido não derrubando os outros,
-  esquema do futuro, vazio que não ressuscita o antigo, e os 2,1 MB medidos.
-- `tests/test_qt_painel_de_treino.py::JanelaDeTreinoTests` (novo): a agenda montada na abertura; o
-  tabuleiro virado para quem resolve; acertar agendando `BOM` e acertar depois de errar agendando
-  `DIFICIL`; ver a solução agendando `DE_NOVO`; o `FACIL` só depois de acertar e esticando o
-  intervalo de verdade (**uma revisão por exercício**, e não uma por botão apertado); a fila que
-  acaba; e o baralho gravado ao fechar.
-- `tests/test_qt_painel_de_treino.py::TaticasNaSalaTests` (novo): a agenda que não abre vazia, a
-  que abre com o que a extração gravou, e o que vence amanhã ficando de fora da fila de hoje.
-- `tests/test_ui_treino_declarado.py::FrasesTests` (novo): a frase da agenda com vencidos, novos e
-  **adiados** -- sem a última, quem volta depois de um mês conclui que o programa perdeu 340 itens.
+- `tests/test_revisao_espacada.py` (puro): a curva de potência e a cauda que a exponencial não tem;
+  o intervalo valendo a estabilidade a 90%; o piso de um dia e o teto de dez anos; o erro nunca
+  aumentando a estabilidade; o item difícil crescendo; **o acerto depois de um mês valendo mais que
+  o acerto em dia**; a parede de 300 virando fila de 60 com 240 adiados; a ordem por retenção contra
+  a ordem por data; vencidos antes de novos. **Da segunda rodada:** `test_o_dia_cheio_de_vencidos_
+  ainda_admite_novos` (75 = 60 + 15, e 20 adiados) e os dois de `proximo_vencimento` -- o mais
+  próximo entre os futuros, e o vencido e o que saiu da coleção sendo ignorados.
+- `tests/test_ui_treino_declarado.py::FrasesTests`: a frase da agenda com vencidos, novos e
+  **adiados**; **da segunda rodada**, `test_a_fila_vazia_de_quem_ja_revisou_tudo_diz_quando_o_
+  material_volta` (a data e o tamanho da coleção, e nenhum "extraia") e os dois de `frase_do_fim`.
+- `tests/test_qt_painel_de_treino.py::JanelaDeTreinoTests`: a agenda montada na abertura; acertar
+  agendando `BOM` e acertar depois de errar agendando `DIFICIL`; ver a solução agendando `DE_NOVO`;
+  o `FACIL` só depois de acertar; e o baralho gravado ao fechar. **Da segunda rodada:** a fila que
+  acaba com resumo e sem tabuleiro; a fila vazia dizendo quando o material volta; o `Enter` que não
+  revela nem agenda; a tecla de avanço passando ao seguinte **depois** de o exercício fechar; e a
+  mesma tecla não pulando exercício em aberto.
+- Reprodução das telas: `scratchpad/crit_treino/roteiro_crit.py <pasta>` fotografa os sete estados
+  nas três peles a 1400×950 e 1920×1080, e imprime as frases de cada estado e o dono do foco.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+| o que ele mediu | o número dele | o que era | como está agora |
+|---|---|---|---|
+| itens novos por dia com a fila cheia | 60 vencidos ⇒ **0** novos | `min(sobra, novos)` subtraía um teto do outro | 60 vencidos **+ 15** novos |
+| fim de sessão | "Hoje você tem 3 para revisar" ao lado de "Fila concluída"; sem resumo; tabuleiro na última posição | duas frases em rótulos diferentes | resumo com exercícios, acerto e perda média; agenda apagada; tabuleiro escondido |
+| teclado | nenhum `QShortcut`, `keyPressEvent` ou `setFocus` | — | `TECLAS_DE_AVANCO` e foco no tabuleiro a cada exercício |
+| "nada para revisar hoje" | tabuleiro vazio em 60% da janela, e a mesma frase de "nenhum exercício extraído" | `frase_da_agenda` sem `volta_em` | frase com a data do próximo vencimento e o tamanho da coleção; sem tabuleiro e sem botões de sessão |
 
-## S-541 · "Adivinhe o lance" com placar persistente e comparação com o motor — ✅ **implementada em 2026-09-04**
+## S-541 · "Adivinhe o lance" com placar persistente e comparação com o motor — ✅ **implementada em 2026-09-05** (segunda rodada: o placar chega ao disco, o lance é comparado como lance, e o erro se vê)
 
 ### Problema
 
@@ -2199,11 +2257,24 @@ lance com `self.estudo.no.variations[0]` e somava um a `_acertos` ou a `_erros`;
    deixava rastro nenhum: nada no disco, nada por livro, nada entre sessões.
 2. **Todo lance que não fosse o da linha era erro.** Treinando sobre uma partida de torneio, isso
    classifica como erro toda transposição e todo lance de igual valor -- o placar passa a medir a
-   memória daquela partida em vez do xadrez de quem treina. O motor estava ali ao lado, e ninguém
-   perguntava nada a ele.
-3. **O lance errado ficava na tela.** `_treinar` não redesenhava no caminho de erro: o modelo do
-   widget joga sobre a própria cópia (`BoardModel`), a árvore não muda -- e a pessoa fica olhando
-   uma posição que o estudo não tem, com o lance seguinte partindo dela.
+   memória daquela partida em vez do xadrez de quem treina.
+3. **O lance errado ficava na tela.** `_treinar` não redesenhava no caminho de erro.
+
+**E a primeira rodada deixou o defeito 1 de pé na janela de treino, com a spec afirmando o
+contrário.** `qt/painel_de_treino.py:632` (`done`) gravava **só** o baralho de revisão; o
+`fechada → _mostrar_placar` da sala apenas repintava um rótulo; e `placar.json` **nunca era
+criado**. A spec dizia "sobrevive a desligar ✅" sobre um arquivo que não existia. Mais três
+defeitos que a segunda rodada mediu:
+
+- `qt/painel_de_treino.py:441` criava `btn_solucao` primeiro, e num `QDialog` o primeiro
+  `QPushButton` com `autoDefault` é quem recebe o `Return`. Nenhum widget recebia foco na abertura.
+  **`Enter` revelava o gabarito e reprovava o exercício** -- `revelou=True`, estabilidade 0,4872,
+  volta amanhã -- sem que ninguém tivesse jogado nada.
+- `ui/treino_declarado.py` comparava lance por igualdade crua. Um gabarito guardado como o livro o
+  imprimiu -- `Ra8+` num lance que dá mate -- rejeitava o `Ra8#` que o `chess` escreve a partir do
+  tabuleiro: quem joga o lance do livro contava erro.
+- `PlacarDoLivro.perda_media` era calculada e **nunca exibida**, e o erro no tabuleiro não tinha
+  sinal nenhum -- a peça voltava sozinha para a origem.
 
 ### Solução
 
@@ -2213,97 +2284,113 @@ lance do gabarito; *equivalente*, um lance diferente que o motor considera igual
 
 **A régua do "igualmente bom" é `analise_da_partida.julgar`, inteira, e não um número novo.** Ela
 recebe as **duas avaliações** -- antes e depois do lance -- e devolve a perda em centipeões e o
-juízo; quando ela cala, o lance é `EQUIVALENTE`, e quando ela fala ele é `ERRADO` com o símbolo
-(`?!`, `?`, `??`) e a perda em peões na frase. Passar as duas em vez de um número de perda pronto é
-o que faz o treino herdar as duas regras que a S-537 mediu -- o teto de dez peões e a **posição já
-decidida**: um lance que cai de +18 para +9 não é erro nenhum, e um corte escrito aqui não saberia
-disso. **E foi o que salvou este item de uma quebra silenciosa**: a S-537 trocou a escala do juízo
-de centipeões para pontos percentuais de expectativa de vitória enquanto este era escrito, e o
-treino acompanhou sem uma linha de mudança, porque a régua é uma só.
+juízo. Passar as duas em vez de um número pronto é o que faz o treino herdar as duas regras que a
+S-537 mediu: o teto de dez peões e a **posição já decidida**.
 
-**O lance do gabarito é certo mesmo quando o motor discorda dele**, e a ordem é a decisão: quem
-treina o `1001 Sacrifices` está aprendendo a combinação de Reinfeld, e um Stockfish que prefere
-outra coisa não torna errado o lance que o livro pede. A discordância do motor com o **gabarito** é
-assunto da extração (`taticas.confirmar`, S-539), e não do lance de quem treina.
+**O lance do gabarito é certo mesmo quando o motor discorda dele**, e a ordem é a decisão. A
+discordância do motor com o **gabarito** é assunto da extração (`taticas.confirmar`, S-539).
+
+**E "o mesmo lance" é uma pergunta de xadrez, não de cadeia** (`mesmo_lance`, segunda rodada). O que
+se apara é `DECORACAO` -- xeque, mate e o juízo do autor --, e nada mais: `Nbd2` e `Nfd2` continuam
+sendo dois cavalos, e `exd5` não é `d5`. Sem isso a repetição espaçada passa a medir a grafia do
+gabarito.
 
 **O veredicto chega na hora e o preço chega depois** (`qt/painel_de_treino.PerdaDoLance`). Saber se
-o lance é o da linha não custa nada; saber quanto ele perdeu custa duas buscas do motor, e elas não
-cabem na linha de eventos. A frase do rodapé é escrita **duas vezes**: primeiro *"d4 não é o lance
-da linha: perguntando ao motor quanto custou…"*, depois *"d4? — erro: perde 1,40 contra e4"*. Sem
-motor a primeira é a única, e ela continua sendo verdade -- `frase_do_resultado` não promete número
-que não existe.
+o lance é o da linha não custa nada; saber quanto ele perdeu custa duas buscas do motor. A frase do
+rodapé é escrita **duas vezes**. **A avaliação de "antes" é guardada por posição**, e um segundo
+pedido durante o primeiro é **recusado** em vez de enfileirado.
 
-**A avaliação de "antes" é guardada por posição.** Errar três vezes no mesmo exercício não pode
-custar seis buscas: a posição antes do lance é a mesma nas três. E um segundo pedido durante o
-primeiro é **recusado** em vez de enfileirado -- quem erra três lances em dois segundos quer a nota
-do último, não três atrasadas.
+**Duas escalas de placar** (`placar.py`). A **sessão** responde *como estou hoje* e não é gravada. O
+**livro** responde *como estou neste material* -- `79% em 268 lances no Big Book of Combinations` é
+a frase que diz qual livro reabrir --, e é gravada **a cada lance**: o arquivo tem uma linha por
+livro e alguns bytes, e o que se perde numa queda é justamente a sessão que ninguém vai repetir.
 
-**Duas escalas de placar, e as duas fazem falta por razões diferentes** (`placar.py`). A **sessão**
-responde *como estou hoje* e é o que muda a decisão de continuar ou parar; ela não é gravada,
-porque uma sessão que sobrevive ao fechamento do programa não é uma sessão. O **livro** responde
-*como estou neste material*, e é ela que dá sentido a um acervo de centenas de livros -- `79% em
-268 lances no Big Book of Combinations` é a frase que diz qual livro reabrir. Essa é gravada, **a
-cada lance**: o arquivo tem uma linha por livro e alguns bytes, e o que se perde numa queda é
-justamente a sessão que ninguém vai repetir. (É a decisão inversa à do baralho de revisão, e a
-diferença é o tamanho do que se grava.)
+**`Placar.origem` é o que faz a gravação chegar ao disco** (segunda rodada). A sala carrega o
+arquivo de `pasta_de_treino/placar.json` e passa o **objeto** para a janela de treino, que conta os
+lances; a janela não tem como saber que pasta é essa, e um `CAMINHO_PADRAO` cravado lá gravaria em
+`data/placar.json`, que ninguém relê. Agora o placar lembra de onde veio, e `gravar` sem destino
+volta para lá. **Sem origem, nada é gravado**: um `Placar()` que não veio do disco -- o de um teste,
+o de quem colou uma posição à mão -- não tem para onde voltar, e escrever na árvore do programa por
+causa dele seria pior que não escrever.
 
-**A perda é somada e não promediada no arquivo**: a média de duas sessões não é a média das médias,
-e recalculá-la a partir da soma é a única forma de o número continuar certo depois de somar o
-placar de hoje ao de ontem.
+**A perda média entra na frase** (segunda rodada): sem ela, "78%" trata igual quem erra dois lances
+de 60 centipeões e quem larga a dama duas vezes. Ela só aparece quando houve motor, porque sem motor
+a perda é sempre zero e um `perde 0,00` fixo mentiria por omissão.
 
-**E o lance errado é desfeito na tela**, na sala e na janela de treino -- uma linha em cada, e é o
-defeito 3.
+**O erro tem sinal no tabuleiro** (segunda rodada): a seta vermelha da S-279 sobre o lance recusado
+(`COR_DO_ERRO`), que some no lance seguinte. A peça voltando sozinha para a casa de origem, sem nada
+explicando por quê, se lê como "soltei fora da casa" -- e quem move rápido joga o mesmo lance de
+novo.
+
+**E nenhum botão é o botão padrão do diálogo** (segunda rodada): `setAutoDefault(False)` nos quatro,
+e o foco vai para o tabuleiro. O `Enter` passa a ser de quem o declarou (S-540).
 
 ### Critério de aceite
 
-- **O placar do livro sobrevive a desligar o treino.** ✅ Medido no painel: um acerto, desligar,
-  ligar de novo -- a sessão zera e o livro continua com 1. E o arquivo já está no disco depois do
-  **primeiro** lance.
+- **✅ O placar chega ao disco, e o teste afirma o arquivo.** Na janela de treino, `placar.json`
+  não existe antes do primeiro lance e existe depois dele, com o acerto contado no livro certo; e a
+  ponta a ponta pela sala -- `treinar_a_agenda` → jogar → arquivo na pasta de treino -- também.
+  *Na primeira rodada o arquivo nunca era criado.*
+- **✅ Um placar sem origem não escreve na árvore do programa.** `Placar()` conta na memória e não
+  cria `data/placar.json`.
+- **✅ O placar do livro sobrevive a desligar o treino.** Um acerto, desligar, ligar de novo: a
+  sessão zera e o livro continua com 1.
+- **✅ O `Enter` não revela mais a solução.** Medido no reprodutor do crítico e no teste: `revelou`
+  continua falso, o baralho continua vazio, o recado continua em branco, e os quatro botões
+  respondem `autoDefault() == False`. O foco nasce no tabuleiro (`FocusPolicy.StrongFocus`).
+- **✅ O lance certo escrito de outro jeito conta como certo.** `Ra8#` contra um gabarito `Ra8+` é
+  `CERTO`; `Qxh7+!!` e `Qxh7+` são o mesmo lance; `Nbd2` e `Nfd2` continuam sendo dois.
+- **✅ A perda média aparece.** `perde 0,62 por lance` na linha do livro, e nada quando não houve
+  motor.
+- **✅ O erro se vê no tabuleiro.** Uma seta vermelha do lance recusado, e ela some no acerto
+  seguinte -- fotografado nas três peles.
 - **Três baldes, com a régua da S-537.** ✅ O ponto em que o balde do meio vira erro é **procurado**
-  no próprio teste, chamando `julgar` até ela falar, e não escrito de novo: quando a S-537 trocou de
-  escala no meio deste item, os testes acompanharam sozinhos. E a **posição já decidida** vale aqui
-  também: `antes=+18, depois=+9` sai como `EQUIVALENTE`, e não como erro grave.
+  no próprio teste, chamando `julgar` até ela falar. E a **posição já decidida** vale aqui também:
+  `antes=+18, depois=+9` sai como `EQUIVALENTE`.
 - **A comparação com o motor volta por sinal, e o veredicto não espera por ela.** ✅ Contra um
   processo UCI de verdade (`tests/fake_uci_engine.py`): a frase de "perguntando ao motor" aparece
-  na hora e a nota chega depois; a avaliação de "antes" é reusada na segunda tentativa (medido
-  pelo tamanho do cache, não pelo relógio); e um segundo pedido durante o primeiro é recusado.
+  na hora e a nota chega depois; a avaliação de "antes" é reusada na segunda tentativa; e um segundo
+  pedido durante o primeiro é recusado.
 - **Sem motor, nada quebra e nada é prometido.** ✅ `pedir` devolve falso, o lance é contado na
   hora, e a frase não traz número.
-- **O lance errado não fica na tela.** ✅ Na janela de treino, a FEN do widget volta a ser a do
-  exercício depois de um erro.
-- **O lance ilegal não derruba o processo.** ✅ Achado ao escrever a fotografia: `chess.Board.san`
-  devolve `Nf3` para um lance ilegal quando há peça na origem, e **levanta** quando não há -- e uma
-  exceção num slot do Qt mata o processo sem mensagem. `jogar` confere a legalidade antes de tudo.
-- **A frase do placar cabe na linha.** ✅ Ela mostrava o caminho inteiro do PDF (80 caracteres) e
-  empurrava o número para fora da janela; passa a mostrar `taticas.nome_curto`, que é o mesmo corte
-  de `Procedencia.frase`.
-- **O que ficou de fora:** o placar não separa por **tema** de tática nem por dificuldade (o
-  Chessable e o CT-ART fazem), porque nada no acervo etiqueta tema -- seria inventar uma coluna que
-  ninguém preenche. E a comparação com o motor **não** grava `[%eval]` no estudo: o treino não é
-  edição da árvore, e é a regra da S-290 mantida.
+- **O lance errado não fica na tela.** ✅ A FEN do widget volta a ser a do exercício depois de um
+  erro.
+- **O lance ilegal não derruba o processo.** ✅ `chess.Board.san` devolve `Nf3` para um lance ilegal
+  quando há peça na origem e **levanta** quando não há; `jogar` confere a legalidade antes de tudo.
+- **A frase do placar cabe na linha.** ✅ `taticas.nome_curto`, o mesmo corte de `Procedencia.frase`.
+- **O que ficou de fora:** o placar não separa por **tema** de tática nem por dificuldade, porque
+  nada no acervo etiqueta tema. E a comparação com o motor **não** grava `[%eval]` no estudo: o
+  treino não é edição da árvore, e é a regra da S-290 mantida.
 
 ### Testes
 
-- `tests/test_ui_treino_declarado.py` (novo, puro): os três baldes; o corte lido da S-537 nos dois
-  lados; o lance do gabarito sendo certo **mesmo com o motor discordando**; sem motor não haver
-  balde do meio; o símbolo e o juízo vindo da tabela da S-537; as quatro frases do rodapé; o placar
-  vazio que não escreve nada; as duas escalas na mesma linha; e o placar -- zerar a sessão sem
-  zerar o livro, o equivalente contando como bom, a posição sem livro contando só na sessão,
-  resultado desconhecido levantando, o total somando os livros, e o arquivo (ida e volta, ausente,
-  esquema do futuro, JSON quebrado).
-- `tests/test_qt_painel_de_treino.py::PerdaDoLanceTests` (novo): sem motor o pedido é recusado; a
-  perda volta por sinal e a avaliação de antes é reusada; um segundo pedido durante o primeiro é
-  recusado.
-- `tests/test_qt_painel_de_treino.py::TreinoNaSalaTests` (novo): o placar do livro sobrevivendo a
-  desligar o treino; o arquivo no disco depois do lance; a frase sem motor que não promete número;
-  a frase escrita duas vezes com motor; o lance da linha andando; e o fim da linha não cobrando
-  lance.
-- `tests/test_qt_painel_de_estudo.py::test_o_treino_esconde_a_continuacao_e_nao_muda_a_arvore`
-  (ajustado): o placar deixou de contar "errado" e passou a contar `bons de total`.
+- `tests/test_ui_treino_declarado.py` (puro): os três baldes; o corte lido da S-537 nos dois lados;
+  o lance do gabarito sendo certo **mesmo com o motor discordando**; sem motor não haver balde do
+  meio; as quatro frases do rodapé; as duas escalas na mesma linha. **Da segunda rodada:**
+  `MesmoLanceTests` (o xeque no gabarito não reprovando a resposta certa, o juízo do autor aparado,
+  e o lance parecido continuando outro lance), a perda média na linha do livro, a linha sem motor
+  que não finge perda zero, e `Placar.origem` -- lembrada mesmo sem arquivo, e o `gravar` sem
+  destino voltando para lá.
+- `tests/test_qt_painel_de_treino.py::PerdaDoLanceTests`: sem motor o pedido é recusado; a perda
+  volta por sinal e a avaliação de antes é reusada; um segundo pedido durante o primeiro é recusado.
+- `tests/test_qt_painel_de_treino.py::JanelaDeTreinoTests` (segunda rodada): o placar da janela indo
+  para o disco a cada lance; o placar sem origem não gravando; o `Enter` que não revela nem agenda;
+  e a seta vermelha do lance errado, que some no acerto.
+- `tests/test_qt_painel_de_treino.py::TreinoNaSalaTests`: o placar do livro sobrevivendo a desligar
+  o treino; o arquivo no disco depois do lance; a frase sem motor que não promete número; a frase
+  escrita duas vezes com motor.
+- `tests/test_qt_painel_de_treino.py::TaticasNaSalaTests` (segunda rodada): `placar.json` nascendo
+  na pasta de treino depois de um lance na janela aberta pela sala.
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+| o que ele mediu | o número dele | o que era | como está agora |
+|---|---|---|---|
+| `placar.json` depois de uma sessão | **nunca criado** | `done()` gravava só o baralho; `fechada → _mostrar_placar` só pintava rótulo | criado no primeiro lance, e recarregável |
+| `Enter` na abertura | revela a solução, `revelou=True`, agenda `DE_NOVO` (S=0,4872) | `btn_solucao` era o botão padrão e nada tinha foco | não faz nada com exercício aberto; passa ao seguinte quando ele fecha |
+| comparação de lance | `Ra8+` num mate rejeita a resposta certa | igualdade crua de cadeia | `mesmo_lance` apara só `DECORACAO` |
+| `perda_media` | calculada e nunca exibida | — | `perde 0,62 por lance` na linha do livro |
+| erro no tabuleiro | nenhum sinal | — | seta vermelha do lance recusado (S-279) |
 
 ## S-542 · Exportar estudo e texto para EPUB, com diagramas como SVG — ✅ **implementada em 2026-09-04** (segunda rodada)
 

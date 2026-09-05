@@ -31,6 +31,9 @@ from chess_diagram_ocr import revisao_arquivo, revisao_espacada, taticas, tatica
 from chess_diagram_ocr.engine import EngineAnalyzer
 
 if TEM_PYQT:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
     from chess_diagram_ocr.qt import painel_de_treino as qt_treino
 
@@ -82,6 +85,7 @@ class JanelaDeTreinoTests(unittest.TestCase):
         self.assertIsNotNone(janela.exercicio)
         self.assertIn("exercício 214", janela.lbl_procedencia.text())
         self.assertIn("Brancas jogam", janela.lbl_vez.text())
+        self.assertFalse(janela.tabuleiro.isHidden(), "com exercício aberto o tabuleiro está lá")
 
     def test_o_tabuleiro_nasce_virado_para_quem_resolve(self) -> None:
         """Resolver de cabeça para baixo é outro exercício."""
@@ -162,12 +166,21 @@ class JanelaDeTreinoTests(unittest.TestCase):
         self.assertEqual(2, janela.tabuleiro.modelo.board.fullmove_number)
         self.assertTrue(janela.tabuleiro.modelo.board.turn, "a vez voltou para quem resolve")
 
-    def test_a_fila_acaba_e_a_janela_diz_isso(self) -> None:
+    def test_a_fila_acaba_com_resumo_da_sessao_e_sem_tabuleiro(self) -> None:
+        """**Três defeitos numa tela só, medidos em 2026-09-04** (S-540, r2): a agenda continuava
+        anunciando "Hoje você tem 3 para revisar" ao lado de "Fila concluída"; não havia resumo
+        nenhum de meia hora de sessão; e o tabuleiro ficava na última posição jogada, que já não é
+        pergunta."""
         janela = self.janela()
         janela.jogar(chess.Move.from_uci("f3f7"))
         janela._proximo()
         self.assertIsNone(janela.exercicio)
-        self.assertIn("concluída", janela.lbl_recado.text())
+        self.assertIn("concluída", janela.lbl_vazio.text())
+        self.assertIn("1 exercício(s)", janela.lbl_vazio.text())
+        self.assertIn("1 de 1", janela.lbl_vazio.text(), "o placar da sessão entra no resumo")
+        self.assertEqual("", janela.lbl_agenda.text(), "a agenda de meia hora atrás se apaga")
+        self.assertTrue(janela.tabuleiro.isHidden(), "não há posição a olhar")
+        self.assertTrue(janela.btn_proximo.isHidden(), "três botões cinza não são assunto")
         self.assertFalse(janela.btn_proximo.isEnabled())
 
     def test_fechar_grava_o_baralho(self) -> None:
@@ -179,10 +192,18 @@ class JanelaDeTreinoTests(unittest.TestCase):
         self.assertEqual([_exercicio().chave], list(revisao_arquivo.carregar(caminho=caminho)))
 
     def test_um_item_ja_revisto_hoje_nao_volta_na_fila_de_hoje(self) -> None:
+        """**E a fila vazia diz quando o material volta, sem desenhar tabuleiro** (S-540, r2). A
+        tela mostrava 64 casas vazias em 60% da janela e a mesma frase de "nenhum exercício
+        extraído" -- que manda extrair o que já está extraído."""
         vencimento = revisao_espacada.estado_inicial(_exercicio().chave, revisao_espacada.BOM, hoje=HOJE)
         janela = self.janela(baralho={vencimento.chave: vencimento})
         self.assertTrue(janela.agenda.vazia)
-        self.assertIn("Nada para revisar", janela.lbl_agenda.text())
+        frase = janela.lbl_vazio.text()
+        self.assertIn("Nada vence hoje", frase)
+        self.assertIn("/2026", frase, "a data do próximo vencimento")
+        self.assertIn("1 exercício(s)", frase, "e o tamanho da coleção que já existe")
+        self.assertNotIn("extraia", frase.lower())
+        self.assertTrue(janela.tabuleiro.isHidden())
 
     def test_o_placar_conta_na_janela_e_no_livro(self) -> None:
         placar = placar_mod.Placar()
@@ -192,6 +213,94 @@ class JanelaDeTreinoTests(unittest.TestCase):
         self.assertEqual(2, placar.sessao.total)
         self.assertEqual(1, placar.do_livro(LIVRO).certos)
         self.assertIn("sessão: 1 de 2", janela.lbl_placar.text())
+
+    def test_o_placar_da_janela_de_treino_vai_para_o_disco(self) -> None:
+        """**O defeito 3 da segunda rodada, e ele era total** (S-541, r2). `done()` gravava só o
+        baralho de revisão; o placar vivia num objeto na memória e `placar.json` **nunca era
+        criado**. A spec afirmava "sobrevive a desligar ✅" sobre um arquivo que não existia."""
+        caminho = self.pasta / "placar.json"
+        placar = placar_mod.carregar(caminho=caminho)
+        janela = self.janela(placar=placar)
+        self.assertFalse(caminho.exists())
+        janela.jogar(chess.Move.from_uci("f3f7"))
+        self.assertTrue(caminho.exists(), "uma gravação por lance, como na sala (S-541)")
+        self.assertEqual(1, placar_mod.carregar(caminho=caminho).do_livro(LIVRO).certos)
+
+    def test_placar_sem_origem_nao_grava_na_arvore_do_programa(self) -> None:
+        """`Placar()` de teste, ou de quem colou uma posição à mão, não veio do disco -- e
+        `placar.gravar` cairia em `CAMINHO_PADRAO`, que é `data/placar.json` da instalação."""
+        placar = placar_mod.Placar()
+        self.assertIsNone(placar.origem)
+        janela = self.janela(placar=placar)
+        janela.jogar(chess.Move.from_uci("f3f7"))
+        self.assertEqual(1, placar.sessao.total, "conta na memória")
+
+    def test_o_enter_nao_revela_a_solucao_nem_reprova_o_exercicio(self) -> None:
+        """**O defeito 4 da segunda rodada** (S-541, r2). `btn_solucao` era o primeiro botão criado
+        e virava o botão padrão do diálogo; nenhum widget recebia foco na abertura. `Enter` então
+        revelava o gabarito e reprovava o exercício -- estabilidade 0,4872, volta amanhã -- sem que
+        ninguém tivesse jogado nada."""
+        janela = self.janela()
+        janela.show()
+        janela.activateWindow()
+        self.app.processEvents()
+        self.assertTrue(janela.tabuleiro.hasFocus(), "o foco nasce onde se joga")
+        for botao in (janela.btn_solucao, janela.btn_facil, janela.btn_proximo):
+            self.assertFalse(botao.autoDefault(), f"{botao.text()} não é o botão padrão")
+        QTest.keyClick(janela, Qt.Key.Key_Return)
+        self.app.processEvents()
+        self.assertFalse(janela.tentativa.revelou, "o Enter não desiste do exercício")
+        self.assertEqual({}, janela.baralho, "e não agenda nada")
+        self.assertEqual("", janela.lbl_recado.text())
+
+    def test_a_tecla_de_avanco_passa_ao_seguinte_depois_de_o_exercicio_fechar(self) -> None:
+        """**A sessão inteira pelo teclado**, que é como o Chessable e o Anki funcionam: não havia
+        `QShortcut`, `keyPressEvent` nem `setFocus` nesta janela."""
+        janela = self.janela(exercicios=[_exercicio(0), _exercicio(1)])
+        janela.show()
+        self.app.processEvents()
+        primeiro = janela.exercicio
+        janela.jogar(chess.Move.from_uci("f3f7"))
+        QTest.keyClick(janela, Qt.Key.Key_Space)
+        self.app.processEvents()
+        self.assertIsNotNone(janela.exercicio)
+        self.assertNotEqual(primeiro.chave, janela.exercicio.chave)
+
+    def test_a_tecla_de_avanco_nao_pula_exercicio_em_aberto(self) -> None:
+        """Um `Enter` distraído no meio de uma combinação pularia o item sem resposta, e a agenda
+        o contaria como visto."""
+        janela = self.janela(exercicios=[_exercicio(0), _exercicio(1)])
+        janela.show()
+        self.app.processEvents()
+        primeiro = janela.exercicio
+        janela.avancar()
+        self.assertEqual(primeiro.chave, janela.exercicio.chave)
+
+    def test_o_tabuleiro_do_treino_ocupa_a_coluna_e_nao_560_px(self) -> None:
+        """**O defeito 5 da segunda rodada** (S-539, r2). Sem `definir_fracao`, o tabuleiro ficava
+        preso no `MAX_DO_TABULEIRO` de 560 px em toda janela e em toda pele -- 15% da área a
+        1400×950, com 861 px de vazio na coluna direita. A sala de estudo já chamava `definir_fracao`
+        pela mesma razão (S-518), e a janela cujo assunto é olhar para uma posição não chamava."""
+        from chess_diagram_ocr.qt.tabuleiro import MAX_DO_TABULEIRO
+
+        janela = self.janela()
+        janela.resize(1400, 950)
+        janela.show()
+        self.app.processEvents()
+        lado = janela.tabuleiro.geometria().size
+        self.assertGreater(lado, MAX_DO_TABULEIRO, "o teto do canvas do Tk deixou de valer aqui")
+
+    def test_o_lance_errado_fica_marcado_no_tabuleiro(self) -> None:
+        """**O erro não tinha sinal nenhum na tela** (S-541, r2): a peça voltava sozinha para a
+        casa de origem, e quem move rápido joga o mesmo lance de novo achando que soltou fora da
+        casa. A seta vermelha é o mecanismo que a S-279 já tem."""
+        janela = self.janela()
+        janela.jogar(chess.Move.from_uci("g1h3"))
+        setas = list(janela.tabuleiro.modelo.arrows)
+        self.assertEqual(1, len(setas))
+        self.assertEqual(qt_treino.COR_DO_ERRO, setas[0][2])
+        janela.jogar(chess.Move.from_uci("f3f7"))
+        self.assertEqual((), janela.tabuleiro.modelo.arrows, "o acerto limpa a marca")
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -377,6 +486,19 @@ class TaticasNaSalaTests(unittest.TestCase):
         janela = painel.treinar_a_agenda()
         self.addCleanup(descartar, janela)
         self.assertTrue(janela.agenda.vazia)
+
+    def test_o_placar_da_sessao_de_treino_nasce_na_pasta_de_treino(self) -> None:
+        """**A ponta a ponta do defeito 3** (S-541, r2): a sala carrega `placar.json` da pasta de
+        treino e passa o objeto para a janela; sem `Placar.origem` a janela não tinha como saber
+        que pasta é essa, e o arquivo nunca era criado."""
+        taticas_arquivo.gravar(LIVRO, [_exercicio()], pasta=self.pasta / "taticas")
+        painel = self.sala()
+        janela = painel.treinar_a_agenda()
+        self.addCleanup(descartar, janela)
+        janela.jogar(chess.Move.from_uci("f3f7"))
+        alvo = self.pasta / "placar.json"
+        self.assertTrue(alvo.exists())
+        self.assertEqual(1, placar_mod.carregar(caminho=alvo).do_livro(LIVRO).certos)
 
     def test_os_dois_comandos_tem_metodo_e_botao_no_mais(self) -> None:
         from chess_diagram_ocr.ui import barra_da_sala

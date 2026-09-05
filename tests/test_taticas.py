@@ -105,6 +105,20 @@ class NumeroDoExercicioTests(unittest.TestCase):
         )
         self.assertIsNone(taticas.numero_junto_ao_diagrama(pagina, 0))
 
+    def test_o_numero_da_propria_folha_nao_e_numero_de_exercicio(self) -> None:
+        """**Num livro de um diagrama por folha, o número de página cai dentro do teto** (S-539,
+        r2). O `Great Chess Combinations` do Anand tem um tabuleiro que ocupa metade da página, e o
+        número impresso na margem ficava a menos de meia altura dele: **78 dos 83** números daquele
+        livro eram o número da folha, e três chegaram a virar exercício com gabarito de peão. No
+        `Big Book`, onde as duas numerações são colunas distantes, a exclusão custa um em 1.002.
+        """
+        pagina = _folha(
+            BlocoDeDiagrama(indice=0, bbox=(46, 76, 155, 185)),
+            _paragrafo(_linha("73", (95, 190, 110, 202))),
+            impressa=73,
+        )
+        self.assertIsNone(taticas.numero_junto_ao_diagrama(pagina, 0))
+
     def test_a_corrida_preenche_o_que_a_leitura_perdeu(self) -> None:
         """Uma folha `97 98 ? 100` perdeu o 99 por leitura, não por o livro não o ter impresso."""
         pagina = _folha(
@@ -119,10 +133,16 @@ class NumeroDoExercicioTests(unittest.TestCase):
         diagramas = [taticas.DiagramaLido(indice=i, placement=PASTOR) for i in range(4)]
         self.assertEqual({0: 97, 1: 98, 2: 99, 3: 100}, taticas.numeros_da_folha(pagina, diagramas))
 
-    def test_a_corrida_corrige_o_ano_que_se_passou_por_numero(self) -> None:
-        """`Paris, 1858` quebrado em duas linhas põe um `1858` onde deveria estar um `5`. Com a
-        maioria concordando num deslocamento, o intruso é substituído -- e é a diferença entre um
-        exercício com o gabarito de outro e um exercício certo."""
+    def test_a_corrida_nao_sobrescreve_o_que_foi_lido(self) -> None:
+        """**O papel vence a corrida, e é a correção da segunda rodada** (2026-09-05).
+
+        A versão anterior devolvia `base + posição` para todos os diagramas, e um `1858` de
+        `Paris, 1858` deslocava a folha inteira. Medido no `Big Book of Combinations`: corrigir o
+        intruso custa quatro números certos (939 contra 943 em 944 conferíveis contra a folha
+        impressa) e a corrida também erra -- na folha 64 ela apagava um `251` impresso. Um número
+        que nenhuma lista responde vira recusa; um número trocado vira o gabarito de outro
+        exercício, que é o pior resultado possível deste módulo.
+        """
         pagina = _folha(
             _paragrafo(_linha("5", (60, 10, 70, 20))),
             BlocoDeDiagrama(indice=0, bbox=(46, 30, 155, 130)),
@@ -132,7 +152,63 @@ class NumeroDoExercicioTests(unittest.TestCase):
             BlocoDeDiagrama(indice=2, bbox=(46, 290, 155, 390)),
         )
         diagramas = [taticas.DiagramaLido(indice=i, placement=PASTOR) for i in range(3)]
-        self.assertEqual({0: 5, 1: 6, 2: 7}, taticas.numeros_da_folha(pagina, diagramas))
+        self.assertEqual({0: 5, 1: 1858, 2: 7}, taticas.numeros_da_folha(pagina, diagramas))
+
+    def test_a_corrida_nao_repete_numero_que_a_folha_ja_usou(self) -> None:
+        """**Um diagrama a mais na varredura inventava o número do exercício seguinte.**
+
+        Era o defeito medido: 57 números do `Big Book` eram dados a dois diagramas diferentes, e o
+        último de uma folha recebia o primeiro da folha seguinte -- `96` em duas. Aqui a caixa
+        extra fica **sem** número, que é a resposta honesta.
+        """
+        pagina = _folha(
+            _paragrafo(_linha("11", (60, 10, 72, 20))),
+            BlocoDeDiagrama(indice=0, bbox=(46, 30, 155, 130)),
+            _paragrafo(_linha("12", (60, 140, 72, 150))),
+            BlocoDeDiagrama(indice=1, bbox=(46, 160, 155, 260)),
+            BlocoDeDiagrama(indice=2, bbox=(46, 290, 155, 390)),
+        )
+        # O terceiro diagrama é uma detecção a mais: nenhum número foi impresso perto dele.
+        diagramas = [taticas.DiagramaLido(indice=i, placement=PASTOR) for i in range(3)]
+        achados = taticas.numeros_da_folha(pagina, diagramas)
+        self.assertEqual({0: 11, 1: 12, 2: 13}, achados)
+        self.assertEqual(len(set(achados.values())), len(achados), "nenhum número em dois lugares")
+
+    def test_a_folha_decide_de_que_lado_esta_o_numero(self) -> None:
+        """**O defeito que deslocou os 963 números do `Big Book` de um** (2026-09-05).
+
+        O livro imprime o número **em cima** do tabuleiro, e o de baixo -- que é o do diagrama
+        seguinte -- fica mais perto: 14,6 pt contra 29,2 pt na folha 37. Escolhendo pelo mais
+        próximo, cada diagrama recebia o número do vizinho e o acerto contra a folha impressa era
+        **zero**; deixando a folha votar pela corrida que os dois lados produzem, 943 de 944.
+        """
+        blocos: list[object] = []
+        # Três tabuleiros empilhados, com o número 20 pt acima de cada um e 60 pt abaixo do
+        # anterior: é a geometria medida do `Big Book`.
+        for posicao in range(3):
+            topo = 40 + posicao * 160
+            blocos.append(_paragrafo(_linha(str(31 + posicao), (60, topo - 20, 72, topo - 8))))
+            blocos.append(BlocoDeDiagrama(indice=posicao, bbox=(46, topo, 155, topo + 110)))
+        pagina = _folha(*blocos)
+        diagramas = [taticas.DiagramaLido(indice=i, placement=PASTOR) for i in range(3)]
+        # O mais próximo do primeiro tabuleiro é o `32` de baixo, a 42 pt; o dele é o `31`, a 8 pt.
+        self.assertEqual({0: 31, 1: 32, 2: 33}, taticas.numeros_da_folha(pagina, diagramas))
+        self.assertEqual(31, taticas.numero_junto_ao_diagrama(pagina, 0, lado=taticas.LADO_ACIMA))
+        self.assertEqual(32, taticas.numero_junto_ao_diagrama(pagina, 0, lado=taticas.LADO_ABAIXO))
+
+    def test_a_folha_que_imprime_embaixo_continua_sendo_lida(self) -> None:
+        """O voto não é uma preferência pelo lado de cima: o `Manual of Chess Combinations`
+        imprime embaixo, e ali a corrida de baixo é a que fecha."""
+        blocos: list[object] = []
+        for posicao in range(3):
+            topo = 40 + posicao * 160
+            blocos.append(BlocoDeDiagrama(indice=posicao, bbox=(46, topo, 155, topo + 110)))
+            blocos.append(
+                _paragrafo(_linha(str(168 + posicao), (60, topo + 118, 78, topo + 130)))
+            )
+        pagina = _folha(*blocos)
+        diagramas = [taticas.DiagramaLido(indice=i, placement=PASTOR) for i in range(3)]
+        self.assertEqual({0: 168, 1: 169, 2: 170}, taticas.numeros_da_folha(pagina, diagramas))
 
     def test_sem_maioria_nada_e_preenchido(self) -> None:
         """Dois deslocamentos empatados: a folha não tem corrida, e inventar seria pior que calar."""
@@ -507,6 +583,57 @@ class ProcedenciaTests(unittest.TestCase):
 
     def test_sem_livro_a_frase_nao_mente(self) -> None:
         self.assertIn("não identificado", taticas.Procedencia().frase())
+
+
+class AdaptadorDePdfTests(unittest.TestCase):
+    """`de_pdf` é a costura entre a varredura e a leitura, e as duas contam diferente."""
+
+    def test_o_indice_da_varredura_vira_o_indice_da_leitura(self) -> None:
+        """**O `-1` é o defeito que deslocava o livro inteiro** (S-539, r2, 2026-09-05).
+
+        `DiagramPosition.diagram_index` conta de 1 (`pdf_to_pgn.py`, `enumerate(..., start=1)`) e
+        `PaginaLida.diagramas` conta de 0. Sem a conversão, cada diagrama recebia a **caixa** do
+        seguinte -- e portanto o número impresso do seguinte --, e o último de cada folha ficava
+        sem caixa nenhuma. Medido no `Big Book of Combinations`: 963 números, **nenhum** deles o da
+        folha impressa. O teste afirma o efeito: o primeiro diagrama sai com o primeiro número.
+        """
+        from contextlib import contextmanager
+        from unittest import mock
+
+        pagina = _folha(
+            _paragrafo(_linha("41", (60, 10, 72, 22))),
+            BlocoDeDiagrama(indice=0, bbox=(46, 30, 155, 140)),
+            _paragrafo(_linha("42", (60, 170, 72, 182))),
+            BlocoDeDiagrama(indice=1, bbox=(46, 190, 155, 300)),
+        )
+
+        class _Posicao:
+            def __init__(self, indice: int, fen: str) -> None:
+                self.page_index = 0
+                self.diagram_index = indice  # 1-based, como o pipeline o escreve
+                self.fen = fen
+                self.side_to_move = None
+
+        @contextmanager
+        def _abrir(_caminho: object):  # noqa: ANN202 - dublê de `pdf_io.opened`
+            yield mock.Mock(page_count=1)
+
+        with (
+            mock.patch(
+                "chess_diagram_ocr.pdf_to_pgn.scan_pdf_positions",
+                return_value=[_Posicao(1, PASTOR), _Posicao(2, PRETAS)],
+            ),
+            mock.patch("chess_diagram_ocr.pdf_io.opened", _abrir),
+            mock.patch("chess_diagram_ocr.text.leitor.ler_pagina", return_value=pagina),
+        ):
+            extracao = taticas.de_pdf(Path("livro.pdf"))
+
+        # Nenhum dos dois vira exercício -- não há lista de soluções --, mas a procedência diz de
+        # que diagrama cada recusa é, e é isso que o número impresso segue.
+        por_diagrama = {
+            recusa.procedencia.diagrama: recusa.procedencia.numero for recusa in extracao.recusas
+        }
+        self.assertEqual({0: 41, 1: 42}, por_diagrama)
 
 
 if __name__ == "__main__":  # pragma: no cover

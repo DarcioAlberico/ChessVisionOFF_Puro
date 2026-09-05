@@ -31,15 +31,40 @@ from . import analise_da_partida as regua
 from . import formato
 
 __all__ = [
+    "DECORACAO",
     "Julgamento",
     "Tentativa",
     "classificar_o_lance",
     "frase_da_agenda",
+    "frase_do_fim",
     "frase_do_gabarito",
     "frase_do_placar",
     "frase_do_resultado",
+    "mesmo_lance",
     "rotulo_do_desfecho",
 ]
+
+DECORACAO = "+#!?±∓⩲⩱"
+"""O que um lance carrega **depois** dele e que não muda o lance: xeque, mate e o juízo do autor.
+
+Não entram `x`, `=` nem a letra de desambiguação: `Nbd2` e `Nfd2` são dois cavalos diferentes, e
+`exd5` não é `d5`. Ver `mesmo_lance`, que é o único lugar que apara por aqui."""
+
+
+def mesmo_lance(jogado: str, esperado: str) -> bool:
+    """Os dois textos são o **mesmo lance**? (S-541)
+
+    **Comparar cadeia crua rejeita a resposta certa, e o caso é comum.** O gabarito de um exercício
+    pode ter sido guardado como o livro o imprimiu -- `Ra8+` num lance que na verdade dá mate --,
+    enquanto o que a tela tem em mãos é o SAN que o `chess` escreve a partir do tabuleiro, `Ra8#`.
+    Com `str(jogado) == str(esperado)` a pessoa joga o lance do livro e o placar conta erro; o
+    exercício volta amanhã como "não sabido", e a repetição espaçada passa a medir a grafia.
+
+    O que se apara é só `DECORACAO`. A comparação continua **exata** no resto, e é por isso que ela
+    não abre a porta que a S-15 fecha: um lance parecido continua sendo outro lance.
+    """
+    return str(jogado).strip().rstrip(DECORACAO) == str(esperado).strip().rstrip(DECORACAO)
+
 
 _SIMBOLOS: dict[str, str] = {
     regua.IMPRECISAO: "?!",
@@ -101,7 +126,7 @@ def classificar_o_lance(
     Sem as duas avaliações não há balde do meio: a única coisa afirmável é se o lance foi o do
     gabarito, e é o que a janela sem motor mostra.
     """
-    if str(jogado) == str(esperado):
+    if mesmo_lance(jogado, esperado):
         return Julgamento(resultado=CERTO, perda=0, com_motor=antes is not None)
     if antes is None or depois is None:
         return Julgamento(resultado=ERRADO, com_motor=False)
@@ -208,17 +233,23 @@ def frase_do_gabarito(lances: Any, procedencia: str = "", desfecho: str = "") ->
     return f"{frase} ({procedencia})" if procedencia else frase
 
 
-def frase_da_agenda(agenda: Any) -> str:
+def frase_da_agenda(agenda: Any, *, volta_em: Any = None, colecao: int = 0) -> str:
     """`Hoje você tem 23 para revisar: 18 vencidos e 5 novos.` (S-540)
 
     **Os adiados aparecem, e é o número mais importante da frase.** Quem some por um mês volta com
     400 itens vencidos e vê uma fila de 60; sem a segunda frase, a conclusão é que o programa
     perdeu os outros 340. Dizer quantos ficaram para amanhã é o que transforma o teto de uma
     limitação numa decisão.
+
+    **A fila vazia diz por que está vazia, e as duas razões são diferentes.** "Nada para revisar"
+    servia tanto a quem não extraiu exercício nenhum quanto a quem já revisou tudo hoje -- e o que
+    a segunda pessoa precisa saber é **quando** o material volta, não que ele sumiu. `volta_em` é a
+    data do próximo vencimento (`revisao_espacada.proximo_vencimento`) e `colecao` é o tamanho da
+    coleção; com os dois, a frase deixa de mandar extrair o que já está extraído.
     """
     quantos = getattr(agenda, "quantos", 0)
     if not quantos:
-        return "Nada para revisar hoje. Volte amanhã, ou extraia as táticas de outro livro."
+        return _fila_vazia(volta_em, colecao)
     vencidos = min(getattr(agenda, "vencidos", 0), quantos)
     novos = quantos - vencidos
     partes = []
@@ -233,12 +264,50 @@ def frase_da_agenda(agenda: Any) -> str:
     return frase
 
 
+def _fila_vazia(volta_em: Any, colecao: int) -> str:
+    if volta_em is None:
+        return "Nada para revisar hoje. Volte amanhã, ou extraia as táticas de outro livro."
+    quando = volta_em.strftime("%d/%m/%Y") if hasattr(volta_em, "strftime") else str(volta_em)
+    frase = f"Nada vence hoje: o próximo volta em {quando}."
+    if colecao:
+        frase += f" A coleção tem {formato.inteiro(colecao)} exercício(s)."
+    return frase
+
+
+def frase_do_fim(exercicios: int, sessao: PlacarDoLivro) -> str:
+    """O resumo do que se acabou de fazer, quando a fila do dia termina (S-540/S-541).
+
+    **Uma sessão que acaba sem resumo acaba sem resultado.** A tela dizia "Fila de hoje concluída"
+    ao lado de uma agenda que continuava anunciando os três exercícios de meia hora atrás, e o
+    placar da sessão sumia junto com o último exercício -- trinta minutos sem nenhuma frase que
+    diga como foram. É a mesma razão do placar por livro da S-541, uma escala abaixo.
+
+    Sem lance nenhum a frase não inventa porcentagem: quem abriu e fechou a janela não teve sessão.
+    """
+    if not sessao.total:
+        return f"Fila de hoje concluída: {exercicios} exercício(s), nenhum lance jogado."
+    frase = (
+        f"Fila de hoje concluída: {exercicios} exercício(s), "
+        f"{sessao.bons} de {sessao.total} lance(s) certos "
+        f"({formato.porcentagem(sessao.acerto, casas=0)})."
+    )
+    if sessao.perda:
+        frase += f" Perdeu {regua.peoes(round(sessao.perda_media))} por lance, em média."
+    return frase
+
+
 def frase_do_placar(sessao: PlacarDoLivro, do_livro: PlacarDoLivro | None = None) -> str:
-    """`sessão: 7 de 9 · Reinfeld 1001: 78% em 214 lances` (S-541).
+    """`sessão: 7 de 9 · Reinfeld 1001: 78% em 214 lances, perde 0,31 por lance` (S-541).
 
     Duas escalas na mesma linha porque elas respondem a perguntas diferentes -- ver o cabeçalho de
     `placar.py`. Sem lance nenhum na sessão, a frase é vazia: um placar `0 de 0` é ruído
     permanente, e é a mesma regra do `(0)` no rótulo de aba da S-162.
+
+    **A perda média entra, e ela é a metade que faltava.** `PlacarDoLivro.perda_media` era
+    calculada e nunca mostrada; sem ela, "78%" trata igual quem erra dois lances de 60 centipeões e
+    quem larga a dama duas vezes. É a mesma distinção que a S-537 faz entre imprecisão e erro
+    grave, aqui contada sobre a sessão inteira -- e ela só aparece quando houve motor, porque sem
+    motor a perda é sempre zero e um `perde 0,00` fixo mentiria por omissão.
     """
     if not sessao.total:
         return ""
@@ -249,7 +318,10 @@ def frase_do_placar(sessao: PlacarDoLivro, do_livro: PlacarDoLivro | None = None
         porcento = formato.porcentagem(do_livro.acerto, casas=0)
         # **O nome curto, e o mesmo de `Procedencia.frase`**: o caminho inteiro de um livro do
         # acervo tem 80 caracteres, e escrito aqui ele empurra o número para fora da janela.
-        partes.append(f"{nome_curto(do_livro.livro) or 'acervo'}: {porcento} em {do_livro.total} lance(s)")
+        linha = f"{nome_curto(do_livro.livro) or 'acervo'}: {porcento} em {do_livro.total} lance(s)"
+        if do_livro.perda:
+            linha += f", perde {regua.peoes(round(do_livro.perda_media))} por lance"
+        partes.append(linha)
     return " · ".join(partes)
 
 

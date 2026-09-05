@@ -17,6 +17,28 @@ from chess_diagram_ocr.ui import analise_da_partida as regua
 from chess_diagram_ocr.ui import treino_declarado as declarado
 
 
+class MesmoLanceTests(unittest.TestCase):
+    """A comparação de lance, que era de cadeia crua (S-541, r2)."""
+
+    def test_o_xeque_no_gabarito_nao_faz_o_lance_certo_virar_erro(self) -> None:
+        """**O caso é comum e ele reprovava a resposta certa.** O gabarito é guardado como o livro
+        o imprimiu -- `Ra8+` num lance que na verdade dá mate --, e o que a tela tem em mãos é o
+        SAN que o `chess` escreve a partir do tabuleiro, `Ra8#`. Com `==`, quem joga o lance do
+        livro conta erro, o exercício volta amanhã como "não sabido", e a repetição espaçada passa
+        a medir a grafia."""
+        self.assertTrue(declarado.mesmo_lance("Ra8#", "Ra8+"))
+        julgamento = declarado.classificar_o_lance("Ra8#", "Ra8+")
+        self.assertEqual(placar_mod.CERTO, julgamento.resultado)
+
+    def test_o_juizo_do_autor_tambem_e_aparado(self) -> None:
+        self.assertTrue(declarado.mesmo_lance("Qxh7+", "Qxh7+!!"))
+
+    def test_um_lance_parecido_continua_sendo_outro_lance(self) -> None:
+        """A aparagem é só de `DECORACAO`: `Nbd2` e `Nfd2` são dois cavalos, e `exd5` não é `d5`."""
+        self.assertFalse(declarado.mesmo_lance("Nbd2", "Nfd2"))
+        self.assertFalse(declarado.mesmo_lance("d5", "exd5"))
+
+
 class ClassificacaoTests(unittest.TestCase):
     """Os três baldes, e o corte que os separa."""
 
@@ -160,6 +182,36 @@ class FrasesTests(unittest.TestCase):
 
         self.assertIn("Nada para revisar", declarado.frase_da_agenda(Agenda()))
 
+    def test_a_fila_vazia_de_quem_ja_revisou_tudo_diz_quando_o_material_volta(self) -> None:
+        """**As duas filas vazias não são o mesmo problema** (S-540, r2). "Nada para revisar"
+        servia tanto a quem não extraiu exercício nenhum quanto a quem já revisou tudo hoje -- e a
+        segunda pessoa precisa saber **quando** o material volta, não que ele sumiu. A frase dizia
+        "extraia as táticas de outro livro" sobre uma coleção de 1.500 exercícios já extraídos."""
+        from datetime import date
+
+        from chess_diagram_ocr.revisao_espacada import Agenda
+
+        frase = declarado.frase_da_agenda(Agenda(), volta_em=date(2026, 9, 8), colecao=1500)
+        self.assertIn("08/09/2026", frase)
+        self.assertIn("1.500", frase)
+        self.assertNotIn("extraia", frase.lower())
+
+    def test_o_fim_da_sessao_resume_o_que_se_fez(self) -> None:
+        """**Uma sessão que acaba sem resumo acaba sem resultado** (S-540/S-541, r2). A tela dizia
+        "Fila de hoje concluída" ao lado de uma agenda que continuava anunciando os três
+        exercícios de meia hora atrás, e o placar da sessão sumia junto com o último exercício."""
+        sessao = placar_mod.PlacarDoLivro(certos=7, equivalentes=1, errados=2, perda=300)
+        frase = declarado.frase_do_fim(4, sessao)
+        self.assertIn("4 exercício(s)", frase)
+        self.assertIn("8 de 10", frase)
+        self.assertIn("80%", frase)
+        self.assertIn("0,30", frase, "a perda média por lance é a metade que faltava")
+
+    def test_o_fim_sem_lance_nenhum_nao_inventa_porcentagem(self) -> None:
+        frase = declarado.frase_do_fim(0, placar_mod.PlacarDoLivro())
+        self.assertIn("nenhum lance jogado", frase)
+        self.assertNotIn("%", frase)
+
     def test_a_agenda_separa_vencidos_de_novos(self) -> None:
         from chess_diagram_ocr.revisao_espacada import Agenda
 
@@ -178,6 +230,20 @@ class FrasesTests(unittest.TestCase):
         self.assertIn("sessão: 7 de 9", frase)
         self.assertIn("Reinfeld 1001", frase)
         self.assertIn("214 lance(s)", frase)
+
+    def test_a_perda_media_aparece_na_linha_do_livro(self) -> None:
+        """**Ela era calculada e nunca mostrada** (S-541, r2). Sem ela, "78%" trata igual quem erra
+        dois lances de 60 centipeões e quem larga a dama duas vezes -- a mesma distinção que a
+        S-537 faz entre imprecisão e erro grave, aqui contada sobre o livro inteiro."""
+        sessao = placar_mod.PlacarDoLivro(certos=1)
+        livro = placar_mod.PlacarDoLivro(livro="Reinfeld 1001", certos=50, errados=50, perda=6200)
+        self.assertIn("perde 0,62 por lance", declarado.frase_do_placar(sessao, livro))
+
+    def test_sem_motor_a_linha_do_livro_nao_finge_perda_zero(self) -> None:
+        """Sem motor a perda é sempre zero, e um `perde 0,00` fixo mentiria por omissão."""
+        sessao = placar_mod.PlacarDoLivro(certos=1)
+        livro = placar_mod.PlacarDoLivro(livro="Reinfeld 1001", certos=50, errados=50)
+        self.assertNotIn("perde", declarado.frase_do_placar(sessao, livro))
 
     def test_o_gabarito_sai_com_a_procedencia(self) -> None:
         frase = declarado.frase_do_gabarito(("Qxh7+", "Kxh7"), "Reinfeld 1001, p. 63, exercício 214")
@@ -273,6 +339,23 @@ class PlacarTests(unittest.TestCase):
     def test_arquivo_ilegivel_nao_derruba_a_sala(self) -> None:
         self.caminho.write_text("{isto não é json", encoding="utf-8")
         self.assertEqual({}, placar_mod.carregar(caminho=self.caminho).livros)
+
+    def test_o_placar_lembra_de_onde_veio_e_volta_para_la(self) -> None:
+        """**A origem existe porque o placar atravessa uma janela que não sabe o caminho dele**
+        (S-541, r2). A sala carrega de `pasta_de_treino/placar.json` e passa o objeto para a janela
+        de treino, que conta os lances; sem a origem, `gravar` cairia em `CAMINHO_PADRAO` -- em
+        `data/placar.json`, que ninguém relê -- e o arquivo da pasta nunca nasceria."""
+        placar = placar_mod.carregar(caminho=self.caminho)
+        self.assertEqual(self.caminho, placar.origem, "vale mesmo sem o arquivo existir ainda")
+        placar.registrar("um.pdf", placar_mod.CERTO)
+        self.assertEqual(self.caminho, placar_mod.gravar(placar))
+        self.assertTrue(self.caminho.exists())
+        self.assertEqual(1, placar_mod.carregar(caminho=self.caminho).do_livro("um.pdf").certos)
+
+    def test_placar_que_nao_veio_do_disco_nao_tem_origem(self) -> None:
+        """`None` é o placar de um teste ou de quem treina numa posição colada à mão: quem grava
+        sem destino explícito precisa saber que não há para onde voltar."""
+        self.assertIsNone(placar_mod.Placar().origem)
 
 
 if __name__ == "__main__":  # pragma: no cover
