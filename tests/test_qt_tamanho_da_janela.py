@@ -884,7 +884,12 @@ class RodapeNaoEPisoDeJanelaTests(unittest.TestCase):
         janela._dizer(frase)  # type: ignore[attr-defined]
         self.app.processEvents()
         zona = janela.rodape._lbl_mensagem  # type: ignore[attr-defined]
-        zona.setFixedWidth(zona.width())
+        # **Travar a largura não basta, e foi assim que esta guarda nasceu vácua** (S-552,
+        # sétima rodada). Aplicar a pele muda a altura do rótulo de 22 para 24 px, o
+        # `resizeEvent` dispara por causa disso, e `_reescrever` refaz o recorte sozinha --
+        # de modo que o teste passava com e sem `_repintar_mensagem`. Travar os dois lados é
+        # o que deixa a repintura ser a única coisa que pode refazer o recorte.
+        zona.setFixedSize(zona.width(), zona.height())
         self.app.processEvents()
         antes = zona.text()
         maior = QFont(zona.font())

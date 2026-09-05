@@ -1257,6 +1257,18 @@ completado.
 | Sem Elo máximo, sem número de lances, sem rodada | Registrado em "O que ficou de fora" com o custo de cada um; nenhum foi feito |
 
 
+### Setima rodada: a guarda do Elo tinha o docstring certo e o dado errado
+
+Um critico trocou `min(welo, belo)` por `max` em `games_index.py` e a suite inteira ficou verde
+-- 5.704 passando, zero falhas. A guarda existia (`test_o_elo_minimo_e_o_menor_dos_dois`) e o
+docstring dela nomeava exatamente o caso ("uma partida de 2835 contra 2180 nao e uma partida de
+2700"), mas **as doze partidas da base de teste sao 2835/2773 ou 2210/2180**: os dois lados sempre
+do mesmo lado do corte, onde `min` e `max` devolvem os mesmos nove.
+
+O par que o docstring cita entrou num indice proprio dentro do teste, para nao mexer nas contagens
+que as outras onze asserçoes da classe cravam. E a licao esta no nome: **um docstring que descreve
+o caso nao prova que o caso foi medido.**
+
 ## S-534 · Classificação ECO embutida, gravada no índice e mostrada na sala — ✅ **implementada em 2026-09-04**
 
 ### Problema
@@ -5425,6 +5437,26 @@ O `1549 != 1000` mostra outra coisa de passagem: naquela ordem de execução o p
 
 A suíte foi de **5.700 para 5.705** testes, e a catraca de `qt/janela.py` continua em **2.009**:
 nenhuma linha de código mudou.
+
+### Setima rodada: a guarda que passava com e sem o conserto
+
+O critico reverteu as seis guardas da rodada anterior **uma de cada vez**, num clone limpo, e
+cinco acusaram. A sexta -- `test_a_troca_de_pele_refaz_a_elisao` -- passava nos dois estados.
+
+O motivo e do genero desta base, e vale mais que o conserto: o teste travava a **largura** da zona
+para que so a repintura pudesse refazer o recorte, e aplicar a pele muda a **altura** do rotulo de
+22 para 24 px. O `resizeEvent` disparava por causa da altura, `_reescrever` refazia o recorte
+sozinha, e a guarda ficava verde sobre o defeito. `setFixedSize` nos dois lados fecha, e o defeito
+volta a acusar (`51 not less than 51`).
+
+E a linha da tabela de reversoes que creditava "1 falha" a essa reversao **so valia com o
+`models/piece_classifier.pt` no disco**; em clone limpo, que e o regime que o `CONTRIBUTING.md`
+promete, ela era **zero**. A tabela foi corrigida.
+
+**O mecanismo e hoje inalcancavel pelo produto, e isso fica escrito**: medidas na janela de
+verdade, as tres peles usam Segoe UI 9 pt -- so a densidade muda entre elas, e densidade mexe na
+largura, que ja reelide pelo `resizeEvent`. A repintura na troca de pele existe para a pele que
+trocar de **fonte**, e a guarda e o que impede que ela seja apagada antes disso.
 
 ## S-553 · O foco de teclado se vê — ✅ **implementada em 2026-09-04**
 

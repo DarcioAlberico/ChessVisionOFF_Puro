@@ -1037,9 +1037,32 @@ class BuscaTests(unittest.TestCase):
 
     def test_o_elo_minimo_e_o_menor_dos_dois(self) -> None:
         """"Elo mínimo 2700" pergunta pelo **nível da partida**: uma partida de 2835 contra 2180
-        não é uma partida de 2700."""
+        não é uma partida de 2700.
+
+        **A base da classe não contém o par que este docstring cita, e por isso ele ganhou índice
+        próprio.** Os doze jogos dela são 2835/2773 ou 2210/2180 -- os dois lados do mesmo lado do
+        corte --, e ali `min` e `max` devolvem os mesmos nove. Um crítico trocou `min` por `max` em
+        `games_index` e a suíte inteira ficou verde: a guarda existia, o docstring nomeava o caso, e
+        o dado que o separa não estava em lugar nenhum. O par abaixo é o do docstring, e é o que faz
+        a asserção discordar das duas leituras.
+        """
         self.assertEqual(9, buscar(Filtro(elo_minimo=2700), self.base, self.indice).total)
         self.assertEqual(0, buscar(Filtro(elo_minimo=2900), self.base, self.indice).total)
+
+        with tempfile.TemporaryDirectory() as pasta:
+            raiz = Path(pasta)
+            base = raiz / "desigual.pgn"
+            base.write_text(
+                _partida(branco="Forte, A", preto="Fraco, B", data="2019.03.01", welo="2835", belo="2180", eco="B90")
+                + _partida(branco="Forte, A", preto="Forte, C", data="2019.03.02", welo="2835", belo="2773", eco="B90"),
+                encoding="utf-8",
+            )
+            indice = raiz / "desigual.sqlite"
+            build_index(base, indice)
+            resposta = buscar(Filtro(elo_minimo=2700), base, indice)
+            self.assertEqual(1, resposta.total, "a partida de 2835 contra 2180 entrou num filtro de 2700")
+            self.assertEqual(["Forte, A"], [a.brancas for a in resposta.achados])
+            self.assertEqual("Forte, C", resposta.achados[0].pretas)
 
     def test_a_partida_sem_elo_nao_entra_no_filtro_de_elo(self) -> None:
         """Uma partida em que um dos lados não tem Elo não pode afirmar nível nenhum."""
