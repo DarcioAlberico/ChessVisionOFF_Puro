@@ -4441,7 +4441,7 @@ teste de cada uma seguia verde medindo a decisão sozinha. A guarda que faltava 
 
 _não houve rodada: seção escrita a posteriori (S-550)_
 
-## S-551 · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move — ✅ **implementada em 2026-09-04** (quinta rodada, 2026-09-05: a coluna que encolhe devolve o piso à leitura)
+## S-551 · A coluna do tabuleiro cresce pela altura, e o divisor da sala se move — ✅ **implementada em 2026-09-04** (quinta rodada, 2026-09-05: a coluna que encolhe devolve o piso à leitura; sexta: a guarda passou a ser contra a janela montada)
 
 ### Problema
 
@@ -4716,7 +4716,39 @@ coluna, e no aperto ele cede junto, como já cedia); crescendo, a régua continu
 a direita, com o caso de 1400×950 e o número dele; e sem `largura_anterior` a resposta é a de antes,
 que é o que mantém o argumento com padrão honesto.
 
-## S-552 · A janela cabe em 1024 px de largura — ✅ **implementada em 2026-09-04; fechada em 2026-09-05** (quinta rodada: a frase do rodapé deixou de ser piso da janela, e a repartição preferida vale ao redimensionar)
+### O que o crítico recusou na rodada 6 (2026-09-05): a correção estava certa, a guarda era vácua
+
+**O crítico aprovou o produto** — o degrau fechado, corte 0 nas 90 células de medição, `--selftest`
+saindo 0, a suíte verde, `ruff` e `mypy` limpos — e **reprovou a guarda**, com o reprodutor na mão:
+
+> Tirando `self._largura_acomodada = largura` de `qt/painel_de_estudo.py:732`, a coluna de leitura
+> volta a cair de 203 para **183 px** depois de 1400 → 1600 → 1400, e a suíte fica **5.703 verdes,
+> zero falhas**.
+
+`ColunaQueEncolheTests` (puro) prova que a régua sabe o que fazer com `largura_anterior`; **nada
+provava que o painel lhe passa esse argumento**. Uma guarda que passa em verde sobre o defeito é
+pior que guarda nenhuma, e esta seção tinha a metade pura de uma decisão de duas metades.
+
+**A guarda nova é contra a janela montada**: `tests/test_qt_tamanho_da_janela.py::
+ColunaQueEncolheNaJanelaTests`, dois ciclos (1400↔1600 e 1920↔2120), cobrando que a coluna de
+leitura volte ao piso que `piso_da_leitura` declara **para a largura de então** — lido na hora,
+porque numa sala apertada esse piso cede abaixo dos 210, como ele sempre cedeu.
+
+**Duas coisas precisam ser reproduzidas para a medição não ser do Qt em vez do painel**, e as duas
+estão medidas no arquivo de teste:
+
+| o que `offscreen` responde | o que a janela de verdade faz | como o teste reproduz |
+|---|---|---|
+| a coluna de leitura **pede 262 px**, acima do teto — e aí o `setMinimumWidth` do próprio painel a segura, e o `QSplitter` não tem de onde tomar | sem motor ela pede **136 px** | esvazia os títulos dos `QGroupBox` e baixa o mínimo da lista e do comentário (é a mesma receita de `SalaA1024SemMotorTests`) |
+| o mínimo que a **coluna do tabuleiro** declara sobe de 343 para **369 px** depois de a janela ter sido larga, e não desce mais: de volta a 1400 sobram 197 px numa sala de 566, abaixo dos 210 da régua | ela pede ~280 px numa sala de ~700, e essa folga nunca é quem manda | solta o mínimo dela (`divisor.widget(0).setMinimumWidth(1)`) |
+
+**A guarda foi conferida contra o estado defeituoso** (a tabela das reversões está na rodada 6 da
+S-552): tirada a linha `self._largura_acomodada = largura`, ela acusa **nos dois ciclos** — na
+suíte inteira, `173 not greater than or equal to 210` e `190 not greater than or equal to 210`.
+Os pixels exatos dependem do que rodou antes no mesmo processo, como todo número de largura sob
+`offscreen`; o que não depende é a comparação, porque os dois lados dela são lidos na hora.
+
+## S-552 · A janela cabe em 1024 px de largura — ✅ **implementada em 2026-09-04; fechada em 2026-09-05** (quinta rodada: a frase do rodapé deixou de ser piso da janela, e a repartição preferida vale ao redimensionar; sexta: as guardas que faltavam)
 
 ### Problema
 
@@ -5128,7 +5160,7 @@ em `qt/rodape.py`:
 | peça | o que ela faz | medido |
 |---|---|---|
 | **teto declarado de exigência** | `sizeHint` e `minimumSizeHint` param de falar do texto e passam a falar da zona; a largura de fato continua vindo do esticamento, que é o que sempre decidiu quem cede espaço no rodapé | o mínimo do rótulo foi de **614 px** (120 caracteres) e 10014 (2.000) para **100** |
-| **elisão à direita** (`QFontMetrics.elidedText`), refeita no `resizeEvent` | o que está na tela é um prefixo da frase mais a reticência | a 1024 a zona mostra **105 de 377** caracteres; a 1400, **177 de 377** |
+| **elisão à direita** (`QFontMetrics.elidedText`), refeita no `resizeEvent` e na troca de pele | o que está na tela é um prefixo da frase mais a reticência | **com um livro aberto**, que é o estado em que o erro acontece, a 1024 a zona tem 204 px e mostra **39 de 434** caracteres (8%); a 1400, 580 px e 103 — ver a rodada 6 |
 | **a frase inteira na dica** | elidir sem isso seria esconder a instrução em vez de encurtá-la | os 377 caracteres, sempre; e frase que coube não deixa dica |
 
 **Elisão à direita e não no meio, e é o item.** Numa frase de erro o começo é o que a classifica --
@@ -5139,8 +5171,8 @@ em `qt/rodape.py`:
 `FOLGA_ENTRE_ZONAS` e `LARGURA_DA_BARRA`, pela razão daqueles dois: os dois frontends desenham o
 mesmo rodapé. O número é a maior das `MARCAS_DE_ERRO` -- `"não foi possível"` --, que mede **82 px**
 na fonte `CORPO` das três peles e 91 com a reticência, mais a folga do arredondamento. **Ele não
-sobe o piso da janela**, e é o que o faz teto e não exigência nova: o resto do rodapé pede 443 px, e
-443 + 100 continua abaixo dos 945 que o divisor já exige.
+sobe o piso da janela**, e é o que o faz teto e não exigência nova -- remedido por pele na rodada 6,
+porque um número não serve às três.
 
 **`mensagem()` passou a devolver a frase inteira** e não o que coube. O que está na tela é
 `_lbl_mensagem.text()`; um roteiro que lesse a tela -- o do `CONTRIBUTING.md` -- passaria a afirmar
@@ -5220,6 +5252,10 @@ caracteres (`scratchpad/exec5/fotos5/`, 12 imagens):
 | "Foco" | 955×587 | 1024×768 | 1400×950 | 105 / 177 |
 | "Fita" | 945×582 | 1024×768 | 1400×950 | 107 / 179 |
 
+⚠ **A última coluna foi medida sem documento aberto**, que é justamente o estado em que o erro não
+acontece: com um livro na tela a zona da mensagem cede à zona do documento e cai a **204 px**. A
+tabela remedida está na rodada 6.
+
 O piso é **o mesmo com frase curta e com frase de erro**, que é o item; e o divisor fica em
 `[500, 519]` a 1024 e `[720, 675]` a 1400 nas três peles.
 
@@ -5289,6 +5325,106 @@ O piso é **o mesmo com frase curta e com frase de erro**, que é o item; e o di
 - A catraca de `qt/janela.py` foi de **1.956 para 2.009** linhas, com o motivo no docstring de
   `tests/test_packaging.py`: 32 de docstring e 21 de código, e a decisão continua sendo a mesma
   função pura que o `showEvent` já chamava.
+
+### O que o crítico recusou na rodada 6 (2026-09-05): duas correções voltariam com a suíte verde
+
+**O crítico aprovou o produto da rodada 5** — o bloqueio do rodapé fechado, as duas linhas de spec
+viradas estado, nenhuma regressão em 90 células de medição, `--selftest` saindo 0, a suíte verde,
+`ruff` e `mypy` limpos — e **reprovou as guardas**. Nenhuma linha de **código** mudou nesta rodada
+— só testes, esta spec e o docstring de `LARGURA_MINIMA_DA_MENSAGEM`, que carregava um número
+medido numa pele e comparado com o piso de outra. O que mudou foi o que a suíte é capaz de recusar.
+
+#### Bloqueio: a fiação do divisor de fábrica não tinha guarda
+
+Trocando `_divisor_de_fabrica = not self._estado.sash_fraction` (`qt/janela.py:296`) por `True`, a
+fração que a sessão anterior gravou **sobrevive ao `show()`** — quem a aplica ali é o `showEvent`,
+que roda de qualquer jeito — e **morre no primeiro redimensionamento**: 0,30 vira os 720 px de
+fábrica a 1600. A suíte inteira ficava verde, e as duas guardas explicam por quê:
+
+| guarda | por que ela não via |
+|---|---|
+| `test_a_fracao_guardada_no_disco_tambem_desliga` | cravava `_estado.sash_fraction` **e** `_divisor_de_fabrica` à mão — os dois lados da fiação sob teste |
+| `test_o_divisor_arrastado_volta_no_lugar` | afirmava a fração **antes** do primeiro `resize` da segunda janela |
+
+As duas passaram a exercitar o caminho inteiro. A primeira monta a janela sobre um `estado.json`
+que **traz a fração no disco**, e afirma depois do `resize`; a segunda redimensiona a segunda
+janela para 2600 px e reafirma a fração ali. **E a janela de prova nasce larga (2200 px)**: sob
+`offscreen` os dois lados estão no piso a 1400 — o do livro pede 810 —, o `QSplitter` grampeia
+qualquer fração pedida, e os dois regimes respondem o mesmo número.
+
+#### Média: a invariante que a spec nomeia não era afirmada por ninguém
+
+*"A frase do rodapé não sobe o piso da janela"* era a razão declarada de
+`LARGURA_MINIMA_DA_MENSAGEM` ser teto e não exigência nova, e a constante podia ir a **900** com só
+um teste de elisão caindo. Remedido na janela de verdade a 1024×768, por pele — **um número não
+serve às três**, e a spec tinha um só:
+
+| pele | resto do rodapé (sem a zona) | piso do divisor | maior zona sem subir o piso | folga sobre os 100 |
+|---|---|---|---|---|
+| clássica | **443 px** | 955 | 512 | 412 |
+| "Foco" | **443 px** | 955 | 512 | 412 |
+| "Fita" | **431 px** | 945 | 514 | 414 |
+
+O "443 px" que estava escrito é a clássica e a "Foco"; a "Fita" pede 431, e o `945` com que ele
+estava comparado é o piso *da "Fita"*. A guarda nova
+(`RodapeNaoEPisoDeJanelaTests::test_a_zona_declarada_cabe_na_folga_do_rodape_nas_tres_peles`) mede o
+resto em vez de cravá-lo — encolhe a zona a 1 px e desconta esse pixel — e cobra
+`resto + LARGURA_MINIMA_DA_MENSAGEM < piso do divisor` nas três peles.
+
+#### A zona da mensagem foi medida no estado em que o erro não acontece
+
+A tabela da rodada 5 diz "105 de 377 caracteres" a 1024, e foi medida **sem documento aberto**. Com
+um livro na tela a zona do documento ocupa 76 caracteres do rodapé, e a da mensagem cede. Remedido
+com a frase de erro de modelo ausente repetida (**434 caracteres**), nas três peles:
+
+| pele | 1024 sem livro | 1024 **com livro** | 1400 com livro | 1920 com livro |
+|---|---|---|---|---|
+| clássica | 581 px, 103 c (23%) | **204 px, 39 c (8%)** | 580 px, 103 c | 1100 px, 199 c |
+| "Foco" | 581 px, 103 c | **204 px, 39 c (8%)** | 580 px, 103 c | 1100 px, 199 c |
+| "Fita" | 593 px, 106 c | **216 px, 41 c (9%)** | 592 px, 105 c | 1112 px, 202 c |
+
+**O que a zona mostra a 1024 com livro é `"Não foi possível carregar o classifica…"`** — a
+severidade e o que falhou, e nada do caminho. A instrução inteira está na dica, que é o que a
+elisão promete; o número que a spec dava (105 de 377) descrevia outra tela.
+
+#### Duas guardas baixas que faltavam
+
+- **A elisão não era refeita na troca de pele sem guarda.** `_repintar_mensagem` reelide pela mesma
+  razão que repinta a cor — as duas foram resolvidas na hora de escrever, e a hora de escrever
+  passou —, e tirar a reelisão deixava a suíte verde.
+  **O regime precisa ser reproduzido**: sob `offscreen` não há as fontes das peles, e o que muda
+  entre elas é só a densidade — que mexe na *largura* da zona e por aí dispara o `resizeEvent`, que
+  reelidiria sozinho. `test_a_troca_de_pele_refaz_a_elisao` trava a largura da zona e troca a fonte
+  à mão (afirmando antes que a troca de fonte sozinha **não** refaz o recorte), e só então troca de
+  pele.
+- **A FEN da sala recém-aberta não era afirmada.** A guarda da rodada 5 empurra um lance e mede
+  depois do `refresh`; quem abre a sala e não toca em nada nunca era medido.
+  `test_a_sala_recem_aberta_ja_mostra_o_comeco_da_fen` mede esse estado.
+  ⚠ **E ele mostrou que o `setCursorPosition(0)` da montagem (`qt/painel_de_estudo.py:503`) é
+  redundante**: `PainelDeEstudo.__init__` chama `refresh()` logo depois de `_montar()`, e o
+  `setText` de lá reescreve o campo e reposiciona o cursor. Tirar só a linha da montagem não muda
+  nada na tela e nenhuma guarda pode acusá-la — a guarda nova acusa quando as **duas** saem. A
+  linha ficou onde estava; retirá-la é decisão de quem coordena, não desta rodada.
+
+#### As guardas novas conferidas contra o estado defeituoso
+
+Uma correção revertida de cada vez, suíte inteira (`--deselect tests/test_environment.py`):
+
+| reversão | falhas | o que acusa |
+|---|---|---|
+| `self._largura_acomodada = largura` fora (`qt/painel_de_estudo.py:732`) | **2** (os dois subtestes de uma guarda) | `173 not greater than or equal to 210` e `190 …`, um por ciclo |
+| `_divisor_de_fabrica = True` (`qt/janela.py:296`) | **2** | `0,60 != 0,42` depois do `resize`, nas duas guardas corrigidas — e em nenhuma outra |
+| `LARGURA_MINIMA_DA_MENSAGEM = 900` | **4** | `1549 != 1000 : a zona declarada já está segurando o piso da janela` nas três peles, mais `ZonaDaMensagemTests::test_alargada_a_zona_mostra_o_que_passou_a_caber` |
+| `_repintar_mensagem` sem reelidir (`qt/rodape.py`) | **1** | `31 not less than 31` — o recorte ficou na fonte da pele anterior |
+| o `setCursorPosition(0)` da montagem fora (`:503`) | **0** | ele é redundante — ver acima |
+| os **dois** `setCursorPosition(0)` fora (`:503` e o do `refresh`) | **2** | `0 != 49` na guarda nova e `0 != 51` na da rodada 5 |
+
+O `1549 != 1000` mostra outra coisa de passagem: naquela ordem de execução o piso do divisor sob
+`offscreen` era **1000**, e não os 1314 do arquivo rodando sozinho — é o regime duplo que a rodada
+5 já registrou. A guarda acusa nos dois, porque os dois lados da comparação são lidos na hora.
+
+A suíte foi de **5.700 para 5.705** testes, e a catraca de `qt/janela.py` continua em **2.009**:
+nenhuma linha de código mudou.
 
 ## S-553 · O foco de teclado se vê — ✅ **implementada em 2026-09-04**
 

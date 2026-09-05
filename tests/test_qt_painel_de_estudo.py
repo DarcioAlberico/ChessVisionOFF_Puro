@@ -295,6 +295,29 @@ class SalaTests(unittest.TestCase):
             "o campo rolou para a direita e o começo da FEN saiu da tela",
         )
 
+    def test_a_sala_recem_aberta_ja_mostra_o_comeco_da_fen(self) -> None:
+        """**Antes de qualquer lance**, e é a metade que faltava (S-552, sexta rodada).
+
+        A guarda vizinha empurra um lance e mede o campo depois de `refresh`; quem abre a sala e
+        não toca em nada vê o campo que a **montagem** escreveu, e é esse estado que ninguém
+        afirmava. A posição inicial tem 56 caracteres e a caixa estreita rola até o cursor, que
+        `setText` deixa no fim -- o que se lê então é `w KQkq - 0 1` no lugar da fileira 8.
+
+        **A régua é o caractere que está no pixel 1**, como na vizinha: é o deslocamento do texto
+        que se vê, e não onde o cursor está.
+        """
+        painel = self.sala()
+        painel.campo_fen.setFixedWidth(90)
+        self.app.processEvents()
+        texto = painel.campo_fen.text()
+        self.assertTrue(texto.startswith("rnbqkbnr/"), texto)
+        meio = painel.campo_fen.height() // 2
+        self.assertEqual(
+            0,
+            painel.campo_fen.cursorPositionAt(QPoint(1, meio)),
+            "a sala recém-aberta já mostrava o fim da FEN, e não o começo",
+        )
+
     def test_a_geracao_cresce_a_cada_mudanca_de_no(self) -> None:
         """É ela que descarta a resposta atrasada do motor, e ela cresce em `refresh` -- o único
         ponto por onde toda mudança de nó passa (S-285)."""

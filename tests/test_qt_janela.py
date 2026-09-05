@@ -1013,6 +1013,20 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         self.app.processEvents()
         self.assertAlmostEqual(arrastado, _fracao(segunda), places=2)
         self.assertGreater(segunda.width(), 2000, "a geometria da sessao anterior nao voltou")
+        # **E ela continua ali depois do primeiro redimensionamento** (S-552, sexta rodada). Ate
+        # esta rodada o teste parava na linha de cima, e ali a fracao guardada ainda esta viva mesmo
+        # sem a fiacao: quem a poe e o `showEvent`, que roda de qualquer jeito. O que a fiacao
+        # (`_divisor_de_fabrica = not self._estado.sash_fraction`) decide e o **resize** seguinte --
+        # trocada por `True`, a escolha da sessao anterior era substituida pelos 720 px preferidos
+        # no primeiro arrasto de borda, e a suite inteira ficava verde.
+        segunda.resize(2600, 1000)
+        self.app.processEvents()
+        self.assertAlmostEqual(
+            arrastado,
+            _fracao(segunda),
+            places=2,
+            msg="a fracao arrastada morreu no primeiro redimensionamento da sessao seguinte",
+        )
 
     def test_a_geometria_guardada_e_a_de_fora_do_maximizado(self) -> None:
         """`normalGeometry` é o que substitui a recusa do `1x1+-32000+-32000` do Tk (S-156)."""

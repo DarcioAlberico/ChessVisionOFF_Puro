@@ -34,10 +34,18 @@ from qt_app import MOTIVO, TEM_PYQT, aplicacao, cor_em, descartar, renderizar
 from test_engine import _launcher
 
 from chess_diagram_ocr.engine import EngineAnalyzer
-from chess_diagram_ocr.ui import galeria_declarada, geometria, pele, sala_declarada
+from chess_diagram_ocr.ui import (
+    estado_do_rodape,
+    galeria_declarada,
+    geometria,
+    pele,
+    sala_declarada,
+    state,
+)
 
 if TEM_PYQT:
     from PyQt6.QtCore import QPoint, Qt
+    from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import QGroupBox, QPushButton
 
     from chess_diagram_ocr.qt import janela as qt_janela
@@ -817,6 +825,86 @@ class RodapeNaoEPisoDeJanelaTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(sem_frase, janela.width(), "a frase longa recusou o tamanho pedido")  # type: ignore[attr-defined]
 
+    def test_a_zona_declarada_cabe_na_folga_do_rodape_nas_tres_peles(self) -> None:
+        """**A invariante que a S-552 nomeia, e que ninguém afirmava** (sexta rodada).
+
+        *"Ele não sobe o piso da janela"* é o que faz de `LARGURA_MINIMA_DA_MENSAGEM` um teto e não
+        uma exigência nova, e era uma frase de spec sem guarda: a constante podia ir a 900 e só um
+        teste de elisão caía. Medido na janela de verdade a 1024x768, o resto do rodapé pede **443
+        px** (clássica e "Foco") e **431** ("Fita"); o piso do divisor é **955** e **945**. A zona
+        pode pedir até **512** px (514 na "Fita") antes de o piso subir, e ela pede 100.
+
+        **Os dois lados são medidos e não cravados**, e é o que faz a guarda valer nas duas ordens
+        de execução. O resto do rodapé sai de encolher a zona a 1 px e descontar esse pixel -- quem
+        o compõe, as três outras zonas mais a barra e o botão, muda de largura com a fonte e com a
+        densidade --, e o piso do divisor é o do arquivo rodando sozinho (1314 px) ou o da suíte
+        inteira (1000), conforme o refluxo da fila de botões do PDF já tenha acontecido. Sob
+        `offscreen` o resto é 693 px, e um literal de qualquer um dos dois lados seria uma guarda
+        que acusa em metade das corridas.
+        """
+        for uma in pele.PELES:
+            with self.subTest(pele=uma.nome):
+                janela = self.janela_na(uma)
+                zona = janela.rodape._lbl_mensagem  # type: ignore[attr-defined]
+                declarado = zona.minimumWidth()
+                self.assertEqual(estado_do_rodape.LARGURA_MINIMA_DA_MENSAGEM, declarado)
+                piso_com_a_zona = janela.minimumSizeHint().width()  # type: ignore[attr-defined]
+                zona.setMinimumWidth(1)
+                self.app.processEvents()
+                resto = janela.rodape.minimumSizeHint().width() - 1  # type: ignore[attr-defined]
+                self.assertEqual(
+                    piso_com_a_zona,
+                    janela.minimumSizeHint().width(),  # type: ignore[attr-defined]
+                    "a zona declarada já está segurando o piso da janela",
+                )
+                zona.setMinimumWidth(declarado)
+                self.app.processEvents()
+                self.assertLess(
+                    resto + estado_do_rodape.LARGURA_MINIMA_DA_MENSAGEM,
+                    janela.divisor.minimumSizeHint().width(),  # type: ignore[attr-defined]
+                    "o rodapé com a zona declarada passou a pedir mais que o divisor",
+                )
+
+    def test_a_troca_de_pele_refaz_a_elisao(self) -> None:
+        """A pele nova traz outra fonte, e o que cabia na anterior pode não caber mais (S-393).
+
+        **A cor era resolvida na hora de escrever e nunca mais, e o recorte também.** A elisão é
+        refeita em `_repintar_mensagem` pela mesma razão que a cor: as duas foram resolvidas na
+        hora de escrever, e a hora de escrever passou. Sem ela a frase fica recortada na fonte da
+        pele anterior -- sobrando tarja vazia, ou estourando a zona -- e a suíte fica verde.
+
+        **O regime é reproduzido, e não afirmado por número.** Sob `offscreen` não há as fontes das
+        peles: as três respondem a mesma métrica, e o que muda entre elas é só a densidade -- que
+        mexe na *largura* da zona e, por aí, dispara o `resizeEvent`, que reelidiria sozinho. O
+        teste trava a largura e troca a fonte à mão, que é o que a pele de verdade faz: assim a
+        única coisa que pode refazer o recorte é a repintura.
+        """
+        janela = self.janela_na(pele.PELES[0])
+        frase = self.frase_de(600)
+        janela._dizer(frase)  # type: ignore[attr-defined]
+        self.app.processEvents()
+        zona = janela.rodape._lbl_mensagem  # type: ignore[attr-defined]
+        zona.setFixedWidth(zona.width())
+        self.app.processEvents()
+        antes = zona.text()
+        maior = QFont(zona.font())
+        maior.setPointSize(max(2, zona.font().pointSize()) * 2)
+        zona.setFont(maior)
+        self.app.processEvents()
+        self.assertEqual(antes, zona.text(), "a fonte sozinha já refez o recorte: o regime é outro")
+        outra = pele.PELES[-1]
+        tema.aplicar_tema(self.app, cromo_escuro=outra.cromo_escuro, densidade=outra.densidade)
+        self.app.processEvents()
+        self.assertLess(
+            len(zona.text()),
+            len(antes),
+            "a troca de pele não refez a elisão: a frase ficou recortada na fonte da pele anterior",
+        )
+        self.assertTrue(
+            frase.startswith(zona.text().rstrip("…")),
+            f"a elisão comeu o começo da frase: {zona.text()!r}",
+        )
+
     def test_a_frase_elidida_guarda_o_comeco_e_a_dica_traz_o_texto_inteiro(self) -> None:
         """**O começo é o que importa numa frase de erro**: é dele que sai a severidade, e é ele
         que diz o que falhou. O resto não some -- vai para a dica."""
@@ -832,6 +920,129 @@ class RodapeNaoEPisoDeJanelaTests(unittest.TestCase):
             frase.startswith(zona.text().rstrip("\u2026")),
             f"a elisão comeu o começo da frase: {zona.text()!r}",
         )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ColunaQueEncolheNaJanelaTests(unittest.TestCase):
+    """O ciclo de crescer e encolher devolve o piso à coluna de leitura (S-551, sexta rodada).
+
+    **A guarda que faltava, e é o defeito mais perigoso da base.** `ColunaQueEncolheTests`, em
+    `tests/test_ui_sala_declarada.py`, prova que a régua pura sabe o que fazer com
+    `largura_anterior`; nada provava que o painel **lhe passa** esse argumento. Tirada a linha
+    `self._largura_acomodada = largura` de `qt/painel_de_estudo.py`, o degrau da quinta rodada
+    volta -- a coluna de leitura cai de 203 para 183 px depois de 1400 -> 1600 -> 1400 -- e a suíte
+    inteira fica verde.
+
+    **Contra a janela montada, e não contra um painel solto.** É a armadilha que a S-551 já
+    registra duas vezes: fora da janela o painel não recebe a largura que a aba lhe daria, o
+    divisor sobra, e a mesma medição passa em verde com o defeito de pé.
+
+    **O regime é reproduzido, e não afirmado por número** -- é a mesma disciplina de
+    `SalaA1024SemMotorTests`. Sob `offscreen` não há a fonte da interface e a coluna de leitura pede
+    262 px, acima do teto de `LARGURA_MINIMA_DA_LEITURA`: com esse pedido o `setMinimumWidth` do
+    painel sozinho já impede o `QSplitter` de encolhê-la, e o degrau não aparece. O que a fonte de
+    verdade faz é a coluna pedir **menos** que o teto (136 px medidos na janela de verdade sem
+    motor), e é ali que o `QSplitter` tem para onde tomar. O teste encolhe o pedido e então cobra o
+    piso.
+
+    **E o piso cobrado é o que a régua declara para aquela largura**, lido na hora e não cravado:
+    numa coluna apertada `piso_da_leitura` cede abaixo dos 210 declarados, como ela sempre cedeu, e
+    um 210 literal mediria o aperto em vez do degrau.
+    """
+
+    CICLOS = ((1400, 1600), (1920, 2120))
+    """As duas idas e voltas que o crítico mediu na janela de verdade: a leitura ficava em 183 px
+    depois da primeira e em 190 depois da segunda, e estacionava ali."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        raiz = pasta_temporaria(self)
+        self.janela = qt_janela.JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=raiz / "rotulos.csv",
+            pasta_de_estudos=raiz / "estudos",
+            pasta_da_galeria=raiz / "galeria",
+            caminho_do_estado=raiz / "estado.json",
+            motor=None,
+        )
+        self.janela.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.addCleanup(descartar, self.janela)
+        self.janela.resize(self.CICLOS[0][0], 950)
+        self.janela.show()
+        self.app.processEvents()
+        self.sala = self.janela.estudo
+        for indice in range(self.janela.abas.count()):
+            if self.janela.abas.tabText(indice).replace("&", "").startswith("Estudo"):
+                self.janela.abas.setCurrentIndex(indice)
+                break
+        self.app.processEvents()
+        self.encolher_o_pedido_da_coluna()
+
+    def encolher_o_pedido_da_coluna(self) -> None:
+        """Põe a coluna a pedir menos que o teto -- que é o que a fonte de verdade faz.
+
+        **E solta o mínimo da coluna do tabuleiro, pela mesma razão.** Sob `offscreen` o mínimo
+        que ela própria declara *sobe* depois de a janela ter sido larga -- medido, de 343 para
+        369 px, e ele não desce mais --, e o `QSplitter` não pode dar à leitura mais do que a
+        outra coluna larga: de volta a 1400 sobram 197 px numa sala de 566, abaixo dos 210 que a
+        régua declara. Na janela de verdade a coluna do tabuleiro pede ~280 px numa sala de ~700 e
+        essa folga nunca é quem manda. Sem soltá-lo, o que este teste mediria é o mínimo do
+        vizinho, e não o degrau.
+        """
+        coluna = self.sala.divisor_vertical
+        for grupo in coluna.findChildren(QGroupBox):
+            if grupo.parentWidget() is coluna:
+                grupo.setTitle("")
+        self.sala.lista.setMinimumWidth(1)
+        self.sala.comentario.setMinimumWidth(1)
+        do_tabuleiro = self.sala.divisor.widget(0)
+        if do_tabuleiro is not None:
+            do_tabuleiro.setMinimumWidth(1)
+        self.app.processEvents()
+        self.sala._acomodar_o_tabuleiro()
+        self.app.processEvents()
+
+    def piso_de_agora(self) -> int:
+        """O piso que a régua declara para a coluna que a sala tem **neste** instante."""
+        return sala_declarada.piso_da_leitura(
+            sum(self.sala.divisor.sizes()),
+            minimo=self.sala._caixa_minima_do_tabuleiro(),
+            esteira=self.sala._esteira_da_coluna(),
+            alca=max(1, self.sala.divisor.handleWidth()),
+        )
+
+    def em(self, largura: int) -> int:
+        self.janela.resize(largura, 950)
+        self.app.processEvents()
+        return self.sala.divisor_vertical.width()
+
+    def test_a_coluna_pede_menos_que_o_teto_como_na_janela_de_verdade(self) -> None:
+        """O controle do arquivo: sem este regime o teste seguinte passa em verde com o defeito.
+
+        Com a coluna pedindo mais que o teto, o próprio `setMinimumWidth` do painel a segura e o
+        `QSplitter` não tem de onde tomar -- e o degrau, que é do lado que **cede**, não acontece.
+        """
+        pedido = self.sala.divisor_vertical.minimumSizeHint().width()
+        self.assertLess(pedido, self.piso_de_agora(), "o regime da janela de verdade não foi reproduzido")
+
+    def test_o_ciclo_de_crescer_e_encolher_devolve_o_piso_a_leitura(self) -> None:
+        """**A promessa é sobre pixel de tabuleiro, e ela estava guardada em fração.**
+
+        Encolhida a janela, o `QSplitter` reparte em proporção *antes* de a régua rodar: a fração de
+        uma coluna larga chega intacta a uma estreita e compra ali mais tabuleiro do que a estreita
+        tem para vender. Quem paga é a coluna de leitura, e ela não volta -- é um degrau, e não um
+        acúmulo.
+        """
+        for ida, volta in self.CICLOS:
+            with self.subTest(ciclo=f"{ida}->{volta}->{ida}"):
+                self.em(ida)
+                self.em(volta)
+                de_volta = self.em(ida)
+                self.assertGreaterEqual(
+                    de_volta,
+                    self.piso_de_agora(),
+                    "a coluna de leitura voltou abaixo do piso depois de a janela crescer e encolher",
+                )
 
 
 class ReparticaoAoRedimensionarTests(unittest.TestCase):
@@ -929,13 +1140,64 @@ class ReparticaoAoRedimensionarTests(unittest.TestCase):
         proporcao = self.janela.divisor.sizes()[0] / sum(self.janela.divisor.sizes())
         self.assertAlmostEqual(antes / largura, proporcao, places=1)
 
-    def test_a_fracao_guardada_no_disco_tambem_desliga(self) -> None:
-        """Uma fração que a sessão anterior gravou é escolha, e passa como veio (S-156)."""
-        self.janela._estado.sash_fraction = 0.25
-        self.janela._divisor_de_fabrica = False
-        self.janela.resize(1600, 950)
+    def janela_com_a_fracao_no_disco(self, fracao: float, largura: int) -> object:
+        """Uma janela que **lê do disco** aquela fração, e não uma com o atributo posto à mão.
+
+        **É a diferença entre esta versão e a que o crítico recusou** (S-552, sexta rodada). A
+        anterior cravava `_estado.sash_fraction` *e* `_divisor_de_fabrica` nos dois lados, que é
+        exatamente a fiação sob teste: trocada por `True` a linha
+        `_divisor_de_fabrica = not self._estado.sash_fraction` de `qt/janela.py`, a escolha da
+        sessão anterior morria no primeiro redimensionamento e a suíte inteira ficava verde.
+
+        **E a janela nasce larga.** A 1400 sob `offscreen` os dois lados estão no piso -- o do
+        livro pede 810 px -- e o `QSplitter` grampeia qualquer fração pedida: os dois regimes
+        respondem o mesmo número, e o que se mediria é o grampo.
+        """
+        raiz = pasta_temporaria(self)
+        caminho = raiz / "estado.json"
+        state.save_state(caminho, state.AppState(sash_fraction=fracao))
+        outra = qt_janela.JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=raiz / "rotulos.csv",
+            pasta_de_estudos=raiz / "estudos",
+            pasta_da_galeria=raiz / "galeria",
+            caminho_do_estado=caminho,
+            motor=None,
+        )
+        outra.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.addCleanup(descartar, outra)
+        outra.resize(largura, 950)
+        outra.show()
         self.app.processEvents()
-        self.assertNotEqual(self.preferida(), self.janela.divisor.sizes()[0])
+        return outra
+
+    def test_a_fracao_guardada_no_disco_tambem_desliga(self) -> None:
+        """Uma fração que a sessão anterior gravou é escolha, e passa como veio (S-156).
+
+        **A afirmação é depois do redimensionamento**, e é o que faltava: sem a fiação a fração
+        guardada sobrevive ao `show()` -- o `showEvent` a aplica de qualquer jeito -- e só morre no
+        primeiro `resize`, trocada pelos 720 px preferidos.
+        """
+        outra = self.janela_com_a_fracao_no_disco(0.60, 2200)
+        tamanhos = outra.divisor.sizes()  # type: ignore[attr-defined]
+        self.assertAlmostEqual(
+            0.60, tamanhos[0] / sum(tamanhos), places=2, msg="o `show()` não aplicou a fração do disco"
+        )
+        outra.resize(2600, 950)  # type: ignore[attr-defined]
+        self.app.processEvents()
+        tamanhos = outra.divisor.sizes()  # type: ignore[attr-defined]
+        self.assertAlmostEqual(
+            0.60,
+            tamanhos[0] / sum(tamanhos),
+            places=2,
+            msg="a escolha da sessão anterior morreu no primeiro redimensionamento",
+        )
+        preferida = geometria.divisor_da_primeira_abertura(
+            sum(tamanhos),
+            preferida_esquerda=qt_janela.LARGURA_PREFERIDA_DAS_ABAS,
+            preferida_direita=qt_janela.LARGURA_PREFERIDA_DO_VISOR,
+        )
+        self.assertNotEqual(preferida, tamanhos[0], "a repartição de fábrica sobrescreveu a escolha")
 
     def test_a_fracao_de_fabrica_nao_e_gravada(self) -> None:
         """**Gravá-la transformava a repartição de fábrica na decisão de alguém.**

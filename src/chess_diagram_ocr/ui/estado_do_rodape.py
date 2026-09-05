@@ -420,6 +420,13 @@ três peles, 91 com a reticência da elisão. Cem é esse número com a folga do
 razão de `galeria_declarada.LARGURA_DA_LATERAL`: reservar o valor exato de uma fonte deixa a zona
 curta na seguinte.
 
-**Ele não sobe o piso da janela**, e é o que faz dele um teto e não uma exigência nova: o resto do
-rodapé pede 443 px, e 443 + 100 continua abaixo dos 945 que o divisor já exige. O que passar da
-zona é elidido à direita e vai inteiro para a dica -- ver `qt/rodape.py`."""
+**Ele não sobe o piso da janela**, e é o que faz dele um teto e não uma exigência nova. Remedido
+por pele em 2026-09-05, a 1024x768, porque **um número não serve às três**: o resto do rodapé pede
+**443 px** na clássica e na "Foco" e **431** na "Fita", contra um piso de divisor de **955** e
+**945**. A zona poderia pedir até **512 px** (514 na "Fita") antes de o piso começar a subir, e ela
+pede 100. Quem afirma isso é
+`tests/test_qt_tamanho_da_janela.py::RodapeNaoEPisoDeJanelaTests`, medindo o resto em vez de
+cravá-lo: até a sexta rodada da S-552 a frase acima estava na spec sem guarda nenhuma, e este
+número podia ir a 900 sem que a suíte acusasse.
+
+O que passar da zona é elidido à direita e vai inteiro para a dica -- ver `qt/rodape.py`."""
