@@ -483,10 +483,10 @@ E quatro dos "deveria" dele:
 5. **As linhas saem ordenadas pela avaliação.** O MultiPV do Stockfish é a ordem da iteração
    anterior, e com dez linhas o crítico viu `-3,09` acima de `-3,04`. O índice **não** é
    reordenado junto: ele é a âncora do clique, e é a posição na lista que a sala guarda.
-6. **A barra espelha com o tabuleiro** (`virado=`), como no Lichess -- ver a linha do relatório
-   abaixo para a fiação que falta.
+6. **A barra espelha com o tabuleiro** (`virado=`), como no Lichess. A sala passa a orientação
+   desde 2026-09-04 -- ver a nota das três linhas, abaixo.
 7. **`titulo_da_secao`** monta `Motor (Stockfish dev-20230303)` a partir do `id name` do UCI, em
-   vez do nome do arquivo -- também à espera de duas linhas na sala.
+   vez do nome do arquivo, e a seção o usa desde a mesma data.
 
 ### Critério de aceite
 
@@ -569,23 +569,33 @@ Primeira rodada, 2026-09-04. Reprovada em três pontos; os reprodutores dele est
 | **`M3` e `−M3` desenham a mesma barra** — 0 px de diferença, âmbar cheio nos dois | o mate pintava a **faixa** de quem mateia, e a faixa de mate é a barra inteira | a faixa cheia passou a ser a cor **do lado**; o âmbar virou o fio, com 2 px. Medido: 6.504 px de 7.800 diferentes |
 | **O rótulo sai cortado e perde o sinal** — `−12,34` vira `12` (precisa de 25 a 30 px, há 18) | barra de 18 px e rótulo com sinal, em Consolas 7pt | barra de 26 px, rótulo **sem sinal** (a posição já o diz), corpo que desce até caber, e nada desenhado quando não cabe |
 | **Na pele Foco a barra some** — faixa a 1,17:1 e moldura a 1,04:1 contra o fundo | o fio era `tokens.MOLDURA`, que é superfície e escurece com o cromo | o fio segue a pele: `MOLDURA` na clara (14,74:1), `GLIFO_CLARO` na escura (15,20:1) |
-| A barra não vira com o tabuleiro | nada perguntava pela orientação | `BarraDeAvaliacao(virado=...)`, perguntado no `paintEvent` como a caixa. **Falta uma linha na sala** — ver abaixo |
+| A barra não vira com o tabuleiro | nada perguntava pela orientação | `BarraDeAvaliacao(virado=...)`, perguntado no `paintEvent` como a caixa. A sala passa `lambda: self.estudo.invertido` desde 2026-09-04 — ver abaixo |
 | A lista MultiPV volta ao topo a cada resposta (~0,9 s), perdendo rolagem e seleção | `setHtml` a cada resposta | HTML igual não redesenha; quando muda, rolagem e seleção são repostas |
 | As linhas não estão ordenadas por avaliação (`−3,09` acima de `−3,04` com MultiPV 10) | a ordem era a que o motor devolveu, que é a da iteração anterior | `linhas_do_motor` ordena pela avaliação do lado que joga, **sem** reordenar o índice (ele é a âncora do clique) |
 | Não dá para copiar uma linha (o `setHtml` apaga a seleção) | idem | as pontas da seleção são anotadas e repostas |
-| O título diz `Motor (stockfish.exe)` em vez do nome UCI | o título usava `path.name` | `motor_declarado.titulo_da_secao` monta `Motor (Stockfish dev-20230303)`. **Faltam duas linhas na sala** — ver abaixo |
+| O título diz `Motor (stockfish.exe)` em vez do nome UCI | o título usava `path.name` | `motor_declarado.titulo_da_secao` monta `Motor (Stockfish dev-20230303)`, e a seção o chama desde 2026-09-04 — ver abaixo |
 
-**As três linhas que faltam, e por que elas não estão escritas.** As três moram em
-`qt/painel_de_estudo.py`, e a Fase 83 está escrevendo naquele arquivo agora -- este executor foi
-instruído a não abri-lo. Elas são:
+**As linhas que faltavam, escritas em 2026-09-04.** As três moravam em `qt/painel_de_estudo.py`, e
+a Fase 83 estava escrevendo naquele arquivo -- o executor da S-529 foi instruído a não abri-lo.
+Assim que ele ficou livre elas entraram, e `motor_declarado.titulo_da_secao` saiu de `SEM_CHAMADOR`
+em `tests/test_ui_orfaos.py` (a catraca continua em zero):
 
 1. `BarraDeAvaliacao(coluna, caixa=self._caixa_do_tabuleiro, virado=lambda: self.estudo.invertido)`
-   em `_montar_a_coluna_do_tabuleiro` (a barra espelhar);
+   em `_esquerda` (a barra espelhar). **Faltava mais que o parâmetro**: `flip_board` não mandava a
+   barra repintar, e ela só descobriria a virada na resposta seguinte do motor -- numa sala sem
+   análise contínua, nunca. `flip_board` passou a chamar `vantagem.update()`, como o `resizeEvent`
+   já fazia.
 2. `QGroupBox(motor_declarado.titulo_da_secao(self._analyzer.name, self._analyzer.path.name), pai)`
-   em `_secao_do_motor`, e a mesma troca na linha que refaz o título ao trocar de binário.
+   em `_secao_do_motor`, e a mesma troca ao trocar de binário. **E uma terceira chamada**, porque o
+   nome UCI chega depois da montagem: o processo só sobe na primeira análise (é decisão de
+   `motor_das_preferencias`, para não pagar 100 a 300 ms de quem não pediu avaliação), então na
+   hora de desenhar a seção `EngineAnalyzer.name` ainda responde o nome do arquivo. Sem o
+   `_mostrar_o_titulo_do_motor` no fim da análise, as duas linhas ficariam escritas e o título
+   continuaria dizendo `Motor (stockfish.exe)` na sessão inteira.
 
-Enquanto elas não entram, o mecanismo existe e é afirmado por teste sobre o widget; o que não
-acontece é a sala usá-lo.
+Testes: `tests/test_qt_motor.py::PainelComMotorTests`
+(`test_a_barra_da_sala_espelha_quando_o_tabuleiro_e_virado`, em pixel sobre a barra do painel, e
+`test_o_titulo_da_secao_traz_o_nome_que_o_motor_diz`, com o `id name` do motor falso).
 
 ## S-530 · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável — ✅ **implementada em 2026-09-04**
 
@@ -1651,10 +1661,15 @@ Stockfish dev-20230303, 1 thread, `Hash` 16 MB, profundidade 16. A partida do cr
 - **O Cancelar continua parando rápido** na profundidade padrão: **125 ms** medidos, sem thread
   viva. Na profundidade 30 a espera máxima passa a ser o teto de 30 s, e isso é o preço declarado
   de a profundidade 30 existir.
-- **O que ficou de fora nesta rodada**: o `[%eval #1]` na posição já matada. A decisão existe
-  (`grava_avaliacao`, e `Avaliado.acabou` sai do tabuleiro, não do motor), e falta **uma linha** em
-  `qt/painel_de_estudo.py::_marcar_os_lances` -- arquivo que a Fase 83 está escrevendo e que este
-  executor foi instruído a não abrir.
+- **O `[%eval]` na posição já matada, ligado em 2026-09-04.** A decisão existia (`grava_avaliacao`,
+  e `Avaliado.acabou` sai do tabuleiro, não do motor) e faltava a linha em
+  `qt/painel_de_estudo.py::_marcar_os_lances` -- arquivo que a Fase 83 estava escrevendo e que o
+  executor da S-537 foi instruído a não abrir. Ela entrou assim que ele ficou livre, e
+  `analise_da_partida.grava_avaliacao` saiu de `SEM_CHAMADOR` em `tests/test_ui_orfaos.py`.
+  **O que se pula é a avaliação, e não o nó**: a posição que acaba a partida também pode ser um
+  afogamento, e afogar no lugar de matar é o `??` que esta passada existe para achar -- o símbolo
+  continua sendo escrito no lance que a acabou. Medido no PGN gravado de `1. f3 e5 2. g4 Qh4#`:
+  três `[%eval]` em quatro lances, e nenhum no último.
 
 ### Testes
 
@@ -1671,7 +1686,9 @@ Stockfish dev-20230303, 1 thread, `Hash` 16 MB, profundidade 16. A partida do cr
   começa rodada; o gráfico desenha e o clique devolve o ply.
 - `tests/test_qt_motor.py::PartidaAnalisadaNaSalaTests` (novo): a gravação de `[%eval]` e do símbolo
   na árvore, com o `??` aparecendo na lista de lances; o relatório levando ao ply; e as duas
-  recusas (sem lance, sem motor).
+  recusas (sem lance, sem motor). Desde 2026-09-04, também
+  `test_a_posicao_ja_matada_nao_leva_eval_para_o_pgn`: o PGN gravado sem o `[%eval]` da posição
+  final, e o símbolo ficando nela.
 - `tests/test_engine.py::test_o_mate_ja_dado_aponta_para_quem_o_deu` (novo): o `mate 0` sem sinal.
 
 Na segunda rodada, em `tests/test_ui_analise_da_partida.py`: os três cortes nos seis limites da
@@ -1696,7 +1713,7 @@ Primeira rodada, 2026-09-04. Reprovada em três pontos; os reprodutores dele est
 | Sem precisão (%) nem ACPL no relatório | nenhum dos dois existia | os dois no resumo, por cor. Medido: brancas 90% e 30 cp, pretas 86% e 51 cp |
 | O progresso diz "lance **0** de 62" | o índice da posição saía como número de lance | conta de 1 sobre o número de **lances**, e nomeia o lance que está sendo avaliado |
 | A lista escreve `g6 ?` com espaço antes do símbolo | o SAN levava sempre um espaço no fim | o espaço vai para `Trecho.token` (o PGN continua `g6 $2`) e o desenho cola o símbolo |
-| `[%eval #1]` gravado na posição já matada | `mate 0` é normalizado para `±1`, que a barra precisa | `Avaliado.acabou` + `grava_avaliacao`. **Falta uma linha na sala** -- ver o critério de aceite |
+| `[%eval #1]` gravado na posição já matada | `mate 0` é normalizado para `±1`, que a barra precisa | `Avaliado.acabou` + `grava_avaliacao`, e `_marcar_os_lances` os chama desde 2026-09-04 -- ver o critério de aceite |
 | Sem marca do lance corrente no gráfico nem dica com ply e avaliação | o gráfico só tinha a curva e os pontos de erro | `GraficoDaPartida.marcar` (fio vertical + anel) e `frase_em`, que troca a dica a cada movimento do ponteiro |
 
 ## S-538 · Tablebases Syzygy quando a pasta existir: resultado exato nos finais — ✅ **implementada em 2026-09-04** (segunda rodada: medida contra tabela real)

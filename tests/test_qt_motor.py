@@ -22,11 +22,13 @@ from __future__ import annotations
 import threading
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import chess
 from ambiente_de_teste import pasta_temporaria
+from fake_uci_engine import ENGINE_NAME
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, cor_em, descartar, pixels_diferentes, renderizar
 from test_engine import _launcher
 
@@ -567,6 +569,36 @@ class PainelComMotorTests(_Sala):
         painel.inserir_linha_do_motor(1)
         self.assertIs(antes, painel.estudo.no)
 
+    def test_a_barra_da_sala_espelha_quando_o_tabuleiro_e_virado(self) -> None:
+        """A barra sabia espelhar desde a S-529 e **a sala não lhe dizia nada**: `virado` chegava
+        `None`, e quem virava o tabuleiro para estudar do lado das pretas ficava com uma barra
+        teimosa ao lado dele -- o olho traduzindo duas vezes, que é o defeito que o item nomeia.
+
+        Mede-se o pixel do painel, e não o parâmetro: a barra pergunta a orientação no `paintEvent`
+        dela, e uma fiação que passasse a resposta errada passaria igual num teste de assinatura.
+        """
+        painel = self.sala(self.motor())
+        self.analisar(painel)
+        self.assertFalse(painel.vantagem.invertida())
+        de_pe = renderizar(painel.vantagem)
+        painel.flip_board()
+        self.app.processEvents()
+        self.assertTrue(painel.vantagem.invertida(), "a barra não pergunta ao estudo da sala")
+        self.assertGreater(pixels_diferentes(de_pe, renderizar(painel.vantagem)), 100)
+
+    def test_o_titulo_da_secao_traz_o_nome_que_o_motor_diz(self) -> None:
+        """`Motor (stockfish.exe)` não distingue dois Stockfish de versões diferentes nem um
+        binário renomeado, e o UCI responde `id name` na abertura -- é esse nome que todo programa
+        de xadrez mostra.
+
+        **O nome chega depois da montagem**, e é isso que a segunda metade afirma: o processo só
+        sobe na primeira análise (S-33), então na hora de desenhar a seção só há o nome do arquivo.
+        """
+        painel = self.sala(self.motor())
+        self.assertEqual(f"Motor ({self.launcher.name})", painel.caixa_do_motor.title())
+        self.analisar(painel)
+        self.assertEqual(f"Motor ({ENGINE_NAME})", painel.caixa_do_motor.title())
+
     def test_pedir_uma_linha_que_o_motor_nao_deu_vira_frase(self) -> None:
         painel = self.sala(self.motor(multipv=1))
         self.analisar(painel)
@@ -816,6 +848,43 @@ class PartidaAnalisadaNaSalaTests(_Sala):
         self.assertIn(declarada.NAG_DE_JUIZO[declarada.ERRO_GRAVE], segundo.nags)
         self.assertEqual(set(), set(primeiro.nags), "lance limpo não recebe símbolo")
         self.assertIn("??", painel.lista.toPlainText())
+
+    def test_a_posicao_ja_matada_nao_leva_eval_para_o_pgn(self) -> None:
+        """`[%eval #-1]` saía gravado na posição em que o mate **já aconteceu**: o UCI responde
+        `score mate 0` ali, e a normalização para `±1` -- que a barra precisa -- vira um "mate em
+        um" falso num campo que outros programas leem. O Lichess não grava avaliação na final.
+
+        A decisão existia (`grava_avaliacao`) e a sala não a chamava, então o defeito continuava
+        saindo no arquivo. O teste lê o PGN gravado, que é onde o número falso ia parar.
+        """
+        painel = self.sala(self.motor())
+        for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
+            painel.push_move(chess.Move.from_uci(uci))
+        avaliados = [
+            declarada.Avaliado(ply=1, numero=1, brancas=True, san="f3", centipeoes=-40,
+                               mate_em=None, perda=40, juizo=""),
+            declarada.Avaliado(ply=2, numero=1, brancas=False, san="e5", centipeoes=-30,
+                               mate_em=None, perda=0, juizo=""),
+            declarada.Avaliado(ply=3, numero=2, brancas=True, san="g4", centipeoes=-1000,
+                               mate_em=None, perda=970, juizo=declarada.ERRO_GRAVE),
+            declarada.Avaliado(ply=4, numero=2, brancas=False, san="Qh4#", centipeoes=-1000,
+                               mate_em=-1, perda=0, juizo="", acabou=True),
+        ]
+        janela = painel._chegou_a_analise_da_partida(avaliados)
+        if janela is not None:
+            self.addCleanup(descartar, janela)
+        mate = painel.estudo.raiz.variations[0].variations[0].variations[0].variations[0]
+        self.assertEqual("Qh4#", mate.san())
+        self.assertNotIn("%eval", mate.comment)
+        self.assertEqual(3, painel.pgn_payload().count("%eval"), "os outros três continuam")
+
+        # **O que se pula é a avaliação, e não o nó.** A posição que acaba a partida também pode
+        # ser um afogamento, e afogar no lugar de matar é justamente o `??` que esta passada existe
+        # para achar: o símbolo continua sendo escrito no lance que a acabou.
+        afogou = [*avaliados[:-1], replace(avaliados[-1], juizo=declarada.ERRO_GRAVE)]
+        self.assertEqual(2, painel._marcar_os_lances(afogou))
+        self.assertIn(declarada.NAG_DE_JUIZO[declarada.ERRO_GRAVE], mate.nags)
+        self.assertNotIn("%eval", mate.comment)
 
     def test_o_relatorio_leva_ao_lance_do_erro(self) -> None:
         painel = self.sala(self.motor())

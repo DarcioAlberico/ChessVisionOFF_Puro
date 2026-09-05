@@ -182,17 +182,12 @@ SEM_CHAMADOR: dict[str, str] = {
         "pronta. Um chamador de fora seria a segunda montagem da mesma linha, e ela já divergiu "
         "uma vez: a primeira rodada não tinha número nenhum ali"
     ),
-    "analise_da_partida.grava_avaliacao": (
-        "a decisão de **não** gravar `[%eval]` na posição em que o mate já aconteceu. Quem a "
-        "chamaria é uma linha de `qt/painel_de_estudo.py::_marcar_os_lances`, e este executor foi "
-        "instruído a não abrir aquele arquivo (outro executor escreve nele agora) -- a linha está "
-        "no relatório da S-537. Enquanto ela não entra, o `[%eval #1]` continua saindo"
-    ),
-    "motor_declarado.titulo_da_secao": (
-        "`Motor (Stockfish dev-20230303)` em vez de `Motor (stockfish.exe)`. Quem a chamaria são "
-        "duas linhas de `qt/painel_de_estudo.py` (`_secao_do_motor` e a troca de binário), pelo "
-        "mesmo motivo de `grava_avaliacao`, e as duas estão no relatório da S-529"
-    ),
+    #
+    # `analise_da_partida.grava_avaliacao` e `motor_declarado.titulo_da_secao` estavam aqui, e
+    # saíram em 2026-09-04 **por terem ganhado chamador**: as três linhas que a S-529 e a S-537
+    # deixaram no relatório foram escritas em `qt/painel_de_estudo.py` assim que o arquivo ficou
+    # livre. É o caminho que este mapa existe para acontecer -- a isenção era do executor que não
+    # podia abrir o arquivo, e não da decisão.
 }
 """`modulo.NOME -> motivo`, e o motivo não pode ser vazio.
 

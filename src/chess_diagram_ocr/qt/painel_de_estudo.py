@@ -436,8 +436,13 @@ class PainelDeEstudo(QWidget):
         # mostrar o que nunca terá número seriam 18 px de promessa. Quando ela existe, o tabuleiro
         # divide a faixa com ela e continua crescendo pela altura (S-551) -- a conta de
         # `LARGURA_MINIMA_DA_LEITURA` não muda, porque a barra sai da coluna esquerda.
+        #
+        # **E ela espelha junto com o tabuleiro**: `virado` é perguntado no `paintEvent` da barra,
+        # como a caixa -- guardar a resposta a deixaria de um lado enquanto o tabuleiro já virou.
         self.vantagem = (
-            BarraDeAvaliacao(coluna, caixa=self._caixa_do_tabuleiro)
+            BarraDeAvaliacao(
+                coluna, caixa=self._caixa_do_tabuleiro, virado=lambda: self.estudo.invertido
+            )
             if self._analyzer is not None
             else None
         )
@@ -708,7 +713,9 @@ class PainelDeEstudo(QWidget):
         insere. O que ficou aqui é o botão, a frase de estado e o rodapé de desempenho.
         """
         assert self._analyzer is not None
-        caixa = QGroupBox(f"Motor ({self._analyzer.path.name})", pai)
+        caixa = QGroupBox(
+            motor_declarado.titulo_da_secao(self._analyzer.name, self._analyzer.path.name), pai
+        )
         self.caixa_do_motor = caixa
         pilha = QVBoxLayout(caixa)
         pilha.setContentsMargins(*(espaco.linha(),) * 4)
@@ -743,6 +750,26 @@ class PainelDeEstudo(QWidget):
         )
         pilha.addWidget(self.lbl_desempenho)
         return caixa
+
+    def _mostrar_o_titulo_do_motor(self) -> None:
+        """`Motor (Stockfish dev-20230303)`: o nome que o **motor** diz, e não o do arquivo (S-529).
+
+        **O nome UCI chega depois da montagem, e é por isso que isto é um método.** O processo só
+        sobe na primeira análise -- é decisão de `motor_das_preferencias`, e ela paga os 100 a
+        300 ms só de quem pede avaliação --, então na hora de desenhar a seção `EngineAnalyzer.name`
+        ainda responde o nome do executável. Chamado outra vez quando o motor responde, o título
+        passa a distinguir dois Stockfish de versões diferentes, que é o que este item existe para
+        fazer. Quem monta a frase é `ui/motor_declarado`.
+
+        Só escreve quando muda: com a análise contínua isto passa aqui a cada ~800 ms, e um
+        `setTitle` por resposta repintaria a moldura da caixa para dizer a mesma coisa.
+        """
+        motor = self._analyzer
+        if motor is None:  # pragma: no cover - sem motor não há seção nem título
+            return
+        titulo = motor_declarado.titulo_da_secao(motor.name, motor.path.name)
+        if titulo != self.caixa_do_motor.title():
+            self.caixa_do_motor.setTitle(titulo)
 
     def showEvent(self, a0: QShowEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         """**O teclado vem junto com a aba** (S-281): o `<Map>` do outro lado.
@@ -1122,6 +1149,9 @@ class PainelDeEstudo(QWidget):
     def _terminar_analise(self, _geracao: int) -> None:
         self._analysing = False
         self.btn_analisar.setEnabled(True)
+        # O processo já subiu (foi ele quem respondeu), então o `id name` do UCI existe: é aqui que
+        # o título deixa de ser o nome do arquivo (S-529). Ver `_mostrar_o_titulo_do_motor`.
+        self._mostrar_o_titulo_do_motor()
         # A posição pode ter mudado enquanto o motor pensava: com a análise contínua ligada, é aqui
         # que a próxima começa. Sem isto, navegar durante uma análise deixaria o motor parado.
         self._analisar_se_continuo()
@@ -1578,6 +1608,11 @@ class PainelDeEstudo(QWidget):
         self.estudo.invertido = not self.estudo.invertido
         self.tabuleiro.mostrar_tabuleiro(self.estudo.tabuleiro, virado=self.estudo.invertido)
         self._mostrar_setas()
+        if self.vantagem is not None:
+            # A barra pergunta a orientação no `paintEvent` (S-529), e ninguém a manda repintar ao
+            # virar: sem isto ela fica com as brancas do lado errado até a resposta seguinte do
+            # motor -- e numa sala sem análise contínua, indefinidamente.
+            self.vantagem.update()
         self._marcar_sujo(historico=False)
 
     def toggle_turn(self) -> None:
@@ -2122,6 +2157,14 @@ class PainelDeEstudo(QWidget):
 
         O casamento é **por posição na linha principal**, e não por nó guardado: a árvore pode ter
         mudado enquanto o motor pensava, e um nó guardado apontaria para um lance que saiu dela.
+
+        **A posição já matada não recebe `[%eval]`** (S-537): o UCI responde `score mate 0` ali, o
+        `engine` normaliza para `±1` -- que a barra precisa --, e o que saía no arquivo era um
+        `[%eval #1]` numa posição em que o mate **já aconteceu**. Quem decide é `grava_avaliacao`.
+
+        O que se pula é a **avaliação**, e não o nó: a posição que acaba a partida também pode ser
+        um afogamento, e afogar no lugar de matar é justamente o `??` que esta passada existe para
+        achar. O símbolo continua sendo escrito, e é do símbolo que a análise vive.
         """
         no: Any = self.estudo.raiz
         marcados = 0
@@ -2129,12 +2172,13 @@ class PainelDeEstudo(QWidget):
             if not no.variations:
                 break
             no = no.variations[0]
-            pontuacao = (
-                chess.engine.Mate(lance.mate_em)
-                if lance.mate_em is not None
-                else chess.engine.Cp(int(lance.centipeoes))
-            )
-            no.set_eval(chess.engine.PovScore(pontuacao, chess.WHITE))
+            if analise_declarada.grava_avaliacao(lance):
+                pontuacao = (
+                    chess.engine.Mate(lance.mate_em)
+                    if lance.mate_em is not None
+                    else chess.engine.Cp(int(lance.centipeoes))
+                )
+                no.set_eval(chess.engine.PovScore(pontuacao, chess.WHITE))
             codigo = analise_declarada.NAG_DE_JUIZO.get(lance.juizo)
             if codigo is not None:
                 no.nags = estudo_mod.alternar_nag(set(no.nags) - {codigo}, codigo)
@@ -2239,7 +2283,9 @@ class PainelDeEstudo(QWidget):
             self.btn_continua = None
             self.caixa_do_motor.hide()
         elif novo is not None and tinha:
-            self.caixa_do_motor.setTitle(f"Motor ({novo.path.name})")
+            # O motor que a troca entrega já está aberto (`MotorVivo` chama `start`), então aqui o
+            # título sai com o nome UCI e não com o do binário.
+            self._mostrar_o_titulo_do_motor()
             self.caixa_do_motor.show()
         elif novo is not None and not tinha:
             self._secao_do_motor(self.divisor_vertical)

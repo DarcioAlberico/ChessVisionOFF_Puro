@@ -1474,6 +1474,15 @@ class _MotorFalso:
         self.path = Path("stockfish-falso.exe")
         self.fechado = False
 
+    @property
+    def name(self) -> str:
+        """O `id name` do UCI, que o título da seção mostra desde a S-529.
+
+        Responde o nome do arquivo porque é o que o `EngineAnalyzer` de verdade responde enquanto o
+        processo não subiu -- e este dublê não sobe nenhum.
+        """
+        return self.path.name
+
     def close(self) -> None:
         self.fechado = True
 
