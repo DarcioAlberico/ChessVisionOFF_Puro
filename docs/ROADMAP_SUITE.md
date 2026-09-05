@@ -106,7 +106,38 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 | 80 | ✅ 2026-09-05 | A barra da sala de 154 para 32 px e a do PDF de 118 para 32; o cabecalho da partida acima do tabuleiro; o tabuleiro cresce pela altura (616 para 662 px a 1920x1080); a janela deixou de crescer ao ler (piso de 902 para 553 px); foco de teclado e icone desabilitado visiveis nas tres peles |
 | 81 | ✅ 2026-09-05 | PGN comprimido em streaming; indice incremental (8,63 GB do zero em ~20 min, segunda rodada em 0,005 s); busca por doze filtros abaixo de 1 s sobre 10,3 milhoes de partidas; ECO a 86,39% contra o header; arvore de aberturas em 0,6 ms de mediana |
 | 82 | ✅ 2026-09-05 | Opcoes do motor sem reiniciar (setoption no processo aberto, 1,34 para 2,33 MN/s); barra de avaliacao que diz quem mateia; analise da partida por expectativa de vitoria, com as divergencias contra o Lichess caindo de 14 para 4 em 256 lances; Syzygy real a 123 us de mediana |
-| 83 | ◐ 2026-09-05 | S-539 de 24 exercicios com zero corretos para 913, com 891 conferidos contra a tabela impressa; S-540 e FSRS-4.5 conferido caso a caso; S-541 com placar no disco. Falta a rodada do critico sobre a rodada 2 |
+| 83 | ✅ 2026-09-05 | S-539 de 24 exercicios com zero corretos para 913, com 891 conferidos contra a tabela impressa e 195 de 200 confirmados pelo motor; S-540 e FSRS-4.5 conferido caso a caso contra a formula publicada; S-541 com placar no disco |
 | 84 | ✅ 2026-09-05 | EPUB 3 com zero erro no epubcheck e DOCX que o Word le, com a tipografia de notacao que um editor reconhece; mil diagramas em lote em 3,01 s de SVG; o estudo impresso em vetor, com texto selecionavel |
 | 85 | ✅ 2026-09-05 | A fila de livros na janela, com progresso por pagina (120 avisos em 81 s onde havia 4) e um relatorio de qualidade por livro; S-547 medida e recusada, com o numero: o Otsu acha 55% mais diagramas no livro que exporta zero e nenhum passa do gate |
 | 86 | ✅ 2026-09-04 | S-549: 52 módulos de `ui/` sem toolkit, guarda acha 31/33 em `qt/`; S-550: sete seções, faixa em 27 cópias |
+
+## O veredito
+
+Sete rodadas de crítica independente, cada uma fotografando a janela sem mostrá-la, medindo pixel e
+contraste e reproduzindo as consultas na gigabase. **Aprovado para AAA em 2026-09-05**, no commit
+`2708309`, depois de sete itens reprovados e refeitos.
+
+O que a crítica achou e nenhum executor acharia sozinho está escrito na seção de cada item, em
+[SPEC_SUITE.md](SPEC_SUITE.md). O padrão que mais apareceu -- e o que este roadmap deixa de herança
+-- é a **guarda que se pergunta ao próprio dado que deveria travar**: quatro delas foram achadas
+revertendo o conserto e vendo a suíte continuar verde. Um docstring que descreve o caso não prova
+que o caso foi medido.
+
+### O que não é bloqueio, e o dono decide se vem depois
+
+Ordenado pelo que pesa para um enxadrista com base de vários gigabytes e para quem edita material,
+com estimativa grosseira:
+
+| o que falta | por quê | esforço |
+|---|---|---|
+| Busca por posição sobre a base inteira | não há índice de posição: a pergunta que o ChessBase responde num piscar é varredura linear aqui | 3 a 5 semanas |
+| Os cinco livros que exportam zero | a S-547 mediu a binarização e registrou honestamente que não há ganho; "é um scan" e "é um scan que o modelo não lê" são perguntas diferentes | 4 a 8 semanas, e é dado de treino, não pré-processamento |
+| Repertório e preparação por adversário | não existe módulo nenhum, e é metade do valor do ChessBase para quem compete | 3 a 4 semanas |
+| O curso no formato do Chessable | a repetição espaçada e o "adivinhe o lance" são o motor; falta o curso como objeto, com importação e progresso | 2 a 3 semanas |
+| Análise em lote sobre a base | a S-537 analisa uma partida e, por decisão registrada, não guarda o resultado | 1 a 2 semanas |
+| Elo máximo, número de lances e rodada na busca | a spec já escreveu o custo de cada um; dois pedem coluna nova e uma versão 7 do índice | 4 a 7 dias |
+| ECO acima de 90% | hoje 86,39% exatos contra o header; o caminho é mais medição e mais linhas, não outra regra | 1 a 2 semanas de trabalho de dados |
+| Sincronização entre máquinas | tudo é local | 2 a 4 semanas |
+| Idioma | `ui/strings.py` são 411 linhas de pt-BR cravado, sem `gettext` | 1 a 2 semanas mais a tradução |
+| LaTeX e `.cbv` na exportação | EPUB, DOCX, PDF, PNG e SVG existem e estão medidos | 2 a 4 dias cada |
+
